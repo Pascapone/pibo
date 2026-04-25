@@ -1,49 +1,14 @@
 import type { AgentSessionRuntime } from "@mariozechner/pi-coding-agent";
-import {
-	createDefaultPiboProfile,
-	InitialSessionContext,
-	type InitialSessionContextOptions,
-} from "./profiles.js";
-import { createPiboRuntime, type PiboRuntimeOptions } from "./runtime.js";
+import type { PiboPluginRegistry } from "../plugins/registry.js";
 import type {
 	PiboEventListener,
 	PiboEventSource,
 	PiboExecutionAction,
 	PiboExecutionEvent,
-	PiboInputEvent,
 	PiboMessageEvent,
 	PiboOutputEvent,
 	PiboSessionStatus,
 } from "./events.js";
-
-export type {
-	PiboEventListener,
-	PiboEventSource,
-	PiboExecutionAction,
-	PiboExecutionEvent,
-	PiboInputEvent,
-	PiboMessageEvent,
-	PiboOutputEvent,
-	PiboSessionStatus,
-} from "./events.js";
-
-export type PiboSessionRouterOptions = Omit<PiboRuntimeOptions, "profile"> & {
-	profile?: InitialSessionContext;
-	forwardPiEvents?: boolean;
-};
-
-function profileForSession(baseProfile: InitialSessionContext, sessionKey: string): InitialSessionContext {
-	const options: InitialSessionContextOptions = {
-		profileName: baseProfile.profileName,
-		sessionId: sessionKey,
-		skills: baseProfile.skills,
-		tools: baseProfile.tools,
-		contextFiles: baseProfile.contextFiles,
-		builtinTools: baseProfile.builtinTools,
-	};
-
-	return new InitialSessionContext(options);
-}
 
 function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
@@ -98,7 +63,7 @@ function normalizePiEvent(sessionKey: string, event: unknown): PiboOutputEvent |
 	return undefined;
 }
 
-class RoutedSession {
+export class RoutedSession {
 	private readonly queue: PiboMessageEvent[] = [];
 	private processing = false;
 	private disposed = false;
@@ -109,6 +74,7 @@ class RoutedSession {
 		private readonly sessionKey: string,
 		private readonly runtime: AgentSessionRuntime,
 		private readonly emit: PiboEventListener,
+		private readonly pluginRegistry: PiboPluginRegistry,
 		forwardPiEvents: boolean,
 	) {
 		this.unsubscribe = this.runtime.session.subscribe((event) => {
@@ -212,29 +178,32 @@ class RoutedSession {
 	}
 
 	private async runAction(action: PiboExecutionAction): Promise<unknown> {
-		switch (action) {
-			case "status":
-				return this.getStatus();
-			case "session_id":
-				return { sessionKey: this.sessionKey };
-			case "clear_queue": {
-				const cleared = this.queue.length;
-				this.queue.length = 0;
-				return { cleared };
-			}
-			case "abort":
-				await this.runtime.session.abort();
-				return { aborted: true };
-			case "dispose":
-				await this.dispose();
-				return { disposed: true };
+		const gatewayAction = this.pluginRegistry.getGatewayAction(action);
+		if (!gatewayAction) {
+			throw new Error(`Unknown execution action "${action}"`);
 		}
+
+		return await gatewayAction.execute({
+			sessionKey: this.sessionKey,
+			getStatus: () => this.getStatus(),
+			clearQueue: () => this.clearQueue(),
+			abort: async () => {
+				await this.runtime.session.abort();
+			},
+			dispose: () => this.dispose(),
+		});
 	}
 
 	private assertActive(): void {
 		if (this.disposed) {
 			throw new Error(`Session "${this.sessionKey}" has been disposed`);
 		}
+	}
+
+	private clearQueue(): number {
+		const cleared = this.queue.length;
+		this.queue.length = 0;
+		return cleared;
 	}
 
 	private withActiveMessage(event: PiboOutputEvent): PiboOutputEvent {
@@ -247,79 +216,4 @@ class RoutedSession {
 
 		return event;
 	}
-}
-
-export class PiboSessionRouter {
-	private readonly sessions = new Map<string, RoutedSession>();
-	private readonly pendingSessions = new Map<string, Promise<RoutedSession>>();
-	private readonly listeners = new Set<PiboEventListener>();
-	private readonly baseProfile: InitialSessionContext;
-
-	constructor(private readonly options: PiboSessionRouterOptions = {}) {
-		this.baseProfile = options.profile ?? createDefaultPiboProfile();
-	}
-
-	subscribe(listener: PiboEventListener): () => void {
-		this.listeners.add(listener);
-		return () => {
-			this.listeners.delete(listener);
-		};
-	}
-
-	async emit(event: PiboInputEvent): Promise<PiboOutputEvent> {
-		const session = await this.getOrCreateSession(event.sessionKey);
-
-		if (event.type === "message") {
-			return session.enqueueMessage(event);
-		}
-
-		const output = await session.executeAction(event);
-		if (event.action === "dispose") {
-			this.sessions.delete(event.sessionKey);
-		}
-		return output;
-	}
-
-	getSessionKeys(): string[] {
-		return [...this.sessions.keys()];
-	}
-
-	async disposeAll(): Promise<void> {
-		const sessions = [...this.sessions.values()];
-		this.sessions.clear();
-		await Promise.all(sessions.map((session) => session.dispose()));
-	}
-
-	private async getOrCreateSession(sessionKey: string): Promise<RoutedSession> {
-		const existing = this.sessions.get(sessionKey);
-		if (existing) return existing;
-
-		const pending = this.pendingSessions.get(sessionKey);
-		if (pending) return pending;
-
-		const created = this.createRoutedSession(sessionKey);
-		this.pendingSessions.set(sessionKey, created);
-		try {
-			return await created;
-		} finally {
-			this.pendingSessions.delete(sessionKey);
-		}
-	}
-
-	private async createRoutedSession(sessionKey: string): Promise<RoutedSession> {
-		const runtime = await createPiboRuntime({
-			cwd: this.options.cwd,
-			persistSession: this.options.persistSession,
-			profile: profileForSession(this.baseProfile, sessionKey),
-		});
-		const session = new RoutedSession(sessionKey, runtime, this.emitOutput, this.options.forwardPiEvents ?? false);
-		this.sessions.set(sessionKey, session);
-		return session;
-	}
-
-	private readonly emitOutput = (event: PiboOutputEvent): void => {
-		for (const listener of this.listeners) {
-			listener(event);
-		}
-	};
 }

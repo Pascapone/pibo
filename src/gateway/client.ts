@@ -14,7 +14,7 @@ import type {
 	PiboMessageStartedEvent,
 	PiboOutputEvent,
 	PiboSessionStatus,
-} from "../events.js";
+} from "../core/events.js";
 
 export type GatewayClientOptions = {
 	host?: string;

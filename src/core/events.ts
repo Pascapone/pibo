@@ -8,7 +8,9 @@ export type PiboMessageEvent = {
 	id?: string;
 };
 
-export type PiboExecutionAction = "status" | "session_id" | "clear_queue" | "abort" | "dispose";
+export type BuiltinPiboExecutionAction = "status" | "session_id" | "clear_queue" | "abort" | "dispose";
+
+export type PiboExecutionAction = BuiltinPiboExecutionAction | (string & {});
 
 export type PiboExecutionEvent = {
 	type: "execution";

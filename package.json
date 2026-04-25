@@ -18,7 +18,9 @@
     "start": "node dist/index.js",
     "test": "npm run build && node --test test/*.test.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "clean": "node -e \"fs.rmSync('dist', { recursive: true, force: true })\""
+    "clean": "node -e \"fs.rmSync('dist', { recursive: true, force: true })\"",
+    "remote": "tsx src/index.ts remote",
+    "remote:line": "tsx src/index.ts remote-line"
   },
   "dependencies": {
     "@mariozechner/pi-ai": "^0.70.2",

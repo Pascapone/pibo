@@ -7,7 +7,7 @@ import {
 	type GatewayFrame,
 	type GatewayResponseFrame,
 } from "./protocol.js";
-import type { PiboAssistantMessageEvent, PiboInputEvent, PiboMessageEvent } from "../events.js";
+import type { PiboAssistantMessageEvent, PiboInputEvent, PiboMessageEvent } from "../core/events.js";
 
 export type GatewayRequestOptions = {
 	host?: string;

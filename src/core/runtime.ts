@@ -11,20 +11,22 @@ import {
 	type AgentSessionRuntime,
 	type AgentSessionRuntimeDiagnostic,
 	type CreateAgentSessionRuntimeFactory,
+	type ExtensionFactory,
 	type ResourceDiagnostic,
 	type ToolDefinition,
 } from "@mariozechner/pi-coding-agent";
 import {
-	createDefaultPiboProfile,
 	type ContextFileProfile,
 	type InitialSessionContext,
 	type ToolProfile,
 } from "./profiles.js";
+import { createDefaultPiboProfile } from "../plugins/builtin.js";
 
 export type PiboRuntimeOptions = {
 	cwd?: string;
 	persistSession?: boolean;
 	profile?: InitialSessionContext;
+	extensionFactories?: ExtensionFactory[];
 };
 
 export type PiboProfileInspection = {
@@ -125,6 +127,7 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 			authStorage,
 			resourceLoaderOptions: {
 				additionalSkillPaths: skillPaths,
+				extensionFactories: options.extensionFactories,
 				agentsFilesOverride: (base) => ({
 					agentsFiles: mergeContextFiles(base.agentsFiles, contextFiles),
 				}),

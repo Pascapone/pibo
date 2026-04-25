@@ -1,6 +1,10 @@
 import { createServer, type Server, type Socket } from "node:net";
-import type { PiboOutputEvent } from "../events.js";
-import { PiboSessionRouter } from "../session-router.js";
+import type { PiboChannel, PiboChannelContext } from "../channels/types.js";
+import type { PiboOutputEvent } from "../core/events.js";
+import { createDefaultPiboPluginRegistry } from "../plugins/builtin.js";
+import type { PiboPluginRegistry } from "../plugins/registry.js";
+import { PiboSessionRouter } from "../core/session-router.js";
+import type { PiboSessionBindingStore } from "../sessions/bindings.js";
 import {
 	DEFAULT_GATEWAY_HOST,
 	DEFAULT_GATEWAY_PORT,
@@ -15,6 +19,10 @@ export type GatewayServerOptions = {
 	host?: string;
 	port?: number;
 	persistSession?: boolean;
+	pluginRegistry?: PiboPluginRegistry;
+	bindingStore?: PiboSessionBindingStore;
+	bindingDbPath?: string;
+	startChannels?: boolean;
 };
 
 type GatewayConnection = {
@@ -40,23 +48,43 @@ function createConnection(socket: Socket): GatewayConnection {
 	};
 }
 
+async function createGatewayBindingStore(options: GatewayServerOptions): Promise<PiboSessionBindingStore> {
+	const { createDefaultSessionBindingStore, SqliteSessionBindingStore } = await import(
+		"../sessions/sqlite-store.js"
+	);
+	return options.bindingDbPath
+		? new SqliteSessionBindingStore(options.bindingDbPath)
+		: createDefaultSessionBindingStore();
+}
+
 export class PiboGatewayServer {
-	private readonly router: PiboSessionRouter;
+	private readonly pluginRegistry: PiboPluginRegistry;
+	private bindingStore?: PiboSessionBindingStore;
+	private ownsBindingStore = false;
+	private router?: PiboSessionRouter;
+	private readonly startedChannels: PiboChannel[] = [];
 	private readonly connections = new Set<GatewayConnection>();
 	private server?: Server;
 	private unsubscribe?: () => void;
 
 	constructor(private readonly options: GatewayServerOptions = {}) {
-		this.router = new PiboSessionRouter({
-			persistSession: options.persistSession,
-		});
+		this.pluginRegistry = options.pluginRegistry ?? createDefaultPiboPluginRegistry();
 	}
 
 	async start(): Promise<void> {
 		if (this.server) return;
 
+		this.validateChannels();
+		this.bindingStore = this.options.bindingStore ?? (await createGatewayBindingStore(this.options));
+		this.ownsBindingStore = !this.options.bindingStore;
+		this.router = new PiboSessionRouter({
+			persistSession: this.options.persistSession,
+			pluginRegistry: this.pluginRegistry,
+			bindingStore: this.bindingStore,
+		});
 		this.unsubscribe = this.router.subscribe((event) => this.broadcastRouterEvent(event));
 		this.server = createServer((socket) => this.handleSocket(socket));
+		await this.pluginRegistry.getAuthService()?.start?.();
 
 		await new Promise<void>((resolve, reject) => {
 			this.server!.once("error", reject);
@@ -65,9 +93,16 @@ export class PiboGatewayServer {
 				resolve();
 			});
 		});
+
+		if (this.options.startChannels !== false) {
+			await this.startChannels();
+		}
 	}
 
 	async stop(): Promise<void> {
+		await this.stopChannels();
+		await this.pluginRegistry.getAuthService()?.stop?.();
+
 		this.unsubscribe?.();
 		this.unsubscribe = undefined;
 
@@ -83,7 +118,14 @@ export class PiboGatewayServer {
 			this.server = undefined;
 		}
 
-		await this.router.disposeAll();
+		await this.router?.disposeAll();
+		this.router = undefined;
+
+		if (this.ownsBindingStore) {
+			this.bindingStore?.close?.();
+		}
+		this.bindingStore = undefined;
+		this.ownsBindingStore = false;
 	}
 
 	private handleSocket(socket: Socket): void {
@@ -127,7 +169,7 @@ export class PiboGatewayServer {
 		}
 
 		try {
-			const output = await this.router.emit(frame.event);
+			const output = await this.requireRouter().emit(frame.event);
 			const response: GatewayResponseFrame = {
 				type: "res",
 				id: frame.id,
@@ -144,6 +186,55 @@ export class PiboGatewayServer {
 		for (const connection of this.connections) {
 			connection.send({ type: "event", event: "router", payload: event });
 		}
+	}
+
+	private async startChannels(): Promise<void> {
+		const context = this.createChannelContext();
+		for (const channel of this.pluginRegistry.getChannels()) {
+			if (channel.auth.mode === "none") {
+				console.error(`Warning: channel "${channel.name}" starts without auth`);
+			}
+			await channel.start(context);
+			this.startedChannels.push(channel);
+		}
+	}
+
+	private validateChannels(): void {
+		for (const channel of this.pluginRegistry.getChannels()) {
+			if (channel.auth.mode === "required" && !this.pluginRegistry.getAuthService()) {
+				throw new Error(`Channel "${channel.name}" requires auth, but no auth service is registered`);
+			}
+		}
+	}
+
+	private async stopChannels(): Promise<void> {
+		while (this.startedChannels.length > 0) {
+			const channel = this.startedChannels.pop()!;
+			await channel.stop?.();
+		}
+	}
+
+	private createChannelContext(): PiboChannelContext {
+		return {
+			emit: (event) => this.requireRouter().emit(event),
+			subscribe: (listener) => this.requireRouter().subscribe(listener),
+			resolveSession: (input) => {
+				const defaultProfile = this.pluginRegistry.resolveProfileName(input.defaultProfile);
+				return this.requireBindingStore().resolve({ ...input, defaultProfile });
+			},
+			getGatewayActions: () => this.pluginRegistry.getGatewayActionInfos(),
+			auth: this.pluginRegistry.getAuthService(),
+		};
+	}
+
+	private requireRouter(): PiboSessionRouter {
+		if (!this.router) throw new Error("Gateway router is not started");
+		return this.router;
+	}
+
+	private requireBindingStore(): PiboSessionBindingStore {
+		if (!this.bindingStore) throw new Error("Gateway binding store is not started");
+		return this.bindingStore;
 	}
 }
 

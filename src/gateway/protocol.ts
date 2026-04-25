@@ -1,4 +1,4 @@
-import type { PiboInputEvent, PiboOutputEvent } from "../events.js";
+import type { PiboInputEvent, PiboOutputEvent } from "../core/events.js";
 
 export const DEFAULT_GATEWAY_HOST = "127.0.0.1";
 export const DEFAULT_GATEWAY_PORT = 4789;

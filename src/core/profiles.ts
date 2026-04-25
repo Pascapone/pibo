@@ -1,6 +1,4 @@
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
-import { createPiboGatewayToolProfiles } from "./gateway/tool.js";
-import { createPiboTestToolProfiles } from "./tools.js";
 
 export type ToolProfile = {
 	name: string;
@@ -112,33 +110,4 @@ export class InitialSessionContextBuilder {
 			builtinTools: this.builtinTools,
 		});
 	}
-}
-
-function createBasePiboProfileBuilder(profileName: string): InitialSessionContextBuilder {
-	return new InitialSessionContextBuilder(profileName)
-		.addSkill({
-			name: "pi-agent-harness",
-			path: ".codex/skills/pi-agent-harness/SKILL.md",
-		})
-		.addContextFile({
-			label: "V1 wrapper notes",
-			path: "examples/context/pibo-wrapper.md",
-		})
-		.addContextFile({
-			label: "Example workspace policy",
-			path: "examples/context/workspace-policy.md",
-		});
-}
-
-export function createDefaultPiboProfile(): InitialSessionContext {
-	return createBasePiboProfileBuilder("pibo-minimal")
-		.addTools(createPiboTestToolProfiles())
-		.createSession();
-}
-
-export function createGatewayProducerPiboProfile(): InitialSessionContext {
-	return createBasePiboProfileBuilder("pibo-gateway-producer")
-		.addTools(createPiboTestToolProfiles())
-		.addTools(createPiboGatewayToolProfiles())
-		.createSession();
 }

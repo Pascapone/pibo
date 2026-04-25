@@ -1,6 +1,6 @@
 import { Type } from "@mariozechner/pi-ai";
 import { defineTool, type ToolDefinition } from "@mariozechner/pi-coding-agent";
-import type { ToolProfile } from "../profiles.js";
+import type { ToolProfile } from "../core/profiles.js";
 import type { GatewayResponseFrame } from "./protocol.js";
 import { sendGatewayMessageAndWaitForReply, type GatewayReplyResult } from "./request.js";
 
