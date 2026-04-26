@@ -1,6 +1,6 @@
 # Pibo Progress
 
-Pibo is a minimal TypeScript wrapper around Pi Coding Agent. This file is a short project status note. The architectural snapshot lives in `docs/architecture.md`; MCP usage lives in `docs/mcp.md`.
+Pibo is a minimal TypeScript wrapper around Pi Coding Agent. This file is a short project status note. The architectural snapshot lives in `docs/architecture.md`; MCP usage lives in `docs/mcp.md`; curated CLI tool usage lives in `docs/tools.md`.
 
 ## Current State
 
@@ -29,9 +29,9 @@ Pibo is a minimal TypeScript wrapper around Pi Coding Agent. This file is a shor
 - The Pi-TUI remote controller is kept as a proof-of-concept example in `src/remote/examples/tui-controller.ts`.
 - An authenticated web gateway path exists through `npm run gateway:web`, split into Better Auth, a same-origin web host, and the chat web app.
 - A minimal Commander-based CLI manages local config values in `.pibo/config.json`.
-- `pibo mcp` provides local MCP server discovery, schema inspection, search, tool calls, `mcp_servers.json` config management, and a small opt-in registry for common external MCP servers such as Browser Use.
-- Browser Use can be installed on demand as an MCP preset into an isolated Python venv under `~/.pibo/mcp-tools/browser-use`.
-- The Browser Use preset defaults to headless mode, supports checked headful setup when a display is available, and falls back to headless with a warning when no display is usable.
+- `pibo mcp` provides local MCP server discovery, schema inspection, search, tool calls, `mcp_servers.json` config management, and a small opt-in registry for common external MCP servers.
+- The MCP registry command surface is in place, but there are currently no bundled presets.
+- `pibo tools` manages curated external CLI tools separately from MCP and from profile skills. The first bundled tool is `browser-use`, with on-demand install, doctor/path/env commands, and CLI guide output.
 
 ## Session Routing
 

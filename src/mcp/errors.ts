@@ -6,46 +6,8 @@
  * - Why it failed (details)
  * - How to fix it (recovery suggestions)
  */
-
-/**
- * Error codes matching exit codes
- */
-export enum ErrorCode {
-  CLIENT_ERROR = 1, // Invalid arguments, config issues
-  SERVER_ERROR = 2, // Tool execution failed
-  NETWORK_ERROR = 3, // Connection failed
-  AUTH_ERROR = 4, // Authentication failed
-}
-
-/**
- * Structured error for CLI output
- */
-export interface CliError {
-  code: ErrorCode;
-  type: string;
-  message: string;
-  details?: string;
-  suggestion?: string;
-}
-
-/**
- * Format a CLI error for stderr output
- */
-export function formatCliError(error: CliError): string {
-  const lines: string[] = [];
-
-  lines.push(`Error [${error.type}]: ${error.message}`);
-
-  if (error.details) {
-    lines.push(`  Details: ${error.details}`);
-  }
-
-  if (error.suggestion) {
-    lines.push(`  Suggestion: ${error.suggestion}`);
-  }
-
-  return lines.join('\n');
-}
+import { type CliError, ErrorCode } from '../cli-errors.js';
+export { ErrorCode, formatCliError, type CliError } from '../cli-errors.js';
 
 // ============================================================================
 // Config Errors

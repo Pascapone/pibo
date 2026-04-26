@@ -17,8 +17,8 @@ npm run dev -- mcp call <server> <tool> '<json>'
 The CLI accepts both space-separated and slash-separated server/tool targets:
 
 ```bash
-npm run dev -- mcp info browser-use browser_get_state
-npm run dev -- mcp info browser-use/browser_get_state
+npm run dev -- mcp info filesystem read_file
+npm run dev -- mcp info filesystem/read_file
 ```
 
 ## Config
@@ -48,10 +48,10 @@ The registry is a curated list of optional MCP server presets. Presets are not a
 
 ```bash
 npm run dev -- mcp registry list
-npm run dev -- mcp registry show browser-use
-npm run dev -- mcp registry doctor browser-use
-npm run dev -- mcp registry install browser-use
-npm run dev -- mcp registry remove browser-use
+npm run dev -- mcp registry show <name>
+npm run dev -- mcp registry doctor <name>
+npm run dev -- mcp registry install <name>
+npm run dev -- mcp registry remove <name>
 ```
 
 Python-based presets are installed into isolated virtual environments:
@@ -62,57 +62,12 @@ Python-based presets are installed into isolated virtual environments:
 
 Pibo does not install Python tools during `npm install`. Runtime setup happens only when a registry preset is installed.
 
-## Browser Use
-
-The first registry preset is `browser-use`. Browser Use provides browser automation through an MCP server. Pibo installs it on demand into:
-
-```text
-~/.pibo/mcp-tools/browser-use/.venv
-```
-
-Install:
-
-```bash
-npm run dev -- mcp registry install browser-use
-```
-
-Inspect tools:
-
-```bash
-npm run dev -- mcp info browser-use
-```
-
-Try direct browser control:
-
-```bash
-npm run dev -- mcp call browser-use browser_navigate '{"url":"https://example.com"}'
-npm run dev -- mcp call browser-use browser_get_state '{"include_screenshot":false}'
-```
-
-The default install is headless, which works well on VPS and server environments:
-
-```json
-{
-  "env": {
-    "BROWSER_USE_HEADLESS": "true"
-  }
-}
-```
-
-For a visible local browser:
-
-```bash
-npm run dev -- mcp registry install browser-use --headful
-```
-
-On Linux, pibo checks whether a graphical display is usable. If no display is found, pibo prints a warning and falls back to headless mode instead of writing a broken headful config.
-
 ## Requirements
 
 Registry installation requires `uv` on `PATH`. The doctor command reports missing prerequisites:
 
 ```bash
-npm run dev -- mcp registry doctor browser-use
+npm run dev -- mcp registry doctor <name>
 ```
 
 If `uv` is missing:
@@ -138,18 +93,12 @@ brew install python
 winget install Python.Python.3.12
 ```
 
-## Model Provider Notes
-
-Direct Browser Use MCP tools such as `browser_navigate`, `browser_get_state`, `browser_click`, and `browser_screenshot` do not need a model provider.
-
-Agentic Browser Use tools, especially `retry_with_browser_use_agent`, need a valid model provider/API key in the Browser Use MCP server environment. Pibo does not yet copy credentials from the main Pi Coding Agent configuration into MCP server env. That should stay explicit until provider ownership is designed.
-
 ## Daemon
 
 The MCP CLI keeps stdio connections warm through a local daemon for faster repeated calls. Disable it with:
 
 ```bash
-MCP_NO_DAEMON=1 npm run dev -- mcp call browser-use browser_get_state '{}'
+MCP_NO_DAEMON=1 npm run dev -- mcp call <server> <tool> '{}'
 ```
 
 Useful environment variables:

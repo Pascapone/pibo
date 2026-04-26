@@ -36,6 +36,12 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 		return;
 	}
 
+	if (argv[2] === "tools") {
+		const { runToolsCli } = await import("./tools/index.js");
+		await runToolsCli([argv[0] ?? "node", "pibo tools", ...argv.slice(3)]);
+		return;
+	}
+
 	const program = new Command();
 	program.name("pibo").description("Pibo CLI").showHelpAfterError();
 
@@ -49,6 +55,18 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 		.action(async (args: string[]) => {
 			const { runMcpCli } = await import("./mcp/index.js");
 			await runMcpCli([argv[0] ?? "node", "pibo mcp", ...args]);
+		});
+
+	program
+		.command("tools")
+		.description("Install and inspect curated external CLI tools")
+		.helpOption(false)
+		.allowUnknownOption(true)
+		.allowExcessArguments(true)
+		.argument("[args...]")
+		.action(async (args: string[]) => {
+			const { runToolsCli } = await import("./tools/index.js");
+			await runToolsCli([argv[0] ?? "node", "pibo tools", ...args]);
 		});
 
 	const config = program.command("config").description(`Manage pibo config at ${DEFAULT_PIBO_CONFIG_PATH}`);

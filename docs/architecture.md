@@ -6,8 +6,8 @@ Pibo is a thin TypeScript harness around Pi Coding Agent. Pi remains the inner e
 
 - Keep Pi Coding Agent embedded as the execution engine, not expanded into the whole product.
 - Keep pibo responsible for product boundaries: profiles, plugins, channels, auth, policy, and routing.
-- Keep optional integrations opt-in. External MCP servers, Python runtimes, browsers, and third-party CLIs are installed only when a user asks for them.
-- Keep runtime configuration explicit and local. Project config lives in `.pibo/config.json`; MCP server definitions live in `mcp_servers.json`.
+- Keep optional integrations opt-in. External MCP servers, Python runtimes, and third-party CLIs are installed only when a user asks for them.
+- Keep runtime configuration explicit and local. Project config lives in `.pibo/config.json`; MCP server definitions live in `mcp_servers.json`; installed external CLI tools live under `~/.pibo/tools`.
 - Prefer ordinary, inspectable boundaries over hidden coupling: plugins register capabilities, channels translate transports, and MCP servers remain external processes.
 
 ## Core Boundary
@@ -160,9 +160,13 @@ The reusable pieces are:
 
 This is useful as a reference for future channel adapters, but Pi TUI is not treated as the long-term primary remote UI. A dedicated web or terminal client can reuse the same channel and `RemoteAgentSessionClient` without coupling itself to Pi TUI internals.
 
-## MCP CLI
+## Operator CLIs
 
 `pibo mcp` is a local operator tool for discovering and calling external MCP servers from the shell. It is separate from the pibo plugin/runtime boundary: MCP servers are configured in `mcp_servers.json`, not in `PiboPluginRegistry`, and their tools are invoked directly by the CLI. The usage guide lives in `docs/mcp.md`.
+
+`pibo tools` is the matching operator surface for curated external CLI tools. These are not MCP servers and are not Pibo profile skills. A tool entry can install an isolated runtime, expose doctor/path/env commands, and print on-demand guides for agents. The first curated tool is `browser-use`, installed under `~/.pibo/tools/browser-use` with its own Python venv and tool home.
+
+## MCP CLI
 
 The CLI supports:
 
@@ -174,9 +178,21 @@ The CLI supports:
 
 The config helper commands live under `pibo mcp config ...` and can create, show, add, and remove server definitions. The runtime lookup order is explicit `-c/--config`, `MCP_CONFIG_PATH`, project-local `mcp_servers.json`, then the user-level MCP config paths.
 
-`pibo mcp registry ...` is a thin convenience layer over the same config file. Registry entries are curated presets for optional MCP servers and are not active until installed. Python-based presets get isolated virtual environments under `~/.pibo/mcp-tools/<name>`, managed on demand through `uv`. Installing a preset writes a normal `mcpServers` entry, so the runtime path stays identical to manually added servers. The first built-in preset is `browser-use`; it is installed into its own venv and exposed through that venv's `browser-use --mcp` executable instead of being bundled as a Pibo package dependency. The preset sets `BROWSER_USE_HEADLESS=true` by default for VPS-friendly local MCP startup; `pibo mcp registry install browser-use --headful` writes display environment variables for a visible local browser when a usable display is detected, otherwise it warns and falls back to headless mode.
+`pibo mcp registry ...` is a thin convenience layer over the same config file. Registry entries are curated presets for optional MCP servers and are not active until installed. Python-based presets get isolated virtual environments under `~/.pibo/mcp-tools/<name>`, managed on demand through `uv`. Installing a preset writes a normal `mcpServers` entry, so the runtime path stays identical to manually added servers. The registry currently has no bundled presets.
 
 The MCP daemon keeps expensive stdio server connections warm between CLI invocations. It is a local convenience cache only; server state and security still belong to the configured MCP server.
+
+## CLI Tools
+
+`pibo tools` keeps curated command-line tools discoverable without pushing their usage instructions into every agent context. Installed tool runtimes live under `~/.pibo/tools/<name>`. A tool can expose one or more guides, but those guides are only printed when requested through the CLI.
+
+The first bundled tool preset is `browser-use`. Its guides are available through:
+
+```bash
+npm run dev -- tools guides browser-use
+npm run dev -- tools guide browser-use browser-use
+npm run dev -- tools guide browser-use remote-browser
+```
 
 ## Current Scripts
 

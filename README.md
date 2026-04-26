@@ -5,7 +5,8 @@ Minimal TypeScript wrapper project around Pi Coding Agent.
 ## Docs
 
 - `docs/architecture.md` describes the current runtime architecture and boundaries.
-- `docs/mcp.md` documents the MCP CLI, registry, and Browser Use preset.
+- `docs/mcp.md` documents the MCP CLI and registry.
+- `docs/tools.md` documents curated external CLI tools.
 - `docs/progress.md` is the short implementation status snapshot.
 
 ## Scripts
@@ -21,6 +22,7 @@ Minimal TypeScript wrapper project around Pi Coding Agent.
 - `npm run remote -- <sessionName> [profile]` starts the Pi-TUI remote controller.
 - `npm run remote:line -- <sessionName> [profile]` starts the minimal line-based remote client for debugging.
 - `npm run dev -- mcp` lists configured MCP servers and tools.
+- `npm run dev -- tools` lists curated external CLI tools.
 - `npm run dev -- config keys` lists supported local config keys.
 - `npm run build` compiles to `dist/`.
 - `npm run start` runs the compiled entrypoint.
@@ -32,7 +34,7 @@ Minimal TypeScript wrapper project around Pi Coding Agent.
 
 Keep the wrapper thin. Pi Coding Agent should remain the inner engine; pibo adds only the small runtime, tool, prompt, and policy layer we actually need.
 
-Optional integrations stay outside the core package until the user installs them. MCP servers, Python virtual environments, browser runtimes, and third-party CLIs are configured on demand through `pibo mcp`, not bundled into pibo itself.
+Optional integrations stay outside the core package until the user installs them. MCP servers, Python virtual environments, and third-party CLIs are configured on demand through `pibo mcp` and `pibo tools`, not bundled into pibo itself.
 
 ## Plugin Layer
 
@@ -121,15 +123,29 @@ Pibo also ships a small MCP registry for common optional servers. Presets are no
 
 ```bash
 npm run dev -- mcp registry list
-npm run dev -- mcp registry show browser-use
-npm run dev -- mcp registry doctor browser-use
-npm run dev -- mcp registry install browser-use
-npm run dev -- mcp registry install browser-use --headful
+npm run dev -- mcp registry show <name>
+npm run dev -- mcp registry doctor <name>
+npm run dev -- mcp registry install <name>
 ```
 
-`browser-use` is installed on demand into its own Python virtual environment under `~/.pibo/mcp-tools/browser-use` and is not bundled as a Pibo dependency. The registry install requires `uv` on PATH and configures the MCP server to run headless by default. Use `--headful` when a local display is available and you want a visible browser window; if no usable display is detected, Pibo prints a warning and falls back to headless mode.
+The registry currently has no bundled presets. The command surface remains in place so curated external MCP servers can be added later without changing the config model.
 
 Config lookup order is `-c/--config`, `MCP_CONFIG_PATH`, `./mcp_servers.json`, `~/.mcp_servers.json`, then `~/.config/mcp/mcp_servers.json`. Use `MCP_NO_DAEMON=1` to force fresh MCP connections instead of using the short-lived connection cache.
+
+## CLI Tools
+
+Pibo includes a separate `pibo tools` registry for curated external CLI tools. These tools are not MCP servers and their guides are not loaded into every agent profile. Agents can discover them on demand:
+
+```bash
+npm run dev -- tools list
+npm run dev -- tools show browser-use
+npm run dev -- tools install browser-use
+npm run dev -- tools doctor browser-use
+npm run dev -- tools guides browser-use
+npm run dev -- tools guide browser-use browser-use
+```
+
+The first curated tool is `browser-use`. It is installed into an isolated runtime under `~/.pibo/tools/browser-use` and uses `~/.pibo/tools/browser-use/home` as its tool home. See `docs/tools.md`.
 
 ## Web Auth
 

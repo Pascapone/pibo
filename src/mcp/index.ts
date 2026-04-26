@@ -53,7 +53,6 @@ interface ParsedArgs {
   registryAction?: RegistryAction;
   registryName?: string;
   registryRunSetup?: boolean;
-  registryBrowserMode?: 'headless' | 'headful';
   withDescriptions: boolean;
   configPath?: string;
 }
@@ -163,14 +162,6 @@ function parseArgs(args: string[]): ParsedArgs {
       case '--no-setup':
       case '--skip-setup':
         result.registryRunSetup = false;
-        break;
-
-      case '--headful':
-        result.registryBrowserMode = 'headful';
-        break;
-
-      case '--headless':
-        result.registryBrowserMode = 'headless';
         break;
 
       default:
@@ -455,7 +446,6 @@ Config:
   pibo mcp registry show <name>                   Show preset details
   pibo mcp registry doctor <name>                 Check runtime prerequisites
   pibo mcp registry install <name>                Install setup deps and add preset
-  pibo mcp registry install <name> --headful      Install preset for a visible local browser
   pibo mcp registry remove <name>                 Remove preset config and runtime
 
 Options:
@@ -464,8 +454,6 @@ Options:
   -d, --with-descriptions  Include tool descriptions
   -c, --config <path>      Path to mcp_servers.json config file
   --no-setup               Skip registry setup commands during install
-  --headful                Registry install: configure a visible browser when supported
-  --headless               Registry install: configure headless browser mode when supported
 
 Output:
   pibo mcp/info/grep       Human-readable text to stdout
@@ -481,7 +469,7 @@ Examples:
   pibo mcp call filesystem read_file '{}'       # Call tool
   cat input.json | pibo mcp call server tool    # Read from stdin (no '-' needed)
   pibo mcp config help                          # Show config file schema
-  pibo mcp registry install browser-use         # Install Browser Use MCP preset
+  pibo mcp registry list                        # List bundled MCP presets
 
 Environment Variables:
   MCP_NO_DAEMON=1        Disable connection caching (force fresh connections)
@@ -584,7 +572,6 @@ export async function runMcpCli(argv = process.argv): Promise<void> {
           name: args.registryName,
           configPath: args.configPath,
           runSetup: args.registryRunSetup,
-          browserMode: args.registryBrowserMode,
         });
         break;
     }
