@@ -18,7 +18,6 @@ import type {
 import {
 	createSubagentSessionKey,
 	getSubagentSessionDepth,
-	type PiboSubagentRunResult,
 	type PiboSubagentRunner,
 } from "../subagents/tool.js";
 import { randomUUID } from "node:crypto";
@@ -74,24 +73,28 @@ function formatRunNotification(notification: PiboRunNotification): string {
 				runId: run.runId,
 				kind: run.kind,
 				status: run.status,
+				toolName: run.toolName,
 				summary: run.summary,
 			})),
 			failed: notification.failed.map((run) => ({
 				runId: run.runId,
 				kind: run.kind,
 				status: run.status,
+				toolName: run.toolName,
 				summary: run.summary,
 			})),
 			cancelled: notification.cancelled.map((run) => ({
 				runId: run.runId,
 				kind: run.kind,
 				status: run.status,
+				toolName: run.toolName,
 				summary: run.summary,
 			})),
 			running: notification.running.map((run) => ({
 				runId: run.runId,
 				kind: run.kind,
 				status: run.status,
+				toolName: run.toolName,
 				summary: run.summary,
 			})),
 			instruction:
@@ -245,7 +248,7 @@ export class PiboSessionRouter {
 
 	private createSubagentRunner(parentSessionKey: string): PiboSubagentRunner {
 		return {
-			runSubagent: async ({ subagent, message, threadKey, mode }): Promise<PiboSubagentRunResult> => {
+			runSubagent: async ({ subagent, message, threadKey }) => {
 				this.assertSubagentDepth(parentSessionKey, subagent);
 				const sessionKey = createSubagentSessionKey(parentSessionKey, subagent.name, threadKey);
 				this.sessionParentKeys.set(sessionKey, parentSessionKey);
@@ -259,51 +262,34 @@ export class PiboSessionRouter {
 					id: randomUUID(),
 				};
 
-				if (mode === "async") {
-					await this.emit(event);
-					return { mode, sessionKey, eventId: event.id! };
-				}
-
 				const reply = await this.emitMessageAndWaitForReply(event, subagent.timeoutMs);
-				return { mode, sessionKey, eventId: event.id!, reply };
+				return { sessionKey, eventId: event.id!, reply };
 			},
 		};
 	}
 
 	private createRunToolController(parentSessionKey: string): PiboRunToolController {
 		return {
-			startSubagent: async ({ subagent, message, threadKey, completionPolicy }) => {
-				this.assertSubagentDepth(parentSessionKey, subagent);
-				const sessionKey = createSubagentSessionKey(parentSessionKey, subagent.name, threadKey);
-				this.sessionParentKeys.set(sessionKey, parentSessionKey);
-				this.resolveSubagentBinding(sessionKey, subagent);
-
-				const event: PiboMessageEvent = {
-					type: "message",
-					sessionKey,
-					text: message,
-					source: "actor",
-					id: randomUUID(),
-				};
-				const run = this.runRegistry.startSubagentRun({
+			startToolRun: ({ toolName, completionPolicy, execute }) => {
+				const run = this.runRegistry.startToolRun({
 					ownerSessionKey: parentSessionKey,
-					subagentName: subagent.name,
-					childSessionKey: sessionKey,
-					eventId: event.id!,
-					threadKey,
+					toolName,
 					completionPolicy,
 				});
 
-				try {
-					await this.emit(event);
-				} catch (error) {
-					this.runRegistry.failByChildEvent(
-						sessionKey,
-						event.id,
-						error instanceof Error ? error.message : String(error),
-					);
-					this.scheduleRunNotification(parentSessionKey, false);
-				}
+				void (async () => {
+					try {
+						const result = await execute();
+						const completed = this.runRegistry.complete(run.runId, result);
+						if (completed) this.scheduleRunNotification(parentSessionKey, false);
+					} catch (error) {
+						const failed = this.runRegistry.fail(
+							run.runId,
+							error instanceof Error ? error.message : String(error),
+						);
+						if (failed) this.scheduleRunNotification(parentSessionKey, false);
+					}
+				})();
 
 				return run;
 			},
@@ -312,13 +298,7 @@ export class PiboSessionRouter {
 			waitForRun: (runId, timeoutMs) => this.runRegistry.wait(parentSessionKey, runId, timeoutMs),
 			readRun: (runId) => this.runRegistry.read(parentSessionKey, runId),
 			cancelRun: async (runId) => {
-				const run = this.runRegistry.getRunForCancellation(parentSessionKey, runId);
 				const cancelled = this.runRegistry.cancel(parentSessionKey, runId);
-				const pendingChild = this.pendingSessions.get(run.childSessionKey);
-				const child =
-					this.sessions.get(run.childSessionKey) ??
-					(pendingChild ? await pendingChild : undefined);
-				await child?.cancelMessage(run.eventId);
 				return cancelled;
 			},
 			ackRun: (runId) => this.runRegistry.ack(parentSessionKey, runId),
@@ -404,14 +384,6 @@ export class PiboSessionRouter {
 	}
 
 	private readonly emitOutput = (event: PiboOutputEvent): void => {
-		if (event.type === "assistant_message") {
-			const run = this.runRegistry.completeByChildEvent(event);
-			if (run) this.scheduleRunNotification(run.ownerSessionKey, false);
-		} else if (event.type === "session_error") {
-			const run = this.runRegistry.failByChildEvent(event.sessionKey, event.eventId, event.error);
-			if (run) this.scheduleRunNotification(run.ownerSessionKey, false);
-		}
-
 		this.pluginRegistry.notifyEvent(event);
 		for (const listener of this.listeners) {
 			listener(event);

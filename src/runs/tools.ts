@@ -1,68 +1,73 @@
 import { StringEnum, Type } from "@mariozechner/pi-ai";
 import { defineTool, type ToolDefinition } from "@mariozechner/pi-coding-agent";
-import type { SubagentProfile } from "../core/profiles.js";
 import type {
 	PiboRunCompletionPolicy,
 	PiboRunReadResult,
+	PiboRunSnapshot,
 	PiboRunWaitResult,
-	PiboSubagentRunSnapshot,
+	PiboToolRunResult,
 } from "./registry.js";
 
-export type PiboRunStartSubagentInput = {
-	subagent: SubagentProfile;
-	message: string;
-	threadKey?: string;
+export type PiboRunStartToolInput = {
+	toolName: string;
+	params: unknown;
 	completionPolicy?: PiboRunCompletionPolicy;
+	execute(): Promise<PiboToolRunResult>;
 };
 
 export type PiboRunToolController = {
-	startSubagent(input: PiboRunStartSubagentInput): Promise<PiboSubagentRunSnapshot>;
-	listRuns(options?: { includeConsumed?: boolean; includeDetached?: boolean }): PiboSubagentRunSnapshot[];
-	getRunStatus(runId: string): PiboSubagentRunSnapshot;
+	startToolRun(input: PiboRunStartToolInput): PiboRunSnapshot;
+	listRuns(options?: { includeConsumed?: boolean; includeDetached?: boolean }): PiboRunSnapshot[];
+	getRunStatus(runId: string): PiboRunSnapshot;
 	waitForRun(runId: string, timeoutMs: number): Promise<PiboRunWaitResult>;
 	readRun(runId: string): PiboRunReadResult;
-	cancelRun(runId: string): Promise<PiboSubagentRunSnapshot>;
-	ackRun(runId: string): PiboSubagentRunSnapshot;
+	cancelRun(runId: string): Promise<PiboRunSnapshot>;
+	ackRun(runId: string): PiboRunSnapshot;
 };
-
-function requireSubagent(subagents: readonly SubagentProfile[], name: string): SubagentProfile {
-	const subagent = subagents.find((candidate) => candidate.name === name && candidate.enabled !== false);
-	if (!subagent) {
-		throw new Error(`Unknown or disabled subagent "${name}"`);
-	}
-	return subagent;
-}
 
 function resultText(prefix: string, value: unknown): string {
 	return `${prefix}\n${JSON.stringify(value, null, 2)}`;
 }
 
+function textFromToolResult(result: { content?: unknown }): string | undefined {
+	if (!Array.isArray(result.content)) return undefined;
+	const text = result.content
+		.map((part) => {
+			if (!part || typeof part !== "object") return "";
+			const candidate = part as { type?: unknown; text?: unknown };
+			return candidate.type === "text" && typeof candidate.text === "string" ? candidate.text : "";
+		})
+		.filter(Boolean)
+		.join("\n");
+	return text || undefined;
+}
+
+function requireTool(tools: readonly ToolDefinition[], name: string): ToolDefinition {
+	const tool = tools.find((candidate) => candidate.name === name);
+	if (!tool) {
+		throw new Error(`Unknown or non-yieldable tool "${name}"`);
+	}
+	return tool;
+}
+
 export function createRunToolDefinitions(
-	subagents: readonly SubagentProfile[],
+	yieldableTools: readonly ToolDefinition[],
 	controller: PiboRunToolController,
 ): ToolDefinition[] {
-	const subagentNames = subagents
-		.filter((subagent) => subagent.enabled !== false)
-		.map((subagent) => subagent.name);
+	const toolNames = yieldableTools.map((tool) => tool.name);
 
 	return [
 		defineTool({
-			name: "pibo_subagent_start",
-			label: "Pibo Subagent Start",
+			name: "pibo_run_start",
+			label: "Pibo Run Start",
 			description:
-				"Start a subagent as a yielded run. Use tracked when the result may matter later; use detached only for intentional fire-and-forget work.",
+				"Start a yieldable tool as a yielded run. Use tracked when the result may matter later; use detached only for intentional fire-and-forget work.",
 			promptSnippet:
-				"Use pibo_subagent_start for long-running subagent work. It returns a runId. Use pibo_run_read for completed results and pibo_run_wait/status/list/cancel/ack to manage runs.",
+				"Use pibo_run_start to run a yieldable tool in the background. It returns a runId. Use pibo_run_read for completed results and pibo_run_wait/status/list/cancel/ack to manage runs.",
 			executionMode: "parallel",
 			parameters: Type.Object({
-				subagentName: StringEnum(subagentNames, { description: "Visible subagent name to start" }),
-				message: Type.String({ description: "Message to send to the subagent" }),
-				threadKey: Type.Optional(
-					Type.String({
-						description:
-							"Stable key for continuing a previous subagent conversation. Omit it to create a new subagent session.",
-					}),
-				),
+				toolName: StringEnum(toolNames, { description: "Yieldable tool name to start" }),
+				arguments: Type.Any({ description: "Arguments object for the selected tool" }),
 				completionPolicy: Type.Optional(
 					StringEnum(["tracked", "detached"], {
 						description:
@@ -71,15 +76,27 @@ export function createRunToolDefinitions(
 					}),
 				),
 			}),
-			async execute(_toolCallId, params) {
-				const run = await controller.startSubagent({
-					subagent: requireSubagent(subagents, params.subagentName),
-					message: params.message,
-					threadKey: params.threadKey,
+			async execute(toolCallId, params, signal, onUpdate, ctx) {
+				const tool = requireTool(yieldableTools, params.toolName);
+				const run = controller.startToolRun({
+					toolName: tool.name,
+					params: params.arguments,
 					completionPolicy: params.completionPolicy as PiboRunCompletionPolicy | undefined,
+					async execute() {
+						const result = await tool.execute(toolCallId, params.arguments, signal, onUpdate, ctx);
+						const resultObject = result as { content?: unknown; details?: unknown; isError?: unknown };
+						const text = textFromToolResult(resultObject);
+						if (resultObject.isError === true) {
+							throw new Error(text ?? `${tool.name} returned an error result.`);
+						}
+						return {
+							text,
+							details: resultObject.details ?? result,
+						};
+					},
 				});
 				return {
-					content: [{ type: "text", text: resultText(`Started subagent run ${run.runId}.`, run) }],
+					content: [{ type: "text", text: resultText(`Started yielded run ${run.runId}.`, run) }],
 					details: run,
 				};
 			},
@@ -112,7 +129,7 @@ export function createRunToolDefinitions(
 			promptSnippet: "Use pibo_run_status to inspect one yielded run without reading its full result.",
 			executionMode: "parallel",
 			parameters: Type.Object({
-				runId: Type.String({ description: "Run id returned by pibo_subagent_start" }),
+				runId: Type.String({ description: "Run id returned by pibo_run_start" }),
 			}),
 			async execute(_toolCallId, params) {
 				const run = controller.getRunStatus(params.runId);
@@ -129,7 +146,7 @@ export function createRunToolDefinitions(
 			promptSnippet: "Use pibo_run_wait when blocked on a run. Timeout is normal; call again or continue other work.",
 			executionMode: "parallel",
 			parameters: Type.Object({
-				runId: Type.String({ description: "Run id returned by pibo_subagent_start" }),
+				runId: Type.String({ description: "Run id returned by pibo_run_start" }),
 				timeoutMs: Type.Optional(Type.Number({ description: "Maximum wait time in milliseconds, clamped to 300000" })),
 			}),
 			async execute(_toolCallId, params) {
@@ -157,7 +174,7 @@ export function createRunToolDefinitions(
 			promptSnippet: "Use pibo_run_read to retrieve a completed or failed run result. Reading terminal tracked runs consumes reminders.",
 			executionMode: "parallel",
 			parameters: Type.Object({
-				runId: Type.String({ description: "Run id returned by pibo_subagent_start" }),
+				runId: Type.String({ description: "Run id returned by pibo_run_start" }),
 			}),
 			async execute(_toolCallId, params) {
 				const run = controller.readRun(params.runId);
@@ -175,7 +192,7 @@ export function createRunToolDefinitions(
 			promptSnippet: "Use pibo_run_cancel when a yielded run is no longer needed.",
 			executionMode: "parallel",
 			parameters: Type.Object({
-				runId: Type.String({ description: "Run id returned by pibo_subagent_start" }),
+				runId: Type.String({ description: "Run id returned by pibo_run_start" }),
 			}),
 			async execute(_toolCallId, params) {
 				const run = await controller.cancelRun(params.runId);
@@ -193,7 +210,7 @@ export function createRunToolDefinitions(
 				"Use pibo_run_ack when you intentionally do not need to read a completed result or do not need more reminders for the current running state.",
 			executionMode: "parallel",
 			parameters: Type.Object({
-				runId: Type.String({ description: "Run id returned by pibo_subagent_start" }),
+				runId: Type.String({ description: "Run id returned by pibo_run_start" }),
 			}),
 			async execute(_toolCallId, params) {
 				const run = controller.ackRun(params.runId);

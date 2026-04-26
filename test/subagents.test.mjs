@@ -16,9 +16,14 @@ import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.j
 const noopSubagentRunner = {
 	async runSubagent(input) {
 		return {
-			mode: input.mode,
 			sessionKey: createSubagentSessionKey("parent", input.subagent.name, input.threadKey),
 			eventId: "event-1",
+			reply: {
+				type: "assistant_message",
+				sessionKey: createSubagentSessionKey("parent", input.subagent.name, input.threadKey),
+				eventId: "event-1",
+				text: "helper result",
+			},
 		};
 	},
 };
@@ -97,7 +102,6 @@ test("subagent tool definitions delegate execution to the provided runner", asyn
 				name: "helper",
 				description: "Ask the helper agent.",
 				targetProfile: "helper-profile",
-				mode: "async",
 				executionMode: "parallel",
 			},
 		],
@@ -119,8 +123,8 @@ test("subagent tool definitions delegate execution to the provided runner", asyn
 
 	assert.equal(observed.message, "Find the relevant files.");
 	assert.equal(observed.threadKey, "files");
-	assert.equal(observed.mode, "async");
 	assert.equal(result.details.sessionKey, "parent::sub::helper::files");
+	assert.equal(result.content[0].text, "helper result");
 });
 
 test("profiles can expose subagents as active router tools", async () => {
@@ -133,7 +137,6 @@ test("profiles can expose subagents as active router tools", async () => {
 					name: "helper",
 					description: "Ask the helper profile.",
 					targetProfile: "helper-profile",
-					mode: "async",
 				});
 				api.registerProfile({
 					name: "parent-profile",
@@ -196,9 +199,10 @@ test("default run-yield QA profile exposes run control tools", async () => {
 	);
 	assert.equal(activeTools.has("pibo_echo"), true);
 	assert.equal(activeTools.has("pibo_workspace_info"), true);
+	assert.equal(activeTools.has("pibo_exec"), true);
 	assert.equal(activeTools.has("pibo_subagent_qa_researcher"), true);
 	assert.equal(activeTools.has("pibo_subagent_qa_reviewer"), true);
-	assert.equal(activeTools.has("pibo_subagent_start"), true);
+	assert.equal(activeTools.has("pibo_run_start"), true);
 	assert.equal(activeTools.has("pibo_run_list"), true);
 	assert.equal(activeTools.has("pibo_run_wait"), true);
 	assert.equal(activeTools.has("pibo_run_read"), true);

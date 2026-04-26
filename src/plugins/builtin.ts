@@ -13,7 +13,7 @@ import { piboRemoteAgentPlugin } from "./remote-agent.js";
 import { definePiboPlugin, PiboPluginRegistry } from "./registry.js";
 import type { PiboPlugin, PiboProfileBuildContext } from "./types.js";
 
-const CORE_PROFILE_TOOLS = ["pibo_echo", "pibo_workspace_info"] as const;
+const CORE_PROFILE_TOOLS = ["pibo_echo", "pibo_workspace_info", "pibo_exec"] as const;
 const GATEWAY_PROFILE_TOOLS = [...CORE_PROFILE_TOOLS, "pibo_gateway_send"] as const;
 const RUN_YIELD_QA_SUBAGENTS = ["qa-researcher", "qa-reviewer"] as const;
 
@@ -89,7 +89,6 @@ export const piboCorePlugin = definePiboPlugin({
 				description:
 					"QA helper subagent for run-yield testing. Use it for small research or inspection tasks.",
 				targetProfile: "pibo-minimal",
-				mode: "async",
 				executionMode: "parallel",
 			},
 			{
@@ -97,7 +96,6 @@ export const piboCorePlugin = definePiboPlugin({
 				description:
 					"QA reviewer subagent for run-yield testing. Use it for independent review or validation tasks.",
 				targetProfile: "pibo-minimal",
-				mode: "async",
 				executionMode: "parallel",
 			},
 		]);

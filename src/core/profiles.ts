@@ -1,12 +1,12 @@
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 
-export type PiboSubagentMode = "sync" | "async";
 export type PiboSubagentExecutionMode = "sequential" | "parallel";
 
 export type ToolProfile = {
 	name: string;
 	description?: string;
 	enabled?: boolean;
+	yieldable?: boolean;
 	definition?: ToolDefinition;
 };
 
@@ -15,7 +15,6 @@ export type SubagentProfile = {
 	description?: string;
 	targetProfile: string;
 	enabled?: boolean;
-	mode?: PiboSubagentMode;
 	executionMode?: PiboSubagentExecutionMode;
 	timeoutMs?: number;
 	maxDepth?: number;

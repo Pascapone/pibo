@@ -92,14 +92,14 @@ parent-session
 
 If `threadKey` is omitted, pibo creates a new subagent session. If the caller passes the same `threadKey` again, the same subagent session is continued, which allows multi-turn delegation. The generated session key can be used through the gateway like any other session key while the router is running.
 
-Subagent tools support `sync` and `async` modes. Sync mode waits for the correlated assistant reply and returns it to the calling agent. Async mode enqueues the message and returns the child `sessionKey` and event id immediately. A depth guard prevents accidental recursive subagent loops.
+Subagent tools are synchronous normal tools: they wait for the correlated child reply and return it to the calling agent. A depth guard prevents accidental recursive subagent loops. Long-running subagent work should be started through yielded runs by wrapping the subagent tool with `pibo_run_start`.
 
 ## Yielded Runs
 
-Profiles with enabled subagents also receive run-control tools. These are agent-facing tools, not gateway actions:
+Profiles with yieldable tools receive run-control tools. These are agent-facing tools, not gateway actions:
 
 ```text
-pibo_subagent_start
+pibo_run_start
 pibo_run_list
 pibo_run_status
 pibo_run_wait
@@ -108,7 +108,7 @@ pibo_run_cancel
 pibo_run_ack
 ```
 
-`pibo_subagent_start` starts a subagent message as a yielded run and returns a `runId`. The run registry in the session router maps that `runId` to the child `sessionKey` and input `eventId`, then completes or fails the run when the router observes the correlated child output.
+`pibo_run_start` wraps one yieldable tool call as a yielded run and returns a `runId`. The wrapped tool still exists as a normal synchronous tool; the run wrapper only changes execution lifecycle. Built-in yieldable tools include generated `pibo_subagent_<name>` tools and `pibo_exec`.
 
 Yielded runs use `tracked` by default. Tracked runs create compact `<pibo_run_notification>` service messages for the parent agent when they start, finish, fail, or remain unconsumed across natural turn boundaries. Notifications contain only run ids and summaries; the agent must call `pibo_run_read` to retrieve the full result. `detached` runs are explicit fire-and-forget work: they remain inspectable with `includeDetached`, but they do not create automatic reminders.
 

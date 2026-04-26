@@ -1,8 +1,8 @@
 # Agent Run Yield Spec
 
-This spec turns the research note in `docs/agent-run-yield-research.md` into the V1 implementation direction for Pibo. V1 is scoped to subagent runs.
+This spec turns the research note in `docs/agent-run-yield-research.md` into the implementation direction for Pibo. V1 was scoped to subagent runs. V2 generalizes yielded runs so any registered yieldable tool can run through the same run-control lifecycle.
 
-Implementation status: V1 is implemented in `src/runs/`, `src/core/session-router.ts`, and `src/core/runtime.ts`.
+Implementation status: yielded runs are implemented in `src/runs/`, `src/core/session-router.ts`, and `src/core/runtime.ts`.
 
 ## Goal
 
@@ -34,21 +34,19 @@ yielded run
   -> agent starts long-running work, receives runId, and continues
 ```
 
-Yielded runs are an add-on. Existing sync and async subagent behavior still works. Run-control tools are exposed only for profiles that have enabled subagents.
+Yielded runs are an add-on. Normal tools still run synchronously when called directly. Run-control tools are exposed when a profile has yieldable tools.
 
 ## Core Model
 
 `sessionKey` identifies a routed Pibo conversation. `sessionId` is the short technical Pi session identity behind that route and is used for Pi persistence and provider cache affinity.
 
-`threadKey` identifies continuity for a subagent conversation.
-
 `runId` identifies one concrete unit of long-running work.
 
 ```text
 parent agent
-  -> pibo_subagent_start(...)
+  -> pibo_run_start(toolName, arguments)
   -> run registry allocates runId
-  -> session router sends message to child sessionKey
+  -> selected yieldable tool runs in the background
   -> tool returns runId quickly
   -> parent agent continues
 ```
@@ -76,12 +74,12 @@ blocking
   Agent may not final-answer until the run is read, cancelled, or explicitly acknowledged.
 ```
 
-## V1 Tools
+## Tools
 
-V1 should expose run control as agent tools.
+Pibo exposes run control as agent tools.
 
 ```text
-pibo_subagent_start
+pibo_run_start
 pibo_run_list
 pibo_run_status
 pibo_run_wait
@@ -90,20 +88,19 @@ pibo_run_cancel
 pibo_run_ack
 ```
 
-`pibo_subagent_start` starts a subagent run. Its `subagentName` parameter is generated as an enum of the enabled subagents visible to the current profile.
+`pibo_run_start` starts any yieldable tool as a yielded run. Its `toolName` parameter is generated as an enum of the yieldable tools visible to the current profile. The same tool can still be called directly for synchronous execution.
 
 Suggested parameters:
 
 ```ts
-type PiboSubagentStartParams = {
-  subagentName: string;
-  message: string;
-  threadKey?: string;
+type PiboRunStartParams = {
+  toolName: string;
+  arguments: unknown;
   completionPolicy?: "tracked" | "detached";
 };
 ```
 
-Generated per-subagent tools remain the existing sync/async interface. Yielded runs use the generic `pibo_subagent_start` tool.
+Generated per-subagent tools are normal synchronous tools and are yieldable. `pibo_exec` is also a normal synchronous tool and can be yielded with `pibo_run_start`.
 
 `pibo_run_list` returns a compact snapshot of runs owned by the current agent session.
 
@@ -142,11 +139,10 @@ Responsibilities:
 
 - allocate stable `runId`
 - store owner parent `sessionKey`
-- store run kind, initially `subagent`
+- store run kind, currently `tool`
 - store completion policy
 - store status
-- store child `sessionKey`
-- store child input `eventId`
+- store wrapped `toolName`
 - store timestamps
 - store compact summary
 - store terminal result or error
@@ -174,10 +170,9 @@ Implemented shape:
 ```ts
 type PiboRunRecord = {
   runId: string;
-  kind: "subagent";
+  kind: "tool";
   ownerSessionKey: string;
-  childSessionKey: string;
-  eventId: string;
+  toolName: string;
   status: "queued" | "running" | "completed" | "failed" | "cancelled";
   completionPolicy: "tracked" | "detached";
   consumed: boolean;
@@ -200,7 +195,7 @@ Example completion notification:
 
 ```xml
 <pibo_run_notification>
-{"completed":[{"runId":"run_123","kind":"subagent","status":"completed","summary":"Subagent run completed. Use pibo_run_read for details."}],"running":["run_456","run_789"]}
+{"completed":[{"runId":"run_123","kind":"tool","toolName":"pibo_exec","status":"completed","summary":"pibo_exec run completed."}],"running":["run_456","run_789"]}
 </pibo_run_notification>
 ```
 
@@ -271,9 +266,9 @@ Multiple yielded runs can be active at the same time.
 Example:
 
 ```text
-run_1 research subagent running
-run_2 test subagent completed
-run_3 review subagent running
+run_1 pibo_exec running
+run_2 pibo_subagent_qa_researcher completed
+run_3 pibo_subagent_qa_reviewer running
 ```
 
 The next automatic follow-up should provide a compact snapshot:
@@ -289,24 +284,23 @@ Still running:
 
 The agent may read `run_2`, wait for `run_1`, leave `run_3` running, or acknowledge any run it does not currently need.
 
-## Subagent Completion Correlation
+## Tool Run Flow
 
-For V1, each yielded subagent run maps to one child message event.
+Each yielded run maps to one wrapped tool call.
 
 Start flow:
 
 ```text
 1. Allocate runId.
-2. Create or reuse child sessionKey from parent session, subagent name, and threadKey.
-3. Register run as queued/running before sending child message.
-4. Send child message with eventId.
-5. Return runId to parent agent.
+2. Register run as running before starting the wrapped tool.
+3. Start the wrapped tool in the background.
+4. Return runId to parent agent.
 ```
 
 Completion flow:
 
 ```text
-1. Router observes assistant_message or session_error for child sessionKey + eventId.
+1. Wrapped tool resolves or throws.
 2. Registry updates run status to completed or failed.
 3. Registry stores terminal result or error.
 4. If completionPolicy is tracked, enqueue compact mailbox notification for ownerSessionKey.
@@ -346,16 +340,16 @@ Exact TTLs can be implementation constants until there is a product need for con
 
 The visible tool descriptions should teach the model these rules:
 
-- Use yielded runs for long-running subagent work.
+- Use yielded runs for long-running yieldable tool work.
 - Use tracked runs when the result may matter later.
 - Use detached only when the result is intentionally not needed.
 - Use `pibo_run_read` to retrieve full results.
 - Do not assume a wait timeout means failure.
 - When reminded about runs, decide explicitly: read, wait, cancel, ack, or continue.
 
-## V1 Success Criteria
+## Current Success Criteria
 
-- A parent agent can start multiple yielded subagent runs.
+- A parent agent can start multiple yielded tool runs.
 - The parent can continue after receiving each `runId`.
 - The parent can list, wait, read, cancel, and ack runs.
 - A completed tracked run does not paste full output into context automatically.
@@ -363,11 +357,11 @@ The visible tool descriptions should teach the model these rules:
 - If the parent ends a turn after starting tracked runs, the runtime does not lose them.
 - If multiple runs complete, notifications are coalesced and delivered sequentially.
 - Detached runs do not create reminders or follow-up turns.
-- Existing sync subagent calls still work.
-- Existing async subagent calls remain available.
+- Direct synchronous tool calls still work.
+- Subagent tools can be called directly or yielded through `pibo_run_start`.
 
 ## Open Questions
 
 - Should automatic follow-up turns remain service-message based, or should a future Pi hook expose a more explicit internal follow-up channel?
-- Should `pibo_run_cancel` eventually dispose idle child sessions when the run created a fresh threadKey?
+- Should `pibo_run_cancel` eventually propagate cancellation into wrapped tools that support cancellation?
 - Should `pibo_run_ack` require a short reason for completed-but-unread tracked runs?

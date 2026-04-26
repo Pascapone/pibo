@@ -12,7 +12,7 @@ Minimal TypeScript wrapper project around Pi Coding Agent.
 ## Scripts
 
 - `npm run dev` runs the TypeScript entrypoint with `tsx`.
-- `npm run profile` prints the active V1 profile with loaded skills and context files.
+- `npm run profile` prints the selected profile with loaded skills, tools, and context files.
 - `npm run profile -- gateway-producer` prints the gateway producer profile.
 - `npm run profile -- run-yield-qa` prints the yielded-run QA profile with subagents.
 - `npm run tui` starts the Pi TUI through the pibo wrapper.
@@ -89,11 +89,11 @@ The main source folders are:
 - `src/gateway/` for the local TCP gateway transport
 - `src/remote/` for the local Pi-like remote-control channel
 
-## V1 Profile
+## Profiles
 
-The default profile is registered by the core plugin. It loads the local `pi-agent-harness` skill, registers the two test tools `pibo_echo` and `pibo_workspace_info`, and appends the example context files from `examples/context/`.
+The default profile is registered by the core plugin. It loads the local `pi-agent-harness` skill, registers the core tools `pibo_echo`, `pibo_workspace_info`, and `pibo_exec`, and appends the example context files from `examples/context/`.
 
-The `run-yield-qa` profile adds two simple QA subagents and the generated run-control tools:
+The `run-yield-qa` profile adds two simple QA subagents. The routed runtime exposes generated run-control tools such as `pibo_run_start` for yieldable tools:
 
 ```bash
 npm run profile -- run-yield-qa

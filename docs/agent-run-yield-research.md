@@ -125,15 +125,15 @@ The runtime still has to provide a safety net. Agents can forget handles, stop e
 
 ## Run Kinds
 
-The same run-control concept should apply to multiple kinds of long-running work:
+The same run-control concept applies to multiple kinds of long-running work:
 
-- subagent runs
-- generic tool runs
-- bash or process runs
+- subagent tool calls
+- generic yieldable tool calls
+- bash or process tool calls
 
-Subagent runs are likely the best V1 because Pibo already has routed sessions, `threadKey`, async subagents, and event streams. Generic tool runs and bash/process runs can follow the same `runId` model later, but they have different lifecycle and safety requirements.
+V1 started with subagent runs because Pibo already had routed sessions, `threadKey`, and event streams. V2 generalizes the same `runId` model to yieldable tools, including subagents and process-style tools such as `pibo_exec`.
 
-Bash should be treated as a tool kind conceptually, but implementation-wise it needs process-manager behavior: output buffering, stdin, exit codes, cancellation, cleanup, and sandbox/approval policy.
+Bash should be treated as a normal tool conceptually. Implementation-wise it still needs process-manager behavior: output buffering, exit codes, cancellation, and cleanup.
 
 ## What Must Not Happen
 
@@ -156,28 +156,14 @@ Possible plugin name:
 - `pibo.async-runs`
 - `pibo.run-control`
 
-Initial tools could be:
+Implemented tools:
 
-- `pibo_run_start` or kind-specific start tools
+- `pibo_run_start`
 - `pibo_run_wait`
 - `pibo_run_status`
 - `pibo_run_read`
 - `pibo_run_cancel`
-- one or more start tools, depending on the run kind
-
-For subagents, this could be:
-
-- `pibo_subagent_start`
-- `pibo_run_wait`
-- `pibo_run_status`
-- `pibo_run_read`
-- `pibo_run_cancel`
-
-For generic tools later:
-
-- `pibo_tool_start`
-- `pibo_run_wait`
-- `pibo_run_status`
+- `pibo_run_ack`
 - `pibo_run_read`
 - `pibo_run_cancel`
 
@@ -235,7 +221,7 @@ Example:
 
 ```xml
 <pibo_run_notification>
-{"runId":"run_123","kind":"subagent","status":"completed","summary":"Subagent completed. Use pibo_run_wait or pibo_run_read for details."}
+{"runId":"run_123","kind":"tool","toolName":"pibo_subagent_qa_researcher","status":"completed","summary":"Yielded tool run completed. Use pibo_run_wait or pibo_run_read for details."}
 </pibo_run_notification>
 ```
 
@@ -254,7 +240,7 @@ Example reminder:
 
 ```xml
 <pibo_run_notification>
-{"runId":"run_123","kind":"subagent","status":"running","summary":"A subagent run started earlier is still running. Continue other work or use pibo_run_wait when blocked."}
+{"runId":"run_123","kind":"tool","toolName":"pibo_exec","status":"running","summary":"A yielded tool run started earlier is still running. Continue other work or use pibo_run_wait when blocked."}
 </pibo_run_notification>
 ```
 
@@ -262,7 +248,7 @@ Example completion:
 
 ```xml
 <pibo_run_notification>
-{"runId":"run_123","kind":"subagent","status":"completed","summary":"A subagent run completed. Use pibo_run_read for the result or pibo_run_wait to consume the terminal result."}
+{"runId":"run_123","kind":"tool","toolName":"pibo_subagent_qa_researcher","status":"completed","summary":"A yielded tool run completed. Use pibo_run_read for the result or pibo_run_wait to consume the terminal result."}
 </pibo_run_notification>
 ```
 
@@ -318,7 +304,7 @@ A Codex-like process runner needs:
 - cleanup/pruning of old processes
 - sandbox/approval policy if commands can mutate the system
 
-This should probably be a second phase. Subagent runs are a safer first target because Pibo already routes sessions and receives completion events.
+`pibo_exec` is the first process-style yieldable tool. It covers command execution with bounded output, exit code reporting, timeout handling, and run-registry storage. Future process tools can add streaming output or stdin support if a real workflow requires it.
 
 ## Things Codex Does Well
 
@@ -366,29 +352,14 @@ Use:
 
 ## Open Questions
 
-- Should async subagents be replaced by run-based tools, or should existing subagent tools gain run handles?
+- Should future yieldable tools expose cancellation hooks beyond marking a run cancelled?
 - Should `pibo_run_wait` return full result content, or only status plus a pointer to `pibo_run_read`?
 - How much mailbox behavior can be implemented cleanly with the current Pi SDK hooks?
 - Should run notifications trigger a follow-up turn automatically, or only become visible on the next user/agent turn?
 - What exact hook should inspect unconsumed runs when an agent turn ends?
 - What are the cleanup rules for abandoned runs?
-- Should V1 support only subagents, or also shell/process commands?
-- How should cancellation map to active Pi subagent sessions?
-- How should nested subagent runs be represented in notifications?
-
-## Recommended V1
-
-Start with subagent runs only.
-
-V1 scope:
-
-- plugin registers run-control tools
-- async subagent start returns a `runId`
-- run wait/status/read/cancel works
-- completion is stored
-- compact completion notification is queued for the parent session
-- turn-end safety check records or schedules reminders for unconsumed runs
-- no shell/process manager yet
+- Which process tools need streaming output or stdin support beyond `pibo_exec`?
+- How should nested yielded subagent tool calls be represented in notifications?
 - no gateway-first API
 - no persistence
 

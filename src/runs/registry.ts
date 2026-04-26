@@ -1,9 +1,13 @@
 import { randomUUID } from "node:crypto";
-import type { PiboAssistantMessageEvent } from "../core/events.js";
 
 export type PiboRunStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
-export type PiboRunKind = "subagent";
+export type PiboRunKind = "tool";
 export type PiboRunCompletionPolicy = "tracked" | "detached";
+
+export type PiboToolRunResult = {
+	text?: string;
+	details?: unknown;
+};
 
 export type PiboRunSnapshot = {
 	runId: string;
@@ -12,34 +16,27 @@ export type PiboRunSnapshot = {
 	status: PiboRunStatus;
 	completionPolicy: PiboRunCompletionPolicy;
 	consumed: boolean;
+	toolName: string;
 	summary?: string;
 	createdAt: string;
 	updatedAt: string;
 	completedAt?: string;
 };
 
-export type PiboSubagentRunSnapshot = PiboRunSnapshot & {
-	kind: "subagent";
-	subagentName: string;
-	childSessionKey: string;
-	eventId: string;
-	threadKey?: string;
-};
-
-export type PiboRunReadResult = PiboSubagentRunSnapshot & {
-	result?: PiboAssistantMessageEvent;
+export type PiboRunReadResult = PiboRunSnapshot & {
+	result?: PiboToolRunResult;
 	error?: string;
 };
 
-export type PiboRunWaitResult = PiboSubagentRunSnapshot & {
+export type PiboRunWaitResult = PiboRunSnapshot & {
 	timedOut: boolean;
 };
 
 export type PiboRunNotification = {
-	completed: PiboSubagentRunSnapshot[];
-	failed: PiboSubagentRunSnapshot[];
-	cancelled: PiboSubagentRunSnapshot[];
-	running: PiboSubagentRunSnapshot[];
+	completed: PiboRunSnapshot[];
+	failed: PiboRunSnapshot[];
+	cancelled: PiboRunSnapshot[];
+	running: PiboRunSnapshot[];
 };
 
 export type PiboRunRegistryOptions = {
@@ -56,19 +53,16 @@ export type PiboRunPruneOptions = {
 const DEFAULT_CONSUMED_TERMINAL_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_DETACHED_TERMINAL_TTL_MS = 60 * 1000;
 
-type PiboRunRecord = PiboSubagentRunSnapshot & {
-	result?: PiboAssistantMessageEvent;
+type PiboRunRecord = PiboRunSnapshot & {
+	result?: PiboToolRunResult;
 	error?: string;
 	notifiedStatus?: PiboRunStatus;
 	acknowledgedStatus?: PiboRunStatus;
 };
 
-type StartSubagentRunInput = {
+type StartToolRunInput = {
 	ownerSessionKey: string;
-	subagentName: string;
-	childSessionKey: string;
-	eventId: string;
-	threadKey?: string;
+	toolName: string;
 	completionPolicy?: PiboRunCompletionPolicy;
 };
 
@@ -80,21 +74,18 @@ function now(): string {
 	return new Date().toISOString();
 }
 
-function snapshot(record: PiboRunRecord): PiboSubagentRunSnapshot {
-	const output: PiboSubagentRunSnapshot = {
+function snapshot(record: PiboRunRecord): PiboRunSnapshot {
+	const output: PiboRunSnapshot = {
 		runId: record.runId,
 		kind: record.kind,
 		ownerSessionKey: record.ownerSessionKey,
 		status: record.status,
 		completionPolicy: record.completionPolicy,
 		consumed: record.consumed,
-		subagentName: record.subagentName,
-		childSessionKey: record.childSessionKey,
-		eventId: record.eventId,
+		toolName: record.toolName,
 		createdAt: record.createdAt,
 		updatedAt: record.updatedAt,
 	};
-	if (record.threadKey) output.threadKey = record.threadKey;
 	if (record.summary) output.summary = record.summary;
 	if (record.completedAt) output.completedAt = record.completedAt;
 	return output;
@@ -110,52 +101,49 @@ export class PiboRunRegistry {
 
 	constructor(private readonly options: PiboRunRegistryOptions = {}) {}
 
-	startSubagentRun(input: StartSubagentRunInput): PiboSubagentRunSnapshot {
+	startToolRun(input: StartToolRunInput): PiboRunSnapshot {
 		this.prune();
 		const timestamp = now();
 		const runId = `run_${randomUUID()}`;
 		const record: PiboRunRecord = {
 			runId,
-			kind: "subagent",
+			kind: "tool",
 			ownerSessionKey: input.ownerSessionKey,
 			status: "running",
 			completionPolicy: input.completionPolicy ?? "tracked",
 			consumed: false,
-			subagentName: input.subagentName,
-			childSessionKey: input.childSessionKey,
-			eventId: input.eventId,
+			toolName: input.toolName,
 			createdAt: timestamp,
 			updatedAt: timestamp,
-			summary: `${input.subagentName} subagent run is running.`,
+			summary: `${input.toolName} run is running.`,
 		};
-		if (input.threadKey) record.threadKey = input.threadKey;
 		this.runs.set(runId, record);
 		return snapshot(record);
 	}
 
-	completeByChildEvent(event: PiboAssistantMessageEvent): PiboSubagentRunSnapshot | undefined {
-		const record = this.findByChildEvent(event.sessionKey, event.eventId);
+	complete(runId: string, result: PiboToolRunResult): PiboRunSnapshot | undefined {
+		const record = this.runs.get(runId);
 		if (!record || terminal(record.status)) return undefined;
 
 		record.status = "completed";
-		record.result = event;
-		record.summary = `${record.subagentName} subagent run completed.`;
+		record.result = result;
+		record.summary = `${record.toolName} run completed.`;
 		this.finish(record);
 		return snapshot(record);
 	}
 
-	failByChildEvent(childSessionKey: string, eventId: string | undefined, error: string): PiboSubagentRunSnapshot | undefined {
-		const record = this.findByChildEvent(childSessionKey, eventId);
+	fail(runId: string, error: string): PiboRunSnapshot | undefined {
+		const record = this.runs.get(runId);
 		if (!record || terminal(record.status)) return undefined;
 
 		record.status = "failed";
 		record.error = error;
-		record.summary = `${record.subagentName} subagent run failed.`;
+		record.summary = `${record.toolName} run failed.`;
 		this.finish(record);
 		return snapshot(record);
 	}
 
-	list(ownerSessionKey: string, options: { includeConsumed?: boolean; includeDetached?: boolean } = {}): PiboSubagentRunSnapshot[] {
+	list(ownerSessionKey: string, options: { includeConsumed?: boolean; includeDetached?: boolean } = {}): PiboRunSnapshot[] {
 		this.prune();
 		return [...this.runs.values()]
 			.filter((record) => record.ownerSessionKey === ownerSessionKey)
@@ -164,7 +152,7 @@ export class PiboRunRegistry {
 			.map(snapshot);
 	}
 
-	status(ownerSessionKey: string, runId: string): PiboSubagentRunSnapshot {
+	status(ownerSessionKey: string, runId: string): PiboRunSnapshot {
 		return snapshot(this.requireOwned(ownerSessionKey, runId));
 	}
 
@@ -212,11 +200,11 @@ export class PiboRunRegistry {
 		return output;
 	}
 
-	cancel(ownerSessionKey: string, runId: string): PiboSubagentRunSnapshot {
+	cancel(ownerSessionKey: string, runId: string): PiboRunSnapshot {
 		const record = this.requireOwned(ownerSessionKey, runId);
 		if (!terminal(record.status)) {
 			record.status = "cancelled";
-			record.summary = `${record.subagentName} subagent run cancelled.`;
+			record.summary = `${record.toolName} run cancelled.`;
 			this.finish(record);
 		}
 		record.consumed = true;
@@ -224,7 +212,7 @@ export class PiboRunRegistry {
 		return snapshot(record);
 	}
 
-	ack(ownerSessionKey: string, runId: string): PiboSubagentRunSnapshot {
+	ack(ownerSessionKey: string, runId: string): PiboRunSnapshot {
 		const record = this.requireOwned(ownerSessionKey, runId);
 		record.acknowledgedStatus = record.status;
 		if (terminal(record.status)) record.consumed = true;
@@ -270,32 +258,28 @@ export class PiboRunRegistry {
 		);
 	}
 
-	getRunForCancellation(ownerSessionKey: string, runId: string): PiboSubagentRunSnapshot {
-		return snapshot(this.requireOwned(ownerSessionKey, runId));
-	}
-
-	cancelOwnerRuns(ownerSessionKey: string, reason = "Owner session was disposed."): PiboSubagentRunSnapshot[] {
-		const cancelled: PiboSubagentRunSnapshot[] = [];
+	cancelOwnerRuns(ownerSessionKey: string, reason = "Owner session was disposed."): PiboRunSnapshot[] {
+		const cancelled: PiboRunSnapshot[] = [];
 		for (const record of this.runs.values()) {
 			if (record.ownerSessionKey !== ownerSessionKey || terminal(record.status)) continue;
 			record.status = "cancelled";
 			record.error = reason;
 			record.consumed = true;
-			record.summary = `${record.subagentName} subagent run cancelled.`;
+			record.summary = `${record.toolName} run cancelled.`;
 			this.finish(record);
 			cancelled.push(snapshot(record));
 		}
 		return cancelled;
 	}
 
-	cancelAll(reason = "Run registry was disposed."): PiboSubagentRunSnapshot[] {
-		const cancelled: PiboSubagentRunSnapshot[] = [];
+	cancelAll(reason = "Run registry was disposed."): PiboRunSnapshot[] {
+		const cancelled: PiboRunSnapshot[] = [];
 		for (const record of this.runs.values()) {
 			if (terminal(record.status)) continue;
 			record.status = "cancelled";
 			record.error = reason;
 			record.consumed = true;
-			record.summary = `${record.subagentName} subagent run cancelled.`;
+			record.summary = `${record.toolName} run cancelled.`;
 			this.finish(record);
 			cancelled.push(snapshot(record));
 		}
@@ -328,13 +312,6 @@ export class PiboRunRegistry {
 		}
 
 		return pruned;
-	}
-
-	private findByChildEvent(childSessionKey: string, eventId: string | undefined): PiboRunRecord | undefined {
-		if (!eventId) return undefined;
-		return [...this.runs.values()].find(
-			(record) => record.childSessionKey === childSessionKey && record.eventId === eventId,
-		);
 	}
 
 	private requireOwned(ownerSessionKey: string, runId: string): PiboRunRecord {

@@ -2,20 +2,18 @@ import { createHash, randomUUID } from "node:crypto";
 import { Type } from "@mariozechner/pi-ai";
 import { defineTool, type ToolDefinition } from "@mariozechner/pi-coding-agent";
 import type { PiboAssistantMessageEvent } from "../core/events.js";
-import type { PiboSubagentMode, SubagentProfile } from "../core/profiles.js";
+import type { SubagentProfile } from "../core/profiles.js";
 
 export type PiboSubagentRunInput = {
 	subagent: SubagentProfile;
 	message: string;
 	threadKey?: string;
-	mode: PiboSubagentMode;
 };
 
 export type PiboSubagentRunResult = {
-	mode: PiboSubagentMode;
 	sessionKey: string;
 	eventId: string;
-	reply?: PiboAssistantMessageEvent;
+	reply: PiboAssistantMessageEvent;
 };
 
 export type PiboSubagentRunner = {
@@ -79,7 +77,6 @@ function createSubagentToolDefinition(
 	subagent: SubagentProfile,
 	runner: PiboSubagentRunner,
 ): ToolDefinition {
-	const mode = subagent.mode ?? "sync";
 	const name = createSubagentToolName(subagent.name);
 
 	return defineTool({
@@ -106,26 +103,13 @@ function createSubagentToolDefinition(
 				subagent,
 				message: params.message,
 				threadKey: params.threadKey,
-				mode,
 			});
-
-			if (result.mode === "async") {
-				return {
-					content: [
-						{
-							type: "text",
-							text: `Started ${subagent.name} subagent session "${result.sessionKey}".`,
-						},
-					],
-					details: result,
-				};
-			}
 
 			return {
 				content: [
 					{
 						type: "text",
-						text: result.reply?.text ?? `Subagent session "${result.sessionKey}" finished without a text reply.`,
+						text: result.reply.text,
 					},
 				],
 				details: result,

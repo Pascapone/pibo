@@ -101,16 +101,20 @@ function getEnabledToolDefinitions(
 	subagentRunner?: PiboSubagentRunner,
 	runToolController?: PiboRunToolController,
 ): ToolDefinition[] {
+	const profileTools = profile.tools.filter(hasEnabledToolDefinition);
 	const subagentTools = subagentRunner
 		? createSubagentToolDefinitions(profile.subagents, subagentRunner)
 		: [];
-	const hasEnabledSubagents = profile.subagents.some((subagent) => subagent.enabled !== false);
-	const runTools = runToolController && hasEnabledSubagents
-		? createRunToolDefinitions(profile.subagents, runToolController)
+	const yieldableTools = [
+		...profileTools.filter((tool) => tool.yieldable !== false).map((tool) => tool.definition),
+		...subagentTools,
+	];
+	const runTools = runToolController && yieldableTools.length > 0
+		? createRunToolDefinitions(yieldableTools, runToolController)
 		: [];
 
 	return [
-		...profile.tools.filter(hasEnabledToolDefinition).map((tool) => tool.definition),
+		...profileTools.map((tool) => tool.definition),
 		...subagentTools,
 		...runTools,
 	];
@@ -121,7 +125,7 @@ function hasEnabledToolDefinition(tool: ToolProfile): tool is ToolProfile & { de
 }
 
 function isGeneratedPiboTool(name: string): boolean {
-	return name === "pibo_subagent_start" || name.startsWith("pibo_subagent_") || name.startsWith("pibo_run_");
+	return name.startsWith("pibo_subagent_") || name.startsWith("pibo_run_");
 }
 
 function createInspectionSubagentRunner(): PiboSubagentRunner {
@@ -137,7 +141,7 @@ function createInspectionRunToolController(): PiboRunToolController {
 		throw new Error("Profile inspection cannot execute run-control tools");
 	};
 	return {
-		startSubagent: fail,
+		startToolRun: fail,
 		listRuns: () => [],
 		getRunStatus: fail,
 		waitForRun: fail,
@@ -222,13 +226,16 @@ export async function inspectPiboProfile(options: PiboRuntimeOptions = {}): Prom
 	const cwd = options.cwd ?? process.cwd();
 	const profile = options.profile ?? createDefaultPiboProfile();
 	const hasEnabledSubagents = profile.subagents.some((subagent) => subagent.enabled !== false);
+	const hasYieldableTools =
+		hasEnabledSubagents ||
+		profile.tools.some((tool) => tool.enabled !== false && tool.definition !== undefined && tool.yieldable !== false);
 	const runtime = await createPiboRuntime({
 		cwd,
 		profile,
 		persistSession: false,
 		subagentRunner: options.subagentRunner ?? (hasEnabledSubagents ? createInspectionSubagentRunner() : undefined),
 		runToolController:
-			options.runToolController ?? (hasEnabledSubagents ? createInspectionRunToolController() : undefined),
+			options.runToolController ?? (hasYieldableTools ? createInspectionRunToolController() : undefined),
 	});
 
 	try {

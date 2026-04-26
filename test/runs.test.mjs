@@ -5,14 +5,26 @@ import { createRunToolDefinitions } from "../dist/runs/tools.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
 
 function startRun(registry, options = {}) {
-	return registry.startSubagentRun({
+	return registry.startToolRun({
 		ownerSessionKey: options.ownerSessionKey ?? "parent",
-		subagentName: options.subagentName ?? "helper",
-		childSessionKey: options.childSessionKey ?? "child",
-		eventId: options.eventId ?? "event-1",
-		threadKey: options.threadKey,
+		toolName: options.toolName ?? "helper",
 		completionPolicy: options.completionPolicy,
 	});
+}
+
+function runSnapshot(run, options = {}) {
+	return {
+		runId: options.runId ?? "run_1",
+		kind: "tool",
+		ownerSessionKey: "parent",
+		status: options.status ?? "running",
+		completionPolicy: options.completionPolicy ?? "tracked",
+		consumed: false,
+		toolName: options.toolName ?? "helper",
+		createdAt: "2026-01-01T00:00:00.000Z",
+		updatedAt: "2026-01-01T00:00:00.000Z",
+		...run,
+	};
 }
 
 test("tracked runs create compact notifications until consumed", () => {
@@ -25,12 +37,7 @@ test("tracked runs create compact notifications until consumed", () => {
 	assert.equal(running.running[0].runId, run.runId);
 	assert.equal(registry.hasPendingNotification("parent"), false);
 
-	registry.completeByChildEvent({
-		type: "assistant_message",
-		sessionKey: "child",
-		eventId: "event-1",
-		text: "done",
-	});
+	registry.complete(run.runId, { text: "done" });
 
 	assert.equal(registry.hasPendingNotification("parent"), true);
 	const completed = registry.createNotification("parent");
@@ -51,12 +58,7 @@ test("detached runs are inspectable but do not notify", () => {
 	assert.deepEqual(registry.list("parent"), []);
 	assert.equal(registry.list("parent", { includeDetached: true }).length, 1);
 
-	registry.completeByChildEvent({
-		type: "assistant_message",
-		sessionKey: "child",
-		eventId: "event-1",
-		text: "background done",
-	});
+	registry.complete(run.runId, { text: "background done" });
 
 	assert.equal(registry.hasPendingNotification("parent"), false);
 	assert.equal(registry.status("parent", run.runId).status, "completed");
@@ -64,21 +66,16 @@ test("detached runs are inspectable but do not notify", () => {
 
 test("wait returns timeout as normal state and resolves on completion", async () => {
 	const registry = new PiboRunRegistry();
-	const timedOutRun = startRun(registry, { eventId: "event-timeout" });
+	const timedOutRun = startRun(registry);
 
 	const timedOut = await registry.wait("parent", timedOutRun.runId, 1);
 	assert.equal(timedOut.status, "running");
 	assert.equal(timedOut.timedOut, true);
 
-	const completedRun = startRun(registry, { eventId: "event-complete" });
+	const completedRun = startRun(registry);
 	const waited = registry.wait("parent", completedRun.runId, 1000);
 	setTimeout(() => {
-		registry.completeByChildEvent({
-			type: "assistant_message",
-			sessionKey: "child",
-			eventId: "event-complete",
-			text: "finished",
-		});
+		registry.complete(completedRun.runId, { text: "finished" });
 	}, 1);
 
 	const completed = await waited;
@@ -107,28 +104,13 @@ test("registry prunes detached terminal and consumed tracked runs only", () => {
 		consumedTerminalTtlMs: 0,
 		detachedTerminalTtlMs: 0,
 	});
-	const tracked = startRun(registry, { eventId: "tracked" });
-	const detached = startRun(registry, { eventId: "detached", completionPolicy: "detached" });
-	const consumed = startRun(registry, { eventId: "consumed" });
+	const tracked = startRun(registry);
+	const detached = startRun(registry, { completionPolicy: "detached" });
+	const consumed = startRun(registry);
 
-	registry.completeByChildEvent({
-		type: "assistant_message",
-		sessionKey: "child",
-		eventId: "tracked",
-		text: "tracked result",
-	});
-	registry.completeByChildEvent({
-		type: "assistant_message",
-		sessionKey: "child",
-		eventId: "detached",
-		text: "detached result",
-	});
-	registry.completeByChildEvent({
-		type: "assistant_message",
-		sessionKey: "child",
-		eventId: "consumed",
-		text: "consumed result",
-	});
+	registry.complete(tracked.runId, { text: "tracked result" });
+	registry.complete(detached.runId, { text: "detached result" });
+	registry.complete(consumed.runId, { text: "consumed result" });
 	registry.read("parent", consumed.runId);
 
 	assert.equal(registry.prune(), 2);
@@ -144,12 +126,7 @@ test("ack suppresses current-state reminders and terminal ack consumes", () => {
 	registry.ack("parent", run.runId);
 	assert.equal(registry.hasPendingNotification("parent"), false);
 
-	registry.completeByChildEvent({
-		type: "assistant_message",
-		sessionKey: "child",
-		eventId: "event-1",
-		text: "done",
-	});
+	registry.complete(run.runId, { text: "done" });
 	assert.equal(registry.hasPendingNotification("parent"), true);
 
 	const acked = registry.ack("parent", run.runId);
@@ -170,35 +147,32 @@ test("turn-end reminders can repeat until a tracked run is acknowledged", () => 
 	registry.ack("parent", run.runId);
 	assert.equal(registry.hasPendingNotification("parent", { includeAlreadyNotified: true }), false);
 
-	registry.completeByChildEvent({
-		type: "assistant_message",
-		sessionKey: "child",
-		eventId: "event-1",
-		text: "done",
-	});
+	registry.complete(run.runId, { text: "done" });
 	assert.equal(registry.hasPendingNotification("parent"), true);
 });
 
-test("run tools start subagent runs with explicit completion policy", async () => {
+test("run tools start yieldable tools with explicit completion policy", async () => {
 	let observed;
 	const [startTool] = createRunToolDefinitions(
-		[{ name: "helper", targetProfile: "helper-profile" }],
+		[
+			{
+				name: "helper",
+				async execute(_toolCallId, params) {
+					observed = params;
+					return {
+						content: [{ type: "text", text: "helper result" }],
+						details: { ok: true },
+					};
+				},
+			},
+		],
 		{
-			async startSubagent(input) {
+			startToolRun(input) {
 				observed = input;
-				return {
-					runId: "run_1",
-					kind: "subagent",
-					ownerSessionKey: "parent",
-					status: "running",
-					completionPolicy: input.completionPolicy ?? "tracked",
-					consumed: false,
-					subagentName: input.subagent.name,
-					childSessionKey: "child",
-					eventId: "event-1",
-					createdAt: "2026-01-01T00:00:00.000Z",
-					updatedAt: "2026-01-01T00:00:00.000Z",
-				};
+				return runSnapshot(undefined, {
+					toolName: input.toolName,
+					completionPolicy: input.completionPolicy,
+				});
 			},
 			listRuns() {
 				return [];
@@ -222,18 +196,18 @@ test("run tools start subagent runs with explicit completion policy", async () =
 	);
 
 	const result = await startTool.execute("tool-call-1", {
-		subagentName: "helper",
-		message: "do background work",
+		toolName: "helper",
+		arguments: { message: "do background work" },
 		completionPolicy: "detached",
 	});
 
-	assert.equal(observed.subagent.name, "helper");
-	assert.equal(observed.message, "do background work");
+	assert.equal(observed.toolName, "helper");
+	assert.deepEqual(observed.params, { message: "do background work" });
 	assert.equal(observed.completionPolicy, "detached");
 	assert.equal(result.details.runId, "run_1");
 });
 
-test("router coalesces run completion into a compact parent notification", async () => {
+test("router coalesces generic run completion into a compact parent notification", async () => {
 	const router = new PiboSessionRouter({ persistSession: false });
 	const messages = [];
 	router.getOrCreateSession = async () => ({
@@ -250,17 +224,12 @@ test("router coalesces run completion into a compact parent notification", async
 		},
 	});
 
-	router.runRegistry.startSubagentRun({
-		ownerSessionKey: "parent",
-		subagentName: "helper",
-		childSessionKey: "child",
-		eventId: "event-1",
-	});
-	router.emitOutput({
-		type: "assistant_message",
-		sessionKey: "child",
-		eventId: "event-1",
-		text: "done",
+	const controller = router.createRunToolController("parent");
+	controller.startToolRun({
+		toolName: "helper",
+		async execute() {
+			return { text: "done" };
+		},
 	});
 	await new Promise((resolve) => setImmediate(resolve));
 
@@ -269,10 +238,11 @@ test("router coalesces run completion into a compact parent notification", async
 	assert.equal(messages[0].source, "service");
 	assert.match(messages[0].text, /<pibo_run_notification>/);
 	assert.match(messages[0].text, /"completed"/);
+	assert.match(messages[0].text, /"toolName":"helper"/);
 	assert.match(messages[0].text, /"runId":"run_/);
 });
 
-test("router converts correlated child session errors into failed run notifications", async () => {
+test("router converts yielded tool errors into failed run notifications", async () => {
 	const router = new PiboSessionRouter({ persistSession: false });
 	const messages = [];
 	router.getOrCreateSession = async () => ({
@@ -289,17 +259,12 @@ test("router converts correlated child session errors into failed run notificati
 		},
 	});
 
-	const run = router.runRegistry.startSubagentRun({
-		ownerSessionKey: "parent",
-		subagentName: "helper",
-		childSessionKey: "child",
-		eventId: "event-1",
-	});
-	router.emitOutput({
-		type: "session_error",
-		sessionKey: "child",
-		eventId: "event-1",
-		error: "Invalid prompt_cache_key",
+	const controller = router.createRunToolController("parent");
+	const run = controller.startToolRun({
+		toolName: "helper",
+		async execute() {
+			throw new Error("tool failed");
+		},
 	});
 	await new Promise((resolve) => setImmediate(resolve));
 

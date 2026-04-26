@@ -6,7 +6,7 @@ Pibo is a minimal TypeScript wrapper around Pi Coding Agent. This file is a shor
 
 - V1 profile builder exists in `src/core/profiles.ts`.
 - The default profile loads the local `pi-agent-harness` skill.
-- Two minimal test tools are registered: `pibo_echo` and `pibo_workspace_info`.
+- Core tools are registered: `pibo_echo`, `pibo_workspace_info`, and `pibo_exec`.
 - Example context files are appended from `examples/context/`.
 - The Pi TUI can be started through `npm run tui`.
 - The profile can be inspected through `npm run profile`.
@@ -14,7 +14,7 @@ Pibo is a minimal TypeScript wrapper around Pi Coding Agent. This file is a shor
 - Gateway transport exists in `src/gateway/` and can be started with `npm run gateway`.
 - A console gateway client exists through `npm run client -- <sessionKey>`.
 - A gateway producer profile exists through `npm run tui:gateway`.
-- A `run-yield-qa` profile exists for manual QA of yielded subagent runs through the routed runtime.
+- A `run-yield-qa` profile exists for manual QA of yielded runs through the routed runtime.
 - Core event contracts live in `src/core/events.ts`.
 - Execution events now include typed Pi session controls for current session metadata, session listing, fork candidates, fork, clone, tree navigation, and session switching.
 - Gateway transport examples live in `examples/gateway/`.
@@ -24,7 +24,7 @@ Pibo is a minimal TypeScript wrapper around Pi Coding Agent. This file is a shor
 - `src/plugins/example.ts` demonstrates adding a plugin-provided skill, tool, and profile.
 - The plugin registry supports subagent registration through `api.registerSubagent(...)`.
 - Profiles can expose subagents through the same builder pattern as tools, skills, and context files.
-- Profiles with enabled subagents expose yielded-run tools for tracked or detached subagent runs.
+- Profiles with yieldable tools expose yielded-run tools for tracked or detached tool runs.
 - Yielded runs are tracked in-memory by the session router with compact parent notifications, bounded waits, read/cancel/ack controls, and simple TTL cleanup.
 - Plugins can register channels through `api.registerChannel(...)`.
 - Plugins can register same-origin web apps through `api.registerWebApp(...)`.
@@ -91,9 +91,9 @@ At runtime, pibo turns enabled subagents into generated Pi tools named `pibo_sub
 <parentSessionKey>::sub::<subagentName>::<threadKey>
 ```
 
-Omitting `threadKey` creates a fresh child session. Reusing `threadKey` continues the same child session, which keeps subagent work inspectable and multi-turn. Sync subagents wait for the correlated reply; async subagents enqueue the work and return the child session key immediately.
+Omitting `threadKey` creates a fresh child session. Reusing `threadKey` continues the same child session, which keeps subagent work inspectable and multi-turn. Subagent tools are synchronous normal tools; long-running subagent work is yielded by wrapping the subagent tool with `pibo_run_start`.
 
-Profiles that expose subagents also expose run-control tools. `pibo_subagent_start` starts a subagent as a yielded run and returns a `runId`; `pibo_run_list`, `pibo_run_status`, `pibo_run_wait`, `pibo_run_read`, `pibo_run_cancel`, and `pibo_run_ack` manage the run afterward. Tracked runs are the default and remind the parent agent with compact `<pibo_run_notification>` service messages until they are read, cancelled, or acknowledged. Detached runs are explicit fire-and-forget work and do not create automatic reminders.
+Profiles that expose yieldable tools also expose run-control tools. `pibo_run_start` wraps a yieldable tool call as a yielded run and returns a `runId`; `pibo_run_list`, `pibo_run_status`, `pibo_run_wait`, `pibo_run_read`, `pibo_run_cancel`, and `pibo_run_ack` manage the run afterward. Tracked runs are the default and remind the parent agent with compact `<pibo_run_notification>` service messages until they are read, cancelled, or acknowledged. Detached runs are explicit fire-and-forget work and do not create automatic reminders.
 
 ## Channels And Session Bindings
 

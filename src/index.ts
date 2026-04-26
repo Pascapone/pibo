@@ -25,7 +25,6 @@ export type {
 	ContextFileProfile,
 	InitialSessionContextOptions,
 	PiboSubagentExecutionMode,
-	PiboSubagentMode,
 	SkillProfile,
 	SubagentProfile,
 	ToolProfile,

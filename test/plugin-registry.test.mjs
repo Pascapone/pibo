@@ -15,12 +15,12 @@ test("default plugin registry builds profiles from registered resources", () => 
 	assert.equal(minimal.profileName, "pibo-minimal");
 	assert.deepEqual(
 		minimal.tools.map((tool) => tool.name),
-		["pibo_echo", "pibo_workspace_info"],
+		["pibo_echo", "pibo_workspace_info", "pibo_exec"],
 	);
 	assert.equal(gatewayProducer.profileName, "pibo-gateway-producer");
 	assert.deepEqual(
 		gatewayProducer.tools.map((tool) => tool.name),
-		["pibo_echo", "pibo_workspace_info", "pibo_gateway_send"],
+		["pibo_echo", "pibo_workspace_info", "pibo_exec", "pibo_gateway_send"],
 	);
 	assert.equal(runYieldQa.profileName, "pibo-run-yield-qa");
 	assert.deepEqual(
