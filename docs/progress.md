@@ -1,6 +1,6 @@
 # Pibo Progress
 
-Pibo is a minimal TypeScript wrapper around Pi Coding Agent. This file is a short project status note. The architectural snapshot lives in `docs/architecture.md`; MCP usage lives in `docs/mcp.md`; curated CLI tool usage lives in `docs/tools.md`.
+Pibo is a minimal TypeScript wrapper around Pi Coding Agent. This file is a short project status note. The architectural snapshot lives in `docs/architecture.md`; local routed TUI usage lives in `docs/local-routed-tui.md`; MCP usage lives in `docs/mcp.md`; curated CLI tool usage lives in `docs/tools.md`.
 
 ## Current State
 
@@ -9,6 +9,7 @@ Pibo is a minimal TypeScript wrapper around Pi Coding Agent. This file is a shor
 - Core tools are registered: `pibo_echo`, `pibo_workspace_info`, and `pibo_exec`.
 - Example context files are appended from `examples/context/`.
 - The Pi TUI can be started through `npm run tui`.
+- The explicit local routed TUI can be started through `npm run tui:routed -- <profile>`.
 - The profile can be inspected through `npm run profile`.
 - Session routing exists in `src/core/session-router.ts`.
 - Gateway transport exists in `src/gateway/` and can be started with `npm run gateway`.
@@ -31,6 +32,7 @@ Pibo is a minimal TypeScript wrapper around Pi Coding Agent. This file is a shor
 - Gateway channel sessions are backed by SQLite session bindings in `.pibo/session-bindings.sqlite`.
 - The built-in `remote-agent` channel exposes a local remote-control path on `127.0.0.1:4790`.
 - The Pi-TUI remote controller is kept as a proof-of-concept example in `src/remote/examples/tui-controller.ts`.
+- The local routed TUI adapter lives in `src/local/` and uses an in-process router instead of a gateway daemon.
 - An authenticated web gateway path exists through `npm run gateway:web`, split into Better Auth, a same-origin web host, and the chat web app.
 - A minimal Commander-based CLI manages local config values in `.pibo/config.json` and uses progressive, agent-oriented discovery output.
 - `pibo mcp` provides local MCP server discovery, schema inspection, search, tool calls, `mcp_servers.json` config management, and a small opt-in registry for common external MCP servers.

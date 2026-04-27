@@ -57,6 +57,19 @@ export { PiboGatewayServer, runGatewayServer } from "./gateway/server.js";
 export { createWebPiboPluginRegistry, runWebGatewayServer } from "./gateway/web.js";
 export type { WebGatewayServerOptions } from "./gateway/web.js";
 export { runGatewayClient } from "./gateway/client.js";
+export {
+	LOCAL_TUI_CHANNEL_NAME,
+	LocalRoutedTuiClient,
+	createLocalRoutedTuiClient,
+	createLocalRoutedTuiExtension,
+	runLocalRoutedTui,
+} from "./local/tui.js";
+export type {
+	LocalRoutedTuiCapabilities,
+	LocalRoutedTuiClientLike,
+	LocalRoutedTuiEventListener,
+	LocalRoutedTuiOptions,
+} from "./local/tui.js";
 export { runRemoteAgentClient } from "./remote/client.js";
 export {
 	createRemoteSlashCommandMap,

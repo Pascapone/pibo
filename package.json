@@ -14,6 +14,7 @@
     "dev": "tsx src/bin/pibo.ts",
     "profile": "tsx src/bin/pibo.ts profile",
     "tui": "tsx src/bin/pibo.ts tui",
+    "tui:routed": "tsx src/bin/pibo.ts tui:routed",
     "tui:gateway": "tsx src/bin/pibo.ts tui gateway-producer",
     "gateway": "tsx src/bin/pibo.ts gateway",
     "gateway:web": "tsx src/bin/pibo.ts gateway:web",

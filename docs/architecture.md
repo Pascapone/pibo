@@ -199,6 +199,18 @@ The reusable pieces are:
 
 This is useful as a reference for future channel adapters, but Pi TUI is not treated as the long-term primary remote UI. A dedicated web or terminal client can reuse the same channel and `RemoteAgentSessionClient` without coupling itself to Pi TUI internals.
 
+## Local Routed TUI
+
+`src/local/` contains the explicit local routed TUI adapter. It starts a Pi TUI controller shell with builtin tools disabled, then routes normal input through an in-process `PiboSessionRouter`.
+
+The local adapter is intentionally not a gateway replacement and not a second runtime:
+
+- `src/local/client.ts` owns the in-process router client, local `local-tui:<profile>:<sessionName>` binding, and router cleanup.
+- `src/local/extension.ts` owns Pi TUI input interception, conservative slash-command filtering, autocomplete filtering, and custom message rendering.
+- `src/local/tui.ts` wires the controller profile, client, extension, and `runPiboTui` together.
+
+V1 is opt-in through `npm run tui:routed -- <profile>`. The existing `npm run tui -- <profile>` path remains direct Pi TUI and does not auto-select routed mode. Details live in `docs/local-routed-tui.md`.
+
 ## Operator CLIs
 
 The operator CLIs are optimized for agent-driven discovery. Each level should answer only the question for that level and point to the next command. Broad usage guides, schemas, and environment details are printed only by explicit deeper commands such as `schema`, `show`, `doctor`, or `guide`.
@@ -244,9 +256,10 @@ npm run client -- <sessionKey>
 npm run remote -- <sessionName> [profile]
 npm run remote:line -- <sessionName> [profile]
 npm run tui -- [profile]
+npm run tui:routed -- [profile]
 npm run profile -- [profile]
 npm run dev -- mcp
 npm run dev -- tools
 ```
 
-`npm run remote` runs the Pi-TUI proof-of-concept controller. `npm run remote:line` runs the simpler debug client.
+`npm run remote` runs the Pi-TUI proof-of-concept controller. `npm run remote:line` runs the simpler debug client. `npm run tui:routed` runs the explicit local routed TUI adapter without requiring the gateway daemon.

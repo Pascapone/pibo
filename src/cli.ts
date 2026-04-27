@@ -144,6 +144,14 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 			await runPiboTui({ profile: await createCliProfile(profile) });
 		});
 	program
+		.command("tui:routed")
+		.argument("[profile]")
+		.description("Start the local routed Pibo TUI")
+		.action(async (profile?: string) => {
+			const { runLocalRoutedTui } = await import("./local/tui.js");
+			await runLocalRoutedTui({ profile });
+		});
+	program
 		.command("router")
 		.argument("[sessionKey]", "Session key", "demo")
 		.description("Emit a demo router status event")
@@ -214,6 +222,8 @@ Commands:
   mcp          Discover and call configured MCP servers
   tools        Install and inspect curated external CLI tools
   profile      Inspect a pibo profile
+  tui          Start the direct Pi TUI
+  tui:routed   Start the local routed Pibo TUI
   gateway      Start the local gateway daemon
   gateway:web  Start the authenticated web gateway
   remote       Start the Pi-TUI remote controller
