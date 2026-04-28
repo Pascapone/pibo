@@ -225,6 +225,7 @@ export class PiboSessionRouter {
 		const runtime = await createPiboRuntime({
 			cwd: this.options.cwd,
 			persistSession: this.options.persistSession,
+			thinkingLevel: this.options.thinkingLevel,
 			profile: profileForSession(profile, binding.sessionId, binding.parentSessionId),
 			subagentRunner: this.createSubagentRunner(sessionKey),
 			runToolController: this.createRunToolController(sessionKey),

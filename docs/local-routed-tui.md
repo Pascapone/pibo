@@ -35,7 +35,7 @@ npm run tui -- <profile>
 ## Files
 
 - `src/local/client.ts` creates the in-process router, profile-scoped binding, and local client methods.
-- `src/local/extension.ts` contains the Pi TUI extension, command filtering, autocomplete filtering, and custom message rendering.
+- `src/local/extension.ts` contains the Pi TUI extension, command filtering, autocomplete filtering, and the adapter from normalized routed events to Pi TUI render components.
 - `src/local/tui.ts` wires the client and extension into `runPiboTui`.
 - `test/local-routed-tui.test.mjs` covers local routing behavior without starting an interactive TUI.
 
@@ -95,13 +95,17 @@ The extension also closes the client on Pi `session_shutdown`, but the entry poi
 
 Assistant deltas from the routed session are rendered into a temporary live widget above the editor. The widget is updated in place so streaming does not append one chat entry per delta. When the final assistant message arrives, the widget is removed and the completed assistant response is rendered as the normal local assistant message.
 
-Thinking deltas use the same live widget but are hidden by default. Start with:
+The local routed TUI does not keep a parallel legacy message renderer. User, assistant, thinking, and tool blocks are rendered through Pi TUI components so local routed output stays visually aligned with the direct Pi CLI. The routed adapter only creates synthetic Pi-compatible message objects at the channel boundary.
+
+Tool calls from the routed session are rendered with Pi's `ToolExecutionComponent`. While a tool is running the component is shown live above the editor; when the tool finishes the same Pi-style tool block is persisted in the local transcript.
+
+Thinking deltas use the same live widget but are hidden by default. `--show-thinking` only controls display; `--thinking` enables the initial Pi thinking level for the routed session. Start with:
 
 ```bash
-npm run tui:routed -- --show-thinking <profile>
+npm run tui:routed -- --thinking high --show-thinking <profile>
 ```
 
-or toggle them during a session with `/thinking`. Thinking visibility is local to the routed TUI display; the router still emits thinking events for other channels that want to opt in.
+During a session, `/thinking` keeps the Pi meaning and changes model effort: `/thinking` cycles the level and `/thinking high` sets a specific level. Use `/thinking-show` only to toggle local visibility of thinking tokens. Thinking visibility is local to the routed TUI display; the router still emits thinking events for other channels that want to opt in.
 
 ## Verification
 

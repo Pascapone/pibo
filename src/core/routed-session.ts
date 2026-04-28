@@ -17,9 +17,31 @@ import type {
 	PiboSessionTreeNavigateParams,
 	PiboSessionTreeNode,
 	PiboSessionTreeResult,
+	PiboThinkingResult,
 } from "./events.js";
+import type { PiboThinkingLevel } from "./thinking.js";
 
 type PiSessionTreeNode = ReturnType<SessionManager["getTree"]>[number];
+
+type PiEventCandidate = {
+	type?: unknown;
+	message?: unknown;
+	assistantMessageEvent?: {
+		type?: unknown;
+		contentIndex?: unknown;
+		delta?: unknown;
+		content?: unknown;
+		toolCall?: { id?: unknown; name?: unknown; arguments?: unknown };
+	};
+	toolCallId?: unknown;
+	toolName?: unknown;
+	args?: unknown;
+	partialResult?: unknown;
+	result?: unknown;
+	isError?: unknown;
+};
+
+type PiToolCall = { id: string; name: string; args: unknown };
 
 function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
@@ -44,14 +66,98 @@ function textFromMessage(message: unknown): string {
 		.join("");
 }
 
+function toolCallFromMessage(message: unknown, contentIndex: unknown): PiToolCall | undefined {
+	if (!message || typeof message !== "object" || typeof contentIndex !== "number") return undefined;
+
+	const content = (message as { content?: unknown }).content;
+	if (!Array.isArray(content)) return undefined;
+
+	const candidate = content[contentIndex];
+	if (!candidate || typeof candidate !== "object") return undefined;
+	const toolCall = candidate as { type?: unknown; id?: unknown; name?: unknown; arguments?: unknown };
+	if (toolCall.type !== "toolCall" || typeof toolCall.id !== "string" || typeof toolCall.name !== "string") {
+		return undefined;
+	}
+
+	return { id: toolCall.id, name: toolCall.name, args: toolCall.arguments ?? {} };
+}
+
+function toolCallFromAssistantEvent(candidate: PiEventCandidate): PiToolCall | undefined {
+	const eventToolCall = candidate.assistantMessageEvent?.toolCall;
+	if (eventToolCall && typeof eventToolCall.id === "string" && typeof eventToolCall.name === "string") {
+		return { id: eventToolCall.id, name: eventToolCall.name, args: eventToolCall.arguments ?? {} };
+	}
+
+	return toolCallFromMessage(candidate.message, candidate.assistantMessageEvent?.contentIndex);
+}
+
+function normalizeToolCallEvent(sessionKey: string, candidate: PiEventCandidate): PiboOutputEvent | undefined {
+	if (
+		candidate.type === "message_update" &&
+		(candidate.assistantMessageEvent?.type === "toolcall_start" ||
+			candidate.assistantMessageEvent?.type === "toolcall_delta" ||
+			candidate.assistantMessageEvent?.type === "toolcall_end")
+	) {
+		const toolCall = toolCallFromAssistantEvent(candidate);
+		if (!toolCall) return undefined;
+
+		return {
+			type: "tool_call",
+			sessionKey,
+			toolCallId: toolCall.id,
+			toolName: toolCall.name,
+			args: toolCall.args,
+			argsComplete: candidate.assistantMessageEvent.type === "toolcall_end",
+		};
+	}
+
+	return undefined;
+}
+
+function normalizeToolExecutionEvent(sessionKey: string, candidate: PiEventCandidate): PiboOutputEvent | undefined {
+	if (typeof candidate.toolCallId !== "string" || typeof candidate.toolName !== "string") {
+		return undefined;
+	}
+
+	if (candidate.type === "tool_execution_start") {
+		return {
+			type: "tool_execution_started",
+			sessionKey,
+			toolCallId: candidate.toolCallId,
+			toolName: candidate.toolName,
+			args: candidate.args,
+		};
+	}
+
+	if (candidate.type === "tool_execution_update") {
+		return {
+			type: "tool_execution_updated",
+			sessionKey,
+			toolCallId: candidate.toolCallId,
+			toolName: candidate.toolName,
+			args: candidate.args,
+			partialResult: candidate.partialResult,
+		};
+	}
+
+	if (candidate.type === "tool_execution_end") {
+		return {
+			type: "tool_execution_finished",
+			sessionKey,
+			toolCallId: candidate.toolCallId,
+			toolName: candidate.toolName,
+			result: candidate.result,
+			isError: candidate.isError === true,
+		};
+	}
+
+	return undefined;
+}
+
 function normalizePiEvent(sessionKey: string, event: unknown): PiboOutputEvent | undefined {
 	if (!event || typeof event !== "object") return undefined;
 
-	const candidate = event as {
-		type?: unknown;
-		message?: unknown;
-		assistantMessageEvent?: { type?: unknown; delta?: unknown; content?: unknown };
-	};
+	const candidate = event as PiEventCandidate;
 
 	if (
 		candidate.type === "message_update" &&
@@ -61,7 +167,10 @@ function normalizePiEvent(sessionKey: string, event: unknown): PiboOutputEvent |
 		return { type: "assistant_delta", sessionKey, text: candidate.assistantMessageEvent.delta };
 	}
 
-	if (candidate.type === "message_update" && candidate.assistantMessageEvent?.type === "thinking_start") {
+	if (
+		candidate.type === "message_update" &&
+		candidate.assistantMessageEvent?.type === "thinking_start"
+	) {
 		return { type: "thinking_started", sessionKey };
 	}
 
@@ -78,6 +187,12 @@ function normalizePiEvent(sessionKey: string, event: unknown): PiboOutputEvent |
 			typeof candidate.assistantMessageEvent.content === "string" ? candidate.assistantMessageEvent.content : undefined;
 		return text === undefined ? { type: "thinking_finished", sessionKey } : { type: "thinking_finished", sessionKey, text };
 	}
+
+	const toolCallEvent = normalizeToolCallEvent(sessionKey, candidate);
+	if (toolCallEvent) return toolCallEvent;
+
+	const toolExecutionEvent = normalizeToolExecutionEvent(sessionKey, candidate);
+	if (toolExecutionEvent) return toolExecutionEvent;
 
 	if (candidate.type === "message_end") {
 		const message = candidate.message as
@@ -274,6 +389,18 @@ export class RoutedSession {
 		};
 	}
 
+	setThinkingLevel(level: PiboThinkingLevel): PiboThinkingResult {
+		this.assertActive();
+		this.runtime.session.setThinkingLevel(level);
+		return this.getThinkingResult();
+	}
+
+	cycleThinkingLevel(): PiboThinkingResult {
+		this.assertActive();
+		this.runtime.session.cycleThinkingLevel();
+		return this.getThinkingResult();
+	}
+
 	async dispose(): Promise<void> {
 		if (this.disposed) return;
 
@@ -365,6 +492,8 @@ export class RoutedSession {
 				getSessionTree: () => this.getSessionTree(),
 				navigateSessionTree: (params) => this.navigateSessionTree(params),
 				switchSession: (params) => this.switchSession(params),
+				setThinkingLevel: (level) => this.setThinkingLevel(level),
+				cycleThinkingLevel: () => this.cycleThinkingLevel(),
 			},
 			event,
 		);
@@ -374,6 +503,14 @@ export class RoutedSession {
 		if (this.disposed) {
 			throw new Error(`Session "${this.sessionKey}" has been disposed`);
 		}
+	}
+
+	private getThinkingResult(): PiboThinkingResult {
+		return {
+			level: this.runtime.session.thinkingLevel as PiboThinkingLevel,
+			availableLevels: this.runtime.session.getAvailableThinkingLevels() as PiboThinkingLevel[],
+			supported: this.runtime.session.supportsThinking(),
+		};
 	}
 
 	private clearQueue(): number {
@@ -403,6 +540,10 @@ export class RoutedSession {
 				event.type === "thinking_started" ||
 				event.type === "thinking_delta" ||
 				event.type === "thinking_finished" ||
+				event.type === "tool_call" ||
+				event.type === "tool_execution_started" ||
+				event.type === "tool_execution_updated" ||
+				event.type === "tool_execution_finished" ||
 				event.type === "session_error")
 		) {
 			return { ...event, eventId: this.activeMessage.id };

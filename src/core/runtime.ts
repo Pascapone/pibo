@@ -27,11 +27,13 @@ import {
 	type PiboSubagentRunner,
 } from "../subagents/tool.js";
 import { createRunToolDefinitions, type PiboRunToolController } from "../runs/tools.js";
+import type { PiboThinkingLevel } from "./thinking.js";
 
 export type PiboRuntimeOptions = {
 	cwd?: string;
 	persistSession?: boolean;
 	profile?: InitialSessionContext;
+	thinkingLevel?: PiboThinkingLevel;
 	extensionFactories?: ExtensionFactory[];
 	subagentRunner?: PiboSubagentRunner;
 	runToolController?: PiboRunToolController;
@@ -194,6 +196,7 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 			services,
 			sessionManager: runtimeSessionManager,
 			sessionStartEvent,
+			thinkingLevel: options.thinkingLevel,
 			customTools,
 			noTools: profile.builtinTools === "disabled" ? "builtin" : undefined,
 		});

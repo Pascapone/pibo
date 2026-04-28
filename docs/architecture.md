@@ -175,7 +175,7 @@ This avoids iframe and cross-origin complexity for V1. Apps can use normal same-
 The local adapter is intentionally not a gateway replacement and not a second runtime:
 
 - `src/local/client.ts` owns the in-process router client, local `local-tui:<profile>:<sessionName>` binding, and router cleanup.
-- `src/local/extension.ts` owns Pi TUI input interception, conservative slash-command filtering, autocomplete filtering, and custom message rendering.
+- `src/local/extension.ts` owns Pi TUI input interception, conservative slash-command filtering, autocomplete filtering, and mapping normalized routed events onto Pi TUI render components.
 - `src/local/tui.ts` wires the controller profile, client, extension, and `runPiboTui` together.
 
 V1 is opt-in through `npm run tui:routed -- <profile>`. The existing `npm run tui -- <profile>` path remains direct Pi TUI and does not auto-select routed mode. Details live in `docs/local-routed-tui.md`.

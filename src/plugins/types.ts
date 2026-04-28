@@ -8,7 +8,9 @@ import type {
 	PiboSessionSwitchParams,
 	PiboSessionTreeNavigateParams,
 	PiboSessionTreeResult,
+	PiboThinkingResult,
 } from "../core/events.js";
+import type { PiboThinkingLevel } from "../core/thinking.js";
 import type { PiboChannel } from "../channels/types.js";
 import type { PiboAuthService } from "../auth/types.js";
 import type { PiboWebApp } from "../web/types.js";
@@ -50,6 +52,8 @@ export type PiboGatewayActionContext = {
 	getSessionTree(): PiboSessionTreeResult;
 	navigateSessionTree(params: PiboSessionTreeNavigateParams): Promise<PiboSessionOperationResult>;
 	switchSession(params: PiboSessionSwitchParams): Promise<PiboSessionOperationResult>;
+	setThinkingLevel(level: PiboThinkingLevel): PiboThinkingResult;
+	cycleThinkingLevel(): PiboThinkingResult;
 };
 
 export type PiboGatewayAction = {

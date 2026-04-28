@@ -9,6 +9,8 @@ import {
 	savePiboConfig,
 	setPiboConfigValue,
 } from "./config/config.js";
+import type { PiboRuntimeOptions } from "./core/runtime.js";
+import { parsePiboThinkingLevel } from "./core/thinking.js";
 
 async function createCliProfile(profileName?: string) {
 	const { createDefaultPiboPluginRegistry } = await import("./plugins/builtin.js");
@@ -146,12 +148,22 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 	program
 		.command("tui:routed")
 		.option("--show-thinking", "Show routed thinking deltas in the local TUI")
+		.option("--thinking <level>", "Set routed thinking level: off, minimal, low, medium, high, xhigh", parsePiboThinkingLevel)
 		.argument("[profile]")
 		.description("Start the local routed Pibo TUI")
-		.action(async (profile: string | undefined, options: { showThinking?: boolean }) => {
-			const { runLocalRoutedTui } = await import("./local/tui.js");
-			await runLocalRoutedTui({ profile, showThinking: options.showThinking === true });
-		});
+		.action(
+			async (
+				profile: string | undefined,
+				options: { showThinking?: boolean; thinking?: PiboRuntimeOptions["thinkingLevel"] },
+			) => {
+				const { runLocalRoutedTui } = await import("./local/tui.js");
+				await runLocalRoutedTui({
+					profile,
+					showThinking: options.showThinking === true,
+					thinkingLevel: options.thinking,
+				});
+			},
+		);
 	program
 		.command("router")
 		.argument("[sessionKey]", "Session key", "demo")

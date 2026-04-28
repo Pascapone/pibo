@@ -1,3 +1,5 @@
+import type { PiboThinkingLevel } from "./thinking.js";
+
 export type PiboEventSource = "user" | "ui" | "service" | "actor";
 
 export type PiboJsonValue =
@@ -30,7 +32,13 @@ export type PiboSessionExecutionAction =
 	| "session.tree_navigate"
 	| "session.switch";
 
-export type PiboExecutionAction = BuiltinPiboExecutionAction | PiboSessionExecutionAction | (string & {});
+export type PiboThinkingExecutionAction = "thinking";
+
+export type PiboExecutionAction =
+	| BuiltinPiboExecutionAction
+	| PiboSessionExecutionAction
+	| PiboThinkingExecutionAction
+	| (string & {});
 
 export type PiboSessionForkParams = {
 	entryId: string;
@@ -47,6 +55,16 @@ export type PiboSessionTreeNavigateParams = {
 export type PiboSessionSwitchParams = {
 	sessionFile: string;
 	cwdOverride?: string;
+};
+
+export type PiboThinkingParams = {
+	level?: PiboThinkingLevel;
+};
+
+export type PiboThinkingResult = {
+	level: PiboThinkingLevel;
+	availableLevels: PiboThinkingLevel[];
+	supported: boolean;
 };
 
 export type PiboExecutionEventBase<TAction extends PiboExecutionAction = PiboExecutionAction> = {
@@ -77,11 +95,16 @@ export type PiboSessionSwitchEvent = PiboExecutionEventBase<"session.switch"> & 
 	params: PiboSessionSwitchParams;
 };
 
+export type PiboThinkingEvent = PiboExecutionEventBase<"thinking"> & {
+	params?: PiboThinkingParams;
+};
+
 export type PiboKnownExecutionEvent =
 	| PiboNoParamsExecutionEvent
 	| PiboSessionForkEvent
 	| PiboSessionTreeNavigateEvent
-	| PiboSessionSwitchEvent;
+	| PiboSessionSwitchEvent
+	| PiboThinkingEvent;
 
 export type PiboCustomExecutionEvent = PiboExecutionEventBase<string & {}> & {
 	params?: PiboJsonValue;
@@ -193,6 +216,45 @@ export type PiboThinkingFinishedEvent = {
 	text?: string;
 };
 
+export type PiboToolCallEvent = {
+	type: "tool_call";
+	sessionKey: string;
+	eventId?: string;
+	toolCallId: string;
+	toolName: string;
+	args: unknown;
+	argsComplete: boolean;
+};
+
+export type PiboToolExecutionStartedEvent = {
+	type: "tool_execution_started";
+	sessionKey: string;
+	eventId?: string;
+	toolCallId: string;
+	toolName: string;
+	args: unknown;
+};
+
+export type PiboToolExecutionUpdatedEvent = {
+	type: "tool_execution_updated";
+	sessionKey: string;
+	eventId?: string;
+	toolCallId: string;
+	toolName: string;
+	args: unknown;
+	partialResult: unknown;
+};
+
+export type PiboToolExecutionFinishedEvent = {
+	type: "tool_execution_finished";
+	sessionKey: string;
+	eventId?: string;
+	toolCallId: string;
+	toolName: string;
+	result: unknown;
+	isError: boolean;
+};
+
 export type PiboOutputEvent =
 	| PiboMessageQueuedEvent
 	| PiboMessageStartedEvent
@@ -201,6 +263,10 @@ export type PiboOutputEvent =
 	| PiboThinkingStartedEvent
 	| PiboThinkingDeltaEvent
 	| PiboThinkingFinishedEvent
+	| PiboToolCallEvent
+	| PiboToolExecutionStartedEvent
+	| PiboToolExecutionUpdatedEvent
+	| PiboToolExecutionFinishedEvent
 	| PiboAssistantMessageEvent
 	| { type: "execution_result"; sessionKey: string; eventId?: string; action: PiboExecutionAction; result: unknown }
 	| { type: "session_error"; sessionKey: string; eventId?: string; error: string }

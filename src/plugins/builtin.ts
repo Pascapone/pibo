@@ -5,8 +5,10 @@ import type {
 	PiboSessionForkParams,
 	PiboSessionSwitchParams,
 	PiboSessionTreeNavigateParams,
+	PiboThinkingParams,
 } from "../core/events.js";
 import { InitialSessionContextBuilder, type InitialSessionContext } from "../core/profiles.js";
+import { parsePiboThinkingLevel } from "../core/thinking.js";
 import { createPiboTestToolProfiles } from "./core-tools.js";
 import { piboExamplePlugin } from "./example.js";
 import { definePiboPlugin, PiboPluginRegistry } from "./registry.js";
@@ -53,6 +55,13 @@ function requireSwitchParams(event: PiboExecutionEvent): PiboSessionSwitchParams
 	const params: PiboSessionSwitchParams = { sessionFile: raw.sessionFile };
 	if (typeof raw.cwdOverride === "string") params.cwdOverride = raw.cwdOverride;
 	return params;
+}
+
+function getThinkingParams(event: PiboExecutionEvent): PiboThinkingParams {
+	const raw = getObjectParams(event);
+	if (!raw || raw.level === undefined) return {};
+	if (typeof raw.level !== "string") throw new Error("thinking requires params.level to be a string");
+	return { level: parsePiboThinkingLevel(raw.level) };
 }
 
 function createBaseProfileBuilder(
@@ -159,6 +168,15 @@ export const piboCorePlugin = definePiboPlugin({
 			async execute(context) {
 				await context.dispose();
 				return { disposed: true };
+			},
+		});
+		api.registerGatewayAction({
+			name: "thinking",
+			description: "Cycle or set the routed Pi thinking level.",
+			slashCommands: ["thinking"],
+			execute(context, event) {
+				const params = getThinkingParams(event);
+				return params.level ? context.setThinkingLevel(params.level) : context.cycleThinkingLevel();
 			},
 		});
 		api.registerGatewayAction({

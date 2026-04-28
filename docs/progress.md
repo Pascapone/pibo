@@ -10,7 +10,8 @@ Pibo is a minimal TypeScript wrapper around Pi Coding Agent. This file is a shor
 - Example context files are appended from `examples/context/`.
 - The Pi TUI can be started through `npm run tui`.
 - The explicit local routed TUI can be started through `npm run tui:routed -- <profile>` and renders routed assistant deltas as a live streaming widget.
-- Routed thinking events are normalized separately from assistant text and can be displayed by opt-in channel UI toggles such as local `/thinking`, `--show-thinking`, the chat web toggle, or gateway client `/thinking`.
+- Routed thinking events are normalized separately from assistant text and can be displayed by opt-in channel UI toggles such as local `/thinking-show`, `--show-thinking`, the chat web toggle, or gateway client `/thinking-show`. Routed `/thinking` keeps the Pi meaning and controls model effort.
+- Routed tool-call and tool-execution events are normalized separately from assistant text. The local routed TUI reuses Pi render components for user, assistant, thinking, live tool, and completed tool blocks instead of maintaining a legacy renderer.
 - The profile can be inspected through `npm run profile`.
 - Session routing exists in `src/core/session-router.ts`.
 - Gateway transport exists in `src/gateway/` and can be started with `npm run gateway`.

@@ -15,6 +15,7 @@ import type {
 	PiboOutputEvent,
 	PiboSessionStatus,
 } from "../core/events.js";
+import { parsePiboThinkingLevel } from "../core/thinking.js";
 
 export type GatewayClientOptions = {
 	host?: string;
@@ -156,7 +157,7 @@ export async function runGatewayClient(options: GatewayClientOptions = {}): Prom
 
 	console.error(`connected to pibo gateway at ${host}:${port}`);
 	console.error(`session: ${sessionKey}`);
-	console.error("type a message, /status, /clear, /abort, /thinking, or /quit");
+	console.error("type a message, /status, /clear, /abort, /thinking [level], /thinking-show, or /quit");
 
 	let buffer = "";
 	const renderState: GatewayClientRenderState = {
@@ -188,9 +189,29 @@ export async function runGatewayClient(options: GatewayClientOptions = {}): Prom
 			const text = (await rl.question("you> ")).trim();
 			if (!text) continue;
 			if (text === "/quit" || text === "/exit") break;
-			if (text === "/thinking") {
+			if (text === "/thinking-show") {
 				renderState.showThinking = !renderState.showThinking;
-				console.error(`thinking: ${renderState.showThinking ? "on" : "off"}`);
+				console.error(`thinking display: ${renderState.showThinking ? "on" : "off"}`);
+				continue;
+			}
+
+			if (text === "/thinking" || text.startsWith("/thinking ")) {
+				const level = text.slice("/thinking".length).trim();
+				let params: { level: ReturnType<typeof parsePiboThinkingLevel> } | undefined;
+				try {
+					params = level ? { level: parsePiboThinkingLevel(level) } : undefined;
+				} catch (error) {
+					console.error(error instanceof Error ? error.message : String(error));
+					continue;
+				}
+				writeFrame(socket, {
+					type: "req",
+					id: randomUUID(),
+					event:
+						params === undefined
+							? { type: "execution", sessionKey, action: "thinking" }
+							: { type: "execution", sessionKey, action: "thinking", params },
+				});
 				continue;
 			}
 

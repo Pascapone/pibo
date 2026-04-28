@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { initTheme } from "../node_modules/@mariozechner/pi-coding-agent/dist/modes/interactive/theme/theme.js";
 import { createLocalRoutedTuiClient, createLocalRoutedTuiExtension } from "../dist/local/tui.js";
+
+// Pi message components read the interactive theme singleton during render.
+initTheme("dark", false);
 
 function createFakeExtensionApi() {
 	const handlers = new Map();
@@ -113,6 +117,7 @@ function createFakeClient() {
 		capabilities: {
 			actions: [
 				{ name: "status", slashCommands: ["status"] },
+				{ name: "thinking", slashCommands: ["thinking"] },
 				{ name: "session_id", slashCommands: ["session"] },
 				{ name: "session.tree", slashCommands: ["tree"] },
 				{ name: "session.current", slashCommands: ["session-current"] },
@@ -147,10 +152,10 @@ test("local routed TUI extension routes input through the local client", async (
 	await fake.handlers.get("session_start")({ type: "session_start", reason: "startup" }, ctx);
 
 	assert.match(fake.messages[0].content, /Connected to pibo local routed session local-tui:pibo-run-yield-qa:default/);
-	assert.match(fake.messages[0].content, /Routed commands: \/status, \/session-current/);
+	assert.match(fake.messages[0].content, /Routed commands: \/status, \/thinking, \/session-current/);
 	assert.doesNotMatch(fake.messages[0].content, /Routed commands: .*\/session(?:,|\n|$)/);
 	assert.doesNotMatch(fake.messages[0].content, /\/tree\b/);
-	assert.deepEqual([...fake.commands.keys()], ["status", "session-current", "thinking"]);
+	assert.deepEqual([...fake.commands.keys()], ["status", "thinking", "session-current", "thinking-show"]);
 	assert.equal(typeof fake.renderers.get("pibo.local-routed"), "function");
 	assert.equal(ctx.autocompleteProviders.length, 1);
 	assert.equal(statuses.get("pibo.local"), "local connected");
@@ -166,6 +171,12 @@ test("local routed TUI extension routes input through the local client", async (
 	await fake.commands.get("status").handler("");
 	assert.deepEqual(client.sentExecutions[0], { action: "status", params: undefined });
 
+	await fake.commands.get("thinking").handler("high");
+	assert.deepEqual(client.sentExecutions[1], { action: "thinking", params: { level: "high" } });
+
+	await fake.commands.get("thinking-show").handler("");
+	assert.match(fake.messages.at(-1).content, /Thinking display: on/);
+
 	const quitResult = await fake.handlers.get("input")(
 		{ type: "input", text: "/quit", source: "interactive" },
 		ctx,
@@ -178,7 +189,14 @@ test("local routed TUI extension routes input through the local client", async (
 	);
 	assert.deepEqual(blockedResult, { action: "handled" });
 	assert.match(fake.messages.at(-1).content, /not available in local routed mode/);
-	assert.equal(client.sentExecutions.length, 1);
+	assert.equal(client.sentExecutions.length, 2);
+
+	const thinkingResult = await fake.handlers.get("input")(
+		{ type: "input", text: "/thinking low", source: "interactive" },
+		ctx,
+	);
+	assert.deepEqual(thinkingResult, { action: "handled" });
+	assert.deepEqual(client.sentExecutions.at(-1), { action: "thinking", params: { level: "low" } });
 
 	for (const listener of client.eventListeners) {
 		listener({
@@ -268,6 +286,22 @@ test("local routed TUI shows thinking deltas only when enabled", async () => {
 			text: "Ich denke",
 		});
 		listener({
+			type: "thinking_finished",
+			sessionKey: "local-tui:pibo-run-yield-qa:default",
+			eventId: "msg-1",
+		});
+		listener({
+			type: "thinking_started",
+			sessionKey: "local-tui:pibo-run-yield-qa:default",
+			eventId: "msg-1",
+		});
+		listener({
+			type: "thinking_delta",
+			sessionKey: "local-tui:pibo-run-yield-qa:default",
+			eventId: "msg-1",
+			text: "weiter",
+		});
+		listener({
 			type: "assistant_delta",
 			sessionKey: "local-tui:pibo-run-yield-qa:default",
 			eventId: "msg-1",
@@ -278,19 +312,135 @@ test("local routed TUI shows thinking deltas only when enabled", async () => {
 	let widget = ctx.widgets.get("pibo.local.streaming");
 	assert.ok(widget);
 	assert.equal(widget.render(80).some((line) => line.includes("Ich denke")), true);
+	assert.equal(widget.render(80).some((line) => line.includes("weiter")), true);
 	assert.equal(widget.render(80).some((line) => line.includes("Antwort")), true);
 
-	await fake.commands.get("thinking").handler("");
+	await fake.commands.get("thinking-show").handler("");
 	widget = ctx.widgets.get("pibo.local.streaming");
 	assert.ok(widget);
 	assert.equal(widget.render(80).some((line) => line.includes("Ich denke")), false);
+	assert.equal(widget.render(80).some((line) => line.includes("weiter")), false);
 	assert.match(fake.messages.at(-1).content, /Thinking display: off/);
 
-	await fake.commands.get("thinking").handler("");
+	await fake.commands.get("thinking-show").handler("");
 	widget = ctx.widgets.get("pibo.local.streaming");
 	assert.ok(widget);
 	assert.equal(widget.render(80).some((line) => line.includes("Ich denke")), true);
+	assert.equal(widget.render(80).some((line) => line.includes("weiter")), true);
 	assert.match(fake.messages.at(-1).content, /Thinking display: on/);
+});
+
+test("local routed TUI preserves thinking blocks when the assistant message finishes", async () => {
+	const client = createFakeClient();
+	const statuses = new Map();
+	const fake = createFakeExtensionApi();
+	const ctx = createFakeExtensionContext(statuses);
+
+	createLocalRoutedTuiExtension(client, { showThinking: true })(fake.api);
+	await fake.handlers.get("session_start")({ type: "session_start", reason: "startup" }, ctx);
+
+	for (const listener of client.eventListeners) {
+		listener({
+			type: "message_started",
+			sessionKey: "local-tui:pibo-run-yield-qa:default",
+			eventId: "msg-1",
+			text: "",
+		});
+		listener({
+			type: "thinking_delta",
+			sessionKey: "local-tui:pibo-run-yield-qa:default",
+			eventId: "msg-1",
+			text: "erster Block",
+		});
+		listener({
+			type: "thinking_finished",
+			sessionKey: "local-tui:pibo-run-yield-qa:default",
+			eventId: "msg-1",
+		});
+		listener({
+			type: "thinking_started",
+			sessionKey: "local-tui:pibo-run-yield-qa:default",
+			eventId: "msg-1",
+		});
+		listener({
+			type: "thinking_finished",
+			sessionKey: "local-tui:pibo-run-yield-qa:default",
+			eventId: "msg-1",
+			text: "zweiter Block",
+		});
+		listener({
+			type: "assistant_message",
+			sessionKey: "local-tui:pibo-run-yield-qa:default",
+			eventId: "msg-1",
+			text: "finale Antwort",
+		});
+	}
+
+	assert.equal(ctx.widgets.has("pibo.local.streaming"), false);
+	assert.equal(fake.messages.at(-2).details.role, "thinking");
+	assert.equal(fake.messages.at(-2).content, "erster Block\n\nzweiter Block");
+	assert.equal(fake.messages.at(-1).details.role, "assistant");
+	assert.equal(fake.messages.at(-1).content, "finale Antwort");
+});
+
+test("local routed TUI renders tool execution events with Pi tool styling", async () => {
+	const client = createFakeClient();
+	const statuses = new Map();
+	const fake = createFakeExtensionApi();
+	const ctx = createFakeExtensionContext(statuses);
+
+	createLocalRoutedTuiExtension(client)(fake.api);
+	await fake.handlers.get("session_start")({ type: "session_start", reason: "startup" }, ctx);
+
+	for (const listener of client.eventListeners) {
+		listener({
+			type: "message_started",
+			sessionKey: "local-tui:pibo-run-yield-qa:default",
+			eventId: "msg-1",
+			text: "",
+		});
+		listener({
+			type: "tool_call",
+			sessionKey: "local-tui:pibo-run-yield-qa:default",
+			eventId: "msg-1",
+			toolCallId: "tool-1",
+			toolName: "pibo_echo",
+			args: { text: "Hallo" },
+			argsComplete: true,
+		});
+		listener({
+			type: "tool_execution_started",
+			sessionKey: "local-tui:pibo-run-yield-qa:default",
+			eventId: "msg-1",
+			toolCallId: "tool-1",
+			toolName: "pibo_echo",
+			args: { text: "Hallo" },
+		});
+	}
+
+	const liveWidget = ctx.widgets.get("pibo.local.tool.tool-1");
+	assert.ok(liveWidget);
+	assert.equal(liveWidget.render(80).some((line) => line.includes("pibo_echo")), true);
+
+	for (const listener of client.eventListeners) {
+		listener({
+			type: "tool_execution_finished",
+			sessionKey: "local-tui:pibo-run-yield-qa:default",
+			eventId: "msg-1",
+			toolCallId: "tool-1",
+			toolName: "pibo_echo",
+			result: { content: [{ type: "text", text: "Echo: Hallo" }] },
+			isError: false,
+		});
+	}
+
+	assert.equal(ctx.widgets.has("pibo.local.tool.tool-1"), false);
+	assert.equal(fake.messages.at(-1).details.role, "tool");
+
+	const renderer = fake.renderers.get("pibo.local-routed");
+	const rendered = renderer(fake.messages.at(-1)).render(80);
+	assert.equal(rendered.some((line) => line.includes("pibo_echo")), true);
+	assert.equal(rendered.some((line) => line.includes("Echo: Hallo")), true);
 });
 
 test("local routed TUI submit guard blocks leading conflicting Pi commands only", async () => {
@@ -327,7 +477,7 @@ test("local routed TUI submit guard blocks leading conflicting Pi commands only"
 	assert.equal(ctx.terminalInputHandlers.length, 0);
 });
 
-test("local routed TUI renderer keeps assistant unboxed and fills boxed headers", async () => {
+test("local routed TUI renderer delegates messages to Pi components", async () => {
 	const client = createFakeClient();
 	const statuses = new Map();
 	const fake = createFakeExtensionApi();
@@ -345,29 +495,34 @@ test("local routed TUI renderer keeps assistant unboxed and fills boxed headers"
 		content: "Hallo",
 		details: { role: "assistant" },
 	}).render(24);
+	const thinkingLines = renderer({
+		content: "Ich denke",
+		details: { role: "thinking" },
+	}).render(24);
 	const executionLines = renderer({
 		content: "status: ok",
 		details: { role: "execution" },
 	}).render(24);
 
-	assert.equal(userLines[0].startsWith("\x1b[48;5;24m"), true);
-	assert.match(userLines[0], /\s+\x1b\[0m$/);
-	assert.equal(executionLines[0].startsWith("\x1b[48;5;58m"), true);
-	assert.match(executionLines[0], /\s+\x1b\[0m$/);
-	assert.equal(assistantLines.some((line) => line.includes("\x1b[48;5;")), false);
-	assert.equal(userLines.length, 3);
-	assert.equal(assistantLines.length, 3);
-	assert.equal(executionLines.length, 3);
+	assert.equal(userLines.some((line) => line.includes("you -> local")), false);
+	assert.equal(assistantLines.some((line) => line.includes("local assistant")), false);
+	assert.equal(thinkingLines.some((line) => line.includes("local thinking")), false);
+	assert.equal(executionLines.some((line) => line.includes("local execution")), false);
+	assert.equal(userLines.some((line) => line.includes("Hallo")), true);
+	assert.equal(assistantLines.some((line) => line.includes("Hallo")), true);
+	assert.equal(thinkingLines.some((line) => line.includes("Ich denke")), true);
+	assert.equal(executionLines.some((line) => line.includes("status: ok")), true);
 });
 
 test("local routed TUI client uses a profile-scoped local session key", async () => {
-	const client = createLocalRoutedTuiClient({ profile: "run-yield-qa", persistSession: false });
+	const client = createLocalRoutedTuiClient({ profile: "run-yield-qa", persistSession: false, thinkingLevel: "high" });
 
 	try {
 		assert.equal(client.binding.sessionKey, "local-tui:pibo-run-yield-qa:default");
 		assert.equal(client.binding.channel, "local-tui");
 		assert.equal(client.binding.externalId, "pibo-run-yield-qa:default");
 		assert.equal(client.binding.originalProfile, "pibo-run-yield-qa");
+		assert.equal(client.router.options.thinkingLevel, "high");
 		assert.ok(client.capabilities.actions.some((action) => action.name === "status"));
 	} finally {
 		await client.close();

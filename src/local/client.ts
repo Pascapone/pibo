@@ -5,6 +5,7 @@ import type {
 	PiboJsonValue,
 	PiboOutputEvent,
 } from "../core/events.js";
+import type { PiboRuntimeOptions } from "../core/runtime.js";
 import { PiboSessionRouter } from "../core/session-router.js";
 import { createDefaultPiboPluginRegistry } from "../plugins/builtin.js";
 import type { PiboPluginRegistry } from "../plugins/registry.js";
@@ -24,6 +25,7 @@ export type LocalRoutedTuiOptions = {
 	profile?: string;
 	sessionName?: string;
 	showThinking?: boolean;
+	thinkingLevel?: PiboRuntimeOptions["thinkingLevel"];
 	pluginRegistry?: PiboPluginRegistry;
 };
 
@@ -147,6 +149,7 @@ export function createLocalRoutedTuiClient(options: LocalRoutedTuiOptions = {}):
 	const router = new PiboSessionRouter({
 		cwd: options.cwd,
 		persistSession: options.persistSession,
+		thinkingLevel: options.thinkingLevel,
 		pluginRegistry: registry,
 		profile,
 		bindingStore,

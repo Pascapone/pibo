@@ -1,6 +1,14 @@
-import type { ExtensionContext, ExtensionFactory } from "@mariozechner/pi-coding-agent";
-import { Box, type AutocompleteProvider, Container, Spacer, Text, type TUI } from "@mariozechner/pi-tui";
-import type { PiboOutputEvent, PiboSessionStatus } from "../core/events.js";
+import type { AssistantMessage } from "@mariozechner/pi-ai";
+import {
+	AssistantMessageComponent,
+	ToolExecutionComponent,
+	UserMessageComponent,
+	type ExtensionContext,
+	type ExtensionFactory,
+} from "@mariozechner/pi-coding-agent";
+import { type AutocompleteProvider, Container, Spacer, type TUI } from "@mariozechner/pi-tui";
+import type { PiboJsonValue, PiboOutputEvent, PiboSessionStatus } from "../core/events.js";
+import { parsePiboThinkingLevel } from "../core/thinking.js";
 import type { LocalRoutedTuiCapabilities, LocalRoutedTuiClientLike } from "./client.js";
 
 const LOCAL_MESSAGE_TYPE = "pibo.local-routed";
@@ -33,13 +41,29 @@ const BLOCKED_PI_TUI_COMMANDS = new Set([
 const SUBMIT_KEYS = new Set(["\r", "\n"]);
 
 type LocalMessageDetails = {
-	role: "system" | "user" | "assistant" | "thinking" | "execution" | "error";
+	role: "system" | "user" | "assistant" | "thinking" | "tool" | "execution" | "error";
 	event?: PiboOutputEvent;
+	tool?: LocalToolState;
+};
+
+type LocalToolResult = {
+	content: Array<{ type: string; text?: string; data?: string; mimeType?: string }>;
+	details?: unknown;
+	isError: boolean;
+};
+
+type LocalToolState = {
+	toolCallId: string;
+	toolName: string;
+	args: unknown;
+	argsComplete: boolean;
+	executionStarted: boolean;
+	result?: LocalToolResult;
 };
 
 class LocalStreamingMessageWidget extends Container {
 	private assistantContent = "";
-	private thinkingContent = "";
+	private thinkingBlocks: string[] = [];
 	private renderTimer: ReturnType<typeof setTimeout> | undefined;
 
 	constructor(
@@ -50,14 +74,17 @@ class LocalStreamingMessageWidget extends Container {
 		this.rebuild();
 	}
 
-	setContent(input: { assistantContent?: string; thinkingContent?: string }): void {
+	setContent(input: { assistantContent?: string; thinkingBlocks?: string[] }): void {
 		const nextAssistantContent = input.assistantContent ?? this.assistantContent;
-		const nextThinkingContent = input.thinkingContent ?? this.thinkingContent;
-		if (nextAssistantContent === this.assistantContent && nextThinkingContent === this.thinkingContent) {
+		const nextThinkingBlocks = input.thinkingBlocks ?? this.thinkingBlocks;
+		const sameThinkingBlocks =
+			nextThinkingBlocks.length === this.thinkingBlocks.length &&
+			nextThinkingBlocks.every((block, index) => block === this.thinkingBlocks[index]);
+		if (nextAssistantContent === this.assistantContent && sameThinkingBlocks) {
 			return;
 		}
 		this.assistantContent = nextAssistantContent;
-		this.thinkingContent = nextThinkingContent;
+		this.thinkingBlocks = [...nextThinkingBlocks];
 		this.rebuild();
 		this.scheduleRender();
 	}
@@ -76,9 +103,12 @@ class LocalStreamingMessageWidget extends Container {
 
 	private rebuild(): void {
 		this.clear();
-		if (this.showThinking() && this.thinkingContent.trim()) {
-			this.addChild(createLocalMessageComponent(this.thinkingContent, { role: "thinking" }));
-			this.addChild(new Spacer(1));
+		if (this.showThinking()) {
+			for (const thinkingBlock of this.thinkingBlocks) {
+				if (!thinkingBlock.trim()) continue;
+				this.addChild(createLocalMessageComponent(thinkingBlock, { role: "thinking" }));
+				this.addChild(new Spacer(1));
+			}
 		}
 		this.addChild(createLocalMessageComponent(this.assistantContent || " ", { role: "assistant" }));
 	}
@@ -115,51 +145,70 @@ function isBlockedPiTuiCommandInput(text: string): boolean {
 	return command !== undefined && BLOCKED_PI_TUI_COMMANDS.has(command);
 }
 
-function bg(color: number, text: string): string {
-	return `\x1b[48;5;${color}m${text}\x1b[0m`;
-}
-
-function fg(color: number, text: string): string {
-	return `\x1b[38;5;${color}m${text}\x1b[39m`;
-}
-
-function bold(text: string): string {
-	return `\x1b[1m${text}\x1b[22m`;
-}
-
-function getLocalMessageStyle(role: LocalMessageDetails["role"]): {
-	label: string;
-	bgColor?: number;
-	labelColor: number;
-} {
-	if (role === "user") {
-		return { label: "you -> local", bgColor: 24, labelColor: 117 };
-	}
-	if (role === "assistant") {
-		return { label: "local assistant", labelColor: 120 };
-	}
-	if (role === "thinking") {
-		return { label: "local thinking", labelColor: 244 };
-	}
-	if (role === "execution") {
-		return { label: "local execution", bgColor: 58, labelColor: 229 };
-	}
-	if (role === "error") {
-		return { label: "local error", bgColor: 52, labelColor: 210 };
-	}
-	return { label: "local session", bgColor: 236, labelColor: 250 };
-}
-
 function createLocalMessageComponent(content: string, details: LocalMessageDetails): Container {
-	const style = getLocalMessageStyle(details.role);
-	const container = new Container();
-	const bgFn = style.bgColor === undefined ? undefined : (text: string) => bg(style.bgColor!, text);
-	const box = new Box(1, 0, bgFn);
-	box.addChild(new Text(bold(fg(style.labelColor, style.label)), 0, 0));
-	box.addChild(new Spacer(1));
-	box.addChild(new Text(content, 0, 0));
-	container.addChild(box);
-	return container;
+	if (details.role === "user") {
+		return new UserMessageComponent(content);
+	}
+	if (details.role === "assistant") {
+		return new AssistantMessageComponent(createLocalAssistantMessage([{ type: "text", text: content }]));
+	}
+	if (details.role === "thinking") {
+		return new AssistantMessageComponent(createLocalAssistantMessage([{ type: "thinking", thinking: content }]));
+	}
+	if (details.role === "tool" && details.tool) {
+		return createLocalToolExecutionComponent(details.tool);
+	}
+	return new AssistantMessageComponent(createLocalAssistantMessage([{ type: "text", text: content }]));
+}
+
+function createLocalAssistantMessage(content: AssistantMessage["content"]): AssistantMessage {
+	return {
+		role: "assistant",
+		content,
+		api: "openai-responses",
+		provider: "pibo-local",
+		model: "pibo-local-routed",
+		usage: {
+			input: 0,
+			output: 0,
+			cacheRead: 0,
+			cacheWrite: 0,
+			totalTokens: 0,
+			cost: {
+				input: 0,
+				output: 0,
+				cacheRead: 0,
+				cacheWrite: 0,
+				total: 0,
+			},
+		},
+		stopReason: "stop",
+		timestamp: Date.now(),
+	};
+}
+
+function normalizeToolResult(input: unknown, isError: boolean): LocalToolResult {
+	if (input && typeof input === "object" && Array.isArray((input as { content?: unknown }).content)) {
+		const candidate = input as { content: LocalToolResult["content"]; details?: unknown };
+		return { content: candidate.content, details: candidate.details, isError };
+	}
+	return { content: [{ type: "text", text: input === undefined ? "" : String(input) }], isError };
+}
+
+function createLocalToolExecutionComponent(tool: LocalToolState, tui?: TUI, cwd = process.cwd()): ToolExecutionComponent {
+	const component = new ToolExecutionComponent(
+		tool.toolName,
+		tool.toolCallId,
+		tool.args,
+		{},
+		undefined,
+		tui ?? ({ requestRender() {} } as TUI),
+		cwd,
+	);
+	if (tool.executionStarted) component.markExecutionStarted();
+	if (tool.argsComplete) component.setArgsComplete();
+	if (tool.result) component.updateResult(tool.result);
+	return component;
 }
 
 function createLocalAutocompleteProvider(
@@ -196,9 +245,26 @@ function isSessionStatus(value: unknown): value is PiboSessionStatus {
 	);
 }
 
+function isThinkingResult(value: unknown): value is { level: string; supported: boolean } {
+	if (!value || typeof value !== "object") return false;
+	const candidate = value as { level?: unknown; supported?: unknown };
+	return typeof candidate.level === "string" && typeof candidate.supported === "boolean";
+}
+
+function createExecutionParams(slashCommand: string, args = ""): PiboJsonValue | undefined {
+	if (slashCommand !== "/thinking") return undefined;
+	const level = args.trim();
+	return level ? { level: parsePiboThinkingLevel(level) } : undefined;
+}
+
 function formatExecutionResult(event: Extract<PiboOutputEvent, { type: "execution_result" }>): string {
 	if (event.action === "status" && isSessionStatus(event.result)) {
 		return `status: session=${event.result.sessionKey} queued=${event.result.queuedMessages} processing=${event.result.processing} streaming=${event.result.streaming}`;
+	}
+
+	if (event.action === "thinking" && isThinkingResult(event.result)) {
+		const suffix = event.result.supported ? "" : " (current model does not support thinking)";
+		return `thinking: ${event.result.level}${suffix}`;
 	}
 
 	if (event.action === "clear_queue" && event.result && typeof event.result === "object") {
@@ -224,8 +290,16 @@ function formatConnectedMessage(client: LocalRoutedTuiClientLike, slashCommands:
 		`Connected to pibo local routed session ${client.binding.sessionKey}.`,
 		`Profile: ${client.binding.originalProfile}`,
 		`Routed commands: ${commands}`,
-		"Only /quit stays local in routed mode.",
+		"Only /quit and /thinking-show stay local in routed mode.",
 	].join("\n");
+}
+
+function splitSlashInput(text: string): { slashCommand: string; args: string } | undefined {
+	const trimmed = text.trim();
+	if (!trimmed.startsWith("/")) return undefined;
+	const match = trimmed.match(/^\/(\S+)(?:\s+([\s\S]*))?$/);
+	if (!match) return undefined;
+	return { slashCommand: `/${match[1]}`, args: match[2] ?? "" };
 }
 
 export type LocalRoutedTuiExtensionOptions = {
@@ -239,13 +313,16 @@ export function createLocalRoutedTuiExtension(
 	return (pi) => {
 		let context: ExtensionContext | undefined;
 		let assistantBuffer = "";
-		let thinkingBuffer = "";
+		let activeThinkingBuffer = "";
+		let thinkingBlocks: string[] = [];
 		let showThinking = options.showThinking === true;
 		let autocompleteRefreshed = false;
 		let connected = false;
 		let unsubscribeEvents: (() => void) | undefined;
 		let unsubscribeSubmitGuard: (() => void) | undefined;
 		let streamingWidget: LocalStreamingMessageWidget | undefined;
+		const toolStates = new Map<string, LocalToolState>();
+		const toolWidgets = new Map<string, ToolExecutionComponent>();
 		const slashCommands = createSlashCommandMap(client.capabilities);
 		const registeredCommands = new Set<string>();
 
@@ -265,7 +342,7 @@ export function createLocalRoutedTuiExtension(
 					streamingWidget = new LocalStreamingMessageWidget(tui, () => showThinking);
 					streamingWidget.setContent({
 						assistantContent: assistantBuffer,
-						thinkingContent: thinkingBuffer,
+						thinkingBlocks: getThinkingBlocks(),
 					});
 					return streamingWidget;
 				},
@@ -278,31 +355,109 @@ export function createLocalRoutedTuiExtension(
 			streamingWidget = undefined;
 		};
 
+		const clearToolWidgets = () => {
+			for (const toolCallId of toolWidgets.keys()) {
+				context?.ui.setWidget(`pibo.local.tool.${toolCallId}`, undefined);
+			}
+			toolWidgets.clear();
+		};
+
+		const getThinkingBlocks = () => {
+			return activeThinkingBuffer.trim() ? [...thinkingBlocks, activeThinkingBuffer] : thinkingBlocks;
+		};
+
+		const finishActiveThinkingBlock = () => {
+			if (activeThinkingBuffer.trim()) {
+				thinkingBlocks = [...thinkingBlocks, activeThinkingBuffer];
+			}
+			activeThinkingBuffer = "";
+		};
+
+		const toggleThinkingDisplay = () => {
+			showThinking = !showThinking;
+			streamingWidget?.refresh();
+			sendTuiMessage(pi, `Thinking display: ${showThinking ? "on" : "off"}`, { role: "system" });
+		};
+
+		const runRoutedCommand = async (slashCommand: string, action: string, args = "") => {
+			try {
+				const params = createExecutionParams(slashCommand, args);
+				sendTuiMessage(pi, args.trim() ? `${slashCommand} ${args.trim()}` : slashCommand, { role: "user" });
+				await client.sendExecution(action, params);
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				sendTuiMessage(pi, `Local routed request failed: ${message}`, { role: "error" });
+			}
+		};
+
+		const ensureToolState = (input: { toolCallId: string; toolName: string; args: unknown }) => {
+			const existing = toolStates.get(input.toolCallId);
+			if (existing) {
+				existing.toolName = input.toolName;
+				existing.args = input.args;
+				return existing;
+			}
+			const state: LocalToolState = {
+				toolCallId: input.toolCallId,
+				toolName: input.toolName,
+				args: input.args,
+				argsComplete: false,
+				executionStarted: false,
+			};
+			toolStates.set(input.toolCallId, state);
+			return state;
+		};
+
+		const ensureToolWidget = (state: LocalToolState) => {
+			if (toolWidgets.has(state.toolCallId) || !context) return toolWidgets.get(state.toolCallId);
+			context.ui.setWidget(
+				`pibo.local.tool.${state.toolCallId}`,
+				(tui) => {
+					const component = createLocalToolExecutionComponent(state, tui, context?.cwd);
+					toolWidgets.set(state.toolCallId, component);
+					return component;
+				},
+				{ placement: "aboveEditor" },
+			);
+			return toolWidgets.get(state.toolCallId);
+		};
+
+		const persistToolState = (state: LocalToolState, event: PiboOutputEvent) => {
+			context?.ui.setWidget(`pibo.local.tool.${state.toolCallId}`, undefined);
+			toolWidgets.delete(state.toolCallId);
+			toolStates.delete(state.toolCallId);
+			sendTuiMessage(pi, "", { role: "tool", event, tool: { ...state } });
+		};
+
 		const handleLocalEvent = (event: PiboOutputEvent) => {
 			if (event.type === "message_started") {
 				assistantBuffer = "";
-				thinkingBuffer = "";
+				activeThinkingBuffer = "";
+				thinkingBlocks = [];
+				toolStates.clear();
+				clearToolWidgets();
 				ensureStreamingWidget();
 				setStatus("local running");
 				return;
 			}
 			if (event.type === "thinking_started") {
-				thinkingBuffer = "";
+				finishActiveThinkingBlock();
 				ensureStreamingWidget();
-				streamingWidget?.setContent({ thinkingContent: thinkingBuffer });
+				streamingWidget?.setContent({ thinkingBlocks: getThinkingBlocks() });
 				return;
 			}
 			if (event.type === "thinking_delta") {
-				thinkingBuffer += event.text;
+				activeThinkingBuffer += event.text;
 				ensureStreamingWidget();
-				streamingWidget?.setContent({ thinkingContent: thinkingBuffer });
+				streamingWidget?.setContent({ thinkingBlocks: getThinkingBlocks() });
 				return;
 			}
 			if (event.type === "thinking_finished") {
 				if (event.text !== undefined) {
-					thinkingBuffer = event.text;
+					activeThinkingBuffer = event.text;
 				}
-				streamingWidget?.setContent({ thinkingContent: thinkingBuffer });
+				finishActiveThinkingBlock();
+				streamingWidget?.setContent({ thinkingBlocks: getThinkingBlocks() });
 				return;
 			}
 			if (event.type === "assistant_delta") {
@@ -311,10 +466,56 @@ export function createLocalRoutedTuiExtension(
 				streamingWidget?.setContent({ assistantContent: assistantBuffer });
 				return;
 			}
+			if (event.type === "tool_call") {
+				const state = ensureToolState(event);
+				state.argsComplete = state.argsComplete || event.argsComplete;
+				const widget = ensureToolWidget(state);
+				widget?.updateArgs(state.args);
+				if (state.argsComplete) widget?.setArgsComplete();
+				return;
+			}
+			if (event.type === "tool_execution_started") {
+				const state = ensureToolState(event);
+				state.executionStarted = true;
+				state.argsComplete = true;
+				const widget = ensureToolWidget(state);
+				widget?.updateArgs(state.args);
+				widget?.setArgsComplete();
+				widget?.markExecutionStarted();
+				return;
+			}
+			if (event.type === "tool_execution_updated") {
+				const state = ensureToolState(event);
+				state.executionStarted = true;
+				state.result = normalizeToolResult(event.partialResult, false);
+				const widget = ensureToolWidget(state);
+				widget?.updateResult(state.result, true);
+				return;
+			}
+			if (event.type === "tool_execution_finished") {
+				const state = ensureToolState({
+					toolCallId: event.toolCallId,
+					toolName: event.toolName,
+					args: toolStates.get(event.toolCallId)?.args ?? {},
+				});
+				state.executionStarted = true;
+				state.argsComplete = true;
+				state.result = normalizeToolResult(event.result, event.isError);
+				const widget = toolWidgets.get(state.toolCallId);
+				widget?.updateResult(state.result);
+				persistToolState(state, event);
+				return;
+			}
 			if (event.type === "assistant_message") {
+				finishActiveThinkingBlock();
+				const finalThinkingBlocks = getThinkingBlocks();
 				clearStreamingWidget();
+				if (showThinking && finalThinkingBlocks.length > 0) {
+					sendTuiMessage(pi, finalThinkingBlocks.join("\n\n"), { role: "thinking", event });
+				}
 				sendTuiMessage(pi, event.text || assistantBuffer, { role: "assistant", event });
 				assistantBuffer = "";
+				thinkingBlocks = [];
 				setStatus("local connected");
 				return;
 			}
@@ -325,6 +526,7 @@ export function createLocalRoutedTuiExtension(
 			}
 			if (event.type === "session_error") {
 				clearStreamingWidget();
+				clearToolWidgets();
 				sendTuiMessage(pi, `Local routed error: ${event.error}`, { role: "error", event });
 				setStatus("local error");
 			}
@@ -344,20 +546,17 @@ export function createLocalRoutedTuiExtension(
 					`Run routed action "${action}".`;
 				pi.registerCommand(name, {
 					description,
-					async handler() {
-						sendTuiMessage(pi, slashCommand, { role: "user" });
-						await client.sendExecution(action);
+					async handler(args = "") {
+						await runRoutedCommand(slashCommand, action, String(args));
 					},
 				});
 			}
-			if (!registeredCommands.has("thinking")) {
-				registeredCommands.add("thinking");
-				pi.registerCommand("thinking", {
-					description: "Toggle routed thinking display in the local TUI.",
+			if (!registeredCommands.has("thinking-show")) {
+				registeredCommands.add("thinking-show");
+				pi.registerCommand("thinking-show", {
+					description: "Toggle routed thinking token visibility in the local TUI.",
 					async handler() {
-						showThinking = !showThinking;
-						streamingWidget?.refresh();
-						sendTuiMessage(pi, `Thinking display: ${showThinking ? "on" : "off"}`, { role: "system" });
+						toggleThinkingDisplay();
 					},
 				});
 			}
@@ -365,7 +564,7 @@ export function createLocalRoutedTuiExtension(
 			if (!autocompleteRefreshed) {
 				const allowedCommands = new Set([...slashCommands.keys()].map((command) => command.slice(1)));
 				allowedCommands.add("quit");
-				allowedCommands.add("thinking");
+				allowedCommands.add("thinking-show");
 				ctx.ui.addAutocompleteProvider((current) => createLocalAutocompleteProvider(current, allowedCommands));
 				autocompleteRefreshed = true;
 			}
@@ -400,6 +599,7 @@ export function createLocalRoutedTuiExtension(
 			unsubscribeSubmitGuard?.();
 			unsubscribeSubmitGuard = undefined;
 			clearStreamingWidget();
+			clearToolWidgets();
 			connected = false;
 			void client.close();
 		});
@@ -411,10 +611,15 @@ export function createLocalRoutedTuiExtension(
 
 			try {
 				ensureConnected(ctx);
-				const action = slashCommands.get(text);
+				if (text === "/thinking-show") {
+					toggleThinkingDisplay();
+					return { action: "handled" };
+				}
+
+				const slashInput = splitSlashInput(text);
+				const action = slashInput ? slashCommands.get(slashInput.slashCommand) : undefined;
 				if (action) {
-					sendTuiMessage(pi, text, { role: "user" });
-					await client.sendExecution(action);
+					await runRoutedCommand(slashInput!.slashCommand, action, slashInput!.args);
 					return { action: "handled" };
 				}
 

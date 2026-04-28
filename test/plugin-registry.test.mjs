@@ -62,6 +62,11 @@ test("default plugin registry builds profiles from registered resources", () => 
 			slashCommands: ["abort"],
 		},
 		{
+			name: "thinking",
+			description: "Cycle or set the routed Pi thinking level.",
+			slashCommands: ["thinking"],
+		},
+		{
 			name: "session.current",
 			description: "Return the active Pi session metadata for this routed session.",
 			slashCommands: ["session-current"],
