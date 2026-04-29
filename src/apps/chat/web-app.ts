@@ -1131,11 +1131,15 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				);
 				state.readModel.upsertSession(selectedSession);
 				const ownedSessions = listOwnedSessions(context, webSession);
+				const indexedSession = state.readModel
+					.listSessions()
+					.find((item) => item.piboSessionId === selectedSession.id);
 				return responseJson(
 					await buildTraceView({
 						session: selectedSession,
 						sessions: ownedSessions,
 						events: state.readModel.listEvents(selectedSession.id),
+						status: indexedSession?.status,
 					}),
 				);
 			}

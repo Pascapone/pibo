@@ -75,6 +75,7 @@ type TraceBuildInput = {
 	session: PiboSession;
 	sessions: PiboSession[];
 	events: ChatWebStoredEvent[];
+	status?: PiboWebSessionStatus;
 	cwd?: string;
 };
 
@@ -157,7 +158,8 @@ export async function buildTraceView(input: TraceBuildInput): Promise<PiboSessio
 	const byId = mapTraceNodesById(nodes);
 	const childByParent = mapChildren(input.sessions);
 	const hasPersistedTranscript = entries.some((entry) => entry.type === "message");
-	const openTranscriptEventIds = findOpenTranscriptEventIds(input.events);
+	const sessionStatus = input.status ?? "idle";
+	const openTranscriptEventIds = findOpenTranscriptEventIds(input.events, sessionStatus);
 
 	for (const storedEvent of input.events) {
 		if (
@@ -168,10 +170,20 @@ export async function buildTraceView(input: TraceBuildInput): Promise<PiboSessio
 			continue;
 		}
 		if (storedEvent.payload.type === "assistant_delta") {
-			mergeAssistantDeltaEvent(nodes, byId, storedEvent.payload, storedEvent.createdAt);
+			mergeAssistantDeltaEvent(nodes, byId, storedEvent.payload, sessionStatus, storedEvent.createdAt);
 			continue;
 		}
-		const node = traceNodeFromEvent(input.session.id, storedEvent.payload, childByParent, storedEvent.createdAt);
+		if (storedEvent.payload.type === "thinking_delta") {
+			mergeThinkingDeltaEvent(nodes, byId, storedEvent.payload, sessionStatus, storedEvent.createdAt);
+			continue;
+		}
+		const node = traceNodeFromEvent(
+			input.session.id,
+			storedEvent.payload,
+			childByParent,
+			sessionStatus,
+			storedEvent.createdAt,
+		);
 		if (!node) continue;
 		if (node.type === "agent.turn" && node.eventId) {
 			const existingTurn = [...byId.values()].find(
@@ -187,6 +199,15 @@ export async function buildTraceView(input: TraceBuildInput): Promise<PiboSessio
 			const existing = byId.get(node.id);
 			if (existing) {
 				mergeAssistantMessageEvent(existing, node);
+				closeParentTurnForFinalAssistant(byId, existing);
+				continue;
+			}
+			closeParentTurnForFinalAssistant(byId, node);
+		}
+		if (node.type === "model.reasoning") {
+			const existing = byId.get(node.id);
+			if (existing) {
+				mergeReasoningEvent(existing, node);
 				continue;
 			}
 		}
@@ -499,6 +520,7 @@ function traceNodeFromEvent(
 	piboSessionId: string,
 	event: PiboOutputEvent,
 	childByParent: Map<string, PiboSession[]>,
+	sessionStatus: PiboWebSessionStatus,
 	createdAt?: string,
 ): PiboTraceNode | undefined {
 	const eventId = "eventId" in event && typeof event.eventId === "string" ? event.eventId : undefined;
@@ -523,7 +545,7 @@ function traceNodeFromEvent(
 				id: eventId ? messageTurnNodeId(eventId) : id,
 				type: "agent.turn",
 				title: "Agent Turn",
-				status: event.type === "message_finished" ? "done" : "running",
+				status: event.type === "message_finished" || sessionStatus !== "running" ? "done" : "running",
 				completedAt: event.type === "message_finished" ? createdAt : undefined,
 				summary: event.type === "message_started" ? event.text : undefined,
 				input: event.type === "message_started" ? { text: event.text, source: event.source } : undefined,
@@ -532,6 +554,7 @@ function traceNodeFromEvent(
 			if (!hasVisibleText(event.text)) return undefined;
 			return {
 				...base,
+				id: eventId ? thinkingNodeId(eventId) : id,
 				parentId: turnParentId,
 				type: "model.reasoning",
 				title: "Thinking",
@@ -567,7 +590,8 @@ function traceNodeFromEvent(
 						? event.isError
 							? "error"
 							: "done"
-						: event.type === "tool_execution_started" || event.type === "tool_execution_updated"
+						: sessionStatus === "running" &&
+							  (event.type === "tool_execution_started" || event.type === "tool_execution_updated")
 							? "running"
 							: "done",
 				completedAt: event.type === "tool_execution_finished" ? createdAt : undefined,
@@ -612,6 +636,7 @@ function mergeAssistantDeltaEvent(
 	nodes: PiboTraceNode[],
 	byId: Map<string, PiboTraceNode>,
 	event: Extract<PiboOutputEvent, { type: "assistant_delta" }>,
+	sessionStatus: PiboWebSessionStatus,
 	createdAt?: string,
 ): void {
 	if (event.text.length === 0) return;
@@ -620,7 +645,7 @@ function mergeAssistantDeltaEvent(
 	const existing = byId.get(id);
 	if (existing) {
 		const text = `${typeof existing.output === "string" ? existing.output : ""}${event.text}`;
-		existing.status = "running";
+		existing.status = sessionStatus === "running" ? "running" : "done";
 		existing.summary = text;
 		existing.output = text;
 		return;
@@ -633,7 +658,7 @@ function mergeAssistantDeltaEvent(
 		eventId: event.eventId,
 		type: "assistant.message",
 		title: "Agent Message",
-		status: "running",
+		status: sessionStatus === "running" ? "running" : "done",
 		startedAt: createdAt,
 		summary: event.text,
 		output: event.text,
@@ -649,6 +674,57 @@ function mergeAssistantMessageEvent(target: PiboTraceNode, update: PiboTraceNode
 	target.output = update.output ?? target.output;
 	target.error = update.error ?? target.error;
 	target.completedAt = update.completedAt ?? target.completedAt;
+}
+
+function mergeThinkingDeltaEvent(
+	nodes: PiboTraceNode[],
+	byId: Map<string, PiboTraceNode>,
+	event: Extract<PiboOutputEvent, { type: "thinking_delta" }>,
+	sessionStatus: PiboWebSessionStatus,
+	createdAt?: string,
+): void {
+	if (event.text.length === 0) return;
+
+	const id = event.eventId ? thinkingNodeId(event.eventId) : `event:thinking_delta:${cryptoSafeId(event)}`;
+	const existing = byId.get(id);
+	if (existing) {
+		const text = `${typeof existing.output === "string" ? existing.output : ""}${event.text}`;
+		existing.status = sessionStatus === "running" ? "running" : "done";
+		existing.summary = text;
+		existing.output = text;
+		return;
+	}
+
+	const node: PiboTraceNode = {
+		id,
+		parentId: event.eventId ? messageTurnNodeId(event.eventId) : undefined,
+		piboSessionId: event.piboSessionId,
+		eventId: event.eventId,
+		type: "model.reasoning",
+		title: "Thinking",
+		status: sessionStatus === "running" ? "running" : "done",
+		startedAt: createdAt,
+		summary: event.text,
+		output: event.text,
+		children: [],
+	};
+	nodes.push(node);
+	byId.set(node.id, node);
+}
+
+function mergeReasoningEvent(target: PiboTraceNode, update: PiboTraceNode): void {
+	target.status = update.status;
+	target.summary = update.summary ?? target.summary;
+	target.output = update.output ?? target.output;
+	target.completedAt = update.completedAt ?? target.completedAt;
+}
+
+function closeParentTurnForFinalAssistant(byId: Map<string, PiboTraceNode>, assistant: PiboTraceNode): void {
+	if (!assistant.parentId || assistant.status !== "done") return;
+	const parent = byId.get(assistant.parentId);
+	if (!parent || parent.type !== "agent.turn") return;
+	parent.status = "done";
+	parent.completedAt = assistant.completedAt ?? assistant.startedAt ?? parent.completedAt;
 }
 
 function isInternalSessionOperation(action: string): boolean {
@@ -673,13 +749,15 @@ function shouldKeepTranscriptEchoEvent(event: PiboOutputEvent, openTranscriptEve
 	return Boolean(eventId && openTranscriptEventIds.has(eventId));
 }
 
-function findOpenTranscriptEventIds(events: ChatWebStoredEvent[]): Set<string> {
+function findOpenTranscriptEventIds(events: ChatWebStoredEvent[], sessionStatus: PiboWebSessionStatus): Set<string> {
+	if (sessionStatus !== "running") return new Set();
+
 	const open = new Set<string>();
 	for (const storedEvent of events) {
 		const event = storedEvent.payload;
 		const eventId = "eventId" in event && typeof event.eventId === "string" ? event.eventId : undefined;
 		if (!eventId) continue;
-		if (event.type === "message_queued" || event.type === "message_started") {
+		if (isOpenTranscriptEvent(event)) {
 			open.add(eventId);
 		} else if (event.type === "message_finished" || event.type === "session_error") {
 			open.delete(eventId);
@@ -688,12 +766,28 @@ function findOpenTranscriptEventIds(events: ChatWebStoredEvent[]): Set<string> {
 	return open;
 }
 
+function isOpenTranscriptEvent(event: PiboOutputEvent): boolean {
+	return (
+		event.type === "message_queued" ||
+		event.type === "message_started" ||
+		event.type === "assistant_delta" ||
+		event.type === "assistant_message" ||
+		event.type === "thinking_started" ||
+		event.type === "thinking_delta" ||
+		event.type === "thinking_finished"
+	);
+}
+
 function messageTurnNodeId(eventId: string): string {
 	return `event:message:${eventId}`;
 }
 
 function assistantMessageNodeId(eventId: string): string {
 	return `event:assistant:${eventId}`;
+}
+
+function thinkingNodeId(eventId: string): string {
+	return `event:thinking:${eventId}`;
 }
 
 function mapTraceNodesById(nodes: PiboTraceNode[]): Map<string, PiboTraceNode> {

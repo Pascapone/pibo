@@ -37,12 +37,18 @@ Bring the Pibo Chat Web App closer to the existing `pydantic-tracing` trace UI:
 - Added web APIs for bootstrap, trace view, SSE updates, messages, and execution actions.
 - Added nested session listing based on Pibo Sessions and `parentId`.
 - Added explicit new-session creation from the Web Chat UI through `POST /api/chat/sessions`.
+- Added session rename, archive, unarchive, and archived-session visibility controls.
 - Added basic Agents and Settings areas as V1 placeholders.
 - Added slash command menu behavior and Enter/Shift+Enter handling.
+- Added live assistant response streaming in the trace view by aggregating `assistant_delta` events into a running `model.response` span before the final assistant message arrives.
+- Added live thinking streaming in the trace view by aggregating `thinking_delta` events into a running `model.reasoning` span when thinking display is enabled.
+- Hid the Raw Events panel behind an explicit debug toggle and compacted adjacent assistant/thinking delta events in the inspector.
 - Fixed duplicate/stale transcript echo behavior:
   - Persisted transcript events are filtered only when safe.
   - Open live event ids are kept so follow-up turns render before page reload.
+  - Live deltas keep a running turn visible even when the retained raw event window no longer contains `message_started`.
   - `message_finished` updates the matching `agent.turn` status.
+- Fixed running state around thinking: `thinking_finished` ends only the reasoning block and no longer makes the session appear idle while visible assistant text is still streaming.
 - Fixed persisted assistant-turn reconstruction so tool calls are grouped under the final assistant response instead of duplicating as flat spans.
 - Empty or whitespace-only Pi reasoning artifacts are filtered during trace reconstruction, both for persisted `thinking` parts and live `thinking_finished` events.
 - Served the built chat UI from `/apps/chat`, falling back to the older inline HTML only if the build is missing.
@@ -50,6 +56,7 @@ Bring the Pibo Chat Web App closer to the existing `pydantic-tracing` trace UI:
 ## Important Design Decisions
 
 - The web app currently stores raw events in SQLite, not materialized trace nodes. This keeps reconstruction flexible for future workflows and agent-team traces.
+- The trace API returns a latest raw-event window for rendering. Trace reconstruction must therefore infer open running turns from retained live deltas, not only from `message_started`.
 - The trace UI is copied/adapted into Pibo instead of imported as a dependency.
 - The current frontend uses TanStack Router with a Vite client build. `@tanstack/react-start` is installed, but the app is not yet a full TanStack Start SSR/server-entry app.
 - Browser settings such as Thinking visibility are stored in `localStorage`.
@@ -78,7 +85,7 @@ Result:
 
 - Typecheck passed.
 - Chat UI build passed.
-- Test suite passed: 69/69 tests.
+- Test suite passed: 85/85 tests.
 
 ## Next Best Steps
 

@@ -46,6 +46,7 @@ This specification does not define HTTP chat API payloads; those are covered by 
 - **REQ-011**: Assistant visible text deltas MUST be emitted as `assistant_delta`.
 - **REQ-012**: Final visible assistant text MUST be emitted as `assistant_message` when Pi provides non-empty final assistant text.
 - **REQ-013**: Thinking traces MUST use `thinking_started`, `thinking_delta`, and `thinking_finished`, separate from visible assistant text.
+- **REQ-013A**: `thinking_finished` MUST be interpreted as the end of the thinking block only. It MUST NOT be interpreted as the end of the full agent turn or the end of visible assistant text streaming.
 - **REQ-014**: Tool call argument streaming MUST use `tool_call` with `argsComplete` indicating whether the tool call arguments are complete.
 - **REQ-015**: Tool execution lifecycle MUST use `tool_execution_started`, `tool_execution_updated`, and `tool_execution_finished`.
 - **REQ-016**: Optional raw Pi events MUST be forwarded only when the router is configured with `forwardPiEvents`.
@@ -150,6 +151,7 @@ type GatewayEventFrame = {
 - **AC-004**: Given a valid request frame, When the router emits successfully, Then the gateway returns `{ type: "res", id, ok: true, payload }`.
 - **AC-005**: Given router output, When gateway clients are connected, Then each connection receives a router event frame.
 - **AC-006**: Given a Pi thinking delta, When normalized, Then it is emitted as `thinking_delta` and not as assistant visible text.
+- **AC-007**: Given Pi emits `thinking_finished` followed by visible text deltas for the same message, When normalized, Then the router emits `thinking_finished` followed by `assistant_delta` events and does not emit `message_finished` until Pi prompt completion.
 
 ## 6. Test Automation Strategy
 

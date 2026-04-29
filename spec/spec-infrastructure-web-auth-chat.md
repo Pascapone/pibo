@@ -58,13 +58,15 @@ This specification does not define non-web local gateway behavior except where w
 - **REQ-021**: `GET /api/chat/bootstrap` MUST require an auth session and return identity, selected Pibo Session, session tree, agent inventory, and available gateway actions.
 - **REQ-022**: Chat session ownership MUST use `ownerScope=user:<authenticated user id>` and default profile `pibo-minimal` unless overridden.
 - **REQ-023**: `POST /api/chat/sessions` MUST require same-origin JSON and create a new top-level personal Pibo Session.
-- **REQ-024**: `POST /api/chat/message` MUST require same-origin JSON, an authenticated session, non-empty string `text`, and MUST emit a `message` input event with source `"user"`.
-- **REQ-025**: `POST /api/chat/action` MUST require same-origin JSON, an authenticated session, a non-empty string `action`, and JSON-serializable optional `params`.
-- **REQ-026**: `GET /api/chat/events` MUST return a Server-Sent Events stream.
-- **REQ-027**: The SSE stream MUST send an initial `ready` event containing the selected `piboSessionId`.
-- **REQ-028**: The SSE stream MUST forward only router output events whose `piboSessionId` matches the authenticated user's selected Pibo Session.
-- **REQ-029**: Chat UI thinking output MUST be user-toggleable and hidden by default.
-- **REQ-030**: Chat APIs that accept a `piboSessionId` MUST reject sessions whose `ownerScope` does not match the authenticated user.
+- **REQ-024**: `PATCH /api/chat/sessions/:piboSessionId` MUST require same-origin JSON and update only mutable Chat Web session metadata such as `title` and `archived`.
+- **REQ-025**: `POST /api/chat/message` MUST require same-origin JSON, an authenticated session, non-empty string `text`, and MUST emit a `message` input event with source `"user"`.
+- **REQ-026**: `POST /api/chat/action` MUST require same-origin JSON, an authenticated session, a non-empty string `action`, and JSON-serializable optional `params`.
+- **REQ-027**: `GET /api/chat/events` MUST return a Server-Sent Events stream.
+- **REQ-028**: The SSE stream MUST send an initial `ready` event containing the selected `piboSessionId`.
+- **REQ-029**: The SSE stream MUST forward only router output events whose `piboSessionId` matches the authenticated user's selected Pibo Session.
+- **REQ-030**: Chat UI thinking output MUST be user-toggleable and hidden by default.
+- **REQ-031**: Chat APIs that accept a `piboSessionId` MUST reject sessions whose `ownerScope` does not match the authenticated user.
+- **REQ-032**: `GET /api/chat/trace` MUST pass the selected session's current read-model status into trace reconstruction so live running nodes can be distinguished from interrupted stale nodes.
 - **SEC-001**: Chat mutation routes MUST reject non-JSON content types with `415`.
 - **SEC-002**: Chat mutation routes MUST reject missing `Origin` headers with `403`.
 - **SEC-003**: Chat mutation routes MUST reject cross-origin `Origin` headers with `403`.
@@ -109,6 +111,7 @@ type PiboWebApp = {
 | `/api/chat/session` | GET | required | Compatibility endpoint returning identity, selected session, capabilities |
 | `/api/chat/sessions` | GET | required | Returns owned session tree |
 | `/api/chat/sessions` | POST | required | Creates a new top-level personal session |
+| `/api/chat/sessions/:piboSessionId` | PATCH | required | Updates mutable session metadata such as title or archived state |
 | `/api/chat/trace` | GET | required | Returns selected session trace view |
 | `/api/chat/message` | POST | required | Emits message event |
 | `/api/chat/action` | POST | required | Emits execution event |
@@ -154,6 +157,8 @@ type PiboWebApp = {
 - **AC-007**: Given a request body larger than `4 MiB`, When converted to a web request, Then status `413` is returned.
 - **AC-008**: Given an SSE subscription, When another session emits an event, Then that event is not written to this stream.
 - **AC-009**: Given an authenticated user requests another user's `piboSessionId`, When the request is handled, Then the response is rejected.
+- **AC-010**: Given an authenticated user patches their own session title or archived state, When the request is valid, Then the returned session and subsequent bootstrap response reflect the update.
+- **AC-011**: Given a trace request for a running selected session, When live delta events exist, Then trace reconstruction receives the session status as `running`.
 
 ## 6. Test Automation Strategy
 

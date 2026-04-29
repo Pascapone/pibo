@@ -90,6 +90,7 @@ export class ChatWebReadModel {
 			CREATE INDEX IF NOT EXISTS idx_web_chat_sessions_parent
 				ON web_chat_sessions(parent_id);
 		`);
+		this.resetInterruptedSessions();
 	}
 
 	upsertSession(session: PiboSession, status: ChatWebSessionIndexItem["status"] = "idle"): void {
@@ -161,7 +162,15 @@ export class ChatWebReadModel {
 	listEvents(piboSessionId: string, limit = 1000): ChatWebStoredEvent[] {
 		const rows = this.db
 			.prepare(
-				"SELECT * FROM web_chat_events WHERE pibo_session_id = ? ORDER BY created_at ASC, id ASC LIMIT ?",
+				`
+					SELECT * FROM (
+						SELECT rowid AS _rowid, * FROM web_chat_events
+						WHERE pibo_session_id = ?
+						ORDER BY rowid DESC
+						LIMIT ?
+					)
+					ORDER BY _rowid ASC
+				`,
 			)
 			.all(piboSessionId, limit) as EventRow[];
 		return rows.map(eventFromRow);
@@ -184,6 +193,10 @@ export class ChatWebReadModel {
 			`);
 		}
 	}
+
+	private resetInterruptedSessions(): void {
+		this.db.prepare("UPDATE web_chat_sessions SET status = 'idle' WHERE status = 'running'").run();
+	}
 }
 
 export function createDefaultChatWebReadModel(cwd = process.cwd()): ChatWebReadModel {
@@ -197,6 +210,7 @@ function statusFromEvent(event: PiboOutputEvent): ChatWebSessionIndexItem["statu
 		event.type === "assistant_delta" ||
 		event.type === "thinking_started" ||
 		event.type === "thinking_delta" ||
+		event.type === "thinking_finished" ||
 		event.type === "tool_execution_started" ||
 		event.type === "tool_execution_updated"
 	) {

@@ -145,6 +145,12 @@ The current web app registered under `/apps/chat` and `/api/chat/*`.
 **Chat Web Read Model**:
 The `.pibo/web-chat.sqlite` projection used by the Chat Web App for raw Pibo event storage and web-oriented session indexing.
 
+**Raw Pibo Event Log**:
+The ordered normalized `PiboOutputEvent` records stored by the Chat Web Read Model. It is a reconstruction and debugging input, not the canonical transcript.
+
+**Chat Web Trace View**:
+The read-time projection that combines Pi session JSONL, Pibo Sessions, Chat Web Read Model rows, and live Pibo events into nested trace nodes for the Chat Web App.
+
 **Config CLI**:
 The `pibo config` operator CLI for managing local runtime config in `.pibo/config.json`.
 
@@ -162,6 +168,7 @@ Machine-local Pibo configuration stored in `.pibo/config.json`.
 - A **Pibo Session** links to one **Pi Session ID** for Pi Coding Agent persistence.
 - The **Pibo Session Store** is the source of truth for Pibo Session metadata.
 - The **Chat Web Read Model** is a projection and is not the source of truth for Pibo Sessions or Pi transcripts.
+- A **Chat Web Trace View** is reconstructed from Pi transcript data plus the **Raw Pibo Event Log**.
 - A **Subagent** call creates or reuses a routed child **Pibo Session** with `parentId`.
 - A **Yielded Run** is tracked in the **Run Registry** and identified by a **runId**.
 - A **Run-Control Tool** manages a **Yielded Run**; a **Yieldable Tool** is the wrapped work.

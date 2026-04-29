@@ -41,20 +41,28 @@ export function App() {
 	const [composerFocusSignal, setComposerFocusSignal] = useState(0);
 	const [creatingSession, setCreatingSession] = useState(false);
 	const showArchivedRef = useRef(showArchived);
+	const bootstrapRequestId = useRef(0);
+	const traceRequestId = useRef(0);
 
 	useEffect(() => {
 		showArchivedRef.current = showArchived;
 	}, [showArchived]);
 
 	const loadBootstrap = useCallback(async (piboSessionId?: string, includeArchived = showArchivedRef.current) => {
+		const requestId = bootstrapRequestId.current + 1;
+		bootstrapRequestId.current = requestId;
 		const data = await getBootstrap(piboSessionId, includeArchived);
+		if (requestId !== bootstrapRequestId.current) return data;
 		setBootstrap(data);
 		setSelectedPiboSessionId(data.selectedPiboSessionId);
 		return data;
 	}, []);
 
 	const loadTrace = useCallback(async (piboSessionId: string) => {
+		const requestId = traceRequestId.current + 1;
+		traceRequestId.current = requestId;
 		const trace = await getTrace(piboSessionId);
+		if (requestId !== traceRequestId.current) return;
 		setTraceView(trace);
 	}, []);
 
@@ -67,6 +75,7 @@ export function App() {
 		loadTrace(selectedPiboSessionId).catch((caught) => setError(caught instanceof Error ? caught.message : String(caught)));
 		const events = new EventSource(`/api/chat/events?piboSessionId=${encodeURIComponent(selectedPiboSessionId)}`);
 		let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+		let bootstrapTimer: ReturnType<typeof setTimeout> | undefined;
 		let refreshInFlight = false;
 		let refreshPending = false;
 		const runRefresh = () => {
@@ -92,21 +101,41 @@ export function App() {
 				runRefresh();
 			}, delayMs);
 		};
+		const scheduleBootstrapRefresh = (delayMs: number) => {
+			if (bootstrapTimer) return;
+			bootstrapTimer = setTimeout(() => {
+				bootstrapTimer = undefined;
+				loadBootstrap(selectedPiboSessionId).catch((caught) => setError(caught instanceof Error ? caught.message : String(caught)));
+			}, delayMs);
+		};
 		events.addEventListener("pibo", (message) => {
 			const type = eventType(message);
 			const immediate = type === "assistant_message" || type === "message_finished" || type === "session_error";
 			scheduleRefresh(immediate ? 0 : 80);
+			if (type && type !== "assistant_delta" && type !== "thinking_delta") {
+				scheduleBootstrapRefresh(immediate ? 0 : 150);
+			}
 		});
 		return () => {
 			if (refreshTimer) clearTimeout(refreshTimer);
+			if (bootstrapTimer) clearTimeout(bootstrapTimer);
 			events.close();
 		};
-	}, [area, loadTrace, selectedPiboSessionId]);
+	}, [area, loadBootstrap, loadTrace, selectedPiboSessionId]);
 
 	const selectedTrace = useMemo(() => {
 		if (!traceView) return null;
 		return adaptTrace(traceView.piboSessionId, traceView.title, traceView.nodes);
 	}, [traceView]);
+
+	useEffect(() => {
+		if (!selectedPiboSessionId || area !== "sessions" || selectedTrace?.status !== "UNSET") return;
+		const timer = setInterval(() => {
+			loadTrace(selectedPiboSessionId).catch((caught) => setError(caught instanceof Error ? caught.message : String(caught)));
+			loadBootstrap(selectedPiboSessionId).catch((caught) => setError(caught instanceof Error ? caught.message : String(caught)));
+		}, 1000);
+		return () => clearInterval(timer);
+	}, [area, loadBootstrap, loadTrace, selectedPiboSessionId, selectedTrace?.status]);
 
 	const rawEvents = useMemo(() => compactRawEvents(traceView?.rawEvents ?? []), [traceView?.rawEvents]);
 
@@ -376,6 +405,7 @@ export function App() {
 								onSend={async (text) => {
 									if (!selectedPiboSessionId) return;
 									await postMessage(selectedPiboSessionId, text);
+									await loadBootstrap(selectedPiboSessionId);
 									await loadTrace(selectedPiboSessionId);
 								}}
 							/>

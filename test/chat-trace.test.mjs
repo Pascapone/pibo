@@ -1,5 +1,10 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
+import { SessionManager } from "@mariozechner/pi-coding-agent";
+import { ChatWebReadModel } from "../dist/apps/chat/read-model.js";
 import { buildTraceView, traceNodesFromEntries } from "../dist/apps/chat/trace.js";
 
 function createTestSession(overrides = {}) {
@@ -14,6 +19,99 @@ function createTestSession(overrides = {}) {
 		...overrides,
 	};
 }
+
+function createPersistedPiSession(cwd) {
+	const manager = SessionManager.create(cwd);
+	manager.appendMessage({
+		role: "user",
+		content: [{ type: "text", text: "previous question" }],
+	});
+	manager.appendMessage({
+		role: "assistant",
+		content: [{ type: "text", text: "previous answer" }],
+		stopReason: "stop",
+	});
+	return manager.getSessionId();
+}
+
+function flattenTraceNodes(nodes) {
+	return nodes.flatMap((node) => [node, ...flattenTraceNodes(node.children ?? [])]);
+}
+
+test("chat read model resets interrupted running sessions on open", () => {
+	const dir = mkdtempSync(join(tmpdir(), "pibo-chat-read-"));
+	const dbPath = join(dir, "web-chat.sqlite");
+	const session = createTestSession();
+
+	let readModel = new ChatWebReadModel(dbPath);
+	readModel.upsertSession(session);
+	readModel.recordEvent(
+		{
+			type: "assistant_delta",
+			piboSessionId: session.id,
+			eventId: "turn-1",
+			text: "partial",
+		},
+		session,
+	);
+	assert.equal(readModel.listSessions().find((item) => item.piboSessionId === session.id)?.status, "running");
+	readModel.close();
+
+	readModel = new ChatWebReadModel(dbPath);
+	assert.equal(readModel.listSessions().find((item) => item.piboSessionId === session.id)?.status, "idle");
+	readModel.close();
+});
+
+test("chat read model keeps newest events when limiting session event history", () => {
+	const readModel = new ChatWebReadModel(":memory:");
+	const session = createTestSession();
+	readModel.upsertSession(session);
+
+	for (let index = 0; index < 1005; index += 1) {
+		readModel.recordEvent(
+			{
+				type: "assistant_delta",
+				piboSessionId: session.id,
+				eventId: "turn-1",
+				text: `delta-${index}`,
+			},
+			session,
+		);
+	}
+	readModel.recordEvent(
+		{
+			type: "assistant_message",
+			piboSessionId: session.id,
+			eventId: "turn-1",
+			text: "final",
+		},
+		session,
+	);
+
+	const events = readModel.listEvents(session.id, 1000);
+	assert.equal(events.length, 1000);
+	assert.equal(events.at(-1)?.type, "assistant_message");
+	assert.equal(events.at(-1)?.payload.type, "assistant_message");
+	assert.notEqual(events[0].payload.type === "assistant_delta" ? events[0].payload.text : undefined, "delta-0");
+	readModel.close();
+});
+
+test("chat read model keeps sessions running after live thinking finishes", () => {
+	const readModel = new ChatWebReadModel(":memory:");
+	const session = createTestSession();
+	readModel.recordEvent(
+		{
+			type: "thinking_finished",
+			piboSessionId: session.id,
+			eventId: "turn-1",
+			text: "finished reasoning",
+		},
+		session,
+	);
+
+	assert.equal(readModel.listSessions().find((item) => item.piboSessionId === session.id)?.status, "running");
+	readModel.close();
+});
 
 test("chat trace preserves assistant content part order", () => {
 	const nodes = traceNodesFromEntries("chat:test", [
@@ -74,6 +172,7 @@ test("chat trace skips empty live reasoning events", async () => {
 	const view = await buildTraceView({
 		session,
 		sessions: [session],
+		status: "running",
 		events: [
 			{
 				id: "event-1",
@@ -117,6 +216,7 @@ test("chat trace aggregates live assistant deltas into a streaming response node
 	const view = await buildTraceView({
 		session,
 		sessions: [session],
+		status: "running",
 		events: [
 			{
 				id: "event-1",
@@ -223,9 +323,228 @@ test("chat trace replaces live assistant deltas with the final assistant message
 
 	const turn = view.nodes.find((node) => node.type === "agent.turn");
 	assert.ok(turn);
+	assert.equal(turn.status, "done");
 	assert.equal(turn.children.length, 1);
 	assert.equal(turn.children[0].status, "done");
 	assert.equal(turn.children[0].output, "final answer");
+});
+
+test("chat trace aggregates live thinking deltas into a reasoning node", async () => {
+	const session = createTestSession();
+	const view = await buildTraceView({
+		session,
+		sessions: [session],
+		status: "running",
+		events: [
+			{
+				id: "event-1",
+				piboSessionId: "chat:test",
+				eventId: "turn-1",
+				type: "message_started",
+				createdAt: "2026-04-29T08:00:00.000Z",
+				payload: {
+					type: "message_started",
+					piboSessionId: "chat:test",
+					eventId: "turn-1",
+					text: "think",
+					source: "user",
+				},
+			},
+			{
+				id: "event-2",
+				piboSessionId: "chat:test",
+				eventId: "turn-1",
+				type: "thinking_delta",
+				createdAt: "2026-04-29T08:00:01.000Z",
+				payload: {
+					type: "thinking_delta",
+					piboSessionId: "chat:test",
+					eventId: "turn-1",
+					text: "first",
+				},
+			},
+			{
+				id: "event-3",
+				piboSessionId: "chat:test",
+				eventId: "turn-1",
+				type: "thinking_delta",
+				createdAt: "2026-04-29T08:00:02.000Z",
+				payload: {
+					type: "thinking_delta",
+					piboSessionId: "chat:test",
+					eventId: "turn-1",
+					text: " thought",
+				},
+			},
+		],
+		cwd: process.cwd(),
+	});
+
+	const turn = view.nodes.find((node) => node.type === "agent.turn");
+	assert.ok(turn);
+	assert.equal(turn.children.length, 1);
+	assert.equal(turn.children[0].type, "model.reasoning");
+	assert.equal(turn.children[0].status, "running");
+	assert.equal(turn.children[0].output, "first thought");
+});
+
+test("chat trace keeps live deltas when the start event fell outside retained history", async () => {
+	const dir = mkdtempSync(join(tmpdir(), "pibo-chat-trace-"));
+	const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+	process.env.PI_CODING_AGENT_DIR = join(dir, "agent");
+
+	try {
+		const piSessionId = createPersistedPiSession(dir);
+		const session = createTestSession({ piSessionId, workspace: dir });
+		const view = await buildTraceView({
+			session,
+			sessions: [session],
+			status: "running",
+			events: [
+				{
+					id: "event-1",
+					piboSessionId: "chat:test",
+					eventId: "turn-1",
+					type: "thinking_delta",
+					createdAt: "2026-04-29T08:00:01.000Z",
+					payload: {
+						type: "thinking_delta",
+						piboSessionId: "chat:test",
+						eventId: "turn-1",
+						text: "live thinking",
+					},
+				},
+				{
+					id: "event-2",
+					piboSessionId: "chat:test",
+					eventId: "turn-1",
+					type: "assistant_delta",
+					createdAt: "2026-04-29T08:00:02.000Z",
+					payload: {
+						type: "assistant_delta",
+						piboSessionId: "chat:test",
+						eventId: "turn-1",
+						text: "live answer",
+					},
+				},
+			],
+			cwd: dir,
+		});
+
+		const allNodes = flattenTraceNodes(view.nodes);
+		assert.ok(allNodes.some((node) => node.type === "model.reasoning" && node.output === "live thinking"));
+		assert.ok(allNodes.some((node) => node.type === "assistant.message" && node.output === "live answer"));
+	} finally {
+		if (previousAgentDir === undefined) {
+			delete process.env.PI_CODING_AGENT_DIR;
+		} else {
+			process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+		}
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("chat trace replaces live thinking deltas with finished reasoning text", async () => {
+	const session = createTestSession();
+	const view = await buildTraceView({
+		session,
+		sessions: [session],
+		status: "running",
+		events: [
+			{
+				id: "event-1",
+				piboSessionId: "chat:test",
+				eventId: "turn-1",
+				type: "message_started",
+				createdAt: "2026-04-29T08:00:00.000Z",
+				payload: {
+					type: "message_started",
+					piboSessionId: "chat:test",
+					eventId: "turn-1",
+					text: "think",
+					source: "user",
+				},
+			},
+			{
+				id: "event-2",
+				piboSessionId: "chat:test",
+				eventId: "turn-1",
+				type: "thinking_delta",
+				createdAt: "2026-04-29T08:00:01.000Z",
+				payload: {
+					type: "thinking_delta",
+					piboSessionId: "chat:test",
+					eventId: "turn-1",
+					text: "partial",
+				},
+			},
+			{
+				id: "event-3",
+				piboSessionId: "chat:test",
+				eventId: "turn-1",
+				type: "thinking_finished",
+				createdAt: "2026-04-29T08:00:02.000Z",
+				payload: {
+					type: "thinking_finished",
+					piboSessionId: "chat:test",
+					eventId: "turn-1",
+					text: "final reasoning",
+				},
+			},
+		],
+		cwd: process.cwd(),
+	});
+
+	const turn = view.nodes.find((node) => node.type === "agent.turn");
+	assert.ok(turn);
+	assert.equal(turn.children.length, 1);
+	assert.equal(turn.children[0].status, "done");
+	assert.equal(turn.children[0].output, "final reasoning");
+});
+
+test("chat trace closes interrupted live assistant deltas when the session is idle", async () => {
+	const session = createTestSession();
+	const view = await buildTraceView({
+		session,
+		sessions: [session],
+		status: "idle",
+		events: [
+			{
+				id: "event-1",
+				piboSessionId: "chat:test",
+				eventId: "turn-1",
+				type: "message_started",
+				createdAt: "2026-04-29T08:00:00.000Z",
+				payload: {
+					type: "message_started",
+					piboSessionId: "chat:test",
+					eventId: "turn-1",
+					text: "hello",
+					source: "user",
+				},
+			},
+			{
+				id: "event-2",
+				piboSessionId: "chat:test",
+				eventId: "turn-1",
+				type: "assistant_delta",
+				createdAt: "2026-04-29T08:00:01.000Z",
+				payload: {
+					type: "assistant_delta",
+					piboSessionId: "chat:test",
+					eventId: "turn-1",
+					text: "partial answer",
+				},
+			},
+		],
+		cwd: process.cwd(),
+	});
+
+	const turn = view.nodes.find((node) => node.type === "agent.turn");
+	assert.ok(turn);
+	assert.equal(turn.status, "done");
+	assert.equal(turn.children[0].status, "done");
+	assert.equal(turn.children[0].output, "partial answer");
 });
 
 test("chat trace hides internal fork and switch execution results", async () => {

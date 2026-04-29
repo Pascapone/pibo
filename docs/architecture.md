@@ -32,7 +32,7 @@ Message events are user input. They are queued per session and sent into Pi.
 
 Execution events are wrapper-level actions such as status, queue clear, abort, dispose, and Pi session controls. They are not model messages. Parameterized execution actions use typed params in `src/core/events.ts`; JSON transports validate those params at the protocol boundary before the router sees them.
 
-Output events are normalized router events. Assistant text and thinking are separate streams: `assistant_delta` carries visible assistant text, while `thinking_started`, `thinking_delta`, and `thinking_finished` carry model thinking traces when the provider emits them. Channels decide independently whether to display thinking; the router always preserves the event boundary so web, gateway, and local TUI clients can opt in without changing Pi runtime behavior.
+Output events are normalized router events. Assistant text and thinking are separate streams: `assistant_delta` carries visible assistant text, while `thinking_started`, `thinking_delta`, and `thinking_finished` carry model thinking traces when the provider emits them. `thinking_finished` ends only the thinking block; the agent turn stays active until `message_finished` or `session_error`. Channels decide independently whether to display thinking; the router always preserves the event boundary so web, gateway, and local TUI clients can opt in without changing Pi runtime behavior.
 
 ## Pibo And Pi Sessions
 

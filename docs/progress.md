@@ -34,7 +34,8 @@ Pibo is a minimal TypeScript wrapper around Pi Coding Agent. This file is a shor
 - Gateway channel sessions are backed by the SQLite Pibo Session store in `.pibo/pibo-sessions.sqlite`.
 - The local routed TUI adapter lives in `src/local/` and uses an in-process router instead of a gateway daemon.
 - An authenticated web gateway path exists through `npm run gateway:web`, split into Better Auth, a same-origin web host, and the chat web app.
-- The Chat Web App can create additional personal sessions, reconstructs trace nodes from Pi JSONL plus raw Pibo events, groups persisted tool calls under the final assistant response, and filters empty reasoning artifacts from trace output.
+- The Chat Web App can create, rename, archive, and restore personal sessions; reconstructs trace nodes from Pi JSONL plus raw Pibo events; groups persisted tool calls under the final assistant response; filters empty reasoning artifacts from trace output; and streams live assistant/thinking deltas into running trace nodes.
+- The Chat Web raw event inspector is hidden behind an explicit debug toggle and compacts adjacent assistant/thinking deltas with the same `eventId` for readability.
 - A minimal Commander-based CLI manages local config values in `.pibo/config.json` and uses progressive, agent-oriented discovery output.
 - `pibo mcp` provides local MCP server discovery, schema inspection, search, tool calls, `mcp_servers.json` config management, and a small opt-in registry for common external MCP servers.
 - The MCP registry command surface is in place, but there are currently no bundled presets.

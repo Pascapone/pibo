@@ -111,6 +111,13 @@ Out of scope for V1:
 - **REQ-051**: `/thinking-show` must affect only browser display state and must not change model thinking effort.
 - **REQ-052**: V1 must not create durable agent template/profile tables. The `Agents` area may use mock data only.
 - **REQ-053**: The `Agents` area should display real profile inventory from the plugin registry when practical, but must not create, update, or persist agent templates in V1.
+- **REQ-054**: Assistant visible text deltas must update a live `assistant.message` trace node before the final `assistant_message` event is available.
+- **REQ-055**: Thinking deltas must update a live `model.reasoning` trace node when thinking display is enabled. `thinking_finished` closes only the reasoning node and must not imply that the full agent turn is finished.
+- **REQ-056**: Trace reconstruction must keep live transcript echo events for a running turn when the retained raw event window contains `assistant_delta`, `assistant_message`, `thinking_started`, `thinking_delta`, or `thinking_finished` for the same `eventId`, even if `message_started` is no longer present in the retained window.
+- **REQ-057**: The Raw Events inspector must be hidden by default and exposed through an explicit debug control.
+- **REQ-058**: The Raw Events inspector must compact adjacent `assistant_delta` and `thinking_delta` events with the same `piboSessionId` and `eventId` for readability.
+- **REQ-059**: Sidebar sessions must support manual rename and archive/unarchive operations.
+- **REQ-060**: Archived sessions must be hidden by default and retrievable through an explicit archived-session display control.
 - **CON-001**: Pibo must not move channel, auth, profile, or UI policy into Pi Coding Agent.
 - **CON-002**: Pibo must preserve the existing product boundary: Pi owns agent execution and session JSONL; Pibo owns channels, routing, auth, policy, web UI, and read models.
 - **CON-003**: The Web App must consume Pibo view models derived from Pi JSONL and Pibo events, not raw Pi events directly.
@@ -133,10 +140,10 @@ type PiboWebSessionNode = {
   piboSessionId: string;
   piSessionId: string;
   parentId?: string;
-  originId?: string;
   profile: string;
   title: string;
   subtitle?: string;
+  archived?: boolean;
   status: PiboWebSessionStatus;
   lastActivityAt?: string;
   children: PiboWebSessionNode[];
@@ -145,9 +152,10 @@ type PiboWebSessionNode = {
 
 Session title selection order:
 
-1. Use `session_info.name` from the Pi session file when present.
-2. Otherwise use the first user message from the Pi session, truncated for sidebar display.
-3. Otherwise use the Pibo Session ID.
+1. Use the manually stored Pibo Session title when present.
+2. Otherwise use `session_info.name` from the Pi session file when present.
+3. Otherwise use the first user message from the Pi session, truncated for sidebar display.
+4. Otherwise use the Pibo Session ID.
 
 The sidebar must also expose the Pibo Session ID as secondary text or tooltip so technical identity remains visible even when a friendly title exists.
 
@@ -209,6 +217,8 @@ type PiboTraceNode = {
 
 Trace reconstruction must treat empty or whitespace-only reasoning text as transport/provider noise. Persisted Pi `thinking` parts and live `thinking_finished` events only produce `model.reasoning` nodes when they contain visible text after trimming.
 
+Trace reconstruction must distinguish persisted transcript content from live transcript echo events. When Pi JSONL already contains persisted messages, live transcript echo events are normally filtered to avoid duplicate user and assistant nodes. The exception is a currently running turn: any retained live delta or thinking event for the turn's `eventId` is sufficient evidence that the event is still open, even if `message_started` has fallen outside the retained raw event window.
+
 ### 4.4 Web Read Model Storage
 
 The implementation must add a dedicated SQLite database at `.pibo/web-chat.sqlite`.
@@ -217,6 +227,8 @@ The read model must store raw inputs for reconstructing the Web Chat view:
 
 - **Raw Pibo event log**: the original normalized Pibo output events, stored in order. This is the receipt trail. It is useful for debugging, replay, and rebuilding a view model after code changes.
 - **Session index**: session and parent-child metadata needed to list main sessions, nested subagent sessions, and session status efficiently.
+
+The trace API may return a bounded latest-event window for rendering. If it does, it must preserve insertion order within the returned window and must not assume that `message_started` or `message_queued` is always present for a still-running turn.
 
 V1 must not persist materialized trace nodes. Trace nodes such as `tool.call`, `agent.delegation`, and `execution.command` are derived at read time or in memory from Pi JSONL plus the raw Pibo event log. Pi JSONL remains canonical for transcript content.
 
@@ -265,6 +277,10 @@ The full `/tree` command is not a V1 Web Chat command because full tree browsing
 - **AC-015**: Given the transcript contains thinking blocks and thinking display is off, When the user enables `/thinking-show`, Then historical thinking blocks become visible without changing model thinking effort.
 - **AC-016**: Given trace nodes are visible for the first time, When the view renders, Then nested trace nodes are collapsed by default.
 - **AC-017**: Given the user uses expand/collapse controls, When they select collapse all, expand all, or expand to depth, Then the trace tree updates accordingly.
+- **AC-018**: Given a running turn has emitted many thinking deltas, When the trace endpoint returns a latest-event window that no longer contains `message_started`, Then subsequent `assistant_delta` events for the same `eventId` still appear as a live assistant response.
+- **AC-019**: Given a `thinking_finished` event is received, When no `message_finished` event has been received for that `eventId`, Then the selected session remains in a running state and the UI continues to accept assistant streaming updates.
+- **AC-020**: Given the Raw Events inspector is opened, When adjacent assistant or thinking delta events share `piboSessionId` and `eventId`, Then they are displayed as one compacted raw event with an aggregate count.
+- **AC-021**: Given a session is renamed or archived, When the sidebar reloads, Then the manual title or archive visibility state is reflected without changing the linked Pi Session ID.
 
 ## 6. Test Automation Strategy
 
@@ -278,6 +294,8 @@ The full `/tree` command is not a V1 Web Chat command because full tree browsing
 - **Integration Tests**:
   - Chat API session list and selected session endpoints.
   - SSE or streaming event ingestion into the read model.
+  - Live assistant and thinking delta aggregation while a turn is running.
+  - Latest-event-window reconstruction when the retained window does not include `message_started`.
   - Clone and fork execution flows.
   - Reconstruction from Pi session JSONL plus raw Pibo event log.
 
@@ -304,6 +322,7 @@ Pi Coding Agent already persists the canonical agent transcript in JSONL files. 
 However, Pibo Web Chat needs data that Pi JSONL does not fully own or does not expose in a web-optimized form:
 
 - Live streaming state before message persistence.
+- Running-turn status while thinking and visible assistant text are streamed as separate event families.
 - Tool execution start/update/end lifecycle and durations.
 - Pibo execution command events and results.
 - Pibo session errors.
@@ -311,7 +330,7 @@ However, Pibo Web Chat needs data that Pi JSONL does not fully own or does not e
 - Subagent session relationships by Pibo Session `parentId`.
 - Yielded run lifecycle and policy metadata.
 
-The dedicated SQLite read model solves web rendering and reload requirements without changing Pi ownership of transcript persistence. V1 stores raw Pibo events rather than durable materialized trace nodes so future execution concepts such as workflows, agent teams, approvals, and scheduled runs can be represented by new events without migrating a UI-shaped storage model.
+The dedicated SQLite read model solves web rendering and reload requirements without changing Pi ownership of transcript persistence. V1 stores raw Pibo events rather than durable materialized trace nodes so future execution concepts such as workflows, agent teams, approvals, and scheduled runs can be represented by new events without migrating a UI-shaped storage model. Because live streams can produce many delta events, trace reconstruction must be robust when the API returns a latest-event window rather than the full raw event history.
 
 The pydantic-tracing UI is the chosen reference because it already solves nested execution inspection with recursive cards, structured JSON rendering, status styling, and delegation-like spans.
 
