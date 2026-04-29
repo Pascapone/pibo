@@ -7,6 +7,7 @@ import {
 	type PiboSessionBinding,
 	type PiboSessionBindingStore,
 	type ResolveSessionBindingInput,
+	type UpdateSessionBindingInput,
 } from "./bindings.js";
 
 type BindingRow = {
@@ -64,9 +65,43 @@ export class SqliteSessionBindingStore implements PiboSessionBindingStore {
 		);
 	}
 
+	update(sessionKey: string, input: UpdateSessionBindingInput): PiboSessionBinding | undefined {
+		const existing = this.get(sessionKey);
+		if (!existing) return undefined;
+		if (input.sessionId && input.sessionId !== existing.sessionId) {
+			const existingSession = this.findBySessionId(input.sessionId);
+			if (existingSession) return existingSession;
+		}
+
+		const updatedAt = new Date().toISOString();
+		this.db
+			.prepare(`
+				UPDATE session_bindings SET
+					session_id = ?,
+					parent_session_id = ?,
+					current_profile = ?,
+					workspace = ?,
+					updated_at = ?
+				WHERE session_key = ?
+			`)
+			.run(
+				input.sessionId ?? existing.sessionId,
+				input.parentSessionId ?? existing.parentSessionId ?? null,
+				input.currentProfile ?? existing.currentProfile ?? null,
+				input.workspace ?? existing.workspace ?? null,
+				updatedAt,
+				sessionKey,
+			);
+		return this.get(sessionKey);
+	}
+
 	resolve(input: ResolveSessionBindingInput): PiboSessionBinding {
 		const existing = this.findByChannelExternalId(input.channel, input.externalId);
 		if (existing) return existing;
+		if (input.sessionId) {
+			const existingSession = this.findBySessionId(input.sessionId);
+			if (existingSession) return existingSession;
+		}
 
 		const binding = createSessionBinding(input);
 		this.db
@@ -113,6 +148,13 @@ export class SqliteSessionBindingStore implements PiboSessionBindingStore {
 		const row = this.db
 			.prepare("SELECT * FROM session_bindings WHERE channel = ? AND external_id = ?")
 			.get(channel, externalId) as BindingRow | undefined;
+		return row ? bindingFromRow(row) : undefined;
+	}
+
+	private findBySessionId(sessionId: string): PiboSessionBinding | undefined {
+		const row = this.db
+			.prepare("SELECT * FROM session_bindings WHERE session_id = ?")
+			.get(sessionId) as BindingRow | undefined;
 		return row ? bindingFromRow(row) : undefined;
 	}
 

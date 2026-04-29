@@ -236,7 +236,7 @@ function SpanHeader({
 					</span>
 				</button>
 				<SpanHeaderActions
-					entryId={span.pibo?.entryId}
+					forkEntryId={span.pibo?.traceNodeType === "user.message" ? span.pibo.entryId : undefined}
 					linkedSessionKey={span.pibo?.linkedSessionKey}
 					onFork={onFork}
 					onOpenSession={onOpenSession}
@@ -428,28 +428,28 @@ function SpanContent({ span }: { span: Span }) {
 }
 
 function SpanHeaderActions({
-	entryId,
+	forkEntryId,
 	linkedSessionKey,
 	onFork,
 	onOpenSession,
 }: {
-	entryId?: string;
+	forkEntryId?: string;
 	linkedSessionKey?: string;
 	onFork?: (entryId: string) => void;
 	onOpenSession?: (sessionKey: string) => void;
 }) {
-	const forkEntryId = entryId && onFork ? entryId : undefined;
+	const forkableEntryId = forkEntryId && onFork ? forkEntryId : undefined;
 	const childSessionKey = linkedSessionKey && onOpenSession ? linkedSessionKey : undefined;
-	if (!forkEntryId && !childSessionKey) return null;
+	if (!forkableEntryId && !childSessionKey) return null;
 	return (
 		<div className="flex shrink-0 items-center gap-1">
-			{forkEntryId ? (
+			{forkableEntryId ? (
 				<button
 					type="button"
-					onClick={() => onFork?.(forkEntryId)}
+					onClick={() => onFork?.(forkableEntryId)}
 					className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-slate-700 bg-[#151f24]/80 text-slate-400 transition-colors hover:border-[#11a4d4] hover:text-[#11a4d4]"
-					title="Fork from here"
-					aria-label="Fork from here"
+					title="Fork user message"
+					aria-label="Fork user message"
 				>
 					<GitBranch size={14} />
 				</button>

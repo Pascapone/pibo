@@ -112,6 +112,64 @@ test("chat trace skips empty live reasoning events", async () => {
 	assert.equal(view.nodes[0].output, "visible answer");
 });
 
+test("chat trace hides internal fork and switch execution results", async () => {
+	const binding = createTestBinding();
+	const view = await buildTraceView({
+		binding,
+		bindings: [binding],
+		events: [
+			{
+				id: "event-1",
+				sessionKey: "chat:test",
+				eventId: "fork-1",
+				type: "execution_result",
+				createdAt: "2026-04-29T08:00:01.000Z",
+				payload: {
+					type: "execution_result",
+					sessionKey: "chat:test",
+					eventId: "fork-1",
+					action: "session.fork",
+					result: { selectedText: "edit me" },
+				},
+			},
+			{
+				id: "event-2",
+				sessionKey: "chat:test",
+				eventId: "switch-1",
+				type: "execution_result",
+				createdAt: "2026-04-29T08:00:02.000Z",
+				payload: {
+					type: "execution_result",
+					sessionKey: "chat:test",
+					eventId: "switch-1",
+					action: "session.switch",
+					result: { ok: true },
+				},
+			},
+			{
+				id: "event-3",
+				sessionKey: "chat:test",
+				eventId: "status-1",
+				type: "execution_result",
+				createdAt: "2026-04-29T08:00:03.000Z",
+				payload: {
+					type: "execution_result",
+					sessionKey: "chat:test",
+					eventId: "status-1",
+					action: "status",
+					result: { ok: true },
+				},
+			},
+		],
+		cwd: process.cwd(),
+	});
+
+	assert.deepEqual(
+		view.nodes.map((node) => [node.type, node.title]),
+		[["execution.command", "status"]],
+	);
+});
+
 test("chat trace groups tool calls with the final assistant response", () => {
 	const nodes = traceNodesFromEntries("chat:test", [
 		{

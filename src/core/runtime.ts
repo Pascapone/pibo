@@ -153,7 +153,16 @@ function createInspectionRunToolController(): PiboRunToolController {
 	};
 }
 
-function createSessionManager(cwd: string, profile: InitialSessionContext, persistSession: boolean): SessionManager {
+async function createSessionManager(
+	cwd: string,
+	profile: InitialSessionContext,
+	persistSession: boolean,
+): Promise<SessionManager> {
+	if (persistSession && profile.sessionId) {
+		const existing = (await SessionManager.list(cwd)).find((session) => session.id === profile.sessionId);
+		if (existing) return SessionManager.open(existing.path, undefined, cwd);
+	}
+
 	const sessionManager = persistSession ? SessionManager.create(cwd) : SessionManager.inMemory(cwd);
 
 	if (profile.sessionId) {
@@ -167,7 +176,7 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 	const cwd = options.cwd ?? process.cwd();
 	const profile = options.profile ?? createDefaultPiboProfile();
 	const agentDir = getAgentDir();
-	const sessionManager = createSessionManager(cwd, profile, options.persistSession !== false);
+	const sessionManager = await createSessionManager(cwd, profile, options.persistSession !== false);
 	const authStorage = AuthStorage.create();
 
 	const createRuntime: CreateAgentSessionRuntimeFactory = async ({

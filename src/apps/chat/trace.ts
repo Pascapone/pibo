@@ -570,6 +570,7 @@ function traceNodeFromEvent(
 			};
 		}
 		case "execution_result":
+			if (isInternalSessionOperation(event.action)) return undefined;
 			return {
 				...base,
 				type: "execution.command",
@@ -590,6 +591,10 @@ function traceNodeFromEvent(
 		default:
 			return undefined;
 	}
+}
+
+function isInternalSessionOperation(action: string): boolean {
+	return action === "session.fork" || action === "session.switch";
 }
 
 function isTranscriptEchoEvent(event: PiboOutputEvent): boolean {

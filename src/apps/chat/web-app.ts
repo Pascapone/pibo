@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { extname, resolve } from "node:path";
-import type { PiboJsonValue, PiboOutputEvent } from "../../core/events.js";
+import type { PiboJsonValue, PiboOutputEvent, PiboSessionOperationResult } from "../../core/events.js";
 import { PiboWebHttpError, readJsonBody, responseHtml, responseJson } from "../../web/http.js";
 import type { PiboWebApp, PiboWebAppContext, PiboWebSession } from "../../web/types.js";
 import type { PiboSessionBinding } from "../../sessions/bindings.js";
@@ -88,15 +88,20 @@ function listKnownBindings(context: PiboWebAppContext, root: PiboSessionBinding)
 	const byKey = new Map<string, PiboSessionBinding>();
 	for (const binding of listed) byKey.set(binding.sessionKey, binding);
 	byKey.set(root.sessionKey, root);
-	return [...byKey.values()].filter((binding) => isSessionInPersonalTree(binding.sessionKey, root.sessionKey, byKey));
+	return [...byKey.values()]
+		.filter((binding) => isSessionInPersonalScope(binding.sessionKey, root.sessionKey, byKey))
+		.map((binding) => normalizePersonalBinding(binding, root.sessionKey));
 }
 
-function isSessionInPersonalTree(
+function isSessionInPersonalScope(
 	sessionKey: string,
 	rootSessionKey: string,
 	byKey: ReadonlyMap<string, PiboSessionBinding>,
 ): boolean {
 	if (sessionKey === rootSessionKey) return true;
+	if (sessionKey.startsWith(`${rootSessionKey}:session:`)) return true;
+	if (sessionKey.startsWith(`${rootSessionKey}:branch:`)) return true;
+	if (sessionKey.startsWith(`${rootSessionKey}::sub::`)) return true;
 
 	let current = byKey.get(sessionKey);
 	const seen = new Set<string>();
@@ -110,6 +115,21 @@ function isSessionInPersonalTree(
 	return false;
 }
 
+function normalizePersonalBinding(binding: PiboSessionBinding, rootSessionKey: string): PiboSessionBinding {
+	if (binding.channel !== CHAT_WEB_CHANNEL) return binding;
+	if (!isPersonalTopLevelKey(binding.sessionKey, rootSessionKey)) return binding;
+	if (!binding.parentSessionKey && !binding.parentSessionId) return binding;
+	return {
+		...binding,
+		parentSessionKey: undefined,
+		parentSessionId: undefined,
+	};
+}
+
+function isPersonalTopLevelKey(sessionKey: string, rootSessionKey: string): boolean {
+	return sessionKey.startsWith(`${rootSessionKey}:session:`) || sessionKey.startsWith(`${rootSessionKey}:branch:`);
+}
+
 function resolveRequestedSession(
 	context: PiboWebAppContext,
 	root: PiboWebSession,
@@ -120,7 +140,7 @@ function resolveRequestedSession(
 	const bindings = listKnownBindings(context, rootBinding);
 	const byKey = new Map(bindings.map((binding) => [binding.sessionKey, binding]));
 	const binding = byKey.get(sessionKey);
-	if (!binding || !isSessionInPersonalTree(sessionKey, rootBinding.sessionKey, byKey)) {
+	if (!binding || !isSessionInPersonalScope(sessionKey, rootBinding.sessionKey, byKey)) {
 		throw new PiboWebHttpError("Session is not available for this user", 404);
 	}
 	return binding;
@@ -133,10 +153,64 @@ function createPersonalChatSession(context: PiboWebAppContext, root: PiboWebSess
 		channel: CHAT_WEB_CHANNEL,
 		externalId: `${root.authSession.identity.userId}:session:${id}`,
 		sessionKey: `${rootBinding.sessionKey}:session:${id}`,
-		parentSessionKey: rootBinding.sessionKey,
 		defaultProfile: rootBinding.currentProfile ?? rootBinding.originalProfile,
 		workspace: rootBinding.workspace,
 	});
+}
+
+function ensureArchivedSessionBindings(context: PiboWebAppContext, root: PiboWebSession, readModel: ChatWebReadModel): void {
+	const bindings = listKnownBindings(context, root.binding);
+	for (const binding of bindings) {
+		for (const event of readModel.listEvents(binding.sessionKey)) {
+			const result = sessionOperationResultFromEvent(event.payload);
+			if (!result || result.cancelled || !result.previous.sessionFile) continue;
+			if (result.previous.sessionId === result.current.sessionId) continue;
+
+			const source = context.channelContext.listSessions?.().find((candidate) => candidate.sessionKey === result.routeSessionKey) ?? binding;
+			const archiveParent = archiveParentFor(source, result.current.sessionId);
+			const sessionId = result.previous.sessionId;
+			if (source.sessionId !== result.current.sessionId) {
+				context.channelContext.updateSession?.(source.sessionKey, {
+					sessionId: result.current.sessionId,
+					workspace: result.current.cwd,
+				});
+			}
+			if (context.channelContext.listSessions?.().some((candidate) => candidate.sessionId === sessionId)) continue;
+			context.channelContext.resolveSession({
+				channel: source.channel,
+				externalId: `${source.externalId}:branch:${sessionId}`,
+				sessionKey: `${source.sessionKey}:branch:${sessionId}`,
+				sessionId,
+				...archiveParent,
+				defaultProfile: source.currentProfile ?? source.originalProfile,
+				workspace: result.previous.cwd,
+			});
+		}
+	}
+}
+
+function sessionOperationResultFromEvent(event: PiboOutputEvent): PiboSessionOperationResult | undefined {
+	if (event.type !== "execution_result") return undefined;
+	if (event.action !== "session.fork" && event.action !== "session.switch" && event.action !== "session.clone") {
+		return undefined;
+	}
+	const result = event.result;
+	if (!result || typeof result !== "object") return undefined;
+	const candidate = result as Partial<PiboSessionOperationResult>;
+	if (!candidate.previous || !candidate.current || typeof candidate.routeSessionKey !== "string") return undefined;
+	if (typeof candidate.previous.sessionId !== "string" || typeof candidate.current.sessionId !== "string") return undefined;
+	return candidate as PiboSessionOperationResult;
+}
+
+function archiveParentFor(
+	source: PiboSessionBinding,
+	currentSessionId: string,
+): Pick<PiboSessionBinding, "parentSessionKey" | "parentSessionId"> {
+	if (source.channel !== "subagent") return {};
+	return {
+		parentSessionKey: source.parentSessionKey ?? source.sessionKey,
+		parentSessionId: source.parentSessionId ?? currentSessionId,
+	};
 }
 
 function createEventStream(sessionKey: string, context: PiboWebAppContext): Response {
@@ -416,6 +490,7 @@ function createChatHtml(): string {
 		let selectedSessionKey;
 		let area = "sessions";
 		let pendingForkResult;
+		let pendingForkComposerText;
 		let showThinking = localStorage.getItem("pibo.chat.showThinking") === "true";
 		let openNodes = new Set(JSON.parse(localStorage.getItem("pibo.chat.openNodes") || "[]"));
 		let commandIndex = 0;
@@ -833,9 +908,17 @@ function createChatHtml(): string {
 			}
 		}
 		async function forkFrom(entryId) {
+			const previousComposerText = messageInput.value;
 			const result = await postJson("/api/chat/action", { sessionKey: selectedSessionKey, action: "session.fork", params: { entryId: entryId } });
 			appendRawEvent({ type: "fork_result", payload: result });
 			pendingForkResult = result && result.result ? result.result : undefined;
+			pendingForkComposerText = previousComposerText;
+			if (pendingForkResult && typeof pendingForkResult.selectedText === "string") {
+				messageInput.value = pendingForkResult.selectedText;
+				messageInput.focus();
+			}
+			await refreshBootstrap(false);
+			await refreshTrace();
 			forkModal.classList.remove("hidden");
 		}
 		async function postJson(url, payload) {
@@ -915,6 +998,8 @@ function createChatHtml(): string {
 			const previousFile = pendingForkResult && pendingForkResult.previous && pendingForkResult.previous.sessionFile;
 			const routeSessionKey = pendingForkResult && pendingForkResult.routeSessionKey ? pendingForkResult.routeSessionKey : selectedSessionKey;
 			pendingForkResult = undefined;
+			messageInput.value = pendingForkComposerText || "";
+			pendingForkComposerText = undefined;
 			if (previousFile) {
 				void postJson("/api/chat/action", { sessionKey: routeSessionKey, action: "session.switch", params: { sessionFile: previousFile } })
 					.then(function(result) { appendRawEvent({ type: "fork_restore", payload: result }); return refreshTrace(); })
@@ -925,6 +1010,7 @@ function createChatHtml(): string {
 			forkModal.classList.add("hidden");
 			const routeSessionKey = pendingForkResult && pendingForkResult.routeSessionKey ? pendingForkResult.routeSessionKey : selectedSessionKey;
 			pendingForkResult = undefined;
+			pendingForkComposerText = undefined;
 			if (routeSessionKey) await selectSession(routeSessionKey);
 		});
 
@@ -969,6 +1055,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				for (const binding of context.channelContext.listSessions?.() ?? []) {
 					state.readModel.upsertSession(binding);
 				}
+				ensureArchivedSessionBindings(context, session, state.readModel);
 				const selectedSession = resolveRequestedSession(
 					context,
 					session,
@@ -1006,6 +1093,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				for (const binding of context.channelContext.listSessions?.() ?? []) {
 					state.readModel.upsertSession(binding);
 				}
+				ensureArchivedSessionBindings(context, session, state.readModel);
 				const bindings = listKnownBindings(context, session.binding);
 				return responseJson(await buildSessionNodes(bindings, state.readModel.listSessions()));
 			}

@@ -23,6 +23,8 @@ import type { PiboThinkingLevel } from "./thinking.js";
 
 type PiSessionTreeNode = ReturnType<SessionManager["getTree"]>[number];
 
+type PiboSessionOperationListener = (result: PiboSessionOperationResult) => void | Promise<void>;
+
 type PiEventCandidate = {
 	type?: unknown;
 	message?: unknown;
@@ -233,6 +235,7 @@ export class RoutedSession {
 		private readonly emit: PiboEventListener,
 		private readonly pluginRegistry: PiboPluginRegistry,
 		private readonly forwardPiEvents: boolean,
+		private readonly onSessionOperation?: PiboSessionOperationListener,
 	) {
 		this.bindRuntimeSession();
 		this.runtime.setRebindSession(async () => {
@@ -274,6 +277,7 @@ export class RoutedSession {
 		this.assertActive();
 
 		const result = await this.runAction(event);
+		if (isSessionOperationResult(result)) await this.onSessionOperation?.(result);
 		const output: PiboOutputEvent = {
 			type: "execution_result",
 			sessionKey: this.sessionKey,
@@ -560,4 +564,14 @@ function normalizeSessionTree(nodes: PiSessionTreeNode[]): PiboSessionTreeNode[]
 		label: node.label,
 		labelTimestamp: node.labelTimestamp,
 	}));
+}
+
+function isSessionOperationResult(value: unknown): value is PiboSessionOperationResult {
+	if (!value || typeof value !== "object") return false;
+	const candidate = value as { routeSessionKey?: unknown; current?: { sessionId?: unknown } };
+	return (
+		typeof candidate.routeSessionKey === "string" &&
+		Boolean(candidate.current) &&
+		typeof candidate.current?.sessionId === "string"
+	);
 }

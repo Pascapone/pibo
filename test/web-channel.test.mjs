@@ -103,6 +103,7 @@ async function startWebHostChannel(options = {}) {
 	return {
 		channel,
 		emitted,
+		bindings,
 		baseURL: `http://${address.host}:${address.port}`,
 	};
 }
@@ -170,7 +171,7 @@ test("chat web app creates user-owned sessions", async () => {
 		assert.equal(created.status, 201);
 		const payload = await created.json();
 		assert.match(payload.sessionKey, /^chat-web:user-1:session:/);
-		assert.equal(payload.binding.parentSessionKey, "chat-web:user-1");
+		assert.equal(payload.binding.parentSessionKey, undefined);
 		assert.equal(payload.binding.parentSessionId, undefined);
 
 		const bootstrap = await fetch(`${baseURL}/api/chat/bootstrap?sessionKey=${encodeURIComponent(payload.sessionKey)}`, {
@@ -179,7 +180,9 @@ test("chat web app creates user-owned sessions", async () => {
 		assert.equal(bootstrap.status, 200);
 		const data = await bootstrap.json();
 		assert.equal(data.selectedSessionKey, payload.sessionKey);
-		assert.equal(data.sessions[0].children.some((session) => session.sessionKey === payload.sessionKey), true);
+		const createdNode = data.sessions.find((session) => session.sessionKey === payload.sessionKey);
+		assert.ok(createdNode);
+		assert.equal(createdNode.parentSessionKey, undefined);
 
 		const message = await fetch(`${baseURL}/api/chat/message`, {
 			method: "POST",
@@ -194,6 +197,41 @@ test("chat web app creates user-owned sessions", async () => {
 		assert.equal(emitted.length, 1);
 		assert.equal(emitted[0].sessionKey, payload.sessionKey);
 		assert.equal(emitted[0].text, "hello new session");
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("chat web app renders legacy user sessions as top-level sessions", async () => {
+	const { channel, baseURL, bindings } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+	});
+
+	try {
+		const root = await fetch(`${baseURL}/api/chat/session`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(root.status, 200);
+
+		const legacy = bindings.resolve({
+			channel: "chat-web",
+			externalId: "user-1:session:legacy",
+			sessionKey: "chat-web:user-1:session:legacy",
+			parentSessionKey: "chat-web:user-1",
+			defaultProfile: "pibo-minimal",
+		});
+
+		const bootstrap = await fetch(`${baseURL}/api/chat/bootstrap`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(bootstrap.status, 200);
+		const data = await bootstrap.json();
+		const legacyNode = data.sessions.find((session) => session.sessionKey === legacy.sessionKey);
+		const rootNode = data.sessions.find((session) => session.sessionKey === "chat-web:user-1");
+		assert.ok(legacyNode);
+		assert.ok(rootNode);
+		assert.equal(legacyNode.parentSessionKey, undefined);
+		assert.equal(rootNode.children.some((session) => session.sessionKey === legacy.sessionKey), false);
 	} finally {
 		await channel.stop?.();
 	}

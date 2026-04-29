@@ -146,7 +146,7 @@ Same-Origin Web Host
   -> Session router
 ```
 
-The V1 chat web app uses Better Auth Google sign-in for every request path, including localhost. The authenticated Better Auth user id maps to the session binding external id, producing `chat-web:<userId>`.
+The V1 chat web app uses Better Auth Google sign-in for every request path, including localhost. The authenticated Better Auth user id maps to the root session binding external id, producing `chat-web:<userId>`. Additional user-created chat sessions use top-level bindings such as `chat-web:<userId>:session:<uuid>`. Fork archives are also top-level branch bindings so they remain visible without looking like subagents. `parentSessionKey` is reserved for true child sessions such as subagents, not for ordinary sessions owned by the same user.
 
 The auth boundary is enforced before channel input reaches the session router:
 

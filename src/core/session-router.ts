@@ -14,6 +14,7 @@ import type {
 	PiboInputEvent,
 	PiboMessageEvent,
 	PiboOutputEvent,
+	PiboSessionOperationResult,
 } from "./events.js";
 import {
 	createSubagentSessionKey,
@@ -102,6 +103,17 @@ function formatRunNotification(notification: PiboRunNotification): string {
 		}),
 		"</pibo_run_notification>",
 	].join("\n");
+}
+
+function archiveParentFor(
+	binding: PiboSessionBinding,
+	currentSessionId: string,
+): Pick<PiboSessionBinding, "parentSessionKey" | "parentSessionId"> {
+	if (binding.channel !== "subagent") return {};
+	return {
+		parentSessionKey: binding.parentSessionKey ?? binding.sessionKey,
+		parentSessionId: binding.parentSessionId ?? currentSessionId,
+	};
 }
 
 export class PiboSessionRouter {
@@ -236,9 +248,81 @@ export class PiboSessionRouter {
 			this.emitOutput,
 			this.pluginRegistry,
 			this.options.forwardPiEvents ?? false,
+			(result) => this.updateSessionBinding(result),
 		);
 		this.sessions.set(sessionKey, session);
 		return session;
+	}
+
+	private updateSessionBinding(result: PiboSessionOperationResult): void {
+		if (result.cancelled) return;
+
+		const sessionKey = result.routeSessionKey;
+		const patch = {
+			sessionId: result.current.sessionId,
+			workspace: result.current.cwd,
+		};
+
+		if (this.bindingStore) {
+			this.bindingStore.update?.(sessionKey, patch);
+		} else {
+			const existing = this.sessionBindings.get(sessionKey);
+			if (!existing) return;
+			this.sessionBindings.set(sessionKey, {
+				...existing,
+				...patch,
+				updatedAt: new Date().toISOString(),
+			});
+		}
+
+		if (result.previous.sessionId !== result.current.sessionId) {
+			this.archivePreviousSessionBinding(result);
+		}
+	}
+
+	private archivePreviousSessionBinding(result: PiboSessionOperationResult): void {
+		const sessionKey = result.routeSessionKey;
+		const existing = this.bindingStore?.get(sessionKey) ?? this.sessionBindings.get(sessionKey);
+		if (!existing || !result.previous.sessionFile) return;
+		if (this.hasSessionBinding(result.previous.sessionId)) return;
+
+		const archiveParent = archiveParentFor(existing, result.current.sessionId);
+		const sessionId = result.previous.sessionId;
+		const archiveSessionKey = `${sessionKey}:branch:${sessionId}`;
+		const externalId = `${existing.externalId}:branch:${sessionId}`;
+		const defaultProfile = existing.currentProfile ?? existing.originalProfile;
+
+		if (this.bindingStore) {
+			this.bindingStore.resolve({
+				channel: existing.channel,
+				externalId,
+				sessionKey: archiveSessionKey,
+				sessionId,
+				...archiveParent,
+				defaultProfile,
+				workspace: result.previous.cwd,
+			});
+			return;
+		}
+
+		if (this.sessionBindings.has(archiveSessionKey)) return;
+		const now = new Date().toISOString();
+		this.sessionBindings.set(archiveSessionKey, {
+			sessionKey: archiveSessionKey,
+			sessionId,
+			...archiveParent,
+			channel: existing.channel,
+			externalId,
+			originalProfile: defaultProfile,
+			workspace: result.previous.cwd,
+			createdAt: now,
+			updatedAt: now,
+		});
+	}
+
+	private hasSessionBinding(sessionId: string): boolean {
+		const bindings = this.bindingStore?.list?.() ?? [...this.sessionBindings.values()];
+		return bindings.some((binding) => binding.sessionId === sessionId);
 	}
 
 	private getProfileForSession(sessionKey: string): InitialSessionContext {

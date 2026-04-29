@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LogOut, MessageSquarePlus, RefreshCw, Settings, UserRound } from "lucide-react";
 import { getBootstrap, getTrace, postAction, postMessage, postSession, signInWithGoogle, signOut } from "./api";
 import type { BootstrapData, PiboSessionTraceView, PiboWebSessionNode } from "./types";
@@ -8,6 +8,22 @@ import { JsonRenderer } from "./tracing/JsonRenderer";
 
 type Area = "sessions" | "agents" | "settings";
 
+type ForkActionResponse = {
+	result: {
+		routeSessionKey?: string;
+		previous: {
+			sessionFile?: string;
+		};
+		cancelled?: boolean;
+		selectedText?: string;
+	};
+};
+
+type PendingFork = {
+	response: ForkActionResponse;
+	previousComposerText: string;
+};
+
 export function App() {
 	const [bootstrap, setBootstrap] = useState<BootstrapData | null>(null);
 	const [traceView, setTraceView] = useState<PiboSessionTraceView | null>(null);
@@ -15,7 +31,9 @@ export function App() {
 	const [area, setArea] = useState<Area>("sessions");
 	const [error, setError] = useState<string | null>(null);
 	const [showThinking, setShowThinking] = useState(() => localStorage.getItem("pibo.chat.showThinking") === "true");
-	const [pendingFork, setPendingFork] = useState<unknown>(null);
+	const [pendingFork, setPendingFork] = useState<PendingFork | null>(null);
+	const [composerText, setComposerText] = useState("");
+	const [composerFocusSignal, setComposerFocusSignal] = useState(0);
 	const [creatingSession, setCreatingSession] = useState(false);
 
 	const loadBootstrap = useCallback(async (sessionKey?: string) => {
@@ -106,17 +124,34 @@ export function App() {
 
 	const forkFrom = async (entryId: string) => {
 		if (!selectedSessionKey) return;
-		const result = await postAction(selectedSessionKey, "session.fork", { entryId });
-		setPendingFork(result);
+		const previousComposerText = composerText;
+		const result = parseForkActionResponse(await postAction(selectedSessionKey, "session.fork", { entryId }));
+		if (result?.result.cancelled) return;
+		if (!result) throw new Error("Unexpected fork action response");
+		if (typeof result.result.selectedText === "string") {
+			setComposerText(result.result.selectedText);
+			setComposerFocusSignal((current) => current + 1);
+		}
+		setPendingFork({ response: result, previousComposerText });
+		await loadBootstrap(selectedSessionKey);
 		await loadTrace(selectedSessionKey);
 	};
 
 	const declineForkSwitch = async () => {
-		if (isForkResult(pendingFork) && selectedSessionKey && pendingFork.result.previous.sessionFile) {
-			await postAction(selectedSessionKey, "session.switch", { sessionFile: pendingFork.result.previous.sessionFile });
+		if (!pendingFork) return;
+		if (selectedSessionKey && pendingFork.response.result.previous.sessionFile) {
+			await postAction(selectedSessionKey, "session.switch", { sessionFile: pendingFork.response.result.previous.sessionFile });
 			await loadTrace(selectedSessionKey);
 		}
+		setComposerText(pendingFork.previousComposerText);
 		setPendingFork(null);
+	};
+
+	const acceptForkSwitch = async () => {
+		if (!pendingFork) return;
+		const routeSessionKey = pendingFork.response.result.routeSessionKey ?? selectedSessionKey;
+		setPendingFork(null);
+		if (routeSessionKey) await selectSession(routeSessionKey);
 	};
 
 	if (error && !bootstrap) {
@@ -223,11 +258,18 @@ export function App() {
 								</button>
 							</div>
 							<TraceTimeline trace={selectedTrace} showThinking={showThinking} onFork={forkFrom} onOpenSession={(key) => void selectSession(key)} />
-							<Composer commands={slashCommands} onCommand={runCommand} onSend={async (text) => {
-								if (!selectedSessionKey) return;
-								await postMessage(selectedSessionKey, text);
-								await loadTrace(selectedSessionKey);
-							}} />
+							<Composer
+								commands={slashCommands}
+								value={composerText}
+								focusSignal={composerFocusSignal}
+								onValueChange={setComposerText}
+								onCommand={runCommand}
+								onSend={async (text) => {
+									if (!selectedSessionKey) return;
+									await postMessage(selectedSessionKey, text);
+									await loadTrace(selectedSessionKey);
+								}}
+							/>
 						</>
 					) : area === "agents" ? (
 						<AgentsView agents={bootstrap.agents} />
@@ -256,7 +298,7 @@ export function App() {
 						<p className="text-sm text-slate-400 mb-4">Der Fork wurde erstellt. Wenn du ablehnst, wird die vorherige Session-Datei wieder geladen.</p>
 						<div className="flex justify-end gap-2">
 							<button type="button" onClick={() => void declineForkSwitch()} className="px-3 py-1.5 border border-slate-700 rounded-sm">Nein</button>
-							<button type="button" onClick={() => setPendingFork(null)} className="px-3 py-1.5 bg-[#11a4d4] rounded-sm">Ja</button>
+							<button type="button" onClick={() => void acceptForkSwitch()} className="px-3 py-1.5 bg-[#11a4d4] rounded-sm">Ja</button>
 						</div>
 					</div>
 				</div>
@@ -316,27 +358,39 @@ function SessionNode({
 
 function Composer({
 	commands,
+	value,
+	focusSignal,
+	onValueChange,
 	onCommand,
 	onSend,
 }: {
 	commands: Array<{ slash: string; action: string; description: string }>;
+	value: string;
+	focusSignal: number;
+	onValueChange: (value: string) => void;
 	onCommand: (text: string) => Promise<boolean>;
 	onSend: (text: string) => Promise<void>;
 }) {
-	const [value, setValue] = useState("");
+	const inputRef = useRef<HTMLTextAreaElement>(null);
 	const [activeIndex, setActiveIndex] = useState(0);
 	const filtered = value.trim().startsWith("/")
 		? commands.filter((command) => command.slash.startsWith(value.trim().split(/\s+/)[0]))
 		: [];
 
+	useEffect(() => {
+		if (focusSignal <= 0) return;
+		inputRef.current?.focus();
+		inputRef.current?.setSelectionRange(value.length, value.length);
+	}, [focusSignal, value]);
+
 	const submit = async () => {
 		const text = value.trim();
 		if (!text) return;
 		if (filtered.length && !commands.some((command) => command.slash === text.split(/\s+/)[0])) {
-			setValue(filtered[Math.min(activeIndex, filtered.length - 1)].slash);
+			onValueChange(filtered[Math.min(activeIndex, filtered.length - 1)].slash);
 			return;
 		}
-		setValue("");
+		onValueChange("");
 		if (text.startsWith("/") && (await onCommand(text))) return;
 		await onSend(text);
 	};
@@ -350,7 +404,7 @@ function Composer({
 							key={command.slash}
 							type="button"
 							onClick={() => {
-								setValue(command.slash);
+								onValueChange(command.slash);
 								setActiveIndex(index);
 							}}
 							className={`w-full grid grid-cols-[120px_1fr] gap-2 px-3 py-2 text-left border-b border-slate-800 ${index === activeIndex ? "bg-[#11a4d4]/15" : ""}`}
@@ -363,8 +417,9 @@ function Composer({
 			) : null}
 			<div className="grid grid-cols-[1fr_auto] gap-2">
 				<textarea
+					ref={inputRef}
 					value={value}
-					onChange={(event) => setValue(event.target.value)}
+					onChange={(event) => onValueChange(event.target.value)}
 					onKeyDown={(event) => {
 						if (filtered.length && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
 							event.preventDefault();
@@ -427,6 +482,11 @@ function SettingsView({ showThinking, setShowThinking }: { showThinking: boolean
 	);
 }
 
-function isForkResult(value: unknown): value is { result: { previous: { sessionFile?: string } } } {
-	return Boolean(value && typeof value === "object" && "result" in value);
+function parseForkActionResponse(value: unknown): ForkActionResponse | null {
+	if (!isRecord(value) || !isRecord(value.result) || !isRecord(value.result.previous)) return null;
+	return value as ForkActionResponse;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
