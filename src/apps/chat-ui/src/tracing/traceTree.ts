@@ -18,18 +18,13 @@ export function processSpanTree(spans: Span[]): Span[] {
 
 function displaySpansFor(span: Span): Span[] {
 	const children = span.children ? processSpanTree(span.children) : [];
-	const { promoted, remaining } = splitPromotedReasoning(span, children);
+	if (span.spanType === "agent.run") return children;
+	if (span.spanType === "model.response") {
+		return sortByStartTime([...children, { ...span, children: undefined }]);
+	}
 
-	if (!shouldDisplaySpan(span)) return [...promoted, ...remaining];
-	return [...promoted, { ...span, children: remaining }];
-}
-
-function splitPromotedReasoning(span: Span, children: Span[]): { promoted: Span[]; remaining: Span[] } {
-	if (span.spanType !== "model.response") return { promoted: [], remaining: children };
-	return {
-		promoted: children.filter((child) => child.spanType === "model.reasoning"),
-		remaining: children.filter((child) => child.spanType !== "model.reasoning"),
-	};
+	if (!shouldDisplaySpan(span)) return children;
+	return [{ ...span, children }];
 }
 
 function sortByStartTime(spans: Span[]): Span[] {

@@ -7,6 +7,7 @@ import { processSpanTree } from "./traceTree";
 type TraceTimelineProps = {
 	trace: Trace | null;
 	showThinking: boolean;
+	expandThinking: boolean;
 	sessionAgentProfile?: string;
 	activeAgentProfile?: string;
 	onFork: (entryId: string) => void;
@@ -22,6 +23,7 @@ const DEFAULT_EXPANSION_DEPTH = 1;
 export function TraceTimeline({
 	trace,
 	showThinking,
+	expandThinking,
 	sessionAgentProfile,
 	activeAgentProfile,
 	onFork,
@@ -156,6 +158,7 @@ export function TraceTimeline({
 							startTime={startTime}
 							expansionDepth={expansionDepth}
 							expansionSignal={expansionSignal}
+							expandThinking={expandThinking}
 							onFork={onFork}
 							onOpenSession={onOpenSession}
 						/>

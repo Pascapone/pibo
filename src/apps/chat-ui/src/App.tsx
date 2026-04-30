@@ -1,12 +1,16 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
 	Archive,
 	ArchiveRestore,
+	Brain,
 	Bug,
 	ChevronDown,
 	ChevronRight,
 	Check,
+	ChevronsDown,
+	ChevronsUp,
 	Edit3,
+	EyeOff,
 	LogOut,
 	MessageSquarePlus,
 	RefreshCw,
@@ -37,7 +41,8 @@ export function App() {
 	const [selectedPiboSessionId, setSelectedPiboSessionId] = useState<string | null>(null);
 	const [area, setArea] = useState<Area>("sessions");
 	const [error, setError] = useState<string | null>(null);
-	const [showThinking, setShowThinking] = useState(() => localStorage.getItem("pibo.chat.showThinking") === "true");
+	const [showThinking, setShowThinking] = useState(() => localStorage.getItem("pibo.chat.showThinking") !== "false");
+	const [expandThinking, setExpandThinking] = useState(() => localStorage.getItem("pibo.chat.expandThinking") !== "false");
 	const [showRawEvents, setShowRawEvents] = useState(() => localStorage.getItem("pibo.chat.showRawEvents") === "true");
 	const [showArchived, setShowArchived] = useState(() => localStorage.getItem("pibo.chat.showArchived") === "true");
 	const [newSessionProfile, setNewSessionProfile] = useState(() => localStorage.getItem("pibo.chat.newSessionProfile") ?? "");
@@ -402,37 +407,50 @@ export function App() {
 									</div>
 								</div>
 								<div className="flex items-center gap-2">
-									<button
-										type="button"
+									<HeaderIconButton
 										onClick={() => {
 											const next = !showRawEvents;
 											setShowRawEvents(next);
 											localStorage.setItem("pibo.chat.showRawEvents", String(next));
 										}}
 										title={showRawEvents ? "Hide Raw Events" : "Show Raw Events"}
-										aria-label={showRawEvents ? "Hide Raw Events" : "Show Raw Events"}
-										className={`h-8 w-8 inline-flex items-center justify-center border rounded-sm ${
-											showRawEvents ? "border-[#11a4d4] text-[#11a4d4]" : "border-slate-700 text-slate-400"
-										}`}
+										ariaLabel={showRawEvents ? "Hide Raw Events" : "Show Raw Events"}
+										active={showRawEvents}
 									>
 										<Bug size={14} />
-									</button>
-									<button
-										type="button"
+									</HeaderIconButton>
+									<HeaderIconButton
 										onClick={() => {
 											const next = !showThinking;
 											setShowThinking(next);
 											localStorage.setItem("pibo.chat.showThinking", String(next));
 										}}
-										className="px-3 py-1.5 text-xs border border-slate-700 rounded-sm"
+										title={showThinking ? "Hide Thinking" : "Show Thinking"}
+										ariaLabel={showThinking ? "Hide Thinking" : "Show Thinking"}
+										active={showThinking}
 									>
-										{showThinking ? "Thinking On" : "Thinking Off"}
-									</button>
+										{showThinking ? <Brain size={14} /> : <EyeOff size={14} />}
+									</HeaderIconButton>
+									{showThinking ? (
+										<HeaderIconButton
+											onClick={() => {
+												const next = !expandThinking;
+												setExpandThinking(next);
+												localStorage.setItem("pibo.chat.expandThinking", String(next));
+											}}
+											title={expandThinking ? "Collapse Thinking" : "Expand Thinking"}
+											ariaLabel={expandThinking ? "Collapse Thinking" : "Expand Thinking"}
+											active={expandThinking}
+										>
+											{expandThinking ? <ChevronsDown size={14} /> : <ChevronsUp size={14} />}
+										</HeaderIconButton>
+									) : null}
 								</div>
 							</div>
 							<TraceTimeline
 								trace={selectedTrace}
 								showThinking={showThinking}
+								expandThinking={expandThinking}
 								sessionAgentProfile={bootstrap.session.profile}
 								activeAgentProfile={newSessionProfile}
 								onFork={forkFrom}
@@ -464,7 +482,12 @@ export function App() {
 							creatingSession={creatingSession}
 						/>
 					) : (
-						<SettingsView showThinking={showThinking} setShowThinking={setShowThinking} />
+						<SettingsView
+							showThinking={showThinking}
+							setShowThinking={setShowThinking}
+							expandThinking={expandThinking}
+							setExpandThinking={setExpandThinking}
+						/>
 					)}
 				</main>
 
@@ -500,6 +523,36 @@ function SignedOut({ message }: { message: string }) {
 				</button>
 			</div>
 		</div>
+	);
+}
+
+function HeaderIconButton({
+	title,
+	ariaLabel,
+	active,
+	onClick,
+	children,
+}: {
+	title: string;
+	ariaLabel: string;
+	active: boolean;
+	onClick: () => void;
+	children: ReactNode;
+}) {
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			title={title}
+			aria-label={ariaLabel}
+			className={`h-8 w-8 inline-flex items-center justify-center border rounded-sm transition-colors ${
+				active
+					? "border-[#11a4d4] bg-[#11a4d4]/10 text-[#11a4d4]"
+					: "border-slate-700 text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"
+			}`}
+		>
+			{children}
+		</button>
 	);
 }
 
@@ -861,7 +914,17 @@ function AgentsView({
 	);
 }
 
-function SettingsView({ showThinking, setShowThinking }: { showThinking: boolean; setShowThinking: (value: boolean) => void }) {
+function SettingsView({
+	showThinking,
+	setShowThinking,
+	expandThinking,
+	setExpandThinking,
+}: {
+	showThinking: boolean;
+	setShowThinking: (value: boolean) => void;
+	expandThinking: boolean;
+	setExpandThinking: (value: boolean) => void;
+}) {
 	return (
 		<div className="p-6 overflow-auto">
 			<h1 className="text-sm font-bold uppercase tracking-wider mb-4 flex items-center gap-2">
@@ -878,6 +941,18 @@ function SettingsView({ showThinking, setShowThinking }: { showThinking: boolean
 					}}
 				/>
 				Show thinking blocks
+			</label>
+			<label className="mt-3 flex items-center gap-2 text-sm">
+				<input
+					type="checkbox"
+					checked={expandThinking}
+					disabled={!showThinking}
+					onChange={(event) => {
+						setExpandThinking(event.target.checked);
+						localStorage.setItem("pibo.chat.expandThinking", String(event.target.checked));
+					}}
+				/>
+				Expand thinking blocks
 			</label>
 		</div>
 	);

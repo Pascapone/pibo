@@ -380,17 +380,15 @@ function createAssistantTurnNodes(piboSessionId: string, entries: MessageSession
 	const firstAssistant = entries.find((entry) => messageRole(entry) === "assistant");
 	if (!firstAssistant) return [];
 
-	const reasoningNodes: PiboTraceNode[] = [];
-	const childNodes: PiboTraceNode[] = [];
+	const orderedNodes: PiboTraceNode[] = [];
 	const toolsByCallId = new Map<string, PiboTraceNode>();
-	const answerTextParts: string[] = [];
-	let responseEntry = firstAssistant;
+	let responseNode: PiboTraceNode | undefined;
 	let responseError: string | undefined;
 	let responseStatus: PiboTraceNodeStatus = "done";
 
 	for (const entry of entries) {
 		if (messageRole(entry) === "toolResult") {
-			mergePersistedToolResult(toolsByCallId, childNodes, entry, piboSessionId);
+			mergePersistedToolResult(toolsByCallId, orderedNodes, entry, piboSessionId);
 			continue;
 		}
 
@@ -401,30 +399,40 @@ function createAssistantTurnNodes(piboSessionId: string, entries: MessageSession
 		for (const [index, part] of messageParts(entry).entries()) {
 			const typed = part as MessagePart;
 			if (typed.type === "thinking" && typeof typed.thinking === "string" && hasVisibleText(typed.thinking)) {
-				reasoningNodes.push(createReasoningNode(piboSessionId, entry, index, typed.thinking));
+				orderedNodes.push(createReasoningNode(piboSessionId, entry, index, typed.thinking));
 			} else if (typed.type === "text" && typeof typed.text === "string" && typed.text !== "") {
-				answerTextParts.push(typed.text);
-				responseEntry = entry;
+				if (!responseNode) {
+					responseNode = createAssistantMessageNode({
+						id: `entry:${firstAssistant.id}:response`,
+						piboSessionId,
+						entry,
+						status: responseStatus,
+						text: typed.text,
+						error: responseError,
+						children: [],
+						startedAt: entry.timestamp,
+						completedAt: entry.timestamp,
+					});
+					orderedNodes.push(responseNode);
+				} else {
+					responseNode.summary = `${typeof responseNode.summary === "string" ? responseNode.summary : ""}${typed.text}`;
+					responseNode.output = `${typeof responseNode.output === "string" ? responseNode.output : ""}${typed.text}`;
+					responseNode.completedAt = entry.timestamp;
+					responseNode.entryId = entry.id;
+				}
 			} else if (typed.type === "toolCall" && typeof typed.id === "string" && typeof typed.name === "string") {
 				const toolNode = createToolCallNode(piboSessionId, entry, typed);
-				childNodes.push(toolNode);
+				orderedNodes.push(toolNode);
 				toolsByCallId.set(typed.id, toolNode);
 			}
 		}
 	}
 
-	const response = createAssistantMessageNode({
-		id: `entry:${firstAssistant.id}:response`,
-		piboSessionId,
-		entry: responseEntry,
-		status: responseStatus,
-		text: answerTextParts.join(""),
-		error: responseError,
-		children: childNodes,
-		startedAt: firstAssistant.timestamp,
-		completedAt: responseEntry.timestamp,
-	});
-	return [...reasoningNodes, response];
+	if (responseNode) {
+		responseNode.status = responseStatus;
+		responseNode.error = responseError;
+	}
+	return orderedNodes;
 }
 
 function createReasoningNode(

@@ -25,6 +25,7 @@ type SpanNodeProps = {
 	depth?: number;
 	expansionDepth: SpanExpansionDepth;
 	expansionSignal: number;
+	expandThinking: boolean;
 	onFork?: (entryId: string) => void;
 	onOpenSession?: (piboSessionId: string) => void;
 };
@@ -115,6 +116,7 @@ export function SpanNode({
 	depth = 0,
 	expansionDepth,
 	expansionSignal,
+	expandThinking,
 	onFork,
 	onOpenSession,
 }: SpanNodeProps) {
@@ -122,14 +124,15 @@ export function SpanNode({
 		return isExpandedAtDepth(depth, expansionDepth);
 	});
 	const [contentExpanded, setContentExpanded] = useState(() => {
+		if (span.spanType === "model.reasoning") return expandThinking;
 		return isExpandedAtDepth(depth, expansionDepth);
 	});
 
 	useEffect(() => {
 		const expanded = isExpandedAtDepth(depth, expansionDepth);
 		setChildrenExpanded(expanded);
-		setContentExpanded(expanded);
-	}, [depth, expansionDepth, expansionSignal]);
+		setContentExpanded(span.spanType === "model.reasoning" ? expandThinking : expanded);
+	}, [depth, expansionDepth, expansionSignal, expandThinking, span.spanType]);
 
 	const config = spanTypeConfigs[span.spanType] || spanTypeConfigs["agent.run"];
 	const isActive = span.status === "UNSET";
@@ -186,6 +189,7 @@ export function SpanNode({
 								depth={depth + 1}
 								expansionDepth={expansionDepth}
 								expansionSignal={expansionSignal}
+								expandThinking={expandThinking}
 								onFork={onFork}
 								onOpenSession={onOpenSession}
 							/>
