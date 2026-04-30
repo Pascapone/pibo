@@ -246,6 +246,7 @@ export function App() {
 
 	const selectRoom = useCallback(async (roomId: string) => {
 		setSelectedRoomId(roomId);
+		setSelectedPiboSessionId(null);
 		setTraceView(null);
 		const data = await loadBootstrap(undefined, showArchivedRef.current, roomId);
 		setTraceLoadingSessionId(data.selectedPiboSessionId);
@@ -593,6 +594,7 @@ export function App() {
 								onOpenSession={openSession}
 							/>
 							<Composer
+								disabled={!selectedPiboSessionId}
 								commands={slashCommands}
 								value={composerText}
 								focusSignal={composerFocusSignal}
@@ -968,6 +970,7 @@ function sessionTreeHasSession(nodes: PiboWebSessionNode[], piboSessionId: strin
 }
 
 function Composer({
+	disabled = false,
 	commands,
 	value,
 	focusSignal,
@@ -975,6 +978,7 @@ function Composer({
 	onCommand,
 	onSend,
 }: {
+	disabled?: boolean;
 	commands: Array<{ slash: string; action: string; description: string }>;
 	value: string;
 	focusSignal: number;
@@ -1012,6 +1016,7 @@ function Composer({
 	}, [value]);
 
 	const submit = async () => {
+		if (disabled) return;
 		const text = value.trim();
 		if (!text) return;
 		if (filtered.length && !commands.some((command) => command.slash === text.split(/\s+/)[0])) {
@@ -1049,6 +1054,7 @@ function Composer({
 					ref={inputRef}
 					rows={1}
 					value={value}
+					disabled={disabled}
 					onChange={(event) => onValueChange(event.target.value)}
 					onKeyDown={(event) => {
 						if (filtered.length && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
@@ -1063,15 +1069,16 @@ function Composer({
 							void submit();
 						}
 					}}
-					placeholder="Message selected session or type /"
-					className="h-10 min-h-10 resize-none overflow-hidden bg-[#0e1116] border border-slate-700 rounded-sm px-3 py-2 text-sm leading-5 outline-none focus:border-[#11a4d4] [scrollbar-gutter:stable]"
+					placeholder={disabled ? "Loading selected room…" : "Message selected session or type /"}
+					className="h-10 min-h-10 resize-none overflow-hidden bg-[#0e1116] border border-slate-700 rounded-sm px-3 py-2 text-sm leading-5 outline-none focus:border-[#11a4d4] disabled:opacity-50 [scrollbar-gutter:stable]"
 				/>
 				<button
 					type="button"
+					disabled={disabled}
 					onClick={() => void submit()}
 					title="Send message"
 					aria-label="Send message"
-					className="h-10 w-10 self-end inline-flex items-center justify-center bg-[#11a4d4] rounded-sm text-white"
+					className="h-10 w-10 self-end inline-flex items-center justify-center bg-[#11a4d4] rounded-sm text-white disabled:opacity-50"
 				>
 					<SendHorizontal size={16} />
 				</button>

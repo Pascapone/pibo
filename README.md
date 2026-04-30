@@ -10,6 +10,7 @@ Pi remains the inner engine for model turns, tools, streaming, sessions, and com
 - `docs/mcp.md` documents the MCP CLI and registry.
 - `docs/tools.md` documents curated external CLI tools.
 - `docs/agent-run-yield-spec.md` documents yielded agent runs and run-control tools.
+- `docs/chat-rooms-event-log.md` documents Chat Web rooms, default-room startup, durable chat events, SSE cursors, and idempotent sends.
 - `docs/progress.md` is the short implementation status snapshot.
 
 ## Scripts

@@ -142,6 +142,21 @@ A plugin-registered same-origin application served by the Pibo web host.
 **Chat Web App**:
 The current web app registered under `/apps/chat` and `/api/chat/*`.
 
+**Pibo Room**:
+A user-facing Chat Web container that groups one or more Pibo Sessions for display, membership, room events, and room-scoped sending.
+
+**Personal Chat Room**:
+The default Pibo Room automatically created for an owner scope when that user first opens the Chat Web App.
+
+**Room Membership**:
+The Chat Web access record that links a principal to a Pibo Room with a role and read cursor.
+
+**Chat Event Log**:
+The durable Pibo-owned event store for Chat Web room and session events, backed by `chat_events` in `.pibo/web-chat.sqlite`.
+
+**Chat Event Cursor**:
+The frame-specific SSE resume cursor formatted as `<streamId>:<frameIndex>`.
+
 **Chat Web Read Model**:
 The `.pibo/web-chat.sqlite` projection used by the Chat Web App for raw Pibo event storage and web-oriented session indexing.
 
@@ -156,6 +171,9 @@ The same-origin server-sent event stream at `/api/chat/events` that sends compac
 
 **Chat Stream Event**:
 An AG-UI-inspired live UI frame derived from a normalized `PiboOutputEvent`, such as `TEXT_MESSAGE_CONTENT`, `REASONING_MESSAGE_CONTENT`, `TOOL_CALL_RESULT`, or `AGENT_DELEGATION`.
+
+**Retention Class**:
+The Chat Event Log category that controls how long a stored chat event should be kept, such as `live_delta`, `trace_event`, `chat_message`, or `audit_event`.
 
 **Config CLI**:
 The `pibo config` operator CLI for managing local runtime config in `.pibo/config.json`.
@@ -173,9 +191,13 @@ Machine-local Pibo configuration stored in `.pibo/config.json`.
 - A **Pibo Session** is the product session record used for routing, profile selection, ownership, hierarchy, and plugin metadata.
 - A **Pibo Session** links to one **Pi Session ID** for Pi Coding Agent persistence.
 - The **Pibo Session Store** is the source of truth for Pibo Session metadata.
+- A **Pibo Room** is a user-facing Chat Web container; it does not replace a **Pibo Session**.
+- A **Pibo Session** belongs to a **Pibo Room** through `PiboSession.metadata.chatRoomId` in the current migration bridge.
+- A **Personal Chat Room** is created automatically for a new **Owner Scope** when the Chat Web App bootstraps.
 - The **Chat Web Read Model** is a projection and is not the source of truth for Pibo Sessions or Pi transcripts.
+- The **Chat Event Log** is durable Chat Web room/session event storage, while the **Raw Pibo Event Log** remains a read-model/debugging projection of normalized output events.
 - A **Chat Web Trace View** is reconstructed from Pi transcript data plus the **Raw Pibo Event Log**.
-- The **Chat Web SSE Stream** carries **Chat Stream Events** for live UI updates; it does not replace the **Raw Pibo Event Log** or the **Chat Web Trace View**.
+- The **Chat Web SSE Stream** carries **Chat Stream Events** for live UI updates; durable frames resume with a **Chat Event Cursor**.
 - A **Subagent** call creates or reuses a routed child **Pibo Session** with `parentId`.
 - A **Yielded Run** is tracked in the **Run Registry** and identified by a **runId**.
 - A **Run-Control Tool** manages a **Yielded Run**; a **Yieldable Tool** is the wrapped work.
@@ -188,6 +210,8 @@ Machine-local Pibo configuration stored in `.pibo/config.json`.
 - Use **Pibo** for the product harness and **Pi Coding Agent** for the embedded engine; do not call both "the agent runtime" without context.
 - Use **Pibo Session ID** for product routing identity and **Pi Session ID** for Pi's technical persistence/cache identity.
 - Use **parentId** only for true hierarchy and UI nesting. Use **originId** for fork or clone derivation.
+- Use **Pibo Room** for the user-facing chat container and **Pibo Session** for the runtime conversation. Do not call rooms "sessions".
+- Use **Personal Chat Room** for the automatically created first room. Do not call it a "global default room"; it is scoped to one owner.
 - Use **Channel** for Pibo transport adapters and **Transport** for the underlying communication mechanism.
 - Use **Plugin** for internal static extension modules and **MCP Server** for external Model Context Protocol processes.
 - Use **Curated CLI Tool** for `pibo tools` entries and **Tool** for capabilities exposed to agents in profiles.

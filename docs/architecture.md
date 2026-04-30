@@ -192,6 +192,35 @@ The adapter lives in `src/apps/chat/stream.ts`. It turns full router events into
 
 The HTTP response still uses plain SSE with `event: pibo`; the optimization is the payload shape. Content deltas send only the new token or character chunk plus a stable message id. The React chat UI applies these frames directly to the current trace view and only refreshes `/api/chat/trace` for lifecycle or structural updates. The raw Pibo event log remains persisted in the Chat Web Read Model for reconstruction and debugging.
 
+### Chat Web Rooms And Durable Events
+
+The Chat Web App now has a user-facing room layer in front of routed Pibo Sessions.
+
+```text
+Authenticated user
+  -> ownerScope=user:<auth-user-id>
+  -> Pibo Room
+  -> one or more Pibo Sessions
+  -> Session Router
+  -> Pi Coding Agent
+```
+
+Rooms are stored in `.pibo/web-chat.sqlite` through `pibo_rooms` and `pibo_room_members`. A room is the UI container and access boundary. A Pibo Session is still the runtime route into Pi Coding Agent. The current migration bridge links sessions to rooms with `PiboSession.metadata.chatRoomId`.
+
+On first Chat Web bootstrap for an owner scope, Pibo ensures a personal default room named `Personal Chat`, adds the user as owner, and ensures a top-level chat session in that room. This makes a first login immediately usable without manual setup.
+
+The same SQLite file also contains `chat_events`, a durable event log with monotone `stream_id` values. The event log stores accepted user messages, failure records, router output events, actor information, optional `client_txn_id`, retention class, and JSON payload. It is written in parallel with the older `web_chat_events` read model so trace reconstruction stays compatible while room sync gains a durable source.
+
+Message sends are idempotent when the client provides `clientTxnId`. The idempotency key is `(roomId, actorId, clientTxnId)`, so retries from the same user in the same room return the already accepted event instead of starting a second agent run.
+
+SSE live updates remain the transport, but persistent frames now carry frame-specific cursors:
+
+```text
+id: <streamId>:<frameIndex>
+```
+
+One stored chat event can generate several UI frames, so the frame index is required for precise reconnect catch-up.
+
 ## Local Routed TUI
 
 `src/local/` contains the explicit local routed TUI adapter. It starts a Pi TUI controller shell with builtin tools disabled, then routes normal input through an in-process `PiboSessionRouter`.
