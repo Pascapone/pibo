@@ -193,6 +193,54 @@ test("chat web app creates user-owned sessions", async () => {
 	}
 });
 
+test("chat web app scopes bootstrap sessions to the selected room", async () => {
+	const { channel, baseURL } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+	});
+
+	try {
+		const defaultSession = await fetch(`${baseURL}/api/chat/session`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(defaultSession.status, 200);
+		const defaultPayload = await defaultSession.json();
+
+		const roomResponse = await fetch(`${baseURL}/api/chat/rooms`, {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				origin: baseURL,
+				"x-test-user": "user-1",
+			},
+			body: JSON.stringify({ name: "Room Two" }),
+		});
+		assert.equal(roomResponse.status, 201);
+		const roomPayload = await roomResponse.json();
+
+		const roomBootstrap = await fetch(
+			`${baseURL}/api/chat/bootstrap?roomId=${encodeURIComponent(roomPayload.room.id)}`,
+			{
+				headers: { "x-test-user": "user-1" },
+			},
+		);
+		assert.equal(roomBootstrap.status, 200);
+		const roomData = await roomBootstrap.json();
+		assert.equal(roomData.selectedRoomId, roomPayload.room.id);
+		assert.equal(roomData.sessions.length, 1);
+		assert.notEqual(roomData.selectedPiboSessionId, defaultPayload.session.id);
+		assert.equal(roomData.sessions[0].piboSessionId, roomData.selectedPiboSessionId);
+
+		const defaultBootstrap = await fetch(`${baseURL}/api/chat/bootstrap`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(defaultBootstrap.status, 200);
+		const defaultData = await defaultBootstrap.json();
+		assert.equal(defaultData.sessions.some((session) => session.piboSessionId === roomData.selectedPiboSessionId), false);
+	} finally {
+		await channel.stop?.();
+	}
+});
+
 test("chat web app makes message sends idempotent by client transaction id", async () => {
 	const { channel, baseURL, emitted } = await startWebHostChannel({
 		auth: createFakeAuthService(),

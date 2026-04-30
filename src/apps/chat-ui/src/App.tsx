@@ -600,9 +600,14 @@ export function App() {
 								onCommand={runCommand}
 								onSend={async (text) => {
 									if (!selectedPiboSessionId) return;
-									await postMessage(selectedPiboSessionId, text, createClientTxnId(), selectedRoomId ?? undefined);
-									await loadBootstrap(selectedPiboSessionId, showArchivedRef.current, selectedRoomId ?? undefined);
-									await loadTrace(selectedPiboSessionId);
+									try {
+										await postMessage(selectedPiboSessionId, text, createClientTxnId(), selectedRoomId ?? undefined);
+										await loadBootstrap(selectedPiboSessionId, showArchivedRef.current, selectedRoomId ?? undefined);
+										await loadTrace(selectedPiboSessionId);
+										setError(null);
+									} catch (caught) {
+										setError(caught instanceof Error ? caught.message : String(caught));
+									}
 								}}
 							/>
 						</>
@@ -1098,7 +1103,8 @@ function cssPx(value: string, fallback = 0): number {
 }
 
 function createClientTxnId(): string {
-	return `web-${Date.now().toString(36)}-${crypto.randomUUID()}`;
+	const randomId = globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
+	return `web-${Date.now().toString(36)}-${randomId}`;
 }
 
 function AgentsView({

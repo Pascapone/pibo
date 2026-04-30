@@ -258,6 +258,32 @@ function sessionsInRoom(sessions: PiboSession[], roomId: string): PiboSession[] 
 	return sessions.filter((session) => chatRoomIdFromMetadata(session.metadata) === roomId);
 }
 
+function visibleSessionsInRoom(input: {
+	state: ChatWebAppState;
+	context: PiboWebAppContext;
+	webSession: PiboWebSession;
+	sessions: PiboSession[];
+	selectedSession: PiboSession;
+	selectedRoomId: string;
+	includeArchived: boolean;
+}): PiboSession[] {
+	const roomSessions: PiboSession[] = [];
+	for (const session of input.sessions) {
+		const room = ensureSessionRoom(input.state, input.context, session, input.webSession);
+		if (room.id === input.selectedRoomId) roomSessions.push(roomSessionWithRoom(session, room.id));
+	}
+	if (!roomSessions.some((session) => session.id === input.selectedSession.id)) {
+		roomSessions.push(roomSessionWithRoom(input.selectedSession, input.selectedRoomId));
+	}
+	return visibleOwnedSessions(roomSessions, input.selectedSession, input.includeArchived);
+}
+
+function roomSessionWithRoom(session: PiboSession, roomId: string): PiboSession {
+	return chatRoomIdFromMetadata(session.metadata) === roomId
+		? session
+		: { ...session, metadata: withChatRoomId(session.metadata, roomId) };
+}
+
 function selectedRoomIdForSession(state: ChatWebAppState, context: PiboWebAppContext, session: PiboSession): string {
 	return ensureSessionRoom(state, context, session).id;
 }
@@ -1511,9 +1537,18 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				);
 				const selectedRoomId = selectedRoomIdForSession(state, context, selectedSession);
 				const ownedSessions = listOwnedSessions(context, webSession);
-				indexOwnedSessions(state.readModel, ownedSessions);
+				const roomSessions = visibleSessionsInRoom({
+					state,
+					context,
+					webSession,
+					sessions: ownedSessions,
+					selectedSession,
+					selectedRoomId,
+					includeArchived,
+				});
+				indexOwnedSessions(state.readModel, roomSessions);
 				const sessions = await buildSessionNodes(
-					visibleOwnedSessions(ownedSessions, selectedSession, includeArchived),
+					roomSessions,
 					state.readModel.listSessions(),
 				);
 				const rooms = state.roomStore.listRoomTree(webSession.ownerScope);
@@ -1551,11 +1586,21 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const includeArchived = parseBooleanSearchParam(url, "includeArchived");
 				const roomId = url.searchParams.get("roomId") || undefined;
 				const selectedSession = ensureDefaultChatSession(state, context, webSession, defaultProfile, roomId);
+				const selectedRoomId = selectedRoomIdForSession(state, context, selectedSession);
 				const ownedSessions = listOwnedSessions(context, webSession);
-				indexOwnedSessions(state.readModel, ownedSessions);
+				const roomSessions = visibleSessionsInRoom({
+					state,
+					context,
+					webSession,
+					sessions: ownedSessions,
+					selectedSession,
+					selectedRoomId,
+					includeArchived,
+				});
+				indexOwnedSessions(state.readModel, roomSessions);
 				return responseJson(
 					await buildSessionNodes(
-						visibleOwnedSessions(ownedSessions, selectedSession, includeArchived),
+						roomSessions,
 						state.readModel.listSessions(),
 					),
 				);
