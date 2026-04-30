@@ -780,7 +780,7 @@ function createChatHtml(): string {
 		function renderSessionNode(node, depth) {
 			const children = node.children || [];
 			const hasChildren = children.length > 0;
-			if (sessionTreeHasStatus(node, "running") || sessionTreeHasSession(children, selectedPiboSessionId)) {
+			if (sessionTreeHasSession(children, selectedPiboSessionId)) {
 				openSessionNodes.add(node.piboSessionId);
 			}
 			const expanded = openSessionNodes.has(node.piboSessionId);
@@ -817,11 +817,6 @@ function createChatHtml(): string {
 			wrap.append(row);
 			if (expanded) children.forEach(function(child) { wrap.append(renderSessionNode(child, depth + 1)); });
 			return wrap;
-		}
-		function sessionTreeHasStatus(node, status) {
-			return node.status === status || (node.children || []).some(function(child) {
-				return sessionTreeHasStatus(child, status);
-			});
 		}
 		function sessionTreeHasSession(nodes, piboSessionId) {
 			return (nodes || []).some(function(node) {

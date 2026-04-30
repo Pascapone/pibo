@@ -521,17 +521,16 @@ function SessionNode({
 	const [editing, setEditing] = useState(false);
 	const [draftTitle, setDraftTitle] = useState(node.title);
 	const hasChildren = node.children.length > 0;
-	const hasRunningDescendant = sessionTreeHasStatus(node, "running");
 	const hasSelectedDescendant = selectedPiboSessionId ? sessionTreeHasSession(node.children, selectedPiboSessionId) : false;
-	const [expanded, setExpanded] = useState(hasRunningDescendant || hasSelectedDescendant);
+	const [expanded, setExpanded] = useState(hasSelectedDescendant);
 
 	useEffect(() => {
 		if (!editing) setDraftTitle(node.title);
 	}, [editing, node.title]);
 
 	useEffect(() => {
-		if (hasRunningDescendant || hasSelectedDescendant) setExpanded(true);
-	}, [hasRunningDescendant, hasSelectedDescendant]);
+		if (hasSelectedDescendant) setExpanded(true);
+	}, [hasSelectedDescendant]);
 
 	const submitRename = () => {
 		const title = draftTitle.trim();
@@ -655,10 +654,6 @@ function SessionNode({
 			)) : null}
 		</div>
 	);
-}
-
-function sessionTreeHasStatus(node: PiboWebSessionNode, status: PiboWebSessionNode["status"]): boolean {
-	return node.status === status || node.children.some((child) => sessionTreeHasStatus(child, status));
 }
 
 function sessionTreeHasSession(nodes: PiboWebSessionNode[], piboSessionId: string): boolean {
