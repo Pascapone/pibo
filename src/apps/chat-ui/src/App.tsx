@@ -3,6 +3,8 @@ import {
 	Archive,
 	ArchiveRestore,
 	Bug,
+	ChevronDown,
+	ChevronRight,
 	Check,
 	Edit3,
 	LogOut,
@@ -518,10 +520,18 @@ function SessionNode({
 }) {
 	const [editing, setEditing] = useState(false);
 	const [draftTitle, setDraftTitle] = useState(node.title);
+	const hasChildren = node.children.length > 0;
+	const hasRunningDescendant = sessionTreeHasStatus(node, "running");
+	const hasSelectedDescendant = selectedPiboSessionId ? sessionTreeHasSession(node.children, selectedPiboSessionId) : false;
+	const [expanded, setExpanded] = useState(hasRunningDescendant || hasSelectedDescendant);
 
 	useEffect(() => {
 		if (!editing) setDraftTitle(node.title);
 	}, [editing, node.title]);
+
+	useEffect(() => {
+		if (hasRunningDescendant || hasSelectedDescendant) setExpanded(true);
+	}, [hasRunningDescendant, hasSelectedDescendant]);
 
 	const submitRename = () => {
 		const title = draftTitle.trim();
@@ -581,18 +591,33 @@ function SessionNode({
 						</button>
 					</form>
 				) : (
-					<button
-						type="button"
-						onClick={() => onSelect(node.piboSessionId)}
-						className="min-w-0 grid grid-cols-[16px_1fr_auto] gap-2 items-center text-left px-2 py-2"
-					>
-						<span className="text-slate-500">{node.children.length ? "▾" : ""}</span>
-						<span className="min-w-0">
-							<span className={`block text-sm truncate ${node.archived ? "text-slate-500" : "text-slate-200"}`}>{node.title}</span>
-							<span className="block text-[10px] font-mono truncate text-slate-500">{node.piboSessionId}</span>
-						</span>
-						<span className={`h-2 w-2 rounded-full ${node.status === "running" ? "bg-[#0bda57]" : node.status === "error" ? "bg-red-500" : "bg-slate-600"}`} />
-					</button>
+					<div className="min-w-0 grid grid-cols-[28px_1fr] items-center py-1 pr-1">
+						{hasChildren ? (
+							<button
+								type="button"
+								onClick={() => setExpanded((current) => !current)}
+								aria-expanded={expanded}
+								title={expanded ? "Collapse Subsessions" : "Expand Subsessions"}
+								aria-label={expanded ? "Collapse Subsessions" : "Expand Subsessions"}
+								className="h-7 w-7 inline-flex items-center justify-center text-slate-500 hover:text-[#11a4d4]"
+							>
+								{expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+							</button>
+						) : (
+							<span />
+						)}
+						<button
+							type="button"
+							onClick={() => onSelect(node.piboSessionId)}
+							className="min-w-0 grid grid-cols-[1fr_auto] gap-2 items-center text-left px-2 py-1"
+						>
+							<span className="min-w-0">
+								<span className={`block text-sm truncate ${node.archived ? "text-slate-500" : "text-slate-200"}`}>{node.title}</span>
+								<span className="block text-[10px] font-mono truncate text-slate-500">{node.piboSessionId}</span>
+							</span>
+							<span className={`h-2 w-2 rounded-full ${node.status === "running" ? "bg-[#0bda57]" : node.status === "error" ? "bg-red-500" : "bg-slate-600"}`} />
+						</button>
+					</div>
 				)}
 				{editing ? null : (
 					<div className="flex items-center gap-1 pr-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
@@ -617,7 +642,7 @@ function SessionNode({
 					</div>
 				)}
 			</div>
-			{node.children.map((child) => (
+			{expanded ? node.children.map((child) => (
 				<SessionNode
 					key={child.piboSessionId}
 					node={child}
@@ -627,9 +652,17 @@ function SessionNode({
 					onArchive={onArchive}
 					depth={depth + 1}
 				/>
-			))}
+			)) : null}
 		</div>
 	);
+}
+
+function sessionTreeHasStatus(node: PiboWebSessionNode, status: PiboWebSessionNode["status"]): boolean {
+	return node.status === status || node.children.some((child) => sessionTreeHasStatus(child, status));
+}
+
+function sessionTreeHasSession(nodes: PiboWebSessionNode[], piboSessionId: string): boolean {
+	return nodes.some((node) => node.piboSessionId === piboSessionId || sessionTreeHasSession(node.children, piboSessionId));
 }
 
 function Composer({

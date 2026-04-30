@@ -325,8 +325,13 @@ function createChatHtml(): string {
 		.panel-actions { display: flex; align-items: center; gap: 6px; }
 		.icon-button { width: 28px; height: 28px; padding: 0; display: grid; place-items: center; line-height: 1; }
 		.session-tree { padding: 8px; }
-		.session-row { width: 100%; display: grid; grid-template-columns: 18px 1fr auto; gap: 7px; align-items: center; text-align: left; margin-bottom: 4px; border-color: transparent; background: transparent; padding: 7px 8px; }
+		.session-row { width: 100%; display: grid; grid-template-columns: 28px minmax(0,1fr); align-items: center; margin-bottom: 4px; border: 1px solid transparent; border-radius: 3px; background: transparent; padding: 0 8px 0 0; }
 		.session-row.active { border-color: #11a4d4; background: rgba(17,164,212,.10); }
+		.session-toggle, .session-select { border: 0; background: transparent; border-radius: 0; padding: 0; }
+		.session-toggle { width: 28px; height: 32px; display: grid; place-items: center; color: #64748b; }
+		.session-toggle:hover { color: #11a4d4; border-color: transparent; }
+		.session-select { min-width: 0; display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 7px; align-items: center; text-align: left; padding: 7px 0; }
+		.session-select:hover { border-color: transparent; }
 		.session-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: #e2e8f0; }
 		.session-id { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; color: #64748b; }
 		.status-dot { width: 7px; height: 7px; border-radius: 999px; background: #64748b; }
@@ -519,6 +524,7 @@ function createChatHtml(): string {
 		let showThinking = localStorage.getItem("pibo.chat.showThinking") === "true";
 		let selectedAgentProfile = localStorage.getItem("pibo.chat.newSessionProfile") || "";
 		let openNodes = new Set(JSON.parse(localStorage.getItem("pibo.chat.openNodes") || "[]"));
+		let openSessionNodes = new Set();
 		let commandIndex = 0;
 
 		function saveOpenNodes() {
@@ -772,19 +778,55 @@ function createChatHtml(): string {
 			(bootstrap.sessions || []).forEach(function(node) { sessionTreeEl.append(renderSessionNode(node, 0)); });
 		}
 		function renderSessionNode(node, depth) {
+			const children = node.children || [];
+			const hasChildren = children.length > 0;
+			if (sessionTreeHasStatus(node, "running") || sessionTreeHasSession(children, selectedPiboSessionId)) {
+				openSessionNodes.add(node.piboSessionId);
+			}
+			const expanded = openSessionNodes.has(node.piboSessionId);
 			const wrap = document.createElement("div");
-			const row = document.createElement("button");
+			const row = document.createElement("div");
 			row.className = "session-row" + (node.piboSessionId === selectedPiboSessionId ? " active" : "");
 			row.style.paddingLeft = 8 + depth * 14 + "px";
-			row.innerHTML =
-				'<span>' + (node.children && node.children.length ? "▾" : "") + '</span>' +
+			row.title = node.piboSessionId;
+			if (hasChildren) {
+				const toggle = document.createElement("button");
+				toggle.type = "button";
+				toggle.className = "session-toggle";
+				toggle.textContent = expanded ? "v" : ">";
+				toggle.setAttribute("aria-expanded", String(expanded));
+				toggle.setAttribute("aria-label", expanded ? "Collapse Subsessions" : "Expand Subsessions");
+				toggle.title = expanded ? "Collapse Subsessions" : "Expand Subsessions";
+				toggle.addEventListener("click", function() {
+					if (openSessionNodes.has(node.piboSessionId)) openSessionNodes.delete(node.piboSessionId);
+					else openSessionNodes.add(node.piboSessionId);
+					renderSessions();
+				});
+				row.append(toggle);
+			} else {
+				row.append(document.createElement("span"));
+			}
+			const select = document.createElement("button");
+			select.type = "button";
+			select.className = "session-select";
+			select.innerHTML =
 				'<span><span class="session-title">' + escapeText(node.title) + '</span><span class="session-id">' + escapeText(node.piboSessionId) + '</span></span>' +
 				'<span class="status-dot ' + escapeText(node.status) + '"></span>';
-			row.title = node.piboSessionId;
-			row.addEventListener("click", function() { selectSession(node.piboSessionId); });
+			select.addEventListener("click", function() { selectSession(node.piboSessionId); });
+			row.append(select);
 			wrap.append(row);
-			(node.children || []).forEach(function(child) { wrap.append(renderSessionNode(child, depth + 1)); });
+			if (expanded) children.forEach(function(child) { wrap.append(renderSessionNode(child, depth + 1)); });
 			return wrap;
+		}
+		function sessionTreeHasStatus(node, status) {
+			return node.status === status || (node.children || []).some(function(child) {
+				return sessionTreeHasStatus(child, status);
+			});
+		}
+		function sessionTreeHasSession(nodes, piboSessionId) {
+			return (nodes || []).some(function(node) {
+				return node.piboSessionId === piboSessionId || sessionTreeHasSession(node.children, piboSessionId);
+			});
 		}
 		async function selectSession(piboSessionId) {
 			selectedPiboSessionId = piboSessionId;
