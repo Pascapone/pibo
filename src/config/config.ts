@@ -10,6 +10,7 @@ export type PiboConfig = {
 		googleClientId?: string;
 		googleClientSecret?: string;
 		allowedEmails?: string[];
+		trustedOrigins?: string[];
 		databasePath?: string;
 	};
 };
@@ -48,6 +49,11 @@ export const PIBO_CONFIG_KEYS: PiboConfigKeyDefinition[] = [
 		key: "auth.allowedEmails",
 		type: "string[]",
 		description: "Allowed Google account emails. Use comma-separated values.",
+	},
+	{
+		key: "auth.trustedOrigins",
+		type: "string[]",
+		description: "Additional trusted Better Auth origins. Use comma-separated values.",
 	},
 	{
 		key: "auth.databasePath",

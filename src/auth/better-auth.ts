@@ -87,12 +87,13 @@ export function createBetterAuthService(options: BetterAuthServiceOptions = {}):
 	const secret = requiredSecret(options.secret ?? authConfig?.secret);
 	const allowedEmails = requiredAllowedEmails(options, authConfig?.allowedEmails);
 	const database = createDatabase(options.databasePath ?? authConfig?.databasePath ?? ".pibo/auth.sqlite");
+	const trustedOrigins = options.trustedOrigins ?? authConfig?.trustedOrigins;
 	const authOptions: BetterAuthOptions = {
 		appName: "Pibo",
 		baseURL,
 		secret,
 		database,
-		trustedOrigins: createTrustedOrigins(baseURL, options.trustedOrigins),
+		trustedOrigins: createTrustedOrigins(baseURL, trustedOrigins),
 		socialProviders: {
 			google: {
 				clientId: googleClientId,

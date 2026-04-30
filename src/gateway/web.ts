@@ -14,13 +14,42 @@ export type WebGatewayServerOptions = GatewayServerOptions & {
 	chat?: ChatWebAppOptions;
 };
 
+const PUBLIC_WEB_CHANNEL_HOST = "0.0.0.0";
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+
+function authBaseURL(options: WebGatewayServerOptions): string | undefined {
+	return options.auth?.baseURL ?? loadPiboConfig().auth?.baseURL;
+}
+
+function defaultWebHost(baseURL: string | undefined): string {
+	if (!baseURL) return DEFAULT_WEB_CHANNEL_HOST;
+	try {
+		const hostname = new URL(baseURL).hostname;
+		return LOOPBACK_HOSTS.has(hostname) ? DEFAULT_WEB_CHANNEL_HOST : PUBLIC_WEB_CHANNEL_HOST;
+	} catch {
+		return DEFAULT_WEB_CHANNEL_HOST;
+	}
+}
+
+export function resolveWebGatewayServerOptions(options: WebGatewayServerOptions = {}): WebGatewayServerOptions {
+	const baseURL = authBaseURL(options);
+	return {
+		...options,
+		web: {
+			...options.web,
+			host: options.web?.host ?? defaultWebHost(baseURL),
+		},
+	};
+}
+
 export function createWebPiboPluginRegistry(options: WebGatewayServerOptions = {}): PiboPluginRegistry {
+	const resolvedOptions = resolveWebGatewayServerOptions(options);
 	return PiboPluginRegistry.create({
 		plugins: [
 			...createDefaultPiboPlugins(),
-			createPiboBetterAuthPlugin(options.auth),
-			createPiboWebHostPlugin({ announce: false, ...options.web }),
-			createPiboChatWebPlugin(options.chat),
+			createPiboBetterAuthPlugin(resolvedOptions.auth),
+			createPiboWebHostPlugin({ announce: false, ...resolvedOptions.web }),
+			createPiboChatWebPlugin(resolvedOptions.chat),
 		],
 	});
 }
@@ -38,16 +67,17 @@ function createChatAppURL(options: WebGatewayServerOptions, host: string, port: 
 }
 
 export async function runWebGatewayServer(options: WebGatewayServerOptions = {}): Promise<void> {
-	const pluginRegistry = options.pluginRegistry ?? createWebPiboPluginRegistry(options);
+	const resolvedOptions = resolveWebGatewayServerOptions(options);
+	const pluginRegistry = resolvedOptions.pluginRegistry ?? createWebPiboPluginRegistry(resolvedOptions);
 	const server = new PiboGatewayServer({
-		...options,
+		...resolvedOptions,
 		pluginRegistry,
 	});
 	await server.start();
 
-	const host = options.web?.host ?? DEFAULT_WEB_CHANNEL_HOST;
-	const port = options.web?.port ?? DEFAULT_WEB_CHANNEL_PORT;
-	console.error(`pibo chat app available at ${createChatAppURL(options, host, port)}`);
+	const host = resolvedOptions.web?.host ?? DEFAULT_WEB_CHANNEL_HOST;
+	const port = resolvedOptions.web?.port ?? DEFAULT_WEB_CHANNEL_PORT;
+	console.error(`pibo chat app available at ${createChatAppURL(resolvedOptions, host, port)}`);
 
 	const stop = async () => {
 		await server.stop();

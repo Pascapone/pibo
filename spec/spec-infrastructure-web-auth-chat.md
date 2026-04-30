@@ -1,8 +1,8 @@
 ---
 title: Pibo Web Gateway Auth And Chat Specification
-version: 1.0
+version: 1.1
 date_created: 2026-04-28
-last_updated: 2026-04-29
+last_updated: 2026-04-30
 owner: Pibo maintainers
 tags: [infrastructure, web, auth, gateway, chat]
 ---
@@ -31,6 +31,7 @@ This specification does not define non-web local gateway behavior except where w
 - **Better Auth service**: The auth implementation named `better-auth`.
 - **Allowed email allowlist**: Configured set of Google account emails allowed to use the web app.
 - **Same-origin mutation**: A non-GET request that requires `Content-Type: application/json` and an `Origin` equal to the request origin.
+- **Forwarded public origin**: The origin reconstructed from `X-Forwarded-Proto` and `X-Forwarded-Host` for requests delivered by a trusted local reverse proxy.
 - **Pibo Session**: The product session record used by the Chat Web App for routing, ownership, session listing, and trace reconstruction.
 
 ## 3. Requirements, Constraints & Guidelines
@@ -38,7 +39,7 @@ This specification does not define non-web local gateway behavior except where w
 - **REQ-001**: `gateway:web` MUST create a plugin registry containing default Pibo plugins plus Better Auth, web host, and chat web plugins.
 - **REQ-002**: The web host channel MUST have auth mode `"required"`.
 - **REQ-003**: The gateway MUST reject startup for any channel with auth mode `"required"` when no auth service is registered.
-- **REQ-004**: The default web host MUST listen on `127.0.0.1:4788` unless overridden.
+- **REQ-004**: The default web host MUST listen on `127.0.0.1:4788` when `auth.baseURL` is loopback and MUST listen on `0.0.0.0:4788` when `auth.baseURL` is non-loopback unless explicitly overridden.
 - **REQ-005**: `/api/auth/*` routes MUST be delegated to the registered auth service HTTP handler.
 - **REQ-006**: Registered web apps MUST receive requests whose pathname matches their mount path or API prefix.
 - **REQ-007**: Root `/` MUST redirect to the first registered web app mount path when at least one app exists.
@@ -54,6 +55,7 @@ This specification does not define non-web local gateway behavior except where w
 - **REQ-017**: Better Auth startup MUST run database migrations.
 - **REQ-018**: Users whose email is not in the allowlist MUST receive `403`.
 - **REQ-019**: Missing auth sessions MUST receive `401`.
+- **REQ-019A**: Better Auth MUST include configured `auth.trustedOrigins` in its trusted origins.
 - **REQ-020**: The chat web app page MUST be served at `GET /apps/chat`.
 - **REQ-021**: `GET /api/chat/bootstrap` MUST require an auth session and return identity, selected Pibo Session, session tree, agent inventory, and available gateway actions.
 - **REQ-022**: Chat session ownership MUST use `ownerScope=user:<authenticated user id>` and default profile `pibo-minimal` unless overridden.
@@ -71,6 +73,7 @@ This specification does not define non-web local gateway behavior except where w
 - **SEC-002**: Chat mutation routes MUST reject missing `Origin` headers with `403`.
 - **SEC-003**: Chat mutation routes MUST reject cross-origin `Origin` headers with `403`.
 - **SEC-004**: Web apps MUST use same-origin cookies and MUST NOT require iframe or cross-origin auth flow.
+- **SEC-005**: The web host MUST use `X-Forwarded-Host` and `X-Forwarded-Proto` to reconstruct request origin only for loopback reverse proxy connections.
 - **CON-001**: Google OAuth redirect URIs are exact per deployment and are not wildcarded by Pibo.
 
 ## 4. Interfaces & Data Contracts
@@ -159,6 +162,8 @@ type PiboWebApp = {
 - **AC-009**: Given an authenticated user requests another user's `piboSessionId`, When the request is handled, Then the response is rejected.
 - **AC-010**: Given an authenticated user patches their own session title or archived state, When the request is valid, Then the returned session and subsequent bootstrap response reflect the update.
 - **AC-011**: Given a trace request for a running selected session, When live delta events exist, Then trace reconstruction receives the session status as `running`.
+- **AC-012**: Given a same-origin mutation delivered through a local reverse proxy with `X-Forwarded-Host` and `X-Forwarded-Proto`, When the request origin matches the forwarded public origin, Then the mutation is accepted.
+- **AC-013**: Given a non-loopback direct client sends spoofed forwarded headers, When the request is handled, Then those forwarded headers are not trusted for origin reconstruction.
 
 ## 6. Test Automation Strategy
 
@@ -195,6 +200,28 @@ The web implementation keeps auth, web hosting, and chat as separate plugin capa
 
 ```text
 http://localhost:4788/api/auth/callback/google
+```
+
+### LAN sslip.io OAuth Redirect
+
+```text
+http://4788.192.168.0.204.sslip.io/api/auth/callback/google
+```
+
+The matching local config uses the same origin:
+
+```bash
+npm run dev -- config set auth.baseURL http://4788.192.168.0.204.sslip.io
+npm run dev -- config set auth.trustedOrigins http://4788.192.168.0.204.sslip.io
+```
+
+The local nginx proxy forwards the public origin:
+
+```nginx
+proxy_set_header Host 127.0.0.1:$target_port;
+proxy_set_header X-Forwarded-Proto $scheme;
+proxy_set_header X-Forwarded-Host $host;
+proxy_pass http://127.0.0.1:$target_port;
 ```
 
 ### Same-Origin Message Request

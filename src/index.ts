@@ -54,7 +54,7 @@ export { createPiboRuntime, inspectPiboProfile, runPiboTui } from "./core/runtim
 export type { PiboProfileInspection, PiboRuntimeOptions } from "./core/runtime.js";
 export { PiboSessionRouter } from "./core/session-router.js";
 export { PiboGatewayServer, runGatewayServer } from "./gateway/server.js";
-export { createWebPiboPluginRegistry, runWebGatewayServer } from "./gateway/web.js";
+export { createWebPiboPluginRegistry, resolveWebGatewayServerOptions, runWebGatewayServer } from "./gateway/web.js";
 export type { WebGatewayServerOptions } from "./gateway/web.js";
 export { runGatewayClient } from "./gateway/client.js";
 export {

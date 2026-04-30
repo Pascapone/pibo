@@ -43,6 +43,26 @@ function createAppContext(channelContext: PiboChannelContext): PiboWebAppContext
 	};
 }
 
+function firstHeaderValue(value: string | string[] | undefined): string | undefined {
+	const raw = Array.isArray(value) ? value[0] : value;
+	return raw?.split(",")[0]?.trim() || undefined;
+}
+
+function isLoopbackAddress(address: string | undefined): boolean {
+	return address === "::1" || address === "127.0.0.1" || address?.startsWith("127.") === true || address?.startsWith("::ffff:127.") === true;
+}
+
+function createRequestBaseURL(nodeRequest: IncomingMessage, host: string, port: number): string {
+	if (isLoopbackAddress(nodeRequest.socket.remoteAddress)) {
+		const forwardedHost = firstHeaderValue(nodeRequest.headers["x-forwarded-host"]);
+		const forwardedProto = firstHeaderValue(nodeRequest.headers["x-forwarded-proto"]);
+		if (forwardedHost && (forwardedProto === "http" || forwardedProto === "https")) {
+			return `${forwardedProto}://${forwardedHost}`;
+		}
+	}
+	return `http://${nodeRequest.headers.host ?? `${host}:${port}`}`;
+}
+
 export function createWebHostChannel(options: WebHostChannelOptions = {}): WebHostChannel {
 	const host = options.host ?? DEFAULT_WEB_CHANNEL_HOST;
 	const port = options.port ?? DEFAULT_WEB_CHANNEL_PORT;
@@ -64,7 +84,7 @@ export function createWebHostChannel(options: WebHostChannelOptions = {}): WebHo
 
 	const handleRequest = async (nodeRequest: IncomingMessage, nodeResponse: ServerResponse): Promise<void> => {
 		try {
-			const baseURL = `http://${nodeRequest.headers.host ?? `${host}:${port}`}`;
+			const baseURL = createRequestBaseURL(nodeRequest, host, port);
 			const request = await nodeRequestToWebRequest(nodeRequest, baseURL);
 			const url = new URL(request.url);
 

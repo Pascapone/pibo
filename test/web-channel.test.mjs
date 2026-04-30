@@ -378,6 +378,31 @@ test("chat web app rejects cross-origin mutation requests", async () => {
 	}
 });
 
+test("chat web app accepts same-origin mutations behind a local reverse proxy", async () => {
+	const { channel, baseURL } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+	});
+
+	try {
+		const response = await fetch(`${baseURL}/api/chat/sessions`, {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				origin: "http://4788.192.168.0.204.sslip.io",
+				"x-forwarded-host": "4788.192.168.0.204.sslip.io",
+				"x-forwarded-proto": "http",
+				"x-test-user": "user-1",
+			},
+			body: JSON.stringify({ profile: "pibo-minimal" }),
+		});
+		assert.equal(response.status, 201);
+		const payload = await response.json();
+		assert.equal(payload.session.ownerScope, "user:user-1");
+	} finally {
+		await channel.stop?.();
+	}
+});
+
 test("web host rejects oversized request bodies", async () => {
 	const { channel, baseURL } = await startWebHostChannel({
 		auth: createFakeAuthService(),

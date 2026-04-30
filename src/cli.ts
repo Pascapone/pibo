@@ -36,6 +36,14 @@ function printConfigDiscovery(): void {
 	console.log(printConfigDiscoveryText());
 }
 
+function parsePort(value: string): number {
+	const port = Number(value);
+	if (!Number.isInteger(port) || port < 1 || port > 65535) {
+		throw new Error("Port must be an integer between 1 and 65535");
+	}
+	return port;
+}
+
 export async function runPiboCli(argv = process.argv): Promise<void> {
 	if (argv[2] === "--help" || argv[2] === "-h") {
 		printRootDiscovery();
@@ -189,9 +197,16 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 	program
 		.command("gateway:web")
 		.description("Start the authenticated web gateway")
-		.action(async () => {
+		.option("--web-host <host>", "Bind the HTTP web host, for example 0.0.0.0 for LAN access")
+		.option("--web-port <port>", "Bind the HTTP web host port", parsePort)
+		.action(async (options: { webHost?: string; webPort?: number }) => {
 			const { runWebGatewayServer } = await import("./gateway/web.js");
-			await runWebGatewayServer();
+			await runWebGatewayServer({
+				web: {
+					host: options.webHost,
+					port: options.webPort,
+				},
+			});
 		});
 	program
 		.command("client")

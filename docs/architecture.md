@@ -162,7 +162,7 @@ The auth boundary is enforced before channel input reaches the session router:
 - allowed users can list and select their own Pibo Sessions by `ownerScope`
 - chat mutation routes require same-origin JSON requests
 
-Google OAuth redirect URIs remain per deployment. Local QA can use `http://localhost:4788/api/auth/callback/google`; internet-facing deployments must configure their own `https://<host>/api/auth/callback/google` in Google Cloud Console and set `auth.baseURL` to the same origin. Pibo does not attempt wildcard redirect support because Google requires exact redirect URI matching for web-server OAuth. Private LAN IP Google OAuth redirects are intentionally not a supported V1 mode.
+Google OAuth redirect URIs remain per deployment. Local QA can use `http://localhost:4788/api/auth/callback/google`; internet-facing deployments must configure their own `https://<host>/api/auth/callback/google` in Google Cloud Console and set `auth.baseURL` to the same origin. LAN development can use an sslip.io origin such as `http://4788.192.168.0.204.sslip.io` when that exact callback URI is registered with Google and configured as `auth.baseURL`. Pibo does not attempt wildcard redirect support because Google requires exact redirect URI matching for web-server OAuth.
 
 ## Web Host And Apps
 
@@ -173,6 +173,8 @@ The same-origin web path is intentionally split:
 - Future apps can register additional web apps without becoming part of the Auth plugin.
 
 This avoids iframe and cross-origin complexity for V1. Apps can use normal same-origin cookies and call their own API routes while sharing the gateway auth boundary.
+
+When the web host sits behind a local reverse proxy, it reconstructs the public request origin from `X-Forwarded-Host` and `X-Forwarded-Proto` only for loopback proxy connections. This lets nginx map `http://4788.<lan-ip>.sslip.io` to `127.0.0.1:4788` without breaking chat mutation CSRF checks. Direct non-loopback clients cannot spoof those forwarded headers.
 
 ## Local Routed TUI
 

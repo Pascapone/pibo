@@ -193,6 +193,12 @@ For a deployed instance, replace the host with that instance's public HTTPS orig
 https://pibo.example.com/api/auth/callback/google
 ```
 
+LAN development through an sslip.io host is also supported when a local reverse proxy exposes Pibo on port 80:
+
+```text
+http://4788.192.168.0.204.sslip.io/api/auth/callback/google
+```
+
 Google OAuth redirect URIs are exact per instance. Wildcard or "all deployments" redirects are not supported for this web-server flow, so each self-hosted deployment needs its own Google OAuth client or an explicitly configured redirect URI.
 
 Required config values:
@@ -205,9 +211,29 @@ npm run dev -- config set auth.googleClientSecret <google oauth client secret>
 npm run dev -- config set auth.allowedEmails you@example.com,friend@example.com
 ```
 
+For LAN access from another device, set the public origin as both the Better Auth base URL and a trusted origin:
+
+```bash
+npm run dev -- config set auth.baseURL http://4788.192.168.0.204.sslip.io
+npm run dev -- config set auth.trustedOrigins http://4788.192.168.0.204.sslip.io
+```
+
+The web host binds to `127.0.0.1` when `auth.baseURL` is loopback. When `auth.baseURL` is a non-loopback host, `npm run gateway:web` binds the HTTP web host to `0.0.0.0` by default. The internal TCP gateway remains on loopback.
+
+When running behind a local nginx sslip.io proxy, preserve the original browser origin:
+
+```nginx
+proxy_set_header Host 127.0.0.1:$target_port;
+proxy_set_header X-Forwarded-Proto $scheme;
+proxy_set_header X-Forwarded-Host $host;
+proxy_pass http://127.0.0.1:$target_port;
+```
+
+Pibo trusts `X-Forwarded-Host` and `X-Forwarded-Proto` only from loopback proxy connections. Chat mutation routes still require JSON and same-origin `Origin` headers.
+
 `auth.secret` must be at least 32 characters. `auth.allowedEmails` must contain at least one email; pibo fails closed if the allowlist is missing or empty. Authenticated Google users whose email is not listed receive `403` from the pibo web API. Unauthenticated pibo API requests receive `401`.
 
-All web chat API requests require Better Auth, including localhost. Private LAN IP Google OAuth redirects are not part of the supported V1 setup.
+All web chat API requests require Better Auth, including localhost.
 
 The Google provider requests `prompt=select_account`, so signing out of pibo and signing in again lets the user choose a different Google account. Pibo signout clears the Better Auth session; it does not sign the user out of Google globally.
 
@@ -223,5 +249,5 @@ npm run dev -- config keys
 npm run dev -- config show
 ```
 
-Supported V1 keys are `auth.baseURL`, `auth.secret`, `auth.googleClientId`, `auth.googleClientSecret`, `auth.allowedEmails`, and `auth.databasePath`.
+Supported V1 keys are `auth.baseURL`, `auth.secret`, `auth.googleClientId`, `auth.googleClientSecret`, `auth.allowedEmails`, `auth.trustedOrigins`, and `auth.databasePath`.
 Secret keys such as `auth.secret` and `auth.googleClientSecret` are stored in full but redacted in `config get` and `config show` output.

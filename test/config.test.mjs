@@ -21,11 +21,15 @@ test("pibo config stores and reads supported keys", () => {
 		let config = loadPiboConfig(path);
 		config = setPiboConfigValue(config, "auth.baseURL", "http://localhost:4788");
 		config = setPiboConfigValue(config, "auth.allowedEmails", "you@example.com,friend@example.com");
+		config = setPiboConfigValue(config, "auth.trustedOrigins", "http://4788.192.168.0.204.sslip.io");
 		savePiboConfig(config, path);
 
 		const loaded = loadPiboConfig(path);
 		assert.equal(getPiboConfigValue(loaded, "auth.baseURL"), "http://localhost:4788");
 		assert.deepEqual(getPiboConfigValue(loaded, "auth.allowedEmails"), ["you@example.com", "friend@example.com"]);
+		assert.deepEqual(getPiboConfigValue(loaded, "auth.trustedOrigins"), [
+			"http://4788.192.168.0.204.sslip.io",
+		]);
 
 		const deleted = deletePiboConfigValue(loaded, "auth.baseURL");
 		assert.equal(getPiboConfigValue(deleted, "auth.baseURL"), undefined);

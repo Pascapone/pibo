@@ -44,3 +44,12 @@ test("better auth trusts loopback aliases for the configured base URL", () => {
 		"http://localhost:4788",
 	]);
 });
+
+test("better auth keeps configured trusted origins", () => {
+	assert.deepEqual(createTrustedOrigins("http://localhost:4788", ["http://4788.192.168.0.204.sslip.io"]).sort(), [
+		"http://127.0.0.1:4788",
+		"http://4788.192.168.0.204.sslip.io",
+		"http://[::1]:4788",
+		"http://localhost:4788",
+	]);
+});
