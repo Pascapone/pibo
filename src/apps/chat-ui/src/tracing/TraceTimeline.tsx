@@ -1,5 +1,5 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { ChevronsDown, ChevronsUp, GitBranch, ListTree, RefreshCw, RotateCcw } from "lucide-react";
+import { ChevronsDown, ChevronsUp, GitBranch, ListTree, MessageSquarePlus, RefreshCw, RotateCcw } from "lucide-react";
 import type { Span, Trace } from "../types";
 import { countRender } from "../renderMetrics";
 import { SpanNode, type SpanExpansionDepth } from "./SpanNode";
@@ -170,18 +170,22 @@ export function TraceTimeline({
 
 			<div ref={scrollRef} onScroll={updateBottomLock} className="flex-1 overflow-auto p-6">
 				<div className="relative w-max min-w-full pr-6" style={timelineContentStyle}>
-					{spanTree.map((span) => (
-						<SpanNode
-							key={span.id}
-							span={span}
-							startTime={startTime}
-							expansionDepth={expansionDepth}
-							expansionSignal={expansionSignal}
-							expandThinking={expandThinking}
-							onFork={onFork}
-							onOpenSession={onOpenSession}
-						/>
-					))}
+					{spanTree.length ? (
+						spanTree.map((span) => (
+							<SpanNode
+								key={span.id}
+								span={span}
+								startTime={startTime}
+								expansionDepth={expansionDepth}
+								expansionSignal={expansionSignal}
+								expandThinking={expandThinking}
+								onFork={onFork}
+								onOpenSession={onOpenSession}
+							/>
+						))
+					) : (
+						<EmptyTraceState />
+					)}
 					{isStreaming ? <StreamingIndicator /> : null}
 				</div>
 			</div>
@@ -247,6 +251,20 @@ function TraceLoadingIndicator() {
 		<div className="flex items-center gap-3 text-sm text-[#11a4d4]" role="status" aria-live="polite">
 			<RefreshCw size={16} className="animate-spin" />
 			<span>Loading Trace...</span>
+		</div>
+	);
+}
+
+function EmptyTraceState() {
+	return (
+		<div className="flex min-h-[18rem] items-center justify-center" style={{ width: "var(--trace-readable-width)" }}>
+			<div className="flex max-w-md flex-col items-center text-center">
+				<div className="mb-4 flex h-12 w-12 items-center justify-center rounded-sm border border-[#11a4d4]/35 bg-[#11a4d4]/10 text-[#11a4d4]">
+					<MessageSquarePlus size={22} />
+				</div>
+				<h3 className="text-2xl font-semibold text-slate-200">No Traces</h3>
+				<p className="mt-2 text-sm leading-6 text-slate-500">Send a message to the agent to start an execution trace.</p>
+			</div>
 		</div>
 	);
 }
