@@ -44,6 +44,47 @@ export type PiboProfileInfo = {
 	aliases: string[];
 };
 
+export type PiboNativeToolInfo = {
+	name: string;
+	description?: string;
+	yieldable: boolean;
+	hasDefinition: boolean;
+};
+
+export type PiboSkillInfo = {
+	name: string;
+	path: string;
+};
+
+export type PiboSubagentInfo = {
+	name: string;
+	description?: string;
+	targetProfile: string;
+	executionMode?: string;
+	timeoutMs?: number;
+	maxDepth?: number;
+};
+
+export type PiboContextFileInfo = {
+	key: string;
+	label?: string;
+	path: string;
+};
+
+export type PiboCapabilityPackageInfo = {
+	name: string;
+	description: string;
+	toolNames: string[];
+};
+
+export type PiboCapabilityCatalog = {
+	nativeTools: PiboNativeToolInfo[];
+	skills: PiboSkillInfo[];
+	subagents: PiboSubagentInfo[];
+	contextFiles: PiboContextFileInfo[];
+	packages: PiboCapabilityPackageInfo[];
+};
+
 export type PiboGatewayActionContext = {
 	piboSessionId: string;
 	getStatus(): PiboSessionStatus;

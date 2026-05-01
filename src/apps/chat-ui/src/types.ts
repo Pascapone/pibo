@@ -45,6 +45,7 @@ export type PiboWebSessionNode = {
 	archived?: boolean;
 	status: "idle" | "running" | "error";
 	lastActivityAt?: string;
+	unreadCount?: number;
 	children: PiboWebSessionNode[];
 };
 
@@ -59,6 +60,7 @@ export type PiboRoom = {
 	updatedAt: string;
 	retentionPolicyId?: string;
 	metadata: Record<string, unknown>;
+	unreadCount?: number;
 	children?: PiboRoom[];
 };
 

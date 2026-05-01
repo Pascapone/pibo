@@ -2,7 +2,7 @@
 title: Pibo Web Chat Trace UI
 version: 0.1
 date_created: 2026-04-28
-last_updated: 2026-04-30
+last_updated: 2026-05-01
 owner: Pibo
 tags: [design, web, chat, tracing, sessions, subagents]
 ---
@@ -45,9 +45,13 @@ Out of scope for V1:
 - **Pibo**: The TypeScript product harness around Pi Coding Agent.
 - **Pi Coding Agent**: The embedded engine that owns model turns, tools, streaming, sessions, and compaction.
 - **Chat Web App**: The same-origin authenticated Pibo web application served under `/apps/chat`.
+- **Pibo Room**: A user-facing Chat Web container that groups one or more Pibo Sessions for display, membership, room events, and room-scoped sending.
 - **Main Session**: A user-visible routed Pibo session that is not a subagent child session.
 - **Subagent Session**: A routed Pibo session created by a generated `pibo_subagent_<name>` tool call.
+- **Selected Pibo Room**: The Pibo Room currently active in the Chat Web App.
+- **Selected Pibo Session**: The Pibo Session currently active for transcript rendering and composer routing.
 - **Delegation**: A trace node representing a subagent call from one session to another session.
+- **Async Agent**: A trace node representing a subagent call started indirectly through a yielded run, usually by `pibo_run_start`.
 - **Trace Node**: A UI node representing a structured unit of agent work.
 - **Read Model**: Pibo-owned SQLite data optimized for web rendering and navigation. It is derived from Pibo events, Pibo Sessions, and Pi session files.
 - **Source of Truth**: The canonical owner of state. Pi session JSONL files remain the source of truth for persisted agent transcript content.
@@ -128,6 +132,22 @@ Out of scope for V1:
 - **REQ-064**: The chat composer textarea must keep cursor position stable during ordinary typing and must not move the cursor to the end unless an explicit focus action, such as fork text insertion, requests that behavior.
 - **REQ-065**: The chat composer resize calculation must use the same rendered font size, line height, padding, and border metrics as the textarea so the cursor baseline and bottom padding do not shift when the internal scrollbar appears.
 - **REQ-066**: The send control must be a compact icon button, stay one-line high, and align to the bottom of the composer textarea instead of growing with the textarea.
+- **REQ-067**: The Web App must persist the selected Pibo Room in `localStorage` so a page reload can restore the user's last active room.
+- **REQ-068**: The Web App must persist the selected Pibo Session per Pibo Room in `localStorage` so room switches can restore each room's last active session.
+- **REQ-069**: When the user switches to a Pibo Room with a stored selected Pibo Session, the Web App must request bootstrap data for that room and session before falling back to room default selection.
+- **REQ-070**: If a stored room or room-session selection is unavailable, unauthorized, archived outside the current filter, or no longer present, the Web App must discard only the invalid stored selection and fall back to a valid server-selected room or session.
+- **REQ-071**: When no selected Pibo Session is available during a room switch or bootstrap refresh, the composer must be disabled and must not send messages to the previously selected session.
+- **REQ-072**: Assistant messages must render safe Markdown, including GitHub-Flavored Markdown tables, lists, blockquotes, code blocks, links, and inline code.
+- **REQ-073**: Markdown rendering must skip raw HTML and must restrict link targets to safe URL forms such as relative links, anchors, `http:`, `https:`, and `mailto:`.
+- **REQ-074**: Direct generated subagent calls must render visible `agent.delegation` trace nodes linked to the child Pibo Session.
+- **REQ-075**: Subagent calls started through `pibo_run_start` must preserve both the yielded-run context and a visible async agent or delegation child node that identifies the wrapped `pibo_subagent_*` tool.
+- **REQ-076**: Async subagent trace nodes must expose the started-by tool, wrapped subagent tool name, subagent name, run id when available, completion policy when available, delegated arguments, thread key when available, status, and linked child Pibo Session when known.
+- **REQ-077**: Service run notifications wrapped in `<pibo_run_notification>` must render as `yielded.run` trace nodes instead of ordinary user messages.
+- **REQ-078**: The transcript must scroll to the latest content when a new trace is selected or loaded.
+- **REQ-079**: During live streaming, the transcript must remain bottom-locked only while the user is already at or near the bottom.
+- **REQ-080**: If the user scrolls upward, live streaming must not force the transcript back to the bottom.
+- **REQ-081**: When the user is away from the bottom, the UI must show a compact scroll-to-bottom affordance.
+- **REQ-082**: The scroll-to-bottom affordance must hide after the user returns to the bottom or activates the affordance.
 - **CON-001**: Pibo must not move channel, auth, profile, or UI policy into Pi Coding Agent.
 - **CON-002**: Pibo must preserve the existing product boundary: Pi owns agent execution and session JSONL; Pibo owns channels, routing, auth, policy, web UI, and read models.
 - **CON-003**: The Web App must consume Pibo view models derived from Pi JSONL and Pibo events, not raw Pi events directly.
@@ -180,6 +200,7 @@ type PiboTraceNodeType =
   | "tool.call"
   | "tool.result"
   | "agent.delegation"
+  | "agent.async"
   | "execution.command"
   | "yielded.run"
   | "error";
@@ -222,8 +243,11 @@ type PiboTraceNode = {
 | `tool_execution_finished` | Finish tool node and render result or error |
 | `execution_result` | `execution.command` |
 | `session_error` | `error` |
-| `pibo_subagent_*` tool | `agent.delegation` linked to child session |
+| `subagent_session` router output event | `agent.delegation` linked to child session |
+| Direct `pibo_subagent_*` tool call | `agent.delegation` linked to child session when the link is known |
+| `pibo_run_start` wrapping a `pibo_subagent_*` tool | `tool.call` or `yielded.run` parent with an `agent.async` child that preserves the wrapped subagent identity |
 | run notification/tool result for `pibo_run_*` | `yielded.run` where detectable |
+| Chat Stream Event `AGENT_DELEGATION` | `agent.delegation`, or `agent.async` child when the referenced tool call is an existing `pibo_run_start` node |
 
 Trace reconstruction must treat empty or whitespace-only reasoning text as transport/provider noise. Persisted Pi `thinking` parts and live `thinking_finished` events only produce `model.reasoning` nodes when they contain visible text after trimming.
 
@@ -247,7 +271,7 @@ Expected stored categories:
 - Session index rows derived from Pibo Sessions and Pi session metadata.
 - Parent-child session relationships for sidebar nesting.
 - Pibo event log rows for web-renderable product events.
-- Session selection metadata if required for navigation.
+- Browser-local or server-side session selection metadata if required for navigation, including selected Pibo Room and selected Pibo Session per room.
 
 The database must not be treated as the canonical source for Pi transcript messages. If performance later requires caching, a future implementation may add a versioned, disposable projection cache that can be deleted and rebuilt without data loss.
 
@@ -294,6 +318,17 @@ The full `/tree` command is not a V1 Web Chat command because full tree browsing
 - **AC-022**: Given the composer contains one line, When the user inserts line breaks up to five lines, Then the textarea grows and the send icon button remains one-line high and bottom-aligned.
 - **AC-023**: Given the composer contains more than five lines, When the internal scrollbar appears, Then the textarea height remains stable and the cursor baseline and bottom spacing do not visually jump.
 - **AC-024**: Given the cursor is placed in the middle of composer text, When the user types a character, Then the cursor stays at the edited position instead of moving to the end.
+- **AC-025**: Given the user reloads the Chat Web App after selecting a room and session, When the stored selection is still valid, Then the same Pibo Room and Pibo Session are selected.
+- **AC-026**: Given the user switches from Room A to Room B and back to Room A, When Room A has a stored selected session, Then that session is restored instead of selecting a different room default.
+- **AC-027**: Given a stored room-session pair no longer exists, When bootstrap for that pair fails, Then the app removes that stored room-session entry and loads a valid fallback for the room.
+- **AC-028**: Given a room switch is in progress with no selected session, When the user presses send, Then no message is emitted to the previous session.
+- **AC-029**: Given assistant output contains Markdown, When it renders, Then supported Markdown renders structurally and unsafe raw HTML is not rendered.
+- **AC-030**: Given a direct generated subagent tool runs, When the parent trace is reconstructed or streamed, Then an `agent.delegation` node links to the child Pibo Session when known.
+- **AC-031**: Given `pibo_run_start` starts a `pibo_subagent_*` tool, When the trace is reconstructed or streamed, Then the trace shows the `pibo_run_start` context and a visible async agent child identifying the subagent.
+- **AC-032**: Given a service message contains `<pibo_run_notification>`, When the trace is reconstructed, Then it renders as a `yielded.run` node with completed, failed, cancelled, and running groups.
+- **AC-033**: Given the user opens a different session trace, When the trace finishes rendering, Then the transcript is positioned at the bottom.
+- **AC-034**: Given the user has manually scrolled upward during streaming, When new assistant or tool content arrives, Then the scroll position is not forced to the bottom and a scroll-to-bottom control is visible.
+- **AC-035**: Given the scroll-to-bottom control is visible, When the user activates it, Then the transcript scrolls to the latest content and the control hides.
 
 ## 6. Test Automation Strategy
 
@@ -323,6 +358,9 @@ The full `/tree` command is not a V1 Web Chat command because full tree browsing
   - Composer send icon button alignment while the textarea grows.
   - Fork from a user message.
   - Clone current session.
+  - Reload restores selected room and selected session.
+  - Room switching restores the last selected session for each room.
+  - Streaming autoscroll preserves manual scroll position and exposes the scroll-to-bottom control.
 
 - **Visual Checks**:
   - Desktop and mobile screenshots for the app shell.
@@ -428,6 +466,30 @@ Textarea grows while the send icon remains one-line high and bottom-aligned
 User adds a sixth line
 Textarea keeps the five-line height and scrolls internally
 Cursor baseline and bottom spacing stay visually stable
+```
+
+### 9.6 Room And Session Selection Restore
+
+```text
+User selects Room A and Session A2
+Web App writes roomId=Room A and sessionsByRoom[Room A]=Session A2 to localStorage
+User switches to Room B and selects Session B1
+Web App writes sessionsByRoom[Room B]=Session B1
+User switches back to Room A
+Web App requests bootstrap for Room A and Session A2
+If Session A2 is valid, the main trace renders Session A2
+If Session A2 is invalid, only Room A's stored session entry is removed and Room A falls back to a valid server-selected session
+```
+
+### 9.7 Async Subagent Run
+
+```text
+Assistant calls pibo_run_start
+  toolName = pibo_subagent_qa_researcher
+  arguments.message = inspect auth
+Trace shows pibo_run_start as the parent execution context
+Trace shows an agent.async child with target qa_researcher
+If the subagent session link is known, the child node can open that Pibo Session
 ```
 
 ## 10. Validation Criteria

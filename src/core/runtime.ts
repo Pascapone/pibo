@@ -111,7 +111,8 @@ function getEnabledToolDefinitions(
 		...profileTools.filter((tool) => tool.yieldable !== false).map((tool) => tool.definition),
 		...subagentTools,
 	];
-	const runTools = runToolController && yieldableTools.length > 0
+	const runControlEnabled = profile.toolPackages.runControl !== false;
+	const runTools = runControlEnabled && runToolController && yieldableTools.length > 0
 		? createRunToolDefinitions(yieldableTools, runToolController)
 		: [];
 

@@ -17,6 +17,7 @@ export type PiboWebSessionNode = {
 	archived?: boolean;
 	status: PiboWebSessionStatus;
 	lastActivityAt?: string;
+	unreadCount?: number;
 	children: PiboWebSessionNode[];
 };
 
@@ -133,6 +134,7 @@ export async function buildSessionNodes(
 	sessions: PiboSession[],
 	indexItems: ChatWebSessionIndexItem[],
 	cwd = process.cwd(),
+	unreadCounts: ReadonlyMap<string, number> = new Map(),
 ): Promise<PiboWebSessionNode[]> {
 	const indexByKey = new Map(indexItems.map((item) => [item.piboSessionId, item]));
 	const nodes = new Map<string, PiboWebSessionNode>();
@@ -157,6 +159,7 @@ export async function buildSessionNodes(
 			archived: isChatWebSessionArchived(session),
 			status: indexed?.status ?? "idle",
 			lastActivityAt: indexed?.lastActivityAt ?? metadata.modified ?? session.updatedAt,
+			unreadCount: unreadCounts.get(session.id) || undefined,
 			children: [],
 		});
 	}

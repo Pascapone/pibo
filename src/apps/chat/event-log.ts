@@ -42,6 +42,13 @@ export type ChatEventListInput = {
 	limit?: number;
 };
 
+export type ChatUnreadCountInput = {
+	roomId?: string;
+	piboSessionId?: string;
+	principalId: string;
+	afterStreamId?: number;
+};
+
 export type ChatRetentionPolicy = {
 	id: string;
 	deleteLiveDeltasAfterMs?: number;
@@ -68,6 +75,13 @@ type RetentionPolicyRow = {
 	delete_live_deltas_after_ms: number | null;
 	delete_trace_events_after_ms: number | null;
 	delete_chat_messages_after_ms: number | null;
+};
+
+type SessionReadCursorRow = {
+	pibo_session_id: string;
+	principal_id: string;
+	last_read_stream_id: number;
+	updated_at: string;
 };
 
 export class ChatEventLog {
@@ -110,6 +124,14 @@ export class ChatEventLog {
 				delete_live_deltas_after_ms INTEGER,
 				delete_trace_events_after_ms INTEGER,
 				delete_chat_messages_after_ms INTEGER
+			);
+
+			CREATE TABLE IF NOT EXISTS chat_session_reads (
+				pibo_session_id TEXT NOT NULL,
+				principal_id TEXT NOT NULL,
+				last_read_stream_id INTEGER NOT NULL,
+				updated_at TEXT NOT NULL,
+				PRIMARY KEY(pibo_session_id, principal_id)
 			);
 		`);
 	}
@@ -211,6 +233,68 @@ export class ChatEventLog {
 			`)
 			.get(roomId, actorId, clientTxnId) as ChatEventRow | undefined;
 		return row ? eventFromRow(row) : undefined;
+	}
+
+	getLatestStreamId(input: { roomId?: string; piboSessionId?: string } = {}): number | undefined {
+		const clauses: string[] = [];
+		const values: string[] = [];
+		if (input.roomId) {
+			clauses.push("room_id = ?");
+			values.push(input.roomId);
+		}
+		if (input.piboSessionId) {
+			clauses.push("pibo_session_id = ?");
+			values.push(input.piboSessionId);
+		}
+		const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+		const row = this.db.prepare(`SELECT MAX(stream_id) AS stream_id FROM chat_events ${where}`).get(...values) as
+			| { stream_id: number | null }
+			| undefined;
+		return row?.stream_id ?? undefined;
+	}
+
+	getSessionReadCursor(piboSessionId: string, principalId: string): number | undefined {
+		const row = this.db
+			.prepare("SELECT * FROM chat_session_reads WHERE pibo_session_id = ? AND principal_id = ?")
+			.get(piboSessionId, principalId) as SessionReadCursorRow | undefined;
+		return row?.last_read_stream_id;
+	}
+
+	markSessionRead(piboSessionId: string, principalId: string, lastReadStreamId: number): void {
+		this.db
+			.prepare(`
+				INSERT INTO chat_session_reads (pibo_session_id, principal_id, last_read_stream_id, updated_at)
+				VALUES (?, ?, ?, ?)
+				ON CONFLICT(pibo_session_id, principal_id) DO UPDATE SET
+					last_read_stream_id = MAX(chat_session_reads.last_read_stream_id, excluded.last_read_stream_id),
+					updated_at = excluded.updated_at
+			`)
+			.run(piboSessionId, principalId, lastReadStreamId, new Date().toISOString());
+	}
+
+	countUnreadMessages(input: ChatUnreadCountInput): number {
+		const clauses: string[] = [
+			"retention_class = 'chat_message'",
+			"event_type IN ('user.message.accepted', 'assistant_message')",
+			"(actor_type IS NULL OR actor_type != 'user' OR actor_id IS NULL OR actor_id != ?)",
+		];
+		const values: Array<string | number> = [input.principalId];
+		if (input.roomId) {
+			clauses.push("room_id = ?");
+			values.push(input.roomId);
+		}
+		if (input.piboSessionId) {
+			clauses.push("pibo_session_id = ?");
+			values.push(input.piboSessionId);
+		}
+		if (input.afterStreamId !== undefined) {
+			clauses.push("stream_id > ?");
+			values.push(input.afterStreamId);
+		}
+		const row = this.db
+			.prepare(`SELECT COUNT(*) AS count FROM chat_events WHERE ${clauses.join(" AND ")}`)
+			.get(...values) as { count: number } | undefined;
+		return Number(row?.count ?? 0);
 	}
 
 	upsertRetentionPolicy(policy: ChatRetentionPolicy): ChatRetentionPolicy {

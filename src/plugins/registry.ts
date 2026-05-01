@@ -15,6 +15,7 @@ import type {
 	PiboPlugin,
 	PiboPluginApi,
 	PiboPluginEventListener,
+	PiboCapabilityCatalog,
 	PiboProfileInfo,
 	PiboProfileBuildContext,
 	PiboProfileDefinition,
@@ -112,12 +113,15 @@ export class PiboPluginRegistry {
 
 	registerProfile(profile: PiboProfileDefinition): void {
 		this.addUnique(this.profiles, profile.name, profile, "profile");
-		for (const alias of profile.aliases ?? []) {
-			if (this.profiles.has(alias) || this.profileAliases.has(alias)) {
-				throw new Error(`Profile alias "${alias}" is already registered`);
-			}
-			this.profileAliases.set(alias, profile.name);
+		this.registerProfileAliases(profile);
+	}
+
+	upsertProfile(profile: PiboProfileDefinition): void {
+		this.profiles.set(profile.name, profile);
+		for (const [alias, profileName] of this.profileAliases.entries()) {
+			if (profileName === profile.name) this.profileAliases.delete(alias);
 		}
+		this.registerProfileAliases(profile);
 	}
 
 	registerGatewayAction(action: PiboGatewayAction): void {
@@ -169,6 +173,49 @@ export class PiboPluginRegistry {
 			description: profile.description,
 			aliases: [...(profile.aliases ?? [])],
 		}));
+	}
+
+	getCapabilityCatalog(): PiboCapabilityCatalog {
+		return {
+			nativeTools: [...this.tools.values()].map((tool) => ({
+				name: tool.name,
+				description: tool.description,
+				yieldable: tool.yieldable !== false,
+				hasDefinition: tool.definition !== undefined,
+			})),
+			skills: [...this.skills.values()].map((skill) => ({
+				name: skill.name,
+				path: skill.path,
+			})),
+			subagents: [...this.subagents.values()].map((subagent) => ({
+				name: subagent.name,
+				description: subagent.description,
+				targetProfile: subagent.targetProfile,
+				executionMode: subagent.executionMode,
+				timeoutMs: subagent.timeoutMs,
+				maxDepth: subagent.maxDepth,
+			})),
+			contextFiles: [...this.contextFiles.entries()].map(([key, contextFile]) => ({
+				key,
+				label: contextFile.label,
+				path: contextFile.path,
+			})),
+			packages: [
+				{
+					name: "pibo-run-control",
+					description: "Expose pibo_run_* tools as one package for yielded native tools and subagents.",
+					toolNames: [
+						"pibo_run_start",
+						"pibo_run_list",
+						"pibo_run_status",
+						"pibo_run_wait",
+						"pibo_run_read",
+						"pibo_run_cancel",
+						"pibo_run_ack",
+					],
+				},
+			],
+		};
 	}
 
 	resolveProfileName(name: string): string {
@@ -253,6 +300,16 @@ export class PiboPluginRegistry {
 			throw new Error(`Unknown ${label} "${key}"`);
 		}
 		return value;
+	}
+
+	private registerProfileAliases(profile: PiboProfileDefinition): void {
+		for (const alias of profile.aliases ?? []) {
+			const existingAliasProfile = this.profileAliases.get(alias);
+			if (this.profiles.has(alias) || (existingAliasProfile && existingAliasProfile !== profile.name)) {
+				throw new Error(`Profile alias "${alias}" is already registered`);
+			}
+			this.profileAliases.set(alias, profile.name);
+		}
 	}
 
 	private addUnique<T>(map: Map<string, T>, key: string, value: T, label: string): void {

@@ -1,10 +1,16 @@
 import type { BootstrapData, CreateSessionData, PiboRoom, PiboSession, PiboSessionTraceView } from "./types";
 
-export async function getBootstrap(piboSessionId?: string, includeArchived = false, roomId?: string): Promise<BootstrapData> {
+export async function getBootstrap(
+	piboSessionId?: string,
+	includeArchived = false,
+	roomId?: string,
+	markRead = false,
+): Promise<BootstrapData> {
 	const params = new URLSearchParams();
 	if (piboSessionId) params.set("piboSessionId", piboSessionId);
 	if (includeArchived) params.set("includeArchived", "true");
 	if (roomId) params.set("roomId", roomId);
+	if (markRead) params.set("markRead", "true");
 	const suffix = params.size ? `?${params.toString()}` : "";
 	return normalizeBootstrap(await requestJson<Partial<BootstrapData>>(`/api/chat/bootstrap${suffix}`));
 }

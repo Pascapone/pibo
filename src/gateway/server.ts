@@ -228,6 +228,8 @@ export class PiboGatewayServer {
 			listSessions: () => this.requireSessionStore().list?.() ?? [],
 			getGatewayActions: () => this.pluginRegistry.getGatewayActionInfos(),
 			getProfiles: () => this.pluginRegistry.getProfileInfos(),
+			getCapabilityCatalog: () => this.pluginRegistry.getCapabilityCatalog(),
+			upsertProfile: (profile) => this.pluginRegistry.upsertProfile(profile),
 			auth: this.pluginRegistry.getAuthService(),
 			getWebApps: () => this.pluginRegistry.getWebApps(),
 		};

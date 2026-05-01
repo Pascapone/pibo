@@ -2,7 +2,7 @@
 title: Pibo Session Model Rebuild
 version: 1.0
 date_created: 2026-04-29
-last_updated: 2026-04-29
+last_updated: 2026-05-01
 owner: Pibo
 tags: [architecture, sessions, routing, web-chat, plugins]
 ---
@@ -38,6 +38,7 @@ This specification does not require migration of existing prototype data.
 - **Pibo Session**: Product-level session record owned by Pibo. It has a stable `id`.
 - **Pibo Session ID**: The `PiboSession.id` value. It replaces `sessionKey` as the route, API, UI, and event correlation identity.
 - **Pi Session ID**: The `PiboSession.piSessionId` value. It is the technical Pi Coding Agent session identifier.
+- **Pibo Room**: A user-facing Chat Web container that groups one or more Pibo Sessions for display, membership, room events, and room-scoped sending.
 - **Channel**: A plugin-owned transport adapter. Stored as an open string identifier, not a closed enum.
 - **Kind**: A plugin-defined session classification string, such as `chat`, `branch`, `subagent`, or a plugin-specific concept.
 - **Owner Scope**: A string used for access control and listing, such as `user:<auth-user-id>`.
@@ -63,6 +64,12 @@ This specification does not require migration of existing prototype data.
 - **REQ-014**: The router must not need to know user identity. It should receive a resolved Pibo Session ID and load the corresponding Pibo Session record.
 - **REQ-015**: Events emitted by the router must identify the product session with `piboSessionId`.
 - **REQ-016**: Events that expose Pi session state must use explicit `piSessionId` fields.
+- **REQ-017**: Pibo Rooms must not replace Pibo Session identity; runtime routing, API operations, trace reconstruction, and event correlation must continue to use `PiboSession.id`.
+- **REQ-018**: Chat Web room membership must not be inferred from Pibo Session ID prefixes or string patterns.
+- **REQ-019**: The current Chat Web room bridge must store room membership on the Pibo Session using `metadata.chatRoomId`.
+- **REQ-020**: Room-scoped session listing must filter by structured `metadata.chatRoomId` and owner access, not by parsing session ids.
+- **REQ-021**: A Pibo Room may contain multiple top-level Pibo Sessions; subagent nesting inside that room still follows `parentId`.
+- **REQ-022**: Pibo Room access and membership are Chat Web product concepts and must not be moved into Pi Session identity.
 - **CON-001**: No backward-compatible data migration is required for existing prototype data.
 - **CON-002**: `channel` and `kind` must be open strings, not TypeScript union types.
 - **CON-003**: Plugin-specific state must not require new core database columns.
@@ -235,6 +242,7 @@ Requests must use `piboSessionId`.
 
 ```http
 GET /api/chat/bootstrap?piboSessionId=<id>
+GET /api/chat/bootstrap?roomId=<id>&piboSessionId=<id>
 GET /api/chat/trace?piboSessionId=<id>
 POST /api/chat/sessions
 POST /api/chat/message
@@ -246,6 +254,7 @@ Message body:
 ```json
 {
   "piboSessionId": "ps_...",
+  "roomId": "room_...",
   "text": "Hello"
 }
 ```
@@ -263,7 +272,9 @@ Create session response:
     "ownerScope": "user:bIibEngJFSvdfQAlDbk43djVBG6Zr2Qc",
     "parentId": null,
     "originId": null,
-    "metadata": {}
+    "metadata": {
+      "chatRoomId": "room_..."
+    }
   }
 }
 ```
@@ -311,6 +322,9 @@ Subagent:
 - **AC-008**: Given a plugin creates a custom session kind, When the session is stored, Then no core schema change is required.
 - **AC-009**: Given a trace view request, When the selected Pibo Session is loaded, Then Pi transcript loading uses `piSessionId`.
 - **AC-010**: Given any new code path, When it needs session ownership, Then it reads `ownerScope` and does not parse the session ID.
+- **AC-011**: Given a room-scoped bootstrap request, When the selected room contains multiple sessions, Then only sessions with matching `metadata.chatRoomId` are returned.
+- **AC-012**: Given a session has no `metadata.chatRoomId`, When the default room is selected during the migration bridge period, Then the session may be treated as belonging to the default room and should be updated with the default room id when practical.
+- **AC-013**: Given a session belongs to Room A, When a message request supplies Room B, Then the request is rejected.
 
 ## 6. Test Automation Strategy
 
@@ -395,7 +409,9 @@ The new fork behavior is intentionally product-centric: forking creates a new vi
   "kind": "chat",
   "profile": "pibo-minimal",
   "ownerScope": "user:bIibEngJFSvdfQAlDbk43djVBG6Zr2Qc",
-  "metadata": {}
+  "metadata": {
+    "chatRoomId": "room_2a3c"
+  }
 }
 ```
 

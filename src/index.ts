@@ -27,6 +27,7 @@ export type {
 	SkillProfile,
 	SubagentProfile,
 	ToolProfile,
+	ToolPackageProfile,
 } from "./core/profiles.js";
 export { definePiboPlugin, PiboPluginRegistry } from "./plugins/registry.js";
 export type { PiboPluginRegistryOptions } from "./plugins/registry.js";
@@ -41,12 +42,18 @@ export type {
 	PiboGatewayAction,
 	PiboGatewayActionContext,
 	PiboGatewayActionInfo,
+	PiboCapabilityCatalog,
+	PiboCapabilityPackageInfo,
+	PiboContextFileInfo,
+	PiboNativeToolInfo,
 	PiboPlugin,
 	PiboPluginApi,
 	PiboPluginEventListener,
 	PiboProfileBuildContext,
 	PiboProfileDefinition,
 	PiboProfileInfo,
+	PiboSkillInfo,
+	PiboSubagentInfo,
 } from "./plugins/types.js";
 export { createPiboGatewayToolProfiles } from "./gateway/tool.js";
 export { createPiboTestToolProfiles } from "./plugins/core-tools.js";

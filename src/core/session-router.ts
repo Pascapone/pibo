@@ -64,6 +64,7 @@ function profileForSession(
 		subagents: baseProfile.subagents,
 		contextFiles: baseProfile.contextFiles,
 		builtinTools: baseProfile.builtinTools,
+		toolPackages: baseProfile.toolPackages,
 	};
 
 	return new InitialSessionContext(options);

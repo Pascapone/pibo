@@ -1,5 +1,5 @@
 import type { PiboEventListener, PiboInputEvent, PiboOutputEvent } from "../core/events.js";
-import type { PiboGatewayActionInfo } from "../plugins/types.js";
+import type { PiboCapabilityCatalog, PiboGatewayActionInfo, PiboProfileDefinition } from "../plugins/types.js";
 import type { PiboAuthService } from "../auth/types.js";
 import type { PiboWebApp } from "../web/types.js";
 import type {
@@ -27,6 +27,8 @@ export type PiboChannelContext = {
 	listSessions?(): PiboSession[];
 	getGatewayActions(): PiboGatewayActionInfo[];
 	getProfiles?(): Array<{ name: string; description?: string; aliases: string[] }>;
+	getCapabilityCatalog?(): PiboCapabilityCatalog;
+	upsertProfile?(profile: PiboProfileDefinition): void;
 	auth?: PiboAuthService;
 	getWebApps(): PiboWebApp[];
 };

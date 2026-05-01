@@ -13,6 +13,7 @@ import {
 	PiboRoomStore,
 	withChatRoomId,
 	type PiboRoom,
+	type PiboRoomNode,
 } from "./rooms.js";
 import { chatStreamFramesFromOutputEvent, createChatStreamState, type ChatStreamEvent } from "./stream.js";
 import { buildSessionNodes, buildTraceView } from "./trace.js";
@@ -67,6 +68,11 @@ type ChatMessageBody = {
 type ChatEventCursor = {
 	streamId: number;
 	frameIndex: number;
+};
+
+type PiboRoomNodeWithUnread = PiboRoom & {
+	unreadCount?: number;
+	children: PiboRoomNodeWithUnread[];
 };
 
 const CHAT_UI_DIST_DIR = resolve(process.cwd(), "dist/apps/chat-ui");
@@ -473,6 +479,60 @@ function resolveCreateSessionProfile(
 
 function indexOwnedSessions(readModel: ChatWebReadModel, sessions: PiboSession[]): void {
 	for (const session of sessions) readModel.upsertSession(session);
+}
+
+function markSessionRead(state: ChatWebAppState, piboSessionId: string, principalId: string): void {
+	const latestStreamId = state.eventLog.getLatestStreamId({ piboSessionId });
+	if (latestStreamId !== undefined) state.eventLog.markSessionRead(piboSessionId, principalId, latestStreamId);
+}
+
+function buildSessionUnreadCounts(
+	state: ChatWebAppState,
+	sessions: PiboSession[],
+	principalId: string,
+): Map<string, number> {
+	const counts = new Map<string, number>();
+	for (const session of sessions) {
+		const lastReadStreamId = state.eventLog.getSessionReadCursor(session.id, principalId) ?? 0;
+		const unreadCount = state.eventLog.countUnreadMessages({
+			piboSessionId: session.id,
+			principalId,
+			afterStreamId: lastReadStreamId,
+		});
+		if (unreadCount > 0) counts.set(session.id, unreadCount);
+	}
+	return counts;
+}
+
+function buildRoomUnreadCounts(
+	sessions: PiboSession[],
+	sessionUnreadCounts: ReadonlyMap<string, number>,
+	defaultRoomId: string,
+): Map<string, number> {
+	const counts = new Map<string, number>();
+	for (const session of sessions) {
+		const unreadCount = sessionUnreadCounts.get(session.id) ?? 0;
+		if (unreadCount <= 0) continue;
+		const roomId = chatRoomIdFromMetadata(session.metadata) ?? defaultRoomId;
+		counts.set(roomId, (counts.get(roomId) ?? 0) + unreadCount);
+	}
+	return counts;
+}
+
+function roomsWithUnreadCounts(
+	rooms: PiboRoomNode[],
+	directCounts: ReadonlyMap<string, number>,
+): PiboRoomNodeWithUnread[] {
+	return rooms.map((room) => {
+		const children = roomsWithUnreadCounts(room.children ?? [], directCounts);
+		const childCount = children.reduce((sum, child) => sum + (child.unreadCount ?? 0), 0);
+		const unreadCount = (directCounts.get(room.id) ?? 0) + childCount;
+		return {
+			...room,
+			...(unreadCount > 0 ? { unreadCount } : {}),
+			children,
+		};
+	});
 }
 
 function parseSseCursor(value: string | null): ChatEventCursor | undefined {
@@ -1547,7 +1607,9 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/bootstrap` && request.method === "GET") {
 				const webSession = await requireSession(request, context);
 				const includeArchived = parseBooleanSearchParam(url, "includeArchived");
+				const markRead = parseBooleanSearchParam(url, "markRead");
 				const requestedRoomId = url.searchParams.get("roomId") || undefined;
+				const principalId = principalIdFor(webSession);
 				const selectedSession = resolveRequestedSession(
 					state,
 					context,
@@ -1556,6 +1618,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					url.searchParams.get("piboSessionId") || undefined,
 					requestedRoomId,
 				);
+				if (markRead) markSessionRead(state, selectedSession.id, principalId);
 				const selectedRoomId = selectedRoomIdForSession(state, context, selectedSession);
 				const ownedSessions = listOwnedSessions(context, webSession);
 				const roomSessions = visibleSessionsInRoom({
@@ -1568,11 +1631,19 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					includeArchived,
 				});
 				indexOwnedSessions(state.readModel, roomSessions);
+				const sessionUnreadCounts = buildSessionUnreadCounts(state, ownedSessions, principalId);
 				const sessions = await buildSessionNodes(
 					roomSessions,
 					state.readModel.listSessions(),
+					process.cwd(),
+					sessionUnreadCounts,
 				);
-				const rooms = state.roomStore.listRoomTree(webSession.ownerScope);
+				const defaultRoom = state.roomStore.ensureDefaultRoom({
+					ownerScope: webSession.ownerScope,
+					principalId,
+				});
+				const roomUnreadCounts = buildRoomUnreadCounts(ownedSessions, sessionUnreadCounts, defaultRoom.id);
+				const rooms = roomsWithUnreadCounts(state.roomStore.listRoomTree(webSession.ownerScope), roomUnreadCounts);
 				return responseJson({
 					identity: webSession.authSession.identity,
 					session: selectedSession,

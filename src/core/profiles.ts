@@ -34,6 +34,10 @@ export type ContextFileProfile = {
 
 export type BuiltinToolsMode = "default" | "disabled";
 
+export type ToolPackageProfile = {
+	runControl?: boolean;
+};
+
 export type InitialSessionContextOptions = {
 	profileName: string;
 	sessionId?: string;
@@ -43,6 +47,7 @@ export type InitialSessionContextOptions = {
 	subagents?: readonly SubagentProfile[];
 	contextFiles?: readonly ContextFileProfile[];
 	builtinTools?: BuiltinToolsMode;
+	toolPackages?: ToolPackageProfile;
 };
 
 export class InitialSessionContext {
@@ -54,6 +59,7 @@ export class InitialSessionContext {
 	readonly subagents: readonly SubagentProfile[];
 	readonly contextFiles: readonly ContextFileProfile[];
 	readonly builtinTools: BuiltinToolsMode;
+	readonly toolPackages: ToolPackageProfile;
 
 	constructor(options: InitialSessionContextOptions) {
 		this.profileName = options.profileName;
@@ -64,6 +70,7 @@ export class InitialSessionContext {
 		this.subagents = [...(options.subagents ?? [])];
 		this.contextFiles = [...(options.contextFiles ?? [])];
 		this.builtinTools = options.builtinTools ?? "default";
+		this.toolPackages = { ...(options.toolPackages ?? {}) };
 	}
 }
 
@@ -76,6 +83,7 @@ export class InitialSessionContextBuilder {
 	private subagents: SubagentProfile[] = [];
 	private contextFiles: ContextFileProfile[] = [];
 	private builtinTools: BuiltinToolsMode = "default";
+	private toolPackages: ToolPackageProfile = {};
 
 	constructor(profileName: string) {
 		this.profileName = profileName;
@@ -93,6 +101,11 @@ export class InitialSessionContextBuilder {
 
 	withBuiltinTools(mode: BuiltinToolsMode): this {
 		this.builtinTools = mode;
+		return this;
+	}
+
+	withToolPackages(packages: ToolPackageProfile): this {
+		this.toolPackages = { ...packages };
 		return this;
 	}
 
@@ -146,6 +159,7 @@ export class InitialSessionContextBuilder {
 			subagents: this.subagents,
 			contextFiles: this.contextFiles,
 			builtinTools: this.builtinTools,
+			toolPackages: this.toolPackages,
 		});
 	}
 }

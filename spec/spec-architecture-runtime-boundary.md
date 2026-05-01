@@ -2,7 +2,7 @@
 title: Pibo Runtime Boundary Specification
 version: 1.0
 date_created: 2026-04-28
-last_updated: 2026-04-29
+last_updated: 2026-05-01
 owner: Pibo maintainers
 tags: [architecture, runtime, plugins, profiles, channels, subagents, runs]
 ---
@@ -34,6 +34,7 @@ This specification does not define future marketplace behavior, remote deploymen
 - **Pibo Session**: Product session record containing route identity, Pi session identity, channel, kind, profile, owner scope, hierarchy, derivation metadata, workspace, title, and plugin metadata.
 - **Yielded run**: A background execution wrapper for a yieldable tool that can be tracked, waited on, read, cancelled, or acknowledged.
 - **Subagent**: A profile-scoped generated tool that routes a message into another Pibo session using a target profile.
+- **Subagent session link**: A router output event that connects a parent generated subagent tool call to the child Pibo Session.
 
 ## 3. Requirements, Constraints & Guidelines
 
@@ -67,6 +68,11 @@ This specification does not define future marketplace behavior, remote deploymen
 - **REQ-028**: Tracked yielded runs MUST create compact service notifications until terminal results are consumed or acknowledged.
 - **REQ-029**: Detached yielded runs MUST remain inspectable when requested but MUST NOT create automatic reminders.
 - **REQ-030**: Running yielded runs MUST be cancelled when the owning session or router is disposed.
+- **REQ-031**: A generated subagent tool MUST pass its `toolCallId` into the subagent runner.
+- **REQ-032**: The subagent runner MUST emit a parent `subagent_session` link event before waiting for the child reply.
+- **REQ-033**: Subagent calls MUST use the configured `timeoutMs` when present and otherwise use a bounded default timeout.
+- **REQ-034**: Yielded-run wrapping MUST preserve the wrapped yieldable tool identity and arguments in run results or run snapshots.
+- **REQ-035**: If `pibo_run_start` starts a generated `pibo_subagent_*` tool, the runtime MUST retain enough metadata for Chat Web trace reconstruction to show both the yielded run context and the underlying subagent delegation.
 - **CON-001**: External MCP servers, Python runtimes, and third-party CLI tools are optional integrations and MUST NOT be bundled into normal Pibo profiles by default.
 - **CON-002**: Web app routes MUST start with `/`, MUST NOT end with `/` except root, and MUST NOT overlap existing web app mount paths or API prefixes.
 - **PAT-001**: Prefer explicit registration and typed boundaries over hidden coupling.
@@ -157,6 +163,8 @@ type PiboChannelContext = {
 - **AC-007**: Given a subagent with a stable thread key, When called twice from the same parent, Then the same child Pibo Session is used.
 - **AC-008**: Given a tracked yielded run completes, When the parent turn finishes, Then the parent receives a compact service notification.
 - **AC-009**: Given a detached yielded run completes, When notifications are scheduled, Then no automatic detached reminder is delivered.
+- **AC-010**: Given a generated subagent tool call, When the child Pibo Session is resolved, Then subscribers receive a `subagent_session` output event containing the parent tool call id and child Pibo Session ID before the child reply is awaited.
+- **AC-011**: Given `pibo_run_start` starts a generated subagent tool, When Chat Web reconstructs the trace, Then the result remains inspectable as a yielded run and as an async subagent/delegation node.
 
 ## 6. Test Automation Strategy
 
@@ -164,7 +172,7 @@ type PiboChannelContext = {
 - **Frameworks**: Node.js built-in test runner through `node --test`; TypeScript build through `tsc`.
 - **Primary Command**: `npm test`.
 - **Focused Commands**: `npm run typecheck`, `node --test test/plugin-registry.test.mjs`, `node --test test/session-router-store.test.mjs`, `node --test test/subagents.test.mjs`, `node --test test/runs.test.mjs`.
-- **Coverage Focus**: Registry uniqueness, profile building, routed session behavior, subagent Pibo Session reuse, yielded-run lifecycle, Pibo Session persistence.
+- **Coverage Focus**: Registry uniqueness, profile building, routed session behavior, subagent Pibo Session reuse and link events, yielded-run lifecycle, yielded-run wrapped tool identity, Pibo Session persistence.
 
 ## 7. Rationale & Context
 
@@ -206,6 +214,22 @@ The current code keeps Pi Coding Agent as the inner engine and gives Pibo a smal
 ```
 
 If `threadKey` is omitted, the router generates a fresh UUID thread key. Reuse is based on structured session fields and metadata, not on parsing the Pibo Session ID.
+
+### Subagent Session Link Event
+
+```json
+{
+  "type": "subagent_session",
+  "piboSessionId": "ps_parent",
+  "toolCallId": "tool-call-1",
+  "toolName": "pibo_subagent_qa_reviewer",
+  "subagentName": "qa-reviewer",
+  "childPiboSessionId": "ps_child",
+  "threadKey": "review-thread"
+}
+```
+
+The event links the parent tool call to the routed child Pibo Session before the parent waits for the child reply.
 
 ### Run Notification Payload
 

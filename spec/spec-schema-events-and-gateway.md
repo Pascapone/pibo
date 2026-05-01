@@ -2,7 +2,7 @@
 title: Pibo Event And Gateway Schema Specification
 version: 1.0
 date_created: 2026-04-28
-last_updated: 2026-04-29
+last_updated: 2026-05-01
 owner: Pibo maintainers
 tags: [schema, events, gateway, sessions]
 ---
@@ -30,6 +30,8 @@ This specification does not define HTTP chat API payloads; those are covered by 
 - **Gateway frame**: A newline-delimited JSON object exchanged over the local TCP gateway.
 - **JSON value**: `null`, boolean, finite number, string, array of JSON values, or object whose values are JSON values.
 - **Pibo Session ID**: The `PiboSession.id` value used for product routing and event correlation.
+- **Subagent Session Event**: A router output event that links a parent tool call to a routed child Pibo Session.
+- **Chat Stream Event**: A compact web UI frame derived from `PiboOutputEvent`. `AGENT_DELEGATION` is a Chat Stream Event name, not a `PiboOutputEvent` type.
 
 ## 3. Requirements, Constraints & Guidelines
 
@@ -54,6 +56,10 @@ This specification does not define HTTP chat API payloads; those are covered by 
 - **REQ-018**: Invalid gateway lines MUST receive an error response with id `"invalid"`.
 - **REQ-019**: Gateway request responses MUST preserve the request frame `id`.
 - **REQ-020**: Gateway router output broadcasts MUST use event frames with `type: "event"` and `event: "router"`.
+- **REQ-021**: Direct generated subagent calls MUST emit a `subagent_session` output event before waiting for the child reply.
+- **REQ-022**: `subagent_session` MUST include parent `piboSessionId`, optional parent `toolCallId`, generated `toolName`, configured `subagentName`, `childPiboSessionId`, and optional `threadKey`.
+- **REQ-023**: Tool execution results for `pibo_run_start` MUST preserve the wrapped yielded tool name and run metadata sufficiently for trace reconstruction.
+- **REQ-024**: When `pibo_run_start` wraps a generated `pibo_subagent_*` tool, stored event payloads or tool result details MUST retain the wrapped tool name and original arguments.
 - **CON-001**: Gateway default host is `127.0.0.1`.
 - **CON-002**: Gateway default port is `4789`.
 
@@ -113,6 +119,7 @@ type PiboOutputEvent =
   | { type: "tool_execution_started"; piboSessionId: string; eventId?: string; toolCallId: string; toolName: string; args: unknown }
   | { type: "tool_execution_updated"; piboSessionId: string; eventId?: string; toolCallId: string; toolName: string; args: unknown; partialResult: unknown }
   | { type: "tool_execution_finished"; piboSessionId: string; eventId?: string; toolCallId: string; toolName: string; result: unknown; isError: boolean }
+  | { type: "subagent_session"; piboSessionId: string; toolCallId?: string; toolName: string; subagentName: string; childPiboSessionId: string; threadKey?: string }
   | { type: "message_finished"; piboSessionId: string; eventId?: string; source?: PiboEventSource }
   | { type: "execution_result"; piboSessionId: string; eventId?: string; action: string; result: unknown }
   | { type: "session_error"; piboSessionId: string; eventId?: string; error: string }
@@ -152,6 +159,8 @@ type GatewayEventFrame = {
 - **AC-005**: Given router output, When gateway clients are connected, Then each connection receives a router event frame.
 - **AC-006**: Given a Pi thinking delta, When normalized, Then it is emitted as `thinking_delta` and not as assistant visible text.
 - **AC-007**: Given Pi emits `thinking_finished` followed by visible text deltas for the same message, When normalized, Then the router emits `thinking_finished` followed by `assistant_delta` events and does not emit `message_finished` until Pi prompt completion.
+- **AC-008**: Given a generated subagent tool is called with a tool call id, When the child Pibo Session is resolved, Then a `subagent_session` event is emitted with the same tool call id and the child Pibo Session ID before the parent awaits the child reply.
+- **AC-009**: Given `pibo_run_start` starts `pibo_subagent_qa_researcher`, When the tool result is stored, Then the payload retains `toolName: "pibo_subagent_qa_researcher"` and enough arguments to reconstruct the async subagent trace node.
 
 ## 6. Test Automation Strategy
 

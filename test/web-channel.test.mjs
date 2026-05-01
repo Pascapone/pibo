@@ -241,6 +241,48 @@ test("chat web app scopes bootstrap sessions to the selected room", async () => 
 	}
 });
 
+test("chat web app exposes unread room and session counts", async () => {
+	const { channel, baseURL, emitOutput } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+	});
+
+	try {
+		const sessionResponse = await fetch(`${baseURL}/api/chat/session`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(sessionResponse.status, 200);
+		const sessionPayload = await sessionResponse.json();
+
+		emitOutput({
+			type: "assistant_message",
+			piboSessionId: sessionPayload.session.id,
+			eventId: "turn-1",
+			text: "new answer",
+		});
+
+		const unreadResponse = await fetch(`${baseURL}/api/chat/bootstrap?markRead=false`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(unreadResponse.status, 200);
+		const unreadData = await unreadResponse.json();
+		assert.equal(unreadData.sessions[0].unreadCount, 1);
+		assert.equal(unreadData.rooms[0].unreadCount, 1);
+
+		const readResponse = await fetch(
+			`${baseURL}/api/chat/bootstrap?markRead=true&piboSessionId=${encodeURIComponent(sessionPayload.session.id)}`,
+			{
+				headers: { "x-test-user": "user-1" },
+			},
+		);
+		assert.equal(readResponse.status, 200);
+		const readData = await readResponse.json();
+		assert.equal(readData.sessions[0].unreadCount, undefined);
+		assert.equal(readData.rooms[0].unreadCount, undefined);
+	} finally {
+		await channel.stop?.();
+	}
+});
+
 test("chat web app makes message sends idempotent by client transaction id", async () => {
 	const { channel, baseURL, emitted } = await startWebHostChannel({
 		auth: createFakeAuthService(),

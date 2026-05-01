@@ -45,6 +45,7 @@ const LAST_SELECTION_STORAGE_KEY = "pibo.chat.lastSelection";
 type StoredSelection = {
 	roomId?: string;
 	piboSessionId?: string;
+	sessionsByRoom?: Record<string, string>;
 };
 
 export function App() {
@@ -134,7 +135,7 @@ export function App() {
 	) => {
 		const requestId = bootstrapRequestId.current + 1;
 		bootstrapRequestId.current = requestId;
-		const data = await getBootstrap(piboSessionId, includeArchived, roomId);
+		const data = await getBootstrap(piboSessionId, includeArchived, roomId, options.selectSession !== false);
 		if (requestId !== bootstrapRequestId.current) return data;
 		setBootstrap(data);
 		if (options.selectSession !== false) setSelectedPiboSessionId(data.selectedPiboSessionId);
@@ -288,12 +289,22 @@ export function App() {
 	}, [loadBootstrap]);
 
 	const selectRoom = useCallback(async (roomId: string) => {
+		const storedPiboSessionId = readStoredSelection().sessionsByRoom?.[roomId];
 		setSelectedRoomId(roomId);
-		setSelectedPiboSessionId(null);
+		setSelectedPiboSessionId(storedPiboSessionId ?? null);
+		if (storedPiboSessionId) setTraceLoadingSessionId(storedPiboSessionId);
 		setTraceView(null);
-		await loadBootstrap(undefined, showArchivedRef.current, roomId, { selectSession: false });
-		setTraceLoadingSessionId(null);
-		setArea("sessions");
+		try {
+			await loadBootstrap(storedPiboSessionId, showArchivedRef.current, roomId, { selectSession: Boolean(storedPiboSessionId) });
+		} catch (caught) {
+			if (!storedPiboSessionId) throw caught;
+			removeStoredRoomSelection(roomId);
+			setSelectedPiboSessionId(null);
+			await loadBootstrap(undefined, showArchivedRef.current, roomId, { selectSession: false });
+		} finally {
+			setTraceLoadingSessionId(null);
+			setArea("sessions");
+		}
 	}, [loadBootstrap]);
 
 	const createSession = async (profile = newSessionProfile) => {
@@ -744,6 +755,20 @@ function HeaderIconButton({
 	);
 }
 
+function UnreadBadge({ count }: { count?: number }) {
+	if (!count || count <= 0) return null;
+	const label = count > 99 ? "99+" : String(count);
+	return (
+		<span
+			className="min-w-5 h-5 px-1.5 inline-flex items-center justify-center rounded-full bg-[#0bda57] text-[#0e1116] text-[10px] font-bold tabular-nums leading-none"
+			aria-label={`${count} unread messages`}
+			title={`${count} unread messages`}
+		>
+			{label}
+		</span>
+	);
+}
+
 function RoomNode({
 	room,
 	selectedRoomId,
@@ -819,9 +844,16 @@ function RoomNode({
 					</form>
 				) : (
 					<div className="grid grid-cols-[1fr_auto] items-center gap-1 py-1 pr-1">
-						<button type="button" onClick={() => onSelect(room.id)} className="min-w-0 text-left px-2 py-1">
-							<span className="block text-sm truncate text-slate-200">{room.name}</span>
-							<span className="block text-[10px] font-mono truncate text-slate-500">{room.topic || room.type}</span>
+						<button
+							type="button"
+							onClick={() => onSelect(room.id)}
+							className="min-w-0 text-left px-2 py-1 grid grid-cols-[minmax(0,1fr)_auto] gap-2 items-center"
+						>
+							<span className="min-w-0">
+								<span className="block text-sm truncate text-slate-200">{room.name}</span>
+								<span className="block text-[10px] font-mono truncate text-slate-500">{room.topic || room.type}</span>
+							</span>
+							<UnreadBadge count={room.unreadCount} />
 						</button>
 						<button
 							type="button"
@@ -946,10 +978,13 @@ function SessionNode({
 								}
 								onSelect(node.piboSessionId);
 							}}
-							className="min-w-0 text-left px-1 py-1"
+							className="min-w-0 text-left px-1 py-1 grid grid-cols-[minmax(0,1fr)_auto] gap-2 items-center"
 						>
-							<span className={`block text-sm truncate ${node.archived ? "text-slate-500" : "text-slate-200"}`}>{node.title}</span>
-							<span className="block text-[10px] font-mono truncate text-slate-500">{node.piboSessionId}</span>
+							<span className="min-w-0">
+								<span className={`block text-sm truncate ${node.archived ? "text-slate-500" : "text-slate-200"}`}>{node.title}</span>
+								<span className="block text-[10px] font-mono truncate text-slate-500">{node.piboSessionId}</span>
+							</span>
+							<UnreadBadge count={node.unreadCount} />
 						</button>
 						<span className="grid grid-rows-[16px_16px] place-items-center gap-0.5">
 							<span className={`h-2 w-2 rounded-full ${node.status === "running" ? "bg-[#0bda57]" : node.status === "error" ? "bg-red-500" : "bg-slate-600"}`} />
@@ -1755,9 +1790,17 @@ function readStoredSelection(): StoredSelection {
 		if (!raw) return {};
 		const value = JSON.parse(raw);
 		if (!isRecord(value)) return {};
+		const sessionsByRoom = isRecord(value.sessionsByRoom)
+			? Object.fromEntries(
+					Object.entries(value.sessionsByRoom).filter(
+						(entry): entry is [string, string] => typeof entry[0] === "string" && typeof entry[1] === "string" && Boolean(entry[1]),
+					),
+				)
+			: undefined;
 		return {
 			roomId: typeof value.roomId === "string" && value.roomId ? value.roomId : undefined,
 			piboSessionId: typeof value.piboSessionId === "string" && value.piboSessionId ? value.piboSessionId : undefined,
+			...(sessionsByRoom && Object.keys(sessionsByRoom).length ? { sessionsByRoom } : {}),
 		};
 	} catch {
 		return {};
@@ -1766,7 +1809,35 @@ function readStoredSelection(): StoredSelection {
 
 function writeStoredSelection(selection: StoredSelection): void {
 	try {
-		localStorage.setItem(LAST_SELECTION_STORAGE_KEY, JSON.stringify(selection));
+		const previous = readStoredSelection();
+		const sessionsByRoom = { ...(previous.sessionsByRoom ?? {}), ...(selection.sessionsByRoom ?? {}) };
+		if (selection.roomId && selection.piboSessionId) sessionsByRoom[selection.roomId] = selection.piboSessionId;
+		localStorage.setItem(
+			LAST_SELECTION_STORAGE_KEY,
+			JSON.stringify({
+				roomId: selection.roomId,
+				piboSessionId: selection.piboSessionId,
+				...(Object.keys(sessionsByRoom).length ? { sessionsByRoom } : {}),
+			}),
+		);
+	} catch {
+		// Browser storage can be unavailable in private or locked-down contexts.
+	}
+}
+
+function removeStoredRoomSelection(roomId: string): void {
+	try {
+		const stored = readStoredSelection();
+		if (!stored.sessionsByRoom?.[roomId]) return;
+		const { [roomId]: _removed, ...sessionsByRoom } = stored.sessionsByRoom;
+		localStorage.setItem(
+			LAST_SELECTION_STORAGE_KEY,
+			JSON.stringify({
+				roomId: stored.roomId,
+				piboSessionId: stored.piboSessionId,
+				...(Object.keys(sessionsByRoom).length ? { sessionsByRoom } : {}),
+			}),
+		);
 	} catch {
 		// Browser storage can be unavailable in private or locked-down contexts.
 	}

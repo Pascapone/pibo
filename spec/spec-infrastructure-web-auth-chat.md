@@ -2,7 +2,7 @@
 title: Pibo Web Gateway Auth And Chat Specification
 version: 1.1
 date_created: 2026-04-28
-last_updated: 2026-04-30
+last_updated: 2026-05-01
 owner: Pibo maintainers
 tags: [infrastructure, web, auth, gateway, chat]
 ---
@@ -33,6 +33,9 @@ This specification does not define non-web local gateway behavior except where w
 - **Same-origin mutation**: A non-GET request that requires `Content-Type: application/json` and an `Origin` equal to the request origin.
 - **Forwarded public origin**: The origin reconstructed from `X-Forwarded-Proto` and `X-Forwarded-Host` for requests delivered by a trusted local reverse proxy.
 - **Pibo Session**: The product session record used by the Chat Web App for routing, ownership, session listing, and trace reconstruction.
+- **Pibo Room**: A user-facing Chat Web container that groups one or more Pibo Sessions for display, membership, room events, and room-scoped sending.
+- **Chat Event Log**: Durable Chat Web event storage in `.pibo/web-chat.sqlite`, backed by `chat_events`.
+- **Chat Stream Event**: A compact SSE frame derived from a normalized Pibo output event for the Chat Web App.
 
 ## 3. Requirements, Constraints & Guidelines
 
@@ -57,7 +60,7 @@ This specification does not define non-web local gateway behavior except where w
 - **REQ-019**: Missing auth sessions MUST receive `401`.
 - **REQ-019A**: Better Auth MUST include configured `auth.trustedOrigins` in its trusted origins.
 - **REQ-020**: The chat web app page MUST be served at `GET /apps/chat`.
-- **REQ-021**: `GET /api/chat/bootstrap` MUST require an auth session and return identity, selected Pibo Session, session tree, agent inventory, and available gateway actions.
+- **REQ-021**: `GET /api/chat/bootstrap` MUST require an auth session and return identity, selected Pibo Room, selected Pibo Session, room-scoped session tree, room tree, agent inventory, and available gateway actions.
 - **REQ-022**: Chat session ownership MUST use `ownerScope=user:<authenticated user id>` and default profile `pibo-minimal` unless overridden.
 - **REQ-023**: `POST /api/chat/sessions` MUST require same-origin JSON and create a new top-level personal Pibo Session.
 - **REQ-024**: `PATCH /api/chat/sessions/:piboSessionId` MUST require same-origin JSON and update only mutable Chat Web session metadata such as `title` and `archived`.
@@ -69,6 +72,23 @@ This specification does not define non-web local gateway behavior except where w
 - **REQ-030**: Chat UI thinking output MUST be user-toggleable and hidden by default.
 - **REQ-031**: Chat APIs that accept a `piboSessionId` MUST reject sessions whose `ownerScope` does not match the authenticated user.
 - **REQ-032**: `GET /api/chat/trace` MUST pass the selected session's current read-model status into trace reconstruction so live running nodes can be distinguished from interrupted stale nodes.
+- **REQ-033**: The Chat Web App MUST ensure a personal default Pibo Room for each authenticated `ownerScope` during bootstrap.
+- **REQ-034**: The personal default Pibo Room MUST add the authenticated principal as an `owner` member.
+- **REQ-035**: Pibo Sessions created for Chat Web MUST be associated with a Pibo Room through `PiboSession.metadata.chatRoomId`.
+- **REQ-036**: `GET /api/chat/bootstrap` and `GET /api/chat/sessions` MUST scope returned sessions to the selected or requested Pibo Room.
+- **REQ-037**: `POST /api/chat/sessions` MUST accept optional `roomId` and create the session in that room after write access is verified.
+- **REQ-038**: `POST /api/chat/message` MUST accept optional `roomId` and MUST reject sends where the selected Pibo Session is not available in that room.
+- **REQ-039**: Message sends SHOULD include a `clientTxnId`; when present, the server MUST make sends idempotent per `(roomId, actorId, clientTxnId)`.
+- **REQ-040**: The Chat Event Log MUST store accepted user messages, failed user messages, router output events, actor id, optional client transaction id, retention class, JSON payload, and monotone `stream_id`.
+- **REQ-041**: `GET /api/chat/events` MUST support session-scoped streaming by `piboSessionId` and room-scoped filtering by `roomId` when supplied.
+- **REQ-042**: Durable SSE replay MUST use frame-specific cursors formatted as `<streamId>:<frameIndex>` because one stored chat event can produce multiple Chat Stream Events.
+- **REQ-043**: Chat Stream Events MUST include compact frames for assistant text, reasoning, tool calls, tool results, agent delegation, execution results, run lifecycle, errors, and raw fallback events.
+- **REQ-044**: The Chat Web App MUST continue to tolerate legacy bootstrap payloads without room fields; full room controls require room-aware backend responses.
+- **REQ-045**: `GET /api/chat/rooms` MUST require an auth session and return the authenticated user's room tree.
+- **REQ-046**: `POST /api/chat/rooms` MUST require same-origin JSON and create a Pibo Room owned by the authenticated user's owner scope.
+- **REQ-047**: `PATCH /api/chat/rooms/:roomId` MUST require same-origin JSON, admin access, and update mutable room fields such as name and topic.
+- **REQ-048**: `GET /api/chat/rooms/:roomId/events` MUST require read access and return durable room events after an optional cursor.
+- **REQ-049**: `POST /api/chat/rooms/:roomId/messages` MUST require write access and send a room-scoped message to the selected or supplied Pibo Session.
 - **SEC-001**: Chat mutation routes MUST reject non-JSON content types with `415`.
 - **SEC-002**: Chat mutation routes MUST reject missing `Origin` headers with `403`.
 - **SEC-003**: Chat mutation routes MUST reject cross-origin `Origin` headers with `403`.
@@ -110,15 +130,21 @@ type PiboWebApp = {
 | Route | Method | Auth | Behavior |
 | --- | --- | --- | --- |
 | `/apps/chat` | GET | UI handles auth state | Returns HTML chat app |
-| `/api/chat/bootstrap` | GET | required | Returns identity, selected session, session tree, capabilities |
-| `/api/chat/session` | GET | required | Compatibility endpoint returning identity, selected session, capabilities |
-| `/api/chat/sessions` | GET | required | Returns owned session tree |
-| `/api/chat/sessions` | POST | required | Creates a new top-level personal session |
+| `/api/chat/bootstrap` | GET | required | Returns identity, selected room, selected session, room-scoped session tree, room tree, capabilities |
+| `/api/chat/session` | GET | required | Compatibility endpoint returning identity, selected session, selected room, capabilities |
+| `/api/chat/sessions` | GET | required | Returns owned session tree scoped to optional `roomId` |
+| `/api/chat/sessions` | POST | required | Creates a new top-level personal session in optional `roomId` |
 | `/api/chat/sessions/:piboSessionId` | PATCH | required | Updates mutable session metadata such as title or archived state |
 | `/api/chat/trace` | GET | required | Returns selected session trace view |
-| `/api/chat/message` | POST | required | Emits message event |
+| `/api/chat/message` | POST | required | Persists a durable chat event and emits a message event |
 | `/api/chat/action` | POST | required | Emits execution event |
 | `/api/chat/events` | GET | required | Opens SSE stream |
+| `/api/chat/rooms` | GET | required | Returns authenticated user's room tree |
+| `/api/chat/rooms` | POST | required | Creates a room and owner membership |
+| `/api/chat/rooms/:roomId` | GET | required | Returns room, membership, and sessions for the room |
+| `/api/chat/rooms/:roomId` | PATCH | required | Updates mutable room metadata |
+| `/api/chat/rooms/:roomId/events` | GET | required | Returns durable room events after optional cursor |
+| `/api/chat/rooms/:roomId/messages` | POST | required | Sends a room-scoped message |
 | `/api/auth/*` | any | auth-service-owned | Delegates to Better Auth |
 
 ### Bootstrap Response
@@ -140,7 +166,18 @@ type PiboWebApp = {
     "createdAt": "2026-04-28T00:00:00.000Z",
     "updatedAt": "2026-04-28T00:00:00.000Z"
   },
+  "room": {
+    "id": "room_...",
+    "ownerScope": "user:user-id",
+    "name": "Personal Chat",
+    "type": "chat",
+    "createdAt": "2026-04-28T00:00:00.000Z",
+    "updatedAt": "2026-04-28T00:00:00.000Z",
+    "metadata": { "default": true }
+  },
+  "selectedRoomId": "room_...",
   "selectedPiboSessionId": "ps_...",
+  "rooms": [],
   "sessions": [],
   "agents": [],
   "capabilities": {
@@ -164,13 +201,20 @@ type PiboWebApp = {
 - **AC-011**: Given a trace request for a running selected session, When live delta events exist, Then trace reconstruction receives the session status as `running`.
 - **AC-012**: Given a same-origin mutation delivered through a local reverse proxy with `X-Forwarded-Host` and `X-Forwarded-Proto`, When the request origin matches the forwarded public origin, Then the mutation is accepted.
 - **AC-013**: Given a non-loopback direct client sends spoofed forwarded headers, When the request is handled, Then those forwarded headers are not trusted for origin reconstruction.
+- **AC-014**: Given a new authenticated user, When `/api/chat/bootstrap` is requested, Then a personal default Pibo Room and a room-scoped selected Pibo Session are returned.
+- **AC-015**: Given an authenticated user requests `/api/chat/bootstrap?roomId=<room>`, When the room exists and the user has access, Then returned sessions are scoped to that room.
+- **AC-016**: Given a message request includes a `roomId` that does not contain the selected Pibo Session, When handled, Then the response is rejected.
+- **AC-017**: Given the same `(roomId, actorId, clientTxnId)` is submitted twice, When the first send was accepted, Then the second send returns the stored accepted event and does not emit a second router message.
+- **AC-018**: Given an SSE client reconnects with `Last-Event-ID: <streamId>:<frameIndex>`, When durable chat events are replayed, Then already delivered frames from that stored event are not replayed.
+- **AC-019**: Given a subagent session link output event is streamed, When compact chat frames are generated, Then an `AGENT_DELEGATION` Chat Stream Event is emitted.
+- **AC-020**: Given a legacy backend omits room fields from bootstrap, When the React client normalizes the payload, Then it does not crash and hides room-specific controls.
 
 ## 6. Test Automation Strategy
 
 - **Test Levels**: Unit and integration tests.
 - **Frameworks**: Node.js built-in test runner and TypeScript compiler.
 - **Primary Command**: `npm test`.
-- **Focused Commands**: `node --test test/better-auth-config.test.mjs`, `node --test test/web-channel.test.mjs`, `node --test test/channel-runtime.test.mjs`.
+- **Focused Commands**: `node --test test/better-auth-config.test.mjs`, `node --test test/web-channel.test.mjs`, `node --test test/chat-rooms-event-log.test.mjs`, `node --test test/channel-runtime.test.mjs`.
 
 ## 7. Rationale & Context
 
@@ -187,6 +231,7 @@ The web implementation keeps auth, web hosting, and chat as separate plugin capa
 - **INF-001**: `.pibo/config.json` for auth configuration.
 - **INF-002**: `.pibo/auth.sqlite` by default for Better Auth persistence.
 - **INF-003**: Pibo Session store, default `.pibo/pibo-sessions.sqlite` when the gateway owns the store.
+- **INF-004**: Chat Web room, read model, and event log database, default `.pibo/web-chat.sqlite`.
 
 ### Technology Platform Dependencies
 
@@ -239,6 +284,24 @@ Current clients SHOULD include `piboSessionId`:
 ```json
 {"piboSessionId":"ps_...","text":"Hello"}
 ```
+
+Room-aware clients SHOULD also include `roomId` and `clientTxnId`:
+
+```json
+{"roomId":"room_...","piboSessionId":"ps_...","text":"Hello","clientTxnId":"web-lv7k-abc123"}
+```
+
+### SSE Cursor
+
+Durable chat event replay uses frame-specific cursors:
+
+```text
+id: 42:0
+event: pibo
+data: {"type":"TEXT_MESSAGE_CONTENT","messageId":"event-1","delta":"Hello"}
+```
+
+The first number is the stored chat event `stream_id`; the second number is the zero-based frame index produced from that stored event.
 
 ### Invalid Action Params
 

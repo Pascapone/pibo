@@ -49,6 +49,51 @@ test("chat event log appends monotone events and queries by cursor and scope", (
 	}
 });
 
+test("chat event log counts unread visible messages after session cursors", () => {
+	const log = new ChatEventLog(":memory:");
+	try {
+		log.appendEvent({
+			roomId: "room_1",
+			piboSessionId: "ps_1",
+			eventType: "user.message.accepted",
+			actorType: "user",
+			actorId: "user:1",
+			retentionClass: "chat_message",
+			payload: { text: "own message" },
+		});
+		const assistant = log.appendEvent({
+			roomId: "room_1",
+			piboSessionId: "ps_1",
+			eventType: "assistant_message",
+			actorType: "assistant",
+			actorId: "user:1",
+			retentionClass: "chat_message",
+			payload: { type: "assistant_message", piboSessionId: "ps_1", text: "answer" },
+		});
+
+		assert.equal(
+			log.countUnreadMessages({
+				piboSessionId: "ps_1",
+				principalId: "user:1",
+				afterStreamId: log.getSessionReadCursor("ps_1", "user:1") ?? 0,
+			}),
+			1,
+		);
+
+		log.markSessionRead("ps_1", "user:1", assistant.streamId);
+		assert.equal(
+			log.countUnreadMessages({
+				piboSessionId: "ps_1",
+				principalId: "user:1",
+				afterStreamId: log.getSessionReadCursor("ps_1", "user:1") ?? 0,
+			}),
+			0,
+		);
+	} finally {
+		log.close();
+	}
+});
+
 test("chat event log purges expired events by retention class", () => {
 	const log = new ChatEventLog(":memory:");
 	try {
