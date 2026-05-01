@@ -142,6 +142,12 @@ A plugin-registered same-origin application served by the Pibo web host.
 **Chat Web App**:
 The current web app registered under `/apps/chat` and `/api/chat/*`.
 
+**Canonical Chat URL**:
+The browser URL that identifies the active Chat Web App area and, in the Sessions area, the selected Pibo Room and selected Pibo Session, such as `/apps/chat/rooms/<roomId>/sessions/<piboSessionId>`.
+
+**Chat Web Deep Link**:
+A URL under `/apps/chat/*` that can be opened directly or reloaded and restores the intended Chat Web App area and selection.
+
 **Pibo Room**:
 A user-facing Chat Web container that groups one or more Pibo Sessions for display, membership, room events, and room-scoped sending.
 
@@ -193,6 +199,7 @@ Machine-local Pibo configuration stored in `.pibo/config.json`.
 - The **Pibo Session Store** is the source of truth for Pibo Session metadata.
 - A **Pibo Room** is a user-facing Chat Web container; it does not replace a **Pibo Session**.
 - A **Pibo Session** belongs to a **Pibo Room** through `PiboSession.metadata.chatRoomId` in the current migration bridge.
+- A **Canonical Chat URL** is the browser-visible route for a **Pibo Room** and **Pibo Session** selection; browser-local last-selection state is only an entry fallback.
 - A **Personal Chat Room** is created automatically for a new **Owner Scope** when the Chat Web App bootstraps.
 - The **Chat Web Read Model** is a projection and is not the source of truth for Pibo Sessions or Pi transcripts.
 - The **Chat Event Log** is durable Chat Web room/session event storage, while the **Raw Pibo Event Log** remains a read-model/debugging projection of normalized output events.

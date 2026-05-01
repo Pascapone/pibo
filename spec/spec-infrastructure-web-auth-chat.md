@@ -60,6 +60,7 @@ This specification does not define non-web local gateway behavior except where w
 - **REQ-019**: Missing auth sessions MUST receive `401`.
 - **REQ-019A**: Better Auth MUST include configured `auth.trustedOrigins` in its trusted origins.
 - **REQ-020**: The chat web app page MUST be served at `GET /apps/chat`.
+- **REQ-020A**: The chat web app MUST serve the same React shell for non-asset `GET /apps/chat/*` deep links so browser reloads and shared URLs do not return `404`.
 - **REQ-021**: `GET /api/chat/bootstrap` MUST require an auth session and return identity, selected Pibo Room, selected Pibo Session, room-scoped session tree, room tree, agent inventory, and available gateway actions.
 - **REQ-022**: Chat session ownership MUST use `ownerScope=user:<authenticated user id>` and default profile `pibo-minimal` unless overridden.
 - **REQ-023**: `POST /api/chat/sessions` MUST require same-origin JSON and create a new top-level personal Pibo Session.
@@ -130,6 +131,11 @@ type PiboWebApp = {
 | Route | Method | Auth | Behavior |
 | --- | --- | --- | --- |
 | `/apps/chat` | GET | UI handles auth state | Returns HTML chat app |
+| `/apps/chat/rooms/:roomId` | GET | UI handles auth state | Returns HTML chat app for a room deep link |
+| `/apps/chat/sessions/:piboSessionId` | GET | UI handles auth state | Returns HTML chat app for a session deep link |
+| `/apps/chat/rooms/:roomId/sessions/:piboSessionId` | GET | UI handles auth state | Returns HTML chat app for the canonical room-session deep link |
+| `/apps/chat/agents` | GET | UI handles auth state | Returns HTML chat app for the Agents area |
+| `/apps/chat/settings` | GET | UI handles auth state | Returns HTML chat app for the Settings area |
 | `/api/chat/bootstrap` | GET | required | Returns identity, selected room, selected session, room-scoped session tree, room tree, capabilities |
 | `/api/chat/session` | GET | required | Compatibility endpoint returning identity, selected session, selected room, capabilities |
 | `/api/chat/sessions` | GET | required | Returns owned session tree scoped to optional `roomId` |
@@ -310,6 +316,7 @@ The first number is the stored chat event `stream_id`; the second number is the 
 ## 10. Validation Criteria
 
 - Web channel and Better Auth tests pass.
+- Deep app links under `/apps/chat/*` return the React shell instead of `404`.
 - `npm run typecheck` passes.
 - Manual local smoke flow works after required auth config is set:
 

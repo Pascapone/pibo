@@ -69,6 +69,14 @@ Open:
 http://localhost:4788/apps/chat
 ```
 
+Stable app URLs:
+
+```text
+http://localhost:4788/apps/chat/rooms/<roomId>/sessions/<piboSessionId>
+http://localhost:4788/apps/chat/agents
+http://localhost:4788/apps/chat/settings
+```
+
 Expected behavior:
 
 - startup fails if `auth.secret` is shorter than 32 characters
@@ -79,4 +87,6 @@ Expected behavior:
 - Google sign-in creates a Better Auth session
 - sign-out clears the Better Auth session and the next sign-in shows Google's account chooser
 - the chat app creates or selects a persistent Pibo Session with `channel: pibo.chat-web`
+- `/apps/chat` canonicalizes to the resolved room/session URL after bootstrap
+- reloading a room/session, Agents, or Settings URL keeps the same visible area
 - messages from the web app route into the selected Pibo Session for that user

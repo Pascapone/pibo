@@ -177,6 +177,8 @@ Same-Origin Web Host
 
 The V1 chat web app uses Better Auth Google sign-in for every request path, including localhost. The authenticated Better Auth user id becomes `ownerScope=user:<userId>`. New personal sessions are top-level Pibo Sessions with `channel: "pibo.chat-web"` and `kind: "chat"`. Fork and clone results are visible branch sessions with `originId`. `parentId` is reserved for true child sessions such as subagents, not for ordinary sessions owned by the same user.
 
+Chat Web navigation is URL-based. The browser URL is the primary source of truth for the visible area and selected room/session. The canonical session URL is `/apps/chat/rooms/<roomId>/sessions/<piboSessionId>`, with additional app URLs for `/apps/chat/agents` and `/apps/chat/settings`. Opening `/apps/chat` may use browser-local last-selection state as an entry fallback, but bootstrap must replace it with the canonical room/session URL. The same-origin web host serves the React shell for non-asset `/apps/chat/*` paths so direct links and page reloads keep the selected area instead of falling back to the base app.
+
 The auth boundary is enforced before channel input reaches the session router:
 
 - no Better Auth session returns `401`
