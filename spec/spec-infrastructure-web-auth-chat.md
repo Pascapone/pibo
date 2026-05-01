@@ -106,6 +106,10 @@ This specification does not define non-web local gateway behavior except where w
 - **REQ-060**: `PATCH /api/context-files/:key` MUST require same-origin JSON and allow updating managed context-file metadata such as label, scope, and agent profile association.
 - **REQ-061**: `DELETE /api/context-files/:key` MUST require same-origin JSON and allow removing managed context files, optionally deleting the backing file from disk.
 - **REQ-062**: `GET /api/context-files/events` MUST require an auth session and stream context-file product events for live UI refresh.
+- **REQ-063**: `POST /api/context-files/:key/link-from-plugin` MUST require same-origin JSON and create a managed copy of a plugin-owned context file, linked to the plugin source hash.
+- **REQ-064**: Linked managed context files MUST expose link state as one of `plugin-only`, `linked-clean`, `linked-dirty`, `linked-stale`, `orphaned`, or `managed-unlinked`.
+- **REQ-065**: Managed context files MUST persist revision history and expose revision listing, source-vs-working diff, reset-to-source, restore-revision, and adopt-source operations.
+- **REQ-066**: Managed context-file metadata and revisions MUST be stored in SQLite, while legacy JSON metadata stores MAY be migrated on first load.
 - **SEC-001**: Chat mutation routes MUST reject non-JSON content types with `415`.
 - **SEC-002**: Chat mutation routes MUST reject missing `Origin` headers with `403`.
 - **SEC-003**: Chat mutation routes MUST reject cross-origin `Origin` headers with `403`.
@@ -176,6 +180,12 @@ type PiboWebApp = {
 | `/api/context-files/:key` | PUT | required | Saves managed context-file markdown |
 | `/api/context-files/:key` | PATCH | required | Updates managed context-file metadata |
 | `/api/context-files/:key` | DELETE | required | Removes a managed context file |
+| `/api/context-files/:key/link-from-plugin` | POST | required | Creates a linked managed copy from a plugin context file |
+| `/api/context-files/:key/revisions` | GET | required | Lists managed context-file revisions |
+| `/api/context-files/:key/diff` | GET | required | Returns a source/working diff for a managed context file |
+| `/api/context-files/:key/reset-to-source` | POST | required | Replaces a linked working copy with the current plugin source |
+| `/api/context-files/:key/restore-revision` | POST | required | Restores a managed context file from a stored revision |
+| `/api/context-files/:key/adopt-source` | POST | required | Adopts the current plugin source as the managed baseline |
 | `/api/context-files/events` | GET | required | Opens the context-file product-event SSE stream |
 | `/api/auth/*` | any | auth-service-owned | Delegates to Better Auth |
 
@@ -280,6 +290,9 @@ type CustomAgent = {
 - **AC-029**: Given an authenticated user requests `GET /api/context-files`, When managed and plugin context files exist, Then the response includes source and scope metadata for both kinds.
 - **AC-030**: Given an authenticated user creates an agent-scoped managed context file without `agentProfileName`, When `POST /api/context-files` is handled, Then the response is rejected.
 - **AC-031**: Given a context file changes on disk after the API watcher starts, When `GET /api/context-files/events` is subscribed, Then a `context-file.external_updated` product event is streamed.
+- **AC-032**: Given a plugin context file exists, When an authenticated user posts to `link-from-plugin`, Then a managed copy is created with `linked-clean` state and a source revision.
+- **AC-033**: Given a linked managed context file has local edits and the plugin source changes, When the file is read, Then the file reports `linked-stale` until reset or adopted.
+- **AC-034**: Given a managed context file has prior revisions, When an authenticated user restores one revision, Then the working markdown is replaced and a new active working revision is recorded.
 
 ## 6. Test Automation Strategy
 
