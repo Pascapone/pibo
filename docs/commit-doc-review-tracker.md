@@ -92,13 +92,13 @@ Scope: Last 10 commits on the current branch, metadata only. No diff review yet.
 
 ### 9. `a9ba897` - Document chat web subagent retest
 
-- Review status: `todo`
-- Documentation follow-up: `tbd`
+- Review status: `done`
+- Documentation follow-up: `none`
 - Date: `2026-05-01T20:40:25+02:00`
 - Author: `pibo`
 - Full hash: `a9ba897fbe1362d52e431a6163102a8b4163a025`
 - Description: `-`
-- Notes: `-`
+- Notes: `Existing retest report already covers scope, verification commands, and the regression found during retest. No additional documentation change needed.`
 
 ### 10. `cc31dcf` - Harden chat web subagent traces
 
