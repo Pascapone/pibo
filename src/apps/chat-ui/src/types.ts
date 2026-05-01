@@ -13,6 +13,18 @@ export type PiboTraceNodeType =
 
 export type PiboTraceNodeStatus = "running" | "done" | "error";
 
+export type PiboTraceSource = "transcript" | "event-log" | "live";
+
+export type PiboTraceOrderKey = {
+	sourceRank: number;
+	turnSeq: number;
+	transcriptIndex?: number;
+	contentPartIndex?: number;
+	eventSequence?: number;
+	streamFrameIndex?: number;
+	phaseRank: number;
+};
+
 export type PiboTraceNode = {
 	id: string;
 	parentId?: string;
@@ -32,6 +44,9 @@ export type PiboTraceNode = {
 	output?: unknown;
 	error?: string;
 	linkedPiboSessionId?: string;
+	source?: PiboTraceSource;
+	stableKey?: string;
+	orderKey?: PiboTraceOrderKey;
 	children: PiboTraceNode[];
 };
 
@@ -191,6 +206,9 @@ export type Span = {
 		entryId?: string;
 		linkedPiboSessionId?: string;
 		traceNodeType: PiboTraceNodeType;
+		traceOrder?: PiboTraceOrderKey;
+		stableKey?: string;
+		source?: PiboTraceSource;
 	};
 };
 

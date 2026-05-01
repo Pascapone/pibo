@@ -50,6 +50,9 @@ function adaptNode(node: PiboTraceNode): Span {
 			entryId: node.entryId,
 			linkedPiboSessionId: node.linkedPiboSessionId,
 			traceNodeType: node.type,
+			traceOrder: node.orderKey,
+			stableKey: node.stableKey,
+			source: node.source,
 		},
 	};
 	spanCache.set(node, span);

@@ -3,6 +3,7 @@ import { buildTraceView, type PiboTraceNode, type PiboSessionTraceView } from ".
 import type { PiboJsonObject, PiboOutputEvent } from "../core/events.js";
 import type { PiboSession } from "../sessions/store.js";
 import type { ChatWebStoredEvent } from "../apps/chat/read-model.js";
+import { compareTraceOrder } from "../shared/trace-order.js";
 import type { ResolvedPiboDebugStore } from "./stores.js";
 
 type SessionRow = {
@@ -28,6 +29,7 @@ type ChatSessionRow = {
 type EventRow = {
 	id: string;
 	pibo_session_id: string;
+	event_sequence?: number | null;
 	event_id: string | null;
 	type: string;
 	created_at: string;
@@ -41,6 +43,7 @@ export type DebugTraceResult = {
 	status: string;
 	nodes: DebugTraceNodeRow[];
 	rawNodeCount: number;
+	checks?: DebugTraceCheckResult;
 };
 
 export type DebugTraceNodeRow = {
@@ -51,15 +54,30 @@ export type DebugTraceNodeRow = {
 	runId?: string;
 	toolCallId?: string;
 	linkedPiboSessionId?: string;
+	source?: string;
+	stableKey?: string;
+	order?: string;
 	startedAt?: string;
 	completedAt?: string;
 	depth: number;
 };
 
+export type DebugTraceCheckResult = {
+	status: "ok" | "warning";
+	issues: DebugTraceIssue[];
+};
+
+export type DebugTraceIssue = {
+	severity: "warning";
+	code: string;
+	message: string;
+	nodeId?: string;
+};
+
 export async function inspectDebugTrace(
 	piboSessionId: string,
 	stores: { sessions: ResolvedPiboDebugStore; chat: ResolvedPiboDebugStore },
-	options: { runningOnly?: boolean } = {},
+	options: { runningOnly?: boolean; check?: boolean } = {},
 ): Promise<DebugTraceResult> {
 	if (!stores.sessions.exists) throw new Error(`Debug store "sessions" not found at ${stores.sessions.defaultPath}`);
 	if (!stores.chat.exists) throw new Error(`Debug store "chat" not found at ${stores.chat.defaultPath}`);
@@ -99,6 +117,7 @@ export async function inspectDebugTrace(
 			status: traceStatus(view),
 			nodes: filtered,
 			rawNodeCount: rows.length,
+			...(options.check ? { checks: checkTraceView(view) } : {}),
 		};
 	} finally {
 		sessionsDb.close();
@@ -133,6 +152,14 @@ export function formatDebugTrace(result: DebugTraceResult): string {
 		);
 	}
 	lines.push(`nodes: ${result.nodes.length}${result.nodes.length !== result.rawNodeCount ? ` of ${result.rawNodeCount}` : ""}`);
+	if (result.checks) {
+		lines.push("");
+		lines.push(`checks: ${result.checks.status}`);
+		for (const issue of result.checks.issues) {
+			lines.push(`${issue.severity}\t${issue.code}\t${issue.nodeId ?? ""}\t${issue.message}`);
+		}
+		if (result.checks.issues.length === 0) lines.push("issues: 0");
+	}
 	return lines.join("\n");
 }
 
@@ -146,6 +173,9 @@ function flattenTraceNodes(nodes: PiboTraceNode[], depth = 0): DebugTraceNodeRow
 			runId: node.runId,
 			toolCallId: node.toolCallId,
 			linkedPiboSessionId: node.linkedPiboSessionId,
+			source: node.source,
+			stableKey: node.stableKey,
+			order: formatOrderKey(node),
 			startedAt: node.startedAt,
 			completedAt: node.completedAt,
 			depth,
@@ -159,6 +189,95 @@ function traceStatus(view: PiboSessionTraceView): string {
 	if (rows.some((node) => node.status === "error")) return "error";
 	if (rows.some((node) => node.status === "running")) return "running";
 	return "done";
+}
+
+function checkTraceView(view: PiboSessionTraceView): DebugTraceCheckResult {
+	const issues: DebugTraceIssue[] = [];
+	const all = flattenPiboTraceNodes(view.nodes);
+	const ids = new Set<string>();
+	for (const node of all) {
+		if (ids.has(node.id)) {
+			issues.push({
+				severity: "warning",
+				code: "duplicate_id",
+				nodeId: node.id,
+				message: "Trace node id appears more than once.",
+			});
+		}
+		ids.add(node.id);
+		if (!node.orderKey) {
+			issues.push({
+				severity: "warning",
+				code: "missing_order",
+				nodeId: node.id,
+				message: "Trace node has no stable order key and may fall back to timestamp ordering.",
+			});
+		}
+		if (!node.source) {
+			issues.push({
+				severity: "warning",
+				code: "missing_source",
+				nodeId: node.id,
+				message: "Trace node has no projection source.",
+			});
+		}
+		if (!node.stableKey) {
+			issues.push({
+				severity: "warning",
+				code: "missing_stable_key",
+				nodeId: node.id,
+				message: "Trace node has no conceptual stable key.",
+			});
+		}
+	}
+	for (const node of all) {
+		if (node.parentId && !ids.has(node.parentId)) {
+			issues.push({
+				severity: "warning",
+				code: "missing_parent",
+				nodeId: node.id,
+				message: `Parent "${node.parentId}" is not present in the trace tree.`,
+			});
+		}
+	}
+	checkSiblingOrder(view.nodes, issues);
+	return { status: issues.length ? "warning" : "ok", issues };
+}
+
+function checkSiblingOrder(nodes: PiboTraceNode[], issues: DebugTraceIssue[]): void {
+	for (let index = 1; index < nodes.length; index += 1) {
+		if (compareOrder(nodes[index - 1], nodes[index]) > 0) {
+			issues.push({
+				severity: "warning",
+				code: "order_regression",
+				nodeId: nodes[index].id,
+				message: `Node appears before previous sibling by stable order: ${nodes[index - 1].id}`,
+			});
+		}
+	}
+	for (const node of nodes) checkSiblingOrder(node.children, issues);
+}
+
+function compareOrder(left: PiboTraceNode, right: PiboTraceNode): number {
+	return compareTraceOrder(left.orderKey, right.orderKey) || left.id.localeCompare(right.id);
+}
+
+function flattenPiboTraceNodes(nodes: PiboTraceNode[]): PiboTraceNode[] {
+	return nodes.flatMap((node) => [node, ...flattenPiboTraceNodes(node.children)]);
+}
+
+function formatOrderKey(node: PiboTraceNode): string | undefined {
+	const order = node.orderKey;
+	if (!order) return undefined;
+	return [
+		`turn=${order.turnSeq}`,
+		order.transcriptIndex === undefined ? undefined : `tx=${order.transcriptIndex}`,
+		order.contentPartIndex === undefined ? undefined : `part=${order.contentPartIndex}`,
+		order.eventSequence === undefined ? undefined : `event=${order.eventSequence}`,
+		order.streamFrameIndex === undefined ? undefined : `frame=${order.streamFrameIndex}`,
+		`phase=${order.phaseRank}`,
+		`source=${order.sourceRank}`,
+	].filter(Boolean).join(",");
 }
 
 function sessionFromRow(row: SessionRow): PiboSession {
@@ -183,6 +302,7 @@ function eventFromRow(row: EventRow): ChatWebStoredEvent {
 	return {
 		id: row.id,
 		piboSessionId: row.pibo_session_id,
+		eventSequence: row.event_sequence ?? undefined,
 		eventId: row.event_id ?? undefined,
 		type: row.type,
 		createdAt: row.created_at,

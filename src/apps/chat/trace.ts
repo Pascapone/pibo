@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { parseSessionEntries, SessionManager, type SessionEntry } from "@mariozechner/pi-coding-agent";
 import type { PiboOutputEvent, PiboSessionListItem } from "../../core/events.js";
 import type { PiboSession } from "../../sessions/store.js";
+import { childTraceOrder, compareTraceOrder, eventTraceOrder, transcriptTraceOrder, type TraceOrderKey, type TraceSource } from "../../shared/trace-order.js";
 import type { ChatWebSessionIndexItem, ChatWebStoredEvent } from "./read-model.js";
 import { isChatWebSessionArchived } from "./session-metadata.js";
 
@@ -36,6 +37,10 @@ export type PiboTraceNodeType =
 
 export type PiboTraceNodeStatus = "running" | "done" | "error";
 
+export type PiboTraceSource = TraceSource;
+
+export type PiboTraceOrderKey = TraceOrderKey;
+
 export type PiboTraceNode = {
 	id: string;
 	parentId?: string;
@@ -55,6 +60,9 @@ export type PiboTraceNode = {
 	output?: unknown;
 	error?: string;
 	linkedPiboSessionId?: string;
+	source?: PiboTraceSource;
+	stableKey?: string;
+	orderKey?: PiboTraceOrderKey;
 	children: PiboTraceNode[];
 };
 
@@ -82,6 +90,11 @@ type TraceBuildInput = {
 };
 
 type MessageSessionEntry = Extract<SessionEntry, { type: "message" }>;
+
+type IndexedMessageSessionEntry = {
+	entry: MessageSessionEntry;
+	index: number;
+};
 
 type MessagePart = {
 	type?: unknown;
@@ -111,6 +124,7 @@ type RunNotificationPayload = {
 	running?: unknown;
 	instruction?: unknown;
 };
+
 
 export async function loadPiSessionMetadata(
 	session: PiboSession,
@@ -202,11 +216,11 @@ export async function buildTraceView(input: TraceBuildInput): Promise<PiboSessio
 			continue;
 		}
 		if (storedEvent.payload.type === "assistant_delta") {
-			mergeAssistantDeltaEvent(nodes, byId, storedEvent.payload, sessionStatus, storedEvent.createdAt);
+			mergeAssistantDeltaEvent(nodes, byId, storedEvent.payload, sessionStatus, storedEvent.createdAt, storedEvent.eventSequence);
 			continue;
 		}
 		if (storedEvent.payload.type === "thinking_delta") {
-			mergeThinkingDeltaEvent(nodes, byId, storedEvent.payload, sessionStatus, storedEvent.createdAt);
+			mergeThinkingDeltaEvent(nodes, byId, storedEvent.payload, sessionStatus, storedEvent.createdAt, storedEvent.eventSequence);
 			continue;
 		}
 		const node = traceNodeFromEvent(
@@ -216,6 +230,7 @@ export async function buildTraceView(input: TraceBuildInput): Promise<PiboSessio
 			linkedChildByToolCallId,
 			sessionStatus,
 			storedEvent.createdAt,
+			storedEvent.eventSequence,
 		);
 		if (!node) continue;
 		if (node.type === "agent.turn" && node.eventId) {
@@ -268,6 +283,7 @@ export async function buildTraceView(input: TraceBuildInput): Promise<PiboSessio
 
 	const nestedNodes = nestTraceNodes(nodes);
 	reconcileAsyncAgentRunStatuses(nestedNodes);
+	sortTraceNodes(nestedNodes);
 
 	return {
 		piboSessionId: input.session.id,
@@ -336,7 +352,7 @@ export function traceNodesFromEntries(piboSessionId: string, entries: SessionEnt
 		if (entry.type === "message") {
 			const role = messageRole(entry);
 			if (role === "user") {
-				nodes.push(createUserMessageNode(piboSessionId, entry, messageContent(entry)));
+				nodes.push(createUserMessageNode(piboSessionId, entry, messageContent(entry), index));
 			} else if (role === "assistant" || role === "toolResult") {
 				const turn = collectAssistantTurn(entries, index);
 				nodes.push(...createAssistantTurnNodes(piboSessionId, turn.entries));
@@ -352,32 +368,38 @@ export function traceNodesFromEntries(piboSessionId: string, entries: SessionEnt
 				status: "done",
 				startedAt: entry.timestamp,
 				output: { name: entry.name },
+				source: "transcript",
+				stableKey: `entry:${entry.id}`,
+				orderKey: transcriptTraceOrder(index, 0, "execution.command"),
 				children: [],
 			});
 		}
 	}
 	reconcileAsyncAgentRunStatuses(nodes);
+	sortTraceNodes(nodes);
 	return nodes;
 }
 
-function collectAssistantTurn(
-	entries: SessionEntry[],
-	startIndex: number,
-): { entries: MessageSessionEntry[]; nextIndex: number } {
-	const turnEntries: MessageSessionEntry[] = [];
+function collectAssistantTurn(entries: SessionEntry[], startIndex: number): { entries: IndexedMessageSessionEntry[]; nextIndex: number } {
+	const turnEntries: IndexedMessageSessionEntry[] = [];
 	let index = startIndex;
 	while (index < entries.length) {
 		const entry = entries[index];
 		if (entry.type !== "message") break;
 		const role = messageRole(entry);
 		if (role !== "assistant" && role !== "toolResult") break;
-		turnEntries.push(entry);
+		turnEntries.push({ entry, index });
 		index += 1;
 	}
 	return { entries: turnEntries, nextIndex: index };
 }
 
-function createUserMessageNode(piboSessionId: string, entry: MessageSessionEntry, content: unknown): PiboTraceNode {
+function createUserMessageNode(
+	piboSessionId: string,
+	entry: MessageSessionEntry,
+	content: unknown,
+	entryIndex: number,
+): PiboTraceNode {
 	const text = extractText(content);
 	const notification = parseRunNotificationText(text);
 	if (notification) {
@@ -386,6 +408,9 @@ function createUserMessageNode(piboSessionId: string, entry: MessageSessionEntry
 			entryId: entry.id,
 			piboSessionId,
 			startedAt: entry.timestamp,
+			orderKey: transcriptTraceOrder(entryIndex, 0, "yielded.run"),
+			source: "transcript",
+			stableKey: `entry:${entry.id}`,
 			notification,
 		});
 	}
@@ -399,20 +424,23 @@ function createUserMessageNode(piboSessionId: string, entry: MessageSessionEntry
 		startedAt: entry.timestamp,
 		summary: text,
 		output: text,
+		source: "transcript",
+		stableKey: `entry:${entry.id}`,
+		orderKey: transcriptTraceOrder(entryIndex, 0, "user.message"),
 		children: [],
 	};
 }
 
-function createAssistantTurnNodes(piboSessionId: string, entries: MessageSessionEntry[]): PiboTraceNode[] {
-	const firstAssistant = entries.find((entry) => messageRole(entry) === "assistant");
+function createAssistantTurnNodes(piboSessionId: string, entries: IndexedMessageSessionEntry[]): PiboTraceNode[] {
+	const firstAssistant = entries.find(({ entry }) => messageRole(entry) === "assistant");
 	if (!firstAssistant) return [];
 
 	const orderedNodes: PiboTraceNode[] = [];
 	const toolsByCallId = new Map<string, PiboTraceNode>();
 
-	for (const entry of entries) {
+	for (const { entry, index: entryIndex } of entries) {
 		if (messageRole(entry) === "toolResult") {
-			mergePersistedToolResult(toolsByCallId, orderedNodes, entry, piboSessionId);
+			mergePersistedToolResult(toolsByCallId, orderedNodes, entry, piboSessionId, entryIndex);
 			continue;
 		}
 
@@ -423,13 +451,15 @@ function createAssistantTurnNodes(piboSessionId: string, entries: MessageSession
 		for (const [index, part] of messageParts(entry).entries()) {
 			const typed = part as MessagePart;
 			if (typed.type === "thinking" && typeof typed.thinking === "string" && hasVisibleText(typed.thinking)) {
-				orderedNodes.push(createReasoningNode(piboSessionId, entry, index, typed.thinking));
+				orderedNodes.push(createReasoningNode(piboSessionId, entry, entryIndex, index, typed.thinking));
 			} else if (typed.type === "text" && typeof typed.text === "string" && typed.text !== "") {
 				if (!responseNode) {
 					responseNode = createAssistantMessageNode({
 						id: `entry:${entry.id}:response`,
 						piboSessionId,
 						entry,
+						entryIndex,
+						contentPartIndex: index,
 						status: responseStatus,
 						text: typed.text,
 						error: responseError,
@@ -444,7 +474,7 @@ function createAssistantTurnNodes(piboSessionId: string, entries: MessageSession
 					responseNode.completedAt = entry.timestamp;
 				}
 			} else if (typed.type === "toolCall" && typeof typed.id === "string" && typeof typed.name === "string") {
-				const toolNode = createToolCallNode(piboSessionId, entry, typed);
+				const toolNode = createToolCallNode(piboSessionId, entry, entryIndex, index, typed);
 				orderedNodes.push(toolNode);
 				toolsByCallId.set(typed.id, toolNode);
 			}
@@ -461,6 +491,7 @@ function createAssistantTurnNodes(piboSessionId: string, entries: MessageSession
 function createReasoningNode(
 	piboSessionId: string,
 	entry: MessageSessionEntry,
+	entryIndex: number,
 	index: number,
 	thinking: string,
 ): PiboTraceNode {
@@ -474,22 +505,35 @@ function createReasoningNode(
 		startedAt: entry.timestamp,
 		summary: thinking,
 		output: thinking,
+		source: "transcript",
+		stableKey: `entry:${entry.id}:thinking:${index}`,
+		orderKey: transcriptTraceOrder(entryIndex, index, "model.reasoning"),
 		children: [],
 	};
 }
 
-function createToolCallNode(piboSessionId: string, entry: MessageSessionEntry, part: MessagePart): PiboTraceNode {
+function createToolCallNode(
+	piboSessionId: string,
+	entry: MessageSessionEntry,
+	entryIndex: number,
+	contentPartIndex: number,
+	part: MessagePart,
+): PiboTraceNode {
 	const name = typeof part.name === "string" ? part.name : "Tool Call";
+	const toolCallId = typeof part.id === "string" ? part.id : undefined;
 	return {
 		id: `entry:${entry.id}:tool:${String(part.id)}`,
 		entryId: entry.id,
 		piboSessionId,
-		toolCallId: typeof part.id === "string" ? part.id : undefined,
+		toolCallId,
 		type: isSubagentToolName(name) ? "agent.delegation" : "tool.call",
 		title: name,
 		status: "done",
 		startedAt: entry.timestamp,
 		input: part.arguments ?? {},
+		source: "transcript",
+		stableKey: toolCallId ? `tool:${toolCallId}` : `entry:${entry.id}:tool:${contentPartIndex}`,
+		orderKey: transcriptTraceOrder(entryIndex, contentPartIndex, isSubagentToolName(name) ? "agent.delegation" : "tool.call"),
 		children: [],
 	};
 }
@@ -499,6 +543,7 @@ function mergePersistedToolResult(
 	childNodes: PiboTraceNode[],
 	entry: MessageSessionEntry,
 	piboSessionId: string,
+	entryIndex: number,
 ): void {
 	const message = entry.message as {
 		toolCallId?: unknown;
@@ -512,7 +557,7 @@ function mergePersistedToolResult(
 
 	let toolNode = toolsByCallId.get(toolCallId);
 	if (!toolNode) {
-		toolNode = createMissingToolResultNode(piboSessionId, entry, toolCallId);
+		toolNode = createMissingToolResultNode(piboSessionId, entry, entryIndex, toolCallId);
 		childNodes.push(toolNode);
 		toolsByCallId.set(toolCallId, toolNode);
 	}
@@ -526,6 +571,7 @@ function mergePersistedToolResult(
 function createMissingToolResultNode(
 	piboSessionId: string,
 	entry: MessageSessionEntry,
+	entryIndex: number,
 	toolCallId: string,
 ): PiboTraceNode {
 	const message = entry.message as { toolName?: unknown };
@@ -538,6 +584,9 @@ function createMissingToolResultNode(
 		title: typeof message.toolName === "string" ? message.toolName : "Tool Result",
 		status: "done",
 		startedAt: entry.timestamp,
+		source: "transcript",
+		stableKey: `tool:${toolCallId}`,
+		orderKey: transcriptTraceOrder(entryIndex, 0, "tool.result"),
 		children: [],
 	};
 }
@@ -551,6 +600,8 @@ function createAssistantMessageNode(input: {
 	id: string;
 	piboSessionId: string;
 	entry: MessageSessionEntry;
+	entryIndex: number;
+	contentPartIndex: number;
 	status: PiboTraceNodeStatus;
 	text: string;
 	error?: string;
@@ -570,6 +621,9 @@ function createAssistantMessageNode(input: {
 		summary: input.text,
 		output: input.text,
 		error: input.error,
+		source: "transcript",
+		stableKey: `entry:${input.entry.id}:response:${input.contentPartIndex}`,
+		orderKey: transcriptTraceOrder(input.entryIndex, input.contentPartIndex, "assistant.message"),
 		children: input.children ?? [],
 	};
 }
@@ -581,11 +635,21 @@ function traceNodeFromEvent(
 	linkedChildByToolCallId: Map<string, string>,
 	sessionStatus: PiboWebSessionStatus,
 	createdAt?: string,
+	eventSequence?: number,
 ): PiboTraceNode | undefined {
 	const eventId = "eventId" in event && typeof event.eventId === "string" ? event.eventId : undefined;
 	const id = `event:${event.type}:${eventId ?? cryptoSafeId(event)}`;
 	const turnParentId = eventId ? messageTurnNodeId(eventId) : undefined;
-	const base = { id, piboSessionId, eventId, startedAt: createdAt, children: [] as PiboTraceNode[] };
+	const base = {
+		id,
+		piboSessionId,
+		eventId,
+		startedAt: createdAt,
+		source: "event-log" as const,
+		stableKey: eventStableKey(event),
+		orderKey: eventTraceNodeOrder(eventSequence, event.type),
+		children: [] as PiboTraceNode[],
+	};
 
 	switch (event.type) {
 		case "message_queued": {
@@ -596,6 +660,9 @@ function traceNodeFromEvent(
 					piboSessionId,
 					eventId,
 					startedAt: createdAt,
+					source: "event-log",
+					stableKey: eventId ? `run-notification:${eventId}` : id,
+					orderKey: eventTraceNodeOrder(eventSequence, event.type),
 					notification,
 				});
 			}
@@ -620,6 +687,7 @@ function traceNodeFromEvent(
 				completedAt: event.type === "message_finished" ? createdAt : undefined,
 				summary: event.type === "message_started" ? event.text : undefined,
 				input: event.type === "message_started" ? { text: event.text, source: event.source } : undefined,
+				stableKey: eventId ? `turn:${eventId}` : base.stableKey,
 			};
 		case "thinking_finished":
 			if (!hasVisibleText(event.text)) return undefined;
@@ -632,6 +700,7 @@ function traceNodeFromEvent(
 				status: "done",
 				summary: event.text,
 				output: event.text,
+				stableKey: eventId ? `reasoning:${eventId}` : base.stableKey,
 			};
 		case "assistant_message":
 			return {
@@ -643,6 +712,7 @@ function traceNodeFromEvent(
 				status: "done",
 				summary: event.text,
 				output: event.text,
+				stableKey: eventId ? `assistant:${eventId}` : base.stableKey,
 			};
 			case "tool_call":
 			case "tool_execution_started":
@@ -679,6 +749,7 @@ function traceNodeFromEvent(
 				error:
 					event.type === "tool_execution_finished" && event.isError ? stringifyPreview(event.result) : undefined,
 				linkedPiboSessionId,
+				stableKey: `tool:${event.toolCallId}`,
 				children: [],
 			};
 		}
@@ -686,6 +757,7 @@ function traceNodeFromEvent(
 			return {
 				...base,
 				id: event.toolCallId ? `tool:${event.toolCallId}` : id,
+				eventId,
 				toolCallId: event.toolCallId,
 				type: "agent.delegation",
 				title: event.toolName,
@@ -693,6 +765,7 @@ function traceNodeFromEvent(
 				summary: event.subagentName,
 				input: { subagentName: event.subagentName, threadKey: event.threadKey },
 				linkedPiboSessionId: event.childPiboSessionId,
+				stableKey: event.toolCallId ? `tool:${event.toolCallId}` : `subagent:${event.childPiboSessionId}`,
 				children: [],
 			};
 		case "execution_result":
@@ -725,6 +798,7 @@ function mergeAssistantDeltaEvent(
 	event: Extract<PiboOutputEvent, { type: "assistant_delta" }>,
 	sessionStatus: PiboWebSessionStatus,
 	createdAt?: string,
+	eventSequence?: number,
 ): void {
 	if (event.text.length === 0) return;
 
@@ -749,6 +823,9 @@ function mergeAssistantDeltaEvent(
 		startedAt: createdAt,
 		summary: event.text,
 		output: event.text,
+		source: "event-log",
+		stableKey: event.eventId ? `assistant:${event.eventId}` : id,
+		orderKey: eventTraceNodeOrder(eventSequence, event.type),
 		children: [],
 	};
 	nodes.push(node);
@@ -769,6 +846,7 @@ function mergeThinkingDeltaEvent(
 	event: Extract<PiboOutputEvent, { type: "thinking_delta" }>,
 	sessionStatus: PiboWebSessionStatus,
 	createdAt?: string,
+	eventSequence?: number,
 ): void {
 	if (event.text.length === 0) return;
 
@@ -793,6 +871,9 @@ function mergeThinkingDeltaEvent(
 		startedAt: createdAt,
 		summary: event.text,
 		output: event.text,
+		source: "event-log",
+		stableKey: event.eventId ? `reasoning:${event.eventId}` : id,
+		orderKey: eventTraceNodeOrder(eventSequence, event.type),
 		children: [],
 	};
 	nodes.push(node);
@@ -865,6 +946,51 @@ function isOpenTranscriptEvent(event: PiboOutputEvent): boolean {
 	);
 }
 
+function eventTraceNodeOrder(eventSequence: number | undefined, type: PiboOutputEvent["type"]): PiboTraceOrderKey {
+	return eventTraceOrder(eventSequence, eventNodeKind(type));
+}
+
+function eventNodeKind(type: PiboOutputEvent["type"]): PiboTraceNodeType {
+	switch (type) {
+		case "message_queued":
+			return "user.message";
+		case "message_started":
+		case "message_finished":
+			return "agent.turn";
+		case "thinking_started":
+		case "thinking_delta":
+		case "thinking_finished":
+			return "model.reasoning";
+		case "tool_call":
+		case "tool_execution_started":
+		case "tool_execution_updated":
+		case "tool_execution_finished":
+		case "subagent_session":
+			return "tool.call";
+		case "assistant_delta":
+		case "assistant_message":
+			return "assistant.message";
+		case "execution_result":
+			return "execution.command";
+		case "session_error":
+			return "error";
+		default:
+			return "execution.command";
+	}
+}
+
+function eventStableKey(event: PiboOutputEvent): string {
+	const eventId = "eventId" in event && typeof event.eventId === "string" ? event.eventId : undefined;
+	if (event.type === "tool_call" || event.type === "tool_execution_started" || event.type === "tool_execution_updated" || event.type === "tool_execution_finished") {
+		return `tool:${event.toolCallId}`;
+	}
+	if (event.type === "subagent_session" && event.toolCallId) return `tool:${event.toolCallId}`;
+	if (eventId && (event.type === "message_started" || event.type === "message_finished")) return `turn:${eventId}`;
+	if (eventId && (event.type === "thinking_started" || event.type === "thinking_delta" || event.type === "thinking_finished")) return `reasoning:${eventId}`;
+	if (eventId && (event.type === "assistant_delta" || event.type === "assistant_message")) return `assistant:${eventId}`;
+	return `event:${event.type}:${eventId ?? cryptoSafeId(event)}`;
+}
+
 function messageTurnNodeId(eventId: string): string {
 	return `event:message:${eventId}`;
 }
@@ -881,6 +1007,17 @@ function mapTraceNodesById(nodes: PiboTraceNode[]): Map<string, PiboTraceNode> {
 	const byId = new Map<string, PiboTraceNode>();
 	for (const node of flattenTraceNodes(nodes)) byId.set(node.id, node);
 	return byId;
+}
+
+function sortTraceNodes(nodes: PiboTraceNode[]): void {
+	nodes.sort(compareTraceNodes);
+	for (const node of nodes) sortTraceNodes(node.children);
+}
+
+function compareTraceNodes(left: PiboTraceNode, right: PiboTraceNode): number {
+	const byOrder = compareTraceOrder(left.orderKey, right.orderKey);
+	if (byOrder !== 0) return byOrder;
+	return (left.startedAt ?? "").localeCompare(right.startedAt ?? "") || left.id.localeCompare(right.id);
 }
 
 function flattenTraceNodes(nodes: PiboTraceNode[]): PiboTraceNode[] {
@@ -902,7 +1039,9 @@ function nestTraceNodes(nodes: PiboTraceNode[]): PiboTraceNode[] {
 		nestedChildIds.add(node.id);
 	}
 
-	return [...byId.values()].filter((node) => !nestedChildIds.has(node.id));
+	const roots = [...byId.values()].filter((node) => !nestedChildIds.has(node.id));
+	sortTraceNodes(roots);
+	return roots;
 }
 
 function mergeToolEvent(target: PiboTraceNode, update: PiboTraceNode): void {
@@ -1003,6 +1142,9 @@ function createAsyncAgentRunNode(
 		output: run,
 		error: parent.error,
 		linkedPiboSessionId: delegation?.linkedPiboSessionId ?? parent.linkedPiboSessionId,
+		source: parent.source,
+		stableKey: runId ? `async-agent:${runId}` : `${parent.stableKey ?? parent.id}:async-agent`,
+		orderKey: childTraceOrder(parent.orderKey, "agent.async"),
 		children: [],
 	};
 }
@@ -1147,6 +1289,9 @@ function createRunNotificationNode(input: {
 	eventId?: string;
 	entryId?: string;
 	startedAt?: string;
+	source?: PiboTraceSource;
+	stableKey?: string;
+	orderKey?: PiboTraceOrderKey;
 	notification: RunNotificationPayload;
 }): PiboTraceNode {
 	const runs = runNotificationRuns(input.notification);
@@ -1165,6 +1310,9 @@ function createRunNotificationNode(input: {
 		startedAt: input.startedAt,
 		summary: runNotificationSummary(input.notification),
 		output: input.notification,
+		source: input.source,
+		stableKey: input.stableKey ?? input.id,
+		orderKey: input.orderKey,
 		children: [],
 	};
 }

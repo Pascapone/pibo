@@ -5,6 +5,7 @@ type ParsedOptions = {
 	json: boolean;
 	events: boolean;
 	runningOnly: boolean;
+	check: boolean;
 	limit?: string;
 	type?: string;
 	fields?: string[];
@@ -123,6 +124,7 @@ async function runDebugTrace(args: string[]): Promise<void> {
 		chat: resolveDebugStore("chat"),
 	}, {
 		runningOnly: options.runningOnly,
+		check: options.check,
 	});
 	if (options.json) console.log(formatJson(result));
 	else console.log(formatDebugTrace(result));
@@ -148,7 +150,7 @@ async function runDebugEvents(args: string[]): Promise<void> {
 }
 
 function parseOptions(args: string[]): ParsedOptions {
-	const parsed: ParsedOptions = { positionals: [], json: false, events: false, runningOnly: false };
+	const parsed: ParsedOptions = { positionals: [], json: false, events: false, runningOnly: false, check: false };
 	for (let index = 0; index < args.length; index += 1) {
 		const arg = args[index];
 		if (arg === "--json") {
@@ -161,6 +163,10 @@ function parseOptions(args: string[]): ParsedOptions {
 		}
 		if (arg === "--running-only") {
 			parsed.runningOnly = true;
+			continue;
+		}
+		if (arg === "--check") {
+			parsed.check = true;
 			continue;
 		}
 		if (arg === "--children") {
@@ -250,12 +256,14 @@ function printDebugTraceDiscovery(): void {
 	console.log(`pibo debug trace - rebuild one Chat Web trace view
 
 Usage:
-  pibo debug trace <pibo-session-id> [--running-only] [--json]
+  pibo debug trace <pibo-session-id> [--running-only] [--check] [--json]
 
 Output:
   Compact trace nodes from the same buildTraceView logic used by /api/chat/trace.
+  --check adds consistency diagnostics for ids, parents, ordering, and links.
 
 Next:
+  pibo debug trace ps_... --check
   pibo debug trace ps_... --running-only
 `);
 }

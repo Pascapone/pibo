@@ -133,6 +133,11 @@ test("pibo debug trace prints rebuilt Chat Web trace nodes", async () => {
 		const parsed = JSON.parse(json.stdout);
 		assert.equal(parsed.status, "running");
 		assert.equal(parsed.nodes.some((node) => node.status === "running" && node.title === "pibo_exec"), true);
+
+		const checked = await execFileAsync("node", [cliPath, "debug", "trace", "ps_running", "--check", "--json"], { cwd });
+		const checkedParsed = JSON.parse(checked.stdout);
+		assert.equal(typeof checkedParsed.checks.status, "string");
+		assert.ok(Array.isArray(checkedParsed.checks.issues));
 	} finally {
 		await rm(cwd, { recursive: true, force: true });
 	}

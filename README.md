@@ -205,10 +205,11 @@ npm run dev -- debug db schema sessions
 npm run dev -- debug db query sessions "select id, profile from pibo_sessions limit 5"
 npm run dev -- debug session /apps/chat/rooms/<roomId>/sessions/<piboSessionId>
 npm run dev -- debug trace <piboSessionId> --running-only
+npm run dev -- debug trace <piboSessionId> --check
 npm run dev -- debug events <piboSessionId> --type tool_execution_finished --fields toolName,toolCallId,result.details.status
 ```
 
-`pibo debug db query` opens known stores read-only, accepts only one read-only SQL statement, applies a default row limit when the query has no `limit`, and supports `--json` for machine-readable output. `pibo debug trace` rebuilds the same Chat Web trace view as `/api/chat/trace`, while `pibo debug events` extracts selected payload fields without dumping full event payloads.
+`pibo debug db query` opens known stores read-only, accepts only one read-only SQL statement, applies a default row limit when the query has no `limit`, and supports `--json` for machine-readable output. `pibo debug trace` rebuilds the same Chat Web trace view as `/api/chat/trace`; `--check` adds trace consistency diagnostics for ids, parents, stable order metadata, and source/stable-key coverage. `pibo debug events` extracts selected payload fields without dumping full event payloads.
 
 ## Web Auth
 

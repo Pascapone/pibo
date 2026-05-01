@@ -1490,7 +1490,7 @@ function createChatHtml(): string {
 			const actions = actionHtml.length ? '<div class="span-actions">' + actionHtml.join("") + '</div>' : "";
 
 			if (node.type === "user.message") {
-				return actions + '<div class="span-quote">"' + escapeText(node.output || node.summary || "") + '"</div>';
+				return actions + '<div class="span-quote">' + escapeText(node.output || node.summary || "") + '</div>';
 			}
 			if (node.type === "assistant.message") {
 				return actions + '<div class="span-section"><div class="span-section-title output">Structured Output</div>' + renderJson(node.output || node.summary || "") + '</div>';

@@ -126,6 +126,22 @@ test("chat read model keeps newest events when limiting session event history", 
 	readModel.close();
 });
 
+test("chat read model assigns stable per-session event sequence", () => {
+	const readModel = new ChatWebReadModel(":memory:");
+	const session = createTestSession();
+	readModel.upsertSession(session);
+
+	readModel.recordEvent({ type: "assistant_delta", piboSessionId: session.id, eventId: "turn-1", text: "a" }, session);
+	readModel.recordEvent({ type: "assistant_delta", piboSessionId: session.id, eventId: "turn-1", text: "b" }, session);
+	readModel.recordEvent({ type: "assistant_message", piboSessionId: session.id, eventId: "turn-1", text: "ab" }, session);
+
+	assert.deepEqual(
+		readModel.listEvents(session.id).map((event) => event.eventSequence),
+		[1, 2, 3],
+	);
+	readModel.close();
+});
+
 test("chat read model keeps sessions running after live thinking finishes", () => {
 	const readModel = new ChatWebReadModel(":memory:");
 	const session = createTestSession();
@@ -211,6 +227,35 @@ test("chat trace preserves assistant content part order", () => {
 	assert.equal(nodes[1].output, "then answer");
 	assert.equal(nodes[0].parentId, undefined);
 	assert.equal(nodes[1].parentId, undefined);
+});
+
+test("chat trace assigns stable order metadata to persisted nodes", () => {
+	const nodes = traceNodesFromEntries("chat:test", [
+		{
+			type: "message",
+			id: "assistant-1",
+			parentId: "user-1",
+			timestamp: "2026-04-29T08:00:00.000Z",
+			message: {
+				role: "assistant",
+				content: [
+					{ type: "thinking", thinking: "first reason" },
+					{ type: "toolCall", id: "tool-1", name: "read", arguments: { path: "README.md" } },
+					{ type: "text", text: "then answer" },
+				],
+				stopReason: "toolUse",
+			},
+		},
+	]);
+
+	assert.deepEqual(
+		nodes.map((node) => [node.type, node.source, node.stableKey, node.orderKey?.contentPartIndex]),
+		[
+			["model.reasoning", "transcript", "entry:assistant-1:thinking:0", 0],
+			["tool.call", "transcript", "tool:tool-1", 1],
+			["assistant.message", "transcript", "entry:assistant-1:response:2", 2],
+		],
+	);
 });
 
 test("chat trace skips empty assistant reasoning entries", () => {

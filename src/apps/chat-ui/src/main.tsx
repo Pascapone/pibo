@@ -1,54 +1,56 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { createRootRoute, createRoute, createRouter, RouterProvider } from "@tanstack/react-router";
+import { createRootRoute, createRoute, createRouter, RouterProvider, useRouterState } from "@tanstack/react-router";
 import { App, type ChatAppRoute } from "./App";
 import "./styles.css";
 
-function ChatRoute(route: ChatAppRoute) {
-	return function ChatRouteComponent() {
-		return <App route={route} />;
-	};
+function ChatRoot() {
+	const pathname = useRouterState({ select: (state) => state.location.pathname });
+	return <App route={chatRouteFromPath(pathname)} />;
 }
 
-const rootRoute = createRootRoute();
+function chatRouteFromPath(pathname: string): ChatAppRoute {
+	const path = pathname.startsWith("/apps/chat") ? pathname.slice("/apps/chat".length) || "/" : pathname;
+	const parts = path
+		.split("/")
+		.filter(Boolean)
+		.map((part) => decodeURIComponent(part));
+	if (parts[0] === "agents") return { area: "agents" };
+	if (parts[0] === "settings") return { area: "settings" };
+	if (parts[0] === "rooms" && parts[1] && parts[2] === "sessions" && parts[3]) {
+		return { area: "sessions", roomId: parts[1], piboSessionId: parts[3] };
+	}
+	if (parts[0] === "rooms" && parts[1]) return { area: "sessions", roomId: parts[1] };
+	if (parts[0] === "sessions" && parts[1]) return { area: "sessions", piboSessionId: parts[1] };
+	return { area: "sessions" };
+}
+
+const rootRoute = createRootRoute({
+	component: ChatRoot,
+});
 const indexRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/",
-	component: ChatRoute({ area: "sessions" }),
 });
 const sessionRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "sessions/$piboSessionId",
-	component: () => {
-		const { piboSessionId } = sessionRoute.useParams();
-		return <App route={{ area: "sessions", piboSessionId }} />;
-	},
 });
 const roomRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "rooms/$roomId",
-	component: () => {
-		const { roomId } = roomRoute.useParams();
-		return <App route={{ area: "sessions", roomId }} />;
-	},
 });
 const roomSessionRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "rooms/$roomId/sessions/$piboSessionId",
-	component: () => {
-		const { roomId, piboSessionId } = roomSessionRoute.useParams();
-		return <App route={{ area: "sessions", roomId, piboSessionId }} />;
-	},
 });
 const agentsRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "agents",
-	component: ChatRoute({ area: "agents" }),
 });
 const settingsRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "settings",
-	component: ChatRoute({ area: "settings" }),
 });
 const router = createRouter({
 	routeTree: rootRoute.addChildren([indexRoute, sessionRoute, roomRoute, roomSessionRoute, agentsRoute, settingsRoute]),

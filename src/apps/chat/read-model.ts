@@ -21,6 +21,7 @@ type SessionRow = {
 type EventRow = {
 	id: string;
 	pibo_session_id: string;
+	event_sequence: number | null;
 	event_id: string | null;
 	type: string;
 	created_at: string;
@@ -30,6 +31,7 @@ type EventRow = {
 export type ChatWebStoredEvent = {
 	id: string;
 	piboSessionId: string;
+	eventSequence?: number;
 	eventId?: string;
 	type: string;
 	createdAt: string;
@@ -77,6 +79,7 @@ export class ChatWebReadModel {
 			CREATE TABLE IF NOT EXISTS web_chat_events (
 				id TEXT PRIMARY KEY,
 				pibo_session_id TEXT NOT NULL,
+				event_sequence INTEGER,
 				event_id TEXT,
 				type TEXT NOT NULL,
 				created_at TEXT NOT NULL,
@@ -85,11 +88,14 @@ export class ChatWebReadModel {
 
 			CREATE INDEX IF NOT EXISTS idx_web_chat_events_session_created
 				ON web_chat_events(pibo_session_id, created_at, id);
+			CREATE INDEX IF NOT EXISTS idx_web_chat_events_session_sequence
+				ON web_chat_events(pibo_session_id, event_sequence, id);
 			CREATE INDEX IF NOT EXISTS idx_web_chat_events_event_id
 				ON web_chat_events(event_id);
 			CREATE INDEX IF NOT EXISTS idx_web_chat_sessions_parent
 				ON web_chat_sessions(parent_id);
 		`);
+		this.migrateEventSequence();
 		this.resetInterruptedSessions();
 	}
 
@@ -138,19 +144,20 @@ export class ChatWebReadModel {
 
 		const id = randomUUID();
 		const createdAt = new Date().toISOString();
+		const eventSequence = this.nextEventSequence(event.piboSessionId);
 		const eventId = "eventId" in event && typeof event.eventId === "string" ? event.eventId : undefined;
 		this.db
 			.prepare(
-				"INSERT INTO web_chat_events (id, pibo_session_id, event_id, type, created_at, payload_json) VALUES (?, ?, ?, ?, ?, ?)",
+				"INSERT INTO web_chat_events (id, pibo_session_id, event_sequence, event_id, type, created_at, payload_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
 			)
-			.run(id, event.piboSessionId, eventId ?? null, event.type, createdAt, JSON.stringify(event));
+			.run(id, event.piboSessionId, eventSequence, eventId ?? null, event.type, createdAt, JSON.stringify(event));
 		this.db
 			.prepare(
 				"UPDATE web_chat_sessions SET last_activity_at = ?, status = ?, updated_at = ? WHERE pibo_session_id = ?",
 			)
 			.run(createdAt, statusFromEvent(event), createdAt, event.piboSessionId);
 
-		return { id, piboSessionId: event.piboSessionId, eventId, type: event.type, createdAt, payload: event };
+		return { id, piboSessionId: event.piboSessionId, eventSequence, eventId, type: event.type, createdAt, payload: event };
 	}
 
 	listSessions(): ChatWebSessionIndexItem[] {
@@ -166,10 +173,10 @@ export class ChatWebReadModel {
 					SELECT * FROM (
 						SELECT rowid AS _rowid, * FROM web_chat_events
 						WHERE pibo_session_id = ?
-						ORDER BY rowid DESC
+						ORDER BY event_sequence DESC, rowid DESC
 						LIMIT ?
 					)
-					ORDER BY _rowid ASC
+					ORDER BY event_sequence ASC, _rowid ASC
 				`,
 			)
 			.all(piboSessionId, limit) as EventRow[];
@@ -202,6 +209,21 @@ export class ChatWebReadModel {
 				DROP TABLE IF EXISTS web_chat_sessions;
 			`);
 		}
+	}
+
+	private migrateEventSequence(): void {
+		const eventColumns = tableColumns(this.db, "web_chat_events");
+		if (!eventColumns.has("event_sequence")) {
+			this.db.exec("ALTER TABLE web_chat_events ADD COLUMN event_sequence INTEGER");
+		}
+		this.db.exec("UPDATE web_chat_events SET event_sequence = rowid WHERE event_sequence IS NULL");
+	}
+
+	private nextEventSequence(piboSessionId: string): number {
+		const row = this.db
+			.prepare("SELECT COALESCE(MAX(event_sequence), 0) + 1 AS next_sequence FROM web_chat_events WHERE pibo_session_id = ?")
+			.get(piboSessionId) as { next_sequence: number };
+		return row.next_sequence;
 	}
 
 	private resetInterruptedSessions(): void {
@@ -249,6 +271,7 @@ function eventFromRow(row: EventRow): ChatWebStoredEvent {
 	return {
 		id: row.id,
 		piboSessionId: row.pibo_session_id,
+		eventSequence: row.event_sequence ?? undefined,
 		eventId: row.event_id ?? undefined,
 		type: row.type,
 		createdAt: row.created_at,

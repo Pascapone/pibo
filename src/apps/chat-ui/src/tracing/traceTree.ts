@@ -1,3 +1,4 @@
+import { compareTraceOrder } from "../../../../shared/trace-order.js";
 import type { Span } from "../types";
 
 const shouldDisplaySpan = (span: Span): boolean => {
@@ -29,5 +30,11 @@ function displaySpansFor(span: Span): Span[] {
 }
 
 function sortByStartTime(spans: Span[]): Span[] {
-	return [...spans].sort((left, right) => left.startTime - right.startTime);
+	return [...spans].sort(compareSpans);
+}
+
+function compareSpans(left: Span, right: Span): number {
+	const byTraceOrder = compareTraceOrder(left.pibo?.traceOrder, right.pibo?.traceOrder);
+	if (byTraceOrder !== 0) return byTraceOrder;
+	return left.startTime - right.startTime || left.id.localeCompare(right.id);
 }

@@ -26,11 +26,12 @@ import {
 	X,
 } from "lucide-react";
 import { deleteCustomAgent, deleteRoom, deleteSession, getBootstrap, getTrace, patchCustomAgent, patchRoom, patchSession, postAction, postCustomAgent, postMessage, postRoom, postSession, signInWithGoogle, signOut, type SaveCustomAgentInput } from "./api";
-import type { AgentCatalog, BootstrapData, CustomAgent, CustomAgentSubagent, PiboRoom, PiboSessionTraceView, PiboTraceNode, PiboWebSessionNode } from "./types";
+import type { AgentCatalog, BootstrapData, CustomAgent, CustomAgentSubagent, PiboRoom, PiboSessionTraceView, PiboTraceNode, PiboTraceOrderKey, PiboWebSessionNode } from "./types";
 import { adaptTrace } from "./tracing/adapt";
 import { TraceTimeline } from "./tracing/TraceTimeline";
 import { JsonRenderer } from "./tracing/JsonRenderer";
 import { countRender } from "./renderMetrics";
+import { childTraceOrder, compareTraceOrder, liveTraceOrder } from "../../../shared/trace-order.js";
 
 type Area = "sessions" | "agents" | "settings";
 
@@ -837,7 +838,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 							) : null}
 						</div>
 					) : (
-						<div className="p-3 text-sm text-slate-400">Browser-local settings.</div>
+						<SettingsSidebar />
 					)}
 				</aside>
 
@@ -2160,6 +2161,23 @@ function AgentSidebarRow({
 	);
 }
 
+function SettingsSidebar() {
+	return (
+		<div className="p-2">
+			<div className="mb-4">
+				<div className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Settings</div>
+				<button
+					type="button"
+					className="w-full mb-1 border border-[#11a4d4] bg-[#11a4d4]/10 rounded-sm text-left p-2"
+				>
+					<span className="block text-sm truncate text-slate-200">General</span>
+					<span className="block text-[10px] font-mono truncate text-slate-500">browser-local</span>
+				</button>
+			</div>
+		</div>
+	);
+}
+
 function DesignerPanel({ title, children }: { title: string; children: ReactNode }) {
 	return (
 		<div className="border border-slate-700 bg-[#1a262b] rounded-sm p-4">
@@ -2294,31 +2312,33 @@ function SettingsView({
 		<div className="p-6 overflow-auto">
 			<h1 className="text-sm font-bold uppercase tracking-wider mb-4 flex items-center gap-2">
 				<Settings size={16} />
-				Settings
+				General
 			</h1>
-			<label className="flex items-center gap-2 text-sm">
-				<input
-					type="checkbox"
-					checked={showThinking}
-					onChange={(event) => {
-						setShowThinking(event.target.checked);
-						localStorage.setItem("pibo.chat.showThinking", String(event.target.checked));
-					}}
-				/>
-				Show thinking blocks
-			</label>
-			<label className="mt-3 flex items-center gap-2 text-sm">
-				<input
-					type="checkbox"
-					checked={expandThinking}
-					disabled={!showThinking}
-					onChange={(event) => {
-						setExpandThinking(event.target.checked);
-						localStorage.setItem("pibo.chat.expandThinking", String(event.target.checked));
-					}}
-				/>
-				Expand thinking blocks
-			</label>
+			<DesignerPanel title="General">
+				<label className="flex items-center gap-2 text-sm">
+					<input
+						type="checkbox"
+						checked={showThinking}
+						onChange={(event) => {
+							setShowThinking(event.target.checked);
+							localStorage.setItem("pibo.chat.showThinking", String(event.target.checked));
+						}}
+					/>
+					Show thinking blocks
+				</label>
+				<label className="flex items-center gap-2 text-sm">
+					<input
+						type="checkbox"
+						checked={expandThinking}
+						disabled={!showThinking}
+						onChange={(event) => {
+							setExpandThinking(event.target.checked);
+							localStorage.setItem("pibo.chat.expandThinking", String(event.target.checked));
+						}}
+					/>
+					Expand thinking blocks
+				</label>
+			</DesignerPanel>
 		</div>
 	);
 }
@@ -2326,7 +2346,12 @@ function SettingsView({
 type RawEvent = PiboSessionTraceView["rawEvents"][number];
 type CompactRawEvent = RawEvent & { count: number };
 
-type ChatStreamEvent =
+type ChatStreamEventMeta = {
+	streamFrameId?: string;
+	streamFrameIndex?: number;
+};
+
+type ChatStreamEvent = ChatStreamEventMeta & (
 	| { type: "ready"; piboSessionId: string }
 	| { type: "RUN_STARTED"; runId: string; input?: { text?: string; source?: string } }
 	| { type: "RUN_FINISHED"; runId: string }
@@ -2342,15 +2367,33 @@ type ChatStreamEvent =
 	| { type: "TOOL_CALL_RESULT"; toolCallId: string; result: unknown; isError: boolean }
 	| { type: "AGENT_DELEGATION"; toolCallId?: string; toolName: string; subagentName: string; childPiboSessionId: string; threadKey?: string }
 	| { type: "EXECUTION_RESULT"; runId?: string; action: string; result: unknown }
-	| { type: "RAW_EVENT"; event: unknown };
+	| { type: "RAW_EVENT"; event: unknown }
+);
 
 function chatStreamEvent(message: MessageEvent): ChatStreamEvent | undefined {
 	try {
 		const parsed = JSON.parse(message.data) as { type?: unknown };
-		return typeof parsed.type === "string" ? (parsed as ChatStreamEvent) : undefined;
+		if (typeof parsed.type !== "string") return undefined;
+		const streamFrameIndex = streamFrameIndexFromId(message.lastEventId);
+		return {
+			...(parsed as ChatStreamEvent),
+			...(message.lastEventId ? { streamFrameId: message.lastEventId } : {}),
+			...(streamFrameIndex === undefined ? {} : { streamFrameIndex }),
+		};
 	} catch {
 		return undefined;
 	}
+}
+
+function streamFrameIndexFromId(value: string): number | undefined {
+	const frame = value.split(":")[1];
+	if (frame === undefined) return undefined;
+	const parsed = Number(frame);
+	return Number.isInteger(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
+function liveOrder(event: ChatStreamEvent, nodeType: PiboTraceNode["type"]): PiboTraceOrderKey {
+	return liveTraceOrder(event.streamFrameIndex, nodeType);
 }
 
 function applyChatStreamEvents(view: PiboSessionTraceView, events: ChatStreamEvent[]): PiboSessionTraceView {
@@ -2360,6 +2403,9 @@ function applyChatStreamEvents(view: PiboSessionTraceView, events: ChatStreamEve
 
 function applyChatStreamEvent(view: PiboSessionTraceView, event: ChatStreamEvent): PiboSessionTraceView {
 	if (event.type === "ready") return view;
+	if (event.streamFrameId && view.rawEvents.some((rawEvent) => rawEvent.id === `stream:${event.streamFrameId}`)) {
+		return view;
+	}
 	const createdAt = new Date().toISOString();
 	let nodes = view.nodes;
 
@@ -2375,6 +2421,9 @@ function applyChatStreamEvent(view: PiboSessionTraceView, event: ChatStreamEvent
 				startedAt: createdAt,
 				summary: event.input?.text,
 				input: event.input,
+				source: "live",
+				stableKey: `turn:${event.runId}`,
+				orderKey: liveOrder(event, "agent.turn"),
 				children: [],
 			});
 			break;
@@ -2405,19 +2454,22 @@ function applyChatStreamEvent(view: PiboSessionTraceView, event: ChatStreamEvent
 				startedAt: createdAt,
 				error: event.message,
 				output: event.message,
+				source: "live",
+				stableKey: `error:${event.runId ?? createdAt}`,
+				orderKey: liveOrder(event, "error"),
 				children: [],
 			});
 			break;
 		}
 		case "TEXT_MESSAGE_START":
-			nodes = upsertTraceNode(nodes, assistantNode(event.messageId, view.piboSessionId, createdAt));
+			nodes = upsertTraceNode(nodes, assistantNode(event.messageId, view.piboSessionId, createdAt, liveOrder(event, "assistant.message")));
 			break;
 		case "TEXT_MESSAGE_CONTENT":
-			nodes = appendTextToNode(nodes, assistantNode(event.messageId, view.piboSessionId, createdAt), event.delta);
+			nodes = appendTextToNode(nodes, assistantNode(event.messageId, view.piboSessionId, createdAt, liveOrder(event, "assistant.message")), event.delta);
 			break;
 		case "TEXT_MESSAGE_END":
 			nodes = upsertTraceNode(nodes, {
-				...assistantNode(event.messageId, view.piboSessionId, createdAt),
+				...assistantNode(event.messageId, view.piboSessionId, createdAt, liveOrder(event, "assistant.message")),
 				status: "done",
 				completedAt: createdAt,
 				...(event.finalText === undefined ? {} : { summary: event.finalText, output: event.finalText }),
@@ -2429,14 +2481,14 @@ function applyChatStreamEvent(view: PiboSessionTraceView, event: ChatStreamEvent
 			}));
 			break;
 		case "REASONING_MESSAGE_START":
-			nodes = upsertTraceNode(nodes, reasoningNode(event.messageId, view.piboSessionId, createdAt));
+			nodes = upsertTraceNode(nodes, reasoningNode(event.messageId, view.piboSessionId, createdAt, liveOrder(event, "model.reasoning")));
 			break;
 		case "REASONING_MESSAGE_CONTENT":
-			nodes = appendTextToNode(nodes, reasoningNode(event.messageId, view.piboSessionId, createdAt), event.delta);
+			nodes = appendTextToNode(nodes, reasoningNode(event.messageId, view.piboSessionId, createdAt, liveOrder(event, "model.reasoning")), event.delta);
 			break;
 		case "REASONING_MESSAGE_END":
 			nodes = upsertTraceNode(nodes, {
-				...reasoningNode(event.messageId, view.piboSessionId, createdAt),
+				...reasoningNode(event.messageId, view.piboSessionId, createdAt, liveOrder(event, "model.reasoning")),
 				status: "done",
 				completedAt: createdAt,
 				...(event.finalText === undefined ? {} : { summary: event.finalText, output: event.finalText }),
@@ -2454,6 +2506,9 @@ function applyChatStreamEvent(view: PiboSessionTraceView, event: ChatStreamEvent
 				status: "running",
 				startedAt: createdAt,
 				input: event.args,
+				source: "live",
+				stableKey: `tool:${event.toolCallId}`,
+				orderKey: liveOrder(event, "tool.call"),
 				children: [],
 			});
 			break;
@@ -2495,6 +2550,9 @@ function applyChatStreamEvent(view: PiboSessionTraceView, event: ChatStreamEvent
 				summary: event.subagentName,
 				input: { subagentName: event.subagentName, threadKey: event.threadKey },
 				linkedPiboSessionId: event.childPiboSessionId,
+				source: "live",
+				stableKey: event.toolCallId ? `tool:${event.toolCallId}` : `subagent:${event.childPiboSessionId}`,
+				orderKey: liveOrder(event, "agent.delegation"),
 				children: [],
 			});
 			break;
@@ -2511,6 +2569,9 @@ function applyChatStreamEvent(view: PiboSessionTraceView, event: ChatStreamEvent
 				startedAt: createdAt,
 				input: { action: event.action },
 				output: event.result,
+				source: "live",
+				stableKey: `execution:${event.runId ?? event.action}`,
+				orderKey: liveOrder(event, "execution.command"),
 				children: [],
 			});
 			break;
@@ -2531,6 +2592,10 @@ function upsertTraceNode(nodes: PiboTraceNode[], update: PiboTraceNode): PiboTra
 		return updateTraceNode(nodes, update.id, (node) => ({
 			...node,
 			...update,
+			startedAt: node.startedAt ?? update.startedAt,
+			source: node.source ?? update.source,
+			stableKey: node.stableKey ?? update.stableKey,
+			orderKey: node.orderKey ?? update.orderKey,
 			children: update.children.length ? update.children : node.children,
 		}));
 	}
@@ -2538,10 +2603,10 @@ function upsertTraceNode(nodes: PiboTraceNode[], update: PiboTraceNode): PiboTra
 	if (parent) {
 		return updateTraceNode(nodes, parent.id, (node) => ({
 			...node,
-			children: [...(node.children ?? []), update],
+			children: sortTraceNodes([...(node.children ?? []), update]),
 		}));
 	}
-	return [...nodes, update];
+	return sortTraceNodes([...nodes, update]);
 }
 
 function updateTraceNode(
@@ -2591,6 +2656,18 @@ function appendTextToNode(nodes: PiboTraceNode[], node: PiboTraceNode, delta: st
 	}));
 }
 
+function sortTraceNodes(nodes: PiboTraceNode[]): PiboTraceNode[] {
+	return [...nodes]
+		.sort(compareTraceNodes)
+		.map((node) => (node.children.length ? { ...node, children: sortTraceNodes(node.children) } : node));
+}
+
+function compareTraceNodes(left: PiboTraceNode, right: PiboTraceNode): number {
+	const byTraceOrder = compareTraceOrder(left.orderKey, right.orderKey);
+	if (byTraceOrder !== 0) return byTraceOrder;
+	return (left.startedAt ?? "").localeCompare(right.startedAt ?? "") || left.id.localeCompare(right.id);
+}
+
 function findTraceNode(nodes: PiboTraceNode[], id: string): PiboTraceNode | undefined {
 	for (const node of nodes) {
 		if (node.id === id) return node;
@@ -2600,7 +2677,12 @@ function findTraceNode(nodes: PiboTraceNode[], id: string): PiboTraceNode | unde
 	return undefined;
 }
 
-function assistantNode(eventId: string, piboSessionId: string, startedAt: string): PiboTraceNode {
+function assistantNode(
+	eventId: string,
+	piboSessionId: string,
+	startedAt: string,
+	orderKey: PiboTraceOrderKey,
+): PiboTraceNode {
 	return {
 		id: assistantMessageNodeId(eventId),
 		parentId: messageTurnNodeId(eventId),
@@ -2612,11 +2694,19 @@ function assistantNode(eventId: string, piboSessionId: string, startedAt: string
 		startedAt,
 		summary: "",
 		output: "",
+		source: "live",
+		stableKey: `assistant:${eventId}`,
+		orderKey,
 		children: [],
 	};
 }
 
-function reasoningNode(eventId: string, piboSessionId: string, startedAt: string): PiboTraceNode {
+function reasoningNode(
+	eventId: string,
+	piboSessionId: string,
+	startedAt: string,
+	orderKey: PiboTraceOrderKey,
+): PiboTraceNode {
 	return {
 		id: thinkingNodeId(eventId),
 		parentId: messageTurnNodeId(eventId),
@@ -2628,6 +2718,9 @@ function reasoningNode(eventId: string, piboSessionId: string, startedAt: string
 		startedAt,
 		summary: "",
 		output: "",
+		source: "live",
+		stableKey: `reasoning:${eventId}`,
+		orderKey,
 		children: [],
 	};
 }
@@ -2636,7 +2729,7 @@ function appendRawStreamEvent(events: RawEvent[], event: ChatStreamEvent, create
 	return [
 		...events.slice(-999),
 		{
-			id: `stream:${createdAt}:${events.length}`,
+			id: event.streamFrameId ? `stream:${event.streamFrameId}` : `stream:${createdAt}:${events.length}`,
 			type: event.type,
 			createdAt,
 			payload: event,
@@ -2682,19 +2775,25 @@ function withAsyncAgentRunChild(parent: PiboTraceNode, piboSessionId: string, st
 
 function withTraceChild(parent: PiboTraceNode, child: PiboTraceNode): PiboTraceNode {
 	const existing = parent.children.find((candidate) => candidate.id === child.id);
-	if (!existing) return { ...parent, children: [...parent.children, child] };
+	if (!existing) return { ...parent, children: sortTraceNodes([...parent.children, child]) };
 	return {
 		...parent,
-		children: parent.children.map((candidate) =>
-			candidate.id === child.id
-				? {
-						...candidate,
-						...child,
-						runId: child.runId ?? candidate.runId,
-						linkedPiboSessionId: child.linkedPiboSessionId ?? candidate.linkedPiboSessionId,
-						children: candidate.children,
-					}
-				: candidate,
+		children: sortTraceNodes(
+			parent.children.map((candidate) =>
+				candidate.id === child.id
+					? {
+							...candidate,
+							...child,
+							runId: child.runId ?? candidate.runId,
+							linkedPiboSessionId: child.linkedPiboSessionId ?? candidate.linkedPiboSessionId,
+							startedAt: candidate.startedAt ?? child.startedAt,
+							source: candidate.source ?? child.source,
+							stableKey: candidate.stableKey ?? child.stableKey,
+							orderKey: candidate.orderKey ?? child.orderKey,
+							children: candidate.children,
+						}
+					: candidate,
+			),
 		),
 	};
 }
@@ -2741,6 +2840,9 @@ function createAsyncAgentRunNode(
 		output: run,
 		error: parent.error,
 		linkedPiboSessionId: delegation?.linkedPiboSessionId ?? parent.linkedPiboSessionId,
+		source: parent.source,
+		stableKey: runId ? `async-agent:${runId}` : `${parent.stableKey ?? parent.id}:async-agent`,
+		orderKey: childTraceOrder(parent.orderKey, "agent.async"),
 		children: [],
 	};
 }

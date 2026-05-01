@@ -316,7 +316,7 @@ const SpanContent = memo(function SpanContent({ span }: { span: Span }) {
 			<div className="flex flex-col">
 				{errorBanner}
 				<div className="p-4 font-mono text-sm text-slate-300 whitespace-pre-wrap">
-					"{typeof content === "string" ? content : JSON.stringify(content)}"
+					{typeof content === "string" ? content : JSON.stringify(content)}
 				</div>
 			</div>
 		);

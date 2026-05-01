@@ -67,8 +67,9 @@ This specification does not define internal runtime event contracts.
 - **REQ-029**: `pibo debug session` MUST warn when a canonical Chat URL room id does not match the selected Pibo Session's `metadata.chatRoomId`.
 - **REQ-030**: `pibo debug trace <pibo-session-id>` MUST rebuild the Chat Web trace view using the same reconstruction logic as `/api/chat/trace`.
 - **REQ-031**: `pibo debug trace --running-only` MUST filter output to trace nodes whose status is `running`.
-- **REQ-032**: `pibo debug events <pibo-session-id>` MUST inspect compact Chat Web event rows and MUST support selecting event types and payload field paths.
-- **REQ-033**: `pibo debug events --fields` MUST extract only the requested payload fields and MUST NOT dump the complete stored payload by default.
+- **REQ-032**: `pibo debug trace --check` MUST report trace consistency diagnostics for duplicate ids, missing parents, missing source/stable-key/order metadata, and stable-order regressions.
+- **REQ-033**: `pibo debug events <pibo-session-id>` MUST inspect compact Chat Web event rows and MUST support selecting event types and payload field paths.
+- **REQ-034**: `pibo debug events --fields` MUST extract only the requested payload fields and MUST NOT dump the complete stored payload by default.
 - **CON-001**: The CLI is agent-facing; avoid large all-in-one help text.
 - **CON-002**: Optional external tools and MCP servers are configured on demand and are not bundled into the core runtime.
 - **CON-003**: The Debug CLI is local operator tooling. It MUST NOT become a profile tool or expose runtime capabilities to agents.
@@ -158,7 +159,7 @@ type CliToolEntry = {
 | `pibo debug db tables <store>` | List table names for one store |
 | `pibo debug db query <store> <sql>` | Run one bounded read-only SQL query |
 | `pibo debug session <url-or-pibo-session-id>` | Summarize one Pibo Session and Chat Web read-model state |
-| `pibo debug trace <pibo-session-id>` | Rebuild one Chat Web trace view |
+| `pibo debug trace <pibo-session-id>` | Rebuild one Chat Web trace view; `--check` adds consistency diagnostics |
 | `pibo debug events <pibo-session-id>` | Inspect compact event headers and selected payload fields |
 
 ## 5. Acceptance Criteria
@@ -174,7 +175,8 @@ type CliToolEntry = {
 - **AC-009**: Given `pibo debug db query sessions "select id from pibo_sessions"`, When executed, Then it returns bounded rows from the read-only sessions store.
 - **AC-010**: Given a Chat URL whose room id differs from session metadata, When `pibo debug session <url> --json` runs, Then the JSON output contains a mismatch warning.
 - **AC-011**: Given a Chat Web session with running trace nodes, When `pibo debug trace <id> --running-only` runs, Then output includes only running trace nodes.
-- **AC-012**: Given stored Chat Web events, When `pibo debug events <id> --type tool_execution_finished --fields toolName,toolCallId,result.details.status` runs, Then output includes those fields and omits full payload dumps.
+- **AC-012**: Given a Chat Web session, When `pibo debug trace <id> --check --json` runs, Then the JSON output contains a `checks` object with a status and issue list.
+- **AC-013**: Given stored Chat Web events, When `pibo debug events <id> --type tool_execution_finished --fields toolName,toolCallId,result.details.status` runs, Then output includes those fields and omits full payload dumps.
 
 ## 6. Test Automation Strategy
 
@@ -182,7 +184,7 @@ type CliToolEntry = {
 - **Frameworks**: Node.js built-in test runner.
 - **Primary Command**: `npm test`.
 - **Focused Commands**: `node --test test/mcp-cli.test.mjs`, `node --test test/tools-cli.test.mjs`, `node --test test/config.test.mjs`, `node --test test/debug-cli.test.mjs`.
-- **Manual Smoke Checks**: `npm run dev -- config keys`, `npm run dev -- tools list`, `npm run dev -- mcp`, `npm run dev -- debug trace ps_... --running-only`.
+- **Manual Smoke Checks**: `npm run dev -- config keys`, `npm run dev -- tools list`, `npm run dev -- mcp`, `npm run dev -- debug trace ps_... --running-only`, `npm run dev -- debug trace ps_... --check`.
 
 ## 7. Rationale & Context
 
@@ -227,6 +229,7 @@ pibo debug db
 pibo debug db schema sessions
 pibo debug session /apps/chat/rooms/<room-id>/sessions/<pibo-session-id>
 pibo debug trace <pibo-session-id> --running-only
+pibo debug trace <pibo-session-id> --check
 pibo debug events <pibo-session-id> --type tool_execution_finished --fields toolName,toolCallId,result.details.status
 ```
 
