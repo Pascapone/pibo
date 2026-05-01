@@ -1,5 +1,5 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { ChevronsDown, ChevronsUp, GitBranch, ListTree, MessageSquarePlus, RefreshCw, RotateCcw } from "lucide-react";
+import { ChevronDown, ChevronsDown, ChevronsUp, GitBranch, ListTree, MessageSquarePlus, RefreshCw, RotateCcw } from "lucide-react";
 import type { Span, Trace } from "../types";
 import { countRender } from "../renderMetrics";
 import { SpanNode, type SpanExpansionDepth } from "./SpanNode";
@@ -38,6 +38,7 @@ export function TraceTimeline({
 	const [expansionDepth, setExpansionDepth] = useState<SpanExpansionDepth>(DEFAULT_EXPANSION_DEPTH);
 	const [expansionSignal, setExpansionSignal] = useState(0);
 	const [levelInput, setLevelInput] = useState(String(DEFAULT_EXPANSION_DEPTH));
+	const [showJumpToBottom, setShowJumpToBottom] = useState(false);
 
 	const spanTree = useMemo(() => {
 		if (!trace?.spans) return [];
@@ -65,17 +66,33 @@ export function TraceTimeline({
 	const updateBottomLock = useCallback(() => {
 		const element = scrollRef.current;
 		if (!element) return;
-		bottomLockedRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 48;
+		const distanceFromBottom = element.scrollHeight - element.scrollTop - element.clientHeight;
+		bottomLockedRef.current = distanceFromBottom < 48;
+		setShowJumpToBottom(distanceFromBottom > 180);
 	}, []);
+
+	const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
+		const element = scrollRef.current;
+		if (!element) return;
+		bottomLockedRef.current = true;
+		element.scrollTo({ top: element.scrollHeight, behavior });
+		setShowJumpToBottom(false);
+	}, []);
+
+	useLayoutEffect(() => {
+		bottomLockedRef.current = true;
+		const frame = requestAnimationFrame(() => scrollToBottom("auto"));
+		return () => cancelAnimationFrame(frame);
+	}, [scrollToBottom, trace?.id]);
 
 	useLayoutEffect(() => {
 		if (!isStreaming || !bottomLockedRef.current) return;
 		const frame = requestAnimationFrame(() => {
 			const element = scrollRef.current;
-			if (element && bottomLockedRef.current) element.scrollTop = element.scrollHeight;
+			if (element && bottomLockedRef.current) scrollToBottom("auto");
 		});
 		return () => cancelAnimationFrame(frame);
-	}, [isStreaming, trace?.spans]);
+	}, [isStreaming, scrollToBottom, trace?.spans]);
 
 	if (!trace) {
 		return (
@@ -189,6 +206,17 @@ export function TraceTimeline({
 					<EmptyTraceState />
 				)}
 			</div>
+			{showJumpToBottom ? (
+				<button
+					type="button"
+					onClick={() => scrollToBottom()}
+					title="Scroll to latest"
+					aria-label="Scroll to latest"
+					className="absolute right-4 bottom-4 z-30 inline-flex h-9 w-9 items-center justify-center rounded-sm border border-[#11a4d4] bg-[#151f24]/95 text-[#11a4d4] shadow-lg shadow-black/30 transition-colors hover:bg-[#11a4d4] hover:text-white"
+				>
+					<ChevronDown size={18} />
+				</button>
+			) : null}
 		</section>
 	);
 }

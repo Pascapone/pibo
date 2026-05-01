@@ -546,19 +546,17 @@ function ToolSignature({ name, args }: { name: string; args: Record<string, unkn
 	return (
 		<code className="font-mono text-xs text-green-400">
 			<span className="text-purple-400">def</span> <span className="text-yellow-300">{name}</span>
-			{Object.keys(args).length > 0 ? (
-				<span>
-					(
-					{Object.entries(args).map(([key, value], index) => (
-						<span key={key}>
-							{index > 0 ? ", " : null}
-							<span className="text-blue-400">{key}</span>=
-							<span className="text-green-300">{typeof value === "string" ? `'${value.slice(0, 50)}${value.length > 50 ? "..." : ""}'` : stringify(value).slice(0, 50)}</span>
-						</span>
-					))}
-					)
-				</span>
-			) : null}
+			<span>
+				(
+				{Object.entries(args).map(([key, value], index) => (
+					<span key={key}>
+						{index > 0 ? ", " : null}
+						<span className="text-blue-400">{key}</span>=
+						<span className="text-green-300">{typeof value === "string" ? `'${value.slice(0, 50)}${value.length > 50 ? "..." : ""}'` : stringify(value).slice(0, 50)}</span>
+					</span>
+				))}
+				)
+			</span>
 		</code>
 	);
 }

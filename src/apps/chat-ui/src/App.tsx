@@ -40,6 +40,13 @@ type LoadBootstrapOptions = {
 	selectSession?: boolean;
 };
 
+const LAST_SELECTION_STORAGE_KEY = "pibo.chat.lastSelection";
+
+type StoredSelection = {
+	roomId?: string;
+	piboSessionId?: string;
+};
+
 export function App() {
 	countRender("App");
 	const [bootstrap, setBootstrap] = useState<BootstrapData | null>(null);
@@ -153,8 +160,35 @@ export function App() {
 	}, []);
 
 	useEffect(() => {
-		loadBootstrap().catch((caught) => setError(caught instanceof Error ? caught.message : String(caught)));
+		const stored = readStoredSelection();
+		loadBootstrap(stored.piboSessionId, showArchivedRef.current, stored.roomId).catch((caught) => {
+			if (stored.piboSessionId && stored.roomId) {
+				loadBootstrap(stored.piboSessionId, showArchivedRef.current).catch(() => {
+					clearStoredSelection();
+					loadBootstrap().catch((fallbackCaught) =>
+						setError(fallbackCaught instanceof Error ? fallbackCaught.message : String(fallbackCaught)),
+					);
+				});
+				return;
+			}
+			if (!stored.piboSessionId && !stored.roomId) {
+				setError(caught instanceof Error ? caught.message : String(caught));
+				return;
+			}
+			clearStoredSelection();
+			loadBootstrap().catch((fallbackCaught) =>
+				setError(fallbackCaught instanceof Error ? fallbackCaught.message : String(fallbackCaught)),
+			);
+		});
 	}, [loadBootstrap]);
+
+	useEffect(() => {
+		if (!selectedRoomId && !selectedPiboSessionId) return;
+		writeStoredSelection({
+			roomId: selectedRoomId ?? undefined,
+			piboSessionId: selectedPiboSessionId ?? undefined,
+		});
+	}, [selectedPiboSessionId, selectedRoomId]);
 
 	useEffect(() => {
 		if (!selectedPiboSessionId || area !== "sessions") return;
@@ -1713,6 +1747,37 @@ function compactRawEvents(events: RawEvent[]): CompactRawEvent[] {
 
 function profileExists(profiles: BootstrapData["agents"], name: string): boolean {
 	return profiles.some((profile) => profile.name === name || profile.aliases.includes(name));
+}
+
+function readStoredSelection(): StoredSelection {
+	try {
+		const raw = localStorage.getItem(LAST_SELECTION_STORAGE_KEY);
+		if (!raw) return {};
+		const value = JSON.parse(raw);
+		if (!isRecord(value)) return {};
+		return {
+			roomId: typeof value.roomId === "string" && value.roomId ? value.roomId : undefined,
+			piboSessionId: typeof value.piboSessionId === "string" && value.piboSessionId ? value.piboSessionId : undefined,
+		};
+	} catch {
+		return {};
+	}
+}
+
+function writeStoredSelection(selection: StoredSelection): void {
+	try {
+		localStorage.setItem(LAST_SELECTION_STORAGE_KEY, JSON.stringify(selection));
+	} catch {
+		// Browser storage can be unavailable in private or locked-down contexts.
+	}
+}
+
+function clearStoredSelection(): void {
+	try {
+		localStorage.removeItem(LAST_SELECTION_STORAGE_KEY);
+	} catch {
+		// Browser storage can be unavailable in private or locked-down contexts.
+	}
 }
 
 function canMergeRawDelta(left: RawEvent, right: RawEvent): boolean {
