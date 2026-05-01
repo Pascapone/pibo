@@ -21,7 +21,7 @@ if [ ! -x "$python_cmd" ]; then
   python_cmd=$(command -v python3 || command -v python || printf '%s' "$python_cmd")
 fi
 
-session=default
+session=\${PIBO_BROWSER_USE_SESSION:-default}
 explicit_profile=0
 fresh_profile=0
 starts_browser=0

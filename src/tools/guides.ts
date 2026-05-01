@@ -113,7 +113,31 @@ browser-use close --all
 
 ## Authenticated Browsing
 
-For the Pibo Chat Web App, prefer the existing authenticated session and inspect it before navigating:
+For the Pibo Chat Web App, prefer an isolated authenticated lease when multiple agents may use the browser at the same time:
+
+\`\`\`bash
+eval "$(pibo tools browser-use lease acquire --app pibo-chat --owner "$USER")"
+browser-use state
+\`\`\`
+
+The lease exports \`BROWSER_USE_HOME\`, \`PIBO_BROWSER_USE_SESSION\`, \`PIBO_BROWSER_USE_CHROME_USER_DATA_DIR\`, and \`PIBO_BROWSER_USE_DEFAULT_PROFILE\`. The Pibo browser-use wrapper uses \`PIBO_BROWSER_USE_SESSION\` as the default session, so later commands can omit \`--session\` in that shell.
+
+Before acquiring leases, prepare one authenticated template profile:
+
+\`\`\`bash
+eval "$(pibo tools browser-use auth-template env)"
+browser-use --headed open http://4788.192.168.0.204.sslip.io/apps/chat
+\`\`\`
+
+Sign in once in that template browser, then close it before agents acquire leases. Inspect and clean up leases with:
+
+\`\`\`bash
+pibo tools browser-use lease list
+pibo tools browser-use lease release <lease-id>
+pibo tools browser-use lease reap-stale
+\`\`\`
+
+If a shared legacy session is already available, inspect it before navigating:
 
 \`\`\`bash
 browser-use --session pibo-auth state

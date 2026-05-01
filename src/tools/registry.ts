@@ -41,6 +41,7 @@ const REGISTRY: CliToolEntry[] = [
       'Pinned to browser-use 0.12.6 so the CLI surface matches the bundled guides.',
       'The tool uses BROWSER_USE_HOME under the pibo tool runtime directory.',
       'The pibo tool environment wraps browser-use so new browser sessions default to Pibo-managed persistent PIBo Chrome via CDP; pass --fresh-profile for a temporary profile.',
+      'Use pibo tools browser-use lease acquire for isolated authenticated browser slots when multiple agents need Chat Web App access.',
       'Guides are available through pibo tools guide and are not loaded into pibo profiles automatically.',
     ],
   },

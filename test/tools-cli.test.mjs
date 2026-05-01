@@ -39,6 +39,8 @@ test("pibo tools exposes browser-use guides outside the profile skill system", a
 		assert.match(guide.stdout, /npm run --silent dev -- tools env browser-use/);
 		assert.match(guide.stdout, /once per persistent shell/);
 		assert.match(guide.stdout, /reuse that shell/);
+		assert.match(guide.stdout, /pibo tools browser-use lease acquire/);
+		assert.match(guide.stdout, /PIBO_BROWSER_USE_SESSION/);
 		assert.match(guide.stdout, /timeout 30s/);
 		assert.match(guide.stdout, /Do not issue parallel/);
 		assert.match(guide.stdout, /get value <index>/);
@@ -77,6 +79,7 @@ test("pibo tools env wraps browser-use with the PIBo default profile", async () 
 		const mode = (await stat(wrapperPath)).mode & 0o777;
 		assert.match(wrapper, /--fresh-profile/);
 		assert.match(wrapper, /PIBO_BROWSER_USE_DEFAULT_PROFILE/);
+		assert.match(wrapper, /PIBO_BROWSER_USE_SESSION:-default/);
 		assert.match(wrapper, /ensure_persistent_chrome/);
 		assert.match(wrapper, /--cdp-url "\$cdp_url"/);
 		assert.equal(mode & 0o111, 0o111);
@@ -115,6 +118,7 @@ test("pibo tools env wraps browser-use with the PIBo default profile", async () 
 		assert.match(await readFile(fakeChromeArgsPath, "utf8"), new RegExp(`--user-data-dir=${chromeUserDataDir}`));
 		assert.match(await readFile(fakeChromeArgsPath, "utf8"), /--headless=new/);
 
+		await rm(fakeChromeArgsPath, { force: true });
 		const headedProfile = await execFileAsync(wrapperPath, ["--headed", "--session", "headed", "open", "https://example.test"], {
 			cwd,
 			env: {
@@ -126,6 +130,14 @@ test("pibo tools env wraps browser-use with the PIBo default profile", async () 
 			},
 		});
 		assert.match(headedProfile.stdout, /--cdp-url\nhttp:\/\/127\.0\.0\.1:\d+\n--headed\n--session\nheaded\nopen\nhttps:\/\/example\.test/);
+		for (let attempt = 0; attempt < 20; attempt += 1) {
+			try {
+				await stat(fakeChromeArgsPath);
+				break;
+			} catch {
+				await new Promise((resolve) => setTimeout(resolve, 25));
+			}
+		}
 		assert.doesNotMatch(await readFile(fakeChromeArgsPath, "utf8"), /--headless=new/);
 
 		const freshProfile = await execFileAsync(wrapperPath, ["--fresh-profile", "open", "https://example.test"], {
@@ -141,6 +153,67 @@ test("pibo tools env wraps browser-use with the PIBo default profile", async () 
 		});
 		assert.doesNotMatch(explicitProfile.stderr, /starting new session/);
 		assert.match(explicitProfile.stdout, /--profile\nDefault\nopen\nhttps:\/\/example\.test/);
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test("pibo tools browser-use manages isolated authenticated leases", async () => {
+	const cwd = await mkdtemp(join(tmpdir(), "pibo-tools-browser-use-leases-"));
+	try {
+		const env = { ...process.env, PIBO_HOME: join(cwd, "pibo-home") };
+		const templateDir = join(cwd, "auth-template");
+		await mkdir(templateDir, { recursive: true });
+		await writeFile(join(templateDir, "Cookies"), "auth-cookie");
+		await writeFile(join(templateDir, "DevToolsActivePort"), "do-not-copy");
+
+		const discovery = await execFileAsync("node", [cliPath, "tools", "browser-use"], { cwd, env });
+		assert.match(discovery.stdout, /pibo tools browser-use - browser-use helpers/);
+		assert.match(discovery.stdout, /lease acquire/);
+
+		const templateEnv = await execFileAsync("node", [cliPath, "tools", "browser-use", "auth-template", "env"], { cwd, env });
+		assert.match(templateEnv.stdout, /PIBO_BROWSER_USE_SESSION='pibo-auth-template'/);
+		assert.match(templateEnv.stdout, /PIBO_BROWSER_USE_CHROME_USER_DATA_DIR=/);
+
+		const acquired = await execFileAsync("node", [
+			cliPath,
+			"tools",
+			"browser-use",
+			"lease",
+			"acquire",
+			"--app",
+			"pibo-chat",
+			"--owner",
+			"agent-a",
+			"--template-dir",
+			templateDir,
+			"--ttl-minutes",
+			"30",
+		], { cwd, env });
+		assert.match(acquired.stdout, /PIBO_BROWSER_USE_LEASE_ID='pibo-chat-slot-001'/);
+		assert.match(acquired.stdout, /PIBO_BROWSER_USE_SESSION='pibo-auth-pibo-chat-slot-001'/);
+		assert.match(acquired.stdout, /PIBO_BROWSER_USE_CHROME_USER_DATA_DIR=/);
+
+		const slotDirMatch = acquired.stdout.match(/PIBO_BROWSER_USE_CHROME_USER_DATA_DIR='([^']+)'/);
+		assert.ok(slotDirMatch);
+		const slotDir = slotDirMatch[1];
+		assert.equal(await readFile(join(slotDir, "Cookies"), "utf8"), "auth-cookie");
+		await assert.rejects(readFile(join(slotDir, "DevToolsActivePort"), "utf8"), /ENOENT/);
+
+		const listed = await execFileAsync("node", [cliPath, "tools", "browser-use", "lease", "list"], { cwd, env });
+		assert.match(listed.stdout, /pibo-chat-slot-001\tactive\tagent-a\tpibo-auth-pibo-chat-slot-001/);
+
+		const released = await execFileAsync("node", [
+			cliPath,
+			"tools",
+			"browser-use",
+			"lease",
+			"release",
+			"pibo-chat-slot-001",
+			"--delete-profile",
+		], { cwd, env });
+		assert.match(released.stdout, /Released pibo-chat-slot-001/);
+		await assert.rejects(readFile(join(slotDir, "Cookies"), "utf8"), /ENOENT/);
 	} finally {
 		await rm(cwd, { recursive: true, force: true });
 	}
