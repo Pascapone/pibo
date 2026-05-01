@@ -10,6 +10,7 @@ export default defineConfig({
 	root,
 	base: "/apps/chat/",
 	resolve: {
+		preserveSymlinks: true,
 		tsconfigPaths: true,
 	},
 	plugins: [tailwindcss(), react()],

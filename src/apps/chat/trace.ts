@@ -13,6 +13,7 @@ export type PiboWebSessionNode = {
 	piSessionId: string;
 	parentId?: string;
 	profile: string;
+	subagentName?: string;
 	title: string;
 	subtitle?: string;
 	archived?: boolean;
@@ -168,6 +169,7 @@ export async function buildSessionNodes(
 			piSessionId: session.piSessionId,
 			parentId: session.parentId,
 			profile: session.profile,
+			subagentName: stringValue(session.metadata?.subagentName),
 			title: createSessionTitle(session, metadata),
 			subtitle: session.id,
 			archived: isChatWebSessionArchived(session),

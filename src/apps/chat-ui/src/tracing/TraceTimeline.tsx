@@ -1,5 +1,6 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { ChevronDown, ChevronsDown, ChevronsUp, GitBranch, ListTree, MessageSquarePlus, RefreshCw, RotateCcw } from "lucide-react";
+import { Breadcrumbs } from "@components-pasko/breadcrumbs";
+import { ChevronDown, ChevronRight, ChevronsDown, ChevronsUp, GitBranch, ListTree, MessageSquarePlus, RefreshCw, RotateCcw } from "lucide-react";
 import type { Span, Trace } from "../types";
 import { countRender } from "../renderMetrics";
 import { SpanNode, type SpanExpansionDepth } from "./SpanNode";
@@ -11,6 +12,7 @@ type TraceTimelineProps = {
 	showThinking: boolean;
 	expandThinking: boolean;
 	sessionAgentProfile?: string;
+	sessionBreadcrumbs?: readonly SessionBreadcrumbItem[];
 	agentProfiles?: readonly AgentProfileOption[];
 	selectedAgentProfile?: string;
 	createSessionDisabled?: boolean;
@@ -25,6 +27,11 @@ type AgentProfileOption = {
 	description?: string;
 };
 
+export type SessionBreadcrumbItem = {
+	piboSessionId: string;
+	label: string;
+};
+
 const timelineContentStyle = {
 	"--trace-readable-width": "min(100%, clamp(36rem, 58vw, 64rem))",
 } as CSSProperties;
@@ -37,6 +44,7 @@ export function TraceTimeline({
 	showThinking,
 	expandThinking,
 	sessionAgentProfile,
+	sessionBreadcrumbs = [],
 	agentProfiles = [],
 	selectedAgentProfile,
 	createSessionDisabled = false,
@@ -112,6 +120,7 @@ export function TraceTimeline({
 						<GitBranch size={18} className="text-[#11a4d4]" />
 						Execution Flow
 					</h2>
+					<SessionBreadcrumbs items={sessionBreadcrumbs} onOpenSession={onOpenSession} />
 					<AgentSessionControls
 						agentProfiles={agentProfiles}
 						selectedAgentProfile={selectedAgentProfile}
@@ -140,9 +149,9 @@ export function TraceTimeline({
 
 	return (
 		<section className="min-w-0 flex-1 flex flex-col bg-[#0c1214] relative overflow-hidden">
-			<div className="min-h-14 px-6 py-2 border-b border-slate-800 bg-[#1a262b]/80 flex items-center justify-between gap-3 sticky top-0 z-20">
-				<div className="flex min-w-0 items-center gap-4">
-					<GitBranch size={18} className="text-[#11a4d4]" aria-label="Execution flow" />
+			<div className="min-h-14 px-6 py-1.5 border-b border-slate-800 bg-[#1a262b]/80 flex items-center justify-between gap-3 sticky top-0 z-20">
+				<div className="grid min-w-0 grid-cols-[18px_minmax(0,1fr)] items-start gap-x-4 gap-y-1">
+					<GitBranch size={18} className="mt-0.5 text-[#11a4d4]" aria-label="Execution flow" />
 					<div className="flex min-w-0 flex-wrap items-center gap-2">
 						{isLoading ? <Badge color="cyan">Loading</Badge> : null}
 						{stats.active > 0 ? <Badge color="cyan">{stats.active} Active</Badge> : null}
@@ -150,8 +159,11 @@ export function TraceTimeline({
 						{sessionAgentProfile ? <Badge color="transparent">{sessionAgentProfile}</Badge> : null}
 						{stats.error > 0 ? <Badge color="orange">{stats.error} Errors</Badge> : null}
 					</div>
+					<div className="col-start-2 min-w-0">
+						<SessionBreadcrumbs items={sessionBreadcrumbs} onOpenSession={onOpenSession} />
+					</div>
 				</div>
-				<div className="flex shrink-0 items-center gap-1">
+				<div className="flex shrink-0 items-center gap-1 self-center">
 					<AgentSessionControls
 						agentProfiles={agentProfiles}
 						selectedAgentProfile={selectedAgentProfile}
@@ -241,6 +253,59 @@ export function TraceTimeline({
 				</button>
 			) : null}
 		</section>
+	);
+}
+
+function SessionBreadcrumbs({
+	items,
+	onOpenSession,
+}: {
+	items: readonly SessionBreadcrumbItem[];
+	onOpenSession: (piboSessionId: string) => void;
+}) {
+	if (items.length <= 1) return null;
+	const labels = Object.fromEntries(items.map((item) => [item.piboSessionId, item.label]));
+	const pathname = `/${items.map((item) => encodeURIComponent(item.piboSessionId)).join("/")}`;
+	const sessionIds = new Set(items.map((item) => item.piboSessionId));
+
+	return (
+		<Breadcrumbs
+			pathname={pathname}
+			labels={labels}
+			maxItems={5}
+			keepFirst={1}
+			keepLast={2}
+			separator={<ChevronRight size={12} />}
+			ellipsis="..."
+			ariaLabel="Session hierarchy"
+			unstyled
+			classNames={{
+				nav: "min-w-0",
+				list: "flex min-w-0 items-center gap-1 overflow-hidden text-[11px] leading-4",
+				item: "inline-flex min-w-0 items-center",
+				link: "block min-w-0 max-w-48 truncate font-mono text-slate-400 transition-colors hover:text-[#11a4d4]",
+				current: "block min-w-0 max-w-56 truncate font-mono text-slate-200",
+				separator: "shrink-0 text-slate-600",
+				ellipsis: "shrink-0 px-1 font-mono text-slate-500",
+				label: "block min-w-0 truncate",
+			}}
+			renderLink={({ item, className, children }) => {
+				const piboSessionId = item.decodedSegment;
+				if (!sessionIds.has(piboSessionId)) return <span className={className}>{children}</span>;
+				return (
+					<a
+						href={`/sessions/${encodeURIComponent(piboSessionId)}`}
+						className={className}
+						onClick={(event) => {
+							event.preventDefault();
+							onOpenSession(piboSessionId);
+						}}
+					>
+						{children}
+					</a>
+				);
+			}}
+		/>
 	);
 }
 

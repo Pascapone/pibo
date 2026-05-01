@@ -55,6 +55,7 @@ export type PiboWebSessionNode = {
 	piSessionId: string;
 	parentId?: string;
 	profile: string;
+	subagentName?: string;
 	title: string;
 	subtitle?: string;
 	archived?: boolean;

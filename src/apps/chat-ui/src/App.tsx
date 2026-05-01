@@ -28,7 +28,7 @@ import {
 import { deleteCustomAgent, deleteRoom, deleteSession, getBootstrap, getTrace, patchCustomAgent, patchRoom, patchSession, postAction, postCustomAgent, postMessage, postRoom, postSession, signInWithGoogle, signOut, type SaveCustomAgentInput } from "./api";
 import type { AgentCatalog, BootstrapData, CustomAgent, CustomAgentSubagent, PiboRoom, PiboSessionTraceView, PiboTraceNode, PiboTraceOrderKey, PiboWebSessionNode } from "./types";
 import { adaptTrace } from "./tracing/adapt";
-import { TraceTimeline } from "./tracing/TraceTimeline";
+import { TraceTimeline, type SessionBreadcrumbItem } from "./tracing/TraceTimeline";
 import { JsonRenderer } from "./tracing/JsonRenderer";
 import { countRender } from "./renderMetrics";
 import { childTraceOrder, compareTraceOrder, liveTraceOrder } from "../../../shared/trace-order.js";
@@ -338,6 +338,10 @@ export function App({ route }: { route: ChatAppRoute }) {
 		if (!currentTraceView) return null;
 		return adaptTrace(currentTraceView.piboSessionId, currentTraceView.title, currentTraceView.nodes);
 	}, [currentTraceView]);
+	const sessionBreadcrumbs = useMemo(
+		() => selectedPiboSessionId ? createSessionBreadcrumbs(bootstrap?.sessions ?? [], selectedPiboSessionId) : [],
+		[bootstrap?.sessions, selectedPiboSessionId],
+	);
 
 	const rawEvents = useMemo(
 		() => (showRawEvents ? compactRawEvents(currentTraceView?.rawEvents ?? []) : []),
@@ -904,6 +908,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 								showThinking={showThinking}
 								expandThinking={expandThinking}
 								sessionAgentProfile={bootstrap.session.profile}
+								sessionBreadcrumbs={sessionBreadcrumbs}
 								agentProfiles={bootstrap.agents}
 								selectedAgentProfile={newSessionProfile}
 								createSessionDisabled={creatingSession || selectedRoomArchived}
@@ -1546,6 +1551,34 @@ function SessionNode({
 
 function sessionTreeHasSession(nodes: PiboWebSessionNode[], piboSessionId: string): boolean {
 	return nodes.some((node) => node.piboSessionId === piboSessionId || sessionTreeHasSession(node.children, piboSessionId));
+}
+
+function createSessionBreadcrumbs(nodes: PiboWebSessionNode[], piboSessionId: string): SessionBreadcrumbItem[] {
+	const path = findSessionPath(nodes, piboSessionId);
+	return path.map((node, index) => ({
+		piboSessionId: node.piboSessionId,
+		label: sessionBreadcrumbLabel(node, index),
+	}));
+}
+
+function findSessionPath(
+	nodes: PiboWebSessionNode[],
+	piboSessionId: string,
+	path: PiboWebSessionNode[] = [],
+): PiboWebSessionNode[] {
+	for (const node of nodes) {
+		const nextPath = [...path, node];
+		if (node.piboSessionId === piboSessionId) return nextPath;
+		const childPath = findSessionPath(node.children, piboSessionId, nextPath);
+		if (childPath.length) return childPath;
+	}
+	return [];
+}
+
+function sessionBreadcrumbLabel(node: PiboWebSessionNode, index: number): string {
+	if (!index) return node.profile || node.title;
+	if (node.subagentName && node.subagentName !== node.profile) return `${node.subagentName} (${node.profile})`;
+	return node.profile || node.subagentName || node.title;
 }
 
 function splitSessionNodesByArchive(nodes: PiboWebSessionNode[]): {
