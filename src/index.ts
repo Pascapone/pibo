@@ -59,6 +59,22 @@ export { createPiboTestToolProfiles } from "./plugins/core-tools.js";
 export { createPiboRuntime, inspectPiboProfile, runPiboTui } from "./core/runtime.js";
 export type { PiboProfileInspection, PiboRuntimeOptions } from "./core/runtime.js";
 export { PiboSessionRouter } from "./core/session-router.js";
+export { PiboReliabilityStore, createDefaultPiboReliabilityStore } from "./reliability/store.js";
+export type {
+	PiboDeadJobListInput,
+	PiboDeadJobReplayInput,
+	PiboEventAppendInput,
+	PiboEventListInput,
+	PiboEventPruneInput,
+	PiboEventRetentionClass,
+	PiboJobEnqueueInput,
+	PiboJobRetryInput,
+	PiboJobState,
+	PiboRunStoreRecord,
+	StoredPiboDeadJob,
+	StoredPiboEvent,
+	StoredPiboJob,
+} from "./reliability/store.js";
 export { PiboGatewayServer, runGatewayServer } from "./gateway/server.js";
 export { createWebPiboPluginRegistry, resolveWebGatewayServerOptions, runWebGatewayServer } from "./gateway/web.js";
 export type { WebGatewayServerOptions } from "./gateway/web.js";

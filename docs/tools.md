@@ -44,6 +44,14 @@ Browser Use state is isolated under:
 ~/.pibo/tools/browser-use/home
 ```
 
+By default, the Pibo Browser Use wrapper starts a Pibo-managed persistent Chrome profile through CDP:
+
+```text
+~/.pibo/tools/browser-use/home/chrome-profiles/PIBo
+```
+
+This is intentionally different from upstream `browser-use --profile`, which can copy Chrome profiles into a temporary user-data directory. Sign-ins made through the default Pibo wrapper path persist across Browser Use daemon restarts and shell sessions. Use `--fresh-profile` only when a disposable temporary browser profile is wanted.
+
 The installer uses `uv` to create the virtual environment and install the pinned package `browser-use[cli]==0.12.6`. The version is pinned so the Browser Use CLI surface stays aligned with the bundled guides. Browser Use system setup stays visible through `pibo tools doctor browser-use`; if Browser Use reports missing optional components, install them explicitly for the workflow that needs them.
 
 ## Requirements
@@ -113,7 +121,7 @@ npm run dev -- tools env browser-use
 On Linux/macOS this prints:
 
 ```bash
-export PATH=".../.venv/bin:.../home/bin:$PATH"
+export PATH=".../home/bin:.../.venv/bin:$PATH"
 export BROWSER_USE_HOME=".../home"
 ```
 
@@ -142,3 +150,5 @@ If no desktop display is detected, `pibo tools install browser-use` and `pibo to
 ```bash
 browser-use --session debug open https://example.com
 ```
+
+To intentionally use a real local Chrome user data directory instead of the Pibo-managed one, set `PIBO_BROWSER_USE_CHROME_USER_DATA_DIR` before starting the Browser Use session.

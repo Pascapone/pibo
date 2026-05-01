@@ -30,6 +30,7 @@ import {
 	type UpdateCustomAgentInput,
 } from "./agent-store.js";
 import { createCustomAgentProfileDefinition } from "./agent-profiles.js";
+import { createDefaultPiboReliabilityStore, PiboReliabilityStore } from "../../reliability/store.js";
 
 export const CHAT_WEB_APP_NAME = "pibo.chat-web";
 export const CHAT_WEB_CHANNEL = "pibo.chat-web";
@@ -42,6 +43,7 @@ export type ChatWebAppOptions = {
 	eventLogPath?: string;
 	roomStorePath?: string;
 	agentStorePath?: string;
+	reliabilityStorePath?: string;
 };
 
 type ChatWebAppState = {
@@ -49,6 +51,7 @@ type ChatWebAppState = {
 	eventLog: ChatEventLog;
 	roomStore: PiboRoomStore;
 	agentStore: CustomAgentStore;
+	reliabilityStore: PiboReliabilityStore;
 	subscribedContext?: PiboWebAppContext;
 	unsubscribe?: () => void;
 	liveListeners: Set<(event: StoredChatEvent) => void>;
@@ -392,6 +395,10 @@ function createAgentStore(path?: string): CustomAgentStore {
 	return path ? new CustomAgentStore(path) : createDefaultCustomAgentStore();
 }
 
+function createReliabilityStore(path?: string): PiboReliabilityStore {
+	return path ? new PiboReliabilityStore(path) : createDefaultPiboReliabilityStore();
+}
+
 function ensureEventIndexing(state: ChatWebAppState, context: PiboWebAppContext): void {
 	if (state.subscribedContext === context && state.unsubscribe) return;
 	state.unsubscribe?.();
@@ -399,6 +406,13 @@ function ensureEventIndexing(state: ChatWebAppState, context: PiboWebAppContext)
 	state.unsubscribe = context.channelContext.subscribe((event) => {
 		const session = context.channelContext.getSession(event.piboSessionId);
 		state.readModel.recordEvent(event, session);
+		state.reliabilityStore.append({
+			topic: "pibo.output",
+			key: event.piboSessionId,
+			eventId: `pibo.output:${event.piboSessionId}:${event.type}:${randomUUID()}`,
+			retentionClass: reliabilityRetentionClassForOutputEvent(event),
+			payload: event as PiboJsonValue,
+		});
 		const room = session ? ensureSessionRoom(state, context, session) : undefined;
 		const stored = state.eventLog.appendOutputEvent(event, {
 			roomId: room?.id,
@@ -406,6 +420,14 @@ function ensureEventIndexing(state: ChatWebAppState, context: PiboWebAppContext)
 		});
 		for (const listener of state.liveListeners) listener(stored);
 	});
+}
+
+function reliabilityRetentionClassForOutputEvent(event: PiboOutputEvent): string {
+	if (event.type === "assistant_delta" || event.type === "thinking_delta") return "live_delta";
+	if (event.type === "assistant_message" || event.type === "message_started" || event.type === "message_finished") {
+		return "chat_message";
+	}
+	return "trace_event";
 }
 
 function listOwnedSessions(context: PiboWebAppContext, webSession: PiboWebSession): PiboSession[] {
@@ -2012,6 +2034,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 		eventLog: createEventLog(options.eventLogPath ?? storagePath),
 		roomStore: createRoomStore(options.roomStorePath ?? storagePath),
 		agentStore: createAgentStore(options.agentStorePath ?? storagePath),
+		reliabilityStore: createReliabilityStore(options.reliabilityStorePath),
 		liveListeners: new Set(),
 	};
 

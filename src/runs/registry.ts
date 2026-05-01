@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { PiboReliabilityStore, PiboRunStoreRecord } from "../reliability/store.js";
 
 export type PiboRunStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 export type PiboRunKind = "tool";
@@ -42,6 +43,7 @@ export type PiboRunNotification = {
 export type PiboRunRegistryOptions = {
 	consumedTerminalTtlMs?: number;
 	detachedTerminalTtlMs?: number;
+	store?: PiboReliabilityStore;
 };
 
 export type PiboRunPruneOptions = {
@@ -58,12 +60,18 @@ type PiboRunRecord = PiboRunSnapshot & {
 	error?: string;
 	notifiedStatus?: PiboRunStatus;
 	acknowledgedStatus?: PiboRunStatus;
+	jobId?: string;
+	retryable?: boolean;
+	maxAttempts?: number;
 };
 
 type StartToolRunInput = {
 	ownerPiboSessionId: string;
 	toolName: string;
+	params?: unknown;
 	completionPolicy?: PiboRunCompletionPolicy;
+	retryable?: boolean;
+	maxAttempts?: number;
 };
 
 type Waiter = {
@@ -99,10 +107,30 @@ export class PiboRunRegistry {
 	private readonly runs = new Map<string, PiboRunRecord>();
 	private readonly waiters = new Map<string, Waiter[]>();
 
-	constructor(private readonly options: PiboRunRegistryOptions = {}) {}
+	constructor(private readonly options: PiboRunRegistryOptions = {}) {
+		if (this.options.store) {
+			this.options.store.recoverInterruptedRuns();
+			for (const record of this.options.store.listRuns({ includeConsumed: true, includeDetached: true })) {
+				this.runs.set(record.runId, recordFromStored(record));
+			}
+		}
+	}
 
 	startToolRun(input: StartToolRunInput): PiboRunSnapshot {
 		this.prune();
+		if (this.options.store) {
+			const stored = this.options.store.createRun({
+				ownerPiboSessionId: input.ownerPiboSessionId,
+				toolName: input.toolName,
+				completionPolicy: input.completionPolicy ?? "tracked",
+				params: input.params,
+				retryable: input.retryable ?? false,
+				maxAttempts: input.maxAttempts ?? 1,
+			});
+			const record = recordFromStored(stored);
+			this.runs.set(record.runId, record);
+			return snapshot(record);
+		}
 		const timestamp = now();
 		const runId = `run_${randomUUID()}`;
 		const record: PiboRunRecord = {
@@ -116,6 +144,8 @@ export class PiboRunRegistry {
 			createdAt: timestamp,
 			updatedAt: timestamp,
 			summary: `${input.toolName} run is running.`,
+			retryable: input.retryable ?? false,
+			maxAttempts: Math.max(1, input.maxAttempts ?? 1),
 		};
 		this.runs.set(runId, record);
 		return snapshot(record);
@@ -129,6 +159,8 @@ export class PiboRunRegistry {
 		record.result = result;
 		record.summary = `${record.toolName} run completed.`;
 		this.finish(record);
+		this.options.store?.updateRun(runId, record);
+		if (record.jobId) this.options.store?.ack(record.jobId, `run-registry:${process.pid}`);
 		return snapshot(record);
 	}
 
@@ -140,6 +172,8 @@ export class PiboRunRegistry {
 		record.error = error;
 		record.summary = `${record.toolName} run failed.`;
 		this.finish(record);
+		this.options.store?.updateRun(runId, record);
+		if (record.jobId) this.options.store?.fail(record.jobId, `run-registry:${process.pid}`, error);
 		return snapshot(record);
 	}
 
@@ -193,6 +227,7 @@ export class PiboRunRegistry {
 		if (terminal(record.status)) {
 			record.consumed = true;
 			record.updatedAt = now();
+			this.options.store?.updateRun(runId, record);
 		}
 		const output: PiboRunReadResult = { ...snapshot(record) };
 		if (record.result) output.result = record.result;
@@ -206,9 +241,11 @@ export class PiboRunRegistry {
 			record.status = "cancelled";
 			record.summary = `${record.toolName} run cancelled.`;
 			this.finish(record);
+			if (record.jobId) this.options.store?.fail(record.jobId, `run-registry:${process.pid}`, "Run was cancelled.");
 		}
 		record.consumed = true;
 		record.updatedAt = now();
+		this.options.store?.updateRun(runId, record);
 		return snapshot(record);
 	}
 
@@ -217,6 +254,7 @@ export class PiboRunRegistry {
 		record.acknowledgedStatus = record.status;
 		if (terminal(record.status)) record.consumed = true;
 		record.updatedAt = now();
+		this.options.store?.updateRun(runId, record);
 		return snapshot(record);
 	}
 
@@ -231,6 +269,7 @@ export class PiboRunRegistry {
 
 		for (const record of records) {
 			record.notifiedStatus = record.status;
+			this.options.store?.updateRun(record.runId, record);
 		}
 
 		const notification: PiboRunNotification = {
@@ -267,6 +306,8 @@ export class PiboRunRegistry {
 			record.consumed = true;
 			record.summary = `${record.toolName} run cancelled.`;
 			this.finish(record);
+			this.options.store?.updateRun(record.runId, record);
+			if (record.jobId) this.options.store?.fail(record.jobId, `run-registry:${process.pid}`, reason);
 			cancelled.push(snapshot(record));
 		}
 		return cancelled;
@@ -281,6 +322,8 @@ export class PiboRunRegistry {
 			record.consumed = true;
 			record.summary = `${record.toolName} run cancelled.`;
 			this.finish(record);
+			this.options.store?.updateRun(record.runId, record);
+			if (record.jobId) this.options.store?.fail(record.jobId, `run-registry:${process.pid}`, reason);
 			cancelled.push(snapshot(record));
 		}
 		return cancelled;
@@ -310,7 +353,9 @@ export class PiboRunRegistry {
 			this.runs.delete(runId);
 			pruned += 1;
 		}
-
+		if (this.options.store) {
+			this.options.store.pruneRuns({ consumedTerminalTtlMs, detachedTerminalTtlMs, nowMs });
+		}
 		return pruned;
 	}
 
@@ -351,4 +396,27 @@ export class PiboRunRegistry {
 			waiter.resolve(record);
 		}
 	}
+}
+
+function recordFromStored(record: PiboRunStoreRecord): PiboRunRecord {
+	return {
+		runId: record.runId,
+		kind: record.kind,
+		ownerPiboSessionId: record.ownerPiboSessionId,
+		status: record.status,
+		completionPolicy: record.completionPolicy,
+		consumed: record.consumed,
+		toolName: record.toolName,
+		createdAt: record.createdAt,
+		updatedAt: record.updatedAt,
+		summary: record.summary,
+		completedAt: record.completedAt,
+		result: record.result,
+		error: record.error,
+		notifiedStatus: record.notifiedStatus,
+		acknowledgedStatus: record.acknowledgedStatus,
+		jobId: record.jobId,
+		retryable: record.retryable,
+		maxAttempts: record.maxAttempts,
+	};
 }

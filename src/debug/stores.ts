@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
-export type PiboDebugStoreName = "sessions" | "chat" | "agents" | "auth" | "bindings";
+export type PiboDebugStoreName = "sessions" | "chat" | "agents" | "auth" | "bindings" | "reliability";
 
 export type PiboDebugStore = {
 	name: PiboDebugStoreName;
@@ -39,6 +39,11 @@ export const PIBO_DEBUG_STORES: readonly PiboDebugStore[] = [
 		name: "bindings",
 		description: "local session binding data",
 		defaultPath: ".pibo/session-bindings.sqlite",
+	},
+	{
+		name: "reliability",
+		description: "Pibo event stream, durable jobs, and yielded runs",
+		defaultPath: ".pibo/pibo-events.sqlite",
 	},
 ];
 

@@ -9,6 +9,9 @@ type ParsedOptions = {
 	limit?: string;
 	type?: string;
 	fields?: string[];
+	topic?: string;
+	after?: string;
+	queue?: string;
 };
 
 export async function runDebugCli(argv = process.argv): Promise<void> {
@@ -32,6 +35,14 @@ export async function runDebugCli(argv = process.argv): Promise<void> {
 		}
 		if (args[0] === "events") {
 			await runDebugEvents(args.slice(1));
+			return;
+		}
+		if (args[0] === "jobs") {
+			await runDebugJobs(args.slice(1));
+			return;
+		}
+		if (args[0] === "runs") {
+			await runDebugRuns(args.slice(1));
 			return;
 		}
 		throw new Error(`Unknown pibo debug command "${args[0]}". Run pibo debug --help.`);
@@ -135,6 +146,42 @@ async function runDebugEvents(args: string[]): Promise<void> {
 		printDebugEventsDiscovery();
 		return;
 	}
+	if (args[0] === "stream") {
+		const options = parseOptions(args.slice(1));
+		const { formatJson, formatRows } = await import("./sql.js");
+		const { PiboReliabilityStore } = await import("../reliability/store.js");
+		const store = resolveDebugStore("reliability");
+		if (!store.exists) throw new Error(`Debug store "reliability" not found at ${store.defaultPath}`);
+		const reliability = new PiboReliabilityStore(store.path);
+		try {
+			const events = reliability.list({
+				topic: options.topic,
+				afterStreamId: options.after ? Number(options.after) : undefined,
+				limit: options.limit ? Number(options.limit) : undefined,
+			});
+			if (options.json) console.log(formatJson({ events }));
+			else console.log(formatRows(events.map(compactEventRow)));
+		} finally {
+			reliability.close();
+		}
+		return;
+	}
+	if (args[0] === "consumers") {
+		const options = parseOptions(args.slice(1));
+		const { formatJson, formatRows } = await import("./sql.js");
+		const { PiboReliabilityStore } = await import("../reliability/store.js");
+		const store = resolveDebugStore("reliability");
+		if (!store.exists) throw new Error(`Debug store "reliability" not found at ${store.defaultPath}`);
+		const reliability = new PiboReliabilityStore(store.path);
+		try {
+			const consumers = reliability.listConsumers();
+			if (options.json) console.log(formatJson({ consumers }));
+			else console.log(formatRows(consumers));
+		} finally {
+			reliability.close();
+		}
+		return;
+	}
 	const options = parseOptions(args);
 	const piboSessionId = options.positionals[0];
 	if (!piboSessionId) throw new Error("pibo debug events requires <pibo-session-id>");
@@ -147,6 +194,81 @@ async function runDebugEvents(args: string[]): Promise<void> {
 	});
 	if (options.json) console.log(formatJson(result));
 	else console.log(formatDebugEvents(result));
+}
+
+async function runDebugJobs(args: string[]): Promise<void> {
+	if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
+		printDebugJobsDiscovery();
+		return;
+	}
+	const command = args[0];
+	const options = parseOptions(args.slice(1));
+	const { formatJson, formatRows } = await import("./sql.js");
+	const { PiboReliabilityStore } = await import("../reliability/store.js");
+	const store = resolveDebugStore("reliability");
+	if (!store.exists) throw new Error(`Debug store "reliability" not found at ${store.defaultPath}`);
+	const reliability = new PiboReliabilityStore(store.path);
+	try {
+		if (command === "list") {
+			const jobs = reliability.listJobs({ queue: options.queue, limit: options.limit ? Number(options.limit) : undefined });
+			if (options.json) console.log(formatJson({ jobs }));
+			else console.log(formatRows(jobs.map(compactJobRow)));
+			return;
+		}
+		if (command === "dead") {
+			const jobs = reliability.listDead({ queue: options.queue, limit: options.limit ? Number(options.limit) : undefined });
+			if (options.json) console.log(formatJson({ jobs }));
+			else console.log(formatRows(jobs.map(compactDeadJobRow)));
+			return;
+		}
+		if (command === "replay") {
+			const jobId = options.positionals[0];
+			if (!jobId) throw new Error("pibo debug jobs replay requires <job-id>");
+			const job = reliability.requeueDead(jobId);
+			if (options.json) console.log(formatJson({ job }));
+			else console.log(formatRows([compactJobRow(job)]));
+			return;
+		}
+		throw new Error(`Unknown pibo debug jobs command "${command}". Run pibo debug jobs --help.`);
+	} finally {
+		reliability.close();
+	}
+}
+
+async function runDebugRuns(args: string[]): Promise<void> {
+	if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
+		printDebugRunsDiscovery();
+		return;
+	}
+	const command = args[0];
+	const options = parseOptions(args.slice(1));
+	const { formatJson, formatRows } = await import("./sql.js");
+	const { PiboReliabilityStore } = await import("../reliability/store.js");
+	const store = resolveDebugStore("reliability");
+	if (!store.exists) throw new Error(`Debug store "reliability" not found at ${store.defaultPath}`);
+	const reliability = new PiboReliabilityStore(store.path);
+	try {
+		if (command === "list") {
+			const piboSessionId = options.positionals[0];
+			if (!piboSessionId) throw new Error("pibo debug runs list requires <pibo-session-id>");
+			const runs = reliability.listRuns({ ownerPiboSessionId: piboSessionId, includeConsumed: true, includeDetached: true });
+			if (options.json) console.log(formatJson({ runs }));
+			else console.log(formatRows(runs.map(compactRunRow)));
+			return;
+		}
+		if (command === "inspect") {
+			const runId = options.positionals[0];
+			if (!runId) throw new Error("pibo debug runs inspect requires <run-id>");
+			const run = reliability.getRun(runId);
+			if (!run) throw new Error(`Unknown run "${runId}"`);
+			if (options.json) console.log(formatJson({ run }));
+			else console.log(formatRows([compactRunRow(run)]));
+			return;
+		}
+		throw new Error(`Unknown pibo debug runs command "${command}". Run pibo debug runs --help.`);
+	} finally {
+		reliability.close();
+	}
 }
 
 function parseOptions(args: string[]): ParsedOptions {
@@ -193,9 +315,84 @@ function parseOptions(args: string[]): ParsedOptions {
 			index += 1;
 			continue;
 		}
+		if (arg === "--topic") {
+			const value = args[index + 1];
+			if (!value) throw new Error("--topic requires a value");
+			parsed.topic = value;
+			index += 1;
+			continue;
+		}
+		if (arg === "--after") {
+			const value = args[index + 1];
+			if (!value) throw new Error("--after requires a value");
+			parsed.after = value;
+			index += 1;
+			continue;
+		}
+		if (arg === "--queue") {
+			const value = args[index + 1];
+			if (!value) throw new Error("--queue requires a value");
+			parsed.queue = value;
+			index += 1;
+			continue;
+		}
 		parsed.positionals.push(arg);
 	}
 	return parsed;
+}
+
+function compactEventRow(event: { streamId: number; topic: string; key?: string; eventId: string; createdAt: string; retentionClass: string; payload: unknown }): Record<string, unknown> {
+	return {
+		streamId: event.streamId,
+		topic: event.topic,
+		key: event.key,
+		eventId: event.eventId,
+		type: payloadType(event.payload),
+		createdAt: event.createdAt,
+		retentionClass: event.retentionClass,
+	};
+}
+
+function compactJobRow(job: { jobId: string; queue: string; state: string; runAt: string; attempts: number; maxAttempts: number; workerId?: string; lastError?: string }): Record<string, unknown> {
+	return {
+		jobId: job.jobId,
+		queue: job.queue,
+		state: job.state,
+		runAt: job.runAt,
+		attempts: `${job.attempts}/${job.maxAttempts}`,
+		workerId: job.workerId,
+		lastError: job.lastError,
+	};
+}
+
+function compactDeadJobRow(job: { jobId: string; queue: string; attempts: number; maxAttempts: number; deadAt: string; deadReason: string; lastError?: string }): Record<string, unknown> {
+	return {
+		jobId: job.jobId,
+		queue: job.queue,
+		attempts: `${job.attempts}/${job.maxAttempts}`,
+		deadAt: job.deadAt,
+		deadReason: job.deadReason,
+		lastError: job.lastError,
+	};
+}
+
+function compactRunRow(run: { runId: string; ownerPiboSessionId: string; status: string; toolName: string; completionPolicy: string; consumed: boolean; updatedAt: string; summary?: string }): Record<string, unknown> {
+	return {
+		runId: run.runId,
+		piboSessionId: run.ownerPiboSessionId,
+		status: run.status,
+		toolName: run.toolName,
+		policy: run.completionPolicy,
+		consumed: run.consumed,
+		updatedAt: run.updatedAt,
+		summary: run.summary,
+	};
+}
+
+function payloadType(payload: unknown): string | undefined {
+	if (!payload || typeof payload !== "object" || Array.isArray(payload)) return undefined;
+	const candidate = payload as { type?: unknown };
+	return typeof candidate.type === "string" ? candidate.type : undefined;
 }
 
 function printDebugDiscovery(): void {
@@ -206,11 +403,14 @@ Commands:
   session  Inspect one Pibo Session by id or Chat URL
   trace    Rebuild the Chat Web trace view for one Pibo Session
   events   Inspect compact event payload fields for one Pibo Session
+  jobs     Inspect durable Pibo jobs and DLQ
+  runs     Inspect durable yielded runs
 
 Next:
   pibo debug db
   pibo debug session <url-or-pibo-session-id>
   pibo debug trace <pibo-session-id> --running-only
+  pibo debug events stream --topic pibo.output
 `);
 }
 
@@ -223,6 +423,7 @@ Stores:
   agents    .pibo/chat-agents.sqlite
   auth      .pibo/auth.sqlite
   bindings  .pibo/session-bindings.sqlite
+  reliability .pibo/pibo-events.sqlite
 
 Commands:
   stores               List known stores and paths
@@ -269,16 +470,45 @@ Next:
 }
 
 function printDebugEventsDiscovery(): void {
-	console.log(`pibo debug events - inspect compact event payload fields
+	console.log(`pibo debug events - inspect compact event payload fields and Pibo event streams
 
 Usage:
   pibo debug events <pibo-session-id> [--type name] [--fields a,b.c] [--limit n] [--json]
+  pibo debug events stream [--topic topic] [--after stream_id] [--limit n] [--json]
+  pibo debug events consumers [--json]
 
 Examples:
   pibo debug events ps_... --type tool_execution_finished --fields toolName,toolCallId,result.details.status
 
 Next:
   pibo debug events ps_... --limit 20
+  pibo debug events stream --topic pibo.output --after 123
+`);
+}
+
+function printDebugJobsDiscovery(): void {
+	console.log(`pibo debug jobs - inspect durable Pibo jobs
+
+Usage:
+  pibo debug jobs list [--queue queue] [--limit n] [--json]
+  pibo debug jobs dead [--queue queue] [--limit n] [--json]
+  pibo debug jobs replay <job-id> [--json]
+
+Next:
+  pibo debug jobs list --queue runs
+  pibo debug jobs dead --queue runs
+`);
+}
+
+function printDebugRunsDiscovery(): void {
+	console.log(`pibo debug runs - inspect durable yielded runs
+
+Usage:
+  pibo debug runs list <pibo-session-id> [--json]
+  pibo debug runs inspect <run-id> [--json]
+
+Next:
+  pibo debug runs list ps_...
 `);
 }
 

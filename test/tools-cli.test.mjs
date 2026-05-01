@@ -77,27 +77,62 @@ test("pibo tools env wraps browser-use with the PIBo default profile", async () 
 		const mode = (await stat(wrapperPath)).mode & 0o777;
 		assert.match(wrapper, /--fresh-profile/);
 		assert.match(wrapper, /PIBO_BROWSER_USE_DEFAULT_PROFILE/);
-		assert.match(wrapper, /--profile "\$default_profile"/);
+		assert.match(wrapper, /ensure_persistent_chrome/);
+		assert.match(wrapper, /--cdp-url "\$cdp_url"/);
 		assert.equal(mode & 0o111, 0o111);
 
 		await mkdir(realBinDir, { recursive: true });
 		const realExecutablePath = join(realBinDir, "browser-use");
 		await writeFile(realExecutablePath, "#!/bin/sh\nprintf '%s\\n' \"$@\"\n");
 		await chmod(realExecutablePath, 0o755);
+		const fakeChromePath = join(cwd, "google-chrome");
+		const fakeChromeArgsPath = join(cwd, "chrome-args.txt");
+		await writeFile(fakeChromePath, `#!/bin/sh\nprintf '%s\\n' "$@" > "${fakeChromeArgsPath}"\n`);
+		await chmod(fakeChromePath, 0o755);
 
 		const browserUseHome = join(cwd, "browser-use-home");
+		const chromeUserDataDir = join(cwd, "chrome-user-data");
 		const defaultProfile = await execFileAsync(wrapperPath, ["open", "https://example.test"], {
 			cwd,
-			env: { ...env, BROWSER_USE_HOME: browserUseHome },
+			env: {
+				...env,
+				BROWSER_USE_HOME: browserUseHome,
+				PIBO_BROWSER_USE_CHROME: fakeChromePath,
+				PIBO_BROWSER_USE_CHROME_USER_DATA_DIR: chromeUserDataDir,
+				PIBO_BROWSER_USE_SKIP_CDP_WAIT: "1",
+			},
 		});
-		assert.match(defaultProfile.stderr, /starting new session with Chrome profile "PIBo"/);
-		assert.match(defaultProfile.stdout, /--profile\nPIBo\nopen\nhttps:\/\/example\.test/);
+		assert.match(defaultProfile.stderr, /started Chrome profile "PIBo"/);
+		assert.match(defaultProfile.stdout, /--cdp-url\nhttp:\/\/127\.0\.0\.1:\d+\nopen\nhttps:\/\/example\.test/);
+		for (let attempt = 0; attempt < 20; attempt += 1) {
+			try {
+				await stat(fakeChromeArgsPath);
+				break;
+			} catch {
+				await new Promise((resolve) => setTimeout(resolve, 25));
+			}
+		}
+		assert.match(await readFile(fakeChromeArgsPath, "utf8"), new RegExp(`--user-data-dir=${chromeUserDataDir}`));
+		assert.match(await readFile(fakeChromeArgsPath, "utf8"), /--headless=new/);
+
+		const headedProfile = await execFileAsync(wrapperPath, ["--headed", "--session", "headed", "open", "https://example.test"], {
+			cwd,
+			env: {
+				...env,
+				BROWSER_USE_HOME: join(cwd, "browser-use-home-headed"),
+				PIBO_BROWSER_USE_CHROME: fakeChromePath,
+				PIBO_BROWSER_USE_CHROME_USER_DATA_DIR: chromeUserDataDir,
+				PIBO_BROWSER_USE_SKIP_CDP_WAIT: "1",
+			},
+		});
+		assert.match(headedProfile.stdout, /--cdp-url\nhttp:\/\/127\.0\.0\.1:\d+\n--headed\n--session\nheaded\nopen\nhttps:\/\/example\.test/);
+		assert.doesNotMatch(await readFile(fakeChromeArgsPath, "utf8"), /--headless=new/);
 
 		const freshProfile = await execFileAsync(wrapperPath, ["--fresh-profile", "open", "https://example.test"], {
 			cwd,
 			env: { ...env, BROWSER_USE_HOME: browserUseHome },
 		});
-		assert.doesNotMatch(freshProfile.stdout, /--profile/);
+		assert.doesNotMatch(freshProfile.stdout, /--cdp-url/);
 		assert.match(freshProfile.stdout, /open\nhttps:\/\/example\.test/);
 
 		const explicitProfile = await execFileAsync(wrapperPath, ["--profile", "Default", "open", "https://example.test"], {

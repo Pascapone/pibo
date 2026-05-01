@@ -12,6 +12,8 @@ export type PiboRunStartToolInput = {
 	toolName: string;
 	params: unknown;
 	completionPolicy?: PiboRunCompletionPolicy;
+	retryable?: boolean;
+	maxAttempts?: number;
 	execute(): Promise<PiboToolRunResult>;
 };
 

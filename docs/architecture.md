@@ -126,6 +126,42 @@ Yielded runs use `tracked` by default. Tracked runs create compact `<pibo_run_no
 
 The router keeps one active parent turn at a time by enqueuing notifications as normal service messages. Service notifications do not immediately re-trigger themselves. Running runs are cancelled when their owning session or router is disposed, detached terminal runs are pruned after a short TTL, and consumed terminal tracked runs are kept briefly for debugging.
 
+## Reliable Event Core
+
+Pibo has a local SQLite reliability store at `.pibo/pibo-events.sqlite`. It is Pibo-owned product metadata and operational state; it does not replace Pi Coding Agent JSONL transcripts, the Pibo Session store, or the Chat Web event log.
+
+The store uses SQLite WAL, `busy_timeout`, and foreign keys for a single-host, multi-process deployment model. It provides at-least-once delivery surfaces, not exactly-once effects. Consumers and projectors must be idempotent, and unsafe side-effect tools are not automatically retried unless a future tool explicitly declares retryability.
+
+The core tables are:
+
+- `pibo_event_stream` for append-only topic streams with `(topic, event_id)` and optional `(topic, idempotency_key)` idempotency.
+- `pibo_event_consumers` for named monotonic consumer offsets.
+- `pibo_jobs` for bounded live work queues with claim visibility, retry metadata, and expiration.
+- `pibo_dead_jobs` for terminal failed or expired jobs that are never scanned by the live claim path.
+- `pibo_runs` for durable yielded-run status, ownership, summaries, results, errors, and notification state.
+
+Replay is cursor-based. `appendOnce` returns an existing event when the same topic/event id or topic/idempotency key has already been stored. Consumer offsets only move forward. Retention pruning preserves rows still needed by named consumers unless an explicit destructive prune is used.
+
+The durable job queue is at-least-once. A worker claims a pending job for a visibility window, and `ack` only succeeds for the current worker before that claim expires. Failed or exhausted jobs move to the dead-letter table. Dead jobs are replayable through the debug CLI, which creates a new live job with provenance in its payload instead of leaving the entry as an unrecoverable graveyard.
+
+Yielded runs write both a durable run record and a `runs` queue job when `pibo_run_start` is called. The current execution still runs in-process; the durable records make run state inspectable across restarts. If a process disappears while a run is still marked running, store recovery fails non-retryable runs by default. Retryable runs can be released back to pending, but arbitrary yieldable tools, `pibo_exec`, and subagent runs remain non-retryable unless explicitly marked safe later.
+
+Chat Web continues to keep `web_chat_events` as its read model and `chat_events` as the room/user-facing durable log. Normalized `PiboOutputEvent` values are additionally mirrored to the `pibo.output` topic for operational replay/debugging. Trace nodes are still reconstructed at read time from Pi JSONL plus Chat Web stores; Pibo does not materialize trace nodes durably.
+
+Debug commands:
+
+```bash
+pibo debug events stream --topic pibo.output --after 123
+pibo debug events consumers
+pibo debug jobs list --queue runs
+pibo debug jobs dead --queue runs
+pibo debug jobs replay <job-id>
+pibo debug runs list <pibo-session-id>
+pibo debug runs inspect <run-id>
+```
+
+Text output is compact by default. Use `--json` for full stored payloads and machine-readable inspection.
+
 ## Agent Designer
 
 The Chat Web Agents area persists custom agents in `.pibo/chat-agents.sqlite`. Each saved custom agent is registered as a dynamic profile before routed sessions are created.

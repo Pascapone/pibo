@@ -6,6 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { promisify } from "node:util";
 import assert from "node:assert/strict";
 import test from "node:test";
+import { PiboReliabilityStore } from "../dist/reliability/store.js";
 
 const execFileAsync = promisify(execFile);
 const cliPath = resolve("dist/bin/pibo.js");
@@ -162,6 +163,63 @@ test("pibo debug events extracts selected payload fields", async () => {
 		);
 		assert.match(result.stdout, /toolName\ttoolCallId\tresult.details.status/);
 		assert.match(result.stdout, /pibo_run_wait\ttool_wait\tcompleted/);
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test("pibo debug events inspects Pibo event streams and consumers", async () => {
+	const cwd = await makeDebugFixture();
+	try {
+		const stream = await execFileAsync(
+			"node",
+			[cliPath, "debug", "events", "stream", "--topic", "pibo.output", "--after", "1"],
+			{ cwd },
+		);
+		assert.match(stream.stdout, /streamId\ttopic\tkey\teventId\ttype\tcreatedAt\tretentionClass/);
+		assert.match(stream.stdout, /pibo.output\tps_parent\tpibo.output:2\tassistant_message/);
+		assert.doesNotMatch(stream.stdout, /pibo.output:1/);
+
+		const consumers = await execFileAsync("node", [cliPath, "debug", "events", "consumers"], { cwd });
+		assert.match(consumers.stdout, /consumer\ttopic\tlastStreamId\tupdatedAt/);
+		assert.match(consumers.stdout, /chat-projector\tpibo.output\t1/);
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test("pibo debug jobs lists dead jobs and replays one", async () => {
+	const cwd = await makeDebugFixture();
+	try {
+		const live = await execFileAsync("node", [cliPath, "debug", "jobs", "list", "--queue", "runs"], { cwd });
+		assert.match(live.stdout, /jobId\tqueue\tstate\trunAt\tattempts\tworkerId\tlastError/);
+		assert.match(live.stdout, /job_live\truns\tpending/);
+
+		const dead = await execFileAsync("node", [cliPath, "debug", "jobs", "dead", "--queue", "runs"], { cwd });
+		assert.match(dead.stdout, /job_dead\truns\t1\/1/);
+
+		const replay = await execFileAsync("node", [cliPath, "debug", "jobs", "replay", "job_dead"], { cwd });
+		assert.match(replay.stdout, /runs\tpending/);
+		assert.doesNotMatch(replay.stdout, /job_dead\truns\tpending/);
+
+		const deadAfterReplay = await execFileAsync("node", [cliPath, "debug", "jobs", "dead", "--queue", "runs"], { cwd });
+		assert.doesNotMatch(deadAfterReplay.stdout, /job_dead/);
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test("pibo debug runs lists and inspects durable runs", async () => {
+	const cwd = await makeDebugFixture();
+	try {
+		const list = await execFileAsync("node", [cliPath, "debug", "runs", "list", "ps_parent"], { cwd });
+		assert.match(list.stdout, /runId\tpiboSessionId\tstatus\ttoolName\tpolicy\tconsumed\tupdatedAt\tsummary/);
+		assert.match(list.stdout, /run_debug\tps_parent\tcompleted\thelper\ttracked\tfalse/);
+
+		const inspect = await execFileAsync("node", [cliPath, "debug", "runs", "inspect", "run_debug", "--json"], { cwd });
+		const parsed = JSON.parse(inspect.stdout);
+		assert.equal(parsed.run.runId, "run_debug");
+		assert.equal(parsed.run.result.text, "done");
 	} finally {
 		await rm(cwd, { recursive: true, force: true });
 	}
@@ -425,5 +483,49 @@ async function makeDebugFixture() {
 			}),
 		);
 	chat.close();
+
+	const reliability = new PiboReliabilityStore(join(piboDir, "pibo-events.sqlite"));
+	reliability.append({
+		topic: "pibo.output",
+		key: "ps_parent",
+		eventId: "pibo.output:1",
+		retentionClass: "trace_event",
+		payload: { type: "message_started", piboSessionId: "ps_parent" },
+	});
+	reliability.append({
+		topic: "pibo.output",
+		key: "ps_parent",
+		eventId: "pibo.output:2",
+		retentionClass: "chat_message",
+		payload: { type: "assistant_message", piboSessionId: "ps_parent", text: "done" },
+	});
+	reliability.saveConsumerOffset("pibo.output", "chat-projector", 1);
+	reliability.enqueue({
+		jobId: "job_live",
+		queue: "runs",
+		payload: { runId: "run_live", toolName: "helper" },
+		maxAttempts: 1,
+	});
+	const dead = reliability.enqueue({
+		jobId: "job_dead",
+		queue: "runs",
+		payload: { runId: "run_dead", toolName: "helper" },
+		maxAttempts: 1,
+	});
+	reliability.claimJob(dead.jobId, "worker");
+	reliability.fail(dead.jobId, "worker", "failed");
+	reliability.createRun({
+		runId: "run_debug",
+		ownerPiboSessionId: "ps_parent",
+		toolName: "helper",
+		completionPolicy: "tracked",
+	});
+	reliability.updateRun("run_debug", {
+		status: "completed",
+		result: { text: "done" },
+		summary: "helper run completed.",
+		completedAt: "2026-05-01T10:06:00.000Z",
+	});
+	reliability.close();
 	return cwd;
 }

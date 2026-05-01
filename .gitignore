@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .pibo/
+.tmp/
 mcp_servers.json
 .env
 .env.*

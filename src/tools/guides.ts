@@ -28,7 +28,7 @@ browser-use doctor
 
 Inside the Pibo source repo, use \`eval "$(npm run --silent dev -- tools env browser-use)"\` instead. Keep running later \`browser-use\` commands in that same shell; a new shell needs the one-time initialization again. If command substitution is not available, run the env command and apply the printed exports manually. On Linux, it includes detected desktop variables such as \`DISPLAY\`, \`WAYLAND_DISPLAY\`, and \`XAUTHORITY\` when a local desktop is available.
 
-The Pibo tool environment wraps \`browser-use\`: when a new browser daemon session is started, it defaults to the Chrome profile \`PIBo\`. Pass \`--fresh-profile\` to start a fresh temporary browser profile instead.
+The Pibo tool environment wraps \`browser-use\`: when a new browser daemon session is started, it starts a Pibo-managed persistent Chrome profile named \`PIBo\` with CDP and connects Browser Use to it. This avoids Browser Use's normal temporary profile copy, so sign-ins made in that profile stay on disk. Pass \`--fresh-profile\` to start a fresh temporary browser profile instead.
 
 ## Core Workflow
 
@@ -47,10 +47,10 @@ After navigation, submit, keypress navigation, major DOM changes, or scroll on c
 ## Browser Modes
 
 \`\`\`bash
-browser-use --headed open <url>                # Starts with the PIBo Chrome profile by default
+browser-use --headed open <url>                # Starts Pibo-managed persistent PIBo Chrome via CDP
 browser-use --fresh-profile open <url>         # Starts a fresh temporary browser profile
 browser-use connect                            # Connect to local Chrome via CDP
-browser-use --profile "Default" open <url>     # Use a specific real Chrome profile
+browser-use --profile "Default" open <url>     # Upstream profile mode; Browser Use may copy it to a temp dir
 \`\`\`
 
 ## Commands
@@ -125,12 +125,13 @@ If \`pibo-auth\` is unavailable and must be recreated, the default wrapper behav
 browser-use --headed --session pibo-auth open http://4788.192.168.0.204.sslip.io/apps/chat
 \`\`\`
 
-For authenticated sites, prefer a real Chrome profile:
+For authenticated sites, the default Pibo wrapper path is the persistent path. Use \`profile list\` only to inspect available Chrome profiles:
 
 \`\`\`bash
 browser-use profile list
-browser-use --profile "Default" open https://github.com
 \`\`\`
+
+To intentionally use a real local Chrome user data directory instead of the Pibo-managed one, set \`PIBO_BROWSER_USE_CHROME_USER_DATA_DIR\` before starting the session.
 
 If \`browser-use connect\` cannot find Chrome, ask the user whether they want to relaunch Chrome with remote debugging or use a managed Chromium profile.
 

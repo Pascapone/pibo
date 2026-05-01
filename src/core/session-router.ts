@@ -21,6 +21,7 @@ import type {
 import { createSubagentToolName, type PiboSubagentRunner } from "../subagents/tool.js";
 import { PiboRunRegistry, type PiboRunNotification } from "../runs/registry.js";
 import type { PiboRunToolController } from "../runs/tools.js";
+import { createDefaultPiboReliabilityStore, type PiboReliabilityStore } from "../reliability/store.js";
 import {
 	InMemoryPiboSessionStore,
 	type PiboSession,
@@ -46,6 +47,7 @@ export type PiboSessionRouterOptions = Omit<
 	pluginRegistry?: PiboPluginRegistry;
 	sessionStore?: PiboSessionStore;
 	forwardPiEvents?: boolean;
+	reliabilityStore?: PiboReliabilityStore;
 };
 
 const DEFAULT_SUBAGENT_REPLY_TIMEOUT_MS = 10 * 60 * 1000;
@@ -126,16 +128,19 @@ export class PiboSessionRouter {
 	private readonly sessions = new Map<string, RoutedSession>();
 	private readonly pendingSessions = new Map<string, Promise<RoutedSession>>();
 	private readonly listeners = new Set<PiboEventListener>();
-	private readonly runRegistry = new PiboRunRegistry();
+	private readonly runRegistry: PiboRunRegistry;
 	private readonly scheduledRunNotifications = new Map<string, boolean>();
 	private readonly baseProfile: InitialSessionContext;
 	private readonly pluginRegistry: PiboPluginRegistry;
 	private readonly sessionStore: PiboSessionStore;
+	private readonly reliabilityStore?: PiboReliabilityStore;
 
 	constructor(private readonly options: PiboSessionRouterOptions = {}) {
 		this.pluginRegistry = options.pluginRegistry ?? createDefaultPiboPluginRegistry();
 		this.sessionStore = options.sessionStore ?? new InMemoryPiboSessionStore();
 		this.baseProfile = options.profile ?? this.pluginRegistry.createProfile("pibo-minimal");
+		this.reliabilityStore = options.reliabilityStore ?? (options.persistSession === false ? undefined : createDefaultPiboReliabilityStore(options.cwd));
+		this.runRegistry = new PiboRunRegistry({ store: this.reliabilityStore });
 	}
 
 	subscribe(listener: PiboEventListener): () => void {
@@ -355,11 +360,14 @@ export class PiboSessionRouter {
 
 	private createRunToolController(parentPiboSessionId: string): PiboRunToolController {
 		return {
-			startToolRun: ({ toolName, completionPolicy, execute }) => {
+			startToolRun: ({ toolName, params, completionPolicy, retryable, maxAttempts, execute }) => {
 				const run = this.runRegistry.startToolRun({
 					ownerPiboSessionId: parentPiboSessionId,
 					toolName,
+					params,
 					completionPolicy,
+					retryable,
+					maxAttempts,
 				});
 
 				void (async () => {
