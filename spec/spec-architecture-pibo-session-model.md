@@ -327,6 +327,7 @@ Subagent:
 - **AC-012**: Given a session has no `metadata.chatRoomId`, When the default room is selected during the migration bridge period, Then the session may be treated as belonging to the default room and should be updated with the default room id when practical.
 - **AC-013**: Given a session belongs to Room A, When a message request supplies Room B, Then the request is rejected.
 - **AC-014**: Given a parent session belongs to Room A, When a subagent child session is created, Then the child session metadata contains Room A's `chatRoomId`.
+- **AC-015**: Given a selected subagent session in Chat Web, When the trace header renders, Then it shows the session's `parentId` chain as breadcrumbs and allows reopening those ancestor sessions without treating fork origins as parents.
 
 ## 6. Test Automation Strategy
 
@@ -354,6 +355,7 @@ Subagent:
   - Delete `.pibo/pibo-sessions.sqlite`, `.pibo/web-chat.sqlite`, and relevant Pi JSONL sessions before testing a clean rebuild.
   - Start the Chat Web App.
   - Verify first session, new sessions, forks, and subagents in the UI.
+  - Open a nested subagent session and verify the trace header breadcrumbs reopen the parent chain from the selected room-scoped session tree.
   - Inspect raw events and verify they use `piboSessionId`, not `sessionKey`.
 
 ## 7. Rationale & Context

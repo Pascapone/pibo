@@ -82,13 +82,13 @@ Scope: Last 10 commits on the current branch, metadata only. No diff review yet.
 
 ### 8. `79f72e4` - Add session breadcrumbs to chat trace header
 
-- Review status: `todo`
-- Documentation follow-up: `tbd`
+- Review status: `done`
+- Documentation follow-up: `required`
 - Date: `2026-05-01T21:01:00+02:00`
 - Author: `pibo`
 - Full hash: `79f72e48aa2a9f28499fbdf0d9598071e01f850c`
 - Description: `-`
-- Notes: `-`
+- Notes: `Documented trace-header breadcrumbs in the Chat Web handoff doc and the Pibo Session model spec, including that breadcrumb paths follow only the `parentId` hierarchy.`
 
 ### 9. `a9ba897` - Document chat web subagent retest
 
