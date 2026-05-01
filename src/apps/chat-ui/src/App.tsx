@@ -1224,6 +1224,7 @@ function AgentsView({
 	const [draft, setDraft] = useState<AgentDraft>(() => createBlankAgentDraft(initialCatalog));
 	const [saving, setSaving] = useState(false);
 	const [localError, setLocalError] = useState<string | null>(null);
+	const designerAvailable = Boolean(catalog);
 
 	useEffect(() => setCustomAgents(initialCustomAgents), [initialCustomAgents]);
 	useEffect(() => {
@@ -1238,6 +1239,10 @@ function AgentsView({
 	);
 
 	const saveDraft = async () => {
+		if (!designerAvailable) {
+			setLocalError(agentDesignerUnavailableMessage());
+			return;
+		}
 		setSaving(true);
 		try {
 			const input: SaveCustomAgentInput = {
@@ -1260,7 +1265,8 @@ function AgentsView({
 			onAgentsChanged();
 			setLocalError(null);
 		} catch (caught) {
-			setLocalError(caught instanceof Error ? caught.message : String(caught));
+			const message = caught instanceof Error ? caught.message : String(caught);
+			setLocalError(isNotFoundError(message) ? agentDesignerUnavailableMessage() : message);
 		} finally {
 			setSaving(false);
 		}
@@ -1313,11 +1319,12 @@ function AgentsView({
 						<button type="button" onClick={() => draft.profileName && onCreateSession(draft.profileName)} disabled={!draft.profileName || creatingSession} title="New Session With Agent" aria-label="New Session With Agent" className="h-8 w-8 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50">
 							<MessageSquarePlus size={14} />
 						</button>
-						<button type="button" onClick={() => void saveDraft()} disabled={saving || !draft.displayName.trim()} title="Save Agent" aria-label="Save Agent" className="h-8 w-8 inline-flex items-center justify-center border border-[#11a4d4] rounded-sm text-[#11a4d4] bg-[#11a4d4]/10 disabled:opacity-50">
+						<button type="button" onClick={() => void saveDraft()} disabled={!designerAvailable || saving || !draft.displayName.trim()} title="Save Agent" aria-label="Save Agent" className="h-8 w-8 inline-flex items-center justify-center border border-[#11a4d4] rounded-sm text-[#11a4d4] bg-[#11a4d4]/10 disabled:opacity-50">
 							<Save size={14} />
 						</button>
 					</div>
 				</div>
+				{designerAvailable ? null : <div className="mb-3 border border-[#f59e0b]/60 bg-[#f59e0b]/10 text-amber-100 px-3 py-2 text-sm rounded-sm">{agentDesignerUnavailableMessage()}</div>}
 				{localError ? <div className="mb-3 border border-red-500/60 bg-red-500/10 text-red-200 px-3 py-2 text-sm rounded-sm">{localError}</div> : null}
 				<div className="grid gap-4">
 					<DesignerPanel title="Basics">
@@ -1441,7 +1448,15 @@ function CatalogToggle({
 }
 
 function EmptyCatalog() {
-	return <div className="text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm p-3">Catalog unavailable</div>;
+	return <div className="text-xs text-amber-100 border border-dashed border-[#f59e0b]/50 bg-[#f59e0b]/10 rounded-sm p-3">Agent Designer API unavailable</div>;
+}
+
+function agentDesignerUnavailableMessage(): string {
+	return "Agent Designer API unavailable. Restart the Pibo web gateway after pulling/building the latest backend.";
+}
+
+function isNotFoundError(message: string): boolean {
+	return message.toLowerCase().includes("not found") || message.includes("404");
 }
 
 function SubagentDesigner({
