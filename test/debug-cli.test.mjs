@@ -182,7 +182,49 @@ test("pibo debug events inspects Pibo event streams and consumers", async () => 
 
 		const consumers = await execFileAsync("node", [cliPath, "debug", "events", "consumers"], { cwd });
 		assert.match(consumers.stdout, /consumer\ttopic\tlastStreamId\tupdatedAt/);
-		assert.match(consumers.stdout, /chat-projector\tpibo.output\t1/);
+		assert.match(consumers.stdout, /chat-projector\tpibo.output\t3/);
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test("pibo debug events reports stats and prunes live deltas", async () => {
+	const cwd = await makeDebugFixture();
+	try {
+		const stats = await execFileAsync(
+			"node",
+			[cliPath, "debug", "events", "stats", "--topic", "pibo.output", "--session", "ps_parent", "--retention", "live_delta"],
+			{ cwd },
+		);
+		assert.match(stats.stdout, /topic\tkey\tretentionClass\tcount/);
+		assert.match(stats.stdout, /pibo.output\tps_parent\tlive_delta\t2/);
+
+		const prune = await execFileAsync(
+			"node",
+			[
+				cliPath,
+				"debug",
+				"events",
+				"prune",
+				"--topic",
+				"pibo.output",
+				"--retention",
+				"live_delta",
+				"--before",
+				"2026-05-01T10:04:00.000Z",
+			],
+			{ cwd },
+		);
+		assert.match(prune.stdout, /deleted/);
+		assert.match(prune.stdout, /1/);
+
+		const after = await execFileAsync(
+			"node",
+			[cliPath, "debug", "events", "stats", "--topic", "pibo.output", "--session", "ps_parent", "--retention", "live_delta", "--json"],
+			{ cwd },
+		);
+		const parsed = JSON.parse(after.stdout);
+		assert.equal(parsed.counts[0].count, 1);
 	} finally {
 		await rm(cwd, { recursive: true, force: true });
 	}
@@ -499,7 +541,23 @@ async function makeDebugFixture() {
 		retentionClass: "chat_message",
 		payload: { type: "assistant_message", piboSessionId: "ps_parent", text: "done" },
 	});
-	reliability.saveConsumerOffset("pibo.output", "chat-projector", 1);
+	reliability.append({
+		topic: "pibo.output",
+		key: "ps_parent",
+		eventId: "pibo.output:3",
+		createdAt: "2026-05-01T10:03:00.000Z",
+		retentionClass: "live_delta",
+		payload: { type: "assistant_delta", piboSessionId: "ps_parent", text: "stream one" },
+	});
+	reliability.append({
+		topic: "pibo.output",
+		key: "ps_parent",
+		eventId: "pibo.output:4",
+		createdAt: "2026-05-01T10:03:01.000Z",
+		retentionClass: "live_delta",
+		payload: { type: "assistant_delta", piboSessionId: "ps_parent", text: "stream two" },
+	});
+	reliability.saveConsumerOffset("pibo.output", "chat-projector", 3);
 	reliability.enqueue({
 		jobId: "job_live",
 		queue: "runs",

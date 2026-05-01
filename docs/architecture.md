@@ -148,10 +148,14 @@ Yielded runs write both a durable run record and a `runs` queue job when `pibo_r
 
 Chat Web continues to keep `web_chat_events` as its read model and `chat_events` as the room/user-facing durable log. Normalized `PiboOutputEvent` values are additionally mirrored to the `pibo.output` topic for operational replay/debugging. Trace nodes are still reconstructed at read time from Pi JSONL plus Chat Web stores; Pibo does not materialize trace nodes durably.
 
+`pibo.output` stores streaming deltas as `live_delta`, which can be high volume during long agent and subagent runs. Operators can inspect counts by topic/session/retention class and prune old deltas. Non-destructive pruning keeps rows that named consumers have not advanced past; `--destructive` is explicit and should only be used when replay consumers no longer need the rows.
+
 Debug commands:
 
 ```bash
 pibo debug events stream --topic pibo.output --after 123
+pibo debug events stats --topic pibo.output --session ps_... --retention live_delta
+pibo debug events prune --topic pibo.output --retention live_delta --before 2026-05-01T00:00:00.000Z
 pibo debug events consumers
 pibo debug jobs list --queue runs
 pibo debug jobs dead --queue runs

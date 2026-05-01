@@ -1,6 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import type { ResolvedPiboDebugStore } from "./stores.js";
-import { normalizeLimit } from "./sql.js";
+import { normalizeLimit, openReadOnlyDebugDatabase, withStorePath } from "./sql.js";
 
 export type ParsedDebugSessionInput = {
 	raw: string;
@@ -64,7 +64,7 @@ export function inspectDebugSession(
 	if (!stores.sessions.exists) {
 		throw new Error(`Debug store "sessions" not found at ${stores.sessions.defaultPath}`);
 	}
-	const sessionsDb = new DatabaseSync(stores.sessions.path, { readOnly: true });
+	const sessionsDb = openReadOnlyDebugDatabase(stores.sessions);
 	try {
 		const session = sessionsDb.prepare("SELECT * FROM pibo_sessions WHERE id = ?").get(parsed.piboSessionId) as
 			| SessionRow
@@ -88,15 +88,19 @@ export function inspectDebugSession(
 			children: listChildSessions(sessionsDb, parsed.piboSessionId, limit),
 		};
 		if (stores.chat.exists) {
-			const chatDb = new DatabaseSync(stores.chat.path, { readOnly: true });
+			const chatDb = openReadOnlyDebugDatabase(stores.chat);
 			try {
 				summary.chat = readChatSession(chatDb, parsed.piboSessionId);
 				if (options.events) summary.events = readEventSummaries(chatDb, parsed.piboSessionId, limit);
+			} catch (error) {
+				throw withStorePath(error, stores.chat);
 			} finally {
 				chatDb.close();
 			}
 		}
 		return summary;
+	} catch (error) {
+		throw withStorePath(error, stores.sessions);
 	} finally {
 		sessionsDb.close();
 	}

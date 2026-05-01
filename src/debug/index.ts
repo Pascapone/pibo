@@ -10,8 +10,12 @@ type ParsedOptions = {
 	type?: string;
 	fields?: string[];
 	topic?: string;
+	key?: string;
+	retention?: string;
 	after?: string;
+	before?: string;
 	queue?: string;
+	destructive: boolean;
 };
 
 export async function runDebugCli(argv = process.argv): Promise<void> {
@@ -166,6 +170,58 @@ async function runDebugEvents(args: string[]): Promise<void> {
 		}
 		return;
 	}
+	if (args[0] === "stats") {
+		const options = parseOptions(args.slice(1));
+		const { formatJson, formatRows } = await import("./sql.js");
+		const { PiboReliabilityStore } = await import("../reliability/store.js");
+		const store = resolveDebugStore("reliability");
+		if (!store.exists) throw new Error(`Debug store "reliability" not found at ${store.defaultPath}`);
+		const reliability = new PiboReliabilityStore(store.path);
+		try {
+			const counts = reliability.countEvents({
+				topic: options.topic,
+				key: options.key,
+				retentionClass: options.retention,
+			});
+			if (options.json) console.log(formatJson({ counts }));
+			else console.log(formatRows(counts));
+		} finally {
+			reliability.close();
+		}
+		return;
+	}
+	if (args[0] === "prune") {
+		const options = parseOptions(args.slice(1));
+		const { formatJson, formatRows } = await import("./sql.js");
+		const { PiboReliabilityStore } = await import("../reliability/store.js");
+		const store = resolveDebugStore("reliability");
+		if (!store.exists) throw new Error(`Debug store "reliability" not found at ${store.defaultPath}`);
+		if (!options.topic || !options.retention || !options.before) {
+			throw new Error("pibo debug events prune requires --topic, --retention, and --before");
+		}
+		const reliability = new PiboReliabilityStore(store.path);
+		try {
+			const deleted = reliability.prune({
+				topic: options.topic,
+				retentionClass: options.retention,
+				before: options.before,
+				limit: options.limit ? Number(options.limit) : undefined,
+				destructive: options.destructive,
+			});
+			const result = {
+				topic: options.topic,
+				retentionClass: options.retention,
+				before: options.before,
+				destructive: options.destructive,
+				deleted,
+			};
+			if (options.json) console.log(formatJson(result));
+			else console.log(formatRows([result]));
+		} finally {
+			reliability.close();
+		}
+		return;
+	}
 	if (args[0] === "consumers") {
 		const options = parseOptions(args.slice(1));
 		const { formatJson, formatRows } = await import("./sql.js");
@@ -272,7 +328,7 @@ async function runDebugRuns(args: string[]): Promise<void> {
 }
 
 function parseOptions(args: string[]): ParsedOptions {
-	const parsed: ParsedOptions = { positionals: [], json: false, events: false, runningOnly: false, check: false };
+	const parsed: ParsedOptions = { positionals: [], json: false, events: false, runningOnly: false, check: false, destructive: false };
 	for (let index = 0; index < args.length; index += 1) {
 		const arg = args[index];
 		if (arg === "--json") {
@@ -322,11 +378,36 @@ function parseOptions(args: string[]): ParsedOptions {
 			index += 1;
 			continue;
 		}
+		if (arg === "--key" || arg === "--session") {
+			const value = args[index + 1];
+			if (!value) throw new Error(`${arg} requires a value`);
+			parsed.key = value;
+			index += 1;
+			continue;
+		}
+		if (arg === "--retention") {
+			const value = args[index + 1];
+			if (!value) throw new Error("--retention requires a value");
+			parsed.retention = value;
+			index += 1;
+			continue;
+		}
 		if (arg === "--after") {
 			const value = args[index + 1];
 			if (!value) throw new Error("--after requires a value");
 			parsed.after = value;
 			index += 1;
+			continue;
+		}
+		if (arg === "--before") {
+			const value = args[index + 1];
+			if (!value) throw new Error("--before requires a value");
+			parsed.before = value;
+			index += 1;
+			continue;
+		}
+		if (arg === "--destructive") {
+			parsed.destructive = true;
 			continue;
 		}
 		if (arg === "--queue") {
@@ -475,6 +556,8 @@ function printDebugEventsDiscovery(): void {
 Usage:
   pibo debug events <pibo-session-id> [--type name] [--fields a,b.c] [--limit n] [--json]
   pibo debug events stream [--topic topic] [--after stream_id] [--limit n] [--json]
+  pibo debug events stats [--topic topic] [--session pibo-session-id] [--retention class] [--json]
+  pibo debug events prune --topic topic --retention class --before iso-date [--limit n] [--destructive] [--json]
   pibo debug events consumers [--json]
 
 Examples:
@@ -482,6 +565,7 @@ Examples:
 
 Next:
   pibo debug events ps_... --limit 20
+  pibo debug events stats --topic pibo.output --retention live_delta
   pibo debug events stream --topic pibo.output --after 123
 `);
 }

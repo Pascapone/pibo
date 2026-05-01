@@ -75,6 +75,44 @@ test("retention preserves rows still needed by named consumers", () => {
 	}
 });
 
+test("event stream counts group by topic key and retention class", () => {
+	const store = new PiboReliabilityStore(":memory:");
+	try {
+		store.append({
+			topic: "pibo.output",
+			key: "ps_parent",
+			eventId: "1",
+			retentionClass: "live_delta",
+			payload: { value: 1 },
+		});
+		store.append({
+			topic: "pibo.output",
+			key: "ps_parent",
+			eventId: "2",
+			retentionClass: "live_delta",
+			payload: { value: 2 },
+		});
+		store.append({
+			topic: "pibo.output",
+			key: "ps_parent",
+			eventId: "3",
+			retentionClass: "chat_message",
+			payload: { value: 3 },
+		});
+
+		assert.deepEqual(store.countEvents({ topic: "pibo.output", key: "ps_parent", retentionClass: "live_delta" }), [
+			{
+				topic: "pibo.output",
+				key: "ps_parent",
+				retentionClass: "live_delta",
+				count: 2,
+			},
+		]);
+	} finally {
+		store.close();
+	}
+});
+
 test("job claims are exclusive, retry backs off, and exhausted retry moves to DLQ", () => {
 	const store = new PiboReliabilityStore(":memory:");
 	try {

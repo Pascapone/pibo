@@ -1,6 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import type { ResolvedPiboDebugStore } from "./stores.js";
-import { normalizeLimit } from "./sql.js";
+import { normalizeLimit, openReadOnlyDebugDatabase, withStorePath } from "./sql.js";
 
 type EventRow = {
 	id: string;
@@ -23,7 +23,7 @@ export function inspectDebugEvents(
 ): DebugEventResult {
 	if (!store.exists) throw new Error(`Debug store "chat" not found at ${store.defaultPath}`);
 	const limit = normalizeLimit(options.limit);
-	const db = new DatabaseSync(store.path, { readOnly: true });
+	const db = openReadOnlyDebugDatabase(store);
 	try {
 		if (!tableExists(db, "web_chat_events")) return { piboSessionId, events: [], limited: false };
 		const clauses = ["pibo_session_id = ?"];
@@ -49,6 +49,8 @@ export function inspectDebugEvents(
 			events: rows.slice(0, limit).map((row) => formatEventRow(row, options.fields ?? [])),
 			limited,
 		};
+	} catch (error) {
+		throw withStorePath(error, store);
 	} finally {
 		db.close();
 	}

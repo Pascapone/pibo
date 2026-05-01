@@ -725,6 +725,41 @@ test("chat trace closes interrupted live assistant deltas when the session is id
 	assert.equal(turn.children[0].output, "partial answer");
 });
 
+test("chat trace ignores stale streamed tool-call deltas after transcript persistence", async () => {
+	const dir = mkdtempSync(join(tmpdir(), "pibo-chat-trace-stale-tool-"));
+	try {
+		const piSessionId = createPersistedPiSession(dir);
+		const session = createTestSession({ piSessionId, workspace: dir });
+		const view = await buildTraceView({
+			session,
+			sessions: [session],
+			status: "idle",
+			events: [
+				{
+					id: "event-tool-call",
+					piboSessionId: session.id,
+					eventSequence: 1,
+					eventId: "turn-stale",
+					type: "tool_call",
+					createdAt: "2026-04-29T08:01:00.000Z",
+					payload: {
+						type: "tool_call",
+						piboSessionId: session.id,
+						eventId: "turn-stale",
+						toolCallId: "call_stale",
+						toolName: "pibo_subagent_sub_agent",
+						args: { message: "partial" },
+					},
+				},
+			],
+		});
+
+		assert.equal(flattenTraceNodes(view.nodes).some((node) => node.toolCallId === "call_stale"), false);
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
 test("chat trace hides internal fork and switch execution results", async () => {
 	const session = createTestSession();
 	const view = await buildTraceView({

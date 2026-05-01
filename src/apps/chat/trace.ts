@@ -215,6 +215,9 @@ export async function buildTraceView(input: TraceBuildInput): Promise<PiboSessio
 		) {
 			continue;
 		}
+		if (hasPersistedTranscript && isStaleToolCallEchoEvent(storedEvent.payload, sessionStatus)) {
+			continue;
+		}
 		if (storedEvent.payload.type === "assistant_delta") {
 			mergeAssistantDeltaEvent(nodes, byId, storedEvent.payload, sessionStatus, storedEvent.createdAt, storedEvent.eventSequence);
 			continue;
@@ -915,6 +918,10 @@ function isTranscriptEchoEvent(event: PiboOutputEvent): boolean {
 function shouldKeepTranscriptEchoEvent(event: PiboOutputEvent, openTranscriptEventIds: ReadonlySet<string>): boolean {
 	const eventId = "eventId" in event && typeof event.eventId === "string" ? event.eventId : undefined;
 	return Boolean(eventId && openTranscriptEventIds.has(eventId));
+}
+
+function isStaleToolCallEchoEvent(event: PiboOutputEvent, sessionStatus: PiboWebSessionStatus): boolean {
+	return sessionStatus !== "running" && event.type === "tool_call";
 }
 
 function findOpenTranscriptEventIds(events: ChatWebStoredEvent[], sessionStatus: PiboWebSessionStatus): Set<string> {

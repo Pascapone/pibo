@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
 import {
 	ArrowDownToLine,
 	Bell,
@@ -153,7 +153,6 @@ export const SpanNode = memo(function SpanNode({
 		: span.endTime
 			? `${((span.endTime - span.startTime) / 1000).toFixed(1)}ms`
 			: null;
-	const subtreeIndentPx = useMemo(() => getMaxDescendantDepth(span) * NESTING_INDENT_PX, [span]);
 
 	const handleToggle = useCallback(() => {
 		setContentExpanded((current) => !current);
@@ -165,11 +164,12 @@ export const SpanNode = memo(function SpanNode({
 			className="relative mb-4 group"
 			style={{
 				marginLeft: depth > 0 ? NESTING_INDENT_PX : 0,
-				width: `calc(var(--trace-readable-width) + ${subtreeIndentPx}px)`,
+				width: depth > 0 ? `calc(100% - ${NESTING_INDENT_PX}px)` : "var(--trace-readable-width)",
+				maxWidth: "100%",
 			}}
 		>
 			<div
-				className={`bg-white dark:bg-[#1a262b] border ${statusStyles.cardClass} rounded-sm shadow-sm transition-all hover:border-opacity-70 ${
+				className={`min-w-0 bg-white dark:bg-[#1a262b] border ${statusStyles.cardClass} rounded-sm shadow-sm transition-all hover:border-opacity-70 ${
 					isActive ? statusStyles.glowClass : ""
 				}`}
 			>
@@ -189,7 +189,7 @@ export const SpanNode = memo(function SpanNode({
 				{contentExpanded ? <SpanContent span={span} /> : null}
 
 				{hasChildren && childrenExpanded && contentExpanded ? (
-					<div className="border-t border-slate-700 bg-slate-900/50 py-4">
+					<div className="min-w-0 border-t border-slate-700 bg-slate-900/50 py-4">
 						{span.children?.map((child) => (
 							<SpanNode
 								key={child.id}
@@ -237,7 +237,7 @@ function SpanHeader({
 
 	return (
 		<div className={headerClassName}>
-			<div className="box-border flex w-full min-w-0 items-center" style={{ maxWidth: "var(--trace-readable-width)" }}>
+			<div className="box-border flex w-full min-w-0 items-center" style={{ maxWidth: "100%" }}>
 				<button type="button" className="min-w-0 flex-1 px-4 py-2 cursor-pointer text-left" onClick={onToggle}>
 					<span className={`min-w-0 text-xs font-bold ${config.color} uppercase tracking-wider flex items-center gap-2`}>
 						{contentExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
@@ -315,7 +315,7 @@ const SpanContent = memo(function SpanContent({ span }: { span: Span }) {
 		return (
 			<div className="flex flex-col">
 				{errorBanner}
-				<div className="p-4 font-mono text-sm text-slate-300 whitespace-pre-wrap">
+				<div className="min-w-0 break-words p-4 font-mono text-sm text-slate-300 whitespace-pre-wrap">
 					{typeof content === "string" ? content : JSON.stringify(content)}
 				</div>
 			</div>
@@ -326,7 +326,7 @@ const SpanContent = memo(function SpanContent({ span }: { span: Span }) {
 		return (
 			<div className="flex flex-col">
 				{errorBanner}
-				<div className="model-response-markdown p-4 text-sm text-slate-200 leading-relaxed">
+				<div className="model-response-markdown min-w-0 p-4 text-sm text-slate-200 leading-relaxed">
 					{typeof content === "string" ? <MarkdownRenderer>{content}</MarkdownRenderer> : <JsonRenderer value={content} />}
 				</div>
 			</div>
@@ -358,7 +358,7 @@ const SpanContent = memo(function SpanContent({ span }: { span: Span }) {
 					<div className="px-4 py-2 bg-[#1a262b] flex items-center gap-2">
 						<ArrowDownToLine size={14} className="text-slate-400" />
 						<span className="text-xs font-mono text-slate-500">Output:</span>
-						<code className="text-xs font-mono text-slate-300 truncate max-w-md">
+						<code className="min-w-0 max-w-md truncate text-xs font-mono text-slate-300">
 							{typeof toolOutput === "string" ? toolOutput.slice(0, 100) : JSON.stringify(toolOutput).slice(0, 100)}
 						</code>
 					</div>
@@ -427,7 +427,7 @@ const SpanContent = memo(function SpanContent({ span }: { span: Span }) {
 		return (
 			<div className="flex flex-col">
 				{errorBanner}
-				<div className="p-4 font-mono text-sm text-slate-300 bg-amber-500/5 leading-relaxed whitespace-pre-wrap">
+				<div className="min-w-0 break-words p-4 font-mono text-sm text-slate-300 bg-amber-500/5 leading-relaxed whitespace-pre-wrap">
 					<span className="text-amber-500 opacity-60">// Model reasoning</span>
 					<br />
 					{typeof reasoning === "string" ? reasoning : JSON.stringify(reasoning, null, 2)}
@@ -643,11 +643,6 @@ function formatRelativeTime(currentUs: number, startUs: number): string {
 	const seconds = Math.floor((diffMs % 60000) / 1000);
 	const milliseconds = Math.floor(diffMs % 1000);
 	return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}.${String(milliseconds).padStart(3, "0")}`;
-}
-
-function getMaxDescendantDepth(span: Span): number {
-	if (!span.children?.length) return 0;
-	return 1 + Math.max(...span.children.map(getMaxDescendantDepth));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

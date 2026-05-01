@@ -94,6 +94,8 @@ export class ChatEventLog {
 		}
 
 		this.db = new DatabaseSync(resolvedPath);
+		this.db.exec("PRAGMA busy_timeout = 5000");
+		if (resolvedPath !== ":memory:") this.db.exec("PRAGMA journal_mode = WAL");
 		this.db.exec(`
 			CREATE TABLE IF NOT EXISTS chat_events (
 				stream_id INTEGER PRIMARY KEY,

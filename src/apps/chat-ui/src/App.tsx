@@ -904,7 +904,6 @@ export function App({ route }: { route: ChatAppRoute }) {
 								showThinking={showThinking}
 								expandThinking={expandThinking}
 								sessionAgentProfile={bootstrap.session.profile}
-								activeAgentProfile={newSessionProfile}
 								agentProfiles={bootstrap.agents}
 								selectedAgentProfile={newSessionProfile}
 								createSessionDisabled={creatingSession || selectedRoomArchived}

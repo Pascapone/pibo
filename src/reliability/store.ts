@@ -41,6 +41,19 @@ export type PiboEventListInput = {
 	limit?: number;
 };
 
+export type PiboEventCountInput = {
+	topic?: string;
+	key?: string;
+	retentionClass?: PiboEventRetentionClass;
+};
+
+export type PiboEventCountRow = {
+	topic: string;
+	key?: string;
+	retentionClass: PiboEventRetentionClass;
+	count: number;
+};
+
 export type PiboEventPruneInput = {
 	topic?: string;
 	retentionClass?: PiboEventRetentionClass;
@@ -374,6 +387,39 @@ export class PiboReliabilityStore {
 			.prepare(`SELECT * FROM pibo_event_stream ${where} ORDER BY stream_id ASC LIMIT ?`)
 			.all(...values, clampLimit(input.limit, 1000)) as PiboEventRow[];
 		return rows.map(eventFromRow);
+	}
+
+	countEvents(input: PiboEventCountInput = {}): PiboEventCountRow[] {
+		const clauses: string[] = [];
+		const values: string[] = [];
+		if (input.topic) {
+			clauses.push("topic = ?");
+			values.push(input.topic);
+		}
+		if (input.key) {
+			clauses.push("key = ?");
+			values.push(input.key);
+		}
+		if (input.retentionClass) {
+			clauses.push("retention_class = ?");
+			values.push(input.retentionClass);
+		}
+		const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+		const rows = this.db
+			.prepare(`
+				SELECT topic, key, retention_class, COUNT(*) AS count
+				FROM pibo_event_stream
+				${where}
+				GROUP BY topic, key, retention_class
+				ORDER BY topic, key, retention_class
+			`)
+			.all(...values) as Array<{ topic: string; key: string | null; retention_class: string; count: number }>;
+		return rows.map((row) => ({
+			topic: row.topic,
+			key: row.key ?? undefined,
+			retentionClass: row.retention_class,
+			count: Number(row.count),
+		}));
 	}
 
 	readFromConsumer(topic: string, consumer: string, limit = 100): StoredPiboEvent[] {

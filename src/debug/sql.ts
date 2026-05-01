@@ -139,16 +139,31 @@ export function formatJson(value: unknown): string {
 	return JSON.stringify(value, null, 2);
 }
 
-function withReadOnlyDatabase<T>(store: ResolvedPiboDebugStore, action: (db: DatabaseSync) => T): T {
+export function openReadOnlyDebugDatabase(store: ResolvedPiboDebugStore): DatabaseSync {
 	if (!store.exists) {
 		throw new Error(`Debug store "${store.name}" not found at ${store.defaultPath}`);
 	}
 	const db = new DatabaseSync(store.path, { readOnly: true });
+	db.exec("PRAGMA busy_timeout = 5000");
+	return db;
+}
+
+function withReadOnlyDatabase<T>(store: ResolvedPiboDebugStore, action: (db: DatabaseSync) => T): T {
+	const db = openReadOnlyDebugDatabase(store);
 	try {
 		return action(db);
+	} catch (error) {
+		throw withStorePath(error, store);
 	} finally {
 		db.close();
 	}
+}
+
+export function withStorePath(error: unknown, store: ResolvedPiboDebugStore): Error {
+	const message = error instanceof Error ? error.message : String(error);
+	if (message.startsWith("Debug store ")) return error instanceof Error ? error : new Error(message);
+	if (!/database is locked/i.test(message)) return error instanceof Error ? error : new Error(message);
+	return new Error(`Debug store "${store.name}" at ${store.path} is locked: ${message}`);
 }
 
 function listTablesFromDb(db: DatabaseSync): string[] {

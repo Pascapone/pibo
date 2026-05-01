@@ -5,6 +5,7 @@ import type { PiboSession } from "../sessions/store.js";
 import type { ChatWebStoredEvent } from "../apps/chat/read-model.js";
 import { compareTraceOrder } from "../shared/trace-order.js";
 import type { ResolvedPiboDebugStore } from "./stores.js";
+import { openReadOnlyDebugDatabase, withStorePath } from "./sql.js";
 
 type SessionRow = {
 	id: string;
@@ -82,8 +83,8 @@ export async function inspectDebugTrace(
 	if (!stores.sessions.exists) throw new Error(`Debug store "sessions" not found at ${stores.sessions.defaultPath}`);
 	if (!stores.chat.exists) throw new Error(`Debug store "chat" not found at ${stores.chat.defaultPath}`);
 
-	const sessionsDb = new DatabaseSync(stores.sessions.path, { readOnly: true });
-	const chatDb = new DatabaseSync(stores.chat.path, { readOnly: true });
+	const sessionsDb = openReadOnlyDebugDatabase(stores.sessions);
+	const chatDb = openReadOnlyDebugDatabase(stores.chat);
 	try {
 		const sessionRow = sessionsDb.prepare("SELECT * FROM pibo_sessions WHERE id = ?").get(piboSessionId) as
 			| SessionRow
@@ -119,6 +120,8 @@ export async function inspectDebugTrace(
 			rawNodeCount: rows.length,
 			...(options.check ? { checks: checkTraceView(view) } : {}),
 		};
+	} catch (error) {
+		throw withStorePath(withStorePath(error, stores.chat), stores.sessions);
 	} finally {
 		sessionsDb.close();
 		chatDb.close();

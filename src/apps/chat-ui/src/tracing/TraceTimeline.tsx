@@ -11,7 +11,6 @@ type TraceTimelineProps = {
 	showThinking: boolean;
 	expandThinking: boolean;
 	sessionAgentProfile?: string;
-	activeAgentProfile?: string;
 	agentProfiles?: readonly AgentProfileOption[];
 	selectedAgentProfile?: string;
 	createSessionDisabled?: boolean;
@@ -27,7 +26,7 @@ type AgentProfileOption = {
 };
 
 const timelineContentStyle = {
-	"--trace-readable-width": "clamp(44rem, 58vw, 64rem)",
+	"--trace-readable-width": "min(100%, clamp(36rem, 58vw, 64rem))",
 } as CSSProperties;
 
 const DEFAULT_EXPANSION_DEPTH = 1;
@@ -38,7 +37,6 @@ export function TraceTimeline({
 	showThinking,
 	expandThinking,
 	sessionAgentProfile,
-	activeAgentProfile,
 	agentProfiles = [],
 	selectedAgentProfile,
 	createSessionDisabled = false,
@@ -74,9 +72,6 @@ export function TraceTimeline({
 		[allSpans],
 	);
 	const isStreaming = trace?.status === "UNSET";
-	const showActiveAgentProfile = Boolean(
-		sessionAgentProfile && activeAgentProfile && activeAgentProfile !== sessionAgentProfile,
-	);
 
 	const updateBottomLock = useCallback(() => {
 		const element = scrollRef.current;
@@ -144,20 +139,19 @@ export function TraceTimeline({
 	};
 
 	return (
-		<section className="flex-1 flex flex-col bg-[#0c1214] relative overflow-hidden">
-			<div className="h-14 px-6 border-b border-slate-800 bg-[#1a262b]/80 flex items-center justify-between sticky top-0 z-20">
-				<div className="flex items-center gap-4">
+		<section className="min-w-0 flex-1 flex flex-col bg-[#0c1214] relative overflow-hidden">
+			<div className="min-h-14 px-6 py-2 border-b border-slate-800 bg-[#1a262b]/80 flex items-center justify-between gap-3 sticky top-0 z-20">
+				<div className="flex min-w-0 items-center gap-4">
 					<GitBranch size={18} className="text-[#11a4d4]" aria-label="Execution flow" />
-					<div className="flex min-w-0 items-center gap-2">
+					<div className="flex min-w-0 flex-wrap items-center gap-2">
 						{isLoading ? <Badge color="cyan">Loading</Badge> : null}
 						{stats.active > 0 ? <Badge color="cyan">{stats.active} Active</Badge> : null}
 						{stats.completed > 0 ? <Badge color="green">{stats.completed} Done</Badge> : null}
 						{sessionAgentProfile ? <Badge color="transparent">{sessionAgentProfile}</Badge> : null}
-						{showActiveAgentProfile ? <Badge color="baby-blue">Active {activeAgentProfile}</Badge> : null}
 						{stats.error > 0 ? <Badge color="orange">{stats.error} Errors</Badge> : null}
 					</div>
 				</div>
-				<div className="flex items-center gap-1">
+				<div className="flex shrink-0 items-center gap-1">
 					<AgentSessionControls
 						agentProfiles={agentProfiles}
 						selectedAgentProfile={selectedAgentProfile}
@@ -214,9 +208,9 @@ export function TraceTimeline({
 				</div>
 			</div>
 
-			<div ref={scrollRef} onScroll={updateBottomLock} className="flex-1 overflow-auto">
+			<div ref={scrollRef} onScroll={updateBottomLock} className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
 				{spanTree.length ? (
-					<div className="relative w-max min-w-full p-6 pr-12" style={timelineContentStyle}>
+					<div className="relative w-full min-w-0 max-w-full p-6" style={timelineContentStyle}>
 						{spanTree.map((span) => (
 							<SpanNode
 								key={span.id}
@@ -328,7 +322,7 @@ function Badge({
 	color,
 	children,
 }: {
-	color: "cyan" | "green" | "orange" | "transparent" | "baby-blue";
+	color: "cyan" | "green" | "orange" | "transparent";
 	children: ReactNode;
 }) {
 	const className =
@@ -338,10 +332,8 @@ function Badge({
 				? "bg-[#0bda57]/20 text-[#0bda57]"
 				: color === "orange"
 					? "bg-[#ff6b00]/20 text-[#ff6b00]"
-					: color === "baby-blue"
-						? "bg-[#bae6fd] text-[#0f172a]"
-						: "border border-slate-700 text-slate-300";
-	const casing = color === "transparent" || color === "baby-blue" ? "" : "uppercase";
+					: "border border-slate-700 text-slate-300";
+	const casing = color === "transparent" ? "" : "uppercase";
 	return (
 		<span className={`max-w-52 truncate rounded-sm px-2 py-0.5 text-xs font-bold ${casing} ${className}`}>
 			{children}
@@ -374,7 +366,7 @@ function EmptyTraceState() {
 
 function StreamingIndicator() {
 	return (
-		<div className="relative mb-8" style={{ width: "var(--trace-readable-width)" }}>
+		<div className="relative mb-8 w-full" style={{ maxWidth: "var(--trace-readable-width)" }}>
 			<div className="bg-[#1a262b] border border-[#11a4d4]/30 rounded-sm p-4 flex items-center gap-3">
 				<span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#11a4d4]/20 border-2 border-[#11a4d4] animate-pulse">
 					<RefreshCw size={14} className="text-[#11a4d4] animate-spin" />

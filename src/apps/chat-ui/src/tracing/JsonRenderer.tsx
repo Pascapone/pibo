@@ -34,14 +34,14 @@ export function JsonRenderer({
 
 	if (!parsed) {
 		return (
-			<pre className={`font-mono text-xs text-slate-300 whitespace-pre-wrap overflow-auto ${className}`} style={{ maxHeight }}>
+			<pre className={`max-w-full overflow-auto whitespace-pre-wrap break-words font-mono text-xs text-slate-300 ${className}`} style={{ maxHeight }}>
 				{typeof value === "string" ? value : JSON.stringify(value, null, 2)}
 			</pre>
 		);
 	}
 
 	return (
-		<div className={className}>
+		<div className={`min-w-0 max-w-full ${className}`}>
 			{showControls ? (
 				<div className="flex items-center gap-1 mb-1">
 					<button
@@ -62,7 +62,7 @@ export function JsonRenderer({
 					</button>
 				</div>
 			) : null}
-			<div className="rounded-sm overflow-auto text-xs" style={{ maxHeight }}>
+			<div className="min-w-0 max-w-full overflow-auto rounded-sm text-xs" style={{ maxHeight }}>
 				<JsonView
 					key={signal}
 					value={parsed}
