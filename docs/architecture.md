@@ -233,7 +233,7 @@ The V1 chat web app uses Better Auth Google sign-in for every request path, incl
 
 Chat Web navigation is URL-based. The browser URL is the primary source of truth for the visible area and selected room/session. The canonical session URL is `/apps/chat/rooms/<roomId>/sessions/<piboSessionId>`, with additional app URLs for `/apps/chat/agents` and `/apps/chat/settings`. Opening `/apps/chat` may use browser-local last-selection state as an entry fallback, but bootstrap must replace it with the canonical room/session URL. The same-origin web host serves the React shell for non-asset `/apps/chat/*` paths so direct links and page reloads keep the selected area instead of falling back to the base app.
 
-The authenticated Chat Web shell also includes a Context area at `/apps/chat/context`. This area reuses the managed context-file API instead of maintaining a second auth flow or a disconnected editor surface. The older dedicated `/apps/context-files` web app still exists as a standalone plugin web app, but the main operator path is now the integrated Chat Web area.
+The authenticated Chat Web shell also includes a Context area at `/apps/chat/context`. This area reuses the managed context-file API instead of maintaining a second auth flow or a disconnected editor surface. Inside the integrated Chat shell, the Context editor remains the primary center workspace while the managed-file creation and selection panel sits on the right side so the shell does not present two competing left sidebars. The older dedicated `/apps/context-files` web app still exists as a standalone plugin web app, but the main operator path is now the integrated Chat Web area.
 
 The auth boundary is enforced before channel input reaches the session router:
 

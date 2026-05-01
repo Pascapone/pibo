@@ -181,8 +181,108 @@ export function ContextFilesView({ agentProfiles }: { agentProfiles: string[] })
 	}, [document, metadataAgent, refreshFiles]);
 
 	return (
-		<div className="context-files-view grid h-full min-h-0 grid-cols-[300px_minmax(0,1fr)] max-[1120px]:grid-cols-[260px_minmax(0,1fr)]">
-			<aside className="min-h-0 overflow-auto border-r border-slate-800 bg-[#1a262b]">
+		<div className="context-files-view grid h-full min-h-0 grid-cols-[minmax(0,1fr)_320px] max-[1180px]:grid-cols-[minmax(0,1fr)_280px] max-[920px]:grid-cols-1">
+			<main className="flex min-h-0 flex-col bg-[#101d22]">
+				<div className="flex h-14 items-center justify-between gap-3 border-b border-slate-800 bg-[#151f24] px-4">
+					<div className="min-w-0">
+						<div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#11a4d4]">
+							{selectedFile ? scopeLabel(selectedFile) : "Context File"}
+						</div>
+						<h2 className="truncate text-base font-semibold text-slate-100">
+							{document?.label || document?.key || "No file selected"}
+						</h2>
+						{document ? <div className="truncate font-mono text-[11px] text-slate-500">{document.path}</div> : null}
+					</div>
+					<div className="flex items-center gap-2">
+						<span className={`inline-flex h-8 items-center gap-1.5 border px-2.5 text-xs ${savePillClass(saveState)}`}>
+							<Save size={14} />
+							{saveStateLabel(saveState)}
+						</span>
+						<button
+							className="inline-flex h-8 w-8 items-center justify-center border border-slate-700 text-slate-400 hover:border-[#11a4d4] hover:text-[#7dd3fc]"
+							type="button"
+							title="Reload"
+							onClick={() => void handleReload()}
+						>
+							<RefreshCw size={15} />
+						</button>
+						<button
+							className="inline-flex h-8 w-8 items-center justify-center border border-slate-700 text-slate-400 hover:border-red-500 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-45"
+							type="button"
+							title="Remove managed file"
+							disabled={!selectedFile?.removable}
+							onClick={() => void handleRemove()}
+						>
+							<Trash2 size={15} />
+						</button>
+					</div>
+				</div>
+
+				<div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
+					{error ? <StatusBanner tone="error" text={error} /> : null}
+					{conflict ? <StatusBanner tone="warning" text={conflict} /> : null}
+					{document?.managed ? (
+						<div className="flex flex-wrap items-center gap-2 border border-slate-800 bg-[#151f24] p-3 text-xs text-slate-400">
+							<div className="flex gap-1">
+								<button
+									type="button"
+									className={`inline-flex h-8 items-center justify-center border px-3 uppercase tracking-wider ${
+										document.scope === "global"
+											? "border-[#11a4d4] bg-[#11a4d4]/10 text-[#7dd3fc]"
+											: "border-slate-700 text-slate-400 hover:border-slate-600 hover:text-slate-300"
+									}`}
+									onClick={() => void handleScopeChange("global")}
+								>
+									Global
+								</button>
+								<button
+									type="button"
+									className={`inline-flex h-8 items-center justify-center border px-3 uppercase tracking-wider ${
+										document.scope === "agent"
+											? "border-[#11a4d4] bg-[#11a4d4]/10 text-[#7dd3fc]"
+											: "border-slate-700 text-slate-400 hover:border-slate-600 hover:text-slate-300"
+									}`}
+									onClick={() => void handleScopeChange("agent")}
+									disabled={!metadataAgent.trim()}
+								>
+									Agent
+								</button>
+							</div>
+							<input
+								className="h-8 min-w-[16rem] flex-1 border border-slate-700 bg-[#0e1116] px-3 text-xs text-slate-200 outline-none placeholder:text-slate-500 focus:border-[#11a4d4]"
+								value={metadataAgent}
+								onChange={(event) => setMetadataAgent(event.currentTarget.value)}
+								placeholder="agent-profile-name"
+								list={metadataAgentListId}
+							/>
+							<datalist id={metadataAgentListId}>
+								{agentOptions.map((profile) => (
+									<option key={profile} value={profile} />
+								))}
+							</datalist>
+						</div>
+					) : null}
+
+					{document?.exists ? (
+						<div className="min-h-0 flex-1 overflow-auto border border-slate-800 bg-[#151f24]">
+							<MarkdownEditor
+								ref={editorRef}
+								documentKey={`${document.key}:${document.version ?? document.updatedAt ?? ""}`}
+								initialMarkdown={document.markdown}
+								onPersist={handlePersist}
+								onSaveStateChange={setSaveState}
+							/>
+						</div>
+					) : (
+						<div className="flex items-center gap-2 border border-dashed border-slate-700 bg-[#151f24] px-4 py-5 text-sm text-slate-400">
+							<AlertTriangle size={18} />
+							{document ? "The selected file is missing on disk." : "Select or create a context file."}
+						</div>
+					)}
+				</div>
+			</main>
+
+			<aside className="min-h-0 overflow-auto border-l border-slate-800 bg-[#1a262b] max-[920px]:border-l-0 max-[920px]:border-t">
 				<div className="border-b border-slate-800 px-4 py-3">
 					<div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#11a4d4]">Context</div>
 					<h1 className="mt-1 text-sm font-semibold text-slate-100">Context Files</h1>
@@ -287,106 +387,6 @@ export function ContextFilesView({ agentProfiles }: { agentProfiles: string[] })
 					</section>
 				</div>
 			</aside>
-
-			<main className="flex min-h-0 flex-col bg-[#101d22]">
-				<div className="flex h-14 items-center justify-between gap-3 border-b border-slate-800 bg-[#151f24] px-4">
-					<div className="min-w-0">
-						<div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#11a4d4]">
-							{selectedFile ? scopeLabel(selectedFile) : "Context File"}
-						</div>
-						<h2 className="truncate text-base font-semibold text-slate-100">
-							{document?.label || document?.key || "No file selected"}
-						</h2>
-						{document ? <div className="truncate font-mono text-[11px] text-slate-500">{document.path}</div> : null}
-					</div>
-					<div className="flex items-center gap-2">
-						<span className={`inline-flex h-8 items-center gap-1.5 border px-2.5 text-xs ${savePillClass(saveState)}`}>
-							<Save size={14} />
-							{saveStateLabel(saveState)}
-						</span>
-						<button
-							className="inline-flex h-8 w-8 items-center justify-center border border-slate-700 text-slate-400 hover:border-[#11a4d4] hover:text-[#7dd3fc]"
-							type="button"
-							title="Reload"
-							onClick={() => void handleReload()}
-						>
-							<RefreshCw size={15} />
-						</button>
-						<button
-							className="inline-flex h-8 w-8 items-center justify-center border border-slate-700 text-slate-400 hover:border-red-500 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-45"
-							type="button"
-							title="Remove managed file"
-							disabled={!selectedFile?.removable}
-							onClick={() => void handleRemove()}
-						>
-							<Trash2 size={15} />
-						</button>
-					</div>
-				</div>
-
-				<div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
-					{error ? <StatusBanner tone="error" text={error} /> : null}
-					{conflict ? <StatusBanner tone="warning" text={conflict} /> : null}
-					{document?.managed ? (
-						<div className="flex flex-wrap items-center gap-2 border border-slate-800 bg-[#151f24] p-3 text-xs text-slate-400">
-							<div className="flex gap-1">
-								<button
-									type="button"
-									className={`inline-flex h-8 items-center justify-center border px-3 uppercase tracking-wider ${
-										document.scope === "global"
-											? "border-[#11a4d4] bg-[#11a4d4]/10 text-[#7dd3fc]"
-											: "border-slate-700 text-slate-400 hover:border-slate-600 hover:text-slate-300"
-									}`}
-									onClick={() => void handleScopeChange("global")}
-								>
-									Global
-								</button>
-								<button
-									type="button"
-									className={`inline-flex h-8 items-center justify-center border px-3 uppercase tracking-wider ${
-										document.scope === "agent"
-											? "border-[#11a4d4] bg-[#11a4d4]/10 text-[#7dd3fc]"
-											: "border-slate-700 text-slate-400 hover:border-slate-600 hover:text-slate-300"
-									}`}
-									onClick={() => void handleScopeChange("agent")}
-									disabled={!metadataAgent.trim()}
-								>
-									Agent
-								</button>
-							</div>
-							<input
-								className="h-8 min-w-[16rem] flex-1 border border-slate-700 bg-[#0e1116] px-3 text-xs text-slate-200 outline-none placeholder:text-slate-500 focus:border-[#11a4d4]"
-								value={metadataAgent}
-								onChange={(event) => setMetadataAgent(event.currentTarget.value)}
-								placeholder="agent-profile-name"
-								list={metadataAgentListId}
-							/>
-							<datalist id={metadataAgentListId}>
-								{agentOptions.map((profile) => (
-									<option key={profile} value={profile} />
-								))}
-							</datalist>
-						</div>
-					) : null}
-
-					{document?.exists ? (
-						<div className="min-h-0 flex-1 overflow-auto border border-slate-800 bg-[#151f24]">
-							<MarkdownEditor
-								ref={editorRef}
-								documentKey={`${document.key}:${document.version ?? document.updatedAt ?? ""}`}
-								initialMarkdown={document.markdown}
-								onPersist={handlePersist}
-								onSaveStateChange={setSaveState}
-							/>
-						</div>
-					) : (
-						<div className="flex items-center gap-2 border border-dashed border-slate-700 bg-[#151f24] px-4 py-5 text-sm text-slate-400">
-							<AlertTriangle size={18} />
-							{document ? "The selected file is missing on disk." : "Select or create a context file."}
-						</div>
-					)}
-				</div>
-			</main>
 		</div>
 	);
 }
