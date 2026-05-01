@@ -297,6 +297,14 @@ export class ChatEventLog {
 		return Number(row?.count ?? 0);
 	}
 
+	deleteSessions(piboSessionIds: string[]): number {
+		if (!piboSessionIds.length) return 0;
+		const placeholders = piboSessionIds.map(() => "?").join(", ");
+		this.db.prepare(`DELETE FROM chat_session_reads WHERE pibo_session_id IN (${placeholders})`).run(...piboSessionIds);
+		const result = this.db.prepare(`DELETE FROM chat_events WHERE pibo_session_id IN (${placeholders})`).run(...piboSessionIds);
+		return Number(result.changes ?? 0);
+	}
+
 	upsertRetentionPolicy(policy: ChatRetentionPolicy): ChatRetentionPolicy {
 		this.db
 			.prepare(`

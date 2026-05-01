@@ -165,6 +165,11 @@ export class SqlitePiboSessionStore implements PiboSessionStore {
 		return this.get(id);
 	}
 
+	delete(id: string): boolean {
+		const result = this.db.prepare("DELETE FROM pibo_sessions WHERE id = ?").run(id);
+		return Number(result.changes ?? 0) > 0;
+	}
+
 	find(input: FindPiboSessionsInput): PiboSession[] {
 		return this.list().filter((session) => matchesFindInput(session, input));
 	}

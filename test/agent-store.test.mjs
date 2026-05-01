@@ -53,3 +53,22 @@ test("custom agent store migrates legacy profile names before listing", () => {
 	db.close();
 	store.close();
 });
+
+test("custom agent store archives and deletes agents", () => {
+	const path = join(mkdtempSync(join(tmpdir(), "pibo-agent-store-")), "agents.sqlite");
+	const store = new CustomAgentStore(path);
+	const agent = store.create({ ownerScope: "user:test", displayName: "archive-me" });
+
+	assert.deepEqual(store.list("user:test").map((item) => item.profileName), ["archive-me"]);
+	const archived = store.setArchived(agent.id, true);
+	assert.ok(archived.archivedAt);
+	assert.deepEqual(store.list("user:test"), []);
+	assert.deepEqual(store.list("user:test", { includeArchived: true }).map((item) => item.profileName), ["archive-me"]);
+
+	const restored = store.setArchived(agent.id, false);
+	assert.equal(restored.archivedAt, undefined);
+	assert.equal(store.delete(agent.id), true);
+	assert.equal(store.get(agent.id), undefined);
+
+	store.close();
+});

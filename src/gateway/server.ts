@@ -224,6 +224,7 @@ export class PiboGatewayServer {
 				return this.requireSessionStore().create({ ...input, profile });
 			},
 			updateSession: (id, input) => this.requireSessionStore().update(id, input),
+			deleteSession: (id) => this.requireSessionStore().delete?.(id) ?? false,
 			findSessions: (input) => this.requireSessionStore().find(input),
 			listSessions: () => this.requireSessionStore().list?.() ?? [],
 			getGatewayActions: () => this.pluginRegistry.getGatewayActionInfos(),

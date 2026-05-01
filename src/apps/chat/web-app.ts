@@ -78,6 +78,8 @@ type ChatAgentBody = {
 	subagents?: unknown;
 	builtinTools?: unknown;
 	runControl?: unknown;
+	archived?: unknown;
+	confirmName?: unknown;
 };
 
 type ChatMessageBody = {
@@ -271,6 +273,12 @@ function normalizeBuiltinTools(value: unknown): "default" | "disabled" {
 function normalizeRunControl(value: unknown): boolean {
 	if (value === undefined) return false;
 	if (typeof value !== "boolean") throw new PiboWebHttpError("runControl must be a boolean", 400);
+	return value;
+}
+
+function normalizeAgentArchived(value: unknown): boolean | undefined {
+	if (value === undefined) return undefined;
+	if (typeof value !== "boolean") throw new PiboWebHttpError("archived must be a boolean", 400);
 	return value;
 }
 
@@ -603,7 +611,9 @@ function createAgentUpdate(body: ChatAgentBody): UpdateCustomAgentInput {
 	if (body.subagents !== undefined) update.subagents = normalizeAgentSubagents(body.subagents);
 	if (body.builtinTools !== undefined) update.builtinTools = normalizeBuiltinTools(body.builtinTools);
 	if (body.runControl !== undefined) update.runControl = normalizeRunControl(body.runControl);
-	if (Object.keys(update).length === 0) throw new PiboWebHttpError("No agent update fields provided", 400);
+	if (Object.keys(update).length === 0 && body.archived === undefined) {
+		throw new PiboWebHttpError("No agent update fields provided", 400);
+	}
 	return update;
 }
 
@@ -615,7 +625,7 @@ function requireAgentProfileNameAvailable(
 ): void {
 	const currentAgent = currentAgentId ? state.agentStore.get(currentAgentId) : undefined;
 	if (currentAgent?.profileName === profileName) return;
-	for (const agent of state.agentStore.list()) {
+	for (const agent of state.agentStore.list(undefined, { includeArchived: true })) {
 		if (agent.id !== currentAgentId && agent.profileName === profileName) {
 			throw new PiboWebHttpError(`Agent name "${profileName}" already exists`, 400);
 		}
@@ -631,6 +641,53 @@ function requireOwnedAgent(agent: CustomAgentDefinition | undefined, webSession:
 		throw new PiboWebHttpError("Agent is not available for this user", 404);
 	}
 	return agent;
+}
+
+function normalizeAgentDeleteConfirmation(value: unknown): string {
+	if (typeof value !== "string" || value.trim().length === 0) {
+		throw new PiboWebHttpError("Type the agent name to permanently delete it.", 400);
+	}
+	return value.trim();
+}
+
+function deleteSessionsForAgentProfile(
+	state: ChatWebAppState,
+	context: PiboWebAppContext,
+	webSession: PiboWebSession,
+	profileName: string,
+): string[] {
+	const deleteSession = context.channelContext.deleteSession;
+	if (!deleteSession) throw new PiboWebHttpError("Session deletion is not available", 501);
+	const ownedSessions = listOwnedSessions(context, webSession);
+	const sessionsById = new Map(ownedSessions.map((session) => [session.id, session]));
+	const ids = new Set(ownedSessions.filter((session) => session.profile === profileName).map((session) => session.id));
+	let changed = true;
+	while (changed) {
+		changed = false;
+		for (const session of ownedSessions) {
+			if (session.parentId && ids.has(session.parentId) && !ids.has(session.id)) {
+				ids.add(session.id);
+				changed = true;
+			}
+		}
+	}
+	const orderedIds = [...ids].sort(
+		(left, right) => sessionDepth(sessionsById.get(right), sessionsById) - sessionDepth(sessionsById.get(left), sessionsById),
+	);
+	state.readModel.deleteSessions(orderedIds);
+	state.eventLog.deleteSessions(orderedIds);
+	for (const id of orderedIds) deleteSession(id);
+	return orderedIds;
+}
+
+function sessionDepth(session: PiboSession | undefined, sessionsById: ReadonlyMap<string, PiboSession>): number {
+	let depth = 0;
+	let current = session;
+	while (current?.parentId) {
+		depth += 1;
+		current = sessionsById.get(current.parentId);
+	}
+	return depth;
 }
 
 function resolveRequestedSession(
@@ -1875,7 +1932,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					rooms,
 					sessions,
 					agents: context.channelContext.getProfiles?.() ?? [],
-					customAgents: state.agentStore.list(webSession.ownerScope),
+					customAgents: state.agentStore.list(webSession.ownerScope, { includeArchived: true }),
 					agentCatalog: context.channelContext.getCapabilityCatalog?.(),
 					capabilities: {
 						actions: context.channelContext.getGatewayActions(),
@@ -1899,7 +1956,8 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/agents` && request.method === "GET") {
 				const webSession = await requireSession(request, context);
-				return responseJson({ agents: state.agentStore.list(webSession.ownerScope) });
+				const includeArchived = parseBooleanSearchParam(url, "includeArchived");
+				return responseJson({ agents: state.agentStore.list(webSession.ownerScope, { includeArchived }) });
 			}
 
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/agents` && request.method === "POST") {
@@ -1920,12 +1978,35 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const existing = requireOwnedAgent(state.agentStore.get(patchAgentId), webSession);
 				const body = await readJsonBody<ChatAgentBody>(request);
 				const update = createAgentUpdate(body);
+				const archived = normalizeAgentArchived(body.archived);
 				if (update.displayName) requireAgentProfileNameAvailable(state, context, update.displayName, existing.id);
-				const agent = state.agentStore.update(patchAgentId, update);
+				const updated = Object.keys(update).length ? state.agentStore.update(patchAgentId, update) : existing;
+				const afterUpdate = requireOwnedAgent(updated, webSession);
+				const agent = archived === undefined ? afterUpdate : state.agentStore.setArchived(patchAgentId, archived);
 				const owned = requireOwnedAgent(agent, webSession);
 				if (existing.profileName !== owned.profileName) context.channelContext.removeProfile?.(existing.profileName);
-				context.channelContext.upsertProfile?.(createCustomAgentProfileDefinition(owned));
+				if (owned.archivedAt) {
+					context.channelContext.removeProfile?.(owned.profileName);
+				} else {
+					context.channelContext.upsertProfile?.(createCustomAgentProfileDefinition(owned));
+				}
 				return responseJson({ agent: owned });
+			}
+
+			if (patchAgentId && request.method === "DELETE") {
+				requireSameOriginJsonRequest(request);
+				const webSession = await requireSession(request, context);
+				const agent = requireOwnedAgent(state.agentStore.get(patchAgentId), webSession);
+				if (!agent.archivedAt) throw new PiboWebHttpError("Archive the agent before permanently deleting it.", 400);
+				const body = await readJsonBody<ChatAgentBody>(request);
+				const confirmName = normalizeAgentDeleteConfirmation(body.confirmName);
+				if (confirmName !== agent.profileName) {
+					throw new PiboWebHttpError(`Type "${agent.profileName}" to permanently delete this agent and its sessions.`, 400);
+				}
+				const deletedSessionIds = deleteSessionsForAgentProfile(state, context, webSession, agent.profileName);
+				state.agentStore.delete(agent.id);
+				context.channelContext.removeProfile?.(agent.profileName);
+				return responseJson({ deletedAgentId: agent.id, deletedSessionIds });
 			}
 
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/session` && request.method === "GET") {

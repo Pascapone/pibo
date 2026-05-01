@@ -57,11 +57,22 @@ export async function postCustomAgent(input: SaveCustomAgentInput): Promise<{ ag
 	});
 }
 
-export async function patchCustomAgent(id: string, input: SaveCustomAgentInput): Promise<{ agent: CustomAgent }> {
+export async function patchCustomAgent(
+	id: string,
+	input: Partial<SaveCustomAgentInput> & { archived?: boolean },
+): Promise<{ agent: CustomAgent }> {
 	return requestJson(`/api/chat/agents/${encodeURIComponent(id)}`, {
 		method: "PATCH",
 		headers: { "content-type": "application/json" },
 		body: JSON.stringify(input),
+	});
+}
+
+export async function deleteCustomAgent(id: string, confirmName: string): Promise<{ deletedAgentId: string; deletedSessionIds: string[] }> {
+	return requestJson(`/api/chat/agents/${encodeURIComponent(id)}`, {
+		method: "DELETE",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify({ confirmName }),
 	});
 }
 

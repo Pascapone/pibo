@@ -27,6 +27,7 @@ export type CustomAgentDefinition = {
 	runControl: boolean;
 	createdAt: string;
 	updatedAt: string;
+	archivedAt?: string;
 };
 
 const CUSTOM_AGENT_NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
@@ -59,6 +60,7 @@ type AgentRow = {
 	run_control: 0 | 1;
 	created_at: string;
 	updated_at: string;
+	archived_at: string | null;
 };
 
 export class CustomAgentStore {
@@ -82,20 +84,23 @@ export class CustomAgentStore {
 				builtin_tools TEXT NOT NULL,
 				run_control INTEGER NOT NULL,
 				created_at TEXT NOT NULL,
-				updated_at TEXT NOT NULL
+				updated_at TEXT NOT NULL,
+				archived_at TEXT
 			);
 
 			CREATE INDEX IF NOT EXISTS idx_chat_agents_owner
 				ON chat_agents(owner_scope, updated_at);
 		`);
+		this.migrateArchivedAtColumn();
 		this.migrateLegacyProfileNames();
 	}
 
-	list(ownerScope?: string): CustomAgentDefinition[] {
+	list(ownerScope?: string, options: { includeArchived?: boolean } = {}): CustomAgentDefinition[] {
 		this.migrateLegacyProfileNames();
+		const archivedClause = options.includeArchived ? "" : " AND archived_at IS NULL";
 		const rows = ownerScope
-			? this.db.prepare("SELECT * FROM chat_agents WHERE owner_scope = ? ORDER BY updated_at DESC").all(ownerScope)
-			: this.db.prepare("SELECT * FROM chat_agents ORDER BY updated_at DESC").all();
+			? this.db.prepare(`SELECT * FROM chat_agents WHERE owner_scope = ?${archivedClause} ORDER BY updated_at DESC`).all(ownerScope)
+			: this.db.prepare(`SELECT * FROM chat_agents WHERE 1 = 1${archivedClause} ORDER BY updated_at DESC`).all();
 		return (rows as AgentRow[]).map(agentFromRow);
 	}
 
@@ -182,6 +187,22 @@ export class CustomAgentStore {
 		return this.get(id);
 	}
 
+	setArchived(id: string, archived: boolean): CustomAgentDefinition | undefined {
+		this.migrateLegacyProfileNames();
+		const existing = this.get(id);
+		if (!existing) return undefined;
+		const archivedAt = archived ? existing.archivedAt ?? new Date().toISOString() : null;
+		this.db
+			.prepare("UPDATE chat_agents SET archived_at = ?, updated_at = ? WHERE id = ?")
+			.run(archivedAt, new Date().toISOString(), id);
+		return this.get(id);
+	}
+
+	delete(id: string): boolean {
+		const result = this.db.prepare("DELETE FROM chat_agents WHERE id = ?").run(id);
+		return Number(result.changes ?? 0) > 0;
+	}
+
 	close(): void {
 		this.db.close();
 	}
@@ -198,12 +219,13 @@ export class CustomAgentStore {
 					native_tools_json,
 					skills_json,
 					context_files_json,
-					subagents_json,
-					builtin_tools,
-					run_control,
-					created_at,
-					updated_at
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				subagents_json,
+				builtin_tools,
+				run_control,
+				created_at,
+				updated_at,
+				archived_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			`)
 			.run(
 				agent.id,
@@ -219,6 +241,7 @@ export class CustomAgentStore {
 				agent.runControl ? 1 : 0,
 				agent.createdAt,
 				agent.updatedAt,
+				agent.archivedAt ?? null,
 			);
 	}
 
@@ -244,6 +267,15 @@ export class CustomAgentStore {
 				.run(nextName, nextName, row.id);
 		}
 	}
+
+	private migrateArchivedAtColumn(): void {
+		const columns = new Set(
+			(this.db.prepare("PRAGMA table_info(chat_agents)").all() as Array<{ name: string }>).map((column) => column.name),
+		);
+		if (!columns.has("archived_at")) {
+			this.db.prepare("ALTER TABLE chat_agents ADD COLUMN archived_at TEXT").run();
+		}
+	}
 }
 
 export function createDefaultCustomAgentStore(cwd = process.cwd()): CustomAgentStore {
@@ -265,6 +297,7 @@ function agentFromRow(row: AgentRow): CustomAgentDefinition {
 		runControl: row.run_control === 1,
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
+		archivedAt: row.archived_at ?? undefined,
 	};
 }
 

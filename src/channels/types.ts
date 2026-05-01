@@ -23,6 +23,7 @@ export type PiboChannelContext = {
 	getSession(id: string): PiboSession | undefined;
 	createSession(input: CreatePiboSessionInput): PiboSession;
 	updateSession?(id: string, input: UpdatePiboSessionInput): PiboSession | undefined;
+	deleteSession?(id: string): boolean;
 	findSessions(input: FindPiboSessionsInput): PiboSession[];
 	listSessions?(): PiboSession[];
 	getGatewayActions(): PiboGatewayActionInfo[];

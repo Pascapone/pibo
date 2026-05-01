@@ -58,6 +58,7 @@ export type PiboSessionStore = {
 	list?(): PiboSession[];
 	create(input: CreatePiboSessionInput): PiboSession;
 	update(id: string, input: UpdatePiboSessionInput): PiboSession | undefined;
+	delete?(id: string): boolean;
 	find(input: FindPiboSessionsInput): PiboSession[];
 	close?(): void;
 };
@@ -136,6 +137,14 @@ export class InMemoryPiboSessionStore implements PiboSessionStore {
 		};
 		this.set(updated, existing.piSessionId);
 		return updated;
+	}
+
+	delete(id: string): boolean {
+		const existing = this.byId.get(id);
+		if (!existing) return false;
+		this.byId.delete(id);
+		this.byPiSessionId.delete(existing.piSessionId);
+		return true;
 	}
 
 	find(input: FindPiboSessionsInput): PiboSession[] {

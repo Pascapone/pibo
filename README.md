@@ -68,7 +68,7 @@ The channel context exposes only the pibo boundary:
 
 - `emit(event)` sends a `PiboInputEvent` to the session router.
 - `subscribe(listener)` receives normalized `PiboOutputEvent` values.
-- `getSession(id)`, `createSession(...)`, `updateSession(...)`, and `findSessions(...)` work with first-class Pibo Session records.
+- `getSession(id)`, `createSession(...)`, `updateSession(...)`, `deleteSession(...)`, and `findSessions(...)` work with first-class Pibo Session records.
 - `getGatewayActions()` exposes discoverable execution actions for channel UIs.
 
 Pibo Sessions are stored in SQLite by default at `.pibo/pibo-sessions.sqlite`. A Pibo Session keeps product identity (`id`), technical Pi identity (`piSessionId`), channel, kind, profile, owner scope, optional parent/origin relationships, optional workspace, title, and plugin metadata.
@@ -90,6 +90,8 @@ The Chat Web App includes an Agent Designer in the Agents area. It creates custo
 The Agents area uses one sidebar for both editable custom agents and read-only plugin profiles. Plugin profiles can be inspected with their registered tools, skills, context files, subagents, built-in tool mode, and run-control package state, then copied into a custom agent when changes are needed.
 
 Custom agent names are profile names. They must be lowercase kebab-case, such as `test-agent`, and are used consistently in the UI, session records, and backend profile registry. Legacy `custom-agent:agent_*` names remain aliases for existing agents.
+
+Custom agents can be archived before deletion. Archived custom agents are removed from the active profile catalog, cannot start new sessions, and become read-only until restored. Permanent deletion is available only for archived agents and requires typing the agent profile name; it deletes the custom agent and Chat sessions using that profile.
 
 The designer configures native Pibo agent capabilities only: plugin-registered tools, skills, context files, subagents, built-in Pi tool visibility, and capability packages such as `pibo-run-control`. Curated external CLI tools from `pibo tools` remain global operator tooling and are not selected per agent.
 

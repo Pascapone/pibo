@@ -19,10 +19,11 @@ import {
 	Save,
 	Settings,
 	SendHorizontal,
+	Trash2,
 	UserRound,
 	X,
 } from "lucide-react";
-import { getBootstrap, getTrace, patchCustomAgent, patchRoom, patchSession, postAction, postCustomAgent, postMessage, postRoom, postSession, signInWithGoogle, signOut, type SaveCustomAgentInput } from "./api";
+import { deleteCustomAgent, getBootstrap, getTrace, patchCustomAgent, patchRoom, patchSession, postAction, postCustomAgent, postMessage, postRoom, postSession, signInWithGoogle, signOut, type SaveCustomAgentInput } from "./api";
 import type { AgentCatalog, BootstrapData, CustomAgent, CustomAgentSubagent, PiboRoom, PiboSessionTraceView, PiboTraceNode, PiboWebSessionNode } from "./types";
 import { adaptTrace } from "./tracing/adapt";
 import { TraceTimeline } from "./tracing/TraceTimeline";
@@ -1205,6 +1206,7 @@ function AgentsView({
 	const [customAgents, setCustomAgents] = useState(initialCustomAgents);
 	const [draft, setDraft] = useState<AgentDraft>(() => createBlankAgentDraft(initialCatalog));
 	const [saving, setSaving] = useState(false);
+	const [deleteConfirmName, setDeleteConfirmName] = useState("");
 	const [localError, setLocalError] = useState<string | null>(null);
 	const designerAvailable = Boolean(catalog);
 
@@ -1217,11 +1219,14 @@ function AgentsView({
 		() => agents.filter((agent) => !customProfileNames.has(agent.name)),
 		[agents, customProfileNames],
 	);
+	const activeCustomAgents = useMemo(() => customAgents.filter((agent) => !agent.archivedAt), [customAgents]);
+	const archivedCustomAgents = useMemo(() => customAgents.filter((agent) => agent.archivedAt), [customAgents]);
 	const profileOptions = useMemo(
-		() => uniqueProfileOptions(agents, customAgents),
-		[agents, customAgents],
+		() => uniqueProfileOptions(agents, activeCustomAgents),
+		[agents, activeCustomAgents],
 	);
-	const readOnly = draft.source === "profile";
+	const archivedDraft = Boolean(draft.archivedAt);
+	const readOnly = draft.source === "profile" || archivedDraft;
 	const agentNameError = readOnly ? null : validateAgentName(draft.displayName);
 	const draftProfileName = draft.profileName ?? (agentNameError ? "new custom profile" : draft.displayName);
 
@@ -1264,6 +1269,40 @@ function AgentsView({
 		}
 	};
 
+	const setDraftArchived = async (archived: boolean) => {
+		if (!draft.id || draft.source !== "custom") return;
+		setSaving(true);
+		try {
+			const response = await patchCustomAgent(draft.id, { archived });
+			setCustomAgents((current) => current.map((agent) => (agent.id === response.agent.id ? response.agent : agent)));
+			setDraft(agentToDraft(response.agent));
+			setDeleteConfirmName("");
+			onAgentsChanged();
+			setLocalError(null);
+		} catch (caught) {
+			setLocalError(caught instanceof Error ? caught.message : String(caught));
+		} finally {
+			setSaving(false);
+		}
+	};
+
+	const deleteDraft = async () => {
+		if (!draft.id || !draft.profileName || !archivedDraft) return;
+		setSaving(true);
+		try {
+			await deleteCustomAgent(draft.id, deleteConfirmName);
+			setCustomAgents((current) => current.filter((agent) => agent.id !== draft.id));
+			setDraft(createBlankAgentDraft(catalog ?? undefined));
+			setDeleteConfirmName("");
+			onAgentsChanged();
+			setLocalError(null);
+		} catch (caught) {
+			setLocalError(caught instanceof Error ? caught.message : String(caught));
+		} finally {
+			setSaving(false);
+		}
+	};
+
 	return (
 		<div className="h-full min-h-0 overflow-hidden grid grid-cols-[300px_minmax(0,1fr)] max-[920px]:grid-cols-1">
 			<aside className="border-r border-slate-800 bg-[#1a262b] min-h-0 overflow-auto">
@@ -1280,7 +1319,7 @@ function AgentsView({
 				</div>
 				<div className="p-2">
 					<AgentList title="Custom Agents">
-						{customAgents.map((agent) => (
+						{activeCustomAgents.map((agent) => (
 							<AgentSidebarRow
 								key={agent.id}
 								title={agent.displayName}
@@ -1297,7 +1336,23 @@ function AgentsView({
 								createSessionDisabled={creatingSession}
 							/>
 						))}
-						{customAgents.length === 0 ? <div className="px-2 py-3 text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm">No custom agents</div> : null}
+						{activeCustomAgents.length === 0 ? <div className="px-2 py-3 text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm">No custom agents</div> : null}
+					</AgentList>
+					<AgentList title="Archived Custom Agents">
+						{archivedCustomAgents.map((agent) => (
+							<AgentSidebarRow
+								key={agent.id}
+								title={agent.displayName}
+								subtitle={agent.profileName}
+								selected={draft.source === "custom" && draft.id === agent.id}
+								onSelect={() => {
+									setDraft(agentToDraft(agent));
+								}}
+								onCreateSession={() => {}}
+								createSessionDisabled
+							/>
+						))}
+						{archivedCustomAgents.length === 0 ? <div className="px-2 py-3 text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm">No archived agents</div> : null}
 					</AgentList>
 					<AgentList title="Read-only Profiles">
 						{pluginProfiles.map((agent) => (
@@ -1326,19 +1381,25 @@ function AgentsView({
 					<div className="min-w-0">
 						<h1 className="text-sm font-bold uppercase tracking-wider">Agent Designer</h1>
 						<div className="font-mono text-[11px] text-slate-500 truncate">{draftProfileName}</div>
-						<div className="text-[11px] uppercase tracking-wider text-slate-500">{readOnly ? "read-only plugin profile" : "custom agent"}</div>
+						<div className="text-[11px] uppercase tracking-wider text-slate-500">{draft.source === "profile" ? "read-only plugin profile" : archivedDraft ? "archived custom agent" : "custom agent"}</div>
 					</div>
 					<div className="flex items-center gap-2">
-						<button type="button" onClick={() => { if (draft.profileName) { onSelect(draft.profileName); onCreateSession(draft.profileName); } }} disabled={!draft.profileName || creatingSession} title="New Session With Agent" aria-label="New Session With Agent" className="h-8 w-8 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50">
+						<button type="button" onClick={() => { if (draft.profileName) { onSelect(draft.profileName); onCreateSession(draft.profileName); } }} disabled={!draft.profileName || creatingSession || archivedDraft} title="New Session With Agent" aria-label="New Session With Agent" className="h-8 w-8 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50">
 							<MessageSquarePlus size={14} />
 						</button>
+						{draft.source === "custom" && draft.id ? (
+							<button type="button" onClick={() => void setDraftArchived(!archivedDraft)} disabled={saving} title={archivedDraft ? "Restore Agent" : "Archive Agent"} aria-label={archivedDraft ? "Restore Agent" : "Archive Agent"} className="h-8 w-8 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50">
+								{archivedDraft ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+							</button>
+						) : null}
 						<button type="button" onClick={() => void saveDraft()} disabled={readOnly || !designerAvailable || saving || Boolean(agentNameError)} title="Save Agent" aria-label="Save Agent" className="h-8 w-8 inline-flex items-center justify-center border border-[#11a4d4] rounded-sm text-[#11a4d4] bg-[#11a4d4]/10 disabled:opacity-50">
 							<Save size={14} />
 						</button>
 					</div>
 				</div>
 				{designerAvailable ? null : <div className="mb-3 border border-[#f59e0b]/60 bg-[#f59e0b]/10 text-amber-100 px-3 py-2 text-sm rounded-sm">{agentDesignerUnavailableMessage()}</div>}
-				{readOnly ? <div className="mb-3 border border-slate-700 bg-[#151f24] text-slate-300 px-3 py-2 text-sm rounded-sm">This profile is registered by a plugin. Copy it to create an editable custom agent.</div> : null}
+				{draft.source === "profile" ? <div className="mb-3 border border-slate-700 bg-[#151f24] text-slate-300 px-3 py-2 text-sm rounded-sm">This profile is registered by a plugin. Copy it to create an editable custom agent.</div> : null}
+				{archivedDraft ? <div className="mb-3 border border-[#f59e0b]/60 bg-[#f59e0b]/10 text-amber-100 px-3 py-2 text-sm rounded-sm">This agent is archived. Restore it before editing or starting new sessions.</div> : null}
 				{localError ? <div className="mb-3 border border-red-500/60 bg-red-500/10 text-red-200 px-3 py-2 text-sm rounded-sm">{localError}</div> : null}
 				<div className="grid gap-4">
 					<DesignerPanel title="Basics">
@@ -1352,6 +1413,18 @@ function AgentsView({
 					<CatalogSection title="Packages"><CatalogToggle disabled={readOnly} checked={draft.runControl} title="pibo-run-control" description="Expose pibo_run_* as one package for yielded native tools and subagents." meta="package" onToggle={() => setDraft((current) => ({ ...current, runControl: !current.runControl }))} /></CatalogSection>
 					<CatalogSection title="Context Files">{catalog?.contextFiles.map((contextFile) => <CatalogToggle key={contextFile.key} disabled={readOnly} checked={draft.contextFiles.includes(contextFile.key)} title={contextFile.label ?? contextFile.key} description={contextFile.path} onToggle={() => setDraft((current) => ({ ...current, contextFiles: toggleName(current.contextFiles, contextFile.key) }))} />) ?? <EmptyCatalog />}</CatalogSection>
 					<SubagentDesigner draft={draft} setDraft={setDraft} profileOptions={profileOptions} readOnly={readOnly} />
+					{archivedDraft && draft.profileName ? (
+						<DesignerPanel title="Delete Agent">
+							<div className="border border-red-500/60 bg-red-500/10 text-red-100 rounded-sm p-3 text-sm">
+								Permanently deleting this agent also deletes all Chat sessions that use profile <span className="font-mono">{draft.profileName}</span>.
+							</div>
+							<input value={deleteConfirmName} onChange={(event) => setDeleteConfirmName(event.target.value)} className="min-w-0 bg-[#0e1116] border border-slate-700 rounded-sm px-3 py-2 text-sm outline-none focus:border-red-500" placeholder={draft.profileName} />
+							<button type="button" onClick={() => void deleteDraft()} disabled={saving || deleteConfirmName !== draft.profileName} className="h-8 w-fit inline-flex items-center gap-2 border border-red-500 rounded-sm px-3 text-red-200 bg-red-500/10 disabled:opacity-50">
+								<Trash2 size={14} />
+								Delete permanently
+							</button>
+						</DesignerPanel>
+					) : null}
 				</div>
 			</section>
 		</div>
@@ -1361,6 +1434,7 @@ function AgentsView({
 type AgentDraft = SaveCustomAgentInput & {
 	id?: string;
 	profileName?: string;
+	archivedAt?: string;
 	source: "custom" | "profile";
 };
 
@@ -1390,6 +1464,7 @@ function agentToDraft(agent: CustomAgent): AgentDraft {
 		subagents: agent.subagents,
 		builtinTools: agent.builtinTools,
 		runControl: agent.runControl,
+		archivedAt: agent.archivedAt,
 		source: "custom",
 	};
 }

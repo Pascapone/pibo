@@ -130,6 +130,8 @@ The Agents UI has a single profile sidebar. User-created custom agents are edita
 
 Custom agent names are canonical profile names. They use lowercase kebab-case, such as `test-agent`, and are stored as `profile_name` so session creation and UI display use the same identifier. Legacy `custom-agent:agent_*` names are migrated to kebab-case names and kept as aliases for compatibility.
 
+Custom agents have an archive-first lifecycle. Active custom agents are registered as dynamic profiles; archived custom agents remain inspectable but are removed from the active profile catalog, disabled for new sessions, and treated as read-only until restored. Permanent deletion is allowed only for archived custom agents, requires confirming the exact profile name, removes the dynamic profile, and deletes Chat Web sessions using that profile plus their child sessions from the Pibo Session store, Chat Web read model, and durable chat event log.
+
 The designer configures native Pibo agent capabilities only:
 
 - plugin-registered native tools
@@ -149,7 +151,7 @@ The channel context intentionally exposes only:
 
 - `emit(event)` to route a `PiboInputEvent`.
 - `subscribe(listener)` to observe `PiboOutputEvent` values.
-- `getSession(id)`, `createSession(input)`, `updateSession(id, input)`, and `findSessions(input)` to work with first-class Pibo Session records.
+- `getSession(id)`, `createSession(input)`, `updateSession(id, input)`, `deleteSession(id)`, and `findSessions(input)` to work with first-class Pibo Session records.
 - `getGatewayActions()` to discover execution actions for channel UIs.
 
 Pibo Sessions are stored in SQLite by default at `.pibo/pibo-sessions.sqlite`. Channels and tools route by `PiboSession.id`; Pi and provider cache keys use `PiboSession.piSessionId`. Sidebar/tree nesting follows `parentId` only. Fork/clone derivation uses `originId` and does not imply nesting.

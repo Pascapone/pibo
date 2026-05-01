@@ -35,7 +35,9 @@ async function startWebHostChannel(options = {}) {
 	const listeners = new Set();
 	const sessions = new InMemoryPiboSessionStore();
 	let profiles = [...(options.profiles ?? [])];
-	const storagePath = join(mkdtempSync(join(tmpdir(), "pibo-web-channel-")), "chat.sqlite");
+	const storageDir = mkdtempSync(join(tmpdir(), "pibo-web-channel-"));
+	const storagePath = join(storageDir, "chat.sqlite");
+	const agentStorePath = join(storageDir, "agents.sqlite");
 	const channel = createWebHostChannel({ port: 0, announce: false });
 
 	await channel.start({
@@ -66,6 +68,9 @@ async function startWebHostChannel(options = {}) {
 		},
 		updateSession(id, input) {
 			return sessions.update(id, input);
+		},
+		deleteSession(id) {
+			return sessions.delete(id);
 		},
 		findSessions(input) {
 			return sessions.find(input);
@@ -100,7 +105,7 @@ async function startWebHostChannel(options = {}) {
 			profiles = profiles.filter((item) => item.name !== name);
 		},
 		getWebApps() {
-			return [createChatWebApp({ readModelPath: storagePath })];
+			return [createChatWebApp({ readModelPath: storagePath, eventLogPath: storagePath, roomStorePath: storagePath, agentStorePath })];
 		},
 	});
 
@@ -553,6 +558,123 @@ test("chat web app creates custom agents from the native capability catalog", as
 		assert.equal(listed.status, 200);
 		const listedPayload = await listed.json();
 		assert.deepEqual(listedPayload.agents.map((agent) => agent.displayName), ["research-agent"]);
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("chat web app archives and permanently deletes custom agents with their sessions", async () => {
+	const { channel, baseURL, sessions } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		profiles: [{ name: "pibo-minimal", aliases: ["minimal"] }],
+	});
+
+	try {
+		const createdAgent = await fetch(`${baseURL}/api/chat/agents`, {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				origin: baseURL,
+				"x-test-user": "user-1",
+			},
+			body: JSON.stringify({ displayName: "delete-agent" }),
+		});
+		assert.equal(createdAgent.status, 201);
+		const agentPayload = await createdAgent.json();
+
+		const createdSession = await fetch(`${baseURL}/api/chat/sessions`, {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				origin: baseURL,
+				"x-test-user": "user-1",
+			},
+			body: JSON.stringify({ profile: "delete-agent" }),
+		});
+		assert.equal(createdSession.status, 201);
+		const sessionPayload = await createdSession.json();
+		const childSession = sessions.create({
+			channel: "pibo.chat-web",
+			kind: "chat",
+			profile: "pibo-minimal",
+			ownerScope: "user:user-1",
+			parentId: sessionPayload.session.id,
+		});
+
+		const deleteBeforeArchive = await fetch(`${baseURL}/api/chat/agents/${encodeURIComponent(agentPayload.agent.id)}`, {
+			method: "DELETE",
+			headers: {
+				"content-type": "application/json",
+				origin: baseURL,
+				"x-test-user": "user-1",
+			},
+			body: JSON.stringify({ confirmName: "delete-agent" }),
+		});
+		assert.equal(deleteBeforeArchive.status, 400);
+		assert.deepEqual(await deleteBeforeArchive.json(), { error: "Archive the agent before permanently deleting it." });
+
+		const archived = await fetch(`${baseURL}/api/chat/agents/${encodeURIComponent(agentPayload.agent.id)}`, {
+			method: "PATCH",
+			headers: {
+				"content-type": "application/json",
+				origin: baseURL,
+				"x-test-user": "user-1",
+			},
+			body: JSON.stringify({ archived: true }),
+		});
+		assert.equal(archived.status, 200);
+		const archivedPayload = await archived.json();
+		assert.equal(typeof archivedPayload.agent.archivedAt, "string");
+
+		const listed = await fetch(`${baseURL}/api/chat/agents`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.deepEqual((await listed.json()).agents, []);
+		const listedArchived = await fetch(`${baseURL}/api/chat/agents?includeArchived=true`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.deepEqual((await listedArchived.json()).agents.map((agent) => agent.profileName), ["delete-agent"]);
+
+		const rejectedSession = await fetch(`${baseURL}/api/chat/sessions`, {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				origin: baseURL,
+				"x-test-user": "user-1",
+			},
+			body: JSON.stringify({ profile: "delete-agent" }),
+		});
+		assert.equal(rejectedSession.status, 400);
+		assert.deepEqual(await rejectedSession.json(), { error: 'Unknown profile "delete-agent"' });
+
+		const wrongConfirm = await fetch(`${baseURL}/api/chat/agents/${encodeURIComponent(agentPayload.agent.id)}`, {
+			method: "DELETE",
+			headers: {
+				"content-type": "application/json",
+				origin: baseURL,
+				"x-test-user": "user-1",
+			},
+			body: JSON.stringify({ confirmName: "wrong-agent" }),
+		});
+		assert.equal(wrongConfirm.status, 400);
+		assert.deepEqual(await wrongConfirm.json(), {
+			error: 'Type "delete-agent" to permanently delete this agent and its sessions.',
+		});
+
+		const deleted = await fetch(`${baseURL}/api/chat/agents/${encodeURIComponent(agentPayload.agent.id)}`, {
+			method: "DELETE",
+			headers: {
+				"content-type": "application/json",
+				origin: baseURL,
+				"x-test-user": "user-1",
+			},
+			body: JSON.stringify({ confirmName: "delete-agent" }),
+		});
+		assert.equal(deleted.status, 200);
+		const deletedPayload = await deleted.json();
+		assert.deepEqual(new Set(deletedPayload.deletedSessionIds), new Set([sessionPayload.session.id, childSession.id]));
+		assert.equal(sessions.get(sessionPayload.session.id), undefined);
+		assert.equal(sessions.get(childSession.id), undefined);
 	} finally {
 		await channel.stop?.();
 	}

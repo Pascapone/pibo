@@ -152,6 +152,7 @@ export type CustomAgent = {
 	runControl: boolean;
 	createdAt: string;
 	updatedAt: string;
+	archivedAt?: string;
 };
 
 export type CreateSessionData = {

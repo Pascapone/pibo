@@ -176,6 +176,16 @@ export class ChatWebReadModel {
 		return rows.map(eventFromRow);
 	}
 
+	deleteSessions(piboSessionIds: string[]): number {
+		if (!piboSessionIds.length) return 0;
+		const placeholders = piboSessionIds.map(() => "?").join(", ");
+		this.db.prepare(`DELETE FROM web_chat_events WHERE pibo_session_id IN (${placeholders})`).run(...piboSessionIds);
+		const result = this.db
+			.prepare(`DELETE FROM web_chat_sessions WHERE pibo_session_id IN (${placeholders})`)
+			.run(...piboSessionIds);
+		return Number(result.changes ?? 0);
+	}
+
 	close(): void {
 		this.db.close();
 	}
