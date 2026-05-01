@@ -2,28 +2,35 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { createRootRoute, createRoute, createRouter, RouterProvider, useRouterState } from "@tanstack/react-router";
 import { App, type ChatAppRoute } from "./App";
+import { parseChatSessionViewId } from "./session-views/types";
 import "./styles.css";
 
 function ChatRoot() {
-	const pathname = useRouterState({ select: (state) => state.location.pathname });
-	return <App route={chatRouteFromPath(pathname)} />;
+	const location = useRouterState({
+		select: (state) => ({
+			pathname: state.location.pathname,
+			search: state.location.search as Record<string, unknown>,
+		}),
+	});
+	return <App route={chatRouteFromLocation(location.pathname, location.search)} />;
 }
 
-function chatRouteFromPath(pathname: string): ChatAppRoute {
+function chatRouteFromLocation(pathname: string, search: Record<string, unknown>): ChatAppRoute {
 	const path = pathname.startsWith("/apps/chat") ? pathname.slice("/apps/chat".length) || "/" : pathname;
 	const parts = path
 		.split("/")
 		.filter(Boolean)
 		.map((part) => decodeURIComponent(part));
+	const sessionViewId = parseChatSessionViewId(search.view);
 	if (parts[0] === "context") return { area: "context" };
 	if (parts[0] === "agents") return { area: "agents" };
 	if (parts[0] === "settings") return { area: "settings" };
 	if (parts[0] === "rooms" && parts[1] && parts[2] === "sessions" && parts[3]) {
-		return { area: "sessions", roomId: parts[1], piboSessionId: parts[3] };
+		return { area: "sessions", roomId: parts[1], piboSessionId: parts[3], sessionViewId };
 	}
-	if (parts[0] === "rooms" && parts[1]) return { area: "sessions", roomId: parts[1] };
-	if (parts[0] === "sessions" && parts[1]) return { area: "sessions", piboSessionId: parts[1] };
-	return { area: "sessions" };
+	if (parts[0] === "rooms" && parts[1]) return { area: "sessions", roomId: parts[1], sessionViewId };
+	if (parts[0] === "sessions" && parts[1]) return { area: "sessions", piboSessionId: parts[1], sessionViewId };
+	return { area: "sessions", sessionViewId };
 }
 
 const rootRoute = createRootRoute({

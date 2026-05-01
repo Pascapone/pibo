@@ -204,6 +204,85 @@ pre {
 	font-size: inherit;
 }
 
+.compact-terminal-markdown {
+	color: #d4d4d4;
+	font-size: 12px;
+	line-height: 1.45;
+	overflow-wrap: anywhere;
+}
+
+.compact-terminal-markdown > :first-child {
+	margin-top: 0;
+}
+
+.compact-terminal-markdown > :last-child {
+	margin-bottom: 0;
+}
+
+.compact-terminal-markdown p {
+	margin: 0 0 0.55rem;
+}
+
+.compact-terminal-markdown h1,
+.compact-terminal-markdown h2,
+.compact-terminal-markdown h3,
+.compact-terminal-markdown h4 {
+	margin: 0.8rem 0 0.35rem;
+	color: #f3f4f6;
+	font-size: 0.95rem;
+	line-height: 1.3;
+}
+
+.compact-terminal-markdown a {
+	color: #38bdf8;
+}
+
+.compact-terminal-markdown ul,
+.compact-terminal-markdown ol {
+	margin: 0 0 0.55rem;
+	padding-left: 1.2rem;
+}
+
+.compact-terminal-markdown li {
+	margin: 0.15rem 0;
+}
+
+.compact-terminal-markdown li::marker {
+	color: #38bdf8;
+}
+
+.compact-terminal-markdown blockquote {
+	margin: 0.6rem 0;
+	padding: 0.45rem 0.7rem;
+	border-left: 1px solid #38bdf8;
+	background: rgb(56 189 248 / 0.08);
+	color: #d4d4d4;
+}
+
+.compact-terminal-markdown :not(pre) > code {
+	border: 1px solid rgb(90 90 90 / 0.6);
+	border-radius: 2px;
+	background: #161616;
+	padding: 0.05rem 0.25rem;
+	color: #38bdf8;
+}
+
+.compact-terminal-markdown pre {
+	margin: 0.65rem 0;
+	border: 1px solid #2a2a2a;
+	background: #111111;
+	padding: 0.65rem 0.8rem;
+	color: #d4d4d4;
+	font-size: 0.78rem;
+	line-height: 1.5;
+}
+
+.compact-terminal-json {
+	--w-rjv-background-color: transparent;
+	--w-rjv-border-left: #2a2a2a;
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
 .context-files-view .mdxeditor {
 	--baseBg: #151f24;
 	--baseBorderColor: #334155;

@@ -1,0 +1,542 @@
+import type { PiboSessionTraceView, PiboTraceNode } from "../../types";
+
+export type CompactTerminalRowStatus = "running" | "done" | "error" | "neutral";
+
+export type CompactTerminalRowKind =
+	| "message.user"
+	| "message.assistant"
+	| "reasoning"
+	| "tool.call"
+	| "tool.group.exploring"
+	| "agent.delegation"
+	| "agent.async"
+	| "yielded.run"
+	| "execution.command"
+	| "error";
+
+export type TerminalInlineToken = {
+	text: string;
+	tone?: "default" | "dim" | "cyan" | "green" | "red" | "magenta";
+	weight?: "normal" | "semibold" | "bold";
+	italic?: boolean;
+};
+
+export type CompactTerminalLine = {
+	prefix?: "bullet" | "detail" | "continuation" | "prompt" | "none";
+	tokens: TerminalInlineToken[];
+};
+
+export type CompactTerminalDetailItem = {
+	id: string;
+	label: string;
+	status: CompactTerminalRowStatus;
+	input?: unknown;
+	output?: unknown;
+	error?: string;
+	linkedPiboSessionId?: string;
+};
+
+export type CompactTerminalRow = {
+	id: string;
+	kind: CompactTerminalRowKind;
+	status: CompactTerminalRowStatus;
+	lines: CompactTerminalLine[];
+	sourceNodeIds: string[];
+	linkedPiboSessionId?: string;
+	forkEntryId?: string;
+	input?: unknown;
+	output?: unknown;
+	error?: string;
+	expandable?: boolean;
+	detailItems?: readonly CompactTerminalDetailItem[];
+};
+
+type BuildTerminalRowsOptions = {
+	showThinking: boolean;
+};
+
+type FlatTraceNode = {
+	node: PiboTraceNode;
+	turnId?: string;
+};
+
+type RowCandidate = {
+	row: CompactTerminalRow;
+	turnId?: string;
+	exploring?: CompactTerminalDetailItem;
+};
+
+export function buildCompactTerminalRows(
+	traceView: PiboSessionTraceView | null,
+	options: BuildTerminalRowsOptions,
+): CompactTerminalRow[] {
+	if (!traceView) return [];
+	const candidates = flattenTraceNodes(traceView.nodes)
+		.flatMap((item) => {
+			if (item.node.type === "agent.turn") return [];
+			if (item.node.type === "model.reasoning" && !options.showThinking) return [];
+			return [createRowCandidate(item.node, item.turnId)];
+		});
+
+	return groupExploringCandidates(candidates).map((candidate) => candidate.row);
+}
+
+function flattenTraceNodes(nodes: readonly PiboTraceNode[], turnId?: string): FlatTraceNode[] {
+	const result: FlatTraceNode[] = [];
+	for (const node of nodes) {
+		if (node.type !== "agent.turn") result.push({ node, turnId });
+		result.push(...flattenTraceNodes(node.children, node.type === "agent.turn" ? node.id : turnId));
+	}
+	return result;
+}
+
+function createRowCandidate(node: PiboTraceNode, turnId?: string): RowCandidate {
+	switch (node.type) {
+		case "user.message":
+			return { row: createUserMessageRow(node), turnId };
+		case "assistant.message":
+			return { row: createAssistantMessageRow(node), turnId };
+		case "model.reasoning":
+			return { row: createReasoningRow(node), turnId };
+		case "tool.call":
+			return createToolRowCandidate(node, turnId);
+		case "tool.result":
+			return { row: createToolResultRow(node), turnId };
+		case "agent.delegation":
+			return { row: createDelegationRow(node), turnId };
+		case "agent.async":
+			return { row: createAsyncAgentRow(node), turnId };
+		case "yielded.run":
+			return { row: createYieldedRunRow(node), turnId };
+		case "execution.command":
+			return { row: createExecutionCommandRow(node), turnId };
+		case "error":
+			return { row: createErrorRow(node), turnId };
+		case "agent.turn":
+			return {
+				row: {
+					id: node.id,
+					kind: "error",
+					status: "neutral",
+					lines: [],
+					sourceNodeIds: [node.id],
+				},
+				turnId,
+			};
+	}
+}
+
+function createUserMessageRow(node: PiboTraceNode): CompactTerminalRow {
+	const text = stringValue(node.output) || stringValue(node.summary) || node.title;
+	return {
+		id: node.id,
+		kind: "message.user",
+		status: mapStatus(node.status),
+		lines: [{ prefix: "prompt", tokens: [token(text)] }],
+		sourceNodeIds: [node.id],
+		forkEntryId: node.entryId,
+		output: text,
+	};
+}
+
+function createAssistantMessageRow(node: PiboTraceNode): CompactTerminalRow {
+	return {
+		id: node.id,
+		kind: "message.assistant",
+		status: mapStatus(node.status),
+		lines: [],
+		sourceNodeIds: [node.id],
+		output: stringValue(node.output) || stringValue(node.summary) || "",
+		error: node.error,
+	};
+}
+
+function createReasoningRow(node: PiboTraceNode): CompactTerminalRow {
+	const preview = previewLines(node.output ?? node.summary, 3);
+	return {
+		id: node.id,
+		kind: "reasoning",
+		status: mapStatus(node.status),
+		lines: [
+			{
+				prefix: "bullet",
+				tokens: [token(node.status === "running" ? "Thinking" : "Thought", "magenta", "semibold")],
+			},
+			...preview.lines,
+		],
+		sourceNodeIds: [node.id],
+		output: node.output ?? node.summary,
+		expandable: preview.truncated || Boolean(node.output),
+	};
+}
+
+function createToolRowCandidate(node: PiboTraceNode, turnId?: string): RowCandidate {
+	const callTarget = `${node.title}${node.input !== undefined ? `(${compactInlinePreview(node.input)})` : ""}`;
+	const preview = previewLines(node.error ?? node.output, 5, node.error ? "red" : "dim");
+	const row: CompactTerminalRow = {
+		id: node.id,
+		kind: "tool.call",
+		status: mapStatus(node.status),
+		lines: [
+			{
+				prefix: "bullet",
+				tokens: [token(toolVerb(node.status), toneForStatus(node.status), "semibold"), token(` ${callTarget}`)],
+			},
+			...preview.lines,
+		],
+		sourceNodeIds: [node.id],
+		input: node.input,
+		output: node.output,
+		error: node.error,
+		expandable: node.input !== undefined || node.output !== undefined || Boolean(node.error),
+	};
+	const exploring = classifyExploringTool(node);
+	return { row, turnId, exploring };
+}
+
+function createToolResultRow(node: PiboTraceNode): CompactTerminalRow {
+	const preview = previewLines(node.error ?? node.output, 5, node.error ? "red" : "dim");
+	return {
+		id: node.id,
+		kind: "tool.call",
+		status: mapStatus(node.status),
+		lines: [
+			{
+				prefix: "bullet",
+				tokens: [token(node.status === "error" ? "Tool failed" : "Returned", toneForStatus(node.status), "semibold"), token(` ${node.title}`)],
+			},
+			...preview.lines,
+		],
+		sourceNodeIds: [node.id],
+		output: node.output,
+		error: node.error,
+		expandable: node.output !== undefined || Boolean(node.error),
+	};
+}
+
+function createDelegationRow(node: PiboTraceNode): CompactTerminalRow {
+	const subagentName = stringValue(isRecord(node.input) ? node.input.subagentName : undefined) || node.summary || node.title;
+	const delegatedArguments = isRecord(node.input) ? node.input.arguments : undefined;
+	const previewText = compactInlinePreview(delegatedArguments ?? node.input);
+	const detailLines = previewText
+		? [{ prefix: "detail" as const, tokens: [token(previewText, "dim")] }]
+		: [];
+	return {
+		id: node.id,
+		kind: "agent.delegation",
+		status: mapStatus(node.status),
+		lines: [
+			{
+				prefix: "bullet",
+				tokens: [token(delegationVerb(node.status), toneForStatus(node.status), "semibold"), token(` ${subagentName}`, "cyan")],
+			},
+			...detailLines,
+		],
+		sourceNodeIds: [node.id],
+		linkedPiboSessionId: node.linkedPiboSessionId,
+		input: node.input,
+		output: node.output,
+		error: node.error,
+		expandable: node.input !== undefined || node.output !== undefined || Boolean(node.error),
+	};
+}
+
+function createAsyncAgentRow(node: PiboTraceNode): CompactTerminalRow {
+	const preview = previewLines(node.error ?? node.output, 4, node.error ? "red" : "dim");
+	return {
+		id: node.id,
+		kind: "agent.async",
+		status: mapStatus(node.status),
+		lines: [
+			{
+				prefix: "bullet",
+				tokens: [token(asyncVerb(node.status), toneForStatus(node.status), "semibold"), token(` ${node.title}`, "cyan")],
+			},
+			...preview.lines,
+		],
+		sourceNodeIds: [node.id],
+		linkedPiboSessionId: node.linkedPiboSessionId,
+		input: node.input,
+		output: node.output,
+		error: node.error,
+		expandable: node.input !== undefined || node.output !== undefined || Boolean(node.error),
+	};
+}
+
+function createYieldedRunRow(node: PiboTraceNode): CompactTerminalRow {
+	const preview = previewLines(node.output, 4);
+	return {
+		id: node.id,
+		kind: "yielded.run",
+		status: mapStatus(node.status),
+		lines: [
+			{
+				prefix: "bullet",
+				tokens: [
+					token(node.status === "running" ? "Waiting on runs" : "Run update", toneForStatus(node.status), "semibold"),
+					token(node.summary ? ` ${node.summary}` : ""),
+				],
+			},
+			...preview.lines,
+		],
+		sourceNodeIds: [node.id],
+		output: node.output,
+		error: node.error,
+		expandable: node.output !== undefined || Boolean(node.error),
+	};
+}
+
+function createExecutionCommandRow(node: PiboTraceNode): CompactTerminalRow {
+	const preview = previewLines(node.error ?? node.output, 5, node.error ? "red" : "dim");
+	return {
+		id: node.id,
+		kind: "execution.command",
+		status: mapStatus(node.status),
+		lines: [
+			{
+				prefix: "bullet",
+				tokens: [token("Ran", toneForStatus(node.status), "semibold"), token(` ${node.title}`, "cyan")],
+			},
+			...preview.lines,
+		],
+		sourceNodeIds: [node.id],
+		input: node.input,
+		output: node.output,
+		error: node.error,
+		expandable: node.input !== undefined || node.output !== undefined || Boolean(node.error),
+	};
+}
+
+function createErrorRow(node: PiboTraceNode): CompactTerminalRow {
+	return {
+		id: node.id,
+		kind: "error",
+		status: "error",
+		lines: [
+			{
+				prefix: "bullet",
+				tokens: [token("Error", "red", "bold"), token(node.error ? ` ${node.error}` : "", "red")],
+			},
+		],
+		sourceNodeIds: [node.id],
+		error: node.error,
+		output: node.output,
+		expandable: node.output !== undefined || Boolean(node.error),
+	};
+}
+
+function groupExploringCandidates(candidates: readonly RowCandidate[]): RowCandidate[] {
+	const grouped: RowCandidate[] = [];
+	for (let index = 0; index < candidates.length; index += 1) {
+		const candidate = candidates[index];
+		if (!candidate.exploring) {
+			grouped.push(candidate);
+			continue;
+		}
+		const run: RowCandidate[] = [candidate];
+		let cursor = index + 1;
+		while (cursor < candidates.length && candidates[cursor].exploring && candidates[cursor].turnId === candidate.turnId) {
+			run.push(candidates[cursor]);
+			cursor += 1;
+		}
+		if (run.length === 1) {
+			grouped.push(candidate);
+			continue;
+		}
+		grouped.push({ row: createExploringGroup(run), turnId: candidate.turnId });
+		index = cursor - 1;
+	}
+	return grouped;
+}
+
+function createExploringGroup(candidates: readonly RowCandidate[]): CompactTerminalRow {
+	const detailItems = candidates.map((candidate) => ({
+		id: candidate.row.id,
+		label: candidate.exploring?.label ?? candidate.row.lines[0]?.tokens.map((entry) => entry.text).join("") ?? candidate.row.id,
+		status: candidate.row.status,
+		input: candidate.row.input,
+		output: candidate.row.output,
+		error: candidate.row.error,
+		linkedPiboSessionId: candidate.row.linkedPiboSessionId,
+	}));
+	const firstId = candidates[0]?.row.id ?? "exploring";
+	const lastId = candidates[candidates.length - 1]?.row.id ?? firstId;
+	const status = candidates.some((candidate) => candidate.row.status === "running")
+		? "running"
+		: candidates.some((candidate) => candidate.row.status === "error")
+			? "error"
+			: "done";
+
+	return {
+		id: `group:exploring:${firstId}:${lastId}`,
+		kind: "tool.group.exploring",
+		status,
+		lines: [
+			{
+				prefix: "bullet",
+				tokens: [token(status === "running" ? "Exploring" : status === "error" ? "Exploring failed" : "Explored", toneForStatus(status), "semibold")],
+			},
+			...detailItems.map((item, index): CompactTerminalLine => ({
+				prefix: index === 0 ? "detail" : "continuation",
+				tokens: [token(item.label, item.status === "error" ? "red" : "dim")],
+			})),
+		],
+		sourceNodeIds: candidates.flatMap((candidate) => candidate.row.sourceNodeIds),
+		detailItems,
+		expandable: detailItems.some((item) => item.input !== undefined || item.output !== undefined || Boolean(item.error)),
+	};
+}
+
+function classifyExploringTool(node: PiboTraceNode): CompactTerminalDetailItem | undefined {
+	const normalized = node.title.trim().toLowerCase();
+	const args = isRecord(node.input) ? node.input : undefined;
+	if (matchesTool(normalized, ["read", "open"])) {
+		return {
+			id: node.id,
+			label: `Read ${previewPath(args) ?? compactInlinePreview(node.input)}`,
+			status: mapStatus(node.status),
+			input: node.input,
+			output: node.output,
+			error: node.error,
+		};
+	}
+	if (matchesTool(normalized, ["list", "ls", "glob"])) {
+		return {
+			id: node.id,
+			label: `List ${previewPath(args) ?? compactInlinePreview(node.input)}`,
+			status: mapStatus(node.status),
+			input: node.input,
+			output: node.output,
+			error: node.error,
+		};
+	}
+	if (matchesTool(normalized, ["search", "find", "grep", "rg"])) {
+		const query = previewQuery(args);
+		const path = previewPath(args);
+		return {
+			id: node.id,
+			label: `Search ${query ?? compactInlinePreview(node.input)}${path ? ` in ${path}` : ""}`,
+			status: mapStatus(node.status),
+			input: node.input,
+			output: node.output,
+			error: node.error,
+		};
+	}
+	return undefined;
+}
+
+function matchesTool(name: string, terms: readonly string[]): boolean {
+	return terms.some((term) => name === term || name.startsWith(`${term}_`) || name.endsWith(`_${term}`) || name.includes(term));
+}
+
+function previewPath(value?: Record<string, unknown>): string | undefined {
+	if (!value) return undefined;
+	for (const key of ["path", "file", "filePath", "filepath", "url", "uri", "cwd", "pattern", "glob"]) {
+		const candidate = stringValue(value[key]);
+		if (candidate) return truncate(candidate, 80);
+	}
+	return undefined;
+}
+
+function previewQuery(value?: Record<string, unknown>): string | undefined {
+	if (!value) return undefined;
+	for (const key of ["query", "pattern", "text", "name", "q", "regex"]) {
+		const candidate = stringValue(value[key]);
+		if (candidate) return truncate(candidate, 80);
+	}
+	return undefined;
+}
+
+function previewLines(
+	value: unknown,
+	maxVisibleLines: number,
+	tone: TerminalInlineToken["tone"] = "dim",
+): { lines: CompactTerminalLine[]; truncated: boolean } {
+	const text = previewText(value);
+	if (!text) return { lines: [], truncated: false };
+	const allLines = text
+		.split(/\r?\n/)
+		.map((line) => line.trimEnd())
+		.filter((line, index, lines) => line.length > 0 || lines.length === 1);
+	if (!allLines.length) return { lines: [], truncated: false };
+	const visible = allLines.slice(0, maxVisibleLines);
+	const lines: CompactTerminalLine[] = visible.map((line, index) => ({
+		prefix: index === 0 ? "detail" : "continuation",
+		tokens: [token(line, tone)],
+	}));
+	if (allLines.length > maxVisibleLines) {
+		lines.push({
+			prefix: "continuation",
+			tokens: [token(`+${allLines.length - maxVisibleLines} more lines`, "dim", "normal", true)],
+		});
+	}
+	return { lines, truncated: allLines.length > maxVisibleLines };
+}
+
+function previewText(value: unknown): string {
+	if (typeof value === "string") return value.trim();
+	if (value === undefined || value === null) return "";
+	try {
+		return JSON.stringify(value, null, 2);
+	} catch {
+		return String(value);
+	}
+}
+
+function compactInlinePreview(value: unknown): string {
+	const text = typeof value === "string" ? value : previewText(value);
+	return truncate(text.replace(/\s+/g, " ").trim(), 96);
+}
+
+function truncate(value: string, maxLength: number): string {
+	if (value.length <= maxLength) return value;
+	return `${value.slice(0, Math.max(0, maxLength - 1))}…`;
+}
+
+function toolVerb(status: PiboTraceNode["status"]): string {
+	if (status === "running") return "Calling";
+	if (status === "error") return "Call failed";
+	return "Called";
+}
+
+function delegationVerb(status: PiboTraceNode["status"]): string {
+	if (status === "running") return "Spawning";
+	if (status === "error") return "Spawn failed";
+	return "Spawned";
+}
+
+function asyncVerb(status: PiboTraceNode["status"]): string {
+	if (status === "running") return "Waiting for";
+	if (status === "error") return "Finished waiting for";
+	return "Finished waiting for";
+}
+
+function mapStatus(status: PiboTraceNode["status"]): CompactTerminalRowStatus {
+	if (status === "running") return "running";
+	if (status === "error") return "error";
+	return "done";
+}
+
+function toneForStatus(status: PiboTraceNode["status"] | CompactTerminalRowStatus): TerminalInlineToken["tone"] {
+	if (status === "running") return "cyan";
+	if (status === "error") return "red";
+	if (status === "done") return "green";
+	return "default";
+}
+
+function token(
+	text: string,
+	tone: TerminalInlineToken["tone"] = "default",
+	weight: TerminalInlineToken["weight"] = "normal",
+	italic = false,
+): TerminalInlineToken {
+	return { text, tone, weight, italic };
+}
+
+function stringValue(value: unknown): string | undefined {
+	return typeof value === "string" && value.trim().length ? value : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}

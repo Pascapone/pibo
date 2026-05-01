@@ -26,21 +26,23 @@ import {
 	Wrench,
 	X,
 } from "lucide-react";
-import { deleteCustomAgent, deleteRoom, deleteSession, getBootstrap, getTrace, linkContextFileFromPlugin, patchCustomAgent, patchRoom, patchSession, postAction, postContextFile, postCustomAgent, postMessage, postRoom, postSession, signInWithGoogle, signOut, type SaveCustomAgentInput } from "./api";
+import { deleteCustomAgent, deleteRoom, deleteSession, getBootstrap, getTrace, patchCustomAgent, patchRoom, patchSession, postAction, postContextFile, postCustomAgent, postMessage, postRoom, postSession, signInWithGoogle, signOut, type SaveCustomAgentInput } from "./api";
 import type { AgentCatalog, BootstrapData, CustomAgent, CustomAgentSubagent, PiboRoom, PiboSessionTraceView, PiboTraceNode, PiboTraceOrderKey, PiboWebSessionNode } from "./types";
 import { adaptTrace } from "./tracing/adapt";
-import { TraceTimeline, type SessionBreadcrumbItem, type SessionDerivationLink, type SessionOriginLink } from "./tracing/TraceTimeline";
+import { type SessionBreadcrumbItem, type SessionDerivationLink, type SessionOriginLink } from "./tracing/TraceTimeline";
 import { JsonRenderer } from "./tracing/JsonRenderer";
 import { countRender } from "./renderMetrics";
 import { childTraceOrder, compareTraceOrder, liveTraceOrder } from "../../../shared/trace-order.js";
 import { ContextFilesView } from "./context/ContextFilesView";
 import { PiboToolsView } from "./context/PiboToolsView";
+import { getChatSessionView, listChatSessionViews } from "./session-views/registry";
+import { DEFAULT_CHAT_SESSION_VIEW_ID, type ChatSessionViewId } from "./session-views/types";
 
 type Area = "sessions" | "agents" | "context" | "settings";
 type ContextPanel = "context-files" | "pibo-tools";
 
 export type ChatAppRoute =
-	| { area: "sessions"; roomId?: string; piboSessionId?: string }
+	| { area: "sessions"; roomId?: string; piboSessionId?: string; sessionViewId?: ChatSessionViewId }
 	| { area: "agents" }
 	| { area: "context" }
 	| { area: "settings" };
@@ -58,6 +60,7 @@ type LoadBootstrapOptions = {
 };
 
 const LAST_SELECTION_STORAGE_KEY = "pibo.chat.lastSelection";
+const SESSION_VIEW_STORAGE_KEY = "pibo.chat.sessionView";
 const SESSION_DELETE_CONFIRM_TEXT = "Delete this session";
 
 type StoredSelection = {
@@ -72,6 +75,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const area = route.area;
 	const routeRoomId = route.area === "sessions" ? route.roomId : undefined;
 	const routePiboSessionId = route.area === "sessions" ? route.piboSessionId : undefined;
+	const routeSessionViewId = route.area === "sessions" ? route.sessionViewId : undefined;
 	const [bootstrap, setBootstrap] = useState<BootstrapData | null>(null);
 	const [traceView, setTraceView] = useState<PiboSessionTraceView | null>(null);
 	const [traceLoadingSessionId, setTraceLoadingSessionId] = useState<string | null>(null);
@@ -84,10 +88,12 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const [showArchived, setShowArchived] = useState(() => localStorage.getItem("pibo.chat.showArchived") === "true");
 	const [showArchivedRooms, setShowArchivedRooms] = useState(() => localStorage.getItem("pibo.chat.showArchivedRooms") === "true");
 	const [newSessionProfile, setNewSessionProfile] = useState(() => localStorage.getItem("pibo.chat.newSessionProfile") ?? "");
+	const [sessionViewId, setSessionViewId] = useState<ChatSessionViewId>(() => routeSessionViewId ?? readStoredSessionView());
 	const [composerText, setComposerText] = useState("");
 	const [composerFocusSignal, setComposerFocusSignal] = useState(0);
 	const [creatingSession, setCreatingSession] = useState(false);
 	const [contextPanel, setContextPanel] = useState<ContextPanel>("context-files");
+	const [selectedContextFileKey, setSelectedContextFileKey] = useState<string | null>(null);
 	const [creatingRoom, setCreatingRoom] = useState(false);
 	const [deleteRoomTarget, setDeleteRoomTarget] = useState<PiboRoom | null>(null);
 	const [deleteRoomConfirmName, setDeleteRoomConfirmName] = useState("");
@@ -122,6 +128,16 @@ export function App({ route }: { route: ChatAppRoute }) {
 	useEffect(() => {
 		traceViewSessionId.current = traceView?.piboSessionId ?? null;
 	}, [traceView?.piboSessionId]);
+
+	useEffect(() => {
+		if (area !== "sessions") return;
+		const next = routeSessionViewId ?? readStoredSessionView();
+		setSessionViewId((current) => (current === next ? current : next));
+	}, [area, routeSessionViewId]);
+
+	useEffect(() => {
+		writeStoredSessionView(sessionViewId);
+	}, [sessionViewId]);
 
 	const flushPendingStreamEvents = useCallback((piboSessionId: string) => {
 		const pending = pendingStreamEventsBySession.current.get(piboSessionId);
@@ -165,7 +181,8 @@ export function App({ route }: { route: ChatAppRoute }) {
 	}, []);
 
 	const navigateToRoute = useCallback(
-		(target: ChatAppRoute, replace = false) => {
+		(target: ChatAppRoute, replace = false, nextSessionViewId = sessionViewId) => {
+			const sessionViewSearch = { view: nextSessionViewId };
 			if (target.area === "agents") {
 				void navigate({ to: "/agents", replace });
 				return;
@@ -182,21 +199,27 @@ export function App({ route }: { route: ChatAppRoute }) {
 				void navigate({
 					to: "/rooms/$roomId/sessions/$piboSessionId",
 					params: { roomId: target.roomId, piboSessionId: target.piboSessionId },
+					search: sessionViewSearch,
 					replace,
 				});
 				return;
 			}
 			if (target.roomId) {
-				void navigate({ to: "/rooms/$roomId", params: { roomId: target.roomId }, replace });
+				void navigate({ to: "/rooms/$roomId", params: { roomId: target.roomId }, search: sessionViewSearch, replace });
 				return;
 			}
 			if (target.piboSessionId) {
-				void navigate({ to: "/sessions/$piboSessionId", params: { piboSessionId: target.piboSessionId }, replace });
+				void navigate({
+					to: "/sessions/$piboSessionId",
+					params: { piboSessionId: target.piboSessionId },
+					search: sessionViewSearch,
+					replace,
+				});
 				return;
 			}
-			void navigate({ to: "/", replace });
+			void navigate({ to: "/", search: sessionViewSearch, replace });
 		},
-		[navigate],
+		[navigate, sessionViewId],
 	);
 
 	const navigateToSelectedSession = useCallback(
@@ -209,6 +232,12 @@ export function App({ route }: { route: ChatAppRoute }) {
 		},
 		[navigateToRoute],
 	);
+
+	const openContextFileEditor = useCallback((key: string) => {
+		setSelectedContextFileKey(key);
+		setContextPanel("context-files");
+		navigateToRoute({ area: "context" });
+	}, [navigateToRoute]);
 
 	const loadBootstrap = useCallback(async (
 		piboSessionId?: string,
@@ -370,6 +399,8 @@ export function App({ route }: { route: ChatAppRoute }) {
 		() => (showRawEvents ? compactRawEvents(currentTraceView?.rawEvents ?? []) : []),
 		[showRawEvents, currentTraceView?.rawEvents],
 	);
+	const sessionViews = useMemo(() => listChatSessionViews(), []);
+	const currentSessionView = useMemo(() => getChatSessionView(sessionViewId), [sessionViewId]);
 
 	useEffect(() => {
 		if (!bootstrap?.agents.length) return;
@@ -660,6 +691,22 @@ export function App({ route }: { route: ChatAppRoute }) {
 	}, [selectSession, selectedPiboSessionId, selectedRoomArchived]);
 
 	const openSession = useCallback((piboSessionId: string) => void selectSession(piboSessionId), [selectSession]);
+	const selectSessionView = useCallback(
+		(nextViewId: ChatSessionViewId) => {
+			setSessionViewId(nextViewId);
+			if (area !== "sessions") return;
+			navigateToRoute(
+				{
+					area: "sessions",
+					...(selectedRoomId ? { roomId: selectedRoomId } : {}),
+					...(selectedPiboSessionId ? { piboSessionId: selectedPiboSessionId } : {}),
+				},
+				false,
+				nextViewId,
+			);
+		},
+		[area, navigateToRoute, selectedPiboSessionId, selectedRoomId],
+	);
 
 	if (error && !bootstrap) {
 		return <SignedOut message={error} />;
@@ -723,6 +770,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 						initialCatalog={bootstrap.agentCatalog}
 						onSelect={setPreferredNewSessionProfile}
 						onCreateSession={(profile) => void createSession(profile)}
+						onEditContextFile={openContextFileEditor}
 						onAgentsChanged={() => void loadBootstrap(selectedPiboSessionId ?? undefined, showArchivedRef.current, selectedRoomId ?? undefined, { selectSession: false })}
 						creatingSession={creatingSession || selectedRoomArchived}
 					/>
@@ -908,6 +956,24 @@ export function App({ route }: { route: ChatAppRoute }) {
 									</div>
 								</div>
 								<div className="flex items-center gap-2">
+									<div className="flex items-center rounded-sm border border-slate-700 bg-[#0e1116] p-0.5">
+										{sessionViews.map((view) => (
+											<button
+												key={view.id}
+												type="button"
+												onClick={() => selectSessionView(view.id)}
+												title={view.description ?? view.label}
+												aria-label={`Switch to ${view.label} view`}
+												className={`min-w-20 px-2.5 py-1 text-[11px] font-bold tracking-wide ${
+													sessionViewId === view.id
+														? "bg-[#11a4d4]/10 text-[#11a4d4]"
+														: "text-slate-400 hover:text-[#11a4d4]"
+												}`}
+											>
+												{view.label}
+											</button>
+										))}
+									</div>
 									<HeaderIconButton
 										onClick={() => {
 											const next = !showRawEvents;
@@ -954,21 +1020,22 @@ export function App({ route }: { route: ChatAppRoute }) {
 									) : null}
 								</div>
 							</div>
-							<TraceTimeline
-								trace={selectedTrace}
-								isLoading={Boolean(selectedPiboSessionId && traceLoadingSessionId === selectedPiboSessionId)}
-								showThinking={showThinking}
-								expandThinking={expandThinking}
-								sessionAgentProfile={bootstrap.session.profile}
-								sessionBreadcrumbs={sessionBreadcrumbs}
-								originSession={originSession}
-								derivedSessions={derivedSessions}
-								agentProfiles={bootstrap.agents}
-								sessionProfileChangeDisabled={creatingSession || selectedRoomArchived}
-								onSessionAgentProfileChange={(profile) => void updateSelectedSessionProfile(profile)}
-								onFork={forkFrom}
-								onOpenSession={openSession}
-							/>
+							{currentSessionView.render({
+								traceView: currentTraceView,
+								selectedTrace,
+								isLoading: Boolean(selectedPiboSessionId && traceLoadingSessionId === selectedPiboSessionId),
+								showThinking,
+								expandThinking,
+								sessionAgentProfile: bootstrap.session.profile,
+								sessionBreadcrumbs,
+								originSession,
+								derivedSessions,
+								agentProfiles: bootstrap.agents,
+								sessionProfileChangeDisabled: creatingSession || selectedRoomArchived,
+								onSessionAgentProfileChange: (profile) => void updateSelectedSessionProfile(profile),
+								onFork: forkFrom,
+								onOpenSession: openSession,
+							})}
 							<Composer
 								disabled={!selectedPiboSessionId || selectedRoomArchived}
 								commands={slashCommands}
@@ -993,7 +1060,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 						contextPanel === "pibo-tools" ? (
 							<PiboToolsView tools={bootstrap.agentCatalog?.piboTools ?? []} />
 						) : (
-							<ContextFilesView agentProfiles={contextAgentProfiles} />
+							<ContextFilesView agentProfiles={contextAgentProfiles} selectedFileKey={selectedContextFileKey} />
 						)
 					) : (
 						<SettingsView
@@ -1892,6 +1959,7 @@ function AgentsView({
 	initialCatalog,
 	onSelect,
 	onCreateSession,
+	onEditContextFile,
 	onAgentsChanged,
 	creatingSession,
 }: {
@@ -1900,6 +1968,7 @@ function AgentsView({
 	initialCatalog?: AgentCatalog;
 	onSelect: (profile: string) => void;
 	onCreateSession: (profile: string) => void;
+	onEditContextFile: (key: string) => void;
 	onAgentsChanged: () => void;
 	creatingSession: boolean;
 }) {
@@ -2023,31 +2092,6 @@ function AgentsView({
 				contextFiles: current.contextFiles.includes(file.key) ? current.contextFiles : [...current.contextFiles, file.key],
 			}));
 			setNewContextFileName("");
-			setLocalError(null);
-		} catch (caught) {
-			setLocalError(caught instanceof Error ? caught.message : String(caught));
-		} finally {
-			setSaving(false);
-		}
-	};
-
-	const createLinkedContextFileForDraft = async (contextFile: AgentCatalog["contextFiles"][number]) => {
-		if (readOnly || !designerAvailable || contextFile.source === "managed") return;
-		if (agentNameError) {
-			setLocalError(agentNameError);
-			return;
-		}
-		setSaving(true);
-		try {
-			const created = await linkContextFileFromPlugin(contextFile.key, {
-				scope: "agent",
-				agentProfileName: draftProfileName,
-			});
-			setCatalog((current) => current ? { ...current, contextFiles: [...current.contextFiles, created] } : current);
-			setDraft((current) => ({
-				...current,
-				contextFiles: current.contextFiles.includes(created.key) ? current.contextFiles : [...current.contextFiles, created.key],
-			}));
 			setLocalError(null);
 		} catch (caught) {
 			setLocalError(caught instanceof Error ? caught.message : String(caught));
@@ -2211,7 +2255,7 @@ function AgentsView({
 							<button type="button" disabled={readOnly} onClick={() => setNewContextFileScope("global")} className={`px-2 py-1 text-xs rounded-sm ${newContextFileScope === "global" ? "bg-[#11a4d4]/20 text-sky-100" : "text-slate-500 hover:text-slate-300"}`}>Global</button>
 						</div>
 						<div className="grid grid-cols-2 max-[1100px]:grid-cols-1 gap-2">
-							{catalog ? visibleContextFiles.map((contextFile) => <CatalogToggle key={contextFile.key} disabled={readOnly} checked={draft.contextFiles.includes(contextFile.key)} title={contextFile.label ?? contextFile.key} description={contextFile.path} meta={contextFileMeta(contextFile)} actionLabel={contextFile.source === "plugin" ? "Link Copy" : undefined} actionDisabled={readOnly || saving || Boolean(agentNameError)} onAction={contextFile.source === "plugin" ? () => void createLinkedContextFileForDraft(contextFile) : undefined} onToggle={() => setDraft((current) => ({ ...current, contextFiles: toggleName(current.contextFiles, contextFile.key) }))} />) : <EmptyCatalog />}
+							{catalog ? visibleContextFiles.map((contextFile) => <CatalogToggle key={contextFile.key} disabled={readOnly} checked={draft.contextFiles.includes(contextFile.key)} title={contextFile.label ?? contextFile.key} description={contextFile.path} meta={contextFileMeta(contextFile)} actionLabel="Edit" actionIcon={<Edit3 size={12} />} onAction={() => onEditContextFile(contextFile.key)} onToggle={() => setDraft((current) => ({ ...current, contextFiles: toggleName(current.contextFiles, contextFile.key) }))} />) : <EmptyCatalog />}
 						</div>
 					</DesignerPanel>
 					<SubagentDesigner draft={draft} setDraft={setDraft} profileOptions={profileOptions} readOnly={readOnly} />
@@ -2475,6 +2519,7 @@ function CatalogToggle({
 	description,
 	meta,
 	actionLabel,
+	actionIcon,
 	actionDisabled,
 	onAction,
 	onToggle,
@@ -2485,6 +2530,7 @@ function CatalogToggle({
 	description?: string;
 	meta?: string;
 	actionLabel?: string;
+	actionIcon?: ReactNode;
 	actionDisabled?: boolean;
 	onAction?: () => void;
 	onToggle: () => void;
@@ -2492,9 +2538,11 @@ function CatalogToggle({
 	return (
 		<button
 			type="button"
-			onClick={onToggle}
-			disabled={disabled}
-			className={`min-w-0 border rounded-sm p-2 text-left grid grid-cols-[18px_1fr] gap-2 disabled:opacity-60 ${
+			onClick={() => {
+				if (!disabled) onToggle();
+			}}
+			aria-disabled={disabled}
+			className={`min-w-0 border rounded-sm p-2 text-left grid grid-cols-[18px_1fr] gap-2 ${disabled && !onAction ? "opacity-60" : ""} ${
 				checked ? "border-[#11a4d4] bg-[#11a4d4]/10" : "border-slate-800 bg-[#151f24] hover:border-slate-700"
 			}`}
 		>
@@ -2506,7 +2554,7 @@ function CatalogToggle({
 				{description ? <span className="block text-xs text-slate-500 truncate">{description}</span> : null}
 				{meta ? <span className="block font-mono text-[10px] text-slate-600 mt-1">{meta}</span> : null}
 				{actionLabel && onAction ? (
-					<span className="mt-2 block">
+					<span className="mt-1.5 block">
 						<span
 							role="button"
 							tabIndex={0}
@@ -2522,12 +2570,13 @@ function CatalogToggle({
 									onAction();
 								}
 							}}
-							className={`inline-flex h-7 items-center justify-center border px-2 text-[10px] uppercase tracking-wider ${
+							className={`inline-flex h-6 items-center justify-center gap-1 border px-1.5 text-[10px] uppercase tracking-wider ${
 								actionDisabled
 									? "border-slate-800 text-slate-600"
 									: "border-[#11a4d4]/70 text-[#7dd3fc] hover:border-[#11a4d4] hover:text-sky-100"
 							}`}
 						>
+							{actionIcon}
 							{actionLabel}
 						</span>
 					</span>
@@ -3273,6 +3322,23 @@ function removeStoredRoomSelection(roomId: string): void {
 				...(Object.keys(sessionsByRoom).length ? { sessionsByRoom } : {}),
 			}),
 		);
+	} catch {
+		// Browser storage can be unavailable in private or locked-down contexts.
+	}
+}
+
+function readStoredSessionView(): ChatSessionViewId {
+	try {
+		const stored = localStorage.getItem(SESSION_VIEW_STORAGE_KEY);
+		return stored === "terminal" ? "terminal" : DEFAULT_CHAT_SESSION_VIEW_ID;
+	} catch {
+		return DEFAULT_CHAT_SESSION_VIEW_ID;
+	}
+}
+
+function writeStoredSessionView(viewId: ChatSessionViewId): void {
+	try {
+		localStorage.setItem(SESSION_VIEW_STORAGE_KEY, viewId);
 	} catch {
 		// Browser storage can be unavailable in private or locked-down contexts.
 	}
