@@ -140,7 +140,14 @@ export type AgentCatalog = {
 		timeoutMs?: number;
 		maxDepth?: number;
 	}>;
-	contextFiles: Array<{ key: string; label?: string; path: string }>;
+	contextFiles: Array<{
+		key: string;
+		label?: string;
+		path: string;
+		scope?: "global" | "agent";
+		source?: "plugin" | "managed";
+		agentProfileName?: string;
+	}>;
 	packages: Array<{ name: string; description: string; toolNames: string[] }>;
 };
 

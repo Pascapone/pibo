@@ -13,5 +13,5 @@
     "skipLibCheck": true
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["src/apps/chat-ui/**"]
+  "exclude": ["src/apps/chat-ui/**", "src/apps/context-files-ui/**"]
 }

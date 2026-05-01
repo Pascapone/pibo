@@ -1,6 +1,7 @@
 import type {
 	PiboExecutionEvent,
 	PiboForkCandidate,
+	PiboJsonObject,
 	PiboOutputEvent,
 	PiboSessionListItem,
 	PiboSessionOperationResult,
@@ -76,6 +77,9 @@ export type PiboContextFileInfo = {
 	key: string;
 	label?: string;
 	path: string;
+	scope?: "global" | "agent";
+	source?: "plugin" | "managed";
+	agentProfileName?: string;
 };
 
 export type PiboCapabilityPackageInfo = {
@@ -90,6 +94,22 @@ export type PiboCapabilityCatalog = {
 	subagents: PiboSubagentInfo[];
 	contextFiles: PiboContextFileInfo[];
 	packages: PiboCapabilityPackageInfo[];
+};
+
+export type PiboProductEventSource = "core" | "plugin" | "web" | "filesystem" | "agent";
+
+export type PiboProductEventInput = {
+	type: string;
+	source: PiboProductEventSource;
+	actorId?: string;
+	payload: PiboJsonObject;
+	id?: string;
+	createdAt?: string;
+};
+
+export type PiboProductEvent = PiboProductEventInput & {
+	id: string;
+	createdAt: string;
 };
 
 export type PiboGatewayActionContext = {
@@ -125,6 +145,7 @@ export type PiboGatewayActionInfo = {
 };
 
 export type PiboPluginEventListener = (event: PiboOutputEvent) => void;
+export type PiboProductEventListener = (event: PiboProductEvent) => void;
 
 export type PiboPluginApi = {
 	registerTool(tool: ToolProfile): void;
@@ -133,12 +154,16 @@ export type PiboPluginApi = {
 	registerSubagents(subagents: readonly SubagentProfile[]): void;
 	registerSkill(skill: SkillProfile): void;
 	registerContextFile(contextFile: ContextFileProfile): void;
+	upsertContextFile(contextFile: ContextFileProfile): void;
+	removeContextFile(key: string): void;
 	registerProfile(profile: PiboProfileDefinition): void;
 	registerGatewayAction(action: PiboGatewayAction): void;
 	registerChannel(channel: PiboChannel): void;
 	registerAuthService(service: PiboAuthService): void;
 	registerWebApp(app: PiboWebApp): void;
 	onEvent(listener: PiboPluginEventListener): void;
+	emitProductEvent(event: PiboProductEventInput): PiboProductEvent;
+	onProductEvent(listener: PiboProductEventListener): () => void;
 };
 
 export type PiboPlugin = {

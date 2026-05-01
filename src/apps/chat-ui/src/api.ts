@@ -38,6 +38,28 @@ export async function getCustomAgents(): Promise<{ agents: CustomAgent[] }> {
 	return requestJson("/api/chat/agents");
 }
 
+export async function postContextFile(input: {
+	label: string;
+	scope: "global" | "agent";
+	agentProfileName?: string;
+	markdown: string;
+}): Promise<{
+	file: AgentCatalog["contextFiles"][number] & {
+		managed: boolean;
+		dynamic: boolean;
+		editable: boolean;
+		removable: boolean;
+		exists: boolean;
+		absolutePath: string;
+	};
+}> {
+	return requestJson("/api/context-files", {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify(input),
+	});
+}
+
 export type SaveCustomAgentInput = {
 	displayName: string;
 	description?: string;

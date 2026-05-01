@@ -23,10 +23,17 @@ export type SkillProfile = {
 	enabled?: boolean;
 };
 
+export type ContextFileScope = "global" | "agent";
+export type ContextFileSource = "plugin" | "managed";
+
 export type ContextFileProfile = {
+	key?: string;
 	path: string;
 	label?: string;
 	enabled?: boolean;
+	scope?: ContextFileScope;
+	source?: ContextFileSource;
+	agentProfileName?: string;
 };
 
 export type BuiltinToolsMode = "default" | "disabled";

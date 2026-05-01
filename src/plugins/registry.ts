@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type {
 	ContextFileProfile,
 	InitialSessionContext,
@@ -15,6 +16,9 @@ import type {
 	PiboPlugin,
 	PiboPluginApi,
 	PiboPluginEventListener,
+	PiboProductEvent,
+	PiboProductEventInput,
+	PiboProductEventListener,
 	PiboCapabilityCatalog,
 	PiboProfileInfo,
 	PiboProfileBuildContext,
@@ -63,6 +67,7 @@ export class PiboPluginRegistry {
 	private authService?: PiboAuthService;
 	private readonly webApps = new Map<string, PiboWebApp>();
 	private readonly eventListeners = new Set<PiboPluginEventListener>();
+	private readonly productEventListeners = new Set<PiboProductEventListener>();
 	private readonly pluginIds = new Set<string>();
 	private readonly eventErrors: string[] = [];
 
@@ -109,6 +114,14 @@ export class PiboPluginRegistry {
 
 	registerContextFile(contextFile: ContextFileProfile): void {
 		this.addUnique(this.contextFiles, contextFileKey(contextFile), contextFile, "context file");
+	}
+
+	upsertContextFile(contextFile: ContextFileProfile): void {
+		this.contextFiles.set(contextFileKey(contextFile), contextFile);
+	}
+
+	removeContextFile(key: string): void {
+		this.contextFiles.delete(key);
 	}
 
 	registerProfile(profile: PiboProfileDefinition): void {
@@ -161,6 +174,13 @@ export class PiboPluginRegistry {
 
 	onEvent(listener: PiboPluginEventListener): void {
 		this.eventListeners.add(listener);
+	}
+
+	onProductEvent(listener: PiboProductEventListener): () => void {
+		this.productEventListeners.add(listener);
+		return () => {
+			this.productEventListeners.delete(listener);
+		};
 	}
 
 	createProfile(name: string): InitialSessionContext {
@@ -217,6 +237,9 @@ export class PiboPluginRegistry {
 				key,
 				label: contextFile.label,
 				path: contextFile.path,
+				scope: contextFile.scope ?? "global",
+				source: contextFile.source ?? "plugin",
+				agentProfileName: contextFile.agentProfileName,
 			})),
 			packages: [
 				{
@@ -284,6 +307,22 @@ export class PiboPluginRegistry {
 		}
 	}
 
+	emitProductEvent(input: PiboProductEventInput): PiboProductEvent {
+		const event: PiboProductEvent = {
+			...input,
+			id: input.id ?? randomUUID(),
+			createdAt: input.createdAt ?? new Date().toISOString(),
+		};
+		for (const listener of this.productEventListeners) {
+			try {
+				listener(event);
+			} catch (error) {
+				this.eventErrors.push(error instanceof Error ? error.message : String(error));
+			}
+		}
+		return event;
+	}
+
 	private createApi(): PiboPluginApi {
 		return {
 			registerTool: (tool) => this.registerTool(tool),
@@ -292,12 +331,16 @@ export class PiboPluginRegistry {
 			registerSubagents: (subagents) => this.registerSubagents(subagents),
 			registerSkill: (skill) => this.registerSkill(skill),
 			registerContextFile: (contextFile) => this.registerContextFile(contextFile),
+			upsertContextFile: (contextFile) => this.upsertContextFile(contextFile),
+			removeContextFile: (key) => this.removeContextFile(key),
 			registerProfile: (profile) => this.registerProfile(profile),
 			registerGatewayAction: (action) => this.registerGatewayAction(action),
 			registerChannel: (channel) => this.registerChannel(channel),
 			registerAuthService: (service) => this.registerAuthService(service),
 			registerWebApp: (app) => this.registerWebApp(app),
 			onEvent: (listener) => this.onEvent(listener),
+			emitProductEvent: (event) => this.emitProductEvent(event),
+			onProductEvent: (listener) => this.onProductEvent(listener),
 		};
 	}
 
@@ -378,7 +421,7 @@ export class PiboPluginRegistry {
 }
 
 function contextFileKey(contextFile: ContextFileProfile): string {
-	return contextFile.label ?? contextFile.path;
+	return contextFile.key ?? contextFile.label ?? contextFile.path;
 }
 
 export function definePiboPlugin(plugin: PiboPlugin): PiboPlugin {

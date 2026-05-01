@@ -25,7 +25,7 @@ import {
 	UserRound,
 	X,
 } from "lucide-react";
-import { deleteCustomAgent, deleteRoom, deleteSession, getBootstrap, getTrace, patchCustomAgent, patchRoom, patchSession, postAction, postCustomAgent, postMessage, postRoom, postSession, signInWithGoogle, signOut, type SaveCustomAgentInput } from "./api";
+import { deleteCustomAgent, deleteRoom, deleteSession, getBootstrap, getTrace, patchCustomAgent, patchRoom, patchSession, postAction, postContextFile, postCustomAgent, postMessage, postRoom, postSession, signInWithGoogle, signOut, type SaveCustomAgentInput } from "./api";
 import type { AgentCatalog, BootstrapData, CustomAgent, CustomAgentSubagent, PiboRoom, PiboSessionTraceView, PiboTraceNode, PiboTraceOrderKey, PiboWebSessionNode } from "./types";
 import { adaptTrace } from "./tracing/adapt";
 import { TraceTimeline } from "./tracing/TraceTimeline";
@@ -655,6 +655,12 @@ export function App({ route }: { route: ChatAppRoute }) {
 							{item}
 						</button>
 					))}
+					<a
+						href="/apps/context-files"
+						className="h-8 px-3 inline-flex items-center border rounded-sm text-xs uppercase tracking-wider border-slate-700 text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"
+					>
+						context
+					</a>
 				</nav>
 				<div className="flex items-center gap-2 text-xs text-slate-400 min-w-0">
 					<UserRound size={14} />
@@ -1785,6 +1791,8 @@ function AgentsView({
 	const [showArchivedAgents, setShowArchivedAgents] = useState(() => localStorage.getItem("pibo.chat.showArchivedAgents") === "true");
 	const [deleteConfirmName, setDeleteConfirmName] = useState("");
 	const [localError, setLocalError] = useState<string | null>(null);
+	const [newContextFileName, setNewContextFileName] = useState("");
+	const [newContextFileScope, setNewContextFileScope] = useState<"global" | "agent">("agent");
 	const designerAvailable = Boolean(catalog);
 
 	useEffect(() => setCustomAgents(initialCustomAgents), [initialCustomAgents]);
@@ -1806,6 +1814,13 @@ function AgentsView({
 	const readOnly = draft.source === "profile" || archivedDraft;
 	const agentNameError = readOnly ? null : validateAgentName(draft.displayName);
 	const draftProfileName = draft.profileName ?? (agentNameError ? "new custom profile" : draft.displayName);
+	const visibleContextFiles = useMemo(
+		() => catalog?.contextFiles.filter((contextFile) => {
+			if ((contextFile.scope ?? "global") !== "agent") return true;
+			return contextFile.agentProfileName === draftProfileName || draft.contextFiles.includes(contextFile.key);
+		}) ?? [],
+		[catalog, draft.contextFiles, draftProfileName],
+	);
 
 	const saveDraft = async () => {
 		if (readOnly) return;
@@ -1860,6 +1875,35 @@ function AgentsView({
 			setDraft(agentToDraft(response.agent));
 			setDeleteConfirmName("");
 			onAgentsChanged();
+			setLocalError(null);
+		} catch (caught) {
+			setLocalError(caught instanceof Error ? caught.message : String(caught));
+		} finally {
+			setSaving(false);
+		}
+	};
+
+	const createContextFileForDraft = async () => {
+		if (readOnly || !designerAvailable || !newContextFileName.trim()) return;
+		if (agentNameError) {
+			setLocalError(agentNameError);
+			return;
+		}
+		setSaving(true);
+		try {
+			const response = await postContextFile({
+				label: newContextFileName.trim(),
+				scope: newContextFileScope,
+				agentProfileName: newContextFileScope === "agent" ? draftProfileName : undefined,
+				markdown: "",
+			});
+			const file = response.file;
+			setCatalog((current) => current ? { ...current, contextFiles: [...current.contextFiles, file] } : current);
+			setDraft((current) => ({
+				...current,
+				contextFiles: current.contextFiles.includes(file.key) ? current.contextFiles : [...current.contextFiles, file.key],
+			}));
+			setNewContextFileName("");
 			setLocalError(null);
 		} catch (caught) {
 			setLocalError(caught instanceof Error ? caught.message : String(caught));
@@ -2011,7 +2055,21 @@ function AgentsView({
 					<CatalogSection title="Native Tools">{catalog?.nativeTools.map((tool) => <CatalogToggle key={tool.name} disabled={readOnly} checked={draft.nativeTools.includes(tool.name)} title={tool.name} description={tool.description} meta={tool.yieldable ? "yieldable" : "direct only"} onToggle={() => setDraft((current) => ({ ...current, nativeTools: toggleName(current.nativeTools, tool.name) }))} />) ?? <EmptyCatalog />}</CatalogSection>
 					<CatalogSection title="Skills">{catalog?.skills.map((skill) => <CatalogToggle key={skill.name} disabled={readOnly} checked={draft.skills.includes(skill.name)} title={skill.name} description={skill.path} onToggle={() => setDraft((current) => ({ ...current, skills: toggleName(current.skills, skill.name) }))} />) ?? <EmptyCatalog />}</CatalogSection>
 					<CatalogSection title="Packages"><CatalogToggle disabled={readOnly} checked={draft.runControl} title="pibo-run-control" description="Expose pibo_run_* as one package for yielded native tools and subagents." meta="package" onToggle={() => setDraft((current) => ({ ...current, runControl: !current.runControl }))} /></CatalogSection>
-					<CatalogSection title="Context Files">{catalog?.contextFiles.map((contextFile) => <CatalogToggle key={contextFile.key} disabled={readOnly} checked={draft.contextFiles.includes(contextFile.key)} title={contextFile.label ?? contextFile.key} description={contextFile.path} onToggle={() => setDraft((current) => ({ ...current, contextFiles: toggleName(current.contextFiles, contextFile.key) }))} />) ?? <EmptyCatalog />}</CatalogSection>
+					<DesignerPanel title="Context Files">
+						<div className="grid grid-cols-[1fr_auto] gap-2">
+							<input value={newContextFileName} disabled={readOnly} onChange={(event) => setNewContextFileName(event.target.value)} className="min-w-0 bg-[#0e1116] border border-slate-700 rounded-sm px-3 py-2 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60" placeholder="New context file" />
+							<button type="button" disabled={readOnly || saving || !newContextFileName.trim() || Boolean(agentNameError)} onClick={() => void createContextFileForDraft()} title="Create Context File" aria-label="Create Context File" className="h-9 w-9 inline-flex items-center justify-center border border-[#11a4d4] rounded-sm text-[#11a4d4] bg-[#11a4d4]/10 disabled:opacity-50">
+								<Plus size={14} />
+							</button>
+						</div>
+						<div className="inline-flex w-fit gap-1 border border-slate-800 bg-[#0e1116] rounded-sm p-1">
+							<button type="button" disabled={readOnly} onClick={() => setNewContextFileScope("agent")} className={`px-2 py-1 text-xs rounded-sm ${newContextFileScope === "agent" ? "bg-[#11a4d4]/20 text-sky-100" : "text-slate-500 hover:text-slate-300"}`}>Agent</button>
+							<button type="button" disabled={readOnly} onClick={() => setNewContextFileScope("global")} className={`px-2 py-1 text-xs rounded-sm ${newContextFileScope === "global" ? "bg-[#11a4d4]/20 text-sky-100" : "text-slate-500 hover:text-slate-300"}`}>Global</button>
+						</div>
+						<div className="grid grid-cols-2 max-[1100px]:grid-cols-1 gap-2">
+							{catalog ? visibleContextFiles.map((contextFile) => <CatalogToggle key={contextFile.key} disabled={readOnly} checked={draft.contextFiles.includes(contextFile.key)} title={contextFile.label ?? contextFile.key} description={contextFile.path} meta={contextFileMeta(contextFile)} onToggle={() => setDraft((current) => ({ ...current, contextFiles: toggleName(current.contextFiles, contextFile.key) }))} />) : <EmptyCatalog />}
+						</div>
+					</DesignerPanel>
 					<SubagentDesigner draft={draft} setDraft={setDraft} profileOptions={profileOptions} readOnly={readOnly} />
 					{archivedDraft && draft.profileName ? (
 						<DesignerPanel title="Delete Agent">
@@ -2249,6 +2307,14 @@ function CatalogToggle({
 			</span>
 		</button>
 	);
+}
+
+function contextFileMeta(contextFile: AgentCatalog["contextFiles"][number]): string {
+	const source = contextFile.source ?? "plugin";
+	const scope = contextFile.scope ?? "global";
+	if (source === "plugin") return "plugin global";
+	if (scope === "agent") return contextFile.agentProfileName ? `agent ${contextFile.agentProfileName}` : "agent local";
+	return "managed global";
 }
 
 function EmptyCatalog() {

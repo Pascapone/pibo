@@ -9,6 +9,8 @@ export {
 export { piboExamplePlugin } from "./plugins/example.js";
 export { createPiboBetterAuthPlugin } from "./plugins/better-auth.js";
 export { createPiboChatWebPlugin } from "./plugins/chat-web.js";
+export { createPiboContextFilesPlugin } from "./plugins/context-files.js";
+export type { ContextFilesPluginOptions } from "./plugins/context-files.js";
 export { createPiboWebHostPlugin } from "./plugins/web.js";
 export { createChatWebApp } from "./apps/chat/web-app.js";
 export type { ChatWebAppOptions } from "./apps/chat/web-app.js";
@@ -48,6 +50,10 @@ export type {
 	PiboPlugin,
 	PiboPluginApi,
 	PiboPluginEventListener,
+	PiboProductEvent,
+	PiboProductEventInput,
+	PiboProductEventListener,
+	PiboProductEventSource,
 	PiboProfileBuildContext,
 	PiboProfileDefinition,
 	PiboProfileInfo,

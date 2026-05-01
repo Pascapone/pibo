@@ -232,6 +232,10 @@ export class PiboGatewayServer {
 			getCapabilityCatalog: () => this.pluginRegistry.getCapabilityCatalog(),
 			upsertProfile: (profile) => this.pluginRegistry.upsertProfile(profile),
 			removeProfile: (name) => this.pluginRegistry.removeProfile(name),
+			upsertContextFile: (contextFile) => this.pluginRegistry.upsertContextFile(contextFile),
+			removeContextFile: (key) => this.pluginRegistry.removeContextFile(key),
+			emitProductEvent: (event) => this.pluginRegistry.emitProductEvent(event),
+			subscribeProductEvents: (listener) => this.pluginRegistry.onProductEvent(listener),
 			auth: this.pluginRegistry.getAuthService(),
 			getWebApps: () => this.pluginRegistry.getWebApps(),
 		};

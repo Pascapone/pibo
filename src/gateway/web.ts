@@ -2,6 +2,7 @@ import { createDefaultPiboPlugins } from "../plugins/builtin.js";
 import type { BetterAuthServiceOptions } from "../auth/better-auth.js";
 import { createPiboBetterAuthPlugin } from "../plugins/better-auth.js";
 import { createPiboChatWebPlugin, type ChatWebAppOptions } from "../plugins/chat-web.js";
+import { createPiboContextFilesPlugin, type ContextFilesPluginOptions } from "../plugins/context-files.js";
 import { PiboPluginRegistry } from "../plugins/registry.js";
 import { createPiboWebHostPlugin } from "../plugins/web.js";
 import { DEFAULT_WEB_CHANNEL_HOST, DEFAULT_WEB_CHANNEL_PORT, type WebHostChannelOptions } from "../web/channel.js";
@@ -12,6 +13,7 @@ export type WebGatewayServerOptions = GatewayServerOptions & {
 	auth?: BetterAuthServiceOptions;
 	web?: WebHostChannelOptions;
 	chat?: ChatWebAppOptions;
+	contextFiles?: ContextFilesPluginOptions;
 };
 
 const PUBLIC_WEB_CHANNEL_HOST = "0.0.0.0";
@@ -49,6 +51,7 @@ export function createWebPiboPluginRegistry(options: WebGatewayServerOptions = {
 			...createDefaultPiboPlugins(),
 			createPiboBetterAuthPlugin(resolvedOptions.auth),
 			createPiboWebHostPlugin({ announce: false, canonicalBaseURL: authBaseURL(resolvedOptions), ...resolvedOptions.web }),
+			createPiboContextFilesPlugin(resolvedOptions.contextFiles),
 			createPiboChatWebPlugin(resolvedOptions.chat),
 		],
 	});
