@@ -189,6 +189,8 @@ npm run dev -- tools guide browser-use browser-use
 npm run dev -- tools guide browser-use remote-browser
 npm run dev -- tools path browser-use
 npm run dev -- tools env browser-use
+npm run dev -- tools browser-use
+npm run dev -- tools browser-use lease acquire
 ```
 
 The first curated tool is `browser-use`, pinned to `browser-use[cli]==0.12.6` so the CLI surface stays aligned with the bundled guides. It is installed into an isolated runtime under `~/.pibo/tools/browser-use` and uses `~/.pibo/tools/browser-use/home` as its tool home. See `docs/tools.md`.

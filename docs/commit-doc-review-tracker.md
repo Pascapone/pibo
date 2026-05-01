@@ -72,13 +72,13 @@ Scope: Last 10 commits on the current branch, metadata only. No diff review yet.
 
 ### 7. `9b45161` - Add browser-use authenticated lease pool
 
-- Review status: `todo`
-- Documentation follow-up: `tbd`
+- Review status: `done`
+- Documentation follow-up: `required`
 - Date: `2026-05-01T21:04:53+02:00`
 - Author: `pibo`
 - Full hash: `9b45161c17e8df0f0023813b860a40334f256385`
 - Description: `-`
-- Notes: `-`
+- Notes: `Expanded the tool docs to cover the new `pibo tools browser-use` discovery entrypoint plus auth-template and lease management helpers introduced by the authenticated lease pool.`
 
 ### 8. `79f72e4` - Add session breadcrumbs to chat trace header
 
