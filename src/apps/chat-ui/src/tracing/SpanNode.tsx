@@ -19,6 +19,7 @@ import {
 import type { Span, SpanStatus, SpanType } from "../types";
 import { countRender } from "../renderMetrics";
 import { JsonRenderer } from "./JsonRenderer";
+import { MarkdownRenderer } from "./MarkdownRenderer";
 
 type SpanNodeProps = {
 	span: Span;
@@ -325,8 +326,8 @@ const SpanContent = memo(function SpanContent({ span }: { span: Span }) {
 		return (
 			<div className="flex flex-col">
 				{errorBanner}
-				<div className="p-4 text-sm text-slate-200 whitespace-pre-wrap leading-relaxed">
-					{typeof content === "string" ? content : <JsonRenderer value={content} />}
+				<div className="model-response-markdown p-4 text-sm text-slate-200 leading-relaxed">
+					{typeof content === "string" ? <MarkdownRenderer>{content}</MarkdownRenderer> : <JsonRenderer value={content} />}
 				</div>
 			</div>
 		);
