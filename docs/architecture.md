@@ -353,6 +353,8 @@ The config helper commands live under `pibo mcp config ...` and can create, show
 
 The MCP daemon keeps expensive stdio server connections warm between CLI invocations. It is a local convenience cache only; server state and security still belong to the configured MCP server.
 
+Chrome DevTools integration is MCP only when `chrome-devtools-mcp` is configured in `mcp_servers.json`. The bundled `browser-use` command remains a separate `pibo tools` entry and is not listed in Agent Designer MCP server selection.
+
 ## CLI Tools
 
 `pibo tools` keeps curated command-line tools discoverable without pushing their usage instructions into every agent context. Installed tool runtimes live under `~/.pibo/tools/<name>`. A tool can expose one or more guides, but those guides are only printed when requested through the CLI.

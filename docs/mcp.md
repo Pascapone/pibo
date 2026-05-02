@@ -105,6 +105,20 @@ npm run dev -- mcp call <server> <tool> '<json>'
 
 Pibo does not inject MCP tool schemas, headers, environment variables, command paths, or full config JSON into model context. The Agent Designer catalog is built from local config metadata and does not start stdio MCP servers or make HTTP MCP requests.
 
+## Chrome DevTools MCP
+
+`browser-use` is a Pibo CLI tool, not an MCP server. It is installed and managed through `pibo tools`, so it does not appear in the Agent Designer `MCP Servers` section.
+
+To expose Chrome DevTools through MCP, add a real MCP server entry:
+
+```bash
+npm run dev -- mcp config add chrome-devtools '{"command":"npx","args":["-y","chrome-devtools-mcp@latest","--headless"]}'
+npm run dev -- mcp config describe chrome-devtools "Control and inspect a local Chrome browser through the official Chrome DevTools MCP server."
+npm run dev -- mcp info chrome-devtools
+```
+
+The final `info` command starts the MCP server and lists its available tools, such as page navigation, screenshots, console inspection, network inspection, script evaluation, and performance tracing. Refresh the Chat Web Agent Designer after adding the config entry.
+
 ## Registry
 
 The registry is a curated list of optional MCP server presets. Presets are not active by default. Installing one writes a normal `mcpServers` entry, so the runtime path is the same as a manually added server.
