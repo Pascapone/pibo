@@ -100,7 +100,9 @@ The Context area also exposes the Pibo Base Prompt. The library prompt lives at 
 
 The default profile is registered by the core plugin. It loads the local `pi-agent-harness` skill and uses Pi Coding Agent's built-in tools for normal coding work.
 
-The `codex-compat` profile is the first complete Codex-compatible profile. It keeps the Pibo runtime boundary while exposing Codex-like coding affordances: Pi/Pibo `read`, `edit`, and `write`; Pibo run-control `bash`; `apply_patch`, `web_search`, and `view_image`; generated `pibo_subagent_default`, `pibo_subagent_explorer`, and `pibo_subagent_worker`; and the `pibo_run_*` lifecycle tools. It intentionally does not expose Pi's separate `grep`, `find`, or `ls` tools by default; search remains Codex-style through `bash` and commands such as `rg`.
+The `codex` alias resolves to the `codex-compat-openai-web` profile. It keeps the Pibo runtime boundary while exposing Codex-like coding affordances: Pi/Pibo `read`, `edit`, and `write`; Pibo run-control `bash`; `apply_patch` and `view_image`; generated `pibo_subagent_default`, `pibo_subagent_explorer`, and `pibo_subagent_worker`; and the `pibo_run_*` lifecycle tools. Web search is provider-backed: Pibo injects OpenAI Responses hosted `web_search` into the model request instead of exposing a local `web_search` function tool. It intentionally does not expose Pi's separate `grep`, `find`, or `ls` tools by default; codebase search remains Codex-style through `bash` and commands such as `rg`.
+
+The local DuckDuckGo-backed search implementation remains available through the explicit `codex-local` / `codex-duckduckgo` aliases, which resolve to `codex-compat-local-web`.
 
 Profiles can opt into registered subagents. Pibo exposes enabled subagents to Pi as generated tools named `pibo_subagent_<name>`, routed through normal pibo sessions. Generated subagent tools are always parallel-capable; agents sequence subagent work by waiting for a direct result before issuing a later call or by using `pibo_run_start` for yielded work.
 

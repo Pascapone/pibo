@@ -10,36 +10,9 @@ import {
 import { createPiboRuntime, inspectPiboProfile } from "../dist/core/runtime.js";
 import { createDefaultPiboPluginRegistry } from "../dist/plugins/builtin.js";
 
-test("default registry exposes the codex-compatible profile and tool surface", () => {
+test("default registry exposes the provider-backed codex-compatible profile", () => {
 	const registry = createDefaultPiboPluginRegistry();
 	const profile = registry.createProfile("codex");
-
-	assert.equal(profile.profileName, "codex-compat");
-	assert.equal(profile.builtinTools, "default");
-	assert.deepEqual(profile.builtinToolNames, ["read", "edit", "write"]);
-	assert.equal(profile.toolPackages.codexCompat, true);
-	assert.equal(profile.toolPackages.providerWebSearch, false);
-	assert.equal(profile.toolPackages.runControl, true);
-	assert.deepEqual(
-		profile.tools.map((tool) => tool.name),
-		[
-			"apply_patch",
-			"web_search",
-			"view_image",
-		],
-	);
-	assert.deepEqual(
-		profile.subagents.map((subagent) => subagent.name),
-		["default", "explorer", "worker"],
-	);
-	assert.deepEqual(profile.contextFiles.map((contextFile) => contextFile.key), ["Codex Base Prompt"]);
-	assert.deepEqual(profile.contextFiles.map((contextFile) => basename(contextFile.path)), ["codex-base-prompt.md"]);
-	assert.equal(existsSync(profile.contextFiles[0].path), true);
-});
-
-test("default registry exposes the OpenAI web-search profile variant", () => {
-	const registry = createDefaultPiboPluginRegistry();
-	const profile = registry.createProfile("codex-web");
 
 	assert.equal(profile.profileName, "codex-compat-openai-web");
 	assert.equal(profile.builtinTools, "default");
@@ -62,11 +35,42 @@ test("default registry exposes the OpenAI web-search profile variant", () => {
 			["worker", "codex-compat-openai-web"],
 		],
 	);
+	assert.deepEqual(profile.contextFiles.map((contextFile) => contextFile.key), ["Codex Base Prompt"]);
+	assert.deepEqual(profile.contextFiles.map((contextFile) => basename(contextFile.path)), ["codex-base-prompt.md"]);
+	assert.equal(existsSync(profile.contextFiles[0].path), true);
+});
+
+test("default registry exposes the local web-search fallback profile", () => {
+	const registry = createDefaultPiboPluginRegistry();
+	const profile = registry.createProfile("codex-local");
+
+	assert.equal(profile.profileName, "codex-compat-local-web");
+	assert.equal(profile.builtinTools, "default");
+	assert.deepEqual(profile.builtinToolNames, ["read", "edit", "write"]);
+	assert.equal(profile.toolPackages.codexCompat, true);
+	assert.equal(profile.toolPackages.providerWebSearch, false);
+	assert.equal(profile.toolPackages.runControl, true);
+	assert.deepEqual(
+		profile.tools.map((tool) => tool.name),
+		[
+			"apply_patch",
+			"web_search",
+			"view_image",
+		],
+	);
+	assert.deepEqual(
+		profile.subagents.map((subagent) => [subagent.name, subagent.targetProfile]),
+		[
+			["default", "codex-compat-local-web"],
+			["explorer", "codex-compat-local-web"],
+			["worker", "codex-compat-local-web"],
+		],
+	);
 });
 
 test("codex-compatible profile inspection shows active generated tools and local web search", async () => {
 	const registry = createDefaultPiboPluginRegistry();
-	const profile = registry.createProfile("codex-compat");
+	const profile = registry.createProfile("codex-compat-local-web");
 	const inspection = await inspectPiboProfile({ profile, persistSession: false });
 	const activeTools = new Set(inspection.tools.filter((tool) => tool.active).map((tool) => tool.name));
 
@@ -120,7 +124,7 @@ test("OpenAI web-search profile inspection does not expose local web_search", as
 
 test("codex-compatible profile uses Pibo run-control bash instead of exec tools", async () => {
 	const registry = createDefaultPiboPluginRegistry();
-	const profile = registry.createProfile("codex-compat");
+	const profile = registry.createProfile("codex");
 	const runtime = await createPiboRuntime({
 		profile,
 		persistSession: false,

@@ -46,42 +46,23 @@ export const piboCodexCompatPlugin = definePiboPlugin({
 			{
 				name: "default",
 				description: "General delegated Codex-compatible child agent.",
-				targetProfile: "codex-compat",
+				targetProfile: "codex-compat-openai-web",
 			},
 			{
 				name: "explorer",
 				description: "Read-focused delegated agent for scoped codebase questions.",
-				targetProfile: "codex-compat",
+				targetProfile: "codex-compat-openai-web",
 			},
 			{
 				name: "worker",
 				description: "Execution-focused delegated agent for bounded implementation work.",
-				targetProfile: "codex-compat",
+				targetProfile: "codex-compat-openai-web",
 			},
 		]);
 
 		api.registerProfile({
-			name: "codex-compat",
-			aliases: ["codex"],
-			description: "Codex-compatible Pibo profile with Codex-like tools, prompt framing, and subagents.",
-			create(context) {
-				return new InitialSessionContextBuilder("codex-compat")
-					.withBuiltinToolNames(["read", "edit", "write"])
-					.withToolPackages({
-						codexCompat: true,
-						providerWebSearch: false,
-						runControl: true,
-					})
-					.addTools(context.getTools(CODEX_COMPAT_TOOL_NAMES))
-					.addSubagents(context.getSubagents(CODEX_COMPAT_SUBAGENTS))
-					.addContextFile(context.getContextFile(CODEX_BASE_PROMPT_CONTEXT_FILE_KEY))
-					.createSession();
-			},
-		});
-
-		api.registerProfile({
 			name: "codex-compat-openai-web",
-			aliases: ["codex-openai-web", "codex-web"],
+			aliases: ["codex"],
 			description: "Codex-compatible Pibo profile with OpenAI Responses hosted web_search.",
 			create(context) {
 				return new InitialSessionContextBuilder("codex-compat-openai-web")
@@ -97,9 +78,28 @@ export const piboCodexCompatPlugin = definePiboPlugin({
 						runControl: true,
 					})
 					.addTools(context.getTools(CODEX_COMPAT_PROVIDER_TOOL_NAMES))
+					.addSubagents(context.getSubagents(CODEX_COMPAT_SUBAGENTS))
+					.addContextFile(context.getContextFile(CODEX_BASE_PROMPT_CONTEXT_FILE_KEY))
+					.createSession();
+			},
+		});
+
+		api.registerProfile({
+			name: "codex-compat-local-web",
+			aliases: ["codex-local", "codex-duckduckgo"],
+			description: "Codex-compatible Pibo profile with local DuckDuckGo-backed web_search.",
+			create(context) {
+				return new InitialSessionContextBuilder("codex-compat-local-web")
+					.withBuiltinToolNames(["read", "edit", "write"])
+					.withToolPackages({
+						codexCompat: true,
+						providerWebSearch: false,
+						runControl: true,
+					})
+					.addTools(context.getTools(CODEX_COMPAT_TOOL_NAMES))
 					.addSubagents(context.getSubagents(CODEX_COMPAT_SUBAGENTS).map((subagent) => ({
 						...subagent,
-						targetProfile: "codex-compat-openai-web",
+						targetProfile: "codex-compat-local-web",
 					})))
 					.addContextFile(context.getContextFile(CODEX_BASE_PROMPT_CONTEXT_FILE_KEY))
 					.createSession();
