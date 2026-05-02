@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { createPiboRuntime } from "../dist/core/runtime.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
+import { upsertPiPackage } from "../dist/pi-packages/store.js";
 import { piboCorePlugin } from "../dist/plugins/builtin.js";
 import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
@@ -76,6 +77,91 @@ test("session router uses the Pibo session profile when creating a runtime", asy
 		assert.equal(current.result.piSessionId, "11111111-1111-4111-8111-111111111111");
 	} finally {
 		await router.disposeAll();
+	}
+});
+
+test("session router preserves selected Pi packages when creating a runtime", async () => {
+	const cwd = await mkdtemp(join(tmpdir(), "pibo-router-pi-package-"));
+	const packageDir = join(cwd, "router-package");
+	await mkdir(packageDir, { recursive: true });
+	await writeFile(join(packageDir, "package.json"), JSON.stringify({
+		name: "router-package",
+		pi: { extensions: ["index.js"] },
+	}), "utf-8");
+	await writeFile(join(packageDir, "index.js"), `
+export default function(pi) {
+	pi.registerTool({
+		name: "router_package_tool",
+		label: "Router Package Tool",
+		description: "Tool provided by a selected Pi package.",
+		parameters: { type: "object", properties: {}, additionalProperties: false },
+		async execute() {
+			return { content: [{ type: "text", text: "ok" }] };
+		},
+	});
+}
+`, "utf-8");
+	upsertPiPackage({
+		id: "router-package",
+		name: "router-package",
+		source: packageDir,
+		installSpec: packageDir,
+		resourceTypes: ["extension"],
+		installStatus: "installed",
+		installPath: packageDir,
+		enabled: true,
+		diagnostics: [],
+	}, cwd);
+
+	const registry = PiboPluginRegistry.create({
+		plugins: [
+			piboCorePlugin,
+			definePiboPlugin({
+				id: "test.router-package",
+				register(api) {
+					api.registerProfile({
+						name: "package-profile",
+						create() {
+							return new InitialSessionContextBuilder("package-profile")
+								.withBuiltinTools("disabled")
+								.withPiPackages([{ id: "router-package" }])
+								.createSession();
+						},
+					});
+				},
+			}),
+		],
+	});
+	const store = new InMemoryPiboSessionStore();
+	store.create({
+		id: "ps_package",
+		piSessionId: "11111111-1111-4111-8111-111111111111",
+		channel: "pibo.test",
+		kind: "chat",
+		profile: "package-profile",
+		ownerScope: "user:test",
+		workspace: cwd,
+	});
+	const router = new PiboSessionRouter({
+		cwd,
+		persistSession: false,
+		sessionStore: store,
+		pluginRegistry: registry,
+		profile: registry.createProfile("package-profile"),
+	});
+
+	try {
+		const output = await router.emit({
+			type: "execution",
+			piboSessionId: "ps_package",
+			action: "status",
+		});
+
+		assert.equal(output.type, "execution_result");
+		assert.equal(output.result.activeTools.includes("router_package_tool"), true);
+	} finally {
+		await router.disposeAll();
+		await rm(cwd, { recursive: true, force: true });
 	}
 });
 

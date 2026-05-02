@@ -65,6 +65,7 @@ function profileForSession(
 		tools: baseProfile.tools,
 		subagents: baseProfile.subagents,
 		contextFiles: baseProfile.contextFiles,
+		piPackages: baseProfile.piPackages,
 		builtinTools: baseProfile.builtinTools,
 		builtinToolNames: baseProfile.builtinToolNames,
 		autoContextFiles: baseProfile.autoContextFiles,
