@@ -1,20 +1,9 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { extname, isAbsolute, resolve } from "node:path";
 import { StringEnum, Type } from "@mariozechner/pi-ai";
 import { defineTool, type ToolDefinition } from "@mariozechner/pi-coding-agent";
 
-type ExecSession = {
-	id: number;
-	child: ChildProcessWithoutNullStreams;
-	output: string;
-	closed: boolean;
-	exitCode: number | null;
-	signal: NodeJS.Signals | null;
-};
-
-const DEFAULT_YIELD_MS = 1000;
-const DEFAULT_MAX_OUTPUT_CHARS = 20000;
 const WEB_SEARCH_TIMEOUT_MS = 12000;
 const WEB_SEARCH_LIMITS = {
 	short: 3,
@@ -22,37 +11,9 @@ const WEB_SEARCH_LIMITS = {
 	long: 8,
 } as const;
 
-function truncate(value: string, maxChars: number): string {
-	if (value.length <= maxChars) return value;
-	return `${value.slice(0, maxChars)}\n[truncated ${value.length - maxChars} chars]`;
-}
-
 function resolveCwd(baseCwd: string, workdir: string | undefined): string {
 	if (!workdir || workdir.trim().length === 0) return baseCwd;
 	return isAbsolute(workdir) ? workdir : resolve(baseCwd, workdir);
-}
-
-function outputSince(session: ExecSession, offset: number, maxChars: number): string {
-	return truncate(session.output.slice(offset), maxChars);
-}
-
-function waitForProcess(session: ExecSession, timeoutMs: number): Promise<"closed" | "timeout"> {
-	if (session.closed) return Promise.resolve("closed");
-	return new Promise((resolveWait) => {
-		const timeout = setTimeout(() => {
-			cleanup();
-			resolveWait("timeout");
-		}, Math.max(0, timeoutMs));
-		const onClose = () => {
-			cleanup();
-			resolveWait("closed");
-		};
-		const cleanup = () => {
-			clearTimeout(timeout);
-			session.child.off("close", onClose);
-		};
-		session.child.once("close", onClose);
-	});
 }
 
 function mimeTypeForPath(path: string): string {
@@ -151,105 +112,6 @@ async function fetchWebSearchResults(
 }
 
 export function createCodexCompatToolDefinitions(): ToolDefinition[] {
-	const execSessions = new Map<number, ExecSession>();
-	let nextExecSessionId = 1;
-
-	const execCommand = defineTool({
-		name: "exec_command",
-		label: "Exec Command",
-		description:
-			"Runs a shell command, returning output immediately or a session_id for ongoing interaction.",
-		promptSnippet:
-			"Use exec_command for shell commands. Long-running commands return a session_id; continue them with write_stdin.",
-		executionMode: "parallel",
-		parameters: Type.Object({
-			cmd: Type.String({ description: "Shell command to execute." }),
-			workdir: Type.Optional(Type.String({ description: "Working directory. Defaults to the runtime cwd." })),
-			yield_time_ms: Type.Optional(Type.Number({ description: "Milliseconds to wait before yielding." })),
-			max_output_tokens: Type.Optional(Type.Number({ description: "Approximate maximum output characters to return." })),
-			shell: Type.Optional(Type.String({ description: "Shell binary. Defaults to bash." })),
-			login: Type.Optional(Type.Boolean({ description: "Use login shell semantics when supported." })),
-			tty: Type.Optional(Type.Boolean({ description: "Accepted for compatibility; execution is pipe-backed." })),
-		}),
-		async execute(_toolCallId, params, signal, _onUpdate, ctx) {
-			const cwd = resolveCwd(ctx.cwd, params.workdir);
-			const shell = params.shell ?? "bash";
-			const shellArgs = params.login === false ? ["-c", params.cmd] : ["-lc", params.cmd];
-			const child = spawn(shell, shellArgs, { cwd, env: process.env, stdio: "pipe" });
-			const session: ExecSession = {
-				id: nextExecSessionId++,
-				child,
-				output: "",
-				closed: false,
-				exitCode: null,
-				signal: null,
-			};
-			const startedOffset = session.output.length;
-			const maxChars = Math.max(0, params.max_output_tokens ?? DEFAULT_MAX_OUTPUT_CHARS);
-			const abort = () => child.kill("SIGTERM");
-
-			signal?.addEventListener("abort", abort, { once: true });
-			child.stdout.on("data", (chunk) => {
-				session.output += String(chunk);
-			});
-			child.stderr.on("data", (chunk) => {
-				session.output += String(chunk);
-			});
-			child.once("close", (exitCode, exitSignal) => {
-				session.closed = true;
-				session.exitCode = exitCode;
-				session.signal = exitSignal;
-				signal?.removeEventListener("abort", abort);
-			});
-
-			const state = await waitForProcess(session, params.yield_time_ms ?? DEFAULT_YIELD_MS);
-			if (state === "timeout") {
-				execSessions.set(session.id, session);
-				return {
-					content: [{ type: "text", text: outputSince(session, startedOffset, maxChars) }],
-					details: { session_id: session.id, running: true, cwd },
-				};
-			}
-
-			return {
-				content: [{ type: "text", text: outputSince(session, startedOffset, maxChars) }],
-				details: { exitCode: session.exitCode, signal: session.signal, cwd },
-				isError: session.exitCode !== 0,
-			};
-		},
-	});
-
-	const writeStdin = defineTool({
-		name: "write_stdin",
-		label: "Write Stdin",
-		description: "Writes characters to an existing exec_command session and returns recent output.",
-		promptSnippet: "Use write_stdin to continue an exec_command session returned with session_id.",
-		executionMode: "parallel",
-		parameters: Type.Object({
-			session_id: Type.Number({ description: "Identifier returned by exec_command." }),
-			chars: Type.Optional(Type.String({ description: "Bytes to write to stdin." })),
-			yield_time_ms: Type.Optional(Type.Number({ description: "Milliseconds to wait for output." })),
-			max_output_tokens: Type.Optional(Type.Number({ description: "Approximate maximum output characters to return." })),
-		}),
-		async execute(_toolCallId, params) {
-			const session = execSessions.get(params.session_id);
-			if (!session) throw new Error(`Unknown exec_command session "${params.session_id}"`);
-			const offset = session.output.length;
-			if (params.chars !== undefined) session.child.stdin.write(params.chars);
-			await waitForProcess(session, params.yield_time_ms ?? DEFAULT_YIELD_MS);
-			return {
-				content: [{ type: "text", text: outputSince(session, offset, params.max_output_tokens ?? DEFAULT_MAX_OUTPUT_CHARS) }],
-				details: {
-					session_id: session.id,
-					running: !session.closed,
-					exitCode: session.exitCode,
-					signal: session.signal,
-				},
-				isError: session.closed && session.exitCode !== 0,
-			};
-		},
-	});
-
 	const applyPatch = defineTool({
 		name: "apply_patch",
 		label: "Apply Patch",
@@ -353,8 +215,6 @@ export function createCodexCompatToolDefinitions(): ToolDefinition[] {
 	});
 
 	return [
-		execCommand,
-		writeStdin,
 		applyPatch,
 		webSearch,
 		viewImage,

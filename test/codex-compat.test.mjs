@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { basename } from "node:path";
 import test from "node:test";
 import { buildCodexCompatSystemPrompt, addCodexCompatWebSearchProviderTool } from "../dist/core/codex-compat.js";
-import { inspectPiboProfile } from "../dist/core/runtime.js";
+import { createPiboRuntime, inspectPiboProfile } from "../dist/core/runtime.js";
 import { createDefaultPiboPluginRegistry } from "../dist/plugins/builtin.js";
 
 test("default registry exposes the codex-compatible profile and tool surface", () => {
@@ -18,8 +18,6 @@ test("default registry exposes the codex-compatible profile and tool surface", (
 	assert.deepEqual(
 		profile.tools.map((tool) => tool.name),
 		[
-			"exec_command",
-			"write_stdin",
 			"apply_patch",
 			"web_search",
 			"view_image",
@@ -41,8 +39,6 @@ test("codex-compatible profile inspection shows active generated tools and local
 	const activeTools = new Set(inspection.tools.filter((tool) => tool.active).map((tool) => tool.name));
 
 	for (const toolName of [
-		"exec_command",
-		"write_stdin",
 		"apply_patch",
 		"web_search",
 		"view_image",
@@ -78,6 +74,35 @@ test("codex-compatible profile inspection shows active generated tools and local
 	assert.equal(inspection.subagents.every((subagent) => subagent.active), true);
 });
 
+test("codex-compatible profile uses Pibo run-control bash instead of exec tools", async () => {
+	const registry = createDefaultPiboPluginRegistry();
+	const profile = registry.createProfile("codex-compat");
+	const runtime = await createPiboRuntime({
+		profile,
+		persistSession: false,
+		subagentRunner: { async runSubagent() { throw new Error("not used"); } },
+		runToolController: {
+			startToolRun() { throw new Error("not used"); },
+			listRuns() { return []; },
+			getRunStatus() { throw new Error("not used"); },
+			waitForRun() { throw new Error("not used"); },
+			readRun() { throw new Error("not used"); },
+			cancelRun() { throw new Error("not used"); },
+			ackRun() { throw new Error("not used"); },
+		},
+	});
+
+	try {
+		const activeTools = new Set(runtime.session.getActiveToolNames());
+		assert.equal(activeTools.has("bash"), true);
+		const startTool = runtime.session.getToolDefinition("pibo_run_start");
+		assert.ok(startTool);
+		assert.equal(startTool.parameters.properties.toolName.enum.includes("bash"), true);
+	} finally {
+		await runtime.dispose();
+	}
+});
+
 test("codex-compatible prompt adds environment and child-agent framing without plan-mode tools", () => {
 	const prompt = buildCodexCompatSystemPrompt({
 		baseSystemPrompt: "Base prompt with Codex base-prompt context.",
@@ -104,7 +129,7 @@ test("codex-compatible web search is serialized as a provider Responses tool", (
 		{
 			model: "gpt-5.4",
 			input: [],
-			tools: [{ type: "function", name: "exec_command" }],
+			tools: [{ type: "function", name: "bash" }],
 		},
 		{
 			external_web_access: true,

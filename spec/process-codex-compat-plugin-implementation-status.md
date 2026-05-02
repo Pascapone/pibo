@@ -38,8 +38,7 @@ The `codex-compat` profile exposes these model-visible tool names:
 
 | Tool name | Status | Implementation notes |
 | --- | --- | --- |
-| `exec_command` | Implemented | Runs shell commands through a pipe-backed child process. Long-running commands can return a `session_id`. |
-| `write_stdin` | Implemented | Writes to an existing `exec_command` process session and returns recent output. |
+| `bash` | Implemented through Pibo run package | Pibo run-control provides the shell-command tool for the profile. |
 | `apply_patch` | Implemented | Invokes the local `apply_patch` command with a Codex-style patch body. |
 | `web_search` | Implemented locally | Executes a local web search request and returns compact titles, URLs, and snippets. Provider delegation remains available as an optional extension path. |
 | `view_image` | Implemented | Reads a local image file and returns an inline image tool result. |
@@ -123,9 +122,9 @@ Codex models cached versus live search through the provider `web_search.external
 
 `web_search.recency` belongs to the broader web-search track. The local schema accepts it for Codex-shape compatibility, but the implementation does not apply a date filter. The decision should be made together with provider-backed search, cached/live behavior, and whether local search remains a first-class provider.
 
-### `exec_command` and PTY
+### Shell Execution
 
-Codex can expose unified `exec_command`/`write_stdin` tooling, and its schema includes a `tty` option. The tool is the shell-command execution surface the model uses for Bash-style work; there is not a separate Bash-only tool in the Codex-compatible surface. Pibo currently executes commands through normal pipes, which works for most non-interactive commands; a real PTY is only needed for terminal-sensitive or interactive programs.
+Shell execution uses Pibo run-control's native `bash` tool, which can also be launched through `pibo_run_start` when shell work should be yielded.
 
 ### Agent Orchestration
 
@@ -139,7 +138,7 @@ The following tracks replace the old flat gap list.
 | --- | --- | --- |
 | Context cleanup and Codex base prompt | Done | Project-local context files were removed from the plugin and one Codex base-prompt context file was added. |
 | Web-search project | V2 research and implementation | Bundle OpenAI provider-backed search, local search fallback, cached/live behavior, recency, allowed domains, and browser-use boundaries into one design pass. |
-| `exec_command` PTY decision | V2 research | Decide whether pipe-backed execution is enough or whether Pibo needs a PTY-backed unified exec path for Codex parity. |
+| Shell tool parity | V2 research | Decide whether Pibo's native `bash` tool needs richer terminal behavior for terminal-sensitive or interactive programs. |
 | Prompt and tool-description tuning | V2 | Align tool descriptions and prompt text with observed Codex-tuned model behavior after the context cleanup. |
 | Prompt snapshot tests | V2 | Update tests so they assert one Codex base-prompt context file and no plugin-owned project-local context files. |
 | Agent orchestration | Done for plugin scope | The plugin uses Pibo generated subagent tools and the native `pibo-run-control` package instead of Codex-specific agent lifecycle tools. Future orchestration changes belong to Pibo's run-system design, not this plugin. |
@@ -171,7 +170,7 @@ Test coverage currently verifies:
 | --- | --- |
 | `src/plugins/codex-compat.ts` | Registers plugin, profile, visible tool names, the Codex base-prompt context file, and subagent roles. |
 | `context/codex-base-prompt.md` | Provides the plugin-owned Codex base-prompt context file. |
-| `src/tools/codex-compat.ts` | Implements Codex-compatible shell, patch, web search, and image tools. |
+| `src/tools/codex-compat.ts` | Implements Codex-compatible patch, web search, and image tools. Shell execution is provided by Pibo run control. |
 | `src/core/codex-compat.ts` | Implements prompt wrapping and provider web-search payload injection. |
 | `src/core/runtime.ts` | Wires Codex-compatible generated tools and prompt/provider extension hooks into runtime creation. |
 | `src/core/profiles.ts` | Adds profile package flags for `codexCompat` and `providerWebSearch`. |

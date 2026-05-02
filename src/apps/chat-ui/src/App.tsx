@@ -2613,8 +2613,6 @@ type NativeToolCatalogItem = AgentCatalog["nativeTools"][number];
 type ContextFileCatalogItem = AgentCatalog["contextFiles"][number];
 type CatalogGroupKind = "native" | "plugin" | "custom";
 const CODEX_COMPAT_TOOL_NAMES = new Set([
-	"exec_command",
-	"write_stdin",
 	"apply_patch",
 	"web_search",
 	"view_image",

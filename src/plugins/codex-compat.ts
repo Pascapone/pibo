@@ -4,8 +4,6 @@ import { InitialSessionContextBuilder } from "../core/profiles.js";
 import { definePiboPlugin } from "./registry.js";
 
 const CODEX_COMPAT_TOOL_NAMES = [
-	"exec_command",
-	"write_stdin",
 	"apply_patch",
 	"web_search",
 	"view_image",
@@ -18,8 +16,6 @@ const PROJECT_ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const CODEX_BASE_PROMPT_CONTEXT_FILE_PATH = resolve(PROJECT_ROOT, "context/codex-base-prompt.md");
 
 const toolDescriptions: Record<(typeof CODEX_COMPAT_TOOL_NAMES)[number], string> = {
-	exec_command: "Runs a shell command and can return a session id for long-running interaction.",
-	write_stdin: "Writes characters to an existing exec_command session.",
 	apply_patch: "Applies a Codex-style patch to workspace files.",
 	web_search: "Searches the web and returns compact result titles, URLs, and snippets.",
 	view_image: "Reads a local image path and returns it for visual inspection.",

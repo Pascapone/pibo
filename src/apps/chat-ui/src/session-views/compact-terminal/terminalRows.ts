@@ -528,12 +528,9 @@ function compactInlinePreview(value: unknown): string {
 function isShellToolName(name: string): boolean {
 	const normalized = name.trim().toLowerCase();
 	return (
-		normalized === "exec_command" ||
 		normalized === "shell" ||
 		normalized === "bash" ||
-		normalized === "terminal" ||
-		normalized.endsWith(".exec_command") ||
-		normalized.includes("exec_command")
+		normalized === "terminal"
 	);
 }
 

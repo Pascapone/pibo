@@ -60,8 +60,6 @@ Assumptions:
   - optional user location
   - optional search context size
 - **REQ-006**: The Codex compatibility layer MUST expose a Codex-like core tool surface with these names unless a technical blocker is documented:
-  - `exec_command`
-  - `write_stdin`
   - `apply_patch`
   - `web_search`
   - `view_image`
@@ -128,8 +126,7 @@ The compatibility profile should expose this initial tool surface:
 
 | Visible tool name | Implementation strategy | Notes |
 | --- | --- | --- |
-| `exec_command` | New Pibo tool adapter | Should support PTY-like long-running command sessions. |
-| `write_stdin` | New Pibo tool adapter | Continues an active exec session. |
+| `bash` | Pibo run-control yieldable shell tool | Provided by the native Pibo run-control package; this is the shell-command surface for the compatibility profile. |
 | `apply_patch` | New Pibo freeform patch tool | Match Codex patch flow closely. |
 | `web_search` | Local Pibo tool by default; optional OpenAI provider-backed tool | No local browser/browser-use runtime owned by the plugin. |
 | `view_image` | Pibo local image view tool | Follow current local-file image viewing semantics. |
@@ -205,7 +202,7 @@ Recommended environment context shape:
 | `src/core/runtime.ts` | Inject compatibility prompt resources and compatibility tools into runtime creation. |
 | `src/subagents/tool.ts` | Reuse or wrap for Codex-compatible subagent tool names and descriptions. |
 | New prompt-builder file under `src/core/` | Assemble Codex-compatible system/developer prompt sections. |
-| New compatibility tool files under `src/plugins/` or `src/tools/` | Implement `exec_command`, `write_stdin`, `apply_patch`, `view_image`, `web_search`, and collab adapters as needed. |
+| New compatibility tool files under `src/plugins/` or `src/tools/` | Implement `apply_patch`, `view_image`, and `web_search` as needed. Shell execution is provided by Pibo run control's `bash` tool. |
 
 ## 5. Acceptance Criteria
 
