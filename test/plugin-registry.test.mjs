@@ -153,8 +153,10 @@ test("plugins can register profiles, gateway actions, and event listeners", asyn
 		plugins: [
 			definePiboPlugin({
 				id: "test.plugin",
+				name: "Test Plugin",
 				register(api) {
 					api.registerTool({ name: "test_tool" });
+					api.registerContextFile({ key: "test_context", path: "test-context.md" });
 					api.registerProfile({
 						name: "test-profile",
 						aliases: ["test"],
@@ -202,6 +204,19 @@ test("plugins can register profiles, gateway actions, and event listeners", asyn
 
 	const profile = registry.createProfile("test");
 	assert.equal(profile.tools[0].name, "test_tool");
+	const catalog = registry.getCapabilityCatalog();
+	assert.deepEqual(
+		catalog.nativeTools.find((tool) => tool.name === "test_tool"),
+		{
+			name: "test_tool",
+			description: undefined,
+			yieldable: true,
+			hasDefinition: false,
+			pluginId: "test.plugin",
+			pluginName: "Test Plugin",
+		},
+	);
+	assert.equal(catalog.contextFiles.find((file) => file.key === "test_context")?.pluginName, "Test Plugin");
 
 	const action = registry.getGatewayAction("test_action");
 	assert.ok(action);

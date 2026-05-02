@@ -145,7 +145,7 @@ export type AgentProfile = {
 };
 
 export type AgentCatalog = {
-	nativeTools: Array<{ name: string; description?: string; yieldable: boolean; hasDefinition: boolean }>;
+	nativeTools: Array<{ name: string; description?: string; yieldable: boolean; hasDefinition: boolean; pluginId?: string; pluginName?: string }>;
 	skills: Array<{ name: string; path: string }>;
 	subagents: Array<{
 		name: string;
@@ -161,6 +161,7 @@ export type AgentCatalog = {
 		scope?: "global" | "agent";
 		source?: "plugin" | "managed";
 		pluginId?: string;
+		pluginName?: string;
 		agentProfileName?: string;
 	}>;
 	packages: Array<{ name: string; description: string; toolNames: string[] }>;

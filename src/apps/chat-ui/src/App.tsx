@@ -8,6 +8,8 @@ import {
 	Brain,
 	Bug,
 	Check,
+	ChevronDown,
+	ChevronRight,
 	ChevronsDown,
 	ChevronsUp,
 	CopyPlus,
@@ -2156,6 +2158,14 @@ function AgentsView({
 		}) ?? [],
 		[catalog, draft.contextFiles, draftProfileName],
 	);
+	const nativeToolGroups = useMemo(
+		() => buildNativeToolGroups(catalog?.nativeTools ?? [], draft.nativeTools),
+		[catalog?.nativeTools, draft.nativeTools],
+	);
+	const contextFileGroups = useMemo(
+		() => buildContextFileGroups(visibleContextFiles, draft.contextFiles),
+		[visibleContextFiles, draft.contextFiles],
+	);
 
 	const saveDraft = async () => {
 		if (readOnly) return;
@@ -2415,7 +2425,23 @@ function AgentsView({
 						<label className="flex items-center gap-2 text-sm text-slate-300"><input type="checkbox" disabled={readOnly} checked={draft.autoContextFiles} onChange={(event) => setDraft((current) => ({ ...current, autoContextFiles: event.target.checked }))} />Load AGENTS.md / CLAUDE.md</label>
 						<label className="flex items-center gap-2 text-sm text-slate-300"><input type="checkbox" disabled={readOnly} checked={draft.builtinTools === "disabled"} onChange={(event) => setDraft((current) => ({ ...current, builtinTools: event.target.checked ? "disabled" : "default" }))} />Disable Pi built-in tools</label>
 					</DesignerPanel>
-					<CatalogSection title="Native Tools">{catalog?.nativeTools.map((tool) => <CatalogToggle key={tool.name} disabled={readOnly} checked={draft.nativeTools.includes(tool.name)} title={tool.name} description={tool.description} meta={tool.yieldable ? "yieldable" : "direct only"} onToggle={() => setDraft((current) => ({ ...current, nativeTools: toggleName(current.nativeTools, tool.name) }))} />) ?? <EmptyCatalog />}</CatalogSection>
+					<DesignerPanel title="Tools">
+						<CatalogGroupGrid
+							groups={nativeToolGroups}
+							empty={catalog ? <EmptyCatalog message="No native tools registered" /> : <EmptyCatalog />}
+							renderItem={(tool) => (
+								<CatalogToggle
+									key={tool.name}
+									disabled={readOnly}
+									checked={draft.nativeTools.includes(tool.name)}
+									title={tool.name}
+									description={tool.description}
+									meta={tool.yieldable ? "yieldable" : "direct only"}
+									onToggle={() => setDraft((current) => ({ ...current, nativeTools: toggleName(current.nativeTools, tool.name) }))}
+								/>
+							)}
+						/>
+					</DesignerPanel>
 					<CatalogSection title="Skills">{catalog?.skills.map((skill) => <CatalogToggle key={skill.name} disabled={readOnly} checked={draft.skills.includes(skill.name)} title={skill.name} description={skill.path} onToggle={() => setDraft((current) => ({ ...current, skills: toggleName(current.skills, skill.name) }))} />) ?? <EmptyCatalog />}</CatalogSection>
 					<CatalogSection title="Packages"><CatalogToggle disabled={readOnly} checked={draft.runControl} title="pibo-run-control" description="Expose pibo_run_* as one package for yielded native tools and subagents." meta="package" onToggle={() => setDraft((current) => ({ ...current, runControl: !current.runControl }))} /></CatalogSection>
 					<DesignerPanel title="Context Files">
@@ -2429,9 +2455,25 @@ function AgentsView({
 							<button type="button" disabled={readOnly} onClick={() => setNewContextFileScope("agent")} className={`px-2 py-1 text-xs rounded-sm ${newContextFileScope === "agent" ? "bg-[#11a4d4]/20 text-sky-100" : "text-slate-500 hover:text-slate-300"}`}>Agent</button>
 							<button type="button" disabled={readOnly} onClick={() => setNewContextFileScope("global")} className={`px-2 py-1 text-xs rounded-sm ${newContextFileScope === "global" ? "bg-[#11a4d4]/20 text-sky-100" : "text-slate-500 hover:text-slate-300"}`}>Global</button>
 						</div>
-						<div className="grid grid-cols-2 max-[1100px]:grid-cols-1 gap-2">
-							{catalog ? visibleContextFiles.map((contextFile) => <CatalogToggle key={contextFile.key} disabled={readOnly} checked={draft.contextFiles.includes(contextFile.key)} title={contextFile.label ?? contextFile.key} description={contextFile.path} meta={contextFileMeta(contextFile)} metaClass="text-[#11a4d4]" actionLabel="Edit" actionIcon={<Edit3 size={12} />} onAction={() => onEditContextFile(contextFile.key)} onToggle={() => setDraft((current) => ({ ...current, contextFiles: toggleName(current.contextFiles, contextFile.key) }))} />) : <EmptyCatalog />}
-						</div>
+						<CatalogGroupGrid
+							groups={contextFileGroups}
+							empty={catalog ? <EmptyCatalog message="No context files registered" /> : <EmptyCatalog />}
+							renderItem={(contextFile) => (
+								<CatalogToggle
+									key={contextFile.key}
+									disabled={readOnly}
+									checked={draft.contextFiles.includes(contextFile.key)}
+									title={contextFile.label ?? contextFile.key}
+									description={contextFile.path}
+									meta={contextFileMeta(contextFile)}
+									metaClass="text-[#11a4d4]"
+									actionLabel="Edit"
+									actionIcon={<Edit3 size={12} />}
+									onAction={() => onEditContextFile(contextFile.key)}
+									onToggle={() => setDraft((current) => ({ ...current, contextFiles: toggleName(current.contextFiles, contextFile.key) }))}
+								/>
+							)}
+						/>
 					</DesignerPanel>
 					<SubagentDesigner draft={draft} setDraft={setDraft} profileOptions={profileOptions} readOnly={readOnly} />
 					<McpServersDesigner
@@ -2567,6 +2609,116 @@ function toggleName(names: string[], name: string): string[] {
 	return names.includes(name) ? names.filter((item) => item !== name) : [...names, name];
 }
 
+type NativeToolCatalogItem = AgentCatalog["nativeTools"][number];
+type ContextFileCatalogItem = AgentCatalog["contextFiles"][number];
+type CatalogGroupKind = "native" | "plugin" | "custom";
+const CODEX_COMPAT_TOOL_NAMES = new Set([
+	"exec_command",
+	"write_stdin",
+	"apply_patch",
+	"web_search",
+	"view_image",
+	"spawn_agent",
+	"send_input",
+	"resume_agent",
+	"wait_agent",
+	"close_agent",
+]);
+type CatalogGroup<T> = {
+	key: string;
+	title: string;
+	description: string;
+	kind: CatalogGroupKind;
+	items: T[];
+	selectedCount: number;
+	totalCount: number;
+	defaultOpen: boolean;
+};
+
+function buildNativeToolGroups(tools: NativeToolCatalogItem[], selectedNames: string[]): CatalogGroup<NativeToolCatalogItem>[] {
+	const selected = new Set(selectedNames);
+	const groups = new Map<string, CatalogGroup<NativeToolCatalogItem>>();
+	for (const tool of tools) {
+		const pluginId = tool.pluginId ?? (CODEX_COMPAT_TOOL_NAMES.has(tool.name) ? "pibo.codex-compat" : undefined);
+		const pluginName = tool.pluginName ?? (pluginId === "pibo.codex-compat" ? "Codex Compat" : undefined);
+		const isNative = !pluginId || pluginId === "pibo.core";
+		const key = isNative ? "native" : `plugin:${pluginId}`;
+		const group = getOrCreateCatalogGroup(groups, key, {
+			title: isNative ? "Native Tools" : pluginDisplayName(pluginId, pluginName),
+			description: isNative ? "Built-in Pibo tool catalog" : pluginId ?? "plugin",
+			kind: isNative ? "native" : "plugin",
+		});
+		group.items.push(tool);
+		if (selected.has(tool.name)) group.selectedCount += 1;
+		group.totalCount += 1;
+	}
+	return finalizeCatalogGroups(groups, ["native", "plugin"]);
+}
+
+function buildContextFileGroups(files: ContextFileCatalogItem[], selectedKeys: string[]): CatalogGroup<ContextFileCatalogItem>[] {
+	const selected = new Set(selectedKeys);
+	const groups = new Map<string, CatalogGroup<ContextFileCatalogItem>>();
+	for (const file of files) {
+		const isCustom = !file.pluginId;
+		const key = isCustom ? "custom" : `plugin:${file.pluginId}`;
+		const group = getOrCreateCatalogGroup(groups, key, {
+			title: isCustom ? "Custom" : pluginDisplayName(file.pluginId, file.pluginName),
+			description: isCustom ? "Loose context files without a plugin owner" : file.pluginId ?? "plugin",
+			kind: isCustom ? "custom" : "plugin",
+		});
+		group.items.push(file);
+		if (selected.has(file.key)) group.selectedCount += 1;
+		group.totalCount += 1;
+	}
+	return finalizeCatalogGroups(groups, ["custom", "plugin"]);
+}
+
+function getOrCreateCatalogGroup<T>(
+	groups: Map<string, CatalogGroup<T>>,
+	key: string,
+	options: Pick<CatalogGroup<T>, "title" | "description" | "kind">,
+): CatalogGroup<T> {
+	const existing = groups.get(key);
+	if (existing) return existing;
+	const created: CatalogGroup<T> = {
+		key,
+		title: options.title,
+		description: options.description,
+		kind: options.kind,
+		items: [],
+		selectedCount: 0,
+		totalCount: 0,
+		defaultOpen: false,
+	};
+	groups.set(key, created);
+	return created;
+}
+
+function finalizeCatalogGroups<T>(
+	groups: Map<string, CatalogGroup<T>>,
+	kindOrder: CatalogGroupKind[],
+): CatalogGroup<T>[] {
+	const order = new Map(kindOrder.map((kind, index) => [kind, index]));
+	const sorted = [...groups.values()].sort((left, right) => {
+		const leftOrder = order.get(left.kind) ?? kindOrder.length;
+		const rightOrder = order.get(right.kind) ?? kindOrder.length;
+		if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+		return left.title.localeCompare(right.title);
+	});
+	return sorted.map((group, index) => ({
+		...group,
+		defaultOpen: group.selectedCount > 0 || (index === 0 && sorted.length === 1),
+	}));
+}
+
+function pluginDisplayName(pluginId: string | undefined, pluginName: string | undefined): string {
+	if (pluginId === "pibo.codex-compat") return "Codex Compat";
+	if (pluginName) return pluginName;
+	if (!pluginId) return "Plugin";
+	const lastSegment = pluginId.split(".").filter(Boolean).at(-1) ?? pluginId;
+	return lastSegment.split("-").filter(Boolean).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+}
+
 function AgentList({ title, children }: { title: string; children: ReactNode }) {
 	return (
 		<div className="mb-4">
@@ -2700,6 +2852,58 @@ function CatalogSection({ title, children }: { title: string; children: ReactNod
 	);
 }
 
+function CatalogGroupGrid<T>({
+	groups,
+	empty,
+	renderItem,
+}: {
+	groups: CatalogGroup<T>[];
+	empty: ReactNode;
+	renderItem: (item: T) => ReactNode;
+}) {
+	if (groups.length === 0) return <>{empty}</>;
+	return (
+		<div className="grid gap-2">
+			{groups.map((group) => (
+				<CatalogGroupCard key={group.key} group={group} renderItem={renderItem} />
+			))}
+		</div>
+	);
+}
+
+function CatalogGroupCard<T>({
+	group,
+	renderItem,
+}: {
+	group: CatalogGroup<T>;
+	renderItem: (item: T) => ReactNode;
+}) {
+	const [open, setOpen] = useState(group.defaultOpen);
+	const accentClass = group.kind === "custom" ? "border-[#f59e0b]/70 text-amber-100 bg-[#f59e0b]/10" : "border-[#11a4d4]/70 text-sky-100 bg-[#11a4d4]/10";
+	return (
+		<div className={`border rounded-sm ${open ? "border-slate-700 bg-[#101d22]" : "border-slate-800 bg-[#151f24] hover:border-slate-700"}`}>
+			<button type="button" onClick={() => setOpen((current) => !current)} className="flex w-full items-center gap-2 p-2 text-left">
+				<span className={`h-6 w-6 shrink-0 inline-flex items-center justify-center border rounded-sm ${accentClass}`}>
+					{open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+				</span>
+				<span className="min-w-0 flex-1">
+					<span className="block truncate text-sm font-medium text-slate-100">{group.title}</span>
+					<span className="block truncate font-mono text-[10px] text-slate-500">{group.description}</span>
+				</span>
+				<span className="shrink-0 text-right font-mono text-[10px]">
+					<span className="text-[#11a4d4]">{group.selectedCount} selected</span>
+					<span className="text-slate-500"> / {group.totalCount}</span>
+				</span>
+			</button>
+			{open ? (
+				<div className="border-t border-slate-800 p-2">
+					<div className="grid grid-cols-2 max-[1100px]:grid-cols-1 gap-2">{group.items.map(renderItem)}</div>
+				</div>
+			) : null}
+		</div>
+	);
+}
+
 function CatalogToggle({
 	checked,
 	disabled,
@@ -2788,8 +2992,8 @@ function contextFileMeta(contextFile: AgentCatalog["contextFiles"][number]): str
 	return "managed global";
 }
 
-function EmptyCatalog() {
-	return <div className="text-xs text-amber-100 border border-dashed border-[#f59e0b]/50 bg-[#f59e0b]/10 rounded-sm p-3">Agent Designer API unavailable</div>;
+function EmptyCatalog({ message = "Agent Designer API unavailable" }: { message?: string }) {
+	return <div className="text-xs text-amber-100 border border-dashed border-[#f59e0b]/50 bg-[#f59e0b]/10 rounded-sm p-3">{message}</div>;
 }
 
 function agentDesignerUnavailableMessage(): string {

@@ -5,6 +5,7 @@ export type ToolProfile = {
 	description?: string;
 	enabled?: boolean;
 	yieldable?: boolean;
+	pluginId?: string;
 	definition?: ToolDefinition;
 };
 

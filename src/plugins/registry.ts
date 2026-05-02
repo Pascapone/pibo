@@ -70,6 +70,7 @@ export class PiboPluginRegistry {
 	private readonly eventListeners = new Set<PiboPluginEventListener>();
 	private readonly productEventListeners = new Set<PiboProductEventListener>();
 	private readonly pluginIds = new Set<string>();
+	private readonly pluginNames = new Map<string, string>();
 	private readonly eventErrors: string[] = [];
 
 	static create(options: PiboPluginRegistryOptions = {}): PiboPluginRegistry {
@@ -86,6 +87,7 @@ export class PiboPluginRegistry {
 		}
 
 		this.pluginIds.add(plugin.id);
+		this.pluginNames.set(plugin.id, plugin.name ?? plugin.id);
 		plugin.register(this.createApi(plugin.id));
 	}
 
@@ -223,6 +225,8 @@ export class PiboPluginRegistry {
 				description: tool.description,
 				yieldable: tool.yieldable !== false,
 				hasDefinition: tool.definition !== undefined,
+				pluginId: tool.pluginId,
+				pluginName: tool.pluginId ? this.pluginNames.get(tool.pluginId) : undefined,
 			})),
 			skills: [...this.skills.values()].map((skill) => ({
 				name: skill.name,
@@ -242,6 +246,7 @@ export class PiboPluginRegistry {
 				scope: contextFile.scope ?? "global",
 				source: contextFile.source ?? "plugin",
 				pluginId: contextFile.pluginId,
+				pluginName: contextFile.pluginId ? this.pluginNames.get(contextFile.pluginId) : undefined,
 				agentProfileName: contextFile.agentProfileName,
 			})),
 			packages: [
@@ -329,12 +334,13 @@ export class PiboPluginRegistry {
 	}
 
 	private createApi(pluginId: string): PiboPluginApi {
+		const withPluginToolContext = (tool: ToolProfile): ToolProfile => ({ ...tool, pluginId: tool.pluginId ?? pluginId });
 		const withPluginContext = (contextFile: ContextFileProfile): ContextFileProfile => (
 			contextFile.source === "managed" ? contextFile : { ...contextFile, pluginId: contextFile.pluginId ?? pluginId }
 		);
 		return {
-			registerTool: (tool) => this.registerTool(tool),
-			registerTools: (tools) => this.registerTools(tools),
+			registerTool: (tool) => this.registerTool(withPluginToolContext(tool)),
+			registerTools: (tools) => this.registerTools(tools.map(withPluginToolContext)),
 			registerSubagent: (subagent) => this.registerSubagent(subagent),
 			registerSubagents: (subagents) => this.registerSubagents(subagents),
 			registerSkill: (skill) => this.registerSkill(skill),

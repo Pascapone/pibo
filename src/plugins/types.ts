@@ -59,6 +59,8 @@ export type PiboNativeToolInfo = {
 	description?: string;
 	yieldable: boolean;
 	hasDefinition: boolean;
+	pluginId?: string;
+	pluginName?: string;
 };
 
 export type PiboSkillInfo = {
@@ -81,6 +83,7 @@ export type PiboContextFileInfo = {
 	scope?: "global" | "agent";
 	source?: "plugin" | "managed";
 	pluginId?: string;
+	pluginName?: string;
 	agentProfileName?: string;
 };
 
