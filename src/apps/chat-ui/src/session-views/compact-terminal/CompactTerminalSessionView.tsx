@@ -141,6 +141,15 @@ export function CompactTerminalSessionView({
 														<MarkdownRenderer>{typeof row.output === "string" ? row.output : ""}</MarkdownRenderer>
 													</div>
 												</div>
+											) : row.kind === "reasoning" && row.markdown ? (
+												<>
+													{row.lines.map((line, index) => <TerminalLine key={`${row.id}:${index}`} line={line} status={row.status} />)}
+													<div className="ml-[1.9rem] min-w-0">
+														<div className="compact-terminal-markdown compact-terminal-reasoning">
+															<MarkdownRenderer>{row.markdown}</MarkdownRenderer>
+														</div>
+													</div>
+												</>
 											) : (
 												row.lines.map((line, index) => <TerminalLine key={`${row.id}:${index}`} line={line} status={row.status} />)
 											)}

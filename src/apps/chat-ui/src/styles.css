@@ -209,6 +209,7 @@ pre {
 	font-size: 12px;
 	line-height: 1.45;
 	overflow-wrap: anywhere;
+	word-break: break-word;
 }
 
 .compact-terminal-markdown > :first-child {
@@ -221,6 +222,18 @@ pre {
 
 .compact-terminal-markdown p {
 	margin: 0 0 0.55rem;
+}
+
+.compact-terminal-reasoning {
+	color: #c7b27a;
+}
+
+.compact-terminal-reasoning p {
+	margin-bottom: 0.35rem;
+}
+
+.compact-terminal-reasoning li::marker {
+	color: #f59e0b;
 }
 
 .compact-terminal-markdown h1,
@@ -240,15 +253,47 @@ pre {
 .compact-terminal-markdown ul,
 .compact-terminal-markdown ol {
 	margin: 0 0 0.55rem;
-	padding-left: 1.2rem;
+	padding-left: 1.35rem;
+	list-style-position: outside;
+}
+
+.compact-terminal-markdown ul {
+	list-style-type: disc;
+}
+
+.compact-terminal-markdown ol {
+	list-style-type: decimal;
+}
+
+.compact-terminal-markdown ul ul,
+.compact-terminal-markdown ol ul {
+	margin: 0.2rem 0 0.2rem;
+	list-style-type: circle;
+}
+
+.compact-terminal-markdown ul ol,
+.compact-terminal-markdown ol ol {
+	margin: 0.2rem 0 0.2rem;
+	list-style-type: lower-alpha;
 }
 
 .compact-terminal-markdown li {
 	margin: 0.15rem 0;
+	padding-left: 0.1rem;
 }
 
 .compact-terminal-markdown li::marker {
 	color: #38bdf8;
+}
+
+.compact-terminal-markdown li > p {
+	margin: 0.15rem 0;
+}
+
+.compact-terminal-markdown input[type="checkbox"] {
+	margin: 0 0.45rem 0 -1.15rem;
+	vertical-align: -0.12em;
+	accent-color: #38bdf8;
 }
 
 .compact-terminal-markdown blockquote {
@@ -269,6 +314,8 @@ pre {
 
 .compact-terminal-markdown pre {
 	margin: 0.65rem 0;
+	max-width: 100%;
+	overflow-x: auto;
 	border: 1px solid #2a2a2a;
 	background: #111111;
 	padding: 0.65rem 0.8rem;
@@ -277,10 +324,144 @@ pre {
 	line-height: 1.5;
 }
 
+.compact-terminal-markdown table {
+	display: block;
+	max-width: 100%;
+	overflow-x: auto;
+	border-collapse: collapse;
+}
+
+.compact-terminal-markdown th,
+.compact-terminal-markdown td {
+	border: 1px solid #2a2a2a;
+	padding: 0.25rem 0.4rem;
+	vertical-align: top;
+}
+
+.compact-terminal-markdown th {
+	color: #f3f4f6;
+	background: #161616;
+}
+
+.compact-terminal-markdown .token.comment,
+.model-response-markdown .token.comment,
+.compact-terminal-markdown .token.prolog,
+.model-response-markdown .token.prolog,
+.compact-terminal-markdown .token.doctype,
+.model-response-markdown .token.doctype,
+.compact-terminal-markdown .token.cdata,
+.model-response-markdown .token.cdata {
+	color: #737373;
+}
+
+.compact-terminal-markdown .token.punctuation,
+.model-response-markdown .token.punctuation {
+	color: #94a3b8;
+}
+
+.compact-terminal-markdown .token.property,
+.model-response-markdown .token.property,
+.compact-terminal-markdown .token.tag,
+.model-response-markdown .token.tag,
+.compact-terminal-markdown .token.boolean,
+.model-response-markdown .token.boolean,
+.compact-terminal-markdown .token.number,
+.model-response-markdown .token.number,
+.compact-terminal-markdown .token.constant,
+.model-response-markdown .token.constant,
+.compact-terminal-markdown .token.symbol,
+.model-response-markdown .token.symbol {
+	color: #60a5fa;
+}
+
+.compact-terminal-markdown .token.selector,
+.model-response-markdown .token.selector,
+.compact-terminal-markdown .token.attr-name,
+.model-response-markdown .token.attr-name,
+.compact-terminal-markdown .token.string,
+.model-response-markdown .token.string,
+.compact-terminal-markdown .token.char,
+.model-response-markdown .token.char,
+.compact-terminal-markdown .token.builtin,
+.model-response-markdown .token.builtin {
+	color: #22c55e;
+}
+
+.compact-terminal-markdown .token.operator,
+.model-response-markdown .token.operator,
+.compact-terminal-markdown .token.entity,
+.model-response-markdown .token.entity,
+.compact-terminal-markdown .token.url,
+.model-response-markdown .token.url,
+.compact-terminal-markdown .token.variable,
+.model-response-markdown .token.variable {
+	color: #facc15;
+}
+
+.compact-terminal-markdown .token.atrule,
+.model-response-markdown .token.atrule,
+.compact-terminal-markdown .token.attr-value,
+.model-response-markdown .token.attr-value,
+.compact-terminal-markdown .token.function,
+.model-response-markdown .token.function,
+.compact-terminal-markdown .token.class-name,
+.model-response-markdown .token.class-name {
+	color: #38bdf8;
+}
+
+.compact-terminal-markdown .token.keyword,
+.model-response-markdown .token.keyword {
+	color: #d946ef;
+}
+
+.compact-terminal-markdown .token.regex,
+.model-response-markdown .token.regex,
+.compact-terminal-markdown .token.important,
+.model-response-markdown .token.important {
+	color: #fb923c;
+}
+
+.compact-terminal-markdown .token.deleted,
+.model-response-markdown .token.deleted {
+	color: #ef4444;
+}
+
+.compact-terminal-markdown .token.inserted,
+.model-response-markdown .token.inserted {
+	color: #22c55e;
+}
+
 .compact-terminal-json {
 	--w-rjv-background-color: transparent;
 	--w-rjv-border-left: #2a2a2a;
 	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.compact-terminal-function-call {
+	overflow-wrap: anywhere;
+	word-break: break-word;
+}
+
+.compact-terminal-json-toggle {
+	margin: 0;
+	border: 0;
+	background: transparent;
+	padding: 0;
+	font: inherit;
+	cursor: pointer;
+}
+
+.compact-terminal-json-toggle:hover {
+	text-decoration: underline;
+	text-decoration-style: dotted;
+	text-underline-offset: 2px;
+}
+
+.compact-terminal-json-caret {
+	display: inline-block;
+	width: 0.75em;
+	color: #a3a3a3;
+	text-decoration: none;
 }
 
 .context-files-view .mdxeditor {

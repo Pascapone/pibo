@@ -1,5 +1,6 @@
 import { JsonRenderer } from "../../tracing/JsonRenderer";
 import type { CompactTerminalRow } from "./terminalRows";
+import { renderableTerminalValue } from "./terminalValue";
 
 type TerminalDetailsProps = {
 	row: CompactTerminalRow;
@@ -34,7 +35,7 @@ export function TerminalDetails({ row, onOpenSession }: TerminalDetailsProps) {
 			) : (
 				<div className="space-y-3">
 					<DetailPayload label="Input" value={row.input} />
-					{typeof row.output === "string" ? <DetailText label="Output" value={row.output} /> : <DetailPayload label="Output" value={row.output} />}
+					<DetailPayload label="Output" value={row.output} />
 					{row.error ? <DetailText label="Error" value={row.error} tone="red" /> : null}
 					{row.linkedPiboSessionId ? (
 						<div className="flex items-center gap-2 text-[11px]">
@@ -55,10 +56,24 @@ export function TerminalDetails({ row, onOpenSession }: TerminalDetailsProps) {
 }
 
 function DetailPayload({ label, value }: { label: string; value: unknown }) {
-	if (value === undefined) return null;
+	const renderable = renderableTerminalValue(value);
+	if (renderable.kind === "empty") return null;
+	if (renderable.kind === "text") {
+		const parsed = parseJsonDetailText(renderable.text);
+		if (parsed?.kind === "json") return <DetailJson label={label} value={parsed.value} meta={parsed.meta} />;
+		if (parsed?.kind === "text") return <DetailText label={label} value={parsed.text} />;
+		return <DetailText label={label} value={renderable.text} />;
+	}
+	return <DetailJson label={label} value={renderable.value} />;
+}
+
+function DetailJson({ label, value, meta }: { label: string; value: unknown; meta?: string }) {
 	return (
 		<div className="space-y-1">
-			<div className="text-[11px] font-semibold text-[#737373]">{label}</div>
+			<div className="space-y-0.5">
+				<div className="text-[11px] font-semibold text-[#737373]">{label}</div>
+				{meta ? <div className="min-w-0 break-words text-[11px] text-[#737373]">Status: {meta}</div> : null}
+			</div>
 			<div className="compact-terminal-json border border-[#2a2a2a] bg-[#0b0b0b] p-2">
 				<JsonRenderer value={value} showControls={false} />
 			</div>
@@ -87,4 +102,47 @@ function DetailText({
 			</pre>
 		</div>
 	);
+}
+
+type ParsedDetailText =
+	| { kind: "json"; value: unknown; meta?: string }
+	| { kind: "text"; text: string };
+
+function parseJsonDetailText(value: string): ParsedDetailText | undefined {
+	const trimmed = value.trim();
+	if (!trimmed) return undefined;
+
+	const direct = parseJsonValue(trimmed);
+	if (direct !== undefined) return normalizeParsedJsonValue(direct);
+
+	const lines = trimmed.split(/\r?\n/);
+	for (let index = 1; index < lines.length; index += 1) {
+		const candidate = lines.slice(index).join("\n").trim();
+		if (!candidate.startsWith("{") && !candidate.startsWith("[")) continue;
+		const parsed = parseJsonValue(candidate);
+		if (parsed === undefined) continue;
+		const meta = lines.slice(0, index).join(" ").trim();
+		return normalizeParsedJsonValue(parsed, meta || undefined);
+	}
+	return undefined;
+}
+
+function normalizeParsedJsonValue(value: unknown, meta?: string): ParsedDetailText {
+	const renderable = renderableTerminalValue(value);
+	if (renderable.kind === "text") {
+		const nested = parseJsonDetailText(renderable.text);
+		if (nested?.kind === "json") return { ...nested, meta: nested.meta ?? meta };
+		return { kind: "text", text: renderable.text };
+	}
+	return { kind: "json", value, meta };
+}
+
+function parseJsonValue(value: string): unknown | undefined {
+	if (!value.startsWith("{") && !value.startsWith("[")) return undefined;
+	try {
+		const parsed = JSON.parse(value) as unknown;
+		return parsed !== null && typeof parsed === "object" ? parsed : undefined;
+	} catch {
+		return undefined;
+	}
 }

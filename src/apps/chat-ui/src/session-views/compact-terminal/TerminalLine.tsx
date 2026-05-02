@@ -1,4 +1,5 @@
 import type { CompactTerminalLine, CompactTerminalRowStatus, TerminalInlineToken } from "./terminalRows";
+import { TerminalFunctionCall } from "./TerminalInlineJson";
 
 type TerminalLineProps = {
 	line: CompactTerminalLine;
@@ -15,6 +16,7 @@ export function TerminalLine({ line, status }: TerminalLineProps) {
 						{token.text}
 					</span>
 				))}
+				{line.functionCall ? <TerminalFunctionCall name={line.functionCall.name} input={line.functionCall.input} /> : null}
 			</span>
 		</div>
 	);
@@ -58,7 +60,13 @@ function tokenClassName(token: TerminalInlineToken): string {
 						? "text-[#ef4444]"
 						: token.tone === "magenta"
 							? "text-[#d946ef]"
-							: "text-[#d4d4d4]";
+							: token.tone === "yellow"
+								? "text-[#facc15]"
+								: token.tone === "blue"
+									? "text-[#60a5fa]"
+									: token.tone === "amber"
+										? "text-[#f59e0b]"
+									: "text-[#d4d4d4]";
 	const weightClass =
 		token.weight === "bold" ? "font-bold" : token.weight === "semibold" ? "font-semibold" : "font-normal";
 	const italicClass = token.italic ? "italic" : "";

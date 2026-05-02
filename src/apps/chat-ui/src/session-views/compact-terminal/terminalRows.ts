@@ -1,4 +1,5 @@
 import type { PiboSessionTraceView, PiboTraceNode } from "../../types";
+import { terminalTextValue } from "./terminalValue";
 
 export type CompactTerminalRowStatus = "running" | "done" | "error" | "neutral";
 
@@ -16,7 +17,7 @@ export type CompactTerminalRowKind =
 
 export type TerminalInlineToken = {
 	text: string;
-	tone?: "default" | "dim" | "cyan" | "green" | "red" | "magenta";
+	tone?: "default" | "dim" | "cyan" | "green" | "red" | "magenta" | "yellow" | "blue" | "amber";
 	weight?: "normal" | "semibold" | "bold";
 	italic?: boolean;
 };
@@ -24,6 +25,10 @@ export type TerminalInlineToken = {
 export type CompactTerminalLine = {
 	prefix?: "bullet" | "detail" | "continuation" | "prompt" | "none";
 	tokens: TerminalInlineToken[];
+	functionCall?: {
+		name: string;
+		input?: unknown;
+	};
 };
 
 export type CompactTerminalDetailItem = {
@@ -47,6 +52,7 @@ export type CompactTerminalRow = {
 	input?: unknown;
 	output?: unknown;
 	error?: string;
+	markdown?: string;
 	expandable?: boolean;
 	detailItems?: readonly CompactTerminalDetailItem[];
 };
@@ -152,7 +158,7 @@ function createAssistantMessageRow(node: PiboTraceNode): CompactTerminalRow {
 }
 
 function createReasoningRow(node: PiboTraceNode): CompactTerminalRow {
-	const preview = previewLines(node.output ?? node.summary, 3);
+	const text = previewText(node.output ?? node.summary);
 	return {
 		id: node.id,
 		kind: "reasoning",
@@ -160,19 +166,21 @@ function createReasoningRow(node: PiboTraceNode): CompactTerminalRow {
 		lines: [
 			{
 				prefix: "bullet",
-				tokens: [token(node.status === "running" ? "Thinking" : "Thought", "magenta", "semibold")],
+				tokens: [token(node.status === "running" ? "Thinking" : "Thought", "amber", "semibold")],
 			},
-			...preview.lines,
 		],
 		sourceNodeIds: [node.id],
-		output: node.output ?? node.summary,
-		expandable: preview.truncated || Boolean(node.output),
+		markdown: text,
 	};
 }
 
 function createToolRowCandidate(node: PiboTraceNode, turnId?: string): RowCandidate {
-	const callTarget = `${node.title}${node.input !== undefined ? `(${compactInlinePreview(node.input)})` : ""}`;
-	const preview = previewLines(node.error ?? node.output, 5, node.error ? "red" : "dim");
+	const command = shellCommandValue(node.input);
+	if (command && isShellToolName(node.title)) {
+		const row = createCommandToolRow(node, command);
+		return { row, turnId, exploring: undefined };
+	}
+	const preview = previewLines(node.error ?? node.output, 4, node.error ? "red" : "dim");
 	const row: CompactTerminalRow = {
 		id: node.id,
 		kind: "tool.call",
@@ -180,7 +188,11 @@ function createToolRowCandidate(node: PiboTraceNode, turnId?: string): RowCandid
 		lines: [
 			{
 				prefix: "bullet",
-				tokens: [token(toolVerb(node.status), toneForStatus(node.status), "semibold"), token(` ${callTarget}`)],
+				tokens: [
+					token(toolVerb(node.status), toneForStatus(node.status), "semibold"),
+					token(" "),
+				],
+				functionCall: { name: node.title, input: node.input },
 			},
 			...preview.lines,
 		],
@@ -195,7 +207,7 @@ function createToolRowCandidate(node: PiboTraceNode, turnId?: string): RowCandid
 }
 
 function createToolResultRow(node: PiboTraceNode): CompactTerminalRow {
-	const preview = previewLines(node.error ?? node.output, 5, node.error ? "red" : "dim");
+	const preview = previewLines(node.error ?? node.output, 4, node.error ? "red" : "dim");
 	return {
 		id: node.id,
 		kind: "tool.call",
@@ -287,7 +299,8 @@ function createYieldedRunRow(node: PiboTraceNode): CompactTerminalRow {
 }
 
 function createExecutionCommandRow(node: PiboTraceNode): CompactTerminalRow {
-	const preview = previewLines(node.error ?? node.output, 5, node.error ? "red" : "dim");
+	const command = shellCommandValue(node.output) ?? shellCommandValue(node.input) ?? node.title;
+	const preview = previewLines(node.error ?? node.output, 4, node.error ? "red" : "dim", 180);
 	return {
 		id: node.id,
 		kind: "execution.command",
@@ -295,7 +308,28 @@ function createExecutionCommandRow(node: PiboTraceNode): CompactTerminalRow {
 		lines: [
 			{
 				prefix: "bullet",
-				tokens: [token("Ran", toneForStatus(node.status), "semibold"), token(` ${node.title}`, "cyan")],
+				tokens: [token("Ran", toneForStatus(node.status), "semibold"), token(" "), ...bashTokens(command)],
+			},
+			...preview.lines,
+		],
+		sourceNodeIds: [node.id],
+		input: node.input,
+		output: node.output,
+		error: node.error,
+		expandable: node.input !== undefined || node.output !== undefined || Boolean(node.error),
+	};
+}
+
+function createCommandToolRow(node: PiboTraceNode, command: string): CompactTerminalRow {
+	const preview = previewLines(node.error ?? node.output, 4, node.error ? "red" : "dim", 180);
+	return {
+		id: node.id,
+		kind: "execution.command",
+		status: mapStatus(node.status),
+		lines: [
+			{
+				prefix: "bullet",
+				tokens: [token(node.status === "running" ? "Running" : "Ran", toneForStatus(node.status), "semibold"), token(" "), ...bashTokens(command)],
 			},
 			...preview.lines,
 		],
@@ -451,6 +485,7 @@ function previewLines(
 	value: unknown,
 	maxVisibleLines: number,
 	tone: TerminalInlineToken["tone"] = "dim",
+	maxLineLength = 160,
 ): { lines: CompactTerminalLine[]; truncated: boolean } {
 	const text = previewText(value);
 	if (!text) return { lines: [], truncated: false };
@@ -462,7 +497,7 @@ function previewLines(
 	const visible = allLines.slice(0, maxVisibleLines);
 	const lines: CompactTerminalLine[] = visible.map((line, index) => ({
 		prefix: index === 0 ? "detail" : "continuation",
-		tokens: [token(line, tone)],
+		tokens: [token(truncate(line, maxLineLength), tone)],
 	}));
 	if (allLines.length > maxVisibleLines) {
 		lines.push({
@@ -474,6 +509,8 @@ function previewLines(
 }
 
 function previewText(value: unknown): string {
+	const text = terminalTextValue(value);
+	if (text !== undefined) return text.trim();
 	if (typeof value === "string") return value.trim();
 	if (value === undefined || value === null) return "";
 	try {
@@ -486,6 +523,45 @@ function previewText(value: unknown): string {
 function compactInlinePreview(value: unknown): string {
 	const text = typeof value === "string" ? value : previewText(value);
 	return truncate(text.replace(/\s+/g, " ").trim(), 96);
+}
+
+function isShellToolName(name: string): boolean {
+	const normalized = name.trim().toLowerCase();
+	return (
+		normalized === "exec_command" ||
+		normalized === "shell" ||
+		normalized === "bash" ||
+		normalized === "terminal" ||
+		normalized.endsWith(".exec_command") ||
+		normalized.includes("exec_command")
+	);
+}
+
+function shellCommandValue(value: unknown): string | undefined {
+	if (!isRecord(value)) return undefined;
+	for (const key of ["cmd", "command", "script"]) {
+		const candidate = stringValue(value[key]);
+		if (candidate) return candidate;
+	}
+	return undefined;
+}
+
+function bashTokens(command: string): TerminalInlineToken[] {
+	const chunks = command.match(/\s+|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s]+/g) ?? [command];
+	let seenCommand = false;
+	return chunks.map((chunk) => {
+		if (/^\s+$/.test(chunk)) return token(chunk);
+		if (/^(?:&&|\|\||[|;<>]|2>&1)$/.test(chunk)) return token(chunk, "red", "semibold");
+		if (chunk.startsWith("-")) return token(chunk, "magenta");
+		if (chunk.startsWith("$") || chunk.includes("=")) return token(chunk, "yellow");
+		if (/^['"]/.test(chunk)) return token(chunk, "green");
+		if (!seenCommand) {
+			seenCommand = true;
+			return token(chunk, "green", "semibold");
+		}
+		if (chunk.includes("/") || chunk.startsWith(".")) return token(chunk, "cyan");
+		return token(chunk, "default");
+	});
 }
 
 function truncate(value: string, maxLength: number): string {
