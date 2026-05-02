@@ -328,6 +328,33 @@ export async function patchMcpServerDescription(name: string, description: strin
 	});
 }
 
+export async function postPiPackage(source: string): Promise<AgentCatalog["piPackages"][number]> {
+	return (await requestJson<{ package: AgentCatalog["piPackages"][number] }>("/api/chat/pi-packages", {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify({ source }),
+	})).package;
+}
+
+export async function patchPiPackage(
+	id: string,
+	input: { enabled: boolean },
+): Promise<AgentCatalog["piPackages"][number]> {
+	return (await requestJson<{ package: AgentCatalog["piPackages"][number] }>(`/api/chat/pi-packages/${encodeURIComponent(id)}`, {
+		method: "PATCH",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify(input),
+	})).package;
+}
+
+export async function deletePiPackage(id: string): Promise<AgentCatalog["piPackages"][number]> {
+	return (await requestJson<{ removedPackage: AgentCatalog["piPackages"][number] }>(`/api/chat/pi-packages/${encodeURIComponent(id)}`, {
+		method: "DELETE",
+		headers: { "content-type": "application/json" },
+		body: "{}",
+	})).removedPackage;
+}
+
 export async function postRoom(input: { name: string; topic?: string }): Promise<{ room: PiboRoom }> {
 	return requestJson<{ room: PiboRoom }>("/api/chat/rooms", {
 		method: "POST",
@@ -445,7 +472,7 @@ function normalizeBootstrap(payload: Partial<BootstrapData>): BootstrapData {
 			? {
 				...payload.agentCatalog,
 				piboTools: payload.agentCatalog.piboTools ?? [],
-				piPackages: payload.agentCatalog.piPackages ?? [],
+				piPackages: (payload.agentCatalog.piPackages ?? []).map((pkg) => ({ ...pkg, enabled: pkg.enabled !== false })),
 			}
 			: payload.agentCatalog,
 		capabilities: {

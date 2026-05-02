@@ -194,7 +194,10 @@ export type AgentCatalog = {
 		discoveredToolNames?: string[];
 		installStatus: "registered" | "installed" | "missing" | "error";
 		installPath?: string;
+		enabled: boolean;
 		diagnostics: Array<{ type: "info" | "warning" | "error"; message: string }>;
+		addedAt?: string;
+		updatedAt?: string;
 	}>;
 };
 

@@ -23,6 +23,13 @@ export function getPiPackageRuntimeOptions(cwd: string, profile: InitialSessionC
 			});
 			continue;
 		}
+		if (!registered.enabled) {
+			diagnostics.push({
+				type: "warning",
+				message: `Selected Pi package "${registered.name}" is globally disabled in Pibo and was not loaded.`,
+			});
+			continue;
+		}
 		if (registered.installStatus === "error") {
 			diagnostics.push({
 				type: "error",

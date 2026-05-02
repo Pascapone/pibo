@@ -60,6 +60,7 @@ export async function inspectPiPackageSource(source: string, cwd = process.cwd()
 		themeNames: namesOrUndefined(resolved.themes),
 		installStatus: install.installStatus,
 		installPath: install.installPath,
+		enabled: true,
 		diagnostics,
 	};
 }

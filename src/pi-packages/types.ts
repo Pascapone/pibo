@@ -21,6 +21,7 @@ export type PiboPiPackageInfo = {
 	discoveredToolNames?: string[];
 	installStatus: "registered" | "installed" | "missing" | "error";
 	installPath?: string;
+	enabled: boolean;
 	diagnostics: PiboPiPackageDiagnostic[];
 	addedAt: string;
 	updatedAt: string;
@@ -31,7 +32,8 @@ export type PiboPiPackageStoreData = {
 	packages: PiboPiPackageInfo[];
 };
 
-export type PiboPiPackageInput = Omit<PiboPiPackageInfo, "addedAt" | "updatedAt"> & {
+export type PiboPiPackageInput = Omit<PiboPiPackageInfo, "addedAt" | "updatedAt" | "enabled"> & {
+	enabled?: boolean;
 	addedAt?: string;
 	updatedAt?: string;
 };

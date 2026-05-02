@@ -8,7 +8,7 @@ import test from "node:test";
 import { promisify } from "node:util";
 import { inspectPiPackageSource, parsePiPackageSource } from "../dist/pi-packages/metadata.js";
 import { getPiPackageRuntimeOptions } from "../dist/pi-packages/runtime.js";
-import { findPiPackage, listPiPackages, removePiPackage, upsertPiPackage } from "../dist/pi-packages/store.js";
+import { findPiPackage, listPiPackages, removePiPackage, setPiPackageEnabled, upsertPiPackage } from "../dist/pi-packages/store.js";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 
 const execFileAsync = promisify(execFile);
@@ -72,6 +72,7 @@ test("pi package store upserts, finds, lists, and removes packages", () => {
 		resourceTypes: ["extension"],
 		installStatus: "installed",
 		installPath: "/tmp/demo-package",
+		enabled: true,
 		diagnostics: [],
 	}, cwd);
 
@@ -93,6 +94,7 @@ test("pi package runtime bridge only loads selected registered packages", () => 
 		resourceTypes: ["extension"],
 		installStatus: "installed",
 		installPath: packageDir,
+		enabled: true,
 		diagnostics: [],
 	}, cwd);
 	const selectedProfile = new InitialSessionContextBuilder("selected")
@@ -103,6 +105,54 @@ test("pi package runtime bridge only loads selected registered packages", () => 
 	assert.deepEqual(getPiPackageRuntimeOptions(cwd, selectedProfile).resourceLoaderOptions.additionalExtensionPaths, [packageDir]);
 	assert.deepEqual(getPiPackageRuntimeOptions(cwd, emptyProfile).resourceLoaderOptions.additionalExtensionPaths, []);
 	assert.equal(getPiPackageRuntimeOptions(cwd, new InitialSessionContextBuilder("missing").withPiPackages([{ id: "missing" }]).createSession()).diagnostics[0].type, "error");
+});
+
+test("pi package store defaults legacy packages to enabled and can disable them", () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pibo-pi-package-store-"));
+	mkdirSync(join(cwd, ".pibo"), { recursive: true });
+	writeFileSync(join(cwd, ".pibo", "pi-packages.json"), JSON.stringify({
+		version: 1,
+		packages: [{
+			id: "legacy-package",
+			name: "legacy-package",
+			source: "/tmp/legacy-package",
+			installSpec: "/tmp/legacy-package",
+			resourceTypes: ["extension"],
+			installed: true,
+			diagnostics: [],
+		}],
+	}), "utf-8");
+
+	assert.equal(findPiPackage("legacy-package", cwd)?.enabled, true);
+	assert.equal(findPiPackage("legacy-package", cwd)?.installStatus, "installed");
+	assert.equal(setPiPackageEnabled("legacy-package", false, cwd)?.enabled, false);
+	assert.equal(findPiPackage("legacy-package", cwd)?.enabled, false);
+});
+
+test("pi package runtime skips globally disabled selected packages", () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pibo-pi-package-runtime-"));
+	const packageDir = join(cwd, "disabled-package");
+	mkdirSync(packageDir, { recursive: true });
+	upsertPiPackage({
+		id: "disabled-package",
+		name: "disabled-package",
+		source: packageDir,
+		installSpec: packageDir,
+		resourceTypes: ["extension"],
+		installStatus: "installed",
+		installPath: packageDir,
+		enabled: false,
+		diagnostics: [],
+	}, cwd);
+
+	const profile = new InitialSessionContextBuilder("disabled")
+		.withPiPackages([{ id: "disabled-package" }])
+		.createSession();
+	const options = getPiPackageRuntimeOptions(cwd, profile);
+
+	assert.deepEqual(options.resourceLoaderOptions.additionalExtensionPaths, []);
+	assert.match(options.diagnostics[0].message, /globally disabled/);
+	assert.equal(options.diagnostics[0].type, "warning");
 });
 
 test("pibo pi-packages CLI provides progressive help and local add/list/remove", async () => {

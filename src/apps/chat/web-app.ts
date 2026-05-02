@@ -40,7 +40,7 @@ import {
 	type PiboBasePromptMode,
 } from "../../core/base-prompt.js";
 import { inspectPiPackageSource } from "../../pi-packages/metadata.js";
-import { findPiPackage, listPiPackages, removePiPackage, upsertPiPackage } from "../../pi-packages/store.js";
+import { findPiPackage, listPiPackages, removePiPackage, setPiPackageEnabled, upsertPiPackage } from "../../pi-packages/store.js";
 
 export const CHAT_WEB_APP_NAME = "pibo.chat-web";
 export const CHAT_WEB_CHANNEL = "pibo.chat-web";
@@ -122,6 +122,11 @@ type ChatBasePromptBody = {
 };
 
 type ChatPiPackageBody = {
+	source?: unknown;
+};
+
+type ChatPiPackagePatchBody = {
+	enabled?: unknown;
 	source?: unknown;
 };
 
@@ -382,6 +387,23 @@ function normalizeRegisteredPiPackages(value: unknown): string[] {
 		if (!registered.has(name)) throw new PiboWebHttpError(`Unknown Pi package "${name}"`, 400);
 	}
 	return [...new Set(names.map((name) => registered.get(name) ?? name))];
+}
+
+function normalizePiPackageWebSource(value: unknown): string {
+	if (typeof value !== "string" || value.trim().length === 0) {
+		throw new PiboWebHttpError("Pi package source is required", 400);
+	}
+	const source = value.trim();
+	let url: URL;
+	try {
+		url = new URL(source);
+	} catch {
+		throw new PiboWebHttpError("Pi package source must be a https://pi.dev/packages/... URL", 400);
+	}
+	if (url.origin !== "https://pi.dev" || !url.pathname.startsWith("/packages/") || url.pathname === "/packages/") {
+		throw new PiboWebHttpError("Pi package source must be a https://pi.dev/packages/... URL", 400);
+	}
+	return source;
 }
 
 function normalizeBuiltinTools(value: unknown): "default" | "disabled" {
@@ -2327,10 +2349,8 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				requireSameOriginJsonRequest(request);
 				await requireSession(request, context);
 				const body = await readJsonBody<ChatPiPackageBody>(request);
-				if (typeof body.source !== "string" || body.source.trim().length === 0) {
-					throw new PiboWebHttpError("Pi package source is required", 400);
-				}
-				const pkg = upsertPiPackage(await inspectPiPackageSource(body.source, process.cwd()), process.cwd());
+				const source = normalizePiPackageWebSource(body.source);
+				const pkg = upsertPiPackage(await inspectPiPackageSource(source, process.cwd()), process.cwd());
 				return responseJson({ package: pkg }, { status: 201 });
 			}
 
@@ -2347,9 +2367,22 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				await requireSession(request, context);
 				const existing = findPiPackage(piPackageId);
 				if (!existing) throw new PiboWebHttpError("Pi package is not registered", 404);
-				const body = await readJsonBody<ChatPiPackageBody>(request);
-				const source = typeof body.source === "string" && body.source.trim() ? body.source.trim() : existing.source;
-				const pkg = upsertPiPackage(await inspectPiPackageSource(source, process.cwd()), process.cwd());
+				const body = await readJsonBody<ChatPiPackagePatchBody>(request);
+				let pkg = existing;
+				let changed = false;
+				if (body.source !== undefined) {
+					const source = normalizePiPackageWebSource(body.source);
+					pkg = upsertPiPackage(await inspectPiPackageSource(source, process.cwd()), process.cwd());
+					changed = true;
+				}
+				if (body.enabled !== undefined) {
+					if (typeof body.enabled !== "boolean") throw new PiboWebHttpError("enabled must be a boolean", 400);
+					const updated = setPiPackageEnabled(pkg.id, body.enabled);
+					if (!updated) throw new PiboWebHttpError("Pi package is not registered", 404);
+					pkg = updated;
+					changed = true;
+				}
+				if (!changed) throw new PiboWebHttpError("No Pi package update fields provided", 400);
 				return responseJson({ package: pkg });
 			}
 

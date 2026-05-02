@@ -69,6 +69,7 @@ export function upsertPiPackage(pkg: PiboPiPackageInput, cwd = process.cwd()): P
 			}
 		: {
 				...pkg,
+				enabled: existing?.enabled ?? pkg.enabled !== false,
 				addedAt: existing ? existing.addedAt : pkg.addedAt ?? now,
 				updatedAt: now,
 			};
@@ -95,6 +96,22 @@ export function removePiPackage(nameOrId: string, cwd = process.cwd()): PiboPiPa
 	return removed;
 }
 
+export function setPiPackageEnabled(nameOrId: string, enabled: boolean, cwd = process.cwd()): PiboPiPackageInfo | undefined {
+	const path = defaultPiPackageStorePath(cwd);
+	const data = loadPiPackageStore(path);
+	const lookup = nameOrId.trim();
+	const index = data.packages.findIndex((pkg) => pkg.id === lookup || pkg.name === lookup || pkg.source === lookup);
+	if (index < 0) return undefined;
+	const next: PiboPiPackageInfo = {
+		...data.packages[index],
+		enabled,
+		updatedAt: new Date().toISOString(),
+	};
+	data.packages[index] = next;
+	savePiPackageStore(data, path);
+	return next;
+}
+
 function sanitizeStoredPackage(value: unknown): PiboPiPackageInfo {
 	const candidate = value as Partial<PiboPiPackageInfo>;
 	if (!candidate || typeof candidate !== "object") throw new Error("Invalid Pi package entry");
@@ -117,6 +134,7 @@ function sanitizeStoredPackage(value: unknown): PiboPiPackageInfo {
 		discoveredToolNames: stringArray(candidate.discoveredToolNames),
 		installStatus: installStatus(candidate),
 		installPath: stringOrUndefined(candidate.installPath),
+		enabled: candidate.enabled !== false,
 		diagnostics: Array.isArray(candidate.diagnostics) ? candidate.diagnostics.flatMap((diagnostic) => {
 			if (!diagnostic || typeof diagnostic !== "object") return [];
 			const item = diagnostic as Partial<PiboPiPackageInfo["diagnostics"][number]>;

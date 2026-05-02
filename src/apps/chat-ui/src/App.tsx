@@ -16,12 +16,15 @@ import {
 	CopyPlus,
 	Edit3,
 	EyeOff,
+	ExternalLink,
 	FolderPlus,
 	Layers,
 	Lock,
 	LogOut,
 	MessageSquarePlus,
 	Plus,
+	Power,
+	PowerOff,
 	RefreshCw,
 	Save,
 	Server,
@@ -32,7 +35,7 @@ import {
 	Wrench,
 	X,
 } from "lucide-react";
-import { deleteCustomAgent, deleteRoom, deleteSession, getBootstrap, getTrace, patchCustomAgent, patchRoom, patchSession, postAction, postContextFile, postCustomAgent, postMessage, postRoom, postSession, signInWithGoogle, signOut, type SaveCustomAgentInput } from "./api";
+import { deleteCustomAgent, deletePiPackage, deleteRoom, deleteSession, getBootstrap, getTrace, patchCustomAgent, patchPiPackage, patchRoom, patchSession, postAction, postContextFile, postCustomAgent, postMessage, postPiPackage, postRoom, postSession, signInWithGoogle, signOut, type SaveCustomAgentInput } from "./api";
 import type { AgentCatalog, BootstrapData, CustomAgent, CustomAgentSubagent, PiboRoom, PiboSessionTraceView, PiboTraceNode, PiboTraceOrderKey, PiboWebSessionNode } from "./types";
 import { adaptTrace } from "./tracing/adapt";
 import { type SessionBreadcrumbItem, type SessionDerivationLink, type SessionOriginLink } from "./tracing/TraceTimeline";
@@ -2472,20 +2475,14 @@ function AgentsView({
 					</DesignerPanel>
 					<CatalogSection title="Skills">{catalog?.skills.map((skill) => <CatalogToggle key={skill.name} disabled={readOnly} checked={draft.skills.includes(skill.name)} title={skill.name} description={skill.path} onToggle={() => setDraft((current) => ({ ...current, skills: toggleName(current.skills, skill.name) }))} />) ?? <EmptyCatalog />}</CatalogSection>
 					<CatalogSection title="Packages"><CatalogToggle disabled={readOnly} checked={draft.runControl} title="pibo-run-control" description="Expose pibo_run_* as one package for yielded native tools and subagents." meta="package" onToggle={() => setDraft((current) => ({ ...current, runControl: !current.runControl }))} /></CatalogSection>
-					<CatalogSection title="Pi Packages">
-						{catalog?.piPackages.map((pkg) => (
-							<CatalogToggle
-								key={pkg.id}
-								disabled={readOnly}
-								checked={draft.piPackages.includes(pkg.id) || draft.piPackages.includes(pkg.name)}
-								title={pkg.name}
-								description={pkg.description ?? pkg.source}
-								meta={piPackageMeta(pkg)}
-								metaClass={pkg.diagnostics.some((diagnostic) => diagnostic.type === "error") ? "text-[#f59e0b]" : "text-[#11a4d4]"}
-								onToggle={() => setDraft((current) => ({ ...current, piPackages: toggleName(current.piPackages, pkg.id) }))}
-							/>
-						)) ?? <EmptyCatalog />}
-					</CatalogSection>
+					<PiPackagesDesigner
+						packages={catalog?.piPackages}
+						draft={draft}
+						setDraft={setDraft}
+						setCatalog={setCatalog}
+						designerAvailable={designerAvailable}
+						readOnly={readOnly}
+					/>
 					<DesignerPanel title="Context Files">
 						<div className="grid grid-cols-[1fr_auto] gap-2">
 							<input value={newContextFileName} disabled={readOnly} onChange={(event) => setNewContextFileName(event.target.value)} className="min-w-0 bg-[#0e1116] border border-slate-700 rounded-sm px-3 py-2 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60" placeholder="New context file" />
@@ -2662,6 +2659,7 @@ function normalizeBuiltinToolNames(names: string[] | undefined, mode: "default" 
 
 type NativeToolCatalogItem = AgentCatalog["nativeTools"][number];
 type ContextFileCatalogItem = AgentCatalog["contextFiles"][number];
+type PiPackageCatalogItem = AgentCatalog["piPackages"][number];
 type CatalogGroupKind = "native" | "plugin" | "custom";
 const CODEX_COMPAT_TOOL_NAMES = new Set([
 	"apply_patch",
@@ -3068,6 +3066,266 @@ function CatalogToggle({
 	);
 }
 
+function PiPackagesDesigner({
+	packages,
+	draft,
+	setDraft,
+	setCatalog,
+	designerAvailable,
+	readOnly,
+}: {
+	packages?: PiPackageCatalogItem[];
+	draft: AgentDraft;
+	setDraft: Dispatch<SetStateAction<AgentDraft>>;
+	setCatalog: Dispatch<SetStateAction<AgentCatalog | null>>;
+	designerAvailable: boolean;
+	readOnly: boolean;
+}) {
+	const [source, setSource] = useState("");
+	const [busy, setBusy] = useState<string | null>(null);
+	const [error, setError] = useState<string | null>(null);
+	const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+	const packageList = packages ?? [];
+	const selectedCount = packageList.filter((pkg) => isPiPackageSelected(draft.piPackages, pkg)).length;
+	const disabledCount = packageList.filter((pkg) => !pkg.enabled).length;
+
+	const upsertCatalogPackage = (pkg: PiPackageCatalogItem) => {
+		setCatalog((current) => {
+			if (!current) return current;
+			const others = current.piPackages.filter((item) => item.id !== pkg.id);
+			return { ...current, piPackages: [...others, pkg].sort((left, right) => left.name.localeCompare(right.name)) };
+		});
+	};
+
+	const addPackage = async () => {
+		if (!designerAvailable || busy) return;
+		setBusy("add");
+		try {
+			const pkg = await postPiPackage(source);
+			upsertCatalogPackage(pkg);
+			setSource("");
+			setExpanded((current) => new Set(current).add(pkg.id));
+			setError(null);
+		} catch (caught) {
+			setError(caught instanceof Error ? caught.message : String(caught));
+		} finally {
+			setBusy(null);
+		}
+	};
+
+	const toggleEnabled = async (pkg: PiPackageCatalogItem) => {
+		if (!designerAvailable || busy) return;
+		setBusy(`${pkg.id}:enabled`);
+		try {
+			const next = await patchPiPackage(pkg.id, { enabled: !pkg.enabled });
+			upsertCatalogPackage(next);
+			setError(null);
+		} catch (caught) {
+			setError(caught instanceof Error ? caught.message : String(caught));
+		} finally {
+			setBusy(null);
+		}
+	};
+
+	const unregisterPackage = async (pkg: PiPackageCatalogItem) => {
+		if (!designerAvailable || busy) return;
+		if (!window.confirm(`Unregister Pi package "${pkg.name}"?`)) return;
+		setBusy(`${pkg.id}:delete`);
+		try {
+			await deletePiPackage(pkg.id);
+			setCatalog((current) => current ? { ...current, piPackages: current.piPackages.filter((item) => item.id !== pkg.id) } : current);
+			setDraft((current) => ({
+				...current,
+				piPackages: current.piPackages.filter((name) => name !== pkg.id && name !== pkg.name),
+			}));
+			setExpanded((current) => {
+				const next = new Set(current);
+				next.delete(pkg.id);
+				return next;
+			});
+			setError(null);
+		} catch (caught) {
+			setError(caught instanceof Error ? caught.message : String(caught));
+		} finally {
+			setBusy(null);
+		}
+	};
+
+	const toggleExpanded = (id: string) => {
+		setExpanded((current) => {
+			const next = new Set(current);
+			if (next.has(id)) next.delete(id);
+			else next.add(id);
+			return next;
+		});
+	};
+
+	return (
+		<DesignerPanel title="Pi Packages">
+			<div className="grid gap-2">
+				<div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+					<input
+						value={source}
+						disabled={!designerAvailable || busy === "add"}
+						onChange={(event) => setSource(event.target.value)}
+						className="min-w-0 bg-[#0e1116] border border-slate-700 rounded-sm px-3 py-2 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60"
+						placeholder="https://pi.dev/packages/package-name"
+					/>
+					<button type="button" disabled={!designerAvailable || busy === "add" || !source.trim()} onClick={() => void addPackage()} title="Add Pi Package" aria-label="Add Pi Package" className="h-9 w-9 inline-flex items-center justify-center border border-[#11a4d4] rounded-sm text-[#11a4d4] bg-[#11a4d4]/10 disabled:opacity-50">
+						<Plus size={14} />
+					</button>
+				</div>
+				<div className="text-[11px] text-slate-500">Extensions execute code in the Pi runtime. Review package source before adding it.</div>
+				{error ? <div className="border border-red-500/60 bg-red-500/10 text-red-200 px-3 py-2 text-sm rounded-sm">{error}</div> : null}
+				<div className="font-mono text-[10px] uppercase tracking-wider text-slate-500">
+					{packageList.length} registered / {selectedCount} selected / {disabledCount} disabled
+				</div>
+			</div>
+			{packages ? (
+				packageList.length ? (
+					<div className="grid gap-2">
+						{packageList.map((pkg) => (
+							<PiPackageCard
+								key={pkg.id}
+								pkg={pkg}
+								selected={isPiPackageSelected(draft.piPackages, pkg)}
+								readOnly={readOnly}
+								expanded={expanded.has(pkg.id)}
+								busy={busy?.startsWith(`${pkg.id}:`) ?? false}
+								onToggleSelected={() => {
+									if (!readOnly && (pkg.enabled || isPiPackageSelected(draft.piPackages, pkg))) {
+										setDraft((current) => ({ ...current, piPackages: togglePiPackageSelection(current.piPackages, pkg) }));
+									}
+								}}
+								onToggleExpanded={() => toggleExpanded(pkg.id)}
+								onToggleEnabled={() => void toggleEnabled(pkg)}
+								onUnregister={() => void unregisterPackage(pkg)}
+							/>
+						))}
+					</div>
+				) : <EmptyCatalog message="No Pi packages registered" />
+			) : <EmptyCatalog />}
+		</DesignerPanel>
+	);
+}
+
+function PiPackageCard({
+	pkg,
+	selected,
+	readOnly,
+	expanded,
+	busy,
+	onToggleSelected,
+	onToggleExpanded,
+	onToggleEnabled,
+	onUnregister,
+}: {
+	pkg: PiPackageCatalogItem;
+	selected: boolean;
+	readOnly: boolean;
+	expanded: boolean;
+	busy: boolean;
+	onToggleSelected: () => void;
+	onToggleExpanded: () => void;
+	onToggleEnabled: () => void;
+	onUnregister: () => void;
+}) {
+	const hasErrors = pkg.diagnostics.some((diagnostic) => diagnostic.type === "error");
+	const selectable = !readOnly && (pkg.enabled || selected);
+	return (
+		<div className={`border rounded-sm ${selected ? "border-[#11a4d4] bg-[#11a4d4]/10" : "border-slate-800 bg-[#151f24]"} ${!pkg.enabled ? "opacity-75" : ""}`}>
+			<div className="grid grid-cols-[1fr_auto] gap-2 p-2">
+				<button type="button" disabled={!selectable} onClick={onToggleSelected} className="min-w-0 grid grid-cols-[18px_1fr] gap-2 text-left disabled:cursor-not-allowed">
+					<SelectionCheckbox checked={selected} disabled={!selectable} className="mt-0.5" />
+					<span className="min-w-0">
+						<span className="flex items-center gap-2">
+							<span className="min-w-0 truncate text-sm text-slate-200">{pkg.name}</span>
+							<span className={`shrink-0 border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider ${pkg.enabled ? "border-[#11a4d4]/60 text-[#7dd3fc]" : "border-slate-700 text-slate-500"}`}>{pkg.enabled ? "enabled" : "disabled"}</span>
+						</span>
+						<span className="block text-xs text-slate-500 truncate">{pkg.description ?? pkg.source}</span>
+						<span className={`block font-mono text-[10px] mt-1 ${hasErrors ? "text-[#f59e0b]" : "text-[#11a4d4]"}`}>{piPackageMeta(pkg)}</span>
+					</span>
+				</button>
+				<div className="flex items-start gap-1">
+					<button type="button" onClick={onToggleExpanded} title={expanded ? "Hide Details" : "Show Details"} aria-label={expanded ? "Hide Details" : "Show Details"} className="h-7 w-7 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]">
+						{expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+					</button>
+					<button type="button" disabled={busy} onClick={onToggleEnabled} title={pkg.enabled ? "Disable Package" : "Enable Package"} aria-label={pkg.enabled ? "Disable Package" : "Enable Package"} className="h-7 w-7 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50">
+						{pkg.enabled ? <PowerOff size={13} /> : <Power size={13} />}
+					</button>
+					<button type="button" disabled={busy} onClick={onUnregister} title="Unregister Package" aria-label="Unregister Package" className="h-7 w-7 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-red-400 hover:text-red-300 disabled:opacity-50">
+						<Trash2 size={13} />
+					</button>
+				</div>
+			</div>
+			{expanded ? <PiPackageDetails pkg={pkg} /> : null}
+		</div>
+	);
+}
+
+function PiPackageDetails({ pkg }: { pkg: PiPackageCatalogItem }) {
+	return (
+		<div className="border-t border-slate-800 p-3 grid gap-3 text-xs text-slate-300">
+			<PackageDetailGrid rows={[
+				["Source", pkg.source],
+				["Install", pkg.installSpec],
+				["Version", pkg.version],
+				["Added", pkg.addedAt],
+				["Updated", pkg.updatedAt],
+			]} />
+			{pkg.repositoryUrl ? (
+				<a href={pkg.repositoryUrl} target="_blank" rel="noreferrer" className="inline-flex w-fit items-center gap-1 text-[#7dd3fc] hover:text-sky-100">
+					<ExternalLink size={12} />
+					Source repository
+				</a>
+			) : null}
+			<PackageResourceList title="Extensions" values={pkg.extensionPaths} />
+			<PackageResourceList title="Skills" values={pkg.skillNames} />
+			<PackageResourceList title="Prompts" values={pkg.promptNames} />
+			<PackageResourceList title="Themes" values={pkg.themeNames} />
+			<PackageResourceList title="Tools" values={pkg.discoveredToolNames} />
+			{pkg.diagnostics.length ? (
+				<div className="grid gap-1">
+					<div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Diagnostics</div>
+					{pkg.diagnostics.map((diagnostic, index) => (
+						<div key={`${diagnostic.type}:${index}`} className={`border px-2 py-1 rounded-sm ${diagnostic.type === "error" ? "border-red-500/50 text-red-200 bg-red-500/10" : diagnostic.type === "warning" ? "border-[#f59e0b]/50 text-amber-100 bg-[#f59e0b]/10" : "border-slate-700 text-slate-400 bg-[#0e1116]"}`}>
+							<span className="font-mono uppercase text-[10px] mr-2">{diagnostic.type}</span>
+							{diagnostic.message}
+						</div>
+					))}
+				</div>
+			) : null}
+		</div>
+	);
+}
+
+function PackageDetailGrid({ rows }: { rows: Array<[string, string | undefined]> }) {
+	const visibleRows = rows.filter(([, value]) => value);
+	if (visibleRows.length === 0) return null;
+	return (
+		<div className="grid gap-1">
+			{visibleRows.map(([label, value]) => (
+				<div key={label} className="grid grid-cols-[84px_minmax(0,1fr)] gap-2">
+					<span className="font-mono text-[10px] uppercase tracking-wider text-slate-500">{label}</span>
+					<span className="min-w-0 break-all font-mono text-[11px] text-slate-300">{value}</span>
+				</div>
+			))}
+		</div>
+	);
+}
+
+function PackageResourceList({ title, values }: { title: string; values?: string[] }) {
+	if (!values?.length) return null;
+	return (
+		<div className="grid gap-1">
+			<div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{title}</div>
+			<div className="flex flex-wrap gap-1">
+				{values.map((value) => <span key={value} className="max-w-full break-all border border-slate-700 bg-[#0e1116] px-2 py-1 font-mono text-[11px] text-slate-300 rounded-sm">{value}</span>)}
+			</div>
+		</div>
+	);
+}
+
 function BuiltinToolsDesigner({
 	draft,
 	setDraft,
@@ -3176,11 +3434,21 @@ function contextFileMeta(contextFile: AgentCatalog["contextFiles"][number]): str
 	return "managed global";
 }
 
+function isPiPackageSelected(selected: string[], pkg: PiPackageCatalogItem): boolean {
+	return selected.includes(pkg.id) || selected.includes(pkg.name);
+}
+
+function togglePiPackageSelection(selected: string[], pkg: PiPackageCatalogItem): string[] {
+	if (isPiPackageSelected(selected, pkg)) return selected.filter((name) => name !== pkg.id && name !== pkg.name);
+	return [...selected, pkg.id];
+}
+
 function piPackageMeta(pkg: AgentCatalog["piPackages"][number]): string {
 	const resources = pkg.resourceTypes.length ? pkg.resourceTypes.join(" + ") : "resources pending";
 	const version = pkg.version ? `v${pkg.version}` : pkg.installStatus;
 	const diagnostics = pkg.diagnostics.some((diagnostic) => diagnostic.type === "error") ? " / needs attention" : "";
-	return `${resources} / ${version}${diagnostics}`;
+	const enabled = pkg.enabled ? "enabled" : "disabled";
+	return `${resources} / ${version} / ${enabled}${diagnostics}`;
 }
 
 function EmptyCatalog({ message = "Agent Designer API unavailable" }: { message?: string }) {

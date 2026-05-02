@@ -31,6 +31,8 @@ Pi package resources remain Pi resources. Extensions execute inside the Pi runti
 
 ## Agent Designer
 
-The Chat Web Agent Designer shows registered packages in the `Pi Packages` section. Selecting a package saves its id on the custom agent. New sessions for that custom agent load the selected packages; other profiles do not inherit them.
+The Chat Web Agent Designer shows registered packages in the `Pi Packages` section. Users can add a package by pasting a `https://pi.dev/packages/...` URL. Browser-origin adds intentionally reject local paths; local path registration stays CLI-only.
 
-Package rows show resource types, version/install status, and diagnostics when available. The first UI version is selection-only; package registration is CLI-first.
+Registered packages can be enabled, disabled, or unregistered from the Agent Designer. This global registration state is separate from per-agent selection. A disabled package remains visible, but Pibo will not load it into any runtime even if an older custom agent still has the package selected.
+
+Package rows show resource types, version/install status, source, install spec, repository link when available, discovered extensions/skills/prompts/themes/tools, and diagnostics. Selecting a package saves its id on the custom agent. New sessions for that custom agent load only packages that are both selected and globally enabled; other profiles do not inherit them.

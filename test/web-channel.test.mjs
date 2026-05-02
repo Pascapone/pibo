@@ -7,6 +7,7 @@ import { createChatWebApp } from "../dist/apps/chat/web-app.js";
 import { PiboAuthError } from "../dist/auth/types.js";
 import { createWebHostChannel } from "../dist/web/channel.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
+import { upsertPiPackage } from "../dist/pi-packages/store.js";
 
 function createFakeAuthService() {
 	return {
@@ -1044,32 +1045,44 @@ test("chat web app manages Pi package registrations and custom agent selections"
 	}), "utf-8");
 
 	await withCwd(cwd, async () => {
+		upsertPiPackage({
+			id: "local-web-package",
+			name: "local-web-package",
+			source: packageDir,
+			installSpec: packageDir,
+			resourceTypes: ["skill"],
+			skillNames: ["demo"],
+			installStatus: "installed",
+			installPath: packageDir,
+			enabled: true,
+			diagnostics: [],
+		}, cwd);
 		const { channel, baseURL } = await startWebHostChannel({
 			auth: createFakeAuthService(),
 			profiles: [{ name: "pibo-minimal", aliases: ["minimal"] }],
 		});
 
 		try {
-			const added = await fetch(`${baseURL}/api/chat/pi-packages`, {
-				method: "POST",
-				headers: {
-					"content-type": "application/json",
-					origin: baseURL,
-					"x-test-user": "user-1",
-				},
-				body: JSON.stringify({ source: packageDir }),
-			});
-			assert.equal(added.status, 201);
-			const addedPayload = await added.json();
-			assert.equal(addedPayload.package.id, "local-web-package");
-			assert.equal(addedPayload.package.installStatus, "installed");
-
 			const catalog = await fetch(`${baseURL}/api/chat/agent-catalog`, {
 				headers: { "x-test-user": "user-1" },
 			});
 			assert.equal(catalog.status, 200);
 			const catalogPayload = await catalog.json();
 			assert.equal(catalogPayload.catalog.piPackages[0].id, "local-web-package");
+			assert.equal(catalogPayload.catalog.piPackages[0].enabled, true);
+
+			const disabled = await fetch(`${baseURL}/api/chat/pi-packages/${encodeURIComponent("local-web-package")}`, {
+				method: "PATCH",
+				headers: {
+					"content-type": "application/json",
+					origin: baseURL,
+					"x-test-user": "user-1",
+				},
+				body: JSON.stringify({ enabled: false }),
+			});
+			assert.equal(disabled.status, 200);
+			const disabledPayload = await disabled.json();
+			assert.equal(disabledPayload.package.enabled, false);
 
 			const createdAgent = await fetch(`${baseURL}/api/chat/agents`, {
 				method: "POST",
@@ -1102,6 +1115,31 @@ test("chat web app manages Pi package registrations and custom agent selections"
 			await channel.stop?.();
 		}
 	});
+});
+
+test("chat web app rejects non-pi.dev package sources from browser adds", async () => {
+	const { channel, baseURL } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		profiles: [{ name: "pibo-minimal", aliases: ["minimal"] }],
+	});
+
+	try {
+		const rejected = await fetch(`${baseURL}/api/chat/pi-packages`, {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				origin: baseURL,
+				"x-test-user": "user-1",
+			},
+			body: JSON.stringify({ source: "/tmp/local-package" }),
+		});
+		assert.equal(rejected.status, 400);
+		assert.deepEqual(await rejected.json(), {
+			error: "Pi package source must be a https://pi.dev/packages/... URL",
+		});
+	} finally {
+		await channel.stop?.();
+	}
 });
 
 test("chat web app exposes and updates MCP server descriptions", async () => {
