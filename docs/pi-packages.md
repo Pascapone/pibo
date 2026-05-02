@@ -25,14 +25,14 @@ Other web URLs are rejected. Local paths must exist.
 
 ## Runtime Boundary
 
-Pibo does not mirror global Pi settings into every profile. At runtime, Pibo resolves the selected `piPackages` from the Pibo store and passes only those package install specs to Pi's package loader.
+Pibo does not mirror global Pi settings into every profile. At runtime, Pibo resolves the selected `piPackages` from the Pibo store and passes only the selected Pibo-managed install paths or resolved local package paths to Pi's package loader.
 
 Pi package resources remain Pi resources. Extensions execute inside the Pi runtime, skills are loaded as Pi skills, and prompt/theme resources stay in Pi's resource system. Pibo's native MCP servers, subagents, provider-backed tools, and `pibo-run-control` package remain separate product capabilities.
 
 ## Agent Designer
 
-The Chat Web Agent Designer shows registered packages in the `Pi Packages` section. Users can add a package by pasting a `https://pi.dev/packages/...` URL. Browser-origin adds intentionally reject local paths; local path registration stays CLI-only.
+The Chat Web Agent Designer shows registered packages in the `Pi Packages` section. Selecting a package saves its id on the custom agent. New sessions for that custom agent load the selected packages; other profiles do not inherit them.
 
-Registered packages can be enabled, disabled, or unregistered from the Agent Designer. This global registration state is separate from per-agent selection. A disabled package remains visible, but Pibo will not load it into any runtime even if an older custom agent still has the package selected.
+Package registration management is CLI-first in the current UI. Backend endpoints exist for listing, adding, inspecting, refreshing, and removing registrations, and the next UI iteration can expose add/remove controls after adding browser-origin validation and confirmation flows.
 
-Package rows show resource types, version/install status, source, install spec, repository link when available, discovered extensions/skills/prompts/themes/tools, and diagnostics. Selecting a package saves its id on the custom agent. New sessions for that custom agent load only packages that are both selected and globally enabled; other profiles do not inherit them.
+Package rows show resource types, version/install status, and diagnostics when available. The first Agent Designer version is selection-only; rich package metadata and global enable/disable controls are planned follow-up work.

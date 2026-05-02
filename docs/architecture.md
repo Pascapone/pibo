@@ -82,7 +82,7 @@ Context file registration is no longer static-only at process start. Plugins can
 
 Pibo can register Pi Coding Agent packages from `https://pi.dev/packages/...` URLs or local paths without making them globally active. The Pibo store at `.pibo/pi-packages.json` is the product source of truth for package source, install spec, metadata, discovered resource types, install status, and diagnostics.
 
-Registered does not mean loaded. A profile or custom agent must select a registered Pi Package before a runtime receives it. Runtime creation resolves the selected package ids through the Pibo store and passes only those install specs into Pi's package resource loading path. Global packages configured directly in Pi settings are not automatically injected into Pibo profiles.
+Registered does not mean loaded. A profile or custom agent must select a registered Pi Package before a runtime receives it. Runtime creation resolves the selected package ids through the Pibo store and passes only the selected Pibo-managed install paths or resolved local package paths into Pi's package resource loading path. Global packages configured directly in Pi settings are not automatically injected into Pibo profiles.
 
 Pi Packages remain Pi-owned resources. Pibo does not rewrite package extensions, skills, prompts, or themes into native Pibo tools. Pibo's product boundary still owns MCP selection, subagents, routed sessions, run-control tools, Chat Web, auth, and policy. Package diagnostics are surfaced through profile inspection and runtime diagnostics so operators can see which packages were loaded and why a package failed.
 
