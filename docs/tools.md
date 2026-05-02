@@ -27,6 +27,8 @@ npm run dev -- tools guide browser-use remote-browser
 npm run dev -- tools path browser-use
 npm run dev -- tools env browser-use
 npm run dev -- tools browser-use
+npm run dev -- tools browser-use targets
+npm run dev -- tools browser-use attach-chat
 npm run dev -- tools browser-use lease acquire
 ```
 
@@ -88,10 +90,12 @@ Use `pibo tools browser-use` as the compact discovery entrypoint. `auth-template
 For low-level Chat Web debugging, prefer an already-open authenticated browser over launching a new profile. Start with CDP target discovery:
 
 ```bash
+npm run dev -- tools browser-use targets
+npm run dev -- tools browser-use attach-chat
 curl -s http://127.0.0.1:56663/json/list
 ```
 
-Inspect Chat Web targets before interacting with them. The usable target is the one that is authenticated and has the composer textarea; the first target may be unauthenticated, stale, or attached to a different gateway. If Browser Use cannot attach cleanly or MCP resources are not visible, connect directly to the target WebSocket from `/json/list` and use CDP `Runtime.evaluate`, `Network`, and DOM inspection.
+Inspect Chat Web targets before interacting with them. The usable target is the one that is authenticated and has the composer textarea; the first target may be unauthenticated, stale, or attached to a different gateway. `attach-chat` prints shell exports for the best existing authenticated Chat target. If Browser Use cannot attach cleanly or MCP resources are not visible, connect directly to the target WebSocket from `targets`, `attach-chat`, or `/json/list` and use CDP `Runtime.evaluate`, `Network`, and DOM inspection.
 
 The installer uses `uv` to create the virtual environment and install the pinned package `browser-use[cli]==0.12.6`. The version is pinned so the Browser Use CLI surface stays aligned with the bundled guides. Browser Use system setup stays visible through `pibo tools doctor browser-use`; if Browser Use reports missing optional components, install them explicitly for the workflow that needs them.
 

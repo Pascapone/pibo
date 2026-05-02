@@ -152,10 +152,12 @@ browser-use --headed --session pibo-auth open http://4788.192.168.0.204.sslip.io
 For low-level Chat Web debugging, prefer an already-open authenticated browser over launching a new profile. Start by listing CDP targets:
 
 \`\`\`bash
+npm run dev -- tools browser-use targets
+npm run dev -- tools browser-use attach-chat
 curl -s http://127.0.0.1:56663/json/list
 \`\`\`
 
-Inspect Chat Web targets and pick the one that is authenticated and has a composer textarea. If Browser Use cannot attach cleanly or MCP resources are unavailable, use the target \`webSocketDebuggerUrl\` from \`/json/list\` and direct CDP \`Runtime.evaluate\`, \`Network\`, and DOM inspection.
+Inspect Chat Web targets and pick the one that is authenticated and has a composer textarea. \`attach-chat\` prints shell exports for the best existing authenticated Chat target. If Browser Use cannot attach cleanly or MCP resources are unavailable, use the target \`webSocketDebuggerUrl\` from \`targets\`, \`attach-chat\`, or \`/json/list\` and direct CDP \`Runtime.evaluate\`, \`Network\`, and DOM inspection.
 
 For authenticated sites, the default Pibo wrapper path is the persistent path. Use \`profile list\` only to inspect available Chrome profiles:
 

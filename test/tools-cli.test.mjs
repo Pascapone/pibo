@@ -1,13 +1,35 @@
 import { execFile } from "node:child_process";
 import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { promisify } from "node:util";
+import { formatBrowserUseTargets, selectBestChatTarget } from "../dist/tools/browser-use-cdp.js";
 
 const execFileAsync = promisify(execFile);
 const cliPath = resolve("dist/bin/pibo.js");
+
+async function withTargetListServer(targets, run) {
+	const server = createServer((request, response) => {
+		if (request.url === "/json/list") {
+			response.writeHead(200, { "content-type": "application/json" });
+			response.end(JSON.stringify(targets));
+			return;
+		}
+		response.writeHead(404);
+		response.end("not found");
+	});
+	await new Promise((resolveListen) => server.listen(0, "127.0.0.1", resolveListen));
+	const address = server.address();
+	assert.ok(address && typeof address === "object");
+	try {
+		return await run(`http://127.0.0.1:${address.port}`);
+	} finally {
+		await new Promise((resolveClose) => server.close(resolveClose));
+	}
+}
 
 test("pibo tools lists curated CLI tools", async () => {
 	const cwd = await mkdtemp(join(tmpdir(), "pibo-tools-list-"));
@@ -39,6 +61,8 @@ test("pibo tools exposes browser-use guides outside the profile skill system", a
 		assert.match(guide.stdout, /npm run --silent dev -- tools env browser-use/);
 		assert.match(guide.stdout, /once per persistent shell/);
 		assert.match(guide.stdout, /reuse that shell/);
+		assert.match(guide.stdout, /tools browser-use targets/);
+		assert.match(guide.stdout, /tools browser-use attach-chat/);
 		assert.match(guide.stdout, /pibo tools browser-use lease acquire/);
 		assert.match(guide.stdout, /PIBO_BROWSER_USE_SESSION/);
 		assert.match(guide.stdout, /timeout 30s/);
@@ -171,6 +195,8 @@ test("pibo tools browser-use manages isolated authenticated leases", async () =>
 		assert.match(discovery.stdout, /pibo tools browser-use - browser-use helpers/);
 		assert.match(discovery.stdout, /eval "\$\(pibo tools env browser-use\)"/);
 		assert.match(discovery.stdout, /pibo tools guide browser-use browser-use/);
+		assert.match(discovery.stdout, /targets/);
+		assert.match(discovery.stdout, /attach-chat/);
 		assert.match(discovery.stdout, /lease acquire/);
 
 		const templateEnv = await execFileAsync("node", [cliPath, "tools", "browser-use", "auth-template", "env"], { cwd, env });
@@ -219,6 +245,64 @@ test("pibo tools browser-use manages isolated authenticated leases", async () =>
 	} finally {
 		await rm(cwd, { recursive: true, force: true });
 	}
+});
+
+test("pibo tools browser-use lists Chrome targets without launching a browser", async () => {
+	const cwd = await mkdtemp(join(tmpdir(), "pibo-tools-browser-use-targets-"));
+	try {
+		const env = { ...process.env, PIBO_HOME: join(cwd, "pibo-home") };
+		await withTargetListServer(
+			[
+				{
+					id: "target-1",
+					type: "page",
+					title: "Pibo Web Chat",
+					url: "http://4788.127.0.0.1.sslip.io/apps/chat",
+					webSocketDebuggerUrl: "ws://127.0.0.1/devtools/page/target-1",
+				},
+			],
+			async (cdpUrl) => {
+				const result = await execFileAsync(
+					"node",
+					[cliPath, "tools", "browser-use", "targets", "--cdp-url", cdpUrl, "--no-probe"],
+					{ cwd, env },
+				);
+
+				assert.match(result.stdout, /id\turl\tauth\tcomposer\ttitle/);
+				assert.match(result.stdout, /target-1\thttp:\/\/4788\.127\.0\.0\.1\.sslip\.io\/apps\/chat\tunknown\tno\tPibo Web Chat/);
+			},
+		);
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test("browser-use target helpers prefer authenticated Chat targets with composers", () => {
+	const targets = [
+		{
+			id: "unauth",
+			type: "page",
+			title: "Pibo Web Chat",
+			url: "http://4788.127.0.0.1.sslip.io/apps/chat",
+			webSocketDebuggerUrl: "ws://127.0.0.1/devtools/page/unauth",
+			auth: "unauthenticated",
+			composer: false,
+			textareaCount: 0,
+		},
+		{
+			id: "usable",
+			type: "page",
+			title: "Pibo Web Chat",
+			url: "http://4790.127.0.0.1.sslip.io/apps/chat/rooms/room_1/sessions/ps_1",
+			webSocketDebuggerUrl: "ws://127.0.0.1/devtools/page/usable",
+			auth: "authenticated",
+			composer: true,
+			textareaCount: 1,
+		},
+	];
+
+	assert.equal(selectBestChatTarget(targets)?.id, "usable");
+	assert.match(formatBrowserUseTargets(targets), /usable\t.*\tauthenticated\tyes\tPibo Web Chat/);
 });
 
 test("pibo tools pins browser-use to the guide-compatible version", async () => {

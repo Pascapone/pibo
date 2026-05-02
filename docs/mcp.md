@@ -126,6 +126,8 @@ The final `info` command starts the MCP server and lists its available tools, su
 If Codex cannot see MCP resources, treat direct CDP as the recovery path rather than starting a fresh unauthenticated browser:
 
 ```bash
+npm run dev -- tools browser-use targets
+npm run dev -- tools browser-use attach-chat
 curl -s http://127.0.0.1:<cdp-port>/json/version
 curl -s http://127.0.0.1:<cdp-port>/json/list
 ```

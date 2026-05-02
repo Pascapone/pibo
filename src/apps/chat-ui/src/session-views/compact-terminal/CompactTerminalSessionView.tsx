@@ -136,7 +136,20 @@ export function CompactTerminalSessionView({
 									? "group border-b border-[#141414] bg-[#11a4d4]/10 py-2 last:border-b-0 hover:bg-[#11a4d4]/15"
 									: "group border-b border-[#141414] py-2 last:border-b-0 hover:bg-[#161616]";
 							return (
-								<div key={row.id} className={rowClassName}>
+								<div
+									key={row.id}
+									className={rowClassName}
+									data-pibo-terminal-row="true"
+									data-row-id={row.id}
+									data-row-kind={row.kind}
+									data-row-status={row.status}
+									data-trace-node-id={row.sourceNodeIds.join(" ")}
+									data-event-id={row.eventId}
+									data-run-id={row.runId}
+									data-order-source={row.orderSource}
+									data-order-stream-id={row.orderStreamId}
+									data-order-frame-index={row.orderStreamFrameIndex}
+								>
 									<div className="flex gap-3">
 										<div className="min-w-0 flex-1">
 											{row.kind === "message.assistant" ? (

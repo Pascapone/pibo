@@ -8,6 +8,12 @@ import {
   reapStaleBrowserUseLeases,
   releaseBrowserUseLease,
 } from './browser-use-leases.js';
+import {
+  formatBrowserUseTargets,
+  listBrowserUseCdpTargets,
+  printAttachChatExports,
+  selectBestChatTarget,
+} from './browser-use-cdp.js';
 import { ensureBrowserUseWrapper } from './browser-use-wrapper.js';
 import { detectDesktopEnv } from './desktop-env.js';
 import {
@@ -166,6 +172,8 @@ Start:
   eval "$(pibo tools env browser-use)"
 
 Commands:
+  targets                    List Chrome CDP targets with Chat auth hints
+  attach-chat                Export the best existing authenticated Chat target
   auth-template path          Print the default authenticated template profile path
   auth-template env           Print shell exports for preparing the auth template profile
   lease acquire               Acquire an isolated authenticated browser slot
@@ -176,6 +184,7 @@ Commands:
 Next:
   pibo tools show browser-use
   pibo tools guide browser-use browser-use
+  pibo tools browser-use targets
   pibo tools browser-use auth-template env
   pibo tools browser-use lease acquire`);
 }
@@ -282,6 +291,51 @@ export async function runToolsCli(argv = process.argv): Promise<void> {
     .command('browser-use')
     .description('Browser-use auth slots and helper commands')
     .action(printBrowserUseDiscovery);
+
+  browserUse
+    .command('targets')
+    .description('List Chrome CDP targets with Chat auth hints')
+    .option('--cdp-url <url>', 'Chrome DevTools HTTP URL', 'http://127.0.0.1:56663')
+    .option('--no-probe', 'Only read /json/list without page DOM probes')
+    .option('--json', 'Print machine-readable target data')
+    .action(async (options: { cdpUrl?: string; probe?: boolean; json?: boolean }) => {
+      const targets = await listBrowserUseCdpTargets({ cdpUrl: options.cdpUrl, probe: options.probe });
+      if (options.json) {
+        console.log(JSON.stringify({ targets }, null, 2));
+        return;
+      }
+      console.log(formatBrowserUseTargets(targets));
+      if (targets.length === 0) {
+        console.log('');
+        console.log('Next: eval "$(pibo tools env browser-use)"');
+      }
+    });
+
+  browserUse
+    .command('attach-chat')
+    .description('Export the best existing authenticated Chat target')
+    .option('--cdp-url <url>', 'Chrome DevTools HTTP URL', 'http://127.0.0.1:56663')
+    .option('--json', 'Print machine-readable target data')
+    .action(async (options: { cdpUrl?: string; json?: boolean }) => {
+      const targets = await listBrowserUseCdpTargets({ cdpUrl: options.cdpUrl });
+      const target = selectBestChatTarget(targets);
+      if (!target) {
+        throw new Error(
+          formatCliError({
+            code: ErrorCode.CLIENT_ERROR,
+            type: 'BROWSER_USE_CHAT_TARGET_NOT_FOUND',
+            message: 'No authenticated Chat Web target with a composer textarea was found',
+            suggestion:
+              'Run `pibo tools browser-use targets`, reuse an authenticated tab if present, or acquire a slot with `pibo tools browser-use lease acquire`.',
+          }),
+        );
+      }
+      if (options.json) {
+        console.log(JSON.stringify({ target }, null, 2));
+        return;
+      }
+      printAttachChatExports(target, options.cdpUrl);
+    });
 
   const authTemplate = browserUse
     .command('auth-template')

@@ -47,6 +47,11 @@ export type CompactTerminalRow = {
 	status: CompactTerminalRowStatus;
 	lines: CompactTerminalLine[];
 	sourceNodeIds: string[];
+	eventId?: string;
+	runId?: string;
+	orderSource?: string;
+	orderStreamId?: number;
+	orderStreamFrameIndex?: number;
 	linkedPiboSessionId?: string;
 	forkEntryId?: string;
 	input?: unknown;
@@ -97,29 +102,40 @@ function flattenTraceNodes(nodes: readonly PiboTraceNode[], turnId?: string): Fl
 }
 
 function createRowCandidate(node: PiboTraceNode, turnId?: string): RowCandidate {
+	let candidate: RowCandidate;
 	switch (node.type) {
 		case "user.message":
-			return { row: createUserMessageRow(node), turnId };
+			candidate = { row: createUserMessageRow(node), turnId };
+			break;
 		case "assistant.message":
-			return { row: createAssistantMessageRow(node), turnId };
+			candidate = { row: createAssistantMessageRow(node), turnId };
+			break;
 		case "model.reasoning":
-			return { row: createReasoningRow(node), turnId };
+			candidate = { row: createReasoningRow(node), turnId };
+			break;
 		case "tool.call":
-			return createToolRowCandidate(node, turnId);
+			candidate = createToolRowCandidate(node, turnId);
+			break;
 		case "tool.result":
-			return { row: createToolResultRow(node), turnId };
+			candidate = { row: createToolResultRow(node), turnId };
+			break;
 		case "agent.delegation":
-			return { row: createDelegationRow(node), turnId };
+			candidate = { row: createDelegationRow(node), turnId };
+			break;
 		case "agent.async":
-			return { row: createAsyncAgentRow(node), turnId };
+			candidate = { row: createAsyncAgentRow(node), turnId };
+			break;
 		case "yielded.run":
-			return { row: createYieldedRunRow(node), turnId };
+			candidate = { row: createYieldedRunRow(node), turnId };
+			break;
 		case "execution.command":
-			return { row: createExecutionCommandRow(node), turnId };
+			candidate = { row: createExecutionCommandRow(node), turnId };
+			break;
 		case "error":
-			return { row: createErrorRow(node), turnId };
+			candidate = { row: createErrorRow(node), turnId };
+			break;
 		case "agent.turn":
-			return {
+			candidate = {
 				row: {
 					id: node.id,
 					kind: "error",
@@ -129,7 +145,22 @@ function createRowCandidate(node: PiboTraceNode, turnId?: string): RowCandidate 
 				},
 				turnId,
 			};
+			break;
 	}
+	return { ...candidate, row: { ...candidate.row, ...debugFields(node) } };
+}
+
+function debugFields(node: PiboTraceNode): Pick<
+	CompactTerminalRow,
+	"eventId" | "runId" | "orderSource" | "orderStreamId" | "orderStreamFrameIndex"
+> {
+	return {
+		eventId: node.eventId,
+		runId: node.runId,
+		orderSource: node.source,
+		orderStreamId: node.orderKey?.streamId,
+		orderStreamFrameIndex: node.orderKey?.streamFrameIndex,
+	};
 }
 
 function createUserMessageRow(node: PiboTraceNode): CompactTerminalRow {

@@ -77,7 +77,7 @@ Always read `GLOSSARY.md`. It contains a shared vocabulary for our project.
 When reading Pibo Sessions, use the debug CLI first: `npm run dev -- debug session --help`.
 
 ## Browser/App Debugging
-For Chat Web browser debugging, start from the browser that already exists. First list CDP targets with `curl -s http://127.0.0.1:56663/json/list`, then inspect Chat Web targets until you find one that is authenticated and has a composer textarea. Do not assume the first tab is the usable tab.
+For Chat Web browser debugging, start from the browser that already exists. First list CDP targets with `npm run dev -- tools browser-use targets`, then inspect Chat Web targets until you find one that is authenticated and has a composer textarea. Do not assume the first tab is the usable tab. If the helper is unavailable, fall back to `curl -s http://127.0.0.1:56663/json/list`.
 
 If no usable browser exists, create one through the Browser Use auth flow instead of starting ad hoc fake-auth infrastructure. First try to acquire an isolated authenticated slot with `eval "$(npm run --silent dev -- tools browser-use lease acquire --app pibo-chat --owner "$USER")"`, then open the current Chat Web URL in that shell. If lease acquisition says no authenticated template exists, prepare it with `eval "$(npm run --silent dev -- tools browser-use auth-template env)"`, open the Chat Web App there, sign in once, close it, then acquire the lease again.
 
