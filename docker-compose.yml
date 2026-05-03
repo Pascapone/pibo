@@ -1,0 +1,26 @@
+version: "3.8"
+
+services:
+  pibo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: pibo:latest
+    container_name: pibo-01
+    ports:
+      - "4789"
+      - "56663"
+    environment:
+      - DISPLAY=:99
+      - PIBO_BROWSER_USE_CHROME=/usr/bin/chromium
+      - BROWSER_USE_HOME=/root/.pibo/tools/browser-use/home
+    volumes:
+      - pibo-data:/root/.pibo
+      - browser-use-data:/root/.browser-use
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+
+volumes:
+  pibo-data:
+  browser-use-data:

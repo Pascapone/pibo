@@ -10,3 +10,12 @@ npm-debug.log*
 pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Temporary / generated files
+get-docker.sh
+*.tgz
+*.tar.gz
+*.png
+*.jpg
+*.jpeg
+*.gif
