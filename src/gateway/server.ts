@@ -258,11 +258,12 @@ export class PiboGatewayServer {
 export async function runGatewayServer(options: GatewayServerOptions = {}): Promise<void> {
 	const server = new PiboGatewayServer(options);
 	await server.start();
-	if (process.env.PIBO_FALLBACK_MODE !== "1") {
-		throw new Error("INTENTIONAL_CRASH_FOR_FALLBACK_TEST");
-	}
 	try {
-		writeFallbackGatewayPid();
+		if (process.env.PIBO_FALLBACK_MODE === "1") {
+			writeFallbackGatewayPid();
+		} else {
+			writeGatewayPid();
+		}
 	} catch (err) {
 		console.error(err instanceof Error ? err.message : String(err));
 		await server.stop();
