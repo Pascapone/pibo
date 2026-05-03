@@ -105,6 +105,17 @@ export function createWebHostChannel(options: WebHostChannelOptions = {}): WebHo
 				return;
 			}
 
+			if (url.pathname === "/health") {
+				await sendWebResponse(
+					nodeResponse,
+					responseJson({
+						status: "ok",
+						mode: process.env.PIBO_FALLBACK_MODE === "1" ? "fallback" : "main",
+					}),
+				);
+				return;
+			}
+
 			if (url.pathname.startsWith("/api/auth/")) {
 				await sendWebResponse(nodeResponse, await handleAuthRequest(request));
 				return;

@@ -8,7 +8,7 @@ import { createPiboWebHostPlugin } from "../plugins/web.js";
 import { DEFAULT_WEB_CHANNEL_HOST, DEFAULT_WEB_CHANNEL_PORT, type WebHostChannelOptions } from "../web/channel.js";
 import { loadPiboConfig } from "../config/config.js";
 import { PiboGatewayServer, type GatewayServerOptions } from "./server.js";
-import { clearPidFile, writeGatewayPid } from "./pidfile.js";
+import { clearFallbackPidFile, clearPidFile, writeFallbackGatewayPid, writeGatewayPid } from "./pidfile.js";
 
 export type WebGatewayServerOptions = GatewayServerOptions & {
 	auth?: BetterAuthServiceOptions;
@@ -79,7 +79,11 @@ export async function runWebGatewayServer(options: WebGatewayServerOptions = {})
 	});
 	await server.start();
 	try {
-		writeGatewayPid();
+		if (process.env.PIBO_FALLBACK_MODE === "1") {
+			writeFallbackGatewayPid();
+		} else {
+			writeGatewayPid();
+		}
 	} catch (err) {
 		console.error(err instanceof Error ? err.message : String(err));
 		await server.stop();
@@ -92,7 +96,11 @@ export async function runWebGatewayServer(options: WebGatewayServerOptions = {})
 
 	const stop = async () => {
 		await server.stop();
-		clearPidFile();
+		if (process.env.PIBO_FALLBACK_MODE === "1") {
+			clearFallbackPidFile();
+		} else {
+			clearPidFile();
+		}
 	};
 	process.once("SIGINT", () => {
 		void stop().finally(() => process.exit(0));

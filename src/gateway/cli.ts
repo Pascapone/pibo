@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { createConnection } from "node:net";
 import { DEFAULT_GATEWAY_HOST, DEFAULT_GATEWAY_PORT } from "./protocol.js";
-import { clearPidFile, readPidFile } from "./pidfile.js";
+import { clearPidFile, readFallbackPidFile, readPidFile } from "./pidfile.js";
 
 function isPortReachable(host: string, port: number, timeout = 2000): Promise<boolean> {
 	return new Promise((resolve) => {
@@ -178,14 +178,88 @@ export async function runGatewayCli(argv = process.argv): Promise<void> {
 		return;
 	}
 
-	if (subcommand === "start" || !subcommand || subcommand.startsWith("-")) {
-		const { runGatewayServer } = await import("./server.js");
-		await runGatewayServer();
+	if (subcommand === "backup") {
+		const backupCommand = args[2];
+		const { installBackup, updateBackup, getBackupStatus, removeBackup } = await import(
+			"./backup.js"
+		);
+		if (backupCommand === "install") {
+			const sourcePath = args[3];
+			installBackup(sourcePath);
+			return;
+		}
+		if (backupCommand === "update") {
+			updateBackup();
+			return;
+		}
+		if (backupCommand === "status") {
+			const status = getBackupStatus();
+			if (status) {
+				console.log("Backup installed at ~/.pibo/stable");
+				console.log(`  Source: ${status.sourcePath}`);
+				console.log(`  Commit: ${status.commit ?? "unknown"}`);
+				console.log(`  Installed: ${status.installedAt}`);
+			} else {
+				console.log("No backup installed.");
+				process.exitCode = 1;
+			}
+			return;
+		}
+		if (backupCommand === "remove") {
+			removeBackup();
+			return;
+		}
+		console.error(`Unknown backup subcommand: ${backupCommand}`);
+		printGatewayHelp();
+		process.exitCode = 1;
+		return;
+	}
+
+	if (subcommand === "fallback") {
+		const fallbackCommand = args[2];
+		const { FALLBACK_GATEWAY_PORT, FALLBACK_WEB_PORT } = await import("./fallback.js");
+		if (fallbackCommand === "start" || !fallbackCommand) {
+			const { startFallback } = await import("./fallback.js");
+			await startFallback();
+			return;
+		}
+		if (fallbackCommand === "stop") {
+			const { stopFallback } = await import("./fallback.js");
+			await stopFallback(hasForceFlag);
+			return;
+		}
+		if (fallbackCommand === "status") {
+			const pid = readFallbackPidFile();
+			if (pid) {
+				console.log(
+					`Fallback is running (PID ${pid}) on 127.0.0.1:${FALLBACK_GATEWAY_PORT} / http://127.0.0.1:${FALLBACK_WEB_PORT}`,
+				);
+			} else {
+				console.log("Fallback is not running.");
+				process.exitCode = 1;
+			}
+			return;
+		}
+		if (fallbackCommand === "restart") {
+			const { stopFallback, startFallback } = await import("./fallback.js");
+			await stopFallback(hasForceFlag);
+			await startFallback();
+			return;
+		}
+		console.error(`Unknown fallback subcommand: ${fallbackCommand}`);
+		printGatewayHelp();
+		process.exitCode = 1;
 		return;
 	}
 
 	if (subcommand === "--help" || subcommand === "-h") {
 		printGatewayHelp();
+		return;
+	}
+
+	if (subcommand === "start" || !subcommand || subcommand.startsWith("-")) {
+		const { runGatewayServer } = await import("./server.js");
+		await runGatewayServer();
 		return;
 	}
 
@@ -198,10 +272,20 @@ function printGatewayHelp(): void {
 	console.log(`pibo gateway - Gateway daemon management
 
 Commands:
-  start    Start the gateway daemon (default)
-  status   Check if the gateway daemon is running
-  stop     Stop the gateway daemon
-  restart  Gracefully restart the gateway daemon
+  start     Start the gateway daemon (default)
+  status    Check if the gateway daemon is running
+  stop      Stop the gateway daemon
+  restart   Gracefully restart the gateway daemon
+  backup    Manage stable backup installation
+    install [path]  Create backup from current or given path
+    update          Update backup to current source
+    status          Show backup info
+    remove          Remove backup
+  fallback  Manage fallback gateway process
+    start           Start fallback on ports 4790/4791
+    stop            Stop fallback
+    status          Check fallback status
+    restart         Restart fallback
 
 Options:
   --force  Force kill (SIGKILL) if graceful stop fails
