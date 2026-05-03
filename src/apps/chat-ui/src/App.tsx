@@ -206,7 +206,13 @@ export function App({ route }: { route: ChatAppRoute }) {
 				return;
 			}
 			if (target.area === "settings") {
-				void navigate({ to: target.panel === "pi-packages" ? "/settings/pi-packages" : "/settings", replace });
+				if (target.panel === "pi-packages") {
+					void navigate({ to: "/settings/pi-packages", replace });
+				} else if (target.panel === "skills") {
+					void navigate({ to: "/settings/skills", replace });
+				} else {
+					void navigate({ to: "/settings", replace });
+				}
 				return;
 			}
 			if (target.roomId && target.piboSessionId) {

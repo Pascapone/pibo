@@ -34,7 +34,11 @@ function chatRouteFromLocation(pathname: string, search: Record<string, unknown>
 	const sessionViewId = parseChatSessionViewId(search.view);
 	if (parts[0] === "context") return { area: "context" };
 	if (parts[0] === "agents") return { area: "agents" };
-	if (parts[0] === "settings") return { area: "settings", panel: parts[1] === "pi-packages" ? "pi-packages" : "general" };
+	if (parts[0] === "settings") {
+		if (parts[1] === "pi-packages") return { area: "settings", panel: "pi-packages" };
+		if (parts[1] === "skills") return { area: "settings", panel: "skills" };
+		return { area: "settings", panel: "general" };
+	}
 	if (parts[0] === "rooms" && parts[1] && parts[2] === "sessions" && parts[3]) {
 		return { area: "sessions", roomId: parts[1], piboSessionId: parts[3], sessionViewId };
 	}
@@ -78,8 +82,12 @@ const settingsPiPackagesRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "settings/pi-packages",
 });
+const settingsSkillsRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "settings/skills",
+});
 const router = createRouter({
-	routeTree: rootRoute.addChildren([indexRoute, sessionRoute, roomRoute, roomSessionRoute, agentsRoute, contextRoute, settingsRoute, settingsPiPackagesRoute]),
+	routeTree: rootRoute.addChildren([indexRoute, sessionRoute, roomRoute, roomSessionRoute, agentsRoute, contextRoute, settingsRoute, settingsPiPackagesRoute, settingsSkillsRoute]),
 	basepath: "/apps/chat",
 });
 
