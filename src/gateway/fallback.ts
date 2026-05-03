@@ -3,6 +3,7 @@ import { createConnection } from "node:net";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import type { WebGatewayServerOptions } from "./web.js";
 import {
 	clearFallbackPidFile,
 	readFallbackPidFile,
@@ -10,7 +11,9 @@ import {
 
 export const FALLBACK_GATEWAY_PORT = 4790;
 export const FALLBACK_WEB_PORT = 4791;
+export const FALLBACK_HOST = "0.0.0.0";
 const BACKUP_DIR = join(homedir(), ".pibo", "stable");
+const FALLBACK_BIN_PATH = join(BACKUP_DIR, "dist", "bin", "pibo.js");
 
 function isPortReachable(host: string, port: number, timeout = 2000): Promise<boolean> {
 	return new Promise((resolve) => {
@@ -73,10 +76,23 @@ export function getFallbackStatus(): { running: boolean; pid?: number } {
 	return { running: pid !== undefined, pid: pid ?? undefined };
 }
 
+export function resolveFallbackWebGatewayServerOptions(): WebGatewayServerOptions {
+	return {
+		host: FALLBACK_HOST,
+		port: FALLBACK_GATEWAY_PORT,
+		web: { host: FALLBACK_HOST, port: FALLBACK_WEB_PORT },
+	};
+}
+
 export async function startFallback(): Promise<void> {
 	if (!existsSync(BACKUP_DIR)) {
 		throw new Error(
 			`No backup found at ${BACKUP_DIR}. Run "pibo gateway backup install" first.`,
+		);
+	}
+	if (!existsSync(FALLBACK_BIN_PATH)) {
+		throw new Error(
+			`Fallback build not found at ${FALLBACK_BIN_PATH}. Run "pibo gateway backup update" first.`,
 		);
 	}
 
@@ -95,14 +111,7 @@ export async function startFallback(): Promise<void> {
 
 	const child = spawn(
 		process.execPath,
-		[
-			"-e",
-			`import('${BACKUP_DIR}/dist/gateway/web.js').then(m => m.runWebGatewayServer({
-				host: '0.0.0.0',
-				port: ${FALLBACK_GATEWAY_PORT},
-				web: { host: '0.0.0.0', port: ${FALLBACK_WEB_PORT} }
-			}))`,
-		],
+		[FALLBACK_BIN_PATH, "gateway", "fallback", "run"],
 		{
 			detached: true,
 			stdio: "ignore",
@@ -121,6 +130,14 @@ export async function startFallback(): Promise<void> {
 	console.log("Fallback gateway started");
 	console.log(`  Gateway: 0.0.0.0:${FALLBACK_GATEWAY_PORT}`);
 	console.log(`  Web App: http://0.0.0.0:${FALLBACK_WEB_PORT}/apps/chat`);
+}
+
+export async function runFallbackGatewayServer(): Promise<void> {
+	if (process.env.PIBO_FALLBACK_MODE !== "1") {
+		throw new Error("gateway fallback run requires PIBO_FALLBACK_MODE=1");
+	}
+	const { runWebGatewayServer } = await import("./web.js");
+	await runWebGatewayServer(resolveFallbackWebGatewayServerOptions());
 }
 
 export async function stopFallback(force = false): Promise<void> {
