@@ -2,13 +2,14 @@ import { Command } from "commander";
 import { UserSkillManager } from "../user-skills/manager.js";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import os from "node:os";
 
 function printJson(value: unknown): void {
 	console.log(JSON.stringify(value, null, 2));
 }
 
 export async function runSkillsCli(argv: string[]): Promise<void> {
-	const manager = new UserSkillManager(process.cwd());
+	const manager = new UserSkillManager(os.homedir());
 
 	const program = new Command();
 	program.name("pibo skills").description("Manage Pibo user skills");
