@@ -246,6 +246,11 @@ export async function runGatewayCli(argv = process.argv): Promise<void> {
 			await startFallback();
 			return;
 		}
+		if (fallbackCommand === "run") {
+			const { runFallbackGatewayServer } = await import("./fallback.js");
+			await runFallbackGatewayServer();
+			return;
+		}
 		console.error(`Unknown fallback subcommand: ${fallbackCommand}`);
 		printGatewayHelp();
 		process.exitCode = 1;
