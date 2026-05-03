@@ -55,6 +55,7 @@ The current Chat Web build includes two session views over the same routed trace
 - `npm test` builds and runs the test suite.
 - `npm run typecheck` checks TypeScript without emitting files.
 - `npm run clean` removes `dist/`.
+- `scripts/deploy-web.sh` is the production web deploy helper for the server: build main, refresh the stable fallback copy, restart `pibo-web`, wait for `/health`, and stop `pibo-web-fallback` again if main is healthy.
 
 ## Philosophy
 
