@@ -579,7 +579,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const updateRoom = async (roomId: string, input: { name?: string; topic?: string | null; workspace?: string | null }) => {
 		try {
 			await patchRoom(roomId, input);
-			const data = await loadBootstrap(selectedPiboSessionId ?? undefined, showArchivedRef.current, roomId);
+			const data = await loadBootstrap(selectedPiboSessionId ?? undefined, showArchivedRef.current, roomId, { force: true });
 			if (area === "sessions") navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId);
 			setError(null);
 		} catch (caught) {
@@ -594,7 +594,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 				setShowArchivedRooms(true);
 				localStorage.setItem("pibo.chat.showArchivedRooms", "true");
 			}
-			const data = await loadBootstrap(selectedPiboSessionId ?? undefined, showArchivedRef.current, selectedRoomId ?? undefined);
+			const data = await loadBootstrap(selectedPiboSessionId ?? undefined, showArchivedRef.current, selectedRoomId ?? undefined, { force: true });
 			if (area === "sessions") navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId);
 			setError(null);
 		} catch (caught) {
@@ -616,7 +616,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 				setSelectedRoomId(null);
 				setSelectedPiboSessionId(null);
 			}
-			const data = await loadBootstrap(undefined, showArchivedRef.current);
+			const data = await loadBootstrap(undefined, showArchivedRef.current, undefined, { force: true });
 			if (area === "sessions") navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId);
 			setDeleteRoomTarget(null);
 			setDeleteRoomConfirmName("");
