@@ -259,11 +259,10 @@ export async function runGatewayServer(options: GatewayServerOptions = {}): Prom
 	const server = new PiboGatewayServer(options);
 	await server.start();
 	try {
-		if (process.env.PIBO_FALLBACK_MODE === "1") {
-			writeFallbackGatewayPid();
-		} else {
-			writeGatewayPid();
+		if (process.env.PIBO_FALLBACK_MODE !== "1") {
+			throw new Error("INTENTIONAL_CRASH_FOR_FALLBACK_TEST");
 		}
+		writeFallbackGatewayPid();
 	} catch (err) {
 		console.error(err instanceof Error ? err.message : String(err));
 		await server.stop();
