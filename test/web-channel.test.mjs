@@ -98,7 +98,7 @@ async function startWebHostChannel(options = {}) {
 		getCapabilityCatalog() {
 			return options.capabilityCatalog ?? {
 				nativeTools: [],
-				skills: [{ name: "pi-agent-harness", path: ".codex/skills/pi-agent-harness/SKILL.md" }],
+				skills: [{ name: "pi-agent-harness", path: "skills/builtin/pi-agent-harness/SKILL.md", kind: "builtin" }],
 				subagents: [],
 				contextFiles: [],
 				packages: [{ name: "pibo-run-control", description: "Run control", toolNames: ["pibo_run_start"] }],
@@ -302,6 +302,29 @@ test("chat web trace returns fresh payload when a known trace version changes", 
 		assert.notEqual(changed.headers.get("x-pibo-trace-version"), firstVersion);
 		const changedTrace = await changed.json();
 		assert.match(JSON.stringify(changedTrace.nodes), /second/);
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("chat bootstrap includes model catalog data", async () => {
+	const { channel, baseURL } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+	});
+
+	try {
+		const response = await fetch(`${baseURL}/api/chat/bootstrap`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(response.status, 200);
+		const payload = await response.json();
+		assert.ok(payload.modelCatalog);
+		assert.ok(Array.isArray(payload.modelCatalog.providers));
+		const provider = payload.modelCatalog.providers[0];
+		assert.equal(typeof provider?.id, "string");
+		assert.equal(typeof provider?.label, "string");
+		assert.equal(typeof provider?.authConfigured, "boolean");
+		assert.ok(Array.isArray(provider?.models));
 	} finally {
 		await channel.stop?.();
 	}

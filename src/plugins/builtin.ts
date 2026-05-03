@@ -77,7 +77,8 @@ export const piboCorePlugin = definePiboPlugin({
 	register(api) {
 		api.registerSkill({
 			name: "pi-agent-harness",
-			path: ".codex/skills/pi-agent-harness/SKILL.md",
+			path: "skills/builtin/pi-agent-harness/SKILL.md",
+			kind: "builtin",
 		});
 		api.registerTool(createWebSearchToolProfile());
 		api.registerSubagents([

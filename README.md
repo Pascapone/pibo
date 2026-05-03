@@ -119,7 +119,7 @@ The Context area also exposes the Pibo Compaction Prompt. The library prompt liv
 
 ## Profiles
 
-The default profile is registered by the core plugin. It loads the local `pi-agent-harness` skill and uses Pi Coding Agent's built-in tools for normal coding work.
+The default profile is registered by the core plugin. It loads the built-in `pi-agent-harness` skill from `skills/builtin/pi-agent-harness/SKILL.md` and uses Pi Coding Agent's built-in tools for normal coding work.
 
 The `codex` alias resolves to the `codex-compat-openai-web` profile. It keeps the Pibo runtime boundary while exposing Codex-like coding affordances: Pi/Pibo `read`, `edit`, and `write`; Pibo run-control `bash`; native `web_search`; `apply_patch` and `view_image`; generated `pibo_subagent_default`, `pibo_subagent_explorer`, and `pibo_subagent_worker`; and the `pibo_run_*` lifecycle tools. `web_search` is a normal Pibo native tool with a provider adapter; the default adapter injects OpenAI Responses hosted `web_search` into the model request instead of using a local DuckDuckGo function tool. It intentionally does not expose Pi's separate `grep`, `find`, or `ls` tools by default; codebase search remains Codex-style through `bash` and commands such as `rg`.
 

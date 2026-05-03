@@ -27,10 +27,14 @@ export type SubagentProfile = {
 	maxDepth?: number;
 };
 
+export type SkillSourceKind = "builtin" | "plugin" | "user";
+
 export type SkillProfile = {
 	name: string;
 	path: string;
 	enabled?: boolean;
+	kind?: SkillSourceKind;
+	pluginId?: string;
 };
 
 export type PiPackageProfile = {

@@ -238,6 +238,9 @@ export class PiboPluginRegistry {
 			skills: [...this.skills.values()].map((skill) => ({
 				name: skill.name,
 				path: skill.path,
+				kind: skill.kind ?? "plugin",
+				pluginId: skill.pluginId,
+				pluginName: skill.pluginId ? this.pluginNames.get(skill.pluginId) : undefined,
 			})),
 			subagents: [...this.subagents.values()].map((subagent) => ({
 				name: subagent.name,
@@ -343,6 +346,15 @@ export class PiboPluginRegistry {
 
 	private createApi(pluginId: string): PiboPluginApi {
 		const withPluginToolContext = (tool: ToolProfile): ToolProfile => ({ ...tool, pluginId: tool.pluginId ?? pluginId });
+		const withPluginSkillContext = (skill: SkillProfile): SkillProfile => (
+			skill.kind === "user"
+				? skill
+				: {
+					...skill,
+					kind: skill.kind ?? "plugin",
+					pluginId: skill.pluginId ?? pluginId,
+				}
+		);
 		const withPluginContext = (contextFile: ContextFileProfile): ContextFileProfile => (
 			contextFile.source === "managed" ? contextFile : { ...contextFile, pluginId: contextFile.pluginId ?? pluginId }
 		);
@@ -351,7 +363,7 @@ export class PiboPluginRegistry {
 			registerTools: (tools) => this.registerTools(tools.map(withPluginToolContext)),
 			registerSubagent: (subagent) => this.registerSubagent(subagent),
 			registerSubagents: (subagents) => this.registerSubagents(subagents),
-			registerSkill: (skill) => this.registerSkill(skill),
+			registerSkill: (skill) => this.registerSkill(withPluginSkillContext(skill)),
 			registerContextFile: (contextFile) => this.registerContextFile(withPluginContext(contextFile)),
 			upsertContextFile: (contextFile) => this.upsertContextFile(withPluginContext(contextFile)),
 			removeContextFile: (key) => this.removeContextFile(key),

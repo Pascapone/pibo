@@ -6,8 +6,8 @@
   "files": [
     "dist",
     "context",
-    ".codex/skills/pi-agent-harness/SKILL.md",
-    ".codex/skills/pi-agent-harness/agents/openai.yaml",
+    "skills/builtin/pi-agent-harness/SKILL.md",
+    "skills/builtin/pi-agent-harness/agents/openai.yaml",
     "README.md",
     "src/mcp/LICENSE.mcp-cli"
   ],
