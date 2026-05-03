@@ -85,7 +85,7 @@ export async function runComputeCli(argv: string[]): Promise<void> {
 				owner: options.owner,
 			});
 			console.error(`[pibo compute] Dev container '${worker.id}' started.`);
-			console.error(`[pibo compute] Ports: gateway=${worker.gatewayPort}, cdp=${worker.cdpPort}, chat-ui=${worker.webUIPortChat}, context-files=${worker.webUIPortContext}`);
+			console.error(`[pibo compute] Ports: gateway=${worker.gatewayPort}, cdp=${worker.cdpPort}, web=${worker.webPort}, chat-ui=${worker.webUIPortChat}, context-files=${worker.webUIPortContext}`);
 			console.error(`[pibo compute] Worktree: ${worker.worktree}`);
 			console.error(`[pibo compute] Connect: ${worker.connect}`);
 

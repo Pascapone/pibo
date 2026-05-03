@@ -134,6 +134,7 @@ export interface SpawnedDevWorker {
 	gatewayHost: string;
 	gatewayPort: number;
 	cdpPort: number;
+	webPort: number;
 	webUIPortChat: number;
 	webUIPortContext: number;
 	connect: string;
@@ -188,8 +189,9 @@ export async function spawnDevWorker(options: {
 	const base = DEV_PORT_BASE + block * DEV_PORT_BLOCK_SIZE;
 	const gatewayPort = base;
 	const cdpPort = base + 1;
-	const webUIPortChat = base + 2;
-	const webUIPortContext = base + 3;
+	const webPort = base + 2;
+	const webUIPortChat = base + 3;
+	const webUIPortContext = base + 4;
 
 	const id = `pibo-dev-${options.worktreeName}`;
 	const createdAt = new Date().toISOString();
@@ -203,6 +205,8 @@ export async function spawnDevWorker(options: {
 		`${gatewayPort}:4789`,
 		"-p",
 		`${cdpPort}:56663`,
+		"-p",
+		`${webPort}:4788`,
 		"-p",
 		`${webUIPortChat}:4790`,
 		"-p",
@@ -248,6 +252,7 @@ export async function spawnDevWorker(options: {
 		gatewayHost: host,
 		gatewayPort,
 		cdpPort,
+		webPort,
 		webUIPortChat,
 		webUIPortContext,
 		connect: `docker exec -it ${id} bash`,

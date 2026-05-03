@@ -46,7 +46,10 @@ The CLI prints progress:
 Parse the JSON output. You need these fields:
 - `id` — the container name (e.g. `pibo-dev-fix-model-select`). Use this in every `docker exec` call.
 - `worktree` — absolute path to the worktree on the host
-- `gatewayPort`, `cdpPort`, `webUIPortChat`, `webUIPortContext` — host ports
+- `gatewayPort` — host port for the TCP gateway
+- `webPort` — host port for the web gateway (HTTP, serves the chat UI)
+- `cdpPort` — host port for browser-use CDP
+- `webUIPortChat`, `webUIPortContext` — host ports for Vite dev servers
 
 ### 2. Edit on the host
 
@@ -71,25 +74,51 @@ You do not need `npm install`. The container mounts the host `node_modules`.
 
 If you add new dependencies to `package.json`, run `npm install` inside the container. The host `node_modules` updates automatically.
 
-### 4. Start the gateway (only inside the container)
+### 4. Build before running
+
+The container mounts the worktree, but `dist/` is not copied. Build first:
 
 ```bash
-docker exec -w /workspace <id> pibo gateway
+docker exec -w /workspace <id> npm run build
 ```
 
-The gateway binds to `0.0.0.0:4789` inside the container. Access it from the host through the `gatewayHost:gatewayPort` from the JSON output.
+### 5. Start the gateway (only inside the container)
 
-Never start `pibo gateway` on the host.
+**TCP gateway:**
+```bash
+docker exec -w /workspace <id> node dist/bin/pibo.js gateway
+```
 
-### 5. Debug with browser-use
+**Web gateway (serves the chat UI):**
+```bash
+docker exec -w /workspace <id> node dist/bin/pibo.js gateway:web --web-host 0.0.0.0
+```
 
-Browser-use runs inside the container. Use it to inspect web UIs through the exposed host ports.
+The web gateway binds to `0.0.0.0:4788` inside the container. Access it from the host through `gatewayHost:webPort` from the JSON output.
 
-### 6. Iterate
+**Config requirement:** `gateway:web` needs `~/.pibo/config.json`. Copy it into the worktree before starting:
+```bash
+docker exec <id> mkdir -p /workspace/.pibo
+docker cp /root/.pibo/config.json <id>:/workspace/.pibo/config.json
+```
+
+Never start `pibo gateway` or `pibo gateway:web` on the host.
+
+### 6. Debug with browser-use
+
+Browser-use runs inside the container. Use it to inspect the web UI through the exposed host port:
+
+```bash
+docker exec -w /workspace <id> bash -c 'export PATH="/root/.pibo/tools/browser-use/home/bin:/root/.pibo/tools/browser-use/.venv/bin:$PATH" && browser-use open http://<gatewayHost>:<webPort>/apps/chat'
+```
+
+**Vite dev server note:** The chat UI dev server (`npm run dev`) binds to `127.0.0.1` by default. It is only reachable from inside the container. Use the web gateway (`gateway:web`) instead for browser debugging from the host.
+
+### 7. Iterate
 
 Keep the container running. Edit on the host. Re-run commands in the container. Do not stop and restart the container between iterations.
 
-### 7. Finish
+### 8. Finish
 
 1. Commit in the worktree:
    ```bash
@@ -112,11 +141,11 @@ Keep the container running. Edit on the host. Re-run commands in the container. 
 
 Each container gets a block of 10 ports. The spawn command assigns the next free block automatically.
 
-| Block | Gateway | CDP | Chat UI | Context UI |
-|-------|---------|-----|---------|------------|
-| 480x  | 4800    | 4801| 4802    | 4803       |
-| 481x  | 4810    | 4811| 4812    | 4813       |
-| 482x  | 4820    | 4821| 4822    | 4823       |
+| Block | Gateway | CDP  | Web   | Chat UI | Context UI |
+|-------|---------|------|-------|---------|------------|
+| 480x  | 4800    | 4801 | 4802  | 4803    | 4804       |
+| 481x  | 4810    | 4811 | 4812  | 4813    | 4814       |
+| 482x  | 4820    | 4821 | 4822  | 4823    | 4824       |
 
 This prevents collisions when multiple agents work in parallel.
 
