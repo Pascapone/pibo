@@ -14,7 +14,7 @@ import {
 	type GatewayFrame,
 	type GatewayResponseFrame,
 } from "./protocol.js";
-import { clearPidFile, writeGatewayPid } from "./pidfile.js";
+import { clearFallbackPidFile, clearPidFile, writeFallbackGatewayPid, writeGatewayPid } from "./pidfile.js";
 
 export type GatewayServerOptions = {
 	host?: string;
@@ -259,7 +259,11 @@ export async function runGatewayServer(options: GatewayServerOptions = {}): Prom
 	const server = new PiboGatewayServer(options);
 	await server.start();
 	try {
-		writeGatewayPid();
+		if (process.env.PIBO_FALLBACK_MODE === "1") {
+			writeFallbackGatewayPid();
+		} else {
+			writeGatewayPid();
+		}
 	} catch (err) {
 		console.error(err instanceof Error ? err.message : String(err));
 		await server.stop();
@@ -272,7 +276,11 @@ export async function runGatewayServer(options: GatewayServerOptions = {}): Prom
 
 	const stop = async () => {
 		await server.stop();
-		clearPidFile();
+		if (process.env.PIBO_FALLBACK_MODE === "1") {
+			clearFallbackPidFile();
+		} else {
+			clearPidFile();
+		}
 	};
 	process.once("SIGINT", () => {
 		void stop().finally(() => process.exit(0));
