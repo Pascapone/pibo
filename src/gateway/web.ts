@@ -3,13 +3,12 @@ import type { BetterAuthServiceOptions } from "../auth/better-auth.js";
 import { createPiboBetterAuthPlugin } from "../plugins/better-auth.js";
 import { createPiboChatWebPlugin, type ChatWebAppOptions } from "../plugins/chat-web.js";
 import { createPiboContextFilesPlugin, type ContextFilesPluginOptions } from "../plugins/context-files.js";
-import { definePiboPlugin, PiboPluginRegistry } from "../plugins/registry.js";
+import { PiboPluginRegistry } from "../plugins/registry.js";
 import { createPiboWebHostPlugin } from "../plugins/web.js";
 import { DEFAULT_WEB_CHANNEL_HOST, DEFAULT_WEB_CHANNEL_PORT, type WebHostChannelOptions } from "../web/channel.js";
 import { loadPiboConfig } from "../config/config.js";
 import { PiboGatewayServer, type GatewayServerOptions } from "./server.js";
 import { clearFallbackPidFile, clearPidFile, writeFallbackGatewayPid, writeGatewayPid } from "./pidfile.js";
-import type { PiboAuthService } from "../auth/types.js";
 
 export type WebGatewayServerOptions = GatewayServerOptions & {
 	auth?: BetterAuthServiceOptions;
@@ -46,57 +45,17 @@ export function resolveWebGatewayServerOptions(options: WebGatewayServerOptions 
 	};
 }
 
-function createDevAuthService(): PiboAuthService {
-	return {
-		name: "dev-auth",
-		async start() {},
-		stop() {},
-		async getSession() {
-			return {
-				identity: { userId: "dev", email: "dev@localhost", name: "Dev User", provider: "dev" },
-				sessionId: "dev-session",
-				expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24),
-			};
-		},
-		async requireSession() {
-			return {
-				identity: { userId: "dev", email: "dev@localhost", name: "Dev User", provider: "dev" },
-				sessionId: "dev-session",
-				expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24),
-			};
-		},
-		handleRequest() {
-			return Promise.resolve(new Response("Auth not configured", { status: 501 }));
-		},
-	};
-}
-
 export function createWebPiboPluginRegistry(options: WebGatewayServerOptions = {}): PiboPluginRegistry {
 	const resolvedOptions = resolveWebGatewayServerOptions(options);
-	const hasAuthConfig = Boolean(
-		resolvedOptions.auth?.baseURL ??
-			loadPiboConfig().auth?.baseURL,
-	);
-	const plugins = [
-		...createDefaultPiboPlugins(),
-		createPiboWebHostPlugin({ announce: false, canonicalBaseURL: authBaseURL(resolvedOptions), ...resolvedOptions.web }),
-		createPiboContextFilesPlugin(resolvedOptions.contextFiles),
-		createPiboChatWebPlugin(resolvedOptions.chat),
-	];
-	if (hasAuthConfig) {
-		plugins.push(createPiboBetterAuthPlugin(resolvedOptions.auth));
-	} else {
-		plugins.push(
-			definePiboPlugin({
-				id: "pibo.dev-auth",
-				name: "Dev Auth",
-				register(api) {
-					api.registerAuthService(createDevAuthService());
-				},
-			}),
-		);
-	}
-	return PiboPluginRegistry.create({ plugins });
+	return PiboPluginRegistry.create({
+		plugins: [
+			...createDefaultPiboPlugins(),
+			createPiboBetterAuthPlugin(resolvedOptions.auth),
+			createPiboWebHostPlugin({ announce: false, canonicalBaseURL: authBaseURL(resolvedOptions), ...resolvedOptions.web }),
+			createPiboContextFilesPlugin(resolvedOptions.contextFiles),
+			createPiboChatWebPlugin(resolvedOptions.chat),
+		],
+	});
 }
 
 function createChatAppURL(options: WebGatewayServerOptions, host: string, port: number): string {

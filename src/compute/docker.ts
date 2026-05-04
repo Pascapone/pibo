@@ -269,6 +269,8 @@ export async function spawnWorker(options: {
 	const id = options.name || `pibo-worker-${Math.random().toString(36).slice(2, 10)}`;
 	const createdAt = new Date().toISOString();
 
+	const homePiboConfig = path.join(process.env.HOME ?? "/root", ".pibo", "config.json");
+
 	const args = [
 		"run",
 		"-d",
@@ -280,6 +282,8 @@ export async function spawnWorker(options: {
 		"56663",
 		"-p",
 		"4788",
+		"-v",
+		`${homePiboConfig}:/app/.pibo/config.json:ro`,
 		"--label",
 		`${LABEL_ROLE}=worker`,
 		"--label",

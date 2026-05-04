@@ -157,7 +157,7 @@ export function createWebHostChannel(options: WebHostChannelOptions = {}): WebHo
 		name: WEB_CHANNEL_NAME,
 		kind: "web",
 		description: "Same-origin HTTP host for pibo web apps and auth routes.",
-		auth: { mode: "none" },
+		auth: { mode: "required" },
 		async start(channelContext) {
 			if (server) return;
 			context = channelContext;
