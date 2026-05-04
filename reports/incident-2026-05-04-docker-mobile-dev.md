@@ -48,31 +48,33 @@ The agent used the local gateway (`127.0.0.1:4788`) and manual Chrome headless w
 
 ## Root Cause Analysis
 
-The Docker compute worker was fundamentally misconfigured for web app access. Five separate issues combined to make the Chat Web App unreachable:
+The Docker compute worker was fundamentally misconfigured for web app access. Four separate issues combined to make the Chat Web App unreachable:
 
 1. **Wrong server type in entrypoint.** `scripts/docker-entrypoint.sh` mapped both `gateway` and `gateway:web` to the same command: `runGatewayServer({ host: '0.0.0.0' })`. The base `runGatewayServer` is a raw TCP server using a JSON-line protocol, not HTTP. When curl connected to it, it received raw TCP bytes interpreted as `HTTP/0.9`.
 2. **Missing web port mapping.** `spawnWorker` in `src/compute/docker.ts` only exposed ports `4789` (gateway TCP) and `56663` (CDP). The HTTP web host runs on port `4788`, which was not mapped to the host at all.
 3. **Auth config crash.** `runWebGatewayServer` instantiates `createBetterAuthService`, which hard-requires `auth.baseURL`, `googleClientId`, `secret`, and `allowedEmails`. In a fresh Docker container there is no `.pibo/config.json`, so the process crashed immediately on startup.
 4. **Wrong default CMD.** The Dockerfile used `CMD ["gateway"]` instead of `CMD ["gateway:web"]`, so workers defaulted to the raw TCP gateway even if the entrypoint had been fixed.
-5. **Missing fallback auth service.** The web channel (`src/web/channel.ts`) had `auth: { mode: "required" }`, which meant it refused to start without an auth service. There was no graceful fallback for development environments.
 
 ## Fixes Applied
 
 | File | Change |
 |------|--------|
-| `scripts/docker-entrypoint.sh` | `gateway:web` now calls `runWebGatewayServer({ web: { host: '0.0.0.0' } })` instead of `runGatewayServer`. |
-| `src/compute/docker.ts` | `spawnWorker` starts the container with `"gateway:web"`, maps port `4788`, and returns a new `webPort` field. |
-| `src/gateway/web.ts` | `createWebPiboPluginRegistry` now checks for auth config. If none is present, it registers a lightweight `dev-auth` plugin that returns a dummy session (`dev@localhost`) instead of crashing. |
-| `src/web/channel.ts` | Changed `auth: { mode: "required" }` to `auth: { mode: "none" }` so the web host starts without an external auth service. |
+| `scripts/docker-entrypoint.sh` | `gateway:web` now calls `runWebGatewayServer({ web: { host: '0.0.0.0' } })` instead of `runGatewayServer`. Sets `PIBO_DEV_AUTH=1` for container workers. |
+| `src/compute/docker.ts` | `spawnWorker` starts the container with `"gateway:web"`, maps port `4788`, returns a new `webPort` field, and mounts the host `~/.pibo/config.json` into the container at `/app/.pibo/config.json`. |
+| `src/gateway/web.ts` | When `PIBO_DEV_AUTH=1`, loads the `dev-auth` plugin instead of Better Auth. Also disables `canonicalBaseURL` redirect and uses the local URL for the chat app in dev mode. |
+| `src/plugins/dev-auth.ts` | New plugin that simulates the full OAuth flow with a fixed dev user (`dev@pibo.local`). Provides cookie-based session handlers for `/api/auth/sign-in/social`, `/api/auth/callback/google`, `/api/auth/sign-out`, and `/api/auth/session`. |
+| `src/web/channel.ts` | Kept `auth: { mode: "required" }` — Better Auth works because the host config is mounted into the container. Dev auth bypasses the mode check by providing a valid auth service. |
 | `Dockerfile` | Updated `EXPOSE` to `4788 4789 56663` and `CMD` to `["gateway:web"]`. |
 
 ## Verification
 
-Worker `pibo-worker-dx8h5ax8` spawned with `webPort: 32792`:
+Worker `pibo-worker-f7btk1ep` spawned with `webPort: 32804`:
 
-- `curl -I http://localhost:32792/` → `302` (redirect to `/apps/chat`)
-- `curl http://localhost:32792/health` → `200 {"status":"ok","mode":"main"}`
-- `curl http://localhost:32792/apps/chat/` → `200` with valid HTML response
+- `curl http://localhost:32804/health` → `200 {"status":"ok","mode":"main"}`
+- `curl http://localhost:32804/apps/chat/` → `200` with valid HTML response
+- `curl -L -c cookie.txt http://localhost:32804/api/auth/sign-in/social` → follows redirects, sets session cookie, lands at `/apps/chat`
+- `curl -b cookie.txt http://localhost:32804/api/auth/session` → `{"identity":{"userId":"dev-user-001","email":"dev@pibo.local","name":"Dev User","provider":"dev"},...}`
+- `curl -b cookie.txt http://localhost:32804/api/auth/sign-out` → clears cookie, returns `302`
 
 ## Recommendations (Remaining)
 
@@ -80,6 +82,7 @@ Worker `pibo-worker-dx8h5ax8` spawned with `webPort: 32792`:
 - **Clean up stale SingletonSocket files.** Add a cron or startup script that removes stale `SingletonSocket` entries from auth-template profiles before lease acquisition.
 - **Auto-start browser on lease acquire.** If the lease system is meant to provide a ready-to-use browser, ensure Chrome is launched automatically after the profile is cloned.
 - **Improve gateway graceful shutdown.** Investigate why the gateway ignores SIGTERM; consider reducing keep-alive timeouts or adding a force-kill fallback in `pibo gateway restart`.
+- **Better Auth with real credentials in container.** The current solution uses a dev-auth fallback (`PIBO_DEV_AUTH=1`) for convenience. For full end-to-end testing with real OAuth, the container needs a dynamic `baseURL` matching the worker's ephemeral host:port, plus a reverse proxy or HTTPS termination. See `plans/docker-worker-better-auth-integration.md`.
 
 ## Related Files
 

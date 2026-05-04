@@ -2,23 +2,35 @@
 
 ## Ziel
 
-Der Docker Compute Worker soll nicht nur den Web-Gateway starten, sondern auch einen vollständigen Better-Auth-Flow unterstützen — inkl. OAuth-Login, Rollen und Session-Management. Das ermöglicht echtes End-to-End-Testing im Container.
+Der Docker Compute Worker soll optional auch einen vollständigen Better-Auth-Flow unterstützen — inkl. echtem OAuth-Login, Rollen und Session-Management. Das ermöglicht produktionsnahes End-to-End-Testing im Container.
 
 ## Aktueller Stand
 
 - Der Worker startet jetzt korrekt mit `gateway:web`.
-- Die Host-`.pibo/config.json` wird als Read-Only-Mount nach `/app/.pibo/config.json` übergeben.
-- Better-Auth initialisiert sich ohne Crash.
-- Die `baseURL` in der Config zeigt aber auf die öffentliche URL (`https://pibo.neuralnexus.me`), nicht auf den dynamischen Worker-Port. Das blockiert den OAuth-Callback.
+- Ein **Dev-Auth Plugin** (`src/plugins/dev-auth.ts`) ist implementiert und wird im Container automatisch aktiviert (`PIBO_DEV_AUTH=1`).
+- Der Dev-Auth simuliert den kompletten OAuth-Flow mit einem festen User (`dev@pibo.local`). Keine Google-Credentials nötig.
+- Die Host-`.pibo/config.json` wird als Read-Only-Mount nach `/app/.pibo/config.json` übergeben, damit Better-Auth theoretisch funktionieren würde.
+- Die `baseURL` in der Config zeigt aber auf die öffentliche URL (`https://pibo.neuralnexus.me`), nicht auf den dynamischen Worker-Port. Das blockiert den echten OAuth-Callback.
 
-## Offene Probleme
+## Offene Probleme (für echtes Better-Auth)
 
 1. **OAuth-Redirect-URL passt nicht.** Google OAuth leitet nach `https://pibo.neuralnexus.me/api/auth/callback/google` zurück. Der Worker läuft aber auf `http://217.154.222.150:<random-port>`. Der Callback landet daher beim Host-Gateway, nicht im Container.
-2. **Keine HTTPS-Terminierung.** Better-Auth erwartet oft `https` für OAuth. Der Worker läuft auf `http`.
+2. **Keine HTTPS-Terminierung.** Better-Auth erwartet `https` für OAuth. Der Worker läuft auf `http`.
 3. **Session-DB ist ephemeral.** Die SQLite-DB für Auth liegt im Container und wird beim Release gelöscht. Das macht persistente Sessions unmöglich.
 4. **Rollen / RBAC fehlt.** Die aktuelle Config hat nur `allowedEmails`. Rollen und Berechtigungen sind noch nicht implementiert.
 
-## Schritte
+## Bereits erledigt
+
+### Dev-Auth Plugin (für Agenten-Tests ohne echtes OAuth)
+
+- `src/plugins/dev-auth.ts` — Neues Plugin mit simuliertem OAuth-Flow und Cookie-Session.
+- `src/gateway/web.ts` — Lädt Dev-Auth statt Better Auth wenn `PIBO_DEV_AUTH=1`.
+- `scripts/docker-entrypoint.sh` — Setzt `PIBO_DEV_AUTH=1` automatisch für `gateway:web`.
+- `src/compute/docker.ts` — Mountet Host-Config (`~/.pibo/config.json` → `/app/.pibo/config.json`).
+
+Der Dev-Auth ist aktiv und funktioniert. Agenten können sich per `curl -L /api/auth/sign-in/social` einloggen und bekommen eine Session als `dev@pibo.local`.
+
+## Offene Schritte (für echtes Better-Auth)
 
 ### 1. Dynamische `baseURL` pro Worker
 
@@ -64,16 +76,18 @@ Da der Agent selbst keinen Browser-Benutzer hat, könnte `pibo compute spawn` au
 
 ## Umsetzungspriorität
 
-| # | Schritt | Aufwand | Impact |
-|---|---------|---------|--------|
-| 1 | Dynamische `baseURL` | Klein | Hoch — OAuth funktioniert |
-| 2 | Persistente Auth-DB | Klein | Mittel — Sessions bleiben erhalten |
-| 3 | Reverse-Proxy / HTTPS | Mittel | Mittel — Produktionsnahes Testing |
-| 4 | Rollen & RBAC | Groß | Hoch — Zukunftssicher |
-| 5 | Auto-Login | Mittel | Niedrig — Agenten-Komfort |
+| # | Schritt | Aufwand | Impact | Status |
+|---|---------|---------|--------|--------|
+| - | Dev-Auth Plugin | Klein | Hoch | ✅ Erledigt |
+| 1 | Dynamische `baseURL` | Klein | Hoch — OAuth funktioniert | Offen |
+| 2 | Persistente Auth-DB | Klein | Mittel — Sessions bleiben erhalten | Offen |
+| 3 | Reverse-Proxy / HTTPS | Mittel | Mittel — Produktionsnahes Testing | Offen |
+| 4 | Rollen & RBAC | Groß | Hoch — Zukunftssicher | Offen |
+| 5 | Auto-Login | Mittel | Niedrig — Agenten-Komfort | Offen |
 
 ## Akzeptanzkriterien
 
+- [x] Dev-Login funktioniert im Container-Worker (`/api/auth/sign-in/social` → Session-Cookie).
 - [ ] OAuth-Login über Google funktioniert im Container-Worker.
 - [ ] Sessions persistieren über `compute release` + `compute spawn` hinaus.
 - [ ] Rollen können über Config oder UI vergeben werden.
