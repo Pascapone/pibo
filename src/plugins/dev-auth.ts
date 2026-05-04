@@ -1,8 +1,13 @@
+import { randomBytes } from "node:crypto";
 import { definePiboPlugin } from "./registry.js";
 import type { PiboAuthService, PiboAuthSession } from "../auth/types.js";
 
 const COOKIE_NAME = "pibo_dev_session";
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
+
+function generateToken(): string {
+	return randomBytes(32).toString("hex");
+}
 
 function setCookie(value: string, maxAge = COOKIE_MAX_AGE): string {
 	return `${COOKIE_NAME}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`;
@@ -20,6 +25,7 @@ function getCookieValue(headers: Headers): string | undefined {
 }
 
 function createDevAuthService(): PiboAuthService {
+	const containerToken = generateToken();
 	const debugSession: PiboAuthSession = {
 		identity: {
 			userId: "dev-user-001",
@@ -40,7 +46,7 @@ function createDevAuthService(): PiboAuthService {
 		stop() {},
 		async getSession(headers) {
 			const token = getCookieValue(headers);
-			if (token === "valid") return debugSession;
+			if (token === containerToken) return debugSession;
 			return undefined;
 		},
 		async requireSession(headers) {
@@ -70,7 +76,7 @@ function createDevAuthService(): PiboAuthService {
 				return new Response(null, {
 					status: 302,
 					headers: {
-						"Set-Cookie": setCookie("valid"),
+						"Set-Cookie": setCookie(containerToken),
 						location: "/apps/chat",
 					},
 				});

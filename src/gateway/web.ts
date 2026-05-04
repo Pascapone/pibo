@@ -48,7 +48,7 @@ export function resolveWebGatewayServerOptions(options: WebGatewayServerOptions 
 
 export function createWebPiboPluginRegistry(options: WebGatewayServerOptions = {}): PiboPluginRegistry {
 	const resolvedOptions = resolveWebGatewayServerOptions(options);
-	const useDevAuth = process.env.PIBO_DEV_AUTH === "1";
+	const useDevAuth = process.env.PIBO_DEV_AUTH === "1" && process.env.PIBO_IN_DOCKER === "1";
 	return PiboPluginRegistry.create({
 		plugins: [
 			...createDefaultPiboPlugins(),
