@@ -153,6 +153,11 @@ test("routed session surfaces assistant provider errors with the active event id
 			getAllTools() {
 				return [];
 			},
+			resourceLoader: {
+				getSkills() {
+					return { skills: [] };
+				},
+			},
 			sessionManager: {
 				getPiSessionId() {
 					return "session-id";
@@ -465,4 +470,146 @@ test("session tree navigation moves the active leaf inside the current Pi sessio
 	} finally {
 		await harness.dispose();
 	}
+});
+
+test("routed session patches agent.continue to trigger preemptive compaction", async () => {
+	const events = [];
+	let compactCalled = false;
+	let continueCalled = false;
+	const originalContinue = () => { continueCalled = true; return Promise.resolve(); };
+	const agent = { continue: originalContinue };
+	const session = {
+		agent,
+		model: { contextWindow: 100000 },
+		messages: [{ role: "user", content: "x".repeat(400000) }],
+		settingsManager: {
+			getCompactionSettings: () => ({ enabled: true, reserveTokens: 16384, keepRecentTokens: 20000 }),
+		},
+		getContextUsage: () => ({ tokens: 90000, maxTokens: 100000 }),
+		async compact() {
+			compactCalled = true;
+			this.messages = [{ role: "user", content: "compacted" }];
+			this.getContextUsage = () => ({ tokens: 1000, maxTokens: 100000 });
+		},
+		subscribe() { return () => {}; },
+		isStreaming: false,
+		getActiveToolNames() { return []; },
+		getAllTools() { return []; },
+		getAvailableThinkingLevels() { return []; },
+		supportsThinking() { return false; },
+		thinkingLevel: "off",
+		sessionManager: {
+			getPiSessionId() { return "session-id"; },
+			getSessionFile() { return undefined; },
+			getLeafId() { return null; },
+			getHeader() { return undefined; },
+		},
+		sessionId: "pi:test",
+		sessionFile: undefined,
+		sessionName: undefined,
+	};
+	const runtime = {
+		cwd: process.cwd(),
+		session,
+		setRebindSession() {},
+		async dispose() {},
+	};
+	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+	const routed = new RoutedSession("route:test", runtime, (event) => events.push(event), registry, false);
+
+	// Verify agent.continue was patched
+	assert.notEqual(agent.continue, originalContinue, "agent.continue should be patched");
+
+	// Call patched continue — it should trigger compact because 90000 > 100000 - 16384
+	await agent.continue();
+	assert.equal(compactCalled, true, "compact() should be called when tokens exceed threshold");
+	assert.equal(continueCalled, true, "original continue should still be called after compact");
+
+	// Second call should not compact again because context is now small
+	compactCalled = false;
+	continueCalled = false;
+	await agent.continue();
+	assert.equal(compactCalled, false, "compact() should not be called when tokens are below threshold");
+	assert.equal(continueCalled, true, "original continue should still be called");
+
+	await routed.dispose();
+});
+
+test("routed session emits compaction events and resets indices", async () => {
+	const events = [];
+	let listener;
+	const agent = { continue: () => Promise.resolve() };
+	const session = {
+		agent,
+		model: { contextWindow: 100000 },
+		messages: [{ role: "user", content: "x".repeat(400000) }],
+		settingsManager: {
+			getCompactionSettings: () => ({ enabled: true, reserveTokens: 16384, keepRecentTokens: 20000 }),
+		},
+		getContextUsage: () => ({ tokens: 90000, maxTokens: 100000 }),
+		async compact() {
+			this.messages = [{ role: "user", content: "compacted" }];
+			this.getContextUsage = () => ({ tokens: 1000, maxTokens: 100000 });
+		},
+		subscribe(callback) { listener = callback; return () => {}; },
+		isStreaming: false,
+		getActiveToolNames() { return []; },
+		getAllTools() { return []; },
+		getAvailableThinkingLevels() { return []; },
+		supportsThinking() { return false; },
+		thinkingLevel: "off",
+		sessionManager: {
+			getPiSessionId() { return "session-id"; },
+			getSessionFile() { return undefined; },
+			getLeafId() { return null; },
+			getHeader() { return undefined; },
+		},
+		sessionId: "pi:test",
+		sessionFile: undefined,
+		sessionName: undefined,
+	};
+	const runtime = {
+		cwd: process.cwd(),
+		session,
+		setRebindSession() {},
+		async dispose() {},
+	};
+	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+	const routed = new RoutedSession("route:test", runtime, (event) => events.push(event), registry, false);
+
+	// Simulate indices being incremented
+	routed.activeAssistantIndex = 2;
+	routed.nextAssistantIndex = 3;
+	routed.activeThinkingIndex = 1;
+	routed.nextThinkingIndex = 2;
+
+	// Emit compaction_end with successful result
+	listener({
+		type: "compaction_end",
+		reason: "threshold",
+		result: { summary: "test", firstKeptEntryId: "abc", tokensBefore: 90000 },
+		aborted: false,
+	});
+
+	const compactionEnd = events.find((e) => e.type === "compaction_end");
+	assert.ok(compactionEnd, "compaction_end event should be emitted");
+	assert.equal(compactionEnd.aborted, false);
+	assert.equal(compactionEnd.reason, "threshold");
+
+	// Indices should be reset
+	assert.equal(routed.activeAssistantIndex, undefined, "activeAssistantIndex should be reset");
+	assert.equal(routed.nextAssistantIndex, 0, "nextAssistantIndex should be reset to 0");
+	assert.equal(routed.activeThinkingIndex, undefined, "activeThinkingIndex should be reset");
+	assert.equal(routed.nextThinkingIndex, 0, "nextThinkingIndex should be reset to 0");
+
+	// Aborted compaction should NOT reset indices
+	routed.activeAssistantIndex = 5;
+	listener({
+		type: "compaction_end",
+		reason: "manual",
+		aborted: true,
+	});
+	assert.equal(routed.activeAssistantIndex, 5, "indices should NOT be reset on aborted compaction");
+
+	await routed.dispose();
 });
