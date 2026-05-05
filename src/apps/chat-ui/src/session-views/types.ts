@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { AgentProfile, PiboSessionTraceView, Trace } from "../types";
+import type { AgentProfile, PiboSessionTraceView, ThinkingLevel, Trace } from "../types";
 import type { SessionBreadcrumbItem, SessionDerivationLink, SessionOriginLink } from "../tracing/TraceTimeline";
 
 export const chatSessionViewIds = ["trace", "terminal"] as const;
@@ -32,6 +32,7 @@ export type ChatSessionViewProps = {
 	onSessionAgentProfileChange(profile: string): void;
 	onFork(entryId: string): void;
 	onOpenSession(piboSessionId: string): void;
+	onThinkingLevelChange(level: ThinkingLevel): void;
 };
 
 export type ChatSessionView = {

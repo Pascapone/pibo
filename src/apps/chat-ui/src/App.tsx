@@ -90,7 +90,6 @@ type SlashCommand = {
 	slash: string;
 	action: string;
 	description: string;
-	thinkingLevel?: ThinkingLevel;
 };
 
 type LoadBootstrapOptions = {
@@ -513,20 +512,13 @@ export function App({ route }: { route: ChatAppRoute }) {
 		const commands = actions.flatMap((action): SlashCommand[] =>
 			action.slashCommands
 				.filter((command) => command !== "tree")
-				.flatMap((command): SlashCommand[] => {
-					if (action.name === "thinking" && command === "thinking") {
-						return [
-							{ slash: "/thinking", action: action.name, description: "Cycle thinking level or use /thinking <level>." },
-							...THINKING_LEVELS.map((thinkingLevel) => ({
-								slash: `/thinking-${thinkingLevel}`,
-								action: action.name,
-								description: `Set thinking level to ${thinkingLevel}.`,
-								thinkingLevel,
-							})),
-						];
-					}
-					return [{ slash: `/${command}`, action: action.name, description: action.description ?? action.name }];
-				}),
+				.map((command): SlashCommand => ({
+					slash: `/${command}`,
+					action: action.name,
+					description: action.name === "thinking" && command === "thinking"
+						? "Cycle thinking level or use /thinking <level>."
+						: action.description ?? action.name,
+				})),
 		);
 		commands.push({
 			slash: "/thinking-show",
@@ -746,7 +738,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 			localStorage.setItem("pibo.chat.showThinking", String(next));
 			return true;
 		}
-		const level = command.thinkingLevel ?? text.match(/^\/thinking\s+(\S+)/)?.[1];
+		const level = text.match(/^\/thinking\s+(\S+)/)?.[1];
 		const result = await postAction(selectedPiboSessionId, command.action, level ? { level } : undefined);
 		const derivedPiboSessionId = getResultPiboSessionId(result);
 		if ((command.action === "session.clone" || command.action === "session.fork") && derivedPiboSessionId) {
@@ -1118,6 +1110,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 						onOpenSession={openSession}
 						onSelectSessionView={selectSessionView}
 						onCommand={runCommand}
+						onThinkingLevelChange={(level) => void runCommand(`/thinking ${level}`)}
 						onRefreshTrace={refreshSelectedTrace}
 						onRefreshBootstrap={refreshSelectedBootstrap}
 						onSend={async (text) => {
@@ -1235,6 +1228,7 @@ function SessionTracePane({
 	onOpenSession,
 	onSelectSessionView,
 	onCommand,
+	onThinkingLevelChange,
 	onRefreshTrace,
 	onRefreshBootstrap,
 	onSend,
@@ -1266,6 +1260,7 @@ function SessionTracePane({
 	onOpenSession: (piboSessionId: string) => void;
 	onSelectSessionView: (viewId: ChatSessionViewId) => void;
 	onCommand: (text: string) => Promise<boolean>;
+	onThinkingLevelChange: (level: ThinkingLevel) => void;
 	onRefreshTrace: () => Promise<void>;
 	onRefreshBootstrap: () => Promise<BootstrapData>;
 	onSend: (text: string) => Promise<void>;
@@ -1569,6 +1564,7 @@ function SessionTracePane({
 						onSessionAgentProfileChange,
 						onFork,
 						onOpenSession,
+						onThinkingLevelChange,
 					})
 				)}
 				<Composer

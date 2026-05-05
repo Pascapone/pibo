@@ -1,4 +1,5 @@
 import { Brain, Check, X } from "lucide-react";
+import { THINKING_LEVELS, type ThinkingLevel } from "../../types";
 import type { CompactTerminalRow } from "./terminalRows";
 
 type ThinkingData = {
@@ -28,7 +29,17 @@ function parseThinkingData(output: unknown): ThinkingData | undefined {
 	};
 }
 
-export function TerminalThinkingCard({ row }: { row: CompactTerminalRow }) {
+function thinkingLevel(value: string): ThinkingLevel | undefined {
+	return THINKING_LEVELS.includes(value as ThinkingLevel) ? value as ThinkingLevel : undefined;
+}
+
+export function TerminalThinkingCard({
+	row,
+	onLevelSelect,
+}: {
+	row: CompactTerminalRow;
+	onLevelSelect?: (level: ThinkingLevel) => void;
+}) {
 	const data = parseThinkingData(row.output);
 
 	if (!data) {
@@ -62,17 +73,26 @@ export function TerminalThinkingCard({ row }: { row: CompactTerminalRow }) {
 				{data.availableLevels.length ? (
 					<div className="flex flex-wrap items-center gap-1.5">
 						<span className="mr-1 text-[#737373]">Available:</span>
-						{data.availableLevels.map((level) => (
-							<span
-								key={level}
-								className={`border px-1.5 py-0.5 ${level === data.level ? "border-[#f59e0b] text-[#f59e0b]" : "border-[#3a3a3a] text-[#d4d4d4]"}`}
-							>
-								{level}
-							</span>
-						))}
+						{data.availableLevels.map((level) => {
+							const selectableLevel = thinkingLevel(level);
+							const disabled = data.supported === false || !selectableLevel || !onLevelSelect;
+							return (
+								<button
+									key={level}
+									type="button"
+									disabled={disabled}
+									onClick={() => {
+										if (selectableLevel) onLevelSelect?.(selectableLevel);
+									}}
+									className={`border bg-transparent px-1.5 py-0.5 ${level === data.level ? "border-[#f59e0b] text-[#f59e0b]" : "border-[#3a3a3a] text-[#d4d4d4]"} ${disabled ? "cursor-default" : "cursor-pointer"}`}
+								>
+									{level}
+								</button>
+							);
+						})}
 					</div>
 				) : null}
-				<div className="text-[#737373]">Use <span className="text-[#f59e0b]">/thinking &lt;level&gt;</span> or <span className="text-[#f59e0b]">/thinking-high</span>.</div>
+				<div className="text-[#737373]">Click a level or use <span className="text-[#f59e0b]">/thinking &lt;level&gt;</span>.</div>
 			</div>
 		</div>
 	);

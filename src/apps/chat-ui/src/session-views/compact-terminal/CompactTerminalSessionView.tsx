@@ -25,6 +25,7 @@ export function CompactTerminalSessionView({
 	onSessionAgentProfileChange,
 	onFork,
 	onOpenSession,
+	onThinkingLevelChange,
 }: ChatSessionViewProps) {
 	const rows = useMemo(
 		() => buildCompactTerminalRows(traceView, { showThinking }),
@@ -174,7 +175,7 @@ export function CompactTerminalSessionView({
 													</div>
 												) : row.kind === "tool.thinking" ? (
 													<div className="min-w-0">
-														<TerminalThinkingCard row={row} />
+														<TerminalThinkingCard row={row} onLevelSelect={onThinkingLevelChange} />
 													</div>
 												) : row.kind === "reasoning" && row.markdown ? (
 													<>
