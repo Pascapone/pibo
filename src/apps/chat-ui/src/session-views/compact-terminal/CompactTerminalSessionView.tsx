@@ -133,7 +133,7 @@ export function CompactTerminalSessionView({
 									return next;
 								});
 							};
-							const handleRowClick = (event: MouseEvent<HTMLDivElement>) => {
+							const handleRowDoubleClick = (event: MouseEvent<HTMLDivElement>) => {
 								if (isInteractiveEventTarget(event)) return;
 								toggleExpanded();
 							};
@@ -150,7 +150,7 @@ export function CompactTerminalSessionView({
 									: row.kind === "execution.command"
 										? "group border-b border-[#141414] bg-[#f59e0b]/5 py-2 last:border-b-0 hover:bg-[#f59e0b]/10"
 										: "group border-b border-[#141414] py-2 last:border-b-0 hover:bg-[#161616]") +
-								(row.expandable ? " cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#38bdf8]/50" : "");
+								(row.expandable ? " focus:outline-none focus:ring-1 focus:ring-[#38bdf8]/50" : "");
 							return (
 								<div className="px-4">
 									<div
@@ -165,7 +165,7 @@ export function CompactTerminalSessionView({
 										data-order-source={row.orderSource}
 										data-order-stream-id={row.orderStreamId}
 										data-order-frame-index={row.orderStreamFrameIndex}
-										onClick={row.expandable ? handleRowClick : undefined}
+										onDoubleClick={row.expandable ? handleRowDoubleClick : undefined}
 										onKeyDown={row.expandable ? handleRowKeyDown : undefined}
 										role={row.expandable ? "button" : undefined}
 										tabIndex={row.expandable ? 0 : undefined}
