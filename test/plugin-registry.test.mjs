@@ -83,6 +83,11 @@ test("default plugin registry builds profiles from registered resources", () => 
 			slashCommands: ["kill"],
 		},
 		{
+			name: "kill_all",
+			description: "Kill the active agent run, all subagent sessions recursively, and all yielded runs.",
+			slashCommands: ["kill-all"],
+		},
+		{
 			name: "thinking",
 			description: "Cycle or set the routed Pi thinking level.",
 			slashCommands: ["thinking"],
@@ -125,6 +130,31 @@ test("default plugin registry builds profiles from registered resources", () => 
 		{
 			name: "session.switch",
 			description: "Switch the active Pi session to a persisted session file.",
+			slashCommands: [],
+		},
+		{
+			name: "login.start",
+			description: "Start an OAuth login flow for a provider. Returns a URL to open in a browser.",
+			slashCommands: [],
+		},
+		{
+			name: "login.complete",
+			description: "Complete an OAuth login flow with the authorization code from the provider callback.",
+			slashCommands: [],
+		},
+		{
+			name: "login.apikey",
+			description: "Set an API key directly for a provider.",
+			slashCommands: [],
+		},
+		{
+			name: "login.status",
+			description: "Check the authentication status for providers.",
+			slashCommands: [],
+		},
+		{
+			name: "logout",
+			description: "Remove stored credentials for a provider.",
 			slashCommands: [],
 		},
 	]);
