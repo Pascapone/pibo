@@ -152,11 +152,17 @@ export class ChatWebReadModel {
 				"INSERT INTO web_chat_events (id, pibo_session_id, event_sequence, event_id, stream_id, type, created_at, payload_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
 			)
 			.run(id, event.piboSessionId, eventSequence, eventId ?? null, streamId ?? null, event.type, createdAt, JSON.stringify(event));
-		this.db
-			.prepare(
-				"UPDATE web_chat_sessions SET last_activity_at = ?, status = ?, updated_at = ? WHERE pibo_session_id = ?",
-			)
-			.run(createdAt, nextStatus, createdAt, event.piboSessionId);
+		if (isSessionNavigationActivityEvent(event)) {
+			this.db
+				.prepare(
+					"UPDATE web_chat_sessions SET last_activity_at = ?, status = ?, updated_at = ? WHERE pibo_session_id = ?",
+				)
+				.run(createdAt, nextStatus, createdAt, event.piboSessionId);
+		} else {
+			this.db
+				.prepare("UPDATE web_chat_sessions SET status = ?, updated_at = ? WHERE pibo_session_id = ?")
+				.run(nextStatus, createdAt, event.piboSessionId);
+		}
 
 		return { id, piboSessionId: event.piboSessionId, eventSequence, eventId, streamId, type: event.type, createdAt, payload: event };
 	}
@@ -268,6 +274,10 @@ export class ChatWebReadModel {
 
 export function createDefaultChatWebReadModel(_cwd?: string): ChatWebReadModel {
 	return new ChatWebReadModel(piboHomePath("web-chat.sqlite"));
+}
+
+function isSessionNavigationActivityEvent(event: PiboOutputEvent): boolean {
+	return event.type === "message_queued" || event.type === "message_started" || event.type === "assistant_message";
 }
 
 function statusFromEvent(

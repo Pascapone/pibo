@@ -23,6 +23,10 @@ function createTestSession(overrides = {}) {
 	};
 }
 
+function sleepSync(ms) {
+	Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
 function createPersistedPiSession(cwd) {
 	const manager = SessionManager.create(cwd);
 	manager.appendMessage({
@@ -266,6 +270,29 @@ test("chat read model keeps newest events when limiting session event history", 
 	assert.equal(allEvents.length, 1006);
 	assert.equal(allEvents[0].payload.type === "assistant_delta" ? allEvents[0].payload.text : undefined, "delta-0");
 	assert.equal(allEvents.at(-1)?.payload.type, "assistant_message");
+	readModel.close();
+});
+
+test("chat read model only promotes sessions on user input and final assistant output", () => {
+	const readModel = new ChatWebReadModel(":memory:");
+	const session = createTestSession();
+	readModel.upsertSession(session);
+
+	readModel.recordEvent({ type: "assistant_delta", piboSessionId: session.id, eventId: "turn-1", text: "streaming" }, session);
+	assert.equal(readModel.listSessions().find((item) => item.piboSessionId === session.id)?.lastActivityAt, undefined);
+
+	readModel.recordEvent({ type: "message_queued", piboSessionId: session.id, eventId: "turn-1", queuedMessages: 1, text: "hello" }, session);
+	const userActivityAt = readModel.listSessions().find((item) => item.piboSessionId === session.id)?.lastActivityAt;
+	assert.ok(userActivityAt);
+
+	readModel.recordEvent({ type: "tool_execution_updated", piboSessionId: session.id, eventId: "turn-1", toolCallId: "tool-1", toolName: "read", args: {}, partialResult: "chunk" }, session);
+	assert.equal(readModel.listSessions().find((item) => item.piboSessionId === session.id)?.lastActivityAt, userActivityAt);
+
+	sleepSync(2);
+	readModel.recordEvent({ type: "assistant_message", piboSessionId: session.id, eventId: "turn-1", text: "final" }, session);
+	const assistantActivityAt = readModel.listSessions().find((item) => item.piboSessionId === session.id)?.lastActivityAt;
+	assert.ok(assistantActivityAt);
+	assert.notEqual(assistantActivityAt, userActivityAt);
 	readModel.close();
 });
 
