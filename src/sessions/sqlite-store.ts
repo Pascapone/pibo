@@ -25,6 +25,7 @@ type SessionRow = {
 	workspace: string | null;
 	title: string | null;
 	metadata_json: string | null;
+	active_model_json: string | null;
 	created_at: string;
 	updated_at: string;
 };
@@ -53,6 +54,7 @@ export class SqlitePiboSessionStore implements PiboSessionStore {
 				workspace TEXT,
 				title TEXT,
 				metadata_json TEXT,
+				active_model_json TEXT,
 				created_at TEXT NOT NULL,
 				updated_at TEXT NOT NULL,
 				FOREIGN KEY(parent_id) REFERENCES pibo_sessions(id),
@@ -68,6 +70,14 @@ export class SqlitePiboSessionStore implements PiboSessionStore {
 			CREATE INDEX IF NOT EXISTS idx_pibo_sessions_channel_kind
 				ON pibo_sessions(channel, kind, updated_at);
 		`);
+		this.ensureActiveModelColumn();
+	}
+
+	private ensureActiveModelColumn(): void {
+		const columns = this.db.prepare("PRAGMA table_info(pibo_sessions)").all() as Array<{ name: string }>;
+		if (!columns.some((column) => column.name === "active_model_json")) {
+			this.db.exec("ALTER TABLE pibo_sessions ADD COLUMN active_model_json TEXT");
+		}
 	}
 
 	get(id: string): PiboSession | undefined {
@@ -97,9 +107,10 @@ export class SqlitePiboSessionStore implements PiboSessionStore {
 					workspace,
 					title,
 					metadata_json,
+					active_model_json,
 					created_at,
 					updated_at
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			`)
 			.run(
 				session.id,
@@ -113,6 +124,7 @@ export class SqlitePiboSessionStore implements PiboSessionStore {
 				session.workspace ?? null,
 				session.title ?? null,
 				JSON.stringify(session.metadata ?? {}),
+				session.activeModel ? JSON.stringify(session.activeModel) : null,
 				session.createdAt,
 				session.updatedAt,
 			);
@@ -136,6 +148,7 @@ export class SqlitePiboSessionStore implements PiboSessionStore {
 			workspace: input.workspace === null ? undefined : input.workspace ?? existing.workspace,
 			title: input.title === null ? undefined : input.title ?? existing.title,
 			metadata: input.metadata ?? existing.metadata,
+			activeModel: input.activeModel === null ? undefined : input.activeModel ? { ...input.activeModel } : existing.activeModel,
 			updatedAt: new Date().toISOString(),
 		};
 
@@ -150,6 +163,7 @@ export class SqlitePiboSessionStore implements PiboSessionStore {
 					workspace = ?,
 					title = ?,
 					metadata_json = ?,
+					active_model_json = ?,
 					updated_at = ?
 				WHERE id = ?
 			`)
@@ -162,6 +176,7 @@ export class SqlitePiboSessionStore implements PiboSessionStore {
 				updated.workspace ?? null,
 				updated.title ?? null,
 				JSON.stringify(updated.metadata ?? {}),
+				updated.activeModel ? JSON.stringify(updated.activeModel) : null,
 				updated.updatedAt,
 				id,
 			);
@@ -199,6 +214,7 @@ function sessionFromRow(row: SessionRow): PiboSession {
 		workspace: row.workspace ?? undefined,
 		title: row.title ?? undefined,
 		metadata: parseMetadata(row.metadata_json),
+		activeModel: parseModelProfile(row.active_model_json),
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 	};
@@ -212,5 +228,18 @@ function parseMetadata(value: string | null): PiboJsonObject {
 		return parsed as PiboJsonObject;
 	} catch {
 		return {};
+	}
+}
+
+function parseModelProfile(value: string | null): import("../core/profiles.js").ModelProfile | undefined {
+	if (!value) return undefined;
+	try {
+		const parsed = JSON.parse(value) as unknown;
+		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
+		const raw = parsed as Record<string, unknown>;
+		if (typeof raw.provider !== "string" || typeof raw.id !== "string") return undefined;
+		return { provider: raw.provider, id: raw.id };
+	} catch {
+		return undefined;
 	}
 }

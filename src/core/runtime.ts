@@ -20,6 +20,7 @@ import {
 	DEFAULT_BUILTIN_TOOL_NAMES,
 	type ContextFileProfile,
 	type InitialSessionContext,
+	type ModelProfile,
 	type ToolProfile,
 } from "./profiles.js";
 import { loadPiboModelDefaults, selectRequestedModelProfile, selectRequestedThinkingLevel, type PiboModelDefaults } from "./model-defaults.js";
@@ -52,6 +53,8 @@ export type PiboRuntimeOptions = {
 	runToolController?: PiboRunToolController;
 	/** Product-level model defaults selected outside the workspace, e.g. Chat Web settings. */
 	modelDefaults?: PiboModelDefaults;
+	/** SessionStore-persisted model. Routed sessions must prefer this over current defaults. */
+	activeModel?: ModelProfile;
 };
 
 export type PiboProfileInspection = {
@@ -305,7 +308,7 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 			services,
 			sessionManager: runtimeSessionManager,
 			sessionStartEvent,
-			model: resolveProfileModel(profile, services, runtimeCwd, modelDefaults),
+			model: resolveProfileModel(profile, services, runtimeCwd, modelDefaults, options.activeModel),
 			thinkingLevel: options.thinkingLevel ?? selectRequestedThinkingLevel(profile, modelDefaults),
 			customTools,
 			noTools: profile.builtinTools === "disabled" ? "builtin" : undefined,
@@ -342,8 +345,9 @@ function resolveProfileModel(
 	services: Awaited<ReturnType<typeof createAgentSessionServices>>,
 	cwd: string,
 	modelDefaults?: PiboModelDefaults,
+	activeModel?: ModelProfile,
 ) {
-	const requestedModel = selectRequestedModelProfile(profile, modelDefaults ?? loadPiboModelDefaults(cwd));
+	const requestedModel = activeModel ? { ...activeModel } : selectRequestedModelProfile(profile, modelDefaults ?? loadPiboModelDefaults(cwd));
 	if (!requestedModel) return undefined;
 
 	const model = services.modelRegistry.find(requestedModel.provider, requestedModel.id);

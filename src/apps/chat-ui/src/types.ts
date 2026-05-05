@@ -14,6 +14,7 @@ export type PiboWebSessionNode = {
 	parentId?: string;
 	originId?: string;
 	profile: string;
+	activeModel?: ModelProfile;
 	subagentName?: string;
 	title: string;
 	subtitle?: string;
@@ -28,6 +29,7 @@ export type PiboWebSessionNode = {
 export type PiboWebDerivedSessionNode = {
 	piboSessionId: string;
 	profile: string;
+	activeModel?: ModelProfile;
 	subagentName?: string;
 	title: string;
 	status: "idle" | "running" | "error";
@@ -62,6 +64,7 @@ export type PiboSession = {
 	workspace?: string;
 	title?: string;
 	metadata?: Record<string, unknown>;
+	activeModel?: ModelProfile;
 	createdAt: string;
 	updatedAt: string;
 };

@@ -2207,7 +2207,7 @@ function createSessionBreadcrumbs(nodes: PiboWebSessionNode[], piboSessionId: st
 
 function resolveSessionActiveModelLabel(
 	bootstrap: BootstrapData,
-	session: Pick<PiboWebSessionNode, "profile" | "parentId">,
+	session: Pick<PiboWebSessionNode, "profile" | "parentId" | "activeModel">,
 ): string | undefined {
 	const model = resolveSessionActiveModel(bootstrap, session);
 	return model ? formatModelProfile(model) : undefined;
@@ -2215,8 +2215,9 @@ function resolveSessionActiveModelLabel(
 
 function resolveSessionActiveModel(
 	bootstrap: BootstrapData,
-	session: Pick<PiboWebSessionNode, "profile" | "parentId">,
+	session: Pick<PiboWebSessionNode, "profile" | "parentId" | "activeModel">,
 ): ModelProfile | undefined {
+	if (session.activeModel) return session.activeModel;
 	const staticAgent = bootstrap.agents.find((agent) => agent.name === session.profile);
 	if (staticAgent?.model) return staticAgent.model;
 

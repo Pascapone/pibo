@@ -4,6 +4,7 @@ import type { PiboOutputEvent } from "../core/events.js";
 import { createDefaultPiboPluginRegistry } from "../plugins/builtin.js";
 import type { PiboPluginRegistry } from "../plugins/registry.js";
 import { PiboSessionRouter } from "../core/session-router.js";
+import { loadPiboModelDefaults, selectRequestedModelProfile } from "../core/model-defaults.js";
 import type { PiboSessionStore } from "../sessions/store.js";
 import {
 	DEFAULT_GATEWAY_HOST,
@@ -222,7 +223,9 @@ export class PiboGatewayServer {
 			getSession: (id) => this.requireSessionStore().get(id),
 			createSession: (input) => {
 				const profile = this.pluginRegistry.resolveProfileName(input.profile);
-				return this.requireSessionStore().create({ ...input, profile });
+				const profileContext = this.pluginRegistry.createProfile(profile);
+				const activeModel = input.activeModel ?? selectRequestedModelProfile(profileContext, loadPiboModelDefaults());
+				return this.requireSessionStore().create({ ...input, profile, activeModel });
 			},
 			updateSession: (id, input) => this.requireSessionStore().update(id, input),
 			deleteSession: (id) => this.requireSessionStore().delete?.(id) ?? false,

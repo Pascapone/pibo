@@ -29,6 +29,7 @@ import {
 } from "../sessions/store.js";
 import { getDefaultPiboWorkspace } from "./workspace.js";
 import { loadPiboModelDefaults, type PiboModelDefaults } from "./model-defaults.js";
+import { resolvePiboSessionActiveModel } from "./session-model.js";
 
 export type {
 	PiboEventListener,
@@ -291,6 +292,8 @@ export class PiboSessionRouter {
 		const parentPiSessionId = piboSession.parentId
 			? this.resolvePiboSession(piboSession.parentId).piSessionId
 			: undefined;
+		const modelDefaults = this.resolveModelDefaults();
+		const activeModel = this.ensureSessionActiveModel(piboSession, profile, parentPiSessionId, modelDefaults);
 		const runtime = await createPiboRuntime({
 			cwd: piboSession.workspace ?? this.options.cwd,
 			persistSession: this.options.persistSession,
@@ -298,7 +301,8 @@ export class PiboSessionRouter {
 			profile: profileForSession(profile, piboSession.piSessionId, parentPiSessionId),
 			subagentRunner: this.createSubagentRunner(piboSession.id),
 			runToolController: this.createRunToolController(piboSession.id),
-			modelDefaults: this.resolveModelDefaults(),
+			modelDefaults,
+			activeModel,
 		});
 		const session = new RoutedSession(
 			piboSession.id,
@@ -311,6 +315,24 @@ export class PiboSessionRouter {
 		);
 		this.sessions.set(piboSession.id, session);
 		return session;
+	}
+
+	private ensureSessionActiveModel(
+		piboSession: PiboSession,
+		profile: InitialSessionContext,
+		parentPiSessionId: string | undefined,
+		modelDefaults: PiboModelDefaults,
+	) {
+		const activeModel = resolvePiboSessionActiveModel({
+			profile,
+			piboSession,
+			parentPiSessionId,
+			modelDefaults,
+		});
+		if (!piboSession.activeModel && activeModel) {
+			this.sessionStore.update(piboSession.id, { activeModel });
+		}
+		return activeModel;
 	}
 
 	private resolveModelDefaults(): PiboModelDefaults {
@@ -354,6 +376,7 @@ export class PiboSessionRouter {
 			piSessionId: result.current.piSessionId,
 			workspace: result.current.cwd,
 			title: source.title,
+			activeModel: source.activeModel,
 			metadata: {
 				...asJsonObject(source.metadata),
 				originAction: action,
@@ -530,7 +553,8 @@ export class PiboSessionRouter {
 				return existing;
 			}
 
-			return this.sessionStore.create({
+			const childProfile = this.pluginRegistry.createProfile(targetProfile);
+			const childSession = this.sessionStore.create({
 				channel: "pibo.subagents",
 				kind: "subagent",
 				profile: targetProfile,
@@ -539,6 +563,13 @@ export class PiboSessionRouter {
 				workspace: parent.workspace,
 				metadata,
 			});
+			const activeModel = resolvePiboSessionActiveModel({
+				profile: childProfile,
+				piboSession: childSession,
+				parentPiSessionId: parent.piSessionId,
+				modelDefaults: this.resolveModelDefaults(),
+			});
+			return activeModel ? this.sessionStore.update(childSession.id, { activeModel }) ?? childSession : childSession;
 		}
 
 	private readonly emitOutput = (event: PiboOutputEvent): void => {

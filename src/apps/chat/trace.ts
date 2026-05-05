@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { parseSessionEntries, SessionManager, type SessionEntry } from "@mariozechner/pi-coding-agent";
 import type { PiboSessionListItem } from "../../core/events.js";
+import type { ModelProfile } from "../../core/profiles.js";
 import type { PiboSession } from "../../sessions/store.js";
 import { buildTraceViewFromEvents } from "../../shared/trace-engine.js";
 import type { PiboSessionTraceView, PiboTraceNode } from "../../shared/trace-types.js";
@@ -13,6 +14,7 @@ export type PiboWebSessionStatus = "idle" | "running" | "error";
 export type PiboWebDerivedSessionNode = {
 	piboSessionId: string;
 	profile: string;
+	activeModel?: ModelProfile;
 	subagentName?: string;
 	title: string;
 	status: PiboWebSessionStatus;
@@ -25,6 +27,7 @@ export type PiboWebSessionNode = {
 	parentId?: string;
 	originId?: string;
 	profile: string;
+	activeModel?: ModelProfile;
 	subagentName?: string;
 	title: string;
 	subtitle?: string;
@@ -118,6 +121,7 @@ export async function buildSessionNodes(
 			parentId: session.parentId,
 			originId: session.originId,
 			profile: session.profile,
+			activeModel: session.activeModel,
 			subagentName: stringValue(session.metadata?.subagentName),
 			title: createSessionTitle(session, metadata),
 			subtitle: session.id,

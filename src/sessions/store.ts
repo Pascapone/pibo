@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { PiboJsonObject } from "../core/events.js";
+import type { ModelProfile } from "../core/profiles.js";
 
 export type PiboSession = {
 	id: string;
@@ -13,6 +14,7 @@ export type PiboSession = {
 	workspace?: string;
 	title?: string;
 	metadata?: PiboJsonObject;
+	activeModel?: ModelProfile;
 	createdAt: string;
 	updatedAt: string;
 };
@@ -29,6 +31,7 @@ export type CreatePiboSessionInput = {
 	workspace?: string;
 	title?: string;
 	metadata?: PiboJsonObject;
+	activeModel?: ModelProfile;
 };
 
 export type UpdatePiboSessionInput = {
@@ -40,6 +43,7 @@ export type UpdatePiboSessionInput = {
 	workspace?: string | null;
 	title?: string | null;
 	metadata?: PiboJsonObject;
+	activeModel?: ModelProfile | null;
 };
 
 export type FindPiboSessionsInput = {
@@ -51,6 +55,7 @@ export type FindPiboSessionsInput = {
 	originId?: string;
 	profile?: string;
 	metadata?: PiboJsonObject;
+	activeModel?: ModelProfile | null;
 };
 
 export type PiboSessionStore = {
@@ -84,6 +89,7 @@ export function createPiboSession(input: CreatePiboSessionInput, now = new Date(
 		workspace: input.workspace,
 		title: input.title,
 		metadata: input.metadata ?? {},
+		activeModel: input.activeModel ? { ...input.activeModel } : undefined,
 		createdAt: now,
 		updatedAt: now,
 	};
@@ -133,6 +139,7 @@ export class InMemoryPiboSessionStore implements PiboSessionStore {
 			workspace: input.workspace === null ? undefined : input.workspace ?? existing.workspace,
 			title: input.title === null ? undefined : input.title ?? existing.title,
 			metadata: input.metadata ?? existing.metadata,
+			activeModel: input.activeModel === null ? undefined : input.activeModel ? { ...input.activeModel } : existing.activeModel,
 			updatedAt: new Date().toISOString(),
 		};
 		this.set(updated, existing.piSessionId);
@@ -178,6 +185,13 @@ export function matchesFindInput(session: PiboSession, input: FindPiboSessionsIn
 	}
 	if (input.originId !== undefined && session.originId !== input.originId) return false;
 	if (input.profile !== undefined && session.profile !== input.profile) return false;
+	if (input.activeModel !== undefined) {
+		if (input.activeModel === null) {
+			if (session.activeModel !== undefined) return false;
+		} else if (session.activeModel?.provider !== input.activeModel.provider || session.activeModel?.id !== input.activeModel.id) {
+			return false;
+		}
+	}
 	if (input.metadata && !metadataMatches(session.metadata, input.metadata)) return false;
 	return true;
 }
