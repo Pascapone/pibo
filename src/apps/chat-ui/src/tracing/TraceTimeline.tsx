@@ -68,6 +68,7 @@ const mobileTimelineContentStyle = {
 } as CSSProperties;
 
 const DEFAULT_EXPANSION_DEPTH = 1;
+const INITIAL_BOTTOM_ITEM = { index: "LAST", align: "end" } as const;
 
 export function TraceTimeline({
 	trace,
@@ -233,8 +234,10 @@ export function TraceTimeline({
 			<div className="min-w-0 flex-1 overflow-hidden">
 				{visibleRows.length ? (
 					<Virtuoso
+						key={trace.id}
 						ref={stickyView.virtuosoRef}
 						data={visibleRows}
+						initialTopMostItemIndex={INITIAL_BOTTOM_ITEM}
 						className="min-h-0 h-full min-w-0 overflow-x-hidden"
 						style={timelineContentStyle}
 						computeItemKey={(_, row) => row.id}

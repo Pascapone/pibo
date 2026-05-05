@@ -12,6 +12,8 @@ import { TerminalStatusCard } from "./TerminalStatusCard";
 import { TerminalThinkingCard } from "./TerminalThinkingCard";
 import { buildCompactTerminalRows, type CompactTerminalLine } from "./terminalRows";
 
+const INITIAL_BOTTOM_ITEM = { index: "LAST", align: "end" } as const;
+
 export function CompactTerminalSessionView({
 	traceView,
 	isLoading,
@@ -108,8 +110,10 @@ export function CompactTerminalSessionView({
 					/>
 				) : rows.length ? (
 					<Virtuoso
+						key={traceView.piboSessionId}
 						ref={stickyView.virtuosoRef}
 						data={rows}
+						initialTopMostItemIndex={INITIAL_BOTTOM_ITEM}
 						className="min-h-0 h-full font-mono text-[12px] leading-[1.45]"
 						computeItemKey={(_, row) => row.id}
 						scrollerRef={stickyView.scrollerRef}
