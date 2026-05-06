@@ -4,7 +4,7 @@ Date: 2026-05-02
 
 Environment:
 
-- Worktree: `/home/pibo/code/pibo-chat-session-caching-hardening`
+- Worktree: `<HOME>/code/pibo-chat-session-caching-hardening`
 - Browser: Google Chrome 146 via local Chrome DevTools Protocol on port 18800
 - App URL: `/apps/chat` served by the real Chat Web App through `createWebHostChannel` with a local test auth service
 - Browser-Use note: the Browser-Use wrapper could not start because the persistent PIBo Chrome profile had an existing `SingletonLock`; CDP against the already running Chrome instance was used instead.

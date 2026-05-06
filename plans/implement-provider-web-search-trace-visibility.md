@@ -40,8 +40,8 @@ Pibo injiziert fuer OpenAI Responses `tools: [{ type: "web_search", ... }]` und 
 
 Zu pruefen:
 
-- `/home/pibo/code/pi-mono/packages/ai/src/stream.ts`
-- `/home/pibo/code/pi-mono/packages/coding-agent/src/core/agent-session.ts`
+- `<HOME>/code/pi-mono/packages/ai/src/stream.ts`
+- `<HOME>/code/pi-mono/packages/coding-agent/src/core/agent-session.ts`
 - OpenAI/Codex Responses Stream Normalisierung in `pi-mono`
 - ob `web_search_call` Items im Provider Response/Stream vorhanden sind, aber verworfen werden
 - ob `web_search_call.action.sources` durch `include` geliefert wird

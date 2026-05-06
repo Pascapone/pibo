@@ -64,38 +64,38 @@ Das bedeutet:
 
 Die folgenden Stellen sind fuer eine spaetere Umsetzung zentral:
 
-- [src/core/runtime.ts](/home/pibo/code/pibo/src/core/runtime.ts:105)
+- [src/core/runtime.ts](<HOME>/code/pibo/src/core/runtime.ts:105)
   Hier werden die aktiven `ToolDefinition[]` zusammengesetzt.
 
-- [src/core/runtime.ts](/home/pibo/code/pibo/src/core/runtime.ts:224)
+- [src/core/runtime.ts](<HOME>/code/pibo/src/core/runtime.ts:224)
   Hier werden die `customTools` an Pi uebergeben.
 
-- [src/core/routed-session.ts](/home/pibo/code/pibo/src/core/routed-session.ts:105)
+- [src/core/routed-session.ts](<HOME>/code/pibo/src/core/routed-session.ts:105)
   Hier wird aus Pi-Events ein Pibo-`tool_call` Event.
 
-- [src/core/routed-session.ts](/home/pibo/code/pibo/src/core/routed-session.ts:127)
+- [src/core/routed-session.ts](<HOME>/code/pibo/src/core/routed-session.ts:127)
   Hier werden `tool_execution_*` Events normalisiert.
 
-- [src/core/events.ts](/home/pibo/code/pibo/src/core/events.ts:235)
+- [src/core/events.ts](<HOME>/code/pibo/src/core/events.ts:235)
   Hier liegen die heutigen Pibo-Tool-Events. Aktuell gibt es noch kein Association-spezifisches Event oder Metadata-Feld.
 
-- [src/plugins/types.ts](/home/pibo/code/pibo/src/plugins/types.ts:172)
+- [src/plugins/types.ts](<HOME>/code/pibo/src/plugins/types.ts:172)
   Die Plugin-API kann heute Tools, Skills, Context Files und Event Listener registrieren, aber noch keine mutierenden Association-Provider oder Tool-Hooks.
 
-- [src/plugins/registry.ts](/home/pibo/code/pibo/src/plugins/registry.ts:310)
+- [src/plugins/registry.ts](<HOME>/code/pibo/src/plugins/registry.ts:310)
   Plugin-Events sind aktuell observe-only.
 
-- [src/core/session-router.ts](/home/pibo/code/pibo/src/core/session-router.ts:487)
+- [src/core/session-router.ts](<HOME>/code/pibo/src/core/session-router.ts:487)
   Hier werden Pibo-Output-Events an Plugins und Listener verteilt.
 
 ## Relevante Hebel in Pi
 
 Pi selbst besitzt bereits Tool-Hooks, die fuer Built-in-Tools spaeter wichtig werden:
 
-- [agent-session.ts](/home/pibo/code/pi-mono/packages/coding-agent/src/core/agent-session.ts:372)
+- [agent-session.ts](<HOME>/code/pi-mono/packages/coding-agent/src/core/agent-session.ts:372)
   `beforeToolCall`
 
-- [agent-session.ts](/home/pibo/code/pi-mono/packages/coding-agent/src/core/agent-session.ts:396)
+- [agent-session.ts](<HOME>/code/pi-mono/packages/coding-agent/src/core/agent-session.ts:396)
   `afterToolCall`
 
 Diese Hooks laufen ueber die Pi-Extension-Schicht.

@@ -384,8 +384,8 @@ Edge cases:
 
 ## 11. Related Specifications / Further Reading
 
-- [spec/spec-architecture-pibo-session-model.md](/home/pibo/code/pibo/spec/spec-architecture-pibo-session-model.md:1)
-- [spec/spec-infrastructure-web-auth-chat.md](/home/pibo/code/pibo/spec/spec-infrastructure-web-auth-chat.md:1)
-- [spec/spec-architecture-codex-compat-plugin.md](/home/pibo/code/pibo/spec/spec-architecture-codex-compat-plugin.md:1)
-- [docs/architecture.md](/home/pibo/code/pibo/docs/architecture.md:89)
-- [docs/agent-run-yield-spec.md](/home/pibo/code/pibo/docs/agent-run-yield-spec.md:1)
+- [spec/spec-architecture-pibo-session-model.md](<HOME>/code/pibo/spec/spec-architecture-pibo-session-model.md:1)
+- [spec/spec-infrastructure-web-auth-chat.md](<HOME>/code/pibo/spec/spec-infrastructure-web-auth-chat.md:1)
+- [spec/spec-architecture-codex-compat-plugin.md](<HOME>/code/pibo/spec/spec-architecture-codex-compat-plugin.md:1)
+- [docs/architecture.md](<HOME>/code/pibo/docs/architecture.md:89)
+- [docs/agent-run-yield-spec.md](<HOME>/code/pibo/docs/agent-run-yield-spec.md:1)

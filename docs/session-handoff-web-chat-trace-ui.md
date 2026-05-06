@@ -16,7 +16,7 @@ Bring the Pibo Chat Web App closer to the existing `pydantic-tracing` trace UI:
 ## Implemented
 
 - Added a dedicated React/TanStack Router/Vite chat UI under `src/apps/chat-ui`.
-- Ported/adapted the tracing components from `/home/pibo/code/pydantic-tracing`:
+- Ported/adapted the tracing components from `<HOME>/code/pydantic-tracing`:
   - `SpanNode`
   - `TraceTimeline`
   - `JsonRenderer`

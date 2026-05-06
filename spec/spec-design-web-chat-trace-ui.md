@@ -11,7 +11,7 @@ tags: [design, web, chat, tracing, sessions, subagents]
 
 This specification defines the next-generation Pibo Chat Web App. The app must expose Pibo's routed runtime features through a first-class web interface: sessions, subagent sessions, tool calls, yielded runs, execution commands, thinking output, errors, fork/clone controls, and future agent templates.
 
-The Web App must use the nested trace-card interaction model from `/home/pibo/code/pydantic-tracing` as its primary execution rendering pattern. Pibo must adapt that model to its own session router, output events, and product boundaries.
+The Web App must use the nested trace-card interaction model from `<HOME>/code/pydantic-tracing` as its primary execution rendering pattern. Pibo must adapt that model to its own session router, output events, and product boundaries.
 
 All Web Chat UI elements that are not directly copied from the tracing UI, including sidebars, top bars, tabs, settings screens, agent inventory screens, buttons, modals, command menus, empty states, inputs, and inspectors, must follow `DESIGN.md`.
 
@@ -81,7 +81,7 @@ Out of scope for V1:
 - **REQ-011**: When a subagent session is selected directly from the sidebar or a delegation link, composer input routes to that selected subagent session.
 - **REQ-012**: Delegation trace nodes must include a direct navigation control to switch into the linked subagent session.
 - **REQ-013**: The main view must render user messages, assistant messages, thinking blocks, tool calls, tool results, execution commands, yielded runs, delegations, and errors as visually distinct nodes.
-- **REQ-014**: The trace-card UI must closely preserve the visual language of `/home/pibo/code/pydantic-tracing`: nested cards, borders, colors, spacing, typography, expand/collapse behavior, status coloring, and JSON rendering patterns.
+- **REQ-014**: The trace-card UI must closely preserve the visual language of `<HOME>/code/pydantic-tracing`: nested cards, borders, colors, spacing, typography, expand/collapse behavior, status coloring, and JSON rendering patterns.
 - **REQ-015**: Pibo must copy/adapt the tracing UI source into its own project. Pibo must not depend on the pydantic-tracing project at runtime.
 - **REQ-016**: All UI elements that are not copied directly from the tracing UI must follow `DESIGN.md`.
 - **REQ-017**: Any modifications or additions to copied tracing UI components must preserve the visual system defined in `DESIGN.md`.
@@ -601,10 +601,10 @@ If the subagent session link is known, the child node can open that Pibo Session
 - [Progress](../docs/progress.md)
 - [Design System](../DESIGN.md)
 - [Web Chat Tracing UI Reference](../docs/web-chat-tracing-ui-reference.md)
-- `/home/pibo/code/pydantic-tracing/src/components/tracing/SpanNode.tsx`
-- `/home/pibo/code/pydantic-tracing/src/components/tracing/TraceTimeline.tsx`
-- `/home/pibo/code/pydantic-tracing/src/components/tracing/JsonRenderer.tsx`
-- `/home/pibo/code/pydantic-tracing/src/components/tracing/traceTree.ts`
+- `<HOME>/code/pydantic-tracing/src/components/tracing/SpanNode.tsx`
+- `<HOME>/code/pydantic-tracing/src/components/tracing/TraceTimeline.tsx`
+- `<HOME>/code/pydantic-tracing/src/components/tracing/JsonRenderer.tsx`
+- `<HOME>/code/pydantic-tracing/src/components/tracing/traceTree.ts`
 
 ## 12. Open Questions
 

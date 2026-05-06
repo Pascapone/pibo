@@ -56,8 +56,8 @@ Start by checking whether OpenAI Responses emits `web_search_call` data that Pi 
 
 Relevant paths:
 
-- `/home/pibo/code/pi-mono/packages/ai/src/stream.ts`
-- `/home/pibo/code/pi-mono/packages/coding-agent/src/core/agent-session.ts`
+- `<HOME>/code/pi-mono/packages/ai/src/stream.ts`
+- `<HOME>/code/pi-mono/packages/coding-agent/src/core/agent-session.ts`
 - `src/apps/chat/trace.ts`
 
 If Pi does not persist provider-hosted tool calls, add a small Pi-side transcript part instead of reconstructing calls from logs in Pibo.

@@ -35,10 +35,10 @@ The Pibo `bash` tool should support the same practical workflow: start shell wor
 
 Relevant Codex files:
 
-- `/home/pibo/code/codex/codex-rs/tools/src/local_tool.rs`
-- `/home/pibo/code/codex/codex-rs/core/src/tools/handlers/unified_exec.rs`
-- `/home/pibo/code/codex/codex-rs/core/src/unified_exec/mod.rs`
-- `/home/pibo/code/codex/codex-rs/core/src/unified_exec/process_manager.rs`
+- `<HOME>/code/codex/codex-rs/tools/src/local_tool.rs`
+- `<HOME>/code/codex/codex-rs/core/src/tools/handlers/unified_exec.rs`
+- `<HOME>/code/codex/codex-rs/core/src/unified_exec/mod.rs`
+- `<HOME>/code/codex/codex-rs/core/src/unified_exec/process_manager.rs`
 
 Important details:
 
@@ -56,10 +56,10 @@ Pibo uses generated `pibo_subagent_*` tools and yielded runs for child-agent orc
 
 Relevant Codex files:
 
-- `/home/pibo/code/codex/codex-rs/tools/src/agent_tool.rs`
-- `/home/pibo/code/codex/codex-rs/core/src/tools/handlers/multi_agents/wait.rs`
-- `/home/pibo/code/codex/codex-rs/core/src/tools/handlers/multi_agents_v2/wait.rs`
-- `/home/pibo/code/codex/codex-rs/core/src/codex.rs`
+- `<HOME>/code/codex/codex-rs/tools/src/agent_tool.rs`
+- `<HOME>/code/codex/codex-rs/core/src/tools/handlers/multi_agents/wait.rs`
+- `<HOME>/code/codex/codex-rs/core/src/tools/handlers/multi_agents_v2/wait.rs`
+- `<HOME>/code/codex/codex-rs/core/src/codex.rs`
 
 Codex also has a mailbox/notification layer for subagent completion. When a child agent completes, Codex can enqueue a notification for the parent thread. This prevents completed child work from being lost if the parent does not immediately wait on the child work.
 

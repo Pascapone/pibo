@@ -225,8 +225,8 @@ Expected:
 
 ## 11. Related Specifications / Further Reading
 
-- [spec/spec-design-web-chat-trace-ui.md](/home/pibo/code/pibo/spec/spec-design-web-chat-trace-ui.md)
-- [plans/harden-chat-trace-rendering.md](/home/pibo/code/pibo/plans/harden-chat-trace-rendering.md)
-- [plans/optimize-chat-trace-streaming-performance.md](/home/pibo/code/pibo/plans/optimize-chat-trace-streaming-performance.md)
-- [RULES.md](/home/pibo/code/pibo/RULES.md)
-- [GLOSSARY.md](/home/pibo/code/pibo/GLOSSARY.md)
+- [spec/spec-design-web-chat-trace-ui.md](<HOME>/code/pibo/spec/spec-design-web-chat-trace-ui.md)
+- [plans/harden-chat-trace-rendering.md](<HOME>/code/pibo/plans/harden-chat-trace-rendering.md)
+- [plans/optimize-chat-trace-streaming-performance.md](<HOME>/code/pibo/plans/optimize-chat-trace-streaming-performance.md)
+- [RULES.md](<HOME>/code/pibo/RULES.md)
+- [GLOSSARY.md](<HOME>/code/pibo/GLOSSARY.md)

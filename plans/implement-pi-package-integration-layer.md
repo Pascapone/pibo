@@ -4,13 +4,13 @@
 
 This task must not modify `pi-mono`.
 
-`/home/pibo/code/pi-mono` is a read-only reference and dependency source for this work. The implementation must live only in `/home/pibo/code/pibo`.
+`<HOME>/code/pi-mono` is a read-only reference and dependency source for this work. The implementation must live only in `<HOME>/code/pibo`.
 
 Forbidden actions:
 
-- Do not edit files under `/home/pibo/code/pi-mono`.
-- Do not add tests under `/home/pibo/code/pi-mono`.
-- Do not run package installation commands in `/home/pibo/code/pi-mono`.
+- Do not edit files under `<HOME>/code/pi-mono`.
+- Do not add tests under `<HOME>/code/pi-mono`.
+- Do not run package installation commands in `<HOME>/code/pi-mono`.
 - Do not propose or implement upstream Pi SDK hooks as part of this task.
 - Do not patch `node_modules`.
 
@@ -387,8 +387,8 @@ V1 UI should be small:
 
 Verify:
 
-- `git status --short` in `/home/pibo/code/pi-mono` is clean before and after.
-- No implementation edits occur outside `/home/pibo/code/pibo`.
+- `git status --short` in `<HOME>/code/pi-mono` is clean before and after.
+- No implementation edits occur outside `<HOME>/code/pibo`.
 - The dependency APIs available from `node_modules/@mariozechner/pi-coding-agent` are inspected.
 
 Success:
@@ -534,14 +534,14 @@ Tests:
 - Runtime loading uses only package selections from the active Pibo profile.
 - Pibo native MCP, subagents, run-control, and provider-backed tools still work.
 - All package diagnostics are visible through CLI and runtime/profile inspection.
-- `git status --short` in `/home/pibo/code/pi-mono` remains unchanged.
+- `git status --short` in `<HOME>/code/pi-mono` remains unchanged.
 
 ## Verification Commands
 
 Minimum final verification:
 
 ```bash
-git -C /home/pibo/code/pi-mono status --short
+git -C <HOME>/code/pi-mono status --short
 npm run build
 npm run typecheck
 node --test test/pi-packages.test.mjs
@@ -567,6 +567,6 @@ Then verify the public dependency surface:
 rg -n "PackageManager|DefaultPackageManager|extensionFactories|resourceLoaderOptions" node_modules/@mariozechner/pi-coding-agent/dist -g "*.d.ts"
 ```
 
-Do not inspect or edit `/home/pibo/code/pi-mono` unless a read-only reference is necessary. If read-only reference is used, state that no source modification is allowed before continuing.
+Do not inspect or edit `<HOME>/code/pi-mono` unless a read-only reference is necessary. If read-only reference is used, state that no source modification is allowed before continuing.
 
 The correct shape of the solution is a Pibo-owned wrapper around Pi Coding Agent package loading, not a Pi Coding Agent source change.

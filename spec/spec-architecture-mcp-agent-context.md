@@ -263,7 +263,7 @@ Expected UI state:
 {
   "mcpServers": {
     "example": {
-      "command": "/home/pibo/.pibo/mcp-tools/example/.venv/bin/example-mcp",
+      "command": "<HOME>/.pibo/mcp-tools/example/.venv/bin/example-mcp",
       "pibo": {
         "description": "Search example service records through the curated MCP preset.",
         "descriptionSource": "registry"

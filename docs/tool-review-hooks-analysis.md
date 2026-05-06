@@ -205,8 +205,8 @@ Limitations:
 
 Source files:
 
-- `/home/pibo/code/pi-mono/packages/coding-agent/src/core/extensions/types.ts`
-- `/home/pibo/code/pi-mono/packages/coding-agent/src/core/extensions/runner.ts`
+- `<HOME>/code/pi-mono/packages/coding-agent/src/core/extensions/types.ts`
+- `<HOME>/code/pi-mono/packages/coding-agent/src/core/extensions/runner.ts`
 
 Pi extensions expose many lifecycle events:
 
@@ -255,8 +255,8 @@ Limitations:
 
 Source files:
 
-- `/home/pibo/code/pi-mono/packages/agent/src/types.ts`
-- `/home/pibo/code/pi-mono/packages/agent/src/agent-loop.ts`
+- `<HOME>/code/pi-mono/packages/agent/src/types.ts`
+- `<HOME>/code/pi-mono/packages/agent/src/agent-loop.ts`
 
 The lower-level agent loop supports:
 

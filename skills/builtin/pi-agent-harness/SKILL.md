@@ -26,34 +26,34 @@ Read only what the task needs. These are the important paths:
 
 Pi product layer:
 
-- `/home/pibo/code/pi-mono/packages/coding-agent/README.md` - product philosophy: minimal core, modes, skills, extensions, explicit tools.
-- `/home/pibo/code/pi-mono/packages/coding-agent/src/main.ts` - CLI entry and mode dispatch.
-- `/home/pibo/code/pi-mono/packages/coding-agent/src/core/sdk.ts` - `createAgentSession(...)`, SDK options, model/auth/settings wiring.
-- `/home/pibo/code/pi-mono/packages/coding-agent/src/core/agent-session.ts` - prompt pipeline, event persistence, compaction, tool registry, extension integration.
-- `/home/pibo/code/pi-mono/packages/coding-agent/src/core/session-manager.ts` - append-only JSONL session tree, branch/fork/compaction context.
-- `/home/pibo/code/pi-mono/packages/coding-agent/src/core/resource-loader.ts` - loads context files, skills, prompts, themes, extensions, `SYSTEM.md`, `APPEND_SYSTEM.md`.
-- `/home/pibo/code/pi-mono/packages/coding-agent/src/core/system-prompt.ts` - default prompt builder and tool/context/skill prompt assembly.
-- `/home/pibo/code/pi-mono/packages/coding-agent/src/core/extensions/types.ts` - extension contract and event names.
-- `/home/pibo/code/pi-mono/packages/coding-agent/src/core/extensions/runner.ts` - extension lifecycle, stale-context guard, event dispatch.
-- `/home/pibo/code/pi-mono/packages/coding-agent/src/modes/interactive/interactive-mode.ts` - TUI integration, commands, selectors, rendering of events.
+- `<HOME>/code/pi-mono/packages/coding-agent/README.md` - product philosophy: minimal core, modes, skills, extensions, explicit tools.
+- `<HOME>/code/pi-mono/packages/coding-agent/src/main.ts` - CLI entry and mode dispatch.
+- `<HOME>/code/pi-mono/packages/coding-agent/src/core/sdk.ts` - `createAgentSession(...)`, SDK options, model/auth/settings wiring.
+- `<HOME>/code/pi-mono/packages/coding-agent/src/core/agent-session.ts` - prompt pipeline, event persistence, compaction, tool registry, extension integration.
+- `<HOME>/code/pi-mono/packages/coding-agent/src/core/session-manager.ts` - append-only JSONL session tree, branch/fork/compaction context.
+- `<HOME>/code/pi-mono/packages/coding-agent/src/core/resource-loader.ts` - loads context files, skills, prompts, themes, extensions, `SYSTEM.md`, `APPEND_SYSTEM.md`.
+- `<HOME>/code/pi-mono/packages/coding-agent/src/core/system-prompt.ts` - default prompt builder and tool/context/skill prompt assembly.
+- `<HOME>/code/pi-mono/packages/coding-agent/src/core/extensions/types.ts` - extension contract and event names.
+- `<HOME>/code/pi-mono/packages/coding-agent/src/core/extensions/runner.ts` - extension lifecycle, stale-context guard, event dispatch.
+- `<HOME>/code/pi-mono/packages/coding-agent/src/modes/interactive/interactive-mode.ts` - TUI integration, commands, selectors, rendering of events.
 
 Lower engine layers:
 
-- `/home/pibo/code/pi-mono/packages/agent/src/agent.ts` - stateful agent wrapper, `subscribe`, `prompt`, `steer`, `followUp`.
-- `/home/pibo/code/pi-mono/packages/agent/src/agent-loop.ts` - turn loop, streaming, tool execution, event emission.
-- `/home/pibo/code/pi-mono/packages/ai/src/stream.ts` - provider dispatch.
-- `/home/pibo/code/pi-mono/packages/tui/src/tui.ts` - terminal rendering if building TUI surfaces.
+- `<HOME>/code/pi-mono/packages/agent/src/agent.ts` - stateful agent wrapper, `subscribe`, `prompt`, `steer`, `followUp`.
+- `<HOME>/code/pi-mono/packages/agent/src/agent-loop.ts` - turn loop, streaming, tool execution, event emission.
+- `<HOME>/code/pi-mono/packages/ai/src/stream.ts` - provider dispatch.
+- `<HOME>/code/pi-mono/packages/tui/src/tui.ts` - terminal rendering if building TUI surfaces.
 
 OpenClaw reference pattern:
 
-- `/home/pibo/docs/research/tools/openclaw-pi-agent-docking-concept.md` - concise docking analysis.
-- `/home/pibo/code/openclaw/src/agents/pi-embedded-runner/run/attempt.ts` - embedded runner assembly.
-- `/home/pibo/code/openclaw/src/agents/pi-tools.ts` - OpenClaw tool catalog assembler.
-- `/home/pibo/code/openclaw/src/agents/pi-tool-definition-adapter.ts` - OpenClaw tool to Pi `ToolDefinition` adapter.
-- `/home/pibo/code/openclaw/src/agents/pi-embedded-runner/tool-split.ts` - custom-tool authority pattern.
-- `/home/pibo/code/openclaw/src/agents/pi-embedded-runner/system-prompt.ts` - external system prompt ownership.
-- `/home/pibo/code/openclaw/src/agents/pi-embedded-subscribe.ts` - Pi event subscription to product output.
-- `/home/pibo/code/openclaw/src/plugins/types.ts` - broad plugin-hook vocabulary, useful as design reference.
+- `<HOME>/docs/research/tools/openclaw-pi-agent-docking-concept.md` - concise docking analysis.
+- `<HOME>/code/openclaw/src/agents/pi-embedded-runner/run/attempt.ts` - embedded runner assembly.
+- `<HOME>/code/openclaw/src/agents/pi-tools.ts` - OpenClaw tool catalog assembler.
+- `<HOME>/code/openclaw/src/agents/pi-tool-definition-adapter.ts` - OpenClaw tool to Pi `ToolDefinition` adapter.
+- `<HOME>/code/openclaw/src/agents/pi-embedded-runner/tool-split.ts` - custom-tool authority pattern.
+- `<HOME>/code/openclaw/src/agents/pi-embedded-runner/system-prompt.ts` - external system prompt ownership.
+- `<HOME>/code/openclaw/src/agents/pi-embedded-subscribe.ts` - Pi event subscription to product output.
+- `<HOME>/code/openclaw/src/plugins/types.ts` - broad plugin-hook vocabulary, useful as design reference.
 
 ## Mental Model
 

@@ -1,18 +1,18 @@
 # Design System: Pibo Trace Terminal
 **Project ID:** local-reference-pibo-tracing-ui
 
-This design system is derived from the existing Trace Terminal UI in `/home/pibo/code/pydantic-tracing`. It defines the visual language that should guide Pibo's new React and Tailwind Chat Web App and other future Pibo web surfaces.
+This design system is derived from the existing Trace Terminal UI in `<HOME>/code/pydantic-tracing`. It defines the visual language that should guide Pibo's new React and Tailwind Chat Web App and other future Pibo web surfaces.
 
 Primary reference files:
 
-- `/home/pibo/code/pydantic-tracing/design/tracing-design-concept.html`
-- `/home/pibo/code/pydantic-tracing/src/styles.css`
-- `/home/pibo/code/pydantic-tracing/src/components/tracing/TraceHeader.tsx`
-- `/home/pibo/code/pydantic-tracing/src/components/tracing/TraceSidebar.tsx`
-- `/home/pibo/code/pydantic-tracing/src/components/tracing/TraceTimeline.tsx`
-- `/home/pibo/code/pydantic-tracing/src/components/tracing/SpanNode.tsx`
-- `/home/pibo/code/pydantic-tracing/src/components/tracing/JsonRenderer.tsx`
-- `/home/pibo/code/pydantic-tracing/src/components/tracing/TraceLogStream.tsx`
+- `<HOME>/code/pydantic-tracing/design/tracing-design-concept.html`
+- `<HOME>/code/pydantic-tracing/src/styles.css`
+- `<HOME>/code/pydantic-tracing/src/components/tracing/TraceHeader.tsx`
+- `<HOME>/code/pydantic-tracing/src/components/tracing/TraceSidebar.tsx`
+- `<HOME>/code/pydantic-tracing/src/components/tracing/TraceTimeline.tsx`
+- `<HOME>/code/pydantic-tracing/src/components/tracing/SpanNode.tsx`
+- `<HOME>/code/pydantic-tracing/src/components/tracing/JsonRenderer.tsx`
+- `<HOME>/code/pydantic-tracing/src/components/tracing/TraceLogStream.tsx`
 
 ## 1. Visual Theme & Atmosphere
 

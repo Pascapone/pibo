@@ -15,7 +15,7 @@ This plan does not implement code. It documents the reproduction, findings, susp
 
 ## Context
 
-The repo root is `/home/pibo/code/pibo`.
+The repo root is `<HOME>/code/pibo`.
 
 Always read these first:
 

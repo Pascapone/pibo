@@ -11,14 +11,14 @@ fi
 export DISPLAY=:99
 
 # Sicherstellen, dass der Browser-Use-Wrapper existiert
-if [ ! -x /root/.pibo/tools/browser-use/home/bin/browser-use ]; then
+if [ ! -x "$HOME/.pibo/tools/browser-use/home/bin/browser-use" ]; then
   echo "[docker-entrypoint] Preparing browser-use wrapper ..."
   /app/scripts/prepare-browser-use-wrapper.sh
 fi
 
 # PATH erweitern
-export PATH="/root/.pibo/tools/browser-use/home/bin:/root/.pibo/tools/browser-use/.venv/bin:$PATH"
-export BROWSER_USE_HOME=/root/.pibo/tools/browser-use/home
+export PATH="$HOME/.pibo/tools/browser-use/home/bin:$HOME/.pibo/tools/browser-use/.venv/bin:$PATH"
+export BROWSER_USE_HOME="$HOME/.pibo/tools/browser-use/home"
 
 # Pibo-CLI-Argumente verarbeiten
 case "${1:-gateway}" in

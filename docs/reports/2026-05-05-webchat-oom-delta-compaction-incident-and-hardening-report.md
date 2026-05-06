@@ -95,7 +95,7 @@ Gateway/system observations around the incident:
 A production backup was created before mutation:
 
 ```text
-/root/.pibo/backups/delta-compaction-20260505T225644Z
+~/.pibo/backups/delta-compaction-20260505T225644Z
 ```
 
 Files:

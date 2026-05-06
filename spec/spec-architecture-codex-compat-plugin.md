@@ -345,7 +345,7 @@ If child agents reuse the root prompt unchanged, Codex-tuned delegation behavior
 
 ## 11. Related Specifications / Further Reading
 
-- [spec-architecture-runtime-boundary.md](/home/pibo/code/pibo/spec/spec-architecture-runtime-boundary.md)
-- [spec-architecture-pibo-session-model.md](/home/pibo/code/pibo/spec/spec-architecture-pibo-session-model.md)
-- [docs/architecture.md](/home/pibo/code/pibo/docs/architecture.md)
-- [docs/codex-harness-analysis.md](/home/pibo/code/pibo/docs/codex-harness-analysis.md)
+- [spec-architecture-runtime-boundary.md](<HOME>/code/pibo/spec/spec-architecture-runtime-boundary.md)
+- [spec-architecture-pibo-session-model.md](<HOME>/code/pibo/spec/spec-architecture-pibo-session-model.md)
+- [docs/architecture.md](<HOME>/code/pibo/docs/architecture.md)
+- [docs/codex-harness-analysis.md](<HOME>/code/pibo/docs/codex-harness-analysis.md)

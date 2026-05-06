@@ -14,7 +14,7 @@ Der Docker Compute Worker soll optional auch einen vollständigen Better-Auth-Fl
 
 ## Offene Probleme (für echtes Better-Auth)
 
-1. **OAuth-Redirect-URL passt nicht.** Google OAuth leitet nach `https://pibo.neuralnexus.me/api/auth/callback/google` zurück. Der Worker läuft aber auf `http://217.154.222.150:<random-port>`. Der Callback landet daher beim Host-Gateway, nicht im Container.
+1. **OAuth-Redirect-URL passt nicht.** Google OAuth leitet nach `https://pibo.neuralnexus.me/api/auth/callback/google` zurück. Der Worker läuft aber auf `http://<host-ip>:<random-port>`. Der Callback landet daher beim Host-Gateway, nicht im Container.
 2. **Keine HTTPS-Terminierung.** Better-Auth erwartet `https` für OAuth. Der Worker läuft auf `http`.
 3. **Session-DB ist ephemeral.** Die SQLite-DB für Auth liegt im Container und wird beim Release gelöscht. Das macht persistente Sessions unmöglich.
 4. **Rollen / RBAC fehlt.** Die aktuelle Config hat nur `allowedEmails`. Rollen und Berechtigungen sind noch nicht implementiert.
@@ -57,7 +57,7 @@ Kurzfristig reicht ein selbst-signiertes Zertifikat im Container oder ein Host-n
 Die Auth-SQLite sollte auf dem Host persistiert werden, damit Sessions zwischen Worker-Neustarts erhalten bleiben.
 
 ```
--v /root/.pibo/auth-worker-<id>.sqlite:/app/.pibo/auth.sqlite
+-v ~/.pibo/auth-worker-<id>.sqlite:/app/.pibo/auth.sqlite
 ```
 
 Und in der Config `auth.databasePath` auf `/app/.pibo/auth.sqlite` setzen.

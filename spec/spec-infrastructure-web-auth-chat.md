@@ -116,7 +116,7 @@ This specification does not define non-web local gateway behavior except where w
 - **SEC-004**: Web apps MUST use same-origin cookies and MUST NOT require iframe or cross-origin auth flow.
 - **SEC-005**: The web host MUST use `X-Forwarded-Host` and `X-Forwarded-Proto` to reconstruct request origin only for loopback reverse proxy connections.
 - **CON-001**: Google OAuth redirect URIs are exact per deployment and are not wildcarded by Pibo.
-- **OPS-001**: The hosted server SHOULD validate host-level Chat Web changes on the dev web gateway before production. The dev gateway uses `pibo-web-dev.service`, `/root/.pibo-dev`, `https://dev.pibo.neuralnexus.me`, and real Better Auth/Google OAuth.
+- **OPS-001**: The hosted server SHOULD validate host-level Chat Web changes on the dev web gateway before production. The dev gateway uses `pibo-web-dev.service`, `~/.pibo-dev`, `https://dev.pibo.neuralnexus.me`, and real Better Auth/Google OAuth.
 - **OPS-002**: `./scripts/deploy-web-dev.sh` MUST target only the dev web gateway. `./scripts/deploy-web.sh` MUST remain the production deployment path and require approval.
 
 ## 4. Interfaces & Data Contracts

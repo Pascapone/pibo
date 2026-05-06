@@ -38,7 +38,7 @@ Start from a safe, separate worktree. The existing worktree is dirty and must be
 Recommended setup:
 
 ```bash
-cd /home/pibo/code/pibo
+cd <HOME>/code/pibo
 git status --short
 git branch --show-current
 git rev-parse --short HEAD

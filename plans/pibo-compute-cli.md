@@ -42,7 +42,7 @@ Eine schlanke CLI innerhalb von Pibo, mit der der Agent frische Docker-Worker-Co
   {
     "id": "pibo-worker-a1b2c3",
     "image": "pibo:latest",
-    "gatewayHost": "217.154.222.150",
+    "gatewayHost": "<host-ip>",
     "gatewayPort": 49153,
     "cdpPort": 49154,
     "connect": "docker exec -it pibo-worker-a1b2c3 bash"

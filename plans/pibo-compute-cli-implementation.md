@@ -30,7 +30,7 @@ Eine schlanke CLI innerhalb von Pibo (`pibo compute`), mit der der Agent frische
 
 ### `pibo compute spawn [--name <name>] [--profile <profile>]`
 1. Prüft, ob `pibo:latest` existiert und aktuell ist (Smart Build).
-2. Falls nicht: baut das Image automatisch aus dem aktuellen Workspace (`/root/code/pibo`).
+2. Falls nicht: baut das Image automatisch aus dem aktuellen Workspace (`<REPO>`).
 3. Erzeugt einen neuen Container mit eindeutigem Namen: `pibo-worker-<uuid>`.
 4. Mapped Ports dynamisch (Docker wählt Host-Port):
    - Container:4789 → Host:??? (Gateway)
@@ -45,7 +45,7 @@ Eine schlanke CLI innerhalb von Pibo (`pibo compute`), mit der der Agent frische
    {
      "id": "pibo-worker-a1b2c3",
      "image": "pibo:latest",
-     "gatewayHost": "217.154.222.150",
+     "gatewayHost": "<host-ip>",
      "gatewayPort": 49153,
      "cdpPort": 49154,
      "connect": "docker exec -it pibo-worker-a1b2c3 bash"
@@ -138,7 +138,7 @@ Wenn der Agent `release` vergisst:
 
 ### Keine Mounts
 - Der Container bekommt eine **Kopie** des Codes zum Build-Zeitpunkt.
-- Kein `-v /root/code/pibo:/app`. Der Agent soll nicht den Host-Code anfassen können.
+- Kein `-v <REPO>:/app`. Der Agent soll nicht den Host-Code anfassen können.
 - Isoliert, sicher, reproduzierbar.
 
 ## Dateien & Aufwand

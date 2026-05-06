@@ -769,7 +769,7 @@ An implementation complies with this specification when:
 - [spec-schema-events-and-gateway.md](./spec-schema-events-and-gateway.md)
 - [spec-architecture-runtime-boundary.md](./spec-architecture-runtime-boundary.md)
 - [spec-process-tool-review-feedback-loop.md](./spec-process-tool-review-feedback-loop.md)
-- Plane local clone: `/home/pibo/code/plane`
-- Plane work item API reference in source: `/home/pibo/code/plane/apps/api/plane/api/urls/work_item.py`
-- Plane webhook sender in source: `/home/pibo/code/plane/apps/api/plane/bgtasks/webhook_task.py`
-- Plane API token auth in source: `/home/pibo/code/plane/apps/api/plane/api/middleware/api_authentication.py`
+- Plane local clone: `<HOME>/code/plane`
+- Plane work item API reference in source: `<HOME>/code/plane/apps/api/plane/api/urls/work_item.py`
+- Plane webhook sender in source: `<HOME>/code/plane/apps/api/plane/bgtasks/webhook_task.py`
+- Plane API token auth in source: `<HOME>/code/plane/apps/api/plane/api/middleware/api_authentication.py`

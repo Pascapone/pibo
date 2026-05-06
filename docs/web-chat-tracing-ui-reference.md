@@ -6,14 +6,14 @@ purpose: Reference context for designing Pibo's next-generation Chat Web App fro
 
 # Web Chat Tracing UI Reference
 
-This document is not the feature specification. It is reference context for a separate specification session. It explains the existing tracing UI in `/home/pibo/code/pydantic-tracing`, why it fits Pibo, and how it should influence the Pibo Chat Web App design.
+This document is not the feature specification. It is reference context for a separate specification session. It explains the existing tracing UI in `<HOME>/code/pydantic-tracing`, why it fits Pibo, and how it should influence the Pibo Chat Web App design.
 
 ## Source Project
 
 The relevant cloned project is:
 
 ```text
-/home/pibo/code/pydantic-tracing
+<HOME>/code/pydantic-tracing
 ```
 
 The useful part is the TypeScript/React tracing UI, not the Python worker system or job queue.

@@ -233,7 +233,7 @@ Unter `MultiAgentV2` wird auf Task-Pfade umgestellt:
 - Task schliessen
 - Agents listen
 
-Statt Agent-ID steht der kanonische Task-Name im Zentrum, z.B. `/root/task_1/subtask_a`.
+Statt Agent-ID steht der kanonische Task-Name im Zentrum, z.B. `<HOME>/task_1/subtask_a`.
 
 Wichtige V2-Eigenschaften:
 

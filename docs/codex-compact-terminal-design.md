@@ -1,18 +1,18 @@
 # Design System: Pibo Codex Compact Terminal
 **Project ID:** local-reference-pibo-codex-compact-terminal
 
-This document defines the visual language for a compact Pibo trace view inspired by the Codex TUI shown in the four-terminal screenshot and by the local Codex source under `/home/pibo/code/codex/codex-rs/tui`.
+This document defines the visual language for a compact Pibo trace view inspired by the Codex TUI shown in the four-terminal screenshot and by the local Codex source under `<HOME>/code/codex/codex-rs/tui`.
 
 Primary references:
 
 - User-provided screenshot with four PowerShell/Windows Terminal panes showing Codex TUI history, tool calls, background terminal waits, build/typecheck output, and composer footer.
-- `/home/pibo/code/codex/codex-rs/tui/styles.md`
-- `/home/pibo/code/codex/codex-rs/tui/src/history_cell.rs`
-- `/home/pibo/code/codex/codex-rs/tui/src/exec_cell/model.rs`
-- `/home/pibo/code/codex/codex-rs/tui/src/exec_cell/render.rs`
-- `/home/pibo/code/codex/codex-rs/tui/src/multi_agents.rs`
-- `/home/pibo/code/codex/codex-rs/tui/src/bottom_pane/footer.rs`
-- Codex TUI snapshot tests under `/home/pibo/code/codex/codex-rs/tui/src/**/snapshots`
+- `<HOME>/code/codex/codex-rs/tui/styles.md`
+- `<HOME>/code/codex/codex-rs/tui/src/history_cell.rs`
+- `<HOME>/code/codex/codex-rs/tui/src/exec_cell/model.rs`
+- `<HOME>/code/codex/codex-rs/tui/src/exec_cell/render.rs`
+- `<HOME>/code/codex/codex-rs/tui/src/multi_agents.rs`
+- `<HOME>/code/codex/codex-rs/tui/src/bottom_pane/footer.rs`
+- Codex TUI snapshot tests under `<HOME>/code/codex/codex-rs/tui/src/**/snapshots`
 
 ## 1. Visual Theme & Atmosphere
 

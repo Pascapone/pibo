@@ -61,8 +61,8 @@ Relevant current code areas:
 - `src/core/runtime.ts`: decides which profile tools are yieldable and when run-control tools are generated.
 - `src/core/profiles.ts`: profile model for tools and packages.
 - `src/plugins/builtin.ts`: built-in profile registration and parked gateway producer registry.
-- `/home/pibo/code/pi-mono/packages/coding-agent/src/core/tools/bash.ts`: Pi built-in `bash` implementation.
-- `/home/pibo/code/pi-mono/packages/coding-agent/src/core/tools/index.ts`: Pi built-in tool definitions.
+- `<HOME>/code/pi-mono/packages/coding-agent/src/core/tools/bash.ts`: Pi built-in `bash` implementation.
+- `<HOME>/code/pi-mono/packages/coding-agent/src/core/tools/index.ts`: Pi built-in tool definitions.
 
 ## Design Questions For Next Session
 
@@ -99,7 +99,7 @@ This should avoid a permanent duplicate shell tool while still giving Pibo the p
 Start by reading Pi's `bash` implementation and Pibo's run-control generation path:
 
 ```text
-/home/pibo/code/pi-mono/packages/coding-agent/src/core/tools/bash.ts
+<HOME>/code/pi-mono/packages/coding-agent/src/core/tools/bash.ts
 src/core/runtime.ts
 src/runs/tools.ts
 src/plugins/core-tools.ts

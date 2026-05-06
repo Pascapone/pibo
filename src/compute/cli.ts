@@ -18,7 +18,7 @@ import { writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 
-const WORKSPACE_DIR = process.env.PIBO_COMPUTE_WORKSPACE || "/root/code/pibo";
+const WORKSPACE_DIR = process.env.PIBO_COMPUTE_WORKSPACE || process.cwd();
 const HASH_FILE = path.join(os.homedir(), ".pibo", "compute-image-hash");
 const DEP_HASH_FILE = path.join(os.homedir(), ".pibo", "compute-dep-hash");
 

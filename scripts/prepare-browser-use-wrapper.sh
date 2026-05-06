@@ -1,8 +1,8 @@
 #!/bin/sh
 set -e
 
-real_browser_use=/root/.pibo/tools/browser-use/.venv/bin/browser-use
-wrapper_dir=/root/.pibo/tools/browser-use/home/bin
+real_browser_use="$HOME/.pibo/tools/browser-use/.venv/bin/browser-use"
+wrapper_dir="$HOME/.pibo/tools/browser-use/home/bin"
 wrapper_path=$wrapper_dir/browser-use
 
 mkdir -p "$wrapper_dir"
@@ -11,10 +11,10 @@ cat > "$wrapper_path" <<'WRAPPER'
 #!/bin/sh
 set -eu
 
-real_browser_use='/root/.pibo/tools/browser-use/.venv/bin/browser-use'
+real_browser_use="$HOME/.pibo/tools/browser-use/.venv/bin/browser-use"
 default_profile='PIBo'
 fresh_flag='--fresh-profile'
-python_cmd='/root/.pibo/tools/browser-use/.venv/bin/python'
+python_cmd="$HOME/.pibo/tools/browser-use/.venv/bin/python"
 
 session=${PIBO_BROWSER_USE_SESSION:-default}
 explicit_profile=0

@@ -9,7 +9,7 @@ Develop Pibo inside a Docker container. Edit files on the host. Run builds, test
 
 ## The rule
 
-Create a new Git worktree for every task. Work only inside that worktree. Never edit files in the main repository (`/root/code/pibo/`).
+Create a new Git worktree for every task. Work only inside that worktree. Never edit files in the main repository (`<REPO>/`).
 
 ## Why
 
@@ -18,7 +18,7 @@ The host runs the live Pibo gateway. If you break it during development, the use
 ## Quick reference
 
 ```
-1. pibo compute dev spawn --worktree <name> --repo /root/code/pibo
+1. pibo compute dev spawn --worktree <name> --repo <REPO>
 2. Parse JSON output → save `id` (container name)
 3. Use read/edit/write inside .worktrees/<name>/
 4. Run builds/tests with: docker exec -w /workspace <id> <command>
@@ -33,7 +33,7 @@ The host runs the live Pibo gateway. If you break it during development, the use
 Run:
 
 ```bash
-pibo compute dev spawn --worktree <branch-name> --repo /root/code/pibo
+pibo compute dev spawn --worktree <branch-name> --repo <REPO>
 ```
 
 If this command does not exist, the CLI needs updating. Tell the user.
@@ -55,7 +55,7 @@ Parse the JSON output. You need these fields:
 
 Use `read`, `edit`, and `write` inside `.worktrees/<branch-name>/`. The container sees changes instantly because the mount is live.
 
-Never use `read` or `edit` on `/root/code/pibo/` directly. Always target the worktree path.
+Never use `read` or `edit` on `<REPO>/` directly. Always target the worktree path.
 
 ### 3. Run commands in the container
 
@@ -99,7 +99,7 @@ The web gateway binds to `0.0.0.0:4788` inside the container. Access it from the
 **Config requirement:** `gateway:web` needs `~/.pibo/config.json`. Copy it into the worktree before starting:
 ```bash
 docker exec <id> mkdir -p /workspace/.pibo
-docker cp /root/.pibo/config.json <id>:/workspace/.pibo/config.json
+docker cp <PIBO_HOME>/config.json <id>:/workspace/.pibo/config.json
 ```
 
 Never start `pibo gateway` or `pibo gateway:web` on the host.
@@ -109,7 +109,7 @@ Never start `pibo gateway` or `pibo gateway:web` on the host.
 Browser-use runs inside the container. Use it to inspect the web UI through the exposed host port:
 
 ```bash
-docker exec -w /workspace <id> bash -c 'export PATH="/root/.pibo/tools/browser-use/home/bin:/root/.pibo/tools/browser-use/.venv/bin:$PATH" && browser-use open http://<gatewayHost>:<webPort>/apps/chat'
+docker exec -w /workspace <id> bash -c 'export PATH="<PIBO_HOME>/tools/browser-use/home/bin:<PIBO_HOME>/tools/browser-use/.venv/bin:$PATH" && browser-use open http://<gatewayHost>:<webPort>/apps/chat'
 ```
 
 **Vite dev server note:** The chat UI dev server (`npm run dev`) binds to `127.0.0.1` by default. It is only reachable from inside the container. Use the web gateway (`gateway:web`) instead for browser debugging from the host.
@@ -122,7 +122,7 @@ Keep the container running. Edit on the host. Re-run commands in the container. 
 
 1. Commit in the worktree:
    ```bash
-   cd /root/code/pibo/.worktrees/<branch-name>
+   cd <REPO>/.worktrees/<branch-name>
    git add -A && git commit -m "your message"
    ```
 2. Release the container:
@@ -132,7 +132,7 @@ Keep the container running. Edit on the host. Re-run commands in the container. 
 3. Tell the user the branch name and worktree path. They merge when ready.
 4. Clean up (only when the user confirms the merge is done):
    ```bash
-   cd /root/code/pibo
+   cd <REPO>
    git worktree remove <branch-name>
    git branch -d <branch-name>
    ```
@@ -151,7 +151,7 @@ This prevents collisions when multiple agents work in parallel.
 
 ## What to avoid
 
-- Do not edit `/root/code/pibo/` directly. Always use the worktree.
+- Do not edit `<REPO>/` directly. Always use the worktree.
 - Do not run `npm run build`, `npm run test`, or `pibo gateway` on the host.
 - Do not stop the container between edit-and-test cycles.
 - Do not merge the branch yourself unless the user explicitly asks for it.
