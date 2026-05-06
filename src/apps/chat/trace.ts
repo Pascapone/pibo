@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { parseSessionEntries, SessionManager, type SessionEntry } from "@mariozechner/pi-coding-agent";
 import type { PiboSessionListItem } from "../../core/events.js";
 import type { ModelProfile } from "../../core/profiles.js";
@@ -71,6 +73,7 @@ type TraceBuildInput = {
 	events: ChatWebStoredPiboEvent[];
 	status?: PiboWebSessionStatus;
 	cwd?: string;
+	metadata?: SessionMetadata;
 	includeRawEvents?: boolean;
 	rawEventsLimit?: number;
 	latestStreamId?: number;
@@ -174,7 +177,7 @@ function sessionNodeStatus(indexedStatus: PiboWebSessionStatus | undefined): Pib
 }
 
 export async function buildTraceView(input: TraceBuildInput): Promise<PiboSessionTraceView> {
-	const metadata = await loadPiSessionMetadata(input.session, input.session.workspace ?? input.cwd);
+	const metadata = input.metadata ?? (await loadPiSessionMetadata(input.session, input.session.workspace ?? input.cwd));
 	const allEntries = metadata.sessionPath ? readEntries(metadata.sessionPath) : [];
 	const sessionStatus = input.status ?? "idle";
 
@@ -286,8 +289,78 @@ function truncateTitle(title: string, maxLength = 56): string {
 }
 
 async function findPiSession(piboSession: PiboSession, cwd: string): Promise<PiboSessionListItem | undefined> {
-	const sessions = await listPiSessions(cwd);
-	return sessions.find((session) => session.id === piboSession.piSessionId);
+	return (
+		findPiSessionDirect(piboSession.piSessionId, cwd) ??
+		(await listPiSessions(cwd)).find((session) => session.id === piboSession.piSessionId)
+	);
+}
+
+function findPiSessionDirect(piSessionId: string, cwd: string): PiboSessionListItem | undefined {
+	const sessionDir = defaultPiSessionDir(cwd);
+	if (!existsSync(sessionDir)) return undefined;
+	try {
+		const file = readdirSync(sessionDir).find((candidate) => candidate.endsWith(`_${piSessionId}.jsonl`));
+		if (!file) return undefined;
+		const sessionPath = join(sessionDir, file);
+		const stats = statSync(sessionPath);
+		const entries = parseSessionEntries(readFileSync(sessionPath, "utf8"));
+		const header = entries.find((entry) => entry.type === "session") as
+			| { id?: unknown; timestamp?: unknown; cwd?: unknown; parentSession?: unknown }
+			| undefined;
+		if (header?.id !== piSessionId) return undefined;
+
+		let name: string | undefined;
+		let firstMessage = "";
+		let messageCount = 0;
+		for (const entry of entries) {
+			if (entry.type === "session_info") name = stringValue((entry as { name?: unknown }).name)?.trim() || undefined;
+			if (entry.type !== "message") continue;
+			messageCount++;
+			if (firstMessage || messageRole(entry) !== "user") continue;
+			firstMessage = extractMessageText(messageContent(entry));
+		}
+
+		return {
+			path: sessionPath,
+			id: piSessionId,
+			cwd: stringValue(header.cwd) ?? cwd,
+			name,
+			parentSessionPath: stringValue(header.parentSession),
+			created: stringValue(header.timestamp) ?? stats.birthtime.toISOString(),
+			modified: sessionModifiedIso(
+				entries.filter((entry): entry is SessionEntry => entry.type !== "session"),
+				stringValue(header.timestamp),
+				stats.mtime,
+			),
+			messageCount,
+			firstMessage: firstMessage || "(no messages)",
+		};
+	} catch {
+		return undefined;
+	}
+}
+
+function defaultPiSessionDir(cwd: string): string {
+	const agentDir = process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent");
+	const safePath = `--${cwd.replace(/^[\\/]/, "").replace(/[\\/:]/g, "-")}--`;
+	return join(agentDir, "sessions", safePath);
+}
+
+function sessionModifiedIso(entries: SessionEntry[], headerTimestamp: string | undefined, statsMtime: Date): string {
+	let lastActivityTime: number | undefined;
+	for (const entry of entries) {
+		if (entry.type !== "message") continue;
+		const timestamp = (entry.message as { timestamp?: unknown }).timestamp;
+		if (typeof timestamp === "number") {
+			lastActivityTime = Math.max(lastActivityTime ?? 0, timestamp);
+			continue;
+		}
+		const entryTime = new Date(entry.timestamp).getTime();
+		if (!Number.isNaN(entryTime)) lastActivityTime = Math.max(lastActivityTime ?? 0, entryTime);
+	}
+	if (lastActivityTime) return new Date(lastActivityTime).toISOString();
+	const headerTime = headerTimestamp ? new Date(headerTimestamp).getTime() : NaN;
+	return !Number.isNaN(headerTime) ? new Date(headerTime).toISOString() : statsMtime.toISOString();
 }
 
 function readEntries(path: string): SessionEntry[] {

@@ -1446,16 +1446,16 @@ function SessionTracePane({
 	const traceQueryKey = useMemo(
 		() =>
 			selectedPiboSessionId
-				? chatTraceQueryKey(selectedPiboSessionId, { includeRawEvents: true, rawEventsLimit: DEFAULT_RAW_EVENTS_LIMIT })
+				? chatTraceQueryKey(selectedPiboSessionId, { includeRawEvents: showRawEvents, rawEventsLimit: DEFAULT_RAW_EVENTS_LIMIT })
 				: null,
-		[selectedPiboSessionId],
+		[selectedPiboSessionId, showRawEvents],
 	);
 	const traceQuery = useQuery({
 		queryKey: traceQueryKey ?? ["chat", "trace", "idle", "compact", DEFAULT_RAW_EVENTS_LIMIT],
 		queryFn: () => {
 			if (!selectedPiboSessionId) throw new Error("Session is required");
 			return loadTraceQueryData(queryClient, selectedPiboSessionId, {
-				includeRawEvents: true,
+				includeRawEvents: showRawEvents,
 				rawEventsLimit: DEFAULT_RAW_EVENTS_LIMIT,
 			});
 		},

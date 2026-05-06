@@ -3253,7 +3253,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					return new Response(null, { status: 304, headers });
 				}
 				const cacheKey = traceCacheKey(selectedSession.id, version, includeRawEvents, rawEventsLimit);
-				const cached = includeRawEvents ? undefined : state.traceCache.get(cacheKey);
+				const cached = state.traceCache.get(cacheKey);
 				if (cached) return responseJson(cached, { headers });
 				const trace = await buildTraceView({
 					session: selectedSession,
@@ -3263,6 +3263,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 						limit: TRACE_RENDER_EVENTS_LIMIT,
 					}),
 					status: indexedSession?.status,
+					metadata,
 					includeRawEvents,
 					rawEventsLimit,
 					latestStreamId,
