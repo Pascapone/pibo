@@ -1,3 +1,4 @@
+import { compareTraceNodes } from "../../../../../shared/trace-engine.js";
 import type { PiboSessionTraceView, PiboTraceNode } from "../../types";
 import { terminalTextValue } from "./terminalValue";
 
@@ -90,6 +91,7 @@ export function buildCompactTerminalRows(
 ): CompactTerminalRow[] {
 	if (!traceView) return [];
 	const candidates = flattenTraceNodes(traceView.nodes)
+		.sort((left, right) => compareTraceNodes(left.node, right.node))
 		.flatMap((item) => {
 			if (item.node.type === "agent.turn") return [];
 			if (item.node.type === "model.reasoning" && !options.showThinking) return [];
