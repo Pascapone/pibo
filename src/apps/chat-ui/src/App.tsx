@@ -98,6 +98,10 @@ type LoadBootstrapOptions = {
 	force?: boolean;
 };
 
+type NavigationOptions = {
+	closeMobileSidebar?: boolean;
+};
+
 const LAST_SELECTION_STORAGE_KEY = "pibo.chat.lastSelection";
 const SESSION_VIEW_STORAGE_KEY = "pibo.chat.sessionView";
 const COMPOSER_DRAFT_STORAGE_PREFIX = "pibo.chat.composerDraft.";
@@ -245,8 +249,8 @@ export function App({ route }: { route: ChatAppRoute }) {
 		writeStoredSessionView(sessionViewId);
 	}, [sessionViewId]);
 	const navigateToRoute = useCallback(
-		(target: ChatAppRoute, replace = false, nextSessionViewId = sessionViewId) => {
-			setMobileSidebarOpen(false);
+		(target: ChatAppRoute, replace = false, nextSessionViewId = sessionViewId, options: NavigationOptions = {}) => {
+			if (options.closeMobileSidebar !== false) setMobileSidebarOpen(false);
 			const sessionViewSearch = { view: nextSessionViewId };
 			if (target.area === "agents") {
 				void navigate({ to: "/agents", replace });
@@ -296,14 +300,14 @@ export function App({ route }: { route: ChatAppRoute }) {
 	);
 
 	const navigateToSelectedSession = useCallback(
-		(roomId: string | undefined, piboSessionId: string | undefined, replace = false) => {
+		(roomId: string | undefined, piboSessionId: string | undefined, replace = false, options: NavigationOptions = {}) => {
 			if (!piboSessionId) {
-				navigateToRoute({ area: "sessions", ...(roomId ? { roomId } : {}) }, replace);
+				navigateToRoute({ area: "sessions", ...(roomId ? { roomId } : {}) }, replace, sessionViewId, options);
 				return;
 			}
-			navigateToRoute({ area: "sessions", ...(roomId ? { roomId } : {}), piboSessionId }, replace);
+			navigateToRoute({ area: "sessions", ...(roomId ? { roomId } : {}), piboSessionId }, replace, sessionViewId, options);
 		},
-		[navigateToRoute],
+		[navigateToRoute, sessionViewId],
 	);
 
 	const openContextFileEditor = useCallback((key: string) => {
@@ -694,7 +698,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 			await renameSessionMutation.mutateAsync({ piboSessionId, title });
 			const data = await loadBootstrap(selectedPiboSessionId ?? undefined, showArchivedRef.current, selectedRoomId ?? undefined, { force: true });
 			if (area === "sessions") await refreshTrace(data.selectedPiboSessionId);
-			if (area === "sessions") navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId);
+			if (area === "sessions") navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId, false, { closeMobileSidebar: false });
 			setError(null);
 		} catch (caught) {
 			setError(caught instanceof Error ? caught.message : String(caught));
@@ -711,7 +715,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 				selectedRoomId ?? undefined,
 				{ force: true },
 			);
-			if (area === "sessions") navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId);
+			if (area === "sessions") navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId, false, { closeMobileSidebar: false });
 			setError(null);
 		} catch (caught) {
 			setError(caught instanceof Error ? caught.message : String(caught));
@@ -745,7 +749,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 				{ force: true },
 			);
 			if (area === "sessions") {
-				navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId);
+				navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId, false, { closeMobileSidebar: false });
 			}
 			setDeleteSessionTarget(null);
 			setDeleteSessionConfirmText("");
@@ -798,7 +802,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 			const { room } = await patchRoom(roomId, input);
 			updateBootstrapCache((data) => updateRoomInBootstrap(data, roomId, () => room));
 			const data = await loadBootstrap(selectedPiboSessionId ?? undefined, showArchivedRef.current, roomId, { force: true });
-			if (area === "sessions") navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId);
+			if (area === "sessions") navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId, false, { closeMobileSidebar: false });
 			setError(null);
 		} catch (caught) {
 			restoreBootstrapSnapshot(snapshot);
@@ -818,7 +822,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 			const { room } = await patchRoom(roomId, { archived });
 			updateBootstrapCache((data) => updateRoomInBootstrap(data, roomId, () => room));
 			const data = await loadBootstrap(selectedPiboSessionId ?? undefined, showArchivedRef.current, selectedRoomId ?? undefined, { force: true });
-			if (area === "sessions") navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId);
+			if (area === "sessions") navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId, false, { closeMobileSidebar: false });
 			setError(null);
 		} catch (caught) {
 			restoreBootstrapSnapshot(snapshot);
@@ -850,7 +854,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 				setSelectedPiboSessionId(null);
 			}
 			const data = await loadBootstrap(undefined, showArchivedRef.current, undefined, { force: true });
-			if (area === "sessions") navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId);
+			if (area === "sessions") navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId, false, { closeMobileSidebar: false });
 			setDeleteRoomTarget(null);
 			setDeleteRoomConfirmName("");
 			setError(null);
