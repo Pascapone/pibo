@@ -483,14 +483,16 @@ function useWorkingScramble(target: string) {
 				return;
 			}
 
-			setActiveIndex(index);
+			const currentIndex = index;
+			const targetChar = targetChars[currentIndex] ?? " ";
+			setActiveIndex(currentIndex);
 			if (rotationsRemaining > 1) {
-				setChars((current) => replaceChar(current, index, randomAsciiChar(targetChars[index])));
+				setChars((current) => replaceChar(current, currentIndex, randomAsciiChar(targetChar)));
 				rotationsRemaining--;
 				return;
 			}
 
-			setChars((current) => replaceChar(current, index, targetChars[index] ?? " "));
+			setChars((current) => replaceChar(current, currentIndex, targetChar));
 			index++;
 			rotationsRemaining = randomRotationCount();
 			if (index >= targetChars.length) {
