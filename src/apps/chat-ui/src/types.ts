@@ -4,9 +4,10 @@ import type {
 	PiboTraceNodeStatus,
 	PiboTraceSource,
 	PiboTraceOrderKey,
+	PiboWebSessionStatus,
 } from "../../../shared/trace-types.js";
 
-export type { PiboTraceNode, PiboTraceNodeType, PiboTraceNodeStatus, PiboTraceSource, PiboTraceOrderKey };
+export type { PiboTraceNode, PiboTraceNodeType, PiboTraceNodeStatus, PiboTraceSource, PiboTraceOrderKey, PiboWebSessionStatus };
 
 export type PiboWebSessionNode = {
 	piboSessionId: string;

@@ -40,7 +40,7 @@ import {
 } from "lucide-react";
 import { createUserSkill, deleteCustomAgent, deletePiPackage, deleteRoom, deleteSession, deleteUserSkill, getBootstrap, getTrace, getUserSkill, installUserSkill, listUserSkills, patchCustomAgent, patchModelDefaults, patchPiPackage, patchRoom, patchSession, postAction, postContextFile, postCustomAgent, postMessage, postPiPackage, postRoom, postSession, signInWithGoogle, signOut, updateUserSkill, type SaveCustomAgentInput } from "./api";
 import { THINKING_LEVELS } from "./types";
-import type { AgentCatalog, BootstrapData, CustomAgent, CustomAgentSubagent, ModelCatalog, ModelDefaults, ModelProfile, PiboRoom, PiboSession, PiboSessionTraceView, PiboTraceNode, PiboTraceOrderKey, PiboWebSessionNode, ThinkingLevel, UserSkill } from "./types";
+import type { AgentCatalog, BootstrapData, CustomAgent, CustomAgentSubagent, ModelCatalog, ModelDefaults, ModelProfile, PiboRoom, PiboSession, PiboSessionTraceView, PiboTraceNode, PiboTraceOrderKey, PiboWebSessionNode, PiboWebSessionStatus, ThinkingLevel, UserSkill } from "./types";
 import type { ChatWebStoredEvent } from "../../../shared/trace-types.js";
 import { adaptTrace } from "./tracing/adapt";
 import { collectBackendNodes } from "./tracing/snapshotCollector";
@@ -1242,6 +1242,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 						selectedRoomArchived={selectedRoomArchived}
 						selectedSessionProfile={selectedSessionNode?.profile ?? bootstrap.session.profile}
 						selectedSessionActiveModel={selectedSessionActiveModel}
+						selectedSessionStatus={selectedSessionNode?.status}
 						sessionViewId={sessionViewId}
 						sessionViews={sessionViews}
 						currentSessionView={currentSessionView}
@@ -1377,6 +1378,7 @@ function SessionTracePane({
 	selectedRoomArchived,
 	selectedSessionProfile,
 	selectedSessionActiveModel,
+	selectedSessionStatus,
 	sessionViewId,
 	sessionViews,
 	currentSessionView,
@@ -1409,6 +1411,7 @@ function SessionTracePane({
 	selectedRoomArchived: boolean;
 	selectedSessionProfile: string;
 	selectedSessionActiveModel?: string;
+	selectedSessionStatus?: PiboWebSessionStatus;
 	sessionViewId: ChatSessionViewId;
 	sessionViews: ReturnType<typeof listChatSessionViews>;
 	currentSessionView: ReturnType<typeof getChatSessionView>;
@@ -1476,7 +1479,7 @@ function SessionTracePane({
 	const currentTraceView = useMemo(() => {
 		if (!selectedPiboSessionId || !bootstrap) return null;
 		if (traceQuery.data?.piboSessionId !== selectedPiboSessionId) return null;
-		const sessionStatus = bootstrap.sessions.find((s) => s.piboSessionId === selectedPiboSessionId)?.status ?? "idle";
+		const sessionStatus = findSessionNode(bootstrap.sessions, selectedPiboSessionId)?.status ?? "idle";
 		const overlayEvents = liveTraceOverlay?.piboSessionId === selectedPiboSessionId
 			? liveTraceOverlay.events
 			: [];
@@ -1718,6 +1721,7 @@ function SessionTracePane({
 						expandThinking,
 						sessionAgentProfile: selectedSessionProfile,
 						sessionActiveModel: selectedSessionActiveModel,
+						selectedSessionStatus,
 						sessionBreadcrumbs,
 						originSession,
 						derivedSessions,
