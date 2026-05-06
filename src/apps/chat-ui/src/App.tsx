@@ -1422,10 +1422,10 @@ function SessionTracePane({
 		const overlayEvents = liveTraceOverlay?.piboSessionId === selectedPiboSessionId
 			? liveTraceOverlay.events
 			: [];
-		if (!overlayEvents.length) return traceQuery.data;
+		if (!overlayEvents.length) return reconcileOptimisticUserMessages(traceQuery.data);
 		const liveTrace = patchTraceViewWithEvents(traceQuery.data, overlayEvents, sessionStatus);
 		annotateLiveTraceForkEntryIds(liveTrace.nodes, traceQuery.data.nodes);
-		return liveTrace;
+		return reconcileOptimisticUserMessages(liveTrace);
 	}, [liveTraceOverlay, selectedPiboSessionId, bootstrap, traceQuery.data]);
 
 	const flushPendingStreamEvents = useCallback((piboSessionId: string) => {
@@ -1867,6 +1867,51 @@ function appendOptimisticUserMessageToTrace(
 
 function traceHasNode(nodes: PiboTraceNode[], nodeId: string): boolean {
 	return nodes.some((node) => node.id === nodeId || traceHasNode(node.children, nodeId));
+}
+
+function reconcileOptimisticUserMessages(view: PiboSessionTraceView): PiboSessionTraceView {
+	const persistedByText = new Map<string, number>();
+	collectPersistedUserMessageText(view.nodes, persistedByText);
+	if (!persistedByText.size) return view;
+	const { nodes, changed } = dropReplacedOptimisticUserMessages(view.nodes, persistedByText);
+	return changed ? { ...view, nodes } : view;
+}
+
+function collectPersistedUserMessageText(nodes: readonly PiboTraceNode[], byText: Map<string, number>): void {
+	for (const node of nodes) {
+		if (node.type === "user.message" && !isOptimisticUserMessageNode(node)) {
+			const text = traceNodeText(node);
+			if (text) byText.set(text, (byText.get(text) ?? 0) + 1);
+		}
+		collectPersistedUserMessageText(node.children, byText);
+	}
+}
+
+function dropReplacedOptimisticUserMessages(
+	nodes: readonly PiboTraceNode[],
+	persistedByText: Map<string, number>,
+): { nodes: PiboTraceNode[]; changed: boolean } {
+	let changed = false;
+	const next: PiboTraceNode[] = [];
+	for (const node of nodes) {
+		if (isOptimisticUserMessageNode(node)) {
+			const text = traceNodeText(node);
+			const persistedCount = text ? persistedByText.get(text) ?? 0 : 0;
+			if (persistedCount > 0) {
+				persistedByText.set(text, persistedCount - 1);
+				changed = true;
+				continue;
+			}
+		}
+		const childResult = dropReplacedOptimisticUserMessages(node.children, persistedByText);
+		changed = changed || childResult.changed;
+		next.push(childResult.changed ? { ...node, children: childResult.nodes } : node);
+	}
+	return { nodes: changed ? next : nodes as PiboTraceNode[], changed };
+}
+
+function isOptimisticUserMessageNode(node: PiboTraceNode): boolean {
+	return node.type === "user.message" && (node.id.startsWith("optimistic:user-message:") || node.stableKey?.startsWith("optimistic:user-message:") === true);
 }
 
 function trimLiveOverlayForBaseTrace(overlay: LiveTraceOverlay | null, baseTrace: PiboSessionTraceView): LiveTraceOverlay | null {
