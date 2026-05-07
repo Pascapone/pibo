@@ -101,14 +101,17 @@ export function TraceTimeline({
 		if (!allSpans.length) return 0;
 		return Math.min(...allSpans.map((span) => span.startTime));
 	}, [allSpans]);
-	const stats = useMemo(
-		() => ({
-			completed: allSpans.filter((span) => span.status === "OK").length,
-			error: allSpans.filter((span) => span.status === "ERROR").length,
-			active: allSpans.filter((span) => span.status === "UNSET").length,
-		}),
-		[allSpans],
-	);
+	const stats = useMemo(() => {
+		let completed = 0;
+		let error = 0;
+		let active = 0;
+		for (const span of allSpans) {
+			if (span.status === "OK") completed += 1;
+			else if (span.status === "ERROR") error += 1;
+			else if (span.status === "UNSET") active += 1;
+		}
+		return { completed, error, active };
+	}, [allSpans]);
 	const isStreaming = trace?.status === "UNSET";
 	const visibleRows = useMemo(() => {
 		const rows = flattenVisibleSpans(spanTree, expansionDepth, expandThinking, expansionOverrides);

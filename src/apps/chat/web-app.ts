@@ -849,8 +849,7 @@ function markActiveSessionRead(state: ChatWebAppState, piboSessionId: string, st
 }
 
 function listOwnedSessions(context: PiboWebAppContext, webSession: PiboWebSession): PiboSession[] {
-	return (context.channelContext.listSessions?.() ?? [])
-		.filter((session) => session.ownerScope === webSession.ownerScope)
+	return context.channelContext.findSessions({ ownerScope: webSession.ownerScope })
 		.map((session) => canonicalizeSessionProfile(context, session))
 		.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 }
@@ -1506,19 +1505,14 @@ function buildSessionUnreadCounts(
 	sessions: PiboSession[],
 	principalId: string,
 ): Map<string, number> {
-	const counts = new Map<string, number>();
 	const sessionsById = new Map(sessions.map((session) => [session.id, session]));
-	for (const session of sessions) {
-		if (hasArchivedSessionInPath(session, sessionsById)) continue;
-		const lastReadStreamId = state.eventLog.getSessionReadCursor(session.id, principalId) ?? 0;
-		const unreadCount = state.eventLog.countUnreadMessages({
-			piboSessionId: session.id,
-			principalId,
-			afterStreamId: lastReadStreamId,
-		});
-		if (unreadCount > 0) counts.set(session.id, unreadCount);
-	}
-	return counts;
+	const visibleSessionIds = sessions
+		.filter((session) => !hasArchivedSessionInPath(session, sessionsById))
+		.map((session) => session.id);
+	return state.eventLog.countUnreadMessagesBySession({
+		piboSessionIds: visibleSessionIds,
+		principalId,
+	});
 }
 
 function buildRoomUnreadCounts(
@@ -3349,9 +3343,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				);
 				state.readModel.upsertSession(selectedSession);
 				const ownedSessions = listOwnedSessions(context, webSession);
-				const indexedSession = state.readModel
-					.listSessions()
-					.find((item) => item.piboSessionId === selectedSession.id);
+				const indexedSession = state.readModel.getSession(selectedSession.id);
 				const metadata = await loadPiSessionMetadata(selectedSession, selectedSession.workspace ?? process.cwd());
 				const lastEventSequence = state.readModel.getLatestEventSequence(selectedSession.id);
 				const latestStreamId = state.eventLog.getLatestStreamId({ piboSessionId: selectedSession.id });
@@ -3401,7 +3393,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const session = context.channelContext.getSession(piboSessionId);
 				if (!session) throw new PiboWebHttpError("Session not found", 404);
 				const ownedSessions = listOwnedSessions(context, await requireSession(request, context));
-				const indexedSession = state.readModel.listSessions().find((item) => item.piboSessionId === piboSessionId);
+				const indexedSession = state.readModel.getSession(piboSessionId);
 				const trace = await buildTraceView({
 					session,
 					sessions: ownedSessions,

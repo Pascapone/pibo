@@ -189,7 +189,34 @@ export class SqlitePiboSessionStore implements PiboSessionStore {
 	}
 
 	find(input: FindPiboSessionsInput): PiboSession[] {
-		return this.list().filter((session) => matchesFindInput(session, input));
+		const clauses: string[] = [];
+		const values: Array<string | null> = [];
+
+		if (input.ids !== undefined) {
+			if (input.ids.length === 0) return [];
+			clauses.push(`id IN (${input.ids.map(() => "?").join(", ")})`);
+			values.push(...input.ids);
+		}
+		if (input.channel !== undefined) { clauses.push("channel = ?"); values.push(input.channel); }
+		if (input.kind !== undefined) { clauses.push("kind = ?"); values.push(input.kind); }
+		if (input.ownerScope !== undefined) { clauses.push("owner_scope = ?"); values.push(input.ownerScope); }
+		if (input.parentId !== undefined) {
+			if (input.parentId === null) clauses.push("parent_id IS NULL");
+			else { clauses.push("parent_id = ?"); values.push(input.parentId); }
+		}
+		if (input.originId !== undefined) { clauses.push("origin_id = ?"); values.push(input.originId); }
+		if (input.profile !== undefined) { clauses.push("profile = ?"); values.push(input.profile); }
+
+		if (input.activeModel !== undefined) {
+			if (input.activeModel === null) clauses.push("active_model_json IS NULL");
+			else clauses.push("active_model_json IS NOT NULL");
+		}
+
+		const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+		const rows = this.db
+			.prepare(`SELECT * FROM pibo_sessions ${where} ORDER BY updated_at DESC`)
+			.all(...values) as SessionRow[];
+		return rows.map(sessionFromRow).filter((session) => matchesFindInput(session, input));
 	}
 
 	close(): void {

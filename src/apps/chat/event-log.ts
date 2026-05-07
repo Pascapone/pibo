@@ -117,6 +117,8 @@ export class ChatEventLog {
 				ON chat_events(room_id, stream_id);
 			CREATE INDEX IF NOT EXISTS idx_chat_events_session_stream
 				ON chat_events(pibo_session_id, stream_id);
+			CREATE INDEX IF NOT EXISTS idx_chat_events_session_type_event
+				ON chat_events(pibo_session_id, event_type, event_id);
 			CREATE INDEX IF NOT EXISTS idx_chat_events_event_id
 				ON chat_events(event_id);
 			CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_events_client_txn
@@ -347,6 +349,60 @@ export class ChatEventLog {
 			`)
 			.get(...values) as { count: number } | undefined;
 		return Number(row?.count ?? 0);
+	}
+
+	countUnreadMessagesBySession(input: { piboSessionIds: string[]; principalId: string }): Map<string, number> {
+		const counts = new Map<string, number>();
+		if (input.piboSessionIds.length === 0) return counts;
+		const uniqueIds = [...new Set(input.piboSessionIds)];
+		for (let offset = 0; offset < uniqueIds.length; offset += 400) {
+			const ids = uniqueIds.slice(offset, offset + 400);
+			const placeholders = ids.map(() => "?").join(", ");
+			const assistantTurnId = `
+				CASE
+					WHEN e.event_id LIKE '%:assistant_message'
+						THEN substr(e.event_id, 1, length(e.event_id) - length(':assistant_message'))
+					ELSE e.event_id
+				END
+			`;
+			const rows = this.db
+				.prepare(`
+					SELECT e.pibo_session_id, COUNT(DISTINCT CASE
+						WHEN e.event_type = 'assistant_message' THEN e.pibo_session_id || ':' || ${assistantTurnId}
+						ELSE 'stream:' || e.stream_id
+					END) AS count
+					FROM chat_events e
+					LEFT JOIN chat_session_reads reads
+						ON reads.pibo_session_id = e.pibo_session_id AND reads.principal_id = ?
+					WHERE e.pibo_session_id IN (${placeholders})
+						AND e.retention_class = 'chat_message'
+						AND e.stream_id > COALESCE(reads.last_read_stream_id, 0)
+						AND (e.actor_type IS NULL OR e.actor_type != 'user' OR e.actor_id IS NULL OR e.actor_id != ?)
+						AND (
+							e.event_type = 'user.message.accepted'
+							OR (
+								e.event_type = 'assistant_message'
+								AND e.event_id IS NOT NULL
+								AND EXISTS (
+									SELECT 1 FROM chat_events done
+									WHERE done.pibo_session_id = e.pibo_session_id
+										AND done.event_type = 'message_finished'
+										AND (
+											done.event_id = ${assistantTurnId}
+											OR done.event_id = ${assistantTurnId} || ':message_finished'
+										)
+								)
+							)
+						)
+					GROUP BY e.pibo_session_id
+				`)
+				.all(input.principalId, ...ids, input.principalId) as Array<{ pibo_session_id: string; count: number }>;
+			for (const row of rows) {
+				const count = Number(row.count ?? 0);
+				if (count > 0) counts.set(row.pibo_session_id, count);
+			}
+		}
+		return counts;
 	}
 
 	deleteSessions(piboSessionIds: string[]): number {
