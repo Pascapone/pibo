@@ -2614,15 +2614,16 @@ function createChatHtml(): string {
 			const result = await postJson("/api/chat/action", { piboSessionId: selectedPiboSessionId, action: "session.fork", params: { entryId: entryId } });
 			appendRawEvent({ type: "fork_result", payload: result });
 			pendingForkResult = result && result.result ? result.result : undefined;
-			if (pendingForkResult && typeof pendingForkResult.selectedText === "string") {
-				messageInput.value = pendingForkResult.selectedText;
-				messageInput.focus();
-			}
+			const selectedText = pendingForkResult && typeof pendingForkResult.selectedText === "string" ? pendingForkResult.selectedText : undefined;
 			if (pendingForkResult && pendingForkResult.piboSessionId) {
 				await selectSession(pendingForkResult.piboSessionId);
 			} else {
 				await refreshBootstrap(false);
 				await refreshTrace();
+			}
+			if (selectedText !== undefined) {
+				messageInput.value = selectedText;
+				messageInput.focus();
 			}
 		}
 		async function postJson(url, payload) {

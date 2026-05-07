@@ -950,12 +950,16 @@ export function App({ route }: { route: ChatAppRoute }) {
 		const result = parseForkActionResponse(await postAction(selectedPiboSessionId, "session.fork", { entryId }));
 		if (result?.result.cancelled) return;
 		if (!result) throw new Error("Unexpected fork action response");
-		if (typeof result.result.selectedText === "string") {
-			setComposerText(result.result.selectedText);
-			setComposerFocusSignal((current) => current + 1);
+		const selectedText = typeof result.result.selectedText === "string" ? result.result.selectedText : undefined;
+		if (selectedText !== undefined && result.result.piboSessionId) {
+			writeStoredComposerDraft(result.result.piboSessionId, selectedText);
 		}
 		if (result.result.piboSessionId) {
 			await selectSession(result.result.piboSessionId);
+		}
+		if (selectedText !== undefined) {
+			setComposerText(selectedText);
+			setComposerFocusSignal((current) => current + 1);
 		}
 	}, [selectSession, selectedPiboSessionId, selectedRoomArchived]);
 
