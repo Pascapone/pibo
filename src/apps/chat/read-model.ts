@@ -21,6 +21,12 @@ type SessionRow = {
 	status: string;
 };
 
+export type ChatWebSessionBootstrapIndexResult = {
+	checked: number;
+	written: number;
+	skipped: number;
+};
+
 type EventRow = {
 	id: string;
 	pibo_session_id: string;
@@ -125,6 +131,7 @@ export class ChatWebReadModel {
 				profile = excluded.profile,
 				channel = excluded.channel,
 				kind = excluded.kind,
+				created_at = excluded.created_at,
 				updated_at = excluded.updated_at,
 				status = COALESCE(?, web_chat_sessions.status)
 			WHERE web_chat_sessions.pi_session_id IS NOT excluded.pi_session_id
@@ -132,6 +139,7 @@ export class ChatWebReadModel {
 				OR web_chat_sessions.profile IS NOT excluded.profile
 				OR web_chat_sessions.channel IS NOT excluded.channel
 				OR web_chat_sessions.kind IS NOT excluded.kind
+				OR web_chat_sessions.created_at IS NOT excluded.created_at
 				OR web_chat_sessions.updated_at IS NOT excluded.updated_at
 				OR (? IS NOT NULL AND web_chat_sessions.status IS NOT ?)
 		`);
@@ -165,6 +173,35 @@ export class ChatWebReadModel {
 			status ?? null,
 			status ?? null,
 		);
+	}
+
+	upsertSessionsIfChanged(sessions: PiboSession[]): ChatWebSessionBootstrapIndexResult {
+		if (!sessions.length) return { checked: 0, written: 0, skipped: 0 };
+
+		const existingRows = this.getSessionRowsByIds(sessions.map((session) => session.id));
+		const changedSessions = sessions.filter((session) => {
+			const row = existingRows.get(session.id);
+			return !row || !sessionRowMatchesPiboSession(row, session);
+		});
+
+		if (changedSessions.length === 1) {
+			this.upsertSession(changedSessions[0]);
+		} else if (changedSessions.length > 1) {
+			this.db.exec("BEGIN");
+			try {
+				for (const session of changedSessions) this.upsertSession(session);
+				this.db.exec("COMMIT");
+			} catch (error) {
+				this.db.exec("ROLLBACK");
+				throw error;
+			}
+		}
+
+		return {
+			checked: sessions.length,
+			written: changedSessions.length,
+			skipped: sessions.length - changedSessions.length,
+		};
 	}
 
 	recordEvent(event: PiboOutputEvent, session?: PiboSession, streamId?: number): ChatWebStoredPiboEvent | undefined {
@@ -217,6 +254,22 @@ export class ChatWebReadModel {
 	getSession(piboSessionId: string): ChatWebSessionIndexItem | undefined {
 		const row = this.getSessionStatement.get(piboSessionId) as SessionRow | undefined;
 		return row ? sessionFromRow(row) : undefined;
+	}
+
+	private getSessionRowsByIds(piboSessionIds: string[]): Map<string, SessionRow> {
+		const rowsById = new Map<string, SessionRow>();
+		const uniqueIds = [...new Set(piboSessionIds)];
+		const chunkSize = 900;
+		for (let index = 0; index < uniqueIds.length; index += chunkSize) {
+			const chunk = uniqueIds.slice(index, index + chunkSize);
+			if (!chunk.length) continue;
+			const placeholders = chunk.map(() => "?").join(", ");
+			const rows = this.db
+				.prepare(`SELECT * FROM web_chat_sessions WHERE pibo_session_id IN (${placeholders})`)
+				.all(...chunk) as SessionRow[];
+			for (const row of rows) rowsById.set(row.pibo_session_id, row);
+		}
+		return rowsById;
 	}
 
 	listEvents(piboSessionId: string, limit = 1000): ChatWebStoredPiboEvent[] {
@@ -396,6 +449,19 @@ function statusFromEvent(
 		return "running";
 	}
 	return previousStatus;
+}
+
+function sessionRowMatchesPiboSession(row: SessionRow, session: PiboSession): boolean {
+	return (
+		row.pibo_session_id === session.id &&
+		row.pi_session_id === session.piSessionId &&
+		row.parent_id === (session.parentId ?? null) &&
+		row.profile === session.profile &&
+		row.channel === session.channel &&
+		row.kind === session.kind &&
+		row.created_at === session.createdAt &&
+		row.updated_at === session.updatedAt
+	);
 }
 
 function sessionFromRow(row: SessionRow): ChatWebSessionIndexItem {
