@@ -165,8 +165,7 @@ type PiboChannelContext = {
 
 | Profile | Aliases | Capabilities |
 | --- | --- | --- |
-| `codex-compat-openai-web` | `minimal` | Harness skill plus Pi built-in tools |
-| `codex-compat-openai-web` | `codex`, `codex` | Harness skill, QA subagents, and run-control-yieldable Pi `bash` |
+| `codex-compat-openai-web` | `codex` | Codex-compatible tools, delegated subagents, and run-control tools |
 | `pibo-gateway-producer` | `gateway-producer` | Parked opt-in profile with `pibo_gateway_send` |
 
 ## 5. Acceptance Criteria
