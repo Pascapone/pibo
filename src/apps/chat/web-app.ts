@@ -1601,6 +1601,7 @@ function buildRoomUnreadCounts(
 	const counts = new Map<string, number>();
 	const sessionsById = new Map(sessions.map((session) => [session.id, session]));
 	for (const session of sessions) {
+		if (session.parentId) continue;
 		if (hasArchivedSessionInPath(session, sessionsById)) continue;
 		const unreadCount = sessionUnreadCounts.get(session.id) ?? 0;
 		if (unreadCount <= 0) continue;
@@ -2860,7 +2861,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					principalId,
 				});
 				if (markRead) {
-					markSessionsRead(state, [selectedSession], principalId);
+					markSessionsRead(state, sessionSubtree(ownedSessions, selectedSession.id), principalId);
 				}
 				indexOwnedSessions(state.readModel, roomSessions);
 				const sessionUnreadCounts = buildSessionUnreadCounts(state, ownedSessions, principalId);
