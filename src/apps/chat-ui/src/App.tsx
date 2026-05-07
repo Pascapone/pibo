@@ -1151,7 +1151,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 													aria-label={showArchivedRooms ? "Hide Archived Rooms" : "Show Archived Rooms"}
 													className={`h-6 w-6 max-[980px]:h-8 max-[980px]:w-8 inline-flex items-center justify-center border rounded-sm hover:border-[#11a4d4] hover:text-[#11a4d4] ${showArchivedRooms ? "border-[#11a4d4] text-[#11a4d4]" : "border-slate-700 text-slate-400"}`}
 												>
-													{showArchivedRooms ? <ArchiveRestore size={14} /> : <Archive size={12} />}
+													{showArchivedRooms ? <ArchiveRestore size={14} /> : <Archive size={14} />}
 												</button>
 											</div>
 										</div>
@@ -1196,7 +1196,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 											disabled={!newSessionProfileOptions.length || selectedRoomArchived}
 											title="Agent for new sessions"
 											aria-label="Agent for new sessions"
-											className="h-6 w-28 max-[980px]:h-8 max-[980px]:w-36 max-[980px]:text-sm rounded-sm border border-slate-700 bg-[#101d22] px-1.5 text-[11px] font-medium normal-case tracking-normal text-slate-300 outline-none hover:border-[#11a4d4] focus:border-[#11a4d4] disabled:opacity-50"
+											className="h-6 w-28 max-[980px]:h-8 max-[980px]:w-32 max-[980px]:text-sm rounded-sm border border-slate-700 bg-[#101d22] px-1.5 text-[11px] font-medium normal-case tracking-normal text-slate-300 outline-none hover:border-[#11a4d4] focus:border-[#11a4d4] disabled:opacity-50"
 										>
 											{newSessionProfileOptions.map((profile) => (
 												<option key={profile.name} value={profile.name} title={profile.description ?? profile.name}>
@@ -1219,11 +1219,11 @@ export function App({ route }: { route: ChatAppRoute }) {
 											onClick={() => void toggleArchivedSessions()}
 											title={showArchived ? "Hide Archived Sessions" : "Show Archived Sessions"}
 											aria-label={showArchived ? "Hide Archived Sessions" : "Show Archived Sessions"}
-											className={`h-6 w-6 inline-flex items-center justify-center border rounded-sm hover:border-[#11a4d4] hover:text-[#11a4d4] ${
+											className={`h-6 w-6 max-[980px]:h-8 max-[980px]:w-8 inline-flex items-center justify-center border rounded-sm hover:border-[#11a4d4] hover:text-[#11a4d4] ${
 												showArchived ? "border-[#11a4d4] text-[#11a4d4]" : "border-slate-700 text-slate-400"
 											}`}
 										>
-											{showArchived ? <ArchiveRestore size={14} /> : <Archive size={12} />}
+											{showArchived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
 										</button>
 									</div>
 								</div>
