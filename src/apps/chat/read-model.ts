@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { piboHomePath } from "../../core/pibo-home.js";
-import { DatabaseSync } from "node:sqlite";
+import { DatabaseSync, type StatementSync } from "node:sqlite";
 import type { PiboOutputEvent } from "../../core/events.js";
 import { isLiveOnlyOutputEvent } from "./output-event-policy.js";
 import type { PiboSession } from "../../sessions/store.js";
@@ -50,6 +50,13 @@ export type ChatWebSessionIndexItem = {
 
 export class ChatWebReadModel {
 	private readonly db: DatabaseSync;
+	private readonly upsertSessionStatement: StatementSync;
+	private readonly getSessionStatement: StatementSync;
+	private readonly insertEventStatement: StatementSync;
+	private readonly nextEventSequenceStatement: StatementSync;
+	private readonly updateSessionStatusStatement: StatementSync;
+	private readonly updateSessionActivityStatement: StatementSync;
+	private readonly resetInterruptedSessionsStatement: StatementSync;
 
 	constructor(path: string) {
 		const resolvedPath = path === ":memory:" ? path : resolve(path);
@@ -99,45 +106,65 @@ export class ChatWebReadModel {
 			CREATE INDEX IF NOT EXISTS idx_web_chat_sessions_parent
 				ON web_chat_sessions(parent_id);
 		`);
+		this.upsertSessionStatement = this.db.prepare(`
+			INSERT INTO web_chat_sessions (
+				pibo_session_id,
+				pi_session_id,
+				parent_id,
+				profile,
+				channel,
+				kind,
+				created_at,
+				updated_at,
+				last_activity_at,
+				status
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
+			ON CONFLICT(pibo_session_id) DO UPDATE SET
+				pi_session_id = excluded.pi_session_id,
+				parent_id = excluded.parent_id,
+				profile = excluded.profile,
+				channel = excluded.channel,
+				kind = excluded.kind,
+				updated_at = excluded.updated_at,
+				status = COALESCE(?, web_chat_sessions.status)
+			WHERE web_chat_sessions.pi_session_id IS NOT excluded.pi_session_id
+				OR web_chat_sessions.parent_id IS NOT excluded.parent_id
+				OR web_chat_sessions.profile IS NOT excluded.profile
+				OR web_chat_sessions.channel IS NOT excluded.channel
+				OR web_chat_sessions.kind IS NOT excluded.kind
+				OR web_chat_sessions.updated_at IS NOT excluded.updated_at
+				OR (? IS NOT NULL AND web_chat_sessions.status IS NOT ?)
+		`);
+		this.getSessionStatement = this.db.prepare("SELECT * FROM web_chat_sessions WHERE pibo_session_id = ?");
+		this.insertEventStatement = this.db.prepare(
+			"INSERT INTO web_chat_events (id, pibo_session_id, event_sequence, event_id, stream_id, type, created_at, payload_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+		);
+		this.nextEventSequenceStatement = this.db.prepare("SELECT COALESCE(MAX(event_sequence), 0) + 1 AS next_sequence FROM web_chat_events WHERE pibo_session_id = ?");
+		this.updateSessionStatusStatement = this.db.prepare(
+			"UPDATE web_chat_sessions SET status = ?, updated_at = ? WHERE pibo_session_id = ? AND status IS NOT ?",
+		);
+		this.updateSessionActivityStatement = this.db.prepare(
+			"UPDATE web_chat_sessions SET last_activity_at = ?, status = ?, updated_at = ? WHERE pibo_session_id = ?",
+		);
+		this.resetInterruptedSessionsStatement = this.db.prepare("UPDATE web_chat_sessions SET status = 'idle' WHERE status = 'running'");
 		this.resetInterruptedSessions();
 	}
 
 	upsertSession(session: PiboSession, status?: ChatWebSessionIndexItem["status"]): void {
-		this.db
-			.prepare(`
-				INSERT INTO web_chat_sessions (
-					pibo_session_id,
-					pi_session_id,
-					parent_id,
-					profile,
-					channel,
-					kind,
-					created_at,
-					updated_at,
-					last_activity_at,
-					status
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
-				ON CONFLICT(pibo_session_id) DO UPDATE SET
-					pi_session_id = excluded.pi_session_id,
-					parent_id = excluded.parent_id,
-					profile = excluded.profile,
-					channel = excluded.channel,
-					kind = excluded.kind,
-					updated_at = excluded.updated_at,
-					status = COALESCE(?, web_chat_sessions.status)
-			`)
-			.run(
-				session.id,
-				session.piSessionId,
-				session.parentId ?? null,
-				session.profile,
-				session.channel,
-				session.kind,
-				session.createdAt,
-				session.updatedAt,
-				status ?? "idle",
-				status ?? null,
-			);
+		this.upsertSessionStatement.run(
+			session.id,
+			session.piSessionId,
+			session.parentId ?? null,
+			session.profile,
+			session.channel,
+			session.kind,
+			session.createdAt,
+			session.updatedAt,
+			status ?? "idle",
+			status ?? null,
+			status ?? null,
+			status ?? null,
+		);
 	}
 
 	recordEvent(event: PiboOutputEvent, session?: PiboSession, streamId?: number): ChatWebStoredPiboEvent | undefined {
@@ -146,31 +173,36 @@ export class ChatWebReadModel {
 		if (session) this.upsertSession(session, nextStatus);
 		if (isLiveOnlyOutputEvent(event)) {
 			const updatedAt = new Date().toISOString();
-			this.db
-				.prepare("UPDATE web_chat_sessions SET status = ?, updated_at = ? WHERE pibo_session_id = ?")
-				.run(nextStatus, updatedAt, event.piboSessionId);
+			this.updateSessionStatusStatement.run(nextStatus, updatedAt, event.piboSessionId, nextStatus);
 			return undefined;
 		}
 
 		const id = randomUUID();
 		const createdAt = new Date().toISOString();
-		const eventSequence = this.nextEventSequence(event.piboSessionId);
 		const eventId = "eventId" in event && typeof event.eventId === "string" ? event.eventId : undefined;
-		this.db
-			.prepare(
-				"INSERT INTO web_chat_events (id, pibo_session_id, event_sequence, event_id, stream_id, type, created_at, payload_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-			)
-			.run(id, event.piboSessionId, eventSequence, eventId ?? null, streamId ?? null, event.type, createdAt, JSON.stringify(event));
-		if (isSessionNavigationActivityEvent(event)) {
-			this.db
-				.prepare(
-					"UPDATE web_chat_sessions SET last_activity_at = ?, status = ?, updated_at = ? WHERE pibo_session_id = ?",
-				)
-				.run(createdAt, nextStatus, createdAt, event.piboSessionId);
-		} else {
-			this.db
-				.prepare("UPDATE web_chat_sessions SET status = ?, updated_at = ? WHERE pibo_session_id = ?")
-				.run(nextStatus, createdAt, event.piboSessionId);
+		let eventSequence = 0;
+		this.db.exec("BEGIN IMMEDIATE");
+		try {
+			eventSequence = this.nextEventSequence(event.piboSessionId);
+			this.insertEventStatement.run(
+				id,
+				event.piboSessionId,
+				eventSequence,
+				eventId ?? null,
+				streamId ?? null,
+				event.type,
+				createdAt,
+				JSON.stringify(event),
+			);
+			if (isSessionNavigationActivityEvent(event)) {
+				this.updateSessionActivityStatement.run(createdAt, nextStatus, createdAt, event.piboSessionId);
+			} else {
+				this.updateSessionStatusStatement.run(nextStatus, createdAt, event.piboSessionId, nextStatus);
+			}
+			this.db.exec("COMMIT");
+		} catch (error) {
+			this.db.exec("ROLLBACK");
+			throw error;
 		}
 
 		return { id, piboSessionId: event.piboSessionId, eventSequence, eventId, streamId, type: event.type, createdAt, payload: event };
@@ -183,9 +215,7 @@ export class ChatWebReadModel {
 	}
 
 	getSession(piboSessionId: string): ChatWebSessionIndexItem | undefined {
-		const row = this.db
-			.prepare("SELECT * FROM web_chat_sessions WHERE pibo_session_id = ?")
-			.get(piboSessionId) as SessionRow | undefined;
+		const row = this.getSessionStatement.get(piboSessionId) as SessionRow | undefined;
 		return row ? sessionFromRow(row) : undefined;
 	}
 
@@ -324,14 +354,12 @@ export class ChatWebReadModel {
 	}
 
 	private nextEventSequence(piboSessionId: string): number {
-		const row = this.db
-			.prepare("SELECT COALESCE(MAX(event_sequence), 0) + 1 AS next_sequence FROM web_chat_events WHERE pibo_session_id = ?")
-			.get(piboSessionId) as { next_sequence: number };
+		const row = this.nextEventSequenceStatement.get(piboSessionId) as { next_sequence: number };
 		return row.next_sequence;
 	}
 
 	private resetInterruptedSessions(): void {
-		this.db.prepare("UPDATE web_chat_sessions SET status = 'idle' WHERE status = 'running'").run();
+		this.resetInterruptedSessionsStatement.run();
 	}
 }
 

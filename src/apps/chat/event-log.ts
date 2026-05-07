@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { piboHomePath } from "../../core/pibo-home.js";
-import { DatabaseSync } from "node:sqlite";
+import { DatabaseSync, type StatementSync } from "node:sqlite";
 import type { PiboJsonValue, PiboOutputEvent } from "../../core/events.js";
 import { isLiveOnlyOutputEvent } from "./output-event-policy.js";
 
@@ -88,6 +88,17 @@ type SessionReadCursorRow = {
 
 export class ChatEventLog {
 	private readonly db: DatabaseSync;
+	private readonly appendEventStatement: StatementSync;
+	private readonly selectEventByStreamIdStatement: StatementSync;
+	private readonly selectEventByClientTxnStatement: StatementSync;
+	private readonly latestStreamStatements: {
+		all: StatementSync;
+		room: StatementSync;
+		session: StatementSync;
+		roomSession: StatementSync;
+	};
+	private readonly getSessionReadCursorStatement: StatementSync;
+	private readonly markSessionReadStatement: StatementSync;
 
 	constructor(path: string) {
 		const resolvedPath = path === ":memory:" ? path : resolve(path);
@@ -140,28 +151,50 @@ export class ChatEventLog {
 				PRIMARY KEY(pibo_session_id, principal_id)
 			);
 		`);
+
+		this.appendEventStatement = this.db.prepare(`
+			INSERT OR IGNORE INTO chat_events (
+				room_id,
+				pibo_session_id,
+				event_id,
+				event_type,
+				actor_type,
+				actor_id,
+				client_txn_id,
+				created_at,
+				retention_class,
+				payload_json
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`);
+		this.selectEventByStreamIdStatement = this.db.prepare("SELECT * FROM chat_events WHERE stream_id = ?");
+		this.selectEventByClientTxnStatement = this.db.prepare(`
+			SELECT * FROM chat_events
+			WHERE room_id = ? AND actor_id = ? AND client_txn_id = ?
+			ORDER BY stream_id ASC
+			LIMIT 1
+		`);
+		this.latestStreamStatements = {
+			all: this.db.prepare("SELECT MAX(stream_id) AS stream_id FROM chat_events"),
+			room: this.db.prepare("SELECT MAX(stream_id) AS stream_id FROM chat_events WHERE room_id = ?"),
+			session: this.db.prepare("SELECT MAX(stream_id) AS stream_id FROM chat_events WHERE pibo_session_id = ?"),
+			roomSession: this.db.prepare("SELECT MAX(stream_id) AS stream_id FROM chat_events WHERE room_id = ? AND pibo_session_id = ?"),
+		};
+		this.getSessionReadCursorStatement = this.db.prepare("SELECT * FROM chat_session_reads WHERE pibo_session_id = ? AND principal_id = ?");
+		this.markSessionReadStatement = this.db.prepare(`
+			INSERT INTO chat_session_reads (pibo_session_id, principal_id, last_read_stream_id, updated_at)
+			VALUES (?, ?, ?, ?)
+			ON CONFLICT(pibo_session_id, principal_id) DO UPDATE SET
+				last_read_stream_id = excluded.last_read_stream_id,
+				updated_at = excluded.updated_at
+			WHERE excluded.last_read_stream_id > chat_session_reads.last_read_stream_id
+		`);
 	}
 
 	appendEvent(input: ChatEventAppendInput): StoredChatEvent {
 		const eventId = input.eventId ?? `ce_${randomUUID()}`;
 		const createdAt = input.createdAt ?? new Date().toISOString();
 		const payloadJson = JSON.stringify(input.payload);
-		const result = this.db
-			.prepare(`
-				INSERT OR IGNORE INTO chat_events (
-					room_id,
-					pibo_session_id,
-					event_id,
-					event_type,
-					actor_type,
-					actor_id,
-					client_txn_id,
-					created_at,
-					retention_class,
-					payload_json
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-			`)
-			.run(
+		const result = this.appendEventStatement.run(
 				input.roomId ?? null,
 				input.piboSessionId ?? null,
 				eventId,
@@ -180,7 +213,7 @@ export class ChatEventLog {
 		}
 
 		const streamId = Number(result.lastInsertRowid);
-		const stored = this.db.prepare("SELECT * FROM chat_events WHERE stream_id = ?").get(streamId) as ChatEventRow | undefined;
+		const stored = this.selectEventByStreamIdStatement.get(streamId) as ChatEventRow | undefined;
 		if (!stored) throw new Error(`Failed to append chat event "${eventId}"`);
 		return eventFromRow(stored);
 	}
@@ -241,60 +274,34 @@ export class ChatEventLog {
 	}
 
 	getEvent(streamId: number): StoredChatEvent | undefined {
-		const row = this.db.prepare("SELECT * FROM chat_events WHERE stream_id = ?").get(streamId) as
-			| ChatEventRow
-			| undefined;
+		const row = this.selectEventByStreamIdStatement.get(streamId) as ChatEventRow | undefined;
 		return row ? eventFromRow(row) : undefined;
 	}
 
 	findByClientTxn(roomId: string | undefined, actorId: string | undefined, clientTxnId: string): StoredChatEvent | undefined {
 		if (!roomId || !actorId) return undefined;
-		const row = this.db
-			.prepare(`
-				SELECT * FROM chat_events
-				WHERE room_id = ? AND actor_id = ? AND client_txn_id = ?
-				ORDER BY stream_id ASC
-				LIMIT 1
-			`)
-			.get(roomId, actorId, clientTxnId) as ChatEventRow | undefined;
+		const row = this.selectEventByClientTxnStatement.get(roomId, actorId, clientTxnId) as ChatEventRow | undefined;
 		return row ? eventFromRow(row) : undefined;
 	}
 
 	getLatestStreamId(input: { roomId?: string; piboSessionId?: string } = {}): number | undefined {
-		const clauses: string[] = [];
-		const values: string[] = [];
-		if (input.roomId) {
-			clauses.push("room_id = ?");
-			values.push(input.roomId);
-		}
-		if (input.piboSessionId) {
-			clauses.push("pibo_session_id = ?");
-			values.push(input.piboSessionId);
-		}
-		const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-		const row = this.db.prepare(`SELECT MAX(stream_id) AS stream_id FROM chat_events ${where}`).get(...values) as
-			| { stream_id: number | null }
-			| undefined;
+		const row = (input.roomId && input.piboSessionId
+			? this.latestStreamStatements.roomSession.get(input.roomId, input.piboSessionId)
+			: input.roomId
+				? this.latestStreamStatements.room.get(input.roomId)
+				: input.piboSessionId
+					? this.latestStreamStatements.session.get(input.piboSessionId)
+					: this.latestStreamStatements.all.get()) as { stream_id: number | null } | undefined;
 		return row?.stream_id ?? undefined;
 	}
 
 	getSessionReadCursor(piboSessionId: string, principalId: string): number | undefined {
-		const row = this.db
-			.prepare("SELECT * FROM chat_session_reads WHERE pibo_session_id = ? AND principal_id = ?")
-			.get(piboSessionId, principalId) as SessionReadCursorRow | undefined;
+		const row = this.getSessionReadCursorStatement.get(piboSessionId, principalId) as SessionReadCursorRow | undefined;
 		return row?.last_read_stream_id;
 	}
 
 	markSessionRead(piboSessionId: string, principalId: string, lastReadStreamId: number): void {
-		this.db
-			.prepare(`
-				INSERT INTO chat_session_reads (pibo_session_id, principal_id, last_read_stream_id, updated_at)
-				VALUES (?, ?, ?, ?)
-				ON CONFLICT(pibo_session_id, principal_id) DO UPDATE SET
-					last_read_stream_id = MAX(chat_session_reads.last_read_stream_id, excluded.last_read_stream_id),
-					updated_at = excluded.updated_at
-			`)
-			.run(piboSessionId, principalId, lastReadStreamId, new Date().toISOString());
+		this.markSessionReadStatement.run(piboSessionId, principalId, lastReadStreamId, new Date().toISOString());
 	}
 
 	countUnreadMessages(input: ChatUnreadCountInput): number {

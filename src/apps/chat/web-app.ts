@@ -79,6 +79,16 @@ export type ChatWebAppOptions = {
 	reliabilityStorePath?: string;
 };
 
+type ChatPersistenceMetrics = {
+	eventCount: number;
+	errorCount: number;
+	totalIndexingMs: number;
+	maxIndexingMs: number;
+	lastIndexingMs?: number;
+	lastError?: string;
+	lastErrorAt?: string;
+};
+
 type ChatWebAppState = {
 	readModel: ChatWebReadModel;
 	eventLog: ChatEventLog;
@@ -93,6 +103,7 @@ type ChatWebAppState = {
 	liveListeners: Set<(event: ChatLiveEvent) => void>;
 	activeEventStreams: Map<string, Map<string, string>>;
 	activeTraceSessions: Set<string>;
+	persistenceMetrics: ChatPersistenceMetrics;
 	userSkillManager: UserSkillManager;
 	syncedUserSkillNames?: Set<string>;
 };
@@ -376,8 +387,13 @@ function requestMatchesVersion(request: Request, version: string): boolean {
 
 const TRACE_RENDER_EVENTS_LIMIT = 10_000;
 
-function traceCacheKey(piboSessionId: string, version: string, includeRawEvents: boolean, rawEventsLimit: number): string {
-	return [piboSessionId, version, includeRawEvents ? "raw" : "compact", rawEventsLimit].join(":");
+function traceCacheKey(piboSessionId: string, version: string): string {
+	return [piboSessionId, version, "structural"].join(":");
+}
+
+function withRawTraceTail(trace: PiboSessionTraceView, rawEvents: PiboSessionTraceView["rawEvents"]): PiboSessionTraceView {
+	if (rawEvents.length === 0) return trace;
+	return { ...trace, rawEvents };
 }
 
 function setTraceCache(cache: Map<string, PiboSessionTraceView>, key: string, trace: PiboSessionTraceView): void {
@@ -757,41 +773,73 @@ function createReliabilityStore(path?: string): PiboReliabilityStore {
 	return path ? new PiboReliabilityStore(path) : createDefaultPiboReliabilityStore();
 }
 
+function createPersistenceMetrics(): ChatPersistenceMetrics {
+	return { eventCount: 0, errorCount: 0, totalIndexingMs: 0, maxIndexingMs: 0 };
+}
+
+function recordPersistenceDuration(metrics: ChatPersistenceMetrics, durationMs: number): void {
+	metrics.eventCount += 1;
+	metrics.totalIndexingMs += durationMs;
+	metrics.lastIndexingMs = durationMs;
+	metrics.maxIndexingMs = Math.max(metrics.maxIndexingMs, durationMs);
+}
+
+function recordPersistenceError(metrics: ChatPersistenceMetrics, error: unknown): void {
+	metrics.errorCount += 1;
+	metrics.lastError = error instanceof Error ? error.message : String(error);
+	metrics.lastErrorAt = new Date().toISOString();
+}
+
+function serializePersistenceMetrics(metrics: ChatPersistenceMetrics): ChatPersistenceMetrics & { averageIndexingMs: number } {
+	return {
+		...metrics,
+		averageIndexingMs: metrics.eventCount > 0 ? metrics.totalIndexingMs / metrics.eventCount : 0,
+	};
+}
+
 function ensureEventIndexing(state: ChatWebAppState, context: PiboWebAppContext): void {
 	if (state.subscribedContext === context && state.unsubscribe) return;
 	state.unsubscribe?.();
 	state.subscribedContext = context;
 	state.unsubscribe = context.channelContext.subscribe((event) => {
-		state.activeTraceSessions.add(event.piboSessionId);
-		const session = context.channelContext.getSession(event.piboSessionId);
-		const room = session ? ensureSessionRoom(state, context, session) : undefined;
-		const result = state.outputCompactor.compact(event);
-		for (const liveEvent of result.liveEvents) {
-			if (isPersistableOutputEvent(liveEvent)) continue;
-			state.readModel.recordEvent(liveEvent, session);
-			for (const listener of state.liveListeners) {
-				listener({ roomId: room?.id, piboSessionId: liveEvent.piboSessionId, eventType: liveEvent.type, payload: liveEvent });
+		const startedAt = performance.now();
+		try {
+			state.activeTraceSessions.add(event.piboSessionId);
+			const session = context.channelContext.getSession(event.piboSessionId);
+			const room = session ? ensureSessionRoom(state, context, session) : undefined;
+			const result = state.outputCompactor.compact(event);
+			for (const liveEvent of result.liveEvents) {
+				if (isPersistableOutputEvent(liveEvent)) continue;
+				state.readModel.recordEvent(liveEvent, session);
+				for (const listener of state.liveListeners) {
+					listener({ roomId: room?.id, piboSessionId: liveEvent.piboSessionId, eventType: liveEvent.type, payload: liveEvent });
+				}
 			}
-		}
-		for (const persistableEvent of result.persistedEvents) {
-			if (!isPersistableOutputEvent(persistableEvent)) continue;
-			const stored = state.eventLog.appendOutputEvent(persistableEvent, {
-				roomId: room?.id,
-				actorId: session?.ownerScope,
-			});
-			if (!stored) continue;
-			if (persistableEvent.type === "assistant_message" || persistableEvent.type === "message_finished") {
-				markActiveSessionRead(state, persistableEvent.piboSessionId, stored.streamId);
+			for (const persistableEvent of result.persistedEvents) {
+				if (!isPersistableOutputEvent(persistableEvent)) continue;
+				const stored = state.eventLog.appendOutputEvent(persistableEvent, {
+					roomId: room?.id,
+					actorId: session?.ownerScope,
+				});
+				if (!stored) continue;
+				if (persistableEvent.type === "assistant_message" || persistableEvent.type === "message_finished") {
+					markActiveSessionRead(state, persistableEvent.piboSessionId, stored.streamId);
+				}
+				state.readModel.recordEvent(persistableEvent, session, stored.streamId);
+				state.reliabilityStore.append({
+					topic: "pibo.output",
+					key: persistableEvent.piboSessionId,
+					eventId: `pibo.output:${persistableEvent.piboSessionId}:${persistableEvent.type}:${randomUUID()}`,
+					retentionClass: reliabilityRetentionClassForOutputEvent(persistableEvent),
+					payload: persistableEvent as PiboJsonValue,
+				});
+				for (const listener of state.liveListeners) listener(stored);
 			}
-			state.readModel.recordEvent(persistableEvent, session, stored.streamId);
-			state.reliabilityStore.append({
-				topic: "pibo.output",
-				key: persistableEvent.piboSessionId,
-				eventId: `pibo.output:${persistableEvent.piboSessionId}:${persistableEvent.type}:${randomUUID()}`,
-				retentionClass: reliabilityRetentionClassForOutputEvent(persistableEvent),
-				payload: persistableEvent as PiboJsonValue,
-			});
-			for (const listener of state.liveListeners) listener(stored);
+			recordPersistenceDuration(state.persistenceMetrics, performance.now() - startedAt);
+		} catch (error) {
+			recordPersistenceError(state.persistenceMetrics, error);
+			console.error("[chat-web] failed to index router event", error);
+			throw error;
 		}
 	});
 }
@@ -2691,6 +2739,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 		liveListeners: new Set(),
 		activeEventStreams: new Map(),
 		activeTraceSessions: new Set(),
+		persistenceMetrics: createPersistenceMetrics(),
 		userSkillManager: new UserSkillManager(os.homedir()),
 	};
 
@@ -3331,6 +3380,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 			}
 
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/trace` && request.method === "GET") {
+				const startedAt = performance.now();
 				const webSession = await requireSession(request, context);
 				const includeRawEvents = parseBooleanSearchParam(url, "includeRawEvents");
 				const rawEventsLimit = parsePositiveIntSearchParam(url, "rawEventsLimit", 80, 1000);
@@ -3344,7 +3394,9 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				state.readModel.upsertSession(selectedSession);
 				const ownedSessions = listOwnedSessions(context, webSession);
 				const indexedSession = state.readModel.getSession(selectedSession.id);
+				const metadataStartedAt = performance.now();
 				const metadata = await loadPiSessionMetadata(selectedSession, selectedSession.workspace ?? process.cwd());
+				const metadataMs = performance.now() - metadataStartedAt;
 				const lastEventSequence = state.readModel.getLatestEventSequence(selectedSession.id);
 				const latestStreamId = state.eventLog.getLatestStreamId({ piboSessionId: selectedSession.id });
 				const version = createTraceViewVersion({
@@ -3357,28 +3409,53 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					metadata,
 					latestStreamId,
 				});
-				const headers = { etag: etagForVersion(version), "x-pibo-trace-version": version };
-				if (requestMatchesVersion(request, version)) {
-					return new Response(null, { status: 304, headers });
-				}
-				const cacheKey = traceCacheKey(selectedSession.id, version, includeRawEvents, rawEventsLimit);
+				const cacheKey = traceCacheKey(selectedSession.id, version);
 				const cached = state.traceCache.get(cacheKey);
-				if (cached) return responseJson(cached, { headers });
-				const trace = await buildTraceView({
-					session: selectedSession,
-					sessions: ownedSessions,
-					events: state.readModel.listTraceEvents({
+				const serverTiming = (cacheState: "hit" | "miss", eventCount = 0) => ({
+					"server-timing": [
+						`trace;dur=${(performance.now() - startedAt).toFixed(1)}`,
+						`trace_metadata;dur=${metadataMs.toFixed(1)}`,
+						`trace_events;desc="${eventCount}"`,
+						`trace_cache;desc="${cacheState}"`,
+					].join(", "),
+				});
+				const baseHeaders = { etag: etagForVersion(version), "x-pibo-trace-version": version };
+				if (!includeRawEvents && requestMatchesVersion(request, version)) {
+					return new Response(null, { status: 304, headers: { ...baseHeaders, ...serverTiming(cached ? "hit" : "miss") } });
+				}
+				let trace = cached;
+				let eventCount = 0;
+				if (!trace) {
+					const events = state.readModel.listTraceEvents({
 						piboSessionId: selectedSession.id,
 						limit: TRACE_RENDER_EVENTS_LIMIT,
-					}),
-					status: indexedSession?.status,
-					metadata,
-					includeRawEvents,
-					rawEventsLimit,
-					latestStreamId,
-				});
-				setTraceCache(state.traceCache, cacheKey, trace);
-				return responseJson(trace, { headers });
+					});
+					eventCount = events.length;
+					trace = await buildTraceView({
+						session: selectedSession,
+						sessions: ownedSessions,
+						events,
+						status: indexedSession?.status,
+						metadata,
+						includeRawEvents: false,
+						latestStreamId,
+					});
+					setTraceCache(state.traceCache, cacheKey, trace);
+				}
+				if (includeRawEvents) {
+					const rawEvents = state.readModel.listTraceEvents({
+						piboSessionId: selectedSession.id,
+						limit: rawEventsLimit,
+					});
+					eventCount = eventCount || rawEvents.length;
+					return responseJson(withRawTraceTail(trace, rawEvents), { headers: { ...baseHeaders, ...serverTiming(cached ? "hit" : "miss", eventCount) } });
+				}
+				return responseJson(trace, { headers: { ...baseHeaders, ...serverTiming(cached ? "hit" : "miss", eventCount) } });
+			}
+
+			if (url.pathname === `${CHAT_WEB_API_PREFIX}/debug/persistence` && request.method === "GET") {
+				await requireSession(request, context);
+				return responseJson({ persistence: serializePersistenceMetrics(state.persistenceMetrics) });
 			}
 
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/debug/trace-at-sequence` && request.method === "POST") {

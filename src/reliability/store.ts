@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { piboHomePath } from "../core/pibo-home.js";
-import { DatabaseSync } from "node:sqlite";
+import { DatabaseSync, type StatementSync } from "node:sqlite";
 import type { PiboJsonValue } from "../core/events.js";
 import type {
 	PiboRunCompletionPolicy,
@@ -233,6 +233,10 @@ function asDate(value: Date | undefined): Date {
 
 export class PiboReliabilityStore {
 	private readonly db: DatabaseSync;
+	private readonly appendEventStatement: StatementSync;
+	private readonly getEventByStreamIdStatement: StatementSync;
+	private readonly getEventByTopicEventIdStatement: StatementSync;
+	private readonly getEventByTopicIdempotencyKeyStatement: StatementSync;
 
 	constructor(path = piboHomePath("pibo-events.sqlite")) {
 		const resolvedPath = path === ":memory:" ? path : resolve(path);
@@ -338,17 +342,20 @@ export class PiboReliabilityStore {
 			CREATE INDEX IF NOT EXISTS idx_pibo_runs_status
 				ON pibo_runs(status);
 		`);
+
+		this.appendEventStatement = this.db.prepare(`
+			INSERT INTO pibo_event_stream (topic, key, event_id, idempotency_key, created_at, retention_class, payload_json)
+			VALUES (?, ?, ?, ?, ?, ?, ?)
+		`);
+		this.getEventByStreamIdStatement = this.db.prepare("SELECT * FROM pibo_event_stream WHERE stream_id = ?");
+		this.getEventByTopicEventIdStatement = this.db.prepare("SELECT * FROM pibo_event_stream WHERE topic = ? AND event_id = ?");
+		this.getEventByTopicIdempotencyKeyStatement = this.db.prepare("SELECT * FROM pibo_event_stream WHERE topic = ? AND idempotency_key = ?");
 	}
 
 	append(input: PiboEventAppendInput): StoredPiboEvent {
 		const eventId = input.eventId ?? `evt_${randomUUID()}`;
 		const createdAt = input.createdAt ?? now();
-		const result = this.db
-			.prepare(`
-				INSERT INTO pibo_event_stream (topic, key, event_id, idempotency_key, created_at, retention_class, payload_json)
-				VALUES (?, ?, ?, ?, ?, ?, ?)
-			`)
-			.run(
+		const result = this.appendEventStatement.run(
 				input.topic,
 				input.key ?? null,
 				eventId,
@@ -853,24 +860,18 @@ export class PiboReliabilityStore {
 	}
 
 	private getEventByStreamId(streamId: number): StoredPiboEvent {
-		const row = this.db.prepare("SELECT * FROM pibo_event_stream WHERE stream_id = ?").get(streamId) as
-			| PiboEventRow
-			| undefined;
+		const row = this.getEventByStreamIdStatement.get(streamId) as PiboEventRow | undefined;
 		if (!row) throw new Error(`Unknown pibo event stream id "${streamId}"`);
 		return eventFromRow(row);
 	}
 
 	private getEventByTopicEventId(topic: string, eventId: string): StoredPiboEvent | undefined {
-		const row = this.db
-			.prepare("SELECT * FROM pibo_event_stream WHERE topic = ? AND event_id = ?")
-			.get(topic, eventId) as PiboEventRow | undefined;
+		const row = this.getEventByTopicEventIdStatement.get(topic, eventId) as PiboEventRow | undefined;
 		return row ? eventFromRow(row) : undefined;
 	}
 
 	private getEventByTopicIdempotencyKey(topic: string, idempotencyKey: string): StoredPiboEvent | undefined {
-		const row = this.db
-			.prepare("SELECT * FROM pibo_event_stream WHERE topic = ? AND idempotency_key = ?")
-			.get(topic, idempotencyKey) as PiboEventRow | undefined;
+		const row = this.getEventByTopicIdempotencyKeyStatement.get(topic, idempotencyKey) as PiboEventRow | undefined;
 		return row ? eventFromRow(row) : undefined;
 	}
 
