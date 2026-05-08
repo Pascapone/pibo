@@ -10,6 +10,7 @@ import type {
 import { InitialSessionContextBuilder, type InitialSessionContext } from "../core/profiles.js";
 import { parsePiboThinkingLevel } from "../core/thinking.js";
 import { createWebSearchToolProfile } from "../tools/web-search.js";
+import { createRuntimeToolProfile } from "../tools/runtime/tool.js";
 import { completeLogin, getLoginStatus, removeLogin, setApiKey, startLogin } from "../auth/login-actions.js";
 import { loadModelCatalog } from "../apps/chat/model-catalog.js";
 import { piboCodexCompatPlugin } from "./codex-compat.js";
@@ -133,6 +134,7 @@ export const piboCorePlugin = definePiboPlugin({
 			kind: "builtin",
 		});
 		api.registerTool(createWebSearchToolProfile());
+		api.registerTool(createRuntimeToolProfile());
 		api.registerProfile({
 			name: "pibo-kimi-coding",
 			aliases: ["kimi", "kimi-coding"],

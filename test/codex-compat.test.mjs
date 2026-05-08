@@ -27,6 +27,7 @@ test("default registry exposes the provider-backed codex-compatible profile", ()
 			"apply_patch",
 			"web_search",
 			"view_image",
+			"runtime",
 		],
 	);
 	assert.deepEqual(profile.tools.find((tool) => tool.name === "web_search")?.providerTool, {
@@ -80,6 +81,7 @@ test("codex-compatible profile inspection shows active generated tools and provi
 		"apply_patch",
 		"web_search",
 		"view_image",
+		"runtime",
 	]) {
 		assert.equal(activeTools.has(toolName), true, `${toolName} should be active`);
 	}

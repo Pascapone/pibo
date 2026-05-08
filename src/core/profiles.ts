@@ -9,6 +9,7 @@ export type ToolProfile = {
 	pluginId?: string;
 	definition?: ToolDefinition;
 	providerTool?: ProviderToolProfile;
+	builtInPiboTool?: "runtime";
 };
 
 export type ProviderToolProfile = WebSearchProviderToolProfile;

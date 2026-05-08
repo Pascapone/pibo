@@ -33,6 +33,7 @@ import {
 import { getDefaultPiboWorkspace } from "./workspace.js";
 import { loadPiboModelDefaults, type PiboModelDefaults } from "./model-defaults.js";
 import { resolvePiboSessionActiveModel } from "./session-model.js";
+import { RuntimeSessionRegistry } from "../tools/runtime/registry.js";
 
 export type {
 	PiboEventListener,
@@ -145,6 +146,7 @@ export class PiboSessionRouter {
 	private readonly listeners = new Set<PiboEventListener>();
 	private readonly runRegistry: PiboRunRegistry;
 	private readonly signalRegistry: PiboSignalRegistry;
+	private readonly runtimeRegistry: RuntimeSessionRegistry;
 	private readonly scheduledRunReminders = new Map<string, boolean>();
 	private readonly baseProfile: InitialSessionContext;
 	private readonly pluginRegistry: PiboPluginRegistry;
@@ -160,6 +162,7 @@ export class PiboSessionRouter {
 		this.baseProfile = options.profile ?? this.pluginRegistry.createProfile(defaultProfileName ?? "codex-compat-openai-web");
 		this.reliabilityStore = options.reliabilityStore ?? (options.persistSession === false ? undefined : createDefaultPiboReliabilityStore());
 		this.signalRegistry = options.signalRegistry ?? createPiboSignalRegistry();
+		this.runtimeRegistry = new RuntimeSessionRegistry({ cwd: options.cwd ?? getDefaultPiboWorkspace() });
 		this.runRegistry = new PiboRunRegistry({ store: this.reliabilityStore });
 		this.runRegistry.subscribe((event) => this.projectRunRegistryEvent(event));
 		for (const run of this.runRegistry.listAll({ includeConsumed: true, includeDetached: true })) {
@@ -201,6 +204,7 @@ export class PiboSessionRouter {
 				const runs = this.runRegistry.cancelOwnerRuns(piboSessionId);
 				cancelledRuns.push(...runs.map((r) => r.runId));
 			}
+			await this.runtimeRegistry.closeOwnerSessions(piboSessionId, { force: true });
 			this.signalRegistry.project({ type: "session_interrupted", piboSessionId, reason: "kill" });
 			const children = await this.killChildSessions(piboSessionId, options);
 			killed.push(...children.killed);
@@ -213,6 +217,7 @@ export class PiboSessionRouter {
 		const descendants = this.descendantSessionIds(piboSessionId);
 		for (const id of [piboSessionId, ...descendants]) {
 			this.runRegistry.cancelOwnerRuns(id);
+			void this.runtimeRegistry.closeOwnerSessions(id, { force: true });
 			this.signalRegistry.project({ type: "session_disposed", piboSessionId: id, reason });
 			this.scheduledRunReminders.delete(id);
 			this.sessions.delete(id);
@@ -328,6 +333,7 @@ export class PiboSessionRouter {
 		this.runRegistry.cancelAll("Pibo session router was disposed.");
 		for (const session of sessions) this.signalRegistry.project({ type: "session_disposed", piboSessionId: session.getStatus().piboSessionId, reason: "router disposed" });
 		this.scheduledRunReminders.clear();
+		await this.runtimeRegistry.closeAll({ force: true });
 		await Promise.all(sessions.map((session) => session.dispose()));
 	}
 
@@ -363,6 +369,7 @@ export class PiboSessionRouter {
 			profile: profileForSession(profile, piboSession.piSessionId, parentPiSessionId),
 			subagentRunner: this.createSubagentRunner(piboSession.id),
 			runToolController: this.createRunToolController(piboSession.id),
+			runtimeToolController: this.runtimeRegistry.createController(piboSession.id),
 			modelDefaults,
 			activeModel,
 		});
@@ -451,6 +458,7 @@ export class PiboSessionRouter {
 	private async resetCachedSession(piboSessionId: string): Promise<void> {
 		const cached = this.sessions.get(piboSessionId);
 		this.sessions.delete(piboSessionId);
+		await this.runtimeRegistry.closeOwnerSessions(piboSessionId, { force: true });
 		await cached?.dispose();
 	}
 

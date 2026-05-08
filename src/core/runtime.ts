@@ -42,6 +42,8 @@ import { getActivePiboBasePromptPath } from "./base-prompt.js";
 import { createPiboCompactionPromptExtension } from "./compaction-prompt.js";
 import { getPiPackageRuntimeOptions } from "../pi-packages/runtime.js";
 import { getDefaultPiboWorkspace } from "./workspace.js";
+import { createRuntimeToolDefinition, type PiboRuntimeToolController } from "../tools/runtime/tool.js";
+import { RuntimeSessionRegistry } from "../tools/runtime/registry.js";
 
 export type PiboRuntimeOptions = {
 	cwd?: string;
@@ -51,6 +53,7 @@ export type PiboRuntimeOptions = {
 	extensionFactories?: ExtensionFactory[];
 	subagentRunner?: PiboSubagentRunner;
 	runToolController?: PiboRunToolController;
+	runtimeToolController?: PiboRuntimeToolController;
 	/** Product-level model defaults selected outside the workspace, e.g. Chat Web settings. */
 	modelDefaults?: PiboModelDefaults;
 	/** SessionStore-persisted model. Routed sessions must prefer this over current defaults. */
@@ -126,8 +129,13 @@ function getEnabledToolDefinitions(
 	},
 	subagentRunner?: PiboSubagentRunner,
 	runToolController?: PiboRunToolController,
+	runtimeToolController?: PiboRuntimeToolController,
 ): ToolDefinition[] {
-	const profileTools = profile.tools.filter(hasEnabledToolDefinition);
+	const runtimeProfileTool = profile.tools.find(isEnabledRuntimeTool);
+	const runtimeTool = runtimeProfileTool && runtimeToolController
+		? createRuntimeToolDefinition(runtimeToolController)
+		: undefined;
+	const profileTools = profile.tools.filter((tool) => !isRuntimeTool(tool)).filter(hasEnabledToolDefinition);
 	const codexCompatEnabled = profile.toolPackages.codexCompat === true;
 	const runControlEnabled = profile.toolPackages.runControl === true;
 	const runControlBashTool: ToolDefinition | undefined = runControlEnabled && runToolController
@@ -145,6 +153,7 @@ function getEnabledToolDefinitions(
 	const yieldableTools = [
 		...(runControlBashTool ? [runControlBashTool] : []),
 		...profileTools.filter((tool) => tool.yieldable !== false).map((tool) => tool.definition),
+		...(runtimeTool && runtimeProfileTool?.yieldable !== false ? [runtimeTool] : []),
 		...subagentTools,
 		...codexCompatTools,
 	];
@@ -155,6 +164,7 @@ function getEnabledToolDefinitions(
 	return [
 		...(runControlBashTool ? [runControlBashTool] : []),
 		...profileTools.map((tool) => tool.definition),
+		...(runtimeTool ? [runtimeTool] : []),
 		...subagentTools,
 		...codexCompatTools,
 		...runTools,
@@ -165,8 +175,16 @@ function hasEnabledToolDefinition(tool: ToolProfile): tool is ToolProfile & { de
 	return tool.enabled !== false && tool.definition !== undefined;
 }
 
+function isRuntimeTool(tool: ToolProfile): boolean {
+	return tool.builtInPiboTool === "runtime" || tool.name === "runtime";
+}
+
+function isEnabledRuntimeTool(tool: ToolProfile): boolean {
+	return tool.enabled !== false && isRuntimeTool(tool);
+}
+
 function isGeneratedPiboTool(name: string): boolean {
-	return name.startsWith("pibo_subagent_") || name.startsWith("pibo_run_");
+	return name === "runtime" || name.startsWith("pibo_subagent_") || name.startsWith("pibo_run_");
 }
 
 function getBuiltinToolAllowlist(profile: InitialSessionContext, customTools: readonly ToolDefinition[]): string[] | undefined {
@@ -292,6 +310,10 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 				}),
 			},
 		});
+		const ownsLocalRuntimeRegistry = options.runtimeToolController === undefined && profile.tools.some(isEnabledRuntimeTool);
+		const localRuntimeRegistry = ownsLocalRuntimeRegistry ? new RuntimeSessionRegistry({ cwd: runtimeCwd }) : undefined;
+		const runtimeToolController = options.runtimeToolController
+			?? localRuntimeRegistry?.createController(profile.sessionId ?? "local");
 		const customTools = getEnabledToolDefinitions(
 			profile,
 			{
@@ -301,6 +323,7 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 			},
 			options.subagentRunner,
 			options.runToolController,
+			runtimeToolController,
 		);
 		const modelDefaults = options.modelDefaults ?? loadPiboModelDefaults(runtimeCwd);
 
@@ -325,6 +348,14 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 				message: `Failed to load extension "${path}": ${error}`,
 			})),
 		];
+
+		if (localRuntimeRegistry) {
+			const originalDispose = created.session.dispose.bind(created.session);
+			created.session.dispose = () => {
+				void localRuntimeRegistry.closeOwnerSessions(profile.sessionId ?? "local", { force: true });
+				originalDispose();
+			};
+		}
 
 		return {
 			...created,
@@ -406,8 +437,8 @@ export async function inspectPiboProfile(options: PiboRuntimeOptions = {}): Prom
 			})),
 			tools: profile.tools.map((tool) => ({
 				name: tool.name,
-				hasDefinition: Boolean(tool.definition),
-				registered: registeredToolNames.has(tool.name) || tool.providerTool !== undefined,
+				hasDefinition: Boolean(tool.definition) || isRuntimeTool(tool),
+				registered: registeredToolNames.has(tool.name) || tool.providerTool !== undefined || isRuntimeTool(tool),
 				active: activeToolNames.has(tool.name) || tool.providerTool !== undefined,
 			})).concat(generatedTools),
 			subagents: profile.subagents.map((subagent) => {

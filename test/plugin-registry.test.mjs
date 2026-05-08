@@ -39,7 +39,7 @@ test("default plugin registry builds profiles from registered resources", () => 
 	assert.equal(codex.profileName, "codex-compat-openai-web");
 	assert.deepEqual(
 		codex.tools.map((tool) => tool.name),
-		["apply_patch", "web_search", "view_image"],
+		["apply_patch", "web_search", "view_image", "runtime"],
 	);
 	assert.deepEqual(
 		codex.subagents.map((subagent) => subagent.name),

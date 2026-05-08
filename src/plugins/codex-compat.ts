@@ -7,6 +7,7 @@ const CODEX_COMPAT_TOOL_NAMES = [
 	"apply_patch",
 	"web_search",
 	"view_image",
+	"runtime",
 ] as const;
 const CODEX_COMPAT_REGISTERED_TOOL_NAMES = [
 	"apply_patch",
