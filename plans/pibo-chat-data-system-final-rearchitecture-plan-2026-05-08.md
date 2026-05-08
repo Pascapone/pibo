@@ -10,14 +10,102 @@ Inputs:
 
 Dieser Plan ersetzt die Einzelpläne nicht als Historie, ist aber die empfohlene Zielrichtung für die Umsetzung.
 
-## Implementierungsstatus — Checkpoint 2026-05-08 nach erster Umsetzung
+## Implementierungsstatus — Checkpoint 2026-05-08 nach Follow-up Navigation + User Shadow Ingest
+
+Branch: `chat-data-v2-followup-navigation-ingest-2026-05-08`  
+Base commit vor der Follow-up-Session: `2d592ea Document chat data V2 handover`  
+Handover: `handoffs/pibo-chat-data-v2-followup-navigation-ingest-handover-2026-05-08.md`  
+Status: implementiert und validiert, zum Zeitpunkt dieses Plan-Updates noch nicht committed.  
+Dev: kein neuer Dev-Deploy in dieser Follow-up-Session.
+
+Dieser Checkpoint ist der aktuelle Ausgangspunkt für die nächste Session. Die Zielarchitektur bleibt unverändert. Die Umsetzung ist jetzt so gestaffelt:
+
+### Erledigt seit dem vorherigen Checkpoint
+
+- `/api/chat/navigation` hat einen expliziten Vertragstest.
+- Frontend-Room-Switch nutzt `/api/chat/navigation` statt `/api/chat/bootstrap`.
+- SSE-getriggerte Navigation-Refreshes nutzen `/api/chat/navigation` statt `/api/chat/bootstrap`.
+- Frontend-Typen/API/Cache wurden für `NavigationData` ergänzt:
+  - `src/apps/chat-ui/src/types.ts`
+  - `src/apps/chat-ui/src/api.ts`
+  - `src/apps/chat-ui/src/cache.ts`
+  - `src/apps/chat-ui/src/App.tsx`
+- `src/data/ingest-service.ts` wurde eingeführt.
+- User-Message-Shadow-Writes aus `sendChatMessage()` schreiben bei aktivem Flag in V2:
+  - `sessions`
+  - `event_log`
+  - `chat_messages`
+  - `session_navigation`
+  - große Payloads über `PayloadStore`
+- Feature Flag für Shadow Writes:
+  - `PIBO_DATA_V2_WRITE=1|user|all`
+  - Tests können `dataV2Write: true` setzen.
+- User-Message-Idempotenz in V2 basiert auf `clientTxnId`:
+  - `chat:user.accepted:${roomId}:${actorId}:${clientTxnId}`
+- Tests ergänzt:
+  - `test/data-v2-ingest-service.test.mjs`
+  - neue Navigation- und V2-Shadow-Ingest-Tests in `test/web-channel.test.mjs`
+
+### Validiert seit dem vorherigen Checkpoint
+
+- `npm run typecheck` ✅
+- `npm run build` ✅
+- `node --test test/data-v2-ingest-service.test.mjs test/web-channel.test.mjs` ✅
+- `npm test` komplett: 315 Tests ✅
+- Docker Compute Build/Worker ✅
+- Docker typecheck ✅
+- Docker `pibo data inventory --json` ✅
+- Docker MCP CLI Smoke:
+  - `pibo mcp config help` ✅
+  - `pibo mcp --no-setup` ✅
+- Dev-auth curl gegen Docker Worker:
+  - `/api/chat/navigation` 200 ✅
+  - `/api/chat/catalog` 200 ✅
+- Browser-Use Smoke gegen Docker Worker:
+  - Chat UI lädt mit Dev User ✅
+  - Room-Wechsel nutzt `/api/chat/navigation` und nicht `/api/chat/bootstrap` ✅
+
+### Aktueller Stand nach finalem Follow-up-Pass
+
+- Phase 1 ist für Room-Switch, Session-Switch und Navigation-Refresh umgesetzt.
+- Mark-read ist über `POST /api/chat/sessions/:id/read` von Bootstrap entkoppelt.
+- Session-Switch nutzt im geladenen Frontend `/api/chat/navigation` statt `/api/chat/bootstrap`.
+- Phase 3 Shadow Ingest ist für User Messages und persistierte Output Events gestartet und getestet:
+  - User Messages -> `event_log`, `chat_messages`, `session_navigation`, Payload Store.
+  - Assistant final output -> `event_log`, `chat_messages`, `observations`.
+  - Tool/run/error-style output -> `event_log`, `observations`.
+- `src/data/session-store.ts` ist eingeführt und in `PiboDataStore` verdrahtet.
+- `pibo data compare --session <id> --json` existiert als erste count-basierte Shadow-Compare-CLI.
+- Legacy bleibt primary für normale Reads und Writes.
+- V2 ist noch nicht primary.
+- Kein Backfill, kein V2 Trace Primary, kein Legacy Cleanup.
+- Dev deploy wurde nach Validierung durchgeführt.
+
+### Aktualisierte nächste Priorität
+
+Die nächste Session soll noch nicht Phase 4+ cutovern, sondern Phase 3 stabilisieren und dann Backfill vorbereiten:
+
+1. Aktuellen Diff reviewen und committen.
+2. Falls praktikabel: Spy-Test ergänzen, dass `/api/chat/navigation` keine Pi-JSONL-/`SessionManager.list()`-Fallbacks und keine historische Unread-Aggregation ausführt.
+3. Shadow Compare über reine Counts hinaus erweitern:
+   - message previews
+   - roles
+   - event type mismatches
+   - missing payload refs
+4. Shadow-Ingest-Metriken/Observability für Fehler ergänzen.
+5. Legacy Backfill/Importer entwerfen und implementieren.
+6. Erst danach V2 Primary Reads für einzelne, flag-gesteuerte Pfade testen.
+
+---
+
+## Implementierungsstatus — vorheriger Checkpoint 2026-05-08 nach erster Umsetzung
 
 Branch: `chat-data-v2-rearchitecture-2026-05-08`  
 Commit: `9b52c05 Add chat data V2 store foundation`  
 Handover: `handoffs/pibo-chat-data-v2-rearchitecture-handover-2026-05-08.md`  
 Dev: `https://dev.pibo.neuralnexus.me/apps/chat`
 
-Dieser Checkpoint ist der aktuelle Ausgangspunkt für Follow-up-Sessions. Die Zielarchitektur bleibt unverändert, aber die Umsetzung ist jetzt gestaffelt:
+Dieser Checkpoint war der Ausgangspunkt der Follow-up-Session. Die Zielarchitektur bleibt unverändert, aber die Umsetzung ist jetzt gestaffelt:
 
 ### Erledigt
 

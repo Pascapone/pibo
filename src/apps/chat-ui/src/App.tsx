@@ -41,9 +41,9 @@ import {
 	Wrench,
 	X,
 } from "lucide-react";
-import { createUserSkill, deleteCustomAgent, deletePiPackage, deleteRoom, deleteSession, deleteUserSkill, fetchSignalTree, downloadChatFile, getBootstrap, getTrace, getUserSkill, installUserSkill, listUserSkills, patchCustomAgent, patchModelDefaults, patchPiPackage, patchRoom, patchSession, postAction, postContextFile, postCustomAgent, postMessage, postPiPackage, postRoom, postSession, signInWithGoogle, signOut, subscribeSignalTree, updateUserSkill, type SaveCustomAgentInput } from "./api";
+import { createUserSkill, deleteCustomAgent, deletePiPackage, deleteRoom, deleteSession, deleteUserSkill, fetchSignalTree, downloadChatFile, getBootstrap, getNavigation, getTrace, getUserSkill, installUserSkill, listUserSkills, markSessionRead, patchCustomAgent, patchModelDefaults, patchPiPackage, patchRoom, patchSession, postAction, postContextFile, postCustomAgent, postMessage, postPiPackage, postRoom, postSession, signInWithGoogle, signOut, subscribeSignalTree, updateUserSkill, type SaveCustomAgentInput } from "./api";
 import { THINKING_LEVELS } from "./types";
-import type { AgentCatalog, BootstrapData, CustomAgent, CustomAgentSubagent, ModelCatalog, ModelDefaults, ModelProfile, PiboRoom, PiboSession, PiboSessionTraceView, PiboSignalPatch, PiboSignalSnapshot, PiboTraceNode, PiboTraceOrderKey, PiboWebSessionNode, PiboWebSessionStatus, ThinkingLevel, UserSkill } from "./types";
+import type { AgentCatalog, BootstrapData, CustomAgent, CustomAgentSubagent, ModelCatalog, ModelDefaults, ModelProfile, NavigationData, PiboRoom, PiboSession, PiboSessionTraceView, PiboSignalPatch, PiboSignalSnapshot, PiboTraceNode, PiboTraceOrderKey, PiboWebSessionNode, PiboWebSessionStatus, ThinkingLevel, UserSkill } from "./types";
 import type { ChatWebStoredEvent } from "../../../shared/trace-types.js";
 import { adaptTrace } from "./tracing/adapt";
 import { collectBackendNodes, isTraceSnapshotCollectionEnabled } from "./tracing/snapshotCollector";
@@ -66,6 +66,7 @@ import {
 	DEFAULT_RAW_EVENTS_LIMIT,
 	TRACE_GC_TIME_MS,
 	chatBootstrapQueryKey,
+	chatSessionNavigationQueryKey,
 	chatTraceQueryKey,
 	isTraceView,
 	setChatNavigationCache,
@@ -149,6 +150,42 @@ async function loadBootstrapQueryData(
 	return data;
 }
 
+async function loadNavigationQueryData(
+	queryClient: QueryClient,
+	input: {
+		piboSessionId?: string;
+		includeArchived?: boolean;
+		roomId?: string;
+		force?: boolean;
+	},
+): Promise<NavigationData> {
+	const queryKey = chatSessionNavigationQueryKey(input.includeArchived, input.roomId, input.piboSessionId);
+	if (input.force) {
+		await queryClient.invalidateQueries({ queryKey, exact: true, refetchType: "none" });
+	}
+	const data = await queryClient.fetchQuery({
+		queryKey,
+		queryFn: () => getNavigation(input.piboSessionId, input.includeArchived, input.roomId),
+		staleTime: BOOTSTRAP_STALE_TIME_MS,
+		gcTime: BOOTSTRAP_GC_TIME_MS,
+	});
+	setChatNavigationCache(queryClient.setQueryData.bind(queryClient), data, input.includeArchived, input.roomId);
+	return data;
+}
+
+function mergeNavigationIntoBootstrap(current: BootstrapData, navigation: NavigationData): BootstrapData {
+	return {
+		...current,
+		identity: navigation.identity,
+		session: navigation.session,
+		room: navigation.room,
+		selectedRoomId: navigation.selectedRoomId,
+		selectedPiboSessionId: navigation.selectedPiboSessionId,
+		rooms: navigation.rooms,
+		sessions: navigation.sessions,
+	};
+}
+
 async function loadTraceQueryData(
 	queryClient: QueryClient,
 	piboSessionId: string,
@@ -207,6 +244,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const [deleteSessionConfirmText, setDeleteSessionConfirmText] = useState("");
 	const [deletingSession, setDeletingSession] = useState(false);
 	const showArchivedRef = useRef(showArchived);
+	const bootstrapRef = useRef<BootstrapData | null>(null);
 	const bootstrapRequestId = useRef(0);
 	const activeRoomId = selectedRoomId ?? bootstrap?.selectedRoomId ?? null;
 	const selectedRoom = activeRoomId && bootstrap ? findRoomById(bootstrap.rooms, activeRoomId) ?? bootstrap.room : undefined;
@@ -215,6 +253,10 @@ export function App({ route }: { route: ChatAppRoute }) {
 	useEffect(() => {
 		showArchivedRef.current = showArchived;
 	}, [showArchived]);
+
+	useEffect(() => {
+		bootstrapRef.current = bootstrap;
+	}, [bootstrap]);
 
 	useEffect(() => {
 		setSignalNow(Date.now());
@@ -430,6 +472,19 @@ export function App({ route }: { route: ChatAppRoute }) {
 		roomId?: string,
 		options: LoadBootstrapOptions = {},
 	) => {
+		const currentBootstrap = bootstrapRef.current;
+		if (currentBootstrap && options.selectSession !== false && !options.force) {
+			if (piboSessionId) await markSessionRead(piboSessionId);
+			const requestId = bootstrapRequestId.current + 1;
+			bootstrapRequestId.current = requestId;
+			const navigation = await loadNavigationQueryData(queryClient, { piboSessionId, includeArchived, roomId });
+			const data = mergeNavigationIntoBootstrap(currentBootstrap, navigation);
+			if (requestId !== bootstrapRequestId.current) return data;
+			setBootstrap(data);
+			setSelectedPiboSessionId(data.selectedPiboSessionId);
+			setSelectedRoomId(data.selectedRoomId);
+			return data;
+		}
 		const requestId = bootstrapRequestId.current + 1;
 		bootstrapRequestId.current = requestId;
 		const data = await loadBootstrapQueryData(queryClient, {
@@ -445,6 +500,25 @@ export function App({ route }: { route: ChatAppRoute }) {
 		setSelectedRoomId(data.selectedRoomId);
 		return data;
 	}, [queryClient]);
+
+	const loadNavigation = useCallback(async (
+		piboSessionId?: string,
+		includeArchived = showArchivedRef.current,
+		roomId?: string,
+		options: { force?: boolean } = {},
+	) => {
+		const currentBootstrap = bootstrapRef.current;
+		if (!currentBootstrap) return loadBootstrap(piboSessionId, includeArchived, roomId, { force: options.force });
+		const requestId = bootstrapRequestId.current + 1;
+		bootstrapRequestId.current = requestId;
+		const navigation = await loadNavigationQueryData(queryClient, { piboSessionId, includeArchived, roomId, force: options.force });
+		const data = mergeNavigationIntoBootstrap(currentBootstrap, navigation);
+		if (requestId !== bootstrapRequestId.current) return data;
+		setBootstrap(data);
+		setSelectedPiboSessionId(data.selectedPiboSessionId);
+		setSelectedRoomId(data.selectedRoomId);
+		return data;
+	}, [loadBootstrap, queryClient]);
 
 	useEffect(() => {
 		const stored = readStoredSelection();
@@ -471,7 +545,8 @@ export function App({ route }: { route: ChatAppRoute }) {
 			return;
 		}
 
-		loadBootstrap(requestedPiboSessionId, showArchivedRef.current, requestedRoomId)
+		const loadRouteData = bootstrap ? loadNavigation : loadBootstrap;
+		loadRouteData(requestedPiboSessionId, showArchivedRef.current, requestedRoomId)
 			.then((data) => {
 				canonicalizeSessionsRoute(data);
 				setError(null);
@@ -479,7 +554,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 			.catch((caught) => {
 				if (route.area === "sessions" && routeRoomId && !routePiboSessionId && requestedPiboSessionId) {
 					removeStoredRoomSelection(routeRoomId);
-					loadBootstrap(undefined, showArchivedRef.current, routeRoomId)
+					loadRouteData(undefined, showArchivedRef.current, routeRoomId)
 						.then((data) => {
 							canonicalizeSessionsRoute(data);
 							setError(null);
@@ -495,7 +570,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 					return;
 				}
 				clearStoredSelection();
-				loadBootstrap()
+				loadRouteData()
 					.then((data) => {
 						canonicalizeSessionsRoute(data);
 						setError(null);
@@ -504,7 +579,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 						setError(fallbackCaught instanceof Error ? fallbackCaught.message : String(fallbackCaught)),
 					);
 			});
-	}, [bootstrap, loadBootstrap, navigateToSelectedSession, route.area, routePiboSessionId, routeRoomId]);
+	}, [bootstrap, loadBootstrap, loadNavigation, navigateToSelectedSession, route.area, routePiboSessionId, routeRoomId]);
 
 	useEffect(() => {
 		if (!selectedRoomId && !selectedPiboSessionId) return;
@@ -559,8 +634,8 @@ export function App({ route }: { route: ChatAppRoute }) {
 		[refreshTrace, selectedPiboSessionId],
 	);
 	const refreshSelectedBootstrap = useCallback(
-		() => loadBootstrap(selectedPiboSessionId ?? undefined, showArchivedRef.current, selectedRoomId ?? undefined, { force: true }),
-		[loadBootstrap, selectedPiboSessionId, selectedRoomId],
+		() => loadNavigation(selectedPiboSessionId ?? undefined, showArchivedRef.current, selectedRoomId ?? undefined, { force: true }),
+		[loadNavigation, selectedPiboSessionId, selectedRoomId],
 	);
 
 	const updateBootstrapCache = useCallback((updater: (data: BootstrapData) => BootstrapData) => {
@@ -711,12 +786,13 @@ export function App({ route }: { route: ChatAppRoute }) {
 		});
 		navigateToSelectedSession(selectedRoomId ?? bootstrap?.selectedRoomId, piboSessionId, false, { closeMobileSidebar: false });
 		try {
-			const data = await loadBootstrap(piboSessionId);
+			await markSessionRead(piboSessionId);
+			const data = await loadNavigation(piboSessionId, showArchivedRef.current, selectedRoomId ?? bootstrap?.selectedRoomId);
 			navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId, true, { closeMobileSidebar: false });
 		} finally {
 			setLoadingPiboSessionId((current) => current === piboSessionId ? null : current);
 		}
-	}, [bootstrap?.selectedRoomId, loadBootstrap, navigateToSelectedSession, selectedRoomId]);
+	}, [bootstrap?.selectedRoomId, loadNavigation, navigateToSelectedSession, selectedRoomId]);
 
 	const selectRoom = useCallback(async (roomId: string) => {
 		setMobileSidebarOpen(false);
@@ -724,16 +800,16 @@ export function App({ route }: { route: ChatAppRoute }) {
 		setSelectedRoomId(roomId);
 		setSelectedPiboSessionId(storedPiboSessionId ?? null);
 		try {
-			const data = await loadBootstrap(storedPiboSessionId, showArchivedRef.current, roomId);
+			const data = await loadNavigation(storedPiboSessionId, showArchivedRef.current, roomId);
 			navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId);
 		} catch (caught) {
 			if (!storedPiboSessionId) throw caught;
 			removeStoredRoomSelection(roomId);
 			setSelectedPiboSessionId(null);
-			const data = await loadBootstrap(undefined, showArchivedRef.current, roomId);
+			const data = await loadNavigation(undefined, showArchivedRef.current, roomId);
 			navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId);
 		}
-	}, [loadBootstrap, navigateToSelectedSession]);
+	}, [loadNavigation, navigateToSelectedSession]);
 
 	const createSession = async (profile = newSessionProfile) => {
 		if (creatingSession || selectedRoomArchived) return;

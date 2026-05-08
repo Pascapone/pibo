@@ -8,6 +8,7 @@ import { NavigationStore } from "./navigation-store.js";
 import { ObservationStore } from "./observation-store.js";
 import { PayloadStore } from "./payload-store.js";
 import { applyPiboDataSchema } from "./schema.js";
+import { SessionStore } from "./session-store.js";
 
 export type PiboDataStoreOptions = {
 	payloadRootDir?: string;
@@ -21,6 +22,7 @@ export class PiboDataStore {
 	readonly messages: MessageStore;
 	readonly observations: ObservationStore;
 	readonly navigation: NavigationStore;
+	readonly sessions: SessionStore;
 
 	constructor(path = piboHomePath("pibo.sqlite"), options: PiboDataStoreOptions = {}) {
 		this.path = path === ":memory:" ? path : resolve(path);
@@ -35,6 +37,7 @@ export class PiboDataStore {
 		this.messages = new MessageStore(this.db);
 		this.observations = new ObservationStore(this.db);
 		this.navigation = new NavigationStore(this.db);
+		this.sessions = new SessionStore(this.db);
 	}
 
 	transaction<T>(action: () => T): T {

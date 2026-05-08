@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { DatabaseSync } from "node:sqlite";
 import { createChatWebApp } from "../dist/apps/chat/web-app.js";
 import { PiboAuthError } from "../dist/auth/types.js";
 import { createWebHostChannel } from "../dist/web/channel.js";
@@ -49,6 +50,8 @@ async function startWebHostChannel(options = {}) {
 	const storageDir = mkdtempSync(join(tmpdir(), "pibo-web-channel-"));
 	const storagePath = join(storageDir, "chat.sqlite");
 	const agentStorePath = join(storageDir, "agents.sqlite");
+	const dataStorePath = join(storageDir, "pibo-chat-v2.sqlite");
+	const dataPayloadRootDir = join(storageDir, "payloads");
 	const channel = createWebHostChannel({ port: 0, announce: false, ...options.web });
 
 	await channel.start({
@@ -118,7 +121,15 @@ async function startWebHostChannel(options = {}) {
 			profiles = profiles.filter((item) => item.name !== name);
 		},
 		getWebApps() {
-			return [createChatWebApp({ readModelPath: storagePath, eventLogPath: storagePath, roomStorePath: storagePath, agentStorePath })];
+			return [createChatWebApp({
+				readModelPath: storagePath,
+				eventLogPath: storagePath,
+				roomStorePath: storagePath,
+				agentStorePath,
+				dataStorePath: options.dataV2Write ? dataStorePath : undefined,
+				dataPayloadRootDir,
+				dataV2Write: options.dataV2Write,
+			})];
 		},
 	});
 
@@ -131,7 +142,9 @@ async function startWebHostChannel(options = {}) {
 			for (const listener of listeners) listener(event);
 		},
 		sessions,
-		baseURL: `http://${address.host}:${address.port}`,
+		storageDir,
+		dataStorePath,
+		baseURL: `http://${address.host}:${address.port}`, 
 	};
 }
 
@@ -324,6 +337,34 @@ test("chat bootstrap includes model catalog data", async () => {
 		assert.equal(typeof provider?.label, "string");
 		assert.equal(typeof provider?.authConfigured, "boolean");
 		assert.ok(Array.isArray(provider?.models));
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("chat navigation returns sidebar data without catalog payload", async () => {
+	const { channel, baseURL } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+	});
+
+	try {
+		const response = await fetch(`${baseURL}/api/chat/navigation`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(response.status, 200);
+		assert.match(response.headers.get("server-timing") ?? "", /navigation/);
+		const payload = await response.json();
+		assert.equal(payload.identity.userId, "user-1");
+		assert.match(payload.session.id, /^ps_[0-9a-f-]{36}$/);
+		assert.equal(payload.selectedPiboSessionId, payload.session.id);
+		assert.equal(typeof payload.selectedRoomId, "string");
+		assert.ok(Array.isArray(payload.rooms));
+		assert.ok(Array.isArray(payload.sessions));
+		assert.equal(Object.hasOwn(payload, "agents"), false);
+		assert.equal(Object.hasOwn(payload, "customAgents"), false);
+		assert.equal(Object.hasOwn(payload, "modelCatalog"), false);
+		assert.equal(Object.hasOwn(payload, "agentCatalog"), false);
+		assert.equal(Object.hasOwn(payload, "capabilities"), false);
 	} finally {
 		await channel.stop?.();
 	}
@@ -916,6 +957,158 @@ test("chat web app makes message sends idempotent by client transaction id", asy
 		assert.equal(emitted.length, 1);
 		assert.equal(duplicate.duplicate, true);
 		assert.equal(duplicate.event.clientTxnId, "txn-retry-1");
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("chat web app shadows user messages into the V2 data store", async () => {
+	const { channel, baseURL, dataStorePath } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		dataV2Write: true,
+	});
+
+	try {
+		const sessionResponse = await fetch(`${baseURL}/api/chat/session`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(sessionResponse.status, 200);
+		const sessionPayload = await sessionResponse.json();
+		const body = JSON.stringify({
+			piboSessionId: sessionPayload.session.id,
+			text: "shadow me",
+			clientTxnId: "txn-shadow-1",
+		});
+
+		for (let index = 0; index < 2; index += 1) {
+			const response = await fetch(`${baseURL}/api/chat/message`, {
+				method: "POST",
+				headers: {
+					"content-type": "application/json",
+					origin: baseURL,
+					"x-test-user": "user-1",
+				},
+				body,
+			});
+			assert.equal(response.status, 200);
+		}
+
+		const db = new DatabaseSync(dataStorePath, { readOnly: true });
+		try {
+			const eventCount = db.prepare("SELECT COUNT(*) AS count FROM event_log WHERE session_id = ?").get(sessionPayload.session.id).count;
+			const messageCount = db.prepare("SELECT COUNT(*) AS count FROM chat_messages WHERE session_id = ?").get(sessionPayload.session.id).count;
+			const message = db.prepare("SELECT * FROM chat_messages WHERE session_id = ?").get(sessionPayload.session.id);
+			const navigation = db.prepare("SELECT * FROM session_navigation WHERE session_id = ?").get(sessionPayload.session.id);
+			assert.equal(eventCount, 1);
+			assert.equal(messageCount, 1);
+			assert.equal(message.content_preview, "shadow me");
+			assert.equal(JSON.parse(message.attributes_json).inlineText, "shadow me");
+			assert.equal(navigation.last_message_preview, "shadow me");
+		} finally {
+			db.close();
+		}
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("chat web app shadows assistant and tool output into the V2 data store", async () => {
+	const { channel, baseURL, emitOutput, dataStorePath } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		dataV2Write: true,
+	});
+
+	try {
+		const sessionResponse = await fetch(`${baseURL}/api/chat/session`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(sessionResponse.status, 200);
+		const sessionPayload = await sessionResponse.json();
+
+		for (let index = 0; index < 2; index += 1) {
+			emitOutput({
+				type: "assistant_message",
+				piboSessionId: sessionPayload.session.id,
+				eventId: "shadow-run-1",
+				text: "assistant v2 shadow",
+			});
+		}
+		emitOutput({
+			type: "tool_execution_finished",
+			piboSessionId: sessionPayload.session.id,
+			eventId: "shadow-run-1",
+			toolCallId: "tool-shadow-1",
+			toolName: "read",
+			result: { ok: true },
+			isError: false,
+		});
+
+		const db = new DatabaseSync(dataStorePath, { readOnly: true });
+		try {
+			const eventRows = db.prepare("SELECT type FROM event_log WHERE session_id = ? ORDER BY stream_id ASC").all(sessionPayload.session.id);
+			const messageRows = db.prepare("SELECT role, content_preview FROM chat_messages WHERE session_id = ? ORDER BY sequence ASC").all(sessionPayload.session.id);
+			const observationRows = db.prepare("SELECT kind, name, status FROM observations WHERE session_id = ? ORDER BY sequence ASC").all(sessionPayload.session.id);
+			assert.deepEqual(eventRows.map((row) => row.type), ["assistant_message", "tool_execution_finished"]);
+			assert.deepEqual(messageRows.map((row) => ({ role: row.role, content_preview: row.content_preview })), [{ role: "assistant", content_preview: "assistant v2 shadow" }]);
+			assert.deepEqual(observationRows.map((row) => row.kind), ["message", "tool"]);
+			assert.equal(observationRows[1].name, "read");
+		} finally {
+			db.close();
+		}
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("chat web app marks a selected session read through the read endpoint", async () => {
+	const { channel, baseURL, emitOutput } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+	});
+
+	try {
+		const sessionResponse = await fetch(`${baseURL}/api/chat/session`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(sessionResponse.status, 200);
+		const sessionPayload = await sessionResponse.json();
+
+		emitOutput({
+			type: "assistant_message",
+			piboSessionId: sessionPayload.session.id,
+			eventId: "read-run-1",
+			text: "read me",
+		});
+		emitOutput({
+			type: "message_finished",
+			piboSessionId: sessionPayload.session.id,
+			eventId: "read-run-1",
+		});
+
+		let bootstrap = await fetch(`${baseURL}/api/chat/bootstrap?markRead=false&piboSessionId=${encodeURIComponent(sessionPayload.session.id)}`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(bootstrap.status, 200);
+		let payload = await bootstrap.json();
+		assert.equal(payload.sessions[0].unreadCount, 1);
+
+		const marked = await fetch(`${baseURL}/api/chat/sessions/${encodeURIComponent(sessionPayload.session.id)}/read`, {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				origin: baseURL,
+				"x-test-user": "user-1",
+			},
+			body: "{}",
+		});
+		assert.equal(marked.status, 200);
+		assert.deepEqual(await marked.json(), { ok: true, piboSessionId: sessionPayload.session.id });
+
+		bootstrap = await fetch(`${baseURL}/api/chat/bootstrap?markRead=false&piboSessionId=${encodeURIComponent(sessionPayload.session.id)}`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(bootstrap.status, 200);
+		payload = await bootstrap.json();
+		assert.equal(payload.sessions[0].unreadCount, undefined);
 	} finally {
 		await channel.stop?.();
 	}

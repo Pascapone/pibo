@@ -65,6 +65,8 @@ import { inspectPiPackageSource } from "../../pi-packages/metadata.js";
 import { findPiPackage, listPiPackages, removePiPackage, setPiPackageEnabled, upsertPiPackage } from "../../pi-packages/store.js";
 import { UserSkillManager } from "../../user-skills/manager.js";
 import { listUserSkills } from "../../user-skills/store.js";
+import { ChatDataIngestService } from "../../data/ingest-service.js";
+import { PiboDataStore } from "../../data/pibo-store.js";
 
 export const CHAT_WEB_APP_NAME = "pibo.chat-web";
 export const CHAT_WEB_CHANNEL = "pibo.chat-web";
@@ -78,6 +80,9 @@ export type ChatWebAppOptions = {
 	roomStorePath?: string;
 	agentStorePath?: string;
 	reliabilityStorePath?: string;
+	dataStorePath?: string;
+	dataPayloadRootDir?: string;
+	dataV2Write?: boolean;
 };
 
 type ChatPersistenceMetrics = {
@@ -96,6 +101,8 @@ type ChatWebAppState = {
 	roomStore: PiboRoomStore;
 	agentStore: CustomAgentStore;
 	reliabilityStore: PiboReliabilityStore;
+	dataStore?: PiboDataStore;
+	ingestService?: ChatDataIngestService;
 	traceCache: Map<string, PiboSessionTraceView>;
 	bootstrapCatalogCache?: { expiresAt: number; value: Promise<ChatBootstrapCatalog> };
 	outputCompactor: OutputCompactor;
@@ -774,6 +781,16 @@ function createReliabilityStore(path?: string): PiboReliabilityStore {
 	return path ? new PiboReliabilityStore(path) : createDefaultPiboReliabilityStore();
 }
 
+function isDataV2WriteEnabled(options: ChatWebAppOptions): boolean {
+	if (options.dataV2Write !== undefined) return options.dataV2Write;
+	return process.env.PIBO_DATA_V2_WRITE === "1" || process.env.PIBO_DATA_V2_WRITE === "user" || process.env.PIBO_DATA_V2_WRITE === "all";
+}
+
+function createDataStore(options: ChatWebAppOptions): PiboDataStore | undefined {
+	if (!isDataV2WriteEnabled(options)) return undefined;
+	return new PiboDataStore(options.dataStorePath, { payloadRootDir: options.dataPayloadRootDir });
+}
+
 function createPersistenceMetrics(): ChatPersistenceMetrics {
 	return { eventCount: 0, errorCount: 0, totalIndexingMs: 0, maxIndexingMs: 0 };
 }
@@ -827,6 +844,20 @@ function ensureEventIndexing(state: ChatWebAppState, context: PiboWebAppContext)
 					markActiveSessionRead(state, persistableEvent.piboSessionId, stored.streamId);
 				}
 				state.readModel.recordEvent(persistableEvent, session, stored.streamId);
+				if (state.ingestService && session) {
+					try {
+						state.ingestService.ingestOutputEvent({
+							session,
+							roomId: room?.id,
+							actorId: session.ownerScope,
+							event: persistableEvent,
+							legacyStreamId: stored.streamId,
+							createdAt: stored.createdAt,
+						});
+					} catch (error) {
+						console.warn("[chat-web] failed to shadow output event into V2", error);
+					}
+				}
 				state.reliabilityStore.append({
 					topic: "pibo.output",
 					key: persistableEvent.piboSessionId,
@@ -1785,6 +1816,18 @@ async function sendChatMessage(input: {
 			...(clientTxnId ? { clientTxnId } : {}),
 		},
 	});
+	try {
+		input.state.ingestService?.ingestUserMessageAccepted({
+			session: selectedSession,
+			roomId: room.id,
+			actorId,
+			text,
+			clientTxnId,
+			legacyEvent: accepted,
+		});
+	} catch (error) {
+		console.warn("V2 chat data shadow ingest failed", error);
+	}
 	for (const listener of input.state.liveListeners) listener(accepted);
 	const messageId = randomUUID();
 	let output: PiboOutputEvent;
@@ -2763,12 +2806,15 @@ function createChatHtml(): string {
 export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 	const defaultProfile = options.defaultProfile ?? "codex-compat-openai-web";
 	const storagePath = options.readModelPath;
+	const dataStore = createDataStore(options);
 	const state: ChatWebAppState = {
 		readModel: createReadModel(storagePath),
 		eventLog: createEventLog(options.eventLogPath ?? storagePath),
 		roomStore: createRoomStore(options.roomStorePath ?? storagePath),
 		agentStore: createAgentStore(options.agentStorePath ?? storagePath),
 		reliabilityStore: createReliabilityStore(options.reliabilityStorePath),
+		dataStore,
+		ingestService: dataStore ? new ChatDataIngestService(dataStore) : undefined,
 		traceCache: new Map(),
 		outputCompactor: new OutputCompactor(),
 		liveListeners: new Set(),
@@ -3422,6 +3468,20 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					body,
 					forcedRoomId: roomResource.roomId,
 				});
+			}
+
+			const sessionReadPrefix = `${CHAT_WEB_API_PREFIX}/sessions/`;
+			if (url.pathname.startsWith(sessionReadPrefix) && url.pathname.endsWith("/read") && request.method === "POST") {
+				requireSameOriginJsonRequest(request);
+				const webSession = await requireSession(request, context);
+				const encodedId = url.pathname.slice(sessionReadPrefix.length, -5);
+				if (!encodedId || encodedId.includes("/")) {
+					throw new PiboWebHttpError("Invalid session id", 400);
+				}
+				const readSessionId = decodeURIComponent(encodedId);
+				const selectedSession = resolveRequestedSession(state, context, webSession, defaultProfile, readSessionId);
+				markSessionsRead(state, [selectedSession], principalIdFor(webSession));
+				return responseJson({ ok: true, piboSessionId: selectedSession.id });
 			}
 
 			const patchSessionId = sessionResourceId(url.pathname);
