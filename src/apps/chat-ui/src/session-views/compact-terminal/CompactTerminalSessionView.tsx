@@ -17,6 +17,7 @@ const SHOW_LATEST_THRESHOLD_PX = 180;
 const INITIAL_BOTTOM_ITEM = { index: "LAST", align: "end" } as const;
 const VIRTUOSO_VIEWPORT = { top: 2_400, bottom: 2_400 } as const;
 const DEFAULT_ROW_HEIGHT_PX = 84;
+const COLLAPSED_EXPLORING_PREVIEW_LINES = 6;
 
 export function CompactTerminalSessionView({
 	traceView,
@@ -413,7 +414,7 @@ function retainExistingExpandedRows(
 }
 
 function collapsedToolCallPreviewLines(row: { kind: string; lines: CompactTerminalLine[] }) {
-	if (row.kind === "tool.group.exploring") return row.lines.slice(0, 1);
+	if (row.kind === "tool.group.exploring") return row.lines.slice(0, COLLAPSED_EXPLORING_PREVIEW_LINES);
 	return row.lines;
 }
 
