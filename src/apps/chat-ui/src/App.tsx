@@ -113,6 +113,7 @@ const COMPOSER_HISTORY_STORAGE_KEY = "pibo.chat.composerHistory";
 const COMPOSER_HISTORY_LIMIT = 100;
 const SESSION_DELETE_CONFIRM_TEXT = "Delete this session";
 const RECENT_SESSION_ACTIVITY_SIGNAL_MS = 3_000;
+const ARCHIVED_SESSION_RENDER_LIMIT = 100;
 
 type StoredSelection = {
 	roomId?: string;
@@ -837,10 +838,22 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const toggleArchivedSessions = async () => {
 		const next = !showArchived;
 		setShowArchived(next);
-		setLoadingArchivedSessions(true);
 		localStorage.setItem("pibo.chat.showArchived", String(next));
+
+		if (!next) {
+			setLoadingArchivedSessions(false);
+			void loadNavigation(selectedPiboSessionId ?? undefined, false, selectedRoomId ?? undefined).then((data) => {
+				if (area === "sessions") navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId, false, { closeMobileSidebar: false });
+				setError(null);
+			}).catch((caught) => {
+				setError(caught instanceof Error ? caught.message : String(caught));
+			});
+			return;
+		}
+
+		setLoadingArchivedSessions(true);
 		try {
-			const data = await loadBootstrap(selectedPiboSessionId ?? undefined, next, selectedRoomId ?? undefined);
+			const data = await loadNavigation(selectedPiboSessionId ?? undefined, true, selectedRoomId ?? undefined);
 			if (area === "sessions") navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId, false, { closeMobileSidebar: false });
 			setError(null);
 		} catch (caught) {
@@ -1104,6 +1117,9 @@ export function App({ route }: { route: ChatAppRoute }) {
 		[area, navigateToRoute, selectedPiboSessionId, selectedRoomId],
 	);
 
+	const sessionGroups = useMemo(() => bootstrap ? splitSessionNodesByArchive(bootstrap.sessions, showArchived) : { active: [], archived: [] }, [bootstrap?.sessions, showArchived]);
+	const visibleArchivedSessions = showArchived ? sessionGroups.archived.slice(0, ARCHIVED_SESSION_RENDER_LIMIT) : [];
+
 	if (error && !bootstrap) {
 		return <SignedOut message={error} />;
 	}
@@ -1112,7 +1128,6 @@ export function App({ route }: { route: ChatAppRoute }) {
 		return <div className="min-h-screen bg-[#101d22] text-slate-300 grid place-items-center">Loading Pibo Chat...</div>;
 	}
 	const roomsSupported = Boolean(bootstrap.selectedRoomId || bootstrap.room || bootstrap.rooms.length);
-	const sessionGroups = splitSessionNodesByArchive(bootstrap.sessions);
 	const newSessionProfileOptions = bootstrap.agents;
 	const selectedSessionNode = selectedPiboSessionId ? findSessionNode(bootstrap.sessions, selectedPiboSessionId) : undefined;
 	const selectedSessionSignal = selectedPiboSessionId ? sessionSignals?.sessions[selectedPiboSessionId] : undefined;
@@ -1394,18 +1409,25 @@ export function App({ route }: { route: ChatAppRoute }) {
 											<Loader2 size={13} className="text-[#11a4d4] animate-spin" /> Loading archived sessions
 										</div>
 									) : sessionGroups.archived.length ? (
-										<ArchivedSessionsList
-											sessions={sessionGroups.archived}
-											signalNow={signalNow}
-											selectedPiboSessionId={selectedPiboSessionId}
-											onSelect={(piboSessionId) => void selectSession(piboSessionId)}
-											onRename={(piboSessionId, title) => void renameSession(piboSessionId, title)}
-											onArchive={(piboSessionId, archived) => void setSessionArchived(piboSessionId, archived)}
-											onDelete={requestSessionDelete}
-											loadingPiboSessionId={loadingPiboSessionId}
-											autoRenameSessionId={autoRenameSessionId}
-											onAutoRenameConsumed={() => setAutoRenameSessionId(null)}
-										/>
+										<>
+											<ArchivedSessionsList
+												sessions={visibleArchivedSessions}
+												signalNow={signalNow}
+												selectedPiboSessionId={selectedPiboSessionId}
+												onSelect={(piboSessionId) => void selectSession(piboSessionId)}
+												onRename={(piboSessionId, title) => void renameSession(piboSessionId, title)}
+												onArchive={(piboSessionId, archived) => void setSessionArchived(piboSessionId, archived)}
+												onDelete={requestSessionDelete}
+												loadingPiboSessionId={loadingPiboSessionId}
+												autoRenameSessionId={autoRenameSessionId}
+												onAutoRenameConsumed={() => setAutoRenameSessionId(null)}
+											/>
+											{sessionGroups.archived.length > ARCHIVED_SESSION_RENDER_LIMIT ? (
+												<div className="mt-2 px-2 py-2 text-[11px] text-slate-500 border border-dashed border-slate-700 rounded-sm">
+													Showing first {ARCHIVED_SESSION_RENDER_LIMIT} of {sessionGroups.archived.length} archived sessions.
+												</div>
+											) : null}
+										</>
 									) : <div className="px-2 py-3 text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm">No archived sessions</div>}
 								</div>
 							) : null}
@@ -3309,7 +3331,7 @@ function sessionLabel(session: Pick<PiboWebSessionNode, "title" | "profile" | "s
 	return session.title || session.profile || session.subagentName || "Untitled Session";
 }
 
-function splitSessionNodesByArchive(nodes: PiboWebSessionNode[]): {
+function splitSessionNodesByArchive(nodes: PiboWebSessionNode[], includeArchived = true): {
 	active: PiboWebSessionNode[];
 	archived: PiboWebSessionNode[];
 } {
@@ -3317,12 +3339,12 @@ function splitSessionNodesByArchive(nodes: PiboWebSessionNode[]): {
 	const archived: PiboWebSessionNode[] = [];
 	for (const node of nodes) {
 		if (node.archived) {
-			archived.push(node);
+			if (includeArchived) archived.push(node);
 			continue;
 		}
-		const children = splitSessionNodesByArchive(node.children);
+		const children = splitSessionNodesByArchive(node.children, includeArchived);
 		active.push({ ...node, children: children.active });
-		archived.push(...children.archived);
+		if (includeArchived) archived.push(...children.archived);
 	}
 	return { active, archived };
 }
