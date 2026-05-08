@@ -143,7 +143,7 @@ export type PiboSignalPatch = {
 	sessionSnapshots: PiboSessionSignalSnapshot[];
 };
 
-export type BootstrapData = {
+export type NavigationData = {
 	identity: { userId: string; email?: string; name?: string };
 	session: PiboSession;
 	room?: PiboRoom;
@@ -151,6 +151,9 @@ export type BootstrapData = {
 	selectedPiboSessionId: string;
 	rooms: PiboRoom[];
 	sessions: PiboWebSessionNode[];
+};
+
+export type BootstrapData = NavigationData & {
 	agents: AgentProfile[];
 	customAgents: CustomAgent[];
 	modelDefaults?: ModelDefaults;

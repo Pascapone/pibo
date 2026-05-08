@@ -1,4 +1,4 @@
-import type { BootstrapData, PiboSessionTraceView, PiboWebSessionNode } from "./types";
+import type { BootstrapData, NavigationData, PiboSessionTraceView, PiboWebSessionNode } from "./types";
 
 export const BOOTSTRAP_STALE_TIME_MS = 30_000;
 export const BOOTSTRAP_GC_TIME_MS = 30 * 60_000;
@@ -23,8 +23,9 @@ export function chatBootstrapQueryKey(
 export function chatSessionNavigationQueryKey(
 	includeArchived = false,
 	roomId?: string,
-): readonly [string, string, string, string] {
-	return ["chat", "sessions", includeArchived ? "archived" : "active", roomId ?? ""];
+	piboSessionId?: string,
+): readonly [string, string, string, string, string] {
+	return ["chat", "sessions", includeArchived ? "archived" : "active", roomId ?? "", piboSessionId ?? ""];
 }
 
 export function chatTraceQueryKey(
@@ -40,7 +41,7 @@ export function chatTraceQueryKey(
 	];
 }
 
-export function sessionNavigationFromBootstrap(data: BootstrapData): SessionNavigationData {
+export function sessionNavigationFromBootstrap(data: NavigationData): SessionNavigationData {
 	return {
 		roomId: data.selectedRoomId,
 		piboSessionId: data.selectedPiboSessionId,
@@ -51,11 +52,11 @@ export function sessionNavigationFromBootstrap(data: BootstrapData): SessionNavi
 
 export function setChatNavigationCache(
 	setQueryData: <T>(queryKey: readonly unknown[], data: T) => void,
-	data: BootstrapData,
+	data: NavigationData,
 	includeArchived = false,
 	roomId?: string,
 ): void {
-	setQueryData(chatSessionNavigationQueryKey(includeArchived, roomId ?? data.selectedRoomId), sessionNavigationFromBootstrap(data));
+	setQueryData(chatSessionNavigationQueryKey(includeArchived, roomId ?? data.selectedRoomId, data.selectedPiboSessionId), sessionNavigationFromBootstrap(data));
 }
 
 export function traceQueriesForSession(piboSessionId: string): readonly [string, string, string] {

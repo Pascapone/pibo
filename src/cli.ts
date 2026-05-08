@@ -77,6 +77,12 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 		return;
 	}
 
+	if (argv[2] === "data") {
+		const { runDataCli } = await import("./data/cli.js");
+		await runDataCli([argv[0] ?? "node", "pibo data", ...argv.slice(3)]);
+		return;
+	}
+
 	if (argv[2] === "gateway") {
 		const { runGatewayCli } = await import("./gateway/cli.js");
 		await runGatewayCli(argv);
@@ -149,6 +155,18 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 		.action(async (args: string[]) => {
 			const { runDebugCli } = await import("./debug/index.js");
 			await runDebugCli([argv[0] ?? "node", "pibo debug", ...args]);
+		});
+
+	program
+		.command("data")
+		.description("Inspect and maintain Pibo data stores")
+		.helpOption(false)
+		.allowUnknownOption(true)
+		.allowExcessArguments(true)
+		.argument("[args...]")
+		.action(async (args: string[]) => {
+			const { runDataCli } = await import("./data/cli.js");
+			await runDataCli([argv[0] ?? "node", "pibo data", ...args]);
 		});
 
 	program
@@ -307,6 +325,7 @@ Commands:
   tools        Install and inspect curated external CLI tools
   pi-packages  Register Pi Coding Agent packages
   debug        Inspect local Pibo data
+  data         Inspect and maintain Pibo data stores
   compute      Manage Pibo Docker compute workers
   skills       Manage Pibo user skills
   profile      Inspect a pibo profile

@@ -174,6 +174,37 @@ test("chat stream adapter prefers assistant message index over reused content in
 	);
 });
 
+test("chat stream adapter emits progressive tool argument and result frames", () => {
+	const state = createChatStreamState();
+
+	assert.deepEqual(
+		visibleChatStreamFrames(
+			{ type: "tool_call", piboSessionId: "chat:test", eventId: "turn-1", toolCallId: "tc-1", toolName: "read", args: { path: "READ" }, argsComplete: false },
+			state,
+		),
+		[
+			{ type: "TOOL_CALL_START", toolCallId: "tc-1", toolName: "read", args: { path: "READ" }, runId: "turn-1" },
+			{ type: "TOOL_CALL_ARGS", toolCallId: "tc-1", toolName: "read", args: { path: "READ" }, argsComplete: false, runId: "turn-1", sourceEventType: "tool_call" },
+		],
+	);
+	assert.deepEqual(
+		visibleChatStreamFrames(
+			{ type: "tool_execution_updated", piboSessionId: "chat:test", eventId: "turn-1", toolCallId: "tc-1", toolName: "read", args: { path: "README.md" }, partialResult: "loading" },
+			state,
+		),
+		[
+			{ type: "TOOL_CALL_ARGS", toolCallId: "tc-1", toolName: "read", args: { path: "README.md" }, argsComplete: true, runId: "turn-1", partialResult: "loading", sourceEventType: "tool_execution_updated" },
+		],
+	);
+	assert.deepEqual(
+		visibleChatStreamFrames(
+			{ type: "tool_execution_finished", piboSessionId: "chat:test", eventId: "turn-1", toolCallId: "tc-1", toolName: "read", result: "ok", isError: false },
+			state,
+		),
+		[{ type: "TOOL_CALL_RESULT", toolCallId: "tc-1", toolName: "read", result: "ok", isError: false, runId: "turn-1" }],
+	);
+});
+
 test("live trace order uses SSE stream id before frame index", () => {
 	assert.deepEqual(parseTraceStreamFrameId("58722:1"), { streamId: 58722, frameIndex: 1 });
 	assert.equal(parseTraceStreamFrameId("58722"), undefined);

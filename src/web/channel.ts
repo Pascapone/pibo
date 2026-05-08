@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { PiboAuthError } from "../auth/types.js";
 import type { PiboChannel, PiboChannelContext } from "../channels/types.js";
+import { handleSimpleAgentApiRequest } from "../api/simple-agent-api.js";
 import { requireWebSession } from "./auth.js";
 import { PiboWebHttpError, nodeRequestToWebRequest, responseHtml, responseJson, sendWebResponse } from "./http.js";
 import type { PiboWebAppContext } from "./types.js";
@@ -176,6 +177,12 @@ export function createWebHostChannel(options: WebHostChannelOptions = {}): WebHo
 			}
 
 			const ctx = requireContext();
+			const simpleApiResponse = await handleSimpleAgentApiRequest(request, ctx);
+			if (simpleApiResponse) {
+				await sendWebResponse(nodeResponse, simpleApiResponse);
+				return;
+			}
+
 			const apps = ctx.getWebApps();
 			const app = apps.find(
 				(candidate) => matchPrefix(url.pathname, candidate.mountPath) || matchPrefix(url.pathname, candidate.apiPrefix),

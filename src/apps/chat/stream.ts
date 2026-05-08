@@ -12,8 +12,8 @@ export type ChatStreamEvent = { piboSessionId?: string } & (
 	| { type: "REASONING_MESSAGE_CONTENT"; messageId: string; runId?: string; delta: string }
 	| { type: "REASONING_MESSAGE_END"; messageId: string; runId?: string; finalText?: string }
 	| { type: "TOOL_CALL_START"; toolCallId: string; toolName: string; args?: unknown; runId?: string }
-	| { type: "TOOL_CALL_ARGS"; toolCallId: string; args: unknown; argsComplete: boolean }
-	| { type: "TOOL_CALL_RESULT"; toolCallId: string; result: unknown; isError: boolean }
+	| { type: "TOOL_CALL_ARGS"; toolCallId: string; toolName?: string; args: unknown; argsComplete: boolean; runId?: string; partialResult?: unknown; sourceEventType?: "tool_call" | "tool_execution_updated" }
+	| { type: "TOOL_CALL_RESULT"; toolCallId: string; toolName?: string; result: unknown; isError: boolean; runId?: string }
 	| { type: "AGENT_DELEGATION"; toolCallId?: string; toolName: string; subagentName: string; childPiboSessionId: string; threadKey?: string }
 	| { type: "EXECUTION_RESULT"; runId?: string; eventId?: string; action: string; result: unknown }
 	| { type: "RAW_EVENT"; event: PiboOutputEvent }
@@ -86,17 +86,35 @@ export function chatStreamFramesFromOutputEvent(
 			break;
 		case "tool_call":
 			ensureToolCallStarted(frames, state, event.toolCallId, event.toolName, event.args, eventId);
-			frames.push({ type: "TOOL_CALL_ARGS", toolCallId: event.toolCallId, args: event.args, argsComplete: event.argsComplete });
+			frames.push({
+				type: "TOOL_CALL_ARGS",
+				toolCallId: event.toolCallId,
+				toolName: event.toolName,
+				args: event.args,
+				argsComplete: event.argsComplete,
+				runId: eventId,
+				sourceEventType: "tool_call",
+			});
 			break;
 		case "tool_execution_started":
 			ensureToolCallStarted(frames, state, event.toolCallId, event.toolName, event.args, eventId);
 			break;
 		case "tool_execution_updated":
 			ensureToolCallStarted(frames, state, event.toolCallId, event.toolName, event.args, eventId);
+			frames.push({
+				type: "TOOL_CALL_ARGS",
+				toolCallId: event.toolCallId,
+				toolName: event.toolName,
+				args: event.args,
+				argsComplete: true,
+				runId: eventId,
+				partialResult: event.partialResult,
+				sourceEventType: "tool_execution_updated",
+			});
 			break;
 		case "tool_execution_finished":
 			ensureToolCallStarted(frames, state, event.toolCallId, event.toolName, undefined, eventId);
-			frames.push({ type: "TOOL_CALL_RESULT", toolCallId: event.toolCallId, result: event.result, isError: event.isError });
+			frames.push({ type: "TOOL_CALL_RESULT", toolCallId: event.toolCallId, toolName: event.toolName, result: event.result, isError: event.isError, runId: eventId });
 			break;
 		case "subagent_session":
 			frames.push({

@@ -115,6 +115,7 @@ export async function buildSessionNodes(
 	indexItems: ChatWebSessionIndexItem[],
 	cwd = process.cwd(),
 	unreadCounts: ReadonlyMap<string, number> = new Map(),
+	options: { skipPiMetadataFallback?: boolean } = {},
 ): Promise<PiboWebSessionNode[]> {
 	const indexByKey = new Map(indexItems.map((item) => [item.piboSessionId, item]));
 	const nodes = new Map<string, PiboWebSessionNode>();
@@ -122,7 +123,7 @@ export async function buildSessionNodes(
 
 	for (const session of sessions) {
 		let metadata: SessionMetadata = {};
-		if (!session.title) {
+		if (!session.title && !options.skipPiMetadataFallback) {
 			const sessionCwd = session.workspace ?? cwd;
 			let piSessions = piSessionsByCwd.get(sessionCwd);
 			if (!piSessions) {

@@ -1,4 +1,4 @@
-import type { AgentCatalog, BootstrapData, CreateSessionData, CustomAgent, ModelDefaults, ModelProfile, PiboRoom, PiboSession, PiboSessionTraceView, UserSkill, PiboSignalPatch, PiboSignalSnapshot } from "./types";
+import type { AgentCatalog, BootstrapData, CreateSessionData, CustomAgent, ModelDefaults, ModelProfile, NavigationData, PiboRoom, PiboSession, PiboSessionTraceView, UserSkill, PiboSignalPatch, PiboSignalSnapshot } from "./types";
 
 const DOWNLOAD_FILENAME_RE = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i;
 
@@ -104,13 +104,20 @@ export async function getBootstrap(
 	roomId?: string,
 	markRead = false,
 ): Promise<BootstrapData> {
-	const params = new URLSearchParams();
-	if (piboSessionId) params.set("piboSessionId", piboSessionId);
-	if (includeArchived) params.set("includeArchived", "true");
-	if (roomId) params.set("roomId", roomId);
+	const params = createNavigationParams(piboSessionId, includeArchived, roomId);
 	if (markRead) params.set("markRead", "true");
 	const suffix = params.size ? `?${params.toString()}` : "";
 	return requestJson<Partial<BootstrapData>>(`/api/chat/bootstrap${suffix}`).then(normalizeBootstrap);
+}
+
+export async function getNavigation(
+	piboSessionId?: string,
+	includeArchived = false,
+	roomId?: string,
+): Promise<NavigationData> {
+	const params = createNavigationParams(piboSessionId, includeArchived, roomId);
+	const suffix = params.size ? `?${params.toString()}` : "";
+	return requestJson<Partial<NavigationData>>(`/api/chat/navigation${suffix}`).then(normalizeNavigation);
 }
 
 export async function getTrace(
@@ -171,6 +178,14 @@ export async function postSession(profile?: string, roomId?: string): Promise<Cr
 		method: "POST",
 		headers: { "content-type": "application/json" },
 		body: JSON.stringify({ ...(profile ? { profile } : {}), ...(roomId ? { roomId } : {}) }),
+	});
+}
+
+export async function markSessionRead(piboSessionId: string): Promise<{ ok: true; piboSessionId: string }> {
+	return requestJson<{ ok: true; piboSessionId: string }>(`/api/chat/sessions/${encodeURIComponent(piboSessionId)}/read`, {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: "{}",
 	});
 }
 
@@ -600,8 +615,16 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
 	return payload as T;
 }
 
-function normalizeBootstrap(payload: Partial<BootstrapData>): BootstrapData {
-	if (!payload.session) throw new Error("Invalid bootstrap response.");
+function createNavigationParams(piboSessionId?: string, includeArchived = false, roomId?: string): URLSearchParams {
+	const params = new URLSearchParams();
+	if (piboSessionId) params.set("piboSessionId", piboSessionId);
+	if (includeArchived) params.set("includeArchived", "true");
+	if (roomId) params.set("roomId", roomId);
+	return params;
+}
+
+function normalizeNavigation(payload: Partial<NavigationData>): NavigationData {
+	if (!payload.session) throw new Error("Invalid navigation response.");
 	const sessions = payload.sessions ?? [];
 	const selectedPiboSessionId = payload.selectedPiboSessionId ?? payload.session.id ?? sessions[0]?.piboSessionId ?? "";
 	return {
@@ -612,6 +635,13 @@ function normalizeBootstrap(payload: Partial<BootstrapData>): BootstrapData {
 		selectedPiboSessionId,
 		rooms: payload.rooms ?? [],
 		sessions,
+	};
+}
+
+function normalizeBootstrap(payload: Partial<BootstrapData>): BootstrapData {
+	const navigation = normalizeNavigation(payload);
+	return {
+		...navigation,
 		agents: payload.agents ?? [],
 		customAgents: payload.customAgents ?? [],
 		modelDefaults: payload.modelDefaults,

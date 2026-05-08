@@ -72,6 +72,53 @@ function storedEventFromStreamEvent(
 		};
 		return makeStored(event, piboSessionId, "thinking_delta", payload, nextSequence, now);
 	}
+	if (event.type === "TOOL_CALL_START" && typeof event.toolCallId === "string" && typeof event.toolName === "string") {
+		const payload = {
+			type: "tool_execution_started",
+			piboSessionId,
+			eventId: typeof event.runId === "string" ? event.runId : undefined,
+			toolCallId: event.toolCallId,
+			toolName: event.toolName,
+			args: event.args,
+		};
+		return makeStored(event, piboSessionId, "tool_execution_started", payload, nextSequence, now);
+	}
+	if (event.type === "TOOL_CALL_ARGS" && typeof event.toolCallId === "string" && typeof event.toolName === "string") {
+		const eventId = typeof event.runId === "string" ? event.runId : undefined;
+		const sourceEventType = event.sourceEventType === "tool_execution_updated" ? "tool_execution_updated" : "tool_call";
+		const payload = sourceEventType === "tool_execution_updated"
+			? {
+					type: "tool_execution_updated",
+					piboSessionId,
+					eventId,
+					toolCallId: event.toolCallId,
+					toolName: event.toolName,
+					args: event.args,
+					partialResult: event.partialResult,
+				}
+			: {
+					type: "tool_call",
+					piboSessionId,
+					eventId,
+					toolCallId: event.toolCallId,
+					toolName: event.toolName,
+					args: event.args,
+					argsComplete: Boolean(event.argsComplete),
+				};
+		return makeStored(event, piboSessionId, sourceEventType, payload, nextSequence, now);
+	}
+	if (event.type === "TOOL_CALL_RESULT" && typeof event.toolCallId === "string" && typeof event.toolName === "string") {
+		const payload = {
+			type: "tool_execution_finished",
+			piboSessionId,
+			eventId: typeof event.runId === "string" ? event.runId : undefined,
+			toolCallId: event.toolCallId,
+			toolName: event.toolName,
+			result: event.result,
+			isError: Boolean(event.isError),
+		};
+		return makeStored(event, piboSessionId, "tool_execution_finished", payload, nextSequence, now);
+	}
 	return undefined;
 }
 
