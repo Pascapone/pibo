@@ -1865,6 +1865,8 @@ function SessionTracePane({
 	const [traceEventLimit, setTraceEventLimit] = useState(DEFAULT_TRACE_EVENTS_PAGE_SIZE);
 	const [rawEventLimit, setRawEventLimit] = useState(DEFAULT_RAW_EVENTS_LIMIT);
 	const [baseTraceView, setBaseTraceView] = useState<PiboSessionTraceView | null>(null);
+	const [copiedHeaderPiboSessionId, setCopiedHeaderPiboSessionId] = useState<string | null>(null);
+	const copyHeaderPiboSessionTimeout = useRef<number | undefined>(undefined);
 	const traceSummaryQueryKey = useMemo(
 		() => selectedPiboSessionId ? chatTraceSummaryQueryKey(selectedPiboSessionId) : null,
 		[selectedPiboSessionId],
@@ -2152,7 +2154,21 @@ function SessionTracePane({
 		return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
 	}, [currentTraceView]);
 
+	useEffect(() => {
+		return () => {
+			if (copyHeaderPiboSessionTimeout.current) window.clearTimeout(copyHeaderPiboSessionTimeout.current);
+		};
+	}, []);
+
 	const headerPiboSessionId = currentTraceView?.piboSessionId ?? selectedPiboSessionId ?? "";
+	const headerPiboSessionCopied = copiedHeaderPiboSessionId === headerPiboSessionId;
+	const copyHeaderPiboSessionId = async () => {
+		if (!headerPiboSessionId) return;
+		await copyTextToClipboard(headerPiboSessionId);
+		setCopiedHeaderPiboSessionId(headerPiboSessionId);
+		if (copyHeaderPiboSessionTimeout.current) window.clearTimeout(copyHeaderPiboSessionTimeout.current);
+		copyHeaderPiboSessionTimeout.current = window.setTimeout(() => setCopiedHeaderPiboSessionId(null), 900);
+	};
 
 	return (
 		<>
@@ -2166,10 +2182,10 @@ function SessionTracePane({
 							{bootstrap.room?.name ?? selectedRoomId ?? "Room"} · {headerPiboSessionId ? (
 								<button
 									type="button"
-									onClick={() => void copyTextToClipboard(headerPiboSessionId)}
-									title="Copy Pibo session ID"
-									aria-label="Copy Pibo session ID"
-									className="font-mono text-slate-400 underline-offset-2 hover:text-[#11a4d4] hover:underline focus:outline-none focus:ring-1 focus:ring-[#11a4d4]"
+									onClick={() => void copyHeaderPiboSessionId()}
+									title={headerPiboSessionCopied ? "Copied Pibo session ID" : "Copy Pibo session ID"}
+									aria-label={headerPiboSessionCopied ? "Copied Pibo session ID" : "Copy Pibo session ID"}
+									className={`rounded-sm px-1 font-mono underline-offset-2 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[#11a4d4] ${headerPiboSessionCopied ? "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-400/50" : "text-slate-400 hover:text-[#11a4d4] hover:underline"}`}
 								>
 									{headerPiboSessionId}
 								</button>
