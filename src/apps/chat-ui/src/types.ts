@@ -158,6 +158,7 @@ export type NavigationData = {
 	room?: PiboRoom;
 	selectedRoomId: string;
 	selectedPiboSessionId: string;
+	latestRoomStreamId?: number;
 	rooms: PiboRoom[];
 	sessions: PiboWebSessionNode[];
 };

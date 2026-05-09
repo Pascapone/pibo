@@ -169,6 +169,7 @@ function mergeNavigationIntoBootstrap(
 		room: navigation.room,
 		selectedRoomId: navigation.selectedRoomId,
 		selectedPiboSessionId: navigation.selectedPiboSessionId,
+		latestRoomStreamId: navigation.latestRoomStreamId,
 		rooms: mergeNavigationRooms(current.rooms, navigation.rooms, navigation.selectedRoomId, clearedUnreadCount),
 		sessions: mergeNavigationSessions(navigation.sessions, readSessionIds, previousUnreadBySessionId),
 	};
@@ -747,6 +748,39 @@ export function App({ route }: { route: ChatAppRoute }) {
 		setBootstrap((current) => current ? updater(current) : current);
 		queryClient.setQueriesData<BootstrapData>({ queryKey: ["chat", "bootstrap"] }, (current) => current ? updater(current) : current);
 	}, [queryClient]);
+
+	const latestRoomStreamId = bootstrap?.latestRoomStreamId;
+
+	useEffect(() => {
+		if (area !== "sessions" || !activeRoomId) return;
+		const params = new URLSearchParams({ roomId: activeRoomId });
+		params.set("since", `${latestRoomStreamId ?? 0}:999999`);
+		const events = new EventSource(`/api/chat/events?${params.toString()}`);
+		let bootstrapTimer: ReturnType<typeof setTimeout> | undefined;
+		const scheduleFullBootstrapRefresh = () => {
+			if (bootstrapTimer) clearTimeout(bootstrapTimer);
+			bootstrapTimer = setTimeout(() => {
+				bootstrapTimer = undefined;
+				loadBootstrap(selectedPiboSessionId ?? undefined, showArchivedRef.current, activeRoomId, { force: true, selectSession: false })
+					.catch((caught) => setError(errorMessage(caught)));
+			}, 900);
+		};
+		events.addEventListener("pibo", (message) => {
+			const event = chatStreamEvent(message);
+			if (!event || event.type === "ready") return;
+			const targetPiboSessionId = event.piboSessionId;
+			const status = liveSessionStatusFromEvent(event);
+			if (targetPiboSessionId && status) {
+				const lastActivityAt = new Date().toISOString();
+				updateBootstrapCache((data) => updateSessionNodeInBootstrap(data, targetPiboSessionId, (node) => ({ ...node, status, lastActivityAt })));
+			}
+			if (eventShouldRefreshNavigation(event)) scheduleFullBootstrapRefresh();
+		});
+		return () => {
+			if (bootstrapTimer) clearTimeout(bootstrapTimer);
+			events.close();
+		};
+	}, [activeRoomId, area, latestRoomStreamId, loadBootstrap, selectedPiboSessionId, updateBootstrapCache]);
 
 	const restoreBootstrapSnapshot = useCallback((snapshot: BootstrapMutationSnapshot | undefined) => {
 		if (!snapshot) return;
@@ -6626,40 +6660,54 @@ function traceNodeText(node: PiboTraceNode): string {
 	return typeof node.output === "string" ? node.output : typeof node.summary === "string" ? node.summary : "";
 }
 
+type SignalSessionUpdate = { status?: PiboWebSessionNode["status"]; updatedAt?: string };
+
 function applySignalSnapshotToBootstrap(bootstrap: BootstrapData, snapshot: PiboSignalSnapshot): BootstrapData {
-	return updateBootstrapSessionStatuses(bootstrap, (piboSessionId) => signalLegacyStatus(snapshot.sessions[piboSessionId]));
+	return updateBootstrapSessionStatuses(bootstrap, (piboSessionId) => signalSessionUpdate(snapshot.sessions[piboSessionId]));
 }
 
 function applySignalPatchToBootstrap(bootstrap: BootstrapData, patch: PiboSignalPatch): BootstrapData {
-	const statuses = new Map(patch.sessionSnapshots.map((snapshot) => [snapshot.piboSessionId, signalLegacyStatus(snapshot)]));
-	return updateBootstrapSessionStatuses(bootstrap, (piboSessionId) => statuses.get(piboSessionId));
+	const updates = new Map(patch.sessionSnapshots.map((snapshot) => [snapshot.piboSessionId, signalSessionUpdate(snapshot)]));
+	return updateBootstrapSessionStatuses(bootstrap, (piboSessionId) => updates.get(piboSessionId));
 }
 
 function updateBootstrapSessionStatuses(
 	bootstrap: BootstrapData,
-	statusFor: (piboSessionId: string) => PiboWebSessionNode["status"] | undefined,
+	updateFor: (piboSessionId: string) => SignalSessionUpdate | undefined,
 ): BootstrapData {
 	return {
 		...bootstrap,
-		sessions: bootstrap.sessions.map((node) => updateSignalStatusInSessionNode(node, statusFor)),
+		sessions: bootstrap.sessions.map((node) => updateSignalStatusInSessionNode(node, updateFor)),
 	};
 }
 
 function updateSignalStatusInSessionNode(
 	node: PiboWebSessionNode,
-	statusFor: (piboSessionId: string) => PiboWebSessionNode["status"] | undefined,
+	updateFor: (piboSessionId: string) => SignalSessionUpdate | undefined,
 ): PiboWebSessionNode {
-	const status = statusFor(node.piboSessionId);
+	const update = updateFor(node.piboSessionId);
+	const status = update?.status;
+	const lastActivityAt = update?.updatedAt ?? (status && status !== node.status ? new Date().toISOString() : node.lastActivityAt);
 	return {
 		...node,
 		status: status ?? node.status,
-		lastActivityAt: status && status !== node.status ? new Date().toISOString() : node.lastActivityAt,
-		children: node.children.map((child) => updateSignalStatusInSessionNode(child, statusFor)),
-		derivedSessions: node.derivedSessions.map((derived) => ({
-			...derived,
-			status: statusFor(derived.piboSessionId) ?? derived.status,
-		})),
+		lastActivityAt,
+		children: node.children.map((child) => updateSignalStatusInSessionNode(child, updateFor)),
+		derivedSessions: node.derivedSessions.map((derived) => {
+			const derivedUpdate = updateFor(derived.piboSessionId);
+			return {
+				...derived,
+				status: derivedUpdate?.status ?? derived.status,
+				lastActivityAt: derivedUpdate?.updatedAt ?? derived.lastActivityAt,
+			};
+		}),
 	};
+}
+
+function signalSessionUpdate(snapshot: PiboSignalSnapshot["sessions"][string] | undefined): SignalSessionUpdate | undefined {
+	const status = signalLegacyStatus(snapshot);
+	if (!snapshot && !status) return undefined;
+	return { status, updatedAt: snapshot?.updatedAt };
 }
 
 function signalLegacyStatus(snapshot: PiboSignalSnapshot["sessions"][string] | undefined): PiboWebSessionNode["status"] | undefined {
@@ -6667,6 +6715,24 @@ function signalLegacyStatus(snapshot: PiboSignalSnapshot["sessions"][string] | u
 	if (snapshot.hasError || snapshot.hasErrorDescendant || snapshot.aggregateStatus === "error") return "error";
 	if (snapshot.isTreeActive) return "running";
 	return "idle";
+}
+
+function liveSessionStatusFromEvent(event: ChatStreamEvent): PiboWebSessionNode["status"] | undefined {
+	if (event.type === "RUN_ERROR") return "error";
+	if (event.type === "RUN_FINISHED" || event.type === "TEXT_MESSAGE_END") return "idle";
+	if (
+		event.type === "RUN_STARTED" ||
+		event.type === "TEXT_MESSAGE_START" ||
+		event.type === "TEXT_MESSAGE_CONTENT" ||
+		event.type === "REASONING_MESSAGE_START" ||
+		event.type === "REASONING_MESSAGE_CONTENT" ||
+		event.type === "TOOL_CALL_START" ||
+		event.type === "TOOL_CALL_ARGS" ||
+		event.type === "AGENT_DELEGATION"
+	) {
+		return "running";
+	}
+	return undefined;
 }
 
 function applySignalPatch(current: PiboSignalSnapshot | null, patch: PiboSignalPatch): PiboSignalSnapshot | null {

@@ -3012,6 +3012,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					defaultRoomId: defaultRoom.id,
 					selectedRoomId,
 					selectedPiboSessionId: selectedSession.id,
+					latestRoomStreamId: state.eventLog.getLatestStreamId({ roomId: selectedRoomId }),
 					rooms,
 					sessions,
 				}, { headers: { "server-timing": "navigation;desc=\"no_catalog_no_unread_no_jsonl\"" } });
@@ -3069,6 +3070,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					room: state.roomStore.getRoom(selectedRoomId),
 					selectedRoomId,
 					selectedPiboSessionId: selectedSession.id,
+					latestRoomStreamId: state.eventLog.getLatestStreamId({ roomId: selectedRoomId }),
 					rooms,
 					sessions,
 					...catalog,
