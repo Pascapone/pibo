@@ -2,6 +2,7 @@ import { existsSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { piboHomePath } from "../core/pibo-home.js";
+import { importLegacyChatData } from "./legacy-importer.js";
 
 type StoreInventory = {
 	name: string;
@@ -47,6 +48,17 @@ export async function runDataCli(argv: string[]): Promise<void> {
 		const comparison = compareSession(root, sessionId);
 		if (json) console.log(JSON.stringify(comparison, null, 2));
 		else printComparison(comparison);
+		return;
+	}
+	if (args[0] === "import" && args[1] === "legacy-chat") {
+		const json = args.includes("--json");
+		const root = optionValue(args, "--root") ?? process.env.PIBO_HOME;
+		const from = optionValue(args, "--from");
+		const to = optionValue(args, "--to");
+		const payloadRootDir = optionValue(args, "--payload-root");
+		const report = importLegacyChatData({ root, from, to, payloadRootDir });
+		if (json) console.log(JSON.stringify(report, null, 2));
+		else printImportReport(report);
 		return;
 	}
 	throw new Error(`Unknown pibo data command "${args[0]}". Run pibo data --help.`);
@@ -182,6 +194,17 @@ function printComparison(comparison: SessionComparison): void {
 	console.log(`delta.observationsMinusLegacyTraceEvents\t${comparison.deltas.observationsMinusLegacyTraceEvents}`);
 }
 
+function printImportReport(report: ReturnType<typeof importLegacyChatData>): void {
+	console.log(`legacyRoot\t${report.legacyRoot}`);
+	console.log(`v2Path\t${report.v2Path}`);
+	console.log(`input.sessions\t${report.inputs.sessions.exists}\t${report.inputs.sessions.path}`);
+	console.log(`input.chat\t${report.inputs.chat.exists}\t${report.inputs.chat.path}`);
+	console.log("kind\timported\tskipped");
+	for (const key of Object.keys(report.imported) as Array<keyof typeof report.imported>) {
+		console.log(`${key}\t${report.imported[key]}\t${report.skipped[key]}`);
+	}
+}
+
 function formatCounts(counts: Record<string, number>): string {
 	return Object.entries(counts).map(([name, count]) => `${name}:${count}`).join(",") || "-";
 }
@@ -208,16 +231,21 @@ function printDataHelp(): void {
 	console.log(`pibo data - inspect and maintain Pibo data stores
 
 Commands:
-  inventory  Read-only row counts, sizes, WAL sizes, and integrity checks
-  compare    Compare legacy Chat DB counts with V2 for one session
+  inventory           Read-only row counts, sizes, WAL sizes, and integrity checks
+  compare             Compare legacy Chat DB counts with V2 for one session
+  import legacy-chat  Import legacy Chat Web data into pibo.sqlite idempotently
 
 Options:
   --json              Print machine-readable JSON
   --root DIR          Inspect a specific Pibo home directory instead of ~/.pibo
+  --from DIR          Legacy import source root
+  --to FILE           Legacy import target pibo.sqlite path
+  --payload-root DIR  V2 payload directory for import
   --session SESSION   Session id for compare
 
 Next:
   pibo data inventory --json
+  pibo data import legacy-chat --json
   pibo data compare --session <piboSessionId> --json
 `);
 }

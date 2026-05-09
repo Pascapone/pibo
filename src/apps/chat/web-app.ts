@@ -74,6 +74,8 @@ export const CHAT_WEB_CHANNEL = "pibo.chat-web";
 export const CHAT_WEB_MOUNT_PATH = "/apps/chat";
 export const CHAT_WEB_API_PREFIX = "/api/chat";
 
+export type ChatDataMode = "legacy" | "v2";
+
 export type ChatWebAppOptions = {
 	defaultProfile?: string;
 	readModelPath?: string;
@@ -84,6 +86,7 @@ export type ChatWebAppOptions = {
 	dataStorePath?: string;
 	dataPayloadRootDir?: string;
 	dataV2Write?: boolean;
+	dataMode?: ChatDataMode;
 };
 
 type ChatPersistenceMetrics = {
@@ -806,7 +809,13 @@ function createReliabilityStore(path?: string): PiboReliabilityStore {
 	return path ? new PiboReliabilityStore(path) : createDefaultPiboReliabilityStore();
 }
 
+function resolveChatDataMode(options: ChatWebAppOptions): ChatDataMode {
+	if (options.dataMode) return options.dataMode;
+	return process.env.PIBO_CHAT_DATA_MODE === "v2" ? "v2" : "legacy";
+}
+
 function isDataV2WriteEnabled(options: ChatWebAppOptions): boolean {
+	if (resolveChatDataMode(options) === "v2") return true;
 	if (options.dataV2Write !== undefined) return options.dataV2Write;
 	return process.env.PIBO_DATA_V2_WRITE === "1" || process.env.PIBO_DATA_V2_WRITE === "user" || process.env.PIBO_DATA_V2_WRITE === "all";
 }
