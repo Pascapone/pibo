@@ -313,6 +313,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const [composerText, setComposerText] = useState("");
 	const [composerFocusSignal, setComposerFocusSignal] = useState(0);
 	const [creatingSession, setCreatingSession] = useState(false);
+	const creatingSessionRef = useRef(false);
 	const [loadingActiveSessions, setLoadingActiveSessions] = useState(false);
 	const [loadingArchivedSessions, setLoadingArchivedSessions] = useState(false);
 	const [visibleActiveSessionCount, setVisibleActiveSessionCount] = useState(SESSION_PAGE_SIZE);
@@ -634,6 +635,10 @@ export function App({ route }: { route: ChatAppRoute }) {
 			return;
 		}
 
+		if (creatingSessionRef.current) {
+			return;
+		}
+
 		if (
 			bootstrap &&
 			route.area === "sessions" &&
@@ -947,17 +952,20 @@ export function App({ route }: { route: ChatAppRoute }) {
 
 	const createSession = async (profile = newSessionProfile) => {
 		if (creatingSession || selectedRoomArchived) return;
+		creatingSessionRef.current = true;
 		setCreatingSession(true);
 		try {
 			const created = await createSessionMutation.mutateAsync({ profile, roomId: selectedRoomId ?? undefined });
 			setSelectedPiboSessionId(created.session.id);
 			setAutoRenameSessionId(created.session.id);
+			navigateToSelectedSession(selectedRoomId ?? bootstrap?.selectedRoomId ?? undefined, created.session.id, false, { closeMobileSidebar: false });
 			const data = await loadBootstrap(created.session.id, showArchivedRef.current, selectedRoomId ?? undefined, { force: true });
 			navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId, false, { closeMobileSidebar: false });
 			setError(null);
 		} catch (caught) {
 			setError(caught instanceof Error ? caught.message : String(caught));
 		} finally {
+			creatingSessionRef.current = false;
 			setCreatingSession(false);
 		}
 	};
