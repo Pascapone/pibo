@@ -126,9 +126,10 @@ async function startWebHostChannel(options = {}) {
 				eventLogPath: storagePath,
 				roomStorePath: storagePath,
 				agentStorePath,
-				dataStorePath: options.dataV2Write ? dataStorePath : undefined,
+				dataStorePath: options.dataV2Write || options.dataMode === "v2" ? dataStorePath : undefined,
 				dataPayloadRootDir,
 				dataV2Write: options.dataV2Write,
+				dataMode: options.dataMode,
 			})];
 		},
 	});
@@ -539,6 +540,49 @@ test("chat web app maps authenticated users to chat sessions", async () => {
 		assert.equal(emitted.length, 1);
 		assert.equal(emitted[0].piboSessionId, session.session.id);
 		assert.equal(emitted[0].text, "hello");
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("chat web app v2 mode runs without creating the legacy web-chat store", async () => {
+	const { channel, baseURL, dataStorePath, storageDir } = await startWebHostChannel({ auth: createFakeAuthService(), dataMode: "v2" });
+
+	try {
+		const createResponse = await fetch(`${baseURL}/api/chat/sessions`, {
+			method: "POST",
+			headers: { "x-test-user": "user-v2", "content-type": "application/json", origin: baseURL },
+			body: JSON.stringify({}),
+		});
+		assert.equal(createResponse.status, 201);
+		const created = await createResponse.json();
+		const piboSessionId = created.session.id;
+		assert.ok(piboSessionId);
+
+		const messageResponse = await fetch(`${baseURL}/api/chat/message`, {
+			method: "POST",
+			headers: { "x-test-user": "user-v2", "content-type": "application/json", origin: baseURL },
+			body: JSON.stringify({ piboSessionId, text: "hello v2", clientTxnId: "txn-v2" }),
+		});
+		assert.equal(messageResponse.status, 200);
+
+		const bootstrapResponse = await fetch(`${baseURL}/api/chat/bootstrap?piboSessionId=${encodeURIComponent(piboSessionId)}`, {
+			headers: { "x-test-user": "user-v2" },
+		});
+		assert.equal(bootstrapResponse.status, 200);
+		const bootstrap = await bootstrapResponse.json();
+		assert.equal(bootstrap.selectedPiboSessionId, piboSessionId);
+		assert.ok(bootstrap.sessions.length > 0);
+
+		const v2 = new DatabaseSync(dataStorePath, { readOnly: true });
+		try {
+			const events = v2.prepare("SELECT COUNT(*) AS count FROM event_log WHERE session_id = ?").get(piboSessionId);
+			assert.ok(Number(events.count) > 0);
+		} finally {
+			v2.close();
+		}
+
+		assert.throws(() => new DatabaseSync(join(storageDir, "chat.sqlite"), { readOnly: true }));
 	} finally {
 		await channel.stop?.();
 	}

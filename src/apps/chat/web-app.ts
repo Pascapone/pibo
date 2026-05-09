@@ -67,6 +67,7 @@ import { findPiPackage, listPiPackages, removePiPackage, setPiPackageEnabled, up
 import { UserSkillManager } from "../../user-skills/manager.js";
 import { listUserSkills } from "../../user-skills/store.js";
 import { ChatDataIngestService } from "../../data/ingest-service.js";
+import { ChatV2EventLog, ChatV2ReadModel, ChatV2RoomStore } from "../../data/chat-v2-adapters.js";
 import { PiboDataStore } from "../../data/pibo-store.js";
 
 export const CHAT_WEB_APP_NAME = "pibo.chat-web";
@@ -99,10 +100,54 @@ type ChatPersistenceMetrics = {
 	lastErrorAt?: string;
 };
 
+type ChatReadModelStore = Pick<ChatWebReadModel,
+	| "upsertSession"
+	| "upsertSessionsIfChanged"
+	| "recordEvent"
+	| "listSessions"
+	| "getSession"
+	| "listEvents"
+	| "listAllEvents"
+	| "listTraceEvents"
+	| "hasSessionActivity"
+	| "countEventsByType"
+	| "getLatestEventSequence"
+	| "deleteSessions"
+	| "close"
+>;
+
+type ChatEventStore = Pick<ChatEventLog,
+	| "appendEvent"
+	| "appendOutputEvent"
+	| "listEvents"
+	| "findByClientTxn"
+	| "getLatestStreamId"
+	| "markSessionRead"
+	| "countUnreadMessagesBySession"
+	| "deleteSessions"
+	| "deleteRooms"
+>;
+
+type ChatRoomStore = Pick<PiboRoomStore,
+	| "createRoom"
+	| "updateRoom"
+	| "deleteRooms"
+	| "getRoom"
+	| "listRooms"
+	| "listRoomTree"
+	| "listRoomSubtree"
+	| "ensureDefaultRoom"
+	| "ensureMember"
+	| "getMember"
+	| "updateReadCursor"
+	| "requireRoomAccess"
+	| "close"
+>;
+
 type ChatWebAppState = {
-	readModel: ChatWebReadModel;
-	eventLog: ChatEventLog;
-	roomStore: PiboRoomStore;
+	readModel: ChatReadModelStore;
+	eventLog: ChatEventStore;
+	roomStore: ChatRoomStore;
 	agentStore: CustomAgentStore;
 	reliabilityStore: PiboReliabilityStore;
 	dataStore?: PiboDataStore;
@@ -1641,7 +1686,7 @@ function resolveCreateSessionProfile(
 	return matched.name;
 }
 
-function indexOwnedSessions(readModel: ChatWebReadModel, sessions: PiboSession[]): void {
+function indexOwnedSessions(readModel: ChatReadModelStore, sessions: PiboSession[]): void {
 	readModel.upsertSessionsIfChanged(sessions);
 }
 
@@ -2866,11 +2911,12 @@ function createChatHtml(): string {
 export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 	const defaultProfile = options.defaultProfile ?? "codex-compat-openai-web";
 	const storagePath = options.readModelPath;
+	const dataMode = resolveChatDataMode(options);
 	const dataStore = createDataStore(options);
 	const state: ChatWebAppState = {
-		readModel: createReadModel(storagePath),
-		eventLog: createEventLog(options.eventLogPath ?? storagePath),
-		roomStore: createRoomStore(options.roomStorePath ?? storagePath),
+		readModel: dataMode === "v2" && dataStore ? new ChatV2ReadModel(dataStore) : createReadModel(storagePath),
+		eventLog: dataMode === "v2" && dataStore ? new ChatV2EventLog(dataStore) : createEventLog(options.eventLogPath ?? storagePath),
+		roomStore: dataMode === "v2" && dataStore ? new ChatV2RoomStore(dataStore) : createRoomStore(options.roomStorePath ?? storagePath),
 		agentStore: createAgentStore(options.agentStorePath ?? storagePath),
 		reliabilityStore: createReliabilityStore(options.reliabilityStorePath),
 		dataStore,
