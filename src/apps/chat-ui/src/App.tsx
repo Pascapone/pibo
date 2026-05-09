@@ -2146,6 +2146,8 @@ function SessionTracePane({
 		return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
 	}, [currentTraceView]);
 
+	const headerPiboSessionId = currentTraceView?.piboSessionId ?? selectedPiboSessionId ?? "";
+
 	return (
 		<>
 			<main className="min-h-0 flex flex-col">
@@ -2155,8 +2157,17 @@ function SessionTracePane({
 							{currentTraceView?.title ?? selectedPiboSessionId ?? bootstrap.room?.name ?? selectedRoomId}
 						</h1>
 						<div className="font-mono text-[11px] text-slate-500 truncate">
-							{bootstrap.room?.name ?? selectedRoomId ?? "Room"} · {currentTraceView?.piboSessionId ?? selectedPiboSessionId ?? ""}{" "}
-							{currentTraceView ? `· ${currentTraceView.piSessionId}` : ""}
+							{bootstrap.room?.name ?? selectedRoomId ?? "Room"} · {headerPiboSessionId ? (
+								<button
+									type="button"
+									onClick={() => void copyTextToClipboard(headerPiboSessionId)}
+									title="Copy Pibo session ID"
+									aria-label="Copy Pibo session ID"
+									className="font-mono text-slate-400 underline-offset-2 hover:text-[#11a4d4] hover:underline focus:outline-none focus:ring-1 focus:ring-[#11a4d4]"
+								>
+									{headerPiboSessionId}
+								</button>
+							) : ""}
 						</div>
 					</div>
 					<div className="flex items-center gap-2">
@@ -3544,6 +3555,22 @@ function resolveSessionActiveModel(
 	const profileModel = staticAgent ?? customAgent;
 	if (session.parentId) return profileModel?.subagentModel ?? bootstrap.modelDefaults?.subagent;
 	return profileModel?.mainModel ?? bootstrap.modelDefaults?.main;
+}
+
+function copyTextToClipboard(text: string): Promise<void> {
+	if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(text);
+	const textarea = document.createElement("textarea");
+	textarea.value = text;
+	textarea.style.position = "fixed";
+	textarea.style.opacity = "0";
+	document.body.appendChild(textarea);
+	textarea.select();
+	try {
+		document.execCommand("copy");
+		return Promise.resolve();
+	} finally {
+		document.body.removeChild(textarea);
+	}
 }
 
 function findSessionNode(nodes: PiboWebSessionNode[], piboSessionId: string): PiboWebSessionNode | undefined {
