@@ -91,6 +91,11 @@ test("default plugin registry builds profiles from registered resources", () => 
 			slashCommands: ["thinking"],
 		},
 		{
+			name: "fast_mode",
+			description: "Toggle between Fast mode and Normal mode for models with thinking support.",
+			slashCommands: ["fast"],
+		},
+		{
 			name: "session.current",
 			description: "Return the active Pi session metadata for this routed session.",
 			slashCommands: ["session-current"],

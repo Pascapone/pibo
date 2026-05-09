@@ -85,6 +85,35 @@ test("thinking action without level reports current level without cycling", asyn
 	}
 });
 
+test("fast action toggles between fast and normal thinking levels", async () => {
+	const harness = await createSessionHarness();
+	try {
+		harness.routed.runtime.session.setThinkingLevel("medium");
+
+		const fast = await harness.routed.executeAction({
+			type: "execution",
+			piboSessionId: "route:test",
+			action: "fast_mode",
+		});
+		assert.equal(fast.type, "execution_result");
+		assert.equal(fast.result.mode, "fast");
+		assert.equal(fast.result.level, "off");
+		assert.equal(harness.routed.runtime.session.thinkingLevel, "off");
+
+		const normal = await harness.routed.executeAction({
+			type: "execution",
+			piboSessionId: "route:test",
+			action: "fast_mode",
+		});
+		assert.equal(normal.type, "execution_result");
+		assert.equal(normal.result.mode, "normal");
+		assert.equal(normal.result.level, "medium");
+		assert.equal(harness.routed.runtime.session.thinkingLevel, "medium");
+	} finally {
+		await harness.dispose();
+	}
+});
+
 test("session fork replaces the active Pi session and can switch back", async () => {
 	const harness = await createSessionHarness();
 	try {
