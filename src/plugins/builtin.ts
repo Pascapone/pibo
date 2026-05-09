@@ -75,13 +75,6 @@ function getThinkingParams(event: PiboExecutionEvent): PiboThinkingParams {
 	return { level: parsePiboThinkingLevel(raw.level) };
 }
 
-function selectNormalThinkingLevel(availableLevels: readonly string[]): PiboThinkingParams["level"] {
-	for (const level of ["medium", "low", "minimal", "high", "xhigh"] as const) {
-		if (availableLevels.includes(level)) return level;
-	}
-	return undefined;
-}
-
 function requireLoginStartParams(event: PiboExecutionEvent): { provider: string } {
 	const params = getObjectParams(event);
 	if (!params || typeof params.provider !== "string" || params.provider.length === 0) {
@@ -240,16 +233,9 @@ export const piboCorePlugin = definePiboPlugin({
 			description: "Toggle between Fast mode and Normal mode for models with thinking support.",
 			slashCommands: ["fast"],
 			execute(context) {
-				const current = context.getThinkingLevel();
-				if (!current.supported) return { ...current, mode: "normal", changed: false };
-
-				if (current.level !== "off" && current.availableLevels.includes("off")) {
-					return { ...context.setThinkingLevel("off"), mode: "fast", changed: true };
-				}
-
-				const normalLevel = selectNormalThinkingLevel(current.availableLevels);
-				if (!normalLevel) return { ...current, mode: "fast", changed: false };
-				return { ...context.setThinkingLevel(normalLevel), mode: "normal", changed: true };
+				const current = context.getFastMode();
+				if (!current.supported) return { ...current, changed: false };
+				return context.setFastMode(current.mode !== "fast");
 			},
 		});
 		api.registerGatewayAction({

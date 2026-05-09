@@ -311,6 +311,7 @@ export class RoutedSession {
 	private readonly queue: RoutedQueueItem[] = [];
 	private processing = false;
 	private disposed = false;
+	private fastMode = false;
 	private activeMessage?: PiboMessageEvent;
 	private activeAssistantIndex?: number;
 	private nextAssistantIndex = 0;
@@ -469,7 +470,7 @@ export class RoutedSession {
 			cwd: this.runtime.cwd,
 			disposed: this.disposed,
 			thinkingLevel,
-			fastMode: thinkingLevel === "off" && this.runtime.session.supportsThinking(),
+			fastMode: this.getFastModeResult().mode === "fast",
 		};
 	}
 
@@ -613,6 +614,19 @@ export class RoutedSession {
 		this.assertActive();
 		this.runtime.session.cycleThinkingLevel();
 		return this.getThinkingResult();
+	}
+
+	getFastMode(): { mode: "fast" | "normal"; supported: boolean } {
+		this.assertActive();
+		return this.getFastModeResult();
+	}
+
+	setFastMode(enabled: boolean): { mode: "fast" | "normal"; supported: boolean; changed: boolean } {
+		this.assertActive();
+		const before = this.getFastModeResult().mode;
+		if (this.runtime.session.supportsThinking()) this.fastMode = enabled;
+		const current = this.getFastModeResult();
+		return { ...current, changed: before !== current.mode };
 	}
 
 	async compact(customInstructions?: string): Promise<CompactionResult> {
@@ -784,6 +798,8 @@ export class RoutedSession {
 				getThinkingLevel: () => this.getThinkingResult(),
 				setThinkingLevel: (level) => this.setThinkingLevel(level),
 				cycleThinkingLevel: () => this.cycleThinkingLevel(),
+				getFastMode: () => this.getFastMode(),
+				setFastMode: (enabled) => this.setFastMode(enabled),
 				setModel: (model) => this.setModel(model),
 				compact: (customInstructions) => this.compact(customInstructions),
 				kill: async () => {
@@ -823,6 +839,11 @@ export class RoutedSession {
 			availableLevels: this.runtime.session.getAvailableThinkingLevels() as PiboThinkingLevel[],
 			supported: this.runtime.session.supportsThinking(),
 		};
+	}
+
+	private getFastModeResult(): { mode: "fast" | "normal"; supported: boolean } {
+		const supported = this.runtime.session.supportsThinking();
+		return { mode: supported && this.fastMode ? "fast" : "normal", supported };
 	}
 
 	private clearQueue(): number {
