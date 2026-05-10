@@ -3,8 +3,10 @@ import { describe, it } from "node:test";
 
 import {
   minimalOneNodePiboAgentWorkflowFixture,
+  mixedNodeWorkflowFixture,
   requiredWorkflowFixtures,
   validateWorkflow,
+  validateWorkflowInput,
 } from "../index.js";
 import type { JsonSchema, ValidationResult, WorkflowDefinition, WorkflowDiagnostic } from "../index.js";
 
@@ -27,6 +29,88 @@ function withDefinitionMutation(mutator: (definition: WorkflowDefinition) => voi
   mutator(definition);
   return definition;
 }
+
+describe("workflow input validation", () => {
+  it("accepts valid text and JSON workflow inputs", () => {
+    assert.equal(validateWorkflowInput(minimalOneNodePiboAgentWorkflowFixture, "Explain workflows.").ok, true);
+    assert.equal(validateWorkflowInput(mixedNodeWorkflowFixture, { topic: "Workflow validation" }).ok, true);
+  });
+
+  it("rejects non-string values for text workflow inputs", () => {
+    const result = validateWorkflowInput(minimalOneNodePiboAgentWorkflowFixture, { prompt: "not text" });
+
+    assert.equal(result.ok, false);
+    findDiagnostic(result, "WorkflowInterfaceError.textValueExpected", (diagnostic) => diagnostic.path === "$.input");
+  });
+
+  it("rejects JSON workflow inputs with missing, extra, or mismatched properties", () => {
+    const missingResult = validateWorkflowInput(mixedNodeWorkflowFixture, {});
+    const extraResult = validateWorkflowInput(mixedNodeWorkflowFixture, {
+      topic: "Workflow validation",
+      extra: true,
+    });
+    const typeResult = validateWorkflowInput(mixedNodeWorkflowFixture, { topic: 123 });
+
+    assert.equal(missingResult.ok, false);
+    findDiagnostic(missingResult, "WorkflowInterfaceError.requiredValueMissing", (diagnostic) => diagnostic.path === "$.input.topic");
+
+    assert.equal(extraResult.ok, false);
+    findDiagnostic(extraResult, "WorkflowInterfaceError.unexpectedProperty", (diagnostic) => diagnostic.path === "$.input.extra");
+
+    assert.equal(typeResult.ok, false);
+    findDiagnostic(typeResult, "WorkflowInterfaceError.valueTypeMismatch", (diagnostic) => diagnostic.path === "$.input.topic");
+  });
+
+  it("validates input enum, anyOf, arrays, and local refs", () => {
+    const definition = withDefinitionMutation((draft) => {
+      draft.input = {
+        kind: "json",
+        schema: {
+          type: "object",
+          properties: {
+            status: { type: "string", enum: ["draft", "approved"] },
+            assignee: {
+              anyOf: [{ type: "string" }, { type: "null" }],
+            },
+            tags: {
+              type: "array",
+              items: { type: "string" },
+            },
+            item: { $ref: "#/$defs/Item" },
+          },
+          required: ["status", "assignee", "tags", "item"],
+          additionalProperties: false,
+          $defs: {
+            Item: strictObjectSchema({ id: { type: "string" } }),
+          },
+        },
+      };
+    });
+
+    assert.equal(
+      validateWorkflowInput(definition, {
+        status: "draft",
+        assignee: null,
+        tags: ["workflow"],
+        item: { id: "item-1" },
+      }).ok,
+      true,
+    );
+
+    const result = validateWorkflowInput(definition, {
+      status: "archived",
+      assignee: 42,
+      tags: ["workflow", 99],
+      item: { id: 123 },
+    });
+
+    assert.equal(result.ok, false);
+    findDiagnostic(result, "WorkflowInterfaceError.enumMismatch", (diagnostic) => diagnostic.path === "$.input.status");
+    findDiagnostic(result, "WorkflowInterfaceError.anyOfNoMatch", (diagnostic) => diagnostic.path === "$.input.assignee");
+    findDiagnostic(result, "WorkflowInterfaceError.valueTypeMismatch", (diagnostic) => diagnostic.path === "$.input.tags.1");
+    findDiagnostic(result, "WorkflowInterfaceError.valueTypeMismatch", (diagnostic) => diagnostic.path === "$.input.item.id");
+  });
+});
 
 describe("workflow definition validation", () => {
   it("accepts the required workflow fixtures", () => {

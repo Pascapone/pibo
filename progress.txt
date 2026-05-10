@@ -1,4 +1,5 @@
 ## Codebase Patterns
+- Call `validateWorkflowInput(definition, input)` before starting workflow execution; it validates text ports as strings and JSON ports against the V1 schema subset with JSONPath-like diagnostics.
 - Workflow validation code should emit `WorkflowDiagnostic` objects with `WorkflowInterfaceError.*` codes and JSONPath-like `path` values instead of throwing, then aggregate through `ValidationResult`.
 - Workflow package tests live under `packages/workflows/src/testing/*.test.ts` and run with `npm --prefix packages/workflows test` (`tsx --test`).
 - Workflow-system implementation progress is currently tracked in `docs/specs/changes/pibo-workflow-system-v1/tasks.md`; the referenced `prd_*.json` files are not present in this worktree.
@@ -91,4 +92,16 @@
   - The implemented schema validator is currently the source of truth for the V1 subset; update the subset doc whenever validator behavior changes.
   - Workflow/node/human/adapter JSON ports require object roots, but global state field schemas intentionally allow scalar/array roots with `requireObjectRoot: false`.
   - Runtime value validation is still pending for stories 2.3 and 2.4; story 2.2 only documents the schema contract.
+---
+
+## 2026-05-10 22:47 UTC - 2.3
+- Implemented workflow start-boundary input validation via `validateWorkflowInput`, backed by reusable port and JSON Schema value validation helpers for text and JSON ports.
+- Added runtime value checks for JSON schema `type`, `required`, `additionalProperties: false`, arrays, `enum`, `const`, `anyOf`, and local `$defs`/`$ref` paths.
+- Documented the input value validation helpers and marked task `2.3` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; root `npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test`.
+- Files changed: `packages/workflows/src/validation/index.ts`, `packages/workflows/src/testing/validation.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/structured-outputs-json-schema-subset.md`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - `validateWorkflowPortValue` and `validateJsonValueAgainstSchema` are reusable for story 2.4 node output, adapter output, and workflow output validation.
+  - Runtime value diagnostics should keep the same `WorkflowInterfaceError.*` code family as schema validation so UI/CLI callers can handle all boundary validation uniformly.
+  - The Docker worker worktree is mounted at `/workspace`, not `/workspaces/pibo`.
 ---

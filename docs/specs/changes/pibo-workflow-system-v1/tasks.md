@@ -16,7 +16,7 @@
 
 - [x] 2.1 Add `text` and `json` port support.
 - [x] 2.2 Document the OpenAI Structured Outputs / tool-calling JSON Schema subset supported in V1.
-- [ ] 2.3 Validate workflow input before execution.
+- [x] 2.3 Validate workflow input before execution.
 - [ ] 2.4 Validate node output and workflow output before downstream use or completion.
 - [ ] 2.5 Test valid and invalid text/JSON inputs and outputs.
 

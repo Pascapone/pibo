@@ -2,14 +2,14 @@
 
 **Status:** Draft  
 **Created:** 2026-05-10  
-**Related tasks:** `2.2` in `tasks.md`  
+**Related tasks:** `2.2`, `2.3` in `tasks.md`  
 **Implementation:** `packages/workflows/src/validation/index.ts`
 
 ## Purpose
 
 Workflow `json(...)` ports use a deliberately small JSON Schema subset aligned with OpenAI Structured Outputs / tool-calling contracts. The same subset is used for workflow input ports, workflow output ports, node input/output ports, human response schemas, edge adapter output ports, and global state field schemas.
 
-This document defines the V1 schema contract that validators, runtime boundary checks, tests, and inspection surfaces should share. It documents the schema shape only; runtime value validation is implemented by later workflow input/output validation tasks.
+This document defines the V1 schema contract that validators, runtime boundary checks, tests, and inspection surfaces should share. It also documents the initial workflow input value validation added for runtime start boundaries.
 
 ## Supported port kinds
 
@@ -239,6 +239,16 @@ Use a nullable required field for optional semantics:
 
 Put the alternative inside a root object property or split the workflow contract.
 
+## Runtime workflow input value validation
+
+`validateWorkflowInput(definition, input)` validates a candidate workflow input before execution starts:
+
+- `text` ports accept only string values.
+- `json` ports first run schema subset validation, then validate the value against supported `type`, `required`, `additionalProperties: false`, `items`, `enum`, `const`, `anyOf`, and local `$defs`/`$ref` rules.
+- Diagnostics use JSONPath-like input paths such as `$.input.topic` so callers can show precise start-boundary failures.
+
+The reusable lower-level helpers are `validateWorkflowPortValue(port, value)` and `validateJsonValueAgainstSchema(schema, value)`.
+
 ## Diagnostic codes
 
 The V1 validator reports structured diagnostics with `WorkflowInterfaceError.*` codes and JSONPath-like `path` values. Current schema subset diagnostics include:
@@ -265,6 +275,13 @@ The V1 validator reports structured diagnostics with `WorkflowInterfaceError.*` 
 - `WorkflowInterfaceError.objectPropertyNotRequired`
 - `WorkflowInterfaceError.invalidRequiredEntry`
 - `WorkflowInterfaceError.requiredUnknownProperty`
+- `WorkflowInterfaceError.textValueExpected`
+- `WorkflowInterfaceError.valueTypeMismatch`
+- `WorkflowInterfaceError.constMismatch`
+- `WorkflowInterfaceError.enumMismatch`
+- `WorkflowInterfaceError.anyOfNoMatch`
+- `WorkflowInterfaceError.requiredValueMissing`
+- `WorkflowInterfaceError.unexpectedProperty`
 
 ## Author checklist
 

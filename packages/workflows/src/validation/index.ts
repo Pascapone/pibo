@@ -41,7 +41,17 @@ export type JsonSchemaSubsetValidationOptions = {
   requireObjectRoot?: boolean;
 };
 
+export type WorkflowValueValidationOptions = {
+  path?: string;
+};
+
 type SchemaValidationContext = {
+  rootSchema: JsonSchema;
+  diagnostics: WorkflowDiagnostic[];
+  seenRefs: Set<string>;
+};
+
+type ValueValidationContext = {
   rootSchema: JsonSchema;
   diagnostics: WorkflowDiagnostic[];
   seenRefs: Set<string>;
@@ -116,6 +126,65 @@ export function validateWorkflowPort(
       requireObjectRoot: true,
     }).map((diagnostic) => ({ ...diagnostic, ...target })),
   );
+}
+
+export function validateWorkflowInput(
+  definition: Pick<WorkflowDefinition, "input">,
+  input: unknown,
+  options: WorkflowValueValidationOptions = {},
+): ValidationResult {
+  return validateWorkflowPortValue(definition.input, input, {
+    path: options.path ?? "$.input",
+  });
+}
+
+export function validateWorkflowPortValue(
+  port: WorkflowPort,
+  value: unknown,
+  options: WorkflowValueValidationOptions = {},
+): ValidationResult {
+  const path = options.path ?? "$.value";
+  const diagnostics: WorkflowDiagnostic[] = [];
+
+  if (port.kind === "text") {
+    if (typeof value !== "string") {
+      diagnostics.push({
+        code: "WorkflowInterfaceError.textValueExpected",
+        message: "Text workflow ports require a string value.",
+        severity: "error",
+        path,
+        hint: "Pass a string for text ports, or change the port to json(...) with an explicit schema.",
+      });
+    }
+  } else {
+    validateWorkflowPort(port, path, diagnostics);
+    diagnostics.push(
+      ...validateJsonValueAgainstSchema(port.schema, value, {
+        path,
+      }),
+    );
+  }
+
+  return diagnostics.some((diagnostic) => diagnostic.severity === "error")
+    ? { ok: false, diagnostics }
+    : { ok: true, diagnostics };
+}
+
+export function validateJsonValueAgainstSchema(
+  schema: JsonSchema,
+  value: unknown,
+  options: WorkflowValueValidationOptions = {},
+): WorkflowDiagnostic[] {
+  const diagnostics: WorkflowDiagnostic[] = [];
+  const context: ValueValidationContext = {
+    rootSchema: schema,
+    diagnostics,
+    seenRefs: new Set(),
+  };
+
+  validateValueNode(schema, value, options.path ?? "$.value", context);
+
+  return diagnostics;
 }
 
 function validateNodeSchemas(
@@ -432,6 +501,235 @@ function validateObjectSchema(schema: JsonSchema, path: string, context: SchemaV
       });
     }
   }
+}
+
+function validateValueNode(
+  schema: JsonSchema,
+  value: unknown,
+  path: string,
+  context: ValueValidationContext,
+): void {
+  if (schema.$ref !== undefined) {
+    if (typeof schema.$ref !== "string") {
+      addValueDiagnostic(context, {
+        code: "WorkflowInterfaceError.invalidRef",
+        message: "$ref must be a string local reference before a JSON value can be validated.",
+        path,
+        hint: "Validate the workflow definition before starting execution.",
+      });
+      return;
+    }
+
+    const refTarget = resolveLocalRef(context.rootSchema, schema.$ref);
+    if (!refTarget) {
+      addValueDiagnostic(context, {
+        code: "WorkflowInterfaceError.unresolvedRef",
+        message: `JSON Schema reference '${schema.$ref}' could not be resolved before validating the value.`,
+        path,
+        hint: "Validate the workflow definition before starting execution.",
+      });
+      return;
+    }
+
+    if (context.seenRefs.has(schema.$ref)) {
+      return;
+    }
+
+    context.seenRefs.add(schema.$ref);
+    validateValueNode(refTarget, value, path, context);
+    context.seenRefs.delete(schema.$ref);
+    return;
+  }
+
+  if (schema.anyOf !== undefined) {
+    if (!Array.isArray(schema.anyOf) || schema.anyOf.length === 0) {
+      addValueDiagnostic(context, {
+        code: "WorkflowInterfaceError.invalidAnyOf",
+        message: "anyOf must be a non-empty array before a JSON value can be validated.",
+        path,
+        hint: "Validate the workflow definition before starting execution.",
+      });
+      return;
+    }
+
+    const matchesAnyBranch = schema.anyOf.some((branch) => {
+      const branchContext: ValueValidationContext = {
+        rootSchema: context.rootSchema,
+        diagnostics: [],
+        seenRefs: new Set(context.seenRefs),
+      };
+      validateValueNode(branch, value, path, branchContext);
+      return !branchContext.diagnostics.some((diagnostic) => diagnostic.severity === "error");
+    });
+
+    if (!matchesAnyBranch) {
+      addValueDiagnostic(context, {
+        code: "WorkflowInterfaceError.anyOfNoMatch",
+        message: "JSON value does not match any allowed anyOf branch.",
+        path,
+        hint: "Provide a value that matches at least one branch of the port schema.",
+      });
+      return;
+    }
+  }
+
+  const schemaTypes = getRuntimeSchemaTypes(schema);
+  if (schemaTypes.length > 0 && !schemaTypes.some((typeName) => valueMatchesType(value, typeName))) {
+    addValueDiagnostic(context, {
+      code: "WorkflowInterfaceError.valueTypeMismatch",
+      message: `JSON value does not match schema type ${formatSchemaTypes(schemaTypes)}.`,
+      path,
+      hint: "Pass a value whose JSON type matches the workflow port schema.",
+    });
+    return;
+  }
+
+  if (schema.const !== undefined && !jsonValuesEqual(value, schema.const)) {
+    addValueDiagnostic(context, {
+      code: "WorkflowInterfaceError.constMismatch",
+      message: "JSON value does not match the schema const value.",
+      path,
+      hint: "Pass the exact const value required by the workflow port schema.",
+    });
+  }
+
+  if (schema.enum !== undefined) {
+    if (!Array.isArray(schema.enum)) {
+      addValueDiagnostic(context, {
+        code: "WorkflowInterfaceError.invalidEnum",
+        message: "enum must be an array before a JSON value can be validated.",
+        path,
+        hint: "Validate the workflow definition before starting execution.",
+      });
+    } else if (!schema.enum.some((item) => jsonValuesEqual(value, item))) {
+      addValueDiagnostic(context, {
+        code: "WorkflowInterfaceError.enumMismatch",
+        message: "JSON value does not match any schema enum value.",
+        path,
+        hint: "Pass one of the values listed in the workflow port schema enum.",
+      });
+    }
+  }
+
+  if (isRecord(value)) {
+    validateObjectValue(schema, value, path, context);
+  }
+
+  if (Array.isArray(value) && schema.items !== undefined) {
+    value.forEach((item, index) => {
+      validateValueNode(schema.items as JsonSchema, item, `${path}.${index}`, context);
+    });
+  }
+}
+
+function validateObjectValue(
+  schema: JsonSchema,
+  value: Record<string, unknown>,
+  path: string,
+  context: ValueValidationContext,
+): void {
+  const properties = isRecord(schema.properties) ? schema.properties : {};
+  const required = Array.isArray(schema.required) ? schema.required : [];
+
+  for (const requiredName of required) {
+    if (typeof requiredName === "string" && !Object.hasOwn(value, requiredName)) {
+      addValueDiagnostic(context, {
+        code: "WorkflowInterfaceError.requiredValueMissing",
+        message: `Required JSON property '${requiredName}' is missing.`,
+        path: `${path}.${requiredName}`,
+        hint: "Provide every required field declared by the workflow port schema.",
+      });
+    }
+  }
+
+  for (const [propertyName, propertyValue] of Object.entries(value)) {
+    const propertySchema = properties[propertyName];
+    if (propertySchema === undefined) {
+      if (schema.additionalProperties === false) {
+        addValueDiagnostic(context, {
+          code: "WorkflowInterfaceError.unexpectedProperty",
+          message: `JSON property '${propertyName}' is not allowed by the workflow port schema.`,
+          path: `${path}.${propertyName}`,
+          hint: "Remove undeclared fields or add them to the schema before execution.",
+        });
+      }
+      continue;
+    }
+
+    validateValueNode(propertySchema as JsonSchema, propertyValue, `${path}.${propertyName}`, context);
+  }
+}
+
+function getRuntimeSchemaTypes(schema: JsonSchema): JsonSchemaTypeName[] {
+  if (schema.type === undefined) {
+    return [];
+  }
+
+  const values = Array.isArray(schema.type) ? schema.type : [schema.type];
+  return values.filter((typeName): typeName is JsonSchemaTypeName => SUPPORTED_SCHEMA_TYPES.has(typeName));
+}
+
+function valueMatchesType(value: unknown, typeName: JsonSchemaTypeName): boolean {
+  switch (typeName) {
+    case "string":
+      return typeof value === "string";
+    case "number":
+      return typeof value === "number" && Number.isFinite(value);
+    case "integer":
+      return typeof value === "number" && Number.isInteger(value);
+    case "boolean":
+      return typeof value === "boolean";
+    case "object":
+      return isRecord(value);
+    case "array":
+      return Array.isArray(value);
+    case "null":
+      return value === null;
+  }
+}
+
+function formatSchemaTypes(types: JsonSchemaTypeName[]): string {
+  return types.length === 1 ? `'${types[0]}'` : `one of ${types.map((typeName) => `'${typeName}'`).join(", ")}`;
+}
+
+function jsonValuesEqual(left: unknown, right: unknown): boolean {
+  if (left === right) {
+    return true;
+  }
+
+  if (Array.isArray(left) || Array.isArray(right)) {
+    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
+      return false;
+    }
+
+    return left.every((item, index) => jsonValuesEqual(item, right[index]));
+  }
+
+  if (isRecord(left) || isRecord(right)) {
+    if (!isRecord(left) || !isRecord(right)) {
+      return false;
+    }
+
+    const leftKeys = Object.keys(left).sort();
+    const rightKeys = Object.keys(right).sort();
+    if (leftKeys.length !== rightKeys.length || !leftKeys.every((key, index) => key === rightKeys[index])) {
+      return false;
+    }
+
+    return leftKeys.every((key) => jsonValuesEqual(left[key], right[key]));
+  }
+
+  return false;
+}
+
+function addValueDiagnostic(
+  context: ValueValidationContext,
+  diagnostic: Omit<WorkflowDiagnostic, "severity"> & { severity?: WorkflowDiagnostic["severity"] },
+): void {
+  context.diagnostics.push({
+    severity: "error",
+    ...diagnostic,
+  });
 }
 
 function resolveLocalRef(rootSchema: JsonSchema, ref: string): JsonSchema | undefined {
