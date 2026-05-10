@@ -6,6 +6,7 @@
 - Export public workflow package types through `packages/workflows/src/index.ts` using `.js` module specifiers because the package uses `moduleResolution: NodeNext`.
 - Keep reusable workflow examples in `packages/workflows/src/fixtures/index.ts`; pair registry-ref-heavy fixtures with `workflowFixtureProviders` so future tests can resolve handlers/adapters/guards without embedding closures in definitions.
 - Put public workflow authoring helpers in `packages/workflows/src/api/index.ts`, export them from the package root, and test them through `../index.js`.
+- Treat `docs/specs/changes/pibo-workflow-system-v1/structured-outputs-json-schema-subset.md` as the canonical V1 JSON port schema subset doc; keep it aligned with `packages/workflows/src/validation/index.ts`.
 
 ## 2026-05-10 22:18 UTC - 1.1
 - Implemented the initial `packages/workflows` package boundary with the PRD-required submodule directories.
@@ -78,4 +79,16 @@
   - Keep helper APIs small and IR-preserving: `json(schema, description?)` stores the same schema contract that validation/runtime layers will consume later.
   - Public package tests should import helpers from `../index.js` so root exports stay covered as the authoring API grows.
   - Story 2.1 only adds port construction/narrowing; value validation for workflow inputs/outputs belongs to the later 2.3/2.4 stories.
+---
+
+## 2026-05-10 22:43 UTC - 2.2
+- Documented the V1 OpenAI Structured Outputs / tool-calling JSON Schema subset for workflow JSON ports, including supported types/keywords, object-root rules, strict object requirements, arrays, `anyOf`, `$defs`/`$ref`, rejected examples, diagnostics, and an author checklist.
+- Linked the canonical subset doc from the workflow spec, authoring design, PRD catalog, and workflow package README.
+- Marked task `2.2` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; root `npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test`.
+- Files changed: `docs/specs/changes/pibo-workflow-system-v1/structured-outputs-json-schema-subset.md`, `docs/specs/changes/pibo-workflow-system-v1/spec.md`, `docs/specs/changes/pibo-workflow-system-v1/design-authoring-api.md`, `docs/specs/changes/pibo-workflow-system-v1/prds/README.md`, `packages/workflows/README.md`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - The implemented schema validator is currently the source of truth for the V1 subset; update the subset doc whenever validator behavior changes.
+  - Workflow/node/human/adapter JSON ports require object roots, but global state field schemas intentionally allow scalar/array roots with `requireObjectRoot: false`.
+  - Runtime value validation is still pending for stories 2.3 and 2.4; story 2.2 only documents the schema contract.
 ---

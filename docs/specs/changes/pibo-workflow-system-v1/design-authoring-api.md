@@ -156,6 +156,7 @@ Rules:
 - A text port carries a string.
 - A JSON port carries a JSON value validated by its schema.
 - V1 uses the OpenAI Structured Outputs / tool-calling JSON Schema subset for structured ports, rather than arbitrary full JSON Schema.
+- The canonical supported subset is documented in `structured-outputs-json-schema-subset.md`.
 - The validator should enforce the important subset constraints: supported primitive/container types, object roots for structured outputs, no root `anyOf`, all object fields listed in `required`, and `additionalProperties: false` on objects.
 - Schema compatibility is checked at definition validation time when possible.
 - If compatibility cannot be proven, an adapter is required.

@@ -15,7 +15,7 @@
 ## 2. Requirement: Workflow interfaces support text and JSON
 
 - [x] 2.1 Add `text` and `json` port support.
-- [ ] 2.2 Document the OpenAI Structured Outputs / tool-calling JSON Schema subset supported in V1.
+- [x] 2.2 Document the OpenAI Structured Outputs / tool-calling JSON Schema subset supported in V1.
 - [ ] 2.3 Validate workflow input before execution.
 - [ ] 2.4 Validate node output and workflow output before downstream use or completion.
 - [ ] 2.5 Test valid and invalid text/JSON inputs and outputs.

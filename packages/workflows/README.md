@@ -15,3 +15,5 @@ The package is organized around the PRD-required internal submodules:
 - `src/xstate` — XState projection, snapshots, and inspection helpers
 - `src/fixtures` — workflow fixtures for tests and manual validation
 - `src/testing` — test harnesses, fake providers, and restart helpers
+
+The V1 JSON port schema subset is documented in `../../docs/specs/changes/pibo-workflow-system-v1/structured-outputs-json-schema-subset.md` and implemented by `src/validation`.
