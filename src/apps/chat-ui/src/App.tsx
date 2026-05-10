@@ -4875,7 +4875,6 @@ function AgentsView({
 							modelCatalog={modelCatalog}
 							readOnly={readOnly}
 							modelHint="Unset to use the settings default."
-							thinkingHint="Unset to use the settings default."
 							onModelChange={(mainModel) => setDraft((current) => ({ ...current, mainModel }))}
 							onThinkingChange={(mainThinkingLevel) => setDraft((current) => ({ ...current, mainThinkingLevel }))}
 							onFastChange={(mainFast) => setDraft((current) => ({ ...current, mainFast }))}
@@ -4889,7 +4888,6 @@ function AgentsView({
 							modelCatalog={modelCatalog}
 							readOnly={readOnly}
 							modelHint="Unset to use the settings default."
-							thinkingHint="Unset to use the settings default."
 							onModelChange={(subagentModel) => setDraft((current) => ({ ...current, subagentModel }))}
 							onThinkingChange={(subagentThinkingLevel) => setDraft((current) => ({ ...current, subagentThinkingLevel }))}
 							onFastChange={(subagentFast) => setDraft((current) => ({ ...current, subagentFast }))}
@@ -6363,7 +6361,6 @@ function ModelDefaultsSettings({
 				modelCatalog={modelCatalog}
 				readOnly={saving}
 				modelHint="Unset to use provider fallback."
-				thinkingHint="Unset to use the provider/runtime fallback."
 				configuredProvidersOnly
 				onModelChange={(main) => void save({ ...draft, main })}
 				onThinkingChange={(mainThinking) => void save({ ...draft, mainThinking })}
@@ -6378,7 +6375,6 @@ function ModelDefaultsSettings({
 				modelCatalog={modelCatalog}
 				readOnly={saving}
 				modelHint="Unset to use provider fallback."
-				thinkingHint="Unset to use the provider/runtime fallback."
 				configuredProvidersOnly
 				onModelChange={(subagent) => void save({ ...draft, subagent })}
 				onThinkingChange={(subagentThinking) => void save({ ...draft, subagentThinking })}
@@ -6398,7 +6394,6 @@ function AgentRuntimeOptions({
 	modelCatalog,
 	readOnly,
 	modelHint,
-	thinkingHint,
 	configuredProvidersOnly = false,
 	onModelChange,
 	onThinkingChange,
@@ -6412,7 +6407,6 @@ function AgentRuntimeOptions({
 	modelCatalog?: ModelCatalog;
 	readOnly: boolean;
 	modelHint?: string;
-	thinkingHint?: string;
 	configuredProvidersOnly?: boolean;
 	onModelChange: (value: ModelProfile | undefined) => void;
 	onThinkingChange: (value: ThinkingLevel | undefined) => void;
@@ -6421,7 +6415,7 @@ function AgentRuntimeOptions({
 	return (
 		<div className="grid gap-2 border border-slate-800 rounded-sm p-3">
 			<div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{title}</div>
-			<div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(150px,190px)_auto] lg:items-end">
+			<div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(150px,190px)_auto] lg:items-start">
 				<ModelSelector
 					title={modelTitle}
 					catalog={modelCatalog}
@@ -6437,11 +6431,12 @@ function AgentRuntimeOptions({
 					title="Thinking"
 					value={thinking}
 					readOnly={readOnly}
-					hint={thinkingHint}
+					reserveHintSpace
 					onChange={onThinkingChange}
 				/>
 				<div className="grid gap-2 pb-1">
 					<div className="text-[11px] uppercase tracking-wider text-slate-500">Fast</div>
+					<div className="h-4" aria-hidden="true" />
 					<button
 						type="button"
 						disabled={readOnly}
@@ -6463,12 +6458,14 @@ function ThinkingLevelSelector({
 	value,
 	readOnly,
 	hint,
+	reserveHintSpace = false,
 	onChange,
 }: {
 	title: string;
 	value?: ThinkingLevel;
 	readOnly: boolean;
 	hint?: string;
+	reserveHintSpace?: boolean;
 	onChange: (value: ThinkingLevel | undefined) => void;
 }) {
 	return (
@@ -6484,7 +6481,7 @@ function ThinkingLevelSelector({
 					Unset
 				</button>
 			</div>
-			{hint ? <div className="text-xs text-slate-500">{hint}</div> : null}
+			{hint ? <div className="text-xs text-slate-500">{hint}</div> : reserveHintSpace ? <div className="h-4" aria-hidden="true" /> : null}
 			<select
 				value={value ?? ""}
 				disabled={readOnly}
