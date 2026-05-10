@@ -1425,7 +1425,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 				}`}
 			>
 				{area === "cron" ? (
-					<CronArea bootstrap={bootstrap} />
+					<CronArea bootstrap={bootstrap} mobileSidebarOpen={mobileSidebarOpen} onCloseMobileSidebar={() => setMobileSidebarOpen(false)} />
 				) : area === "agents" ? (
 					<AgentsView
 						agents={bootstrap.agents}

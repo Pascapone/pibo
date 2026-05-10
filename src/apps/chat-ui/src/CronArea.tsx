@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { AlertTriangle, CalendarClock, Loader2, Play, Plus, RefreshCw, Save, Trash2 } from "lucide-react";
+import { AlertTriangle, CalendarClock, Loader2, Pause, Play, Plus, RefreshCw, Save, Trash2, X } from "lucide-react";
 import {
 	deleteCronJob,
 	getCronJobs,
@@ -70,7 +70,7 @@ const weekdayOptions = [
 	{ value: 0, short: "So", label: "Sonntag" },
 ];
 
-export function CronArea({ bootstrap }: { bootstrap: BootstrapData }) {
+export function CronArea({ bootstrap, mobileSidebarOpen = false, onCloseMobileSidebar }: { bootstrap: BootstrapData; mobileSidebarOpen?: boolean; onCloseMobileSidebar?: () => void }) {
 	const rooms = useMemo(() => flattenRooms(bootstrap.rooms), [bootstrap.rooms]);
 	const agentOptions = useMemo(() => profileOptions(bootstrap.agents, bootstrap.customAgents), [bootstrap.agents, bootstrap.customAgents]);
 	const defaultProfile = agentOptions[0]?.name ?? "codex-compat-openai-web";
@@ -86,6 +86,7 @@ export function CronArea({ bootstrap }: { bootstrap: BootstrapData }) {
 	const selectedJob = jobs.find((job) => job.id === selectedJobId) ?? null;
 	const visibleRuns = selectedJobId ? runs.filter((run) => run.jobId === selectedJobId) : runs;
 	const schedulePreview = useMemo(() => previewSchedule(draft), [draft]);
+	const selectedJobIsRecurring = selectedJob ? isRecurringCronJob(selectedJob) : false;
 
 	const load = async (jobId = selectedJobId) => {
 		setLoading(true);
@@ -119,6 +120,7 @@ export function CronArea({ bootstrap }: { bootstrap: BootstrapData }) {
 	const selectJob = async (job: PiboCronJob) => {
 		setSelectedJobId(job.id);
 		setDraft(draftFromJob(job, defaultProfile, rooms));
+		onCloseMobileSidebar?.();
 		try {
 			const response = await getCronRuns(job.id, 100);
 			setRuns(response.runs);
@@ -170,14 +172,40 @@ export function CronArea({ bootstrap }: { bootstrap: BootstrapData }) {
 		}
 	};
 
+	const toggleSelectedJobEnabled = async () => {
+		if (!selectedJob || !selectedJobIsRecurring) return;
+		setSaving(true);
+		try {
+			const response = await patchCronJob(selectedJob.id, { enabled: !selectedJob.enabled });
+			setDraft(draftFromJob(response.job, defaultProfile, rooms));
+			await load(response.job.id);
+			setError(null);
+		} catch (caught) {
+			setError(errorMessage(caught));
+		} finally {
+			setSaving(false);
+		}
+	};
+
 	return (
 		<div className="min-h-0 grid grid-cols-[340px_minmax(0,1fr)] max-[980px]:grid-cols-1 h-full overflow-hidden">
-			<aside className="min-h-0 overflow-auto bg-[#1a262b] border-r border-slate-800">
-				<div className="h-11 px-3 border-b border-slate-800 flex items-center justify-between text-xs font-bold uppercase tracking-wider">
+			<div
+				className={`fixed inset-0 z-30 bg-black/60 min-[981px]:hidden transition-opacity duration-200 ${
+					mobileSidebarOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+				}`}
+				onClick={onCloseMobileSidebar}
+			/>
+			<aside
+				className={`min-h-0 overflow-auto bg-[#1a262b] border-r border-slate-800 max-[980px]:fixed max-[980px]:left-0 max-[980px]:top-0 max-[980px]:bottom-0 max-[980px]:z-40 max-[980px]:w-[280px] max-[980px]:transition-transform max-[980px]:duration-200 ${
+					mobileSidebarOpen ? "max-[980px]:translate-x-0" : "max-[980px]:-translate-x-full"
+				}`}
+			>
+				<div className="h-11 px-3 border-b border-slate-800 flex items-center justify-between text-xs font-bold uppercase tracking-wider max-[980px]:h-auto max-[980px]:py-2">
 					<span className="inline-flex items-center gap-2"><CalendarClock size={14} /> Cron Jobs</span>
 					<div className="flex items-center gap-1">
 						<button type="button" onClick={() => void load()} title="Refresh" aria-label="Refresh" className="p-1 border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"><RefreshCw size={13} /></button>
 						<button type="button" onClick={startNewJob} title="New Cron Job" aria-label="New Cron Job" className="p-1 border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"><Plus size={13} /></button>
+						<button type="button" onClick={onCloseMobileSidebar} title="Close sidebar" aria-label="Close sidebar" className="min-[981px]:hidden p-1 border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"><X size={13} /></button>
 					</div>
 				</div>
 				<div className="p-3 space-y-3">
@@ -213,6 +241,7 @@ export function CronArea({ bootstrap }: { bootstrap: BootstrapData }) {
 							<p className="text-sm text-slate-400">Each run creates a visible Pibo Session in the selected Personal Chat or Room.</p>
 						</div>
 						<div className="flex items-center gap-2">
+							{selectedJobIsRecurring ? <button type="button" onClick={() => void toggleSelectedJobEnabled()} disabled={saving} className={`h-9 px-3 inline-flex items-center gap-2 rounded-sm border disabled:opacity-50 ${selectedJob?.enabled ? "border-amber-500/50 text-amber-300 hover:border-amber-400" : "border-emerald-500/50 text-emerald-300 hover:border-emerald-400"}`}>{selectedJob?.enabled ? <Pause size={14} /> : <Play size={14} />} {selectedJob?.enabled ? "Stop" : "Resume"}</button> : null}
 							{selectedJob ? <button type="button" onClick={() => void runNow()} disabled={saving} className="h-9 px-3 inline-flex items-center gap-2 rounded-sm border border-slate-700 text-slate-300 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50"><Play size={14} /> Run now</button> : null}
 							<button type="button" onClick={() => void saveJob()} disabled={saving} className="h-9 px-3 inline-flex items-center gap-2 rounded-sm border border-[#11a4d4] bg-[#11a4d4]/10 text-[#11a4d4] disabled:opacity-50">{saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Save</button>
 							{selectedJob ? <button type="button" onClick={() => void removeJob()} disabled={saving} className="h-9 px-3 inline-flex items-center gap-2 rounded-sm border border-red-500/40 text-red-300 hover:border-red-400 disabled:opacity-50"><Trash2 size={14} /> Delete</button> : null}
@@ -611,6 +640,11 @@ function profileOptions(agents: AgentProfile[], customAgents: CustomAgent[]): Ag
 	for (const agent of agents) options.set(agent.name, { name: agent.name, description: agent.description });
 	for (const agent of customAgents) if (!agent.archivedAt) options.set(agent.profileName, { name: agent.profileName, description: agent.description });
 	return [...options.values()];
+}
+
+function isRecurringCronJob(job: PiboCronJob): boolean {
+	if (job.schedule.kind === "every" || job.schedule.kind === "cron") return true;
+	return job.scheduleUi?.preset === "every" || job.scheduleUi?.preset === "daily" || job.scheduleUi?.preset === "weekly" || job.scheduleUi?.preset === "monthly" || job.scheduleUi?.preset === "advanced";
 }
 
 function formatSchedule(job: PiboCronJob): string {
