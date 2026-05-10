@@ -14,6 +14,7 @@ import {
 	ChevronRight,
 	ChevronsDown,
 	ChevronsUp,
+	Copy,
 	CopyPlus,
 	Edit3,
 	EyeOff,
@@ -3485,6 +3486,10 @@ function RoomNode({
 	const [menuOpen, setMenuOpen] = useState(false);
 	const menuRef = useRef<HTMLDivElement>(null);
 
+	const copyRoomId = () => {
+		void copyTextToClipboard(room.id).catch(() => undefined);
+	};
+
 	useEffect(() => {
 		if (!menuOpen) return;
 		const handle = (e: MouseEvent) => {
@@ -3593,6 +3598,15 @@ function RoomNode({
 											<>
 												<button
 													type="button"
+													onClick={copyRoomId}
+													title="Copy Room Id"
+													aria-label="Copy Room Id"
+													className="h-7 w-7 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"
+												>
+													<Copy size={13} />
+												</button>
+												<button
+													type="button"
 													onClick={() => onArchive(room.id, false)}
 													title="Restore Room"
 													aria-label="Restore Room"
@@ -3612,6 +3626,15 @@ function RoomNode({
 											</>
 										) : (
 											<>
+												<button
+													type="button"
+													onClick={copyRoomId}
+													title="Copy Room Id"
+													aria-label="Copy Room Id"
+													className="h-7 w-7 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"
+												>
+													<Copy size={13} />
+												</button>
 												<button
 													type="button"
 													onClick={() => setEditing(true)}
@@ -3649,6 +3672,13 @@ function RoomNode({
 													<>
 														<button
 															type="button"
+															onClick={() => { copyRoomId(); setMenuOpen(false); }}
+															className="w-full text-left px-3 py-2.5 text-sm text-slate-300 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4] flex items-center gap-2"
+														>
+															<Copy size={16} /> Copy Room Id
+														</button>
+														<button
+															type="button"
 															onClick={() => { setMenuOpen(false); onArchive(room.id, false); }}
 															className="w-full text-left px-3 py-2.5 text-sm text-slate-300 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4] flex items-center gap-2"
 														>
@@ -3664,6 +3694,13 @@ function RoomNode({
 													</>
 												) : (
 													<>
+														<button
+															type="button"
+															onClick={() => { copyRoomId(); setMenuOpen(false); }}
+															className="w-full text-left px-3 py-2.5 text-sm text-slate-300 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4] flex items-center gap-2"
+														>
+															<Copy size={16} /> Copy Room Id
+														</button>
 														<button
 															type="button"
 															onClick={() => { setMenuOpen(false); setEditing(true); }}
