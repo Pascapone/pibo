@@ -212,6 +212,70 @@ export function validateNodeOutput(
   );
 }
 
+export function validateWorkflowEdgeAdapterOutput(
+  definition: Pick<WorkflowDefinition, "nodes" | "edges">,
+  edgeId: string,
+  output: unknown,
+  options: WorkflowValueValidationOptions = {},
+): ValidationResult {
+  const diagnostics: WorkflowDiagnostic[] = [];
+  const edge = definition.edges[edgeId];
+
+  if (!edge) {
+    diagnostics.push({
+      code: "WorkflowInterfaceError.unknownEdge",
+      message: `Workflow edge '${edgeId}' does not exist, so its adapter output cannot be validated.`,
+      severity: "error",
+      edgeId,
+      path: `$.edges.${edgeId}`,
+      hint: "Validate adapter outputs only for edge ids declared in the workflow definition.",
+    });
+    return { ok: false, diagnostics };
+  }
+
+  if (!edge.adapter) {
+    diagnostics.push({
+      code: "WorkflowInterfaceError.edgeAdapterExpected",
+      message: `Workflow edge '${edgeId}' does not declare an adapter output port.`,
+      severity: "error",
+      edgeId,
+      path: `$.edges.${edgeId}.adapter`,
+      hint: "Call validateWorkflowEdgeAdapterOutput only for edges that declare edgeAdapter(...).",
+    });
+    return { ok: false, diagnostics };
+  }
+
+  const adapterOutputPath = options.path ?? `$.edges.${edgeId}.adapter.outputValue`;
+  diagnostics.push(
+    ...validateWorkflowPortValue(edge.adapter.output, output, {
+      path: adapterOutputPath,
+    }).diagnostics.map((diagnostic) => ({ ...diagnostic, edgeId })),
+  );
+
+  const targetNode = definition.nodes[edge.to.nodeId];
+  if (!targetNode) {
+    diagnostics.push({
+      code: "WorkflowGraphError.unknownTargetNode",
+      message: `Workflow edge '${edgeId}' references missing target node '${edge.to.nodeId}'.`,
+      severity: "error",
+      edgeId,
+      nodeId: edge.to.nodeId,
+      path: `$.edges.${edgeId}.to.nodeId`,
+      hint: "Validate adapter outputs only after graph validation has accepted target node references.",
+    });
+  } else if (targetNode.input) {
+    diagnostics.push(
+      ...validateWorkflowPortValue(targetNode.input, output, {
+        path: `$.edges.${edgeId}.targetInput`,
+      }).diagnostics.map((diagnostic) => ({ ...diagnostic, edgeId, nodeId: edge.to.nodeId })),
+    );
+  }
+
+  return diagnostics.some((diagnostic) => diagnostic.severity === "error")
+    ? { ok: false, diagnostics }
+    : { ok: true, diagnostics };
+}
+
 export function validateWorkflowPortValue(
   port: WorkflowPort,
   value: unknown,

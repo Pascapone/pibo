@@ -2,9 +2,14 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  adapterRef,
+  createWorkflowRegistry,
+  edgeAdapter,
   json,
   recordWorkflowEdgeTransfer,
+  registerWorkflowAdapter,
   text,
+  transferWorkflowEdgeAdapterData,
   transferWorkflowEdgeData,
   validateWorkflow,
   validateWorkflowPortValue,
@@ -12,6 +17,7 @@ import {
 import type {
   NodeAttempt,
   WorkflowDefinition,
+  WorkflowPort,
   WorkflowRun,
   WorkflowRuntimeEvent,
   WorkflowRunStore,
@@ -128,6 +134,17 @@ function createJsonRun(): WorkflowRun {
     createdAt: "2026-05-10T23:30:00.000Z",
     updatedAt: "2026-05-10T23:30:00.000Z",
   };
+}
+
+function createSummaryJsonPort(): WorkflowPort {
+  return json({
+    type: "object",
+    properties: {
+      summary: { type: "string" },
+    },
+    required: ["summary"],
+    additionalProperties: false,
+  });
 }
 
 function createSourceAttempt(overrides: Partial<NodeAttempt> = {}): NodeAttempt {
@@ -321,6 +338,67 @@ describe("workflow edge data transfer", () => {
     assert.ok(
       result.diagnostics.some(
         (diagnostic) => diagnostic.code === "WorkflowInterfaceError.valueTypeMismatch" && diagnostic.edgeId === "draft-to-review",
+      ),
+    );
+  });
+
+  it("runs a registered edge adapter and validates its output before target node input", async () => {
+    const definition = createTwoNodeWorkflow();
+    const summaryPort = createSummaryJsonPort();
+    definition.nodes.review.input = summaryPort;
+    definition.edges["draft-to-review"].adapter = edgeAdapter(adapterRef("test.adapters.textToSummary"), summaryPort);
+    const registry = createWorkflowRegistry();
+    registerWorkflowAdapter(registry, "test.adapters.textToSummary", ({ input }) => ({
+      output: { summary: String(input) },
+    }));
+
+    const definitionValidation = validateWorkflow(definition, { registry });
+    assert.equal(definitionValidation.ok, true);
+
+    const result = await transferWorkflowEdgeAdapterData(
+      definition,
+      createRun(),
+      "draft-to-review",
+      createSourceAttempt(),
+      {
+        registry,
+        now: () => "2026-05-10T23:21:03.000Z",
+        createEdgeTransferId: () => "wet_adapted_draft_to_review",
+      },
+    );
+
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.targetInput, { summary: "Draft output for review." });
+    assert.deepEqual(result.transfer.payload, { summary: "Draft output for review." });
+    assert.equal(result.transfer.targetNodeId, "review");
+  });
+
+  it("rejects registered edge adapter output that does not satisfy the declared output port", async () => {
+    const definition = createTwoNodeWorkflow();
+    const summaryPort = createSummaryJsonPort();
+    definition.nodes.review.input = summaryPort;
+    definition.edges["draft-to-review"].adapter = edgeAdapter(adapterRef("test.adapters.invalidSummary"), summaryPort);
+    const registry = createWorkflowRegistry();
+    registerWorkflowAdapter(registry, "test.adapters.invalidSummary", () => ({
+      output: { summary: 42 },
+    }));
+
+    const result = await transferWorkflowEdgeAdapterData(
+      definition,
+      createRun(),
+      "draft-to-review",
+      createSourceAttempt(),
+      { registry },
+    );
+
+    assert.equal(result.ok, false);
+    assert.equal(result.error.code, "WorkflowRuntimeError.invalidAdapterOutput");
+    assert.ok(
+      result.diagnostics.some(
+        (diagnostic) =>
+          diagnostic.code === "WorkflowInterfaceError.valueTypeMismatch" &&
+          diagnostic.edgeId === "draft-to-review" &&
+          diagnostic.path === "$.edges.draft-to-review.adapter.outputValue.summary",
       ),
     );
   });
