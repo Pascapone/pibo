@@ -1,4 +1,5 @@
 import type {
+  AdapterRef,
   JsonSchema,
   JsonSchemaTypeName,
   ValidationResult,
@@ -90,6 +91,7 @@ export function validateWorkflowDefinitionSchemas(definition: WorkflowDefinition
 
   for (const [edgeId, edge] of Object.entries(definition.edges)) {
     validateWorkflowEdgeNodeRefs(definition, edgeId, edge, diagnostics);
+    validateWorkflowEdgeAdapterRef(definition, edgeId, edge, diagnostics);
     validateWorkflowEdgePortCompatibility(definition, edgeId, edge, diagnostics);
 
     if (edge.adapter) {
@@ -279,6 +281,46 @@ function validateWorkflowEdgeNodeRefs(
       hint: "Update the edge target to reference a declared workflow node id, or add the missing node to the workflow definition.",
     });
   }
+}
+
+function validateWorkflowEdgeAdapterRef(
+  definition: Pick<WorkflowDefinition, "nodes">,
+  edgeId: string,
+  edge: WorkflowEdgeDefinition,
+  diagnostics: WorkflowDiagnostic[],
+): void {
+  if (!edge.adapter) {
+    return;
+  }
+
+  if (!isRegisteredAdapterRef(edge.adapter.transform)) {
+    diagnostics.push({
+      code: "WorkflowGraphError.invalidAdapterRef",
+      message: `Workflow edge '${edgeId}' must use a registered TypeScript adapter ref for its edge adapter transform.`,
+      severity: "error",
+      edgeId,
+      path: `$.edges.${edgeId}.adapter.transform`,
+      hint: "Create edge adapters with edgeAdapter(adapterRef('adapter.id'), outputPort) so persisted workflow IR stores an explicit adapter ref instead of an inline or raw handler value.",
+    });
+  }
+
+  const targetNode = definition.nodes[edge.to.nodeId];
+  if (!targetNode?.input) {
+    return;
+  }
+
+  if (areWorkflowPortsDirectlyCompatible(edge.adapter.output, targetNode.input)) {
+    return;
+  }
+
+  diagnostics.push({
+    code: "WorkflowGraphError.incompatibleEdgeAdapterOutput",
+    message: `Workflow edge '${edgeId}' declares an adapter output that is incompatible with the target input port.`,
+    severity: "error",
+    edgeId,
+    path: `$.edges.${edgeId}.adapter.output`,
+    hint: "Set the edgeAdapter output port to the exact target input contract, or insert a visible adapter node whose output matches the downstream node.",
+  });
 }
 
 function validateWorkflowEdgePortCompatibility(
@@ -840,6 +882,16 @@ function normalizeSemanticJsonSchema(value: unknown, key?: string): unknown {
   }
 
   return value;
+}
+
+function isRegisteredAdapterRef(value: unknown): value is AdapterRef {
+  return (
+    isRecord(value) &&
+    value.kind === "adapter" &&
+    value.language === "typescript" &&
+    typeof value.id === "string" &&
+    value.id.length > 0
+  );
 }
 
 function stableJsonStringify(value: unknown): string {

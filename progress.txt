@@ -1,4 +1,5 @@
 ## Codebase Patterns
+- Edge adapters should validate both structural adapter refs (`adapterRef(...)`) and declared adapter output compatibility with the target node input; actual registry resolution remains a separate validation layer.
 - Use `adapterRef(...)` for registered deterministic TypeScript adapters in workflow IR; pass those refs to `edgeAdapter(...)` for edge-local adapters and to visible `adapter` node `handler` fields.
 - Two-node direct-edge tests should validate the workflow definition, call `recordWorkflowEdgeTransfer`, then use `transferResult.targetInput` as the downstream node attempt input.
 - Use `recordWorkflowEdgeTransfer` when a direct edge transfer should update the run cursor, emit `edge.transferred`, and persist the run; keep `transferWorkflowEdgeData` pure for validation/payload creation.
@@ -277,4 +278,18 @@
   - Adapter refs now carry `{ kind: "adapter", language: "typescript", id }`, so future registry resolution should read `ref.id` instead of accepting raw adapter id strings from workflow IR.
   - The `edgeAdapter(...)` authoring helper keeps the edge adapter shape consistent while preserving the output port contract for later adapter-output validation.
   - Story 5.1 is authoring/type surface only; adapter registry lookup, incompatible-edge rejection, and adapter output runtime validation remain in stories 5.2-5.4.
+---
+
+
+## 2026-05-10 23:36 UTC - 5.2
+- Rejected incompatible workflow edges unless they use a structural registered TypeScript `adapterRef(...)` in their edge adapter transform.
+- Added definition-time validation that an edge adapter's declared output port matches the downstream target input port, while leaving actual registry lookup/runtime adapter execution to later stories.
+- Added validation coverage for valid adapter-bridged incompatible ports, raw string adapter transforms, and adapter outputs that do not satisfy the target input contract.
+- Marked task `5.2` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; root `npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- Files changed: `packages/workflows/src/validation/index.ts`, `packages/workflows/src/testing/validation.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - `validateWorkflow` now treats `edge.adapter.transform` as untrusted IR and verifies it has the `adapterRef(...)` shape before accepting it as an explicit bridge.
+  - Adapter output compatibility is a static graph validation concern; runtime value validation and registry-backed adapter execution remain in stories 5.3-5.5.
+  - No browser verification was needed because this story only changes the workflow package validation/test layer.
 ---

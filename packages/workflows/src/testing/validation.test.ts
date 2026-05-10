@@ -384,6 +384,97 @@ describe("workflow definition validation", () => {
     findDiagnostic(result, "WorkflowGraphError.incompatibleEdgePorts", (diagnostic) => diagnostic.edgeId === "answer-to-next");
   });
 
+  it("accepts incompatible source and target ports when an edge uses a registered adapter ref whose output matches the target", () => {
+    const targetSchema = strictObjectSchema({ value: { type: "string" } });
+    const definition = withDefinitionMutation((draft) => {
+      draft.nodes.next = {
+        kind: "code",
+        language: "typescript",
+        handler: "fixture.handlers.next",
+        input: { kind: "json", schema: targetSchema },
+        output: { kind: "text" },
+      };
+      draft.edges["answer-to-next"] = {
+        id: "answer-to-next",
+        from: { nodeId: "answer" },
+        to: { nodeId: "next" },
+        kind: "data",
+        adapter: {
+          kind: "edgeAdapter",
+          transform: adapterRef("fixture.adapters.answerToNext"),
+          output: { kind: "json", schema: structuredClone(targetSchema) as JsonSchema },
+        },
+      };
+    });
+
+    assert.equal(validateWorkflow(definition).ok, true);
+  });
+
+  it("rejects edge adapters that do not use registered TypeScript adapter refs", () => {
+    const targetSchema = strictObjectSchema({ value: { type: "string" } });
+    const definition = withDefinitionMutation((draft) => {
+      draft.nodes.next = {
+        kind: "code",
+        language: "typescript",
+        handler: "fixture.handlers.next",
+        input: { kind: "json", schema: targetSchema },
+        output: { kind: "text" },
+      };
+      draft.edges["answer-to-next"] = {
+        id: "answer-to-next",
+        from: { nodeId: "answer" },
+        to: { nodeId: "next" },
+        kind: "data",
+        adapter: {
+          kind: "edgeAdapter",
+          transform: "fixture.adapters.answerToNext" as unknown as ReturnType<typeof adapterRef>,
+          output: { kind: "json", schema: structuredClone(targetSchema) as JsonSchema },
+        },
+      };
+    });
+
+    const result = validateWorkflow(definition);
+
+    assert.equal(result.ok, false);
+    findDiagnostic(
+      result,
+      "WorkflowGraphError.invalidAdapterRef",
+      (diagnostic) => diagnostic.edgeId === "answer-to-next" && diagnostic.path === "$.edges.answer-to-next.adapter.transform",
+    );
+  });
+
+  it("rejects edge adapters whose declared output does not match the target input", () => {
+    const definition = withDefinitionMutation((draft) => {
+      draft.nodes.next = {
+        kind: "code",
+        language: "typescript",
+        handler: "fixture.handlers.next",
+        input: { kind: "json", schema: strictObjectSchema({ value: { type: "string" } }) },
+        output: { kind: "text" },
+      };
+      draft.edges["answer-to-next"] = {
+        id: "answer-to-next",
+        from: { nodeId: "answer" },
+        to: { nodeId: "next" },
+        kind: "data",
+        adapter: {
+          kind: "edgeAdapter",
+          transform: adapterRef("fixture.adapters.answerToNext"),
+          output: { kind: "text" },
+        },
+      };
+    });
+
+    const result = validateWorkflow(definition);
+
+    assert.equal(result.ok, false);
+    findDiagnostic(
+      result,
+      "WorkflowGraphError.incompatibleEdgeAdapterOutput",
+      (diagnostic) => diagnostic.edgeId === "answer-to-next" && diagnostic.path === "$.edges.answer-to-next.adapter.output",
+    );
+  });
+
   it("rejects malformed edge adapter output schemas", () => {
     const definition = withDefinitionMutation((draft) => {
       draft.nodes.next = {
