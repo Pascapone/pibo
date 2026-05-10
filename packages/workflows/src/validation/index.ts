@@ -138,6 +138,49 @@ export function validateWorkflowInput(
   });
 }
 
+export function validateWorkflowOutput(
+  definition: Pick<WorkflowDefinition, "output">,
+  output: unknown,
+  options: WorkflowValueValidationOptions = {},
+): ValidationResult {
+  return validateWorkflowPortValue(definition.output, output, {
+    path: options.path ?? "$.output",
+  });
+}
+
+export function validateNodeOutput(
+  definition: Pick<WorkflowDefinition, "nodes">,
+  nodeId: string,
+  output: unknown,
+  options: WorkflowValueValidationOptions = {},
+): ValidationResult {
+  const node = definition.nodes[nodeId];
+  if (!node) {
+    const diagnostics: WorkflowDiagnostic[] = [
+      {
+        code: "WorkflowInterfaceError.unknownNode",
+        message: `Workflow node '${nodeId}' does not exist, so its output cannot be validated.`,
+        severity: "error",
+        nodeId,
+        path: `$.nodes.${nodeId}`,
+        hint: "Validate outputs only for node ids declared in the workflow definition.",
+      },
+    ];
+    return { ok: false, diagnostics };
+  }
+
+  if (!node.output) {
+    return { ok: true, diagnostics: [] };
+  }
+
+  return withDiagnosticTarget(
+    validateWorkflowPortValue(node.output, output, {
+      path: options.path ?? `$.nodes.${nodeId}.output`,
+    }),
+    { nodeId },
+  );
+}
+
 export function validateWorkflowPortValue(
   port: WorkflowPort,
   value: unknown,
@@ -720,6 +763,16 @@ function jsonValuesEqual(left: unknown, right: unknown): boolean {
   }
 
   return false;
+}
+
+function withDiagnosticTarget(
+  result: ValidationResult,
+  target: Pick<WorkflowDiagnostic, "nodeId" | "edgeId">,
+): ValidationResult {
+  const diagnostics = result.diagnostics.map((diagnostic) => ({ ...diagnostic, ...target }));
+  return diagnostics.some((diagnostic) => diagnostic.severity === "error")
+    ? { ok: false, diagnostics }
+    : { ok: true, diagnostics };
 }
 
 function addValueDiagnostic(

@@ -2,14 +2,14 @@
 
 **Status:** Draft  
 **Created:** 2026-05-10  
-**Related tasks:** `2.2`, `2.3` in `tasks.md`  
+**Related tasks:** `2.2`, `2.3`, `2.4` in `tasks.md`  
 **Implementation:** `packages/workflows/src/validation/index.ts`
 
 ## Purpose
 
 Workflow `json(...)` ports use a deliberately small JSON Schema subset aligned with OpenAI Structured Outputs / tool-calling contracts. The same subset is used for workflow input ports, workflow output ports, node input/output ports, human response schemas, edge adapter output ports, and global state field schemas.
 
-This document defines the V1 schema contract that validators, runtime boundary checks, tests, and inspection surfaces should share. It also documents the initial workflow input value validation added for runtime start boundaries.
+This document defines the V1 schema contract that validators, runtime boundary checks, tests, and inspection surfaces should share. It also documents workflow input, node output, and workflow output value validation for runtime boundaries.
 
 ## Supported port kinds
 
@@ -239,13 +239,16 @@ Use a nullable required field for optional semantics:
 
 Put the alternative inside a root object property or split the workflow contract.
 
-## Runtime workflow input value validation
+## Runtime port value validation
 
-`validateWorkflowInput(definition, input)` validates a candidate workflow input before execution starts:
+Runtime boundary helpers validate concrete values before crossing workflow interfaces:
 
+- `validateWorkflowInput(definition, input)` validates a candidate workflow input before execution starts.
+- `validateNodeOutput(definition, nodeId, output)` validates a declared node output before downstream edge transfer or target node execution.
+- `validateWorkflowOutput(definition, output)` validates final workflow output before the run is marked completed.
 - `text` ports accept only string values.
 - `json` ports first run schema subset validation, then validate the value against supported `type`, `required`, `additionalProperties: false`, `items`, `enum`, `const`, `anyOf`, and local `$defs`/`$ref` rules.
-- Diagnostics use JSONPath-like input paths such as `$.input.topic` so callers can show precise start-boundary failures.
+- Diagnostics use JSONPath-like paths such as `$.input.topic`, `$.nodes.plan.output.steps.0.done`, or `$.output.status` so callers can show precise boundary failures.
 
 The reusable lower-level helpers are `validateWorkflowPortValue(port, value)` and `validateJsonValueAgainstSchema(schema, value)`.
 
@@ -282,6 +285,7 @@ The V1 validator reports structured diagnostics with `WorkflowInterfaceError.*` 
 - `WorkflowInterfaceError.anyOfNoMatch`
 - `WorkflowInterfaceError.requiredValueMissing`
 - `WorkflowInterfaceError.unexpectedProperty`
+- `WorkflowInterfaceError.unknownNode`
 
 ## Author checklist
 

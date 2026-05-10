@@ -1,4 +1,5 @@
 ## Codebase Patterns
+- Use `validateWorkflowInput`, `validateNodeOutput`, and `validateWorkflowOutput` at runtime boundaries; they all delegate to shared port/schema value validation and emit JSONPath-like `WorkflowInterfaceError.*` diagnostics.
 - Call `validateWorkflowInput(definition, input)` before starting workflow execution; it validates text ports as strings and JSON ports against the V1 schema subset with JSONPath-like diagnostics.
 - Workflow validation code should emit `WorkflowDiagnostic` objects with `WorkflowInterfaceError.*` codes and JSONPath-like `path` values instead of throwing, then aggregate through `ValidationResult`.
 - Workflow package tests live under `packages/workflows/src/testing/*.test.ts` and run with `npm --prefix packages/workflows test` (`tsx --test`).
@@ -104,4 +105,16 @@
   - `validateWorkflowPortValue` and `validateJsonValueAgainstSchema` are reusable for story 2.4 node output, adapter output, and workflow output validation.
   - Runtime value diagnostics should keep the same `WorkflowInterfaceError.*` code family as schema validation so UI/CLI callers can handle all boundary validation uniformly.
   - The Docker worker worktree is mounted at `/workspace`, not `/workspaces/pibo`.
+---
+
+## 2026-05-10 22:50 UTC - 2.4
+- Implemented runtime output boundary helpers `validateNodeOutput` and `validateWorkflowOutput`, reusing `validateWorkflowPortValue` so text and JSON outputs are checked before downstream edge use or workflow completion.
+- Added node/output tests for valid declared outputs, invalid nested JSON values, invalid workflow final outputs, and unknown node diagnostics.
+- Documented runtime output validation helpers and marked task `2.4` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; root `npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test`.
+- Files changed: `packages/workflows/src/validation/index.ts`, `packages/workflows/src/testing/validation.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/structured-outputs-json-schema-subset.md`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - Node output validation should attach `nodeId` to every diagnostic so runtime/UI callers can associate boundary failures with a node attempt.
+  - Workflow output validation can reuse the same final `$.output` path convention as definition validation while reporting concrete value failures like `$.output.status`.
+  - Nodes without declared output ports currently validate as OK; future runtime stories should decide whether node kinds must declare outputs before edge compatibility checks enforce downstream contracts.
 ---

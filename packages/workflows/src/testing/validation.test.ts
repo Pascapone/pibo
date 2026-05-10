@@ -5,8 +5,10 @@ import {
   minimalOneNodePiboAgentWorkflowFixture,
   mixedNodeWorkflowFixture,
   requiredWorkflowFixtures,
+  validateNodeOutput,
   validateWorkflow,
   validateWorkflowInput,
+  validateWorkflowOutput,
 } from "../index.js";
 import type { JsonSchema, ValidationResult, WorkflowDefinition, WorkflowDiagnostic } from "../index.js";
 
@@ -109,6 +111,68 @@ describe("workflow input validation", () => {
     findDiagnostic(result, "WorkflowInterfaceError.anyOfNoMatch", (diagnostic) => diagnostic.path === "$.input.assignee");
     findDiagnostic(result, "WorkflowInterfaceError.valueTypeMismatch", (diagnostic) => diagnostic.path === "$.input.tags.1");
     findDiagnostic(result, "WorkflowInterfaceError.valueTypeMismatch", (diagnostic) => diagnostic.path === "$.input.item.id");
+  });
+});
+
+describe("workflow output validation", () => {
+  it("accepts valid text and JSON workflow outputs", () => {
+    assert.equal(validateWorkflowOutput(minimalOneNodePiboAgentWorkflowFixture, "Done.").ok, true);
+    assert.equal(
+      validateWorkflowOutput(mixedNodeWorkflowFixture, {
+        summary: "Workflow validation is complete.",
+        status: "approved",
+      }).ok,
+      true,
+    );
+  });
+
+  it("rejects invalid workflow outputs before completion", () => {
+    const textResult = validateWorkflowOutput(minimalOneNodePiboAgentWorkflowFixture, { answer: "not text" });
+    const jsonResult = validateWorkflowOutput(mixedNodeWorkflowFixture, {
+      summary: "Workflow validation is complete.",
+      status: "archived",
+    });
+
+    assert.equal(textResult.ok, false);
+    findDiagnostic(textResult, "WorkflowInterfaceError.textValueExpected", (diagnostic) => diagnostic.path === "$.output");
+
+    assert.equal(jsonResult.ok, false);
+    findDiagnostic(jsonResult, "WorkflowInterfaceError.enumMismatch", (diagnostic) => diagnostic.path === "$.output.status");
+  });
+});
+
+describe("node output validation", () => {
+  it("accepts valid declared node outputs", () => {
+    assert.equal(
+      validateNodeOutput(mixedNodeWorkflowFixture, "plan", {
+        steps: [{ title: "Validate output", done: false }],
+      }).ok,
+      true,
+    );
+  });
+
+  it("rejects invalid declared node outputs before downstream use", () => {
+    const result = validateNodeOutput(mixedNodeWorkflowFixture, "plan", {
+      steps: [{ title: "Validate output", done: "no" }],
+    });
+
+    assert.equal(result.ok, false);
+    findDiagnostic(
+      result,
+      "WorkflowInterfaceError.valueTypeMismatch",
+      (diagnostic) => diagnostic.nodeId === "plan" && diagnostic.path === "$.nodes.plan.output.steps.0.done",
+    );
+  });
+
+  it("reports unknown nodes when validating node output", () => {
+    const result = validateNodeOutput(mixedNodeWorkflowFixture, "missing", "anything");
+
+    assert.equal(result.ok, false);
+    findDiagnostic(
+      result,
+      "WorkflowInterfaceError.unknownNode",
+      (diagnostic) => diagnostic.nodeId === "missing" && diagnostic.path === "$.nodes.missing",
+    );
   });
 });
 
