@@ -422,6 +422,8 @@ export async function runOneNodeAgentWorkflow(
 
     run.status = "completed";
     run.current = { nodeId, status: "completed" };
+    if (executorResult.piboSessionId) run.piboSessionId = executorResult.piboSessionId;
+    if (node.routing?.projectId) run.projectId = node.routing.projectId;
     run.output = executorResult.output;
     run.completedAt = completedAt;
     run.updatedAt = completedAt;

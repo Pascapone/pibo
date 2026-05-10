@@ -1,4 +1,5 @@
 ## Codebase Patterns
+- Single-prompt one-node runtime coverage should assert validation, routed Pibo session creation/message emission, trace events, and reopened `SqliteWorkflowRunStore` facts in one end-to-end test.
 - Workflow run persistence is exposed through `WorkflowRunStore` and `SqliteWorkflowRunStore` in `packages/workflows/src/store/index.ts`; inject a store into `runOneNodeAgentWorkflow` when a runtime path must persist run status/cursor/input/output facts.
 - One-node agent runtime trace/event projection uses the optional `emitEvent` hook on `runOneNodeAgentWorkflow`; it receives the same `WorkflowRuntimeEvent` objects returned in `result.events`.
 - One-node agent runtime execution is exposed from `packages/workflows/src/runtime/index.ts` as `runOneNodeAgentWorkflow`; use `createPiboSessionRoutingAgentExecutor` to adapt a Pibo channel/session routing surface (`createSession`, `emit`, `subscribe`) into the injected `agentExecutor` seam.
@@ -183,4 +184,16 @@
   - The runtime already returned `WorkflowRuntimeEvent[]`; the new hook should be used by future trace/UI/CLI projections instead of re-deriving boundary events from run status.
   - Keep workflow trace projection decoupled from persistence for now; durable `workflow_events` storage is still a later persistence story.
   - Tests can import `WorkflowRuntimeEvent` from `../index.js` to keep the public type export path covered.
+---
+
+## 2026-05-10 23:13 UTC - 3.5
+- Added an automated single-prompt workflow start-to-completion test that validates the fixture, routes through the mocked normal Pibo session path, emits trace events, persists the completed run, reopens the SQLite store, and verifies stored input/current/output/session/project linkage.
+- Updated the one-node runtime to copy the executor-returned Pibo session id and routing project id onto the completed workflow run before persistence so run-level inspection can link back to the routed Pibo session.
+- Marked task `3.5` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; root `npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- Files changed: `packages/workflows/src/runtime/index.ts`, `packages/workflows/src/testing/runtime-one-node-agent.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - `WorkflowRun` already has `piboSessionId` and `projectId` fields; set them before the final `saveRun` when an executor produces routing linkage that inspectors need at run level.
+  - End-to-end one-node tests can use an in-memory mocked `PiboWorkflowSessionRouting` plus a temp `SqliteWorkflowRunStore` to cover routed execution and durable run facts without touching host gateways.
+  - UI/browser verification was not needed for this story because it only changes package runtime/test behavior.
 ---

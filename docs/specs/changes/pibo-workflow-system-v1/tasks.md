@@ -26,7 +26,7 @@
 - [x] 3.2 Ensure the node launches through normal Pibo session routing.
 - [x] 3.3 Persist workflow run id, workflow id, version, status, current node, input, and output.
 - [x] 3.4 Emit workflow start, node start, node complete, and workflow complete trace events.
-- [ ] 3.5 Test a single-prompt workflow from start to completion.
+- [x] 3.5 Test a single-prompt workflow from start to completion.
 
 ## 4. Requirement: Workflows compose through edges
 
