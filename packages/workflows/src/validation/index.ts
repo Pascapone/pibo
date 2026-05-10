@@ -49,7 +49,7 @@ export type WorkflowValueValidationOptions = {
 };
 
 export type WorkflowValidationOptions = {
-  registry?: Pick<WorkflowRegistry, "adapters">;
+  registry?: Partial<Pick<WorkflowRegistry, "adapters" | "handlers">>;
 };
 
 type SchemaValidationContext = {
@@ -95,6 +95,7 @@ export function validateWorkflowDefinitionSchemas(
 
   for (const [nodeId, node] of Object.entries(definition.nodes)) {
     validateNodeSchemas(nodeId, node, diagnostics);
+    validateWorkflowCodeNodeRef(nodeId, node, diagnostics, options);
     validateWorkflowAdapterNodeRef(nodeId, node, diagnostics, options);
   }
 
@@ -403,6 +404,30 @@ function validateWorkflowEdgeAdapterRef(
   });
 }
 
+function validateWorkflowCodeNodeRef(
+  nodeId: string,
+  node: WorkflowNodeDefinition,
+  diagnostics: WorkflowDiagnostic[],
+  options: WorkflowValidationOptions,
+): void {
+  if (node.kind !== "code") {
+    return;
+  }
+
+  if (!options.registry?.handlers || options.registry.handlers.has(node.handler)) {
+    return;
+  }
+
+  diagnostics.push({
+    code: "WorkflowGraphError.unknownHandlerRef",
+    message: `Workflow code node '${nodeId}' references handler '${node.handler}', but it is not registered in the Workflow Registry.`,
+    severity: "error",
+    nodeId,
+    path: `$.nodes.${nodeId}.handler`,
+    hint: "Register the handler with registerWorkflowHandler/createWorkflowRegistry before validating or executing this workflow, or update the workflow to use a registered handler id.",
+  });
+}
+
 function validateWorkflowAdapterNodeRef(
   nodeId: string,
   node: WorkflowNodeDefinition,
@@ -438,7 +463,7 @@ function validateRegisteredAdapterExists(
   options: WorkflowValidationOptions,
   target: Pick<WorkflowDiagnostic, "nodeId" | "edgeId"> & { path: string; ownerLabel: string },
 ): void {
-  if (!options.registry || options.registry.adapters.has(ref.id)) {
+  if (!options.registry?.adapters || options.registry.adapters.has(ref.id)) {
     return;
   }
 

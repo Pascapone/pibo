@@ -149,6 +149,17 @@ export function registerWorkflowHumanAction(
   return humanAction;
 }
 
+export function resolveWorkflowHandler(
+  registry: Pick<WorkflowRegistry, "handlers">,
+  ref: RegistryRefId,
+): WorkflowRegistryEntry<CodeNodeHandler> | undefined {
+  return registry.handlers.get(ref);
+}
+
+export function hasWorkflowHandler(registry: Pick<WorkflowRegistry, "handlers">, ref: RegistryRefId): boolean {
+  return resolveWorkflowHandler(registry, ref) !== undefined;
+}
+
 export function resolveWorkflowAdapter(
   registry: Pick<WorkflowRegistry, "adapters">,
   ref: AdapterRef | RegistryRefId,

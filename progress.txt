@@ -1,4 +1,5 @@
 ## Codebase Patterns
+- Code node dispatch goes through `dispatchWorkflowCodeNode` with a `WorkflowRegistry`; registered handlers receive scoped `global`, `local`, `edge`, `emit`, and `command` context and state patches must be declared in `node.state.writes`.
 - Registered edge adapter runtime tests should validate the workflow with a `WorkflowRegistry` and then call `transferWorkflowEdgeAdapterData` so both static adapter refs and runtime adapter output are covered.
 - Use `transferWorkflowEdgeAdapterData` for registered edge-adapter runtime transfer; it resolves the adapter, validates source output, validates adapter output with `validateWorkflowEdgeAdapterOutput`, and only then returns `targetInput` for the downstream node.
 - Registry-backed workflow validation should remain opt-in via `validateWorkflow(definition, { registry })` until each ref family is implemented, preserving schema/graph-only validation for fixtures without providers.
@@ -333,4 +334,17 @@
   - `transferWorkflowEdgeAdapterData` already handles both adapter directions as long as the edge adapter's declared output port matches the target node input port.
   - JSON-to-text adapter tests can reuse `createJsonTwoNodeWorkflow()` by changing the target node input and edge adapter output to `text()`.
   - No browser verification was needed because this story only changes workflow package runtime tests.
+---
+
+## 2026-05-10 23:54 UTC - 6.1
+- Implemented `dispatchWorkflowCodeNode` for TypeScript code nodes backed by registered `WorkflowRegistry` handlers.
+- Added handler lookup helpers, optional registry-backed validation for code handler refs, scoped state/edge readers, command/event hooks, output validation, global/local patch application, and undeclared state write/read rejection.
+- Added code node runtime tests for successful dispatch, missing handlers, undeclared writes, invalid output, and non-code node rejection.
+- Marked task `6.1` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; root `npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- Files changed: `packages/workflows/src/runtime/index.ts`, `packages/workflows/src/registry/index.ts`, `packages/workflows/src/validation/index.ts`, `packages/workflows/src/testing/runtime-code-node.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - Code handlers should stay registry-backed (`registerWorkflowHandler`/`createWorkflowRegistry`) so workflow IR stores only durable handler ids.
+  - State access is deliberately explicit: reads are enforced through context readers and returned patches are rejected unless matching `global.*` or `local.*` paths are declared in `node.state.writes`.
+  - `dispatchWorkflowCodeNode` is a node-level executor seam; later graph-runtime stories can compose it with agent/workflow/human dispatch rather than duplicating code handler invocation logic.
 ---

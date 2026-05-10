@@ -1,15 +1,25 @@
 import type {
   AgentNodeDefinition,
+  CodeNodeResult,
+  EdgePayloadReader,
   EdgeTransfer,
   EdgeTransferId,
+  JsonValue,
   NodeAttempt,
   NodeAttemptId,
+  NodeLocalStateReader,
   RuntimeSelectionMetadata,
+  ScopedStatePath,
+  StatePatch,
+  TypeScriptCodeNodeDefinition,
   ValidationResult,
+  WorkflowCommand,
+  WorkflowCommandEmitter,
   WorkflowDefinition,
   WorkflowDiagnostic,
   WorkflowErrorSummary,
   WorkflowEventEmitter,
+  WorkflowGlobalStateReader,
   WorkflowRegistry,
   WorkflowRun,
   WorkflowRunId,
@@ -17,8 +27,9 @@ import type {
   WorkflowValue,
 } from "../types/index.js";
 import type { WorkflowRunStore } from "../store/index.js";
-import { resolveWorkflowAdapter } from "../registry/index.js";
+import { resolveWorkflowAdapter, resolveWorkflowHandler } from "../registry/index.js";
 import {
+  validateJsonValueAgainstSchema,
   validateNodeOutput,
   validateWorkflow,
   validateWorkflowEdgeAdapterOutput,
@@ -146,6 +157,37 @@ export type OneNodeAgentWorkflowOptions = {
   agentExecutor: OneNodeAgentExecutor;
 };
 
+export type WorkflowCodeNodeDispatchOptions = {
+  registry: Pick<WorkflowRegistry, "handlers">;
+  now?: () => Date | string;
+  createNodeAttemptId?: () => NodeAttemptId;
+  store?: WorkflowRunStore;
+  emitEvent?: WorkflowEventEmitter;
+  commandEmitter?: WorkflowCommandEmitter;
+  edgePayloads?: Record<string, WorkflowValue>;
+};
+
+export type WorkflowCodeNodeDispatchSuccess = {
+  ok: true;
+  run: WorkflowRun;
+  nodeAttempt: NodeAttempt;
+  events: WorkflowRuntimeEvent[];
+  output: WorkflowValue;
+  result: CodeNodeResult;
+  commands: WorkflowCommand[];
+};
+
+export type WorkflowCodeNodeDispatchFailure = {
+  ok: false;
+  run: WorkflowRun;
+  nodeAttempt?: NodeAttempt;
+  events: WorkflowRuntimeEvent[];
+  diagnostics: WorkflowDiagnostic[];
+  error: WorkflowErrorSummary;
+};
+
+export type WorkflowCodeNodeDispatchResult = WorkflowCodeNodeDispatchSuccess | WorkflowCodeNodeDispatchFailure;
+
 export type WorkflowEdgeTransferOptions = {
   now?: () => Date | string;
   createEdgeTransferId?: () => EdgeTransferId;
@@ -254,6 +296,219 @@ export function createPiboSessionRoutingAgentExecutor(
       effectiveTools: status?.enabledTools ?? status?.activeTools,
     };
   };
+}
+
+export async function dispatchWorkflowCodeNode(
+  definition: WorkflowDefinition,
+  run: WorkflowRun,
+  nodeId: string,
+  input: WorkflowValue,
+  options: WorkflowCodeNodeDispatchOptions,
+): Promise<WorkflowCodeNodeDispatchResult> {
+  const events: WorkflowRuntimeEvent[] = [];
+  const timestamp = createTimestampFactory(options.now);
+  const node = definition.nodes[nodeId];
+
+  if (!node) {
+    return codeNodeDispatchFailure({
+      run,
+      events,
+      diagnostics: [
+        {
+          code: "WorkflowRuntimeError.unknownNode",
+          message: `Workflow node '${nodeId}' does not exist, so it cannot be dispatched as a code node.`,
+          severity: "error",
+          nodeId,
+          path: `$.nodes.${nodeId}`,
+        },
+      ],
+      error: {
+        code: "WorkflowRuntimeError.unknownNode",
+        message: "Code node dispatch failed because the node is not declared.",
+      },
+    });
+  }
+
+  if (node.kind !== "code") {
+    return codeNodeDispatchFailure({
+      run,
+      events,
+      diagnostics: [
+        {
+          code: "WorkflowRuntimeError.codeNodeRequired",
+          message: `Workflow node '${nodeId}' is '${node.kind}', but code node dispatch requires a TypeScript code node.`,
+          severity: "error",
+          nodeId,
+          path: `$.nodes.${nodeId}.kind`,
+        },
+      ],
+      error: {
+        code: "WorkflowRuntimeError.codeNodeRequired",
+        message: "Code node dispatch failed because the selected node is not a code node.",
+      },
+    });
+  }
+
+  const codeNode = node as TypeScriptCodeNodeDefinition;
+  const startedAt = timestamp();
+  const nodeAttempt: NodeAttempt = {
+    id: options.createNodeAttemptId?.() ?? createId("wna"),
+    workflowRunId: run.id,
+    nodeId,
+    attempt: 1,
+    kind: "code",
+    status: "running",
+    input,
+    startedAt,
+    metadata: { handlerId: codeNode.handler },
+  };
+  run.current = { nodeId, status: "running" };
+  run.updatedAt = startedAt;
+
+  await emitWorkflowRuntimeEvent(events, options.emitEvent, {
+    type: "node.started",
+    runId: run.id,
+    nodeAttemptId: nodeAttempt.id,
+    nodeId,
+  });
+  await persistWorkflowRun(options.store, run);
+
+  const handler = resolveWorkflowHandler(options.registry, codeNode.handler);
+  const diagnostics: WorkflowDiagnostic[] = [];
+
+  if (!handler) {
+    diagnostics.push({
+      code: "WorkflowGraphError.unknownHandlerRef",
+      message: `Workflow code node '${nodeId}' references handler '${codeNode.handler}', but it is not registered in the Workflow Registry.`,
+      severity: "error",
+      nodeId,
+      path: `$.nodes.${nodeId}.handler`,
+      hint: "Register the handler before dispatching the code node.",
+    });
+  }
+
+  if (codeNode.input) {
+    diagnostics.push(
+      ...validateWorkflowPortValue(codeNode.input, input, { path: `$.nodes.${nodeId}.input` }).diagnostics.map(
+        (diagnostic) => ({ ...diagnostic, nodeId }),
+      ),
+    );
+  }
+
+  if (diagnostics.some((diagnostic) => diagnostic.severity === "error")) {
+    return failCodeNodeDispatch({
+      run,
+      nodeAttempt,
+      events,
+      diagnostics,
+      timestamp,
+      store: options.store,
+      emitEvent: options.emitEvent,
+      error: {
+        code: "WorkflowRuntimeError.codeNodeDispatchFailed",
+        message: "Code node dispatch failed before handler execution.",
+      },
+    });
+  }
+
+  try {
+    const emittedCommands: WorkflowCommand[] = [];
+    const handlerResult = await handler!.value({
+      input,
+      global: createStateReader("global", run.state.global, codeNode, nodeId),
+      local: createStateReader("local", run.state.local?.[nodeId] ?? {}, codeNode, nodeId),
+      edge: createEdgePayloadReader(options.edgePayloads ?? {}),
+      emit: (event) => emitWorkflowRuntimeEvent(events, options.emitEvent, event),
+      command: async (command) => {
+        emittedCommands.push(command);
+        await options.commandEmitter?.(command);
+      },
+    });
+
+    const commands = [...emittedCommands, ...toWorkflowCommandArray(handlerResult.command)];
+    const patchDiagnostics = validateCodeNodePatches(definition, codeNode, nodeId, handlerResult);
+    if (patchDiagnostics.some((diagnostic) => diagnostic.severity === "error")) {
+      return failCodeNodeDispatch({
+        run,
+        nodeAttempt,
+        events,
+        diagnostics: patchDiagnostics,
+        timestamp,
+        store: options.store,
+        emitEvent: options.emitEvent,
+        error: {
+          code: "WorkflowRuntimeError.invalidCodeNodePatch",
+          message: "Code node state patch failed validation before completion.",
+        },
+      });
+    }
+
+    const nodeOutputResult = validateNodeOutput(definition, nodeId, handlerResult.output);
+    if (!nodeOutputResult.ok) {
+      return failCodeNodeDispatch({
+        run,
+        nodeAttempt,
+        events,
+        diagnostics: nodeOutputResult.diagnostics,
+        timestamp,
+        store: options.store,
+        emitEvent: options.emitEvent,
+        error: {
+          code: "WorkflowRuntimeError.invalidNodeOutput",
+          message: "Code node output failed validation before downstream use.",
+        },
+      });
+    }
+
+    applyCodeNodePatches(run, nodeId, handlerResult.globalPatch, handlerResult.localPatch);
+
+    for (const command of commands) {
+      if (!emittedCommands.includes(command)) {
+        await options.commandEmitter?.(command);
+      }
+      if (command.kind === "emitEvent") {
+        await emitWorkflowRuntimeEvent(events, options.emitEvent, command.event);
+      }
+    }
+
+    const completedAt = timestamp();
+    nodeAttempt.status = "completed";
+    nodeAttempt.output = handlerResult.output;
+    nodeAttempt.localState = run.state.local?.[nodeId];
+    nodeAttempt.completedAt = completedAt;
+    run.current = { nodeId, status: run.status };
+    run.updatedAt = completedAt;
+
+    await emitWorkflowRuntimeEvent(events, options.emitEvent, {
+      type: "node.completed",
+      runId: run.id,
+      nodeAttemptId: nodeAttempt.id,
+      output: handlerResult.output,
+    });
+    await persistWorkflowRun(options.store, run);
+
+    return {
+      ok: true,
+      run,
+      nodeAttempt,
+      events,
+      output: handlerResult.output,
+      result: handlerResult,
+      commands,
+    };
+  } catch (caught) {
+    const diagnostics = caught instanceof WorkflowStateAccessViolation ? [caught.diagnostic] : [];
+    return failCodeNodeDispatch({
+      run,
+      nodeAttempt,
+      events,
+      diagnostics,
+      timestamp,
+      store: options.store,
+      emitEvent: options.emitEvent,
+      error: codeNodeErrorSummaryFromCaught(caught),
+    });
+  }
 }
 
 export function transferWorkflowEdgeData(
@@ -885,6 +1140,214 @@ export async function runOneNodeAgentWorkflow(
   }
 }
 
+function createStateReader(
+  scope: "global" | "local",
+  values: Record<string, JsonValue>,
+  node: TypeScriptCodeNodeDefinition,
+  nodeId: string,
+): WorkflowGlobalStateReader | NodeLocalStateReader {
+  return {
+    get(path) {
+      assertDeclaredStateRead(scope, path, node, nodeId);
+      return values[path];
+    },
+  };
+}
+
+function createEdgePayloadReader(payloads: Record<string, WorkflowValue>): EdgePayloadReader {
+  return {
+    get(edgeId) {
+      return payloads[edgeId];
+    },
+    all() {
+      return { ...payloads };
+    },
+  };
+}
+
+function assertDeclaredStateRead(
+  scope: "global" | "local",
+  path: string,
+  node: TypeScriptCodeNodeDefinition,
+  nodeId: string,
+): void {
+  const scopedPath = `${scope}.${path}` as ScopedStatePath;
+  if ((node.state?.reads ?? []).includes(scopedPath)) {
+    return;
+  }
+
+  throw new WorkflowStateAccessViolation({
+    code: "WorkflowStateError.undeclaredStateRead",
+    message: `Code node handler '${node.handler}' attempted to read undeclared ${scope} state path '${path}'.`,
+    severity: "error",
+    nodeId,
+    path: `$.nodes.${nodeId}.state.reads`,
+    hint: `Declare '${scopedPath}' in the code node state.reads list before reading it from handler context.`,
+  });
+}
+
+function validateCodeNodePatches(
+  definition: WorkflowDefinition,
+  node: TypeScriptCodeNodeDefinition,
+  nodeId: string,
+  result: CodeNodeResult,
+): WorkflowDiagnostic[] {
+  const diagnostics: WorkflowDiagnostic[] = [];
+  validateStatePatchWrites("global", result.globalPatch, node, nodeId, diagnostics);
+  validateStatePatchWrites("local", result.localPatch, node, nodeId, diagnostics);
+  validateGlobalStatePatchValues(definition, nodeId, result.globalPatch, diagnostics);
+  return diagnostics;
+}
+
+function validateStatePatchWrites(
+  scope: "global" | "local",
+  patch: StatePatch | undefined,
+  node: TypeScriptCodeNodeDefinition,
+  nodeId: string,
+  diagnostics: WorkflowDiagnostic[],
+): void {
+  if (!patch) {
+    return;
+  }
+
+  const declaredWrites = new Set(node.state?.writes ?? []);
+  for (const path of Object.keys(patch)) {
+    const scopedPath = `${scope}.${path}` as ScopedStatePath;
+    if (declaredWrites.has(scopedPath)) {
+      continue;
+    }
+
+    diagnostics.push({
+      code: "WorkflowStateError.undeclaredStateWrite",
+      message: `Workflow code node '${nodeId}' attempted to write undeclared ${scope} state path '${path}'.`,
+      severity: "error",
+      nodeId,
+      path: `$.nodes.${nodeId}.state.writes`,
+      hint: `Declare '${scopedPath}' in the code node state.writes list before returning it in a state patch.`,
+    });
+  }
+}
+
+function validateGlobalStatePatchValues(
+  definition: WorkflowDefinition,
+  nodeId: string,
+  patch: StatePatch | undefined,
+  diagnostics: WorkflowDiagnostic[],
+): void {
+  if (!patch || !definition.state?.global) {
+    return;
+  }
+
+  for (const [path, value] of Object.entries(patch)) {
+    if (value === undefined) {
+      continue;
+    }
+
+    const field = definition.state.global[path];
+    if (!field) {
+      continue;
+    }
+
+    diagnostics.push(
+      ...validateJsonValueAgainstSchema(field.schema, value, {
+        path: `$.nodes.${nodeId}.globalPatch.${path}`,
+      }).map((diagnostic) => ({ ...diagnostic, nodeId })),
+    );
+  }
+}
+
+function applyCodeNodePatches(
+  run: WorkflowRun,
+  nodeId: string,
+  globalPatch: StatePatch | undefined,
+  localPatch: StatePatch | undefined,
+): void {
+  if (globalPatch) {
+    applyStatePatch(run.state.global, globalPatch);
+  }
+
+  if (localPatch) {
+    run.state.local ??= {};
+    run.state.local[nodeId] ??= {};
+    applyStatePatch(run.state.local[nodeId], localPatch);
+  }
+}
+
+function applyStatePatch(target: Record<string, JsonValue>, patch: StatePatch): void {
+  for (const [path, value] of Object.entries(patch)) {
+    if (value === undefined) {
+      delete target[path];
+    } else {
+      target[path] = value;
+    }
+  }
+}
+
+function toWorkflowCommandArray(command: WorkflowCommand | WorkflowCommand[] | undefined): WorkflowCommand[] {
+  if (!command) {
+    return [];
+  }
+
+  return Array.isArray(command) ? command : [command];
+}
+
+async function failCodeNodeDispatch(options: {
+  run: WorkflowRun;
+  nodeAttempt: NodeAttempt;
+  events: WorkflowRuntimeEvent[];
+  diagnostics: WorkflowDiagnostic[];
+  timestamp: () => string;
+  store?: WorkflowRunStore;
+  emitEvent?: WorkflowEventEmitter;
+  error: WorkflowErrorSummary;
+}): Promise<WorkflowCodeNodeDispatchFailure> {
+  const failedAt = options.timestamp();
+  options.nodeAttempt.status = "failed";
+  options.nodeAttempt.error = options.error;
+  options.nodeAttempt.failedAt = failedAt;
+  options.run.status = "failed";
+  options.run.current = { nodeId: options.nodeAttempt.nodeId, status: "failed" };
+  options.run.failedAt = failedAt;
+  options.run.updatedAt = failedAt;
+  await emitWorkflowRuntimeEvent(options.events, options.emitEvent, {
+    type: "node.failed",
+    runId: options.run.id,
+    nodeAttemptId: options.nodeAttempt.id,
+    error: options.error,
+  });
+  await persistWorkflowRun(options.store, options.run);
+
+  return {
+    ok: false,
+    run: options.run,
+    nodeAttempt: options.nodeAttempt,
+    events: options.events,
+    diagnostics: options.diagnostics,
+    error: options.error,
+  };
+}
+
+function codeNodeDispatchFailure(options: {
+  run: WorkflowRun;
+  events: WorkflowRuntimeEvent[];
+  diagnostics: WorkflowDiagnostic[];
+  error: WorkflowErrorSummary;
+}): WorkflowCodeNodeDispatchFailure {
+  return {
+    ok: false,
+    run: options.run,
+    events: options.events,
+    diagnostics: options.diagnostics,
+    error: options.error,
+  };
+}
+
+class WorkflowStateAccessViolation extends Error {
+  constructor(readonly diagnostic: WorkflowDiagnostic) {
+    super(diagnostic.message);
+  }
+}
+
 function resolveExecutorTitle(
   title: PiboSessionRoutingAgentExecutorOptions["title"],
   context: OneNodeAgentExecutorContext,
@@ -1037,6 +1500,27 @@ function errorSummaryFromCaught(caught: unknown): WorkflowErrorSummary {
   return {
     code: "WorkflowRuntimeError.executorFailed",
     message: "Agent executor failed with a non-Error value.",
+  };
+}
+
+function codeNodeErrorSummaryFromCaught(caught: unknown): WorkflowErrorSummary {
+  if (caught instanceof WorkflowStateAccessViolation) {
+    return {
+      code: caught.diagnostic.code,
+      message: caught.message,
+    };
+  }
+
+  if (caught instanceof Error) {
+    return {
+      code: "WorkflowRuntimeError.codeHandlerFailed",
+      message: caught.message,
+    };
+  }
+
+  return {
+    code: "WorkflowRuntimeError.codeHandlerFailed",
+    message: "Code node handler failed with a non-Error value.",
   };
 }
 
