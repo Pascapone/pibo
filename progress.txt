@@ -1,4 +1,5 @@
 ## Codebase Patterns
+- Backtracking/retry support is split between definition validation (`WorkflowRetryError.*`, `WorkflowGraphError.unboundedBackEdge`) and runtime helpers (`resolveWorkflowRetryPolicy`, `decideWorkflowNodeRetry`, `createRetryScheduledNodeAttempt`); node retry policy wins over workflow retry policy.
 - Runtime contexts exposed to node/plugin code must be node-scoped for local state: pass only the current node's `run.state.local[nodeId]`, keep prompt-builder `state.local` current-node-only, and hide all local state from edge adapters unless explicit mapping is added.
 - Node state access declarations live under `node.state.reads` / `node.state.writes` as scoped strings (`global.*`, `local.*`, `edge.*`); validation rejects unknown global paths and edge writes because edge payloads are immutable.
 - Multiple nodes declaring writes to the same `global.*` state path are rejected unless the corresponding `state.global[path].merge` policy is explicit; single-writer paths can omit merge policy.
@@ -616,4 +617,16 @@
   - Conflict detection currently uses declared node `state.writes` and treats duplicate global writers as potentially concurrent until a merge policy is declared on `state.global[path]`.
   - Keep state conflict diagnostics in the definition validator so ambiguous graphs fail before runtime state patch application.
   - Future custom merge handler validation will need registry support for merge/reducer handlers; current V1 coverage only checks whether a merge policy is present.
+---
+
+## 2026-05-11 01:25 UTC - 9.6
+- Implemented explicit bounded back-edge/retry policy support by validating workflow/node retry policies, loop policies, and guard refs, including `maxAttempts`, backoff shape, `retryOn`, missing loop edges, and unguarded loop diagnostics.
+- Added runtime retry helpers for resolving node-vs-workflow policy precedence, scheduling the next retry attempt with backoff-derived `availableAt`, creating retry-scheduled node attempts, and producing `WorkflowRetryExhaustedError.maxAttemptsExceeded` when attempts are exhausted.
+- Added validation and runtime tests for bounded review-loop fixtures, invalid retry/loop policies, registry-backed guard refs, retry scheduling, retry exhaustion, and retry skip decisions.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; `npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- Files changed: `packages/workflows/src/validation/index.ts`, `packages/workflows/src/runtime/index.ts`, `packages/workflows/src/testing/validation.test.ts`, `packages/workflows/src/testing/runtime-retry-policy.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - Node-level `retry` should override workflow-level `retry`; use `resolveWorkflowRetryPolicy` rather than duplicating precedence rules in executors.
+  - Loop policies (`definition.loops`) currently validate explicit bounded guarded back-edge declarations; full cycle detection/rejection remains for story 9.7.
+  - Registry-backed guard validation is opt-in like adapters/profiles: pass `{ registry }` to `validateWorkflow` when unknown guard refs should fail before runtime.
 ---

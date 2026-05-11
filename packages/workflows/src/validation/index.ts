@@ -1,8 +1,11 @@
 import type {
   AdapterRef,
+  GuardRef,
   JsonSchema,
   JsonSchemaTypeName,
   PromptBuilderRef,
+  RetryBackoffPolicy,
+  RetryPolicy,
   ValidationResult,
   WorkflowDefinition,
   WorkflowDiagnostic,
@@ -50,7 +53,7 @@ export type WorkflowValueValidationOptions = {
 };
 
 export type WorkflowValidationOptions = {
-  registry?: Partial<Pick<WorkflowRegistry, "adapters" | "handlers" | "profiles" | "promptBuilders">>;
+  registry?: Partial<Pick<WorkflowRegistry, "adapters" | "guards" | "handlers" | "profiles" | "promptBuilders">>;
 };
 
 type SchemaValidationContext = {
@@ -94,8 +97,11 @@ export function validateWorkflowDefinitionSchemas(
   validateWorkflowPort(definition.input, "$.input", diagnostics);
   validateWorkflowPort(definition.output, "$.output", diagnostics);
 
+  validateWorkflowRetryPolicy(definition.retry, "$.retry", diagnostics);
+
   for (const [nodeId, node] of Object.entries(definition.nodes)) {
     validateNodeSchemas(nodeId, node, diagnostics);
+    validateWorkflowRetryPolicy(node.retry, `$.nodes.${nodeId}.retry`, diagnostics, { nodeId });
     validateWorkflowAgentNodeRuntimeSelection(nodeId, node, diagnostics, options);
     validateWorkflowAgentNodePromptBuilderRef(nodeId, node, diagnostics, options);
     validateWorkflowCodeNodeRef(nodeId, node, diagnostics, options);
@@ -104,9 +110,11 @@ export function validateWorkflowDefinitionSchemas(
   }
 
   validateWorkflowGlobalStateWriteConflicts(definition, diagnostics);
+  validateWorkflowLoopPolicies(definition, diagnostics, options);
 
   for (const [edgeId, edge] of Object.entries(definition.edges)) {
     validateWorkflowEdgeNodeRefs(definition, edgeId, edge, diagnostics);
+    validateWorkflowEdgeGuardRef(edgeId, edge, diagnostics, options);
     validateWorkflowEdgeAdapterRef(definition, edgeId, edge, diagnostics, options);
     validateWorkflowEdgePortCompatibility(definition, edgeId, edge, diagnostics);
 
@@ -355,6 +363,269 @@ export function validateJsonValueAgainstSchema(
   validateValueNode(schema, value, options.path ?? "$.value", context);
 
   return diagnostics;
+}
+
+function validateWorkflowRetryPolicy(
+  policy: RetryPolicy | undefined,
+  path: string,
+  diagnostics: WorkflowDiagnostic[],
+  target: Pick<WorkflowDiagnostic, "nodeId" | "edgeId"> = {},
+): void {
+  if (policy === undefined) {
+    return;
+  }
+
+  if (!Number.isInteger(policy.maxAttempts) || policy.maxAttempts < 1) {
+    diagnostics.push({
+      code: "WorkflowRetryError.invalidMaxAttempts",
+      message: "Workflow retry policies must declare maxAttempts as a positive integer.",
+      severity: "error",
+      ...target,
+      path: `${path}.maxAttempts`,
+      hint: "Set maxAttempts to the total number of attempts allowed, for example maxAttempts: 3.",
+    });
+  }
+
+  if (policy.backoff !== undefined) {
+    validateWorkflowRetryBackoffPolicy(policy.backoff, `${path}.backoff`, diagnostics, target);
+  }
+
+  if (policy.retryOn !== undefined) {
+    if (!Array.isArray(policy.retryOn)) {
+      diagnostics.push({
+        code: "WorkflowRetryError.invalidRetryOn",
+        message: "Workflow retry policy retryOn must be an array of non-empty error code strings.",
+        severity: "error",
+        ...target,
+        path: `${path}.retryOn`,
+        hint: "Use retryOn: ['WorkflowRuntimeError.transient'] or omit retryOn to retry all retryable errors until maxAttempts.",
+      });
+      return;
+    }
+
+    policy.retryOn.forEach((code, index) => {
+      if (typeof code !== "string" || code.length === 0) {
+        diagnostics.push({
+          code: "WorkflowRetryError.invalidRetryOn",
+          message: "Workflow retry policy retryOn entries must be non-empty error code strings.",
+          severity: "error",
+          ...target,
+          path: `${path}.retryOn.${index}`,
+          hint: "Use stable error codes such as 'WorkflowRuntimeError.timeout'.",
+        });
+      }
+    });
+  }
+}
+
+function validateWorkflowRetryBackoffPolicy(
+  backoff: RetryBackoffPolicy,
+  path: string,
+  diagnostics: WorkflowDiagnostic[],
+  target: Pick<WorkflowDiagnostic, "nodeId" | "edgeId">,
+): void {
+  if (!isRecord(backoff)) {
+    diagnostics.push({
+      code: "WorkflowRetryError.invalidBackoffPolicy",
+      message: "Workflow retry backoff policy must be an object.",
+      severity: "error",
+      ...target,
+      path,
+      hint: "Use { kind: 'none' }, { kind: 'fixed', delayMs }, { kind: 'linear', initialMs, stepMs }, or { kind: 'exponential', initialMs }.",
+    });
+    return;
+  }
+
+  switch (backoff.kind) {
+    case "none":
+      return;
+    case "fixed":
+      validateNonNegativeNumber(backoff.delayMs, `${path}.delayMs`, "delayMs", diagnostics, target);
+      return;
+    case "linear":
+      validateNonNegativeNumber(backoff.initialMs, `${path}.initialMs`, "initialMs", diagnostics, target);
+      validateNonNegativeNumber(backoff.stepMs, `${path}.stepMs`, "stepMs", diagnostics, target);
+      validateOptionalNonNegativeNumber(backoff.maxMs, `${path}.maxMs`, "maxMs", diagnostics, target);
+      return;
+    case "exponential":
+      validateNonNegativeNumber(backoff.initialMs, `${path}.initialMs`, "initialMs", diagnostics, target);
+      if (backoff.factor !== undefined && (typeof backoff.factor !== "number" || backoff.factor <= 1)) {
+        diagnostics.push({
+          code: "WorkflowRetryError.invalidBackoffPolicy",
+          message: "Workflow exponential retry backoff factor must be greater than 1 when declared.",
+          severity: "error",
+          ...target,
+          path: `${path}.factor`,
+          hint: "Omit factor to use the runtime default, or set factor to a number greater than 1.",
+        });
+      }
+      validateOptionalNonNegativeNumber(backoff.maxMs, `${path}.maxMs`, "maxMs", diagnostics, target);
+      return;
+    default:
+      diagnostics.push({
+        code: "WorkflowRetryError.invalidBackoffPolicy",
+        message: "Workflow retry backoff policy kind is not supported.",
+        severity: "error",
+        ...target,
+        path: `${path}.kind`,
+        hint: "Use backoff kind 'none', 'fixed', 'linear', or 'exponential'.",
+      });
+  }
+}
+
+function validateNonNegativeNumber(
+  value: unknown,
+  path: string,
+  field: string,
+  diagnostics: WorkflowDiagnostic[],
+  target: Pick<WorkflowDiagnostic, "nodeId" | "edgeId">,
+): void {
+  if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+    return;
+  }
+
+  diagnostics.push({
+    code: "WorkflowRetryError.invalidBackoffPolicy",
+    message: `Workflow retry backoff ${field} must be a non-negative number.`,
+    severity: "error",
+    ...target,
+    path,
+    hint: "Use millisecond delays greater than or equal to 0.",
+  });
+}
+
+function validateOptionalNonNegativeNumber(
+  value: unknown,
+  path: string,
+  field: string,
+  diagnostics: WorkflowDiagnostic[],
+  target: Pick<WorkflowDiagnostic, "nodeId" | "edgeId">,
+): void {
+  if (value === undefined) {
+    return;
+  }
+
+  validateNonNegativeNumber(value, path, field, diagnostics, target);
+}
+
+function validateWorkflowLoopPolicies(
+  definition: Pick<WorkflowDefinition, "edges" | "loops">,
+  diagnostics: WorkflowDiagnostic[],
+  options: WorkflowValidationOptions,
+): void {
+  for (const [index, loop] of definition.loops?.entries() ?? []) {
+    const path = `$.loops.${index}`;
+    const edgeId = loop.edgeId;
+    const edge = edgeId ? definition.edges[edgeId] : undefined;
+
+    if (typeof edgeId !== "string" || edgeId.length === 0) {
+      diagnostics.push({
+        code: "WorkflowGraphError.invalidLoopPolicy",
+        message: "Workflow loop policies must reference the explicit back-edge by edgeId.",
+        severity: "error",
+        path: `${path}.edgeId`,
+        hint: "Set loops[n].edgeId to the id of the guarded back-edge this policy bounds.",
+      });
+    } else if (!edge) {
+      diagnostics.push({
+        code: "WorkflowGraphError.unknownLoopEdge",
+        message: `Workflow loop policy references missing edge '${edgeId}'.`,
+        severity: "error",
+        edgeId,
+        path: `${path}.edgeId`,
+        hint: "Point the loop policy at an existing back-edge in workflow.edges.",
+      });
+    }
+
+    if (!Number.isInteger(loop.maxAttempts) || loop.maxAttempts < 1) {
+      diagnostics.push({
+        code: "WorkflowRetryError.invalidMaxAttempts",
+        message: "Workflow loop policies must declare maxAttempts as a positive integer.",
+        severity: "error",
+        edgeId: typeof edgeId === "string" ? edgeId : undefined,
+        path: `${path}.maxAttempts`,
+        hint: "Set maxAttempts to the maximum number of times this back-edge may be traversed.",
+      });
+    }
+
+    const guard = loop.guard ?? edge?.guard;
+    if (!guard) {
+      diagnostics.push({
+        code: "WorkflowGraphError.unboundedBackEdge",
+        message: `Workflow loop policy${edgeId ? ` for edge '${edgeId}'` : ""} must declare a guard on the loop policy or edge.`,
+        severity: "error",
+        edgeId: typeof edgeId === "string" ? edgeId : undefined,
+        path,
+        hint: "Back-edges must be explicit, guarded, and bounded with maxAttempts so review/fix loops cannot run freely.",
+      });
+    } else {
+      validateWorkflowGuardRef(guard, diagnostics, options, {
+        edgeId: typeof edgeId === "string" ? edgeId : undefined,
+        path: loop.guard ? `${path}.guard.handler` : `$.edges.${edgeId}.guard.handler`,
+        ownerLabel: `Workflow loop policy${edgeId ? ` for edge '${edgeId}'` : ""}`,
+      });
+    }
+  }
+}
+
+function validateWorkflowEdgeGuardRef(
+  edgeId: string,
+  edge: WorkflowEdgeDefinition,
+  diagnostics: WorkflowDiagnostic[],
+  options: WorkflowValidationOptions,
+): void {
+  if (!edge.guard) {
+    return;
+  }
+
+  validateWorkflowGuardRef(edge.guard, diagnostics, options, {
+    edgeId,
+    path: `$.edges.${edgeId}.guard.handler`,
+    ownerLabel: `Workflow edge '${edgeId}'`,
+  });
+}
+
+function validateWorkflowGuardRef(
+  guard: GuardRef,
+  diagnostics: WorkflowDiagnostic[],
+  options: WorkflowValidationOptions,
+  target: Pick<WorkflowDiagnostic, "edgeId"> & { path: string; ownerLabel: string },
+): void {
+  if (!isRecord(guard) || typeof guard.handler !== "string" || guard.handler.length === 0) {
+    diagnostics.push({
+      code: "WorkflowGraphError.invalidGuardRef",
+      message: `${target.ownerLabel} must use a registered guard handler ref.`,
+      severity: "error",
+      edgeId: target.edgeId,
+      path: target.path,
+      hint: "Use guard: { handler: 'guard.id' } with a non-empty registered guard id.",
+    });
+    return;
+  }
+
+  if (guard.priority !== undefined && (!Number.isInteger(guard.priority) || guard.priority < 0)) {
+    diagnostics.push({
+      code: "WorkflowGraphError.invalidGuardPriority",
+      message: `${target.ownerLabel} guard priority must be a non-negative integer when declared.`,
+      severity: "error",
+      edgeId: target.edgeId,
+      path: target.path.replace(/\.handler$/, ".priority"),
+      hint: "Use priority to make multiple guarded outgoing edges deterministic.",
+    });
+  }
+
+  if (!options.registry?.guards || options.registry.guards.has(guard.handler)) {
+    return;
+  }
+
+  diagnostics.push({
+    code: "WorkflowGraphError.unknownGuardRef",
+    message: `${target.ownerLabel} references guard '${guard.handler}', but it is not registered in the Workflow Registry.`,
+    severity: "error",
+    edgeId: target.edgeId,
+    path: target.path,
+    hint: "Register the guard with registerWorkflowGuard/createWorkflowRegistry before validating or executing this workflow, or update the workflow to use a registered guard id.",
+  });
 }
 
 function validateWorkflowEdgeNodeRefs(

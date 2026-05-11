@@ -3,6 +3,8 @@ import { describe, it } from "node:test";
 
 import {
   adapterRef,
+  boundedReviewLoopWorkflowFixture,
+  createWorkflowRegistry,
   minimalOneNodePiboAgentWorkflowFixture,
   mixedNodeWorkflowFixture,
   requiredWorkflowFixtures,
@@ -10,6 +12,7 @@ import {
   validateWorkflow,
   validateWorkflowInput,
   validateWorkflowOutput,
+  workflowFixtureProviders,
 } from "../index.js";
 import type { JsonSchema, ValidationResult, WorkflowDefinition, WorkflowDiagnostic } from "../index.js";
 
@@ -183,6 +186,65 @@ describe("workflow definition validation", () => {
       const result = validateWorkflow(fixture);
       assert.equal(result.ok, true, `${fixture.id} should validate: ${diagnosticCodes(result).join(", ")}`);
     }
+  });
+
+  it("accepts bounded review-loop back-edges and registered guard refs", () => {
+    const registry = createWorkflowRegistry(workflowFixtureProviders);
+    const result = validateWorkflow(boundedReviewLoopWorkflowFixture, { registry });
+
+    assert.equal(result.ok, true, diagnosticCodes(result).join(", "));
+  });
+
+  it("rejects invalid retry policies without positive maxAttempts", () => {
+    const definition = withDefinitionMutation((draft) => {
+      draft.retry = {
+        maxAttempts: 0,
+        backoff: { kind: "fixed", delayMs: -1 },
+        retryOn: ["WorkflowRuntimeError.timeout", ""],
+      };
+      draft.nodes.answer.retry = {
+        maxAttempts: 1.5,
+        backoff: { kind: "exponential", initialMs: 100, factor: 1 },
+      };
+    });
+
+    const result = validateWorkflow(definition);
+
+    assert.equal(result.ok, false);
+    findDiagnostic(result, "WorkflowRetryError.invalidMaxAttempts", (diagnostic) => diagnostic.path === "$.retry.maxAttempts");
+    findDiagnostic(result, "WorkflowRetryError.invalidBackoffPolicy", (diagnostic) => diagnostic.path === "$.retry.backoff.delayMs");
+    findDiagnostic(result, "WorkflowRetryError.invalidRetryOn", (diagnostic) => diagnostic.path === "$.retry.retryOn.1");
+    findDiagnostic(result, "WorkflowRetryError.invalidMaxAttempts", (diagnostic) => diagnostic.path === "$.nodes.answer.retry.maxAttempts");
+    findDiagnostic(result, "WorkflowRetryError.invalidBackoffPolicy", (diagnostic) => diagnostic.path === "$.nodes.answer.retry.backoff.factor");
+  });
+
+  it("rejects loop policies without an existing guarded back-edge and maxAttempts", () => {
+    const definition = structuredClone(boundedReviewLoopWorkflowFixture) as WorkflowDefinition;
+    definition.loops = [
+      { edgeId: "missing-edge", maxAttempts: 0 },
+      { edgeId: "draft-to-review", maxAttempts: 2 },
+    ];
+
+    const result = validateWorkflow(definition);
+
+    assert.equal(result.ok, false);
+    findDiagnostic(result, "WorkflowGraphError.unknownLoopEdge", (diagnostic) => diagnostic.path === "$.loops.0.edgeId");
+    findDiagnostic(result, "WorkflowRetryError.invalidMaxAttempts", (diagnostic) => diagnostic.path === "$.loops.0.maxAttempts");
+    findDiagnostic(result, "WorkflowGraphError.unboundedBackEdge", (diagnostic) => diagnostic.path === "$.loops.1");
+  });
+
+  it("validates loop and edge guard refs against the Workflow Registry when one is provided", () => {
+    const registry = createWorkflowRegistry(workflowFixtureProviders);
+    const definition = structuredClone(boundedReviewLoopWorkflowFixture) as WorkflowDefinition;
+    assert.equal(definition.loops?.[0]?.guard?.handler !== undefined, true);
+    if (definition.loops?.[0]?.guard) {
+      definition.loops[0].guard.handler = "fixture.guards.missing";
+    }
+
+    const result = validateWorkflow(definition, { registry });
+
+    assert.equal(result.ok, false);
+    findDiagnostic(result, "WorkflowGraphError.unknownGuardRef", (diagnostic) => diagnostic.path === "$.loops.0.guard.handler");
   });
 
   it("rejects agent nodes that do not select the V1 Pibo Runtime", () => {

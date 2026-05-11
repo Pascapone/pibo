@@ -76,7 +76,7 @@
 - [x] 9.3 Add read/write path declarations for nodes.
 - [x] 9.4 Enforce local state isolation by default.
 - [x] 9.5 Reject ambiguous concurrent global state writes unless a merge strategy is declared.
-- [ ] 9.6 Add explicit back-edge/retry policy support with max attempts.
+- [x] 9.6 Add explicit back-edge/retry policy support with max attempts.
 - [ ] 9.7 Reject free or unbounded cycles.
 - [ ] 9.8 Test state read/write isolation, edge data transfer, and bounded review/fix loops.
 
