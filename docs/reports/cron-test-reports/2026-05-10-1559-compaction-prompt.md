@@ -125,3 +125,11 @@ Die vorhandenen Tests sind sinnvoll, schnell und gut isoliert, decken aber nur d
 - Ausgeführte Kommandos: `npm run build -- --pretty false`; `node --test test/compaction-prompt.test.mjs`.
 - Ergebnis: Build erfolgreich; Compaction-Prompt-Subset grün mit 4/4 Tests. Abgesichert ist, dass ein invalides Custom-Prompt-Save den bestehenden gültigen Custom-Prompt, `updatedAt` und aktiven Custom-Pfad nicht überschreibt.
 - Verbleibende offene Punkte: Test für Custom-Mode-Dateierzeugung, Builder-/API-Subsets aus diesem Report.
+
+## Umgesetzt am 2026-05-11 15:33 Europe/Berlin
+
+- Bereich: Custom-Mode-Dateierzeugung für Compaction-Prompts.
+- Geänderte Dateien: `test/compaction-prompt.test.mjs`, `docs/reports/cron-test-reports/2026-05-10-1559-compaction-prompt.md`.
+- Ausgeführte Kommandos: `node --test test/compaction-prompt.test.mjs`.
+- Ergebnis: Grün; Compaction-Prompt-Subset mit 5/5 Tests bestanden. Abgesichert ist, dass `setPiboCompactionPromptMode("custom")` ohne vorhandene Custom-Datei eine Library-Kopie anlegt und als aktiven Custom-Pfad nutzt.
+- Verbleibende offene Punkte: Builder-/API-Subsets aus diesem Report bleiben offen.

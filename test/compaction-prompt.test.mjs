@@ -83,6 +83,25 @@ test("compaction prompt invalid custom save preserves previous valid custom prom
 	}
 });
 
+test("compaction prompt custom mode creates custom file from library when missing", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pibo-compaction-prompt-create-custom-"));
+	try {
+		const library = await readPiboCompactionPrompt(cwd);
+		assert.equal(library.custom.exists, false);
+
+		const customMode = setPiboCompactionPromptMode("custom", cwd);
+		assert.equal(customMode.mode, "custom");
+		assert.equal(customMode.effectiveMode, "custom");
+		assert.equal(customMode.custom.exists, true);
+		assert.equal(customMode.custom.markdown, library.library.markdown);
+		assert.equal(readFileSync(customMode.custom.path, "utf-8"), library.library.markdown);
+		assert.equal(getActivePiboCompactionPromptPath(cwd), customMode.custom.path);
+		assert.ok(customMode.custom.updatedAt);
+	} finally {
+		rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
 test("compaction prompt parser exposes all prompt sections and rejects broken custom files", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pibo-compaction-prompt-invalid-"));
 	try {
