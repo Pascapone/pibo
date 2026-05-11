@@ -1,4 +1,5 @@
 ## Codebase Patterns
+- Minimal workflow definition docs should use the public `@pasko70/pibo-workflows` helpers and keep executable behavior behind Workflow Registry refs so examples match serializable IR rules.
 - Canonical current workflow capability docs live under `docs/project/` (for example `docs/project/workflows.md`); keep historical PRDs/design docs under `docs/specs/changes/pibo-workflow-system-v1/`.
 - Workflow/XState V1 UI is inspection-only: surface creation/visual editing/raw XState editing as explicitly deferred, and keep workflow definitions TypeScript-owned through the Workflow Registry.
 - Human wait actions should go through registry-backed refs on the wait token, then `applyWorkflowHumanAction` to validate availability/payloads, record `workflow_human_actions`, resolve the token, and schedule a human wakeup for resumed waits.
@@ -932,4 +933,16 @@
   - Canonical current-state docs belong in `docs/project/`; workflow-system PRDs/design docs remain useful as historical implementation context under `docs/specs/changes/pibo-workflow-system-v1/`.
   - Keep `13.1` documentation broad and capability-oriented; follow-up tasks `13.2` through `13.5` should add examples and deeper adapter/XState/registry details without duplicating the capability overview.
   - Documentation-only workflow iterations can still run the root typecheck and workflow package tests to keep the branch green without restarting gateways or browser-testing non-UI changes.
+---
+
+## 2026-05-11 03:45 UTC - 13.2
+- Documented minimal workflow definition examples for one-node Pibo agent, JSON code-node, and human wait workflows using the public workflow package helpers.
+- Linked the new example page from the canonical workflow capability doc and removed minimal examples from the planned follow-up list.
+- Marked task `13.2` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; `npm run typecheck`.
+- Files changed: `docs/project/workflow-definition-examples.md`, `docs/project/workflows.md`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - Minimal docs should import and show public helpers (`text`, `json`, `fixedProfile`, registry helpers) rather than raw fixture literals when teaching authoring patterns.
+  - Code-node handler examples must return `{ output: ... }`, not a bare output payload, because runtime handlers use the `CodeNodeResult` contract.
+  - Examples for registry-backed validation should pass a `WorkflowRegistry`; examples without a registry demonstrate structural/schema validation only.
 ---

@@ -112,7 +112,7 @@
 ## 13. Documentation
 
 - [x] 13.1 Add canonical workflow capability docs after implementation decisions are confirmed.
-- [ ] 13.2 Document minimal workflow definition examples.
+- [x] 13.2 Document minimal workflow definition examples.
 - [ ] 13.3 Document interface adapters with examples.
 - [ ] 13.4 Document XState-backed projection semantics.
 - [ ] 13.5 Document Workflow Registry, plugin registration, registered TypeScript adapters, prompt assets, routing hints, human actions, and debug serialization.
