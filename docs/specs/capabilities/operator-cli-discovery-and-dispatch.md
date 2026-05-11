@@ -2,8 +2,9 @@
 
 **Status:** Draft  
 **Created:** 2026-05-10  
+**Updated:** 2026-05-11  
 **Owner / Source:** Scheduled Pibo source-spec coverage job  
-**Related docs:** [Local Config CLI](./local-config-cli.md), [MCP Server Integration](./mcp-server-integration.md), [Curated CLI Tools](./curated-cli-tools.md), [Local Gateway Protocol and Lifecycle](./local-gateway-protocol-and-lifecycle.md)
+**Related docs:** [Local Config CLI](./local-config-cli.md), [MCP Server Integration](./mcp-server-integration.md), [Curated CLI Tools](./curated-cli-tools.md), [Local Gateway Protocol and Lifecycle](./local-gateway-protocol-and-lifecycle.md), [Continuous Ralph Jobs](./continuous-ralph-jobs.md)
 
 ## Why
 
@@ -17,7 +18,7 @@ The top-level `pibo` command MUST provide compact progressive discovery, delegat
 
 ## Background / Current State
 
-`src/bin/pibo.ts` invokes `runPiboCli`. `src/cli.ts` intercepts several command families before Commander parsing: `mcp`, `tools`, `pi-packages`, `debug`, `data`, `gateway`, `compute`, `skills`, `cron`, and compact `config` help. It prints a custom root discovery text for no arguments and `--help`, then defines direct commands for config, profile inspection, direct Pi TUI, routed TUI, demo router status, web gateway startup, and a console gateway client.
+`src/bin/pibo.ts` invokes `runPiboCli`. `src/cli.ts` intercepts several command families before Commander parsing: `mcp`, `tools`, `pi-packages`, `debug`, `data`, `gateway`, `compute`, `skills`, `cron`, `ralph`, and compact `config` help. It prints a custom root discovery text for no arguments and `--help`, then defines direct commands for config, profile inspection, direct Pi TUI, routed TUI, demo router status, web gateway startup, and a console gateway client.
 
 Tests in `test/mcp-cli.test.mjs` already assert that root help is compact and does not fall back to generic Commander `Usage:` output.
 
@@ -66,13 +67,14 @@ The CLI MUST delegate recognized command families to their specialized runners b
 
 #### Current
 
-`runPiboCli` checks `argv[2]` and calls runners such as `runMcpCli`, `runToolsCli`, `runPiPackagesCli`, `runDebugCli`, `runDataCli`, `runGatewayCli`, `runComputeCli`, `runSkillsCli`, and `runCronCli`.
+`runPiboCli` checks `argv[2]` and calls runners such as `runMcpCli`, `runToolsCli`, `runPiPackagesCli`, `runDebugCli`, `runDataCli`, `runGatewayCli`, `runComputeCli`, `runSkillsCli`, `runCronCli`, and `runRalphCli`.
 
 #### Acceptance
 
-- `pibo mcp --help`, `pibo tools --help`, and similar delegated help commands use the delegated CLI's progressive output.
+- `pibo mcp --help`, `pibo tools --help`, `pibo cron --help`, `pibo ralph --help`, and similar delegated help commands use the delegated CLI's progressive output.
 - Unknown options meant for delegated commands are not rejected by the root CLI.
-- The delegated argv preserves the displayed command name, such as `pibo mcp` or `pibo tools`, where that sub-CLI expects it.
+- The delegated argv preserves the displayed command name, such as `pibo mcp`, `pibo tools`, or `pibo ralph`, where that sub-CLI expects it.
+- The root discovery output lists each early-dispatched command family so agents can discover delegated commands without reading source.
 
 #### Scenario: MCP version passthrough
 
@@ -187,7 +189,7 @@ Root-owned compatibility commands MUST keep their narrow current purpose and mus
 ## Edge Cases
 
 - A delegated command with its own unknown options must not be blocked by root Commander definitions.
-- Adding a new top-level command requires updating root discovery text and dispatch behavior consistently.
+- Adding a new top-level command requires updating root discovery text, early dispatch behavior, fallback Commander passthrough, and this spec's verification coverage consistently.
 - Root help should stay useful when the package is executed through `npm run dev --` or installed as `pibo`.
 - Port parsing must reject non-numeric, fractional, zero, negative, and above-range values.
 - Profile aliases must resolve through the plugin registry, not through ad hoc string matching except for the gateway-producer compatibility aliases.
@@ -202,11 +204,33 @@ Root-owned compatibility commands MUST keep their narrow current purpose and mus
 ## Success Criteria
 
 - [ ] SC-001: `pibo`, `pibo --help`, and `pibo -h` print compact root discovery without Commander `Usage:` output.
-- [ ] SC-002: Delegated command families receive their arguments without root-level option rejection.
+- [ ] SC-002: Delegated command families receive their arguments without root-level option rejection, including `mcp`, `tools`, `pi-packages`, `debug`, `data`, `gateway`, `compute`, `skills`, `cron`, and `ralph`.
 - [ ] SC-003: `pibo config --help` prints compact config discovery and points to `pibo config keys`.
 - [ ] SC-004: `pibo profile` defaults to `codex-compat-openai-web`; gateway-producer aliases still resolve.
 - [ ] SC-005: `pibo tui` and `pibo tui:routed` call distinct runtime paths.
 - [ ] SC-006: `pibo gateway:web --web-port` rejects invalid ports before server startup.
+
+## Verification Coverage
+
+### Directly Tested
+
+- Root help and MCP/config progressive discovery behavior are covered by `test/mcp-cli.test.mjs`.
+- `pibo config` load/save, redaction, supported keys, and value mutation behavior are covered by `test/config.test.mjs`, but this is config behavior rather than full root-dispatch coverage.
+- Several delegated command families have focused tests for their own behavior, such as `test/mcp-cli.test.mjs`, `test/tools-cli.test.mjs`, `test/pi-packages.test.mjs`, `test/debug-cli.test.mjs`, `test/data-cli.test.mjs`, and `test/cron-schedule-store.test.mjs`.
+
+### Source-Inspected Only
+
+- Early dispatch and fallback Commander passthrough for `mcp`, `tools`, `pi-packages`, `debug`, `data`, `gateway`, `compute`, `skills`, `cron`, and `ralph` are source-inspected from `src/cli.ts`.
+- Root discovery output is source-inspected from `printRootDiscoveryText()` in `src/cli.ts`.
+- Root-owned `profile`, `tui`, `tui:routed`, `router`, `gateway:web`, and `client` command behavior is source-inspected from `src/cli.ts`.
+- The binary entry point is source-inspected from `src/bin/pibo.ts` and `package.json`.
+
+### Test Gaps
+
+- Add a root-dispatch parity test that stubs or invokes each early-dispatched family with `--help` and verifies the root CLI does not emit Commander `Usage:` output or reject delegated options.
+- Add a regression test that the command names shown in root discovery match the current early-dispatch list and fallback Commander passthrough list.
+- Add built-CLI tests for `pibo ralph --help`, `pibo compute --help`, and `pibo skills --help`, because newer command families are weakest in direct progressive-discovery coverage.
+- Add root-owned command tests for invalid `gateway:web --web-port`, profile default selection, and `tui:routed --thinking` validation without starting long-running runtimes.
 
 ## Assumptions and Open Questions
 
@@ -226,7 +250,7 @@ Root-owned compatibility commands MUST keep their narrow current purpose and mus
 | Requirement | Scenario / Story | Plan / Task | Status |
 |---|---|---|---|
 | REQ-001 Root discovery is compact and progressive | Agent starts discovery | Existing tests in `test/mcp-cli.test.mjs` | Draft |
-| REQ-002 Specialized command families bypass root Commander parsing | MCP version passthrough | `src/cli.ts` early dispatch | Draft |
+| REQ-002 Specialized command families bypass root Commander parsing | MCP version passthrough | `src/cli.ts` early dispatch for `mcp`, `tools`, `pi-packages`, `debug`, `data`, `gateway`, `compute`, `skills`, `cron`, and `ralph` | Source-inspected |
 | REQ-003 Config discovery is handled before full config parsing | Agent inspects config safely | Existing tests in `test/mcp-cli.test.mjs` | Draft |
 | REQ-004 Root-owned profile commands use the default plugin registry | Inspect default profile | `createCliProfile()` | Draft |
 | REQ-005 Direct and routed TUI commands remain distinct | Routed QA with thinking | `tui` and `tui:routed` command actions | Draft |
@@ -235,4 +259,19 @@ Root-owned compatibility commands MUST keep their narrow current purpose and mus
 
 ## Verification Basis
 
-This spec is based on the current code in `src/bin/pibo.ts`, `src/cli.ts`, `package.json`, and the CLI behavior assertions in `test/mcp-cli.test.mjs`.
+This spec is based on the current workspace code and tests:
+
+- `src/bin/pibo.ts`
+- `src/cli.ts`
+- `package.json`
+- `test/mcp-cli.test.mjs`
+- `test/config.test.mjs`
+- `test/tools-cli.test.mjs`
+- `test/pi-packages.test.mjs`
+- `test/debug-cli.test.mjs`
+- `test/data-cli.test.mjs`
+- `test/cron-schedule-store.test.mjs`
+
+Change log:
+
+- 2026-05-11: Updated the delegated-command contract for the current Ralph dispatch path and added verification coverage/test gaps for root CLI discovery parity.

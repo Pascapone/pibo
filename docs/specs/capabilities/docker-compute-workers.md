@@ -2,7 +2,8 @@
 
 **Status:** Draft  
 **Created:** 2026-05-10  
-**Owner / Source:** Current Pibo codebase  
+**Updated:** 2026-05-11  
+**Owner / Source:** Current Pibo codebase; Scheduled Pibo Source Specs Coverage  
 **Related docs:** `GLOSSARY.md`, `AGENTS.md`, `docs/specs/README.md`, `docs/specs/capabilities/web-auth-and-same-origin-host.md`
 
 ## Why
@@ -185,11 +186,11 @@ The Docker entrypoint starts `gateway:web` with the internal `{ devAuth: true }`
 
 ### Requirement: Worker cleanup is explicit and bounded
 
-The compute CLI MUST let operators stop workers explicitly and remove old one-time workers by age.
+The compute CLI MUST let operators inspect, stop, and remove workers explicitly, and MUST remove old workers only when the operator selects the eligible worker class.
 
 #### Current
 
-`releaseWorker()` stops a named container with a 10-second timeout and removes it. `reapWorkers()` lists role `worker` containers, compares their created-time label to the requested maximum age, and releases old ones. `listWorkers()` currently lists role `worker` containers.
+`releaseWorker()` stops a named container with a 10-second timeout and removes it. `listWorkers()` lists role `worker` and `dev` containers by default. `reapWorkers()` removes old one-time workers by default and includes dev workers only when `--include-dev` is supplied.
 
 #### Acceptance
 
@@ -197,20 +198,22 @@ The compute CLI MUST let operators stop workers explicitly and remove old one-ti
 - Releasing an already stopped container still attempts removal.
 - `pibo compute reap --max-age-minutes <n>` removes one-time workers older than the requested age.
 - The default reap age is 60 minutes.
-- `pibo compute list` shows running one-time workers with name, status, ports, and created time, or an empty-state message.
-- Releasing a dev worker container does not remove its Git worktree automatically.
+- `pibo compute reap --include-dev` also makes old dev workers eligible for removal.
+- `pibo compute list` shows running one-time and dev workers with name, role, status, ports, and created time, or an empty-state message.
+- Releasing or reaping a dev worker container does not remove its Git worktree automatically.
 
 #### Scenario: Reap old one-time worker
 
 - GIVEN a running one-time worker has a created-at label older than 60 minutes
 - WHEN an operator runs `pibo compute reap`
-- THEN Pibo stops and removes that worker container.
+- THEN Pibo stops and removes that worker container
+- AND old dev workers are left running unless `--include-dev` is supplied.
 
 ## Edge Cases
 
 - Existing Git branches or worktrees can make `git worktree add -b <name>` fail; the current code retries by adding the existing branch name.
 - Docker port parsing can return `0` if Docker returns no parseable host port; callers should treat that as unusable connection data.
-- `pibo compute list` and `reap` currently inspect role `worker` containers, while dev containers use role `dev`.
+- `pibo compute list` includes dev containers by default, but `pibo compute reap` excludes dev containers unless `--include-dev` is supplied.
 - `release` removes containers but intentionally does not delete worktree directories.
 
 ## Constraints
@@ -227,7 +230,37 @@ The compute CLI MUST let operators stop workers explicitly and remove old one-ti
 - [ ] SC-002: `pibo compute dev spawn --worktree <name>` creates a worktree, starts a dev container, and returns deterministic non-overlapping ports.
 - [ ] SC-003: Worker `gateway:web` exposes Chat Web with Docker-only dev auth and rejects host dev-auth activation.
 - [ ] SC-004: `pibo compute release <id>` removes the target container without deleting source worktrees.
-- [ ] SC-005: `pibo compute reap` removes old one-time worker containers and leaves newer workers running.
+- [ ] SC-005: `pibo compute reap` removes old one-time worker containers, leaves dev workers running by default, and includes old dev workers only with `--include-dev`.
+- [ ] SC-006: A built-CLI discovery test verifies `pibo compute --help` and `pibo compute dev --help` expose only immediate next-step commands without starting Docker.
+
+## Verification Coverage
+
+### Directly Tested
+
+- Dev-auth host safety is covered outside the compute command path by `test/web-gateway.test.mjs` and `test/dev-auth.test.mjs`; these tests verify the host cannot enable dev auth through `PIBO_DEV_AUTH=1` and dev-auth routes require loopback host context.
+
+### Source-Inspected Only
+
+- Compute CLI discovery, command registration, help text, required `--worktree`, and JSON printing are source-inspected from `src/compute/cli.ts`.
+- Image rebuild predicates, source/dependency hash files, Docker build invocation, one-time worker spawn, dev worker spawn, deterministic port blocks, worktree creation, list/release/reap behavior, and `--include-dev` cleanup selection are source-inspected from `src/compute/docker.ts`.
+- Worker entrypoint browser setup and dev-auth gateway dispatch are source-inspected from `scripts/docker-entrypoint.sh`.
+- Docker image dependencies and port exposure are source-inspected from `Dockerfile`.
+
+### Test Matrix
+
+| Test target | Required cases | Primary requirements | Suggested file |
+|---|---|---|---|
+| CLI discovery | `pibo compute --help` lists `spawn`, `dev`, `rebuild`, `list`, `release`, and `reap`; output points to `pibo compute spawn --help` and `pibo compute dev --help`; `pibo compute dev --help` points only to `pibo compute dev spawn --help`. | REQ-001 | `test/compute-cli.test.mjs` |
+| CLI validation without Docker | `pibo compute dev spawn` without `--worktree` fails through Commander before Docker or Git commands run; unknown compute subcommands fail with help/error output. | REQ-001, REQ-004 | `test/compute-cli.test.mjs` |
+| Hash predicates | Dependency hash changes for `package.json`, `package-lock.json`, or `Dockerfile`; source hash includes TypeScript/TSX and package/Dockerfile inputs while skipping generated or local-state directories. | REQ-002 | unit test with temporary workspace |
+| Docker command construction | Mock `docker` and `git` commands to verify one-time worker labels, dynamic exposed ports, dev worker labels, deterministic port mapping, optional owner labels, and node_modules mount behavior. | REQ-003, REQ-004 | command-stub unit test |
+| Cleanup selection | `listWorkers()` includes worker and dev roles by default; `reapWorkers()` removes only role `worker` by default and includes old dev workers only with `includeDev: true`; release never removes worktree directories. | REQ-007 | command-stub unit test |
+
+### Verification Gaps
+
+- Add built-CLI discovery tests before changing compute help text so the progressive discovery rule remains enforced.
+- Add Docker-command stub tests before changing worker labels, port mappings, or cleanup defaults; these tests should not require a real Docker daemon.
+- Keep real Docker spawn validation as an explicit integration check outside normal unit tests because it requires host Docker privileges and can create containers.
 
 ## Assumptions and Open Questions
 
@@ -239,18 +272,18 @@ The compute CLI MUST let operators stop workers explicitly and remove old one-ti
 
 ### Open Questions
 
-- Should `pibo compute list` and `reap` include dev workers, or should dev workers receive separate list/reap commands?
+- Should `pibo compute list` eventually support `--one-time-only` or `--include-dev` flags for symmetric filtering with `reap`?
 - Should release optionally delete the associated worktree after confirmation?
 - Should one-time workers mount the current workspace or remain image-only after build?
 
 ## Traceability
 
-| Requirement | Scenario / Story | Plan / Task | Status |
-|---|---|---|---|
-| REQ-001 Compute CLI is discoverable and scoped | Discover development worker command | None | Draft |
-| REQ-002 Image builds are cached by source or dependency hashes | Dependency change before dev spawn | None | Draft |
-| REQ-003 One-time workers start the web gateway with dynamic ports | Spawn isolated worker | None | Draft |
-| REQ-004 Development workers use Git worktrees and deterministic port blocks | Two dev workers do not collide | None | Draft |
-| REQ-005 Worker entrypoint prepares browser-capable runtime | Browser automation dependency is available | None | Draft |
-| REQ-006 Dev auth remains worker-only | Host cannot enable dev auth by accident | None | Draft |
-| REQ-007 Worker cleanup is explicit and bounded | Reap old one-time worker | None | Draft |
+| Requirement | Scenario / Story | Code Basis | Verification | Status |
+|---|---|---|---|---|
+| REQ-001 Compute CLI is discoverable and scoped | Discover development worker command | `src/compute/cli.ts` | Source-inspected; add `test/compute-cli.test.mjs` | Source-inspected |
+| REQ-002 Image builds are cached by source or dependency hashes | Dependency change before dev spawn | `src/compute/cli.ts`, `src/compute/docker.ts` | Source-inspected; add hash predicate tests | Source-inspected |
+| REQ-003 One-time workers start the web gateway with dynamic ports | Spawn isolated worker | `src/compute/docker.ts`, `Dockerfile` | Source-inspected; real Docker integration check deferred | Source-inspected |
+| REQ-004 Development workers use Git worktrees and deterministic port blocks | Two dev workers do not collide | `src/compute/docker.ts` | Source-inspected; add Docker/Git command-stub tests | Source-inspected |
+| REQ-005 Worker entrypoint prepares browser-capable runtime | Browser automation dependency is available | `scripts/docker-entrypoint.sh`, `Dockerfile` | Source-inspected; real container integration check deferred | Source-inspected |
+| REQ-006 Dev auth remains worker-only | Host cannot enable dev auth by accident | `src/gateway/web.ts`, `src/plugins/dev-auth.ts`, `scripts/docker-entrypoint.sh` | `test/web-gateway.test.mjs`, `test/dev-auth.test.mjs`; compute entrypoint source-inspected | Partly tested |
+| REQ-007 Worker cleanup is explicit and bounded | Reap old one-time worker | `src/compute/cli.ts`, `src/compute/docker.ts` | Source-inspected; add cleanup selection tests | Source-inspected |

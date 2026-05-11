@@ -3,7 +3,7 @@
 **Status:** Draft  
 **Created:** 2026-05-10  
 **Owner / Source:** Scheduled Pibo Source Specs Coverage; current workspace code  
-**Related docs:** [Chat Web Rooms and Event Streams](./chat-web-rooms-and-event-streams.md), [Chat Web Trace and Terminal View](./chat-web-trace-and-terminal-view.md), [Custom Agents and Agent Designer](./custom-agents.md), [Scheduled Pibo Jobs](./scheduled-pibo-jobs.md)
+**Related docs:** [Chat Web Rooms and Event Streams](./chat-web-rooms-and-event-streams.md), [Chat Web Trace and Terminal View](./chat-web-trace-and-terminal-view.md), [Custom Agents and Agent Designer](./custom-agents.md), [Scheduled Pibo Jobs](./scheduled-pibo-jobs.md), [Continuous Ralph Jobs](./continuous-ralph-jobs.md)
 
 ## Why
 
@@ -48,7 +48,7 @@ The browser shell MUST parse Chat Web URLs into exactly one area and its support
 
 #### Current
 
-`chatRouteFromLocation` recognizes `/`, `/sessions/:piboSessionId`, `/rooms/:roomId`, `/rooms/:roomId/sessions/:piboSessionId`, `/projects`, `/projects/:projectId`, `/projects/:projectId/sessions/:piboSessionId`, `/agents`, `/cron`, `/context`, `/settings`, `/settings/pi-packages`, `/settings/skills`, and `/settings/providers`. It also accepts a `view` search parameter for session-capable areas.
+`chatRouteFromLocation` recognizes `/`, `/sessions/:piboSessionId`, `/rooms/:roomId`, `/rooms/:roomId/sessions/:piboSessionId`, `/projects`, `/projects/:projectId`, `/projects/:projectId/sessions/:piboSessionId`, `/agents`, `/cron`, `/ralph`, `/context`, `/settings`, `/settings/pi-packages`, `/settings/skills`, and `/settings/providers`. It accepts a `view` search parameter for session-capable areas and ignores that session-view state for management-only areas such as Agents, Cron, Ralph, Context, and Settings.
 
 #### Target
 
@@ -69,6 +69,13 @@ A browser-only test can call the route parser or mount the router and verify tha
 - GIVEN the user opens `/apps/chat/unknown/path`
 - WHEN the browser shell parses the route
 - THEN the app starts in the sessions area and does not throw a routing error.
+
+#### Scenario: Ralph management route
+
+- GIVEN the user opens `/apps/chat/ralph?view=terminal`
+- WHEN the browser shell parses the route
+- THEN the app route is the Ralph management area
+- AND the `view` query does not select a session view or request a session bootstrap selection.
 
 ### Requirement: Navigation URLs are canonicalized from authoritative server selection
 
@@ -296,7 +303,7 @@ A browser test can force service worker registration and `/health` to fail and v
 - Explicit invalid deep links show errors; implicit remembered selections are recoverable.
 - Archived rooms disable message and command submission in that room.
 - Mobile navigation may close the sidebar on route changes, but callers can keep it open for specific flows.
-- The same session view query is meaningful only for session-capable areas; non-session areas ignore it.
+- The same session view query is meaningful only for session-capable areas; non-session management areas such as Agents, Cron, Ralph, Context, and Settings ignore it.
 - Composer history is browser-local and may contain text from different sessions; drafts remain session-scoped.
 
 ## Constraints
@@ -336,7 +343,7 @@ A browser test can force service worker registration and `/health` to fail and v
 
 | Requirement | Scenario / Story | Plan / Task | Status |
 |---|---|---|---|
-| REQ-001 Routes map to one browser area and optional selection | Deep link to a room session; Unknown path | Browser route tests | Pending |
+| REQ-001 Routes map to one browser area and optional selection | Deep link to a room session; Unknown path; Ralph management route | Browser route tests for `src/apps/chat-ui/src/main.tsx` | Pending |
 | REQ-002 Navigation URLs are canonicalized from authoritative server selection | Remembered room session no longer exists; Explicit invalid session link | Navigation fallback tests | Pending |
 | REQ-003 Browser preferences are local, bounded, and non-fatal | Locked-down browser storage | Local storage failure tests | Pending |
 | REQ-004 Last session selection is remembered per browser and per room | Room-specific selection | Selection persistence tests | Pending |
@@ -355,6 +362,7 @@ This spec is based on the current code in:
 - `src/apps/chat-ui/src/App.tsx`
 - `src/apps/chat-ui/src/cache.ts`
 - `src/apps/chat-ui/src/api.ts`
+- `src/apps/chat-ui/src/RalphArea.tsx`
 - `src/apps/chat-ui/src/session-views/types.ts`
 - `src/apps/chat/web-app.ts`
 - `src/apps/chat/stream.ts`

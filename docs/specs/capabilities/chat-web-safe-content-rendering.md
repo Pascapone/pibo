@@ -2,6 +2,7 @@
 
 **Status:** Draft  
 **Created:** 2026-05-10  
+**Updated:** 2026-05-11  
 **Owner / Source:** Scheduled Pibo Source Specs Coverage; current workspace code  
 **Related docs:** [Chat Web Trace and Terminal View](./chat-web-trace-and-terminal-view.md), [Chat Web Browser Shell State](./chat-web-browser-shell-state.md), [Curated CLI Tools](./curated-cli-tools.md)
 
@@ -219,6 +220,36 @@ Users can inspect provider-shaped payloads and command outputs without seeing un
 - [ ] SC-004: A compact-terminal test verifies inline function-call JSON can collapse nested values and expand long strings independently.
 - [ ] SC-005: A terminal-detail test verifies text wrappers and status-prefixed JSON are normalized into readable detail panels.
 
+## Verification Coverage
+
+### Directly Tested
+
+- No focused renderer-safety tests were found under `test/*.test.mjs` in the current workspace.
+
+### Source-Inspected Only
+
+- Markdown element allowlisting, raw-HTML skipping, safe URL transformation, link isolation, read-only task checkboxes, language aliasing, and best-effort Prism highlighting are source-inspected from `src/apps/chat-ui/src/tracing/MarkdownRenderer.tsx`.
+- Structured JSON parsing, invalid JSON fallback, expand/collapse controls, max-height scrolling, clipboard support, and long-string shortening are source-inspected from `src/apps/chat-ui/src/tracing/JsonRenderer.tsx`.
+- Inline function-call rendering, path-scoped object/array collapse, escaped path keys, long-string expansion, and click-propagation blocking are source-inspected from `src/apps/chat-ui/src/session-views/compact-terminal/TerminalInlineJson.tsx`.
+- Detail payload normalization, text-wrapper extraction, status-prefixed JSON parsing, linked child-session buttons, and empty-detail omission are source-inspected from `src/apps/chat-ui/src/session-views/compact-terminal/TerminalDetails.tsx` and `terminalValue.ts`.
+
+### Test Matrix
+
+| Test target | Required cases | Primary requirements | Suggested file |
+|---|---|---|---|
+| Markdown safety | Raw `<script>` and inline HTML are skipped; `javascript:` and `data:` links have no usable `href`; accepted links use `target="_blank"` and `rel="noreferrer"`. | REQ-001, REQ-002 | `test/chat-ui-rendering-safety.test.mjs` or component test |
+| Markdown formatting compatibility | GFM table, task checkbox, strikethrough, heading, list, and code block still render; task checkbox is disabled/read-only. | REQ-001, REQ-003 | `test/chat-ui-rendering-safety.test.mjs` or component test |
+| Code highlighting fallback | `sh`, `shell`, `js`, `ts`, `md`, and `yml` map to canonical languages; unknown language renders plain escaped code without throwing. | REQ-003 | `test/chat-ui-rendering-safety.test.mjs` or component test |
+| JSON renderer fallback | Object input renders structured JSON; object/array strings parse; invalid JSON-like strings and scalar strings render escaped preformatted text; `maxHeight` is applied. | REQ-004 | `test/chat-ui-json-renderer.test.mjs` or component test |
+| Inline function-call JSON | Root is expanded by default; nested paths collapse/expand independently; path keys with dots or backslashes remain distinct; long strings expand without toggling parent row state. | REQ-005 | `test/chat-ui-terminal-inline-json.test.mjs` or component test |
+| Terminal details | `undefined` and `null` details are omitted; common text wrappers render text; direct JSON and status-prefixed JSON render structured JSON with status metadata; non-JSON text stays preformatted. | REQ-006 | `test/chat-ui-terminal-details.test.mjs` or component test |
+
+### Verification Gaps
+
+- Add browser-independent component tests before changing renderer dependencies or markdown allowlists.
+- Add at least one regression test for unsafe URL removal because link behavior is security-sensitive and easy to weaken during markdown library upgrades.
+- Add compact-terminal tests before reworking row expansion so inline JSON toggles cannot accidentally open or close the parent row.
+
 ## Assumptions and Open Questions
 
 ### Assumptions
@@ -235,12 +266,12 @@ Users can inspect provider-shaped payloads and command outputs without seeing un
 
 | Requirement | Scenario / Story | Plan / Task | Status |
 |---|---|---|---|
-| REQ-001 Markdown allows only approved presentation elements | Raw HTML in assistant text | Add renderer safety tests | Pending |
-| REQ-002 Markdown links are protocol-limited and isolated | Unsafe markdown link | Add URL transform tests | Pending |
-| REQ-003 Code highlighting is best-effort and non-blocking | Unknown code language | Add markdown code-block tests | Pending |
-| REQ-004 Structured payloads render as bounded JSON when possible | Tool returns invalid JSON-like text | Add JSON renderer tests | Pending |
-| REQ-005 Terminal function-call arguments are inline and collapsible | Long string argument | Add compact-terminal interaction tests | Pending |
-| REQ-006 Terminal details normalize text wrappers and parse embedded JSON | Command output with status and JSON | Add terminal-detail parsing tests | Pending |
+| REQ-001 Markdown allows only approved presentation elements | Raw HTML in assistant text | `src/apps/chat-ui/src/tracing/MarkdownRenderer.tsx`; add renderer safety tests | Source-inspected |
+| REQ-002 Markdown links are protocol-limited and isolated | Unsafe markdown link | `src/apps/chat-ui/src/tracing/MarkdownRenderer.tsx`; add URL transform tests | Source-inspected |
+| REQ-003 Code highlighting is best-effort and non-blocking | Unknown code language | `src/apps/chat-ui/src/tracing/MarkdownRenderer.tsx`; add markdown code-block tests | Source-inspected |
+| REQ-004 Structured payloads render as bounded JSON when possible | Tool returns invalid JSON-like text | `src/apps/chat-ui/src/tracing/JsonRenderer.tsx`; add JSON renderer tests | Source-inspected |
+| REQ-005 Terminal function-call arguments are inline and collapsible | Long string argument | `src/apps/chat-ui/src/session-views/compact-terminal/TerminalInlineJson.tsx`; add compact-terminal interaction tests | Source-inspected |
+| REQ-006 Terminal details normalize text wrappers and parse embedded JSON | Command output with status and JSON | `src/apps/chat-ui/src/session-views/compact-terminal/TerminalDetails.tsx`, `terminalValue.ts`; add terminal-detail parsing tests | Source-inspected |
 
 ## Verification Basis
 

@@ -86,8 +86,10 @@ Provider credentials are stored in Pi Coding Agent auth storage and are later vi
 #### Acceptance
 
 - `/login` returns an interactive provider menu with configured flags.
-- `login.start` for `openai-codex` returns a device-code login payload with verification URL, user code, state, provider, and instructions.
-- `login.complete` for `openai-codex` polls the device authorization flow, exchanges the authorization code, stores OAuth access and refresh tokens, and returns the detected account id when present.
+- `login.start` for `openai-codex` returns a device-code login payload with verification URL, user code, state, provider, polling interval, and instructions.
+- `login.complete` for `openai-codex` polls the device authorization flow, treats pending 403/404 responses as retryable until timeout, exchanges the authorization code, stores OAuth access and refresh tokens, and returns the detected account id when present.
+- `login.start` for `openai-codex-browser` returns a browser PKCE authorization URL and stores transient verifier state under the browser flow provider.
+- `login.complete` for `openai-codex-browser` requires an authorization code, exchanges it with the browser redirect URI, and stores the resulting credential under canonical provider `openai-codex`.
 - `login.apikey` stores an API-key credential for the requested provider.
 - `login.status` returns stored auth status for all providers or a requested provider.
 - `logout` removes the requested provider credential.
@@ -100,6 +102,14 @@ Provider credentials are stored in Pi Coding Agent auth storage and are later vi
 - WHEN the user completes `login.complete` with the returned state after authorizing
 - THEN Pibo stores an OAuth credential under `openai-codex`
 - AND later `login.status` reports `openai-codex` as configured.
+
+#### Scenario: Browser PKCE login canonicalizes credentials
+
+- GIVEN a user starts `login.start` with provider `openai-codex-browser`
+- AND the provider redirects with an authorization code for the returned state
+- WHEN the user completes `login.complete` with provider `openai-codex-browser`
+- THEN Pibo exchanges the code with the browser redirect URI
+- AND stores the resulting OAuth credential under provider `openai-codex`.
 
 ### Requirement: Pending OAuth login state is provider-bound and expires
 
@@ -230,6 +240,43 @@ Interactive model selection avoids offering choices that runtime creation would 
 - THEN the menu contains no selectable providers
 - AND the UI can present an empty authenticated-provider state.
 
+### Requirement: Terminal action cards provide safe provider operations
+
+The Chat Web terminal MUST render provider login, model selection, and status action results as bounded interactive cards instead of raw JSON when the gateway action payload is recognized.
+
+#### Current
+
+The compact terminal maps `login` tool output with `action: "show_login_menu"` to `tool.login`, maps `model` tool output with `action: "show_model_menu"` to `tool.model`, and maps `status` output to `tool.status`. `TerminalLoginCard` starts provider login through `login.start`, completes device/browser-code flows through `login.complete`, stores API keys through `login.apikey`, and requires a selected Pibo Session before starting session-bound actions. `TerminalModelCard` filters authenticated model choices by search and writes the selected `{ provider, id }` to the current Pibo Session through `PATCH /api/chat/sessions/:id`. `TerminalStatusCard` parses status JSON defensively and renders session state, queue state, context usage, provider usage, credits, and foldable enabled tools.
+
+#### Target
+
+Provider operations remain usable from slash-command output while preserving session ownership, avoiding accidental credential display, and degrading safely when payloads cannot be parsed.
+
+#### Acceptance
+
+- A recognized `/login` result renders provider choices, configured-provider badges, supported auth methods, device/browser-code completion, and API-key entry without showing the API key after save.
+- Login actions are not started when no Pibo Session is selected; the card shows a local error instead.
+- Device and browser-code login flows expose the returned URL, user code or code-entry field, copied-state feedback, provider instructions, busy state, success, and errors.
+- A recognized `/model` result renders only the authenticated providers supplied by the gateway action, supports search across provider/model labels and ids, and patches the selected session active model.
+- A model-selection failure leaves the card visible and reports the mutation error instead of pretending the model changed.
+- A recognized `/status` result renders parseable status fields and shows an unparseable status fallback for invalid output.
+- Provider usage and context usage are display-only in the terminal status card.
+- Unrecognized login or model payloads remain normal tool output and are not treated as trusted interactive cards.
+
+#### Scenario: Select an authenticated model from the terminal
+
+- GIVEN a Chat Web session receives a `/model` action result with one authenticated provider and two models
+- WHEN the user searches for one model and selects it
+- THEN Chat Web patches the selected Pibo Session active model to that provider/model id
+- AND the card reports the selected model after the patch completes.
+
+#### Scenario: Complete provider login from the terminal
+
+- GIVEN a Chat Web session receives a `/login` action result listing OpenAI Codex with device-code support
+- WHEN the user starts device login, authorizes with the returned user code, and chooses Complete
+- THEN Chat Web calls `login.start` and `login.complete` against the selected Pibo Session
+- AND the card reports success or the returned action error without exposing stored credential material.
+
 ### Requirement: User timezone is owner-scoped runtime context
 
 The system MUST store user settings by Owner Scope and inject the sanitized timezone into runtime session context.
@@ -273,6 +320,7 @@ Status output can show OpenAI Codex rate-limit and credit information without fa
 - Non-`openai-codex` active models return no provider usage.
 - Missing or non-OAuth `openai-codex` credentials return no provider usage.
 - Successful usage responses normalize limit windows, remaining percentages, reset timestamps, plan type, and credits when present.
+- JWT account-id extraction prefers a stored credential account id and otherwise reads the OpenAI auth claim from the access token when present.
 - Failed usage HTTP responses surface an explicit OpenAI Codex usage error.
 
 #### Scenario: API key credential has no usage status
@@ -306,6 +354,40 @@ Status output can show OpenAI Codex rate-limit and credit information without fa
 - [ ] SC-004: Login-action tests verify OpenAI Codex device login stores OAuth credentials and reports configured status.
 - [ ] SC-005: Runtime validation tests or integration checks verify unknown and unauthenticated selected models fail before a Pi agent run starts.
 - [ ] SC-006: Chat Web API checks verify model-default and user-settings mutations require authenticated same-origin JSON requests.
+- [ ] SC-007: Chat Web terminal checks verify login, model, and status action cards parse recognized payloads, call the correct session-bound actions, handle errors, and fall back safely for malformed payloads.
+
+## Verification Coverage
+
+This section separates currently direct verification from source-inspected behavior. It is part of the provider/model contract so future work can add focused tests without expanding this spec into duplicate capability documents.
+
+### Directly Tested
+
+- Model catalog grouping, model sorting, provider auth annotations, and reasoning-support flags are verified by `test/model-catalog.test.mjs`.
+- Model-default loading, saving, invalid JSON handling, and partial sanitization are verified by `test/model-defaults.test.mjs`.
+- Session active-model source-of-truth behavior, default precedence, fork/clone inheritance, SQLite persistence, and older-schema backfill are verified by `test/session-model-source-of-truth.test.mjs`.
+- OpenAI Codex device-code login starts the device flow, exchanges the authorization code, stores OAuth credentials under `openai-codex`, extracts account id from the JWT auth claim, and reports configured login status. Verified by `test/login-actions.test.mjs`.
+
+### Source-Inspected Only
+
+- Browser PKCE login for `openai-codex-browser` is implemented in `src/auth/login-actions.ts`; it creates a verifier/challenge pair, returns an OpenAI authorization URL, requires a code at completion, exchanges with the browser redirect URI, and stores credentials under canonical provider `openai-codex`.
+- Pending login state mismatch, browser/device flow mismatch, ten-minute expiry, retryable device polling, and unsupported-provider errors are implemented in `src/auth/login-actions.ts` but do not have focused direct tests in the current test inventory.
+- OpenAI Codex usage status is implemented in `src/auth/openai-codex-usage.ts`; it only runs for active `openai-codex` OAuth credentials, derives account id from stored credential or JWT claim, normalizes rate-limit windows and credits, and throws explicit errors for failed usage responses.
+- Runtime rejection of unknown or unauthenticated selected models is implemented in `src/core/runtime.ts` and selected by `src/core/session-router.ts`, but current direct tests focus on selection/freezing rather than runtime provider-auth failure.
+- Terminal action-card behavior for `/login`, `/model`, and `/status` is implemented in `src/apps/chat-ui/src/session-views/compact-terminal/*` and remains source-inspected only.
+- Owner-scoped user settings and timezone injection are implemented in `src/core/user-settings.ts`, `src/apps/chat/web-app.ts`, and `src/core/session-router.ts`; current tests do not directly exercise the Chat Web settings mutation plus runtime-context path.
+
+### Recommended Test Matrix
+
+| Test target | Required cases | Primary requirements | Suggested file |
+|---|---|---|---|
+| Browser PKCE login | `login.start` for `openai-codex-browser` returns an authorization URL with `state`, PKCE challenge, redirect URI, and supported scope; `login.complete` requires a code; successful completion stores OAuth credentials under `openai-codex`; the returned provider is canonicalized to `openai-codex`. | Login actions manage provider credentials; Pending OAuth login state is provider-bound and expires | `test/login-actions.test.mjs` |
+| Pending login state safety | Unknown state fails; provider mismatch fails without storing credentials; browser/device flow mismatch fails; expired state is deleted and fails; unsupported providers report explicit unsupported-provider errors. | Pending OAuth login state is provider-bound and expires | `test/login-actions.test.mjs` |
+| Device polling failures | Device polling treats `403` and `404` as retryable pending states; unexpected HTTP status fails with response text; malformed device/token responses fail before storing credentials. | Login actions manage provider credentials | `test/login-actions.test.mjs` |
+| Runtime model validation | Unknown provider/model fails before Pi session creation; known unauthenticated model fails before Pi session creation; authenticated model is passed to Pi runtime options without fallback. | Runtime rejects unknown or unauthenticated selected models | `test/runtime-model-validation.test.mjs` |
+| Gateway model menu | Menu payload uses `show_model_menu`; unauthenticated providers and explicitly unauthenticated models are excluded; empty authenticated-provider state returns a bounded empty menu. | Model menu exposes only authenticated model choices | `test/gateway-model-action.test.mjs` |
+| OpenAI Codex provider usage | Non-`openai-codex` active models return no usage; API-key credentials return no usage; OAuth credentials add bearer and account headers; snake_case and camelCase usage payloads normalize to limit windows, reset times, remaining percentages, plan type, and credits; failed HTTP status throws a usage error. | Provider usage is optional and provider-specific | `test/openai-codex-usage.test.mjs` |
+| Owner-scoped user settings | Missing settings default to `UTC`; invalid timezones are rejected by the Chat Web PATCH endpoint; valid timezones persist per Owner Scope; a runtime for another Owner Scope does not read them; runtime session context includes the sanitized timezone. | User timezone is owner-scoped runtime context | `test/user-settings-runtime-context.test.mjs` |
+| Terminal provider cards | Recognized login/model/status payloads render cards; missing selected session blocks session-bound actions; API keys are not echoed after save; model selection patches the selected Pibo Session; malformed or unrecognized payloads fall back to normal tool output. | Terminal action cards provide safe provider operations | component test or browser-independent terminal renderer test |
 
 ## Assumptions and Open Questions
 
@@ -326,14 +408,15 @@ Status output can show OpenAI Codex rate-limit and credit information without fa
 | Requirement | Scenario / Story | Plan / Task | Status |
 |---|---|---|---|
 | REQ-001 Model catalog is grouped by provider | Authenticated provider is visible | `test/model-catalog.test.mjs` | Covered |
-| REQ-002 Login actions manage provider credentials | OpenAI Codex device login completes | `test/login-actions.test.mjs` | Covered |
-| REQ-003 Pending OAuth login state is provider-bound and expires | Provider mismatch is rejected | Add focused login-state tests | Pending |
+| REQ-002 Login actions manage provider credentials | OpenAI Codex device login completes; Browser PKCE login canonicalizes credentials | `src/auth/login-actions.ts`, `test/login-actions.test.mjs` | Partial: device flow tested; browser PKCE source-inspected |
+| REQ-003 Pending OAuth login state is provider-bound and expires | Provider mismatch is rejected | `src/auth/login-actions.ts`; add focused login-state tests | Partial |
 | REQ-004 Model defaults are sanitized and persisted locally | Invalid default is ignored | `test/model-defaults.test.mjs` plus invalid-input cases | Partial |
 | REQ-005 Session active model is frozen before runtime use | Defaults change after session creation | `test/session-model-source-of-truth.test.mjs` | Covered |
 | REQ-006 Runtime rejects unknown or unauthenticated selected models | User chooses an unauthenticated model | Add runtime validation test | Pending |
 | REQ-007 Model menu exposes only authenticated model choices | No providers are authenticated | Add gateway action test | Pending |
-| REQ-008 User timezone is owner-scoped runtime context | User sets timezone | Add user-settings API/router test | Pending |
-| REQ-009 Provider usage is optional and provider-specific | API key credential has no usage status | Add provider usage test | Pending |
+| REQ-008 Terminal action cards provide safe provider operations | Select an authenticated model from the terminal; Complete provider login from the terminal | `src/apps/chat-ui/src/session-views/compact-terminal/TerminalLoginCard.tsx`, `TerminalModelCard.tsx`, `TerminalStatusCard.tsx`, `loginMenu.ts`, `terminalRows.ts`; add terminal-card tests | Source-inspected only |
+| REQ-009 User timezone is owner-scoped runtime context | User sets timezone | Add user-settings API/router test | Pending |
+| REQ-010 Provider usage is optional and provider-specific | API key credential has no usage status | `src/auth/openai-codex-usage.ts`; add provider usage test | Source-inspected only |
 
 ## Verification Basis
 
@@ -349,9 +432,20 @@ This spec is based on the current code in:
 - `src/core/runtime.ts`
 - `src/core/user-settings.ts`
 - `src/plugins/builtin.ts`
+- `src/apps/chat-ui/src/session-views/compact-terminal/TerminalLoginCard.tsx`
+- `src/apps/chat-ui/src/session-views/compact-terminal/TerminalModelCard.tsx`
+- `src/apps/chat-ui/src/session-views/compact-terminal/TerminalStatusCard.tsx`
+- `src/apps/chat-ui/src/session-views/compact-terminal/loginMenu.ts`
+- `src/apps/chat-ui/src/session-views/compact-terminal/terminalRows.ts`
 - `src/sessions/store.ts`
 - `src/sessions/sqlite-store.ts`
 - `test/model-catalog.test.mjs`
 - `test/model-defaults.test.mjs`
 - `test/session-model-source-of-truth.test.mjs`
 - `test/login-actions.test.mjs`
+
+## Change Log
+
+- 2026-05-11: Tightened the provider-login and OpenAI Codex usage contract from current `login-actions` and `openai-codex-usage` source inspection; no source changes.
+- 2026-05-11: Added Chat Web terminal action-card behavior for `/login`, `/model`, and `/status` from current compact-terminal source inspection; no source changes.
+- 2026-05-11: Added verification coverage and a focused test matrix for provider auth, model selection, user settings, terminal cards, and OpenAI Codex usage; no source changes.

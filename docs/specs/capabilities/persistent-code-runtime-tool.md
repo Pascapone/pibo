@@ -143,6 +143,33 @@ Agents can distinguish printed output from return values and failures without pa
 - AND includes `stderr: "err\n"`
 - AND does not merge either stream into the value summary
 
+### Requirement: Worker protocol isolates control frames from user streams
+
+The system MUST keep backend request/response protocol frames parseable while capturing user stdout and stderr as result fields.
+
+#### Current
+
+Python workers redirect user stdout and stderr while executing user code, then write one JSON response line to the worker protocol stream. Node workers run user code in a VM context with proxied `console`, `process.stdout.write`, and `process.stderr.write` so user output is appended to the current action result instead of corrupting protocol JSON.
+
+#### Target
+
+Agents can print arbitrary normal text from Python or Node snippets without breaking the runtime session protocol, and protocol errors are reported as runtime errors rather than mixed into user output.
+
+#### Acceptance
+
+- Python `print` and `sys.stderr` writes appear in `stdout` and `stderr` result fields.
+- Node `console.log`, `console.error`, `process.stdout.write`, and `process.stderr.write` appear in `stdout` and `stderr` result fields.
+- User output does not appear as standalone protocol lines consumed by the backend controller.
+- Unknown worker request types return a structured `RuntimeProtocolError` response.
+- Worker readiness is reported with a ready control frame before normal requests are accepted.
+
+#### Scenario: Node output does not corrupt protocol
+
+- GIVEN a Node runtime session
+- WHEN code writes JSON-looking text to `console.log` and `process.stdout.write`
+- THEN the exec result contains that text in `stdout`
+- AND the controller still receives one response for the exec request.
+
 ### Requirement: Inspect and vars read live runtime state without executing new user code blocks
 
 The tool MUST support `inspect` and `vars` actions for the selected owned runtime session.
@@ -250,6 +277,7 @@ Agents see an explicit unsupported-target result instead of a partial or mislead
 
 - Worker startup can fail when `python3`, `node`, or a custom executable is missing.
 - A worker that writes invalid protocol JSON is treated as failed and pending requests are rejected.
+- User code that prints JSON-looking or newline-delimited text must be captured as output, not interpreted as backend protocol.
 - An interrupt can kill or destabilize the worker; later exec may return `not_found` or `failed` if the backend exits.
 - `list` only returns sessions owned by the current Pibo Session.
 - Runtime history is retained only in memory and capped by `maxHistoryEntries`.
@@ -268,8 +296,9 @@ Agents see an explicit unsupported-target result instead of a partial or mislead
 - [ ] SC-003: Python and Node language errors keep prior state and do not trigger `closeOnSuccess`.
 - [ ] SC-004: Owner isolation prevents one Pibo Session from listing or using another session's runtime workers.
 - [ ] SC-005: `stdout`, `stderr`, value summaries, and error summaries remain separate in tool details.
-- [ ] SC-006: Explicit close and `closeOnSuccess` remove sessions from owner listings.
-- [ ] SC-007: Unsupported `docker` and `ssh` targets return explicit unsupported-target errors.
+- [ ] SC-006: Worker protocol frames remain isolated from user stdout/stderr for Python and Node workers.
+- [ ] SC-007: Explicit close and `closeOnSuccess` remove sessions from owner listings.
+- [ ] SC-008: Unsupported `docker` and `ssh` targets return explicit unsupported-target errors.
 
 ## Assumptions and Open Questions
 
@@ -292,11 +321,12 @@ Agents see an explicit unsupported-target result instead of a partial or mislead
 | REQ-001 Runtime tool activation is profile-gated | Codex-compatible profile includes runtime | Existing implementation | Implemented |
 | REQ-002 Exec auto-starts an owner-scoped default session | Preserve Python variable | Existing implementation | Implemented |
 | REQ-003 Runtime sessions preserve state after code errors | Node exception keeps prior state | Existing implementation | Implemented |
-| REQ-004 Outputs and value summaries are separated | Separate Python streams | Existing implementation | Implemented |
-| REQ-005 Inspect and vars read live runtime state | Inspect Python function | Existing implementation | Implemented |
-| REQ-006 Busy, timeout, interruption, and not-found states are explicit | Exec timeout is not a silent success | Existing implementation | Implemented |
-| REQ-007 Session cleanup is explicit and automatic | closeOnSuccess removes session | Existing implementation | Implemented |
-| REQ-008 Unsupported targets fail before worker startup | Docker target requested | Existing implementation | Implemented |
+| REQ-004 Outputs and value summaries are separated | Separate Python streams | `src/tools/runtime/python-worker-source.ts`, `src/tools/runtime/node-worker-source.ts`, `test/runtime-tool.test.mjs` | Runtime-tested |
+| REQ-005 Worker protocol isolates control frames from user streams | Node output does not corrupt protocol | `src/tools/runtime/python-worker-source.ts`, `src/tools/runtime/node-worker-source.ts`, `src/tools/runtime/python-backend.ts`, `src/tools/runtime/node-backend.ts`, `test/runtime-tool.test.mjs` | Partial: stdout/stderr tested; JSON-looking output and unknown protocol source-inspected |
+| REQ-006 Inspect and vars read live runtime state | Inspect Python function | `src/tools/runtime/*worker-source.ts`, `test/runtime-tool.test.mjs` | Runtime-tested |
+| REQ-007 Busy, timeout, interruption, and not-found states are explicit | Exec timeout is not a silent success | `src/tools/runtime/registry.ts`, `src/tools/runtime/*backend.ts` | Source-inspected |
+| REQ-008 Session cleanup is explicit and automatic | closeOnSuccess removes session | `src/tools/runtime/registry.ts`, `test/runtime-tool.test.mjs` | Runtime-tested |
+| REQ-009 Unsupported targets fail before worker startup | Docker target requested | `src/tools/runtime/registry.ts` | Source-inspected |
 
 ## Verification Basis
 
@@ -310,4 +340,10 @@ This spec is based on current code in:
 - `src/tools/runtime/types.ts`
 - `src/tools/runtime/python-backend.ts`
 - `src/tools/runtime/node-backend.ts`
+- `src/tools/runtime/python-worker-source.ts`
+- `src/tools/runtime/node-worker-source.ts`
 - `test/runtime-tool.test.mjs`
+
+## Change Log
+
+- 2026-05-11: Added the worker-protocol isolation requirement from current Python/Node worker source inspection and existing runtime tool tests.

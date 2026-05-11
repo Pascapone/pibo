@@ -289,6 +289,27 @@ Profiles MUST be able to select both plugin and managed context files by key, an
 - WHEN Pibo creates that custom agent's profile definition
 - THEN profile creation continues and omits the unknown context file.
 
+### Requirement: API mutations require authenticated JSON requests
+
+The Context Files API MUST require an authenticated web session for reads and mutations, and mutation handlers MUST parse a JSON request body before creating, editing, deleting, linking, resetting, adopting, or restoring managed files.
+
+#### Current
+
+`createContextFilesWebApp` calls `context.requireSession({ request })` on list, read, event-stream, create, update, metadata update, delete, link-from-plugin, reset-to-source, restore-revision, revision, diff, and adopt-source routes. Mutation routes call `readJsonBody()` where they accept a request body. Source-reset and source-adoption routes require authentication and do not require a body. Unlike the Chat Web API helper in `src/apps/chat/web-app.ts`, the current Context Files plugin does not check the `Origin` header before mutations.
+
+#### Acceptance
+
+- Requests without a valid web session fail before listing, reading, or mutating context files.
+- Create, save, metadata update, delete, link-from-plugin, and restore-revision mutations reject malformed JSON bodies before changing managed state.
+- Source reset and source adoption can run with an authenticated request and no body because their current source of truth is the linked file state.
+- The current source-backed contract does not claim same-origin `Origin` enforcement for Context Files mutations until the implementation adds it.
+
+#### Scenario: Unauthenticated save is rejected
+
+- GIVEN a managed context file exists
+- WHEN a request without a valid web session sends `PUT /api/context-files/:key`
+- THEN the API rejects the request before writing markdown, appending a revision, or emitting a product event.
+
 ## Edge Cases
 
 - A managed markdown file may be deleted from disk; reads MUST fall back to the active revision when possible.
@@ -301,7 +322,7 @@ Profiles MUST be able to select both plugin and managed context files by key, an
 ## Constraints
 
 - **Product Boundary:** Pibo owns managed context-file metadata, revisions, source links, and registry updates. Plugin context files remain plugin-owned sources.
-- **Security / Privacy:** Context File APIs MUST require an authenticated web session. Managed mutations record the web session owner scope as revision actor metadata when available.
+- **Security / Privacy:** Context File APIs MUST require an authenticated web session. Managed mutations record the web session owner scope as revision actor metadata when available. Current Context Files mutation handlers require JSON bodies where a body is consumed, but they do not perform the Chat Web `Origin` header guard.
 - **Compatibility:** Legacy managed JSON metadata MUST be migrated forward without treating it as the post-migration source of truth.
 - **Reliability:** Revision history MUST preserve enough content to recover a managed file when its backing markdown file is missing.
 - **UX Safety:** The browser editor MUST prefer visible warnings and raw-markdown fallback over silently dropping content.
@@ -320,6 +341,7 @@ Profiles MUST be able to select both plugin and managed context files by key, an
 - [ ] SC-009: Context Files UI autosave covers delayed save, selection flush, failed save, and version-conflict behavior.
 - [ ] SC-010: Context Files UI event handling covers same-browser echoes, external changes while saved, external changes while unsaved, and SSE disconnect errors.
 - [ ] SC-011: Context Files UI editor tests cover read-only plugin documents, rich-editor fallback, plain-text autosave, and inline-code exit navigation.
+- [ ] SC-012: Context Files API tests cover unauthenticated rejection and malformed JSON rejection for managed mutation routes, and document whether same-origin `Origin` checks are added or intentionally absent.
 
 ## Assumptions and Open Questions
 
@@ -332,6 +354,7 @@ Profiles MUST be able to select both plugin and managed context files by key, an
 ### Open Questions
 
 - Should managed context files become owner-scoped rather than shared within the local Pibo home?
+- Should Context Files mutations adopt the shared Chat Web same-origin `Origin` guard, or remain authenticated-session plus JSON-body guarded because the app is mounted as a separate same-origin web app?
 - Should source adoption and source reset remain separate actions, or should the UI merge them with clearer copy?
 - Should large context files have size limits or warnings before runtime injection?
 - Should managed context files emit durable reliability events in addition to in-process product events?
@@ -351,7 +374,8 @@ Profiles MUST be able to select both plugin and managed context files by key, an
 | REQ-009 Context Files UI reacts to live changes without overwriting local edits | External edit while local draft exists | `src/apps/context-files-ui/src/main.tsx`, `src/plugins/context-files.ts` | Implemented |
 | REQ-010 Rich markdown editing has a plain-text safety fallback | Rich editor rejects a document | `src/apps/context-files-ui/src/components/MarkdownEditor.tsx` | Implemented |
 | REQ-011 Runtime profile selection uses managed and plugin context files by key | Custom agent has stale context-file key | `src/core/profiles.ts`, `src/apps/chat/agent-profiles.ts`, `test/agent-profiles.test.mjs` | Implemented |
+| REQ-012 API mutations require authenticated JSON requests | Unauthenticated save is rejected | `src/plugins/context-files.ts`, `src/web/channel.ts`, `src/web/http.ts`, `test/context-files-web.test.mjs` | Partly tested |
 
 ## Verification Basis
 
-Current behavior is covered or illustrated by `test/context-files-web.test.mjs`, `test/agent-profiles.test.mjs`, `test/plugin-registry.test.mjs`, context-file references in `test/web-channel.test.mjs`, and current UI code under `src/apps/context-files-ui/src/`.
+Current behavior is covered or illustrated by `test/context-files-web.test.mjs`, `test/agent-profiles.test.mjs`, `test/plugin-registry.test.mjs`, context-file references in `test/web-channel.test.mjs`, and current UI code under `src/apps/context-files-ui/src/`. The API mutation boundary was rechecked against `src/plugins/context-files.ts`, especially `createContextFilesWebApp`, and against the shared web request helpers in `src/web/http.ts`.

@@ -263,6 +263,30 @@ A terminal turn node older than the configured success TTL is removed from snaps
 - THEN the turn node is removed
 - AND the session snapshot remains available.
 
+### Requirement: Signal performance benchmark exercises deep-tree propagation
+
+The project SHOULD provide an operator-run benchmark that measures signal registry cost for deep session trees, repeated no-op queue updates, and repeated tool metadata updates without requiring a live gateway or browser.
+
+#### Current
+
+`scripts/bench-signal-registry.mjs` imports the compiled signal registry from `dist/signals/registry.js`. It creates a synthetic session tree with configurable depth, starts one leaf tool, projects repeated identical queue updates, projects repeated tool metadata changes, and prints elapsed milliseconds for each phase. Defaults are `PIBO_SIGNAL_BENCH_DEPTH=100` and `PIBO_SIGNAL_BENCH_TOOL_UPDATES=1000`.
+
+#### Acceptance
+
+- The benchmark runs against the compiled `dist/` artifact and does not import TypeScript source directly.
+- `PIBO_SIGNAL_BENCH_DEPTH` changes the number of synthetic parent/child sessions.
+- `PIBO_SIGNAL_BENCH_TOOL_UPDATES` changes both repeated queue-update and tool-metadata-update loop counts.
+- Repeated identical queue updates are included so no-op projection behavior remains visible to operators.
+- The benchmark prints one timing line for tree creation, one for leaf-tool propagation, one for identical queue updates, and one for tool metadata updates.
+
+#### Scenario: Benchmark a deeper tree
+
+- GIVEN the project has been built
+- WHEN an operator runs `PIBO_SIGNAL_BENCH_DEPTH=250 PIBO_SIGNAL_BENCH_TOOL_UPDATES=2000 node scripts/bench-signal-registry.mjs`
+- THEN the script creates a 250-deep synthetic session tree
+- AND reports timing for propagating a leaf tool through that tree
+- AND reports timing for 2000 repeated queue updates and 2000 tool metadata updates.
+
 ## Edge Cases
 
 - Unknown future signal kinds and statuses MAY pass through as strings, but existing aggregate logic only treats known active and terminal statuses specially.
@@ -275,7 +299,7 @@ A terminal turn node older than the configured success TTL is removed from snaps
 
 - **Compatibility:** Public signal API fields use JSON-compatible records and Pibo Session IDs.
 - **Security / Privacy:** Signal snapshots are owner-scoped and must not leak another user's session ids, tool names, run ids, or error text.
-- **Performance:** Navigation overlays should use compact snapshot summaries; full trace reconstruction must not be required for basic running/error indicators.
+- **Performance:** Navigation overlays should use compact snapshot summaries; full trace reconstruction must not be required for basic running/error indicators. The benchmark is diagnostic, not a fixed performance budget.
 - **Durability:** Current signal state is in-memory and can be reconstructed only from currently known sessions, runs, and future events. Durable signals require a separate spec or extension.
 - **Product boundary:** Signals summarize Product Boundary events. They do not replace Pi transcript files or Pibo-owned durable stores.
 
@@ -285,6 +309,7 @@ A terminal turn node older than the configured success TTL is removed from snaps
 - [ ] SC-002: `test/chat-signals-api.test.mjs` verifies owner-scoped snapshots, tree snapshots, SSE snapshot-before-patch behavior, and navigation/bootstrap status overlays.
 - [ ] SC-003: Chat Web can show running, idle, and error state for a selected session tree without reading the full trace.
 - [ ] SC-004: A failed tool call or yielded run remains visible as a node error without incorrectly marking the whole session failed.
+- [ ] SC-005: `scripts/bench-signal-registry.mjs` runs after build and prints timing for deep-tree propagation, no-op queue updates, and metadata-changing tool updates.
 
 ## Assumptions and Open Questions
 
@@ -315,7 +340,8 @@ A terminal turn node older than the configured success TTL is removed from snaps
 | REQ-009 SSE snapshot before patches | Subscribe to root tree | `src/apps/chat/web-app.ts`, `src/apps/chat-ui/src/api.ts`, `test/chat-signals-api.test.mjs` | Draft |
 | REQ-010 Navigation overlays | Settled signal clears stale navigation | `src/apps/chat/web-app.ts`, `src/apps/chat-ui/src/App.tsx`, `test/chat-signals-api.test.mjs` | Draft |
 | REQ-011 Terminal pruning | Prune finished turn | `src/signals/registry.ts`, `test/signal-registry.test.mjs` | Draft |
+| REQ-012 Signal performance benchmark | Benchmark a deeper tree | `scripts/bench-signal-registry.mjs`, `src/signals/registry.ts` | Draft |
 
 ## Verification Basis
 
-This spec was derived from the current workspace code in `src/signals/`, `src/core/session-router.ts`, `src/channels/types.ts`, `src/web/channel.ts`, `src/gateway/server.ts`, `src/apps/chat/web-app.ts`, `src/apps/chat-ui/src/api.ts`, `src/apps/chat-ui/src/App.tsx`, `test/signal-registry.test.mjs`, and `test/chat-signals-api.test.mjs`.
+This spec was derived from the current workspace code in `src/signals/`, `src/core/session-router.ts`, `src/channels/types.ts`, `src/web/channel.ts`, `src/gateway/server.ts`, `src/apps/chat/web-app.ts`, `src/apps/chat-ui/src/api.ts`, `src/apps/chat-ui/src/App.tsx`, `scripts/bench-signal-registry.mjs`, `test/signal-registry.test.mjs`, and `test/chat-signals-api.test.mjs`.

@@ -2,6 +2,7 @@
 
 **Status:** Draft  
 **Created:** 2026-05-10  
+**Updated:** 2026-05-11  
 **Owner / Source:** Scheduled Pibo Source Specs Coverage  
 **Related docs:** [Chat Web Rooms and Event Streams](./chat-web-rooms-and-event-streams.md), [Custom Agents and Agent Designer](./custom-agents.md), [Scheduled Pibo Jobs](./scheduled-pibo-jobs.md)
 
@@ -246,10 +247,35 @@ Non-GET/HEAD request bodies are limited to 4 MiB. JSON responses may be gzip-com
 ## Success Criteria
 
 - [ ] SC-001: A normal gateway with complete Better Auth config starts and serves `/health`, `/gateway/status`, `/api/auth/*`, and registered apps from one origin.
-- [ ] SC-002: A normal gateway with missing auth config fails before accepting authenticated app traffic.
-- [ ] SC-003: Docker worker dev auth supports loopback sign-in and rejects non-loopback auth route requests.
-- [ ] SC-004: Web app handlers receive authenticated owner scopes as `user:<auth-user-id>`.
-- [ ] SC-005: Overlapping web app routes are rejected at plugin registration time.
+- [x] SC-002: Better Auth rejects an empty allowed-email list and weak secrets before accepting authenticated app traffic, as covered by `test/better-auth-config.test.mjs`.
+- [x] SC-003: Docker worker dev auth safety is fail-closed at the host boundary and loopback-gated at auth routes, as covered by `test/web-gateway.test.mjs` and `test/dev-auth.test.mjs`.
+- [x] SC-004: Web app handlers receive authenticated owner scopes as `user:<auth-user-id>`, as covered by `test/web-channel.test.mjs`.
+- [x] SC-005: Overlapping web app routes are rejected at plugin registration time, as covered by `test/plugin-registry.test.mjs`.
+
+## Verification Coverage
+
+This section records which parts of the web-auth and same-origin host contract are directly tested today. Dev-auth safety is intentionally tracked here rather than split into a standalone capability spec because dev auth is not a supported host product mode.
+
+### Directly Tested
+
+- Better Auth configuration rejects empty `allowedEmails`, rejects secrets shorter than 32 characters, and preserves trusted origin expansion. Verified by `test/better-auth-config.test.mjs`.
+- Legacy host dev-auth activation fails closed: `PIBO_DEV_AUTH=1` does not enable `gateway:web`, and the default auth mode remains Better Auth. Verified by `test/web-gateway.test.mjs`.
+- Dev-auth route access is loopback-gated by both `Host` and `X-Forwarded-Host`; public forwarded host values are rejected by the loopback predicate. Verified by `test/dev-auth.test.mjs`.
+- Authenticated Chat Web requests map fake-auth user ids to `user:<id>` owner scopes, forbidden auth errors surface as `403`, cross-origin mutations are rejected, local reverse-proxy same-origin mutations are accepted, and oversized bodies return `413`. Verified by `test/web-channel.test.mjs`.
+- Duplicate auth service registration and overlapping web app routes fail during plugin registry creation. Verified by `test/plugin-registry.test.mjs`.
+- Dynamic JSON response compression honors gzip support, rejects `gzip;q=0`, does not use Brotli for dynamic JSON, and leaves small JSON uncompressed. Verified by `test/web-http.test.mjs`.
+
+### Source-Inspected Only
+
+- Full normal gateway startup with real Better Auth, Google OAuth, and a registered Chat Web app is source-inspected from `src/gateway/web.ts`, `src/plugins/better-auth.ts`, `src/plugins/web.ts`, and `src/apps/chat/web-app.ts`; current tests cover the component contracts but do not perform a real OAuth login.
+- `/api/auth/*` delegation precedence over app routes is source-inspected in `src/web/channel.ts`; plugin route-overlap tests prevent many conflicting routes but do not assert a malicious broad app claiming auth routes.
+- Canonical redirects for `/api/auth/*` callbacks are source-inspected in `src/web/channel.ts`; tests directly assert app-link canonical redirects.
+
+### Test Gaps
+
+- Add an integration test that builds `createWebPiboPluginRegistry` with complete Better Auth config and asserts the selected auth service plus registered web apps without contacting Google.
+- Add a web-host route-order test proving `/api/auth/*` is delegated to auth before registered app routing.
+- Add a canonical redirect test for `/api/auth/callback/google` specifically, matching the OAuth callback scenario.
 
 ## Assumptions and Open Questions
 
@@ -265,18 +291,20 @@ Non-GET/HEAD request bodies are limited to 4 MiB. JSON responses may be gzip-com
 
 ## Traceability
 
-| Requirement | Scenario / Story | Code Basis | Status |
-|---|---|---|---|
-| REQ-001 Web gateways select exactly one auth service | Duplicate auth service registration | `src/gateway/web.ts`, `src/plugins/registry.ts` | Draft |
-| REQ-002 Normal web gateways use Better Auth configuration | Missing allowed email list | `src/auth/better-auth.ts`, `src/config/config.ts` | Draft |
-| REQ-003 Better Auth authorizes only allowed emails | Signed-in user is not allowed | `src/auth/better-auth.ts` | Draft |
-| REQ-004 Dev auth is available only inside Docker workers | Host tries env dev auth | `src/gateway/web.ts`, `src/plugins/dev-auth.ts` | Draft |
-| REQ-005 Authenticated web requests map to owner scopes | Chat API request uses authenticated owner | `src/web/auth.ts`, `src/web/types.ts` | Draft |
-| REQ-006 Web host routes same-origin requests deterministically | Auth route is not claimed by an app | `src/web/channel.ts` | Draft |
-| REQ-007 Canonical redirects protect browser-facing origins | OAuth callback reaches loopback origin | `src/web/channel.ts`, `src/gateway/web.ts` | Draft |
-| REQ-008 Registered web app routes must not overlap | Two apps claim same API prefix | `src/plugins/registry.ts`, `src/web/types.ts` | Draft |
-| REQ-009 HTTP request and response handling is bounded and explicit | Oversized API body | `src/web/http.ts` | Draft |
+| Requirement | Scenario / Story | Code Basis | Verification | Status |
+|---|---|---|---|---|
+| REQ-001 Web gateways select exactly one auth service | Duplicate auth service registration | `src/gateway/web.ts`, `src/plugins/registry.ts` | `test/plugin-registry.test.mjs` | Component-tested |
+| REQ-002 Normal web gateways use Better Auth configuration | Missing allowed email list | `src/auth/better-auth.ts`, `src/config/config.ts` | `test/better-auth-config.test.mjs` | Component-tested |
+| REQ-003 Better Auth authorizes only allowed emails | Signed-in user is not allowed | `src/auth/better-auth.ts`, `src/web/channel.ts` | `test/web-channel.test.mjs` covers auth-service `403`; real Better Auth allowlist path is source-inspected | Partly tested |
+| REQ-004 Dev auth is available only inside Docker workers | Host tries env dev auth | `src/gateway/web.ts`, `src/plugins/dev-auth.ts` | `test/web-gateway.test.mjs`, `test/dev-auth.test.mjs` | Component-tested |
+| REQ-005 Authenticated web requests map to owner scopes | Chat API request uses authenticated owner | `src/web/auth.ts`, `src/web/types.ts`, `src/apps/chat/web-app.ts` | `test/web-channel.test.mjs` | Integration-tested |
+| REQ-006 Web host routes same-origin requests deterministically | Auth route is not claimed by an app | `src/web/channel.ts` | Component behavior source-inspected; app shell/authenticated API routes covered by `test/web-channel.test.mjs` | Partly tested |
+| REQ-007 Canonical redirects protect browser-facing origins | OAuth callback reaches loopback origin | `src/web/channel.ts`, `src/gateway/web.ts` | `test/web-channel.test.mjs` covers app-link redirect; auth-callback redirect is source-inspected | Partly tested |
+| REQ-008 Registered web app routes must not overlap | Two apps claim same API prefix | `src/plugins/registry.ts`, `src/web/types.ts` | `test/plugin-registry.test.mjs` | Component-tested |
+| REQ-009 HTTP request and response handling is bounded and explicit | Oversized API body | `src/web/http.ts`, `src/web/channel.ts` | `test/web-channel.test.mjs`, `test/web-http.test.mjs` | Component-tested |
 
 ## Verification Basis
 
 This spec was derived from the current implementation in `src/web/*`, `src/auth/*`, `src/plugins/better-auth.ts`, `src/plugins/dev-auth.ts`, `src/plugins/web.ts`, `src/plugins/registry.ts`, `src/gateway/web.ts`, `src/config/config.ts`, and web app integration points in `src/apps/chat/web-app.ts`.
+
+Verification coverage was updated from `test/better-auth-config.test.mjs`, `test/dev-auth.test.mjs`, `test/web-gateway.test.mjs`, `test/web-channel.test.mjs`, `test/plugin-registry.test.mjs`, and `test/web-http.test.mjs`.

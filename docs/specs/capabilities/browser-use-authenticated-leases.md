@@ -2,6 +2,7 @@
 
 **Status:** Draft  
 **Created:** 2026-05-10  
+**Updated:** 2026-05-11  
 **Owner / Source:** Scheduled Pibo Source Specs Coverage  
 **Related docs:** [Browser Automation Desktop Environment](./browser-automation-desktop-environment.md), [Curated CLI Tools](./curated-cli-tools.md), [Docker Compute Workers](./docker-compute-workers.md), `AGENTS.md`
 
@@ -231,11 +232,38 @@ The system MUST turn expired active leases into released leases, terminating the
 ## Success Criteria
 
 - [ ] SC-001: CLI tests prove progressive discovery for `pibo tools browser-use`, `auth-template`, and `lease`.
-- [ ] SC-002: Auth-template env tests prove a stable template directory and expected exported variables.
+- [x] SC-002: Auth-template env tests prove a stable template directory and expected exported variables.
 - [ ] SC-003: Acquire tests prove template files are copied, transient Chrome files are skipped, shell exports are printed, and JSON output includes export data.
 - [ ] SC-004: Concurrency and max-slot tests prove the registry lock and pool exhaustion behavior.
 - [ ] SC-005: Release and reap tests prove process-safe state transitions and optional profile deletion.
 - [ ] SC-006: Error tests cover running templates, unknown lease ids, malformed registries, and lock timeout.
+
+## Verification Coverage
+
+This section separates behavior with direct tests from behavior that is currently source-inspected only. It is part of the lease contract so future test work can target the remaining unverified safety paths without duplicating broader Browser Automation or Curated CLI specs.
+
+### Directly Tested
+
+- `pibo tools browser-use` discovery lists the browser-use helper surface and points to environment setup, guides, targets, attach-chat, and lease acquisition. Verified by `test/tools-cli.test.mjs`.
+- `pibo tools browser-use auth-template env` prints shell exports for the reusable authenticated template session and user-data directory. Verified by `test/tools-cli.test.mjs`.
+- `pibo tools browser-use lease acquire` creates `pibo-chat-slot-001`, prints shell exports for the isolated session, copies ordinary template files such as `Cookies`, and omits `DevToolsActivePort`. Verified by `test/tools-cli.test.mjs`.
+- `pibo tools browser-use lease list` reports the active lease id, owner, session name, and user-data directory. Verified by `test/tools-cli.test.mjs`.
+- `pibo tools browser-use lease release <id> --delete-profile` prints the release confirmation and deletes the slot profile directory. Verified by `test/tools-cli.test.mjs`.
+
+### Source-Inspected Only
+
+- Nested discovery for bare `auth-template` and bare `lease` command groups is implemented in `src/tools/index.ts`, but current tests cover the main discovery output and concrete subcommands rather than each nested help branch.
+- JSON output for acquire/list is implemented in `src/tools/browser-use-leases.ts` and wired in `src/tools/index.ts`, but current tests assert text output only.
+- Registry locking, `--max-slots` exhaustion, reusable released/expired slots, and stale-lease reap behavior are implemented in `src/tools/browser-use-leases.ts`, but current tests do not simulate concurrent or expired registry states.
+- Running-template rejection for `SingletonLock`, `SingletonCookie`, and `SingletonSocket`, malformed registry failures, unknown lease id errors, and lock timeout errors are source-inspected only.
+- Warm-up behavior is source-inspected only; tests do not create a wrapper process or assert warning behavior on warm-up failure.
+
+### Test Gaps
+
+- Add CLI tests for `pibo tools browser-use auth-template` and `pibo tools browser-use lease` bare discovery output.
+- Add JSON-mode tests for acquire and list to prove automation-safe export fields.
+- Add unit or CLI tests for pool exhaustion, expired lease reuse, `reap-stale`, running-template rejection, malformed registries, and unknown lease release errors.
+- Add a warm-up failure test that proves acquisition remains successful and the warning is reported in text mode.
 
 ## Assumptions and Open Questions
 
@@ -253,16 +281,16 @@ The system MUST turn expired active leases into released leases, terminating the
 
 ## Traceability
 
-| Requirement | Scenario / Story | Source Basis | Status |
-|---|---|---|---|
-| REQ-001 Browser-use auth commands are progressively discoverable | Agent discovers a safe auth workflow | `src/tools/index.ts`, `test/tools-cli.test.mjs` | Draft |
-| REQ-002 Auth template exports target a reusable closed Chrome profile | Prepare authenticated template | `src/tools/browser-use-leases.ts`, `src/tools/index.ts` | Draft |
-| REQ-003 Lease acquisition clones template state into isolated slots | Acquire isolated Chat Web slot | `src/tools/browser-use-leases.ts`, `test/tools-cli.test.mjs` | Draft |
-| REQ-004 Active lease counts and registry writes are concurrency-safe | Pool is full | `src/tools/browser-use-leases.ts` | Draft |
-| REQ-005 Running template profiles are not cloned | Template browser still open | `src/tools/browser-use-leases.ts` | Draft |
-| REQ-006 Lease warm-up is helpful but non-destructive | Chrome warm-up unavailable | `src/tools/browser-use-leases.ts` | Draft |
-| REQ-007 Listing and release reflect live lease state | Release and delete a slot | `src/tools/browser-use-leases.ts`, `test/tools-cli.test.mjs` | Draft |
-| REQ-008 Expired active leases can be reaped and reused | Expired lease is reused | `src/tools/browser-use-leases.ts` | Draft |
+| Requirement | Scenario / Story | Source Basis | Verification | Status |
+|---|---|---|---|---|
+| REQ-001 Browser-use auth commands are progressively discoverable | Agent discovers a safe auth workflow | `src/tools/index.ts`, `test/tools-cli.test.mjs` | Main discovery asserted; nested bare groups source-inspected | Partial |
+| REQ-002 Auth template exports target a reusable closed Chrome profile | Prepare authenticated template | `src/tools/browser-use-leases.ts`, `src/tools/index.ts` | `test/tools-cli.test.mjs` | CLI-tested |
+| REQ-003 Lease acquisition clones template state into isolated slots | Acquire isolated Chat Web slot | `src/tools/browser-use-leases.ts`, `test/tools-cli.test.mjs` | Text acquire path tested; JSON path source-inspected | Partial |
+| REQ-004 Active lease counts and registry writes are concurrency-safe | Pool is full | `src/tools/browser-use-leases.ts` | Source inspection only | Source-inspected |
+| REQ-005 Running template profiles are not cloned | Template browser still open | `src/tools/browser-use-leases.ts` | Source inspection only | Source-inspected |
+| REQ-006 Lease warm-up is helpful but non-destructive | Chrome warm-up unavailable | `src/tools/browser-use-leases.ts` | Source inspection only | Source-inspected |
+| REQ-007 Listing and release reflect live lease state | Release and delete a slot | `src/tools/browser-use-leases.ts`, `test/tools-cli.test.mjs` | List and release/delete tested; error/reap states source-inspected | Partial |
+| REQ-008 Expired active leases can be reaped and reused | Expired lease is reused | `src/tools/browser-use-leases.ts` | Source inspection only | Source-inspected |
 
 ## Verification Basis
 

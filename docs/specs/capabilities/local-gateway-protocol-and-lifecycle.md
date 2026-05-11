@@ -2,6 +2,7 @@
 
 **Status:** Draft  
 **Created:** 2026-05-10  
+**Updated:** 2026-05-11  
 **Owner / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code  
 **Related docs:** [Pibo Session Routing](./pibo-session-routing.md), [Web Auth and Same-Origin Host](./web-auth-and-same-origin-host.md), [Yielded Run Control](./yielded-run-control.md)
 
@@ -324,13 +325,20 @@ Emergency operators can run the stable fallback beside or instead of the normal 
 
 #### Acceptance
 
-Starting fallback without an installed and built backup fails with guidance to install or update the backup. A running fallback reports its PID and both fallback endpoints. Stopping fallback clears only the fallback PID file.
+Starting fallback without an installed and built backup fails with guidance to install or update the backup. A running fallback reports its PID and both fallback endpoints. Stopping fallback clears only the fallback PID file. The resolved fallback gateway options use public host `0.0.0.0`, TCP gateway port `4790`, and web port `4791` so fallback never collides with the default local gateway port.
 
 #### Scenario: Fallback port conflict
 
 - GIVEN a process is already listening on fallback gateway port `4790` or fallback web port `4791`
 - WHEN an operator runs `pibo gateway fallback start`
 - THEN the command fails before spawning the backup gateway and reports the occupied port.
+
+#### Scenario: Fallback uses dedicated public ports
+
+- GIVEN fallback gateway options are resolved
+- WHEN the fallback server is configured
+- THEN the TCP gateway listens on `0.0.0.0:4790`
+- AND the web gateway listens on `0.0.0.0:4791`.
 
 ### Requirement: Agent-facing gateway send waits for the correlated assistant reply
 
@@ -373,12 +381,37 @@ If the gateway emits an unrelated assistant message before the correlated assist
 ## Success Criteria
 
 - [ ] SC-001: Protocol tests cover valid request frames, invalid frames, subscriptions, and request/response correlation.
-- [ ] SC-002: Backpressure tests prove droppable events are discarded before unbounded queue growth and non-droppable frames are not silently dropped.
-- [ ] SC-003: Channel startup tests fail required-auth channels without an auth service.
-- [ ] SC-004: Managed gateway CLI tests cover status parsing, wrong-mode start blocking, production active-work blocking, and force confirmation.
-- [ ] SC-005: Gateway send tests cover unrelated replies and response/reply ordering.
+- [x] SC-002: Backpressure tests prove droppable events are discarded before unbounded queue growth and non-droppable frames are not silently dropped, as covered by `test/gateway-backpressure-subscriptions.test.mjs`.
+- [x] SC-003: Channel startup tests fail required-auth channels without an auth service, as covered by `test/channel-runtime.test.mjs`.
+- [x] SC-004: Managed gateway CLI tests cover wrong-mode start blocking, production active-work blocking, and force confirmation, as covered by `test/gateway-restart-safety.test.mjs`.
+- [x] SC-005: Gateway send tests cover unrelated replies and response/reply ordering, as covered by `test/gateway-request.test.mjs`.
 - [ ] SC-006: Backup CLI tests cover install validation, metadata status, update source reuse, and removal.
 - [ ] SC-007: Fallback CLI tests cover missing backup, missing build, port conflict, PID separation, readiness wait, and graceful or forced stop.
+- [x] SC-008: Fallback option tests prove fallback uses dedicated public gateway and web ports, as covered by `test/web-gateway.test.mjs`.
+
+## Verification Coverage
+
+This section maps current gateway tests to the lifecycle contract so future source-spec runs can target real gaps instead of duplicating gateway behavior.
+
+### Directly Tested
+
+- Session-scoped subscriptions, legacy all-session broadcasts, droppable-event queue bounding, and non-droppable backpressure preservation are covered by `test/gateway-backpressure-subscriptions.test.mjs`.
+- Gateway request helpers and `pibo_gateway_send` response/reply ordering are covered by `test/gateway-request.test.mjs`.
+- Required-auth channel startup failure and channel context startup flow are covered by `test/channel-runtime.test.mjs`.
+- Production active-work restart blocking, idle restart allowance, force confirmation token export, deploy-script restart indirection, and dev start wrong-mode blocking are covered by `test/gateway-restart-safety.test.mjs`.
+- Fallback gateway public host and dedicated ports are covered by `test/web-gateway.test.mjs`.
+
+### Source-Inspected Only
+
+- Backup install/update/remove behavior is defined in `src/gateway/backup.ts` and `src/gateway/cli.ts` but lacks focused direct tests in the current test inventory.
+- Full fallback process lifecycle behavior for missing backup, missing built binary, port conflict, PID file separation, readiness waiting, and graceful or forced stop is defined in `src/gateway/fallback.ts`, `src/gateway/pidfile.ts`, and `src/gateway/cli.ts` but is not fully covered by direct tests.
+- Raw protocol invalid-frame parsing remains specified from `src/gateway/protocol.ts` and `src/gateway/server.ts`; existing tests focus on subscriptions and request helper behavior rather than malformed frame parsing.
+
+### Test Gaps
+
+- Add protocol tests for invalid JSON frames, invalid request shapes, and non-JSON-compatible execution params.
+- Add backup CLI tests for invalid install source, metadata status output, update source reuse, and removal.
+- Add fallback CLI tests that exercise missing backup/build, occupied ports, PID separation, readiness timeout, and forced shutdown without using the normal gateway PID file.
 
 ## Assumptions and Open Questions
 
@@ -400,18 +433,18 @@ If the gateway emits an unrelated assistant message before the correlated assist
 | REQ-001 | Invalid JSON frame | `src/gateway/protocol.ts`, `src/gateway/server.ts` | Draft |
 | REQ-002 | Execution params are not JSON-compatible | `src/gateway/protocol.ts` | Draft |
 | REQ-003 | Router rejects a request | `src/gateway/server.ts`, `src/gateway/request.ts` | Draft |
-| REQ-004 | Subscribe to one session | `src/gateway/server.ts`, `test/gateway-backpressure-subscriptions.test.mjs` | Draft |
-| REQ-005 | Slow client receives live deltas | `src/gateway/server.ts`, `test/gateway-backpressure-subscriptions.test.mjs` | Draft |
-| REQ-006 | Inspect active subscriptions | `src/gateway/server.ts` | Draft |
-| REQ-007 | Required auth channel without auth service | `src/gateway/server.ts`, `src/channels/types.ts` | Draft |
-| REQ-008 | Channel creates routed session | `src/gateway/server.ts` | Draft |
-| REQ-009 | Wrong mode on target port | `src/gateway/cli.ts`, `test/gateway-restart-safety.test.mjs` | Draft |
-| REQ-010 | Active yielded run blocks restart | `src/gateway/cli.ts`, `test/gateway-restart-safety.test.mjs` | Draft |
-| REQ-011 | Restart with stale PID file | `src/gateway/cli.ts`, `src/gateway/pidfile.ts` | Draft |
-| REQ-012 | Install from non-package directory | `src/gateway/backup.ts`, `src/gateway/cli.ts` | Draft |
-| REQ-013 | Fallback port conflict | `src/gateway/fallback.ts`, `src/gateway/cli.ts`, `src/gateway/pidfile.ts`, `src/gateway/web.ts` | Draft |
-| REQ-014 | Reply arrives before response | `src/gateway/tool.ts`, `src/gateway/request.ts`, `test/gateway-request.test.mjs` | Draft |
+| REQ-004 | Subscribe to one session | `src/gateway/server.ts`, `test/gateway-backpressure-subscriptions.test.mjs` | Component-tested |
+| REQ-005 | Slow client receives live deltas | `src/gateway/server.ts`, `test/gateway-backpressure-subscriptions.test.mjs` | Component-tested |
+| REQ-006 | Inspect active subscriptions | `src/gateway/server.ts`, `test/gateway-backpressure-subscriptions.test.mjs` | Component-tested |
+| REQ-007 | Required auth channel without auth service | `src/gateway/server.ts`, `src/channels/types.ts`, `test/channel-runtime.test.mjs` | Component-tested |
+| REQ-008 | Channel creates routed session | `src/gateway/server.ts`, `test/channel-runtime.test.mjs` | Component-tested |
+| REQ-009 | Wrong mode on target port | `src/gateway/cli.ts`, `test/gateway-restart-safety.test.mjs` | Component-tested |
+| REQ-010 | Active yielded run blocks restart | `src/gateway/cli.ts`, `test/gateway-restart-safety.test.mjs` | Component-tested |
+| REQ-011 | Restart with stale PID file | `src/gateway/cli.ts`, `src/gateway/pidfile.ts` | Source-inspected |
+| REQ-012 | Install from non-package directory | `src/gateway/backup.ts`, `src/gateway/cli.ts` | Source-inspected |
+| REQ-013 | Fallback port conflict / dedicated public ports | `src/gateway/fallback.ts`, `src/gateway/cli.ts`, `src/gateway/pidfile.ts`, `src/gateway/web.ts`, `test/web-gateway.test.mjs` | Partly component-tested |
+| REQ-014 | Reply arrives before response | `src/gateway/tool.ts`, `src/gateway/request.ts`, `test/gateway-request.test.mjs` | Component-tested |
 
 ## Verification Basis
 
-This spec is based on current workspace code in `src/gateway/protocol.ts`, `src/gateway/server.ts`, `src/gateway/client.ts`, `src/gateway/request.ts`, `src/gateway/tool.ts`, `src/gateway/cli.ts`, `src/gateway/backup.ts`, `src/gateway/fallback.ts`, `src/gateway/pidfile.ts`, `src/gateway/web.ts`, plugin registry/channel contracts, and gateway-related tests under `test/`.
+This spec is based on current workspace code in `src/gateway/protocol.ts`, `src/gateway/server.ts`, `src/gateway/client.ts`, `src/gateway/request.ts`, `src/gateway/tool.ts`, `src/gateway/cli.ts`, `src/gateway/backup.ts`, `src/gateway/fallback.ts`, `src/gateway/pidfile.ts`, `src/gateway/web.ts`, plugin registry/channel contracts, and gateway-related tests under `test/`, especially `test/gateway-backpressure-subscriptions.test.mjs`, `test/gateway-request.test.mjs`, `test/gateway-restart-safety.test.mjs`, `test/channel-runtime.test.mjs`, and `test/web-gateway.test.mjs`.

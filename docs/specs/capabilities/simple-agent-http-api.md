@@ -2,6 +2,7 @@
 
 **Status:** Draft
 **Created:** 2026-05-10
+**Updated:** 2026-05-11
 **Owner / Source:** Scheduled Pibo Source Specs Coverage; current workspace code
 **Related docs:** [Web Auth and Same-Origin Host](./web-auth-and-same-origin-host.md), [Pibo Session Routing](./pibo-session-routing.md), [Local Gateway Protocol and Lifecycle](./local-gateway-protocol-and-lifecycle.md)
 
@@ -214,6 +215,24 @@ The API MUST convert a correlated `session_error` into a `500` response and MUST
 - [ ] SC-004: A successful service message emits one Pibo message event with source `service` and returns the final correlated assistant text.
 - [ ] SC-005: Correlated `session_error` and timeout paths return `500` and `504` and release subscriptions.
 
+## Verification Coverage
+
+This section records the current verification state for the Simple Agent HTTP API. The implementation is source-backed, but the workspace does not currently include a dedicated simple-agent HTTP test file.
+
+### Source-Inspected Behavior
+
+- Route selection, public health handling, method checks, and fallthrough are implemented in `handleSimpleAgentApiRequest` in `src/api/simple-agent-api.ts` and reached from the web host before registered app routing in `src/web/channel.ts`.
+- API-key configuration, candidate extraction, Basic-auth decoding, Bearer/Token stripping, and timing-safe comparison are implemented in `src/api/simple-agent-api.ts`.
+- JSON body parsing and HTTP error conversion rely on `readJsonBody`, `PiboWebHttpError`, and `responseJson` from `src/web/http.ts`.
+- Session existence checks, service-source event emission, output subscription, event-id correlation, assistant-message aggregation, session-error conversion, timeout handling, and unsubscribe cleanup are implemented in `src/api/simple-agent-api.ts` against the `PiboChannelContext` contract from `src/channels/types.ts`.
+
+### Test Gaps
+
+- Add a focused HTTP-handler test that asserts `/api/health` `GET`, `HEAD`, and method rejection without requiring a live gateway.
+- Add API-key validation tests for missing config, invalid candidates, `x-api-key`, Bearer/Token authorization, and Basic-auth username/password matching.
+- Add send-message tests with a fake `PiboChannelContext` for invalid JSON/body fields, unknown sessions, emitted service messages, correlated assistant output, unrelated output ignored, correlated `session_error`, and timeout unsubscribe cleanup.
+- Add or extend a web-host route-order test proving `/api/health` and `/api/send-message` are handled by the Simple Agent API before registered web app routes.
+
 ## Assumptions and Open Questions
 
 ### Assumptions
@@ -228,17 +247,17 @@ The API MUST convert a correlated `session_error` into a `500` response and MUST
 
 ## Traceability
 
-| Requirement | Scenario / Story | Plan / Task | Status |
-|---|---|---|---|
-| REQ-001 Health checks are public and method-limited | Service probes health | Add/maintain web API tests | Pending |
-| REQ-002 Send-message accepts only POST | Wrong method is rejected | Add/maintain web API tests | Pending |
-| REQ-003 Send-message requires a configured API key | Operator forgot to configure the key | Add/maintain auth tests | Pending |
-| REQ-004 API-key candidates are accepted from supported headers | Bearer token authorizes a service client | Add/maintain auth tests | Pending |
-| REQ-005 Request body contains a target session and message | Blank message is rejected | Add/maintain validation tests | Pending |
-| REQ-006 Target session must already exist | Client addresses an unknown session | Add/maintain routing tests | Pending |
-| REQ-007 Submitted service messages use a generated correlation id | Concurrent service requests do not cross replies | Add/maintain correlation tests | Pending |
-| REQ-008 The response returns the final correlated assistant message | Agent finishes normally | Add/maintain response tests | Pending |
-| REQ-009 Correlated errors and timeouts become HTTP failures | Agent run times out | Add/maintain timeout/error tests | Pending |
+| Requirement | Scenario / Story | Code Basis | Verification | Status |
+|---|---|---|---|---|
+| REQ-001 Health checks are public and method-limited | Service probes health | `src/api/simple-agent-api.ts` | Dedicated test missing | Source-inspected only |
+| REQ-002 Send-message accepts only POST | Wrong method is rejected | `src/api/simple-agent-api.ts` | Dedicated test missing | Source-inspected only |
+| REQ-003 Send-message requires a configured API key | Operator forgot to configure the key | `src/api/simple-agent-api.ts` | Dedicated test missing | Source-inspected only |
+| REQ-004 API-key candidates are accepted from supported headers | Bearer token authorizes a service client | `src/api/simple-agent-api.ts` | Dedicated test missing | Source-inspected only |
+| REQ-005 Request body contains a target session and message | Blank message is rejected | `src/api/simple-agent-api.ts`, `src/web/http.ts` | Dedicated test missing | Source-inspected only |
+| REQ-006 Target session must already exist | Client addresses an unknown session | `src/api/simple-agent-api.ts`, `src/channels/types.ts` | Dedicated test missing | Source-inspected only |
+| REQ-007 Submitted service messages use a generated correlation id | Concurrent service requests do not cross replies | `src/api/simple-agent-api.ts`, `src/core/events.ts` | Dedicated test missing | Source-inspected only |
+| REQ-008 The response returns the final correlated assistant message | Agent finishes normally | `src/api/simple-agent-api.ts`, `src/core/events.ts` | Dedicated test missing | Source-inspected only |
+| REQ-009 Correlated errors and timeouts become HTTP failures | Agent run times out | `src/api/simple-agent-api.ts`, `src/core/events.ts` | Dedicated test missing | Source-inspected only |
 
 ## Verification Basis
 

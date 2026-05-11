@@ -2,6 +2,7 @@
 
 **Status:** Draft
 **Created:** 2026-05-10
+**Updated:** 2026-05-11
 **Owner / Source:** Scheduled Pibo Source Specs Coverage
 **Related docs:** [Chat Web Rooms and Event Streams](./chat-web-rooms-and-event-streams.md), [Pibo Session Routing](./pibo-session-routing.md), [Debug CLI](./debug-cli.md)
 
@@ -260,12 +261,38 @@ Operators and agents can inspect data-store state, migrate session projections, 
 
 ## Success Criteria
 
-- [ ] SC-001: Opening a v2 store twice leaves schema version and table/index inventory stable.
-- [ ] SC-002: Retried user-message ingestion with the same client transaction creates one event and one message.
-- [ ] SC-003: Retried assistant output ingestion with the same event identity creates one output event, one assistant message, and one observation.
-- [ ] SC-004: Large message payloads are externalized and readable from their payload reference.
-- [ ] SC-005: V2-native Chat Web service tests cover default rooms, session upsert, idempotent event append, timeline ordering, trace-event ordering, and read-state monotonicity.
-- [ ] SC-006: Data inventory reports v2 and legacy stores without requiring those files to exist.
+- [x] SC-001: Opening a v2 store twice leaves schema version and table/index inventory stable, as covered by `test/data-v2-store.test.mjs`.
+- [x] SC-002: Retried user-message ingestion with the same client transaction creates one event and one message, as covered by `test/data-v2-ingest-service.test.mjs`.
+- [x] SC-003: Retried assistant output ingestion with the same event identity creates one output event, one assistant message, and one observation, as covered by `test/data-v2-ingest-service.test.mjs`.
+- [x] SC-004: Large message payloads are externalized and readable from their payload reference, as covered by `test/data-v2-ingest-service.test.mjs`.
+- [x] SC-005: V2-native Chat Web service tests cover default rooms, session upsert, idempotent event append, timeline ordering, trace-event ordering, and read-state monotonicity, as covered by `test/chat-v2-native-services.test.mjs`.
+- [x] SC-006: Data inventory reports v2 and legacy stores without requiring those files to exist, as covered by `test/data-cli.test.mjs`.
+- [x] SC-007: V2-backed Pibo Session Store semantics and session migration are covered by `test/pibo-data-session-store.test.mjs`.
+
+## Verification Coverage
+
+This section maps current tests to this source-backed contract. It avoids creating duplicate data-store specs while making weak traceability explicit.
+
+### Directly Tested
+
+- Store initialization, schema idempotency, payload read/write/deduplication, event-log idempotency, and simple message/observation listing are covered by `test/data-v2-store.test.mjs`.
+- User-message ingestion idempotency, large-message payload externalization, assistant-output idempotency, progressive tool-call snapshots, and tool-output observation projection are covered by `test/data-v2-ingest-service.test.mjs`.
+- V2-native room, session, timeline, command-event, trace-event, and read-state service behavior is covered by `test/chat-v2-native-services.test.mjs`.
+- Data inventory and unread-baseline repair behavior are covered by `test/data-cli.test.mjs`.
+- V2-backed Pibo Session Store structured-field persistence and legacy session migration idempotency are covered by `test/pibo-data-session-store.test.mjs`.
+
+### Source-Inspected Only
+
+- Exact SQLite index inventory and every migration-table column are source-inspected in `src/data/schema.ts` rather than asserted table-by-table.
+- File-backed WAL and busy-timeout PRAGMA behavior are source-inspected in `src/data/pibo-store.ts`.
+- Payload temp-file rename behavior is source-inspected in `src/data/payload-store.ts`.
+- Chat Web web-route use of the v2-native services is covered by higher-level Chat Web specs and source inspection, not by this data-store test set.
+
+### Test Gaps
+
+- Add focused assertions for WAL mode and foreign-key behavior on file-backed stores if those become release gates.
+- Add schema inventory assertions when a future migration increases `PIBO_DATA_SCHEMA_VERSION`.
+- Add integration tests that exercise Chat Web HTTP routes through v2-native services without legacy read-model fallback.
 
 ## Assumptions and Open Questions
 
@@ -285,14 +312,14 @@ Operators and agents can inspect data-store state, migrate session projections, 
 
 | Requirement | Scenario / Story | Plan / Task | Status |
 |---|---|---|---|
-| REQ-001 V2 store initializes deterministically | Fresh v2 store | `src/data/schema.ts`, `src/data/pibo-store.ts` | Draft |
-| REQ-002 Event log appends are ordered and idempotent | Retried append | `src/data/event-log.ts` | Draft |
-| REQ-003 Payloads are content-addressed and externalized for large values | Large user message | `src/data/payload-store.ts`, `src/data/ingest-service.ts` | Draft |
-| REQ-004 User-message ingestion is idempotent per client transaction | Retried accepted input | `src/data/ingest-service.ts` | Draft |
-| REQ-005 Runtime output ingestion shadows messages and observations | Assistant output retry | `src/data/ingest-service.ts`, `src/data/message-store.ts`, `src/data/observation-store.ts` | Draft |
-| REQ-006 Session and navigation projections track current conversation placement | New room activity | `src/data/session-store.ts`, `src/data/navigation-store.ts` | Draft |
-| REQ-007 V2-native Chat Web services read and write through the v2 store | V2-native chat service flow | `src/apps/chat/data/*.ts`, `test/chat-v2-native-services.test.mjs` | Draft |
-| REQ-008 Data CLI reports and repair operations are bounded | Inventory for missing root store | `src/data/cli.ts` | Draft |
+| REQ-001 V2 store initializes deterministically | Fresh v2 store | `src/data/schema.ts`, `src/data/pibo-store.ts`, `test/data-v2-store.test.mjs` | Covered, with PRAGMA details source-inspected |
+| REQ-002 Event log appends are ordered and idempotent | Retried append | `src/data/event-log.ts`, `test/data-v2-store.test.mjs` | Covered |
+| REQ-003 Payloads are content-addressed and externalized for large values | Large user message | `src/data/payload-store.ts`, `src/data/ingest-service.ts`, `test/data-v2-store.test.mjs`, `test/data-v2-ingest-service.test.mjs` | Covered |
+| REQ-004 User-message ingestion is idempotent per client transaction | Retried accepted input | `src/data/ingest-service.ts`, `test/data-v2-ingest-service.test.mjs` | Covered |
+| REQ-005 Runtime output ingestion shadows messages and observations | Assistant output retry | `src/data/ingest-service.ts`, `src/data/message-store.ts`, `src/data/observation-store.ts`, `test/data-v2-ingest-service.test.mjs` | Covered |
+| REQ-006 Session and navigation projections track current conversation placement | New room activity | `src/data/session-store.ts`, `src/data/navigation-store.ts`, `test/data-v2-ingest-service.test.mjs`, `test/pibo-data-session-store.test.mjs` | Covered for ingestion and session-store paths; navigation edge cases source-inspected |
+| REQ-007 V2-native Chat Web services read and write through the v2 store | V2-native chat service flow | `src/apps/chat/data/*.ts`, `test/chat-v2-native-services.test.mjs` | Covered |
+| REQ-008 Data CLI reports and repair operations are bounded | Inventory for missing root store | `src/data/cli.ts`, `test/data-cli.test.mjs`, `test/pibo-data-session-store.test.mjs` | Covered |
 
 ## Verification Basis
 

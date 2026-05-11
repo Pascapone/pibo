@@ -2,6 +2,7 @@
 
 **Status:** Draft
 **Created:** 2026-05-10
+**Updated:** 2026-05-11
 **Owner / Source:** Scheduled Pibo Source Specs Coverage
 **Related docs:** [Chat Web Rooms and Event Streams](./chat-web-rooms-and-event-streams.md), [Pibo Data Store and Chat Ingestion](./pibo-data-store-and-ingestion.md), [Pibo Session Routing](./pibo-session-routing.md), [Pibo Session Signals](./pibo-session-signals.md), [Yielded Run Control](./yielded-run-control.md)
 
@@ -32,6 +33,7 @@ The active frontend session view is the compact terminal in `src/apps/chat-ui/sr
 - Trace node identity, ordering, deduplication, status, raw-event opt-in, pagination metadata, and versioning.
 - Single-event patch behavior used by live UI updates.
 - Compact terminal row projection, grouping, thinking visibility, expansion, linked-session navigation, fork affordances, and sticky-scroll behavior.
+- Chat Web session-view registry behavior for active terminal/workflow views and the dormant nested trace view adapter.
 
 ### Out of Scope
 
@@ -209,6 +211,28 @@ The terminal view MUST keep users near the latest output when they are at the bo
 - WHEN more trace rows arrive
 - THEN the viewport does not jump to the bottom and the terminal shows a control to return to the latest output.
 
+### Requirement: Session view selection is bounded to active view ids
+
+The Chat Web session surface MUST expose only supported active session views to normal selection while keeping the legacy nested trace view available as dormant code that can render the same trace props if explicitly reactivated by a future change.
+
+#### Current
+
+`chatSessionViewIds` accepts only `terminal` and `workflow`, with `terminal` as the default. `listChatSessionViews` returns those active views. `getChatSessionView` falls back to the default terminal view for unknown active view ids. `inactiveChatSessionViews` keeps the nested `trace` view as an unregistered adapter around `TraceTimeline`.
+
+#### Acceptance
+
+- Normal session-view parsing accepts `terminal` and `workflow` and rejects any other string.
+- The default session view is `terminal`.
+- Listing active session views returns terminal and workflow, not the dormant trace view.
+- Looking up an unknown active view id falls back to terminal.
+- The dormant trace view, if manually invoked by code, passes trace, loading, thinking, profile/model, breadcrumb, derivation, profile-change, fork, and open-session props through to `TraceTimeline` without owning separate trace state.
+
+#### Scenario: Unknown view id falls back to terminal
+
+- GIVEN a stored or query-provided session-view id is not one of the active ids
+- WHEN Chat Web resolves the view
+- THEN it renders the terminal view instead of exposing the dormant trace view or failing the session surface.
+
 ## Edge Cases
 
 - Missing or removed Pi transcript files still produce a trace from stored events and session metadata.
@@ -235,12 +259,13 @@ The terminal view MUST keep users near the latest output when they are at the bo
 - [ ] SC-004: Raw events are absent by default and bounded when requested.
 - [ ] SC-005: Single-event patches preserve object identity for unaffected nodes.
 - [ ] SC-006: The compact terminal renders visible node kinds, hides thinking when configured, preserves expansion, follows output only when sticky, and distinguishes tool errors from system errors.
+- [ ] SC-007: Session-view resolution exposes only active terminal/workflow views, defaults unknown ids to terminal, and keeps the nested trace view dormant unless deliberately reactivated.
 
 ## Assumptions and Open Questions
 
 ### Assumptions
 
-- The compact terminal is the active Chat Web session surface; the older nested trace view remains dormant unless a future change reactivates it.
+- The compact terminal is the default active Chat Web session surface; the workflow view is also active for workflow-backed sessions, and the older nested trace view remains dormant unless a future change reactivates it.
 - Trace materialization may ignore unknown event types until a new node type is specified.
 - The trace API may rebuild from the current event page instead of the full event history when pagination parameters request a bounded page.
 
@@ -260,9 +285,10 @@ The terminal view MUST keep users near the latest output when they are at the bo
 | REQ-004 Persisted transcript echoes do not duplicate live event nodes | Transcript catches up after streaming | `src/shared/trace-engine.ts`, `src/apps/chat/trace.ts` | Implemented |
 | REQ-005 Raw events are opt-in and bounded | Request raw tail for debugging | `src/apps/chat/web-app.ts`, `test/chat-trace-materialization.test.mjs` | Implemented |
 | REQ-006 Live patches preserve unaffected node identity | Tool result patch | `src/shared/trace-engine.ts`, `test/trace-patch-identity.test.mjs` | Implemented |
-| REQ-007 Compact terminal renders trace nodes as a readable conversation surface | Thinking hidden by default | `src/apps/chat-ui/src/session-views/compact-terminal/*` | Implemented |
+| REQ-007 Compact terminal renders trace nodes as a readable conversation surface | Thinking hidden by default | `src/apps/chat-ui/src/session-views/compact-terminal/*`, including `TerminalLine.tsx` | Implemented |
 | REQ-008 Terminal interaction stays stable during streaming | Inspect old output while tools run | `src/apps/chat-ui/src/session-views/compact-terminal/CompactTerminalSessionView.tsx`, `src/apps/chat-ui/src/components/useStickyVirtuoso.ts` | Implemented |
+| REQ-009 Session view selection is bounded to active view ids | Unknown view id falls back to terminal | `src/apps/chat-ui/src/session-views/types.ts`, `src/apps/chat-ui/src/session-views/registry.tsx`, `src/apps/chat-ui/src/session-views/TraceSessionView.tsx` | Implemented |
 
 ## Verification Basis
 
-Current behavior is covered or illustrated by `test/chat-trace-materialization.test.mjs`, `test/trace-patch-identity.test.mjs`, `test/chat-ui-integration.test.mjs`, `test/web-channel.test.mjs`, and the trace/terminal implementation files listed in Traceability.
+Current behavior is covered or illustrated by `test/chat-trace-materialization.test.mjs`, `test/trace-patch-identity.test.mjs`, `test/chat-ui-integration.test.mjs`, `test/web-channel.test.mjs`, and the trace/terminal/session-view implementation files listed in Traceability. Session-view registry behavior is source-inspected from `src/apps/chat-ui/src/session-views/types.ts`, `src/apps/chat-ui/src/session-views/registry.tsx`, and `src/apps/chat-ui/src/session-views/TraceSessionView.tsx`; add a focused registry test if selectable session views become user-configurable.
