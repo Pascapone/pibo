@@ -51,12 +51,13 @@ function createAttempt(overrides: Partial<NodeAttempt> = {}): NodeAttempt {
 }
 
 describe("workflow run inspection", () => {
-  it("builds an inspectable completed run summary from persisted facts", async () => {
+  it("builds an inspectable completed run summary after SQLite restart", async () => {
     const tempRoot = mkdtempSync(join(tmpdir(), "pibo-workflows-inspection-completed-"));
-    const store = new SqliteWorkflowRunStore(join(tempRoot, "pibo-workflows.sqlite"));
+    const dbPath = join(tempRoot, "pibo-workflows.sqlite");
+    const run = createRun();
+    let store = new SqliteWorkflowRunStore(dbPath);
 
     try {
-      const run = createRun();
       store.saveRun(run);
       store.saveNodeAttempt(createAttempt());
       store.saveCheckpoint({
@@ -77,7 +78,9 @@ describe("workflow run inspection", () => {
         payload: { type: "workflow.completed", runId: run.id, output: run.output },
         createdAt: updatedAt,
       });
+      store.close();
 
+      store = new SqliteWorkflowRunStore(dbPath);
       const inspection = await inspectWorkflowRun(store, run.id);
 
       assert.ok(inspection);
@@ -94,20 +97,21 @@ describe("workflow run inspection", () => {
     }
   });
 
-  it("surfaces failed node and error summaries for failed runs", async () => {
+  it("surfaces failed node and error summaries for failed runs after SQLite restart", async () => {
     const tempRoot = mkdtempSync(join(tmpdir(), "pibo-workflows-inspection-failed-"));
-    const store = new SqliteWorkflowRunStore(join(tempRoot, "pibo-workflows.sqlite"));
+    const dbPath = join(tempRoot, "pibo-workflows.sqlite");
     const error: WorkflowErrorSummary = { code: "WorkflowNodeError.failed", message: "Node failed", retryable: false };
+    const run = createRun({
+      id: "wfr_failed",
+      status: "failed",
+      current: { nodeId: "review", status: "failed" },
+      output: undefined,
+      completedAt: undefined,
+      failedAt: updatedAt,
+    });
+    let store = new SqliteWorkflowRunStore(dbPath);
 
     try {
-      const run = createRun({
-        id: "wfr_failed",
-        status: "failed",
-        current: { nodeId: "review", status: "failed" },
-        output: undefined,
-        completedAt: undefined,
-        failedAt: updatedAt,
-      });
       store.saveRun(run);
       store.saveNodeAttempt(createAttempt({
         id: "wna_review_1",
@@ -126,7 +130,9 @@ describe("workflow run inspection", () => {
         payload: { type: "workflow.failed", runId: run.id, error },
         createdAt: updatedAt,
       });
+      store.close();
 
+      store = new SqliteWorkflowRunStore(dbPath);
       const inspection = await inspectWorkflowRun(store, run.id);
 
       assert.ok(inspection);

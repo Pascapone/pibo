@@ -1,4 +1,5 @@
 ## Codebase Patterns
+- Restart-style workflow persistence/inspection tests should write facts, close `SqliteWorkflowRunStore`, reopen the same `pibo-workflows.sqlite`, and then inspect/read facts so recovery regressions are caught.
 - Workflow run inspection is package-level and store-interface based: use `inspectWorkflowRun(store, runId)` to aggregate persisted run, attempts, events, edge transfers, checkpoints, wakeups, wait tokens, and human actions; use `formatWorkflowRunInspection` for compact text output.
 - Workflow Agent session linkage stays structural: `createPiboSessionRoutingAgentExecutor` can call an injected `linkProjectSession` callback, while Chat Web `ChatProjectService` persists `workflow_run_id` on `project_sessions` without importing workflow runtime code.
 - Workflow DB boundaries should store workflow facts plus lightweight links (`pibo_session_id`, `project_id`) only; normal Pibo/Pi traces, tool calls, spans, transcripts, and session records stay in their existing session stores.
@@ -814,4 +815,15 @@
   - Store methods on `SqliteWorkflowRunStore` depend on `this`; helper APIs that accept optional store methods should call them with the store as receiver instead of extracting unbound methods.
   - The workflow inspection API intentionally depends on small store interfaces, so a future debug CLI or Project UI can reuse it with `SqliteWorkflowRunStore` or a narrower internal store implementation.
   - The formatter is text-only and compact by design; JSON consumers should use the structured `WorkflowRunInspection` object directly.
+---
+
+## 2026-05-11 02:37 UTC - 11.6
+- Added restart-style inspection coverage for both completed and failed workflow runs by saving facts, closing `SqliteWorkflowRunStore`, reopening the same SQLite database, and then calling `inspectWorkflowRun` / `formatWorkflowRunInspection`.
+- Marked task `11.6` complete in the workflow-system task list because the referenced JSON PRDs are absent and progress is tracked in `tasks.md`.
+- Files changed: `packages/workflows/src/testing/workflow-run-inspection.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- Quality checks: `npm --prefix packages/workflows test -- workflow-run-inspection.test.ts`; host `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`; container `/workspace` `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- **Learnings for future iterations:**
+  - Inspection tests should close and reopen `SqliteWorkflowRunStore` before inspecting when the story is about restart recovery, not just persisted facts in an open connection.
+  - The package `test` script runs `src/**/*.test.ts`; passing a filename argument does not narrow the run, so use full package tests for workflow coverage unless the script changes.
+  - Completed and failed inspection summaries already derive status, attempts, checkpoints, errors, and formatted text from persisted store facts after reopen.
 ---
