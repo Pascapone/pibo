@@ -135,6 +135,54 @@ test("sendGatewayMessageAndWaitForReply rejects when the gateway rejects the mes
 	}
 });
 
+test("sendGatewayMessageAndWaitForReply preserves an existing event id for reply correlation", async () => {
+	const callerEventId = "caller-event-id";
+	const gateway = await withMockGateway((frame, socket) => {
+		assert.notEqual(frame.id, callerEventId);
+		assert.equal(frame.event.id, callerEventId);
+		socket.write(
+			`${JSON.stringify({
+				type: "res",
+				id: frame.id,
+				ok: true,
+				payload: {
+					type: "message_queued",
+					piboSessionId: frame.event.piboSessionId,
+					eventId: frame.event.id,
+					queuedMessages: 1,
+					text: frame.event.text,
+					source: frame.event.source,
+				},
+			})}\n`,
+		);
+		socket.write(
+			`${JSON.stringify({
+				type: "event",
+				event: "router",
+				payload: {
+					type: "assistant_message",
+					piboSessionId: frame.event.piboSessionId,
+					eventId: callerEventId,
+					text: "correlated by caller id",
+				},
+			})}\n`,
+		);
+	});
+
+	try {
+		const result = await sendGatewayMessageAndWaitForReply(
+			{ id: callerEventId, type: "message", piboSessionId: "receiver", text: "hello", source: "actor" },
+			{ port: gateway.port },
+		);
+
+		assert.equal(result.response.ok, true);
+		assert.equal(result.reply.eventId, callerEventId);
+		assert.equal(result.reply.text, "correlated by caller id");
+	} finally {
+		await gateway.close();
+	}
+});
+
 test("sendGatewayMessageAndWaitForReply resolves only the correlated assistant reply", async () => {
 	const gateway = await withMockGateway((frame, socket) => {
 		socket.write(
