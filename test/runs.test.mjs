@@ -280,6 +280,83 @@ test("run tools start yieldable tools with explicit completion policy", async ()
 	assert.equal(result.details.runId, "run_1");
 });
 
+test("run start tool rejects unknown yieldable tool names", async () => {
+	const [startTool] = createRunToolDefinitions([], {
+		startToolRun() {
+			throw new Error("not used");
+		},
+		listRuns() {
+			return [];
+		},
+		getRunStatus() {
+			throw new Error("not used");
+		},
+		waitForRun() {
+			throw new Error("not used");
+		},
+		readRun() {
+			throw new Error("not used");
+		},
+		cancelRun() {
+			throw new Error("not used");
+		},
+		ackRun() {
+			throw new Error("not used");
+		},
+	});
+
+	await assert.rejects(
+		startTool.execute("tool-call-1", { toolName: "missing", arguments: {} }),
+		/Unknown or non-yieldable tool "missing"/,
+	);
+});
+
+test("run start tool turns yieldable error results into failed run exceptions", async () => {
+	let started;
+	const [startTool] = createRunToolDefinitions(
+		[
+			{
+				name: "helper",
+				async execute() {
+					return {
+						isError: true,
+						content: [{ type: "text", text: "helper failed" }],
+					};
+				},
+			},
+		],
+		{
+			startToolRun(input) {
+				started = input;
+				return runSnapshot(undefined, { toolName: input.toolName });
+			},
+			listRuns() {
+				return [];
+			},
+			getRunStatus() {
+				throw new Error("not used");
+			},
+			waitForRun() {
+				throw new Error("not used");
+			},
+			readRun() {
+				throw new Error("not used");
+			},
+			cancelRun() {
+				throw new Error("not used");
+			},
+			ackRun() {
+				throw new Error("not used");
+			},
+		},
+	);
+
+	await startTool.execute("tool-call-1", { toolName: "helper", arguments: { ok: false } });
+
+	assert.equal(started.toolName, "helper");
+	await assert.rejects(started.execute(), /helper failed/);
+});
+
 test("run read tool returns terminal text and full details", async () => {
 	const tools = createRunToolsWithController({
 		readRun(runId) {
