@@ -83,7 +83,7 @@
 ## 10. Requirement: XState-backed orchestration projection
 
 - [x] 10.1 Add `xstate` as a dependency.
-- [ ] 10.2 Define the XState machine projection shape.
+- [x] 10.2 Define the XState machine projection shape.
 - [ ] 10.3 Map nodes to states.
 - [ ] 10.4 Map edges to transitions.
 - [ ] 10.5 Map guards, waits, failures, and final states.

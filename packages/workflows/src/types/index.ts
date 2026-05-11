@@ -746,14 +746,179 @@ export type WorkflowMachineSnapshot<TInput = WorkflowValue, TOutput = WorkflowVa
 export type WorkflowSnapshotFrom<TWorkflow extends { input: WorkflowPort; output: WorkflowPort }> =
   WorkflowMachineSnapshot<WorkflowInputFrom<TWorkflow>, WorkflowOutputFrom<TWorkflow>>;
 
+export type XStateProjectionSchemaVersion = 1;
+export type XStateProjectionKind = "pibo.workflow.xstateProjection";
+export type XStateProjectionStateType = "atomic" | "compound" | "parallel" | "final" | "history";
+export type XStateProjectionRuntimeStateKind = "node" | "wait" | "retryDelay" | "terminal";
+export type XStateProjectionTerminalKind = "completed" | "failed" | "cancelled";
+
+export type XStateProjectionContextShape = {
+  /** Projection-only state shape; kernel workflow records remain the durable truth. */
+  durableTruth: "kernel";
+  global: Record<StatePath, WorkflowStateFieldDefinition>;
+  local: Record<NodeId, StateAccessPolicy | undefined>;
+  edge: Record<EdgeId, EdgeStateMapping | undefined>;
+  exposesPrivatePayloads: false;
+};
+
+export type XStateProjectionInvokeInput =
+  | { kind: "workflowInput" }
+  | { kind: "nodeInput"; nodeId: NodeId }
+  | { kind: "edgePayload"; edgeId: EdgeId }
+  | { kind: "snapshotRef"; snapshotKind: WorkflowSnapshotKind };
+
+export type XStateProjectionActor = {
+  id: string;
+  src: string;
+  nodeId: NodeId;
+  kind: WorkflowNodeDefinition["kind"];
+  input: XStateProjectionInvokeInput;
+  childWorkflowId?: WorkflowId;
+  childWorkflowVersion?: WorkflowVersion;
+  metadata?: WorkflowMetadata;
+};
+
+export type XStateProjectionGuard = {
+  id: string;
+  ref: RegistryRefId;
+  edgeId?: EdgeId;
+  description?: string;
+};
+
+export type XStateProjectionActionKind =
+  | "startNode"
+  | "completeNode"
+  | "transferEdge"
+  | "enterWait"
+  | "resumeWait"
+  | "scheduleRetry"
+  | "recordFailure"
+  | "cancelWorkflow";
+
+export type XStateProjectionAction = {
+  id: string;
+  kind: XStateProjectionActionKind;
+  nodeId?: NodeId;
+  edgeId?: EdgeId;
+  durableEffect: boolean;
+};
+
+export type XStateProjectionDelay = {
+  id: string;
+  kind: "retry" | "humanTimeout";
+  nodeId?: NodeId;
+  edgeId?: EdgeId;
+  duration?: DurationSpec;
+  durableWakeup: true;
+};
+
+export type XStateProjectionStateMeta = {
+  pibo: {
+    kind: XStateProjectionRuntimeStateKind;
+    nodeId?: NodeId;
+    nodeKind?: WorkflowNodeDefinition["kind"];
+    actorId?: string;
+    wait?: {
+      durable: true;
+      resumeEvent: string;
+      waitTokenId?: WorkflowWaitTokenId;
+      actions?: WorkflowHumanActionRef[];
+      timeout?: DurationSpec;
+    };
+    retry?: {
+      durable: true;
+      delayId: string;
+      policy?: RetryPolicy;
+    };
+    terminal?: {
+      status: Extract<WorkflowRunStatus, "completed" | "failed" | "cancelled">;
+    };
+    ui?: WorkflowNodeUiMetadata;
+    description?: string;
+    tags?: string[];
+  };
+};
+
+export type XStateProjectionTransitionMeta = {
+  pibo: {
+    edgeId?: EdgeId;
+    edgeKind?: EdgeKind;
+    guardRef?: RegistryRefId;
+    adapterRef?: RegistryRefId;
+    join?: JoinPolicy;
+    priority?: number;
+    ui?: WorkflowEdgeUiMetadata;
+  };
+};
+
+export type XStateProjectionTransitionConfig = {
+  target?: string | string[];
+  guard?: string | { type: string; params?: JsonObject };
+  actions?: string[];
+  reenter?: boolean;
+  meta?: XStateProjectionTransitionMeta;
+};
+
+export type XStateProjectionInvokeConfig = {
+  id: string;
+  src: string;
+  input?: XStateProjectionInvokeInput;
+  onDone?: XStateProjectionTransitionConfig;
+  onError?: XStateProjectionTransitionConfig;
+};
+
+export type XStateProjectionStateNodeConfig = {
+  id?: string;
+  type?: XStateProjectionStateType;
+  description?: string;
+  tags?: string[];
+  entry?: string[];
+  exit?: string[];
+  invoke?: XStateProjectionInvokeConfig | XStateProjectionInvokeConfig[];
+  on?: Record<string, XStateProjectionTransitionConfig | XStateProjectionTransitionConfig[]>;
+  after?: Record<string, XStateProjectionTransitionConfig | XStateProjectionTransitionConfig[]>;
+  always?: XStateProjectionTransitionConfig | XStateProjectionTransitionConfig[];
+  states?: Record<string, XStateProjectionStateNodeConfig>;
+  meta?: XStateProjectionStateMeta;
+};
+
+export type XStateProjectionMachineMeta = {
+  pibo: {
+    schemaVersion: XStateProjectionSchemaVersion;
+    workflowId: WorkflowId;
+    workflowVersion: WorkflowVersion;
+    snapshotKinds: WorkflowSnapshotKind[];
+    contextShape: XStateProjectionContextShape;
+    actors: Record<string, XStateProjectionActor>;
+    guards: Record<string, XStateProjectionGuard>;
+    actions: Record<string, XStateProjectionAction>;
+    delays: Record<string, XStateProjectionDelay>;
+    finalStates: Record<XStateProjectionTerminalKind, string>;
+    metadata?: WorkflowMetadata;
+    ui?: WorkflowUiMetadata;
+  };
+};
+
+export type XStateProjectionMachineConfig = {
+  id: WorkflowId;
+  initial: string;
+  context?: Record<string, JsonValue>;
+  states: Record<string, XStateProjectionStateNodeConfig>;
+  on?: Record<string, XStateProjectionTransitionConfig | XStateProjectionTransitionConfig[]>;
+  meta: XStateProjectionMachineMeta;
+};
+
 export type XStateProjectionState = {
   id: string;
   nodeId?: NodeId;
-  type?: "atomic" | "compound" | "parallel" | "final";
-  invoke?: { src: string; input?: JsonValue };
+  kind: XStateProjectionRuntimeStateKind;
+  type?: XStateProjectionStateType;
+  actorId?: string;
+  invoke?: XStateProjectionInvokeConfig;
   entry?: string[];
   exit?: string[];
-  meta?: Record<string, JsonValue>;
+  tags?: string[];
+  meta?: XStateProjectionStateMeta;
 };
 
 export type XStateProjectionTransition = {
@@ -764,15 +929,24 @@ export type XStateProjectionTransition = {
   edgeId?: EdgeId;
   guard?: RegistryRefId;
   actions?: string[];
+  meta?: XStateProjectionTransitionMeta;
 };
 
 export type XStateMachineProjection = {
+  kind: XStateProjectionKind;
+  schemaVersion: XStateProjectionSchemaVersion;
   id: WorkflowId;
   version: WorkflowVersion;
   initial: string;
+  config: XStateProjectionMachineConfig;
   states: Record<string, XStateProjectionState>;
   transitions: XStateProjectionTransition[];
-  finalStates: string[];
+  actors: Record<string, XStateProjectionActor>;
+  guards: Record<string, XStateProjectionGuard>;
+  actions: Record<string, XStateProjectionAction>;
+  delays: Record<string, XStateProjectionDelay>;
+  contextShape: XStateProjectionContextShape;
+  finalStates: Record<XStateProjectionTerminalKind, string>;
   metadata?: WorkflowMetadata;
   ui?: WorkflowUiMetadata;
 };
