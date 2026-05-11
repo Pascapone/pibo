@@ -59,6 +59,62 @@ test("pibo mcp help stays progressive", async () => {
 	assert.match(schema.stdout, /Full example:/);
 });
 
+test("pibo mcp parser reports focused errors for invalid command shapes", async () => {
+	const cases = [
+		{
+			args: ["mcp", "--unknown"],
+			expected: /Error \[UNKNOWN_OPTION\]: Unknown option: --unknown/,
+		},
+		{
+			args: ["mcp", "call", "demo"],
+			expected: /Error \[MISSING_ARGUMENT\]: Missing required argument for call: tool/,
+		},
+		{
+			args: ["mcp", "demo/tool"],
+			expected: /Error \[AMBIGUOUS_COMMAND\]: Ambiguous command/,
+		},
+		{
+			args: ["mcp", "grep"],
+			expected: /Error \[MISSING_ARGUMENT\]: Missing required argument for grep: pattern/,
+		},
+	];
+
+	for (const { args, expected } of cases) {
+		await assert.rejects(
+			execFileAsync("node", [cliPath, ...args]),
+			(error) => {
+				assert.equal(error.code, 1);
+				assert.equal(error.stdout, "");
+				assert.match(error.stderr, expected);
+				return true;
+			},
+		);
+	}
+});
+
+test("pibo mcp config add accepts config option after positional arguments", async () => {
+	const cwd = await mkdtemp(join(tmpdir(), "pibo-mcp-config-trailing-option-"));
+	try {
+		const configPath = join(cwd, "custom-mcp.json");
+
+		await execFileAsync("node", [
+			cliPath,
+			"mcp",
+			"config",
+			"add",
+			"demo",
+			'{"command":"node"}',
+			"-c",
+			configPath,
+		]);
+
+		const savedConfig = JSON.parse(await readFile(configPath, "utf-8"));
+		assert.deepEqual(savedConfig.mcpServers.demo, { command: "node" });
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
 test("pibo mcp config can create, add, show, and remove servers", async () => {
 	const cwd = await mkdtemp(join(tmpdir(), "pibo-mcp-config-"));
 	try {
