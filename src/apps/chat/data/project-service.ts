@@ -136,14 +136,30 @@ export class ChatProjectService {
 		return row ? projectSessionFromRow(row) : undefined;
 	}
 
-	addProjectSession(input: { projectId: string; piboSessionId: string; kind?: PiboProjectSessionKind; workflowId?: PiboProjectWorkflowId; parentMainSessionId?: string; title?: string }): PiboProjectSession {
+	addProjectSession(input: { projectId: string; piboSessionId: string; kind?: PiboProjectSessionKind; workflowId?: PiboProjectWorkflowId; workflowRunId?: string; parentMainSessionId?: string; title?: string; state?: string }): PiboProjectSession {
 		const now = new Date().toISOString();
-		this.db.prepare(`INSERT INTO project_sessions (project_id, pibo_session_id, kind, workflow_id, parent_main_session_id, title, state, archived, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
-			ON CONFLICT(pibo_session_id) DO UPDATE SET project_id = excluded.project_id, kind = excluded.kind, workflow_id = excluded.workflow_id, parent_main_session_id = excluded.parent_main_session_id, title = excluded.title, updated_at = excluded.updated_at`)
-			.run(input.projectId, input.piboSessionId, input.kind ?? "main", input.workflowId ?? "simple-chat", input.parentMainSessionId ?? null, input.title ?? null, "simple_chat", now, now);
-		this.db.prepare("UPDATE projects SET current_main_session_id = ?, updated_at = ? WHERE id = ?").run(input.piboSessionId, now, input.projectId);
+		const kind = input.kind ?? "main";
+		this.db.prepare(`INSERT INTO project_sessions (project_id, pibo_session_id, kind, workflow_id, workflow_run_id, parent_main_session_id, title, state, archived, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+			ON CONFLICT(pibo_session_id) DO UPDATE SET project_id = excluded.project_id, kind = excluded.kind, workflow_id = excluded.workflow_id, workflow_run_id = COALESCE(excluded.workflow_run_id, workflow_run_id), parent_main_session_id = excluded.parent_main_session_id, title = excluded.title, state = COALESCE(excluded.state, state), updated_at = excluded.updated_at`)
+			.run(input.projectId, input.piboSessionId, kind, input.workflowId ?? "simple-chat", input.workflowRunId ?? null, input.parentMainSessionId ?? null, input.title ?? null, input.state ?? "simple_chat", now, now);
+		if (kind === "main") {
+			this.db.prepare("UPDATE projects SET current_main_session_id = ?, updated_at = ? WHERE id = ?").run(input.piboSessionId, now, input.projectId);
+		}
 		return this.getProjectSession(input.piboSessionId)!;
+	}
+
+	linkWorkflowRunSession(input: { projectId: string; piboSessionId: string; workflowRunId: string; workflowId: PiboProjectWorkflowId; parentMainSessionId?: string; title?: string }): PiboProjectSession {
+		return this.addProjectSession({
+			projectId: input.projectId,
+			piboSessionId: input.piboSessionId,
+			kind: input.parentMainSessionId ? "sub" : "main",
+			workflowId: input.workflowId,
+			workflowRunId: input.workflowRunId,
+			parentMainSessionId: input.parentMainSessionId,
+			title: input.title,
+			state: "workflow",
+		});
 	}
 
 	setProjectSessionArchived(piboSessionId: string, archived: boolean): PiboProjectSession | undefined {

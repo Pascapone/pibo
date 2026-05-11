@@ -2,6 +2,7 @@ import type { ChatSessionView } from "./types";
 import { DEFAULT_CHAT_SESSION_VIEW_ID, type ChatSessionViewId } from "./types";
 import { TraceSessionView } from "./TraceSessionView";
 import { CompactTerminalSessionView } from "./compact-terminal/CompactTerminalSessionView";
+import { WorkflowXStateSessionView } from "./WorkflowXStateSessionView";
 
 export const inactiveChatSessionViews = [
 	{
@@ -18,6 +19,12 @@ const builtinChatSessionViews = [
 		label: "Terminal",
 		description: "Compact Codex-style terminal transcript.",
 		render: (props) => <CompactTerminalSessionView {...props} />,
+	},
+	{
+		id: "workflow",
+		label: "Workflow",
+		description: "Workflow/XState visualization for workflow-backed project sessions.",
+		render: (props) => <WorkflowXStateSessionView {...props} />,
 	},
 ] satisfies readonly (ChatSessionView & { id: ChatSessionViewId })[];
 

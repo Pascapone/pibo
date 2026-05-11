@@ -1,0 +1,23 @@
+{
+  "name": "@pasko70/pibo-workflows",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Pibo Workflow System V1 framework package.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsx --test src/**/*.test.ts"
+  },
+  "dependencies": {
+    "xstate": "^5.31.1"
+  }
+}

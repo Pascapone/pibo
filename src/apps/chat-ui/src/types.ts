@@ -214,6 +214,7 @@ export type ProjectsBootstrapData = {
 	personalProject: PiboProject;
 	project?: PiboProject;
 	projects: PiboProject[];
+	projectSessions: PiboProjectSession[];
 	session?: PiboSession;
 	selectedProjectId: string;
 	selectedPiboSessionId?: string;

@@ -1,0 +1,1049 @@
+## Codebase Patterns
+- Manual bounded-loop validation can compose `dispatchWorkflowAgentNode(...)`, `recordWorkflowEdgeTransfer(...)`, `dispatchWorkflowHumanNode(...)`, `applyWorkflowHumanAction(...)`, guarded control-edge checks, and `dispatchWorkflowCodeNode(...)`; reopen `SqliteWorkflowRunStore` at human wait boundaries and inspect after completion.
+- Manual nested-workflow validation can compose `dispatchWorkflowCodeNode(...)`, `transferWorkflowEdgeAdapterData(...)`, and `dispatchWorkflowNestedWorkflowNode(...)`; persist the adapted `EdgeTransfer`, close/reopen `SqliteWorkflowRunStore`, then inspect both parent and child runs.
+- Manual workflow validation can be run as a one-off `npx tsx` harness inside `/workspace` using fixture definitions/providers, `createWorkflowRegistry(...)`, `runOneNodeAgentWorkflow(...)`, routed executor seams, a temporary `SqliteWorkflowRunStore`, and `inspectWorkflowRun(...)` after reopening the store.
+- Workflow persistence validation should close/reopen `SqliteWorkflowRunStore` around each recovery boundary; use real human dispatch/action APIs for waiting/resumed run facts instead of only direct row inserts.
+- Workflow debug/registration docs should treat Workflow Registry ids as the durable boundary: definitions store serializable refs, plugins register implementations in scoped registries, and debug snapshots summarize refs/diagnostics/projection without raw private payloads.
+- XState workflow docs should treat the kernel snapshot/workflow store as authoritative; `xstate` and `ui` snapshots are optional reconstructable caches, and normal UI should consume `createWorkflowXStateUiModel(...)`.
+- Minimal workflow definition docs should use the public `@pasko70/pibo-workflows` helpers and keep executable behavior behind Workflow Registry refs so examples match serializable IR rules.
+- Canonical current workflow capability docs live under `docs/project/` (for example `docs/project/workflows.md`); keep historical PRDs/design docs under `docs/specs/changes/pibo-workflow-system-v1/`.
+- Workflow/XState V1 UI is inspection-only: surface creation/visual editing/raw XState editing as explicitly deferred, and keep workflow definitions TypeScript-owned through the Workflow Registry.
+- Human wait actions should go through registry-backed refs on the wait token, then `applyWorkflowHumanAction` to validate availability/payloads, record `workflow_human_actions`, resolve the token, and schedule a human wakeup for resumed waits.
+- Workflow/XState tab secondary inspection panels should derive final output and validation diagnostics from the selected `traceView` inside `WorkflowProjectSessionUiModel`, then summarize only counts/availability in the safe UI snapshot.
+- Workflow-backed Chat Web sessions should derive display metadata from `PiboProjectSession` plus the live `PiboWebSessionStatus`; keep `simple-chat` sessions unbadged unless they have a workflow run id or non-simple workflow id.
+- Chat Web session tabs are registered through `src/apps/chat-ui/src/session-views/registry.tsx`; project-specific workflow context can flow into any tab via optional `ChatSessionViewProps` fields from `SessionTracePane`.
+- Project UI workflow surfaces should read `projectSessions` from `/api/chat/projects/bootstrap`; `workflowRunId` and `state: "workflow"`/non-`simple-chat` workflow ids identify workflow-backed sessions without coupling Chat Web to the workflow runtime package.
+- Restart-style workflow persistence/inspection tests should write facts, close `SqliteWorkflowRunStore`, reopen the same `pibo-workflows.sqlite`, and then inspect/read facts so recovery regressions are caught.
+- Workflow run inspection is package-level and store-interface based: use `inspectWorkflowRun(store, runId)` to aggregate persisted run, attempts, events, edge transfers, checkpoints, wakeups, wait tokens, and human actions; use `formatWorkflowRunInspection` for compact text output.
+- Workflow Agent session linkage stays structural: `createPiboSessionRoutingAgentExecutor` can call an injected `linkProjectSession` callback, while Chat Web `ChatProjectService` persists `workflow_run_id` on `project_sessions` without importing workflow runtime code.
+- Workflow DB boundaries should store workflow facts plus lightweight links (`pibo_session_id`, `project_id`) only; normal Pibo/Pi traces, tool calls, spans, transcripts, and session records stay in their existing session stores.
+- Workflow fact persistence uses small store interfaces in `packages/workflows/src/store/index.ts`; runtime helpers should persist events/edge transfers only when the injected store supports the corresponding optional `save*` method.
+- Workflow SQLite schema changes belong in `packages/workflows/src/store/index.ts` with `CREATE TABLE IF NOT EXISTS` / additive column migrations and a focused schema contract test under `packages/workflows/src/testing`.
+- Web UI Workflow/XState consumers should use `createWorkflowXStateUiModel(projectWorkflowToXStateProjection(definition), { snapshot | activeStateIds })` to get compact nodes/edges/actors/guards/actions/delays while keeping `contextShape.exposesPrivatePayloads: false` and kernel snapshots as durable truth.
+- Chat Web Workflow/XState UI panels should derive graph and node-status surfaces from the shared workflow UI model (`model.nodes` plus `snapshot.nodeStatuses`) so visual flow, list view, and snapshot facts stay consistent.
+- XState projection snapshot tests should compare normalized full projections for representative fixtures against `packages/workflows/src/testing/__snapshots__/xstate-projection.snap.json`; normalize object keys but preserve transition arrays so snapshot diffs catch semantic projection changes.
+- XState guard/wait/failure/final projection is deterministic: edge/loop guards populate the flat `guards` index, human nodes become `wait` states with durable wait actions/timeouts, node invoke failures target failed or retry-delay states, and `definition.final` nodes add completion transitions to `workflow.completed`.
+- XState workflow projection composes `projectWorkflowNodesToXState` and `projectWorkflowEdgesToXState` inside `projectWorkflowToXStateProjection`: map each workflow node to `node.<id>` plus `workflow.node.<id>` actor metadata, then layer edge transitions/actions without changing node ids.
+- XState projection data is Pibo-owned and versioned (`kind`, `schemaVersion`) with both a machine-config view and flat indexes for states/transitions/actors/guards/actions/delays; keep context shape projection-only with `durableTruth: "kernel"` and `exposesPrivatePayloads: false`.
+- XState edge projection goes through `projectWorkflowEdgesToXState`: use stable `workflow.edge.<id>.transition` and `workflow.edge.<id>.transfer` ids, default data/control events to `WORKFLOW.NODE.DONE`, resume edges to `WORKFLOW.RESUME`, and error edges to `WORKFLOW.FAIL`.
+- Multi-node runtime integration tests can manually compose `dispatchWorkflowCodeNode`/node dispatch helpers, `recordWorkflowEdgeTransfer` or `transferWorkflowEdgeData`, and downstream dispatch using `transferResult.targetInput`; pass `edgePayloads` explicitly when the downstream handler/prompt must inspect an incoming edge payload.
+- Cycle validation treats edges covered by structurally bounded loop policies (existing edge, positive `maxAttempts`, valid guard ref on loop or edge) as intentional back-edges, removes them from the validation graph, and rejects any remaining directed cycle with `WorkflowGraphError.unboundedCycle`.
+- Backtracking/retry support is split between definition validation (`WorkflowRetryError.*`, `WorkflowGraphError.unboundedBackEdge`) and runtime helpers (`resolveWorkflowRetryPolicy`, `decideWorkflowNodeRetry`, `createRetryScheduledNodeAttempt`); node retry policy wins over workflow retry policy.
+- Runtime contexts exposed to node/plugin code must be node-scoped for local state: pass only the current node's `run.state.local[nodeId]`, keep prompt-builder `state.local` current-node-only, and hide all local state from edge adapters unless explicit mapping is added.
+- Node state access declarations live under `node.state.reads` / `node.state.writes` as scoped strings (`global.*`, `local.*`, `edge.*`); validation rejects unknown global paths and edge writes because edge payloads are immutable.
+- Multiple nodes declaring writes to the same `global.*` state path are rejected unless the corresponding `state.global[path].merge` policy is explicit; single-writer paths can omit merge policy.
+- One-node agent workflow runs accept `initialGlobalState`; validate it with `validateWorkflowGlobalState`, render it through prompt state readers, and persist it in `WorkflowRun.state.global` via the workflow run store.
+- Local node state is stored under `WorkflowRun.state.local[nodeId]`; dispatch helpers snapshot the current node state into `NodeAttempt.localState` at start and terminal/waiting boundaries so restart inspection can recover the current node state.
+- Prompt workflow runtime coverage should include both one-node `promptTemplate` execution and graph-level `promptBuilder` execution after edge transfer so fixed and variable prompt paths stay covered.
+- Agent `promptTemplate` rendering supports `{{input.path}}`, `{{global.path}}`, `{{state.global.path}}`, `{{state.path}}` as a global-state shortcut, and current-node `{{local.path}}` / `{{state.local.path}}`; unresolved placeholders are preserved in the final prompt.
+- Agent `promptBuilder` refs should use `promptBuilderRef("id")` for registered TypeScript prompt builders; registry-backed validation checks `promptBuilders`, rejects unknown refs, and rejects nodes declaring both `promptTemplate` and `promptBuilder`.
+- Agent `promptBuilder` execution requires passing a Workflow Registry with `promptBuilders` into `dispatchWorkflowAgentNode`/`runOneNodeAgentWorkflow`; runtime prompt builders receive scoped `global`, `local`, and optional `edgePayloads` readers before Pibo Runtime is called.
+- Agent nodes record the final prompt under `nodeAttempt.metadata.finalPrompt` after prompt rendering/builder execution and before Pibo Runtime dispatch; keep prompt text out of workflow runtime events and persist attempts through `WorkflowNodeAttemptStore`.
+- For runtime tests that must prove fixed Agent Designer profile selection, create `createWorkflowRegistry(workflowFixtureProviders)`, validate with `{ registry }`, and bridge to runtime with a `profileResolver` that calls `resolveWorkflowAgentProfile`.
+- Registry-backed profile validation is opt-in through `validateWorkflow(definition, { registry })`; register fixed Agent Designer profiles with `registerWorkflowAgentProfile` or `WorkflowProviders.profiles` before validating agent-node workflows against a full registry.
+- Agent runtime metadata should be created from resolved profile plus executor result: executor-returned effective tools/skills/context win, otherwise use `ResolvedAgentProfile` capability lists; always persist selected profile and effective routing metadata on the node attempt.
+- Agent node runtime profile resolution uses the optional `profileResolver` hook before Pibo Runtime/session creation; the resolved profile id is passed to `agentExecutor`/`createPiboSessionRoutingAgentExecutor` and recorded in node metadata.
+- Agent node V1 runtime policy is enforced by `validateWorkflow`: agent nodes must use `runtime: "pibo"` and a fixed Agent Designer profile (`fixedProfile("pibo-agent")` or `{ kind: "fixed", id }`).
+- Visible adapter node dispatch goes through `dispatchWorkflowAdapterNode` with a registry-resolved TypeScript `adapterRef`; it validates node input/output, emits node lifecycle events, persists attempts, and records `metadata.adapterId`.
+- Persist node attempts through `WorkflowNodeAttemptStore`/`SqliteWorkflowRunStore.saveNodeAttempt`; dispatch helpers should save attempts at start plus terminal/waiting/failure boundaries so restart inspection can recover node status by kind.
+- Human node dispatch goes through `dispatchWorkflowHumanNode`; it validates node input, persists a `WorkflowWaitToken` through `WorkflowWaitTokenStore`, emits `wait.created`, and leaves the node/run in `waiting` with `metadata.waitTokenId`.
+- Nested workflow node dispatch goes through `dispatchWorkflowNestedWorkflowNode` with a registry-resolved child workflow and injected `nestedWorkflowExecutor`; it validates parent/child input and child/node output, records `childRunId` metadata, and keeps parent state isolated from child state.
+- Agent node dispatch goes through `dispatchWorkflowAgentNode` with an injected `agentExecutor`; it validates node input, routes through `createPiboSessionRoutingAgentExecutor`, validates node output, emits node lifecycle events, and records runtime/session metadata on the node attempt.
+- Code node dispatch goes through `dispatchWorkflowCodeNode` with a `WorkflowRegistry`; registered handlers receive scoped `global`, `local`, `edge`, `emit`, and `command` context and state patches must be declared in `node.state.writes`.
+- Registered edge adapter runtime tests should validate the workflow with a `WorkflowRegistry` and then call `transferWorkflowEdgeAdapterData` so both static adapter refs and runtime adapter output are covered.
+- Use `transferWorkflowEdgeAdapterData` for registered edge-adapter runtime transfer; it resolves the adapter, validates source output, validates adapter output with `validateWorkflowEdgeAdapterOutput`, and only then returns `targetInput` for the downstream node.
+- Registry-backed workflow validation should remain opt-in via `validateWorkflow(definition, { registry })` until each ref family is implemented, preserving schema/graph-only validation for fixtures without providers.
+- Edge adapters should validate both structural adapter refs (`adapterRef(...)`) and declared adapter output compatibility with the target node input; actual registry resolution remains a separate validation layer.
+- Use `adapterRef(...)` for registered deterministic TypeScript adapters in workflow IR; pass those refs to `edgeAdapter(...)` for edge-local adapters and to visible `adapter` node `handler` fields.
+- Two-node direct-edge tests should validate the workflow definition, call `recordWorkflowEdgeTransfer`, then use `transferResult.targetInput` as the downstream node attempt input.
+- Use `recordWorkflowEdgeTransfer` when a direct edge transfer should update the run cursor, emit `edge.transferred`, and persist the run; keep `transferWorkflowEdgeData` pure for validation/payload creation.
+- Direct edge runtime transfer is exposed as `transferWorkflowEdgeData`; it creates an immutable `EdgeTransfer` from a completed source attempt output only after validating source output and target input ports.
+- Direct workflow edge compatibility is conservative: text ports match text ports, and JSON ports match only when their semantic schema contracts are equivalent; otherwise use an explicit edge adapter or adapter node.
+- Single-prompt one-node runtime coverage should assert validation, routed Pibo session creation/message emission, trace events, and reopened `SqliteWorkflowRunStore` facts in one end-to-end test.
+- Workflow run persistence is exposed through `WorkflowRunStore` and `SqliteWorkflowRunStore` in `packages/workflows/src/store/index.ts`; inject a store into `runOneNodeAgentWorkflow` when a runtime path must persist run status/cursor/input/output facts.
+- One-node agent runtime trace/event projection uses the optional `emitEvent` hook on `runOneNodeAgentWorkflow`; it receives the same `WorkflowRuntimeEvent` objects returned in `result.events`.
+- One-node agent runtime execution is exposed from `packages/workflows/src/runtime/index.ts` as `runOneNodeAgentWorkflow`; use `createPiboSessionRoutingAgentExecutor` to adapt a Pibo channel/session routing surface (`createSession`, `emit`, `subscribe`) into the injected `agentExecutor` seam.
+- Use `validateWorkflowInput`, `validateNodeOutput`, and `validateWorkflowOutput` at runtime boundaries; they all delegate to shared port/schema value validation and emit JSONPath-like `WorkflowInterfaceError.*` diagnostics.
+- Call `validateWorkflowInput(definition, input)` before starting workflow execution; it validates text ports as strings and JSON ports against the V1 schema subset with JSONPath-like diagnostics.
+- Workflow validation code should emit `WorkflowDiagnostic` objects with `WorkflowInterfaceError.*` codes and JSONPath-like `path` values instead of throwing, then aggregate through `ValidationResult`.
+- Workflow graph validation diagnostics use the `WorkflowGraphError.*` code family and should include `edgeId`, missing `nodeId`, and JSONPath-like paths for source/target refs.
+- Workflow package tests live under `packages/workflows/src/testing/*.test.ts` and run with `npm --prefix packages/workflows test` (`tsx --test`).
+- Workflow-system implementation progress is currently tracked in `docs/specs/changes/pibo-workflow-system-v1/tasks.md`; the referenced `prd_*.json` files are not present in this worktree.
+- Keep the new workflow framework isolated under `packages/workflows` so future iterations can evolve the package without touching the host gateway or existing app surfaces.
+- Export public workflow package types through `packages/workflows/src/index.ts` using `.js` module specifiers because the package uses `moduleResolution: NodeNext`.
+- Keep reusable workflow examples in `packages/workflows/src/fixtures/index.ts`; pair registry-ref-heavy fixtures with `workflowFixtureProviders` so future tests can resolve handlers/adapters/guards without embedding closures in definitions.
+- Put public workflow authoring helpers in `packages/workflows/src/api/index.ts`, export them from the package root, and test them through `../index.js`.
+- Treat `docs/specs/changes/pibo-workflow-system-v1/structured-outputs-json-schema-subset.md` as the canonical V1 JSON port schema subset doc; keep it aligned with `packages/workflows/src/validation/index.ts`.
+
+## 2026-05-10 22:18 UTC - 1.1
+- Implemented the initial `packages/workflows` package boundary with the PRD-required submodule directories.
+- Added a minimal standalone package manifest, TypeScript config, root `src/index.ts`, and package README documenting each submodule responsibility.
+- Marked task `1.1` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Files changed: `packages/workflows/package.json`, `packages/workflows/tsconfig.json`, `packages/workflows/README.md`, `packages/workflows/src/index.ts`, `packages/workflows/src/*/.gitkeep`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - The root `tsconfig.json` only includes `src/**/*.ts`; package-local code under `packages/workflows` needs its own `tsconfig.json` or root workspace wiring in a later story.
+  - Empty PRD-required directories need placeholder files such as `.gitkeep` to be tracked by Git.
+  - The task prompt mentions `prd_*.json`, but this worktree currently contains Markdown PRDs and `tasks.md` only.
+---
+
+## 2026-05-10 22:22 UTC - 1.2
+- Added the initial Workflow System V1 TypeScript type surface for workflow definitions, text/JSON ports, node and edge IR, registry refs/handlers, runtime run state, human wait/action records, and XState projection snapshots.
+- Re-exported the public type surface from the package root.
+- Marked task `1.2` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Quality checks: `npm --prefix packages/workflows run typecheck` on host and inside `pibo-dev-Workflows` container.
+- Files changed: `packages/workflows/src/types/index.ts`, `packages/workflows/src/index.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - Use registered ids (`RegistryRefId`) in workflow definitions for handlers, adapters, guards, prompt builders, and human actions so persisted IR stays closure-free.
+  - Keep validation behavior out of the type layer; story 1.3 should add validators against these exported types rather than embedding runtime assumptions in type definitions.
+  - The standalone workflow package typecheck is the relevant fast check until root workspace wiring includes `packages/workflows`.
+---
+
+## 2026-05-10 22:28 UTC - 1.3
+- Implemented workflow JSON schema subset validation for workflow definitions, covering JSON ports on workflows/nodes, human node schemas, edge adapter output ports, and global state field schemas.
+- Added public validation exports for `validateWorkflow`, `validateWorkflowPort`, and `validateJsonSchemaSubset` with structured `WorkflowDiagnostic` results for OpenAI Structured Outputs/tool-calling subset failures such as root `anyOf`, non-object structured roots, missing `additionalProperties: false`, incomplete `required`, missing array `items`, unsupported `oneOf`/`allOf`, and unresolved local `$defs` refs.
+- Marked task `1.3` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Quality checks: `npm --prefix packages/workflows run typecheck` on host and inside `pibo-dev-Workflows` container; root `npm run typecheck` on host.
+- Files changed: `packages/workflows/src/validation/index.ts`, `packages/workflows/src/index.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - JSON workflow ports are treated as Structured Outputs roots, so scalar/array contracts must be wrapped in an object property and every object must use `additionalProperties: false`.
+  - Keep validation side-effect free and registry/runtime independent; later stories can layer graph, compatibility, and registry reference checks into the same `ValidationResult` pattern.
+  - Human node response schemas and edge adapter output ports need the same schema subset checks as workflow/node JSON ports.
+---
+
+## 2026-05-10 22:34 UTC - 1.4
+- Added required workflow fixtures for minimal one-node `pibo-agent`, mixed-node, explicit edge adapter, human wait, registry/provider refs, debug serialization, nested parent/child workflows, and bounded review-loop/back-edge definitions.
+- Exported fixtures from the workflow package root and included lightweight fixture providers for referenced handlers, adapters, guards, prompt builders, and human actions.
+- Marked task `1.4` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; fixture validation smoke test with `npx tsx`; root `npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows run typecheck`.
+- Files changed: `packages/workflows/src/fixtures/index.ts`, `packages/workflows/src/index.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - Fixtures should stay JSON-serializable at the `WorkflowDefinition` layer and keep executable behavior in companion providers keyed by registry refs.
+  - The current validator only checks schema subset rules; future malformed-definition tests need to add graph/registry validation before these fixtures can prove edge compatibility, cycles, and unknown refs.
+  - State global schemas can be scalar with `requireObjectRoot: false`, but workflow/node/human/adapter ports must use object-root Structured Outputs schemas.
+---
+
+## 2026-05-10 22:38 UTC - 1.5
+- Added workflow package node:test coverage that accepts all required fixtures and rejects malformed definition schemas for JSON port roots, root `anyOf`, non-strict object schemas, human response schemas, and edge adapter output refs.
+- Added the workflow package `test` script using `tsx --test`.
+- Marked task `1.5` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; root `npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test`.
+- Files changed: `packages/workflows/package.json`, `packages/workflows/src/testing/validation.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - Tests should import public exports from `../index.js` to exercise the package boundary while preserving NodeNext `.js` import specifiers.
+  - Current malformed-definition coverage is focused on schema subset rejection; graph/registry/runtime malformed cases belong to later validation stories as those validators are implemented.
+  - Keeping fixtures in the positive test path helps catch regressions when validation expands beyond schema checks.
+---
+
+
+## 2026-05-10 22:41 UTC - 2.1
+- Added public `text()` and `json()` port authoring helpers plus `isTextPort`/`isJsonPort` kind guards for workflow/node/adapter contracts.
+- Exported the API helpers from the workflow package root.
+- Added port helper tests that exercise text ports, JSON schema-backed ports, optional descriptions, and kind narrowing.
+- Marked task `2.1` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; root `npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test`.
+- Files changed: `packages/workflows/src/api/index.ts`, `packages/workflows/src/index.ts`, `packages/workflows/src/testing/ports.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - Keep helper APIs small and IR-preserving: `json(schema, description?)` stores the same schema contract that validation/runtime layers will consume later.
+  - Public package tests should import helpers from `../index.js` so root exports stay covered as the authoring API grows.
+  - Story 2.1 only adds port construction/narrowing; value validation for workflow inputs/outputs belongs to the later 2.3/2.4 stories.
+---
+
+## 2026-05-10 22:43 UTC - 2.2
+- Documented the V1 OpenAI Structured Outputs / tool-calling JSON Schema subset for workflow JSON ports, including supported types/keywords, object-root rules, strict object requirements, arrays, `anyOf`, `$defs`/`$ref`, rejected examples, diagnostics, and an author checklist.
+- Linked the canonical subset doc from the workflow spec, authoring design, PRD catalog, and workflow package README.
+- Marked task `2.2` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; root `npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test`.
+- Files changed: `docs/specs/changes/pibo-workflow-system-v1/structured-outputs-json-schema-subset.md`, `docs/specs/changes/pibo-workflow-system-v1/spec.md`, `docs/specs/changes/pibo-workflow-system-v1/design-authoring-api.md`, `docs/specs/changes/pibo-workflow-system-v1/prds/README.md`, `packages/workflows/README.md`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - The implemented schema validator is currently the source of truth for the V1 subset; update the subset doc whenever validator behavior changes.
+  - Workflow/node/human/adapter JSON ports require object roots, but global state field schemas intentionally allow scalar/array roots with `requireObjectRoot: false`.
+  - Runtime value validation is still pending for stories 2.3 and 2.4; story 2.2 only documents the schema contract.
+---
+
+## 2026-05-10 22:47 UTC - 2.3
+- Implemented workflow start-boundary input validation via `validateWorkflowInput`, backed by reusable port and JSON Schema value validation helpers for text and JSON ports.
+- Added runtime value checks for JSON schema `type`, `required`, `additionalProperties: false`, arrays, `enum`, `const`, `anyOf`, and local `$defs`/`$ref` paths.
+- Documented the input value validation helpers and marked task `2.3` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; root `npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test`.
+- Files changed: `packages/workflows/src/validation/index.ts`, `packages/workflows/src/testing/validation.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/structured-outputs-json-schema-subset.md`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - `validateWorkflowPortValue` and `validateJsonValueAgainstSchema` are reusable for story 2.4 node output, adapter output, and workflow output validation.
+  - Runtime value diagnostics should keep the same `WorkflowInterfaceError.*` code family as schema validation so UI/CLI callers can handle all boundary validation uniformly.
+  - The Docker worker worktree is mounted at `/workspace`, not `/workspaces/pibo`.
+---
+
+## 2026-05-10 22:50 UTC - 2.4
+- Implemented runtime output boundary helpers `validateNodeOutput` and `validateWorkflowOutput`, reusing `validateWorkflowPortValue` so text and JSON outputs are checked before downstream edge use or workflow completion.
+- Added node/output tests for valid declared outputs, invalid nested JSON values, invalid workflow final outputs, and unknown node diagnostics.
+- Documented runtime output validation helpers and marked task `2.4` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; root `npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test`.
+- Files changed: `packages/workflows/src/validation/index.ts`, `packages/workflows/src/testing/validation.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/structured-outputs-json-schema-subset.md`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - Node output validation should attach `nodeId` to every diagnostic so runtime/UI callers can associate boundary failures with a node attempt.
+  - Workflow output validation can reuse the same final `$.output` path convention as definition validation while reporting concrete value failures like `$.output.status`.
+  - Nodes without declared output ports currently validate as OK; future runtime stories should decide whether node kinds must declare outputs before edge compatibility checks enforce downstream contracts.
+---
+
+## 2026-05-10 22:52 UTC - 2.5
+- Added dedicated interface value tests for valid and invalid text/JSON workflow inputs, workflow outputs, node outputs, and direct port output validation.
+- Covered JSON boundary failures for text passed to JSON ports, missing/extra properties, nested array item type errors, enum/const mismatches, nullable unions, and integer fields.
+- Marked task `2.5` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; root `npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test`.
+- Files changed: `packages/workflows/src/testing/interface-values.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - Direct `validateWorkflowPortValue` tests are useful for adapter-like boundary coverage before story 5.4 adds adapter-specific runtime validation helpers.
+  - JSON schemas used in runtime value tests still pass through schema subset validation first, so const-only properties need an explicit supported `type`.
+  - Keep interface value tests separate from definition schema tests so future runtime-boundary changes have focused regression coverage.
+---
+
+## 2026-05-10 22:55 UTC - 3.1
+- Implemented a focused one-node `agent` workflow runtime path with `validateOneNodeAgentWorkflowPath` and `runOneNodeAgentWorkflow`.
+- Added injected `agentExecutor` support, minimal `{{input}}` prompt substitution, run/node attempt facts, runtime metadata capture, in-memory workflow/node lifecycle events, and input/node-output/workflow-output validation around execution.
+- Marked task `3.1` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; root `npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test`.
+- Files changed: `packages/workflows/src/runtime/index.ts`, `packages/workflows/src/testing/runtime-one-node-agent.test.ts`, `packages/workflows/src/index.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - Story 3.1 intentionally keeps normal Pibo session routing behind an injected executor; story 3.2 can wire this seam to the routed runtime without changing the one-node validation/output boundary.
+  - The minimal one-node path emits `WorkflowRuntimeEvent` records in memory, but trace-store integration is still pending for story 3.4.
+  - `promptTemplate` support here only substitutes `{{input}}` for the minimal fixture path; full prompt rendering with state and builders belongs to section 8.
+---
+
+## 2026-05-10 22:59 UTC - 3.2
+- Added `createPiboSessionRoutingAgentExecutor`, which creates a routed Pibo session for one-node agent workflows, sends the rendered prompt through the normal message event path, waits for the routed assistant reply, and records routed session ids/profile/tool metadata on the node attempt.
+- Passed workflow routing metadata through session creation, including parent session, owner scope, room/project metadata, workflow run id, and node attempt id.
+- Added tests that verify the one-node agent path creates a normal Pibo session, emits an actor message, consumes the assistant reply, and records routed session metadata.
+- Marked task `3.2` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; `npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test`; container `docker exec pibo-dev-Workflows ... npm run typecheck`.
+- Files changed: `packages/workflows/src/runtime/index.ts`, `packages/workflows/src/testing/runtime-one-node-agent.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - The workflows package stays product-code independent by using structural routing types that match `PiboChannelContext` instead of importing from `src/`.
+  - Agent workflow session metadata should include workflow run/node identifiers so later persistence and UI stories can link Pibo Sessions back to workflow node attempts.
+  - Use message source `actor` for workflow-driven agent-node prompts so routed sessions distinguish workflow/runtime input from direct UI input.
+---
+
+## 2026-05-10 23:06 UTC - 3.3
+- Added the initial workflow run persistence API with `WorkflowRunStore` and `SqliteWorkflowRunStore`, backed by a `workflow_runs` table in `pibo-workflows.sqlite`-compatible databases.
+- Wired `runOneNodeAgentWorkflow` to persist run start, completion, and failure states when a store is provided, including run id, workflow id/version, status, current cursor, input, and output.
+- Added a restart-style persistence test that writes a completed one-node workflow run, closes the store, reopens the SQLite file, and verifies the persisted run facts.
+- Marked task `3.3` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; `npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test`; container `docker exec pibo-dev-Workflows ... npm run typecheck`.
+- Files changed: `packages/workflows/src/store/index.ts`, `packages/workflows/src/runtime/index.ts`, `packages/workflows/src/testing/runtime-one-node-agent.test.ts`, `packages/workflows/src/index.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - Keep workflow persistence behind an injected store seam so runtime tests can use temporary SQLite files without forcing a default host path.
+  - Persist optional workflow output with an explicit `output_present` flag so JSON `null` remains distinct from no output yet.
+  - `node:sqlite` `DatabaseSync` works in the workflow package tests on the current Node runtime and avoids adding a package dependency.
+---
+
+## 2026-05-10 23:11 UTC - 3.4
+- Added an `emitEvent` hook to `runOneNodeAgentWorkflow` so workflow runtime events can be projected to trace consumers as the runtime crosses workflow/node boundaries.
+- Routed workflow start, node start, node complete, workflow complete, and existing failure events through the shared event emission helper while preserving the returned `result.events` array.
+- Added runtime test coverage proving emitted trace events match the returned event sequence for a successful one-node agent workflow.
+- Marked task `3.4` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; root `npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test`; container root `npm run typecheck`.
+- Files changed: `packages/workflows/src/runtime/index.ts`, `packages/workflows/src/testing/runtime-one-node-agent.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - The runtime already returned `WorkflowRuntimeEvent[]`; the new hook should be used by future trace/UI/CLI projections instead of re-deriving boundary events from run status.
+  - Keep workflow trace projection decoupled from persistence for now; durable `workflow_events` storage is still a later persistence story.
+  - Tests can import `WorkflowRuntimeEvent` from `../index.js` to keep the public type export path covered.
+---
+
+## 2026-05-10 23:13 UTC - 3.5
+- Added an automated single-prompt workflow start-to-completion test that validates the fixture, routes through the mocked normal Pibo session path, emits trace events, persists the completed run, reopens the SQLite store, and verifies stored input/current/output/session/project linkage.
+- Updated the one-node runtime to copy the executor-returned Pibo session id and routing project id onto the completed workflow run before persistence so run-level inspection can link back to the routed Pibo session.
+- Marked task `3.5` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; root `npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- Files changed: `packages/workflows/src/runtime/index.ts`, `packages/workflows/src/testing/runtime-one-node-agent.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - `WorkflowRun` already has `piboSessionId` and `projectId` fields; set them before the final `saveRun` when an executor produces routing linkage that inspectors need at run level.
+  - End-to-end one-node tests can use an in-memory mocked `PiboWorkflowSessionRouting` plus a temp `SqliteWorkflowRunStore` to cover routed execution and durable run facts without touching host gateways.
+  - UI/browser verification was not needed for this story because it only changes package runtime/test behavior.
+---
+
+## 2026-05-10 23:16 UTC - 4.1
+- Implemented workflow edge graph validation for missing source and target node references in `validateWorkflow`.
+- Added diagnostics with `WorkflowGraphError.unknownSourceNode` and `WorkflowGraphError.unknownTargetNode`, including edge id, missing node id, JSONPath-like paths, and repair hints.
+- Added validation test coverage for edges pointing at missing source/target nodes.
+- Marked task `4.1` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; root `npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- Files changed: `packages/workflows/src/validation/index.ts`, `packages/workflows/src/testing/validation.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - Keep graph-structure failures separate from interface/schema failures by using `WorkflowGraphError.*` diagnostics.
+  - Edge diagnostics should include both `edgeId` and the referenced `nodeId` so future UI/CLI inspection can highlight the bad edge endpoint directly.
+  - Edge node-reference validation currently runs before later compatibility/adapters checks in `validateWorkflow`, so story 4.2 can safely assume source/target nodes exist or report its own diagnostics after this pass.
+---
+
+## 2026-05-10 23:19 UTC - 4.2
+- Implemented direct workflow edge port compatibility validation for non-adapted edges.
+- Added a public `areWorkflowPortsDirectlyCompatible` helper that accepts text-to-text edges and conservatively accepts JSON-to-JSON edges only when their semantic schema contracts match.
+- Added validation tests for compatible JSON direct edges, text-to-JSON incompatibility, and incompatible JSON schema contracts.
+- Marked task `4.2` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; root `npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- Files changed: `packages/workflows/src/validation/index.ts`, `packages/workflows/src/testing/validation.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - Direct JSON edge compatibility deliberately uses semantic schema equality rather than broad JSON Schema subsumption; if compatibility cannot be proven, future adapter stories should require an explicit adapter.
+  - Edge compatibility validation skips edges with `edge.adapter` so adapter-specific output-to-target checks can be layered in the later adapter stories without rejecting existing adapter fixtures.
+  - Keep graph compatibility diagnostics in the `WorkflowGraphError.*` family with `edgeId` and JSONPath-like `path` fields for UI/CLI highlighting.
+---
+
+## 2026-05-10 23:23 UTC - 4.3
+- Implemented direct workflow edge data transfer with `transferWorkflowEdgeData`, producing `EdgeTransfer` records from completed source node attempts.
+- Added runtime validation for source run/node/status/output, source output port, and target input port before transfer; direct transfer intentionally rejects adapter and non-data edges until later stories.
+- Added edge transfer tests for successful text payload transfer, invalid target input rejection, and incomplete source attempt rejection.
+- Marked task `4.3` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; root `npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- Files changed: `packages/workflows/src/runtime/index.ts`, `packages/workflows/src/testing/runtime-edge-transfer.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - `transferWorkflowEdgeData` is a pure runtime helper today; story 4.4 can wrap it with `edge.transferred` event emission without reimplementing validation.
+  - Edge adapters are deliberately rejected by direct transfer until registry-backed adapter resolution lands in section 5.
+  - Use `Object.hasOwn(sourceNodeAttempt, "output")` semantics to distinguish a missing output from other falsy JSON/text values such as `null`, `false`, `0`, or an empty string.
+---
+
+## 2026-05-10 23:26 UTC - 4.4
+- Added `recordWorkflowEdgeTransfer`, a runtime wrapper around direct edge transfer that appends/emits `edge.transferred`, advances the workflow run cursor to the transferred edge, updates `run.updatedAt`, and persists the run when a store is provided.
+- Added edge transfer event tests for successful event/cursor/store recording and for validation failures that must not emit events or mutate the run cursor.
+- Marked task `4.4` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; root `npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- Files changed: `packages/workflows/src/runtime/index.ts`, `packages/workflows/src/testing/runtime-edge-transfer.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - Keep pure edge transfer validation/payload creation (`transferWorkflowEdgeData`) separate from run/event side effects (`recordWorkflowEdgeTransfer`) so future graph runtime code can choose the correct boundary.
+  - Edge transfer event recording should only happen after transfer validation succeeds; failed transfers should return diagnostics without invoking event emitters or changing the run cursor.
+  - The existing `WorkflowRun.current` cursor can represent an edge boundary with `{ edgeId, status }`, and `SqliteWorkflowRunStore` already persists `current_edge_id` through the serialized cursor.
+---
+
+## 2026-05-10 23:29 UTC - 4.5
+- Added a two-node direct-edge runtime test where node A completes with JSON output, `recordWorkflowEdgeTransfer` records the transfer, and node B starts from the transferred JSON object as its input.
+- Verified the test workflow definition is valid, the transfer emits `edge.transferred`, the run cursor advances to the edge, and the downstream input validates against node B's JSON port.
+- Marked task `4.5` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; root `npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- Files changed: `packages/workflows/src/testing/runtime-edge-transfer.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - `recordWorkflowEdgeTransfer` already provides the target node input as `transferResult.targetInput`; use that value directly when constructing a downstream `NodeAttempt` in tests.
+  - Direct JSON two-node fixtures can reuse the same `json(...)` port object for source output and target input so existing direct compatibility validation proves the schemas match.
+  - Story 4.5 is test-only; a full graph runner that automatically starts node B belongs to later node dispatch/orchestration stories.
+---
+
+## 2026-05-10 23:34 UTC - 5.1
+- Added explicit registered TypeScript `AdapterRef` IR objects and helper APIs (`adapterRef`, `edgeAdapter`, `isAdapterRef`, `adapterRefId`) for edge adapters and visible adapter nodes.
+- Updated adapter fixtures and validation tests to store adapter refs instead of bare strings for both `edgeAdapter.transform` and adapter node `handler`.
+- Marked task `5.1` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; root `npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- Files changed: `packages/workflows/src/types/index.ts`, `packages/workflows/src/api/index.ts`, `packages/workflows/src/fixtures/index.ts`, `packages/workflows/src/testing/ports.test.ts`, `packages/workflows/src/testing/validation.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - Adapter refs now carry `{ kind: "adapter", language: "typescript", id }`, so future registry resolution should read `ref.id` instead of accepting raw adapter id strings from workflow IR.
+  - The `edgeAdapter(...)` authoring helper keeps the edge adapter shape consistent while preserving the output port contract for later adapter-output validation.
+  - Story 5.1 is authoring/type surface only; adapter registry lookup, incompatible-edge rejection, and adapter output runtime validation remain in stories 5.2-5.4.
+---
+
+
+## 2026-05-10 23:36 UTC - 5.2
+- Rejected incompatible workflow edges unless they use a structural registered TypeScript `adapterRef(...)` in their edge adapter transform.
+- Added definition-time validation that an edge adapter's declared output port matches the downstream target input port, while leaving actual registry lookup/runtime adapter execution to later stories.
+- Added validation coverage for valid adapter-bridged incompatible ports, raw string adapter transforms, and adapter outputs that do not satisfy the target input contract.
+- Marked task `5.2` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; root `npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- Files changed: `packages/workflows/src/validation/index.ts`, `packages/workflows/src/testing/validation.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - `validateWorkflow` now treats `edge.adapter.transform` as untrusted IR and verifies it has the `adapterRef(...)` shape before accepting it as an explicit bridge.
+  - Adapter output compatibility is a static graph validation concern; runtime value validation and registry-backed adapter execution remain in stories 5.3-5.5.
+  - No browser verification was needed because this story only changes the workflow package validation/test layer.
+---
+
+## 2026-05-10 23:40 UTC - 5.3
+- Implemented Workflow Registry adapter registration and resolution helpers, including scoped registry creation from workflow providers, duplicate registration protection, overrides, and adapter lookup by `adapterRef(...)` or id.
+- Added registry-backed workflow validation for edge adapter refs and visible adapter node refs when a registry is provided, producing `WorkflowGraphError.unknownAdapterRef` diagnostics for missing adapters.
+- Added registry tests covering adapter resolution/execution, duplicate/override behavior, edge adapter validation, and visible adapter node validation.
+- Marked task `5.3` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; root `npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- Files changed: `packages/workflows/src/registry/index.ts`, `packages/workflows/src/index.ts`, `packages/workflows/src/validation/index.ts`, `packages/workflows/src/testing/registry.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - Use `createWorkflowRegistry(workflowFixtureProviders)` in tests when validation needs actual registered adapters rather than only structural `adapterRef(...)` checks.
+  - `validateWorkflow(definition)` intentionally keeps registry lookup disabled unless a registry is passed, so existing schema/graph validation remains usable for plain fixture validation.
+  - Adapter registry diagnostics use `WorkflowGraphError.unknownAdapterRef` with `edgeId` or `nodeId` plus a path ending in `.id` so UI/CLI inspectors can highlight the unresolved registered ref.
+---
+
+## 2026-05-10 23:45 UTC - 5.4
+- Implemented runtime adapter-edge transfer via `transferWorkflowEdgeAdapterData`, resolving registered TypeScript adapters, validating completed source outputs, running the adapter, and validating the adapter output before exposing target node input.
+- Added `validateWorkflowEdgeAdapterOutput` so adapter output is checked against both the declared edge adapter output port and downstream target input port with edge/node diagnostics.
+- Added tests for successful registered adapter output transfer and invalid adapter output rejection.
+- Marked task `5.4` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; root `npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- Files changed: `packages/workflows/src/validation/index.ts`, `packages/workflows/src/runtime/index.ts`, `packages/workflows/src/testing/runtime-edge-transfer.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - Adapter-edge runtime transfer is separate from direct `transferWorkflowEdgeData`; use the adapter helper when `edge.adapter` is present and provide a Workflow Registry with registered adapter handlers.
+  - Validate adapter output twice at the boundary: first against the edge adapter's declared output port, then against the target node input port before constructing the downstream `targetInput`.
+  - Adapter transfer currently creates immutable edge transfer payloads but does not persist adapter node attempts; full adapter attempt persistence remains for later node executor/persistence stories.
+---
+
+## 2026-05-10 23:49 UTC - 5.5
+- Added adapter-edge runtime coverage for both text-to-JSON and JSON-to-text registered adapter directions.
+- Renamed the existing registered adapter runtime test to explicitly document the text-to-JSON case and added a JSON source to text target workflow transfer test using `transferWorkflowEdgeAdapterData`.
+- Marked task `5.5` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; root `npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- Files changed: `packages/workflows/src/testing/runtime-edge-transfer.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - `transferWorkflowEdgeAdapterData` already handles both adapter directions as long as the edge adapter's declared output port matches the target node input port.
+  - JSON-to-text adapter tests can reuse `createJsonTwoNodeWorkflow()` by changing the target node input and edge adapter output to `text()`.
+  - No browser verification was needed because this story only changes workflow package runtime tests.
+---
+
+## 2026-05-10 23:54 UTC - 6.1
+- Implemented `dispatchWorkflowCodeNode` for TypeScript code nodes backed by registered `WorkflowRegistry` handlers.
+- Added handler lookup helpers, optional registry-backed validation for code handler refs, scoped state/edge readers, command/event hooks, output validation, global/local patch application, and undeclared state write/read rejection.
+- Added code node runtime tests for successful dispatch, missing handlers, undeclared writes, invalid output, and non-code node rejection.
+- Marked task `6.1` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; root `npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- Files changed: `packages/workflows/src/runtime/index.ts`, `packages/workflows/src/registry/index.ts`, `packages/workflows/src/validation/index.ts`, `packages/workflows/src/testing/runtime-code-node.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - Code handlers should stay registry-backed (`registerWorkflowHandler`/`createWorkflowRegistry`) so workflow IR stores only durable handler ids.
+  - State access is deliberately explicit: reads are enforced through context readers and returned patches are rejected unless matching `global.*` or `local.*` paths are declared in `node.state.writes`.
+  - `dispatchWorkflowCodeNode` is a node-level executor seam; later graph-runtime stories can compose it with agent/workflow/human dispatch rather than duplicating code handler invocation logic.
+---
+
+
+## 2026-05-10 23:58 UTC - 6.2
+- Implemented `dispatchWorkflowAgentNode` so arbitrary agent nodes can execute through the existing Pibo Runtime/session-routing executor seam outside the previous one-node workflow path.
+- Added agent node dispatch validation for unknown/non-agent nodes, Pibo runtime selection, node input ports, and Pibo Runtime output ports, plus node lifecycle events and runtime/session metadata recording on node attempts.
+- Added agent dispatch tests covering routed Pibo session creation/message emission, metadata capture, invalid input rejection before executor call, invalid output rejection, and non-agent node rejection.
+- Marked task `6.2` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; `npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- Files changed: `packages/workflows/src/runtime/index.ts`, `packages/workflows/src/testing/runtime-agent-node.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - Use `dispatchWorkflowAgentNode` for graph-level agent node execution; keep `runOneNodeAgentWorkflow` as the workflow-level convenience path that additionally validates workflow input/output and emits workflow start/complete events.
+  - The existing `createPiboSessionRoutingAgentExecutor` already works for general agent dispatch because its context includes workflow/run/node ids, rendered prompt, fixed profile id, and node routing policy.
+  - Node executor dispatch helpers should emit only node lifecycle events; graph/workflow orchestration should remain responsible for workflow completion/failure events.
+---
+
+## 2026-05-11 00:02 UTC - 6.3
+- Implemented nested `workflow` node dispatch through `dispatchWorkflowNestedWorkflowNode`, including child workflow registry resolution, parent node attempt lifecycle events, child input/output validation, parent node output validation, child run metadata linkage, and failed/incomplete child propagation.
+- Added nested workflow node runtime tests for successful parent/child linkage and isolated state, missing child workflow references, and failed child workflow runs.
+- Marked task `6.3` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; root `npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test`.
+- Files changed: `packages/workflows/src/runtime/index.ts`, `packages/workflows/src/testing/runtime-nested-workflow-node.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - Nested workflow execution follows the same dispatch seam pattern as agent/code nodes: resolve durable refs first, validate inputs before executor calls, validate output before downstream use, then emit/persist node lifecycle facts.
+  - Child workflow runs should be created by the injected nested executor with `parentRunId` and `parentNodeAttemptId`; the parent node records the returned `childRunId` in node attempt metadata.
+  - Returned child workflow events can be included in the dispatch result for trace linkage, but parent `emitEvent` currently emits only parent node lifecycle events unless the nested executor emits child events itself.
+---
+
+## 2026-05-11 00:06 UTC - 6.4
+- Implemented `human` node dispatch that validates input, creates a durable pending wait token, records `waitTokenId` on the node attempt, moves the node/run to `waiting`, and emits `wait.created` without completing the node.
+- Extended `SqliteWorkflowRunStore` with `WorkflowWaitTokenStore` support, including `workflow_wait_tokens` persistence, lookup, and filtered listing so waits remain visible after reopening the database.
+- Added human node dispatch tests for durable wait creation/restart visibility, invalid input failure before wait creation, and non-human dispatch rejection.
+- Files changed: `packages/workflows/src/runtime/index.ts`, `packages/workflows/src/store/index.ts`, `packages/workflows/src/testing/runtime-human-node.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; `npm run typecheck`; container `/workspace` `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- **Learnings for future iterations:**
+  - Persist wait tokens before returning a waiting dispatch result; future resume/approve/reject/cancel paths should use the same `WorkflowWaitTokenStore` instead of process-local callbacks.
+  - Wait-token durability currently stores run state and token rows, but node attempts themselves are still returned in-memory; story 6.5/11.x should add durable node-attempt persistence.
+  - Timeout conversion is handled during wait-token creation; unsupported ISO-8601 duration strings currently produce no `expiresAt`, so validation should tighten this if authors need strict timeout diagnostics.
+---
+
+## 2026-05-11 00:12 UTC - 6.5
+- Implemented durable workflow node attempt persistence with `WorkflowNodeAttemptStore` APIs and `workflow_node_attempts` SQLite storage in `SqliteWorkflowRunStore`.
+- Wired agent, code, nested workflow, human, and one-node agent dispatch paths to persist node attempts at running, completed, waiting, and failed boundaries when the injected store supports node attempts.
+- Added restart-style node attempt persistence coverage for all V1 node kinds, including `adapter`, and added runtime assertions that dispatch helpers persist their final node attempt records.
+- Marked task `6.5` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Files changed: `packages/workflows/src/store/index.ts`, `packages/workflows/src/runtime/index.ts`, `packages/workflows/src/testing/node-attempt-persistence.test.ts`, `packages/workflows/src/testing/runtime-agent-node.test.ts`, `packages/workflows/src/testing/runtime-code-node.test.ts`, `packages/workflows/src/testing/runtime-human-node.test.ts`, `packages/workflows/src/testing/runtime-nested-workflow-node.test.ts`, `packages/workflows/src/testing/runtime-one-node-agent.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; `npm run typecheck`; container `/workspace` `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- **Learnings for future iterations:**
+  - SQLite JSON persistence drops `undefined` object properties, so runtime metadata should omit absent optional fields instead of setting them to `undefined` when tests need persisted records to match in-memory attempts.
+  - Keep node-attempt persistence behind the optional `WorkflowNodeAttemptStore` seam so existing lightweight custom run stores keep working while `SqliteWorkflowRunStore` records durable inspection facts.
+  - Visible adapter-node dispatch is still not implemented, but the node-attempt store already persists `kind: "adapter"` attempts for the upcoming mixed-workflow/adapter executor work.
+---
+
+## 2026-05-11 00:16 UTC - 6.6
+- Implemented visible adapter-node dispatch through `dispatchWorkflowAdapterNode` so mixed workflow tests can execute all five V1 node kinds with durable node attempt persistence.
+- Added a mixed workflow runtime test that validates the fixture with registry providers, dispatches code, agent, human wait/resume, adapter, and nested workflow nodes, transfers direct and adapted edge payloads, validates final workflow output, and verifies persisted attempts for every node kind.
+- Marked task `6.6` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Files changed: `packages/workflows/src/runtime/index.ts`, `packages/workflows/src/testing/runtime-mixed-node-workflow.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; `npm run typecheck`; container `/workspace` `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- **Learnings for future iterations:**
+  - Mixed-workflow coverage can compose existing node dispatch seams directly until a graph orchestrator exists; use `recordWorkflowEdgeTransfer` for compatible data edges and `transferWorkflowEdgeAdapterData` for adapted data edges.
+  - Human resume is still not a dedicated runtime helper, so the mixed test simulates a completed human attempt after the wait token is created; future resume stories should replace that manual transition.
+  - `SqliteWorkflowRunStore.listNodeAttempts` is not insertion-ordered; tests that assert a graph sequence should sort attempts by expected node order before comparing.
+---
+
+## 2026-05-11 00:20 UTC - 7.1
+- Defined the V1 Pibo Runtime selection policy for agent nodes by adding public `fixedProfile(...)` and selection policy helper APIs.
+- Added workflow definition validation that rejects agent nodes unless they use `runtime: "pibo"` and a non-empty fixed Agent Designer profile selection.
+- Marked task `7.1` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Files changed: `packages/workflows/src/api/index.ts`, `packages/workflows/src/validation/index.ts`, `packages/workflows/src/testing/ports.test.ts`, `packages/workflows/src/testing/validation.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; `npm run typecheck`; container `/workspace` `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- **Learnings for future iterations:**
+  - V1 profile selection remains structural at definition validation time; profile registry existence and effective profile resolution are left for stories 7.2/7.4.
+  - Use `fixedProfile("pibo-agent")` in new workflow authoring helpers/tests instead of hand-writing profile refs when possible.
+  - Keep runtime selection diagnostics in workflow validation so malformed persisted IR fails before dispatch reaches Pibo Runtime creation.
+---
+
+## 2026-05-11 00:24 UTC - 7.2
+- Implemented Agent Designer fixed-profile resolution before agent node runtime/session creation through an optional `profileResolver` hook.
+- Passed the resolved profile id and resolved profile object into agent executor contexts so routed Pibo Runtime creation uses the canonical Agent Designer profile.
+- Added runtime failure diagnostics for missing or failed profile resolution before any Pibo Runtime executor/session is called.
+- Files changed: `packages/workflows/src/runtime/index.ts`, `packages/workflows/src/testing/runtime-agent-node.test.ts`, `packages/workflows/src/testing/runtime-one-node-agent.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; `npm run typecheck`; container `/workspace` `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- **Learnings for future iterations:**
+  - Profile resolution belongs before prompt executor/session creation so an unknown profile can fail without creating a Pibo Session.
+  - Keep the default no-resolver behavior as identity resolution (`node.profile.id`) so existing tests and lightweight runtimes do not need a profile registry.
+  - Story 7.3 can build on `resolvedProfile`/runtime metadata to add effective tool, skill, and context-file recording from profile resolution.
+---
+
+## 2026-05-11 00:28 UTC - 7.3
+- Recorded full Agent node runtime selection metadata on completed node attempts, including requested/selected profile details, effective tools, skills, context files, and routing metadata.
+- Extended resolved Agent Designer profile metadata so profile resolution can provide default tools/skills/context when the Pibo Runtime executor does not return explicit effective lists.
+- Added agent dispatch coverage that verifies resolved profile capabilities and routing are persisted in `nodeAttempt.metadata.runtime`.
+- Marked task `7.3` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Files changed: `packages/workflows/src/types/index.ts`, `packages/workflows/src/runtime/index.ts`, `packages/workflows/src/testing/runtime-agent-node.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; `npm run typecheck`; container `/workspace` `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- **Learnings for future iterations:**
+  - `ResolvedAgentProfile` is now the lightweight workflow-side shape for Agent Designer profile capability metadata; future profile registry integration can adapt `nativeTools` into runtime `tools` metadata without importing product UI types.
+  - `nodeAttempt.metadata.runtime.routing` now records the effective owner scope even when it falls back to the workflow run owner, so inspectors do not need to recompute that from run/node definitions.
+  - Browser verification was not needed because this story only changes workflow package runtime metadata and tests.
+---
+
+## 2026-05-11 00:31 UTC - 7.4
+- Implemented registry-backed validation for fixed Agent Designer profile references on agent nodes, producing `WorkflowGraphError.unknownAgentProfileRef` diagnostics when a provided Workflow Registry cannot resolve the selected profile.
+- Added Agent Designer profile registration/resolution helpers and fixture provider metadata for `pibo-agent`.
+- Marked task `7.4` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Files changed: `packages/workflows/src/types/index.ts`, `packages/workflows/src/registry/index.ts`, `packages/workflows/src/validation/index.ts`, `packages/workflows/src/fixtures/index.ts`, `packages/workflows/src/testing/registry.test.ts`, `packages/workflows/src/testing/runtime-edge-transfer.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; `npm run typecheck`; container `/workspace` `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- **Learnings for future iterations:**
+  - `createWorkflowRegistry(workflowFixtureProviders)` now includes the `pibo-agent` fixture profile so registry-backed validation can check agents, adapters, and handlers together.
+  - If tests create an ad hoc registry for workflows containing agent nodes, register `pibo-agent` or another fixed profile before expecting `validateWorkflow(..., { registry })` to pass.
+  - Unknown fixed profiles are definition-time graph validation failures; runtime `profileResolver` misses still remain runtime dispatch failures for runs that skipped registry-backed validation.
+---
+
+## 2026-05-11 00:36 UTC - 7.5
+- Added one-node workflow runtime coverage that validates the minimal `pibo-agent` fixture against a registry, resolves the fixed Agent Designer profile through `resolveWorkflowAgentProfile`, routes through normal Pibo session creation with profile `pibo-agent`, and verifies persisted runtime metadata inherits the registered tools/skills/context.
+- Marked task `7.5` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Files changed: `packages/workflows/src/testing/runtime-one-node-agent.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; `npm run typecheck`; container `/workspace` `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- **Learnings for future iterations:**
+  - Use `createWorkflowRegistry(workflowFixtureProviders)` plus `validateWorkflow(definition, { registry })` when a test needs to prove that a workflow's fixed profile exists, not just that the IR is structurally valid.
+  - Runtime profile selection tests can adapt registry entries into `profileResolver` results with `resolveWorkflowAgentProfile`; if the executor omits effective tools/skills/context, runtime metadata falls back to the resolved profile capabilities.
+  - `createPiboSessionRoutingAgentExecutor` always sends the resolved `context.profileId` to session creation, so it is the right seam for verifying fixed Agent Designer profile routing without touching a real gateway.
+---
+
+## 2026-05-11 00:39 UTC - 8.1
+- Implemented agent `promptTemplate` rendering for nested JSON input paths plus workflow global and current-node local state paths.
+- Added runtime coverage proving a JSON-input agent node receives a rendered final prompt with `{{input.topic}}`, `{{input.tags.0}}`, `{{state.projectGoal}}`, `{{global.projectGoal}}`, and `{{state.local.previousDraft}}` substitutions.
+- Marked task `8.1` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Files changed: `packages/workflows/src/runtime/index.ts`, `packages/workflows/src/testing/runtime-agent-node.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; `npm run typecheck`; container `/workspace` `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- **Learnings for future iterations:**
+  - Prompt rendering happens immediately before the agent executor/session-routing seam, so both `dispatchWorkflowAgentNode` and `runOneNodeAgentWorkflow` should pass the current `run.state` and node id into the same renderer.
+  - Preserve unresolved `{{...}}` placeholders instead of replacing them with empty strings so template typos remain visible until a later validation story adds diagnostics.
+  - Story 8.1 is limited to fixed `promptTemplate` rendering; registered `promptBuilder` resolution/execution remains for stories 8.2/8.3.
+---
+
+## 2026-05-11 00:44 UTC - 8.2
+- Defined the Agent node `promptBuilder` contract with explicit `PromptBuilderRef`, `PromptBuilderContext`, `PromptBuilderResult`, and generic `PromptBuilderHandler` types.
+- Added public `promptBuilderRef(...)` helpers plus Workflow Registry prompt-builder resolution helpers and registry-backed validation for unknown prompt builders.
+- Added validation that rejects ambiguous Agent prompt sources when a node declares both `promptTemplate` and `promptBuilder`.
+- Documented the prompt builder contract in the workflow authoring design and marked task `8.2` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Files changed: `packages/workflows/src/types/index.ts`, `packages/workflows/src/api/index.ts`, `packages/workflows/src/registry/index.ts`, `packages/workflows/src/validation/index.ts`, `packages/workflows/src/fixtures/index.ts`, `packages/workflows/src/testing/ports.test.ts`, `packages/workflows/src/testing/registry.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/design-authoring-api.md`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; `npm run typecheck`; container `/workspace` `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- **Learnings for future iterations:**
+  - `PromptBuilderHandler` now receives scoped readers (`global`, `local`, `edge`) plus the Agent node, node id, state, and optional run/workflow; story 8.3 should use this contract when executing registered prompt builders.
+  - Prompt builders may return either a prompt string or `{ prompt, metadata }`, so execution code should normalize the result before passing final text to the agent executor.
+  - Keep prompt source validation definition-time: `promptTemplate` and `promptBuilder` are mutually exclusive, and unknown builder ids are checked only when a registry with `promptBuilders` is supplied.
+---
+
+## 2026-05-11 00:50 UTC - 8.3
+- Implemented registered TypeScript prompt builder execution for Agent nodes before Pibo Runtime/session creation.
+- Added runtime registry support for prompt builders, prompt result normalization, scoped global/local/edge readers for builders, and structured failures when prompt builders are missing, invalid, or throw.
+- Added runtime tests covering successful prompt builder execution, missing prompt builder failure, and mixed workflow dispatch with registry-backed prompt builders.
+- Marked task `8.3` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Files changed: `packages/workflows/src/runtime/index.ts`, `packages/workflows/src/testing/runtime-agent-node.test.ts`, `packages/workflows/src/testing/runtime-mixed-node-workflow.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; `npm run typecheck`; container `/workspace` `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- **Learnings for future iterations:**
+  - Runtime prompt builder execution must happen after fixed profile resolution but before `agentExecutor` so failures do not create Pibo Runtime sessions.
+  - Agent dispatch callers for workflows with `promptBuilder` nodes need to pass the same registry used for validation, not only profile/adapters/handlers.
+  - Edge payload access for prompt builders is opt-in via `edgePayloads` on `dispatchWorkflowAgentNode`; one-node runtime has no edge payloads by design.
+---
+
+## 2026-05-11 00:54 UTC - 8.4
+- Recorded the final prompt for Agent nodes in `nodeAttempt.metadata.finalPrompt` for default input prompts, `promptTemplate`, and registered `promptBuilder` sources.
+- Preserved existing trace privacy boundaries by storing prompt text in owner-scoped node-attempt metadata instead of adding prompt payloads to workflow runtime events.
+- Persisted the rendered prompt before Pibo Runtime dispatch so completed and post-prompt failed attempts remain inspectable after restart.
+- Marked task `8.4` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Files changed: `packages/workflows/src/types/index.ts`, `packages/workflows/src/runtime/index.ts`, `packages/workflows/src/testing/runtime-agent-node.test.ts`, `packages/workflows/src/testing/runtime-one-node-agent.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; `npm run typecheck`; container `/workspace` `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- **Learnings for future iterations:**
+  - Use `finalPrompt` metadata for prompt inspection rather than adding a new workflow runtime event payload, which keeps event streams lightweight and avoids broader trace exposure.
+  - Merge completed Agent node metadata with the pre-dispatch prompt metadata so runtime/session fields do not overwrite `finalPrompt`.
+  - Prompt builder result metadata can be captured as `finalPrompt.builderMetadata` when it is JSON-serializable.
+---
+
+## 2026-05-11 00:56 UTC - 8.5
+- Added runtime coverage for fixed `promptTemplate` workflows and variable `promptBuilder` workflows.
+- The new variable prompt test validates a registry-backed two-node workflow, transfers code-node output over an edge, builds the Agent prompt from transferred data plus global/local state, and verifies recorded final prompt metadata.
+- Marked task `8.5` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Files changed: `packages/workflows/src/testing/runtime-prompt-workflows.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; `npm run typecheck`; container `/workspace` `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- **Learnings for future iterations:**
+  - For prompt workflow tests, use `runOneNodeAgentWorkflow` to cover fixed prompt templates at workflow start/complete boundaries.
+  - For variable prompt workflows, combine `dispatchWorkflowCodeNode`, `recordWorkflowEdgeTransfer`, and `dispatchWorkflowAgentNode` with `edgePayloads` so prompt builders can assert incoming edge data and scoped state access.
+  - Register the fixed `pibo-agent` profile in ad hoc registries before calling `validateWorkflow(..., { registry })` on Agent-node workflows.
+---
+
+## 2026-05-11 01:00 UTC - 9.1
+- Added persisted global workflow state support for one-node agent workflow runs via `initialGlobalState`, with schema validation before execution and storage under `WorkflowRun.state.global`.
+- Added restart coverage proving global state survives SQLite reopen and prompt rendering can read persisted run state; added invalid initial global state coverage.
+- Marked task `9.1` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; `npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- Files changed: `packages/workflows/src/runtime/index.ts`, `packages/workflows/src/validation/index.ts`, `packages/workflows/src/testing/runtime-one-node-agent.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - Global workflow state is stored on `WorkflowRun.state.global` and serialized through the existing `workflow_runs.state_json` column rather than a separate table/column.
+  - Initial global state validation should use the workflow's `state.global` field schemas but currently only validates declared keys that are present; unknown state-path policy belongs to later read/write declaration stories.
+  - Prompt templates and prompt builders already read global state from the run object, so initial state support automatically feeds both prompt paths once the run is initialized.
+---
+
+## 2026-05-11 01:06 UTC - 9.2
+- Added persisted local node state support for one-node agent workflows via `initialLocalState`, storing state under `WorkflowRun.state.local[nodeId]` and exposing it to prompt rendering/runtime contexts.
+- Snapshotted current-node local state onto node attempts for agent, code, nested workflow, human, and adapter dispatch at persisted boundaries without adding `localState: undefined` fields.
+- Extended restart coverage to prove local node state persists through both `workflow_runs.state_json` and `workflow_node_attempts.local_state_json`.
+- Marked task `9.2` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; `npm run typecheck`; container `/workspace` `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- Files changed: `packages/workflows/src/runtime/index.ts`, `packages/workflows/src/testing/runtime-one-node-agent.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - Use `initialLocalState: { [nodeId]: { ... } }` for one-node runtime tests that need persisted local state before dispatch.
+  - Persist local state snapshots only when a node actually has local state; adding explicit `localState: undefined` changes deep-equality expectations because SQLite reload omits absent optional fields.
+  - `WorkflowRun.state.local` remains a per-node map, while `NodeAttempt.localState` stores only the current node snapshot for inspection/restart.
+---
+
+## 2026-05-11 01:10 UTC - 9.3
+- Implemented validation for node `state.reads` / `state.writes` declarations, including scoped path syntax checks, declared global state path checks, and rejection of writes to immutable edge payloads.
+- Added validation tests for accepted scoped global/local/edge reads and global/local writes, plus malformed state declarations and unknown global state references.
+- Updated the code-node runtime fixture to declare the global `topic` state path it reads.
+- Marked task `9.3` complete in the workflow-system task list because the referenced JSON PRDs are absent and progress is tracked in `tasks.md`.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; `npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- Files changed: `packages/workflows/src/validation/index.ts`, `packages/workflows/src/testing/validation.test.ts`, `packages/workflows/src/testing/runtime-code-node.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - The workflow definition validator is the right place for static state declaration checks; runtime code-node checks still enforce actual handler reads/writes at execution boundaries.
+  - Global state access declarations should correspond to `definition.state.global` schema entries before a workflow validates.
+  - `edge.*` can be declared as a read scope, but edge payloads are immutable and `state.writes` must not target `edge.*`.
+---
+
+## 2026-05-11 01:16 UTC - 9.4
+- Enforced default local node state isolation at runtime by passing node-scoped workflow run views into Agent executors, nested workflow executors, visible adapter nodes, and prompt builders.
+- Hid all workflow local state from edge adapter handlers, since edge adapters should consume the edge payload and explicit inputs rather than another node's private local state.
+- Updated prompt rendering so `{{state}}` exposes only global state plus the current node's local state, and added tests proving foreign node local state remains unresolved/hidden.
+- Marked task `9.4` complete in the workflow-system task list because the referenced JSON PRDs are absent and progress is tracked in `tasks.md`.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; `npm run typecheck`; container `/workspace` `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- Files changed: `packages/workflows/src/runtime/index.ts`, `packages/workflows/src/testing/runtime-agent-node.test.ts`, `packages/workflows/src/testing/runtime-edge-transfer.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - Use node-scoped `WorkflowRun` views whenever invoking workflow-provided executors or prompt builders; the durable run can keep all node local state, but user/plugin code should only see current-node local state by default.
+  - Prompt templates already resolve `{{local.*}}` and `{{state.local.*}}` against the current node; `{{state}}` needed the same scoped projection to avoid dumping the entire local-state map.
+  - Edge adapter handlers currently receive no local state in their `run` context; future explicit state-mapping stories should add narrowly-scoped inputs instead of exposing `run.state.local` wholesale.
+---
+
+## 2026-05-11 01:20 UTC - 9.5
+- Added workflow definition validation that rejects multiple nodes writing the same declared global state path unless that global state field declares an explicit merge policy.
+- Added validation coverage for the ambiguous multi-writer failure and for the allowed explicit `append` merge policy case.
+- Marked task `9.5` complete in the workflow-system task list because the referenced JSON PRDs are absent and progress is tracked in `tasks.md`.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; `npm run typecheck`; container `/workspace` `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- Files changed: `packages/workflows/src/validation/index.ts`, `packages/workflows/src/testing/validation.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - Conflict detection currently uses declared node `state.writes` and treats duplicate global writers as potentially concurrent until a merge policy is declared on `state.global[path]`.
+  - Keep state conflict diagnostics in the definition validator so ambiguous graphs fail before runtime state patch application.
+  - Future custom merge handler validation will need registry support for merge/reducer handlers; current V1 coverage only checks whether a merge policy is present.
+---
+
+## 2026-05-11 01:25 UTC - 9.6
+- Implemented explicit bounded back-edge/retry policy support by validating workflow/node retry policies, loop policies, and guard refs, including `maxAttempts`, backoff shape, `retryOn`, missing loop edges, and unguarded loop diagnostics.
+- Added runtime retry helpers for resolving node-vs-workflow policy precedence, scheduling the next retry attempt with backoff-derived `availableAt`, creating retry-scheduled node attempts, and producing `WorkflowRetryExhaustedError.maxAttemptsExceeded` when attempts are exhausted.
+- Added validation and runtime tests for bounded review-loop fixtures, invalid retry/loop policies, registry-backed guard refs, retry scheduling, retry exhaustion, and retry skip decisions.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; `npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- Files changed: `packages/workflows/src/validation/index.ts`, `packages/workflows/src/runtime/index.ts`, `packages/workflows/src/testing/validation.test.ts`, `packages/workflows/src/testing/runtime-retry-policy.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - Node-level `retry` should override workflow-level `retry`; use `resolveWorkflowRetryPolicy` rather than duplicating precedence rules in executors.
+  - Loop policies (`definition.loops`) currently validate explicit bounded guarded back-edge declarations; full cycle detection/rejection remains for story 9.7.
+  - Registry-backed guard validation is opt-in like adapters/profiles: pass `{ registry }` to `validateWorkflow` when unknown guard refs should fail before runtime.
+---
+
+## 2026-05-11 01:29 UTC - 9.7
+- Implemented workflow graph cycle validation that removes bounded loop-policy back-edges and rejects any remaining directed cycles with `WorkflowGraphError.unboundedCycle` diagnostics.
+- Added validation coverage for free cycles with no loop policy and loop policies that have `maxAttempts` but no valid guard.
+- Marked task `9.7` complete in the workflow-system task list because the referenced JSON PRDs are absent and progress is tracked in `tasks.md`.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; `npm run typecheck`; container `/workspace` `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- Files changed: `packages/workflows/src/validation/index.ts`, `packages/workflows/src/testing/validation.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - Validate free cycles by removing only structurally bounded loop edges, then running directed DFS over the remaining workflow graph.
+  - Guard refs can be registry-invalid and still structurally bounded for cycle-shape validation; registry-backed guard diagnostics are emitted separately when a registry is supplied.
+  - Keep cycle diagnostics attached to the closing edge path (`$.edges.<edgeId>`) so authors can quickly choose the edge to convert into an explicit loop policy.
+---
+
+## 2026-05-11 01:32 UTC - 9.8
+- Added integrated runtime coverage for state read/write isolation, validated edge data transfer, and bounded review/fix loop behavior.
+- Covered stateful code node dispatch where node-local state remains private, direct edge transfer feeds the downstream node input, explicit edge payloads are passed to the downstream handler, and bounded review-loop back-edge/retry behavior remains finite.
+- Marked task `9.8` complete in the workflow-system task list because the referenced JSON PRDs are absent and progress is tracked in `tasks.md`.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; `npm run typecheck`; container `/workspace` `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- Files changed: `packages/workflows/src/testing/runtime-state-loop-integration.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - For integration-style runtime coverage before a full graph runner exists, dispatch source nodes, record/transfer the edge, then dispatch downstream nodes with the returned `targetInput`.
+  - Code node handlers only receive node-scoped local state through `ctx.local`; foreign node local state can exist in `run.state.local` without being visible to the downstream handler.
+  - Bounded review/fix loop coverage can combine registry-backed validation, guard handler evaluation, back-edge transfer, and retry policy helpers until the orchestration kernel automates loop execution.
+---
+
+## 2026-05-11 01:34 UTC - 10.1
+- Added `xstate` as a runtime dependency of the standalone workflow package and committed the package-local lockfile so future XState projection work can install reproducibly.
+- Marked task `10.1` complete in the workflow-system task list because the referenced JSON PRDs are absent and progress is tracked in `tasks.md`.
+- Files changed: `packages/workflows/package.json`, `packages/workflows/package-lock.json`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; `npm run typecheck`; container `/workspace` `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- **Learnings for future iterations:**
+  - The workflows package is still standalone rather than a root npm workspace, so package-specific runtime dependencies belong in `packages/workflows/package.json` with a package-local `package-lock.json`.
+  - Adding XState for story 10.1 should not introduce projection code yet; projection shape/state mapping belongs to the following 10.2+ stories.
+---
+
+## 2026-05-11 01:41 UTC - 10.2
+- Defined the versioned Pibo-owned XState projection shape, including machine config, flat state/transition indexes, actor/guard/action/delay metadata, terminal state ids, projection-only context shape, and stable event/id helpers.
+- Added XState projection shape tests covering schema versioning, kernel-owned context projection, actor/guard/action metadata, terminal states, and transition projection into the machine-config view.
+- Marked task `10.2` complete in the workflow-system task list because the referenced JSON PRDs are absent and progress is tracked in `tasks.md`.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; `npm run typecheck`; container `/workspace` `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- Files changed: `packages/workflows/src/types/index.ts`, `packages/workflows/src/xstate/index.ts`, `packages/workflows/src/index.ts`, `packages/workflows/src/testing/xstate-shape.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - Keep future node/edge mapping stories building `XStateMachineProjection` through `createXStateMachineProjection` so the machine config and flat UI indexes stay synchronized.
+  - The projection shape intentionally records context schemas and refs, not raw workflow payloads; runtime/kernel records remain the source of truth for state, edge transfers, waits, and retries.
+  - Story 10.2 only defines the projection contract and helper skeleton; node, edge, wait/retry/final-state mapping belongs to the following 10.3-10.5 stories.
+---
+
+## 2026-05-11 01:44 UTC - 10.3
+- Implemented XState node projection helpers that map workflow nodes to deterministic `node.<id>` states and `workflow.node.<id>` actors for agent, code, human, adapter, and nested workflow nodes.
+- Added `projectWorkflowToXStateProjection` to build a machine projection from node states/actors while leaving edge transitions for the next stories.
+- Added XState projection tests covering mixed-node fixtures, actor source mapping, nested child workflow metadata, context shape projection, and minimal workflow machine creation.
+- Marked task `10.3` complete in the workflow-system task list because the referenced JSON PRDs are absent and progress is tracked in `tasks.md`.
+- Files changed: `packages/workflows/src/xstate/index.ts`, `packages/workflows/src/testing/xstate-shape.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; `npm run typecheck`; container `/workspace` `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- **Learnings for future iterations:**
+  - Use `WORKFLOW_XSTATE_ACTOR_SOURCES`, `xstateStateIdForNode`, and `xstateActorIdForNode` when adding edge/wait/retry projection so ids stay stable across flat indexes and machine config.
+  - `projectWorkflowToXStateProjection` intentionally emits no transitions yet; story 10.4 should layer edge-to-transition mapping without changing node state/actor ids.
+  - Context shape projection can be built from workflow global state, node `state` policies, and edge `state` mappings while still keeping kernel records as durable truth.
+---
+
+## 2026-05-11 01:49 UTC - 10.4
+- Implemented XState edge projection with deterministic transition records and durable `transferEdge` action metadata for workflow edges.
+- Wired edge transitions/actions into `projectWorkflowToXStateProjection`, including default event mapping by edge kind, adapter refs, guard refs, priority, and UI metadata in transition meta.
+- Added XState projection tests for mixed-workflow edge transitions, transfer actions, resume edge events, adapter metadata, and generated machine config `on` entries.
+- Marked task `10.4` complete in the workflow-system task list because the referenced JSON PRDs are absent and progress is tracked in `tasks.md`.
+- Files changed: `packages/workflows/src/xstate/index.ts`, `packages/workflows/src/testing/xstate-shape.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; `npm run typecheck`; container `/workspace` `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- **Learnings for future iterations:**
+  - Edge projection is intentionally metadata/action oriented; the kernel remains responsible for actually validating and persisting edge transfers.
+  - `projectWorkflowToXStateProjection` now composes node and edge projections, so future guard/wait/final-state work should extend the same projection assembly rather than rebuilding machine config directly.
+  - Transition order is deterministic by source node, event, explicit edge/guard priority, then edge id so guarded outgoing transitions can become XState arrays in a stable order.
+---
+
+## 2026-05-11 01:54 UTC - 10.5
+- Mapped XState edge/loop guards, durable human waits, failure transitions, retry delay states, and workflow final-node completion transitions in the workflow projection.
+- Added projection metadata/actions/delays for wait entry/resume, human timeouts, record-failure, retry scheduling, and final-node completion; extended projection state types to carry `after` transitions.
+- Added tests covering guard indexes, loop-guard transition projection, human wait timeout projection, node failure targets, retry delay wakeups, and final-state completion transitions.
+- Files changed: `packages/workflows/src/xstate/index.ts`, `packages/workflows/src/types/index.ts`, `packages/workflows/src/testing/xstate-shape.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; `npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- **Learnings for future iterations:**
+  - XState projection keeps runtime durability explicit by using named actions/delays (`enterWait`, `resumeWait`, `recordFailure`, `scheduleRetry`) instead of relying on in-memory XState effects.
+  - Final workflow nodes are projected separately from normal edges so guarded outgoing transitions can remain ordered before fallback completion transitions.
+  - Human wait and retry delay projections need `after` support on `XStateProjectionState` so machine config and flat projection indexes stay aligned.
+---
+
+## 2026-05-11 02:00 UTC - 10.6
+- Added deterministic XState machine projection snapshot coverage for minimal one-node, mixed-node, human-wait, and bounded review-loop workflow fixtures.
+- Snapshot assertions normalize object keys while preserving transition arrays, and compare full `projectWorkflowToXStateProjection` output against a committed JSON snapshot.
+- Marked task `10.6` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; root `npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test`.
+- Files changed: `packages/workflows/src/testing/xstate-projection-snapshots.test.ts`, `packages/workflows/src/testing/__snapshots__/xstate-projection.snap.json`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - Full XState projection snapshots are large but useful for catching accidental changes across states, transitions, actors, guards, actions, delays, context shape, and machine config metadata.
+  - Keep snapshot normalization local to the test: object keys are sorted for deterministic file diffs, while arrays remain ordered to protect edge/final transition order.
+  - Snapshot fixtures should cover representative graph features rather than every fixture; current coverage includes one-node, mixed node kinds, human timeout waits, and bounded retry/back-edge policy.
+---
+
+## 2026-05-11 02:06 UTC - 10.7
+- Added a compact `WorkflowXStateUiModel` surface for the future Web UI Workflow/XState tab, derived from `XStateMachineProjection` plus optional kernel snapshots or explicit active state ids.
+- Exposed UI model constants and `createWorkflowXStateUiModel` from the workflows package; the model includes safe nodes, edges, actors, guards, actions, delays, terminal states, and current-state status without adding any XState CLI command.
+- Added internal tests for mixed-node projection display data and kernel snapshot status mapping for waiting, completed, and retry-delay states.
+- Marked task `10.7` complete in the workflow-system task list because the referenced JSON PRDs are absent and progress is tracked in `tasks.md`.
+- Files changed: `packages/workflows/src/types/index.ts`, `packages/workflows/src/xstate/index.ts`, `packages/workflows/src/testing/xstate-ui-model.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; `npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test`.
+- **Learnings for future iterations:**
+  - The Web UI should consume the compact UI model instead of hand-reading the full machine config; it keeps visualization fields ordered and strips runtime payloads.
+  - `WorkflowMachineSnapshot.kind === "kernel"` remains authoritative for current UI status; active XState ids are a projection/cache input, not durable truth.
+  - Story 10.7 intentionally did not add CLI surface; debug/inspection commands belong to later persistence/inspection stories.
+---
+
+## 2026-05-11 02:13 UTC - 11.1
+- Designed the workflow-specific runtime SQLite store schema around the canonical `pibo-workflows.sqlite` filename and all required V1 logical workflow tables.
+- Added exported store schema constants/path helper, expanded run/node/wait-token record fields for definition snapshots, session/project linkage, node environments, and resolved wait-token actions, and kept additive column migration support for earlier workflow test databases.
+- Added a schema contract test that verifies every required V1 workflow table and required column is created.
+- Marked task `11.1` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Quality checks: host `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- Files changed: `packages/workflows/src/store/index.ts`, `packages/workflows/src/types/index.ts`, `packages/workflows/src/testing/workflow-sqlite-schema.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - `pibo-workflows.sqlite` now has schema-level tables for definition snapshots, events, edge transfers, checkpoints, wakeups, wait tokens, and human actions, but story 11.2 still needs the save/get/list APIs and runtime calls for the newly added fact tables.
+  - Existing run/node/wait-token persistence tests rely on exact object round-trips, so new optional fields must only be emitted when persisted values are present.
+  - Additive SQLite migrations should run after `CREATE TABLE IF NOT EXISTS` so prior test databases can pick up new columns without breaking existing store consumers.
+---
+## 2026-05-11 02:19 UTC - 11.2
+- Implemented durable SQLite save/get/list APIs for workflow definition snapshots, events, edge transfers, checkpoints, wakeups, wait tokens, human action facts, runs, node attempts, and checkpoint-backed state snapshots.
+- Wired runtime event emission and direct edge transfer recording to persist workflow events and edge transfer facts when the injected store supports those optional interfaces.
+- Added restart-style workflow fact persistence coverage that reopens `pibo-workflows.sqlite` and verifies events, edge transfers, checkpoints/state snapshots, wakeups, waits, human actions, run state, and node attempts.
+- Marked task `11.2` complete in the workflow-system task list because the referenced JSON PRDs are absent and progress is tracked in `tasks.md`.
+- Quality checks: host `npm --prefix packages/workflows run typecheck`; host `npm --prefix packages/workflows test`; host `npm run typecheck`; container `/workspace` `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- Files changed: `packages/workflows/src/store/index.ts`, `packages/workflows/src/runtime/index.ts`, `packages/workflows/src/types/index.ts`, `packages/workflows/src/testing/workflow-store-facts.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - Keep workflow persistence facts queryable through focused store interfaces instead of forcing every lightweight runtime store to implement every table.
+  - Checkpoint records are the current durable state-snapshot representation: they store cursor, global state, pending/completed node ids, and edge payload refs.
+  - Runtime event persistence uses generated event ids and wall-clock `createdAt`, so tests should filter by event type/id rather than rely on mixed manually-created and runtime-created event ordering.
+---
+
+## 2026-05-11 02:26 UTC - 11.3
+- Added an explicit workflow SQLite/session-store boundary contract so `pibo-workflows.sqlite` remains limited to workflow facts and lightweight `pibo_session_id` / `project_id` links.
+- Added schema contract coverage that fails if workflow storage introduces normal session trace, transcript, tool-call, span, or session-record tables/columns.
+- Added routed one-node agent runtime coverage proving session trace/tool-call/span/transcript stream events are ignored by workflow event persistence while only the normal assistant reply and session ids are recorded.
+- Marked task `11.3` complete in the workflow-system task list because the referenced JSON PRDs are absent and progress is tracked in `tasks.md`.
+- Quality checks: host `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test`; host `npm run typecheck`; container `/workspace` `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- Files changed: `packages/workflows/src/store/index.ts`, `packages/workflows/src/testing/workflow-sqlite-schema.test.ts`, `packages/workflows/src/testing/runtime-one-node-agent.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - The workflow store should expose only workflow-specific logical tables; add new workflow facts there, but leave Pibo/Pi session tables and trace payload storage in existing stores.
+  - Agent-node workflow persistence should record session linkage (`piboSessionId`, optional `piSessionId`) and workflow events, not routed session tool-call/span/transcript event payloads.
+  - Schema-boundary tests can use storage-name keyword guards while allowing explicit link columns such as `pibo_session_id` for future inspection stories.
+---
+
+## 2026-05-11 02:31 UTC - 11.4
+- Linked workflow runs to routed Pibo Sessions at both one-node and general agent-node dispatch boundaries by copying the executor-returned `piboSessionId` plus routing `projectId` onto the persisted `WorkflowRun`.
+- Added an injected `linkProjectSession` seam to `createPiboSessionRoutingAgentExecutor` so product code can upsert Project Session linkage before the workflow prompt is sent, without coupling `packages/workflows` to Chat Web internals.
+- Extended `ChatProjectService` with `workflowRunId` persistence for project sessions and a `linkWorkflowRunSession` helper for workflow-backed main/sub project sessions.
+- Marked task `11.4` complete in the workflow-system task list because the referenced JSON PRDs are absent and progress is tracked in `tasks.md`.
+- Files changed: `packages/workflows/src/runtime/index.ts`, `packages/workflows/src/testing/runtime-agent-node.test.ts`, `packages/workflows/src/testing/runtime-one-node-agent.test.ts`, `src/apps/chat/data/project-service.ts`, `test/project-service-workflow-link.test.mjs`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- Quality checks: host `npm --prefix packages/workflows run typecheck`; host `npm --prefix packages/workflows test`; host `npm run typecheck`; host `npm run build && node --test test/project-service-workflow-link.test.mjs`; container `/workspace` `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`; container `node --test test/project-service-workflow-link.test.mjs`.
+- **Learnings for future iterations:**
+  - Keep product/session integration behind injected seams in `packages/workflows`; Chat Web can adapt those seams to `ChatProjectService` instead of making the workflow package import product services.
+  - `workflow_runs.piboSessionId/projectId` now updates for general agent-node dispatch, not just the one-node convenience runner, so inspection code can find workflow-backed sessions from either runtime path.
+  - Project sub-session linking should not change `projects.current_main_session_id`; `ChatProjectService.addProjectSession` now only advances the current main session for `kind: "main"`.
+---
+
+## 2026-05-11 02:35 UTC - 11.5
+- Added package-level workflow run inspection via `inspectWorkflowRun`, aggregating durable workflow run facts from the existing store interfaces and producing a compact summary for completed, failed, waiting, and linked runs.
+- Added `formatWorkflowRunInspection` for CLI/debug-style text rendering without wiring a root debug command yet.
+- Added workflow inspection tests for completed, failed, and missing runs.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; repeated both inside `pibo-dev-Workflows` container.
+- Files changed: `packages/workflows/src/inspection/index.ts`, `packages/workflows/src/index.ts`, `packages/workflows/src/testing/workflow-run-inspection.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - Store methods on `SqliteWorkflowRunStore` depend on `this`; helper APIs that accept optional store methods should call them with the store as receiver instead of extracting unbound methods.
+  - The workflow inspection API intentionally depends on small store interfaces, so a future debug CLI or Project UI can reuse it with `SqliteWorkflowRunStore` or a narrower internal store implementation.
+  - The formatter is text-only and compact by design; JSON consumers should use the structured `WorkflowRunInspection` object directly.
+---
+
+## 2026-05-11 02:37 UTC - 11.6
+- Added restart-style inspection coverage for both completed and failed workflow runs by saving facts, closing `SqliteWorkflowRunStore`, reopening the same SQLite database, and then calling `inspectWorkflowRun` / `formatWorkflowRunInspection`.
+- Marked task `11.6` complete in the workflow-system task list because the referenced JSON PRDs are absent and progress is tracked in `tasks.md`.
+- Files changed: `packages/workflows/src/testing/workflow-run-inspection.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- Quality checks: `npm --prefix packages/workflows test -- workflow-run-inspection.test.ts`; host `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`; container `/workspace` `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- **Learnings for future iterations:**
+  - Inspection tests should close and reopen `SqliteWorkflowRunStore` before inspecting when the story is about restart recovery, not just persisted facts in an open connection.
+  - The package `test` script runs `src/**/*.test.ts`; passing a filename argument does not narrow the run, so use full package tests for workflow coverage unless the script changes.
+  - Completed and failed inspection summaries already derive status, attempts, checkpoints, errors, and formatted text from persisted store facts after reopen.
+---
+## 2026-05-11 02:51 UTC - 12.1
+- Added a Project UI workflow-runs surface by returning `projectSessions` from the projects bootstrap API and typing it in Chat UI.
+- Rendered a Workflow Runs panel in the Projects sidebar for linked workflow-backed sessions/runs, including workflow id, shortened run id, and state badges, and updated the Project Sessions subtitle to show the selected workflow/run.
+- Browser-verified the panel in the Docker worker by seeding a dev project session with `workflowRunId`/`waiting` state and checking the Chat Web DOM through CDP.
+- Marked task `12.1` complete in the workflow-system task list because the referenced JSON PRDs are absent and progress is tracked in `tasks.md`.
+- Files changed: `src/apps/chat/web-app.ts`, `src/apps/chat-ui/src/types.ts`, `src/apps/chat-ui/src/App.tsx`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- Quality checks: host `npm run typecheck`; host `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run build`; container `/workspace` `npm run typecheck`; container `/workspace` `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test`; browser/CDP verification against `http://127.0.0.1:4812/apps/chat/projects`.
+- **Learnings for future iterations:**
+  - The Chat Web root TypeScript build only includes `src`, so Project UI workflow metadata should come through product-level project-session records unless a later story explicitly wires a workflow-store API into `src`.
+  - The Docker worker `/workspace` is not automatically updated from the host worktree in this task setup; copy changed files into the container before container typecheck/browser verification.
+  - After `docker restart pibo-dev-Workflows`, the provided worker needed the web gateway restarted manually with the dev-auth web gateway command before browser checks.
+---
+
+## 2026-05-11 02:59 UTC - 12.2
+- Added an active Chat Web `Workflow` session tab registered alongside the Terminal view.
+- Implemented a dedicated Workflow/XState visualization surface for workflow-backed project sessions, including workflow/run badges, XState-style state flow, current UI snapshot JSON, and projection facts while preserving kernel records as durable truth.
+- Passed selected project-session workflow linkage into session views so the Workflow tab can render project workflow context without coupling to the workflow runtime package.
+- Marked task `12.2` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Quality checks: `npm run chat-ui:typecheck`; `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; root `npm run typecheck`; `npm run chat-ui:build`; container `docker exec pibo-dev-Workflows ... npm run chat-ui:typecheck && npm run chat-ui:build`; browser-use smoke test at `http://127.0.0.1:4812/apps/chat/projects?view=workflow` verified the Workflow tab renders the visualization.
+- Files changed: `src/apps/chat-ui/src/session-views/WorkflowXStateSessionView.tsx`, `src/apps/chat-ui/src/session-views/registry.tsx`, `src/apps/chat-ui/src/session-views/types.ts`, `src/apps/chat-ui/src/App.tsx`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - Chat Web session views are a small plugin registry; add new tabs by extending `chatSessionViewIds`, registering the view in `session-views/registry.tsx`, and passing any extra context through `ChatSessionViewProps`.
+  - The Projects area already knows the selected `PiboProjectSession`; workflow-specific UI can use that linkage without importing `packages/workflows` into the browser bundle.
+  - Browser verification can use the worker web port with local browser-use (`/apps/chat/projects?view=workflow`); the worker CDP port may not always have an active browser attached.
+---
+
+## 2026-05-11 03:03 UTC - 12.3
+- Added current workflow metadata to the Chat Web session header for workflow-backed Project Sessions, showing workflow id, derived current state, and shortened run id next to the Pibo session id.
+- Updated Project Sessions/Workflow Runs labels to derive state from project-session metadata plus live session status so running/error workflow sessions show current state where available.
+- Browser-verified the worker Projects view shows `WORKFLOW workflow.ui-smoke`, `STATE waiting`, and the workflow run id in the selected session header.
+- Marked task `12.3` complete in the workflow-system task list because the referenced JSON PRDs are absent and progress is tracked in `tasks.md`.
+- Files changed: `src/apps/chat-ui/src/App.tsx`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- Quality checks: host `npm run chat-ui:typecheck`; host `npm --prefix packages/workflows run typecheck`; host `npm run typecheck`; host `npm run chat-ui:build`; container `/workspace` `npm run chat-ui:typecheck && npm run chat-ui:build`; container `/workspace` `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test`; browser-use DOM verification at `http://127.0.0.1:4812/apps/chat/projects?view=workflow`.
+- **Learnings for future iterations:**
+  - `SessionTracePane` already receives `workflowProjectSession`, `selectedSessionStatus`, and the selected trace context, so selected-session workflow badges can be added without new API calls.
+  - The Projects view can derive workflow state from project session `state` first, then live session status for `running`/`failed`, preserving durable Project Session metadata as the default source.
+  - Browser-use against the worker can verify header text after opening `/apps/chat/projects?view=workflow`; the seeded dev workflow session from prior UI smoke work remains useful for workflow header checks.
+---
+
+## 2026-05-11 03:14 UTC - 12.4
+- Added a Workflow/XState node-status list for workflow-backed sessions/runs, showing each projected node id, label, kind, status badge, icon, and description beside the runtime snapshot.
+- Included compact `nodeStatuses` in the UI snapshot so the rendered list and debug snapshot expose the same reconstructed node status facts.
+- Marked task `12.4` complete in the workflow-system task list because the referenced JSON PRDs are absent and progress is tracked in `tasks.md`.
+- Files changed: `src/apps/chat-ui/src/session-views/WorkflowXStateSessionView.tsx`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- Quality checks: host `npm run chat-ui:typecheck`; host `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test`; host `npm run typecheck`; host `npm run chat-ui:build`; container `/workspace` `npm run chat-ui:typecheck && npm run chat-ui:build`; container `/workspace` `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test`; browser-use verification at `http://127.0.0.1:4812/apps/chat/projects?view=workflow` after scrolling confirmed `Node Statuses`, `workflow.entry`, `node.session`, and status badges render.
+- **Learnings for future iterations:**
+  - The Workflow/XState tab already has a shared `WorkflowProjectSessionUiModel`; add secondary inspection surfaces by consuming `model.nodes` instead of recomputing workflow state separately.
+  - Browser-use `wait text` checks visible text only; for lower Workflow tab panels, scroll before verifying text that is below the fold.
+  - Restarting the provided Docker worker can leave the gateway stopped; the worker web gateway can be brought back inside the container with the dev-auth `runWebGatewayServer({ devAuth: true, host: "0.0.0.0", web: { host: "0.0.0.0" } })` command.
+---
+## 2026-05-11 03:20 UTC - 12.5
+- Added a Workflow/XState tab panel for final workflow output and validation diagnostics.
+- Derived completed final output from the latest assistant/completed trace output, collected validation-like node errors and raw-event diagnostics, and exposed result availability/error counts in the compact UI snapshot.
+- Browser-verified the worker Projects Workflow tab renders `Final Output & Validation`, `Final output`, and `Validation errors` against `http://127.0.0.1:4812/apps/chat/projects?view=workflow`.
+- Files changed: `src/apps/chat-ui/src/session-views/WorkflowXStateSessionView.tsx`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- Quality checks: host `npm run chat-ui:typecheck`; host `npm run typecheck`; host `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test`; host `npm run chat-ui:build`; container `/workspace` `npm run chat-ui:typecheck && npm run chat-ui:build && npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test`; browser-use verification.
+- **Learnings for future iterations:**
+  - The Workflow/XState tab can keep adding inspection surfaces through `WorkflowProjectSessionUiModel`; keep payload-heavy details in rendered panels and only expose booleans/counts in the snapshot object.
+  - Final workflow output is only meaningful when the derived workflow status is completed; waiting/running workflow-backed sessions should show an explicit pending message.
+  - Raw trace events may not be visible by default, so validation diagnostic collection should use `traceView.rawEvents` opportunistically and fall back to trace node errors.
+---
+
+## 2026-05-11 03:28 UTC - 12.6
+- Implemented registry-backed human action resolution helpers plus `applyWorkflowHumanAction` for approve/reject/resume/cancel and custom action kinds.
+- Added action application validation for pending wait tokens, run ownership, registry availability, action kind mismatches, registered action input/output ports, resume payload schemas, and human node output compatibility.
+- Persisted accepted human actions, resolved/cancelled wait tokens, node attempt/run status updates, `wait.resumed`/`workflow.cancelled` events, and human wakeups for resumed waits.
+- Added registry and runtime tests for extensible human action registration/resolution, validation against registries, approve resolution with actor/action/wakeup records, invalid resume payload rejection, and cancel handling with a custom action set.
+- Files changed: `packages/workflows/src/registry/index.ts`, `packages/workflows/src/runtime/index.ts`, `packages/workflows/src/validation/index.ts`, `packages/workflows/src/testing/registry.test.ts`, `packages/workflows/src/testing/runtime-human-node.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; `npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test`; container `docker exec pibo-dev-Workflows ... npm run typecheck`.
+- **Learnings for future iterations:**
+  - Wait-token action refs should be treated as the UI/CLI-facing availability list, but accepted actions must still resolve through the Workflow Registry before mutating durable wait/run state.
+  - Resume action payloads need both action-port validation and the human node schema validation so bad human input cannot resolve the wait token.
+  - Human action resumption schedules `WorkflowWakeup` rows with the `WorkflowHumanActionRecord.id` as `correlationId`, giving later orchestration paths a durable resume cue without process-local callbacks.
+---
+
+## 2026-05-11 03:39 UTC - 12.7
+- Made the Workflow/XState tab explicitly read-only for V1 by adding a deferred creation/editing notice for workflow-backed and non-workflow sessions.
+- Added creation, visual editing, and raw XState editing deferred facts to the compact UI snapshot so inspection output communicates the non-goal programmatically.
+- Marked task `12.7` complete in the workflow-system task list because the referenced JSON PRDs are absent and progress is tracked in `tasks.md`.
+- Files changed: `src/apps/chat-ui/src/session-views/WorkflowXStateSessionView.tsx`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- Quality checks: host `npm run chat-ui:typecheck && npm run chat-ui:build && npm run typecheck`; container `/workspace` `npm run chat-ui:typecheck && npm run chat-ui:build && npm run typecheck`; host+container `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test`; browser-use verification at `http://127.0.0.1:4812/apps/chat/projects?view=workflow` confirmed `Read-only V1 workflow surface`, `create workflow: deferred`, and `edit workflow: deferred` render.
+- **Learnings for future iterations:**
+  - The Workflow/XState tab can make V1 non-goals visible without adding new API endpoints by adding compact UI snapshot fields plus read-only explanatory panels.
+  - After `docker restart pibo-dev-Workflows`, the worker container may only run `tail -f /dev/null`; restart the dev-auth web gateway inside `/workspace` before browser verification.
+  - `browser-use wait text` may report `found: False` even when subsequent `browser-use state` shows the text, so keep the state output as the browser verification evidence.
+---
+
+## 2026-05-11 03:41 UTC - 13.1
+- Added canonical current-state workflow capability documentation covering V1 scope, authoring model, node/runtime boundaries, data flow/state, registry/plugin boundary, persistence/inspection, XState projection, and security/privacy rules.
+- Linked the workflow capability doc from the canonical project documentation index.
+- Marked task `13.1` complete in the workflow-system task list because the referenced `prd_*.json` files are not present in this worktree.
+- Quality checks: `npm run typecheck`; `npm --prefix packages/workflows test`; container `docker exec pibo-dev-Workflows ... npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows test`.
+- Files changed: `docs/project/workflows.md`, `docs/project/README.md`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - Canonical current-state docs belong in `docs/project/`; workflow-system PRDs/design docs remain useful as historical implementation context under `docs/specs/changes/pibo-workflow-system-v1/`.
+  - Keep `13.1` documentation broad and capability-oriented; follow-up tasks `13.2` through `13.5` should add examples and deeper adapter/XState/registry details without duplicating the capability overview.
+  - Documentation-only workflow iterations can still run the root typecheck and workflow package tests to keep the branch green without restarting gateways or browser-testing non-UI changes.
+---
+
+## 2026-05-11 03:45 UTC - 13.2
+- Documented minimal workflow definition examples for one-node Pibo agent, JSON code-node, and human wait workflows using the public workflow package helpers.
+- Linked the new example page from the canonical workflow capability doc and removed minimal examples from the planned follow-up list.
+- Marked task `13.2` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; `npm run typecheck`.
+- Files changed: `docs/project/workflow-definition-examples.md`, `docs/project/workflows.md`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - Minimal docs should import and show public helpers (`text`, `json`, `fixedProfile`, registry helpers) rather than raw fixture literals when teaching authoring patterns.
+  - Code-node handler examples must return `{ output: ... }`, not a bare output payload, because runtime handlers use the `CodeNodeResult` contract.
+  - Examples for registry-backed validation should pass a `WorkflowRegistry`; examples without a registry demonstrate structural/schema validation only.
+---
+
+## 2026-05-11 03:46 UTC - 13.3
+- Documented workflow interface adapters with edge-adapter and visible `adapter` node examples, including registry registration, validation expectations, placement guidance, and implementation references.
+- Linked the adapter documentation from the canonical workflow overview and marked task `13.3` complete.
+- Quality checks: `npm run typecheck`; `npm --prefix packages/workflows test`.
+- Files changed: `docs/project/workflow-interface-adapters.md`, `docs/project/workflows.md`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - Adapter documentation should distinguish edge-local `edgeAdapter(adapterRef(...), outputPort)` mappings from visible `adapter` nodes that produce node attempts and are easier to inspect.
+  - Workflow docs should keep executable adapter handlers behind Workflow Registry registration examples instead of embedding closures in workflow definitions.
+  - Current adapter runtime behavior is well covered by `runtime-edge-transfer.test.ts` for edge adapters and `runtime-mixed-node-workflow.test.ts` for visible adapter nodes.
+---
+
+## 2026-05-11 03:51 UTC - 13.4
+- Documented XState-backed projection semantics, including projection identity/versioning, kernel-authoritative snapshot rules, stable id mapping, node/edge/guard/action/delay projection behavior, human waits, retry/failure/terminal semantics, UI model behavior, inspection events, and consumer restrictions.
+- Linked the new canonical projection doc from the workflow overview and marked task `13.4` complete.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; `npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test`.
+- Files changed: `docs/project/workflow-xstate-projection.md`, `docs/project/workflows.md`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - XState projection docs should describe public helpers and stable ids from `packages/workflows/src/xstate/index.ts`, not raw XState internals.
+  - The UI model derives active states from `WorkflowMachineSnapshot` status/current cursor, so docs should point consumers to `createWorkflowXStateUiModel(...)` rather than exposing projection maps directly.
+  - The projection advertises `kernel`, `xstate`, and `ui` snapshot kinds, but only `kernel` is durable truth; avoid documenting XState snapshots as a recovery dependency.
+---
+## 2026-05-11 03:54 UTC - 13.5
+- Documented the Workflow Registry, plugin registration pattern, registered TypeScript adapters, prompt assets/prompt builders, routing hints, human actions, and deterministic debug serialization.
+- Marked task 13.5 complete because the requested current documentation now lives under `docs/project/`.
+- Files changed: `docs/project/workflow-registry-and-debug-serialization.md`, `docs/project/workflows.md`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - Canonical workflow developer docs should stay under `docs/project/` and link back to `docs/project/workflows.md` as the overview.
+  - The current workflow package exposes registry maps for workflows, profiles, handlers, adapters, guards, prompt builders, and human actions; raw prompt assets are represented by stable metadata refs while executable prompt construction uses prompt builders.
+  - No `prd_*.json` files exist in this worktree; workflow completion status is being tracked through `docs/specs/changes/pibo-workflow-system-v1/tasks.md`.
+---
+## 2026-05-11 03:57 UTC - 14.1
+- Ran the root TypeScript typecheck successfully on the host worktree and inside the `pibo-dev-Workflows` container.
+- Marked task `14.1` complete because the root `npm run typecheck` validation passes; no `prd_*.json` files exist in this worktree, so completion status remains tracked in `tasks.md`.
+- Files changed: `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- Quality checks: host `npm run typecheck`; container `/workspace` `npm run typecheck`.
+- **Learnings for future iterations:**
+  - Validation section tasks may only require recording the completed check in `tasks.md` and `progress.txt`; keep these commits limited to the validation evidence.
+  - The root typecheck includes `tsc -p tsconfig.json --noEmit`, `chat-ui:typecheck`, and `context-files-ui:typecheck`, so it covers both backend TypeScript and the two UI TypeScript projects.
+  - For this Docker worker, the container project path is `/workspace`; use `docker exec pibo-dev-Workflows bash -lc 'cd /workspace && ...'` for container validation.
+---
+
+## 2026-05-11 03:58 UTC - 14.2
+- Ran the workflow package unit test suite and verified all current workflow tests pass (`126` tests across `24` suites).
+- Also reran workflow package typecheck, root typecheck, and the workflow unit tests inside the `pibo-dev-Workflows` Docker worker.
+- Marked task `14.2` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Files changed: `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - `npm --prefix packages/workflows test` is the focused workflow unit test command and currently covers runtime, validation, persistence facts/schema, inspection, human actions, XState projection, and UI projection models.
+  - The Docker worker path is `/workspace`; use `docker exec pibo-dev-Workflows bash -lc 'cd /workspace && ...'` for container verification.
+  - Story 14.3 should use persistence-specific tests/manual assertions beyond the full unit suite because the unit suite already includes some persistence coverage but does not separately certify completed, failed, waiting, and resumed run scenarios as a validation checklist.
+---
+## 2026-05-11 04:00 UTC - 14.3
+- Added an explicit workflow persistence validation test that recovers completed, failed, waiting, and resumed run facts across SQLite store restarts.
+- The test persists terminal runs, creates a real human wait through `dispatchWorkflowHumanNode`, reopens the store to verify the waiting state, applies a registry-backed resume action after restart, and reopens again to verify the resumed run, wait token, human action, wakeup, node attempt, and event sequence.
+- Marked task `14.3` complete in the workflow-system task list because the referenced JSON PRDs are absent and completion status is tracked in `tasks.md`.
+- Files changed: `packages/workflows/src/testing/workflow-persistence-validation.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- Quality checks: host `npm --prefix packages/workflows run typecheck`; host `npm --prefix packages/workflows test -- workflow-persistence-validation.test.ts` (package script runs all workflow tests; 127 tests passed); host `npm run typecheck`; container `/workspace` `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- **Learnings for future iterations:**
+  - Close and reopen `SqliteWorkflowRunStore` at each persistence recovery boundary when validating restart behavior.
+  - Waiting/resumed workflow validation should exercise `dispatchWorkflowHumanNode` and `applyWorkflowHumanAction` so wait tokens, human actions, wakeups, node attempts, run status, and events stay aligned.
+  - The package test script currently runs all `src/**/*.test.ts` even when a filename is passed, so count increases are a reliable way to confirm newly added workflow tests executed.
+---
+## 2026-05-11 04:04 UTC - 14.4
+- Ran a manual one-node `pibo-agent` workflow validation in the Docker worker using the minimal workflow fixture, registry-backed `pibo-agent` profile resolution, routed agent executor semantics, temporary workflow SQLite persistence, store reopen, and `inspectWorkflowRun`.
+- Recorded the validation evidence in a report and marked task `14.4` complete in the workflow-system task list because the referenced JSON PRDs are absent and completion status is tracked in `tasks.md`.
+- Files changed: `docs/reports/2026-05-11-workflow-manual-one-node-pibo-agent.md`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- Quality checks: container `/workspace` manual validation script via `npx tsx`; container `/workspace` `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- **Learnings for future iterations:**
+  - Manual workflow validation can reuse the public workflow package surface and fixture registry from a temporary `tsx` script without adding permanent test harness files.
+  - Reopen the temporary `pibo-workflows.sqlite` and inspect the run after the manual execution so validation proves persisted facts, not only in-memory runtime results.
+  - The worker Chat Web app was reachable and dev-auth succeeded, but the live Chat Web catalog did not expose a `pibo-agent` profile; the V1 workflow fixture registry is the current source for this manual `pibo-agent` validation path.
+---
+## 2026-05-11 04:08 UTC - 14.5
+- Ran a manual two-workflow composition validation inside the Docker worker with a parent workflow, registered child workflow, explicit registered TypeScript edge adapter, temporary workflow SQLite store, restart-style store reopen, and parent/child `inspectWorkflowRun(...)` checks.
+- Recorded the validation evidence in a report and marked task `14.5` complete in the workflow-system task list because the referenced JSON PRDs are absent and completion status is tracked in `tasks.md`.
+- Files changed: `docs/reports/2026-05-11-workflow-manual-two-workflow-adapter.md`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- Quality checks: container `/workspace` manual validation script via `npx tsx`; host `npm --prefix packages/workflows run typecheck`; host `npm --prefix packages/workflows test`; host `npm run typecheck`; container `/workspace` `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- **Learnings for future iterations:**
+  - For manual nested workflow validation, compose the currently exposed dispatch helpers explicitly: parent code dispatch, adapted edge transfer, nested workflow node dispatch, and child code dispatch inside the nested executor.
+  - `transferWorkflowEdgeAdapterData(...)` validates and returns the adapted payload but does not persist it; manual harnesses should save the returned `EdgeTransfer` and an `edge.transferred` event when persistence evidence is needed.
+  - Reopen the temporary workflow SQLite store and inspect both parent and child run ids so validation proves persisted parent/child linkage and adapted edge facts, not only in-memory success.
+---
+## 2026-05-11 04:14 UTC - 14.6
+- Ran a manual bounded review/fix loop validation inside the Docker worker with the `fixture.bounded-review-loop` workflow, registry-backed refs, mocked `pibo-agent` agent node dispatch, two human review resumes, a guarded revision path, a persisted bounded `revise-to-draft` back-edge, and restart-style inspection.
+- Verified the completed run persisted 5 completed node attempts, 3 edge transfers, 2 resumed wait tokens, 2 human actions, 2 wakeups, final approved output, and inspection output after reopening `SqliteWorkflowRunStore`.
+- Probed max-attempt behavior: the fixture loop used 1 of 3 configured back-edge attempts, and the draft node retry policy scheduled attempt 2 then exhausted at `maxAttempts: 2`.
+- Marked task `14.6` complete in the workflow-system task list because the referenced JSON PRDs are absent and completion status is tracked in `tasks.md`.
+- Files changed: `docs/reports/2026-05-11-workflow-manual-bounded-review-loop.md`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- Quality checks: container `/workspace` manual validation script via `npx tsx`; host `npm --prefix packages/workflows run typecheck`; host `npm --prefix packages/workflows test`; host `npm run typecheck`; container `/workspace` `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- **Learnings for future iterations:**
+  - Manual bounded-loop validation should exercise the actual node dispatch helpers and human action APIs rather than only graph validation, because the wait/resume/wakeup records are key durable facts.
+  - Control edges such as `needs-revision` are guard decisions, while data back-edges such as `revise-to-draft` should be persisted with `recordWorkflowEdgeTransfer(...)` when inspection evidence is required.
+  - Pair loop `maxAttempts` validation with `decideWorkflowNodeRetry(...)` / `createRetryScheduledNodeAttempt(...)` probes when a fixture also declares node retry bounds, so both bounded-loop and bounded-retry behavior are evidenced.
+---

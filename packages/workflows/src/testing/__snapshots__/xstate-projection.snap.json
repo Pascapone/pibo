@@ -1,0 +1,2474 @@
+{
+  "fixture.minimal-pibo-agent": {
+    "actions": {
+      "workflow.node.answer.complete": {
+        "durableEffect": true,
+        "id": "workflow.node.answer.complete",
+        "kind": "completeNode",
+        "nodeId": "answer"
+      },
+      "workflow.node.answer.recordFailure": {
+        "durableEffect": true,
+        "id": "workflow.node.answer.recordFailure",
+        "kind": "recordFailure",
+        "nodeId": "answer"
+      }
+    },
+    "actors": {
+      "workflow.node.answer": {
+        "id": "workflow.node.answer",
+        "input": {
+          "kind": "nodeInput",
+          "nodeId": "answer"
+        },
+        "kind": "agent",
+        "nodeId": "answer",
+        "src": "pibo.workflow.actor.agent"
+      }
+    },
+    "config": {
+      "id": "fixture.minimal-pibo-agent",
+      "initial": "node.answer",
+      "meta": {
+        "pibo": {
+          "actions": {
+            "workflow.node.answer.complete": {
+              "durableEffect": true,
+              "id": "workflow.node.answer.complete",
+              "kind": "completeNode",
+              "nodeId": "answer"
+            },
+            "workflow.node.answer.recordFailure": {
+              "durableEffect": true,
+              "id": "workflow.node.answer.recordFailure",
+              "kind": "recordFailure",
+              "nodeId": "answer"
+            }
+          },
+          "actors": {
+            "workflow.node.answer": {
+              "id": "workflow.node.answer",
+              "input": {
+                "kind": "nodeInput",
+                "nodeId": "answer"
+              },
+              "kind": "agent",
+              "nodeId": "answer",
+              "src": "pibo.workflow.actor.agent"
+            }
+          },
+          "contextShape": {
+            "durableTruth": "kernel",
+            "edge": {},
+            "exposesPrivatePayloads": false,
+            "global": {},
+            "local": {}
+          },
+          "delays": {},
+          "finalStates": {
+            "cancelled": "workflow.cancelled",
+            "completed": "workflow.completed",
+            "failed": "workflow.failed"
+          },
+          "guards": {},
+          "metadata": {
+            "tags": [
+              "fixture",
+              "minimal",
+              "agent"
+            ],
+            "useWhen": [
+              "Validate that a one-node pibo-agent workflow can be represented."
+            ]
+          },
+          "schemaVersion": 1,
+          "snapshotKinds": [
+            "kernel",
+            "xstate",
+            "ui"
+          ],
+          "workflowId": "fixture.minimal-pibo-agent",
+          "workflowVersion": "1.0.0"
+        }
+      },
+      "states": {
+        "node.answer": {
+          "id": "node.answer",
+          "invoke": {
+            "id": "workflow.node.answer",
+            "input": {
+              "kind": "nodeInput",
+              "nodeId": "answer"
+            },
+            "onError": {
+              "actions": [
+                "workflow.node.answer.recordFailure"
+              ],
+              "target": "workflow.failed"
+            },
+            "src": "pibo.workflow.actor.agent"
+          },
+          "meta": {
+            "pibo": {
+              "actorId": "workflow.node.answer",
+              "kind": "node",
+              "nodeId": "answer",
+              "nodeKind": "agent",
+              "tags": [
+                "agent"
+              ]
+            }
+          },
+          "on": {
+            "WORKFLOW.NODE.DONE": {
+              "actions": [
+                "workflow.node.answer.complete"
+              ],
+              "target": "workflow.completed"
+            }
+          },
+          "tags": [
+            "agent"
+          ],
+          "type": "atomic"
+        },
+        "workflow.cancelled": {
+          "id": "workflow.cancelled",
+          "meta": {
+            "pibo": {
+              "kind": "terminal",
+              "terminal": {
+                "status": "cancelled"
+              }
+            }
+          },
+          "type": "final"
+        },
+        "workflow.completed": {
+          "id": "workflow.completed",
+          "meta": {
+            "pibo": {
+              "kind": "terminal",
+              "terminal": {
+                "status": "completed"
+              }
+            }
+          },
+          "type": "final"
+        },
+        "workflow.failed": {
+          "id": "workflow.failed",
+          "meta": {
+            "pibo": {
+              "kind": "terminal",
+              "terminal": {
+                "status": "failed"
+              }
+            }
+          },
+          "type": "final"
+        }
+      }
+    },
+    "contextShape": {
+      "durableTruth": "kernel",
+      "edge": {},
+      "exposesPrivatePayloads": false,
+      "global": {},
+      "local": {}
+    },
+    "delays": {},
+    "finalStates": {
+      "cancelled": "workflow.cancelled",
+      "completed": "workflow.completed",
+      "failed": "workflow.failed"
+    },
+    "guards": {},
+    "id": "fixture.minimal-pibo-agent",
+    "initial": "node.answer",
+    "kind": "pibo.workflow.xstateProjection",
+    "metadata": {
+      "tags": [
+        "fixture",
+        "minimal",
+        "agent"
+      ],
+      "useWhen": [
+        "Validate that a one-node pibo-agent workflow can be represented."
+      ]
+    },
+    "schemaVersion": 1,
+    "states": {
+      "node.answer": {
+        "actorId": "workflow.node.answer",
+        "id": "node.answer",
+        "invoke": {
+          "id": "workflow.node.answer",
+          "input": {
+            "kind": "nodeInput",
+            "nodeId": "answer"
+          },
+          "onError": {
+            "actions": [
+              "workflow.node.answer.recordFailure"
+            ],
+            "target": "workflow.failed"
+          },
+          "src": "pibo.workflow.actor.agent"
+        },
+        "kind": "node",
+        "meta": {
+          "pibo": {
+            "actorId": "workflow.node.answer",
+            "kind": "node",
+            "nodeId": "answer",
+            "nodeKind": "agent",
+            "tags": [
+              "agent"
+            ]
+          }
+        },
+        "nodeId": "answer",
+        "tags": [
+          "agent"
+        ],
+        "type": "atomic"
+      }
+    },
+    "transitions": [
+      {
+        "actions": [
+          "workflow.node.answer.complete"
+        ],
+        "event": "WORKFLOW.NODE.DONE",
+        "id": "workflow.node.answer.complete.transition",
+        "source": "node.answer",
+        "target": "workflow.completed"
+      }
+    ],
+    "version": "1.0.0"
+  },
+  "fixture.mixed-nodes": {
+    "actions": {
+      "workflow.edge.draft-to-review.transfer": {
+        "durableEffect": true,
+        "edgeId": "draft-to-review",
+        "id": "workflow.edge.draft-to-review.transfer",
+        "kind": "transferEdge"
+      },
+      "workflow.edge.normalize-to-child.transfer": {
+        "durableEffect": true,
+        "edgeId": "normalize-to-child",
+        "id": "workflow.edge.normalize-to-child.transfer",
+        "kind": "transferEdge"
+      },
+      "workflow.edge.plan-to-draft.transfer": {
+        "durableEffect": true,
+        "edgeId": "plan-to-draft",
+        "id": "workflow.edge.plan-to-draft.transfer",
+        "kind": "transferEdge"
+      },
+      "workflow.edge.review-to-normalize.transfer": {
+        "durableEffect": true,
+        "edgeId": "review-to-normalize",
+        "id": "workflow.edge.review-to-normalize.transfer",
+        "kind": "transferEdge"
+      },
+      "workflow.node.child-summary.complete": {
+        "durableEffect": true,
+        "id": "workflow.node.child-summary.complete",
+        "kind": "completeNode",
+        "nodeId": "child-summary"
+      },
+      "workflow.node.child-summary.recordFailure": {
+        "durableEffect": true,
+        "id": "workflow.node.child-summary.recordFailure",
+        "kind": "recordFailure",
+        "nodeId": "child-summary"
+      },
+      "workflow.node.draft.recordFailure": {
+        "durableEffect": true,
+        "id": "workflow.node.draft.recordFailure",
+        "kind": "recordFailure",
+        "nodeId": "draft"
+      },
+      "workflow.node.normalize.recordFailure": {
+        "durableEffect": true,
+        "id": "workflow.node.normalize.recordFailure",
+        "kind": "recordFailure",
+        "nodeId": "normalize"
+      },
+      "workflow.node.plan.recordFailure": {
+        "durableEffect": true,
+        "id": "workflow.node.plan.recordFailure",
+        "kind": "recordFailure",
+        "nodeId": "plan"
+      },
+      "workflow.node.review.enterWait": {
+        "durableEffect": true,
+        "id": "workflow.node.review.enterWait",
+        "kind": "enterWait",
+        "nodeId": "review"
+      },
+      "workflow.node.review.recordFailure": {
+        "durableEffect": true,
+        "id": "workflow.node.review.recordFailure",
+        "kind": "recordFailure",
+        "nodeId": "review"
+      },
+      "workflow.node.review.resumeWait": {
+        "durableEffect": true,
+        "id": "workflow.node.review.resumeWait",
+        "kind": "resumeWait",
+        "nodeId": "review"
+      }
+    },
+    "actors": {
+      "workflow.node.child-summary": {
+        "childWorkflowId": "fixture.nested-child",
+        "childWorkflowVersion": "1.0.0",
+        "id": "workflow.node.child-summary",
+        "input": {
+          "kind": "nodeInput",
+          "nodeId": "child-summary"
+        },
+        "kind": "workflow",
+        "nodeId": "child-summary",
+        "src": "pibo.workflow.actor.workflow"
+      },
+      "workflow.node.draft": {
+        "id": "workflow.node.draft",
+        "input": {
+          "kind": "nodeInput",
+          "nodeId": "draft"
+        },
+        "kind": "agent",
+        "nodeId": "draft",
+        "src": "pibo.workflow.actor.agent"
+      },
+      "workflow.node.normalize": {
+        "id": "workflow.node.normalize",
+        "input": {
+          "kind": "nodeInput",
+          "nodeId": "normalize"
+        },
+        "kind": "adapter",
+        "nodeId": "normalize",
+        "src": "pibo.workflow.actor.adapter"
+      },
+      "workflow.node.plan": {
+        "id": "workflow.node.plan",
+        "input": {
+          "kind": "nodeInput",
+          "nodeId": "plan"
+        },
+        "kind": "code",
+        "nodeId": "plan",
+        "src": "pibo.workflow.actor.code"
+      },
+      "workflow.node.review": {
+        "id": "workflow.node.review",
+        "input": {
+          "kind": "nodeInput",
+          "nodeId": "review"
+        },
+        "kind": "human",
+        "nodeId": "review",
+        "src": "pibo.workflow.actor.human"
+      }
+    },
+    "config": {
+      "id": "fixture.mixed-nodes",
+      "initial": "node.plan",
+      "meta": {
+        "pibo": {
+          "actions": {
+            "workflow.edge.draft-to-review.transfer": {
+              "durableEffect": true,
+              "edgeId": "draft-to-review",
+              "id": "workflow.edge.draft-to-review.transfer",
+              "kind": "transferEdge"
+            },
+            "workflow.edge.normalize-to-child.transfer": {
+              "durableEffect": true,
+              "edgeId": "normalize-to-child",
+              "id": "workflow.edge.normalize-to-child.transfer",
+              "kind": "transferEdge"
+            },
+            "workflow.edge.plan-to-draft.transfer": {
+              "durableEffect": true,
+              "edgeId": "plan-to-draft",
+              "id": "workflow.edge.plan-to-draft.transfer",
+              "kind": "transferEdge"
+            },
+            "workflow.edge.review-to-normalize.transfer": {
+              "durableEffect": true,
+              "edgeId": "review-to-normalize",
+              "id": "workflow.edge.review-to-normalize.transfer",
+              "kind": "transferEdge"
+            },
+            "workflow.node.child-summary.complete": {
+              "durableEffect": true,
+              "id": "workflow.node.child-summary.complete",
+              "kind": "completeNode",
+              "nodeId": "child-summary"
+            },
+            "workflow.node.child-summary.recordFailure": {
+              "durableEffect": true,
+              "id": "workflow.node.child-summary.recordFailure",
+              "kind": "recordFailure",
+              "nodeId": "child-summary"
+            },
+            "workflow.node.draft.recordFailure": {
+              "durableEffect": true,
+              "id": "workflow.node.draft.recordFailure",
+              "kind": "recordFailure",
+              "nodeId": "draft"
+            },
+            "workflow.node.normalize.recordFailure": {
+              "durableEffect": true,
+              "id": "workflow.node.normalize.recordFailure",
+              "kind": "recordFailure",
+              "nodeId": "normalize"
+            },
+            "workflow.node.plan.recordFailure": {
+              "durableEffect": true,
+              "id": "workflow.node.plan.recordFailure",
+              "kind": "recordFailure",
+              "nodeId": "plan"
+            },
+            "workflow.node.review.enterWait": {
+              "durableEffect": true,
+              "id": "workflow.node.review.enterWait",
+              "kind": "enterWait",
+              "nodeId": "review"
+            },
+            "workflow.node.review.recordFailure": {
+              "durableEffect": true,
+              "id": "workflow.node.review.recordFailure",
+              "kind": "recordFailure",
+              "nodeId": "review"
+            },
+            "workflow.node.review.resumeWait": {
+              "durableEffect": true,
+              "id": "workflow.node.review.resumeWait",
+              "kind": "resumeWait",
+              "nodeId": "review"
+            }
+          },
+          "actors": {
+            "workflow.node.child-summary": {
+              "childWorkflowId": "fixture.nested-child",
+              "childWorkflowVersion": "1.0.0",
+              "id": "workflow.node.child-summary",
+              "input": {
+                "kind": "nodeInput",
+                "nodeId": "child-summary"
+              },
+              "kind": "workflow",
+              "nodeId": "child-summary",
+              "src": "pibo.workflow.actor.workflow"
+            },
+            "workflow.node.draft": {
+              "id": "workflow.node.draft",
+              "input": {
+                "kind": "nodeInput",
+                "nodeId": "draft"
+              },
+              "kind": "agent",
+              "nodeId": "draft",
+              "src": "pibo.workflow.actor.agent"
+            },
+            "workflow.node.normalize": {
+              "id": "workflow.node.normalize",
+              "input": {
+                "kind": "nodeInput",
+                "nodeId": "normalize"
+              },
+              "kind": "adapter",
+              "nodeId": "normalize",
+              "src": "pibo.workflow.actor.adapter"
+            },
+            "workflow.node.plan": {
+              "id": "workflow.node.plan",
+              "input": {
+                "kind": "nodeInput",
+                "nodeId": "plan"
+              },
+              "kind": "code",
+              "nodeId": "plan",
+              "src": "pibo.workflow.actor.code"
+            },
+            "workflow.node.review": {
+              "id": "workflow.node.review",
+              "input": {
+                "kind": "nodeInput",
+                "nodeId": "review"
+              },
+              "kind": "human",
+              "nodeId": "review",
+              "src": "pibo.workflow.actor.human"
+            }
+          },
+          "contextShape": {
+            "durableTruth": "kernel",
+            "edge": {},
+            "exposesPrivatePayloads": false,
+            "global": {
+              "plan": {
+                "merge": {
+                  "kind": "replace"
+                },
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "steps": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "done": {
+                            "type": "boolean"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "title",
+                          "done"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "steps"
+                  ],
+                  "type": "object"
+                }
+              },
+              "topic": {
+                "merge": {
+                  "kind": "replace"
+                },
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "topic": {
+                      "description": "Topic to work on.",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "topic"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "local": {
+              "plan": {
+                "reads": [
+                  "global.topic"
+                ],
+                "writes": [
+                  "global.plan"
+                ]
+              }
+            }
+          },
+          "delays": {},
+          "finalStates": {
+            "cancelled": "workflow.cancelled",
+            "completed": "workflow.completed",
+            "failed": "workflow.failed"
+          },
+          "guards": {
+            "fixture.guards.approved": {
+              "edgeId": "review-to-normalize",
+              "id": "fixture.guards.approved",
+              "ref": "fixture.guards.approved"
+            }
+          },
+          "metadata": {
+            "tags": [
+              "fixture",
+              "mixed",
+              "all-node-kinds"
+            ]
+          },
+          "schemaVersion": 1,
+          "snapshotKinds": [
+            "kernel",
+            "xstate",
+            "ui"
+          ],
+          "workflowId": "fixture.mixed-nodes",
+          "workflowVersion": "1.0.0"
+        }
+      },
+      "states": {
+        "node.child-summary": {
+          "id": "node.child-summary",
+          "invoke": {
+            "id": "workflow.node.child-summary",
+            "input": {
+              "kind": "nodeInput",
+              "nodeId": "child-summary"
+            },
+            "onError": {
+              "actions": [
+                "workflow.node.child-summary.recordFailure"
+              ],
+              "target": "workflow.failed"
+            },
+            "src": "pibo.workflow.actor.workflow"
+          },
+          "meta": {
+            "pibo": {
+              "actorId": "workflow.node.child-summary",
+              "kind": "node",
+              "nodeId": "child-summary",
+              "nodeKind": "workflow",
+              "tags": [
+                "workflow"
+              ]
+            }
+          },
+          "on": {
+            "WORKFLOW.NODE.DONE": {
+              "actions": [
+                "workflow.node.child-summary.complete"
+              ],
+              "target": "workflow.completed"
+            }
+          },
+          "tags": [
+            "workflow"
+          ],
+          "type": "atomic"
+        },
+        "node.draft": {
+          "id": "node.draft",
+          "invoke": {
+            "id": "workflow.node.draft",
+            "input": {
+              "kind": "nodeInput",
+              "nodeId": "draft"
+            },
+            "onError": {
+              "actions": [
+                "workflow.node.draft.recordFailure"
+              ],
+              "target": "workflow.failed"
+            },
+            "src": "pibo.workflow.actor.agent"
+          },
+          "meta": {
+            "pibo": {
+              "actorId": "workflow.node.draft",
+              "kind": "node",
+              "nodeId": "draft",
+              "nodeKind": "agent",
+              "tags": [
+                "agent"
+              ]
+            }
+          },
+          "on": {
+            "WORKFLOW.NODE.DONE": {
+              "actions": [
+                "workflow.edge.draft-to-review.transfer"
+              ],
+              "meta": {
+                "pibo": {
+                  "edgeId": "draft-to-review",
+                  "edgeKind": "data"
+                }
+              },
+              "target": "node.review"
+            }
+          },
+          "tags": [
+            "agent"
+          ],
+          "type": "atomic"
+        },
+        "node.normalize": {
+          "id": "node.normalize",
+          "invoke": {
+            "id": "workflow.node.normalize",
+            "input": {
+              "kind": "nodeInput",
+              "nodeId": "normalize"
+            },
+            "onError": {
+              "actions": [
+                "workflow.node.normalize.recordFailure"
+              ],
+              "target": "workflow.failed"
+            },
+            "src": "pibo.workflow.actor.adapter"
+          },
+          "meta": {
+            "pibo": {
+              "actorId": "workflow.node.normalize",
+              "kind": "node",
+              "nodeId": "normalize",
+              "nodeKind": "adapter",
+              "tags": [
+                "adapter"
+              ]
+            }
+          },
+          "on": {
+            "WORKFLOW.NODE.DONE": {
+              "actions": [
+                "workflow.edge.normalize-to-child.transfer"
+              ],
+              "meta": {
+                "pibo": {
+                  "adapterRef": "fixture.adapters.draftToSummary",
+                  "edgeId": "normalize-to-child",
+                  "edgeKind": "data"
+                }
+              },
+              "target": "node.child-summary"
+            }
+          },
+          "tags": [
+            "adapter"
+          ],
+          "type": "atomic"
+        },
+        "node.plan": {
+          "id": "node.plan",
+          "invoke": {
+            "id": "workflow.node.plan",
+            "input": {
+              "kind": "nodeInput",
+              "nodeId": "plan"
+            },
+            "onError": {
+              "actions": [
+                "workflow.node.plan.recordFailure"
+              ],
+              "target": "workflow.failed"
+            },
+            "src": "pibo.workflow.actor.code"
+          },
+          "meta": {
+            "pibo": {
+              "actorId": "workflow.node.plan",
+              "kind": "node",
+              "nodeId": "plan",
+              "nodeKind": "code",
+              "tags": [
+                "code"
+              ]
+            }
+          },
+          "on": {
+            "WORKFLOW.NODE.DONE": {
+              "actions": [
+                "workflow.edge.plan-to-draft.transfer"
+              ],
+              "meta": {
+                "pibo": {
+                  "edgeId": "plan-to-draft",
+                  "edgeKind": "data"
+                }
+              },
+              "target": "node.draft"
+            }
+          },
+          "tags": [
+            "code"
+          ],
+          "type": "atomic"
+        },
+        "node.review": {
+          "entry": [
+            "workflow.node.review.enterWait"
+          ],
+          "exit": [
+            "workflow.node.review.resumeWait"
+          ],
+          "id": "node.review",
+          "invoke": {
+            "id": "workflow.node.review",
+            "input": {
+              "kind": "nodeInput",
+              "nodeId": "review"
+            },
+            "onError": {
+              "actions": [
+                "workflow.node.review.recordFailure"
+              ],
+              "target": "workflow.failed"
+            },
+            "src": "pibo.workflow.actor.human"
+          },
+          "meta": {
+            "pibo": {
+              "actorId": "workflow.node.review",
+              "kind": "wait",
+              "nodeId": "review",
+              "nodeKind": "human",
+              "tags": [
+                "human",
+                "wait"
+              ],
+              "wait": {
+                "actions": [
+                  {
+                    "id": "fixture.humanActions.approve",
+                    "kind": "approve"
+                  }
+                ],
+                "durable": true,
+                "resumeEvent": "WORKFLOW.RESUME"
+              }
+            }
+          },
+          "on": {
+            "WORKFLOW.RESUME": {
+              "actions": [
+                "workflow.edge.review-to-normalize.transfer"
+              ],
+              "guard": "fixture.guards.approved",
+              "meta": {
+                "pibo": {
+                  "edgeId": "review-to-normalize",
+                  "edgeKind": "resume",
+                  "guardRef": "fixture.guards.approved",
+                  "priority": 1
+                }
+              },
+              "target": "node.normalize"
+            }
+          },
+          "tags": [
+            "human",
+            "wait"
+          ],
+          "type": "atomic"
+        },
+        "workflow.cancelled": {
+          "id": "workflow.cancelled",
+          "meta": {
+            "pibo": {
+              "kind": "terminal",
+              "terminal": {
+                "status": "cancelled"
+              }
+            }
+          },
+          "type": "final"
+        },
+        "workflow.completed": {
+          "id": "workflow.completed",
+          "meta": {
+            "pibo": {
+              "kind": "terminal",
+              "terminal": {
+                "status": "completed"
+              }
+            }
+          },
+          "type": "final"
+        },
+        "workflow.failed": {
+          "id": "workflow.failed",
+          "meta": {
+            "pibo": {
+              "kind": "terminal",
+              "terminal": {
+                "status": "failed"
+              }
+            }
+          },
+          "type": "final"
+        }
+      }
+    },
+    "contextShape": {
+      "durableTruth": "kernel",
+      "edge": {},
+      "exposesPrivatePayloads": false,
+      "global": {
+        "plan": {
+          "merge": {
+            "kind": "replace"
+          },
+          "schema": {
+            "additionalProperties": false,
+            "properties": {
+              "steps": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "done": {
+                      "type": "boolean"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "done"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "steps"
+            ],
+            "type": "object"
+          }
+        },
+        "topic": {
+          "merge": {
+            "kind": "replace"
+          },
+          "schema": {
+            "additionalProperties": false,
+            "properties": {
+              "topic": {
+                "description": "Topic to work on.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "topic"
+            ],
+            "type": "object"
+          }
+        }
+      },
+      "local": {
+        "plan": {
+          "reads": [
+            "global.topic"
+          ],
+          "writes": [
+            "global.plan"
+          ]
+        }
+      }
+    },
+    "delays": {},
+    "finalStates": {
+      "cancelled": "workflow.cancelled",
+      "completed": "workflow.completed",
+      "failed": "workflow.failed"
+    },
+    "guards": {
+      "fixture.guards.approved": {
+        "edgeId": "review-to-normalize",
+        "id": "fixture.guards.approved",
+        "ref": "fixture.guards.approved"
+      }
+    },
+    "id": "fixture.mixed-nodes",
+    "initial": "node.plan",
+    "kind": "pibo.workflow.xstateProjection",
+    "metadata": {
+      "tags": [
+        "fixture",
+        "mixed",
+        "all-node-kinds"
+      ]
+    },
+    "schemaVersion": 1,
+    "states": {
+      "node.child-summary": {
+        "actorId": "workflow.node.child-summary",
+        "id": "node.child-summary",
+        "invoke": {
+          "id": "workflow.node.child-summary",
+          "input": {
+            "kind": "nodeInput",
+            "nodeId": "child-summary"
+          },
+          "onError": {
+            "actions": [
+              "workflow.node.child-summary.recordFailure"
+            ],
+            "target": "workflow.failed"
+          },
+          "src": "pibo.workflow.actor.workflow"
+        },
+        "kind": "node",
+        "meta": {
+          "pibo": {
+            "actorId": "workflow.node.child-summary",
+            "kind": "node",
+            "nodeId": "child-summary",
+            "nodeKind": "workflow",
+            "tags": [
+              "workflow"
+            ]
+          }
+        },
+        "nodeId": "child-summary",
+        "tags": [
+          "workflow"
+        ],
+        "type": "atomic"
+      },
+      "node.draft": {
+        "actorId": "workflow.node.draft",
+        "id": "node.draft",
+        "invoke": {
+          "id": "workflow.node.draft",
+          "input": {
+            "kind": "nodeInput",
+            "nodeId": "draft"
+          },
+          "onError": {
+            "actions": [
+              "workflow.node.draft.recordFailure"
+            ],
+            "target": "workflow.failed"
+          },
+          "src": "pibo.workflow.actor.agent"
+        },
+        "kind": "node",
+        "meta": {
+          "pibo": {
+            "actorId": "workflow.node.draft",
+            "kind": "node",
+            "nodeId": "draft",
+            "nodeKind": "agent",
+            "tags": [
+              "agent"
+            ]
+          }
+        },
+        "nodeId": "draft",
+        "tags": [
+          "agent"
+        ],
+        "type": "atomic"
+      },
+      "node.normalize": {
+        "actorId": "workflow.node.normalize",
+        "id": "node.normalize",
+        "invoke": {
+          "id": "workflow.node.normalize",
+          "input": {
+            "kind": "nodeInput",
+            "nodeId": "normalize"
+          },
+          "onError": {
+            "actions": [
+              "workflow.node.normalize.recordFailure"
+            ],
+            "target": "workflow.failed"
+          },
+          "src": "pibo.workflow.actor.adapter"
+        },
+        "kind": "node",
+        "meta": {
+          "pibo": {
+            "actorId": "workflow.node.normalize",
+            "kind": "node",
+            "nodeId": "normalize",
+            "nodeKind": "adapter",
+            "tags": [
+              "adapter"
+            ]
+          }
+        },
+        "nodeId": "normalize",
+        "tags": [
+          "adapter"
+        ],
+        "type": "atomic"
+      },
+      "node.plan": {
+        "actorId": "workflow.node.plan",
+        "id": "node.plan",
+        "invoke": {
+          "id": "workflow.node.plan",
+          "input": {
+            "kind": "nodeInput",
+            "nodeId": "plan"
+          },
+          "onError": {
+            "actions": [
+              "workflow.node.plan.recordFailure"
+            ],
+            "target": "workflow.failed"
+          },
+          "src": "pibo.workflow.actor.code"
+        },
+        "kind": "node",
+        "meta": {
+          "pibo": {
+            "actorId": "workflow.node.plan",
+            "kind": "node",
+            "nodeId": "plan",
+            "nodeKind": "code",
+            "tags": [
+              "code"
+            ]
+          }
+        },
+        "nodeId": "plan",
+        "tags": [
+          "code"
+        ],
+        "type": "atomic"
+      },
+      "node.review": {
+        "actorId": "workflow.node.review",
+        "entry": [
+          "workflow.node.review.enterWait"
+        ],
+        "exit": [
+          "workflow.node.review.resumeWait"
+        ],
+        "id": "node.review",
+        "invoke": {
+          "id": "workflow.node.review",
+          "input": {
+            "kind": "nodeInput",
+            "nodeId": "review"
+          },
+          "onError": {
+            "actions": [
+              "workflow.node.review.recordFailure"
+            ],
+            "target": "workflow.failed"
+          },
+          "src": "pibo.workflow.actor.human"
+        },
+        "kind": "wait",
+        "meta": {
+          "pibo": {
+            "actorId": "workflow.node.review",
+            "kind": "wait",
+            "nodeId": "review",
+            "nodeKind": "human",
+            "tags": [
+              "human",
+              "wait"
+            ],
+            "wait": {
+              "actions": [
+                {
+                  "id": "fixture.humanActions.approve",
+                  "kind": "approve"
+                }
+              ],
+              "durable": true,
+              "resumeEvent": "WORKFLOW.RESUME"
+            }
+          }
+        },
+        "nodeId": "review",
+        "tags": [
+          "human",
+          "wait"
+        ],
+        "type": "atomic"
+      }
+    },
+    "transitions": [
+      {
+        "actions": [
+          "workflow.edge.draft-to-review.transfer"
+        ],
+        "edgeId": "draft-to-review",
+        "event": "WORKFLOW.NODE.DONE",
+        "id": "workflow.edge.draft-to-review.transition",
+        "meta": {
+          "pibo": {
+            "edgeId": "draft-to-review",
+            "edgeKind": "data"
+          }
+        },
+        "source": "node.draft",
+        "target": "node.review"
+      },
+      {
+        "actions": [
+          "workflow.edge.normalize-to-child.transfer"
+        ],
+        "edgeId": "normalize-to-child",
+        "event": "WORKFLOW.NODE.DONE",
+        "id": "workflow.edge.normalize-to-child.transition",
+        "meta": {
+          "pibo": {
+            "adapterRef": "fixture.adapters.draftToSummary",
+            "edgeId": "normalize-to-child",
+            "edgeKind": "data"
+          }
+        },
+        "source": "node.normalize",
+        "target": "node.child-summary"
+      },
+      {
+        "actions": [
+          "workflow.edge.plan-to-draft.transfer"
+        ],
+        "edgeId": "plan-to-draft",
+        "event": "WORKFLOW.NODE.DONE",
+        "id": "workflow.edge.plan-to-draft.transition",
+        "meta": {
+          "pibo": {
+            "edgeId": "plan-to-draft",
+            "edgeKind": "data"
+          }
+        },
+        "source": "node.plan",
+        "target": "node.draft"
+      },
+      {
+        "actions": [
+          "workflow.edge.review-to-normalize.transfer"
+        ],
+        "edgeId": "review-to-normalize",
+        "event": "WORKFLOW.RESUME",
+        "guard": "fixture.guards.approved",
+        "id": "workflow.edge.review-to-normalize.transition",
+        "meta": {
+          "pibo": {
+            "edgeId": "review-to-normalize",
+            "edgeKind": "resume",
+            "guardRef": "fixture.guards.approved",
+            "priority": 1
+          }
+        },
+        "source": "node.review",
+        "target": "node.normalize"
+      },
+      {
+        "actions": [
+          "workflow.node.child-summary.complete"
+        ],
+        "event": "WORKFLOW.NODE.DONE",
+        "id": "workflow.node.child-summary.complete.transition",
+        "source": "node.child-summary",
+        "target": "workflow.completed"
+      }
+    ],
+    "version": "1.0.0"
+  },
+  "fixture.human-wait": {
+    "actions": {
+      "workflow.node.review.complete": {
+        "durableEffect": true,
+        "id": "workflow.node.review.complete",
+        "kind": "completeNode",
+        "nodeId": "review"
+      },
+      "workflow.node.review.enterWait": {
+        "durableEffect": true,
+        "id": "workflow.node.review.enterWait",
+        "kind": "enterWait",
+        "nodeId": "review"
+      },
+      "workflow.node.review.recordFailure": {
+        "durableEffect": true,
+        "id": "workflow.node.review.recordFailure",
+        "kind": "recordFailure",
+        "nodeId": "review"
+      },
+      "workflow.node.review.resumeWait": {
+        "durableEffect": true,
+        "id": "workflow.node.review.resumeWait",
+        "kind": "resumeWait",
+        "nodeId": "review"
+      }
+    },
+    "actors": {
+      "workflow.node.review": {
+        "id": "workflow.node.review",
+        "input": {
+          "kind": "nodeInput",
+          "nodeId": "review"
+        },
+        "kind": "human",
+        "nodeId": "review",
+        "src": "pibo.workflow.actor.human"
+      }
+    },
+    "config": {
+      "id": "fixture.human-wait",
+      "initial": "node.review",
+      "meta": {
+        "pibo": {
+          "actions": {
+            "workflow.node.review.complete": {
+              "durableEffect": true,
+              "id": "workflow.node.review.complete",
+              "kind": "completeNode",
+              "nodeId": "review"
+            },
+            "workflow.node.review.enterWait": {
+              "durableEffect": true,
+              "id": "workflow.node.review.enterWait",
+              "kind": "enterWait",
+              "nodeId": "review"
+            },
+            "workflow.node.review.recordFailure": {
+              "durableEffect": true,
+              "id": "workflow.node.review.recordFailure",
+              "kind": "recordFailure",
+              "nodeId": "review"
+            },
+            "workflow.node.review.resumeWait": {
+              "durableEffect": true,
+              "id": "workflow.node.review.resumeWait",
+              "kind": "resumeWait",
+              "nodeId": "review"
+            }
+          },
+          "actors": {
+            "workflow.node.review": {
+              "id": "workflow.node.review",
+              "input": {
+                "kind": "nodeInput",
+                "nodeId": "review"
+              },
+              "kind": "human",
+              "nodeId": "review",
+              "src": "pibo.workflow.actor.human"
+            }
+          },
+          "contextShape": {
+            "durableTruth": "kernel",
+            "edge": {},
+            "exposesPrivatePayloads": false,
+            "global": {},
+            "local": {}
+          },
+          "delays": {
+            "workflow.node.review.humanTimeout": {
+              "durableWakeup": true,
+              "duration": {
+                "kind": "minutes",
+                "value": 60
+              },
+              "id": "workflow.node.review.humanTimeout",
+              "kind": "humanTimeout",
+              "nodeId": "review"
+            }
+          },
+          "finalStates": {
+            "cancelled": "workflow.cancelled",
+            "completed": "workflow.completed",
+            "failed": "workflow.failed"
+          },
+          "guards": {},
+          "metadata": {
+            "tags": [
+              "fixture",
+              "human",
+              "wait"
+            ]
+          },
+          "schemaVersion": 1,
+          "snapshotKinds": [
+            "kernel",
+            "xstate",
+            "ui"
+          ],
+          "workflowId": "fixture.human-wait",
+          "workflowVersion": "1.0.0"
+        }
+      },
+      "states": {
+        "node.review": {
+          "after": {
+            "workflow.node.review.humanTimeout": {
+              "actions": [
+                "workflow.node.review.recordFailure"
+              ],
+              "target": "workflow.failed"
+            }
+          },
+          "entry": [
+            "workflow.node.review.enterWait"
+          ],
+          "exit": [
+            "workflow.node.review.resumeWait"
+          ],
+          "id": "node.review",
+          "invoke": {
+            "id": "workflow.node.review",
+            "input": {
+              "kind": "nodeInput",
+              "nodeId": "review"
+            },
+            "onError": {
+              "actions": [
+                "workflow.node.review.recordFailure"
+              ],
+              "target": "workflow.failed"
+            },
+            "src": "pibo.workflow.actor.human"
+          },
+          "meta": {
+            "pibo": {
+              "actorId": "workflow.node.review",
+              "kind": "wait",
+              "nodeId": "review",
+              "nodeKind": "human",
+              "tags": [
+                "human",
+                "wait"
+              ],
+              "wait": {
+                "actions": [
+                  {
+                    "id": "fixture.humanActions.approve",
+                    "kind": "approve"
+                  },
+                  {
+                    "id": "fixture.humanActions.reject",
+                    "kind": "reject"
+                  },
+                  {
+                    "id": "fixture.humanActions.resume",
+                    "kind": "resume"
+                  },
+                  {
+                    "id": "fixture.humanActions.cancel",
+                    "kind": "cancel"
+                  }
+                ],
+                "durable": true,
+                "resumeEvent": "WORKFLOW.RESUME",
+                "timeout": {
+                  "kind": "minutes",
+                  "value": 60
+                }
+              }
+            }
+          },
+          "on": {
+            "WORKFLOW.NODE.DONE": {
+              "actions": [
+                "workflow.node.review.complete"
+              ],
+              "target": "workflow.completed"
+            }
+          },
+          "tags": [
+            "human",
+            "wait"
+          ],
+          "type": "atomic"
+        },
+        "workflow.cancelled": {
+          "id": "workflow.cancelled",
+          "meta": {
+            "pibo": {
+              "kind": "terminal",
+              "terminal": {
+                "status": "cancelled"
+              }
+            }
+          },
+          "type": "final"
+        },
+        "workflow.completed": {
+          "id": "workflow.completed",
+          "meta": {
+            "pibo": {
+              "kind": "terminal",
+              "terminal": {
+                "status": "completed"
+              }
+            }
+          },
+          "type": "final"
+        },
+        "workflow.failed": {
+          "id": "workflow.failed",
+          "meta": {
+            "pibo": {
+              "kind": "terminal",
+              "terminal": {
+                "status": "failed"
+              }
+            }
+          },
+          "type": "final"
+        }
+      }
+    },
+    "contextShape": {
+      "durableTruth": "kernel",
+      "edge": {},
+      "exposesPrivatePayloads": false,
+      "global": {},
+      "local": {}
+    },
+    "delays": {
+      "workflow.node.review.humanTimeout": {
+        "durableWakeup": true,
+        "duration": {
+          "kind": "minutes",
+          "value": 60
+        },
+        "id": "workflow.node.review.humanTimeout",
+        "kind": "humanTimeout",
+        "nodeId": "review"
+      }
+    },
+    "finalStates": {
+      "cancelled": "workflow.cancelled",
+      "completed": "workflow.completed",
+      "failed": "workflow.failed"
+    },
+    "guards": {},
+    "id": "fixture.human-wait",
+    "initial": "node.review",
+    "kind": "pibo.workflow.xstateProjection",
+    "metadata": {
+      "tags": [
+        "fixture",
+        "human",
+        "wait"
+      ]
+    },
+    "schemaVersion": 1,
+    "states": {
+      "node.review": {
+        "actorId": "workflow.node.review",
+        "after": {
+          "workflow.node.review.humanTimeout": {
+            "actions": [
+              "workflow.node.review.recordFailure"
+            ],
+            "target": "workflow.failed"
+          }
+        },
+        "entry": [
+          "workflow.node.review.enterWait"
+        ],
+        "exit": [
+          "workflow.node.review.resumeWait"
+        ],
+        "id": "node.review",
+        "invoke": {
+          "id": "workflow.node.review",
+          "input": {
+            "kind": "nodeInput",
+            "nodeId": "review"
+          },
+          "onError": {
+            "actions": [
+              "workflow.node.review.recordFailure"
+            ],
+            "target": "workflow.failed"
+          },
+          "src": "pibo.workflow.actor.human"
+        },
+        "kind": "wait",
+        "meta": {
+          "pibo": {
+            "actorId": "workflow.node.review",
+            "kind": "wait",
+            "nodeId": "review",
+            "nodeKind": "human",
+            "tags": [
+              "human",
+              "wait"
+            ],
+            "wait": {
+              "actions": [
+                {
+                  "id": "fixture.humanActions.approve",
+                  "kind": "approve"
+                },
+                {
+                  "id": "fixture.humanActions.reject",
+                  "kind": "reject"
+                },
+                {
+                  "id": "fixture.humanActions.resume",
+                  "kind": "resume"
+                },
+                {
+                  "id": "fixture.humanActions.cancel",
+                  "kind": "cancel"
+                }
+              ],
+              "durable": true,
+              "resumeEvent": "WORKFLOW.RESUME",
+              "timeout": {
+                "kind": "minutes",
+                "value": 60
+              }
+            }
+          }
+        },
+        "nodeId": "review",
+        "tags": [
+          "human",
+          "wait"
+        ],
+        "type": "atomic"
+      }
+    },
+    "transitions": [
+      {
+        "actions": [
+          "workflow.node.review.complete"
+        ],
+        "event": "WORKFLOW.NODE.DONE",
+        "id": "workflow.node.review.complete.transition",
+        "source": "node.review",
+        "target": "workflow.completed"
+      }
+    ],
+    "version": "1.0.0"
+  },
+  "fixture.bounded-review-loop": {
+    "actions": {
+      "workflow.edge.draft-to-review.transfer": {
+        "durableEffect": true,
+        "edgeId": "draft-to-review",
+        "id": "workflow.edge.draft-to-review.transfer",
+        "kind": "transferEdge"
+      },
+      "workflow.edge.needs-revision.transfer": {
+        "durableEffect": true,
+        "edgeId": "needs-revision",
+        "id": "workflow.edge.needs-revision.transfer",
+        "kind": "transferEdge"
+      },
+      "workflow.edge.revise-to-draft.transfer": {
+        "durableEffect": true,
+        "edgeId": "revise-to-draft",
+        "id": "workflow.edge.revise-to-draft.transfer",
+        "kind": "transferEdge"
+      },
+      "workflow.node.draft.recordFailure": {
+        "durableEffect": true,
+        "id": "workflow.node.draft.recordFailure",
+        "kind": "recordFailure",
+        "nodeId": "draft"
+      },
+      "workflow.node.draft.scheduleRetry": {
+        "durableEffect": true,
+        "id": "workflow.node.draft.scheduleRetry",
+        "kind": "scheduleRetry",
+        "nodeId": "draft"
+      },
+      "workflow.node.review.complete": {
+        "durableEffect": true,
+        "id": "workflow.node.review.complete",
+        "kind": "completeNode",
+        "nodeId": "review"
+      },
+      "workflow.node.review.enterWait": {
+        "durableEffect": true,
+        "id": "workflow.node.review.enterWait",
+        "kind": "enterWait",
+        "nodeId": "review"
+      },
+      "workflow.node.review.recordFailure": {
+        "durableEffect": true,
+        "id": "workflow.node.review.recordFailure",
+        "kind": "recordFailure",
+        "nodeId": "review"
+      },
+      "workflow.node.review.resumeWait": {
+        "durableEffect": true,
+        "id": "workflow.node.review.resumeWait",
+        "kind": "resumeWait",
+        "nodeId": "review"
+      },
+      "workflow.node.revise.recordFailure": {
+        "durableEffect": true,
+        "id": "workflow.node.revise.recordFailure",
+        "kind": "recordFailure",
+        "nodeId": "revise"
+      }
+    },
+    "actors": {
+      "workflow.node.draft": {
+        "id": "workflow.node.draft",
+        "input": {
+          "kind": "nodeInput",
+          "nodeId": "draft"
+        },
+        "kind": "agent",
+        "nodeId": "draft",
+        "src": "pibo.workflow.actor.agent"
+      },
+      "workflow.node.review": {
+        "id": "workflow.node.review",
+        "input": {
+          "kind": "nodeInput",
+          "nodeId": "review"
+        },
+        "kind": "human",
+        "nodeId": "review",
+        "src": "pibo.workflow.actor.human"
+      },
+      "workflow.node.revise": {
+        "id": "workflow.node.revise",
+        "input": {
+          "kind": "nodeInput",
+          "nodeId": "revise"
+        },
+        "kind": "code",
+        "nodeId": "revise",
+        "src": "pibo.workflow.actor.code"
+      }
+    },
+    "config": {
+      "id": "fixture.bounded-review-loop",
+      "initial": "node.draft",
+      "meta": {
+        "pibo": {
+          "actions": {
+            "workflow.edge.draft-to-review.transfer": {
+              "durableEffect": true,
+              "edgeId": "draft-to-review",
+              "id": "workflow.edge.draft-to-review.transfer",
+              "kind": "transferEdge"
+            },
+            "workflow.edge.needs-revision.transfer": {
+              "durableEffect": true,
+              "edgeId": "needs-revision",
+              "id": "workflow.edge.needs-revision.transfer",
+              "kind": "transferEdge"
+            },
+            "workflow.edge.revise-to-draft.transfer": {
+              "durableEffect": true,
+              "edgeId": "revise-to-draft",
+              "id": "workflow.edge.revise-to-draft.transfer",
+              "kind": "transferEdge"
+            },
+            "workflow.node.draft.recordFailure": {
+              "durableEffect": true,
+              "id": "workflow.node.draft.recordFailure",
+              "kind": "recordFailure",
+              "nodeId": "draft"
+            },
+            "workflow.node.draft.scheduleRetry": {
+              "durableEffect": true,
+              "id": "workflow.node.draft.scheduleRetry",
+              "kind": "scheduleRetry",
+              "nodeId": "draft"
+            },
+            "workflow.node.review.complete": {
+              "durableEffect": true,
+              "id": "workflow.node.review.complete",
+              "kind": "completeNode",
+              "nodeId": "review"
+            },
+            "workflow.node.review.enterWait": {
+              "durableEffect": true,
+              "id": "workflow.node.review.enterWait",
+              "kind": "enterWait",
+              "nodeId": "review"
+            },
+            "workflow.node.review.recordFailure": {
+              "durableEffect": true,
+              "id": "workflow.node.review.recordFailure",
+              "kind": "recordFailure",
+              "nodeId": "review"
+            },
+            "workflow.node.review.resumeWait": {
+              "durableEffect": true,
+              "id": "workflow.node.review.resumeWait",
+              "kind": "resumeWait",
+              "nodeId": "review"
+            },
+            "workflow.node.revise.recordFailure": {
+              "durableEffect": true,
+              "id": "workflow.node.revise.recordFailure",
+              "kind": "recordFailure",
+              "nodeId": "revise"
+            }
+          },
+          "actors": {
+            "workflow.node.draft": {
+              "id": "workflow.node.draft",
+              "input": {
+                "kind": "nodeInput",
+                "nodeId": "draft"
+              },
+              "kind": "agent",
+              "nodeId": "draft",
+              "src": "pibo.workflow.actor.agent"
+            },
+            "workflow.node.review": {
+              "id": "workflow.node.review",
+              "input": {
+                "kind": "nodeInput",
+                "nodeId": "review"
+              },
+              "kind": "human",
+              "nodeId": "review",
+              "src": "pibo.workflow.actor.human"
+            },
+            "workflow.node.revise": {
+              "id": "workflow.node.revise",
+              "input": {
+                "kind": "nodeInput",
+                "nodeId": "revise"
+              },
+              "kind": "code",
+              "nodeId": "revise",
+              "src": "pibo.workflow.actor.code"
+            }
+          },
+          "contextShape": {
+            "durableTruth": "kernel",
+            "edge": {},
+            "exposesPrivatePayloads": false,
+            "global": {
+              "reviewNotes": {
+                "merge": {
+                  "kind": "replace"
+                },
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "approved": {
+                      "type": "boolean"
+                    },
+                    "notes": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "approved",
+                    "notes"
+                  ],
+                  "type": "object"
+                }
+              },
+              "revisionCount": {
+                "merge": {
+                  "kind": "replace"
+                },
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "local": {
+              "revise": {
+                "reads": [
+                  "global.reviewNotes"
+                ],
+                "writes": [
+                  "global.revisionCount"
+                ]
+              }
+            }
+          },
+          "delays": {
+            "workflow.node.draft.retryDelay": {
+              "durableWakeup": true,
+              "duration": {
+                "kind": "milliseconds",
+                "value": 1000
+              },
+              "id": "workflow.node.draft.retryDelay",
+              "kind": "retry",
+              "nodeId": "draft"
+            }
+          },
+          "finalStates": {
+            "cancelled": "workflow.cancelled",
+            "completed": "workflow.completed",
+            "failed": "workflow.failed"
+          },
+          "guards": {
+            "fixture.guards.needsRevision": {
+              "edgeId": "needs-revision",
+              "id": "fixture.guards.needsRevision",
+              "ref": "fixture.guards.needsRevision"
+            }
+          },
+          "metadata": {
+            "tags": [
+              "fixture",
+              "review-loop",
+              "bounded-back-edge"
+            ]
+          },
+          "schemaVersion": 1,
+          "snapshotKinds": [
+            "kernel",
+            "xstate",
+            "ui"
+          ],
+          "workflowId": "fixture.bounded-review-loop",
+          "workflowVersion": "1.0.0"
+        }
+      },
+      "states": {
+        "node.draft": {
+          "id": "node.draft",
+          "invoke": {
+            "id": "workflow.node.draft",
+            "input": {
+              "kind": "nodeInput",
+              "nodeId": "draft"
+            },
+            "onError": {
+              "actions": [
+                "workflow.node.draft.recordFailure",
+                "workflow.node.draft.scheduleRetry"
+              ],
+              "target": "node.draft.retryDelay"
+            },
+            "src": "pibo.workflow.actor.agent"
+          },
+          "meta": {
+            "pibo": {
+              "actorId": "workflow.node.draft",
+              "kind": "node",
+              "nodeId": "draft",
+              "nodeKind": "agent",
+              "tags": [
+                "agent"
+              ]
+            }
+          },
+          "on": {
+            "WORKFLOW.NODE.DONE": {
+              "actions": [
+                "workflow.edge.draft-to-review.transfer"
+              ],
+              "meta": {
+                "pibo": {
+                  "edgeId": "draft-to-review",
+                  "edgeKind": "data"
+                }
+              },
+              "target": "node.review"
+            }
+          },
+          "tags": [
+            "agent"
+          ],
+          "type": "atomic"
+        },
+        "node.draft.retryDelay": {
+          "after": {
+            "workflow.node.draft.retryDelay": {
+              "target": "node.draft"
+            }
+          },
+          "id": "node.draft.retryDelay",
+          "meta": {
+            "pibo": {
+              "kind": "retryDelay",
+              "nodeId": "draft",
+              "retry": {
+                "delayId": "workflow.node.draft.retryDelay",
+                "durable": true,
+                "policy": {
+                  "backoff": {
+                    "delayMs": 1000,
+                    "kind": "fixed"
+                  },
+                  "maxAttempts": 2
+                }
+              }
+            }
+          },
+          "tags": [
+            "retryDelay"
+          ],
+          "type": "atomic"
+        },
+        "node.review": {
+          "entry": [
+            "workflow.node.review.enterWait"
+          ],
+          "exit": [
+            "workflow.node.review.resumeWait"
+          ],
+          "id": "node.review",
+          "invoke": {
+            "id": "workflow.node.review",
+            "input": {
+              "kind": "nodeInput",
+              "nodeId": "review"
+            },
+            "onError": {
+              "actions": [
+                "workflow.node.review.recordFailure"
+              ],
+              "target": "workflow.failed"
+            },
+            "src": "pibo.workflow.actor.human"
+          },
+          "meta": {
+            "pibo": {
+              "actorId": "workflow.node.review",
+              "kind": "wait",
+              "nodeId": "review",
+              "nodeKind": "human",
+              "tags": [
+                "human",
+                "wait"
+              ],
+              "wait": {
+                "actions": [
+                  {
+                    "id": "fixture.humanActions.approve",
+                    "kind": "approve"
+                  },
+                  {
+                    "id": "fixture.humanActions.resume",
+                    "kind": "resume"
+                  }
+                ],
+                "durable": true,
+                "resumeEvent": "WORKFLOW.RESUME"
+              }
+            }
+          },
+          "on": {
+            "WORKFLOW.NODE.DONE": [
+              {
+                "actions": [
+                  "workflow.edge.needs-revision.transfer"
+                ],
+                "guard": "fixture.guards.needsRevision",
+                "meta": {
+                  "pibo": {
+                    "edgeId": "needs-revision",
+                    "edgeKind": "control",
+                    "guardRef": "fixture.guards.needsRevision",
+                    "priority": 2
+                  }
+                },
+                "target": "node.revise"
+              },
+              {
+                "actions": [
+                  "workflow.node.review.complete"
+                ],
+                "target": "workflow.completed"
+              }
+            ]
+          },
+          "tags": [
+            "human",
+            "wait"
+          ],
+          "type": "atomic"
+        },
+        "node.revise": {
+          "id": "node.revise",
+          "invoke": {
+            "id": "workflow.node.revise",
+            "input": {
+              "kind": "nodeInput",
+              "nodeId": "revise"
+            },
+            "onError": {
+              "actions": [
+                "workflow.node.revise.recordFailure"
+              ],
+              "target": "workflow.failed"
+            },
+            "src": "pibo.workflow.actor.code"
+          },
+          "meta": {
+            "pibo": {
+              "actorId": "workflow.node.revise",
+              "kind": "node",
+              "nodeId": "revise",
+              "nodeKind": "code",
+              "tags": [
+                "code"
+              ]
+            }
+          },
+          "on": {
+            "WORKFLOW.NODE.DONE": {
+              "actions": [
+                "workflow.edge.revise-to-draft.transfer"
+              ],
+              "guard": "fixture.guards.needsRevision",
+              "meta": {
+                "pibo": {
+                  "edgeId": "revise-to-draft",
+                  "edgeKind": "data",
+                  "guardRef": "fixture.guards.needsRevision"
+                }
+              },
+              "target": "node.draft"
+            }
+          },
+          "tags": [
+            "code"
+          ],
+          "type": "atomic"
+        },
+        "workflow.cancelled": {
+          "id": "workflow.cancelled",
+          "meta": {
+            "pibo": {
+              "kind": "terminal",
+              "terminal": {
+                "status": "cancelled"
+              }
+            }
+          },
+          "type": "final"
+        },
+        "workflow.completed": {
+          "id": "workflow.completed",
+          "meta": {
+            "pibo": {
+              "kind": "terminal",
+              "terminal": {
+                "status": "completed"
+              }
+            }
+          },
+          "type": "final"
+        },
+        "workflow.failed": {
+          "id": "workflow.failed",
+          "meta": {
+            "pibo": {
+              "kind": "terminal",
+              "terminal": {
+                "status": "failed"
+              }
+            }
+          },
+          "type": "final"
+        }
+      }
+    },
+    "contextShape": {
+      "durableTruth": "kernel",
+      "edge": {},
+      "exposesPrivatePayloads": false,
+      "global": {
+        "reviewNotes": {
+          "merge": {
+            "kind": "replace"
+          },
+          "schema": {
+            "additionalProperties": false,
+            "properties": {
+              "approved": {
+                "type": "boolean"
+              },
+              "notes": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "approved",
+              "notes"
+            ],
+            "type": "object"
+          }
+        },
+        "revisionCount": {
+          "merge": {
+            "kind": "replace"
+          },
+          "schema": {
+            "type": "integer"
+          }
+        }
+      },
+      "local": {
+        "revise": {
+          "reads": [
+            "global.reviewNotes"
+          ],
+          "writes": [
+            "global.revisionCount"
+          ]
+        }
+      }
+    },
+    "delays": {
+      "workflow.node.draft.retryDelay": {
+        "durableWakeup": true,
+        "duration": {
+          "kind": "milliseconds",
+          "value": 1000
+        },
+        "id": "workflow.node.draft.retryDelay",
+        "kind": "retry",
+        "nodeId": "draft"
+      }
+    },
+    "finalStates": {
+      "cancelled": "workflow.cancelled",
+      "completed": "workflow.completed",
+      "failed": "workflow.failed"
+    },
+    "guards": {
+      "fixture.guards.needsRevision": {
+        "edgeId": "needs-revision",
+        "id": "fixture.guards.needsRevision",
+        "ref": "fixture.guards.needsRevision"
+      }
+    },
+    "id": "fixture.bounded-review-loop",
+    "initial": "node.draft",
+    "kind": "pibo.workflow.xstateProjection",
+    "metadata": {
+      "tags": [
+        "fixture",
+        "review-loop",
+        "bounded-back-edge"
+      ]
+    },
+    "schemaVersion": 1,
+    "states": {
+      "node.draft": {
+        "actorId": "workflow.node.draft",
+        "id": "node.draft",
+        "invoke": {
+          "id": "workflow.node.draft",
+          "input": {
+            "kind": "nodeInput",
+            "nodeId": "draft"
+          },
+          "onError": {
+            "actions": [
+              "workflow.node.draft.recordFailure",
+              "workflow.node.draft.scheduleRetry"
+            ],
+            "target": "node.draft.retryDelay"
+          },
+          "src": "pibo.workflow.actor.agent"
+        },
+        "kind": "node",
+        "meta": {
+          "pibo": {
+            "actorId": "workflow.node.draft",
+            "kind": "node",
+            "nodeId": "draft",
+            "nodeKind": "agent",
+            "tags": [
+              "agent"
+            ]
+          }
+        },
+        "nodeId": "draft",
+        "tags": [
+          "agent"
+        ],
+        "type": "atomic"
+      },
+      "node.draft.retryDelay": {
+        "after": {
+          "workflow.node.draft.retryDelay": {
+            "target": "node.draft"
+          }
+        },
+        "id": "node.draft.retryDelay",
+        "kind": "retryDelay",
+        "meta": {
+          "pibo": {
+            "kind": "retryDelay",
+            "nodeId": "draft",
+            "retry": {
+              "delayId": "workflow.node.draft.retryDelay",
+              "durable": true,
+              "policy": {
+                "backoff": {
+                  "delayMs": 1000,
+                  "kind": "fixed"
+                },
+                "maxAttempts": 2
+              }
+            }
+          }
+        },
+        "nodeId": "draft",
+        "tags": [
+          "retryDelay"
+        ],
+        "type": "atomic"
+      },
+      "node.review": {
+        "actorId": "workflow.node.review",
+        "entry": [
+          "workflow.node.review.enterWait"
+        ],
+        "exit": [
+          "workflow.node.review.resumeWait"
+        ],
+        "id": "node.review",
+        "invoke": {
+          "id": "workflow.node.review",
+          "input": {
+            "kind": "nodeInput",
+            "nodeId": "review"
+          },
+          "onError": {
+            "actions": [
+              "workflow.node.review.recordFailure"
+            ],
+            "target": "workflow.failed"
+          },
+          "src": "pibo.workflow.actor.human"
+        },
+        "kind": "wait",
+        "meta": {
+          "pibo": {
+            "actorId": "workflow.node.review",
+            "kind": "wait",
+            "nodeId": "review",
+            "nodeKind": "human",
+            "tags": [
+              "human",
+              "wait"
+            ],
+            "wait": {
+              "actions": [
+                {
+                  "id": "fixture.humanActions.approve",
+                  "kind": "approve"
+                },
+                {
+                  "id": "fixture.humanActions.resume",
+                  "kind": "resume"
+                }
+              ],
+              "durable": true,
+              "resumeEvent": "WORKFLOW.RESUME"
+            }
+          }
+        },
+        "nodeId": "review",
+        "tags": [
+          "human",
+          "wait"
+        ],
+        "type": "atomic"
+      },
+      "node.revise": {
+        "actorId": "workflow.node.revise",
+        "id": "node.revise",
+        "invoke": {
+          "id": "workflow.node.revise",
+          "input": {
+            "kind": "nodeInput",
+            "nodeId": "revise"
+          },
+          "onError": {
+            "actions": [
+              "workflow.node.revise.recordFailure"
+            ],
+            "target": "workflow.failed"
+          },
+          "src": "pibo.workflow.actor.code"
+        },
+        "kind": "node",
+        "meta": {
+          "pibo": {
+            "actorId": "workflow.node.revise",
+            "kind": "node",
+            "nodeId": "revise",
+            "nodeKind": "code",
+            "tags": [
+              "code"
+            ]
+          }
+        },
+        "nodeId": "revise",
+        "tags": [
+          "code"
+        ],
+        "type": "atomic"
+      }
+    },
+    "transitions": [
+      {
+        "actions": [
+          "workflow.edge.draft-to-review.transfer"
+        ],
+        "edgeId": "draft-to-review",
+        "event": "WORKFLOW.NODE.DONE",
+        "id": "workflow.edge.draft-to-review.transition",
+        "meta": {
+          "pibo": {
+            "edgeId": "draft-to-review",
+            "edgeKind": "data"
+          }
+        },
+        "source": "node.draft",
+        "target": "node.review"
+      },
+      {
+        "actions": [
+          "workflow.edge.needs-revision.transfer"
+        ],
+        "edgeId": "needs-revision",
+        "event": "WORKFLOW.NODE.DONE",
+        "guard": "fixture.guards.needsRevision",
+        "id": "workflow.edge.needs-revision.transition",
+        "meta": {
+          "pibo": {
+            "edgeId": "needs-revision",
+            "edgeKind": "control",
+            "guardRef": "fixture.guards.needsRevision",
+            "priority": 2
+          }
+        },
+        "source": "node.review",
+        "target": "node.revise"
+      },
+      {
+        "actions": [
+          "workflow.edge.revise-to-draft.transfer"
+        ],
+        "edgeId": "revise-to-draft",
+        "event": "WORKFLOW.NODE.DONE",
+        "guard": "fixture.guards.needsRevision",
+        "id": "workflow.edge.revise-to-draft.transition",
+        "meta": {
+          "pibo": {
+            "edgeId": "revise-to-draft",
+            "edgeKind": "data",
+            "guardRef": "fixture.guards.needsRevision"
+          }
+        },
+        "source": "node.revise",
+        "target": "node.draft"
+      },
+      {
+        "actions": [
+          "workflow.node.review.complete"
+        ],
+        "event": "WORKFLOW.NODE.DONE",
+        "id": "workflow.node.review.complete.transition",
+        "source": "node.review",
+        "target": "workflow.completed"
+      }
+    ],
+    "version": "1.0.0"
+  }
+}

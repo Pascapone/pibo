@@ -353,6 +353,7 @@ type ChatProjectsBootstrap = ChatBootstrapCatalog & {
 	personalProject: PiboProject;
 	project?: PiboProject;
 	projects: PiboProject[];
+	projectSessions: PiboProjectSession[];
 	session?: PiboSession;
 	selectedProjectId: string;
 	selectedPiboSessionId?: string;
@@ -2114,6 +2115,7 @@ async function buildProjectsBootstrap(input: {
 		personalProject,
 		project: selectedProject,
 		projects: input.state.projectService.listProjects({ includeArchived: input.includeArchived }),
+		projectSessions,
 		...(selectedSession ? { session: selectedSession, selectedPiboSessionId: selectedSession.id } : {}),
 		selectedProjectId: selectedProject.id,
 		sessions: nodes,

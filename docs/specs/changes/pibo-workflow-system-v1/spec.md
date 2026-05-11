@@ -8,6 +8,7 @@
 - `docs/specs/changes/pibo-workflow-system-v1/proposal.md`
 - `docs/specs/changes/pibo-workflow-system-v1/design.md`
 - `docs/specs/changes/pibo-workflow-system-v1/references.md`
+- `docs/specs/changes/pibo-workflow-system-v1/structured-outputs-json-schema-subset.md`
 - `docs/reports/2026-05-10-langgraph-xstate-pibo-workflow-plan.md`
 
 ## Why

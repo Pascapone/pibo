@@ -156,6 +156,7 @@ Rules:
 - A text port carries a string.
 - A JSON port carries a JSON value validated by its schema.
 - V1 uses the OpenAI Structured Outputs / tool-calling JSON Schema subset for structured ports, rather than arbitrary full JSON Schema.
+- The canonical supported subset is documented in `structured-outputs-json-schema-subset.md`.
 - The validator should enforce the important subset constraints: supported primitive/container types, object roots for structured outputs, no root `anyOf`, all object fields listed in `required`, and `additionalProperties: false` on objects.
 - Schema compatibility is checked at definition validation time when possible.
 - If compatibility cannot be proven, an adapter is required.
@@ -176,9 +177,42 @@ type AgentNodeDefinition = BaseNodeDefinition & {
   context?: ContextSelectionPolicy;
   routing?: SessionRoutingPolicy;
   promptTemplate?: string;
-  promptBuilder?: HandlerRef;
+  promptBuilder?: PromptBuilderRef;
 };
 ```
+
+Prompt builder contract:
+
+```ts
+type PromptBuilderRef =
+  | string
+  | { kind: "promptBuilder"; language: "typescript"; id: string };
+
+type PromptBuilderContext<I = WorkflowValue> = {
+  input: I;
+  state: WorkflowRunState;
+  global: WorkflowGlobalStateReader;
+  local: NodeLocalStateReader;
+  edge: EdgePayloadReader;
+  node: AgentNodeDefinition;
+  nodeId: string;
+  run?: WorkflowRun;
+  workflow?: WorkflowDefinition;
+};
+
+type PromptBuilderResult = string | { prompt: string; metadata?: Record<string, JsonValue> };
+
+type PromptBuilderHandler<I = WorkflowValue> =
+  (ctx: PromptBuilderContext<I>) => PromptBuilderResult | Promise<PromptBuilderResult>;
+```
+
+Prompt builder rules:
+
+- `promptTemplate` and `promptBuilder` are mutually exclusive prompt sources.
+- Prompt builders are registered TypeScript handlers referenced by id in persisted workflow IR.
+- The builder input contract is the Agent node's declared `input` port.
+- The builder output contract is final prompt text; returning an object allows future runtime metadata without changing the prompt contract.
+- Builder context exposes workflow input, global state, current-node local state, and edge payload readers; state writes are out of scope for prompt builders.
 
 Selection policies:
 

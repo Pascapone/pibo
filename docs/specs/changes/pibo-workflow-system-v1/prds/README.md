@@ -17,6 +17,7 @@ This directory translates the Pibo Workflow System V1 proposal, spec, design, ta
 - `../design-xstate-integration.md`
 - `../tasks.md`
 - `../references.md`
+- `../structured-outputs-json-schema-subset.md`
 
 ## PRDs
 
