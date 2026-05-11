@@ -1990,6 +1990,44 @@ test("workflow validation pipeline runs on draft load, edit, validate, and publi
 			assert.equal(patchPayload.draft.validationState, "valid");
 		}
 
+		const graphEditedDefinition = structuredClone(validDefinition);
+		graphEditedDefinition.nodes.agent_2 = {
+			kind: "agent",
+			runtime: "pibo",
+			profile: { kind: "fixed", id: "pibo-agent" },
+			promptTemplate: "Summarize the previous agent output.",
+		};
+		graphEditedDefinition.edges.edge_agent_to_agent_2 = {
+			id: "edge_agent_to_agent_2",
+			from: { nodeId: "agent" },
+			to: { nodeId: "agent_2" },
+			kind: "data",
+		};
+		graphEditedDefinition.ui = {
+			...(graphEditedDefinition.ui ?? {}),
+			layout: "manual",
+			positions: {
+				agent: { x: 120, y: 100 },
+				agent_2: { x: 420, y: 100 },
+			},
+		};
+		const graphPatchResponse = await fetch(`${baseURL}/api/chat/workflows/drafts/${encodeURIComponent(draftId)}`, {
+			method: "PATCH",
+			headers: {
+				"content-type": "application/json",
+				origin: baseURL,
+				"x-test-user": "user-1",
+			},
+			body: JSON.stringify({ definition: graphEditedDefinition, editTrigger: "graph_edit" }),
+		});
+		assert.equal(graphPatchResponse.status, 200);
+		const graphPatchPayload = await graphPatchResponse.json();
+		assert.equal(graphPatchPayload.validation.trigger, "graph_edit");
+		assert.equal(graphPatchPayload.validation.ok, true);
+		assert.equal(graphPatchPayload.draft.definition.nodes.agent_2.runtime, "pibo");
+		assert.equal(graphPatchPayload.draft.definition.edges.edge_agent_to_agent_2.to.nodeId, "agent_2");
+		assert.deepEqual(graphPatchPayload.draft.definition.ui.positions.agent_2, { x: 420, y: 100 });
+
 		const rawPatchResponse = await fetch(`${baseURL}/api/chat/workflows/drafts/${encodeURIComponent(draftId)}`, {
 			method: "PATCH",
 			headers: {

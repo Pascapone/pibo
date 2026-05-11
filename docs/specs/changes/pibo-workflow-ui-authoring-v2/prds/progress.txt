@@ -2,6 +2,7 @@
 - Workflow catalog persistence uses explicit `SqliteWorkflowRunStore` entities for UI identities, drafts, published versions, archive states, and delete tombstones; tombstones must not remove definition snapshots needed by historical run inspection.
 - Workflow profile picker APIs should compose active custom Agent Designer profiles from `CustomAgentStore` with global `channelContext.getProfiles()` entries, while using archived custom profile rows only to produce diagnostics for already-referenced drafts.
 - Workflow capability picker UI should use select-only registered refs, nullable metadata fields, and selected-ref diagnostics instead of manual text entry paths.
+- Workflow Builder graph add-node defaults should derive registered refs from picker APIs instead of hard-coding fixture ids because dev/prod profile catalogs differ.
 - Chat Web top-level product tabs need coordinated updates in `src/apps/chat-ui/src/App.tsx` for `ChatAppRoute`, navigation, and rendering, plus `src/apps/chat-ui/src/main.tsx` for URL parsing and the TanStack route tree.
 - In the `pibo-dev-WorkflowsV2` browser worker, pass `--fresh-profile` to every `browser-use` command when the default `PIBo` Chrome profile is already locked by another browser process.
 - When resolving PRD decision stories, update the focused PRD plus `README.md`, `tasks.md`, and `09-implementation-completeness-contract.md` if they repeat the same TBD or baseline contract.
@@ -568,4 +569,35 @@
 - **Learnings for future iterations:**
   - Keep V2 session config as structured Project-session data with explicit override scopes so the next snapshot/start story can consume one normalized boundary.
   - `profile` remains the Chat runtime profile selector; Agent-node profile override attempts must use explicit disallowed fields and be rejected by the workflow-session creation whitelist.
+---
+## 2026-05-12 01:35 CEST - US-003
+- What was implemented
+  - Added an `@xyflow/react` Workflow Builder graph canvas that projects draft Pibo Workflow IR nodes and edges.
+  - Added graph controls to add Agent nodes, connect nodes into data edges, select nodes/edges, delete the selected graph element, nudge selected nodes, and save layout metadata.
+  - Persisted graph edits through the existing draft PATCH route with `graph_edit`; layout saves write `workflow.ui.layout = "manual"` and `workflow.ui.positions` without changing runtime graph semantics.
+  - Added graph-edit API coverage for saving nodes, edges, and layout positions through the validation pipeline.
+- Files changed
+  - `package.json`
+  - `package-lock.json`
+  - `src/apps/chat-ui/src/WorkflowsArea.tsx`
+  - `test/web-channel.test.mjs`
+  - `docs/specs/changes/pibo-workflow-ui-authoring-v2/prds/prd_04_workflow_builder_and_ir_editing.json`
+  - `docs/specs/changes/pibo-workflow-ui-authoring-v2/prds/progress.txt`
+- Quality checks run
+  - `docker exec pibo-dev-WorkflowsV2 bash -lc 'cd /workspace && npm install'` — installed the new `@xyflow/react` dependency in the container workspace.
+  - `docker exec pibo-dev-WorkflowsV2 bash -lc 'cd /workspace && npm run typecheck'` — passed.
+  - `docker exec pibo-dev-WorkflowsV2 bash -lc 'cd /workspace && npm run build && node --test --test-name-pattern "workflow validation pipeline" test/web-channel.test.mjs'` — passed, 1/1 targeted test.
+  - `python3 -m json.tool docs/specs/changes/pibo-workflow-ui-authoring-v2/prds/prd_04_workflow_builder_and_ir_editing.json` — passed.
+  - `git diff --check` — passed.
+- Browser verification, if UI changed
+  - Restarted the container gateway from rebuilt `/workspace/dist` and verified `http://127.0.0.1:4802/apps/chat` returned OK.
+  - Used `browser-use --fresh-profile` inside `pibo-dev-WorkflowsV2` with dev auth to open `/apps/chat/workflows/drafts/v2-starter-draft`.
+  - Verified the authenticated builder shows `Workflow graph canvas`, React Flow controls, node/edge counts, `Add Agent node`, `Connect nodes`, `Nudge selected node`, `Delete selected`, and `Save layout` controls.
+  - Added Agent nodes, connected `agent` to `agent_2`, selected and nudged `agent_2`, saved layout, and confirmed the visible status `Layout saved to workflow.ui.positions without changing runtime semantics.`
+  - After the final rebuild, reopened the authenticated draft and added `agent_3` to confirm the rebuilt graph canvas remained functional.
+  - Saved screenshots inside the container: `/tmp/ralph-v2-graph-canvas-layout.png` and `/tmp/ralph-v2-graph-canvas-layout-final.png`.
+- **Learnings for future iterations:**
+  - React Flow should stay a UI projection: graph structural edits update Pibo Workflow IR nodes/edges, while layout persistence writes only `workflow.ui.positions`.
+  - New graph controls should derive default registered refs from existing picker APIs where possible; hard-coded profile ids can be invalid in dev-auth workers with a different profile catalog.
+  - Start detached container gateways with `docker exec -d ... exec node ...`; backgrounding `node` inside a detached shell can exit after logging startup and leave the forwarded port resetting connections.
 ---
