@@ -33,7 +33,7 @@ Primary authoring helpers:
 
 Definitions should stay serializable. TypeScript closures belong in the Workflow Registry, not in persisted workflow IR.
 
-For starter TypeScript examples, see `docs/project/workflow-definition-examples.md`. For explicit interface adapter examples, see `docs/project/workflow-interface-adapters.md`. For projection semantics, see `docs/project/workflow-xstate-projection.md`.
+For starter TypeScript examples, see `docs/project/workflow-definition-examples.md`. For explicit interface adapter examples, see `docs/project/workflow-interface-adapters.md`. For registry/plugin registration, prompt assets, routing hints, human actions, and debug serialization, see `docs/project/workflow-registry-and-debug-serialization.md`. For projection semantics, see `docs/project/workflow-xstate-projection.md`.
 
 ## Runtime nodes
 
@@ -109,4 +109,4 @@ Additional V1 rules:
 
 Keep current operator/developer docs under `docs/project/`. Keep implementation plans, validation reports, and historical specs under `docs/plans/`, `docs/reports/`, and `docs/specs/` respectively.
 
-Planned follow-up documentation should cover registry/plugin registration patterns.
+Registry/plugin registration patterns are documented in `docs/project/workflow-registry-and-debug-serialization.md`; add future current workflow docs under `docs/project/` and keep historical specs under `docs/specs/`.
