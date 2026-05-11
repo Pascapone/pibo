@@ -30,8 +30,8 @@
         "Typecheck passes"
       ],
       "priority": 2,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Workflows tab shell already satisfies this completeness-contract story via the Chat Web Workflows route, main navigation item, Workflow Library area, and Workflow Builder area."
     },
     {
       "id": "US-003",

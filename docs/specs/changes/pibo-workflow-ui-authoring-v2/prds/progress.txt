@@ -254,3 +254,23 @@
   - Agent profile picker UI should keep archived refs diagnostic-only; do not add a manual text-entry path for profile ids.
   - `browser-use state` gives a more reliable DOM/text confirmation than target listing after deep-link navigation.
 ---
+## 2026-05-11 23:42 CEST - US-002
+- What was implemented
+  - Completed the implementation-completeness contract story for the Workflows tab shell by verifying the existing Chat Web Workflows route and shell implementation.
+  - Marked PRD 09 US-002 passing after confirming the main navigation entry, Workflow Library area, and Workflow Builder area are present for the authenticated Chat Web app.
+- Files changed
+  - `docs/specs/changes/pibo-workflow-ui-authoring-v2/prds/prd_09_implementation_completeness_contract.json`
+  - `docs/specs/changes/pibo-workflow-ui-authoring-v2/prds/progress.txt`
+- Quality checks run
+  - `docker exec pibo-dev-WorkflowsV2 bash -lc 'cd /workspace && npm run typecheck'` — passed.
+  - `docker exec pibo-dev-WorkflowsV2 bash -lc 'cd /workspace && npm run chat-ui:build'` — passed.
+  - `python3 -m json.tool docs/specs/changes/pibo-workflow-ui-authoring-v2/prds/prd_09_implementation_completeness_contract.json` — passed.
+  - `git diff --check` — passed.
+- Browser verification, if UI changed
+  - Verified the container gateway was serving `http://127.0.0.1:4802/apps/chat`.
+  - Used `browser-use --fresh-profile` inside `pibo-dev-WorkflowsV2` with dev auth to open `/apps/chat/workflows`.
+  - Confirmed the authenticated page shows `dev@pibo.local`, a `workflows` main-navigation item, `Workflow Library`, and `Workflow Builder`.
+  - Saved screenshot: `/tmp/ralph-v2-workflows-tab-shell.png` inside the container.
+- **Learnings for future iterations:**
+  - Completeness-contract stories may be satisfied by earlier focused PRD implementations; still rerun the required checks and update only the relevant PRD story when marking them complete.
+---
