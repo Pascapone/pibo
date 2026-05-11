@@ -54,7 +54,7 @@ This directory translates the Pibo Workflow UI Authoring V2 proposal, spec, desi
 - Archive applies to the whole workflow. Delete is allowed even when historical runs exist.
 - Historical runs must remain inspectable through snapshots after workflow deletion.
 - UI-authored workflows are global and visible to authenticated users.
-- All authenticated users may archive or delete workflows in V2.
+- All authenticated users may archive or delete UI-authored workflows in V2; code workflows remain read-only except duplication.
 - The UI composes existing registered capabilities only. It must not allow inline TypeScript or arbitrary executable code.
 - Schemas use the existing custom JSON Schema subset validator. V2 does not introduce Zod.
 - JSON Schema editing is raw JSON only in V2.
@@ -101,9 +101,8 @@ The source specs already answer the PRD discovery questions:
 
 ## Known Open Questions / TBD Before Implementation
 
-The PRDs preserve the source specs' open questions instead of choosing silently. Implementation MUST resolve and document these before coding the affected area:
+The Workflow Registry/store schema and V2 permission matrix are resolved in `02-workflow-registry-catalog-and-draft-store.md`. The PRDs preserve the remaining source specs' open questions instead of choosing silently. Implementation MUST resolve and document these before coding the affected area:
 
-- exact Workflow Registry/store schema and database records for UI drafts and UI-published workflows;
 - exact configuration/effective-definition snapshot fields beyond the minimum required for deleted-workflow run inspection;
 - deleted-workflow display and link behavior in historical Project run views;
 - exact API route contracts for catalog, drafts, versions, publish, archive, delete, Project session creation, and run start;

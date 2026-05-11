@@ -64,26 +64,48 @@
   - Published UI workflows are registry-resolvable by id/version and executable like code-registered workflows.
   - Drafts are editor objects until published; runtime never executes invalid drafts.
 
-- **Entity Model Baseline**:
-  - A workflow identity groups versions, draft state, archive state, delete/tombstone state, tags, title, and description.
-  - A draft record is the one mutable UI editing track for a workflow/copy and may contain partial or invalid Workflow IR.
-  - A published version record is immutable, has a version and definition hash, and is runnable when not hidden by archive/delete rules.
-  - Archive state belongs to the workflow identity, not to one published version.
-  - Delete may remove or tombstone the live catalog identity, but it must not remove snapshots needed by historical runs.
+- **Workflow Registry Store Schema Decision**:
 
-- **Permission Baseline**:
+  The V2 Workflow Registry/store persists UI-authored workflow identities, drafts, published versions, archive markers, and delete tombstones. Code-registered workflows are projected into the catalog from the existing code registry and stay read-only; they are not mutated by the UI store. Persisted records use authenticated user ids for audit fields only. V2 does not add owner-private workflow access rules.
 
-  | Action | Source-spec decision | V2 PRD contract |
-  |---|---|---|
-  | View global workflows | UI-authored workflows are global and visible to authenticated users | Require authentication and list visible code/UI records. |
-  | Duplicate workflow | Users can duplicate existing workflows | Require authentication; exact cross-user ownership/edit semantics remain TBD. |
-  | Create/edit/publish UI drafts | Normal users are the UI target, but detailed edit rights are not specified | Resolve and document exact permissions before implementation. |
-  | Archive workflow | Any authenticated user may archive workflows in V2 | Require authentication; no additional V2 role. |
-  | Delete workflow | Any authenticated user may delete workflows in V2 | Require authentication; no additional V2 role; preserve historical snapshots. |
+  | Entity | Key | Required fields | Rules |
+  |---|---|---|---|
+  | Workflow identity | `workflowId` | `title`, `description`, `tags`, `source: "ui"`, `createdBy`, `createdAt`, `updatedBy`, `updatedAt`, optional `currentDraftId`, optional `latestVersion` | One identity per UI-authored workflow/copy. It groups the active draft, published versions, archive state, and delete/tombstone state. Code workflows expose catalog identities as projections only. |
+  | Draft record | `draftId` plus `workflowId` | `status: "draft"`, `baseWorkflowId`, `baseWorkflowVersion`, `baseDefinitionHash`, `versionIntent` (`patch`, `minor`, or `major`), `definition: PartialWorkflowDefinition`, `diagnostics`, `validationState`, `revision`, audit timestamps | One active draft per workflow identity. The draft definition may be incomplete or workflow-invalid, but it is still a parsed Workflow IR object. Invalid raw text is a client/editor buffer and must not replace `definition`. |
+  | Published version record | `workflowId` plus `version` | `status: "published"`, immutable `definition: WorkflowDefinition`, `definitionHash`, `publishedFromDraftId`, `publishedBy`, `publishedAt`, `createdAt` | Each version is immutable after publish and registry-resolvable by `workflowId`/`version` while the identity is not deleted. Publishing requires a valid draft with no error diagnostics. |
+  | Archive state | `workflowId` | `archived: boolean`, optional `archivedAt`, optional `archivedBy`, optional `archiveReason` | Archive applies to the whole workflow identity, not to individual versions. Archived workflows are hidden from default catalog, picker, and Project session selection lists and can appear only through explicit archive filters or historical run links. |
+  | Delete/tombstone state | `workflowId` | `deleted: boolean`, optional `deletedAt`, optional `deletedBy`, `lastKnownTitle`, `lastKnownVersion`, optional `lastDefinitionHash` | Delete hides the live catalog identity and blocks new draft, publish, archive, duplicate, and Project-session selection actions. Historical Project runs continue to render from their own snapshots; delete must not remove run snapshots. |
 
-- **Open Decisions**:
-  - Exact Workflow Registry/store database tables and record shapes are TBD.
-  - Exact create/edit/publish permissions are TBD beyond the authenticated-user archive/delete rule.
+  Catalog projections derive `source` and `status` from these entities:
+
+  - code registry projection: `source: "code"`, `status: "published"`, read-only except duplicate;
+  - active UI draft: `source: "ui"`, `status: "draft"`;
+  - unarchived UI published version: `source: "ui"`, `status: "published"`;
+  - archived UI identity: `source: "ui"`, `status: "archived"` when an archive filter or historical link requests it;
+  - deleted UI identity: not listed in normal catalog responses; historical run views use snapshots plus the tombstone label.
+
+- **Permission Matrix Decision**:
+
+  All actions require an authenticated user. `createdBy`, `updatedBy`, `publishedBy`, `archivedBy`, and `deletedBy` are audit fields, not ownership gates, because V2 workflows are global. Role-based or owner-private permissions are deferred beyond V2.
+
+  | Action | Code workflow projection | UI draft | UI published, unarchived | UI archived or tombstoned | V2 rule |
+  |---|---|---|---|---|---|
+  | View | Allowed | Allowed | Allowed | Archived: explicit filter or historical link. Tombstoned: historical snapshot/tombstone label only. | Catalog/list/inspect APIs require authentication. |
+  | Duplicate | Allowed; creates a new UI identity and active draft. | Not a separate action; edit the active draft. | Allowed; creates a new UI identity and active draft from the selected version. | Not allowed from tombstones; archived duplicates are deferred unless a later story explicitly enables them. | Duplicate never mutates the source workflow/version. |
+  | Create draft | Not allowed directly; duplicate first. | Not allowed when the workflow already has an active draft. | Allowed as the next-version draft for that workflow when no active draft exists. | Not allowed. | Enforce one active draft per workflow/copy. |
+  | Edit draft | Not allowed. | Allowed. | Not allowed; create a next-version draft first. | Not allowed. | Any authenticated user may edit global UI drafts in V2. |
+  | Publish | Not allowed. | Allowed only when validation has no error diagnostics and registered references resolve. | Not allowed; publish from a draft. | Not allowed. | Publish creates a new immutable version record. |
+  | Archive | Not allowed for code projections. | Allowed at workflow identity level. | Allowed at workflow identity level. | Already archived: idempotent/no-op. Tombstoned: not allowed. | Any authenticated user may archive UI-authored workflows in V2. |
+  | Delete | Not allowed for code projections. | Allowed at workflow identity level. | Allowed at workflow identity level. | Archived: allowed. Tombstoned: idempotent/no-op. | Any authenticated user may delete UI-authored workflows in V2; historical snapshots remain. |
+
+- **Implementation Story References**:
+  - Catalog entity, list, inspect, action derivation, and auth stories (`prd_02` US-002, US-005, US-009, US-010) MUST implement the schema and permission matrix above.
+  - Draft persistence, raw edit safety, and duplicate-to-draft stories (`prd_02` US-003, US-004, US-006) MUST use the workflow identity plus one-active-draft rule above.
+  - Publish, version, archive, and delete lifecycle stories (`prd_06` US-001 through US-008) MUST use these entities for immutable versions, workflow-level archive, and delete/tombstone behavior.
+
+- **Remaining Implementation Details**:
+  - Physical database layout may use normalized tables or JSON columns, but the API-facing entities and lifecycle invariants above are normative.
+  - Exact HTTP route paths remain part of the catalog/API implementation stories.
 
 - **Integration Points**:
   - Workflow Registry/store for code workflow projection, UI drafts, UI-published versions, archive/delete markers, and metadata.

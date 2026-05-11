@@ -110,23 +110,25 @@ type WorkflowRecordSource = "code" | "ui";
 type WorkflowRecordStatus = "draft" | "published" | "archived";
 ```
 
-The implementation MUST treat these entities as distinct:
+The implementation MUST use the detailed Workflow Registry/store schema in `02-workflow-registry-catalog-and-draft-store.md`. It treats these entities as distinct:
 
-- workflow identity: groups versions, draft state, archive state, delete/tombstone state, title, description, and tags;
-- draft record: the one mutable UI editing track for a workflow/copy;
-- published version record: immutable runnable definition with version and definition hash;
+- workflow identity: groups versions, active draft state, archive state, delete/tombstone state, title, description, tags, and audit fields;
+- draft record: the one mutable UI editing track for a workflow/copy, containing a parsed partial Workflow IR object plus diagnostics;
+- published version record: immutable runnable definition with semantic version and definition hash;
 - archive state: workflow-level state, not per-version state;
 - delete/tombstone state: live catalog state that must not remove historical run snapshots.
 
-The implementation MUST use this baseline permission matrix:
+The implementation MUST use the permission matrix in `02-workflow-registry-catalog-and-draft-store.md`:
 
 | Action | V2 baseline |
 |---|---|
-| View workflows | Authenticated users can see global UI-authored workflows unless future access rules are introduced. |
-| Duplicate workflow | Authenticated action; exact cross-user ownership/edit semantics are TBD. |
-| Create/edit/publish UI draft | Normal-user UI feature; exact create/edit/publish permissions are TBD. |
-| Archive workflow | Any authenticated user may archive workflows in V2. |
-| Delete workflow | Any authenticated user may delete workflows in V2; historical snapshots must remain inspectable. |
+| View workflows | Authenticated users can see code projections and global UI-authored workflows; archived records require an explicit archive filter or historical link. |
+| Duplicate workflow | Authenticated users can duplicate code workflow projections or unarchived UI-published versions into new UI identities and active drafts. |
+| Create draft | Authenticated users can create a UI draft for a new UI identity or next-version path when the workflow has no active draft. |
+| Edit draft | Authenticated users can edit global UI drafts; V2 audit fields do not create owner-private edit gates. |
+| Publish draft | Authenticated users can publish valid UI drafts with no error diagnostics as immutable version records. |
+| Archive workflow | Authenticated users can archive UI-authored workflow identities; code projections remain read-only except duplicate. |
+| Delete workflow | Authenticated users can delete/tombstone UI-authored workflow identities; historical snapshots must remain inspectable. |
 
 The implementation MUST support:
 

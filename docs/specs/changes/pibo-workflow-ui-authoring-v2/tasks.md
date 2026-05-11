@@ -7,7 +7,7 @@
 
 ## 0. Spec Discovery and Open Questions
 
-- [ ] 0.1 Confirm Workflow Registry/store schema for UI drafts and UI-published workflows.
+- [x] 0.1 Confirm Workflow Registry/store schema for UI drafts and UI-published workflows. Decision recorded in `prds/02-workflow-registry-catalog-and-draft-store.md`.
 - [ ] 0.2 Define configuration/effective-definition snapshot fields.
 - [ ] 0.3 Define deleted-workflow behavior for historical Project runs.
 - [ ] 0.4 Choose visual graph/canvas library.

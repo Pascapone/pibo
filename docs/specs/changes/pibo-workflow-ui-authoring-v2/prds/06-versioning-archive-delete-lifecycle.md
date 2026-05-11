@@ -38,7 +38,7 @@
   - Archiving applies to the whole workflow, not a single version.
   - Archived workflows are hidden from default run/selection lists but visible through archive filters or historical run links.
   - Delete requires authentication but no additional V2 role.
-  - Create/edit/publish permissions use the shared workflow permission model; exact cross-user edit and publish rights are TBD before implementation.
+  - Create/edit/publish/archive/delete permissions use the shared Workflow Registry permission matrix in `02-workflow-registry-catalog-and-draft-store.md`.
   - Historical Project runs show snapshot data and a clear “definition deleted” state when the live definition is gone.
 
 - **Non-Goals**:
@@ -69,7 +69,7 @@
   - Published records are immutable workflow version records with definition hash.
   - Archive applies at workflow identity level and changes catalog visibility/action derivation.
   - Delete removes or tombstones live catalog records while preserving run snapshots and references required for inspection.
-  - Lifecycle actions must use the permission matrix defined for the workflow catalog; archive/delete are explicitly authenticated-user actions in V2, while create/edit/publish rights remain an open decision.
+  - Lifecycle actions must use the schema and permission matrix defined in `02-workflow-registry-catalog-and-draft-store.md`; any authenticated user may create, edit, publish, archive, or delete UI-authored workflows in V2, while code workflow projections remain read-only except duplicate.
 
 - **Integration Points**:
   - Workflow Registry/store for draft, published, archived, deleted/tombstoned records, versions, and hashes.

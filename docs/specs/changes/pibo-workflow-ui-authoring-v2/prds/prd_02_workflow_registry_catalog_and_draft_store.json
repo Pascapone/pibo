@@ -14,8 +14,8 @@
         "Typecheck passes"
       ],
       "priority": 1,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Schema, permission matrix, and implementation-story references are documented in 02-workflow-registry-catalog-and-draft-store.md."
     },
     {
       "id": "US-002",
