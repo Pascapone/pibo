@@ -391,6 +391,22 @@ test("run wait tool reports timeout as non-error state", async () => {
 	assert.equal(result.details.timedOut, true);
 });
 
+test("run wait tool uses the documented default timeout", async () => {
+	const tools = createRunToolsWithController({
+		waitForRun(runId, timeoutMs) {
+			assert.equal(runId, "run_1");
+			assert.equal(timeoutMs, 30000);
+			return Promise.resolve(runSnapshot({ status: "completed", timedOut: false }, { runId }));
+		},
+	});
+
+	const result = await tools.pibo_run_wait.execute("tool-call-1", { runId: "run_1" });
+
+	assert.match(result.content[0].text, /Run run_1 reached completed/);
+	assert.equal(result.details.status, "completed");
+	assert.equal(result.details.timedOut, false);
+});
+
 test("run ack tool returns acknowledged snapshot details", async () => {
 	const tools = createRunToolsWithController({
 		ackRun(runId) {
