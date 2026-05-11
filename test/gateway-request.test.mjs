@@ -110,6 +110,41 @@ test("sendGatewayEvent ignores responses with a different request id", async () 
 	}
 });
 
+test("sendGatewayEvent buffers fragmented gateway responses", async () => {
+	const gateway = await withMockGateway((frame, socket) => {
+		const responseLine = `${JSON.stringify({
+			type: "res",
+			id: frame.id,
+			ok: true,
+			payload: {
+				type: "message_queued",
+				piboSessionId: frame.event.piboSessionId,
+				eventId: frame.event.id,
+				queuedMessages: 1,
+				text: frame.event.text,
+				source: frame.event.source,
+			},
+		})}\n`;
+
+		socket.write(responseLine.slice(0, 17));
+		setImmediate(() => socket.write(responseLine.slice(17)));
+	});
+
+	try {
+		const response = await sendGatewayEvent(
+			{ type: "message", piboSessionId: "receiver", text: "hello", source: "actor" },
+			{ port: gateway.port },
+		);
+
+		assert.equal(response.ok, true);
+		assert.equal(response.id, gateway.receivedFrames[0].id);
+		assert.equal(response.payload.type, "message_queued");
+		assert.equal(response.payload.text, "hello");
+	} finally {
+		await gateway.close();
+	}
+});
+
 test("sendGatewayMessageAndWaitForReply rejects when the gateway rejects the message", async () => {
 	const gateway = await withMockGateway((frame, socket) => {
 		socket.write(

@@ -146,6 +146,14 @@ Der volle `npm test` bleibt sinnvoll für spätere Integrations-/Release-Phasen,
 - Ergebnis: Gateway-Request-Subset grün mit 7/7 bestandenen Tests.
 - Verbleibende offene Punkte: Weitere kleine Framing-Fälle aus dem Report, insbesondere fragmentierte NDJSON-Frames.
 
+## Umgesetzt am 2026-05-11 12:14 Europe/Berlin
+
+- Bereich: Fragmentierte NDJSON-Gateway-Response wird von `sendGatewayEvent` gepuffert und erst nach vollständiger Zeile verarbeitet.
+- Geänderte Dateien: `test/gateway-request.test.mjs`, `docs/reports/cron-test-reports/2026-05-10-1408-gateway-request.md`
+- Ausgeführte Kommandos: `npm run build`; `node --test test/gateway-request.test.mjs`
+- Ergebnis: Build erfolgreich; Gateway-Request-Subset grün mit 8/8 bestandenen Tests.
+- Verbleibende offene Punkte: Optional weitere Framing-Varianten für mehrere Frames pro Chunk oder fragmentierte Router-Events; außerdem das separate `src/gateway/tool.ts`-Subset aus dem Report.
+
 ## Kurzfazit
 
 Das bestehende Gateway-Request-Subset ist schnell, sinnvoll granuliert und deckt zwei wichtige Korrelationseigenschaften ab. Die größte Testsystem-Lücke liegt nicht in Breite, sondern in den fehlenden negativen Pfaden und in der `dist/`-Abhängigkeit der Direktläufe. Mit wenigen zusätzlichen Mock-Gateway-Fällen würde dieser Bereich ein sehr gutes frühes Entwickler-Signal liefern.
