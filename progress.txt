@@ -1,4 +1,5 @@
 ## Codebase Patterns
+- For runtime tests that must prove fixed Agent Designer profile selection, create `createWorkflowRegistry(workflowFixtureProviders)`, validate with `{ registry }`, and bridge to runtime with a `profileResolver` that calls `resolveWorkflowAgentProfile`.
 - Registry-backed profile validation is opt-in through `validateWorkflow(definition, { registry })`; register fixed Agent Designer profiles with `registerWorkflowAgentProfile` or `WorkflowProviders.profiles` before validating agent-node workflows against a full registry.
 - Agent runtime metadata should be created from resolved profile plus executor result: executor-returned effective tools/skills/context win, otherwise use `ResolvedAgentProfile` capability lists; always persist selected profile and effective routing metadata on the node attempt.
 - Agent node runtime profile resolution uses the optional `profileResolver` hook before Pibo Runtime/session creation; the resolved profile id is passed to `agentExecutor`/`createPiboSessionRoutingAgentExecutor` and recorded in node metadata.
@@ -468,4 +469,15 @@
   - `createWorkflowRegistry(workflowFixtureProviders)` now includes the `pibo-agent` fixture profile so registry-backed validation can check agents, adapters, and handlers together.
   - If tests create an ad hoc registry for workflows containing agent nodes, register `pibo-agent` or another fixed profile before expecting `validateWorkflow(..., { registry })` to pass.
   - Unknown fixed profiles are definition-time graph validation failures; runtime `profileResolver` misses still remain runtime dispatch failures for runs that skipped registry-backed validation.
+---
+
+## 2026-05-11 00:36 UTC - 7.5
+- Added one-node workflow runtime coverage that validates the minimal `pibo-agent` fixture against a registry, resolves the fixed Agent Designer profile through `resolveWorkflowAgentProfile`, routes through normal Pibo session creation with profile `pibo-agent`, and verifies persisted runtime metadata inherits the registered tools/skills/context.
+- Marked task `7.5` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Files changed: `packages/workflows/src/testing/runtime-one-node-agent.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; `npm run typecheck`; container `/workspace` `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- **Learnings for future iterations:**
+  - Use `createWorkflowRegistry(workflowFixtureProviders)` plus `validateWorkflow(definition, { registry })` when a test needs to prove that a workflow's fixed profile exists, not just that the IR is structurally valid.
+  - Runtime profile selection tests can adapt registry entries into `profileResolver` results with `resolveWorkflowAgentProfile`; if the executor omits effective tools/skills/context, runtime metadata falls back to the resolved profile capabilities.
+  - `createPiboSessionRoutingAgentExecutor` always sends the resolved `context.profileId` to session creation, so it is the right seam for verifying fixed Agent Designer profile routing without touching a real gateway.
 ---

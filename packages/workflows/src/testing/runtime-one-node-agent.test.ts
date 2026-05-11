@@ -6,11 +6,14 @@ import { describe, it } from "node:test";
 
 import {
   createPiboSessionRoutingAgentExecutor,
+  createWorkflowRegistry,
   minimalOneNodePiboAgentWorkflowFixture,
+  resolveWorkflowAgentProfile,
   runOneNodeAgentWorkflow,
   SqliteWorkflowRunStore,
   validateOneNodeAgentWorkflowPath,
   validateWorkflow,
+  workflowFixtureProviders,
 } from "../index.js";
 import type { AgentNodeDefinition, WorkflowDefinition, WorkflowRuntimeEvent } from "../index.js";
 
@@ -111,6 +114,107 @@ describe("one-node agent workflow runtime path", () => {
     assert.equal(result.nodeAttempt.metadata?.piboSessionId, "ps_workflow_agent");
     assert.equal(result.nodeAttempt.metadata?.piSessionId, "pi_workflow_agent");
     assert.deepEqual(result.nodeAttempt.metadata?.runtime?.tools, ["read", "bash"]);
+  });
+
+  it("selects the registered fixed pibo-agent Agent Designer profile for one-node execution", async () => {
+    const registry = createWorkflowRegistry(workflowFixtureProviders);
+    const definition = cloneMinimalWorkflow();
+    const createdSessions: unknown[] = [];
+    const emittedMessages: unknown[] = [];
+    const listeners = new Set<(event: { type: string; piboSessionId: string; eventId?: string; text?: string }) => void>();
+
+    const definitionValidation = validateWorkflow(definition, { registry });
+    assert.equal(definitionValidation.ok, true);
+
+    const result = await runOneNodeAgentWorkflow(definition, "Use the registered profile.", {
+      ownerScope: "user:pibo-agent-profile",
+      now: () => "2026-05-11T00:35:00.000Z",
+      createRunId: () => "wfr_pibo_agent_profile",
+      createNodeAttemptId: () => "wna_pibo_agent_profile",
+      profileResolver: ({ selection }) => {
+        const entry = resolveWorkflowAgentProfile(registry, selection.id);
+        if (!entry) return undefined;
+
+        return {
+          id: entry.id,
+          requestedId: selection.id,
+          ...entry.value,
+        };
+      },
+      agentExecutor: createPiboSessionRoutingAgentExecutor({
+        routing: {
+          createSession(input) {
+            createdSessions.push(input);
+            return { id: "ps_pibo_agent_profile", piSessionId: "pi_pibo_agent_profile", profile: input.profile };
+          },
+          emit(event) {
+            emittedMessages.push(event);
+            queueMicrotask(() => {
+              for (const listener of listeners) {
+                listener({
+                  type: "assistant_message",
+                  piboSessionId: event.piboSessionId,
+                  eventId: event.id,
+                  text: "Registered pibo-agent profile response.",
+                });
+              }
+            });
+          },
+          subscribe(listener) {
+            listeners.add(listener);
+            return () => listeners.delete(listener);
+          },
+        },
+        createMessageId: () => "msg_pibo_agent_profile",
+        title: "Registered pibo-agent workflow",
+      }),
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.output, "Registered pibo-agent profile response.");
+    assert.deepEqual(createdSessions, [
+      {
+        channel: "pibo.workflows",
+        kind: "workflow-agent",
+        profile: "pibo-agent",
+        ownerScope: "user:pibo-agent-profile",
+        parentId: undefined,
+        workspace: undefined,
+        title: "Registered pibo-agent workflow",
+        metadata: {
+          workflowRunId: "wfr_pibo_agent_profile",
+          workflowId: definition.id,
+          workflowVersion: definition.version,
+          workflowNodeId: "answer",
+          workflowNodeAttemptId: "wna_pibo_agent_profile",
+        },
+      },
+    ]);
+    assert.deepEqual(emittedMessages, [
+      {
+        type: "message",
+        piboSessionId: "ps_pibo_agent_profile",
+        id: "msg_pibo_agent_profile",
+        text: "Answer the user request using normal Pibo Runtime routing: Use the registered profile.",
+        source: "actor",
+      },
+    ]);
+    assert.deepEqual(result.nodeAttempt.metadata?.runtime, {
+      profileId: "pibo-agent",
+      requestedProfileId: "pibo-agent",
+      selectedProfile: {
+        id: "pibo-agent",
+        requestedId: "pibo-agent",
+      },
+      tools: ["read", "bash", "edit", "write"],
+      skills: [],
+      contextFiles: [],
+      routing: {
+        ownerScope: "user:pibo-agent-profile",
+      },
+    });
+    assert.equal(result.nodeAttempt.metadata?.piboSessionId, "ps_pibo_agent_profile");
+    assert.equal(result.nodeAttempt.metadata?.piSessionId, "pi_pibo_agent_profile");
   });
 
   it("runs a single-prompt workflow from validation to routed, persisted completion", async () => {

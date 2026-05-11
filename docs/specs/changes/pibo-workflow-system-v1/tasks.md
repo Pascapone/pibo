@@ -59,7 +59,7 @@
 - [x] 7.2 Resolve the Agent Designer profile before runtime creation.
 - [x] 7.3 Record selected agent profile, tools, skills, context, and routing metadata in node run metadata.
 - [x] 7.4 Reject workflow definitions that reference unknown fixed agent profiles.
-- [ ] 7.5 Test fixed Agent Designer profile selection, e.g. `pibo-agent`.
+- [x] 7.5 Test fixed Agent Designer profile selection, e.g. `pibo-agent`.
 
 ## 8. Requirement: Prompts can be fixed or built at runtime
 
