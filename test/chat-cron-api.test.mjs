@@ -64,6 +64,14 @@ test("chat cron API rejects mutating requests with non-JSON content type", async
 	);
 });
 
+test("chat cron API rejects mutating requests from a different Origin", async () => {
+	await assertHttpError(
+		handleChatCronApiRequest(makeOptions(postCronJob({ headers: { origin: "http://evil.local", "content-type": "application/json" } }))),
+		403,
+		/Origin is not allowed/,
+	);
+});
+
 test("chat cron API rejects personal cron targets for another principal", async () => {
 	await assertHttpError(
 		handleChatCronApiRequest(makeOptions(postCronJob({
