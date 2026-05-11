@@ -54,8 +54,13 @@ test("MCP agent context is generated only for selected described servers", async
 	assert.match(contextFile.content, /npm run dev -- mcp info filesystem/);
 	assert.doesNotMatch(contextFile.content, /missing-description/);
 
+	const mixedContextFile = await getMcpAgentContextFile(["unknown", "filesystem"], configPath);
+	assert.match(mixedContextFile.content, /## filesystem/);
+	assert.doesNotMatch(mixedContextFile.content, /unknown/);
+
 	assert.equal(await getMcpAgentContextFile([], configPath), undefined);
 	assert.equal(await getMcpAgentContextFile(["missing-description"], configPath), undefined);
+	assert.equal(await getMcpAgentContextFile(["unknown"], configPath), undefined);
 });
 
 test("runtime profile inspection includes selected MCP context", async () => {
