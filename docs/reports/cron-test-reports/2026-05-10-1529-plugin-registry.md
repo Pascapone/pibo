@@ -124,3 +124,11 @@ Diese Kombination vermischt Registry-/Profil-Verträge mit persistenten Runtime-
 2. Eine kleine Built-in-Action-Suite schaffen oder den bestehenden Registry-Test so erweitern, dass Action-Parser getrennt von der großen Action-Liste geprüft werden.
 3. Dynamic-Profile-Lifecycle gezielt testen, bevor weitere Custom-Agent- oder Context-File-Funktionen auf `upsertProfile`/`removeProfile` aufbauen.
 4. Die Runtime-Tool-Fehlschläge aus der angrenzenden Probe separat prüfen; nicht in diesem Registry-Report vermischen.
+
+## Umgesetzt am 2026-05-11 14:23 Europe/Berlin
+
+- Bereich: Product-Event-Contract der Plugin-Registry mit generierter Metadaten-ID/`createdAt`, Erhalt expliziter Felder, Listener-Isolation bei Fehlern und Unsubscribe-Verhalten.
+- Geänderte Dateien: `test/plugin-registry.test.mjs`, `docs/reports/cron-test-reports/2026-05-10-1529-plugin-registry.md`
+- Ausgeführte Kommandos: `node --test test/plugin-registry.test.mjs`
+- Ergebnis: Plugin-Registry-Subset grün mit 8/8 bestandenen Tests.
+- Verbleibende offene Punkte: Web-App-Route-Matrix, Built-in-Action-Unit-Suite und Dynamic-Profile-Lifecycle-Tests aus diesem Report bleiben offen.

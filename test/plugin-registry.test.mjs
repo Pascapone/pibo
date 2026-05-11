@@ -357,6 +357,52 @@ test("plugins can register profiles, gateway actions, and event listeners", asyn
 	]);
 });
 
+test("product events add metadata, preserve explicit fields, and isolate listeners", () => {
+	const observed = [];
+	const registry = PiboPluginRegistry.create();
+	const unsubscribeFirst = registry.onProductEvent((event) => {
+		observed.push({ listener: "first", id: event.id, type: event.type });
+	});
+	registry.onProductEvent(() => {
+		throw new Error("product listener failed");
+	});
+	registry.onProductEvent((event) => {
+		observed.push({ listener: "second", id: event.id, type: event.type });
+	});
+
+	const generated = registry.emitProductEvent({
+		type: "capability.updated",
+		source: "core",
+		payload: { name: "generated" },
+	});
+
+	assert.match(generated.id, /^[0-9a-f-]{36}$/);
+	assert.ok(Date.parse(generated.createdAt));
+	assert.deepEqual(observed, [
+		{ listener: "first", id: generated.id, type: "capability.updated" },
+		{ listener: "second", id: generated.id, type: "capability.updated" },
+	]);
+	assert.deepEqual(registry.getEventErrors(), ["product listener failed"]);
+
+	unsubscribeFirst();
+	const explicit = registry.emitProductEvent({
+		id: "caller-event-id",
+		createdAt: "2026-05-10T12:00:00.000Z",
+		type: "capability.updated",
+		source: "plugin",
+		payload: { name: "explicit" },
+	});
+
+	assert.equal(explicit.id, "caller-event-id");
+	assert.equal(explicit.createdAt, "2026-05-10T12:00:00.000Z");
+	assert.deepEqual(observed, [
+		{ listener: "first", id: generated.id, type: "capability.updated" },
+		{ listener: "second", id: generated.id, type: "capability.updated" },
+		{ listener: "second", id: "caller-event-id", type: "capability.updated" },
+	]);
+	assert.deepEqual(registry.getEventErrors(), ["product listener failed", "product listener failed"]);
+});
+
 test("plugin registry rejects duplicate registrations", () => {
 	assert.throws(
 		() =>
