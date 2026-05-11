@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { join, resolve } from "node:path";
@@ -110,6 +110,54 @@ test("pibo mcp config add accepts config option after positional arguments", asy
 
 		const savedConfig = JSON.parse(await readFile(configPath, "utf-8"));
 		assert.deepEqual(savedConfig.mcpServers.demo, { command: "node" });
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test("pibo mcp config path follows explicit env cwd priority", async () => {
+	const cwd = await mkdtemp(join(tmpdir(), "pibo-mcp-config-paths-"));
+	try {
+		const explicitPath = join(cwd, "explicit.json");
+		const envPath = join(cwd, "env.json");
+		const cwdPath = join(cwd, "mcp_servers.json");
+		await writeFile(
+			explicitPath,
+			JSON.stringify({ mcpServers: { explicit: { command: "node" } } }),
+		);
+		await writeFile(
+			envPath,
+			JSON.stringify({ mcpServers: { env: { command: "node" } } }),
+		);
+		await writeFile(
+			cwdPath,
+			JSON.stringify({ mcpServers: { cwd: { command: "node" } } }),
+		);
+
+		const env = { ...process.env, MCP_CONFIG_PATH: envPath };
+
+		const explicit = await execFileAsync(
+			"node",
+			[cliPath, "mcp", "config", "path", "-c", explicitPath],
+			{ cwd, env },
+		);
+		assert.equal(explicit.stdout.trim(), explicitPath);
+
+		const fromEnv = await execFileAsync(
+			"node",
+			[cliPath, "mcp", "config", "path"],
+			{ cwd, env },
+		);
+		assert.equal(fromEnv.stdout.trim(), envPath);
+
+		const withoutEnv = { ...process.env };
+		delete withoutEnv.MCP_CONFIG_PATH;
+		const fromCwd = await execFileAsync(
+			"node",
+			[cliPath, "mcp", "config", "path"],
+			{ cwd, env: withoutEnv },
+		);
+		assert.equal(fromCwd.stdout.trim(), cwdPath);
 	} finally {
 		await rm(cwd, { recursive: true, force: true });
 	}
