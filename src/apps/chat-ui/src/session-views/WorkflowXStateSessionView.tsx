@@ -56,6 +56,7 @@ export function WorkflowXStateSessionView({
 							{isLoading ? "Loading session trace…" : "This session is not linked to a workflow run, so no Workflow/XState projection is available."}
 						</p>
 					</div>
+					<WorkflowCreationEditingDeferredNotice />
 				</div>
 			</section>
 		);
@@ -65,6 +66,7 @@ export function WorkflowXStateSessionView({
 		<section className="min-w-0 flex-1 overflow-auto bg-[#0b0f14] p-4 text-slate-300">
 			<div className="mx-auto flex max-w-6xl flex-col gap-4">
 				<WorkflowSummaryCard model={workflowModel} />
+				<WorkflowCreationEditingDeferredNotice />
 				<WorkflowGraph nodes={workflowModel.nodes} edges={workflowModel.edges} />
 				<div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
 					<WorkflowRuntimeSnapshot model={workflowModel} />
@@ -118,6 +120,28 @@ function WorkflowSummaryCard({ model }: { model: WorkflowProjectSessionUiModel }
 			<p className="mt-3 text-sm text-slate-400">
 				Dedicated workflow visualization surface. This V1 view derives the current XState-style UI snapshot from project-session workflow linkage and live session state while keeping kernel records as durable truth.
 			</p>
+		</div>
+	);
+}
+
+function WorkflowCreationEditingDeferredNotice() {
+	return (
+		<div className="rounded-sm border border-amber-500/30 bg-amber-500/10 p-4 text-sm">
+			<div className="flex flex-wrap items-start justify-between gap-3">
+				<div className="min-w-0">
+					<div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-amber-200">
+						<AlertTriangle size={14} />
+						Read-only V1 workflow surface
+					</div>
+					<p className="mt-2 max-w-3xl text-xs leading-5 text-amber-100/80">
+						Workflow creation, visual graph editing, and raw XState JSON editing are intentionally deferred in V1. This tab only inspects registered workflow runs and their XState-style projection; workflow definitions remain TypeScript-owned through the Workflow Registry.
+					</p>
+				</div>
+				<div className="flex shrink-0 flex-wrap gap-2">
+					<span className="rounded border border-amber-500/40 bg-[#0b0f14]/50 px-2 py-1 text-[10px] uppercase tracking-wide text-amber-100/80">create workflow: deferred</span>
+					<span className="rounded border border-amber-500/40 bg-[#0b0f14]/50 px-2 py-1 text-[10px] uppercase tracking-wide text-amber-100/80">edit workflow: deferred</span>
+				</div>
+			</div>
 		</div>
 	);
 }
@@ -357,6 +381,12 @@ function createProjectSessionWorkflowModel(
 				initialStateId: "workflow.entry",
 				durableTruth: "kernel",
 				exposesPrivatePayloads: false,
+			},
+			editing: {
+				enabled: false,
+				creationUi: "deferred",
+				visualEditingUi: "deferred",
+				rawXStateEditingUi: "deferred",
 			},
 			current: {
 				snapshotKind: "ui",

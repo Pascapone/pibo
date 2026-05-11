@@ -107,7 +107,7 @@
 - [x] 12.4 Show node status list for a workflow run.
 - [x] 12.5 Show final output and validation errors.
 - [x] 12.6 Add registry-backed extensible human action interface for approve/reject/resume/cancel and future actions.
-- [ ] 12.7 Defer full workflow creation/editing UI.
+- [x] 12.7 Defer full workflow creation/editing UI.
 
 ## 13. Documentation
 

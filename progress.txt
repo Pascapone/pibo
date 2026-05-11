@@ -1,4 +1,5 @@
 ## Codebase Patterns
+- Workflow/XState V1 UI is inspection-only: surface creation/visual editing/raw XState editing as explicitly deferred, and keep workflow definitions TypeScript-owned through the Workflow Registry.
 - Human wait actions should go through registry-backed refs on the wait token, then `applyWorkflowHumanAction` to validate availability/payloads, record `workflow_human_actions`, resolve the token, and schedule a human wakeup for resumed waits.
 - Workflow/XState tab secondary inspection panels should derive final output and validation diagnostics from the selected `traceView` inside `WorkflowProjectSessionUiModel`, then summarize only counts/availability in the safe UI snapshot.
 - Workflow-backed Chat Web sessions should derive display metadata from `PiboProjectSession` plus the live `PiboWebSessionStatus`; keep `simple-chat` sessions unbadged unless they have a workflow run id or non-simple workflow id.
@@ -906,4 +907,16 @@
   - Wait-token action refs should be treated as the UI/CLI-facing availability list, but accepted actions must still resolve through the Workflow Registry before mutating durable wait/run state.
   - Resume action payloads need both action-port validation and the human node schema validation so bad human input cannot resolve the wait token.
   - Human action resumption schedules `WorkflowWakeup` rows with the `WorkflowHumanActionRecord.id` as `correlationId`, giving later orchestration paths a durable resume cue without process-local callbacks.
+---
+
+## 2026-05-11 03:39 UTC - 12.7
+- Made the Workflow/XState tab explicitly read-only for V1 by adding a deferred creation/editing notice for workflow-backed and non-workflow sessions.
+- Added creation, visual editing, and raw XState editing deferred facts to the compact UI snapshot so inspection output communicates the non-goal programmatically.
+- Marked task `12.7` complete in the workflow-system task list because the referenced JSON PRDs are absent and progress is tracked in `tasks.md`.
+- Files changed: `src/apps/chat-ui/src/session-views/WorkflowXStateSessionView.tsx`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- Quality checks: host `npm run chat-ui:typecheck && npm run chat-ui:build && npm run typecheck`; container `/workspace` `npm run chat-ui:typecheck && npm run chat-ui:build && npm run typecheck`; host+container `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test`; browser-use verification at `http://127.0.0.1:4812/apps/chat/projects?view=workflow` confirmed `Read-only V1 workflow surface`, `create workflow: deferred`, and `edit workflow: deferred` render.
+- **Learnings for future iterations:**
+  - The Workflow/XState tab can make V1 non-goals visible without adding new API endpoints by adding compact UI snapshot fields plus read-only explanatory panels.
+  - After `docker restart pibo-dev-Workflows`, the worker container may only run `tail -f /dev/null`; restart the dev-auth web gateway inside `/workspace` before browser verification.
+  - `browser-use wait text` may report `found: False` even when subsequent `browser-use state` shows the text, so keep the state output as the browser verification evidence.
 ---
