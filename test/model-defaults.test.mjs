@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
-import { loadPiboModelDefaults, savePiboModelDefaults, selectRequestedFastMode, selectRequestedModelProfile, selectRequestedThinkingLevel } from "../dist/core/model-defaults.js";
+import { loadPiboModelDefaults, sanitizePiboModelDefaults, savePiboModelDefaults, selectRequestedFastMode, selectRequestedModelProfile, selectRequestedThinkingLevel } from "../dist/core/model-defaults.js";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 
 test("model defaults persist and roundtrip", () => {
@@ -20,6 +20,33 @@ test("model defaults persist and roundtrip", () => {
 		thinking: "high",
 	});
 	assert.deepEqual(loadPiboModelDefaults(cwd, "model-defaults.json"), saved);
+});
+
+test("model defaults sanitizer drops invalid values and preserves explicit false", () => {
+	assert.deepEqual(sanitizePiboModelDefaults({
+		main: { provider: " openai ", id: " gpt-5.4 " },
+		subagent: { provider: "kimi-coding", id: "" },
+		thinking: "medium",
+		mainThinking: "invalid",
+		subagentThinking: "low",
+		fast: false,
+		mainFast: "false",
+		subagentFast: true,
+		unknown: { provider: "ignored", id: "ignored" },
+	}), {
+		main: { provider: "openai", id: "gpt-5.4" },
+		thinking: "medium",
+		subagentThinking: "low",
+		fast: false,
+		subagentFast: true,
+	});
+
+	assert.deepEqual(sanitizePiboModelDefaults({
+		main: { provider: "", id: "gpt-5.4" },
+		subagent: [{ provider: "openai", id: "gpt-5.4" }],
+		thinking: false,
+		fast: "true",
+	}), {});
 });
 
 test("model selection prefers hard pin, then role override, then defaults", () => {

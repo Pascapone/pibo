@@ -257,3 +257,11 @@ Die vorhandenen Tests treffen die Kernidee des Bereichs gut: Modell-Defaults wer
 - Ausgeführte Kommandos: `npm run build`; `node --test test/model-defaults.test.mjs`.
 - Ergebnis: 4/4 Tests bestanden; abgedeckt sind `mainFast`/`subagentFast` vor globalem `fast`, explizites `false` vor default-`true`, sowie `mainThinking`/`subagentThinking` und Profil-/Rollen-Overrides vor globalem `thinking`.
 - Verbleibende offene Punkte: Sanitizing-Matrix, `session-model-source-of-truth` Profil-Pin-/Clone-Fälle, Model-Katalog-Fehlerpfad und UI-/Backend-Parität bleiben offen.
+
+## Umgesetzt am 2026-05-11 12:44 Europe/Berlin
+
+- Bereich: Sanitizing-Matrix für Model-Defaults.
+- Geänderte Dateien: `test/model-defaults.test.mjs`, `docs/reports/cron-test-reports/2026-05-10-1458-model-selection-defaults.md`.
+- Ausgeführte Kommandos: `node --test test/model-defaults.test.mjs`.
+- Ergebnis: Grün; 5/5 Tests bestanden. Abgedeckt sind unbekannte Top-Level-Keys, ungültige Modellprofile, ungültige Thinking-Level, boolesche Felder mit echten Boolean-Werten und die Erhaltung von explizitem `false`.
+- Verbleibende offene Punkte: `session-model-source-of-truth` Profil-Pin-/Clone-Fälle, Model-Katalog-Fehlerpfad und UI-/Backend-Parität bleiben offen.
