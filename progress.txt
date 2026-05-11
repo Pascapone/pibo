@@ -1,4 +1,5 @@
 ## Codebase Patterns
+- Agent node runtime profile resolution uses the optional `profileResolver` hook before Pibo Runtime/session creation; the resolved profile id is passed to `agentExecutor`/`createPiboSessionRoutingAgentExecutor` and recorded in node metadata.
 - Agent node V1 runtime policy is enforced by `validateWorkflow`: agent nodes must use `runtime: "pibo"` and a fixed Agent Designer profile (`fixedProfile("pibo-agent")` or `{ kind: "fixed", id }`).
 - Visible adapter node dispatch goes through `dispatchWorkflowAdapterNode` with a registry-resolved TypeScript `adapterRef`; it validates node input/output, emits node lifecycle events, persists attempts, and records `metadata.adapterId`.
 - Persist node attempts through `WorkflowNodeAttemptStore`/`SqliteWorkflowRunStore.saveNodeAttempt`; dispatch helpers should save attempts at start plus terminal/waiting/failure boundaries so restart inspection can recover node status by kind.
@@ -428,4 +429,16 @@
   - V1 profile selection remains structural at definition validation time; profile registry existence and effective profile resolution are left for stories 7.2/7.4.
   - Use `fixedProfile("pibo-agent")` in new workflow authoring helpers/tests instead of hand-writing profile refs when possible.
   - Keep runtime selection diagnostics in workflow validation so malformed persisted IR fails before dispatch reaches Pibo Runtime creation.
+---
+
+## 2026-05-11 00:24 UTC - 7.2
+- Implemented Agent Designer fixed-profile resolution before agent node runtime/session creation through an optional `profileResolver` hook.
+- Passed the resolved profile id and resolved profile object into agent executor contexts so routed Pibo Runtime creation uses the canonical Agent Designer profile.
+- Added runtime failure diagnostics for missing or failed profile resolution before any Pibo Runtime executor/session is called.
+- Files changed: `packages/workflows/src/runtime/index.ts`, `packages/workflows/src/testing/runtime-agent-node.test.ts`, `packages/workflows/src/testing/runtime-one-node-agent.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- Quality checks: `npm --prefix packages/workflows run typecheck`; `npm --prefix packages/workflows test`; `npm run typecheck`; container `/workspace` `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- **Learnings for future iterations:**
+  - Profile resolution belongs before prompt executor/session creation so an unknown profile can fail without creating a Pibo Session.
+  - Keep the default no-resolver behavior as identity resolution (`node.profile.id`) so existing tests and lightweight runtimes do not need a profile registry.
+  - Story 7.3 can build on `resolvedProfile`/runtime metadata to add effective tool, skill, and context-file recording from profile resolution.
 ---

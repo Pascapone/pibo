@@ -246,6 +246,36 @@ describe("one-node agent workflow runtime path", () => {
     }
   });
 
+  it("resolves a fixed Agent Designer profile before one-node runtime execution", async () => {
+    const definition = cloneMinimalWorkflow();
+    (definition.nodes.answer as AgentNodeDefinition).profile = { kind: "fixed", id: "answer-alias" };
+    const order: string[] = [];
+
+    const result = await runOneNodeAgentWorkflow(definition, "Explain profile resolution.", {
+      ownerScope: "user:profile-resolution",
+      createRunId: () => "wfr_profile_resolution",
+      createNodeAttemptId: () => "wna_profile_resolution",
+      profileResolver: ({ selection, nodeId }) => {
+        order.push(`resolve:${nodeId}:${selection.id}`);
+        return { id: "answer-profile", requestedId: selection.id, aliases: [selection.id] };
+      },
+      agentExecutor: (context) => {
+        order.push(`execute:${context.profileId}`);
+        assert.equal(context.profileId, "answer-profile");
+        assert.deepEqual(context.resolvedProfile, {
+          id: "answer-profile",
+          requestedId: "answer-alias",
+          aliases: ["answer-alias"],
+        });
+        return { output: "Resolved profile workflow output." };
+      },
+    });
+
+    assert.equal(result.ok, true);
+    assert.deepEqual(order, ["resolve:answer:answer-alias", "execute:answer-profile"]);
+    assert.equal(result.nodeAttempt.metadata?.runtime?.profileId, "answer-profile");
+  });
+
   it("runs a minimal pibo-agent workflow from input to completion", async () => {
     const result = await runOneNodeAgentWorkflow(minimalOneNodePiboAgentWorkflowFixture, "Explain workflow runs.", {
       ownerScope: "user:test",

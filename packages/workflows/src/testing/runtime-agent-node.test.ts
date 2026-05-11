@@ -8,7 +8,7 @@ import {
   SqliteWorkflowRunStore,
   text,
 } from "../index.js";
-import type { WorkflowDefinition, WorkflowRun, WorkflowRuntimeEvent } from "../index.js";
+import type { AgentNodeDefinition, WorkflowDefinition, WorkflowRun, WorkflowRuntimeEvent } from "../index.js";
 
 function createAgentWorkflow(): WorkflowDefinition {
   return {
@@ -147,6 +147,102 @@ describe("workflow agent node dispatch", () => {
         source: "actor",
       },
     ]);
+  });
+
+  it("resolves the fixed Agent Designer profile before Pibo Runtime creation", async () => {
+    const definition = createAgentWorkflow();
+    (definition.nodes.draft as AgentNodeDefinition).profile = { kind: "fixed", id: "writer-alias" };
+    const order: string[] = [];
+    const createdSessions: unknown[] = [];
+    const listeners = new Set<(event: { type: string; piboSessionId: string; eventId?: string; text?: string }) => void>();
+
+    const result = await dispatchWorkflowAgentNode(definition, createRun(), "draft", "Explain workflows", {
+      createNodeAttemptId: () => "wna_agent_resolved_profile",
+      profileResolver: ({ selection, nodeId }) => {
+        order.push(`resolve:${nodeId}:${selection.id}`);
+        return { id: "writer-profile", requestedId: selection.id, aliases: [selection.id] };
+      },
+      agentExecutor: createPiboSessionRoutingAgentExecutor({
+        routing: {
+          createSession(input) {
+            order.push(`createSession:${input.profile}`);
+            createdSessions.push(input);
+            return { id: "ps_resolved_profile", piSessionId: "pi_resolved_profile", profile: input.profile };
+          },
+          emit(event) {
+            order.push(`emit:${event.piboSessionId}`);
+            queueMicrotask(() => {
+              for (const listener of listeners) {
+                listener({
+                  type: "assistant_message",
+                  piboSessionId: event.piboSessionId,
+                  eventId: event.id,
+                  text: "Resolved profile response.",
+                });
+              }
+            });
+          },
+          subscribe(listener) {
+            listeners.add(listener);
+            return () => listeners.delete(listener);
+          },
+        },
+        createMessageId: () => "msg_resolved_profile",
+      }),
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.nodeAttempt.metadata?.runtime?.profileId, "writer-profile");
+    assert.deepEqual(order, [
+      "resolve:draft:writer-alias",
+      "createSession:writer-profile",
+      "emit:ps_resolved_profile",
+    ]);
+    assert.deepEqual(createdSessions, [
+      {
+        channel: "chat",
+        kind: "workflow-agent",
+        profile: "writer-profile",
+        ownerScope: "user:agent-node",
+        parentId: "ps_parent_agent",
+        workspace: undefined,
+        title: undefined,
+        metadata: {
+          workflowRunId: "wfr_agent",
+          workflowId: definition.id,
+          workflowVersion: definition.version,
+          workflowNodeId: "draft",
+          workflowNodeAttemptId: "wna_agent_resolved_profile",
+          projectId: "project_agent_node",
+          chatRoomId: "room_agent_node",
+        },
+      },
+    ]);
+  });
+
+  it("fails before Pibo Runtime creation when fixed Agent Designer profile resolution misses", async () => {
+    const definition = createAgentWorkflow();
+    let executorCalled = false;
+
+    const result = await dispatchWorkflowAgentNode(definition, createRun(), "draft", "Explain workflows", {
+      createNodeAttemptId: () => "wna_agent_missing_profile",
+      profileResolver: () => undefined,
+      agentExecutor: () => {
+        executorCalled = true;
+        return { output: "should not run" };
+      },
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(executorCalled, false);
+    assert.equal(result.nodeAttempt?.status, "failed");
+    assert.equal(result.run.status, "failed");
+    assert.equal(result.error.code, "WorkflowRuntimeError.unknownAgentProfile");
+    assert.ok(result.diagnostics.some((diagnostic) => diagnostic.code === "WorkflowRuntimeError.unknownAgentProfile"));
+    assert.deepEqual(
+      result.events.map((event) => event.type),
+      ["node.started", "node.failed"],
+    );
   });
 
   it("fails before Pibo Runtime execution when agent node input is invalid", async () => {

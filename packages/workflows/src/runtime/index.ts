@@ -45,6 +45,24 @@ import {
   validateWorkflowPortValue,
 } from "../validation/index.js";
 
+export type ResolvedAgentProfile = {
+  id: string;
+  requestedId: string;
+  aliases?: string[];
+};
+
+export type AgentProfileResolverContext = {
+  workflow: WorkflowDefinition;
+  run: WorkflowRun;
+  nodeId: string;
+  node: AgentNodeDefinition;
+  selection: AgentNodeDefinition["profile"];
+};
+
+export type AgentProfileResolver = (
+  context: AgentProfileResolverContext,
+) => Promise<ResolvedAgentProfile | undefined> | ResolvedAgentProfile | undefined;
+
 export type OneNodeAgentExecutorContext = {
   workflow: WorkflowDefinition;
   run: WorkflowRun;
@@ -54,6 +72,7 @@ export type OneNodeAgentExecutorContext = {
   input: WorkflowValue;
   prompt: string;
   profileId: string;
+  resolvedProfile: ResolvedAgentProfile;
   routing?: AgentNodeDefinition["routing"];
 };
 
@@ -161,6 +180,7 @@ export type OneNodeAgentWorkflowOptions = {
   createNodeAttemptId?: () => NodeAttemptId;
   store?: WorkflowRunStore;
   emitEvent?: WorkflowEventEmitter;
+  profileResolver?: AgentProfileResolver;
   agentExecutor: OneNodeAgentExecutor;
 };
 
@@ -169,6 +189,7 @@ export type WorkflowAgentNodeDispatchOptions = {
   createNodeAttemptId?: () => NodeAttemptId;
   store?: WorkflowRunStore;
   emitEvent?: WorkflowEventEmitter;
+  profileResolver?: AgentProfileResolver;
   agentExecutor: OneNodeAgentExecutor;
 };
 
@@ -568,6 +589,26 @@ export async function dispatchWorkflowAgentNode(
   }
 
   try {
+    const profileResolution = await resolveAgentProfileForRuntime({
+      workflow: definition,
+      run,
+      nodeId,
+      node: agentNode,
+      resolver: options.profileResolver,
+    });
+    if (!profileResolution.ok) {
+      return failAgentNodeDispatch({
+        run,
+        nodeAttempt,
+        events,
+        diagnostics: profileResolution.diagnostics,
+        timestamp,
+        store: options.store,
+        emitEvent: options.emitEvent,
+        error: profileResolution.error,
+      });
+    }
+
     const prompt = buildAgentNodePrompt(agentNode, input);
     const executorResult = await options.agentExecutor({
       workflow: definition,
@@ -577,7 +618,8 @@ export async function dispatchWorkflowAgentNode(
       node: agentNode,
       input,
       prompt,
-      profileId: agentNode.profile.id,
+      profileId: profileResolution.profile.id,
+      resolvedProfile: profileResolution.profile,
       routing: agentNode.routing,
     });
 
@@ -599,7 +641,7 @@ export async function dispatchWorkflowAgentNode(
     }
 
     const runtimeMetadata: RuntimeSelectionMetadata = {
-      profileId: executorResult.effectiveProfile ?? agentNode.profile.id,
+      profileId: executorResult.effectiveProfile ?? profileResolution.profile.id,
       ...(executorResult.effectiveTools ? { tools: executorResult.effectiveTools } : {}),
       ...(executorResult.effectiveSkills ? { skills: executorResult.effectiveSkills } : {}),
       ...(executorResult.effectiveContextFiles ? { contextFiles: executorResult.effectiveContextFiles } : {}),
@@ -1959,6 +2001,26 @@ export async function runOneNodeAgentWorkflow(
   await persistWorkflowNodeAttempt(options.store, nodeAttempt);
 
   try {
+    const profileResolution = await resolveAgentProfileForRuntime({
+      workflow: definition,
+      run,
+      nodeId,
+      node,
+      resolver: options.profileResolver,
+    });
+    if (!profileResolution.ok) {
+      return failRunningWorkflow({
+        run,
+        nodeAttempt,
+        events,
+        diagnostics: profileResolution.diagnostics,
+        timestamp,
+        store: options.store,
+        emitEvent: options.emitEvent,
+        error: profileResolution.error,
+      });
+    }
+
     const prompt = buildAgentNodePrompt(node, input);
     const executorResult = await options.agentExecutor({
       workflow: definition,
@@ -1968,7 +2030,8 @@ export async function runOneNodeAgentWorkflow(
       node,
       input,
       prompt,
-      profileId: node.profile.id,
+      profileId: profileResolution.profile.id,
+      resolvedProfile: profileResolution.profile,
       routing: node.routing,
     });
 
@@ -2007,7 +2070,7 @@ export async function runOneNodeAgentWorkflow(
     }
 
     const runtimeMetadata: RuntimeSelectionMetadata = {
-      profileId: executorResult.effectiveProfile ?? node.profile.id,
+      profileId: executorResult.effectiveProfile ?? profileResolution.profile.id,
       ...(executorResult.effectiveTools ? { tools: executorResult.effectiveTools } : {}),
       ...(executorResult.effectiveSkills ? { skills: executorResult.effectiveSkills } : {}),
       ...(executorResult.effectiveContextFiles ? { contextFiles: executorResult.effectiveContextFiles } : {}),
@@ -2580,6 +2643,78 @@ function hasWorkflowNodeAttemptStore(
   store: WorkflowRunStore | undefined,
 ): store is WorkflowRunStore & Pick<WorkflowNodeAttemptStore, "saveNodeAttempt"> {
   return typeof (store as { saveNodeAttempt?: unknown } | undefined)?.saveNodeAttempt === "function";
+}
+
+async function resolveAgentProfileForRuntime(options: {
+  workflow: WorkflowDefinition;
+  run: WorkflowRun;
+  nodeId: string;
+  node: AgentNodeDefinition;
+  resolver?: AgentProfileResolver;
+}): Promise<
+  | { ok: true; profile: ResolvedAgentProfile }
+  | { ok: false; diagnostics: WorkflowDiagnostic[]; error: WorkflowErrorSummary }
+> {
+  const requestedId = options.node.profile.id;
+
+  if (!options.resolver) {
+    return { ok: true, profile: { id: requestedId, requestedId } };
+  }
+
+  try {
+    const profile = await options.resolver({
+      workflow: options.workflow,
+      run: options.run,
+      nodeId: options.nodeId,
+      node: options.node,
+      selection: options.node.profile,
+    });
+
+    if (!profile || typeof profile.id !== "string" || profile.id.length === 0) {
+      const diagnostic: WorkflowDiagnostic = {
+        code: "WorkflowRuntimeError.unknownAgentProfile",
+        message: `Workflow agent node '${options.nodeId}' references fixed Agent Designer profile '${requestedId}', but profile resolution returned no profile.`,
+        severity: "error",
+        nodeId: options.nodeId,
+        path: `$.nodes.${options.nodeId}.profile.id`,
+        hint: "Register the Agent Designer profile before running the workflow or update the node's fixed profile selection.",
+      };
+      return {
+        ok: false,
+        diagnostics: [diagnostic],
+        error: {
+          code: diagnostic.code,
+          message: "Agent node dispatch failed before Pibo Runtime creation because profile resolution failed.",
+        },
+      };
+    }
+
+    return {
+      ok: true,
+      profile: {
+        ...profile,
+        requestedId: profile.requestedId || requestedId,
+      },
+    };
+  } catch (caught) {
+    const message = caught instanceof Error ? caught.message : "Agent profile resolver failed with a non-Error value.";
+    const diagnostic: WorkflowDiagnostic = {
+      code: "WorkflowRuntimeError.agentProfileResolutionFailed",
+      message: `Workflow agent node '${options.nodeId}' could not resolve fixed Agent Designer profile '${requestedId}': ${message}`,
+      severity: "error",
+      nodeId: options.nodeId,
+      path: `$.nodes.${options.nodeId}.profile.id`,
+      hint: "Ensure the workflow runtime is connected to the Agent Designer profile registry before creating the Pibo Runtime.",
+    };
+    return {
+      ok: false,
+      diagnostics: [diagnostic],
+      error: {
+        code: diagnostic.code,
+        message: "Agent node dispatch failed before Pibo Runtime creation because profile resolution failed.",
+      },
+    };
+  }
 }
 
 function buildAgentNodePrompt(node: AgentNodeDefinition, input: WorkflowValue): string {

@@ -56,7 +56,7 @@
 ## 7. Requirement: Agent nodes select profiles, tools, skills, and routing like normal sessions
 
 - [x] 7.1 Define Pibo Runtime selection policy with required fixed Agent Designer profile per Agent node.
-- [ ] 7.2 Resolve the Agent Designer profile before runtime creation.
+- [x] 7.2 Resolve the Agent Designer profile before runtime creation.
 - [ ] 7.3 Record selected agent profile, tools, skills, context, and routing metadata in node run metadata.
 - [ ] 7.4 Reject workflow definitions that reference unknown fixed agent profiles.
 - [ ] 7.5 Test fixed Agent Designer profile selection, e.g. `pibo-agent`.
