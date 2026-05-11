@@ -82,6 +82,49 @@ test("pi package store upserts, finds, lists, and removes packages", () => {
 	assert.deepEqual(listPiPackages(cwd), []);
 });
 
+test("pi package store preserves previous installed package when refresh input is error", () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pibo-pi-package-store-"));
+	upsertPiPackage({
+		id: "refresh-package",
+		name: "refresh-package",
+		source: "/tmp/refresh-package",
+		installSpec: "/tmp/refresh-package",
+		version: "1.0.0",
+		resourceTypes: ["extension"],
+		installStatus: "installed",
+		installPath: "/tmp/refresh-package-installed",
+		enabled: true,
+		diagnostics: [{ type: "info", message: "previous install ok" }],
+		addedAt: "2026-01-01T00:00:00.000Z",
+		updatedAt: "2026-01-01T00:00:00.000Z",
+	}, cwd);
+
+	const refreshed = upsertPiPackage({
+		id: "refresh-package",
+		name: "refresh-package",
+		source: "/tmp/refresh-package",
+		installSpec: "/tmp/refresh-package",
+		version: "2.0.0",
+		resourceTypes: ["skill"],
+		installStatus: "error",
+		enabled: true,
+		diagnostics: [{ type: "error", message: "refresh failed" }],
+	}, cwd);
+
+	assert.equal(refreshed.installStatus, "installed");
+	assert.equal(refreshed.installPath, "/tmp/refresh-package-installed");
+	assert.equal(refreshed.version, "1.0.0");
+	assert.deepEqual(refreshed.resourceTypes, ["extension"]);
+	assert.equal(refreshed.addedAt, "2026-01-01T00:00:00.000Z");
+	assert.notEqual(refreshed.updatedAt, "2026-01-01T00:00:00.000Z");
+	assert.deepEqual(refreshed.diagnostics, [
+		{ type: "info", message: "previous install ok" },
+		{ type: "warning", message: "Latest package refresh failed; keeping previous installed record for refresh-package." },
+		{ type: "error", message: "refresh failed" },
+	]);
+	assert.deepEqual(findPiPackage("refresh-package", cwd), refreshed);
+});
+
 test("pi package runtime bridge only loads selected registered packages", () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pibo-pi-package-runtime-"));
 	const packageDir = join(cwd, "local-package");
