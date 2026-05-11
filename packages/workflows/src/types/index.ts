@@ -558,6 +558,8 @@ export type WorkflowRun = {
   id: WorkflowRunId;
   workflowId: WorkflowId;
   workflowVersion: WorkflowVersion;
+  workflowDefinitionHash?: string;
+  definitionSnapshotId?: string;
   ownerScope: string;
   parentRunId?: WorkflowRunId;
   parentNodeAttemptId?: NodeAttemptId;
@@ -609,6 +611,7 @@ export type NodeAttempt = {
   attempt: number;
   kind: WorkflowNodeDefinition["kind"];
   status: NodeAttemptStatus;
+  environment?: WorkflowExecutionEnvironment;
   input: WorkflowValue;
   output?: WorkflowValue;
   localState?: Record<string, JsonValue>;
@@ -705,6 +708,7 @@ export type WorkflowWaitToken = {
   workflowRunId: WorkflowRunId;
   nodeAttemptId?: NodeAttemptId;
   humanNodeId?: NodeId;
+  kind?: string;
   actions: WorkflowHumanActionRef[];
   prompt: string;
   schema?: JsonSchema;

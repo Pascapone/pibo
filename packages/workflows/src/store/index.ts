@@ -6,6 +6,7 @@ import type {
   NodeAttempt,
   NodeAttemptId,
   NodeAttemptStatus,
+  WorkflowExecutionEnvironment,
   WorkflowRun,
   WorkflowRunId,
   WorkflowRunStatus,
@@ -14,6 +15,27 @@ import type {
   WorkflowWaitTokenId,
   WorkflowWaitTokenStatus,
 } from "../types/index.js";
+
+export const WORKFLOW_SQLITE_FILENAME = "pibo-workflows.sqlite";
+export const WORKFLOW_SQLITE_SCHEMA_VERSION = 1;
+
+export const WORKFLOW_SQLITE_TABLES = [
+  "workflow_definition_snapshots",
+  "workflow_runs",
+  "workflow_events",
+  "workflow_node_attempts",
+  "workflow_edge_transfers",
+  "workflow_checkpoints",
+  "workflow_wakeups",
+  "workflow_wait_tokens",
+  "workflow_human_actions",
+] as const;
+
+export type WorkflowSqliteTableName = (typeof WORKFLOW_SQLITE_TABLES)[number];
+
+export function createWorkflowSqlitePath(baseDirectory: string): string {
+  return resolve(baseDirectory, WORKFLOW_SQLITE_FILENAME);
+}
 
 export type WorkflowRunStore = {
   saveRun(run: WorkflowRun): void | Promise<void>;
@@ -58,6 +80,8 @@ type WorkflowRunRow = {
   id: string;
   workflow_id: string;
   workflow_version: string;
+  workflow_definition_hash: string | null;
+  definition_snapshot_id: string | null;
   owner_scope: string;
   parent_run_id: string | null;
   parent_node_attempt_id: string | null;
@@ -86,7 +110,9 @@ type WorkflowWaitTokenRow = {
   workflow_run_id: string;
   node_attempt_id: string | null;
   human_node_id: string | null;
-  actions_json: string;
+  kind: string | null;
+  available_actions_json: string | null;
+  actions_json?: string | null;
   prompt: string;
   schema_json: string | null;
   status: WorkflowWaitTokenStatus;
@@ -94,16 +120,19 @@ type WorkflowWaitTokenRow = {
   resume_payload_present: number;
   created_at: string;
   expires_at: string | null;
-  resumed_at: string | null;
+  resolved_at: string | null;
+  resumed_at?: string | null;
 };
 
 type WorkflowNodeAttemptRow = {
   id: string;
   workflow_run_id: string;
   node_id: string;
-  attempt: number;
+  attempt_number: number | null;
+  attempt?: number | null;
   kind: NodeAttempt["kind"];
   status: NodeAttemptStatus;
+  environment_json: string | null;
   input_json: string;
   output_json: string | null;
   output_present: number;
@@ -131,10 +160,24 @@ export class SqliteWorkflowRunStore implements WorkflowRunStore, WorkflowWaitTok
     this.db.exec("PRAGMA busy_timeout = 5000");
     if (resolvedPath !== ":memory:") this.db.exec("PRAGMA journal_mode = WAL");
     this.db.exec(`
+      CREATE TABLE IF NOT EXISTS workflow_definition_snapshots (
+        id TEXT PRIMARY KEY,
+        workflow_id TEXT NOT NULL,
+        workflow_version TEXT NOT NULL,
+        definition_hash TEXT NOT NULL,
+        compiled_definition_json TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_workflow_definition_snapshots_hash
+        ON workflow_definition_snapshots(workflow_id, workflow_version, definition_hash);
+
       CREATE TABLE IF NOT EXISTS workflow_runs (
         id TEXT PRIMARY KEY,
         workflow_id TEXT NOT NULL,
         workflow_version TEXT NOT NULL,
+        workflow_definition_hash TEXT,
+        definition_snapshot_id TEXT,
         owner_scope TEXT NOT NULL,
         parent_run_id TEXT,
         parent_node_attempt_id TEXT,
@@ -166,14 +209,37 @@ export class SqliteWorkflowRunStore implements WorkflowRunStore, WorkflowWaitTok
         ON workflow_runs(owner_scope, updated_at);
       CREATE INDEX IF NOT EXISTS idx_workflow_runs_current_node
         ON workflow_runs(current_node_id, updated_at);
+      CREATE INDEX IF NOT EXISTS idx_workflow_runs_pibo_session
+        ON workflow_runs(pibo_session_id, updated_at);
+      CREATE INDEX IF NOT EXISTS idx_workflow_runs_project
+        ON workflow_runs(project_id, updated_at);
+
+      CREATE TABLE IF NOT EXISTS workflow_events (
+        id TEXT PRIMARY KEY,
+        workflow_run_id TEXT NOT NULL,
+        type TEXT NOT NULL,
+        node_id TEXT,
+        edge_id TEXT,
+        attempt_id TEXT,
+        payload_json TEXT,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_workflow_events_run
+        ON workflow_events(workflow_run_id, created_at);
+      CREATE INDEX IF NOT EXISTS idx_workflow_events_type
+        ON workflow_events(type, created_at);
+      CREATE INDEX IF NOT EXISTS idx_workflow_events_node
+        ON workflow_events(workflow_run_id, node_id, created_at);
 
       CREATE TABLE IF NOT EXISTS workflow_node_attempts (
         id TEXT PRIMARY KEY,
         workflow_run_id TEXT NOT NULL,
         node_id TEXT NOT NULL,
-        attempt INTEGER NOT NULL,
+        attempt_number INTEGER NOT NULL,
         kind TEXT NOT NULL,
         status TEXT NOT NULL,
+        environment_json TEXT,
         input_json TEXT NOT NULL,
         output_json TEXT,
         output_present INTEGER NOT NULL DEFAULT 0,
@@ -181,34 +247,87 @@ export class SqliteWorkflowRunStore implements WorkflowRunStore, WorkflowWaitTok
         metadata_json TEXT,
         error_json TEXT,
         lease_json TEXT,
+        available_at TEXT,
         started_at TEXT,
         heartbeat_at TEXT,
         completed_at TEXT,
-        failed_at TEXT,
-        available_at TEXT
+        failed_at TEXT
       );
 
       CREATE INDEX IF NOT EXISTS idx_workflow_node_attempts_run
-        ON workflow_node_attempts(workflow_run_id, node_id, attempt);
+        ON workflow_node_attempts(workflow_run_id, node_id);
       CREATE INDEX IF NOT EXISTS idx_workflow_node_attempts_status
         ON workflow_node_attempts(status, started_at);
       CREATE INDEX IF NOT EXISTS idx_workflow_node_attempts_kind
         ON workflow_node_attempts(kind, started_at);
+      CREATE INDEX IF NOT EXISTS idx_workflow_node_attempts_available
+        ON workflow_node_attempts(status, available_at);
+
+      CREATE TABLE IF NOT EXISTS workflow_edge_transfers (
+        id TEXT PRIMARY KEY,
+        workflow_run_id TEXT NOT NULL,
+        edge_id TEXT NOT NULL,
+        source_node_attempt_id TEXT NOT NULL,
+        target_node_id TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        adapter_attempt_id TEXT,
+        status TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_workflow_edge_transfers_run
+        ON workflow_edge_transfers(workflow_run_id, created_at);
+      CREATE INDEX IF NOT EXISTS idx_workflow_edge_transfers_edge
+        ON workflow_edge_transfers(edge_id, created_at);
+      CREATE INDEX IF NOT EXISTS idx_workflow_edge_transfers_target
+        ON workflow_edge_transfers(workflow_run_id, target_node_id, created_at);
+
+      CREATE TABLE IF NOT EXISTS workflow_checkpoints (
+        id TEXT PRIMARY KEY,
+        workflow_run_id TEXT NOT NULL,
+        namespace TEXT NOT NULL,
+        cursor_json TEXT NOT NULL,
+        state_json TEXT NOT NULL,
+        pending_json TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_workflow_checkpoints_run
+        ON workflow_checkpoints(workflow_run_id, namespace, created_at);
+
+      CREATE TABLE IF NOT EXISTS workflow_wakeups (
+        id TEXT PRIMARY KEY,
+        workflow_run_id TEXT NOT NULL,
+        node_attempt_id TEXT,
+        kind TEXT NOT NULL,
+        available_at TEXT NOT NULL,
+        correlation_id TEXT,
+        payload_json TEXT,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_workflow_wakeups_available
+        ON workflow_wakeups(kind, available_at);
+      CREATE INDEX IF NOT EXISTS idx_workflow_wakeups_run
+        ON workflow_wakeups(workflow_run_id, available_at);
+      CREATE INDEX IF NOT EXISTS idx_workflow_wakeups_correlation
+        ON workflow_wakeups(correlation_id);
 
       CREATE TABLE IF NOT EXISTS workflow_wait_tokens (
         id TEXT PRIMARY KEY,
         workflow_run_id TEXT NOT NULL,
         node_attempt_id TEXT,
         human_node_id TEXT,
-        actions_json TEXT NOT NULL,
+        kind TEXT,
+        available_actions_json TEXT NOT NULL,
         prompt TEXT NOT NULL,
         schema_json TEXT,
         status TEXT NOT NULL,
         resume_payload_json TEXT,
         resume_payload_present INTEGER NOT NULL DEFAULT 0,
-        created_at TEXT NOT NULL,
         expires_at TEXT,
-        resumed_at TEXT
+        created_at TEXT NOT NULL,
+        resolved_at TEXT
       );
 
       CREATE INDEX IF NOT EXISTS idx_workflow_wait_tokens_run
@@ -217,7 +336,36 @@ export class SqliteWorkflowRunStore implements WorkflowRunStore, WorkflowWaitTok
         ON workflow_wait_tokens(status, created_at);
       CREATE INDEX IF NOT EXISTS idx_workflow_wait_tokens_node
         ON workflow_wait_tokens(human_node_id, created_at);
+
+      CREATE TABLE IF NOT EXISTS workflow_human_actions (
+        id TEXT PRIMARY KEY,
+        workflow_run_id TEXT NOT NULL,
+        wait_token_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        actor_json TEXT,
+        payload_json TEXT,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_workflow_human_actions_run
+        ON workflow_human_actions(workflow_run_id, created_at);
+      CREATE INDEX IF NOT EXISTS idx_workflow_human_actions_wait_token
+        ON workflow_human_actions(wait_token_id, created_at);
     `);
+
+    this.ensureColumn("workflow_runs", "workflow_definition_hash", "TEXT");
+    this.ensureColumn("workflow_runs", "definition_snapshot_id", "TEXT");
+    this.ensureColumn("workflow_node_attempts", "attempt_number", "INTEGER");
+    this.ensureColumn("workflow_node_attempts", "environment_json", "TEXT");
+    this.ensureColumn("workflow_wait_tokens", "kind", "TEXT");
+    this.ensureColumn("workflow_wait_tokens", "available_actions_json", "TEXT");
+    this.ensureColumn("workflow_wait_tokens", "resolved_at", "TEXT");
+  }
+
+  private ensureColumn(table: string, column: string, definition: string): void {
+    const columns = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+    if (columns.some((row) => row.name === column)) return;
+    this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
   }
 
   saveRun(run: WorkflowRun): void {
@@ -226,6 +374,8 @@ export class SqliteWorkflowRunStore implements WorkflowRunStore, WorkflowWaitTok
         id,
         workflow_id,
         workflow_version,
+        workflow_definition_hash,
+        definition_snapshot_id,
         owner_scope,
         parent_run_id,
         parent_node_attempt_id,
@@ -247,10 +397,12 @@ export class SqliteWorkflowRunStore implements WorkflowRunStore, WorkflowWaitTok
         completed_at,
         failed_at,
         cancelled_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         workflow_id = excluded.workflow_id,
         workflow_version = excluded.workflow_version,
+        workflow_definition_hash = excluded.workflow_definition_hash,
+        definition_snapshot_id = excluded.definition_snapshot_id,
         owner_scope = excluded.owner_scope,
         parent_run_id = excluded.parent_run_id,
         parent_node_attempt_id = excluded.parent_node_attempt_id,
@@ -275,6 +427,8 @@ export class SqliteWorkflowRunStore implements WorkflowRunStore, WorkflowWaitTok
       run.id,
       run.workflowId,
       run.workflowVersion,
+      run.workflowDefinitionHash ?? null,
+      run.definitionSnapshotId ?? null,
       run.ownerScope,
       run.parentRunId ?? null,
       run.parentNodeAttemptId ?? null,
@@ -335,9 +489,10 @@ export class SqliteWorkflowRunStore implements WorkflowRunStore, WorkflowWaitTok
         id,
         workflow_run_id,
         node_id,
-        attempt,
+        attempt_number,
         kind,
         status,
+        environment_json,
         input_json,
         output_json,
         output_present,
@@ -350,13 +505,14 @@ export class SqliteWorkflowRunStore implements WorkflowRunStore, WorkflowWaitTok
         completed_at,
         failed_at,
         available_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         workflow_run_id = excluded.workflow_run_id,
         node_id = excluded.node_id,
-        attempt = excluded.attempt,
+        attempt_number = excluded.attempt_number,
         kind = excluded.kind,
         status = excluded.status,
+        environment_json = excluded.environment_json,
         input_json = excluded.input_json,
         output_json = excluded.output_json,
         output_present = excluded.output_present,
@@ -376,6 +532,7 @@ export class SqliteWorkflowRunStore implements WorkflowRunStore, WorkflowWaitTok
       nodeAttempt.attempt,
       nodeAttempt.kind,
       nodeAttempt.status,
+      serializeOptional(nodeAttempt.environment),
       serialize(nodeAttempt.input),
       nodeAttempt.output === undefined ? null : serialize(nodeAttempt.output),
       nodeAttempt.output === undefined ? 0 : 1,
@@ -434,41 +591,44 @@ export class SqliteWorkflowRunStore implements WorkflowRunStore, WorkflowWaitTok
         workflow_run_id,
         node_attempt_id,
         human_node_id,
-        actions_json,
+        kind,
+        available_actions_json,
         prompt,
         schema_json,
         status,
         resume_payload_json,
         resume_payload_present,
-        created_at,
         expires_at,
-        resumed_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        created_at,
+        resolved_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         workflow_run_id = excluded.workflow_run_id,
         node_attempt_id = excluded.node_attempt_id,
         human_node_id = excluded.human_node_id,
-        actions_json = excluded.actions_json,
+        kind = excluded.kind,
+        available_actions_json = excluded.available_actions_json,
         prompt = excluded.prompt,
         schema_json = excluded.schema_json,
         status = excluded.status,
         resume_payload_json = excluded.resume_payload_json,
         resume_payload_present = excluded.resume_payload_present,
         expires_at = excluded.expires_at,
-        resumed_at = excluded.resumed_at
+        resolved_at = excluded.resolved_at
     `).run(
       token.id,
       token.workflowRunId,
       token.nodeAttemptId ?? null,
       token.humanNodeId ?? null,
+      token.kind ?? null,
       serialize(token.actions),
       token.prompt,
       serializeOptional(token.schema),
       token.status,
       token.resumePayload === undefined ? null : serialize(token.resumePayload),
       token.resumePayload === undefined ? 0 : 1,
-      token.createdAt,
       token.expiresAt ?? null,
+      token.createdAt,
       token.resumedAt ?? null,
     );
   }
@@ -515,6 +675,8 @@ function workflowRunFromRow(row: WorkflowRunRow): WorkflowRun {
     id: row.id,
     workflowId: row.workflow_id,
     workflowVersion: row.workflow_version,
+    ...(row.workflow_definition_hash ? { workflowDefinitionHash: row.workflow_definition_hash } : {}),
+    ...(row.definition_snapshot_id ? { definitionSnapshotId: row.definition_snapshot_id } : {}),
     ownerScope: row.owner_scope,
     ...(row.parent_run_id ? { parentRunId: row.parent_run_id } : {}),
     ...(row.parent_node_attempt_id ? { parentNodeAttemptId: row.parent_node_attempt_id } : {}),
@@ -541,14 +703,15 @@ function workflowWaitTokenFromRow(row: WorkflowWaitTokenRow): WorkflowWaitToken 
     workflowRunId: row.workflow_run_id,
     ...(row.node_attempt_id ? { nodeAttemptId: row.node_attempt_id } : {}),
     ...(row.human_node_id ? { humanNodeId: row.human_node_id } : {}),
-    actions: parseJson(row.actions_json),
+    ...(row.kind ? { kind: row.kind } : {}),
+    actions: parseJson(row.available_actions_json ?? row.actions_json ?? "[]"),
     prompt: row.prompt,
     ...(row.schema_json ? { schema: parseJson(row.schema_json) } : {}),
     status: row.status,
     ...(row.resume_payload_present ? { resumePayload: parseJson(row.resume_payload_json ?? "null") as WorkflowValue } : {}),
     createdAt: row.created_at,
     ...(row.expires_at ? { expiresAt: row.expires_at } : {}),
-    ...(row.resumed_at ? { resumedAt: row.resumed_at } : {}),
+    ...(row.resolved_at ?? row.resumed_at ? { resumedAt: (row.resolved_at ?? row.resumed_at) as string } : {}),
   };
 }
 
@@ -557,9 +720,10 @@ function workflowNodeAttemptFromRow(row: WorkflowNodeAttemptRow): NodeAttempt {
     id: row.id,
     workflowRunId: row.workflow_run_id,
     nodeId: row.node_id,
-    attempt: row.attempt,
+    attempt: row.attempt_number ?? row.attempt ?? 0,
     kind: row.kind,
     status: row.status,
+    ...(row.environment_json ? { environment: parseJson<WorkflowExecutionEnvironment>(row.environment_json) } : {}),
     input: parseJson(row.input_json) as WorkflowValue,
     ...(row.output_present ? { output: parseJson(row.output_json ?? "null") as WorkflowValue } : {}),
     ...(row.local_state_json ? { localState: parseJson(row.local_state_json) } : {}),

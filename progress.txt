@@ -1,4 +1,5 @@
 ## Codebase Patterns
+- Workflow SQLite schema changes belong in `packages/workflows/src/store/index.ts` with `CREATE TABLE IF NOT EXISTS` / additive column migrations and a focused schema contract test under `packages/workflows/src/testing`.
 - Web UI Workflow/XState consumers should use `createWorkflowXStateUiModel(projectWorkflowToXStateProjection(definition), { snapshot | activeStateIds })` to get compact nodes/edges/actors/guards/actions/delays while keeping `contextShape.exposesPrivatePayloads: false` and kernel snapshots as durable truth.
 - XState projection snapshot tests should compare normalized full projections for representative fixtures against `packages/workflows/src/testing/__snapshots__/xstate-projection.snap.json`; normalize object keys but preserve transition arrays so snapshot diffs catch semantic projection changes.
 - XState guard/wait/failure/final projection is deterministic: edge/loop guards populate the flat `guards` index, human nodes become `wait` states with durable wait actions/timeouts, node invoke failures target failed or retry-delay states, and `definition.final` nodes add completion transitions to `workflow.completed`.
@@ -746,4 +747,17 @@
   - The Web UI should consume the compact UI model instead of hand-reading the full machine config; it keeps visualization fields ordered and strips runtime payloads.
   - `WorkflowMachineSnapshot.kind === "kernel"` remains authoritative for current UI status; active XState ids are a projection/cache input, not durable truth.
   - Story 10.7 intentionally did not add CLI surface; debug/inspection commands belong to later persistence/inspection stories.
+---
+
+## 2026-05-11 02:13 UTC - 11.1
+- Designed the workflow-specific runtime SQLite store schema around the canonical `pibo-workflows.sqlite` filename and all required V1 logical workflow tables.
+- Added exported store schema constants/path helper, expanded run/node/wait-token record fields for definition snapshots, session/project linkage, node environments, and resolved wait-token actions, and kept additive column migration support for earlier workflow test databases.
+- Added a schema contract test that verifies every required V1 workflow table and required column is created.
+- Marked task `11.1` complete in the workflow-system task list because no `prd_*.json` files exist in this worktree.
+- Quality checks: host `npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`; container `docker exec pibo-dev-Workflows ... npm --prefix packages/workflows run typecheck && npm --prefix packages/workflows test && npm run typecheck`.
+- Files changed: `packages/workflows/src/store/index.ts`, `packages/workflows/src/types/index.ts`, `packages/workflows/src/testing/workflow-sqlite-schema.test.ts`, `docs/specs/changes/pibo-workflow-system-v1/tasks.md`, `progress.txt`.
+- **Learnings for future iterations:**
+  - `pibo-workflows.sqlite` now has schema-level tables for definition snapshots, events, edge transfers, checkpoints, wakeups, wait tokens, and human actions, but story 11.2 still needs the save/get/list APIs and runtime calls for the newly added fact tables.
+  - Existing run/node/wait-token persistence tests rely on exact object round-trips, so new optional fields must only be emitted when persisted values are present.
+  - Additive SQLite migrations should run after `CREATE TABLE IF NOT EXISTS` so prior test databases can pick up new columns without breaking existing store consumers.
 ---
