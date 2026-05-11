@@ -69,6 +69,47 @@ test("sendGatewayEvent sends a request event and resolves the gateway response",
 	}
 });
 
+test("sendGatewayEvent ignores responses with a different request id", async () => {
+	const gateway = await withMockGateway((frame, socket) => {
+		socket.write(
+			`${JSON.stringify({
+				type: "res",
+				id: "unrelated-request",
+				ok: true,
+				payload: { type: "ignored" },
+			})}\n`,
+		);
+		socket.write(
+			`${JSON.stringify({
+				type: "res",
+				id: frame.id,
+				ok: true,
+				payload: {
+					type: "message_queued",
+					piboSessionId: frame.event.piboSessionId,
+					eventId: frame.event.id,
+					queuedMessages: 1,
+					text: frame.event.text,
+					source: frame.event.source,
+				},
+			})}\n`,
+		);
+	});
+
+	try {
+		const response = await sendGatewayEvent(
+			{ type: "message", piboSessionId: "receiver", text: "hello", source: "actor" },
+			{ port: gateway.port },
+		);
+
+		assert.equal(response.ok, true);
+		assert.equal(response.id, gateway.receivedFrames[0].id);
+		assert.equal(response.payload.type, "message_queued");
+	} finally {
+		await gateway.close();
+	}
+});
+
 test("sendGatewayMessageAndWaitForReply resolves only the correlated assistant reply", async () => {
 	const gateway = await withMockGateway((frame, socket) => {
 		socket.write(
