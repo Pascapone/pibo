@@ -4,11 +4,11 @@ Granulare Review-Reports aus dem scheduled Pibo-Job zur langfristigen Verbesseru
 
 ## Reports
 
-- [2026-05-10-1749-mcp-cli.md](2026-05-10-1749-mcp-cli.md) — MCP-CLI-Konfiguration und Discovery; am 2026-05-10 wurden Unit-Subsets für `filterTools`/`isToolAllowed` und `globToRegex` ergänzt, offen bleiben Parser-, Config-Pfad- und Fixture-Server-Subsets.
+- [2026-05-10-1749-mcp-cli.md](2026-05-10-1749-mcp-cli.md) — MCP-CLI-Konfiguration und Discovery, Tool-Filterung, grep-Pattern, CLI-Parser- und Fixture-Server-Testlücken.
 - [2026-05-10-1739-trace-materialization.md](2026-05-10-1739-trace-materialization.md) — Chat-Web-Trace-Materialisierung, Live-Patching-Identität, fehlende Trace-Order-/Live-Reducer-/Transcript-Echo-Subsets.
 - [2026-05-10-1718-cron-scheduler-core.md](2026-05-10-1718-cron-scheduler-core.md) — Cron-Scheduler-Kern, Store-Lifecycle, Recovery, Service-Event-Korrelation und bessere Trennung von Schedule-/Store-/CLI-Subsets.
 - [2026-05-10-1708-custom-agent-store.md](2026-05-10-1708-custom-agent-store.md) — Custom-Agent-Store, Profil-Brücke, globale Namenssemantik und fehlende kleine Roundtrip-/Mapping-Subsets.
-- [2026-05-10-1658-pi-packages.md](2026-05-10-1658-pi-packages.md) — Pi-Package-Store, CLI, Runtime-Brücke; am 2026-05-10 wurde der Failed-Refresh-Preserve-Test ergänzt, offen bleiben Runtime-Skip-/Doctor- und kleinere Web-API-Subsets.
+- [2026-05-10-1658-pi-packages.md](2026-05-10-1658-pi-packages.md) — Pi-Package-Store, CLI, Runtime-Brücke und fehlende Failed-Refresh-, Runtime-Skip-/Doctor- und Web-API-Subsets.
 - [2026-05-10-1648-better-auth-config.md](2026-05-10-1648-better-auth-config.md) — Better-Auth-Konfiguration, Web-Gateway-Auth-Boundary, Pflichtfeld-/Origin-Matrix und granulare Auth-Resolver-Subsets.
 - [2026-05-10-1626-channel-runtime.md](2026-05-10-1626-channel-runtime.md) — Gateway-Channel-Lifecycle, `PiboChannelContext`, Auth-Mode-Matrix und fehlende kleine Lifecycle-/Contract-Subsets.
 - [2026-05-10-1619-context-files-web-api.md](2026-05-10-1619-context-files-web-api.md) — Context-Files Web API, Revisionen, Legacy-Migration und fehlende Store-, Lifecycle-, Konflikt- und Event-Subsets.
