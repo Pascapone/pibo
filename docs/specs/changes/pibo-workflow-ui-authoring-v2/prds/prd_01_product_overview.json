@@ -110,8 +110,8 @@
         "Typecheck passes"
       ],
       "priority": 7,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Added a Project workflow execution smoke checklist covering select, configure, save, configured/not-started review, start, run inspection sections, and human wait resolution."
     },
     {
       "id": "US-008",

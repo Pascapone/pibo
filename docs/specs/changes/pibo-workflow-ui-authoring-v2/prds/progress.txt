@@ -1449,3 +1449,22 @@
   - Version-list and version-inspect routes should first resolve workflow visibility through the catalog projection, then inspect the immutable definition, so archive/delete behavior stays consistent across catalog, pickers, and Project selection.
   - Web-channel API tests import compiled `dist/`; rebuild before targeted tests after changing `src/apps/chat/web-app.ts`.
 ---
+## 2026-05-12 08:05 CEST - US-007
+- What was implemented
+  - Added the Project workflow execution manual smoke checklist to the product overview PRD.
+  - Covered select workflow, configure session, save configured/not-started session, explicit Start, run inspection sections, and human wait resolution expectations.
+  - Marked PRD 01 US-007 passing.
+- Files changed
+  - `docs/specs/changes/pibo-workflow-ui-authoring-v2/prds/01-product-overview.md`
+  - `docs/specs/changes/pibo-workflow-ui-authoring-v2/prds/prd_01_product_overview.json`
+  - `docs/specs/changes/pibo-workflow-ui-authoring-v2/prds/progress.txt`
+- Quality checks run
+  - `python3 -m json.tool docs/specs/changes/pibo-workflow-ui-authoring-v2/prds/prd_01_product_overview.json` — passed.
+  - `git diff --check` — passed.
+  - `docker exec pibo-dev-WorkflowsV2 bash -lc 'cd /workspace && npm run typecheck'` — passed.
+  - Relevant tests: not run; documentation-only checklist change.
+- Browser verification, if UI changed
+  - Not run; documentation-only change with no UI behavior changes.
+- **Learnings for future iterations:**
+  - Product-level smoke checklists should name both the configured/not-started pre-run state and the post-start run inspection sections so manual QA can verify delayed start and inspection contracts without reading implementation notes.
+---

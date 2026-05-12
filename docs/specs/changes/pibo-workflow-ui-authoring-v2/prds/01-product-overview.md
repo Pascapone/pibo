@@ -98,3 +98,21 @@
   - Users publish invalid or unsafe workflows; mitigate with validation gates and registered-capability-only composition.
   - Run inspection breaks after deletion; mitigate with immutable configuration/effective-definition snapshots.
   - V2 scope expands into code generation or marketplace behavior; mitigate with explicit non-goals and review gates.
+
+## 6. Manual Smoke Checklists
+
+### Project workflow execution smoke checklist
+
+Use this checklist after deploys or before release signoff to verify the Project workflow path end to end.
+
+1. Open Chat Web as an authenticated user and navigate to Projects.
+2. Create or open a Project and choose the workflow-backed session creation option.
+3. Select a published workflow version from the global workflow-version picker.
+4. Configure allowed session values: session name, workflow input, eligible prompt overrides, model, thinking level, and fast mode where available.
+5. Save the workflow Project session.
+   - Expected before Start: the session is visible in a configured/not-started state, shows the selected workflow id/version and configuration summary, shows validation state, exposes an explicit Start action, and shows no workflow run record or run history yet.
+6. Start the workflow from the configured session view.
+   - Expected after Start: exactly one workflow run is attached to the Project session, duplicate Start attempts return the existing run, and the status is no longer configured/not-started. Depending on the workflow, the run status should progress through running, waiting, completed, failed, or cancelled.
+7. Inspect the Project workflow run view.
+   - Expected inspection sections: status, current node, run history, node attempts, edge transfers, output, errors, validation diagnostics, nested workflow links, definition link or definition-deleted state, and pending human actions. Each section must show populated values or an explicit empty state.
+8. If the workflow reaches a human wait, resolve it from the Project run view and confirm the run resumes or records the selected terminal action.
