@@ -1,4 +1,5 @@
 ## Codebase Patterns
+- Catalog missingRefs should filter to explicit missing/unavailable reference diagnostic codes; diagnostics that carry `registryRef` for params or kind mismatch context should stay in full diagnostics only.
 - Workflow Builder manual Validate controls should call the draft validate route without `before_publish`; the publish route owns the `before_publish` trigger, while manual validation uses the route fallback/edit triggers.
 - Broad V2 release-gate tests can assert a PRD coverage matrix across package tests, web-channel integration tests, and source-level UI surfaces instead of duplicating long flows.
 - Workflow lifecycle archive/delete UI should use in-page confirmation panels with copy that names default catalog/picker effects and historical Project snapshot behavior so browser checks can verify the safeguards.
@@ -1713,4 +1714,25 @@
   - Not run; documentation-only change with no UI behavior changes.
 - **Learnings for future iterations:**
   - Product-overview manual smoke checklists can capture cross-PRD expected outcomes while referencing the implemented V2 contracts instead of adding new product behavior.
+---
+## 2026-05-12 13:11 CEST - US-008
+- What was implemented
+  - Tightened Workflow catalog `missingRefs` projection to include only explicit missing or unavailable registered-reference diagnostic codes.
+  - Added structured missing-reference coverage for profiles, handlers, adapter nodes, edge adapters, guards, prompt assets, human actions, and nested workflow versions.
+  - Verified builder draft validation diagnostics and catalog inspect data expose code, message, severity, registry ref, path, and node/edge location for missing refs.
+- Files changed
+  - `src/apps/chat/web-app.ts`
+  - `test/web-channel.test.mjs`
+  - `docs/specs/changes/pibo-workflow-ui-authoring-v2/prds/prd_02_workflow_registry_catalog_and_draft_store.json`
+  - `docs/specs/changes/pibo-workflow-ui-authoring-v2/prds/progress.txt`
+- Quality checks run
+  - `docker exec pibo-dev-WorkflowsV2 bash -lc 'cd /workspace && npm run typecheck && npm run build && node --test --test-name-pattern "workflow security boundary validates registered refs" test/web-channel.test.mjs'` — passed.
+  - `docker exec pibo-dev-WorkflowsV2 bash -lc 'cd /workspace && node --test test/web-channel.test.mjs'` — passed, 71/71 tests.
+  - `python3 -m json.tool docs/specs/changes/pibo-workflow-ui-authoring-v2/prds/prd_02_workflow_registry_catalog_and_draft_store.json` — passed.
+  - `git diff --check` — passed.
+- Browser verification, if UI changed
+  - Not run; this was an API/diagnostic projection and integration-test change with no visible UI behavior changes.
+- **Learnings for future iterations:**
+  - Structured missing-reference assertions should check the registry ref plus path and node/edge location, not only the diagnostic code.
+  - `missingRefs` is a catalog summary; keep richer non-missing `registryRef` diagnostics such as params and kind mismatches in full diagnostics.
 ---

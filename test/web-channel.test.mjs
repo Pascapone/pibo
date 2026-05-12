@@ -42,6 +42,20 @@ async function withCwd(cwd, run) {
 	}
 }
 
+function assertStructuredMissingRefDiagnostic(diagnostics, expected) {
+	const diagnostic = diagnostics.find((candidate) => {
+		return candidate.code === expected.code &&
+			candidate.registryRef === expected.registryRef &&
+			candidate.path === expected.path &&
+			(expected.nodeId === undefined || candidate.nodeId === expected.nodeId) &&
+			(expected.edgeId === undefined || candidate.edgeId === expected.edgeId);
+	});
+	assert.ok(diagnostic, `missing structured diagnostic ${JSON.stringify(expected)} in ${JSON.stringify(diagnostics)}`);
+	assert.equal(diagnostic.severity, "error");
+	assert.equal(typeof diagnostic.message, "string");
+	assert.ok(diagnostic.message.includes(expected.registryRef));
+}
+
 async function startWebHostChannel(options = {}) {
 	const emitted = [];
 	const listeners = new Set();
@@ -2890,11 +2904,19 @@ test("workflow security boundary validates registered refs and rejects inline ex
 		assert.ok(invalidParamsPatchPayload.diagnostics.some((diagnostic) => diagnostic.code === "WorkflowGraphError.invalidAdapterParams" && diagnostic.path === "$.edges.plan-to-review.adapter.transform.params.format" && diagnostic.edgeId === "plan-to-review"));
 
 		const invalidDefinition = structuredClone(secureDefinition);
+		invalidDefinition.nodes.collect.profile.id = "missing.profiles.inline";
 		invalidDefinition.nodes.plan.handler = "missing.handlers.inline";
 		invalidDefinition.nodes.plan.inlineTypeScript = "return await eval(input);";
 		invalidDefinition.nodes.normalize.handler.id = "missing.adapters.inline";
 		invalidDefinition.nodes.normalize.mode = "llm";
 		invalidDefinition.nodes.promptAsset.promptBuilder.id = "missing.promptAssets.inline";
+		invalidDefinition.nodes.childWorkflow = {
+			kind: "workflow",
+			workflowId: "missing-nested-workflow",
+			workflowVersion: "9.9.9",
+			input: textPort,
+			output: textPort,
+		};
 		invalidDefinition.nodes.review.actions = [
 			{ id: "missing.humanActions.inline", kind: "approve" },
 			{ id: "fixture.humanActions.approve", kind: "reject" },
@@ -2925,17 +2947,86 @@ test("workflow security boundary validates registered refs and rejects inline ex
 		const invalidPatchPayload = await invalidPatchResponse.json();
 		assert.equal(invalidPatchPayload.validation.ok, false);
 		const diagnosticCodes = new Set(invalidPatchPayload.diagnostics.map((diagnostic) => diagnostic.code));
+		assert.ok(diagnosticCodes.has("WorkflowGraphError.unknownAgentProfileRef"));
 		assert.ok(diagnosticCodes.has("WorkflowGraphError.unknownHandlerRef"));
 		assert.ok(diagnosticCodes.has("WorkflowGraphError.unknownAdapterRef"));
 		assert.ok(diagnosticCodes.has("WorkflowGraphError.unknownGuardRef"));
 		assert.ok(diagnosticCodes.has("WorkflowGraphError.unknownPromptBuilderRef"));
 		assert.ok(diagnosticCodes.has("WorkflowGraphError.unknownHumanActionRef"));
+		assert.ok(diagnosticCodes.has("WorkflowCatalogError.unknownWorkflowVersion"));
 		assert.ok(diagnosticCodes.has("WorkflowGraphError.humanActionKindMismatch"));
 		assert.ok(diagnosticCodes.has("WorkflowGraphError.incompatibleEdgePorts"));
 		assert.ok(diagnosticCodes.has("WorkflowSecurityError.inlineExecutableCode"));
 		assert.ok(diagnosticCodes.has("WorkflowSecurityError.hiddenLlmCoercion"));
-		assert.ok(invalidPatchPayload.diagnostics.some((diagnostic) => diagnostic.registryRef === "missing.guards.inline"));
+		assertStructuredMissingRefDiagnostic(invalidPatchPayload.diagnostics, {
+			code: "WorkflowGraphError.unknownAgentProfileRef",
+			registryRef: "missing.profiles.inline",
+			nodeId: "collect",
+			path: "$.nodes.collect.profile.id",
+		});
+		assertStructuredMissingRefDiagnostic(invalidPatchPayload.diagnostics, {
+			code: "WorkflowGraphError.unknownHandlerRef",
+			registryRef: "missing.handlers.inline",
+			nodeId: "plan",
+			path: "$.nodes.plan.handler",
+		});
+		assertStructuredMissingRefDiagnostic(invalidPatchPayload.diagnostics, {
+			code: "WorkflowGraphError.unknownAdapterRef",
+			registryRef: "missing.adapters.inline",
+			nodeId: "normalize",
+			path: "$.nodes.normalize.handler.id",
+		});
+		assertStructuredMissingRefDiagnostic(invalidPatchPayload.diagnostics, {
+			code: "WorkflowGraphError.unknownPromptBuilderRef",
+			registryRef: "missing.promptAssets.inline",
+			nodeId: "promptAsset",
+			path: "$.nodes.promptAsset.promptBuilder.id",
+		});
+		assertStructuredMissingRefDiagnostic(invalidPatchPayload.diagnostics, {
+			code: "WorkflowGraphError.unknownHumanActionRef",
+			registryRef: "missing.humanActions.inline",
+			nodeId: "review",
+			path: "$.nodes.review.actions.0.id",
+		});
+		assertStructuredMissingRefDiagnostic(invalidPatchPayload.diagnostics, {
+			code: "WorkflowGraphError.unknownGuardRef",
+			registryRef: "missing.guards.inline",
+			edgeId: "collect-to-plan",
+			path: "$.edges.collect-to-plan.guard.handler",
+		});
+		assertStructuredMissingRefDiagnostic(invalidPatchPayload.diagnostics, {
+			code: "WorkflowGraphError.unknownAdapterRef",
+			registryRef: "missing.adapters.edge",
+			edgeId: "plan-to-review",
+			path: "$.edges.plan-to-review.adapter.transform.id",
+		});
+		assertStructuredMissingRefDiagnostic(invalidPatchPayload.diagnostics, {
+			code: "WorkflowCatalogError.unknownWorkflowVersion",
+			registryRef: "missing-nested-workflow@9.9.9",
+			nodeId: "childWorkflow",
+			path: "$.nodes.childWorkflow.workflowId",
+		});
 		assert.ok(invalidPatchPayload.diagnostics.some((diagnostic) => diagnostic.hint?.includes("Hidden LLM coercion is not allowed")));
+
+		const inspectResponse = await fetch(`${baseURL}/api/chat/workflows/${encodeURIComponent(duplicatePayload.draft.workflowId)}`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(inspectResponse.status, 200);
+		const inspectPayload = await inspectResponse.json();
+		assert.equal(inspectPayload.selected.kind, "draft");
+		assertStructuredMissingRefDiagnostic(inspectPayload.diagnostics, {
+			code: "WorkflowGraphError.unknownHandlerRef",
+			registryRef: "missing.handlers.inline",
+			nodeId: "plan",
+			path: "$.nodes.plan.handler",
+		});
+		assertStructuredMissingRefDiagnostic(inspectPayload.workflow.missingRefs, {
+			code: "WorkflowCatalogError.unknownWorkflowVersion",
+			registryRef: "missing-nested-workflow@9.9.9",
+			nodeId: "childWorkflow",
+			path: "$.nodes.childWorkflow.workflowId",
+		});
+		assert.equal(inspectPayload.workflow.missingRefs.some((diagnostic) => diagnostic.code === "WorkflowGraphError.humanActionKindMismatch"), false);
 	} finally {
 		await channel.stop?.();
 	}

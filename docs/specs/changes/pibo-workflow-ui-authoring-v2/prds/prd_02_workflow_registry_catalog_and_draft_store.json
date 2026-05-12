@@ -120,8 +120,8 @@
         "Typecheck passes"
       ],
       "priority": 8,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "V2 draft validation now returns structured missing-reference diagnostics for registered profiles, handlers, adapters, guards, prompt assets, human actions, and nested workflow versions, and catalog inspect missingRefs now contains only missing/unavailable reference diagnostics."
     },
     {
       "id": "US-009",

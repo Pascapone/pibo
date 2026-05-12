@@ -4358,8 +4358,23 @@ function workflowCatalogValidationStateFromVersions(versions: WorkflowCatalogVer
 	return "unknown";
 }
 
+const WORKFLOW_MISSING_REF_DIAGNOSTIC_CODES = new Set([
+	"WorkflowGraphError.unknownAgentProfileRef",
+	"WorkflowGraphError.archivedAgentProfileRef",
+	"WorkflowGraphError.unknownHandlerRef",
+	"WorkflowGraphError.unknownAdapterRef",
+	"WorkflowGraphError.unknownGuardRef",
+	"WorkflowGraphError.unknownPromptBuilderRef",
+	"WorkflowGraphError.unknownHumanActionRef",
+	"WorkflowCatalogError.unknownWorkflowVersion",
+]);
+
 function workflowMissingRefDiagnostics(diagnostics: WorkflowDraftDiagnostic[]): WorkflowDraftDiagnostic[] {
-	return uniqueWorkflowDiagnostics(sanitizeWorkflowDiagnostics(diagnostics).filter((diagnostic) => Boolean(diagnostic.registryRef)));
+	return uniqueWorkflowDiagnostics(sanitizeWorkflowDiagnostics(diagnostics).filter(isWorkflowMissingRefDiagnostic));
+}
+
+function isWorkflowMissingRefDiagnostic(diagnostic: WorkflowDraftDiagnostic): boolean {
+	return Boolean(diagnostic.registryRef && WORKFLOW_MISSING_REF_DIAGNOSTIC_CODES.has(diagnostic.code));
 }
 
 function uniqueWorkflowDiagnostics(diagnostics: WorkflowDraftDiagnostic[]): WorkflowDraftDiagnostic[] {
