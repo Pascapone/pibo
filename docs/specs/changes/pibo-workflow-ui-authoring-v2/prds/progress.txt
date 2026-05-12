@@ -1400,3 +1400,26 @@
   - Pre-run Project workflow views cannot rely on trace/run attempts; render configuration and validation from the Project session row plus lifecycle events until Start creates the first workflow run.
   - `browser-use wait text` may return false before the accessibility tree refreshes, so use `state` and a lower-cased `document.body.innerText` check when verifying transformed uppercase labels.
 ---
+## 2026-05-12 07:49 CEST - US-006
+- What was implemented
+  - Added source-level negative tests for explicit V2 deferrals in the Workflows and Project workflow UI surfaces.
+  - The tests assert visible scope-boundary copy names inline executable authoring, raw XState editing, Zod schema authoring, workflow templates/slash commands/tools, YAML/JSON product import/export, and TypeScript export as non-goals.
+  - The tests scan interactive UI controls so explanatory copy remains allowed while deferred authoring actions are not exposed as buttons, links, selects, inputs, or textareas.
+- Files changed
+  - `test/workflow-v2-deferrals.test.mjs`
+  - `docs/specs/changes/pibo-workflow-ui-authoring-v2/prds/prd_08_validation_security_testing_rollout.json`
+  - `docs/specs/changes/pibo-workflow-ui-authoring-v2/prds/progress.txt`
+- Quality checks run
+  - `docker exec pibo-dev-WorkflowsV2 bash -lc 'cd /workspace && npm run typecheck'` — passed.
+  - `docker exec pibo-dev-WorkflowsV2 bash -lc 'cd /workspace && npm run chat-ui:build && node --test test/workflow-v2-deferrals.test.mjs'` — passed, 2/2 targeted tests.
+  - `docker exec pibo-dev-WorkflowsV2 bash -lc 'cd /workspace && node --test test/workflow-v2-deferrals.test.mjs'` — passed after final helper tightening, 2/2 targeted tests.
+  - `python3 -m json.tool docs/specs/changes/pibo-workflow-ui-authoring-v2/prds/prd_08_validation_security_testing_rollout.json` — passed.
+- Browser verification, if UI changed
+  - Verified the container gateway was serving `http://127.0.0.1:4802/apps/chat` successfully.
+  - Used `browser-use --fresh-profile --session ralph-v2-deferrals` inside `pibo-dev-WorkflowsV2` with dev auth and confirmed an authenticated Chat target.
+  - Opened `/apps/chat/workflows`, captured body HTML, verified the `Workflow V2 explicit non-goals` panel included the deferred inline executable, raw XState, YAML/JSON import/export, TypeScript export, and Zod copy, and parsed interactive labels with no forbidden deferred actions found.
+  - Opened `/apps/chat/projects`, captured body HTML, verified the Project workflow V2 scope-boundary copy, and parsed interactive labels with no forbidden deferred actions found.
+  - Saved screenshot: `/tmp/ralph-v2-deferral-negative-tests.png` inside the container.
+- **Learnings for future iterations:**
+  - Source-level negative UI tests should include control `aria-label`, `title`, and `placeholder` attributes, because icon-only buttons may expose their action only through accessibility labels.
+---

@@ -92,8 +92,8 @@
         "Typecheck passes"
       ],
       "priority": 6,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Added source-level UI negative tests for explicit V2 deferrals, covering visible scope-boundary copy and ensuring interactive Workflows/Project controls do not expose deferred inline executable, raw XState, Zod, workflow template/slash-command/tool, product import/export, or TypeScript export actions."
     },
     {
       "id": "US-007",
