@@ -51,6 +51,24 @@ describe("workflow registry adapter resolution", () => {
     assert.deepEqual(result.output, { topic: "Registry adapters" });
   });
 
+  it("stores registry entry paramsSchema metadata for picker-driven params editors", () => {
+    const registry = createWorkflowRegistry();
+    const adapter: AdapterHandler = ({ input }) => ({ output: input });
+    const paramsSchema = {
+      type: "object" as const,
+      properties: {
+        format: { type: "string" as const },
+      },
+      required: ["format"],
+      additionalProperties: false as const,
+    };
+
+    const entry = registerWorkflowAdapter(registry, "fixture.adapters.withParams", adapter, { paramsSchema });
+
+    assert.deepEqual(entry.paramsSchema, paramsSchema);
+    assert.deepEqual(resolveWorkflowAdapter(registry, "fixture.adapters.withParams")?.paramsSchema, paramsSchema);
+  });
+
   it("rejects duplicate adapter registrations unless override is explicit", () => {
     const registry = createWorkflowRegistry();
     const first: AdapterHandler = ({ input }) => ({ output: String(input) });

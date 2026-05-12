@@ -80,8 +80,8 @@
         "Typecheck passes"
       ],
       "priority": 5,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented registry-controlled guard/adapter paramsSchema metadata, conditional params editors, and validation diagnostics for invalid or unsupported params."
     },
     {
       "id": "US-006",

@@ -16,12 +16,14 @@ import type {
   WorkflowRegistryEntry,
   WorkflowRegistration,
   WorkflowRegistrationOptions,
+  JsonSchema,
 } from "../types/index.js";
 
 export type WorkflowRegistryEntryOptions = WorkflowRegistrationOptions & {
   title?: string;
   description?: string;
   tags?: string[];
+  paramsSchema?: JsonSchema;
 };
 
 export function createWorkflowRegistry(providers: WorkflowProviders = {}): WorkflowRegistry {
@@ -295,5 +297,6 @@ function withOptionalEntryMetadata<TValue>(
     ...(options.title ? { title: options.title } : {}),
     ...(options.description ? { description: options.description } : {}),
     ...(options.tags ? { tags: options.tags } : {}),
+    ...(options.paramsSchema ? { paramsSchema: options.paramsSchema } : {}),
   };
 }

@@ -367,6 +367,7 @@ type WorkflowRegisteredRefOption = {
 	id: string;
 	displayName: string;
 	description?: string;
+	paramsSchema: PiboJsonObject | null;
 };
 
 type WorkflowRegisteredRefPickerResponse = {
@@ -2972,11 +2973,20 @@ const WORKFLOW_ADAPTER_REF_OPTIONS: WorkflowRegisteredRefOption[] = [
 		id: "fixture.adapters.textToTopic",
 		displayName: "Text to topic",
 		description: "Registered deterministic adapter from the workflow fixtures registry.",
+		paramsSchema: null,
 	},
 	{
 		id: "fixture.adapters.draftToSummary",
 		displayName: "Draft to summary",
 		description: "Registered deterministic adapter from the workflow fixtures registry.",
+		paramsSchema: {
+			type: "object",
+			properties: {
+				format: { type: "string", description: "Presentation format for the summarized payload." },
+			},
+			required: ["format"],
+			additionalProperties: false,
+		},
 	},
 ];
 
@@ -2985,11 +2995,20 @@ const WORKFLOW_GUARD_REF_OPTIONS: WorkflowRegisteredRefOption[] = [
 		id: "fixture.guards.approved",
 		displayName: "Approved",
 		description: "Registered guard from the workflow fixtures registry.",
+		paramsSchema: {
+			type: "object",
+			properties: {
+				expected: { type: "boolean", description: "Expected approval flag for this guarded route." },
+			},
+			required: ["expected"],
+			additionalProperties: false,
+		},
 	},
 	{
 		id: "fixture.guards.needsRevision",
 		displayName: "Needs revision",
 		description: "Registered guard from the workflow fixtures registry.",
+		paramsSchema: null,
 	},
 ];
 
@@ -2998,6 +3017,7 @@ const WORKFLOW_PROMPT_ASSET_REF_OPTIONS: WorkflowRegisteredRefOption[] = [
 		id: "fixture.promptBuilders.draftPrompt",
 		displayName: "Draft prompt builder",
 		description: "Registered prompt asset/prompt-builder ref from the workflow fixtures registry.",
+		paramsSchema: null,
 	},
 ];
 
@@ -3007,12 +3027,14 @@ const WORKFLOW_HUMAN_ACTION_REF_OPTIONS: WorkflowHumanActionOption[] = [
 		kind: "approve",
 		displayName: "Approve",
 		description: "Registered human action for approving a pending workflow wait token.",
+		paramsSchema: null,
 	},
 	{
 		id: "fixture.humanActions.reject",
 		kind: "reject",
 		displayName: "Reject",
 		description: "Registered human action for rejecting a pending workflow wait token.",
+		paramsSchema: null,
 	},
 ];
 
@@ -4582,7 +4604,8 @@ function validateRegisteredAdapterRefLike(
 		});
 		return;
 	}
-	if (!WORKFLOW_ADAPTER_REF_OPTIONS.some((option) => option.id === ref.id)) {
+	const registered = WORKFLOW_ADAPTER_REF_OPTIONS.find((option) => option.id === ref.id);
+	if (!registered) {
 		diagnostics.push({
 			code: "WorkflowGraphError.unknownAdapterRef",
 			message: `${target.ownerLabel} references adapter '${ref.id}', but it is not registered in the Workflow Registry.`,
@@ -4593,15 +4616,25 @@ function validateRegisteredAdapterRefLike(
 			registryRef: ref.id,
 			hint: "Select a registered adapter ref before publishing or running this workflow.",
 		});
+		return;
 	}
+	validateWorkflowRegisteredRefParamsLike(ref.params, registered.paramsSchema, diagnostics, {
+		kind: "adapter",
+		path: `${target.path}.params`,
+		ownerLabel: target.ownerLabel,
+		registryRef: ref.id,
+		nodeId: target.nodeId,
+		edgeId: target.edgeId,
+	});
 }
 
-function readRegisteredAdapterRef(value: unknown): { id?: string; valid: boolean } {
+function readRegisteredAdapterRef(value: unknown): { id?: string; valid: boolean; params?: unknown } {
 	if (!isJsonObject(value)) return { valid: false };
 	const id = typeof value.id === "string" ? value.id.trim() : undefined;
 	return {
 		id,
 		valid: value.kind === "adapter" && value.language === "typescript" && Boolean(id),
+		...(value.params !== undefined ? { params: value.params } : {}),
 	};
 }
 
@@ -4628,7 +4661,8 @@ function validateWorkflowGuardRefLike(edgeId: string, value: unknown, diagnostic
 			edgeId,
 		});
 	}
-	if (!WORKFLOW_GUARD_REF_OPTIONS.some((option) => option.id === guardId)) {
+	const registered = WORKFLOW_GUARD_REF_OPTIONS.find((option) => option.id === guardId);
+	if (!registered) {
 		diagnostics.push({
 			code: "WorkflowGraphError.unknownGuardRef",
 			message: `Workflow edge '${edgeId}' references guard '${guardId}', but it is not registered in the Workflow Registry.`,
@@ -4638,7 +4672,134 @@ function validateWorkflowGuardRefLike(edgeId: string, value: unknown, diagnostic
 			registryRef: guardId,
 			hint: "Select a registered guard ref before publishing or running this workflow.",
 		});
+		return;
 	}
+	validateWorkflowRegisteredRefParamsLike(value.params, registered.paramsSchema, diagnostics, {
+		kind: "guard",
+		path: `$.edges.${edgeId}.guard.params`,
+		ownerLabel: `Workflow edge '${edgeId}' guard`,
+		registryRef: guardId,
+		edgeId,
+	});
+}
+
+function validateWorkflowRegisteredRefParamsLike(
+	value: unknown,
+	paramsSchema: PiboJsonObject | null,
+	diagnostics: WorkflowDraftDiagnostic[],
+	target: Pick<WorkflowDraftDiagnostic, "nodeId" | "edgeId"> & { kind: "guard" | "adapter"; path: string; ownerLabel: string; registryRef: string },
+): void {
+	if (value === undefined) return;
+	const code = target.kind === "guard" ? "WorkflowGraphError.invalidGuardParams" : "WorkflowGraphError.invalidAdapterParams";
+	if (!paramsSchema) {
+		diagnostics.push({
+			code: target.kind === "guard" ? "WorkflowGraphError.unexpectedGuardParams" : "WorkflowGraphError.unexpectedAdapterParams",
+			message: `${target.ownerLabel} declares params, but registry ref '${target.registryRef}' does not expose a paramsSchema.`,
+			severity: "error",
+			path: target.path,
+			nodeId: target.nodeId,
+			edgeId: target.edgeId,
+			registryRef: target.registryRef,
+			hint: "Remove params or select a registered ref whose picker metadata includes paramsSchema.",
+		});
+		return;
+	}
+	if (!isJsonObject(value)) {
+		diagnostics.push({
+			code,
+			message: `${target.ownerLabel} params for '${target.registryRef}' must be a JSON object matching the registry paramsSchema.`,
+			severity: "error",
+			path: target.path,
+			nodeId: target.nodeId,
+			edgeId: target.edgeId,
+			registryRef: target.registryRef,
+			hint: "Edit params as JSON object data only; inline handlers or arbitrary code are not allowed.",
+		});
+		return;
+	}
+	validateWorkflowParamsValueAgainstSchema(value, paramsSchema, target.path, diagnostics, target, code);
+}
+
+function validateWorkflowParamsValueAgainstSchema(
+	value: unknown,
+	schema: PiboJsonObject,
+	path: string,
+	diagnostics: WorkflowDraftDiagnostic[],
+	target: Pick<WorkflowDraftDiagnostic, "nodeId" | "edgeId"> & { ownerLabel: string; registryRef: string },
+	code: "WorkflowGraphError.invalidGuardParams" | "WorkflowGraphError.invalidAdapterParams",
+): void {
+	const typeNames = readParamsSchemaTypes(schema.type);
+	if (typeNames.length && !typeNames.some((typeName) => workflowParamValueMatchesType(value, typeName))) {
+		diagnostics.push({
+			code,
+			message: `${target.ownerLabel} params for '${target.registryRef}' do not match the registry paramsSchema type at '${path}'.`,
+			severity: "error",
+			path,
+			nodeId: target.nodeId,
+			edgeId: target.edgeId,
+			registryRef: target.registryRef,
+			hint: "Use the selected ref's paramsSchema from the picker when editing params.",
+		});
+		return;
+	}
+	if (isJsonObject(value)) {
+		const required = Array.isArray(schema.required) ? schema.required.filter((entry): entry is string => typeof entry === "string") : [];
+		for (const requiredKey of required) {
+			if (Object.hasOwn(value, requiredKey)) continue;
+			diagnostics.push({
+				code,
+				message: `${target.ownerLabel} params for '${target.registryRef}' are missing required registry paramsSchema field '${requiredKey}'.`,
+				severity: "error",
+				path: workflowParamsChildPath(path, requiredKey),
+				nodeId: target.nodeId,
+				edgeId: target.edgeId,
+				registryRef: target.registryRef,
+				hint: "Add the required params field or remove the params block.",
+			});
+		}
+		const properties = isJsonObject(schema.properties) ? schema.properties : {};
+		for (const [key, propertyValue] of Object.entries(value)) {
+			const propertySchema = properties[key];
+			if (isJsonObject(propertySchema)) {
+				validateWorkflowParamsValueAgainstSchema(propertyValue, propertySchema, workflowParamsChildPath(path, key), diagnostics, target, code);
+			} else if (schema.additionalProperties === false) {
+				diagnostics.push({
+					code,
+					message: `${target.ownerLabel} params for '${target.registryRef}' include field '${key}', which is not allowed by the registry paramsSchema.`,
+					severity: "error",
+					path: workflowParamsChildPath(path, key),
+					nodeId: target.nodeId,
+					edgeId: target.edgeId,
+					registryRef: target.registryRef,
+					hint: "Remove fields not declared by the selected ref's paramsSchema.",
+				});
+			}
+		}
+	}
+	if (Array.isArray(value) && isJsonObject(schema.items)) {
+		value.forEach((item, index) => validateWorkflowParamsValueAgainstSchema(item, schema.items as PiboJsonObject, `${path}.${index}`, diagnostics, target, code));
+	}
+}
+
+function readParamsSchemaTypes(value: unknown): string[] {
+	if (typeof value === "string") return [value];
+	if (Array.isArray(value)) return value.filter((entry): entry is string => typeof entry === "string");
+	return [];
+}
+
+function workflowParamValueMatchesType(value: unknown, typeName: string): boolean {
+	if (typeName === "string") return typeof value === "string";
+	if (typeName === "number") return typeof value === "number";
+	if (typeName === "integer") return typeof value === "number" && Number.isInteger(value);
+	if (typeName === "boolean") return typeof value === "boolean";
+	if (typeName === "object") return isJsonObject(value);
+	if (typeName === "array") return Array.isArray(value);
+	if (typeName === "null") return value === null;
+	return true;
+}
+
+function workflowParamsChildPath(path: string, key: string): string {
+	return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(key) ? `${path}.${key}` : `${path}[${JSON.stringify(key)}]`;
 }
 
 function validateWorkflowHumanActionRefsLike(nodeId: string, value: unknown, diagnostics: WorkflowDraftDiagnostic[]): void {

@@ -230,6 +230,7 @@ export type AdapterRef = {
   kind: "adapter";
   language: "typescript";
   id: RegistryRefId;
+  params?: JsonObject;
 };
 
 export type AdapterNodeDefinition = BaseNodeDefinition & {
@@ -256,6 +257,7 @@ export type JoinPolicy = "all_success" | "one_success" | "none_failed_min_one_su
 export type GuardRef = {
   handler: RegistryRefId;
   priority?: number;
+  params?: JsonObject;
 };
 
 export type EdgeAdapterDefinition = {
@@ -493,6 +495,7 @@ export type WorkflowRegistryEntry<TValue> = {
   title?: string;
   description?: string;
   tags?: string[];
+  paramsSchema?: JsonSchema;
   value: TValue;
 };
 

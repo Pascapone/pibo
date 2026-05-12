@@ -263,6 +263,7 @@ export type WorkflowRegisteredRefOption = {
 	id: string;
 	displayName: string;
 	description?: string;
+	paramsSchema: Record<string, unknown> | null;
 };
 
 export type WorkflowRegisteredRefPickerResponse = {

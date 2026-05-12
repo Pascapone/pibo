@@ -104,6 +104,7 @@ type WorkflowNodeInspectorFormState = {
 	promptTemplate: string;
 	handlerId: string;
 	adapterRef: string;
+	adapterParamsText: string;
 	workflowVersionKey: string;
 	humanPrompt: string;
 };
@@ -115,7 +116,9 @@ type WorkflowEdgeInspectorFormState = {
 	kind: "data" | "control" | "error" | "resume";
 	guardHandler: string;
 	guardPriority: string;
+	guardParamsText: string;
 	adapterRef: string;
+	adapterParamsText: string;
 };
 type WorkflowEdgePortDetails = {
 	sourceNodeId?: string;
@@ -1211,6 +1214,7 @@ function WorkflowNodeInspector({ draft, nodeId, node, isSaving, onSaveDefinition
 	const [workflowPicker, setWorkflowPicker] = useState<WorkflowVersionPickerResponse | undefined>();
 	const nodeKind = workflowNodeKind(node);
 	const nodeDiagnostics = workflowDiagnosticsForNode(draft.diagnostics, nodeId);
+	const selectedAdapterOption = adapterPicker?.options.find((option) => option.id === (adapterPicker?.selectedRefId ?? form.adapterRef));
 
 	useEffect(() => {
 		setForm(createWorkflowNodeInspectorFormState(node));
@@ -1328,6 +1332,14 @@ function WorkflowNodeInspector({ draft, nodeId, node, isSaving, onSaveDefinition
 							</select>
 						</label>
 						<WorkflowInspectorPickerDiagnostics diagnostics={adapterPicker?.diagnostics ?? []} />
+						{selectedAdapterOption?.paramsSchema ? (
+							<WorkflowParamsEditor
+								label="Adapter params JSON"
+								schema={selectedAdapterOption.paramsSchema}
+								value={form.adapterParamsText}
+								onChange={(value) => update("adapterParamsText", value)}
+							/>
+						) : null}
 						<div className="rounded-sm border border-slate-800 bg-[#151f24]/70 p-2 text-[11px] leading-5 text-slate-500">
 							Adapter nodes store only a registered deterministic adapter ref. Inline transformation code and hidden LLM coercion are not exposed by the UI.
 						</div>
@@ -1376,6 +1388,8 @@ function WorkflowEdgeInspector({ draft, edgeId, edge, nodeIds, isSaving, onSaveD
 	const edgeDiagnostics = workflowDiagnosticsForEdge(draft.diagnostics, edgeId);
 	const edgePortDetails = createWorkflowEdgePortDetails(draft.definition, edge);
 	const hasIncompatibleEdgeDiagnostic = edgeDiagnostics.some((diagnostic) => diagnostic.code === "WorkflowGraphError.incompatibleEdgePorts");
+	const selectedGuardOption = guardPicker?.options.find((option) => option.id === (guardPicker?.selectedRefId ?? form.guardHandler));
+	const selectedAdapterOption = adapterPicker?.options.find((option) => option.id === (adapterPicker?.selectedRefId ?? form.adapterRef));
 
 	useEffect(() => {
 		setForm(createWorkflowEdgeInspectorFormState(edge, nodeIds));
@@ -1472,6 +1486,12 @@ function WorkflowEdgeInspector({ draft, edgeId, edge, nodeIds, isSaving, onSaveD
 						</select>
 					</label>
 				</div>
+				{selectedGuardOption?.paramsSchema ? (
+					<WorkflowParamsEditor label="Guard params JSON" schema={selectedGuardOption.paramsSchema} value={form.guardParamsText} onChange={(value) => update("guardParamsText", value)} />
+				) : null}
+				{selectedAdapterOption?.paramsSchema ? (
+					<WorkflowParamsEditor label="Edge adapter params JSON" schema={selectedAdapterOption.paramsSchema} value={form.adapterParamsText} onChange={(value) => update("adapterParamsText", value)} />
+				) : null}
 				<button
 					type="button"
 					className={`inline-flex items-center justify-center gap-2 rounded-sm border px-3 py-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${hasIncompatibleEdgeDiagnostic ? "border-amber-600/70 text-amber-100 hover:border-amber-400" : "border-slate-700 text-slate-300 hover:border-[#11a4d4]/60 hover:text-slate-100"}`}
@@ -1681,6 +1701,23 @@ function WorkflowListTextEditor({ label, value, onChange }: { label: string; val
 			<span>{label}</span>
 			<textarea className="min-h-16 rounded-sm border border-slate-700 bg-[#101d22] px-2 py-1.5 text-slate-100" value={value} onChange={(event) => onChange(event.target.value)} placeholder="One value per line" />
 		</label>
+	);
+}
+
+function WorkflowParamsEditor({ label, schema, value, onChange }: { label: string; schema: Record<string, unknown>; value: string; onChange: (value: string) => void }) {
+	return (
+		<div className="grid gap-2 rounded-sm border border-slate-800 bg-[#101d22] p-2" aria-label={label}>
+			<div className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">{label}</div>
+			<HandlerSchemaPreview label="paramsSchema" schema={schema} />
+			<textarea
+				className="min-h-24 rounded-sm border border-slate-700 bg-[#151f24] px-2 py-1.5 font-mono text-[11px] leading-5 text-slate-100"
+				value={value}
+				onChange={(event) => onChange(event.target.value)}
+				placeholder="{}"
+				aria-label={`${label} value`}
+			/>
+			<div className="text-[11px] leading-5 text-slate-500">Params save as data on the selected registry ref. No inline code path is created.</div>
+		</div>
 	);
 }
 
@@ -2678,6 +2715,7 @@ function createWorkflowNodeInspectorFormState(node: WorkflowJsonObject): Workflo
 		promptTemplate: typeof node.promptTemplate === "string" ? node.promptTemplate : "",
 		handlerId: typeof node.handler === "string" ? node.handler : "",
 		adapterRef: readAdapterRefId(node.handler),
+		adapterParamsText: formatWorkflowParamsText(readAdapterRefParams(node.handler)),
 		workflowVersionKey: workflowId && workflowVersion ? workflowVersionSelectionKey(workflowId, workflowVersion) : "",
 		humanPrompt: typeof node.prompt === "string" ? node.prompt : "",
 	};
@@ -2704,7 +2742,11 @@ function applyWorkflowNodeInspectorForm(definition: WorkflowDraftDefinition, nod
 	}
 	if (nodeKind === "adapter") {
 		nextNode.mode = "deterministic";
-		if (form.adapterRef.trim()) nextNode.handler = createRegisteredAdapterRef(form.adapterRef.trim());
+		if (form.adapterRef.trim()) {
+			const handler = createRegisteredAdapterRef(form.adapterRef.trim());
+			writeWorkflowParams(handler, form.adapterParamsText);
+			nextNode.handler = handler;
+		}
 	}
 	if (nodeKind === "workflow") {
 		const selection = parseWorkflowVersionKey(form.workflowVersionKey);
@@ -2738,7 +2780,9 @@ function createWorkflowEdgeInspectorFormState(edge: WorkflowJsonObject, nodeIds:
 		kind,
 		guardHandler: guard && typeof guard.handler === "string" ? guard.handler : "",
 		guardPriority: guard && typeof guard.priority === "number" ? String(guard.priority) : "",
+		guardParamsText: formatWorkflowParamsText(guard?.params),
 		adapterRef: transform && typeof transform.id === "string" ? transform.id : "",
+		adapterParamsText: formatWorkflowParamsText(transform?.params),
 	};
 }
 
@@ -2756,21 +2800,25 @@ function applyWorkflowEdgeInspectorForm(definition: WorkflowDraftDefinition, edg
 	const guardHandler = form.guardHandler.trim();
 	if (guardHandler) {
 		const priority = Number.parseInt(form.guardPriority, 10);
-		nextEdge.guard = {
+		const guard: WorkflowJsonObject = {
 			handler: guardHandler,
 			...(Number.isInteger(priority) && priority >= 0 ? { priority } : {}),
 		};
+		writeWorkflowParams(guard, form.guardParamsText);
+		nextEdge.guard = guard;
 	} else {
 		delete nextEdge.guard;
 	}
 	const adapterRef = form.adapterRef.trim();
 	if (adapterRef) {
 		const previousAdapter = isWorkflowJsonObject(currentEdge.adapter) ? currentEdge.adapter : {};
+		const transform = createRegisteredAdapterRef(adapterRef);
+		writeWorkflowParams(transform, form.adapterParamsText);
 		nextEdge.adapter = {
 			...previousAdapter,
 			kind: "edgeAdapter",
 			output: isWorkflowJsonObject(previousAdapter.output) ? previousAdapter.output : createWorkflowPort("text", "", undefined),
-			transform: { kind: "adapter", language: "typescript", id: adapterRef },
+			transform,
 		};
 	} else {
 		delete nextEdge.adapter;
@@ -2954,8 +3002,34 @@ function readAdapterRefId(value: unknown): string {
 	return isWorkflowJsonObject(value) && value.kind === "adapter" && value.language === "typescript" && typeof value.id === "string" ? value.id : "";
 }
 
+function readAdapterRefParams(value: unknown): unknown {
+	return isWorkflowJsonObject(value) && value.kind === "adapter" && value.language === "typescript" ? value.params : undefined;
+}
+
 function createRegisteredAdapterRef(adapterRef: string): WorkflowJsonObject {
 	return { kind: "adapter", language: "typescript", id: adapterRef };
+}
+
+function formatWorkflowParamsText(value: unknown): string {
+	if (value === undefined) return "";
+	try {
+		return JSON.stringify(value, null, 2) ?? "";
+	} catch {
+		return "";
+	}
+}
+
+function writeWorkflowParams(target: WorkflowJsonObject, value: string): void {
+	const trimmed = value.trim();
+	if (!trimmed) {
+		delete target.params;
+		return;
+	}
+	try {
+		target.params = JSON.parse(trimmed) as unknown;
+	} catch {
+		target.params = trimmed;
+	}
 }
 
 function formatWorkflowStringList(value: unknown): string {
@@ -3176,6 +3250,7 @@ function RegisteredRefOptionCard({ option, badge }: { option: WorkflowRegistered
 				<WorkflowPill label={badge} />
 			</div>
 			{option.description ? <div className="mt-2 text-slate-500">{option.description}</div> : null}
+			{option.paramsSchema ? <div className="mt-3"><HandlerSchemaPreview label="paramsSchema" schema={option.paramsSchema} /></div> : null}
 		</div>
 	);
 }

@@ -1,4 +1,5 @@
 ## Codebase Patterns
+- Registered guard/adapter params should flow from picker `paramsSchema` metadata; render params editors only for selected refs with schemas and reject params on refs without schemas.
 - Workflow lifecycle observability for Chat Web belongs in durable `workflow_lifecycle_events` records and Project bootstrap data so configured-session run inspection can surface start-blocked diagnostics without a workflow run id.
 - Project Workflow/XState run inspection panels should render status, current node, run history, node attempts, edge transfers, output, and error sections with explicit empty states for configured/not-started sessions while labeling XState as projection-only.
 - Workflow Builder inspectors should patch the same draft Pibo Workflow IR through existing draft PATCH validation triggers; capability refs in inspectors should come from picker APIs instead of free-text fields.
@@ -1048,4 +1049,32 @@
 - **Learnings for future iterations:**
   - Keep raw editor textarea state separate from the draft `definition`; invalid server responses should update diagnostics but not clobber the user's repair buffer.
   - Browser-use DOM evaluation can reliably exercise React textareas by using the native textarea value setter and dispatching a bubbling `input` event before clicking the save button.
+---
+## 2026-05-12 05:09 CEST - US-005
+- What was implemented
+  - Added `paramsSchema` metadata to registered guard/adapter picker responses and registry entries.
+  - Added conditional Workflow Builder params editors for adapter node refs, edge guard refs, and edge adapter refs when the selected registry option exposes `paramsSchema`.
+  - Validated guard/adapter params at draft validation time, including unexpected params on refs without schemas and typed/path diagnostics for invalid params.
+- Files changed
+  - `packages/workflows/src/types/index.ts`
+  - `packages/workflows/src/registry/index.ts`
+  - `packages/workflows/src/testing/registry.test.ts`
+  - `src/apps/chat/web-app.ts`
+  - `src/apps/chat-ui/src/api.ts`
+  - `src/apps/chat-ui/src/WorkflowsArea.tsx`
+  - `test/web-channel.test.mjs`
+  - `docs/specs/changes/pibo-workflow-ui-authoring-v2/prds/prd_05_composition_node_and_capability_pickers.json`
+  - `docs/specs/changes/pibo-workflow-ui-authoring-v2/prds/progress.txt`
+- Quality checks run
+  - `docker exec pibo-dev-WorkflowsV2 bash -lc 'cd /workspace && npm run typecheck'` — passed.
+  - `docker exec pibo-dev-WorkflowsV2 bash -lc 'cd /workspace && npm --prefix packages/workflows test -- src/testing/registry.test.ts'` — passed, 137/137 workflow package tests.
+  - `docker exec pibo-dev-WorkflowsV2 bash -lc 'cd /workspace && npm run build && node --test test/web-channel.test.mjs'` — passed, 63/63 tests.
+- Browser verification, if UI changed
+  - Restarted the container web gateway from `/workspace` and verified `http://127.0.0.1:4802/apps/chat` returned OK.
+  - Used `browser-use --fresh-profile --session ralph-v2` inside `pibo-dev-WorkflowsV2` with dev auth.
+  - Created a workflow draft with a registered guard params block and a registered edge adapter params block, opened it in the Workflow Builder, selected both relevant edges, and verified `Guard params JSON`, `Edge adapter params JSON`, and `paramsSchema` appeared only for refs with schema metadata.
+  - Saved screenshot: `/tmp/ralph-v2-guard-adapter-params.png` inside the container.
+- **Learnings for future iterations:**
+  - Picker metadata must include `paramsSchema` consistently because the UI and draft validator both depend on the same selected registered ref metadata.
+  - Browser-use eval arguments cannot safely contain whitespace in this wrapper; for complex browser setup, keep JavaScript compact or drive the browser through simpler commands.
 ---

@@ -1889,6 +1889,11 @@ test("workflow guard and adapter pickers list registered refs and report missing
 			"fixture.guards.approved",
 			"fixture.guards.needsRevision",
 		]);
+		const approvedGuard = guardPayload.options.find((option) => option.id === "fixture.guards.approved");
+		assert.equal(approvedGuard.paramsSchema.type, "object");
+		assert.deepEqual(approvedGuard.paramsSchema.required, ["expected"]);
+		const revisionGuard = guardPayload.options.find((option) => option.id === "fixture.guards.needsRevision");
+		assert.equal(revisionGuard.paramsSchema, null);
 
 		const selectedGuard = await fetch(`${baseURL}/api/chat/workflows/pickers/guards?selectedRefId=fixture.guards.approved`, {
 			headers: { "x-test-user": "user-1" },
@@ -1917,6 +1922,11 @@ test("workflow guard and adapter pickers list registered refs and report missing
 			"fixture.adapters.draftToSummary",
 			"fixture.adapters.textToTopic",
 		]);
+		const summaryAdapter = adapterPayload.options.find((option) => option.id === "fixture.adapters.draftToSummary");
+		assert.equal(summaryAdapter.paramsSchema.type, "object");
+		assert.deepEqual(summaryAdapter.paramsSchema.required, ["format"]);
+		const topicAdapter = adapterPayload.options.find((option) => option.id === "fixture.adapters.textToTopic");
+		assert.equal(topicAdapter.paramsSchema, null);
 
 		const missingAdapter = await fetch(`${baseURL}/api/chat/workflows/pickers/adapters?selectedRefId=missing.adapters.inline`, {
 			headers: { "x-test-user": "user-1" },
@@ -2199,7 +2209,7 @@ test("workflow security boundary validates registered refs and rejects inline ex
 					from: { nodeId: "collect" },
 					to: { nodeId: "plan" },
 					kind: "data",
-					guard: { handler: "fixture.guards.approved", priority: 0 },
+					guard: { handler: "fixture.guards.approved", priority: 0, params: { expected: true } },
 				},
 				"plan-to-review": {
 					id: "plan-to-review",
@@ -2208,7 +2218,7 @@ test("workflow security boundary validates registered refs and rejects inline ex
 					kind: "data",
 					adapter: {
 						kind: "edgeAdapter",
-						transform: { kind: "adapter", language: "typescript", id: "fixture.adapters.draftToSummary" },
+						transform: { kind: "adapter", language: "typescript", id: "fixture.adapters.draftToSummary", params: { format: "compact" } },
 						output: textPort,
 					},
 				},
@@ -2224,6 +2234,22 @@ test("workflow security boundary validates registered refs and rejects inline ex
 		const validPatchPayload = await validPatchResponse.json();
 		assert.equal(validPatchPayload.validation.ok, true);
 		assert.equal(validPatchPayload.diagnostics.some((diagnostic) => diagnostic.severity === "error"), false);
+
+		const invalidParamsDefinition = structuredClone(secureDefinition);
+		invalidParamsDefinition.nodes.normalize.handler.params = { unsupported: true };
+		invalidParamsDefinition.edges["collect-to-plan"].guard.params = { expected: "yes", extra: true };
+		invalidParamsDefinition.edges["plan-to-review"].adapter.transform.params = { format: 12 };
+		const invalidParamsPatchResponse = await fetch(`${baseURL}/api/chat/workflows/drafts/${encodeURIComponent(draftId)}`, {
+			method: "PATCH",
+			headers: jsonHeaders,
+			body: JSON.stringify({ definition: invalidParamsDefinition, editTrigger: "edge_edit" }),
+		});
+		assert.equal(invalidParamsPatchResponse.status, 200);
+		const invalidParamsPatchPayload = await invalidParamsPatchResponse.json();
+		assert.equal(invalidParamsPatchPayload.validation.ok, false);
+		assert.ok(invalidParamsPatchPayload.diagnostics.some((diagnostic) => diagnostic.code === "WorkflowGraphError.unexpectedAdapterParams" && diagnostic.path === "$.nodes.normalize.handler.params" && diagnostic.nodeId === "normalize"));
+		assert.ok(invalidParamsPatchPayload.diagnostics.some((diagnostic) => diagnostic.code === "WorkflowGraphError.invalidGuardParams" && diagnostic.path === "$.edges.collect-to-plan.guard.params.expected" && diagnostic.edgeId === "collect-to-plan"));
+		assert.ok(invalidParamsPatchPayload.diagnostics.some((diagnostic) => diagnostic.code === "WorkflowGraphError.invalidAdapterParams" && diagnostic.path === "$.edges.plan-to-review.adapter.transform.params.format" && diagnostic.edgeId === "plan-to-review"));
 
 		const invalidDefinition = structuredClone(secureDefinition);
 		invalidDefinition.nodes.plan.handler = "missing.handlers.inline";
