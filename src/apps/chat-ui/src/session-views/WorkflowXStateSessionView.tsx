@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Activity, AlertTriangle, CheckCircle2, Circle, Clock3, GitBranch, Layers3, ListChecks, Route, XCircle } from "lucide-react";
 import { JsonRenderer } from "../tracing/JsonRenderer";
-import type { PiboProjectSession, PiboSessionTraceView, PiboTraceNode, PiboWebSessionStatus } from "../types";
+import type { PiboProjectSession, PiboSessionSignalSnapshot, PiboSessionTraceView, PiboTraceNode, PiboWebSessionStatus } from "../types";
 import type { ChatSessionViewProps } from "./types";
 
 type WorkflowNodeStatus = "idle" | "active" | "waiting" | "completed" | "failed" | "cancelled";
@@ -41,7 +41,7 @@ export function WorkflowXStateSessionView({
 	selectedSessionSignal,
 	workflowProjectSession,
 }: ChatSessionViewProps) {
-	const workflowModel = workflowProjectSession ? createProjectSessionWorkflowModel(workflowProjectSession, traceView, selectedSessionStatus) : null;
+	const workflowModel = workflowProjectSession ? createProjectSessionWorkflowModel(workflowProjectSession, traceView, selectedSessionStatus, selectedSessionSignal) : null;
 
 	if (!workflowModel) {
 		return (
@@ -56,7 +56,7 @@ export function WorkflowXStateSessionView({
 							{isLoading ? "Loading session trace…" : "This session is not linked to a workflow run, so no Workflow/XState projection is available."}
 						</p>
 					</div>
-					<WorkflowCreationEditingDeferredNotice />
+					<WorkflowProjectionBoundaryNotice />
 				</div>
 			</section>
 		);
@@ -66,7 +66,8 @@ export function WorkflowXStateSessionView({
 		<section className="min-w-0 flex-1 overflow-auto bg-[#0b0f14] p-4 text-slate-300">
 			<div className="mx-auto flex max-w-6xl flex-col gap-4">
 				<WorkflowSummaryCard model={workflowModel} />
-				<WorkflowCreationEditingDeferredNotice />
+				<WorkflowProjectionBoundaryNotice />
+				<WorkflowExecutionShell model={workflowModel} />
 				<WorkflowGraph nodes={workflowModel.nodes} edges={workflowModel.edges} />
 				<div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
 					<WorkflowRuntimeSnapshot model={workflowModel} />
@@ -81,8 +82,20 @@ export function WorkflowXStateSessionView({
 	);
 }
 
+type WorkflowConfigurationSummary = {
+	inputKeys: string[];
+	promptOverrideNodeIds: string[];
+};
+
+type WorkflowPendingHumanAction = {
+	id: string;
+	label: string;
+	source: string;
+};
+
 type WorkflowProjectSessionUiModel = {
 	workflowId: string;
+	workflowVersion?: string;
 	workflowRunId?: string;
 	piboSessionId: string;
 	state: string;
@@ -92,6 +105,8 @@ type WorkflowProjectSessionUiModel = {
 	latestStreamId?: number;
 	nodes: WorkflowVisualNode[];
 	edges: WorkflowVisualEdge[];
+	configuration: WorkflowConfigurationSummary;
+	pendingHumanActions: WorkflowPendingHumanAction[];
 	finalOutput?: WorkflowFinalOutput;
 	validationErrors: WorkflowValidationError[];
 	snapshot: Record<string, unknown>;
@@ -118,32 +133,110 @@ function WorkflowSummaryCard({ model }: { model: WorkflowProjectSessionUiModel }
 				</div>
 			</div>
 			<p className="mt-3 text-sm text-slate-400">
-				Dedicated workflow visualization surface. This V1 view derives the current XState-style UI snapshot from project-session workflow linkage and live session state while keeping kernel records as durable truth.
+				Dedicated Project workflow execution surface. This view derives the current XState-style UI snapshot from project-session workflow linkage and live session state while keeping kernel records as durable truth.
 			</p>
 		</div>
 	);
 }
 
-function WorkflowCreationEditingDeferredNotice() {
+function WorkflowProjectionBoundaryNotice() {
 	return (
 		<div className="rounded-sm border border-amber-500/30 bg-amber-500/10 p-4 text-sm">
 			<div className="flex flex-wrap items-start justify-between gap-3">
 				<div className="min-w-0">
 					<div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-amber-200">
 						<AlertTriangle size={14} />
-						Read-only V1 workflow surface
+						Workflow IR source-of-truth boundary
 					</div>
 					<p className="mt-2 max-w-3xl text-xs leading-5 text-amber-100/80">
-						Workflow creation, visual graph editing, and raw XState JSON editing are intentionally deferred in V1. This tab only inspects registered workflow runs and their XState-style projection; workflow definitions remain TypeScript-owned through the Workflow Registry.
+						Projects inspect configured sessions, workflow runs, and the XState-style projection derived from Pibo Workflow IR. Authoring stays in the Workflows tab; raw XState editing and inline executable code are not exposed here.
 					</p>
 				</div>
 				<div className="flex shrink-0 flex-wrap gap-2">
-					<span className="rounded border border-amber-500/40 bg-[#0b0f14]/50 px-2 py-1 text-[10px] uppercase tracking-wide text-amber-100/80">create workflow: deferred</span>
-					<span className="rounded border border-amber-500/40 bg-[#0b0f14]/50 px-2 py-1 text-[10px] uppercase tracking-wide text-amber-100/80">edit workflow: deferred</span>
+					<span className="rounded border border-amber-500/40 bg-[#0b0f14]/50 px-2 py-1 text-[10px] uppercase tracking-wide text-amber-100/80">IR: source of truth</span>
+					<span className="rounded border border-amber-500/40 bg-[#0b0f14]/50 px-2 py-1 text-[10px] uppercase tracking-wide text-amber-100/80">XState: projection only</span>
 				</div>
 			</div>
 		</div>
 	);
+}
+
+function WorkflowExecutionShell({ model }: { model: WorkflowProjectSessionUiModel }) {
+	const activeNode = currentWorkflowNode(model);
+	const selectedWorkflow = `${model.workflowId}${model.workflowVersion ? `@${model.workflowVersion}` : ""}`;
+	return (
+		<div className="grid gap-4 lg:grid-cols-3" aria-label="Projects workflow execution shell">
+			<WorkflowShellCard title="Workflow configured-session view" icon={<ListChecks size={14} />}>
+				<div className="space-y-3 text-xs text-slate-400">
+					<WorkflowShellFact label="selected workflow" value={selectedWorkflow} />
+					<WorkflowShellFact label="session state" value={model.workflowRunId ? "started" : "configured/not-started"} />
+					<WorkflowShellFact label="input keys" value={String(model.configuration.inputKeys.length)} />
+					<WorkflowShellFact label="prompt overrides" value={String(model.configuration.promptOverrideNodeIds.length)} />
+					<p className="leading-5 text-slate-500">
+						Saved configuration is reviewed here before Start. Workflow selection and session overrides remain immutable for this configured Project session.
+					</p>
+				</div>
+			</WorkflowShellCard>
+			<WorkflowShellCard title="Workflow run view" icon={<Activity size={14} />}>
+				<div className="space-y-3 text-xs text-slate-400">
+					<WorkflowShellFact label="run id" value={model.workflowRunId ? shortWorkflowValue(model.workflowRunId) : "not started"} />
+					<WorkflowShellFact label="status" value={model.state} />
+					<WorkflowShellFact label="current node" value={activeNode?.label ?? "none"} />
+					<WorkflowShellFact label="output" value={model.finalOutput ? "available" : "empty"} />
+					<WorkflowShellFact label="error" value={model.validationErrors.length ? `${model.validationErrors.length} validation diagnostics` : "none"} />
+					<p className="leading-5 text-slate-500">
+						This workflow run view container is the stable Project home for status, current node, output, and error sections.
+					</p>
+				</div>
+			</WorkflowShellCard>
+			<WorkflowShellCard title="Human action area" icon={<Clock3 size={14} />}>
+				<div className="space-y-3 text-xs text-slate-400">
+					{model.pendingHumanActions.length ? (
+						<div className="space-y-2">
+							{model.pendingHumanActions.map((action) => (
+								<div key={action.id} className="rounded-sm border border-amber-500/40 bg-amber-500/10 p-2 text-amber-100">
+									<div className="font-semibold">{action.label}</div>
+									<div className="mt-1 font-mono text-[10px] text-amber-100/70">{action.source}</div>
+								</div>
+							))}
+						</div>
+					) : (
+						<div className="rounded-sm border border-slate-800 bg-[#0b0f14] p-3 text-slate-500">
+							No pending human action. Approval, rejection, resume, and cancel controls will render here when a workflow wait token exists.
+						</div>
+					)}
+					<p className="leading-5 text-slate-500">
+						This human action area lives inside the workflow run context and stays separate from normal Terminal chat controls.
+					</p>
+				</div>
+			</WorkflowShellCard>
+		</div>
+	);
+}
+
+function WorkflowShellCard({ title, icon, children }: { title: string; icon: ReactNode; children: ReactNode }) {
+	return (
+		<section className="rounded-sm border border-slate-800 bg-[#111820] p-4" aria-label={title}>
+			<div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500">
+				<span className="text-[#11a4d4]">{icon}</span>
+				{title}
+			</div>
+			{children}
+		</section>
+	);
+}
+
+function WorkflowShellFact({ label, value }: { label: string; value: string }) {
+	return (
+		<div className="flex items-start justify-between gap-3 border-b border-slate-800/70 pb-2 last:border-b-0 last:pb-0">
+			<span className="uppercase tracking-wide text-slate-500">{label}</span>
+			<span className="min-w-0 max-w-[12rem] truncate text-right font-mono text-slate-300" title={value}>{value}</span>
+		</div>
+	);
+}
+
+function currentWorkflowNode(model: WorkflowProjectSessionUiModel): WorkflowVisualNode | undefined {
+	return model.nodes.find((node) => node.status === "active" || node.status === "waiting") ?? model.nodes[0];
 }
 
 function WorkflowGraph({ nodes, edges }: { nodes: WorkflowVisualNode[]; edges: WorkflowVisualEdge[] }) {
@@ -328,6 +421,7 @@ function createProjectSessionWorkflowModel(
 	projectSession: PiboProjectSession,
 	traceView: PiboSessionTraceView | null,
 	selectedSessionStatus: PiboWebSessionStatus | undefined,
+	selectedSessionSignal: PiboSessionSignalSnapshot | undefined,
 ): WorkflowProjectSessionUiModel | null {
 	if (!isWorkflowBackedProjectSession(projectSession)) return null;
 	const status = workflowNodeStatus(projectSession, selectedSessionStatus);
@@ -359,6 +453,7 @@ function createProjectSessionWorkflowModel(
 	];
 	return {
 		workflowId: projectSession.workflowId,
+		...(projectSession.workflowVersion ? { workflowVersion: projectSession.workflowVersion } : {}),
 		...(projectSession.workflowRunId ? { workflowRunId: projectSession.workflowRunId } : {}),
 		piboSessionId: projectSession.piboSessionId,
 		state: workflowStateLabel(projectSession, selectedSessionStatus),
@@ -371,6 +466,8 @@ function createProjectSessionWorkflowModel(
 			{ id: "workflow.transition.entry.session", source: "workflow.entry", target: "node.session", label: "WORKFLOW.START" },
 			{ id: "workflow.transition.session.terminal", source: "node.session", target: terminalStateIdForStatus(status), label: terminalEventForStatus(status) },
 		],
+		configuration: summarizeWorkflowConfiguration(projectSession),
+		pendingHumanActions: collectPendingHumanActions(projectSession, selectedSessionSignal),
 		...(finalOutput ? { finalOutput } : {}),
 		validationErrors,
 		snapshot: {
@@ -382,11 +479,10 @@ function createProjectSessionWorkflowModel(
 				durableTruth: "kernel",
 				exposesPrivatePayloads: false,
 			},
-			editing: {
-				enabled: false,
-				creationUi: "deferred",
-				visualEditingUi: "deferred",
-				rawXStateEditingUi: "deferred",
+			authoring: {
+				location: "workflows_tab",
+				rawXStateEditingUi: "not_exposed",
+				inlineExecutableCodeUi: "not_exposed",
 			},
 			current: {
 				snapshotKind: "ui",
@@ -403,6 +499,36 @@ function createProjectSessionWorkflowModel(
 			actors: [{ id: "workflow.actor.session", kind: "agent", piboSessionId: projectSession.piboSessionId }],
 		},
 	};
+}
+
+function summarizeWorkflowConfiguration(projectSession: PiboProjectSession): WorkflowConfigurationSummary {
+	const configuration = projectSession.configuration;
+	return {
+		inputKeys: Object.keys(configuration?.inputValues ?? {}).sort(),
+		promptOverrideNodeIds: Object.keys(configuration?.promptOverrides ?? {}).sort(),
+	};
+}
+
+function collectPendingHumanActions(
+	projectSession: PiboProjectSession,
+	selectedSessionSignal: PiboSessionSignalSnapshot | undefined,
+): WorkflowPendingHumanAction[] {
+	const state = workflowStateLabel(projectSession, undefined).toLowerCase();
+	const signalStatus = [selectedSessionSignal?.aggregateStatus, selectedSessionSignal?.localStatus]
+		.filter((value): value is string => typeof value === "string")
+		.join(" ")
+		.toLowerCase();
+	const hasPendingHumanAction = state.includes("waiting")
+		|| state.includes("blocked")
+		|| signalStatus.includes("waiting")
+		|| signalStatus.includes("blocked")
+		|| Boolean(selectedSessionSignal?.hasBlockedDescendant);
+	if (!hasPendingHumanAction) return [];
+	return [{
+		id: `human-action:${projectSession.piboSessionId}`,
+		label: "Awaiting human action",
+		source: selectedSessionSignal ? "session signal" : "project session state",
+	}];
 }
 
 function collectWorkflowFinalOutput(traceView: PiboSessionTraceView | null, status: WorkflowNodeStatus): WorkflowFinalOutput | undefined {

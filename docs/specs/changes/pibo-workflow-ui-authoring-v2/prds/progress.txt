@@ -25,6 +25,7 @@
 - Project workflow session creation should whitelist request fields, reject disallowed override families/arbitrary options before persistence, and store allowed input/prompt/model/thinking/fast config in `project_sessions.configuration_json` with explicit workflow/eligible-node scopes.
 - Project view routing should combine `PiboWebSessionNode.workflowSessionKind` with `PiboProjectSession` workflow linkage; legacy `simple-chat` Project main sessions may carry `main_workflow` metadata but must still route to Terminal.
 - V2 workflow security validation should reject inline executable fields and hidden LLM coercion at draft/publish/start boundaries; incompatible ports require visible registered adapter refs instead.
+- Container web gateway restart commands should avoid `pgrep`/`pkill` patterns that match the wrapper shell; keep the Node process alive with a keepalive/nohup after `runWebGatewayServer` logs startup.
 
 ## 2026-05-11 22:37 CEST - US-001
 - What was implemented
@@ -707,4 +708,27 @@
 - **Learnings for future iterations:**
   - Security-boundary validation should cover raw IR mutations as well as picker-driven edits, because publish/start boundaries consume stored Workflow IR.
   - Browser text checks can require lowercasing `innerText` because headings may be uppercased by CSS.
+---
+## 2026-05-12 02:46 CEST - US-003
+- What was implemented
+  - Added an explicit Projects workflow execution shell inside the Workflow/XState Project view.
+  - Rendered separate workflow configured-session, workflow run view, and human action area containers for workflow-backed Project sessions.
+  - Updated the Project workflow projection boundary copy to keep Pibo Workflow IR as source of truth and XState as projection only.
+- Files changed
+  - `src/apps/chat-ui/src/session-views/WorkflowXStateSessionView.tsx`
+  - `docs/specs/changes/pibo-workflow-ui-authoring-v2/prds/prd_09_implementation_completeness_contract.json`
+  - `docs/specs/changes/pibo-workflow-ui-authoring-v2/prds/progress.txt`
+- Quality checks run
+  - `docker exec pibo-dev-WorkflowsV2 bash -lc 'cd /workspace && npm run typecheck'` — passed.
+  - `docker exec pibo-dev-WorkflowsV2 bash -lc 'cd /workspace && npm run chat-ui:build'` — passed.
+  - `python3 -m json.tool docs/specs/changes/pibo-workflow-ui-authoring-v2/prds/prd_09_implementation_completeness_contract.json` — passed.
+- Browser verification, if UI changed
+  - Restarted the container web gateway from rebuilt `/workspace/dist` and verified `http://127.0.0.1:4802/apps/chat` returned OK.
+  - Created a dev-auth workflow-backed Project session `Execution Shell Check` for `standard-project@1.0.0`.
+  - Used `browser-use --fresh-profile` inside `pibo-dev-WorkflowsV2` to open the session with `?view=workflow`.
+  - Verified the authenticated Workflow/XState Project view shows `Workflow configured-session view`, `Workflow run view`, `Human action area`, `No pending human action`, `Workflow IR source-of-truth boundary`, and `XState: projection only`.
+  - Saved screenshot: `/tmp/ralph-v2-execution-shell.png` inside the container.
+- **Learnings for future iterations:**
+  - Browser `innerText` reflects CSS uppercase transforms, so text assertions for uppercase-styled headings should normalize to lowercase.
+  - Starting the worker gateway via a shell command that contains `runWebGatewayServer` can cause `pgrep`/`pkill` self-matches; avoid those patterns and keep the Node process alive after startup.
 ---

@@ -46,8 +46,8 @@
         "Typecheck passes"
       ],
       "priority": 3,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Projects workflow execution shell now renders configured-session, run-view, and human-action containers in the Workflow/XState Project view."
     },
     {
       "id": "US-004",
