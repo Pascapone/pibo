@@ -90,6 +90,16 @@ export type PiboProjectWorkflowSessionConfiguration = {
 	fastMode?: boolean;
 };
 
+export type PiboProjectWorkflowDefinitionLink = {
+	status: "live" | "snapshot_only_definition_deleted";
+	workflowId: "simple-chat" | "standard-project" | string;
+	workflowVersion?: string;
+	title?: string;
+	definitionHash?: string;
+	href?: string;
+	tombstoneLabel?: string;
+};
+
 export type PiboProjectSession = {
 	projectId: string;
 	piboSessionId: string;
@@ -101,6 +111,7 @@ export type PiboProjectSession = {
 	title?: string;
 	state?: PiboProjectSessionState;
 	configuration?: PiboProjectWorkflowSessionConfiguration;
+	workflowDefinitionLink?: PiboProjectWorkflowDefinitionLink;
 	retryCount?: number;
 	maxRetries?: number;
 	archived?: boolean;

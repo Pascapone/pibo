@@ -3324,6 +3324,7 @@ function SessionTracePane({
 						selectedSessionSignal,
 						workflowProjectSession,
 						workflowLifecycleEvents,
+						sessionNodes: bootstrap.sessions,
 						sessionBreadcrumbs,
 						originSession,
 						derivedSessions,

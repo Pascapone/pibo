@@ -1,4 +1,5 @@
 ## Codebase Patterns
+- Project Workflow/XState navigation should derive nested workflow links from real `PiboWebSessionNode` child sessions and definition link/deleted state from Project session `workflowDefinitionLink` metadata.
 - Registered guard/adapter params should flow from picker `paramsSchema` metadata; render params editors only for selected refs with schemas and reject params on refs without schemas.
 - Workflow lifecycle observability for Chat Web belongs in durable `workflow_lifecycle_events` records and Project bootstrap data so configured-session run inspection can surface start-blocked diagnostics without a workflow run id.
 - Project Workflow/XState run inspection panels should render status, current node, run history, node attempts, edge transfers, output, and error sections with explicit empty states for configured/not-started sessions while labeling XState as projection-only.
@@ -1104,4 +1105,35 @@
   - Archive state must be applied as an identity-scoped projection overlay across catalog, history, inspect, draft, and picker paths; changing only a version row leaves stale selection routes.
   - `node --test test/web-channel.test.mjs` imports `dist`, so rebuild before running focused web-channel tests or stale routes can fail even when TypeScript source is correct.
   - Browser verification archived the container's `ui-review-workflow` fixture; future browser checks that need it unarchived should use another UI workflow, inspect with archived filters, or reset the worker data.
+---
+## 2026-05-12 05:44 CEST - US-005
+- What was implemented
+  - Added Project bootstrap workflow definition-link metadata for workflow-backed Project sessions, including live Workflows viewer links and snapshot-only definition-deleted fallback state when the live catalog record is unavailable.
+  - Added Workflow/XState run-view navigation links for real nested workflow child sessions derived from the Project session tree.
+  - Added a run-view workflow definition link panel that opens the live Workflows tab definition when available and renders a snapshot-only definition-deleted state instead of a broken link.
+- Files changed
+  - `src/apps/chat/web-app.ts`
+  - `src/apps/chat/data/project-service.ts`
+  - `src/apps/chat-ui/src/types.ts`
+  - `src/apps/chat-ui/src/session-views/types.ts`
+  - `src/apps/chat-ui/src/session-views/WorkflowXStateSessionView.tsx`
+  - `src/apps/chat-ui/src/App.tsx`
+  - `test/web-channel.test.mjs`
+  - `docs/specs/changes/pibo-workflow-ui-authoring-v2/prds/prd_07_project_run_inspection_sidebar_and_human_actions.json`
+  - `docs/specs/changes/pibo-workflow-ui-authoring-v2/prds/progress.txt`
+- Quality checks run
+  - `docker exec pibo-dev-WorkflowsV2 bash -lc 'cd /workspace && npm run typecheck'` — passed.
+  - `docker exec pibo-dev-WorkflowsV2 bash -lc 'cd /workspace && npm run chat-ui:build && npm run build && node --test --test-name-pattern "project bootstrap includes real workflow session descendants" test/web-channel.test.mjs'` — passed, 1/1 targeted test.
+  - `docker exec pibo-dev-WorkflowsV2 bash -lc 'cd /workspace && node --test test/web-channel.test.mjs'` — passed, 64/64 tests.
+- Browser verification, if UI changed
+  - Restarted the container web gateway from rebuilt `/workspace/dist` and verified `http://127.0.0.1:4802/apps/chat` returned OK.
+  - Created a dev-auth Project workflow session `Nested Definition Link Root` for `standard-project@1.0.0` and inserted a real nested workflow child Pibo Session `Nested Definition Link Child` under the root in the worker session store.
+  - Used `browser-use --fresh-profile --session ralph-v2` inside `pibo-dev-WorkflowsV2` to open the root Project workflow session and verified `Workflow navigation links`, `Nested workflow child sessions`, `Nested Definition Link Child`, `Open live workflow definition`, `Live workflow definition exists`, and `standard-project@1.0.0`.
+  - Clicked `Open live workflow definition` and verified navigation to `/apps/chat/workflows/view/standard-project/1.0.0` with the Workflows version viewer.
+  - Clicked the nested workflow child session link and verified navigation to `/apps/chat/projects/<projectId>/sessions/<nestedPiboSessionId>?view=workflow`.
+  - Mutated the root Project session to reference a missing workflow version and verified the run view shows `Definition deleted — snapshot-only definition-deleted state` with `deleted-review-workflow@9.9.9` instead of a live link.
+  - Saved screenshot: `/tmp/ralph-v2-nested-definition-links.png` inside the container.
+- **Learnings for future iterations:**
+  - Run-view nested workflow links should use real Project session tree descendants, not workflow graph nodes.
+  - Definition navigation needs a Project-session-level link state so deleted or unavailable definitions can render snapshot-only history without creating broken Workflows tab links.
 ---

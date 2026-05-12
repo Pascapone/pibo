@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
-import { Activity, AlertTriangle, CheckCircle2, Circle, Clock3, Database, GitBranch, History, Layers3, ListChecks, Route, XCircle } from "lucide-react";
+import { Activity, AlertTriangle, CheckCircle2, Circle, Clock3, Database, ExternalLink, GitBranch, History, Layers3, ListChecks, Route, XCircle } from "lucide-react";
 import { JsonRenderer } from "../tracing/JsonRenderer";
-import type { PiboProjectSession, PiboSessionSignalSnapshot, PiboSessionTraceView, PiboTraceNode, PiboWebSessionStatus, WorkflowLifecycleEventRecord } from "../types";
+import type { PiboProjectSession, PiboProjectWorkflowDefinitionLink, PiboSessionSignalSnapshot, PiboSessionTraceView, PiboTraceNode, PiboWebSessionNode, PiboWebSessionStatus, WorkflowLifecycleEventRecord } from "../types";
 import type { ChatSessionViewProps } from "./types";
 
 type WorkflowNodeStatus = "idle" | "active" | "waiting" | "completed" | "failed" | "cancelled";
@@ -76,8 +76,10 @@ export function WorkflowXStateSessionView({
 	selectedSessionSignal,
 	workflowProjectSession,
 	workflowLifecycleEvents,
+	sessionNodes,
+	onOpenSession,
 }: ChatSessionViewProps) {
-	const workflowModel = workflowProjectSession ? createProjectSessionWorkflowModel(workflowProjectSession, traceView, selectedSessionStatus, selectedSessionSignal, workflowLifecycleEvents ?? []) : null;
+	const workflowModel = workflowProjectSession ? createProjectSessionWorkflowModel(workflowProjectSession, traceView, selectedSessionStatus, selectedSessionSignal, workflowLifecycleEvents ?? [], sessionNodes) : null;
 
 	if (!workflowModel) {
 		return (
@@ -105,6 +107,7 @@ export function WorkflowXStateSessionView({
 				<WorkflowProjectionBoundaryNotice />
 				<WorkflowExecutionShell model={workflowModel} />
 				<WorkflowRunInspectionPanel model={workflowModel} />
+				<WorkflowNavigationLinks model={workflowModel} onOpenSession={onOpenSession} />
 				<WorkflowGraph nodes={workflowModel.nodes} edges={workflowModel.edges} />
 				<div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
 					<WorkflowRuntimeSnapshot model={workflowModel} />
@@ -130,6 +133,13 @@ type WorkflowPendingHumanAction = {
 	source: string;
 };
 
+type WorkflowNestedSessionLink = {
+	piboSessionId: string;
+	title: string;
+	kind: string;
+	workflowSessionKind?: PiboWebSessionNode["workflowSessionKind"];
+};
+
 type WorkflowProjectSessionUiModel = {
 	workflowId: string;
 	workflowVersion?: string;
@@ -143,6 +153,8 @@ type WorkflowProjectSessionUiModel = {
 	nodes: WorkflowVisualNode[];
 	edges: WorkflowVisualEdge[];
 	configuration: WorkflowConfigurationSummary;
+	definitionLink: PiboProjectWorkflowDefinitionLink;
+	nestedSessionLinks: WorkflowNestedSessionLink[];
 	pendingHumanActions: WorkflowPendingHumanAction[];
 	runHistory: WorkflowRunHistoryEntry[];
 	nodeAttempts: WorkflowNodeAttemptSummary[];
@@ -373,6 +385,81 @@ function WorkflowRunInspectionPanel({ model }: { model: WorkflowProjectSessionUi
 						<WorkflowEmptyState>No workflow run errors are recorded.</WorkflowEmptyState>
 					)}
 				</WorkflowInspectionSection>
+			</div>
+		</section>
+	);
+}
+
+function WorkflowNavigationLinks({ model, onOpenSession }: { model: WorkflowProjectSessionUiModel; onOpenSession: (piboSessionId: string) => void }) {
+	const definitionHref = workflowDefinitionLinkHref(model.definitionLink);
+	return (
+		<section className="rounded-sm border border-slate-800 bg-[#111820] p-4 text-sm" aria-label="Workflow navigation links">
+			<div className="flex flex-wrap items-start justify-between gap-3">
+				<div className="min-w-0">
+					<div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500">
+						<ExternalLink size={14} />
+						Workflow navigation links
+					</div>
+					<p className="mt-2 max-w-3xl text-xs leading-5 text-slate-500">
+						Use these run-view links to move between real nested workflow sessions and the Workflows tab definition. Snapshot-only history is shown when the live definition is deleted or unavailable.
+					</p>
+				</div>
+				{model.definitionLink.status === "live" && definitionHref ? (
+					<a
+						className="inline-flex shrink-0 items-center justify-center gap-1 rounded-sm border border-[#11a4d4]/50 px-3 py-1.5 text-xs font-semibold text-[#8bdcf4] transition hover:border-[#11a4d4] hover:text-slate-100"
+						href={definitionHref}
+					>
+						<ExternalLink size={13} />
+						Open live workflow definition
+					</a>
+				) : null}
+			</div>
+			<div className="mt-4 grid gap-3 lg:grid-cols-2">
+				<div className="rounded-sm border border-slate-800 bg-[#0f171e] p-3" aria-label="Nested workflow child session links">
+					<div className="mb-3 flex items-center justify-between gap-2">
+						<div className="text-xs font-bold uppercase tracking-wider text-slate-500">Nested workflow child sessions</div>
+						<span className="rounded border border-slate-700 bg-[#0b0f14] px-1.5 py-0.5 font-mono text-[10px] text-slate-400">{model.nestedSessionLinks.length}</span>
+					</div>
+					{model.nestedSessionLinks.length ? (
+						<div className="space-y-2">
+							{model.nestedSessionLinks.map((link) => (
+								<button
+									key={link.piboSessionId}
+									type="button"
+									onClick={() => onOpenSession(link.piboSessionId)}
+									className="w-full rounded-sm border border-slate-800 bg-[#0b0f14] p-2 text-left transition hover:border-[#11a4d4]/60 hover:bg-[#102331]"
+								>
+									<div className="flex items-start justify-between gap-3">
+										<div className="min-w-0">
+											<div className="truncate text-xs font-semibold text-slate-200">{link.title}</div>
+											<div className="mt-1 font-mono text-[10px] text-slate-500">{shortWorkflowValue(link.piboSessionId)}</div>
+										</div>
+										<span className="rounded border border-[#11a4d4]/40 bg-[#11a4d4]/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-[#8bdcf4]">open session</span>
+									</div>
+								</button>
+							))}
+						</div>
+					) : (
+						<WorkflowEmptyState>No nested workflow child sessions are linked under this selected Project session yet.</WorkflowEmptyState>
+					)}
+				</div>
+				<div className="rounded-sm border border-slate-800 bg-[#0f171e] p-3" aria-label="Workflow definition link state">
+					<div className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-500">Workflow definition link</div>
+					{model.definitionLink.status === "live" && definitionHref ? (
+						<div className="rounded-sm border border-emerald-500/35 bg-emerald-500/10 p-3 text-xs leading-5 text-emerald-100">
+							<div className="font-semibold">Live workflow definition exists</div>
+							<div className="mt-1 font-mono text-[11px] text-emerald-100/80">{workflowDefinitionRefLabel(model.definitionLink)}</div>
+							{model.definitionLink.definitionHash ? <div className="mt-1 font-mono text-[10px] text-emerald-100/60">snapshot {shortWorkflowValue(model.definitionLink.definitionHash)}</div> : null}
+						</div>
+					) : (
+						<div className="rounded-sm border border-amber-500/40 bg-amber-500/10 p-3 text-xs leading-5 text-amber-100">
+							<div className="font-semibold">Definition deleted — snapshot-only definition-deleted state</div>
+							<div className="mt-1 font-mono text-[11px] text-amber-100/80">{workflowDefinitionRefLabel(model.definitionLink)}</div>
+							<div className="mt-1 text-amber-100/80">{model.definitionLink.tombstoneLabel ?? "Historical run inspection uses the immutable Project session snapshot instead of a broken live definition link."}</div>
+							{model.definitionLink.definitionHash ? <div className="mt-1 font-mono text-[10px] text-amber-100/60">snapshot {shortWorkflowValue(model.definitionLink.definitionHash)}</div> : null}
+						</div>
+					)}
+				</div>
 			</div>
 		</section>
 	);
@@ -615,6 +702,7 @@ function createProjectSessionWorkflowModel(
 	selectedSessionStatus: PiboWebSessionStatus | undefined,
 	selectedSessionSignal: PiboSessionSignalSnapshot | undefined,
 	workflowLifecycleEvents: readonly WorkflowLifecycleEventRecord[],
+	sessionNodes: readonly PiboWebSessionNode[],
 ): WorkflowProjectSessionUiModel | null {
 	if (!isWorkflowBackedProjectSession(projectSession)) return null;
 	const state = workflowStateLabel(projectSession, selectedSessionStatus);
@@ -629,6 +717,8 @@ function createProjectSessionWorkflowModel(
 	const nodeAttempts = collectWorkflowNodeAttempts(traceView, projectSession.workflowRunId);
 	const edgeTransfers = collectWorkflowEdgeTransfers(traceView, projectSession.workflowRunId);
 	const runtimeErrors = collectWorkflowRuntimeErrors(traceView, selectedSessionSignal);
+	const definitionLink = resolveWorkflowDefinitionLink(projectSession);
+	const nestedSessionLinks = collectNestedWorkflowSessionLinks(sessionNodes, projectSession.piboSessionId);
 	const nodes: WorkflowVisualNode[] = [
 		{
 			id: "workflow.entry",
@@ -668,6 +758,8 @@ function createProjectSessionWorkflowModel(
 			{ id: "workflow.transition.session.terminal", source: "node.session", target: terminalStateIdForStatus(status), label: terminalEventForStatus(status) },
 		],
 		configuration: summarizeWorkflowConfiguration(projectSession),
+		definitionLink,
+		nestedSessionLinks,
 		pendingHumanActions: collectPendingHumanActions(projectSession, selectedSessionSignal),
 		runHistory,
 		nodeAttempts,
@@ -710,8 +802,79 @@ function createProjectSessionWorkflowModel(
 				validationErrorCount: validationErrors.length,
 			},
 			actors: [{ id: "workflow.actor.session", kind: "agent", piboSessionId: projectSession.piboSessionId }],
+			definitionLink: {
+				status: definitionLink.status,
+				workflowId: definitionLink.workflowId,
+				workflowVersion: definitionLink.workflowVersion,
+				hasLiveLink: definitionLink.status === "live" && Boolean(workflowDefinitionLinkHref(definitionLink)),
+			},
+			nestedWorkflowSessionCount: nestedSessionLinks.length,
 		},
 	};
+}
+
+function resolveWorkflowDefinitionLink(projectSession: PiboProjectSession): PiboProjectWorkflowDefinitionLink {
+	if (projectSession.workflowDefinitionLink) return projectSession.workflowDefinitionLink;
+	if (projectSession.workflowVersion) {
+		return {
+			status: "live",
+			workflowId: projectSession.workflowId,
+			workflowVersion: projectSession.workflowVersion,
+			title: projectSession.title ?? projectSession.workflowId,
+			href: workflowDefinitionViewerPath(projectSession.workflowId, projectSession.workflowVersion),
+		};
+	}
+	return {
+		status: "snapshot_only_definition_deleted",
+		workflowId: projectSession.workflowId,
+		title: projectSession.title ?? projectSession.workflowId,
+		tombstoneLabel: "Historical run inspection uses the immutable Project session snapshot instead of a broken live definition link.",
+	};
+}
+
+function collectNestedWorkflowSessionLinks(sessionNodes: readonly PiboWebSessionNode[], rootPiboSessionId: string): WorkflowNestedSessionLink[] {
+	const root = findWorkflowSessionNode(sessionNodes, rootPiboSessionId);
+	if (!root) return [];
+	const links: WorkflowNestedSessionLink[] = [];
+	const visit = (nodes: readonly PiboWebSessionNode[]) => {
+		for (const node of nodes) {
+			if (node.workflowSessionKind === "nested_workflow") {
+				links.push({
+					piboSessionId: node.piboSessionId,
+					title: node.title,
+					kind: node.workflowSessionKind ?? node.profile ?? "workflow",
+					...(node.workflowSessionKind ? { workflowSessionKind: node.workflowSessionKind } : {}),
+				});
+			}
+			visit(node.children);
+		}
+	};
+	visit(root.children);
+	return links;
+}
+
+function findWorkflowSessionNode(nodes: readonly PiboWebSessionNode[], piboSessionId: string): PiboWebSessionNode | undefined {
+	for (const node of nodes) {
+		if (node.piboSessionId === piboSessionId) return node;
+		const child = findWorkflowSessionNode(node.children, piboSessionId);
+		if (child) return child;
+	}
+	return undefined;
+}
+
+function workflowDefinitionLinkHref(link: PiboProjectWorkflowDefinitionLink): string | undefined {
+	if (link.status !== "live") return undefined;
+	if (link.href) return link.href;
+	if (!link.workflowVersion) return undefined;
+	return workflowDefinitionViewerPath(link.workflowId, link.workflowVersion);
+}
+
+function workflowDefinitionViewerPath(workflowId: string, workflowVersion: string): string {
+	return `/apps/chat/workflows/view/${encodeURIComponent(workflowId)}/${encodeURIComponent(workflowVersion)}`;
+}
+
+function workflowDefinitionRefLabel(link: PiboProjectWorkflowDefinitionLink): string {
+	return `${link.workflowId}${link.workflowVersion ? `@${link.workflowVersion}` : ""}`;
 }
 
 function summarizeWorkflowConfiguration(projectSession: PiboProjectSession): WorkflowConfigurationSummary {

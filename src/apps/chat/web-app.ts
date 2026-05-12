@@ -5685,8 +5685,8 @@ async function buildProjectsBootstrap(input: {
 }): Promise<ChatProjectsBootstrap> {
 	const personalProject = input.state.projectService.ensurePersonalProject({ ownerScope: input.webSession.ownerScope });
 	const selectedProject = input.projectId ? input.state.projectService.requireProject(input.projectId, { includeArchived: true }) : personalProject;
-	let projectSessions = input.state.projectService.listProjectSessions(selectedProject.id, { includeArchived: input.includeArchived });
-	if (selectedProject.id === personalProject.id && projectSessions.length === 0) {
+	let storedProjectSessions = input.state.projectService.listProjectSessions(selectedProject.id, { includeArchived: input.includeArchived });
+	if (selectedProject.id === personalProject.id && storedProjectSessions.length === 0) {
 		const session = createProjectChatSession({
 			state: input.state,
 			context: input.context,
@@ -5695,8 +5695,9 @@ async function buildProjectsBootstrap(input: {
 			profile: input.defaultProfile,
 			workflowId: "simple-chat",
 		});
-		projectSessions = [input.state.projectService.getProjectSession(session.id)!];
+		storedProjectSessions = [input.state.projectService.getProjectSession(session.id)!];
 	}
+	const projectSessions = storedProjectSessions.map((projectSession) => enrichProjectSessionWorkflowDefinitionLink(input.state, projectSession));
 	const rootSessions = projectSessions
 		.map((projectSession) => input.context.channelContext.getSession(projectSession.piboSessionId))
 		.filter((session): session is PiboSession => Boolean(session));
@@ -5741,6 +5742,51 @@ function collectProjectSessionTreeSessions(rootSessions: PiboSession[], candidat
 		}
 	}
 	return [...sessionsById.values()].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+}
+
+function enrichProjectSessionWorkflowDefinitionLink(state: ChatWebAppState, projectSession: PiboProjectSession): PiboProjectSession {
+	if (!isProjectWorkflowBackedSession(projectSession)) return projectSession;
+	const snapshot = state.projectService.getWorkflowSessionSnapshotForSession(projectSession.piboSessionId);
+	const workflowId = projectSession.workflowId;
+	const workflowVersion = projectSession.workflowVersion ?? snapshot?.workflow.version;
+	const catalogRecord = workflowVersion
+		? buildProjectWorkflowVersionCatalog(state).find((record) => record.id === workflowId && record.version === workflowVersion)
+		: undefined;
+	const snapshotHash = snapshot?.workflow.effectiveDefinitionHash ?? snapshot?.deletedDefinitionFallback.effectiveDefinitionHash;
+	if (catalogRecord && catalogRecord.status !== "deleted") {
+		return {
+			...projectSession,
+			workflowDefinitionLink: {
+				status: "live",
+				workflowId,
+				workflowVersion: catalogRecord.version,
+				title: catalogRecord.title,
+				...(snapshotHash ? { definitionHash: snapshotHash } : {}),
+				href: workflowDefinitionViewerPath(catalogRecord.id, catalogRecord.version),
+			},
+		};
+	}
+	const fallback = snapshot?.deletedDefinitionFallback;
+	const definitionHash = fallback?.effectiveDefinitionHash ?? snapshotHash;
+	return {
+		...projectSession,
+		workflowDefinitionLink: {
+			status: "snapshot_only_definition_deleted",
+			workflowId,
+			...(workflowVersion ? { workflowVersion } : {}),
+			title: fallback?.title ?? snapshot?.workflow.title ?? projectSession.title ?? workflowId,
+			...(definitionHash ? { definitionHash } : {}),
+			tombstoneLabel: fallback?.tombstoneLabel ?? "Definition deleted or no longer available in the live Workflow catalog.",
+		},
+	};
+}
+
+function isProjectWorkflowBackedSession(projectSession: PiboProjectSession): boolean {
+	return Boolean(projectSession.workflowRunId) || projectSession.state === "workflow" || projectSession.workflowId !== "simple-chat";
+}
+
+function workflowDefinitionViewerPath(workflowId: string, workflowVersion: string): string {
+	return `${CHAT_WEB_MOUNT_PATH}/workflows/view/${encodeURIComponent(workflowId)}/${encodeURIComponent(workflowVersion)}`;
 }
 
 function applyProjectSessionArchiveState(nodes: PiboWebSessionNode[], archivedBySessionId: ReadonlyMap<string, boolean>): void {

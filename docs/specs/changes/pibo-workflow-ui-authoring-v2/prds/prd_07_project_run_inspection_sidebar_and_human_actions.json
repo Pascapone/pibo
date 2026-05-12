@@ -79,8 +79,8 @@
         "Typecheck passes"
       ],
       "priority": 5,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented run-view navigation links for nested workflow child sessions and live/snapshot-only workflow definition states."
     },
     {
       "id": "US-006",

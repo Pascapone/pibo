@@ -3211,7 +3211,7 @@ test("chat web app rejects unsupported Project workflow session creation inputs"
 });
 
 test("chat web app project bootstrap includes real workflow session descendants only", async () => {
-	const { channel, baseURL, sessions, storageDir } = await startWebHostChannel({
+	const { channel, baseURL, sessions, storageDir, projectStorePath } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 		profiles: [{ name: "pibo-agent", aliases: ["default"] }, { name: "reviewer-agent" }],
 	});
@@ -3312,6 +3312,29 @@ test("chat web app project bootstrap includes real workflow session descendants 
 		assert.equal(rootNode.children[0].children[0].workflowSessionKind, "agent_node");
 		assert.equal(rootNode.children[0].children[0].children[0].workflowSessionKind, "subagent");
 		assert.deepEqual(bootstrapPayload.projectSessions.map((session) => session.piboSessionId), [root.id]);
+		assert.equal(bootstrapPayload.projectSessions[0].workflowDefinitionLink.status, "live");
+		assert.equal(bootstrapPayload.projectSessions[0].workflowDefinitionLink.workflowId, "standard-project");
+		assert.equal(bootstrapPayload.projectSessions[0].workflowDefinitionLink.workflowVersion, "1.0.0");
+		assert.equal(bootstrapPayload.projectSessions[0].workflowDefinitionLink.href, "/apps/chat/workflows/view/standard-project/1.0.0");
+
+		const db = new DatabaseSync(projectStorePath);
+		try {
+			db.prepare("UPDATE project_sessions SET workflow_id = ?, workflow_version = ? WHERE pibo_session_id = ?").run("deleted-review-workflow", "9.9.9", root.id);
+		} finally {
+			db.close();
+		}
+
+		const deletedBootstrapResponse = await fetch(`${baseURL}/api/chat/projects/bootstrap?projectId=${encodeURIComponent(projectPayload.project.id)}&piboSessionId=${encodeURIComponent(root.id)}`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(deletedBootstrapResponse.status, 200);
+		const deletedBootstrapPayload = await deletedBootstrapResponse.json();
+		const deletedProjectSession = deletedBootstrapPayload.projectSessions[0];
+		assert.equal(deletedProjectSession.workflowDefinitionLink.status, "snapshot_only_definition_deleted");
+		assert.equal(deletedProjectSession.workflowDefinitionLink.workflowId, "deleted-review-workflow");
+		assert.equal(deletedProjectSession.workflowDefinitionLink.workflowVersion, "9.9.9");
+		assert.equal(deletedProjectSession.workflowDefinitionLink.href, undefined);
+		assert.match(deletedProjectSession.workflowDefinitionLink.tombstoneLabel, /Definition deleted/);
 	} finally {
 		await channel.stop?.();
 	}

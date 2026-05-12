@@ -78,6 +78,16 @@ export type PiboProjectWorkflowSessionSnapshot = {
 	};
 };
 
+export type PiboProjectWorkflowDefinitionLink = {
+	status: "live" | "snapshot_only_definition_deleted";
+	workflowId: PiboProjectWorkflowId;
+	workflowVersion?: string;
+	title?: string;
+	definitionHash?: string;
+	href?: string;
+	tombstoneLabel?: string;
+};
+
 export type PiboProjectWorkflowRunStatus = "running" | "waiting" | "completed" | "failed" | "cancelled";
 
 export type PiboProjectWorkflowRun = {
@@ -130,6 +140,7 @@ export type PiboProjectSession = {
 	title?: string;
 	state?: PiboProjectSessionState;
 	configuration?: PiboProjectWorkflowSessionConfiguration;
+	workflowDefinitionLink?: PiboProjectWorkflowDefinitionLink;
 	retryCount?: number;
 	maxRetries?: number;
 	archived?: boolean;
