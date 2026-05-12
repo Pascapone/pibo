@@ -6,6 +6,7 @@
 - Workflow Builder inspectors should patch the same draft Pibo Workflow IR through existing draft PATCH validation triggers; capability refs in inspectors should come from picker APIs instead of free-text fields.
 - Nested workflow node UI should reuse the workflow-version picker API, store only `workflowId`/`workflowVersion` refs in parent graph IR, and navigate to a separate workflow viewer instead of inline-expanding child graphs.
 - Workflow catalog persistence uses explicit `SqliteWorkflowRunStore` entities for UI identities, drafts, published versions, archive states, and delete tombstones; tombstones must not remove definition snapshots needed by historical run inspection.
+- Workflow record source/status contracts should use exported value guards; persisted UI entity records assert `source: "ui"` while code workflows remain catalog projections.
 - Workflow profile picker APIs should compose active custom Agent Designer profiles from `CustomAgentStore` with global `channelContext.getProfiles()` entries, while using archived custom profile rows only to produce diagnostics for already-referenced drafts.
 - Workflow capability picker UI should use select-only registered refs, nullable metadata fields, and selected-ref diagnostics instead of manual text entry paths.
 - Workflow Builder graph add-node defaults should derive registered refs from picker APIs instead of hard-coding fixture ids because dev/prod profile catalogs differ.
@@ -1159,4 +1160,25 @@
 - **Learnings for future iterations:**
   - Sanitizers should accept diagnostic records with `undefined` optional fields, because in-memory TypeScript diagnostics may contain undefined properties before JSON persistence strips them.
   - Draft and Project diagnostic visibility needs explicit owner checks at both list/bootstrap surfaces and direct resource routes; owner-scoped lifecycle events alone are not enough.
+---
+## 2026-05-12 06:05 CEST - US-005
+- What was implemented
+  - Added exported workflow record source/status value constants and guards for `code`/`ui` sources and `draft`/`published`/`archived` statuses.
+  - Added runtime assertions that persisted UI workflow identities, drafts, published versions, archive states, and delete tombstones cannot conflate code projections, lifecycle status, or tombstone state.
+  - Added workflow catalog entity tests for the source/status contract and marked the completeness-contract story passing.
+- Files changed
+  - `packages/workflows/src/store/index.ts`
+  - `packages/workflows/src/testing/workflow-catalog-entities.test.ts`
+  - `docs/specs/changes/pibo-workflow-ui-authoring-v2/prds/prd_09_implementation_completeness_contract.json`
+  - `docs/specs/changes/pibo-workflow-ui-authoring-v2/prds/progress.txt`
+- Quality checks run
+  - `docker exec pibo-dev-WorkflowsV2 bash -lc 'cd /workspace && npm run typecheck'` — passed.
+  - `docker exec pibo-dev-WorkflowsV2 bash -lc 'cd /workspace && npm --prefix packages/workflows test -- src/testing/workflow-catalog-entities.test.ts src/testing/workflow-sqlite-schema.test.ts'` — passed, 138/138 workflow package tests.
+  - `python3 -m json.tool docs/specs/changes/pibo-workflow-ui-authoring-v2/prds/prd_09_implementation_completeness_contract.json` — passed.
+  - `git diff --check` — passed.
+- Browser verification, if UI changed
+  - Not run; this changed workflow package source/status guards, store assertions, tests, and PRD status only, with no visible UI behavior changes.
+- **Learnings for future iterations:**
+  - Keep `deleted` as tombstone state, not a normal `WorkflowRecordStatus`; live record status remains limited to draft, published, and archived.
+  - Persisted UI entity writes should fail early when code projections or mismatched lifecycle statuses are accidentally passed through casted or decoded data.
 ---

@@ -464,6 +464,43 @@ type WorkflowHumanActionRow = {
   created_at: string;
 };
 
+export const WORKFLOW_RECORD_SOURCES = ["code", "ui"] as const satisfies readonly WorkflowRecordSource[];
+export const WORKFLOW_RECORD_STATUSES = ["draft", "published", "archived"] as const satisfies readonly WorkflowRecordStatus[];
+
+export function isWorkflowRecordSource(value: unknown): value is WorkflowRecordSource {
+  return typeof value === "string" && (WORKFLOW_RECORD_SOURCES as readonly string[]).includes(value);
+}
+
+export function isWorkflowRecordStatus(value: unknown): value is WorkflowRecordStatus {
+  return typeof value === "string" && (WORKFLOW_RECORD_STATUSES as readonly string[]).includes(value);
+}
+
+export function assertWorkflowRecordSource(value: unknown): asserts value is WorkflowRecordSource {
+  if (!isWorkflowRecordSource(value)) {
+    throw new Error(`Workflow record source must be one of: ${WORKFLOW_RECORD_SOURCES.join(", ")}.`);
+  }
+}
+
+export function assertWorkflowRecordStatus(value: unknown): asserts value is WorkflowRecordStatus {
+  if (!isWorkflowRecordStatus(value)) {
+    throw new Error(`Workflow record status must be one of: ${WORKFLOW_RECORD_STATUSES.join(", ")}.`);
+  }
+}
+
+function assertWorkflowUiRecordSource(value: unknown, entity: string): asserts value is "ui" {
+  assertWorkflowRecordSource(value);
+  if (value !== "ui") {
+    throw new Error(`${entity} records must use source 'ui'. Code workflows are catalog projections and are not persisted UI records.`);
+  }
+}
+
+function assertWorkflowRecordStatusValue(value: unknown, expected: WorkflowRecordStatus, entity: string): void {
+  assertWorkflowRecordStatus(value);
+  if (value !== expected) {
+    throw new Error(`${entity} records must use status '${expected}'.`);
+  }
+}
+
 export function createWorkflowPublishedVersionRecord(
   input: CreateWorkflowPublishedVersionRecordInput,
 ): WorkflowPublishedVersionRecord {
@@ -478,9 +515,8 @@ export function createWorkflowPublishedVersionRecord(
 }
 
 export function assertPublishedWorkflowVersionRecord(record: WorkflowPublishedVersionRecord): void {
-  if (record.source !== "ui" || record.status !== "published") {
-    throw new Error(`Workflow '${record.workflowId}@${record.version}' is not a UI published version record.`);
-  }
+  assertWorkflowUiRecordSource(record.source, "Workflow published version");
+  assertWorkflowRecordStatusValue(record.status, "published", "Workflow published version");
   if (record.definition.id !== record.workflowId || record.definition.version !== record.version) {
     throw new Error(`Workflow '${record.workflowId}@${record.version}' published record does not match its definition id/version.`);
   }
@@ -882,6 +918,8 @@ export class SqliteWorkflowRunStore implements
   }
 
   saveWorkflowIdentity(record: WorkflowIdentityRecord): void {
+    assertWorkflowUiRecordSource(record.source, "Workflow identity");
+
     this.db.prepare(`
       INSERT INTO workflow_identities (
         workflow_id,
@@ -945,6 +983,9 @@ export class SqliteWorkflowRunStore implements
   }
 
   saveWorkflowDraft(record: WorkflowDraftRecord): void {
+    assertWorkflowUiRecordSource(record.source, "Workflow draft");
+    assertWorkflowRecordStatusValue(record.status, "draft", "Workflow draft");
+
     const conflict = this.db
       .prepare("SELECT draft_id FROM workflow_drafts WHERE workflow_id = ? AND status = 'draft' AND draft_id <> ? LIMIT 1")
       .get(record.workflowId, record.draftId) as { draft_id: string } | undefined;
@@ -1040,6 +1081,8 @@ export class SqliteWorkflowRunStore implements
   }
 
   saveWorkflowArchiveState(record: WorkflowArchiveStateRecord): void {
+    assertWorkflowUiRecordSource(record.source, "Workflow archive state");
+
     this.db.prepare(`
       INSERT INTO workflow_archive_states (
         workflow_id,
@@ -1091,6 +1134,11 @@ export class SqliteWorkflowRunStore implements
   }
 
   saveWorkflowDeleteTombstone(record: WorkflowDeleteTombstoneRecord): void {
+    assertWorkflowUiRecordSource(record.source, "Workflow delete tombstone");
+    if (record.deleted !== true) {
+      throw new Error("Workflow delete tombstone records must use deleted true.");
+    }
+
     this.db.prepare(`
       INSERT INTO workflow_delete_tombstones (
         workflow_id,

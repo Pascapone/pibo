@@ -7,8 +7,12 @@ import { describe, it } from "node:test";
 import {
   createWorkflowPublishedVersionRecord,
   hashWorkflowDefinition,
+  isWorkflowRecordSource,
+  isWorkflowRecordStatus,
   minimalOneNodePiboAgentWorkflowFixture,
   SqliteWorkflowRunStore,
+  WORKFLOW_RECORD_SOURCES,
+  WORKFLOW_RECORD_STATUSES,
 } from "../index.js";
 import type {
   WorkflowArchiveStateRecord,
@@ -33,6 +37,80 @@ function createDefinition(overrides: Partial<WorkflowDefinition> = {}): Workflow
 }
 
 describe("workflow catalog entity persistence", () => {
+  it("defines workflow source/status values and rejects conflated UI entity records", () => {
+    assert.deepEqual([...WORKFLOW_RECORD_SOURCES], ["code", "ui"]);
+    assert.deepEqual([...WORKFLOW_RECORD_STATUSES], ["draft", "published", "archived"]);
+    assert.equal(isWorkflowRecordSource("code"), true);
+    assert.equal(isWorkflowRecordSource("ui"), true);
+    assert.equal(isWorkflowRecordSource("deleted"), false);
+    assert.equal(isWorkflowRecordStatus("draft"), true);
+    assert.equal(isWorkflowRecordStatus("published"), true);
+    assert.equal(isWorkflowRecordStatus("archived"), true);
+    assert.equal(isWorkflowRecordStatus("deleted"), false);
+
+    const store = new SqliteWorkflowRunStore(":memory:");
+    const definition = createDefinition({ id: "workflow.ui.contract" });
+    const definitionHash = hashWorkflowDefinition(definition);
+    const identity: WorkflowIdentityRecord = {
+      workflowId: definition.id,
+      source: "ui",
+      title: "Contract workflow",
+      tags: [],
+      createdAt,
+      updatedAt,
+    };
+    const draft: WorkflowDraftRecord = {
+      draftId: "wfd_contract_1",
+      workflowId: definition.id,
+      source: "ui",
+      status: "draft",
+      versionIntent: "patch",
+      definition: { id: definition.id },
+      diagnostics: [],
+      validationState: "unknown",
+      revision: 1,
+      createdAt,
+      updatedAt,
+    };
+    const tombstone: WorkflowDeleteTombstoneRecord = {
+      workflowId: definition.id,
+      source: "ui",
+      deleted: true,
+      lastKnownTitle: identity.title,
+      lastKnownVersion: definition.version,
+      lastDefinitionHash: definitionHash,
+      createdAt,
+    };
+
+    try {
+      assert.throws(
+        () => store.saveWorkflowIdentity({ ...identity, source: "code" } as unknown as WorkflowIdentityRecord),
+        /Workflow identity records must use source 'ui'/,
+      );
+      assert.throws(
+        () => store.saveWorkflowDraft({ ...draft, status: "published" } as unknown as WorkflowDraftRecord),
+        /Workflow draft records must use status 'draft'/,
+      );
+      assert.throws(
+        () => store.saveWorkflowDeleteTombstone({ ...tombstone, deleted: false } as unknown as WorkflowDeleteTombstoneRecord),
+        /Workflow delete tombstone records must use deleted true/,
+      );
+      assert.throws(
+        () => createWorkflowPublishedVersionRecord({
+          workflowId: definition.id,
+          version: definition.version,
+          definition,
+          status: "draft",
+          publishedAt: updatedAt,
+          createdAt,
+        } as unknown as Parameters<typeof createWorkflowPublishedVersionRecord>[0]),
+        /Workflow published version records must use status 'published'/,
+      );
+    } finally {
+      store.close();
+    }
+  });
+
   it("stores identity, draft, published version, archive, and tombstone records as separate entities", () => {
     const tempRoot = mkdtempSync(join(tmpdir(), "pibo-workflows-catalog-entities-"));
     const store = new SqliteWorkflowRunStore(join(tempRoot, "pibo-workflows.sqlite"));
