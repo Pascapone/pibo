@@ -1,4 +1,5 @@
 ## Codebase Patterns
+- Workflow lifecycle archive/delete UI should use in-page confirmation panels with copy that names default catalog/picker effects and historical Project snapshot behavior so browser checks can verify the safeguards.
 - Workflow state mapping UI should write simple scoped `state.reads`/`state.writes` arrays through dropdown controls, trigger `state_edit` validation, and leave complex state DSL edits to raw Pibo Workflow IR.
 - Project workflow create/start diagnostics should render sanitized diagnostic metadata (`code`, `path`, `nodeId`, `edgeId`, `registryRef`, `hint`) near the blocking action, not only in a global error banner.
 - Dedicated workflow version-list/inspect APIs should derive visibility through `buildWorkflowCatalogList` before reading definitions so archive/delete filtering matches catalog and picker surfaces.
@@ -1570,4 +1571,32 @@
 - **Learnings for future iterations:**
   - Simple state mapping controls should stay dropdown-only and write scoped `state.reads`/`state.writes` arrays; complex state mapping DSL changes remain in raw Pibo Workflow IR.
   - Programmatic browser checks may need separate waits between controlled `<select>` changes because React rerenders path options after the scope dropdown changes.
+---
+## 2026-05-12 11:13 CEST - US-007
+- What was implemented
+  - Replaced native archive/delete prompts in the Workflow Library with in-page confirmation panels.
+  - Added archive copy explaining whole-workflow identity scope, default catalog/Project picker hiding, archive-filter visibility, and historical Project snapshot behavior.
+  - Added delete copy explaining live identity tombstoning, removal from catalog/picker/authoring/start surfaces, required workflow-id confirmation, and historical snapshot inspection.
+  - Added lifecycle API safeguards assertions for unauthenticated create/edit/publish/delete and code-workflow edit rejection.
+  - Marked PRD 06 US-007 passing.
+- Files changed
+  - `src/apps/chat-ui/src/WorkflowsArea.tsx`
+  - `test/web-channel.test.mjs`
+  - `docs/specs/changes/pibo-workflow-ui-authoring-v2/prds/prd_06_versioning_archive_delete_lifecycle.json`
+  - `docs/specs/changes/pibo-workflow-ui-authoring-v2/prds/progress.txt`
+- Quality checks run
+  - `docker exec pibo-dev-WorkflowsV2 bash -lc 'cd /workspace && npm run typecheck && npm run chat-ui:build'` — passed.
+  - `docker exec pibo-dev-WorkflowsV2 bash -lc 'cd /workspace && npm run build && node --test --test-name-pattern "workflow catalog lifecycle APIs|workflow archive API applies|workflow delete API tombstones" test/web-channel.test.mjs'` — passed, 3/3 tests.
+  - `python3 -m json.tool docs/specs/changes/pibo-workflow-ui-authoring-v2/prds/prd_06_versioning_archive_delete_lifecycle.json` — passed.
+  - `git diff --check` — passed.
+- Browser verification, if UI changed
+  - Restarted the container web gateway from `/workspace` without touching host gateways and verified `http://127.0.0.1:4802/apps/chat` returned OK.
+  - Used `browser-use --fresh-profile --session ralph-v2-lifecycle` inside `pibo-dev-WorkflowsV2` with dev auth (`dev@pibo.local`).
+  - Created and published a temporary UI workflow for verification because the long-lived worker already had archived fixture workflows.
+  - Opened `/apps/chat/workflows`, triggered `Archive workflow`, and verified the in-page confirmation copy mentions default catalog/Project selection hiding and historical Project snapshot rendering.
+  - Triggered `Delete workflow` and verified the in-page confirmation copy mentions tombstoning, removal from catalog/picker/authoring/start surfaces, workflow-id confirmation, and immutable historical snapshots.
+  - Saved screenshots inside the container: `/tmp/ralph-v2-lifecycle-confirmation.png` and `/tmp/ralph-v2-lifecycle-delete-confirmation.png`.
+- **Learnings for future iterations:**
+  - Native browser prompts are hard to verify through `browser-use`; use DOM-rendered confirmation panels for destructive workflow lifecycle safeguards.
+  - Long-lived worker data may have archived/deleted static fixture workflows, so browser checks should create or target a currently published UI workflow when verifying lifecycle action affordances.
 ---

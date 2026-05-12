@@ -2217,6 +2217,19 @@ test("workflow catalog lifecycle APIs create, validate, publish, and expose vers
 	};
 
 	try {
+		const unauthenticatedCreate = await fetch(`${baseURL}/api/chat/workflows`, {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				origin: baseURL,
+			},
+			body: JSON.stringify({
+				workflowId: "ui-lifecycle-api-draft",
+				title: "Lifecycle API Draft",
+			}),
+		});
+		assert.equal(unauthenticatedCreate.status, 401);
+
 		const createResponse = await fetch(`${baseURL}/api/chat/workflows`, {
 			method: "POST",
 			headers: jsonHeaders,
@@ -2267,6 +2280,16 @@ test("workflow catalog lifecycle APIs create, validate, publish, and expose vers
 			ui: { layout: "auto", positions: { agent: { x: 80, y: 80 } } },
 		};
 
+		const unauthenticatedPatch = await fetch(`${baseURL}/api/chat/workflows/drafts/${encodeURIComponent(createPayload.draft.draftId)}`, {
+			method: "PATCH",
+			headers: {
+				"content-type": "application/json",
+				origin: baseURL,
+			},
+			body: JSON.stringify({ definition: runnableDefinition, editTrigger: "graph_edit" }),
+		});
+		assert.equal(unauthenticatedPatch.status, 401);
+
 		const patchResponse = await fetch(`${baseURL}/api/chat/workflows/drafts/${encodeURIComponent(createPayload.draft.draftId)}`, {
 			method: "PATCH",
 			headers: jsonHeaders,
@@ -2287,6 +2310,16 @@ test("workflow catalog lifecycle APIs create, validate, publish, and expose vers
 		assert.equal(validatePayload.validation.ok, true);
 		assert.equal(validatePayload.draft.source, "ui");
 		assert.equal(validatePayload.draft.status, "draft");
+
+		const unauthenticatedPublish = await fetch(`${baseURL}/api/chat/workflows/drafts/${encodeURIComponent(createPayload.draft.draftId)}/publish`, {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				origin: baseURL,
+			},
+			body: JSON.stringify({ versionIntent: "patch" }),
+		});
+		assert.equal(unauthenticatedPublish.status, 401);
 
 		const publishResponse = await fetch(`${baseURL}/api/chat/workflows/drafts/${encodeURIComponent(createPayload.draft.draftId)}/publish`, {
 			method: "POST",
@@ -2322,6 +2355,14 @@ test("workflow catalog lifecycle APIs create, validate, publish, and expose vers
 		assert.deepEqual(versionInspectPayload.missingRefs, []);
 		assert.equal(versionInspectPayload.definition.id, "ui-lifecycle-api-draft");
 
+		const codeNextDraftResponse = await fetch(`${baseURL}/api/chat/workflows/standard-project/drafts`, {
+			method: "POST",
+			headers: jsonHeaders,
+			body: JSON.stringify({ version: "1.0.0" }),
+		});
+		assert.equal(codeNextDraftResponse.status, 409);
+		assert.match((await codeNextDraftResponse.json()).error, /Code workflow projections are read-only/);
+
 		const unauthenticatedArchive = await fetch(`${baseURL}/api/chat/workflows/ui-lifecycle-api-draft/archive`, {
 			method: "POST",
 			headers: {
@@ -2331,6 +2372,16 @@ test("workflow catalog lifecycle APIs create, validate, publish, and expose vers
 			body: JSON.stringify({ reason: "auth baseline check" }),
 		});
 		assert.equal(unauthenticatedArchive.status, 401);
+
+		const unauthenticatedDelete = await fetch(`${baseURL}/api/chat/workflows/ui-lifecycle-api-draft`, {
+			method: "DELETE",
+			headers: {
+				"content-type": "application/json",
+				origin: baseURL,
+			},
+			body: JSON.stringify({ confirmWorkflowId: "ui-lifecycle-api-draft" }),
+		});
+		assert.equal(unauthenticatedDelete.status, 401);
 
 		const archiveResponse = await fetch(`${baseURL}/api/chat/workflows/ui-lifecycle-api-draft/archive`, {
 			method: "POST",

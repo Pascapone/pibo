@@ -180,6 +180,12 @@ type WorkflowVersionHistoryGroup = {
 	records: WorkflowCatalogVersionRecord[];
 };
 
+type WorkflowLifecycleConfirmationTarget = {
+	kind: "archive" | "delete";
+	workflowId: string;
+	title: string;
+};
+
 export function WorkflowsArea({ draftId, viewWorkflowId, viewWorkflowVersion }: { draftId?: string; viewWorkflowId?: string; viewWorkflowVersion?: string }) {
 	return (
 		<main className="h-full min-h-0 overflow-auto bg-[#101d22]">
@@ -239,6 +245,8 @@ function WorkflowLibraryPanel({ activeDraftId }: { activeDraftId?: string }) {
 	const [editingKey, setEditingKey] = useState<string | undefined>();
 	const [archivingWorkflowId, setArchivingWorkflowId] = useState<string | undefined>();
 	const [deletingWorkflowId, setDeletingWorkflowId] = useState<string | undefined>();
+	const [pendingLifecycleAction, setPendingLifecycleAction] = useState<WorkflowLifecycleConfirmationTarget | undefined>();
+	const [deleteConfirmWorkflowId, setDeleteConfirmWorkflowId] = useState("");
 	const [errorMessage, setErrorMessage] = useState<string | undefined>();
 	const busy = Boolean(duplicatingKey || editingKey || archivingWorkflowId || deletingWorkflowId);
 
@@ -287,11 +295,26 @@ function WorkflowLibraryPanel({ activeDraftId }: { activeDraftId?: string }) {
 		}
 	};
 
-	const archiveWorkflow = async (workflowId: string) => {
+	const requestArchiveWorkflow = (workflowId: string, title: string) => {
+		setDeleteConfirmWorkflowId("");
+		setErrorMessage(undefined);
+		setPendingLifecycleAction({ kind: "archive", workflowId, title });
+	};
+
+	const requestDeleteWorkflow = (workflowId: string, title: string) => {
+		setDeleteConfirmWorkflowId("");
+		setErrorMessage(undefined);
+		setPendingLifecycleAction({ kind: "delete", workflowId, title });
+	};
+
+	const archiveWorkflow = async () => {
+		if (!pendingLifecycleAction || pendingLifecycleAction.kind !== "archive") return;
+		const { workflowId } = pendingLifecycleAction;
 		setArchivingWorkflowId(workflowId);
 		setErrorMessage(undefined);
 		try {
 			await postWorkflowArchive(workflowId);
+			setPendingLifecycleAction(undefined);
 			await loadVersionHistory();
 		} catch (error) {
 			setErrorMessage(error instanceof Error ? error.message : "Failed to archive workflow");
@@ -300,13 +323,15 @@ function WorkflowLibraryPanel({ activeDraftId }: { activeDraftId?: string }) {
 		}
 	};
 
-	const deleteWorkflowIdentity = async (workflowId: string) => {
-		const confirmWorkflowId = window.prompt(`Type the workflow id "${workflowId}" to delete this workflow. Historical Project run snapshots remain inspectable.`);
-		if (confirmWorkflowId === null) return;
+	const deleteWorkflowIdentity = async () => {
+		if (!pendingLifecycleAction || pendingLifecycleAction.kind !== "delete") return;
+		const { workflowId } = pendingLifecycleAction;
 		setDeletingWorkflowId(workflowId);
 		setErrorMessage(undefined);
 		try {
-			await deleteWorkflow(workflowId, { confirmWorkflowId });
+			await deleteWorkflow(workflowId, { confirmWorkflowId: deleteConfirmWorkflowId });
+			setPendingLifecycleAction(undefined);
+			setDeleteConfirmWorkflowId("");
 			await loadVersionHistory();
 		} catch (error) {
 			setErrorMessage(error instanceof Error ? error.message : "Failed to delete workflow");
@@ -335,6 +360,19 @@ function WorkflowLibraryPanel({ activeDraftId }: { activeDraftId?: string }) {
 				</div>
 				{activeDraftId === STARTER_DRAFT_ID ? <div className="mt-3 text-[11px] font-semibold text-emerald-300">Currently open in the builder.</div> : null}
 			</div>
+
+			<WorkflowLifecycleConfirmationPanel
+				target={pendingLifecycleAction}
+				busy={busy}
+				deleteConfirmWorkflowId={deleteConfirmWorkflowId}
+				onDeleteConfirmChange={setDeleteConfirmWorkflowId}
+				onCancel={() => {
+					setPendingLifecycleAction(undefined);
+					setDeleteConfirmWorkflowId("");
+				}}
+				onConfirmArchive={() => void archiveWorkflow()}
+				onConfirmDelete={() => void deleteWorkflowIdentity()}
+			/>
 
 			<div className="grid gap-3" aria-label="Workflow version history">
 				<div className="flex items-center justify-between gap-3">
@@ -382,8 +420,8 @@ function WorkflowLibraryPanel({ activeDraftId }: { activeDraftId?: string }) {
 						deletingWorkflowId={deletingWorkflowId}
 						onDuplicate={duplicateWorkflow}
 						onEditPublished={editPublishedWorkflow}
-						onArchive={archiveWorkflow}
-						onDelete={deleteWorkflowIdentity}
+						onArchive={requestArchiveWorkflow}
+						onDelete={requestDeleteWorkflow}
 					/>
 				)) : null}
 			</div>
@@ -417,8 +455,8 @@ function WorkflowVersionHistoryGroupCard({
 	deletingWorkflowId?: string;
 	onDuplicate: (workflowId: string, version: string) => Promise<void>;
 	onEditPublished: (workflowId: string, version: string) => Promise<void>;
-	onArchive: (workflowId: string) => Promise<void>;
-	onDelete: (workflowId: string) => Promise<void>;
+	onArchive: (workflowId: string, title: string) => void;
+	onDelete: (workflowId: string, title: string) => void;
 }) {
 	return (
 		<div className="rounded-sm border border-slate-800 bg-[#101d22]/70 p-4" aria-label={`Version history for ${group.workflowId}`}>
@@ -473,8 +511,8 @@ function WorkflowVersionHistoryRow({
 	deletingWorkflowId?: string;
 	onDuplicate: (workflowId: string, version: string) => Promise<void>;
 	onEditPublished: (workflowId: string, version: string) => Promise<void>;
-	onArchive: (workflowId: string) => Promise<void>;
-	onDelete: (workflowId: string) => Promise<void>;
+	onArchive: (workflowId: string, title: string) => void;
+	onDelete: (workflowId: string, title: string) => void;
 }) {
 	const key = workflowVersionSelectionKey(record.id, record.version);
 	const published = record.status === "published";
@@ -527,7 +565,7 @@ function WorkflowVersionHistoryRow({
 								<button
 									type="button"
 									className="inline-flex items-center justify-center gap-1 rounded-sm border border-amber-700/70 px-3 py-1.5 text-xs font-semibold text-amber-100 transition hover:border-amber-500 hover:text-amber-50 disabled:cursor-not-allowed disabled:opacity-50"
-									onClick={() => void onArchive(record.id)}
+									onClick={() => onArchive(record.id, record.title)}
 									disabled={busy}
 								>
 									{archivingWorkflowId === record.id ? <Loader2 size={13} className="animate-spin" /> : <Archive size={13} />}
@@ -538,7 +576,7 @@ function WorkflowVersionHistoryRow({
 								<button
 									type="button"
 									className="inline-flex items-center justify-center gap-1 rounded-sm border border-red-800/80 px-3 py-1.5 text-xs font-semibold text-red-100 transition hover:border-red-500 hover:text-red-50 disabled:cursor-not-allowed disabled:opacity-50"
-									onClick={() => void onDelete(record.id)}
+									onClick={() => onDelete(record.id, record.title)}
 									disabled={busy}
 								>
 									{deletingWorkflowId === record.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
@@ -551,6 +589,89 @@ function WorkflowVersionHistoryRow({
 							Unavailable for Project session selection.
 						</div>
 					)}
+				</div>
+			</div>
+		</div>
+	);
+}
+
+function WorkflowLifecycleConfirmationPanel({
+	target,
+	busy,
+	deleteConfirmWorkflowId,
+	onDeleteConfirmChange,
+	onCancel,
+	onConfirmArchive,
+	onConfirmDelete,
+}: {
+	target?: WorkflowLifecycleConfirmationTarget;
+	busy: boolean;
+	deleteConfirmWorkflowId: string;
+	onDeleteConfirmChange: (value: string) => void;
+	onCancel: () => void;
+	onConfirmArchive: () => void;
+	onConfirmDelete: () => void;
+}) {
+	if (!target) return null;
+	const isDelete = target.kind === "delete";
+	const deleteConfirmationMatches = deleteConfirmWorkflowId.trim() === target.workflowId;
+	return (
+		<div className={`rounded-sm border p-4 text-xs leading-5 ${isDelete ? "border-red-900/70 bg-red-950/25 text-red-100" : "border-amber-800/70 bg-amber-950/20 text-amber-100"}`} role="region" aria-label={`${isDelete ? "Delete" : "Archive"} workflow confirmation`}>
+			<div className="flex flex-wrap items-start justify-between gap-4">
+				<div className="min-w-0 flex-1">
+					<div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em]">
+						<AlertTriangle size={13} />
+						Confirm {isDelete ? "delete" : "archive"}
+					</div>
+					<h3 className="mt-1 text-sm font-bold text-slate-100">{target.title}</h3>
+					<div className="mt-1 font-mono text-[11px] text-slate-300">{target.workflowId}</div>
+					{isDelete ? (
+						<>
+							<p className="mt-3">
+								Deleting tombstones the live workflow identity. It removes this workflow from the default catalog, workflow pickers, duplicate/edit/publish/archive actions, and new Project session creation.
+							</p>
+							<p className="mt-2">
+								Historical Project runs remain inspectable from immutable snapshots and show a definition-deleted state instead of a broken live catalog link.
+							</p>
+							<label className="mt-3 block text-[11px] font-semibold text-red-100">
+								Type the workflow id to confirm delete
+								<input
+									value={deleteConfirmWorkflowId}
+									onChange={(event) => onDeleteConfirmChange(event.target.value)}
+									className="mt-1 w-full rounded-sm border border-red-900/70 bg-[#101d22] px-2 py-1.5 font-mono text-xs text-slate-100 outline-none focus:border-red-400"
+									placeholder={target.workflowId}
+									disabled={busy}
+								/>
+							</label>
+						</>
+					) : (
+						<>
+							<p className="mt-3">
+								Archiving applies to the whole workflow identity. It hides this workflow from the default catalog and Project workflow selection lists.
+							</p>
+							<p className="mt-2">
+								Published versions stay available only through archive filters and historical run links, and historical Project runs continue to render from their snapshots.
+							</p>
+						</>
+					)}
+				</div>
+				<div className="flex shrink-0 flex-col gap-2">
+					<button
+						type="button"
+						className="rounded-sm border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition hover:border-slate-500 hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+						onClick={onCancel}
+						disabled={busy}
+					>
+						Cancel
+					</button>
+					<button
+						type="button"
+						className={`rounded-sm border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${isDelete ? "border-red-700 text-red-100 hover:border-red-400" : "border-amber-600 text-amber-100 hover:border-amber-400"}`}
+						onClick={isDelete ? onConfirmDelete : onConfirmArchive}
+						disabled={busy || (isDelete && !deleteConfirmationMatches)}
+					>
+						{isDelete ? "Delete workflow" : "Archive workflow"}
+					</button>
 				</div>
 			</div>
 		</div>
