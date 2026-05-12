@@ -28,6 +28,56 @@ export type PiboProjectWorkflowSessionConfiguration = {
 	fastMode?: boolean;
 };
 
+export type PiboProjectWorkflowPromptAssetPin = {
+	assetId: string;
+	revisionId: string;
+	contentHash: string;
+	source: "code" | "ui";
+};
+
+export type PiboProjectWorkflowSessionSnapshot = {
+	id: string;
+	schemaVersion: 1;
+	createdAt: string;
+	createdBy: string;
+	ownerScope: string;
+	projectId: string;
+	piboSessionId: string;
+	workflow: {
+		id: PiboProjectWorkflowId;
+		version: string;
+		source: "code" | "ui";
+		title?: string;
+		description?: string;
+		tags: string[];
+		baseDefinitionHash: string;
+		effectiveDefinitionHash: string;
+	};
+	baseDefinition: PiboJsonObject;
+	effectiveDefinition: PiboJsonObject;
+	inputValues: PiboJsonObject;
+	promptOverrides: Record<string, string>;
+	overridePolicy: {
+		promptEligibility: "metadata.sessionOverrides.prompt===true-and-direct-promptTemplate";
+		eligiblePromptNodeIds: string[];
+		modelScope: "workflow";
+		thinkingLevelScope: "workflow";
+		fastModeScope: "workflow";
+	};
+	model?: ModelProfile;
+	thinkingLevel?: PiboThinkingLevel;
+	fastMode?: boolean;
+	promptAssetPins: PiboProjectWorkflowPromptAssetPin[];
+	validation: PiboJsonObject;
+	deletedDefinitionFallback: {
+		title?: string;
+		workflowId: PiboProjectWorkflowId;
+		workflowVersion: string;
+		effectiveDefinitionHash: string;
+		tombstoneLabel?: string;
+	};
+};
+
 export type PiboProject = {
 	id: string;
 	ownerScope: string;
@@ -187,6 +237,42 @@ export class ChatProjectService {
 		});
 	}
 
+	saveWorkflowSessionSnapshot(snapshot: PiboProjectWorkflowSessionSnapshot): PiboProjectWorkflowSessionSnapshot {
+		const existing = this.getWorkflowSessionSnapshot(snapshot.id);
+		if (existing) {
+			if (existing.piboSessionId !== snapshot.piboSessionId || existing.workflow.effectiveDefinitionHash !== snapshot.workflow.effectiveDefinitionHash) {
+				throw new Error("Workflow session snapshots are immutable");
+			}
+			return existing;
+		}
+		const existingForSession = this.getWorkflowSessionSnapshotForSession(snapshot.piboSessionId);
+		if (existingForSession) throw new Error(`Project workflow session '${snapshot.piboSessionId}' already has a configuration snapshot`);
+		this.db.prepare(`INSERT INTO project_workflow_session_snapshots (id, schema_version, project_id, pibo_session_id, workflow_id, workflow_version, base_definition_hash, effective_definition_hash, snapshot_json, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+			snapshot.id,
+			snapshot.schemaVersion,
+			snapshot.projectId,
+			snapshot.piboSessionId,
+			snapshot.workflow.id,
+			snapshot.workflow.version,
+			snapshot.workflow.baseDefinitionHash,
+			snapshot.workflow.effectiveDefinitionHash,
+			JSON.stringify(snapshot),
+			snapshot.createdAt,
+		);
+		return this.getWorkflowSessionSnapshot(snapshot.id)!;
+	}
+
+	getWorkflowSessionSnapshot(id: string): PiboProjectWorkflowSessionSnapshot | undefined {
+		const row = this.db.prepare("SELECT * FROM project_workflow_session_snapshots WHERE id = ?").get(id) as ProjectWorkflowSessionSnapshotRow | undefined;
+		return row ? workflowSessionSnapshotFromRow(row) : undefined;
+	}
+
+	getWorkflowSessionSnapshotForSession(piboSessionId: string): PiboProjectWorkflowSessionSnapshot | undefined {
+		const row = this.db.prepare("SELECT * FROM project_workflow_session_snapshots WHERE pibo_session_id = ?").get(piboSessionId) as ProjectWorkflowSessionSnapshotRow | undefined;
+		return row ? workflowSessionSnapshotFromRow(row) : undefined;
+	}
+
 	setProjectSessionArchived(piboSessionId: string, archived: boolean): PiboProjectSession | undefined {
 		const now = new Date().toISOString();
 		this.db.prepare("UPDATE project_sessions SET archived = ?, updated_at = ? WHERE pibo_session_id = ?").run(archived ? 1 : 0, now, piboSessionId);
@@ -228,6 +314,20 @@ export class ChatProjectService {
 				updated_at TEXT NOT NULL
 			);
 			CREATE INDEX IF NOT EXISTS project_sessions_project_id_idx ON project_sessions(project_id, archived, created_at);
+			CREATE TABLE IF NOT EXISTS project_workflow_session_snapshots (
+				id TEXT PRIMARY KEY,
+				schema_version INTEGER NOT NULL,
+				project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+				pibo_session_id TEXT NOT NULL REFERENCES project_sessions(pibo_session_id) ON DELETE CASCADE,
+				workflow_id TEXT NOT NULL,
+				workflow_version TEXT NOT NULL,
+				base_definition_hash TEXT NOT NULL,
+				effective_definition_hash TEXT NOT NULL,
+				snapshot_json TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				UNIQUE(pibo_session_id)
+			);
+			CREATE INDEX IF NOT EXISTS project_workflow_session_snapshots_project_idx ON project_workflow_session_snapshots(project_id, created_at);
 		`);
 		this.ensureProjectSessionWorkflowVersionColumn();
 		this.ensureProjectSessionConfigurationColumn();
@@ -290,6 +390,19 @@ type ProjectSessionRow = {
 	updated_at: string;
 };
 
+type ProjectWorkflowSessionSnapshotRow = {
+	id: string;
+	schema_version: number;
+	project_id: string;
+	pibo_session_id: string;
+	workflow_id: string;
+	workflow_version: string;
+	base_definition_hash: string;
+	effective_definition_hash: string;
+	snapshot_json: string;
+	created_at: string;
+};
+
 function projectFromRow(row: ProjectRow): PiboProject {
 	return {
 		id: row.id,
@@ -324,6 +437,50 @@ function projectSessionFromRow(row: ProjectSessionRow): PiboProjectSession {
 		archived: row.archived === 1,
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
+	};
+}
+
+function workflowSessionSnapshotFromRow(row: ProjectWorkflowSessionSnapshotRow): PiboProjectWorkflowSessionSnapshot {
+	const snapshot = safeJsonObject(row.snapshot_json) as Partial<PiboProjectWorkflowSessionSnapshot>;
+	return {
+		...snapshot,
+		id: row.id,
+		schemaVersion: 1,
+		projectId: row.project_id,
+		piboSessionId: row.pibo_session_id,
+		workflow: {
+			...(snapshot.workflow ?? {}),
+			id: row.workflow_id,
+			version: row.workflow_version,
+			baseDefinitionHash: row.base_definition_hash,
+			effectiveDefinitionHash: row.effective_definition_hash,
+			source: snapshot.workflow?.source ?? "code",
+			tags: snapshot.workflow?.tags ?? [],
+		},
+		baseDefinition: isPlainJsonObject(snapshot.baseDefinition) ? snapshot.baseDefinition : {},
+		effectiveDefinition: isPlainJsonObject(snapshot.effectiveDefinition) ? snapshot.effectiveDefinition : {},
+		inputValues: isPlainJsonObject(snapshot.inputValues) ? snapshot.inputValues : {},
+		promptOverrides: isStringRecord(snapshot.promptOverrides) ? snapshot.promptOverrides : {},
+		overridePolicy: snapshot.overridePolicy ?? {
+			promptEligibility: "metadata.sessionOverrides.prompt===true-and-direct-promptTemplate",
+			eligiblePromptNodeIds: [],
+			modelScope: "workflow",
+			thinkingLevelScope: "workflow",
+			fastModeScope: "workflow",
+		},
+		promptAssetPins: snapshot.promptAssetPins ?? [],
+		validation: isPlainJsonObject(snapshot.validation) ? snapshot.validation : {},
+		deletedDefinitionFallback: snapshot.deletedDefinitionFallback ?? {
+			workflowId: row.workflow_id,
+			workflowVersion: row.workflow_version,
+			effectiveDefinitionHash: row.effective_definition_hash,
+		},
+		createdAt: typeof snapshot.createdAt === "string" ? snapshot.createdAt : row.created_at,
+		createdBy: typeof snapshot.createdBy === "string" ? snapshot.createdBy : "unknown",
+		ownerScope: typeof snapshot.ownerScope === "string" ? snapshot.ownerScope : "unknown",
+		...(snapshot.model ? { model: snapshot.model } : {}),
+		...(snapshot.thinkingLevel ? { thinkingLevel: snapshot.thinkingLevel } : {}),
+		...(snapshot.fastMode !== undefined ? { fastMode: snapshot.fastMode } : {}),
 	};
 }
 
@@ -388,6 +545,15 @@ function safeJsonObject(value: string): Record<string, unknown> {
 	} catch {
 		return {};
 	}
+}
+
+function isPlainJsonObject(value: unknown): value is PiboJsonObject {
+	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+	return Boolean(value) && typeof value === "object" && !Array.isArray(value)
+		&& Object.values(value as Record<string, unknown>).every((entry) => typeof entry === "string");
 }
 
 export function personalProjectId(ownerScope: string): string {

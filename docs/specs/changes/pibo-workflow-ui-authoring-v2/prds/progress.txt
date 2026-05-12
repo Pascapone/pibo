@@ -27,6 +27,7 @@
 - V2 workflow security validation should reject inline executable fields and hidden LLM coercion at draft/publish/start boundaries; incompatible ports require visible registered adapter refs instead.
 - Container web gateway restart commands should avoid `pgrep`/`pkill` patterns that match the wrapper shell; keep the Node process alive with a keepalive/nohup after `runWebGatewayServer` logs startup.
 - Invalid raw Workflow IR text should be a transient warning diagnostic on the draft while preserving the last parsed `definition`; clear the warning after the next valid parsed raw/visual edit.
+- Project workflow configuration snapshots should be immutable Project-service records keyed by Pibo Session id; apply prompt overrides only to the effective snapshot definition while preserving the base definition and hash.
 
 ## 2026-05-11 22:37 CEST - US-001
 - What was implemented
@@ -776,4 +777,26 @@
 - **Learnings for future iterations:**
   - Raw IR parse failures should be warning diagnostics on the existing draft, not HTTP 400 replacements, so authors can recover without losing the last valid Workflow IR object.
   - Clear stale raw-parse warnings once a valid raw or visual edit saves a parsed definition.
+---
+## 2026-05-12 03:06 CEST - US-004
+- What was implemented
+  - Added immutable Project workflow session configuration/effective-definition snapshots persisted by `ChatProjectService`.
+  - Snapshot creation now runs during `POST /api/chat/projects/:projectId/workflow-sessions`, storing Project/Pibo Session identity, workflow id/version/source metadata, base/effective definition hashes, base/effective definitions, input values, prompt overrides, workflow-scoped model/thinking/fast mode, override policy, validation metadata, and deleted-definition fallback fields.
+  - Prompt overrides are applied only to the effective snapshot definition; the base definition and base hash remain unchanged.
+  - Start validation now requires and returns the stored snapshot, while run creation remains for the next start story.
+- Files changed
+  - `src/apps/chat/data/project-service.ts`
+  - `src/apps/chat/web-app.ts`
+  - `test/project-service-workflow-link.test.mjs`
+  - `test/web-channel.test.mjs`
+  - `docs/specs/changes/pibo-workflow-ui-authoring-v2/prds/prd_03_project_session_selection_and_snapshots.json`
+  - `docs/specs/changes/pibo-workflow-ui-authoring-v2/prds/progress.txt`
+- Quality checks run
+  - `docker exec pibo-dev-WorkflowsV2 bash -lc 'cd /workspace && npm run typecheck'` — passed.
+  - `docker exec pibo-dev-WorkflowsV2 bash -lc 'cd /workspace && npm run build && node --test test/project-service-workflow-link.test.mjs && node --test --test-name-pattern "configured Project workflow sessions" test/web-channel.test.mjs'` — passed.
+- Browser verification, if UI changed
+  - Not run; this story changed Project workflow-session snapshot persistence/API response data and tests only, with no visible UI behavior changes.
+- **Learnings for future iterations:**
+  - Store snapshots in the Project service with stable identity/hash columns plus the full JSON snapshot payload so future run-inspection and deleted-definition stories can read one immutable record.
+  - Keep model, thinking level, and fast mode as workflow-scoped snapshot settings; do not mutate Workflow IR nodes for those fields.
 ---

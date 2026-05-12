@@ -2583,6 +2583,32 @@ test("chat web app creates configured Project workflow sessions from the workflo
 		assert.equal(createdPayload.projectSession.workflowRunId, undefined);
 		assert.equal(createdPayload.validation.trigger, "before_project_session_creation");
 		assert.equal(createdPayload.validation.ok, true);
+		assert.match(createdPayload.snapshot.id, /^wfs_/);
+		assert.equal(createdPayload.snapshot.schemaVersion, 1);
+		assert.equal(createdPayload.snapshot.projectId, projectPayload.project.id);
+		assert.equal(createdPayload.snapshot.piboSessionId, createdPayload.session.id);
+		assert.equal(createdPayload.snapshot.workflow.id, "standard-project");
+		assert.equal(createdPayload.snapshot.workflow.version, "1.0.0");
+		assert.equal(createdPayload.snapshot.workflow.source, "code");
+		assert.match(createdPayload.snapshot.workflow.baseDefinitionHash, /^sha256:[a-f0-9]{64}$/);
+		assert.match(createdPayload.snapshot.workflow.effectiveDefinitionHash, /^sha256:[a-f0-9]{64}$/);
+		assert.notEqual(createdPayload.snapshot.workflow.baseDefinitionHash, createdPayload.snapshot.workflow.effectiveDefinitionHash);
+		assert.deepEqual(createdPayload.snapshot.inputValues, workflowConfiguration.inputValues);
+		assert.deepEqual(createdPayload.snapshot.promptOverrides, workflowConfiguration.promptOverrides);
+		assert.deepEqual(createdPayload.snapshot.overridePolicy, {
+			promptEligibility: "metadata.sessionOverrides.prompt===true-and-direct-promptTemplate",
+			eligiblePromptNodeIds: ["agent"],
+			modelScope: "workflow",
+			thinkingLevelScope: "workflow",
+			fastModeScope: "workflow",
+		});
+		assert.deepEqual(createdPayload.snapshot.model, workflowConfiguration.model);
+		assert.equal(createdPayload.snapshot.thinkingLevel, "medium");
+		assert.equal(createdPayload.snapshot.fastMode, true);
+		assert.equal(createdPayload.snapshot.baseDefinition.nodes.agent.promptTemplate, "Use the workflow input to produce a concise answer.\n\n{{input}}");
+		assert.equal(createdPayload.snapshot.effectiveDefinition.nodes.agent.promptTemplate, workflowConfiguration.promptOverrides.agent);
+		assert.equal(createdPayload.snapshot.validation.trigger, "before_project_session_creation");
+		assert.equal(createdPayload.snapshot.validation.ok, true);
 		assert.equal(emitted.length, 0);
 
 		const startValidationResponse = await fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(projectPayload.project.id)}/workflow-sessions/${encodeURIComponent(createdPayload.session.id)}/start`, {
@@ -2601,6 +2627,8 @@ test("chat web app creates configured Project workflow sessions from the workflo
 		assert.equal(startValidationPayload.projectSession.state, "configured");
 		assert.deepEqual(startValidationPayload.projectSession.configuration, createdPayload.configuration);
 		assert.equal(startValidationPayload.projectSession.workflowRunId, undefined);
+		assert.equal(startValidationPayload.snapshot.id, createdPayload.snapshot.id);
+		assert.deepEqual(startValidationPayload.snapshot.effectiveDefinition, createdPayload.snapshot.effectiveDefinition);
 		assert.equal(emitted.length, 0);
 
 		const legacyRejected = await fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(projectPayload.project.id)}/sessions`, {

@@ -77,6 +77,80 @@ test("project workflow session records persist selection metadata before runs st
 	}
 });
 
+test("project workflow session snapshots persist configuration and effective definitions", () => {
+	const tempRoot = mkdtempSync(join(tmpdir(), "pibo-project-workflow-snapshot-"));
+	const service = new ChatProjectService(join(tempRoot, "web-projects.sqlite"));
+
+	try {
+		const project = service.createProject({
+			ownerScope: "user:workflow-snapshot",
+			name: "Workflow Snapshot Project",
+			projectFolder: join(tempRoot, "project"),
+			createFolder: true,
+		});
+		service.addProjectSession({
+			projectId: project.id,
+			piboSessionId: "ps_snapshot_workflow",
+			kind: "main",
+			workflowId: "standard-project",
+			workflowVersion: "1.0.0",
+			state: "configured",
+		});
+
+		const snapshot = {
+			id: "wfs_project_service",
+			schemaVersion: 1,
+			createdAt: "2026-05-12T00:00:00.000Z",
+			createdBy: "user-1",
+			ownerScope: "user:workflow-snapshot",
+			projectId: project.id,
+			piboSessionId: "ps_snapshot_workflow",
+			workflow: {
+				id: "standard-project",
+				version: "1.0.0",
+				source: "code",
+				title: "Standard Project",
+				tags: ["project"],
+				baseDefinitionHash: "sha256:base",
+				effectiveDefinitionHash: "sha256:effective",
+			},
+			baseDefinition: { id: "standard-project", version: "1.0.0", nodes: { agent: { promptTemplate: "Base" } } },
+			effectiveDefinition: { id: "standard-project", version: "1.0.0", nodes: { agent: { promptTemplate: "Override" } } },
+			inputValues: { topic: "Snapshots" },
+			promptOverrides: { agent: "Override" },
+			overridePolicy: {
+				promptEligibility: "metadata.sessionOverrides.prompt===true-and-direct-promptTemplate",
+				eligiblePromptNodeIds: ["agent"],
+				modelScope: "workflow",
+				thinkingLevelScope: "workflow",
+				fastModeScope: "workflow",
+			},
+			model: { provider: "openai", id: "gpt-5.1" },
+			thinkingLevel: "low",
+			fastMode: false,
+			promptAssetPins: [],
+			validation: { trigger: "before_project_session_creation", ok: true, validatedAt: "2026-05-12T00:00:00.000Z" },
+			deletedDefinitionFallback: {
+				workflowId: "standard-project",
+				workflowVersion: "1.0.0",
+				effectiveDefinitionHash: "sha256:effective",
+			},
+		};
+
+		const saved = service.saveWorkflowSessionSnapshot(snapshot);
+		assert.deepEqual(saved, snapshot);
+		assert.deepEqual(service.getWorkflowSessionSnapshot("wfs_project_service"), snapshot);
+		assert.deepEqual(service.getWorkflowSessionSnapshotForSession("ps_snapshot_workflow"), snapshot);
+		assert.throws(() => service.saveWorkflowSessionSnapshot({
+			...snapshot,
+			id: "wfs_second_snapshot",
+		}), /already has a configuration snapshot/);
+	} finally {
+		service.close();
+		rmSync(tempRoot, { recursive: true, force: true });
+	}
+});
+
 test("project sessions can link back to workflow run ids", () => {
 	const tempRoot = mkdtempSync(join(tmpdir(), "pibo-project-workflow-link-"));
 	const service = new ChatProjectService(join(tempRoot, "web-projects.sqlite"));

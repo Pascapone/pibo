@@ -76,7 +76,7 @@ import { ChatReadStateService } from "./data/read-state-service.js";
 import { ChatRoomService } from "./data/room-service.js";
 import { ChatSessionQueryService } from "./data/session-query-service.js";
 import { ChatTimelineQueryService } from "./data/timeline-query-service.js";
-import { ChatProjectService, type PiboProject, type PiboProjectSession, type PiboProjectWorkflowSessionConfiguration } from "./data/project-service.js";
+import { ChatProjectService, type PiboProject, type PiboProjectSession, type PiboProjectWorkflowSessionConfiguration, type PiboProjectWorkflowSessionSnapshot } from "./data/project-service.js";
 import { PiboDataStore } from "../../data/pibo-store.js";
 import { createDefaultPiboCronStore, type PiboCronStore } from "../../cron/store.js";
 import { createDefaultPiboRalphStore, type PiboRalphStore } from "../../ralph/store.js";
@@ -1965,6 +1965,84 @@ function normalizeProjectWorkflowSessionConfiguration(body: ChatProjectSessionCr
 		...(model ? { model } : {}),
 		...(thinkingLevel ? { thinkingLevel } : {}),
 		...(fastMode !== undefined ? { fastMode } : {}),
+	};
+}
+
+function createProjectWorkflowSessionSnapshot(input: {
+	webSession: PiboWebSession;
+	project: PiboProject;
+	session: PiboSession;
+	workflow: WorkflowVersionPickerOption;
+	baseDefinition: PiboJsonObject;
+	configuration: PiboProjectWorkflowSessionConfiguration;
+	validation: WorkflowValidationResponse;
+}): PiboProjectWorkflowSessionSnapshot {
+	const baseDefinition = cloneJsonObject(input.baseDefinition);
+	const effectiveDefinition = applyProjectWorkflowPromptOverrides(baseDefinition, input.configuration.promptOverrides);
+	const baseDefinitionHash = hashWorkflowDefinitionJson(baseDefinition);
+	const effectiveDefinitionHash = hashWorkflowDefinitionJson(effectiveDefinition);
+	const now = new Date().toISOString();
+	return {
+		id: `wfs_${randomUUID()}`,
+		schemaVersion: 1,
+		createdAt: now,
+		createdBy: input.webSession.authSession.identity.userId,
+		ownerScope: input.webSession.ownerScope,
+		projectId: input.project.id,
+		piboSessionId: input.session.id,
+		workflow: {
+			id: input.workflow.id,
+			version: input.workflow.version,
+			source: input.workflow.source,
+			title: input.workflow.title,
+			...(input.workflow.description ? { description: input.workflow.description } : {}),
+			tags: [...input.workflow.tags],
+			baseDefinitionHash,
+			effectiveDefinitionHash,
+		},
+		baseDefinition,
+		effectiveDefinition,
+		inputValues: cloneJsonObject(input.configuration.inputValues),
+		promptOverrides: { ...input.configuration.promptOverrides },
+		overridePolicy: {
+			promptEligibility: "metadata.sessionOverrides.prompt===true-and-direct-promptTemplate",
+			eligiblePromptNodeIds: [...input.configuration.promptOverrideEligibleNodeIds],
+			modelScope: input.configuration.overrideScopes.model,
+			thinkingLevelScope: input.configuration.overrideScopes.thinkingLevel,
+			fastModeScope: input.configuration.overrideScopes.fastMode,
+		},
+		...(input.configuration.model ? { model: input.configuration.model } : {}),
+		...(input.configuration.thinkingLevel ? { thinkingLevel: input.configuration.thinkingLevel } : {}),
+		...(input.configuration.fastMode !== undefined ? { fastMode: input.configuration.fastMode } : {}),
+		promptAssetPins: [],
+		validation: workflowValidationSnapshot(input.validation),
+		deletedDefinitionFallback: {
+			title: input.workflow.title,
+			workflowId: input.workflow.id,
+			workflowVersion: input.workflow.version,
+			effectiveDefinitionHash,
+		},
+	};
+}
+
+function applyProjectWorkflowPromptOverrides(definition: PiboJsonObject, promptOverrides: Record<string, string>): PiboJsonObject {
+	const effectiveDefinition = cloneJsonObject(definition);
+	const nodes = isJsonObject(effectiveDefinition.nodes) ? effectiveDefinition.nodes : undefined;
+	if (!nodes) return effectiveDefinition;
+	for (const [nodeId, promptTemplate] of Object.entries(promptOverrides)) {
+		const node = nodes[nodeId];
+		if (isJsonObject(node)) {
+			nodes[nodeId] = { ...node, promptTemplate };
+		}
+	}
+	return effectiveDefinition;
+}
+
+function workflowValidationSnapshot(validation: WorkflowValidationResponse): PiboJsonObject {
+	return {
+		...validation.validation,
+		validatedAt: validation.validation.checkedAt,
+		diagnostics: validation.diagnostics as unknown as PiboJsonValue[],
 	};
 }
 
@@ -5887,7 +5965,8 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const project = state.projectService.requireProject(projectResource.projectId);
 				const profile = resolveCreateSessionProfile(context, defaultProfile, body.profile);
 				const workflowSelection = resolveProjectWorkflowSelection(state, body.workflowId, body.workflowVersion, { requireExplicitWorkflowId: true, requireExplicitVersion: true });
-				const configuration = normalizeProjectWorkflowSessionConfiguration(body, createPublishedWorkflowDefinition(workflowSelection, profile));
+				const baseDefinition = createPublishedWorkflowDefinition(workflowSelection, profile);
+				const configuration = normalizeProjectWorkflowSessionConfiguration(body, baseDefinition);
 				const validation = validatePublishedWorkflowBoundary({
 					state,
 					context,
@@ -5911,7 +5990,16 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					configuredWorkflow: true,
 					configuration,
 				});
-				return responseJson({ session, projectSession: state.projectService.getProjectSession(session.id), workflow: workflowSelection, configuration, validation: validation.validation, diagnostics: validation.diagnostics }, { status: 201 });
+				const snapshot = state.projectService.saveWorkflowSessionSnapshot(createProjectWorkflowSessionSnapshot({
+					webSession,
+					project,
+					session,
+					workflow: workflowSelection,
+					baseDefinition,
+					configuration,
+					validation,
+				}));
+				return responseJson({ session, projectSession: state.projectService.getProjectSession(session.id), workflow: workflowSelection, configuration, snapshot, validation: validation.validation, diagnostics: validation.diagnostics }, { status: 201 });
 			}
 
 			const workflowSessionStart = projectWorkflowSessionStartResource(url.pathname);
@@ -5924,6 +6012,8 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const projectSession = state.projectService.getProjectSession(session.id);
 				if (!projectSession || projectSession.projectId !== project.id) throw new PiboWebHttpError("Project workflow session not found", 404);
 				const workflowSelection = resolveProjectWorkflowSelection(state, projectSession.workflowId, projectSession.workflowVersion);
+				const snapshot = state.projectService.getWorkflowSessionSnapshotForSession(session.id);
+				if (!snapshot) throw new PiboWebHttpError("Project workflow session snapshot not found", 409);
 				const validation = validatePublishedWorkflowBoundary({
 					state,
 					context,
@@ -5938,6 +6028,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				return responseJson({
 					projectSession,
 					workflow: workflowSelection,
+					snapshot,
 					validation: validation.validation,
 					diagnostics: validation.diagnostics,
 					message: "Workflow start validation passed. Run creation is implemented by the V2 Project start story.",
