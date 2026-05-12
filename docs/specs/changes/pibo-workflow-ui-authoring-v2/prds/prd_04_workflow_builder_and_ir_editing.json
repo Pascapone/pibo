@@ -62,8 +62,8 @@
         "Typecheck passes"
       ],
       "priority": 4,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Workflow settings, node, and edge inspectors are implemented in the builder; inspector saves patch the draft IR through validation triggers and browser verification covered workflow title/metadata, node label, and edge port/guard/adapter edits."
     },
     {
       "id": "US-005",

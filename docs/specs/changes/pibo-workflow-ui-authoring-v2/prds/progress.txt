@@ -1,4 +1,5 @@
 ## Codebase Patterns
+- Workflow Builder inspectors should patch the same draft Pibo Workflow IR through existing draft PATCH validation triggers; capability refs in inspectors should come from picker APIs instead of free-text fields.
 - Nested workflow node UI should reuse the workflow-version picker API, store only `workflowId`/`workflowVersion` refs in parent graph IR, and navigate to a separate workflow viewer instead of inline-expanding child graphs.
 - Workflow catalog persistence uses explicit `SqliteWorkflowRunStore` entities for UI identities, drafts, published versions, archive states, and delete tombstones; tombstones must not remove definition snapshots needed by historical run inspection.
 - Workflow profile picker APIs should compose active custom Agent Designer profiles from `CustomAgentStore` with global `channelContext.getProfiles()` entries, while using archived custom profile rows only to produce diagnostics for already-referenced drafts.
@@ -799,4 +800,34 @@
 - **Learnings for future iterations:**
   - Store snapshots in the Project service with stable identity/hash columns plus the full JSON snapshot payload so future run-inspection and deleted-definition stories can read one immutable record.
   - Keep model, thinking level, and fast mode as workflow-scoped snapshot settings; do not mutate Workflow IR nodes for those fields.
+---
+## 2026-05-12 03:18 CEST - US-004
+- What was implemented
+  - Added Workflow Builder inspectors for workflow settings, selected nodes, and selected edges.
+  - Workflow settings edits update title, description, input/output ports, and exposed metadata lists on the same Pibo Workflow IR draft.
+  - Node inspector edits base node fields plus supported Agent, Code, Workflow, and Human node-specific fields using existing profile/handler/workflow picker boundaries.
+  - Edge inspector edits source/target ports, edge kind, registered guard refs, registered adapter refs, and selected-edge diagnostics.
+  - Added authenticated guard and adapter picker APIs for registered ref selection.
+- Files changed
+  - `src/apps/chat-ui/src/WorkflowsArea.tsx`
+  - `src/apps/chat-ui/src/api.ts`
+  - `src/apps/chat/web-app.ts`
+  - `test/web-channel.test.mjs`
+  - `docs/specs/changes/pibo-workflow-ui-authoring-v2/prds/prd_04_workflow_builder_and_ir_editing.json`
+  - `docs/specs/changes/pibo-workflow-ui-authoring-v2/prds/progress.txt`
+- Quality checks run
+  - `docker exec pibo-dev-WorkflowsV2 bash -lc 'cd /workspace && npm run typecheck'` — passed.
+  - `docker exec pibo-dev-WorkflowsV2 bash -lc 'cd /workspace && npm run build && node --test --test-name-pattern "workflow guard and adapter pickers|workflow validation pipeline" test/web-channel.test.mjs'` — passed, 2/2 targeted web-channel tests.
+  - `python3 -m json.tool docs/specs/changes/pibo-workflow-ui-authoring-v2/prds/prd_04_workflow_builder_and_ir_editing.json` — passed.
+  - `git diff --check` — passed.
+- Browser verification, if UI changed
+  - Restarted the container web gateway from the rebuilt `/workspace/dist` and verified `http://127.0.0.1:4802/apps/chat` returned OK.
+  - Used `browser-use --fresh-profile` inside `pibo-dev-WorkflowsV2` with dev auth to open `/apps/chat/workflows/drafts/v2-starter-draft`.
+  - Verified the builder shows `Workflow inspectors`, `Workflow settings inspector`, selected `Node inspector`, and selected `Edge inspector` panels.
+  - Edited and saved the workflow title/metadata, selected Agent node label, and selected Edge source/target port ids, edge kind, registered guard ref, and registered adapter ref.
+  - Verified the visible Pibo Workflow IR draft contains `Inspector Browser Workflow`, `Inspector Agent Node`, `fixture.guards.approved`, `fixture.adapters.textToTopic`, `result`, and `topic`.
+  - Saved screenshot: `/tmp/ralph-v2-workflow-inspectors.png` inside the container.
+- **Learnings for future iterations:**
+  - React Flow node selection is more reliable through `browser-use click <element-index>` than dispatching a synthetic `MouseEvent` from page eval.
+  - Edge guard/adapter inspectors need picker APIs just like profile, handler, and nested-workflow selectors to preserve the no-free-text registered-ref boundary.
 ---

@@ -259,6 +259,33 @@ export async function getWorkflowHandlerPicker(selectedHandlerId?: string): Prom
 	return requestJson<WorkflowHandlerPickerResponse>(`/api/chat/workflows/pickers/handlers${suffix}`);
 }
 
+export type WorkflowRegisteredRefOption = {
+	id: string;
+	displayName: string;
+	description?: string;
+};
+
+export type WorkflowRegisteredRefPickerResponse = {
+	kind: "guards" | "adapters";
+	options: WorkflowRegisteredRefOption[];
+	selectedRefId?: string;
+	diagnostics: WorkflowPickerDiagnostic[];
+};
+
+export async function getWorkflowGuardPicker(selectedRefId?: string): Promise<WorkflowRegisteredRefPickerResponse> {
+	const params = new URLSearchParams();
+	if (selectedRefId) params.set("selectedRefId", selectedRefId);
+	const suffix = params.size ? `?${params.toString()}` : "";
+	return requestJson<WorkflowRegisteredRefPickerResponse>(`/api/chat/workflows/pickers/guards${suffix}`);
+}
+
+export async function getWorkflowAdapterPicker(selectedRefId?: string): Promise<WorkflowRegisteredRefPickerResponse> {
+	const params = new URLSearchParams();
+	if (selectedRefId) params.set("selectedRefId", selectedRefId);
+	const suffix = params.size ? `?${params.toString()}` : "";
+	return requestJson<WorkflowRegisteredRefPickerResponse>(`/api/chat/workflows/pickers/adapters${suffix}`);
+}
+
 export type WorkflowVersionPickerOption = {
 	id: string;
 	version: string;

@@ -21,7 +21,9 @@ import "@xyflow/react/dist/style.css";
 import type { LucideIcon } from "lucide-react";
 import { AlertTriangle, BookOpenText, Brain, CheckCheck, Code2, CopyPlus, ExternalLink, Layers, Link2, Loader2, MousePointer2, MoveRight, Plus, RefreshCw, Save, ShieldCheck, Trash2 } from "lucide-react";
 import {
+	getWorkflowAdapterPicker,
 	getWorkflowDraft,
+	getWorkflowGuardPicker,
 	getWorkflowHandlerPicker,
 	getWorkflowProfilePicker,
 	getWorkflowVersionPicker,
@@ -37,6 +39,9 @@ import {
 	type WorkflowPickerDiagnostic,
 	type WorkflowProfilePickerOption,
 	type WorkflowProfilePickerResponse,
+	type WorkflowRegisteredRefOption,
+	type WorkflowRegisteredRefPickerResponse,
+	type WorkflowValidationTrigger,
 	type WorkflowVersionPickerOption,
 	type WorkflowVersionPickerResponse,
 } from "./api";
@@ -100,6 +105,43 @@ type WorkflowGraphProjection = {
 	missingPositionCount: number;
 };
 type WorkflowVersionSelection = { workflowId: string; workflowVersion: string };
+type WorkflowPortKindSelection = "text" | "json";
+type OptionalWorkflowPortKindSelection = "none" | WorkflowPortKindSelection;
+type WorkflowSettingsFormState = {
+	title: string;
+	description: string;
+	inputKind: WorkflowPortKindSelection;
+	inputDescription: string;
+	outputKind: WorkflowPortKindSelection;
+	outputDescription: string;
+	metadataTags: string;
+	metadataUseWhen: string;
+	metadataNotFor: string;
+	metadataExamples: string;
+};
+type WorkflowNodeInspectorFormState = {
+	label: string;
+	description: string;
+	inputKind: OptionalWorkflowPortKindSelection;
+	inputDescription: string;
+	outputKind: OptionalWorkflowPortKindSelection;
+	outputDescription: string;
+	profileId: string;
+	promptTemplate: string;
+	handlerId: string;
+	workflowVersionKey: string;
+	humanPrompt: string;
+};
+type WorkflowEdgeInspectorFormState = {
+	sourceNodeId: string;
+	sourcePortId: string;
+	targetNodeId: string;
+	targetPortId: string;
+	kind: "data" | "control" | "error" | "resume";
+	guardHandler: string;
+	guardPriority: string;
+	adapterRef: string;
+};
 
 export function WorkflowsArea({ draftId, viewWorkflowId, viewWorkflowVersion }: { draftId?: string; viewWorkflowId?: string; viewWorkflowVersion?: string }) {
 	return (
@@ -517,11 +559,11 @@ function WorkflowGraphCanvas({ draft, onDraftChange }: { draft: WorkflowDraftRec
 		});
 	}, [nodeIds, sourceNodeId]);
 
-	const saveDefinition = useCallback(async (definition: WorkflowDraftDefinition, successMessage: string, options: { clearLayoutDirty?: boolean } = {}) => {
+	const saveDefinition = useCallback(async (definition: WorkflowDraftDefinition, successMessage: string, options: { clearLayoutDirty?: boolean; editTrigger?: WorkflowValidationTrigger } = {}) => {
 		setSaveState("saving");
 		setStatusMessage(undefined);
 		try {
-			const response = await patchWorkflowDraft(draft.draftId, { definition, editTrigger: "graph_edit" });
+			const response = await patchWorkflowDraft(draft.draftId, { definition, editTrigger: options.editTrigger ?? "graph_edit" });
 			onDraftChange(response.draft);
 			setSaveState("saved");
 			setStatusMessage(successMessage);
@@ -742,6 +784,14 @@ function WorkflowGraphCanvas({ draft, onDraftChange }: { draft: WorkflowDraftRec
 						<div className="mt-2 text-xs leading-5 text-slate-300">{selectedDescription}</div>
 					</div>
 
+					<WorkflowInspectorsPanel
+						draft={draft}
+						selectedElement={selectedElement}
+						nodeIds={nodeIds}
+						isSaving={isSaving}
+						onSaveDefinition={saveDefinition}
+					/>
+
 					{statusMessage ? (
 						<div className={`rounded-sm border p-3 text-xs leading-5 ${saveState === "error" ? "border-red-900/70 bg-red-950/40 text-red-200" : "border-emerald-900/60 bg-emerald-950/20 text-emerald-200"}`} role="status">
 							{statusMessage}
@@ -754,6 +804,452 @@ function WorkflowGraphCanvas({ draft, onDraftChange }: { draft: WorkflowDraftRec
 				Automatic layout is a canvas projection for workflows without saved positions. Saving layout writes only display metadata and does not change nodes, edges, ports, guards, adapters, runtime routing, or validation semantics.
 			</div>
 		</section>
+	);
+}
+
+function WorkflowInspectorsPanel({
+	draft,
+	selectedElement,
+	nodeIds,
+	isSaving,
+	onSaveDefinition,
+}: {
+	draft: WorkflowDraftRecord;
+	selectedElement: SelectedGraphElement;
+	nodeIds: string[];
+	isSaving: boolean;
+	onSaveDefinition: (definition: WorkflowDraftDefinition, successMessage: string, options?: { clearLayoutDirty?: boolean; editTrigger?: WorkflowValidationTrigger }) => Promise<void>;
+}) {
+	const selectedNode = selectedElement?.type === "node" ? readWorkflowNodeDefinitions(draft.definition)[selectedElement.id] : undefined;
+	const selectedEdge = selectedElement?.type === "edge" ? readWorkflowEdgeDefinitions(draft.definition)[selectedElement.id] : undefined;
+
+	return (
+		<div className="grid gap-3 rounded-sm border border-slate-800 bg-[#101d22] p-3" aria-label="Workflow inspectors">
+			<div>
+				<div className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#11a4d4]">Workflow inspectors</div>
+				<p className="mt-1 text-[11px] leading-5 text-slate-500">
+					Inspector saves update the same Pibo Workflow IR draft as the graph canvas; XState remains projection-only.
+				</p>
+			</div>
+			<WorkflowSettingsInspector draft={draft} isSaving={isSaving} onSaveDefinition={onSaveDefinition} />
+			{selectedElement?.type === "node" && selectedNode ? (
+				<WorkflowNodeInspector
+					draft={draft}
+					nodeId={selectedElement.id}
+					node={selectedNode}
+					isSaving={isSaving}
+					onSaveDefinition={onSaveDefinition}
+				/>
+			) : selectedElement?.type === "edge" && selectedEdge ? (
+				<WorkflowEdgeInspector
+					draft={draft}
+					edgeId={selectedElement.id}
+					edge={selectedEdge}
+					nodeIds={nodeIds}
+					isSaving={isSaving}
+					onSaveDefinition={onSaveDefinition}
+				/>
+			) : (
+				<div className="rounded-sm border border-dashed border-slate-700 bg-[#151f24]/70 p-3 text-[11px] leading-5 text-slate-500">
+					Select a canvas node or edge to open the node or edge inspector. Workflow settings remain editable at all times.
+				</div>
+			)}
+		</div>
+	);
+}
+
+function WorkflowSettingsInspector({ draft, isSaving, onSaveDefinition }: {
+	draft: WorkflowDraftRecord;
+	isSaving: boolean;
+	onSaveDefinition: (definition: WorkflowDraftDefinition, successMessage: string, options?: { editTrigger?: WorkflowValidationTrigger }) => Promise<void>;
+}) {
+	const [form, setForm] = useState<WorkflowSettingsFormState>(() => createWorkflowSettingsFormState(draft.definition));
+
+	useEffect(() => {
+		setForm(createWorkflowSettingsFormState(draft.definition));
+	}, [draft.definition]);
+
+	const update = <K extends keyof WorkflowSettingsFormState>(key: K, value: WorkflowSettingsFormState[K]) => {
+		setForm((current) => ({ ...current, [key]: value }));
+	};
+
+	const saveSettings = () => {
+		const definition = applyWorkflowSettingsForm(draft.definition, form);
+		void onSaveDefinition(definition, "Saved workflow settings inspector edits to the draft IR.", { editTrigger: "graph_edit" });
+	};
+
+	return (
+		<details className="rounded-sm border border-slate-800 bg-[#151f24]/70 p-3" open>
+			<summary className="cursor-pointer text-xs font-bold text-slate-200">Workflow settings inspector</summary>
+			<div className="mt-3 grid gap-3 text-xs">
+				<label className="grid gap-1 font-semibold text-slate-300">
+					<span>Workflow title</span>
+					<input className="rounded-sm border border-slate-700 bg-[#101d22] px-2 py-1.5 text-slate-100" value={form.title} onChange={(event) => update("title", event.target.value)} />
+				</label>
+				<label className="grid gap-1 font-semibold text-slate-300">
+					<span>Workflow description</span>
+					<textarea className="min-h-20 rounded-sm border border-slate-700 bg-[#101d22] px-2 py-1.5 text-slate-100" value={form.description} onChange={(event) => update("description", event.target.value)} />
+				</label>
+				<div className="grid gap-2 md:grid-cols-2">
+					<WorkflowPortEditor label="Workflow input port" kind={form.inputKind} description={form.inputDescription} onKindChange={(value) => update("inputKind", value)} onDescriptionChange={(value) => update("inputDescription", value)} />
+					<WorkflowPortEditor label="Workflow output port" kind={form.outputKind} description={form.outputDescription} onKindChange={(value) => update("outputKind", value)} onDescriptionChange={(value) => update("outputDescription", value)} />
+				</div>
+				<div className="grid gap-2 md:grid-cols-2">
+					<WorkflowListTextEditor label="metadata.tags" value={form.metadataTags} onChange={(value) => update("metadataTags", value)} />
+					<WorkflowListTextEditor label="metadata.useWhen" value={form.metadataUseWhen} onChange={(value) => update("metadataUseWhen", value)} />
+					<WorkflowListTextEditor label="metadata.notFor" value={form.metadataNotFor} onChange={(value) => update("metadataNotFor", value)} />
+					<WorkflowListTextEditor label="metadata.examples" value={form.metadataExamples} onChange={(value) => update("metadataExamples", value)} />
+				</div>
+				<button type="button" className="inline-flex items-center justify-center gap-2 rounded-sm border border-[#11a4d4]/50 px-3 py-2 text-xs font-semibold text-[#8bdcf4] transition hover:border-[#11a4d4] hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-50" onClick={saveSettings} disabled={isSaving}>
+					{isSaving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+					Save workflow settings
+				</button>
+			</div>
+		</details>
+	);
+}
+
+function WorkflowNodeInspector({ draft, nodeId, node, isSaving, onSaveDefinition }: {
+	draft: WorkflowDraftRecord;
+	nodeId: string;
+	node: WorkflowJsonObject;
+	isSaving: boolean;
+	onSaveDefinition: (definition: WorkflowDraftDefinition, successMessage: string, options?: { editTrigger?: WorkflowValidationTrigger }) => Promise<void>;
+}) {
+	const [form, setForm] = useState<WorkflowNodeInspectorFormState>(() => createWorkflowNodeInspectorFormState(node));
+	const [profilePicker, setProfilePicker] = useState<WorkflowProfilePickerResponse | undefined>();
+	const [handlerPicker, setHandlerPicker] = useState<WorkflowHandlerPickerResponse | undefined>();
+	const [workflowPicker, setWorkflowPicker] = useState<WorkflowVersionPickerResponse | undefined>();
+	const nodeKind = workflowNodeKind(node);
+	const nodeDiagnostics = workflowDiagnosticsForNode(draft.diagnostics, nodeId);
+
+	useEffect(() => {
+		setForm(createWorkflowNodeInspectorFormState(node));
+	}, [node, nodeId]);
+
+	useEffect(() => {
+		if (nodeKind !== "agent") return;
+		let cancelled = false;
+		getWorkflowProfilePicker(form.profileId || undefined).then((picker) => {
+			if (!cancelled) setProfilePicker(picker);
+		}).catch(() => undefined);
+		return () => {
+			cancelled = true;
+		};
+	}, [nodeKind, form.profileId]);
+
+	useEffect(() => {
+		if (nodeKind !== "code") return;
+		let cancelled = false;
+		getWorkflowHandlerPicker(form.handlerId || undefined).then((picker) => {
+			if (!cancelled) setHandlerPicker(picker);
+		}).catch(() => undefined);
+		return () => {
+			cancelled = true;
+		};
+	}, [nodeKind, form.handlerId]);
+
+	useEffect(() => {
+		if (nodeKind !== "workflow") return;
+		let cancelled = false;
+		const selection = parseWorkflowVersionKey(form.workflowVersionKey);
+		getWorkflowVersionPicker({
+			selectedWorkflowId: selection?.workflowId,
+			selectedWorkflowVersion: selection?.workflowVersion,
+		}).then((picker) => {
+			if (!cancelled) setWorkflowPicker(picker);
+		}).catch(() => undefined);
+		return () => {
+			cancelled = true;
+		};
+	}, [nodeKind, form.workflowVersionKey]);
+
+	const update = <K extends keyof WorkflowNodeInspectorFormState>(key: K, value: WorkflowNodeInspectorFormState[K]) => {
+		setForm((current) => ({ ...current, [key]: value }));
+	};
+
+	const saveNode = () => {
+		const definition = applyWorkflowNodeInspectorForm(draft.definition, nodeId, form);
+		void onSaveDefinition(definition, `Saved node inspector edits for ${nodeId}.`, { editTrigger: "node_edit" });
+	};
+
+	return (
+		<details className="rounded-sm border border-slate-800 bg-[#151f24]/70 p-3" open>
+			<summary className="cursor-pointer text-xs font-bold text-slate-200">Node inspector: {nodeId}</summary>
+			<div className="mt-3 grid gap-3 text-xs">
+				<div className="flex flex-wrap gap-2 text-[11px]"><WorkflowPill label={`${nodeKind} node`} /><WorkflowPill label={`${nodeDiagnostics.length} diagnostics`} /></div>
+				<label className="grid gap-1 font-semibold text-slate-300">
+					<span>Node label</span>
+					<input className="rounded-sm border border-slate-700 bg-[#101d22] px-2 py-1.5 text-slate-100" value={form.label} onChange={(event) => update("label", event.target.value)} />
+				</label>
+				<label className="grid gap-1 font-semibold text-slate-300">
+					<span>Node description</span>
+					<textarea className="min-h-16 rounded-sm border border-slate-700 bg-[#101d22] px-2 py-1.5 text-slate-100" value={form.description} onChange={(event) => update("description", event.target.value)} />
+				</label>
+				<div className="grid gap-2 md:grid-cols-2">
+					<WorkflowOptionalPortEditor label="Node input port" kind={form.inputKind} description={form.inputDescription} onKindChange={(value) => update("inputKind", value)} onDescriptionChange={(value) => update("inputDescription", value)} />
+					<WorkflowOptionalPortEditor label="Node output port" kind={form.outputKind} description={form.outputDescription} onKindChange={(value) => update("outputKind", value)} onDescriptionChange={(value) => update("outputDescription", value)} />
+				</div>
+				{nodeKind === "agent" ? (
+					<div className="grid gap-3 rounded-sm border border-slate-800 bg-[#101d22] p-3" aria-label="Agent node fields">
+						<label className="grid gap-1 font-semibold text-slate-300">
+							<span>Agent profile ref</span>
+							<select className="rounded-sm border border-slate-700 bg-[#151f24] px-2 py-1.5 text-slate-100" value={profilePicker?.selectedProfileId ?? form.profileId} onChange={(event) => update("profileId", event.target.value)}>
+								<option value="">Select a non-archived profile</option>
+								{profilePicker?.options.map((option) => <option key={option.id} value={option.id}>{profileOptionLabel(option)}</option>)}
+							</select>
+						</label>
+						<WorkflowInspectorPickerDiagnostics diagnostics={profilePicker?.diagnostics ?? []} />
+						<label className="grid gap-1 font-semibold text-slate-300">
+							<span>Prompt template</span>
+							<textarea className="min-h-24 rounded-sm border border-slate-700 bg-[#151f24] px-2 py-1.5 font-mono text-slate-100" value={form.promptTemplate} onChange={(event) => update("promptTemplate", event.target.value)} />
+						</label>
+					</div>
+				) : null}
+				{nodeKind === "code" ? (
+					<div className="grid gap-3 rounded-sm border border-slate-800 bg-[#101d22] p-3" aria-label="Code node fields">
+						<label className="grid gap-1 font-semibold text-slate-300">
+							<span>Registered code handler</span>
+							<select className="rounded-sm border border-slate-700 bg-[#151f24] px-2 py-1.5 text-slate-100" value={handlerPicker?.selectedHandlerId ?? form.handlerId} onChange={(event) => update("handlerId", event.target.value)}>
+								<option value="">Select a registered handler ref</option>
+								{handlerPicker?.options.map((option) => <option key={option.id} value={option.id}>{handlerOptionLabel(option)}</option>)}
+							</select>
+						</label>
+						<WorkflowInspectorPickerDiagnostics diagnostics={handlerPicker?.diagnostics ?? []} />
+					</div>
+				) : null}
+				{nodeKind === "workflow" ? (
+					<div className="grid gap-3 rounded-sm border border-slate-800 bg-[#101d22] p-3" aria-label="Workflow node fields">
+						<label className="grid gap-1 font-semibold text-slate-300">
+							<span>Nested workflow ref</span>
+							<select className="rounded-sm border border-slate-700 bg-[#151f24] px-2 py-1.5 text-slate-100" value={workflowPicker?.selectedWorkflowId && workflowPicker.selectedWorkflowVersion ? workflowVersionSelectionKey(workflowPicker.selectedWorkflowId, workflowPicker.selectedWorkflowVersion) : form.workflowVersionKey} onChange={(event) => update("workflowVersionKey", event.target.value)}>
+								<option value="">Select a published workflow version</option>
+								{workflowPicker?.options.map((option) => <option key={workflowVersionOptionKey(option)} value={workflowVersionOptionKey(option)}>{workflowVersionOptionLabel(option)}</option>)}
+							</select>
+						</label>
+						<WorkflowVersionDiagnostics diagnostics={workflowPicker?.diagnostics ?? []} ariaLabel="Workflow node diagnostics" />
+					</div>
+				) : null}
+				{nodeKind === "human" ? (
+					<label className="grid gap-1 font-semibold text-slate-300">
+						<span>Human prompt</span>
+						<textarea className="min-h-24 rounded-sm border border-slate-700 bg-[#101d22] px-2 py-1.5 text-slate-100" value={form.humanPrompt} onChange={(event) => update("humanPrompt", event.target.value)} />
+					</label>
+				) : null}
+				<WorkflowInspectorDiagnostics diagnostics={nodeDiagnostics} emptyLabel="No diagnostics for selected node." />
+				<button type="button" className="inline-flex items-center justify-center gap-2 rounded-sm border border-[#11a4d4]/50 px-3 py-2 text-xs font-semibold text-[#8bdcf4] transition hover:border-[#11a4d4] hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-50" onClick={saveNode} disabled={isSaving}>
+					{isSaving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+					Save node inspector
+				</button>
+			</div>
+		</details>
+	);
+}
+
+function WorkflowEdgeInspector({ draft, edgeId, edge, nodeIds, isSaving, onSaveDefinition }: {
+	draft: WorkflowDraftRecord;
+	edgeId: string;
+	edge: WorkflowJsonObject;
+	nodeIds: string[];
+	isSaving: boolean;
+	onSaveDefinition: (definition: WorkflowDraftDefinition, successMessage: string, options?: { editTrigger?: WorkflowValidationTrigger }) => Promise<void>;
+}) {
+	const [form, setForm] = useState<WorkflowEdgeInspectorFormState>(() => createWorkflowEdgeInspectorFormState(edge, nodeIds));
+	const [guardPicker, setGuardPicker] = useState<WorkflowRegisteredRefPickerResponse | undefined>();
+	const [adapterPicker, setAdapterPicker] = useState<WorkflowRegisteredRefPickerResponse | undefined>();
+	const edgeDiagnostics = workflowDiagnosticsForEdge(draft.diagnostics, edgeId);
+
+	useEffect(() => {
+		setForm(createWorkflowEdgeInspectorFormState(edge, nodeIds));
+	}, [edge, edgeId, nodeIds]);
+
+	useEffect(() => {
+		let cancelled = false;
+		getWorkflowGuardPicker(form.guardHandler || undefined).then((picker) => {
+			if (!cancelled) setGuardPicker(picker);
+		}).catch(() => undefined);
+		return () => {
+			cancelled = true;
+		};
+	}, [form.guardHandler]);
+
+	useEffect(() => {
+		let cancelled = false;
+		getWorkflowAdapterPicker(form.adapterRef || undefined).then((picker) => {
+			if (!cancelled) setAdapterPicker(picker);
+		}).catch(() => undefined);
+		return () => {
+			cancelled = true;
+		};
+	}, [form.adapterRef]);
+
+	const update = <K extends keyof WorkflowEdgeInspectorFormState>(key: K, value: WorkflowEdgeInspectorFormState[K]) => {
+		setForm((current) => ({ ...current, [key]: value }));
+	};
+
+	const saveEdge = () => {
+		const definition = applyWorkflowEdgeInspectorForm(draft.definition, edgeId, form);
+		void onSaveDefinition(definition, `Saved edge inspector edits for ${edgeId}.`, { editTrigger: "edge_edit" });
+	};
+
+	return (
+		<details className="rounded-sm border border-slate-800 bg-[#151f24]/70 p-3" open>
+			<summary className="cursor-pointer text-xs font-bold text-slate-200">Edge inspector: {edgeId}</summary>
+			<div className="mt-3 grid gap-3 text-xs">
+				<div className="flex flex-wrap gap-2 text-[11px]"><WorkflowPill label={`${form.kind} edge`} /><WorkflowPill label={`${edgeDiagnostics.length} diagnostics`} /></div>
+				<div className="grid gap-2 md:grid-cols-2">
+					<label className="grid gap-1 font-semibold text-slate-300">
+						<span>Source node</span>
+						<select className="rounded-sm border border-slate-700 bg-[#101d22] px-2 py-1.5 text-slate-100" value={form.sourceNodeId} onChange={(event) => update("sourceNodeId", event.target.value)}>
+							<option value="">Select source</option>
+							{nodeIds.map((nodeId) => <option key={nodeId} value={nodeId}>{nodeId}</option>)}
+						</select>
+					</label>
+					<label className="grid gap-1 font-semibold text-slate-300">
+						<span>Target node</span>
+						<select className="rounded-sm border border-slate-700 bg-[#101d22] px-2 py-1.5 text-slate-100" value={form.targetNodeId} onChange={(event) => update("targetNodeId", event.target.value)}>
+							<option value="">Select target</option>
+							{nodeIds.map((nodeId) => <option key={nodeId} value={nodeId}>{nodeId}</option>)}
+						</select>
+					</label>
+					<label className="grid gap-1 font-semibold text-slate-300">
+						<span>Source port id</span>
+						<input className="rounded-sm border border-slate-700 bg-[#101d22] px-2 py-1.5 text-slate-100" value={form.sourcePortId} onChange={(event) => update("sourcePortId", event.target.value)} placeholder="default" />
+					</label>
+					<label className="grid gap-1 font-semibold text-slate-300">
+						<span>Target port id</span>
+						<input className="rounded-sm border border-slate-700 bg-[#101d22] px-2 py-1.5 text-slate-100" value={form.targetPortId} onChange={(event) => update("targetPortId", event.target.value)} placeholder="default" />
+					</label>
+				</div>
+				<label className="grid gap-1 font-semibold text-slate-300">
+					<span>Edge kind</span>
+					<select className="rounded-sm border border-slate-700 bg-[#101d22] px-2 py-1.5 text-slate-100" value={form.kind} onChange={(event) => update("kind", event.target.value as WorkflowEdgeInspectorFormState["kind"])}>
+						<option value="data">data</option>
+						<option value="control">control</option>
+						<option value="error">error</option>
+						<option value="resume">resume</option>
+					</select>
+				</label>
+				<div className="grid gap-2 md:grid-cols-2">
+					<label className="grid gap-1 font-semibold text-slate-300">
+						<span>Guard ref</span>
+						<select className="rounded-sm border border-slate-700 bg-[#101d22] px-2 py-1.5 text-slate-100" value={guardPicker?.selectedRefId ?? form.guardHandler} onChange={(event) => update("guardHandler", event.target.value)}>
+							<option value="">No guard</option>
+							{guardPicker?.options.map((option) => <option key={option.id} value={option.id}>{registeredRefOptionLabel(option)}</option>)}
+						</select>
+					</label>
+					<label className="grid gap-1 font-semibold text-slate-300">
+						<span>Guard priority</span>
+						<input className="rounded-sm border border-slate-700 bg-[#101d22] px-2 py-1.5 text-slate-100" value={form.guardPriority} onChange={(event) => update("guardPriority", event.target.value)} placeholder="optional integer" />
+					</label>
+					<label className="grid gap-1 font-semibold text-slate-300 md:col-span-2">
+						<span>Edge adapter ref</span>
+						<select className="rounded-sm border border-slate-700 bg-[#101d22] px-2 py-1.5 text-slate-100" value={adapterPicker?.selectedRefId ?? form.adapterRef} onChange={(event) => update("adapterRef", event.target.value)}>
+							<option value="">No edge adapter</option>
+							{adapterPicker?.options.map((option) => <option key={option.id} value={option.id}>{registeredRefOptionLabel(option)}</option>)}
+						</select>
+					</label>
+				</div>
+				<WorkflowInspectorPickerDiagnostics diagnostics={[...(guardPicker?.diagnostics ?? []), ...(adapterPicker?.diagnostics ?? [])]} />
+				<WorkflowInspectorDiagnostics diagnostics={edgeDiagnostics} emptyLabel="No diagnostics for selected edge." />
+				<button type="button" className="inline-flex items-center justify-center gap-2 rounded-sm border border-[#11a4d4]/50 px-3 py-2 text-xs font-semibold text-[#8bdcf4] transition hover:border-[#11a4d4] hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-50" onClick={saveEdge} disabled={isSaving || !form.sourceNodeId || !form.targetNodeId}>
+					{isSaving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+					Save edge inspector
+				</button>
+			</div>
+		</details>
+	);
+}
+
+function WorkflowPortEditor({ label, kind, description, onKindChange, onDescriptionChange }: {
+	label: string;
+	kind: WorkflowPortKindSelection;
+	description: string;
+	onKindChange: (kind: WorkflowPortKindSelection) => void;
+	onDescriptionChange: (description: string) => void;
+}) {
+	return (
+		<div className="grid gap-2 rounded-sm border border-slate-800 bg-[#101d22] p-2">
+			<label className="grid gap-1 font-semibold text-slate-300">
+				<span>{label}</span>
+				<select className="rounded-sm border border-slate-700 bg-[#151f24] px-2 py-1.5 text-slate-100" value={kind} onChange={(event) => onKindChange(event.target.value as WorkflowPortKindSelection)}>
+					<option value="text">text</option>
+					<option value="json">json</option>
+				</select>
+			</label>
+			<label className="grid gap-1 font-semibold text-slate-300">
+				<span>Description</span>
+				<input className="rounded-sm border border-slate-700 bg-[#151f24] px-2 py-1.5 text-slate-100" value={description} onChange={(event) => onDescriptionChange(event.target.value)} placeholder="Optional port description" />
+			</label>
+		</div>
+	);
+}
+
+function WorkflowOptionalPortEditor({ label, kind, description, onKindChange, onDescriptionChange }: {
+	label: string;
+	kind: OptionalWorkflowPortKindSelection;
+	description: string;
+	onKindChange: (kind: OptionalWorkflowPortKindSelection) => void;
+	onDescriptionChange: (description: string) => void;
+}) {
+	return (
+		<div className="grid gap-2 rounded-sm border border-slate-800 bg-[#101d22] p-2">
+			<label className="grid gap-1 font-semibold text-slate-300">
+				<span>{label}</span>
+				<select className="rounded-sm border border-slate-700 bg-[#151f24] px-2 py-1.5 text-slate-100" value={kind} onChange={(event) => onKindChange(event.target.value as OptionalWorkflowPortKindSelection)}>
+					<option value="none">inherit/default</option>
+					<option value="text">text</option>
+					<option value="json">json</option>
+				</select>
+			</label>
+			<label className="grid gap-1 font-semibold text-slate-300">
+				<span>Description</span>
+				<input className="rounded-sm border border-slate-700 bg-[#151f24] px-2 py-1.5 text-slate-100" value={description} onChange={(event) => onDescriptionChange(event.target.value)} disabled={kind === "none"} placeholder="Optional port description" />
+			</label>
+		</div>
+	);
+}
+
+function WorkflowListTextEditor({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+	return (
+		<label className="grid gap-1 font-semibold text-slate-300">
+			<span>{label}</span>
+			<textarea className="min-h-16 rounded-sm border border-slate-700 bg-[#101d22] px-2 py-1.5 text-slate-100" value={value} onChange={(event) => onChange(event.target.value)} placeholder="One value per line" />
+		</label>
+	);
+}
+
+function WorkflowInspectorDiagnostics({ diagnostics, emptyLabel }: { diagnostics: WorkflowDraftDiagnostic[]; emptyLabel: string }) {
+	if (!diagnostics.length) {
+		return <div className="rounded-sm border border-slate-800 bg-[#101d22] p-2 text-[11px] text-slate-500">{emptyLabel}</div>;
+	}
+	return (
+		<div className="grid gap-2" aria-label="Inspector diagnostics">
+			{diagnostics.map((diagnostic) => (
+				<div key={`${diagnostic.code}:${diagnostic.path ?? diagnostic.nodeId ?? diagnostic.edgeId ?? diagnostic.registryRef ?? diagnostic.message}`} className="rounded-sm border border-amber-700/70 bg-amber-950/30 p-2 text-[11px] leading-5 text-amber-100">
+					<div className="flex items-center gap-2 font-bold text-amber-200"><AlertTriangle size={12} />{diagnostic.code}</div>
+					<div className="mt-1">{diagnostic.message}</div>
+					{diagnostic.path ? <div className="mt-1 font-mono text-amber-200/80">{diagnostic.path}</div> : null}
+					{diagnostic.hint ? <div className="mt-1 text-amber-200/80">{diagnostic.hint}</div> : null}
+				</div>
+			))}
+		</div>
+	);
+}
+
+function WorkflowInspectorPickerDiagnostics({ diagnostics }: { diagnostics: WorkflowPickerDiagnostic[] }) {
+	if (!diagnostics.length) return null;
+	return (
+		<div className="grid gap-2" aria-label="Inspector picker diagnostics">
+			{diagnostics.map((diagnostic) => (
+				<div key={`${diagnostic.code}:${diagnostic.registryRef}`} className="rounded-sm border border-amber-700/70 bg-amber-950/30 p-2 text-[11px] leading-5 text-amber-100">
+					<div className="flex items-center gap-2 font-bold text-amber-200"><AlertTriangle size={12} />{diagnostic.code}</div>
+					<div className="mt-1">{diagnostic.message}</div>
+					<div className="mt-1 font-mono text-amber-200/80">{diagnostic.path}</div>
+					<div className="mt-1 text-amber-200/80">{diagnostic.hint}</div>
+				</div>
+			))}
+		</div>
 	);
 }
 
@@ -1521,6 +2017,229 @@ function describeSelectedGraphElement(definition: WorkflowDraftDefinition, selec
 	const source = edge ? readEdgeEndpointNodeId(edge.from) : undefined;
 	const target = edge ? readEdgeEndpointNodeId(edge.to) : undefined;
 	return edge && source && target ? `Edge ${selectedElement.id}: ${source} → ${target}` : `Edge ${selectedElement.id}`;
+}
+
+function createWorkflowSettingsFormState(definition: WorkflowDraftDefinition): WorkflowSettingsFormState {
+	const metadata = isWorkflowJsonObject(definition.metadata) ? definition.metadata : {};
+	return {
+		title: typeof definition.title === "string" ? definition.title : "",
+		description: typeof definition.description === "string" ? definition.description : "",
+		inputKind: readWorkflowPortKind(definition.input, "text"),
+		inputDescription: readWorkflowPortDescription(definition.input),
+		outputKind: readWorkflowPortKind(definition.output, "text"),
+		outputDescription: readWorkflowPortDescription(definition.output),
+		metadataTags: formatWorkflowStringList(metadata.tags),
+		metadataUseWhen: formatWorkflowStringList(metadata.useWhen),
+		metadataNotFor: formatWorkflowStringList(metadata.notFor),
+		metadataExamples: formatWorkflowStringList(metadata.examples),
+	};
+}
+
+function applyWorkflowSettingsForm(definition: WorkflowDraftDefinition, form: WorkflowSettingsFormState): WorkflowDraftDefinition {
+	const metadata: WorkflowJsonObject = isWorkflowJsonObject(definition.metadata) ? { ...definition.metadata } : {};
+	writeWorkflowStringList(metadata, "tags", form.metadataTags);
+	writeWorkflowStringList(metadata, "useWhen", form.metadataUseWhen);
+	writeWorkflowStringList(metadata, "notFor", form.metadataNotFor);
+	writeWorkflowStringList(metadata, "examples", form.metadataExamples);
+	const nextDefinition: WorkflowDraftDefinition = {
+		...definition,
+		input: createWorkflowPort(form.inputKind, form.inputDescription, definition.input),
+		output: createWorkflowPort(form.outputKind, form.outputDescription, definition.output),
+	};
+	writeOptionalString(nextDefinition, "title", form.title);
+	writeOptionalString(nextDefinition, "description", form.description);
+	if (Object.keys(metadata).length) nextDefinition.metadata = metadata;
+	else delete nextDefinition.metadata;
+	return nextDefinition;
+}
+
+function createWorkflowNodeInspectorFormState(node: WorkflowJsonObject): WorkflowNodeInspectorFormState {
+	const workflowId = typeof node.workflowId === "string" ? node.workflowId : "";
+	const workflowVersion = typeof node.workflowVersion === "string" ? node.workflowVersion : "";
+	return {
+		label: typeof node.label === "string" ? node.label : "",
+		description: typeof node.description === "string" ? node.description : "",
+		inputKind: readOptionalWorkflowPortKind(node.input),
+		inputDescription: readWorkflowPortDescription(node.input),
+		outputKind: readOptionalWorkflowPortKind(node.output),
+		outputDescription: readWorkflowPortDescription(node.output),
+		profileId: readAgentProfileId(node.profile),
+		promptTemplate: typeof node.promptTemplate === "string" ? node.promptTemplate : "",
+		handlerId: typeof node.handler === "string" ? node.handler : "",
+		workflowVersionKey: workflowId && workflowVersion ? workflowVersionSelectionKey(workflowId, workflowVersion) : "",
+		humanPrompt: typeof node.prompt === "string" ? node.prompt : "",
+	};
+}
+
+function applyWorkflowNodeInspectorForm(definition: WorkflowDraftDefinition, nodeId: string, form: WorkflowNodeInspectorFormState): WorkflowDraftDefinition {
+	const nodes = readWorkflowNodeDefinitions(definition);
+	const currentNode = nodes[nodeId];
+	if (!currentNode) return definition;
+	const nodeKind = workflowNodeKind(currentNode);
+	const nextNode: WorkflowJsonObject = { ...currentNode };
+	writeOptionalString(nextNode, "label", form.label);
+	writeOptionalString(nextNode, "description", form.description);
+	writeOptionalPort(nextNode, "input", form.inputKind, form.inputDescription, currentNode.input);
+	writeOptionalPort(nextNode, "output", form.outputKind, form.outputDescription, currentNode.output);
+	if (nodeKind === "agent") {
+		nextNode.runtime = "pibo";
+		if (form.profileId.trim()) nextNode.profile = { kind: "fixed", id: form.profileId.trim() };
+		writeOptionalString(nextNode, "promptTemplate", form.promptTemplate);
+	}
+	if (nodeKind === "code") {
+		nextNode.language = "typescript";
+		if (form.handlerId.trim()) nextNode.handler = form.handlerId.trim();
+	}
+	if (nodeKind === "workflow") {
+		const selection = parseWorkflowVersionKey(form.workflowVersionKey);
+		if (selection) {
+			nextNode.workflowId = selection.workflowId;
+			nextNode.workflowVersion = selection.workflowVersion;
+		}
+	}
+	if (nodeKind === "human") writeOptionalString(nextNode, "prompt", form.humanPrompt);
+	return {
+		...definition,
+		nodes: {
+			...nodes,
+			[nodeId]: nextNode,
+		},
+	};
+}
+
+function createWorkflowEdgeInspectorFormState(edge: WorkflowJsonObject, nodeIds: string[]): WorkflowEdgeInspectorFormState {
+	const from = isWorkflowJsonObject(edge.from) ? edge.from : {};
+	const to = isWorkflowJsonObject(edge.to) ? edge.to : {};
+	const guard = isWorkflowJsonObject(edge.guard) ? edge.guard : undefined;
+	const adapter = isWorkflowJsonObject(edge.adapter) ? edge.adapter : undefined;
+	const transform = adapter && isWorkflowJsonObject(adapter.transform) ? adapter.transform : undefined;
+	const kind = typeof edge.kind === "string" && ["data", "control", "error", "resume"].includes(edge.kind) ? edge.kind as WorkflowEdgeInspectorFormState["kind"] : "data";
+	return {
+		sourceNodeId: typeof from.nodeId === "string" ? from.nodeId : nodeIds[0] ?? "",
+		sourcePortId: typeof from.portId === "string" ? from.portId : "",
+		targetNodeId: typeof to.nodeId === "string" ? to.nodeId : nodeIds.find((id) => id !== (from.nodeId ?? nodeIds[0])) ?? "",
+		targetPortId: typeof to.portId === "string" ? to.portId : "",
+		kind,
+		guardHandler: guard && typeof guard.handler === "string" ? guard.handler : "",
+		guardPriority: guard && typeof guard.priority === "number" ? String(guard.priority) : "",
+		adapterRef: transform && typeof transform.id === "string" ? transform.id : "",
+	};
+}
+
+function applyWorkflowEdgeInspectorForm(definition: WorkflowDraftDefinition, edgeId: string, form: WorkflowEdgeInspectorFormState): WorkflowDraftDefinition {
+	const edges = readWorkflowEdgeDefinitions(definition);
+	const currentEdge = edges[edgeId];
+	if (!currentEdge) return definition;
+	const nextEdge: WorkflowJsonObject = {
+		...currentEdge,
+		id: edgeId,
+		from: createNodePortRef(form.sourceNodeId, form.sourcePortId),
+		to: createNodePortRef(form.targetNodeId, form.targetPortId),
+		kind: form.kind,
+	};
+	const guardHandler = form.guardHandler.trim();
+	if (guardHandler) {
+		const priority = Number.parseInt(form.guardPriority, 10);
+		nextEdge.guard = {
+			handler: guardHandler,
+			...(Number.isInteger(priority) && priority >= 0 ? { priority } : {}),
+		};
+	} else {
+		delete nextEdge.guard;
+	}
+	const adapterRef = form.adapterRef.trim();
+	if (adapterRef) {
+		const previousAdapter = isWorkflowJsonObject(currentEdge.adapter) ? currentEdge.adapter : {};
+		nextEdge.adapter = {
+			...previousAdapter,
+			kind: "edgeAdapter",
+			output: isWorkflowJsonObject(previousAdapter.output) ? previousAdapter.output : createWorkflowPort("text", "", undefined),
+			transform: { kind: "adapter", language: "typescript", id: adapterRef },
+		};
+	} else {
+		delete nextEdge.adapter;
+	}
+	return {
+		...definition,
+		edges: {
+			...edges,
+			[edgeId]: nextEdge,
+		},
+	};
+}
+
+function readWorkflowPortKind(value: unknown, fallback: WorkflowPortKindSelection): WorkflowPortKindSelection {
+	if (!isWorkflowJsonObject(value)) return fallback;
+	return value.kind === "json" ? "json" : "text";
+}
+
+function readOptionalWorkflowPortKind(value: unknown): OptionalWorkflowPortKindSelection {
+	if (!isWorkflowJsonObject(value)) return "none";
+	return readWorkflowPortKind(value, "text");
+}
+
+function readWorkflowPortDescription(value: unknown): string {
+	return isWorkflowJsonObject(value) && typeof value.description === "string" ? value.description : "";
+}
+
+function createWorkflowPort(kind: WorkflowPortKindSelection, description: string, previous: unknown): WorkflowJsonObject {
+	const port: WorkflowJsonObject = { kind };
+	writeOptionalString(port, "description", description);
+	if (kind === "json") {
+		const previousSchema = isWorkflowJsonObject(previous) && isWorkflowJsonObject(previous.schema) ? previous.schema : undefined;
+		port.schema = previousSchema ?? { type: "object" };
+	}
+	return port;
+}
+
+function writeOptionalPort(target: WorkflowJsonObject, key: "input" | "output", kind: OptionalWorkflowPortKindSelection, description: string, previous: unknown): void {
+	if (kind === "none") {
+		delete target[key];
+		return;
+	}
+	target[key] = createWorkflowPort(kind, description, previous);
+}
+
+function createNodePortRef(nodeId: string, portId: string): WorkflowJsonObject {
+	const ref: WorkflowJsonObject = { nodeId };
+	writeOptionalString(ref, "portId", portId);
+	return ref;
+}
+
+function readAgentProfileId(value: unknown): string {
+	return isWorkflowJsonObject(value) && value.kind === "fixed" && typeof value.id === "string" ? value.id : "";
+}
+
+function formatWorkflowStringList(value: unknown): string {
+	return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string").join("\n") : "";
+}
+
+function parseWorkflowStringList(value: string): string[] {
+	return value.split(/\r?\n|,/).map((entry) => entry.trim()).filter(Boolean);
+}
+
+function writeWorkflowStringList(target: WorkflowJsonObject, key: "tags" | "useWhen" | "notFor" | "examples", value: string): void {
+	const entries = parseWorkflowStringList(value);
+	if (entries.length) target[key] = entries;
+	else delete target[key];
+}
+
+function writeOptionalString(target: WorkflowJsonObject, key: string, value: string): void {
+	const trimmed = value.trim();
+	if (trimmed) target[key] = trimmed;
+	else delete target[key];
+}
+
+function workflowDiagnosticsForNode(diagnostics: WorkflowDraftDiagnostic[], nodeId: string): WorkflowDraftDiagnostic[] {
+	return diagnostics.filter((diagnostic) => diagnostic.nodeId === nodeId || diagnostic.path?.startsWith(`$.nodes.${nodeId}`));
+}
+
+function workflowDiagnosticsForEdge(diagnostics: WorkflowDraftDiagnostic[], edgeId: string): WorkflowDraftDiagnostic[] {
+	return diagnostics.filter((diagnostic) => diagnostic.edgeId === edgeId || diagnostic.path?.startsWith(`$.edges.${edgeId}`));
+}
+
+function registeredRefOptionLabel(option: WorkflowRegisteredRefOption): string {
+	return `${option.displayName} (${option.id})`;
 }
 
 function readInitialProfileRef(): string {

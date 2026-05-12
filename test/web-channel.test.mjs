@@ -1868,6 +1868,65 @@ test("workflow handler picker lists registered handlers and reports missing refs
 	}
 });
 
+test("workflow guard and adapter pickers list registered refs and report missing refs", async () => {
+	const { channel, baseURL } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		profiles: [{ name: "pibo-agent", aliases: ["default"] }],
+	});
+
+	try {
+		const guardPicker = await fetch(`${baseURL}/api/chat/workflows/pickers/guards`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(guardPicker.status, 200);
+		const guardPayload = await guardPicker.json();
+		assert.equal(guardPayload.kind, "guards");
+		assert.deepEqual(guardPayload.options.map((option) => option.id), [
+			"fixture.guards.approved",
+			"fixture.guards.needsRevision",
+		]);
+
+		const selectedGuard = await fetch(`${baseURL}/api/chat/workflows/pickers/guards?selectedRefId=fixture.guards.approved`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(selectedGuard.status, 200);
+		const selectedGuardPayload = await selectedGuard.json();
+		assert.equal(selectedGuardPayload.selectedRefId, "fixture.guards.approved");
+		assert.deepEqual(selectedGuardPayload.diagnostics, []);
+
+		const missingGuard = await fetch(`${baseURL}/api/chat/workflows/pickers/guards?selectedRefId=missing.guards.inline`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(missingGuard.status, 200);
+		const missingGuardPayload = await missingGuard.json();
+		assert.equal(missingGuardPayload.selectedRefId, undefined);
+		assert.equal(missingGuardPayload.diagnostics[0].code, "WorkflowGraphError.unknownGuardRef");
+		assert.equal(missingGuardPayload.diagnostics[0].registryRef, "missing.guards.inline");
+
+		const adapterPicker = await fetch(`${baseURL}/api/chat/workflows/pickers/adapters`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(adapterPicker.status, 200);
+		const adapterPayload = await adapterPicker.json();
+		assert.equal(adapterPayload.kind, "adapters");
+		assert.deepEqual(adapterPayload.options.map((option) => option.id), [
+			"fixture.adapters.draftToSummary",
+			"fixture.adapters.textToTopic",
+		]);
+
+		const missingAdapter = await fetch(`${baseURL}/api/chat/workflows/pickers/adapters?selectedRefId=missing.adapters.inline`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(missingAdapter.status, 200);
+		const missingAdapterPayload = await missingAdapter.json();
+		assert.equal(missingAdapterPayload.selectedRefId, undefined);
+		assert.equal(missingAdapterPayload.diagnostics[0].code, "WorkflowGraphError.unknownAdapterRef");
+		assert.equal(missingAdapterPayload.diagnostics[0].registryRef, "missing.adapters.inline");
+	} finally {
+		await channel.stop?.();
+	}
+});
+
 test("workflow version picker lists published nested workflow refs and reports missing refs", async () => {
 	const { channel, baseURL } = await startWebHostChannel({
 		auth: createFakeAuthService(),

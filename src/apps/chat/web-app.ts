@@ -368,6 +368,13 @@ type WorkflowRegisteredRefOption = {
 	description?: string;
 };
 
+type WorkflowRegisteredRefPickerResponse = {
+	kind: "guards" | "adapters";
+	options: WorkflowRegisteredRefOption[];
+	selectedRefId?: string;
+	diagnostics: WorkflowPickerDiagnostic[];
+};
+
 type WorkflowHumanActionOption = WorkflowRegisteredRefOption & {
 	kind: string;
 };
@@ -2648,6 +2655,37 @@ function buildWorkflowHandlerPicker(selectedHandlerId?: string): WorkflowHandler
 		kind: "handlers",
 		options,
 		...(activeSelection ? { selectedHandlerId: activeSelection } : {}),
+		diagnostics,
+	};
+}
+
+function buildWorkflowRegisteredRefPicker(
+	kind: "guards" | "adapters",
+	optionsInput: WorkflowRegisteredRefOption[],
+	selectedRefId: string | undefined,
+): WorkflowRegisteredRefPickerResponse {
+	const options = [...optionsInput]
+		.sort((left, right) => left.displayName.localeCompare(right.displayName) || left.id.localeCompare(right.id));
+	const normalizedSelection = selectedRefId?.trim() || undefined;
+	const activeSelection = normalizedSelection && options.some((option) => option.id === normalizedSelection)
+		? normalizedSelection
+		: undefined;
+	const diagnostics: WorkflowPickerDiagnostic[] = [];
+	if (normalizedSelection && !activeSelection) {
+		const isGuard = kind === "guards";
+		diagnostics.push({
+			code: isGuard ? "WorkflowGraphError.unknownGuardRef" : "WorkflowGraphError.unknownAdapterRef",
+			message: `Workflow edge references ${isGuard ? "guard" : "adapter"} '${normalizedSelection}', but it is not registered in the Workflow Registry.`,
+			severity: "error",
+			path: isGuard ? "$.edges.edge.guard.handler" : "$.edges.edge.adapter.transform.id",
+			registryRef: normalizedSelection,
+			hint: `Select a registered ${isGuard ? "guard" : "adapter"} ref before publishing or running this workflow.`,
+		});
+	}
+	return {
+		kind,
+		options,
+		...(activeSelection ? { selectedRefId: activeSelection } : {}),
 		diagnostics,
 	};
 }
@@ -6200,6 +6238,20 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				if (pickerKind === "handlers") {
 					return responseJson(buildWorkflowHandlerPicker(
 						url.searchParams.get("selectedHandlerId") ?? undefined,
+					));
+				}
+				if (pickerKind === "guards") {
+					return responseJson(buildWorkflowRegisteredRefPicker(
+						"guards",
+						WORKFLOW_GUARD_REF_OPTIONS,
+						url.searchParams.get("selectedRefId") ?? undefined,
+					));
+				}
+				if (pickerKind === "adapters") {
+					return responseJson(buildWorkflowRegisteredRefPicker(
+						"adapters",
+						WORKFLOW_ADAPTER_REF_OPTIONS,
+						url.searchParams.get("selectedRefId") ?? undefined,
 					));
 				}
 				if (pickerKind === "workflow-versions") {
