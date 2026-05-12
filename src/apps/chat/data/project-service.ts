@@ -78,6 +78,33 @@ export type PiboProjectWorkflowSessionSnapshot = {
 	};
 };
 
+export type PiboProjectWorkflowRunStatus = "running" | "waiting" | "completed" | "failed" | "cancelled";
+
+export type PiboProjectWorkflowRun = {
+	id: string;
+	projectId: string;
+	piboSessionId: string;
+	workflowId: PiboProjectWorkflowId;
+	workflowVersion: string;
+	snapshotId: string;
+	effectiveDefinitionHash: string;
+	status: PiboProjectWorkflowRunStatus;
+	current: PiboJsonObject;
+	inputValues: PiboJsonObject;
+	validation?: PiboJsonObject;
+	createdAt: string;
+	updatedAt: string;
+	completedAt?: string;
+	failedAt?: string;
+	cancelledAt?: string;
+};
+
+export type StartProjectWorkflowRunResult = {
+	projectSession: PiboProjectSession;
+	run: PiboProjectWorkflowRun;
+	alreadyStarted: boolean;
+};
+
 export type PiboProject = {
 	id: string;
 	ownerScope: string;
@@ -273,10 +300,164 @@ export class ChatProjectService {
 		return row ? workflowSessionSnapshotFromRow(row) : undefined;
 	}
 
+	getProjectWorkflowRun(runId: string): PiboProjectWorkflowRun | undefined {
+		const row = this.db.prepare("SELECT * FROM project_workflow_runs WHERE id = ?").get(runId) as ProjectWorkflowRunRow | undefined;
+		return row ? projectWorkflowRunFromRow(row) : undefined;
+	}
+
+	getProjectWorkflowRunForSession(piboSessionId: string): PiboProjectWorkflowRun | undefined {
+		const row = this.db.prepare("SELECT * FROM project_workflow_runs WHERE pibo_session_id = ?").get(piboSessionId) as ProjectWorkflowRunRow | undefined;
+		return row ? projectWorkflowRunFromRow(row) : undefined;
+	}
+
+	listProjectWorkflowRuns(filter: { projectId?: string; piboSessionId?: string; limit?: number } = {}): PiboProjectWorkflowRun[] {
+		const clauses: string[] = [];
+		const values: Array<string | number> = [];
+		if (filter.projectId) {
+			clauses.push("project_id = ?");
+			values.push(filter.projectId);
+		}
+		if (filter.piboSessionId) {
+			clauses.push("pibo_session_id = ?");
+			values.push(filter.piboSessionId);
+		}
+		const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+		const limit = Math.max(1, Math.min(filter.limit ?? 100, 500));
+		const rows = this.db.prepare(`SELECT * FROM project_workflow_runs ${where} ORDER BY created_at DESC, id DESC LIMIT ?`).all(...values, limit) as ProjectWorkflowRunRow[];
+		return rows.map(projectWorkflowRunFromRow);
+	}
+
+	startWorkflowSessionRun(input: {
+		projectId: string;
+		piboSessionId: string;
+		runId: string;
+		workflowId: PiboProjectWorkflowId;
+		workflowVersion: string;
+		snapshotId: string;
+		effectiveDefinitionHash: string;
+		current: PiboJsonObject;
+		inputValues: PiboJsonObject;
+		validation?: PiboJsonObject;
+	}): StartProjectWorkflowRunResult {
+		this.db.exec("BEGIN IMMEDIATE");
+		try {
+			const existingSessionRow = this.db.prepare("SELECT * FROM project_sessions WHERE pibo_session_id = ?").get(input.piboSessionId) as ProjectSessionRow | undefined;
+			if (!existingSessionRow || existingSessionRow.project_id !== input.projectId) throw new Error("Project workflow session not found");
+
+			if (existingSessionRow.workflow_run_id) {
+				const existingRun = this.getProjectWorkflowRun(existingSessionRow.workflow_run_id)
+					?? this.insertProjectWorkflowRunForExistingSession(existingSessionRow, input);
+				this.db.exec("COMMIT");
+				return {
+					projectSession: projectSessionFromRow(existingSessionRow),
+					run: existingRun,
+					alreadyStarted: true,
+				};
+			}
+
+			const now = new Date().toISOString();
+			const run: PiboProjectWorkflowRun = {
+				id: input.runId,
+				projectId: input.projectId,
+				piboSessionId: input.piboSessionId,
+				workflowId: input.workflowId,
+				workflowVersion: input.workflowVersion,
+				snapshotId: input.snapshotId,
+				effectiveDefinitionHash: input.effectiveDefinitionHash,
+				status: "running",
+				current: input.current,
+				inputValues: input.inputValues,
+				...(input.validation ? { validation: input.validation } : {}),
+				createdAt: now,
+				updatedAt: now,
+			};
+			this.insertProjectWorkflowRun(run);
+			this.db.prepare("UPDATE project_sessions SET workflow_run_id = ?, state = 'running', updated_at = ? WHERE pibo_session_id = ? AND workflow_run_id IS NULL")
+				.run(run.id, now, input.piboSessionId);
+			const updatedSessionRow = this.db.prepare("SELECT * FROM project_sessions WHERE pibo_session_id = ?").get(input.piboSessionId) as ProjectSessionRow;
+			this.db.exec("COMMIT");
+			return {
+				projectSession: projectSessionFromRow(updatedSessionRow),
+				run,
+				alreadyStarted: false,
+			};
+		} catch (error) {
+			this.db.exec("ROLLBACK");
+			throw error;
+		}
+	}
+
 	setProjectSessionArchived(piboSessionId: string, archived: boolean): PiboProjectSession | undefined {
 		const now = new Date().toISOString();
 		this.db.prepare("UPDATE project_sessions SET archived = ?, updated_at = ? WHERE pibo_session_id = ?").run(archived ? 1 : 0, now, piboSessionId);
 		return this.getProjectSession(piboSessionId);
+	}
+
+	private insertProjectWorkflowRunForExistingSession(row: ProjectSessionRow, input: {
+		workflowId: PiboProjectWorkflowId;
+		workflowVersion: string;
+		snapshotId: string;
+		effectiveDefinitionHash: string;
+		current: PiboJsonObject;
+		inputValues: PiboJsonObject;
+		validation?: PiboJsonObject;
+	}): PiboProjectWorkflowRun {
+		const now = new Date().toISOString();
+		const run: PiboProjectWorkflowRun = {
+			id: row.workflow_run_id!,
+			projectId: row.project_id,
+			piboSessionId: row.pibo_session_id,
+			workflowId: row.workflow_id,
+			workflowVersion: row.workflow_version ?? input.workflowVersion,
+			snapshotId: input.snapshotId,
+			effectiveDefinitionHash: input.effectiveDefinitionHash,
+			status: normalizeWorkflowRunStatus(row.state) ?? "running",
+			current: input.current,
+			inputValues: input.inputValues,
+			...(input.validation ? { validation: input.validation } : {}),
+			createdAt: row.updated_at ?? now,
+			updatedAt: row.updated_at ?? now,
+		};
+		this.insertProjectWorkflowRun(run);
+		return run;
+	}
+
+	private insertProjectWorkflowRun(run: PiboProjectWorkflowRun): void {
+		this.db.prepare(`INSERT INTO project_workflow_runs (
+			id,
+			project_id,
+			pibo_session_id,
+			workflow_id,
+			workflow_version,
+			snapshot_id,
+			effective_definition_hash,
+			status,
+			current_json,
+			input_json,
+			validation_json,
+			created_at,
+			updated_at,
+			completed_at,
+			failed_at,
+			cancelled_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+			run.id,
+			run.projectId,
+			run.piboSessionId,
+			run.workflowId,
+			run.workflowVersion,
+			run.snapshotId,
+			run.effectiveDefinitionHash,
+			run.status,
+			JSON.stringify(run.current),
+			JSON.stringify(run.inputValues),
+			run.validation ? JSON.stringify(run.validation) : null,
+			run.createdAt,
+			run.updatedAt,
+			run.completedAt ?? null,
+			run.failedAt ?? null,
+			run.cancelledAt ?? null,
+		);
 	}
 
 	private applySchema(): void {
@@ -328,6 +509,27 @@ export class ChatProjectService {
 				UNIQUE(pibo_session_id)
 			);
 			CREATE INDEX IF NOT EXISTS project_workflow_session_snapshots_project_idx ON project_workflow_session_snapshots(project_id, created_at);
+			CREATE TABLE IF NOT EXISTS project_workflow_runs (
+				id TEXT PRIMARY KEY,
+				project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+				pibo_session_id TEXT NOT NULL REFERENCES project_sessions(pibo_session_id) ON DELETE CASCADE,
+				workflow_id TEXT NOT NULL,
+				workflow_version TEXT NOT NULL,
+				snapshot_id TEXT NOT NULL REFERENCES project_workflow_session_snapshots(id) ON DELETE RESTRICT,
+				effective_definition_hash TEXT NOT NULL,
+				status TEXT NOT NULL,
+				current_json TEXT NOT NULL,
+				input_json TEXT NOT NULL,
+				validation_json TEXT,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				completed_at TEXT,
+				failed_at TEXT,
+				cancelled_at TEXT,
+				UNIQUE(pibo_session_id)
+			);
+			CREATE INDEX IF NOT EXISTS project_workflow_runs_project_idx ON project_workflow_runs(project_id, created_at);
+			CREATE INDEX IF NOT EXISTS project_workflow_runs_session_idx ON project_workflow_runs(pibo_session_id);
 		`);
 		this.ensureProjectSessionWorkflowVersionColumn();
 		this.ensureProjectSessionConfigurationColumn();
@@ -401,6 +603,25 @@ type ProjectWorkflowSessionSnapshotRow = {
 	effective_definition_hash: string;
 	snapshot_json: string;
 	created_at: string;
+};
+
+type ProjectWorkflowRunRow = {
+	id: string;
+	project_id: string;
+	pibo_session_id: string;
+	workflow_id: string;
+	workflow_version: string;
+	snapshot_id: string;
+	effective_definition_hash: string;
+	status: PiboProjectWorkflowRunStatus;
+	current_json: string;
+	input_json: string;
+	validation_json: string | null;
+	created_at: string;
+	updated_at: string;
+	completed_at: string | null;
+	failed_at: string | null;
+	cancelled_at: string | null;
 };
 
 function projectFromRow(row: ProjectRow): PiboProject {
@@ -484,6 +705,27 @@ function workflowSessionSnapshotFromRow(row: ProjectWorkflowSessionSnapshotRow):
 	};
 }
 
+function projectWorkflowRunFromRow(row: ProjectWorkflowRunRow): PiboProjectWorkflowRun {
+	return {
+		id: row.id,
+		projectId: row.project_id,
+		piboSessionId: row.pibo_session_id,
+		workflowId: row.workflow_id,
+		workflowVersion: row.workflow_version,
+		snapshotId: row.snapshot_id,
+		effectiveDefinitionHash: row.effective_definition_hash,
+		status: normalizeWorkflowRunStatus(row.status) ?? "running",
+		current: safeJsonObject(row.current_json) as PiboJsonObject,
+		inputValues: safeJsonObject(row.input_json) as PiboJsonObject,
+		...(row.validation_json ? { validation: safeJsonObject(row.validation_json) as PiboJsonObject } : {}),
+		createdAt: row.created_at,
+		updatedAt: row.updated_at,
+		...(row.completed_at ? { completedAt: row.completed_at } : {}),
+		...(row.failed_at ? { failedAt: row.failed_at } : {}),
+		...(row.cancelled_at ? { cancelledAt: row.cancelled_at } : {}),
+	};
+}
+
 function normalizeProjectName(value: unknown): string {
 	if (typeof value !== "string") throw new Error("Project name is required");
 	const name = value.replace(/\s+/g, " ").trim();
@@ -517,6 +759,11 @@ function normalizeProjectSessionState(value: PiboProjectSessionState | undefined
 	const state = value ?? "simple_chat";
 	if (!PROJECT_SESSION_STATES.has(state)) throw new Error(`Unsupported project session state: ${state}`);
 	return state;
+}
+
+function normalizeWorkflowRunStatus(value: PiboProjectSessionState | null | undefined): PiboProjectWorkflowRunStatus | undefined {
+	if (value === "running" || value === "waiting" || value === "completed" || value === "failed" || value === "cancelled") return value;
+	return undefined;
 }
 
 function serializeProjectSessionConfiguration(configuration: PiboProjectWorkflowSessionConfiguration | undefined): string | null {

@@ -34,6 +34,7 @@
 - Project workflow configuration snapshots should be immutable Project-service records keyed by Pibo Session id; apply prompt overrides only to the effective snapshot definition while preserving the base definition and hash.
 - Edge adapter UI should derive source output and target input ports from current Workflow IR; use-as-edge stores the target input as adapter output, while insert-node splits the edge through a visible deterministic adapter node.
 - Workflow Library version history should consume all catalog states for visibility, while Project workflow-version pickers remain published-only selection surfaces.
+- Project workflow start should validate the immutable session snapshot and claim the one allowed run atomically in `ChatProjectService`; duplicate starts return the existing run instead of revalidating live catalog state.
 
 ## 2026-05-11 22:37 CEST - US-001
 - What was implemented
@@ -1000,4 +1001,27 @@
 - **Learnings for future iterations:**
   - Catalog APIs can reuse existing draft validation and static workflow projection helpers while keeping Pibo Workflow IR as the definition source of truth.
   - `includeArchived=true` is the explicit archive filter for catalog list/inspect APIs; default catalog responses should omit archived workflow identities.
+---
+## 2026-05-12 04:39 CEST - US-005
+- What was implemented
+  - Implemented explicit Project workflow session start as a durable one-run claim.
+  - Added project workflow run records linked to Project session id, snapshot id, workflow id/version, effective definition hash, input values, validation summary, and current initial node ids.
+  - Made duplicate start calls idempotently return the existing run with `alreadyStarted: true` and no extra run row.
+  - Updated start validation to run against the immutable effective session snapshot instead of rebuilding from live catalog state.
+- Files changed
+  - `src/apps/chat/data/project-service.ts`
+  - `src/apps/chat/web-app.ts`
+  - `test/project-service-workflow-link.test.mjs`
+  - `test/web-channel.test.mjs`
+  - `docs/specs/changes/pibo-workflow-ui-authoring-v2/prds/prd_03_project_session_selection_and_snapshots.json`
+  - `docs/specs/changes/pibo-workflow-ui-authoring-v2/prds/progress.txt`
+- Quality checks run
+  - `docker exec pibo-dev-WorkflowsV2 bash -lc 'cd /workspace && npm run typecheck'` — passed.
+  - `docker exec pibo-dev-WorkflowsV2 bash -lc 'cd /workspace && npm run build && node --test test/project-service-workflow-link.test.mjs test/web-channel.test.mjs'` — passed, 67/67 tests.
+  - `git diff --check` — passed.
+- Browser verification, if UI changed
+  - Not run; this story changed the Project workflow start API and persistence tests, with no new UI behavior.
+- **Learnings for future iterations:**
+  - Start idempotency should be checked before live revalidation when a run already exists, so later catalog/profile changes do not turn duplicate Start clicks into false failures.
+  - Store the started run's current state as initial node ids rather than a single node id so the one-run-per-session rule does not imply one-node execution.
 ---

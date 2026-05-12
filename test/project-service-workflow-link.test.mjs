@@ -151,6 +151,103 @@ test("project workflow session snapshots persist configuration and effective def
 	}
 });
 
+test("project workflow start creates one run per configured session", () => {
+	const tempRoot = mkdtempSync(join(tmpdir(), "pibo-project-workflow-start-"));
+	const service = new ChatProjectService(join(tempRoot, "web-projects.sqlite"));
+
+	try {
+		const project = service.createProject({
+			ownerScope: "user:workflow-start",
+			name: "Workflow Start Project",
+			projectFolder: join(tempRoot, "project"),
+			createFolder: true,
+		});
+		service.addProjectSession({
+			projectId: project.id,
+			piboSessionId: "ps_start_workflow",
+			kind: "main",
+			workflowId: "standard-project",
+			workflowVersion: "1.0.0",
+			state: "configured",
+		});
+
+		const snapshot = {
+			id: "wfs_start_once",
+			schemaVersion: 1,
+			createdAt: "2026-05-12T01:00:00.000Z",
+			createdBy: "user-1",
+			ownerScope: "user:workflow-start",
+			projectId: project.id,
+			piboSessionId: "ps_start_workflow",
+			workflow: {
+				id: "standard-project",
+				version: "1.0.0",
+				source: "code",
+				title: "Standard Project",
+				tags: ["project"],
+				baseDefinitionHash: "sha256:base",
+				effectiveDefinitionHash: "sha256:effective",
+			},
+			baseDefinition: { id: "standard-project", version: "1.0.0", initial: ["draft", "review"], nodes: {} },
+			effectiveDefinition: { id: "standard-project", version: "1.0.0", initial: ["draft", "review"], nodes: {} },
+			inputValues: { topic: "Parallel start" },
+			promptOverrides: {},
+			overridePolicy: {
+				promptEligibility: "metadata.sessionOverrides.prompt===true-and-direct-promptTemplate",
+				eligiblePromptNodeIds: [],
+				modelScope: "workflow",
+				thinkingLevelScope: "workflow",
+				fastModeScope: "workflow",
+			},
+			promptAssetPins: [],
+			validation: { trigger: "before_project_session_creation", ok: true, validatedAt: "2026-05-12T01:00:00.000Z" },
+			deletedDefinitionFallback: {
+				workflowId: "standard-project",
+				workflowVersion: "1.0.0",
+				effectiveDefinitionHash: "sha256:effective",
+			},
+		};
+		service.saveWorkflowSessionSnapshot(snapshot);
+
+		const first = service.startWorkflowSessionRun({
+			projectId: project.id,
+			piboSessionId: "ps_start_workflow",
+			runId: "wfr_first",
+			workflowId: "standard-project",
+			workflowVersion: "1.0.0",
+			snapshotId: snapshot.id,
+			effectiveDefinitionHash: snapshot.workflow.effectiveDefinitionHash,
+			current: { status: "running", initialNodeIds: ["draft", "review"] },
+			inputValues: snapshot.inputValues,
+			validation: { trigger: "before_workflow_start", ok: true },
+		});
+		assert.equal(first.alreadyStarted, false);
+		assert.equal(first.projectSession.state, "running");
+		assert.equal(first.projectSession.workflowRunId, "wfr_first");
+		assert.deepEqual(first.run.current.initialNodeIds, ["draft", "review"]);
+
+		const second = service.startWorkflowSessionRun({
+			projectId: project.id,
+			piboSessionId: "ps_start_workflow",
+			runId: "wfr_second",
+			workflowId: "standard-project",
+			workflowVersion: "1.0.0",
+			snapshotId: snapshot.id,
+			effectiveDefinitionHash: snapshot.workflow.effectiveDefinitionHash,
+			current: { status: "running", initialNodeIds: ["other"] },
+			inputValues: {},
+		});
+		assert.equal(second.alreadyStarted, true);
+		assert.equal(second.run.id, "wfr_first");
+		assert.equal(second.projectSession.workflowRunId, "wfr_first");
+		assert.deepEqual(second.run.current.initialNodeIds, ["draft", "review"]);
+		assert.equal(service.listProjectWorkflowRuns({ piboSessionId: "ps_start_workflow" }).length, 1);
+	} finally {
+		service.close();
+		rmSync(tempRoot, { recursive: true, force: true });
+	}
+});
+
 test("project sessions can link back to workflow run ids", () => {
 	const tempRoot = mkdtempSync(join(tmpdir(), "pibo-project-workflow-link-"));
 	const service = new ChatProjectService(join(tempRoot, "web-projects.sqlite"));

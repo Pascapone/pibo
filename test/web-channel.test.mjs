@@ -144,6 +144,7 @@ async function startWebHostChannel(options = {}) {
 		sessions,
 		storageDir,
 		dataStorePath,
+		projectStorePath,
 		baseURL: `http://${address.host}:${address.port}`, 
 	};
 }
@@ -2719,8 +2720,8 @@ test("workflow published edit creates or reuses one next-version draft", async (
 	}
 });
 
-test("chat web app creates configured Project workflow sessions from the workflow catalog without starting a run", async () => {
-	const { channel, baseURL, emitted, storageDir } = await startWebHostChannel({
+test("chat web app creates configured Project workflow sessions and starts one workflow run explicitly", async () => {
+	const { channel, baseURL, emitted, storageDir, projectStorePath } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 		profiles: [{ name: "pibo-agent", aliases: ["default"] }],
 	});
@@ -2840,12 +2841,44 @@ test("chat web app creates configured Project workflow sessions from the workflo
 		const startValidationPayload = await startValidationResponse.json();
 		assert.equal(startValidationPayload.validation.trigger, "before_workflow_start");
 		assert.equal(startValidationPayload.validation.ok, true);
-		assert.equal(startValidationPayload.projectSession.state, "configured");
+		assert.equal(startValidationPayload.projectSession.state, "running");
 		assert.deepEqual(startValidationPayload.projectSession.configuration, createdPayload.configuration);
-		assert.equal(startValidationPayload.projectSession.workflowRunId, undefined);
+		assert.match(startValidationPayload.projectSession.workflowRunId, /^wfr_/);
 		assert.equal(startValidationPayload.snapshot.id, createdPayload.snapshot.id);
 		assert.deepEqual(startValidationPayload.snapshot.effectiveDefinition, createdPayload.snapshot.effectiveDefinition);
+		assert.equal(startValidationPayload.alreadyStarted, false);
+		assert.equal(startValidationPayload.run.id, startValidationPayload.projectSession.workflowRunId);
+		assert.equal(startValidationPayload.run.status, "running");
+		assert.equal(startValidationPayload.run.snapshotId, createdPayload.snapshot.id);
+		assert.equal(startValidationPayload.run.effectiveDefinitionHash, createdPayload.snapshot.workflow.effectiveDefinitionHash);
+		assert.deepEqual(startValidationPayload.run.inputValues, workflowConfiguration.inputValues);
+		assert.deepEqual(startValidationPayload.run.current.initialNodeIds, ["agent"]);
+		assert.equal(startValidationPayload.run.current.nodeId, "agent");
 		assert.equal(emitted.length, 0);
+
+		const secondStartResponse = await fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(projectPayload.project.id)}/workflow-sessions/${encodeURIComponent(createdPayload.session.id)}/start`, {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				origin: baseURL,
+				"x-test-user": "user-1",
+			},
+			body: JSON.stringify({}),
+		});
+		assert.equal(secondStartResponse.status, 200);
+		const secondStartPayload = await secondStartResponse.json();
+		assert.equal(secondStartPayload.alreadyStarted, true);
+		assert.equal(secondStartPayload.projectSession.workflowRunId, startValidationPayload.projectSession.workflowRunId);
+		assert.equal(secondStartPayload.run.id, startValidationPayload.run.id);
+
+		const projectDb = new DatabaseSync(projectStorePath, { readOnly: true });
+		try {
+			const rows = projectDb.prepare("SELECT id, pibo_session_id FROM project_workflow_runs WHERE pibo_session_id = ?").all(createdPayload.session.id);
+			assert.equal(rows.length, 1);
+			assert.equal(rows[0].id, startValidationPayload.run.id);
+		} finally {
+			projectDb.close();
+		}
 
 		const legacyRejected = await fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(projectPayload.project.id)}/sessions`, {
 			method: "POST",
