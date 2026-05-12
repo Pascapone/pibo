@@ -2145,6 +2145,97 @@ test("workflow validation pipeline runs on draft load, edit, validate, and publi
 	}
 });
 
+test("workflow draft publish allocates patch, minor, and major versions", async () => {
+	const { channel, baseURL, dataStorePath } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		profiles: [{ name: "pibo-agent", aliases: ["default"] }],
+	});
+
+	const jsonHeaders = {
+		"content-type": "application/json",
+		origin: baseURL,
+		"x-test-user": "user-1",
+	};
+
+	async function duplicateDraft(workflowId, version) {
+		const response = await fetch(`${baseURL}/api/chat/workflows/${workflowId}/duplicate`, {
+			method: "POST",
+			headers: jsonHeaders,
+			body: JSON.stringify({ version }),
+		});
+		assert.equal(response.status, 201);
+		return response.json();
+	}
+
+	async function publishDraft(draftId, body = {}) {
+		const response = await fetch(`${baseURL}/api/chat/workflows/drafts/${encodeURIComponent(draftId)}/publish`, {
+			method: "POST",
+			headers: jsonHeaders,
+			body: JSON.stringify(body),
+		});
+		const payload = await response.json();
+		return { response, payload };
+	}
+
+	try {
+		const nextDraftResponse = await fetch(`${baseURL}/api/chat/workflows/ui-review-workflow/drafts`, {
+			method: "POST",
+			headers: jsonHeaders,
+			body: JSON.stringify({ version: "2.0.0" }),
+		});
+		assert.equal(nextDraftResponse.status, 201);
+		const nextDraftPayload = await nextDraftResponse.json();
+		const patchPublish = await publishDraft(nextDraftPayload.draft.draftId);
+		assert.equal(patchPublish.response.status, 201);
+		assert.equal(patchPublish.payload.publishedVersion.workflowId, "ui-review-workflow");
+		assert.equal(patchPublish.payload.publishedVersion.version, "2.0.1");
+		assert.equal(patchPublish.payload.publishedVersion.definition.version, "2.0.1");
+		assert.match(patchPublish.payload.publishedVersion.definitionHash, /^sha256:[a-f0-9]{64}$/);
+		assert.equal(patchPublish.payload.draft.targetWorkflowVersion, "2.0.1");
+		assert.match(patchPublish.payload.message, /patch version bump/);
+
+		const repeatedPatchPublish = await publishDraft(nextDraftPayload.draft.draftId, { versionIntent: "patch" });
+		assert.equal(repeatedPatchPublish.response.status, 200);
+		assert.equal(repeatedPatchPublish.payload.alreadyPublished, true);
+		assert.equal(repeatedPatchPublish.payload.publishedVersion.version, "2.0.1");
+
+		const minorDraft = await duplicateDraft("standard-project", "1.0.0");
+		const minorPublish = await publishDraft(minorDraft.draft.draftId, { versionIntent: "minor" });
+		assert.equal(minorPublish.response.status, 201);
+		assert.equal(minorPublish.payload.publishedVersion.workflowId, "ui-standard-project-copy");
+		assert.equal(minorPublish.payload.publishedVersion.version, "1.1.0");
+		assert.equal(minorPublish.payload.publishedVersion.definition.id, "ui-standard-project-copy");
+
+		const majorDraft = await duplicateDraft("simple-chat", "1.0.0");
+		const majorPublish = await publishDraft(majorDraft.draft.draftId, { versionIntent: "major" });
+		assert.equal(majorPublish.response.status, 201);
+		assert.equal(majorPublish.payload.publishedVersion.workflowId, "ui-simple-chat-copy");
+		assert.equal(majorPublish.payload.publishedVersion.version, "2.0.0");
+
+		const pickerResponse = await fetch(`${baseURL}/api/chat/workflows/pickers/workflow-versions`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(pickerResponse.status, 200);
+		const pickerPayload = await pickerResponse.json();
+		const pickerKeys = pickerPayload.options.map((option) => `${option.id}@${option.version}`);
+		assert.ok(pickerKeys.includes("ui-review-workflow@2.0.1"));
+		assert.ok(pickerKeys.includes("ui-standard-project-copy@1.1.0"));
+		assert.ok(pickerKeys.includes("ui-simple-chat-copy@2.0.0"));
+
+		const db = new DatabaseSync(dataStorePath, { readOnly: true });
+		try {
+			const rows = db.prepare("SELECT workflow_id, version FROM workflow_published_versions ORDER BY workflow_id, version").all();
+			assert.ok(rows.some((row) => row.workflow_id === "ui-review-workflow" && row.version === "2.0.1"));
+			assert.ok(rows.some((row) => row.workflow_id === "ui-standard-project-copy" && row.version === "1.1.0"));
+			assert.ok(rows.some((row) => row.workflow_id === "ui-simple-chat-copy" && row.version === "2.0.0"));
+		} finally {
+			db.close();
+		}
+	} finally {
+		await channel.stop?.();
+	}
+});
+
 test("workflow published edit creates or reuses one next-version draft", async () => {
 	const { channel, baseURL } = await startWebHostChannel({
 		auth: createFakeAuthService(),

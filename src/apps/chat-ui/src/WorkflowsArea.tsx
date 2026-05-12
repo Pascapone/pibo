@@ -26,6 +26,7 @@ import {
 	getWorkflowProfilePicker,
 	getWorkflowVersionPicker,
 	patchWorkflowDraft,
+	postWorkflowDraftPublish,
 	postWorkflowDuplicateDraft,
 	postWorkflowNextDraft,
 	type WorkflowDraftDefinition,
@@ -321,10 +322,33 @@ function WorkflowBuilderDraftLoader({ draftId }: { draftId: string }) {
 
 function WorkflowDraftEditorShell({ draft }: { draft: WorkflowDraftRecord }) {
 	const [currentDraft, setCurrentDraft] = useState(draft);
+	const [versionIntent, setVersionIntent] = useState<"patch" | "minor" | "major">(draft.versionIntent);
+	const [publishState, setPublishState] = useState<"idle" | "publishing" | "published" | "error">("idle");
+	const [publishMessage, setPublishMessage] = useState<string | undefined>();
 
 	useEffect(() => {
 		setCurrentDraft(draft);
+		setVersionIntent(draft.versionIntent);
+		setPublishState("idle");
+		setPublishMessage(undefined);
 	}, [draft]);
+
+	const publishDraft = async () => {
+		setPublishState("publishing");
+		setPublishMessage(undefined);
+		try {
+			const response = await postWorkflowDraftPublish(currentDraft.draftId, { versionIntent });
+			setCurrentDraft(response.draft);
+			setVersionIntent(response.draft.versionIntent);
+			setPublishState("published");
+			setPublishMessage(response.publishedVersion
+				? `${response.message ?? "Published workflow draft."} Definition hash ${response.publishedVersion.definitionHash}.`
+				: response.message ?? "Publish validation passed.");
+		} catch (error) {
+			setPublishState("error");
+			setPublishMessage(error instanceof Error ? error.message : "Failed to publish workflow draft");
+		}
+	};
 
 	return (
 		<div className="flex w-full flex-col gap-4 rounded-sm border border-slate-800 bg-[#101d22]/70 p-4">
@@ -350,6 +374,47 @@ function WorkflowDraftEditorShell({ draft }: { draft: WorkflowDraftRecord }) {
 				<WorkflowFact label="Base workflow" value={currentDraft.baseWorkflowId && currentDraft.baseWorkflowVersion ? `${currentDraft.baseWorkflowId}@${currentDraft.baseWorkflowVersion}` : "new UI draft"} />
 				<WorkflowFact label="Next version path" value={currentDraft.targetWorkflowVersion ?? "not assigned yet"} />
 				<WorkflowFact label="Version intent" value={currentDraft.versionIntent} />
+			</div>
+
+			<div className="rounded-sm border border-slate-800 bg-[#151f24]/70 p-4" aria-label="Workflow publish version panel">
+				<div className="flex flex-wrap items-end justify-between gap-3">
+					<div>
+						<div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">Publish version intent</div>
+						<p className="mt-2 max-w-2xl text-xs leading-5 text-slate-400">
+							Default publish increments the patch version. Choose minor or major when the release scope needs a larger semantic version bump.
+						</p>
+					</div>
+					<div className="flex flex-wrap items-center gap-2">
+						<label className="flex items-center gap-2 text-xs font-semibold text-slate-300">
+							<span>Version bump intent</span>
+							<select
+								className="rounded-sm border border-slate-700 bg-[#101d22] px-2 py-1.5 text-xs text-slate-100 outline-none transition focus:border-[#11a4d4]"
+								value={versionIntent}
+								onChange={(event) => setVersionIntent(event.target.value as "patch" | "minor" | "major")}
+								disabled={publishState === "publishing"}
+								aria-label="Version bump intent"
+							>
+								<option value="patch">Patch version bump (default)</option>
+								<option value="minor">Minor version bump</option>
+								<option value="major">Major version bump</option>
+							</select>
+						</label>
+						<button
+							type="button"
+							className="inline-flex items-center justify-center gap-1 rounded-sm border border-emerald-600/70 px-3 py-1.5 text-xs font-semibold text-emerald-200 transition hover:border-emerald-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+							onClick={() => void publishDraft()}
+							disabled={publishState === "publishing"}
+						>
+							{publishState === "publishing" ? <Loader2 size={13} className="animate-spin" /> : <CheckCheck size={13} />}
+							Publish draft
+						</button>
+					</div>
+				</div>
+				{publishMessage ? (
+					<div className={`mt-3 rounded-sm border p-3 text-xs leading-5 ${publishState === "error" ? "border-red-900/70 bg-red-950/40 text-red-200" : "border-emerald-900/60 bg-emerald-950/20 text-emerald-200"}`} role={publishState === "error" ? "alert" : "status"}>
+						{publishMessage}
+					</div>
+				) : null}
 			</div>
 
 			<WorkflowGraphCanvas draft={currentDraft} onDraftChange={setCurrentDraft} />

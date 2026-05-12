@@ -15,6 +15,7 @@
 - Workflow session routing metadata uses the stable Pibo Session metadata key `workflowSessionKind` with values `main_workflow`, `nested_workflow`, `agent_node`, and `subagent`; Chat sidebar nodes expose it as `PiboWebSessionNode.workflowSessionKind`.
 - Project workflow sidebars should build from Project root Pibo Sessions plus real parent/child Pibo Session descendants from `channelContext.findSessions`, not from logical workflow graph node ids.
 - Published workflow versions use `hashWorkflowDefinition` plus `SqliteWorkflowRunStore.savePublishedWorkflowVersion`; saving the same body is idempotent, while changing a published `workflowId@version` body throws to preserve immutability.
+- Workflow publish routes should allocate semantic versions inside a durable transaction, reserve both static catalog and persisted versions, and make repeated publish requests idempotent by draft id.
 - Edit-published actions should use `POST /api/chat/workflows/:workflowId/drafts`, create or reuse the one active next-version draft for UI-authored published workflows, and keep code projections duplicate-only.
 - Project workflow session creation should use the V2 `/api/chat/projects/:projectId/workflow-sessions` route and `workflow-versions` picker; keep legacy `/projects/:projectId/sessions` limited to `simple-chat`.
 - Project workflow session records keep selected workflow metadata in `project_sessions.workflow_id`, `workflow_version`, and constrained lifecycle `state`; configured sessions must not set `workflow_run_id` until Start.
@@ -629,4 +630,30 @@
 - **Learnings for future iterations:**
   - Reuse the published workflow-version picker for nested workflow node authoring so Project session creation and builder refs share the same catalog boundary.
   - Keep nested workflow Open workflow navigation as a separate viewer route; parent graph UI should show only the reference and no child graph expansion.
+---
+## 2026-05-12 02:09 CEST - US-003
+- What was implemented
+  - Implemented workflow draft publish persistence with transactional semantic version allocation.
+  - Default publish allocates the next patch version; explicit `minor` and `major` intents allocate the next corresponding semantic version.
+  - Published UI versions are stored durably in `workflow_published_versions`, exposed through the workflow-version picker, and repeated publish requests for the same draft return the existing published version instead of duplicating it.
+  - Added a Workflow Builder publish panel with a patch/minor/major version intent selector and publish result feedback.
+- Files changed
+  - `src/apps/chat/web-app.ts`
+  - `src/apps/chat-ui/src/api.ts`
+  - `src/apps/chat-ui/src/WorkflowsArea.tsx`
+  - `test/web-channel.test.mjs`
+  - `docs/specs/changes/pibo-workflow-ui-authoring-v2/prds/prd_06_versioning_archive_delete_lifecycle.json`
+  - `docs/specs/changes/pibo-workflow-ui-authoring-v2/prds/progress.txt`
+- Quality checks run
+  - `docker exec pibo-dev-WorkflowsV2 bash -lc 'cd /workspace && npm run typecheck'` — passed.
+  - `docker exec pibo-dev-WorkflowsV2 bash -lc 'cd /workspace && npm run build && node --test --test-name-pattern "workflow draft publish|workflow published edit|workflow version picker" test/web-channel.test.mjs'` — passed, 3/3 targeted web-channel tests.
+- Browser verification, if UI changed
+  - Restarted the container gateway from rebuilt `/workspace/dist` and verified `http://127.0.0.1:4802/apps/chat` after starting the worker web process with a keepalive.
+  - Used `browser-use --fresh-profile` inside `pibo-dev-WorkflowsV2` with dev auth to open the Workflows tab and create/open the UI Review Workflow next-version draft.
+  - Verified the builder shows `Publish version intent`, the `Version bump intent` select with patch/minor/major options, and the `Publish draft` action.
+  - Patched the draft's Agent profile ref to the available `codex-compat-openai-web` profile through the authenticated browser session, selected the minor bump, clicked `Publish draft`, and verified `Published ui-review-workflow@2.1.0 with a minor version bump` plus a `sha256:` definition hash.
+  - Saved screenshot: `/tmp/ralph-v2-version-bump-publish.png` inside the container.
+- **Learnings for future iterations:**
+  - Publish/version APIs must reserve static catalog versions as well as persisted UI versions when allocating the next semantic version.
+  - Browser workers may need a valid Agent profile ref before publish validation can pass; draft fixtures that hard-code `pibo-agent` can fail in dev-auth catalogs where that profile is unavailable.
 ---

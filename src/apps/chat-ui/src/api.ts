@@ -369,7 +369,24 @@ export async function getWorkflowDraft(draftId: string): Promise<WorkflowDraftRe
 	return requestJson<WorkflowDraftResponse>(`/api/chat/workflows/drafts/${encodeURIComponent(draftId)}`);
 }
 
-export type WorkflowDraftMutationResponse = WorkflowDraftResponse & WorkflowValidationResponse;
+export type WorkflowPublishedVersionRecord = {
+	workflowId: string;
+	version: string;
+	source: "ui";
+	status: "published";
+	definition: WorkflowDraftDefinition;
+	definitionHash: string;
+	publishedFromDraftId?: string;
+	publishedBy?: string;
+	publishedAt: string;
+	createdAt: string;
+};
+
+export type WorkflowDraftMutationResponse = WorkflowDraftResponse & WorkflowValidationResponse & {
+	message?: string;
+	publishedVersion?: WorkflowPublishedVersionRecord;
+	alreadyPublished?: boolean;
+};
 
 export async function patchWorkflowDraft(draftId: string, input: { definition?: WorkflowDraftDefinition; rawDefinitionText?: string; editTrigger: WorkflowValidationTrigger }): Promise<WorkflowDraftMutationResponse> {
 	return requestJson<WorkflowDraftMutationResponse>(`/api/chat/workflows/drafts/${encodeURIComponent(draftId)}`, {

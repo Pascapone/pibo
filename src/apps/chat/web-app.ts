@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { basename, extname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -184,6 +184,7 @@ type ChatWebAppState = {
 	userSkillManager: UserSkillManager;
 	syncedUserSkillNames?: Set<string>;
 	workflowDraftStore: ChatWorkflowDraftStore;
+	workflowPublishedVersionStore: ChatWorkflowPublishedVersionStore;
 };
 
 type ChatBootstrapCatalog = {
@@ -489,6 +490,32 @@ type WorkflowDraftStoreRow = {
 	updated_at: string;
 };
 
+type WorkflowPublishedVersionRecord = {
+	workflowId: string;
+	version: string;
+	source: "ui";
+	status: "published";
+	definition: PiboJsonObject;
+	definitionHash: string;
+	publishedFromDraftId?: string;
+	publishedBy?: string;
+	publishedAt: string;
+	createdAt: string;
+};
+
+type WorkflowPublishedVersionStoreRow = {
+	workflow_id: string;
+	version: string;
+	source: "ui";
+	status: "published";
+	definition_hash: string;
+	definition_json: string;
+	published_from_draft_id: string | null;
+	published_by: string | null;
+	published_at: string;
+	created_at: string;
+};
+
 class ChatWorkflowDraftStore {
 	constructor(private readonly dataStore: PiboDataStore) {
 		this.dataStore.db.exec(`
@@ -620,6 +647,133 @@ function workflowDraftFromStoreRow(row: WorkflowDraftStoreRow): OwnedWorkflowDra
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 		ownerScope: row.owner_scope,
+	};
+}
+
+class ChatWorkflowPublishedVersionStore {
+	constructor(private readonly dataStore: PiboDataStore) {
+		this.dataStore.db.exec(`
+			CREATE TABLE IF NOT EXISTS workflow_published_versions (
+				workflow_id TEXT NOT NULL,
+				version TEXT NOT NULL,
+				source TEXT NOT NULL,
+				status TEXT NOT NULL,
+				definition_hash TEXT NOT NULL,
+				definition_json TEXT NOT NULL,
+				published_from_draft_id TEXT,
+				published_by TEXT,
+				published_at TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				PRIMARY KEY (workflow_id, version)
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_workflow_published_versions_workflow
+				ON workflow_published_versions(workflow_id, version);
+			CREATE INDEX IF NOT EXISTS idx_workflow_published_versions_published_at
+				ON workflow_published_versions(published_at);
+			CREATE UNIQUE INDEX IF NOT EXISTS idx_workflow_published_versions_draft
+				ON workflow_published_versions(published_from_draft_id)
+				WHERE published_from_draft_id IS NOT NULL;
+		`);
+	}
+
+	getPublishedVersionByDraftId(draftId: string): WorkflowPublishedVersionRecord | undefined {
+		const row = this.dataStore.db
+			.prepare("SELECT * FROM workflow_published_versions WHERE published_from_draft_id = ? ORDER BY published_at ASC LIMIT 1")
+			.get(draftId) as WorkflowPublishedVersionStoreRow | undefined;
+		return row ? workflowPublishedVersionFromStoreRow(row) : undefined;
+	}
+
+	listPublishedVersions(filter: { workflowId?: string } = {}): WorkflowPublishedVersionRecord[] {
+		const rows = filter.workflowId
+			? this.dataStore.db
+				.prepare("SELECT * FROM workflow_published_versions WHERE workflow_id = ? ORDER BY workflow_id ASC, version ASC")
+				.all(filter.workflowId) as WorkflowPublishedVersionStoreRow[]
+			: this.dataStore.db
+				.prepare("SELECT * FROM workflow_published_versions ORDER BY workflow_id ASC, version ASC")
+				.all() as WorkflowPublishedVersionStoreRow[];
+		return rows.map(workflowPublishedVersionFromStoreRow);
+	}
+
+	publishDraft(input: {
+		draft: OwnedWorkflowDraftRecord;
+		versionIntent: "patch" | "minor" | "major";
+		publishedBy: string;
+		reservedVersions: string[];
+	}): { record: WorkflowPublishedVersionRecord; alreadyPublished: boolean } {
+		return this.dataStore.transaction(() => {
+			const alreadyPublished = this.getPublishedVersionByDraftId(input.draft.draftId);
+			if (alreadyPublished) return { record: alreadyPublished, alreadyPublished: true };
+
+			const existingVersions = [
+				...input.reservedVersions,
+				...this.listPublishedVersions({ workflowId: input.draft.workflowId }).map((record) => record.version),
+			];
+			const version = allocateWorkflowPublishedVersion({
+				draft: input.draft,
+				versionIntent: input.versionIntent,
+				existingVersions,
+			});
+			const definition = workflowDraftDefinitionForPublishedVersion(input.draft.definition, input.draft.workflowId, version);
+			const now = new Date().toISOString();
+			const record: WorkflowPublishedVersionRecord = {
+				workflowId: input.draft.workflowId,
+				version,
+				source: "ui",
+				status: "published",
+				definition,
+				definitionHash: hashWorkflowDefinitionJson(definition),
+				publishedFromDraftId: input.draft.draftId,
+				publishedBy: input.publishedBy,
+				publishedAt: now,
+				createdAt: now,
+			};
+			this.insertPublishedVersion(record);
+			return { record, alreadyPublished: false };
+		});
+	}
+
+	private insertPublishedVersion(record: WorkflowPublishedVersionRecord): void {
+		this.dataStore.db.prepare(`
+			INSERT INTO workflow_published_versions (
+				workflow_id,
+				version,
+				source,
+				status,
+				definition_hash,
+				definition_json,
+				published_from_draft_id,
+				published_by,
+				published_at,
+				created_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`).run(
+			record.workflowId,
+			record.version,
+			record.source,
+			record.status,
+			record.definitionHash,
+			canonicalWorkflowDefinitionJson(record.definition),
+			record.publishedFromDraftId ?? null,
+			record.publishedBy ?? null,
+			record.publishedAt,
+			record.createdAt,
+		);
+	}
+}
+
+function workflowPublishedVersionFromStoreRow(row: WorkflowPublishedVersionStoreRow): WorkflowPublishedVersionRecord {
+	return {
+		workflowId: row.workflow_id,
+		version: row.version,
+		source: row.source,
+		status: row.status,
+		definitionHash: row.definition_hash,
+		definition: JSON.parse(row.definition_json) as PiboJsonObject,
+		...(row.published_from_draft_id ? { publishedFromDraftId: row.published_from_draft_id } : {}),
+		...(row.published_by ? { publishedBy: row.published_by } : {}),
+		publishedAt: row.published_at,
+		createdAt: row.created_at,
 	};
 }
 
@@ -1670,7 +1824,7 @@ function createProjectChatSession(input: {
 	configuredWorkflow?: boolean;
 	configuration?: PiboProjectWorkflowSessionConfiguration;
 }): PiboSession {
-	const workflowSelection = resolveProjectWorkflowSelection(input.workflowId, input.workflowVersion);
+	const workflowSelection = resolveProjectWorkflowSelection(input.state, input.workflowId, input.workflowVersion);
 	const session = input.context.channelContext.createSession({
 		channel: CHAT_WEB_CHANNEL,
 		kind: "chat",
@@ -1702,6 +1856,7 @@ function createProjectChatSession(input: {
 }
 
 function resolveProjectWorkflowSelection(
+	state: ChatWebAppState,
 	workflowIdValue: unknown,
 	workflowVersionValue?: unknown,
 	options: { requireExplicitWorkflowId?: boolean; requireExplicitVersion?: boolean } = {},
@@ -1714,7 +1869,7 @@ function resolveProjectWorkflowSelection(
 	if (options.requireExplicitVersion && !workflowVersion) {
 		throw new PiboWebHttpError("Workflow version is required", 400);
 	}
-	const candidates = buildProjectWorkflowVersionCatalog().filter((option) => option.id === workflowId);
+	const candidates = buildProjectWorkflowVersionCatalog(state).filter((option) => option.id === workflowId);
 	const selected = candidates.find((option) => workflowVersion === undefined || option.version === workflowVersion);
 	if (!selected) {
 		throw new PiboWebHttpError(`Unknown workflow version: ${workflowId}${workflowVersion ? `@${workflowVersion}` : ""}`, 400);
@@ -2360,8 +2515,8 @@ function buildWorkflowHandlerPicker(selectedHandlerId?: string): WorkflowHandler
 	};
 }
 
-function buildWorkflowVersionPicker(selectedWorkflowId?: string, selectedWorkflowVersion?: string): WorkflowVersionPickerResponse {
-	const options = buildProjectWorkflowVersionOptions();
+function buildWorkflowVersionPicker(state: ChatWebAppState, selectedWorkflowId?: string, selectedWorkflowVersion?: string): WorkflowVersionPickerResponse {
+	const options = buildProjectWorkflowVersionOptions(state);
 	const normalizedWorkflowId = selectedWorkflowId?.trim() || undefined;
 	const normalizedWorkflowVersion = selectedWorkflowVersion?.trim() || undefined;
 	const selected = normalizedWorkflowId
@@ -2386,58 +2541,91 @@ function buildWorkflowVersionPicker(selectedWorkflowId?: string, selectedWorkflo
 	};
 }
 
-function buildProjectWorkflowVersionOptions(): WorkflowVersionPickerOption[] {
-	return buildProjectWorkflowVersionCatalog().filter((option): option is WorkflowVersionPickerOption => option.status === "published");
+function buildProjectWorkflowVersionOptions(state?: ChatWebAppState): WorkflowVersionPickerOption[] {
+	return buildProjectWorkflowVersionCatalog(state).filter((option): option is WorkflowVersionPickerOption => option.status === "published");
 }
 
-function buildProjectWorkflowVersionCatalog(): WorkflowCatalogVersionRecord[] {
-	return [
-		{
-			id: "standard-project",
-			version: "1.0.0",
-			title: "Standard Project",
-			description: "Configured workflow-backed Project session for feature, bugfix, and review work. Creation saves the configuration without starting a run.",
-			source: "code",
-			status: "published",
-			tags: ["project", "workflow"],
-		},
-		{
-			id: "simple-chat",
-			version: "1.0.0",
-			title: "Simple Chat",
-			description: "Baseline Project chat workflow that preserves the existing one-session chat behavior.",
-			source: "code",
-			status: "published",
-			tags: ["project", "chat"],
-		},
-		{
-			id: "ui-review-workflow",
-			version: "2.0.0",
-			title: "UI Review Workflow",
-			description: "UI-authored published workflow fixture for next-version draft editing.",
-			source: "ui",
-			status: "published",
-			tags: ["workflow-ui", "review"],
-		},
-		{
-			id: "ui-draft-workflow",
-			version: "0.1.0-draft",
-			title: "UI Draft Workflow",
-			description: "Unpublished fixture used to enforce Project session creation boundaries.",
-			source: "ui",
-			status: "draft",
-			tags: ["workflow-ui", "draft"],
-		},
-		{
-			id: "archived-review-workflow",
-			version: "1.0.0",
-			title: "Archived Review Workflow",
-			description: "Archived fixture omitted from default Project session creation choices.",
-			source: "ui",
-			status: "archived",
-			tags: ["workflow-ui", "archived"],
-		},
-	];
+const STATIC_WORKFLOW_VERSION_CATALOG: WorkflowCatalogVersionRecord[] = [
+	{
+		id: "standard-project",
+		version: "1.0.0",
+		title: "Standard Project",
+		description: "Configured workflow-backed Project session for feature, bugfix, and review work. Creation saves the configuration without starting a run.",
+		source: "code",
+		status: "published",
+		tags: ["project", "workflow"],
+	},
+	{
+		id: "simple-chat",
+		version: "1.0.0",
+		title: "Simple Chat",
+		description: "Baseline Project chat workflow that preserves the existing one-session chat behavior.",
+		source: "code",
+		status: "published",
+		tags: ["project", "chat"],
+	},
+	{
+		id: "ui-review-workflow",
+		version: "2.0.0",
+		title: "UI Review Workflow",
+		description: "UI-authored published workflow fixture for next-version draft editing.",
+		source: "ui",
+		status: "published",
+		tags: ["workflow-ui", "review"],
+	},
+	{
+		id: "ui-draft-workflow",
+		version: "0.1.0-draft",
+		title: "UI Draft Workflow",
+		description: "Unpublished fixture used to enforce Project session creation boundaries.",
+		source: "ui",
+		status: "draft",
+		tags: ["workflow-ui", "draft"],
+	},
+	{
+		id: "archived-review-workflow",
+		version: "1.0.0",
+		title: "Archived Review Workflow",
+		description: "Archived fixture omitted from default Project session creation choices.",
+		source: "ui",
+		status: "archived",
+		tags: ["workflow-ui", "archived"],
+	},
+];
+
+function buildProjectWorkflowVersionCatalog(state?: ChatWebAppState): WorkflowCatalogVersionRecord[] {
+	const recordsByKey = new Map<string, WorkflowCatalogVersionRecord>();
+	for (const record of STATIC_WORKFLOW_VERSION_CATALOG) {
+		recordsByKey.set(workflowCatalogVersionKey(record.id, record.version), record);
+	}
+	if (state) {
+		for (const record of state.workflowPublishedVersionStore.listPublishedVersions()) {
+			recordsByKey.set(workflowCatalogVersionKey(record.workflowId, record.version), workflowCatalogRecordFromPublishedVersion(record));
+		}
+	}
+	return [...recordsByKey.values()];
+}
+
+function workflowCatalogVersionKey(workflowId: string, version: string): string {
+	return `${workflowId}@${version}`;
+}
+
+function workflowCatalogRecordFromPublishedVersion(record: WorkflowPublishedVersionRecord): WorkflowCatalogVersionRecord {
+	return {
+		id: record.workflowId,
+		version: record.version,
+		title: typeof record.definition.title === "string" ? record.definition.title : record.workflowId,
+		...(typeof record.definition.description === "string" ? { description: record.definition.description } : {}),
+		source: "ui",
+		status: "published",
+		tags: workflowDefinitionTags(record.definition),
+	};
+}
+
+function workflowDefinitionTags(definition: PiboJsonObject): string[] {
+	const metadata = isJsonObject(definition.metadata) ? definition.metadata : undefined;
+	const tags = metadata && Array.isArray(metadata.tags) ? metadata.tags : [];
+	return tags.filter((tag): tag is string => typeof tag === "string");
 }
 
 const WORKFLOW_STARTER_DRAFT_ID = "v2-starter-draft";
@@ -2475,7 +2663,7 @@ function duplicateWorkflowIntoDraft(
 ): WorkflowDraftRecord {
 	const workflowId = normalizeProjectWorkflowId(workflowIdValue);
 	const workflowVersion = normalizeProjectWorkflowVersion(workflowVersionValue);
-	const published = selectPublishedWorkflowVersion(workflowId, workflowVersion);
+	const published = selectPublishedWorkflowVersion(state, workflowId, workflowVersion);
 	if (!published) throw new PiboWebHttpError("Published workflow version not found", 404);
 
 	const copyWorkflowId = `ui-${published.id}-copy`;
@@ -2521,7 +2709,7 @@ function createNextVersionDraftFromPublishedWorkflow(
 ): { draft: WorkflowDraftRecord; reused: boolean } {
 	const workflowId = normalizeProjectWorkflowId(workflowIdValue);
 	const workflowVersion = normalizeProjectWorkflowVersion(workflowVersionValue);
-	const published = selectPublishedWorkflowVersion(workflowId, workflowVersion);
+	const published = selectPublishedWorkflowVersion(state, workflowId, workflowVersion);
 	if (!published) throw new PiboWebHttpError("Published workflow version not found", 404);
 	if (published.source !== "ui") {
 		throw new PiboWebHttpError("Code workflow projections are read-only; duplicate them to a UI draft before editing", 409);
@@ -2565,8 +2753,8 @@ function createNextVersionDraftFromPublishedWorkflow(
 	return { draft: serializeWorkflowDraft(draft), reused: false };
 }
 
-function selectPublishedWorkflowVersion(workflowId: string, version?: string): WorkflowVersionPickerOption | undefined {
-	const options = buildProjectWorkflowVersionOptions().filter((option) => option.id === workflowId);
+function selectPublishedWorkflowVersion(state: ChatWebAppState, workflowId: string, version?: string): WorkflowVersionPickerOption | undefined {
+	const options = buildProjectWorkflowVersionOptions(state).filter((option) => option.id === workflowId);
 	if (!version) return options[0];
 	return options.find((option) => option.version === version);
 }
@@ -2764,6 +2952,90 @@ function normalizeWorkflowVersionIntent(value: unknown, fallback: "patch" | "min
 	if (value === undefined || value === null || value === "") return fallback;
 	if (value === "patch" || value === "minor" || value === "major") return value;
 	throw new PiboWebHttpError("Workflow version intent must be patch, minor, or major", 400);
+}
+
+type ParsedWorkflowSemver = { major: number; minor: number; patch: number };
+
+function allocateWorkflowPublishedVersion(input: {
+	draft: OwnedWorkflowDraftRecord;
+	versionIntent: "patch" | "minor" | "major";
+	existingVersions: string[];
+}): string {
+	const existing = new Set(input.existingVersions);
+	let base = maxWorkflowSemver([
+		...input.existingVersions,
+		input.draft.baseWorkflowVersion ?? (typeof input.draft.definition.version === "string" ? input.draft.definition.version : undefined),
+	]);
+	base ??= { major: 0, minor: 0, patch: 0 };
+	let candidate = bumpWorkflowSemver(base, input.versionIntent);
+	while (existing.has(formatWorkflowSemver(candidate))) {
+		candidate = bumpWorkflowSemver(candidate, input.versionIntent);
+	}
+	return formatWorkflowSemver(candidate);
+}
+
+function maxWorkflowSemver(versions: Array<string | undefined>): ParsedWorkflowSemver | undefined {
+	let max: ParsedWorkflowSemver | undefined;
+	for (const version of versions) {
+		const parsed = version ? parseWorkflowSemver(version) : undefined;
+		if (parsed && (!max || compareWorkflowSemver(parsed, max) > 0)) max = parsed;
+	}
+	return max;
+}
+
+function parseWorkflowSemver(version: string): ParsedWorkflowSemver | undefined {
+	const match = /^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/.exec(version.trim());
+	if (!match) return undefined;
+	return { major: Number(match[1]), minor: Number(match[2]), patch: Number(match[3]) };
+}
+
+function compareWorkflowSemver(left: ParsedWorkflowSemver, right: ParsedWorkflowSemver): number {
+	return left.major - right.major || left.minor - right.minor || left.patch - right.patch;
+}
+
+function bumpWorkflowSemver(version: ParsedWorkflowSemver, intent: "patch" | "minor" | "major"): ParsedWorkflowSemver {
+	if (intent === "major") return { major: version.major + 1, minor: 0, patch: 0 };
+	if (intent === "minor") return { major: version.major, minor: version.minor + 1, patch: 0 };
+	return { major: version.major, minor: version.minor, patch: version.patch + 1 };
+}
+
+function formatWorkflowSemver(version: ParsedWorkflowSemver): string {
+	return `${version.major}.${version.minor}.${version.patch}`;
+}
+
+function workflowDraftDefinitionForPublishedVersion(definition: PiboJsonObject, workflowId: string, version: string): PiboJsonObject {
+	return {
+		...cloneJsonObject(definition),
+		id: workflowId,
+		version,
+	};
+}
+
+function hashWorkflowDefinitionJson(definition: PiboJsonObject): string {
+	return `sha256:${createHash("sha256").update(canonicalWorkflowDefinitionJson(definition)).digest("hex")}`;
+}
+
+function canonicalWorkflowDefinitionJson(definition: PiboJsonObject): string {
+	return JSON.stringify(normalizeForCanonicalJson(definition));
+}
+
+function normalizeForCanonicalJson(value: PiboJsonValue | undefined): PiboJsonValue | undefined {
+	if (Array.isArray(value)) {
+		return value.map((item) => normalizeForCanonicalJson(item) ?? null);
+	}
+	if (value && typeof value === "object") {
+		const output: PiboJsonObject = {};
+		for (const key of Object.keys(value).sort()) {
+			const normalized = normalizeForCanonicalJson(value[key]);
+			if (normalized !== undefined) output[key] = normalized;
+		}
+		return output;
+	}
+	return value;
+}
+
+function cloneJsonObject(value: PiboJsonObject): PiboJsonObject {
+	return JSON.parse(JSON.stringify(value)) as PiboJsonObject;
 }
 
 function parseWorkflowDraftDefinitionFromPatch(body: WorkflowDraftPatchBody): { definition?: PiboJsonObject; trigger: WorkflowValidationTrigger } {
@@ -2967,7 +3239,7 @@ function validateWorkflowNodeLike(
 		return;
 	}
 	if (kind === "workflow") {
-		validateWorkflowNestedNodeLike(nodeId, value, diagnostics);
+		validateWorkflowNestedNodeLike(nodeId, value, input, diagnostics);
 		return;
 	}
 	if (kind === "adapter") {
@@ -3070,12 +3342,17 @@ function validateWorkflowCodeNodeLike(nodeId: string, node: PiboJsonObject, diag
 	}
 }
 
-function validateWorkflowNestedNodeLike(nodeId: string, node: PiboJsonObject, diagnostics: WorkflowDraftDiagnostic[]): void {
+function validateWorkflowNestedNodeLike(
+	nodeId: string,
+	node: PiboJsonObject,
+	input: { state: ChatWebAppState; context: PiboWebAppContext; webSession: PiboWebSession },
+	diagnostics: WorkflowDraftDiagnostic[],
+): void {
 	const path = `$.nodes.${nodeId}`;
 	const workflowId = typeof node.workflowId === "string" ? node.workflowId.trim() : undefined;
 	const workflowVersion = typeof node.workflowVersion === "string" ? node.workflowVersion.trim() : undefined;
 	const selected = workflowId
-		? buildProjectWorkflowVersionOptions().find((option) => option.id === workflowId && (!workflowVersion || option.version === workflowVersion))
+		? buildProjectWorkflowVersionOptions(input.state).find((option) => option.id === workflowId && (!workflowVersion || option.version === workflowVersion))
 		: undefined;
 	if (!selected) {
 		const registryRef = workflowId ? `${workflowId}${workflowVersion ? `@${workflowVersion}` : ""}` : undefined;
@@ -4863,6 +5140,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 		persistenceMetrics: createPersistenceMetrics(),
 		userSkillManager: new UserSkillManager(os.homedir()),
 		workflowDraftStore: new ChatWorkflowDraftStore(dataStore),
+		workflowPublishedVersionStore: new ChatWorkflowPublishedVersionStore(dataStore),
 	};
 
 	const requireSession = (request: Request, context: PiboWebAppContext): Promise<PiboWebSession> =>
@@ -5144,7 +5422,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const body = await readJsonBody<ChatProjectSessionCreateBody>(request);
 				const project = state.projectService.requireProject(projectResource.projectId);
 				const profile = resolveCreateSessionProfile(context, defaultProfile, body.profile);
-				const workflowSelection = resolveProjectWorkflowSelection(body.workflowId, body.workflowVersion, { requireExplicitWorkflowId: true, requireExplicitVersion: true });
+				const workflowSelection = resolveProjectWorkflowSelection(state, body.workflowId, body.workflowVersion, { requireExplicitWorkflowId: true, requireExplicitVersion: true });
 				const configuration = normalizeProjectWorkflowSessionConfiguration(body, createPublishedWorkflowDefinition(workflowSelection, profile));
 				const validation = validatePublishedWorkflowBoundary({
 					state,
@@ -5181,7 +5459,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				if (project.ownerScope !== webSession.ownerScope) throw new PiboWebHttpError("Project not found", 404);
 				const projectSession = state.projectService.getProjectSession(session.id);
 				if (!projectSession || projectSession.projectId !== project.id) throw new PiboWebHttpError("Project workflow session not found", 404);
-				const workflowSelection = resolveProjectWorkflowSelection(projectSession.workflowId, projectSession.workflowVersion);
+				const workflowSelection = resolveProjectWorkflowSelection(state, projectSession.workflowId, projectSession.workflowVersion);
 				const validation = validatePublishedWorkflowBoundary({
 					state,
 					context,
@@ -5289,11 +5567,27 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				if (!validation.validation.ok) {
 					return workflowValidationBlockedResponse("Workflow draft has validation errors and cannot be published", validation, { draft: serializeWorkflowDraft(record) });
 				}
+				const publishResult = state.workflowPublishedVersionStore.publishDraft({
+					draft: record,
+					versionIntent: record.versionIntent,
+					publishedBy: principalIdFor(webSession),
+					reservedVersions: STATIC_WORKFLOW_VERSION_CATALOG
+						.filter((workflow) => workflow.id === record.workflowId && workflow.status === "published")
+						.map((workflow) => workflow.version),
+				});
+				record.targetWorkflowVersion = publishResult.record.version;
+				record.definition = publishResult.record.definition;
+				record.updatedAt = publishResult.record.publishedAt;
+				state.workflowDraftStore.saveDraft(record);
 				return responseJson({
 					draft: serializeWorkflowDraft(record),
 					...validation,
-					message: "Workflow publish validation passed. Immutable publish persistence is implemented by the V2 publish/version lifecycle stories.",
-				}, { status: 202 });
+					publishedVersion: publishResult.record,
+					alreadyPublished: publishResult.alreadyPublished,
+					message: publishResult.alreadyPublished
+						? `Workflow draft was already published as ${publishResult.record.workflowId}@${publishResult.record.version}.`
+						: `Published ${publishResult.record.workflowId}@${publishResult.record.version} with a ${record.versionIntent} version bump.`,
+				}, { status: publishResult.alreadyPublished ? 200 : 201 });
 			}
 
 			const workflowDraftId = workflowDraftResourceId(url.pathname);
@@ -5352,6 +5646,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				}
 				if (pickerKind === "workflow-versions") {
 					return responseJson(buildWorkflowVersionPicker(
+						state,
 						url.searchParams.get("selectedWorkflowId") ?? undefined,
 						url.searchParams.get("selectedWorkflowVersion") ?? undefined,
 					));
