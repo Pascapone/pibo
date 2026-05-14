@@ -5341,8 +5341,7 @@ function Composer({
 		fileInputRef.current?.click();
 	};
 
-	const handleFileSelection = async (files: FileList | null) => {
-		const selectedFiles = Array.from(files ?? []);
+	const handleFileSelection = async (selectedFiles: readonly File[]) => {
 		if (!selectedFiles.length) return;
 		setUploading(true);
 		setUploadError(false);
@@ -5393,7 +5392,7 @@ function Composer({
 				multiple
 				className="hidden"
 				onChange={(event) => {
-					const files = event.target.files;
+					const files = Array.from(event.target.files ?? []);
 					event.target.value = "";
 					void handleFileSelection(files);
 				}}
