@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
+import { createReadStream, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, extname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { brotliCompressSync, gzipSync } from "node:zlib";
@@ -1749,6 +1749,7 @@ type PiboRoomNodeWithUnread = PiboRoom & {
 const CHAT_UI_DIST_DIR = resolve(fileURLToPath(new URL("../../../dist/apps/chat-ui", import.meta.url)));
 const compressedAssetCache = new Map<string, Uint8Array>();
 const TRACE_CACHE_MAX_ENTRIES = 24;
+const CHAT_UPLOAD_DIR = resolve(os.homedir(), ".pibo", "uploads");
 
 function writeSse(
 	controller: ReadableStreamDefaultController<Uint8Array>,
@@ -1774,9 +1775,17 @@ function writeJsonSse(controller: ReadableStreamDefaultController<Uint8Array>, e
 }
 
 function requireSameOriginJsonRequest(request: Request): void {
+	requireSameOriginRequest(request, "application/json");
+}
+
+function requireSameOriginMultipartRequest(request: Request): void {
+	requireSameOriginRequest(request, "multipart/form-data");
+}
+
+function requireSameOriginRequest(request: Request, expectedContentType: string): void {
 	const contentType = request.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase();
-	if (contentType !== "application/json") {
-		throw new PiboWebHttpError("Content-Type must be application/json", 415);
+	if (contentType !== expectedContentType) {
+		throw new PiboWebHttpError(`Content-Type must be ${expectedContentType}`, 415);
 	}
 
 	const origin = request.headers.get("origin");
@@ -3284,6 +3293,58 @@ function projectSessionResourceId(pathname: string): string | undefined {
 
 function resolveDownloadPath(path: string, basePath: string): string {
 	return isAbsolute(path) ? resolve(path) : resolve(basePath, path);
+}
+
+type UploadedChatFile = {
+	name: string;
+	size: number;
+	arrayBuffer(): Promise<ArrayBuffer>;
+};
+
+async function saveUploadedChatFiles(request: Request): Promise<{ uploadDir: string; files: Array<{ name: string; path: string; bytes: number }> }> {
+	const form = await request.formData();
+	const files: UploadedChatFile[] = [];
+	for (const value of form.getAll("files")) {
+		if (isUploadedChatFile(value)) files.push(value);
+	}
+	if (!files.length) throw new PiboWebHttpError("No files were uploaded", 400);
+
+	mkdirSync(CHAT_UPLOAD_DIR, { recursive: true });
+	const saved = [];
+	for (const file of files) {
+		const name = sanitizeUploadFilename(file.name);
+		const targetPath = nextAvailableUploadPath(name);
+		const bytes = Buffer.from(await file.arrayBuffer());
+		writeFileSync(targetPath, bytes, { flag: "wx" });
+		saved.push({ name, path: targetPath, bytes: bytes.byteLength });
+	}
+	return { uploadDir: CHAT_UPLOAD_DIR, files: saved };
+}
+
+function isUploadedChatFile(value: unknown): value is UploadedChatFile {
+	return typeof value === "object"
+		&& value !== null
+		&& typeof (value as { name?: unknown }).name === "string"
+		&& typeof (value as { size?: unknown }).size === "number"
+		&& typeof (value as { arrayBuffer?: unknown }).arrayBuffer === "function";
+}
+
+function sanitizeUploadFilename(name: string): string {
+	const cleaned = basename(name).replace(/[\u0000-\u001f\u007f]/g, "").trim();
+	const safe = cleaned.replace(/[\\/]/g, "_");
+	if (safe && !/^\.+$/.test(safe)) return safe;
+	return `upload-${Date.now()}`;
+}
+
+function nextAvailableUploadPath(filename: string): string {
+	const extension = extname(filename);
+	const stem = filename.slice(0, filename.length - extension.length) || "upload";
+	for (let index = 0; index < 10_000; index += 1) {
+		const candidate = index === 0 ? filename : `${stem}-${index}${extension}`;
+		const targetPath = resolve(CHAT_UPLOAD_DIR, candidate);
+		if (!existsSync(targetPath)) return targetPath;
+	}
+	throw new PiboWebHttpError("Could not allocate upload filename", 500);
 }
 
 function contentTypeForDownload(path: string): string {
@@ -8778,6 +8839,12 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 
 			if (isChatAppPath(url.pathname) && request.method === "GET") {
 				return responseBuiltChatIndex() ?? responseHtml(createChatHtml());
+			}
+
+			if (url.pathname === `${CHAT_WEB_API_PREFIX}/upload` && request.method === "POST") {
+				requireSameOriginMultipartRequest(request);
+				await requireSession(request, context);
+				return responseJson(await saveUploadedChatFiles(request), { status: 201 });
 			}
 
 			if (url.pathname === CHAT_WEB_API_PREFIX + "/download" && request.method === "GET") {

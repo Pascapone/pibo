@@ -43,7 +43,7 @@ import {
 	Wrench,
 	X,
 } from "lucide-react";
-import { createUserSkill, deleteCustomAgent, deletePiPackage, deleteProject, deleteRoom, deleteSession, deleteUserSkill, fetchSignalTree, downloadChatFile, getBootstrap, getNavigation, getProjectsBootstrap, getSessionPage, getTrace, getTraceSummary, getUserSettings, getUserSkill, getWorkflowVersionPicker, installUserSkill, listUserSkills, markRoomRead, markSessionRead, patchCustomAgent, patchModelDefaults, patchPiPackage, patchProject, patchProjectSession, patchRoom, patchSession, patchUserSettings, postAction, postContextFile, postCustomAgent, postMessage, postPiPackage, postProject, postProjectMessage, postProjectSession, postProjectWorkflowSession, postProjectWorkflowSessionStart, postRoom, postSession, signInWithGoogle, signOut, subscribeSignalTree, updateUserSkill, type SaveCustomAgentInput, type UserSettings, type WorkflowVersionPickerOption } from "./api";
+import { createUserSkill, deleteCustomAgent, deletePiPackage, deleteProject, deleteRoom, deleteSession, deleteUserSkill, fetchSignalTree, downloadChatFile, getBootstrap, getNavigation, getProjectsBootstrap, getSessionPage, getTrace, getTraceSummary, getUserSettings, getUserSkill, getWorkflowVersionPicker, installUserSkill, listUserSkills, markRoomRead, markSessionRead, patchCustomAgent, patchModelDefaults, patchPiPackage, patchProject, patchProjectSession, patchRoom, patchSession, patchUserSettings, postAction, postContextFile, postCustomAgent, postMessage, postPiPackage, postProject, postProjectMessage, postProjectSession, postProjectWorkflowSession, postProjectWorkflowSessionStart, postRoom, postSession, signInWithGoogle, signOut, subscribeSignalTree, updateUserSkill, uploadChatFiles, type SaveCustomAgentInput, type UserSettings, type WorkflowVersionPickerOption } from "./api";
 import { THINKING_LEVELS } from "./types";
 import type { AgentCatalog, BootstrapData, CustomAgent, CustomAgentSubagent, ModelCatalog, ModelDefaults, ModelProfile, NavigationData, PiboProject, PiboProjectSession, ProjectsBootstrapData, PiboRoom, PiboSession, PiboSessionTraceSummary, PiboSessionTraceView, PiboSignalPatch, PiboSignalSnapshot, PiboTraceNode, PiboTraceOrderKey, PiboWebSessionNode, PiboWebSessionStatus, ThinkingLevel, UserSkill, WorkflowLifecycleEventRecord } from "./types";
 import type { ChatWebStoredEvent } from "../../../shared/trace-types.js";
@@ -961,6 +961,11 @@ export function App({ route }: { route: ChatAppRoute }) {
 				slash: "/download",
 				action: "download",
 				description: "Download a file by absolute path or relative to the current working directory.",
+			},
+			{
+				slash: "/upload",
+				action: "upload",
+				description: "Upload one or more files to ~/.pibo/uploads.",
 			},
 			{
 				slash: "/thinking-show",
@@ -5160,6 +5165,7 @@ function Composer({
 }) {
 	const composerRootRef = useRef<HTMLDivElement>(null);
 	const inputRef = useRef<HTMLTextAreaElement>(null);
+	const fileInputRef = useRef<HTMLInputElement>(null);
 	const activeCommandRef = useRef<HTMLButtonElement>(null);
 	const activeSkillRef = useRef<HTMLButtonElement>(null);
 	const historyNavRef = useRef<{ entries: string[]; index: number; draft: string } | null>(null);
@@ -5167,6 +5173,9 @@ function Composer({
 	const [activeSkillIndex, setActiveSkillIndex] = useState(0);
 	const [cursorPos, setCursorPos] = useState(0);
 	const [dismissedSuggestionKeys, setDismissedSuggestionKeys] = useState<string[]>([]);
+	const [uploading, setUploading] = useState(false);
+	const [uploadStatus, setUploadStatus] = useState<string | null>(null);
+	const [uploadError, setUploadError] = useState(false);
 
 	const skillTrigger = useMemo(() => {
 		for (let i = cursorPos - 1; i >= 0; i--) {
@@ -5327,6 +5336,30 @@ function Composer({
 		return true;
 	};
 
+	const openUploadDialog = () => {
+		if (disabled || uploading) return;
+		fileInputRef.current?.click();
+	};
+
+	const handleFileSelection = async (files: FileList | null) => {
+		const selectedFiles = Array.from(files ?? []);
+		if (!selectedFiles.length) return;
+		setUploading(true);
+		setUploadError(false);
+		setUploadStatus(`Uploading ${selectedFiles.length} file${selectedFiles.length === 1 ? "" : "s"}...`);
+		try {
+			const result = await uploadChatFiles(selectedFiles);
+			const names = result.files.map((file) => file.name).join(", ");
+			setUploadStatus(`Uploaded ${result.files.length} file${result.files.length === 1 ? "" : "s"} to ${result.uploadDir}: ${names}`);
+			setUploadError(false);
+		} catch (caught) {
+			setUploadStatus(caught instanceof Error ? caught.message : String(caught));
+			setUploadError(true);
+		} finally {
+			setUploading(false);
+		}
+	};
+
 	const submit = async () => {
 		if (disabled) return;
 		const text = value.trim();
@@ -5344,12 +5377,32 @@ function Composer({
 		historyNavRef.current = null;
 		appendStoredComposerHistory(text);
 		onValueChange("");
+		if (text.split(/\s+/)[0] === "/upload") {
+			openUploadDialog();
+			return;
+		}
 		if (text.startsWith("/") && (await onCommand(text))) return;
 		await onSend(text);
 	};
 
 	return (
 		<div ref={composerRootRef} className="relative p-3 bg-[#151f24] border-t border-slate-800 max-[980px]:p-2">
+			<input
+				ref={fileInputRef}
+				type="file"
+				multiple
+				className="hidden"
+				onChange={(event) => {
+					const files = event.target.files;
+					event.target.value = "";
+					void handleFileSelection(files);
+				}}
+			/>
+			{uploadStatus ? (
+				<div className={`mb-2 rounded-sm border px-3 py-2 text-xs ${uploadError ? "border-red-900 bg-red-950/40 text-red-200" : "border-slate-700 bg-[#0e1116] text-slate-300"}`}>
+					{uploadStatus}
+				</div>
+			) : null}
 			{filteredSkills.length ? (
 				<div className="absolute left-3 bottom-full mb-2 w-[min(520px,calc(100%-24px))] max-h-72 overflow-auto bg-[#0e1116] border border-emerald-500 rounded-sm shadow-xl">
 					{filteredSkills.map((skill, index) => (
@@ -5434,7 +5487,7 @@ function Composer({
 				/>
 				<button
 					type="button"
-					disabled={disabled}
+					disabled={disabled || uploading}
 					onClick={() => void submit()}
 					title="Send message"
 					aria-label="Send message"

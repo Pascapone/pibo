@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { createChatWebApp } from "../dist/apps/chat/web-app.js";
@@ -208,6 +208,37 @@ test("chat web app serves built assets with immutable cache and compression head
 		assert.equal(asset.headers.get("content-encoding"), "br");
 		assert.equal(asset.headers.get("vary"), "accept-encoding");
 	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("chat web app uploads multipart files to the Pibo uploads directory", async () => {
+	const { channel, baseURL } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+	});
+	let uploadedPath;
+
+	try {
+		const form = new FormData();
+		form.append("files", new File(["hello upload"], "upload-test.txt", { type: "text/plain" }));
+
+		const response = await fetch(`${baseURL}/api/chat/upload`, {
+			method: "POST",
+			headers: {
+				"x-test-user": "user-1",
+				origin: baseURL,
+			},
+			body: form,
+		});
+		assert.equal(response.status, 201);
+		const payload = await response.json();
+		assert.equal(payload.uploadDir, join(homedir(), ".pibo", "uploads"));
+		assert.equal(payload.files.length, 1);
+		uploadedPath = payload.files[0].path;
+		assert.equal(dirname(uploadedPath), payload.uploadDir);
+		assert.equal(readFileSync(uploadedPath, "utf8"), "hello upload");
+	} finally {
+		if (uploadedPath) rmSync(uploadedPath, { force: true });
 		await channel.stop?.();
 	}
 });
