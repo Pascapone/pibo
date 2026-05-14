@@ -59,6 +59,7 @@ import { BasePromptView } from "./context/BasePromptView";
 import { CompactionPromptView } from "./context/CompactionPromptView";
 import { PiboToolsView } from "./context/PiboToolsView";
 import { McpToolsView } from "./context/McpToolsView";
+import { ContextBuildView } from "./context/ContextBuildView";
 import { CronArea } from "./CronArea";
 import { RalphArea } from "./RalphArea";
 import { getChatSessionView, listChatSessionViews } from "./session-views/registry";
@@ -78,7 +79,7 @@ import {
 } from "./cache";
 
 type Area = "sessions" | "projects" | "cron" | "ralph" | "agents" | "context" | "settings";
-type ContextPanel = "context-files" | "base-prompt" | "compaction-prompt" | "pibo-tools" | "mcp-tools";
+type ContextPanel = "context-files" | "base-prompt" | "compaction-prompt" | "pibo-tools" | "mcp-tools" | "build-context";
 type SettingsPanel = "general" | "pi-packages" | "skills" | "providers";
 
 export type ChatAppRoute =
@@ -87,7 +88,7 @@ export type ChatAppRoute =
 	| { area: "agents" }
 	| { area: "cron" }
 	| { area: "ralph" }
-	| { area: "context" }
+	| { area: "context"; piboSessionId?: string }
 	| { area: "settings"; panel?: SettingsPanel };
 
 type ForkActionResponse = {
@@ -304,7 +305,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const area = route.area;
 	const routeRoomId = route.area === "sessions" ? route.roomId : undefined;
 	const routeProjectId = route.area === "projects" ? route.projectId : undefined;
-	const routePiboSessionId = route.area === "sessions" || route.area === "projects" ? route.piboSessionId : undefined;
+	const routePiboSessionId = route.area === "sessions" || route.area === "projects" || route.area === "context" ? route.piboSessionId : undefined;
 	const routeSessionViewId = route.area === "sessions" || route.area === "projects" ? route.sessionViewId : undefined;
 	const settingsPanel: SettingsPanel = route.area === "settings" ? route.panel ?? "general" : "general";
 	const [bootstrap, setBootstrap] = useState<BootstrapData | null>(null);
@@ -328,7 +329,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const [visibleArchivedSessionCount, setVisibleArchivedSessionCount] = useState(ARCHIVED_SESSION_PAGE_SIZE);
 	const [loadingPiboSessionId, setLoadingPiboSessionId] = useState<string | null>(null);
 	const [autoRenameSessionId, setAutoRenameSessionId] = useState<string | null>(null);
-	const [contextPanel, setContextPanel] = useState<ContextPanel>("context-files");
+	const [contextPanel, setContextPanel] = useState<ContextPanel>("build-context");
 	const [selectedContextFileKey, setSelectedContextFileKey] = useState<string | null>(null);
 	const [selectedMcpServerName, setSelectedMcpServerName] = useState<string | null>(null);
 	const [creatingRoom, setCreatingRoom] = useState(false);
@@ -464,7 +465,11 @@ export function App({ route }: { route: ChatAppRoute }) {
 				return;
 			}
 			if (target.area === "context") {
-				void navigate({ to: "/context", replace });
+				void navigate({
+					to: "/context",
+					search: target.piboSessionId ? { piboSessionId: target.piboSessionId } : {},
+					replace,
+				});
 				return;
 			}
 			if (target.area === "settings") {
@@ -527,6 +532,11 @@ export function App({ route }: { route: ChatAppRoute }) {
 		},
 		[navigateToRoute, sessionViewId],
 	);
+
+	const viewSessionContext = useCallback((piboSessionId: string) => {
+		setContextPanel("build-context");
+		navigateToRoute({ area: "context", piboSessionId });
+	}, [navigateToRoute]);
 
 	const openContextFileEditor = useCallback((key: string) => {
 		setSelectedContextFileKey(key);
@@ -663,10 +673,16 @@ export function App({ route }: { route: ChatAppRoute }) {
 	useEffect(() => {
 		const stored = readStoredSelection();
 		const storedPiboSessionId = routeRoomId ? stored.sessionsByRoom?.[routeRoomId] : stored.piboSessionId;
-		const requestedRoomId = route.area === "sessions" ? (routeRoomId ?? (!routePiboSessionId ? stored.roomId : undefined)) : stored.roomId;
+		const requestedRoomId = route.area === "sessions"
+			? (routeRoomId ?? (!routePiboSessionId ? stored.roomId : undefined))
+			: route.area === "context" && routePiboSessionId
+				? undefined
+				: stored.roomId;
 		const requestedPiboSessionId = route.area === "sessions"
 			? (routePiboSessionId ?? (!routePiboSessionId ? storedPiboSessionId : undefined))
-			: stored.piboSessionId;
+			: route.area === "context"
+				? routePiboSessionId
+				: stored.piboSessionId;
 
 		const canonicalizeSessionsRoute = (data: BootstrapData, replace = true) => {
 			if (route.area !== "sessions") return;
@@ -676,7 +692,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 		};
 
 		if (bootstrap && route.area !== "sessions") {
-			return;
+			if (route.area !== "context" || !routePiboSessionId || bootstrap.selectedPiboSessionId === routePiboSessionId) return;
 		}
 
 		if (creatingSessionRef.current) {
@@ -1475,6 +1491,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 						mobileSidebarOpen={mobileSidebarOpen}
 						onCloseMobileSidebar={() => setMobileSidebarOpen(false)}
 						onNavigate={navigateToSelectedProjectSession}
+						onViewContext={viewSessionContext}
 						onSelectSessionView={selectSessionView}
 						onToggleRawEvents={() => {
 							const next = !showRawEvents;
@@ -1668,6 +1685,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 										onRename={(piboSessionId, title) => void renameSession(piboSessionId, title)}
 										onArchive={(piboSessionId, archived) => void setSessionArchived(piboSessionId, archived)}
 										onDelete={requestSessionDelete}
+										onViewContext={viewSessionContext}
 										loadingPiboSessionId={loadingPiboSessionId}
 										autoRename={autoRenameSessionId === session.piboSessionId}
 										onAutoRenameConsumed={() => setAutoRenameSessionId(null)}
@@ -1706,6 +1724,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 												onRename={(piboSessionId, title) => void renameSession(piboSessionId, title)}
 												onArchive={(piboSessionId, archived) => void setSessionArchived(piboSessionId, archived)}
 												onDelete={requestSessionDelete}
+												onViewContext={viewSessionContext}
 												loadingPiboSessionId={loadingPiboSessionId}
 												autoRenameSessionId={autoRenameSessionId}
 												onAutoRenameConsumed={() => setAutoRenameSessionId(null)}
@@ -1815,6 +1834,8 @@ export function App({ route }: { route: ChatAppRoute }) {
 										selectedServerName={selectedMcpServerName}
 										onServerSaved={updateMcpServerInBootstrap}
 									/>
+								) : contextPanel === "build-context" ? (
+									<ContextBuildView piboSessionId={routePiboSessionId ?? null} />
 								) : contextPanel === "base-prompt" ? (
 									<BasePromptView />
 								) : contextPanel === "compaction-prompt" ? (
@@ -1893,6 +1914,7 @@ function ProjectsArea({
 	commands,
 	skills,
 	onNavigate,
+	onViewContext,
 	onSelectSessionView,
 	onToggleRawEvents,
 	onToggleThinking,
@@ -1914,6 +1936,7 @@ function ProjectsArea({
 	commands: SlashCommand[];
 	skills: Array<{ name: string; description?: string; path?: string }>;
 	onNavigate: (projectId: string | undefined, piboSessionId: string | undefined, replace?: boolean, options?: NavigationOptions) => void;
+	onViewContext: (piboSessionId: string) => void;
 	onSelectSessionView: (viewId: ChatSessionViewId) => void;
 	onToggleRawEvents: () => void;
 	onToggleThinking: () => void;
@@ -2126,9 +2149,9 @@ function ProjectsArea({
 								<button type="button" onClick={() => { const next = !showArchivedSessions; setShowArchivedSessions(next); localStorage.setItem("pibo.chat.projects.showArchivedSessions", String(next)); }} title={showArchivedSessions ? "Hide Archived Project Sessions" : "Show Archived Project Sessions"} aria-label={showArchivedSessions ? "Hide Archived Project Sessions" : "Show Archived Project Sessions"} className={`h-6 w-6 inline-flex items-center justify-center border rounded-sm hover:border-[#11a4d4] hover:text-[#11a4d4] ${showArchivedSessions ? "border-[#11a4d4] text-[#11a4d4]" : "border-slate-700 text-slate-400"}`}>{showArchivedSessions ? <ArchiveRestore size={14} /> : <Archive size={14} />}</button>
 							</div>
 						</div>
-						{sessionGroups.active.map((session) => <SessionNode key={session.piboSessionId} node={session} signalNow={Date.now()} selectedPiboSessionId={selectedPiboSessionId} selectedSessionPathIds={selectedSessionPathIds} onSelect={(piboSessionId) => onNavigate(selectedProject?.id, piboSessionId)} onRename={(piboSessionId, title) => void renameSession(piboSessionId, title)} onArchive={(piboSessionId, archived) => void patchProjectSession(piboSessionId, { archived }).then(() => load({ projectId: selectedProject?.id }))} onDelete={(node) => void patchProjectSession(node.piboSessionId, { archived: true }).then(() => load({ projectId: selectedProject?.id }))} loadingPiboSessionId={null} autoRename={autoRenameSessionId === session.piboSessionId} onAutoRenameConsumed={() => setAutoRenameSessionId(null)} />)}
+						{sessionGroups.active.map((session) => <SessionNode key={session.piboSessionId} node={session} signalNow={Date.now()} selectedPiboSessionId={selectedPiboSessionId} selectedSessionPathIds={selectedSessionPathIds} onSelect={(piboSessionId) => onNavigate(selectedProject?.id, piboSessionId)} onRename={(piboSessionId, title) => void renameSession(piboSessionId, title)} onArchive={(piboSessionId, archived) => void patchProjectSession(piboSessionId, { archived }).then(() => load({ projectId: selectedProject?.id }))} onDelete={(node) => void patchProjectSession(node.piboSessionId, { archived: true }).then(() => load({ projectId: selectedProject?.id }))} onViewContext={onViewContext} loadingPiboSessionId={null} autoRename={autoRenameSessionId === session.piboSessionId} onAutoRenameConsumed={() => setAutoRenameSessionId(null)} />)}
 						{sessionGroups.active.length === 0 ? <div className="px-2 py-3 text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm">No active project sessions</div> : null}
-						{showArchivedSessions ? <div className="mt-3"><div className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Archived Project Sessions</div>{sessionGroups.archived.map((session) => <SessionNode key={session.piboSessionId} node={session} signalNow={Date.now()} selectedPiboSessionId={selectedPiboSessionId} selectedSessionPathIds={selectedSessionPathIds} onSelect={(piboSessionId) => onNavigate(selectedProject?.id, piboSessionId)} onRename={(piboSessionId, title) => void renameSession(piboSessionId, title)} onArchive={(piboSessionId, archived) => void patchProjectSession(piboSessionId, { archived }).then(() => load({ projectId: selectedProject?.id }))} onDelete={(node) => void patchProjectSession(node.piboSessionId, { archived: true }).then(() => load({ projectId: selectedProject?.id }))} loadingPiboSessionId={null} />)}{sessionGroups.archived.length === 0 ? <div className="px-2 py-3 text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm">No archived project sessions</div> : null}</div> : null}
+						{showArchivedSessions ? <div className="mt-3"><div className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Archived Project Sessions</div>{sessionGroups.archived.map((session) => <SessionNode key={session.piboSessionId} node={session} signalNow={Date.now()} selectedPiboSessionId={selectedPiboSessionId} selectedSessionPathIds={selectedSessionPathIds} onSelect={(piboSessionId) => onNavigate(selectedProject?.id, piboSessionId)} onRename={(piboSessionId, title) => void renameSession(piboSessionId, title)} onArchive={(piboSessionId, archived) => void patchProjectSession(piboSessionId, { archived }).then(() => load({ projectId: selectedProject?.id }))} onDelete={(node) => void patchProjectSession(node.piboSessionId, { archived: true }).then(() => load({ projectId: selectedProject?.id }))} onViewContext={onViewContext} loadingPiboSessionId={null} />)}{sessionGroups.archived.length === 0 ? <div className="px-2 py-3 text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm">No archived project sessions</div> : null}</div> : null}
 					</div>
 				</div>
 			</aside>
@@ -3584,6 +3607,7 @@ function ArchivedSessionsList({
 	onRename,
 	onArchive,
 	onDelete,
+	onViewContext,
 	loadingPiboSessionId,
 	autoRenameSessionId,
 	onAutoRenameConsumed,
@@ -3596,6 +3620,7 @@ function ArchivedSessionsList({
 	onRename: (piboSessionId: string, title: string | null) => void;
 	onArchive: (piboSessionId: string, archived: boolean) => void;
 	onDelete: (node: PiboWebSessionNode) => void;
+	onViewContext: (piboSessionId: string) => void;
 	loadingPiboSessionId?: string | null;
 	autoRenameSessionId?: string | null;
 	onAutoRenameConsumed?: () => void;
@@ -3613,6 +3638,7 @@ function ArchivedSessionsList({
 					onRename={onRename}
 					onArchive={onArchive}
 					onDelete={onDelete}
+					onViewContext={onViewContext}
 					loadingPiboSessionId={loadingPiboSessionId}
 					autoRename={autoRenameSessionId === session.piboSessionId}
 					onAutoRenameConsumed={onAutoRenameConsumed}
@@ -3932,6 +3958,7 @@ function SessionNode({
 	onRename,
 	onArchive,
 	onDelete,
+	onViewContext,
 	depth = 0,
 	loadingPiboSessionId,
 	autoRename = false,
@@ -3945,6 +3972,7 @@ function SessionNode({
 	onRename: (piboSessionId: string, title: string | null) => void;
 	onArchive: (piboSessionId: string, archived: boolean) => void;
 	onDelete: (node: PiboWebSessionNode) => void;
+	onViewContext: (piboSessionId: string) => void;
 	depth?: number;
 	loadingPiboSessionId?: string | null;
 	autoRename?: boolean;
@@ -4114,6 +4142,15 @@ function SessionNode({
 							>
 								{node.archived ? <ArchiveRestore size={13} /> : <Archive size={13} />}
 							</button>
+							<button
+								type="button"
+								onClick={() => onViewContext(node.piboSessionId)}
+								title="View Context"
+								aria-label="View Context"
+								className="h-7 w-7 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"
+							>
+								<Bug size={13} />
+							</button>
 							{node.archived ? (
 								<button
 									type="button"
@@ -4149,6 +4186,13 @@ function SessionNode({
 											</button>
 											<button
 												type="button"
+												onClick={() => { setMenuOpen(false); onViewContext(node.piboSessionId); }}
+												className="w-full text-left px-3 py-2.5 text-sm text-slate-300 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4] flex items-center gap-2"
+											>
+												<Bug size={16} /> View Context
+											</button>
+											<button
+												type="button"
 												onClick={() => { setMenuOpen(false); onDelete(node); }}
 												className="w-full text-left px-3 py-2.5 text-sm text-red-300 hover:bg-red-500/10 flex items-center gap-2"
 											>
@@ -4171,6 +4215,13 @@ function SessionNode({
 											>
 												<Archive size={16} /> Archive Session
 											</button>
+											<button
+												type="button"
+												onClick={() => { setMenuOpen(false); onViewContext(node.piboSessionId); }}
+												className="w-full text-left px-3 py-2.5 text-sm text-slate-300 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4] flex items-center gap-2"
+											>
+												<Bug size={16} /> View Context
+											</button>
 										</>
 									)}
 								</div>
@@ -4190,6 +4241,7 @@ function SessionNode({
 					onRename={onRename}
 					onArchive={onArchive}
 					onDelete={onDelete}
+					onViewContext={onViewContext}
 					depth={depth + 1}
 					loadingPiboSessionId={loadingPiboSessionId}
 				/>
@@ -5840,7 +5892,7 @@ function ContextSidebar({
 				<button
 					type="button"
 					onClick={() => onSelect("mcp-tools")}
-					className={`flex w-full items-center gap-2 border p-2 text-left ${
+					className={`mb-1 flex w-full items-center gap-2 border p-2 text-left ${
 						activePanel === "mcp-tools"
 							? "border-[#11a4d4] bg-[#11a4d4]/10"
 							: "border-slate-800 bg-[#151f24] hover:border-slate-700"
@@ -5854,6 +5906,21 @@ function ContextSidebar({
 					<span className="inline-flex min-w-6 items-center justify-center border border-slate-700 bg-[#101d22] px-1.5 py-0.5 text-[10px] font-mono text-slate-400">
 						{mcpServerCount}
 					</span>
+				</button>
+				<button
+					type="button"
+					onClick={() => onSelect("build-context")}
+					className={`flex w-full items-center gap-2 border p-2 text-left ${
+						activePanel === "build-context"
+							? "border-[#11a4d4] bg-[#11a4d4]/10"
+							: "border-slate-800 bg-[#151f24] hover:border-slate-700"
+					}`}
+				>
+					<Bug size={13} className="text-[#11a4d4]" />
+					<div className="min-w-0">
+						<span className="block truncate text-sm text-slate-200">Build Context</span>
+						<span className="block truncate font-mono text-[10px] text-slate-500">runtime-snapshot</span>
+					</div>
 				</button>
 			</div>
 		</div>

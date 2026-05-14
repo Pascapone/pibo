@@ -404,6 +404,7 @@ export class PiboGatewayServer {
 			subscribeSignalTree: (rootPiboSessionId, listener) => this.requireRouter().subscribeSignalTree(rootPiboSessionId, listener),
 			getGatewayActions: () => this.pluginRegistry.getGatewayActionInfos(),
 			getProfiles: () => this.pluginRegistry.getProfileInfos(),
+			createProfile: (name) => this.pluginRegistry.createProfile(name),
 			getCapabilityCatalog: () => this.pluginRegistry.getCapabilityCatalog(),
 			upsertProfile: (profile) => this.pluginRegistry.upsertProfile(profile),
 			removeProfile: (name) => this.pluginRegistry.removeProfile(name),

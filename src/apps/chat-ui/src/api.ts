@@ -102,6 +102,53 @@ export type CompactionPromptSnapshot = {
 	};
 };
 
+export type ContextBuildDiagnostic = {
+	type: "info" | "warning" | "error";
+	message: string;
+	nodeId?: string;
+};
+
+export type ContextBuildNode = {
+	id: string;
+	parentId?: string;
+	order: number;
+	kind: string;
+	title: string;
+	source: string;
+	state?: "active" | "disabled" | "skipped" | "warning" | "error";
+	badges?: string[];
+	metadata?: Record<string, unknown>;
+	path?: string;
+	key?: string;
+	provider?: string;
+	bytes?: number;
+	children?: ContextBuildNode[];
+	hydratedText?: string;
+	schemaJson?: unknown;
+	payloadJson?: unknown;
+	notes?: string[];
+	redacted?: boolean;
+	approximate?: boolean;
+};
+
+export type ContextBuildSnapshot = {
+	version: 1;
+	generatedAt: string;
+	profileName: string;
+	piboSessionId?: string;
+	piboRoomId?: string;
+	cwd: string;
+	activeModel?: ModelProfile;
+	summary: {
+		topLevelNodes: number;
+		totalNodes: number;
+		warnings: number;
+		errors: number;
+	};
+	nodes: ContextBuildNode[];
+	diagnostics: ContextBuildDiagnostic[];
+};
+
 export async function getBootstrap(
 	piboSessionId?: string,
 	includeArchived = false,
@@ -383,6 +430,11 @@ export async function getAgentCatalog(): Promise<{
 
 export async function getCustomAgents(): Promise<{ agents: CustomAgent[] }> {
 	return requestJson("/api/chat/agents");
+}
+
+export async function getContextBuild(input: { piboSessionId: string }): Promise<ContextBuildSnapshot> {
+	const params = new URLSearchParams({ piboSessionId: input.piboSessionId });
+	return (await requestJson<{ snapshot: ContextBuildSnapshot }>(`/api/chat/context-build?${params.toString()}`)).snapshot;
 }
 
 export async function getBasePrompt(): Promise<BasePromptSnapshot> {

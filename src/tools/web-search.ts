@@ -30,6 +30,8 @@ export type WebSearchProviderAdapter = {
 	createExtension(options: WebSearchProviderOptions | undefined): ExtensionFactory;
 };
 
+export const WEB_SEARCH_PROMPT_CONTRIBUTION = "web_search is available as a Pibo native tool through the OpenAI provider adapter. Use it when current or externally sourced information is needed.";
+
 const WEB_SEARCH_SOURCES_INCLUDE = "web_search_call.action.sources";
 
 function hasProviderResponsesShape(payload: unknown): payload is ProviderPayload {
@@ -143,7 +145,7 @@ const openAiWebSearchAdapter: WebSearchProviderAdapter = {
 				systemPrompt: [
 					event.systemPrompt,
 					"# Native Web Search",
-					"web_search is available as a Pibo native tool through the OpenAI provider adapter. Use it when current or externally sourced information is needed.",
+					WEB_SEARCH_PROMPT_CONTRIBUTION,
 				].join("\n\n"),
 			}));
 			pi.on("before_provider_request", (event) => addOpenAiWebSearchProviderTool(event.payload, config));

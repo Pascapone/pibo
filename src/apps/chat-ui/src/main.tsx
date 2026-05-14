@@ -27,12 +27,13 @@ function ChatRoot() {
 
 function chatRouteFromLocation(pathname: string, search: Record<string, unknown>): ChatAppRoute {
 	const path = pathname.startsWith("/apps/chat") ? pathname.slice("/apps/chat".length) || "/" : pathname;
+	const contextPiboSessionId = typeof search.piboSessionId === "string" && search.piboSessionId.trim() ? search.piboSessionId.trim() : undefined;
 	const parts = path
 		.split("/")
 		.filter(Boolean)
 		.map((part) => decodeURIComponent(part));
 	const sessionViewId = parseChatSessionViewId(search.view);
-	if (parts[0] === "context") return { area: "context" };
+	if (parts[0] === "context") return { area: "context", ...(contextPiboSessionId ? { piboSessionId: contextPiboSessionId } : {}) };
 	if (parts[0] === "agents") return { area: "agents" };
 	if (parts[0] === "cron") return { area: "cron" };
 	if (parts[0] === "ralph") return { area: "ralph" };

@@ -11,7 +11,7 @@ import type {
 } from "../plugins/types.js";
 import type { PiboAuthService } from "../auth/types.js";
 import type { PiboWebApp } from "../web/types.js";
-import type { ContextFileProfile, SkillProfile } from "../core/profiles.js";
+import type { ContextFileProfile, InitialSessionContext, SkillProfile } from "../core/profiles.js";
 import type {
 	CreatePiboSessionInput,
 	FindPiboSessionsInput,
@@ -43,6 +43,7 @@ export type PiboChannelContext = {
 	subscribeSignalTree?(rootPiboSessionId: string, listener: (patch: PiboSignalPatch) => void): () => void;
 	getGatewayActions(): PiboGatewayActionInfo[];
 	getProfiles?(): PiboProfileInfo[];
+	createProfile?(name: string): InitialSessionContext;
 	getCapabilityCatalog?(): PiboCapabilityCatalog;
 	upsertProfile?(profile: PiboProfileDefinition): void;
 	removeProfile?(name: string): void;

@@ -6,21 +6,21 @@ type PiboSystemPromptTemplateOptions = {
 	promptGuidelines?: string[];
 };
 
-const AVAILABLE_TOOLS_MARKER = "{{availableTools}}";
-const GUIDELINES_MARKER = "{{guidelines}}";
+export const PIBO_AVAILABLE_TOOLS_MARKER = "{{availableTools}}";
+export const PIBO_GUIDELINES_MARKER = "{{guidelines}}";
 
-function hasTemplateMarkers(systemPrompt: string): boolean {
-	return systemPrompt.includes(AVAILABLE_TOOLS_MARKER) || systemPrompt.includes(GUIDELINES_MARKER);
+export function hasPiboSystemPromptTemplateMarkers(systemPrompt: string): boolean {
+	return systemPrompt.includes(PIBO_AVAILABLE_TOOLS_MARKER) || systemPrompt.includes(PIBO_GUIDELINES_MARKER);
 }
 
-function buildAvailableTools(options: PiboSystemPromptTemplateOptions): string {
+export function buildPiboAvailableTools(options: PiboSystemPromptTemplateOptions): string {
 	const tools = options.selectedTools || ["read", "bash", "edit", "write"];
 	const visibleTools = tools.filter((name) => !!options.toolSnippets?.[name]);
 	if (visibleTools.length === 0) return "(none)";
 	return visibleTools.map((name) => `- ${name}: ${options.toolSnippets![name]}`).join("\n");
 }
 
-function buildGuidelines(options: PiboSystemPromptTemplateOptions): string {
+export function buildPiboGuidelines(options: PiboSystemPromptTemplateOptions): string {
 	const tools = options.selectedTools || ["read", "bash", "edit", "write"];
 	const guidelinesList: string[] = [];
 	const guidelinesSet = new Set<string>();
@@ -56,10 +56,10 @@ export function renderPiboSystemPromptTemplate(
 	systemPrompt: string,
 	options: PiboSystemPromptTemplateOptions,
 ): string {
-	if (!hasTemplateMarkers(systemPrompt)) return systemPrompt;
+	if (!hasPiboSystemPromptTemplateMarkers(systemPrompt)) return systemPrompt;
 	return systemPrompt
-		.replaceAll(AVAILABLE_TOOLS_MARKER, buildAvailableTools(options))
-		.replaceAll(GUIDELINES_MARKER, buildGuidelines(options));
+		.replaceAll(PIBO_AVAILABLE_TOOLS_MARKER, buildPiboAvailableTools(options))
+		.replaceAll(PIBO_GUIDELINES_MARKER, buildPiboGuidelines(options));
 }
 
 export function createPiboSystemPromptTemplateExtension(): ExtensionFactory {
