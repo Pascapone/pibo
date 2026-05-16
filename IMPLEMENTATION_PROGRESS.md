@@ -54,3 +54,11 @@ Implement all PRDs under:
 - 2026-05-16: Reloaded the Docker dev gateway inside `pibo-dev-ralph-observability-telemetry` after code changes and verified health with `curl -fsS http://127.0.0.1:4802/apps/chat >/dev/null` after the build/gateway came up.
 
 - 2026-05-16: Committed PRD 02 storage foundation batch with message `Implement telemetry store foundation PRD02 US-001-US-003`.
+
+- 2026-05-16: Started next Ralph run from clean HEAD `24935bb`. Reviewed required git history/status, glossary, progress, change specs, PRD markdown/JSONs. Selected a cohesive remaining PRD 02 batch: US-004 through US-007 (bounded read APIs, volume-control helper, preview-disabled contract hardening, stats/prune service) because PRD 04 CLI depends on these storage read seams.
+- 2026-05-16: Implemented first PRD 02 US-004/US-005/US-007 storage read-service draft in `src/data/telemetry.ts`: bounded session/session-detail/turn/provider-event-page/stale read APIs, centralized bounded preview and safe-field helpers, and telemetry stats/prune dry-run/apply service. Docker `npm run typecheck` passed after the draft. Adding focused store contract tests next.
+- 2026-05-16: Completed PRD 02 US-004 through US-007 implementation and validation: bounded read APIs, provider-event cursor pages, stale read, volume-control helpers, preview-disabled contract hardening, stats, dry-run/apply prune, and focused tests. Docker `npm test` passed with 406 tests. Marked PRD 02 US-004-US-007 as passing and checked tasks 2.3-2.5 plus validation task 6.1. Reloading Docker gateway next.
+- 2026-05-16: Reloaded Docker dev gateway inside `pibo-dev-ralph-observability-telemetry` after the PRD 02 read/retention code changes and verified Chat Web health at `http://127.0.0.1:4802/apps/chat`.
+- 2026-05-16: Final validation after UTF-8 truncation hardening passed in Docker worker: `npm run typecheck` and `npm test` (406 passing tests).
+- 2026-05-16: Reloaded Docker dev gateway again after final validation/build and verified Chat Web health at `http://127.0.0.1:4802/apps/chat`. Ready to commit PRD 02 US-004-US-007.
+- 2026-05-16: Committed PRD 02 read/retention batch with message `Implement telemetry read APIs PRD02 US-004-US-007`. PRD 02 is now fully passing; next coherent work starts PRD 03 runtime/provider/tool capture or PRD 04 CLI on top of the read APIs.

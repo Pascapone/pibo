@@ -12,9 +12,9 @@
 
 - [x] 2.1 Add `pibo.sqlite` telemetry schema migration for turns, phases, provider requests, provider events/aggregates, tool calls, retention classes, preview-unavailable contract, and indexes for session/event/payload joins.
 - [x] 2.2 Add typed telemetry store/service with bounded insert/update methods.
-- [ ] 2.3 Add bounded-preview/truncation helper for optional preview paths and header/payload-like display values.
-- [ ] 2.4 Add retention class and stats support.
-- [ ] 2.5 Add tests for idempotent migration, missing store behavior, session/event/payload joins, bounded storage, truncation, and prune dry-run.
+- [x] 2.3 Add bounded-preview/truncation helper for optional preview paths and header/payload-like display values.
+- [x] 2.4 Add retention class and stats support.
+- [x] 2.5 Add tests for idempotent migration, missing store behavior, session/event/payload joins, bounded storage, truncation, and prune dry-run.
 
 ## 3. Runtime and Provider Capture
 
@@ -48,7 +48,7 @@
 
 ## 6. Validation
 
-- [ ] 6.1 Run `npm run typecheck`.
+- [x] 6.1 Run `npm run typecheck`.
 - [ ] 6.2 Run debug CLI tests.
 - [ ] 6.3 Reproduce a synthetic partial-tool-call telemetry fixture and verify drill-down path:
   - [ ] `pibo debug telemetry session ps_...`

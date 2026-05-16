@@ -20,6 +20,119 @@ export type TelemetryPreviewUnavailableResult = {
 	message: string;
 };
 
+export type TelemetryBoundedPreview = {
+	text: string;
+	byteSize: number;
+	maxBytes: number;
+	truncated: boolean;
+	contentType: string;
+	valueKind: "json" | "headers" | "text" | "tool_args" | "unknown";
+	volumeControlled: true;
+};
+
+export type TelemetryPreviewInput = {
+	value: unknown;
+	maxBytes?: number;
+	hardMaxBytes?: number;
+	contentType?: string;
+	valueKind?: TelemetryBoundedPreview["valueKind"];
+};
+
+export type TelemetryListOptions = {
+	limit?: number;
+};
+
+export type TelemetryStaleOptions = TelemetryListOptions & {
+	now?: string;
+	thresholdMs?: number;
+};
+
+export type TelemetryProviderEventListOptions = TelemetryListOptions & {
+	afterSequence?: number;
+};
+
+export type TelemetrySessionSummary = {
+	piboSessionId: string;
+	status: TelemetryTurnStatus | "idle";
+	activeTurnId?: string;
+	activePhase?: StoredTelemetryPhase;
+	queueDepth?: number;
+	lastProgressAt?: string;
+	staleForMs?: number;
+	isStale: boolean;
+	turnCount: number;
+	nextCommands: string[];
+};
+
+export type TelemetrySessionDetail = {
+	piboSessionId: string;
+	activeTurn?: StoredTelemetryTurn;
+	activePhase?: StoredTelemetryPhase;
+	recentTurns: StoredTelemetryTurn[];
+	providerRequests: StoredTelemetryProviderRequest[];
+	toolCalls: StoredTelemetryToolCall[];
+	nextCommands: string[];
+};
+
+export type TelemetryTurnTimeline = {
+	turn: StoredTelemetryTurn;
+	phases: StoredTelemetryPhase[];
+	providerRequests: StoredTelemetryProviderRequest[];
+	toolCalls: StoredTelemetryToolCall[];
+	nextCommands: string[];
+};
+
+export type TelemetryProviderEventsPage = {
+	providerRequestId: string;
+	rows: StoredTelemetryProviderEvent[];
+	limit: number;
+	afterSequence: number;
+	nextAfterSequence?: number;
+	hasMore: boolean;
+	truncated: boolean;
+	storageMode: "per_event";
+};
+
+export type TelemetryStaleWorkItem = {
+	piboSessionId: string;
+	turnId: string;
+	phaseId?: string;
+	phase?: TelemetryPhaseName;
+	lastProgressAt?: string;
+	staleForMs: number;
+	thresholdMs: number;
+	queueDepth?: number;
+	nextCommands: string[];
+};
+
+export type TelemetryRetentionStatsRow = {
+	retentionClass: TelemetryRetentionClass;
+	table: "turns" | "phases" | "provider_requests" | "provider_events" | "tool_calls";
+	rowCount: number;
+	byteCount: number;
+};
+
+export type TelemetryRetentionStats = {
+	rows: TelemetryRetentionStatsRow[];
+	totalRows: number;
+	totalBytes: number;
+};
+
+export type TelemetryPruneInput = {
+	retentionClass: TelemetryRetentionClass;
+	before: string;
+	apply?: boolean;
+};
+
+export type TelemetryPruneResult = {
+	retentionClass: TelemetryRetentionClass;
+	before: string;
+	applied: boolean;
+	rowsMatched: number;
+	bytesMatched: number;
+	rowsDeleted: number;
+};
+
 export type StoredTelemetryTurn = {
 	turnId: string;
 	piboSessionId: string;
@@ -479,8 +592,190 @@ type TelemetryToolCallRow = {
 	updated_at: string;
 };
 
+const DEFAULT_TELEMETRY_LIST_LIMIT = 20;
+const MAX_TELEMETRY_LIST_LIMIT = 200;
+const DEFAULT_STALE_THRESHOLD_MS = 5 * 60 * 1000;
+const DEFAULT_PREVIEW_MAX_BYTES = 2048;
+const HARD_PREVIEW_MAX_BYTES = 16 * 1024;
+const RETENTION_CLASSES: TelemetryRetentionClass[] = ["live", "diagnostic", "provider_event", "incident", "payload_preview"];
+
+export function createTelemetryBoundedPreview(input: TelemetryPreviewInput): TelemetryBoundedPreview {
+	const hardMaxBytes = clampLimit(input.hardMaxBytes ?? HARD_PREVIEW_MAX_BYTES, 1, HARD_PREVIEW_MAX_BYTES);
+	const maxBytes = clampLimit(input.maxBytes ?? DEFAULT_PREVIEW_MAX_BYTES, 1, hardMaxBytes);
+	const text = stringifyPreviewValue(input.value, input.valueKind);
+	const buffer = Buffer.from(text, "utf8");
+	const truncated = buffer.byteLength > maxBytes;
+	return {
+		text: truncated ? truncateUtf8(text, maxBytes) : text,
+		byteSize: buffer.byteLength,
+		maxBytes,
+		truncated,
+		contentType: input.contentType ?? (input.valueKind === "json" || typeof input.value === "object" ? "application/json" : "text/plain"),
+		valueKind: input.valueKind ?? inferPreviewKind(input.value),
+		volumeControlled: true,
+	};
+}
+
+export function telemetrySafeJsonObject(value: unknown, allowedKeys?: readonly string[]): PiboJsonObject {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+	const allowed = allowedKeys ? new Set(allowedKeys) : undefined;
+	const output: PiboJsonObject = {};
+	for (const [key, raw] of Object.entries(value)) {
+		if (allowed && !allowed.has(key)) continue;
+		if (typeof raw === "string" || typeof raw === "number" || typeof raw === "boolean" || raw === null) output[key] = raw;
+	}
+	return output;
+}
+
+export function telemetrySafeTopLevelKeys(value: unknown, limit = 50): string[] {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+	return Object.keys(value).filter((key) => key.length <= 128).slice(0, clampLimit(limit, 0, 200));
+}
+
 export class TelemetryStore {
 	constructor(private readonly db: DatabaseSync) {}
+
+	listSessions(input: TelemetryStaleOptions = {}): TelemetrySessionSummary[] {
+		const limit = normalizeListLimit(input.limit);
+		const nowMs = Date.parse(input.now ?? new Date().toISOString());
+		const thresholdMs = input.thresholdMs ?? DEFAULT_STALE_THRESHOLD_MS;
+		const rows = this.db.prepare(`
+			SELECT t.*, counts.turn_count AS turn_count FROM telemetry_turns t
+			JOIN (
+				SELECT pibo_session_id, MAX(updated_at) AS max_updated, COUNT(*) AS turn_count
+				FROM telemetry_turns
+				GROUP BY pibo_session_id
+			) counts ON counts.pibo_session_id = t.pibo_session_id AND counts.max_updated = t.updated_at
+			ORDER BY t.updated_at DESC
+			LIMIT ?
+		`).all(limit) as Array<TelemetryTurnRow & { turn_count: number }>;
+		return rows.map((row) => this.sessionSummaryFromTurnRow(row, Number(row.turn_count), nowMs, thresholdMs));
+	}
+
+	getSessionTelemetry(piboSessionId: string, input: TelemetryListOptions = {}): TelemetrySessionDetail | undefined {
+		const recentTurns = this.listTurnsForSession(piboSessionId, input);
+		if (recentTurns.length === 0) return undefined;
+		const activeTurn = recentTurns.find((turn) => turn.status === "queued" || turn.status === "running") ?? recentTurns[0];
+		const activePhase = this.getActivePhaseForSession(piboSessionId, activeTurn.turnId);
+		const providerRequests = this.listProviderRequestsForTurn(activeTurn.turnId, input);
+		const toolCalls = this.listToolCallsForTurn(activeTurn.turnId, input);
+		return {
+			piboSessionId,
+			activeTurn,
+			activePhase,
+			recentTurns,
+			providerRequests,
+			toolCalls,
+			nextCommands: telemetryNextCommands({ piboSessionId, turnId: activeTurn.turnId, providerRequests, toolCalls }),
+		};
+	}
+
+	getTurnTimeline(turnIdOrEventId: string, input: TelemetryListOptions = {}): TelemetryTurnTimeline | undefined {
+		const turn = this.getTurn(turnIdOrEventId) ?? this.getTurnByEventId(turnIdOrEventId);
+		if (!turn) return undefined;
+		const limit = normalizeListLimit(input.limit);
+		const phaseRows = this.db.prepare(`
+			SELECT * FROM telemetry_phases
+			WHERE turn_id = ?
+			ORDER BY started_at ASC, created_at ASC
+			LIMIT ?
+		`).all(turn.turnId, limit) as TelemetryPhaseRow[];
+		const phases = phaseRows.map(phaseFromRow);
+		const providerRequests = this.listProviderRequestsForTurn(turn.turnId, input);
+		const toolCalls = this.listToolCallsForTurn(turn.turnId, input);
+		return {
+			turn,
+			phases,
+			providerRequests,
+			toolCalls,
+			nextCommands: telemetryNextCommands({ piboSessionId: turn.piboSessionId, turnId: turn.turnId, providerRequests, toolCalls }),
+		};
+	}
+
+	listProviderEventsPage(providerRequestId: string, input: TelemetryProviderEventListOptions = {}): TelemetryProviderEventsPage {
+		const limit = normalizeListLimit(input.limit);
+		const afterSequence = input.afterSequence ?? -1;
+		const rows = this.db.prepare(`
+			SELECT * FROM telemetry_provider_events
+			WHERE provider_request_id = ? AND sequence > ?
+			ORDER BY sequence ASC
+			LIMIT ?
+		`).all(providerRequestId, afterSequence, limit + 1) as TelemetryProviderEventRow[];
+		const hasMore = rows.length > limit;
+		const pageRows = rows.slice(0, limit).map(providerEventFromRow);
+		return {
+			providerRequestId,
+			rows: pageRows,
+			limit,
+			afterSequence,
+			nextAfterSequence: hasMore && pageRows.length > 0 ? pageRows[pageRows.length - 1]?.sequence : undefined,
+			hasMore,
+			truncated: hasMore,
+			storageMode: "per_event",
+		};
+	}
+
+	listStaleWork(input: TelemetryStaleOptions = {}): TelemetryStaleWorkItem[] {
+		const limit = normalizeListLimit(input.limit);
+		const thresholdMs = input.thresholdMs ?? DEFAULT_STALE_THRESHOLD_MS;
+		const nowMs = Date.parse(input.now ?? new Date().toISOString());
+		const rows = this.db.prepare(`
+			SELECT * FROM telemetry_phases
+			WHERE status = 'open'
+			ORDER BY COALESCE(last_progress_at, started_at) ASC
+			LIMIT ?
+		`).all(MAX_TELEMETRY_LIST_LIMIT) as TelemetryPhaseRow[];
+		return rows.map(phaseFromRow)
+			.map((phase) => {
+				const progress = phase.lastProgressAt ?? phase.startedAt;
+				const staleForMs = Number.isFinite(nowMs) ? Math.max(0, nowMs - Date.parse(progress)) : 0;
+				const turn = this.getTurn(phase.turnId);
+				return { phase, staleForMs, turn };
+			})
+			.filter((item) => item.staleForMs >= thresholdMs)
+			.slice(0, limit)
+			.map(({ phase, staleForMs, turn }) => ({
+				piboSessionId: phase.piboSessionId,
+				turnId: phase.turnId,
+				phaseId: phase.phaseId,
+				phase: phase.name,
+				lastProgressAt: phase.lastProgressAt ?? phase.startedAt,
+				staleForMs,
+				thresholdMs,
+				queueDepth: turn?.queueDepth,
+				nextCommands: telemetryNextCommands({ piboSessionId: phase.piboSessionId, turnId: phase.turnId, phase }),
+			}));
+	}
+
+	getStats(): TelemetryRetentionStats {
+		const rows: TelemetryRetentionStatsRow[] = [];
+		for (const retentionClass of RETENTION_CLASSES) {
+			rows.push(this.statsForTable("turns", "telemetry_turns", "updated_at", "0", retentionClass));
+			rows.push(this.statsForTable("phases", "telemetry_phases", "updated_at", "0", retentionClass));
+			rows.push(this.statsForTable("provider_requests", "telemetry_provider_requests", "updated_at", "COALESCE(bytes_received, 0)", retentionClass));
+			rows.push(this.statsForTable("provider_events", "telemetry_provider_events", "received_at", "byte_size", retentionClass));
+			rows.push(this.statsForTable("tool_calls", "telemetry_tool_calls", "updated_at", "0", retentionClass));
+		}
+		const presentRows = rows.filter((row) => row.rowCount > 0 || row.retentionClass === "payload_preview");
+		return {
+			rows: presentRows,
+			totalRows: presentRows.reduce((sum, row) => sum + row.rowCount, 0),
+			totalBytes: presentRows.reduce((sum, row) => sum + row.byteCount, 0),
+		};
+	}
+
+	prune(input: TelemetryPruneInput): TelemetryPruneResult {
+		const plan = this.prunePlan(input.retentionClass, input.before);
+		if (!input.apply) {
+			return { retentionClass: input.retentionClass, before: input.before, applied: false, rowsMatched: plan.rows, bytesMatched: plan.bytes, rowsDeleted: 0 };
+		}
+		let rowsDeleted = 0;
+		for (const spec of PRUNE_TABLES) {
+			const result = this.db.prepare(`DELETE FROM ${spec.table} WHERE retention_class = ? AND ${spec.cutoffColumn} < ?`).run(input.retentionClass, input.before);
+			rowsDeleted += Number(result.changes ?? 0);
+		}
+		return { retentionClass: input.retentionClass, before: input.before, applied: true, rowsMatched: plan.rows, bytesMatched: plan.bytes, rowsDeleted };
+	}
 
 	upsertTurn(input: TelemetryTurnUpsertInput): StoredTelemetryTurn {
 		const now = input.updatedAt ?? new Date().toISOString();
@@ -860,15 +1155,8 @@ export class TelemetryStore {
 		return row ? providerEventFromRow(row) : undefined;
 	}
 
-	listProviderEvents(providerRequestId: string, input: { afterSequence?: number; limit?: number } = {}): StoredTelemetryProviderEvent[] {
-		const limit = clampLimit(input.limit ?? 20, 1, 200);
-		const rows = this.db.prepare(`
-			SELECT * FROM telemetry_provider_events
-			WHERE provider_request_id = ? AND sequence > ?
-			ORDER BY sequence ASC
-			LIMIT ?
-		`).all(providerRequestId, input.afterSequence ?? -1, limit) as TelemetryProviderEventRow[];
-		return rows.map(providerEventFromRow);
+	listProviderEvents(providerRequestId: string, input: TelemetryProviderEventListOptions = {}): StoredTelemetryProviderEvent[] {
+		return this.listProviderEventsPage(providerRequestId, input).rows;
 	}
 
 	getToolCall(toolCallId: string): StoredTelemetryToolCall | undefined {
@@ -883,6 +1171,101 @@ export class TelemetryStore {
 			captureMode: "disabled",
 			message: "Telemetry payload previews are disabled in V1; summaries store metadata and links only.",
 		};
+	}
+
+	private listTurnsForSession(piboSessionId: string, input: TelemetryListOptions = {}): StoredTelemetryTurn[] {
+		const limit = normalizeListLimit(input.limit);
+		const rows = this.db.prepare(`
+			SELECT * FROM telemetry_turns
+			WHERE pibo_session_id = ?
+			ORDER BY updated_at DESC
+			LIMIT ?
+		`).all(piboSessionId, limit) as TelemetryTurnRow[];
+		return rows.map(turnFromRow);
+	}
+
+	private getTurnByEventId(eventId: string): StoredTelemetryTurn | undefined {
+		const row = this.db.prepare(`
+			SELECT * FROM telemetry_turns
+			WHERE event_id = ? OR input_event_id = ?
+			ORDER BY updated_at DESC
+			LIMIT 1
+		`).get(eventId, eventId) as TelemetryTurnRow | undefined;
+		return row ? turnFromRow(row) : undefined;
+	}
+
+	private getActivePhaseForSession(piboSessionId: string, turnId?: string): StoredTelemetryPhase | undefined {
+		const row = turnId
+			? this.db.prepare(`
+				SELECT * FROM telemetry_phases
+				WHERE pibo_session_id = ? AND turn_id = ? AND status = 'open'
+				ORDER BY COALESCE(last_progress_at, started_at) DESC
+				LIMIT 1
+			`).get(piboSessionId, turnId) as TelemetryPhaseRow | undefined
+			: this.db.prepare(`
+				SELECT * FROM telemetry_phases
+				WHERE pibo_session_id = ? AND status = 'open'
+				ORDER BY COALESCE(last_progress_at, started_at) DESC
+				LIMIT 1
+			`).get(piboSessionId) as TelemetryPhaseRow | undefined;
+		return row ? phaseFromRow(row) : undefined;
+	}
+
+	private listProviderRequestsForTurn(turnId: string, input: TelemetryListOptions = {}): StoredTelemetryProviderRequest[] {
+		const limit = normalizeListLimit(input.limit);
+		const rows = this.db.prepare(`
+			SELECT * FROM telemetry_provider_requests
+			WHERE turn_id = ?
+			ORDER BY started_at ASC
+			LIMIT ?
+		`).all(turnId, limit) as TelemetryProviderRequestRow[];
+		return rows.map(providerRequestFromRow);
+	}
+
+	private listToolCallsForTurn(turnId: string, input: TelemetryListOptions = {}): StoredTelemetryToolCall[] {
+		const limit = normalizeListLimit(input.limit);
+		const rows = this.db.prepare(`
+			SELECT * FROM telemetry_tool_calls
+			WHERE turn_id = ?
+			ORDER BY COALESCE(args_started_at, created_at) ASC
+			LIMIT ?
+		`).all(turnId, limit) as TelemetryToolCallRow[];
+		return rows.map(toolCallFromRow);
+	}
+
+	private sessionSummaryFromTurnRow(row: TelemetryTurnRow, turnCount: number, nowMs: number, thresholdMs: number): TelemetrySessionSummary {
+		const turn = turnFromRow(row);
+		const activePhase = this.getActivePhaseForSession(turn.piboSessionId, turn.turnId);
+		const lastProgressAt = activePhase?.lastProgressAt ?? activePhase?.startedAt ?? turn.lastProgressAt ?? turn.startedAt ?? turn.queuedAt;
+		const staleForMs = Number.isFinite(nowMs) ? Math.max(0, nowMs - Date.parse(lastProgressAt)) : undefined;
+		return {
+			piboSessionId: turn.piboSessionId,
+			status: turn.status ?? "idle",
+			activeTurnId: turn.status === "queued" || turn.status === "running" ? turn.turnId : undefined,
+			activePhase,
+			queueDepth: turn.queueDepth,
+			lastProgressAt,
+			staleForMs,
+			isStale: typeof staleForMs === "number" && staleForMs >= thresholdMs && (turn.status === "queued" || turn.status === "running" || activePhase?.status === "open"),
+			turnCount,
+			nextCommands: telemetryNextCommands({ piboSessionId: turn.piboSessionId, turnId: turn.turnId, phase: activePhase }),
+		};
+	}
+
+	private statsForTable(table: TelemetryRetentionStatsRow["table"], sqlTable: string, _cutoffColumn: string, byteExpression: string, retentionClass: TelemetryRetentionClass): TelemetryRetentionStatsRow {
+		const row = this.db.prepare(`SELECT COUNT(*) AS row_count, COALESCE(SUM(${byteExpression}), 0) AS byte_count FROM ${sqlTable} WHERE retention_class = ?`).get(retentionClass) as { row_count: number; byte_count: number };
+		return { retentionClass, table, rowCount: Number(row.row_count ?? 0), byteCount: Number(row.byte_count ?? 0) };
+	}
+
+	private prunePlan(retentionClass: TelemetryRetentionClass, before: string): { rows: number; bytes: number } {
+		let rows = 0;
+		let bytes = 0;
+		for (const spec of PRUNE_TABLES) {
+			const row = this.db.prepare(`SELECT COUNT(*) AS row_count, COALESCE(SUM(${spec.byteExpression}), 0) AS byte_count FROM ${spec.table} WHERE retention_class = ? AND ${spec.cutoffColumn} < ?`).get(retentionClass, before) as { row_count: number; byte_count: number };
+			rows += Number(row.row_count ?? 0);
+			bytes += Number(row.byte_count ?? 0);
+		}
+		return { rows, bytes };
 	}
 
 	private nextProviderEventSequence(providerRequestId: string): number {
@@ -1112,6 +1495,62 @@ function toolCallFromRow(row: TelemetryToolCallRow): StoredTelemetryToolCall {
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 	};
+}
+
+const PRUNE_TABLES = [
+	{ table: "telemetry_provider_events", cutoffColumn: "received_at", byteExpression: "byte_size" },
+	{ table: "telemetry_tool_calls", cutoffColumn: "updated_at", byteExpression: "0" },
+	{ table: "telemetry_provider_requests", cutoffColumn: "updated_at", byteExpression: "COALESCE(bytes_received, 0)" },
+	{ table: "telemetry_phases", cutoffColumn: "updated_at", byteExpression: "0" },
+	{ table: "telemetry_turns", cutoffColumn: "updated_at", byteExpression: "0" },
+] as const;
+
+function telemetryNextCommands(input: {
+	piboSessionId?: string;
+	turnId?: string;
+	phase?: StoredTelemetryPhase;
+	providerRequests?: StoredTelemetryProviderRequest[];
+	toolCalls?: StoredTelemetryToolCall[];
+}): string[] {
+	const commands: string[] = [];
+	if (input.piboSessionId) commands.push(`pibo debug telemetry session ${input.piboSessionId}`);
+	if (input.turnId) commands.push(`pibo debug telemetry turn ${input.turnId}`);
+	const providerRequestId = input.phase?.providerRequestId ?? input.providerRequests?.[0]?.providerRequestId;
+	if (providerRequestId) {
+		commands.push(`pibo debug telemetry provider ${providerRequestId}`);
+		commands.push(`pibo debug telemetry provider ${providerRequestId} events --limit 20`);
+	}
+	const toolCallId = input.phase?.toolCallId ?? input.toolCalls?.[0]?.toolCallId;
+	if (toolCallId) commands.push(`pibo debug telemetry tool ${toolCallId}`);
+	return [...new Set(commands)];
+}
+
+function stringifyPreviewValue(value: unknown, valueKind?: TelemetryBoundedPreview["valueKind"]): string {
+	if (typeof value === "string") return value;
+	if (valueKind === "headers" && value && typeof value === "object" && !Array.isArray(value)) {
+		return Object.entries(value).map(([key, raw]) => `${key}: ${typeof raw === "string" ? raw : String(raw)}`).join("\n");
+	}
+	try {
+		return JSON.stringify(value, null, 2) ?? "";
+	} catch {
+		return String(value);
+	}
+}
+
+function truncateUtf8(text: string, maxBytes: number): string {
+	let truncated = Buffer.from(text, "utf8").subarray(0, maxBytes).toString("utf8");
+	while (Buffer.byteLength(truncated, "utf8") > maxBytes) truncated = truncated.slice(0, -1);
+	return truncated;
+}
+
+function inferPreviewKind(value: unknown): TelemetryBoundedPreview["valueKind"] {
+	if (typeof value === "string") return "text";
+	if (value && typeof value === "object") return "json";
+	return "unknown";
+}
+
+function normalizeListLimit(value: number | undefined): number {
+	return clampLimit(value ?? DEFAULT_TELEMETRY_LIST_LIMIT, 1, MAX_TELEMETRY_LIST_LIMIT);
 }
 
 function parseJsonObject(text: string): PiboJsonObject {
