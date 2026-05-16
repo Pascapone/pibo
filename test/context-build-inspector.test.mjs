@@ -25,6 +25,8 @@ test("codex context build includes compact Pibo native tooling context", async (
 	assert.match(nativeTooling.hydratedText, /^# Pibo Native Tooling/m);
 	assert.match(nativeTooling.hydratedText, /Start with `pibo debug --help`/);
 	assert.match(nativeTooling.hydratedText, /`pibo debug web \.\.\.`/);
+	assert.match(nativeTooling.hydratedText, /`pibo debug pty \.\.\.`/);
+	assert.match(nativeTooling.hydratedText, /`--real-provider` only with bounded `--max-iterations`/);
 	assert.doesNotMatch(nativeTooling.hydratedText, /AGENTS\.md/);
 });
 
