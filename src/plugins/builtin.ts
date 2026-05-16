@@ -160,6 +160,11 @@ export const piboCorePlugin = definePiboPlugin({
 			kind: "builtin",
 		});
 		api.registerSkill({
+			name: "skill-creator",
+			path: builtinSkillPath("skill-creator"),
+			kind: "builtin",
+		});
+		api.registerSkill({
 			name: "ralph-loop",
 			path: builtinSkillPath("ralph-loop"),
 			kind: "builtin",

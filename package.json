@@ -30,7 +30,7 @@
     "context-files-ui:build": "vite build --config src/apps/context-files-ui/vite.config.ts",
     "context-files-ui:typecheck": "tsc -p src/apps/context-files-ui/tsconfig.json --noEmit",
     "web-ui:build": "npm run chat-ui:build && npm run context-files-ui:build",
-    "build": "tsc -p tsconfig.json && npm run web-ui:build",
+    "build": "tsc -p tsconfig.json && npm run web-ui:build && node scripts/ensure-bin-executable.mjs",
     "start": "node dist/bin/pibo.js",
     "test": "npm run build && node --test test/*.test.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit && npm run chat-ui:typecheck && npm run context-files-ui:typecheck",

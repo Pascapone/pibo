@@ -11,4 +11,6 @@ Use Pibo-owned operator/debug CLI capabilities before ad hoc scripts:
 
 For browser access, use Browser Use leases. For render-state analysis, attach with `pibo debug web targets`.
 
+Use `pibo skills --help` to manage user skills. This CLI covers user-installed skills only, not built-in or plugin-provided skills. Prefer `pibo skills list --json` when another agent will parse the result.
+
 Keep discovery in the CLI: run each command with `--help` before using deeper options.

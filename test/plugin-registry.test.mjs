@@ -53,7 +53,7 @@ test("default plugin registry builds profiles from registered resources", () => 
 		registry.getCapabilityCatalog().skills
 			.filter((skill) => skill.kind === "builtin")
 			.map((skill) => skill.name),
-		["pi-agent-harness", "pibo-spec-writing", "pibo-docker-system", "prd", "ralph-loop", "ralph-prd-json"],
+		["pi-agent-harness", "pibo-spec-writing", "pibo-docker-system", "prd", "skill-creator", "ralph-loop", "ralph-prd-json"],
 	);
 	assert.deepEqual(registry.getGatewayActionInfos(), [
 		{

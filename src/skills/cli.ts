@@ -12,13 +12,18 @@ export async function runSkillsCli(argv: string[]): Promise<void> {
 	const manager = new UserSkillManager(os.homedir());
 
 	const program = new Command();
-	program.name("pibo skills").description("Manage Pibo user skills");
+	program.name("pibo skills").description("Manage Pibo user skills (not built-in or plugin skills)");
 
 	program
 		.command("list")
-		.description("List all user skills")
-		.action(() => {
+		.description("List user skills managed by this CLI")
+		.option("--json", "Print JSON")
+		.action((options: { json?: boolean }) => {
 			const skills = manager.list();
+			if (options.json) {
+				printJson(skills);
+				return;
+			}
 			if (skills.length === 0) {
 				console.log("No user skills registered.");
 				return;
@@ -114,6 +119,11 @@ export async function runSkillsCli(argv: string[]): Promise<void> {
 			const skill = await manager.installFromUrl(url);
 			printJson({ id: skill.id, name: skill.name, source: skill.source });
 		});
+
+	if (argv.length <= 2) {
+		program.outputHelp();
+		return;
+	}
 
 	await program.parseAsync(argv);
 }

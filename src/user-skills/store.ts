@@ -245,10 +245,20 @@ function parseSimpleYaml(text: string): Record<string, string> {
 		const colonIdx = line.indexOf(":");
 		if (colonIdx <= 0) continue;
 		const key = line.slice(0, colonIdx).trim();
-		const value = line.slice(colonIdx + 1).trim();
+		const value = parseSimpleYamlScalar(line.slice(colonIdx + 1).trim());
 		if (key) result[key] = value;
 	}
 	return result;
+}
+
+function parseSimpleYamlScalar(value: string): string {
+	if (value.length >= 2) {
+		const quote = value[0];
+		if ((quote === '"' || quote === "'") && value[value.length - 1] === quote) {
+			return value.slice(1, -1);
+		}
+	}
+	return value;
 }
 
 function renameDirContents(oldDir: string, newDir: string): void {
