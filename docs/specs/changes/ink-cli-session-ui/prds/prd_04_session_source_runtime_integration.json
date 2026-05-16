@@ -28,8 +28,8 @@
         "Typecheck passes"
       ],
       "priority": 2,
-      "passes": false,
-      "notes": "Depends on US-001."
+      "passes": true,
+      "notes": "Implemented LocalCliSessionSource skeleton over PiboSessionStore with local/direct status, owner-scoped session discovery, metadata-derived room discovery, profile-backed agent listing, secret-redacted status messages, clear unsupported errors for later create/open/send flows, and close behavior. Validation: npm run typecheck; focused cli-session-source test; full npm test."
     },
     {
       "id": "US-003",
