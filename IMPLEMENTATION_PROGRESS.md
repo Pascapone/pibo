@@ -4,7 +4,7 @@
 
 - Created: 2026-05-16
 - Owner scope: `user:ueR3mwuqBMPNTber3xuTwLmODbUlF4Sa`
-- Target room: `room_793ed4cd-25ad-419f-b39e-b6c247ab77ba`
+- Target room: `room_0a5d20f1-f368-4020-984f-aa9ce3a603be`
 - Profile: `pibo-agent`
 - Template: `prd-batch-stories`
 - Worktree: `/root/code/pibo/.worktrees/ralph-ink-cli-session-ui`
@@ -15,6 +15,7 @@
 - Docker web port: `4812`
 - Docker chat UI dev port: `4813`
 - Docker context-files UI dev port: `4814`
+- Room working directory: `/root/code/pibo/.worktrees/ralph-ink-cli-session-ui`
 
 ## Scope
 
@@ -54,3 +55,5 @@ Implement:
 
 - 2026-05-16: Created dedicated worktree and Docker dev worker for Ink CLI Session UI Ralph loop.
 - 2026-05-16: Started container gateway/web with `npm run build && /app/scripts/docker-entrypoint.sh gateway:web`; health check passed at `http://127.0.0.1:4812/apps/chat`.
+
+- 2026-05-16: Updated Ralph target to dedicated room `room_0a5d20f1-f368-4020-984f-aa9ce3a603be`; room CWD is the dedicated worktree.
