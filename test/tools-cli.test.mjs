@@ -40,6 +40,32 @@ test("pibo tools lists curated CLI tools", async () => {
 
 		assert.match(result.stdout, /browser-use/);
 		assert.match(result.stdout, /available/);
+		assert.match(result.stdout, /ralph\tinstalled\tPibo-native continuous agent job runner/);
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test("pibo tools exposes Ralph guides and helper discovery", async () => {
+	const cwd = await mkdtemp(join(tmpdir(), "pibo-tools-ralph-guide-"));
+	try {
+		const env = { ...process.env, PIBO_HOME: join(cwd, "pibo-home") };
+
+		const show = await execFileAsync("node", [cliPath, "tools", "show", "ralph"], { cwd, env });
+		assert.match(show.stdout, /kind: built-in/);
+		assert.match(show.stdout, /pibo ralph templates/);
+		assert.match(show.stdout, /pibo tools guide ralph ralph/);
+
+		const helper = await execFileAsync("node", [cliPath, "tools", "ralph"], { cwd, env });
+		assert.match(helper.stdout, /pibo tools ralph - Ralph job helpers/);
+		assert.match(helper.stdout, /pibo ralph add --template <id>/);
+		assert.match(helper.stdout, /pibo ralph runs --owner-scope <scope> --job <job-id> --json/);
+
+		const guide = await execFileAsync("node", [cliPath, "tools", "guide", "ralph", "ralph"], { cwd, env });
+		assert.match(guide.stdout, /# Ralph CLI Tool/);
+		assert.match(guide.stdout, /pibo ralph templates --json/);
+		assert.match(guide.stdout, /pibo ralph add/);
+		assert.match(guide.stdout, /pibo ralph cancel/);
 	} finally {
 		await rm(cwd, { recursive: true, force: true });
 	}

@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { detectDesktopEnv, hasDesktopDisplay, printDesktopEnvStatus, printLinuxVirtualDisplayHint } from './desktop-env.js';
-import { type ToolGuide, BROWSER_USE_GUIDE, REMOTE_BROWSER_GUIDE } from './guides.js';
+import { type ToolGuide, BROWSER_USE_GUIDE, RALPH_GUIDE, REMOTE_BROWSER_GUIDE } from './guides.js';
 import { ensureLinuxVirtualDisplay } from './linux-virtual-display.js';
 import {
   type ToolPythonRuntimeSpec,
@@ -14,7 +14,8 @@ import {
 export interface CliToolEntry {
   name: string;
   description: string;
-  runtime: ToolPythonRuntimeSpec;
+  kind?: 'python' | 'internal';
+  runtime?: ToolPythonRuntimeSpec;
   guides: readonly ToolGuide[];
   notes: readonly string[];
   agentContextSnippet: string;
@@ -63,6 +64,23 @@ const REGISTRY: CliToolEntry[] = [
       'Discover details with `npm run dev -- tools show browser-use` and `npm run dev -- tools guide browser-use browser-use`.',
     ].join('\n'),
   },
+  {
+    name: 'ralph',
+    description: 'Pibo-native continuous agent job runner for implementation and debugging loops.',
+    kind: 'internal',
+    guides: [RALPH_GUIDE],
+    notes: [
+      'Ralph is built into the pibo CLI; no external runtime installation is required.',
+      'Use the current Pibo owner scope and target room/personal context when creating jobs.',
+      'Prefer templates for repeatable jobs, and use --json for automation-safe inspection.',
+    ],
+    agentContextSnippet: [
+      'Continuous Pibo agent job runner for implementation/debug loops.',
+      'Use `pibo ralph templates`, then create with `pibo ralph add --template <id> --owner-scope <scope> --room <room-id> --start`.',
+      'Inspect/control with `pibo ralph list --json`, `runs --job <id> --json`, `stop <id>`, `cancel <id>`.',
+      'Guide: `pibo tools guide ralph ralph`.',
+    ].join('\n'),
+  },
 ];
 
 for (const entry of REGISTRY) {
@@ -86,6 +104,16 @@ export function findCliToolEntry(name: string): CliToolEntry | undefined {
 }
 
 export function getCliToolStatus(entry: CliToolEntry): CliToolStatus {
+  if (entry.kind === 'internal') {
+    return {
+      entry,
+      installed: true,
+      executablePath: `pibo ${entry.name}`,
+      rootDir: '',
+      homeDir: '',
+    };
+  }
+  if (!entry.runtime) throw new Error(`CLI tool "${entry.name}" is missing runtime`);
   const paths = getToolPythonRuntimePaths(entry.name, entry.runtime);
   return {
     entry,
@@ -133,6 +161,14 @@ export function getInstalledCliToolContextFile(): { path: string; content: strin
 }
 
 export async function installCliTool(entry: CliToolEntry, runSetup: boolean): Promise<void> {
+  if (entry.kind === 'internal') {
+    const status = getCliToolStatus(entry);
+    console.log(`Built-in ${entry.name}`);
+    console.log(`  executable: ${status.executablePath}`);
+    console.log(`  env: no extra environment required`);
+    return;
+  }
+  if (!entry.runtime) throw new Error(`CLI tool "${entry.name}" is missing runtime`);
   if (runSetup) {
     if (entry.name === 'browser-use') {
       await ensureLinuxVirtualDisplay({ runInherited: runInheritedCommand });
@@ -151,9 +187,20 @@ export async function installCliTool(entry: CliToolEntry, runSetup: boolean): Pr
 }
 
 export async function removeCliTool(entry: CliToolEntry): Promise<void> {
+  if (entry.kind === 'internal') {
+    console.log(`${entry.name} is built into pibo and cannot be removed separately.`);
+    return;
+  }
+  if (!entry.runtime) throw new Error(`CLI tool "${entry.name}" is missing runtime`);
   await removeToolPythonRuntime(entry.name, entry.runtime);
 }
 
 export async function doctorCliTool(entry: CliToolEntry): Promise<void> {
+  if (entry.kind === 'internal') {
+    console.log(`${entry.name}: ok`);
+    console.log(`  executable: pibo ${entry.name}`);
+    return;
+  }
+  if (!entry.runtime) throw new Error(`CLI tool "${entry.name}" is missing runtime`);
   await printToolPythonRuntimeDoctor(entry.name, entry.runtime);
 }

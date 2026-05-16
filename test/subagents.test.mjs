@@ -108,7 +108,7 @@ test("profiles can disable automatic AGENTS.md context discovery", async () => {
 	});
 });
 
-test("installed pibo tools are injected into the runtime context and disappear when removed", async () => {
+test("installed pibo tools are injected into the runtime context", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pibo-installed-tools-context-"));
 	const profile = new InitialSessionContextBuilder("context-profile").withAutoContextFiles(false).createSession();
 	const browserUse = findCliToolEntry("browser-use");
@@ -127,6 +127,9 @@ test("installed pibo tools are injected into the runtime context and disappear w
 		assert.match(toolContextFile.content, /## browser-use/);
 		assert.match(toolContextFile.content, /tools env browser-use/);
 		assert.match(toolContextFile.content, /tools browser-use lease acquire/);
+		assert.match(toolContextFile.content, /## ralph/);
+		assert.match(toolContextFile.content, /pibo ralph templates/);
+		assert.match(toolContextFile.content, /pibo tools guide ralph ralph/);
 
 		const withToolInstalled = await inspectPiboProfile({ cwd, profile, persistSession: false });
 		assert.equal(
@@ -136,12 +139,15 @@ test("installed pibo tools are injected into the runtime context and disappear w
 
 		rmSync(paths.rootDir, { recursive: true, force: true });
 
-		assert.equal(getInstalledCliToolContextFile(), undefined);
+		const afterBrowserUseRemoval = getInstalledCliToolContextFile();
+		assert.ok(afterBrowserUseRemoval);
+		assert.doesNotMatch(afterBrowserUseRemoval.content, /## browser-use/);
+		assert.match(afterBrowserUseRemoval.content, /## ralph/);
 
 		const afterRemoval = await inspectPiboProfile({ cwd, profile, persistSession: false });
 		assert.equal(
 			afterRemoval.contextFiles.some((contextFile) => contextFile.path === ".pibo/context/installed-pibo-tools.md"),
-			false,
+			true,
 		);
 	});
 });

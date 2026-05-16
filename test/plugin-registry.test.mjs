@@ -197,10 +197,14 @@ test("capability catalog exposes installed pibo tool context hints", async () =>
 		const registry = createDefaultPiboPluginRegistry();
 		const catalog = registry.getCapabilityCatalog();
 		const browserUseCatalogEntry = catalog.piboTools.find((tool) => tool.name === "browser-use");
+		const ralphCatalogEntry = catalog.piboTools.find((tool) => tool.name === "ralph");
 
 		assert.ok(browserUseCatalogEntry);
 		assert.match(browserUseCatalogEntry.snippet, /tools env browser-use/);
 		assert.match(browserUseCatalogEntry.snippet, /tools browser-use lease acquire/);
+		assert.ok(ralphCatalogEntry);
+		assert.match(ralphCatalogEntry.snippet, /pibo ralph templates/);
+		assert.match(ralphCatalogEntry.snippet, /pibo tools guide ralph ralph/);
 
 		rmSync(paths.rootDir, { recursive: true, force: true });
 	});
