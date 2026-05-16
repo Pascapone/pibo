@@ -1,6 +1,7 @@
 import { PiboWebHttpError, readJsonBody, responseJson } from '../../web/http.js';
 import type { PiboWebAppContext, PiboWebSession } from '../../web/types.js';
 import { getPiboRalphService } from '../../ralph/channel.js';
+import { listRalphJobTemplates } from '../../ralph/templates.js';
 import type { ModelProfile } from '../../core/profiles.js';
 import { isPiboThinkingLevel, type PiboThinkingLevel } from '../../core/thinking.js';
 import type { PiboRalphJobPatchInput, PiboRalphStopPolicy, PiboRalphTarget } from '../../ralph/types.js';
@@ -28,6 +29,7 @@ export async function handleChatRalphApiRequest(options: ChatRalphApiOptions): P
 	const { request, ralphStore, webSession } = options; const url = new URL(request.url); if (!url.pathname.startsWith(`${CHAT_WEB_API_PREFIX}/ralph`)) return undefined;
 	if (url.pathname === `${CHAT_WEB_API_PREFIX}/ralph/status` && request.method === 'GET') return responseJson({ status: getPiboRalphService()?.status() ?? { enabled: false, ...ralphStore.status() } });
 	if (url.pathname === `${CHAT_WEB_API_PREFIX}/ralph/conditions` && request.method === 'GET') return responseJson({ conditions: options.context.channelContext.getRalphStopConditionInfos?.() ?? options.context.channelContext.getCapabilityCatalog?.().ralphStopConditions ?? [] });
+	if (url.pathname === `${CHAT_WEB_API_PREFIX}/ralph/templates` && request.method === 'GET') return responseJson({ templates: listRalphJobTemplates() });
 	if (url.pathname === `${CHAT_WEB_API_PREFIX}/ralph/jobs` && request.method === 'GET') return responseJson({ jobs: ralphStore.listJobs({ ownerScope: webSession.ownerScope, includeDisabled: url.searchParams.get('includeDisabled') === 'true' }) });
 	if (url.pathname === `${CHAT_WEB_API_PREFIX}/ralph/jobs` && request.method === 'POST') { requireSameOriginJsonRequest(request); const body = await readJsonBody<RalphJobBody>(request); const job = ralphStore.createJob({ ownerScope: webSession.ownerScope, name: normalizeString(body.name, 'name', { max: 120 }), description: normalizeString(body.description, 'description', { max: 500 }), enabled: normalizeEnabled(body.enabled), target: normalizeTarget(body.target, options), profile: resolveProfile(options.context, options.defaultProfile, body.profile), prompt: normalizeString(body.prompt, 'prompt', { required: true, max: 20_000 })!, maxIterations: normalizeMaxIterations(body.maxIterations), stopPolicy: normalizeStopPolicy(body.stopPolicy), modelOverride: normalizeModelOverride(body.modelOverride), thinkingLevel: normalizeThinkingLevel(body.thinkingLevel), fastMode: normalizeFastMode(body.fastMode) }); return responseJson({ job }, { status: 201 }); }
 	if (url.pathname === `${CHAT_WEB_API_PREFIX}/ralph/runs` && request.method === 'GET') { const jobId = url.searchParams.get('jobId') || undefined; const limit = Number(url.searchParams.get('limit') ?? '100'); if (jobId && !ralphStore.getOwnedJob(webSession.ownerScope, jobId)) throw new PiboWebHttpError('Ralph job not found', 404); return responseJson({ runs: ralphStore.listRuns({ ownerScope: webSession.ownerScope, jobId, limit: Number.isFinite(limit) ? limit : 100 }) }); }
