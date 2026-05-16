@@ -44,11 +44,11 @@
 
 ## Phase 4: CLI command integration
 
-- [ ] T4.1 Register the new command in `src/cli.ts`.
-- [ ] T4.2 Update root CLI discovery text.
-- [ ] T4.3 Add `--help` output for the command.
-- [ ] T4.4 Ensure existing `pibo tui` and `pibo tui:routed` continue to work.
-- [ ] T4.5 Add command-level tests where current CLI test infrastructure allows.
+- [x] T4.1 Register the new command in `src/cli.ts`.
+- [x] T4.2 Update root CLI discovery text.
+- [x] T4.3 Add `--help` output for the command.
+- [x] T4.4 Ensure existing `pibo tui` and `pibo tui:routed` continue to work.
+- [x] T4.5 Add command-level tests where current CLI test infrastructure allows.
 
 ## Phase 5: SSH/recovery hardening
 

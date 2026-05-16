@@ -47,6 +47,14 @@ function parsePort(value: string): number {
 	return port;
 }
 
+function parsePositiveInteger(value: string): number {
+	const parsed = Number(value);
+	if (!Number.isInteger(parsed) || parsed < 1) {
+		throw new Error("Value must be a positive integer");
+	}
+	return parsed;
+}
+
 export async function runPiboCli(argv = process.argv): Promise<void> {
 	if (argv[2] === "--help" || argv[2] === "-h") {
 		printRootDiscovery();
@@ -115,6 +123,12 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 
 	if (argv[2] === "config" && (argv[3] === "--help" || argv[3] === "-h" || argv.length === 3)) {
 		printConfigDiscovery();
+		return;
+	}
+
+	if (argv[2] === "tui:sessions" && (argv[3] === "--help" || argv[3] === "-h")) {
+		const { cliSessionsHelpText } = await import("./apps/cli-ui/index.js");
+		console.log(cliSessionsHelpText());
 		return;
 	}
 
@@ -308,6 +322,22 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 			},
 		);
 	program
+		.command("tui:sessions")
+		.description("Start the reduced Web Chat-derived session UI")
+		.option("--session <id>", "Open a specific Pibo session id")
+		.option("--owner-scope <id>", "Limit local/direct discovery to one owner scope")
+		.option("--max-rows <count>", "Limit rendered transcript rows", parsePositiveInteger)
+		.option("--demo", "Use deterministic fake session data for smoke testing")
+		.action(async (options: { session?: string; ownerScope?: string; maxRows?: number; demo?: boolean }) => {
+			const { runCliSessionsUi } = await import("./apps/cli-ui/index.js");
+			await runCliSessionsUi({
+				initialSessionId: options.session,
+				ownerScope: options.ownerScope,
+				maxRows: options.maxRows,
+				useFakeSource: options.demo === true,
+			});
+		});
+	program
 		.command("router")
 		.argument("[piboSessionId]", "Pibo session id", "demo")
 		.description("Emit a demo router status event")
@@ -369,6 +399,7 @@ Commands:
   profile      Inspect a pibo profile
   tui          Start the direct Pi TUI
   tui:routed   Start the local routed Pibo TUI
+  tui:sessions  Start the reduced Web Chat-derived session UI
   gateway      Inspect and restart host gateways through safe CLI commands
   gateway:web  Start a web gateway runtime
 

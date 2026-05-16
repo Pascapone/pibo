@@ -68,6 +68,19 @@
   - Manual TTY smoke test for keyboard flows.
   - Typecheck.
 
+### Manual TTY smoke test
+
+Run these checks from an interactive shell, not through a non-TTY pipe:
+
+1. Build first: `npm run build`.
+2. Start deterministic demo mode: `node dist/bin/pibo.js tui:sessions --demo --max-rows 20`.
+3. Confirm the screen shows a status bar, command hint, compact transcript rows, and input prompt.
+4. Type text and press Enter; confirm input clears and the shell stays open.
+5. Type text and press Esc; confirm the prompt returns to transcript mode and clears input.
+6. Press Ctrl+C to exit and verify the terminal prompt is restored.
+
+Use `node dist/bin/pibo.js tui:sessions --help` when a non-interactive environment is needed.
+
 ## 4. Technical Specifications
 
 - **Architecture Overview**:
