@@ -17,8 +17,19 @@
         "Typecheck passes"
       ],
       "priority": 1,
-      "passes": false,
-      "notes": "Depends on PRD 02 write APIs."
+      "passes": true,
+      "notes": "Depends on PRD 02 write APIs.",
+      "status": "complete",
+      "pass": true,
+      "validation": [
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run typecheck'",
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm test' (409 passing tests)"
+      ],
+      "implementationNotes": [
+        "Added src/core/runtime-telemetry.ts best-effort recorder for message queued, message started, message finished, session_error, abort/dispose/kill_all, and clear_queue lifecycle events.",
+        "Wired PiboSessionRouter to a telemetry store through the new telemetryStore option or PiboDataSessionStore.getTelemetryStore().",
+        "Telemetry rows store ids, queue depth, queuedBehind, timestamps, status, phase summaries, and session metadata only; no transcripts or raw provider payloads are captured."
+      ]
     },
     {
       "id": "US-002",

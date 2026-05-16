@@ -18,7 +18,7 @@
 
 ## 3. Runtime and Provider Capture
 
-- [ ] 3.1 Capture queue and turn lifecycle in session router / routed session.
+- [x] 3.1 Capture queue and turn lifecycle in session router / routed session.
 - [ ] 3.2 Capture phase transitions from normalized events.
 - [ ] 3.3 Capture provider request lifecycle around stream calls.
 - [ ] 3.4 Capture bounded provider event metadata/summaries in OpenAI/Codex Responses stream parser without duplicating raw provider bodies.

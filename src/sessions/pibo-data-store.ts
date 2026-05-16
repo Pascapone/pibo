@@ -148,6 +148,10 @@ export class PiboDataSessionStore implements PiboSessionStore {
 		return rows.map(sessionFromRow).filter((session) => matchesFindInput(session, input));
 	}
 
+	getTelemetryStore() {
+		return this.dataStore.telemetry;
+	}
+
 	close(): void {
 		if (this.ownsDataStore) this.dataStore.close();
 	}

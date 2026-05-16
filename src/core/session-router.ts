@@ -37,6 +37,8 @@ import { resolvePiboSessionActiveModel } from "./session-model.js";
 import { isPiboThinkingLevel, type PiboThinkingLevel } from "./thinking.js";
 import { RuntimeSessionRegistry } from "../tools/runtime/registry.js";
 import { withWorkflowSessionKind } from "../sessions/workflow-session-kind.js";
+import { PiboRuntimeTelemetryRecorder } from "./runtime-telemetry.js";
+import type { TelemetryStore } from "../data/telemetry.js";
 
 export type {
 	PiboEventListener,
@@ -61,6 +63,8 @@ export type PiboSessionRouterOptions = Omit<
 	signalRegistry?: PiboSignalRegistry;
 	/** Product-level model defaults. Used as Chat Web main/subagent defaults before Pi fallback. */
 	modelDefaults?: PiboModelDefaults | (() => PiboModelDefaults);
+	/** Optional pibo.sqlite telemetry store for best-effort runtime queue/turn lifecycle capture. */
+	telemetryStore?: TelemetryStore;
 };
 
 const DEFAULT_SUBAGENT_REPLY_TIMEOUT_MS = 10 * 60 * 1000;
@@ -172,6 +176,12 @@ function piboRoomIdFromMetadata(metadata: PiboJsonObject | undefined): string | 
 	return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
+type TelemetrySessionStore = PiboSessionStore & { getTelemetryStore?: () => TelemetryStore | undefined };
+
+function telemetryStoreFromSessionStore(store: PiboSessionStore): TelemetryStore | undefined {
+	return (store as TelemetrySessionStore).getTelemetryStore?.();
+}
+
 export class PiboSessionRouter {
 	private readonly sessions = new Map<string, RoutedSession>();
 	private readonly pendingSessions = new Map<string, Promise<RoutedSession>>();
@@ -184,10 +194,13 @@ export class PiboSessionRouter {
 	private readonly pluginRegistry: PiboPluginRegistry;
 	private readonly sessionStore: PiboSessionStore;
 	private readonly reliabilityStore?: PiboReliabilityStore;
+	private readonly telemetryRecorder?: PiboRuntimeTelemetryRecorder;
 
 	constructor(private readonly options: PiboSessionRouterOptions = {}) {
 		this.pluginRegistry = options.pluginRegistry ?? createDefaultPiboPluginRegistry();
 		this.sessionStore = options.sessionStore ?? new InMemoryPiboSessionStore();
+		const telemetryStore = options.telemetryStore ?? telemetryStoreFromSessionStore(this.sessionStore);
+		this.telemetryRecorder = telemetryStore ? new PiboRuntimeTelemetryRecorder(telemetryStore) : undefined;
 		const defaultProfileName = this.pluginRegistry.getProfileNames().includes("codex-compat-openai-web")
 			? "codex-compat-openai-web"
 			: this.pluginRegistry.getProfileNames()[0];
@@ -699,7 +712,9 @@ export class PiboSessionRouter {
 		}
 
 	private readonly emitOutput = (event: PiboOutputEvent): void => {
-		this.signalRegistry.project({ type: "pibo_output", event, session: this.sessionStore.get(event.piboSessionId) });
+		const session = this.sessionStore.get(event.piboSessionId);
+		this.telemetryRecorder?.recordOutput(event, { session, status: this.sessions.get(event.piboSessionId)?.getStatus() });
+		this.signalRegistry.project({ type: "pibo_output", event, session });
 		this.pluginRegistry.notifyEvent(event);
 		for (const listener of this.listeners) {
 			listener(event);
