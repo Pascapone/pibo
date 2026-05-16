@@ -33,14 +33,14 @@
 ## Phase 3: Session controller and interactive app
 
 - [x] T3.1 Define `CliSessionSource` and fake test source.
-- [ ] T3.2 Implement controller state for current room, session, agent, status, rows, input, picker mode, and errors.
-- [ ] T3.3 Implement Slash Command parser and command results.
-- [ ] T3.4 Implement `/help`, `/status`, `/clear`, `/exit`, `/quit`.
-- [ ] T3.5 Implement `/session` picker with cancellation.
-- [ ] T3.6 Implement `/new` session flow.
-- [ ] T3.7 Implement `/agent` picker for existing profiles.
-- [ ] T3.8 Implement message sending for normal non-command input.
-- [ ] T3.9 Implement update subscription and row refresh for live session changes.
+- [x] T3.2 Implement controller state for current room, session, agent, status, rows, input, picker mode, and errors.
+- [x] T3.3 Implement Slash Command parser and command results.
+- [x] T3.4 Implement `/help`, `/status`, `/clear`, `/exit`, `/quit`.
+- [x] T3.5 Implement `/session` picker with cancellation.
+- [x] T3.6 Implement `/new` session flow.
+- [x] T3.7 Implement `/agent` picker for existing profiles.
+- [x] T3.8 Implement message sending for normal non-command input.
+- [x] T3.9 Implement update subscription and row refresh for live session changes.
 
 ## Phase 4: CLI command integration
 
@@ -71,11 +71,11 @@
 ## Acceptance Checklist
 
 - [ ] New CLI command starts an Ink app in a TTY.
-- [ ] CLI can create/select sessions.
-- [ ] CLI can send a normal message.
-- [ ] CLI shows live compact transcript output.
-- [ ] CLI can choose existing agent/profile.
-- [ ] `/help`, `/new`, `/session`, `/agent`, `/status`, `/clear`, `/exit`, and `/quit` work.
+- [x] CLI can create/select sessions.
+- [x] CLI can send a normal message.
+- [x] CLI shows live compact transcript output.
+- [x] CLI can choose existing agent/profile.
+- [x] `/help`, `/new`, `/session`, `/agent`, `/status`, `/clear`, `/exit`, and `/quit` work.
 - [ ] Projects, Workflows, Cron, Ralph, Agent Designer, and full Settings are absent from V1 CLI.
 - [ ] Shared row model is reused by Web and CLI.
 - [ ] Web Chat UI remains unchanged.

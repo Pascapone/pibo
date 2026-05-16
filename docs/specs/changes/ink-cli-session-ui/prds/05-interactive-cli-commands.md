@@ -75,9 +75,14 @@ Run these checks from an interactive shell, not through a non-TTY pipe:
 1. Build first: `npm run build`.
 2. Start deterministic demo mode: `node dist/bin/pibo.js tui:sessions --demo --max-rows 20`.
 3. Confirm the screen shows a status bar, command hint, compact transcript rows, and input prompt.
-4. Type text and press Enter; confirm input clears and the shell stays open.
-5. Type text and press Esc; confirm the prompt returns to transcript mode and clears input.
-6. Press Ctrl+C to exit and verify the terminal prompt is restored.
+4. Type `/help` and press Enter; confirm supported Slash Commands and Web-only exclusions are shown.
+5. Type `/status` and press Enter; confirm source/session/agent/model state is shown without secrets.
+6. Type `/session`, use ↑/↓, then Esc; confirm picker cancellation returns to transcript mode.
+7. Type `/agent`, use ↑/↓, then Esc; confirm only existing profiles are listed and no edit UI appears.
+8. Type `/new` and press Enter; confirm a new demo session opens.
+9. Type normal text and press Enter; confirm input clears and the compact transcript refreshes with the sent message.
+10. Type `/clear` and press Enter; confirm local display rows clear without deleting session data.
+11. Type `/quit` or press Ctrl+C to exit and verify the terminal prompt is restored.
 
 Use `node dist/bin/pibo.js tui:sessions --help` when a non-interactive environment is needed.
 

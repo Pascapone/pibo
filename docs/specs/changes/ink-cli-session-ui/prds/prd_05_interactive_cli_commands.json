@@ -48,8 +48,8 @@
         "Typecheck passes"
       ],
       "priority": 3,
-      "passes": false,
-      "notes": "Depends on US-002."
+      "passes": true,
+      "notes": "Validated with parser/controller tests for /help, /status redaction, /clear, /exit, /quit, unknown command handling, Docker typecheck, focused app test, and full npm test."
     },
     {
       "id": "US-004",
@@ -63,8 +63,8 @@
         "Typecheck passes"
       ],
       "priority": 4,
-      "passes": false,
-      "notes": "Depends on US-002 and PRD 04 session source work."
+      "passes": true,
+      "notes": "Validated with /session picker state, keyboard navigation/cancellation reducer coverage, /new fake-source create/open flow, Docker typecheck, focused app test, and full npm test."
     },
     {
       "id": "US-005",
@@ -78,8 +78,8 @@
         "Typecheck passes"
       ],
       "priority": 5,
-      "passes": false,
-      "notes": "Depends on PRD 04 agent source work."
+      "passes": true,
+      "notes": "Validated with /agent existing-profile picker state, source-backed agent selection path, no create/edit/delete UI additions, Docker typecheck, focused app test, and full npm test."
     },
     {
       "id": "US-006",
@@ -94,8 +94,8 @@
         "Typecheck passes"
       ],
       "priority": 6,
-      "passes": false,
-      "notes": "Depends on US-002, US-003, and PRD 04 live updates."
+      "passes": true,
+      "notes": "Validated with normal message submission through CliSessionSource, input clearing reducer path, fake-source live subscription row refresh assertion, Docker typecheck, focused app test, and full npm test."
     }
   ]
 }
