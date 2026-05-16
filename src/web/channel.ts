@@ -110,13 +110,26 @@ function collectActiveRuns(channelContext: PiboChannelContext): unknown[] {
 	return runs;
 }
 
+function createGatewayRuntimeStatuses(channelContext: PiboChannelContext): unknown[] {
+	const statuses = channelContext.listSessionRuntimeStatuses?.() ?? [];
+	return statuses.map((status) => {
+		try {
+			const snapshot = channelContext.snapshotSignalSession?.(status.piboSessionId);
+			const activeTelemetry = snapshot?.sessions[status.piboSessionId]?.activeTelemetry;
+			return activeTelemetry ? { ...status, activeTelemetry } : status;
+		} catch {
+			return status;
+		}
+	});
+}
+
 function createGatewayStatusResponse(channelContext: PiboChannelContext, options: WebHostChannelOptions): Response {
 	const mode = gatewayMode(options);
 	return responseJson({
 		status: "ok",
 		mode,
 		health: { status: "ok", mode },
-		runtimeStatuses: channelContext.listSessionRuntimeStatuses?.() ?? [],
+		runtimeStatuses: createGatewayRuntimeStatuses(channelContext),
 		activeRuns: collectActiveRuns(channelContext),
 	});
 }

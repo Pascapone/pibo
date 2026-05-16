@@ -421,6 +421,7 @@ export class RoutedSession {
 		private readonly emit: PiboEventListener,
 		private readonly pluginRegistry: PiboPluginRegistry,
 		private readonly forwardPiEvents: boolean,
+		private readonly onPiEventTelemetry: ((piboSessionId: string, event: unknown, context: { status?: PiboSessionStatus; activeEventId?: string }) => void) | undefined,
 		initialFastMode: boolean,
 		private readonly onSessionOperation?: PiboSessionOperationListener,
 		private readonly onKillChildren?: (piboSessionId: string, options?: { includeRuns?: boolean }) => Promise<{ killed: string[]; cancelledRuns: string[] }>,
@@ -492,6 +493,7 @@ export class RoutedSession {
 	private bindRuntimeSession(): void {
 		this.unsubscribe?.();
 		this.unsubscribe = this.runtime.session.subscribe((event) => {
+			this.onPiEventTelemetry?.(this.piboSessionId, event, { status: this.getStatus(), activeEventId: this.activeMessage?.id });
 			const model = this.runtime.session.model as { contextWindow?: unknown } | undefined;
 			const normalized = normalizePiEvent(this.piboSessionId, event, { contextWindow: numberValue(model?.contextWindow) });
 			if (normalized) {

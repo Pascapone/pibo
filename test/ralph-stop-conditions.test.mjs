@@ -78,13 +78,24 @@ test("Ralph max-iterations stop condition counts failed after-run outcomes", asy
 	assert.deepEqual(result.evaluation.decisions.find((decision) => decision.id === "max-iterations").details, { maxIterations: 1, completedIterations: 1 });
 });
 
+test("Ralph promise-complete condition requires marker on its own line", async () => {
+	const job = { id: "ralph_1", ownerScope: "user:a", name: "job", enabled: true, target: { kind: "personal", principalId: "user:a" }, profile: "codex", prompt: "work", state: { completedIterations: 0 }, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+	const facts = { list: () => [], count: () => 0 };
+	const inline = await evaluateRalphStopPolicy({ job, phase: "after-run", definitions: createBuiltInRalphStopConditions(), facts, outcome: { status: "ok", finalAnswer: `Kein ${PROMISE_COMPLETE_STOP_TOKEN}, da noch Arbeit offen ist.` } });
+	assert.equal(inline.evaluation.finalAction, "continue");
+
+	const ownLine = await evaluateRalphStopPolicy({ job, phase: "after-run", definitions: createBuiltInRalphStopConditions(), facts, outcome: { status: "ok", finalAnswer: `done\n${PROMISE_COMPLETE_STOP_TOKEN}` } });
+	assert.equal(ownLine.evaluation.finalAction, "stop-after-run");
+	assert.equal(ownLine.evaluation.reason, "promise-complete");
+});
+
 test("Ralph service preserves promise-complete and max-iteration stop behavior through conditions", async () => {
 	const dir = await mkdtemp(join(tmpdir(), "pibo-ralph-stop-"));
 	const store = new PiboRalphStore({ path: ":memory:" });
 	const listeners = new Set();
 	const context = {
 		async emit(event) {
-			if (event.type === "message") queueMicrotask(() => { for (const listener of listeners) { listener({ type: "assistant_message", piboSessionId: event.piboSessionId, eventId: event.id, text: `done ${PROMISE_COMPLETE_STOP_TOKEN}` }); listener({ type: "message_finished", piboSessionId: event.piboSessionId, eventId: event.id }); } });
+			if (event.type === "message") queueMicrotask(() => { for (const listener of listeners) { listener({ type: "assistant_message", piboSessionId: event.piboSessionId, eventId: event.id, text: `done\n${PROMISE_COMPLETE_STOP_TOKEN}` }); listener({ type: "message_finished", piboSessionId: event.piboSessionId, eventId: event.id }); } });
 			return { type: "execution_result", piboSessionId: event.piboSessionId, eventId: event.id ?? "evt", action: "test", result: {} };
 		},
 		subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },

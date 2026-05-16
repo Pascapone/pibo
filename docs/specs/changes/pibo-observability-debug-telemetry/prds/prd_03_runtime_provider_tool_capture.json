@@ -17,8 +17,19 @@
         "Typecheck passes"
       ],
       "priority": 1,
-      "passes": false,
-      "notes": "Depends on PRD 02 write APIs."
+      "passes": true,
+      "notes": "Depends on PRD 02 write APIs.",
+      "status": "complete",
+      "pass": true,
+      "validation": [
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run typecheck'",
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm test' (409 passing tests)"
+      ],
+      "implementationNotes": [
+        "Added src/core/runtime-telemetry.ts best-effort recorder for message queued, message started, message finished, session_error, abort/dispose/kill_all, and clear_queue lifecycle events.",
+        "Wired PiboSessionRouter to a telemetry store through the new telemetryStore option or PiboDataSessionStore.getTelemetryStore().",
+        "Telemetry rows store ids, queue depth, queuedBehind, timestamps, status, phase summaries, and session metadata only; no transcripts or raw provider payloads are captured."
+      ]
     },
     {
       "id": "US-002",
@@ -34,8 +45,19 @@
         "Typecheck passes"
       ],
       "priority": 2,
-      "passes": false,
-      "notes": "Minimum required phase set must be stable for CLI tests; extra visible phases are allowed."
+      "passes": true,
+      "notes": "Minimum required phase set must be stable for CLI tests; extra visible phases are allowed.",
+      "status": "complete",
+      "pass": true,
+      "validation": [
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run typecheck'",
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm test' (412 passing tests)"
+      ],
+      "implementationNotes": [
+        "Added normalized-event phase capture in src/core/runtime-telemetry.ts for assistant_text, reasoning, tool_args, tool_execution, provider_stream, finish, abort, and error phase timelines.",
+        "Phase rows are metadata-only, link to the Pibo turn and toolCallId when known, and never store assistant text, reasoning content, raw provider payloads, or full tool arguments.",
+        "Open phases remain inspectable until terminal events close them; terminal turn outcomes close all open phases with ok/error/aborted status as appropriate."
+      ]
     },
     {
       "id": "US-003",
@@ -51,8 +73,19 @@
         "Typecheck passes"
       ],
       "priority": 3,
-      "passes": false,
-      "notes": "Use Pibo-owned provider wrappers/seams where feasible; do not edit node_modules."
+      "passes": true,
+      "notes": "Completed in provider lifecycle telemetry batch on 2026-05-16. Raw provider event metadata/counters beyond normalized progress remain in PRD 03 US-004.",
+      "status": "complete",
+      "pass": true,
+      "validation": [
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run typecheck'",
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm test' (417 passing tests)"
+      ],
+      "implementationNotes": [
+        "Added src/core/provider-telemetry.ts with a best-effort provider telemetry recorder and Pi extension factory using before_provider_request and after_provider_response hooks.",
+        "Wired PiboSessionRouter to install the provider telemetry extension for routed runtimes when a telemetry store is available.",
+        "Runtime telemetry now links normalized stream progress and terminal ok/error/aborted outcomes back to active provider request rows and provider phases without storing raw provider payloads or full headers."
+      ]
     },
     {
       "id": "US-004",
@@ -69,8 +102,20 @@
         "Typecheck passes"
       ],
       "priority": 4,
-      "passes": false,
-      "notes": "Storage shape comes from PRD 02; CLI listing comes from PRD 04."
+      "passes": true,
+      "notes": "Completed in provider event metadata batch on 2026-05-16. Current Pi extension API does not expose raw OpenAI SSE bodies, so Pibo captures bounded provider parser metadata from Pi assistant stream events and store-level parse/unknown counters without editing node_modules or storing payload bodies.",
+      "status": "complete",
+      "pass": true,
+      "validation": [
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run typecheck'",
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run build >/tmp/pibo-test-build.log 2>&1 && node --test test/runtime-telemetry.test.mjs test/telemetry-store.test.mjs' (22 passing tests)",
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm test' (418 passing tests)"
+      ],
+      "implementationNotes": [
+        "Added PiboRuntimeTelemetryRecorder.recordPiEvent and wired RoutedSession/SessionRouter to capture bounded Pi assistant stream event metadata for active provider requests.",
+        "Provider event rows store event type, sequence, timestamps, byte sizes, parse status, safe structural fields, upstream response id, item/tool ids, and counters only; full provider bodies, assistant text, and full tool arguments are not stored.",
+        "Extended telemetry provider event writes with normalizedEventDelta so parser metadata can link to normalized types without double-counting normalized output events; store tests cover unknown and invalid_json counters."
+      ]
     },
     {
       "id": "US-005",
@@ -87,8 +132,20 @@
         "Typecheck passes"
       ],
       "priority": 5,
-      "passes": false,
-      "notes": "Must not store full tool argument bodies by default."
+      "passes": true,
+      "notes": "Completed in tool telemetry batch on 2026-05-16. Captures normalized tool_call snapshots and Pi toolcall provider metadata without storing full argument bodies.",
+      "status": "complete",
+      "pass": true,
+      "validation": [
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run typecheck'",
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run build >/tmp/pibo-runtime-tool-build.log 2>&1 && node --test test/runtime-telemetry.test.mjs test/telemetry-store.test.mjs' (25 passing tests)",
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm test' (421 passing tests)"
+      ],
+      "implementationNotes": [
+        "Runtime telemetry now upserts telemetry_tool_calls rows for tool_call and Pi toolcall_start/toolcall_delta/toolcall_end metadata with toolCallId, providerRequestId, provider item id, status, first/last delta timestamps, argsBytes, argsCompletedAt, parseStatus, and safe top-level argument keys.",
+        "Tool argument telemetry stores byte counts, parse state, safe keys, ids, and timestamps only; full argument bodies are not persisted in telemetry rows.",
+        "Tests cover empty, partial JSON, invalid JSON, valid-but-incomplete, complete, and never-executed argument states."
+      ]
     },
     {
       "id": "US-006",
@@ -104,8 +161,20 @@
         "Typecheck passes"
       ],
       "priority": 6,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed in tool telemetry batch on 2026-05-16. Uses normalized tool execution events and runtime terminal events to summarize starts, progress, finishes, errors, and aborts without stdout/stderr dumps.",
+      "status": "complete",
+      "pass": true,
+      "validation": [
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run typecheck'",
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run build >/tmp/pibo-runtime-tool-build.log 2>&1 && node --test test/runtime-telemetry.test.mjs test/telemetry-store.test.mjs' (25 passing tests)",
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm test' (421 passing tests)"
+      ],
+      "implementationNotes": [
+        "Tool execution start/update/finish events now update telemetry_tool_calls with executionStartedAt, executionEndedAt, durationMs, status, updatedAt as the last-progress timestamp, and safe tool error category/message.",
+        "Runtime abort/error/timeout terminal paths now mark non-terminal tool calls with aborted/error/timeout status where observable.",
+        "Tests cover successful execution, failed execution with safe error summary, and started-without-finish execution aborted by the turn."
+      ]
     },
     {
       "id": "US-007",
@@ -120,8 +189,20 @@
         "Typecheck passes"
       ],
       "priority": 7,
-      "passes": false,
-      "notes": "Incident-specific fixture only. Reusable fixture builders and broad validation live in PRD 05."
+      "passes": true,
+      "notes": "Completed in stuck tool-call fixture batch on 2026-05-16. Adds an incident-specific metadata-only fixture for downstream CLI/stale validation without network access.",
+      "pass": true,
+      "status": "complete",
+      "validation": [
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run typecheck'",
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run build >/tmp/pibo-stuck-fixture-build.log 2>&1 && node --test test/telemetry-stuck-tool-call-fixture.test.mjs test/telemetry-store.test.mjs' (12 passing tests)",
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm test' (423 passing tests)"
+      ],
+      "implementationNotes": [
+        "Added test/telemetry-stuck-tool-call-fixture.mjs with seedStuckToolCallTelemetryFixture(), which creates a running incident-retention turn with open provider_stream and tool_args phases, a streaming provider request, provider event metadata rows/counters, and a partial tool-call row with no execution timestamps.",
+        "Added test/telemetry-stuck-tool-call-fixture.test.mjs to prove the fixture is inspectable through session, turn, provider, provider events, tool-call, and stale store APIs.",
+        "The fixture stores ids, counters, byte counts, safe fields, timestamps, and summaries only; it does not store full provider payloads, transcripts, stdout/stderr, normalized event payload dumps, or full tool arguments."
+      ]
     }
   ]
 }

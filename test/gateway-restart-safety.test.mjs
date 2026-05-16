@@ -20,6 +20,11 @@ describe('gateway restart safety', () => {
   it('blocks with queued messages', () => {
     assert.equal(checkActiveWork({ ...idle, runtimeStatuses: [{ piboSessionId: 's1', queuedMessages: 1 }] }).unsafe, true);
   });
+  it('blocks with stale telemetry hints', () => {
+    const check = checkActiveWork({ ...idle, runtimeStatuses: [{ piboSessionId: 's1', activeTelemetry: { isStale: true, activePhase: 'tool_args' } }] });
+    assert.equal(check.unsafe, true);
+    assert.match(check.reasons.join('\n'), /s1 has stale telemetry in tool_args/);
+  });
   it('blocks with active yielded runs', () => {
     assert.equal(checkActiveWork({ ...idle, activeRuns: [{ runId: 'r1', status: 'running' }] }).unsafe, true);
   });

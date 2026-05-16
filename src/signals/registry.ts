@@ -1,3 +1,4 @@
+import { DEFAULT_TELEMETRY_STALE_THRESHOLD_MS } from "../core/telemetry-staleness.js";
 import { errorFromNode, isActiveSignalStatus, isTerminalSignalStatus, phaseForStatus, strongestStatus } from "./aggregate.js";
 import { createDefaultSignalProducers } from "./projector.js";
 import type {
@@ -75,6 +76,53 @@ function dedupeErrors(errors: readonly PiboSignalError[]): PiboSignalError[] {
 	return deduped;
 }
 
+function activeTelemetryHint(piboSessionId: string, activeNodes: PiboSignalNode[], queuedMessages: number, timestamp: string): PiboSessionSignalSnapshot["activeTelemetry"] {
+	if (activeNodes.length === 0 && queuedMessages <= 0) return undefined;
+	const lastProgressAt = latestNodeUpdate(activeNodes) ?? timestamp;
+	const staleForMs = Math.max(0, Date.parse(timestamp) - Date.parse(lastProgressAt));
+	const activeNode = activeNodes.find((node) => node.kind === "tool_call")
+		?? activeNodes.find((node) => node.kind === "assistant_stream" || node.kind === "thinking_stream")
+		?? activeNodes.find((node) => node.kind === "turn")
+		?? activeNodes[0];
+	return {
+		source: "signals",
+		activeTurnId: telemetryTurnIdFromNode(activeNode, piboSessionId),
+		activePhase: activeSignalPhase(activeNode, queuedMessages),
+		lastProgressAt,
+		staleForMs,
+		isStale: staleForMs >= DEFAULT_TELEMETRY_STALE_THRESHOLD_MS,
+		queueDepth: queuedMessages,
+		thresholdMs: DEFAULT_TELEMETRY_STALE_THRESHOLD_MS,
+	};
+}
+
+function latestNodeUpdate(nodes: PiboSignalNode[]): string | undefined {
+	let latest: string | undefined;
+	for (const node of nodes) {
+		if (!latest || Date.parse(node.updatedAt) > Date.parse(latest)) latest = node.updatedAt;
+	}
+	return latest;
+}
+
+function activeSignalPhase(node: PiboSignalNode | undefined, queuedMessages: number): string | undefined {
+	if (!node) return queuedMessages > 0 ? "queued" : undefined;
+	if (node.kind === "assistant_stream") return "assistant_text";
+	if (node.kind === "thinking_stream") return "reasoning";
+	if (node.kind === "tool_call") return node.status === "running" ? "tool_execution" : "tool_args";
+	if (node.kind === "message") return "queued";
+	if (node.kind === "turn") return "message_started";
+	return node.kind;
+}
+
+function telemetryTurnIdFromNode(node: PiboSignalNode | undefined, piboSessionId: string): string | undefined {
+	if (!node) return undefined;
+	const prefix = `turn:${piboSessionId}:`;
+	if (!node.id.startsWith(prefix)) {
+		return node.parentNodeId?.startsWith(prefix) ? `turn_${node.parentNodeId.slice(prefix.length)}` : undefined;
+	}
+	return `turn_${node.id.slice(prefix.length)}`;
+}
+
 function signalNodeEqual(a: PiboSignalNode | undefined, b: PiboSignalNode): boolean {
 	if (!a) return false;
 	return a.id === b.id
@@ -143,6 +191,7 @@ function sessionSnapshotSemanticallyEqual(a: PiboSessionSignalSnapshot | undefin
 		&& arrayEqual(a.activeToolCalls, b.activeToolCalls, toolCallSummaryEqual)
 		&& arrayEqual(a.activeRuns, b.activeRuns, runSummaryEqual)
 		&& arrayEqual(a.activeChildren, b.activeChildren, childSummaryEqual)
+		&& jsonValueEqual(a.activeTelemetry, b.activeTelemetry)
 		&& arrayEqual(a.errors, b.errors, errorEqual);
 }
 
@@ -421,6 +470,7 @@ export class InMemoryPiboSignalRegistry implements PiboSignalRegistry {
 		const activeToolCalls: ToolCallSignalSummary[] = nodes.filter((node) => node.kind === "tool_call" && isActiveSignalStatus(node.status)).map((node) => ({ nodeId: node.id, toolCallId: typeof node.metadata?.toolCallId === "string" ? node.metadata.toolCallId : undefined, toolName: typeof node.metadata?.toolName === "string" ? node.metadata.toolName : undefined, status: node.status, startedAt: node.startedAt, updatedAt: node.updatedAt }));
 		const activeRuns: RunSignalSummary[] = nodes.filter((node) => node.kind === "yielded_run" && isActiveSignalStatus(node.status)).map((node) => ({ nodeId: node.id, runId: String(node.metadata?.runId ?? node.id.replace(/^run:/, "")), toolName: typeof node.metadata?.toolName === "string" ? node.metadata.toolName : undefined, status: node.status, completionPolicy: typeof node.metadata?.completionPolicy === "string" ? node.metadata.completionPolicy : undefined, consumed: typeof node.metadata?.consumed === "boolean" ? node.metadata.consumed : undefined, startedAt: node.startedAt, updatedAt: node.updatedAt }));
 		const activeChildren: ChildSessionSignalSummary[] = childSnapshots.filter((snapshot) => snapshot.isTreeActive).map((snapshot) => ({ nodeId: `session:${snapshot.piboSessionId}`, piboSessionId: snapshot.piboSessionId, status: snapshot.aggregateStatus, isTreeActive: snapshot.isTreeActive, hasError: snapshot.hasError || snapshot.hasErrorDescendant, updatedAt: snapshot.updatedAt }));
+		const activeTelemetry = activeTelemetryHint(piboSessionId, activeLocalNodes, queuedMessages, now());
 		const localErrors = nodes.flatMap((node) => {
 			if (node.kind === "tool_call" || node.kind === "yielded_run") return [];
 			return errorFromNode(node) ?? [];
@@ -451,6 +501,7 @@ export class InMemoryPiboSignalRegistry implements PiboSignalRegistry {
 			activeToolCalls,
 			activeRuns,
 			activeChildren,
+			activeTelemetry,
 			errors,
 		};
 	}

@@ -6,14 +6,14 @@ import { PiboDataStore } from '../data/pibo-store.js';
 import { ChatRoomService } from '../apps/chat/data/room-service.js';
 import { isPiboRoomArchived } from '../apps/chat/types/rooms.js';
 import { createDefaultPiboRalphStore, PiboRalphStore } from './store.js';
-import { createBuiltInRalphStopConditions, evaluateRalphStopPolicy, PROMISE_COMPLETE_STOP_TOKEN } from './stopping.js';
+import { createBuiltInRalphStopConditions, evaluateRalphStopPolicy } from './stopping.js';
 import type { PiboRalphJob, PiboRalphRun, PiboRalphRunFact, PiboRalphRunOutcome, PiboRalphStatus, PiboRalphStopConditionDefinition, PiboRalphStopEvaluationSummary } from './types.js';
 
 const CHAT_WEB_CHANNEL = 'pibo.chat-web';
 
 export type PiboRalphServiceOptions = { store?: PiboRalphStore; context: PiboChannelContext; dataStorePath?: string; dataPayloadRootDir?: string; intervalMs?: number; maxConcurrentRuns?: number; runTimeoutMs?: number };
 function errorMessage(error: unknown): string { return error instanceof Error ? error.message : String(error); }
-function buildRalphPrompt(job: PiboRalphJob): string { return ['You are running a continuous Pibo Ralph job.', `Job: ${job.name}`, `Target: ${job.target.kind}`, '', `Complete the task below. Return the result in this session. When this session finishes, Ralph may start a fresh session with the same task. If your final answer contains the exact sequence ${PROMISE_COMPLETE_STOP_TOKEN}, Ralph will stop and not start another iteration.`, '', 'Task:', job.prompt].join('\n'); }
+function buildRalphPrompt(job: PiboRalphJob): string { return ['You are running a continuous Pibo Ralph job.', `Job: ${job.name}`, `Target: ${job.target.kind}`, '', 'Complete the task below. Return the result in this session. When this session finishes, Ralph may start a fresh session with the same task unless a configured stop condition is satisfied.', 'Important: if this job uses a promise-complete stop condition, do not quote, negate, explain, or mention its literal completion marker unless the task is fully complete and you intend to stop the job.', '', 'Task:', job.prompt].join('\n'); }
 function isJsonObject(value: unknown): value is PiboJsonObject { return !!value && typeof value === 'object' && !Array.isArray(value); }
 
 export class PiboRalphService {

@@ -79,7 +79,16 @@ test("pibo debug help stays progressive", async () => {
 	assert.match(root.stdout, /pibo debug - inspect local Pibo data/);
 	assert.match(root.stdout, /pibo debug db/);
 	assert.match(root.stdout, /pibo debug trace/);
+	assert.match(root.stdout, /pibo debug telemetry/);
 	assert.doesNotMatch(root.stdout, /pibo_sessions/);
+
+	const telemetry = await execFileAsync("node", [cliPath, "debug", "telemetry", "--help"]);
+	assert.match(telemetry.stdout, /pibo debug telemetry - inspect bounded runtime observability telemetry/);
+	assert.match(telemetry.stdout, /sessions\s+List recent, active, or stale telemetry sessions/);
+	assert.match(telemetry.stdout, /session\s+Show compact session telemetry/);
+	assert.match(telemetry.stdout, /turn\s+Show a phase timeline/);
+	assert.match(telemetry.stdout, /provider\s+Show provider request summary/);
+	assert.doesNotMatch(telemetry.stdout, /telemetry_turns/);
 
 	const db = await execFileAsync("node", [cliPath, "debug", "db", "--help"]);
 	assert.match(db.stdout, /pibo debug db - inspect local SQLite stores/);
@@ -88,6 +97,170 @@ test("pibo debug help stays progressive", async () => {
 	assert.doesNotMatch(db.stdout, /CREATE TABLE/);
 	assert.doesNotMatch(db.stdout, /web-chat\.sqlite/);
 	assert.doesNotMatch(db.stdout, /pibo-sessions\.sqlite/);
+});
+
+test("pibo debug telemetry lists sessions and drills into session and turn summaries", async () => {
+	const cwd = await makeDebugFixture();
+	try {
+		const sessions = await execFileAsync("node", [cliPath, "debug", "telemetry", "sessions", "--active", "--limit", "5"], { cwd });
+		assert.match(sessions.stdout, /pibo debug telemetry sessions/);
+		assert.match(sessions.stdout, /piboSessionId\tstatus\tactiveTurnId\tactivePhase/);
+		assert.match(sessions.stdout, /ps_running\trunning\tturn_debug_stuck\ttool_args:open/);
+		assert.match(sessions.stdout, /pibo debug telemetry session ps_running/);
+		assert.doesNotMatch(sessions.stdout, /sleep 10/);
+
+		const stale = await execFileAsync("node", [cliPath, "debug", "telemetry", "sessions", "--stale", "--json"], { cwd });
+		const staleParsed = JSON.parse(stale.stdout);
+		assert.equal(staleParsed.available, true);
+		assert.equal(staleParsed.filters.stale, true);
+		assert.equal(staleParsed.rows.some((row) => row.piboSessionId === "ps_running" && row.isStale === true), true);
+		assert.equal(staleParsed.limit, 20);
+
+		const session = await execFileAsync("node", [cliPath, "debug", "telemetry", "session", "ps_running", "--limit", "5"], { cwd });
+		assert.match(session.stdout, /status\trunning/);
+		assert.match(session.stdout, /activeTurn\tturn_debug_stuck/);
+		assert.match(session.stdout, /activePhase\ttool_args:open/);
+		assert.match(session.stdout, /providerRequestId\tpr_debug_stuck/);
+		assert.match(session.stdout, /toolCallId\ttool_debug_stuck/);
+		assert.match(session.stdout, /pibo debug telemetry turn turn_debug_stuck/);
+		assert.doesNotMatch(session.stdout, /large provider body/);
+
+		const sessionJson = await execFileAsync("node", [cliPath, "debug", "telemetry", "session", "ps_running", "--json"], { cwd });
+		const sessionParsed = JSON.parse(sessionJson.stdout);
+		assert.equal(sessionParsed.available, true);
+		assert.equal(sessionParsed.detail.activeTurn.turnId, "turn_debug_stuck");
+		assert.equal(sessionParsed.detail.providerRequests[0].providerRequestId, "pr_debug_stuck");
+		assert.equal(sessionParsed.detail.toolCalls[0].argsBytes, 18);
+
+		const turn = await execFileAsync("node", [cliPath, "debug", "telemetry", "turn", "turn_debug_stuck", "--events"], { cwd });
+		assert.match(turn.stdout, /pibo debug telemetry turn turn_debug_stuck/);
+		assert.match(turn.stdout, /openPhases\t2/);
+		assert.match(turn.stdout, /missingTerminalEvent\ttrue/);
+		assert.match(turn.stdout, /provider_stream\topen/);
+		assert.match(turn.stdout, /tool_args\topen/);
+		assert.match(turn.stdout, /evt_running/);
+		assert.match(turn.stdout, /pibo debug telemetry provider pr_debug_stuck/);
+		assert.doesNotMatch(turn.stdout, /partial command body/);
+
+		const turnJson = await execFileAsync("node", [cliPath, "debug", "telemetry", "turn", "evt_running", "--json"], { cwd });
+		const turnParsed = JSON.parse(turnJson.stdout);
+		assert.equal(turnParsed.available, true);
+		assert.equal(turnParsed.timeline.turn.turnId, "turn_debug_stuck");
+		assert.equal(turnParsed.timeline.phases.some((phase) => phase.name === "tool_args" && phase.status === "open"), true);
+		assert.equal(turnParsed.openPhases, 2);
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test("pibo debug telemetry inspects provider summaries, event pages, and disabled previews", async () => {
+	const cwd = await makeDebugFixture();
+	try {
+		const provider = await execFileAsync("node", [cliPath, "debug", "telemetry", "provider", "pr_debug_stuck"], { cwd });
+		assert.match(provider.stdout, /pibo debug telemetry provider pr_debug_stuck/);
+		assert.match(provider.stdout, /status\tstreaming/);
+		assert.match(provider.stdout, /provider\topenai/);
+		assert.match(provider.stdout, /upstreamResponseId\tresp_debug_stuck/);
+		assert.match(provider.stdout, /rawEventCount\t2/);
+		assert.match(provider.stdout, /unknownEventCount\t1/);
+		assert.match(provider.stdout, /response\.output_item\.added\t1/);
+		assert.match(provider.stdout, /pibo debug telemetry provider pr_debug_stuck events --limit 20/);
+		assert.doesNotMatch(provider.stdout, /large provider body/);
+
+		const providerJson = await execFileAsync("node", [cliPath, "debug", "telemetry", "provider", "pr_debug_stuck", "--json"], { cwd });
+		const providerParsed = JSON.parse(providerJson.stdout);
+		assert.equal(providerParsed.available, true);
+		assert.equal(providerParsed.request.providerRequestId, "pr_debug_stuck");
+		assert.equal(providerParsed.request.rawEventCount, 2);
+		assert.equal(providerParsed.eventTypeRows.some((row) => row.eventType === "provider.experimental.unknown" && row.count === 1), true);
+
+		const events = await execFileAsync("node", [cliPath, "debug", "telemetry", "provider", "pr_debug_stuck", "events", "--limit", "1", "--fields", "toolName,itemId,status"], { cwd });
+		assert.match(events.stdout, /sequence\trawEventId\treceivedAt\teventType/);
+		assert.match(events.stdout, /raw_debug_stuck_1/);
+		assert.match(events.stdout, /safeFields/);
+		assert.match(events.stdout, /toolName=bash/);
+		assert.match(events.stdout, /nextAfterSequence\t1/);
+		assert.match(events.stdout, /pibo debug telemetry provider pr_debug_stuck events --after 1 --limit 20/);
+		assert.doesNotMatch(events.stdout, /large provider body/);
+
+		const eventsJson = await execFileAsync("node", [cliPath, "debug", "telemetry", "provider", "pr_debug_stuck", "events", "--after", "1", "--json"], { cwd });
+		const eventsParsed = JSON.parse(eventsJson.stdout);
+		assert.equal(eventsParsed.available, true);
+		assert.equal(eventsParsed.page.afterSequence, 1);
+		assert.equal(eventsParsed.rows.length, 1);
+		assert.equal(eventsParsed.rows[0].eventType, "provider.experimental.unknown");
+		assert.equal(eventsParsed.rows[0].selectedSafeFields.status, "ignored");
+		assert.equal(eventsParsed.rows[0].safeFields.status, "ignored");
+
+		const payload = await execFileAsync("node", [cliPath, "debug", "telemetry", "provider", "pr_debug_stuck", "payload", "raw_debug_stuck_1"], { cwd });
+		assert.match(payload.stdout, /status\tdisabled/);
+		assert.match(payload.stdout, /preview_capture_disabled/);
+		assert.match(payload.stdout, /metadata and links only/);
+		assert.doesNotMatch(payload.stdout, /large provider body/);
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test("pibo debug telemetry inspects tool calls, stale work, stats, and dry-run-first prune", async () => {
+	const cwd = await makeDebugFixture();
+	try {
+		const tool = await execFileAsync("node", [cliPath, "debug", "telemetry", "tool", "tool_debug_stuck"], { cwd });
+		assert.match(tool.stdout, /pibo debug telemetry tool tool_debug_stuck/);
+		assert.match(tool.stdout, /toolName\tbash/);
+		assert.match(tool.stdout, /status\targs_partial/);
+		assert.match(tool.stdout, /argsBytes\t18/);
+		assert.match(tool.stdout, /parseStatus\tpartial/);
+		assert.match(tool.stdout, /noExecutionStart\ttrue/);
+		assert.match(tool.stdout, /pibo debug telemetry provider pr_debug_stuck/);
+		assert.doesNotMatch(tool.stdout, /sleep 10/);
+		assert.doesNotMatch(tool.stdout, /partial command body/);
+
+		const toolJson = await execFileAsync("node", [cliPath, "debug", "telemetry", "tool", "tool_debug_stuck", "--json"], { cwd });
+		const toolParsed = JSON.parse(toolJson.stdout);
+		assert.equal(toolParsed.available, true);
+		assert.equal(toolParsed.tool.toolCallId, "tool_debug_stuck");
+		assert.equal(toolParsed.noExecutionStart, true);
+		assert.deepEqual(Object.keys(toolParsed.tool).includes("args"), false);
+
+		const stale = await execFileAsync("node", [cliPath, "debug", "telemetry", "stale", "--limit", "5"], { cwd });
+		assert.match(stale.stdout, /pibo debug telemetry stale/);
+		assert.match(stale.stdout, /ps_running\tturn_debug_stuck/);
+		assert.match(stale.stdout, /tool_args/);
+		assert.match(stale.stdout, /300000\tdefault/);
+		assert.doesNotMatch(stale.stdout, /large provider body/);
+
+		const staleOverride = await execFileAsync("node", [cliPath, "debug", "telemetry", "stale", "--threshold-ms", "1000", "--json"], { cwd });
+		const staleOverrideParsed = JSON.parse(staleOverride.stdout);
+		assert.equal(staleOverrideParsed.available, true);
+		assert.equal(staleOverrideParsed.thresholdOverrideMs, 1000);
+		assert.equal(staleOverrideParsed.rows.some((row) => row.thresholdSource === "override" && row.appliedThresholdMs === 1000), true);
+
+		const stats = await execFileAsync("node", [cliPath, "debug", "telemetry", "stats", "--retention", "provider_event", "--json"], { cwd });
+		const statsParsed = JSON.parse(stats.stdout);
+		assert.equal(statsParsed.available, true);
+		assert.equal(statsParsed.retentionClass, "provider_event");
+		assert.equal(statsParsed.stats.totalRows, 2);
+		assert.equal(statsParsed.stats.totalBytes, 200);
+
+		const dryRun = await execFileAsync("node", [cliPath, "debug", "telemetry", "prune", "--retention", "provider_event", "--before", "2026-05-01T10:04:04.000Z", "--json"], { cwd });
+		const dryRunParsed = JSON.parse(dryRun.stdout);
+		assert.equal(dryRunParsed.available, true);
+		assert.equal(dryRunParsed.dryRun, true);
+		assert.equal(dryRunParsed.result.applied, false);
+		assert.equal(dryRunParsed.result.rowsMatched, 1);
+		assert.equal(dryRunParsed.result.rowsDeleted, 0);
+
+		const apply = await execFileAsync("node", [cliPath, "debug", "telemetry", "prune", "--retention", "provider_event", "--before", "2026-05-01T10:04:04.000Z", "--apply", "--json"], { cwd });
+		const applyParsed = JSON.parse(apply.stdout);
+		assert.equal(applyParsed.result.applied, true);
+		assert.equal(applyParsed.result.rowsDeleted, 1);
+
+		const statsAfter = await execFileAsync("node", [cliPath, "debug", "telemetry", "stats", "--retention", "provider_event", "--json"], { cwd });
+		assert.equal(JSON.parse(statsAfter.stdout).stats.totalRows, 1);
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
 });
 
 test("pibo debug db discovers schema and runs limited read-only SQL", async () => {
@@ -557,6 +730,180 @@ async function makeDebugFixture() {
 			type: "tool_execution_started",
 			createdAt: "2026-05-01T10:04:02.000Z",
 			payload: { type: "tool_execution_started", piboSessionId: "ps_running", eventId: "evt_running", toolCallId: "tool_1", toolName: "bash", args: { cmd: "sleep 10" } },
+		});
+		data.telemetry.upsertTurn({
+			turnId: "turn_parent_done",
+			piboSessionId: "ps_parent",
+			rootSessionId: "ps_parent",
+			roomId: "room_one",
+			eventId: "evt_1",
+			eventStreamId: 1,
+			source: "user",
+			status: "ok",
+			currentPhase: "finish",
+			queuedAt: "2026-05-01T10:02:55.000Z",
+			startedAt: "2026-05-01T10:02:56.000Z",
+			completedAt: "2026-05-01T10:03:00.000Z",
+			lastProgressAt: "2026-05-01T10:03:00.000Z",
+			queueDepth: 0,
+			summary: "completed fixture turn",
+			createdAt: "2026-05-01T10:02:55.000Z",
+			updatedAt: "2026-05-01T10:03:00.000Z",
+		});
+		data.telemetry.upsertTurn({
+			turnId: "turn_debug_stuck",
+			piboSessionId: "ps_running",
+			rootSessionId: "ps_running",
+			eventId: "evt_running",
+			eventStreamId: 3,
+			source: "user",
+			status: "running",
+			currentPhase: "tool_args",
+			queuedAt: "2026-05-01T10:04:00.000Z",
+			startedAt: "2026-05-01T10:04:01.000Z",
+			lastProgressAt: "2026-05-01T10:04:06.000Z",
+			queuedBehind: 0,
+			queueDepth: 1,
+			summary: "partial tool-call fixture without argument body",
+			retentionClass: "incident",
+			createdAt: "2026-05-01T10:04:00.000Z",
+			updatedAt: "2026-05-01T10:04:06.000Z",
+			metadata: { fixture: "debug_cli", omittedBody: true },
+		});
+		data.telemetry.upsertPhase({
+			phaseId: "turn_debug_stuck:queued",
+			turnId: "turn_debug_stuck",
+			piboSessionId: "ps_running",
+			rootSessionId: "ps_running",
+			name: "queued",
+			status: "ok",
+			startedAt: "2026-05-01T10:04:00.000Z",
+			endedAt: "2026-05-01T10:04:01.000Z",
+			lastProgressAt: "2026-05-01T10:04:01.000Z",
+			durationMs: 1000,
+			eventId: "evt_running",
+			eventStreamId: 3,
+			retentionClass: "incident",
+			createdAt: "2026-05-01T10:04:00.000Z",
+			updatedAt: "2026-05-01T10:04:01.000Z",
+		});
+		data.telemetry.upsertPhase({
+			phaseId: "turn_debug_stuck:provider_stream:pr_debug_stuck",
+			turnId: "turn_debug_stuck",
+			piboSessionId: "ps_running",
+			rootSessionId: "ps_running",
+			name: "provider_stream",
+			status: "open",
+			startedAt: "2026-05-01T10:04:02.000Z",
+			lastProgressAt: "2026-05-01T10:04:05.000Z",
+			providerRequestId: "pr_debug_stuck",
+			eventId: "evt_running",
+			eventStreamId: 3,
+			counters: { rawEvents: 2, normalizedEvents: 1 },
+			summary: "provider stream metadata only; large provider body omitted",
+			retentionClass: "incident",
+			createdAt: "2026-05-01T10:04:02.000Z",
+			updatedAt: "2026-05-01T10:04:05.000Z",
+		});
+		data.telemetry.upsertProviderRequest({
+			providerRequestId: "pr_debug_stuck",
+			piboSessionId: "ps_running",
+			rootSessionId: "ps_running",
+			turnId: "turn_debug_stuck",
+			phaseId: "turn_debug_stuck:provider_stream:pr_debug_stuck",
+			provider: "openai",
+			api: "openai-responses",
+			model: "gpt-debug",
+			transport: "sse",
+			status: "streaming",
+			startedAt: "2026-05-01T10:04:02.000Z",
+			firstByteAt: "2026-05-01T10:04:03.000Z",
+			lastRawEventAt: "2026-05-01T10:04:05.000Z",
+			lastNormalizedEventAt: "2026-05-01T10:04:05.000Z",
+			upstreamResponseId: "resp_debug_stuck",
+			captureMode: "metadata_only",
+			retentionClass: "incident",
+			createdAt: "2026-05-01T10:04:02.000Z",
+			updatedAt: "2026-05-01T10:04:05.000Z",
+		});
+		data.telemetry.appendProviderEventSummary({
+			rawEventId: "raw_debug_stuck_1",
+			providerRequestId: "pr_debug_stuck",
+			piboSessionId: "ps_running",
+			turnId: "turn_debug_stuck",
+			phaseId: "turn_debug_stuck:provider_stream:pr_debug_stuck",
+			sequence: 1,
+			receivedAt: "2026-05-01T10:04:03.000Z",
+			eventType: "response.output_item.added",
+			byteSize: 128,
+			parseStatus: "ok",
+			normalizedType: "tool_call:start",
+			itemId: "item_debug_stuck",
+			toolCallId: "tool_debug_stuck",
+			eventId: "evt_running",
+			eventStreamId: 3,
+			safeFields: { itemId: "item_debug_stuck", itemType: "function_call", toolName: "bash" },
+			retentionClass: "provider_event",
+			createdAt: "2026-05-01T10:04:03.000Z",
+			updatedAt: "2026-05-01T10:04:03.000Z",
+		});
+		data.telemetry.appendProviderEventSummary({
+			rawEventId: "raw_debug_stuck_2",
+			providerRequestId: "pr_debug_stuck",
+			piboSessionId: "ps_running",
+			turnId: "turn_debug_stuck",
+			phaseId: "turn_debug_stuck:provider_stream:pr_debug_stuck",
+			sequence: 2,
+			receivedAt: "2026-05-01T10:04:05.000Z",
+			eventType: "provider.experimental.unknown",
+			byteSize: 72,
+			parseStatus: "unknown_type",
+			eventId: "evt_running",
+			eventStreamId: 4,
+			safeFields: { eventType: "provider.experimental.unknown", sequence: 2, status: "ignored" },
+			retentionClass: "provider_event",
+			createdAt: "2026-05-01T10:04:05.000Z",
+			updatedAt: "2026-05-01T10:04:05.000Z",
+		});
+		data.telemetry.upsertPhase({
+			phaseId: "turn_debug_stuck:tool_args:tool_debug_stuck",
+			turnId: "turn_debug_stuck",
+			piboSessionId: "ps_running",
+			rootSessionId: "ps_running",
+			name: "tool_args",
+			status: "open",
+			startedAt: "2026-05-01T10:04:04.000Z",
+			lastProgressAt: "2026-05-01T10:04:06.000Z",
+			providerRequestId: "pr_debug_stuck",
+			toolCallId: "tool_debug_stuck",
+			eventId: "evt_running",
+			eventStreamId: 4,
+			counters: { argsBytes: 18 },
+			summary: "partial command body omitted",
+			retentionClass: "incident",
+			createdAt: "2026-05-01T10:04:04.000Z",
+			updatedAt: "2026-05-01T10:04:06.000Z",
+		});
+		data.telemetry.upsertToolCall({
+			toolCallId: "tool_debug_stuck",
+			piboSessionId: "ps_running",
+			rootSessionId: "ps_running",
+			turnId: "turn_debug_stuck",
+			providerRequestId: "pr_debug_stuck",
+			providerItemId: "item_debug_stuck",
+			toolName: "bash",
+			status: "args_partial",
+			argsStartedAt: "2026-05-01T10:04:04.000Z",
+			firstDeltaAt: "2026-05-01T10:04:04.000Z",
+			lastDeltaAt: "2026-05-01T10:04:06.000Z",
+			argsBytes: 18,
+			parseStatus: "partial",
+			safeArgKeys: [],
+			eventId: "evt_running",
+			eventStreamId: 4,
+			retentionClass: "incident",
+			createdAt: "2026-05-01T10:04:04.000Z",
+			updatedAt: "2026-05-01T10:04:06.000Z",
 		});
 	} finally {
 		data.close();

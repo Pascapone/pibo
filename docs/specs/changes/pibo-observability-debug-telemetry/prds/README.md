@@ -14,6 +14,10 @@ This directory translates the observability/debug telemetry proposal, spec, desi
 - `../tasks.md`
 - `../decisions.md`
 - `../../../../reports/incident-2026-05-16-stuck-toolcall-stream.md`
+- `../../../capabilities/runtime-observability-telemetry.md`
+- `../../../capabilities/debug-cli.md`
+- `../../../../project/observability-telemetry-playbooks.md`
+- `../../../../project/observability-telemetry-rollout-verification.md`
 
 ## PRDs
 
@@ -47,6 +51,18 @@ This directory translates the observability/debug telemetry proposal, spec, desi
 | Staleness | Read-only provider/profile-aware detection with minimal settings/config and threshold source shown in output | Mutating remediation |
 | Retention | Retention classes, stats, dry-run-first prune, and `incident` retention class | Incident export/pinning workflows beyond retention class |
 | Signals/status | Compact active-phase/stale hints only | Rich UI evidence panel |
+
+## Execution Readiness
+
+Ralph can implement the PRDs without more product clarification if each batch keeps the following boundaries:
+
+- Implement summary-only telemetry first. Treat payload previews as unavailable unless a later explicit user decision enables bounded preview capture.
+- Use the unified `pibo.sqlite` store and additive telemetry tables. Do not create another SQLite database.
+- Add provider/profile-aware stale threshold plumbing before exposing stale CLI results as complete. Exact thresholds may start with safe defaults and source labels, then tighten during PRD 05 validation.
+- Keep all runtime writes best-effort. Telemetry failures must not fail model streaming, tool execution, routing, or debug reads outside the telemetry branch.
+- Keep V1 CLI-only for drill-down. Signals/status may show compact hints, but Chat Web does not get a telemetry evidence panel in V1.
+
+No open issue blocks PRD 02 storage work. The remaining TBDs are implementation choices inside later PRDs: exact stale-threshold defaults, exact config shape, and provider event per-row versus aggregate storage once volume tests run.
 
 ## Shared QA Conventions
 
@@ -84,6 +100,21 @@ The source specs intentionally left several choices open. These PRDs use the fol
 | Explicit retention and prune behavior | `02`, `04`, `05` |
 | Signal hints with telemetry evidence | `05` |
 | Stable JSON output for agents | `04`, `05` |
+
+## Rollout Checklist
+
+Use this checklist before enabling observability telemetry beyond local development. The canonical expanded checklist lives in `docs/project/observability-telemetry-rollout-verification.md`:
+
+- [ ] Run `npm run typecheck` in the Docker compute worker.
+- [ ] Run the debug CLI test suite, including telemetry text and JSON output tests.
+- [ ] Run storage and output safety tests that seed large provider payloads, headers, normalized event links, transcripts, and tool arguments, then verify default telemetry output remains bounded.
+- [ ] Run the synthetic partial-tool-call fixture and verify the drill-down path: `session` → `turn` → `provider`/`tool`.
+- [ ] Verify `pibo debug telemetry stats` reports retention classes and byte/count estimates.
+- [ ] Verify `pibo debug telemetry prune` reports a dry-run by default and deletes only telemetry rows when apply/destructive mode is explicit.
+- [ ] Verify stale output shows the applied threshold and threshold source, including provider/profile override and default cases.
+- [ ] Verify preview reads report disabled/unavailable by default and never fall back to raw provider payload reads.
+- [ ] Verify existing `pibo debug` branches still pass their compatibility tests.
+- [ ] Confirm operators know automatic provider timeout recovery, abort, and retry behavior are out of scope for this telemetry feature.
 
 ## Ralph Execution Note
 

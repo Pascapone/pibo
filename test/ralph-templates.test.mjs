@@ -12,7 +12,8 @@ test("built-in Ralph job templates are discoverable and editable copies", () => 
 	const standard = getRalphJobTemplate("prd-single-story-standard");
 	assert.ok(standard);
 	assert.match(standard.job.prompt, /Pick the highest-priority user story/);
-	assert.match(standard.job.prompt, /<promise>COMPLETE<\/promise>/);
+	assert.match(standard.job.prompt, /XML completion marker/);
+	assert.doesNotMatch(standard.job.prompt, /<promise>COMPLETE<\/promise>/);
 	assert.equal(standard.job.stopPolicy?.conditions[0]?.type, "pibo.ralph.promise-complete");
 
 	standard.job.name = "changed locally";

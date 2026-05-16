@@ -1,12 +1,14 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { piboHomePath } from "./pibo-home.js";
+import { sanitizeTelemetryStaleThresholdSettings, type TelemetryStaleThresholdSettings } from "./telemetry-staleness.js";
 
 export const DEFAULT_USER_TIMEZONE = "UTC";
 export const DEFAULT_PIBO_USER_SETTINGS_PATH = "user-settings.json";
 
 export type PiboUserSettings = {
 	timezone: string;
+	telemetryStaleThresholds: TelemetryStaleThresholdSettings;
 };
 
 type PiboUserSettingsState = {
@@ -44,6 +46,7 @@ function sanitizeUserSettings(value: unknown): PiboUserSettings {
 		: {};
 	return {
 		timezone: sanitizeTimezone(raw.timezone) ?? DEFAULT_USER_TIMEZONE,
+		telemetryStaleThresholds: sanitizeTelemetryStaleThresholdSettings(raw.telemetryStaleThresholds),
 	};
 }
 

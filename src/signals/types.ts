@@ -89,6 +89,17 @@ export type ChildSessionSignalSummary = {
 	updatedAt: string;
 };
 
+export type PiboActiveTelemetrySignalHint = {
+	source: "signals";
+	activeTurnId?: string;
+	activePhase?: string;
+	lastProgressAt?: string;
+	staleForMs?: number;
+	isStale: boolean;
+	queueDepth: number;
+	thresholdMs: number;
+};
+
 export type PiboSessionSignalSnapshot = {
 	piboSessionId: string;
 	piSessionId?: string;
@@ -113,6 +124,7 @@ export type PiboSessionSignalSnapshot = {
 	activeToolCalls: ToolCallSignalSummary[];
 	activeRuns: RunSignalSummary[];
 	activeChildren: ChildSessionSignalSummary[];
+	activeTelemetry?: PiboActiveTelemetrySignalHint;
 	errors: PiboSignalError[];
 };
 

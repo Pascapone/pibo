@@ -7,6 +7,7 @@ export const MAX_ITERATIONS_STOP_CONDITION = 'pibo.ralph.max-iterations';
 export const PROMISE_COMPLETE_STOP_CONDITION = 'pibo.ralph.promise-complete';
 export const FACT_COUNT_STOP_CONDITION = 'pibo.ralph.fact-count';
 
+function hasPromiseCompleteMarker(finalAnswer: string): boolean { return finalAnswer.split(/\r?\n/).some((line) => line.trim() === PROMISE_COMPLETE_STOP_TOKEN); }
 function isObject(value: unknown): value is PiboJsonObject { return !!value && typeof value === 'object' && !Array.isArray(value); }
 function stringOption(options: PiboJsonObject | undefined, key: string): string | undefined { const value = options?.[key]; return typeof value === 'string' && value.trim() ? value.trim() : undefined; }
 function numberOption(options: PiboJsonObject | undefined, key: string): number | undefined { const value = options?.[key]; return typeof value === 'number' && Number.isFinite(value) ? value : undefined; }
@@ -42,11 +43,11 @@ export function createBuiltInRalphStopConditions(): PiboRalphStopConditionDefini
 		{
 			type: PROMISE_COMPLETE_STOP_CONDITION,
 			name: 'Promise complete token',
-			description: `Stops after a successful run whose final answer contains ${PROMISE_COMPLETE_STOP_TOKEN}.`,
+			description: 'Stops after a successful run whose final answer contains the promise-complete marker on its own line.',
 			phases: ['after-run'],
 			evaluate(context) {
 				const finalAnswer = context.outcome?.finalAnswer ?? '';
-				if (context.outcome?.status === 'ok' && finalAnswer.includes(PROMISE_COMPLETE_STOP_TOKEN)) return { action: 'stop-after-run', reason: 'promise-complete', details: { token: PROMISE_COMPLETE_STOP_TOKEN } };
+				if (context.outcome?.status === 'ok' && hasPromiseCompleteMarker(finalAnswer)) return { action: 'stop-after-run', reason: 'promise-complete', details: { token: PROMISE_COMPLETE_STOP_TOKEN } };
 				return { action: 'continue' };
 			},
 		},

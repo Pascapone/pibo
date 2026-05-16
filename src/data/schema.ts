@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 
-export const PIBO_DATA_SCHEMA_VERSION = 1;
+export const PIBO_DATA_SCHEMA_VERSION = 2;
 
 export function applyPiboDataSchema(db: DatabaseSync): void {
 	db.exec(`
@@ -215,6 +215,152 @@ export function applyPiboDataSchema(db: DatabaseSync): void {
 			PRIMARY KEY(source_store, source_table, source_key)
 		);
 
+		CREATE TABLE IF NOT EXISTS telemetry_turns (
+			turn_id TEXT PRIMARY KEY,
+			pibo_session_id TEXT NOT NULL,
+			root_session_id TEXT,
+			room_id TEXT,
+			input_event_id TEXT,
+			event_id TEXT,
+			event_stream_id INTEGER,
+			payload_ref TEXT,
+			run_id TEXT,
+			source TEXT NOT NULL,
+			status TEXT NOT NULL,
+			current_phase TEXT,
+			queued_at TEXT NOT NULL,
+			started_at TEXT,
+			completed_at TEXT,
+			last_progress_at TEXT,
+			queued_behind INTEGER,
+			queue_depth INTEGER,
+			summary TEXT,
+			retention_class TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			metadata_json TEXT NOT NULL DEFAULT '{}'
+		);
+
+		CREATE TABLE IF NOT EXISTS telemetry_phases (
+			phase_id TEXT PRIMARY KEY,
+			turn_id TEXT NOT NULL,
+			pibo_session_id TEXT NOT NULL,
+			root_session_id TEXT,
+			room_id TEXT,
+			name TEXT NOT NULL,
+			status TEXT NOT NULL,
+			started_at TEXT NOT NULL,
+			ended_at TEXT,
+			last_progress_at TEXT,
+			duration_ms INTEGER,
+			provider_request_id TEXT,
+			tool_call_id TEXT,
+			event_stream_id INTEGER,
+			event_id TEXT,
+			payload_ref TEXT,
+			run_id TEXT,
+			counters_json TEXT NOT NULL DEFAULT '{}',
+			summary TEXT,
+			retention_class TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		);
+
+		CREATE TABLE IF NOT EXISTS telemetry_provider_requests (
+			provider_request_id TEXT PRIMARY KEY,
+			pibo_session_id TEXT NOT NULL,
+			root_session_id TEXT,
+			room_id TEXT,
+			turn_id TEXT NOT NULL,
+			phase_id TEXT,
+			provider TEXT NOT NULL,
+			api TEXT NOT NULL,
+			model TEXT NOT NULL,
+			transport TEXT NOT NULL,
+			service_tier TEXT,
+			status TEXT NOT NULL,
+			started_at TEXT NOT NULL,
+			response_headers_at TEXT,
+			first_byte_at TEXT,
+			last_raw_event_at TEXT,
+			last_normalized_event_at TEXT,
+			completed_at TEXT,
+			http_status INTEGER,
+			upstream_response_id TEXT,
+			raw_event_count INTEGER NOT NULL DEFAULT 0,
+			normalized_event_count INTEGER NOT NULL DEFAULT 0,
+			parse_error_count INTEGER NOT NULL DEFAULT 0,
+			unknown_event_count INTEGER NOT NULL DEFAULT 0,
+			bytes_received INTEGER,
+			event_type_counts_json TEXT NOT NULL DEFAULT '{}',
+			event_stream_id INTEGER,
+			event_id TEXT,
+			payload_ref TEXT,
+			error_category TEXT,
+			error_message TEXT,
+			capture_mode TEXT NOT NULL,
+			retention_class TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		);
+
+		CREATE TABLE IF NOT EXISTS telemetry_provider_events (
+			raw_event_id TEXT PRIMARY KEY,
+			provider_request_id TEXT NOT NULL,
+			pibo_session_id TEXT,
+			turn_id TEXT,
+			phase_id TEXT,
+			sequence INTEGER NOT NULL,
+			received_at TEXT NOT NULL,
+			event_type TEXT NOT NULL,
+			byte_size INTEGER NOT NULL DEFAULT 0,
+			parse_status TEXT NOT NULL,
+			normalized_type TEXT,
+			event_stream_id INTEGER,
+			event_id TEXT,
+			item_id TEXT,
+			tool_call_id TEXT,
+			payload_ref TEXT,
+			payload_preview_ref TEXT,
+			safe_fields_json TEXT NOT NULL DEFAULT '{}',
+			retention_class TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			UNIQUE(provider_request_id, sequence)
+		);
+
+		CREATE TABLE IF NOT EXISTS telemetry_tool_calls (
+			tool_call_id TEXT PRIMARY KEY,
+			pibo_session_id TEXT NOT NULL,
+			root_session_id TEXT,
+			room_id TEXT,
+			turn_id TEXT NOT NULL,
+			provider_request_id TEXT,
+			provider_item_id TEXT,
+			output_index INTEGER,
+			tool_name TEXT NOT NULL,
+			status TEXT NOT NULL,
+			args_started_at TEXT,
+			first_delta_at TEXT,
+			last_delta_at TEXT,
+			args_completed_at TEXT,
+			execution_started_at TEXT,
+			execution_ended_at TEXT,
+			duration_ms INTEGER,
+			args_bytes INTEGER NOT NULL DEFAULT 0,
+			parse_status TEXT NOT NULL,
+			safe_arg_keys_json TEXT NOT NULL DEFAULT '[]',
+			event_stream_id INTEGER,
+			event_id TEXT,
+			payload_ref TEXT,
+			run_id TEXT,
+			error_category TEXT,
+			error_message TEXT,
+			retention_class TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		);
+
 		CREATE INDEX IF NOT EXISTS idx_sessions_owner_activity
 			ON sessions(owner_scope, archived_at, last_activity_at DESC);
 		CREATE INDEX IF NOT EXISTS idx_sessions_room_activity
@@ -244,6 +390,66 @@ export function applyPiboDataSchema(db: DatabaseSync): void {
 			ON session_navigation(owner_scope, room_id, archived_at, sort_key DESC);
 		CREATE INDEX IF NOT EXISTS idx_session_navigation_root
 			ON session_navigation(root_session_id, parent_id);
+		CREATE INDEX IF NOT EXISTS idx_telemetry_turns_session_updated
+			ON telemetry_turns(pibo_session_id, updated_at DESC);
+		CREATE INDEX IF NOT EXISTS idx_telemetry_turns_room_updated
+			ON telemetry_turns(room_id, updated_at DESC);
+		CREATE INDEX IF NOT EXISTS idx_telemetry_turns_event
+			ON telemetry_turns(event_id, event_stream_id);
+		CREATE INDEX IF NOT EXISTS idx_telemetry_turns_payload
+			ON telemetry_turns(payload_ref);
+		CREATE INDEX IF NOT EXISTS idx_telemetry_turns_retention_updated
+			ON telemetry_turns(retention_class, updated_at);
+		CREATE INDEX IF NOT EXISTS idx_telemetry_phases_turn_started
+			ON telemetry_phases(turn_id, started_at ASC);
+		CREATE INDEX IF NOT EXISTS idx_telemetry_phases_session_status
+			ON telemetry_phases(pibo_session_id, status, last_progress_at);
+		CREATE INDEX IF NOT EXISTS idx_telemetry_phases_provider_request
+			ON telemetry_phases(provider_request_id);
+		CREATE INDEX IF NOT EXISTS idx_telemetry_phases_tool_call
+			ON telemetry_phases(tool_call_id);
+		CREATE INDEX IF NOT EXISTS idx_telemetry_phases_event
+			ON telemetry_phases(event_id, event_stream_id);
+		CREATE INDEX IF NOT EXISTS idx_telemetry_phases_payload
+			ON telemetry_phases(payload_ref);
+		CREATE INDEX IF NOT EXISTS idx_telemetry_phases_retention_updated
+			ON telemetry_phases(retention_class, updated_at);
+		CREATE INDEX IF NOT EXISTS idx_telemetry_provider_requests_session_updated
+			ON telemetry_provider_requests(pibo_session_id, updated_at DESC);
+		CREATE INDEX IF NOT EXISTS idx_telemetry_provider_requests_turn
+			ON telemetry_provider_requests(turn_id, started_at ASC);
+		CREATE INDEX IF NOT EXISTS idx_telemetry_provider_requests_upstream
+			ON telemetry_provider_requests(upstream_response_id);
+		CREATE INDEX IF NOT EXISTS idx_telemetry_provider_requests_event
+			ON telemetry_provider_requests(event_id, event_stream_id);
+		CREATE INDEX IF NOT EXISTS idx_telemetry_provider_requests_payload
+			ON telemetry_provider_requests(payload_ref);
+		CREATE INDEX IF NOT EXISTS idx_telemetry_provider_requests_retention_updated
+			ON telemetry_provider_requests(retention_class, updated_at);
+		CREATE INDEX IF NOT EXISTS idx_telemetry_provider_events_request_sequence
+			ON telemetry_provider_events(provider_request_id, sequence ASC);
+		CREATE INDEX IF NOT EXISTS idx_telemetry_provider_events_session_received
+			ON telemetry_provider_events(pibo_session_id, received_at DESC);
+		CREATE INDEX IF NOT EXISTS idx_telemetry_provider_events_event
+			ON telemetry_provider_events(event_id, event_stream_id);
+		CREATE INDEX IF NOT EXISTS idx_telemetry_provider_events_payload
+			ON telemetry_provider_events(payload_ref, payload_preview_ref);
+		CREATE INDEX IF NOT EXISTS idx_telemetry_provider_events_tool_call
+			ON telemetry_provider_events(tool_call_id);
+		CREATE INDEX IF NOT EXISTS idx_telemetry_provider_events_retention_received
+			ON telemetry_provider_events(retention_class, received_at);
+		CREATE INDEX IF NOT EXISTS idx_telemetry_tool_calls_session_updated
+			ON telemetry_tool_calls(pibo_session_id, updated_at DESC);
+		CREATE INDEX IF NOT EXISTS idx_telemetry_tool_calls_turn
+			ON telemetry_tool_calls(turn_id);
+		CREATE INDEX IF NOT EXISTS idx_telemetry_tool_calls_provider_request
+			ON telemetry_tool_calls(provider_request_id);
+		CREATE INDEX IF NOT EXISTS idx_telemetry_tool_calls_event
+			ON telemetry_tool_calls(event_id, event_stream_id);
+		CREATE INDEX IF NOT EXISTS idx_telemetry_tool_calls_payload
+			ON telemetry_tool_calls(payload_ref);
+		CREATE INDEX IF NOT EXISTS idx_telemetry_tool_calls_retention_updated
+			ON telemetry_tool_calls(retention_class, updated_at);
 	`);
 	db.exec(`PRAGMA user_version = ${PIBO_DATA_SCHEMA_VERSION}`);
 }

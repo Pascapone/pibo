@@ -20,6 +20,9 @@ type ParsedOptions = {
 	apply: boolean;
 	dryRun: boolean;
 	store?: string;
+	active: boolean;
+	stale: boolean;
+	thresholdMs?: string;
 };
 
 export async function runDebugCli(argv = process.argv): Promise<void> {
@@ -55,6 +58,10 @@ export async function runDebugCli(argv = process.argv): Promise<void> {
 		}
 		if (args[0] === "signals") {
 			await runDebugSignals(args.slice(1));
+			return;
+		}
+		if (args[0] === "telemetry") {
+			await runDebugTelemetry(args.slice(1));
 			return;
 		}
 		if (args[0] === "web") {
@@ -160,6 +167,112 @@ async function runDebugSignals(args: string[]): Promise<void> {
 	} else {
 		console.log(formatSignalSnapshotText(payload as any));
 	}
+}
+
+async function runDebugTelemetry(args: string[]): Promise<void> {
+	if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
+		printDebugTelemetryDiscovery();
+		return;
+	}
+	const command = args[0];
+	const options = parseOptions(args.slice(1));
+	const { formatJson } = await import("./sql.js");
+	const {
+		formatTelemetryProvider,
+		formatTelemetryProviderEvents,
+		formatTelemetryProviderPayload,
+		formatTelemetryPrune,
+		formatTelemetrySession,
+		formatTelemetrySessions,
+		formatTelemetryStale,
+		formatTelemetryStats,
+		formatTelemetryTool,
+		formatTelemetryTurn,
+		inspectTelemetryProvider,
+		inspectTelemetryProviderEvents,
+		inspectTelemetryProviderPayload,
+		inspectTelemetryPrune,
+		inspectTelemetrySession,
+		inspectTelemetrySessions,
+		inspectTelemetryStale,
+		inspectTelemetryStats,
+		inspectTelemetryTool,
+		inspectTelemetryTurn,
+	} = await import("./telemetry.js");
+	const store = resolveDebugStore("pibo-data");
+	if (command === "sessions") {
+		const result = inspectTelemetrySessions(store, { limit: options.limit, active: options.active, stale: options.stale });
+		if (options.json) console.log(formatJson(result));
+		else console.log(formatTelemetrySessions(result));
+		return;
+	}
+	if (command === "session") {
+		const piboSessionId = options.positionals[0];
+		if (!piboSessionId) throw new Error("pibo debug telemetry session requires <pibo-session-id>");
+		const result = inspectTelemetrySession(store, piboSessionId, { limit: options.limit });
+		if (options.json) console.log(formatJson(result));
+		else console.log(formatTelemetrySession(result));
+		return;
+	}
+	if (command === "turn") {
+		const turnIdOrEventId = options.positionals[0];
+		if (!turnIdOrEventId) throw new Error("pibo debug telemetry turn requires <turn-id-or-event-id>");
+		const result = inspectTelemetryTurn(store, turnIdOrEventId, { limit: options.limit, events: options.events });
+		if (options.json) console.log(formatJson(result));
+		else console.log(formatTelemetryTurn(result));
+		return;
+	}
+	if (command === "provider") {
+		const providerRequestId = options.positionals[0];
+		if (!providerRequestId) throw new Error("pibo debug telemetry provider requires <provider-request-id>");
+		const subcommand = options.positionals[1];
+		if (subcommand === "events") {
+			const result = inspectTelemetryProviderEvents(store, providerRequestId, { limit: options.limit, after: options.after, fields: options.fields });
+			if (options.json) console.log(formatJson(result));
+			else console.log(formatTelemetryProviderEvents(result));
+			return;
+		}
+		if (subcommand === "payload") {
+			const payloadRef = options.positionals[2];
+			if (!payloadRef) throw new Error("pibo debug telemetry provider <provider-request-id> payload requires <preview-or-event-summary-id>");
+			const result = inspectTelemetryProviderPayload(store, providerRequestId, payloadRef);
+			if (options.json) console.log(formatJson(result));
+			else console.log(formatTelemetryProviderPayload(result));
+			return;
+		}
+		if (subcommand) throw new Error(`Unknown pibo debug telemetry provider subcommand "${subcommand}". Run pibo debug telemetry --help.`);
+		const result = inspectTelemetryProvider(store, providerRequestId);
+		if (options.json) console.log(formatJson(result));
+		else console.log(formatTelemetryProvider(result));
+		return;
+	}
+	if (command === "tool") {
+		const toolCallId = options.positionals[0];
+		if (!toolCallId) throw new Error("pibo debug telemetry tool requires <tool-call-id>");
+		const result = inspectTelemetryTool(store, toolCallId);
+		if (options.json) console.log(formatJson(result));
+		else console.log(formatTelemetryTool(result));
+		return;
+	}
+	if (command === "stale") {
+		const result = inspectTelemetryStale(store, { limit: options.limit, thresholdMs: options.thresholdMs });
+		if (options.json) console.log(formatJson(result));
+		else console.log(formatTelemetryStale(result));
+		return;
+	}
+	if (command === "stats") {
+		const result = inspectTelemetryStats(store, { retention: options.retention });
+		if (options.json) console.log(formatJson(result));
+		else console.log(formatTelemetryStats(result));
+		return;
+	}
+	if (command === "prune") {
+		const result = inspectTelemetryPrune(store, { retention: options.retention, before: options.before, apply: options.apply });
+		if (options.json) console.log(formatJson(result));
+		else console.log(formatTelemetryPrune(result));
+		return;
+	}
+	throw new Error(`Unknown pibo debug telemetry command "${command}". Run pibo debug telemetry --help.`);
 }
 
 async function runDebugTrace(args: string[]): Promise<void> {
@@ -380,7 +493,7 @@ async function runDebugRuns(args: string[]): Promise<void> {
 }
 
 function parseOptions(args: string[]): ParsedOptions {
-	const parsed: ParsedOptions = { positionals: [], json: false, events: false, runningOnly: false, check: false, destructive: false, apply: false, dryRun: false };
+	const parsed: ParsedOptions = { positionals: [], json: false, events: false, runningOnly: false, check: false, destructive: false, apply: false, dryRun: false, active: false, stale: false };
 	for (let index = 0; index < args.length; index += 1) {
 		const arg = args[index];
 		if (arg === "--json") {
@@ -468,6 +581,21 @@ function parseOptions(args: string[]): ParsedOptions {
 		}
 		if (arg === "--dry-run") {
 			parsed.dryRun = true;
+			continue;
+		}
+		if (arg === "--active") {
+			parsed.active = true;
+			continue;
+		}
+		if (arg === "--stale") {
+			parsed.stale = true;
+			continue;
+		}
+		if (arg === "--threshold-ms") {
+			const value = args[index + 1];
+			if (!value) throw new Error("--threshold-ms requires a value");
+			parsed.thresholdMs = value;
+			index += 1;
 			continue;
 		}
 		if (arg === "--store") {
@@ -570,6 +698,7 @@ Commands:
   jobs     Inspect durable Pibo jobs and DLQ
   runs     Inspect durable yielded runs
   signals  Inspect live session signal snapshots through Chat Web APIs
+  telemetry Inspect runtime observability telemetry
   web      Inspect browser render state via CDP
 
 Next:
@@ -578,6 +707,7 @@ Next:
   pibo debug trace <pibo-session-id> --running-only
   pibo debug events stream --topic pibo.output
   pibo debug signals tree ps_...
+  pibo debug telemetry sessions --active
   pibo debug web targets
 `);
 }
@@ -594,6 +724,39 @@ Environment:
 
 Next:
   pibo debug signals tree ps_...
+`);
+}
+
+function printDebugTelemetryDiscovery(): void {
+	console.log(`pibo debug telemetry - inspect bounded runtime observability telemetry
+
+Usage:
+  pibo debug telemetry sessions [--active] [--stale] [--limit n] [--json]
+  pibo debug telemetry session <pibo-session-id> [--limit n] [--json]
+  pibo debug telemetry turn <turn-id-or-event-id> [--events] [--limit n] [--json]
+  pibo debug telemetry provider <provider-request-id> [--json]
+  pibo debug telemetry provider <provider-request-id> events [--after seq] [--fields a,b] [--limit n] [--json]
+  pibo debug telemetry provider <provider-request-id> payload <preview-or-event-summary-id> [--json]
+  pibo debug telemetry tool <tool-call-id> [--json]
+  pibo debug telemetry stale [--threshold-ms n] [--limit n] [--json]
+  pibo debug telemetry stats [--retention class] [--json]
+  pibo debug telemetry prune --retention class --before iso-date [--dry-run|--apply] [--json]
+
+Commands:
+  sessions  List recent, active, or stale telemetry sessions
+  session   Show compact session telemetry and next turn/provider/tool commands
+  turn      Show a phase timeline for one turn or event id
+  provider  Show provider request summary, event pages, and preview-unavailable diagnostics
+  tool      Show tool-call argument and execution telemetry
+  stale     List read-only stale active work
+  stats     Show telemetry retention counts and byte estimates
+  prune     Dry-run telemetry retention cleanup unless --apply is explicit
+
+Next:
+  pibo debug telemetry sessions --active
+  pibo debug telemetry session ps_...
+  pibo debug telemetry turn turn_...
+  pibo debug telemetry provider pr_... events --limit 20
 `);
 }
 

@@ -245,3 +245,59 @@ test("signal snapshot dedupes identical local errors", () => {
 	assert.equal(snapshot.sessions.root.errors.length, 1);
 	assert.deepEqual(snapshot.sessions.root.errors[0], { message: "No API key", source: "pi" });
 });
+
+test("signal snapshot exposes compact active telemetry hints without payloads", () => {
+	const registry = createPiboSignalRegistry();
+	registry.project({ type: "session_created", session: session("root") });
+	registry.project({ type: "pibo_output", event: { type: "message_started", piboSessionId: "root", eventId: "m1", text: "secret prompt text must not appear" } });
+	registry.project({ type: "pibo_output", event: { type: "tool_call", piboSessionId: "root", eventId: "m1", toolCallId: "tc1", toolName: "bash", args: { command: "echo secret" }, argsComplete: false } });
+
+	const hint = registry.snapshotTree("root").sessions.root.activeTelemetry;
+	assert.ok(hint);
+	assert.equal(hint.source, "signals");
+	assert.equal(hint.activeTurnId, "turn_m1");
+	assert.equal(hint.activePhase, "tool_args");
+	assert.equal(hint.queueDepth, 0);
+	assert.equal(hint.isStale, false);
+	assert.equal(typeof hint.lastProgressAt, "string");
+	assert.equal(typeof hint.staleForMs, "number");
+	const serialized = JSON.stringify(hint);
+	assert.equal(serialized.includes("secret prompt"), false);
+	assert.equal(serialized.includes("echo secret"), false);
+});
+
+test("signal snapshot marks old active telemetry hints stale", () => {
+	const registry = createPiboSignalRegistry();
+	registry.registerProducer({
+		name: "old-active-node",
+		accepts: (input) => input.type === "old_active_node",
+		project: () => [{
+			type: "upsert_node",
+			node: {
+				id: "turn:root:m-old",
+				kind: "turn",
+				status: "running",
+				rootPiboSessionId: "root",
+				piboSessionId: "root",
+				createdAt: "2026-05-16T00:00:00.000Z",
+				startedAt: "2026-05-16T00:00:00.000Z",
+				updatedAt: "2026-05-16T00:00:00.000Z",
+			},
+		}],
+	});
+	registry.project({ type: "session_created", session: session("root") });
+	registry.project({ type: "old_active_node" });
+
+	const hint = registry.snapshotTree("root").sessions.root.activeTelemetry;
+	assert.ok(hint);
+	assert.equal(hint.activeTurnId, "turn_m-old");
+	assert.equal(hint.activePhase, "message_started");
+	assert.equal(hint.isStale, true);
+	assert.equal(hint.staleForMs >= hint.thresholdMs, true);
+});
+
+test("idle signal snapshot omits active telemetry when telemetry is unavailable", () => {
+	const registry = createPiboSignalRegistry();
+	registry.project({ type: "session_created", session: session("root") });
+	assert.equal(registry.snapshotTree("root").sessions.root.activeTelemetry, undefined);
+});

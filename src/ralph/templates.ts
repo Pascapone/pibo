@@ -108,13 +108,9 @@ If you discover a reusable pattern, add it to the \`## Codebase Patterns\` secti
 
 After completing one user story, check whether all stories in all PRD JSON files have \`passes: true\`.
 
-If all stories are complete and passing, reply with:
+If all stories are complete and passing, reply with the XML completion marker on its own line. Compose it from the opening tag \`<promise>\`, the word \`COMPLETE\`, and the closing tag \`</promise>\`.
 
-\`\`\`xml
-<promise>COMPLETE</promise>
-\`\`\`
-
-If any story remains with \`passes: false\`, end normally so another iteration can pick up the next story.`,
+Do not quote, negate, explain, or mention that literal marker unless all stories are complete and you intend to stop the job. If any story remains with \`passes: false\`, end normally so another iteration can pick up the next story and say only that the completion marker was omitted.`,
 			stopPolicy: promiseCompletePolicy,
 		},
 	},
@@ -162,13 +158,9 @@ Batch limit: \`<max-stories-this-run>\`
 
 ## Stop Condition
 
-If all stories in all PRD JSON files are complete and passing, reply:
+If all stories in all PRD JSON files are complete and passing, reply with the XML completion marker on its own line. Compose it from the opening tag \`<promise>\`, the word \`COMPLETE\`, and the closing tag \`</promise>\`.
 
-\`\`\`xml
-<promise>COMPLETE</promise>
-\`\`\`
-
-Otherwise report the stories completed and the next remaining failing story.`,
+Do not quote, negate, explain, or mention that literal marker unless all stories are complete and you intend to stop the job. Otherwise report the stories completed and the next remaining failing story, and say only that the completion marker was omitted.`,
 			stopPolicy: promiseCompletePolicy,
 		},
 	},

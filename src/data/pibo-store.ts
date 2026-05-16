@@ -8,6 +8,7 @@ import { NavigationStore } from "./navigation-store.js";
 import { ObservationStore } from "./observation-store.js";
 import { PayloadStore } from "./payload-store.js";
 import { applyPiboDataSchema } from "./schema.js";
+import { TelemetryStore } from "./telemetry.js";
 import { SessionStore } from "./session-store.js";
 
 export type PiboDataStoreOptions = {
@@ -23,6 +24,7 @@ export class PiboDataStore {
 	readonly observations: ObservationStore;
 	readonly navigation: NavigationStore;
 	readonly sessions: SessionStore;
+	readonly telemetry: TelemetryStore;
 
 	constructor(path = piboHomePath("pibo.sqlite"), options: PiboDataStoreOptions = {}) {
 		this.path = path === ":memory:" ? path : resolve(path);
@@ -38,6 +40,7 @@ export class PiboDataStore {
 		this.observations = new ObservationStore(this.db);
 		this.navigation = new NavigationStore(this.db);
 		this.sessions = new SessionStore(this.db);
+		this.telemetry = new TelemetryStore(this.db);
 	}
 
 	transaction<T>(action: () => T): T {

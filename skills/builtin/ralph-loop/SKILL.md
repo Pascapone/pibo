@@ -179,6 +179,18 @@ This prevents endless loops when runs repeatedly fail or get cancelled before sa
 
 Use a high but bounded value for large PRD batches, such as `100`, and a small value for focused one-shot tasks, such as `1`.
 
+### Promise-complete Token Safety
+
+Ralph's promise-complete condition is a literal marker check on the final answer. Older deployments and some jobs may treat any mention as a match; even with stricter own-line matching, quoted examples are dangerous. If an agent writes the literal completion marker in a negative sentence, quote, explanation, or example, the loop can stop accidentally.
+
+When preparing prompts for jobs with a promise-complete condition:
+
+- Do not include the full literal completion marker contiguously in the prompt.
+- Describe it as the XML completion marker, or as the opening tag `<promise>`, the word `COMPLETE`, and the closing tag `</promise>`.
+- Instruct the agent not to quote, negate, explain, or mention the literal marker unless all completion criteria are satisfied and it intentionally wants to stop the job.
+- For incomplete work, instruct the agent to say "completion marker omitted" instead of writing the literal marker in any form.
+- When reviewing a stopped job with reason `promise-complete`, inspect the final answer for accidental mentions such as "not complete" statements before assuming the work is finished.
+
 ## Prompt Instructions Ralph Needs
 
 The job prompt is the most important part. It should be explicit about environment, scope, verification, commits, and forbidden actions.
@@ -223,6 +235,7 @@ Operating rules:
 - Do not restart or modify host pibo-web.service.
 - Do not expose credentials.
 - Keep telemetry/privacy/product constraints from the PRDs.
+- If using promise-complete, never quote, negate, explain, or mention the literal completion marker unless all completion criteria are satisfied; for incomplete work, say "completion marker omitted".
 - Update IMPLEMENTATION_PROGRESS.md with decisions, completed stories, validation, commits, blockers, and next steps.
 - Commit after every completed story or coherent story group.
 

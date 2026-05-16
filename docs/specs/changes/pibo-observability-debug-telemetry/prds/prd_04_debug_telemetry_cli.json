@@ -16,8 +16,10 @@
         "Typecheck passes"
       ],
       "priority": 1,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed in PRD 04 CLI foundation batch on 2026-05-16: registered pibo debug telemetry under the existing debug CLI with compact progressive help listing sessions, session, turn, provider, tool, stale, stats, and prune commands plus next examples. Root help does not query or print telemetry rows. Validated with Docker npm run typecheck and npm test (430 passing tests).",
+      "status": "complete",
+      "pass": true
     },
     {
       "id": "US-002",
@@ -32,8 +34,10 @@
         "Typecheck passes"
       ],
       "priority": 2,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed in PRD 04 CLI foundation batch on 2026-05-16: implemented pibo debug telemetry sessions with bounded --limit, --active, --stale, text and JSON output, active turn/phase, queue depth, last progress/stale indicator, and next-command hints. Validated with fixture-backed debug CLI tests and full Docker npm test (430 passing tests).",
+      "status": "complete",
+      "pass": true
     },
     {
       "id": "US-003",
@@ -49,8 +53,10 @@
         "Typecheck passes"
       ],
       "priority": 3,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed in PRD 04 CLI foundation batch on 2026-05-16: implemented pibo debug telemetry session <pibo-session-id> with compact status, queue depth, active turn/phase, stale age, provider/tool ids, recent turns, text/JSON output, and next-command hints while omitting raw payloads/transcripts/tool args. Validated with fixture-backed debug CLI tests and full Docker npm test (430 passing tests).",
+      "status": "complete",
+      "pass": true
     },
     {
       "id": "US-004",
@@ -66,8 +72,10 @@
         "Typecheck passes"
       ],
       "priority": 4,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed in PRD 04 CLI foundation batch on 2026-05-16: implemented pibo debug telemetry turn <turn-id-or-event-id> with ordered phase timeline, open-phase and missing-terminal indicators, optional bounded linked event refs via --events, provider/tool links, text/JSON output, and next-command hints. Validated with fixture-backed debug CLI tests and full Docker npm test (430 passing tests).",
+      "status": "complete",
+      "pass": true
     },
     {
       "id": "US-005",
@@ -83,8 +91,10 @@
         "Typecheck passes"
       ],
       "priority": 5,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed in PRD 04 provider diagnostics batch on 2026-05-16: implemented pibo debug telemetry provider <provider-request-id> with session/turn links, provider/API/model/transport/status, HTTP/timing/upstream ids, capture mode, raw/normalized/parse/unknown counters, event-type count rows, text/JSON output, and next-command hints. Validated with fixture-backed debug CLI tests and full Docker npm run typecheck && npm test (431 passing tests).",
+      "status": "complete",
+      "pass": true
     },
     {
       "id": "US-006",
@@ -101,8 +111,10 @@
         "Typecheck passes"
       ],
       "priority": 6,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed in PRD 04 provider diagnostics batch on 2026-05-16: implemented pibo debug telemetry provider <provider-request-id> events with --after cursor paging, bounded --limit, safe --fields selection, metadata-only rows, cursor/truncation metadata, text/JSON output, and no raw provider payload dumps. Validated with fixture-backed debug CLI tests and full Docker npm run typecheck && npm test (431 passing tests).",
+      "status": "complete",
+      "pass": true
     },
     {
       "id": "US-007",
@@ -118,8 +130,10 @@
         "Typecheck passes"
       ],
       "priority": 7,
-      "passes": false,
-      "notes": "Depends on PRD 02 preview contract. Optional; do not run unless preview command remains in V1 scope."
+      "passes": true,
+      "notes": "Completed in PRD 04 provider diagnostics batch on 2026-05-16: kept the V1 preview command as an explicit provider payload diagnostic and wired it to the PRD 02 preview-disabled contract. It requires a preview/event-summary id, reports preview_capture_disabled/captureMode=disabled by default, supports JSON output, and never reads arbitrary raw provider payloads. Validated with fixture-backed debug CLI tests and full Docker npm run typecheck && npm test (431 passing tests).",
+      "status": "complete",
+      "pass": true
     },
     {
       "id": "US-008",
@@ -135,8 +149,10 @@
         "Typecheck passes"
       ],
       "priority": 8,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed in PRD 04 final CLI batch on 2026-05-16: implemented pibo debug telemetry tool <tool-call-id> with tool/session/turn/provider links, args byte counts, parse status, safe arg keys, execution timestamps, no-execution-start indicator, JSON output, and next-command hints while omitting full argument bodies/stdout/stderr/raw payloads. Validated with fixture-backed debug CLI tests and full Docker npm run typecheck && npm test (432 passing tests).",
+      "status": "complete",
+      "pass": true
     },
     {
       "id": "US-009",
@@ -151,8 +167,10 @@
         "Typecheck passes"
       ],
       "priority": 9,
-      "passes": false,
-      "notes": "Depends on PRD 05 stale detector/settings stories. If PRD 04 runs earlier, implement command shell only and finish after PRD 05."
+      "passes": true,
+      "notes": "Completed in PRD 04 final CLI batch on 2026-05-16: implemented pibo debug telemetry stale using the TelemetryStaleDetector service with provider/profile-aware threshold resolution, --threshold-ms inspection override, metadata-only stale rows, applied threshold/source fields, read-only behavior, JSON output, and next-command hints. Validated with fixture-backed debug CLI tests and full Docker npm run typecheck && npm test (432 passing tests).",
+      "status": "complete",
+      "pass": true
     },
     {
       "id": "US-010",
@@ -168,8 +186,10 @@
         "Typecheck passes"
       ],
       "priority": 10,
-      "passes": false,
-      "notes": "Depends on PRD 02 stats/prune service."
+      "passes": true,
+      "notes": "Completed in PRD 04 final CLI batch on 2026-05-16: implemented pibo debug telemetry stats with retention filtering and pibo debug telemetry prune with dry-run default plus explicit --apply, reporting matched/deleted rows and byte estimates for telemetry tables only. Validated with fixture-backed debug CLI tests and full Docker npm run typecheck && npm test (432 passing tests).",
+      "status": "complete",
+      "pass": true
     }
   ]
 }

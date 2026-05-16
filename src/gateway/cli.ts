@@ -10,11 +10,23 @@ export const RESTART_CONFIRMATION_TOKEN = "restart-active-agents";
 type GatewayMode = "dev" | "prod" | "fallback" | "unknown";
 type GatewayTarget = "web" | "dev";
 
+type RuntimeTelemetryHint = {
+	source?: string;
+	activeTurnId?: string;
+	activePhase?: string;
+	lastProgressAt?: string;
+	staleForMs?: number;
+	isStale?: boolean;
+	queueDepth?: number;
+	thresholdMs?: number;
+};
+
 type RuntimeStatus = {
 	piboSessionId?: string;
 	queuedMessages?: number;
 	processing?: boolean;
 	streaming?: boolean;
+	activeTelemetry?: RuntimeTelemetryHint;
 };
 
 type ActiveRunSummary = {
@@ -103,6 +115,21 @@ function objectValue(value: unknown): Record<string, unknown> | undefined {
 	return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 }
 
+function runtimeTelemetryHint(value: unknown): RuntimeTelemetryHint | undefined {
+	const obj = objectValue(value);
+	if (!obj) return undefined;
+	return {
+		source: stringValue(obj.source),
+		activeTurnId: stringValue(obj.activeTurnId),
+		activePhase: stringValue(obj.activePhase),
+		lastProgressAt: stringValue(obj.lastProgressAt),
+		staleForMs: numberValue(obj.staleForMs),
+		isStale: booleanValue(obj.isStale),
+		queueDepth: numberValue(obj.queueDepth),
+		thresholdMs: numberValue(obj.thresholdMs),
+	};
+}
+
 function runtimeStatus(value: unknown): RuntimeStatus | undefined {
 	const obj = objectValue(value);
 	if (!obj) return undefined;
@@ -111,6 +138,7 @@ function runtimeStatus(value: unknown): RuntimeStatus | undefined {
 		queuedMessages: numberValue(obj.queuedMessages),
 		processing: booleanValue(obj.processing),
 		streaming: booleanValue(obj.streaming),
+		activeTelemetry: runtimeTelemetryHint(obj.activeTelemetry),
 	};
 }
 
@@ -144,6 +172,10 @@ export function checkActiveWork(status: GatewaySafetyStatus, target: GatewayTarg
 		if (session.processing === true) reasons.push(`${id} is processing`);
 		if (session.streaming === true) reasons.push(`${id} is streaming`);
 		if ((session.queuedMessages ?? 0) > 0) reasons.push(`${id} has queued messages`);
+		if (session.activeTelemetry?.isStale === true) {
+			const phase = session.activeTelemetry.activePhase ? ` in ${session.activeTelemetry.activePhase}` : "";
+			reasons.push(`${id} has stale telemetry${phase}`);
+		}
 	}
 	for (const run of status.activeRuns) reasons.push(`${run.runId ?? "yielded run"} is ${run.status ?? "active"}`);
 	return { unsafe: reasons.length > 0, reasons };
@@ -168,6 +200,17 @@ function printSafetyStatus(target: GatewayTarget, status: GatewaySafetyStatus): 
 	console.log(`  runtime sessions: ${status.runtimeStatuses.length}`);
 	for (const session of status.runtimeStatuses) {
 		console.log(`    ${session.piboSessionId ?? "unknown"}: processing=${session.processing === true} streaming=${session.streaming === true} queued=${session.queuedMessages ?? 0}`);
+		if (session.activeTelemetry) {
+			const parts = [
+				session.activeTelemetry.activePhase ? `phase=${session.activeTelemetry.activePhase}` : undefined,
+				session.activeTelemetry.activeTurnId ? `turn=${session.activeTelemetry.activeTurnId}` : undefined,
+				typeof session.activeTelemetry.staleForMs === "number" ? `staleForMs=${session.activeTelemetry.staleForMs}` : undefined,
+				session.activeTelemetry.lastProgressAt ? `lastProgress=${session.activeTelemetry.lastProgressAt}` : undefined,
+				typeof session.activeTelemetry.thresholdMs === "number" ? `thresholdMs=${session.activeTelemetry.thresholdMs}` : undefined,
+				session.activeTelemetry.source ? `source=${session.activeTelemetry.source}` : undefined,
+			].filter(Boolean).join(" ");
+			console.log(`      telemetry: stale=${session.activeTelemetry.isStale === true}${parts ? ` ${parts}` : ""}`);
+		}
 	}
 	console.log(`  active yielded runs: ${status.activeRuns.length}`);
 	for (const run of status.activeRuns) console.log(`    ${run.runId ?? "unknown"}: ${run.status ?? "active"}${run.toolName ? ` (${run.toolName})` : ""}`);

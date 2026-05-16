@@ -16,8 +16,10 @@
         "Typecheck passes"
       ],
       "priority": 1,
-      "passes": false,
-      "notes": "No Chat Web telemetry drill-down UI in V1."
+      "passes": true,
+      "notes": "Completed in signals/staleness batch on 2026-05-16: signal snapshots now expose compact metadata-only activeTelemetry hints with active turn id, active phase, last progress time, stale age, stale flag, queue depth, and threshold. Tests cover active non-stale, active stale, telemetry-unavailable/idle, and absence of prompt/tool argument payloads. Validated with Docker npm run typecheck and npm test (429 passing tests).",
+      "status": "complete",
+      "pass": true
     },
     {
       "id": "US-002",
@@ -32,8 +34,10 @@
         "Typecheck passes"
       ],
       "priority": 2,
-      "passes": false,
-      "notes": "Run before PRD 04 stale command."
+      "passes": true,
+      "notes": "Completed in signals/staleness batch on 2026-05-16: added sanitized telemetryStaleThresholds user/provider settings shape with default, provider, and profile thresholds plus resolver output for applied threshold and source. Tests cover default, provider override, profile override, explicit override, invalid config fallback, and missing config fallback. Validated with Docker npm run typecheck and npm test (429 passing tests).",
+      "status": "complete",
+      "pass": true
     },
     {
       "id": "US-003",
@@ -48,8 +52,10 @@
         "Typecheck passes"
       ],
       "priority": 3,
-      "passes": false,
-      "notes": "Depends on PRD 02 read APIs and US-002 settings."
+      "passes": true,
+      "notes": "Completed in signals/staleness batch on 2026-05-16: added read-only TelemetryStaleDetector over existing telemetry read APIs with provider/profile-aware thresholds, threshold source/key output, next commands, active phase, stale age, queue depth, provider/model/profile fields, missing-progress fallback, and completed-turn filtering. Detector performs no abort/clear/dispose/prune mutations. Validated with Docker npm run typecheck and npm test (429 passing tests).",
+      "status": "complete",
+      "pass": true
     },
     {
       "id": "US-004",
@@ -64,8 +70,15 @@
         "Typecheck passes"
       ],
       "priority": 4,
-      "passes": false,
-      "notes": "Builds on PRD 03 incident fixture where available."
+      "passes": true,
+      "notes": "Builds on PRD 03 incident fixture where available.",
+      "status": "complete",
+      "pass": true,
+      "validation": [
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run typecheck'",
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run build >/tmp/pibo-telemetry-validation-build.log 2>&1 && node --test test/telemetry-validation-fixtures.test.mjs test/telemetry-stuck-tool-call-fixture.test.mjs test/debug-cli.test.mjs' (22 passing tests)",
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run typecheck && npm test' (437 passing tests)"
+      ]
     },
     {
       "id": "US-005",
@@ -79,8 +92,15 @@
         "Typecheck passes"
       ],
       "priority": 5,
-      "passes": false,
-      "notes": "Do not add raw preview fixtures unless preview mode is explicitly enabled."
+      "passes": true,
+      "notes": "Do not add raw preview fixtures unless preview mode is explicitly enabled.",
+      "status": "complete",
+      "pass": true,
+      "validation": [
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run typecheck'",
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run build >/tmp/pibo-telemetry-validation-build.log 2>&1 && node --test test/telemetry-validation-fixtures.test.mjs test/telemetry-stuck-tool-call-fixture.test.mjs test/debug-cli.test.mjs' (22 passing tests)",
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run typecheck && npm test' (437 passing tests)"
+      ]
     },
     {
       "id": "US-006",
@@ -95,8 +115,15 @@
         "Typecheck passes"
       ],
       "priority": 6,
-      "passes": false,
-      "notes": "Depends on PRD 04 core commands and US-004 fixtures."
+      "passes": true,
+      "notes": "Depends on PRD 04 core commands and US-004 fixtures.",
+      "status": "complete",
+      "pass": true,
+      "validation": [
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run typecheck'",
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run build >/tmp/pibo-telemetry-validation-build.log 2>&1 && node --test test/telemetry-validation-fixtures.test.mjs test/telemetry-stuck-tool-call-fixture.test.mjs test/debug-cli.test.mjs' (22 passing tests)",
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run typecheck && npm test' (437 passing tests)"
+      ]
     },
     {
       "id": "US-007",
@@ -110,8 +137,15 @@
         "Typecheck passes"
       ],
       "priority": 7,
-      "passes": false,
-      "notes": "Depends on PRD 04 CLI commands."
+      "passes": true,
+      "notes": "Depends on PRD 04 CLI commands.",
+      "status": "complete",
+      "pass": true,
+      "validation": [
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run typecheck'",
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run build >/tmp/pibo-telemetry-validation-build.log 2>&1 && node --test test/telemetry-validation-fixtures.test.mjs test/telemetry-stuck-tool-call-fixture.test.mjs test/debug-cli.test.mjs' (22 passing tests)",
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run typecheck && npm test' (437 passing tests)"
+      ]
     },
     {
       "id": "US-008",
@@ -125,8 +159,15 @@
         "Typecheck passes"
       ],
       "priority": 8,
-      "passes": false,
-      "notes": "Depends on PRD 02 store contract and optional PRD 04 preview command if present."
+      "passes": true,
+      "notes": "Depends on PRD 02 store contract and optional PRD 04 preview command if present.",
+      "status": "complete",
+      "pass": true,
+      "validation": [
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run typecheck'",
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run build >/tmp/pibo-telemetry-validation-build.log 2>&1 && node --test test/telemetry-validation-fixtures.test.mjs test/telemetry-stuck-tool-call-fixture.test.mjs test/debug-cli.test.mjs' (22 passing tests)",
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run typecheck && npm test' (437 passing tests)"
+      ]
     },
     {
       "id": "US-009",
@@ -140,8 +181,14 @@
         "Typecheck passes"
       ],
       "priority": 9,
-      "passes": false,
-      "notes": "Depends on PRD 04 command surface."
+      "passes": true,
+      "notes": "Completed by docs/project/observability-telemetry-playbooks.md and linked capability examples.",
+      "status": "complete",
+      "pass": true,
+      "validation": [
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run typecheck'",
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm test' (438 passing tests)"
+      ]
     },
     {
       "id": "US-010",
@@ -154,8 +201,14 @@
         "Typecheck passes"
       ],
       "priority": 10,
-      "passes": false,
-      "notes": "Run near the end after PRDs 02-04 and validation stories."
+      "passes": true,
+      "notes": "Completed by docs/project/observability-telemetry-rollout-verification.md and linked PRD checklist references.",
+      "status": "complete",
+      "pass": true,
+      "validation": [
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run typecheck'",
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm test' (438 passing tests)"
+      ]
     }
   ]
 }
