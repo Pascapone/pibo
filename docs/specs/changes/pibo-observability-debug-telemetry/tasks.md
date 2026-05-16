@@ -37,8 +37,8 @@
 
 ## 5. Debug CLI
 
-- [ ] 5.1 Add `pibo debug telemetry --help` with compact progressive discovery.
-- [ ] 5.2 Add `sessions`, `session`, and `turn` commands with bounded text and JSON output.
+- [x] 5.1 Add `pibo debug telemetry --help` with compact progressive discovery.
+- [x] 5.2 Add `sessions`, `session`, and `turn` commands with bounded text and JSON output.
 - [ ] 5.3 Add `provider`, `provider events`, and optional `provider payload` unavailable/preview command with cursors/aggregation, limits, allowlisted fields, and truncation indicators.
 - [ ] 5.4 Add `tool` command for tool-call argument and execution telemetry.
 - [ ] 5.5 Add `stale` command with threshold option.

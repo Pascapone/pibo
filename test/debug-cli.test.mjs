@@ -29,7 +29,16 @@ test("pibo debug help stays progressive", async () => {
 	assert.match(root.stdout, /pibo debug - inspect local Pibo data/);
 	assert.match(root.stdout, /pibo debug db/);
 	assert.match(root.stdout, /pibo debug trace/);
+	assert.match(root.stdout, /pibo debug telemetry/);
 	assert.doesNotMatch(root.stdout, /pibo_sessions/);
+
+	const telemetry = await execFileAsync("node", [cliPath, "debug", "telemetry", "--help"]);
+	assert.match(telemetry.stdout, /pibo debug telemetry - inspect bounded runtime observability telemetry/);
+	assert.match(telemetry.stdout, /sessions\s+List recent, active, or stale telemetry sessions/);
+	assert.match(telemetry.stdout, /session\s+Show compact session telemetry/);
+	assert.match(telemetry.stdout, /turn\s+Show a phase timeline/);
+	assert.match(telemetry.stdout, /provider\s+Show provider request summary/);
+	assert.doesNotMatch(telemetry.stdout, /telemetry_turns/);
 
 	const db = await execFileAsync("node", [cliPath, "debug", "db", "--help"]);
 	assert.match(db.stdout, /pibo debug db - inspect local SQLite stores/);
@@ -38,6 +47,60 @@ test("pibo debug help stays progressive", async () => {
 	assert.doesNotMatch(db.stdout, /CREATE TABLE/);
 	assert.doesNotMatch(db.stdout, /web-chat\.sqlite/);
 	assert.doesNotMatch(db.stdout, /pibo-sessions\.sqlite/);
+});
+
+test("pibo debug telemetry lists sessions and drills into session and turn summaries", async () => {
+	const cwd = await makeDebugFixture();
+	try {
+		const sessions = await execFileAsync("node", [cliPath, "debug", "telemetry", "sessions", "--active", "--limit", "5"], { cwd });
+		assert.match(sessions.stdout, /pibo debug telemetry sessions/);
+		assert.match(sessions.stdout, /piboSessionId\tstatus\tactiveTurnId\tactivePhase/);
+		assert.match(sessions.stdout, /ps_running\trunning\tturn_debug_stuck\ttool_args:open/);
+		assert.match(sessions.stdout, /pibo debug telemetry session ps_running/);
+		assert.doesNotMatch(sessions.stdout, /sleep 10/);
+
+		const stale = await execFileAsync("node", [cliPath, "debug", "telemetry", "sessions", "--stale", "--json"], { cwd });
+		const staleParsed = JSON.parse(stale.stdout);
+		assert.equal(staleParsed.available, true);
+		assert.equal(staleParsed.filters.stale, true);
+		assert.equal(staleParsed.rows.some((row) => row.piboSessionId === "ps_running" && row.isStale === true), true);
+		assert.equal(staleParsed.limit, 20);
+
+		const session = await execFileAsync("node", [cliPath, "debug", "telemetry", "session", "ps_running", "--limit", "5"], { cwd });
+		assert.match(session.stdout, /status\trunning/);
+		assert.match(session.stdout, /activeTurn\tturn_debug_stuck/);
+		assert.match(session.stdout, /activePhase\ttool_args:open/);
+		assert.match(session.stdout, /providerRequestId\tpr_debug_stuck/);
+		assert.match(session.stdout, /toolCallId\ttool_debug_stuck/);
+		assert.match(session.stdout, /pibo debug telemetry turn turn_debug_stuck/);
+		assert.doesNotMatch(session.stdout, /large provider body/);
+
+		const sessionJson = await execFileAsync("node", [cliPath, "debug", "telemetry", "session", "ps_running", "--json"], { cwd });
+		const sessionParsed = JSON.parse(sessionJson.stdout);
+		assert.equal(sessionParsed.available, true);
+		assert.equal(sessionParsed.detail.activeTurn.turnId, "turn_debug_stuck");
+		assert.equal(sessionParsed.detail.providerRequests[0].providerRequestId, "pr_debug_stuck");
+		assert.equal(sessionParsed.detail.toolCalls[0].argsBytes, 18);
+
+		const turn = await execFileAsync("node", [cliPath, "debug", "telemetry", "turn", "turn_debug_stuck", "--events"], { cwd });
+		assert.match(turn.stdout, /pibo debug telemetry turn turn_debug_stuck/);
+		assert.match(turn.stdout, /openPhases\t2/);
+		assert.match(turn.stdout, /missingTerminalEvent\ttrue/);
+		assert.match(turn.stdout, /provider_stream\topen/);
+		assert.match(turn.stdout, /tool_args\topen/);
+		assert.match(turn.stdout, /evt_running/);
+		assert.match(turn.stdout, /pibo debug telemetry provider pr_debug_stuck/);
+		assert.doesNotMatch(turn.stdout, /partial command body/);
+
+		const turnJson = await execFileAsync("node", [cliPath, "debug", "telemetry", "turn", "evt_running", "--json"], { cwd });
+		const turnParsed = JSON.parse(turnJson.stdout);
+		assert.equal(turnParsed.available, true);
+		assert.equal(turnParsed.timeline.turn.turnId, "turn_debug_stuck");
+		assert.equal(turnParsed.timeline.phases.some((phase) => phase.name === "tool_args" && phase.status === "open"), true);
+		assert.equal(turnParsed.openPhases, 2);
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
 });
 
 test("pibo debug db discovers schema and runs limited read-only SQL", async () => {
@@ -479,6 +542,162 @@ async function makeDebugFixture() {
 			type: "tool_execution_started",
 			createdAt: "2026-05-01T10:04:02.000Z",
 			payload: { type: "tool_execution_started", piboSessionId: "ps_running", eventId: "evt_running", toolCallId: "tool_1", toolName: "bash", args: { cmd: "sleep 10" } },
+		});
+		data.telemetry.upsertTurn({
+			turnId: "turn_parent_done",
+			piboSessionId: "ps_parent",
+			rootSessionId: "ps_parent",
+			roomId: "room_one",
+			eventId: "evt_1",
+			eventStreamId: 1,
+			source: "user",
+			status: "ok",
+			currentPhase: "finish",
+			queuedAt: "2026-05-01T10:02:55.000Z",
+			startedAt: "2026-05-01T10:02:56.000Z",
+			completedAt: "2026-05-01T10:03:00.000Z",
+			lastProgressAt: "2026-05-01T10:03:00.000Z",
+			queueDepth: 0,
+			summary: "completed fixture turn",
+			createdAt: "2026-05-01T10:02:55.000Z",
+			updatedAt: "2026-05-01T10:03:00.000Z",
+		});
+		data.telemetry.upsertTurn({
+			turnId: "turn_debug_stuck",
+			piboSessionId: "ps_running",
+			rootSessionId: "ps_running",
+			eventId: "evt_running",
+			eventStreamId: 3,
+			source: "user",
+			status: "running",
+			currentPhase: "tool_args",
+			queuedAt: "2026-05-01T10:04:00.000Z",
+			startedAt: "2026-05-01T10:04:01.000Z",
+			lastProgressAt: "2026-05-01T10:04:06.000Z",
+			queuedBehind: 0,
+			queueDepth: 1,
+			summary: "partial tool-call fixture without argument body",
+			retentionClass: "incident",
+			createdAt: "2026-05-01T10:04:00.000Z",
+			updatedAt: "2026-05-01T10:04:06.000Z",
+			metadata: { fixture: "debug_cli", omittedBody: true },
+		});
+		data.telemetry.upsertPhase({
+			phaseId: "turn_debug_stuck:queued",
+			turnId: "turn_debug_stuck",
+			piboSessionId: "ps_running",
+			rootSessionId: "ps_running",
+			name: "queued",
+			status: "ok",
+			startedAt: "2026-05-01T10:04:00.000Z",
+			endedAt: "2026-05-01T10:04:01.000Z",
+			lastProgressAt: "2026-05-01T10:04:01.000Z",
+			durationMs: 1000,
+			eventId: "evt_running",
+			eventStreamId: 3,
+			retentionClass: "incident",
+			createdAt: "2026-05-01T10:04:00.000Z",
+			updatedAt: "2026-05-01T10:04:01.000Z",
+		});
+		data.telemetry.upsertPhase({
+			phaseId: "turn_debug_stuck:provider_stream:pr_debug_stuck",
+			turnId: "turn_debug_stuck",
+			piboSessionId: "ps_running",
+			rootSessionId: "ps_running",
+			name: "provider_stream",
+			status: "open",
+			startedAt: "2026-05-01T10:04:02.000Z",
+			lastProgressAt: "2026-05-01T10:04:05.000Z",
+			providerRequestId: "pr_debug_stuck",
+			eventId: "evt_running",
+			eventStreamId: 3,
+			counters: { rawEvents: 2, normalizedEvents: 1 },
+			summary: "provider stream metadata only; large provider body omitted",
+			retentionClass: "incident",
+			createdAt: "2026-05-01T10:04:02.000Z",
+			updatedAt: "2026-05-01T10:04:05.000Z",
+		});
+		data.telemetry.upsertProviderRequest({
+			providerRequestId: "pr_debug_stuck",
+			piboSessionId: "ps_running",
+			rootSessionId: "ps_running",
+			turnId: "turn_debug_stuck",
+			phaseId: "turn_debug_stuck:provider_stream:pr_debug_stuck",
+			provider: "openai",
+			api: "openai-responses",
+			model: "gpt-debug",
+			transport: "sse",
+			status: "streaming",
+			startedAt: "2026-05-01T10:04:02.000Z",
+			firstByteAt: "2026-05-01T10:04:03.000Z",
+			lastRawEventAt: "2026-05-01T10:04:05.000Z",
+			lastNormalizedEventAt: "2026-05-01T10:04:05.000Z",
+			upstreamResponseId: "resp_debug_stuck",
+			captureMode: "metadata_only",
+			retentionClass: "incident",
+			createdAt: "2026-05-01T10:04:02.000Z",
+			updatedAt: "2026-05-01T10:04:05.000Z",
+		});
+		data.telemetry.appendProviderEventSummary({
+			rawEventId: "raw_debug_stuck_1",
+			providerRequestId: "pr_debug_stuck",
+			piboSessionId: "ps_running",
+			turnId: "turn_debug_stuck",
+			phaseId: "turn_debug_stuck:provider_stream:pr_debug_stuck",
+			sequence: 1,
+			receivedAt: "2026-05-01T10:04:03.000Z",
+			eventType: "response.output_item.added",
+			byteSize: 128,
+			parseStatus: "ok",
+			normalizedType: "tool_call:start",
+			itemId: "item_debug_stuck",
+			toolCallId: "tool_debug_stuck",
+			eventId: "evt_running",
+			eventStreamId: 3,
+			safeFields: { itemId: "item_debug_stuck", itemType: "function_call", toolName: "bash" },
+			retentionClass: "provider_event",
+			createdAt: "2026-05-01T10:04:03.000Z",
+			updatedAt: "2026-05-01T10:04:03.000Z",
+		});
+		data.telemetry.upsertPhase({
+			phaseId: "turn_debug_stuck:tool_args:tool_debug_stuck",
+			turnId: "turn_debug_stuck",
+			piboSessionId: "ps_running",
+			rootSessionId: "ps_running",
+			name: "tool_args",
+			status: "open",
+			startedAt: "2026-05-01T10:04:04.000Z",
+			lastProgressAt: "2026-05-01T10:04:06.000Z",
+			providerRequestId: "pr_debug_stuck",
+			toolCallId: "tool_debug_stuck",
+			eventId: "evt_running",
+			eventStreamId: 4,
+			counters: { argsBytes: 18 },
+			summary: "partial command body omitted",
+			retentionClass: "incident",
+			createdAt: "2026-05-01T10:04:04.000Z",
+			updatedAt: "2026-05-01T10:04:06.000Z",
+		});
+		data.telemetry.upsertToolCall({
+			toolCallId: "tool_debug_stuck",
+			piboSessionId: "ps_running",
+			rootSessionId: "ps_running",
+			turnId: "turn_debug_stuck",
+			providerRequestId: "pr_debug_stuck",
+			providerItemId: "item_debug_stuck",
+			toolName: "bash",
+			status: "args_partial",
+			argsStartedAt: "2026-05-01T10:04:04.000Z",
+			firstDeltaAt: "2026-05-01T10:04:04.000Z",
+			lastDeltaAt: "2026-05-01T10:04:06.000Z",
+			argsBytes: 18,
+			parseStatus: "partial",
+			safeArgKeys: [],
+			eventId: "evt_running",
+			eventStreamId: 4,
+			retentionClass: "incident",
+			createdAt: "2026-05-01T10:04:04.000Z",
+			updatedAt: "2026-05-01T10:04:06.000Z",
 		});
 	} finally {
 		data.close();
