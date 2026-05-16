@@ -1,0 +1,70 @@
+{
+  "project": "PTY Debug and E2E Tooling",
+  "branchName": "ralph/pty-debug-e2e-docs-ralph-guidance",
+  "description": "Documentation and Ralph guidance for pibo debug pty usage, artifacts, host vs Docker execution, real-provider safety, and evidence requirements.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Document pibo debug pty usage",
+      "description": "As a maintainer, I want concise pibo debug pty examples so that I can run PTY checks without reading implementation code.",
+      "acceptanceCriteria": [
+        "Add docs or help text for pibo debug pty run, scenario, and list-scenarios",
+        "Include a host execution example and a Docker-worker execution example",
+        "Include examples for rows, cols, timeout, idle timeout, input delay, expect, reject, and artifact dir",
+        "Docs match the implemented command behavior",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Document artifacts and debugging workflow",
+      "description": "As a reviewer, I want artifact documentation so that I can inspect PTY failures and understand what the user saw.",
+      "acceptanceCriteria": [
+        "Document metadata.json, input.json, assertions.json, raw.ansi.log, clean.txt, and screen.txt",
+        "Explain when to inspect raw ANSI versus cleaned text",
+        "Explain how failure output points to the artifact directory",
+        "Warn that artifacts may contain transcripts, provider output, and secrets",
+        "Docs include one sample failure interpretation",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Document provider safety rules",
+      "description": "As an operator, I want real-provider safety rules documented so that live PTY smokes are explicit and bounded.",
+      "acceptanceCriteria": [
+        "Document mocked/deterministic provider mode as the default",
+        "Document that live provider calls require --real-provider",
+        "Document default --max-iterations 10 for real-provider mode",
+        "Document wall-clock timeout, idle timeout, stop conditions, and fail-closed behavior",
+        "Document that real-provider PTY E2E is not part of default npm test",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Update Ralph guidance for CLI and TUI validation",
+      "description": "As a Ralph implementation agent, I want clear validation gates so that interactive terminal stories are not marked complete after weak fake/demo checks only.",
+      "acceptanceCriteria": [
+        "Update Ralph or PRD guidance to require PTY scenario validation when interactive CLI/TUI behavior changes",
+        "Guidance requires evidence notes with commands run, host/Docker target, provider mode, artifact path, and fake/demo/mocked/real classification",
+        "Guidance states that fake/demo checks are supporting evidence and cannot replace real default-path checks when the user path is in scope",
+        "Guidance references the canonical CLI Session UI scenario where appropriate",
+        "Focused docs/skill validation checks pass if available",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

@@ -1,0 +1,68 @@
+{
+  "project": "PTY Debug and E2E Tooling",
+  "branchName": "ralph/pty-debug-e2e-docker-worker-target",
+  "description": "Docker worker target support for pibo debug pty scenarios, including capability detection, PTY execution inside a container, and artifact retrieval.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Add Docker target option handling",
+      "description": "As a Ralph agent, I want to target a named Docker worker so that PTY validation runs in my implementation environment.",
+      "acceptanceCriteria": [
+        "--docker-worker <name> selects Docker execution for scenario runs",
+        "--workdir <path> sets the command working directory inside the container",
+        "The Docker backend validates that the named container exists and is running before scenario execution",
+        "Worker name, container id when available, and workdir are recorded in metadata.json",
+        "Focused Docker option and validation tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Detect Docker PTY capabilities",
+      "description": "As a maintainer, I want clear diagnostics for missing container PTY capabilities so that I can choose a fallback or fix the worker image.",
+      "acceptanceCriteria": [
+        "Detect a usable PTY method inside the container, preferring an internal helper and falling back to Python pty, script, or tmux when available",
+        "Missing capability errors name the worker, checked tools, and suggested fallback",
+        "metadata.json records the selected PTY method",
+        "Tests cover capability detection success and missing-capability diagnostics using mocked Docker command output or equivalent",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Execute scenarios inside Docker worker",
+      "description": "As a Ralph agent, I want the same scenario semantics in Docker as on host so that validation gates are portable.",
+      "acceptanceCriteria": [
+        "Run scenario command and steps inside the selected worker with PTY semantics",
+        "Support waits, typeText, writeBytes, press, sleep, expectations, and rejects through the Docker backend",
+        "Wall-clock timeout and idle timeout terminate the container-side process and record diagnostics",
+        "A deterministic Docker PTY smoke passes when required worker capabilities are present or is documented as skipped when unavailable",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Make Docker artifacts host-readable",
+      "description": "As a reviewer, I want Docker-run artifacts available from the host so that I can inspect PTY failures after a Ralph run.",
+      "acceptanceCriteria": [
+        "Docker-run artifacts are copied to or written under the requested host artifact directory",
+        "Failure output prints the host-readable artifact path",
+        "Artifact metadata identifies Docker target details and PTY method",
+        "Tests or documented smoke verify artifact retrieval for a deterministic command",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

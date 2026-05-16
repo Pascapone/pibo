@@ -1,0 +1,70 @@
+{
+  "project": "PTY Debug and E2E Tooling",
+  "branchName": "ralph/pty-debug-e2e-provider-loop-safety",
+  "description": "Provider mode resolution and loop safety for PTY E2E scenarios, including mocked default, explicit real-provider opt-in, max iterations, timeouts, and fail-closed behavior.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Resolve provider mode with mocked default",
+      "description": "As a Ralph agent, I want mocked or deterministic provider mode to be the default so that PTY E2E checks are repeatable and do not use live credentials.",
+      "acceptanceCriteria": [
+        "Provider mode defaults to mocked/deterministic when a scenario needs model output and --real-provider is not supplied",
+        "Scenario files cannot enable live provider calls by themselves without the CLI --real-provider flag",
+        "When mocked mode cannot be configured for a model-output scenario, the command fails with an actionable message",
+        "Provider mode is recorded in metadata.json",
+        "Focused provider mode tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Require explicit real-provider opt-in",
+      "description": "As a maintainer, I want real provider PTY runs to require explicit opt-in so that accidental provider calls do not happen.",
+      "acceptanceCriteria": [
+        "Live provider mode starts only when --real-provider is present",
+        "Without --real-provider, a scenario requesting real provider mode fails before any live provider work starts",
+        "Failure output explains the --real-provider requirement",
+        "Tests verify real-provider scenarios fail without the flag",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Enforce max iterations and stop conditions",
+      "description": "As an operator, I want real-provider runs to be bounded so that model-backed agents cannot enter an endless loop.",
+      "acceptanceCriteria": [
+        "Real-provider mode defaults maxIterations to 10 when no explicit value is supplied",
+        "Support explicit lower or higher maxIterations values from human CLI options",
+        "Real-provider mode requires an enforceable iteration counter or fails closed before starting",
+        "Iteration counting supports submitted user messages, observed assistant completions, or scenario steps marked iteration: true",
+        "Exceeding max iterations terminates the PTY process and records stop reason max_iterations",
+        "Tests cover default 10, explicit override, iteration limit violation, and fail-closed missing counter",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Enforce real-provider timeout safety",
+      "description": "As a maintainer, I want real-provider scenarios to stop on timeouts and stop patterns so that live runs remain safe and inspectable.",
+      "acceptanceCriteria": [
+        "Real-provider mode requires or defaults wall-clock timeout and idle timeout",
+        "Real-provider mode stops on expected output, explicit stop pattern, process exit, max iterations, wall-clock timeout, idle timeout, or external cancellation",
+        "metadata.json records max iterations, observed iterations, timeout values, and stop reason",
+        "Tests cover timeout stop reasons and stop-pattern completion",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

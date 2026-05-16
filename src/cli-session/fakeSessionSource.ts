@@ -19,6 +19,7 @@ export type FakeCliSessionSourceOptions = {
 	traceViews?: Readonly<Record<string, PiboSessionTraceView | null>>;
 	status?: Partial<CliRuntimeStatus>;
 	now?: () => string;
+	assistantReply?: string | ((message: string, session: CliSessionSummary) => string | undefined);
 };
 
 export class FakeCliSessionSource implements CliSessionSource {
@@ -29,12 +30,14 @@ export class FakeCliSessionSource implements CliSessionSource {
 	private readonly listeners = new Map<string, Set<CliSessionUpdateListener>>();
 	private readonly openHandles = new Set<{ sessionId: string; close: () => void }>();
 	private readonly now: () => string;
+	private readonly assistantReply?: string | ((message: string, session: CliSessionSummary) => string | undefined);
 	private nextSessionNumber = 1;
 	private closed = false;
 	private statusOverrides: Partial<CliRuntimeStatus>;
 
 	constructor(options: FakeCliSessionSourceOptions = {}) {
 		this.now = options.now ?? (() => new Date().toISOString());
+		this.assistantReply = options.assistantReply;
 		this.rooms = [...(options.rooms ?? defaultRooms())].map(cloneJson);
 		this.agents = [...(options.agents ?? defaultAgents())].map(cloneJson);
 		for (const session of options.sessions ?? defaultSessions()) {
@@ -145,10 +148,28 @@ export class FakeCliSessionSource implements CliSessionSource {
 			output: trimmed,
 			children: [],
 		};
-		const traceView = { ...existing, nodes: [...existing.nodes, node], eventCount: (existing.eventCount ?? existing.nodes.length) + 1 };
+		let traceView = { ...existing, nodes: [...existing.nodes, node], eventCount: (existing.eventCount ?? existing.nodes.length) + 1 };
+		const reply = typeof this.assistantReply === "function" ? this.assistantReply(trimmed, updated) : this.assistantReply;
+		const finalSession = reply
+			? { ...updated, status: "idle" as const, updatedAt: this.now() }
+			: updated;
+		if (reply) {
+			const assistantNode: PiboTraceNode = {
+				id: `node_fake_assistant_${traceView.nodes.length + 1}`,
+				piboSessionId: sessionId,
+				type: "assistant.message",
+				title: "Agent Message",
+				status: "done",
+				startedAt: finalSession.updatedAt ?? updated.updatedAt,
+				output: reply,
+				children: [],
+			};
+			traceView = { ...traceView, nodes: [...traceView.nodes, assistantNode], eventCount: (traceView.eventCount ?? traceView.nodes.length) + 1 };
+			this.sessions.set(sessionId, finalSession);
+		}
 		this.traceViews.set(sessionId, traceView);
-		this.emit(sessionId, { type: "session", session: cloneJson(updated), status: this.buildStatus(sessionId), traceView: cloneTraceView(traceView) });
-		this.emit(sessionId, { type: "trace", session: cloneJson(updated), traceView: cloneTraceView(traceView) });
+		this.emit(sessionId, { type: "session", session: cloneJson(finalSession), status: this.buildStatus(sessionId), traceView: cloneTraceView(traceView) });
+		this.emit(sessionId, { type: "trace", session: cloneJson(finalSession), traceView: cloneTraceView(traceView) });
 	}
 
 	async listAgents(): Promise<readonly CliAgentSummary[]> {
@@ -246,8 +267,8 @@ export class FakeCliSessionSource implements CliSessionSource {
 	}
 }
 
-export function createDefaultFakeCliSessionSource(): FakeCliSessionSource {
-	return new FakeCliSessionSource({ now: deterministicNow });
+export function createDefaultFakeCliSessionSource(options: Pick<FakeCliSessionSourceOptions, "assistantReply"> = {}): FakeCliSessionSource {
+	return new FakeCliSessionSource({ now: deterministicNow, assistantReply: options.assistantReply });
 }
 
 function defaultRooms(): CliRoomSummary[] {

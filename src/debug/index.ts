@@ -69,6 +69,11 @@ export async function runDebugCli(argv = process.argv): Promise<void> {
 			await runDebugWeb(args.slice(1));
 			return;
 		}
+		if (args[0] === "pty") {
+			const { runDebugPty } = await import("./pty.js");
+			await runDebugPty(args.slice(1));
+			return;
+		}
 		throw new Error(`Unknown pibo debug command "${args[0]}". Run pibo debug --help.`);
 	} catch (error) {
 		console.error(error instanceof Error ? error.message : String(error));
@@ -700,6 +705,7 @@ Commands:
   signals  Inspect live session signal snapshots through Chat Web APIs
   telemetry Inspect runtime observability telemetry
   web      Inspect browser render state via CDP
+  pty      Run and inspect interactive CLI/TUI commands under a PTY
 
 Next:
   pibo debug db
@@ -709,6 +715,7 @@ Next:
   pibo debug signals tree ps_...
   pibo debug telemetry sessions --active
   pibo debug web targets
+  pibo debug pty run -- pibo tui:sessions --demo
 `);
 }
 

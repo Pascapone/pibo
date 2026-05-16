@@ -1,0 +1,85 @@
+{
+  "project": "PTY Debug and E2E Tooling",
+  "branchName": "ralph/pty-debug-e2e-cli-session-scenarios",
+  "description": "Canonical pibo tui:sessions PTY scenarios that validate the real default CLI path with mocked provider output and optional bounded real-provider smoke.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Add mocked-provider injection seam for CLI Session UI scenario",
+      "description": "As a maintainer, I want deterministic assistant output for pibo tui:sessions so that the canonical PTY scenario does not require live provider credentials.",
+      "acceptanceCriteria": [
+        "Define a narrow mocked provider or deterministic source injection seam for pibo tui:sessions PTY scenarios",
+        "Mocked mode can return a deterministic assistant response to a test message",
+        "Mocked mode does not require external network access or real provider credentials",
+        "Provider/mock setup details are recorded in artifacts when available",
+        "Focused mocked provider/source tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Create canonical host pibo tui:sessions scenario",
+      "description": "As an implementation agent, I want a canonical PTY scenario for pibo tui:sessions so that I validate the real default path instead of demo mode only.",
+      "acceptanceCriteria": [
+        "Add a canonical scenario that runs pibo tui:sessions without --demo under PTY on host",
+        "Scenario waits for startup, creates or opens a controlled test session, sends Hi, waits for deterministic assistant output, runs /status, and exits with /quit",
+        "Scenario uses terminal-safe per-character typing for user commands",
+        "Scenario asserts transcript text, assistant output, status/session details, and clean exit or controlled termination",
+        "PTY scenario passes in mocked/deterministic mode on host",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Verify agent/profile visibility in CLI Session UI scenario",
+      "description": "As a reviewer, I want the canonical scenario to catch missing custom/test agents so that runtime registry regressions are visible.",
+      "acceptanceCriteria": [
+        "Scenario verifies configured test profile or pibo-agent visibility when fixture state is available",
+        "If a custom-agent fixture is not available in the target environment, the scenario reports a documented skipped/unsupported condition rather than silently passing the check",
+        "Failure artifacts make missing profile/agent visibility clear",
+        "Focused scenario/fixture tests or documented smoke checks pass",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Enable Docker execution for canonical scenario",
+      "description": "As a Ralph agent, I want the canonical pibo tui:sessions scenario to run in Docker workers so that autonomous implementation validates its actual environment.",
+      "acceptanceCriteria": [
+        "Canonical scenario can target --docker-worker and --workdir",
+        "Docker run either passes with mocked provider mode or fails/skips with clear missing-capability diagnostics",
+        "Docker artifacts are host-readable and include backend metadata",
+        "Documented Docker smoke check or automated test verifies the scenario path",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Document optional real-provider CLI Session UI smoke",
+      "description": "As a maintainer, I want an optional real-provider smoke scenario so that I can manually validate live provider behavior with safety bounds.",
+      "acceptanceCriteria": [
+        "Document the real-provider variant of the pibo tui:sessions scenario",
+        "Real-provider variant requires --real-provider and defaults --max-iterations to 10",
+        "Instructions explain provider cost, timeout, idle timeout, stop conditions, and artifact sensitivity",
+        "The real-provider smoke is not part of default npm test",
+        "Docs/examples are reviewed against implemented command behavior",
+        "Typecheck passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

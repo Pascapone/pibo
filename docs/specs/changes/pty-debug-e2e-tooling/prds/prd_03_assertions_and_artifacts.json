@@ -1,0 +1,71 @@
+{
+  "project": "PTY Debug and E2E Tooling",
+  "branchName": "ralph/pty-debug-e2e-assertions-artifacts",
+  "description": "Assertions and diagnostic artifacts for PTY runs, including raw ANSI, cleaned text, final screen capture, metadata, input, and assertion reports.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Implement cleaned output and assertion engine",
+      "description": "As a reviewer, I want expected and forbidden text assertions against cleaned terminal output so that PTY scenarios have stable pass/fail checks.",
+      "acceptanceCriteria": [
+        "Generate cleaned terminal text from raw PTY output while preserving the raw output separately",
+        "Evaluate expect patterns against cleaned text and fail when any expected pattern is missing",
+        "Evaluate reject patterns against cleaned text and fail when any forbidden pattern appears",
+        "Assertion failures include the missing or forbidden pattern in diagnostics",
+        "Unit tests cover ANSI cleanup, expected matches, missing expected text, and forbidden text",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Write required artifact files",
+      "description": "As a maintainer, I want failed PTY runs to preserve raw output, cleaned output, metadata, input, screen, and assertion details so that failures are debuggable.",
+      "acceptanceCriteria": [
+        "Create an artifact directory for each failed PTY run and for successful runs when configured",
+        "Write metadata.json, input.json, assertions.json, raw.ansi.log, clean.txt, and screen.txt or best-effort final capture",
+        "metadata.json records command, cwd/workdir, backend, timings, exit code, timeout status, provider mode, and artifact schema version",
+        "input.json records expanded input steps and timing",
+        "assertions.json records expected/rejected patterns and pass/fail details",
+        "Tests verify all required files exist after a forced failed run",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Print actionable failure diagnostics",
+      "description": "As an implementation agent, I want the CLI to print artifact paths and concise failure reasons so that I can report evidence in progress notes.",
+      "acceptanceCriteria": [
+        "Failed PTY runs print the artifact directory path",
+        "Failure output names the stop reason or assertion that failed",
+        "Timeout failures distinguish wall-clock timeout from idle timeout",
+        "Artifact metadata redacts known secret-like environment values",
+        "Focused CLI failure-output tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Add best-effort final screen capture",
+      "description": "As a maintainer, I want a final screen artifact so that I can quickly see what the user likely saw at failure time.",
+      "acceptanceCriteria": [
+        "Generate screen.txt from a terminal parser, tmux capture, or cleaned-output tail depending on available backend support",
+        "screen.txt generation failure does not discard raw.ansi.log or clean.txt",
+        "metadata.json records the screen capture method",
+        "Tests cover the cleaned-tail fallback path",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

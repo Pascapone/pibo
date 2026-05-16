@@ -1,0 +1,68 @@
+{
+  "project": "PTY Debug and E2E Tooling",
+  "branchName": "ralph/pty-debug-e2e-command-scenario-contract",
+  "description": "Command and scenario contract for the pibo debug pty command family, CLI options, scenario schema, and validation errors.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Register pibo debug pty command group",
+      "description": "As a maintainer, I want a discoverable pibo debug pty command group so that PTY validation has a standard entry point.",
+      "acceptanceCriteria": [
+        "Register pibo debug pty in the existing CLI command registry",
+        "Add pibo debug pty --help output that lists run, scenario, and list-scenarios",
+        "The command group exits with a clear help or usage message when no subcommand is provided",
+        "Focused CLI parser tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Add run subcommand options",
+      "description": "As a maintainer, I want pibo debug pty run to accept terminal, timeout, artifact, assertion, target, and provider options so that ad hoc PTY checks can be configured from the CLI.",
+      "acceptanceCriteria": [
+        "Add pibo debug pty run -- <command...> option parsing",
+        "Support rows, cols, timeout-ms, idle-timeout-ms, artifact-dir, docker-worker, workdir, real-provider, max-iterations, input-delay-ms, expect, and reject options",
+        "Normalize run options into the shared PTY scenario structure",
+        "Focused option parsing tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Define scenario schema and validation",
+      "description": "As a QA engineer, I want declarative scenario files so that PTY flows can be reviewed and repeated across environments.",
+      "acceptanceCriteria": [
+        "Define scenario types/schema for command, cwd/workdir, env, rows, cols, timeoutMs, idleTimeoutMs, inputDelayMs, providerMode, maxIterations, artifactDir, steps, expect, and reject",
+        "Support step types waitFor, typeText, writeBytes, press, sleepMs, expect, and reject",
+        "Reject invalid provider modes, missing command arrays, invalid step shapes, invalid timeouts, and malformed artifact settings",
+        "Schema validation errors include the field path and expected shape",
+        "Focused schema validation tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Add scenario and list-scenarios subcommands",
+      "description": "As an implementation agent, I want pibo debug pty scenario and list-scenarios so that reusable PTY scenarios can be loaded and discovered.",
+      "acceptanceCriteria": [
+        "Add pibo debug pty scenario <file> that loads and validates JSON scenario files before execution",
+        "Add pibo debug pty list-scenarios that lists available built-in or documented scenarios and exits successfully when none exist",
+        "Scenario command supports CLI option overrides where defined by the spec",
+        "Focused command tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

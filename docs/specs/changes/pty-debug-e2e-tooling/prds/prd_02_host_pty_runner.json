@@ -1,0 +1,70 @@
+{
+  "project": "PTY Debug and E2E Tooling",
+  "branchName": "ralph/pty-debug-e2e-host-pty-runner",
+  "description": "Host PTY runner for pibo debug pty, including process spawn, terminal sizing, raw output, scripted input, named keys, and timeout cleanup.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Implement host PTY process backend",
+      "description": "As a maintainer, I want pibo debug pty to start commands under a real host pseudo-terminal so that terminal UI behavior matches SSH/user execution.",
+      "acceptanceCriteria": [
+        "Implement a host PTY runner behind the shared scenario execution interface",
+        "Start arbitrary commands under PTY with configured rows and cols",
+        "Capture raw output from the PTY without stripping ANSI sequences",
+        "Return exit status, timeout status, and termination diagnostics to the caller",
+        "Focused host PTY runner tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Implement scripted input steps",
+      "description": "As a QA engineer, I want terminal-safe scripted input so that Ink commands can be typed reliably during PTY scenarios.",
+      "acceptanceCriteria": [
+        "Implement typeText with per-character input and configurable inputDelayMs",
+        "Implement writeBytes for raw input",
+        "Implement press mappings for Enter, Escape, CtrlC, Up, and Down",
+        "Implement sleepMs without sending input",
+        "Tests cover per-character typing, Enter handling, raw bytes, and at least one navigation/control key",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Implement wait and timeout control",
+      "description": "As an implementation agent, I want waits and timeouts so that stuck interactive processes do not block jobs indefinitely.",
+      "acceptanceCriteria": [
+        "Implement waitFor against accumulated output using the scenario timeout for that step when present",
+        "Implement wall-clock timeout for the whole PTY run",
+        "Implement idle timeout based on absence of output",
+        "Timeouts terminate the child process and report whether termination was graceful or forced",
+        "Tests cover wait success, wait timeout, wall-clock timeout, and idle timeout",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Add deterministic host PTY fixture tests",
+      "description": "As a reviewer, I want deterministic PTY fixture coverage so that the runner is verified before it is used against pibo tui:sessions.",
+      "acceptanceCriteria": [
+        "Add a deterministic local interactive fixture command or test helper",
+        "Test a complete scenario that waits for output, types text, presses Enter, observes echo/result, and exits",
+        "The test does not require real provider credentials or network access",
+        "Focused PTY integration tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}
