@@ -43,8 +43,8 @@
         "Typecheck passes"
       ],
       "priority": 3,
-      "passes": false,
-      "notes": "Depends on US-002."
+      "passes": true,
+      "notes": "Implemented LocalCliSessionSource create/open/send flow: creates owner-scoped Pibo sessions with room metadata and selected existing profile, opens empty/current local trace views, records normal text messages as compact-row-compatible user trace nodes, and maps source/runtime failures to CliSourceError. Validation: npm run typecheck; focused cli-session-source test; full npm test."
     },
     {
       "id": "US-004",
@@ -58,8 +58,8 @@
         "Typecheck passes"
       ],
       "priority": 4,
-      "passes": false,
-      "notes": "Depends on US-003."
+      "passes": true,
+      "notes": "Implemented local open-session update subscriptions, router-output projection into trace/session updates, idempotent handle/source cleanup, listener-count test hooks, and source close cleanup for subscriptions/router/store resources. Validation: npm run typecheck; focused cli-session-source test; full npm test."
     },
     {
       "id": "US-005",
@@ -73,8 +73,8 @@
         "Typecheck passes"
       ],
       "priority": 5,
-      "passes": false,
-      "notes": "Depends on US-001 and may depend on US-003 for current session behavior."
+      "passes": true,
+      "notes": "Local source already lists canonical plugin profiles and now applies selected existing profile/agent to new session creation. Existing-session profile changes validate the target profile then return an explicit unsupported CliSourceError; no profile create/edit/delete behavior was added. Validation: npm run typecheck; focused cli-session-source test; full npm test."
     }
   ]
 }
