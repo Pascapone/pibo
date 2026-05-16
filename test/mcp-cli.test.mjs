@@ -32,8 +32,9 @@ test("pibo config and tools help print compact discovery", async () => {
 	assert.doesNotMatch(config.stdout, /Usage:/);
 
 	const tools = await execFileAsync("node", [cliPath, "tools", "--help"]);
-	assert.match(tools.stdout, /pibo tools - curated external CLI tools/);
+	assert.match(tools.stdout, /pibo tools - curated CLI tools/);
 	assert.match(tools.stdout, /pibo tools list/);
+	assert.match(tools.stdout, /ralph/);
 	assert.doesNotMatch(tools.stdout, /Usage:/);
 });
 

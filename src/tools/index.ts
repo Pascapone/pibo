@@ -76,10 +76,11 @@ function printShow(name: string): void {
   const status = getCliToolStatus(entry);
   console.log(`${entry.name}`);
   console.log(`  ${entry.description}`);
-  console.log(`  package: ${entry.runtime.packageName}`);
+  console.log(`  kind: ${entry.kind === 'internal' ? 'built-in' : 'external'}`);
+  if (entry.runtime) console.log(`  package: ${entry.runtime.packageName}`);
   console.log(`  status: ${status.installed ? 'installed' : 'available'}`);
-  console.log(`  runtime: ${status.rootDir}`);
-  console.log(`  home: ${status.homeDir}`);
+  if (status.rootDir) console.log(`  runtime: ${status.rootDir}`);
+  if (status.homeDir) console.log(`  home: ${status.homeDir}`);
   if (entry.name === 'browser-use') {
     const wrapperPath = ensureBrowserUseWrapper(status);
     console.log(`  wrapper: ${wrapperPath ?? 'not generated'}`);
@@ -102,10 +103,14 @@ function printShow(name: string): void {
   }
   console.log('');
   console.log('Next:');
-  console.log(`  pibo tools env ${entry.name}`);
+  if (entry.kind !== 'internal') console.log(`  pibo tools env ${entry.name}`);
   console.log(`  pibo tools guide ${entry.name} ${entry.guides[0]?.name ?? ''}`.trimEnd());
   if (entry.name === 'browser-use') {
     console.log('  pibo tools browser-use');
+  }
+  if (entry.name === 'ralph') {
+    console.log('  pibo tools ralph');
+    console.log('  pibo ralph templates');
   }
 }
 
@@ -160,6 +165,13 @@ function printEnv(name: string): void {
   const entry = requireEntry(name);
   const status = getCliToolStatus(entry);
   const desktop = detectDesktopEnv();
+
+  if (entry.kind === 'internal') {
+    console.log(`# ${entry.name} is built into pibo; no extra environment is required.`);
+    console.log(`# Run: pibo ${entry.name} --help`);
+    return;
+  }
+  if (!entry.runtime) throw new Error(`CLI tool "${entry.name}" is missing runtime`);
 
   if (process.platform === 'win32') {
     console.log(`$env:PATH = "${status.executablePath.replace(/\\[^\\]+$/, '')};$env:PATH"`);
@@ -321,8 +333,24 @@ async function printBrowserUseHealth(status: CliToolStatus, json = false): Promi
   }
 }
 
+function printRalphDiscovery(): void {
+  console.log(`pibo tools ralph - Ralph job helpers
+
+Commands:
+  pibo ralph templates --json
+  pibo ralph add --template <id> --owner-scope <scope> --room <room-id> --start --json
+  pibo ralph list --owner-scope <scope> --all --json
+  pibo ralph runs --owner-scope <scope> --job <job-id> --json
+  pibo ralph stop --owner-scope <scope> <job-id>
+  pibo ralph cancel --owner-scope <scope> <job-id>
+
+Next:
+  pibo tools guide ralph ralph
+  pibo ralph templates`);
+}
+
 function printToolsDiscovery(): void {
-  console.log(`pibo tools - curated external CLI tools
+  console.log(`pibo tools - curated CLI tools
 
 Commands:
   list                      List curated tools
@@ -335,6 +363,7 @@ Commands:
   path <name>               Print executable path
   env <name>                Print shell exports
   browser-use               Browser-use auth slots and helper commands
+  ralph                     Ralph job helper commands
 
 Next:
   pibo tools list`);
@@ -418,6 +447,11 @@ export async function runToolsCli(argv = process.argv): Promise<void> {
     .argument('<name>')
     .description('Print shell exports for using the tool directly')
     .action(printEnv);
+
+  program
+    .command('ralph')
+    .description('Ralph job helper commands')
+    .action(printRalphDiscovery);
 
   const browserUse = program
     .command('browser-use')

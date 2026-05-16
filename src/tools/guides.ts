@@ -4,6 +4,105 @@ export interface ToolGuide {
   content: string;
 }
 
+export const RALPH_GUIDE: ToolGuide = {
+  name: 'ralph',
+  description: 'Create, inspect, and control Pibo Ralph jobs from the CLI.',
+  content: `---
+name: ralph
+description: Creates and controls continuous Pibo agent jobs for implementation loops, bug fixing, validation, and PRD/story execution.
+allowed-tools: Bash(pibo:*), Bash(npm:*)
+---
+
+# Ralph CLI Tool
+
+Ralph runs repeatable Pibo agent jobs. Use it when the user wants an implementation loop, PRD/story execution, bug fixing, validation, or a background job that can be started, stopped, inspected, and resumed.
+
+## Required Context
+
+Most commands need an owner scope. In this runtime, prefer the current session context values:
+
+- owner scope: \`user:<current-user-id>\`
+- room target: \`--room <current-room-id>\`
+- personal target: \`--personal --principal-id <principal-id>\`
+
+Inside the Pibo source repo, use \`npm run --silent dev -- ralph ...\` for uninstalled local changes. For the installed CLI, use \`pibo ralph ...\`.
+
+## Discover Templates
+
+\`\`\`bash
+pibo ralph templates
+pibo ralph templates --json
+pibo tools guide ralph ralph
+\`\`\`
+
+Good defaults:
+
+- \`prd-single-story-standard\`: one failing PRD story per run; promise-complete stop policy.
+- \`prd-batch-stories\`: multiple PRD stories in priority order; commit after each story.
+- \`single-run-objective\`: one focused non-PRD objective; stops after one successful session.
+
+## Create Jobs
+
+Create stopped, inspect, then start:
+
+\`\`\`bash
+pibo ralph add \\
+  --owner-scope "user:<user-id>" \\
+  --room "<room-id>" \\
+  --template prd-single-story-standard \\
+  --name "Implement story X" \\
+  --prompt "Implement exactly one failing PRD story, test it, and commit." \\
+  --json
+
+pibo ralph start <job-id>
+\`\`\`
+
+Create and start immediately:
+
+\`\`\`bash
+pibo ralph add \\
+  --owner-scope "user:<user-id>" \\
+  --room "<room-id>" \\
+  --template single-run-objective \\
+  --name "Fix bug Y" \\
+  --prompt "Reproduce and fix bug Y, then run focused tests." \\
+  --start \\
+  --json
+\`\`\`
+
+Explicit options override template fields.
+
+## Inspect and Debug
+
+\`\`\`bash
+pibo ralph status --json
+pibo ralph list --owner-scope "user:<user-id>" --all --json
+pibo ralph runs --owner-scope "user:<user-id>" --job <job-id> --json
+pibo ralph policy show --owner-scope "user:<user-id>" <job-id> --json
+\`\`\`
+
+Use \`runs --json\` to debug failures, session ids, completion state, and recent activity. Prefer bounded JSON output when another agent will parse it.
+
+## Control Jobs
+
+\`\`\`bash
+pibo ralph stop --owner-scope "user:<user-id>" <job-id>      # finish current session, then stop
+pibo ralph cancel --owner-scope "user:<user-id>" <job-id>    # abort current session and stop
+pibo ralph edit --owner-scope "user:<user-id>" <job-id> --prompt "Updated objective" --json
+pibo ralph remove --owner-scope "user:<user-id>" <job-id>
+\`\`\`
+
+Prefer \`stop\` for normal shutdown and \`cancel\` only when the active run is stuck or unsafe.
+
+## Safety
+
+1. Do not start many Ralph jobs unless the user asked for parallel work.
+2. Use templates first; avoid ad-hoc long prompts when a preset fits.
+3. Inspect with \`list --json\` and \`runs --json\` before editing or canceling an unknown job.
+4. If working in the source repo before install, use \`npm run --silent dev -- ralph ...\`.
+`,
+};
+
 export const BROWSER_USE_GUIDE: ToolGuide = {
   name: 'browser-use',
   description: 'Local browser automation with the browser-use CLI.',
