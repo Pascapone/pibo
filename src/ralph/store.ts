@@ -185,7 +185,7 @@ export class PiboRalphStore {
 	}
 	completeRun(input: { jobId: string; runId: string; status: PiboRalphRunStatus; piboSessionId?: string; error?: string; reason?: string; stopAfterRun?: boolean; stopEvaluation?: PiboRalphStopEvaluationSummary; conditionStates?: Record<string, PiboJsonObject> }, now = new Date()): void {
 		const timestamp = nowIso(now); const job = this.getJob(input.jobId); if (!job) return;
-		const completedIterations = (job.state.completedIterations ?? 0) + (input.status === 'ok' ? 1 : 0);
+			const completedIterations = (job.state.completedIterations ?? 0) + 1;
 		const reachedMaxIterations = job.maxIterations !== undefined && completedIterations >= job.maxIterations;
 		const shouldDisable = reachedMaxIterations || input.stopAfterRun === true || input.stopEvaluation?.finalAction === 'stop-after-run' || input.stopEvaluation?.finalAction === 'cancel-current-run';
 		const state: PiboRalphJobState = { ...job.state, runningAt: undefined, completedIterations, lastRunAt: timestamp, lastRunId: input.runId, lastStatus: input.status === 'error' ? 'error' : input.status === 'cancelled' ? 'cancelled' : 'ok', lastError: input.error, lastPiboSessionId: input.piboSessionId ?? job.state.lastPiboSessionId, consecutiveErrors: input.status === 'error' ? (job.state.consecutiveErrors ?? 0) + 1 : 0, conditionStates: input.conditionStates ?? job.state.conditionStates, lastStopEvaluation: input.stopEvaluation ?? job.state.lastStopEvaluation };

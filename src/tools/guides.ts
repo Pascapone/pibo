@@ -39,7 +39,7 @@ Good defaults:
 
 - \`prd-single-story-standard\`: one failing PRD story per run; promise-complete stop policy.
 - \`prd-batch-stories\`: multiple PRD stories in priority order; commit after each story.
-- \`single-run-objective\`: one focused non-PRD objective; stops after one successful session.
+- \`single-run-objective\`: one focused non-PRD objective; stops after one completed run attempt.
 
 ## Create Jobs
 

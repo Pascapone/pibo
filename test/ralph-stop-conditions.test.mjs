@@ -46,6 +46,38 @@ test("Ralph stop evaluator composes any, all, and stateful custom conditions", a
 	assert.equal(all.evaluation.finalAction, "continue");
 });
 
+test("Ralph max-iterations counts completed run attempts regardless of outcome", async () => {
+	const store = new PiboRalphStore({ path: ":memory:" });
+	try {
+		const job = store.createJob({ ownerScope: "user:a", target: { kind: "personal", principalId: "user:a" }, profile: "codex", prompt: "work", enabled: true, maxIterations: 1 });
+		const reserved = store.reserveRun("user:a", job.id);
+		assert.ok(reserved);
+
+		store.completeRun({ jobId: job.id, runId: reserved.run.id, status: "error", error: "failed" });
+
+		const saved = store.getJob(job.id);
+		assert.equal(saved.enabled, false);
+		assert.equal(saved.state.completedIterations, 1);
+		assert.equal(saved.state.lastStatus, "error");
+	} finally { store.close(); }
+});
+
+test("Ralph max-iterations stop condition counts failed after-run outcomes", async () => {
+	const job = { id: "ralph_1", ownerScope: "user:a", name: "job", enabled: true, target: { kind: "personal", principalId: "user:a" }, profile: "codex", prompt: "work", maxIterations: 1, state: { completedIterations: 0 }, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+	const facts = { list: () => [], count: () => 0 };
+	const result = await evaluateRalphStopPolicy({
+		job,
+		phase: "after-run",
+		definitions: createBuiltInRalphStopConditions(),
+		facts,
+		outcome: { status: "error", error: "failed" },
+	});
+
+	assert.equal(result.evaluation.finalAction, "stop-after-run");
+	assert.equal(result.evaluation.reason, "max-iterations");
+	assert.deepEqual(result.evaluation.decisions.find((decision) => decision.id === "max-iterations").details, { maxIterations: 1, completedIterations: 1 });
+});
+
 test("Ralph service preserves promise-complete and max-iteration stop behavior through conditions", async () => {
 	const dir = await mkdtemp(join(tmpdir(), "pibo-ralph-stop-"));
 	const store = new PiboRalphStore({ path: ":memory:" });

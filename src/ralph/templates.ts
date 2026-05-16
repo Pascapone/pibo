@@ -175,7 +175,7 @@ Otherwise report the stories completed and the next remaining failing story.`,
 	{
 		id: 'single-run-objective',
 		name: 'Single-run objective',
-		description: 'Non-PRD template for one focused objective with explicit done criteria. Stops after one successful run by max-iterations.',
+		description: 'Non-PRD template for one focused objective with explicit done criteria. Stops after one completed run attempt by max-iterations.',
 		category: 'general',
 		job: {
 			name: 'Ralph single-run objective',

@@ -19,7 +19,7 @@ Pibo MUST let Ralph jobs stop through one or more plugin-registered stop conditi
 
 `PiboRalphService` currently builds the Ralph prompt, sends one service message into a routed session, waits for the correlated run to finish, checks the final answer for `<promise>COMPLETE</promise>`, and passes `stopAfterRun` into `PiboRalphStore.completeRun()`.
 
-`PiboRalphStore` owns durable jobs and runs. It stores `maxIterations`, counts successful `completedIterations`, records `consecutiveErrors`, and disables a job when max iterations or `stopAfterRun` applies. Manual stop and cancel are direct service/store actions.
+`PiboRalphStore` owns durable jobs and runs. It stores `maxIterations`, counts completed run attempts in `completedIterations`, records `consecutiveErrors`, and disables a job when max iterations or `stopAfterRun` applies. Manual stop and cancel are direct service/store actions.
 
 `PiboPluginRegistry` already lets plugins register tools, subagents, skills, context files, profiles, gateway actions, channels, auth services, web apps, and product event listeners. It does not yet expose Ralph stop-condition registration.
 
@@ -116,19 +116,19 @@ Existing jobs behave the same after migration. The built-in policy is implicit w
 
 #### Acceptance
 
-- A job with `maxIterations: 1` still stops after one successful run.
+- A job with `maxIterations: 1` stops after one completed run attempt regardless of outcome.
 - A final answer containing `<promise>COMPLETE</promise>` still stops the job and records reason `promise-complete`.
 - Manual stop still disables the job and lets an active run finish.
 - Cancel still disables the job and aborts the active session when possible.
-- Failed runs still do not increment successful completed iterations.
+- Failed and cancelled runs increment the completed run-attempt counter used by `maxIterations`.
 - API and CLI responses expose the effective default policy or clearly state that the policy is inherited.
 
-#### Scenario: Legacy max iterations
+#### Scenario: Max iterations fallback
 
 - GIVEN an existing job has `maxIterations: 1` and no stored stop policy
-- WHEN one Ralph run completes successfully without a promise-complete token
+- WHEN one Ralph run completes with `ok`, `error`, or `cancelled` without a promise-complete token
 - THEN the job is disabled
-- AND the run outcome is equivalent to current max-iteration behavior.
+- AND the run outcome is equivalent to max-iteration fallback behavior.
 
 ### Requirement: Ralph jobs persist a configurable stop policy
 

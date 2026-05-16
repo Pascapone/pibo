@@ -162,11 +162,11 @@ A Ralph run is visible as normal Chat Web session activity while still preservin
 
 ### Requirement: Completion controls stop continuous work deterministically
 
-The system MUST stop a Ralph job after the current run when requested, when the maximum successful iteration count is reached, or when the final answer contains the exact promise-complete token.
+The system MUST stop a Ralph job after the current run when requested, when the maximum completed run-attempt count is reached, or when the final answer contains the exact promise-complete token.
 
 #### Current
 
-The service prompt tells the agent that returning `<promise>COMPLETE</promise>` stops Ralph. `completeRun()` increments `completedIterations` for successful runs, disables the job when `maxIterations` is reached, and disables the job when `stopAfterRun` is true. `requestStop()` disables the job and records `stopRequestedAt` without aborting the current session.
+The service prompt tells the agent that returning `<promise>COMPLETE</promise>` stops Ralph. `completeRun()` increments `completedIterations` for every completed run attempt, including `ok`, `error`, and `cancelled`, disables the job when `maxIterations` is reached, and disables the job when `stopAfterRun` is true. `requestStop()` disables the job and records `stopRequestedAt` without aborting the current session.
 
 #### Target
 
@@ -176,8 +176,8 @@ Users and agents can end a Ralph loop without creating another run.
 
 - Stop disables the job and lets an already running session finish.
 - A successful run containing `<promise>COMPLETE</promise>` disables the job and records reason `promise-complete`.
-- A job with `maxIterations: 1` stops after one successful run.
-- Failed runs do not increment successful completed iterations.
+- A job with `maxIterations: 1` stops after one completed run attempt regardless of outcome.
+- Failed and cancelled runs increment the completed run-attempt counter used by `maxIterations`.
 
 #### Scenario: Agent promises completion
 

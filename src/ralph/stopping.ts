@@ -28,13 +28,13 @@ export function createBuiltInRalphStopConditions(): PiboRalphStopConditionDefini
 		{
 			type: MAX_ITERATIONS_STOP_CONDITION,
 			name: 'Max iterations',
-			description: 'Stops a Ralph job after its configured number of successful runs.',
+			description: 'Stops a Ralph job after its configured number of completed run attempts, regardless of outcome.',
 			phases: ['before-run', 'after-run'],
 			evaluate(context) {
 				const maxIterations = context.job.maxIterations;
 				if (maxIterations === undefined) return { action: 'continue' };
 				const current = context.job.state.completedIterations ?? 0;
-				const completed = context.phase === 'after-run' && context.outcome?.status === 'ok' ? current + 1 : current;
+				const completed = context.phase === 'after-run' && context.outcome ? current + 1 : current;
 				if (completed >= maxIterations) return { action: 'stop-after-run', reason: 'max-iterations', details: { maxIterations, completedIterations: completed } };
 				return { action: 'continue', details: { maxIterations, completedIterations: completed } };
 			},
