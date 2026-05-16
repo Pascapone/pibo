@@ -189,8 +189,20 @@
         "Typecheck passes"
       ],
       "priority": 7,
-      "passes": false,
-      "notes": "Incident-specific fixture only. Reusable fixture builders and broad validation live in PRD 05."
+      "passes": true,
+      "notes": "Completed in stuck tool-call fixture batch on 2026-05-16. Adds an incident-specific metadata-only fixture for downstream CLI/stale validation without network access.",
+      "pass": true,
+      "status": "complete",
+      "validation": [
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run typecheck'",
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run build >/tmp/pibo-stuck-fixture-build.log 2>&1 && node --test test/telemetry-stuck-tool-call-fixture.test.mjs test/telemetry-store.test.mjs' (12 passing tests)",
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm test' (423 passing tests)"
+      ],
+      "implementationNotes": [
+        "Added test/telemetry-stuck-tool-call-fixture.mjs with seedStuckToolCallTelemetryFixture(), which creates a running incident-retention turn with open provider_stream and tool_args phases, a streaming provider request, provider event metadata rows/counters, and a partial tool-call row with no execution timestamps.",
+        "Added test/telemetry-stuck-tool-call-fixture.test.mjs to prove the fixture is inspectable through session, turn, provider, provider events, tool-call, and stale store APIs.",
+        "The fixture stores ids, counters, byte counts, safe fields, timestamps, and summaries only; it does not store full provider payloads, transcripts, stdout/stderr, normalized event payload dumps, or full tool arguments."
+      ]
     }
   ]
 }

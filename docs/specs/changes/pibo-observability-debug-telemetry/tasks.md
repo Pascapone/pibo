@@ -25,7 +25,7 @@
 - [x] 3.5 Capture parse error and unknown-event counters.
 - [x] 3.6 Capture tool-call argument progress metadata, including deltas as counters and timestamps.
 - [x] 3.7 Capture tool execution start/update/finish summaries.
-- [ ] 3.8 Add tests for partial tool-call stream, malformed SSE event, unknown event type, and interleaved tool calls where feasible.
+- [x] 3.8 Add tests for partial tool-call stream, malformed SSE event, unknown event type, and interleaved tool calls where feasible.
 
 ## 4. Signals and Staleness Hints
 
