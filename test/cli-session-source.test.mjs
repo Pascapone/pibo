@@ -3,7 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { buildCompactTerminalRows } from "../dist/session-ui/index.js";
-import { CliSourceError, createDefaultFakeCliSessionSource } from "../dist/cli-session/index.js";
+import { CliSourceError, createDefaultFakeCliSessionSource, LocalCliSessionSource, redactCliSecretText } from "../dist/cli-session/index.js";
+import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
 
 const fixedNow = "2026-05-16T12:00:00.000Z";
 
@@ -93,6 +94,86 @@ test("fake CLI session source creates sessions and applies existing agents only"
 		() => source.setSessionAgent(created.id, "missing-agent"),
 		(error) => error instanceof CliSourceError && error.code === "agent_not_found",
 	);
+});
+
+test("local CLI session source lists existing sessions, derived rooms, agents, and redacted status", async () => {
+	const store = new InMemoryPiboSessionStore();
+	store.create({
+		id: "ps_cli_local_a",
+		piSessionId: "pi_cli_local_a",
+		channel: "chat-web",
+		kind: "chat",
+		profile: "pibo-agent",
+		ownerScope: "user:one",
+		workspace: "/workspace/project-a",
+		title: "Local A",
+		metadata: { chatRoomId: "room_one", chatRoomName: "Main Room", status: "idle" },
+		activeModel: { provider: "openai", id: "gpt-test" },
+	});
+	store.create({
+		id: "ps_cli_local_b",
+		piSessionId: "pi_cli_local_b",
+		channel: "chat-web",
+		kind: "chat",
+		profile: "codex-compat-openai-web",
+		ownerScope: "user:two",
+		title: "Hidden for owner filter",
+		metadata: { chatRoomId: "room_two", status: "running" },
+	});
+	const source = new LocalCliSessionSource({
+		sessionStore: store,
+		ownerScope: "user:one",
+		now: () => fixedNow,
+		statusMessage: "OPENAI_API_KEY=sk-testsecret token:abcdef123456 password=hunter2",
+	});
+
+	const rooms = await source.listRooms();
+	assert.deepEqual(rooms, [{ id: "room_one", title: "Main Room", description: "Derived from local session metadata" }]);
+
+	const sessions = await source.listSessions({ roomId: "room_one" });
+	assert.equal(sessions.length, 1);
+	assert.equal(sessions[0].id, "ps_cli_local_a");
+	assert.equal(sessions[0].status, "idle");
+	assert.deepEqual(sessions[0].model, { provider: "openai", id: "gpt-test" });
+	assert.equal(sessions[0].workspace, "/workspace/project-a");
+
+	const agents = await source.listAgents();
+	assert.ok(agents.some((agent) => agent.id === "codex-compat-openai-web"));
+
+	const status = await source.getStatus({ sessionId: "ps_cli_local_a" });
+	assert.equal(status.source, "local/direct");
+	assert.equal(status.mode, "local");
+	assert.equal(status.rooms, "supported");
+	assert.equal(status.sessions, "supported");
+	assert.equal(status.activeRoomId, "room_one");
+	assert.equal(status.activeAgentId, "pibo-agent");
+	assert.equal(status.updatedAt, fixedNow);
+	assert.doesNotMatch(status.message ?? "", /sk-testsecret|abcdef123456|hunter2/);
+	assert.match(status.message ?? "", /\[redacted\]/);
+});
+
+test("local CLI session source reports clear unsupported states and closes cleanly", async () => {
+	const store = new InMemoryPiboSessionStore();
+	const source = new LocalCliSessionSource({ sessionStore: store, now: () => fixedNow });
+	assert.deepEqual(await source.listRooms(), []);
+	assert.deepEqual(await source.listSessions(), []);
+	const status = await source.getStatus();
+	assert.equal(status.rooms, "unknown");
+	assert.equal(status.message, "Local CLI source ready; discovered 0 sessions.");
+
+	await assert.rejects(() => source.createSession({ title: "Later" }), (error) => error instanceof CliSourceError && error.code === "unsupported");
+	await assert.rejects(() => source.openSession("missing"), (error) => error instanceof CliSourceError && error.code === "unsupported");
+	await assert.rejects(() => source.sendMessage("missing", "hello"), (error) => error instanceof CliSourceError && error.code === "unsupported");
+	await assert.rejects(() => source.setSessionAgent("missing", "pibo-agent"), (error) => error instanceof CliSourceError && error.code === "unsupported");
+
+	source.close();
+	await assert.rejects(() => source.listSessions(), (error) => error instanceof CliSourceError && error.code === "source_closed");
+});
+
+test("CLI status redaction removes common secret-shaped values", () => {
+	const redacted = redactCliSecretText("api-key:sk-secretvalue token=ghp_abcdefghijklmnopqrstuvwxyz password:supersecret");
+	assert.doesNotMatch(redacted, /sk-secretvalue|ghp_abcdefghijklmnopqrstuvwxyz|supersecret/);
+	assert.match(redacted, /\[redacted\]/);
 });
 
 test("CLI session source modules avoid renderer dependencies", () => {
