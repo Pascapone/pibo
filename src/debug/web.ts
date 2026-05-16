@@ -385,6 +385,12 @@ async function runWatch(options: WebOptions): Promise<void> {
 		printWatchHelp();
 		return;
 	}
+	if (options.act || options.manual) {
+		throw new Error("Action flags are only supported by scenarios. Next: pibo debug web scenario new-session --act");
+	}
+	if (options.positionals.length) {
+		throw new Error(`Unexpected pibo debug web watch argument "${options.positionals[0]}". Run pibo debug web watch --help.`);
+	}
 	const scope = resolveScope(options);
 	const durationMs = parseDuration(options.duration);
 	const { client, target } = await connectTarget(options);
@@ -406,6 +412,10 @@ async function runScenario(options: WebOptions): Promise<void> {
 		printScenarioHelp();
 		return;
 	}
+	if (options.positionals.length > 1) {
+		throw new Error(`Unexpected pibo debug web scenario argument "${options.positionals[1]}". Run pibo debug web scenario --help.`);
+	}
+	if (options.act && options.manual) throw new Error("Use either --manual or --act, not both.");
 	if (scenario !== "new-session") throw new Error(`Unknown pibo debug web scenario "${scenario}". Run pibo debug web scenario --help.`);
 	const durationMs = parseDuration(options.duration);
 	const { client, target } = await connectTarget({ ...options, preset: "app" });
@@ -681,10 +691,9 @@ function findNewSessionButton() {
   });
 }
 async function runWatch(options) {
-  const before = captureSnapshot(options);
   const root = document.querySelector(options.scope);
   const events = [];
-  const omitted = { events: 0, nodes: before.omitted.nodes, depth: before.omitted.depth, budget: before.omitted.budget };
+  const omitted = { events: 0, nodes: 0, depth: 0, budget: false };
   const start = performance.now();
   const at = () => Math.max(0, Math.round(performance.now() - start));
   const originalPushState = history.pushState;
@@ -740,6 +749,10 @@ async function runWatch(options) {
   if (observer && root) observer.observe(root, { childList: true, subtree: true, attributes: true, attributeOldValue: true, characterData: true, characterDataOldValue: true, attributeFilter: ['class', 'style', 'hidden', 'aria-selected', 'aria-expanded', 'data-pibo-selected', 'data-pibo-session-id', 'data-pibo-selected-session-id', 'data-pibo-state', 'data-pibo-debug'] });
   document.addEventListener('focusin', onFocusIn, true);
   window.addEventListener('popstate', onPopState, true);
+  const before = captureSnapshot(options);
+  omitted.nodes += before.omitted.nodes;
+  omitted.depth += before.omitted.depth;
+  omitted.budget = omitted.budget || before.omitted.budget;
   if (options.action === 'new-session') {
     try {
       const button = findNewSessionButton();
@@ -772,7 +785,7 @@ async function runWatch(options) {
     title: document.title || '',
     scope: options.scope,
     durationMs: options.durationMs,
-    rootFound: Boolean(root),
+    rootFound: Boolean(before.rootFound || after.rootFound),
     events,
     before,
     after,
@@ -917,8 +930,10 @@ function nodeChanges(before: SnapshotNode, after: SnapshotNode): string[] {
 function inferSnapshotFlickers(removed: SnapshotNode[], added: SnapshotNode[]): string[] {
 	const flickers: string[] = [];
 	for (const oldNode of removed) {
-		const match = added.find((node) => node.name && node.name === oldNode.name || node.text && node.text === oldNode.text);
-		if (match) flickers.push(`remount-like ${oldNode.identity} -> ${match.identity} label=${JSON.stringify(match.name ?? match.text ?? "")}`);
+		const match = bestLogicalMatch(oldNode, added);
+		if (match && match.score >= 55) {
+			flickers.push(`remount-like ${oldNode.identity} -> ${match.node.identity} reason=${match.reason}`);
+		}
 	}
 	return flickers.slice(0, 20);
 }
@@ -942,7 +957,7 @@ function formatSnapshotDiff(diff: ReturnType<typeof diffSnapshots>, before: WebS
 	return lines.join("\n");
 }
 
-function formatWatch(watch: WebWatch, target: BrowserUseCdpTarget | { id: string; url: string; title: string }, label = "watch"): string {
+export function formatWatch(watch: WebWatch, target: BrowserUseCdpTarget | { id: string; url: string; title: string }, label = "watch"): string {
 	const lines = [
 		`# Web Render Watch: ${label}, ${(watch.durationMs / 1000).toFixed(1)}s`,
 		`# target: ${target.id} ${target.url || watch.url}`,
@@ -955,7 +970,14 @@ function formatWatch(watch: WebWatch, target: BrowserUseCdpTarget | { id: string
 	if (watch.action) {
 		lines.push(`# action: ${watch.action.requested} performed=${watch.action.performed}${watch.action.error ? ` error=${watch.action.error}` : ""}`);
 	}
-	if (!watch.events.length) lines.push("no changes");
+	const snapshotDelta = watch.before && watch.after ? diffSnapshots(watch.before, watch.after) : undefined;
+	const hasSnapshotDelta = snapshotDelta ? hasSnapshotDiff(snapshotDelta) : false;
+	if (!watch.events.length && hasSnapshotDelta) {
+		lines.push("no mutation events captured; final snapshot differs:");
+		lines.push(...formatCompactSnapshotDelta(snapshotDelta!));
+	} else if (!watch.events.length) {
+		lines.push("no changes");
+	}
 	for (const event of watch.events) {
 		lines.push(formatWatchEvent(event));
 	}
@@ -981,14 +1003,36 @@ function formatWatchEvent(event: WatchEvent): string {
 	return `${t}ms ${event.source} ${event.kind} ${event.target ?? ""}`;
 }
 
-function inferWatchFlickers(events: readonly WatchEvent[]): string[] {
+function hasSnapshotDiff(diff: ReturnType<typeof diffSnapshots>): boolean {
+	return Boolean(diff.added.length || diff.removed.length || diff.changed.length);
+}
+
+function formatCompactSnapshotDelta(diff: ReturnType<typeof diffSnapshots>, limit = 8): string[] {
+	const lines: string[] = [];
+	for (const node of diff.removed) lines.push(`  - ${node.identity} ${describeNode(node)}`);
+	for (const node of diff.added) lines.push(`  + ${node.identity} ${describeNode(node)}`);
+	for (const item of diff.changed) lines.push(`  ~ ${item.after.identity} ${item.changes.join("; ")}`);
+	if (lines.length > limit) return [...lines.slice(0, limit), `  … ${lines.length - limit} more snapshot changes`];
+	return lines;
+}
+
+export function inferWatchFlickers(events: readonly WatchEvent[]): string[] {
 	const flickers: string[] = [];
 	const removals = events.filter((event) => event.kind === "removed" && event.node);
 	const additions = events.filter((event) => event.kind === "added" && event.node);
+	for (const added of additions) {
+		const addedNode = added.node!;
+		const removal = removals.find((removed) => removed.t >= added.t && removed.t - added.t <= 500 && removed.node && sameStableNode(addedNode, removed.node));
+		if (removal?.node) flickers.push(`transient node within ${removal.t - added.t}ms: ${addedNode.identity} added then removed`);
+	}
 	for (const removed of removals) {
 		const removedNode = removed.node!;
-		const match = additions.find((added) => Math.abs(added.t - removed.t) <= 500 && added.node && sameLogicalNode(removedNode, added.node));
-		if (match?.node) flickers.push(`remove/add within ${Math.abs(match.t - removed.t)}ms: ${removedNode.identity} -> ${match.node.identity}`);
+		const candidates = additions.filter((added) => added.t >= removed.t && added.t - removed.t <= 500 && added.node);
+		const match = bestLogicalMatch(removedNode, candidates.map((candidate) => candidate.node!));
+		if (match && match.score >= 55) {
+			const event = candidates.find((candidate) => candidate.node === match.node);
+			if (event) flickers.push(`remove/add within ${event.t - removed.t}ms: ${removedNode.identity} -> ${match.node.identity} reason=${match.reason}`);
+		}
 	}
 	const attrRollbacks = new Map<string, WatchEvent[]>();
 	for (const event of events) {
@@ -1007,12 +1051,67 @@ function inferWatchFlickers(events: readonly WatchEvent[]): string[] {
 	return [...new Set(flickers)].slice(0, 20);
 }
 
-function sameLogicalNode(left: SnapshotNode, right: SnapshotNode): boolean {
+function sameStableNode(left: SnapshotNode, right: SnapshotNode): boolean {
 	if (left.identity === right.identity) return true;
-	if (left.attributes["data-pibo-session-id"] && left.attributes["data-pibo-session-id"] === right.attributes["data-pibo-session-id"]) return true;
-	if (left.name && left.name === right.name) return true;
-	if (left.text && left.text === right.text) return true;
-	return false;
+	const leftSession = attrText(left, "data-pibo-session-id");
+	const rightSession = attrText(right, "data-pibo-session-id");
+	return Boolean(leftSession && leftSession === rightSession);
+}
+
+function bestLogicalMatch(node: SnapshotNode, candidates: readonly SnapshotNode[]): { node: SnapshotNode; score: number; reason: string } | undefined {
+	let best: { node: SnapshotNode; score: number; reason: string } | undefined;
+	for (const candidate of candidates) {
+		const match = logicalMatchScore(node, candidate);
+		if (!best || match.score > best.score) best = { node: candidate, ...match };
+	}
+	return best && best.score > 0 ? best : undefined;
+}
+
+function logicalMatchScore(left: SnapshotNode, right: SnapshotNode): { score: number; reason: string } {
+	if (left.identity === right.identity) return { score: 100, reason: "same-identity" };
+	const leftSession = attrText(left, "data-pibo-session-id");
+	const rightSession = attrText(right, "data-pibo-session-id");
+	if (leftSession && rightSession && leftSession === rightSession) return { score: 90, reason: "same-session-id" };
+
+	const reasons: string[] = [];
+	let score = 0;
+	const leftDebug = attrText(left, "data-pibo-debug");
+	const rightDebug = attrText(right, "data-pibo-debug");
+	if (leftDebug || rightDebug) {
+		if (leftDebug !== rightDebug) return { score: 0, reason: "different-debug-anchor" };
+		score += 45;
+		reasons.push("same-debug-anchor");
+	}
+	if (left.tag === right.tag) {
+		score += 10;
+		reasons.push("same-tag");
+	}
+	if (left.path && left.path === right.path) {
+		score += 25;
+		reasons.push("same-path");
+	}
+	if (left.role && left.role === right.role) {
+		score += 10;
+		reasons.push("same-role");
+	}
+
+	const differentSessionIds = Boolean(leftSession && rightSession && leftSession !== rightSession);
+	if (!differentSessionIds) {
+		if (left.name && left.name === right.name) {
+			score += 15;
+			reasons.push("same-name");
+		}
+		if (left.text && left.text === right.text) {
+			score += 10;
+			reasons.push("same-text");
+		}
+	}
+	return { score, reason: reasons.join("+") || "weak-match" };
+}
+
+function attrText(node: SnapshotNode, key: string): string | undefined {
+	const value = node.attributes[key];
+	return typeof value === "string" && value.length ? value : undefined;
 }
 
 function countEvents(events: readonly WatchEvent[]): { added: number; removed: number; attr: number; text: number; focus: number; route: number } {

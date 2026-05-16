@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
 import { PiboReliabilityStore } from "../dist/reliability/store.js";
+import { formatWatch, inferWatchFlickers } from "../dist/debug/web.js";
 
 const execFileAsyncRaw = promisify(execFile);
 const cliPath = resolve("dist/bin/pibo.js");
@@ -23,6 +24,55 @@ function execFileAsync(file, args, options = {}) {
 		},
 	});
 }
+
+test("pibo debug web watch rejects action flags", async () => {
+	await assert.rejects(
+		execFileAsync("node", [cliPath, "debug", "web", "watch", "--preset", "app", "--act"]),
+		(error) => {
+			assert.match(error.stderr, /Action flags are only supported by scenarios/);
+			assert.match(error.stderr, /pibo debug web scenario new-session --act/);
+			return true;
+		},
+	);
+});
+
+test("web render flicker detection does not match a removal to an earlier add", () => {
+	const opt = makeWatchNode("session-row:opt", { "data-pibo-session-id": "opt" });
+	const real = makeWatchNode("session-row:real", { "data-pibo-session-id": "real" });
+	const flickers = inferWatchFlickers([
+		{ t: 1, source: "dom", kind: "added", target: opt.identity, node: opt },
+		{ t: 61, source: "dom", kind: "removed", target: opt.identity, node: opt },
+		{ t: 122, source: "dom", kind: "added", target: real.identity, node: real },
+	]);
+	const output = flickers.join("\n");
+	assert.match(output, /transient node within 60ms: session-row:opt added then removed/);
+	assert.match(output, /remove\/add within 61ms: session-row:opt -> session-row:real/);
+	assert.doesNotMatch(output, /session-row:opt -> session-row:opt/);
+});
+
+test("web render watch reports final snapshot deltas when no mutation events were captured", () => {
+	const before = makeWatchSnapshot([]);
+	const after = makeWatchSnapshot([makeWatchNode("session-row:ps_new", { "data-pibo-session-id": "ps_new" })]);
+	const output = formatWatch(
+		{
+			kind: "watch",
+			createdAt: "2026-05-16T00:00:00.000Z",
+			url: "file:///fixture.html",
+			title: "Fixture",
+			scope: "#container",
+			durationMs: 1000,
+			rootFound: true,
+			events: [],
+			before,
+			after,
+			omitted: { events: 0, nodes: 0, depth: 0, budget: false },
+		},
+		{ id: "target", url: "file:///fixture.html", title: "Fixture" },
+	);
+	assert.match(output, /no mutation events captured; final snapshot differs/);
+	assert.match(output, /\+ session-row:ps_new/);
+	assert.doesNotMatch(output, /no changes/);
+});
 
 test("pibo debug help stays progressive", async () => {
 	const root = await execFileAsync("node", [cliPath, "debug", "--help"]);
@@ -302,6 +352,34 @@ async function makeEmptyCwd() {
 	return cwd;
 }
 
+
+function makeWatchNode(identity, attributes = {}) {
+	return {
+		ref: "@fixture",
+		identity,
+		identityKind: "pibo-session",
+		depth: 0,
+		tag: "div",
+		name: identity.replace(/^session-row:/, ""),
+		attributes: { "data-pibo-debug": "session-row", ...attributes },
+		classSummary: "session-row",
+		path: "html>body>div:nth-of-type(1)",
+	};
+}
+
+function makeWatchSnapshot(nodes) {
+	return {
+		kind: "snapshot",
+		createdAt: "2026-05-16T00:00:00.000Z",
+		url: "file:///fixture.html",
+		title: "Fixture",
+		scope: "#container",
+		rootFound: true,
+		root: nodes[0],
+		nodes,
+		omitted: { nodes: 0, depth: 0, budget: false },
+	};
+}
 
 function insertSession(db, input) {
 	db.prepare(`
