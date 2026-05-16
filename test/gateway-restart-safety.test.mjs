@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createServer } from 'node:http';
+import { createWebHostChannel } from '../dist/web/channel.js';
 
 const idle = { reachable: true, mode: 'prod', runtimeStatuses: [], activeRuns: [] };
 
@@ -69,6 +70,34 @@ async function waitUntilReachable(port) {
   }
   throw new Error(`fake gateway on ${port} did not become reachable`);
 }
+
+describe('gateway status endpoint', () => {
+  it('uses direct run registry summaries instead of scanning stored session snapshots', async () => {
+    const port = await freePort();
+    const channel = createWebHostChannel({ port, gatewayMode: 'prod', announce: false });
+    await channel.start({
+      listSessionRuntimeStatuses: () => [],
+      listRuns: () => [
+        { runId: 'run_active', kind: 'tool', ownerPiboSessionId: 'ps_1', status: 'running', completionPolicy: 'tracked', consumed: false, toolName: 'bash', createdAt: '2026-05-16T00:00:00.000Z', updatedAt: '2026-05-16T00:00:00.000Z' },
+        { runId: 'run_done', kind: 'tool', ownerPiboSessionId: 'ps_1', status: 'completed', completionPolicy: 'tracked', consumed: false, toolName: 'bash', createdAt: '2026-05-16T00:00:00.000Z', updatedAt: '2026-05-16T00:00:00.000Z', completedAt: '2026-05-16T00:00:01.000Z' },
+      ],
+      listSessions: () => { throw new Error('status endpoint should not scan all stored sessions'); },
+      snapshotSignalTree: () => { throw new Error('status endpoint should not snapshot session trees'); },
+      getGatewayActions: () => [],
+      getWebApps: () => [],
+    });
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/gateway/status`);
+      assert.equal(response.status, 200);
+      const body = await response.json();
+      assert.equal(body.mode, 'prod');
+      assert.deepEqual(body.activeRuns.map((run) => run.runId), ['run_active']);
+    } finally {
+      await channel.stop();
+    }
+  });
+});
+
 
 describe('gateway start command', () => {
   it('starts a dev gateway that is not reachable yet', async () => {

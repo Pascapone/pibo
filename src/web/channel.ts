@@ -70,12 +70,19 @@ function isActiveRunStatus(status: unknown): boolean {
 	return typeof status === "string" && ["queued", "starting", "running", "streaming", "waiting", "blocked", "retrying", "compacting", "pausing"].includes(status);
 }
 
+function isActiveRunSnapshotStatus(status: unknown): boolean {
+	return typeof status === "string" && (status === "queued" || status === "running");
+}
+
 function gatewayMode(options: WebHostChannelOptions): "dev" | "prod" | "fallback" | "unknown" {
 	if (process.env.PIBO_FALLBACK_MODE === "1") return "fallback";
 	return options.gatewayMode ?? "unknown";
 }
 
 function collectActiveRuns(channelContext: PiboChannelContext): unknown[] {
+	const directRuns = channelContext.listRuns?.({ includeConsumed: true, includeDetached: true });
+	if (directRuns) return directRuns.filter((run) => isActiveRunSnapshotStatus(run.status));
+
 	const sessions = channelContext.listSessions?.() ?? [];
 	const runs: unknown[] = [];
 	const seen = new Set<string>();

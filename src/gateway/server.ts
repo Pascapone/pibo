@@ -399,6 +399,7 @@ export class PiboGatewayServer {
 			listSessions: () => this.requireSessionStore().list?.() ?? [],
 			getSessionRuntimeStatus: (piboSessionId) => this.requireRouter().getSessionRuntimeStatus(piboSessionId),
 			listSessionRuntimeStatuses: () => this.requireRouter().listSessionRuntimeStatuses(),
+			listRuns: (options) => this.requireRouter().listRuns(options),
 			snapshotSignalSession: (piboSessionId) => this.requireRouter().snapshotSignalSession(piboSessionId),
 			snapshotSignalTree: (rootPiboSessionId) => this.requireRouter().snapshotSignalTree(rootPiboSessionId),
 			subscribeSignalTree: (rootPiboSessionId, listener) => this.requireRouter().subscribeSignalTree(rootPiboSessionId, listener),

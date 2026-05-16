@@ -20,7 +20,7 @@ import type {
 	PiboSessionStatus,
 } from "./events.js";
 import { createSubagentToolName, type PiboSubagentRunner } from "../subagents/tool.js";
-import { PiboRunRegistry, type PiboRunNotification, type PiboRunRegistryEvent } from "../runs/registry.js";
+import { PiboRunRegistry, type PiboRunNotification, type PiboRunRegistryEvent, type PiboRunSnapshot } from "../runs/registry.js";
 import { createPiboSignalRegistry } from "../signals/registry.js";
 import type { PiboSignalPatch, PiboSignalRegistry, PiboSignalSnapshot } from "../signals/types.js";
 import type { PiboRunToolController } from "../runs/tools.js";
@@ -299,6 +299,10 @@ export class PiboSessionRouter {
 
 	listSessionRuntimeStatuses(): PiboSessionStatus[] {
 		return [...this.sessions.values()].map((session) => session.getStatus());
+	}
+
+	listRuns(options: { includeConsumed?: boolean; includeDetached?: boolean } = {}): PiboRunSnapshot[] {
+		return this.runRegistry.listAll(options);
 	}
 
 	getSignalRegistry(): PiboSignalRegistry {
