@@ -67,8 +67,15 @@
         "Typecheck passes"
       ],
       "priority": 4,
-      "passes": false,
-      "notes": "Builds on PRD 03 incident fixture where available."
+      "passes": true,
+      "notes": "Builds on PRD 03 incident fixture where available.",
+      "status": "complete",
+      "pass": true,
+      "validation": [
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run typecheck'",
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run build >/tmp/pibo-telemetry-validation-build.log 2>&1 && node --test test/telemetry-validation-fixtures.test.mjs test/telemetry-stuck-tool-call-fixture.test.mjs test/debug-cli.test.mjs' (22 passing tests)",
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run typecheck && npm test' (437 passing tests)"
+      ]
     },
     {
       "id": "US-005",
@@ -82,8 +89,15 @@
         "Typecheck passes"
       ],
       "priority": 5,
-      "passes": false,
-      "notes": "Do not add raw preview fixtures unless preview mode is explicitly enabled."
+      "passes": true,
+      "notes": "Do not add raw preview fixtures unless preview mode is explicitly enabled.",
+      "status": "complete",
+      "pass": true,
+      "validation": [
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run typecheck'",
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run build >/tmp/pibo-telemetry-validation-build.log 2>&1 && node --test test/telemetry-validation-fixtures.test.mjs test/telemetry-stuck-tool-call-fixture.test.mjs test/debug-cli.test.mjs' (22 passing tests)",
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run typecheck && npm test' (437 passing tests)"
+      ]
     },
     {
       "id": "US-006",
@@ -98,8 +112,15 @@
         "Typecheck passes"
       ],
       "priority": 6,
-      "passes": false,
-      "notes": "Depends on PRD 04 core commands and US-004 fixtures."
+      "passes": true,
+      "notes": "Depends on PRD 04 core commands and US-004 fixtures.",
+      "status": "complete",
+      "pass": true,
+      "validation": [
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run typecheck'",
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run build >/tmp/pibo-telemetry-validation-build.log 2>&1 && node --test test/telemetry-validation-fixtures.test.mjs test/telemetry-stuck-tool-call-fixture.test.mjs test/debug-cli.test.mjs' (22 passing tests)",
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run typecheck && npm test' (437 passing tests)"
+      ]
     },
     {
       "id": "US-007",
@@ -113,8 +134,15 @@
         "Typecheck passes"
       ],
       "priority": 7,
-      "passes": false,
-      "notes": "Depends on PRD 04 CLI commands."
+      "passes": true,
+      "notes": "Depends on PRD 04 CLI commands.",
+      "status": "complete",
+      "pass": true,
+      "validation": [
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run typecheck'",
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run build >/tmp/pibo-telemetry-validation-build.log 2>&1 && node --test test/telemetry-validation-fixtures.test.mjs test/telemetry-stuck-tool-call-fixture.test.mjs test/debug-cli.test.mjs' (22 passing tests)",
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run typecheck && npm test' (437 passing tests)"
+      ]
     },
     {
       "id": "US-008",
@@ -128,8 +156,15 @@
         "Typecheck passes"
       ],
       "priority": 8,
-      "passes": false,
-      "notes": "Depends on PRD 02 store contract and optional PRD 04 preview command if present."
+      "passes": true,
+      "notes": "Depends on PRD 02 store contract and optional PRD 04 preview command if present.",
+      "status": "complete",
+      "pass": true,
+      "validation": [
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run typecheck'",
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run build >/tmp/pibo-telemetry-validation-build.log 2>&1 && node --test test/telemetry-validation-fixtures.test.mjs test/telemetry-stuck-tool-call-fixture.test.mjs test/debug-cli.test.mjs' (22 passing tests)",
+        "docker exec pibo-dev-ralph-observability-telemetry bash -lc 'cd /workspace && npm run typecheck && npm test' (437 passing tests)"
+      ]
     },
     {
       "id": "US-009",

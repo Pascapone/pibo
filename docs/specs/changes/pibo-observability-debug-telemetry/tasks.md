@@ -50,13 +50,13 @@
 
 - [x] 6.1 Run `npm run typecheck`.
 - [x] 6.2 Run debug CLI tests.
-- [ ] 6.3 Reproduce a synthetic partial-tool-call telemetry fixture and verify drill-down path:
-  - [ ] `pibo debug telemetry session ps_...`
-  - [ ] `pibo debug telemetry turn <turn-id>`
-  - [ ] `pibo debug telemetry provider <provider-request-id>`
-  - [ ] `pibo debug telemetry tool <tool-call-id>`
-- [ ] 6.4 Verify no default command prints raw provider payloads, full transcripts, normalized event payloads, or full tool arguments.
-- [ ] 6.5 If payload preview commands exist, verify disabled/unavailable behavior by default and truncation/preview metadata when previews are explicitly enabled.
+- [x] 6.3 Reproduce a synthetic partial-tool-call telemetry fixture and verify drill-down path:
+  - [x] `pibo debug telemetry session ps_...`
+  - [x] `pibo debug telemetry turn <turn-id>`
+  - [x] `pibo debug telemetry provider <provider-request-id>`
+  - [x] `pibo debug telemetry tool <tool-call-id>`
+- [x] 6.4 Verify no default command prints raw provider payloads, full transcripts, normalized event payloads, or full tool arguments.
+- [x] 6.5 If payload preview commands exist, verify disabled/unavailable behavior by default and truncation/preview metadata when previews are explicitly enabled.
 
 ## 7. Documentation and Handoff
 
