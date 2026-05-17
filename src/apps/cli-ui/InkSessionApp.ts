@@ -274,7 +274,7 @@ export function InkSessionApp({ source, initialSessionId, skipOwnerPicker = fals
 				error: undefined,
 			}));
 		} catch (error) {
-			setState((current) => ({ ...current, mode: "transcript", picker: undefined, error: boundedLine(formatCliSessionError(error)), message: undefined }));
+			setState((current) => ({ ...current, mode: "transcript", picker: undefined, error: formatCliSessionError(error), message: undefined }));
 		}
 	}, [closeOpenSession, openRoomPicker, openSession, openSessionPickerForRoom, source]);
 
@@ -388,19 +388,19 @@ export type InkSessionAppViewProps = {
 export function InkSessionAppView({ state, maxRows = 20, maxLineChars }: InkSessionAppViewProps): React.ReactElement {
 	const lineLimit = normalizeTerminalLineLimit(maxLineChars);
 	const statusLines = useMemo(() => formatStatusHeaderLines(state, lineLimit), [lineLimit, state]);
-	const commandSummary = useMemo(() => boundedLine(cliCommandHintText(), lineLimit), [lineLimit]);
+	const commandSummary = useMemo(() => cliCommandHintText(), []);
 	return React.createElement(
 		Box,
 		{ flexDirection: "column" },
 		...statusLines.map((line, index) => React.createElement(Text, { color: state.status?.connected === false ? "red" : "cyan", key: `status-${index}` }, line)),
 		React.createElement(Text, { color: "gray" }, commandSummary),
 		state.loading ? React.createElement(Text, { color: "yellow" }, "Loading CLI session…") : null,
-		state.error ? React.createElement(Text, { color: "red" }, boundedLine(`Error: ${state.error}`, lineLimit)) : null,
+		state.error ? React.createElement(Text, { color: "red" }, `Error: ${state.error}`) : null,
 		...(state.message ? renderBoundedTextLines(state.message, "gray", lineLimit, "message") : []),
 		state.picker ? React.createElement(InkSessionPickerView, { picker: state.picker, maxLineChars: lineLimit }) : null,
 		React.createElement(InkTerminalView, { rows: state.rows, maxRows, maxLineChars: lineLimit }),
 		state.slashSuggestions ? React.createElement(InkSlashSuggestionsView, { suggestions: state.slashSuggestions, maxLineChars: lineLimit }) : null,
-		React.createElement(Text, { color: state.mode === "transcript" ? "green" : "yellow" }, boundedLine(`› ${state.input}`, lineLimit)),
+		React.createElement(Text, { color: state.mode === "transcript" ? "green" : "yellow" }, `› ${state.input}`),
 	);
 }
 
@@ -414,7 +414,7 @@ export function InkSlashSuggestionsView({ suggestions, maxLineChars }: { suggest
 	return React.createElement(
 		Box,
 		{ flexDirection: "column" },
-		React.createElement(Text, { color: "yellow" }, boundedLine("slash commands", lineLimit)),
+		React.createElement(Text, { color: "yellow" }, "slash commands"),
 		...suggestions.items.slice(0, 8).map((command, index) => {
 			const disabled = command.support === "deferred" || command.support === "browser-only" || Boolean(command.unsupportedReason);
 			const item: InkSessionPickerItem = {
@@ -425,7 +425,7 @@ export function InkSlashSuggestionsView({ suggestions, maxLineChars }: { suggest
 			};
 			return React.createElement(Text, { key: command.id, color: overlayItemColor(index === suggestions.selectedIndex, disabled) }, formatOverlayItemLine(item, index === suggestions.selectedIndex, lineLimit));
 		}),
-		React.createElement(Text, { color: "gray" }, boundedLine("↑↓ select · enter accept/run · esc close · ctrl-c exit", lineLimit)),
+		React.createElement(Text, { color: "gray" }, "↑↓ select · enter accept/run · esc close · ctrl-c exit"),
 	);
 }
 
@@ -434,17 +434,17 @@ export function InkSessionPickerView({ picker, maxLineChars }: { picker: InkSess
 	const title = compactOverlayTitle(picker.title);
 	if (picker.items.length === 0) {
 		return React.createElement(Box, { flexDirection: "column" },
-			React.createElement(Text, { color: "yellow" }, boundedLine(title, lineLimit)),
-			React.createElement(Text, { color: "gray" }, boundedLine(picker.emptyMessage, lineLimit)),
-			React.createElement(Text, { color: "gray" }, boundedLine("esc back/cancel · ctrl-c exit", lineLimit)),
+			React.createElement(Text, { color: "yellow" }, title),
+			React.createElement(Text, { color: "gray" }, picker.emptyMessage),
+			React.createElement(Text, { color: "gray" }, "esc back/cancel · ctrl-c exit"),
 		);
 	}
 	return React.createElement(
 		Box,
 		{ flexDirection: "column" },
-		React.createElement(Text, { color: "yellow" }, boundedLine(title, lineLimit)),
+		React.createElement(Text, { color: "yellow" }, title),
 		...picker.items.map((item, index) => React.createElement(Text, { key: item.id, color: overlayItemColor(index === picker.selectedIndex, item.disabled === true) }, formatOverlayItemLine(item, index === picker.selectedIndex, lineLimit))),
-		React.createElement(Text, { color: "gray" }, boundedLine("↑↓ select · enter confirm · esc back/cancel · ctrl-c exit", lineLimit)),
+		React.createElement(Text, { color: "gray" }, "↑↓ select · enter confirm · esc back/cancel · ctrl-c exit"),
 	);
 }
 
@@ -621,7 +621,7 @@ export async function handleCliSessionSubmittedInput(
 			await source.sendMessage(sessionId, parsed.text);
 			setState((current) => ({ ...current, message: "Message sent.", error: undefined }));
 		} catch (error) {
-			setState((current) => ({ ...current, error: boundedLine(formatCliSessionError(error)), message: undefined }));
+			setState((current) => ({ ...current, error: formatCliSessionError(error), message: undefined }));
 		}
 		return;
 	}
@@ -1284,12 +1284,12 @@ function compactOverlayTitle(title: string): string {
 		.replace(/^Select /i, "select ");
 }
 
-function formatOverlayItemLine(item: InkSessionPickerItem, selected: boolean, max: number): string {
+function formatOverlayItemLine(item: InkSessionPickerItem, selected: boolean, _max: number): string {
 	const marker = selected ? "❯" : " ";
 	const disabled = item.disabled === true;
 	const availability = disabled ? "× " : "";
 	const secondary = item.description ? ` · ${redactCliSessionStatusText(item.description)}` : "";
-	return boundedLine(`${marker} ${availability}${redactCliSessionStatusText(item.label)}${secondary}`, max);
+	return `${marker} ${availability}${redactCliSessionStatusText(item.label)}${secondary}`;
 }
 
 function overlayItemColor(selected: boolean, disabled: boolean): string {
@@ -1297,12 +1297,8 @@ function overlayItemColor(selected: boolean, disabled: boolean): string {
 	return selected ? "green" : "white";
 }
 
-function abbreviateIdentifier(value: string | undefined, max = 24): string | undefined {
-	if (!value) return undefined;
-	if (value.length <= max) return value;
-	const head = Math.max(6, Math.floor((max - 1) / 2));
-	const tail = Math.max(4, max - head - 1);
-	return `${value.slice(0, head)}…${value.slice(-tail)}`;
+function abbreviateIdentifier(value: string | undefined, _max = 24): string | undefined {
+	return value;
 }
 
 function itemMetadata(...parts: Array<string | undefined | false>): string | undefined {
@@ -1362,8 +1358,8 @@ function agentPickerItem(agent: CliAgentSummary): InkSessionPickerItem {
 	};
 }
 
-function renderBoundedTextLines(value: string, color: string, max: number, keyPrefix: string): React.ReactElement[] {
-	return value.split(/\r?\n/).map((line, index) => React.createElement(Text, { key: `${keyPrefix}-${index}`, color }, boundedLine(line, max)));
+function renderBoundedTextLines(value: string, color: string, _max: number, keyPrefix: string): React.ReactElement[] {
+	return value.split(/\r?\n/).map((line, index) => React.createElement(Text, { key: `${keyPrefix}-${index}`, color }, line));
 }
 
 export function formatStatusHeaderLines(state: InkSessionAppState, max = 220): string[] {
@@ -1374,17 +1370,13 @@ export function formatStatusHeaderLines(state: InkSessionAppState, max = 220): s
 	const model = state.status?.activeModel ? `${state.status.activeModel.provider}/${state.status.activeModel.id}` : "model unknown";
 	const mode = state.mode === "transcript" ? "transcript" : state.mode;
 	const full = `pibo sessions · ${source} · ${mode} · owner ${owner} · session ${session} · agent ${agent} · model ${model}`;
-	if (max >= 96 || full.length <= max) return [boundedLine(full, max)];
+	if (max >= 96 || full.length <= max) return [full];
 	return [
-		boundedLine(`pibo sessions · ${source} · ${mode}`, max),
-		boundedLine(`owner ${owner}`, max),
-		boundedLine(`session ${session}`, max),
-		boundedLine(`agent ${agent} · model ${model}`, max),
+		`pibo sessions · ${source} · ${mode}`,
+		`owner ${owner}`,
+		`session ${session}`,
+		`agent ${agent} · model ${model}`,
 	];
-}
-
-function boundedLine(value: string, max = 220): string {
-	return value.length <= max ? value : `${value.slice(0, Math.max(0, max - 12))}… truncated`;
 }
 
 export function createCliSessionCleanup(closeOpenSession: () => void, closeSource: () => void): () => void {

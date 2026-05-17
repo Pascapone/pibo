@@ -110,9 +110,10 @@ test("compact row previews handle long text, JSON-like values, empty values, and
 	assert.equal(rows[0].expandable, false);
 
 	const longPreviewToken = rows[1].lines[1].tokens[0];
-	assert.equal(longPreviewToken.text.length, 160);
-	assert.ok(longPreviewToken.text.endsWith("…"));
-	assert.match(rowText(rows[1]), /\+1 more lines/);
+	assert.equal(longPreviewToken.text.length, 240);
+	assert.equal(longPreviewToken.text, longLine);
+	assert.doesNotMatch(rowText(rows[1]), /truncated|more lines/);
+	assert.match(rowText(rows[1]), /sixth/);
 
 	assert.match(rowText(rows[2]), /"nested": \{/);
 	assert.deepEqual(renderableTerminalValue(undefined), { kind: "empty" });

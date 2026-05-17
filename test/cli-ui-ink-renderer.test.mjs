@@ -158,7 +158,7 @@ test("Ink renderer renders inline detail sections with bounded redacted values",
 		assert.match(output, new RegExp(`${label}:`));
 	}
 	assert.match(output, /↳ Call failed detail_tool/);
-	assert.match(output, /… truncated|more items/);
+	assert.match(output, /more items|fixture-value-0/);
 	assert.match(output, /token=\[redacted\]/);
 	assert.doesNotMatch(output, /detail-secret-value|sk_fixture_secret/);
 	assert.ok(output.length < 5000, "detail rendering stays bounded");
@@ -280,7 +280,8 @@ test("terminal JSON helper pretty-prints and marks bounded truncation", () => {
 	assert.match(text, /… 45 more items/);
 
 	const charBounded = formatInkJson({ ok: true, value: "x".repeat(500) }, { maxChars: 120 });
-	assert.match(charBounded, /… truncated/);
+	assert.doesNotMatch(charBounded, /truncated/);
+	assert.match(charBounded, new RegExp(`x{${500}}`));
 });
 
 test("Ink renderer source avoids Web-only presentation dependencies", () => {

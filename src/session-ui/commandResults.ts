@@ -105,6 +105,5 @@ function stringField(record: Record<string, unknown>, key: string): string | und
 }
 
 function trimLabel(value: string | undefined): string | undefined {
-	if (!value) return undefined;
-	return value.length <= 64 ? value : `${value.slice(0, 61)}…`;
+	return value;
 }

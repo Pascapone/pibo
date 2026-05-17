@@ -802,7 +802,7 @@ test("empty picker states and recovery errors are actionable and redacted", asyn
 	assert.match(formatted, /Recovery: use \/session/);
 });
 
-test("default app viewport bounds large sessions and narrow terminal lines", () => {
+test("default app viewport bounds large sessions and wraps narrow terminal lines", () => {
 	const rows = Array.from({ length: 30 }, (_, index) => ({
 		id: `row-${index}`,
 		kind: "message.user",
@@ -818,7 +818,7 @@ test("default app viewport bounds large sessions and narrow terminal lines", () 
 	assert.match(output, /… 10 earlier rows omitted/);
 	assert.doesNotMatch(output, /message 0/);
 	assert.match(output, /message 29/);
-	assert.match(output, /truncated/);
+	assert.doesNotMatch(output, /truncated/);
 	assert.equal(terminalLineLimitFromColumns(36), 32);
 	assert.equal(terminalLineLimitFromColumns(10), 20);
 });

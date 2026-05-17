@@ -1,18 +1,12 @@
-import { sanitizeTerminalText, truncateTerminalText } from "./inkJson.js";
+import { sanitizeTerminalText } from "./inkJson.js";
 
 export type InkMarkdownOptions = {
 	maxChars?: number;
 	maxLines?: number;
 };
 
-const DEFAULT_MAX_CHARS = 3000;
-const DEFAULT_MAX_LINES = 80;
-
-export function renderInkMarkdownLines(markdown: string | undefined, options: InkMarkdownOptions = {}): string[] {
-	const maxChars = options.maxChars ?? DEFAULT_MAX_CHARS;
-	const maxLines = options.maxLines ?? DEFAULT_MAX_LINES;
-	const bounded = truncateTerminalText(markdown ?? "", maxChars);
-	const sourceLines = sanitizeTerminalText(bounded).split("\n");
+export function renderInkMarkdownLines(markdown: string | undefined, _options: InkMarkdownOptions = {}): string[] {
+	const sourceLines = sanitizeTerminalText(markdown ?? "").split("\n");
 	const result: string[] = [];
 	let inCodeFence = false;
 	for (const sourceLine of sourceLines) {
@@ -23,21 +17,15 @@ export function renderInkMarkdownLines(markdown: string | undefined, options: In
 		}
 		if (inCodeFence) {
 			result.push(`    ${sourceLine.replace(/\t/g, "    ")}`.trimEnd());
-			if (result.length >= maxLines) break;
 			continue;
 		}
 		if (!trimmed) {
 			if (result.length > 0 && result[result.length - 1] !== "") result.push("");
-			if (result.length >= maxLines) break;
 			continue;
 		}
 		result.push(normalizeMarkdownLine(trimmed));
-		if (result.length >= maxLines) break;
 	}
 	while (result[result.length - 1] === "") result.pop();
-	if (sourceLines.length > maxLines || bounded.includes("… truncated")) {
-		if (result[result.length - 1] !== "… truncated") result.push("… truncated");
-	}
 	return result.length > 0 ? result : [""];
 }
 
