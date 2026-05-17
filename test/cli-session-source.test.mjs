@@ -412,6 +412,7 @@ test("local CLI session source routes slash actions under the selected owner and
 		},
 		async emit(event) {
 			emitted.push(event);
+			if (event.action === "status") return { type: "execution_result", piboSessionId: event.piboSessionId, eventId: event.id, action: event.action, result: { piboSessionId: event.piboSessionId, activeModel: { provider: "openai", id: "gpt-local", label: "GPT Local" }, contextUsage: { tokens: 250, contextWindow: 1000, percent: 25 }, providerUsage: { provider: "openai", planType: "test", limits: [{ label: "requests", usedPercent: 40 }] } } };
 			if (event.action === "session.clone") {
 				const sourceSession = store.get(event.piboSessionId);
 				const clone = store.create({
@@ -448,7 +449,9 @@ test("local CLI session source routes slash actions under the selected owner and
 
 	const status = await source.executeSlashCommand({ command: "status", sessionId: created.id });
 	assert.equal(status.descriptor.kind, "status");
-	assert.equal(emitted.length, 0, "status uses source-equivalent status without starting runtime");
+	assert.equal(emitted.at(-1).action, "status");
+	assert.equal(status.rawResult.contextUsage.percent, 25);
+	assert.equal(status.rawResult.providerUsage.limits[0].usedPercent, 40);
 	const cleared = await source.executeSlashCommand({ command: "clear", sessionId: created.id });
 	assert.equal(cleared.actionName, "clear_queue");
 	assert.equal(emitted.at(-1).action, "clear_queue");

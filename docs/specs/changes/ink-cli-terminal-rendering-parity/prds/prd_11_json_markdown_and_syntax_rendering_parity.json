@@ -1,0 +1,103 @@
+{
+  "project": "Ink CLI Terminal Rendering Parity — Web-Derived Completion",
+  "branchName": "ralph/ink-cli-json-markdown-syntax",
+  "description": "Implement terminal-native Ink JSON, markdown, and syntax rendering that follows Web semantic roles without importing Web components.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Implement Ink inline JSON token rendering",
+      "description": "As an SSH operator, I want function-call arguments to be scannable like Web inline JSON.",
+      "acceptanceCriteria": [
+        "Inline function-call rendering emits separate token roles for function name, parens, keys, strings, literals, punctuation, and collapsed collection markers",
+        "Nested object/array values show disclosure markers rather than unbounded inline dumps",
+        "Snapshots cover color-enabled and NO_COLOR output for nested JSON with long strings and secrets",
+        "Web UI preservation gate passes: Web Compact Terminal visual/behavioral render logic remains unchanged unless the story explicitly documents user-approved Web behavior changes; shared `src/session-ui/**` changes include Web regression evidence.",
+        "Implementation does not import Web DOM/Tailwind/lucide components into CLI modules",
+        "Secrets are redacted in previews, details, fixtures, snapshots, and PTY artifacts",
+        "Focused tests pass",
+        "Typecheck passes",
+        "When marking passes true, notes include commands run, evidence tier, artifact paths where applicable, and fake/demo/mocked/real classification"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Implement Ink detail JSON wells",
+      "description": "As a power user, I want JSON details to be readable without leaving the terminal.",
+      "acceptanceCriteria": [
+        "Detail rendering parses object/array values and JSON-looking text output into pretty terminal JSON blocks",
+        "Leading status/meta text before JSON is preserved as metadata",
+        "Default detail JSON depth/items are bounded and indicate additional nested content where applicable",
+        "Full detail access remains available through expanded row/details behavior",
+        "Web UI preservation gate passes: Web Compact Terminal visual/behavioral render logic remains unchanged unless the story explicitly documents user-approved Web behavior changes; shared `src/session-ui/**` changes include Web regression evidence.",
+        "Implementation does not import Web DOM/Tailwind/lucide components into CLI modules",
+        "Secrets are redacted in previews, details, fixtures, snapshots, and PTY artifacts",
+        "Focused tests pass",
+        "Typecheck passes",
+        "When marking passes true, notes include commands run, evidence tier, artifact paths where applicable, and fake/demo/mocked/real classification"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Improve Ink markdown structural rendering",
+      "description": "As a user, I want assistant answers and reasoning to preserve headings, lists, code, and quotes.",
+      "acceptanceCriteria": [
+        "Ink markdown renderer preserves headings, paragraphs, bullets, ordered lists, nested list indentation, blockquotes, inline code, fenced code, tables, and links as terminal-native text",
+        "Reasoning markdown uses reasoning tone/markers distinct from assistant prose",
+        "Snapshots cover complex markdown and narrow wrapping without `… truncated`",
+        "Web UI preservation gate passes: Web Compact Terminal visual/behavioral render logic remains unchanged unless the story explicitly documents user-approved Web behavior changes; shared `src/session-ui/**` changes include Web regression evidence.",
+        "Implementation does not import Web DOM/Tailwind/lucide components into CLI modules",
+        "Secrets are redacted in previews, details, fixtures, snapshots, and PTY artifacts",
+        "Focused tests pass",
+        "Typecheck passes",
+        "When marking passes true, notes include commands run, evidence tier, artifact paths where applicable, and fake/demo/mocked/real classification"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Align bash and code tokenization with Web roles",
+      "description": "As an operator, I want shell commands and code snippets to be quickly scannable.",
+      "acceptanceCriteria": [
+        "Bash command tokens use Web-derived roles for command, flags, env/variables, quoted strings, paths, pipes/redirects/control operators, and default text",
+        "JSON fenced code receives JSON token roles or a documented terminal-native approximation",
+        "Unknown code fences fall back to safe monospaced text without breaking layout",
+        "Web UI preservation gate passes: Web Compact Terminal visual/behavioral render logic remains unchanged unless the story explicitly documents user-approved Web behavior changes; shared `src/session-ui/**` changes include Web regression evidence.",
+        "Implementation does not import Web DOM/Tailwind/lucide components into CLI modules",
+        "Secrets are redacted in previews, details, fixtures, snapshots, and PTY artifacts",
+        "Focused tests pass",
+        "Typecheck passes",
+        "When marking passes true, notes include commands run, evidence tier, artifact paths where applicable, and fake/demo/mocked/real classification"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Capture JSON and markdown PTY evidence",
+      "description": "As a reviewer, I want terminal artifacts showing rich structured content, not plain dumps.",
+      "acceptanceCriteria": [
+        "PTY scenario renders a function call with nested JSON, an expanded detail JSON payload, markdown with code/list/table, and a bash command",
+        "Artifacts show color-enabled output and a NO_COLOR or ASCII-safe fallback",
+        "Artifact assertions verify secrets are redacted and visible text is not character-truncated",
+        "Web UI preservation gate passes: Web Compact Terminal visual/behavioral render logic remains unchanged unless the story explicitly documents user-approved Web behavior changes; shared `src/session-ui/**` changes include Web regression evidence.",
+        "Implementation does not import Web DOM/Tailwind/lucide components into CLI modules",
+        "Secrets are redacted in previews, details, fixtures, snapshots, and PTY artifacts",
+        "Focused tests pass",
+        "Typecheck passes",
+        "When marking passes true, notes include commands run, evidence tier, artifact paths where applicable, and fake/demo/mocked/real classification"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

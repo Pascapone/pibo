@@ -32,32 +32,32 @@ export function InkTerminalRow({ row, maxLineChars = 220, maxMarkdownLines = 80 
 	);
 }
 
-export function InkTerminalCard({ card, maxLineChars = 220 }: { card: TerminalCardDescriptor; maxLineChars?: number }): React.ReactElement {
+export function InkTerminalCard({ card, maxLineChars: _maxLineChars = 220 }: { card: TerminalCardDescriptor; maxLineChars?: number }): React.ReactElement {
 	const marker = markerForStatus(card.status);
 	const color = colorForCardTone(card.tone) ?? colorForStatus(card.status);
 	const statusLabel = card.status === "neutral" ? card.kind : `${card.kind} · ${card.status}`;
 	const statusSummary = card.kind === "status" ? statusCardSummary(card) : undefined;
 	const lines: React.ReactElement[] = [
-		React.createElement(Text, { color, key: "header", bold: true }, truncateCardLine(`${marker} ▣ ${card.title} — ${statusLabel}${statusSummary ? ` · ${statusSummary}` : ""}`, maxLineChars)),
+		React.createElement(Text, { color, key: "header", bold: true }, cardLine(`${marker} ▣ ${card.title} — ${statusLabel}${statusSummary ? ` · ${statusSummary}` : ""}`)),
 	];
 	for (const [index, row] of card.rows.entries()) {
 		const text = row.label ? `  ↳ ${row.label}: ${row.value}` : `  ↳ ${row.value}`;
-		lines.push(React.createElement(Text, { color: colorForCardTone(row.tone) ?? "white", key: `row-${index}` }, truncateCardLine(text, maxLineChars)));
+		lines.push(React.createElement(Text, { color: colorForCardTone(row.tone) ?? "white", key: `row-${index}` }, cardLine(text)));
 	}
 	for (const progress of card.statusView?.progress ?? []) {
-		const bar = inkProgressBarText(progress, progress.state === "available" ? 18 : 12);
+		const bar = inkProgressBarText(progress, 18);
 		const detail = progress.state === "available" ? ` — ${progress.text}` : "";
-		lines.push(React.createElement(Text, { color: progress.tone === "neutral" ? "gray" : colorForTone(progress.tone), key: `progress-${progress.id}` }, truncateCardLine(`  ↳ ${progress.label}: ${bar}${detail}`, maxLineChars)));
+		lines.push(React.createElement(Text, { color: progress.tone === "neutral" ? "gray" : colorForTone(progress.tone), key: `progress-${progress.id}` }, cardLine(`  ↳ ${progress.label}: ${bar}${detail}`)));
 	}
 	for (const [index, warning] of (card.statusView?.warnings ?? []).entries()) {
-		lines.push(React.createElement(Text, { color: "yellow", key: `warning-${index}` }, truncateCardLine(`  ⚠ ${warning}`, maxLineChars)));
+		lines.push(React.createElement(Text, { color: "yellow", key: `warning-${index}` }, cardLine(`  ⚠ ${warning}`)));
 	}
 	for (const [index, error] of (card.statusView?.errors ?? []).entries()) {
-		lines.push(React.createElement(Text, { color: "red", key: `error-${index}` }, truncateCardLine(`  ✕ ${error}`, maxLineChars)));
+		lines.push(React.createElement(Text, { color: "red", key: `error-${index}` }, cardLine(`  ✕ ${error}`)));
 	}
 	if (card.actions?.length) {
 		const actions = card.actions.map((action) => `${action.disabled ? "-" : "•"} ${action.label}`).join("  ");
-		lines.push(React.createElement(Text, { color: "gray", key: "actions" }, truncateCardLine(`  Actions: ${actions}`, maxLineChars)));
+		lines.push(React.createElement(Text, { color: "gray", key: "actions" }, cardLine(`  Actions: ${actions}`)));
 	}
 	if (lines.length === 1) lines.push(React.createElement(Text, { color: "gray", key: "empty" }, "  ↳ No details"));
 	return React.createElement(Box, { flexDirection: "column" }, ...lines);
@@ -85,7 +85,7 @@ function statusCardSummary(card: TerminalCardDescriptor): string {
 	const session = shortStatusValue(fields.get("session"));
 	const model = shortStatusValue(fields.get("model"));
 	const owner = abbreviateOwner(fields.get("owner"));
-	return ["status", runtime, session ? `session ${session}` : undefined, model ? `model ${model}` : undefined, owner ? `owner ${owner}` : undefined].filter(Boolean).join(" · ");
+	return [runtime, session ? `session ${session}` : undefined, model ? `model ${model}` : undefined, owner ? `owner ${owner}` : undefined].filter(Boolean).join(" · ");
 }
 
 function shortStatusValue(value: string | undefined): string | undefined {
@@ -95,20 +95,22 @@ function shortStatusValue(value: string | undefined): string | undefined {
 
 function abbreviateOwner(value: string | undefined): string | undefined {
 	if (!value) return undefined;
-	const label = value.replace(/\s*\([^)]*\)\s*$/, "").trim() || value;
-	return label.length <= 28 ? label : `${label.slice(0, 12)}…${label.slice(-8)}`;
+	return value.replace(/\s*\([^)]*\)\s*$/, "").trim() || value;
 }
 
-function truncateCardLine(value: string, maxChars: number): string {
-	const normalized = value.replace(/\s+/g, " ");
-	return normalized.length <= maxChars ? normalized : `${normalized.slice(0, Math.max(0, maxChars - 12))}… truncated`;
+function cardLine(value: string): string {
+	return value.replace(/\s+/g, " ");
 }
 
 function inkProgressBarText(progress: Parameters<typeof progressBarText>[0], width: number): string {
-	const text = progressBarText(progress, width);
-	if (progress.state !== "available" || progress.percent === undefined) return text;
-	if (!shouldUseAsciiProgress()) return text;
 	const boundedWidth = Math.max(4, Math.min(80, Math.floor(width)));
+	const ascii = shouldUseAsciiProgress();
+	if (progress.state !== "available" || progress.percent === undefined) {
+		const empty = ascii ? "-".repeat(boundedWidth) : "░".repeat(boundedWidth);
+		return `unavailable · ${empty}`;
+	}
+	const text = progressBarText(progress, boundedWidth);
+	if (!ascii) return text;
 	const filled = Math.round((Math.max(0, Math.min(100, progress.percent)) / 100) * boundedWidth);
 	return `${"#".repeat(filled)}${"-".repeat(boundedWidth - filled)} ${progress.percent.toFixed(1)}%`;
 }
@@ -126,7 +128,7 @@ function rowDetailLines(row: CompactTerminalRow, maxLineChars: number): React.Re
 	return details.flatMap((detail, index) => detailTextLines(detail, maxLineChars).map((text, lineIndex) => React.createElement(Text, {
 		color: detail.status === "error" ? "red" : "gray",
 		key: `${row.id}:detail:${detail.id}:${index}:${lineIndex}`,
-	}, truncateCardLine(lineIndex === 0 ? `  ↳ ${text}` : `    ${text}`, maxLineChars))));
+	}, cardLine(lineIndex === 0 ? `  ↳ ${text}` : `    ${text}`))));
 }
 
 function detailTextLines(detail: CompactTerminalDetailItem, maxLineChars: number): string[] {
@@ -145,7 +147,7 @@ function detailValueText(value: unknown, maxLineChars: number): string {
 		? value
 		: formatInkJson(value, { maxChars: Math.min(420, Math.max(120, maxLineChars * 3)), maxDepth: 3, maxArrayItems: 4, maxObjectKeys: 8 });
 	const redacted = redactTerminalSecret(text).replace(/\s+/g, " ").trim();
-	return truncateCardLine(redacted, Math.min(220, Math.max(80, maxLineChars - 12)));
+	return redacted;
 }
 
 function rowLines(row: CompactTerminalRow, maxMarkdownLines: number): CompactTerminalLine[] {

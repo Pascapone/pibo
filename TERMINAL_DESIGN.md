@@ -170,6 +170,8 @@ Rows are the atomic unit of the transcript. They are **not cards**. They are lin
 - Hover: assistant/system rows get `hover:bg-[#161616]`; user rows get `hover:bg-[#11a4d4]/15`.
 - Internal grid: `grid-cols-[1.9rem_minmax(0,1fr)] gap-2` — a fixed prefix column and a flexible content column.
 - Text wraps via `whitespace-pre-wrap break-words`.
+- Default rendering for `tool.call`, `tool.group.exploring`, `yielded.run`, `execution.command`, `execution.compaction`, and `error` is row-first: prefix glyph, terse verb, inline tokens, bounded preview, optional details.
+- Card-like surfaces are exceptions reserved for interactive or structured controls such as status, thinking, login, model selection, and explicit detail panels. Do not render normal tool and command rows as decorative cards by default.
 
 #### Prefix Glyphs
 
@@ -209,6 +211,17 @@ Action buttons appear on the right side of a row, visible only on `group-hover` 
 - Hover: border and text shift to **Cyan Signal (`#38bdf8`)**.
 - Actions: `Open`, `Fork`, `Hide`, `Details`.
 
+### Output Preview And Expansion
+
+Collapsed transcript rows use **progressive disclosure**. The terminal must stay dense while keeping full data available on demand.
+
+- Tool calls, tool results, async agents, yielded runs, shell commands, and execution command rows show at most the first **5 output preview lines** in the collapsed transcript.
+- Grouped exploration rows show at most the first **6 child summary lines** while collapsed.
+- The preview limit is a **line-count bound**, not character truncation. Visible preview lines wrap with `whitespace-pre-wrap break-words` and must not be shortened with `… truncated`.
+- If additional preview lines exist, the row should expose an expansion affordance (`Details`, double-click/Enter in Web, or a terminal-native equivalent in Ink) and may show a terse `+N more lines` hint.
+- Expanded details reveal the full `Input`, `Output`, and `Error` payloads, or a full-output disclosure/path when the runtime has compacted very large validation output.
+- Do not expand full JSON payloads, full shell output, or full tool results by default in the transcript.
+
 ### Detail Expansion Panel
 
 Triggered per-row via the `Details` / `Hide` action. Expands **below** the parent row without additional horizontal indentation.
@@ -217,6 +230,8 @@ Triggered per-row via the `Details` / `Hide` action. Expands **below** the paren
 - Text: 12px **Terminal Text (`#d4d4d4`)**.
 - Sections: `Input`, `Output`, `Error`.
 - Section label: 11px `font-semibold` **Dim Text (`#737373`)**.
+- Details are row-owned. Do not move them into a side inspector or detached dashboard.
+- Details are not a substitute for collapsed previews; both states must exist for large output.
 
 ### JSON / Code Wells
 
@@ -227,13 +242,28 @@ Triggered per-row via the `Details` / `Hide` action. Expands **below** the paren
 
 #### Inline JSON Behavior
 
-- Collapsed state shows `▸{...}` or `▸[...]` as a clickable toggle.
-- Expanded state shows `▾{` with keys, values, and closing `}`.
+Inline JSON is used for function-call arguments and compact row previews.
+
+- Function-call format is `<name>(<inline-json>)`.
+- Function names are **Warm Yellow (`#facc15`)** and `font-semibold`.
+- The root collection is expanded by default when space permits.
+- Nested collapsed state shows `▸{...}` or `▸[...]` as a clickable/toggleable marker.
+- Expanded state shows `▾{` or `▾[` with keys, values, separators, and closing braces/brackets.
 - Strings: **Orange (`#fb923c`)**.
 - Numbers / booleans / null: **Blue (`#60a5fa`)**.
 - Keys: **Terminal Text (`#d4d4d4`)** with surrounding quotes.
 - Colons / commas / braces: **Dim Text (`#737373`)**.
-- Long strings (>140 chars) are truncated with `...` and expandable via click.
+- Long inline strings (>140 chars) may shorten with `...`, but only with an explicit expandable/toggleable affordance. This is an inline JSON disclosure rule, not general transcript truncation.
+
+#### Detail JSON Behavior
+
+Detail panels parse JSON-looking input/output values and render them as JSON wells.
+
+- Raw object/array values render as pretty JSON.
+- Text values that contain JSON after status text may render the leading text as metadata and the parsed JSON in the well.
+- Default expansion depth is 1.
+- JSON controls are hidden in terminal detail wells unless the surrounding UI explicitly provides expand/collapse controls.
+- Long strings inside detail JSON may be shortened by the JSON renderer only when the renderer exposes a way to inspect or expand the full value.
 
 ### Function Call Inline
 
@@ -241,6 +271,7 @@ Triggered per-row via the `Details` / `Hide` action. Expands **below** the paren
 - Function name: **Warm Yellow (`#facc15`)** `font-semibold`.
 - Parens: **Terminal Text (`#d4d4d4`)**.
 - Arguments: Inline JSON rules above.
+- Function calls are transcript rows first. Do not promote every function call into a large card by default.
 
 ### Markdown Inside Terminal
 

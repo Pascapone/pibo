@@ -108,7 +108,7 @@ function createLocalCliSessionSourceContext(): { dataStore: PiboDataStore; sessi
 	const customAgentStore = createDefaultCustomAgentStore();
 	const customAgents = customAgentStore.list();
 	try {
-		for (const agent of customAgents) pluginRegistry.upsertProfile(createCustomAgentProfileDefinition(agent));
+		for (const agent of customAgents) pluginRegistry.upsertProfile(createCustomAgentProfileDefinition(agent, { missingReferenceMode: "silent" }));
 	} finally {
 		customAgentStore.close();
 	}

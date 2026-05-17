@@ -2,7 +2,7 @@ import React from "react";
 import { Box, Text } from "ink";
 import type { CompactTerminalLine, TerminalInlineToken } from "../../session-ui/index.js";
 import { colorForTone, type InkTerminalColor } from "./inkColors.js";
-import { formatInlineJson, truncateTerminalText } from "./inkJson.js";
+import { formatInlineJson } from "./inkJson.js";
 
 export type InkTerminalLineProps = {
 	line: CompactTerminalLine;
@@ -53,18 +53,12 @@ function markerText(line: CompactTerminalLine, leadingMarker: string | undefined
 	return `${leadingMarker} `;
 }
 
-function buildLineChunks(line: CompactTerminalLine, maxChars: number): LineChunk[] {
+function buildLineChunks(line: CompactTerminalLine, _maxChars: number): LineChunk[] {
 	const chunks: LineChunk[] = [...line.tokens];
 	if (line.functionCall) {
 		chunks.push({ text: line.functionCall.name, tone: "cyan", weight: "semibold" });
 		if (line.functionCall.input !== undefined) chunks.push({ text: ` ${formatInlineJson(line.functionCall.input)}`, tone: "dim" });
 	}
 	if (chunks.length === 0) return [{ text: "∅", tone: "dim" }];
-	let remaining = maxChars;
-	return chunks.map((chunk) => {
-		if (remaining <= 0) return { ...chunk, text: "" };
-		const truncated = truncateTerminalText(chunk.text, remaining).replace(/\n/g, " ");
-		remaining -= truncated.length;
-		return { ...chunk, text: truncated };
-	}).filter((chunk) => chunk.text.length > 0);
+	return chunks.map((chunk) => ({ ...chunk, text: chunk.text.replace(/\n/g, " ") })).filter((chunk) => chunk.text.length > 0);
 }

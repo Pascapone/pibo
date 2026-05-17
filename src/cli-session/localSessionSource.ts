@@ -381,6 +381,16 @@ export class LocalCliSessionSource implements CliSessionSource {
 
 	private async executeLocalSlashAction(input: { command: string; actionName: string; session?: PiboSession; args?: string }): Promise<unknown> {
 		if (input.command === "status") {
+			if (input.session && this.router) {
+				const event: PiboExecutionEvent = {
+					type: "execution",
+					piboSessionId: input.session.id,
+					action: input.actionName,
+					id: randomUUID(),
+				};
+				const output = await this.router.emit(event);
+				if (output.type === "execution_result") return output.result;
+			}
 			const status = input.session ? this.buildStatus(input.session) : await this.getStatus();
 			return { ...status, activeModel: input.session?.activeModel };
 		}

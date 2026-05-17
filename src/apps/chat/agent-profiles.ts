@@ -2,7 +2,12 @@ import { InitialSessionContextBuilder } from "../../core/profiles.js";
 import type { PiboProfileDefinition } from "../../plugins/types.js";
 import type { CustomAgentDefinition } from "./agent-store.js";
 
-export function createCustomAgentProfileDefinition(agent: CustomAgentDefinition): PiboProfileDefinition {
+export type CustomAgentProfileOptions = {
+	missingReferenceMode?: "warn" | "silent";
+};
+
+export function createCustomAgentProfileDefinition(agent: CustomAgentDefinition, options: CustomAgentProfileOptions = {}): PiboProfileDefinition {
+	const shouldWarnMissingReferences = options.missingReferenceMode !== "silent";
 	return {
 		name: agent.profileName,
 		aliases: [agent.id, `custom-agent:${agent.id}`],
@@ -29,7 +34,7 @@ export function createCustomAgentProfileDefinition(agent: CustomAgentDefinition)
 					builder.addSkill(context.getSkill(skillName));
 				} catch (error) {
 					if (!isUnknownSkillError(error, skillName)) throw error;
-					console.warn(`Skipping unknown skill "${skillName}" for custom agent "${agent.profileName}"`);
+					if (shouldWarnMissingReferences) console.warn(`Skipping unknown skill "${skillName}" for custom agent "${agent.profileName}"`);
 				}
 			}
 			for (const contextFileKey of agent.contextFiles) {
@@ -37,7 +42,7 @@ export function createCustomAgentProfileDefinition(agent: CustomAgentDefinition)
 					builder.addContextFile(context.getContextFile(contextFileKey));
 				} catch (error) {
 					if (!isUnknownContextFileError(error, contextFileKey)) throw error;
-					console.warn(`Skipping unknown context file "${contextFileKey}" for custom agent "${agent.profileName}"`);
+					if (shouldWarnMissingReferences) console.warn(`Skipping unknown context file "${contextFileKey}" for custom agent "${agent.profileName}"`);
 				}
 			}
 			for (const toolName of agent.nativeTools) builder.addTool(context.getTool(toolName));

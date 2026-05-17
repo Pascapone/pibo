@@ -143,9 +143,9 @@ test("InkSessionAppView renders status bar transcript viewport and input line", 
 		maxRows: 20,
 	}));
 
-	assert.match(output, /Pibo CLI Sessions \| fake \| owner unknown \| CLI app shell fixture \| pibo-agent/);
-	assert.match(output, /Commands: \/help \/new \/room \/session \/agent \/owner \/repair-user-unknown/);
-	assert.match(output, /type \/ for suggestions, \/help for catalog/);
+	assert.match(output, /pibo sessions · fake · transcript · owner owner unknown · session CLI app shell\s*fixture · agent pibo-agent/);
+	assert.match(output, /commands: \/ opens palette · \/status runtime · \/room \/session navigate/);
+	assert.match(output, /\/help\s*catalog/);
 	assert.match(output, /› Show me status/);
 	assert.match(output, /Status looks healthy\./);
 	assert.match(output, /› \/status/);
@@ -314,7 +314,8 @@ test("renderCliStatusCardText renders shared status bars and redacts secrets", (
 	assert.match(text, /Runtime: processing/);
 	assert.match(text, /Queue: 2/);
 	assert.match(text, /Context: .*50\.0%/);
-	assert.match(text, /openai requests: .*80\.0%/);
+	assert.match(text, /openai requests: .*20\.0%/);
+	assert.match(text, /20\.0% remaining/);
 	assert.match(text, /Provider plan: team/);
 	assert.match(text, /Credits: \$5\.00/);
 	assert.match(text, /Enabled tools: 2 \(read, bash\)/);
@@ -491,7 +492,8 @@ test("status command result rows preserve transcript flow and can render as Ink 
 	assert.match(output, /Owner: Web user alpha/);
 	assert.match(output, /Session: Status Session \| ps_status/);
 	assert.match(output, /Context: .*50\.0%/);
-	assert.match(output, /openai requests: .*75\.0%/);
+	assert.match(output, /openai requests: .*25\.0%/);
+	assert.match(output, /25\.0% remaining/);
 });
 
 test("/status closes an open picker and appends transcript rows instead of header message", async () => {
@@ -585,7 +587,8 @@ test("Slash commands handle help status clear pickers unknown exit and normal se
 	assert.match(statusText, /Session: Existing fake session \| ps_fake_existing/);
 	assert.match(statusText, /Runtime: fake/);
 	assert.match(statusText, /Context: 0\/1000 tokens \(0\.0%\)/);
-	assert.match(statusText, /openai requests: 25\.0% used/);
+	assert.match(statusText, /openai requests: 75\.0% remaining/);
+	assert.doesNotMatch(statusText, /used/);
 	assert.match(statusText, /Provider plan: pro/);
 	assert.match(statusText, /Enabled tools: 3 \(read, edit, bash\)/);
 	assert.match(statusText, /Active tools: 1 \(bash\)/);
@@ -802,7 +805,7 @@ test("empty picker states and recovery errors are actionable and redacted", asyn
 	assert.match(formatted, /Recovery: use \/session/);
 });
 
-test("default app viewport bounds large sessions and narrow terminal lines", () => {
+test("default app viewport bounds large sessions and wraps narrow terminal lines", () => {
 	const rows = Array.from({ length: 30 }, (_, index) => ({
 		id: `row-${index}`,
 		kind: "message.user",
@@ -818,7 +821,7 @@ test("default app viewport bounds large sessions and narrow terminal lines", () 
 	assert.match(output, /… 10 earlier rows omitted/);
 	assert.doesNotMatch(output, /message 0/);
 	assert.match(output, /message 29/);
-	assert.match(output, /truncated/);
+	assert.doesNotMatch(output, /truncated/);
 	assert.equal(terminalLineLimitFromColumns(36), 32);
 	assert.equal(terminalLineLimitFromColumns(10), 20);
 });

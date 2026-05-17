@@ -158,7 +158,7 @@ test("Ink renderer renders inline detail sections with bounded redacted values",
 		assert.match(output, new RegExp(`${label}:`));
 	}
 	assert.match(output, /↳ Call failed detail_tool/);
-	assert.match(output, /… truncated|more items/);
+	assert.match(output, /more items|fixture-value-0/);
 	assert.match(output, /token=\[redacted\]/);
 	assert.doesNotMatch(output, /detail-secret-value|sk_fixture_secret/);
 	assert.ok(output.length < 5000, "detail rendering stays bounded");
@@ -172,15 +172,16 @@ test("Ink status card renders compact runtime fields bars unavailable states too
 	];
 	const output = renderToString(React.createElement(InkTerminalView, { rows, maxRows: 10, maxLineChars: 180 }));
 
-	assert.match(output, /Status — status · done · status · idle · session Terminal parity fixture/);
-	assert.match(output, /model GPT Test · owner Web user Fixture/);
+	assert.match(output, /Status — status · done · idle · session Terminal parity fixture/);
+	assert.match(output, /model GPT\s*Test · owner Web user Fixture/);
 	assert.match(output, /Provider plan: pro/);
 	assert.match(output, /Credits: unlimited/);
 	assert.match(output, /Enabled tools: 3 \(read, edit, bash\)/);
-	assert.match(output, /anthropic messages: .*25\.0%/);
-	assert.match(output, /local-ai requests: unavailable/);
-	assert.match(output, /Provider quota: unavailable/);
-	assert.match(output, /Context: unavailable/);
+	assert.match(output, /anthropic messages: .*75\.0%/);
+	assert.match(output, /anthropic messages: .*75\.0% remaining/);
+	assert.match(output, /local-ai requests: unavailable · [░-]+/);
+	assert.match(output, /Provider quota: unavailable · [░-]+/);
+	assert.match(output, /Context: unavailable · [░-]+/);
 	assert.doesNotMatch(output, /sk_fixture_secret|warning-secret-value/);
 });
 
@@ -191,8 +192,8 @@ test("Ink status progress bars use readable ASCII fallback when color or glyph s
 		const rows = [{ id: "status-ascii", kind: "tool.status", status: "done", lines: [], output: highUsageStatusPayload(), sourceNodeIds: ["status-ascii"] }];
 		const output = renderToString(React.createElement(InkTerminalView, { rows, maxRows: 5, maxLineChars: 160 }));
 		assert.match(output, /Context: #################-/);
-		assert.match(output, /openai requests: ------------------ 0\.0%/);
-		assert.match(output, /openai spend: ################-+/);
+		assert.match(output, /openai requests: ################## 100\.0%/);
+		assert.match(output, /openai spend: ##---------------- 9\.0%/);
 		assert.doesNotMatch(output, /█|░|sk_fixture_secret|warning-secret-value/);
 	} finally {
 		if (previousNoColor === undefined) delete process.env.NO_COLOR;
@@ -222,12 +223,12 @@ test("Ink Session app keeps owner, session, error, and command state readable at
 		message: "Status card remains readable.",
 	};
 	const headerLines = formatStatusHeaderLines(state, 60);
-	assert.ok(headerLines.some((line) => line.includes("Owner:")), "narrow header includes an owner line");
-	assert.ok(headerLines.some((line) => line.includes("Session:")), "narrow header includes a session line");
+	assert.ok(headerLines.some((line) => line.includes("owner ")), "narrow header includes an owner line");
+	assert.ok(headerLines.some((line) => line.includes("session ")), "narrow header includes a session line");
 	const output = renderToString(React.createElement(InkSessionAppView, { state, maxRows: 5, maxLineChars: 60 }));
 
-	assert.match(output, /Owner: Web user narrow/);
-	assert.match(output, /Session: Narrow Session/);
+	assert.match(output, /owner Web user narrow/);
+	assert.match(output, /session Narrow Session/);
 	assert.match(output, /Error:/);
 	assert.match(output, /Status card remains readable/);
 	assert.match(output, /› \/status/);
@@ -280,7 +281,8 @@ test("terminal JSON helper pretty-prints and marks bounded truncation", () => {
 	assert.match(text, /… 45 more items/);
 
 	const charBounded = formatInkJson({ ok: true, value: "x".repeat(500) }, { maxChars: 120 });
-	assert.match(charBounded, /… truncated/);
+	assert.doesNotMatch(charBounded, /truncated/);
+	assert.match(charBounded, new RegExp(`x{${500}}`));
 });
 
 test("Ink renderer source avoids Web-only presentation dependencies", () => {

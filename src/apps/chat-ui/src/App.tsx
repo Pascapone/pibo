@@ -4461,151 +4461,77 @@ function RoomNode({
 									<Lock size={24} className="w-3.5 h-3.5 max-[980px]:w-5 max-[980px]:h-5" />
 								</span>
 							) : (
-								<>
-									<div className="hidden min-[981px]:flex items-center gap-1">
-										{archived ? (
-											<>
-												<button
-													type="button"
-													onClick={copyRoomId}
-													title="Copy Room Id"
-													aria-label="Copy Room Id"
-													className="h-7 w-7 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"
-												>
-													<Copy size={13} />
-												</button>
-												<button
-													type="button"
-													onClick={() => onArchive(room.id, false)}
-													title="Restore Room"
-													aria-label="Restore Room"
-													className="h-7 w-7 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"
-												>
-													<ArchiveRestore size={13} />
-												</button>
-												<button
-													type="button"
-													onClick={() => onDelete(room)}
-													title="Delete Room"
-													aria-label="Delete Room"
-													className="h-7 w-7 inline-flex items-center justify-center border border-red-500/70 rounded-sm text-red-300 hover:bg-red-500/10"
-												>
-													<Trash2 size={13} />
-												</button>
-											</>
-										) : (
-											<>
-												<button
-													type="button"
-													onClick={copyRoomId}
-													title="Copy Room Id"
-													aria-label="Copy Room Id"
-													className="h-7 w-7 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"
-												>
-													<Copy size={13} />
-												</button>
-												<button
-													type="button"
-													onClick={() => setEditing(true)}
-													title="Edit Room"
-													aria-label="Edit Room"
-													className="h-7 w-7 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"
-												>
-													<Edit3 size={13} />
-												</button>
-												<button
-													type="button"
-													onClick={() => onReadAll(room.id)}
-													title="Read All"
-													aria-label="Read All"
-													className="h-7 w-7 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"
-												>
-													<CheckCheck size={13} />
-												</button>
-												<button
-													type="button"
-													onClick={() => onArchive(room.id, true)}
-													title="Archive Room"
-													aria-label="Archive Room"
-													className="h-7 w-7 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"
-												>
-													<Archive size={13} />
-												</button>
-											</>
-										)}
-									</div>
-									<div className="min-[981px]:hidden relative" ref={menuRef}>
-										<button
-											type="button"
-											onClick={() => setMenuOpen((v) => !v)}
-											title="Room actions"
-											aria-label="Room actions"
-											className="h-7 w-7 max-[980px]:h-9 max-[980px]:w-9 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"
-										>
-											<MoreVertical size={24} className="w-3.5 h-3.5 max-[980px]:w-5 max-[980px]:h-5" />
-										</button>
-										{menuOpen && (
-											<div className="absolute right-0 top-full z-50 mt-1 w-48 bg-[#1a262b] border border-slate-700 rounded-sm shadow-lg py-1">
-												{archived ? (
-													<>
-														<button
-															type="button"
-															onClick={() => { copyRoomId(); setMenuOpen(false); }}
-															className="w-full text-left px-3 py-2.5 text-sm text-slate-300 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4] flex items-center gap-2"
-														>
-															<Copy size={16} /> Copy Room Id
-														</button>
-														<button
-															type="button"
-															onClick={() => { setMenuOpen(false); onArchive(room.id, false); }}
-															className="w-full text-left px-3 py-2.5 text-sm text-slate-300 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4] flex items-center gap-2"
-														>
-															<ArchiveRestore size={16} /> Restore Room
-														</button>
-														<button
-															type="button"
-															onClick={() => { setMenuOpen(false); onDelete(room); }}
-															className="w-full text-left px-3 py-2.5 text-sm text-red-300 hover:bg-red-500/10 flex items-center gap-2"
-														>
-															<Trash2 size={16} /> Delete Room
-														</button>
-													</>
-												) : (
-													<>
-														<button
-															type="button"
-															onClick={() => { copyRoomId(); setMenuOpen(false); }}
-															className="w-full text-left px-3 py-2.5 text-sm text-slate-300 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4] flex items-center gap-2"
-														>
-															<Copy size={16} /> Copy Room Id
-														</button>
-														<button
-															type="button"
-															onClick={() => { setMenuOpen(false); setEditing(true); }}
-															className="w-full text-left px-3 py-2.5 text-sm text-slate-300 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4] flex items-center gap-2"
-														>
-															<Edit3 size={16} /> Edit Room
-														</button>
-														<button
-															type="button"
-															onClick={() => { setMenuOpen(false); onReadAll(room.id); }}
-															className="w-full text-left px-3 py-2.5 text-sm text-slate-300 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4] flex items-center gap-2"
-														>
-															<CheckCheck size={16} /> Read All
-														</button>
-														<button
-															type="button"
-															onClick={() => { setMenuOpen(false); onArchive(room.id, true); }}
-															className="w-full text-left px-3 py-2.5 text-sm text-slate-300 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4] flex items-center gap-2"
-														>
-															<Archive size={16} /> Archive Room
-														</button>
-													</>
-												)}
-											</div>
-										)}
-									</div>
-								</>
+								<div className="relative" ref={menuRef}>
+									<button
+										type="button"
+										onClick={() => setMenuOpen((v) => !v)}
+										title="Room actions"
+										aria-label="Room actions"
+										className="h-7 w-7 max-[980px]:h-9 max-[980px]:w-9 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"
+									>
+										<MoreVertical size={24} className="w-3.5 h-3.5 max-[980px]:w-5 max-[980px]:h-5" />
+									</button>
+									{menuOpen && (
+										<div className="absolute right-0 top-full z-50 mt-1 w-48 bg-[#1a262b] border border-slate-700 rounded-sm shadow-lg py-1">
+											{archived ? (
+												<>
+													<button
+														type="button"
+														onClick={() => { copyRoomId(); setMenuOpen(false); }}
+														className="w-full text-left px-3 py-2.5 text-sm text-slate-300 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4] flex items-center gap-2"
+													>
+														<Copy size={16} /> Copy Room ID
+													</button>
+													<button
+														type="button"
+														onClick={() => { setMenuOpen(false); onArchive(room.id, false); }}
+														className="w-full text-left px-3 py-2.5 text-sm text-slate-300 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4] flex items-center gap-2"
+													>
+														<ArchiveRestore size={16} /> Restore Room
+													</button>
+													<button
+														type="button"
+														onClick={() => { setMenuOpen(false); onDelete(room); }}
+														className="w-full text-left px-3 py-2.5 text-sm text-red-300 hover:bg-red-500/10 flex items-center gap-2"
+													>
+														<Trash2 size={16} /> Delete Room
+													</button>
+												</>
+											) : (
+												<>
+													<button
+														type="button"
+														onClick={() => { copyRoomId(); setMenuOpen(false); }}
+														className="w-full text-left px-3 py-2.5 text-sm text-slate-300 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4] flex items-center gap-2"
+													>
+														<Copy size={16} /> Copy Room ID
+													</button>
+													<button
+														type="button"
+														onClick={() => { setMenuOpen(false); setEditing(true); }}
+														className="w-full text-left px-3 py-2.5 text-sm text-slate-300 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4] flex items-center gap-2"
+													>
+														<Edit3 size={16} /> Edit Room
+													</button>
+													<button
+														type="button"
+														onClick={() => { setMenuOpen(false); onReadAll(room.id); }}
+														className="w-full text-left px-3 py-2.5 text-sm text-slate-300 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4] flex items-center gap-2"
+													>
+														<CheckCheck size={16} /> Read All
+													</button>
+													<button
+														type="button"
+														onClick={() => { setMenuOpen(false); onArchive(room.id, true); }}
+														className="w-full text-left px-3 py-2.5 text-sm text-slate-300 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4] flex items-center gap-2"
+													>
+														<Archive size={16} /> Archive Room
+													</button>
+												</>
+											)}
+										</div>
+									)}
+								</div>
 							)}
 						</div>
 					</div>

@@ -127,20 +127,20 @@ function providerProgress(usage: BuildTerminalStatusInput["providerUsage"]): Ter
 		return [{ id: "provider", label: "Provider quota", state: "unavailable", text: "Provider usage unavailable", tone: "neutral" }];
 	}
 	return usage.limits.map((limit, index) => {
-		const percent = normalizePercent(limit.usedPercent);
+		const usedPercent = normalizePercent(limit.usedPercent);
+		const remainingPercent = normalizePercent(limit.remainingPercent ?? (usedPercent === undefined ? undefined : 100 - usedPercent));
 		const provider = usage.provider ? `${usage.provider} ` : "";
 		const details = [
-			percent === undefined ? undefined : `${percent.toFixed(1)}% used`,
-			typeof limit.remainingPercent === "number" ? `${normalizePercent(limit.remainingPercent)?.toFixed(1)}% remaining` : undefined,
+			remainingPercent === undefined ? undefined : `${remainingPercent.toFixed(1)}% remaining`,
 			limit.resetsAt ? `resets ${redactTerminalSecret(limit.resetsAt)}` : undefined,
 		].filter(Boolean).join(", ");
 		return {
 			id: `provider-${index}`,
 			label: `${provider}${limit.label ?? "quota"}`.trim(),
-			state: percent === undefined ? "unavailable" : "available",
-			percent,
-			text: percent === undefined ? "Provider usage unavailable" : details,
-			tone: toneForPercent(percent),
+			state: remainingPercent === undefined ? "unavailable" : "available",
+			percent: remainingPercent,
+			text: remainingPercent === undefined ? "Provider usage unavailable" : details,
+			tone: toneForRemainingPercent(remainingPercent),
 		};
 	});
 }
@@ -154,6 +154,13 @@ function toneForPercent(percent: number | undefined): TerminalProgressTone {
 	if (percent === undefined) return "neutral";
 	if (percent >= 80) return "red";
 	if (percent >= 50) return "yellow";
+	return "green";
+}
+
+function toneForRemainingPercent(percent: number | undefined): TerminalProgressTone {
+	if (percent === undefined) return "neutral";
+	if (percent <= 20) return "red";
+	if (percent <= 50) return "yellow";
 	return "green";
 }
 

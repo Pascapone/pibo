@@ -166,10 +166,10 @@ test("status progress fixture preserves unavailable zero warning high labels per
 	const providerWarning = highStatus.progress.find((item) => item.id === "provider-1");
 	const providerHigh = highStatus.progress.find((item) => item.id === "provider-2");
 	assert.deepEqual([contextHigh.state, contextHigh.value, contextHigh.max, contextHigh.percent, contextHigh.tone], ["available", 920, 1000, 92, "red"]);
-	assert.deepEqual([providerZero.label, providerZero.percent, providerZero.tone], ["openai requests", 0, "green"]);
-	assert.deepEqual([providerWarning.label, providerWarning.percent, providerWarning.tone], ["openai tokens", 55, "yellow"]);
+	assert.deepEqual([providerZero.label, providerZero.percent, providerZero.tone], ["openai requests", 100, "green"]);
+	assert.deepEqual([providerWarning.label, providerWarning.percent, providerWarning.tone], ["openai tokens", 45, "yellow"]);
 	assert.match(providerWarning.text, /45\.0% remaining, resets 2026-05-17/);
-	assert.deepEqual([providerHigh.label, providerHigh.percent, providerHigh.tone], ["openai spend", 91, "red"]);
+	assert.deepEqual([providerHigh.label, providerHigh.percent, providerHigh.tone], ["openai spend", 9, "red"]);
 	assert.equal(highStatus.fields.find((item) => item.id === "provider-plan").value, "team");
 	assert.equal(highStatus.fields.find((item) => item.id === "provider-credits").value, "$42.00");
 	assert.equal(highStatus.fields.find((item) => item.id === "enabled-tools").value, "3 (read, edit, bash)");

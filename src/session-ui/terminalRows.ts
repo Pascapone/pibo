@@ -657,7 +657,7 @@ function previewPath(value?: Record<string, unknown>): string | undefined {
 	if (!value) return undefined;
 	for (const key of ["path", "file", "filePath", "filepath", "url", "uri", "cwd", "pattern", "glob"]) {
 		const candidate = stringValue(value[key]);
-		if (candidate) return truncate(candidate, 80);
+		if (candidate) return candidate;
 	}
 	return undefined;
 }
@@ -666,7 +666,7 @@ function previewQuery(value?: Record<string, unknown>): string | undefined {
 	if (!value) return undefined;
 	for (const key of ["query", "pattern", "text", "name", "q", "regex"]) {
 		const candidate = stringValue(value[key]);
-		if (candidate) return truncate(candidate, 80);
+		if (candidate) return candidate;
 	}
 	return undefined;
 }
@@ -675,7 +675,7 @@ function previewLines(
 	value: unknown,
 	maxVisibleLines: number,
 	tone: TerminalInlineToken["tone"] = "dim",
-	maxLineLength = 160,
+	_maxLineLength = 160,
 ): { lines: CompactTerminalLine[]; truncated: boolean } {
 	const text = previewText(value);
 	if (!text) return { lines: [], truncated: false };
@@ -687,7 +687,7 @@ function previewLines(
 	const visible = allLines.slice(0, maxVisibleLines);
 	const lines: CompactTerminalLine[] = visible.map((line, index) => ({
 		prefix: index === 0 ? "detail" : "continuation",
-		tokens: [token(truncate(line, maxLineLength), tone)],
+		tokens: [token(line, tone)],
 	}));
 	if (allLines.length > maxVisibleLines) {
 		lines.push({
@@ -712,7 +712,7 @@ function previewText(value: unknown): string {
 
 function compactInlinePreview(value: unknown): string {
 	const text = typeof value === "string" ? value : previewText(value);
-	return truncate(text.replace(/\s+/g, " ").trim(), 96);
+	return text.replace(/\s+/g, " ").trim();
 }
 
 function isShellToolName(name: string | undefined): boolean {
@@ -751,10 +751,6 @@ function bashTokens(command: string): TerminalInlineToken[] {
 	});
 }
 
-function truncate(value: string, maxLength: number): string {
-	if (value.length <= maxLength) return value;
-	return `${value.slice(0, Math.max(0, maxLength - 1))}…`;
-}
 
 function toolVerb(status: PiboTraceNode["status"]): string {
 	if (status === "running") return "Calling";

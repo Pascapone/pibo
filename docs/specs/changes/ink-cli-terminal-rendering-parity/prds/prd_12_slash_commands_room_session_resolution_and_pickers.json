@@ -1,0 +1,105 @@
+{
+  "project": "Ink CLI Terminal Rendering Parity — Web-Derived Completion",
+  "branchName": "ralph/ink-cli-slash-room-session-resolution",
+  "description": "Bring all slash-command flows, room/session label resolution, and picker overlays into Web-derived terminal behavior, including showing Web room names rather than only room IDs.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Document and test the complete slash-command behavior matrix",
+      "description": "As an operator, I want every slash command to have predictable terminal behavior.",
+      "acceptanceCriteria": [
+        "Add a command matrix covering all CLI_ONLY_SLASH_COMMANDS, WEB_PARITY_SLASH_COMMANDS, aliases, and dynamic gateway capabilities",
+        "For each command, document palette display, argument behavior, transcript/overlay/navigation/exit outcome, context requirements, error behavior, and terminal adaptation",
+        "Tests assert command catalog grouping and support labels match the matrix",
+        "Web UI preservation gate passes: Web Compact Terminal visual/behavioral render logic remains unchanged unless the story explicitly documents user-approved Web behavior changes; shared `src/session-ui/**` changes include Web regression evidence.",
+        "Implementation does not import Web DOM/Tailwind/lucide components into CLI modules",
+        "Secrets are redacted in previews, details, fixtures, snapshots, and PTY artifacts",
+        "Focused tests pass",
+        "Typecheck passes",
+        "When marking passes true, notes include commands run, evidence tier, artifact paths where applicable, and fake/demo/mocked/real classification"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Resolve room names from canonical room data across TUI surfaces",
+      "description": "As an SSH operator, I want to see Web room names instead of only room IDs.",
+      "acceptanceCriteria": [
+        "Room picker, header, session picker, messages, repair results, session-link descriptors, `/sessions`, and `/session-current` prefer room title over room ID when available",
+        "LocalCliSessionSource resolves room titles through ChatRoomService/session navigation/session metadata in a deterministic order",
+        "Tests cover default Personal Chat, renamed room, archived room, missing room fallback, and stale room ID recovery",
+        "Web UI preservation gate passes: Web Compact Terminal visual/behavioral render logic remains unchanged unless the story explicitly documents user-approved Web behavior changes; shared `src/session-ui/**` changes include Web regression evidence.",
+        "Implementation does not import Web DOM/Tailwind/lucide components into CLI modules",
+        "Secrets are redacted in previews, details, fixtures, snapshots, and PTY artifacts",
+        "Focused tests pass",
+        "Typecheck passes",
+        "When marking passes true, notes include commands run, evidence tier, artifact paths where applicable, and fake/demo/mocked/real classification"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Resolve session labels and room context in command results",
+      "description": "As a user, I want command-result rows to explain which named room/session they affect.",
+      "acceptanceCriteria": [
+        "`/clone`, `/fork-candidates`, `/session-current`, `/sessions`, `/new`, and session-link rows include session title and room title when available",
+        "IDs remain available as secondary metadata and fallback when labels are missing",
+        "Command result normalization accepts optional room/session label fields and redacts them safely",
+        "Tests assert no command result shows a raw room ID as the primary label when a room title exists",
+        "Web UI preservation gate passes: Web Compact Terminal visual/behavioral render logic remains unchanged unless the story explicitly documents user-approved Web behavior changes; shared `src/session-ui/**` changes include Web regression evidence.",
+        "Implementation does not import Web DOM/Tailwind/lucide components into CLI modules",
+        "Secrets are redacted in previews, details, fixtures, snapshots, and PTY artifacts",
+        "Focused tests pass",
+        "Typecheck passes",
+        "When marking passes true, notes include commands run, evidence tier, artifact paths where applicable, and fake/demo/mocked/real classification"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Align picker overlays with Web navigation semantics",
+      "description": "As a keyboard user, I want owner/room/session/model/login/thinking/fork picker flows to be compact and predictable.",
+      "acceptanceCriteria": [
+        "Owner → room → session flow keeps active/default markers and supports back/cancel behavior",
+        "Room/session pickers show named rooms and sessions, not only IDs",
+        "Model/login/thinking/fork candidate pickers remain overlays and do not append noisy transcript rows until an action is confirmed",
+        "Controller tests cover Enter, Esc, arrow navigation, nested picker back, empty states, and errors",
+        "Web UI preservation gate passes: Web Compact Terminal visual/behavioral render logic remains unchanged unless the story explicitly documents user-approved Web behavior changes; shared `src/session-ui/**` changes include Web regression evidence.",
+        "Implementation does not import Web DOM/Tailwind/lucide components into CLI modules",
+        "Secrets are redacted in previews, details, fixtures, snapshots, and PTY artifacts",
+        "Focused tests pass",
+        "Typecheck passes",
+        "When marking passes true, notes include commands run, evidence tier, artifact paths where applicable, and fake/demo/mocked/real classification"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Validate slash and room/session flows through PTY/default path",
+      "description": "As a reviewer, I want evidence that command and room-label fixes work in the actual TUI.",
+      "acceptanceCriteria": [
+        "PTY scenario exercises `/room`, `/session`, `/sessions`, `/session-current`, `/status`, and at least one runtime command using the installed/local `pibo tui:sessions` path",
+        "Screen artifacts show named rooms where fixture/canonical data provides names",
+        "Assertions reject raw room ID as primary label when a room title is available",
+        "Artifacts include raw ANSI, clean text, final screen, metadata, input/assertions, and exact command invocation",
+        "Web UI preservation gate passes: Web Compact Terminal visual/behavioral render logic remains unchanged unless the story explicitly documents user-approved Web behavior changes; shared `src/session-ui/**` changes include Web regression evidence.",
+        "Implementation does not import Web DOM/Tailwind/lucide components into CLI modules",
+        "Secrets are redacted in previews, details, fixtures, snapshots, and PTY artifacts",
+        "Focused tests pass",
+        "Typecheck passes",
+        "When marking passes true, notes include commands run, evidence tier, artifact paths where applicable, and fake/demo/mocked/real classification"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

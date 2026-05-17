@@ -11,7 +11,6 @@ const DEFAULT_MAX_ARRAY_ITEMS = 20;
 const DEFAULT_MAX_OBJECT_KEYS = 40;
 
 export function formatInkJson(value: unknown, options: InkJsonOptions = {}): string {
-	const maxChars = options.maxChars ?? DEFAULT_MAX_CHARS;
 	const prepared = prepareJsonValue(value, {
 		maxDepth: options.maxDepth ?? DEFAULT_MAX_DEPTH,
 		maxArrayItems: options.maxArrayItems ?? DEFAULT_MAX_ARRAY_ITEMS,
@@ -19,11 +18,10 @@ export function formatInkJson(value: unknown, options: InkJsonOptions = {}): str
 		seen: new WeakSet<object>(),
 		depth: 0,
 	});
-	const text = JSON.stringify(prepared, null, 2) ?? String(prepared);
-	return truncateTerminalText(text, maxChars);
+	return sanitizeTerminalText(JSON.stringify(prepared, null, 2) ?? String(prepared));
 }
 
-export function formatInlineJson(value: unknown, maxChars = 180): string {
+export function formatInlineJson(value: unknown, _maxChars = 180): string {
 	const text = JSON.stringify(prepareJsonValue(value, {
 		maxDepth: 2,
 		maxArrayItems: 8,
@@ -31,13 +29,11 @@ export function formatInlineJson(value: unknown, maxChars = 180): string {
 		seen: new WeakSet<object>(),
 		depth: 0,
 	})) ?? String(value);
-	return truncateTerminalText(text, maxChars).replace(/\s+/g, " ");
+	return sanitizeTerminalText(text).replace(/\s+/g, " ");
 }
 
-export function truncateTerminalText(text: string, maxChars: number): string {
-	const safeText = sanitizeTerminalText(text);
-	if (safeText.length <= maxChars) return safeText;
-	return `${safeText.slice(0, Math.max(0, maxChars - 12)).trimEnd()}\n… truncated`;
+export function truncateTerminalText(text: string, _maxChars: number): string {
+	return sanitizeTerminalText(text);
 }
 
 export function sanitizeTerminalText(text: string): string {
@@ -53,7 +49,7 @@ type PrepareOptions = Required<Omit<InkJsonOptions, "maxChars">> & {
 
 function prepareJsonValue(value: unknown, options: PrepareOptions): unknown {
 	if (value === null || value === undefined) return value;
-	if (typeof value === "string") return truncateTerminalText(value, 600);
+	if (typeof value === "string") return sanitizeTerminalText(value);
 	if (typeof value === "number" || typeof value === "boolean") return value;
 	if (typeof value === "bigint") return `${value.toString()}n`;
 	if (typeof value === "symbol") return value.description ? `Symbol(${value.description})` : "Symbol";
