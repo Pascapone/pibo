@@ -1,0 +1,102 @@
+{
+  "project": "Ink CLI Terminal Rendering Parity — Web-Derived Completion",
+  "branchName": "ralph/ink-cli-output-preview-details",
+  "description": "Restore Web collapsed-output disclosure semantics in shared rows and add terminal-native Ink row expansion so previews stay dense while full input/output/error remains available.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Restore shared preview line limits without character truncation",
+      "description": "As an SSH operator, I want large outputs to be summarized without losing visible line content.",
+      "acceptanceCriteria": [
+        "Shared `previewLines` or successor logic limits collapsed output to five logical output lines for applicable row kinds",
+        "Exploration group collapsed child summaries are limited to six logical lines",
+        "Visible preview lines preserve full characters and rely on wrapping, not `… truncated`",
+        "Tests cover fewer-than-limit, exactly-at-limit, over-limit, empty-line, and long-unbroken-token cases",
+        "Implementation does not import Web DOM/Tailwind/lucide components into CLI modules",
+        "Secrets are redacted in previews, details, fixtures, snapshots, and PTY artifacts",
+        "Focused tests pass",
+        "Typecheck passes",
+        "When marking passes true, notes include commands run, evidence tier, artifact paths where applicable, and fake/demo/mocked/real classification"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Expose omitted preview metadata and full detail payloads",
+      "description": "As a renderer, I want explicit omitted-line metadata so I can show a detail affordance consistently.",
+      "acceptanceCriteria": [
+        "CompactTerminalRow or detail descriptors expose omitted preview count or equivalent metadata for over-limit outputs",
+        "Full input/output/error payloads remain available on the row or detail items",
+        "Command/tool result conversion preserves full payloads while using bounded previews",
+        "Tests assert full detail payload survives collapsed preview rendering",
+        "Implementation does not import Web DOM/Tailwind/lucide components into CLI modules",
+        "Secrets are redacted in previews, details, fixtures, snapshots, and PTY artifacts",
+        "Focused tests pass",
+        "Typecheck passes",
+        "When marking passes true, notes include commands run, evidence tier, artifact paths where applicable, and fake/demo/mocked/real classification"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Add Ink selected-row and expanded-row controller behavior",
+      "description": "As a keyboard user, I want to open details from the TUI without losing input flow.",
+      "acceptanceCriteria": [
+        "Ink session state tracks selected row and expanded row IDs or an equivalent focused-detail mode",
+        "Keyboard controls select expandable rows and toggle details while preserving normal text entry and slash picker behavior",
+        "Help text documents the detail controls compactly",
+        "Controller tests cover selection, expansion, collapse, picker interaction, and message input interaction",
+        "Implementation does not import Web DOM/Tailwind/lucide components into CLI modules",
+        "Secrets are redacted in previews, details, fixtures, snapshots, and PTY artifacts",
+        "Focused tests pass",
+        "Typecheck passes",
+        "When marking passes true, notes include commands run, evidence tier, artifact paths where applicable, and fake/demo/mocked/real classification"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Render Ink details below the parent row",
+      "description": "As an SSH operator, I want full details inline where the event occurred.",
+      "acceptanceCriteria": [
+        "Expanded Ink row renders `Input`, `Output`, `Error`, linked session, and compacted-output disclosure below the parent row",
+        "Details use compact terminal spacing and semantic markers rather than detached header messages",
+        "Details redact secrets and preserve full multi-line output",
+        "Ink snapshots cover string, JSON, error, linked session, and compacted-output details",
+        "Implementation does not import Web DOM/Tailwind/lucide components into CLI modules",
+        "Secrets are redacted in previews, details, fixtures, snapshots, and PTY artifacts",
+        "Focused tests pass",
+        "Typecheck passes",
+        "When marking passes true, notes include commands run, evidence tier, artifact paths where applicable, and fake/demo/mocked/real classification"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Validate long-output preview and expansion through PTY",
+      "description": "As a reviewer, I want actual terminal evidence that collapsed output and details behave like Web.",
+      "acceptanceCriteria": [
+        "PTY scenario creates or renders a row with at least 12 output lines",
+        "Collapsed screen shows five preview lines and an omitted/detail affordance",
+        "After keyboard expansion, screen/artifact shows full output or full-output disclosure",
+        "Artifacts include raw ANSI, clean text, final screen, metadata, input/assertions, and exact command invocation",
+        "Implementation does not import Web DOM/Tailwind/lucide components into CLI modules",
+        "Secrets are redacted in previews, details, fixtures, snapshots, and PTY artifacts",
+        "Focused tests pass",
+        "Typecheck passes",
+        "When marking passes true, notes include commands run, evidence tier, artifact paths where applicable, and fake/demo/mocked/real classification"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

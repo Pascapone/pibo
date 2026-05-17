@@ -1,0 +1,99 @@
+{
+  "project": "Ink CLI Terminal Rendering Parity — Web-Derived Completion",
+  "branchName": "ralph/ink-cli-terminal-e2e-validation-gates",
+  "description": "Create the final Web-derived validation gate with PTY artifacts, Web checks, snapshot gates, default-path room/session validation, and an acceptance report.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Add a Web-derived validation command suite",
+      "description": "As a reviewer, I want one documented validation suite that covers all parity rules.",
+      "acceptanceCriteria": [
+        "Add script, npm task, or documented command set that runs shared/model tests, Ink snapshots, Web semantic-hook tests, and PTY smoke checks relevant to Web-derived parity",
+        "Validation suite maps each check to PRD 08 matrix rows",
+        "Failure output names the failed rule or fixture rather than only a generic snapshot mismatch",
+        "Implementation does not import Web DOM/Tailwind/lucide components into CLI modules",
+        "Secrets are redacted in previews, details, fixtures, snapshots, and PTY artifacts",
+        "Focused tests pass",
+        "Typecheck passes",
+        "When marking passes true, notes include commands run, evidence tier, artifact paths where applicable, and fake/demo/mocked/real classification"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Add PTY visual flows for final parity evidence",
+      "description": "As an SSH operator, I want terminal evidence for the actual workflows I use.",
+      "acceptanceCriteria": [
+        "PTY flows cover `/status`, long output preview/details, JSON rendering, markdown/code rendering, slash palette, `/room`, `/session`, `/sessions`, `/session-current`, no startup warning noise, and NO_COLOR/narrow terminal variant",
+        "At least one PTY flow uses the real/local `pibo tui:sessions` path rather than only demo renderer fixtures",
+        "Artifacts include raw ANSI, clean text, final screen, metadata, input/assertions, and visual conversion or documented fallback",
+        "Implementation does not import Web DOM/Tailwind/lucide components into CLI modules",
+        "Secrets are redacted in previews, details, fixtures, snapshots, and PTY artifacts",
+        "Focused tests pass",
+        "Typecheck passes",
+        "When marking passes true, notes include commands run, evidence tier, artifact paths where applicable, and fake/demo/mocked/real classification"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Add Web semantic regression checks for shared fixtures",
+      "description": "As a product maintainer, I want Web Terminal behavior protected while Ink changes continue.",
+      "acceptanceCriteria": [
+        "Web tests verify shared fixtures render expected row hooks, status hooks, detail hooks, and structured card hooks",
+        "Collapsed/expanded Web behavior is asserted for long-output and JSON/detail fixtures",
+        "Web checks pass without changing Web visuals except intentional semantic hooks",
+        "Implementation does not import Web DOM/Tailwind/lucide components into CLI modules",
+        "Secrets are redacted in previews, details, fixtures, snapshots, and PTY artifacts",
+        "Focused tests pass",
+        "Typecheck passes",
+        "When marking passes true, notes include commands run, evidence tier, artifact paths where applicable, and fake/demo/mocked/real classification"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Create final acceptance report",
+      "description": "As a user and reviewer, I want a clear report showing what passed and what remains.",
+      "acceptanceCriteria": [
+        "Report under `docs/reports/` summarizes matrix coverage, commands run, artifact paths, evidence classification, observed results, and limitations",
+        "Report explicitly states whether production/web deployment was performed or not",
+        "Report includes room/session name resolution evidence and any remaining known gaps",
+        "Implementation does not import Web DOM/Tailwind/lucide components into CLI modules",
+        "Secrets are redacted in previews, details, fixtures, snapshots, and PTY artifacts",
+        "Focused tests pass",
+        "Typecheck passes",
+        "When marking passes true, notes include commands run, evidence tier, artifact paths where applicable, and fake/demo/mocked/real classification"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Run final gate commands and record results",
+      "description": "As a maintainer, I want the branch to be merge-ready with evidence.",
+      "acceptanceCriteria": [
+        "`npm run typecheck` passes",
+        "`npm test` passes",
+        "`npm run chat-ui:typecheck` passes when Web tests/hooks changed",
+        "`npm run chat-ui:build` passes when Web UI changed",
+        "Final PTY commands pass or documented limitations are approved before marking this PRD complete",
+        "Implementation does not import Web DOM/Tailwind/lucide components into CLI modules",
+        "Secrets are redacted in previews, details, fixtures, snapshots, and PTY artifacts",
+        "Focused tests pass",
+        "Typecheck passes",
+        "When marking passes true, notes include commands run, evidence tier, artifact paths where applicable, and fake/demo/mocked/real classification"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

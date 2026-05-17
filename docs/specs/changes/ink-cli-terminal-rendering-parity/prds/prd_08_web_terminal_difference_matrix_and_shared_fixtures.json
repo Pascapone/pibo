@@ -1,0 +1,97 @@
+{
+  "project": "Ink CLI Terminal Rendering Parity — Web-Derived Completion",
+  "branchName": "ralph/ink-cli-web-terminal-diff-fixtures",
+  "description": "Complete the Web Compact Terminal reference matrix and add shared fixtures that expose every known layout, behavior, command, JSON, markdown, details, status, and room/session naming difference before implementation continues.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Create Web-vs-Ink terminal difference matrix",
+      "description": "As a reviewer, I want a complete Web-vs-Ink matrix so that parity gaps are explicit and owned.",
+      "acceptanceCriteria": [
+        "Add a matrix document under the change docs that lists Web law, current Ink behavior, target Ink behavior, source files, fixture coverage, and owning PRD/story for every required area",
+        "Matrix includes layout/header, rows, spacing, preview/details, JSON, markdown, status, streaming, slash commands, pickers, room/session naming, no-color, and narrow terminal behavior",
+        "Matrix references `web-terminal-reference-audit.md` and `TERMINAL_DESIGN.md` for every major rule",
+        "Implementation does not import Web DOM/Tailwind/lucide components into CLI modules",
+        "Secrets are redacted in previews, details, fixtures, snapshots, and PTY artifacts",
+        "Focused tests pass",
+        "Typecheck passes",
+        "When marking passes true, notes include commands run, evidence tier, artifact paths where applicable, and fake/demo/mocked/real classification"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Add renderer-neutral long-output and detail fixtures",
+      "description": "As an implementer, I want long-output fixtures so preview and expansion rules can be tested without live provider calls.",
+      "acceptanceCriteria": [
+        "Add shared fixtures with at least 12 output lines for tool.call, tool.result-like rows, yielded.run, async agent, shell command, and execution.command",
+        "Fixtures retain full input/output/error payloads while marking the collapsed preview expectation as five lines",
+        "Fixture tests assert no per-line character truncation in visible preview lines",
+        "Implementation does not import Web DOM/Tailwind/lucide components into CLI modules",
+        "Secrets are redacted in previews, details, fixtures, snapshots, and PTY artifacts",
+        "Focused tests pass",
+        "Typecheck passes",
+        "When marking passes true, notes include commands run, evidence tier, artifact paths where applicable, and fake/demo/mocked/real classification"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Add JSON, markdown, and syntax fixtures",
+      "description": "As an implementer, I want JSON and markdown fixtures so syntax/render semantics are not inferred ad hoc.",
+      "acceptanceCriteria": [
+        "Add nested JSON fixture with object keys, arrays, string, number, boolean, null, long string, circular-safe or prepared equivalent, and secret-like values",
+        "Add markdown fixture with headings, paragraphs, nested lists, blockquote, inline code, fenced bash/json code, table, and links",
+        "Fixture tests assert renderer-neutral token roles or expected semantic markers for JSON and markdown outputs",
+        "Implementation does not import Web DOM/Tailwind/lucide components into CLI modules",
+        "Secrets are redacted in previews, details, fixtures, snapshots, and PTY artifacts",
+        "Focused tests pass",
+        "Typecheck passes",
+        "When marking passes true, notes include commands run, evidence tier, artifact paths where applicable, and fake/demo/mocked/real classification"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Add room/session naming and slash-command fixtures",
+      "description": "As an SSH operator, I want fixtures that prove the TUI shows Web room names and command behavior, not only IDs.",
+      "acceptanceCriteria": [
+        "Add fixtures for default room, renamed room, archived room, missing room fallback, session with title, and session with only ID",
+        "Add slash command fixture cases for every command in `CLI_ONLY_SLASH_COMMANDS` and `WEB_PARITY_SLASH_COMMANDS`",
+        "Tests assert command catalog grouping, command labels, room labels, session labels, and fallback behavior are stable",
+        "Implementation does not import Web DOM/Tailwind/lucide components into CLI modules",
+        "Secrets are redacted in previews, details, fixtures, snapshots, and PTY artifacts",
+        "Focused tests pass",
+        "Typecheck passes",
+        "When marking passes true, notes include commands run, evidence tier, artifact paths where applicable, and fake/demo/mocked/real classification"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Wire matrix rows to validation ownership",
+      "description": "As a Ralph runner, I want every discovered gap to map to a future story so work can be executed in order.",
+      "acceptanceCriteria": [
+        "Every matrix row has owner PRD/story and validation type: shared test, Web render test, Ink snapshot, PTY, or manual review",
+        "README and task docs link the matrix and explain how new differences must be added",
+        "No uncovered matrix row may be marked complete without a validation owner",
+        "Implementation does not import Web DOM/Tailwind/lucide components into CLI modules",
+        "Secrets are redacted in previews, details, fixtures, snapshots, and PTY artifacts",
+        "Focused tests pass",
+        "Typecheck passes",
+        "When marking passes true, notes include commands run, evidence tier, artifact paths where applicable, and fake/demo/mocked/real classification"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

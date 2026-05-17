@@ -1,0 +1,100 @@
+{
+  "project": "Ink CLI Terminal Rendering Parity — Web-Derived Completion",
+  "branchName": "ralph/ink-cli-row-first-layout-spacing",
+  "description": "Make Ink normal transcript events use Web row-first grammar, tighten spacing, and compact status/header chrome according to the Web Terminal layout contract.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Render normal Ink events as row-first transcript lines",
+      "description": "As an SSH operator, I want normal terminal events to look like Web transcript rows instead of cards.",
+      "acceptanceCriteria": [
+        "Ink renderer bypasses `TerminalCardDescriptor` card headers for normal row kinds: tool.call, tool.group.exploring, agent.delegation, agent.async, yielded.run, execution.command, execution.compaction, and error",
+        "Normal rows render prefix glyphs, terse verbs, inline tokens, bounded previews, and optional detail affordance",
+        "Snapshots assert normal rows do not contain `▣` card headers",
+        "Implementation does not import Web DOM/Tailwind/lucide components into CLI modules",
+        "Secrets are redacted in previews, details, fixtures, snapshots, and PTY artifacts",
+        "Focused tests pass",
+        "Typecheck passes",
+        "When marking passes true, notes include commands run, evidence tier, artifact paths where applicable, and fake/demo/mocked/real classification"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Keep structured exceptions for status thinking login and model",
+      "description": "As a user, I want genuinely interactive structured controls to remain usable in terminal form.",
+      "acceptanceCriteria": [
+        "Ink keeps first-class structured rendering for tool.status, tool.thinking, tool.login, and tool.model",
+        "Structured exceptions are documented in renderer tests and match Web exceptions",
+        "Snapshots prove status/thinking/login/model remain distinguishable from normal row grammar",
+        "Implementation does not import Web DOM/Tailwind/lucide components into CLI modules",
+        "Secrets are redacted in previews, details, fixtures, snapshots, and PTY artifacts",
+        "Focused tests pass",
+        "Typecheck passes",
+        "When marking passes true, notes include commands run, evidence tier, artifact paths where applicable, and fake/demo/mocked/real classification"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Tighten Ink spacing and prefix alignment",
+      "description": "As an SSH operator, I want the transcript to be dense and scannable like Web Terminal.",
+      "acceptanceCriteria": [
+        "Adjacent transcript rows render without unexplained blank lines or repeated decorative headers",
+        "Detail/continuation lines align under the content column using stable terminal-native prefixes",
+        "Narrow snapshots preserve row meaning and prefix/content alignment after wrapping",
+        "Spacing snapshot covers user, assistant, reasoning, tool, command, status, and error adjacency",
+        "Implementation does not import Web DOM/Tailwind/lucide components into CLI modules",
+        "Secrets are redacted in previews, details, fixtures, snapshots, and PTY artifacts",
+        "Focused tests pass",
+        "Typecheck passes",
+        "When marking passes true, notes include commands run, evidence tier, artifact paths where applicable, and fake/demo/mocked/real classification"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Compact status and header chrome",
+      "description": "As an SSH operator, I want `/status` and header chrome to be useful without consuming the whole screen.",
+      "acceptanceCriteria": [
+        "Status groups fields, bars, warnings/errors, and tools according to Web-derived compactness rules",
+        "Enabled/active tools are summarized or foldable by default with a way to inspect full names",
+        "Header shows owner, room/session names, agent, model, and source compactly without duplicating `/status`",
+        "Tests cover available, partial, unavailable, queued/streaming/processing, and disposed status states",
+        "Implementation does not import Web DOM/Tailwind/lucide components into CLI modules",
+        "Secrets are redacted in previews, details, fixtures, snapshots, and PTY artifacts",
+        "Focused tests pass",
+        "Typecheck passes",
+        "When marking passes true, notes include commands run, evidence tier, artifact paths where applicable, and fake/demo/mocked/real classification"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Capture dense row-first PTY evidence",
+      "description": "As a reviewer, I want terminal artifacts proving the UI no longer looks like card spam.",
+      "acceptanceCriteria": [
+        "PTY scenario includes normal tool, command, yielded/error row, and status structured exception",
+        "Screen artifact shows row-first grammar for normal events and compact structured status",
+        "Artifact assertions reject decorative `▣` headers for normal row kinds where feasible",
+        "Artifacts include raw ANSI, clean text, final screen, metadata, input/assertions, and exact command invocation",
+        "Implementation does not import Web DOM/Tailwind/lucide components into CLI modules",
+        "Secrets are redacted in previews, details, fixtures, snapshots, and PTY artifacts",
+        "Focused tests pass",
+        "Typecheck passes",
+        "When marking passes true, notes include commands run, evidence tier, artifact paths where applicable, and fake/demo/mocked/real classification"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}
