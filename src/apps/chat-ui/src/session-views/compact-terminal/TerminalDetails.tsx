@@ -28,6 +28,7 @@ export function TerminalDetails({ row, onOpenSession }: TerminalDetailsProps) {
 							</div>
 							<DetailPayload label="Input" value={item.input} />
 							<DetailPayload label="Output" value={item.output} />
+							<CompactedOutputDisclosure value={item.output} />
 							{item.error ? <DetailText label="Error" value={item.error} tone="red" /> : null}
 						</div>
 					))}
@@ -36,6 +37,7 @@ export function TerminalDetails({ row, onOpenSession }: TerminalDetailsProps) {
 				<div className="space-y-3">
 					<DetailPayload label="Input" value={row.input} />
 					<DetailPayload label="Output" value={row.output} />
+					<CompactedOutputDisclosure value={row.output} />
 					{row.error ? <DetailText label="Error" value={row.error} tone="red" /> : null}
 					{row.linkedPiboSessionId ? (
 						<div className="flex items-center gap-2 text-[11px]">
@@ -66,6 +68,46 @@ function DetailPayload({ label, value }: { label: string; value: unknown }) {
 	}
 	return <DetailJson label={label} value={renderable.value} />;
 }
+
+function CompactedOutputDisclosure({ value }: { value: unknown }) {
+	const details = compactedOutputDetails(value);
+	if (!details) return null;
+	return (
+		<details className="space-y-1 border border-[#2a2a2a] bg-[#0b0b0b] p-2">
+			<summary className="cursor-pointer text-[11px] font-semibold text-[#38bdf8]">
+				Show full output ({details.originalLines} lines)
+			</summary>
+			{details.fullOutput ? (
+				<pre className="mt-2 max-h-[520px] overflow-auto whitespace-pre-wrap break-words font-mono text-[12px] leading-[1.45] text-[#d4d4d4]">
+					{details.fullOutput}
+				</pre>
+			) : details.fullOutputPath ? (
+				<div className="mt-2 min-w-0 break-words font-mono text-[12px] text-[#d4d4d4]">
+					Full output file: {details.fullOutputPath}
+				</div>
+			) : null}
+		</details>
+	);
+}
+
+function compactedOutputDetails(value: unknown): CompactedOutputDetails | undefined {
+	if (!isRecord(value)) return undefined;
+	const details = isRecord(value.details) ? value.details.piboBashOutputCompaction : undefined;
+	if (!isRecord(details) || details.kind !== "validation-output") return undefined;
+	const originalLines = typeof details.originalLines === "number" ? details.originalLines : undefined;
+	if (originalLines === undefined) return undefined;
+	return {
+		originalLines,
+		fullOutput: typeof details.fullOutput === "string" ? details.fullOutput : undefined,
+		fullOutputPath: typeof details.fullOutputPath === "string" ? details.fullOutputPath : undefined,
+	};
+}
+
+type CompactedOutputDetails = {
+	originalLines: number;
+	fullOutput?: string;
+	fullOutputPath?: string;
+};
 
 function DetailJson({ label, value, meta }: { label: string; value: unknown; meta?: string }) {
 	return (
@@ -145,4 +187,8 @@ function parseJsonValue(value: string): unknown | undefined {
 	} catch {
 		return undefined;
 	}
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }

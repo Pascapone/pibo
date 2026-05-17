@@ -45,6 +45,7 @@ import { getDefaultPiboWorkspace } from "./workspace.js";
 import { DEFAULT_USER_TIMEZONE } from "./user-settings.js";
 import { createRuntimeToolDefinition, type PiboRuntimeToolController } from "../tools/runtime/tool.js";
 import { RuntimeSessionRegistry } from "../tools/runtime/registry.js";
+import { compactValidationToolResultForContext } from "./test-output-compaction.js";
 
 export type PiboRuntimeOptions = {
 	cwd?: string;
@@ -378,6 +379,8 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 			tools: getBuiltinToolAllowlist(profile, customTools),
 		});
 
+		installValidationOutputCompaction(created.session.agent);
+
 		const resourceLoader = services.resourceLoader;
 		const diagnostics: AgentSessionRuntimeDiagnostic[] = [
 			...piPackageOptions.diagnostics,
@@ -409,6 +412,39 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 		agentDir,
 		sessionManager,
 	});
+}
+
+type PiboAgentWithAfterToolCall = {
+	afterToolCall?: (context: Parameters<typeof compactValidationToolResultForContext>[0], signal?: AbortSignal) => Promise<unknown> | unknown;
+};
+
+function installValidationOutputCompaction(agent: unknown): void {
+	const target = agent as PiboAgentWithAfterToolCall | undefined;
+	if (!target) return;
+	const previous = target.afterToolCall;
+	target.afterToolCall = async (context, signal) => {
+		const prior = await previous?.(context, signal);
+		const mergedContext = mergePriorAfterToolCallResult(context, prior);
+		return compactValidationToolResultForContext(mergedContext) ?? prior;
+	};
+}
+
+function mergePriorAfterToolCallResult(
+	context: Parameters<typeof compactValidationToolResultForContext>[0],
+	prior: unknown,
+): Parameters<typeof compactValidationToolResultForContext>[0] {
+	if (!prior || typeof prior !== "object" || Array.isArray(prior)) return context;
+	const replacement = prior as { content?: unknown; details?: unknown; isError?: unknown; terminate?: unknown };
+	return {
+		...context,
+		isError: typeof replacement.isError === "boolean" ? replacement.isError : context.isError,
+		result: {
+			...context.result,
+			content: Array.isArray(replacement.content) ? replacement.content as typeof context.result.content : context.result.content,
+			details: replacement.details !== undefined ? replacement.details : context.result.details,
+			terminate: typeof replacement.terminate === "boolean" ? replacement.terminate : context.result.terminate,
+		},
+	};
 }
 
 function resolveProfileModel(
