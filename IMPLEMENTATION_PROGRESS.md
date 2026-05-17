@@ -269,4 +269,4 @@ Remaining limitations / next stories:
 
 Commit:
 
-- `036aaea` feat: refine Ink compact terminal renderer
+- `ecbdafd` feat: refine Ink compact terminal renderer
