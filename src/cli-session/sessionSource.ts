@@ -1,5 +1,6 @@
 import type { ModelProfile } from "../core/profiles.js";
-import type { SlashCommandDescriptor } from "../session-ui/index.js";
+import type { CommandResultDescriptor, SlashCommandDescriptor } from "../session-ui/index.js";
+import type { PiboJsonValue } from "../core/events.js";
 import type { PiboSessionTraceView } from "../shared/trace-types.js";
 
 export type CliSourceCapability = "supported" | "unsupported" | "unknown";
@@ -92,6 +93,22 @@ export type RepairLegacyUserUnknownSessionsResult = {
 	sessionIds: readonly string[];
 };
 
+export type ExecuteCliSlashCommandInput = {
+	command: string;
+	sessionId?: string;
+	args?: string;
+	ownerScope?: string;
+};
+
+export type ExecuteCliSlashCommandResult = {
+	command: string;
+	actionName: string;
+	descriptor: CommandResultDescriptor;
+	rawResult?: PiboJsonValue | unknown;
+	openSessionId?: string;
+	roomId?: string;
+};
+
 export type CliOpenSession = {
 	session: CliSessionSummary;
 	traceView: PiboSessionTraceView | null;
@@ -111,6 +128,7 @@ export interface CliSessionSource {
 	sendMessage(sessionId: string, text: string): Promise<void>;
 	listAgents(): Promise<readonly CliAgentSummary[]>;
 	listSlashCommands(): Promise<readonly SlashCommandDescriptor[]>;
+	executeSlashCommand(input: ExecuteCliSlashCommandInput): Promise<ExecuteCliSlashCommandResult>;
 	setSessionAgent(sessionId: string, agentId: string): Promise<CliSessionSummary>;
 	repairLegacyUserUnknownSessions?(input?: RepairLegacyUserUnknownSessionsInput): Promise<RepairLegacyUserUnknownSessionsResult>;
 	getStatus(input?: { sessionId?: string }): Promise<CliRuntimeStatus>;

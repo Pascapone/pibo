@@ -348,3 +348,18 @@ Validation and results for shared slash catalog help and Ink suggestions batch:
 - Completed stories marked `passes: true`: PRD 05 `US-001`, `US-002`, `US-005`.
 - Implementation commit: `ddbecd4` (`Add Ink slash catalog help and suggestions`).
 - Next recommended group: PRD 05 `US-003` and `US-004` for routed action execution (`/status`, `/compact`, `/clear`, `/abort`, `/kill`, `/kill-all`, `/fast`, `/session-current`, `/sessions`, `/clone`) using shared command result descriptors and PTY validation.
+
+## 2026-05-17 run: routed slash action execution batch
+
+Selected story group:
+
+- `prd_05_slash_command_catalog_and_actions.json` / `US-003` — Execute basic routed slash actions.
+- `prd_05_slash_command_catalog_and_actions.json` / `US-004` — Execute session metadata and clone actions.
+
+Intended validation plan:
+
+- Add a CLI source action-execution contract that maps shared slash command descriptors to gateway action names, parses safe terminal arguments, scopes execution to the selected owner and active session, and normalizes results through shared command-result descriptors.
+- Implement fake and local source action execution for `/status`, `/compact`, `/clear`, `/abort`, `/kill`, `/kill-all`, `/fast`, `/session-current`, `/sessions`, and `/clone`, including local source equivalents or explicit unsupported results when no routed runtime is available.
+- Update Ink command handling so supported Web/session slash actions render shared command result descriptors; `/clear` keeps local display clearing while also running the routed/source action; `/clone` opens/selects a derived session when a result returns one.
+- Add focused source and Ink tests for successful routed actions, unsupported/runtime-error redaction, action-name mapping, metadata/session-list results, clone selection, and clear display behavior.
+- Run `npm run build` plus focused tests in `pibo-dev-ink-cli-v2-web-parity`, then run PTY scripts for `/status`, `/fast`, `/session-current`, and `/clone` with raw/clean artifacts, followed by `npm run typecheck` and broader tests if practical.

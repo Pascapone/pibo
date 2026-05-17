@@ -8,6 +8,7 @@ import {
 	filterSlashCommands,
 	formatSlashCommand,
 	groupSlashCommandsForHelp,
+	type CommandResultDescriptor,
 	type CompactTerminalRow,
 	type SlashCommandDescriptor,
 } from "../../session-ui/index.js";
@@ -559,12 +560,14 @@ async function handleSlashCommand(
 		return;
 	}
 	if (command.name === "status") {
+		const result = await source.executeSlashCommand({ command: command.name, args: command.args, sessionId: state.session?.id, ownerScope: state.activeOwner?.ownerScope });
 		const status = await source.getStatus({ sessionId: state.session?.id });
-		setState((current) => ({ ...current, status, message: formatCliSessionStatus(status, current.session), error: undefined }));
+		setState((current) => ({ ...current, status, message: renderCommandResultDescriptorText(result.descriptor, current.session), error: undefined }));
 		return;
 	}
 	if (command.name === "clear") {
-		setState((current) => ({ ...current, rows: [], message: "Cleared local display. Session data was not deleted.", error: undefined }));
+		const result = await source.executeSlashCommand({ command: command.name, args: command.args, sessionId: state.session?.id, ownerScope: state.activeOwner?.ownerScope });
+		setState((current) => ({ ...current, rows: [], message: `${renderCommandResultDescriptorText(result.descriptor, current.session)}\nCleared local display. Session data was not deleted.`, error: undefined }));
 		return;
 	}
 	if (command.name === "exit" || command.name === "quit") {
@@ -677,7 +680,40 @@ async function handleSlashCommand(
 		}));
 		return;
 	}
+	const handled = await executeSharedSlashCommand(command, source, state, setState, openSession);
+	if (handled) return;
 	setState((current) => ({ ...current, error: `Unknown command ${command.raw}. Use /help for supported CLI commands.`, message: undefined }));
+}
+
+async function executeSharedSlashCommand(
+	command: CliSessionSlashCommand,
+	source: CliSessionSource,
+	state: InkSessionAppState,
+	setState: React.Dispatch<React.SetStateAction<InkSessionAppState>>,
+	openSession: (sessionId: string, message?: string) => Promise<void>,
+): Promise<boolean> {
+	const catalog = state.slashCommands ?? buildSlashCommandCatalog();
+	const descriptor = catalog.find((candidate) => candidate.slash === `/${command.name}` || candidate.aliases?.includes(`/${command.name}` as `/${string}`));
+	if (!descriptor || descriptor.group === "cli" || descriptor.group === "navigation") return false;
+	const result = await source.executeSlashCommand({ command: command.name, args: command.args, sessionId: state.session?.id, ownerScope: state.activeOwner?.ownerScope });
+	const message = renderCommandResultDescriptorText(result.descriptor, state.session);
+	if (result.openSessionId && result.openSessionId !== state.session?.id) {
+		await openSession(result.openSessionId, message);
+		return true;
+	}
+	const status = await source.getStatus({ sessionId: state.session?.id });
+	setState((current) => ({ ...current, status, message, error: undefined }));
+	return true;
+}
+
+export function renderCommandResultDescriptorText(descriptor: CommandResultDescriptor, session?: CliSessionSummary): string {
+	if (descriptor.kind === "text") return [descriptor.title, descriptor.text].filter(Boolean).join(": ");
+	if (descriptor.kind === "unsupported") return `${descriptor.command}: ${descriptor.reason}`;
+	if (descriptor.kind === "error") return `${descriptor.title ?? "Error"}: ${descriptor.message}`;
+	if (descriptor.kind === "session-link") return `${descriptor.title}: ${descriptor.label ?? "session"} ${descriptor.sessionId}${descriptor.roomId ? ` in ${descriptor.roomId}` : ""}`;
+	if (descriptor.kind === "status") return `${descriptor.title}: ${formatCliSessionStatus(descriptor.status as CliRuntimeStatus, session)}`;
+	if (descriptor.kind === "menu") return [descriptor.title, ...descriptor.items.map((item) => `  ${item.disabled ? "-" : "•"} ${item.label}${item.description ? ` — ${item.description}` : ""}`)].join("\n");
+	return `${descriptor.title ?? "Result"}: ${redactCliSessionStatusText(JSON.stringify(descriptor.value, null, 2))}`;
 }
 
 function ownerPickerItem(owner: CliOwnerSummary): InkSessionPickerItem {

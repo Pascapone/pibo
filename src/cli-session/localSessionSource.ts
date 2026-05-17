@@ -3,7 +3,7 @@ import { createDefaultPiboPluginRegistry } from "../plugins/builtin.js";
 import type { PiboPluginRegistry } from "../plugins/registry.js";
 import { createDefaultPiboDataSessionStore } from "../sessions/pibo-data-store.js";
 import type { PiboSession, PiboSessionStore } from "../sessions/store.js";
-import type { PiboEventListener, PiboInputEvent, PiboOutputEvent, PiboSessionStatus } from "../core/events.js";
+import type { PiboEventListener, PiboExecutionEvent, PiboInputEvent, PiboJsonValue, PiboOutputEvent, PiboSessionStatus } from "../core/events.js";
 import { getDefaultPiboWorkspace } from "../core/workspace.js";
 import { buildTraceView } from "../apps/chat/trace.js";
 import { storedPiboEventFromV2Row, type EventLogRow } from "../apps/chat/data/chat-data-mappers.js";
@@ -11,7 +11,7 @@ import { ChatDataIngestService } from "../data/ingest-service.js";
 import { ChatRoomService } from "../apps/chat/data/room-service.js";
 import type { StoredPiboEventLogRow } from "../data/event-log.js";
 import type { PiboDataStore } from "../data/pibo-store.js";
-import { buildSlashCommandCatalog, type SlashCommandDescriptor } from "../session-ui/index.js";
+import { buildSlashCommandCatalog, normalizeCommandErrorDescriptor, normalizeCommandResultDescriptor, type SlashCommandDescriptor } from "../session-ui/index.js";
 import type { PiboSessionTraceView, PiboTraceNode, PiboTraceNodeStatus } from "../shared/trace-types.js";
 import {
 	CliSourceError,
@@ -25,6 +25,8 @@ import {
 	type CliSessionUpdate,
 	type CliSessionUpdateListener,
 	type CreateCliSessionInput,
+	type ExecuteCliSlashCommandInput,
+	type ExecuteCliSlashCommandResult,
 	type RepairLegacyUserUnknownSessionsInput,
 	type RepairLegacyUserUnknownSessionsResult,
 } from "./sessionSource.js";
@@ -264,11 +266,28 @@ export class LocalCliSessionSource implements CliSessionSource {
 
 	async listSlashCommands(): Promise<readonly SlashCommandDescriptor[]> {
 		this.assertOpen();
-		return buildSlashCommandCatalog(this.pluginRegistry.getGatewayActionInfos().map((action) => ({
-			name: action.name,
-			description: action.description,
-			slashCommands: action.slashCommands,
-		}))).map(cloneJson);
+		return this.buildSlashCommands().map(cloneJson);
+	}
+
+	async executeSlashCommand(input: ExecuteCliSlashCommandInput): Promise<ExecuteCliSlashCommandResult> {
+		this.assertOpen();
+		const command = normalizeCommandName(input.command);
+		const descriptor = this.findSlashCommand(command);
+		const actionName = descriptor.actionName ?? descriptor.id;
+		const session = input.sessionId ? this.resolveSession(input.sessionId) : undefined;
+		if (descriptor.support === "browser-only" || descriptor.support === "product-area" || descriptor.support === "deferred") {
+			const rawResult = { supported: false, unsupportedReason: descriptor.unsupportedReason ?? `${descriptor.slash} is not supported in the terminal.` };
+			return { command, actionName, descriptor: normalizeCommandResultDescriptor(command, rawResult), rawResult };
+		}
+		try {
+			const rawResult = await this.executeLocalSlashAction({ command, actionName, session, args: input.args });
+			const openSessionId = sessionIdFromActionResult(rawResult);
+			const roomId = roomIdFromActionResult(rawResult) ?? (openSessionId ? roomIdFromSession(this.sessionStore.get(openSessionId) ?? session ?? ({} as PiboSession)) : undefined);
+			if (openSessionId) this.upsertDerivedSessionNavigation(openSessionId, roomId);
+			return { command, actionName, descriptor: normalizeCommandResultDescriptor(command, rawResult), rawResult, openSessionId, roomId };
+		} catch (error) {
+			return { command, actionName, descriptor: normalizeCommandErrorDescriptor(command, error), rawResult: { error: error instanceof Error ? error.message : String(error) } };
+		}
 	}
 
 	async setSessionAgent(sessionId: string, agentId: string): Promise<CliSessionSummary> {
@@ -343,6 +362,65 @@ export class LocalCliSessionSource implements CliSessionSource {
 		let count = 0;
 		for (const listeners of this.listeners.values()) count += listeners.size;
 		return count;
+	}
+
+	private buildSlashCommands(): SlashCommandDescriptor[] {
+		return buildSlashCommandCatalog(this.pluginRegistry.getGatewayActionInfos().map((action) => ({
+			name: action.name,
+			description: action.description,
+			slashCommands: action.slashCommands,
+		})));
+	}
+
+	private findSlashCommand(command: string): SlashCommandDescriptor {
+		const slash = `/${command}`;
+		const descriptor = this.buildSlashCommands().find((candidate) => candidate.slash === slash || candidate.aliases?.includes(slash as `/${string}`));
+		if (!descriptor) throw new CliSourceError("unsupported", `No slash command found for /${command}`);
+		return descriptor;
+	}
+
+	private async executeLocalSlashAction(input: { command: string; actionName: string; session?: PiboSession; args?: string }): Promise<unknown> {
+		if (input.command === "status") {
+			const status = input.session ? this.buildStatus(input.session) : await this.getStatus();
+			return { ...status, activeModel: input.session?.activeModel };
+		}
+		if (input.command === "session-current") {
+			if (!input.session) return { supported: false, unsupportedReason: "No session is open." };
+			return sessionMetadataResult(input.session, this.ensureDefaultRoomForOwner(normalizeOwnerScope(input.session.ownerScope)).id);
+		}
+		if (input.command === "sessions") {
+			const roomId = input.session ? roomIdFromSession(input.session, this.ensureDefaultRoomForOwner(normalizeOwnerScope(input.session.ownerScope)).id) : undefined;
+			return (await this.listSessions({ ownerScope: input.session?.ownerScope ?? this.ownerScope, roomId })).map((session) => ({
+				id: session.id,
+				title: session.title,
+				roomId: session.roomId,
+				profile: session.profile,
+				status: session.status,
+				updatedAt: session.updatedAt,
+			}));
+		}
+		if (!input.session) return { supported: false, unsupportedReason: `/${input.command} requires an open session.` };
+		if (!this.router) {
+			return { supported: false, unsupportedReason: `/${input.command} requires a routed local runtime. Open a local routed session or use a debug PTY mocked router.` };
+		}
+		const event: PiboExecutionEvent = {
+			type: "execution",
+			piboSessionId: input.session.id,
+			action: input.actionName,
+			id: randomUUID(),
+			...(executionParamsForSlash(input.command, input.args) !== undefined ? { params: executionParamsForSlash(input.command, input.args) } : {}),
+		};
+		const output = await this.router.emit(event);
+		if (output.type !== "execution_result") throw new CliSourceError("action_failed", `Action /${input.command} did not return an execution result.`);
+		return output.result;
+	}
+
+	private upsertDerivedSessionNavigation(sessionId: string, resultRoomId: string | undefined): void {
+		const session = this.sessionStore.get(sessionId);
+		if (!session) return;
+		const roomId = resultRoomId ?? roomIdFromSession(session);
+		if (!roomId) return;
+		this.upsertSessionNavigation(session, roomId, undefined, statusFromSession(session) === "unknown" ? "idle" : statusFromSession(session));
 	}
 
 	private readSessions(ownerScope = this.ownerScope): PiboSession[] {
@@ -893,6 +971,55 @@ function defaultCliRoomSummary(ownerScope: string): CliRoomSummary {
 
 export function cliDefaultRoomIdForOwner(ownerScope: string): string {
 	return `room_cli_personal_${Buffer.from(ownerScope).toString("base64url")}`;
+}
+
+function normalizeCommandName(command: string): string {
+	return command.trim().replace(/^\/+/, "").toLowerCase();
+}
+
+function executionParamsForSlash(command: string, args: string | undefined): PiboJsonValue | undefined {
+	const trimmed = args?.trim();
+	if (command === "compact" && trimmed) return { customInstructions: trimmed };
+	if (command === "thinking" && trimmed) return { level: trimmed };
+	if (command === "fast" && trimmed) return { mode: trimmed };
+	return undefined;
+}
+
+function sessionMetadataResult(session: PiboSession, defaultRoomId?: string): Record<string, unknown> {
+	return {
+		piboSessionId: session.id,
+		piSessionId: session.piSessionId,
+		title: session.title,
+		profile: session.profile,
+		ownerScope: session.ownerScope,
+		roomId: roomIdFromSession(session, defaultRoomId),
+		workspace: session.workspace,
+		status: statusFromSession(session),
+		createdAt: session.createdAt,
+		updatedAt: session.updatedAt,
+	};
+}
+
+function sessionIdFromActionResult(value: unknown): string | undefined {
+	const unwrapped = unwrapActionResult(value);
+	if (!unwrapped || typeof unwrapped !== "object" || Array.isArray(unwrapped)) return undefined;
+	const record = unwrapped as Record<string, unknown>;
+	return typeof record.piboSessionId === "string" ? record.piboSessionId : typeof record.sessionId === "string" ? record.sessionId : undefined;
+}
+
+function roomIdFromActionResult(value: unknown): string | undefined {
+	const unwrapped = unwrapActionResult(value);
+	if (!unwrapped || typeof unwrapped !== "object" || Array.isArray(unwrapped)) return undefined;
+	const record = unwrapped as Record<string, unknown>;
+	return typeof record.roomId === "string" ? record.roomId : undefined;
+}
+
+function unwrapActionResult(value: unknown): unknown {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+	const record = value as Record<string, unknown>;
+	if (record.ok === true && "result" in record) return record.result;
+	if (record.success === true && "data" in record) return record.data;
+	return value;
 }
 
 function cloneJson<T>(value: T): T {

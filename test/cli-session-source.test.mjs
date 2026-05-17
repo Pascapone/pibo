@@ -368,6 +368,105 @@ test("local CLI session source creates opens sends and cleans local trace subscr
 	await assert.rejects(() => source.listSessions(), (error) => error instanceof CliSourceError && error.code === "source_closed");
 });
 
+test("CLI session sources execute shared slash actions and normalize results", async () => {
+	const fake = new FakeCliSessionSource({
+		actionHandler(input) {
+			if (input.command === "fast") return { mode: "fast", supported: true, changed: true };
+			if (input.command === "compact") throw new Error("failed with TOKEN=secret-value");
+			return undefined;
+		},
+	});
+	const fast = await fake.executeSlashCommand({ command: "fast", sessionId: "ps_fake_existing" });
+	assert.equal(fast.actionName, "fast_mode");
+	assert.equal(fast.descriptor.kind, "json");
+	const unsupported = await fake.executeSlashCommand({ command: "download", sessionId: "ps_fake_existing" });
+	assert.equal(unsupported.descriptor.kind, "unsupported");
+	assert.match(unsupported.descriptor.reason, /Browser download APIs/);
+	const failed = await fake.executeSlashCommand({ command: "compact", sessionId: "ps_fake_existing" });
+	assert.equal(failed.descriptor.kind, "error");
+	assert.match(failed.descriptor.message, /TOKEN=\[redacted\]/);
+	assert.doesNotMatch(failed.descriptor.message, /secret-value/);
+
+	const cloned = await fake.executeSlashCommand({ command: "clone", sessionId: "ps_fake_existing" });
+	assert.equal(cloned.descriptor.kind, "session-link");
+	assert.match(cloned.openSessionId, /^ps_fake_clone_/);
+	assert.equal((await fake.openSession(cloned.openSessionId)).session.id, cloned.openSessionId);
+});
+
+test("local CLI session source routes slash actions under the selected owner and opens clone results", async () => {
+	const store = new InMemoryPiboSessionStore();
+	const emitted = [];
+	const router = {
+		subscribe() {
+			return () => {};
+		},
+		async emit(event) {
+			emitted.push(event);
+			if (event.action === "session.clone") {
+				const sourceSession = store.get(event.piboSessionId);
+				const clone = store.create({
+					id: "ps_local_clone",
+					piSessionId: "pi_local_clone",
+					channel: sourceSession.channel,
+					kind: "branch",
+					profile: sourceSession.profile,
+					ownerScope: sourceSession.ownerScope,
+					originId: sourceSession.id,
+					workspace: sourceSession.workspace,
+					title: "Local Clone",
+					metadata: sourceSession.metadata,
+				});
+				return { type: "execution_result", piboSessionId: event.piboSessionId, eventId: event.id, action: event.action, result: { piboSessionId: clone.id, roomId: "room_one", title: clone.title } };
+			}
+			if (event.action === "clear_queue") return { type: "execution_result", piboSessionId: event.piboSessionId, eventId: event.id, action: event.action, result: { cleared: 2 } };
+			if (event.action === "fast_mode") return { type: "execution_result", piboSessionId: event.piboSessionId, eventId: event.id, action: event.action, result: { mode: "fast", supported: true, changed: true } };
+			if (event.action === "compact") return { type: "execution_result", piboSessionId: event.piboSessionId, eventId: event.id, action: event.action, result: { queued: true, customInstructions: event.params?.customInstructions } };
+			if (event.action === "abort") return { type: "execution_result", piboSessionId: event.piboSessionId, eventId: event.id, action: event.action, result: { aborted: true } };
+			if (event.action === "kill") return { type: "execution_result", piboSessionId: event.piboSessionId, eventId: event.id, action: event.action, result: { killed: [event.piboSessionId], cancelledRuns: [] } };
+			if (event.action === "kill_all") return { type: "execution_result", piboSessionId: event.piboSessionId, eventId: event.id, action: event.action, result: { killed: [event.piboSessionId], cancelledRuns: ["run_1"] } };
+			return { type: "execution_result", piboSessionId: event.piboSessionId, eventId: event.id, action: event.action, result: { ok: true } };
+		},
+	};
+	const source = new LocalCliSessionSource({ sessionStore: store, router, ownerScope: "user:one", now: () => fixedNow });
+	const created = await source.createSession({ roomId: "room_one", title: "Action Session", profile: "codex-compat-openai-web" });
+
+	const status = await source.executeSlashCommand({ command: "status", sessionId: created.id });
+	assert.equal(status.descriptor.kind, "status");
+	assert.equal(emitted.length, 0, "status uses source-equivalent status without starting runtime");
+	const cleared = await source.executeSlashCommand({ command: "clear", sessionId: created.id });
+	assert.equal(cleared.actionName, "clear_queue");
+	assert.equal(emitted.at(-1).action, "clear_queue");
+	assert.deepEqual(cleared.rawResult, { cleared: 2 });
+	const fast = await source.executeSlashCommand({ command: "fast", args: "on", sessionId: created.id });
+	assert.equal(fast.actionName, "fast_mode");
+	assert.equal(emitted.at(-1).action, "fast_mode");
+	const compact = await source.executeSlashCommand({ command: "compact", args: "summarize safely", sessionId: created.id });
+	assert.equal(compact.actionName, "compact");
+	assert.equal(emitted.at(-1).action, "compact");
+	assert.deepEqual(emitted.at(-1).params, { customInstructions: "summarize safely" });
+	const aborted = await source.executeSlashCommand({ command: "abort", sessionId: created.id });
+	assert.equal(aborted.actionName, "abort");
+	assert.equal(emitted.at(-1).action, "abort");
+	const killed = await source.executeSlashCommand({ command: "kill", sessionId: created.id });
+	assert.equal(killed.actionName, "kill");
+	assert.equal(emitted.at(-1).action, "kill");
+	const killedAll = await source.executeSlashCommand({ command: "kill-all", sessionId: created.id });
+	assert.equal(killedAll.actionName, "kill_all");
+	assert.equal(emitted.at(-1).action, "kill_all");
+	const current = await source.executeSlashCommand({ command: "session-current", sessionId: created.id });
+	assert.equal(current.descriptor.kind, "session-link");
+	assert.equal(current.openSessionId, created.id);
+	const sessions = await source.executeSlashCommand({ command: "sessions", sessionId: created.id });
+	assert.equal(sessions.descriptor.kind, "json");
+	assert.match(JSON.stringify(sessions.rawResult), /Action Session/);
+	const clone = await source.executeSlashCommand({ command: "clone", sessionId: created.id });
+	assert.equal(clone.actionName, "session.clone");
+	assert.equal(clone.openSessionId, "ps_local_clone");
+	assert.equal((await source.openSession(clone.openSessionId)).session.id, "ps_local_clone");
+
+	await source.close();
+});
+
 test("local CLI session source can project router live events into trace updates", async () => {
 	const store = new InMemoryPiboSessionStore();
 	const listeners = new Set();

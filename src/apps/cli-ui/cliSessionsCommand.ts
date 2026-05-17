@@ -155,7 +155,7 @@ class DebugMockCliSessionRouter implements LocalCliSessionRouter {
 
 	async emit(event: PiboInputEvent): Promise<PiboOutputEvent> {
 		if (event.type !== "message") {
-			const result: PiboOutputEvent = { type: "execution_result", piboSessionId: event.piboSessionId, eventId: event.id, action: event.action, result: { mocked: true } };
+			const result: PiboOutputEvent = { type: "execution_result", piboSessionId: event.piboSessionId, eventId: event.id, action: event.action, result: this.executionResult(event) };
 			this.publish(result);
 			return result;
 		}
@@ -183,6 +183,17 @@ class DebugMockCliSessionRouter implements LocalCliSessionRouter {
 
 	private publish(event: PiboOutputEvent): void {
 		for (const listener of this.listeners) listener(event);
+	}
+
+	private executionResult(event: Extract<PiboInputEvent, { type: "execution" }>): unknown {
+		if (event.action === "fast_mode") return { mode: "fast", supported: true, changed: true };
+		if (event.action === "compact") return { queued: true, queuedMessages: 1 };
+		if (event.action === "clear_queue") return { cleared: 0 };
+		if (event.action === "abort") return { aborted: true };
+		if (event.action === "kill") return { killed: [event.piboSessionId], cancelledRuns: [] };
+		if (event.action === "kill_all") return { killed: [event.piboSessionId], cancelledRuns: [] };
+		if (event.action === "session.clone") return { supported: false, unsupportedReason: "Debug PTY mocked router cannot clone Pi session state; live routed sessions return a derived session id when clone succeeds." };
+		return { mocked: true, action: event.action };
 	}
 
 	private status(piboSessionId: string, overrides: Partial<PiboSessionStatus> = {}): PiboSessionStatus {

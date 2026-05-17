@@ -1,5 +1,5 @@
 import type { PiboSessionTraceView, PiboTraceNode } from "../shared/trace-types.js";
-import { buildSlashCommandCatalog, type GatewayCommandCapability, type SlashCommandDescriptor } from "../session-ui/index.js";
+import { buildSlashCommandCatalog, normalizeCommandErrorDescriptor, normalizeCommandResultDescriptor, type GatewayCommandCapability, type SlashCommandDescriptor } from "../session-ui/index.js";
 import {
 	CliSourceError,
 	type CliAgentSummary,
@@ -12,6 +12,8 @@ import {
 	type CliSessionUpdate,
 	type CliSessionUpdateListener,
 	type CreateCliSessionInput,
+	type ExecuteCliSlashCommandInput,
+	type ExecuteCliSlashCommandResult,
 } from "./sessionSource.js";
 
 export type FakeCliSessionSourceOptions = {
@@ -25,6 +27,7 @@ export type FakeCliSessionSourceOptions = {
 	status?: Partial<CliRuntimeStatus>;
 	now?: () => string;
 	assistantReply?: string | ((message: string, session: CliSessionSummary) => string | undefined);
+	actionHandler?: (input: ExecuteCliSlashCommandInput, source: FakeCliSessionSource) => unknown | Promise<unknown>;
 };
 
 export class FakeCliSessionSource implements CliSessionSource {
@@ -39,6 +42,7 @@ export class FakeCliSessionSource implements CliSessionSource {
 	private readonly openHandles = new Set<{ sessionId: string; close: () => void }>();
 	private readonly now: () => string;
 	private readonly assistantReply?: string | ((message: string, session: CliSessionSummary) => string | undefined);
+	private readonly actionHandler?: (input: ExecuteCliSlashCommandInput, source: FakeCliSessionSource) => unknown | Promise<unknown>;
 	private nextSessionNumber = 1;
 	private closed = false;
 	private statusOverrides: Partial<CliRuntimeStatus>;
@@ -46,6 +50,7 @@ export class FakeCliSessionSource implements CliSessionSource {
 	constructor(options: FakeCliSessionSourceOptions = {}) {
 		this.now = options.now ?? (() => new Date().toISOString());
 		this.assistantReply = options.assistantReply;
+		this.actionHandler = options.actionHandler;
 		this.owners = [...(options.owners ?? defaultOwners())].map(cloneJson);
 		this.activeOwnerScope = options.activeOwnerScope ?? this.owners[0]?.ownerScope ?? "user:fake";
 		this.rooms = [...(options.rooms ?? defaultRooms())].map(cloneJson);
@@ -216,6 +221,26 @@ export class FakeCliSessionSource implements CliSessionSource {
 		return this.slashCommands.map(cloneJson);
 	}
 
+	async executeSlashCommand(input: ExecuteCliSlashCommandInput): Promise<ExecuteCliSlashCommandResult> {
+		this.assertOpen();
+		const command = normalizeCommandName(input.command);
+		const descriptor = this.findSlashCommand(command);
+		const actionName = descriptor.actionName ?? descriptor.id;
+		if (descriptor.support === "browser-only" || descriptor.support === "product-area" || descriptor.support === "deferred") {
+			const result = { supported: false, unsupportedReason: descriptor.unsupportedReason ?? `${descriptor.slash} is not supported in the terminal.` };
+			return { command, actionName, descriptor: normalizeCommandResultDescriptor(command, result), rawResult: result };
+		}
+		try {
+			const handledResult = this.actionHandler ? await this.actionHandler({ ...input, command }, this) : undefined;
+			const rawResult = handledResult === undefined ? await this.defaultActionResult(command, actionName, input.sessionId, input.args) : handledResult;
+			const resultDescriptor = normalizeCommandResultDescriptor(command, rawResult);
+			const openSessionId = sessionIdFromActionResult(rawResult);
+			return { command, actionName, descriptor: resultDescriptor, rawResult, openSessionId, roomId: roomIdFromActionResult(rawResult) };
+		} catch (error) {
+			return { command, actionName, descriptor: normalizeCommandErrorDescriptor(command, error), rawResult: { error: error instanceof Error ? error.message : String(error) } };
+		}
+	}
+
 	async setSessionAgent(sessionId: string, agentId: string): Promise<CliSessionSummary> {
 		this.assertOpen();
 		const session = this.resolveSession(sessionId);
@@ -259,6 +284,28 @@ export class FakeCliSessionSource implements CliSessionSource {
 		return count;
 	}
 
+	private defaultActionResult(command: string, actionName: string, sessionId: string | undefined, args: string | undefined): unknown {
+		const session = sessionId ? this.resolveSession(sessionId) : undefined;
+		if (session) this.assertSessionOwner(session);
+		if (command === "status") return this.buildStatus(sessionId);
+		if (command === "session-current") return session ? { piboSessionId: session.id, title: session.title, profile: session.profile, roomId: session.roomId, ownerScope: session.ownerScope } : { supported: false, unsupportedReason: "No session is open." };
+		if (command === "sessions") return this.listSessions({ roomId: session?.roomId, ownerScope: session?.ownerScope ?? this.activeOwnerScope });
+		if (command === "clone") {
+			if (!session) return { supported: false, unsupportedReason: "No session is open." };
+			const clone: CliSessionSummary = { ...session, id: `ps_fake_clone_${this.nextSessionNumber++}`, title: `${session.title} Clone`, status: "idle", updatedAt: this.now() };
+			this.sessions.set(clone.id, clone);
+			this.traceViews.set(clone.id, cloneTraceView(this.traceViews.get(session.id) ?? emptyTraceView(session)));
+			return { piboSessionId: clone.id, sessionId: clone.id, roomId: clone.roomId, title: clone.title, clonedFrom: session.id };
+		}
+		if (command === "clear") return { cleared: 0 };
+		if (command === "fast") return { mode: args === "off" ? "normal" : "fast", supported: true, changed: true };
+		if (command === "compact") return { queued: true, instructions: args?.trim() || undefined };
+		if (command === "abort") return { aborted: true };
+		if (command === "kill") return { killed: session ? [session.id] : [], cancelledRuns: [] };
+		if (command === "kill-all") return { killed: [...this.sessions.values()].filter((candidate) => candidate.ownerScope === undefined || candidate.ownerScope === this.activeOwnerScope).map((candidate) => candidate.id), cancelledRuns: [] };
+		return { supported: false, unsupportedReason: `No fake action fixture is registered for ${actionName}.` };
+	}
+
 	close(): void {
 		if (this.closed) return;
 		this.closed = true;
@@ -285,6 +332,13 @@ export class FakeCliSessionSource implements CliSessionSource {
 			updatedAt: this.now(),
 			...this.statusOverrides,
 		};
+	}
+
+	private findSlashCommand(command: string): SlashCommandDescriptor {
+		const slash = `/${command}`;
+		const descriptor = this.slashCommands.find((candidate) => candidate.slash === slash || candidate.aliases?.includes(slash as `/${string}`));
+		if (!descriptor) throw new CliSourceError("unsupported", `No slash command fixture found for /${command}`);
+		return descriptor;
 	}
 
 	private activeOwner(): CliOwnerSummary {
@@ -403,6 +457,22 @@ function emptyTraceView(session: CliSessionSummary): PiboSessionTraceView {
 
 function deterministicNow(): string {
 	return "2026-05-16T12:00:00.000Z";
+}
+
+function normalizeCommandName(command: string): string {
+	return command.trim().replace(/^\/+/, "").toLowerCase();
+}
+
+function sessionIdFromActionResult(value: unknown): string | undefined {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+	const record = value as Record<string, unknown>;
+	return typeof record.piboSessionId === "string" ? record.piboSessionId : typeof record.sessionId === "string" ? record.sessionId : undefined;
+}
+
+function roomIdFromActionResult(value: unknown): string | undefined {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+	const record = value as Record<string, unknown>;
+	return typeof record.roomId === "string" ? record.roomId : undefined;
 }
 
 function cloneTraceView<T extends PiboSessionTraceView | null | undefined>(value: T): T {

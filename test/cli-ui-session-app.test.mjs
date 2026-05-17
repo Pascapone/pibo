@@ -438,6 +438,32 @@ test("Slash commands handle help status clear pickers unknown exit and normal se
 	assert.equal(exited, true);
 });
 
+test("Slash Web action commands render shared results and open clone sessions", async () => {
+	const source = createDefaultFakeCliSessionSource();
+	const harness = stateHarness({ ...baseState(), activeOwner: { ownerScope: "user:fake", label: "Fake user", kind: "web-user" }, session: { id: "ps_fake_existing", title: "Existing fake session", profile: "pibo-agent", agentId: "pibo-agent", ownerScope: "user:fake", roomId: "room_fake_main", status: "idle" } });
+	const openSession = (sessionId, message) => openFakeSessionInto(source, harness, sessionId, message);
+	const submit = (input) => handleCliSessionSubmittedInput(input, source, harness.state, harness.setState, openSession, () => {});
+
+	await submit("/fast");
+	assert.match(harness.state.message, /mode/);
+	assert.match(harness.state.message, /fast/);
+
+	await submit("/session-current");
+	assert.match(harness.state.message, /session-current: Existing fake session ps_fake_existing/);
+
+	await submit("/sessions");
+	assert.match(harness.state.message, /Existing fake session/);
+	assert.match(harness.state.message, /ps_fake_existing/);
+
+	await submit("/download");
+	assert.match(harness.state.message, /Browser download APIs/);
+	assert.equal(harness.state.error, undefined);
+
+	await submit("/clone");
+	assert.match(harness.state.session.id, /^ps_fake_clone_/);
+	assert.match(harness.state.message, /clone: Existing fake session Clone/);
+});
+
 test("empty picker states and recovery errors are actionable and redacted", async () => {
 	const source = new FakeCliSessionSource({ rooms: [], sessions: [], agents: [], status: { rooms: "unsupported", message: "TOKEN=secret-value" } });
 	const harness = stateHarness({ ...baseState(), session: undefined, rows: [] });
