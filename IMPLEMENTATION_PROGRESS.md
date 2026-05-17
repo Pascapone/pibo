@@ -156,5 +156,5 @@ Validation and results for owner/startup picker flow batch:
   - `docker exec pibo-dev-ink-cli-v2-web-parity bash -lc 'cd /workspace && npm run typecheck'` — passed.
   - `docker exec pibo-dev-ink-cli-v2-web-parity bash -lc 'cd /workspace && npm test'` — failed only in the pre-existing unrelated `test/telemetry-store.test.mjs` stale/prune assertion; 489/490 tests passed.
 - Completed stories marked `passes: true`: PRD 02 `US-002`; PRD 04 `US-002`.
-- Implementation commit: `b1399a6` (`Add Ink owner and startup room pickers`).
+- Implementation commit: `19aea5d` (`Add Ink owner and startup room pickers`).
 - Next recommended group: PRD 02 `US-003` and PRD 04 `US-003` for `/owner`, `/room`, and room-first `/session` switching, building on the new picker/source primitives.
