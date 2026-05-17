@@ -16,8 +16,8 @@
         "Typecheck passes"
       ],
       "priority": 1,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed in implementation commit ddbecd4. Extended src/session-ui/commandCatalog.ts so buildSlashCommandCatalog merges default Web parity commands, CLI navigation/recovery commands, Web-added browser commands, and gateway action infos with slashCommands arrays. CLI-owned /session, /room, /owner, /profile, /new, /agent, /help, /exit, /quit, and /repair-user-unknown keep terminal semantics when a gateway action uses the same slash. Added grouped help helpers, support labels, first-token prefix filtering, and explicit unsupported/deferred/browser-only reasons. Fake and local CliSessionSource now expose listSlashCommands(); the local source derives from the default plugin registry gateway action infos. Evidence: docker exec pibo-dev-ink-cli-v2-web-parity bash -lc 'cd /workspace && npm run build >/tmp/pibo-build.log && node --test test/cli-ui-session-app.test.mjs test/session-ui-view-models.test.mjs test/cli-session-source.test.mjs' passed 41/41 focused tests; docker exec pibo-dev-ink-cli-v2-web-parity bash -lc 'cd /workspace && npm run typecheck' passed. Full npm test ran 505 tests with 504 passed and only the pre-existing unrelated test/telemetry-store.test.mjs stale/prune assertion failed. Path classification: shared model/source/unit path plus real local source catalog from plugin registry; no Web DOM behavior changed."
     },
     {
       "id": "US-002",
@@ -33,8 +33,8 @@
         "Typecheck passes"
       ],
       "priority": 2,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed in implementation commit ddbecd4. Added Ink slash suggestion state and rendering: typing / shows catalog commands, typing a prefix such as /th filters to /thinking and /thinking-show, arrow keys move the selected suggestion, Enter accepts a prefix or runs an exact selected command, and Escape closes suggestions while preserving typed input. Evidence: focused tests in test/cli-ui-session-app.test.mjs cover reducer filtering, selection, escape preservation, and suggestion rendering; docker exec pibo-dev-ink-cli-v2-web-parity bash -lc 'cd /workspace && npm run build >/tmp/pibo-build.log && node --test test/cli-ui-session-app.test.mjs test/session-ui-view-models.test.mjs test/cli-session-source.test.mjs' passed 41/41. PTY command: docker exec pibo-dev-ink-cli-v2-web-parity bash -lc 'cd /workspace && rm -rf .tmp/pty-slash-suggestions && npm run dev -- debug pty run --artifact --artifact-dir /workspace/.tmp/pty-slash-suggestions --timeout-ms 60000 --idle-timeout-ms 15000 --cols 120 --rows 34 --wait-for \"Select room for Web user alpha\" --press Enter --wait-for \"New session in Personal Chat\" --press Enter --wait-for \"Created session\" --type \"/th\" --wait-for \"Slash commands\" --expect \"/thinking\" --expect \"/thinking-show\" --press Down --expect \"thinking-show\" --press Escape --wait-for \"Closed slash suggestions\" --expect \"› /th\" --press CtrlC -- env PIBO_DEBUG_PTY_CLI_SESSIONS_MOCKED=1 PIBO_DEBUG_PTY_CLI_SESSIONS_OWNERS=user:alpha node dist/bin/pibo.js tui:sessions --owner-scope user:alpha' passed. PTY classification: real PTY-backed CLI/TUI path with LocalCliSessionSource and deterministic mocked local router/source, not live provider. Raw artifact: /root/code/pibo/.worktrees/ink-cli-v2-web-parity/.tmp/pty-slash-suggestions/raw.ansi.log. Clean artifact: /root/code/pibo/.worktrees/ink-cli-v2-web-parity/.tmp/pty-slash-suggestions/clean.txt. Observed result: clean output shows Slash commands, /thinking, /thinking-show, selected thinking-show after Down, Closed slash suggestions, and preserved input › /th. Typecheck passed."
     },
     {
       "id": "US-003",
@@ -85,8 +85,8 @@
         "Typecheck passes"
       ],
       "priority": 5,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed in implementation commit ddbecd4. Replaced hard-coded in-app command header and /help body with catalog-generated output grouped as Available Web/session actions, CLI navigation and recovery commands, and Unsupported or deferred terminal commands. Help includes owner/room/session keyboard controls and unsupported browser-only reasons such as /download and /upload. Multi-line help now renders as bounded individual terminal lines instead of truncating the whole catalog into one line. Evidence: focused tests in test/cli-ui-session-app.test.mjs cover grouped help, command header, pibo tui:sessions --help, and redaction/bounding; docker exec pibo-dev-ink-cli-v2-web-parity bash -lc 'cd /workspace && npm run build >/tmp/pibo-build.log && node --test test/cli-ui-session-app.test.mjs test/session-ui-view-models.test.mjs test/cli-session-source.test.mjs' passed 41/41. PTY command: docker exec pibo-dev-ink-cli-v2-web-parity bash -lc 'cd /workspace && rm -rf .tmp/pty-slash-help .tmp/pty-slash-help-home && mkdir -p .tmp/pty-slash-help-home && npm run dev -- debug pty run --artifact --artifact-dir /workspace/.tmp/pty-slash-help --timeout-ms 60000 --idle-timeout-ms 15000 --cols 140 --rows 50 --wait-for \"Select room for Web user alpha\" --press Enter --wait-for \"New session in Personal Chat\" --press Enter --wait-for \"Created session\" --type \"/help\" --press Enter --wait-for \"Slash command catalog\" --expect \"Available Web/session actions\" --expect \"CLI navigation and recovery commands\" --expect \"Unsupported or deferred terminal commands\" --expect \"/download\" --expect \"Keyboard controls\" --press CtrlC -- env PIBO_HOME=/workspace/.tmp/pty-slash-help-home PIBO_DEBUG_PTY_CLI_SESSIONS_MOCKED=1 PIBO_DEBUG_PTY_CLI_SESSIONS_OWNERS=user:alpha node dist/bin/pibo.js tui:sessions --owner-scope user:alpha' passed. PTY classification: real PTY-backed CLI/TUI path with LocalCliSessionSource, temp PIBO_HOME, and deterministic mocked local router/source, not live provider. Raw artifact: /root/code/pibo/.worktrees/ink-cli-v2-web-parity/.tmp/pty-slash-help/raw.ansi.log. Clean artifact: /root/code/pibo/.worktrees/ink-cli-v2-web-parity/.tmp/pty-slash-help/clean.txt. Observed result: clean output shows Slash command catalog, all three help groups, /download unsupported entry, and Keyboard controls. Typecheck passed."
     }
   ]
 }
