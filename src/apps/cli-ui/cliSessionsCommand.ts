@@ -219,7 +219,7 @@ Options:
   -h, --help           Show this help
 
 V2 commands inside the app:
-  /help /new /owner /profile /room /session /agent /status /clear /exit /quit
+  /help /new /owner /profile /room /session /agent /status /repair-user-unknown /clear /exit /quit
 
 Scope:
   CLI Sessions is a reduced session/chat UI for SSH, bootstrap, recovery, and quick local work.

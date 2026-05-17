@@ -134,7 +134,7 @@ test("InkSessionAppView renders status bar transcript viewport and input line", 
 	}));
 
 	assert.match(output, /Pibo CLI Sessions \| fake \| owner unknown \| CLI app shell fixture \| pibo-agent/);
-	assert.match(output, /Commands: \/help \/new \/owner \/room \/session \/agent \/status \/clear \/exit \/quit/);
+	assert.match(output, /Commands: \/help \/new \/owner \/room \/session \/agent \/status \/repair-user-unknown\s+\/clear \/exit \/quit/);
 	assert.match(output, /› Show me status/);
 	assert.match(output, /Status looks healthy\./);
 	assert.match(output, /› \/status/);
@@ -201,7 +201,7 @@ test("Slash parser distinguishes messages, commands, and empty input", () => {
 	assert.deepEqual(parseCliSessionInput("  hello agent  "), { type: "message", text: "hello agent" });
 	assert.deepEqual(parseCliSessionInput(" /STATUS now "), { type: "command", command: { name: "status", args: "now", raw: "/STATUS now" } });
 	assert.deepEqual(parseCliSessionInput("   "), { type: "empty" });
-	assert.match(cliSessionSlashHelpText(), /\/help, \/new, \/owner, \/profile, \/room, \/session, \/agent, \/status, \/clear, \/exit, \/quit/);
+	assert.match(cliSessionSlashHelpText(), /\/help, \/new, \/owner, \/profile, \/room, \/session, \/agent, \/status, \/repair-user-unknown, \/clear, \/exit, \/quit/);
 	assert.match(cliSessionSlashHelpText(), /Web-only in V1/);
 });
 
@@ -327,6 +327,27 @@ test("Slash /session and /room open owner-scoped room-first pickers", async () =
 	assert.equal(harness.state.picker.items[harness.state.picker.selectedIndex].roomId, "room_project");
 });
 
+test("Slash /repair-user-unknown runs source repair for the active owner and room", async () => {
+	const source = createDefaultFakeCliSessionSource();
+	let repairInput;
+	source.repairLegacyUserUnknownSessions = async (input) => {
+		repairInput = input;
+		return { ownerScope: input.ownerScope, roomId: input.roomId, scanned: 2, repaired: 1, skipped: 1, sessionIds: ["ps_legacy"] };
+	};
+	const harness = stateHarness({
+		...baseState(),
+		activeOwner: { ownerScope: "user:alpha", label: "Alpha", kind: "web-user" },
+		activeRoom: { id: "room_alpha", title: "Alpha Room", ownerScope: "user:alpha" },
+	});
+	const openSession = (sessionId, message) => openFakeSessionInto(source, harness, sessionId, message);
+
+	await handleCliSessionSubmittedInput("/repair-user-unknown", source, harness.state, harness.setState, openSession, () => {});
+
+	assert.deepEqual(repairInput, { ownerScope: "user:alpha", roomId: "room_alpha" });
+	assert.match(harness.state.message, /Repaired 1\/2 legacy user:unknown CLI sessions to Alpha \(user:alpha\) in room_alpha/);
+	assert.equal(harness.state.error, undefined);
+});
+
 test("Slash commands handle help status clear pickers unknown exit and normal sends", async () => {
 	const source = createDefaultFakeCliSessionSource();
 	source.setStatus({ message: "TOKEN=secret-value" });
@@ -441,7 +462,7 @@ test("runCliSessionsUi rejects non-interactive stdin or stdout before rendering"
 test("pibo tui:sessions command help and root discovery describe the new UI without hiding existing TUI commands", async () => {
 	const help = cliSessionsHelpText();
 	assert.match(help, /reduced Web Chat-derived session UI/);
-	assert.match(help, /\/help \/new \/owner \/profile \/room \/session \/agent \/status \/clear \/exit \/quit/);
+	assert.match(help, /\/help \/new \/owner \/profile \/room \/session \/agent \/status \/repair-user-unknown \/clear \/exit \/quit/);
 	assert.match(help, /pibo tui\n/);
 	assert.match(help, /pibo tui:routed/);
 

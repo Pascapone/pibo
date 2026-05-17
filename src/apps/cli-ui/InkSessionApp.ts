@@ -328,7 +328,7 @@ export function InkSessionAppView({ state, maxRows = 20, maxLineChars }: InkSess
 		Box,
 		{ flexDirection: "column" },
 		React.createElement(Text, { color: state.status?.connected === false ? "red" : "cyan" }, statusText),
-		React.createElement(Text, { color: "gray" }, boundedLine("Commands: /help /new /owner /room /session /agent /status /clear /exit /quit", lineLimit)),
+		React.createElement(Text, { color: "gray" }, boundedLine("Commands: /help /new /owner /room /session /agent /status /repair-user-unknown /clear /exit /quit", lineLimit)),
 		state.loading ? React.createElement(Text, { color: "yellow" }, "Loading CLI session…") : null,
 		state.error ? React.createElement(Text, { color: "red" }, boundedLine(`Error: ${state.error}`, lineLimit)) : null,
 		state.message ? React.createElement(Text, { color: "gray" }, boundedLine(state.message, lineLimit)) : null,
@@ -406,7 +406,7 @@ export function parseCliSessionInput(input: string): ParsedCliSessionInput {
 }
 
 export function cliSessionSlashHelpText(): string {
-	return "Commands: /help, /new, /owner, /profile, /room, /session, /agent, /status, /clear, /exit, /quit. Web-only in V1: projects, workflows, Cron, Ralph, Agent Designer, full settings, context management, /model, /thinking, /fork, /details.";
+	return "Commands: /help, /new, /owner, /profile, /room, /session, /agent, /status, /repair-user-unknown, /clear, /exit, /quit. Web-only in V1: projects, workflows, Cron, Ralph, Agent Designer, full settings, context management, /model, /thinking, /fork, /details.";
 }
 
 export function formatCliSessionStatus(status: CliRuntimeStatus | undefined, session: CliSessionSummary | undefined): string {
@@ -554,6 +554,19 @@ async function handleSlashCommand(
 				ownerScope: owner.ownerScope,
 			},
 			message: rooms.length === 0 ? "No rooms are available for the selected owner." : command.name === "room" ? "Select the active room with arrow keys." : "Select a room, then choose or create a session.",
+			error: undefined,
+		}));
+		return;
+	}
+	if (command.name === "repair-user-unknown") {
+		if (!source.repairLegacyUserUnknownSessions) throw new Error("This source does not support legacy user:unknown repair.");
+		const owner = state.activeOwner ?? await source.getActiveOwner();
+		const result = await source.repairLegacyUserUnknownSessions({ ownerScope: owner.ownerScope, roomId: state.activeRoom?.id });
+		const status = await source.getStatus({ sessionId: state.session?.id });
+		setState((current) => ({
+			...current,
+			status,
+			message: `Repaired ${result.repaired}/${result.scanned} legacy user:unknown CLI session${result.scanned === 1 ? "" : "s"} to ${owner.label} (${result.ownerScope})${result.roomId ? ` in ${result.roomId}` : ""}.`,
 			error: undefined,
 		}));
 		return;

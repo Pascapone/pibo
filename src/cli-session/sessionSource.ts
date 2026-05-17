@@ -76,6 +76,21 @@ export type CliSessionUpdate = {
 
 export type CliSessionUpdateListener = (update: CliSessionUpdate) => void;
 
+export type RepairLegacyUserUnknownSessionsInput = {
+	ownerScope?: string;
+	roomId?: string;
+	sessionIds?: readonly string[];
+};
+
+export type RepairLegacyUserUnknownSessionsResult = {
+	ownerScope: string;
+	roomId?: string;
+	scanned: number;
+	repaired: number;
+	skipped: number;
+	sessionIds: readonly string[];
+};
+
 export type CliOpenSession = {
 	session: CliSessionSummary;
 	traceView: PiboSessionTraceView | null;
@@ -95,6 +110,7 @@ export interface CliSessionSource {
 	sendMessage(sessionId: string, text: string): Promise<void>;
 	listAgents(): Promise<readonly CliAgentSummary[]>;
 	setSessionAgent(sessionId: string, agentId: string): Promise<CliSessionSummary>;
+	repairLegacyUserUnknownSessions?(input?: RepairLegacyUserUnknownSessionsInput): Promise<RepairLegacyUserUnknownSessionsResult>;
 	getStatus(input?: { sessionId?: string }): Promise<CliRuntimeStatus>;
 	close(): Promise<void> | void;
 }

@@ -433,6 +433,99 @@ test("local CLI session source reports clear errors and current-session agent li
 	await assert.rejects(() => source.listSessions(), (error) => error instanceof CliSourceError && error.code === "source_closed");
 });
 
+test("local CLI session source repairs legacy user:unknown CLI sessions to selected owner and room", async () => {
+	const dataStore = new PiboDataStore(":memory:");
+	const sessionStore = new PiboDataSessionStore(dataStore);
+	const rooms = new ChatRoomService(dataStore);
+	const targetRoom = rooms.ensureDefaultRoom({ ownerScope: "user:repair", principalId: "user:repair", name: "Personal Chat" });
+	const legacy = sessionStore.create({
+		id: "ps_legacy_unknown",
+		piSessionId: "pi_legacy_unknown",
+		channel: "cli-session-ui",
+		kind: "chat",
+		profile: "pibo-agent",
+		ownerScope: "user:unknown",
+		title: "Legacy Unknown",
+		metadata: { source: "pibo tui:sessions", status: "idle" },
+	});
+	sessionStore.create({
+		id: "ps_non_cli_unknown",
+		piSessionId: "pi_non_cli_unknown",
+		channel: "chat-web",
+		kind: "chat",
+		profile: "pibo-agent",
+		ownerScope: "user:unknown",
+		title: "Non CLI Unknown",
+		metadata: { status: "idle" },
+	});
+	const source = new LocalCliSessionSource({ dataStore, sessionStore, ownerScope: "user:repair", now: () => fixedNow });
+
+	assert.deepEqual((await source.listOwners()).map((owner) => owner.ownerScope), ["user:repair"]);
+	assert.deepEqual((await source.listSessions()).map((session) => session.id), []);
+	const result = await source.repairLegacyUserUnknownSessions({ ownerScope: "user:repair", roomId: targetRoom.id });
+
+	assert.equal(result.scanned, 2);
+	assert.equal(result.repaired, 1);
+	assert.equal(result.skipped, 1);
+	assert.deepEqual(result.sessionIds, [legacy.id]);
+	const repairedSession = dataStore.db.prepare("SELECT owner_scope, room_id FROM sessions WHERE id = ?").get(legacy.id);
+	assert.equal(repairedSession.owner_scope, "user:repair");
+	assert.equal(repairedSession.room_id, targetRoom.id);
+	const repairedNavigation = dataStore.db.prepare("SELECT owner_scope, room_id, status FROM session_navigation WHERE session_id = ?").get(legacy.id);
+	assert.equal(repairedNavigation.owner_scope, "user:repair");
+	assert.equal(repairedNavigation.room_id, targetRoom.id);
+	assert.equal(repairedNavigation.status, "idle");
+	const notRepaired = dataStore.db.prepare("SELECT owner_scope FROM sessions WHERE id = ?").get("ps_non_cli_unknown");
+	assert.equal(notRepaired.owner_scope, "user:unknown");
+	assert.deepEqual((await source.listSessions({ roomId: targetRoom.id })).map((session) => session.id), [legacy.id]);
+	await assert.rejects(() => source.repairLegacyUserUnknownSessions({ ownerScope: "user:unknown" }), (error) => error instanceof CliSourceError && error.code === "invalid_owner");
+
+	await source.close();
+	dataStore.close();
+});
+
+test("local CLI session source hydrates existing room transcripts by selected owner", async () => {
+	const dataStore = new PiboDataStore(":memory:");
+	const sessionStore = new PiboDataSessionStore(dataStore);
+	const rooms = new ChatRoomService(dataStore);
+	const room = rooms.ensureDefaultRoom({ ownerScope: "user:history", principalId: "user:history", name: "Personal Chat" });
+	const history = sessionStore.create({ id: "ps_history", piSessionId: "pi_history", channel: "chat-web", kind: "chat", profile: "pibo-agent", ownerScope: "user:history", title: "History Session", metadata: { chatRoomId: room.id, chatRoomName: "Personal Chat", status: "idle" } });
+	sessionStore.create({ id: "ps_other_history", piSessionId: "pi_other_history", channel: "chat-web", kind: "chat", profile: "pibo-agent", ownerScope: "user:other", title: "Other History", metadata: { chatRoomId: room.id, chatRoomName: "Personal Chat", status: "idle" } });
+	dataStore.eventLog.appendEvent({ sessionId: history.id, sessionSequence: 1, roomId: room.id, topic: "chat", type: "user.message.accepted", source: "test", actorType: "user", actorId: "user:history", eventId: "evt_history_user", retentionClass: "chat_message", previewText: "Existing user prompt", attributes: { inlineText: "Existing user prompt", clientTxnId: "txn_history_user" }, createdAt: fixedNow });
+	dataStore.eventLog.appendEvent({ sessionId: history.id, sessionSequence: 2, roomId: room.id, topic: "chat", type: "assistant_message", source: "test", actorType: "assistant", actorId: "pibo-agent", eventId: "evt_history_assistant", retentionClass: "chat_message", previewText: "Existing assistant reply", createdAt: fixedNow });
+	const source = new LocalCliSessionSource({ dataStore, sessionStore, ownerScope: "user:history", now: () => fixedNow });
+
+	const listed = await source.listSessions({ roomId: room.id });
+	assert.deepEqual(listed.map((session) => session.id), [history.id]);
+	const opened = await source.openSession(history.id);
+	const rows = buildCompactTerminalRows(opened.traceView, { showThinking: false });
+	assert.deepEqual(rows.map((row) => row.kind), ["message.user", "message.assistant"]);
+	assert.match(JSON.stringify(rows), /Existing user prompt/);
+	assert.match(JSON.stringify(rows), /Existing assistant reply/);
+	await assert.rejects(() => source.openSession("ps_other_history"), (error) => error instanceof CliSourceError && error.code === "session_not_found");
+
+	await source.close();
+	dataStore.close();
+});
+
+test("local CLI session source lists owner-scoped sessions without room metadata under Personal Chat", async () => {
+	const dataStore = new PiboDataStore(":memory:");
+	const sessionStore = new PiboDataSessionStore(dataStore);
+	const rooms = new ChatRoomService(dataStore);
+	const defaultRoom = rooms.ensureDefaultRoom({ ownerScope: "user:default", principalId: "user:default", name: "Personal Chat" });
+	const legacyRoomless = sessionStore.create({ id: "ps_roomless", piSessionId: "pi_roomless", channel: "cli-session-ui", kind: "chat", profile: "pibo-agent", ownerScope: "user:default", title: "Roomless", metadata: { status: "idle" } });
+	const source = new LocalCliSessionSource({ dataStore, sessionStore, ownerScope: "user:default", now: () => fixedNow });
+
+	const sessions = await source.listSessions({ roomId: defaultRoom.id });
+	assert.deepEqual(sessions.map((session) => session.id), [legacyRoomless.id]);
+	assert.equal(sessions[0].roomId, defaultRoom.id);
+	const opened = await source.openSession(legacyRoomless.id);
+	assert.equal(opened.session.roomId, defaultRoom.id);
+
+	await source.close();
+	dataStore.close();
+});
+
 test("CLI status redaction removes common secret-shaped values", () => {
 	const redacted = redactCliSecretText("api-key:sk-secretvalue token=ghp_abcdefghijklmnopqrstuvwxyz password:supersecret");
 	assert.doesNotMatch(redacted, /sk-secretvalue|ghp_abcdefghijklmnopqrstuvwxyz|supersecret/);

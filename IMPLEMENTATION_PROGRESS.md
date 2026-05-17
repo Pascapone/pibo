@@ -230,3 +230,46 @@ Validation and results for /new Web-visible selected owner/room batch:
 - Completed stories marked `passes: true`: PRD 04 `US-004`; PRD 02 `US-005`.
 - Implementation commit: f4c2aa6 (`Make CLI new sessions Web-visible`).
 - Next recommended group: PRD 04 `US-005` existing room session/transcript hydration, then PRD 02 `US-004` diagnostics/repair for legacy `user:unknown` sessions.
+
+## 2026-05-17 run: legacy unknown repair and existing transcript hydration batch
+
+Selected story group:
+
+- `prd_02_owner_scope_recovery_profile.json` / `US-004` — Prevent and repair `user:unknown` CLI sessions.
+- `prd_04_room_session_navigation.json` / `US-005` — Hydrate existing room sessions and transcript by owner.
+
+Intended validation plan:
+
+- Add a focused local-source repair API and Ink slash command for legacy `user:unknown` CLI sessions, scoped to the active owner and active/default room, updating `sessions` and `session_navigation` ownership/room metadata without selecting `user:unknown` by default.
+- Treat existing owner-scoped sessions with missing room metadata as selected-owner Personal Chat in room-scoped CLI listings.
+- Normalize persisted `user.message.accepted` event-log rows into CLI trace user-message nodes during existing-session hydration, preserving assistant events and owner/room filtering.
+- Add focused source and Ink command tests for legacy repair, no implicit `user:unknown` new writes, room-scoped existing-session listing, cross-owner exclusion, and transcript hydration.
+- Run `npm run build` plus focused tests inside `pibo-dev-ink-cli-v2-web-parity`.
+- Run `pibo debug pty` scenarios for opening an existing session from the room picker and by `--session <id>`, with raw/clean artifacts and transcript assertions.
+- Run `npm run typecheck`; run broader tests if the focused changes affect shared behavior beyond local CLI/session source paths.
+
+Validation and results for legacy unknown repair and existing transcript hydration batch:
+
+- Implemented `LocalCliSessionSource.repairLegacyUserUnknownSessions()` and an Ink `/repair-user-unknown` diagnostic/repair command. The repair path refuses `user:unknown` as a target, reassigns only CLI-origin legacy `user:unknown` sessions to the selected owner, maps them to the selected/default room, updates `sessions.owner_scope`/`sessions.room_id`, and upserts `session_navigation` owner/room/status.
+- Existing owner-scoped sessions with missing room metadata now appear under the selected owner's Personal Chat/default room in CLI room-scoped listings and open-session summaries.
+- Existing persisted `user.message.accepted` event-log rows are normalized into CLI user-message trace nodes during local-source hydration, so existing Web/Pibo-data transcripts show both user and assistant history in Ink.
+- Focused validation commands:
+  - `docker exec pibo-dev-ink-cli-v2-web-parity bash -lc 'cd /workspace && npm run build >/tmp/pibo-build.log && node --test test/cli-session-source.test.mjs test/cli-ui-session-app.test.mjs test/ink-cli-v2-current-state.test.mjs'` — passed after a test-only regex fix for Ink line wrapping.
+  - `docker exec pibo-dev-ink-cli-v2-web-parity bash -lc 'cd /workspace && node --test test/cli-session-source.test.mjs test/cli-ui-session-app.test.mjs test/ink-cli-v2-current-state.test.mjs'` — passed 36/36 focused tests.
+- PTY existing-session picker validation:
+  - `docker exec pibo-dev-ink-cli-v2-web-parity bash -lc 'cd /workspace && npm run dev -- debug pty run --artifact --artifact-dir /workspace/.tmp/pty-existing-picker --timeout-ms 60000 --idle-timeout-ms 15000 --cols 120 --rows 32 --wait-for "Select room for Web user history" --expect "Personal Chat" --press Enter --wait-for "Select session in Personal Chat" --expect "Existing PTY Session" --press Enter --wait-for "Opened session Existing PTY Session" --expect "Existing PTY user prompt" --expect "Existing PTY assistant reply" --press CtrlC -- env PIBO_HOME=/workspace/.tmp/pty-existing-home node dist/bin/pibo.js tui:sessions --owner-scope user:history'` — passed.
+  - Classification: real PTY path using `LocalCliSessionSource` and a real temp `PiboDataStore` fixture; no fake source/demo path and no live provider send.
+  - Raw artifact: `/root/code/pibo/.worktrees/ink-cli-v2-web-parity/.tmp/pty-existing-picker/raw.ansi.log`.
+  - Clean artifact: `/root/code/pibo/.worktrees/ink-cli-v2-web-parity/.tmp/pty-existing-picker/clean.txt`.
+  - Observed result: clean output shows Personal Chat selection, `Existing PTY Session`, `Opened session Existing PTY Session`, `Existing PTY user prompt`, and `Existing PTY assistant reply`.
+- PTY direct `--session` hydration validation:
+  - `docker exec pibo-dev-ink-cli-v2-web-parity bash -lc 'cd /workspace && npm run dev -- debug pty run --artifact --artifact-dir /workspace/.tmp/pty-existing-direct --timeout-ms 60000 --idle-timeout-ms 15000 --cols 120 --rows 32 --wait-for "Existing PTY user prompt" --expect "Existing PTY assistant reply" --expect "Pibo CLI Sessions | local/direct | Web user history (user:history) | Existing PTY Session" --press CtrlC -- env PIBO_HOME=/workspace/.tmp/pty-existing-home node dist/bin/pibo.js tui:sessions --owner-scope user:history --session ps_pty_history'` — passed.
+  - Classification: real PTY path using `LocalCliSessionSource` and the same real temp `PiboDataStore` fixture; no fake source/demo path and no live provider send.
+  - Raw artifact: `/root/code/pibo/.worktrees/ink-cli-v2-web-parity/.tmp/pty-existing-direct/raw.ansi.log`.
+  - Clean artifact: `/root/code/pibo/.worktrees/ink-cli-v2-web-parity/.tmp/pty-existing-direct/clean.txt`.
+  - Observed result: clean output shows direct-open header for `Web user history (user:history) | Existing PTY Session` plus the persisted user and assistant transcript lines.
+- `docker exec pibo-dev-ink-cli-v2-web-parity bash -lc 'cd /workspace && npm run typecheck'` — passed.
+- `docker exec pibo-dev-ink-cli-v2-web-parity bash -lc 'cd /workspace && npm test'` — ran 498 tests; 497 passed and only the pre-existing unrelated `test/telemetry-store.test.mjs` stale/prune assertion failed.
+- Completed stories marked `passes: true`: PRD 02 `US-004`; PRD 04 `US-005`.
+- Implementation commit: pending.
+- Next recommended group: PRD 03 `US-001` through `US-004` shared terminal/card/status/command/picker descriptors, then PRD 05 catalog stories that consume those descriptors.
