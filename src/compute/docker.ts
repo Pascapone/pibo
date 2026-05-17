@@ -206,6 +206,13 @@ interface ComputeWorkerMetadataLabelOptions {
 	ralphRunId?: string;
 }
 
+const SAFE_RALPH_LABEL_VALUE = /^[A-Za-z0-9._:-]{1,128}$/;
+
+function safeRalphLabel(label: string, value: string | undefined): string[] {
+	if (!value || !SAFE_RALPH_LABEL_VALUE.test(value)) return [];
+	return [`${label}=${value}`];
+}
+
 function buildComputeWorkerMetadataLabels(options: ComputeWorkerMetadataLabelOptions): string[] {
 	return [
 		`${LABEL_ROLE}=${options.role}`,
@@ -217,8 +224,8 @@ function buildComputeWorkerMetadataLabels(options: ComputeWorkerMetadataLabelOpt
 		...(options.worktree ? [`${LABEL_WORKTREE}=${options.worktree}`] : []),
 		...(options.worktreePath ? [`${LABEL_WORKTREE_PATH}=${options.worktreePath}`] : []),
 		...Object.entries(options.ports).map(([name, value]) => `pibo.compute.port.${name}=${value}`),
-		...(options.ralphJobId ? [`${LABEL_RALPH_JOB_ID}=${options.ralphJobId}`] : []),
-		...(options.ralphRunId ? [`${LABEL_RALPH_RUN_ID}=${options.ralphRunId}`] : []),
+		...safeRalphLabel(LABEL_RALPH_JOB_ID, options.ralphJobId),
+		...safeRalphLabel(LABEL_RALPH_RUN_ID, options.ralphRunId),
 	];
 }
 
@@ -513,15 +520,51 @@ export interface WorkerInfo {
 	status: string;
 	ports: string;
 	createdAt: string;
+	ownerScope?: string;
+	worktree?: string;
+	worktreePath?: string;
+	ralphJobId?: string;
+	ralphRunId?: string;
 }
 
-export async function listWorkers(options: { includeDev?: boolean } = {}): Promise<WorkerInfo[]> {
+export function parseDockerLabels(labelsStr: string | undefined): Record<string, string> {
+	const labels: Record<string, string> = {};
+	for (const part of (labelsStr ?? "").split(",")) {
+		const index = part.indexOf("=");
+		if (index <= 0) continue;
+		labels[part.slice(0, index)] = part.slice(index + 1);
+	}
+	return labels;
+}
+
+export function parseDockerWorkerListLine(line: string, fallbackRole?: string): WorkerInfo | undefined {
+	const [containerId, name, status, ports, labelsStr] = line.split("\t");
+	if (!containerId || !name) return undefined;
+	const labels = parseDockerLabels(labelsStr);
+	const role = labels[LABEL_ROLE] ?? fallbackRole ?? "unknown";
+	return {
+		id: containerId,
+		name,
+		role,
+		status: status ?? "",
+		ports: ports ?? "",
+		createdAt: labels[LABEL_CREATED_AT] ?? "unknown",
+		ownerScope: labels[LABEL_OWNER_SCOPE] ?? labels[LABEL_OWNER],
+		worktree: labels[LABEL_WORKTREE],
+		worktreePath: labels[LABEL_WORKTREE_PATH],
+		ralphJobId: labels[LABEL_RALPH_JOB_ID],
+		ralphRunId: labels[LABEL_RALPH_RUN_ID],
+	};
+}
+
+export async function listWorkers(options: { includeDev?: boolean; all?: boolean } = {}): Promise<WorkerInfo[]> {
 	const roles = options.includeDev === false ? ["worker"] : ["worker", "dev"];
 	const workers: WorkerInfo[] = [];
 
 	for (const role of roles) {
 		const { stdout } = await execFileAsync("docker", [
 			"ps",
+			...(options.all ? ["--all"] : []),
 			"--filter",
 			`label=${LABEL_ROLE}=${role}`,
 			"--format",
@@ -532,16 +575,8 @@ export async function listWorkers(options: { includeDev?: boolean } = {}): Promi
 
 		const lines = stdout.trim().split("\n");
 		for (const line of lines) {
-			const [containerId, name, status, ports, labelsStr] = line.split("\t");
-			const createdMatch = labelsStr?.match(/pibo\.compute\.createdAt=([^,]+)/);
-			workers.push({
-				id: containerId ?? "",
-				name: name ?? "",
-				role,
-				status: status ?? "",
-				ports: ports ?? "",
-				createdAt: createdMatch ? createdMatch[1] : "unknown",
-			});
+			const worker = parseDockerWorkerListLine(line, role);
+			if (worker) workers.push(worker);
 		}
 	}
 

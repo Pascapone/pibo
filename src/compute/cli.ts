@@ -182,22 +182,31 @@ Rebuilds from the current workspace and refreshes compute image hashes.
 
 	program
 		.command("list")
-		.description("List running Pibo worker and dev-worker containers")
+		.description("List Pibo worker and dev-worker containers")
+		.option("--all", "Include stopped, exited, dead, and restarting Pibo workers")
+		.option("--json", "Print machine-readable worker metadata")
 		.addHelpText(
 			"after",
 			`
-Shows each worker's name, role, status, mapped ports, and creation time.
+Shows each worker's name, role, status, mapped ports, creation time, owner, and Ralph ownership when labeled.
+
+Next:
+  $ pibo compute list --all --json
 `,
 		)
-		.action(async () => {
-			const workers = await listWorkers();
-			if (workers.length === 0) {
-				console.log("No worker containers running.");
+		.action(async (options: { all?: boolean; json?: boolean }) => {
+			const workers = await listWorkers({ all: options.all === true });
+			if (options.json) {
+				printJson({ workers });
 				return;
 			}
-			console.log("NAME\t\tROLE\t\tSTATUS\t\tPORTS\t\tCREATED");
+			if (workers.length === 0) {
+				console.log(options.all ? "No Pibo worker containers found." : "No worker containers running.");
+				return;
+			}
+			console.log("NAME\tROLE\tSTATUS\tPORTS\tCREATED\tOWNER\tRALPH_JOB\tRALPH_RUN");
 			for (const w of workers) {
-				console.log(`${w.name}\t${w.role}\t${w.status}\t${w.ports}\t${w.createdAt}`);
+				console.log(`${w.name}\t${w.role}\t${w.status}\t${w.ports}\t${w.createdAt}\t${w.ownerScope ?? "-"}\t${w.ralphJobId ?? "-"}\t${w.ralphRunId ?? "-"}`);
 			}
 		});
 

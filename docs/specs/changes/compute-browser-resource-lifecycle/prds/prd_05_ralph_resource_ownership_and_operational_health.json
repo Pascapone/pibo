@@ -32,8 +32,8 @@
         "Typecheck passes"
       ],
       "priority": 2,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented safe Ralph worker labels and compute list ownership visibility: Ralph job/run Docker labels are emitted only for safe id-shaped values, owner scope labels are preserved, list parsing exposes owner/worktree/Ralph fields, and `pibo compute list --all` / `--json` display the fields for labeled workers. Evidence recorded in IMPLEMENTATION_PROGRESS.md; focused compute tests and full npm run typecheck passed."
     },
     {
       "id": "US-003",

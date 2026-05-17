@@ -19,6 +19,7 @@ import {
 	LABEL_WORKTREE_PATH,
 	buildDevWorkerDockerRunArgs,
 	buildWorkerDockerRunArgs,
+	parseDockerWorkerListLine,
 	resolveComputeWorkerLifecycle,
 } from '../dist/compute/docker.js';
 
@@ -137,6 +138,53 @@ test('one-time worker docker run args include resource policy and inspectable la
 	assert.ok(runLabels.includes(`${COMPUTE_RESOURCE_POLICY_LABELS.shmSize}=768m`));
 	assert.ok(runLabels.includes(`${COMPUTE_RESOURCE_POLICY_LABELS.restart}=no`));
 	assert.ok(runLabels.includes(`${COMPUTE_RESOURCE_POLICY_LABELS.logMaxFile}=4`));
+});
+
+test('ralph-owned worker labels omit unsafe prompt-like values', () => {
+	const args = buildWorkerDockerRunArgs({
+		id: 'pibo-worker-unsafe',
+		createdAt: '2026-05-17T00:00:00.000Z',
+		owner: 'user:test',
+		ralphJobId: 'This is a full prompt with spaces and secrets',
+		ralphRunId: 'rrun_safe-1',
+		policy: customPolicy,
+	});
+
+	const runLabels = labels(args);
+	assert.ok(!runLabels.some((label) => label.includes('This is a full prompt')));
+	assert.ok(runLabels.includes(`${LABEL_RALPH_RUN_ID}=rrun_safe-1`));
+});
+
+test('compute list parsing exposes Ralph ownership from Docker labels', () => {
+	const line = [
+		'abc123',
+		'pibo-dev-ralph-test',
+		'Exited (137) 2 minutes ago',
+		'0.0.0.0:4830->4789/tcp',
+		[
+			'pibo.compute.role=dev',
+			'pibo.compute.createdAt=2026-05-17T00:00:00.000Z',
+			'pibo.compute.ownerScope=user:test',
+			'pibo.compute.worktree=ralph-test',
+			'pibo.compute.worktreePath=/repo/.worktrees/ralph-test',
+			'pibo.ralph.jobId=ralph_job_1',
+			'pibo.ralph.runId=rrun_1',
+		].join(','),
+	].join('\t');
+
+	assert.deepEqual(parseDockerWorkerListLine(line), {
+		id: 'abc123',
+		name: 'pibo-dev-ralph-test',
+		role: 'dev',
+		status: 'Exited (137) 2 minutes ago',
+		ports: '0.0.0.0:4830->4789/tcp',
+		createdAt: '2026-05-17T00:00:00.000Z',
+		ownerScope: 'user:test',
+		worktree: 'ralph-test',
+		worktreePath: '/repo/.worktrees/ralph-test',
+		ralphJobId: 'ralph_job_1',
+		ralphRunId: 'rrun_1',
+	});
 });
 
 test('dev worker docker run args include resource policy labels worktree metadata and bounded logs', () => {
