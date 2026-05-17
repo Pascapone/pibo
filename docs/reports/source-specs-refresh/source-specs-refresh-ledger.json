@@ -1,12 +1,12 @@
 {
   "version": 1,
-  "status": "blocked_on_decisions",
+  "status": "complete",
   "baseline": {
     "baseRef": "upstream/dev",
     "baseCommit": "bdf219f906eb331a2f5343dd16e8124c2734878b",
     "mainRef": "main",
     "createdAt": "2026-05-17T00:17:50Z",
-    "lastUpdatedAt": "2026-05-17T01:32:31Z",
+    "lastUpdatedAt": "2026-05-17T01:45:00Z",
     "notes": [
       "This ledger is the durable resume state for the Ralph source-spec refresh loop.",
       "Current code in this worktree is the source of truth for source-backed specs.",
@@ -14,14 +14,14 @@
     ]
   },
   "cursor": {
-    "nextQueueId": "blocked-on-decision-requests",
+    "nextQueueId": null,
     "lastIteration": 7
   },
   "decisionRequests": [
     {
       "id": "dr-bootstrap-catalog-owner-cache",
       "createdAt": "2026-05-17T01:15:54Z",
-      "status": "open",
+      "status": "resolved",
       "question": "Should Chat Web change the bootstrap catalog cache so owner-scoped custom-agent data cannot be reused across owner scopes?",
       "context": "Source inspection of src/apps/chat/web-app.ts found loadBootstrapCatalog() caches one full catalog promise for 30 seconds. The cached value includes customAgents serialized for the web session that populated the cache. The refreshed bootstrap/navigation spec records this as a current source-observed gap instead of treating owner-safe caching as proven behavior.",
       "options": [
@@ -32,7 +32,11 @@
       "recommendedOption": "Split static catalog data into a shared cache and build owner-scoped customAgents per request.",
       "blockingQueueIds": [
         "q-store-data-boundaries"
-      ]
+      ],
+      "resolvedAt": "2026-05-17T01:45:00Z",
+      "resolution": "Custom agents must remain owner-scoped. Do not reuse owner-scoped customAgents across owner scopes through the bootstrap catalog cache.",
+      "selectedOption": "Split static catalog data into a shared cache and build owner-scoped customAgents per request.",
+      "followUp": "Implement the cache split or equivalent owner-keying in code; the specs now treat owner-scoped customAgents as required behavior, with current source noted as not yet satisfying it."
     }
   ],
   "queue": [
@@ -149,7 +153,7 @@
     },
     {
       "id": "q-store-data-boundaries",
-      "status": "blocked",
+      "status": "completed",
       "priority": 6,
       "title": "Store, data, session, and ownership-boundary specs",
       "paths": [
@@ -168,12 +172,13 @@
           "docs/specs/capabilities/pibo-session-store.md",
           "docs/specs/capabilities/chat-web-bootstrap-and-navigation-api.md"
         ],
-        "result": "blocked_with_spec_updates",
+        "result": "completed_with_spec_updates_and_resolved_decision",
         "next": "q-web-annotations-uncommitted",
-        "blockedByDecisionRequestIds": [
+        "resolvedDecisionRequestIds": [
           "dr-bootstrap-catalog-owner-cache"
         ]
-      }
+      },
+      "decisionResolvedAt": "2026-05-17T01:45:00Z"
     },
     {
       "id": "q-web-annotations-uncommitted",
@@ -445,6 +450,12 @@
         "Small verification-basis/path hygiene updates were made for local config, static shell/PWA assets, MCP registry Python runtimes, and persistence diagnostics.",
         "No new capability spec was created; a final coverage note records the inventory outcome. The remaining blocked store/data queue item is covered by the existing open bootstrap catalog owner-cache decision request."
       ]
+    },
+    {
+      "id": "complete-bootstrap-cache-decision",
+      "queueId": "q-store-data-boundaries",
+      "completedAt": "2026-05-17T01:45:00Z",
+      "summary": "Closed the bootstrap catalog owner-cache decision based on user input. Spec refresh ledger is now complete; code follow-up remains to enforce owner-scoped customAgents in the cache path."
     }
   ],
   "staleFindings": [
@@ -1113,7 +1124,10 @@
       "blockedAt": "2026-05-17T01:15:54Z",
       "decisionRequestId": "dr-bootstrap-catalog-owner-cache",
       "path": "docs/specs/capabilities/chat-web-bootstrap-and-navigation-api.md",
-      "summary": "Spec can document current source behavior, but resolving whether to owner-key/split/change the bootstrap catalog cache requires product/code approval."
+      "summary": "Spec can document current source behavior, but resolving whether to owner-key/split/change the bootstrap catalog cache requires product/code approval.",
+      "status": "resolved_by_user_decision",
+      "resolvedAt": "2026-05-17T01:45:00Z",
+      "resolution": "Custom agents are owner-scoped; bootstrap catalog caching must not share customAgents across owner scopes. Preferred implementation is shared static catalog cache plus per-request owner-scoped customAgents."
     }
   ],
   "commits": [
@@ -1241,6 +1255,10 @@
     {
       "at": "2026-05-17T01:32:31Z",
       "note": "Recorded commit 3fa28dd for q-global-source-marked-inventory final source-spec sweep. Ledger status is blocked_on_decisions because the bootstrap catalog owner-cache decision request remains open."
+    },
+    {
+      "at": "2026-05-17T01:45:00Z",
+      "note": "User resolved dr-bootstrap-catalog-owner-cache: Custom Agents must be owner-scoped. Preferred follow-up is static catalog cache plus per-request owner-scoped customAgents."
     }
   ]
 }
