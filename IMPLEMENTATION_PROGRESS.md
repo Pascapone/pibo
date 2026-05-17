@@ -43,3 +43,4 @@ Related docs:
 
 - 2026-05-17: Created worktree, copied specs/PRDs/JSON files, and prepared Ralph loop baseline.
 - 2026-05-17: Rebuilt `pibo:latest` and started Docker dev worker `pibo-dev-compute-browser-resource-lifecycle` with manual safety limits (`2g` memory, `512` PIDs, `512m` shm).
+- 2026-05-17: Started Xvfb inside the Docker dev worker on `DISPLAY=:99`; browser commands should export `DISPLAY=:99` when needed.
