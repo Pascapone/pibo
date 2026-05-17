@@ -66,8 +66,8 @@
         "Typecheck passes"
       ],
       "priority": 4,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented auth lease/browser-pool coordination. Auth lease acquire now records/returns browserPoolLeaseId and exports PIBO_BROWSER_POOL_LEASE_ID; release calls browser-pool release when an associated managed pool lease is present; reap-stale safely terminates the matching managed browser process only when the pool state active lease id and user-data dir match the expired auth slot, preserving the auth template. Evidence recorded in IMPLEMENTATION_PROGRESS.md: focused Docker-worker CLI tests passed and npm run typecheck passed."
     },
     {
       "id": "US-005",

@@ -638,6 +638,134 @@ test("pibo tools browser-use manages isolated authenticated leases", async () =>
 	}
 });
 
+test("pibo tools browser-use auth leases coordinate managed browser-pool leases", async () => {
+	const cwd = await mkdtemp(join(tmpdir(), "pibo-tools-browser-use-managed-leases-"));
+	const children = [];
+	try {
+		const env = {
+			...process.env,
+			PIBO_HOME: join(cwd, "pibo-home"),
+			PIBO_BROWSER_POOL_WORKER_ID: "auth-worker",
+			PIBO_BROWSER_USE_CHROME: join(cwd, "missing-chrome"),
+		};
+		const templateDir = join(cwd, "auth-template");
+		await mkdir(templateDir, { recursive: true });
+		await writeFile(join(templateDir, "Cookies"), "auth-cookie");
+		await writeFile(join(templateDir, "SingletonLock"), "template-lock");
+
+		const acquireMissing = await execFileAsync("node", [
+			cliPath,
+			"tools",
+			"browser-use",
+			"lease",
+			"acquire",
+			"--app",
+			"pibo-chat",
+			"--owner",
+			"agent-missing",
+			"--template-dir",
+			join(cwd, "empty-template"),
+			"--json",
+		], { cwd, env });
+		const missingLease = JSON.parse(acquireMissing.stdout);
+		assert.equal(missingLease.browserPoolLeaseId, "browser-use:pibo-auth-pibo-chat-slot-001");
+		assert.equal(missingLease.exports.PIBO_BROWSER_POOL_LEASE_ID, missingLease.browserPoolLeaseId);
+		const missingRelease = await execFileAsync("node", [cliPath, "tools", "browser-use", "lease", "release", missingLease.id], { cwd, env });
+		assert.match(missingRelease.stdout, /Released pibo-chat-slot-001/);
+
+		const acquireRelease = await execFileAsync("node", [
+			cliPath,
+			"tools",
+			"browser-use",
+			"lease",
+			"acquire",
+			"--app",
+			"pibo-chat",
+			"--owner",
+			"agent-release",
+			"--template-dir",
+			join(cwd, "empty-template"),
+			"--json",
+		], { cwd, env });
+		const releaseLease = JSON.parse(acquireRelease.stdout);
+		const poolStatePath = join(releaseLease.browserPoolRootDir, "browser-pools", releaseLease.browserPoolWorkerId, releaseLease.browserPoolId, "state.json");
+		await mkdir(dirname(poolStatePath), { recursive: true });
+		await writeFile(poolStatePath, `${JSON.stringify({
+			workerId: releaseLease.browserPoolWorkerId,
+			poolId: releaseLease.browserPoolId,
+			maxBrowserProcesses: 1,
+			pid: 999999,
+			cdpUrl: "http://127.0.0.1:9",
+			userDataDir: releaseLease.userDataDir,
+			activeLeaseId: releaseLease.browserPoolLeaseId,
+			activeLeaseCount: 1,
+			owner: "agent-release",
+			state: "leased",
+			cleanupStatus: "not-attempted",
+		}, null, 2)}\n`, "utf8");
+		await execFileAsync("node", [cliPath, "tools", "browser-use", "lease", "release", releaseLease.id], { cwd, env });
+		const releasedPoolState = JSON.parse(await readFile(poolStatePath, "utf8"));
+		assert.equal(releasedPoolState.activeLeaseId, undefined);
+		assert.equal(releasedPoolState.activeLeaseCount, 0);
+		assert.equal(releasedPoolState.cleanupStatus, "skipped");
+
+		const acquireExpired = await execFileAsync("node", [
+			cliPath,
+			"tools",
+			"browser-use",
+			"lease",
+			"acquire",
+			"--app",
+			"pibo-chat",
+			"--owner",
+			"agent-expired",
+			"--template-dir",
+			join(cwd, "empty-template"),
+			"--json",
+		], { cwd, env });
+		const expiredLease = JSON.parse(acquireExpired.stdout);
+		const browser = spawnBrowserLikeProcess("chromium", expiredLease.userDataDir);
+		children.push(browser);
+		await waitForProcess(browser.pid, true);
+		const templateBrowser = spawnBrowserLikeProcess("chromium", templateDir);
+		children.push(templateBrowser);
+		await waitForProcess(templateBrowser.pid, true);
+		const expiredPoolStatePath = join(expiredLease.browserPoolRootDir, "browser-pools", expiredLease.browserPoolWorkerId, expiredLease.browserPoolId, "state.json");
+		await mkdir(dirname(expiredPoolStatePath), { recursive: true });
+		await writeFile(expiredPoolStatePath, `${JSON.stringify({
+			workerId: expiredLease.browserPoolWorkerId,
+			poolId: expiredLease.browserPoolId,
+			maxBrowserProcesses: 1,
+			pid: browser.pid,
+			cdpUrl: "http://127.0.0.1:9",
+			userDataDir: expiredLease.userDataDir,
+			activeLeaseId: expiredLease.browserPoolLeaseId,
+			activeLeaseCount: 1,
+			owner: "agent-expired",
+			state: "leased",
+			cleanupStatus: "not-attempted",
+		}, null, 2)}\n`, "utf8");
+		const registryPath = join(expiredLease.browserUseHome, "auth-pool", "leases.json");
+		const registry = JSON.parse(await readFile(registryPath, "utf8"));
+		const registryLease = registry.leases.find((lease) => lease.id === expiredLease.id);
+		registryLease.expiresAt = new Date(Date.now() - 60_000).toISOString();
+		await writeFile(registryPath, `${JSON.stringify(registry, null, 2)}\n`, "utf8");
+
+		const reaped = await execFileAsync("node", [cliPath, "tools", "browser-use", "lease", "reap-stale"], { cwd, env });
+		assert.match(reaped.stdout, /Reaped 1 stale browser-use auth lease/);
+		await waitForProcess(browser.pid, false);
+		assert.equal(processIsAlive(templateBrowser.pid), true);
+		assert.equal(await readFile(join(templateDir, "Cookies"), "utf8"), "auth-cookie");
+		assert.equal(await readFile(join(templateDir, "SingletonLock"), "utf8"), "template-lock");
+		const reapedPoolState = JSON.parse(await readFile(expiredPoolStatePath, "utf8"));
+		assert.equal(reapedPoolState.activeLeaseId, undefined);
+		assert.equal(reapedPoolState.cleanupStatus, "success");
+	} finally {
+		for (const child of children) terminateProcess(child);
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
 test("pibo tools browser-use lists Chrome targets without launching a browser", async () => {
 	const cwd = await mkdtemp(join(tmpdir(), "pibo-tools-browser-use-targets-"));
 	try {
