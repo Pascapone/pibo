@@ -96,8 +96,8 @@
         "Typecheck passes"
       ],
       "priority": 6,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Validated the full Chat Web annotation attachment flow in the Docker worker on 2026-05-17: empty state/list refresh, URL annotation UI action, existing-target attach UI action, overlay-created pin annotation, attach/detach/re-attach composer chip behavior, successful send, attached status update, and bounded trace context without inline image/base64 data. Docker worker typecheck, build, and focused web-annotation tests passed."
     }
   ]
 }
