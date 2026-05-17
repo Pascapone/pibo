@@ -135,6 +135,45 @@ test("Web Annotation overlay submissions use binding token and derive session sc
 	}
 });
 
+test("Web Annotation API lists gets and patches authorized session annotations", async () => {
+	const store = new WebAnnotationStore({ path: ":memory:" });
+	try {
+		const created = store.createAnnotation({
+			id: "ann_api",
+			ownerScope: "user:a",
+			piboSessionId: "ps_a",
+			piboRoomId: "room_a",
+			note: "Fix spacing",
+			url: "http://localhost:3000/settings",
+			targetKind: "element",
+			viewport: { width: 100, height: 100 },
+			target: { kind: "element", label: "Save", selector: "[data-testid=save]" },
+		});
+		const app = createWebAnnotationsWebApp({ store });
+		const context = createContext();
+
+		const listed = await app.handleRequest(new Request("http://127.0.0.1/api/web-annotations?piboSessionId=ps_a&limit=10"), context);
+		const listedJson = await listed.json();
+		assert.equal(listedJson.annotations.length, 1);
+		assert.equal(listedJson.annotations[0].id, created.id);
+		assert.equal(listedJson.annotations[0].label, "Save");
+
+		const got = await app.handleRequest(new Request("http://127.0.0.1/api/web-annotations/ann_api?piboSessionId=ps_a"), context);
+		assert.equal((await got.json()).annotation.note, "Fix spacing");
+
+		const patched = await app.handleRequest(createRequest("/api/web-annotations/ann_api", { piboSessionId: "ps_a", status: "attached" }, "PATCH"), context);
+		assert.equal((await patched.json()).annotation.status, "attached");
+		assert.equal(store.getAnnotation("user:a", "ps_a", "ann_api").status, "attached");
+
+		await assert.rejects(
+			() => app.handleRequest(new Request("http://127.0.0.1/api/web-annotations/ann_api?piboSessionId=ps_missing"), context),
+			/Pibo session not found/,
+		);
+	} finally {
+		store.close();
+	}
+});
+
 test("Web Annotation API enforces same-origin session authorization and routes binding operations", async () => {
 	const calls = [];
 	const fakeService = {

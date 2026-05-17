@@ -32,8 +32,8 @@
         "Typecheck passes"
       ],
       "priority": 2,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed by session-scoped Web Annotations panel with refresh, empty/loading/error/populated states, resolved/dismissed hidden by default, and bounded status/kind/label/note/URL/time chips. Docker typecheck/build/focused tests and browser UI verification passed."
     },
     {
       "id": "US-003",
@@ -48,8 +48,8 @@
         "Typecheck passes"
       ],
       "priority": 3,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed by composer-selected annotation id state, attach/detach chip controls, clear action, send-time selected ids, post-send clearing, and stale selection pruning from refreshed session annotations. Docker typecheck/build/focused tests and browser attach/detach verification passed."
     },
     {
       "id": "US-004",
@@ -64,8 +64,8 @@
         "Typecheck passes"
       ],
       "priority": 4,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed by outgoing Chat Web message support for webAnnotationIds, server-side owner/session revalidation, accepted event payload persistence with bounded webAnnotationAttachments and webAnnotationContext, model message text enrichment, and post-send annotation status update to attached. Docker typecheck/build/focused tests and browser send/status verification passed."
     },
     {
       "id": "US-005",
@@ -80,8 +80,8 @@
         "Typecheck passes"
       ],
       "priority": 5,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed by shared bounded attachment serializer and model-visible attached-web-annotations renderer covering id, kind, URL, label, selector/fallback, source hint, position, text, html hint, and note with truncation/escaping and no inline screenshot data. Focused rendering tests, Docker typecheck/build, and browser trace verification passed."
     },
     {
       "id": "US-006",

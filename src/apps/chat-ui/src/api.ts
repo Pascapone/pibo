@@ -44,6 +44,27 @@ export type WebAnnotationBindingResponse = {
 	stopped?: boolean;
 };
 
+export type WebAnnotationStatus = "open" | "attached" | "acknowledged" | "applying" | "needs_review" | "resolved" | "dismissed" | "failed";
+
+export type WebAnnotationMessageAttachment = {
+	id: string;
+	status: WebAnnotationStatus;
+	targetKind: string;
+	url: string;
+	label?: string;
+	selector?: string;
+	sourceHint?: string;
+	position?: string;
+	text?: string;
+	note: string;
+	createdAt: string;
+};
+
+export type WebAnnotationListResponse = {
+	ok: true;
+	annotations: WebAnnotationMessageAttachment[];
+};
+
 export type ContextFileInfo = {
 	key: string;
 	label?: string;
@@ -1379,11 +1400,26 @@ export async function deleteSession(
 	});
 }
 
-export async function postMessage(piboSessionId: string, text: string, clientTxnId: string, roomId?: string): Promise<unknown> {
+export async function postMessage(piboSessionId: string, text: string, clientTxnId: string, roomId?: string, webAnnotationIds: readonly string[] = []): Promise<unknown> {
 	return requestJson("/api/chat/message", {
 		method: "POST",
 		headers: { "content-type": "application/json" },
-		body: JSON.stringify({ piboSessionId, text, clientTxnId, ...(roomId ? { roomId } : {}) }),
+		body: JSON.stringify({ piboSessionId, text, clientTxnId, ...(roomId ? { roomId } : {}), ...(webAnnotationIds.length ? { webAnnotationIds } : {}) }),
+	});
+}
+
+export async function listWebAnnotations(piboSessionId: string, input: { status?: WebAnnotationStatus; limit?: number } = {}): Promise<WebAnnotationListResponse> {
+	const params = new URLSearchParams({ piboSessionId });
+	if (input.status) params.set("status", input.status);
+	if (input.limit) params.set("limit", String(input.limit));
+	return requestJson<WebAnnotationListResponse>(`/api/web-annotations?${params.toString()}`);
+}
+
+export async function patchWebAnnotation(annotationId: string, input: { piboSessionId: string; status?: WebAnnotationStatus; summary?: string | null }): Promise<{ ok: true; annotation: WebAnnotationMessageAttachment }> {
+	return requestJson<{ ok: true; annotation: WebAnnotationMessageAttachment }>(`/api/web-annotations/${encodeURIComponent(annotationId)}`, {
+		method: "PATCH",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify(compactObject(input)),
 	});
 }
 

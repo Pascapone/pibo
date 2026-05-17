@@ -43,7 +43,7 @@ import {
 	Wrench,
 	X,
 } from "lucide-react";
-import { createUserSkill, createWebAnnotationBinding, deleteCustomAgent, deletePiPackage, deleteProject, deleteRoom, deleteSession, deleteUserSkill, fetchSignalTree, downloadChatFile, getBootstrap, getNavigation, getProjectsBootstrap, getSessionPage, getTrace, getTraceSummary, getUserSettings, getUserSkill, getWorkflowVersionPicker, injectWebAnnotationBinding, installUserSkill, listUserSkills, listWebAnnotationTargets, markRoomRead, markSessionRead, patchCustomAgent, patchModelDefaults, patchPiPackage, patchProject, patchProjectSession, patchRoom, patchSession, patchUserSettings, postAction, postContextFile, postCustomAgent, postMessage, postPiPackage, postProject, postProjectMessage, postProjectSession, postProjectWorkflowSession, postProjectWorkflowSessionStart, postRoom, postSession, signInWithGoogle, signOut, subscribeSignalTree, updateUserSkill, uploadChatFiles, type SaveCustomAgentInput, type UserSettings, type WebAnnotationBindingResponse, type WebAnnotationTargetSummary, type WorkflowVersionPickerOption } from "./api";
+import { createUserSkill, createWebAnnotationBinding, deleteCustomAgent, deletePiPackage, deleteProject, deleteRoom, deleteSession, deleteUserSkill, fetchSignalTree, downloadChatFile, getBootstrap, getNavigation, getProjectsBootstrap, getSessionPage, getTrace, getTraceSummary, getUserSettings, getUserSkill, getWorkflowVersionPicker, injectWebAnnotationBinding, installUserSkill, listUserSkills, listWebAnnotations, listWebAnnotationTargets, markRoomRead, markSessionRead, patchCustomAgent, patchModelDefaults, patchPiPackage, patchProject, patchProjectSession, patchRoom, patchSession, patchUserSettings, postAction, postContextFile, postCustomAgent, postMessage, postPiPackage, postProject, postProjectMessage, postProjectSession, postProjectWorkflowSession, postProjectWorkflowSessionStart, postRoom, postSession, signInWithGoogle, signOut, subscribeSignalTree, updateUserSkill, uploadChatFiles, type SaveCustomAgentInput, type UserSettings, type WebAnnotationBindingResponse, type WebAnnotationMessageAttachment, type WebAnnotationTargetSummary, type WorkflowVersionPickerOption } from "./api";
 import { THINKING_LEVELS } from "./types";
 import type { AgentCatalog, BootstrapData, CustomAgent, CustomAgentSubagent, ModelCatalog, ModelDefaults, ModelProfile, NavigationData, PiboProject, PiboProjectSession, ProjectsBootstrapData, PiboRoom, PiboSession, PiboSessionTraceSummary, PiboSessionTraceView, PiboSignalPatch, PiboSignalSnapshot, PiboTraceNode, PiboTraceOrderKey, PiboWebSessionNode, PiboWebSessionStatus, ThinkingLevel, UserSkill, WorkflowLifecycleEventRecord } from "./types";
 import type { ChatWebStoredEvent } from "../../../shared/trace-types.js";
@@ -925,8 +925,8 @@ export function App({ route }: { route: ChatAppRoute }) {
 	});
 
 	const sendMessageMutation = useMutation({
-		mutationFn: ({ piboSessionId, text, clientTxnId, roomId }: { piboSessionId: string; text: string; clientTxnId: string; roomId?: string }) =>
-			postMessage(piboSessionId, text, clientTxnId, roomId),
+		mutationFn: ({ piboSessionId, text, clientTxnId, roomId, webAnnotationIds }: { piboSessionId: string; text: string; clientTxnId: string; roomId?: string; webAnnotationIds?: readonly string[] }) =>
+			postMessage(piboSessionId, text, clientTxnId, roomId, webAnnotationIds),
 		onMutate: async ({ piboSessionId }) => {
 			await queryClient.cancelQueries({ queryKey: tracePageQueriesForSession(piboSessionId) });
 			updateBootstrapCache((data) => updateSessionNodeInBootstrap(data, piboSessionId, (node) => ({ ...node, status: "running", lastActivityAt: new Date().toISOString() })));
@@ -1867,7 +1867,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 						onThinkingLevelChange={(level) => void runCommand(`/thinking ${level}`)}
 						onRefreshTrace={refreshSelectedTrace}
 						onRefreshBootstrap={refreshSelectedBootstrap}
-						onSend={async (text) => {
+						onSend={async (text, webAnnotationIds) => {
 							if (!selectedPiboSessionId || selectedRoomArchived) return;
 							try {
 								await sendMessageMutation.mutateAsync({
@@ -1875,6 +1875,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 									text,
 									clientTxnId: createClientTxnId(),
 									roomId: selectedRoomId ?? undefined,
+									webAnnotationIds,
 								});
 								await loadBootstrap(selectedPiboSessionId, showArchivedRef.current, selectedRoomId ?? undefined, { force: true });
 								setError(null);
@@ -3080,7 +3081,7 @@ function SessionTracePane({
 	onThinkingLevelChange: (level: ThinkingLevel) => void;
 	onRefreshTrace: () => Promise<void>;
 	onRefreshBootstrap: () => Promise<unknown>;
-	onSend: (text: string) => Promise<void>;
+	onSend: (text: string, webAnnotationIds?: readonly string[]) => Promise<void>;
 	onError: (message: string | null) => void;
 }) {
 	const queryClient = useQueryClient();
@@ -3091,6 +3092,7 @@ function SessionTracePane({
 	const [traceEventLimit, setTraceEventLimit] = useState(DEFAULT_TRACE_EVENTS_PAGE_SIZE);
 	const [rawEventLimit, setRawEventLimit] = useState(DEFAULT_RAW_EVENTS_LIMIT);
 	const [baseTraceView, setBaseTraceView] = useState<PiboSessionTraceView | null>(null);
+	const [selectedWebAnnotationIds, setSelectedWebAnnotationIds] = useState<string[]>([]);
 	const [copiedHeaderPiboSessionId, setCopiedHeaderPiboSessionId] = useState<string | null>(null);
 	const copyHeaderPiboSessionTimeout = useRef<number | undefined>(undefined);
 	const traceSummaryQueryKey = useMemo(
@@ -3141,13 +3143,47 @@ function SessionTracePane({
 		refetchOnWindowFocus: false,
 		retry: 1,
 	});
+	const webAnnotationsQuery = useQuery({
+		queryKey: ["web-annotations", selectedPiboSessionId],
+		queryFn: async () => {
+			if (!selectedPiboSessionId) throw new Error("Session is required");
+			return listWebAnnotations(selectedPiboSessionId, { limit: 50 });
+		},
+		enabled: Boolean(selectedPiboSessionId),
+		staleTime: 3_000,
+		refetchOnWindowFocus: false,
+		retry: 1,
+	});
+	const visibleWebAnnotations = useMemo(
+		() => (webAnnotationsQuery.data?.annotations ?? []).filter((annotation) => annotation.status !== "resolved" && annotation.status !== "dismissed"),
+		[webAnnotationsQuery.data?.annotations],
+	);
+	const selectedWebAnnotations = useMemo(
+		() => selectedWebAnnotationIds
+			.map((id) => visibleWebAnnotations.find((annotation) => annotation.id === id))
+			.filter((annotation): annotation is WebAnnotationMessageAttachment => Boolean(annotation)),
+		[selectedWebAnnotationIds, visibleWebAnnotations],
+	);
 
 	useEffect(() => {
 		setTraceEventLimit(DEFAULT_TRACE_EVENTS_PAGE_SIZE);
 		setRawEventLimit(DEFAULT_RAW_EVENTS_LIMIT);
 		setBaseTraceView(null);
 		setLiveTraceOverlay(null);
+		setSelectedWebAnnotationIds([]);
 	}, [selectedPiboSessionId]);
+
+	useEffect(() => {
+		if (!visibleWebAnnotations.length) {
+			setSelectedWebAnnotationIds((current) => current.length ? [] : current);
+			return;
+		}
+		const visibleIds = new Set(visibleWebAnnotations.map((annotation) => annotation.id));
+		setSelectedWebAnnotationIds((current) => {
+			const next = current.filter((id) => visibleIds.has(id));
+			return next.length === current.length ? current : next;
+		});
+	}, [visibleWebAnnotations]);
 
 	// TanStack Query caches only bounded trace pages and summaries. The render path
 	// reads from local state so a synchronous cache hit cannot rehydrate a trace in
@@ -3401,8 +3437,15 @@ function SessionTracePane({
 		copyHeaderPiboSessionTimeout.current = window.setTimeout(() => setCopiedHeaderPiboSessionId(null), 900);
 	};
 
+	const toggleWebAnnotationAttachment = (annotationId: string) => {
+		setSelectedWebAnnotationIds((current) => current.includes(annotationId)
+			? current.filter((id) => id !== annotationId)
+			: [...current, annotationId].slice(0, 5));
+	};
+
 	const handleComposerSend = async (text: string) => {
 		if (!selectedPiboSessionId) return;
+		const webAnnotationIds = selectedWebAnnotations.map((annotation) => annotation.id);
 		const now = new Date().toISOString();
 		const eventId = `optimistic:user-message:${createClientTxnId()}`;
 		const optimisticEvent: ChatWebStoredEvent = {
@@ -3425,8 +3468,9 @@ function SessionTracePane({
 			piboSessionId: selectedPiboSessionId,
 			events: [...(current?.piboSessionId === selectedPiboSessionId ? current.events : []), optimisticEvent],
 		}));
-		await onSend(text);
-		await tracePageQuery.refetch();
+		await onSend(text, webAnnotationIds);
+		setSelectedWebAnnotationIds([]);
+		await Promise.all([tracePageQuery.refetch(), webAnnotationsQuery.refetch()]);
 	};
 
 	return (
@@ -3576,6 +3620,15 @@ function SessionTracePane({
 						onError,
 					})
 				)}
+				<WebAnnotationsSessionPanel
+					piboSessionId={selectedPiboSessionId}
+					annotations={visibleWebAnnotations}
+					selectedIds={selectedWebAnnotationIds}
+					loading={webAnnotationsQuery.isLoading || webAnnotationsQuery.isFetching}
+					error={webAnnotationsQuery.error ? errorMessage(webAnnotationsQuery.error) : null}
+					onRefresh={() => void webAnnotationsQuery.refetch()}
+					onToggle={toggleWebAnnotationAttachment}
+				/>
 				<Composer
 					sessionId={selectedPiboSessionId}
 					disabled={!selectedPiboSessionId || selectedRoomArchived}
@@ -3583,8 +3636,11 @@ function SessionTracePane({
 					skills={skills}
 					value={composerText}
 					focusSignal={composerFocusSignal}
+					selectedWebAnnotations={selectedWebAnnotations}
 					onValueChange={onComposerTextChange}
 					onCommand={onCommand}
+					onDetachWebAnnotation={(id) => setSelectedWebAnnotationIds((current) => current.filter((candidate) => candidate !== id))}
+					onClearWebAnnotations={() => setSelectedWebAnnotationIds([])}
 					onSend={handleComposerSend}
 				/>
 			</main>
@@ -5199,6 +5255,66 @@ function formatRoomSummary(room: PiboRoom): string {
 	return room.type;
 }
 
+function WebAnnotationsSessionPanel({
+	piboSessionId,
+	annotations,
+	selectedIds,
+	loading,
+	error,
+	onRefresh,
+	onToggle,
+}: {
+	piboSessionId: string | null;
+	annotations: WebAnnotationMessageAttachment[];
+	selectedIds: readonly string[];
+	loading: boolean;
+	error: string | null;
+	onRefresh: () => void;
+	onToggle: (annotationId: string) => void;
+}) {
+	if (!piboSessionId) return null;
+	return (
+		<section className="border-t border-slate-800 bg-[#101d22] px-4 py-2" data-pibo-debug="web-annotations-session-panel" data-pibo-session-id={piboSessionId}>
+			<div className="mb-2 flex items-center justify-between gap-2">
+				<div>
+					<div className="text-[11px] font-bold uppercase tracking-wider text-[#11a4d4]">Web annotations</div>
+					<div className="text-[11px] text-slate-500">Attach selected annotations to your next message.</div>
+				</div>
+				<button type="button" onClick={onRefresh} disabled={loading} className="inline-flex h-7 items-center gap-1 rounded-sm border border-slate-700 px-2 text-[11px] text-slate-300 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50" data-pibo-debug="web-annotations-refresh">
+					<RefreshCw size={12} className={loading ? "animate-spin" : undefined} /> Refresh
+				</button>
+			</div>
+			{error ? (
+				<div className="rounded-sm border border-red-900 bg-red-950/40 px-3 py-2 text-xs text-red-200" data-pibo-debug="web-annotations-error">{boundedUiText(error, 220)}</div>
+			) : loading && !annotations.length ? (
+				<div className="rounded-sm border border-slate-800 bg-[#0e1116] px-3 py-2 text-xs text-slate-400" data-pibo-debug="web-annotations-loading">Loading annotations…</div>
+			) : !annotations.length ? (
+				<div className="rounded-sm border border-slate-800 bg-[#0e1116] px-3 py-2 text-xs text-slate-500" data-pibo-debug="web-annotations-empty">No open annotations for this session.</div>
+			) : (
+				<div className="flex gap-2 overflow-x-auto pb-1" data-pibo-debug="web-annotations-list">
+					{annotations.map((annotation) => {
+						const selected = selectedIds.includes(annotation.id);
+						return (
+							<div key={annotation.id} data-pibo-debug="web-annotation-chip" data-web-annotation-id={annotation.id} data-web-annotation-selected={selected ? "true" : "false"} className={`min-w-64 max-w-80 rounded-sm border px-3 py-2 text-xs ${selected ? "border-[#11a4d4] bg-[#11a4d4]/10" : "border-slate-800 bg-[#0e1116]"}`}>
+								<div className="mb-1 flex items-center justify-between gap-2">
+									<span className="min-w-0 truncate font-mono text-[11px] text-slate-500">{annotation.status} · {annotation.targetKind}</span>
+									<button type="button" onClick={() => onToggle(annotation.id)} className={`inline-flex h-6 shrink-0 items-center gap-1 rounded-sm border px-1.5 text-[11px] ${selected ? "border-[#11a4d4] text-[#11a4d4]" : "border-slate-700 text-slate-300 hover:border-[#11a4d4] hover:text-[#11a4d4]"}`}>
+										{selected ? <X size={11} /> : <Plus size={11} />} {selected ? "Detach" : "Attach"}
+									</button>
+								</div>
+								<div className="truncate text-slate-200" title={annotation.label || annotation.selector || annotation.id}>{boundedUiText(annotation.label || annotation.selector || annotation.id, 120)}</div>
+								<div className="truncate font-mono text-[11px] text-slate-500" title={annotation.url}>{webAnnotationUrlLabel(annotation.url)}</div>
+								<div className="mt-1 line-clamp-2 text-slate-400" title={annotation.note}>{boundedUiText(annotation.note, 180)}</div>
+								<div className="mt-1 text-[11px] text-slate-600">{shortWorkflowTimestamp(annotation.createdAt)}</div>
+							</div>
+						);
+					})}
+				</div>
+			)}
+		</section>
+	);
+}
+
 function WebAnnotationsEntryPoints({
 	piboSessionId,
 	piboRoomId,
@@ -5400,11 +5516,15 @@ function compactWebAnnotationError(caught: unknown, fallback: string): string {
 
 function webAnnotationTargetLabel(target: WebAnnotationTargetSummary | undefined, fallbackUrl?: string): string {
 	const value = target?.url || fallbackUrl || target?.title || "target";
+	return webAnnotationUrlLabel(target?.title || value);
+}
+
+function webAnnotationUrlLabel(value: string): string {
 	try {
 		const parsed = new URL(value);
 		return `${parsed.host}${parsed.pathname === "/" ? "" : parsed.pathname}`;
 	} catch {
-		return boundedUiText(target?.title || value, 80);
+		return boundedUiText(value, 80);
 	}
 }
 
@@ -5419,8 +5539,11 @@ function Composer({
 	skills,
 	value,
 	focusSignal,
+	selectedWebAnnotations,
 	onValueChange,
 	onCommand,
+	onDetachWebAnnotation,
+	onClearWebAnnotations,
 	onSend,
 }: {
 	sessionId: string | null;
@@ -5429,8 +5552,11 @@ function Composer({
 	skills: Array<{ name: string; description?: string; path?: string }>;
 	value: string;
 	focusSignal: number;
+	selectedWebAnnotations: WebAnnotationMessageAttachment[];
 	onValueChange: (value: string) => void;
 	onCommand: (text: string) => Promise<boolean>;
+	onDetachWebAnnotation: (annotationId: string) => void;
+	onClearWebAnnotations: () => void;
 	onSend: (text: string) => Promise<void>;
 }) {
 	const composerRootRef = useRef<HTMLDivElement>(null);
@@ -5786,6 +5912,22 @@ function Composer({
 							<span className="text-xs text-slate-400">{skill.description ?? skill.path ?? ""}</span>
 						</button>
 					))}
+				</div>
+			) : null}
+			{selectedWebAnnotations.length ? (
+				<div className="mb-2 rounded-sm border border-slate-800 bg-[#0e1116] px-3 py-2" data-pibo-debug="composer-web-annotations" data-web-annotation-count={selectedWebAnnotations.length}>
+					<div className="mb-2 flex items-center justify-between gap-2">
+						<div className="text-[11px] font-bold uppercase tracking-wider text-[#11a4d4]">Attached web annotations</div>
+						<button type="button" onClick={onClearWebAnnotations} className="text-[11px] text-slate-500 hover:text-[#11a4d4]">Clear</button>
+					</div>
+					<div className="flex flex-wrap gap-1.5">
+						{selectedWebAnnotations.map((annotation) => (
+							<button key={annotation.id} type="button" onClick={() => onDetachWebAnnotation(annotation.id)} title={`Detach ${annotation.id}`} className="inline-flex max-w-72 items-center gap-1 rounded-sm border border-[#11a4d4]/50 bg-[#11a4d4]/10 px-2 py-1 text-left text-[11px] text-slate-200" data-pibo-debug="composer-web-annotation-chip" data-web-annotation-id={annotation.id}>
+								<span className="min-w-0 truncate">{boundedUiText(annotation.label || annotation.note || annotation.id, 100)}</span>
+								<X size={11} className="shrink-0 text-[#11a4d4]" />
+							</button>
+						))}
+					</div>
 				</div>
 			) : null}
 			{filtered.length ? (

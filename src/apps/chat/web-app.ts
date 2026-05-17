@@ -83,6 +83,9 @@ import { createDefaultPiboCronStore, type PiboCronStore } from "../../cron/store
 import { createDefaultPiboRalphStore, type PiboRalphStore } from "../../ralph/store.js";
 import { handleChatCronApiRequest } from "./cron-api.js";
 import { handleChatRalphApiRequest } from "./ralph-api.js";
+import { normalizeWebAnnotationAttachmentIds, renderAttachedWebAnnotations, serializeWebAnnotationAttachment, type WebAnnotationMessageAttachment } from "../../web-annotations/attachments.js";
+import { createDefaultWebAnnotationStore, type WebAnnotationStore } from "../../web-annotations/store.js";
+import type { WebAnnotation } from "../../web-annotations/types.js";
 
 export const CHAT_WEB_APP_NAME = "pibo.chat-web";
 export const CHAT_WEB_CHANNEL = "pibo.chat-web";
@@ -1712,6 +1715,7 @@ type ChatMessageBody = {
 	roomId?: unknown;
 	text?: unknown;
 	clientTxnId?: unknown;
+	webAnnotationIds?: unknown;
 };
 
 type ChatProjectsBootstrap = ChatBootstrapCatalog & {
@@ -2401,6 +2405,65 @@ function normalizeMessageText(value: unknown): string {
 		throw new PiboWebHttpError("Message text is required", 400);
 	}
 	return value;
+}
+
+let defaultChatWebAnnotationStore: WebAnnotationStore | undefined;
+
+function getChatWebAnnotationStore(): WebAnnotationStore {
+	defaultChatWebAnnotationStore ??= createDefaultWebAnnotationStore();
+	return defaultChatWebAnnotationStore;
+}
+
+type PreparedWebAnnotationAttachments = {
+	ids: string[];
+	annotations: WebAnnotation[];
+	attachments: WebAnnotationMessageAttachment[];
+	modelContext: string;
+	messageText: string;
+};
+
+function prepareWebAnnotationAttachments(input: {
+	ownerScope: string;
+	piboSessionId: string;
+	messageText: string;
+	attachmentIds: unknown;
+}): PreparedWebAnnotationAttachments {
+	let ids: string[];
+	try {
+		ids = normalizeWebAnnotationAttachmentIds(input.attachmentIds);
+	} catch (error) {
+		throw new PiboWebHttpError(error instanceof Error ? error.message : String(error), 400);
+	}
+	if (!ids.length) {
+		return { ids: [], annotations: [], attachments: [], modelContext: "", messageText: input.messageText };
+	}
+	const store = getChatWebAnnotationStore();
+	const annotations = ids.map((id) => {
+		const annotation = store.getAnnotation(input.ownerScope, input.piboSessionId, id);
+		if (!annotation) throw new PiboWebHttpError(`Web Annotation ${id} is not available for this session`, 404);
+		if (annotation.status === "resolved" || annotation.status === "dismissed") {
+			throw new PiboWebHttpError(`Web Annotation ${id} cannot be attached because it is ${annotation.status}`, 400);
+		}
+		return annotation;
+	});
+	const modelContext = renderAttachedWebAnnotations(annotations);
+	return {
+		ids,
+		annotations,
+		attachments: annotations.map(serializeWebAnnotationAttachment),
+		modelContext,
+		messageText: modelContext ? `${input.messageText.trimEnd()}\n\n${modelContext}` : input.messageText,
+	};
+}
+
+function markWebAnnotationsAttached(prepared: PreparedWebAnnotationAttachments): void {
+	if (!prepared.annotations.length) return;
+	const store = getChatWebAnnotationStore();
+	for (const annotation of prepared.annotations) {
+		if (annotation.status !== "attached") {
+			store.patchAnnotation(annotation.ownerScope, annotation.piboSessionId, annotation.id, { status: "attached" });
+		}
+	}
 }
 
 function accessDenied(error: unknown): never {
@@ -7805,6 +7868,12 @@ async function sendChatMessage(input: {
 	const actorId = principalIdFor(input.webSession);
 	const duplicate = clientTxnId ? input.state.eventCommands.findByClientTxn(room.id, actorId, clientTxnId) : undefined;
 	if (duplicate) return responseJson({ duplicate: true, event: duplicate });
+	const webAnnotationContext = prepareWebAnnotationAttachments({
+		ownerScope: input.webSession.ownerScope,
+		piboSessionId: selectedSession.id,
+		messageText: text,
+		attachmentIds: input.body.webAnnotationIds,
+	});
 	const accepted = input.state.eventCommands.appendEvent({
 		roomId: room.id,
 		piboSessionId: selectedSession.id,
@@ -7817,7 +7886,12 @@ async function sendChatMessage(input: {
 			type: "user.message.accepted",
 			piboSessionId: selectedSession.id,
 			roomId: room.id,
-			text,
+			text: webAnnotationContext.messageText,
+			...(webAnnotationContext.attachments.length ? {
+				webAnnotationIds: webAnnotationContext.ids,
+				webAnnotationAttachments: webAnnotationContext.attachments,
+				webAnnotationContext: webAnnotationContext.modelContext,
+			} : {}),
 			...(clientTxnId ? { clientTxnId } : {}),
 		},
 	});
@@ -7826,7 +7900,7 @@ async function sendChatMessage(input: {
 			session: selectedSession,
 			roomId: room.id,
 			actorId,
-			text,
+			text: webAnnotationContext.messageText,
 			clientTxnId,
 			legacyEvent: accepted,
 		});
@@ -7841,7 +7915,7 @@ async function sendChatMessage(input: {
 			type: "message",
 			piboSessionId: selectedSession.id,
 			id: messageId,
-			text,
+			text: webAnnotationContext.messageText,
 			source: "user",
 		});
 	} catch (error) {
@@ -7863,6 +7937,7 @@ async function sendChatMessage(input: {
 		for (const listener of input.state.liveListeners) listener(failed);
 		throw error;
 	}
+	markWebAnnotationsAttached(webAnnotationContext);
 	return responseJson({ output, event: accepted });
 }
 

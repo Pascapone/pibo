@@ -1,8 +1,9 @@
 import { PiboWebHttpError, readJsonBody, responseJson } from "../web/http.js";
 import type { PiboWebApp, PiboWebAppContext, PiboWebSession } from "../web/types.js";
 import { createWebAnnotationCdpService, type WebAnnotationCdpService, type WebAnnotationBindingContext } from "./cdp.js";
+import { serializeWebAnnotationAttachment } from "./attachments.js";
 import { createDefaultWebAnnotationStore, type WebAnnotationStore } from "./store.js";
-import { isWebAnnotationTargetKind, type WebAnnotationTarget, type WebAnnotationViewport } from "./types.js";
+import { isWebAnnotationStatus, isWebAnnotationTargetKind, type WebAnnotationTarget, type WebAnnotationViewport } from "./types.js";
 
 export const WEB_ANNOTATIONS_API_PREFIX = "/api/web-annotations";
 export const WEB_ANNOTATIONS_APP_MOUNT = "/apps/web-annotations";
@@ -36,6 +37,12 @@ type OverlaySubmissionBody = {
 	viewport?: WebAnnotationViewport;
 	target?: WebAnnotationTarget;
 	screenshotRef?: object;
+};
+
+type AnnotationPatchBody = {
+	piboSessionId?: string;
+	status?: string;
+	summary?: string | null;
 };
 
 let defaultStore: WebAnnotationStore | undefined;
@@ -98,6 +105,38 @@ export function createWebAnnotationsWebApp(options: WebAnnotationsWebAppOptions 
 						return responseJson({ ok: true, ...result }, { status: 201 });
 					}
 					throw new PiboWebHttpError("url or targetId is required", 400);
+				}
+
+				if (url.pathname === WEB_ANNOTATIONS_API_PREFIX && request.method === "GET") {
+					const piboSessionId = requireQueryParam(url, "piboSessionId", "sessionId");
+					const bindingContext = resolveBindingContext(context, webSession, { piboSessionId });
+					const status = optionalStatus(url.searchParams.get("status"));
+					const annotations = store.listAnnotations({ ...bindingContext, status, limit: parseLimit(url.searchParams.get("limit")) })
+						.map(serializeWebAnnotationAttachment);
+					return responseJson({ ok: true, annotations });
+				}
+
+				const annotationResource = matchAnnotationResource(url.pathname);
+				if (annotationResource) {
+					if (request.method === "GET") {
+						const piboSessionId = requireQueryParam(url, "piboSessionId", "sessionId");
+						const bindingContext = resolveBindingContext(context, webSession, { piboSessionId });
+						const annotation = store.getAnnotation(bindingContext.ownerScope, bindingContext.piboSessionId, annotationResource.id);
+						if (!annotation) throw new PiboWebHttpError("Web Annotation was not found", 404);
+						return responseJson({ ok: true, annotation });
+					}
+					if (request.method === "PATCH") {
+						requireSameOriginJsonRequest(request);
+						const body = await readJsonBody<AnnotationPatchBody>(request);
+						const bindingContext = resolveBindingContext(context, webSession, body);
+						const status = optionalStatus(body.status);
+						const annotation = store.patchAnnotation(bindingContext.ownerScope, bindingContext.piboSessionId, annotationResource.id, {
+							...(status ? { status } : {}),
+							...(body.summary !== undefined ? { summary: body.summary } : {}),
+						});
+						if (!annotation) throw new PiboWebHttpError("Web Annotation was not found", 404);
+						return responseJson({ ok: true, annotation: serializeWebAnnotationAttachment(annotation) });
+					}
 				}
 
 				const bindingResource = matchBindingResource(url.pathname);
@@ -255,9 +294,15 @@ function resolveBindingContext(context: PiboWebAppContext, webSession: PiboWebSe
 	};
 }
 
-function requireQueryParam(url: URL, name: string): string {
-	const value = url.searchParams.get(name)?.trim();
+function requireQueryParam(url: URL, name: string, fallbackName?: string): string {
+	const value = (url.searchParams.get(name) ?? (fallbackName ? url.searchParams.get(fallbackName) : undefined))?.trim();
 	if (!value) throw new PiboWebHttpError(`${name} is required`, 400);
+	return value;
+}
+
+function optionalStatus(value: string | null | undefined) {
+	if (!value) return undefined;
+	if (!isWebAnnotationStatus(value)) throw new PiboWebHttpError("Invalid annotation status", 400);
 	return value;
 }
 
@@ -273,4 +318,12 @@ function matchBindingResource(pathname: string): { id: string; action?: string }
 	const parts = pathname.slice(prefix.length).split("/").filter(Boolean).map(decodeURIComponent);
 	if (parts.length === 0 || parts.length > 2) return undefined;
 	return { id: parts[0], action: parts[1] };
+}
+
+function matchAnnotationResource(pathname: string): { id: string } | undefined {
+	const prefix = `${WEB_ANNOTATIONS_API_PREFIX}/`;
+	if (!pathname.startsWith(prefix) || pathname.startsWith(`${WEB_ANNOTATIONS_API_PREFIX}/bindings/`)) return undefined;
+	const parts = pathname.slice(prefix.length).split("/").filter(Boolean).map(decodeURIComponent);
+	if (parts.length !== 1 || parts[0] === "targets" || parts[0] === "submissions" || parts[0] === "bindings") return undefined;
+	return { id: parts[0] };
 }
