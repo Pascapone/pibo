@@ -447,12 +447,13 @@ test("telemetry stale, stats, and prune are read-oriented by default", () => {
 		assert.equal(stats.rows.some((row) => row.retentionClass === "diagnostic" && row.table === "provider_events" && row.byteCount === 9), true);
 		assert.equal(stats.totalRows >= 5, true);
 
-		const dryRun = store.telemetry.prune({ retentionClass: "diagnostic", before: "2026-05-17T00:00:00.000Z" });
+		const pruneBefore = "2100-01-01T00:00:00.000Z";
+		const dryRun = store.telemetry.prune({ retentionClass: "diagnostic", before: pruneBefore });
 		assert.equal(dryRun.applied, false);
 		assert.equal(dryRun.rowsDeleted, 0);
 		assert.equal(store.telemetry.getProviderRequest("pr_delete")?.providerRequestId, "pr_delete");
 
-		const applied = store.telemetry.prune({ retentionClass: "diagnostic", before: "2026-05-17T00:00:00.000Z", apply: true });
+		const applied = store.telemetry.prune({ retentionClass: "diagnostic", before: pruneBefore, apply: true });
 		assert.equal(applied.applied, true);
 		assert.equal(applied.rowsDeleted, dryRun.rowsMatched);
 		assert.equal(store.telemetry.getProviderRequest("pr_delete"), undefined);
