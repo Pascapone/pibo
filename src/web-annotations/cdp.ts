@@ -262,8 +262,13 @@ function buildDocumentReadyExpression(): string {
 }
 
 function buildInjectExpression(config: { bindingId: string; bindingToken: string; apiBaseUrl?: string }): string {
+	return buildWebAnnotationOverlayScript(JSON.stringify(config));
+}
+
+export function buildWebAnnotationOverlayScript(configExpression = "window.__piboWebAnnotationConfig"): string {
 	return String.raw`(() => {
-  const config = ${JSON.stringify(config)};
+  const config = (${configExpression});
+  if (!config || !config.bindingId || !config.bindingToken) throw new Error("Pibo Web Annotation overlay config is missing bindingId or bindingToken");
   const rootId = "pibo-web-annotation-overlay";
   const outlineId = "pibo-web-annotation-outline";
   const previous = window.__piboWebAnnotations;

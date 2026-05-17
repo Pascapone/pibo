@@ -43,7 +43,7 @@ import {
 	Wrench,
 	X,
 } from "lucide-react";
-import { createUserSkill, createWebAnnotationBinding, deleteCustomAgent, deletePiPackage, deleteProject, deleteRoom, deleteSession, deleteUserSkill, fetchSignalTree, downloadChatFile, getBootstrap, getNavigation, getProjectsBootstrap, getSessionPage, getTrace, getTraceSummary, getUserSettings, getUserSkill, getWorkflowVersionPicker, injectWebAnnotationBinding, installUserSkill, listUserSkills, listWebAnnotations, listWebAnnotationTargets, markRoomRead, markSessionRead, patchCustomAgent, patchModelDefaults, patchPiPackage, patchProject, patchProjectSession, patchRoom, patchSession, patchUserSettings, postAction, postContextFile, postCustomAgent, postMessage, postPiPackage, postProject, postProjectMessage, postProjectSession, postProjectWorkflowSession, postProjectWorkflowSessionStart, postRoom, postSession, signInWithGoogle, signOut, subscribeSignalTree, updateUserSkill, uploadChatFiles, type SaveCustomAgentInput, type UserSettings, type WebAnnotationBindingResponse, type WebAnnotationMessageAttachment, type WebAnnotationTargetSummary, type WorkflowVersionPickerOption } from "./api";
+import { createUserSkill, createWebAnnotationBinding, deleteCustomAgent, deletePiPackage, deleteProject, deleteRoom, deleteSession, deleteUserSkill, fetchSignalTree, downloadChatFile, getBootstrap, getNavigation, getProjectsBootstrap, getSessionPage, getTrace, getTraceSummary, getUserSettings, getUserSkill, getWorkflowVersionPicker, injectWebAnnotationBinding, installUserSkill, listUserSkills, listWebAnnotations, listWebAnnotationTargets, markRoomRead, markSessionRead, patchCustomAgent, patchModelDefaults, patchPiPackage, patchProject, patchProjectSession, patchRoom, patchSession, patchUserSettings, postAction, postContextFile, postCustomAgent, postMessage, postPiPackage, postProject, postProjectMessage, postProjectSession, postProjectWorkflowSession, postProjectWorkflowSessionStart, postRoom, postSession, signInWithGoogle, signOut, subscribeSignalTree, updateUserSkill, uploadChatFiles, type SaveCustomAgentInput, type UserSettings, type WebAnnotationBindingResponse, type WebAnnotationMessageAttachment, type WebAnnotationOverlayConfig, type WebAnnotationTargetSummary, type WorkflowVersionPickerOption } from "./api";
 import { THINKING_LEVELS } from "./types";
 import type { AgentCatalog, BootstrapData, CustomAgent, CustomAgentSubagent, ModelCatalog, ModelDefaults, ModelProfile, NavigationData, PiboProject, PiboProjectSession, ProjectsBootstrapData, PiboRoom, PiboSession, PiboSessionTraceSummary, PiboSessionTraceView, PiboSignalPatch, PiboSignalSnapshot, PiboTraceNode, PiboTraceOrderKey, PiboWebSessionNode, PiboWebSessionStatus, ThinkingLevel, UserSkill, WorkflowLifecycleEventRecord } from "./types";
 import type { ChatWebStoredEvent } from "../../../shared/trace-types.js";
@@ -5250,11 +5250,42 @@ function WebAnnotationsEntryPoints({
 		return injectWebAnnotationBinding(result.binding.id, compactWebAnnotationRequest({ piboSessionId, piboRoomId, cdpUrl }));
 	};
 
+	const startCurrentPageAnnotation = async () => {
+		if (!piboSessionId || busy) return;
+		setBusy(true);
+		setStatus({ kind: "info", message: "Injecting annotation overlay into this Pibo page…" });
+		try {
+			const binding = await createWebAnnotationBinding({
+				piboSessionId,
+				piboRoomId,
+				url: window.location.href,
+				title: document.title,
+				sameOrigin: true,
+			});
+			if (!binding.overlay) throw new Error("Overlay config missing from same-origin binding response");
+			await installSameOriginWebAnnotationOverlay(binding.overlay);
+			setStatus({ kind: "success", message: "Annotation overlay is active on this Pibo page." });
+			onError(null);
+		} catch (caught) {
+			const message = compactWebAnnotationError(caught, "Current-page annotation failed");
+			setStatus({ kind: "error", message });
+			onError(message);
+		} finally {
+			setBusy(false);
+		}
+	};
+
 	const startUrlAnnotation = async () => {
 		if (!piboSessionId || busy) return;
 		const targetUrl = url.trim();
 		if (!targetUrl) {
 			setStatus({ kind: "error", message: "URL is required" });
+			return;
+		}
+		if (isLikelyWebAnnotationCdpUrl(targetUrl)) {
+			const message = "That looks like a CDP endpoint. Put it in CDP URL, and put the page you want to annotate in Annotate URL.";
+			setStatus({ kind: "error", message });
+			onError(message);
 			return;
 		}
 		setBusy(true);
@@ -5307,13 +5338,16 @@ function WebAnnotationsEntryPoints({
 					<div className="mb-2 flex items-start justify-between gap-3">
 						<div>
 							<div className="text-xs font-bold uppercase tracking-wider text-[#11a4d4]">Web Annotations</div>
-							<div className="mt-1 text-xs text-slate-500">Bind an explicit URL or selected CDP target to this session.</div>
+							<div className="mt-1 text-xs text-slate-500">Annotate this Pibo page directly, or bind a CDP target for external pages.</div>
 						</div>
 						<button type="button" onClick={() => setOpen(false)} className="rounded-sm p-1 text-slate-500 hover:bg-slate-800 hover:text-slate-200" aria-label="Close Web Annotations panel">
 							<X size={14} />
 						</button>
 					</div>
-					<label className="mb-2 block text-[11px] font-bold uppercase tracking-wider text-slate-500" htmlFor="web-annotation-url">Annotate URL</label>
+					<button type="button" onClick={() => void startCurrentPageAnnotation()} disabled={busy} className="mb-3 h-9 w-full rounded-sm bg-emerald-600 px-3 text-xs font-medium text-white hover:bg-emerald-500 disabled:opacity-50" data-pibo-debug="web-annotations-current-page">
+						Annotate this Pibo page
+					</button>
+					<label className="mb-2 block text-[11px] font-bold uppercase tracking-wider text-slate-500" htmlFor="web-annotation-url">Annotate URL via CDP</label>
 					<div className="grid grid-cols-[1fr_auto] gap-2">
 						<input
 							id="web-annotation-url"
@@ -5372,6 +5406,36 @@ function WebAnnotationsEntryPoints({
 
 function compactWebAnnotationRequest<T extends Record<string, string | undefined>>(input: T): T {
 	return Object.fromEntries(Object.entries(input).filter(([, value]) => value && value.trim())) as T;
+}
+
+function isLikelyWebAnnotationCdpUrl(value: string): boolean {
+	try {
+		const parsed = new URL(value);
+		return parsed.port === "56663" || parsed.pathname.startsWith("/json/");
+	} catch {
+		return false;
+	}
+}
+
+function installSameOriginWebAnnotationOverlay(config: WebAnnotationOverlayConfig): Promise<void> {
+	return new Promise((resolve, reject) => {
+		const targetWindow = window as typeof window & {
+			__piboWebAnnotationConfig?: WebAnnotationOverlayConfig;
+			__piboWebAnnotations?: { remove?: () => void };
+		};
+		try {
+			targetWindow.__piboWebAnnotations?.remove?.();
+			targetWindow.__piboWebAnnotationConfig = config;
+			const script = document.createElement("script");
+			script.src = `/apps/web-annotations/overlay.js?ts=${Date.now()}`;
+			script.async = true;
+			script.onload = () => resolve();
+			script.onerror = () => reject(new Error("Could not load Web Annotation overlay script"));
+			document.head.appendChild(script);
+		} catch (error) {
+			reject(error);
+		}
+	});
 }
 
 function readStoredWebAnnotationsCdpUrl(): string {

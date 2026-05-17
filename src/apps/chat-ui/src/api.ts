@@ -36,10 +36,17 @@ export type WebAnnotationBindingSummary = {
 	error?: string;
 };
 
+export type WebAnnotationOverlayConfig = {
+	bindingId: string;
+	bindingToken: string;
+	apiBaseUrl?: string;
+};
+
 export type WebAnnotationBindingResponse = {
 	ok: true;
 	binding: WebAnnotationBindingSummary;
 	target?: WebAnnotationTargetSummary;
+	overlay?: WebAnnotationOverlayConfig;
 	injected?: boolean;
 	stopped?: boolean;
 };
@@ -1434,8 +1441,10 @@ export async function createWebAnnotationBinding(input: {
 	piboSessionId: string;
 	piboRoomId?: string;
 	url?: string;
+	title?: string;
 	targetId?: string;
 	cdpUrl?: string;
+	sameOrigin?: boolean;
 }): Promise<WebAnnotationBindingResponse> {
 	return requestJson<WebAnnotationBindingResponse>("/api/web-annotations/bindings", {
 		method: "POST",
