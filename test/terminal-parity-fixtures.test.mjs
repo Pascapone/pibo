@@ -175,6 +175,13 @@ test("web-derived long-output fixture covers every preview owner without charact
 			.map((line) => line.tokens.map((token) => token.text).join(""));
 		assert.deepEqual(visiblePreviewLines.slice(0, 5), WEB_DERIVED_LONG_OUTPUT_LINES.slice(0, 5), `${row.id} shows first five output lines`);
 		assert.match(visiblePreviewLines[5], /\+7 more lines/, `${row.id} exposes omitted-line affordance`);
+		assert.deepEqual(row.previewOmission, {
+			source: "output",
+			visibleLineCount: 5,
+			omittedLineCount: 7,
+			totalLineCount: 12,
+			maxVisibleLineCount: 5,
+		}, `${row.id} exposes renderer-neutral omitted-line metadata`);
 		assert.doesNotMatch(visiblePreviewLines.join("\n"), /truncated|… truncated/, `${row.id} does not character-truncate preview text`);
 		assert.doesNotMatch(visiblePreviewLines.join("\n"), /web-derived output line 12/, `${row.id} keeps collapsed transcript bounded`);
 		assert.match(String(row.output), /web-derived output line 12/, `${row.id} preserves full output for details`);

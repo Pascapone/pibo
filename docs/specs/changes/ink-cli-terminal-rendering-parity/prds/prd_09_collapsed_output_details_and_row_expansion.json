@@ -20,8 +20,8 @@
         "When marking passes true, notes include commands run, evidence tier, artifact paths where applicable, and fake/demo/mocked/real classification"
       ],
       "priority": 1,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "2026-05-17: PASS. Implemented shared Web-derived preview constants and explicit preview metadata in src/session-ui/terminalRows.ts. Collapsed previews remain bounded to 5 output lines for tool.call/tool.result/agent.async/yielded.run/execution.command/shell rows; exploration groups are now bounded to 6 child summaries. Existing preview logic still preserves full visible line text and uses +N omitted-line affordances rather than character truncation. Added focused tests for fewer-than-limit/empty, exactly-at-limit, over-limit, long-unbroken-token, and 8-item exploration group cases. Evidence tier: shared model + renderer-neutral fixture tests; no live/default PTY for this foundational story because PRD09 US-005 owns keyboard expansion PTY evidence. Commands in Docker worker: npm run build; node --test test/session-ui-terminal-rows.test.mjs test/terminal-parity-fixtures.test.mjs; npm run typecheck; npm run chat-ui:typecheck; npm test. Web UI preservation: shared src/session-ui change only; Web Compact Terminal visual code unchanged; npm run build included chat-ui:build, and fixture/source Web regression checks in terminal-parity-fixtures.test.mjs plus full npm test passed. Secret handling: no new unredacted fixture payloads or logs/artifacts added."
     },
     {
       "id": "US-002",
@@ -40,8 +40,8 @@
         "When marking passes true, notes include commands run, evidence tier, artifact paths where applicable, and fake/demo/mocked/real classification"
       ],
       "priority": 2,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "2026-05-17: PASS. Added renderer-neutral CompactTerminalPreviewOmission metadata on rows and detail items, including source, visibleLineCount, omittedLineCount, totalLineCount, and maxVisibleLineCount. Long-output fixtures now assert omittedLineCount=7 for 12-line outputs and preserve the full row.output payload for details; exploration grouping keeps all detailItems while collapsing visible summaries to 6 and recording omitted details metadata. Evidence tier: shared model + fake deterministic fixtures; no PTY artifact because PRD09 US-005 owns default-path long-output expansion evidence. Commands in Docker worker: npm run build; node --test test/session-ui-terminal-rows.test.mjs test/terminal-parity-fixtures.test.mjs; npm run typecheck; npm run chat-ui:typecheck; npm test. Web UI preservation: no Web Compact Terminal visual/behavioral render logic changed; shared metadata is additive; chat-ui:build via npm run build, chat-ui:typecheck, and full npm test passed."
     },
     {
       "id": "US-003",

@@ -130,7 +130,8 @@ test("compact row previews handle long text, JSON-like values, empty values, and
 	const rows = buildCompactTerminalRows(traceView([
 		traceNode("tool.call", "node-empty", { order: 1, title: "custom_tool" }),
 		traceNode("tool.result", "node-long", { order: 2, title: "custom_tool", output: `${longLine}\nsecond\nthird\nfourth\nfifth\nsixth` }),
-		traceNode("tool.result", "node-json", { order: 3, title: "custom_tool", output: { nested: { value: 42 }, empty: null } }),
+		traceNode("tool.result", "node-exact", { order: 3, title: "custom_tool", output: "one\ntwo\nthree\nfour\nfive" }),
+		traceNode("tool.result", "node-json", { order: 4, title: "custom_tool", output: { nested: { value: 42 }, empty: null } }),
 	]), { showThinking: false });
 
 	assert.equal(rows[0].lines.length, 1, "empty/missing optional fields should produce only the call line");
@@ -143,10 +144,53 @@ test("compact row previews handle long text, JSON-like values, empty values, and
 	assert.match(rowText(rows[1]), /\+1 more lines/);
 	assert.doesNotMatch(rowText(rows[1]), /sixth/);
 
-	assert.match(rowText(rows[2]), /"nested": \{/);
+	assert.equal(rows[1].previewOmission.omittedLineCount, 1);
+	assert.equal(rows[1].previewOmission.visibleLineCount, 5);
+	assert.equal(rows[1].previewOmission.maxVisibleLineCount, 5);
+
+	assert.equal(rows[2].previewOmission, undefined);
+	assert.match(rowText(rows[2]), /five/);
+	assert.doesNotMatch(rowText(rows[2]), /more lines/);
+
+	assert.match(rowText(rows[3]), /"nested": \{/);
 	assert.deepEqual(renderableTerminalValue(undefined), { kind: "empty" });
 	assert.deepEqual(renderableTerminalValue({ value: 1 }), { kind: "json", value: { value: 1 } });
 	assert.equal(terminalTextValue({ content: [{ type: "text", text: "joined" }] }), "joined");
+});
+
+test("compact exploring groups expose six collapsed summaries and full detail metadata", () => {
+	const children = Array.from({ length: 8 }, (_, index) => traceNode("tool.call", `explore-${index + 1}`, {
+		order: index + 1,
+		title: "read",
+		input: { path: `src/file-${index + 1}.ts` },
+		output: `output for file ${index + 1}`,
+	}));
+	const rows = buildCompactTerminalRows(traceView([
+		traceNode("agent.turn", "turn-explore", { order: 1, children }),
+	]), { showThinking: false });
+
+	assert.equal(rows.length, 1);
+	const group = rows[0];
+	assert.equal(group.kind, "tool.group.exploring");
+	assert.deepEqual(group.lines.slice(1).map((line) => line.tokens.map((entry) => entry.text).join("")), [
+		"Read src/file-1.ts",
+		"Read src/file-2.ts",
+		"Read src/file-3.ts",
+		"Read src/file-4.ts",
+		"Read src/file-5.ts",
+		"Read src/file-6.ts",
+		"+2 more explorations",
+	]);
+	assert.deepEqual(group.previewOmission, {
+		source: "details",
+		visibleLineCount: 6,
+		omittedLineCount: 2,
+		totalLineCount: 8,
+		maxVisibleLineCount: 6,
+	});
+	assert.equal(group.detailItems.length, 8);
+	assert.equal(group.detailItems[7].label, "Read src/file-8.ts");
+	assert.equal(group.detailItems[7].output, "output for file 8");
 });
 
 test("shared terminal view-model source stays renderer-neutral", () => {

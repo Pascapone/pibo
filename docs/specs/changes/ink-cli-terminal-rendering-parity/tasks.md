@@ -60,9 +60,9 @@
 ## 8. Requirement: Collapsed Output Preview Parity
 
 - [x] 8.1 Add/restore a shared fixture with at least 12 output lines for tool calls, execution commands, yielded runs, and async agents.
-- [ ] 8.2 Restore shared collapsed preview bounds: 5 output preview lines for tool/result/async/yielded/execution rows and 6 child summary lines for grouped exploration.
-- [ ] 8.3 Preserve no character truncation in visible preview lines; assert wrapping/no `… truncated` separately from preview omission.
-- [ ] 8.4 Add omitted-line metadata or an equivalent descriptor so renderers can show `+N more lines` and expose details.
+- [x] 8.2 Restore shared collapsed preview bounds: 5 output preview lines for tool/result/async/yielded/execution rows and 6 child summary lines for grouped exploration.
+- [x] 8.3 Preserve no character truncation in visible preview lines; assert wrapping/no `… truncated` separately from preview omission.
+- [x] 8.4 Add omitted-line metadata or an equivalent descriptor so renderers can show `+N more lines` and expose details.
 - [ ] 8.5 Add Web and Ink tests proving collapsed previews are bounded and expanded details show full output.
 
 ## 9. Requirement: Ink Row Grammar and Spacing
