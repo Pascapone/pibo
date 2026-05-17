@@ -1304,6 +1304,7 @@ export class TelemetryStore {
 			eventTypeCounts,
 			captureMode: existing.captureMode,
 			retentionClass: existing.retentionClass,
+			updatedAt: receivedAt,
 		});
 	}
 }

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Activity, Cpu, Folder, Gauge, Hash, Layers } from "lucide-react";
+import { buildTerminalCardDescriptor, type TerminalProgressDescriptor, type TerminalStatusField } from "../../../../../session-ui/index.js";
 import type { CompactTerminalRow } from "../../../../../session-ui/terminalRows.js";
 
 type StatusData = {
@@ -123,6 +124,49 @@ function parseStatusData(output: unknown): StatusData | undefined {
 	};
 }
 
+function legacyStatusField(id: string, label: string, value?: string): TerminalStatusField | undefined {
+	return value ? { id, label, value } : undefined;
+}
+
+function StatusFieldRow({ field, icon }: { field: TerminalStatusField; icon: "session" | "cwd" }) {
+	const Icon = icon === "session" ? Hash : Folder;
+	return (
+		<div className="flex items-center gap-1.5 text-[11px]" data-shared-status-field={field.id}>
+			<Icon size={11} className="shrink-0 text-[#737373]" />
+			<span className="shrink-0 text-[#737373]">{field.label}:</span>
+			<span className={`truncate font-mono ${field.id === "session" ? "text-[#38bdf8]" : "text-[#d4d4d4]"}`}>
+				{field.value}
+			</span>
+		</div>
+	);
+}
+
+function SharedProgressBar({ progress, label }: { progress: TerminalProgressDescriptor; label?: string }) {
+	const percent = progress.percent ?? 0;
+	const barColor =
+		progress.tone === "red"
+			? "bg-[#ef4444]"
+			: progress.tone === "yellow"
+				? "bg-[#facc15]"
+				: progress.tone === "cyan"
+					? "bg-[#38bdf8]"
+					: "bg-[#22c55e]";
+	return (
+		<div className="mt-3 space-y-1" data-shared-progress={progress.id}>
+			<div className="flex items-center justify-between text-[11px]">
+				<span className="text-[#737373]">{label ?? progress.label}</span>
+				<span className="font-mono text-[#d4d4d4]">{progress.text}</span>
+			</div>
+			<div className="h-1.5 w-full overflow-hidden rounded-full bg-[#2a2a2a]">
+				<div
+					className={`h-full rounded-full ${barColor} transition-all`}
+					style={{ width: `${Math.min(Math.max(percent, 0), 100)}%` }}
+				/>
+			</div>
+		</div>
+	);
+}
+
 function formatResetTime(value?: string): string | undefined {
 	if (!value) return undefined;
 	const date = new Date(value);
@@ -136,9 +180,11 @@ function formatResetTime(value?: string): string | undefined {
 
 export function TerminalStatusCard({ row }: { row: CompactTerminalRow }) {
 	const data = parseStatusData(row.output);
+	const sharedCard = buildTerminalCardDescriptor(row);
+	const statusView = sharedCard?.kind === "status" ? sharedCard.statusView : undefined;
 	const [toolsExpanded, setToolsExpanded] = useState(false);
 
-	if (!data) {
+	if (!data || !statusView) {
 		return (
 			<div className="mt-2 border border-[#2a2a2a] bg-[#111111] px-3 py-2 text-[12px] text-[#d4d4d4]">
 				<div className="text-[#737373]">Status (unparseable)</div>
@@ -146,46 +192,25 @@ export function TerminalStatusCard({ row }: { row: CompactTerminalRow }) {
 		);
 	}
 
-	const percent = data.contextUsage?.percent ?? 0;
-	const percentFormatted = percent.toFixed(1);
-	const barColor =
-		percent >= 80
-			? "bg-[#ef4444]"
-			: percent >= 50
-				? "bg-[#facc15]"
-				: "bg-[#22c55e]";
-	const tokens = data.contextUsage?.tokens ?? 0;
-	const maxTokens = data.contextUsage?.contextWindow ?? 0;
+	const fieldById = new Map(statusView.fields.map((field) => [field.id, field]));
+	const sessionField = fieldById.get("session") ?? legacyStatusField("session", "Session", data.piboSessionId);
+	const cwdField = fieldById.get("cwd") ?? legacyStatusField("cwd", "CWD", data.cwd);
+	const contextProgress = statusView.progress.find((progress) => progress.id === "context" && progress.state === "available");
+	const providerProgress = statusView.progress.filter((progress) => progress.id.startsWith("provider-") && progress.state === "available");
 	const enabledTools = data.enabledTools ?? data.activeTools ?? [];
 
 	return (
-		<div className="mt-2 border border-[#2a2a2a] bg-[#111111] px-3 py-2 text-[12px] text-[#d4d4d4]">
+		<div className="mt-2 border border-[#2a2a2a] bg-[#111111] px-3 py-2 text-[12px] text-[#d4d4d4]" data-shared-terminal-card="status">
 			{/* Header */}
 			<div className="mb-2 flex items-center gap-2">
 				<Activity size={14} className="text-[#22c55e]" />
-				<span className="font-semibold text-[#d4d4d4]">Status</span>
+				<span className="font-semibold text-[#d4d4d4]">{statusView.title}</span>
 			</div>
 
 			{/* Session Info */}
 			<div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-				{data.piboSessionId ? (
-					<div className="flex items-center gap-1.5 text-[11px]">
-						<Hash size={11} className="shrink-0 text-[#737373]" />
-						<span className="shrink-0 text-[#737373]">Session:</span>
-						<span className="truncate font-mono text-[#38bdf8]">
-							{data.piboSessionId}
-						</span>
-					</div>
-				) : null}
-				{data.cwd ? (
-					<div className="flex items-center gap-1.5 text-[11px]">
-						<Folder size={11} className="shrink-0 text-[#737373]" />
-						<span className="shrink-0 text-[#737373]">CWD:</span>
-						<span className="truncate font-mono text-[#d4d4d4]">
-							{data.cwd}
-						</span>
-					</div>
-				) : null}
+				{sessionField ? <StatusFieldRow field={sessionField} icon="session" /> : null}
+				{cwdField ? <StatusFieldRow field={cwdField} icon="cwd" /> : null}
 			</div>
 
 			{/* State Badges */}
@@ -214,27 +239,11 @@ export function TerminalStatusCard({ row }: { row: CompactTerminalRow }) {
 			</div>
 
 			{/* Context Usage Bar */}
-			{data.contextUsage ? (
-				<div className="mt-3 space-y-1">
-					<div className="flex items-center justify-between text-[11px]">
-						<span className="text-[#737373]">Context Usage</span>
-						<span className="font-mono text-[#d4d4d4]">
-							{tokens.toLocaleString()} / {maxTokens.toLocaleString()} tokens (
-							{percentFormatted}%)
-						</span>
-					</div>
-					<div className="h-1.5 w-full overflow-hidden rounded-full bg-[#2a2a2a]">
-						<div
-							className={`h-full rounded-full ${barColor} transition-all`}
-							style={{ width: `${Math.min(percent, 100)}%` }}
-						/>
-					</div>
-				</div>
-			) : null}
+			{contextProgress ? <SharedProgressBar progress={contextProgress} label="Context Usage" /> : null}
 
 			{/* Provider Usage */}
 			{data.providerUsage ? (
-				<div className="mt-3 space-y-1.5 border-t border-[#2a2a2a] pt-2">
+				<div className="mt-3 space-y-1.5 border-t border-[#2a2a2a] pt-2" data-shared-provider-progress={providerProgress.length}>
 					<div className="flex items-center gap-1.5 text-[11px] text-[#737373]">
 						<Gauge size={11} />
 						<span>OpenAI Codex quota{data.providerUsage.planType ? ` (${data.providerUsage.planType})` : ""}</span>

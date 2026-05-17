@@ -78,8 +78,8 @@
         "Typecheck passes"
       ],
       "priority": 5,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed in d6b68449aca7f67c6c49f73a510348cfe57504e7. Web Compact Terminal status rendering now consumes the shared renderer-neutral terminal card/status descriptors via buildTerminalCardDescriptor(row) and statusView in src/apps/chat-ui/src/session-views/compact-terminal/TerminalStatusCard.tsx. The Web component remains DOM-specific but maps shared descriptor title, status fields, and context progress into existing Web styling, with stable data-shared-terminal-card/data-shared-status-field/data-shared-progress hooks. No CLI renderer imports Web DOM/CSS/browser modules. Evidence: docker exec pibo-dev-ink-cli-v2-web-parity bash -lc 'cd /workspace && npm run build >/tmp/pibo-build.log && node --test test/session-ui-view-models.test.mjs test/session-ui-terminal-rows.test.mjs' passed 10/10 focused tests, including a static regression that verifies Web status-card descriptor consumption and CLI/Web boundary isolation. Web checks: docker exec pibo-dev-ink-cli-v2-web-parity bash -lc 'cd /workspace && npm run chat-ui:typecheck && npm run chat-ui:build && npm run typecheck' passed; chat-ui build completed with only existing Vite chunk-size warnings. Full validation after the telemetry retention timestamp fix: docker exec pibo-dev-ink-cli-v2-web-parity bash -lc 'cd /workspace && npm run typecheck && npm test' passed 521/521 tests. Path classification: Web DOM renderer path consuming shared renderer-neutral descriptors plus static source/unit tests; no Ink/PT UI behavior changed for this story, so no PTY artifact was required specifically for PRD 03 US-005."
     }
   ]
 }

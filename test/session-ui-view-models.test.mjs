@@ -154,6 +154,28 @@ test("shared owner room session picker descriptors include defaults empty rooms 
 	assert.ok(sessions.items[1].markers.includes("current"));
 });
 
+test("Web compact terminal status card consumes shared descriptors without crossing renderer boundaries", () => {
+	const statusCardSource = fs.readFileSync(path.resolve("src/apps/chat-ui/src/session-views/compact-terminal/TerminalStatusCard.tsx"), "utf8");
+	assert.match(statusCardSource, /buildTerminalCardDescriptor/, "Web status card should consume shared terminal card descriptors");
+	assert.match(statusCardSource, /statusView/, "Web status card should render from the shared status view model");
+	assert.match(statusCardSource, /data-shared-terminal-card/, "Web status card should expose a stable shared-descriptor hook for regression checks");
+
+	const cliSourceDir = path.resolve("src/apps/cli-ui");
+	const cliFiles = listSourceFiles(cliSourceDir);
+	for (const file of cliFiles) {
+		const source = fs.readFileSync(file, "utf8");
+		assert.doesNotMatch(source, /src\/apps\/chat-ui|session-views\/compact-terminal|react-dom|\.module\.css|window\.|document\./, `${path.relative(process.cwd(), file)} must not import Web DOM components or browser APIs`);
+	}
+});
+
+function listSourceFiles(dir) {
+	return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+		const filePath = path.join(dir, entry.name);
+		if (entry.isDirectory()) return listSourceFiles(filePath);
+		return /\.(?:ts|tsx)$/.test(entry.name) ? [filePath] : [];
+	});
+}
+
 test("all shared session-ui view-model modules stay renderer-neutral", () => {
 	const sourceDir = path.resolve("src/session-ui");
 	for (const file of fs.readdirSync(sourceDir).filter((name) => name.endsWith(".ts"))) {

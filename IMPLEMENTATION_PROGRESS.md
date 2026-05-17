@@ -530,3 +530,45 @@ Validation and results for narrow/no-color fallback and reusable PTY smoke scrip
 - Completed stories marked `passes: true`: PRD 07 `US-003`, `US-004`.
 - Implementation commit: `dd6b70433e48a080cc2229dab378611c836e4990` (`Add Ink PTY fallback smoke scripts`).
 - Next recommended group: PRD 03 `US-005` Web Compact Terminal shared descriptor consumption, then PRD 07 `US-005` final installed CLI/Web parity validation.
+
+## 2026-05-17 run: Web compact terminal descriptor consumption and final validation batch
+
+Selected story group:
+
+- `prd_03_shared_terminal_view_model_v2.json` / `US-005` — Wire Web Compact Terminal to shared descriptors without behavior regression.
+- `prd_07_web_parity_rendering_and_pty_validation.json` / `US-005` — Final Web parity and installed CLI validation.
+
+Intended validation plan:
+
+- Wire at least one Web Compact Terminal rich-card path to `src/session-ui` shared descriptors, starting with the status card because Ink already consumes the same status descriptor and `/status` has rich parity evidence.
+- Keep Web DOM rendering separate and thin; do not import Web components into Ink or DOM/CSS/browser modules into `src/session-ui`.
+- Add focused static/shared tests proving the Web status card imports and consumes shared terminal card/status descriptors and no CLI renderer imports Web DOM/CSS/browser dependencies.
+- Run focused shared/Web parity tests after build in `pibo-dev-ink-cli-v2-web-parity`.
+- Run `npm run chat-ui:typecheck`, `npm run chat-ui:build`, and `npm run typecheck` for Web-impacting changes.
+- Run reusable real PTY smoke script and installed/built package `pibo tui:sessions` via `pibo debug pty`, with raw/clean artifacts, then query the temp store for selected-owner Web navigation/read-model visibility.
+- Run `npm test` and record whether the known telemetry prune failure still blocks full suite completion.
+- Update PRD JSON story notes with command evidence, artifact paths, observed results, and commit hash, then commit the coherent final batch from the host worktree.
+
+Validation and results for Web compact terminal descriptor consumption and final validation batch:
+
+- Wired the Web Compact Terminal status card to consume shared renderer-neutral `src/session-ui` descriptors through `buildTerminalCardDescriptor(row)` and `statusView`. The Web renderer still owns DOM/CSS styling, but shared status title, fields, context progress, and descriptor hooks now drive the status rich-card path.
+- Added static/source regression coverage in `test/session-ui-view-models.test.mjs` proving the Web status card imports shared descriptors and `src/apps/cli-ui` does not import Web compact-terminal, React DOM, CSS module, `window`, or `document` dependencies.
+- Fixed the telemetry retention prune regression that had been blocking full `npm test`: provider-request counter updates now preserve `updatedAt` as the provider event receive time, so stale diagnostic provider requests remain prunable instead of being refreshed to wall-clock time.
+- Focused validation commands:
+  - `docker exec pibo-dev-ink-cli-v2-web-parity bash -lc 'cd /workspace && npm run build >/tmp/pibo-build.log && node --test test/session-ui-view-models.test.mjs test/session-ui-terminal-rows.test.mjs'` — passed 10/10 focused shared/Web parity tests.
+  - `docker exec pibo-dev-ink-cli-v2-web-parity bash -lc 'cd /workspace && npm run chat-ui:typecheck && npm run chat-ui:build && npm run typecheck'` — passed; `chat-ui:build` emitted only existing Vite chunk-size warnings.
+  - `docker exec pibo-dev-ink-cli-v2-web-parity bash -lc 'cd /workspace && npm run build >/tmp/pibo-build.log && node --test test/telemetry-store.test.mjs test/session-ui-view-models.test.mjs'` — passed 17/17 focused tests, including the previously failing telemetry stale/stats/prune case.
+  - `docker exec pibo-dev-ink-cli-v2-web-parity bash -lc 'cd /workspace && npm run typecheck && npm test'` — passed full typecheck and 521/521 tests.
+- Installed CLI PTY validation:
+  - Command: `docker exec pibo-dev-ink-cli-v2-web-parity bash -lc 'cd /workspace && npm install -g . >/tmp/pibo-install-global.log && rm -rf .tmp/pty-installed-final .tmp/pty-installed-final-home && mkdir -p .tmp/pty-installed-final-home && pibo debug pty run --artifact --artifact-dir /workspace/.tmp/pty-installed-final --timeout-ms 90000 --idle-timeout-ms 18000 --cols 140 --rows 46 --wait-for "Select room for Web user final" --expect "Personal Chat" --press Enter --wait-for "New session in Personal Chat" --press Enter --wait-for "Created session" --type "Installed PTY visible in Web" --press Enter --wait-for "Installed assistant final" --expect "Message sent" --press CtrlC -- env PIBO_HOME=/workspace/.tmp/pty-installed-final-home PIBO_DEBUG_PTY_CLI_SESSIONS_MOCKED=1 PIBO_DEBUG_PTY_ASSISTANT_REPLY="Installed assistant final" pibo tui:sessions --owner-scope user:final'` — PTY passed.
+  - Classification: installed global `pibo` command, real PTY-backed `pibo tui:sessions` path with `LocalCliSessionSource` and real temp `PiboDataStore`; deterministic mocked local router/source only to avoid live provider credentials.
+  - Raw artifact: `/root/code/pibo/.worktrees/ink-cli-v2-web-parity/.tmp/pty-installed-final/raw.ansi.log`.
+  - Clean artifact: `/root/code/pibo/.worktrees/ink-cli-v2-web-parity/.tmp/pty-installed-final/clean.txt`.
+  - Observed clean output: `Web user final (user:final)`, `Personal Chat`, `+ New session in Personal Chat`, `Created session`, user message `Installed PTY visible in Web`, assistant reply `Installed assistant final`, and `Message sent`.
+- Store/Web read-model verification:
+  - Queried `/workspace/.tmp/pty-installed-final-home/pibo.sqlite` after the installed PTY run.
+  - Confirmed session `ps_81d9f8a4-20c7-43bd-9e70-ed91e0c76d22` has `owner_scope=user:final`, `room_id=room_0cdb603e-c6fc-4ae7-8ae9-d01e671aa1db`, matching `session_navigation` owner/room/status `idle` and `last_message_preview=Installed assistant final`, plus user and assistant `chat_messages` and `event_log` rows in the same room.
+  - Web URL for manual/API verification: `http://127.0.0.1:4822/apps/chat/rooms/room_0cdb603e-c6fc-4ae7-8ae9-d01e671aa1db/sessions/ps_81d9f8a4-20c7-43bd-9e70-ed91e0c76d22`.
+- Path classification: Web DOM renderer path consuming shared renderer-neutral descriptors; shared/unit/static tests; installed global CLI real PTY path with deterministic mocked local router/source and real local persistence.
+- Completed stories marked `passes: true`: PRD 03 `US-005`; PRD 07 `US-005`.
+- Implementation commit: `d6b68449aca7f67c6c49f73a510348cfe57504e7`.
