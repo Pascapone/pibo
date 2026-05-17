@@ -334,6 +334,7 @@ export function InkSessionApp({ source, initialSessionId, skipOwnerPicker = fals
 			return;
 		}
 		if (key.return) {
+			const submitted = stateRef.current.input;
 			if (stateRef.current.slashSuggestions && !stateRef.current.picker) {
 				const accepted = acceptSlashSuggestion(stateRef.current);
 				if (accepted.runInput) {
@@ -344,11 +345,15 @@ export function InkSessionApp({ source, initialSessionId, skipOwnerPicker = fals
 				}
 				return;
 			}
+			if (submitted.trimStart().startsWith("/")) {
+				setState((current) => reduceInkSessionInputState(current, { type: "enter" }));
+				void submitCommandOrMessage(submitted);
+				return;
+			}
 			if (stateRef.current.picker) {
 				void selectPickerItem();
 				return;
 			}
-			const submitted = stateRef.current.input;
 			setState((current) => reduceInkSessionInputState(current, { type: "enter" }));
 			void submitCommandOrMessage(submitted);
 			return;
@@ -616,7 +621,7 @@ async function handleSlashCommand(
 	if (command.name === "status") {
 		const result = await source.executeSlashCommand({ command: command.name, args: command.args, sessionId: state.session?.id, ownerScope: state.activeOwner?.ownerScope });
 		const status = await source.getStatus({ sessionId: state.session?.id });
-		setState((current) => ({ ...current, status, message: renderCommandResultDescriptorText(result.descriptor, current.session), error: undefined }));
+		setState((current) => ({ ...current, status, mode: "transcript", picker: undefined, slashSuggestions: undefined, message: renderCommandResultDescriptorText(result.descriptor, current.session), error: undefined }));
 		return;
 	}
 	if (command.name === "clear") {
