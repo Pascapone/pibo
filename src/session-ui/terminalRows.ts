@@ -576,7 +576,8 @@ function createExploringGroup(candidates: readonly RowCandidate[]): CompactTermi
 		error: candidate.row.error,
 		linkedPiboSessionId: candidate.row.linkedPiboSessionId,
 	}));
-	const firstId = candidates[0]?.row.id ?? "exploring";
+	const firstRow = candidates[0]?.row;
+	const firstId = firstRow?.id ?? "exploring";
 	const lastId = candidates[candidates.length - 1]?.row.id ?? firstId;
 	const status = candidates.some((candidate) => candidate.row.status === "running")
 		? "running"
@@ -600,6 +601,11 @@ function createExploringGroup(candidates: readonly RowCandidate[]): CompactTermi
 			})),
 		],
 		sourceNodeIds: candidates.flatMap((candidate) => candidate.row.sourceNodeIds),
+		eventId: firstRow?.eventId,
+		runId: firstRow?.runId,
+		orderSource: firstRow?.orderSource,
+		orderStreamId: firstRow?.orderStreamId,
+		orderStreamFrameIndex: firstRow?.orderStreamFrameIndex,
 		detailItems,
 		expandable: detailItems.some((item) => item.input !== undefined || item.output !== undefined || Boolean(item.error)),
 	};

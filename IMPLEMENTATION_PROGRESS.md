@@ -105,3 +105,55 @@ Remaining limitations:
 - Running/streaming row evidence is demo-only, not real provider streaming.
 - Final installed/global `pibo tui:sessions` smoke remains for PRD 07/final completion.
 - PRDs 02-07 remain incomplete.
+
+## 2026-05-17 Ralph run: PRD 02 shared render flow fixtures
+
+### Selected coherent story group
+
+- PRD 02 `US-001` Build canonical compact-terminal fixture helpers.
+- PRD 02 `US-002` Assert shared row order, descriptors, tones, and redaction.
+- PRD 02 `US-003` Preserve streaming and chronological ordering semantics.
+- PRD 02 `US-004` Share details and bounded previews across Web and Ink.
+- PRD 02 `US-005` Prove Web and Ink consume the same fixture source.
+
+### Plan and validation approach
+
+1. Add renderer-neutral test fixtures under `test/fixtures/` that generate canonical trace rows, streaming rows, local command/result rows, status usage variants, details, long payloads, and secret-bearing values from shared `dist/session-ui` contracts.
+2. Add focused shared-model parity tests for exact row/card order, order metadata, token tones, progress states, redaction, stable local command ids, detail labels, and bounded previews.
+3. Update Web/source and Ink renderer tests to import the same fixture source and assert equivalent semantic hooks/output without crossing renderer boundaries.
+4. Run focused tests in the Docker worker after build, then run `npm run typecheck` and `npm test`. No PTY run is planned for this fixture-only batch because no user-visible TUI behavior changes are expected; evidence tier is fixture/source/unit.
+5. Mark PRD 02 stories true only if criteria are satisfied, update notes/progress with commands and evidence, run browser cleanup, and commit from the host worktree.
+
+### Result
+
+Completed PRD 02 `US-001` through `US-005`.
+
+Changes:
+
+- Added `test/fixtures/terminal-parity-fixtures.mjs` as the canonical renderer-neutral fixture source for shared Web/Ink parity tests.
+- Added `test/terminal-parity-fixtures.test.mjs` covering row/card order, streaming order metadata, stable local command ids, status progress variants, redaction, bounded detail previews, Web semantic hooks, and Ink output from the same fixture.
+- Updated `test/session-ui-view-models.test.mjs` and `test/cli-ui-ink-renderer.test.mjs` to import the canonical fixture source directly.
+- Preserved order/event/run metadata on grouped exploring rows in `src/session-ui/terminalRows.ts` so grouped rows keep renderer-visible ordering hooks.
+- Marked PRD 02 stories `passes: true` with evidence notes and updated completed task checkboxes.
+
+Validation run in Docker worker:
+
+- `npm run build` — passed; includes `chat-ui:build` and `context-files-ui:build`.
+- `node --test test/terminal-parity-fixtures.test.mjs test/session-ui-view-models.test.mjs test/session-ui-terminal-rows.test.mjs test/cli-ui-ink-renderer.test.mjs test/ink-cli-terminal-design-contract.test.mjs` — passed, 30 tests.
+- `npm run typecheck` — passed; includes `chat-ui:typecheck` and `context-files-ui:typecheck`.
+- `npm test` — passed, 668 tests.
+
+Evidence/artifacts:
+
+- Evidence tier: fixture/source/unit.
+- PTY artifacts: not applicable for this fixture-only batch; no user-visible TUI behavior was changed.
+- Web checks: source-level semantic hook checks plus `chat-ui:typecheck`/`chat-ui:build` through the commands above.
+
+Remaining limitations / next stories:
+
+- PRD 03 remains incomplete for command-result row conversion in the live controller path and slash palette placement.
+- PRDs 04-07 remain incomplete for renderer refinements, picker overlays, PTY visual parity artifacts, installed CLI smoke, and final evidence.
+
+Commit:
+
+- `00ba1aa` test: add terminal parity shared fixtures

@@ -18,8 +18,8 @@
         "Typecheck passes"
       ],
       "priority": 1,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "PASS 2026-05-17. Added renderer-neutral canonical fixture helpers in test/fixtures/terminal-parity-fixtures.mjs covering user, assistant, running assistant, reasoning, tool call/result, exploring group, yielded run, compaction, execution command, status command/result, thinking/model/login, error, expandable details, long JSON/markdown, secret-bearing values, unavailable/zero/high/warning status usage, stable local command ids, and real-shaped raw event-log/gateway status payloads. Evidence tier: fixture/source/unit; no PTY artifacts because this story is fixture-only and changes no user-visible TUI behavior. Validation: npm run build; node --test test/terminal-parity-fixtures.test.mjs test/session-ui-view-models.test.mjs test/session-ui-terminal-rows.test.mjs test/cli-ui-ink-renderer.test.mjs test/ink-cli-terminal-design-contract.test.mjs; npm run typecheck; npm test."
     },
     {
       "id": "US-002",
@@ -36,8 +36,8 @@
         "Typecheck passes"
       ],
       "priority": 2,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "PASS 2026-05-17. Added shared parity assertions for exact row kind/status sequence, card descriptor kind order for status/thinking/model/login/tool/yielded-run/compaction/command/error, prefix glyph semantics, token tones, progress descriptors, unavailable/zero/warning/high states, labels/percent/raw counts, and redaction before shared card/status descriptors reach renderers. Evidence tier: fixture/source/unit. Validation: npm run build; focused node --test parity/view-model/Ink tests; npm run typecheck; npm test."
     },
     {
       "id": "US-003",
@@ -54,8 +54,8 @@
         "Typecheck passes"
       ],
       "priority": 3,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "PASS 2026-05-17. Added streaming fixture proving running tool and assistant rows keep stream order metadata and local command/status/detail rows append after the live transcript tail with stable ids local-command:status:001 and local-result:status:001. Web sticky-follow and Ink tail-window assumptions remain covered by source checks and existing Ink rowWindow tests. Evidence tier: fixture/source/unit. Validation: focused node --test parity/view-model/Ink tests; npm run typecheck; npm test."
     },
     {
       "id": "US-004",
@@ -71,8 +71,8 @@
         "Typecheck passes"
       ],
       "priority": 4,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "PASS 2026-05-17. Added expandable detail fixture with Input, Output, Error, Linked session, Command args, Tool result preview, Large JSON, and Long markdown labels; tests assert collapsed previews remain bounded and redacted while full detail payloads stay behind detail fields. Existing renderer bounds for Ink JSON/markdown remain covered by cli-ui-ink-renderer tests. Evidence tier: fixture/source/unit. Validation: focused node --test parity/view-model/Ink tests; npm run typecheck; npm test."
     },
     {
       "id": "US-005",
@@ -90,8 +90,8 @@
         "Typecheck passes"
       ],
       "priority": 5,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "PASS 2026-05-17. Web/source checks and Ink renderer tests now import the same canonical fixture source. Added parity tests asserting Web semantic hooks for row kind/status, trace node id, event id, run id, order source, stream id, frame index, and Ink output labels/markers/status/redaction from the same rows. Full npm test passed (668 tests). Web checks passed via npm run typecheck (includes chat-ui:typecheck) and npm run build/npm test (includes chat-ui:build). Evidence tier: fixture/source/unit; no PTY artifacts for fixture-only work."
     }
   ]
 }

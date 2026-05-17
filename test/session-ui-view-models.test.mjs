@@ -16,6 +16,7 @@ import {
 	normalizeCommandResultDescriptor,
 	progressBarText,
 } from "../dist/session-ui/index.js";
+import { buildCanonicalTerminalRows } from "./fixtures/terminal-parity-fixtures.mjs";
 
 function row(kind, overrides = {}) {
 	return {
@@ -200,6 +201,8 @@ function listSourceFiles(dir) {
 }
 
 test("Web Compact Terminal source preserves shared flow ordering hooks and streaming semantics", () => {
+	const fixtureRows = buildCanonicalTerminalRows();
+	assert.ok(fixtureRows.some((row) => row.kind === "tool.status" && row.orderSource), "canonical shared fixture exercises Web row/card hooks");
 	const compactSource = fs.readFileSync(path.resolve("src/apps/chat-ui/src/session-views/compact-terminal/CompactTerminalSessionView.tsx"), "utf8");
 	assert.match(compactSource, /buildCompactTerminalRows\(traceView, \{ showThinking \}\)/, "Web terminal must derive rows from shared row builder");
 	assert.match(compactSource, /computeItemKey=\{\(_, row\) => row\.id\}/, "Web terminal should use shared row ids as stable render keys");

@@ -6,6 +6,7 @@ import test from "node:test";
 import { renderToString } from "ink";
 import { buildCompactTerminalRows } from "../dist/session-ui/index.js";
 import { formatInkJson, formatStatusHeaderLines, InkSessionAppView, InkTerminalView, renderInkMarkdownLines, rowWindow } from "../dist/apps/cli-ui/index.js";
+import { buildCanonicalTerminalRows } from "./fixtures/terminal-parity-fixtures.mjs";
 
 const sessionId = "pibo:ink-renderer-test";
 
@@ -105,6 +106,18 @@ test("InkTerminalView renders rich shared card descriptors with Web-parity label
 	assert.match(output, /✕ ▣ Error — error · error/);
 	assert.match(output, /TOKEN=\[redacted\]/);
 	assert.doesNotMatch(output, /secret-value/);
+});
+
+test("Ink renderer consumes the canonical shared parity fixture", () => {
+	const output = renderToString(React.createElement(InkTerminalView, { rows: buildCanonicalTerminalRows(), maxRows: 40, maxLineChars: 160 }));
+
+	assert.match(output, /Audit the compact terminal renderer/);
+	assert.match(output, /▣ Status — status · done/);
+	assert.match(output, /▣ Thinking — thinking · done/);
+	assert.match(output, /▣ Model — model · done/);
+	assert.match(output, /▣ Login — login · done/);
+	assert.match(output, /Provider usage unavailable/);
+	assert.doesNotMatch(output, /sk_fixture_secret|detail-secret-value/);
 });
 
 test("Ink Session app keeps owner, session, error, and command state readable at narrow widths", () => {
