@@ -7,6 +7,7 @@
 - Target room: `room_d45b1be3-7317-4c35-86b3-5e4550336cdc`
 - Profile: `pibo-agent`
 - Ralph job: `ralph_2573cc4a-d1d4-4a0e-88e9-c6224222c2d4`
+- Max iterations: `105` (3x 35 PRD user stories)
 - Template: `prd-batch-stories` with flexible coherent story batching
 - Host worktree: `/root/code/pibo/.worktrees/ink-cli-terminal-rendering-parity`
 - Branch: `ralph/ink-cli-terminal-rendering-parity`
@@ -48,3 +49,4 @@ Implement:
 
 - 2026-05-17: Created worktree, committed PRD Markdown/JSON batch, started Docker dev worker, prepared Ralph job prompt, and created stopped Ralph job `ralph_2573cc4a-d1d4-4a0e-88e9-c6224222c2d4`.
 - 2026-05-17: Validated Docker worker access and replaced the Ralph prompt Chrome cleanup command with exact-name `pkill -x` cleanup so the cleanup command does not match and terminate its own shell.
+- 2026-05-17: Confirmed target room `room_d45b1be3-7317-4c35-86b3-5e4550336cdc`, set Ralph max iterations to 105, and tightened the job prompt using outcome-first prompting guidance.
