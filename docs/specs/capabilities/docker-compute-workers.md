@@ -221,6 +221,8 @@ Docker run commands start one-time and dev workers without explicit memory, swap
 
 Every compute worker has a resource policy. Defaults protect small hosts, and operators can override limits for larger hosts through documented settings.
 
+Default policy values are intentionally conservative for small hosts: `memory=2g`, `memory-swap=2g`, `pids-limit=512`, `shm-size=512m`, `--init`, `restart=no`, Docker JSON logs with `max-size=10m`, and `max-file=3`. Larger hosts may override only the sizing fields through environment variables read at spawn time: `PIBO_COMPUTE_MEMORY`, `PIBO_COMPUTE_MEMORY_SWAP`, `PIBO_COMPUTE_PIDS_LIMIT`, `PIBO_COMPUTE_SHM_SIZE`, `PIBO_COMPUTE_INIT`, `PIBO_COMPUTE_LOG_MAX_SIZE`, and `PIBO_COMPUTE_LOG_MAX_FILE`. The restart policy remains `no` so OOM or PID-limit failures do not create restart loops.
+
 #### Acceptance
 
 - One-time and dev worker Docker runs include memory, memory-swap, PIDs, shm-size, init, restart, and log options.

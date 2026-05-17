@@ -16,8 +16,8 @@
         "Typecheck passes"
       ],
       "priority": 1,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented compute resource policy model in src/compute/resource-policy.ts with conservative defaults, spawn-time env overrides, Docker run policy args, and inspectable resource labels. Refactored one-time and dev worker Docker run construction through exported helpers that apply the policy. Documented override sources in docs/specs/capabilities/docker-compute-workers.md. Added test/compute-resource-policy.test.mjs covering defaults, env overrides, policy args, one-time worker run args, dev worker run args, and policy labels. Evidence recorded in IMPLEMENTATION_PROGRESS.md: focused Docker-worker tests passed; compute spawn help real CLI path checked; npm run typecheck passed."
     },
     {
       "id": "US-002",

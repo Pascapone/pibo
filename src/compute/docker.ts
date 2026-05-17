@@ -3,6 +3,12 @@ import { promisify } from "node:util";
 import { createHash } from "node:crypto";
 import { readFile, readdir, writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
+import {
+	buildComputeResourcePolicyLabels,
+	buildDockerResourcePolicyArgs,
+	resolveComputeResourcePolicy,
+	type ComputeResourcePolicy,
+} from "./resource-policy.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -178,6 +184,63 @@ export async function createWorktree(repoDir: string, name: string): Promise<str
 	return worktreePath;
 }
 
+export interface BuildDevWorkerDockerRunArgsOptions {
+	id: string;
+	worktreePath: string;
+	worktreeName: string;
+	block: number;
+	gatewayPort: number;
+	cdpPort: number;
+	webPort: number;
+	webUIPortChat: number;
+	webUIPortContext: number;
+	createdAt: string;
+	owner?: string;
+	hostNodeModules?: string;
+	policy?: ComputeResourcePolicy;
+}
+
+export function buildDevWorkerDockerRunArgs(options: BuildDevWorkerDockerRunArgsOptions): string[] {
+	const policy = options.policy ?? resolveComputeResourcePolicy();
+	return [
+		"run",
+		"-d",
+		"--name",
+		options.id,
+		...buildDockerResourcePolicyArgs(policy),
+		"-p",
+		`${options.gatewayPort}:4789`,
+		"-p",
+		`${options.cdpPort}:56663`,
+		"-p",
+		`${options.webPort}:4788`,
+		"-p",
+		`${options.webUIPortChat}:4790`,
+		"-p",
+		`${options.webUIPortContext}:4791`,
+		"-v",
+		`${options.worktreePath}:/workspace`,
+		...(options.hostNodeModules ? ["-v", `${options.hostNodeModules}:/workspace/node_modules`] : []),
+		"-w",
+		"/workspace",
+		"--label",
+		`${LABEL_ROLE}=dev`,
+		"--label",
+		`${LABEL_CREATED_AT}=${options.createdAt}`,
+		"--label",
+		`pibo.compute.portBlock=${options.block}`,
+		"--label",
+		`pibo.compute.worktree=${options.worktreeName}`,
+		...buildComputeResourcePolicyLabels(policy).flatMap((label) => ["--label", label]),
+		...(options.owner ? ["--label", `${LABEL_OWNER}=${options.owner}`] : []),
+		"--entrypoint",
+		"/bin/sh",
+		IMAGE_NAME,
+		"-c",
+		"tail -f /dev/null",
+	];
+}
+
 export async function spawnDevWorker(options: {
 	repoDir: string;
 	worktreeName: string;
@@ -197,51 +260,30 @@ export async function spawnDevWorker(options: {
 	const id = `pibo-dev-${options.worktreeName}`;
 	const createdAt = new Date().toISOString();
 
-	const args = [
-		"run",
-		"-d",
-		"--name",
-		id,
-		"-p",
-		`${gatewayPort}:4789`,
-		"-p",
-		`${cdpPort}:56663`,
-		"-p",
-		`${webPort}:4788`,
-		"-p",
-		`${webUIPortChat}:4790`,
-		"-p",
-		`${webUIPortContext}:4791`,
-		"-v",
-		`${worktreePath}:/workspace`,
-		"-w",
-		"/workspace",
-		"--label",
-		`${LABEL_ROLE}=dev`,
-		"--label",
-		`${LABEL_CREATED_AT}=${createdAt}`,
-		"--label",
-		`pibo.compute.portBlock=${block}`,
-		"--label",
-		`pibo.compute.worktree=${options.worktreeName}`,
-		...(options.owner ? ["--label", `${LABEL_OWNER}=${options.owner}`] : []),
-		"--entrypoint",
-		"/bin/sh",
-		IMAGE_NAME,
-		"-c",
-		"tail -f /dev/null",
-	];
-
 	// Mount host node_modules into the container so dependencies are immediately available
 	const hostNodeModules = path.join(options.repoDir, "node_modules");
+	let nodeModulesMount: string | undefined;
 	try {
 		const { stdout } = await execFileAsync("ls", ["-d", hostNodeModules]);
-		if (stdout.trim()) {
-			args.splice(args.indexOf("-w") + 2, 0, "-v", `${hostNodeModules}:/workspace/node_modules`);
-		}
+		if (stdout.trim()) nodeModulesMount = hostNodeModules;
 	} catch {
 		// host node_modules does not exist; skip mount
 	}
+
+	const args = buildDevWorkerDockerRunArgs({
+		id,
+		worktreePath,
+		worktreeName: options.worktreeName,
+		block,
+		gatewayPort,
+		cdpPort,
+		webPort,
+		webUIPortChat,
+		webUIPortContext,
+		createdAt,
+		owner: options.owner,
+		hostNodeModules: nodeModulesMount,
+	});
 
 	await execFileAsync("docker", args, { cwd: options.repoDir });
 
@@ -261,19 +303,21 @@ export async function spawnDevWorker(options: {
 	};
 }
 
-export async function spawnWorker(options: {
-	workspaceDir: string;
-	name?: string;
+export interface BuildWorkerDockerRunArgsOptions {
+	id: string;
+	createdAt: string;
 	owner?: string;
-}): Promise<SpawnedWorker> {
-	const id = options.name || `pibo-worker-${Math.random().toString(36).slice(2, 10)}`;
-	const createdAt = new Date().toISOString();
+	policy?: ComputeResourcePolicy;
+}
 
-	const args = [
+export function buildWorkerDockerRunArgs(options: BuildWorkerDockerRunArgsOptions): string[] {
+	const policy = options.policy ?? resolveComputeResourcePolicy();
+	return [
 		"run",
 		"-d",
 		"--name",
-		id,
+		options.id,
+		...buildDockerResourcePolicyArgs(policy),
 		"-p",
 		"4789",
 		"-p",
@@ -283,11 +327,27 @@ export async function spawnWorker(options: {
 		"--label",
 		`${LABEL_ROLE}=worker`,
 		"--label",
-		`${LABEL_CREATED_AT}=${createdAt}`,
+		`${LABEL_CREATED_AT}=${options.createdAt}`,
+		...buildComputeResourcePolicyLabels(policy).flatMap((label) => ["--label", label]),
 		...(options.owner ? ["--label", `${LABEL_OWNER}=${options.owner}`] : []),
 		IMAGE_NAME,
 		"gateway:web",
 	];
+}
+
+export async function spawnWorker(options: {
+	workspaceDir: string;
+	name?: string;
+	owner?: string;
+}): Promise<SpawnedWorker> {
+	const id = options.name || `pibo-worker-${Math.random().toString(36).slice(2, 10)}`;
+	const createdAt = new Date().toISOString();
+
+	const args = buildWorkerDockerRunArgs({
+		id,
+		createdAt,
+		owner: options.owner,
+	});
 
 	await execFileAsync("docker", args, { cwd: options.workspaceDir });
 
