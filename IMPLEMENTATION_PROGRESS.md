@@ -156,4 +156,4 @@ Remaining limitations / next stories:
 
 Commit:
 
-- `00ba1aa` test: add terminal parity shared fixtures
+- `e38d4cb` test: add terminal parity shared fixtures
