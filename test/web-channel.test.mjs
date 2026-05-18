@@ -66,6 +66,12 @@ async function startWebHostChannel(options = {}) {
 	const dataStorePath = join(storageDir, "pibo-chat-v2.sqlite");
 	const dataPayloadRootDir = join(storageDir, "payloads");
 	const projectStorePath = join(storageDir, "projects.sqlite");
+	const webApps = [createChatWebApp({
+		agentStorePath,
+		dataStorePath,
+		dataPayloadRootDir,
+		projectStorePath,
+	})];
 	const channel = createWebHostChannel({ port: 0, announce: false, ...options.web });
 
 	await channel.start({
@@ -135,12 +141,7 @@ async function startWebHostChannel(options = {}) {
 			profiles = profiles.filter((item) => item.name !== name);
 		},
 		getWebApps() {
-			return [createChatWebApp({
-				agentStorePath,
-				dataStorePath,
-				dataPayloadRootDir,
-				projectStorePath,
-			})];
+			return webApps;
 		},
 	});
 
@@ -161,6 +162,24 @@ async function startWebHostChannel(options = {}) {
 		projectStorePath,
 		baseURL: `http://${address.host}:${address.port}`, 
 	};
+}
+
+async function readSseTextUntil(reader, match, options = {}) {
+	const decoder = new TextDecoder();
+	const timeoutMs = options.timeoutMs ?? 1000;
+	const maxChunks = options.maxChunks ?? 20;
+	let text = "";
+	for (let index = 0; index < maxChunks; index += 1) {
+		const chunk = await Promise.race([
+			reader.read().then((value) => ({ kind: "chunk", value })),
+			new Promise((resolve) => setTimeout(() => resolve({ kind: "timeout" }), timeoutMs)),
+		]);
+		if (chunk.kind === "timeout") return { matched: false, text };
+		assert.equal(chunk.value.done, false);
+		text += decoder.decode(chunk.value.value, { stream: true });
+		if (match(text)) return { matched: true, text };
+	}
+	return { matched: false, text };
 }
 
 test("chat web app requires auth for localhost requests", async () => {
@@ -1117,6 +1136,308 @@ test("chat web app room event streams do not mark assistant messages read", asyn
 		assert.equal(bootstrap.sessions[0].unreadCount, 1);
 
 		controller.abort();
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("chat web app summary event streams suppress live assistant deltas", async () => {
+	const { channel, baseURL, emitOutput } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+	});
+
+	try {
+		const sessionResponse = await fetch(`${baseURL}/api/chat/session`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(sessionResponse.status, 200);
+		const sessionPayload = await sessionResponse.json();
+		const session = sessionPayload.session;
+		const room = sessionPayload.room;
+
+		const controller = new AbortController();
+		const eventsResponse = await fetch(
+			`${baseURL}/api/chat/events?roomId=${encodeURIComponent(room.id)}&mode=summary&since=0`,
+			{
+				headers: { "x-test-user": "user-1" },
+				signal: controller.signal,
+			},
+		);
+		assert.equal(eventsResponse.status, 200);
+		const reader = eventsResponse.body.getReader();
+		await reader.read();
+
+		emitOutput({
+			type: "assistant_delta",
+			piboSessionId: session.id,
+			eventId: "summary-hidden-live",
+			text: "hidden live token",
+		});
+		await new Promise((resolve) => setTimeout(resolve, 150));
+
+		emitOutput({
+			type: "assistant_message",
+			piboSessionId: session.id,
+			eventId: "summary-hidden-live",
+			text: "final visible answer",
+		});
+		const finalFrame = await readSseTextUntil(reader, (text) => text.includes("final visible answer"));
+		assert.equal(finalFrame.matched, true, finalFrame.text);
+		assert.doesNotMatch(finalFrame.text, /hidden live token/);
+
+		controller.abort();
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("chat web app selected live event streams receive assistant deltas", async () => {
+	const { channel, baseURL, emitOutput } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+	});
+
+	try {
+		const sessionResponse = await fetch(`${baseURL}/api/chat/session`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(sessionResponse.status, 200);
+		const sessionPayload = await sessionResponse.json();
+
+		const controller = new AbortController();
+		const eventsResponse = await fetch(
+			`${baseURL}/api/chat/events?piboSessionId=${encodeURIComponent(sessionPayload.session.id)}&mode=live&since=0`,
+			{
+				headers: { "x-test-user": "user-1" },
+				signal: controller.signal,
+			},
+		);
+		assert.equal(eventsResponse.status, 200);
+		const reader = eventsResponse.body.getReader();
+		await reader.read();
+
+		emitOutput({
+			type: "assistant_delta",
+			piboSessionId: sessionPayload.session.id,
+			eventId: "live-visible",
+			text: "visible live token",
+		});
+		const liveFrame = await readSseTextUntil(reader, (text) => text.includes("TEXT_MESSAGE_CONTENT") && text.includes("visible live token"));
+		assert.equal(liveFrame.matched, true, liveFrame.text);
+
+		controller.abort();
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("chat web app invalid event stream modes fall back to selected-session live mode", async () => {
+	const { channel, baseURL, emitOutput } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+	});
+
+	try {
+		const sessionResponse = await fetch(`${baseURL}/api/chat/session`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(sessionResponse.status, 200);
+		const sessionPayload = await sessionResponse.json();
+
+		const controller = new AbortController();
+		const eventsResponse = await fetch(
+			`${baseURL}/api/chat/events?piboSessionId=${encodeURIComponent(sessionPayload.session.id)}&mode=invalid&since=0`,
+			{
+				headers: { "x-test-user": "user-1" },
+				signal: controller.signal,
+			},
+		);
+		assert.equal(eventsResponse.status, 200);
+		const reader = eventsResponse.body.getReader();
+		await reader.read();
+
+		emitOutput({
+			type: "assistant_delta",
+			piboSessionId: sessionPayload.session.id,
+			eventId: "fallback-live",
+			text: "fallback live token",
+		});
+		const liveFrame = await readSseTextUntil(reader, (text) => text.includes("fallback live token"));
+		assert.equal(liveFrame.matched, true, liveFrame.text);
+
+		controller.abort();
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("chat web app live observers can join mid-turn from compactor snapshots", async () => {
+	const { channel, baseURL, emitOutput } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+	});
+	const summaryController = new AbortController();
+	const liveController = new AbortController();
+
+	try {
+		const sessionResponse = await fetch(`${baseURL}/api/chat/session`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(sessionResponse.status, 200);
+		const sessionPayload = await sessionResponse.json();
+
+		const summaryResponse = await fetch(
+			`${baseURL}/api/chat/events?roomId=${encodeURIComponent(sessionPayload.room.id)}&mode=summary&since=0`,
+			{
+				headers: { "x-test-user": "user-1" },
+				signal: summaryController.signal,
+			},
+		);
+		assert.equal(summaryResponse.status, 200);
+		await summaryResponse.body.getReader().read();
+
+		emitOutput({
+			type: "assistant_delta",
+			piboSessionId: sessionPayload.session.id,
+			eventId: "mid-turn",
+			text: "early token",
+		});
+		await new Promise((resolve) => setTimeout(resolve, 50));
+
+		const eventsResponse = await fetch(
+			`${baseURL}/api/chat/events?piboSessionId=${encodeURIComponent(sessionPayload.session.id)}&mode=live&since=0`,
+			{
+				headers: { "x-test-user": "user-1" },
+				signal: liveController.signal,
+			},
+		);
+		assert.equal(eventsResponse.status, 200);
+		const reader = eventsResponse.body.getReader();
+		const snapshot = await readSseTextUntil(reader, (text) => text.includes("early token"));
+		assert.equal(snapshot.matched, true, snapshot.text);
+
+		emitOutput({
+			type: "assistant_delta",
+			piboSessionId: sessionPayload.session.id,
+			eventId: "mid-turn",
+			text: " later token",
+		});
+		const liveFrame = await readSseTextUntil(reader, (text) => text.includes("later token"));
+		assert.equal(liveFrame.matched, true, liveFrame.text);
+	} finally {
+		liveController.abort();
+		summaryController.abort();
+		await channel.stop?.();
+	}
+});
+
+test("chat web app persists final output with no live observer", async () => {
+	const { channel, baseURL, emitOutput } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+	});
+
+	try {
+		const sessionResponse = await fetch(`${baseURL}/api/chat/session`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(sessionResponse.status, 200);
+		const sessionPayload = await sessionResponse.json();
+
+		emitOutput({
+			type: "assistant_delta",
+			piboSessionId: sessionPayload.session.id,
+			eventId: "no-observer-final",
+			text: "persisted",
+		});
+		emitOutput({
+			type: "assistant_delta",
+			piboSessionId: sessionPayload.session.id,
+			eventId: "no-observer-final",
+			text: " final text",
+		});
+		emitOutput({
+			type: "message_finished",
+			piboSessionId: sessionPayload.session.id,
+			eventId: "no-observer-final",
+		});
+
+		const traceResponse = await fetch(
+			`${baseURL}/api/chat/trace?piboSessionId=${encodeURIComponent(sessionPayload.session.id)}&includeRawEvents=true`,
+			{ headers: { "x-test-user": "user-1" } },
+		);
+		assert.equal(traceResponse.status, 200);
+		const trace = await traceResponse.json();
+		assert.match(JSON.stringify(trace), /persisted final text/);
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("chat web app removes live observer accounting on disconnect", async () => {
+	const { channel, baseURL, emitOutput } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+	});
+
+	try {
+		const sessionResponse = await fetch(`${baseURL}/api/chat/session`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(sessionResponse.status, 200);
+		const sessionPayload = await sessionResponse.json();
+
+		const controller = new AbortController();
+		const eventsResponse = await fetch(
+			`${baseURL}/api/chat/events?piboSessionId=${encodeURIComponent(sessionPayload.session.id)}&mode=live&since=0`,
+			{
+				headers: { "x-test-user": "user-1" },
+				signal: controller.signal,
+			},
+		);
+		assert.equal(eventsResponse.status, 200);
+		const reader = eventsResponse.body.getReader();
+		await reader.read();
+
+		let debugResponse = await fetch(`${baseURL}/api/chat/debug/persistence`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(debugResponse.status, 200);
+		let debug = await debugResponse.json();
+		assert.deepEqual(debug.liveObservers, [{ piboSessionId: sessionPayload.session.id, count: 1 }]);
+
+		emitOutput({
+			type: "assistant_delta",
+			piboSessionId: sessionPayload.session.id,
+			eventId: "disconnect-live",
+			text: "before disconnect",
+		});
+		const liveFrame = await readSseTextUntil(reader, (text) => text.includes("before disconnect"));
+		assert.equal(liveFrame.matched, true, liveFrame.text);
+
+		controller.abort();
+		await new Promise((resolve) => setTimeout(resolve, 50));
+
+		debugResponse = await fetch(`${baseURL}/api/chat/debug/persistence`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(debugResponse.status, 200);
+		debug = await debugResponse.json();
+		assert.deepEqual(debug.liveObservers, []);
+
+		emitOutput({
+			type: "assistant_delta",
+			piboSessionId: sessionPayload.session.id,
+			eventId: "disconnect-live",
+			text: " after disconnect",
+		});
+		emitOutput({
+			type: "message_finished",
+			piboSessionId: sessionPayload.session.id,
+			eventId: "disconnect-live",
+		});
+		const traceResponse = await fetch(
+			`${baseURL}/api/chat/trace?piboSessionId=${encodeURIComponent(sessionPayload.session.id)}&includeRawEvents=true`,
+			{ headers: { "x-test-user": "user-1" } },
+		);
+		assert.equal(traceResponse.status, 200);
+		const trace = await traceResponse.json();
+		assert.match(JSON.stringify(trace), /before disconnect after disconnect/);
 	} finally {
 		await channel.stop?.();
 	}

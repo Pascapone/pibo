@@ -10,7 +10,7 @@ import { PiboWebHttpError, readJsonBody, responseHtml, responseJson } from "../.
 import type { PiboWebApp, PiboWebAppContext, PiboWebSession } from "../../web/types.js";
 import type { PiboSession, UpdatePiboSessionInput } from "../../sessions/store.js";
 import { OutputCompactor } from "./output-compactor.js";
-import { isPersistableOutputEvent } from "./output-event-policy.js";
+import { isLiveOnlyOutputEvent, isPersistableOutputEvent } from "./output-event-policy.js";
 import type { ChatEventAppendInput, ChatEventListInput, StoredChatEvent } from "./types/event-store.js";
 import type { ChatWebSessionBootstrapIndexResult, ChatWebSessionIndexItem, ChatWebStoredPiboEvent } from "./types/read-model.js";
 import {
@@ -1738,6 +1738,8 @@ type ChatEventCursor = {
 	frameIndex: number;
 };
 
+type ChatEventStreamMode = "live" | "summary";
+
 type TransientChatEvent = {
 	roomId?: string;
 	piboSessionId?: string;
@@ -2632,6 +2634,7 @@ function ensureEventIndexing(state: ChatWebAppState, context: PiboWebAppContext)
 			for (const liveEvent of result.liveEvents) {
 				if (isPersistableOutputEvent(liveEvent)) continue;
 				state.sessionQuery.recordEvent(liveEvent, session);
+				if (isLiveOnlyOutputEvent(liveEvent) && !hasLiveObserver(state, liveEvent.piboSessionId)) continue;
 				for (const listener of state.liveListeners) {
 					listener({ roomId: room?.id, piboSessionId: liveEvent.piboSessionId, eventType: liveEvent.type, payload: liveEvent });
 				}
@@ -2733,6 +2736,16 @@ function markEventStreamDisconnected(input: {
 	appendEventStreamDisconnectEvent(input.state, input.piboSessionId, "event_stream_disconnected", {
 		activeStreams: input.state.activeEventStreams.get(input.piboSessionId)?.size ?? 0,
 	});
+}
+
+function hasLiveObserver(state: ChatWebAppState, piboSessionId: string): boolean {
+	return (state.activeEventStreams.get(piboSessionId)?.size ?? 0) > 0;
+}
+
+function listLiveObservers(state: ChatWebAppState): Array<{ piboSessionId: string; count: number }> {
+	return Array.from(state.activeEventStreams.entries())
+		.map(([piboSessionId, streams]) => ({ piboSessionId, count: streams.size }))
+		.filter((observer) => observer.count > 0);
 }
 
 function markActiveSessionRead(state: ChatWebAppState, piboSessionId: string, streamId: number): void {
@@ -7214,6 +7227,17 @@ function parseSseCursor(value: string | null): ChatEventCursor | undefined {
 	return { streamId, frameIndex };
 }
 
+function defaultEventStreamMode(input: { requestedRoomId?: string; requestedPiboSessionId?: string }): ChatEventStreamMode {
+	if (input.requestedPiboSessionId) return "live";
+	if (input.requestedRoomId) return "summary";
+	return "live";
+}
+
+function parseEventStreamMode(value: string | null, fallback: ChatEventStreamMode): ChatEventStreamMode {
+	if (value === "live" || value === "summary") return value;
+	return fallback;
+}
+
 function isPiboOutputEvent(value: unknown): value is PiboOutputEvent {
 	return !!value && typeof value === "object" && !Array.isArray(value) && typeof (value as { type?: unknown }).type === "string";
 }
@@ -7229,8 +7253,10 @@ function writeChatEventFrames(
 	event: ChatLiveEvent,
 	state: ReturnType<typeof createChatStreamState>,
 	cursor?: ChatEventCursor,
+	options: { mode: ChatEventStreamMode } = { mode: "live" },
 ): void {
 	if (!isPiboOutputEvent(event.payload)) return;
+	if (options.mode === "summary" && isLiveOnlyOutputEvent(event.payload)) return;
 	const piboSessionId = event.piboSessionId ?? event.payload.piboSessionId;
 	const streamId = "streamId" in event ? event.streamId : undefined;
 	const frames = chatStreamFramesFromOutputEvent(event.payload, state, {
@@ -7246,6 +7272,7 @@ function createEventStream(input: {
 	roomId?: string;
 	piboSessionId?: string;
 	activePiboSessionId?: string;
+	mode: ChatEventStreamMode;
 	principalId: string;
 	context: PiboWebAppContext;
 	state: ChatWebAppState;
@@ -7253,10 +7280,14 @@ function createEventStream(input: {
 }): Response {
 	let unsubscribe: (() => void) | undefined;
 	let heartbeat: ReturnType<typeof setInterval> | undefined;
+	let registeredLiveObserver = false;
 	const streamId = randomUUID();
 	const stream = new ReadableStream<Uint8Array>({
 		start(controller) {
-			if (input.activePiboSessionId) markEventStreamConnected(input.state, input.activePiboSessionId, streamId, input.principalId);
+			if (input.mode === "live" && input.activePiboSessionId) {
+				markEventStreamConnected(input.state, input.activePiboSessionId, streamId, input.principalId);
+				registeredLiveObserver = true;
+			}
 			const streamState = createChatStreamState();
 			writeSse(controller, "pibo", {
 				type: "ready",
@@ -7268,20 +7299,22 @@ function createEventStream(input: {
 				afterStreamId: input.cursor ? Math.max(0, input.cursor.streamId - 1) : undefined,
 				limit: 1000,
 			})) {
-				writeChatEventFrames(controller, stored, streamState, input.cursor);
+				writeChatEventFrames(controller, stored, streamState, input.cursor, { mode: input.mode });
 			}
-			if (input.piboSessionId) {
+			if (input.mode === "live" && input.piboSessionId) {
 				for (const snapshot of input.state.outputCompactor.snapshotsForSession(input.piboSessionId)) {
 					writeChatEventFrames(
 						controller,
 						{ piboSessionId: snapshot.piboSessionId, eventType: snapshot.type, payload: snapshot },
 						streamState,
+						undefined,
+						{ mode: input.mode },
 					);
 				}
 			}
 			const listener = (event: ChatLiveEvent) => {
 				if (!liveEventMatches(event, input)) return;
-				writeChatEventFrames(controller, event, streamState);
+				writeChatEventFrames(controller, event, streamState, undefined, { mode: input.mode });
 			};
 			input.state.liveListeners.add(listener);
 			unsubscribe = () => {
@@ -7294,12 +7327,13 @@ function createEventStream(input: {
 			unsubscribe = undefined;
 			if (heartbeat) clearInterval(heartbeat);
 			heartbeat = undefined;
-			if (input.activePiboSessionId) {
+			if (registeredLiveObserver && input.activePiboSessionId) {
 				markEventStreamDisconnected({
 					state: input.state,
 					piboSessionId: input.activePiboSessionId,
 					streamId,
 				});
+				registeredLiveObserver = false;
 			}
 		},
 	});
@@ -10539,7 +10573,10 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/debug/persistence` && request.method === "GET") {
 				await requireSession(request, context);
-				return responseJson({ persistence: serializePersistenceMetrics(state.persistenceMetrics) });
+				return responseJson({
+					persistence: serializePersistenceMetrics(state.persistenceMetrics),
+					liveObservers: listLiveObservers(state),
+				});
 			}
 
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/debug/trace-at-sequence` && request.method === "POST") {
@@ -10611,6 +10648,10 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const webSession = await requireSession(request, context);
 				const requestedRoomId = url.searchParams.get("roomId") || undefined;
 				const requestedPiboSessionId = url.searchParams.get("piboSessionId") || undefined;
+				const streamMode = parseEventStreamMode(
+					url.searchParams.get("mode"),
+					defaultEventStreamMode({ requestedRoomId, requestedPiboSessionId }),
+				);
 				const selectedSession = resolveRequestedSession(
 					state,
 					context,
@@ -10624,6 +10665,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					return createEventStream({
 						piboSessionId: selectedSession.id,
 						activePiboSessionId: selectedSession.id,
+						mode: streamMode,
 						principalId: principalIdFor(webSession),
 						context,
 						state,
@@ -10637,6 +10679,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					roomId: streamPiboSessionId ? undefined : roomId,
 					piboSessionId: streamPiboSessionId,
 					activePiboSessionId: streamPiboSessionId ? selectedSession.id : undefined,
+					mode: streamMode,
 					principalId: principalIdFor(webSession),
 					context,
 					state,

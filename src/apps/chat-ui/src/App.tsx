@@ -854,6 +854,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	useEffect(() => {
 		if (area !== "sessions" || !activeRoomId) return;
 		const params = new URLSearchParams({ roomId: activeRoomId });
+		params.set("mode", "summary");
 		params.set("since", `${latestRoomStreamId ?? 0}:999999`);
 		const events = new EventSource(`/api/chat/events?${params.toString()}`);
 		let bootstrapTimer: ReturnType<typeof setTimeout> | undefined;
@@ -3330,6 +3331,7 @@ function SessionTracePane({
 		if (!selectedPiboSessionId || !tracePageQueryKey) return;
 		if (!currentTraceView || currentTraceView.piboSessionId !== selectedPiboSessionId) return;
 		const params = new URLSearchParams({ piboSessionId: selectedPiboSessionId });
+		params.set("mode", "live");
 		if (currentTraceView?.latestStreamId !== undefined) {
 			params.set("since", `${currentTraceView.latestStreamId}:999999`);
 		}
