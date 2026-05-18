@@ -6,7 +6,7 @@ import test from "node:test";
 import { renderToString } from "ink";
 import { buildCompactTerminalRows } from "../dist/session-ui/index.js";
 import { formatInkJson, formatStatusHeaderLines, InkSessionAppView, InkTerminalView, renderInkMarkdownLines, rowWindow } from "../dist/apps/cli-ui/index.js";
-import { buildCanonicalTerminalRows, buildExpandableDetailFixtureRow, buildWebDerivedLongOutputRows, fullStatusPayload, highUsageStatusPayload, partialStatusPayload, unavailableStatusPayload } from "./fixtures/terminal-parity-fixtures.mjs";
+import { buildCanonicalTerminalRows, buildExpandableDetailFixtureRow, buildWebDerivedLongOutputRows, disposedStatusPayload, fullStatusPayload, highUsageStatusPayload, partialStatusPayload, unavailableStatusPayload } from "./fixtures/terminal-parity-fixtures.mjs";
 
 const sessionId = "pibo:ink-renderer-test";
 
@@ -209,14 +209,21 @@ test("Ink status card renders compact runtime fields bars unavailable states too
 		{ id: "status-full", kind: "tool.status", status: "done", lines: [], output: fullStatusPayload(), sourceNodeIds: ["status-full"] },
 		{ id: "status-partial", kind: "tool.status", status: "done", lines: [], output: partialStatusPayload(), sourceNodeIds: ["status-partial"] },
 		{ id: "status-unavailable", kind: "tool.status", status: "done", lines: [], output: unavailableStatusPayload(), sourceNodeIds: ["status-unavailable"] },
+		{ id: "status-disposed", kind: "tool.status", status: "done", lines: [], output: disposedStatusPayload(), sourceNodeIds: ["status-disposed"] },
 	];
 	const output = renderToString(React.createElement(InkTerminalView, { rows, maxRows: 10, maxLineChars: 180 }));
 
 	assert.match(output, /Status — status · done · idle · session Terminal parity fixture/);
 	assert.match(output, /model GPT\s*Test · owner Web user Fixture/);
-	assert.match(output, /Provider plan: pro/);
-	assert.match(output, /Credits: unlimited/);
-	assert.match(output, /Enabled tools: 3 \(read, edit, bash\)/);
+	assert.match(output, /Identity: owner Web user Fixture · session Terminal parity fixture · profile\s*pibo-agent · model GPT\s*Test/);
+	assert.match(output, /Runtime: idle · queue 3/);
+	assert.match(output, /Provider: plan pro · credits unlimited/);
+	assert.match(output, /Tools: enabled 3 folded · active bash · names in details/);
+	assert.doesNotMatch(output, /Enabled tools: 3 \(read, edit, bash\)/);
+	assert.doesNotMatch(output, /Processing: no|Streaming: no|Disposed: no|Fast mode: off/);
+	assert.match(output, /Runtime: streaming · queue 1 · streaming yes/);
+	assert.match(output, /Runtime: idle\n ↳ Message: Provider\/context usage unavailable/);
+	assert.match(output, /Runtime: disposed · disposed yes/);
 	assert.match(output, /anthropic messages: .*75\.0%/);
 	assert.match(output, /anthropic messages: .*75\.0% remaining/);
 	assert.match(output, /local-ai requests: unavailable · [░-]+/);
@@ -250,10 +257,12 @@ test("Ink Session app keeps owner, session, error, and command state readable at
 			connected: true,
 			activeOwnerLabel: "Web user narrow",
 			activeOwnerScope: "user:narrow",
+			activeRoomId: "room_narrow",
 			activeAgentId: "pibo-agent",
 			activeModel: { provider: "openai", id: "gpt-test", label: "GPT Test" },
 		},
-		session: { id: "ps_narrow", title: "Narrow Session", ownerScope: "user:narrow", profile: "pibo-agent", status: "idle" },
+		activeRoom: { id: "room_narrow", title: "Narrow Room", ownerScope: "user:narrow" },
+		session: { id: "ps_narrow", title: "Narrow Session", roomId: "room_narrow", ownerScope: "user:narrow", profile: "pibo-agent", status: "idle" },
 		rows: [
 			{ id: "err", kind: "error", status: "error", lines: [], error: "Provider TOKEN=secret-value failed in a narrow terminal", sourceNodeIds: ["err"] },
 		],
@@ -263,11 +272,11 @@ test("Ink Session app keeps owner, session, error, and command state readable at
 		message: "Status card remains readable.",
 	};
 	const headerLines = formatStatusHeaderLines(state, 60);
-	assert.ok(headerLines.some((line) => line.includes("owner ")), "narrow header includes an owner line");
-	assert.ok(headerLines.some((line) => line.includes("session ")), "narrow header includes a session line");
+	assert.ok(headerLines.some((line) => line.includes("owner Web user narrow") && line.includes("room Narrow Room")), "narrow header includes owner and room names");
+	assert.ok(headerLines.some((line) => line.includes("session Narrow Session")), "narrow header includes a session line");
 	const output = renderToString(React.createElement(InkSessionAppView, { state, maxRows: 5, maxLineChars: 60 }));
 
-	assert.match(output, /owner Web user narrow/);
+	assert.match(output, /owner Web user narrow · room Narrow Room/);
 	assert.match(output, /session Narrow Session/);
 	assert.match(output, /Error:/);
 	assert.match(output, /Status card remains readable/);

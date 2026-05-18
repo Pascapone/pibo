@@ -63,9 +63,13 @@ export function InkTerminalCard({ card, maxLineChars: _maxLineChars = 220 }: { c
 	const lines: React.ReactElement[] = [
 		React.createElement(Text, { color, key: "header", bold: true }, cardLine(`${marker} ▣ ${card.title} — ${statusLabel}${statusSummary ? ` · ${statusSummary}` : ""}`)),
 	];
-	for (const [index, row] of card.rows.entries()) {
-		const text = row.label ? `  ↳ ${row.label}: ${row.value}` : `  ↳ ${row.value}`;
-		lines.push(React.createElement(Text, { color: colorForCardTone(row.tone) ?? "white", key: `row-${index}` }, cardLine(text)));
+	if (card.kind === "status") {
+		lines.push(...statusCardCompactRows(card));
+	} else {
+		for (const [index, row] of card.rows.entries()) {
+			const text = row.label ? `  ↳ ${row.label}: ${row.value}` : `  ↳ ${row.value}`;
+			lines.push(React.createElement(Text, { color: colorForCardTone(row.tone) ?? "white", key: `row-${index}` }, cardLine(text)));
+		}
 	}
 	for (const progress of card.statusView?.progress ?? []) {
 		const bar = inkProgressBarText(progress, 18);
@@ -103,12 +107,95 @@ function colorForCardTone(tone: TerminalCardTone | undefined): InkTerminalColor 
 }
 
 function statusCardSummary(card: TerminalCardDescriptor): string {
-	const fields = new Map((card.statusView?.fields ?? []).map((field) => [field.id, field.value]));
+	const fields = statusFieldMap(card);
 	const runtime = fields.get("runtime") ?? card.status;
 	const session = shortStatusValue(fields.get("session"));
 	const model = shortStatusValue(fields.get("model"));
 	const owner = abbreviateOwner(fields.get("owner"));
 	return [runtime, session ? `session ${session}` : undefined, model ? `model ${model}` : undefined, owner ? `owner ${owner}` : undefined].filter(Boolean).join(" · ");
+}
+
+function statusCardCompactRows(card: TerminalCardDescriptor): React.ReactElement[] {
+	const fields = statusFieldMap(card);
+	const rows: React.ReactElement[] = [];
+	const identity = [
+		fields.get("owner") ? `owner ${abbreviateOwner(fields.get("owner"))}` : undefined,
+		fields.get("session") ? `session ${shortStatusValue(fields.get("session"))}` : undefined,
+		fields.get("profile") ? `profile ${fields.get("profile")}` : undefined,
+		fields.get("model") ? `model ${fields.get("model")}` : undefined,
+	].filter(Boolean).join(" · ");
+	if (identity) rows.push(statusCardRow("identity", "Identity", identity));
+
+	const runtime = [
+		fields.get("runtime"),
+		fieldIfMeaningful("queue", fields.get("queue")),
+		fieldIfMeaningful("processing", fields.get("processing")),
+		fieldIfMeaningful("streaming", fields.get("streaming")),
+		fieldIfMeaningful("disposed", fields.get("disposed")),
+		fields.get("session-status") ? `session ${fields.get("session-status")}` : undefined,
+	].filter(Boolean).join(" · ");
+	if (runtime) rows.push(statusCardRow("runtime", "Runtime", runtime, statusRuntimeTone(fields)));
+
+	const location = fields.get("cwd");
+	if (location) rows.push(statusCardRow("location", "CWD", location));
+
+	const settings = [
+		fields.get("thinking") ? `thinking ${fields.get("thinking")}` : undefined,
+		fieldIfEnabled("fast", fields.get("fast-mode")),
+	].filter(Boolean).join(" · ");
+	if (settings) rows.push(statusCardRow("settings", "Settings", settings, "yellow"));
+
+	const provider = [
+		fields.get("provider-plan") ? `plan ${fields.get("provider-plan")}` : undefined,
+		fields.get("provider-credits") ? `credits ${fields.get("provider-credits")}` : undefined,
+	].filter(Boolean).join(" · ");
+	if (provider) rows.push(statusCardRow("provider", "Provider", provider));
+
+	const tools = [
+		fields.get("enabled-tools") ? `enabled ${foldedToolCount(fields.get("enabled-tools"))}` : undefined,
+		fields.get("active-tools") ? `active ${activeToolSummary(fields.get("active-tools"))}` : undefined,
+	].filter(Boolean).join(" · ");
+	if (tools) rows.push(statusCardRow("tools", "Tools", `${tools} · names in details`, "cyan"));
+
+	const message = fields.get("message");
+	if (message) rows.push(statusCardRow("message", "Message", message, "neutral"));
+	return rows;
+}
+
+function statusCardRow(id: string, label: string, value: string, tone: TerminalCardTone = "neutral"): React.ReactElement {
+	return React.createElement(Text, { color: colorForCardTone(tone) ?? "white", key: `status-${id}` }, cardLine(`  ↳ ${label}: ${value}`));
+}
+
+function statusFieldMap(card: TerminalCardDescriptor): Map<string, string> {
+	return new Map((card.statusView?.fields ?? []).map((field) => [field.id, field.value]));
+}
+
+function statusRuntimeTone(fields: Map<string, string>): TerminalCardTone {
+	if (fields.get("disposed") === "yes" || fields.get("runtime") === "disconnected") return "red";
+	if (fields.get("processing") === "yes" || fields.get("streaming") === "yes") return "cyan";
+	return "green";
+}
+
+function fieldIfMeaningful(label: string, value: string | undefined): string | undefined {
+	if (!value || value === "no" || value === "0") return undefined;
+	return `${label} ${value}`;
+}
+
+function fieldIfEnabled(label: string, value: string | undefined): string | undefined {
+	if (!value || value === "off" || value === "no") return undefined;
+	return `${label} ${value}`;
+}
+
+function foldedToolCount(value: string | undefined): string | undefined {
+	if (!value) return undefined;
+	const count = value.match(/^\d+/)?.[0] ?? value;
+	return `${count} folded`;
+}
+
+function activeToolSummary(value: string | undefined): string | undefined {
+	if (!value) return undefined;
+	const names = value.match(/\(([^)]+)\)/)?.[1];
+	return names ?? foldedToolCount(value);
 }
 
 function shortStatusValue(value: string | undefined): string | undefined {

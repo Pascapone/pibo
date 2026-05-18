@@ -514,8 +514,9 @@ test("status command result rows preserve transcript flow with row-first command
 	assert.match(output, /• Ran \/status/);
 	assert.doesNotMatch(output, /▣ Command/);
 	assert.match(output, /Status — status · done/);
-	assert.match(output, /Owner: Web user alpha/);
-	assert.match(output, /Session: Status Session \| ps_status/);
+	assert.match(output, /Identity: owner Web user alpha · session Status Session · profile pibo-agent\s*· model openai\/gpt-status/);
+	assert.doesNotMatch(output, /Owner: Web user alpha/);
+	assert.doesNotMatch(output, /Session: Status Session \| ps_status/);
 	assert.match(output, /Context: .*50\.0%/);
 	assert.match(output, /openai requests: .*25\.0%/);
 	assert.match(output, /25\.0% remaining/);
@@ -560,9 +561,10 @@ test("/status preserves existing streaming rows and appends after the live trans
 	assert.match(output, /Calling read/);
 	assert.ok(output.indexOf("Partial streamed reply") < output.indexOf("Ran /status"));
 	assert.ok(output.indexOf("Ran /status") < output.indexOf("Status — status · done"));
-	assert.match(output, /Processing: yes/);
-	assert.match(output, /Streaming: yes/);
-	assert.match(output, /Queue: 1/);
+	assert.match(output, /Runtime: processing · queue 1 · processing yes · streaming yes/);
+	assert.doesNotMatch(output, /Processing: yes/);
+	assert.doesNotMatch(output, /Streaming: yes/);
+	assert.doesNotMatch(output, /Queue: 1/);
 	assert.match(output, /Context: .*90\.0%/);
 });
 

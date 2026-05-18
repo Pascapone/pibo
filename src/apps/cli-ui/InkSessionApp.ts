@@ -1425,19 +1425,35 @@ function renderBoundedTextLines(value: string, color: string, _max: number, keyP
 
 export function formatStatusHeaderLines(state: InkSessionAppState, max = 220): string[] {
 	const source = state.status?.source ?? "starting";
-	const owner = state.status?.activeOwnerLabel ? `${state.status.activeOwnerLabel} (${state.status.activeOwnerScope ?? "unknown"})` : state.status?.activeOwnerScope ?? state.session?.ownerScope ?? "owner unknown";
+	const owner = statusHeaderOwner(state);
+	const room = statusHeaderRoom(state);
 	const session = state.session?.title ?? state.status?.activeSessionId ?? "no session";
 	const agent = state.session?.agentId ?? state.session?.profile ?? state.status?.activeAgentId ?? "default";
 	const model = state.status?.activeModel ? `${state.status.activeModel.provider}/${state.status.activeModel.id}` : "model unknown";
 	const mode = state.mode === "transcript" ? "transcript" : state.mode;
-	const full = `pibo sessions · ${source} · ${mode} · owner ${owner} · session ${session} · agent ${agent} · model ${model}`;
-	if (max >= 96 || full.length <= max) return [full];
+	const parts = [`pibo sessions`, source, mode, `owner ${owner}`, room ? `room ${room}` : undefined, `session ${session}`, `agent ${agent}`, `model ${model}`].filter(Boolean);
+	const full = parts.join(" · ");
+	if (max >= 112 || full.length <= max) return [full];
 	return [
 		`pibo sessions · ${source} · ${mode}`,
-		`owner ${owner}`,
+		`owner ${owner}${room ? ` · room ${room}` : ""}`,
 		`session ${session}`,
 		`agent ${agent} · model ${model}`,
 	];
+}
+
+function statusHeaderOwner(state: InkSessionAppState): string {
+	return state.status?.activeOwnerLabel
+		?? state.activeOwner?.label
+		?? state.status?.activeOwnerScope
+		?? state.session?.ownerScope
+		?? "owner unknown";
+}
+
+function statusHeaderRoom(state: InkSessionAppState): string | undefined {
+	const title = state.activeRoom?.title?.trim();
+	if (title) return title;
+	return state.status?.activeRoomId ?? state.session?.roomId;
 }
 
 export function createCliSessionCleanup(closeOpenSession: () => void, closeSource: () => void): () => void {

@@ -47,13 +47,15 @@ test("fake CLI session source opens trace fixtures compatible with shared compac
 	assert.equal(opened.session.title, "Existing fake session");
 	assert.equal(opened.traceView?.piboSessionId, "ps_fake_existing");
 	const rows = buildCompactTerminalRows(opened.traceView, { showThinking: false });
-	assert.deepEqual(rows.map((row) => row.kind), ["message.user", "message.assistant", "tool.call"]);
+	assert.deepEqual(rows.map((row) => row.kind), ["message.user", "message.assistant", "tool.call", "yielded.run", "error"]);
 	assert.match(JSON.stringify(rows), /Hello from fake source/);
 	assert.match(JSON.stringify(rows), /Fake assistant response/);
 	const collapsedText = rows.flatMap((row) => row.lines.flatMap((line) => line.tokens.map((token) => token.text))).join("\n");
 	assert.match(collapsedText, /web-derived output line 05/);
 	assert.doesNotMatch(collapsedText, /web-derived output line 06/);
-	assert.equal(rows.at(-1)?.previewOmission?.omittedLineCount, 7);
+	assert.equal(rows.find((row) => row.id === "node_fake_long_output_1")?.previewOmission?.omittedLineCount, 7);
+	assert.ok(rows.some((row) => row.kind === "yielded.run" && row.status === "running"));
+	assert.ok(rows.some((row) => row.kind === "error" && row.status === "error"));
 
 	opened.close();
 	assert.equal(source.listenerCount("ps_fake_existing"), 0);

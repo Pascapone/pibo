@@ -120,7 +120,7 @@ test("golden mixed transcript status and NO_COLOR screens reject visual regressi
 		const noColor = normalizeScreen(renderToString(React.createElement(InkTerminalView, { rows: statusRows, maxRows: 8, maxLineChars: 72 })));
 		assert.match(noColor, /Context: #/);
 		assert.match(noColor, /openai spend: #/);
-		assert.match(noColor, /Provider plan: team/);
+		assert.match(noColor, /Provider: plan team · credits \$42\.00/);
 		assert.doesNotMatch(noColor, /█|sk_fixture_secret|warning-secret-value/);
 	} finally {
 		if (previousNoColor === undefined) delete process.env.NO_COLOR;
