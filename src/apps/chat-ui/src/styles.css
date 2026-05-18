@@ -12,6 +12,11 @@
 	--color-surface-light: #ffffff;
 }
 
+:root {
+	color-scheme: dark;
+	scrollbar-color: #334155 #101d22;
+}
+
 html,
 body,
 #root {
