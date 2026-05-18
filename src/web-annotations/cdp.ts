@@ -285,7 +285,7 @@ export function buildWebAnnotationOverlayScript(configExpression = "window.__pib
     sourceRaw: 800,
   };
   const state = {
-    active: true,
+    active: false,
     mode: "element",
     hovered: null,
     popup: null,
@@ -340,7 +340,8 @@ export function buildWebAnnotationOverlayScript(configExpression = "window.__pib
   main.type = "button";
   main.className = "pibo-wa-main";
   main.innerHTML = iconSvg("book-a");
-  main.setAttribute("aria-label", "Pibo Web Annotations");
+  main.setAttribute("aria-label", "Enable element annotation mode");
+  main.title = "Enable element annotation mode";
   const status = document.createElement("div");
   status.className = "pibo-wa-status";
   actions.append(toggle, pin, stop);
@@ -380,6 +381,7 @@ export function buildWebAnnotationOverlayScript(configExpression = "window.__pib
     el.className = "pibo-wa-button";
     el.innerHTML = content;
     el.setAttribute("aria-label", aria);
+    el.title = aria;
     return el;
   }
 
