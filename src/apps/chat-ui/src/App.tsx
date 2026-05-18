@@ -110,7 +110,6 @@ type SlashCommand = {
 
 type UploadedChatAttachment = ChatUploadedFile & {
 	id: string;
-	attachedAt: string;
 };
 
 type LoadBootstrapOptions = {
@@ -3487,13 +3486,12 @@ function SessionTracePane({
 
 	const attachUploadedFiles = useCallback((files: readonly ChatUploadedFile[]) => {
 		if (!selectedPiboSessionId || !files.length) return;
-		const now = new Date().toISOString();
 		setSelectedUploadAttachmentsBySession((current) => {
 			const existing = current[selectedPiboSessionId] ?? [];
 			const existingPaths = new Set(existing.map((file) => file.path));
 			const additions = files
 				.filter((file) => file.path && !existingPaths.has(file.path))
-				.map((file): UploadedChatAttachment => ({ ...file, id: `upload-${createClientTxnId()}`, attachedAt: now }));
+				.map((file): UploadedChatAttachment => ({ ...file, id: `upload-${createClientTxnId()}` }));
 			if (!additions.length) return current;
 			return {
 				...current,
@@ -5939,12 +5937,8 @@ function Composer({
 		setUploadStatus({ message: `Uploading ${selectedFiles.length} file${selectedFiles.length === 1 ? "" : "s"}...`, error: false });
 		try {
 			const result = await uploadChatFiles(selectedFiles);
-			const paths = result.files.map((file) => file.path);
-			setUploadStatus({
-				message: `Uploaded ${result.files.length} file${result.files.length === 1 ? "" : "s"} successfully`,
-				copyText: paths.join("\n"),
-				error: false,
-			});
+			onAttachUploadedFiles(result.files);
+			setUploadStatus(null);
 		} catch (caught) {
 			setUploadStatus({ message: caught instanceof Error ? caught.message : String(caught), error: true });
 		} finally {
@@ -6069,6 +6063,27 @@ function Composer({
 							<span className="text-xs text-slate-400">{skill.description ?? skill.path ?? ""}</span>
 						</button>
 					))}
+				</div>
+			) : null}
+			{selectedUploadAttachments.length ? (
+				<div className="mb-2 rounded-sm border border-slate-800 bg-[#0e1116] px-2.5 py-1.5" data-pibo-debug="composer-upload-attachments" data-upload-attachment-count={selectedUploadAttachments.length}>
+					<div className="mb-1.5 flex items-center justify-between gap-2">
+						<div className="text-[11px] font-bold uppercase tracking-wider text-[#11a4d4]">Attached uploads</div>
+						<button type="button" onClick={onClearUploadAttachments} className="text-[11px] text-slate-500 hover:text-[#11a4d4]">Clear</button>
+					</div>
+					<div className="flex flex-wrap gap-1.5">
+						{selectedUploadAttachments.map((attachment) => (
+							<div key={attachment.id} title={attachment.path} className="inline-flex max-w-80 items-center gap-1 rounded-sm border border-emerald-500/45 bg-emerald-500/10 px-2 py-1 text-left text-[11px] text-slate-200" data-pibo-debug="composer-upload-attachment-chip" data-upload-path={attachment.path}>
+								<span className="min-w-0 truncate">{boundedUiText(attachment.name || attachment.path, 100)}</span>
+								<button type="button" onClick={() => void copyTextToClipboard(attachment.path)} title="Copy uploaded file path" aria-label="Copy uploaded file path" className="shrink-0 rounded-sm p-0.5 text-emerald-300 hover:bg-slate-800 hover:text-[#11a4d4]">
+									<Copy size={11} />
+								</button>
+								<button type="button" onClick={() => onDetachUploadAttachment(attachment.id)} title={`Detach ${attachment.name || attachment.path}`} aria-label={`Detach ${attachment.name || attachment.path}`} className="shrink-0 rounded-sm p-0.5 text-emerald-300 hover:bg-slate-800 hover:text-slate-100">
+									<X size={11} />
+								</button>
+							</div>
+						))}
+					</div>
 				</div>
 			) : null}
 			{selectedWebAnnotations.length ? (
