@@ -29,6 +29,12 @@ pibo setup developer-host \
   --prod-domain pibo.example.com \
   --dev-domain dev.pibo.example.com \
   --print-files
+
+pibo setup developer-host \
+  --origin git@github.com:<server-or-user-fork>/pibo.git \
+  --prod-domain pibo.example.com \
+  --dev-domain dev.pibo.example.com \
+  --write-to /tmp/pibo-setup
 ```
 
 ## Upgrade rules
@@ -39,12 +45,16 @@ pibo setup developer-host \
 - Keep `pibo-web` on `4788/4789`.
 - Start `pibo-web-dev` on `4808/4809`.
 - Install Docker only for the developer path.
+- Provision swap at the OS level for developer hosts, then verify it with `--min-swap-gb 8`.
+- Build each checkout with `npm ci && npm run build`; do not globally install the dev worktree over production.
+- Keep generated services pinned to branch-specific entrypoints instead of relying on one mutable global `pibo` symlink.
 - Keep `origin` pointed at the host-specific fork.
 - Keep `upstream` pointed at `git@github.com:Pascapone/pibo.git`.
 
 ## Validation
 
 ```bash
+pibo setup doctor --domain pibo.example.com --dev-domain dev.pibo.example.com --expected-ip <server-ip> --require-docker --min-swap-gb 8
 pibo gateway web status
 PIBO_GATEWAY_DEV_PORT=4808 pibo gateway dev status
 docker --version

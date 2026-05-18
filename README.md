@@ -61,11 +61,12 @@ A fresh server install usually needs only three decisions:
 Use the setup planner to keep the first run simple:
 
 ```bash
-pibo setup doctor
+pibo setup doctor --domain pibo.example.com --expected-ip <server-ip>
 pibo setup user-host --domain pibo.example.com --print-files
+pibo setup user-host --domain pibo.example.com --write-to /tmp/pibo-setup
 ```
 
-This is the normal user path: one gateway, one `PIBO_HOME`, no required Docker, no dev gateway, and no GitHub App setup.
+This is the normal user path: one gateway, one `PIBO_HOME`, no required Docker, no dev gateway, and no GitHub App setup. After reviewing staged files, use `--apply --yes` to write the generated systemd/Caddy files.
 
 Developer hosts are opt-in and add production/dev separation plus Docker compute workers:
 
@@ -75,9 +76,15 @@ pibo setup developer-host \
   --prod-domain pibo.example.com \
   --dev-domain dev.pibo.example.com \
   --print-files
+
+pibo setup developer-host \
+  --origin git@github.com:<your-fork>/pibo.git \
+  --prod-domain pibo.example.com \
+  --dev-domain dev.pibo.example.com \
+  --write-to /tmp/pibo-setup
 ```
 
-See `docs/ops/install-user-host.md`, `docs/ops/install-developer-host.md`, and `docs/ops/upgrade-user-to-developer-host.md`.
+See `docs/ops/install-user-host.md`, `docs/ops/install-developer-host.md`, and `docs/ops/upgrade-user-to-developer-host.md`. Developer-host services are source-pinned so production and dev do not fight over one global `pibo` symlink. Docker and swap are developer-host prerequisites only; verify them with `pibo setup doctor --require-docker --min-swap-gb 8`.
 
 If the agent should be able to perform server administration, give that Linux user the required sudo or Docker permissions explicitly. Pibo does not need a special onboarding user to work correctly; normal Unix ownership is enough.
 
@@ -99,7 +106,7 @@ PIBO_HOME=/home/pibo/.pibo
 
 ## Web gateway auth
 
-`pibo gateway:web` starts the authenticated web runtime. It requires Better Auth configuration before production use:
+`pibo gateway:web` starts the authenticated web runtime. It requires Better Auth configuration before production use. This step is intentionally not automated because you must create/select the Google OAuth client and allowed user list:
 
 ```bash
 pibo config set auth.baseURL https://your-host.example

@@ -19,11 +19,23 @@ It does not require Docker, a dev gateway, a GitHub App, or branch worktrees.
 
 ```bash
 npm install -g @pasko70/pibo
-pibo setup doctor
+pibo setup doctor --domain pibo.example.com --expected-ip <server-ip>
 pibo setup user-host --domain pibo.example.com --print-files
 ```
 
-Review the generated files before installing them.
+Review the generated files before installing them. To stage the exact paths without touching the host, use:
+
+```bash
+pibo setup user-host --domain pibo.example.com --write-to /tmp/pibo-setup
+find /tmp/pibo-setup -type f -maxdepth 5 -print
+```
+
+After review, apply directly on the host with:
+
+```bash
+pibo setup user-host --domain pibo.example.com --apply --yes
+systemctl daemon-reload
+```
 
 ## Configure auth
 
@@ -37,7 +49,13 @@ pibo config set auth.allowedEmails you@example.com
 
 ## Start the gateway
 
-After installing the rendered systemd unit:
+`pibo-web` will not start until Better Auth config is complete. This cannot be automated because you must create/select your Google OAuth client and allowed user list. Check it first:
+
+```bash
+pibo setup doctor --pibo-home /root/.pibo
+```
+
+If auth is incomplete, the doctor prints a hard blocker and the exact missing keys. After installing the rendered systemd unit:
 
 ```bash
 systemctl daemon-reload
