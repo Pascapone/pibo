@@ -5749,6 +5749,32 @@ test("chat web app rejects cross-origin mutation requests", async () => {
 	}
 });
 
+test("chat web app provider auth actions bypass session runtime auth", async () => {
+	const { channel, baseURL, emitted } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+	});
+
+	try {
+		const response = await fetch(`${baseURL}/api/chat/action`, {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				origin: baseURL,
+				"x-test-user": "user-1",
+			},
+			body: JSON.stringify({ piboSessionId: "ps_missing_auth", action: "login.status", params: {} }),
+		});
+		assert.equal(response.status, 200);
+		const payload = await response.json();
+		assert.equal(payload.type, "execution_result");
+		assert.equal(payload.action, "login.status");
+		assert.ok(Array.isArray(payload.result.providers));
+		assert.equal(emitted.length, 0);
+	} finally {
+		await channel.stop?.();
+	}
+});
+
 test("chat web app accepts same-origin mutations behind a local reverse proxy", async () => {
 	const { channel, baseURL } = await startWebHostChannel({
 		auth: createFakeAuthService(),
