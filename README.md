@@ -58,6 +58,27 @@ A fresh server install usually needs only three decisions:
 2. Install Node.js 24+ for that user or system-wide.
 3. Install Pibo through npm.
 
+Use the setup planner to keep the first run simple:
+
+```bash
+pibo setup doctor
+pibo setup user-host --domain pibo.example.com --print-files
+```
+
+This is the normal user path: one gateway, one `PIBO_HOME`, no required Docker, no dev gateway, and no GitHub App setup.
+
+Developer hosts are opt-in and add production/dev separation plus Docker compute workers:
+
+```bash
+pibo setup developer-host \
+  --origin git@github.com:<your-fork>/pibo.git \
+  --prod-domain pibo.example.com \
+  --dev-domain dev.pibo.example.com \
+  --print-files
+```
+
+See `docs/ops/install-user-host.md`, `docs/ops/install-developer-host.md`, and `docs/ops/upgrade-user-to-developer-host.md`.
+
 If the agent should be able to perform server administration, give that Linux user the required sudo or Docker permissions explicitly. Pibo does not need a special onboarding user to work correctly; normal Unix ownership is enough.
 
 ## Docker notes
@@ -122,6 +143,7 @@ pibo mcp          # discover and call configured MCP servers
 pibo tools        # install and inspect curated external CLI tools
 pibo pi-packages  # register Pi Coding Agent packages
 pibo debug        # inspect local Pibo data stores
+pibo setup        # plan user-host installs and developer-host upgrades
 pibo profile      # inspect runtime profiles
 pibo tui          # start the direct Pi TUI
 pibo tui:routed   # start the routed Pibo TUI
