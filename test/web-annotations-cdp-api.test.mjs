@@ -124,7 +124,8 @@ test("Web Annotation API creates same-origin bindings and serves standalone over
 		assert.match(scriptResponse.headers.get("content-type"), /javascript/);
 		const script = await scriptResponse.text();
 		assert.match(script, /window\.__piboWebAnnotationConfig/);
-		assert.match(script, /Pibo Web Annotations/);
+		assert.match(script, /active: false/);
+		assert.match(script, /Enable element annotation mode/);
 		assert.match(script, /Drag annotation widget/);
 		assert.match(script, /data-pibo-component/);
 		assert.match(script, /pibo-terminal-row/);

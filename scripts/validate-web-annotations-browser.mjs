@@ -167,6 +167,7 @@ async function createElementAnnotation(client, selector, note) {
 		if (!el) return { ok: false, reason: "missing element" };
 		const rect = el.getBoundingClientRect();
 		const init = { bubbles: true, cancelable: true, composed: true, view: window, clientX: Math.round(rect.left + Math.min(10, rect.width / 2)), clientY: Math.round(rect.top + Math.min(10, rect.height / 2)) };
+		if (window.__piboWebAnnotations && typeof window.__piboWebAnnotations.setMode === "function") window.__piboWebAnnotations.setMode("element");
 		el.dispatchEvent(new MouseEvent("mousemove", init));
 		el.dispatchEvent(new MouseEvent("click", init));
 		const root = document.getElementById("pibo-web-annotation-overlay");
@@ -181,7 +182,7 @@ async function createPinAnnotation(client, selector, note) {
 	const opened = await client.evaluate(`(() => {
 		const root = document.getElementById("pibo-web-annotation-overlay");
 		const shadow = root && root.shadowRoot;
-		const pinButton = shadow && Array.from(shadow.querySelectorAll("button")).find((button) => button.textContent === "Pin");
+		const pinButton = shadow && Array.from(shadow.querySelectorAll("button")).find((button) => button.getAttribute("aria-label") === "Mark a point instead of an element");
 		if (!pinButton) return { ok: false, reason: "missing pin button" };
 		pinButton.click();
 		const zone = document.querySelector(${JSON.stringify(selector)});
