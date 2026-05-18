@@ -1580,7 +1580,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 					data-pibo-room-id={selectedRoomId ?? bootstrap.selectedRoomId ?? undefined}
 					data-pibo-selected-session-id={selectedPiboSessionId ?? undefined}
 					data-pibo-state={mobileSidebarOpen ? "open" : "closed"}
-					className={`min-h-0 overflow-auto bg-[#1a262b] border-r border-slate-800 max-[980px]:fixed max-[980px]:left-0 max-[980px]:top-0 max-[980px]:bottom-0 max-[980px]:z-40 max-[980px]:w-[280px] max-[980px]:transition-transform max-[980px]:duration-200 ${
+					className={`min-h-0 overflow-hidden flex flex-col bg-[#1a262b] border-r border-slate-800 max-[980px]:fixed max-[980px]:left-0 max-[980px]:top-0 max-[980px]:bottom-0 max-[980px]:z-40 max-[980px]:w-[280px] max-[980px]:transition-transform max-[980px]:duration-200 ${
 						mobileSidebarOpen ? "max-[980px]:translate-x-0" : "max-[980px]:-translate-x-full"
 					}`}
 				>
@@ -1620,12 +1620,12 @@ export function App({ route }: { route: ChatAppRoute }) {
 							data-pibo-room-id={selectedRoomId ?? bootstrap.selectedRoomId ?? undefined}
 							data-pibo-selected-session-id={selectedPiboSessionId ?? undefined}
 							data-pibo-state={showArchived ? "archived-visible" : "active-only"}
-							className="p-2 space-y-3"
+							className="min-h-0 flex-1 overflow-hidden p-2 flex flex-col gap-3"
 						>
-								{roomsSupported ? (
-									<div>
-										{personalRoom ? (
-											<div className="mb-3">
+							{roomsSupported ? (
+								<>
+									{personalRoom ? (
+											<div className="shrink-0">
 												<div className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Personal Chat</div>
 												<RoomNode
 													room={personalRoom}
@@ -1637,8 +1637,9 @@ export function App({ route }: { route: ChatAppRoute }) {
 													onDelete={requestRoomDelete}
 												/>
 											</div>
-										) : null}
-										<div className="flex items-center justify-between gap-2 px-1 pb-1">
+									) : null}
+									<div className="min-h-0 flex-1 basis-0 overflow-hidden flex flex-col">
+										<div className="shrink-0 flex items-center justify-between gap-2 px-1 pb-1">
 											<div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Rooms</div>
 											<div className="flex items-center gap-1">
 												<button
@@ -1666,6 +1667,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 												</button>
 											</div>
 										</div>
+										<div className="min-h-0 flex-1 overflow-y-auto pr-1">
 										{roomGroups.active.map((room) => (
 											<RoomNode
 												key={room.id}
@@ -1695,10 +1697,12 @@ export function App({ route }: { route: ChatAppRoute }) {
 												) : <div className="px-2 py-3 text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm">No archived rooms</div>}
 											</div>
 										) : null}
+										</div>
 									</div>
-								) : null}
-							<div>
-								<div className="flex items-center justify-between gap-2 px-1 pb-1">
+								</>
+							) : null}
+							<div className="min-h-0 flex-1 basis-0 overflow-hidden flex flex-col">
+								<div className="shrink-0 flex items-center justify-between gap-2 px-1 pb-1">
 									<div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Sessions</div>
 									<div className="flex items-center gap-1">
 										<select
@@ -1742,6 +1746,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 										</button>
 									</div>
 								</div>
+								<div className="min-h-0 flex-1 overflow-y-auto pr-1">
 								{visibleActiveSessions.map((session) => (
 									<SessionNode
 										key={session.piboSessionId}
@@ -1770,9 +1775,8 @@ export function App({ route }: { route: ChatAppRoute }) {
 										{loadingActiveSessions ? "Loading active sessions…" : `Load more active sessions (${visibleActiveSessions.length} of ${sessionGroups.active.length})`}
 									</button>
 								) : null}
-							</div>
 							{showArchived ? (
-								<div>
+								<div className="mt-3">
 									<div className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
 										<span>Archived Sessions</span>
 										{loadingArchivedSessions ? <Loader2 size={12} className="text-[#11a4d4] animate-spin" aria-label="Loading archived sessions" /> : null}
@@ -1811,6 +1815,8 @@ export function App({ route }: { route: ChatAppRoute }) {
 									) : <div className="px-2 py-3 text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm">No archived sessions</div>}
 								</div>
 							) : null}
+								</div>
+							</div>
 						</div>
 					) : area === "context" ? (
 						<ContextSidebar
@@ -5420,7 +5426,7 @@ function WebAnnotationsEntryPoints({
 			});
 			if (!binding.overlay) throw new Error("Overlay config missing from same-origin binding response");
 			await installSameOriginWebAnnotationOverlay(binding.overlay);
-			setStatus({ kind: "success", message: "Annotation overlay is active on this Pibo page." });
+			setStatus({ kind: "success", message: "Annotation overlay is ready on this Pibo page. Use the overlay button to enable annotation mode." });
 			onError(null);
 		} catch (caught) {
 			const message = compactWebAnnotationError(caught, "Current-page annotation failed");
@@ -5500,7 +5506,7 @@ function WebAnnotationsEntryPoints({
 					<div className="mb-2 flex items-start justify-between gap-3">
 						<div>
 							<div className="text-xs font-bold uppercase tracking-wider text-[#11a4d4]">Web Annotations</div>
-							<div className="mt-1 text-xs text-slate-500">Annotate this Pibo page directly, or bind a CDP target for external pages.</div>
+							<div className="mt-1 text-xs text-slate-500">Start an inactive overlay for this Pibo page, or bind a CDP target for external pages.</div>
 						</div>
 						<div className="flex items-center gap-1">
 							<button type="button" onClick={panelVisible ? onHidePanel : onShowPanel} className="rounded-sm p-1 text-slate-500 hover:bg-slate-800 hover:text-slate-200" aria-label={panelVisible ? "Hide annotation list" : "Show annotation list"} title={panelVisible ? "Hide annotation list" : "Show annotation list"}>
