@@ -8644,7 +8644,7 @@ function createChatHtml(): string {
 			const row = document.createElement("div");
 			row.className = "session-row" + (node.piboSessionId === selectedPiboSessionId ? " active" : "");
 			row.style.paddingLeft = 8 + depth * 14 + "px";
-			row.title = node.piboSessionId;
+			row.title = (node.title || "Untitled Session") + "\n" + node.piboSessionId;
 			if (hasChildren) {
 				const toggle = document.createElement("button");
 				toggle.type = "button";

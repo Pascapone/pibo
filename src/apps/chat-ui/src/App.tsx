@@ -4468,6 +4468,7 @@ function RoomNode({
 	const archived = isArchivedRoom(room);
 	const [menuOpen, setMenuOpen] = useState(false);
 	const menuRef = useRef<HTMLDivElement>(null);
+	const roomTooltip = roomNodeTooltip(room);
 
 	const copyRoomId = () => {
 		void copyTextToClipboard(room.id).catch(() => undefined);
@@ -4512,7 +4513,7 @@ function RoomNode({
 								: "border-transparent"
 				}`}
 				style={{ marginLeft: depth * 12 }}
-				title={room.id}
+				title={roomTooltip}
 			>
 				{editing && !personal ? (
 					<form
@@ -4700,6 +4701,7 @@ function SessionNode({
 	showWorkflowSessionKindMarkers?: boolean;
 }) {
 	const safeTitle = sessionNodeTitle(node);
+	const sessionTooltip = sessionNodeTooltip(node);
 	const [editing, setEditing] = useState(false);
 	const [draftTitle, setDraftTitle] = useState(safeTitle);
 	const titleInputRef = useRef<HTMLInputElement>(null);
@@ -4764,7 +4766,7 @@ function SessionNode({
 					node.piboSessionId === selectedPiboSessionId ? "border-[#11a4d4] bg-[#11a4d4]/10" : "border-transparent"
 				}`}
 				style={{ paddingLeft: 8 + depth * 14 }}
-				title={node.piboSessionId}
+				title={sessionTooltip}
 			>
 				{editing ? (
 					<form
@@ -4951,6 +4953,14 @@ function SessionNode({
 			)) : null}
 		</div>
 	);
+}
+
+function roomNodeTooltip(room: Pick<PiboRoom, "id" | "name">): string {
+	return `${room.name || "Untitled Room"}\n${room.id}`;
+}
+
+function sessionNodeTooltip(node: PiboWebSessionNode): string {
+	return `${sessionNodeTitle(node)}\n${node.piboSessionId}`;
 }
 
 function sessionNodeTitle(node: PiboWebSessionNode): string {
