@@ -1,4 +1,5 @@
 import { execFile, spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { test } from "node:test";
@@ -591,6 +592,14 @@ test("pibo tools browser-use pool reap reports JSON counts and dirty next comman
 			state: "stale",
 			lastError: "Recorded browser pid 987654321 is not alive",
 		}, null, 2)}\n`, "utf8");
+
+		const emptyWorker = "worker-empty-reap";
+		const emptyStatePath = join(env.BROWSER_USE_HOME, "pibo-browser-pool", "browser-pools", emptyWorker, "default", "state.json");
+		const emptyResult = await execFileAsync("node", [cliPath, "tools", "browser-use", "pool", "reap", "--worker-id", emptyWorker, "--idle-timeout-ms", "0", "--json"], { cwd, env });
+		const emptyParsed = JSON.parse(emptyResult.stdout);
+		assert.equal(emptyParsed.counts.affectedBrowserPools, 0);
+		assert.equal(emptyParsed.pools[0].cleanupStatus, "skipped");
+		assert.equal(existsSync(emptyStatePath), false);
 
 		const jsonResult = await execFileAsync("node", [cliPath, "tools", "browser-use", "pool", "reap", "--worker-id", "worker-reap", "--json"], { cwd, env });
 		const parsed = JSON.parse(jsonResult.stdout);

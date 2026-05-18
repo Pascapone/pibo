@@ -38,6 +38,34 @@ function parsePositiveIntegerOption(value: string | undefined): number | undefin
 	return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
+function hostPort(value: string | undefined): string | undefined {
+	if (!value || value === "-") return undefined;
+	const first = value.split(",")[0] ?? value;
+	return first.includes(":") ? first.split(":").pop() : first;
+}
+
+function formatPorts(worker: WorkerInfo, verbose = false): string {
+	if (verbose) return worker.ports || "-";
+	const preferred: Array<[string, string | undefined]> = [
+		["gw", worker.portMap["4789/tcp"] ?? worker.portMap.gateway],
+		["cdp", worker.portMap["56663/tcp"] ?? worker.portMap.cdp],
+		["web", worker.portMap["4788/tcp"] ?? worker.portMap.web],
+		["chat", worker.portMap["4790/tcp"] ?? worker.portMap.chatUi],
+		["ctx", worker.portMap["4791/tcp"] ?? worker.portMap.contextFiles],
+	];
+	const compact = preferred
+		.map(([label, value]) => {
+			const port = hostPort(value);
+			return port ? `${label}=${port}` : undefined;
+		})
+		.filter(Boolean) as string[];
+	if (compact.length > 0) return compact.join(",");
+	const fallback = Object.entries(worker.portMap)
+		.slice(0, 4)
+		.map(([container, value]) => `${container.replace(/\/tcp$/, "")}=${hostPort(value) ?? value}`);
+	return fallback.length > 0 ? fallback.join(",") : worker.ports || "-";
+}
+
 function formatResourcePolicy(worker: WorkerInfo): string {
 	const policy = worker.resourcePolicy;
 	if (!policy) return "-";
@@ -54,7 +82,15 @@ function formatCleanup(worker: WorkerInfo): string {
 	return `${prefix}:${worker.cleanupEligibility.reasons.join("+") || "none"}`;
 }
 
-export function renderComputeWorkerListText(workers: WorkerInfo[], options: { all?: boolean } = {}): string {
+function formatComputeReapCommand(plan: ComputeWorkerReapPlan, apply: boolean): string {
+	const args = ["pibo", "compute", "reap", apply ? "--apply" : "--dry-run", "--max-age-minutes", String(plan.options.maxAgeMinutes)];
+	if (plan.options.includeDev) args.push("--include-dev");
+	if (!plan.options.includeStopped) args.push("--no-stopped");
+	if (!plan.options.includeDirty) args.push("--no-dirty");
+	return args.join(" ");
+}
+
+export function renderComputeWorkerListText(workers: WorkerInfo[], options: { all?: boolean; verbose?: boolean } = {}): string {
 	if (workers.length === 0) {
 		return [
 			options.all ? "No Pibo worker containers found." : "No worker containers running.",
@@ -64,8 +100,9 @@ export function renderComputeWorkerListText(workers: WorkerInfo[], options: { al
 	}
 	const lines = ["NAME\tROLE\tSTATE\tSTATUS\tOOM\tPORTS\tCREATED\tLAST_USED\tOWNER\tWORKTREE\tRALPH_JOB\tRALPH_RUN\tRESOURCE\tCLEANUP"];
 	for (const w of workers) {
-		lines.push(`${w.name}\t${w.role}\t${w.state}\t${w.status}\t${w.oomKilled ? "yes" : "no"}\t${w.ports || "-"}\t${w.createdAt}\t${w.lastUsedAt ?? "-"}\t${w.ownerScope ?? "-"}\t${w.worktree ?? "-"}\t${w.ralphJobId ?? "-"}\t${w.ralphRunId ?? "-"}\t${formatResourcePolicy(w)}\t${formatCleanup(w)}`);
+		lines.push(`${w.name}\t${w.role}\t${w.state}\t${w.status}\t${w.oomKilled ? "yes" : "no"}\t${formatPorts(w, options.verbose === true)}\t${w.createdAt}\t${w.lastUsedAt ?? "-"}\t${w.ownerScope ?? "-"}\t${w.worktree ?? "-"}\t${w.ralphJobId ?? "-"}\t${w.ralphRunId ?? "-"}\t${formatResourcePolicy(w)}\t${formatCleanup(w)}`);
 	}
+	lines.push(options.verbose ? "Next: pibo compute list --all --json" : "Next: pibo compute list --all --verbose for full Docker port bindings");
 	lines.push("Next: pibo compute list --all --json");
 	return lines.join("\n");
 }
@@ -81,8 +118,10 @@ export function renderComputeReapPlanText(plan: ComputeWorkerReapPlan, options: 
 			lines.push(`${item.action}\t${item.worker.name}\t${item.worker.role}\t${item.worker.state}\t${item.ageMinutes === undefined ? "-" : Math.floor(item.ageMinutes)}\t${item.reasons.join("+") || "-"}\t${item.skipReasons.join("+") || "-"}\t${item.preservesWorktree ? "preserve" : "-"}`);
 		}
 	}
+	if (plan.options.includeDev && plan.summary.selected > 0) lines.push("WARNING: --include-dev selected dev workers. Review ports/worktrees and active Ralph jobs before applying.");
 	if (options.applied) lines.push(`Removed: ${options.removed?.join(", ") || "none"}`);
-	else lines.push("Dry-run only. Apply with: pibo compute reap --apply");
+	else lines.push(`Dry-run only. Apply equivalent plan with: ${formatComputeReapCommand(plan, true)}`);
+	lines.push(`Review equivalent dry-run with: ${formatComputeReapCommand(plan, false)}`);
 	lines.push("Worktrees are preserved; remove Git worktrees only with an explicit worktree cleanup command.");
 	lines.push(...plan.nextCommands.map((command) => `Next: ${command}`));
 	return lines.join("\n");
@@ -102,6 +141,14 @@ export function renderComputeResourceHealthText(health: ComputeResourceHealth): 
 	const lines = [`Compute resource health: ${health.severity} (read-only)`];
 	lines.push(`Generated at: ${health.generatedAt}`);
 	lines.push(`Browser processes: ${health.browserProcesses.totalChromiumMainProcesses} main / ${health.browserProcesses.totalChromiumProcesses} total Chromium processes`);
+	if (health.browserProcesses.unassignedMainProcessDetails.length > 0) {
+		lines.push(`Unmanaged browser main processes: ${health.browserProcesses.unassignedMainProcessDetails.length}`);
+		lines.push("PID\tWORKER\tUSER_DATA_DIR\tCOMMAND");
+		for (const process of health.browserProcesses.unassignedMainProcessDetails.slice(0, 5)) {
+			lines.push(`${process.pid}\t${process.workerName ?? "-"}\t${process.userDataDir ?? "-"}\t${process.commandName}`);
+		}
+		lines.push("Inspect unmanaged browsers with: pibo compute health --json");
+	}
 	lines.push(`Active browser leases: ${health.browserLeases.active}`);
 	lines.push(`Stale CDP files: ${health.browserLeases.staleCdpFiles.pidFiles} pid, ${health.browserLeases.staleCdpFiles.portFiles} port`);
 	lines.push(`Compute workers: ${health.computeWorkers.total} total, ${health.computeWorkers.dirty} dirty, ${health.computeWorkers.oomKilled} OOM-killed, ${health.computeWorkers.cleanupEligible} cleanup-eligible`);
@@ -302,6 +349,7 @@ Rebuilds from the current workspace and refreshes compute image hashes.
 		.description("List Pibo worker and dev-worker containers")
 		.option("--all", "Include stopped, exited, dead, and restarting Pibo workers")
 		.option("--json", "Print machine-readable worker metadata")
+		.option("--verbose", "Show full Docker port bindings in text output")
 		.addHelpText(
 			"after",
 			`
@@ -311,13 +359,13 @@ Next:
   $ pibo compute list --all --json
 `,
 		)
-		.action(async (options: { all?: boolean; json?: boolean }) => {
+		.action(async (options: { all?: boolean; json?: boolean; verbose?: boolean }) => {
 			const workers = await listWorkers({ all: options.all === true });
 			if (options.json) {
 				printJson({ workers });
 				return;
 			}
-			console.log(renderComputeWorkerListText(workers, { all: options.all === true }));
+			console.log(renderComputeWorkerListText(workers, { all: options.all === true, verbose: options.verbose === true }));
 		});
 
 	program

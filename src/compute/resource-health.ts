@@ -29,6 +29,18 @@ export interface ResourceHealthProcessInfo {
 	isMainProcess: boolean;
 }
 
+export interface ResourceHealthUnassignedBrowserProcessInfo {
+	pid: number;
+	ppid: number;
+	pgid: number;
+	commandName: string;
+	workerName?: string;
+	userDataDir?: string;
+	cdpPort?: number;
+	argsPreview: string;
+	nextCommands: string[];
+}
+
 export interface ResourceHealthBrowserPoolInfo {
 	workerId: string;
 	poolId: string;
@@ -70,6 +82,7 @@ export interface ComputeResourceHealth {
 		totalChromiumProcesses: number;
 		totalChromiumMainProcesses: number;
 		unassignedChromiumMainProcesses: number;
+		unassignedMainProcessDetails: ResourceHealthUnassignedBrowserProcessInfo[];
 		perWorker: ResourceHealthBrowserPoolInfo[];
 	};
 	browserLeases: {
@@ -176,7 +189,10 @@ export function buildComputeResourceHealth(options: BuildComputeResourceHealthOp
 	for (const pool of browserPools) {
 		for (const process of mainProcesses) if (browserProcessMatchesPool(process, pool.state)) assignedMainPids.add(process.pid);
 	}
-	const unassignedChromiumMainProcesses = mainProcesses.filter((process) => !assignedMainPids.has(process.pid)).length;
+	const unassignedMainProcessDetails = mainProcesses
+		.filter((process) => !assignedMainPids.has(process.pid))
+		.map((process) => describeUnassignedBrowserProcess(process, workers));
+	const unassignedChromiumMainProcesses = unassignedMainProcessDetails.length;
 	const activePoolIds = perWorker.filter((pool) => pool.activeLeaseCount > 0).map((pool) => `${pool.workerId}/${pool.poolId}`);
 	const dirtyWorkers = workers.filter((worker) => worker.cleanupState === "dirty" || Boolean(worker.dirtyReason)).map((worker) => worker.name);
 	const oomKilledWorkers = workers.filter((worker) => worker.oomKilled === true).map((worker) => worker.name);
@@ -184,7 +200,7 @@ export function buildComputeResourceHealth(options: BuildComputeResourceHealthOp
 	const diskPressure = Boolean(disk?.dockerAvailable && ((disk.totals.reclaimableBytes ?? 0) >= DOCKER_DISK_PRESSURE_BYTES || (disk.usage.buildCache?.sizeBytes ?? 0) >= DOCKER_DISK_PRESSURE_BYTES));
 
 	if (!processListAvailable) checks.push({ id: "process-list", severity: "warning", message: `Process list unavailable: ${options.processListError}`, nextCommands: ["ps -eo pid,ppid,pgid,comm,args"] });
-	if (perWorker.some((pool) => pool.browserMainProcessCount > pool.maxBrowserProcesses) || unassignedChromiumMainProcesses > 0) checks.push({ id: "browser-leak", severity: "warning", message: "Chromium main-process count exceeds managed pool expectations.", nextCommands: ["pibo tools browser-use pool status --json", "pibo tools browser-use pool reap --json", "pibo compute reap --dry-run --include-dev"] });
+	if (perWorker.some((pool) => pool.browserMainProcessCount > pool.maxBrowserProcesses) || unassignedChromiumMainProcesses > 0) checks.push({ id: "browser-leak", severity: "warning", message: browserLeakMessage(unassignedChromiumMainProcesses), nextCommands: ["pibo compute health --json", "pibo tools browser-use pool status --json", "pibo tools browser-use pool reap --json", "pibo compute reap --dry-run --include-dev"] });
 	else checks.push({ id: "browser-processes", severity: "ok", message: "Browser process counts are within managed pool expectations.", nextCommands: ["pibo tools browser-use pool status --json"] });
 	if (activePoolIds.length > 0) checks.push({ id: "browser-leases", severity: "warning", message: `${activePoolIds.length} active browser pool lease(s) found.`, nextCommands: ["pibo ralph runs --json", "pibo tools browser-use pool status --json"] });
 	if (staleCdpFiles.pidFiles > 0 || staleCdpFiles.portFiles > 0) checks.push({ id: "stale-cdp-files", severity: "warning", message: `${staleCdpFiles.pidFiles} stale pid file(s), ${staleCdpFiles.portFiles} orphan port file(s).`, nextCommands: ["pibo tools browser-use lease reap-stale", "pibo tools browser-use pool reap --json"] });
@@ -208,6 +224,7 @@ export function buildComputeResourceHealth(options: BuildComputeResourceHealthOp
 			totalChromiumProcesses: processes.filter((process) => process.isChromium).length,
 			totalChromiumMainProcesses: mainProcesses.length,
 			unassignedChromiumMainProcesses,
+			unassignedMainProcessDetails,
 			perWorker,
 		},
 		browserLeases: { active: activePoolIds.length, activePoolIds, staleCdpFiles },
@@ -232,6 +249,44 @@ export function buildComputeResourceHealth(options: BuildComputeResourceHealthOp
 		reaperTimers,
 		nextCommands,
 	};
+}
+
+function browserLeakMessage(unassignedCount: number): string {
+	if (unassignedCount > 0) return `${unassignedCount} unmanaged Chromium main process(es) are not associated with a managed browser pool.`;
+	return "Chromium main-process count exceeds managed pool expectations.";
+}
+
+function describeUnassignedBrowserProcess(process: ResourceHealthProcessInfo, workers: WorkerInfo[]): ResourceHealthUnassignedBrowserProcessInfo {
+	const worker = workers.find((candidate) => candidate.hostPid !== undefined && candidate.hostPid > 0 && candidate.hostPid === process.ppid);
+	const userDataDir = readChromeArg(process.args, "user-data-dir");
+	const cdpPortValue = readChromeArg(process.args, "remote-debugging-port");
+	const cdpPort = cdpPortValue && /^\d+$/.test(cdpPortValue) ? Number(cdpPortValue) : undefined;
+	const nextCommands = worker
+		? [`docker top ${worker.name} -eo pid,ppid,pgid,comm,args`, `pibo compute list --all --json`]
+		: ["ps -eo pid,ppid,pgid,comm,args | grep -Ei 'chrome|chromium'", "pibo compute list --all --json"];
+	return {
+		pid: process.pid,
+		ppid: process.ppid,
+		pgid: process.pgid,
+		commandName: process.commandName,
+		workerName: worker?.name,
+		userDataDir,
+		cdpPort,
+		argsPreview: sanitizeArgsPreview(process.args),
+		nextCommands,
+	};
+}
+
+function readChromeArg(args: string, name: string): string | undefined {
+	const pattern = new RegExp(`(?:^|\\s)--${name}=([^\\s]+)`);
+	return args.match(pattern)?.[1];
+}
+
+function sanitizeArgsPreview(args: string): string {
+	const redacted = args
+		.replace(/(token|access_token|refresh_token|password|passwd|cookie|secret)=([^\s]+)/gi, "$1=<redacted>")
+		.replace(/(--(?:token|password|cookie|secret))\s+([^\s]+)/gi, "$1 <redacted>");
+	return redacted.length > 220 ? `${redacted.slice(0, 217)}...` : redacted;
 }
 
 export async function getComputeResourceHealth(options: GetComputeResourceHealthOptions = {}): Promise<ComputeResourceHealth> {
