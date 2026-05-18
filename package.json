@@ -7,6 +7,7 @@
     "dist",
     "context",
     "skills/builtin/**",
+    "docs/ops/**",
     "README.md",
     "src/mcp/LICENSE.mcp-cli"
   ],
