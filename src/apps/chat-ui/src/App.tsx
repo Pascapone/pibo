@@ -28,6 +28,7 @@ import {
 	Loader2,
 	Lock,
 	LogOut,
+	List,
 	Menu,
 	MessageSquarePlus,
 	MoreVertical,
@@ -85,6 +86,8 @@ import {
 type Area = "sessions" | "projects" | "workflows" | "cron" | "ralph" | "agents" | "context" | "settings";
 type ContextPanel = "context-files" | "base-prompt" | "compaction-prompt" | "pibo-tools" | "mcp-tools" | "build-context";
 type SettingsPanel = "general" | "shortcuts" | "pi-packages" | "skills" | "providers";
+
+const MAIN_NAV_AREAS: readonly Area[] = ["sessions", "projects", "workflows", "cron", "ralph", "agents", "context", "settings"];
 
 export type ChatAppRoute =
 	| { area: "sessions"; roomId?: string; piboSessionId?: string; sessionViewId?: ChatSessionViewId }
@@ -353,6 +356,8 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const [selectedMcpServerName, setSelectedMcpServerName] = useState<string | null>(null);
 	const [creatingRoom, setCreatingRoom] = useState(false);
 	const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+	const [mobileAreaMenuOpen, setMobileAreaMenuOpen] = useState(false);
+	const mobileAreaMenuRef = useRef<HTMLDivElement>(null);
 	const [deleteRoomTarget, setDeleteRoomTarget] = useState<PiboRoom | null>(null);
 	const [deleteRoomConfirmName, setDeleteRoomConfirmName] = useState("");
 	const [deletingRoom, setDeletingRoom] = useState(false);
@@ -372,6 +377,24 @@ export function App({ route }: { route: ChatAppRoute }) {
 	useEffect(() => {
 		showArchivedRef.current = showArchived;
 	}, [showArchived]);
+
+	useEffect(() => {
+		if (!mobileAreaMenuOpen) return;
+		const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+			if (mobileAreaMenuRef.current && !mobileAreaMenuRef.current.contains(event.target as Node)) setMobileAreaMenuOpen(false);
+		};
+		const handleKeyDown = (event: KeyboardEvent) => {
+			if (event.key === "Escape") setMobileAreaMenuOpen(false);
+		};
+		document.addEventListener("mousedown", handlePointerDown);
+		document.addEventListener("touchstart", handlePointerDown);
+		document.addEventListener("keydown", handleKeyDown);
+		return () => {
+			document.removeEventListener("mousedown", handlePointerDown);
+			document.removeEventListener("touchstart", handlePointerDown);
+			document.removeEventListener("keydown", handleKeyDown);
+		};
+	}, [mobileAreaMenuOpen]);
 
 	useEffect(() => {
 		bootstrapRef.current = bootstrap;
@@ -1433,6 +1456,18 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const totalRoomUnreadCount = countUnreadRooms(bootstrap.rooms);
 	const contextAgentProfiles = [...new Set([...bootstrap.agents.map((agent) => agent.name), ...bootstrap.customAgents.map((agent) => agent.profileName)])];
 	const identity = identityFromBootstrap(bootstrap);
+	const selectMainNavArea = (item: Area) => {
+		setMobileAreaMenuOpen(false);
+		if (item === "sessions") {
+			navigateToSelectedSession(selectedRoomId ?? bootstrap.selectedRoomId, selectedPiboSessionId ?? bootstrap.selectedPiboSessionId);
+			return;
+		}
+		if (item === "projects") {
+			navigateToRoute({ area: "projects" });
+			return;
+		}
+		navigateToRoute({ area: item });
+	};
 
 	return (
 		<>
@@ -1449,55 +1484,75 @@ export function App({ route }: { route: ChatAppRoute }) {
 				data-pibo-selected-session-id={selectedPiboSessionId ?? bootstrap.selectedPiboSessionId ?? undefined}
 				className="h-dvh overflow-hidden bg-[#101d22] text-slate-200 grid grid-rows-[auto_auto_1fr]"
 			>
-				<header className="flex items-center justify-between gap-3 px-4 bg-[#1a262b] border-b border-slate-800 min-h-14 max-[980px]:flex-wrap max-[980px]:py-2">
-					<div className="flex items-center gap-2">
+				<header className="flex items-center gap-3 px-4 bg-[#1a262b] border-b border-slate-800 min-h-14 max-[980px]:px-3">
+					<div className="flex min-w-0 items-center gap-2">
 						<button
 							type="button"
 							onClick={() => setMobileSidebarOpen(true)}
-							className="min-[981px]:hidden p-1.5 border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"
+							className="min-[981px]:hidden shrink-0 p-1.5 border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"
 							title="Open sidebar"
 							aria-label="Open sidebar"
 						>
 							<Menu size={16} />
 						</button>
-						<img src="/apps/chat/assets/pwa-images/android/launchericon-512x512.png" alt="Logo" className="h-5 w-auto" />
-						<div className="font-extrabold tracking-[0.08em] uppercase text-lg">Pibo Chat</div>
+						<img src="/apps/chat/assets/pwa-images/android/launchericon-512x512.png" alt="Logo" className="h-5 w-auto shrink-0" />
+						<div className="truncate font-extrabold tracking-[0.08em] uppercase text-lg max-[420px]:text-base">Pibo Chat</div>
 					</div>
-					<nav className="flex gap-1 flex-wrap">
-					{(["sessions", "projects", "workflows", "cron", "ralph", "agents", "context", "settings"] as const).map((item) => (
-						<button
-							key={item}
-							type="button"
-							onClick={() => {
-								if (item === "sessions") {
-									navigateToSelectedSession(selectedRoomId ?? bootstrap.selectedRoomId, selectedPiboSessionId ?? bootstrap.selectedPiboSessionId);
-									return;
-								}
-								if (item === "projects") {
-									navigateToRoute({ area: "projects" });
-									return;
-								}
-								navigateToRoute({ area: item });
-							}}
-							className={`h-8 px-3 border rounded-sm text-xs uppercase tracking-wider max-[980px]:h-7 max-[980px]:px-2 ${
-								area === item ? "border-[#11a4d4] text-[#11a4d4] bg-[#11a4d4]/10" : "border-slate-700 text-slate-400"
-							}`}
-						>
-							<span className="inline-flex items-center gap-1.5">
-								<span>{item}</span>
-								{item === "sessions" ? <MobileUnreadBadge count={totalRoomUnreadCount} /> : null}
-							</span>
+					<nav className="ml-auto flex gap-1 max-[980px]:hidden">
+						{MAIN_NAV_AREAS.map((item) => (
+							<button
+								key={item}
+								type="button"
+								onClick={() => selectMainNavArea(item)}
+								className={`h-8 px-3 border rounded-sm text-xs uppercase tracking-wider ${
+									area === item ? "border-[#11a4d4] text-[#11a4d4] bg-[#11a4d4]/10" : "border-slate-700 text-slate-400"
+								}`}
+							>
+								<span className="inline-flex items-center gap-1.5">
+									<span>{item}</span>
+									{item === "sessions" ? <MobileUnreadBadge count={totalRoomUnreadCount} /> : null}
+								</span>
+							</button>
+						))}
+					</nav>
+					<div className="ml-auto flex shrink-0 items-center justify-end gap-2 text-xs text-slate-400 min-[981px]:ml-0">
+						<UserRound size={14} />
+						<span className="truncate max-[600px]:hidden">{identity.email || identity.name || identity.userId}</span>
+						<button type="button" onClick={() => void signOut().then(() => location.reload())} className="p-1 border border-slate-700 rounded-sm hover:border-[#11a4d4] hover:text-[#11a4d4]" title="Sign out" aria-label="Sign out">
+							<LogOut size={14} />
 						</button>
-					))}
-				</nav>
-				<div className="flex items-center gap-2 text-xs text-slate-400 min-w-0">
-					<UserRound size={14} />
-					<span className="truncate max-[600px]:hidden">{identity.email || identity.name || identity.userId}</span>
-					<button type="button" onClick={() => void signOut().then(() => location.reload())} className="p-1 border border-slate-700 rounded-sm">
-						<LogOut size={14} />
-					</button>
-				</div>
-			</header>
+						<div className="relative min-[981px]:hidden" ref={mobileAreaMenuRef}>
+							<button
+								type="button"
+								onClick={() => setMobileAreaMenuOpen((open) => !open)}
+								className={`p-1 border rounded-sm hover:border-[#11a4d4] hover:text-[#11a4d4] ${mobileAreaMenuOpen ? "border-[#11a4d4] text-[#11a4d4] bg-[#11a4d4]/10" : "border-slate-700 text-slate-400"}`}
+								title="Open navigation menu"
+								aria-label="Open navigation menu"
+								aria-expanded={mobileAreaMenuOpen}
+							>
+								<List size={14} />
+							</button>
+							{mobileAreaMenuOpen ? (
+								<div className="absolute right-0 top-full z-50 mt-2 w-52 rounded-sm border border-slate-700 bg-[#1a262b] p-1 shadow-xl" role="menu" aria-label="Main navigation">
+									{MAIN_NAV_AREAS.map((item) => (
+										<button
+											key={item}
+											type="button"
+											onClick={() => selectMainNavArea(item)}
+											className={`flex w-full items-center justify-between gap-2 rounded-sm px-3 py-2 text-left text-xs uppercase tracking-wider ${
+												area === item ? "bg-[#11a4d4]/10 text-[#11a4d4]" : "text-slate-300 hover:bg-slate-800/80 hover:text-[#11a4d4]"
+											}`}
+											role="menuitem"
+										>
+											<span>{item}</span>
+											{item === "sessions" ? <MobileUnreadBadge count={totalRoomUnreadCount} /> : null}
+										</button>
+									))}
+								</div>
+							) : null}
+						</div>
+					</div>
+				</header>
 
 			<div>{error ? <AppErrorBanner message={error} onDismiss={() => setError(null)} /> : null}</div>
 
