@@ -41,6 +41,10 @@ export type CreateTargetBindingInput = WebAnnotationBindingContext & {
 	targetId: string;
 };
 
+export type WebAnnotationOverlayOptions = {
+	annotationShortcut?: string;
+};
+
 export type BindingOperationResult = {
 	binding: WebAnnotationBinding;
 	target?: WebAnnotationTargetSummary;
@@ -115,7 +119,7 @@ export class WebAnnotationCdpService {
 		return { binding, target: targetSummary(target) };
 	}
 
-	async injectBinding(context: WebAnnotationBindingContext, bindingId: string): Promise<BindingOperationResult> {
+	async injectBinding(context: WebAnnotationBindingContext, bindingId: string, overlayOptions: WebAnnotationOverlayOptions = {}): Promise<BindingOperationResult> {
 		const binding = this.ensureOverlaySubmissionToken(this.requireBinding(context, bindingId));
 		const target = await this.resolveBindingTarget(binding);
 		const client = await connectCdpTarget(target, this.timeoutMs);
@@ -125,6 +129,7 @@ export class WebAnnotationCdpService {
 				bindingId: binding.id,
 				bindingToken: String(binding.metadata?.overlaySubmissionToken ?? ""),
 				apiBaseUrl: this.apiBaseUrl,
+				annotationShortcut: overlayOptions.annotationShortcut,
 			}), this.timeoutMs);
 			if (!result?.ok) throw new Error("Overlay injection did not report success");
 			const updated = this.store.patchBinding(context.ownerScope, context.piboSessionId, binding.id, {
@@ -261,7 +266,7 @@ function buildDocumentReadyExpression(): string {
 })`;
 }
 
-function buildInjectExpression(config: { bindingId: string; bindingToken: string; apiBaseUrl?: string }): string {
+function buildInjectExpression(config: { bindingId: string; bindingToken: string; apiBaseUrl?: string; annotationShortcut?: string }): string {
 	return buildWebAnnotationOverlayScript(JSON.stringify(config));
 }
 
@@ -271,6 +276,8 @@ export function buildWebAnnotationOverlayScript(configExpression = "window.__pib
   if (!config || !config.bindingId || !config.bindingToken) throw new Error("Pibo Web Annotation overlay config is missing bindingId or bindingToken");
   const rootId = "pibo-web-annotation-overlay";
   const outlineId = "pibo-web-annotation-outline";
+  const shortcutStorageKey = "pibo.chat.shortcuts.webAnnotationsToggle";
+  const defaultAnnotationShortcut = "Alt+Shift+A";
   const previous = window.__piboWebAnnotations;
   if (previous && typeof previous.remove === "function") previous.remove();
 
@@ -291,6 +298,8 @@ export function buildWebAnnotationOverlayScript(configExpression = "window.__pib
     popup: null,
     lastHoverAt: 0,
     pendingFrame: 0,
+    dragMoved: false,
+    shortcut: parseShortcut(config.annotationShortcut || readStoredShortcut() || defaultAnnotationShortcut),
     submissions: [],
     lastError: null,
   };
@@ -298,28 +307,27 @@ export function buildWebAnnotationOverlayScript(configExpression = "window.__pib
   const host = document.createElement("div");
   host.id = rootId;
   host.setAttribute("data-pibo-web-annotation-binding", config.bindingId);
-  host.style.cssText = "position:fixed;right:16px;bottom:16px;z-index:2147483647;pointer-events:auto;color-scheme:light dark";
+  host.style.cssText = "position:fixed;right:112px;bottom:156px;z-index:2147483647;pointer-events:auto;color-scheme:light dark";
   const shadow = host.attachShadow ? host.attachShadow({ mode: "open" }) : host;
   const style = document.createElement("style");
   style.textContent = [
     ":host{all:initial;font:13px system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}",
-    ".pibo-wa-panel{position:relative;width:42px;min-height:42px;color:#fff;font:13px system-ui,sans-serif}",
-    ".pibo-wa-main,.pibo-wa-button{box-sizing:border-box;width:40px;height:40px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(148,163,184,.5);background:#111827;color:#dbeafe;border-radius:12px;box-shadow:0 10px 28px rgba(0,0,0,.32);cursor:pointer;user-select:none;line-height:0;padding:0;transition:background .12s ease,border-color .12s ease,color .12s ease,transform .12s ease}",
-    ".pibo-wa-main{border-color:#38bdf8;background:linear-gradient(180deg,#102334,#0f172a);color:#7dd3fc}",
+    "@keyframes pibo-wa-attention{0%{transform:scale(.72);opacity:.45;box-shadow:0 0 0 0 rgba(56,189,248,.7)}18%{transform:scale(1.22,.82);opacity:1}34%{transform:scale(.9,1.12)}52%{transform:scale(1.08,.94);box-shadow:0 0 0 12px rgba(56,189,248,.18)}72%{transform:scale(.98,1.02)}100%{transform:scale(1);opacity:1;box-shadow:0 12px 32px rgba(0,0,0,.36),0 0 0 0 rgba(56,189,248,0)}}",
+    ".pibo-wa-panel{position:relative;width:50px;min-height:50px;color:#fff;font:13px system-ui,sans-serif}",
+    ".pibo-wa-main,.pibo-wa-button{box-sizing:border-box;width:48px;height:48px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(148,163,184,.5);background:#111827;color:#dbeafe;border-radius:14px;box-shadow:0 12px 32px rgba(0,0,0,.36);cursor:pointer;user-select:none;line-height:0;padding:0;transition:background .12s ease,border-color .12s ease,color .12s ease,transform .12s ease}",
+    ".pibo-wa-main{border-color:#38bdf8;background:linear-gradient(180deg,#102334,#0f172a);color:#7dd3fc;cursor:grab}",
+    ".pibo-wa-main:active{cursor:grabbing}",
+    ".pibo-wa-main.pibo-wa-attention{animation:pibo-wa-attention .78s cubic-bezier(.2,.8,.2,1) both}",
+    "@media (prefers-reduced-motion:reduce){.pibo-wa-main.pibo-wa-attention{animation:none;box-shadow:0 0 0 3px rgba(56,189,248,.6),0 12px 32px rgba(0,0,0,.36)}}",
     ".pibo-wa-main:hover,.pibo-wa-button:hover{border-color:#7dd3fc;color:#e0f2fe;background:#172033;transform:translateY(-1px)}",
-    ".pibo-wa-icon{width:19px;height:19px;display:block;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;fill:none;flex:0 0 auto}",
-    ".pibo-wa-actions{position:absolute;right:-2px;bottom:34px;display:flex;flex-direction:column;gap:7px;padding:0 2px 12px 2px;opacity:0;pointer-events:none;transform:translateY(6px);transition:opacity .12s ease,transform .12s ease}",
+    ".pibo-wa-icon{width:22px;height:22px;display:block;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;fill:none;flex:0 0 auto}",
+    ".pibo-wa-actions{position:absolute;right:-2px;bottom:42px;display:flex;flex-direction:column;gap:7px;padding:0 2px 12px 2px;opacity:0;pointer-events:none;transform:translateY(6px);transition:opacity .12s ease,transform .12s ease}",
     ".pibo-wa-actions::before{content:'';position:absolute;inset:0 -8px -12px -8px;z-index:-1}",
-    ".pibo-wa-move-action{position:absolute;right:46px;bottom:1px;opacity:0;pointer-events:none;transform:translateX(6px);transition:opacity .12s ease,transform .12s ease}",
-    ".pibo-wa-move-action::before{content:'';position:absolute;inset:-8px -12px -8px -8px;z-index:-1}",
     ".pibo-wa-panel:hover .pibo-wa-actions,.pibo-wa-panel:focus-within .pibo-wa-actions{opacity:1;pointer-events:auto;transform:translateY(0)}",
-    ".pibo-wa-panel:hover .pibo-wa-move-action,.pibo-wa-panel:focus-within .pibo-wa-move-action{opacity:1;pointer-events:auto;transform:translateX(0)}",
     ".pibo-wa-button{background:#1f2937}",
     ".pibo-wa-button[aria-pressed='true']{background:#2563eb;border-color:#93c5fd;color:#fff}",
     ".pibo-wa-button-danger{background:#3f1418;border-color:#7f1d1d;color:#fecaca}",
     ".pibo-wa-button-danger:hover{border-color:#ef4444;color:#fff;background:#7f1d1d}",
-    ".pibo-wa-button-move{cursor:grab}",
-    ".pibo-wa-button-move:active{cursor:grabbing}",
     ".pibo-wa-status{display:none}",
     ".pibo-wa-popup{position:fixed;z-index:2147483647;width:min(320px,calc(100vw - 24px));background:#fff;color:#111827;border:1px solid #9ca3af;border-radius:12px;padding:10px;box-shadow:0 14px 36px rgba(0,0,0,.35);font:13px system-ui,sans-serif}",
     ".pibo-wa-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px}",
@@ -330,8 +338,6 @@ export function buildWebAnnotationOverlayScript(configExpression = "window.__pib
   panel.className = "pibo-wa-panel";
   const actions = document.createElement("div");
   actions.className = "pibo-wa-actions";
-  const move = button(iconSvg("move"), "Drag annotation widget");
-  move.className += " pibo-wa-button-move pibo-wa-move-action";
   const toggle = button(iconSvg("edit"), "Toggle element annotation mode");
   const pin = button(iconSvg("arrow-down-to-dot"), "Mark a point instead of an element");
   const stop = button(iconSvg("x"), "Remove the Pibo annotation overlay");
@@ -340,12 +346,13 @@ export function buildWebAnnotationOverlayScript(configExpression = "window.__pib
   main.type = "button";
   main.className = "pibo-wa-main";
   main.innerHTML = iconSvg("book-a");
-  main.setAttribute("aria-label", "Enable element annotation mode");
-  main.title = "Enable element annotation mode";
+  main.classList.add("pibo-wa-attention");
+  main.setAttribute("aria-label", shortcutTitle("Enable element annotation mode"));
+  main.title = shortcutTitle("Enable element annotation mode");
   const status = document.createElement("div");
   status.className = "pibo-wa-status";
   actions.append(toggle, pin, stop);
-  panel.append(actions, move, main, status);
+  panel.append(actions, main, status);
   shadow.append(style, panel);
   document.documentElement.appendChild(host);
 
@@ -354,13 +361,18 @@ export function buildWebAnnotationOverlayScript(configExpression = "window.__pib
   outline.style.cssText = "position:fixed;z-index:2147483646;pointer-events:none;border:2px solid #2563eb;background:rgba(37,99,235,.10);box-shadow:0 0 0 9999px rgba(37,99,235,.04);display:none;border-radius:3px";
   document.documentElement.appendChild(outline);
 
+  main.addEventListener("pointerdown", startDrag);
   main.addEventListener("click", () => {
+    if (state.dragMoved) {
+      state.dragMoved = false;
+      return;
+    }
     state.active = true;
     state.mode = "element";
     closePopup();
     updateUi();
   });
-  move.addEventListener("pointerdown", startDrag);
+  main.addEventListener("animationend", () => main.classList.remove("pibo-wa-attention"));
   toggle.addEventListener("click", () => {
     state.active = !state.active;
     state.mode = "element";
@@ -388,23 +400,28 @@ export function buildWebAnnotationOverlayScript(configExpression = "window.__pib
   function iconSvg(name) {
     const attrs = "class=\"pibo-wa-icon\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"";
     if (name === "book-a") return "<svg " + attrs + "><path d=\"M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20\"/><path d=\"m8 13 4-7 4 7\"/><path d=\"M9.1 11h5.7\"/></svg>";
-    if (name === "move") return "<svg " + attrs + "><path d=\"M12 2v20\"/><path d=\"m15 19-3 3-3-3\"/><path d=\"m19 9 3 3-3 3\"/><path d=\"M2 12h20\"/><path d=\"m5 9-3 3 3 3\"/><path d=\"m9 5 3-3 3 3\"/></svg>";
     if (name === "arrow-down-to-dot") return "<svg " + attrs + "><path d=\"M12 2v14\"/><path d=\"m19 9-7 7-7-7\"/><circle cx=\"12\" cy=\"21\" r=\"1\"/></svg>";
     if (name === "x") return "<svg " + attrs + "><path d=\"M18 6 6 18\"/><path d=\"m6 6 12 12\"/></svg>";
     return "<svg " + attrs + "><path d=\"M12 20h9\"/><path d=\"M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z\"/></svg>";
   }
 
   function startDrag(event) {
-    event.preventDefault();
+    if (event.button !== undefined && event.button !== 0) return;
     const startX = event.clientX;
     const startY = event.clientY;
     const rect = host.getBoundingClientRect();
     const originLeft = rect.left;
     const originTop = rect.top;
-    if (move.setPointerCapture) move.setPointerCapture(event.pointerId);
+    state.dragMoved = false;
+    if (main.setPointerCapture) main.setPointerCapture(event.pointerId);
     const onMove = (nextEvent) => {
-      const left = Math.max(8, Math.min(window.innerWidth - rect.width - 8, originLeft + nextEvent.clientX - startX));
-      const top = Math.max(8, Math.min(window.innerHeight - rect.height - 8, originTop + nextEvent.clientY - startY));
+      const dx = nextEvent.clientX - startX;
+      const dy = nextEvent.clientY - startY;
+      if (!state.dragMoved && Math.hypot(dx, dy) < 4) return;
+      state.dragMoved = true;
+      nextEvent.preventDefault();
+      const left = Math.max(8, Math.min(window.innerWidth - rect.width - 8, originLeft + dx));
+      const top = Math.max(8, Math.min(window.innerHeight - rect.height - 8, originTop + dy));
       host.style.left = left + "px";
       host.style.top = top + "px";
       host.style.right = "auto";
@@ -413,16 +430,95 @@ export function buildWebAnnotationOverlayScript(configExpression = "window.__pib
     const onUp = () => {
       window.removeEventListener("pointermove", onMove, true);
       window.removeEventListener("pointerup", onUp, true);
+      window.removeEventListener("pointercancel", onUp, true);
     };
     window.addEventListener("pointermove", onMove, true);
     window.addEventListener("pointerup", onUp, true);
+    window.addEventListener("pointercancel", onUp, true);
   }
 
   function updateUi(message) {
+    const title = shortcutTitle("Enable element annotation mode");
+    main.setAttribute("aria-label", title);
+    main.title = title;
+    toggle.title = shortcutTitle("Toggle element annotation mode");
+    toggle.setAttribute("aria-label", shortcutTitle("Toggle element annotation mode"));
     toggle.setAttribute("aria-pressed", state.active && state.mode === "element" ? "true" : "false");
     pin.setAttribute("aria-pressed", state.active && state.mode === "pin" ? "true" : "false");
     outline.style.display = state.active && state.mode === "element" && state.hovered ? "block" : "none";
     status.textContent = message || (state.active ? (state.mode === "pin" ? "Pin mode: click anywhere to mark a point." : "Element mode: hover and click a visible target.") : "Inactive: page clicks and typing pass through normally.");
+  }
+
+  function readStoredShortcut() {
+    try { return window.localStorage && window.localStorage.getItem(shortcutStorageKey); } catch { return ""; }
+  }
+
+  function parseShortcut(value) {
+    const label = String(value || defaultAnnotationShortcut).trim() || defaultAnnotationShortcut;
+    const parts = label.split("+").map((part) => part.trim()).filter(Boolean);
+    const shortcut = { alt: false, ctrl: false, meta: false, shift: false, key: "a", label: defaultAnnotationShortcut };
+    for (const part of parts) {
+      const lower = part.toLowerCase();
+      if (lower === "alt" || lower === "option") shortcut.alt = true;
+      else if (lower === "ctrl" || lower === "control") shortcut.ctrl = true;
+      else if (lower === "cmd" || lower === "command" || lower === "meta") shortcut.meta = true;
+      else if (lower === "shift") shortcut.shift = true;
+      else shortcut.key = normalizeShortcutKey(part);
+    }
+    shortcut.label = shortcutLabel(shortcut);
+    return shortcut;
+  }
+
+  function normalizeShortcutKey(value) {
+    const key = String(value || "a").trim();
+    if (key === " ") return "Space";
+    if (key.length === 1) return key.toLowerCase();
+    return key.toLowerCase() === "space" ? "Space" : key;
+  }
+
+  function shortcutLabel(shortcut) {
+    const parts = [];
+    if (shortcut.ctrl) parts.push("Ctrl");
+    if (shortcut.alt) parts.push("Alt");
+    if (shortcut.shift) parts.push("Shift");
+    if (shortcut.meta) parts.push("Meta");
+    parts.push(shortcut.key.length === 1 ? shortcut.key.toUpperCase() : shortcut.key);
+    return parts.join("+");
+  }
+
+  function shortcutTitle(label) {
+    return label + " (" + state.shortcut.label + ")";
+  }
+
+  function matchesShortcut(event) {
+    const key = normalizeShortcutKey(event.key || "");
+    const expected = String(state.shortcut.key);
+    const keyMatches = key.toLowerCase() === expected.toLowerCase()
+      || (expected.length === 1 && event.code === "Key" + expected.toUpperCase());
+    return keyMatches
+      && Boolean(event.altKey) === state.shortcut.alt
+      && Boolean(event.ctrlKey) === state.shortcut.ctrl
+      && Boolean(event.metaKey) === state.shortcut.meta
+      && Boolean(event.shiftKey) === state.shortcut.shift;
+  }
+
+  function setShortcut(value) {
+    state.shortcut = parseShortcut(value || readStoredShortcut() || defaultAnnotationShortcut);
+    updateUi();
+  }
+
+  function onKeyDown(event) {
+    if (event.defaultPrevented || event.repeat || !matchesShortcut(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    state.active = !(state.active && state.mode === "element");
+    state.mode = "element";
+    closePopup();
+    updateUi(state.active ? "Element annotation mode enabled from shortcut." : "Annotation mode disabled from shortcut.");
+  }
+
+  function onShortcutChanged(event) {
+    setShortcut(event && event.detail && event.detail.shortcut);
   }
 
   function onMouseMove(event) {
@@ -914,6 +1010,8 @@ export function buildWebAnnotationOverlayScript(configExpression = "window.__pib
 
   document.addEventListener("mousemove", onMouseMove, true);
   document.addEventListener("click", onClick, true);
+  document.addEventListener("keydown", onKeyDown, true);
+  window.addEventListener("pibo:web-annotation-shortcut-changed", onShortcutChanged);
   updateUi();
 
   const api = {
@@ -921,10 +1019,13 @@ export function buildWebAnnotationOverlayScript(configExpression = "window.__pib
     injectedAt: new Date().toISOString(),
     setActive(value) { state.active = Boolean(value); updateUi(); },
     setMode(value) { state.mode = value === "pin" ? "pin" : "element"; state.active = true; updateUi(); },
-    getState() { return { active: state.active, mode: state.mode, submissions: state.submissions.slice(), lastError: state.lastError }; },
+    setShortcut(value) { setShortcut(value); },
+    getState() { return { active: state.active, mode: state.mode, shortcut: state.shortcut.label, submissions: state.submissions.slice(), lastError: state.lastError }; },
     remove() {
       document.removeEventListener("mousemove", onMouseMove, true);
       document.removeEventListener("click", onClick, true);
+      document.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("pibo:web-annotation-shortcut-changed", onShortcutChanged);
       if (state.pendingFrame) cancelAnimationFrame(state.pendingFrame);
       closePopup();
       outline.remove();

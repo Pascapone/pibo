@@ -47,7 +47,7 @@ import {
 	type PiboModelDefaults,
 } from "../../core/model-defaults.js";
 import { inspectPiboContextBuild } from "../../core/context-build.js";
-import { loadPiboUserSettings, sanitizeTimezone, updatePiboUserSettings } from "../../core/user-settings.js";
+import { loadPiboUserSettings, sanitizeShortcutSettings, sanitizeTimezone, updatePiboUserSettings } from "../../core/user-settings.js";
 import { loadModelCatalog } from "./model-catalog.js";
 import type { ModelProfile } from "../../core/profiles.js";
 import { isPiboThinkingLevel, type PiboThinkingLevel } from "../../core/thinking.js";
@@ -1708,6 +1708,7 @@ type ChatModelDefaultsBody = {
 
 type ChatUserSettingsBody = {
 	timezone?: unknown;
+	shortcuts?: unknown;
 };
 
 type ChatMessageBody = {
@@ -9852,9 +9853,14 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				requireSameOriginJsonRequest(request);
 				const webSession = await requireSession(request, context);
 				const body = await readJsonBody<ChatUserSettingsBody>(request);
-				const timezone = sanitizeTimezone(body.timezone);
-				if (!timezone) throw new PiboWebHttpError("Invalid timezone", 400);
-				return responseJson({ userSettings: updatePiboUserSettings(webSession.ownerScope, { timezone }) });
+				const patch: Parameters<typeof updatePiboUserSettings>[1] = {};
+				if (body.timezone !== undefined) {
+					const timezone = sanitizeTimezone(body.timezone);
+					if (!timezone) throw new PiboWebHttpError("Invalid timezone", 400);
+					patch.timezone = timezone;
+				}
+				if (body.shortcuts !== undefined) patch.shortcuts = sanitizeShortcutSettings(body.shortcuts);
+				return responseJson({ userSettings: updatePiboUserSettings(webSession.ownerScope, patch) });
 			}
 
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/pi-packages` && request.method === "GET") {

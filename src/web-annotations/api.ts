@@ -32,12 +32,14 @@ type BindingBody = {
 	targetId?: string;
 	cdpUrl?: string;
 	sameOrigin?: boolean;
+	annotationShortcut?: string;
 };
 
 type InjectBody = {
 	piboSessionId?: string;
 	piboRoomId?: string;
 	cdpUrl?: string;
+	annotationShortcut?: string;
 };
 
 type OverlaySubmissionBody = {
@@ -79,6 +81,7 @@ function createSameOriginBinding(store: WebAnnotationStore, request: Request, co
 		overlay: {
 			bindingId: binding.id,
 			bindingToken,
+			annotationShortcut: optionalBodyString(body.annotationShortcut, 80, false),
 		},
 	};
 }
@@ -196,7 +199,7 @@ export function createWebAnnotationsWebApp(options: WebAnnotationsWebAppOptions 
 						const body = await readJsonBody<InjectBody>(request);
 						const bindingContext = resolveBindingContext(context, webSession, body);
 						const service = serviceForRequest(baseService, body.cdpUrl, request, store, options);
-						const result = await service.injectBinding(bindingContext, bindingResource.id);
+						const result = await service.injectBinding(bindingContext, bindingResource.id, { annotationShortcut: optionalBodyString(body.annotationShortcut, 80, false) });
 						return responseJson({ ok: true, ...result });
 					}
 					if (request.method === "POST" && bindingResource.action === "stop") {

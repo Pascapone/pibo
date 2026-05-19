@@ -40,6 +40,7 @@ export type WebAnnotationOverlayConfig = {
 	bindingId: string;
 	bindingToken: string;
 	apiBaseUrl?: string;
+	annotationShortcut?: string;
 };
 
 export type WebAnnotationBindingResponse = {
@@ -159,6 +160,9 @@ export type CompactionPromptMode = "library" | "custom";
 
 export type UserSettings = {
 	timezone: string;
+	shortcuts: {
+		webAnnotationsToggle: string;
+	};
 };
 
 export type CompactionPromptSnapshot = {
@@ -1271,7 +1275,7 @@ export async function getUserSettings(): Promise<UserSettings> {
 	return (await requestJson<{ userSettings: UserSettings }>("/api/chat/user-settings")).userSettings;
 }
 
-export async function patchUserSettings(input: UserSettings): Promise<UserSettings> {
+export async function patchUserSettings(input: Partial<UserSettings>): Promise<UserSettings> {
 	return (await requestJson<{ userSettings: UserSettings }>("/api/chat/user-settings", {
 		method: "PATCH",
 		headers: { "content-type": "application/json" },
@@ -1466,6 +1470,7 @@ export async function createWebAnnotationBinding(input: {
 	targetId?: string;
 	cdpUrl?: string;
 	sameOrigin?: boolean;
+	annotationShortcut?: string;
 }): Promise<WebAnnotationBindingResponse> {
 	return requestJson<WebAnnotationBindingResponse>("/api/web-annotations/bindings", {
 		method: "POST",
@@ -1478,6 +1483,7 @@ export async function injectWebAnnotationBinding(bindingId: string, input: {
 	piboSessionId: string;
 	piboRoomId?: string;
 	cdpUrl?: string;
+	annotationShortcut?: string;
 }): Promise<WebAnnotationBindingResponse> {
 	return requestJson<WebAnnotationBindingResponse>(`/api/web-annotations/bindings/${encodeURIComponent(bindingId)}/inject`, {
 		method: "POST",

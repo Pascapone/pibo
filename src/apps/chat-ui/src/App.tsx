@@ -6,6 +6,7 @@ import {
 	Archive,
 	ArchiveRestore,
 	AlertTriangle,
+	BookA,
 	BookOpenText,
 	Brain,
 	Bug,
@@ -22,6 +23,7 @@ import {
 	ExternalLink,
 	FolderPlus,
 	Key,
+	Keyboard,
 	Layers,
 	Loader2,
 	Lock,
@@ -44,7 +46,7 @@ import {
 	Wrench,
 	X,
 } from "lucide-react";
-import { createUserSkill, createWebAnnotationBinding, deleteCustomAgent, deletePiPackage, deleteProject, deleteRoom, deleteSession, deleteUserSkill, fetchSignalTree, downloadChatFile, getBootstrap, getNavigation, getProjectsBootstrap, getSessionPage, getTrace, getTraceSummary, getUserSettings, getUserSkill, getWorkflowVersionPicker, injectWebAnnotationBinding, installUserSkill, listUserSkills, listWebAnnotations, listWebAnnotationTargets, markRoomRead, markSessionRead, patchCustomAgent, patchModelDefaults, patchPiPackage, patchProject, patchProjectSession, patchRoom, patchSession, patchUserSettings, patchWebAnnotation, postAction, postContextFile, postCustomAgent, postMessage, postPiPackage, postProject, postProjectMessage, postProjectSession, postProjectWorkflowSession, postProjectWorkflowSessionStart, postRoom, postSession, signInWithGoogle, signOut, subscribeSignalTree, updateUserSkill, uploadChatFiles, type ChatUploadedFile, type SaveCustomAgentInput, type UserSettings, type WebAnnotationBindingResponse, type WebAnnotationMessageAttachment, type WebAnnotationOverlayConfig, type WebAnnotationTargetSummary, type WorkflowVersionPickerOption } from "./api";
+import { createUserSkill, createWebAnnotationBinding, deleteCustomAgent, deletePiPackage, deleteProject, deleteRoom, deleteSession, deleteUserSkill, fetchSignalTree, downloadChatFile, getBootstrap, getNavigation, getProjectsBootstrap, getSessionPage, getTrace, getTraceSummary, getUserSettings, getUserSkill, getWorkflowVersionPicker, injectWebAnnotationBinding, installUserSkill, listUserSkills, listWebAnnotations, listWebAnnotationTargets, markRoomRead, markSessionRead, patchCustomAgent, patchModelDefaults, patchPiPackage, patchProject, patchProjectSession, patchRoom, patchSession, patchUserSettings, patchWebAnnotation, postAction, postContextFile, postCustomAgent, postMessage, postPiPackage, postProject, postProjectMessage, postProjectSession, postProjectWorkflowSession, postProjectWorkflowSessionStart, postRoom, postSession, signInWithGoogle, signOut, subscribeSignalTree, updateUserSkill, uploadChatFiles, type ChatUploadedFile, type SaveCustomAgentInput, type WebAnnotationBindingResponse, type WebAnnotationMessageAttachment, type WebAnnotationOverlayConfig, type WebAnnotationTargetSummary, type WorkflowVersionPickerOption } from "./api";
 import { THINKING_LEVELS } from "./types";
 import type { AgentCatalog, BootstrapData, CustomAgent, CustomAgentSubagent, ModelCatalog, ModelDefaults, ModelProfile, NavigationData, PiboProject, PiboProjectSession, ProjectsBootstrapData, PiboRoom, PiboSession, PiboSessionTraceSummary, PiboSessionTraceView, PiboSignalPatch, PiboSignalSnapshot, PiboTraceNode, PiboTraceOrderKey, PiboWebSessionNode, PiboWebSessionStatus, ThinkingLevel, UserSkill, WorkflowLifecycleEventRecord } from "./types";
 import type { ChatWebStoredEvent } from "../../../shared/trace-types.js";
@@ -82,7 +84,7 @@ import {
 
 type Area = "sessions" | "projects" | "workflows" | "cron" | "ralph" | "agents" | "context" | "settings";
 type ContextPanel = "context-files" | "base-prompt" | "compaction-prompt" | "pibo-tools" | "mcp-tools" | "build-context";
-type SettingsPanel = "general" | "pi-packages" | "skills" | "providers";
+type SettingsPanel = "general" | "shortcuts" | "pi-packages" | "skills" | "providers";
 
 export type ChatAppRoute =
 	| { area: "sessions"; roomId?: string; piboSessionId?: string; sessionViewId?: ChatSessionViewId }
@@ -128,6 +130,8 @@ const COMPOSER_HISTORY_STORAGE_KEY = "pibo.chat.composerHistory";
 const WEB_ANNOTATIONS_CDP_URL_STORAGE_KEY = "pibo.chat.webAnnotations.cdpUrl";
 const WEB_ANNOTATIONS_SELECTED_STORAGE_PREFIX = "pibo.chat.webAnnotations.selected.";
 const WEB_ANNOTATIONS_PANEL_COLLAPSED_STORAGE_KEY = "pibo.chat.webAnnotations.panelCollapsed";
+const WEB_ANNOTATIONS_TOGGLE_SHORTCUT_STORAGE_KEY = "pibo.chat.shortcuts.webAnnotationsToggle";
+const DEFAULT_WEB_ANNOTATIONS_TOGGLE_SHORTCUT = "Alt+Shift+A";
 const COMPOSER_HISTORY_LIMIT = 100;
 const SESSION_DELETE_CONFIRM_TEXT = "Delete this session";
 const RECENT_SESSION_ACTIVITY_SIGNAL_MS = 3_000;
@@ -496,7 +500,9 @@ export function App({ route }: { route: ChatAppRoute }) {
 				return;
 			}
 			if (target.area === "settings") {
-				if (target.panel === "pi-packages") {
+				if (target.panel === "shortcuts") {
+					void navigate({ to: "/settings/shortcuts", replace });
+				} else if (target.panel === "pi-packages") {
 					void navigate({ to: "/settings/pi-packages", replace });
 				} else if (target.panel === "skills") {
 					void navigate({ to: "/settings/skills", replace });
@@ -5408,7 +5414,7 @@ function WebAnnotationsEntryPoints({
 
 	const injectCreatedBinding = async (result: WebAnnotationBindingResponse) => {
 		if (!piboSessionId) throw new Error("No active session context");
-		return injectWebAnnotationBinding(result.binding.id, compactWebAnnotationRequest({ piboSessionId, piboRoomId, cdpUrl }));
+		return injectWebAnnotationBinding(result.binding.id, compactWebAnnotationRequest({ piboSessionId, piboRoomId, cdpUrl, annotationShortcut: readStoredWebAnnotationToggleShortcut() }));
 	};
 
 	const startCurrentPageAnnotation = async () => {
@@ -5423,6 +5429,7 @@ function WebAnnotationsEntryPoints({
 				url: window.location.href,
 				title: document.title,
 				sameOrigin: true,
+				annotationShortcut: readStoredWebAnnotationToggleShortcut(),
 			});
 			if (!binding.overlay) throw new Error("Overlay config missing from same-origin binding response");
 			await installSameOriginWebAnnotationOverlay(binding.overlay);
@@ -5499,7 +5506,7 @@ function WebAnnotationsEntryPoints({
 				ariaLabel="Web Annotations"
 				active={open || panelVisible}
 			>
-				<Bug size={14} />
+				<BookA size={14} />
 			</HeaderIconButton>
 			{open && !disabled ? (
 				<div className="absolute right-0 top-full z-40 mt-2 w-[min(420px,calc(100vw-24px))] rounded-sm border border-slate-700 bg-[#0e1116] p-3 text-sm shadow-xl" role="dialog" aria-label="Web Annotations">
@@ -5628,6 +5635,38 @@ function writeStoredWebAnnotationsCdpUrl(value: string): void {
 	}
 }
 
+function readStoredWebAnnotationToggleShortcut(): string {
+	try {
+		return localStorage.getItem(WEB_ANNOTATIONS_TOGGLE_SHORTCUT_STORAGE_KEY) || DEFAULT_WEB_ANNOTATIONS_TOGGLE_SHORTCUT;
+	} catch {
+		return DEFAULT_WEB_ANNOTATIONS_TOGGLE_SHORTCUT;
+	}
+}
+
+function writeStoredWebAnnotationToggleShortcut(value: string): void {
+	const shortcut = normalizeShortcutLabel(value) || DEFAULT_WEB_ANNOTATIONS_TOGGLE_SHORTCUT;
+	try {
+		localStorage.setItem(WEB_ANNOTATIONS_TOGGLE_SHORTCUT_STORAGE_KEY, shortcut);
+	} catch {
+		// Ignore storage errors in private windows or locked-down browser contexts.
+	}
+}
+
+function notifyWebAnnotationShortcutChanged(shortcut: string): void {
+	const targetWindow = window as typeof window & {
+		__piboWebAnnotations?: { setShortcut?: (value: string) => void };
+	};
+	targetWindow.__piboWebAnnotations?.setShortcut?.(shortcut);
+	try {
+		window.dispatchEvent(new CustomEvent("pibo:web-annotation-shortcut-changed", { detail: { shortcut } }));
+	} catch {
+		// CustomEvent can be unavailable in very old embedded browser contexts.
+	}
+}
+
+function normalizeShortcutLabel(value: string): string {
+	return value.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 80);
+}
 function readStoredSelectedWebAnnotationIds(piboSessionId: string): string[] {
 	try {
 		const raw = localStorage.getItem(WEB_ANNOTATIONS_SELECTED_STORAGE_PREFIX + piboSessionId);
@@ -7175,6 +7214,21 @@ function SettingsSidebar({
 				</button>
 				<button
 					type="button"
+					onClick={() => onSelect("shortcuts")}
+					className={`mb-1 flex w-full items-center gap-2 border p-2 text-left ${
+						activePanel === "shortcuts"
+							? "border-[#11a4d4] bg-[#11a4d4]/10"
+							: "border-slate-800 bg-[#151f24] hover:border-slate-700"
+					}`}
+				>
+					<Keyboard size={13} className="text-[#11a4d4]" />
+					<div className="min-w-0">
+						<span className="block truncate text-sm text-slate-200">Shortcuts</span>
+						<span className="block truncate font-mono text-[10px] text-slate-500">keyboard</span>
+					</div>
+				</button>
+				<button
+					type="button"
 					onClick={() => onSelect("pi-packages")}
 					className={`mb-1 flex w-full items-center gap-2 border p-2 text-left ${
 						activePanel === "pi-packages"
@@ -8009,6 +8063,18 @@ function SettingsView({
 		);
 	}
 
+	if (activePanel === "shortcuts") {
+		return (
+			<div className="p-6 overflow-auto">
+				<h1 className="text-sm font-bold uppercase tracking-wider mb-4 flex items-center gap-2">
+					<Keyboard size={16} />
+					Shortcuts
+				</h1>
+				<ShortcutsSettings />
+			</div>
+		);
+	}
+
 	return (
 		<div className="p-6 overflow-auto">
 			<h1 className="text-sm font-bold uppercase tracking-wider mb-4 flex items-center gap-2">
@@ -8094,7 +8160,7 @@ function UserTimezoneSettings() {
 		setSaving(true);
 		setError(null);
 		try {
-			const saved = await patchUserSettings({ timezone } satisfies UserSettings);
+			const saved = await patchUserSettings({ timezone });
 			setDraft(saved.timezone);
 			queryClient.setQueryData(["user-settings"], saved);
 		} catch (err) {
@@ -8128,6 +8194,91 @@ function UserTimezoneSettings() {
 			{error ? <div className="mt-2 text-xs text-red-300">{error}</div> : null}
 		</div>
 	);
+}
+
+function ShortcutsSettings() {
+	const queryClient = useQueryClient();
+	const { data, isLoading } = useQuery({ queryKey: ["user-settings"], queryFn: getUserSettings });
+	const [draft, setDraft] = useState(DEFAULT_WEB_ANNOTATIONS_TOGGLE_SHORTCUT);
+	const [recording, setRecording] = useState(false);
+	const [saving, setSaving] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+
+	useEffect(() => {
+		const shortcut = data?.shortcuts?.webAnnotationsToggle || readStoredWebAnnotationToggleShortcut();
+		setDraft(shortcut);
+		writeStoredWebAnnotationToggleShortcut(shortcut);
+		notifyWebAnnotationShortcutChanged(shortcut);
+	}, [data?.shortcuts?.webAnnotationsToggle]);
+
+	const save = async (shortcut: string) => {
+		const normalized = normalizeShortcutLabel(shortcut) || DEFAULT_WEB_ANNOTATIONS_TOGGLE_SHORTCUT;
+		setDraft(normalized);
+		setSaving(true);
+		setError(null);
+		try {
+			const saved = await patchUserSettings({ shortcuts: { webAnnotationsToggle: normalized } });
+			queryClient.setQueryData(["user-settings"], saved);
+			writeStoredWebAnnotationToggleShortcut(saved.shortcuts.webAnnotationsToggle);
+			notifyWebAnnotationShortcutChanged(saved.shortcuts.webAnnotationsToggle);
+		} catch (err) {
+			setError(err instanceof Error ? err.message : String(err));
+		} finally {
+			setSaving(false);
+		}
+	};
+
+	return (
+		<DesignerPanel title="Shortcuts">
+			<div className="grid max-w-2xl gap-3 rounded-sm border border-slate-800 bg-[#151f24] p-3">
+				<div className="flex flex-wrap items-center justify-between gap-3">
+					<div>
+						<div className="flex items-center gap-2 text-sm font-semibold text-slate-200"><BookA size={15} /> Toggle annotation mode</div>
+						<div className="mt-1 text-xs text-slate-500">Toggles the Web Annotation element mode with the pencil button.</div>
+					</div>
+					<kbd className="rounded-sm border border-slate-700 bg-[#0e1116] px-2 py-1 font-mono text-xs text-[#7dd3fc]">{draft}</kbd>
+				</div>
+				<div className="flex flex-wrap items-center gap-2">
+					<button
+						type="button"
+						disabled={isLoading || saving}
+						aria-pressed={recording}
+						onClick={() => setRecording((current) => !current)}
+						onKeyDown={(event) => {
+							if (!recording) return;
+							const shortcut = shortcutFromKeyboardEvent(event);
+							if (!shortcut) return;
+							event.preventDefault();
+							event.stopPropagation();
+							setRecording(false);
+							void save(shortcut);
+						}}
+						className={`rounded-sm border px-3 py-2 text-xs font-medium ${recording ? "border-[#11a4d4] bg-[#11a4d4]/10 text-sky-100" : "border-slate-700 text-slate-300 hover:border-[#11a4d4] hover:text-[#7dd3fc]"} disabled:opacity-50`}
+					>
+						{recording ? "Press shortcut…" : "Record shortcut"}
+					</button>
+					<button type="button" disabled={saving || draft === DEFAULT_WEB_ANNOTATIONS_TOGGLE_SHORTCUT} onClick={() => void save(DEFAULT_WEB_ANNOTATIONS_TOGGLE_SHORTCUT)} className="rounded-sm border border-slate-700 px-3 py-2 text-xs text-slate-300 hover:border-[#11a4d4] hover:text-[#7dd3fc] disabled:opacity-50">
+						Reset
+					</button>
+					{saving ? <span className="text-xs text-slate-400">Saving…</span> : null}
+				</div>
+				<div className="text-[11px] text-slate-500">Default: {DEFAULT_WEB_ANNOTATIONS_TOGGLE_SHORTCUT}. Use a modifier combination to avoid conflicts with normal typing.</div>
+				{error ? <div className="text-xs text-red-300">{error}</div> : null}
+			</div>
+		</DesignerPanel>
+	);
+}
+
+function shortcutFromKeyboardEvent(event: { key: string; code?: string; altKey: boolean; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean }): string | null {
+	if (["Alt", "Control", "Meta", "Shift"].includes(event.key)) return null;
+	const key = event.code?.match(/^Key[A-Z]$/) ? event.code.slice(3) : event.key === " " ? "Space" : event.key.length === 1 ? event.key.toUpperCase() : event.key;
+	const parts = [];
+	if (event.ctrlKey) parts.push("Ctrl");
+	if (event.altKey) parts.push("Alt");
+	if (event.shiftKey) parts.push("Shift");
+	if (event.metaKey) parts.push("Meta");
+	parts.push(key);
+	return parts.join("+");
 }
 
 function buildTimezoneOptions(currentTimezone: string | undefined): Array<{ value: string; label: string }> {

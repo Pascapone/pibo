@@ -4,10 +4,16 @@ import { piboHomePath } from "./pibo-home.js";
 import { sanitizeTelemetryStaleThresholdSettings, type TelemetryStaleThresholdSettings } from "./telemetry-staleness.js";
 
 export const DEFAULT_USER_TIMEZONE = "UTC";
+export const DEFAULT_WEB_ANNOTATIONS_TOGGLE_SHORTCUT = "Alt+Shift+A";
 export const DEFAULT_PIBO_USER_SETTINGS_PATH = "user-settings.json";
+
+export type PiboShortcutSettings = {
+	webAnnotationsToggle: string;
+};
 
 export type PiboUserSettings = {
 	timezone: string;
+	shortcuts: PiboShortcutSettings;
 	telemetryStaleThresholds: TelemetryStaleThresholdSettings;
 };
 
@@ -28,6 +34,19 @@ export function updatePiboUserSettings(ownerScope: string, patch: Partial<PiboUs
 	return next;
 }
 
+export function sanitizeShortcutSettings(value: unknown): PiboShortcutSettings {
+	const raw = value && typeof value === "object" && !Array.isArray(value)
+		? value as Record<string, unknown>
+		: {};
+	return { webAnnotationsToggle: sanitizeShortcut(raw.webAnnotationsToggle) ?? DEFAULT_WEB_ANNOTATIONS_TOGGLE_SHORTCUT };
+}
+
+export function sanitizeShortcut(value: unknown): string | undefined {
+	if (typeof value !== "string") return undefined;
+	const shortcut = value.replace(/[\u0000-\u001f\u007f]/g, "").trim();
+	return shortcut && shortcut.length <= 80 ? shortcut : undefined;
+}
+
 export function sanitizeTimezone(value: unknown): string | undefined {
 	if (typeof value !== "string") return undefined;
 	const timezone = value.trim();
@@ -46,6 +65,7 @@ function sanitizeUserSettings(value: unknown): PiboUserSettings {
 		: {};
 	return {
 		timezone: sanitizeTimezone(raw.timezone) ?? DEFAULT_USER_TIMEZONE,
+		shortcuts: sanitizeShortcutSettings(raw.shortcuts),
 		telemetryStaleThresholds: sanitizeTelemetryStaleThresholdSettings(raw.telemetryStaleThresholds),
 	};
 }

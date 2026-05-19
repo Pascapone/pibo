@@ -41,6 +41,7 @@ function chatRouteFromLocation(pathname: string, search: Record<string, unknown>
 	if (parts[0] === "cron") return { area: "cron" };
 	if (parts[0] === "ralph") return { area: "ralph" };
 	if (parts[0] === "settings") {
+		if (parts[1] === "shortcuts") return { area: "settings", panel: "shortcuts" };
 		if (parts[1] === "pi-packages") return { area: "settings", panel: "pi-packages" };
 		if (parts[1] === "skills") return { area: "settings", panel: "skills" };
 		if (parts[1] === "providers") return { area: "settings", panel: "providers" };
@@ -122,6 +123,10 @@ const settingsRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "settings",
 });
+const settingsShortcutsRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "settings/shortcuts",
+});
 const settingsPiPackagesRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "settings/pi-packages",
@@ -135,7 +140,7 @@ const settingsProvidersRoute = createRoute({
 	path: "settings/providers",
 });
 const router = createRouter({
-	routeTree: rootRoute.addChildren([indexRoute, sessionRoute, roomRoute, roomSessionRoute, projectsRoute, projectRoute, projectSessionRoute, workflowsRoute, workflowDraftRoute, workflowViewRoute, agentsRoute, cronRoute, ralphRoute, contextRoute, settingsRoute, settingsPiPackagesRoute, settingsSkillsRoute, settingsProvidersRoute]),
+	routeTree: rootRoute.addChildren([indexRoute, sessionRoute, roomRoute, roomSessionRoute, projectsRoute, projectRoute, projectSessionRoute, workflowsRoute, workflowDraftRoute, workflowViewRoute, agentsRoute, cronRoute, ralphRoute, contextRoute, settingsRoute, settingsShortcutsRoute, settingsPiPackagesRoute, settingsSkillsRoute, settingsProvidersRoute]),
 	basepath: "/apps/chat",
 });
 
