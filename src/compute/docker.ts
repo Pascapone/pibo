@@ -531,6 +531,7 @@ export interface WorkerInfo {
 	status: string;
 	ports: string;
 	portMap: Record<string, string>;
+	hostPid?: number;
 	createdAt: string;
 	lastUsedAt?: string;
 	ownerScope?: string;
@@ -585,7 +586,7 @@ interface DockerInspectContainer {
 	Name?: string;
 	Created?: string;
 	Config?: { Labels?: Record<string, string> | null };
-	State?: { Status?: string; Running?: boolean; OOMKilled?: boolean; Dead?: boolean; ExitCode?: number; StartedAt?: string; FinishedAt?: string };
+	State?: { Status?: string; Running?: boolean; OOMKilled?: boolean; Dead?: boolean; ExitCode?: number; StartedAt?: string; FinishedAt?: string; Pid?: number };
 	HostConfig?: { Memory?: number; MemorySwap?: number; PidsLimit?: number; ShmSize?: number; RestartPolicy?: { Name?: string }; LogConfig?: { Type?: string; Config?: Record<string, string> } };
 	NetworkSettings?: { Ports?: Record<string, Array<{ HostIp?: string; HostPort?: string }> | null> | null };
 }
@@ -666,7 +667,7 @@ function cleanupEligibilityForWorker(worker: Pick<WorkerInfo, "role" | "state" |
 	};
 }
 
-function workerFromLabels(base: { id: string; name: string; state: string; status: string; ports: string; labels: Record<string, string>; fallbackRole?: string; oomKilled?: boolean; exitCode?: number }): WorkerInfo {
+function workerFromLabels(base: { id: string; name: string; state: string; status: string; ports: string; labels: Record<string, string>; fallbackRole?: string; oomKilled?: boolean; exitCode?: number; hostPid?: number }): WorkerInfo {
 	const role = base.labels[LABEL_ROLE] ?? base.fallbackRole ?? "unknown";
 	const portMap = portMapFromLabels(base.labels);
 	const worker: WorkerInfo = {
@@ -677,6 +678,7 @@ function workerFromLabels(base: { id: string; name: string; state: string; statu
 		status: base.status ?? "",
 		ports: base.ports ?? "",
 		portMap,
+		hostPid: base.hostPid,
 		createdAt: base.labels[LABEL_CREATED_AT] ?? "unknown",
 		lastUsedAt: base.labels[LABEL_LAST_USED_AT],
 		ownerScope: base.labels[LABEL_OWNER_SCOPE] ?? base.labels[LABEL_OWNER],
@@ -733,6 +735,7 @@ export function parseDockerWorkerInspect(value: DockerInspectContainer, fallback
 		fallbackRole: role,
 		oomKilled: value.State?.OOMKilled,
 		exitCode: value.State?.ExitCode,
+		hostPid: value.State?.Pid,
 	});
 	worker.portMap = portMap;
 	if (value.Created && worker.createdAt === "unknown") worker.createdAt = value.Created;

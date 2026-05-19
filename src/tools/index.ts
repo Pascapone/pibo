@@ -210,6 +210,14 @@ function parsePositiveInteger(value: string): number {
   return parsed;
 }
 
+function parseNonNegativeInteger(value: string): number {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new Error(`Expected a non-negative integer, got "${value}"`);
+  }
+  return parsed;
+}
+
 function printBrowserUseDiscovery(): void {
   console.log(`pibo tools browser-use - browser-use helpers
 
@@ -361,7 +369,21 @@ async function getBrowserPoolReap(status: CliToolStatus, options: BrowserPoolRea
   const identity = getBrowserPoolStatusIdentity(options);
   const rootDir = getBrowserPoolRoot(status, options);
   const paths = browserPoolPaths(rootDir, identity);
-  const result = await reapIdleBrowserPool(paths, identity, { idleTimeoutMs: options.idleTimeoutMs });
+  const missingState = !existsSync(paths.statePath);
+  const result = missingState
+    ? {
+      reaped: false,
+      eligible: false,
+      reason: 'Browser pool has no recorded browser to reap',
+      affectedLeases: 0,
+      affectedBrowserPools: 0,
+      terminatedProcessTrees: 0,
+      staleStateFiles: 0,
+      cleanupStatus: 'skipped' as const,
+      lastError: 'Browser pool has no recorded browser to reap',
+      state: createEmptyBrowserPoolState(identity),
+    }
+    : await reapIdleBrowserPool(paths, identity, { idleTimeoutMs: options.idleTimeoutMs });
   return {
     rootDir,
     statePath: paths.statePath,
@@ -733,7 +755,7 @@ Commands:
     .option('--worker-id <id>', 'Worker id to inspect')
     .option('--pool-id <id>', 'Browser pool id to inspect')
     .option('--root <path>', 'Browser pool root directory')
-    .option('--idle-timeout-ms <ms>', 'Idle timeout in milliseconds', parsePositiveInteger)
+    .option('--idle-timeout-ms <ms>', 'Idle timeout in milliseconds (0 means immediately eligible)', parseNonNegativeInteger)
     .option('--json', 'Print machine-readable reap result')
     .action(async (options: BrowserPoolReapOptions) => {
       await printBrowserPoolReap(getCliToolStatus(requireEntry('browser-use')), options);

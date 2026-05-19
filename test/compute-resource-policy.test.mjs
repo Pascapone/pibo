@@ -268,8 +268,14 @@ test('compute list text output has empty state guidance and all-state columns', 
 	const text = renderComputeWorkerListText([worker], { all: true });
 	assert.match(text, /NAME\tROLE\tSTATE\tSTATUS\tOOM\tPORTS/);
 	assert.match(text, /pibo-worker-running\tworker\texited\texited \(137\)\tyes/);
+	assert.match(text, /gw=4830/);
+	assert.doesNotMatch(text, /0\.0\.0\.0:4830->4789\/tcp/);
+	assert.match(text, /pibo compute list --all --verbose/);
 	assert.match(text, /mem=2g,pids=512,shm=512m/);
 	assert.match(text, /eligible:oom-killed\+stopped/);
+
+	const verbose = renderComputeWorkerListText([worker], { all: true, verbose: true });
+	assert.match(verbose, /4789\/tcp=0\.0\.0\.0:4830/);
 });
 
 function workerFixture(name, overrides = {}) {
@@ -300,6 +306,8 @@ test('compute reap dry-run plans selected and skipped workers with worktree pres
 	const text = renderComputeReapPlanText(plan);
 	assert.match(text, /Compute reap dry-run: 1 selected/);
 	assert.match(text, /Dry-run only/);
+	assert.match(text, /Apply equivalent plan with: pibo compute reap --apply --max-age-minutes 59/);
+	assert.match(text, /Review equivalent dry-run with: pibo compute reap --dry-run --max-age-minutes 59/);
 	assert.match(text, /Worktrees are preserved/);
 });
 
@@ -316,6 +324,9 @@ test('compute reap include-dev, dirty, and max-age selectors choose expected con
 		['pibo-worker-oom', 'remove', ['stopped', 'oom-killed']],
 	]);
 	assert.equal(plan.summary.worktreesPreserved, 1);
+	const text = renderComputeReapPlanText(plan);
+	assert.match(text, /WARNING: --include-dev selected dev workers/);
+	assert.match(text, /--apply --max-age-minutes 60 --include-dev/);
 });
 
 test('compute reap apply removes only selected containers and never deletes worktrees', async () => {
@@ -511,6 +522,7 @@ test('compute resource health warns on browser main-process leaks and active lea
 		'101 1 101 chromium /usr/bin/chromium --user-data-dir=/tmp/pibo-profile-a --remote-debugging-port=9222',
 		'102 1 102 google-chrome /usr/bin/google-chrome --user-data-dir=/tmp/pibo-profile-a --remote-debugging-port=9223',
 		'103 101 101 chromium /usr/bin/chromium --type=renderer --user-data-dir=/tmp/pibo-profile-a',
+		'104 201 104 chromium /usr/bin/chromium --user-data-dir=/tmp/unmanaged-profile --remote-debugging-port=9333 --token=secret',
 	].join('\n'));
 	const health = buildComputeResourceHealth({
 		workers: [],
@@ -522,12 +534,19 @@ test('compute resource health warns on browser main-process leaks and active lea
 	});
 
 	assert.equal(health.severity, 'warning');
-	assert.equal(health.browserProcesses.totalChromiumProcesses, 3);
-	assert.equal(health.browserProcesses.totalChromiumMainProcesses, 2);
+	assert.equal(health.browserProcesses.totalChromiumProcesses, 4);
+	assert.equal(health.browserProcesses.totalChromiumMainProcesses, 3);
 	assert.equal(health.browserProcesses.perWorker[0].browserMainProcessCount, 2);
+	assert.equal(health.browserProcesses.unassignedChromiumMainProcesses, 1);
+	assert.equal(health.browserProcesses.unassignedMainProcessDetails[0].pid, 104);
+	assert.equal(health.browserProcesses.unassignedMainProcessDetails[0].userDataDir, '/tmp/unmanaged-profile');
+	assert.match(health.browserProcesses.unassignedMainProcessDetails[0].argsPreview, /token=<redacted>/);
 	assert.equal(health.browserLeases.active, 1);
-	assert.ok(health.checks.some((check) => check.id === 'browser-leak'));
+	assert.ok(health.checks.some((check) => check.id === 'browser-leak' && /unmanaged Chromium/.test(check.message)));
 	assert.ok(health.checks.some((check) => check.id === 'stale-cdp-files'));
+	const text = renderComputeResourceHealthText(health);
+	assert.match(text, /Unmanaged browser main processes: 1/);
+	assert.match(text, /104\t-\t\/tmp\/unmanaged-profile\tchromium/);
 });
 
 test('compute resource health reports dirty workers and OOM containers with cleanup commands', () => {
