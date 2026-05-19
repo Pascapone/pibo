@@ -1,0 +1,98 @@
+flowchart TD
+  U["User types in Composer textarea"] --> C1["Composer.submit"]
+  C1 --> C2{"Text starts with / ?"}
+
+  C2 -->|yes| A1["postAction: POST /api/chat/action"]
+  A1 --> G0["WebHostChannel HTTP gateway"]
+  G0 --> RAction["PiboSessionRouter.emit execution"]
+  RAction --> RSAction["RoutedSession.executeAction"]
+  RSAction --> GA["GatewayAction.execute"]
+  GA --> OUT0["execution_result"]
+
+  C2 -->|no| C3["handleComposerSend"]
+  C3 --> C4["Optimistic message_queued in UI"]
+  C4 --> C5["postMessage: POST /api/chat/message"]
+
+  C5 --> WH["WebHostChannel.handleRequest"]
+  WH --> AUTH["requireWebSession / auth"]
+  AUTH --> APP["ChatWebApp.handleRequest"]
+  APP --> IDX["ensureEventIndexing subscribes to Router"]
+  IDX --> MSG["sendChatMessage"]
+
+  MSG --> S1["Normalize text, clientTxnId, roomId"]
+  S1 --> S2["resolveRequestedSession + ensureSessionRoom"]
+  S2 --> S3{"Duplicate clientTxnId?"}
+  S3 -->|yes| DUP["Return duplicate event"]
+  S3 -->|no| S4["Prepare web annotations"]
+  S4 --> S5["Prepare file attachments"]
+
+  S5 --> DB1[("pibo.sqlite: event_log")]
+  S5 --> DB2[("pibo.sqlite: chat_messages, sessions, navigation")]
+  S5 --> LIVE1["Notify Chat liveListeners"]
+  S5 --> EMIT["channelContext.emit message"]
+
+  EMIT --> ROUTER["PiboSessionRouter.emit"]
+  ROUTER --> R1["getOrCreateSession"]
+  R1 --> R2{"RoutedSession exists?"}
+  R2 -->|no| CR["createRoutedSession"]
+  CR --> PROF["pluginRegistry.createProfile"]
+  PROF --> RT["createPiboRuntime"]
+  RT --> SM["Pi SessionManager open/create JSONL"]
+  RT --> SV["createAgentSessionServices"]
+  SV --> CF["Load context files, skills, tools, extensions"]
+  CF --> AS["createAgentSessionFromServices"]
+  AS --> AR["AgentSessionRuntime"]
+  AR --> RS["RoutedSession"]
+
+  R2 -->|yes| RS
+  RS --> Q["RoutedSession.enqueueMessage"]
+  Q --> OQ["Emit message_queued"]
+  Q --> DRAIN["drain queue async"]
+  OQ --> HTTPRESP["HTTP POST returns queued output"]
+
+  DRAIN --> MS["Emit message_started"]
+  MS --> EXP["Expand inline skills"]
+  EXP --> PROMPT["AgentSession.prompt"]
+
+  PROMPT --> P1["Extension commands/input handlers"]
+  P1 --> P2["Skill/template expansion"]
+  P2 --> P3["Model + auth check"]
+  P3 --> P4["Optional compaction pre-check"]
+  P4 --> P5["before_agent_start extensions"]
+  P5 --> CORE["Pi Agent Core: Agent.prompt"]
+
+  CORE --> LOOP["runAgentLoop"]
+  LOOP --> LLM["streamAssistantResponse"]
+  LLM --> PROV["pi-ai provider stream: OpenAI, Bedrock, etc."]
+  PROV --> EV["Agent events: text, thinking, tool deltas"]
+  EV --> SUB["RoutedSession runtime.session.subscribe"]
+  SUB --> NORM["normalizePiEvent"]
+  NORM --> PO["PiboOutputEvent"]
+
+  PO --> ROUTOUT["PiboSessionRouter.emitOutput"]
+  ROUTOUT --> TEL[("pibo.sqlite: telemetry tables")]
+  ROUTOUT --> SIG["SignalRegistry projection"]
+  ROUTOUT --> PLUG["pluginRegistry.notifyEvent"]
+  ROUTOUT --> SUBS["Router subscribers"]
+
+  SUBS --> CHATIDX["ChatWeb ensureEventIndexing listener"]
+  CHATIDX --> COMP["OutputCompactor"]
+  COMP --> DB3[("pibo.sqlite: event_log, observations, messages")]
+  COMP --> REL[("pibo-events.sqlite: reliability stream")]
+  COMP --> LIVE2["Chat liveListeners"]
+
+  LIVE2 --> SSE["/api/chat/events SSE"]
+  SSE --> UIEV["Chat UI EventSource"]
+  UIEV --> UITRACE["traceLiveReducer / live overlay"]
+  UIEV --> REFRESH["Optional GET /api/chat/trace"]
+  REFRESH --> TRACE["buildTraceView from event_log"]
+  TRACE --> UI["UI renders answer, tools, status"]
+
+  LOOP --> TC{"Tool call?"}
+  TC -->|yes| TOOL["execute tool"]
+  TOOL --> TOOLDB["tool_execution events"]
+  TOOLDB --> LOOP
+  TC -->|no| END["message_end"]
+  END --> AM["assistant_message"]
+  AM --> MF["message_finished"]
+  MF --> REM["Maybe schedule run reminders"]
