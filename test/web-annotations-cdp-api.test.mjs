@@ -108,6 +108,7 @@ test("Web Annotation API creates same-origin bindings and serves standalone over
 		assert.equal(json.binding.metadata.source, "same-origin");
 		assert.equal(json.overlay.bindingId, json.binding.id);
 		assert.equal(json.overlay.bindingToken, json.binding.metadata.overlaySubmissionToken);
+		assert.equal(json.overlay.piboSessionId, "ps_a");
 		assert.match(json.binding.url, /^http:\/\/127\.0\.0\.1\/apps\/chat/);
 
 		await assert.rejects(
@@ -129,6 +130,8 @@ test("Web Annotation API creates same-origin bindings and serves standalone over
 		assert.match(script, /Alt\+Shift\+A/);
 		assert.match(script, /right:112px;bottom:156px/);
 		assert.match(script, /pibo-wa-attention/);
+		assert.match(script, /pibo:web-annotation-overlay-state/);
+		assert.match(script, /pibo\.chat\.webAnnotations\.overlay\./);
 		assert.doesNotMatch(script, /Drag annotation widget/);
 		assert.match(script, /data-pibo-component/);
 		assert.match(script, /pibo-terminal-row/);

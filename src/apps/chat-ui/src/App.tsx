@@ -132,6 +132,7 @@ const COMPOSER_DRAFT_STORAGE_PREFIX = "pibo.chat.composerDraft.";
 const COMPOSER_HISTORY_STORAGE_KEY = "pibo.chat.composerHistory";
 const WEB_ANNOTATIONS_CDP_URL_STORAGE_KEY = "pibo.chat.webAnnotations.cdpUrl";
 const WEB_ANNOTATIONS_SELECTED_STORAGE_PREFIX = "pibo.chat.webAnnotations.selected.";
+const WEB_ANNOTATIONS_OVERLAY_STORAGE_PREFIX = "pibo.chat.webAnnotations.overlay.";
 const WEB_ANNOTATIONS_PANEL_COLLAPSED_STORAGE_KEY = "pibo.chat.webAnnotations.panelCollapsed";
 const WEB_ANNOTATIONS_TOGGLE_SHORTCUT_STORAGE_KEY = "pibo.chat.shortcuts.webAnnotationsToggle";
 const DEFAULT_WEB_ANNOTATIONS_TOGGLE_SHORTCUT = "Alt+Shift+A";
@@ -144,6 +145,16 @@ const PROJECT_ROUTING_UNKNOWN_TIMESTAMP = "1970-01-01T00:00:00.000Z";
 const PROJECT_SESSION_VIEW_ALLOWED_IDS: Record<ChatSessionViewId, readonly ChatSessionViewId[]> = {
 	terminal: ["terminal"],
 	workflow: ["workflow"],
+};
+
+type WebAnnotationOverlayPanelState = {
+	bindingId?: string;
+	piboSessionId: string;
+	installed: boolean;
+	active: boolean;
+	mode?: string;
+	reason?: string;
+	updatedAt?: string;
 };
 
 type StoredSelection = {
@@ -3171,6 +3182,7 @@ function SessionTracePane({
 	const [selectedWebAnnotationIds, setSelectedWebAnnotationIds] = useState<string[]>([]);
 	const [selectedUploadAttachmentsBySession, setSelectedUploadAttachmentsBySession] = useState<Record<string, UploadedChatAttachment[]>>({});
 	const [webAnnotationsPanelVisible, setWebAnnotationsPanelVisible] = useState(false);
+	const [webAnnotationOverlayState, setWebAnnotationOverlayState] = useState<WebAnnotationOverlayPanelState | null>(() => selectedPiboSessionId ? readStoredWebAnnotationOverlayState(selectedPiboSessionId) : null);
 	const [webAnnotationsPanelCollapsed, setWebAnnotationsPanelCollapsed] = useState(() => readStoredWebAnnotationsPanelCollapsed());
 	const [clearingWebAnnotations, setClearingWebAnnotations] = useState(false);
 	const [copiedHeaderPiboSessionId, setCopiedHeaderPiboSessionId] = useState<string | null>(null);
@@ -3186,6 +3198,13 @@ function SessionTracePane({
 				: null,
 		[rawEventLimit, selectedPiboSessionId, showRawEvents],
 	);
+	const webAnnotationOverlayActive = Boolean(
+		selectedPiboSessionId
+		&& webAnnotationOverlayState?.piboSessionId === selectedPiboSessionId
+		&& webAnnotationOverlayState.installed
+		&& webAnnotationOverlayState.active,
+	);
+	const webAnnotationsPanelRendered = Boolean(selectedPiboSessionId) && (webAnnotationsPanelVisible || webAnnotationOverlayActive);
 	const traceSummaryQuery = useQuery({
 		queryKey: traceSummaryQueryKey ?? ["chat", "trace-summary", "idle"],
 		queryFn: async () => {
@@ -3229,10 +3248,10 @@ function SessionTracePane({
 			if (!selectedPiboSessionId) throw new Error("Session is required");
 			return listWebAnnotations(selectedPiboSessionId, { limit: 100, scope: "owner" });
 		},
-		enabled: Boolean(selectedPiboSessionId) && (webAnnotationsPanelVisible || selectedWebAnnotationIds.length > 0),
+		enabled: Boolean(selectedPiboSessionId) && (webAnnotationsPanelRendered || selectedWebAnnotationIds.length > 0),
 		staleTime: 1_000,
-		refetchOnWindowFocus: webAnnotationsPanelVisible,
-		refetchInterval: webAnnotationsPanelVisible ? 5_000 : false,
+		refetchOnWindowFocus: webAnnotationsPanelRendered,
+		refetchInterval: webAnnotationsPanelRendered ? 5_000 : false,
 		retry: 1,
 	});
 	const visibleWebAnnotations = useMemo(
@@ -3256,7 +3275,42 @@ function SessionTracePane({
 		setBaseTraceView(null);
 		setLiveTraceOverlay(null);
 		setSelectedWebAnnotationIds(selectedPiboSessionId ? readStoredSelectedWebAnnotationIds(selectedPiboSessionId) : []);
+		setWebAnnotationOverlayState(selectedPiboSessionId ? readStoredWebAnnotationOverlayState(selectedPiboSessionId) : null);
 	}, [selectedPiboSessionId]);
+
+	useEffect(() => {
+		if (!selectedPiboSessionId) return;
+		const applyOverlayState = (state: WebAnnotationOverlayPanelState | null) => {
+			if (!state || state.piboSessionId !== selectedPiboSessionId) return;
+			setWebAnnotationOverlayState((current) => {
+				if (state.active) return state;
+				if (current?.active && current.bindingId && state.bindingId && current.bindingId !== state.bindingId) return current;
+				return state;
+			});
+			if (state.active) {
+				void webAnnotationsQuery.refetch();
+			} else {
+				setWebAnnotationsPanelVisible(false);
+			}
+		};
+		const handleOverlayState = (event: Event) => applyOverlayState(parseWebAnnotationOverlayState((event as CustomEvent).detail));
+		const handleStorage = (event: StorageEvent) => {
+			if (event.key !== `${WEB_ANNOTATIONS_OVERLAY_STORAGE_PREFIX}${selectedPiboSessionId}`) return;
+			applyOverlayState(parseStoredWebAnnotationOverlayState(event.newValue));
+		};
+		const refreshFromStorage = () => applyOverlayState(readStoredWebAnnotationOverlayState(selectedPiboSessionId));
+		window.addEventListener("pibo:web-annotation-overlay-state", handleOverlayState);
+		window.addEventListener("storage", handleStorage);
+		window.addEventListener("focus", refreshFromStorage);
+		document.addEventListener("visibilitychange", refreshFromStorage);
+		refreshFromStorage();
+		return () => {
+			window.removeEventListener("pibo:web-annotation-overlay-state", handleOverlayState);
+			window.removeEventListener("storage", handleStorage);
+			window.removeEventListener("focus", refreshFromStorage);
+			document.removeEventListener("visibilitychange", refreshFromStorage);
+		};
+	}, [selectedPiboSessionId, webAnnotationsQuery.refetch]);
 
 	useEffect(() => {
 		if (!webAnnotationsQuery.data) return;
@@ -3683,7 +3737,7 @@ function SessionTracePane({
 							piboSessionId={selectedPiboSessionId}
 							piboRoomId={selectedRoomId ?? bootstrap.selectedRoomId ?? undefined}
 							disabled={!selectedPiboSessionId || selectedRoomArchived}
-							panelVisible={webAnnotationsPanelVisible}
+							panelVisible={webAnnotationsPanelRendered}
 							onShowPanel={() => setWebAnnotationsPanelVisible(true)}
 							onHidePanel={() => setWebAnnotationsPanelVisible(false)}
 							onError={onError}
@@ -3793,7 +3847,7 @@ function SessionTracePane({
 						onError,
 					})
 				)}
-				{webAnnotationsPanelVisible ? (
+				{webAnnotationsPanelRendered ? (
 					<WebAnnotationsSessionPanel
 						piboSessionId={selectedPiboSessionId}
 						annotations={visibleWebAnnotations}
@@ -5490,7 +5544,7 @@ function WebAnnotationsEntryPoints({
 			});
 			if (!binding.overlay) throw new Error("Overlay config missing from same-origin binding response");
 			await installSameOriginWebAnnotationOverlay(binding.overlay);
-			setStatus({ kind: "success", message: "Annotation overlay is ready on this Pibo page. Use the overlay button to enable annotation mode." });
+			setStatus({ kind: "success", message: "Annotation mode is active on this Pibo page. Use the overlay controls or shortcut to toggle it." });
 			onError(null);
 		} catch (caught) {
 			const message = compactWebAnnotationError(caught, "Current-page annotation failed");
@@ -5658,7 +5712,7 @@ function installSameOriginWebAnnotationOverlay(config: WebAnnotationOverlayConfi
 	return new Promise((resolve, reject) => {
 		const targetWindow = window as typeof window & {
 			__piboWebAnnotationConfig?: WebAnnotationOverlayConfig;
-			__piboWebAnnotations?: { remove?: () => void };
+			__piboWebAnnotations?: { remove?: () => void; setActive?: (value: boolean) => void };
 		};
 		try {
 			targetWindow.__piboWebAnnotations?.remove?.();
@@ -5666,7 +5720,10 @@ function installSameOriginWebAnnotationOverlay(config: WebAnnotationOverlayConfi
 			const script = document.createElement("script");
 			script.src = `/apps/web-annotations/overlay.js?ts=${Date.now()}`;
 			script.async = true;
-			script.onload = () => resolve();
+			script.onload = () => {
+				targetWindow.__piboWebAnnotations?.setActive?.(true);
+				resolve();
+			};
 			script.onerror = () => reject(new Error("Could not load Web Annotation overlay script"));
 			document.head.appendChild(script);
 		} catch (error) {
@@ -5724,6 +5781,40 @@ function notifyWebAnnotationShortcutChanged(shortcut: string): void {
 function normalizeShortcutLabel(value: string): string {
 	return value.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 80);
 }
+
+function readStoredWebAnnotationOverlayState(piboSessionId: string): WebAnnotationOverlayPanelState | null {
+	try {
+		return parseStoredWebAnnotationOverlayState(localStorage.getItem(WEB_ANNOTATIONS_OVERLAY_STORAGE_PREFIX + piboSessionId));
+	} catch {
+		return null;
+	}
+}
+
+function parseStoredWebAnnotationOverlayState(raw: string | null): WebAnnotationOverlayPanelState | null {
+	if (!raw) return null;
+	try {
+		return parseWebAnnotationOverlayState(JSON.parse(raw));
+	} catch {
+		return null;
+	}
+}
+
+function parseWebAnnotationOverlayState(value: unknown): WebAnnotationOverlayPanelState | null {
+	if (!value || typeof value !== "object") return null;
+	const record = value as Record<string, unknown>;
+	const piboSessionId = typeof record.piboSessionId === "string" ? record.piboSessionId.trim() : "";
+	if (!piboSessionId) return null;
+	return {
+		bindingId: typeof record.bindingId === "string" ? record.bindingId : undefined,
+		piboSessionId,
+		installed: record.installed !== false,
+		active: record.active === true,
+		mode: typeof record.mode === "string" ? record.mode : undefined,
+		reason: typeof record.reason === "string" ? record.reason : undefined,
+		updatedAt: typeof record.updatedAt === "string" ? record.updatedAt : undefined,
+	};
+}
+
 function readStoredSelectedWebAnnotationIds(piboSessionId: string): string[] {
 	try {
 		const raw = localStorage.getItem(WEB_ANNOTATIONS_SELECTED_STORAGE_PREFIX + piboSessionId);

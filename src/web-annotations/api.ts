@@ -81,6 +81,7 @@ function createSameOriginBinding(store: WebAnnotationStore, request: Request, co
 		overlay: {
 			bindingId: binding.id,
 			bindingToken,
+			piboSessionId: binding.piboSessionId,
 			annotationShortcut: optionalBodyString(body.annotationShortcut, 80, false),
 		},
 	};

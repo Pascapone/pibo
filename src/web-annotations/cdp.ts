@@ -128,6 +128,7 @@ export class WebAnnotationCdpService {
 			const result = await client.evaluate<{ ok?: boolean; url?: string; title?: string }>(buildInjectExpression({
 				bindingId: binding.id,
 				bindingToken: String(binding.metadata?.overlaySubmissionToken ?? ""),
+				piboSessionId: binding.piboSessionId,
 				apiBaseUrl: this.apiBaseUrl,
 				annotationShortcut: overlayOptions.annotationShortcut,
 			}), this.timeoutMs);
@@ -266,7 +267,7 @@ function buildDocumentReadyExpression(): string {
 })`;
 }
 
-function buildInjectExpression(config: { bindingId: string; bindingToken: string; apiBaseUrl?: string; annotationShortcut?: string }): string {
+function buildInjectExpression(config: { bindingId: string; bindingToken: string; piboSessionId?: string; apiBaseUrl?: string; annotationShortcut?: string }): string {
 	return buildWebAnnotationOverlayScript(JSON.stringify(config));
 }
 
@@ -277,6 +278,8 @@ export function buildWebAnnotationOverlayScript(configExpression = "window.__pib
   const rootId = "pibo-web-annotation-overlay";
   const outlineId = "pibo-web-annotation-outline";
   const shortcutStorageKey = "pibo.chat.shortcuts.webAnnotationsToggle";
+  const overlayStateEventName = "pibo:web-annotation-overlay-state";
+  const overlayStateStoragePrefix = "pibo.chat.webAnnotations.overlay.";
   const defaultAnnotationShortcut = "Alt+Shift+A";
   const previous = window.__piboWebAnnotations;
   if (previous && typeof previous.remove === "function") previous.remove();
@@ -303,6 +306,28 @@ export function buildWebAnnotationOverlayScript(configExpression = "window.__pib
     submissions: [],
     lastError: null,
   };
+
+  function publishOverlayState(reason, installed) {
+    const piboSessionId = String(config.piboSessionId || "");
+    const detail = {
+      bindingId: String(config.bindingId || ""),
+      piboSessionId,
+      installed: installed !== false,
+      active: installed !== false && Boolean(state.active),
+      mode: state.mode,
+      reason: String(reason || "state"),
+      updatedAt: new Date().toISOString(),
+    };
+    if (piboSessionId) {
+      try { window.localStorage && window.localStorage.setItem(overlayStateStoragePrefix + piboSessionId, JSON.stringify(detail)); } catch {}
+    }
+    try { window.dispatchEvent(new CustomEvent(overlayStateEventName, { detail })); } catch {}
+  }
+
+  function onPageHide() {
+    state.active = false;
+    publishOverlayState("pagehide", false);
+  }
 
   const host = document.createElement("div");
   host.id = rootId;
@@ -371,6 +396,7 @@ export function buildWebAnnotationOverlayScript(configExpression = "window.__pib
     state.mode = "element";
     closePopup();
     updateUi();
+    publishOverlayState("main-button");
   });
   main.addEventListener("animationend", () => main.classList.remove("pibo-wa-attention"));
   toggle.addEventListener("click", () => {
@@ -378,12 +404,14 @@ export function buildWebAnnotationOverlayScript(configExpression = "window.__pib
     state.mode = "element";
     closePopup();
     updateUi();
+    publishOverlayState("toggle");
   });
   pin.addEventListener("click", () => {
     state.active = true;
     state.mode = state.mode === "pin" ? "element" : "pin";
     closePopup();
     updateUi();
+    publishOverlayState("pin-toggle");
   });
   stop.addEventListener("click", () => api.remove());
 
@@ -515,6 +543,7 @@ export function buildWebAnnotationOverlayScript(configExpression = "window.__pib
     state.mode = "element";
     closePopup();
     updateUi(state.active ? "Element annotation mode enabled from shortcut." : "Annotation mode disabled from shortcut.");
+    publishOverlayState("shortcut");
   }
 
   function onShortcutChanged(event) {
@@ -1012,20 +1041,34 @@ export function buildWebAnnotationOverlayScript(configExpression = "window.__pib
   document.addEventListener("click", onClick, true);
   document.addEventListener("keydown", onKeyDown, true);
   window.addEventListener("pibo:web-annotation-shortcut-changed", onShortcutChanged);
+  window.addEventListener("pagehide", onPageHide);
   updateUi();
 
   const api = {
     bindingId: config.bindingId,
+    piboSessionId: config.piboSessionId,
     injectedAt: new Date().toISOString(),
-    setActive(value) { state.active = Boolean(value); updateUi(); },
-    setMode(value) { state.mode = value === "pin" ? "pin" : "element"; state.active = true; updateUi(); },
+    setActive(value) {
+      state.active = Boolean(value);
+      updateUi();
+      publishOverlayState("set-active");
+    },
+    setMode(value) {
+      state.mode = value === "pin" ? "pin" : "element";
+      state.active = true;
+      updateUi();
+      publishOverlayState("set-mode");
+    },
     setShortcut(value) { setShortcut(value); },
     getState() { return { active: state.active, mode: state.mode, shortcut: state.shortcut.label, submissions: state.submissions.slice(), lastError: state.lastError }; },
     remove() {
+      state.active = false;
+      publishOverlayState("removed", false);
       document.removeEventListener("mousemove", onMouseMove, true);
       document.removeEventListener("click", onClick, true);
       document.removeEventListener("keydown", onKeyDown, true);
       window.removeEventListener("pibo:web-annotation-shortcut-changed", onShortcutChanged);
+      window.removeEventListener("pagehide", onPageHide);
       if (state.pendingFrame) cancelAnimationFrame(state.pendingFrame);
       closePopup();
       outline.remove();
@@ -1034,6 +1077,7 @@ export function buildWebAnnotationOverlayScript(configExpression = "window.__pib
     },
   };
   window.__piboWebAnnotations = api;
+  publishOverlayState("installed");
   return { ok: true, url: location.href, title: document.title || "" };
 })()`;
 }

@@ -39,6 +39,7 @@ export type WebAnnotationBindingSummary = {
 export type WebAnnotationOverlayConfig = {
 	bindingId: string;
 	bindingToken: string;
+	piboSessionId?: string;
 	apiBaseUrl?: string;
 	annotationShortcut?: string;
 };
