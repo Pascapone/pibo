@@ -6427,6 +6427,7 @@ function AgentsView({
 	const [catalog, setCatalog] = useState<AgentCatalog | null>(initialCatalog ?? null);
 	const [customAgents, setCustomAgents] = useState(initialCustomAgents);
 	const [draft, setDraft] = useState<AgentDraft>(() => createBlankAgentDraft(initialCatalog));
+	const [showUnsavedAgentDraft, setShowUnsavedAgentDraft] = useState(false);
 	const [saving, setSaving] = useState(false);
 	const [showArchivedAgents, setShowArchivedAgents] = useState(() => localStorage.getItem("pibo.chat.showArchivedAgents") === "true");
 	const [deleteConfirmName, setDeleteConfirmName] = useState("");
@@ -6451,6 +6452,7 @@ function AgentsView({
 		[agents, activeCustomAgents],
 	);
 	const archivedDraft = Boolean(draft.archivedAt);
+	const unsavedAgentDraftVisible = showUnsavedAgentDraft && draft.source === "custom" && !draft.id;
 	const readOnly = draft.source === "profile" || archivedDraft;
 	const agentNameError = readOnly ? null : validateAgentName(draft.displayName);
 	const draftProfileName = draft.profileName ?? (agentNameError ? "new custom profile" : draft.displayName);
@@ -6473,6 +6475,17 @@ function AgentsView({
 		() => buildContextFileGroups(visibleContextFiles, draft.contextFiles),
 		[visibleContextFiles, draft.contextFiles],
 	);
+
+	const createNewAgentDraft = () => {
+		const usedNames = [
+			...agents.map((agent) => agent.name),
+			...customAgents.flatMap((agent) => [agent.profileName, agent.displayName]),
+			...(unsavedAgentDraftVisible ? [draft.displayName] : []),
+		];
+		setDraft(createBlankAgentDraft(catalog ?? undefined, uniqueDraftAgentName(usedNames)));
+		setShowUnsavedAgentDraft(true);
+		setLocalError(null);
+	};
 
 	const saveDraft = async () => {
 		if (readOnly) return;
@@ -6514,6 +6527,7 @@ function AgentsView({
 				return [response.agent, ...withoutSaved];
 			});
 			setDraft(agentToDraft(response.agent));
+			setShowUnsavedAgentDraft(false);
 			onSelect(response.agent.profileName);
 			onAgentsChanged();
 			setLocalError(null);
@@ -6582,6 +6596,7 @@ function AgentsView({
 			await deleteCustomAgent(draft.id, deleteConfirmName);
 			setCustomAgents((current) => current.filter((agent) => agent.id !== draft.id));
 			setDraft(createBlankAgentDraft(catalog ?? undefined));
+			setShowUnsavedAgentDraft(false);
 			setDeleteConfirmName("");
 			onAgentsChanged();
 			setLocalError(null);
@@ -6598,7 +6613,7 @@ function AgentsView({
 				<div className="h-11 px-3 border-b border-slate-800 flex items-center justify-between text-xs font-bold uppercase tracking-wider">
 					<span>Agents</span>
 					<div className="flex items-center gap-1">
-						<button type="button" onClick={() => setDraft(createBlankAgentDraft(catalog ?? undefined))} title="New Agent" aria-label="New Agent" className="p-1 border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]">
+						<button type="button" onClick={createNewAgentDraft} title="New Agent" aria-label="New Agent" className="p-1 border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]">
 							<Plus size={13} />
 						</button>
 						<button
@@ -6621,6 +6636,17 @@ function AgentsView({
 				</div>
 				<div className="p-2">
 					<AgentList title="Custom Agents">
+						{unsavedAgentDraftVisible ? (
+							<AgentSidebarRow
+								key="unsaved-agent-draft"
+								title={draft.displayName || "new-agent"}
+								subtitle="unsaved custom agent"
+								selected
+								onSelect={() => {}}
+								onCreateSession={() => {}}
+								createSessionDisabled
+							/>
+						) : null}
 						{activeCustomAgents.map((agent) => (
 							<AgentSidebarRow
 								key={agent.id}
@@ -6628,10 +6654,14 @@ function AgentsView({
 								subtitle={agent.profileName}
 								selected={draft.source === "custom" && draft.id === agent.id}
 								onSelect={() => {
+									setShowUnsavedAgentDraft(false);
 									setDraft(agentToDraft(agent));
 									onSelect(agent.profileName);
 								}}
-								onCopy={() => setDraft(copyCustomAgentToDraft(agent))}
+								onCopy={() => {
+									setDraft(copyCustomAgentToDraft(agent));
+									setShowUnsavedAgentDraft(true);
+								}}
 								onCreateSession={() => {
 									onSelect(agent.profileName);
 									onCreateSession(agent.profileName);
@@ -6639,7 +6669,7 @@ function AgentsView({
 								createSessionDisabled={creatingSession}
 							/>
 						))}
-						{activeCustomAgents.length === 0 ? <div className="px-2 py-3 text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm">No custom agents</div> : null}
+						{activeCustomAgents.length === 0 && !unsavedAgentDraftVisible ? <div className="px-2 py-3 text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm">No custom agents</div> : null}
 					</AgentList>
 					{showArchivedAgents ? (
 						<AgentList title="Archived Custom Agents">
@@ -6650,9 +6680,13 @@ function AgentsView({
 									subtitle={agent.profileName}
 									selected={draft.source === "custom" && draft.id === agent.id}
 									onSelect={() => {
+										setShowUnsavedAgentDraft(false);
 										setDraft(agentToDraft(agent));
 									}}
-									onCopy={() => setDraft(copyCustomAgentToDraft(agent))}
+									onCopy={() => {
+										setDraft(copyCustomAgentToDraft(agent));
+										setShowUnsavedAgentDraft(true);
+									}}
 									onCreateSession={() => {}}
 									createSessionDisabled
 								/>
@@ -6668,10 +6702,14 @@ function AgentsView({
 								subtitle={agent.aliases.join(", ") || "plugin"}
 								selected={draft.source === "profile" && draft.profileName === agent.name}
 								onSelect={() => {
+									setShowUnsavedAgentDraft(false);
 									setDraft(profileToDraft(agent, catalog ?? undefined));
 									onSelect(agent.name);
 								}}
-								onCopy={() => setDraft(copyProfileToDraft(agent, catalog ?? undefined))}
+								onCopy={() => {
+									setDraft(copyProfileToDraft(agent, catalog ?? undefined));
+									setShowUnsavedAgentDraft(true);
+								}}
 								onCreateSession={() => {
 									onSelect(agent.name);
 									onCreateSession(agent.name);
@@ -6895,9 +6933,9 @@ type AgentDraft = SaveCustomAgentInput & {
 	source: "custom" | "profile";
 };
 
-function createBlankAgentDraft(catalog?: AgentCatalog): AgentDraft {
+function createBlankAgentDraft(catalog?: AgentCatalog, displayName = "new-agent"): AgentDraft {
 	return {
-		displayName: "new-agent",
+		displayName,
 		description: "",
 		nativeTools: [],
 		skills: hasBuiltinSkill(catalog, "pi-agent-harness") ? ["pi-agent-harness"] : [],
@@ -6921,6 +6959,16 @@ function createBlankAgentDraft(catalog?: AgentCatalog): AgentDraft {
 		hardPinnedModel: undefined,
 		source: "custom",
 	};
+}
+
+function uniqueDraftAgentName(usedNames: Iterable<string>): string {
+	const used = new Set([...usedNames].map((name) => name.trim()).filter(Boolean));
+	const baseName = "new-agent";
+	if (!used.has(baseName)) return baseName;
+	for (let index = 1; ; index += 1) {
+		const candidate = `${baseName}-${index}`;
+		if (!used.has(candidate)) return candidate;
+	}
 }
 
 function agentToDraft(agent: CustomAgent): AgentDraft {
