@@ -399,14 +399,16 @@ function retainExistingExpandedRows(
 }
 
 function collapsedToolCallPreviewLines(row: { kind: string; lines: CompactTerminalLine[] }) {
-	if (row.kind === "tool.group.exploring") return row.lines.slice(0, COLLAPSED_EXPLORING_PREVIEW_LINES);
+	if (row.kind === "tool.group.exploring" || row.kind === "tool.group.images") return row.lines.slice(0, COLLAPSED_EXPLORING_PREVIEW_LINES);
 	return row.lines;
 }
 
 function isToolCallLikeRow(row: { kind: string; expandable?: boolean }) {
 	return Boolean(row.expandable) && (
 		row.kind === "tool.call" ||
+		row.kind === "tool.image" ||
 		row.kind === "tool.group.exploring" ||
+		row.kind === "tool.group.images" ||
 		row.kind === "agent.delegation" ||
 		row.kind === "agent.async" ||
 		row.kind === "yielded.run" ||

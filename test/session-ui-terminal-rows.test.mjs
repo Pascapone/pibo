@@ -158,6 +158,53 @@ test("compact row previews handle long text, JSON-like values, empty values, and
 	assert.equal(terminalTextValue({ content: [{ type: "text", text: "joined" }] }), "joined");
 });
 
+test("compact image tool rows hide binary blobs and show the image path", () => {
+	const base64 = "iVBOR" + "A".repeat(800);
+	const rows = buildCompactTerminalRows(traceView([
+		traceNode("tool.call", "node-image", {
+			order: 1,
+			title: "view_image",
+			input: { path: "/tmp/screenshot.png", detail: "original" },
+			output: { content: [{ type: "image", data: base64, mimeType: "image/png" }], details: { path: "/tmp/screenshot.png", detail: "original" } },
+		}),
+	]), { showThinking: false });
+
+	assert.equal(rows.length, 1);
+	assert.equal(rows[0].kind, "tool.image");
+	assert.match(rowText(rows[0]), /Viewed image/);
+	assert.match(rowText(rows[0]), /Path: \/tmp\/screenshot\.png/);
+	assert.doesNotMatch(rowText(rows[0]), /iVBOR/);
+	assert.equal(rows[0].output.type, "image");
+	assert.equal(rows[0].output.path, "/tmp/screenshot.png");
+	assert.equal(rows[0].output.mimeType, "image/png");
+	assert.equal(rows[0].output.detail, "Image data hidden in terminal view.");
+});
+
+test("compact image tool rows group consecutive image reads", () => {
+	const children = Array.from({ length: 3 }, (_, index) => traceNode("tool.call", `image-${index + 1}`, {
+		order: index + 1,
+		title: "view_image",
+		input: { path: `/tmp/image-${index + 1}.png` },
+		output: { content: [{ type: "image", data: "abc", mimeType: "image/png" }], details: { path: `/tmp/image-${index + 1}.png` } },
+	}));
+	const rows = buildCompactTerminalRows(traceView([
+		traceNode("agent.turn", "turn-images", { order: 1, children }),
+	]), { showThinking: false });
+
+	assert.equal(rows.length, 1);
+	const group = rows[0];
+	assert.equal(group.kind, "tool.group.images");
+	assert.deepEqual(group.lines.map((line) => line.tokens.map((entry) => entry.text).join("")), [
+		"Viewed images",
+		"Viewed image /tmp/image-1.png",
+		"Viewed image /tmp/image-2.png",
+		"Viewed image /tmp/image-3.png",
+	]);
+	assert.equal(group.detailItems.length, 3);
+	assert.deepEqual(group.detailItems.map((item) => item.output.path), ["/tmp/image-1.png", "/tmp/image-2.png", "/tmp/image-3.png"]);
+	assert.doesNotMatch(JSON.stringify(group), /abcabc|iVBOR/);
+});
+
 test("compact exploring groups expose six collapsed summaries and full detail metadata", () => {
 	const children = Array.from({ length: 8 }, (_, index) => traceNode("tool.call", `explore-${index + 1}`, {
 		order: index + 1,
