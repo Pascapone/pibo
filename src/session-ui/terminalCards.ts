@@ -46,7 +46,9 @@ export function buildTerminalCardDescriptor(row: CompactTerminalRow): TerminalCa
 		case "tool.login":
 			return buildLoginCard(row);
 		case "tool.call":
+		case "tool.image":
 		case "tool.group.exploring":
+		case "tool.group.images":
 			return buildToolCard(row);
 		case "yielded.run":
 			return baseCard(row, "yielded-run", "Yielded run", row.status === "error" ? "red" : row.status === "running" ? "cyan" : "green");
@@ -174,7 +176,12 @@ function buildLoginCard(row: CompactTerminalRow): TerminalCardDescriptor {
 }
 
 function buildToolCard(row: CompactTerminalRow): TerminalCardDescriptor {
-	return baseCard(row, "tool", row.kind === "tool.group.exploring" ? "Exploring" : "Tool", row.status === "error" ? "red" : row.status === "running" ? "cyan" : "green");
+	const title = row.kind === "tool.group.exploring"
+		? "Exploring"
+		: row.kind === "tool.image" || row.kind === "tool.group.images"
+			? "Image"
+			: "Tool";
+	return baseCard(row, "tool", title, row.status === "error" ? "red" : row.status === "running" ? "cyan" : "green");
 }
 
 function baseCard(row: CompactTerminalRow, kind: TerminalCardKind, title: string, tone: TerminalCardTone): TerminalCardDescriptor {

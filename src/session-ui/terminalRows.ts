@@ -13,7 +13,9 @@ export type CompactTerminalRowKind =
 	| "tool.thinking"
 	| "tool.login"
 	| "tool.model"
+	| "tool.image"
 	| "tool.group.exploring"
+	| "tool.group.images"
 	| "agent.delegation"
 	| "agent.async"
 	| "yielded.run"
@@ -92,6 +94,7 @@ type RowCandidate = {
 	row: CompactTerminalRow;
 	turnId?: string;
 	exploring?: CompactTerminalDetailItem;
+	image?: CompactTerminalDetailItem;
 };
 
 export const COMPACT_TERMINAL_OUTPUT_PREVIEW_LINES = 5;
@@ -106,7 +109,7 @@ export function buildCompactTerminalRows(
 		.sort((left, right) => compareTraceNodes(left.node, right.node))
 		.filter((item) => item.node.type !== "agent.turn" && (options.showThinking || item.node.type !== "model.reasoning"));
 	const candidates = flatNodes.map((item) => createRowCandidate(item.node, item.turnId));
-	return groupExploringCandidates(candidates).map((candidate) => candidate.row);
+	return groupRelatedToolCandidates(candidates).map((candidate) => candidate.row);
 }
 
 function flattenTraceNodes(nodes: readonly PiboTraceNode[], turnId?: string): FlatTraceNode[] {
@@ -134,7 +137,7 @@ function createRowCandidate(node: PiboTraceNode, turnId?: string): RowCandidate 
 			candidate = createToolRowCandidate(node, turnId);
 			break;
 		case "tool.result":
-			candidate = { row: createToolResultRow(node), turnId };
+			candidate = createToolResultRowCandidate(node, turnId);
 			break;
 		case "agent.delegation":
 			candidate = { row: createDelegationRow(node), turnId };
@@ -231,6 +234,11 @@ function createToolRowCandidate(node: PiboTraceNode, turnId?: string): RowCandid
 		const row = createCommandToolRow(node, command);
 		return { row, turnId, exploring: undefined };
 	}
+	const image = classifyImageTool(node);
+	if (image) {
+		const row = createImageToolRow(node, image);
+		return { row, turnId, image: image.detail };
+	}
 	const preview = previewLines(node.error ?? node.output, COMPACT_TERMINAL_OUTPUT_PREVIEW_LINES, node.error ? "red" : "dim");
 	const row: CompactTerminalRow = {
 		id: node.id,
@@ -257,6 +265,41 @@ function createToolRowCandidate(node: PiboTraceNode, turnId?: string): RowCandid
 	};
 	const exploring = classifyExploringTool(node);
 	return { row, turnId, exploring };
+}
+
+function createImageToolRow(node: PiboTraceNode, image: ImageToolClassification): CompactTerminalRow {
+	const status = mapStatus(node.status);
+	const detailLabel = image.path ? `Path: ${image.path}` : image.query ? `Query: ${image.query}` : image.mimeType ? `Type: ${image.mimeType}` : "Image content returned";
+	return {
+		id: node.id,
+		kind: "tool.image",
+		status,
+		errorKind: node.status === "error" ? "tool" : undefined,
+		lines: [
+			{
+				prefix: "bullet",
+				tokens: [token(imageToolVerb(node.status, image.count), toneForStatus(node.status), "semibold")],
+			},
+			{
+				prefix: "detail",
+				tokens: [token(detailLabel, node.status === "error" ? "red" : "cyan")],
+			},
+		],
+		sourceNodeIds: [node.id],
+		input: sanitizeImagePayload(node.input),
+		output: image.summary,
+		error: node.error,
+		expandable: node.input !== undefined || image.summary !== undefined || Boolean(node.error),
+	};
+}
+
+function createToolResultRowCandidate(node: PiboTraceNode, turnId?: string): RowCandidate {
+	const image = classifyImageTool(node);
+	if (image) {
+		const row = createImageToolRow(node, image);
+		return { row, turnId, image: image.detail };
+	}
+	return { row: createToolResultRow(node), turnId };
 }
 
 function createToolResultRow(node: PiboTraceNode): CompactTerminalRow {
@@ -578,17 +621,18 @@ function sessionErrorDetailLines(details: unknown): CompactTerminalLine[] {
 		}));
 }
 
-function groupExploringCandidates(candidates: readonly RowCandidate[]): RowCandidate[] {
+function groupRelatedToolCandidates(candidates: readonly RowCandidate[]): RowCandidate[] {
 	const grouped: RowCandidate[] = [];
 	for (let index = 0; index < candidates.length; index += 1) {
 		const candidate = candidates[index];
-		if (!candidate.exploring) {
+		const groupKind = candidateGroupKind(candidate);
+		if (!groupKind) {
 			grouped.push(candidate);
 			continue;
 		}
 		const run: RowCandidate[] = [candidate];
 		let cursor = index + 1;
-		while (cursor < candidates.length && candidates[cursor].exploring && candidates[cursor].turnId === candidate.turnId) {
+		while (cursor < candidates.length && candidateGroupKind(candidates[cursor]) === groupKind && candidates[cursor].turnId === candidate.turnId) {
 			run.push(candidates[cursor]);
 			cursor += 1;
 		}
@@ -596,23 +640,20 @@ function groupExploringCandidates(candidates: readonly RowCandidate[]): RowCandi
 			grouped.push(candidate);
 			continue;
 		}
-		grouped.push({ row: createExploringGroup(run), turnId: candidate.turnId });
+		grouped.push({ row: groupKind === "images" ? createImageGroup(run) : createExploringGroup(run), turnId: candidate.turnId });
 		index = cursor - 1;
 	}
 	return grouped;
 }
 
+function candidateGroupKind(candidate: RowCandidate): "exploring" | "images" | undefined {
+	if (candidate.image) return "images";
+	if (candidate.exploring) return "exploring";
+	return undefined;
+}
+
 function createExploringGroup(candidates: readonly RowCandidate[]): CompactTerminalRow {
-	const detailItems = candidates.map((candidate) => ({
-		id: candidate.row.id,
-		label: candidate.exploring?.label ?? candidate.row.lines[0]?.tokens.map((entry) => entry.text).join("") ?? candidate.row.id,
-		status: candidate.row.status,
-		input: candidate.row.input,
-		output: candidate.row.output,
-		error: candidate.row.error,
-		linkedPiboSessionId: candidate.row.linkedPiboSessionId,
-		previewOmission: candidate.row.previewOmission,
-	}));
+	const detailItems = detailItemsForGroup(candidates, "exploring");
 	const visibleDetailItems = detailItems.slice(0, COMPACT_TERMINAL_EXPLORING_PREVIEW_LINES);
 	const omittedDetailCount = Math.max(0, detailItems.length - visibleDetailItems.length);
 	const firstRow = candidates[0]?.row;
@@ -659,6 +700,175 @@ function createExploringGroup(candidates: readonly RowCandidate[]): CompactTermi
 			maxVisibleLineCount: COMPACT_TERMINAL_EXPLORING_PREVIEW_LINES,
 		} : undefined,
 	};
+}
+
+function createImageGroup(candidates: readonly RowCandidate[]): CompactTerminalRow {
+	const detailItems = detailItemsForGroup(candidates, "images");
+	const visibleDetailItems = detailItems.slice(0, COMPACT_TERMINAL_EXPLORING_PREVIEW_LINES);
+	const omittedDetailCount = Math.max(0, detailItems.length - visibleDetailItems.length);
+	const firstRow = candidates[0]?.row;
+	const firstId = firstRow?.id ?? "images";
+	const lastId = candidates[candidates.length - 1]?.row.id ?? firstId;
+	const status = candidates.some((candidate) => candidate.row.status === "running")
+		? "running"
+		: candidates.some((candidate) => candidate.row.status === "error")
+			? "error"
+			: "done";
+
+	return {
+		id: `group:images:${firstId}:${lastId}`,
+		kind: "tool.group.images",
+		status,
+		errorKind: status === "error" ? "tool" : undefined,
+		lines: [
+			{
+				prefix: "bullet",
+				tokens: [token(status === "running" ? "Viewing images" : status === "error" ? "Image reads failed" : "Viewed images", toneForStatus(status), "semibold")],
+			},
+			...visibleDetailItems.map((item, index): CompactTerminalLine => ({
+				prefix: index === 0 ? "detail" : "continuation",
+				tokens: [token(item.label, item.status === "error" ? "red" : "cyan")],
+			})),
+			...(omittedDetailCount > 0 ? [{
+				prefix: "continuation" as const,
+				tokens: [token(`+${omittedDetailCount} more image reads`, "dim", "normal", true)],
+			}] : []),
+		],
+		sourceNodeIds: candidates.flatMap((candidate) => candidate.row.sourceNodeIds),
+		eventId: firstRow?.eventId,
+		runId: firstRow?.runId,
+		orderSource: firstRow?.orderSource,
+		orderStreamId: firstRow?.orderStreamId,
+		orderStreamFrameIndex: firstRow?.orderStreamFrameIndex,
+		detailItems,
+		expandable: detailItems.some((item) => item.input !== undefined || item.output !== undefined || Boolean(item.error)),
+		previewOmission: omittedDetailCount > 0 ? {
+			source: "details",
+			visibleLineCount: visibleDetailItems.length,
+			omittedLineCount: omittedDetailCount,
+			totalLineCount: detailItems.length,
+			maxVisibleLineCount: COMPACT_TERMINAL_EXPLORING_PREVIEW_LINES,
+		} : undefined,
+	};
+}
+
+function detailItemsForGroup(candidates: readonly RowCandidate[], kind: "exploring" | "images"): CompactTerminalDetailItem[] {
+	return candidates.map((candidate) => {
+		const detail = kind === "images" ? candidate.image : candidate.exploring;
+		return {
+			id: candidate.row.id,
+			label: detail?.label ?? candidate.row.lines[0]?.tokens.map((entry) => entry.text).join("") ?? candidate.row.id,
+			status: candidate.row.status,
+			input: candidate.row.input,
+			output: candidate.row.output,
+			error: candidate.row.error,
+			linkedPiboSessionId: candidate.row.linkedPiboSessionId,
+			previewOmission: candidate.row.previewOmission,
+		};
+	});
+}
+
+type ImageToolClassification = {
+	count: number;
+	path?: string;
+	query?: string;
+	mimeType?: string;
+	summary: unknown;
+	detail: CompactTerminalDetailItem;
+};
+
+type ImagePayloadSummary = {
+	type: "image" | "images" | "image_reference";
+	path?: string;
+	query?: string;
+	mimeType?: string;
+	count?: number;
+	detail?: string;
+};
+
+function classifyImageTool(node: PiboTraceNode): ImageToolClassification | undefined {
+	const normalized = (node.title ?? "").trim().toLowerCase();
+	const args = isRecord(node.input) ? node.input : undefined;
+	const path = previewPath(args) ?? previewPath(isRecord(node.output) ? recordField(node.output, "details") : undefined) ?? previewPath(isRecord(node.output) ? node.output : undefined);
+	const query = previewQuery(args);
+	const images = collectImagePayloads(node.output);
+	const isImageTool = matchesTool(normalized, ["view_image", "image", "screenshot"]);
+	if (!images.length && !isImageTool) return undefined;
+
+	const mimeType = images.map((image) => image.mimeType).find((value): value is string => Boolean(value));
+	const count = Math.max(1, images.length);
+	const summary: ImagePayloadSummary = {
+		type: images.length > 1 ? "images" : images.length === 1 ? "image" : "image_reference",
+		path,
+		query,
+		mimeType,
+		count: count > 1 ? count : undefined,
+		detail: images.length ? "Image data hidden in terminal view." : "Image path only; binary data is hidden in terminal view.",
+	};
+	const labelTarget = path ?? query ?? mimeType ?? "image";
+	return {
+		count,
+		path,
+		query,
+		mimeType,
+		summary,
+		detail: {
+			id: node.id,
+			label: `${node.status === "error" ? "Image failed" : "Viewed image"} ${labelTarget}`,
+			status: mapStatus(node.status),
+			input: sanitizeImagePayload(node.input),
+			output: summary,
+			error: node.error,
+		},
+	};
+}
+
+function collectImagePayloads(value: unknown, depth = 0, seen = new Set<unknown>()): Array<{ mimeType?: string }> {
+	if (depth > 5 || value === undefined || value === null) return [];
+	if (typeof value !== "object") return [];
+	if (seen.has(value)) return [];
+	seen.add(value);
+	if (Array.isArray(value)) return value.flatMap((item) => collectImagePayloads(item, depth + 1, seen));
+	const record = value as Record<string, unknown>;
+	const type = typeof record.type === "string" ? record.type.toLowerCase() : undefined;
+	const mimeType = typeof record.mimeType === "string" ? record.mimeType : typeof record.mime_type === "string" ? record.mime_type : undefined;
+	const hasImageData = typeof record.data === "string" || typeof record.image_url === "string" || isRecord(record.image_url);
+	if ((type === "image" || type === "input_image" || type === "output_image" || type === "image_url") && (hasImageData || mimeType?.startsWith("image/"))) {
+		return [{ mimeType }];
+	}
+	if (mimeType?.startsWith("image/") && hasImageData) return [{ mimeType }];
+
+	const nested: unknown[] = [];
+	if ("content" in record) nested.push(record.content);
+	if ("message" in record) nested.push(record.message);
+	if ("result" in record) nested.push(record.result);
+	if ("output" in record) nested.push(record.output);
+	return nested.flatMap((item) => collectImagePayloads(item, depth + 1, seen));
+}
+
+function sanitizeImagePayload(value: unknown): unknown {
+	if (Array.isArray(value)) return value.map(sanitizeImagePayload);
+	if (!isRecord(value)) return value;
+	const result: Record<string, unknown> = {};
+	for (const [key, item] of Object.entries(value)) {
+		if ((key === "data" || key === "image_url") && typeof item === "string" && item.length > 120) {
+			result[key] = `[hidden ${key}]`;
+			continue;
+		}
+		result[key] = sanitizeImagePayload(item);
+	}
+	return result;
+}
+
+function imageToolVerb(status: PiboTraceNode["status"], count: number): string {
+	if (status === "running") return count > 1 ? "Viewing images" : "Viewing image";
+	if (status === "error") return count > 1 ? "Image reads failed" : "Image read failed";
+	return count > 1 ? "Viewed images" : "Viewed image";
+}
+
+function recordField(record: Record<string, unknown> | undefined, key: string): Record<string, unknown> | undefined {
+	const value = record?.[key];
+	return isRecord(value) ? value : undefined;
 }
 
 function classifyExploringTool(node: PiboTraceNode): CompactTerminalDetailItem | undefined {
