@@ -346,3 +346,16 @@ test("idle signal snapshot omits active telemetry when telemetry is unavailable"
 	registry.project({ type: "session_created", session: session("root") });
 	assert.equal(registry.snapshotTree("root").sessions.root.activeTelemetry, undefined);
 });
+
+test("session error clears queued message count", () => {
+	const registry = createPiboSignalRegistry();
+	registry.project({ type: "session_created", session: session("root") });
+	registry.project({ type: "queue_changed", piboSessionId: "root", queuedMessages: 1 });
+	registry.project({ type: "pibo_output", event: { type: "session_error", piboSessionId: "root", error: "No API key" } });
+
+	const snapshot = registry.snapshotTree("root").sessions.root;
+	assert.equal(snapshot.localStatus, "error");
+	assert.equal(snapshot.isTreeActive, false);
+	assert.equal(snapshot.queuedMessages, 0);
+	assert.equal(snapshot.hasError, true);
+});

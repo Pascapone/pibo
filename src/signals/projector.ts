@@ -139,6 +139,7 @@ export const outputSignalProducer: PiboSignalProducer = {
 			mutations.push(...settleActiveSessionNodes(piboSessionId, context));
 		}
 		if (event.type === "session_error") {
+			mutations.push({ type: "set_session_queue", piboSessionId, queuedMessages: 0 });
 			mutations.push(...settleActiveSessionNodes(piboSessionId, context));
 			mutations.push({ type: "patch_node", nodeId: `session:${piboSessionId}`, patch: { status: "error", completedAt: context.now(), error: { message: event.error, source: "pi" } } });
 			if (event.eventId) {

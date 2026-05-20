@@ -394,6 +394,8 @@ export class PiboGatewayServer {
 				return this.requireSessionStore().create({ ...input, profile, activeModel });
 			},
 			updateSession: (id, input) => this.requireSessionStore().update(id, input),
+			setLiveSessionActiveModel: (id, model) => this.requireRouter().setLiveSessionActiveModel(id, model),
+			reportSessionError: (id, error, options) => this.requireRouter().reportSessionError(id, error, options),
 			deleteSession: (id) => this.requireSessionStore().delete?.(id) ?? false,
 			findSessions: (input) => this.requireSessionStore().find(input),
 			listSessions: () => this.requireSessionStore().list?.() ?? [],

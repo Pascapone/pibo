@@ -1,0 +1,380 @@
+{
+  "ok": true,
+  "sessionId": "ps_live_spark_1779227554483",
+  "statusBefore": {
+    "type": "execution_result",
+    "piboSessionId": "ps_live_spark_1779227554483",
+    "action": "status",
+    "result": {
+      "piboSessionId": "ps_live_spark_1779227554483",
+      "queuedMessages": 0,
+      "processing": false,
+      "streaming": false,
+      "activeTools": [
+        "read",
+        "edit",
+        "write",
+        "bash",
+        "runtime",
+        "pibo_subagent_default",
+        "pibo_subagent_explorer",
+        "pibo_subagent_worker",
+        "apply_patch",
+        "view_image",
+        "pibo_run_start",
+        "pibo_run_list",
+        "pibo_run_status",
+        "pibo_run_wait",
+        "pibo_run_read",
+        "pibo_run_cancel",
+        "pibo_run_ack"
+      ],
+      "enabledTools": [
+        "read",
+        "edit",
+        "write",
+        "bash",
+        "runtime",
+        "pibo_subagent_default",
+        "pibo_subagent_explorer",
+        "pibo_subagent_worker",
+        "apply_patch",
+        "view_image",
+        "pibo_run_start",
+        "pibo_run_list",
+        "pibo_run_status",
+        "pibo_run_wait",
+        "pibo_run_read",
+        "pibo_run_cancel",
+        "pibo_run_ack"
+      ],
+      "cwd": "/tmp",
+      "disposed": false,
+      "thinkingLevel": "low",
+      "fastMode": true,
+      "activeModel": {
+        "provider": "openai-codex",
+        "id": "gpt-5.3-codex-spark"
+      },
+      "contextUsage": {
+        "tokens": 0,
+        "contextWindow": 128000,
+        "percent": 0
+      },
+      "providerUsage": {
+        "provider": "openai-codex",
+        "planType": "pro",
+        "limits": [
+          {
+            "label": "5h limit",
+            "usedPercent": 8,
+            "remainingPercent": 92,
+            "windowMinutes": 300,
+            "resetsAt": "2026-05-19T23:48:44.000Z"
+          },
+          {
+            "label": "1w limit",
+            "usedPercent": 2,
+            "remainingPercent": 98,
+            "windowMinutes": 10080,
+            "resetsAt": "2026-05-26T18:48:44.000Z"
+          },
+          {
+            "label": "GPT-5.3-Codex-Spark 5h limit",
+            "usedPercent": 0,
+            "remainingPercent": 100,
+            "windowMinutes": 300,
+            "resetsAt": "2026-05-20T02:52:34.000Z"
+          },
+          {
+            "label": "GPT-5.3-Codex-Spark 1w limit",
+            "usedPercent": 0,
+            "remainingPercent": 100,
+            "windowMinutes": 10080,
+            "resetsAt": "2026-05-26T21:52:34.000Z"
+          }
+        ],
+        "fetchedAt": "2026-05-19T21:52:34.777Z"
+      }
+    }
+  },
+  "queued": {
+    "type": "message_queued",
+    "piboSessionId": "ps_live_spark_1779227554483",
+    "eventId": "msg_1779227554778",
+    "queuedMessages": 1,
+    "text": "Live Spark signal smoke test. Reply with exactly: OK",
+    "source": "user"
+  },
+  "statusAfter": {
+    "type": "execution_result",
+    "piboSessionId": "ps_live_spark_1779227554483",
+    "action": "status",
+    "result": {
+      "piboSessionId": "ps_live_spark_1779227554483",
+      "queuedMessages": 0,
+      "processing": false,
+      "streaming": false,
+      "activeTools": [
+        "read",
+        "edit",
+        "write",
+        "bash",
+        "runtime",
+        "pibo_subagent_default",
+        "pibo_subagent_explorer",
+        "pibo_subagent_worker",
+        "apply_patch",
+        "view_image",
+        "pibo_run_start",
+        "pibo_run_list",
+        "pibo_run_status",
+        "pibo_run_wait",
+        "pibo_run_read",
+        "pibo_run_cancel",
+        "pibo_run_ack"
+      ],
+      "enabledTools": [
+        "read",
+        "edit",
+        "write",
+        "bash",
+        "runtime",
+        "pibo_subagent_default",
+        "pibo_subagent_explorer",
+        "pibo_subagent_worker",
+        "apply_patch",
+        "view_image",
+        "pibo_run_start",
+        "pibo_run_list",
+        "pibo_run_status",
+        "pibo_run_wait",
+        "pibo_run_read",
+        "pibo_run_cancel",
+        "pibo_run_ack"
+      ],
+      "cwd": "/tmp",
+      "disposed": false,
+      "thinkingLevel": "low",
+      "fastMode": true,
+      "activeModel": {
+        "provider": "openai-codex",
+        "id": "gpt-5.3-codex-spark"
+      },
+      "contextUsage": {
+        "tokens": 8296,
+        "contextWindow": 128000,
+        "percent": 6.481249999999999
+      },
+      "providerUsage": {
+        "provider": "openai-codex",
+        "planType": "pro",
+        "limits": [
+          {
+            "label": "5h limit",
+            "usedPercent": 8,
+            "remainingPercent": 92,
+            "windowMinutes": 300,
+            "resetsAt": "2026-05-19T23:48:44.000Z"
+          },
+          {
+            "label": "1w limit",
+            "usedPercent": 2,
+            "remainingPercent": 98,
+            "windowMinutes": 10080,
+            "resetsAt": "2026-05-26T18:48:44.000Z"
+          },
+          {
+            "label": "GPT-5.3-Codex-Spark 5h limit",
+            "usedPercent": 0,
+            "remainingPercent": 100,
+            "windowMinutes": 300,
+            "resetsAt": "2026-05-20T02:52:37.000Z"
+          },
+          {
+            "label": "GPT-5.3-Codex-Spark 1w limit",
+            "usedPercent": 0,
+            "remainingPercent": 100,
+            "windowMinutes": 10080,
+            "resetsAt": "2026-05-26T21:52:37.000Z"
+          }
+        ],
+        "fetchedAt": "2026-05-19T21:52:37.134Z"
+      }
+    }
+  },
+  "beforeSignal": {
+    "piboSessionId": "ps_live_spark_1779227554483",
+    "rootPiboSessionId": "ps_live_spark_1779227554483",
+    "version": 1,
+    "updatedAt": "2026-05-19T21:52:34.490Z",
+    "localStatus": "idle",
+    "aggregateStatus": "idle",
+    "queuedMessages": 0,
+    "isLocalActive": false,
+    "hasActiveDescendant": false,
+    "isTreeActive": false,
+    "isSettled": true,
+    "hasError": false,
+    "hasErrorDescendant": false,
+    "hasBlockedDescendant": false,
+    "activeToolCalls": [],
+    "activeRuns": [],
+    "activeChildren": [],
+    "errors": []
+  },
+  "finalSignal": {
+    "piboSessionId": "ps_live_spark_1779227554483",
+    "rootPiboSessionId": "ps_live_spark_1779227554483",
+    "version": 11,
+    "updatedAt": "2026-05-19T21:52:35.912Z",
+    "localStatus": "idle",
+    "aggregateStatus": "idle",
+    "queuedMessages": 0,
+    "isLocalActive": false,
+    "hasActiveDescendant": false,
+    "isTreeActive": false,
+    "isSettled": true,
+    "hasError": false,
+    "hasErrorDescendant": false,
+    "hasBlockedDescendant": false,
+    "activeToolCalls": [],
+    "activeRuns": [],
+    "activeChildren": [],
+    "errors": []
+  },
+  "events": [
+    {
+      "type": "execution_result",
+      "piboSessionId": "ps_live_spark_1779227554483"
+    },
+    {
+      "type": "message_queued",
+      "eventId": "msg_1779227554778",
+      "piboSessionId": "ps_live_spark_1779227554483",
+      "text": "Live Spark signal smoke test. Reply with exactly: OK",
+      "queuedMessages": 1
+    },
+    {
+      "type": "message_started",
+      "eventId": "msg_1779227554778",
+      "piboSessionId": "ps_live_spark_1779227554483",
+      "text": "Live Spark signal smoke test. Reply with exactly: OK"
+    },
+    {
+      "type": "thinking_started",
+      "eventId": "msg_1779227554778",
+      "piboSessionId": "ps_live_spark_1779227554483"
+    },
+    {
+      "type": "thinking_finished",
+      "eventId": "msg_1779227554778",
+      "piboSessionId": "ps_live_spark_1779227554483",
+      "text": ""
+    },
+    {
+      "type": "assistant_delta",
+      "eventId": "msg_1779227554778",
+      "piboSessionId": "ps_live_spark_1779227554483",
+      "text": "OK"
+    },
+    {
+      "type": "assistant_message",
+      "eventId": "msg_1779227554778",
+      "piboSessionId": "ps_live_spark_1779227554483",
+      "text": "OK"
+    },
+    {
+      "type": "message_finished",
+      "eventId": "msg_1779227554778",
+      "piboSessionId": "ps_live_spark_1779227554483"
+    },
+    {
+      "type": "execution_result",
+      "piboSessionId": "ps_live_spark_1779227554483"
+    }
+  ],
+  "signalSnapshots": [
+    {
+      "atEvent": "execution_result",
+      "localStatus": "idle",
+      "aggregateStatus": "idle",
+      "isTreeActive": false,
+      "queuedMessages": 0,
+      "hasError": false,
+      "errors": []
+    },
+    {
+      "atEvent": "message_queued",
+      "localStatus": "queued",
+      "aggregateStatus": "queued",
+      "isTreeActive": true,
+      "queuedMessages": 1,
+      "hasError": false,
+      "errors": []
+    },
+    {
+      "atEvent": "message_started",
+      "localStatus": "running",
+      "aggregateStatus": "running",
+      "isTreeActive": true,
+      "queuedMessages": 0,
+      "hasError": false,
+      "errors": []
+    },
+    {
+      "atEvent": "thinking_started",
+      "localStatus": "streaming",
+      "aggregateStatus": "streaming",
+      "isTreeActive": true,
+      "queuedMessages": 0,
+      "hasError": false,
+      "errors": []
+    },
+    {
+      "atEvent": "thinking_finished",
+      "localStatus": "running",
+      "aggregateStatus": "running",
+      "isTreeActive": true,
+      "queuedMessages": 0,
+      "hasError": false,
+      "errors": []
+    },
+    {
+      "atEvent": "assistant_delta",
+      "localStatus": "streaming",
+      "aggregateStatus": "streaming",
+      "isTreeActive": true,
+      "queuedMessages": 0,
+      "hasError": false,
+      "errors": []
+    },
+    {
+      "atEvent": "assistant_message",
+      "localStatus": "running",
+      "aggregateStatus": "running",
+      "isTreeActive": true,
+      "queuedMessages": 0,
+      "hasError": false,
+      "errors": []
+    },
+    {
+      "atEvent": "message_finished",
+      "localStatus": "idle",
+      "aggregateStatus": "idle",
+      "isTreeActive": false,
+      "queuedMessages": 0,
+      "hasError": false,
+      "errors": []
+    },
+    {
+      "atEvent": "execution_result",
+      "localStatus": "idle",
+      "aggregateStatus": "idle",
+      "isTreeActive": false,
+      "queuedMessages": 0,
+      "hasError": false,
+      "errors": []
+    }
+  ]
+}

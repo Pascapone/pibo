@@ -1,0 +1,12 @@
+{
+  "selectedPiboSessionId": "ps_16411e32-b601-41bd-957c-bac96132f7cd",
+  "selectedRoomId": "room_2c7b52ad-8cd4-4c06-8270-a15228ed8c74",
+  "sessionCount": 1,
+  "rooms": [
+    {
+      "id": "room_2c7b52ad-8cd4-4c06-8270-a15228ed8c74",
+      "name": "Personal Chat",
+      "unreadCount": null
+    }
+  ]
+}

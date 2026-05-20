@@ -1,0 +1,43 @@
+✔ chat signal snapshots enforce ownership and include local session state (59.31972ms)
+✔ chat signal tree snapshot includes descendants (40.31817ms)
+✔ chat signal SSE sends snapshot then monotonic patches (29.046147ms)
+✔ chat signal SSE rejects missing root session id (14.400422ms)
+✔ chat signal SSE enforces root ownership (13.913789ms)
+✔ chat signal routes return 503 when registry functions are unavailable (29.603914ms)
+✔ chat bootstrap overlays live signal running status (116.867488ms)
+✔ chat navigation clears stale indexed running status from settled signal state (35.629548ms)
+✔ chat navigation treats session errors as unread until marked read (44.793991ms)
+✔ chat navigation includes unread counts for completed messages in other sessions (65.405275ms)
+✔ signal registry aggregates a three-level active descendant (4.534081ms)
+✔ deep child tool start sets parent and root active (1.483808ms)
+✔ child error sets parent error descendant (0.696569ms)
+✔ yielded run keeps session tree active and completion removes active run (0.690478ms)
+▶ signal session phase reflects active work kind
+  ✔ tool calls use tools phase (1.437451ms)
+  ✔ subagent sessions use subagent phase (0.443734ms)
+  ✔ yielded runs use run phase (0.259107ms)
+  ✔ compaction uses compaction phase (0.390384ms)
+  ✔ running status outranks queued phase (0.410361ms)
+✔ signal session phase reflects active work kind (3.946226ms)
+✔ failed yielded run does not mark session as runtime error (0.401955ms)
+✔ queue count changes local status and repeated count is ignored (0.694906ms)
+✔ prune terminal node sends remove patch (15.311114ms)
+✔ metadata change produces a patch and identical metadata input does not (0.854386ms)
+✔ snapshot updatedAt only advances on semantic change (2.511249ms)
+✔ patch versions are monotonic per root (0.503366ms)
+✔ message finish settles active tool signals without matching tool finish (0.746604ms)
+✔ processing false settles orphan active tool signals (0.614594ms)
+✔ tool call errors do not mark the session signal as failed (0.849416ms)
+✔ queued message signal settles after a provider error (0.84617ms)
+✔ signal snapshot dedupes identical local errors (1.403066ms)
+✔ signal snapshot exposes compact active telemetry hints without payloads (0.443383ms)
+✔ signal snapshot marks old active telemetry hints stale (0.515098ms)
+✔ idle signal snapshot omits active telemetry when telemetry is unavailable (0.282611ms)
+ℹ tests 34
+ℹ suites 0
+ℹ pass 34
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1578.505672

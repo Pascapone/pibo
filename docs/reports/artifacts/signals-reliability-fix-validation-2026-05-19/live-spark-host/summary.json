@@ -1,0 +1,37 @@
+{
+  "ok": true,
+  "sessionId": "ps_live_spark_fixed_1779229537885",
+  "activeModel": {
+    "provider": "openai-codex",
+    "id": "gpt-5.3-codex-spark"
+  },
+  "thinking": "low",
+  "assistant": [
+    {
+      "type": "assistant_delta",
+      "text": "OK"
+    },
+    {
+      "type": "assistant_message",
+      "text": "OK"
+    }
+  ],
+  "finalSignal": {
+    "localStatus": "idle",
+    "aggregateStatus": "idle",
+    "isTreeActive": false,
+    "queuedMessages": 0,
+    "hasError": false
+  },
+  "eventTypes": [
+    "execution_result",
+    "message_queued",
+    "message_started",
+    "thinking_started",
+    "thinking_finished",
+    "assistant_delta",
+    "assistant_message",
+    "message_finished",
+    "execution_result"
+  ]
+}

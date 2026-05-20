@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { getPiboHome } from "../core/pibo-home.js";
 import { resolveDebugStore, resolveDebugStores } from "./stores.js";
 
@@ -23,6 +24,8 @@ type ParsedOptions = {
 	active: boolean;
 	stale: boolean;
 	thresholdMs?: string;
+	cookie?: string;
+	authHeader?: string;
 };
 
 export async function runDebugCli(argv = process.argv): Promise<void> {
@@ -163,7 +166,10 @@ async function runDebugSignals(args: string[]): Promise<void> {
 	const baseUrl = process.env.PIBO_GATEWAY_URL ?? process.env.PIBO_WEB_URL;
 	if (!baseUrl) throw new Error("Set PIBO_GATEWAY_URL to inspect live signal state through Chat Web APIs.");
 	const url = new URL(`/api/chat/signals/${command}/${encodeURIComponent(piboSessionId)}`, baseUrl);
-	const response = await fetch(url);
+	const headers = new Headers();
+	if (options.cookie) headers.set("cookie", readCookieHeaderFile(options.cookie));
+	if (options.authHeader) headers.set("authorization", options.authHeader);
+	const response = await fetch(url, { headers });
 	const payload = await response.json().catch(() => undefined);
 	if (!response.ok) throw new Error(payload && typeof payload === "object" && "error" in payload ? String(payload.error) : `Request failed: ${response.status}`);
 	if (options.json) {
@@ -497,6 +503,23 @@ async function runDebugRuns(args: string[]): Promise<void> {
 	}
 }
 
+function readCookieHeaderFile(path: string): string {
+	const content = readFileSync(path, "utf8").trim();
+	const cookies = content
+		.split(/\r?\n/)
+		.map((line) => line.trim())
+		.filter(Boolean)
+		.flatMap((line) => {
+			const normalized = line.startsWith("#HttpOnly_") ? line.slice("#HttpOnly_".length) : line;
+			if (normalized.startsWith("#")) return [];
+			const fields = normalized.split("\t");
+			if (fields.length >= 7) return [`${fields[5]}=${fields[6]}`];
+			return [normalized];
+		});
+	if (cookies.length === 0) throw new Error(`Cookie file "${path}" does not contain any cookies`);
+	return cookies.join("; ");
+}
+
 function parseOptions(args: string[]): ParsedOptions {
 	const parsed: ParsedOptions = { positionals: [], json: false, events: false, runningOnly: false, check: false, destructive: false, apply: false, dryRun: false, active: false, stale: false };
 	for (let index = 0; index < args.length; index += 1) {
@@ -594,6 +617,20 @@ function parseOptions(args: string[]): ParsedOptions {
 		}
 		if (arg === "--stale") {
 			parsed.stale = true;
+			continue;
+		}
+		if (arg === "--cookie") {
+			const value = args[index + 1];
+			if (!value) throw new Error("--cookie requires a path");
+			parsed.cookie = value;
+			index += 1;
+			continue;
+		}
+		if (arg === "--auth-header") {
+			const value = args[index + 1];
+			if (!value) throw new Error("--auth-header requires a value");
+			parsed.authHeader = value;
+			index += 1;
 			continue;
 		}
 		if (arg === "--threshold-ms") {
@@ -723,11 +760,15 @@ function printDebugSignalsDiscovery(): void {
 	console.log(`pibo debug signals - inspect live Session Signal snapshots
 
 Usage:
-  pibo debug signals session <pibo-session-id> [--json]
-  pibo debug signals tree <root-pibo-session-id> [--json]
+  pibo debug signals session <pibo-session-id> [--json] [--cookie <path>]
+  pibo debug signals tree <root-pibo-session-id> [--json] [--cookie <path>]
 
 Environment:
   PIBO_GATEWAY_URL=http://127.0.0.1:4788
+
+Auth:
+  --cookie <path> reads a Cookie header value from a local file.
+  --auth-header <value> sends an Authorization header. Values are not printed.
 
 Next:
   pibo debug signals tree ps_...

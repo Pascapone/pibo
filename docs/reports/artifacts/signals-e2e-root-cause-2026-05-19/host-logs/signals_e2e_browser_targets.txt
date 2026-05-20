@@ -1,0 +1,4 @@
+id	url	auth	composer	title
+BA9540A46982D6122B757EFA2C3FAAF4	http://127.0.0.1:4788/apps/chat/	unauthenticated	no	Pibo Web Chat
+3799C983B2F0D8FEF567296C44446E1E	http://127.0.0.1:4788/apps/chat/sw.js	unknown	no	Service Worker http://127.0.0.1:4788/apps/chat/sw.js
+{"id": "r347285", "success": true, "data": {"_raw_text": "viewport: 780x441\npage: 780x441\nscroll: (0, 0)\n[44]<div id=root />\n\tUnauthenticated\n\t[45]<button />\n\t\tSign in with Google"}}

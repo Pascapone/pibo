@@ -25,7 +25,7 @@ function createFakeAuthService() {
 }
 
 async function startSignalWebHost(options = {}) {
-	const { exposeSignalRegistry = true } = options;
+	const { exposeSignalRegistry = true, emit, setLiveSessionActiveModel } = options;
 	const sessions = new InMemoryPiboSessionStore();
 	const signals = createPiboSignalRegistry();
 	const storageDir = mkdtempSync(join(tmpdir(), "pibo-chat-signals-"));
@@ -35,7 +35,7 @@ async function startSignalWebHost(options = {}) {
 	const listeners = new Set();
 	await channel.start({
 		auth: createFakeAuthService(),
-		emit() { throw new Error("not used"); },
+		emit: emit ?? (() => { throw new Error("not used"); }),
 		subscribe(listener) {
 			listeners.add(listener);
 			return () => listeners.delete(listener);
@@ -43,6 +43,11 @@ async function startSignalWebHost(options = {}) {
 		getSession: (id) => sessions.get(id),
 		createSession: (input) => sessions.create(input),
 		updateSession: (id, input) => sessions.update(id, input),
+		setLiveSessionActiveModel,
+		reportSessionError(id, error, opts = {}) {
+			signals.project({ type: "session_created", session: sessions.get(id) });
+			signals.project({ type: "pibo_output", event: { type: "session_error", piboSessionId: id, eventId: opts.eventId, error }, session: sessions.get(id) });
+		},
 		deleteSession: (id) => sessions.delete(id),
 		findSessions: (input) => sessions.find(input),
 		listSessions: () => sessions.list(),
@@ -291,6 +296,54 @@ test("chat navigation includes unread counts for completed messages in other ses
 		assert.equal(response.status, 200);
 		const body = await response.json();
 		assert.equal(findSessionNode(body.sessions, other.id)?.unreadCount, 1);
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("chat session model patch updates the live runtime before persisting", async () => {
+	const calls = [];
+	const { channel, baseURL, sessions } = await startSignalWebHost({
+		async setLiveSessionActiveModel(id, model) {
+			calls.push({ id, model });
+			return model;
+		},
+	});
+	try {
+		const session = createSession(sessions, "ps_model_patch");
+		const response = await fetch(`${baseURL}/api/chat/sessions/${encodeURIComponent(session.id)}`, {
+			method: "PATCH",
+			headers: { "x-test-user": "user-1", "content-type": "application/json", origin: baseURL },
+			body: JSON.stringify({ activeModel: { provider: "openai-codex", id: "gpt-5.3-codex-spark" } }),
+		});
+		assert.equal(response.status, 200);
+		const body = await response.json();
+		assert.deepEqual(calls, [{ id: session.id, model: { provider: "openai-codex", id: "gpt-5.3-codex-spark" } }]);
+		assert.deepEqual(body.session.activeModel, { provider: "openai-codex", id: "gpt-5.3-codex-spark" });
+		assert.deepEqual(sessions.get(session.id).activeModel, { provider: "openai-codex", id: "gpt-5.3-codex-spark" });
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("chat message emit failure is projected into session error signals", async () => {
+	const { channel, baseURL, sessions, signals } = await startSignalWebHost({
+		emit: async () => { throw new Error("No API key found for the selected model."); },
+	});
+	try {
+		const session = createSession(sessions, "ps_emit_failure_signal");
+		const response = await fetch(`${baseURL}/api/chat/message`, {
+			method: "POST",
+			headers: { "x-test-user": "user-1", "content-type": "application/json", origin: baseURL },
+			body: JSON.stringify({ piboSessionId: session.id, text: "hello" }),
+		});
+		assert.equal(response.status, 500);
+		const snapshot = signals.snapshotTree(session.id).sessions[session.id];
+		assert.equal(snapshot.localStatus, "error");
+		assert.equal(snapshot.hasError, true);
+		assert.equal(snapshot.isTreeActive, false);
+		assert.equal(snapshot.queuedMessages, 0);
+		assert.equal(snapshot.errors.some((error) => error.message.includes("No API key")), true);
 	} finally {
 		await channel.stop?.();
 	}

@@ -1,0 +1,3 @@
+{"provider":"azure-openai-responses","providerLabel":"Azure OpenAI Responses","providerAuth":false,"id":"gpt-5.3-codex-spark","label":"GPT-5.3 Codex Spark","modelAuth":false,"supportsReasoning":true}
+{"provider":"openai-codex","providerLabel":"ChatGPT Plus/Pro (Codex Subscription)","providerAuth":false,"id":"gpt-5.3-codex-spark","label":"GPT-5.3 Codex Spark","modelAuth":false,"supportsReasoning":true}
+{"provider":"openai","providerLabel":"OpenAI","providerAuth":false,"id":"gpt-5.3-codex-spark","label":"GPT-5.3 Codex Spark","modelAuth":false,"supportsReasoning":true}

@@ -1,0 +1,427 @@
+{
+  "kind": "snapshot",
+  "createdAt": "2026-05-19T21:29:44.523Z",
+  "url": "http://127.0.0.1:4788/apps/chat/rooms/room_2c7b52ad-8cd4-4c06-8270-a15228ed8c74/sessions/ps_16411e32-b601-41bd-957c-bac96132f7cd?view=terminal",
+  "title": "Pibo Web Chat",
+  "scope": "[data-pibo-debug=\"session-list\"]",
+  "rootFound": true,
+  "root": {
+    "ref": "@n1",
+    "identity": "session-list:room_2c7b52ad-8cd4-4c06-8270-a15228ed8c74",
+    "identityKind": "pibo-room",
+    "depth": 0,
+    "tag": "div",
+    "attributes": {
+      "data-pibo-debug": "session-list",
+      "data-pibo-room-id": "room_2c7b52ad-8cd4-4c06-8270-a15228ed8c74",
+      "data-pibo-selected-session-id": "ps_16411e32-b601-41bd-957c-bac96132f7cd",
+      "data-pibo-state": "active-only"
+    },
+    "path": "body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(2)>aside:nth-of-type(1)>div:nth-of-type(2)",
+    "text": "PERSONAL CHAT Personal Chat locked personal room ROOMS No rooms SESSIONS pibo-k…",
+    "classSummary": "overflow-hidden",
+    "box": {
+      "x": -280,
+      "y": 40,
+      "w": 279,
+      "h": 401
+    }
+  },
+  "activeElement": {
+    "identity": "path:body:nth-of-type(1)",
+    "tag": "body",
+    "path": "body:nth-of-type(1)"
+  },
+  "nodes": [
+    {
+      "ref": "@n1",
+      "identity": "session-list:room_2c7b52ad-8cd4-4c06-8270-a15228ed8c74",
+      "identityKind": "pibo-room",
+      "depth": 0,
+      "tag": "div",
+      "attributes": {
+        "data-pibo-debug": "session-list",
+        "data-pibo-room-id": "room_2c7b52ad-8cd4-4c06-8270-a15228ed8c74",
+        "data-pibo-selected-session-id": "ps_16411e32-b601-41bd-957c-bac96132f7cd",
+        "data-pibo-state": "active-only"
+      },
+      "path": "body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(2)>aside:nth-of-type(1)>div:nth-of-type(2)",
+      "text": "PERSONAL CHAT Personal Chat locked personal room ROOMS No rooms SESSIONS pibo-k…",
+      "classSummary": "overflow-hidden",
+      "box": {
+        "x": -280,
+        "y": 40,
+        "w": 279,
+        "h": 401
+      }
+    },
+    {
+      "ref": "@n2",
+      "identity": "path:body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(2)>aside:nth-of-type(1)>div:nth-of-type(2)>div:nth-of-type(1)>div:nth-of-type(1)",
+      "identityKind": "path",
+      "depth": 2,
+      "tag": "div",
+      "attributes": {},
+      "path": "body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(2)>aside:nth-of-type(1)>div:nth-of-type(2)>div:nth-of-type(1)>div:nth-of-type(1)",
+      "text": "PERSONAL CHAT",
+      "classSummary": "text-[10px] text-slate-500",
+      "box": {
+        "x": -272,
+        "y": 48,
+        "w": 263,
+        "h": 19
+      }
+    },
+    {
+      "ref": "@n3",
+      "identity": "path:body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(2)>aside:nth-of-type(1)>div:nth-of-type(2)>div:nth-of-type(1)>div:nth-of-type(2)>div:nth-of-type(1)",
+      "identityKind": "path",
+      "depth": 3,
+      "tag": "div",
+      "attributes": {
+        "title": "Personal Chat room_2c7b52ad-8cd4-4c06-8270-a15228ed8c74"
+      },
+      "path": "body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(2)>aside:nth-of-type(1)>div:nth-of-type(2)>div:nth-of-type(1)>div:nth-of-type(2)>div:nth-of-type(1)",
+      "name": "Personal Chat room_2c7b52ad-8cd4-4c06-8270-a15228ed8c74",
+      "text": "Personal Chat locked personal room",
+      "classSummary": "border border-[#0bda57] bg-[#0bda57]/10",
+      "box": {
+        "x": -272,
+        "y": 67,
+        "w": 263,
+        "h": 53
+      }
+    },
+    {
+      "ref": "@n4",
+      "identity": "path:body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(2)>aside:nth-of-type(1)>div:nth-of-type(2)>div:nth-of-type(1)>div:nth-of-type(2)>div:nth-of-type(1)>div:nth-of-type(1)>button:nth-of-type(1)",
+      "identityKind": "path",
+      "depth": 5,
+      "tag": "button",
+      "attributes": {},
+      "path": "body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(2)>aside:nth-of-type(1)>div:nth-of-type(2)>div:nth-of-type(1)>div:nth-of-type(2)>div:nth-of-type(1)>div:nth-of-type(1)>button:nth-of-type(1)",
+      "role": "button",
+      "text": "Personal Chat locked personal room",
+      "classSummary": "text-left",
+      "box": {
+        "x": -271,
+        "y": 72,
+        "w": 213,
+        "h": 43
+      }
+    },
+    {
+      "ref": "@n5",
+      "identity": "path:body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(2)>aside:nth-of-type(1)>div:nth-of-type(2)>div:nth-of-type(1)>div:nth-of-type(2)>div:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(1)>span:nth-of-type(1)",
+      "identityKind": "path",
+      "depth": 6,
+      "tag": "span",
+      "attributes": {
+        "title": "Personal Chat is locked",
+        "aria-label": "Personal Chat is locked"
+      },
+      "path": "body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(2)>aside:nth-of-type(1)>div:nth-of-type(2)>div:nth-of-type(1)>div:nth-of-type(2)>div:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(1)>span:nth-of-type(1)",
+      "name": "Personal Chat is locked",
+      "classSummary": "border border-[#0bda57]/50 text-[#0bda57]",
+      "box": {
+        "x": -54,
+        "y": 76,
+        "w": 36,
+        "h": 36
+      }
+    },
+    {
+      "ref": "@n6",
+      "identity": "path:body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(2)>aside:nth-of-type(1)>div:nth-of-type(2)>div:nth-of-type(2)>div:nth-of-type(1)>div:nth-of-type(1)",
+      "identityKind": "path",
+      "depth": 3,
+      "tag": "div",
+      "attributes": {},
+      "path": "body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(2)>aside:nth-of-type(1)>div:nth-of-type(2)>div:nth-of-type(2)>div:nth-of-type(1)>div:nth-of-type(1)",
+      "text": "ROOMS",
+      "classSummary": "text-[10px] text-slate-500",
+      "box": {
+        "x": -268,
+        "y": 145,
+        "w": 40,
+        "h": 15
+      }
+    },
+    {
+      "ref": "@n7",
+      "identity": "button:New Room",
+      "identityKind": "role-name",
+      "depth": 4,
+      "tag": "button",
+      "attributes": {
+        "title": "New Room",
+        "aria-label": "New Room"
+      },
+      "path": "body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(2)>aside:nth-of-type(1)>div:nth-of-type(2)>div:nth-of-type(2)>div:nth-of-type(1)>div:nth-of-type(2)>button:nth-of-type(1)",
+      "role": "button",
+      "name": "New Room",
+      "classSummary": "border border-slate-700 text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50",
+      "box": {
+        "x": -81,
+        "y": 136,
+        "w": 32,
+        "h": 32
+      }
+    },
+    {
+      "ref": "@n8",
+      "identity": "button:Show Archived Rooms",
+      "identityKind": "role-name",
+      "depth": 4,
+      "tag": "button",
+      "attributes": {
+        "title": "Show Archived Rooms",
+        "aria-label": "Show Archived Rooms"
+      },
+      "path": "body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(2)>aside:nth-of-type(1)>div:nth-of-type(2)>div:nth-of-type(2)>div:nth-of-type(1)>div:nth-of-type(2)>button:nth-of-type(2)",
+      "role": "button",
+      "name": "Show Archived Rooms",
+      "classSummary": "border hover:border-[#11a4d4] hover:text-[#11a4d4] border-slate-700 text-slate-400",
+      "box": {
+        "x": -45,
+        "y": 136,
+        "w": 32,
+        "h": 32
+      }
+    },
+    {
+      "ref": "@n9",
+      "identity": "path:body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(2)>aside:nth-of-type(1)>div:nth-of-type(2)>div:nth-of-type(2)>div:nth-of-type(2)>div:nth-of-type(1)",
+      "identityKind": "path",
+      "depth": 3,
+      "tag": "div",
+      "attributes": {},
+      "path": "body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(2)>aside:nth-of-type(1)>div:nth-of-type(2)>div:nth-of-type(2)>div:nth-of-type(2)>div:nth-of-type(1)",
+      "text": "No rooms",
+      "classSummary": "text-xs text-slate-500 border border-dashed border-slate-700",
+      "box": {
+        "x": -272,
+        "y": 172,
+        "w": 259,
+        "h": 42
+      }
+    },
+    {
+      "ref": "@n10",
+      "identity": "path:body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(2)>aside:nth-of-type(1)>div:nth-of-type(2)>div:nth-of-type(3)>div:nth-of-type(1)>div:nth-of-type(1)",
+      "identityKind": "path",
+      "depth": 3,
+      "tag": "div",
+      "attributes": {},
+      "path": "body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(2)>aside:nth-of-type(1)>div:nth-of-type(2)>div:nth-of-type(3)>div:nth-of-type(1)>div:nth-of-type(1)",
+      "text": "SESSIONS",
+      "classSummary": "text-[10px] text-slate-500",
+      "box": {
+        "x": -268,
+        "y": 306,
+        "w": 55,
+        "h": 15
+      }
+    },
+    {
+      "ref": "@n11",
+      "identity": "combobox:Agent for new sessions",
+      "identityKind": "role-name",
+      "depth": 4,
+      "tag": "select",
+      "attributes": {
+        "title": "Agent for new sessions",
+        "aria-label": "Agent for new sessions"
+      },
+      "path": "body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(2)>aside:nth-of-type(1)>div:nth-of-type(2)>div:nth-of-type(3)>div:nth-of-type(1)>div:nth-of-type(2)>select:nth-of-type(1)",
+      "role": "combobox",
+      "name": "Agent for new sessions",
+      "text": "pibo-kimi-coding codex-compat-openai-web",
+      "classSummary": "max-[980px]:text-sm border border-slate-700 bg-[#101d22] text-[11px] text-slate-300 hover:border-[#11a4d4] focus:border-[#11a4d4] disabled:opacity-50",
+      "box": {
+        "x": -205,
+        "y": 297,
+        "w": 128,
+        "h": 32
+      }
+    },
+    {
+      "ref": "@n12",
+      "identity": "path:body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(2)>aside:nth-of-type(1)>div:nth-of-type(2)>div:nth-of-type(3)>div:nth-of-type(1)>div:nth-of-type(2)>select:nth-of-type(1)>option:nth-of-type(1)",
+      "identityKind": "path",
+      "depth": 5,
+      "tag": "option",
+      "attributes": {
+        "title": "Pibo profile pinned to Kimi For Coding. Requires KIMI_API_KEY or configured kimi-coding auth."
+      },
+      "path": "body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(2)>aside:nth-of-type(1)>div:nth-of-type(2)>div:nth-of-type(3)>div:nth-of-type(1)>div:nth-of-type(2)>select:nth-of-type(1)>option:nth-of-type(1)",
+      "name": "Pibo profile pinned to Kimi For Coding. Requires KIMI_API_KEY or configured kim…",
+      "text": "pibo-kimi-coding",
+      "box": {
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      }
+    },
+    {
+      "ref": "@n13",
+      "identity": "path:body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(2)>aside:nth-of-type(1)>div:nth-of-type(2)>div:nth-of-type(3)>div:nth-of-type(1)>div:nth-of-type(2)>select:nth-of-type(1)>option:nth-of-type(2)",
+      "identityKind": "path",
+      "depth": 5,
+      "tag": "option",
+      "attributes": {
+        "title": "Codex-compatible Pibo profile with native provider-backed web_search."
+      },
+      "path": "body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(2)>aside:nth-of-type(1)>div:nth-of-type(2)>div:nth-of-type(3)>div:nth-of-type(1)>div:nth-of-type(2)>select:nth-of-type(1)>option:nth-of-type(2)",
+      "name": "Codex-compatible Pibo profile with native provider-backed web_search.",
+      "text": "codex-compat-openai-web",
+      "box": {
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      }
+    },
+    {
+      "ref": "@n14",
+      "identity": "new-session-button:room_2c7b52ad-8cd4-4c06-8270-a15228ed8c74",
+      "identityKind": "pibo-room",
+      "depth": 4,
+      "tag": "button",
+      "attributes": {
+        "data-pibo-debug": "new-session-button",
+        "data-pibo-room-id": "room_2c7b52ad-8cd4-4c06-8270-a15228ed8c74",
+        "data-pibo-state": "ready",
+        "title": "New Session",
+        "aria-label": "New Session"
+      },
+      "path": "body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(2)>aside:nth-of-type(1)>div:nth-of-type(2)>div:nth-of-type(3)>div:nth-of-type(1)>div:nth-of-type(2)>button:nth-of-type(1)",
+      "role": "button",
+      "name": "New Session",
+      "classSummary": "border border-slate-700 text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50",
+      "box": {
+        "x": -73,
+        "y": 297,
+        "w": 32,
+        "h": 32
+      }
+    },
+    {
+      "ref": "@n15",
+      "identity": "button:Show Archived Sessions",
+      "identityKind": "role-name",
+      "depth": 4,
+      "tag": "button",
+      "attributes": {
+        "title": "Show Archived Sessions",
+        "aria-label": "Show Archived Sessions"
+      },
+      "path": "body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(2)>aside:nth-of-type(1)>div:nth-of-type(2)>div:nth-of-type(3)>div:nth-of-type(1)>div:nth-of-type(2)>button:nth-of-type(2)",
+      "role": "button",
+      "name": "Show Archived Sessions",
+      "classSummary": "border hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-70 border-slate-700 text-slate-400",
+      "box": {
+        "x": -37,
+        "y": 297,
+        "w": 32,
+        "h": 32
+      }
+    },
+    {
+      "ref": "@n16",
+      "identity": "session-row:ps_16411e32-b601-41bd-957c-bac96132f7cd",
+      "identityKind": "pibo-session",
+      "depth": 4,
+      "tag": "div",
+      "attributes": {
+        "data-pibo-component": "SessionNode",
+        "data-pibo-debug": "session-row",
+        "data-pibo-session-id": "ps_16411e32-b601-41bd-957c-bac96132f7cd",
+        "data-pibo-title": "Untitled Session",
+        "data-pibo-selected": "true",
+        "data-pibo-state": "error",
+        "data-pibo-archived": "false",
+        "data-pibo-unread-count": "0",
+        "title": "Untitled Session ps_16411e32-b601-41bd-957c-bac96132f7cd"
+      },
+      "path": "body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(2)>aside:nth-of-type(1)>div:nth-of-type(2)>div:nth-of-type(3)>div:nth-of-type(2)>div:nth-of-type(1)>div:nth-of-type(1)",
+      "name": "Untitled Session ps_16411e32-b601-41bd-957c-bac96132f7cd",
+      "text": "Untitled Session ps_16411e32-b601-41bd-957c-bac96132f7cd",
+      "classSummary": "border border-[#11a4d4] bg-[#11a4d4]/10",
+      "box": {
+        "x": -272,
+        "y": 333,
+        "w": 259,
+        "h": 55
+      }
+    },
+    {
+      "ref": "@n17",
+      "identity": "button:Open session Untitled Session",
+      "identityKind": "role-name",
+      "depth": 6,
+      "tag": "button",
+      "attributes": {
+        "aria-label": "Open session Untitled Session"
+      },
+      "path": "body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(2)>aside:nth-of-type(1)>div:nth-of-type(2)>div:nth-of-type(3)>div:nth-of-type(2)>div:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(1)>button:nth-of-type(1)",
+      "role": "button",
+      "name": "Open session Untitled Session",
+      "text": "Untitled Session ps_16411e32-b601-41bd-957c-bac96132f7cd",
+      "classSummary": "text-left",
+      "box": {
+        "x": -263,
+        "y": 338,
+        "w": 177,
+        "h": 45
+      }
+    },
+    {
+      "ref": "@n18",
+      "identity": "path:body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(2)>aside:nth-of-type(1)>div:nth-of-type(2)>div:nth-of-type(3)>div:nth-of-type(2)>div:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(1)>span:nth-of-type(1)>span:nth-of-type(1)",
+      "identityKind": "path",
+      "depth": 7,
+      "tag": "span",
+      "attributes": {
+        "title": "Idle",
+        "aria-label": "Idle"
+      },
+      "path": "body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(2)>aside:nth-of-type(1)>div:nth-of-type(2)>div:nth-of-type(3)>div:nth-of-type(2)>div:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(1)>span:nth-of-type(1)>span:nth-of-type(1)",
+      "name": "Idle",
+      "classSummary": "session-signal h-2 w-2 rounded-full session-signal-idle",
+      "box": {
+        "x": -74,
+        "y": 348,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "ref": "@n19",
+      "identity": "button:Session actions",
+      "identityKind": "role-name",
+      "depth": 7,
+      "tag": "button",
+      "attributes": {
+        "title": "Session actions",
+        "aria-label": "Session actions"
+      },
+      "path": "body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(2)>aside:nth-of-type(1)>div:nth-of-type(2)>div:nth-of-type(3)>div:nth-of-type(2)>div:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(2)>div:nth-of-type(1)>button:nth-of-type(1)",
+      "role": "button",
+      "name": "Session actions",
+      "classSummary": "border border-slate-700 text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]",
+      "box": {
+        "x": -54,
+        "y": 343,
+        "w": 36,
+        "h": 36
+      }
+    }
+  ],
+  "omitted": {
+    "nodes": 0,
+    "depth": 5,
+    "budget": false
+  }
+}

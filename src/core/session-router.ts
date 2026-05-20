@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
 	InitialSessionContext,
 	type InitialSessionContextOptions,
+	type ModelProfile,
 	type SubagentProfile,
 } from "./profiles.js";
 import { createDefaultPiboPluginRegistry } from "../plugins/builtin.js";
@@ -311,6 +312,31 @@ export class PiboSessionRouter {
 
 	getSessionRuntimeStatus(piboSessionId: string): PiboSessionStatus | undefined {
 		return this.sessions.get(piboSessionId)?.getStatus();
+	}
+
+	async setLiveSessionActiveModel(piboSessionId: string, model: ModelProfile | undefined): Promise<ModelProfile | undefined> {
+		const session = this.sessions.get(piboSessionId);
+		if (!session) return model;
+		const status = session.getStatus();
+		if (status.processing || status.streaming || status.queuedMessages > 0) {
+			throw new Error("Session model can only be changed while the runtime is idle.");
+		}
+		if (!model) {
+			await this.resetCachedSession(piboSessionId);
+			return undefined;
+		}
+		return session.setModel(model);
+	}
+
+	reportSessionError(piboSessionId: string, error: string, options: { eventId?: string; source?: "pi" | "pibo" } = {}): void {
+		this.signalRegistry.project({ type: "session_created", session: this.resolvePiboSession(piboSessionId) });
+		this.emitOutput({
+			type: "session_error",
+			piboSessionId,
+			eventId: options.eventId,
+			error,
+			errorDetails: runtimeSessionErrorDetails(error),
+		});
 	}
 
 	listSessionRuntimeStatuses(): PiboSessionStatus[] {

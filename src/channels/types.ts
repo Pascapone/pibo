@@ -13,7 +13,7 @@ import type {
 import type { PiboAuthService } from "../auth/types.js";
 import type { PiboWebApp } from "../web/types.js";
 import type { PiboRalphStopConditionDefinition, PiboRalphStopConditionInfo } from "../ralph/types.js";
-import type { ContextFileProfile, InitialSessionContext, SkillProfile } from "../core/profiles.js";
+import type { ContextFileProfile, InitialSessionContext, ModelProfile, SkillProfile } from "../core/profiles.js";
 import type {
 	CreatePiboSessionInput,
 	FindPiboSessionsInput,
@@ -35,6 +35,8 @@ export type PiboChannelContext = {
 	getSession(id: string): PiboSession | undefined;
 	createSession(input: CreatePiboSessionInput): PiboSession;
 	updateSession?(id: string, input: UpdatePiboSessionInput): PiboSession | undefined;
+	setLiveSessionActiveModel?(id: string, model: ModelProfile | undefined): Promise<ModelProfile | undefined>;
+	reportSessionError?(id: string, error: string, options?: { eventId?: string; source?: "pi" | "pibo" }): void;
 	deleteSession?(id: string): boolean;
 	findSessions(input: FindPiboSessionsInput): PiboSession[];
 	listSessions?(): PiboSession[];

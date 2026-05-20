@@ -48,8 +48,9 @@ export function CompactTerminalSessionView({
 	const runningCount = rows.filter((row) => row.status === "running").length;
 	const toolErrorCount = rows.filter((row) => row.status === "error" && row.errorKind === "tool").length;
 	const errorCount = rows.filter((row) => row.status === "error" && row.errorKind !== "tool").length;
-	const signalWorking = selectedSessionSignal?.isTreeActive ?? false;
-	const isStreaming = signalWorking || selectedSessionStatus === "running" || runningCount > 0 || selectedTrace?.status === "UNSET";
+	const isStreaming = selectedSessionSignal
+		? selectedSessionSignal.isTreeActive
+		: selectedSessionStatus === "running" || runningCount > 0 || selectedTrace?.status === "UNSET";
 
 	const stickyView = useStickyVirtuoso({
 		itemCount: rows.length,
@@ -398,14 +399,16 @@ function retainExistingExpandedRows(
 }
 
 function collapsedToolCallPreviewLines(row: { kind: string; lines: CompactTerminalLine[] }) {
-	if (row.kind === "tool.group.exploring") return row.lines.slice(0, COLLAPSED_EXPLORING_PREVIEW_LINES);
+	if (row.kind === "tool.group.exploring" || row.kind === "tool.group.images") return row.lines.slice(0, COLLAPSED_EXPLORING_PREVIEW_LINES);
 	return row.lines;
 }
 
 function isToolCallLikeRow(row: { kind: string; expandable?: boolean }) {
 	return Boolean(row.expandable) && (
 		row.kind === "tool.call" ||
+		row.kind === "tool.image" ||
 		row.kind === "tool.group.exploring" ||
+		row.kind === "tool.group.images" ||
 		row.kind === "agent.delegation" ||
 		row.kind === "agent.async" ||
 		row.kind === "yielded.run" ||

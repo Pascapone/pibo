@@ -8056,6 +8056,8 @@ async function sendChatMessage(input: {
 			source: "user",
 		});
 	} catch (error) {
+		const errorMessage = error instanceof Error ? error.message : String(error);
+		input.context.channelContext.reportSessionError?.(selectedSession.id, errorMessage, { eventId: messageId, source: "pibo" });
 		const failed = input.state.eventCommands.appendEvent({
 			roomId: room.id,
 			piboSessionId: selectedSession.id,
@@ -8068,7 +8070,7 @@ async function sendChatMessage(input: {
 				piboSessionId: selectedSession.id,
 				roomId: room.id,
 				...(clientTxnId ? { clientTxnId } : {}),
-				message: error instanceof Error ? error.message : String(error),
+				message: errorMessage,
 			},
 		});
 		for (const listener of input.state.liveListeners) listener(failed);
@@ -10376,7 +10378,17 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				if (body.profile !== undefined && (state.activeTraceSessions.has(selectedSession.id) || state.sessionQuery.hasSessionActivity(selectedSession.id))) {
 					throw new PiboWebHttpError("Session profile can only be changed before the first message.", 400);
 				}
-				const updated = updateSession(selectedSession.id, createSessionUpdate(context, selectedSession, body));
+				const update = createSessionUpdate(context, selectedSession, body);
+				if ("activeModel" in update) {
+					try {
+						await context.channelContext.setLiveSessionActiveModel?.(selectedSession.id, update.activeModel ?? undefined);
+					} catch (error) {
+						const message = error instanceof Error ? error.message : String(error);
+						const status = /idle/i.test(message) ? 409 : 400;
+						throw new PiboWebHttpError(message, status);
+					}
+				}
+				const updated = updateSession(selectedSession.id, update);
 				if (!updated) throw new PiboWebHttpError("Session not found", 404);
 				if (body.archived === true) {
 					markSessionsRead(state, sessionSubtree(listOwnedSessions(context, webSession), selectedSession.id), principalIdFor(webSession));

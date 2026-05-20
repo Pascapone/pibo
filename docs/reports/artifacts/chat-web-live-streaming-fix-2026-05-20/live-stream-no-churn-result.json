@@ -1,0 +1,499 @@
+{
+  "sid": "ps_55ecce3b-854d-448c-905a-92f60a48764e",
+  "at": "2026-05-20T20:37:44.846Z",
+  "result": {
+    "url": "http://127.0.0.1:4788/apps/chat/rooms/room_e425c1d9-48c7-4576-81c2-41a7a3dcd4d7/sessions/ps_55ecce3b-854d-448c-905a-92f60a48764e?view=terminal",
+    "text": "PIBO CHAT\ndev@pibo.local\nSESSIONS\nPERSONAL CHAT\nPersonal Chat\nlocked personal room\nROOMS\nNo rooms\nSESSIONS\npibo-kimi-coding\ncodex-compat-openai-web\nUntitled Session\nps_55ecce3b-854d-448c-905a-92f60a48764e\nUntitled Session\nPersonal Chat\n·\nps_55ecce3b-854d-448c-905a-92f60a48764e\nTerminal\nWorkflow\ncodex-compat-openai-web\ncodex-compat-openai-web\nStatus\nSession:\nps_55ecce3b-854d-448c-905a-92f60a48764e\nCWD:\n/root\nModel:\nunknown/unknown\nRuntime:\nidle\nDisposed:\nno\nQueue:\n0\nProcessing:\nno\nStreaming:\nno\nThinking:\noff\nFast mode:\noff\nContext Usage\nunavailable\nProvider quota\nProvider quota\nunavailable\n▸\nEnabled tools (17)\nStatus\nSession:\nps_55ecce3b-854d-448c-905a-92f60a48764e\nCWD:\n/root\nModel:\nunknown/unknown\nRuntime:\nidle\nDisposed:\nno\nQueue:\n0\nProcessing:\nno\nStreaming:\nno\nThinking:\noff\nFast mode:\noff\nContext Usage\nunavailable\nProvider quota\nProvider quota\nunavailable\n▸\nEnabled tools (17)\nStatus\nSession:\nps_55ecce3b-854d-448c-905a-92f60a48764e\nCWD:\n/root\nModel:\nunknown/unknown\nRuntime:\nidle\nDisposed:\nno\nQueue:\n0\nProcessing:\nno\nStreaming:\nno\nThinking:\noff\nFast mode:\noff\nContext Usage\nunavailable\nProvider quota\nProvider quota\nunavailable\n▸\nEnabled tools (17)\nStatus\nSession:\nps_55ecce3b-854d-448c-905a-92f60a48764e\nCWD:\n/root\nModel:\nunknown/unknown\nRuntime:\nidle\nDisposed:\nno\nQueue:\n0\nProcessing:\nno\nStreaming:\nno\nThinking:\noff\nFast mode:\noff\nContext Usage\nunavailable\nProvider quota\nProvider quota\nunavailable\n▸\nEnabled tools (17)\nStatus\nSession:\nps_55ecce3b-854d-448c-905a-92f60a48764e\nCWD:\n/ro",
+    "state": {
+      "eventSources": [
+        {
+          "t": 1779309456994,
+          "hidden": false,
+          "visibilityState": "visible",
+          "kind": "construct",
+          "id": 1,
+          "url": "/api/chat/signals/events?rootPiboSessionId=ps_55ecce3b-854d-448c-905a-92f60a48764e",
+          "readyState": 0
+        },
+        {
+          "t": 1779309456995,
+          "hidden": false,
+          "visibilityState": "visible",
+          "kind": "construct",
+          "id": 2,
+          "url": "/api/chat/events?roomId=room_e425c1d9-48c7-4576-81c2-41a7a3dcd4d7&mode=summary&since=0%3A999999",
+          "readyState": 0
+        },
+        {
+          "t": 1779309457058,
+          "hidden": false,
+          "visibilityState": "visible",
+          "kind": "open",
+          "id": 1,
+          "url": "/api/chat/signals/events?rootPiboSessionId=ps_55ecce3b-854d-448c-905a-92f60a48764e",
+          "readyState": 1
+        },
+        {
+          "t": 1779309457064,
+          "hidden": false,
+          "visibilityState": "visible",
+          "kind": "open",
+          "id": 2,
+          "url": "/api/chat/events?roomId=room_e425c1d9-48c7-4576-81c2-41a7a3dcd4d7&mode=summary&since=0%3A999999",
+          "readyState": 1
+        },
+        {
+          "t": 1779309457064,
+          "hidden": false,
+          "visibilityState": "visible",
+          "kind": "message:pibo",
+          "id": 2,
+          "url": "/api/chat/events?roomId=room_e425c1d9-48c7-4576-81c2-41a7a3dcd4d7&mode=summary&since=0%3A999999",
+          "lastEventId": "",
+          "readyState": 1
+        },
+        {
+          "t": 1779309457066,
+          "hidden": false,
+          "visibilityState": "visible",
+          "kind": "construct",
+          "id": 3,
+          "url": "/api/chat/events?piboSessionId=ps_55ecce3b-854d-448c-905a-92f60a48764e&mode=live",
+          "readyState": 0
+        },
+        {
+          "t": 1779309457072,
+          "hidden": false,
+          "visibilityState": "visible",
+          "kind": "open",
+          "id": 3,
+          "url": "/api/chat/events?piboSessionId=ps_55ecce3b-854d-448c-905a-92f60a48764e&mode=live",
+          "readyState": 1
+        },
+        {
+          "t": 1779309457072,
+          "hidden": false,
+          "visibilityState": "visible",
+          "kind": "message:pibo",
+          "id": 3,
+          "url": "/api/chat/events?piboSessionId=ps_55ecce3b-854d-448c-905a-92f60a48764e&mode=live",
+          "lastEventId": "",
+          "readyState": 1
+        },
+        {
+          "t": 1779309460222,
+          "hidden": false,
+          "visibilityState": "visible",
+          "kind": "message:pibo",
+          "id": 2,
+          "url": "/api/chat/events?roomId=room_e425c1d9-48c7-4576-81c2-41a7a3dcd4d7&mode=summary&since=0%3A999999",
+          "lastEventId": "1:0",
+          "readyState": 1
+        },
+        {
+          "t": 1779309460222,
+          "hidden": false,
+          "visibilityState": "visible",
+          "kind": "message:pibo",
+          "id": 2,
+          "url": "/api/chat/events?roomId=room_e425c1d9-48c7-4576-81c2-41a7a3dcd4d7&mode=summary&since=0%3A999999",
+          "lastEventId": "1:1",
+          "readyState": 1
+        },
+        {
+          "t": 1779309460222,
+          "hidden": false,
+          "visibilityState": "visible",
+          "kind": "message:pibo",
+          "id": 3,
+          "url": "/api/chat/events?piboSessionId=ps_55ecce3b-854d-448c-905a-92f60a48764e&mode=live",
+          "lastEventId": "1:0",
+          "readyState": 1
+        },
+        {
+          "t": 1779309460222,
+          "hidden": false,
+          "visibilityState": "visible",
+          "kind": "message:pibo",
+          "id": 3,
+          "url": "/api/chat/events?piboSessionId=ps_55ecce3b-854d-448c-905a-92f60a48764e&mode=live",
+          "lastEventId": "1:1",
+          "readyState": 1
+        },
+        {
+          "t": 1779309460652,
+          "hidden": false,
+          "visibilityState": "visible",
+          "kind": "message:pibo",
+          "id": 2,
+          "url": "/api/chat/events?roomId=room_e425c1d9-48c7-4576-81c2-41a7a3dcd4d7&mode=summary&since=0%3A999999",
+          "lastEventId": "2:0",
+          "readyState": 1
+        },
+        {
+          "t": 1779309460652,
+          "hidden": false,
+          "visibilityState": "visible",
+          "kind": "message:pibo",
+          "id": 2,
+          "url": "/api/chat/events?roomId=room_e425c1d9-48c7-4576-81c2-41a7a3dcd4d7&mode=summary&since=0%3A999999",
+          "lastEventId": "2:1",
+          "readyState": 1
+        },
+        {
+          "t": 1779309460652,
+          "hidden": false,
+          "visibilityState": "visible",
+          "kind": "message:pibo",
+          "id": 3,
+          "url": "/api/chat/events?piboSessionId=ps_55ecce3b-854d-448c-905a-92f60a48764e&mode=live",
+          "lastEventId": "2:0",
+          "readyState": 1
+        },
+        {
+          "t": 1779309460652,
+          "hidden": false,
+          "visibilityState": "visible",
+          "kind": "message:pibo",
+          "id": 3,
+          "url": "/api/chat/events?piboSessionId=ps_55ecce3b-854d-448c-905a-92f60a48764e&mode=live",
+          "lastEventId": "2:1",
+          "readyState": 1
+        },
+        {
+          "t": 1779309461085,
+          "hidden": false,
+          "visibilityState": "visible",
+          "kind": "message:pibo",
+          "id": 2,
+          "url": "/api/chat/events?roomId=room_e425c1d9-48c7-4576-81c2-41a7a3dcd4d7&mode=summary&since=0%3A999999",
+          "lastEventId": "3:0",
+          "readyState": 1
+        },
+        {
+          "t": 1779309461085,
+          "hidden": false,
+          "visibilityState": "visible",
+          "kind": "message:pibo",
+          "id": 2,
+          "url": "/api/chat/events?roomId=room_e425c1d9-48c7-4576-81c2-41a7a3dcd4d7&mode=summary&since=0%3A999999",
+          "lastEventId": "3:1",
+          "readyState": 1
+        },
+        {
+          "t": 1779309461085,
+          "hidden": false,
+          "visibilityState": "visible",
+          "kind": "message:pibo",
+          "id": 3,
+          "url": "/api/chat/events?piboSessionId=ps_55ecce3b-854d-448c-905a-92f60a48764e&mode=live",
+          "lastEventId": "3:0",
+          "readyState": 1
+        },
+        {
+          "t": 1779309461086,
+          "hidden": false,
+          "visibilityState": "visible",
+          "kind": "message:pibo",
+          "id": 3,
+          "url": "/api/chat/events?piboSessionId=ps_55ecce3b-854d-448c-905a-92f60a48764e&mode=live",
+          "lastEventId": "3:1",
+          "readyState": 1
+        },
+        {
+          "t": 1779309461508,
+          "hidden": false,
+          "visibilityState": "visible",
+          "kind": "message:pibo",
+          "id": 2,
+          "url": "/api/chat/events?roomId=room_e425c1d9-48c7-4576-81c2-41a7a3dcd4d7&mode=summary&since=0%3A999999",
+          "lastEventId": "4:0",
+          "readyState": 1
+        },
+        {
+          "t": 1779309461508,
+          "hidden": false,
+          "visibilityState": "visible",
+          "kind": "message:pibo",
+          "id": 2,
+          "url": "/api/chat/events?roomId=room_e425c1d9-48c7-4576-81c2-41a7a3dcd4d7&mode=summary&since=0%3A999999",
+          "lastEventId": "4:1",
+          "readyState": 1
+        },
+        {
+          "t": 1779309461508,
+          "hidden": false,
+          "visibilityState": "visible",
+          "kind": "message:pibo",
+          "id": 3,
+          "url": "/api/chat/events?piboSessionId=ps_55ecce3b-854d-448c-905a-92f60a48764e&mode=live",
+          "lastEventId": "4:0",
+          "readyState": 1
+        },
+        {
+          "t": 1779309461508,
+          "hidden": false,
+          "visibilityState": "visible",
+          "kind": "message:pibo",
+          "id": 3,
+          "url": "/api/chat/events?piboSessionId=ps_55ecce3b-854d-448c-905a-92f60a48764e&mode=live",
+          "lastEventId": "4:1",
+          "readyState": 1
+        },
+        {
+          "t": 1779309461929,
+          "hidden": false,
+          "visibilityState": "visible",
+          "kind": "message:pibo",
+          "id": 2,
+          "url": "/api/chat/events?roomId=room_e425c1d9-48c7-4576-81c2-41a7a3dcd4d7&mode=summary&since=0%3A999999",
+          "lastEventId": "5:0",
+          "readyState": 1
+        },
+        {
+          "t": 1779309461929,
+          "hidden": false,
+          "visibilityState": "visible",
+          "kind": "message:pibo",
+          "id": 2,
+          "url": "/api/chat/events?roomId=room_e425c1d9-48c7-4576-81c2-41a7a3dcd4d7&mode=summary&since=0%3A999999",
+          "lastEventId": "5:1",
+          "readyState": 1
+        },
+        {
+          "t": 1779309461929,
+          "hidden": false,
+          "visibilityState": "visible",
+          "kind": "message:pibo",
+          "id": 3,
+          "url": "/api/chat/events?piboSessionId=ps_55ecce3b-854d-448c-905a-92f60a48764e&mode=live",
+          "lastEventId": "5:0",
+          "readyState": 1
+        },
+        {
+          "t": 1779309461929,
+          "hidden": false,
+          "visibilityState": "visible",
+          "kind": "message:pibo",
+          "id": 3,
+          "url": "/api/chat/events?piboSessionId=ps_55ecce3b-854d-448c-905a-92f60a48764e&mode=live",
+          "lastEventId": "5:1",
+          "readyState": 1
+        }
+      ],
+      "fetches": [
+        {
+          "t": 1779309456900,
+          "kind": "fetch",
+          "url": "/health"
+        },
+        {
+          "t": 1779309456903,
+          "kind": "fetch",
+          "url": "/api/chat/bootstrap?piboSessionId=ps_55ecce3b-854d-448c-905a-92f60a48764e&markRead=true"
+        },
+        {
+          "t": 1779309456991,
+          "kind": "fetch",
+          "url": "/api/chat/trace/summary?piboSessionId=ps_55ecce3b-854d-448c-905a-92f60a48764e"
+        },
+        {
+          "t": 1779309456993,
+          "kind": "fetch",
+          "url": "/api/chat/trace?piboSessionId=ps_55ecce3b-854d-448c-905a-92f60a48764e&rawEventsLimit=80&pageSize=2000"
+        },
+        {
+          "t": 1779309459495,
+          "kind": "fetch",
+          "url": "/api/chat/navigation?piboSessionId=ps_55ecce3b-854d-448c-905a-92f60a48764e&roomId=room_e425c1d9-48c7-4576-81c2-41a7a3dcd4d7"
+        },
+        {
+          "t": 1779309460189,
+          "kind": "fetch",
+          "url": "/api/chat/action"
+        },
+        {
+          "t": 1779309460640,
+          "kind": "fetch",
+          "url": "/api/chat/action"
+        },
+        {
+          "t": 1779309461074,
+          "kind": "fetch",
+          "url": "/api/chat/action"
+        },
+        {
+          "t": 1779309461497,
+          "kind": "fetch",
+          "url": "/api/chat/action"
+        },
+        {
+          "t": 1779309461902,
+          "kind": "fetch",
+          "url": "/health"
+        },
+        {
+          "t": 1779309461919,
+          "kind": "fetch",
+          "url": "/api/chat/action"
+        },
+        {
+          "t": 1779309461995,
+          "kind": "fetch",
+          "url": "/api/chat/navigation?piboSessionId=ps_55ecce3b-854d-448c-905a-92f60a48764e&roomId=room_e425c1d9-48c7-4576-81c2-41a7a3dcd4d7"
+        },
+        {
+          "t": 1779309463431,
+          "kind": "fetch",
+          "url": "/api/chat/trace/summary?piboSessionId=ps_55ecce3b-854d-448c-905a-92f60a48764e"
+        },
+        {
+          "t": 1779309463431,
+          "kind": "fetch",
+          "url": "/api/chat/trace?piboSessionId=ps_55ecce3b-854d-448c-905a-92f60a48764e&rawEventsLimit=80&pageSize=2000"
+        },
+        {
+          "t": 1779309464495,
+          "kind": "fetch",
+          "url": "/api/chat/navigation?piboSessionId=ps_55ecce3b-854d-448c-905a-92f60a48764e&roomId=room_e425c1d9-48c7-4576-81c2-41a7a3dcd4d7"
+        }
+      ]
+    }
+  },
+  "live": [
+    {
+      "t": 1779309457066,
+      "hidden": false,
+      "visibilityState": "visible",
+      "kind": "construct",
+      "id": 3,
+      "url": "/api/chat/events?piboSessionId=ps_55ecce3b-854d-448c-905a-92f60a48764e&mode=live",
+      "readyState": 0
+    },
+    {
+      "t": 1779309457072,
+      "hidden": false,
+      "visibilityState": "visible",
+      "kind": "open",
+      "id": 3,
+      "url": "/api/chat/events?piboSessionId=ps_55ecce3b-854d-448c-905a-92f60a48764e&mode=live",
+      "readyState": 1
+    },
+    {
+      "t": 1779309457072,
+      "hidden": false,
+      "visibilityState": "visible",
+      "kind": "message:pibo",
+      "id": 3,
+      "url": "/api/chat/events?piboSessionId=ps_55ecce3b-854d-448c-905a-92f60a48764e&mode=live",
+      "lastEventId": "",
+      "readyState": 1
+    },
+    {
+      "t": 1779309460222,
+      "hidden": false,
+      "visibilityState": "visible",
+      "kind": "message:pibo",
+      "id": 3,
+      "url": "/api/chat/events?piboSessionId=ps_55ecce3b-854d-448c-905a-92f60a48764e&mode=live",
+      "lastEventId": "1:0",
+      "readyState": 1
+    },
+    {
+      "t": 1779309460222,
+      "hidden": false,
+      "visibilityState": "visible",
+      "kind": "message:pibo",
+      "id": 3,
+      "url": "/api/chat/events?piboSessionId=ps_55ecce3b-854d-448c-905a-92f60a48764e&mode=live",
+      "lastEventId": "1:1",
+      "readyState": 1
+    },
+    {
+      "t": 1779309460652,
+      "hidden": false,
+      "visibilityState": "visible",
+      "kind": "message:pibo",
+      "id": 3,
+      "url": "/api/chat/events?piboSessionId=ps_55ecce3b-854d-448c-905a-92f60a48764e&mode=live",
+      "lastEventId": "2:0",
+      "readyState": 1
+    },
+    {
+      "t": 1779309460652,
+      "hidden": false,
+      "visibilityState": "visible",
+      "kind": "message:pibo",
+      "id": 3,
+      "url": "/api/chat/events?piboSessionId=ps_55ecce3b-854d-448c-905a-92f60a48764e&mode=live",
+      "lastEventId": "2:1",
+      "readyState": 1
+    },
+    {
+      "t": 1779309461085,
+      "hidden": false,
+      "visibilityState": "visible",
+      "kind": "message:pibo",
+      "id": 3,
+      "url": "/api/chat/events?piboSessionId=ps_55ecce3b-854d-448c-905a-92f60a48764e&mode=live",
+      "lastEventId": "3:0",
+      "readyState": 1
+    },
+    {
+      "t": 1779309461086,
+      "hidden": false,
+      "visibilityState": "visible",
+      "kind": "message:pibo",
+      "id": 3,
+      "url": "/api/chat/events?piboSessionId=ps_55ecce3b-854d-448c-905a-92f60a48764e&mode=live",
+      "lastEventId": "3:1",
+      "readyState": 1
+    },
+    {
+      "t": 1779309461508,
+      "hidden": false,
+      "visibilityState": "visible",
+      "kind": "message:pibo",
+      "id": 3,
+      "url": "/api/chat/events?piboSessionId=ps_55ecce3b-854d-448c-905a-92f60a48764e&mode=live",
+      "lastEventId": "4:0",
+      "readyState": 1
+    },
+    {
+      "t": 1779309461508,
+      "hidden": false,
+      "visibilityState": "visible",
+      "kind": "message:pibo",
+      "id": 3,
+      "url": "/api/chat/events?piboSessionId=ps_55ecce3b-854d-448c-905a-92f60a48764e&mode=live",
+      "lastEventId": "4:1",
+      "readyState": 1
+    },
+    {
+      "t": 1779309461929,
+      "hidden": false,
+      "visibilityState": "visible",
+      "kind": "message:pibo",
+      "id": 3,
+      "url": "/api/chat/events?piboSessionId=ps_55ecce3b-854d-448c-905a-92f60a48764e&mode=live",
+      "lastEventId": "5:0",
+      "readyState": 1
+    },
+    {
+      "t": 1779309461929,
+      "hidden": false,
+      "visibilityState": "visible",
+      "kind": "message:pibo",
+      "id": 3,
+      "url": "/api/chat/events?piboSessionId=ps_55ecce3b-854d-448c-905a-92f60a48764e&mode=live",
+      "lastEventId": "5:1",
+      "readyState": 1
+    }
+  ],
+  "counts": {
+    "construct": 1,
+    "open": 1,
+    "message:pibo": 11
+  },
+  "passed": true
+}
