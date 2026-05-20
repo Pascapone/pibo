@@ -139,6 +139,11 @@ const DEFAULT_WEB_ANNOTATIONS_TOGGLE_SHORTCUT = "Alt+Shift+A";
 const COMPOSER_HISTORY_LIMIT = 100;
 const SESSION_DELETE_CONFIRM_TEXT = "Delete this session";
 const RECENT_SESSION_ACTIVITY_SIGNAL_MS = 3_000;
+const LIVE_STREAM_RECONNECT_BASE_DELAY_MS = 500;
+const LIVE_STREAM_RECONNECT_MAX_DELAY_MS = 10_000;
+const LIVE_STREAM_STALE_MS = 45_000;
+const HIDDEN_STREAM_FLUSH_DELAY_MS = 100;
+const SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS = 750;
 const SESSION_PAGE_SIZE = 120;
 const ARCHIVED_SESSION_PAGE_SIZE = 60;
 const PROJECT_ROUTING_UNKNOWN_TIMESTAMP = "1970-01-01T00:00:00.000Z";
@@ -425,28 +430,42 @@ export function App({ route }: { route: ChatAppRoute }) {
 			setSessionSignals(null);
 			return;
 		}
-		return subscribeSignalTree(selectedPiboSessionId, {
+		let signalRecoveryTimer: ReturnType<typeof setTimeout> | undefined;
+		const refreshSignalSnapshot = (delayMs: number) => {
+			if (signalRecoveryTimer) clearTimeout(signalRecoveryTimer);
+			signalRecoveryTimer = setTimeout(() => {
+				signalRecoveryTimer = undefined;
+				fetchSignalTree(selectedPiboSessionId)
+					.then((snapshot) => {
+						setSessionSignals(snapshot);
+						setBootstrap((latest) => latest ? applySignalSnapshotToBootstrap(latest, snapshot) : latest);
+					})
+					.catch(() => undefined);
+			}, delayMs);
+		};
+		const unsubscribe = subscribeSignalTree(selectedPiboSessionId, {
 			onSnapshot: (snapshot) => {
+				if (signalRecoveryTimer) {
+					clearTimeout(signalRecoveryTimer);
+					signalRecoveryTimer = undefined;
+				}
 				setSessionSignals(snapshot);
 				setBootstrap((current) => current ? applySignalSnapshotToBootstrap(current, snapshot) : current);
 			},
 			onPatch: (patch) => {
 				setSessionSignals((current) => {
 					const next = applySignalPatch(current, patch);
-					if (current && next === current) {
-						fetchSignalTree(selectedPiboSessionId)
-							.then((snapshot) => {
-								setSessionSignals(snapshot);
-								setBootstrap((latest) => latest ? applySignalSnapshotToBootstrap(latest, snapshot) : latest);
-							})
-							.catch(() => undefined);
-					}
+					if (current && next === current) refreshSignalSnapshot(0);
 					return next;
 				});
 				setBootstrap((current) => current ? applySignalPatchToBootstrap(current, patch) : current);
 			},
-			onError: () => undefined,
+			onError: () => refreshSignalSnapshot(SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS),
 		});
+		return () => {
+			if (signalRecoveryTimer) clearTimeout(signalRecoveryTimer);
+			unsubscribe();
+		};
 	}, [area, selectedPiboSessionId]);
 
 	useEffect(() => {
@@ -3189,7 +3208,13 @@ function SessionTracePane({
 	const queryClient = useQueryClient();
 	const pendingStreamEventsBySession = useRef(new Map<string, ChatStreamEvent[]>());
 	const pendingStreamFrame = useRef<number | undefined>(undefined);
+	const pendingStreamTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 	const liveEventSeqRef = useRef(0);
+	const latestLiveStreamIdBySession = useRef(new Map<string, number>());
+	const selectedLiveStreamRef = useRef<SelectedLiveEventStream | null>(null);
+	const selectedLiveStreamReconnectTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+	const selectedLiveStreamReconnectAttempts = useRef(0);
+	const [selectedLiveStreamReconnectGeneration, setSelectedLiveStreamReconnectGeneration] = useState(0);
 	const [liveTraceOverlay, setLiveTraceOverlay] = useState<LiveTraceOverlay | null>(null);
 	const [traceEventLimit, setTraceEventLimit] = useState(DEFAULT_TRACE_EVENTS_PAGE_SIZE);
 	const [rawEventLimit, setRawEventLimit] = useState(DEFAULT_RAW_EVENTS_LIMIT);
@@ -3354,6 +3379,10 @@ function SessionTracePane({
 			.map((e) => e.eventSequence ?? 0)
 			.reduce((a, b) => Math.max(a, b), 0);
 		liveEventSeqRef.current = Math.max(liveEventSeqRef.current, maxSeq + 1);
+		if (trace.latestStreamId !== undefined) {
+			const currentLatestStreamId = latestLiveStreamIdBySession.current.get(trace.piboSessionId);
+			latestLiveStreamIdBySession.current.set(trace.piboSessionId, Math.max(currentLatestStreamId ?? trace.latestStreamId, trace.latestStreamId));
+		}
 		startTransition(() => {
 			setBaseTraceView(trace);
 			setLiveTraceOverlay((current) => trimLiveOverlayForBaseTrace(current, trace));
@@ -3425,7 +3454,14 @@ function SessionTracePane({
 	}, []);
 
 	const schedulePendingStreamFlush = useCallback(() => {
-		if (pendingStreamFrame.current !== undefined || !selectedPiboSessionId) return;
+		if (pendingStreamFrame.current !== undefined || pendingStreamTimer.current !== undefined || !selectedPiboSessionId) return;
+		if (document.hidden) {
+			pendingStreamTimer.current = setTimeout(() => {
+				pendingStreamTimer.current = undefined;
+				flushPendingStreamEvents(selectedPiboSessionId);
+			}, HIDDEN_STREAM_FLUSH_DELAY_MS);
+			return;
+		}
 		pendingStreamFrame.current = requestAnimationFrame(() => {
 			pendingStreamFrame.current = undefined;
 			flushPendingStreamEvents(selectedPiboSessionId);
@@ -3448,18 +3484,58 @@ function SessionTracePane({
 			if (pendingStreamFrame.current !== undefined) {
 				cancelAnimationFrame(pendingStreamFrame.current);
 			}
+			if (pendingStreamTimer.current !== undefined) {
+				clearTimeout(pendingStreamTimer.current);
+			}
+			if (selectedLiveStreamReconnectTimer.current !== undefined) {
+				clearTimeout(selectedLiveStreamReconnectTimer.current);
+			}
 		};
 	}, []);
+
+	const recordLatestLiveStreamId = useCallback((piboSessionId: string, event: ChatStreamEvent) => {
+		if (event.streamId === undefined) return;
+		const currentLatestStreamId = latestLiveStreamIdBySession.current.get(piboSessionId);
+		latestLiveStreamIdBySession.current.set(piboSessionId, Math.max(currentLatestStreamId ?? event.streamId, event.streamId));
+	}, []);
+
+	const requestSelectedLiveStreamReconnect = useCallback((delayMs = 0) => {
+		if (selectedLiveStreamReconnectTimer.current !== undefined) {
+			if (delayMs > 0) return;
+			clearTimeout(selectedLiveStreamReconnectTimer.current);
+		}
+		selectedLiveStreamReconnectTimer.current = setTimeout(() => {
+			selectedLiveStreamReconnectTimer.current = undefined;
+			setSelectedLiveStreamReconnectGeneration((current) => current + 1);
+		}, delayMs);
+	}, []);
+
+	const recoverSelectedLiveStream = useCallback(() => {
+		if (!selectedPiboSessionId) return;
+		flushPendingStreamEvents(selectedPiboSessionId);
+		void onRefreshTrace().catch((caught) => onError(errorMessage(caught)));
+		void onRefreshBootstrap().catch((caught) => onError(errorMessage(caught)));
+		const liveStream = selectedLiveStreamRef.current;
+		const stale = !liveStream
+			|| liveStream.piboSessionId !== selectedPiboSessionId
+			|| liveStream.events.readyState === 2
+			|| Date.now() - liveStream.lastActivityAt > LIVE_STREAM_STALE_MS;
+		if (stale) requestSelectedLiveStreamReconnect();
+	}, [flushPendingStreamEvents, onError, onRefreshBootstrap, onRefreshTrace, requestSelectedLiveStreamReconnect, selectedPiboSessionId]);
 
 	useEffect(() => {
 		if (!selectedPiboSessionId || !tracePageQueryKey) return;
 		if (!currentTraceView || currentTraceView.piboSessionId !== selectedPiboSessionId) return;
 		const params = new URLSearchParams({ piboSessionId: selectedPiboSessionId });
 		params.set("mode", "live");
-		if (currentTraceView?.latestStreamId !== undefined) {
-			params.set("since", `${currentTraceView.latestStreamId}:999999`);
+		const latestStreamId = latestLiveStreamIdBySession.current.get(selectedPiboSessionId) ?? currentTraceView.latestStreamId;
+		if (latestStreamId !== undefined) {
+			params.set("since", `${latestStreamId}:999999`);
 		}
 		const events = new EventSource(`/api/chat/events?${params.toString()}`);
+		const openedAt = Date.now();
+		selectedLiveStreamRef.current = { piboSessionId: selectedPiboSessionId, events, openedAt, lastActivityAt: openedAt };
+		let closed = false;
 		let traceTimer: ReturnType<typeof setTimeout> | undefined;
 		let bootstrapTimer: ReturnType<typeof setTimeout> | undefined;
 		let bootstrapRefreshInFlight = false;
@@ -3502,10 +3578,33 @@ function SessionTracePane({
 		const scheduleTerminalBootstrapRefresh = () => {
 			scheduleBootstrapRefresh(900, true);
 		};
+		events.onopen = () => {
+			selectedLiveStreamReconnectAttempts.current = 0;
+			if (selectedLiveStreamReconnectTimer.current !== undefined) {
+				clearTimeout(selectedLiveStreamReconnectTimer.current);
+				selectedLiveStreamReconnectTimer.current = undefined;
+			}
+			const liveStream = selectedLiveStreamRef.current;
+			if (liveStream?.events === events) liveStream.lastActivityAt = Date.now();
+		};
+		events.onerror = () => {
+			if (closed) return;
+			const liveStream = selectedLiveStreamRef.current;
+			if (liveStream?.events === events) {
+				liveStream.lastErrorAt = Date.now();
+			}
+			const attempt = selectedLiveStreamReconnectAttempts.current++;
+			const delayMs = Math.min(LIVE_STREAM_RECONNECT_MAX_DELAY_MS, LIVE_STREAM_RECONNECT_BASE_DELAY_MS * 2 ** attempt);
+			requestSelectedLiveStreamReconnect(delayMs);
+		};
 		events.addEventListener("pibo", (message) => {
+			if (closed) return;
 			const event = chatStreamEvent(message);
 			if (!event) return;
 			const targetPiboSessionId = event.piboSessionId || selectedPiboSessionId;
+			const liveStream = selectedLiveStreamRef.current;
+			if (liveStream?.events === events) liveStream.lastActivityAt = Date.now();
+			recordLatestLiveStreamId(targetPiboSessionId, event);
 			const flushImmediately = event.type !== "TEXT_MESSAGE_CONTENT" && event.type !== "REASONING_MESSAGE_CONTENT";
 			if (targetPiboSessionId === selectedPiboSessionId) {
 				enqueueStreamEvent(targetPiboSessionId, event, flushImmediately);
@@ -3526,11 +3625,14 @@ function SessionTracePane({
 			}
 		});
 		return () => {
+			closed = true;
 			if (traceTimer) clearTimeout(traceTimer);
 			if (bootstrapTimer) clearTimeout(bootstrapTimer);
+			flushPendingStreamEvents(selectedPiboSessionId);
+			if (selectedLiveStreamRef.current?.events === events) selectedLiveStreamRef.current = null;
 			events.close();
 		};
-	}, [currentTraceView?.latestStreamId, currentTraceView?.piboSessionId, enqueueStreamEvent, onError, onRefreshBootstrap, onRefreshTrace, selectedPiboSessionId, tracePageQueryKey]);
+	}, [currentTraceView?.piboSessionId, enqueueStreamEvent, flushPendingStreamEvents, onError, onRefreshBootstrap, onRefreshTrace, recordLatestLiveStreamId, requestSelectedLiveStreamReconnect, selectedLiveStreamReconnectGeneration, selectedPiboSessionId, tracePageQueryKey]);
 
 	const selectedTrace = null;
 	const selectedSessionNode = selectedPiboSessionId ? findSessionNode(bootstrap.sessions, selectedPiboSessionId) : undefined;
@@ -3576,6 +3678,23 @@ function SessionTracePane({
 		document.addEventListener("visibilitychange", handleVisibilityChange);
 		return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
 	}, [currentTraceView]);
+
+	useEffect(() => {
+		const recover = () => recoverSelectedLiveStream();
+		const recoverWhenVisible = () => {
+			if (!document.hidden) recoverSelectedLiveStream();
+		};
+		window.addEventListener("focus", recover);
+		window.addEventListener("online", recover);
+		window.addEventListener("pageshow", recover);
+		document.addEventListener("visibilitychange", recoverWhenVisible);
+		return () => {
+			window.removeEventListener("focus", recover);
+			window.removeEventListener("online", recover);
+			window.removeEventListener("pageshow", recover);
+			document.removeEventListener("visibilitychange", recoverWhenVisible);
+		};
+	}, [recoverSelectedLiveStream]);
 
 	useEffect(() => {
 		return () => {
@@ -5128,7 +5247,7 @@ function sessionNodeSignal(node: PiboWebSessionNode, now: number): { className: 
 	if (node.status === "running") {
 		return { className: `${base} session-signal-running`, title: "Runtime is working" };
 	}
-	if (node.status !== "error" && ((node.unreadCount ?? 0) > 0 || sessionWasRecentlyActive(node, now))) {
+	if ((node.unreadCount ?? 0) > 0 || sessionWasRecentlyActive(node, now)) {
 		return { className: `${base} session-signal-unread`, title: "New completed assistant message" };
 	}
 	return { className: `${base} session-signal-idle`, title: "Idle" };
@@ -9312,6 +9431,14 @@ type CompactRawEvent = RawEvent & { count: number };
 type LiveTraceOverlay = {
 	piboSessionId: string;
 	events: ChatWebStoredEvent[];
+};
+
+type SelectedLiveEventStream = {
+	piboSessionId: string;
+	events: EventSource;
+	openedAt: number;
+	lastActivityAt: number;
+	lastErrorAt?: number;
 };
 
 type ChatStreamEventMeta = {
