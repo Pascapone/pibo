@@ -2,7 +2,32 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-DEV_PUBLIC_URL="${PIBO_DEV_PUBLIC_URL:-https://dev.pibo2.neuralnexus.me/apps/chat}"
+DEPLOY_ENV_FILE="${PIBO_DEPLOY_ENV_FILE:-$ROOT_DIR/.env.developer-host}"
+if [[ -f "$DEPLOY_ENV_FILE" ]]; then
+	set -a
+	# shellcheck disable=SC1090
+	source "$DEPLOY_ENV_FILE"
+	set +a
+fi
+
+resolve_dev_public_url() {
+	if [[ -n "${PIBO_DEV_PUBLIC_URL:-}" ]]; then
+		printf '%s\n' "$PIBO_DEV_PUBLIC_URL"
+		return
+	fi
+	if [[ -n "${PIBO_DEV_BASE_URL:-}" ]]; then
+		printf '%s/apps/chat\n' "${PIBO_DEV_BASE_URL%/}"
+		return
+	fi
+	cat >&2 <<'EOF'
+Dev deploy needs a host-specific public dev URL.
+Set PIBO_DEV_PUBLIC_URL, or set PIBO_DEV_BASE_URL and the script will append /apps/chat.
+You can export it in the shell, service environment, or a repo-local .env.developer-host file.
+EOF
+	exit 2
+}
+
+DEV_PUBLIC_URL="$(resolve_dev_public_url)"
 DEV_BRANCH="${PIBO_DEV_BRANCH:-dev}"
 DEV_REMOTE="${PIBO_DEV_REMOTE:-origin}"
 

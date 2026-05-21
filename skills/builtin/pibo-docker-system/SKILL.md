@@ -106,7 +106,7 @@ After Docker validation, use the host dev gateway for host-level testing:
 pibo gateway dev restart
 ```
 
-Canonical hosted dev Chat URL: `https://dev.pibo2.neuralnexus.me/apps/chat`. Treat `dev.pibo.neuralnexus.me` as a legacy alias, not the primary dev test URL.
+The hosted dev Chat URL is host-specific. Set `PIBO_DEV_PUBLIC_URL` or `PIBO_DEV_BASE_URL` in the environment or repo-local `.env.developer-host`; do not hard-code public hostnames in docs, scripts, or skills.
 
 Deploy production only after dev testing succeeds and the user approves it:
 

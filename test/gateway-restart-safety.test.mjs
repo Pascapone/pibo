@@ -63,6 +63,14 @@ describe('deploy scripts', () => {
     assert.match(readFileSync('scripts/deploy-web.sh', 'utf8'), /pibo gateway web restart/);
     assert.match(readFileSync('scripts/deploy-web-dev.sh', 'utf8'), /pibo gateway dev restart/);
   });
+  it('keeps hosted dev public URLs in environment configuration', () => {
+    const script = readFileSync('scripts/deploy-web-dev.sh', 'utf8');
+    assert.doesNotMatch(script, /https:\/\/dev\.pibo/);
+    assert.doesNotMatch(script, /neuralnexus\.me/);
+    assert.match(script, /PIBO_DEPLOY_ENV_FILE/);
+    assert.match(script, /PIBO_DEV_PUBLIC_URL/);
+    assert.match(script, /PIBO_DEV_BASE_URL/);
+  });
 });
 
 

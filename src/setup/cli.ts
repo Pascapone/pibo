@@ -141,6 +141,8 @@ PIBO_PROD_HOME=${options.prodHome}
 PIBO_DEV_HOME=${options.devHome}
 PIBO_PROD_BASE_URL=${options.prodDomain ? `https://${options.prodDomain}` : "https://pibo.example.com"}
 PIBO_DEV_BASE_URL=${options.devDomain ? `https://${options.devDomain}` : "https://dev.pibo.example.com"}
+# Optional: override the dev deploy reachability probe. If omitted, deploy uses PIBO_DEV_BASE_URL/apps/chat.
+# PIBO_DEV_PUBLIC_URL=${options.devDomain ? `https://${options.devDomain}/apps/chat` : "https://dev.pibo.example.com/apps/chat"}
 `;
 }
 

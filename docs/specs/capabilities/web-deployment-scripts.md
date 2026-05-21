@@ -85,19 +85,21 @@ The dev deployment script MUST build current web artifacts and MUST NOT start or
 - THEN it prints that the existing dev public web app is not reachable yet
 - AND still completes without restarting the dev gateway.
 
-### Requirement: Dev public URL is configurable
+### Requirement: Dev public URL is host-configured
 
-The dev deployment script MUST allow operators to override the public URL used for the non-blocking reachability probe.
+The dev deployment script MUST derive the public URL used for the non-blocking reachability probe from host configuration, not from a repository-hard-coded hostname.
 
 #### Current
 
-`DEV_PUBLIC_URL` defaults to the canonical hosted dev Chat Web URL, `https://dev.pibo2.neuralnexus.me/apps/chat`, and can be overridden with the `PIBO_DEV_PUBLIC_URL` environment variable.
+The script loads an optional deploy env file from `PIBO_DEPLOY_ENV_FILE`, defaulting to repo-local `.env.developer-host`. It requires either `PIBO_DEV_PUBLIC_URL` or `PIBO_DEV_BASE_URL`; when only `PIBO_DEV_BASE_URL` is set, the script appends `/apps/chat`.
 
 #### Acceptance
 
-- Without `PIBO_DEV_PUBLIC_URL`, the script probes the default dev Chat Web URL.
-- With `PIBO_DEV_PUBLIC_URL` set, the script probes that value instead.
+- Without `PIBO_DEV_PUBLIC_URL` and without `PIBO_DEV_BASE_URL`, the script exits before building and explains which environment variable to set.
+- With `PIBO_DEV_PUBLIC_URL` set, the script probes that exact value.
+- With only `PIBO_DEV_BASE_URL` set, the script probes `${PIBO_DEV_BASE_URL%/}/apps/chat`.
 - Probe output names the URL that was checked.
+- The repository does not hard-code a real hosted dev domain in active deploy scripts, context files, or skills.
 
 #### Scenario: Custom dev URL probe
 
