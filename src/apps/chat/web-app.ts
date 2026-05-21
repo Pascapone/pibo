@@ -7955,7 +7955,7 @@ async function sendProjectMessage(input: {
 		},
 	});
 	for (const listener of input.state.liveListeners) listener(accepted);
-	const messageId = randomUUID();
+	const messageId = clientTxnId ?? randomUUID();
 	const output = await input.context.channelContext.emit({
 		type: "message",
 		piboSessionId: selectedSession.id,
@@ -8045,7 +8045,7 @@ async function sendChatMessage(input: {
 		console.warn("V2 chat data shadow ingest failed", error);
 	}
 	for (const listener of input.state.liveListeners) listener(accepted);
-	const messageId = randomUUID();
+	const messageId = clientTxnId ?? randomUUID();
 	let output: PiboOutputEvent;
 	try {
 		output = await input.context.channelContext.emit({

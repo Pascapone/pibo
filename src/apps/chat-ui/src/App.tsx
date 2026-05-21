@@ -1987,13 +1987,13 @@ export function App({ route }: { route: ChatAppRoute }) {
 						onThinkingLevelChange={(level) => void runCommand(`/thinking ${level}`)}
 						onRefreshTrace={refreshSelectedTrace}
 						onRefreshBootstrap={refreshSelectedBootstrap}
-						onSend={async (text, webAnnotationIds, fileAttachmentPaths) => {
+						onSend={async (text, webAnnotationIds, fileAttachmentPaths, clientTxnId) => {
 							if (!selectedPiboSessionId || selectedRoomArchived) return;
 							try {
 								await sendMessageMutation.mutateAsync({
 									piboSessionId: selectedPiboSessionId,
 									text,
-									clientTxnId: createClientTxnId(),
+									clientTxnId: clientTxnId ?? createClientTxnId(),
 									roomId: selectedRoomId ?? undefined,
 									webAnnotationIds,
 									fileAttachmentPaths,
@@ -3202,7 +3202,7 @@ function SessionTracePane({
 	onThinkingLevelChange: (level: ThinkingLevel) => void;
 	onRefreshTrace: () => Promise<void>;
 	onRefreshBootstrap: () => Promise<unknown>;
-	onSend: (text: string, webAnnotationIds?: readonly string[], fileAttachmentPaths?: readonly string[]) => Promise<void>;
+	onSend: (text: string, webAnnotationIds?: readonly string[], fileAttachmentPaths?: readonly string[], clientTxnId?: string) => Promise<void>;
 	onError: (message: string | null) => void;
 }) {
 	const queryClient = useQueryClient();
@@ -3803,7 +3803,8 @@ function SessionTracePane({
 		const webAnnotationIds = selectedWebAnnotations.map((annotation) => annotation.id);
 		const fileAttachmentPaths = selectedUploadAttachments.map((attachment) => attachment.path);
 		const now = new Date().toISOString();
-		const eventId = `optimistic:user-message:${createClientTxnId()}`;
+		const clientTxnId = createClientTxnId();
+		const eventId = clientTxnId;
 		const optimisticEvent: ChatWebStoredEvent = {
 			id: eventId,
 			piboSessionId: selectedPiboSessionId,
@@ -3815,6 +3816,7 @@ function SessionTracePane({
 				type: "message_queued",
 				piboSessionId: selectedPiboSessionId,
 				eventId,
+				clientTxnId,
 				queuedMessages: 1,
 				text,
 				...(fileAttachmentPaths.length ? { fileAttachmentPaths } : {}),
@@ -3825,7 +3827,7 @@ function SessionTracePane({
 			piboSessionId: selectedPiboSessionId,
 			events: [...(current?.piboSessionId === selectedPiboSessionId ? current.events : []), optimisticEvent],
 		}));
-		await onSend(text, webAnnotationIds, fileAttachmentPaths);
+		await onSend(text, webAnnotationIds, fileAttachmentPaths, clientTxnId);
 		clearSelectedWebAnnotationAttachments();
 		clearSelectedUploadAttachments();
 		await Promise.all([tracePageQuery.refetch(), webAnnotationsQuery.refetch()]);
@@ -4365,10 +4367,42 @@ function isOptimisticUserMessageNode(node: PiboTraceNode): boolean {
 function trimLiveOverlayForBaseTrace(overlay: LiveTraceOverlay | null, baseTrace: PiboSessionTraceView): LiveTraceOverlay | null {
 	if (!overlay || overlay.piboSessionId !== baseTrace.piboSessionId) return overlay;
 	const latestStreamId = baseTrace.latestStreamId;
-	const events = latestStreamId === undefined
-		? overlay.events
-		: overlay.events.filter((event) => event.streamId === undefined || event.streamId > latestStreamId);
+	const confirmedEventKeys = confirmedTraceEventKeys(baseTrace);
+	const events = overlay.events.filter((event) => {
+		if (latestStreamId !== undefined && event.streamId !== undefined && event.streamId <= latestStreamId) return false;
+		const key = traceEventConfirmationKey(event);
+		return !key || !confirmedEventKeys.has(key);
+	});
 	return events.length ? { ...overlay, events } : null;
+}
+
+function confirmedTraceEventKeys(trace: PiboSessionTraceView): Set<string> {
+	const keys = new Set<string>();
+	for (const event of trace.rawEvents) {
+		const key = traceEventConfirmationKey(event);
+		if (key) keys.add(key);
+	}
+	collectConfirmedTraceNodeKeys(trace.nodes, keys);
+	return keys;
+}
+
+function collectConfirmedTraceNodeKeys(nodes: readonly PiboTraceNode[], keys: Set<string>): void {
+	for (const node of nodes) {
+		if (node.type === "user.message") {
+			const eventId = node.id.startsWith("event:message_queued:") ? node.id.slice("event:message_queued:".length) : undefined;
+			if (eventId) keys.add(`${node.piboSessionId}:message_queued:${eventId}`);
+		}
+		collectConfirmedTraceNodeKeys(node.children, keys);
+	}
+}
+
+function traceEventConfirmationKey(event: ChatWebStoredEvent): string | undefined {
+	const payload = event.payload;
+	if (!payload || typeof payload !== "object" || Array.isArray(payload)) return undefined;
+	const eventId = "eventId" in payload && typeof payload.eventId === "string" ? payload.eventId : event.eventId;
+	const piboSessionId = "piboSessionId" in payload && typeof payload.piboSessionId === "string" ? payload.piboSessionId : event.piboSessionId;
+	if (!eventId || !piboSessionId) return undefined;
+	return `${piboSessionId}:${event.type}:${eventId}`;
 }
 
 function errorMessage(caught: unknown): string {

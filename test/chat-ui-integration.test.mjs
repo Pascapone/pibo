@@ -130,7 +130,42 @@ test("execution commands after an errored turn remain chronological root nodes",
 	], "idle");
 
 	assert.deepEqual(view.nodes.map((node) => node.title), ["Agent Turn", "Session Error", "thinking"]);
-	assert.equal(view.nodes.find((node) => node.title === "thinking")?.parentId, "event:message:cmd-thinking");
+	assert.equal(view.nodes.find((node) => node.title === "thinking")?.parentId, undefined);
+});
+
+test("persisted user message with optimistic event id keeps one trace node", () => {
+	const clientTxnId = "web-client-txn-1";
+	const baseView = createBaseView([
+		{
+			id: `optimistic:user-message:${clientTxnId}`,
+			piboSessionId: "chat:test",
+			createdAt: "2026-04-29T08:00:00.000Z",
+			eventSequence: 1,
+			type: "message_queued",
+			payload: {
+				type: "message_queued",
+				piboSessionId: "chat:test",
+				eventId: clientTxnId,
+				clientTxnId,
+				queuedMessages: 1,
+				text: "hello optimistic",
+				source: "user",
+			},
+		},
+	], "running");
+	const before = flatNodes(baseView).filter((node) => node.type === "user.message");
+	assert.equal(before.length, 1);
+	assert.equal(before[0].id, `event:message_queued:${clientTxnId}`);
+
+	const patched = patchTraceViewWithEvent(baseView, createEvent({
+		seq: 2,
+		streamId: 20,
+		type: "message_queued",
+		payload: { type: "message_queued", eventId: clientTxnId, text: "hello optimistic", source: "user", queuedMessages: 1 },
+	}), "running");
+	const after = flatNodes(patched).filter((node) => node.type === "user.message");
+	assert.equal(after.length, 1);
+	assert.equal(after[0].id, `event:message_queued:${clientTxnId}`);
 });
 
 test("live stream simulation: thinking -> assistant -> tool -> finish", () => {
