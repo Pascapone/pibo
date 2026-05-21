@@ -36,6 +36,13 @@ type ProviderRequestModel = {
 };
 
 type ProviderRequestPayload = Record<string, unknown>;
+type ProviderStreamOptions = Record<string, unknown> | undefined;
+type ProviderStreamFunction = (model: ProviderRequestModel, context: unknown, options?: ProviderStreamOptions) => unknown;
+
+type FastModePatchableAgent = {
+	streamFn?: ProviderStreamFunction;
+	onPayload?: (payload: unknown, model: ProviderRequestModel) => unknown | undefined | Promise<unknown | undefined>;
+};
 
 const FAST_SERVICE_TIER = "priority";
 
@@ -48,6 +55,10 @@ function modelSupportsFastServiceTier(model: ProviderRequestModel | undefined): 
 function withFastServiceTier(payload: unknown): unknown {
 	if (!payload || typeof payload !== "object" || Array.isArray(payload)) return payload;
 	return { ...(payload as ProviderRequestPayload), service_tier: FAST_SERVICE_TIER };
+}
+
+function withFastServiceTierOption(options: ProviderStreamOptions): ProviderStreamOptions {
+	return { ...(options ?? {}), serviceTier: FAST_SERVICE_TIER };
 }
 
 type PiboSessionOperationListener = (
@@ -440,18 +451,31 @@ export class RoutedSession {
 	}
 
 	private patchFastModeProviderRequest(): void {
-		const agent = this.runtime.session.agent;
+		const agent = this.runtime.session.agent as unknown as FastModePatchableAgent | undefined;
 		if (!agent || typeof agent !== "object") return;
 		if (this.fastModePatchedAgents.has(agent)) return;
 		this.fastModePatchedAgents.add(agent);
 
+		const originalStreamFn = typeof agent.streamFn === "function" ? agent.streamFn.bind(agent) : undefined;
+		if (originalStreamFn) {
+			agent.streamFn = (model, context, options) => {
+				const nextOptions = this.shouldUseFastServiceTier(model) ? withFastServiceTierOption(options) : options;
+				return originalStreamFn(model, context, nextOptions);
+			};
+		}
+
 		const originalOnPayload = agent.onPayload?.bind(agent);
 		agent.onPayload = async (payload, model) => {
-			const nextPayload = originalOnPayload ? await originalOnPayload(payload, model) : payload;
-			if (this.getFastModeResult().mode !== "fast") return nextPayload;
-			if (!modelSupportsFastServiceTier(model)) return nextPayload;
-			return withFastServiceTier(nextPayload);
+			const useFastTier = this.shouldUseFastServiceTier(model);
+			const payloadForHooks = useFastTier ? withFastServiceTier(payload) : payload;
+			const nextPayload = originalOnPayload ? await originalOnPayload(payloadForHooks, model) : payloadForHooks;
+			return useFastTier ? withFastServiceTier(nextPayload) : nextPayload;
 		};
+	}
+
+	private shouldUseFastServiceTier(model: ProviderRequestModel | undefined): boolean {
+		if (this.getFastModeResult().mode !== "fast") return false;
+		return modelSupportsFastServiceTier(model) || modelSupportsFastServiceTier(this.runtime.session.model as ProviderRequestModel | undefined);
 	}
 
 	private patchAgentContinue(): void {

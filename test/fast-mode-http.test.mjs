@@ -124,6 +124,7 @@ test("fast mode sends priority service tier through the HTTP provider request", 
 	const fakeApi = await startFakeCodexHttpApi();
 	const cwd = await mkdtemp(join(tmpdir(), "pibo-fast-http-api-"));
 	const events = [];
+	const capturedProviderPayloads = [];
 	let runtime;
 	let routed;
 
@@ -132,7 +133,19 @@ test("fast mode sends priority service tier through the HTTP provider request", 
 			.withBuiltinTools("disabled")
 			.withAutoContextFiles(false)
 			.createSession();
-		runtime = await createPiboRuntime({ cwd, persistSession: false, profile, modelDefaults: {} });
+		runtime = await createPiboRuntime({
+			cwd,
+			persistSession: false,
+			profile,
+			modelDefaults: {},
+			extensionFactories: [
+				(pi) => {
+					pi.on("before_provider_request", (event) => {
+						capturedProviderPayloads.push(event.payload);
+					});
+				},
+			],
+		});
 
 		// Avoid real credentials while preserving the normal AgentSession -> Agent -> pi-ai provider path.
 		runtime.session._modelRegistry.hasConfiguredAuth = () => true;
@@ -181,6 +194,8 @@ test("fast mode sends priority service tier through the HTTP provider request", 
 		assert.equal(request.body.model, "gpt-5.5");
 		assert.equal(request.body.reasoning.effort, "high");
 		assert.equal(request.body.service_tier, "priority");
+		assert.equal(capturedProviderPayloads.length, 1);
+		assert.equal(capturedProviderPayloads[0].service_tier, "priority");
 	} finally {
 		if (routed) await routed.dispose();
 		else if (runtime) await runtime.dispose();
