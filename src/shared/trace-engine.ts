@@ -363,12 +363,18 @@ function isConfirmedUserMessageEcho(nodes: readonly PiboTraceNode[], event: Chat
 	const payload = event.payload as PiboOutputEvent;
 	if (payload.type !== "message_queued" || payload.source !== "user") return false;
 	const eventId = typeof payload.eventId === "string" ? payload.eventId : event.eventId;
-	if (!eventId) return false;
-	return flattenTraceNodes([...nodes]).some((node) =>
-		node.type === "user.message" &&
-		node.source === "transcript" &&
-		(node.entryId === eventId || node.stableKey === `entry:${eventId}`)
-	);
+	const text = typeof payload.text === "string" ? payload.text : undefined;
+	return flattenTraceNodes([...nodes]).some((node) => {
+		if (node.type !== "user.message" || node.source !== "transcript") return false;
+		if (eventId && (node.entryId === eventId || node.stableKey === `entry:${eventId}`)) return true;
+		return Boolean(text && traceNodeText(node) === text);
+	});
+}
+
+function traceNodeText(node: PiboTraceNode): string | undefined {
+	if (typeof node.output === "string") return node.output;
+	if (typeof node.summary === "string") return node.summary;
+	return undefined;
 }
 
 function shareUnchangedTraceNodes(

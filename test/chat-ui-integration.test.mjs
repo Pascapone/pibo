@@ -175,7 +175,7 @@ test("optimistic user echo is ignored once the transcript entry exists", () => {
 		status: "running",
 		transcriptEntries: [
 			{
-				id: clientTxnId,
+				id: "pi-transcript-entry-1",
 				type: "message",
 				timestamp: "2026-04-29T08:00:00.000Z",
 				message: { role: "user", content: [{ type: "text", text: "hello persisted optimistic" }] },
@@ -194,7 +194,7 @@ test("optimistic user echo is ignored once the transcript entry exists", () => {
 
 	const users = flatNodes(patched).filter((node) => node.type === "user.message");
 	assert.equal(users.length, 1);
-	assert.equal(users[0].id, `entry:${clientTxnId}`);
+	assert.equal(users[0].id, "entry:pi-transcript-entry-1");
 	assert.equal(users[0].source, "transcript");
 });
 

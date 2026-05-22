@@ -4368,6 +4368,7 @@ function dropReplacedOptimisticUserMessages(
 
 function isOptimisticUserMessageNode(node: PiboTraceNode): boolean {
 	if (node.type !== "user.message") return false;
+	if (node.source === "event-log" && node.id.startsWith("event:message_queued:")) return true;
 	return [node.id, node.stableKey, node.eventId]
 		.filter((value): value is string => typeof value === "string")
 		.some((value) => value.startsWith("optimistic:user-message:") || value.includes(":optimistic:user-message:"));
@@ -4377,12 +4378,38 @@ function trimLiveOverlayForBaseTrace(overlay: LiveTraceOverlay | null, baseTrace
 	if (!overlay || overlay.piboSessionId !== baseTrace.piboSessionId) return overlay;
 	const latestStreamId = baseTrace.latestStreamId;
 	const confirmedEventKeys = confirmedTraceEventKeys(baseTrace);
+	const confirmedUserMessageTexts = confirmedTranscriptUserMessageTexts(baseTrace.nodes);
 	const events = overlay.events.filter((event) => {
 		if (latestStreamId !== undefined && event.streamId !== undefined && event.streamId <= latestStreamId) return false;
+		if (isUserMessageQueuedEvent(event) && confirmedUserMessageTexts.has(event.payload.text)) return false;
 		const key = traceEventConfirmationKey(event);
 		return !key || !confirmedEventKeys.has(key);
 	});
 	return events.length ? { ...overlay, events } : null;
+}
+
+function confirmedTranscriptUserMessageTexts(nodes: readonly PiboTraceNode[]): Set<string> {
+	const texts = new Set<string>();
+	for (const node of nodes) {
+		if (node.type === "user.message" && node.source === "transcript") {
+			const text = traceNodeText(node);
+			if (text) texts.add(text);
+		}
+		for (const text of confirmedTranscriptUserMessageTexts(node.children)) texts.add(text);
+	}
+	return texts;
+}
+
+function isUserMessageQueuedEvent(event: ChatWebStoredEvent): event is ChatWebStoredEvent & { payload: { type: "message_queued"; source: "user"; text: string } } {
+	const payload = event.payload;
+	return Boolean(
+		payload &&
+		typeof payload === "object" &&
+		!Array.isArray(payload) &&
+		"type" in payload && payload.type === "message_queued" &&
+		"source" in payload && payload.source === "user" &&
+		"text" in payload && typeof payload.text === "string"
+	);
 }
 
 function confirmedTraceEventKeys(trace: PiboSessionTraceView): Set<string> {
