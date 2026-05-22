@@ -7393,6 +7393,7 @@ function createEventStream(input: {
 		headers: {
 			"content-type": "text/event-stream; charset=utf-8",
 			"cache-control": "no-cache, no-transform",
+			"x-accel-buffering": "no",
 			connection: "keep-alive",
 		},
 	});

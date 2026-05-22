@@ -1256,6 +1256,7 @@ test("chat web app selected live event streams receive assistant deltas", async 
 			},
 		);
 		assert.equal(eventsResponse.status, 200);
+		assert.equal(eventsResponse.headers.get("x-accel-buffering"), "no");
 		const reader = eventsResponse.body.getReader();
 		await reader.read();
 
