@@ -28,7 +28,7 @@ import {
 	type PiboRoomRole,
 	type UpdatePiboRoomInput,
 } from "./types/rooms.js";
-import { chatStreamFramesFromOutputEvent, createChatStreamState, type ChatStreamEvent } from "./stream.js";
+import { chatStreamFramesFromOutputEvent, createChatStreamState, nextTransientChatStreamFrameId, type ChatStreamEvent } from "./stream.js";
 import { buildSessionNodes, buildTraceView, createTraceViewVersion, loadPiSessionMetadata, type PiboSessionTraceView, type PiboWebSessionNode, type PiboWebSessionStatus } from "./trace.js";
 import type { ChatWebStoredEvent, PiboSessionTraceSummary } from "../../shared/trace-types.js";
 import { patchTraceViewWithEvent } from "../../shared/trace-engine.js";
@@ -7315,7 +7315,8 @@ function writeChatEventFrames(
 	});
 	for (let index = 0; index < frames.length; index += 1) {
 		if (cursor && streamId !== undefined && streamId === cursor.streamId && index <= cursor.frameIndex) continue;
-		writeSse(controller, "pibo", { ...frames[index], piboSessionId }, streamId === undefined ? undefined : `${streamId}:${index}`);
+		const frameId = streamId === undefined ? nextTransientChatStreamFrameId(state) : `${streamId}:${index}`;
+		writeSse(controller, "pibo", { ...frames[index], piboSessionId }, frameId);
 	}
 }
 

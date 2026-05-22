@@ -23,6 +23,7 @@ export type ChatStreamState = {
 	textMessageIds: Set<string>;
 	reasoningMessageIds: Set<string>;
 	toolCallIds: Set<string>;
+	transientFrameIndex: number;
 };
 
 export function createChatStreamState(): ChatStreamState {
@@ -30,7 +31,12 @@ export function createChatStreamState(): ChatStreamState {
 		textMessageIds: new Set(),
 		reasoningMessageIds: new Set(),
 		toolCallIds: new Set(),
+		transientFrameIndex: 0,
 	};
+}
+
+export function nextTransientChatStreamFrameId(state: ChatStreamState): string {
+	return `live:${state.transientFrameIndex++}`;
 }
 
 export function chatStreamFramesFromOutputEvent(

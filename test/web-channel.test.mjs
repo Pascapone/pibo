@@ -1268,6 +1268,7 @@ test("chat web app selected live event streams receive assistant deltas", async 
 		});
 		const liveFrame = await readSseTextUntil(reader, (text) => text.includes("TEXT_MESSAGE_CONTENT") && text.includes("visible live token"));
 		assert.equal(liveFrame.matched, true, liveFrame.text);
+		assert.match(liveFrame.text, /id: live:\d+/);
 
 		controller.abort();
 	} finally {
