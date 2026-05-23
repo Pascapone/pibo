@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
 import { PiboReliabilityStore } from "../dist/reliability/store.js";
-import { formatWatch, inferWatchFlickers } from "../dist/debug/web.js";
+import { attachStreamingProviderTelemetryToBenchmark, collectStreamingProviderTelemetryFromSelectedBrowserSession, collectStreamingProviderTelemetryFromSession, collectStreamingProviderTelemetryFromTurn, evaluateStreamingBenchmarkAssertion, evaluateStreamingBenchmarkUrlComparisonRegressions, evaluateStreamingLivePipelineRegressions, evaluateStreamingProviderRegressions, formatStreamingBenchmarkAssertionSummary, formatStreamingBenchmarkUrlComparison, formatWatch, inferWatchFlickers, resolveStreamingBenchmarkHostedCompareUrlFromValues, summarizeStreamingBenchmarkUrlComparison, summarizeStreamingBenchmarks, summarizeStreamingLivePipeline, summarizeStreamingProviderPreservation, summarizeStreamingProviderTelemetry } from "../dist/debug/web.js";
 
 const execFileAsyncRaw = promisify(execFile);
 const cliPath = resolve("dist/bin/pibo.js");
@@ -31,6 +31,963 @@ test("pibo debug web watch rejects action flags", async () => {
 		(error) => {
 			assert.match(error.stderr, /Action flags are only supported by scenarios/);
 			assert.match(error.stderr, /pibo debug web scenario new-session --act/);
+			return true;
+		},
+	);
+});
+
+test("pibo debug web report renders saved streaming benchmark artifacts without CDP", async () => {
+	const help = await execFileAsync("node", [cliPath, "debug", "web", "report", "--help"]);
+	assert.match(help.stdout, /--json-output\s+Write the normalized JSON report payload and compact rows/);
+	const cwd = await makeEmptyCwd();
+	try {
+		const artifact = join(cwd, "streaming-benchmark.json");
+		await writeFile(artifact, JSON.stringify({
+			kind: "streaming-benchmark",
+			createdAt: "2026-05-23T00:00:00.000Z",
+			url: "http://example.test/apps/chat/rooms/room_test/sessions/ps_test",
+			title: "Chat",
+			durationMs: 1800,
+			debug: {
+				enabledRequested: true,
+				available: true,
+				reset: true,
+				delta: { textDeltaCount: 12, textDeltaBytes: 24, reasoningDeltaCount: 4, enqueueCount: 22, flushCount: 20, overlayUpdateCount: 20 },
+				after: { overlayEventCount: 16, currentOutputLength: 24, traceBaseOutputLength: 0 },
+			},
+			dom: {
+				selector: "[data-pibo-component=MarkdownRendererHost]",
+				targetCountStart: 1,
+				targetCountEnd: 1,
+				lengthStart: 0,
+				lengthEnd: 24,
+				lengthMax: 24,
+				updateCount: 12,
+				positiveUpdateCount: 12,
+				firstPositiveUpdateMs: 145,
+				gapsMs: { count: 11, p50: 100, p90: 101, p99: 103, max: 103, avg: 100.4 },
+				positiveCharJumps: { count: 12, p50: 2, p90: 2, p99: 2, max: 2, avg: 2 },
+			},
+			raf: { count: 100, gapsMs: { count: 99, p50: 16.7, p90: 16.8, p99: 17, max: 17, avg: 16.7 } },
+			longTasks: { count: 0, totalMs: 0, maxMs: 0 },
+			score: { smoothness: 58, textDeltaCount: 12, domPositiveUpdateCount: 12 },
+			regressions: [],
+			warnings: [],
+		}, null, 2));
+		const report = await execFileAsync("node", [cliPath, "debug", "web", "report", "streaming-benchmark", "--from", artifact], { cwd });
+		assert.match(report.stdout, /# Web Streaming Benchmark, 1\.8s/);
+		assert.match(report.stdout, /# target: artifact http:\/\/example\.test\/apps\/chat/);
+		assert.match(report.stdout, /events: text=12 \(24 bytes\), reasoning=4/);
+		assert.match(report.stdout, /dom gaps: count=11, p50=100, p90=101/);
+		const compactReport = await execFileAsync("node", [cliPath, "debug", "web", "report", "streaming-benchmark", "--from", artifact, "--compact"], { cwd });
+		assert.match(compactReport.stdout, /# Web Streaming Benchmark Compact Report/);
+		assert.match(compactReport.stdout, /\| Layer \| Preservation \| Cadence \/ latency \|/);
+		assert.match(compactReport.stdout, /\| SSE transport \| n\/a \| n\/a \|/);
+		assert.match(compactReport.stdout, /\| DOM \| positive 12, max jump 2 chars \| p90 gap 101ms, first visible 145ms \|/);
+		const output = join(cwd, "reports", "streaming-compact.md");
+		const outputReport = await execFileAsync("node", [cliPath, "debug", "web", "report", "streaming-benchmark", "--from", artifact, "--compact", "--output", output], { cwd });
+		assert.match(outputReport.stdout, /Wrote report: .*streaming-compact\.md/);
+		const writtenReport = await readFile(output, "utf-8");
+		assert.match(writtenReport, /# Web Streaming Benchmark Compact Report/);
+		assert.match(writtenReport, /\| DOM \| positive 12, max jump 2 chars \| p90 gap 101ms, first visible 145ms \|/);
+		const jsonOutput = join(cwd, "reports", "streaming-compact.json");
+		const jsonOutputReport = await execFileAsync("node", [cliPath, "debug", "web", "report", "streaming-benchmark", "--from", artifact, "--compact", "--json-output", jsonOutput], { cwd });
+		assert.match(jsonOutputReport.stdout, /Wrote report JSON: .*streaming-compact\.json/);
+		const writtenJson = JSON.parse(await readFile(jsonOutput, "utf-8"));
+		assert.equal(writtenJson.format, "compact");
+		assert.equal(writtenJson.benchmark.kind, "streaming-benchmark");
+		assert.match(writtenJson.markdown, /# Web Streaming Benchmark Compact Report/);
+		assert.deepEqual(writtenJson.rows.find((row) => row.metric === "DOM"), {
+			section: "compact",
+			metric: "DOM",
+			preservation: "positive 12, max jump 2 chars",
+			cadenceLatency: "p90 gap 101ms, first visible 145ms",
+		});
+		const stdoutJsonReport = await execFileAsync("node", [cliPath, "debug", "web", "report", "streaming-benchmark", "--from", artifact, "--compact", "--json"], { cwd });
+		const stdoutJson = JSON.parse(stdoutJsonReport.stdout);
+		assert.equal(stdoutJson.benchmark.kind, "streaming-benchmark");
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test("pibo debug web report emits compact URL comparison JSON rows", async () => {
+	const cwd = await makeEmptyCwd();
+	try {
+		const makeRun = (url, firstOffset = 0) => ({
+			kind: "streaming-benchmark",
+			createdAt: "2026-05-23T00:00:00.000Z",
+			url,
+			title: "Chat",
+			durationMs: 1800,
+			debug: {
+				enabledRequested: true,
+				available: true,
+				reset: true,
+				delta: { textDeltaCount: 12, textDeltaBytes: 24, reasoningDeltaCount: 4, enqueueCount: 22, flushCount: 20, flushedEventCount: 22, overlayUpdateCount: 20 },
+				after: { overlayEventCount: 16, currentOutputLength: 24, traceBaseOutputLength: 0 },
+			},
+			fixture: { requested: true, mode: "backend", profile: "steady", mix: "reasoning-text", available: true, started: true, deltaCount: 12, reasoningDeltaCount: 4, textBytes: 24, scheduleGapsMs: { count: 11, p90: 100 } },
+			dom: {
+				selector: "[data-pibo-component=MarkdownRendererHost]",
+				targetCountStart: 1,
+				targetCountEnd: 1,
+				lengthStart: 0,
+				lengthEnd: 24,
+				lengthMax: 24,
+				updateCount: 12,
+				positiveUpdateCount: 12,
+				firstPositiveUpdateMs: 145 + firstOffset,
+				gapsMs: { count: 11, p50: 100, p90: 101, p99: 103, max: 103, avg: 100.4 },
+				positiveCharJumps: { count: 12, p50: 2, p90: 2, p99: 2, max: 2, avg: 2 },
+			},
+			raf: { count: 100, gapsMs: { count: 99, p90: 16.8 } },
+			longTasks: { count: 0, totalMs: 0, maxMs: 0 },
+			eventSource: { streams: [{ role: "selected-live", eventCountAfterStart: 22, textEventCountAfterStart: 12, reasoningEventCountAfterStart: 4, transientIdCountAfterStart: 22, firstTextEventMsAfterStart: 121 + firstOffset }] },
+			sse: { textEventCount: 12, reasoningEventCount: 4, firstTextEventMs: 119 + firstOffset, chunkBytes: { count: 1, p50: 280 }, chunkGapsMs: { count: 1, p90: 100 }, textEventsPerChunk: { count: 1, p90: 1 }, textEventGapsMs: { count: 11, p90: 100 } },
+			livePipeline: { expectedInputEventCount: 16, flushedEventsToExpectedRatio: 1.375, overlayEventsToExpectedRatio: 1, currentOutputToExpectedTextBytesRatio: 1, flushToEnqueueRatio: 0.909, overlayUpdatesToFlushedEventsRatio: 0.909, firstTextDeltaMs: 120 + firstOffset, firstEnqueueMs: 40 + firstOffset, firstFlushMs: 42 + firstOffset, firstOverlayUpdateMs: 44 + firstOffset },
+			score: { smoothness: 58, textDeltaCount: 12, domPositiveUpdateCount: 12 },
+			regressions: [],
+			warnings: [],
+		});
+		const primaryRun = makeRun("http://direct.example/apps/chat/rooms/room/sessions/ps");
+		const compareRun = makeRun("https://hosted.example/apps/chat/rooms/room/sessions/ps", 5);
+		const artifact = join(cwd, "streaming-url-comparison.json");
+		await writeFile(artifact, JSON.stringify({
+			kind: "streaming-benchmark-url-comparison",
+			createdAt: "2026-05-23T00:00:00.000Z",
+			primaryUrl: primaryRun.url,
+			compareUrl: compareRun.url,
+			primary: { kind: "streaming-benchmark-runs", createdAt: "2026-05-23T00:00:00.000Z", durationMs: 1800, runs: [primaryRun], summary: {}, regressions: [], warnings: [] },
+			compare: { kind: "streaming-benchmark-runs", createdAt: "2026-05-23T00:00:00.000Z", durationMs: 1800, runs: [compareRun], summary: {}, regressions: [], warnings: [] },
+			comparison: {},
+			regressions: [],
+			warnings: [],
+		}, null, 2));
+		const jsonOutput = join(cwd, "reports", "streaming-url-compact.json");
+		await execFileAsync("node", [cliPath, "debug", "web", "report", "streaming-benchmark", "--from", artifact, "--compact", "--json-output", jsonOutput], { cwd });
+		const writtenJson = JSON.parse(await readFile(jsonOutput, "utf-8"));
+		assert.equal(writtenJson.benchmark.kind, "streaming-benchmark-url-comparison");
+		assert.deepEqual(writtenJson.rows.find((row) => row.metric === "First SSE text"), {
+			section: "compact-url-comparison",
+			metric: "First SSE text",
+			primaryP50: "119ms",
+			compareP50: "124ms",
+			delta: "+5ms",
+		});
+		assert.deepEqual(writtenJson.rows.find((row) => row.metric === "First live flush"), {
+			section: "compact-url-comparison",
+			metric: "First live flush",
+			primaryP50: "42ms",
+			compareP50: "47ms",
+			delta: "+5ms",
+		});
+		assert.match(writtenJson.markdown, /\| First live overlay \| 44ms \| 49ms \| \+5ms \|/);
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test("pibo debug web report recomputes streaming summaries for older artifacts", async () => {
+	const cwd = await makeEmptyCwd();
+	try {
+		const artifact = join(cwd, "legacy-streaming-runs.json");
+		const run = {
+			kind: "streaming-benchmark",
+			createdAt: "2026-05-23T00:00:00.000Z",
+			url: "http://example.test/apps/chat/rooms/room_test/sessions/ps_test?debugStreaming=1",
+			title: "Chat",
+			durationMs: 1800,
+			debug: {
+				enabledRequested: true,
+				available: true,
+				reset: true,
+				delta: { textDeltaCount: 12, textDeltaBytes: 24, reasoningDeltaCount: 4, enqueueCount: 22, flushCount: 20, flushedEventCount: 22, overlayUpdateCount: 20 },
+				after: { overlayEventCount: 16, currentOutputLength: 24, traceBaseOutputLength: 0 },
+			},
+			dom: {
+				selector: "[data-pibo-component=MarkdownRendererHost]",
+				targetCountStart: 1,
+				targetCountEnd: 1,
+				lengthStart: 0,
+				lengthEnd: 24,
+				lengthMax: 24,
+				updateCount: 12,
+				positiveUpdateCount: 12,
+				firstPositiveUpdateMs: 145,
+				gapsMs: { count: 11, p50: 100, p90: 101, p99: 103, max: 103, avg: 100.4 },
+				positiveCharJumps: { count: 12, p50: 2, p90: 2, p99: 2, max: 2, avg: 2 },
+			},
+			raf: { count: 100, gapsMs: { count: 99, p50: 16.7, p90: 16.8, p99: 17, max: 17, avg: 16.7 } },
+			longTasks: { count: 0, totalMs: 0, maxMs: 0 },
+			fixture: { requested: true, mode: "backend", profile: "steady", mix: "reasoning-text", available: true, started: true, deltaCount: 12, reasoningDeltaCount: 4, scheduleGapsMs: { count: 11, p50: 100, p90: 100, p99: 100, max: 100, avg: 100 }, textBytes: 24 },
+			sse: { requested: true, installed: true, status: 200, textEventCount: 12, reasoningEventCount: 4, transientIdCount: 22, chunkBytes: { count: 1 }, chunkGapsMs: { count: 0 }, textEventsPerChunk: { count: 12, p50: 1, p90: 1, p99: 1, max: 1, avg: 1 }, textEventGapsMs: { count: 11, p50: 100, p90: 101, p99: 103, max: 103, avg: 100.4 }, errors: [] },
+			score: { smoothness: 58, textDeltaCount: 12, domPositiveUpdateCount: 12 },
+			regressions: [],
+			warnings: [],
+		};
+		await writeFile(artifact, JSON.stringify({
+			kind: "streaming-benchmark-runs",
+			createdAt: "2026-05-23T00:00:00.000Z",
+			durationMs: 1800,
+			runs: [run],
+			summary: { runs: 1, smoothness: { count: 1, p50: 58 } },
+			regressions: [],
+			warnings: [],
+		}, null, 2));
+		const report = await execFileAsync("node", [cliPath, "debug", "web", "report", "streaming-benchmark", "--from", artifact, "--compact"], { cwd });
+		assert.match(report.stdout, /\| SSE transport \| text 12, reasoning 4 \|/);
+		assert.match(report.stdout, /\| Cadence lag \| fixture schedule p90 100ms \| DOM lag 1ms, SSE text lag 1ms \|/);
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test("pibo debug web streaming benchmark help advertises the deterministic fixture", async () => {
+	const help = await execFileAsync("node", [cliPath, "debug", "web", "scenario", "--help"]);
+	assert.match(help.stdout, /streaming-benchmark \[--fixture\|--backend-fixture\].*\[--fixture-profile steady\|jitter\|burst\|batch\].*\[--fixture-mix text\|reasoning-text\].*\[--simulate-reconnect\|--simulate-trace-catchup\].*\[--provider-request-id pr_\.\.\.\|--provider-session-id ps_\.\.\.\|--provider-turn-id turn_\.\.\.\|--provider-selected-session\].*\[--compare-url url\|--compare-hosted\|--compare-hosted-if-configured\].*\[--assert\].*\[--expect-regression text\].*\[--negative-profile batch\|overlay-drop\]/);
+	assert.match(help.stdout, /deterministic in-browser stream fixture/);
+	assert.match(help.stdout, /real app consumes deterministic \/api\/chat\/events frames/);
+	assert.match(help.stdout, /--fixture-profile selects steady cadence, deterministic jitter, bursty timing, or intentional batch stress/);
+	assert.match(help.stdout, /--fixture-mix includes text-only or mixed reasoning\/text deltas/);
+	assert.match(help.stdout, /--simulate-reconnect reloads the app with an EventSource probe/);
+	assert.match(help.stdout, /--simulate-trace-catchup suppresses backend live text deltas/);
+	assert.match(help.stdout, /--runs repeats the same scenario and reports medians/);
+	assert.match(help.stdout, /--compare-url runs the same backend fixture at another Chat URL/);
+	assert.match(help.stdout, /--compare-hosted uses PIBO_DEV_PUBLIC_URL or PIBO_DEV_BASE_URL/);
+	assert.match(help.stdout, /--compare-hosted-if-configured runs the hosted comparison when a dev URL is configured/);
+	assert.match(help.stdout, /--provider-request-id attaches provider\/Pi telemetry delta counts/);
+	assert.match(help.stdout, /--provider-session-id, --provider-turn-id, or --provider-selected-session discovers the latest provider request.*after the benchmark window/);
+	assert.match(help.stdout, /--assert exits non-zero when fixture\/debug\/DOM\/provider preservation gates fail/);
+	assert.match(help.stdout, /--expect-regression marks a required regression substring/);
+	assert.match(help.stdout, /--negative-profile batch expands to the backend batch reasoning\/text fixture/);
+	assert.match(help.stdout, /--negative-profile overlay-drop preserves SSE\/EventSource input/);
+});
+
+test("streaming benchmark assertion matches expected controlled regressions", () => {
+	const assertion = evaluateStreamingBenchmarkAssertion(
+		[
+			"positive DOM updates 3 < 10",
+			"DOM max jump 8 chars exceeds gate",
+		],
+		["positive DOM updates", "DOM max jump"],
+	);
+	assert.equal(assertion.passed, true);
+	assert.deepEqual(assertion.unexpectedRegressions, []);
+	assert.deepEqual(assertion.missingExpectedRegressionPatterns, []);
+});
+
+test("streaming benchmark assertion fails on unexpected or missing expected regressions", () => {
+	const assertion = evaluateStreamingBenchmarkAssertion(
+		[
+			"positive DOM updates 3 < 10",
+			"fixture did not start",
+		],
+		["positive DOM updates", "DOM max jump"],
+	);
+	assert.equal(assertion.passed, false);
+	assert.deepEqual(assertion.unexpectedRegressions, ["fixture did not start"]);
+	assert.deepEqual(assertion.missingExpectedRegressionPatterns, ["DOM max jump"]);
+});
+
+test("streaming benchmark assertion summary reports matched expected regressions", () => {
+	const assertion = evaluateStreamingBenchmarkAssertion(
+		[
+			"positive DOM updates 3 < 10",
+			"fixture did not start",
+		],
+		["positive DOM updates", "DOM max jump"],
+	);
+	assert.equal(formatStreamingBenchmarkAssertionSummary(assertion), "expected regressions: passed=false matched=1/2 expected=1 unexpected=1 missing=1");
+});
+
+test("streaming hosted compare URL resolution prefers env and supports optional absence", () => {
+	assert.equal(resolveStreamingBenchmarkHostedCompareUrlFromValues({ PIBO_DEV_PUBLIC_URL: " https://dev.example.test/apps/chat " }, {}), "https://dev.example.test/apps/chat");
+	assert.equal(resolveStreamingBenchmarkHostedCompareUrlFromValues({ PIBO_DEV_BASE_URL: "https://dev.example.test/" }, {}), "https://dev.example.test/apps/chat");
+	assert.equal(resolveStreamingBenchmarkHostedCompareUrlFromValues({}, { PIBO_DEV_PUBLIC_URL: "https://file.example.test/apps/chat" }), "https://file.example.test/apps/chat");
+	assert.equal(resolveStreamingBenchmarkHostedCompareUrlFromValues({ PIBO_DEV_PUBLIC_URL: "", PIBO_DEV_BASE_URL: "" }, {}), undefined);
+});
+
+test("streaming benchmark summaries include live pipeline debug counters", () => {
+	const run = (enqueueCount, traceRefreshCompletedCount) => ({
+		kind: "streaming-benchmark",
+		debug: {
+			delta: {
+				textDeltaCount: 12,
+				reasoningDeltaCount: 4,
+				enqueueCount,
+				flushCount: enqueueCount - 1,
+				flushedEventCount: enqueueCount,
+				overlayUpdateCount: enqueueCount - 1,
+				traceRefreshScheduledCount: 2,
+				traceRefreshCompletedCount,
+				traceRefreshFailedCount: 0,
+			},
+			after: {
+				startedAt: "2026-01-01T00:00:00.000Z",
+				firstReasoningDeltaAt: "2026-01-01T00:00:00.090Z",
+				firstTextDeltaAt: "2026-01-01T00:00:00.100Z",
+				firstEnqueueAt: "2026-01-01T00:00:00.110Z",
+				firstFlushAt: "2026-01-01T00:00:00.125Z",
+				firstOverlayUpdateAt: "2026-01-01T00:00:00.126Z",
+				overlayEventCount: enqueueCount,
+				currentOutputLength: enqueueCount * 2,
+				traceBaseOutputLength: 4,
+				traceRefreshDurationMsMax: 25,
+			},
+		},
+		fixture: { available: true, requested: true, mode: "backend", started: true, deltaCount: 12, reasoningDeltaCount: 4, textBytes: 24 },
+		eventSource: { streams: [{ role: "selected-live", textEventCountAfterStart: 12, firstTextEventMsAfterStart: 103 }] },
+		sse: { textEventCount: 12, firstTextEventMs: 101, chunkBytes: {}, chunkGapsMs: {}, textEventsPerChunk: {}, textEventGapsMs: {} },
+		dom: { gapsMs: { count: 0 }, positiveCharJumps: { count: 0 }, positiveUpdateCount: enqueueCount },
+		longTasks: { maxMs: 0 },
+		regressions: [],
+		score: { smoothness: 50, textDeltaCount: 12, domPositiveUpdateCount: enqueueCount },
+	});
+	const summary = summarizeStreamingBenchmarks([run(12, 1), run(14, 2)]);
+	assert.equal(summary.debugEnqueueCount.p50, 12);
+	assert.equal(summary.debugFlushCount.p50, 11);
+	assert.equal(summary.debugFlushedEventCount.p90, 12);
+	assert.equal(summary.debugOverlayUpdateCount.p90, 11);
+	assert.equal(summary.debugOverlayEventCount.max, 14);
+	assert.equal(summary.debugTraceRefreshCompletedCount.max, 2);
+	assert.equal(summary.debugTraceRefreshDurationMaxMs.p50, 25);
+	assert.equal(summary.debugCurrentOutputLength.max, 28);
+	assert.equal(summary.liveExpectedInputEventCount.p50, 16);
+	assert.equal(summary.liveEnqueueToExpectedRatio.p50, 0.75);
+	assert.equal(summary.liveFlushedEventsToExpectedRatio.p90, 0.75);
+	assert.equal(summary.liveOverlayEventsToExpectedRatio.max, 0.875);
+	assert.equal(summary.liveCurrentOutputToExpectedTextBytesRatio.max, 1.167);
+	assert.equal(summary.liveFlushToEnqueueRatio.p50, 0.917);
+	assert.equal(summary.liveOverlayUpdatesToFlushedEventsRatio.p50, 0.917);
+	assert.equal(summary.liveFirstTextDeltaMs.p50, 100);
+	assert.equal(summary.liveFirstReasoningDeltaMs.p50, 90);
+	assert.equal(summary.liveFirstEnqueueMs.p50, 110);
+	assert.equal(summary.liveFirstFlushMs.p50, 125);
+	assert.equal(summary.liveFirstOverlayUpdateMs.p50, 126);
+	assert.equal(summary.sseFirstTextEventMs.p50, 101);
+	assert.equal(summary.selectedLiveFirstTextEventMsAfterStart.p50, 103);
+});
+
+test("streaming live pipeline summary computes fixture-normalized ratios", () => {
+	const summary = summarizeStreamingLivePipeline({
+		debug: {
+			delta: { enqueueCount: 22, flushCount: 20, flushedEventCount: 22, overlayUpdateCount: 20, textDeltaCount: 12, reasoningDeltaCount: 4 },
+			after: {
+				startedAt: "2026-01-01T00:00:00.000Z",
+				firstTextDeltaAt: "2026-01-01T00:00:00.120Z",
+				firstEnqueueAt: "2026-01-01T00:00:00.121Z",
+				firstFlushAt: "2026-01-01T00:00:00.130Z",
+				overlayEventCount: 16,
+				currentOutputLength: 24,
+			},
+		},
+		fixture: { available: true, requested: true, mode: "backend", started: true, deltaCount: 12, reasoningDeltaCount: 4, textBytes: 24 },
+	});
+	assert.equal(summary.expectedSource, "fixture");
+	assert.equal(summary.expectedInputEventCount, 16);
+	assert.equal(summary.enqueueToExpectedRatio, 1.375);
+	assert.equal(summary.flushedEventsToExpectedRatio, 1.375);
+	assert.equal(summary.overlayEventsToExpectedRatio, 1);
+	assert.equal(summary.currentOutputToExpectedTextBytesRatio, 1);
+	assert.equal(summary.flushToEnqueueRatio, 0.909);
+	assert.equal(summary.overlayUpdatesToFlushedEventsRatio, 0.909);
+	assert.equal(summary.firstTextDeltaMs, 120);
+	assert.equal(summary.firstEnqueueMs, 121);
+	assert.equal(summary.firstFlushMs, 130);
+});
+
+test("streaming live pipeline regressions gate preservation and flush ratios", () => {
+	assert.deepEqual(evaluateStreamingLivePipelineRegressions({
+		livePipeline: {
+			expectedSource: "fixture",
+			expectedTextDeltaCount: 12,
+			expectedReasoningDeltaCount: 4,
+			expectedInputEventCount: 16,
+			enqueueCount: 22,
+			flushCount: 20,
+			flushedEventCount: 22,
+			overlayUpdateCount: 20,
+			overlayEventCount: 16,
+			flushedEventsToExpectedRatio: 1.375,
+			overlayEventsToExpectedRatio: 1,
+			currentOutputToExpectedTextBytesRatio: 1,
+			flushToEnqueueRatio: 0.909,
+			overlayUpdatesToFlushedEventsRatio: 0.909,
+			expectedTextBytes: 24,
+		},
+	}), []);
+	assert.deepEqual(evaluateStreamingLivePipelineRegressions({
+		livePipeline: {
+			expectedSource: "fixture",
+			expectedTextDeltaCount: 12,
+			expectedReasoningDeltaCount: 4,
+			expectedInputEventCount: 16,
+			enqueueCount: 22,
+			flushCount: 13,
+			flushedEventCount: 14,
+			overlayUpdateCount: 13,
+			overlayEventCount: 13,
+			flushedEventsToExpectedRatio: 0.9,
+			overlayEventsToExpectedRatio: 0.8,
+			currentOutputToExpectedTextBytesRatio: 0.7,
+			flushToEnqueueRatio: 0.591,
+			overlayUpdatesToFlushedEventsRatio: 0.591,
+			expectedTextBytes: 24,
+		},
+	}), [
+		"live pipeline flushed events/expected ratio 0.9 < 0.95",
+		"live pipeline overlay events/expected ratio 0.8 < 0.95",
+		"live pipeline current text/expected bytes ratio 0.7 < 0.95",
+		"live pipeline flush/enqueue ratio 0.591 < 0.75",
+		"live pipeline overlay updates/flushed ratio 0.591 < 0.75",
+	]);
+	assert.deepEqual(evaluateStreamingLivePipelineRegressions({
+		livePipeline: {
+			expectedSource: "provider",
+			expectedTextDeltaCount: 12,
+			expectedReasoningDeltaCount: 0,
+			expectedInputEventCount: 12,
+		},
+	}), []);
+	assert.deepEqual(evaluateStreamingLivePipelineRegressions({
+		fixture: { simulation: "trace-catchup" },
+		livePipeline: {
+			expectedSource: "fixture",
+			expectedTextDeltaCount: 12,
+			expectedReasoningDeltaCount: 0,
+			expectedInputEventCount: 12,
+			flushedEventsToExpectedRatio: 0,
+			overlayEventsToExpectedRatio: 0,
+			flushToEnqueueRatio: 0,
+			overlayUpdatesToFlushedEventsRatio: 0,
+		},
+	}), []);
+});
+
+test("streaming provider preservation summary computes provider-to-transport ratios", () => {
+	const summary = summarizeStreamingProviderPreservation({
+		provider: {
+			requested: true,
+			available: true,
+			providerRequestId: "pr_fixture",
+			textDeltaCount: 10,
+			reasoningDeltaCount: 4,
+			textDeltaBytes: { count: 10 },
+			reasoningDeltaBytes: { count: 4 },
+			textDeltaGapsMs: { count: 9 },
+			reasoningDeltaGapsMs: { count: 3 },
+			eventPageCount: 1,
+			truncated: false,
+		},
+		sse: { textEventCount: 10, reasoningEventCount: 3 },
+		eventSource: { streams: [{ role: "selected-live", textEventCountAfterStart: 9, reasoningEventCountAfterStart: 4 }] },
+		dom: { positiveUpdateCount: 8 },
+	});
+	assert.equal(summary.providerTextDeltaCount, 10);
+	assert.equal(summary.sseTextToProviderRatio, 1);
+	assert.equal(summary.selectedLiveTextToProviderRatio, 0.9);
+	assert.equal(summary.domPositiveToProviderTextRatio, 0.8);
+	assert.equal(summary.sseReasoningToProviderRatio, 0.75);
+	assert.equal(summary.selectedLiveReasoningToProviderRatio, 1);
+});
+
+test("streaming provider telemetry can be attached after a benchmark window", () => {
+	const updated = attachStreamingProviderTelemetryToBenchmark({
+		regressions: ["fixture did not start", "provider stale regression"],
+		sse: { requested: true, textEventCount: 9, reasoningEventCount: 4 },
+		eventSource: { requested: true, streams: [{ role: "selected-live", textEventCountAfterStart: 10, reasoningEventCountAfterStart: 4 }] },
+		dom: { positiveUpdateCount: 8 },
+	}, {
+		requested: true,
+		available: true,
+		providerRequestId: "pr_after_window",
+		textDeltaCount: 10,
+		reasoningDeltaCount: 4,
+		textDeltaBytes: { count: 10 },
+		reasoningDeltaBytes: { count: 4 },
+		textDeltaGapsMs: { count: 9 },
+		reasoningDeltaGapsMs: { count: 3 },
+		parseErrorCount: 0,
+		unknownEventCount: 0,
+		eventPageCount: 1,
+		truncated: false,
+	});
+	assert.equal(updated.provider.providerRequestId, "pr_after_window");
+	assert.equal(updated.providerPreservation.sseTextToProviderRatio, 0.9);
+	assert.equal(updated.providerPreservation.selectedLiveTextToProviderRatio, 1);
+	assert.deepEqual(updated.regressions, [
+		"fixture did not start",
+		"provider SSE text preservation ratio 0.9 < 0.95",
+	]);
+});
+
+test("streaming provider regressions gate telemetry health and preservation ratios", () => {
+	const healthyProvider = {
+		requested: true,
+		available: true,
+		providerRequestId: "pr_fixture",
+		textDeltaCount: 100,
+		reasoningDeltaCount: 20,
+		textDeltaBytes: { count: 100 },
+		reasoningDeltaBytes: { count: 20 },
+		textDeltaGapsMs: { count: 99 },
+		reasoningDeltaGapsMs: { count: 19 },
+		parseErrorCount: 0,
+		unknownEventCount: 0,
+		eventPageCount: 1,
+		truncated: false,
+	};
+	assert.deepEqual(evaluateStreamingProviderRegressions({
+		provider: healthyProvider,
+		providerPreservation: {
+			providerTextDeltaCount: 100,
+			providerReasoningDeltaCount: 20,
+			sseTextToProviderRatio: 0.98,
+			selectedLiveTextToProviderRatio: 0.99,
+			sseReasoningToProviderRatio: 1,
+			selectedLiveReasoningToProviderRatio: 0.95,
+		},
+		sse: { requested: true },
+		eventSource: { requested: true },
+	}), []);
+	assert.deepEqual(evaluateStreamingProviderRegressions({
+		provider: { ...healthyProvider, parseErrorCount: 1, unknownEventCount: 2, truncated: true },
+		providerPreservation: {
+			providerTextDeltaCount: 100,
+			providerReasoningDeltaCount: 20,
+			sseTextToProviderRatio: 0.94,
+			selectedLiveTextToProviderRatio: 0.93,
+			sseReasoningToProviderRatio: 0.9,
+			selectedLiveReasoningToProviderRatio: 0.94,
+		},
+		sse: { requested: true },
+		eventSource: { requested: true },
+	}), [
+		"provider parse errors 1 > 0",
+		"provider unknown events 2 > 0",
+		"provider telemetry events were truncated",
+		"provider SSE text preservation ratio 0.94 < 0.95",
+		"provider selected-live text preservation ratio 0.93 < 0.95",
+		"provider SSE reasoning preservation ratio 0.9 < 0.95",
+		"provider selected-live reasoning preservation ratio 0.94 < 0.95",
+	]);
+});
+
+test("streaming provider telemetry summary extracts delta bytes, gaps, and latencies", () => {
+	const summary = summarizeStreamingProviderTelemetry({
+		request: {
+			providerRequestId: "pr_fixture",
+			piboSessionId: "ps_fixture",
+			turnId: "turn_fixture",
+			provider: "openai",
+			api: "responses",
+			model: "gpt-fixture",
+			transport: "sse",
+			status: "completed",
+			startedAt: "2026-05-23T00:00:00.000Z",
+			firstByteAt: "2026-05-23T00:00:00.050Z",
+			completedAt: "2026-05-23T00:00:00.300Z",
+			parseErrorCount: 0,
+			unknownEventCount: 1,
+			rawEventCount: 5,
+			normalizedEventCount: 4,
+			eventTypeCounts: { "pi.text_delta": 3, "pi.thinking_delta": 1 },
+		},
+		events: [
+			{ normalizedType: "thinking_delta", eventType: "pi.thinking_delta", receivedAt: "2026-05-23T00:00:00.075Z", safeFields: { deltaBytes: 4 }, byteSize: 40 },
+			{ normalizedType: "assistant_delta", eventType: "pi.text_delta", receivedAt: "2026-05-23T00:00:00.100Z", safeFields: { deltaBytes: 2 }, byteSize: 20 },
+			{ normalizedType: "assistant_delta", eventType: "pi.text_delta", receivedAt: "2026-05-23T00:00:00.125Z", safeFields: { deltaBytes: 3 }, byteSize: 30 },
+			{ normalizedType: "assistant_delta", eventType: "pi.text_delta", receivedAt: "2026-05-23T00:00:00.175Z", safeFields: { deltaBytes: 5 }, byteSize: 50 },
+		],
+		eventPageCount: 1,
+	});
+	assert.equal(summary.available, true);
+	assert.equal(summary.providerRequestId, "pr_fixture");
+	assert.equal(summary.textDeltaCount, 3);
+	assert.equal(summary.reasoningDeltaCount, 1);
+	assert.equal(summary.textDeltaBytes.p50, 3);
+	assert.equal(summary.textDeltaGapsMs.max, 50);
+	assert.equal(summary.firstByteLatencyMs, 50);
+	assert.equal(summary.firstTextLatencyMs, 100);
+	assert.equal(summary.firstReasoningLatencyMs, 75);
+	assert.equal(summary.unknownEventCount, 1);
+});
+
+test("streaming provider telemetry can be discovered from session or turn metadata", async () => {
+	const cwd = await makeDebugFixture();
+	const previousPiboHome = process.env.PIBO_HOME;
+	process.env.PIBO_HOME = join(cwd, ".pibo");
+	try {
+		const bySession = collectStreamingProviderTelemetryFromSession("ps_running");
+		assert.equal(bySession.available, true);
+		assert.equal(bySession.providerRequestId, "pr_debug_stuck");
+		assert.equal(bySession.piboSessionId, "ps_running");
+		assert.equal(bySession.turnId, "turn_debug_stuck");
+
+		const byTurn = collectStreamingProviderTelemetryFromTurn("evt_running");
+		assert.equal(byTurn.available, true);
+		assert.equal(byTurn.providerRequestId, "pr_debug_stuck");
+		assert.equal(byTurn.unknownEventCount, 1);
+
+		const bySelectedSession = await collectStreamingProviderTelemetryFromSelectedBrowserSession({
+			evaluate: async () => ({ piboSessionId: "ps_running" }),
+		});
+		assert.equal(bySelectedSession.available, true);
+		assert.equal(bySelectedSession.providerRequestId, "pr_debug_stuck");
+
+		const missingSelectedSession = await collectStreamingProviderTelemetryFromSelectedBrowserSession({
+			evaluate: async () => ({}),
+		});
+		assert.equal(missingSelectedSession.available, false);
+		assert.equal(missingSelectedSession.providerRequestId, "selected-session");
+		assert.match(missingSelectedSession.error, /No selected Chat session/);
+
+		const missing = collectStreamingProviderTelemetryFromSession("ps_missing");
+		assert.equal(missing.available, false);
+		assert.equal(missing.providerRequestId, "session:ps_missing");
+		assert.match(missing.error, /No telemetry found/);
+	} finally {
+		if (previousPiboHome === undefined) delete process.env.PIBO_HOME;
+		else process.env.PIBO_HOME = previousPiboHome;
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test("streaming URL comparison regressions gate hosted-vs-direct degradation", () => {
+	assert.deepEqual(evaluateStreamingBenchmarkUrlComparisonRegressions({
+		baselineRuns: 2,
+		currentRuns: 2,
+		smoothnessDelta: -1,
+		domLagOverFixtureScheduleP90DeltaMs: 2,
+		sseTextLagOverFixtureScheduleP90DeltaMs: 3,
+		sseChunkGapP90DeltaMs: 4,
+		selectedLiveFirstTextEventDeltaMs: 20,
+		sseFirstTextEventDeltaMs: 20,
+		liveFirstTextDeltaDeltaMs: 20,
+		liveFirstEnqueueDeltaMs: 20,
+		liveFirstFlushDeltaMs: 20,
+		liveFirstOverlayUpdateDeltaMs: 20,
+		firstVisibleDeltaMs: 20,
+		sseTextEventDelta: 0,
+		selectedLiveTextEventDelta: 0,
+		selectedLiveReasoningEventDelta: 0,
+	}), []);
+	assert.deepEqual(evaluateStreamingBenchmarkUrlComparisonRegressions({
+		baselineRuns: 2,
+		currentRuns: 2,
+		smoothnessDelta: -16,
+		domLagOverFixtureScheduleP90DeltaMs: 151,
+		sseTextLagOverFixtureScheduleP90DeltaMs: 101,
+		sseChunkGapP90DeltaMs: 101,
+		selectedLiveFirstTextEventDeltaMs: 251,
+		sseFirstTextEventDeltaMs: 252,
+		liveFirstTextDeltaDeltaMs: 253,
+		liveFirstEnqueueDeltaMs: 254,
+		liveFirstFlushDeltaMs: 255,
+		liveFirstOverlayUpdateDeltaMs: 256,
+		firstVisibleDeltaMs: 301,
+		sseTextEventDelta: -1,
+		selectedLiveTextEventDelta: -1,
+		selectedLiveReasoningEventDelta: -1,
+	}), [
+		"compare smoothness delta -16 below -15",
+		"compare DOM lag over schedule delta 151ms exceeds 150ms",
+		"compare SSE text lag over schedule delta 101ms exceeds 100ms",
+		"compare SSE chunk p90 gap delta 101ms exceeds 100ms",
+		"compare selected-live first text latency delta 251ms exceeds 250ms",
+		"compare SSE first text latency delta 252ms exceeds 250ms",
+		"compare live first text latency delta 253ms exceeds 250ms",
+		"compare live first enqueue latency delta 254ms exceeds 250ms",
+		"compare live first flush latency delta 255ms exceeds 250ms",
+		"compare live first overlay latency delta 256ms exceeds 250ms",
+		"compare DOM first visible latency delta 301ms exceeds 300ms",
+		"compare SSE text events delta -1 below 0",
+		"compare selected-live text events delta -1 below 0",
+		"compare selected-live reasoning events delta -1 below 0",
+	]);
+});
+
+test("streaming URL comparison preserves controlled negative profile in artifacts and text", () => {
+	const makeRun = (regression) => ({
+		kind: "streaming-benchmark",
+		durationMs: 1200,
+		url: "http://direct.example/apps/chat/rooms/room/sessions/ps",
+		debug: { available: true, reset: true, before: {}, after: {}, delta: { textDeltaCount: 12, reasoningDeltaCount: 4 } },
+		fixture: { requested: true, mode: "backend", profile: "steady", mix: "reasoning-text", available: true, started: true, deltaCount: 12, reasoningDeltaCount: 4, textBytes: 24, scheduleGapsMs: { count: 11, p90: 100 } },
+		dom: { targetCountStart: 1, targetCountEnd: 1, lengthStart: 0, lengthEnd: 0, updateCount: 0, positiveUpdateCount: 0, firstPositiveUpdateMs: 140, gapsMs: { count: 0 }, positiveCharJumps: { count: 0 } },
+		raf: { count: 10, gapsMs: { count: 9, p90: 16.7 } },
+		longTasks: { count: 0, maxMs: 0, totalMs: 0 },
+		eventSource: { streams: [{ role: "selected-live", eventCountAfterStart: 22, textEventCountAfterStart: 12, reasoningEventCountAfterStart: 4, transientIdCountAfterStart: 22, firstTextEventMsAfterStart: 121 }] },
+		sse: { textEventCount: 12, reasoningEventCount: 4, firstTextEventMs: 119, chunkBytes: { count: 1, p50: 200 }, chunkGapsMs: { count: 1, p90: 100 }, textEventsPerChunk: { count: 1, p90: 1 }, textEventGapsMs: { count: 1, p90: 100 } },
+		livePipeline: { expectedInputEventCount: 16, flushedEventsToExpectedRatio: 0.375, overlayEventsToExpectedRatio: 0, currentOutputToExpectedTextBytesRatio: 0, flushToEnqueueRatio: 0.5, overlayUpdatesToFlushedEventsRatio: 0.5, firstTextDeltaMs: 120, firstEnqueueMs: 40, firstFlushMs: 42, firstOverlayUpdateMs: 44 },
+		score: { smoothness: 10, textDeltaCount: 12, domPositiveUpdateCount: 0 },
+		negativeProfile: "overlay-drop",
+		regressions: [regression],
+		warnings: [],
+	});
+	const makeGroup = (run, label) => ({
+		kind: "streaming-benchmark-runs",
+		createdAt: "2026-05-23T00:00:00.000Z",
+		durationMs: 1200,
+		runs: [run],
+		negativeProfile: "overlay-drop",
+		summary: summarizeStreamingBenchmarks([run]),
+		regressions: run.regressions.map((regression) => `${label}: ${regression}`),
+		warnings: [],
+	});
+	const primary = makeGroup(makeRun("positive DOM updates 0 < 10"), "run 1");
+	const compare = makeGroup(makeRun("positive DOM updates 0 < 10"), "run 1");
+	const comparison = summarizeStreamingBenchmarkUrlComparison("http://direct.example/apps/chat", "https://hosted.example/apps/chat", primary, compare);
+	assert.equal(comparison.negativeProfile, "overlay-drop");
+	assert.deepEqual(comparison.regressions, ["primary: run 1: positive DOM updates 0 < 10", "compare: run 1: positive DOM updates 0 < 10"]);
+	assert.equal(comparison.comparison.selectedLiveFirstTextEventDeltaMs, 0);
+	assert.equal(comparison.comparison.sseFirstTextEventDeltaMs, 0);
+	assert.equal(comparison.comparison.liveFirstTextDeltaDeltaMs, 0);
+	assert.equal(comparison.comparison.firstVisibleDeltaMs, 0);
+	const text = formatStreamingBenchmarkUrlComparison(comparison, { id: "target", url: "", title: "" });
+	assert.match(text, /negative profile: overlay-drop/);
+	assert.match(text, /primary selected-live: .*text=count=1, p50=12/);
+	assert.match(text, /compare selected-live: .*reasoning=count=1, p50=4/);
+	assert.match(text, /comparison selected-live: events 0, text 0, reasoning 0/);
+	assert.match(text, /primary live ratios: .*flushed\/expected=count=1, p50=0.375/);
+	assert.match(text, /compare live ratios: .*overlayEvents\/expected=count=1, p50=0/);
+	assert.match(text, /comparison live ratios: flushed\/expected 0, overlayEvents\/expected 0, flush\/enqueue 0, overlayUpdates\/flushed 0/);
+	assert.match(text, /primary first latency: .*selectedLive=count=1, p50=121.*sse=count=1, p50=119.*liveText=count=1, p50=120.*domVisible=count=1, p50=140/);
+	assert.match(text, /comparison first latency: selectedLive 0ms, sse 0ms, liveText 0ms, liveEnqueue 0ms, liveFlush 0ms, liveOverlay 0ms, domVisible 0ms/);
+});
+
+test("pibo debug web streaming benchmark rejects missing expected regression value before target discovery", async () => {
+	await assert.rejects(
+		execFileAsync("node", [cliPath, "debug", "web", "scenario", "streaming-benchmark", "--expect-regression"]),
+		(error) => {
+			assert.match(error.stderr, /--expect-regression requires a value/);
+			assert.doesNotMatch(error.stderr, /No attachable CDP target/);
+			return true;
+		},
+	);
+});
+
+test("pibo debug web streaming benchmark rejects missing provider request id before target discovery", async () => {
+	await assert.rejects(
+		execFileAsync("node", [cliPath, "debug", "web", "scenario", "streaming-benchmark", "--provider-request-id"]),
+		(error) => {
+			assert.match(error.stderr, /--provider-request-id requires a value/);
+			assert.doesNotMatch(error.stderr, /No attachable CDP target/);
+			return true;
+		},
+	);
+});
+
+test("pibo debug web streaming benchmark rejects missing provider session id before target discovery", async () => {
+	await assert.rejects(
+		execFileAsync("node", [cliPath, "debug", "web", "scenario", "streaming-benchmark", "--provider-session-id"]),
+		(error) => {
+			assert.match(error.stderr, /--provider-session-id requires a value/);
+			assert.doesNotMatch(error.stderr, /No attachable CDP target/);
+			return true;
+		},
+	);
+});
+
+test("pibo debug web streaming benchmark rejects multiple provider telemetry sources before target discovery", async () => {
+	await assert.rejects(
+		execFileAsync("node", [cliPath, "debug", "web", "scenario", "streaming-benchmark", "--provider-request-id", "pr_one", "--provider-selected-session"]),
+		(error) => {
+			assert.match(error.stderr, /Use only one provider telemetry source flag: --provider-request-id, --provider-selected-session/);
+			assert.doesNotMatch(error.stderr, /No attachable CDP target/);
+			return true;
+		},
+	);
+});
+
+test("pibo debug web streaming benchmark rejects missing negative profile value before target discovery", async () => {
+	await assert.rejects(
+		execFileAsync("node", [cliPath, "debug", "web", "scenario", "streaming-benchmark", "--negative-profile"]),
+		(error) => {
+			assert.match(error.stderr, /--negative-profile requires a value/);
+			assert.doesNotMatch(error.stderr, /No attachable CDP target/);
+			return true;
+		},
+	);
+});
+
+test("pibo debug web streaming benchmark rejects missing compare URL before target discovery", async () => {
+	await assert.rejects(
+		execFileAsync("node", [cliPath, "debug", "web", "scenario", "streaming-benchmark", "--compare-url"]),
+		(error) => {
+			assert.match(error.stderr, /--compare-url requires a value/);
+			assert.doesNotMatch(error.stderr, /No attachable CDP target/);
+			return true;
+		},
+	);
+});
+
+test("pibo debug web streaming benchmark rejects compare URL without backend fixture before target discovery", async () => {
+	await assert.rejects(
+		execFileAsync("node", [cliPath, "debug", "web", "scenario", "streaming-benchmark", "--compare-url", "http://example.test/apps/chat"]),
+		(error) => {
+			assert.match(error.stderr, /--compare-url requires --backend-fixture/);
+			assert.doesNotMatch(error.stderr, /No attachable CDP target/);
+			return true;
+		},
+	);
+});
+
+test("pibo debug web streaming benchmark rejects compare hosted without backend fixture before target discovery", async () => {
+	await assert.rejects(
+		execFileAsync("node", [cliPath, "debug", "web", "scenario", "streaming-benchmark", "--compare-hosted"]),
+		(error) => {
+			assert.match(error.stderr, /--compare-hosted requires --backend-fixture/);
+			assert.doesNotMatch(error.stderr, /No attachable CDP target/);
+			return true;
+		},
+	);
+});
+
+test("pibo debug web streaming benchmark rejects mutually exclusive compare targets before target discovery", async () => {
+	await assert.rejects(
+		execFileAsync("node", [cliPath, "debug", "web", "scenario", "streaming-benchmark", "--backend-fixture", "--compare-url", "http://example.test/apps/chat", "--compare-hosted"]),
+		(error) => {
+			assert.match(error.stderr, /Use only one compare target flag: --compare-url, --compare-hosted/);
+			assert.doesNotMatch(error.stderr, /No attachable CDP target/);
+			return true;
+		},
+	);
+});
+
+test("pibo debug web streaming benchmark rejects optional compare hosted without backend fixture before target discovery", async () => {
+	await assert.rejects(
+		execFileAsync("node", [cliPath, "debug", "web", "scenario", "streaming-benchmark", "--compare-hosted-if-configured"]),
+		(error) => {
+			assert.match(error.stderr, /--compare-hosted-if-configured requires --backend-fixture/);
+			assert.doesNotMatch(error.stderr, /No attachable CDP target/);
+			return true;
+		},
+	);
+});
+
+test("pibo debug web streaming benchmark rejects compare hosted without configured dev URL before target discovery", async () => {
+	const cwd = await makeEmptyCwd();
+	try {
+		await assert.rejects(
+			execFileAsync("node", [cliPath, "debug", "web", "scenario", "streaming-benchmark", "--backend-fixture", "--compare-hosted"], { cwd, env: { PIBO_DEV_PUBLIC_URL: "", PIBO_DEV_BASE_URL: "" } }),
+			(error) => {
+				assert.match(error.stderr, /--compare-hosted requires PIBO_DEV_PUBLIC_URL or PIBO_DEV_BASE_URL/);
+				assert.doesNotMatch(error.stderr, /No attachable CDP target/);
+				return true;
+			},
+		);
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test("pibo debug web streaming benchmark rejects invalid negative profile before target discovery", async () => {
+	await assert.rejects(
+		execFileAsync("node", [cliPath, "debug", "web", "scenario", "streaming-benchmark", "--negative-profile", "random"]),
+		(error) => {
+			assert.match(error.stderr, /--negative-profile must be batch or overlay-drop/);
+			assert.doesNotMatch(error.stderr, /No attachable CDP target/);
+			return true;
+		},
+	);
+});
+
+test("pibo debug web streaming benchmark rejects conflicting negative profile flags before target discovery", async () => {
+	await assert.rejects(
+		execFileAsync("node", [cliPath, "debug", "web", "scenario", "streaming-benchmark", "--negative-profile", "batch", "--fixture-profile", "steady"]),
+		(error) => {
+			assert.match(error.stderr, /--negative-profile batch already selects fixture settings and expected regressions; remove --fixture-profile/);
+			assert.doesNotMatch(error.stderr, /No attachable CDP target/);
+			return true;
+		},
+	);
+});
+
+test("pibo debug web streaming benchmark rejects mutually exclusive fixtures before target discovery", async () => {
+	await assert.rejects(
+		execFileAsync("node", [cliPath, "debug", "web", "scenario", "streaming-benchmark", "--fixture", "--backend-fixture"]),
+		(error) => {
+			assert.match(error.stderr, /Use either --fixture or --backend-fixture, not both/);
+			assert.doesNotMatch(error.stderr, /No attachable CDP target/);
+			return true;
+		},
+	);
+});
+
+test("pibo debug web streaming benchmark rejects action flags before target discovery", async () => {
+	await assert.rejects(
+		execFileAsync("node", [cliPath, "debug", "web", "scenario", "streaming-benchmark", "--act"]),
+		(error) => {
+			assert.match(error.stderr, /streaming-benchmark does not support --act or --manual/);
+			assert.doesNotMatch(error.stderr, /No attachable CDP target/);
+			return true;
+		},
+	);
+});
+
+test("pibo debug web streaming benchmark rejects invalid fixture profiles before target discovery", async () => {
+	await assert.rejects(
+		execFileAsync("node", [cliPath, "debug", "web", "scenario", "streaming-benchmark", "--backend-fixture", "--fixture-profile", "random"]),
+		(error) => {
+			assert.match(error.stderr, /--fixture-profile must be steady, jitter, burst, or batch/);
+			assert.doesNotMatch(error.stderr, /No attachable CDP target/);
+			return true;
+		},
+	);
+});
+
+test("pibo debug web streaming benchmark rejects invalid fixture mix before target discovery", async () => {
+	await assert.rejects(
+		execFileAsync("node", [cliPath, "debug", "web", "scenario", "streaming-benchmark", "--backend-fixture", "--fixture-mix", "thinking-only"]),
+		(error) => {
+			assert.match(error.stderr, /--fixture-mix must be text or reasoning-text/);
+			assert.doesNotMatch(error.stderr, /No attachable CDP target/);
+			return true;
+		},
+	);
+});
+
+test("pibo debug web streaming benchmark rejects fixture mix without fixture before target discovery", async () => {
+	await assert.rejects(
+		execFileAsync("node", [cliPath, "debug", "web", "scenario", "streaming-benchmark", "--fixture-mix", "reasoning-text"]),
+		(error) => {
+			assert.match(error.stderr, /--fixture-mix requires --fixture or --backend-fixture/);
+			assert.doesNotMatch(error.stderr, /No attachable CDP target/);
+			return true;
+		},
+	);
+});
+
+test("pibo debug web streaming benchmark rejects reconnect simulation without backend fixture before target discovery", async () => {
+	await assert.rejects(
+		execFileAsync("node", [cliPath, "debug", "web", "scenario", "streaming-benchmark", "--simulate-reconnect"]),
+		(error) => {
+			assert.match(error.stderr, /--simulate-reconnect requires --backend-fixture/);
+			assert.doesNotMatch(error.stderr, /No attachable CDP target/);
+			return true;
+		},
+	);
+});
+
+test("pibo debug web streaming benchmark rejects trace catch-up simulation without backend fixture before target discovery", async () => {
+	await assert.rejects(
+		execFileAsync("node", [cliPath, "debug", "web", "scenario", "streaming-benchmark", "--simulate-trace-catchup"]),
+		(error) => {
+			assert.match(error.stderr, /--simulate-trace-catchup requires --backend-fixture/);
+			assert.doesNotMatch(error.stderr, /No attachable CDP target/);
+			return true;
+		},
+	);
+});
+
+test("pibo debug web streaming benchmark rejects combined stream simulations before target discovery", async () => {
+	await assert.rejects(
+		execFileAsync("node", [cliPath, "debug", "web", "scenario", "streaming-benchmark", "--backend-fixture", "--simulate-reconnect", "--simulate-trace-catchup"]),
+		(error) => {
+			assert.match(error.stderr, /Use either --simulate-reconnect or --simulate-trace-catchup, not both/);
+			assert.doesNotMatch(error.stderr, /No attachable CDP target/);
 			return true;
 		},
 	);

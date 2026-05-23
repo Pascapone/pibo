@@ -82,6 +82,19 @@ import {
 	tracePageQueriesForSession,
 	traceSummaryQueriesForSession,
 } from "./cache";
+import {
+	isStreamingDebugEnabled,
+	recordStreamingDebugEnqueue,
+	recordStreamingDebugFlush,
+	recordStreamingDebugLiveError,
+	recordStreamingDebugLiveOpen,
+	recordStreamingDebugStreamEvent,
+	recordStreamingDebugTraceRefreshEnd,
+	recordStreamingDebugTraceRefreshScheduled,
+	recordStreamingDebugTraceRefreshStart,
+	recordStreamingDebugTraceState,
+	shouldDropStreamingBenchmarkOverlayEvent,
+} from "./streamingDebug";
 
 type Area = "sessions" | "projects" | "workflows" | "cron" | "ralph" | "agents" | "context" | "settings";
 type ContextPanel = "context-files" | "base-prompt" | "compaction-prompt" | "pibo-tools" | "mcp-tools" | "build-context";
@@ -888,14 +901,23 @@ export function App({ route }: { route: ChatAppRoute }) {
 	}, []);
 
 	const refreshTrace = useCallback(async (piboSessionId: string) => {
-		await Promise.all([
-			queryClient.invalidateQueries({ queryKey: traceSummaryQueriesForSession(piboSessionId), refetchType: "none" }),
-			queryClient.invalidateQueries({ queryKey: tracePageQueriesForSession(piboSessionId), refetchType: "none" }),
-		]);
-		await Promise.all([
-			queryClient.refetchQueries({ queryKey: traceSummaryQueriesForSession(piboSessionId), type: "active" }),
-			queryClient.refetchQueries({ queryKey: tracePageQueriesForSession(piboSessionId), type: "active" }),
-		]);
+		const startedAt = recordStreamingDebugTraceRefreshStart(piboSessionId);
+		let failed = false;
+		try {
+			await Promise.all([
+				queryClient.invalidateQueries({ queryKey: traceSummaryQueriesForSession(piboSessionId), refetchType: "none" }),
+				queryClient.invalidateQueries({ queryKey: tracePageQueriesForSession(piboSessionId), refetchType: "none" }),
+			]);
+			await Promise.all([
+				queryClient.refetchQueries({ queryKey: traceSummaryQueriesForSession(piboSessionId), type: "active" }),
+				queryClient.refetchQueries({ queryKey: tracePageQueriesForSession(piboSessionId), type: "active" }),
+			]);
+		} catch (error) {
+			failed = true;
+			throw error;
+		} finally {
+			recordStreamingDebugTraceRefreshEnd(piboSessionId, startedAt, failed);
+		}
 	}, [queryClient]);
 	const refreshSelectedTrace = useCallback(
 		() => selectedPiboSessionId ? refreshTrace(selectedPiboSessionId) : Promise.resolve(),
@@ -3383,6 +3405,13 @@ function SessionTracePane({
 			const currentLatestStreamId = latestLiveStreamIdBySession.current.get(trace.piboSessionId);
 			latestLiveStreamIdBySession.current.set(trace.piboSessionId, Math.max(currentLatestStreamId ?? trace.latestStreamId, trace.latestStreamId));
 		}
+		if (isStreamingDebugEnabled()) {
+			recordStreamingDebugTraceState(trace.piboSessionId, {
+				overlayEventCount: 0,
+				traceBaseOutputLength: traceAssistantOutputLength(trace),
+				traceBaseUpdated: true,
+			});
+		}
 		startTransition(() => {
 			setBaseTraceView(trace);
 			setLiveTraceOverlay((current) => trimLiveOverlayForBaseTrace(current, trace));
@@ -3401,6 +3430,15 @@ function SessionTracePane({
 		annotateLiveTraceForkEntryIds(liveTrace.nodes, baseTraceView.nodes);
 		return reconcileOptimisticUserMessages(liveTrace);
 	}, [liveTraceOverlay, selectedPiboSessionId, bootstrap, baseTraceView]);
+
+	useEffect(() => {
+		if (!selectedPiboSessionId || !currentTraceView?.piboSessionId || !isStreamingDebugEnabled()) return;
+		recordStreamingDebugTraceState(currentTraceView.piboSessionId, {
+			overlayEventCount: liveTraceOverlay?.piboSessionId === currentTraceView.piboSessionId ? liveTraceOverlay.events.length : 0,
+			traceBaseOutputLength: traceAssistantOutputLength(baseTraceView),
+			currentOutputLength: traceAssistantOutputLength(currentTraceView),
+		});
+	}, [baseTraceView, currentTraceView, liveTraceOverlay, selectedPiboSessionId]);
 
 	const loadOlderTracePage = useCallback(async () => {
 		if (!selectedPiboSessionId || !currentTraceView?.nextBeforeSequence) return;
@@ -3440,14 +3478,16 @@ function SessionTracePane({
 		if (!pending?.length) return;
 		setLiveTraceOverlay((current) => {
 			const currentEvents = current?.piboSessionId === piboSessionId ? current.events : [];
+			const events = applyTraceLiveEvents({
+				currentEvents,
+				streamEvents: pending,
+				piboSessionId,
+				nextSequence: () => liveEventSeqRef.current++,
+			});
+			recordStreamingDebugFlush(piboSessionId, pending.length, events.length);
 			return {
 				piboSessionId,
-				events: applyTraceLiveEvents({
-					currentEvents,
-					streamEvents: pending,
-					piboSessionId,
-					nextSequence: () => liveEventSeqRef.current++,
-				}),
+				events,
 			};
 		});
 		pendingStreamEventsBySession.current.delete(piboSessionId);
@@ -3472,6 +3512,7 @@ function SessionTracePane({
 		const pending = pendingStreamEventsBySession.current.get(piboSessionId) ?? [];
 		pending.push(event);
 		pendingStreamEventsBySession.current.set(piboSessionId, pending);
+		recordStreamingDebugEnqueue(piboSessionId, event, pending.length, flushImmediately);
 		if (flushImmediately || piboSessionId !== selectedPiboSessionId) {
 			flushPendingStreamEvents(piboSessionId);
 		} else {
@@ -3545,6 +3586,7 @@ function SessionTracePane({
 				if (!reset) return;
 				clearTimeout(traceTimer);
 			}
+			recordStreamingDebugTraceRefreshScheduled(selectedPiboSessionId, delayMs);
 			traceTimer = setTimeout(() => {
 				traceTimer = undefined;
 				onRefreshTrace().catch((caught) => onError(errorMessage(caught)));
@@ -3584,11 +3626,13 @@ function SessionTracePane({
 				clearTimeout(selectedLiveStreamReconnectTimer.current);
 				selectedLiveStreamReconnectTimer.current = undefined;
 			}
+			recordStreamingDebugLiveOpen(selectedPiboSessionId, events.readyState);
 			const liveStream = selectedLiveStreamRef.current;
 			if (liveStream?.events === events) liveStream.lastActivityAt = Date.now();
 		};
 		events.onerror = () => {
 			if (closed) return;
+			recordStreamingDebugLiveError(selectedPiboSessionId, events.readyState);
 			const liveStream = selectedLiveStreamRef.current;
 			if (liveStream?.events === events) {
 				liveStream.lastErrorAt = Date.now();
@@ -3605,6 +3649,8 @@ function SessionTracePane({
 			const liveStream = selectedLiveStreamRef.current;
 			if (liveStream?.events === events) liveStream.lastActivityAt = Date.now();
 			recordLatestLiveStreamId(targetPiboSessionId, event);
+			recordStreamingDebugStreamEvent(targetPiboSessionId, event, message.lastEventId, events.readyState);
+			if (shouldDropStreamingBenchmarkOverlayEvent(event)) return;
 			const flushImmediately = event.type !== "TEXT_MESSAGE_CONTENT" && event.type !== "REASONING_MESSAGE_CONTENT";
 			if (targetPiboSessionId === selectedPiboSessionId) {
 				enqueueStreamEvent(targetPiboSessionId, event, flushImmediately);
@@ -9813,6 +9859,13 @@ function flattenPiboTraceNodes(nodes: readonly PiboTraceNode[]): PiboTraceNode[]
 
 function traceNodeText(node: PiboTraceNode): string {
 	return typeof node.output === "string" ? node.output : typeof node.summary === "string" ? node.summary : "";
+}
+
+function traceAssistantOutputLength(trace: PiboSessionTraceView | null | undefined): number | undefined {
+	if (!trace) return undefined;
+	return flattenPiboTraceNodes(trace.nodes)
+		.filter((node) => node.type === "assistant.message")
+		.reduce((sum, node) => sum + traceNodeText(node).length, 0);
 }
 
 type SignalSessionUpdate = { status?: PiboWebSessionNode["status"]; updatedAt?: string; isTreeActive?: boolean };
