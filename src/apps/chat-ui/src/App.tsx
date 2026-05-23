@@ -1543,7 +1543,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 						<img src="/apps/chat/assets/pwa-images/android/launchericon-512x512.png" alt="Logo" className="h-5 w-auto shrink-0" />
 						<div className="truncate font-extrabold tracking-[0.08em] uppercase text-lg max-[420px]:text-base">Pibo Chat</div>
 					</div>
-					<nav className="flex gap-1 max-[980px]:hidden min-[981px]:absolute min-[981px]:left-1/2 min-[981px]:-translate-x-1/2">
+					<nav className="flex gap-1 max-[1200px]:hidden min-[1201px]:absolute min-[1201px]:left-1/2 min-[1201px]:-translate-x-1/2">
 						{MAIN_NAV_AREAS.map((item) => (
 							<button
 								key={item}
@@ -1560,13 +1560,13 @@ export function App({ route }: { route: ChatAppRoute }) {
 							</button>
 						))}
 					</nav>
-					<div className="ml-auto flex shrink-0 items-center justify-end gap-2 text-xs text-slate-400 min-[981px]:ml-0">
+					<div className="ml-auto flex shrink-0 items-center justify-end gap-2 text-xs text-slate-400 min-[1201px]:ml-0">
 						<UserRound size={14} />
 						<span className="truncate max-[600px]:hidden">{identity.email || identity.name || identity.userId}</span>
 						<button type="button" onClick={() => void signOut().then(() => location.reload())} className="p-1 border border-slate-700 rounded-sm hover:border-[#11a4d4] hover:text-[#11a4d4]" title="Sign out" aria-label="Sign out">
 							<LogOut size={14} />
 						</button>
-						<div className="relative min-[981px]:hidden" ref={mobileAreaMenuRef}>
+						<div className="relative min-[1201px]:hidden" ref={mobileAreaMenuRef}>
 							<button
 								type="button"
 								onClick={() => setMobileAreaMenuOpen((open) => !open)}
