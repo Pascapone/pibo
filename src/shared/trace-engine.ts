@@ -19,9 +19,21 @@ import type {
 // ── existing utilities ───────────────────────────────────────────
 
 export function sortTraceNodes(nodes: PiboTraceNode[]): PiboTraceNode[] {
-	return [...nodes]
-		.sort(compareTraceNodes)
-		.map((node) => (node.children.length ? { ...node, children: sortTraceNodes(node.children) } : node));
+	let hasSortedChildren = false;
+	const nodesWithSortedChildren = nodes.map((node) => {
+		if (!node.children.length) return node;
+		hasSortedChildren = true;
+		return { ...node, children: sortTraceNodes(node.children) };
+	});
+	if (areTraceNodesSorted(nodesWithSortedChildren)) return hasSortedChildren ? nodesWithSortedChildren : [...nodes];
+	return [...nodesWithSortedChildren].sort(compareTraceNodes);
+}
+
+function areTraceNodesSorted(nodes: readonly PiboTraceNode[]): boolean {
+	for (let index = 1; index < nodes.length; index += 1) {
+		if (compareTraceNodes(nodes[index - 1], nodes[index]) > 0) return false;
+	}
+	return true;
 }
 
 export function compareTraceNodes(left: PiboTraceNode, right: PiboTraceNode): number {
@@ -40,7 +52,17 @@ function compareOptionalIsoTime(left?: string, right?: string): number {
 }
 
 export function flattenTraceNodes(nodes: PiboTraceNode[]): PiboTraceNode[] {
-	return nodes.flatMap((node) => [node, ...flattenTraceNodes(node.children)]);
+	const flattened: PiboTraceNode[] = [];
+	const stack = [...nodes].reverse();
+	while (stack.length) {
+		const node = stack.pop();
+		if (!node) continue;
+		flattened.push(node);
+		for (let index = node.children.length - 1; index >= 0; index -= 1) {
+			stack.push(node.children[index]);
+		}
+	}
+	return flattened;
 }
 
 export function nestTraceNodes(nodes: PiboTraceNode[]): PiboTraceNode[] {
@@ -217,6 +239,26 @@ function applySingleEventToNodes(
 		);
 		return;
 	}
+	if (payload.type === "assistant_message") {
+		const node = assistantMessageNodeFromEvent(
+			piboSessionId,
+			payload,
+			storedEvent.createdAt,
+			storedEvent.eventSequence,
+			storedEvent.streamId,
+			storedEvent.streamFrameIndex,
+		);
+		const existing = byId.get(node.id);
+		if (existing) {
+			mergeAssistantMessageEvent(existing, node);
+			closeParentTurnForFinalAssistant(byId, existing);
+			return;
+		}
+		closeParentTurnForFinalAssistant(byId, node);
+		nodes.push(node);
+		byId.set(node.id, node);
+		return;
+	}
 	const node = traceNodeFromEvent(
 		piboSessionId,
 		payload,
@@ -285,6 +327,35 @@ function applySingleEventToNodes(
 	for (const indexed of flattenTraceNodes([node])) byId.set(indexed.id, indexed);
 }
 
+function assistantMessageNodeFromEvent(
+	piboSessionId: string,
+	event: Extract<PiboOutputEvent, { type: "assistant_message" }>,
+	createdAt?: string,
+	eventSequence?: number,
+	streamId?: number,
+	streamFrameIndex?: number,
+): PiboTraceNode {
+	const eventId = typeof event.eventId === "string" ? event.eventId : undefined;
+	const assistantId = assistantEventNodeId(event);
+	const id = assistantId ? assistantMessageNodeId(assistantId) : `event:${event.type}:${cryptoSafeId(event)}`;
+	return {
+		id,
+		piboSessionId,
+		eventId,
+		parentId: eventId ? messageTurnNodeId(eventId) : undefined,
+		type: "assistant.message",
+		title: "Agent Message",
+		status: "done",
+		startedAt: createdAt,
+		summary: event.text,
+		output: event.text,
+		source: "event-log",
+		stableKey: assistantId ? `assistant:${assistantId}` : eventStableKey(event),
+		orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex),
+		children: [],
+	};
+}
+
 function attachExecutionCommandToOpenTurn(
 	node: PiboTraceNode,
 	byId: Map<string, PiboTraceNode>,
@@ -325,38 +396,120 @@ export function patchTraceViewWithEvent(
 	event: ChatWebStoredEvent,
 	sessionStatus: PiboWebSessionStatus,
 ): PiboSessionTraceView {
-	if (view.rawEvents.some((re) => traceEventDedupeKey(re) === traceEventDedupeKey(event))) {
-		return view;
+	return patchTraceViewWithEvents(view, [event], sessionStatus);
+}
+
+export function patchTraceViewWithEvents(
+	view: PiboSessionTraceView,
+	events: readonly ChatWebStoredEvent[],
+	sessionStatus: PiboWebSessionStatus,
+): PiboSessionTraceView {
+	if (!events.length) return view;
+
+	const seenEventKeys = new Set(view.rawEvents.map((event) => traceEventDedupeKey(event)));
+	const candidateEvents: ChatWebStoredEvent[] = [];
+	for (const event of events) {
+		const eventKey = traceEventDedupeKey(event);
+		if (seenEventKeys.has(eventKey)) continue;
+		seenEventKeys.add(eventKey);
+		candidateEvents.push(event);
 	}
-	if (isConfirmedUserMessageEcho(view.nodes, event)) {
-		return view;
+	if (!candidateEvents.length) return view;
+
+	const previousFlatNodes = flattenTraceNodes(view.nodes);
+	const allNodes: PiboTraceNode[] = [];
+	const byId = new Map<string, PiboTraceNode>();
+	const previousById = new Map<string, PiboTraceNode>();
+	for (const previousNode of previousFlatNodes) {
+		previousById.set(previousNode.id, previousNode);
+		const nextNode = { ...previousNode, children: [] };
+		allNodes.push(nextNode);
+		byId.set(nextNode.id, nextNode);
+	}
+	const childByParent = new Map<string, Array<{ id: string; metadata?: Record<string, unknown> }>>();
+	const linkedChildByToolCallId = new Map<string, string>();
+	const openTranscriptEventIds = new Set<string>();
+	const appliedEvents: ChatWebStoredEvent[] = [];
+	let contentDeltaChangedNodeIds: Set<string> | undefined = new Set();
+
+	for (const event of candidateEvents) {
+		if (isConfirmedUserMessageEcho(allNodes, event)) continue;
+
+		appliedEvents.push(event);
+		const contentDeltaNodeId = contentDeltaPatchNodeId(event.payload as PiboOutputEvent);
+		if (contentDeltaChangedNodeIds && contentDeltaNodeId) contentDeltaChangedNodeIds.add(contentDeltaNodeId);
+		else contentDeltaChangedNodeIds = undefined;
+		applySingleEventToNodes(
+			allNodes,
+			byId,
+			view.piboSessionId,
+			event,
+			childByParent,
+			linkedChildByToolCallId,
+			false,
+			openTranscriptEventIds,
+			sessionStatus,
+		);
 	}
 
-	const allNodes = flattenTraceNodes(view.nodes).map((node) => ({ ...node, children: [] }));
-	const byId = mapTraceNodesById(allNodes);
+	if (!appliedEvents.length) return view;
 
-	applySingleEventToNodes(
-		allNodes,
-		byId,
-		view.piboSessionId,
-		event,
-		new Map(),
-		new Map(),
-		false,
-		new Set(),
-		sessionStatus,
-	);
-
-	const nestedNodes = nestTraceNodes(allNodes);
-	reconcileAsyncAgentRunStatuses(nestedNodes);
-	const sharedNodes = shareUnchangedTraceNodes(view.nodes, nestedNodes);
+	const nestedNodes = nestMutableCopiedTraceNodes(allNodes);
+	if (eventsCanAffectAsyncAgentRunStatus(appliedEvents)) {
+		reconcileAsyncAgentRunStatuses(nestedNodes);
+	}
+	const sharedNodes = shareUnchangedTraceNodes(previousById, nestedNodes, contentDeltaChangedNodeIds);
 
 	return {
 		...view,
-		rawEvents: [...view.rawEvents, event],
+		rawEvents: view.rawEvents.length ? [...view.rawEvents, ...appliedEvents] : appliedEvents,
 		nodes: sharedNodes,
-		latestStreamId: latestTraceStreamId([event], view.latestStreamId),
+		latestStreamId: latestTraceStreamId(appliedEvents, view.latestStreamId),
 	};
+}
+
+function eventsCanAffectAsyncAgentRunStatus(events: readonly ChatWebStoredEvent[]): boolean {
+	return events.some((event) => {
+		const type = (event.payload as PiboOutputEvent).type;
+		return type !== "assistant_delta" && type !== "thinking_delta";
+	});
+}
+
+function contentDeltaPatchNodeId(event: PiboOutputEvent): string | undefined {
+	if (event.type === "assistant_delta") {
+		if (event.text.length === 0) return undefined;
+		const assistantId = assistantEventNodeId(event);
+		return assistantId ? assistantMessageNodeId(assistantId) : undefined;
+	}
+	if (event.type === "thinking_delta") {
+		if (event.text.length === 0) return undefined;
+		const thinkingId = thinkingEventNodeId(event);
+		return thinkingId ? thinkingNodeId(thinkingId) : undefined;
+	}
+	return undefined;
+}
+
+function nestMutableCopiedTraceNodes(nodes: readonly PiboTraceNode[]): PiboTraceNode[] {
+	const byId = new Map<string, PiboTraceNode>();
+	for (const node of nodes) byId.set(node.id, node);
+
+	const roots: PiboTraceNode[] = [];
+	for (const node of nodes) {
+		if (!node.parentId) {
+			roots.push(node);
+			continue;
+		}
+		const parent = byId.get(node.parentId);
+		if (parent) parent.children.push(node);
+		else roots.push(node);
+	}
+	return sortTraceNodes(roots);
+}
+
+function mapFlatTraceNodesById(nodes: readonly PiboTraceNode[]): Map<string, PiboTraceNode> {
+	const byId = new Map<string, PiboTraceNode>();
+	for (const node of nodes) byId.set(node.id, node);
+	return byId;
 }
 
 function isConfirmedUserMessageEcho(nodes: readonly PiboTraceNode[], event: ChatWebStoredEvent): boolean {
@@ -364,7 +517,7 @@ function isConfirmedUserMessageEcho(nodes: readonly PiboTraceNode[], event: Chat
 	if (payload.type !== "message_queued" || payload.source !== "user") return false;
 	const eventId = typeof payload.eventId === "string" ? payload.eventId : event.eventId;
 	const text = typeof payload.text === "string" ? payload.text : undefined;
-	return flattenTraceNodes([...nodes]).some((node) => {
+	return nodes.some((node) => {
 		if (node.type !== "user.message" || node.source !== "transcript") return false;
 		if (eventId && (node.entryId === eventId || node.stableKey === `entry:${eventId}`)) return true;
 		return Boolean(text && traceNodeText(node) === text);
@@ -378,26 +531,37 @@ function traceNodeText(node: PiboTraceNode): string | undefined {
 }
 
 function shareUnchangedTraceNodes(
-	previousNodes: readonly PiboTraceNode[],
+	previousById: ReadonlyMap<string, PiboTraceNode>,
 	nextNodes: readonly PiboTraceNode[],
+	contentDeltaChangedNodeIds?: ReadonlySet<string>,
 ): PiboTraceNode[] {
-	const previousById = mapTraceNodesById(previousNodes as PiboTraceNode[]);
-	return nextNodes.map((node) => shareUnchangedTraceNode(previousById, node));
+	return nextNodes.map((node) => shareUnchangedTraceNode(previousById, node, contentDeltaChangedNodeIds));
 }
 
 function shareUnchangedTraceNode(
 	previousById: ReadonlyMap<string, PiboTraceNode>,
 	nextNode: PiboTraceNode,
+	contentDeltaChangedNodeIds?: ReadonlySet<string>,
 ): PiboTraceNode {
 	const previousNode = previousById.get(nextNode.id);
-	const sharedChildren = nextNode.children.map((child) => shareUnchangedTraceNode(previousById, child));
+	if (nextNode.children.length === 0) {
+		const childrenUnchanged = previousNode !== undefined && previousNode.children.length === 0;
+		if (previousNode && childrenUnchanged) {
+			if (contentDeltaChangedNodeIds && !contentDeltaChangedNodeIds.has(nextNode.id)) return previousNode;
+			if (traceNodeShallowEqual(previousNode, nextNode)) return previousNode;
+		}
+		return childrenUnchanged ? { ...nextNode, children: previousNode.children } : { ...nextNode, children: [] };
+	}
+
+	const sharedChildren = nextNode.children.map((child) => shareUnchangedTraceNode(previousById, child, contentDeltaChangedNodeIds));
 	const childrenUnchanged =
 		previousNode !== undefined &&
 		previousNode.children.length === sharedChildren.length &&
 		previousNode.children.every((child, index) => child === sharedChildren[index]);
 
-	if (previousNode && childrenUnchanged && traceNodeShallowEqual(previousNode, nextNode)) {
-		return previousNode;
+	if (previousNode && childrenUnchanged) {
+		if (contentDeltaChangedNodeIds && !contentDeltaChangedNodeIds.has(nextNode.id)) return previousNode;
+		if (traceNodeShallowEqual(previousNode, nextNode)) return previousNode;
 	}
 
 	return childrenUnchanged ? { ...nextNode, children: previousNode?.children ?? sharedChildren } : { ...nextNode, children: sharedChildren };
@@ -432,7 +596,16 @@ function traceNodeShallowEqual(left: PiboTraceNode, right: PiboTraceNode): boole
 function traceOrderKeyEqual(left: PiboTraceNode["orderKey"], right: PiboTraceNode["orderKey"]): boolean {
 	if (left === right) return true;
 	if (!left || !right) return false;
-	return JSON.stringify(left) === JSON.stringify(right);
+	return (
+		left.sourceRank === right.sourceRank &&
+		left.turnSeq === right.turnSeq &&
+		left.transcriptIndex === right.transcriptIndex &&
+		left.contentPartIndex === right.contentPartIndex &&
+		left.eventSequence === right.eventSequence &&
+		left.streamId === right.streamId &&
+		left.streamFrameIndex === right.streamFrameIndex &&
+		left.phaseRank === right.phaseRank
+	);
 }
 
 export function dedupeTraceEvents<T extends ChatWebStoredEvent>(events: readonly T[]): T[] {

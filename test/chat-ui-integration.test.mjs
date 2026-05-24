@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildTraceViewFromEvents, patchTraceViewWithEvent } from "../dist/shared/trace-engine.js";
+import { buildTraceViewFromEvents, patchTraceViewWithEvent, patchTraceViewWithEvents } from "../dist/shared/trace-engine.js";
 
 function createEvent(overrides) {
 	return {
@@ -28,7 +28,7 @@ function createBaseView(events = [], status = "running") {
 }
 
 function applyLiveEvents(baseView, events, sessionStatus = "running") {
-	return events.reduce((view, event) => patchTraceViewWithEvent(view, event, sessionStatus), baseView);
+	return patchTraceViewWithEvents(baseView, events, sessionStatus);
 }
 
 function flatNodes(view) {
@@ -479,12 +479,16 @@ test("incremental patch produces same result as full build for 50+ event stream"
 
 	const fullView = createBaseView(events, "running");
 	const incrementalView = events.reduce((view, event) => patchTraceViewWithEvent(view, event, "running"), createBaseView([], "running"));
+	const batchView = patchTraceViewWithEvents(createBaseView([], "running"), events, "running");
 
 	assert.equal(fullView.nodes.length, incrementalView.nodes.length);
+	assert.equal(fullView.nodes.length, batchView.nodes.length);
 	for (let i = 0; i < fullView.nodes.length; i++) {
-		assert.equal(fullView.nodes[i].type, incrementalView.nodes[i].type);
-		assert.equal(fullView.nodes[i].output, incrementalView.nodes[i].output);
-		assert.equal(fullView.nodes[i].status, incrementalView.nodes[i].status);
-		assert.equal(fullView.nodes[i].children.length, incrementalView.nodes[i].children.length);
+		for (const candidate of [incrementalView, batchView]) {
+			assert.equal(fullView.nodes[i].type, candidate.nodes[i].type);
+			assert.equal(fullView.nodes[i].output, candidate.nodes[i].output);
+			assert.equal(fullView.nodes[i].status, candidate.nodes[i].status);
+			assert.equal(fullView.nodes[i].children.length, candidate.nodes[i].children.length);
+		}
 	}
 });

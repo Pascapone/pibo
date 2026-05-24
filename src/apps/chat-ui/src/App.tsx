@@ -56,7 +56,7 @@ import { type SessionBreadcrumbItem, type SessionDerivationLink, type SessionOri
 import { JsonRenderer } from "./tracing/JsonRenderer";
 import { countRender } from "./renderMetrics";
 import { parseTraceStreamFrameId } from "../../../shared/trace-order.js";
-import { patchTraceViewWithEvent } from "../../../shared/trace-engine.js";
+import { patchTraceViewWithEvents } from "../../../shared/trace-engine.js";
 import { applyTraceLiveEvents } from "./traceLiveReducer";
 import { ContextFilesView } from "./context/ContextFilesView";
 import { BasePromptView } from "./context/BasePromptView";
@@ -88,6 +88,7 @@ import {
 	recordStreamingDebugFlush,
 	recordStreamingDebugLiveError,
 	recordStreamingDebugLiveOpen,
+	recordStreamingDebugLiveTraceCompute,
 	recordStreamingDebugStreamEvent,
 	recordStreamingDebugTraceRefreshEnd,
 	recordStreamingDebugTraceRefreshScheduled,
@@ -3231,6 +3232,7 @@ function SessionTracePane({
 	const pendingStreamEventsBySession = useRef(new Map<string, ChatStreamEvent[]>());
 	const pendingStreamFrame = useRef<number | undefined>(undefined);
 	const pendingStreamTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+	const firstLiveContentFlushKeysBySession = useRef(new Map<string, Set<string>>());
 	const liveEventSeqRef = useRef(0);
 	const latestLiveStreamIdBySession = useRef(new Map<string, number>());
 	const selectedLiveStreamRef = useRef<SelectedLiveEventStream | null>(null);
@@ -3418,18 +3420,32 @@ function SessionTracePane({
 		});
 	}, [selectedPiboSessionId, tracePageQuery.data]);
 
-	const currentTraceView = useMemo(() => {
-		if (!selectedPiboSessionId || !bootstrap) return null;
-		if (baseTraceView?.piboSessionId !== selectedPiboSessionId) return null;
-		const sessionStatus = findSessionNode(bootstrap.sessions, selectedPiboSessionId)?.status ?? "idle";
+	const reconciledBaseTraceView = useMemo(
+		() => baseTraceView ? reconcileOptimisticUserMessages(baseTraceView) : null,
+		[baseTraceView],
+	);
+
+	const persistedUserMessageIndexForBaseTrace = useMemo(
+		() => reconciledBaseTraceView ? collectPersistedUserMessageIndex(reconciledBaseTraceView.nodes) : new Map<string, string[]>(),
+		[reconciledBaseTraceView],
+	);
+
+	const currentTraceComputation = useMemo((): { traceView: PiboSessionTraceView | null; liveTraceComputeDurationMs?: number } => {
+		if (!selectedPiboSessionId) return { traceView: null };
+		if (reconciledBaseTraceView?.piboSessionId !== selectedPiboSessionId) return { traceView: null };
 		const overlayEvents = liveTraceOverlay?.piboSessionId === selectedPiboSessionId
 			? liveTraceOverlay.events
 			: [];
-		if (!overlayEvents.length) return reconcileOptimisticUserMessages(baseTraceView);
-		const liveTrace = patchTraceViewWithEvents(baseTraceView, overlayEvents, sessionStatus);
-		annotateLiveTraceForkEntryIds(liveTrace.nodes, baseTraceView.nodes);
-		return reconcileOptimisticUserMessages(liveTrace);
-	}, [liveTraceOverlay, selectedPiboSessionId, bootstrap, baseTraceView]);
+		if (!overlayEvents.length) return { traceView: reconciledBaseTraceView };
+		const measureCompute = isStreamingDebugEnabled();
+		const startedAt = measureCompute ? performance.now() : 0;
+		const liveTrace = patchTraceViewWithEvents(reconciledBaseTraceView, overlayEvents, selectedSessionStatus ?? "idle");
+		const hasOptimisticUserMessage = overlayIncludesOptimisticUserMessage(overlayEvents);
+		if (hasOptimisticUserMessage) annotateLiveTraceForkEntryIds(liveTrace.nodes, persistedUserMessageIndexForBaseTrace);
+		const traceView = hasOptimisticUserMessage ? reconcileOptimisticUserMessages(liveTrace) : liveTrace;
+		return { traceView, liveTraceComputeDurationMs: measureCompute ? performance.now() - startedAt : undefined };
+	}, [liveTraceOverlay, selectedPiboSessionId, selectedSessionStatus, reconciledBaseTraceView, persistedUserMessageIndexForBaseTrace]);
+	const currentTraceView = currentTraceComputation.traceView;
 
 	useEffect(() => {
 		if (!selectedPiboSessionId || !currentTraceView?.piboSessionId || !isStreamingDebugEnabled()) return;
@@ -3438,7 +3454,10 @@ function SessionTracePane({
 			traceBaseOutputLength: traceAssistantOutputLength(baseTraceView),
 			currentOutputLength: traceAssistantOutputLength(currentTraceView),
 		});
-	}, [baseTraceView, currentTraceView, liveTraceOverlay, selectedPiboSessionId]);
+		if (currentTraceComputation.liveTraceComputeDurationMs !== undefined) {
+			recordStreamingDebugLiveTraceCompute(currentTraceView.piboSessionId, currentTraceComputation.liveTraceComputeDurationMs);
+		}
+	}, [baseTraceView, currentTraceComputation.liveTraceComputeDurationMs, currentTraceView, liveTraceOverlay, selectedPiboSessionId]);
 
 	const loadOlderTracePage = useCallback(async () => {
 		if (!selectedPiboSessionId || !currentTraceView?.nextBeforeSequence) return;
@@ -3509,11 +3528,13 @@ function SessionTracePane({
 	}, [flushPendingStreamEvents, selectedPiboSessionId]);
 
 	const enqueueStreamEvent = useCallback((piboSessionId: string, event: ChatStreamEvent, flushImmediately = false) => {
+		resetLiveContentFlushTracking(firstLiveContentFlushKeysBySession.current, piboSessionId, event);
+		const shouldFlushImmediately = flushImmediately || consumeFirstLiveContentFlush(firstLiveContentFlushKeysBySession.current, piboSessionId, event);
 		const pending = pendingStreamEventsBySession.current.get(piboSessionId) ?? [];
 		pending.push(event);
 		pendingStreamEventsBySession.current.set(piboSessionId, pending);
-		recordStreamingDebugEnqueue(piboSessionId, event, pending.length, flushImmediately);
-		if (flushImmediately || piboSessionId !== selectedPiboSessionId) {
+		recordStreamingDebugEnqueue(piboSessionId, event, pending.length, shouldFlushImmediately);
+		if (shouldFlushImmediately || piboSessionId !== selectedPiboSessionId) {
 			flushPendingStreamEvents(piboSessionId);
 		} else {
 			schedulePendingStreamFlush();
@@ -3652,7 +3673,7 @@ function SessionTracePane({
 			recordStreamingDebugStreamEvent(targetPiboSessionId, event, message.lastEventId, events.readyState);
 			if (shouldDropStreamingBenchmarkOverlayEvent(event)) return;
 			const flushImmediately = event.type !== "TEXT_MESSAGE_CONTENT" && event.type !== "REASONING_MESSAGE_CONTENT";
-			if (targetPiboSessionId === selectedPiboSessionId) {
+			if (targetPiboSessionId === selectedPiboSessionId && eventUpdatesLiveOverlay(event)) {
 				enqueueStreamEvent(targetPiboSessionId, event, flushImmediately);
 			}
 			const traceRefreshDelay = eventTraceRefreshDelay(event);
@@ -4103,14 +4124,6 @@ function SessionTracePane({
 	);
 }
 
-function patchTraceViewWithEvents(
-	view: PiboSessionTraceView,
-	events: ChatWebStoredEvent[],
-	sessionStatus: PiboWebSessionNode["status"],
-): PiboSessionTraceView {
-	return events.reduce((current, event) => patchTraceViewWithEvent(current, event, sessionStatus), view);
-}
-
 type BootstrapMutationSnapshot = {
 	localBootstrap: BootstrapData | null;
 	queryData: Array<[readonly unknown[], BootstrapData | undefined]>;
@@ -4377,6 +4390,10 @@ function reconcileOptimisticUserMessages(view: PiboSessionTraceView): PiboSessio
 	if (!persistedByText.size) return view;
 	const { nodes, changed } = dropReplacedOptimisticUserMessages(view.nodes, persistedByText);
 	return changed ? { ...view, nodes } : view;
+}
+
+function overlayIncludesOptimisticUserMessage(events: readonly ChatWebStoredEvent[]): boolean {
+	return events.some(isUserMessageQueuedEvent);
 }
 
 function collectPersistedUserMessageText(nodes: readonly PiboTraceNode[], byText: Map<string, number>): void {
@@ -9624,6 +9641,48 @@ function eventShouldRefreshNavigation(event: ChatStreamEvent): boolean {
 	return event.type === "RUN_STARTED" || event.type === "RUN_FINISHED" || event.type === "RUN_ERROR" || event.type === "TEXT_MESSAGE_END";
 }
 
+function eventUpdatesLiveOverlay(event: ChatStreamEvent): boolean {
+	return event.type === "TEXT_MESSAGE_CONTENT"
+		|| event.type === "REASONING_MESSAGE_CONTENT"
+		|| event.type === "TOOL_CALL_START"
+		|| event.type === "TOOL_CALL_ARGS"
+		|| event.type === "TOOL_CALL_RESULT"
+		|| event.type === "RUN_ERROR"
+		|| event.type === "RAW_EVENT";
+}
+
+function resetLiveContentFlushTracking(keysBySession: Map<string, Set<string>>, piboSessionId: string, event: ChatStreamEvent): void {
+	if (event.type === "RUN_STARTED" || event.type === "RUN_FINISHED" || event.type === "RUN_ERROR") {
+		keysBySession.delete(piboSessionId);
+		return;
+	}
+	const startedKey = liveContentFlushKeyForStartedEvent(event);
+	if (startedKey) keysBySession.get(piboSessionId)?.delete(startedKey);
+}
+
+function consumeFirstLiveContentFlush(keysBySession: Map<string, Set<string>>, piboSessionId: string, event: ChatStreamEvent): boolean {
+	const key = liveContentFlushKey(event);
+	if (!key) return false;
+	let keys = keysBySession.get(piboSessionId);
+	if (!keys) {
+		keys = new Set<string>();
+		keysBySession.set(piboSessionId, keys);
+	}
+	if (keys.has(key)) return false;
+	keys.add(key);
+	return true;
+}
+
+function liveContentFlushKey(event: ChatStreamEvent): string | undefined {
+	if (event.type === "TEXT_MESSAGE_CONTENT" || event.type === "REASONING_MESSAGE_CONTENT") return `${event.type}:${event.messageId}`;
+	return undefined;
+}
+
+function liveContentFlushKeyForStartedEvent(event: ChatStreamEvent): string | undefined {
+	if (event.type === "TEXT_MESSAGE_START") return `TEXT_MESSAGE_CONTENT:${event.messageId}`;
+	if (event.type === "REASONING_MESSAGE_START") return `REASONING_MESSAGE_CONTENT:${event.messageId}`;
+	return undefined;
+}
 
 function compactRawEvents(events: RawEvent[]): CompactRawEvent[] {
 	const compacted: CompactRawEvent[] = [];
@@ -9829,32 +9888,39 @@ function getResultPiboSessionId(value: unknown): string | undefined {
 	return typeof value.result.piboSessionId === "string" ? value.result.piboSessionId : undefined;
 }
 
-function annotateLiveTraceForkEntryIds(liveNodes: PiboTraceNode[], persistedNodes: readonly PiboTraceNode[]): void {
-	const persistedUserMessages = flattenPiboTraceNodes(persistedNodes)
-		.filter((node) => node.type === "user.message" && node.entryId)
-		.map((node) => ({ entryId: node.entryId!, text: traceNodeText(node) }));
-	if (!persistedUserMessages.length) return;
-	const used = new Set<string>();
-	for (const node of flattenPiboTraceNodes(liveNodes)) {
-		if (node.type !== "user.message" || node.entryId) continue;
+function collectPersistedUserMessageIndex(nodes: readonly PiboTraceNode[]): Map<string, string[]> {
+	const messagesByText = new Map<string, string[]>();
+	forEachPiboTraceNode(nodes, (node) => {
+		if (node.type !== "user.message" || !node.entryId) return;
 		const text = traceNodeText(node);
-		const match = persistedUserMessages.find((candidate) => !used.has(candidate.entryId) && candidate.text === text);
-		if (!match) continue;
-		node.entryId = match.entryId;
-		used.add(match.entryId);
-	}
+		const entryIds = messagesByText.get(text);
+		if (entryIds) entryIds.push(node.entryId);
+		else messagesByText.set(text, [node.entryId]);
+	});
+	return messagesByText;
 }
 
-function flattenPiboTraceNodes(nodes: readonly PiboTraceNode[]): PiboTraceNode[] {
-	const flattened: PiboTraceNode[] = [];
-	const visit = (items: readonly PiboTraceNode[]) => {
-		for (const item of items) {
-			flattened.push(item);
-			visit(item.children);
-		}
-	};
-	visit(nodes);
-	return flattened;
+function annotateLiveTraceForkEntryIds(liveNodes: PiboTraceNode[], persistedUserMessageIndex: ReadonlyMap<string, readonly string[]>): void {
+	if (!persistedUserMessageIndex.size) return;
+	const nextIndexByText = new Map<string, number>();
+	forEachPiboTraceNode(liveNodes, (node) => {
+		if (node.type !== "user.message" || node.entryId) return;
+		const text = traceNodeText(node);
+		const entryIds = persistedUserMessageIndex.get(text);
+		if (!entryIds?.length) return;
+		const nextIndex = nextIndexByText.get(text) ?? 0;
+		const entryId = entryIds[nextIndex];
+		if (!entryId) return;
+		node.entryId = entryId;
+		nextIndexByText.set(text, nextIndex + 1);
+	});
+}
+
+function forEachPiboTraceNode(nodes: readonly PiboTraceNode[], visitNode: (node: PiboTraceNode) => void): void {
+	for (const node of nodes) {
+		visitNode(node);
+		forEachPiboTraceNode(node.children, visitNode);
+	}
 }
 
 function traceNodeText(node: PiboTraceNode): string {
@@ -9863,9 +9929,11 @@ function traceNodeText(node: PiboTraceNode): string {
 
 function traceAssistantOutputLength(trace: PiboSessionTraceView | null | undefined): number | undefined {
 	if (!trace) return undefined;
-	return flattenPiboTraceNodes(trace.nodes)
-		.filter((node) => node.type === "assistant.message")
-		.reduce((sum, node) => sum + traceNodeText(node).length, 0);
+	let length = 0;
+	forEachPiboTraceNode(trace.nodes, (node) => {
+		if (node.type === "assistant.message") length += traceNodeText(node).length;
+	});
+	return length;
 }
 
 type SignalSessionUpdate = { status?: PiboWebSessionNode["status"]; updatedAt?: string; isTreeActive?: boolean };
