@@ -1,7 +1,18 @@
 import type { PiboOutputEvent } from "../../core/events.js";
 
+export type ChatStreamReplayStatus = {
+	requestedAfter: number;
+	replayed: number;
+	missed: boolean;
+	evictedBefore?: number;
+	oldestAvailable?: number;
+	newestAvailable?: number;
+	bufferSize: number;
+	maxEvents: number;
+};
+
 export type ChatStreamEvent = { piboSessionId?: string } & (
-	| { type: "ready"; piboSessionId: string }
+	| { type: "ready"; piboSessionId: string; liveReplay?: ChatStreamReplayStatus }
 	| { type: "RUN_STARTED"; runId: string; input?: { text?: string; source?: string } }
 	| { type: "RUN_FINISHED"; runId: string }
 	| { type: "RUN_ERROR"; runId?: string; message: string; errorDetails?: unknown }

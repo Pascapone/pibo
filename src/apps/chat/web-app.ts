@@ -183,6 +183,9 @@ type ChatWebAppState = {
 	subscribedContext?: PiboWebAppContext;
 	unsubscribe?: () => void;
 	liveListeners: Set<(event: ChatLiveEvent) => void>;
+	transientReplaySequence: number;
+	transientReplayBuffer: TransientChatReplayRecord[];
+	transientReplayEvictedBeforeByScope: Map<string, number>;
 	activeEventStreams: Map<string, Map<string, string>>;
 	activeTraceSessions: Set<string>;
 	persistenceMetrics: ChatPersistenceMetrics;
@@ -1760,9 +1763,26 @@ type TransientChatEvent = {
 	piboSessionId?: string;
 	eventType: string;
 	payload: PiboOutputEvent;
+	replaySequence?: number;
 };
 
 type ChatLiveEvent = StoredChatEvent | TransientChatEvent;
+
+type TransientChatReplayRecord = TransientChatEvent & {
+	replaySequence: number;
+	createdAtMs: number;
+};
+
+type TransientReplayStatus = {
+	requestedAfter: number;
+	replayed: number;
+	missed: boolean;
+	evictedBefore?: number;
+	oldestAvailable?: number;
+	newestAvailable?: number;
+	bufferSize: number;
+	maxEvents: number;
+};
 
 type PiboRoomNodeWithUnread = PiboRoom & {
 	unreadCount?: number;
@@ -1773,6 +1793,7 @@ const CHAT_UI_DIST_DIR = resolve(fileURLToPath(new URL("../../../dist/apps/chat-
 const compressedAssetCache = new Map<string, Uint8Array>();
 const TRACE_CACHE_MAX_ENTRIES = 24;
 const CHAT_UPLOAD_DIR = resolve(os.homedir(), ".pibo", "uploads");
+const TRANSIENT_REPLAY_BUFFER_MAX_EVENTS = 1000;
 
 function writeSse(
 	controller: ReadableStreamDefaultController<Uint8Array>,
@@ -2761,9 +2782,10 @@ function ensureEventIndexing(state: ChatWebAppState, context: PiboWebAppContext)
 			for (const liveEvent of result.liveEvents) {
 				if (isPersistableOutputEvent(liveEvent)) continue;
 				state.sessionQuery.recordEvent(liveEvent, session);
+				const transient = recordTransientReplayEvent(state, { roomId: room?.id, piboSessionId: liveEvent.piboSessionId, eventType: liveEvent.type, payload: liveEvent });
 				if (isLiveOnlyOutputEvent(liveEvent) && !hasLiveObserver(state, liveEvent.piboSessionId)) continue;
 				for (const listener of state.liveListeners) {
-					listener({ roomId: room?.id, piboSessionId: liveEvent.piboSessionId, eventType: liveEvent.type, payload: liveEvent });
+					listener(transient);
 				}
 			}
 			for (const persistableEvent of result.persistedEvents) {
@@ -7367,6 +7389,12 @@ function parseSseCursor(value: string | null): ChatEventCursor | undefined {
 	return { streamId, frameIndex };
 }
 
+function parseTransientReplayCursor(value: string | null): number | undefined {
+	if (!value) return undefined;
+	const cursor = Number(value);
+	return Number.isInteger(cursor) && cursor >= 0 ? cursor : undefined;
+}
+
 function defaultEventStreamMode(input: { requestedRoomId?: string; requestedPiboSessionId?: string }): ChatEventStreamMode {
 	if (input.requestedPiboSessionId) return "live";
 	if (input.requestedRoomId) return "summary";
@@ -7388,6 +7416,60 @@ function liveEventMatches(event: ChatLiveEvent, input: { roomId?: string; piboSe
 	return true;
 }
 
+function recordTransientReplayEvent(state: ChatWebAppState, event: Omit<TransientChatEvent, "replaySequence">): TransientChatEvent {
+	const replaySequence = ++state.transientReplaySequence;
+	const recorded: TransientChatReplayRecord = { ...event, replaySequence, createdAtMs: Date.now() };
+	state.transientReplayBuffer.push(recorded);
+	if (state.transientReplayBuffer.length > TRANSIENT_REPLAY_BUFFER_MAX_EVENTS) {
+		const removed = state.transientReplayBuffer.splice(0, state.transientReplayBuffer.length - TRANSIENT_REPLAY_BUFFER_MAX_EVENTS);
+		for (const evicted of removed) recordTransientReplayEviction(state, evicted);
+	}
+	return recorded;
+}
+
+function transientReplayScopeKeys(input: { roomId?: string; piboSessionId?: string }): string[] {
+	const keys: string[] = [];
+	if (input.piboSessionId) keys.push(`session:${input.piboSessionId}`);
+	if (input.roomId) keys.push(`room:${input.roomId}`);
+	return keys;
+}
+
+function recordTransientReplayEviction(state: ChatWebAppState, event: TransientChatReplayRecord): void {
+	for (const key of transientReplayScopeKeys(event)) {
+		state.transientReplayEvictedBeforeByScope.set(key, Math.max(state.transientReplayEvictedBeforeByScope.get(key) ?? 0, event.replaySequence));
+	}
+}
+
+function transientReplayEvictedBefore(state: ChatWebAppState, input: { roomId?: string; piboSessionId?: string }): number | undefined {
+	const values = transientReplayScopeKeys(input)
+		.map((key) => state.transientReplayEvictedBeforeByScope.get(key))
+		.filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+	return values.length ? Math.max(...values) : undefined;
+}
+
+function collectTransientReplayEvents(
+	state: ChatWebAppState,
+	input: { roomId?: string; piboSessionId?: string; afterReplaySequence?: number },
+): { events: TransientChatEvent[]; status?: TransientReplayStatus } {
+	const afterReplaySequence = input.afterReplaySequence;
+	if (afterReplaySequence === undefined) return { events: [] };
+	const events = state.transientReplayBuffer.filter((event) => event.replaySequence > afterReplaySequence && liveEventMatches(event, input));
+	const sequences = events.map((event) => event.replaySequence);
+	const evictedBefore = transientReplayEvictedBefore(state, input);
+	return {
+		events,
+		status: {
+			requestedAfter: afterReplaySequence,
+			replayed: events.length,
+			missed: evictedBefore !== undefined && afterReplaySequence < evictedBefore,
+			...(evictedBefore !== undefined ? { evictedBefore } : {}),
+			...(sequences.length ? { oldestAvailable: Math.min(...sequences), newestAvailable: Math.max(...sequences) } : {}),
+			bufferSize: state.transientReplayBuffer.length,
+			maxEvents: TRANSIENT_REPLAY_BUFFER_MAX_EVENTS,
+		},
+	};
+}
+
 function writeChatEventFrames(
 	controller: ReadableStreamDefaultController<Uint8Array>,
 	event: ChatLiveEvent,
@@ -7405,7 +7487,11 @@ function writeChatEventFrames(
 	for (let index = 0; index < frames.length; index += 1) {
 		if (cursor && streamId !== undefined && streamId === cursor.streamId && index <= cursor.frameIndex) continue;
 		const frameId = streamId === undefined ? nextTransientChatStreamFrameId(state) : `${streamId}:${index}`;
-		writeSse(controller, "pibo", { ...frames[index], piboSessionId }, frameId);
+		writeSse(controller, "pibo", {
+			...frames[index],
+			piboSessionId,
+			...(!("streamId" in event) && event.replaySequence !== undefined ? { liveReplayId: event.replaySequence } : {}),
+		}, frameId);
 	}
 }
 
@@ -7418,6 +7504,7 @@ function createEventStream(input: {
 	context: PiboWebAppContext;
 	state: ChatWebAppState;
 	cursor?: ChatEventCursor;
+	transientReplayCursor?: number;
 }): Response {
 	let unsubscribe: (() => void) | undefined;
 	let heartbeat: ReturnType<typeof setInterval> | undefined;
@@ -7430,9 +7517,15 @@ function createEventStream(input: {
 				registeredLiveObserver = true;
 			}
 			const streamState = createChatStreamState();
+			const transientReplay = input.mode === "live" ? collectTransientReplayEvents(input.state, {
+				roomId: input.roomId,
+				piboSessionId: input.piboSessionId,
+				afterReplaySequence: input.transientReplayCursor,
+			}) : undefined;
 			writeSse(controller, "pibo", {
 				type: "ready",
 				piboSessionId: input.piboSessionId ?? "",
+				...(transientReplay?.status ? { liveReplay: transientReplay.status } : {}),
 			});
 			for (const stored of input.state.timelineQuery.listEvents({
 				roomId: input.roomId,
@@ -7443,14 +7536,19 @@ function createEventStream(input: {
 				writeChatEventFrames(controller, stored, streamState, input.cursor, { mode: input.mode });
 			}
 			if (input.mode === "live" && input.piboSessionId) {
-				for (const snapshot of input.state.outputCompactor.snapshotsForSession(input.piboSessionId)) {
-					writeChatEventFrames(
-						controller,
-						{ piboSessionId: snapshot.piboSessionId, eventType: snapshot.type, payload: snapshot },
-						streamState,
-						undefined,
-						{ mode: input.mode },
-					);
+				if (input.transientReplayCursor === undefined) {
+					for (const snapshot of input.state.outputCompactor.snapshotsForSession(input.piboSessionId)) {
+						writeChatEventFrames(
+							controller,
+							{ piboSessionId: snapshot.piboSessionId, eventType: snapshot.type, payload: snapshot },
+							streamState,
+							undefined,
+							{ mode: input.mode },
+						);
+					}
+				}
+				for (const replay of transientReplay?.events ?? []) {
+					writeChatEventFrames(controller, replay, streamState, undefined, { mode: input.mode });
 				}
 			}
 			const listener = (event: ChatLiveEvent) => {
@@ -8144,12 +8242,12 @@ function startChatStreamingFixture(input: {
 			input.state.outputCompactor.compact(event);
 		}
 		if (suppressLiveDeltas && event.type === "assistant_delta") return;
-		const liveEvent: TransientChatEvent = {
+		const liveEvent = recordTransientReplayEvent(input.state, {
 			roomId: room.id,
 			piboSessionId: selectedSession.id,
 			eventType: event.type,
 			payload: event,
-		};
+		});
 		for (const listener of input.state.liveListeners) listener(liveEvent);
 	};
 	const emitAt = (delayMs: number, event: PiboOutputEvent) => {
@@ -9270,6 +9368,9 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 		traceCache: new Map(),
 		outputCompactor: new OutputCompactor(),
 		liveListeners: new Set(),
+		transientReplaySequence: 0,
+		transientReplayBuffer: [],
+		transientReplayEvictedBeforeByScope: new Map(),
 		activeEventStreams: new Map(),
 		activeTraceSessions: new Set(),
 		persistenceMetrics: createPersistenceMetrics(),
@@ -10915,6 +11016,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					requestedRoomId,
 				);
 				const cursor = parseSseCursor(url.searchParams.get("since")) ?? parseSseCursor(request.headers.get("last-event-id"));
+				const transientReplayCursor = parseTransientReplayCursor(url.searchParams.get("liveSince"));
 				if (!requestedRoomId && state.projectService.getProjectSession(selectedSession.id)) {
 					return createEventStream({
 						piboSessionId: selectedSession.id,
@@ -10924,6 +11026,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 						context,
 						state,
 						cursor,
+						transientReplayCursor,
 					});
 				}
 				const roomId = requestedRoomId ?? selectedRoomIdForSession(state, context, selectedSession);
@@ -10938,6 +11041,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					context,
 					state,
 					cursor,
+					transientReplayCursor,
 				});
 			}
 

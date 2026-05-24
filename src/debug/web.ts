@@ -2087,7 +2087,13 @@ function streamingBenchmarkRegressions(result) {
   }
   if (result.eventSource && result.eventSource.requested) {
     if (!result.eventSource.installed) failures.push('EventSource probe unavailable');
-    const selectedLive = Array.isArray(result.eventSource.streams) ? result.eventSource.streams.find((stream) => stream.role === 'selected-live') : undefined;
+    const selectedLiveStreams = Array.isArray(result.eventSource.streams) ? result.eventSource.streams.filter((stream) => stream.role === 'selected-live') : [];
+    const selectedLive = selectedLiveStreams.length > 1
+      ? selectedLiveStreams.reduce((total, stream) => ({
+          textEventCountAfterStart: total.textEventCountAfterStart + (stream.textEventCountAfterStart || 0),
+          reasoningEventCountAfterStart: total.reasoningEventCountAfterStart + (stream.reasoningEventCountAfterStart || 0),
+        }), { textEventCountAfterStart: 0, reasoningEventCountAfterStart: 0 })
+      : selectedLiveStreams[0];
     if (!selectedLive) failures.push('EventSource selected-live stream was not observed');
     if (!traceCatchupRequested && selectedLive && expectedDeltas !== undefined && selectedLive.textEventCountAfterStart < expectedDeltas) failures.push('selected-live text events after start ' + selectedLive.textEventCountAfterStart + ' < fixture deltas ' + expectedDeltas);
     if (!traceCatchupRequested && selectedLive && expectedReasoningDeltas !== undefined && selectedLive.reasoningEventCountAfterStart < expectedReasoningDeltas) failures.push('selected-live reasoning events after start ' + selectedLive.reasoningEventCountAfterStart + ' < fixture reasoning deltas ' + expectedReasoningDeltas);
@@ -3448,7 +3454,46 @@ function streamingDebugAfterNumber(run: StreamingBenchmark, key: keyof Streaming
 }
 
 function selectedLiveStream(run: StreamingBenchmark): StreamingBenchmarkEventSourceStreamProbe | undefined {
-	return run.eventSource?.streams.find((stream) => stream.role === "selected-live");
+	const streams = run.eventSource?.streams.filter((stream) => stream.role === "selected-live") ?? [];
+	if (streams.length <= 1) return streams[0];
+	return aggregateEventSourceStreams(streams, "selected-live");
+}
+
+function aggregateEventSourceStreams(streams: StreamingBenchmarkEventSourceStreamProbe[], role: StreamingBenchmarkEventSourceStreamProbe["role"]): StreamingBenchmarkEventSourceStreamProbe {
+	const first = streams[0]!;
+	const sum = (key: keyof StreamingBenchmarkEventSourceStreamProbe) => streams.reduce((total, stream) => total + (typeof stream[key] === "number" ? stream[key] as number : 0), 0);
+	const min = (key: keyof StreamingBenchmarkEventSourceStreamProbe) => {
+		const values = streams.map((stream) => stream[key]).filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+		return values.length ? Math.min(...values) : undefined;
+	};
+	return {
+		url: first.url,
+		mode: first.mode,
+		role,
+		piboSessionId: first.piboSessionId,
+		roomId: first.roomId,
+		sinceValues: streams.flatMap((stream) => stream.sinceValues),
+		openCountAfterStart: sum("openCountAfterStart"),
+		errorCountAfterStart: sum("errorCountAfterStart"),
+		closeCountAfterStart: sum("closeCountAfterStart"),
+		forcedCloseCountAfterStart: sum("forcedCloseCountAfterStart"),
+		eventCount: sum("eventCount"),
+		eventCountAfterStart: sum("eventCountAfterStart"),
+		textEventCount: sum("textEventCount"),
+		textEventCountAfterStart: sum("textEventCountAfterStart"),
+		reasoningEventCount: sum("reasoningEventCount"),
+		reasoningEventCountAfterStart: sum("reasoningEventCountAfterStart"),
+		transientIdCount: sum("transientIdCount"),
+		uniqueTransientIdCount: sum("uniqueTransientIdCount"),
+		transientIdCountAfterStart: sum("transientIdCountAfterStart"),
+		uniqueTransientIdCountAfterStart: sum("uniqueTransientIdCountAfterStart"),
+		durableIdCount: sum("durableIdCount"),
+		otherIdCount: sum("otherIdCount"),
+		lastEventId: streams.at(-1)?.lastEventId,
+		firstEventMsAfterStart: min("firstEventMsAfterStart"),
+		firstTextEventMsAfterStart: min("firstTextEventMsAfterStart"),
+		firstReasoningEventMsAfterStart: min("firstReasoningEventMsAfterStart"),
+	};
 }
 
 function roomSummaryStream(run: StreamingBenchmark): StreamingBenchmarkEventSourceStreamProbe | undefined {

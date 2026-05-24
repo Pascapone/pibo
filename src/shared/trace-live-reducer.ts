@@ -6,6 +6,7 @@ type ChatStreamEvent = {
 	streamFrameId?: string;
 	streamId?: number;
 	streamFrameIndex?: number;
+	liveReplayId?: number;
 	[key: string]: unknown;
 };
 
@@ -140,13 +141,16 @@ function makeStored(
 ): ChatWebStoredEvent {
 	const streamFrame = typeof streamEvent.streamFrameId === "string" ? streamEvent.streamFrameId : undefined;
 	const streamFrameIndex = typeof streamEvent.streamFrameIndex === "number" ? streamEvent.streamFrameIndex : undefined;
+	const liveReplayId = typeof streamEvent.liveReplayId === "number" && Number.isFinite(streamEvent.liveReplayId) ? streamEvent.liveReplayId : undefined;
 	const sequence = nextSequence();
 	return {
 		id: typeof streamEvent.streamId === "number"
 			? `stream:${streamEvent.streamId}:${streamFrameIndex ?? "raw"}:${type}`
-			: streamFrame
-				? `stream:${streamFrame}:${type}`
-				: `live:${sequence}:${type}`,
+			: liveReplayId !== undefined
+				? `live-replay:${liveReplayId}:${type}`
+				: streamFrame
+					? `stream:${streamFrame}:${type}`
+					: `live:${sequence}:${type}`,
 		piboSessionId,
 		eventSequence: sequence,
 		streamId: typeof streamEvent.streamId === "number" ? streamEvent.streamId : undefined,

@@ -1276,6 +1276,138 @@ test("chat web app selected live event streams receive assistant deltas", async 
 	}
 });
 
+test("chat web app selected live event streams replay buffered transient deltas after reconnect", async () => {
+	const { channel, baseURL, emitOutput } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+	});
+	const firstController = new AbortController();
+	const replayController = new AbortController();
+
+	try {
+		const sessionResponse = await fetch(`${baseURL}/api/chat/session`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(sessionResponse.status, 200);
+		const sessionPayload = await sessionResponse.json();
+
+		const firstResponse = await fetch(
+			`${baseURL}/api/chat/events?piboSessionId=${encodeURIComponent(sessionPayload.session.id)}&mode=live&since=0`,
+			{
+				headers: { "x-test-user": "user-1" },
+				signal: firstController.signal,
+			},
+		);
+		assert.equal(firstResponse.status, 200);
+		const firstReader = firstResponse.body.getReader();
+		await firstReader.read();
+
+		emitOutput({
+			type: "assistant_delta",
+			piboSessionId: sessionPayload.session.id,
+			eventId: "buffered-reconnect",
+			text: "first before reconnect",
+		});
+		const firstFrame = await readSseTextUntil(firstReader, (text) => text.includes("first before reconnect"));
+		assert.equal(firstFrame.matched, true, firstFrame.text);
+		const liveReplayMatch = firstFrame.text.match(/"liveReplayId":(\d+)/);
+		assert.ok(liveReplayMatch, firstFrame.text);
+		firstController.abort();
+		await new Promise((resolve) => setTimeout(resolve, 50));
+
+		emitOutput({
+			type: "assistant_delta",
+			piboSessionId: sessionPayload.session.id,
+			eventId: "buffered-reconnect",
+			text: " second during reconnect",
+		});
+
+		const replayResponse = await fetch(
+			`${baseURL}/api/chat/events?piboSessionId=${encodeURIComponent(sessionPayload.session.id)}&mode=live&since=0&liveSince=${liveReplayMatch[1]}`,
+			{
+				headers: { "x-test-user": "user-1" },
+				signal: replayController.signal,
+			},
+		);
+		assert.equal(replayResponse.status, 200);
+		const replayReader = replayResponse.body.getReader();
+		const replayFrame = await readSseTextUntil(replayReader, (text) => text.includes("second during reconnect"));
+		assert.equal(replayFrame.matched, true, replayFrame.text);
+		assert.doesNotMatch(replayFrame.text, /first before reconnect/);
+		assert.match(replayFrame.text, /id: live:\d+/);
+	} finally {
+		firstController.abort();
+		replayController.abort();
+		await channel.stop?.();
+	}
+});
+
+test("chat web app selected live replay reports missed transient deltas after buffer eviction", async () => {
+	const { channel, baseURL, emitOutput } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+	});
+	const firstController = new AbortController();
+	const replayController = new AbortController();
+
+	try {
+		const sessionResponse = await fetch(`${baseURL}/api/chat/session`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(sessionResponse.status, 200);
+		const sessionPayload = await sessionResponse.json();
+
+		const firstResponse = await fetch(
+			`${baseURL}/api/chat/events?piboSessionId=${encodeURIComponent(sessionPayload.session.id)}&mode=live&since=0`,
+			{
+				headers: { "x-test-user": "user-1" },
+				signal: firstController.signal,
+			},
+		);
+		assert.equal(firstResponse.status, 200);
+		const firstReader = firstResponse.body.getReader();
+		await firstReader.read();
+
+		emitOutput({
+			type: "assistant_delta",
+			piboSessionId: sessionPayload.session.id,
+			eventId: "evicted-reconnect",
+			text: "first before eviction",
+		});
+		const firstFrame = await readSseTextUntil(firstReader, (text) => text.includes("first before eviction"));
+		assert.equal(firstFrame.matched, true, firstFrame.text);
+		const liveReplayMatch = firstFrame.text.match(/"liveReplayId":(\d+)/);
+		assert.ok(liveReplayMatch, firstFrame.text);
+		firstController.abort();
+
+		for (let index = 0; index < 1001; index += 1) {
+			emitOutput({
+				type: "assistant_delta",
+				piboSessionId: sessionPayload.session.id,
+				eventId: "evicted-reconnect",
+				text: ` overflow ${index}`,
+			});
+		}
+
+		const replayResponse = await fetch(
+			`${baseURL}/api/chat/events?piboSessionId=${encodeURIComponent(sessionPayload.session.id)}&mode=live&since=0&liveSince=${liveReplayMatch[1]}`,
+			{
+				headers: { "x-test-user": "user-1" },
+				signal: replayController.signal,
+			},
+		);
+		assert.equal(replayResponse.status, 200);
+		const replayReader = replayResponse.body.getReader();
+		const readyFrame = await readSseTextUntil(replayReader, (text) => text.includes('"type":"ready"') && text.includes('"liveReplay"'));
+		assert.equal(readyFrame.matched, true, readyFrame.text);
+		assert.match(readyFrame.text, /"missed":true/);
+		assert.match(readyFrame.text, /"evictedBefore":\d+/);
+		assert.match(readyFrame.text, /"replayed":1000/);
+	} finally {
+		firstController.abort();
+		replayController.abort();
+		await channel.stop?.();
+	}
+});
+
 test("chat web app invalid event stream modes fall back to selected-session live mode", async () => {
 	const { channel, baseURL, emitOutput } = await startWebHostChannel({
 		auth: createFakeAuthService(),

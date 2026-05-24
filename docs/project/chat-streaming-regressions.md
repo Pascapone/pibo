@@ -67,6 +67,8 @@ This document records known Chat Web streaming failure modes and the benchmark s
 - reconnect opens are observed;
 - expected text/reasoning deltas survive reconnect.
 
+Selected-live reconnects also carry a bounded `liveSince` replay cursor in the stream URL. Use it to replay live-only transient events emitted during the reconnect gap; keep the visible SSE frame ids transient so EventSource dedupe does not collapse live deltas into durable cursors.
+
 ### Trace catch-up can be transient
 
 When live deltas are suppressed and trace snapshots recover output, the visible snapshot can disappear after a message boundary if it was live-only compactor state rather than durable transcript output.
