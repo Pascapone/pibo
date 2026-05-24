@@ -13,6 +13,7 @@ import "prismjs/components/prism-yaml";
 
 type MarkdownRendererProps = {
 	children: string;
+	streaming?: boolean;
 };
 
 const allowedElements = [
@@ -62,6 +63,58 @@ export function isPlainMarkdownText(markdown: string): boolean {
 
 function hasAutolinkCandidate(markdown: string): boolean {
 	return markdown.includes("://") || markdown.includes("www.") || markdown.includes("@");
+}
+
+export function stabilizeStreamingInlineCodeMarkdown(markdown: string): string {
+	const openSpan = findOpenSingleBacktickCodeSpan(markdown);
+	if (!openSpan) return markdown;
+	if (openSpan.openerEnd >= markdown.length) return markdown.slice(0, openSpan.openerStart);
+	return `${markdown}\``;
+}
+
+function findOpenSingleBacktickCodeSpan(markdown: string): { openerStart: number; openerEnd: number } | undefined {
+	let cursor = 0;
+	while (cursor < markdown.length) {
+		const start = markdown.indexOf("`", cursor);
+		if (start === -1) return undefined;
+		if (isEscapedMarkdownDelimiter(markdown, start)) {
+			cursor = start + 1;
+			continue;
+		}
+		const tickCount = countBacktickRun(markdown, start);
+		if (tickCount !== 1) return undefined;
+		const end = findMatchingSingleBacktick(markdown, start + 1);
+		if (end === -1) return { openerStart: start, openerEnd: start + 1 };
+		cursor = end + 1;
+	}
+	return undefined;
+}
+
+function findMatchingSingleBacktick(markdown: string, cursor: number): number {
+	while (cursor < markdown.length) {
+		const end = markdown.indexOf("`", cursor);
+		if (end === -1) return -1;
+		const tickCount = countBacktickRun(markdown, end);
+		if (tickCount === 1) return end;
+		cursor = end + tickCount;
+	}
+	return -1;
+}
+
+function countBacktickRun(markdown: string, start: number): number {
+	let cursor = start;
+	while (cursor < markdown.length && markdown[cursor] === "`") cursor += 1;
+	return cursor - start;
+}
+
+function isEscapedMarkdownDelimiter(markdown: string, index: number): boolean {
+	let slashCount = 0;
+	let cursor = index - 1;
+	while (cursor >= 0 && markdown[cursor] === "\\") {
+		slashCount += 1;
+		cursor -= 1;
+	}
+	return slashCount % 2 === 1;
 }
 
 export function requiresGfmMarkdown(markdown: string): boolean {
@@ -368,18 +421,19 @@ const safeUrlTransform: UrlTransform = (url, key, node) => {
 	}
 };
 
-export const MarkdownRenderer = memo(function MarkdownRenderer({ children }: MarkdownRendererProps) {
+export const MarkdownRenderer = memo(function MarkdownRenderer({ children, streaming = false }: MarkdownRendererProps) {
 	const startedAt = isStreamingDebugEnabled()
 		? (typeof performance === "undefined" ? Date.now() : performance.now())
 		: undefined;
+	const renderChildren = streaming ? stabilizeStreamingInlineCodeMarkdown(children) : children;
 	let mode: "plain" | "commonmark" | "gfm" | "gfm-fast" = "commonmark";
 	let element: ReactElement;
-	if (isPlainMarkdownText(children)) {
+	if (isPlainMarkdownText(renderChildren)) {
 		mode = "plain";
-		element = <p data-pibo-component="MarkdownRenderer" data-pibo-markdown-node="p">{children}</p>;
+		element = <p data-pibo-component="MarkdownRenderer" data-pibo-markdown-node="p">{renderChildren}</p>;
 	} else {
-		const useGfm = requiresGfmMarkdown(children);
-		const simpleGfmElement = useGfm ? renderSimpleGfmStrikethrough(children) ?? renderSimpleGfmTaskList(children) : undefined;
+		const useGfm = requiresGfmMarkdown(renderChildren);
+		const simpleGfmElement = useGfm ? renderSimpleGfmStrikethrough(renderChildren) ?? renderSimpleGfmTaskList(renderChildren) : undefined;
 		if (simpleGfmElement) {
 			mode = "gfm-fast";
 			element = simpleGfmElement;
@@ -388,7 +442,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({ children }: Mar
 			// ReactMarkdown is a synchronous parser/render function; call it directly so debug timings include its parse/tree-build work.
 			element = ReactMarkdown({
 				allowedElements,
-				children,
+				children: renderChildren,
 				components,
 				remarkPlugins: useGfm ? gfmRemarkPlugins : commonMarkRemarkPlugins,
 				skipHtml: true,

@@ -358,7 +358,7 @@ function TerminalRowContent({
 		return (
 			<div className="ml-[1.9rem] min-w-0" data-pibo-component="TerminalAssistantMessage">
 				<div className="compact-terminal-markdown" data-pibo-component="MarkdownRendererHost" data-pibo-markdown-kind="assistant-message">
-					<MarkdownRenderer>{typeof row.output === "string" ? row.output : ""}</MarkdownRenderer>
+					<MarkdownRenderer streaming={row.status === "running"}>{typeof row.output === "string" ? row.output : ""}</MarkdownRenderer>
 				</div>
 			</div>
 		);
@@ -374,7 +374,7 @@ function TerminalRowContent({
 				<TerminalLines lines={visibleLines} status={row.status} clampPreview={collapseToolCallPreview} />
 				<div className="ml-[1.9rem] min-w-0" data-pibo-component="TerminalReasoningMarkdown">
 					<div className="compact-terminal-markdown compact-terminal-reasoning" data-pibo-component="MarkdownRendererHost" data-pibo-markdown-kind="reasoning">
-						<MarkdownRenderer>{row.markdown}</MarkdownRenderer>
+						<MarkdownRenderer streaming={row.status === "running"}>{row.markdown}</MarkdownRenderer>
 					</div>
 				</div>
 			</>
