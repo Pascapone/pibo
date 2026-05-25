@@ -315,6 +315,7 @@ export function buildWebAnnotationOverlayScript(configExpression = "window.__pib
       piboSessionId,
       installed: installed !== false,
       active: installed !== false && Boolean(state.active),
+      toolbarExpanded: installed !== false && Boolean(state.toolbarExpanded),
       mode: state.mode,
       reason: String(reason || "state"),
       updatedAt: new Date().toISOString(),
@@ -411,7 +412,7 @@ export function buildWebAnnotationOverlayScript(configExpression = "window.__pib
   toggle.addEventListener("click", () => {
     state.active = !state.active;
     state.mode = "element";
-    state.toolbarExpanded = true;
+    state.toolbarExpanded = !state.active;
     closePopup();
     updateUi();
     publishOverlayState("toggle");
@@ -419,7 +420,7 @@ export function buildWebAnnotationOverlayScript(configExpression = "window.__pib
   pin.addEventListener("click", () => {
     state.active = true;
     state.mode = state.mode === "pin" ? "element" : "pin";
-    state.toolbarExpanded = true;
+    state.toolbarExpanded = false;
     closePopup();
     updateUi();
     publishOverlayState("pin-toggle");
@@ -1133,7 +1134,7 @@ export function buildWebAnnotationOverlayScript(configExpression = "window.__pib
       publishOverlayState("set-mode");
     },
     setShortcut(value) { setShortcut(value); },
-    getState() { return { active: state.active, mode: state.mode, shortcut: state.shortcut.label, submissions: state.submissions.slice(), lastError: state.lastError }; },
+    getState() { return { active: state.active, toolbarExpanded: state.toolbarExpanded, mode: state.mode, shortcut: state.shortcut.label, submissions: state.submissions.slice(), lastError: state.lastError }; },
     remove() {
       state.active = false;
       publishOverlayState("removed", false);

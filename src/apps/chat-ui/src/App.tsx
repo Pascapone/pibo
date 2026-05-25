@@ -172,6 +172,7 @@ type WebAnnotationOverlayPanelState = {
 	piboSessionId: string;
 	installed: boolean;
 	active: boolean;
+	toolbarExpanded: boolean;
 	mode?: string;
 	reason?: string;
 	updatedAt?: string;
@@ -3266,13 +3267,14 @@ function SessionTracePane({
 				: null,
 		[rawEventLimit, selectedPiboSessionId, showRawEvents],
 	);
-	const webAnnotationOverlayActive = Boolean(
+	const webAnnotationToolMenuOpen = Boolean(
 		selectedPiboSessionId
 		&& webAnnotationOverlayState?.piboSessionId === selectedPiboSessionId
 		&& webAnnotationOverlayState.installed
-		&& webAnnotationOverlayState.active,
+		&& webAnnotationOverlayState.toolbarExpanded
+		&& !webAnnotationOverlayState.active,
 	);
-	const webAnnotationsPanelRendered = Boolean(selectedPiboSessionId) && (webAnnotationsPanelVisible || webAnnotationOverlayActive);
+	const webAnnotationsPanelRendered = Boolean(selectedPiboSessionId) && (webAnnotationsPanelVisible || webAnnotationToolMenuOpen);
 	const traceSummaryQuery = useQuery({
 		queryKey: traceSummaryQueryKey ?? ["chat", "trace-summary", "idle"],
 		queryFn: async () => {
@@ -3351,11 +3353,11 @@ function SessionTracePane({
 		const applyOverlayState = (state: WebAnnotationOverlayPanelState | null) => {
 			if (!state || state.piboSessionId !== selectedPiboSessionId) return;
 			setWebAnnotationOverlayState((current) => {
-				if (state.active) return state;
-				if (current?.active && current.bindingId && state.bindingId && current.bindingId !== state.bindingId) return current;
+				if (state.toolbarExpanded) return state;
+				if (current?.toolbarExpanded && current.bindingId && state.bindingId && current.bindingId !== state.bindingId) return current;
 				return state;
 			});
-			if (state.active) {
+			if (state.toolbarExpanded && !state.active) {
 				void webAnnotationsQuery.refetch();
 			} else {
 				setWebAnnotationsPanelVisible(false);
@@ -6154,6 +6156,7 @@ function parseWebAnnotationOverlayState(value: unknown): WebAnnotationOverlayPan
 		piboSessionId,
 		installed: record.installed !== false,
 		active: record.active === true,
+		toolbarExpanded: record.toolbarExpanded === true,
 		mode: typeof record.mode === "string" ? record.mode : undefined,
 		reason: typeof record.reason === "string" ? record.reason : undefined,
 		updatedAt: typeof record.updatedAt === "string" ? record.updatedAt : undefined,
