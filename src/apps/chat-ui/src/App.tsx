@@ -3267,14 +3267,12 @@ function SessionTracePane({
 				: null,
 		[rawEventLimit, selectedPiboSessionId, showRawEvents],
 	);
-	const webAnnotationToolMenuOpen = Boolean(
+	const webAnnotationOverlayInstalled = Boolean(
 		selectedPiboSessionId
 		&& webAnnotationOverlayState?.piboSessionId === selectedPiboSessionId
-		&& webAnnotationOverlayState.installed
-		&& webAnnotationOverlayState.toolbarExpanded
-		&& !webAnnotationOverlayState.active,
+		&& webAnnotationOverlayState.installed,
 	);
-	const webAnnotationsPanelRendered = Boolean(selectedPiboSessionId) && (webAnnotationsPanelVisible || webAnnotationToolMenuOpen);
+	const webAnnotationsPanelRendered = Boolean(selectedPiboSessionId) && (webAnnotationsPanelVisible || webAnnotationOverlayInstalled);
 	const traceSummaryQuery = useQuery({
 		queryKey: traceSummaryQueryKey ?? ["chat", "trace-summary", "idle"],
 		queryFn: async () => {
@@ -3353,11 +3351,11 @@ function SessionTracePane({
 		const applyOverlayState = (state: WebAnnotationOverlayPanelState | null) => {
 			if (!state || state.piboSessionId !== selectedPiboSessionId) return;
 			setWebAnnotationOverlayState((current) => {
-				if (state.toolbarExpanded) return state;
-				if (current?.toolbarExpanded && current.bindingId && state.bindingId && current.bindingId !== state.bindingId) return current;
+				if (state.installed) return state;
+				if (current?.installed && current.bindingId && state.bindingId && current.bindingId !== state.bindingId) return current;
 				return state;
 			});
-			if (state.toolbarExpanded && !state.active) {
+			if (state.installed) {
 				void webAnnotationsQuery.refetch();
 			} else {
 				setWebAnnotationsPanelVisible(false);
