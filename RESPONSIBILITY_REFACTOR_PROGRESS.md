@@ -64,12 +64,12 @@ Initial high-priority candidates from line-count scan:
 
 ## Current state
 
-- Last batch: Extracted workflow loop/cycle validation from `packages/workflows/src/validation/index.ts` into `packages/workflows/src/validation/graph-cycles.ts`.
-- Result: `validation/index.ts` is down from 530 to 379 LOC and now delegates loop policy guard checks, bounded back-edge detection, and unbounded cycle traversal diagnostics to `graph-cycles.ts`.
+- Last batch: Extracted workflow edge structural validation from `packages/workflows/src/validation/index.ts` into `packages/workflows/src/validation/graph-edges.ts`.
+- Result: `validation/index.ts` is down from 379 to 318 LOC and now delegates edge source/target node reference checks plus edge adapter transform ref validation to `graph-edges.ts`.
 - Validation: `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace/packages/workflows && npm test'` passed; `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && npm run typecheck'` passed.
-- Commit: `a3b6ed2444e153d2da602384f0bc43add2888612` (`refactor(workflows): extract graph cycle validators`).
+- Commit: pending (`refactor(workflows): extract graph edge validators`).
 - Blockers: none.
-- Exact next step: Consider extracting edge structural validation from `packages/workflows/src/validation/index.ts` into a focused graph-edges module: edge source/target node references plus edge adapter registry-ref checks, keeping existing unknown edge/node and adapter-ref tests as the safety net.
+- Exact next step: Consider extracting the remaining node schema validation from `packages/workflows/src/validation/index.ts` into a focused node-schema module, or pause workflow validation splitting and move to the next higher-value large-file seam if review prefers fewer validation modules.
 
 ## Progress log
 
@@ -81,3 +81,4 @@ Initial high-priority candidates from line-count scan:
 - 2026-05-26: Extracted workflow graph port compatibility validators into `packages/workflows/src/validation/graph-ports.ts`; focused workflow package tests and root typecheck passed in Docker.
 - 2026-05-26: Extracted workflow retry/backoff policy validators into `packages/workflows/src/validation/retry-policy.ts`; focused workflow package tests and root typecheck passed in Docker.
 - 2026-05-26: Extracted workflow loop/cycle validators into `packages/workflows/src/validation/graph-cycles.ts`; focused workflow package tests and root typecheck passed in Docker.
+- 2026-05-26: Extracted workflow edge structural validators into `packages/workflows/src/validation/graph-edges.ts`; focused workflow package tests and root typecheck passed in Docker.
