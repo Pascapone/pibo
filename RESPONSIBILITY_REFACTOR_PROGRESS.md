@@ -67,7 +67,7 @@ Initial high-priority candidates from line-count scan:
 - Last batch: Extracted workflow runtime wait-token/time helpers from `packages/workflows/src/runtime/index.ts` into `packages/workflows/src/runtime/time.ts`.
 - Result: `runtime/index.ts` is down from 3,594 to 3,542 LOC; timestamp factory creation, wait-token expiry resolution, duration conversion, ISO-8601 duration parsing, and timestamp comparison now live behind a focused runtime time module.
 - Validation: `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace/packages/workflows && npm test -- src/testing/runtime-human-node.test.ts'` passed (package script ran all 138 workflow tests); `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace/packages/workflows && npm test'` passed; `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && npm run typecheck'` passed. Closest practical runtime E2E was the human-node workflow test path through the public package entrypoint, SQLite wait-token persistence, and action expiry/resume helpers.
-- Commit: `11ab6287a8304052dcdaab0d6494faaa917cadae` (`refactor(workflows): extract runtime time helpers`).
+- Commit: `a63d20b37a30a1dfbceb816a185f1338b6783ad9` (`refactor(workflows): extract runtime time helpers`).
 - Blockers: none.
 - Exact next step: Continue `packages/workflows/src/runtime/index.ts` with failure/result builder extraction analysis, or extract a very small pure helper only if existing tests clearly cover the seam.
 
