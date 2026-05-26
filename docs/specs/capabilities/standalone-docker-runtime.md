@@ -13,15 +13,15 @@ That standalone path is executable product surface. It needs its own behavior co
 
 ## Goal
 
-The standalone Docker image and Compose service MUST start a built Pibo runtime with predictable gateway commands, Docker-only dev auth for web mode, browser automation prerequisites, and persistent Pibo/browser-use state.
+The standalone Docker image and Compose service MUST start a built Pibo runtime with predictable gateway commands, Docker-only dev auth for web mode, browser automation prerequisites, and persistent Pibo/browser-use/agent-browser state.
 
 ## Background / Current State
 
-The repository root `Dockerfile` builds from `node:24-slim`, installs Python, Chromium, Xvfb, uv, build tools, and fonts, runs `npm install`, copies the workspace, runs `npm run build`, installs `browser-use[cli]==0.12.6` into `/root/.pibo/tools/browser-use/.venv`, prepares the Pibo browser-use wrapper, creates persistent state directories, exposes ports `4788`, `4789`, and `56663`, and uses `scripts/docker-entrypoint.sh` as the entrypoint.
+The repository root `Dockerfile` builds from `node:24-slim`, installs Python, Chromium, Xvfb, uv, build tools, and fonts, runs `npm install`, copies the workspace, runs `npm run build`, installs `browser-use[cli]==0.12.6` into `/root/.pibo/tools/browser-use/.venv`, installs `agent-browser@0.27.0` into `/root/.pibo/tools/agent-browser/node`, prepares both Pibo browser wrappers, creates persistent state directories, exposes ports `4788`, `4789`, and `56663`, and uses `scripts/docker-entrypoint.sh` as the entrypoint.
 
 `docker-compose.yml` builds the same image as `pibo:latest`, runs one `pibo` service, persists `/root/.pibo` and `/root/.browser-use` with named volumes, exports gateway and CDP ports through Docker-assigned host ports, sets browser-use environment variables, and starts the default image command `gateway:web`.
 
-The entrypoint starts Xvfb on display `:99` when needed, ensures the browser-use wrapper exists, sets `PATH`, sets `BROWSER_USE_HOME`, and dispatches `gateway`, `gateway:web`, shell commands, or arbitrary Pibo CLI arguments.
+The entrypoint starts Xvfb on display `:99` when needed, ensures the browser-use and agent-browser wrappers exist, sets `PATH`, sets `BROWSER_USE_HOME` and `AGENT_BROWSER_HOME`, and dispatches `gateway`, `gateway:web`, shell commands, or arbitrary Pibo CLI arguments.
 
 ## Scope
 
@@ -32,14 +32,14 @@ The entrypoint starts Xvfb on display `:99` when needed, ensures the browser-use
 - Compose service environment, volumes, restart policy, and port publishing.
 - Browser automation readiness inside the container.
 - Dev-auth behavior for the standalone web gateway.
-- Persistence boundaries for Pibo state and browser-use state.
+- Persistence boundaries for Pibo state, browser-use state, and agent-browser state.
 
 ### Out of Scope
 
 - `pibo compute` worker lifecycle, labels, worktrees, and dynamic worker JSON output — covered by Docker Compute Workers.
 - Host gateway management outside Docker — covered by Local Gateway Protocol and Lifecycle.
 - Production deployment scripts — covered by Web Deployment Scripts.
-- Browser-use CLI semantics beyond wrapper availability and environment setup — covered by Browser Automation Desktop Environment and Curated CLI Tools.
+- Browser CLI semantics beyond wrapper availability and environment setup — covered by Browser Automation Desktop Environment and Curated CLI Tools.
 
 ## Requirements
 
@@ -125,11 +125,11 @@ The entrypoint MUST prepare the browser automation environment before running ga
 
 #### Current
 
-The image installs Chromium, Chromium Driver, Xvfb, uv, and browser-use. The entrypoint starts Xvfb on `:99` if it is not already running, exports `DISPLAY=:99`, prepares the browser-use wrapper if missing, prepends wrapper and virtualenv paths to `PATH`, and exports `BROWSER_USE_HOME`.
+The image installs Chromium, Chromium Driver, Xvfb, uv, browser-use, and agent-browser. The entrypoint starts Xvfb on `:99` if it is not already running, exports `DISPLAY=:99`, prepares wrappers if missing, prepends wrapper and runtime bin paths to `PATH`, and exports `BROWSER_USE_HOME` and `AGENT_BROWSER_HOME`.
 
 #### Target
 
-Agents inside the standalone container can run browser-use-backed checks without a separate desktop setup step.
+Agents inside the standalone container can run browser-use or agent-browser checks without a separate desktop setup step.
 
 #### Acceptance
 
@@ -137,14 +137,15 @@ Agents inside the standalone container can run browser-use-backed checks without
 - `DISPLAY` is set to `:99` for all dispatched commands.
 - `PIBO_BROWSER_USE_CHROME` defaults to `/usr/bin/chromium` in the image.
 - `BROWSER_USE_HOME` resolves to `$HOME/.pibo/tools/browser-use/home` after entrypoint setup.
-- The browser-use wrapper directory and virtualenv bin directory are prepended to `PATH`.
-- If the wrapper is missing from the persisted home, the entrypoint runs `/app/scripts/prepare-browser-use-wrapper.sh` before dispatch.
+- `AGENT_BROWSER_HOME` resolves to `$HOME/.pibo/tools/agent-browser/home` after entrypoint setup.
+- The browser wrapper directories and runtime bin directories are prepended to `PATH`.
+- If a wrapper is missing from the persisted home, the entrypoint runs the matching prepare script before dispatch.
 
 #### Scenario: Persisted volume lacks wrapper
 
-- GIVEN `/root/.pibo` is mounted from a fresh or older volume without `tools/browser-use/home/bin/browser-use`
+- GIVEN `/root/.pibo` is mounted from a fresh or older volume without a browser wrapper
 - WHEN the container starts
-- THEN the entrypoint prepares the wrapper before executing the requested command.
+- THEN the entrypoint prepares the missing wrapper before executing the requested command.
 
 ### Requirement: Compose preserves Pibo and browser-use state
 

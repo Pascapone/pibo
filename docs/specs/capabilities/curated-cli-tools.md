@@ -17,9 +17,9 @@ Pibo MUST provide a progressive `pibo tools` interface for curated external CLI 
 
 ## Background / Current State
 
-The current implementation lives in `src/tools/`. `src/tools/registry.ts` defines the curated registry and currently includes `browser-use` pinned to `browser-use[cli]==0.12.6` with Python 3.12. `src/tools/index.ts` implements `pibo tools` commands for listing, showing, installing, removing, diagnosing, printing guides, printing paths, printing shell environment, and browser-use helpers.
+The current implementation lives in `src/tools/`. `src/tools/registry.ts` defines the curated registry and includes `browser-use` pinned to `browser-use[cli]==0.12.6` with Python 3.12, `agent-browser` pinned to `agent-browser@0.27.0` in a local npm runtime, and built-in Ralph. `src/tools/index.ts` implements `pibo tools` commands for listing, showing, installing, removing, diagnosing, printing guides, printing paths, printing shell environment, and browser helper commands.
 
-Tool runtimes use `~/.pibo/tools/<name>` unless `PIBO_HOME` overrides the Pibo home path. Python tools use a dedicated uv-created virtual environment and a separate tool home directory. Runtime creation in `src/core/runtime.ts` injects `.pibo/context/installed-pibo-tools.md` only when curated tools are installed.
+Tool runtimes use `~/.pibo/tools/<name>` unless `PIBO_HOME` overrides the Pibo home path. Python tools use a dedicated uv-created virtual environment and a separate tool home directory. npm tools use `node/` with local `node_modules/.bin` and the same separate tool home directory. Runtime creation in `src/core/runtime.ts` injects `.pibo/context/installed-pibo-tools.md` only when curated tools are installed.
 
 ## Scope
 
@@ -27,11 +27,12 @@ Tool runtimes use `~/.pibo/tools/<name>` unless `PIBO_HOME` overrides the Pibo h
 
 - `pibo tools` progressive CLI discovery.
 - Curated tool registry entries and installed-tool status.
-- Isolated Python runtime installation, removal, doctor output, and executable path reporting.
+- Isolated Python and npm runtime installation, removal, doctor output, and executable path reporting.
 - Tool guides stored behind explicit `guide` commands.
 - Compact installed-tool context injection into Pibo runtimes.
 - Browser-use wrapper behavior for Pibo-managed persistent Chrome via CDP.
-- Browser-use authenticated template profiles, leases, target discovery, and health checks.
+- Agent Browser wrapper behavior for Pibo-owned state and default profiles.
+- Browser-use and Agent Browser authenticated template profiles, leases, target discovery, and health checks.
 
 ### Out of Scope
 
@@ -68,25 +69,26 @@ The `pibo tools` CLI MUST expose only the immediate command surface at each leve
 
 ### Requirement: Curated tools install into isolated Pibo-owned runtimes
 
-The system MUST install each curated CLI into a tool-specific runtime under the Pibo home directory and MUST NOT depend on global Python package state for normal use.
+The system MUST install each curated CLI into a tool-specific runtime under the Pibo home directory and MUST NOT depend on global Python or npm package state for normal use.
 
 #### Current
 
-`installToolPythonRuntime()` creates `~/.pibo/tools/<name>/.venv`, installs the pinned package with uv, and creates `~/.pibo/tools/<name>/home`. `getToolPythonRuntimePaths()` derives executable, venv, root, and home paths from the tool registry entry.
+`installToolPythonRuntime()` creates `~/.pibo/tools/<name>/.venv`, installs the pinned package with uv, and creates `~/.pibo/tools/<name>/home`. `installToolNpmRuntime()` creates `~/.pibo/tools/<name>/node`, installs the pinned npm package with `npm install --prefix`, and creates the same separate home directory. Runtime path helpers derive executable, runtime root, and home paths from the tool registry entry.
 
 #### Acceptance
 
 - Installing `browser-use` creates a tool root, home directory, virtual environment, and executable path under the selected Pibo home.
-- `pibo tools path browser-use` prints the executable path, or the Pibo wrapper path when a wrapper exists.
-- `pibo tools env browser-use` prints shell exports that put the wrapper and virtual environment on `PATH` and set `BROWSER_USE_HOME`.
-- `pibo tools remove browser-use` removes only the tool runtime root for that tool.
+- Installing `agent-browser` creates a tool root, home directory, local npm runtime, and executable path under the selected Pibo home.
+- `pibo tools path <name>` prints the executable path, or the Pibo wrapper path when a wrapper exists.
+- `pibo tools env <name>` prints shell exports that put the wrapper and runtime bin directory on `PATH` and set the tool home variable.
+- `pibo tools remove <name>` removes only the tool runtime root for that tool.
 
 #### Scenario: Install target is local to Pibo
 
 - GIVEN `PIBO_HOME=/tmp/pibo-home`
-- WHEN an operator installs `browser-use`
-- THEN the executable path is under `/tmp/pibo-home/tools/browser-use/`
-- AND no global Python site-packages path is required for normal execution.
+- WHEN an operator installs `browser-use` or `agent-browser`
+- THEN the executable path is under `/tmp/pibo-home/tools/<name>/`
+- AND no global Python site-packages or global npm package path is required for normal execution.
 
 ### Requirement: Tool doctor output reports missing prerequisites and runtime state
 
@@ -99,6 +101,7 @@ The CLI MUST provide a bounded diagnostic command for each curated tool that rep
 #### Acceptance
 
 - `pibo tools doctor browser-use` reports uv status, Python status, runtime paths, venv state, executable state, and display state.
+- `pibo tools doctor agent-browser` reports Node, npm, package pin, runtime paths, executable state, display state, and upstream offline doctor state when installed.
 - Missing uv produces installation instructions instead of a stack trace.
 - Missing Python produces OS-oriented installation hints.
 - `pibo tools browser-use health` reports `ok`, `degraded`, or `critical` and prints corrective suggestions for missing wrapper, missing Chrome, stale CDP state, or expired leases.
@@ -133,6 +136,29 @@ The runtime MUST inject compact installed-tool hints only for tools that are ins
 - THEN the runtime context includes a compact installed-tools file
 - AND the file points the agent to `pibo tools show browser-use` and `pibo tools guide browser-use browser-use` for details.
 
+### Requirement: Agent Browser wrapper keeps state under the Pibo tool home
+
+The Agent Browser executable exposed by Pibo MUST prefer a Pibo-owned home and default profile, while preserving explicit upstream flags.
+
+#### Current
+
+`ensureAgentBrowserWrapper()` writes `home/bin/agent-browser`. `pibo tools env agent-browser` puts that wrapper before the local npm bin directory and sets `AGENT_BROWSER_HOME`. Because `agent-browser@0.27.0` uses `HOME` for `~/.agent-browser` state, the wrapper redirects `HOME` to `AGENT_BROWSER_HOME` unless `PIBO_AGENT_BROWSER_PRESERVE_HOME=1` is set. The wrapper injects `--profile $AGENT_BROWSER_HOME/profiles/PIBo` for launch commands unless the caller passes `--fresh-profile` or explicit profile, state, CDP, provider, engine, executable, or config flags.
+
+#### Acceptance
+
+- `pibo tools show agent-browser` prints the wrapper path and warns operators to use it instead of the raw executable.
+- `pibo tools env agent-browser` puts the wrapper directory before `node/node_modules/.bin` on `PATH`.
+- Launch commands use `home/profiles/PIBo` by default.
+- `--fresh-profile` and explicit upstream runtime flags disable profile injection.
+- Doctor, config, socket, and auth vault paths stay under the Pibo tool home by default.
+- The wrapper never prints cookies, saved state, headers, or auth vault data.
+
+#### Scenario: Explicit profile wins
+
+- GIVEN the Agent Browser wrapper is on `PATH`
+- WHEN an operator runs `agent-browser --profile /tmp/profile open https://example.com`
+- THEN the wrapper forwards that profile and does not add the Pibo default profile.
+
 ### Requirement: Browser-use wrapper defaults to Pibo-managed persistent Chrome
 
 The browser-use executable exposed by Pibo MUST prefer a Pibo-managed Chrome profile and CDP connection for new sessions, while still allowing an explicit fresh profile.
@@ -157,7 +183,7 @@ The browser-use executable exposed by Pibo MUST prefer a Pibo-managed Chrome pro
 
 ### Requirement: Authenticated browser leases isolate concurrent Chat Web agents
 
-The browser-use helpers MUST let agents acquire isolated authenticated browser slots from a template profile and release or reap those slots explicitly.
+The browser-use and Agent Browser helpers MUST let agents acquire isolated authenticated browser slots from a template profile and release or reap those slots explicitly.
 
 #### Current
 
@@ -165,8 +191,9 @@ The browser-use helpers MUST let agents acquire isolated authenticated browser s
 
 #### Acceptance
 
-- `pibo tools browser-use auth-template env` creates the template directory when needed and prints exports for preparing the template profile.
+- `pibo tools browser-use auth-template env` and `pibo tools agent-browser auth-template env` create the template directory when needed and print exports for preparing the template profile.
 - `pibo tools browser-use lease acquire` prints `BROWSER_USE_HOME`, `PIBO_BROWSER_USE_LEASE_ID`, `PIBO_BROWSER_USE_SESSION`, `PIBO_BROWSER_USE_CHROME_USER_DATA_DIR`, and `PIBO_BROWSER_USE_DEFAULT_PROFILE`.
+- `pibo tools agent-browser lease acquire` prints `AGENT_BROWSER_HOME`, `PIBO_AGENT_BROWSER_LEASE_ID`, `AGENT_BROWSER_SESSION`, `AGENT_BROWSER_PROFILE`, and `AGENT_BROWSER_SESSION_NAME`.
 - Lease acquisition fails with `BROWSER_USE_AUTH_POOL_EXHAUSTED` when `--max-slots` is reached for active unexpired leases.
 - Lease acquisition fails with `BROWSER_USE_AUTH_TEMPLATE_RUNNING` when the template profile contains Chrome singleton files.
 - `lease list` shows active, expired, and released leases and can emit JSON.
@@ -180,9 +207,9 @@ The browser-use helpers MUST let agents acquire isolated authenticated browser s
 - THEN the command fails with a client error
 - AND the suggestion tells the agent to release a lease or increase the maximum slot count.
 
-### Requirement: Browser-use target discovery prefers usable Chat Web tabs
+### Requirement: Browser target discovery prefers usable Chat Web tabs
 
-The browser-use helpers MUST inspect Chrome CDP targets and identify authenticated Chat Web tabs that can accept input.
+The browser-use and Agent Browser helpers MUST inspect Chrome CDP targets and identify authenticated Chat Web tabs that can accept input.
 
 #### Current
 
@@ -190,10 +217,10 @@ The browser-use helpers MUST inspect Chrome CDP targets and identify authenticat
 
 #### Acceptance
 
-- `pibo tools browser-use targets` prints target id, URL, auth classification, composer availability, and title.
+- `pibo tools browser-use targets` and `pibo tools agent-browser targets` print target id, URL, auth classification, composer availability, and title.
 - `targets --json` emits machine-readable target data.
 - `targets --no-probe` lists CDP targets without DOM probing.
-- `attach-chat` fails with `BROWSER_USE_CHAT_TARGET_NOT_FOUND` when no authenticated Chat Web target with a composer exists.
+- `attach-chat` fails with a tool-specific structured error when no authenticated Chat Web target with a composer exists.
 - Successful `attach-chat` prints exports for `PIBO_CDP_URL`, `PIBO_CDP_TARGET_ID`, `PIBO_CDP_TARGET_WS`, and `PIBO_CHAT_URL`.
 
 #### Scenario: Authenticated composer exists
@@ -217,12 +244,12 @@ The browser-use helpers MUST inspect Chrome CDP targets and identify authenticat
 - **Compatibility:** Existing `pibo tools` commands and browser-use shell exports must remain stable for agents and AGENTS.md guidance.
 - **Security / Privacy:** Authenticated template profiles and lease profiles may contain credentials; commands must keep them under the tool home and must not print cookie contents.
 - **Performance:** Runtime creation should only read installed-tool status and inject compact context; it must not run tool doctors or enumerate guide content.
-- **Dependencies:** Python tool installation depends on uv and the pinned package in the registry entry. Browser-use helpers depend on a Chrome or Chromium binary for managed browser sessions.
+- **Dependencies:** Python tool installation depends on uv and the pinned package in the registry entry. npm tool installation depends on Node.js, npm, and the pinned package in the registry entry. Browser helpers depend on a Chrome or Chromium binary for managed browser sessions.
 
 ## Success Criteria
 
 - [ ] SC-001: `pibo tools --help`, `list`, `show`, `guides`, and `guide` support progressive discovery without duplicate long output.
-- [ ] SC-002: `pibo tools install browser-use` creates an isolated runtime under the Pibo home and exposes a wrapper-first path and env.
+- [ ] SC-002: `pibo tools install browser-use` and `pibo tools install agent-browser` create isolated runtimes under the Pibo home and expose wrapper-first path and env.
 - [ ] SC-003: `pibo tools doctor browser-use` and `pibo tools browser-use health` give actionable diagnostics for missing prerequisites and stale state.
 - [ ] SC-004: Installed curated tools inject only `.pibo/context/installed-pibo-tools.md` compact hints into runtimes.
 - [ ] SC-005: Browser-use leases can be acquired, listed, released, and reaped without sharing a mutable running Chrome profile across concurrent agents.
@@ -232,13 +259,13 @@ The browser-use helpers MUST inspect Chrome CDP targets and identify authenticat
 
 ### Assumptions
 
-- `browser-use` is currently the only curated CLI tool in the registry.
+- `browser-use`, `agent-browser`, and built-in Ralph are currently the curated CLI tools in the registry.
 - Curated CLI tool guides are operational documentation, not profile-selected skills.
 - Agents normally invoke curated tools through shell commands after applying `pibo tools env <name>`.
 
 ### Open Questions
 
-- Should future curated tools support runtimes other than Python/uv while preserving the same CLI contract?
+- Should future curated tools support runtimes other than Python/uv and npm while preserving the same CLI contract?
 - Should lease records eventually move from JSON files into the Reliable Event Core or another SQLite store?
 - Should browser-use health auto-repair stale CDP state, or should it remain diagnostic-only except for explicit reap commands?
 

@@ -205,6 +205,59 @@ test("pibo tools install supports a no-setup dry target", async () => {
 	}
 });
 
+test("pibo tools exposes agent-browser npm runtime, guide, wrapper, and helpers", async () => {
+	const cwd = await mkdtemp(join(tmpdir(), "pibo-tools-agent-browser-"));
+	try {
+		const env = { ...process.env, PIBO_HOME: join(cwd, "pibo-home") };
+
+		const list = await execFileAsync("node", [cliPath, "tools", "list"], { cwd, env });
+		assert.match(list.stdout, /agent-browser\tavailable\tFast native browser automation CLI/);
+
+		const show = await execFileAsync("node", [cliPath, "tools", "show", "agent-browser"], { cwd, env });
+		assert.match(show.stdout, /package: agent-browser@0\.27\.0/);
+		assert.match(show.stdout, /wrapper: .*tools\/agent-browser\/home\/bin\/agent-browser/);
+		assert.match(show.stdout, /pibo tools guide agent-browser agent-browser/);
+		assert.match(show.stdout, /pibo tools agent-browser/);
+
+		const guide = await execFileAsync("node", [cliPath, "tools", "guide", "agent-browser", "agent-browser"], { cwd, env });
+		assert.match(guide.stdout, /# Browser Automation with Agent Browser/);
+		assert.match(guide.stdout, /agent-browser snapshot -i/);
+		assert.match(guide.stdout, /agent-browser click @e1/);
+		assert.match(guide.stdout, /agent-browser skills get core --full/);
+
+		const envOutput = await execFileAsync("node", [cliPath, "tools", "env", "agent-browser"], { cwd, env });
+		const wrapperPath = join(env.PIBO_HOME, "tools", "agent-browser", "home", "bin", "agent-browser");
+		const realBinDir = join(env.PIBO_HOME, "tools", "agent-browser", "node", "node_modules", ".bin");
+		assert.ok(envOutput.stdout.includes(`export PATH="${wrapperPath.replace(/\/agent-browser$/, "")}:${realBinDir}:$PATH"`));
+		assert.match(envOutput.stdout, /export AGENT_BROWSER_HOME=/);
+
+		await mkdir(realBinDir, { recursive: true });
+		const realExecutablePath = join(realBinDir, "agent-browser");
+		await writeFile(realExecutablePath, "#!/bin/sh\nprintf '%s\\n' \"$@\"\n");
+		await chmod(realExecutablePath, 0o755);
+
+		const defaultProfile = await execFileAsync(wrapperPath, ["open", "https://example.test"], { cwd, env });
+		assert.match(defaultProfile.stdout, /--profile\n.*tools\/agent-browser\/home\/profiles\/PIBo\nopen\nhttps:\/\/example\.test/);
+
+		const freshProfile = await execFileAsync(wrapperPath, ["--fresh-profile", "open", "https://example.test"], { cwd, env });
+		assert.doesNotMatch(freshProfile.stdout, /--profile/);
+		assert.match(freshProfile.stdout, /open\nhttps:\/\/example\.test/);
+
+		const explicitProfile = await execFileAsync(wrapperPath, ["--profile", "/tmp/custom", "open", "https://example.test"], { cwd, env });
+		assert.match(explicitProfile.stdout, /^--profile\n\/tmp\/custom\nopen/m);
+
+		const helper = await execFileAsync("node", [cliPath, "tools", "agent-browser"], { cwd, env });
+		assert.match(helper.stdout, /pibo tools agent-browser - Agent Browser helpers/);
+		assert.match(helper.stdout, /lease acquire/);
+
+		const lease = await execFileAsync("node", [cliPath, "tools", "agent-browser", "lease", "acquire", "--owner", "test"], { cwd, env });
+		assert.match(lease.stdout, /PIBO_AGENT_BROWSER_LEASE_ID/);
+		assert.match(lease.stdout, /AGENT_BROWSER_PROFILE/);
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
 test("pibo browser-use virtual display service unit uses a stable Linux xvfb setup", () => {
 	const unit = createPiboXvfbServiceUnit();
 	assert.match(unit, /\[Unit\]/);

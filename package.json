@@ -12,7 +12,8 @@
     "src/mcp/LICENSE.mcp-cli"
   ],
   "bin": {
-    "pibo": "dist/bin/pibo.js"
+    "pibo": "dist/bin/pibo.js",
+    "rg": "dist/bin/rg.js"
   },
   "engines": {
     "node": ">=24"
@@ -50,6 +51,7 @@
     "@tanstack/react-router": "^1.168.25",
     "@tanstack/react-start": "^1.167.50",
     "@uiw/react-json-view": "^2.0.0-alpha.41",
+    "@vscode/ripgrep": "^1.18.0",
     "@xyflow/react": "12.10.2",
     "better-auth": "^1.6.9",
     "commander": "^14.0.3",

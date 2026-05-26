@@ -10,17 +10,17 @@
 
 Pibo agents use browser automation to inspect Chat Web, run UI checks, and attach to authenticated browser sessions. Browser automation only works reliably when the process has the correct desktop environment, Chrome profile, and CDP state.
 
-The current code gives Pibo a thin desktop-environment contract around curated browser-use tooling. It detects an available Linux desktop, exports only the needed process variables, can provision a virtual X display for root Linux installs, and reports browser-use health without loading large browser instructions into every runtime.
+The current code gives Pibo a thin desktop-environment contract around curated browser-use and Agent Browser tooling. It detects an available Linux desktop, exports only the needed process variables, can provision a virtual X display for root Linux installs, and reports browser health without loading large browser instructions into every runtime.
 
 ## Goal
 
-Pibo MUST make headed browser automation discoverable and reproducible by detecting desktop display state, exporting browser process environment, provisioning a virtual display only when safe, and reporting actionable browser-use health.
+Pibo MUST make headed browser automation discoverable and reproducible by detecting desktop display state, exporting browser process environment, provisioning a virtual display only when safe, and reporting actionable browser-use and Agent Browser health.
 
 ## Background / Current State
 
-The current implementation is centered on `src/tools/desktop-env.ts`, `src/tools/linux-virtual-display.ts`, `src/tools/registry.ts`, and browser-use helper code in `src/tools/index.ts`, `src/tools/browser-use-wrapper.ts`, and `src/tools/browser-use-cdp.ts`.
+The current implementation is centered on `src/tools/desktop-env.ts`, `src/tools/linux-virtual-display.ts`, `src/tools/registry.ts`, browser-use helper code in `src/tools/index.ts`, `src/tools/browser-use-wrapper.ts`, and `src/tools/browser-use-cdp.ts`, plus Agent Browser support in `src/tools/agent-browser-wrapper.ts` and `src/tools/agent-browser-leases.ts`.
 
-`pibo tools install browser-use` calls desktop setup before installing the isolated Python runtime. `pibo tools env browser-use` prints shell exports for PATH, `BROWSER_USE_HOME`, display variables, X authority, runtime dir, and DBus when detected. Browser-use health checks validate wrapper presence, Chrome availability, display availability, stale CDP state, and expired leases.
+`pibo tools install browser-use` and `pibo tools install agent-browser` call desktop setup before installing their isolated runtimes. `pibo tools env <name>` prints shell exports for PATH, tool home, display variables, X authority, runtime dir, and DBus when detected. Browser health checks validate wrapper presence, Chrome availability, display availability, stale CDP state, and lease state where applicable.
 
 ## Scope
 
@@ -28,14 +28,14 @@ The current implementation is centered on `src/tools/desktop-env.ts`, `src/tools
 
 - Linux desktop display detection for X11 and Wayland.
 - Browser-use environment export for detected desktop variables.
-- Automatic virtual X display provisioning during browser-use setup when the host is Linux, headless, and running as root.
+- Automatic virtual X display provisioning during browser setup when the host is Linux, headless, and running as root.
 - Human-readable virtual-display hints when automatic setup is not available.
 - Browser-use health reporting for wrapper, Chrome, display, stale CDP files, and expired leases.
 - CDP target discovery that can find the most recent Pibo-managed Chrome port state.
 
 ### Out of Scope
 
-- Implementing browser automation itself — that belongs to the external browser-use tool.
+- Implementing browser automation itself — that belongs to external tools such as browser-use and Agent Browser.
 - Managing arbitrary desktop environments beyond the variables Pibo detects today.
 - Starting host gateways, dev auth, or authenticated browser sessions — those are covered by gateway, auth, and curated-tool specs.
 - Guaranteeing GUI availability on non-Linux platforms — current automatic setup is Linux-only.
@@ -66,7 +66,7 @@ The system MUST detect browser-relevant desktop variables and expose them as a s
 
 ### Requirement: Tool environment export preserves desktop access
 
-`pibo tools env <name>` MUST print shell exports that let the installed tool run with Pibo's runtime paths and the detected desktop environment.
+`pibo tools env <name>` MUST print shell exports that let the installed browser tool run with Pibo's runtime paths and the detected desktop environment.
 
 #### Current
 
@@ -111,7 +111,7 @@ Pibo MUST only provision a system virtual X display when the platform is Linux, 
 
 ### Requirement: Browser-use health distinguishes critical and degraded states
 
-The browser-use health command MUST report whether the browser-use wrapper, Chrome binary, display, CDP state, and leases are healthy.
+Browser health commands MUST report whether the wrapper, Chrome binary, display, CDP state, and relevant leases are healthy.
 
 #### Current
 
@@ -204,7 +204,7 @@ This capability participates in the compute/browser resource lifecycle change. I
 - **Security:** The virtual X display systemd unit MUST use `-nolisten tcp`; Pibo MUST NOT expose the display over the network.
 - **Host Safety:** Automatic package installation and systemd writes require root and happen only during explicit browser-use setup.
 - **Compatibility:** Non-Linux platforms keep install/env behavior without automatic virtual-display provisioning.
-- **Context Economy:** Browser-use usage details remain in `pibo tools guide`; runtime context gets only compact curated-tool hints.
+- **Context Economy:** Browser tool usage details remain in `pibo tools guide`; runtime context gets only compact curated-tool hints.
 
 ## Success Criteria
 

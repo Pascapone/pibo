@@ -103,6 +103,110 @@ Prefer \`stop\` for normal shutdown and \`cancel\` only when the active run is s
 `,
 };
 
+export const AGENT_BROWSER_GUIDE: ToolGuide = {
+  name: 'agent-browser',
+  description: 'Ref-based browser automation with the Agent Browser CLI.',
+  content: `---
+name: agent-browser
+description: Fast native browser automation CLI for AI agents. Use when you need to open pages, inspect snapshots, click refs, fill fields, and keep browser state under a Pibo-owned tool home.
+allowed-tools: Bash(agent-browser:*)
+---
+
+# Browser Automation with Agent Browser
+
+Agent Browser uses refs from interactive snapshots. Inspect first, act on refs, then inspect again after navigation or DOM changes.
+
+## Prerequisites
+
+Initialize one shell with the Pibo tool environment:
+
+\`\`\`bash
+eval "$(pibo tools env agent-browser)"
+agent-browser doctor --offline --quick
+\`\`\`
+
+Inside the Pibo source repo, use \`eval "$(npm run --silent dev -- tools env agent-browser)"\`. The Pibo wrapper comes first on \`PATH\` and keeps state under \`AGENT_BROWSER_HOME\`, normally \`$PIBO_HOME/tools/agent-browser/home\`. For \`agent-browser@0.27.0\`, the wrapper also redirects \`HOME\` there by default so \`~/.agent-browser\` stays inside the tool home.
+
+## Core Workflow
+
+\`\`\`bash
+agent-browser open <url>
+agent-browser snapshot -i
+agent-browser click @e1
+agent-browser fill @e2 "text"
+agent-browser snapshot -i
+agent-browser get title
+agent-browser close --all
+\`\`\`
+
+Re-run \`snapshot -i\` after navigation, submit, scroll, animation, or any DOM-changing action. Do not reuse stale refs.
+
+## Sessions
+
+Use sessions for separate browser tasks:
+
+\`\`\`bash
+agent-browser --session pibo-check open https://example.com
+AGENT_BROWSER_SESSION=pibo-check agent-browser snapshot -i
+agent-browser session list
+\`\`\`
+
+Keep mutating commands against the same session serial. Avoid parallel \`click\`, \`fill\`, \`open\`, or \`snapshot\` calls for one session.
+
+## State and Profiles
+
+The wrapper defaults browser-launching commands to a persistent Pibo profile:
+
+\`\`\`bash
+agent-browser open https://example.com
+\`\`\`
+
+Opt out when needed:
+
+\`\`\`bash
+agent-browser --fresh-profile open https://example.com
+agent-browser --profile /path/to/profile open https://example.com
+agent-browser --session-name saved-check open https://example.com
+\`\`\`
+
+Treat profiles, saved states, auth vaults, cookies, and headers as secrets. Do not print or copy their contents into chat.
+
+## Authenticated Chat Web Work
+
+Prefer isolated leases when more than one agent may use authenticated Chat Web:
+
+\`\`\`bash
+eval "$(pibo tools agent-browser lease acquire --app pibo-chat --owner "$USER")"
+agent-browser open http://4788.192.168.0.204.sslip.io/apps/chat
+agent-browser snapshot -i
+\`\`\`
+
+To prepare the reusable template profile:
+
+\`\`\`bash
+eval "$(pibo tools agent-browser auth-template env --app pibo-chat)"
+agent-browser open http://4788.192.168.0.204.sslip.io/apps/chat
+\`\`\`
+
+Sign in once, close the browser, then acquire leases from the template.
+
+For an already-open browser, inspect CDP targets:
+
+\`\`\`bash
+pibo tools agent-browser targets
+pibo tools agent-browser attach-chat
+\`\`\`
+
+## Upstream Skills
+
+Pibo keeps the full upstream skill out of default runtime context. Fetch it only when needed:
+
+\`\`\`bash
+agent-browser skills get core --full
+\`\`\`
+`,
+};
+
 export const BROWSER_USE_GUIDE: ToolGuide = {
   name: 'browser-use',
   description: 'Local browser automation with the browser-use CLI.',

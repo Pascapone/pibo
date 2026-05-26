@@ -10,15 +10,21 @@ fi
 
 export DISPLAY=:99
 
-# Sicherstellen, dass der Browser-Use-Wrapper existiert
+# Sicherstellen, dass die Browser-Wrapper existieren
 if [ ! -x "$HOME/.pibo/tools/browser-use/home/bin/browser-use" ]; then
   echo "[docker-entrypoint] Preparing browser-use wrapper ..."
   /app/scripts/prepare-browser-use-wrapper.sh
 fi
 
+if [ ! -x "$HOME/.pibo/tools/agent-browser/home/bin/agent-browser" ]; then
+  echo "[docker-entrypoint] Preparing agent-browser wrapper ..."
+  /app/scripts/prepare-agent-browser-wrapper.sh
+fi
+
 # PATH erweitern
-export PATH="$HOME/.pibo/tools/browser-use/home/bin:$HOME/.pibo/tools/browser-use/.venv/bin:$PATH"
+export PATH="$HOME/.pibo/tools/agent-browser/home/bin:$HOME/.pibo/tools/agent-browser/node/node_modules/.bin:$HOME/.pibo/tools/browser-use/home/bin:$HOME/.pibo/tools/browser-use/.venv/bin:$PATH"
 export BROWSER_USE_HOME="$HOME/.pibo/tools/browser-use/home"
+export AGENT_BROWSER_HOME="$HOME/.pibo/tools/agent-browser/home"
 
 # Pibo-CLI-Argumente verarbeiten
 case "${1:-gateway}" in

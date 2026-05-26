@@ -29,17 +29,23 @@ RUN npm install
 COPY . .
 RUN npm run build
 
-# Browser-Use vorinstallieren (damit es im Image direkt verfügbar ist)
+# Browser tools vorinstallieren (damit sie im Image direkt verfügbar sind)
 RUN mkdir -p /root/.pibo/tools/browser-use/home/bin && \
     uv venv /root/.pibo/tools/browser-use/.venv --python 3.12 && \
     uv pip install --python /root/.pibo/tools/browser-use/.venv/bin/python \
     'browser-use[cli]==0.12.6'
 
-# Browser-Use Wrapper vorbereiten (Pibo erwartet ihn unter home/bin)
-RUN /app/scripts/prepare-browser-use-wrapper.sh
+RUN mkdir -p /root/.pibo/tools/agent-browser/home/bin \
+    /root/.pibo/tools/agent-browser/home/profiles \
+    /root/.pibo/tools/agent-browser/node && \
+    npm install --prefix /root/.pibo/tools/agent-browser/node agent-browser@0.27.0
+
+# Browser Wrapper vorbereiten (Pibo erwartet sie unter home/bin)
+RUN /app/scripts/prepare-browser-use-wrapper.sh && \
+    /app/scripts/prepare-agent-browser-wrapper.sh
 
 # Persistente Verzeichnisse für Pibo
-RUN mkdir -p /root/.pibo /root/.browser-use
+RUN mkdir -p /root/.pibo /root/.browser-use /root/.pibo/tools/agent-browser/home
 
 EXPOSE 4788 4789 56663
 

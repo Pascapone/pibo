@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
-const binPath = join(root, "dist/bin/pibo.js");
+const binPaths = ["dist/bin/pibo.js", "dist/bin/rg.js"];
 
-chmodSync(binPath, 0o755);
+for (const binPath of binPaths) {
+	chmodSync(join(root, binPath), 0o755);
+}

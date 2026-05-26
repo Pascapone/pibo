@@ -1,7 +1,15 @@
 import { existsSync } from 'node:fs';
+import { ensureAgentBrowserWrapper } from './agent-browser-wrapper.js';
 import { detectDesktopEnv, hasDesktopDisplay, printDesktopEnvStatus, printLinuxVirtualDisplayHint } from './desktop-env.js';
-import { type ToolGuide, BROWSER_USE_GUIDE, RALPH_GUIDE, REMOTE_BROWSER_GUIDE } from './guides.js';
+import { type ToolGuide, AGENT_BROWSER_GUIDE, BROWSER_USE_GUIDE, RALPH_GUIDE, REMOTE_BROWSER_GUIDE } from './guides.js';
 import { ensureLinuxVirtualDisplay } from './linux-virtual-display.js';
+import {
+  type ToolNpmRuntimeSpec,
+  getToolNpmRuntimePaths,
+  installToolNpmRuntime,
+  printToolNpmRuntimeDoctor,
+  removeToolNpmRuntime,
+} from './npm-runtime.js';
 import {
   type ToolPythonRuntimeSpec,
   getToolPythonRuntimePaths,
@@ -11,11 +19,13 @@ import {
   removeToolPythonRuntime,
 } from './python-runtime.js';
 
+export type CliToolRuntimeSpec = (ToolPythonRuntimeSpec & { type?: 'python' }) | ToolNpmRuntimeSpec;
+
 export interface CliToolEntry {
   name: string;
   description: string;
-  kind?: 'python' | 'internal';
-  runtime?: ToolPythonRuntimeSpec;
+  kind?: 'python' | 'npm' | 'internal';
+  runtime?: CliToolRuntimeSpec;
   guides: readonly ToolGuide[];
   notes: readonly string[];
   agentContextSnippet: string;
@@ -62,6 +72,32 @@ const REGISTRY: CliToolEntry[] = [
       'Start in one persistent shell with `eval "$(npm run --silent dev -- tools env browser-use)"`.',
       'For authenticated Pibo Chat Web App testing, prefer `eval "$(npm run --silent dev -- tools browser-use lease acquire --app pibo-chat --owner "$USER")"`.',
       'Discover details with `npm run dev -- tools show browser-use` and `npm run dev -- tools guide browser-use browser-use`.',
+    ].join('\n'),
+  },
+  {
+    name: 'agent-browser',
+    description: 'Fast native browser automation CLI for AI agents.',
+    kind: 'npm',
+    runtime: {
+      type: 'npm',
+      packageName: 'agent-browser@0.27.0',
+      executableName: 'agent-browser',
+      homeEnvVar: 'AGENT_BROWSER_HOME',
+    },
+    guides: [AGENT_BROWSER_GUIDE],
+    notes: [
+      'Installed on demand into an isolated npm runtime.',
+      'Pinned to agent-browser 0.27.0 so the CLI surface matches the bundled guide.',
+      'The Pibo wrapper redirects HOME to AGENT_BROWSER_HOME by default so Agent Browser state stays in the tool home.',
+      'The wrapper uses home/profiles/PIBo as the default browser profile for launch commands; pass --fresh-profile or explicit upstream flags to opt out.',
+      'Use pibo tools agent-browser lease acquire for isolated authenticated browser slots when multiple agents need Chat Web App access.',
+      'Guides are available through pibo tools guide and are not loaded into pibo profiles automatically.',
+    ],
+    agentContextSnippet: [
+      'Browser automation CLI for frontend development and web testing.',
+      'Start in one persistent shell with `eval "$(npm run --silent dev -- tools env agent-browser)"`.',
+      'For authenticated Pibo Chat Web App testing, prefer `eval "$(npm run --silent dev -- tools agent-browser lease acquire --app pibo-chat --owner "$USER")"`.',
+      'Discover details with `npm run dev -- tools show agent-browser` and `npm run dev -- tools guide agent-browser agent-browser`.',
     ].join('\n'),
   },
   {
@@ -114,7 +150,9 @@ export function getCliToolStatus(entry: CliToolEntry): CliToolStatus {
     };
   }
   if (!entry.runtime) throw new Error(`CLI tool "${entry.name}" is missing runtime`);
-  const paths = getToolPythonRuntimePaths(entry.name, entry.runtime);
+  const paths = entry.runtime.type === 'npm'
+    ? getToolNpmRuntimePaths(entry.name, entry.runtime)
+    : getToolPythonRuntimePaths(entry.name, entry.runtime);
   return {
     entry,
     installed: existsSync(paths.executablePath),
@@ -170,17 +208,22 @@ export async function installCliTool(entry: CliToolEntry, runSetup: boolean): Pr
   }
   if (!entry.runtime) throw new Error(`CLI tool "${entry.name}" is missing runtime`);
   if (runSetup) {
-    if (entry.name === 'browser-use') {
+    if (entry.name === 'browser-use' || entry.name === 'agent-browser') {
       await ensureLinuxVirtualDisplay({ runInherited: runInheritedCommand });
     }
-    await installToolPythonRuntime(entry.name, entry.runtime);
+    if (entry.runtime.type === 'npm') {
+      await installToolNpmRuntime(entry.name, entry.runtime);
+    } else {
+      await installToolPythonRuntime(entry.name, entry.runtime);
+    }
   }
   const status = getCliToolStatus(entry);
+  if (entry.name === 'agent-browser') ensureAgentBrowserWrapper(status);
   console.log(`${runSetup ? 'Installed' : 'Install target'} ${entry.name}`);
   console.log(`  executable: ${status.executablePath}`);
   console.log(`  home: ${status.homeDir}`);
   printDesktopEnvStatus('  ');
-  if (entry.name === 'browser-use' && process.platform === 'linux' && !hasDesktopDisplay(detectDesktopEnv())) {
+  if ((entry.name === 'browser-use' || entry.name === 'agent-browser') && process.platform === 'linux' && !hasDesktopDisplay(detectDesktopEnv())) {
     printLinuxVirtualDisplayHint('  ');
   }
   console.log(`  env: pibo tools env ${entry.name}`);
@@ -192,7 +235,11 @@ export async function removeCliTool(entry: CliToolEntry): Promise<void> {
     return;
   }
   if (!entry.runtime) throw new Error(`CLI tool "${entry.name}" is missing runtime`);
-  await removeToolPythonRuntime(entry.name, entry.runtime);
+  if (entry.runtime.type === 'npm') {
+    await removeToolNpmRuntime(entry.name, entry.runtime);
+  } else {
+    await removeToolPythonRuntime(entry.name, entry.runtime);
+  }
 }
 
 export async function doctorCliTool(entry: CliToolEntry): Promise<void> {
@@ -202,5 +249,10 @@ export async function doctorCliTool(entry: CliToolEntry): Promise<void> {
     return;
   }
   if (!entry.runtime) throw new Error(`CLI tool "${entry.name}" is missing runtime`);
-  await printToolPythonRuntimeDoctor(entry.name, entry.runtime);
+  if (entry.name === 'agent-browser') ensureAgentBrowserWrapper(getCliToolStatus(entry));
+  if (entry.runtime.type === 'npm') {
+    await printToolNpmRuntimeDoctor(entry.name, entry.runtime);
+  } else {
+    await printToolPythonRuntimeDoctor(entry.name, entry.runtime);
+  }
 }

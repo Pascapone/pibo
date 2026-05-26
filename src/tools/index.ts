@@ -4,6 +4,15 @@ import { join } from 'node:path';
 import { Command } from 'commander';
 import { ErrorCode, formatCliError } from '../cli-errors.js';
 import {
+  acquireAgentBrowserLease,
+  listAgentBrowserLeases,
+  printAgentBrowserAuthTemplateEnv,
+  printAgentBrowserAuthTemplatePath,
+  reapStaleAgentBrowserLeases,
+  releaseAgentBrowserLease,
+} from './agent-browser-leases.js';
+import { ensureAgentBrowserWrapper } from './agent-browser-wrapper.js';
+import {
   acquireBrowserUseLease,
   isExpired,
   listBrowserUseLeases,
@@ -97,6 +106,13 @@ function printShow(name: string): void {
     console.log('');
     console.log('  IMPORTANT: Always use the wrapper path above, not the raw executable.');
     console.log('  The wrapper manages persistent Chrome profiles and CDP automatically.');
+  } else if (entry.name === 'agent-browser') {
+    const wrapperPath = ensureAgentBrowserWrapper(status);
+    console.log(`  wrapper: ${wrapperPath ?? 'not generated'}`);
+    console.log(`  executable: ${status.executablePath}`);
+    console.log('');
+    console.log('  IMPORTANT: Always use the wrapper path above, not the raw executable.');
+    console.log('  The wrapper keeps Agent Browser state under the Pibo tool home.');
   } else {
     console.log(`  executable: ${status.executablePath}`);
   }
@@ -116,6 +132,9 @@ function printShow(name: string): void {
   console.log(`  pibo tools guide ${entry.name} ${entry.guides[0]?.name ?? ''}`.trimEnd());
   if (entry.name === 'browser-use') {
     console.log('  pibo tools browser-use');
+  }
+  if (entry.name === 'agent-browser') {
+    console.log('  pibo tools agent-browser');
   }
   if (entry.name === 'ralph') {
     console.log('  pibo tools ralph');
@@ -167,6 +186,13 @@ function printPath(name: string): void {
       return;
     }
   }
+  if (entry.name === 'agent-browser') {
+    const wrapperPath = ensureAgentBrowserWrapper(status);
+    if (wrapperPath) {
+      console.log(wrapperPath);
+      return;
+    }
+  }
   console.log(status.executablePath);
 }
 
@@ -189,7 +215,7 @@ function printEnv(name: string): void {
   }
 
   const binDir = status.executablePath.replace(/\/[^/]+$/, '');
-  const wrapperPath = ensureBrowserUseWrapper(status);
+  const wrapperPath = entry.name === 'agent-browser' ? ensureAgentBrowserWrapper(status) : ensureBrowserUseWrapper(status);
   const wrapperBinDir = wrapperPath ? wrapperPath.replace(/\/[^/]+$/, '') : `${status.homeDir}/bin`;
   console.log(`export PATH="${wrapperBinDir}:${binDir}:$PATH"`);
   if (entry.runtime.homeEnvVar) console.log(`export ${entry.runtime.homeEnvVar}="${status.homeDir}"`);
@@ -442,6 +468,9 @@ async function printBrowserPoolReap(status: CliToolStatus, options: BrowserPoolR
 }
 
 function findChromeBinary(): string | undefined {
+  if (process.env.AGENT_BROWSER_EXECUTABLE_PATH && existsSync(process.env.AGENT_BROWSER_EXECUTABLE_PATH)) {
+    return process.env.AGENT_BROWSER_EXECUTABLE_PATH;
+  }
   if (process.env.PIBO_BROWSER_USE_CHROME && existsSync(process.env.PIBO_BROWSER_USE_CHROME)) {
     return process.env.PIBO_BROWSER_USE_CHROME;
   }
@@ -493,6 +522,78 @@ function checkStaleCdpState(homeDir: string): { stalePids: number; stalePorts: n
   }
 
   return { stalePids, stalePorts, details };
+}
+
+async function printAgentBrowserHealth(status: CliToolStatus, json = false): Promise<void> {
+  const wrapperPath = join(status.homeDir, 'bin', 'agent-browser');
+  const wrapperExists = existsSync(wrapperPath);
+  const npmExecutableExists = existsSync(status.executablePath);
+  const chromePath = findChromeBinary();
+  const desktop = detectDesktopEnv();
+  const hasDisplay = hasDesktopDisplay(desktop);
+  const nodeVersion = spawnSync('node', ['--version'], { encoding: 'utf-8' });
+  const npmVersion = spawnSync('npm', ['--version'], { encoding: 'utf-8' });
+  const packageJsonPath = join(status.rootDir, 'node', 'node_modules', 'agent-browser', 'package.json');
+  let packageVersion: string | undefined;
+  try {
+    packageVersion = JSON.parse(readFileSync(packageJsonPath, 'utf-8')).version;
+  } catch {
+    packageVersion = undefined;
+  }
+  const staleState = checkStaleCdpState(status.homeDir);
+  const overall = !wrapperExists || !npmExecutableExists ? 'critical' : staleState.stalePids > 0 || staleState.stalePorts > 0 ? 'degraded' : 'ok';
+  const result = {
+    overall,
+    wrapper: { exists: wrapperExists, path: wrapperPath },
+    npmRuntime: { executable: npmExecutableExists, path: status.executablePath, packageVersion },
+    node: { ok: nodeVersion.status === 0, version: nodeVersion.stdout.trim() },
+    npm: { ok: npmVersion.status === 0, version: npmVersion.stdout.trim() },
+    chrome: { found: Boolean(chromePath), path: chromePath },
+    display: { available: hasDisplay, display: desktop.display, waylandDisplay: desktop.waylandDisplay },
+    staleState: { pidFiles: staleState.stalePids, portFiles: staleState.stalePorts, details: staleState.details },
+    nextCommands: ['pibo tools install agent-browser', 'eval "$(pibo tools env agent-browser)"', 'agent-browser doctor --offline --quick'],
+  };
+
+  if (json) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  console.log(`agent-browser health: ${overall}`);
+  console.log(`  wrapper: ${wrapperExists ? 'ok' : 'MISSING'} (${wrapperPath})`);
+  console.log(`  executable: ${npmExecutableExists ? 'ok' : 'MISSING'} (${status.executablePath})`);
+  console.log(`  package version: ${packageVersion ?? 'unknown'}`);
+  console.log(`  node: ${nodeVersion.status === 0 ? nodeVersion.stdout.trim() : 'missing'}`);
+  console.log(`  npm: ${npmVersion.status === 0 ? npmVersion.stdout.trim() : 'missing'}`);
+  console.log(`  chrome: ${chromePath ? `ok (${chromePath})` : 'not found; upstream install may be needed'}`);
+  console.log(`  display: ${hasDisplay ? 'available' : 'none'} (${desktop.display || 'no DISPLAY'})`);
+  console.log(`  stale state: ${staleState.stalePids} stale pid files, ${staleState.stalePorts} orphan port files`);
+  if (overall !== 'ok') {
+    console.log('');
+    console.log('Suggestions:');
+    if (!wrapperExists || !npmExecutableExists) console.log('  Run: pibo tools install agent-browser');
+    if (!chromePath) console.log('  Install Chrome/Chromium or run: agent-browser install');
+    if (staleState.stalePids > 0 || staleState.stalePorts > 0) console.log('  Inspect and release stale sessions before deleting state.');
+  }
+}
+
+async function printAgentBrowserSessions(status: CliToolStatus, json = false): Promise<void> {
+  const wrapperPath = ensureAgentBrowserWrapper(status) || status.executablePath;
+  if (!existsSync(status.executablePath)) {
+    const result = { sessions: [], installed: false, nextCommands: ['pibo tools install agent-browser'] };
+    console.log(json ? JSON.stringify(result, null, 2) : 'agent-browser is not installed. Run: pibo tools install agent-browser');
+    return;
+  }
+  const result = spawnSync(wrapperPath, ['session', 'list'], {
+    encoding: 'utf-8',
+    env: { ...process.env, AGENT_BROWSER_HOME: status.homeDir },
+  });
+  if (json) {
+    console.log(JSON.stringify({ installed: true, ok: result.status === 0, stdout: result.stdout, stderr: result.stderr }, null, 2));
+    return;
+  }
+  if (result.stdout.trim()) console.log(result.stdout.trimEnd());
+  if (result.status !== 0 && result.stderr.trim()) console.error(result.stderr.trimEnd());
 }
 
 async function printBrowserUseHealth(status: CliToolStatus, json = false): Promise<void> {
@@ -548,6 +649,31 @@ async function printBrowserUseHealth(status: CliToolStatus, json = false): Promi
   }
 }
 
+function printAgentBrowserDiscovery(): void {
+  console.log(`pibo tools agent-browser - Agent Browser helpers
+
+Start:
+  eval "$(pibo tools env agent-browser)"
+
+Commands:
+  health                      Check Agent Browser health and report issues
+  sessions                    List upstream Agent Browser sessions
+  targets                     List Chrome CDP targets with Chat auth hints
+  attach-chat                 Export the best existing authenticated Chat target
+  auth-template path          Print the default authenticated template profile path
+  auth-template env           Print shell exports for preparing the auth template profile
+  lease acquire               Acquire an isolated authenticated browser slot
+  lease list                  List authenticated browser slots
+  lease release <id>          Release one browser slot
+  lease reap-stale            Release expired browser slots
+
+Next:
+  pibo tools show agent-browser
+  pibo tools guide agent-browser agent-browser
+  pibo tools agent-browser health
+  pibo tools agent-browser lease acquire`);
+}
+
 function printRalphDiscovery(): void {
   console.log(`pibo tools ralph - Ralph job helpers
 
@@ -578,6 +704,7 @@ Commands:
   path <name>               Print executable path
   env <name>                Print shell exports
   browser-use               Browser-use auth slots and helper commands
+  agent-browser             Agent Browser sessions, targets, and auth slots
   ralph                     Ralph job helper commands
 
 Next:
@@ -667,6 +794,163 @@ export async function runToolsCli(argv = process.argv): Promise<void> {
     .command('ralph')
     .description('Ralph job helper commands')
     .action(printRalphDiscovery);
+
+  const agentBrowser = program
+    .command('agent-browser')
+    .description('Agent Browser sessions, targets, and auth slots')
+    .action(printAgentBrowserDiscovery);
+
+  agentBrowser
+    .command('health')
+    .description('Check Agent Browser health and report issues')
+    .option('--json', 'Print machine-readable health data')
+    .action(async (options: { json?: boolean }) => {
+      await printAgentBrowserHealth(getCliToolStatus(requireEntry('agent-browser')), Boolean(options.json));
+    });
+
+  agentBrowser
+    .command('sessions')
+    .description('List upstream Agent Browser sessions')
+    .option('--json', 'Print machine-readable session output')
+    .action(async (options: { json?: boolean }) => {
+      await printAgentBrowserSessions(getCliToolStatus(requireEntry('agent-browser')), Boolean(options.json));
+    });
+
+  agentBrowser
+    .command('targets')
+    .description('List Chrome CDP targets with Chat auth hints')
+    .option('--cdp-url <url>', 'Chrome DevTools HTTP URL')
+    .option('--no-probe', 'Only read /json/list without page DOM probes')
+    .option('--json', 'Print machine-readable target data')
+    .action(async (options: { cdpUrl?: string; probe?: boolean; json?: boolean }) => {
+      const status = getCliToolStatus(requireEntry('agent-browser'));
+      const previousHome = process.env.BROWSER_USE_HOME;
+      process.env.BROWSER_USE_HOME = status.homeDir;
+      try {
+        const targets = await listBrowserUseCdpTargets({ cdpUrl: options.cdpUrl, probe: options.probe });
+        if (options.json) {
+          console.log(JSON.stringify({ targets }, null, 2));
+          return;
+        }
+        console.log(formatBrowserUseTargets(targets));
+        if (targets.length === 0) console.log('\nNext: eval "$(pibo tools env agent-browser)"');
+      } finally {
+        if (previousHome === undefined) delete process.env.BROWSER_USE_HOME;
+        else process.env.BROWSER_USE_HOME = previousHome;
+      }
+    });
+
+  agentBrowser
+    .command('attach-chat')
+    .description('Export the best existing authenticated Chat target')
+    .option('--cdp-url <url>', 'Chrome DevTools HTTP URL')
+    .option('--json', 'Print machine-readable target data')
+    .action(async (options: { cdpUrl?: string; json?: boolean }) => {
+      const status = getCliToolStatus(requireEntry('agent-browser'));
+      const previousHome = process.env.BROWSER_USE_HOME;
+      process.env.BROWSER_USE_HOME = status.homeDir;
+      try {
+        const targets = await listBrowserUseCdpTargets({ cdpUrl: options.cdpUrl });
+        const target = selectBestChatTarget(targets);
+        if (!target) {
+          throw new Error(
+            formatCliError({
+              code: ErrorCode.CLIENT_ERROR,
+              type: 'AGENT_BROWSER_CHAT_TARGET_NOT_FOUND',
+              message: 'No authenticated Chat Web target with a composer textarea was found',
+              suggestion: 'Run `pibo tools agent-browser targets`, reuse an authenticated tab, or acquire a slot with `pibo tools agent-browser lease acquire`.',
+            }),
+          );
+        }
+        if (options.json) {
+          console.log(JSON.stringify({ target }, null, 2));
+          return;
+        }
+        const cdpUrl = options.cdpUrl ? normalizeCdpUrlSync(options.cdpUrl) : 'http://127.0.0.1:56663';
+        console.log(`export PIBO_AGENT_BROWSER_CDP_URL='${cdpUrl.replaceAll("'", "'\\''")}'`);
+        printAttachChatExports(target, cdpUrl);
+      } finally {
+        if (previousHome === undefined) delete process.env.BROWSER_USE_HOME;
+        else process.env.BROWSER_USE_HOME = previousHome;
+      }
+    });
+
+  const agentAuthTemplate = agentBrowser
+    .command('auth-template')
+    .description('Manage the Agent Browser authenticated template profile')
+    .action(() => {
+      console.log(`pibo tools agent-browser auth-template
+
+Commands:
+  path    Print the default authenticated template profile path
+  env     Print shell exports for preparing the auth template profile`);
+    });
+
+  agentAuthTemplate
+    .command('path')
+    .option('--app <name>', 'Auth pool app name', 'pibo-chat')
+    .description('Print the default authenticated template profile path')
+    .action((options: { app?: string }) => {
+      printAgentBrowserAuthTemplatePath(getCliToolStatus(requireEntry('agent-browser')), options.app);
+    });
+
+  agentAuthTemplate
+    .command('env')
+    .option('--app <name>', 'Auth pool app name', 'pibo-chat')
+    .description('Print shell exports for preparing the auth template profile')
+    .action(async (options: { app?: string }) => {
+      await printAgentBrowserAuthTemplateEnv(getCliToolStatus(requireEntry('agent-browser')), options.app);
+    });
+
+  const agentLease = agentBrowser
+    .command('lease')
+    .description('Acquire and manage isolated Agent Browser slots')
+    .action(() => {
+      console.log(`pibo tools agent-browser lease
+
+Commands:
+  acquire       Acquire an isolated authenticated browser slot
+  list          List authenticated browser slots
+  release <id>  Release one browser slot
+  reap-stale    Release expired browser slots`);
+    });
+
+  agentLease
+    .command('acquire')
+    .description('Acquire an isolated authenticated browser slot')
+    .option('--app <name>', 'Auth pool app name', 'pibo-chat')
+    .option('--owner <owner>', 'Lease owner label')
+    .option('--ttl-ms <ms>', 'Lease time-to-live in milliseconds', parsePositiveInteger)
+    .option('--max-slots <count>', 'Maximum active slots for the app', parsePositiveInteger)
+    .option('--json', 'Print machine-readable lease data')
+    .action(async (options: { app?: string; owner?: string; ttlMs?: number; maxSlots?: number; json?: boolean }) => {
+      await acquireAgentBrowserLease(getCliToolStatus(requireEntry('agent-browser')), options);
+    });
+
+  agentLease
+    .command('list')
+    .description('List authenticated browser slots')
+    .option('--json', 'Print machine-readable lease data')
+    .action(async (options: { json?: boolean }) => {
+      await listAgentBrowserLeases(getCliToolStatus(requireEntry('agent-browser')), Boolean(options.json));
+    });
+
+  agentLease
+    .command('release')
+    .argument('<id>')
+    .option('--delete-profile', 'Delete the slot browser profile')
+    .description('Release one browser slot')
+    .action(async (id: string, options: { deleteProfile?: boolean }) => {
+      await releaseAgentBrowserLease(getCliToolStatus(requireEntry('agent-browser')), id, options);
+    });
+
+  agentLease
+    .command('reap-stale')
+    .description('Release expired browser slots')
+    .option('--json', 'Print machine-readable reap result')
+    .action(async (options: { json?: boolean }) => {
+      await reapStaleAgentBrowserLeases(getCliToolStatus(requireEntry('agent-browser')), Boolean(options.json));
+    });
 
   const browserUse = program
     .command('browser-use')

@@ -10,7 +10,7 @@ Use Pibo-owned operator/debug CLI capabilities before ad hoc scripts:
 - `pibo debug web ...` for CDP render snapshots, diffs, watch timelines, and Chat Web render scenarios.
 - `pibo debug pty ...` for real PTY-backed CLI/TUI smoke tests, scripted input, assertions, and raw/clean artifacts.
 
-For browser access, use Browser Use leases. For render-state analysis, attach with `pibo debug web targets`.
+For browser access, prefer `pibo tools agent-browser` for fast ref-based browser automation, Browser Use leases for existing Browser Use workflows, and `pibo debug web targets` for render-state analysis. Start with `pibo tools show agent-browser` and `pibo tools guide agent-browser agent-browser`.
 For interactive terminal debugging, start with `pibo debug pty --help`; prefer mocked/deterministic scenarios by default and use `--real-provider` only with bounded `--max-iterations`.
 
 Use `pibo skills --help` to manage user skills. This CLI covers user-installed skills only, not built-in or plugin-provided skills. Prefer `pibo skills list --json` when another agent will parse the result.
