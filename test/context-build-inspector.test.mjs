@@ -5,7 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { InitialSessionContext } from "../dist/core/profiles.js";
 import { inspectPiboContextBuild } from "../dist/core/context-build.js";
-import { createDefaultPiboPluginRegistry } from "../dist/plugins/builtin.js";
+import { createDefaultPiboProfile } from "../dist/plugins/builtin.js";
 import { createWebSearchToolProfile } from "../dist/tools/web-search.js";
 
 function findNode(nodes, predicate) {
@@ -17,17 +17,12 @@ function findNode(nodes, predicate) {
 	return undefined;
 }
 
-test("codex context build includes compact Pibo native tooling context", async () => {
-	const snapshot = await inspectPiboContextBuild({ profile: createDefaultPiboPluginRegistry().createProfile("codex") });
+test("default base context build does not select Pibo native tooling context", async () => {
+	const snapshot = await inspectPiboContextBuild({ profile: createDefaultPiboProfile() });
 	const nativeTooling = findNode(snapshot.nodes, (node) => node.path?.endsWith("context/pibo-native-tooling.md"));
 
-	assert.ok(nativeTooling, "native tooling context file should exist");
-	assert.match(nativeTooling.hydratedText, /^# Pibo Native Tooling/m);
-	assert.match(nativeTooling.hydratedText, /Start with `pibo debug --help`/);
-	assert.match(nativeTooling.hydratedText, /`pibo debug web \.\.\.`/);
-	assert.match(nativeTooling.hydratedText, /`pibo debug pty \.\.\.`/);
-	assert.match(nativeTooling.hydratedText, /`--real-provider` only with bounded `--max-iterations`/);
-	assert.doesNotMatch(nativeTooling.hydratedText, /AGENTS\.md/);
+	assert.equal(snapshot.profileName, "base");
+	assert.equal(nativeTooling, undefined);
 });
 
 test("context build snapshot exposes runtime context and provider-backed web search without final prompt duplicate", async () => {

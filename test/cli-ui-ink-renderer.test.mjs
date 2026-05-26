@@ -215,7 +215,7 @@ test("Ink status card renders compact runtime fields bars unavailable states too
 
 	assert.match(output, /Status — status · done · idle · session Terminal parity fixture/);
 	assert.match(output, /model GPT\s*Test · owner Web user Fixture/);
-	assert.match(output, /Identity: owner Web user Fixture · session Terminal parity fixture · profile\s*pibo-agent · model GPT\s*Test/);
+	assert.match(output, /Identity: owner Web user Fixture · session Terminal parity fixture · profile\s*base · model GPT\s*Test/);
 	assert.match(output, /Runtime: idle · queue 3/);
 	assert.match(output, /Provider: plan pro · credits unlimited/);
 	assert.match(output, /Tools: enabled 3 folded · active bash · names in details/);
@@ -258,11 +258,11 @@ test("Ink Session app keeps owner, session, error, and command state readable at
 			activeOwnerLabel: "Web user narrow",
 			activeOwnerScope: "user:narrow",
 			activeRoomId: "room_narrow",
-			activeAgentId: "pibo-agent",
+			activeAgentId: "base",
 			activeModel: { provider: "openai", id: "gpt-test", label: "GPT Test" },
 		},
 		activeRoom: { id: "room_narrow", title: "Narrow Room", ownerScope: "user:narrow" },
-		session: { id: "ps_narrow", title: "Narrow Session", roomId: "room_narrow", ownerScope: "user:narrow", profile: "pibo-agent", status: "idle" },
+		session: { id: "ps_narrow", title: "Narrow Session", roomId: "room_narrow", ownerScope: "user:narrow", profile: "base", status: "idle" },
 		rows: [
 			{ id: "err", kind: "error", status: "error", lines: [], error: "Provider TOKEN=secret-value failed in a narrow terminal", sourceNodeIds: ["err"] },
 		],

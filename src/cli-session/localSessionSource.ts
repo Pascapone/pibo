@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { createDefaultPiboPluginRegistry } from "../plugins/builtin.js";
+import { DEFAULT_PIBO_PROFILE_NAME, createDefaultPiboPluginRegistry, resolvePiboProfileNameFromRegistryOrDefault } from "../plugins/builtin.js";
 import type { PiboPluginRegistry } from "../plugins/registry.js";
 import { createDefaultPiboDataSessionStore } from "../sessions/pibo-data-store.js";
 import type { PiboSession, PiboSessionStore } from "../sessions/store.js";
@@ -256,12 +256,15 @@ export class LocalCliSessionSource implements CliSessionSource {
 	async listAgents(): Promise<readonly CliAgentSummary[]> {
 		this.assertOpen();
 		if (this.agentSummaries) return this.agentSummaries.map(cloneJson);
-		return this.pluginRegistry.getProfileInfos().map((profile) => ({
+		const agents = this.pluginRegistry.getProfileInfos().map((profile) => ({
 			id: profile.name,
 			name: profile.name,
 			description: profile.description,
 			profileName: profile.name,
 		}));
+		return agents.some((agent) => agent.profileName === DEFAULT_PIBO_PROFILE_NAME)
+			? agents
+			: [defaultBaseAgentSummary(), ...agents];
 	}
 
 	async listSlashCommands(): Promise<readonly SlashCommandDescriptor[]> {
@@ -464,6 +467,7 @@ export class LocalCliSessionSource implements CliSessionSource {
 	private resolveAgent(agentId: string): CliAgentSummary {
 		const summary = this.agentSummaries?.find((candidate) => candidate.id === agentId || candidate.profileName === agentId || candidate.name === agentId);
 		if (summary) return cloneJson(summary);
+		if (agentId === DEFAULT_PIBO_PROFILE_NAME) return defaultBaseAgentSummary();
 		const agent = this.pluginRegistry.getProfileInfos().find((candidate) => candidate.name === agentId || candidate.aliases.includes(agentId));
 		if (!agent) throw new CliSourceError("agent_not_found", `No local profile found for "${agentId}"`);
 		return { id: agent.name, name: agent.name, description: agent.description, profileName: agent.name };
@@ -471,7 +475,7 @@ export class LocalCliSessionSource implements CliSessionSource {
 
 	private resolveProfile(profile: string): string {
 		try {
-			return this.pluginRegistry.resolveProfileName(profile);
+			return resolvePiboProfileNameFromRegistryOrDefault(this.pluginRegistry, profile);
 		} catch (error) {
 			throw toCliSourceError("agent_not_found", `No local profile found for "${profile}"`, error);
 		}
@@ -479,7 +483,7 @@ export class LocalCliSessionSource implements CliSessionSource {
 
 	private defaultProfileName(): string {
 		const names = this.pluginRegistry.getProfileNames();
-		return names.includes("pibo-agent") ? "pibo-agent" : names.includes("codex-compat-openai-web") ? "codex-compat-openai-web" : names[0] ?? "pibo-agent";
+		return names.includes("base") ? "base" : names[0] ?? "base";
 	}
 
 	private handleRouterEvent(event: PiboOutputEvent): void {
@@ -1101,6 +1105,15 @@ function unwrapActionResult(value: unknown): unknown {
 	if (record.ok === true && "result" in record) return record.result;
 	if (record.success === true && "data" in record) return record.data;
 	return value;
+}
+
+function defaultBaseAgentSummary(): CliAgentSummary {
+	return {
+		id: DEFAULT_PIBO_PROFILE_NAME,
+		name: DEFAULT_PIBO_PROFILE_NAME,
+		description: "Base agent with only the four Pi built-in tools.",
+		profileName: DEFAULT_PIBO_PROFILE_NAME,
+	};
 }
 
 function cloneJson<T>(value: T): T {

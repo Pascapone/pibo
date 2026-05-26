@@ -8438,7 +8438,7 @@ function SubagentDesigner({
 					disabled={readOnly}
 					onClick={() => setDraft((current) => ({
 						...current,
-						subagents: [...current.subagents, { name: "helper", targetProfile: profileOptions[0]?.value ?? "codex-compat-openai-web", maxDepth: 3 }],
+						subagents: [...current.subagents, { name: "helper", targetProfile: profileOptions[0]?.value ?? "base", maxDepth: 3 }],
 					}))}
 					className="h-7 w-7 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50"
 					title="Add Subagent"

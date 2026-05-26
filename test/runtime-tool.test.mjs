@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { inspectPiboProfile } from "../dist/core/runtime.js";
 import { createDefaultPiboPluginRegistry } from "../dist/plugins/builtin.js";
 import { RuntimeSessionRegistry } from "../dist/tools/runtime/registry.js";
@@ -176,9 +177,17 @@ test("node runtime captures stdout, stderr, inspect, vars, and closeOnSuccess", 
 	});
 });
 
-test("runtime is registered in codex-compatible profile and inspection", async () => {
+test("runtime can be selected by a registered profile and inspection", async () => {
 	const registry = createDefaultPiboPluginRegistry();
-	const profile = registry.createProfile("codex");
+	registry.upsertProfile({
+		name: "runtime-agent",
+		create(context) {
+			return new InitialSessionContextBuilder("runtime-agent")
+				.addTool(context.getTool("runtime"))
+				.createSession();
+		},
+	});
+	const profile = registry.createProfile("runtime-agent");
 	assert.ok(profile.tools.some((tool) => tool.name === "runtime" && tool.builtInPiboTool === "runtime"));
 	assert.ok(registry.getCapabilityCatalog().nativeTools.some((tool) => tool.name === "runtime" && tool.pluginId === "pibo.core"));
 

@@ -250,7 +250,7 @@ test("subagent runner emits a parent link event before waiting for the child rep
 		piSessionId: "parent-session",
 		channel: "pibo.test",
 		kind: "chat",
-		profile: "codex-compat-openai-web",
+		profile: "base",
 		ownerScope: "user:test",
 		metadata: { chatRoomId: "room_parent" },
 	});
@@ -267,7 +267,7 @@ test("subagent runner emits a parent link event before waiting for the child rep
 	try {
 		const runner = router.createSubagentRunner("ps_parent");
 		const result = await runner.runSubagent({
-			subagent: { name: "explorer", targetProfile: "codex-compat-openai-web" },
+			subagent: { name: "explorer", targetProfile: "base" },
 			message: "check this",
 			threadKey: "inspect",
 			toolCallId: "tool-1",
@@ -288,9 +288,15 @@ test("subagent runner emits a parent link event before waiting for the child rep
 	}
 });
 
-test("default Codex-compatible profile exposes run control tools", async () => {
-	const registry = createDefaultPiboPluginRegistry();
-	const profile = registry.createProfile("codex");
+test("profile-selected subagents expose run control tools", async () => {
+	const profile = new InitialSessionContextBuilder("run-control-agent")
+		.withToolPackages({ runControl: true })
+		.addSubagents([
+			{ name: "default", targetProfile: "base" },
+			{ name: "explorer", targetProfile: "base" },
+			{ name: "worker", targetProfile: "base" },
+		])
+		.createSession();
 	const inspection = await inspectPiboProfile({ profile, persistSession: false });
 	const activeTools = new Set(inspection.tools.map((tool) => tool.name));
 
@@ -312,8 +318,10 @@ test("default Codex-compatible profile exposes run control tools", async () => {
 });
 
 test("run-control package exposes Pi bash as a yieldable tool", async () => {
-	const registry = createDefaultPiboPluginRegistry();
-	const profile = registry.createProfile("codex");
+	const profile = new InitialSessionContextBuilder("run-control-agent")
+		.withBuiltinToolNames(["read", "bash", "edit", "write"])
+		.withToolPackages({ runControl: true })
+		.createSession();
 	const runtime = await createPiboRuntime({
 		profile,
 		persistSession: false,

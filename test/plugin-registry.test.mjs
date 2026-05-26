@@ -31,23 +31,17 @@ async function withCwd(cwd, run) {
 	}
 }
 
-test("default plugin registry builds profiles from registered resources", () => {
+test("default plugin registry builds capabilities without retired built-in coding agents", () => {
 	const registry = createDefaultPiboPluginRegistry();
+	const catalog = registry.getCapabilityCatalog();
 
-	const codex = registry.createProfile("codex");
-
-	assert.equal(codex.profileName, "codex-compat-openai-web");
-	assert.deepEqual(
-		codex.tools.map((tool) => tool.name),
-		["apply_patch", "web_search", "view_image", "runtime"],
-	);
-	assert.deepEqual(
-		codex.subagents.map((subagent) => subagent.name),
-		["default", "explorer", "worker"],
-	);
-	assert.ok(registry.getCapabilityCatalog().nativeTools.some((tool) => (
+	assert.deepEqual(registry.getProfileNames(), ["base"]);
+	assert.deepEqual(registry.createProfile("base").builtinToolNames, ["read", "bash", "edit", "write"]);
+	assert.ok(catalog.nativeTools.some((tool) => (
 		tool.name === "web_search" && tool.pluginId === "pibo.core" && tool.hasDefinition === false
 	)));
+	assert.ok(catalog.nativeTools.some((tool) => tool.name === "apply_patch" && tool.pluginId === "pibo.codex-compat"));
+	assert.ok(catalog.nativeTools.some((tool) => tool.name === "view_image" && tool.pluginId === "pibo.codex-compat"));
 	assert.deepEqual(registry.getChannels().map((channel) => channel.name), []);
 	assert.deepEqual(
 		registry.getCapabilityCatalog().skills
@@ -248,10 +242,9 @@ test("capability catalog exposes registered Pi packages without activating them"
 		});
 		const registry = createDefaultPiboPluginRegistry();
 		const catalog = registry.getCapabilityCatalog();
-		const codex = registry.createProfile("codex");
 
 		assert.equal(catalog.piPackages.find((pkg) => pkg.id === "catalog-package")?.installStatus, "registered");
-		assert.deepEqual(codex.piPackages, []);
+		assert.deepEqual(registry.getProfileNames(), ["base"]);
 	});
 });
 

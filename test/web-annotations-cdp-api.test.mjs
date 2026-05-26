@@ -36,7 +36,7 @@ function createContext(options = "user:a") {
 		channelContext: {
 			getSession(id) {
 				const session = sessions[id];
-				return session ? { id, piSessionId: "pi", channel: "web", kind: "chat", profile: "pibo-agent", ownerScope: session.ownerScope, createdAt: "now", updatedAt: "now" } : undefined;
+				return session ? { id, piSessionId: "pi", channel: "web", kind: "chat", profile: "base", ownerScope: session.ownerScope, createdAt: "now", updatedAt: "now" } : undefined;
 			},
 		},
 		requireSession() {

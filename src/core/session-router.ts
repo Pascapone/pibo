@@ -5,7 +5,7 @@ import {
 	type ModelProfile,
 	type SubagentProfile,
 } from "./profiles.js";
-import { createDefaultPiboPluginRegistry } from "../plugins/builtin.js";
+import { createDefaultPiboPluginRegistry, createPiboProfileFromRegistryOrDefault, resolvePiboProfileNameFromRegistryOrDefault, selectDefaultPiboProfileName } from "../plugins/builtin.js";
 import type { PiboPluginRegistry } from "../plugins/registry.js";
 import { createPiboRuntime, type PiboRuntimeOptions } from "./runtime.js";
 import { RoutedSession } from "./routed-session.js";
@@ -205,10 +205,8 @@ export class PiboSessionRouter {
 		this.sessionStore = options.sessionStore ?? new InMemoryPiboSessionStore();
 		this.telemetryStore = options.telemetryStore ?? telemetryStoreFromSessionStore(this.sessionStore);
 		this.telemetryRecorder = this.telemetryStore ? new PiboRuntimeTelemetryRecorder(this.telemetryStore) : undefined;
-		const defaultProfileName = this.pluginRegistry.getProfileNames().includes("codex-compat-openai-web")
-			? "codex-compat-openai-web"
-			: this.pluginRegistry.getProfileNames()[0];
-		this.baseProfile = options.profile ?? this.pluginRegistry.createProfile(defaultProfileName ?? "codex-compat-openai-web");
+		const defaultProfileName = selectDefaultPiboProfileName(this.pluginRegistry);
+		this.baseProfile = options.profile ?? createPiboProfileFromRegistryOrDefault(this.pluginRegistry, defaultProfileName);
 		this.reliabilityStore = options.reliabilityStore ?? (options.persistSession === false ? undefined : createDefaultPiboReliabilityStore());
 		this.signalRegistry = options.signalRegistry ?? createPiboSignalRegistry();
 		this.runtimeRegistry = new RuntimeSessionRegistry({ cwd: options.cwd ?? getDefaultPiboWorkspace() });
@@ -436,7 +434,7 @@ export class PiboSessionRouter {
 	private async createRoutedSession(piboSessionId: string): Promise<RoutedSession> {
 		const piboSession = this.resolvePiboSession(piboSessionId);
 		this.signalRegistry.project({ type: "session_created", session: piboSession });
-		const profile = this.pluginRegistry.createProfile(piboSession.profile);
+		const profile = createPiboProfileFromRegistryOrDefault(this.pluginRegistry, piboSession.profile);
 		const parentPiSessionId = piboSession.parentId
 			? this.resolvePiboSession(piboSession.parentId).piSessionId
 			: undefined;
@@ -691,63 +689,63 @@ export class PiboSessionRouter {
 		subagent: SubagentProfile,
 		threadKey?: string,
 	): PiboSession {
-			const targetProfile = this.pluginRegistry.resolveProfileName(subagent.targetProfile);
-			const parent = this.resolvePiboSession(parentPiboSessionId);
-			const resolvedThreadKey = threadKey?.trim() ? threadKey.trim() : randomUUID();
-			const baseMetadata: PiboJsonObject = {
-				subagentName: subagent.name,
-				subagentToolName: createSubagentToolName(subagent.name),
-				threadKey: resolvedThreadKey,
-			};
-			const metadata: PiboJsonObject = withWorkflowSessionKind(baseMetadata, "subagent");
-			const parentChatRoomId = typeof parent.metadata?.chatRoomId === "string" ? parent.metadata.chatRoomId : undefined;
-			if (parentChatRoomId) metadata.chatRoomId = parentChatRoomId;
-			const legacyMetadata: PiboJsonObject = { ...baseMetadata };
-			const legacyMetadataWithChatRoom: PiboJsonObject | undefined = parentChatRoomId
-				? { ...baseMetadata, chatRoomId: parentChatRoomId }
-				: undefined;
-			const findExisting = (candidate: PiboJsonObject | undefined): PiboSession | undefined => candidate
-				? this.sessionStore.find({
-					channel: "pibo.subagents",
-					kind: "subagent",
-					parentId: parent.id,
-					profile: targetProfile,
-					metadata: candidate,
-				})[0]
-				: undefined;
-			const existing = findExisting(metadata) ?? findExisting(legacyMetadataWithChatRoom) ?? findExisting(legacyMetadata);
-			if (existing) {
-				const updatedMetadata = withWorkflowSessionKind(
-					{
-						...(existing.metadata ?? {}),
-						...(parentChatRoomId ? { chatRoomId: parentChatRoomId } : {}),
-					},
-					"subagent",
-				);
-				if (JSON.stringify(updatedMetadata) !== JSON.stringify(existing.metadata ?? {})) {
-					return this.sessionStore.update(existing.id, { metadata: updatedMetadata }) ?? existing;
-				}
-				return existing;
-			}
-
-			const childProfile = this.pluginRegistry.createProfile(targetProfile);
-			const childSession = this.sessionStore.create({
+		const targetProfile = resolvePiboProfileNameFromRegistryOrDefault(this.pluginRegistry, subagent.targetProfile);
+		const parent = this.resolvePiboSession(parentPiboSessionId);
+		const resolvedThreadKey = threadKey?.trim() ? threadKey.trim() : randomUUID();
+		const baseMetadata: PiboJsonObject = {
+			subagentName: subagent.name,
+			subagentToolName: createSubagentToolName(subagent.name),
+			threadKey: resolvedThreadKey,
+		};
+		const metadata: PiboJsonObject = withWorkflowSessionKind(baseMetadata, "subagent");
+		const parentChatRoomId = typeof parent.metadata?.chatRoomId === "string" ? parent.metadata.chatRoomId : undefined;
+		if (parentChatRoomId) metadata.chatRoomId = parentChatRoomId;
+		const legacyMetadata: PiboJsonObject = { ...baseMetadata };
+		const legacyMetadataWithChatRoom: PiboJsonObject | undefined = parentChatRoomId
+			? { ...baseMetadata, chatRoomId: parentChatRoomId }
+			: undefined;
+		const findExisting = (candidate: PiboJsonObject | undefined): PiboSession | undefined => candidate
+			? this.sessionStore.find({
 				channel: "pibo.subagents",
 				kind: "subagent",
-				profile: targetProfile,
-				ownerScope: parent.ownerScope,
 				parentId: parent.id,
-				workspace: parent.workspace,
-				metadata,
-			});
-			this.signalRegistry.project({ type: "session_created", session: childSession });
-			const activeModel = resolvePiboSessionActiveModel({
-				profile: childProfile,
-				piboSession: childSession,
-				parentPiSessionId: parent.piSessionId,
-				modelDefaults: this.resolveModelDefaults(),
-			});
-			return activeModel ? this.sessionStore.update(childSession.id, { activeModel }) ?? childSession : childSession;
+				profile: targetProfile,
+				metadata: candidate,
+			})[0]
+			: undefined;
+		const existing = findExisting(metadata) ?? findExisting(legacyMetadataWithChatRoom) ?? findExisting(legacyMetadata);
+		if (existing) {
+			const updatedMetadata = withWorkflowSessionKind(
+				{
+					...(existing.metadata ?? {}),
+					...(parentChatRoomId ? { chatRoomId: parentChatRoomId } : {}),
+				},
+				"subagent",
+			);
+			if (JSON.stringify(updatedMetadata) !== JSON.stringify(existing.metadata ?? {})) {
+				return this.sessionStore.update(existing.id, { metadata: updatedMetadata }) ?? existing;
+			}
+			return existing;
+		}
+
+		const childProfile = createPiboProfileFromRegistryOrDefault(this.pluginRegistry, targetProfile);
+		const childSession = this.sessionStore.create({
+			channel: "pibo.subagents",
+			kind: "subagent",
+			profile: targetProfile,
+			ownerScope: parent.ownerScope,
+			parentId: parent.id,
+			workspace: parent.workspace,
+			metadata,
+		});
+		this.signalRegistry.project({ type: "session_created", session: childSession });
+		const activeModel = resolvePiboSessionActiveModel({
+			profile: childProfile,
+			piboSession: childSession,
+			parentPiSessionId: parent.piSessionId,
+			modelDefaults: this.resolveModelDefaults(),
+		});
+		return activeModel ? this.sessionStore.update(childSession.id, { activeModel }) ?? childSession : childSession;
 		}
 
 	private readonly emitOutput = (event: PiboOutputEvent): void => {

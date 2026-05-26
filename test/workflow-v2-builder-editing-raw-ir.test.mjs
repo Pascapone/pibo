@@ -126,7 +126,7 @@ test("Workflow Builder layout metadata does not change serialized runtime semant
 			agent: {
 				kind: "agent",
 				runtime: "pibo",
-				profile: { kind: "fixed", id: "pibo-agent" },
+				profile: { kind: "fixed", id: "base" },
 				promptTemplate: "Summarize the input.",
 				ui: { position: { x: 80, y: 80 } },
 			},

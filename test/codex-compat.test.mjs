@@ -5,64 +5,45 @@ import test from "node:test";
 import {
 	buildCodexCompatSystemPrompt,
 } from "../dist/core/codex-compat.js";
-import { createPiboRuntime, inspectPiboProfile } from "../dist/core/runtime.js";
 import { createDefaultPiboPluginRegistry } from "../dist/plugins/builtin.js";
 import {
 	addOpenAiWebSearchProviderTool,
 	normalizeOpenAiWebSearchConfig,
 } from "../dist/tools/web-search.js";
 
-test("default registry exposes the provider-backed codex-compatible profile", () => {
+test("default registry exposes base and not retired built-in coding agents", () => {
 	const registry = createDefaultPiboPluginRegistry();
-	const profile = registry.createProfile("codex");
+	const profile = registry.createProfile("base");
 
-	assert.equal(profile.profileName, "codex-compat-openai-web");
+	assert.deepEqual(registry.getProfileNames(), ["base"]);
+	assert.equal(profile.profileName, "base");
 	assert.equal(profile.builtinTools, "default");
-	assert.deepEqual(profile.builtinToolNames, ["read", "edit", "write"]);
-	assert.equal(profile.toolPackages.codexCompat, true);
-	assert.equal(profile.toolPackages.runControl, true);
-	assert.deepEqual(
-		profile.tools.map((tool) => tool.name),
-		[
-			"apply_patch",
-			"web_search",
-			"view_image",
-			"runtime",
-		],
-	);
-	assert.deepEqual(profile.tools.find((tool) => tool.name === "web_search")?.providerTool, {
-		kind: "web_search",
-		provider: "openai",
-		options: {
-			externalWebAccess: true,
-			searchContextSize: "medium",
-			includeSources: true,
-		},
-	});
-	assert.deepEqual(
-		profile.subagents.map((subagent) => [subagent.name, subagent.targetProfile]),
-		[
-			["default", "codex-compat-openai-web"],
-			["explorer", "codex-compat-openai-web"],
-			["worker", "codex-compat-openai-web"],
-		],
-	);
-	assert.deepEqual(profile.contextFiles.map((contextFile) => contextFile.key), ["Codex Base Prompt", "Pibo Native Tooling"]);
-	assert.deepEqual(profile.contextFiles.map((contextFile) => basename(contextFile.path)), ["codex-base-prompt.md", "pibo-native-tooling.md"]);
-	assert.equal(profile.contextFiles.every((contextFile) => existsSync(contextFile.path)), true);
+	assert.deepEqual(profile.builtinToolNames, ["read", "bash", "edit", "write"]);
+	assert.deepEqual(profile.tools, []);
+	assert.deepEqual(profile.skills, []);
+	assert.deepEqual(profile.contextFiles, []);
+	assert.deepEqual(profile.subagents, []);
+	assert.equal(profile.toolPackages.runControl, undefined);
+	assert.throws(() => registry.createProfile("codex"), /Unknown profile "codex"/);
+	assert.throws(() => registry.createProfile("codex-compat-openai-web"), /Unknown profile "codex-compat-openai-web"/);
+	assert.throws(() => registry.createProfile("pibo-kimi-coding"), /Unknown profile "pibo-kimi-coding"/);
 });
 
-test("default registry exposes Pibo native tooling context from core", () => {
+test("default registry keeps core and compatibility capabilities without built-in agents", () => {
 	const registry = createDefaultPiboPluginRegistry();
 	const catalog = registry.getCapabilityCatalog();
 	const nativeTooling = catalog.contextFiles.find((contextFile) => contextFile.key === "Pibo Native Tooling");
-	const kimiProfile = registry.createProfile("pibo-kimi-coding");
+	const codexBasePrompt = catalog.contextFiles.find((contextFile) => contextFile.key === "Codex Base Prompt");
 
 	assert.ok(nativeTooling);
 	assert.equal(nativeTooling.pluginId, "pibo.core");
 	assert.equal(nativeTooling.pluginName, "Pibo Core");
 	assert.equal(basename(nativeTooling.path), "pibo-native-tooling.md");
-	assert.deepEqual(kimiProfile.contextFiles.map((contextFile) => contextFile.key), ["Pibo Native Tooling"]);
+	assert.equal(existsSync(nativeTooling.path), true);
+	assert.ok(codexBasePrompt);
+	assert.equal(codexBasePrompt.pluginId, "pibo.codex-compat");
+	assert.equal(basename(codexBasePrompt.path), "codex-base-prompt.md");
+	assert.equal(existsSync(codexBasePrompt.path), true);
 });
 
 test("default registry exposes web_search as a core native tool", () => {
@@ -82,97 +63,6 @@ test("default registry exposes web_search as a core native tool", () => {
 			includeSources: true,
 		},
 	});
-});
-
-test("codex-compatible profile inspection shows active generated tools and provider-backed web search", async () => {
-	const registry = createDefaultPiboPluginRegistry();
-	const profile = registry.createProfile("codex");
-	const inspection = await inspectPiboProfile({ profile, persistSession: false });
-	const activeTools = new Set(inspection.tools.filter((tool) => tool.active).map((tool) => tool.name));
-
-	for (const toolName of [
-		"apply_patch",
-		"web_search",
-		"view_image",
-		"runtime",
-	]) {
-		assert.equal(activeTools.has(toolName), true, `${toolName} should be active`);
-	}
-	for (const toolName of [
-		"spawn_agent",
-		"send_input",
-		"resume_agent",
-		"wait_agent",
-		"close_agent",
-	]) {
-		assert.equal(activeTools.has(toolName), false, `${toolName} should not be active`);
-	}
-	for (const toolName of [
-		"pibo_subagent_default",
-		"pibo_subagent_explorer",
-		"pibo_subagent_worker",
-		"pibo_run_start",
-		"pibo_run_list",
-		"pibo_run_status",
-		"pibo_run_wait",
-		"pibo_run_read",
-		"pibo_run_cancel",
-		"pibo_run_ack",
-	]) {
-		assert.equal(activeTools.has(toolName), true, `${toolName} should be active`);
-	}
-	const contextFileNames = inspection.contextFiles.map((contextFile) => basename(contextFile.path));
-	assert.equal(contextFileNames.includes("codex-base-prompt.md"), true);
-	assert.equal(contextFileNames.includes("pibo-native-tooling.md"), true);
-	assert.equal(profile.contextFiles.some((contextFile) => /^(?:AGENTS|RULES|GLOSSARY)\.md$/.test(basename(contextFile.path))), false);
-	assert.equal(inspection.subagents.every((subagent) => subagent.active), true);
-});
-
-test("provider-backed web_search is active without a local function definition", async () => {
-	const registry = createDefaultPiboPluginRegistry();
-	const profile = registry.createProfile("codex-compat-openai-web");
-	const inspection = await inspectPiboProfile({ profile, persistSession: false });
-	const webSearch = inspection.tools.find((tool) => tool.name === "web_search");
-
-	assert.ok(webSearch);
-	assert.equal(webSearch.hasDefinition, false);
-	assert.equal(webSearch.registered, true);
-	assert.equal(webSearch.active, true);
-});
-
-test("codex-compatible profile uses Pibo run-control bash instead of exec tools", async () => {
-	const registry = createDefaultPiboPluginRegistry();
-	const profile = registry.createProfile("codex");
-	const runtime = await createPiboRuntime({
-		profile,
-		persistSession: false,
-		subagentRunner: { async runSubagent() { throw new Error("not used"); } },
-		runToolController: {
-			startToolRun() { throw new Error("not used"); },
-			listRuns() { return []; },
-			getRunStatus() { throw new Error("not used"); },
-			waitForRun() { throw new Error("not used"); },
-			readRun() { throw new Error("not used"); },
-			cancelRun() { throw new Error("not used"); },
-			ackRun() { throw new Error("not used"); },
-		},
-	});
-
-	try {
-		const activeTools = new Set(runtime.session.getActiveToolNames());
-		assert.equal(activeTools.has("read"), true);
-		assert.equal(activeTools.has("edit"), true);
-		assert.equal(activeTools.has("write"), true);
-		assert.equal(activeTools.has("bash"), true);
-		assert.equal(activeTools.has("grep"), false);
-		assert.equal(activeTools.has("find"), false);
-		assert.equal(activeTools.has("ls"), false);
-		const startTool = runtime.session.getToolDefinition("pibo_run_start");
-		assert.ok(startTool);
-		assert.equal(startTool.parameters.properties.toolName.enum.includes("bash"), true);
-	} finally {
-		await runtime.dispose();
-	}
 });
 
 test("codex-compatible prompt adds environment and child-agent framing without plan-mode tools", () => {

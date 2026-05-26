@@ -6,7 +6,7 @@ import type { PiboPluginApi, PiboProfileBuildContext } from "./types.js";
 export const PIBO_NATIVE_TOOLING_CONTEXT_FILE_KEY = "Pibo Native Tooling";
 
 const PROJECT_ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
-const PIBO_NATIVE_TOOLING_CONTEXT_FILE_PATH = resolve(PROJECT_ROOT, "context/pibo-native-tooling.md");
+export const PIBO_NATIVE_TOOLING_CONTEXT_FILE_PATH = resolve(PROJECT_ROOT, "context/pibo-native-tooling.md");
 
 export function registerPiboNativeTooling(api: PiboPluginApi): void {
 	api.registerContextFile({

@@ -269,7 +269,7 @@ test("status fixtures cover full partial unavailable zero non-OpenAI queued stre
 	assert.equal(full.title, "Status");
 	assert.ok(full.fields.some((field) => field.id === "owner" && field.value.includes("Web user Fixture")));
 	assert.ok(full.fields.some((field) => field.id === "session" && field.value.includes(TERMINAL_PARITY_SESSION_ID)));
-	assert.equal(full.fields.find((field) => field.id === "profile").value, "pibo-agent");
+	assert.equal(full.fields.find((field) => field.id === "profile").value, "base");
 	assert.equal(full.fields.find((field) => field.id === "model").value, "GPT Test");
 	assert.equal(full.fields.find((field) => field.id === "queue").value, "3");
 	assert.equal(full.fields.find((field) => field.id === "processing").value, "no");

@@ -640,7 +640,7 @@ test("chat web app maps authenticated users to chat sessions", async () => {
 		assert.match(session.session.id, /^ps_[0-9a-f-]{36}$/);
 		assert.equal(session.session.channel, "pibo.chat-web");
 		assert.equal(session.session.kind, "chat");
-		assert.equal(session.session.profile, "codex-compat-openai-web");
+		assert.equal(session.session.profile, "base");
 		assert.equal(session.session.ownerScope, "user:user-1");
 
 		const message = await fetch(`${baseURL}/api/chat/message`, {
@@ -2324,7 +2324,7 @@ test("chat web app creates custom agents from the native capability catalog", as
 test("workflow profile picker excludes archived custom agents and reports archived refs", async () => {
 	const { channel, baseURL } = await startWebHostChannel({
 		auth: createFakeAuthService(),
-		profiles: [{ name: "pibo-agent", aliases: ["default"], description: "Global Pibo agent" }],
+		profiles: [{ name: "base", aliases: ["default"], description: "Global Pibo agent" }],
 	});
 
 	try {
@@ -2361,7 +2361,7 @@ test("workflow profile picker excludes archived custom agents and reports archiv
 		});
 		assert.equal(picker.status, 200);
 		const pickerPayload = await picker.json();
-		assert.deepEqual(pickerPayload.options.map((option) => option.id), ["pibo-agent"]);
+		assert.deepEqual(pickerPayload.options.map((option) => option.id), ["base"]);
 		assert.equal(pickerPayload.options[0].source, "global");
 		assert.equal(pickerPayload.options[0].paramsSchema, null);
 		assert.deepEqual(pickerPayload.options[0].aliases, ["default"]);
@@ -2382,7 +2382,7 @@ test("workflow profile picker excludes archived custom agents and reports archiv
 test("workflow handler picker lists registered handlers and reports missing refs", async () => {
 	const { channel, baseURL } = await startWebHostChannel({
 		auth: createFakeAuthService(),
-		profiles: [{ name: "pibo-agent", aliases: ["default"] }],
+		profiles: [{ name: "base", aliases: ["default"] }],
 	});
 
 	try {
@@ -2430,7 +2430,7 @@ test("workflow handler picker lists registered handlers and reports missing refs
 test("workflow guard and adapter pickers list registered refs and report missing refs", async () => {
 	const { channel, baseURL } = await startWebHostChannel({
 		auth: createFakeAuthService(),
-		profiles: [{ name: "pibo-agent", aliases: ["default"] }],
+		profiles: [{ name: "base", aliases: ["default"] }],
 	});
 
 	try {
@@ -2499,7 +2499,7 @@ test("workflow guard and adapter pickers list registered refs and report missing
 test("workflow human action and prompt asset pickers list registered refs and report missing refs", async () => {
 	const { channel, baseURL } = await startWebHostChannel({
 		auth: createFakeAuthService(),
-		profiles: [{ name: "pibo-agent", aliases: ["default"] }],
+		profiles: [{ name: "base", aliases: ["default"] }],
 	});
 
 	try {
@@ -2572,7 +2572,7 @@ test("workflow human action and prompt asset pickers list registered refs and re
 test("workflow version picker lists published nested workflow refs and reports missing refs", async () => {
 	const { channel, baseURL } = await startWebHostChannel({
 		auth: createFakeAuthService(),
-		profiles: [{ name: "pibo-agent", aliases: ["default"] }],
+		profiles: [{ name: "base", aliases: ["default"] }],
 	});
 
 	try {
@@ -2652,7 +2652,7 @@ test("workflow version picker lists published nested workflow refs and reports m
 test("workflow catalog authentication and permission baseline treats UI workflows as global", async () => {
 	const { channel, baseURL } = await startWebHostChannel({
 		auth: createFakeAuthService(),
-		profiles: [{ name: "pibo-agent", aliases: ["default"] }],
+		profiles: [{ name: "base", aliases: ["default"] }],
 	});
 
 	const userOneHeaders = {
@@ -2720,7 +2720,7 @@ test("workflow catalog authentication and permission baseline treats UI workflow
 				agent: {
 					kind: "agent",
 					runtime: "pibo",
-					profile: { kind: "fixed", id: "pibo-agent" },
+					profile: { kind: "fixed", id: "base" },
 					promptTemplate: "Answer with the workflow input.\n\n{{input}}",
 					output: { kind: "text" },
 				},
@@ -2785,7 +2785,7 @@ test("workflow catalog authentication and permission baseline treats UI workflow
 test("workflow catalog list and inspect APIs expose source/status, diagnostics, and archive filtering", async () => {
 	const { channel, baseURL } = await startWebHostChannel({
 		auth: createFakeAuthService(),
-		profiles: [{ name: "pibo-agent", aliases: ["default"] }],
+		profiles: [{ name: "base", aliases: ["default"] }],
 	});
 
 	const jsonHeaders = {
@@ -2924,7 +2924,7 @@ test("workflow catalog list and inspect APIs expose source/status, diagnostics, 
 test("workflow catalog lifecycle APIs create, validate, publish, and expose version resources", async () => {
 	const { channel, baseURL } = await startWebHostChannel({
 		auth: createFakeAuthService(),
-		profiles: [{ name: "pibo-agent", aliases: ["default"] }],
+		profiles: [{ name: "base", aliases: ["default"] }],
 	});
 
 	const jsonHeaders = {
@@ -2988,7 +2988,7 @@ test("workflow catalog lifecycle APIs create, validate, publish, and expose vers
 				agent: {
 					kind: "agent",
 					runtime: "pibo",
-					profile: { kind: "fixed", id: "pibo-agent" },
+					profile: { kind: "fixed", id: "base" },
 					promptTemplate: "Answer with the workflow input.\n\n{{input}}",
 					output: { kind: "text" },
 				},
@@ -3130,7 +3130,7 @@ test("workflow catalog lifecycle APIs create, validate, publish, and expose vers
 test("workflow duplicate-to-draft catalog operation handles code and UI published versions", async () => {
 	const { channel, baseURL } = await startWebHostChannel({
 		auth: createFakeAuthService(),
-		profiles: [{ name: "pibo-agent", aliases: ["default"] }],
+		profiles: [{ name: "base", aliases: ["default"] }],
 	});
 
 	const jsonHeaders = {
@@ -3250,7 +3250,7 @@ test("workflow duplicate-to-draft catalog operation handles code and UI publishe
 test("workflow archive API applies at workflow identity scope and hides archived workflows from selection", async () => {
 	const { channel, baseURL } = await startWebHostChannel({
 		auth: createFakeAuthService(),
-		profiles: [{ name: "pibo-agent", aliases: ["default"] }],
+		profiles: [{ name: "base", aliases: ["default"] }],
 	});
 
 	const jsonHeaders = {
@@ -3335,7 +3335,7 @@ test("workflow archive API applies at workflow identity scope and hides archived
 test("workflow delete API tombstones UI workflows while preserving Project snapshots", async () => {
 	const { channel, baseURL, storageDir } = await startWebHostChannel({
 		auth: createFakeAuthService(),
-		profiles: [{ name: "pibo-agent", aliases: ["default"] }],
+		profiles: [{ name: "base", aliases: ["default"] }],
 	});
 
 	const jsonHeaders = {
@@ -3361,7 +3361,7 @@ test("workflow delete API tombstones UI workflows while preserving Project snaps
 			method: "POST",
 			headers: jsonHeaders,
 			body: JSON.stringify({
-				profile: "pibo-agent",
+				profile: "base",
 				workflowId: "ui-review-workflow",
 				workflowVersion: "2.0.0",
 				title: "Review run before delete",
@@ -3504,7 +3504,7 @@ test("workflow delete API tombstones UI workflows while preserving Project snaps
 test("workflow security boundary validates registered refs and rejects inline execution paths", async () => {
 	const { channel, baseURL } = await startWebHostChannel({
 		auth: createFakeAuthService(),
-		profiles: [{ name: "pibo-agent", aliases: ["default"] }],
+		profiles: [{ name: "base", aliases: ["default"] }],
 	});
 
 	const jsonHeaders = {
@@ -3544,7 +3544,7 @@ test("workflow security boundary validates registered refs and rejects inline ex
 				collect: {
 					kind: "agent",
 					runtime: "pibo",
-					profile: { kind: "fixed", id: "pibo-agent" },
+					profile: { kind: "fixed", id: "base" },
 					promptTemplate: "Collect workflow input.",
 					output: textPort,
 				},
@@ -3565,7 +3565,7 @@ test("workflow security boundary validates registered refs and rejects inline ex
 				promptAsset: {
 					kind: "agent",
 					runtime: "pibo",
-					profile: { kind: "fixed", id: "pibo-agent" },
+					profile: { kind: "fixed", id: "base" },
 					promptBuilder: { kind: "promptBuilder", language: "typescript", id: "fixture.promptBuilders.draftPrompt" },
 					input: textPort,
 					output: textPort,
@@ -3788,7 +3788,7 @@ test("workflow security boundary validates registered refs and rejects inline ex
 test("workflow prompt asset revisions create managed assets and draft prompt refs", async () => {
 	const { channel, baseURL } = await startWebHostChannel({
 		auth: createFakeAuthService(),
-		profiles: [{ name: "pibo-agent", aliases: ["default"] }],
+		profiles: [{ name: "base", aliases: ["default"] }],
 	});
 
 	const jsonHeaders = {
@@ -3912,7 +3912,7 @@ test("workflow prompt asset revisions create managed assets and draft prompt ref
 test("workflow builder draft loader opens starter and duplicated UI draft wrappers", async () => {
 	const { channel, baseURL } = await startWebHostChannel({
 		auth: createFakeAuthService(),
-		profiles: [{ name: "pibo-agent", aliases: ["default"] }],
+		profiles: [{ name: "base", aliases: ["default"] }],
 	});
 
 	try {
@@ -4024,7 +4024,7 @@ test("workflow builder draft loader opens starter and duplicated UI draft wrappe
 test("workflow validation pipeline runs on draft load, edit, validate, and publish boundaries", async () => {
 	const { channel, baseURL } = await startWebHostChannel({
 		auth: createFakeAuthService(),
-		profiles: [{ name: "pibo-agent", aliases: ["default"] }],
+		profiles: [{ name: "base", aliases: ["default"] }],
 	});
 
 	try {
@@ -4072,7 +4072,7 @@ test("workflow validation pipeline runs on draft load, edit, validate, and publi
 		graphEditedDefinition.nodes.agent_2 = {
 			kind: "agent",
 			runtime: "pibo",
-			profile: { kind: "fixed", id: "pibo-agent" },
+			profile: { kind: "fixed", id: "base" },
 			promptTemplate: "Summarize the previous agent output.",
 		};
 		graphEditedDefinition.edges.edge_agent_to_agent_2 = {
@@ -4251,7 +4251,7 @@ test("workflow validation pipeline runs on draft load, edit, validate, and publi
 test("workflow Project session creation validates persisted UI-published definitions", async () => {
 	const { channel, baseURL, setProfiles, storageDir } = await startWebHostChannel({
 		auth: createFakeAuthService(),
-		profiles: [{ name: "pibo-agent", aliases: ["default"] }, { name: "temporary-workflow-agent" }],
+		profiles: [{ name: "base", aliases: ["default"] }, { name: "temporary-workflow-agent" }],
 	});
 
 	const jsonHeaders = {
@@ -4315,12 +4315,12 @@ test("workflow Project session creation validates persisted UI-published definit
 		assert.equal(projectResponse.status, 201);
 		const projectPayload = await projectResponse.json();
 
-		setProfiles([{ name: "pibo-agent", aliases: ["default"] }]);
+		setProfiles([{ name: "base", aliases: ["default"] }]);
 		const blockedCreateResponse = await fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(projectPayload.project.id)}/workflow-sessions`, {
 			method: "POST",
 			headers: jsonHeaders,
 			body: JSON.stringify({
-				profile: "pibo-agent",
+				profile: "base",
 				workflowId: definition.id,
 				workflowVersion,
 				title: "Blocked persisted UI definition",
@@ -4339,12 +4339,12 @@ test("workflow Project session creation validates persisted UI-published definit
 		assert.equal(typeof missingProfileDiagnostic.message, "string");
 		assert.equal(typeof missingProfileDiagnostic.hint, "string");
 
-		setProfiles([{ name: "pibo-agent", aliases: ["default"] }, { name: "temporary-workflow-agent" }]);
+		setProfiles([{ name: "base", aliases: ["default"] }, { name: "temporary-workflow-agent" }]);
 		const acceptedCreateResponse = await fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(projectPayload.project.id)}/workflow-sessions`, {
 			method: "POST",
 			headers: jsonHeaders,
 			body: JSON.stringify({
-				profile: "pibo-agent",
+				profile: "base",
 				workflowId: definition.id,
 				workflowVersion,
 				title: "Accepted persisted UI definition",
@@ -4375,7 +4375,7 @@ test("workflow Project session creation validates persisted UI-published definit
 test("workflow draft publish allocates patch, minor, and major versions", async () => {
 	const { channel, baseURL, dataStorePath } = await startWebHostChannel({
 		auth: createFakeAuthService(),
-		profiles: [{ name: "pibo-agent", aliases: ["default"] }],
+		profiles: [{ name: "base", aliases: ["default"] }],
 	});
 
 	const jsonHeaders = {
@@ -4477,7 +4477,7 @@ test("workflow draft publish allocates patch, minor, and major versions", async 
 test("workflow published edit creates or reuses one next-version draft", async () => {
 	const { channel, baseURL } = await startWebHostChannel({
 		auth: createFakeAuthService(),
-		profiles: [{ name: "pibo-agent", aliases: ["default"] }],
+		profiles: [{ name: "base", aliases: ["default"] }],
 	});
 
 	try {
@@ -4543,7 +4543,7 @@ test("workflow published edit creates or reuses one next-version draft", async (
 test("chat web app creates configured Project workflow sessions and starts one workflow run explicitly", async () => {
 	const { channel, baseURL, emitted, storageDir, projectStorePath } = await startWebHostChannel({
 		auth: createFakeAuthService(),
-		profiles: [{ name: "pibo-agent", aliases: ["default"] }],
+		profiles: [{ name: "base", aliases: ["default"] }],
 	});
 
 	try {
@@ -4586,7 +4586,7 @@ test("chat web app creates configured Project workflow sessions and starts one w
 				"x-test-user": "user-1",
 			},
 			body: JSON.stringify({
-				profile: "pibo-agent",
+				profile: "base",
 				workflowId: "standard-project",
 				workflowVersion: "1.0.0",
 				title: "Configured Standard Project",
@@ -4769,7 +4769,7 @@ test("chat web app creates configured Project workflow sessions and starts one w
 test("chat web app lists and resolves Project workflow human wait tokens", async () => {
 	const { channel, baseURL, storageDir, projectStorePath } = await startWebHostChannel({
 		auth: createFakeAuthService(),
-		profiles: [{ name: "pibo-agent", aliases: ["default"] }],
+		profiles: [{ name: "base", aliases: ["default"] }],
 	});
 	const jsonHeaders = {
 		"content-type": "application/json",
@@ -4801,7 +4801,7 @@ test("chat web app lists and resolves Project workflow human wait tokens", async
 			method: "POST",
 			headers: jsonHeaders,
 			body: JSON.stringify({
-				profile: "pibo-agent",
+				profile: "base",
 				workflowId: "standard-project",
 				workflowVersion: "1.0.0",
 				title: "Human Review Workflow",
@@ -4823,7 +4823,7 @@ test("chat web app lists and resolves Project workflow human wait tokens", async
 			method: "POST",
 			headers: jsonHeaders,
 			body: JSON.stringify({
-				profile: "pibo-agent",
+				profile: "base",
 				workflowId: "standard-project",
 				workflowVersion: "1.0.0",
 				title: "Other Human Review Workflow",
@@ -4991,7 +4991,7 @@ test("chat web app lists and resolves Project workflow human wait tokens", async
 test("workflow lifecycle observability records draft, publish, Project start, and blocked diagnostics", async () => {
 	const { channel, baseURL, setProfiles, dataStorePath, storageDir } = await startWebHostChannel({
 		auth: createFakeAuthService(),
-		profiles: [{ name: "pibo-agent", aliases: ["default"] }, { name: "unstable-agent" }],
+		profiles: [{ name: "base", aliases: ["default"] }, { name: "unstable-agent" }],
 	});
 
 	const jsonHeaders = {
@@ -5037,7 +5037,7 @@ test("workflow lifecycle observability records draft, publish, Project start, an
 			method: "POST",
 			headers: jsonHeaders,
 			body: JSON.stringify({
-				profile: "pibo-agent",
+				profile: "base",
 				workflowId: "standard-project",
 				workflowVersion: "1.0.0",
 				title: "Observable accepted start",
@@ -5066,7 +5066,7 @@ test("workflow lifecycle observability records draft, publish, Project start, an
 		assert.equal(blockedSessionResponse.status, 201);
 		const blockedSessionPayload = await blockedSessionResponse.json();
 
-		setProfiles([{ name: "pibo-agent", aliases: ["default"] }]);
+		setProfiles([{ name: "base", aliases: ["default"] }]);
 		const blockedStartResponse = await fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(projectPayload.project.id)}/workflow-sessions/${encodeURIComponent(blockedSessionPayload.session.id)}/start`, {
 			method: "POST",
 			headers: jsonHeaders,
@@ -5125,7 +5125,7 @@ test("workflow lifecycle observability records draft, publish, Project start, an
 test("workflow diagnostics are redacted and scoped to owning Project sessions", async () => {
 	const { channel, baseURL, dataStorePath, storageDir } = await startWebHostChannel({
 		auth: createFakeAuthService(),
-		profiles: [{ name: "pibo-agent", aliases: ["default"] }],
+		profiles: [{ name: "base", aliases: ["default"] }],
 	});
 
 	const jsonHeaders = {
@@ -5241,7 +5241,7 @@ test("workflow diagnostics are redacted and scoped to owning Project sessions", 
 test("chat web app rejects unsupported Project workflow session creation inputs", async () => {
 	const { channel, baseURL, emitted, storageDir } = await startWebHostChannel({
 		auth: createFakeAuthService(),
-		profiles: [{ name: "pibo-agent", aliases: ["default"] }],
+		profiles: [{ name: "base", aliases: ["default"] }],
 	});
 
 	try {
@@ -5271,7 +5271,7 @@ test("chat web app rejects unsupported Project workflow session creation inputs"
 			body: JSON.stringify(body),
 		});
 		const validSelection = {
-			profile: "pibo-agent",
+			profile: "base",
 			workflowId: "standard-project",
 			workflowVersion: "1.0.0",
 		};
@@ -5311,7 +5311,7 @@ test("chat web app rejects unsupported Project workflow session creation inputs"
 test("chat web app project bootstrap includes real workflow session descendants only", async () => {
 	const { channel, baseURL, sessions, storageDir, projectStorePath } = await startWebHostChannel({
 		auth: createFakeAuthService(),
-		profiles: [{ name: "pibo-agent", aliases: ["default"] }, { name: "reviewer-agent" }],
+		profiles: [{ name: "base", aliases: ["default"] }, { name: "reviewer-agent" }],
 	});
 
 	try {
@@ -5339,7 +5339,7 @@ test("chat web app project bootstrap includes real workflow session descendants 
 				"x-test-user": "user-1",
 			},
 			body: JSON.stringify({
-				profile: "pibo-agent",
+				profile: "base",
 				workflowId: "standard-project",
 				workflowVersion: "1.0.0",
 				title: "Workflow Root",
@@ -5354,7 +5354,7 @@ test("chat web app project bootstrap includes real workflow session descendants 
 		const nested = sessions.create({
 			channel: "pibo.workflow",
 			kind: "workflow",
-			profile: "pibo-agent",
+			profile: "base",
 			ownerScope,
 			parentId: root.id,
 			workspace: projectPayload.project.projectFolder,
@@ -5364,7 +5364,7 @@ test("chat web app project bootstrap includes real workflow session descendants 
 		const agent = sessions.create({
 			channel: "pibo.workflow",
 			kind: "agent-node",
-			profile: "pibo-agent",
+			profile: "base",
 			ownerScope,
 			parentId: nested.id,
 			workspace: projectPayload.project.projectFolder,
@@ -5384,7 +5384,7 @@ test("chat web app project bootstrap includes real workflow session descendants 
 		const unrelated = sessions.create({
 			channel: "pibo.workflow",
 			kind: "agent-node",
-			profile: "pibo-agent",
+			profile: "base",
 			ownerScope,
 			workspace: projectPayload.project.projectFolder,
 			title: "Unrelated Workflow Node",
@@ -6289,7 +6289,7 @@ test("chat web app accepts same-origin mutations behind a local reverse proxy", 
 				"x-forwarded-proto": "http",
 				"x-test-user": "user-1",
 			},
-			body: JSON.stringify({ profile: "codex-compat-openai-web" }),
+			body: JSON.stringify({ profile: "base" }),
 		});
 		assert.equal(response.status, 201);
 		const payload = await response.json();

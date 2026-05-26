@@ -1445,7 +1445,7 @@ test("pibo debug session inspects a Chat URL without event payload dumps", async
 		const parsed = JSON.parse(result.stdout);
 		assert.equal(parsed.input.roomId, "room_one");
 		assert.equal(parsed.input.piboSessionId, "ps_parent");
-		assert.equal(parsed.session.profile, "codex-compat-openai-web");
+		assert.equal(parsed.session.profile, "base");
 		assert.equal(parsed.room.matches, true);
 		assert.equal(parsed.children[0].id, "ps_child");
 		assert.equal(parsed.children[0].subagentName, "researcher");
@@ -1732,7 +1732,7 @@ async function makeDebugFixture() {
 			piSessionId: "11111111-1111-4111-8111-111111111111",
 			channel: "pibo.chat-web",
 			kind: "chat",
-			profile: "codex-compat-openai-web",
+			profile: "base",
 			ownerScope: "user:one",
 			roomId: "room_one",
 			rootSessionId: "ps_parent",
@@ -1770,7 +1770,7 @@ async function makeDebugFixture() {
 			piSessionId: "33333333-3333-4333-8333-333333333333",
 			channel: "pibo.chat-web",
 			kind: "chat",
-			profile: "codex-compat-openai-web",
+			profile: "base",
 			ownerScope: "user:one",
 			rootSessionId: "ps_other",
 			title: "Other",
@@ -1785,7 +1785,7 @@ async function makeDebugFixture() {
 			piSessionId: "44444444-4444-4444-8444-444444444444",
 			channel: "pibo.chat-web",
 			kind: "chat",
-			profile: "codex-compat-openai-web",
+			profile: "base",
 			ownerScope: "user:one",
 			rootSessionId: "ps_running",
 			title: "Running",

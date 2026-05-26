@@ -312,7 +312,7 @@ export function highUsageStatusPayload() {
 		activeOwnerScope: "user:terminal-fixture",
 		piboSessionId: TERMINAL_PARITY_SESSION_ID,
 		sessionTitle: "Terminal parity fixture",
-		profile: "pibo-agent",
+		profile: "base",
 		activeModel: { provider: "openai", id: "gpt-test", label: "GPT Test" },
 		connected: true,
 		processing: true,

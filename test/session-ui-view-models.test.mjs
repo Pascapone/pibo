@@ -196,7 +196,7 @@ test("shared owner room session picker descriptors include defaults empty rooms 
 		activeSessionId: "ps_active",
 		includeBackAction: true,
 		room: { id: "room_project", title: "Project Room", ownerScope: "user:beta" },
-		sessions: [{ id: "ps_active", title: "Active", profile: "pibo-agent", status: "idle", roomId: "room_project", ownerScope: "user:beta" }],
+		sessions: [{ id: "ps_active", title: "Active", profile: "base", status: "idle", roomId: "room_project", ownerScope: "user:beta" }],
 	});
 	assert.equal(sessions.items[0].kind, "back");
 	assert.ok(sessions.items[1].markers.includes("current"));

@@ -1,7 +1,7 @@
 import { createServer, type Server, type Socket } from "node:net";
 import type { PiboChannel, PiboChannelContext } from "../channels/types.js";
 import type { PiboOutputEvent } from "../core/events.js";
-import { createDefaultPiboPluginRegistry } from "../plugins/builtin.js";
+import { createDefaultPiboPluginRegistry, createPiboProfileFromRegistryOrDefault, resolvePiboProfileNameFromRegistryOrDefault } from "../plugins/builtin.js";
 import type { PiboPluginRegistry } from "../plugins/registry.js";
 import { PiboSessionRouter } from "../core/session-router.js";
 import { loadPiboModelDefaults, selectRequestedModelProfile } from "../core/model-defaults.js";
@@ -388,8 +388,8 @@ export class PiboGatewayServer {
 			subscribe: (listener) => this.requireRouter().subscribe(listener),
 			getSession: (id) => this.requireSessionStore().get(id),
 			createSession: (input) => {
-				const profile = this.pluginRegistry.resolveProfileName(input.profile);
-				const profileContext = this.pluginRegistry.createProfile(profile);
+				const profile = resolvePiboProfileNameFromRegistryOrDefault(this.pluginRegistry, input.profile);
+				const profileContext = createPiboProfileFromRegistryOrDefault(this.pluginRegistry, profile);
 				const activeModel = input.activeModel ?? selectRequestedModelProfile(profileContext, loadPiboModelDefaults());
 				return this.requireSessionStore().create({ ...input, profile, activeModel });
 			},

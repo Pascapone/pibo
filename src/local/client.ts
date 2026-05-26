@@ -7,7 +7,7 @@ import type {
 } from "../core/events.js";
 import type { PiboRuntimeOptions } from "../core/runtime.js";
 import { PiboSessionRouter } from "../core/session-router.js";
-import { createDefaultPiboPluginRegistry } from "../plugins/builtin.js";
+import { createDefaultPiboPluginRegistry, createPiboProfileFromRegistryOrDefault, resolvePiboProfileNameFromRegistryOrDefault } from "../plugins/builtin.js";
 import type { PiboPluginRegistry } from "../plugins/registry.js";
 import type { PiboGatewayActionInfo } from "../plugins/types.js";
 import { getDefaultPiboWorkspace } from "../core/workspace.js";
@@ -98,8 +98,8 @@ export class LocalRoutedTuiClient implements LocalRoutedTuiClientLike {
 
 export function createLocalRoutedTuiClient(options: LocalRoutedTuiOptions = {}): LocalRoutedTuiClient {
 	const registry = options.pluginRegistry ?? createDefaultPiboPluginRegistry();
-	const profileName = registry.resolveProfileName(options.profile ?? "codex-compat-openai-web");
-	const profile = registry.createProfile(profileName);
+	const profileName = resolvePiboProfileNameFromRegistryOrDefault(registry, options.profile);
+	const profile = createPiboProfileFromRegistryOrDefault(registry, profileName);
 	const sessionName = options.sessionName ?? "default";
 	const workspace = options.cwd ?? getDefaultPiboWorkspace();
 	const sessionStore = new InMemoryPiboSessionStore();
