@@ -56,6 +56,18 @@ import {
   validateWorkflowOutput,
   validateWorkflowPortValue,
 } from "../validation/index.js";
+import {
+  adapterNodeDispatchFailure,
+  agentNodeDispatchFailure,
+  codeNodeDispatchFailure,
+  failAdapterNodeDispatch,
+  failAgentNodeDispatch,
+  failCodeNodeDispatch,
+  failHumanNodeDispatch,
+  failNestedWorkflowNodeDispatch,
+  humanNodeDispatchFailure,
+  nestedWorkflowNodeDispatchFailure,
+} from "./dispatch-failures.js";
 import { createEdgePayloadReader } from "./edge-payloads.js";
 import { createWorkflowRuntimeId as createId } from "./ids.js";
 import {
@@ -2569,230 +2581,6 @@ function toWorkflowCommandArray(command: WorkflowCommand | WorkflowCommand[] | u
   }
 
   return Array.isArray(command) ? command : [command];
-}
-
-async function failAgentNodeDispatch(options: {
-  run: WorkflowRun;
-  nodeAttempt: NodeAttempt;
-  events: WorkflowRuntimeEvent[];
-  diagnostics: WorkflowDiagnostic[];
-  timestamp: () => string;
-  store?: WorkflowRunStore;
-  emitEvent?: WorkflowEventEmitter;
-  error: WorkflowErrorSummary;
-}): Promise<WorkflowAgentNodeDispatchFailure> {
-  const failure = await failNodeDispatch(options);
-  return {
-    ok: false,
-    run: failure.run,
-    nodeAttempt: failure.nodeAttempt,
-    events: failure.events,
-    diagnostics: failure.diagnostics,
-    error: failure.error,
-  };
-}
-
-function agentNodeDispatchFailure(options: {
-  run: WorkflowRun;
-  events: WorkflowRuntimeEvent[];
-  diagnostics: WorkflowDiagnostic[];
-  error: WorkflowErrorSummary;
-}): WorkflowAgentNodeDispatchFailure {
-  return {
-    ok: false,
-    run: options.run,
-    events: options.events,
-    diagnostics: options.diagnostics,
-    error: options.error,
-  };
-}
-
-async function failCodeNodeDispatch(options: {
-  run: WorkflowRun;
-  nodeAttempt: NodeAttempt;
-  events: WorkflowRuntimeEvent[];
-  diagnostics: WorkflowDiagnostic[];
-  timestamp: () => string;
-  store?: WorkflowRunStore;
-  emitEvent?: WorkflowEventEmitter;
-  error: WorkflowErrorSummary;
-}): Promise<WorkflowCodeNodeDispatchFailure> {
-  const failure = await failNodeDispatch(options);
-  return {
-    ok: false,
-    run: failure.run,
-    nodeAttempt: failure.nodeAttempt,
-    events: failure.events,
-    diagnostics: failure.diagnostics,
-    error: failure.error,
-  };
-}
-
-async function failNestedWorkflowNodeDispatch(options: {
-  run: WorkflowRun;
-  nodeAttempt: NodeAttempt;
-  events: WorkflowRuntimeEvent[];
-  diagnostics: WorkflowDiagnostic[];
-  timestamp: () => string;
-  store?: WorkflowRunStore;
-  emitEvent?: WorkflowEventEmitter;
-  error: WorkflowErrorSummary;
-  childRun?: WorkflowRun;
-}): Promise<WorkflowNestedWorkflowNodeDispatchFailure> {
-  const failure = await failNodeDispatch(options);
-  return {
-    ok: false,
-    run: failure.run,
-    nodeAttempt: failure.nodeAttempt,
-    events: failure.events,
-    diagnostics: failure.diagnostics,
-    error: failure.error,
-    ...(options.childRun ? { childRun: options.childRun } : {}),
-  };
-}
-
-async function failNodeDispatch(options: {
-  run: WorkflowRun;
-  nodeAttempt: NodeAttempt;
-  events: WorkflowRuntimeEvent[];
-  diagnostics: WorkflowDiagnostic[];
-  timestamp: () => string;
-  store?: WorkflowRunStore;
-  emitEvent?: WorkflowEventEmitter;
-  error: WorkflowErrorSummary;
-}): Promise<{
-  run: WorkflowRun;
-  nodeAttempt: NodeAttempt;
-  events: WorkflowRuntimeEvent[];
-  diagnostics: WorkflowDiagnostic[];
-  error: WorkflowErrorSummary;
-}> {
-  const failedAt = options.timestamp();
-  options.nodeAttempt.status = "failed";
-  options.nodeAttempt.error = options.error;
-  options.nodeAttempt.failedAt = failedAt;
-  options.run.status = "failed";
-  options.run.current = { nodeId: options.nodeAttempt.nodeId, status: "failed" };
-  options.run.failedAt = failedAt;
-  options.run.updatedAt = failedAt;
-  await emitWorkflowRuntimeEvent(options.events, options.store, options.emitEvent, {
-    type: "node.failed",
-    runId: options.run.id,
-    nodeAttemptId: options.nodeAttempt.id,
-    error: options.error,
-  });
-  await persistWorkflowNodeAttempt(options.store, options.nodeAttempt);
-  await persistWorkflowRun(options.store, options.run);
-
-  return {
-    run: options.run,
-    nodeAttempt: options.nodeAttempt,
-    events: options.events,
-    diagnostics: options.diagnostics,
-    error: options.error,
-  };
-}
-
-function codeNodeDispatchFailure(options: {
-  run: WorkflowRun;
-  events: WorkflowRuntimeEvent[];
-  diagnostics: WorkflowDiagnostic[];
-  error: WorkflowErrorSummary;
-}): WorkflowCodeNodeDispatchFailure {
-  return {
-    ok: false,
-    run: options.run,
-    events: options.events,
-    diagnostics: options.diagnostics,
-    error: options.error,
-  };
-}
-
-function nestedWorkflowNodeDispatchFailure(options: {
-  run: WorkflowRun;
-  events: WorkflowRuntimeEvent[];
-  diagnostics: WorkflowDiagnostic[];
-  error: WorkflowErrorSummary;
-}): WorkflowNestedWorkflowNodeDispatchFailure {
-  return {
-    ok: false,
-    run: options.run,
-    events: options.events,
-    diagnostics: options.diagnostics,
-    error: options.error,
-  };
-}
-
-async function failAdapterNodeDispatch(options: {
-  run: WorkflowRun;
-  nodeAttempt: NodeAttempt;
-  events: WorkflowRuntimeEvent[];
-  diagnostics: WorkflowDiagnostic[];
-  timestamp: () => string;
-  store?: WorkflowRunStore;
-  emitEvent?: WorkflowEventEmitter;
-  error: WorkflowErrorSummary;
-}): Promise<WorkflowAdapterNodeDispatchFailure> {
-  const failure = await failNodeDispatch(options);
-  return {
-    ok: false,
-    run: failure.run,
-    nodeAttempt: failure.nodeAttempt,
-    events: failure.events,
-    diagnostics: failure.diagnostics,
-    error: failure.error,
-  };
-}
-
-function adapterNodeDispatchFailure(options: {
-  run: WorkflowRun;
-  events: WorkflowRuntimeEvent[];
-  diagnostics: WorkflowDiagnostic[];
-  error: WorkflowErrorSummary;
-}): WorkflowAdapterNodeDispatchFailure {
-  return {
-    ok: false,
-    run: options.run,
-    events: options.events,
-    diagnostics: options.diagnostics,
-    error: options.error,
-  };
-}
-
-async function failHumanNodeDispatch(options: {
-  run: WorkflowRun;
-  nodeAttempt: NodeAttempt;
-  events: WorkflowRuntimeEvent[];
-  diagnostics: WorkflowDiagnostic[];
-  timestamp: () => string;
-  store?: WorkflowRunStore;
-  emitEvent?: WorkflowEventEmitter;
-  error: WorkflowErrorSummary;
-}): Promise<WorkflowHumanNodeDispatchFailure> {
-  const failure = await failNodeDispatch(options);
-  return {
-    ok: false,
-    run: failure.run,
-    nodeAttempt: failure.nodeAttempt,
-    events: failure.events,
-    diagnostics: failure.diagnostics,
-    error: failure.error,
-  };
-}
-
-function humanNodeDispatchFailure(options: {
-  run: WorkflowRun;
-  events: WorkflowRuntimeEvent[];
-  diagnostics: WorkflowDiagnostic[];
-  error: WorkflowErrorSummary;
-}): WorkflowHumanNodeDispatchFailure {
-  return {
-    ok: false,
-    run: options.run,
-    events: options.events,
-    diagnostics: options.diagnostics,
-    error: options.error,
-  };
 }
 
 function resolveExecutorTitle(

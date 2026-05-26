@@ -64,12 +64,12 @@ Initial high-priority candidates from line-count scan:
 
 ## Current state
 
-- Last batch: Extracted workflow runtime persistence/event-store helpers from `packages/workflows/src/runtime/index.ts` into `packages/workflows/src/runtime/persistence.ts`.
-- Result: `runtime/index.ts` is down from 3,225 to 3,124 LOC; event emission, optional store capability guards, run/node-attempt/edge-transfer persistence, and workflow event record creation now live behind a focused runtime persistence module.
-- Validation: `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace/packages/workflows && npm test -- src/testing/node-attempt-persistence.test.ts src/testing/workflow-persistence-validation.test.ts src/testing/runtime-human-node.test.ts'` passed (package script ran all 138 workflow tests); `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace/packages/workflows && npm test'` passed; `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && npm run typecheck'` passed. Closest practical runtime E2E was the persisted runtime path through SQLite-backed workflow runs, node attempts, events, edge transfers, wait tokens, and human wakeups covered by the workflow package tests.
-- Commit: `9f03e298a1e088e736522887b20b932a26ee772c` (`refactor(workflows): extract runtime persistence helpers`).
+- Last batch: Extracted workflow runtime node-dispatch failure helpers from `packages/workflows/src/runtime/index.ts` into `packages/workflows/src/runtime/dispatch-failures.ts`.
+- Result: `runtime/index.ts` is down from 3,124 to 2,912 LOC; node dispatch failure result shaping, shared failed-at state mutation, `node.failed` event emission, and failed attempt/run persistence now live behind a focused runtime failure module.
+- Validation: `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace/packages/workflows && npm test -- src/testing/runtime-agent-node.test.ts src/testing/runtime-code-node.test.ts src/testing/runtime-human-node.test.ts src/testing/runtime-nested-workflow-node.test.ts'` passed (package script ran all 138 workflow tests); `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace/packages/workflows && npm test'` passed; `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && npm run typecheck'` passed. Closest practical runtime E2E was the routed one-node workflow and mixed workflow runtime paths covered by the workflow package tests, including failed agent/code/human/nested/adapter dispatch paths and persisted runtime facts.
+- Commit: pending.
 - Blockers: none.
-- Exact next step: Continue `packages/workflows/src/runtime/index.ts` with failure/result builder extraction analysis, or extract another small test-backed runtime helper seam if one is clearer.
+- Exact next step: Continue `packages/workflows/src/runtime/index.ts` with another small test-backed seam such as one-node workflow completion/failure helpers or Pibo session routing helper extraction; avoid moving the central dispatch orchestration until more behavior is isolated.
 
 ## Progress log
 
@@ -88,3 +88,4 @@ Initial high-priority candidates from line-count scan:
 - 2026-05-26: Extracted workflow runtime timestamp/wait-token expiry helpers into `packages/workflows/src/runtime/time.ts`; focused human-node runtime test command, full workflow package tests, and root typecheck passed in Docker.
 - 2026-05-26: Extracted workflow runtime agent prompt-building helpers into `packages/workflows/src/runtime/prompts.ts` plus shared edge payload reader creation in `packages/workflows/src/runtime/edge-payloads.ts`; focused prompt/agent command, full workflow package tests, and root typecheck passed in Docker.
 - 2026-05-26: Extracted workflow runtime persistence/event-store helpers into `packages/workflows/src/runtime/persistence.ts`; focused persistence/human-node command, full workflow package tests, and root typecheck passed in Docker.
+- 2026-05-26: Extracted workflow runtime node-dispatch failure helpers into `packages/workflows/src/runtime/dispatch-failures.ts`; focused failed dispatch command, full workflow package tests, and root typecheck passed in Docker.
