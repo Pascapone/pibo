@@ -103,7 +103,7 @@ export class FakeCliSessionSource implements CliSessionSource {
 		this.assertOpen();
 		const createdAt = this.now();
 		const agent = input.agentId ? this.resolveAgent(input.agentId) : undefined;
-		const profile = input.profile ?? agent?.profileName ?? agent?.id ?? "pibo-agent";
+		const profile = input.profile ?? agent?.profileName ?? agent?.id ?? "base";
 		const session: CliSessionSummary = {
 			id: `ps_fake_created_${this.nextSessionNumber++}`,
 			title: input.title?.trim() || "New CLI session",
@@ -454,7 +454,7 @@ function defaultRooms(): CliRoomSummary[] {
 
 function defaultAgents(): CliAgentSummary[] {
 	return [
-		{ id: "pibo-agent", name: "Pibo Agent", description: "Default Pibo coding agent", profileName: "pibo-agent" },
+		{ id: "base", name: "base", description: "Base agent with only the four Pi built-in tools.", profileName: "base" },
 	];
 }
 
@@ -464,8 +464,8 @@ function defaultSessions(): CliSessionSummary[] {
 			id: "ps_fake_existing",
 			title: "Existing fake session",
 			roomId: "room_fake_main",
-			profile: "pibo-agent",
-			agentId: "pibo-agent",
+			profile: "base",
+			agentId: "base",
 			ownerScope: "user:fake",
 			workspace: "/workspace",
 			status: "idle",

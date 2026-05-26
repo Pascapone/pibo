@@ -47,7 +47,7 @@ test("V2 CLI owner resolution prevents implicit user:unknown writes", async () =
 	const source = new LocalCliSessionSource({ dataStore, sessionStore, now: () => fixedNow });
 
 	try {
-		const created = await source.createSession({ roomId: "room_owner_required", title: "Owner must be explicit", profile: "codex-compat-openai-web" });
+		const created = await source.createSession({ roomId: "room_owner_required", title: "Owner must be explicit", profile: "base" });
 		await source.sendMessage(created.id, "message that should keep selected owner fallback");
 		assert.equal(created.ownerScope, "local:root");
 

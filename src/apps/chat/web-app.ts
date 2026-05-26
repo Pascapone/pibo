@@ -4701,7 +4701,7 @@ function deriveWorkflowCatalogStatus(versions: WorkflowCatalogVersionSummary[]):
 function workflowCatalogVersionSummaryFromCatalogRecord(record: WorkflowCatalogVersionRecord, context: WorkflowCatalogBuildContext): WorkflowCatalogVersionSummary {
 	const catalogRecord = workflowCatalogRecordWithArchiveState(record, context.state);
 	const definition = catalogRecord.status === "published" || catalogRecord.status === "archived"
-		? createPublishedWorkflowDefinition(catalogRecord, "pibo-agent")
+		? createPublishedWorkflowDefinition(catalogRecord, "base")
 		: undefined;
 	const diagnostics = definition ? validateWorkflowDefinitionForV2(definition, context) : [];
 	return {
@@ -4906,7 +4906,7 @@ function workflowPublishedVersionInspection(
 	const staticRecord = STATIC_WORKFLOW_VERSION_CATALOG.find((record) => record.id === workflowId && record.version === version);
 	const catalogRecord = staticRecord ? workflowCatalogRecordWithArchiveState(staticRecord, state) : undefined;
 	if (!catalogRecord || catalogRecord.status === "draft" || catalogRecord.status === "deleted" || (catalogRecord.status === "archived" && !includeArchived)) return undefined;
-	const definition = createPublishedWorkflowDefinition(catalogRecord, "pibo-agent");
+	const definition = createPublishedWorkflowDefinition(catalogRecord, "base");
 	const diagnostics = validateWorkflowDefinitionForV2(definition, { state, context, webSession });
 	return {
 		version: { ...catalogRecord, definitionHash: hashWorkflowDefinitionJson(definition) },
@@ -5306,7 +5306,7 @@ function selectPublishedWorkflowVersion(state: ChatWebAppState, workflowId: stri
 	const options = buildProjectWorkflowVersionOptions(state).filter((option) => option.id === workflowId);
 	const selected = version ? options.find((option) => option.version === version) : options[0];
 	if (!selected) return undefined;
-	return resolvePublishedWorkflowDefinitionForProfile(state, selected, "pibo-agent");
+	return resolvePublishedWorkflowDefinitionForProfile(state, selected, "base");
 }
 
 function resolvePublishedWorkflowDefinitionForProfile(
@@ -9395,7 +9395,7 @@ function createChatHtml(): string {
 }
 
 export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
-	const defaultProfile = options.defaultProfile ?? "pibo-agent";
+	const defaultProfile = options.defaultProfile ?? "base";
 	const dataStore = createDataStore(options);
 	const state: ChatWebAppState = {
 		sessionQuery: new ChatSessionQueryService(dataStore),

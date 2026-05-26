@@ -264,7 +264,7 @@ export class LocalCliSessionSource implements CliSessionSource {
 		}));
 		return agents.some((agent) => agent.profileName === DEFAULT_PIBO_PROFILE_NAME)
 			? agents
-			: [defaultPiboAgentSummary(), ...agents];
+			: [defaultBaseAgentSummary(), ...agents];
 	}
 
 	async listSlashCommands(): Promise<readonly SlashCommandDescriptor[]> {
@@ -467,7 +467,7 @@ export class LocalCliSessionSource implements CliSessionSource {
 	private resolveAgent(agentId: string): CliAgentSummary {
 		const summary = this.agentSummaries?.find((candidate) => candidate.id === agentId || candidate.profileName === agentId || candidate.name === agentId);
 		if (summary) return cloneJson(summary);
-		if (agentId === DEFAULT_PIBO_PROFILE_NAME) return defaultPiboAgentSummary();
+		if (agentId === DEFAULT_PIBO_PROFILE_NAME) return defaultBaseAgentSummary();
 		const agent = this.pluginRegistry.getProfileInfos().find((candidate) => candidate.name === agentId || candidate.aliases.includes(agentId));
 		if (!agent) throw new CliSourceError("agent_not_found", `No local profile found for "${agentId}"`);
 		return { id: agent.name, name: agent.name, description: agent.description, profileName: agent.name };
@@ -483,7 +483,7 @@ export class LocalCliSessionSource implements CliSessionSource {
 
 	private defaultProfileName(): string {
 		const names = this.pluginRegistry.getProfileNames();
-		return names.includes("pibo-agent") ? "pibo-agent" : names[0] ?? "pibo-agent";
+		return names.includes("base") ? "base" : names[0] ?? "base";
 	}
 
 	private handleRouterEvent(event: PiboOutputEvent): void {
@@ -1107,11 +1107,11 @@ function unwrapActionResult(value: unknown): unknown {
 	return value;
 }
 
-function defaultPiboAgentSummary(): CliAgentSummary {
+function defaultBaseAgentSummary(): CliAgentSummary {
 	return {
 		id: DEFAULT_PIBO_PROFILE_NAME,
-		name: "Pibo Agent",
-		description: "Default Pibo coding agent",
+		name: DEFAULT_PIBO_PROFILE_NAME,
+		description: "Base agent with only the four Pi built-in tools.",
 		profileName: DEFAULT_PIBO_PROFILE_NAME,
 	};
 }

@@ -1085,7 +1085,7 @@ function WorkflowGraphCanvas({ draft, onDraftChange }: { draft: WorkflowDraftRec
 	const [layoutDirty, setLayoutDirty] = useState(false);
 	const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
 	const [statusMessage, setStatusMessage] = useState<string | undefined>();
-	const [defaultAgentProfileId, setDefaultAgentProfileId] = useState("pibo-agent");
+	const [defaultAgentProfileId, setDefaultAgentProfileId] = useState("base");
 	const [workflowVersionOptions, setWorkflowVersionOptions] = useState<WorkflowVersionPickerOption[]>([]);
 	const [selectedWorkflowVersionKey, setSelectedWorkflowVersionKey] = useState("");
 	const [adapterOptions, setAdapterOptions] = useState<WorkflowRegisteredRefOption[]>([]);
@@ -3421,7 +3421,7 @@ function createDefaultAgentNodeDefinition(nodeId: string, profileId: string): Wo
 		kind: "agent",
 		runtime: "pibo",
 		label: `Agent ${nodeId}`,
-		profile: { kind: "fixed", id: profileId || "pibo-agent" },
+		profile: { kind: "fixed", id: profileId || "base" },
 		promptTemplate: DEFAULT_AGENT_PROMPT_TEMPLATE,
 		metadata: { sessionOverrides: { prompt: true } },
 	};

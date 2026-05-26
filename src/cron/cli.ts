@@ -115,7 +115,7 @@ export async function runCronCli(argv = process.argv): Promise<void> {
 		.option("--room <roomId>", "Target room")
 		.option("--personal", "Target personal chat")
 		.option("--principal-id <id>", "Principal id for personal target")
-		.option("--agent <profile>", "Agent/profile", "pibo-agent")
+		.option("--agent <profile>", "Agent/profile", "base")
 		.option("--name <name>", "Job name")
 		.requiredOption("--prompt <text>", "Prompt/task")
 		.option("--in <duration>", "Run once after duration, e.g. 20m")

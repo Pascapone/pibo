@@ -11,10 +11,19 @@ import {
 	normalizeOpenAiWebSearchConfig,
 } from "../dist/tools/web-search.js";
 
-test("default registry does not expose retired built-in coding agents", () => {
+test("default registry exposes base and not retired built-in coding agents", () => {
 	const registry = createDefaultPiboPluginRegistry();
+	const profile = registry.createProfile("base");
 
-	assert.deepEqual(registry.getProfileNames(), []);
+	assert.deepEqual(registry.getProfileNames(), ["base"]);
+	assert.equal(profile.profileName, "base");
+	assert.equal(profile.builtinTools, "default");
+	assert.deepEqual(profile.builtinToolNames, ["read", "bash", "edit", "write"]);
+	assert.deepEqual(profile.tools, []);
+	assert.deepEqual(profile.skills, []);
+	assert.deepEqual(profile.contextFiles, []);
+	assert.deepEqual(profile.subagents, []);
+	assert.equal(profile.toolPackages.runControl, undefined);
 	assert.throws(() => registry.createProfile("codex"), /Unknown profile "codex"/);
 	assert.throws(() => registry.createProfile("codex-compat-openai-web"), /Unknown profile "codex-compat-openai-web"/);
 	assert.throws(() => registry.createProfile("pibo-kimi-coding"), /Unknown profile "pibo-kimi-coding"/);

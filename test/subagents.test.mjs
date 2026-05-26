@@ -250,7 +250,7 @@ test("subagent runner emits a parent link event before waiting for the child rep
 		piSessionId: "parent-session",
 		channel: "pibo.test",
 		kind: "chat",
-		profile: "pibo-agent",
+		profile: "base",
 		ownerScope: "user:test",
 		metadata: { chatRoomId: "room_parent" },
 	});
@@ -267,7 +267,7 @@ test("subagent runner emits a parent link event before waiting for the child rep
 	try {
 		const runner = router.createSubagentRunner("ps_parent");
 		const result = await runner.runSubagent({
-			subagent: { name: "explorer", targetProfile: "pibo-agent" },
+			subagent: { name: "explorer", targetProfile: "base" },
 			message: "check this",
 			threadKey: "inspect",
 			toolCallId: "tool-1",
@@ -292,9 +292,9 @@ test("profile-selected subagents expose run control tools", async () => {
 	const profile = new InitialSessionContextBuilder("run-control-agent")
 		.withToolPackages({ runControl: true })
 		.addSubagents([
-			{ name: "default", targetProfile: "pibo-agent" },
-			{ name: "explorer", targetProfile: "pibo-agent" },
-			{ name: "worker", targetProfile: "pibo-agent" },
+			{ name: "default", targetProfile: "base" },
+			{ name: "explorer", targetProfile: "base" },
+			{ name: "worker", targetProfile: "base" },
 		])
 		.createSession();
 	const inspection = await inspectPiboProfile({ profile, persistSession: false });

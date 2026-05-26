@@ -50,7 +50,7 @@ test("session router uses the Pibo session profile when creating a runtime", asy
 		piSessionId: "11111111-1111-4111-8111-111111111111",
 		channel: "pibo.test",
 		kind: "chat",
-		profile: "pibo-agent",
+		profile: "base",
 		ownerScope: "user:test",
 	});
 	const router = new PiboSessionRouter({
@@ -87,7 +87,7 @@ test("session router defaults runtimes to the user home workspace", async () => 
 		piSessionId: "21111111-1111-4111-8111-111111111111",
 		channel: "pibo.test",
 		kind: "chat",
-		profile: "pibo-agent",
+		profile: "base",
 		ownerScope: "user:test",
 	});
 	const router = new PiboSessionRouter({
@@ -121,7 +121,7 @@ test("session router applies product model defaults instead of workspace-local d
 		piSessionId: "31111111-1111-4111-8111-111111111111",
 		channel: "pibo.test",
 		kind: "chat",
-		profile: "pibo-agent",
+		profile: "base",
 		ownerScope: "user:test",
 		workspace: cwd,
 	});
@@ -371,7 +371,7 @@ test("kill cancels child sessions but not yielded runs", async () => {
 		piSessionId: "11111111-1111-4111-8111-111111111111",
 		channel: "pibo.test",
 		kind: "chat",
-		profile: "pibo-agent",
+		profile: "base",
 		ownerScope: "user:test",
 	});
 	store.create({
@@ -379,7 +379,7 @@ test("kill cancels child sessions but not yielded runs", async () => {
 		piSessionId: "22222222-2222-4222-8222-222222222222",
 		channel: "pibo.subagents",
 		kind: "subagent",
-		profile: "pibo-agent",
+		profile: "base",
 		parentId: "ps_parent",
 		ownerScope: "user:test",
 	});
@@ -424,7 +424,7 @@ test("kill_all cancels child sessions and yielded runs recursively", async () =>
 		piSessionId: "11111111-1111-4111-8111-111111111111",
 		channel: "pibo.test",
 		kind: "chat",
-		profile: "pibo-agent",
+		profile: "base",
 		ownerScope: "user:test",
 	});
 	store.create({
@@ -432,7 +432,7 @@ test("kill_all cancels child sessions and yielded runs recursively", async () =>
 		piSessionId: "22222222-2222-4222-8222-222222222222",
 		channel: "pibo.subagents",
 		kind: "subagent",
-		profile: "pibo-agent",
+		profile: "base",
 		parentId: "ps_parent",
 		ownerScope: "user:test",
 	});

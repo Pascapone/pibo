@@ -16,12 +16,12 @@ import { createRuntimeToolProfile } from "../tools/runtime/tool.js";
 import { completeLogin, getLoginStatus, removeLogin, setApiKey, startLogin } from "../auth/login-actions.js";
 import { loadModelCatalog } from "../apps/chat/model-catalog.js";
 import { piboCodexCompatPlugin } from "./codex-compat.js";
-import { addPiboNativeToolingContext, PIBO_NATIVE_TOOLING_CONTEXT_FILE_KEY, PIBO_NATIVE_TOOLING_CONTEXT_FILE_PATH, registerPiboNativeTooling } from "./native-tooling.js";
+import { addPiboNativeToolingContext, registerPiboNativeTooling } from "./native-tooling.js";
 import { piboWebAnnotationsPlugin } from "./web-annotations.js";
 import { definePiboPlugin, PiboPluginRegistry } from "./registry.js";
 import type { PiboPlugin, PiboProfileBuildContext } from "./types.js";
 
-export const DEFAULT_PIBO_PROFILE_NAME = "pibo-agent";
+export const DEFAULT_PIBO_PROFILE_NAME = "base";
 
 const GATEWAY_PROFILE_TOOLS = ["pibo_gateway_send"] as const;
 const PIBO_PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -180,6 +180,15 @@ export const piboCorePlugin = definePiboPlugin({
 		api.registerTool(createWebSearchToolProfile());
 		api.registerTool(createRuntimeToolProfile());
 		registerPiboNativeTooling(api);
+		api.registerProfile({
+			name: DEFAULT_PIBO_PROFILE_NAME,
+			description: "Base agent with only the four Pi built-in tools.",
+			create() {
+				return new InitialSessionContextBuilder(DEFAULT_PIBO_PROFILE_NAME)
+					.withBuiltinToolNames(["read", "bash", "edit", "write"])
+					.createSession();
+			},
+		});
 		api.registerGatewayAction({
 			name: "status",
 			description: "Return current session status with context usage quota.",
@@ -456,16 +465,7 @@ export function selectDefaultPiboProfileName(registry: PiboPluginRegistry): stri
 
 export function createDefaultPiboProfile(): InitialSessionContext {
 	return new InitialSessionContextBuilder(DEFAULT_PIBO_PROFILE_NAME)
-		.addSkill({
-			name: "pi-agent-harness",
-			path: builtinSkillPath("pi-agent-harness"),
-			kind: "builtin",
-		})
-		.addContextFile({
-			key: PIBO_NATIVE_TOOLING_CONTEXT_FILE_KEY,
-			label: "Pibo Native Tooling",
-			path: PIBO_NATIVE_TOOLING_CONTEXT_FILE_PATH,
-		})
+		.withBuiltinToolNames(["read", "bash", "edit", "write"])
 		.createSession();
 }
 

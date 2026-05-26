@@ -11,7 +11,7 @@ test("pibo session builder creates opaque product and Pi identities", () => {
 		{
 			channel: "pibo.chat-web",
 			kind: "chat",
-			profile: "codex-compat-openai-web",
+			profile: "base",
 			ownerScope: "user:user-1",
 			workspace: "/workspace",
 			metadata: { source: "test" },
@@ -23,7 +23,7 @@ test("pibo session builder creates opaque product and Pi identities", () => {
 	assert.match(session.piSessionId, /^[0-9a-f-]{36}$/);
 	assert.equal(session.channel, "pibo.chat-web");
 	assert.equal(session.kind, "chat");
-	assert.equal(session.profile, "codex-compat-openai-web");
+	assert.equal(session.profile, "base");
 	assert.equal(session.ownerScope, "user:user-1");
 	assert.equal(session.workspace, "/workspace");
 	assert.deepEqual(session.metadata, { source: "test" });
@@ -37,7 +37,7 @@ test("in-memory pibo session store creates, updates, and finds sessions", () => 
 		id: "ps_parent",
 		channel: "pibo.chat-web",
 		kind: "chat",
-		profile: "codex-compat-openai-web",
+		profile: "base",
 		ownerScope: "user:user-1",
 	});
 	const child = store.create({
@@ -70,7 +70,7 @@ test("in-memory pibo session store rejects duplicate Pi session ownership", () =
 		piSessionId: "11111111-1111-4111-8111-111111111111",
 		channel: "pibo.chat-web",
 		kind: "chat",
-		profile: "codex-compat-openai-web",
+		profile: "base",
 	});
 
 	assert.throws(
@@ -80,7 +80,7 @@ test("in-memory pibo session store rejects duplicate Pi session ownership", () =
 				piSessionId: "11111111-1111-4111-8111-111111111111",
 				channel: "pibo.chat-web",
 				kind: "branch",
-				profile: "codex-compat-openai-web",
+				profile: "base",
 			}),
 		/Pi session "11111111-1111-4111-8111-111111111111" is already attached/,
 	);
@@ -98,7 +98,7 @@ test("default sqlite pibo session store uses PIBO_HOME, not cwd", async () => {
 			piSessionId: "44444444-4444-4444-8444-444444444444",
 			channel: "pibo.test",
 			kind: "chat",
-			profile: "codex-compat-openai-web",
+			profile: "base",
 		});
 		const reopened = new SqlitePiboSessionStore(join(dir, "pibo-sessions.sqlite"));
 		try {
@@ -146,7 +146,7 @@ for (const factory of contractStoreFactories) {
 				piSessionId: "11111111-1111-4111-8111-111111111111",
 				channel: "pibo.chat-web",
 				kind: "chat",
-				profile: "codex-compat-openai-web",
+				profile: "base",
 				ownerScope: "user:user-1",
 				activeModel: { provider: "openai", id: "gpt-4.1" },
 			});
@@ -202,7 +202,7 @@ test("sqlite pibo session store persists structured session fields", async () =>
 			piSessionId: "11111111-1111-4111-8111-111111111111",
 			channel: "pibo.chat-web",
 			kind: "chat",
-			profile: "codex-compat-openai-web",
+			profile: "base",
 			ownerScope: "user:user-1",
 		});
 		const child = store.create({

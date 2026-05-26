@@ -35,7 +35,8 @@ test("default plugin registry builds capabilities without retired built-in codin
 	const registry = createDefaultPiboPluginRegistry();
 	const catalog = registry.getCapabilityCatalog();
 
-	assert.deepEqual(registry.getProfileNames(), []);
+	assert.deepEqual(registry.getProfileNames(), ["base"]);
+	assert.deepEqual(registry.createProfile("base").builtinToolNames, ["read", "bash", "edit", "write"]);
 	assert.ok(catalog.nativeTools.some((tool) => (
 		tool.name === "web_search" && tool.pluginId === "pibo.core" && tool.hasDefinition === false
 	)));
@@ -243,7 +244,7 @@ test("capability catalog exposes registered Pi packages without activating them"
 		const catalog = registry.getCapabilityCatalog();
 
 		assert.equal(catalog.piPackages.find((pkg) => pkg.id === "catalog-package")?.installStatus, "registered");
-		assert.deepEqual(registry.getProfileNames(), []);
+		assert.deepEqual(registry.getProfileNames(), ["base"]);
 	});
 });
 

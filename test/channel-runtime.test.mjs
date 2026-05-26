@@ -34,7 +34,7 @@ test("gateway starts plugin channels with router and session session context", a
 							id: "ps_web_user_1",
 							channel: "web",
 							kind: "chat",
-							profile: "pibo-agent",
+							profile: "base",
 							ownerScope: "user:user-1",
 						});
 					},
@@ -57,7 +57,7 @@ test("gateway starts plugin channels with router and session session context", a
 	await server.stop();
 
 	assert.equal(startedSession.id, "ps_web_user_1");
-	assert.equal(startedSession.profile, "pibo-agent");
+	assert.equal(startedSession.profile, "base");
 	assert.equal(store.get("ps_web_user_1"), startedSession);
 	assert.equal(stopped, true);
 });

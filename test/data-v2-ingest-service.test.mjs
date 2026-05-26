@@ -13,7 +13,7 @@ function makeSession(overrides = {}) {
 		piSessionId: "pi_ingest_test",
 		channel: "pibo.chat-web",
 		kind: "chat",
-		profile: "codex-compat-openai-web",
+		profile: "base",
 		ownerScope: "user:test",
 		workspace: "/tmp",
 		createdAt: now,

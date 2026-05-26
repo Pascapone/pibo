@@ -73,7 +73,7 @@ const weekdayOptions = [
 export function CronArea({ bootstrap, mobileSidebarOpen = false, onCloseMobileSidebar }: { bootstrap: BootstrapData; mobileSidebarOpen?: boolean; onCloseMobileSidebar?: () => void }) {
 	const rooms = useMemo(() => flattenRooms(bootstrap.rooms), [bootstrap.rooms]);
 	const agentOptions = useMemo(() => profileOptions(bootstrap.agents, bootstrap.customAgents), [bootstrap.agents, bootstrap.customAgents]);
-	const defaultProfile = agentOptions[0]?.name ?? "pibo-agent";
+	const defaultProfile = agentOptions[0]?.name ?? "base";
 	const [jobs, setJobs] = useState<PiboCronJob[]>([]);
 	const [runs, setRuns] = useState<PiboCronRun[]>([]);
 	const [status, setStatus] = useState<PiboCronStatus | null>(null);
