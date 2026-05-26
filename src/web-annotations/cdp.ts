@@ -302,6 +302,7 @@ export function buildWebAnnotationOverlayScript(configExpression = "window.__pib
     lastHoverAt: 0,
     pendingFrame: 0,
     dragMoved: false,
+    toolbarExpanded: false,
     shortcut: parseShortcut(config.annotationShortcut || readStoredShortcut() || defaultAnnotationShortcut),
     submissions: [],
     lastError: null,
@@ -314,6 +315,7 @@ export function buildWebAnnotationOverlayScript(configExpression = "window.__pib
       piboSessionId,
       installed: installed !== false,
       active: installed !== false && Boolean(state.active),
+      toolbarExpanded: installed !== false && Boolean(state.toolbarExpanded),
       mode: state.mode,
       reason: String(reason || "state"),
       updatedAt: new Date().toISOString(),
@@ -332,14 +334,14 @@ export function buildWebAnnotationOverlayScript(configExpression = "window.__pib
   const host = document.createElement("div");
   host.id = rootId;
   host.setAttribute("data-pibo-web-annotation-binding", config.bindingId);
-  host.style.cssText = "position:fixed;right:112px;bottom:156px;z-index:2147483647;pointer-events:auto;color-scheme:light dark";
+  host.style.cssText = "position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom));z-index:2147483647;pointer-events:auto;color-scheme:light dark";
   const shadow = host.attachShadow ? host.attachShadow({ mode: "open" }) : host;
   const style = document.createElement("style");
   style.textContent = [
     ":host{all:initial;font:13px system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}",
     "@keyframes pibo-wa-attention{0%{transform:scale(.72);opacity:.45;box-shadow:0 0 0 0 rgba(56,189,248,.7)}18%{transform:scale(1.22,.82);opacity:1}34%{transform:scale(.9,1.12)}52%{transform:scale(1.08,.94);box-shadow:0 0 0 12px rgba(56,189,248,.18)}72%{transform:scale(.98,1.02)}100%{transform:scale(1);opacity:1;box-shadow:0 12px 32px rgba(0,0,0,.36),0 0 0 0 rgba(56,189,248,0)}}",
-    ".pibo-wa-panel{position:relative;width:50px;min-height:50px;color:#fff;font:13px system-ui,sans-serif}",
-    ".pibo-wa-main,.pibo-wa-button{box-sizing:border-box;width:48px;height:48px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(148,163,184,.5);background:#111827;color:#dbeafe;border-radius:14px;box-shadow:0 12px 32px rgba(0,0,0,.36);cursor:pointer;user-select:none;line-height:0;padding:0;transition:background .12s ease,border-color .12s ease,color .12s ease,transform .12s ease}",
+    ".pibo-wa-panel{position:relative;width:50px;min-height:50px;color:#fff;font:13px system-ui,sans-serif;touch-action:none}",
+    ".pibo-wa-main,.pibo-wa-button{box-sizing:border-box;width:48px;height:48px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(148,163,184,.5);background:#111827;color:#dbeafe;border-radius:14px;box-shadow:0 12px 32px rgba(0,0,0,.36);cursor:pointer;user-select:none;line-height:0;padding:0;transition:background .12s ease,border-color .12s ease,color .12s ease,transform .12s ease;-webkit-tap-highlight-color:transparent}",
     ".pibo-wa-main{border-color:#38bdf8;background:linear-gradient(180deg,#102334,#0f172a);color:#7dd3fc;cursor:grab}",
     ".pibo-wa-main:active{cursor:grabbing}",
     ".pibo-wa-main.pibo-wa-attention{animation:pibo-wa-attention .78s cubic-bezier(.2,.8,.2,1) both}",
@@ -348,15 +350,17 @@ export function buildWebAnnotationOverlayScript(configExpression = "window.__pib
     ".pibo-wa-icon{width:22px;height:22px;display:block;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;fill:none;flex:0 0 auto}",
     ".pibo-wa-actions{position:absolute;right:-2px;bottom:42px;display:flex;flex-direction:column;gap:7px;padding:0 2px 12px 2px;opacity:0;pointer-events:none;transform:translateY(6px);transition:opacity .12s ease,transform .12s ease}",
     ".pibo-wa-actions::before{content:'';position:absolute;inset:0 -8px -12px -8px;z-index:-1}",
-    ".pibo-wa-panel:hover .pibo-wa-actions,.pibo-wa-panel:focus-within .pibo-wa-actions{opacity:1;pointer-events:auto;transform:translateY(0)}",
+    ".pibo-wa-panel:hover .pibo-wa-actions,.pibo-wa-panel:focus-within .pibo-wa-actions,.pibo-wa-panel.pibo-wa-active .pibo-wa-actions,.pibo-wa-panel.pibo-wa-expanded .pibo-wa-actions{opacity:1;pointer-events:auto;transform:translateY(0)}",
+    "@media (hover:none),(pointer:coarse){.pibo-wa-panel{width:54px;min-height:54px}.pibo-wa-main,.pibo-wa-button{width:52px;height:52px;border-radius:16px}.pibo-wa-actions,.pibo-wa-panel:hover .pibo-wa-actions,.pibo-wa-panel:focus-within .pibo-wa-actions,.pibo-wa-panel.pibo-wa-active .pibo-wa-actions{right:-1px;bottom:48px;gap:8px;opacity:0;pointer-events:none;transform:translateY(6px)}.pibo-wa-panel.pibo-wa-expanded .pibo-wa-actions{opacity:1;pointer-events:auto;transform:none}.pibo-wa-main:hover,.pibo-wa-button:hover{transform:none}}",
     ".pibo-wa-button{background:#1f2937}",
     ".pibo-wa-button[aria-pressed='true']{background:#2563eb;border-color:#93c5fd;color:#fff}",
     ".pibo-wa-button-danger{background:#3f1418;border-color:#7f1d1d;color:#fecaca}",
     ".pibo-wa-button-danger:hover{border-color:#ef4444;color:#fff;background:#7f1d1d}",
     ".pibo-wa-status{display:none}",
-    ".pibo-wa-popup{position:fixed;z-index:2147483647;width:min(320px,calc(100vw - 24px));background:#fff;color:#111827;border:1px solid #9ca3af;border-radius:12px;padding:10px;box-shadow:0 14px 36px rgba(0,0,0,.35);font:13px system-ui,sans-serif}",
+    ".pibo-wa-popup{box-sizing:border-box;position:fixed;z-index:2147483647;width:min(320px,calc(100vw - 24px));max-height:calc(100svh - 24px);overflow:auto;background:#fff;color:#111827;border:1px solid #9ca3af;border-radius:12px;padding:10px;box-shadow:0 14px 36px rgba(0,0,0,.35);font:13px system-ui,sans-serif;overscroll-behavior:contain}",
     ".pibo-wa-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px}",
     ".pibo-wa-popup textarea{box-sizing:border-box;width:100%;min-height:76px;margin:8px 0;border:1px solid #9ca3af;border-radius:8px;padding:8px;font:13px system-ui,sans-serif;color:#111827;background:#fff}",
+    "@media (max-width:480px){.pibo-wa-popup{width:calc(100vw - 24px);padding:12px}.pibo-wa-popup textarea{min-height:96px;font-size:16px}.pibo-wa-row .pibo-wa-button{width:auto;min-width:92px;height:40px;border-radius:10px;padding:0 12px;line-height:1}}",
     ".pibo-wa-popup-label{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
   ].join("");
   const panel = document.createElement("div");
@@ -392,6 +396,12 @@ export function buildWebAnnotationOverlayScript(configExpression = "window.__pib
       state.dragMoved = false;
       return;
     }
+    if (isCoarsePointer()) {
+      state.toolbarExpanded = !state.toolbarExpanded;
+      updateUi();
+      publishOverlayState("toolbar-toggle");
+      return;
+    }
     state.active = true;
     state.mode = "element";
     closePopup();
@@ -402,6 +412,7 @@ export function buildWebAnnotationOverlayScript(configExpression = "window.__pib
   toggle.addEventListener("click", () => {
     state.active = !state.active;
     state.mode = "element";
+    state.toolbarExpanded = !state.active;
     closePopup();
     updateUi();
     publishOverlayState("toggle");
@@ -409,6 +420,7 @@ export function buildWebAnnotationOverlayScript(configExpression = "window.__pib
   pin.addEventListener("click", () => {
     state.active = true;
     state.mode = state.mode === "pin" ? "element" : "pin";
+    state.toolbarExpanded = false;
     closePopup();
     updateUi();
     publishOverlayState("pin-toggle");
@@ -448,8 +460,9 @@ export function buildWebAnnotationOverlayScript(configExpression = "window.__pib
       if (!state.dragMoved && Math.hypot(dx, dy) < 4) return;
       state.dragMoved = true;
       nextEvent.preventDefault();
-      const left = Math.max(8, Math.min(window.innerWidth - rect.width - 8, originLeft + dx));
-      const top = Math.max(8, Math.min(window.innerHeight - rect.height - 8, originTop + dy));
+      const viewport = viewportMetrics();
+      const left = clamp(originLeft + dx, viewport.left + 8, viewport.left + viewport.width - rect.width - 8);
+      const top = clamp(originTop + dy, viewport.top + 8, viewport.top + viewport.height - rect.height - 8);
       host.style.left = left + "px";
       host.style.top = top + "px";
       host.style.right = "auto";
@@ -459,6 +472,7 @@ export function buildWebAnnotationOverlayScript(configExpression = "window.__pib
       window.removeEventListener("pointermove", onMove, true);
       window.removeEventListener("pointerup", onUp, true);
       window.removeEventListener("pointercancel", onUp, true);
+      ensureHostInViewport();
     };
     window.addEventListener("pointermove", onMove, true);
     window.addEventListener("pointerup", onUp, true);
@@ -466,15 +480,22 @@ export function buildWebAnnotationOverlayScript(configExpression = "window.__pib
   }
 
   function updateUi(message) {
-    const title = shortcutTitle("Enable element annotation mode");
+    const title = isCoarsePointer() ? (state.toolbarExpanded ? "Hide annotation controls" : "Show annotation controls") : shortcutTitle("Enable element annotation mode");
     main.setAttribute("aria-label", title);
+    main.setAttribute("aria-expanded", state.toolbarExpanded ? "true" : "false");
     main.title = title;
     toggle.title = shortcutTitle("Toggle element annotation mode");
     toggle.setAttribute("aria-label", shortcutTitle("Toggle element annotation mode"));
     toggle.setAttribute("aria-pressed", state.active && state.mode === "element" ? "true" : "false");
     pin.setAttribute("aria-pressed", state.active && state.mode === "pin" ? "true" : "false");
+    panel.classList.toggle("pibo-wa-active", state.active);
+    panel.classList.toggle("pibo-wa-expanded", state.toolbarExpanded);
     outline.style.display = state.active && state.mode === "element" && state.hovered ? "block" : "none";
     status.textContent = message || (state.active ? (state.mode === "pin" ? "Pin mode: click anywhere to mark a point." : "Element mode: hover and click a visible target.") : "Inactive: page clicks and typing pass through normally.");
+  }
+
+  function isCoarsePointer() {
+    return Boolean(window.matchMedia && window.matchMedia("(hover: none), (pointer: coarse)").matches);
   }
 
   function readStoredShortcut() {
@@ -613,7 +634,55 @@ export function buildWebAnnotationOverlayScript(configExpression = "window.__pib
   }
 
   function rectAnchor(rect) {
-    return { x: Math.min(window.innerWidth - 340, Math.max(12, rect.left)), y: Math.min(window.innerHeight - 160, Math.max(12, rect.bottom + 8)) };
+    const viewport = viewportMetrics();
+    return {
+      x: clamp(rect.left, viewport.left + 12, viewport.left + viewport.width - 12),
+      y: clamp(rect.bottom + 8, viewport.top + 12, viewport.top + viewport.height - 12),
+    };
+  }
+
+  function viewportMetrics() {
+    const visual = window.visualViewport;
+    return {
+      left: visual && Number.isFinite(visual.offsetLeft) ? visual.offsetLeft : 0,
+      top: visual && Number.isFinite(visual.offsetTop) ? visual.offsetTop : 0,
+      width: Math.max(0, visual && Number.isFinite(visual.width) ? visual.width : (window.innerWidth || document.documentElement.clientWidth || 0)),
+      height: Math.max(0, visual && Number.isFinite(visual.height) ? visual.height : (window.innerHeight || document.documentElement.clientHeight || 0)),
+    };
+  }
+
+  function clamp(value, min, max) {
+    const upper = Math.max(min, max);
+    return Math.max(min, Math.min(upper, value));
+  }
+
+  function positionPopup(popup, anchor) {
+    const viewport = viewportMetrics();
+    const margin = 12;
+    const rect = popup.getBoundingClientRect();
+    const width = Math.min(rect.width || 320, Math.max(0, viewport.width - margin * 2));
+    const height = Math.min(rect.height || 180, Math.max(0, viewport.height - margin * 2));
+    popup.style.left = clamp(anchor.x, viewport.left + margin, viewport.left + viewport.width - width - margin) + "px";
+    popup.style.top = clamp(anchor.y, viewport.top + margin, viewport.top + viewport.height - height - margin) + "px";
+  }
+
+  function ensureHostInViewport() {
+    const rect = host.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const viewport = viewportMetrics();
+    const left = clamp(rect.left, viewport.left + 8, viewport.left + viewport.width - rect.width - 8);
+    const top = clamp(rect.top, viewport.top + 8, viewport.top + viewport.height - rect.height - 8);
+    if (Math.abs(left - rect.left) > 1 || Math.abs(top - rect.top) > 1) {
+      host.style.left = left + "px";
+      host.style.top = top + "px";
+      host.style.right = "auto";
+      host.style.bottom = "auto";
+    }
+  }
+
+  function onViewportChange() {
+    ensureHostInViewport();
+    if (state.popup && state.popup.__piboAnchor) positionPopup(state.popup, state.popup.__piboAnchor);
   }
 
   function isUsableRect(rect) {
@@ -625,8 +694,7 @@ export function buildWebAnnotationOverlayScript(configExpression = "window.__pib
     clearHover();
     const popup = document.createElement("div");
     popup.className = "pibo-wa-popup";
-    popup.style.left = Math.max(12, Math.min(window.innerWidth - 340, anchor.x)) + "px";
-    popup.style.top = Math.max(12, Math.min(window.innerHeight - 160, anchor.y)) + "px";
+    popup.__piboAnchor = anchor;
     const label = document.createElement("div");
     label.className = "pibo-wa-popup-label";
     label.textContent = kind === "pin" ? "Pin annotation" : (target.label || target.selector || "Element annotation");
@@ -642,8 +710,9 @@ export function buildWebAnnotationOverlayScript(configExpression = "window.__pib
     shadow.append(popup);
     state.popup = popup;
     state.active = false;
+    positionPopup(popup, anchor);
     updateUi("Add a note, submit, or cancel.");
-    textarea.focus();
+    textarea.focus({ preventScroll: true });
     cancel.addEventListener("click", () => {
       closePopup();
       state.active = true;
@@ -1042,6 +1111,11 @@ export function buildWebAnnotationOverlayScript(configExpression = "window.__pib
   document.addEventListener("keydown", onKeyDown, true);
   window.addEventListener("pibo:web-annotation-shortcut-changed", onShortcutChanged);
   window.addEventListener("pagehide", onPageHide);
+  window.addEventListener("resize", onViewportChange);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", onViewportChange);
+    window.visualViewport.addEventListener("scroll", onViewportChange);
+  }
   updateUi();
 
   const api = {
@@ -1060,7 +1134,7 @@ export function buildWebAnnotationOverlayScript(configExpression = "window.__pib
       publishOverlayState("set-mode");
     },
     setShortcut(value) { setShortcut(value); },
-    getState() { return { active: state.active, mode: state.mode, shortcut: state.shortcut.label, submissions: state.submissions.slice(), lastError: state.lastError }; },
+    getState() { return { active: state.active, toolbarExpanded: state.toolbarExpanded, mode: state.mode, shortcut: state.shortcut.label, submissions: state.submissions.slice(), lastError: state.lastError }; },
     remove() {
       state.active = false;
       publishOverlayState("removed", false);
@@ -1069,6 +1143,11 @@ export function buildWebAnnotationOverlayScript(configExpression = "window.__pib
       document.removeEventListener("keydown", onKeyDown, true);
       window.removeEventListener("pibo:web-annotation-shortcut-changed", onShortcutChanged);
       window.removeEventListener("pagehide", onPageHide);
+      window.removeEventListener("resize", onViewportChange);
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener("resize", onViewportChange);
+        window.visualViewport.removeEventListener("scroll", onViewportChange);
+      }
       if (state.pendingFrame) cancelAnimationFrame(state.pendingFrame);
       closePopup();
       outline.remove();
