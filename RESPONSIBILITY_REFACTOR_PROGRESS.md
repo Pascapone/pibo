@@ -64,12 +64,12 @@ Initial high-priority candidates from line-count scan:
 
 ## Current state
 
-- Last batch: Extracted workflow code node dispatch types/functions into `packages/workflows/src/runtime/code-node.ts`, preserving the public `runtime/index.ts` export surface through re-exports.
-- Result: `runtime/index.ts` is down from 1,037 to 753 LOC; code node handler resolution, scoped state/edge readers, command collection/emission, patch validation/application, output validation, event persistence, and code-handler error summarization now live in a focused runtime module.
-- Validation: `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace/packages/workflows && npm test -- src/testing/runtime-code-node.test.ts'` passed; `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace/packages/workflows && npm test'` passed (138 passing); `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && npm run typecheck'` passed. Closest practical runtime E2E is workflow package coverage for code-node dispatch plus mixed code/agent/human/adapter/nested workflow execution.
-- Commit: `5dc1f1735f0692351d4653f0c487152ec3986c58` (`refactor(workflows): extract code node runtime`).
+- Last batch: Extracted workflow nested workflow node dispatch types/functions into `packages/workflows/src/runtime/nested-workflow-node.ts`, preserving the public `runtime/index.ts` export surface through re-exports.
+- Result: `runtime/index.ts` is down from 753 to 422 LOC; child workflow registry resolution, parent/child input validation, nested executor handoff, child run status/output validation, completion/failure persistence, and nested executor error summarization now live in a focused runtime module.
+- Validation: `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace/packages/workflows && npm test -- src/testing/runtime-nested-workflow-node.test.ts src/testing/runtime-mixed-node-workflow.test.ts'` passed (138 passing because the package test script also includes `src/**/*.test.ts`); `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && npm run typecheck'` passed. Closest practical runtime E2E is workflow package coverage for nested workflow dispatch plus mixed code/agent/human/adapter/nested workflow execution.
+- Commit: pending.
 - Blockers: none.
-- Exact next step: Continue `packages/workflows/src/runtime/index.ts` by extracting nested workflow node dispatch into `packages/workflows/src/runtime/nested-workflow-node.ts`; existing nested workflow and mixed workflow tests cover registered child execution, missing child refs, incomplete child runs, child output validation, and persistence-adjacent behavior.
+- Exact next step: Continue `packages/workflows/src/runtime/index.ts` by extracting the remaining agent node dispatch into `packages/workflows/src/runtime/agent-node.ts`; existing agent-node, prompt-workflow, mixed workflow, one-node, and routing-adjacent tests cover profile resolution, prompt building, executor invocation, output validation, and persistence-adjacent behavior.
 
 ## Progress log
 
@@ -96,3 +96,4 @@ Initial high-priority candidates from line-count scan:
 - 2026-05-26: Extracted workflow human node dispatch runtime/types into `packages/workflows/src/runtime/human-node.ts`; focused human/mixed/persistence command, full workflow package tests, and root typecheck passed in Docker.
 - 2026-05-26: Extracted workflow adapter node dispatch runtime/types into `packages/workflows/src/runtime/adapter-node.ts`; focused mixed/registry command, full workflow package tests, and root typecheck passed in Docker.
 - 2026-05-26: Extracted workflow code node dispatch runtime/types into `packages/workflows/src/runtime/code-node.ts`; focused code-node command, full workflow package tests, and root typecheck passed in Docker.
+- 2026-05-26: Extracted workflow nested workflow node dispatch runtime/types into `packages/workflows/src/runtime/nested-workflow-node.ts`; focused nested/mixed command (package script ran all 138 workflow tests) and root typecheck passed in Docker.
