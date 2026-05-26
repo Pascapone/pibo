@@ -64,15 +64,16 @@ Initial high-priority candidates from line-count scan:
 
 ## Current state
 
-- Last batch: Extracted workflow JSON Schema subset/value validation and semantic schema equality helpers from `packages/workflows/src/validation/index.ts` into `packages/workflows/src/validation/json-schema.ts`.
-- Result: `validation/index.ts` now owns workflow-level validation orchestration/rules; the new submodule owns low-level JSON Schema subset validation, runtime JSON value validation, local `$defs` refs, and semantic schema equality.
+- Last batch: Extracted workflow registry-reference validators from `packages/workflows/src/validation/index.ts` into `packages/workflows/src/validation/registry-refs.ts`.
+- Result: `validation/index.ts` now keeps workflow graph/state/port orchestration while `registry-refs.ts` owns guard/profile/prompt-builder/code-handler/adapter/human-action registry reference validation and the `WorkflowValidationOptions` type re-exported by `index.ts`.
 - Validation: `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace/packages/workflows && npm test'` passed; `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && npm run typecheck'` passed.
-- Commit: pending at batch close; final session report records the exact hash.
+- Commit: current batch commit `refactor(workflows): extract registry ref validators`; final session report records the exact hash.
 - Blockers: none.
-- Exact next step: Consider extracting workflow registry-reference validators from `packages/workflows/src/validation/index.ts` (`validateWorkflowEdgeGuardRef`, agent profile/prompt builder/code/adapter/human-action ref checks, and `validateRegisteredAdapterExists`) into a focused `registry-refs` validation submodule, protected by `packages/workflows` tests.
+- Exact next step: Consider extracting workflow state access/write-conflict validation from `packages/workflows/src/validation/index.ts` into a focused state validation submodule, protected by existing workflow validation tests.
 
 ## Progress log
 
 - 2026-05-26: Prepared dedicated upstream/dev-based worktree, Docker dev worker, Ralph room, tracking files, and stopped Ralph job `ralph_08b432d8-b80f-49b2-bd25-da1c84cfc16e` with only `max-iterations=200` as stop condition.
 - 2026-05-26: Tightened Ralph prompt to broaden scope from responsibility-only refactoring to code-quality refactoring/analysis, require reading progress/insights and git history at run start, and allow analysis, naming, boundary, test-safety, and architecture-cleanup batches.
 - 2026-05-26: Extracted pure workflow JSON Schema validation/equality helpers into `packages/workflows/src/validation/json-schema.ts`; focused workflow package tests and root typecheck passed in Docker.
+- 2026-05-26: Extracted workflow registry-reference validators into `packages/workflows/src/validation/registry-refs.ts`; focused workflow package tests and root typecheck passed in Docker.

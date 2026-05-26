@@ -38,8 +38,9 @@
 
 ## Workflow validation seams
 
-- `packages/workflows/src/validation/json-schema.ts` now owns the pure JSON Schema subset/value validation seam: schema keyword/type checks, object/array/ref/anyOf validation, runtime JSON value checks, and semantic schema equality for port compatibility.
-- `packages/workflows/src/validation/index.ts` still mixes workflow orchestration, retry/loop/cycle rules, registry reference checks, state access validation, and port/value entry points. The next safest extraction is likely registry-reference validation because those helpers are clustered around guard, adapter, profile, prompt builder, code-node, and human-action refs and are covered by `packages/workflows/src/testing/validation.test.ts`.
+- `packages/workflows/src/validation/json-schema.ts` now owns the pure JSON Schema subset/value validation seam: schema keyword/type checks, object/array/ref/anyOf validation, runtime JSON value checks, local `$defs` refs, and semantic schema equality for port compatibility.
+- `packages/workflows/src/validation/registry-refs.ts` now owns workflow registry-reference validation: guard refs (including loop policy guard validation), agent profile selection/archive checks, prompt builder refs, code handler refs, adapter refs, human action refs, adapter-ref shape detection, and `WorkflowValidationOptions`.
+- `packages/workflows/src/validation/index.ts` still mixes workflow orchestration, retry/loop/cycle rules, edge node/adapter port compatibility, state access validation, and port/value entry points. A likely next extraction is state validation (`validateWorkflowNodeStateAccess`, global write conflicts, scoped state path parsing) because it is cohesive and tested through `packages/workflows/src/testing/validation.test.ts`.
 
 ## Commit policy
 
