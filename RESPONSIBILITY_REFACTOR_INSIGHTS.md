@@ -1,12 +1,14 @@
-# Responsibility Refactoring Insights
+# Code Quality Refactoring Insights
 
 ## Durable context
 
-- The loop targets broad codebase maintainability, not only `src/apps/chat-ui/src/App.tsx`.
+- The loop targets broad codebase maintainability, not only `src/apps/chat-ui/src/App.tsx` and not only responsibility splitting.
+- Valid work includes implementation refactors, analysis-only target discovery, class/module boundary improvements, naming consistency, test-safety batches, duplication reduction, and small architecture cleanup.
 - Large-file line count is only a heuristic. Refactor where responsibilities are separable and tests/manual checks can protect behavior.
 - Avoid mechanical splitting that creates worse coupling. Each extraction should have a named responsibility and clear call sites.
 - Prefer incremental, behavior-preserving moves: extract types, helpers, service modules, hooks/components, or focused API adapters before changing behavior.
 - Use existing project style and naming. Do not add speculative frameworks or abstractions.
+- At run start, always read the progress file, this insights file, and recent git history before choosing the next batch.
 
 ## Environment reminders
 

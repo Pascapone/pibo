@@ -1,4 +1,4 @@
-# Responsibility Refactoring Ralph Progress
+# Code Quality Refactoring Ralph Progress
 
 ## Ralph job setup
 
@@ -7,7 +7,7 @@
 - Target room: `room_f3d80d96-327b-4b2e-b9cf-090d1329bad1`
 - Ralph job: `ralph_08b432d8-b80f-49b2-bd25-da1c84cfc16e` (created stopped; start explicitly when ready)
 - Profile: `pibo-agent`
-- Template: custom general refactoring loop
+- Template: custom code-quality refactoring loop
 - Worktree: `/root/code/pibo/.worktrees/refactor-responsibility-ralph`
 - Branch: `refactor-responsibility-ralph`
 - Docker image: `pibo:latest`
@@ -23,7 +23,7 @@
 
 ## Scope
 
-Improve maintainability by identifying and refactoring overloaded files and modules with too many responsibilities. Do not focus only on Chat UI `App.tsx`; inspect the full codebase and prioritize large, high-responsibility files where extraction is safe and valuable.
+Improve maintainability through safe, reviewable code-quality work. Focus mainly on overloaded files and unclear responsibility boundaries, but also address adjacent issues when they are higher-value: module/class boundaries, naming consistency, duplicated logic, brittle architecture, missing tests around risky seams, and analysis that identifies the next best refactor.
 
 Initial high-priority candidates from line-count scan:
 
@@ -40,8 +40,9 @@ Initial high-priority candidates from line-count scan:
 
 ## Acceptance criteria
 
-- Refactor only when it improves responsibility boundaries and maintainability.
+- Refactor or analyze only when it improves maintainability or identifies a concrete safer next step.
 - Prefer files below 1,000 LOC; for very large legacy files, make steady, behavior-preserving reductions without risky big-bang rewrites.
+- Valid batches include implementation refactors, naming/convention cleanup, test-safety batches, and analysis-only batches with useful committed findings.
 - Preserve behavior and public APIs unless a change is necessary and covered by tests.
 - All relevant tests continue to pass.
 - Run `npm run typecheck` for completed refactoring batches.
@@ -64,3 +65,4 @@ Initial high-priority candidates from line-count scan:
 ## Progress log
 
 - 2026-05-26: Prepared dedicated upstream/dev-based worktree, Docker dev worker, Ralph room, tracking files, and stopped Ralph job `ralph_08b432d8-b80f-49b2-bd25-da1c84cfc16e` with only `max-iterations=200` as stop condition.
+- 2026-05-26: Tightened Ralph prompt to broaden scope from responsibility-only refactoring to code-quality refactoring/analysis, require reading progress/insights and git history at run start, and allow analysis, naming, boundary, test-safety, and architecture-cleanup batches.
