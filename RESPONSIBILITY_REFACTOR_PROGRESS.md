@@ -67,7 +67,7 @@ Initial high-priority candidates from line-count scan:
 - Last batch: Extracted workflow schema declaration validation from `packages/workflows/src/validation/index.ts` into `packages/workflows/src/validation/schema-declarations.ts`.
 - Result: `validation/index.ts` is down from 318 to 273 LOC and now delegates workflow/node/edge-adapter/global-state schema declaration checks while keeping public exports stable.
 - Validation: `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace/packages/workflows && npm test'` passed; `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && npm run typecheck'` passed.
-- Commit: pending until this batch is committed.
+- Commit: `07551fe2a7f168aeab85847eccd140dad75a7650` (`refactor(workflows): extract schema declaration validators`).
 - Blockers: none.
 - Exact next step: Pause further `packages/workflows/src/validation/index.ts` splitting unless new seams appear; next high-value workflow target is a test-backed extraction from `packages/workflows/src/runtime/index.ts`, starting with analysis of runtime boundary helpers and dispatch seams.
 
