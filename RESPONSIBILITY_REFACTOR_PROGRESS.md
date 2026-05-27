@@ -68,7 +68,7 @@ Initial high-priority candidates from line-count scan:
 - Result: `App.tsx` delegates stored-selection resolution, route load skip checks, sessions-route canonicalization, and explicit sessions-route detection to the focused helper module. `App.tsx` is down to ~1,540 LOC.
 - Evidence: Added `test/chat-ui-app-route-selection.test.mjs` covering stored per-room selection, explicit session routes, context/settings fallback selection, bootstrap-load skip rules, canonical sessions-route targeting, and explicit route detection.
 - Validation: host `git diff --check` passed; Docker focused `node --test test/chat-ui-app-route-selection.test.mjs` passed; Docker `npm run chat-ui:typecheck` passed; Docker root `npm run typecheck` passed. Docker route smoke `curl http://127.0.0.1:4802/apps/chat` returned connection failure/HTTP 000 because port 4802 was not listening; no service restart was performed.
-- Commit: pending.
+- Commit: `7e433e6` (`refactor(chat-ui): extract app route selection helpers`).
 - Blockers: worker Chat Web server on port 4802 is still not listening for route smoke checks; not blocking this pure route-selection extraction because focused tests and typechecks passed.
 - Exact next step: Continue with a small App seam, preferably extracting command action response parsing/download command helpers from the bottom of `App.tsx` or adding test safety around room/session destructive flow before moving more side-effect code.
 
