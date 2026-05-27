@@ -64,16 +64,17 @@ Initial high-priority candidates from line-count scan:
 
 ## Current state
 
-- Last batch: Completed an analysis-only review of the remaining `src/debug/web.ts` responsibilities after the debug-web render/report/benchmark/provider/artifact extractions.
-- Result: Ranked the next seams: (1) extract snapshot/watch browser expression generation and the injected DOM observer library; (2) extract CLI option parsing/defaults/preset validation after preserving current pre-CDP validation behavior; (3) keep CDP target connection and command orchestration in `web.ts` for now; (4) defer hosted-compare env-file helpers unless they are moved with option parsing.
-- Evidence: `src/debug/web.ts` is 1,183 LOC; the browser snapshot/watch script block spans roughly lines 632-937 and is self-contained behind `buildSnapshotExpression`/`buildWatchExpression`; `parseOptions` and validators span roughly lines 939-1109 and are covered by many `test/debug-cli.test.mjs` pre-target-discovery rejection tests; command handlers still interleave CDP connection, validation, navigation, and artifact/report calls.
-- Validation: host `git diff --check` passed for the tracking-only diff.
-- Commit: `d4e6ddb` (`docs(refactor): analyze debug web seams`).
+- Last batch: Extracted the `pibo debug web` snapshot/watch browser-expression seam from `src/debug/web.ts` into `src/debug/web-snapshot-browser-scripts.ts`.
+- Result: `src/debug/web.ts` dropped from 1,183 LOC to 877 LOC and now imports the browser expression builders, while the new 321 LOC module owns `buildSnapshotExpression`, `buildWatchExpression`, typed builder options, and the injected DOM observer/snapshot library.
+- Evidence: The extraction is behavior-preserving: the generated browser library text was moved unchanged, with only the TypeScript builder signatures named through exported option types.
+- Validation: host `git diff --check` passed; Docker `npm run build` passed; Docker focused `node --test test/debug-cli.test.mjs` passed (66 tests); Docker root `npm run typecheck` passed; Docker CLI smoke for `node dist/bin/pibo.js debug web snapshot --help` and `watch --help` passed (13 lines each).
+- Commit: pending hash recording after commit.
 - Blockers: none.
-- Exact next step: Implement the low-risk extraction of snapshot/watch browser scripts into `src/debug/web-snapshot-browser-scripts.ts`, exporting `buildSnapshotExpression` and `buildWatchExpression`, then run host `git diff --check`, Docker `npm run build`, Docker focused `node --test test/debug-cli.test.mjs`, Docker root `npm run typecheck`, and CLI smoke for `node dist/bin/pibo.js debug web snapshot --help` plus `watch --help`.
+- Exact next step: Extract the remaining debug-web option parsing/defaults/preset validation seam into a focused module only after preserving current pre-CDP validation/error ordering with `test/debug-cli.test.mjs`.
 
 ## Progress log
 
+- 2026-05-27: Extracted debug web snapshot/watch browser expression generation and DOM observer library into `src/debug/web-snapshot-browser-scripts.ts`; host `git diff --check`, Docker `npm run build`, focused `test/debug-cli.test.mjs` (66 tests), root `npm run typecheck`, and `snapshot --help`/`watch --help` CLI smoke checks passed.
 - 2026-05-27: Completed analysis-only review of remaining `src/debug/web.ts` seams; ranked snapshot/watch browser script extraction as the safest next implementation slice, option parsing/validation as the next likely seam, and CDP command orchestration as too coupled for immediate extraction; host `git diff --check` passed for the tracking-only diff.
 - 2026-05-27: Extracted debug web artifact/output I/O helpers into `src/debug/web-artifacts.ts`; host `git diff --check`, Docker `npm run build`, focused `test/debug-cli.test.mjs` (66 tests), root `npm run typecheck`, and `node dist/bin/pibo.js debug web report --help` smoke passed.
 - 2026-05-27: Extracted debug web benchmark scoring/regression/summary/artifact normalization into `src/debug/web-streaming-benchmark-analysis.ts`; host `git diff --check`, Docker `npm run build`, focused `test/debug-cli.test.mjs`, root `npm run typecheck`, and `node dist/bin/pibo.js debug web scenario --help` smoke passed.
