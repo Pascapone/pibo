@@ -64,13 +64,13 @@ Initial high-priority candidates from line-count scan:
 
 ## Current state
 
-- Last batch: Extracted the `SessionTracePane` raw-events sidebar/load-more rendering into `src/apps/chat-ui/src/tracing/RawEventsSidebar.tsx`.
-- Result: `App.tsx` now passes raw-event state/query status into a focused component and no longer owns raw-event compaction or JSON rendering. `App.tsx` fell from 3,702 LOC to 3,678 LOC; the new component is 54 LOC.
-- Evidence: Docker source/import sanity confirmed `App.tsx` imports `./tracing/RawEventsSidebar`, while `RawEventsSidebar.tsx` owns `compactRawEvents` and `JsonRenderer`. `wc -l` reports 3,678 LOC for `App.tsx` and 54 LOC for `tracing/RawEventsSidebar.tsx`.
+- Last batch: Extracted the `SessionTracePane` load-older trace history strip into `src/apps/chat-ui/src/tracing/TraceHistoryLoadMore.tsx`.
+- Result: `App.tsx` now delegates history-strip presentation/copy/count formatting to a focused tracing component while retaining the trace-page fetch and state transitions in `SessionTracePane`. `App.tsx` fell from 3,678 LOC to 3,673 LOC; the new component is 28 LOC.
+- Evidence: Docker source/import sanity confirmed `App.tsx` imports `./tracing/TraceHistoryLoadMore`, while `TraceHistoryLoadMore.tsx` owns the `Load older trace history` button copy. `wc -l` reports 3,673 LOC for `App.tsx` and 28 LOC for `tracing/TraceHistoryLoadMore.tsx`.
 - Validation: `git diff --check` passed; Docker source/import sanity passed; Docker `npm run chat-ui:typecheck` passed; Docker root `npm run typecheck` passed. Worker route smoke `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && curl --max-time 5 -S -s -o /tmp/pibo-chat-smoke.out -w "HTTP %{http_code}\n" http://127.0.0.1:4802/apps/chat || true'` returned `curl: (7) Failed to connect to 127.0.0.1 port 4802` and HTTP 000, so no browser validation was possible without restarting worker services.
-- Commit: `a102168` (`refactor(chat-ui): extract raw events sidebar`).
+- Commit: pending.
 - Blockers: worker Chat Web server on port 4802 is still not serving the route during smoke validation; no restart performed per operating rules.
-- Exact next step: Continue reducing `SessionTracePane` by extracting the load-older trace history strip or the current session-view render props into a focused helper/component.
+- Exact next step: Extract the current session-view render props/object assembly from `SessionTracePane` into a focused helper/component, or pivot to App bootstrap mutation helpers if the render prop seam looks too coupled.
 
 ## Progress log
 
@@ -149,3 +149,4 @@ Initial high-priority candidates from line-count scan:
 - 2026-05-27: Extracted `SessionTracePane` composer send planning/optimistic overlay helpers into `src/apps/chat-ui/src/composer-send.ts` and added `test/chat-ui-composer-send.test.mjs`; `git diff --check`, Docker focused test, source/import sanity, Docker `npm run chat-ui:typecheck`, and root `npm run typecheck` passed. Worker route smoke returned curl connection failure/HTTP 000 without restarting services.
 - 2026-05-27: Extracted `SessionTracePane` composer UI, browser paste/upload handling, composer history navigation, autosizing, suggestion state, and attachment chips into `src/apps/chat-ui/src/composer/Composer.tsx`; source/import sanity, `git diff --check`, Docker `npm run chat-ui:typecheck`, and root `npm run typecheck` passed. Worker route smoke returned curl connection failure/HTTP 000 without restarting services.
 - 2026-05-27: Extracted `SessionTracePane` raw-events sidebar/load-more rendering into `src/apps/chat-ui/src/tracing/RawEventsSidebar.tsx`; source/import sanity, `git diff --check`, Docker `npm run chat-ui:typecheck`, and root `npm run typecheck` passed. Worker route smoke returned curl connection failure/HTTP 000 without restarting services.
+- 2026-05-27: Extracted `SessionTracePane` trace-history load-more strip into `src/apps/chat-ui/src/tracing/TraceHistoryLoadMore.tsx`; source/import sanity, `git diff --check`, Docker `npm run chat-ui:typecheck`, and root `npm run typecheck` passed. Worker route smoke returned curl connection failure/HTTP 000 without restarting services.
