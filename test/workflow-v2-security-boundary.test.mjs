@@ -32,6 +32,7 @@ test("Workflow V2 security boundary surfaces auth, capability, compute, and data
 
 test("Workflow V2 security boundary is covered by backend auth, validation, redaction, and visibility gates", async () => {
 	const webAppSource = await readSource("src/apps/chat/web-app.ts");
+	const workflowPersistenceModelSource = await readSource("src/apps/chat/workflow-persistence-model.ts");
 	const webChannelTests = await readSource("test/web-channel.test.mjs");
 	const deferralTests = await readSource("test/workflow-v2-deferrals.test.mjs");
 
@@ -44,6 +45,9 @@ test("Workflow V2 security boundary is covered by backend auth, validation, reda
 		["raw XState fields are rejected by validation", /WorkflowSecurityError\.rawXStateAuthoring/],
 		["hidden LLM coercion is rejected", /WorkflowSecurityError\.hiddenLlmCoercion/],
 		["Zod is excluded by the JSON Schema subset validator", /Zod schemas are not part of V2 authoring/],
+	]);
+
+	assertAllMatch(workflowPersistenceModelSource, [
 		["diagnostics are sanitized before storage or responses", /function sanitizeWorkflowDiagnostics/],
 		["diagnostic text redacts sensitive workflow values", /function redactWorkflowDiagnosticText/],
 	]);
