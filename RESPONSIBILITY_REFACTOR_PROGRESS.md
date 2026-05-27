@@ -69,7 +69,7 @@ Initial high-priority candidates from line-count scan:
 - Result: Added `src/apps/chat/chat-request-normalizers.ts` for session/room/project/agent/settings/message/streaming-fixture request contracts, normalizers, profile selection, model-default updates, and session/room/agent update builders. `web-app.ts` now imports this boundary and keeps auth, method dispatch, service calls, persistence, response assembly, streaming, and route orchestration.
 - Evidence: `web-app.ts` is now 6,824 LOC (down from 7,513); new `chat-request-normalizers.ts` is 774 LOC. The extracted module is below the 1,000 LOC target and isolates body validation from side-effectful route handlers.
 - Validation: host `git diff --check` passed; Docker `npm run build` passed; Docker `node --test test/web-channel.test.mjs` passed; Docker `npm run typecheck` passed. Worker route smoke to `http://127.0.0.1:4802/apps/chat` returned curl exit 7/HTTP 000 connection refused because the worker web server was not listening; no restart was performed.
-- Commit: pending.
+- Commit: `2ac9956` (`refactor(chat): extract request normalizers`).
 - Blockers: none.
 - Exact next step: Re-rank remaining Chat Web route seams before moving side-effectful route handlers; likely candidates are workflow validation response shaping or a narrow file-upload/download helper seam, not a broad router rewrite.
 
