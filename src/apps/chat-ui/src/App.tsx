@@ -4,6 +4,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { flushSync } from "react-dom";
 import { RefreshCw, X } from "lucide-react";
 import { deleteRoom, deleteSession, getBootstrap, getNavigation, getSessionPage, markRoomRead, markSessionRead, patchRoom, patchSession, postAction, postMessage, postRoom, postSession } from "./api-chat-sessions";
+import { navigateToChatRoute, type ChatAppRoute, type NavigationOptions } from "./app-routes";
 import { downloadChatFile } from "./api-chat-files";
 import { fetchSignalTree, subscribeSignalTree } from "./api-trace-signals";
 import { listUserSkills } from "./api-agent-designer";
@@ -117,15 +118,7 @@ import {
 	upsertAgentCatalogUserSkill,
 } from "./app-agent-catalog-mutations";
 
-export type ChatAppRoute =
-	| { area: "sessions"; roomId?: string; piboSessionId?: string; sessionViewId?: ChatSessionViewId }
-	| { area: "projects"; projectId?: string; piboSessionId?: string; sessionViewId?: ChatSessionViewId }
-	| { area: "workflows"; draftId?: string; viewWorkflowId?: string; viewWorkflowVersion?: string }
-	| { area: "agents" }
-	| { area: "cron" }
-	| { area: "ralph" }
-	| { area: "context"; piboSessionId?: string }
-	| { area: "settings"; panel?: SettingsPanel };
+export type { ChatAppRoute } from "./app-routes";
 
 type ForkActionResponse = {
 	result: {
@@ -138,10 +131,6 @@ type ForkActionResponse = {
 type LoadBootstrapOptions = {
 	selectSession?: boolean;
 	force?: boolean;
-};
-
-type NavigationOptions = {
-	closeMobileSidebar?: boolean;
 };
 
 const SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS = 750;
@@ -349,89 +338,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const navigateToRoute = useCallback(
 		(target: ChatAppRoute, replace = false, nextSessionViewId = sessionViewId, options: NavigationOptions = {}) => {
 			if (options.closeMobileSidebar !== false) setMobileSidebarOpen(false);
-			const sessionViewSearch = { view: nextSessionViewId };
-			if (target.area === "projects") {
-				if (target.projectId && target.piboSessionId) {
-					void navigate({
-						to: "/projects/$projectId/sessions/$piboSessionId",
-						params: { projectId: target.projectId, piboSessionId: target.piboSessionId },
-						search: sessionViewSearch,
-						replace,
-					});
-					return;
-				}
-				if (target.projectId) {
-					void navigate({ to: "/projects/$projectId", params: { projectId: target.projectId }, search: sessionViewSearch, replace });
-					return;
-				}
-				void navigate({ to: "/projects", search: sessionViewSearch, replace });
-				return;
-			}
-			if (target.area === "workflows") {
-				if (target.draftId) {
-					void navigate({ to: "/workflows/drafts/$draftId", params: { draftId: target.draftId }, replace });
-					return;
-				}
-				void navigate({ to: "/workflows", replace });
-				return;
-			}
-			if (target.area === "agents") {
-				void navigate({ to: "/agents", replace });
-				return;
-			}
-			if (target.area === "cron") {
-				void navigate({ to: "/cron", replace });
-				return;
-			}
-			if (target.area === "ralph") {
-				void navigate({ to: "/ralph", replace });
-				return;
-			}
-			if (target.area === "context") {
-				void navigate({
-					to: "/context",
-					search: target.piboSessionId ? { piboSessionId: target.piboSessionId } : {},
-					replace,
-				});
-				return;
-			}
-			if (target.area === "settings") {
-				if (target.panel === "shortcuts") {
-					void navigate({ to: "/settings/shortcuts", replace });
-				} else if (target.panel === "pi-packages") {
-					void navigate({ to: "/settings/pi-packages", replace });
-				} else if (target.panel === "skills") {
-					void navigate({ to: "/settings/skills", replace });
-				} else if (target.panel === "providers") {
-					void navigate({ to: "/settings/providers", replace });
-				} else {
-					void navigate({ to: "/settings", replace });
-				}
-				return;
-			}
-			if (target.roomId && target.piboSessionId) {
-				void navigate({
-					to: "/rooms/$roomId/sessions/$piboSessionId",
-					params: { roomId: target.roomId, piboSessionId: target.piboSessionId },
-					search: sessionViewSearch,
-					replace,
-				});
-				return;
-			}
-			if (target.roomId) {
-				void navigate({ to: "/rooms/$roomId", params: { roomId: target.roomId }, search: sessionViewSearch, replace });
-				return;
-			}
-			if (target.piboSessionId) {
-				void navigate({
-					to: "/sessions/$piboSessionId",
-					params: { piboSessionId: target.piboSessionId },
-					search: sessionViewSearch,
-					replace,
-				});
-				return;
-			}
-			void navigate({ to: "/", search: sessionViewSearch, replace });
+			navigateToChatRoute(navigate, target, replace, nextSessionViewId);
 		},
 		[navigate, sessionViewId],
 	);

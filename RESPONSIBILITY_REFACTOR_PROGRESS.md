@@ -64,13 +64,13 @@ Initial high-priority candidates from line-count scan:
 
 ## Current state
 
-- Last batch: Extracted Chat UI App local-storage-backed display/profile preference helpers into `src/apps/chat-ui/src/app-storage.ts` and switched App/Settings toggle call sites off raw preference keys.
-- Result: `app-storage.ts` now owns persisted show-thinking, expand-thinking, raw-events, archived-sessions, archived-rooms, and preferred new-session profile access; `App.tsx`/`SettingsView.tsx` call named helpers instead of duplicating string keys and default semantics.
-- Evidence: Added focused coverage in `test/chat-ui-app-storage.test.mjs` for default values, boolean/profile writes, invalid stored boolean fallback, and storage-unavailable safety. `App.tsx` direct references to these preference keys are gone.
-- Validation: host `git diff --check` passed; Docker focused `node --test test/chat-ui-app-storage.test.mjs` passed; Docker source import sanity for `app-storage.ts` and `SettingsView.tsx` passed; Docker `npm run chat-ui:typecheck` passed; Docker root `npm run typecheck` passed. Docker route smoke `curl http://127.0.0.1:4802/apps/chat` returned connection failure/HTTP 000 because port 4802 was not listening; no service restart was performed.
-- Commit: `ec7af0e` (`refactor(chat-ui): extract app storage preferences`).
-- Blockers: worker Chat Web server on port 4802 is still not listening for route smoke checks; not blocking this behavior-preserving storage helper extraction because focused tests and typechecks passed.
-- Exact next step: Continue reducing `App.tsx` by extracting route navigation path planning or room/session selection flow helpers after a small seam analysis; avoid additional generic storage work unless another raw preference key becomes duplicated.
+- Last batch: Extracted Chat UI route contracts, browser-location parsing, and route-to-navigation request planning into `src/apps/chat-ui/src/app-routes.ts`.
+- Result: `App.tsx` delegates navigation planning to `app-routes.ts` and re-exports `ChatAppRoute` for compatibility; `main.tsx` delegates URL parsing to the same route module. `App.tsx` is down to ~1,561 LOC.
+- Evidence: Added `test/chat-ui-app-routes.test.mjs` covering location parsing and navigation request mapping for sessions, projects, context, settings, workflow-view parsing, `/apps/chat` prefix stripping, decoded path parts, and invalid session view fallback.
+- Validation: host `git diff --check` passed; Docker focused `node --test test/chat-ui-app-routes.test.mjs` passed; Docker `npm run chat-ui:typecheck` passed; Docker root `npm run typecheck` passed. Docker route smoke `curl http://127.0.0.1:4802/apps/chat` returned connection failure/HTTP 000 because port 4802 was not listening; no service restart was performed.
+- Commit: `39bc2f9` (`refactor(chat-ui): extract app route helpers`).
+- Blockers: worker Chat Web server on port 4802 is still not listening for route smoke checks; not blocking this behavior-preserving route helper extraction because focused tests and typechecks passed.
+- Exact next step: Continue reducing `App.tsx` by extracting room/session selection flow helpers or do a short seam analysis of remaining App responsibilities before more extraction; avoid reworking route helpers unless new route behavior is needed.
 
 ## Progress log
 
@@ -168,3 +168,4 @@ Initial high-priority candidates from line-count scan:
 - 2026-05-27: Extracted Chat UI App agent-catalog bootstrap mutation helpers into `src/apps/chat-ui/src/app-agent-catalog-mutations.ts` and added `test/chat-ui-app-agent-catalog-mutations.test.mjs`; host `git diff --check`, Docker focused test, Docker `npm run chat-ui:typecheck`, and root `npm run typecheck` passed. Worker route smoke returned curl connection failure/HTTP 000 without restarting services.
 - 2026-05-27: Extracted Chat UI App slash-command and available-skill catalog helpers into `src/apps/chat-ui/src/app-command-catalog.ts` and added `test/chat-ui-app-command-catalog.test.mjs`; host `git diff --check`, Docker focused test, Docker `npm run chat-ui:typecheck`, and root `npm run typecheck` passed. Worker route smoke returned curl connection failure/HTTP 000 without restarting services.
 - 2026-05-27: Extracted Chat UI App display/profile preference storage helpers into `src/apps/chat-ui/src/app-storage.ts` and added `test/chat-ui-app-storage.test.mjs`; host `git diff --check`, Docker focused test, Docker source import sanity for storage/settings modules, Docker `npm run chat-ui:typecheck`, and root `npm run typecheck` passed. Worker route smoke returned curl connection failure/HTTP 000 without restarting services.
+- 2026-05-27: Extracted Chat UI route contracts/location parsing/navigation request planning into `src/apps/chat-ui/src/app-routes.ts` and added `test/chat-ui-app-routes.test.mjs`; host `git diff --check`, Docker focused test, Docker `npm run chat-ui:typecheck`, and root `npm run typecheck` passed. Worker route smoke returned curl connection failure/HTTP 000 without restarting services.

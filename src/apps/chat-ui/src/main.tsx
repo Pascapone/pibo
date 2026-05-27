@@ -2,8 +2,8 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRootRoute, createRoute, createRouter, RouterProvider, useRouterState } from "@tanstack/react-router";
-import { App, type ChatAppRoute } from "./App";
-import { parseChatSessionViewId } from "./session-views/types";
+import { App } from "./App";
+import { chatRouteFromLocation } from "./app-routes";
 import "./styles.css";
 
 const queryClient = new QueryClient({
@@ -23,41 +23,6 @@ function ChatRoot() {
 		}),
 	});
 	return <App route={chatRouteFromLocation(location.pathname, location.search)} />;
-}
-
-function chatRouteFromLocation(pathname: string, search: Record<string, unknown>): ChatAppRoute {
-	const path = pathname.startsWith("/apps/chat") ? pathname.slice("/apps/chat".length) || "/" : pathname;
-	const contextPiboSessionId = typeof search.piboSessionId === "string" && search.piboSessionId.trim() ? search.piboSessionId.trim() : undefined;
-	const parts = path
-		.split("/")
-		.filter(Boolean)
-		.map((part) => decodeURIComponent(part));
-	const sessionViewId = parseChatSessionViewId(search.view);
-	if (parts[0] === "context") return { area: "context", ...(contextPiboSessionId ? { piboSessionId: contextPiboSessionId } : {}) };
-	if (parts[0] === "workflows" && parts[1] === "drafts" && parts[2]) return { area: "workflows", draftId: parts[2] };
-	if (parts[0] === "workflows" && parts[1] === "view" && parts[2] && parts[3]) return { area: "workflows", viewWorkflowId: parts[2], viewWorkflowVersion: parts[3] };
-	if (parts[0] === "workflows") return { area: "workflows" };
-	if (parts[0] === "agents") return { area: "agents" };
-	if (parts[0] === "cron") return { area: "cron" };
-	if (parts[0] === "ralph") return { area: "ralph" };
-	if (parts[0] === "settings") {
-		if (parts[1] === "shortcuts") return { area: "settings", panel: "shortcuts" };
-		if (parts[1] === "pi-packages") return { area: "settings", panel: "pi-packages" };
-		if (parts[1] === "skills") return { area: "settings", panel: "skills" };
-		if (parts[1] === "providers") return { area: "settings", panel: "providers" };
-		return { area: "settings", panel: "general" };
-	}
-	if (parts[0] === "projects" && parts[1] && parts[2] === "sessions" && parts[3]) {
-		return { area: "projects", projectId: parts[1], piboSessionId: parts[3], sessionViewId };
-	}
-	if (parts[0] === "projects" && parts[1]) return { area: "projects", projectId: parts[1], sessionViewId };
-	if (parts[0] === "projects") return { area: "projects", sessionViewId };
-	if (parts[0] === "rooms" && parts[1] && parts[2] === "sessions" && parts[3]) {
-		return { area: "sessions", roomId: parts[1], piboSessionId: parts[3], sessionViewId };
-	}
-	if (parts[0] === "rooms" && parts[1]) return { area: "sessions", roomId: parts[1], sessionViewId };
-	if (parts[0] === "sessions" && parts[1]) return { area: "sessions", piboSessionId: parts[1], sessionViewId };
-	return { area: "sessions", sessionViewId };
 }
 
 const rootRoute = createRootRoute({
