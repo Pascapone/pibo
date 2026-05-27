@@ -67,7 +67,7 @@ Initial high-priority candidates from line-count scan:
 - Last batch: Extracted the Chat UI Web Annotation API seam from `src/apps/chat-ui/src/api.ts` into `src/apps/chat-ui/src/api-web-annotations.ts`.
 - Result: Web annotation target/binding/overlay/message types and list/patch/target/binding/inject client functions now live in `api-web-annotations.ts`; `App.tsx` imports that focused client directly, while `api.ts` re-exports it for compatibility. `api.ts` dropped from 573 LOC to 452 LOC.
 - Validation: `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && test -f src/apps/chat-ui/src/api-web-annotations.ts && grep -q "export \\* from \"./api-web-annotations\"" src/apps/chat-ui/src/api.ts && grep -q "./api-web-annotations" src/apps/chat-ui/src/App.tsx && ! grep -E "export type WebAnnotation|listWebAnnotations|patchWebAnnotation|createWebAnnotationBinding|injectWebAnnotationBinding|listWebAnnotationTargets|compactObject" src/apps/chat-ui/src/api.ts && npm run build && npm run typecheck'` passed (source/import sanity check, root build, root typecheck). No browser/manual check was needed because this was a pure client module extraction with preserved request paths and exported names.
-- Commit: pending.
+- Commit: `56ffa0a` (`refactor(chat-ui): extract web annotation api client`).
 - Blockers: none.
 - Exact next step: Continue shrinking the Chat UI API boundary with another cohesive request family from `api.ts`, likely auth/upload/download helpers, trace/signal polling, or room/session messaging APIs.
 
