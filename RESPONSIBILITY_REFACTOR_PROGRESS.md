@@ -69,7 +69,7 @@ Initial high-priority candidates from line-count scan:
 - Result: Added focused custom-agent web-route coverage for renaming a custom agent, removing the old profile from session creation, creating a session with the renamed profile, archiving the renamed agent, permanently deleting it, and deleting the renamed-profile session subtree.
 - Evidence: `test/web-channel.test.mjs` now has 87 tests and includes `chat web app deletes renamed custom agents with their session subtrees`, complementing existing archive/delete, profile-name validation, alias canonicalization, Pi-package selection, and broken-context-file custom-agent coverage.
 - Validation: host `git diff --check` passed; Docker `npm run build` passed; Docker `node --test test/web-channel.test.mjs` passed (87 tests); Docker `npm run typecheck` passed; worker route smoke `curl http://127.0.0.1:4802/apps/chat` returned exit 7/HTTP 000 connection refused without restarting services.
-- Commit: pending.
+- Commit: `944a14b` (`test(chat): cover custom agent rename deletion`).
 - Blockers: none.
 - Exact next step: Extract the `/api/chat/agents` list/create/update/delete handler into a focused route helper while keeping same-origin enforcement and session auth visible in `web-app.ts`; include renamed-profile deletion coverage in the focused validation set.
 
