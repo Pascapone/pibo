@@ -69,7 +69,7 @@ Initial high-priority candidates from line-count scan:
 - Result: `web-app.ts` now delegates trace helper mechanics to the new module while retaining route auth, selected-session resolution, metadata/event queries, trace building, response headers, and response assembly. Added focused coverage in `test/chat-trace-helpers.test.mjs` for ETags, cache keys/eviction, raw tails, page annotations, and live snapshot event shaping.
 - Evidence: `web-app.ts` is now 5,335 LOC (down from 5,433); `chat-trace-helpers.ts` is 114 LOC; `test/chat-trace-helpers.test.mjs` is 66 LOC.
 - Validation: host `git diff --check` passed; Docker `node --test test/chat-trace-helpers.test.mjs test/web-channel.test.mjs` passed; Docker `npm run build` passed; Docker `npm run typecheck` passed. Worker route smoke to `http://127.0.0.1:4802/apps/chat` returned curl exit 56/HTTP 000 connection reset; no restart was performed.
-- Commit: `f0b7e86` (`refactor(chat): extract trace route helpers`).
+- Commit: `ed9bf73` (`refactor(chat): extract trace route helpers`).
 - Blockers: none.
 - Exact next step: Continue analyzing the remaining `src/apps/chat/web-app.ts` route-orchestration surface; trace route building is still orchestration-heavy, so the next safe Chat Web slice is likely a small settings/tooling helper or an analysis batch that ranks provider auth/settings/MCP/Pi-package/user-skill handlers by coupling and test coverage before moving route side effects.
 
