@@ -67,7 +67,7 @@ Initial high-priority candidates from line-count scan:
 - Last batch: Extracted workflow draft write side-effect helpers into `packages/workflows/src/store/draft-writes.ts`.
 - Result: `packages/workflows/src/store/index.ts` is down from 884 to 874 LOC. The store class still owns the draft upsert SQL, while active-draft conflict detection and identity current-draft side effects now have named store-local helper functions.
 - Validation: `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace/packages/workflows && npm test -- src/testing/workflow-catalog-entities.test.ts src/testing/workflow-store-facts.test.ts'` passed (package script runs the workflow test suite); `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && npm run typecheck'` passed. Closest practical store E2E is workflow package store/catalog/persistence coverage because the public store API and SQLite behavior are preserved.
-- Commit: pending.
+- Commit: `66b5998b3b7197fa3a405ac79ec8dceb17c773eb` (`refactor(workflows): extract draft write helpers`).
 - Blockers: none.
 - Exact next step: Pivot to the next high-value large target, likely `src/shared/trace-engine.ts` or `src/data/telemetry.ts`, unless a store reviewer asks for more cleanup; `packages/workflows/src/store/index.ts` is below 1,000 LOC and further splitting has diminishing returns.
 
