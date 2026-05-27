@@ -1525,8 +1525,6 @@ export function App({ route }: { route: ChatAppRoute }) {
 	if (!bootstrap) {
 		return <div className="min-h-screen bg-[#101d22] text-slate-300 grid place-items-center">Loading Pibo Chat...</div>;
 	}
-	const roomsSupported = Boolean(bootstrap.selectedRoomId || bootstrap.room || bootstrap.rooms.length);
-	const newSessionProfileOptions = bootstrap.agents;
 	const selectedSessionNode = selectedPiboSessionId ? findSessionNode(bootstrap.sessions, selectedPiboSessionId) : undefined;
 	const selectedSessionSignal = selectedPiboSessionId ? sessionSignals?.sessions[selectedPiboSessionId] : undefined;
 	const selectedRootSignal = sessionSignals?.rootPiboSessionId ? sessionSignals.sessions[sessionSignals.rootPiboSessionId] : undefined;
@@ -1534,8 +1532,6 @@ export function App({ route }: { route: ChatAppRoute }) {
 		profile: defaultProfileFromBootstrap(bootstrap),
 		parentId: bootstrap.session?.parentId,
 	});
-	const personalRoom = findPersonalRoom(bootstrap.rooms);
-	const roomGroups = splitRoomNodes(bootstrap.rooms);
 	const totalRoomUnreadCount = countUnreadRooms(bootstrap.rooms);
 	const contextAgentProfiles = [...new Set([...bootstrap.agents.map((agent) => agent.name), ...bootstrap.customAgents.map((agent) => agent.profileName)])];
 	const identity = identityFromBootstrap(bootstrap);
@@ -1760,209 +1756,51 @@ export function App({ route }: { route: ChatAppRoute }) {
 						</div>
 					</div>
 					{area === "sessions" ? (
-						<div
-							data-pibo-debug="session-list"
-							data-pibo-room-id={selectedRoomId ?? bootstrap.selectedRoomId ?? undefined}
-							data-pibo-selected-session-id={selectedPiboSessionId ?? undefined}
-							data-pibo-state={showArchived ? "archived-visible" : "active-only"}
-							className="min-h-0 flex-1 overflow-hidden p-2 flex flex-col gap-3"
-						>
-							{roomsSupported ? (
-								<>
-									{personalRoom ? (
-											<div className="shrink-0">
-												<div className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Personal Chat</div>
-												<RoomNode
-													room={personalRoom}
-													selectedRoomId={selectedRoomId}
-													onSelect={(roomId) => void selectRoom(roomId)}
-													onUpdate={(roomId, input) => void updateRoom(roomId, input)}
-													onArchive={(roomId, archived) => void setRoomArchived(roomId, archived)}
-													onReadAll={(roomId) => void readAllRoom(roomId)}
-													onDelete={requestRoomDelete}
-												/>
-											</div>
-									) : null}
-									<div className="min-h-0 flex-1 basis-0 overflow-hidden flex flex-col">
-										<div className="shrink-0 flex items-center justify-between gap-2 px-1 pb-1">
-											<div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Rooms</div>
-											<div className="flex items-center gap-1">
-												<button
-													type="button"
-													onClick={() => void createRoom()}
-													disabled={creatingRoom}
-													title="New Room"
-													aria-label="New Room"
-													className="h-6 w-6 max-[980px]:h-8 max-[980px]:w-8 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50"
-												>
-													<Plus size={14} />
-												</button>
-												<button
-													type="button"
-													onClick={() => {
-														const next = !showArchivedRooms;
-														setShowArchivedRooms(next);
-														localStorage.setItem("pibo.chat.showArchivedRooms", String(next));
-													}}
-													title={showArchivedRooms ? "Hide Archived Rooms" : "Show Archived Rooms"}
-													aria-label={showArchivedRooms ? "Hide Archived Rooms" : "Show Archived Rooms"}
-													className={`h-6 w-6 max-[980px]:h-8 max-[980px]:w-8 inline-flex items-center justify-center border rounded-sm hover:border-[#11a4d4] hover:text-[#11a4d4] ${showArchivedRooms ? "border-[#11a4d4] text-[#11a4d4]" : "border-slate-700 text-slate-400"}`}
-												>
-													{showArchivedRooms ? <ArchiveRestore size={14} /> : <Archive size={14} />}
-												</button>
-											</div>
-										</div>
-										<div className="min-h-0 flex-1 overflow-y-auto pr-1">
-										{roomGroups.active.map((room) => (
-											<RoomNode
-												key={room.id}
-												room={room}
-												selectedRoomId={selectedRoomId}
-												onSelect={(roomId) => void selectRoom(roomId)}
-												onUpdate={(roomId, input) => void updateRoom(roomId, input)}
-												onArchive={(roomId, archived) => void setRoomArchived(roomId, archived)}
-												onReadAll={(roomId) => void readAllRoom(roomId)}
-												onDelete={requestRoomDelete}
-											/>
-										))}
-										{roomGroups.active.length === 0 ? <div className="px-2 py-3 text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm">No rooms</div> : null}
-										{showArchivedRooms ? (
-											<div className="mt-3">
-												<div className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Archived Rooms</div>
-												{roomGroups.archived.length ? (
-													<ArchivedRoomsList
-														rooms={roomGroups.archived}
-														selectedRoomId={selectedRoomId}
-														onSelect={(roomId) => void selectRoom(roomId)}
-														onUpdate={(roomId, input) => void updateRoom(roomId, input)}
-														onArchive={(roomId, archived) => void setRoomArchived(roomId, archived)}
-														onReadAll={(roomId) => void readAllRoom(roomId)}
-														onDelete={requestRoomDelete}
-													/>
-												) : <div className="px-2 py-3 text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm">No archived rooms</div>}
-											</div>
-										) : null}
-										</div>
-									</div>
-								</>
-							) : null}
-							<div className="min-h-0 flex-1 basis-0 overflow-hidden flex flex-col border-t border-slate-700/80 pt-3">
-								<div className="shrink-0 flex items-center justify-between gap-2 px-1 pb-1">
-									<div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Sessions</div>
-									<div className="flex items-center gap-1">
-										<select
-											value={newSessionProfile}
-											onChange={(event) => setPreferredNewSessionProfile(event.target.value)}
-											disabled={!newSessionProfileOptions.length || selectedRoomArchived}
-											title="Agent for new sessions"
-											aria-label="Agent for new sessions"
-											className="h-6 w-28 max-[980px]:h-8 max-[980px]:w-32 max-[980px]:text-sm rounded-sm border border-slate-700 bg-[#101d22] px-1.5 text-[11px] font-medium normal-case tracking-normal text-slate-300 outline-none hover:border-[#11a4d4] focus:border-[#11a4d4] disabled:opacity-50"
-										>
-											{newSessionProfileOptions.map((profile) => (
-												<option key={profile.name} value={profile.name} title={profile.description ?? profile.name}>
-													{profile.name}
-												</option>
-											))}
-										</select>
-										<button
-											data-pibo-debug="new-session-button"
-											data-pibo-room-id={selectedRoomId ?? bootstrap.selectedRoomId ?? undefined}
-											data-pibo-state={creatingSession ? "creating" : selectedRoomArchived ? "archived-disabled" : "ready"}
-											type="button"
-											onClick={() => void createSession()}
-											disabled={creatingSession || selectedRoomArchived}
-											title="New Session"
-											aria-label="New Session"
-											className="h-6 w-6 max-[980px]:h-8 max-[980px]:w-8 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50"
-										>
-											<Plus size={14} />
-										</button>
-										<button
-											type="button"
-											onClick={() => void toggleArchivedSessions()}
-											disabled={loadingArchivedSessions}
-											title={showArchived ? "Hide Archived Sessions" : "Show Archived Sessions"}
-											aria-label={showArchived ? "Hide Archived Sessions" : "Show Archived Sessions"}
-											className={`h-6 w-6 max-[980px]:h-8 max-[980px]:w-8 inline-flex items-center justify-center border rounded-sm hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-70 ${
-												showArchived ? "border-[#11a4d4] text-[#11a4d4]" : "border-slate-700 text-slate-400"
-											}`}
-										>
-											{loadingArchivedSessions ? <Loader2 size={14} className="animate-spin" /> : showArchived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
-										</button>
-									</div>
-								</div>
-								<div ref={sessionListScrollRef} className="min-h-0 flex-1 overflow-y-auto pr-1">
-								{visibleActiveSessions.map((session) => (
-									<SessionNode
-										key={session.piboSessionId}
-										node={session}
-										signalNow={signalNow}
-										selectedPiboSessionId={selectedPiboSessionId}
-										selectedSessionPathIds={selectedSessionPathIds}
-										onSelect={(piboSessionId) => void selectSession(piboSessionId)}
-										onRename={(piboSessionId, title) => void renameSession(piboSessionId, title)}
-										onArchive={(piboSessionId, archived) => void setSessionArchived(piboSessionId, archived)}
-										onDelete={requestSessionDelete}
-										onViewContext={viewSessionContext}
-										loadingPiboSessionId={loadingPiboSessionId}
-										autoRename={autoRenameSessionId === session.piboSessionId}
-										onAutoRenameConsumed={() => setAutoRenameSessionId(null)}
-									/>
-								))}
-								{sessionGroups.active.length === 0 ? <div className="px-2 py-3 text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm">No active sessions</div> : null}
-								{hasMoreActiveSessions ? (
-									<SessionSidebarLoadMoreButton
-										debugName="active-session-load-more"
-										loading={loadingActiveSessions}
-										rootRef={sessionListScrollRef}
-										onLoadMore={() => loadMoreSessionPage(false)}
-									>
-										{loadingActiveSessions ? "Loading active sessions…" : `Load more active sessions (${visibleActiveSessions.length} of ${sessionGroups.active.length})`}
-									</SessionSidebarLoadMoreButton>
-								) : null}
-							{showArchived ? (
-								<div className="mt-3">
-									<div className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-										<span>Archived Sessions</span>
-										{loadingArchivedSessions ? <Loader2 size={12} className="text-[#11a4d4] animate-spin" aria-label="Loading archived sessions" /> : null}
-									</div>
-									{loadingArchivedSessions ? (
-										<div className="px-2 py-3 text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm flex items-center gap-2">
-											<Loader2 size={13} className="text-[#11a4d4] animate-spin" /> Loading archived sessions
-										</div>
-									) : sessionGroups.archived.length ? (
-										<>
-											<ArchivedSessionsList
-												sessions={visibleArchivedSessions}
-												signalNow={signalNow}
-												selectedPiboSessionId={selectedPiboSessionId}
-												selectedSessionPathIds={selectedSessionPathIds}
-												onSelect={(piboSessionId) => void selectSession(piboSessionId)}
-												onRename={(piboSessionId, title) => void renameSession(piboSessionId, title)}
-												onArchive={(piboSessionId, archived) => void setSessionArchived(piboSessionId, archived)}
-												onDelete={requestSessionDelete}
-												onViewContext={viewSessionContext}
-												loadingPiboSessionId={loadingPiboSessionId}
-												autoRenameSessionId={autoRenameSessionId}
-												onAutoRenameConsumed={() => setAutoRenameSessionId(null)}
-											/>
-											{hasMoreArchivedSessions ? (
-												<SessionSidebarLoadMoreButton
-													debugName="archived-session-load-more"
-													loading={loadingArchivedSessions}
-													rootRef={sessionListScrollRef}
-													onLoadMore={() => loadMoreSessionPage(true)}
-												>
-													{loadingArchivedSessions ? "Loading archived sessions…" : `Load more archived sessions (${visibleArchivedSessions.length} of ${sessionGroups.archived.length})`}
-												</SessionSidebarLoadMoreButton>
-											) : null}
-										</>
-									) : <div className="px-2 py-3 text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm">No archived sessions</div>}
-								</div>
-							) : null}
-								</div>
-							</div>
-						</div>
+						<SessionSidebar
+							bootstrap={bootstrap}
+							selectedRoomId={selectedRoomId}
+							selectedPiboSessionId={selectedPiboSessionId}
+							showArchivedRooms={showArchivedRooms}
+							onToggleArchivedRooms={() => {
+								const next = !showArchivedRooms;
+								setShowArchivedRooms(next);
+								localStorage.setItem("pibo.chat.showArchivedRooms", String(next));
+							}}
+							creatingRoom={creatingRoom}
+							onCreateRoom={() => createRoom()}
+							onSelectRoom={selectRoom}
+							onUpdateRoom={updateRoom}
+							onArchiveRoom={setRoomArchived}
+							onReadAllRoom={readAllRoom}
+							onDeleteRoom={requestRoomDelete}
+							newSessionProfile={newSessionProfile}
+							onNewSessionProfileChange={setPreferredNewSessionProfile}
+							selectedRoomArchived={selectedRoomArchived}
+							creatingSession={creatingSession}
+							onCreateSession={() => createSession()}
+							showArchived={showArchived}
+							onToggleArchivedSessions={toggleArchivedSessions}
+							loadingArchivedSessions={loadingArchivedSessions}
+							visibleActiveSessions={visibleActiveSessions}
+							visibleArchivedSessions={visibleArchivedSessions}
+							totalActiveSessionCount={sessionGroups.active.length}
+							totalArchivedSessionCount={sessionGroups.archived.length}
+							hasMoreActiveSessions={hasMoreActiveSessions}
+							hasMoreArchivedSessions={hasMoreArchivedSessions}
+							loadingActiveSessions={loadingActiveSessions}
+							sessionListScrollRef={sessionListScrollRef}
+							onLoadMoreSessions={loadMoreSessionPage}
+							signalNow={signalNow}
+							selectedSessionPathIds={selectedSessionPathIds}
+							onSelectSession={selectSession}
+							onRenameSession={renameSession}
+							onArchiveSession={setSessionArchived}
+							onDeleteSession={requestSessionDelete}
+							onViewContext={viewSessionContext}
+							loadingPiboSessionId={loadingPiboSessionId}
+							autoRenameSessionId={autoRenameSessionId}
+							onAutoRenameConsumed={() => setAutoRenameSessionId(null)}
+						/>
 					) : area === "context" ? (
 						<ContextSidebar
 							activePanel={contextPanel}
@@ -4771,6 +4609,300 @@ function MobileUnreadBadge({ count }: { count?: number }) {
 		>
 			{unreadBadgeLabel(count)}
 		</span>
+	);
+}
+
+
+type RoomUpdateInput = { name?: string; topic?: string | null; workspace?: string | null };
+
+type SessionSidebarProps = {
+	bootstrap: BootstrapData;
+	selectedRoomId: string | null;
+	selectedPiboSessionId: string | null;
+	showArchivedRooms: boolean;
+	onToggleArchivedRooms: () => void;
+	creatingRoom: boolean;
+	onCreateRoom: () => void | Promise<void>;
+	onSelectRoom: (roomId: string) => void | Promise<void>;
+	onUpdateRoom: (roomId: string, input: RoomUpdateInput) => void | Promise<void>;
+	onArchiveRoom: (roomId: string, archived: boolean) => void | Promise<void>;
+	onReadAllRoom: (roomId: string) => void | Promise<void>;
+	onDeleteRoom: (room: PiboRoom) => void;
+	newSessionProfile: string;
+	onNewSessionProfileChange: (profile: string) => void;
+	selectedRoomArchived: boolean;
+	creatingSession: boolean;
+	onCreateSession: () => void | Promise<void>;
+	showArchived: boolean;
+	onToggleArchivedSessions: () => void | Promise<void>;
+	loadingArchivedSessions: boolean;
+	visibleActiveSessions: PiboWebSessionNode[];
+	visibleArchivedSessions: PiboWebSessionNode[];
+	totalActiveSessionCount: number;
+	totalArchivedSessionCount: number;
+	hasMoreActiveSessions: boolean;
+	hasMoreArchivedSessions: boolean;
+	loadingActiveSessions: boolean;
+	sessionListScrollRef: RefObject<HTMLDivElement | null>;
+	onLoadMoreSessions: (archived: boolean) => void | Promise<void>;
+	signalNow: number;
+	selectedSessionPathIds: ReadonlySet<string>;
+	onSelectSession: (piboSessionId: string) => void | Promise<void>;
+	onRenameSession: (piboSessionId: string, title: string | null) => void | Promise<void>;
+	onArchiveSession: (piboSessionId: string, archived: boolean) => void | Promise<void>;
+	onDeleteSession: (node: PiboWebSessionNode) => void;
+	onViewContext: (piboSessionId: string) => void;
+	loadingPiboSessionId?: string | null;
+	autoRenameSessionId?: string | null;
+	onAutoRenameConsumed: () => void;
+};
+
+function SessionSidebar({
+	bootstrap,
+	selectedRoomId,
+	selectedPiboSessionId,
+	showArchivedRooms,
+	onToggleArchivedRooms,
+	creatingRoom,
+	onCreateRoom,
+	onSelectRoom,
+	onUpdateRoom,
+	onArchiveRoom,
+	onReadAllRoom,
+	onDeleteRoom,
+	newSessionProfile,
+	onNewSessionProfileChange,
+	selectedRoomArchived,
+	creatingSession,
+	onCreateSession,
+	showArchived,
+	onToggleArchivedSessions,
+	loadingArchivedSessions,
+	visibleActiveSessions,
+	visibleArchivedSessions,
+	totalActiveSessionCount,
+	totalArchivedSessionCount,
+	hasMoreActiveSessions,
+	hasMoreArchivedSessions,
+	loadingActiveSessions,
+	sessionListScrollRef,
+	onLoadMoreSessions,
+	signalNow,
+	selectedSessionPathIds,
+	onSelectSession,
+	onRenameSession,
+	onArchiveSession,
+	onDeleteSession,
+	onViewContext,
+	loadingPiboSessionId,
+	autoRenameSessionId,
+	onAutoRenameConsumed,
+}: SessionSidebarProps) {
+	const roomsSupported = Boolean(bootstrap.selectedRoomId || bootstrap.room || bootstrap.rooms.length);
+	const newSessionProfileOptions = bootstrap.agents;
+	const personalRoom = findPersonalRoom(bootstrap.rooms);
+	const roomGroups = splitRoomNodes(bootstrap.rooms);
+
+	return (
+		<div
+			data-pibo-debug="session-list"
+			data-pibo-room-id={selectedRoomId ?? bootstrap.selectedRoomId ?? undefined}
+			data-pibo-selected-session-id={selectedPiboSessionId ?? undefined}
+			data-pibo-state={showArchived ? "archived-visible" : "active-only"}
+			className="min-h-0 flex-1 overflow-hidden p-2 flex flex-col gap-3"
+		>
+			{roomsSupported ? (
+				<>
+					{personalRoom ? (
+							<div className="shrink-0">
+								<div className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Personal Chat</div>
+								<RoomNode
+									room={personalRoom}
+									selectedRoomId={selectedRoomId}
+									onSelect={(roomId) => void onSelectRoom(roomId)}
+									onUpdate={(roomId, input) => void onUpdateRoom(roomId, input)}
+									onArchive={(roomId, archived) => void onArchiveRoom(roomId, archived)}
+									onReadAll={(roomId) => void onReadAllRoom(roomId)}
+									onDelete={onDeleteRoom}
+								/>
+							</div>
+					) : null}
+					<div className="min-h-0 flex-1 basis-0 overflow-hidden flex flex-col">
+						<div className="shrink-0 flex items-center justify-between gap-2 px-1 pb-1">
+							<div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Rooms</div>
+							<div className="flex items-center gap-1">
+								<button
+									type="button"
+									onClick={() => void onCreateRoom()}
+									disabled={creatingRoom}
+									title="New Room"
+									aria-label="New Room"
+									className="h-6 w-6 max-[980px]:h-8 max-[980px]:w-8 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50"
+								>
+									<Plus size={14} />
+								</button>
+								<button
+									type="button"
+									onClick={onToggleArchivedRooms}
+									title={showArchivedRooms ? "Hide Archived Rooms" : "Show Archived Rooms"}
+									aria-label={showArchivedRooms ? "Hide Archived Rooms" : "Show Archived Rooms"}
+									className={`h-6 w-6 max-[980px]:h-8 max-[980px]:w-8 inline-flex items-center justify-center border rounded-sm hover:border-[#11a4d4] hover:text-[#11a4d4] ${showArchivedRooms ? "border-[#11a4d4] text-[#11a4d4]" : "border-slate-700 text-slate-400"}`}
+								>
+									{showArchivedRooms ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+								</button>
+							</div>
+						</div>
+						<div className="min-h-0 flex-1 overflow-y-auto pr-1">
+						{roomGroups.active.map((room) => (
+							<RoomNode
+								key={room.id}
+								room={room}
+								selectedRoomId={selectedRoomId}
+								onSelect={(roomId) => void onSelectRoom(roomId)}
+								onUpdate={(roomId, input) => void onUpdateRoom(roomId, input)}
+								onArchive={(roomId, archived) => void onArchiveRoom(roomId, archived)}
+								onReadAll={(roomId) => void onReadAllRoom(roomId)}
+								onDelete={onDeleteRoom}
+							/>
+						))}
+						{roomGroups.active.length === 0 ? <div className="px-2 py-3 text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm">No rooms</div> : null}
+						{showArchivedRooms ? (
+							<div className="mt-3">
+								<div className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Archived Rooms</div>
+								{roomGroups.archived.length ? (
+									<ArchivedRoomsList
+										rooms={roomGroups.archived}
+										selectedRoomId={selectedRoomId}
+										onSelect={(roomId) => void onSelectRoom(roomId)}
+										onUpdate={(roomId, input) => void onUpdateRoom(roomId, input)}
+										onArchive={(roomId, archived) => void onArchiveRoom(roomId, archived)}
+										onReadAll={(roomId) => void onReadAllRoom(roomId)}
+										onDelete={onDeleteRoom}
+									/>
+								) : <div className="px-2 py-3 text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm">No archived rooms</div>}
+							</div>
+						) : null}
+						</div>
+					</div>
+				</>
+			) : null}
+			<div className="min-h-0 flex-1 basis-0 overflow-hidden flex flex-col border-t border-slate-700/80 pt-3">
+				<div className="shrink-0 flex items-center justify-between gap-2 px-1 pb-1">
+					<div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Sessions</div>
+					<div className="flex items-center gap-1">
+						<select
+							value={newSessionProfile}
+							onChange={(event) => onNewSessionProfileChange(event.target.value)}
+							disabled={!newSessionProfileOptions.length || selectedRoomArchived}
+							title="Agent for new sessions"
+							aria-label="Agent for new sessions"
+							className="h-6 w-28 max-[980px]:h-8 max-[980px]:w-32 max-[980px]:text-sm rounded-sm border border-slate-700 bg-[#101d22] px-1.5 text-[11px] font-medium normal-case tracking-normal text-slate-300 outline-none hover:border-[#11a4d4] focus:border-[#11a4d4] disabled:opacity-50"
+						>
+							{newSessionProfileOptions.map((profile) => (
+								<option key={profile.name} value={profile.name} title={profile.description ?? profile.name}>
+									{profile.name}
+								</option>
+							))}
+						</select>
+						<button
+							data-pibo-debug="new-session-button"
+							data-pibo-room-id={selectedRoomId ?? bootstrap.selectedRoomId ?? undefined}
+							data-pibo-state={creatingSession ? "creating" : selectedRoomArchived ? "archived-disabled" : "ready"}
+							type="button"
+							onClick={() => void onCreateSession()}
+							disabled={creatingSession || selectedRoomArchived}
+							title="New Session"
+							aria-label="New Session"
+							className="h-6 w-6 max-[980px]:h-8 max-[980px]:w-8 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50"
+						>
+							<Plus size={14} />
+						</button>
+						<button
+							type="button"
+							onClick={() => void onToggleArchivedSessions()}
+							disabled={loadingArchivedSessions}
+							title={showArchived ? "Hide Archived Sessions" : "Show Archived Sessions"}
+							aria-label={showArchived ? "Hide Archived Sessions" : "Show Archived Sessions"}
+							className={`h-6 w-6 max-[980px]:h-8 max-[980px]:w-8 inline-flex items-center justify-center border rounded-sm hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-70 ${
+								showArchived ? "border-[#11a4d4] text-[#11a4d4]" : "border-slate-700 text-slate-400"
+							}`}
+						>
+							{loadingArchivedSessions ? <Loader2 size={14} className="animate-spin" /> : showArchived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+						</button>
+					</div>
+				</div>
+				<div ref={sessionListScrollRef} className="min-h-0 flex-1 overflow-y-auto pr-1">
+				{visibleActiveSessions.map((session) => (
+					<SessionNode
+						key={session.piboSessionId}
+						node={session}
+						signalNow={signalNow}
+						selectedPiboSessionId={selectedPiboSessionId}
+						selectedSessionPathIds={selectedSessionPathIds}
+						onSelect={(piboSessionId) => void onSelectSession(piboSessionId)}
+						onRename={(piboSessionId, title) => void onRenameSession(piboSessionId, title)}
+						onArchive={(piboSessionId, archived) => void onArchiveSession(piboSessionId, archived)}
+						onDelete={onDeleteSession}
+						onViewContext={onViewContext}
+						loadingPiboSessionId={loadingPiboSessionId}
+						autoRename={autoRenameSessionId === session.piboSessionId}
+						onAutoRenameConsumed={() => onAutoRenameConsumed()}
+					/>
+				))}
+				{totalActiveSessionCount === 0 ? <div className="px-2 py-3 text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm">No active sessions</div> : null}
+				{hasMoreActiveSessions ? (
+					<SessionSidebarLoadMoreButton
+						debugName="active-session-load-more"
+						loading={loadingActiveSessions}
+						rootRef={sessionListScrollRef}
+						onLoadMore={() => onLoadMoreSessions(false)}
+					>
+						{loadingActiveSessions ? "Loading active sessions…" : `Load more active sessions (${visibleActiveSessions.length} of ${totalActiveSessionCount})`}
+					</SessionSidebarLoadMoreButton>
+				) : null}
+			{showArchived ? (
+				<div className="mt-3">
+					<div className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+						<span>Archived Sessions</span>
+						{loadingArchivedSessions ? <Loader2 size={12} className="text-[#11a4d4] animate-spin" aria-label="Loading archived sessions" /> : null}
+					</div>
+					{loadingArchivedSessions ? (
+						<div className="px-2 py-3 text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm flex items-center gap-2">
+							<Loader2 size={13} className="text-[#11a4d4] animate-spin" /> Loading archived sessions
+						</div>
+					) : totalArchivedSessionCount ? (
+						<>
+							<ArchivedSessionsList
+								sessions={visibleArchivedSessions}
+								signalNow={signalNow}
+								selectedPiboSessionId={selectedPiboSessionId}
+								selectedSessionPathIds={selectedSessionPathIds}
+								onSelect={(piboSessionId) => void onSelectSession(piboSessionId)}
+								onRename={(piboSessionId, title) => void onRenameSession(piboSessionId, title)}
+								onArchive={(piboSessionId, archived) => void onArchiveSession(piboSessionId, archived)}
+								onDelete={onDeleteSession}
+								onViewContext={onViewContext}
+								loadingPiboSessionId={loadingPiboSessionId}
+								autoRenameSessionId={autoRenameSessionId}
+								onAutoRenameConsumed={() => onAutoRenameConsumed()}
+							/>
+							{hasMoreArchivedSessions ? (
+								<SessionSidebarLoadMoreButton
+									debugName="archived-session-load-more"
+									loading={loadingArchivedSessions}
+									rootRef={sessionListScrollRef}
+									onLoadMore={() => onLoadMoreSessions(true)}
+								>
+									{loadingArchivedSessions ? "Loading archived sessions…" : `Load more archived sessions (${visibleArchivedSessions.length} of ${totalArchivedSessionCount})`}
+								</SessionSidebarLoadMoreButton>
+							) : null}
+						</>
+					) : <div className="px-2 py-3 text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm">No archived sessions</div>}
+				</div>
+			) : null}
+				</div>
+			</div>
+		</div>
 	);
 }
 

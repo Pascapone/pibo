@@ -64,13 +64,13 @@ Initial high-priority candidates from line-count scan:
 
 ## Current state
 
-- Last batch: Completed an analysis-only App seam ranking for `src/apps/chat-ui/src/App.tsx`.
-- Result: Ranked the next safe App responsibility moves. Highest-value next implementation is extracting the embedded sessions sidebar from the `App` render into a focused component; next options are Agent Designer module extraction, then trace-pane test-safety/hook extraction. Durable findings are recorded in `RESPONSIBILITY_REFACTOR_INSIGHTS.md`.
-- Evidence: `App.tsx` is 9,946 LOC. Source-structure inspection in the Docker worker showed the largest spans as `App` 1,761 LOC, `SessionTracePane` 979 LOC, `AgentsView` 517 LOC, `Composer` 508 LOC, `ProjectsArea` 425 LOC, `SessionNode` 286 LOC, `RoomNode` 228 LOC, and `WebAnnotationsEntryPoints` 222 LOC; grep confirmed existing `context/`, `settings/`, `session-views/`, and `tracing/` feature directories.
-- Validation: `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && wc -l src/apps/chat-ui/src/App.tsx && python3 - <<'"'"'PY'"'"' ... PY'` passed for line-span analysis; `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && grep -nE "function (SessionTracePane|AgentsView|Composer|ProjectsArea|SettingsView|SettingsSidebar|ContextSidebar)|type BootstrapMutationSnapshot|function applySignalSnapshotToBootstrap|function liveSessionStatusFromEvent|function buildNativeToolGroups" src/apps/chat-ui/src/App.tsx && find src/apps/chat-ui/src -maxdepth 2 -type d | sort'` passed for seam/directory evidence. No build/typecheck was needed because this batch changed only tracking docs.
-- Commit: `d3a539c` (`docs(refactor): rank chat app seams`).
-- Blockers: none.
-- Exact next step: Extract a `SessionSidebar` component from the sessions branch of `App`'s route shell, keeping row components (`RoomNode`, `SessionNode`, archived lists, load-more button) unchanged first; validate with `npm run chat-ui:typecheck`, `npm run typecheck`, and a Chat Web sessions-route smoke/manual check if the worker web server is available.
+- Last batch: Extracted the sessions-route sidebar JSX from `App` into a focused `SessionSidebar` component in `src/apps/chat-ui/src/App.tsx`, leaving existing row components (`RoomNode`, `SessionNode`, archived lists, load-more button) in place.
+- Result: `App` now delegates the room/session navigation panel to `SessionSidebar`; sidebar-only derivations (`roomsSupported`, room groups, personal room, new-session profile options) moved with the component, while route-shell, refresh, context/settings sidebars, and trace pane orchestration remain in `App`.
+- Evidence: `git diff --check` passed; `wc -l src/apps/chat-ui/src/App.tsx` reports 10,078 LOC after the component extraction/tracking update.
+- Validation: `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && npm run chat-ui:typecheck'` passed; `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && npm run typecheck'` passed. Worker route smoke `curl http://127.0.0.1:4802/apps/chat` returned `curl: (56) Recv failure: Connection reset by peer`/HTTP `000`, so no browser validation was possible without restarting worker services.
+- Commit: `2bded6b` (`refactor(chat-ui): extract session sidebar component`).
+- Blockers: worker Chat Web server on port 4802 was not serving the route during smoke validation; no restart performed per operating rules.
+- Exact next step: Either move the `SessionSidebar` row-component cluster to a dedicated module once a clean dependency boundary is chosen, or take the lower-risk next App seam by extracting `AgentsView`/Agent Designer into a feature module.
 
 ## Progress log
 
@@ -126,3 +126,4 @@ Initial high-priority candidates from line-count scan:
 - 2026-05-27: Extracted Chat UI local-storage/session preference helpers into `src/apps/chat-ui/src/app-storage.ts`; source/import sanity check, build, and root typecheck passed in Docker. A route smoke check found the worker web server was not listening, so no service restart/browser check was performed for this pure extraction.
 - 2026-05-27: Extracted Web Annotation browser-storage and shortcut persistence helpers into `src/apps/chat-ui/src/web-annotation-storage.ts`; source/import sanity check, build, and root typecheck passed in Docker. A route smoke check found the worker web server was not listening, so no service restart/browser check was performed for this pure extraction.
 - 2026-05-27: Completed an analysis-only App seam ranking for `src/apps/chat-ui/src/App.tsx`; Docker source-structure inspection identified sessions sidebar as the best next extraction, followed by Agent Designer module extraction and trace-pane test-safety/hook work.
+- 2026-05-27: Extracted `SessionSidebar` from the sessions-route branch of `App` while keeping row components unchanged; Docker `npm run chat-ui:typecheck` and `npm run typecheck` passed, and a worker route smoke found port 4802 returning connection reset/HTTP 000 without restarting services.
