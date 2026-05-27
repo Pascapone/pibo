@@ -68,7 +68,7 @@ Initial high-priority candidates from line-count scan:
 - Result: `App.tsx` now imports a route-local composer boundary and no longer owns textarea autosizing, command/skill suggestion state, composer history navigation, upload status UI, pasted-image confirmation, clipboard image normalization, or attachment chip rendering. `App.tsx` fell from 4,315 LOC to 3,702 LOC; the new component module is 621 LOC.
 - Evidence: Docker source/import sanity confirmed `App.tsx` imports `./composer/Composer`, and the new module owns `uploadChatFiles`, `clipboardImageFiles`, and `export function Composer`. `wc -l` reports 3,702 LOC for `App.tsx` and 621 LOC for `composer/Composer.tsx`.
 - Validation: `git diff --check` passed; Docker source/import sanity passed; Docker `npm run chat-ui:typecheck` passed; Docker root `npm run typecheck` passed. Worker route smoke `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && curl --max-time 5 -S -s -o /tmp/pibo-chat-smoke.out -w "HTTP %{http_code}\n" http://127.0.0.1:4802/apps/chat || true'` returned `curl: (7) Failed to connect to 127.0.0.1 port 4802` and HTTP 000, so no browser validation was possible without restarting worker services.
-- Commit: pending (`refactor(chat-ui): extract composer component`).
+- Commit: `93280d2` (`refactor(chat-ui): extract composer component`).
 - Blockers: worker Chat Web server on port 4802 is still not serving the route during smoke validation; no restart performed per operating rules.
 - Exact next step: Continue reducing `SessionTracePane` by extracting raw-events sidebar/load-older controls or session-view rendering helpers, now that composer UI and send planning are outside `App.tsx`.
 
