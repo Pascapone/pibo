@@ -69,7 +69,7 @@ Initial high-priority candidates from line-count scan:
 - Result: Added `src/apps/chat/static-assets.ts` for `CHAT_WEB_MOUNT_PATH`, built index/asset/public-file responses, asset compression/cache headers, app-path detection, and the legacy fallback shell response. `web-app.ts` now delegates static route handling to that module and preserves the public `CHAT_WEB_MOUNT_PATH` export.
 - Evidence: `web-app.ts` is now 10,150 LOC (down from 11,096); `static-assets.ts` is 958 LOC and contains the formerly embedded `createChatHtml` fallback shell plus built-asset helpers. A Docker direct dist smoke reported `appPath:true`, `assetPath:false`, shell HTTP 200/text-html, and manifest HTTP 200/no-cache.
 - Validation: host `git diff --check` passed; Docker `npm run build` passed; Docker `node --test test/web-channel.test.mjs` passed; Docker `npm run typecheck` passed. Worker web route smoke to `http://127.0.0.1:4802/apps/chat` and `/apps/chat/manifest.webmanifest` returned curl exit 56 connection reset, so no browser/route assertion was possible without restarting worker services.
-- Commit: Pending.
+- Commit: `8fcb7a3` (`refactor(chat): extract static asset serving`).
 - Blockers: none.
 - Exact next step: Extract Chat Web workflow persistence stores/row mappers (`ChatWorkflowDraftStore`, published versions, prompt assets, archive/tombstone/lifecycle stores) from `src/apps/chat/web-app.ts` into a focused module, preserving V2 source-check expectations and running web-channel plus workflow source/check tests.
 
