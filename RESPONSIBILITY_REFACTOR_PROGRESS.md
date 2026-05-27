@@ -68,7 +68,7 @@ Initial high-priority candidates from line-count scan:
 - Result: `src/shared/trace-engine.ts` dropped from 1,049 LOC to 990 LOC; subagent child-session lookup by parent/tool/thread key and explicit `subagent_session` link mapping now live in a focused 73 LOC helper module.
 - Evidence: Added `test/chat-trace-materialization.test.mjs` coverage proving subagent tool events link likely child sessions by tool name and `threadKey` metadata.
 - Validation: host `git diff --check` passed; Docker `npm run build` passed; Docker focused `node --test test/chat-trace-materialization.test.mjs test/trace-patch-identity.test.mjs test/terminal-parity-fixtures.test.mjs` passed; Docker root `npm run typecheck` passed; Docker CLI smoke `node dist/bin/pibo.js debug trace --help` passed and showed trace rebuild/check help.
-- Commit: pending.
+- Commit: `05cd8d7` (`refactor(trace): extract subagent link helpers`).
 - Blockers: none.
 - Exact next step: Re-rank the remaining `src/shared/trace-engine.ts` responsibilities now that it is below 1,000 LOC; the highest-value next trace seam is likely event-to-node projection, but do a focused test-safety batch first because it is intertwined with live patch merge semantics.
 
