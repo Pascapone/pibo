@@ -33,6 +33,7 @@ import {
   assertWorkflowUiRecordSource,
   createWorkflowPublishedVersionRecord,
 } from "./catalog-records.js";
+import { assertNoActiveWorkflowDraftConflict, updateWorkflowIdentityCurrentDraft } from "./draft-writes.js";
 import type {
   WorkflowArchiveStateListFilter,
   WorkflowArchiveStateStore,
@@ -283,12 +284,7 @@ export class SqliteWorkflowRunStore implements
     assertWorkflowUiRecordSource(record.source, "Workflow draft");
     assertWorkflowRecordStatusValue(record.status, "draft", "Workflow draft");
 
-    const conflict = this.db
-      .prepare("SELECT draft_id FROM workflow_drafts WHERE workflow_id = ? AND status = 'draft' AND draft_id <> ? LIMIT 1")
-      .get(record.workflowId, record.draftId) as { draft_id: string } | undefined;
-    if (conflict) {
-      throw new Error(`Workflow '${record.workflowId}' already has an active draft '${conflict.draft_id}'.`);
-    }
+    assertNoActiveWorkflowDraftConflict(this.db, record);
 
     this.db.prepare(`
       INSERT INTO workflow_drafts (
@@ -327,13 +323,7 @@ export class SqliteWorkflowRunStore implements
         updated_at = excluded.updated_at
     `).run(...workflowDraftWriteValues(record));
 
-    this.db.prepare(`
-      UPDATE workflow_identities
-      SET current_draft_id = ?,
-          updated_by = COALESCE(?, updated_by),
-          updated_at = ?
-      WHERE workflow_id = ?
-    `).run(record.draftId, record.updatedBy ?? null, record.updatedAt, record.workflowId);
+    updateWorkflowIdentityCurrentDraft(this.db, record);
   }
 
   getWorkflowDraft(draftId: string): WorkflowDraftRecord | undefined {

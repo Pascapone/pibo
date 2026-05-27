@@ -64,12 +64,12 @@ Initial high-priority candidates from line-count scan:
 
 ## Current state
 
-- Last batch: Extracted workflow store write-side SQLite parameter serialization into `packages/workflows/src/store/write-values.ts`.
-- Result: `packages/workflows/src/store/index.ts` is down from 1,052 to 885 LOC. The store class keeps SQL/read/write orchestration, while JSON serialization, null coercion, output-present flags, checkpoint pending payload shaping, and canonical published-version definition JSON for writes live in one store-local helper module.
-- Validation: `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace/packages/workflows && npm test -- src/testing/workflow-store-facts.test.ts src/testing/workflow-persistence-validation.test.ts src/testing/workflow-run-inspection.test.ts src/testing/workflow-sqlite-schema.test.ts src/testing/node-attempt-persistence.test.ts src/testing/workflow-catalog-entities.test.ts src/testing/workflow-published-versions.test.ts'` passed (138 passing because the package test script also includes `src/**/*.test.ts`); `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && npm run typecheck'` passed. Closest practical store E2E is the workflow package store/persistence coverage across SQLite restarts because this batch preserves the store public API and database behavior.
-- Commit: `06f40b51c4dc43f9fb2b23323a1883ef213d53f5` (`refactor(workflows): extract store write values`).
+- Last batch: Extracted workflow draft write side-effect helpers into `packages/workflows/src/store/draft-writes.ts`.
+- Result: `packages/workflows/src/store/index.ts` is down from 884 to 874 LOC. The store class still owns the draft upsert SQL, while active-draft conflict detection and identity current-draft side effects now have named store-local helper functions.
+- Validation: `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace/packages/workflows && npm test -- src/testing/workflow-catalog-entities.test.ts src/testing/workflow-store-facts.test.ts'` passed (package script runs the workflow test suite); `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && npm run typecheck'` passed. Closest practical store E2E is workflow package store/catalog/persistence coverage because the public store API and SQLite behavior are preserved.
+- Commit: pending.
 - Blockers: none.
-- Exact next step: Continue `packages/workflows/src/store/index.ts` by inspecting whether the remaining catalog/draft write conflict and identity-update logic has a safe named helper boundary, or pivot to the next large target because the store entry point is now under 1,000 LOC.
+- Exact next step: Pivot to the next high-value large target, likely `src/shared/trace-engine.ts` or `src/data/telemetry.ts`, unless a store reviewer asks for more cleanup; `packages/workflows/src/store/index.ts` is below 1,000 LOC and further splitting has diminishing returns.
 
 ## Progress log
 
@@ -104,3 +104,4 @@ Initial high-priority candidates from line-count scan:
 - 2026-05-27: Extracted workflow store list-query construction and limit clamping into `packages/workflows/src/store/list-query.ts`; focused store/persistence/schema/inspection command (package script ran all 138 workflow tests) and root typecheck passed in Docker.
 - 2026-05-27: Extracted workflow store public contracts/list filters into `packages/workflows/src/store/contracts.ts`; focused store/persistence/schema/inspection command (package script ran all 138 workflow tests) and root typecheck passed in Docker.
 - 2026-05-27: Extracted workflow store write-side SQLite value serialization into `packages/workflows/src/store/write-values.ts`; focused store/persistence/schema/inspection command (package script ran all 138 workflow tests) and root typecheck passed in Docker.
+- 2026-05-27: Extracted workflow draft conflict and identity current-draft side-effect helpers into `packages/workflows/src/store/draft-writes.ts`; focused store/catalog/persistence command and root typecheck passed in Docker.
