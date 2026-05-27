@@ -68,7 +68,7 @@ Initial high-priority candidates from line-count scan:
 - Result: `App.tsx` now delegates the session title/room metadata, copy-session-id state, web-annotation entry button, session-view toggles, raw-event toggle, thinking toggle, and expand-thinking toggle to `SessionTraceHeader`. `SessionTracePane` keeps trace queries, trace rendering, panels, and composer orchestration. `App.tsx` fell from 4,443 LOC to 4,332 LOC; the new header module is 190 LOC.
 - Evidence: Docker source/import sanity confirmed `App.tsx` imports `SessionTraceHeader`, and the new module owns `WebAnnotationsEntryPoints`/`WorkflowHeaderMeta` rendering. `wc -l` reports 4,332 LOC for `App.tsx` and 190 LOC for `session-trace-header.tsx`.
 - Validation: `git diff --check` passed; Docker source/import sanity passed; Docker `npm run chat-ui:typecheck` passed; Docker root `npm run typecheck` passed. Worker route smoke `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && curl --max-time 5 -S -s -o /tmp/pibo-chat-smoke.out -w "HTTP %{http_code}\n" http://127.0.0.1:4802/apps/chat || true'` returned `curl: (7) Failed to connect to 127.0.0.1 port 4802` and HTTP 000, so no browser validation was possible without restarting worker services.
-- Commit: pending.
+- Commit: `d0d3359` (`refactor(chat-ui): extract session trace header`).
 - Blockers: worker Chat Web server on port 4802 is still not serving the route during smoke validation; no restart performed per operating rules.
 - Exact next step: Add a focused test-safety batch around Composer send orchestration before moving it, or extract the raw-events sidebar/load-older controls if a smaller presentational seam is preferred.
 
