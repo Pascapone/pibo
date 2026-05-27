@@ -67,7 +67,7 @@ Initial high-priority candidates from line-count scan:
 - Last batch: Extracted workflow UI/catalog record invariants and published-version record factory/assertions into `packages/workflows/src/store/catalog-records.ts`.
 - Result: `packages/workflows/src/store/index.ts` is down from 1,380 to 1,316 LOC and now keeps store interfaces plus the `SqliteWorkflowRunStore` API/write/query methods; public record constants, guards, and published-version helpers remain re-exported from the store entry point.
 - Validation: `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace/packages/workflows && npm test -- src/testing/workflow-store-facts.test.ts src/testing/workflow-persistence-validation.test.ts src/testing/workflow-run-inspection.test.ts src/testing/workflow-sqlite-schema.test.ts src/testing/node-attempt-persistence.test.ts src/testing/workflow-catalog-entities.test.ts src/testing/workflow-published-versions.test.ts'` passed (138 passing because the package test script also includes `src/**/*.test.ts`); `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && npm run typecheck'` passed. Closest practical store E2E is the workflow package catalog/published-version/persistence coverage across SQLite restarts.
-- Commit: pending (`refactor(workflows): extract store catalog records`).
+- Commit: `3cdbcc7f8b9e4b4f64a6531e24374bcab3fdf498` (`refactor(workflows): extract store catalog records`).
 - Blockers: none.
 - Exact next step: Continue `packages/workflows/src/store/index.ts` with a small test-backed extraction of repeated list-query construction helpers (where-clause assembly plus `listLimit`) or, if that proves too coupled, record a short analysis of the remaining store class seams before moving more code.
 
