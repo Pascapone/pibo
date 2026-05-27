@@ -30,7 +30,7 @@ import { signInWithGoogle, signOut } from "./api-auth";
 import { deleteProject, deleteRoom, deleteSession, getBootstrap, getNavigation, getProjectsBootstrap, getSessionPage, markRoomRead, markSessionRead, patchProject, patchProjectSession, patchRoom, patchSession, postAction, postMessage, postProject, postProjectMessage, postProjectSession, postRoom, postSession } from "./api-chat-sessions";
 import { downloadChatFile, uploadChatFiles, type ChatUploadedFile } from "./api-chat-files";
 import { fetchSignalTree, getTrace, getTraceSummary, subscribeSignalTree } from "./api-trace-signals";
-import { createWebAnnotationBinding, injectWebAnnotationBinding, listWebAnnotations, listWebAnnotationTargets, patchWebAnnotation, type WebAnnotationBindingResponse, type WebAnnotationMessageAttachment, type WebAnnotationOverlayConfig, type WebAnnotationTargetSummary } from "./api-web-annotations";
+import { createWebAnnotationBinding, injectWebAnnotationBinding, listWebAnnotationTargets, type WebAnnotationBindingResponse, type WebAnnotationMessageAttachment, type WebAnnotationOverlayConfig, type WebAnnotationTargetSummary } from "./api-web-annotations";
 import { listUserSkills } from "./api-agent-designer";
 import { getWorkflowVersionPicker, postProjectWorkflowSession, postProjectWorkflowSessionStart, type WorkflowVersionPickerOption } from "./api-workflows";
 import { THINKING_LEVELS } from "./types";
@@ -66,6 +66,7 @@ import type { PiPackageCatalogItem } from "./agents/agent-designer-model";
 import { AgentsView } from "./agents/AgentsView";
 import { copyTextToClipboard } from "./clipboard";
 import { useSessionUploadAttachments, type UploadedChatAttachment } from "./chat-upload-attachments";
+import { useSessionWebAnnotations } from "./use-session-web-annotations";
 import { SessionSidebar } from "./session-sidebar";
 import { getChatSessionView, listChatSessionViews } from "./session-views/registry";
 import type { ChatSessionViewId } from "./session-views/types";
@@ -82,18 +83,9 @@ import {
 	writeStoredSessionView,
 } from "./app-storage";
 import {
-	parseStoredWebAnnotationOverlayState,
-	parseWebAnnotationOverlayState,
-	readStoredSelectedWebAnnotationIds,
-	readStoredWebAnnotationOverlayState,
 	readStoredWebAnnotationsCdpUrl,
 	readStoredWebAnnotationToggleShortcut,
-	readStoredWebAnnotationsPanelCollapsed,
-	storedWebAnnotationOverlayStateKey,
-	writeStoredSelectedWebAnnotationIds,
 	writeStoredWebAnnotationsCdpUrl,
-	writeStoredWebAnnotationsPanelCollapsed,
-	type WebAnnotationOverlayPanelState,
 } from "./web-annotation-storage";
 import {
 	DEFAULT_RAW_EVENTS_LIMIT,
@@ -2470,11 +2462,6 @@ function SessionTracePane({
 	const [traceEventLimit, setTraceEventLimit] = useState(DEFAULT_TRACE_EVENTS_PAGE_SIZE);
 	const [rawEventLimit, setRawEventLimit] = useState(DEFAULT_RAW_EVENTS_LIMIT);
 	const [baseTraceView, setBaseTraceView] = useState<PiboSessionTraceView | null>(null);
-	const [selectedWebAnnotationIds, setSelectedWebAnnotationIds] = useState<string[]>([]);
-	const [webAnnotationsPanelVisible, setWebAnnotationsPanelVisible] = useState(false);
-	const [webAnnotationOverlayState, setWebAnnotationOverlayState] = useState<WebAnnotationOverlayPanelState | null>(() => selectedPiboSessionId ? readStoredWebAnnotationOverlayState(selectedPiboSessionId) : null);
-	const [webAnnotationsPanelCollapsed, setWebAnnotationsPanelCollapsed] = useState(() => readStoredWebAnnotationsPanelCollapsed());
-	const [clearingWebAnnotations, setClearingWebAnnotations] = useState(false);
 	const [copiedHeaderPiboSessionId, setCopiedHeaderPiboSessionId] = useState<string | null>(null);
 	const copyHeaderPiboSessionTimeout = useRef<number | undefined>(undefined);
 	const traceSummaryQueryKey = useMemo(
@@ -2488,12 +2475,6 @@ function SessionTracePane({
 				: null,
 		[rawEventLimit, selectedPiboSessionId, showRawEvents],
 	);
-	const webAnnotationOverlayInstalled = Boolean(
-		selectedPiboSessionId
-		&& webAnnotationOverlayState?.piboSessionId === selectedPiboSessionId
-		&& webAnnotationOverlayState.installed,
-	);
-	const webAnnotationsPanelRendered = Boolean(selectedPiboSessionId) && (webAnnotationsPanelVisible || webAnnotationOverlayInstalled);
 	const traceSummaryQuery = useQuery({
 		queryKey: traceSummaryQueryKey ?? ["chat", "trace-summary", "idle"],
 		queryFn: async () => {
@@ -2531,28 +2512,26 @@ function SessionTracePane({
 		refetchOnWindowFocus: false,
 		retry: 1,
 	});
-	const webAnnotationsQuery = useQuery({
-		queryKey: ["web-annotations", "owner", selectedPiboSessionId],
-		queryFn: async () => {
-			if (!selectedPiboSessionId) throw new Error("Session is required");
-			return listWebAnnotations(selectedPiboSessionId, { limit: 100, scope: "owner" });
-		},
-		enabled: Boolean(selectedPiboSessionId) && (webAnnotationsPanelRendered || selectedWebAnnotationIds.length > 0),
-		staleTime: 1_000,
-		refetchOnWindowFocus: webAnnotationsPanelRendered,
-		refetchInterval: webAnnotationsPanelRendered ? 5_000 : false,
-		retry: 1,
+	const {
+		selectedWebAnnotationIds,
+		selectedWebAnnotations,
+		visibleWebAnnotations,
+		webAnnotationsPanelCollapsed,
+		webAnnotationsPanelRendered,
+		webAnnotationsPanelVisible,
+		webAnnotationsQuery,
+		clearingWebAnnotations,
+		setWebAnnotationsPanelVisible,
+		toggleWebAnnotationAttachment,
+		detachWebAnnotationAttachment,
+		clearSelectedWebAnnotationAttachments,
+		toggleWebAnnotationsPanelCollapsed,
+		clearVisibleWebAnnotations,
+	} = useSessionWebAnnotations({
+		selectedPiboSessionId,
+		onError,
+		formatError: compactWebAnnotationError,
 	});
-	const visibleWebAnnotations = useMemo(
-		() => (webAnnotationsQuery.data?.annotations ?? []).filter((annotation) => annotation.status !== "resolved" && annotation.status !== "dismissed"),
-		[webAnnotationsQuery.data?.annotations],
-	);
-	const selectedWebAnnotations = useMemo(
-		() => selectedWebAnnotationIds
-			.map((id) => visibleWebAnnotations.find((annotation) => annotation.id === id))
-			.filter((annotation): annotation is WebAnnotationMessageAttachment => Boolean(annotation)),
-		[selectedWebAnnotationIds, visibleWebAnnotations],
-	);
 	const createUploadAttachmentId = useCallback(() => `upload-${createClientTxnId()}`, []);
 	const {
 		selectedUploadAttachments,
@@ -2566,60 +2545,7 @@ function SessionTracePane({
 		setRawEventLimit(DEFAULT_RAW_EVENTS_LIMIT);
 		setBaseTraceView(null);
 		setLiveTraceOverlay(null);
-		setSelectedWebAnnotationIds(selectedPiboSessionId ? readStoredSelectedWebAnnotationIds(selectedPiboSessionId) : []);
-		setWebAnnotationOverlayState(selectedPiboSessionId ? readStoredWebAnnotationOverlayState(selectedPiboSessionId) : null);
 	}, [selectedPiboSessionId]);
-
-	useEffect(() => {
-		if (!selectedPiboSessionId) return;
-		const applyOverlayState = (state: WebAnnotationOverlayPanelState | null) => {
-			if (!state || state.piboSessionId !== selectedPiboSessionId) return;
-			setWebAnnotationOverlayState((current) => {
-				if (state.installed) return state;
-				if (current?.installed && current.bindingId && state.bindingId && current.bindingId !== state.bindingId) return current;
-				return state;
-			});
-			if (state.installed) {
-				void webAnnotationsQuery.refetch();
-			} else {
-				setWebAnnotationsPanelVisible(false);
-			}
-		};
-		const handleOverlayState = (event: Event) => applyOverlayState(parseWebAnnotationOverlayState((event as CustomEvent).detail));
-		const handleStorage = (event: StorageEvent) => {
-			if (event.key !== storedWebAnnotationOverlayStateKey(selectedPiboSessionId)) return;
-			applyOverlayState(parseStoredWebAnnotationOverlayState(event.newValue));
-		};
-		const refreshFromStorage = () => applyOverlayState(readStoredWebAnnotationOverlayState(selectedPiboSessionId));
-		window.addEventListener("pibo:web-annotation-overlay-state", handleOverlayState);
-		window.addEventListener("storage", handleStorage);
-		window.addEventListener("focus", refreshFromStorage);
-		document.addEventListener("visibilitychange", refreshFromStorage);
-		refreshFromStorage();
-		return () => {
-			window.removeEventListener("pibo:web-annotation-overlay-state", handleOverlayState);
-			window.removeEventListener("storage", handleStorage);
-			window.removeEventListener("focus", refreshFromStorage);
-			document.removeEventListener("visibilitychange", refreshFromStorage);
-		};
-	}, [selectedPiboSessionId, webAnnotationsQuery.refetch]);
-
-	useEffect(() => {
-		if (!webAnnotationsQuery.data) return;
-		if (!visibleWebAnnotations.length) {
-			setSelectedWebAnnotationIds((current) => {
-				if (current.length && selectedPiboSessionId) writeStoredSelectedWebAnnotationIds(selectedPiboSessionId, []);
-				return current.length ? [] : current;
-			});
-			return;
-		}
-		const visibleIds = new Set(visibleWebAnnotations.map((annotation) => annotation.id));
-		setSelectedWebAnnotationIds((current) => {
-			const next = current.filter((id) => visibleIds.has(id));
-			if (next.length !== current.length && selectedPiboSessionId) writeStoredSelectedWebAnnotationIds(selectedPiboSessionId, next);
-			return next.length === current.length ? current : next;
-		});
-	}, [selectedPiboSessionId, visibleWebAnnotations, webAnnotationsQuery.data]);
 
 	// TanStack Query caches only bounded trace pages and summaries. The render path
 	// reads from local state so a synchronous cache hit cannot rehydrate a trace in
@@ -2764,15 +2690,6 @@ function SessionTracePane({
 		};
 	}, []);
 
-	useEffect(() => {
-		const handleSaved = () => {
-			setWebAnnotationsPanelVisible(true);
-			void webAnnotationsQuery.refetch();
-		};
-		window.addEventListener("pibo:web-annotation-saved", handleSaved);
-		return () => window.removeEventListener("pibo:web-annotation-saved", handleSaved);
-	}, [webAnnotationsQuery]);
-
 	const headerPiboSessionId = currentTraceView?.piboSessionId ?? selectedPiboSessionId ?? "";
 	const headerPiboSessionCopied = copiedHeaderPiboSessionId === headerPiboSessionId;
 	const workflowHeader = workflowProjectSession && isWorkflowBackedProjectSession(workflowProjectSession)
@@ -2785,45 +2702,6 @@ function SessionTracePane({
 		setCopiedHeaderPiboSessionId(headerPiboSessionId);
 		if (copyHeaderPiboSessionTimeout.current) window.clearTimeout(copyHeaderPiboSessionTimeout.current);
 		copyHeaderPiboSessionTimeout.current = window.setTimeout(() => setCopiedHeaderPiboSessionId(null), 900);
-	};
-
-	const updateSelectedWebAnnotationIds = useCallback((updater: (current: string[]) => string[]) => {
-		setSelectedWebAnnotationIds((current) => {
-			const next = updater(current);
-			if (selectedPiboSessionId) writeStoredSelectedWebAnnotationIds(selectedPiboSessionId, next);
-			return next;
-		});
-	}, [selectedPiboSessionId]);
-
-	const toggleWebAnnotationAttachment = (annotationId: string) => {
-		updateSelectedWebAnnotationIds((current) => current.includes(annotationId)
-			? current.filter((id) => id !== annotationId)
-			: [...current, annotationId].slice(0, 5));
-	};
-
-	const clearSelectedWebAnnotationAttachments = () => updateSelectedWebAnnotationIds(() => []);
-
-	const toggleWebAnnotationsPanelCollapsed = () => {
-		setWebAnnotationsPanelCollapsed((current) => {
-			const next = !current;
-			writeStoredWebAnnotationsPanelCollapsed(next);
-			return next;
-		});
-	};
-
-	const clearVisibleWebAnnotations = async () => {
-		if (!visibleWebAnnotations.length || clearingWebAnnotations) return;
-		if (!window.confirm(`Dismiss ${visibleWebAnnotations.length} visible web annotations? This keeps sent messages but clears the annotation list.`)) return;
-		setClearingWebAnnotations(true);
-		try {
-			await Promise.all(visibleWebAnnotations.map((annotation) => patchWebAnnotation(annotation.id, { piboSessionId: annotation.piboSessionId, status: "dismissed", summary: "Cleared from Chat Web UI" })));
-			clearSelectedWebAnnotationAttachments();
-			await webAnnotationsQuery.refetch();
-		} catch (caught) {
-			onError(compactWebAnnotationError(caught, "Could not clear web annotations"));
-		} finally {
-			setClearingWebAnnotations(false);
-		}
 	};
 
 	const handleComposerSend = async (text: string) => {
@@ -3037,7 +2915,7 @@ function SessionTracePane({
 					selectedUploadAttachments={selectedUploadAttachments}
 					onValueChange={onComposerTextChange}
 					onCommand={onCommand}
-					onDetachWebAnnotation={(id) => updateSelectedWebAnnotationIds((current) => current.filter((candidate) => candidate !== id))}
+					onDetachWebAnnotation={detachWebAnnotationAttachment}
 					onClearWebAnnotations={clearSelectedWebAnnotationAttachments}
 					onAttachUploadedFiles={attachUploadedFiles}
 					onDetachUploadAttachment={detachUploadAttachment}
