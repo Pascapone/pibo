@@ -69,7 +69,7 @@ Initial high-priority candidates from line-count scan:
 - Result: Added `src/apps/chat/workflow-registered-ref-params.ts` for guard/adapter paramsSchema presence checks, JSON-object enforcement, recursive type/required/additionalProperties validation, array items, and diagnostic path shaping. `web-app.ts` now imports this boundary and keeps registered-ref shape parsing, registry option lookup, workflow shape validation, port compatibility, route dispatch, stores, lifecycle events, and validation response assembly local.
 - Evidence: `web-app.ts` is now 5,932 LOC (down from 6,050); new `workflow-registered-ref-params.ts` is 151 LOC.
 - Validation: host `git diff --check` passed; Docker `npm run build` passed; Docker `node --test test/web-channel.test.mjs test/workflow-v2-security-boundary.test.mjs` passed; Docker `npm run typecheck` passed. Worker route smoke to `http://127.0.0.1:4802/apps/chat` returned curl exit 7/HTTP 000 connection refused; no restart was performed.
-- Commit: pending in this run.
+- Commit: `cb19fc7` (`refactor(chat): extract workflow registered ref params`).
 - Blockers: none.
 - Exact next step: Inspect the remaining Chat Web workflow V2 validator for another focused pure helper seam, likely registered-ref option/picker diagnostics or workflow edge port compatibility, before moving route handlers.
 
