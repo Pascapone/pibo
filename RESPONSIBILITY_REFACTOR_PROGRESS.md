@@ -69,7 +69,7 @@ Initial high-priority candidates from line-count scan:
 - Result: Added `src/apps/chat/project-workflow-human-actions.ts` for Project workflow human-action request normalization, wait-token action validation, pending-action projection, lifecycle payload shaping, runtime diagnostics, and diagnostic HTTP responses. `web-app.ts` now keeps authorization, project-service mutation, and lifecycle event orchestration for the route.
 - Evidence: `web-app.ts` is now 7,972 LOC (down from 8,303); new `project-workflow-human-actions.ts` is 394 LOC. Focused coverage in `test/web-channel.test.mjs` exercises configured Project workflow session creation/start and Project workflow human wait-token resolution/rejection paths.
 - Validation: host `git diff --check` passed; Docker `npm run build` passed; Docker `node --test test/web-channel.test.mjs` passed; Docker `npm run typecheck` passed. Worker route smoke to `http://127.0.0.1:4802/apps/chat` returned curl exit 7/HTTP 000 connection refused because the worker web server was not listening; no restart was performed.
-- Commit: pending.
+- Commit: `dfec5ca` (`refactor(chat): extract project workflow human actions`).
 - Blockers: none.
 - Exact next step: Extract or analyze Project workflow session creation/start orchestration now that human-action normalization/validation is isolated; start by keeping route authorization in `web-app.ts` and moving only snapshot/validation/start response shaping if the seam remains cohesive.
 
