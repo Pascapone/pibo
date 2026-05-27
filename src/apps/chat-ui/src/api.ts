@@ -216,29 +216,6 @@ export async function postAction(piboSessionId: string, action: string, params?:
 	});
 }
 
-export async function signOut(): Promise<void> {
-	await fetch("/api/auth/sign-out", {
-		method: "POST",
-		credentials: "same-origin",
-		headers: { "content-type": "application/json" },
-		body: "{}",
-	});
-}
-
-export async function signInWithGoogle(): Promise<void> {
-	const callbackURL = location.pathname.startsWith("/apps/chat")
-		? `${location.pathname}${location.search}`
-		: "/apps/chat";
-	const response = await fetch("/api/auth/sign-in/social", {
-		method: "POST",
-		headers: { "content-type": "application/json" },
-		body: JSON.stringify({ provider: "google", callbackURL, disableRedirect: true }),
-	});
-	const data = (await response.json()) as { url?: string; error?: string; message?: string };
-	if (!response.ok || !data.url) throw new Error(data.message || data.error || "Could not start Google sign in.");
-	location.href = data.url;
-}
-
 function createNavigationParams(piboSessionId?: string, includeArchived = false, roomId?: string): URLSearchParams {
 	const params = new URLSearchParams();
 	if (piboSessionId) params.set("piboSessionId", piboSessionId);
@@ -293,6 +270,7 @@ function normalizeBootstrap(payload: Partial<BootstrapData>): BootstrapData {
 }
 
 export * from "./api-agent-designer";
+export * from "./api-auth";
 export * from "./api-chat-files";
 export * from "./api-context-files";
 export * from "./api-cron";

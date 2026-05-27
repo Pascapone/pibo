@@ -64,12 +64,12 @@ Initial high-priority candidates from line-count scan:
 
 ## Current state
 
-- Last batch: Extracted the Chat UI chat-file upload/download API seam from `src/apps/chat-ui/src/api.ts` into `src/apps/chat-ui/src/api-chat-files.ts`.
-- Result: `ChatUploadedFile`, `ChatUploadResult`, `uploadChatFiles`, `downloadChatFile`, and the download filename helper now live in `api-chat-files.ts`; `App.tsx` imports the file client directly, while `api.ts` re-exports it for compatibility. `api.ts` dropped from 360 LOC to 303 LOC.
-- Validation: `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && test -f src/apps/chat-ui/src/api-chat-files.ts && grep -q "export \\* from \"./api-chat-files\"" src/apps/chat-ui/src/api.ts && grep -q "./api-chat-files" src/apps/chat-ui/src/App.tsx && ! grep -E "export async function uploadChatFiles|export async function downloadChatFile|type ChatUploadedFile|type ChatUploadResult|function downloadFilename|DOWNLOAD_FILENAME_RE" src/apps/chat-ui/src/api.ts && npm run build && npm run typecheck'` passed (source/import sanity check, root build, root typecheck). A best-effort route smoke check with `curl -fsS http://127.0.0.1:4802/apps/chat` inside the Docker worker could not connect because the worker web server was not running; no service restart was performed for this pure module extraction.
-- Commit: `6a89eee` (`refactor(chat-ui): extract chat file api client`).
+- Last batch: Extracted the Chat UI auth API seam from `src/apps/chat-ui/src/api.ts` into `src/apps/chat-ui/src/api-auth.ts`.
+- Result: `signOut` and `signInWithGoogle` now live in `api-auth.ts`; `App.tsx` imports the auth client directly, while `api.ts` re-exports it for compatibility. `api.ts` dropped from 303 LOC to 281 LOC.
+- Validation: `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && test -f src/apps/chat-ui/src/api-auth.ts && grep -q "export \\* from \"./api-auth\"" src/apps/chat-ui/src/api.ts && grep -q "./api-auth" src/apps/chat-ui/src/App.tsx && ! grep -E "export async function signOut|export async function signInWithGoogle" src/apps/chat-ui/src/api.ts && npm run build && npm run typecheck'` passed (source/import sanity check, root build, root typecheck). A best-effort route smoke check with `curl -fsS -I http://127.0.0.1:4802/apps/chat` inside the Docker worker could not connect because the worker web server was not running; no service restart was performed for this pure module extraction.
+- Commit: pending.
 - Blockers: none.
-- Exact next step: Continue shrinking the remaining Chat UI API boundary by extracting the auth helpers (`signOut`, `signInWithGoogle`) into `api-auth.ts`, or take the larger session/navigation split if import churn is acceptable.
+- Exact next step: Continue shrinking the remaining Chat UI API boundary with a larger `api-chat-sessions.ts` extraction for navigation/bootstrap/projects/sessions, or pivot to `src/apps/chat-ui/src/App.tsx` component/hook seams if another API split would create too much import churn.
 
 ## Progress log
 
@@ -120,3 +120,4 @@ Initial high-priority candidates from line-count scan:
 - 2026-05-27: Extracted the Web Annotation Chat UI API client seam into `src/apps/chat-ui/src/api-web-annotations.ts`; source/import sanity check, build, and root typecheck passed in Docker.
 - 2026-05-27: Extracted the trace/signal Chat UI API client seam into `src/apps/chat-ui/src/api-trace-signals.ts`; source/import sanity check, build, and root typecheck passed in Docker.
 - 2026-05-27: Extracted the chat file upload/download Chat UI API client seam into `src/apps/chat-ui/src/api-chat-files.ts`; source/import sanity check, build, and root typecheck passed in Docker. A route smoke check found the worker web server was not listening, so no service restart/browser check was performed for this pure extraction.
+- 2026-05-27: Extracted the auth Chat UI API client seam into `src/apps/chat-ui/src/api-auth.ts`; source/import sanity check, build, and root typecheck passed in Docker. A route smoke check found the worker web server was not listening, so no service restart/browser check was performed for this pure extraction.
