@@ -69,7 +69,7 @@ Initial high-priority candidates from line-count scan:
 - Result: Added `src/apps/chat/chat-api-routes.ts` for room/session/signal/project/workflow/agent/MCP/Pi package/user-skill route resource parsing. `web-app.ts` now imports those route helpers and keeps HTTP method dispatch, auth, request-body handling, services, and response assembly.
 - Evidence: `web-app.ts` is now 7,513 LOC (down from 7,740); new `chat-api-routes.ts` is 260 LOC. The extracted module owns path decoding/error-copy compatibility for route resources without moving route side effects.
 - Validation: host `git diff --check` passed; Docker `npm run build` passed; Docker `node --test test/web-channel.test.mjs` passed; Docker `npm run typecheck` passed. Worker route smoke to `http://127.0.0.1:4802/apps/chat` returned curl exit 7/HTTP 000 connection refused because the worker web server was not listening; no restart was performed.
-- Commit: pending hash-record update after implementation commit.
+- Commit: `60df280` (`refactor(chat): extract api route parsers`).
 - Blockers: none.
 - Exact next step: Continue with a small Chat Web support seam only if it helps route-module extraction, such as request-body normalizers or workflow validation response shaping; avoid moving side-effectful route handlers wholesale until a clearer feature-handler boundary emerges.
 
