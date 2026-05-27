@@ -64,13 +64,13 @@ Initial high-priority candidates from line-count scan:
 
 ## Current state
 
-- Last batch: Extracted the App-owned Context sidebar presentation into `src/apps/chat-ui/src/context/ContextSidebar.tsx`, with `ContextPanel` moved to `src/apps/chat-ui/src/context/types.ts`.
-- Result: `App.tsx` now keeps context route/panel state but no longer owns Context sidebar chrome or context navigation icon imports.
-- Evidence: `App.tsx` dropped from 2,338 LOC to 2,217 LOC; the new `ContextSidebar.tsx` is 118 LOC and lives with the context feature modules.
+- Last batch: Extracted App-owned room/session destructive confirmation modals into `src/apps/chat-ui/src/delete-confirmation-modals.tsx`.
+- Result: `App.tsx` still owns delete state, API calls, navigation, and optimistic cache mutations, while modal presentation and confirmation copy live in a focused component module.
+- Evidence: `App.tsx` dropped from 2,217 LOC to 2,070 LOC; the new `delete-confirmation-modals.tsx` is 150 LOC.
 - Validation: Docker source/import sanity check passed; `git diff --check` passed; Docker `npm run chat-ui:typecheck` passed; Docker root `npm run typecheck` passed. Docker route smoke `curl http://127.0.0.1:4802/apps/chat` returned connection failure/HTTP 000 because port 4802 was not listening; no service restart was performed.
-- Commit: `498cb45` (`refactor(chat-ui): extract context sidebar`).
+- Commit: `a541cc7` (`refactor(chat-ui): extract delete confirmation modals`).
 - Blockers: worker Chat Web server on port 4802 is still not listening for route smoke checks; not blocking this behavior-preserving presentation extraction because focused source checks and typechecks passed.
-- Exact next step: Continue reducing `App.tsx` by extracting the delete-room/delete-session modal components or by splitting another focused App-owned presentation seam; avoid moving route side effects back into App.
+- Exact next step: Continue reducing `App.tsx` by extracting another low-risk presentation seam, such as the signed-out/error/mobile badge helpers, or do an analysis pass to rank the remaining App state/effect seams before further extraction.
 
 ## Progress log
 
@@ -161,3 +161,4 @@ Initial high-priority candidates from line-count scan:
 - 2026-05-27: Moved `SessionTracePane` orchestration into `src/apps/chat-ui/src/session-trace-pane.tsx` with shared `chat-commands.ts` and `error-message.ts`; `git diff --check`, Docker source/import sanity, focused current-trace/trace-page/session-view-props/composer-send tests, Docker `npm run chat-ui:typecheck`, and root `npm run typecheck` passed. Worker route smoke returned curl connection failure/HTTP 000 without restarting services.
 - 2026-05-27: Moved the Projects route component into `src/apps/chat-ui/src/projects/ProjectsArea.tsx`; Docker source/import sanity, `git diff --check`, Docker `npm run chat-ui:typecheck`, and root `npm run typecheck` passed. Worker route smoke returned curl connection failure/HTTP 000 without restarting services.
 - 2026-05-27: Extracted the Context sidebar presentation into `src/apps/chat-ui/src/context/ContextSidebar.tsx` and moved `ContextPanel` into `src/apps/chat-ui/src/context/types.ts`; Docker source/import sanity, `git diff --check`, Docker `npm run chat-ui:typecheck`, and root `npm run typecheck` passed. Worker route smoke returned curl connection failure/HTTP 000 without restarting services.
+- 2026-05-27: Extracted App-owned room/session destructive confirmation modals into `src/apps/chat-ui/src/delete-confirmation-modals.tsx`; Docker source/import sanity, `git diff --check`, Docker `npm run chat-ui:typecheck`, and root `npm run typecheck` passed. Worker route smoke returned curl connection failure/HTTP 000 without restarting services.
