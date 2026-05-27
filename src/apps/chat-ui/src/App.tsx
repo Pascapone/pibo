@@ -28,8 +28,7 @@ import { THINKING_LEVELS } from "./types";
 import type { AgentCatalog, BootstrapData, ModelProfile, NavigationData, PiboProject, PiboProjectSession, ProjectsBootstrapData, PiboRoom, PiboSession, PiboSessionTraceSummary, PiboSessionTraceView, PiboSignalPatch, PiboSignalSnapshot, PiboTraceNode, PiboTraceOrderKey, PiboWebSessionNode, PiboWebSessionStatus, ThinkingLevel, UserSkill, WorkflowLifecycleEventRecord } from "./types";
 import { collectBackendNodes, isTraceSnapshotCollectionEnabled } from "./tracing/snapshotCollector";
 import { type SessionBreadcrumbItem, type SessionDerivationLink, type SessionOriginLink } from "./tracing/TraceTimeline";
-import { JsonRenderer } from "./tracing/JsonRenderer";
-import { compactRawEvents } from "./tracing/raw-events";
+import { RawEventsSidebar } from "./tracing/RawEventsSidebar";
 import {
 	collectPersistedUserMessageIndex,
 	reconcileOptimisticUserMessages,
@@ -2641,10 +2640,6 @@ function SessionTracePane({
 		() => selectedPiboSessionId ? createDerivedSessionLinks(bootstrap.sessions, selectedPiboSessionId) : [],
 		[bootstrap.sessions, selectedPiboSessionId],
 	);
-	const rawEvents = useMemo(
-		() => (showRawEvents ? compactRawEvents(currentTraceView?.rawEvents ?? []) : []),
-		[showRawEvents, currentTraceView?.rawEvents],
-	);
 	const loadingTrace = Boolean(selectedPiboSessionId) && tracePageQuery.isFetching && !currentTraceView;
 	const traceError = tracePageQuery.error ? errorMessage(tracePageQuery.error) : traceSummaryQuery.error ? errorMessage(traceSummaryQuery.error) : null;
 
@@ -2808,32 +2803,13 @@ function SessionTracePane({
 				/>
 			</main>
 
-			{showRawEvents ? (
-				<aside className="min-h-0 overflow-auto bg-[#0e1116] border-l border-slate-800 max-[980px]:hidden">
-					<div className="h-11 px-3 border-b border-slate-800 flex items-center text-xs font-bold uppercase tracking-wider">Raw Events</div>
-					<div className="p-3 flex flex-col gap-2">
-						{currentTraceView && rawEvents.length >= rawEventLimit ? (
-							<button
-								type="button"
-								onClick={() => setRawEventLimit((current) => current + DEFAULT_RAW_EVENTS_LIMIT)}
-								disabled={tracePageQuery.isFetching}
-								className="mb-1 rounded-sm border border-slate-700 px-2 py-1 text-xs text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-60"
-							>
-								{tracePageQuery.isFetching ? "Loading raw events…" : `Load older raw events (${rawEvents.length})`}
-							</button>
-						) : null}
-						{rawEvents.slice(-rawEventLimit).reverse().map((event) => (
-							<div key={event.id} className="border-l-2 border-[#11a4d4] bg-[#151f24] p-2">
-								<div className="flex items-center justify-between gap-2 text-[#11a4d4] font-mono text-[11px] mb-1">
-									<span>{event.type}</span>
-									{event.count > 1 ? <span className="text-slate-500">x{event.count}</span> : null}
-								</div>
-								<JsonRenderer value={event.payload} showControls={false} />
-							</div>
-						))}
-					</div>
-				</aside>
-			) : null}
+			<RawEventsSidebar
+				traceView={currentTraceView}
+				eventLimit={rawEventLimit}
+				isFetching={tracePageQuery.isFetching}
+				visible={showRawEvents}
+				onLoadOlder={() => setRawEventLimit((current) => current + DEFAULT_RAW_EVENTS_LIMIT)}
+			/>
 		</>
 	);
 }
