@@ -69,7 +69,7 @@ Initial high-priority candidates from line-count scan:
 - Result: Added `sessionActionResource` to `src/apps/chat/chat-api-routes.ts`; `web-app.ts` now delegates read/kill/kill-all session action path decoding to the route parser while retaining auth, session resolution, read-state mutation, execution-action emission, and response assembly. Added focused route-helper coverage in `test/chat-api-routes.test.mjs`.
 - Evidence: `web-app.ts` is now 5,433 LOC (down from 5,461); `chat-api-routes.ts` is 275 LOC; new `test/chat-api-routes.test.mjs` is 25 LOC.
 - Validation: host `git diff --check` passed; Docker `sessionActionResource` source/import sanity passed; Docker `node --test test/chat-api-routes.test.mjs test/web-channel.test.mjs` passed; Docker `npm run build` passed; Docker `npm run typecheck` passed. Worker route smoke to `http://127.0.0.1:4802/apps/chat` returned curl exit 7/HTTP 000 connection refused; no restart was performed.
-- Commit: `27fb8c9` (`refactor(chat): extract session action route parsing`).
+- Commit: `1a9af7f` (`refactor(chat): extract session action route parsing`).
 - Blockers: none.
 - Exact next step: Continue analyzing the remaining `src/apps/chat/web-app.ts` route-orchestration surface; candidate next slices are trace summary/detail helpers or settings/tooling feature handlers, but only move them after identifying a tested boundary comparable to this route-parser extraction.
 
