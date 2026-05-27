@@ -1,6 +1,6 @@
 import { AlertTriangle, Save, Server } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { patchMcpServerDescription } from "../api";
+import { patchMcpServerDescription } from "../api-agent-designer";
 import type { AgentCatalog } from "../types";
 
 type McpServer = AgentCatalog["mcpServers"][number];

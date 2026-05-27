@@ -64,12 +64,12 @@ Initial high-priority candidates from line-count scan:
 
 ## Current state
 
-- Last batch: Extracted the Chat UI prompt/settings API seam from `src/apps/chat-ui/src/api.ts` into `src/apps/chat-ui/src/api-settings.ts`.
-- Result: Base prompt, compaction prompt, model-defaults, and user-settings types/functions now live in `api-settings.ts`; `App.tsx`, `BasePromptView.tsx`, and `CompactionPromptView.tsx` import that focused client directly, while `api.ts` re-exports it for compatibility. `api.ts` dropped from 868 LOC to 768 LOC.
-- Validation: `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && test -f src/apps/chat-ui/src/api-settings.ts && grep -R "api-settings" src/apps/chat-ui/src/App.tsx src/apps/chat-ui/src/context/BasePromptView.tsx src/apps/chat-ui/src/context/CompactionPromptView.tsx && ! grep -E "getBasePrompt|setBasePromptMode|saveCustomBasePrompt|getCompactionPrompt|setCompactionPromptMode|saveCustomCompactionPrompt|getUserSettings|patchUserSettings|patchModelDefaults|type BasePromptMode|type CompactionPromptMode|type UserSettings|type BasePromptSnapshot|type CompactionPromptSnapshot" src/apps/chat-ui/src/api.ts && npm run build && npm run typecheck'` passed (source sanity check, root build, root typecheck). No browser/manual check was needed because this was a pure client module extraction with preserved request paths and exported names.
-- Commit: `029f038` (`refactor(chat-ui): extract settings api client`).
+- Last batch: Extracted the Chat UI Agent Designer/capability-management API seam from `src/apps/chat-ui/src/api.ts` into `src/apps/chat-ui/src/api-agent-designer.ts`.
+- Result: Custom-agent, agent catalog, context-build, MCP description, Pi package, and user-skill request/types now live in `api-agent-designer.ts`; `App.tsx`, `ContextBuildView.tsx`, and `McpToolsView.tsx` import that focused client directly, while `api.ts` re-exports it for compatibility. `api.ts` dropped from 768 LOC to 573 LOC.
+- Validation: `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && test -f src/apps/chat-ui/src/api-agent-designer.ts && grep -R "api-agent-designer" src/apps/chat-ui/src/App.tsx src/apps/chat-ui/src/context/ContextBuildView.tsx src/apps/chat-ui/src/context/McpToolsView.tsx && ! grep -E "getAgentCatalog|getCustomAgents|getContextBuild|postCustomAgent|patchCustomAgent|deleteCustomAgent|patchMcpServerDescription|postPiPackage|patchPiPackage|deletePiPackage|listUserSkills|getUserSkill|createUserSkill|updateUserSkill|deleteUserSkill|installUserSkill|type SaveCustomAgentInput|type ContextBuildSnapshot|type ContextBuildNode|type ContextBuildDiagnostic" src/apps/chat-ui/src/api.ts && npm run build && npm run typecheck'` passed (source sanity check, root build, root typecheck). No browser/manual check was needed because this was a pure client module extraction with preserved request paths and exported names.
+- Commit: pending (will be recorded after the implementation commit is created).
 - Blockers: none.
-- Exact next step: Continue the Chat UI API boundary with another cohesive request family from `api.ts`, likely agent-designer capability management or room/session messaging APIs.
+- Exact next step: Continue shrinking the Chat UI API boundary with another cohesive request family from `api.ts`, likely room/session messaging APIs, web-annotation APIs, or auth/upload/download helpers.
 
 ## Progress log
 
@@ -116,3 +116,4 @@ Initial high-priority candidates from line-count scan:
 - 2026-05-27: Extracted the Context Files Chat UI API client seam into `src/apps/chat-ui/src/api-context-files.ts`; context-files web tests, build, and root typecheck passed in Docker.
 - 2026-05-27: Extracted the Workflow Chat UI API client seam into `src/apps/chat-ui/src/api-workflows.ts`; source sanity check, build, and root typecheck passed in Docker.
 - 2026-05-27: Extracted the prompt/settings Chat UI API client seam into `src/apps/chat-ui/src/api-settings.ts`; source sanity check, build, and root typecheck passed in Docker.
+- 2026-05-27: Extracted the Agent Designer/capability-management Chat UI API client seam into `src/apps/chat-ui/src/api-agent-designer.ts`; source sanity check, build, and root typecheck passed in Docker.
