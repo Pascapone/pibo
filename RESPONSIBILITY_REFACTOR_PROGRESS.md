@@ -68,7 +68,7 @@ Initial high-priority candidates from line-count scan:
 - Result: `App.tsx` now keeps context route/panel state but no longer owns Context sidebar chrome or context navigation icon imports.
 - Evidence: `App.tsx` dropped from 2,338 LOC to 2,217 LOC; the new `ContextSidebar.tsx` is 118 LOC and lives with the context feature modules.
 - Validation: Docker source/import sanity check passed; `git diff --check` passed; Docker `npm run chat-ui:typecheck` passed; Docker root `npm run typecheck` passed. Docker route smoke `curl http://127.0.0.1:4802/apps/chat` returned connection failure/HTTP 000 because port 4802 was not listening; no service restart was performed.
-- Commit: `4874ff9` (`refactor(chat-ui): extract context sidebar`).
+- Commit: `498cb45` (`refactor(chat-ui): extract context sidebar`).
 - Blockers: worker Chat Web server on port 4802 is still not listening for route smoke checks; not blocking this behavior-preserving presentation extraction because focused source checks and typechecks passed.
 - Exact next step: Continue reducing `App.tsx` by extracting the delete-room/delete-session modal components or by splitting another focused App-owned presentation seam; avoid moving route side effects back into App.
 
