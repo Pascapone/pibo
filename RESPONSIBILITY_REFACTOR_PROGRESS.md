@@ -64,13 +64,13 @@ Initial high-priority candidates from line-count scan:
 
 ## Current state
 
-- Last batch: Extracted `SessionTracePane` session-view render prop assembly into `src/apps/chat-ui/src/session-trace-view-props.ts`.
-- Result: `App.tsx` now delegates `ChatSessionViewProps` construction, session-view derivation links, and session model badge resolution to a focused helper module. `App.tsx` fell from 3,673 LOC to 3,577 LOC; the new helper is 206 LOC.
-- Evidence: Docker source/import sanity confirmed `App.tsx` imports `./session-trace-view-props`, calls `createSessionTraceViewProps`, and renders `currentSessionView.render(sessionViewProps)`. `wc -l` reports 3,577 LOC for `App.tsx` and 206 LOC for `session-trace-view-props.ts`.
-- Validation: `git diff --check` passed; Docker source/import sanity passed; Docker focused `node --test test/chat-ui-current-trace-view.test.mjs test/chat-ui-integration.test.mjs` passed (14 tests); Docker `npm run chat-ui:typecheck` passed; Docker root `npm run typecheck` passed. Worker route smoke `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && curl --max-time 5 -S -s -o /tmp/pibo-chat-smoke.out -w "HTTP %{http_code}\n" http://127.0.0.1:4802/apps/chat || true'` returned `curl: (7) Failed to connect to 127.0.0.1 port 4802` and HTTP 000, so no browser validation was possible without restarting worker services.
-- Commit: `dd990dc` (`refactor(chat-ui): extract session trace view props`).
-- Blockers: worker Chat Web server on port 4802 is still not serving the route during smoke validation; no restart performed per operating rules.
-- Exact next step: Add focused tests for `session-trace-view-props.ts` if its link/model badge semantics will change; otherwise pivot to extracting App bootstrap mutation helpers into a support module.
+- Last batch: Added focused test-safety coverage for `src/apps/chat-ui/src/session-trace-view-props.ts` before future changes to link labels, derivation links, and model/thinking/fast fallback semantics.
+- Result: New `test/chat-ui-session-trace-view-props.test.mjs` covers empty-link behavior, nested breadcrumb labels, origin and derived session links, profile/trace/runtime model badge fallback precedence, missing-model output, and `createSessionTraceViewProps` callback assembly/order.
+- Evidence: The focused test imports `createSessionTraceViewLinks`, `resolveSessionTraceModelBadge`, and `createSessionTraceViewProps` through the existing Chat UI `tsx` source-import test pattern.
+- Validation: `git diff --check` passed; Docker focused `node --test test/chat-ui-session-trace-view-props.test.mjs` passed; Docker `npm run chat-ui:typecheck` passed; Docker root `npm run typecheck` passed. No browser/manual check was needed because this batch changed tests and tracking only.
+- Commit: `71eb6ae` (`test(chat-ui): cover session trace view props`).
+- Blockers: worker Chat Web server on port 4802 has been unreliable in prior UI smoke checks; not relevant to this test-safety-only batch.
+- Exact next step: Pivot to extracting App bootstrap mutation helpers (`BootstrapMutationSnapshot`, optimistic session/room update helpers, and session-node conversion helpers) into a focused App support module, or first run a small analysis to map those helpers and tests.
 
 ## Progress log
 
@@ -151,3 +151,4 @@ Initial high-priority candidates from line-count scan:
 - 2026-05-27: Extracted `SessionTracePane` raw-events sidebar/load-more rendering into `src/apps/chat-ui/src/tracing/RawEventsSidebar.tsx`; source/import sanity, `git diff --check`, Docker `npm run chat-ui:typecheck`, and root `npm run typecheck` passed. Worker route smoke returned curl connection failure/HTTP 000 without restarting services.
 - 2026-05-27: Extracted `SessionTracePane` trace-history load-more strip into `src/apps/chat-ui/src/tracing/TraceHistoryLoadMore.tsx`; source/import sanity, `git diff --check`, Docker `npm run chat-ui:typecheck`, and root `npm run typecheck` passed. Worker route smoke returned curl connection failure/HTTP 000 without restarting services.
 - 2026-05-27: Extracted `SessionTracePane` session-view prop assembly and session-view link/model badge helpers into `src/apps/chat-ui/src/session-trace-view-props.ts`; source/import sanity, focused chat-ui trace tests, `git diff --check`, Docker `npm run chat-ui:typecheck`, and root `npm run typecheck` passed. Worker route smoke returned curl connection failure/HTTP 000 without restarting services.
+- 2026-05-27: Added focused test-safety coverage for `session-trace-view-props.ts` link labels, derivation links, model badge fallback precedence, missing-model output, and prop callback assembly; focused Docker test, `git diff --check`, Docker `npm run chat-ui:typecheck`, and root `npm run typecheck` passed.
