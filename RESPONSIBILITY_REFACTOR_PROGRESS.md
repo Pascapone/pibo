@@ -68,7 +68,7 @@ Initial high-priority candidates from line-count scan:
 - Result: `App.tsx` now imports the parsed chat stream event union, live cursor recording, first-content flush tracking, navigation/trace-refresh predicates, overlay update predicate, and live status mapping from the tracing module. `App.tsx` fell from 5,633 LOC to 5,463 LOC; the new module is 185 LOC.
 - Evidence: Source/import sanity check found the new `chat-stream-events.ts` exports and confirmed `App.tsx` imports from `./tracing/chat-stream-events`; `wc -l` reports 5,463 LOC for `App.tsx` and 185 LOC for the new module.
 - Validation: `git diff --check` passed; Docker `npm run chat-ui:typecheck` passed; Docker root `npm run typecheck` passed. Worker route smoke `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && curl --max-time 5 -S -s -o /tmp/pibo-chat-smoke.out -w "HTTP %{http_code}\\n" http://127.0.0.1:4802/apps/chat || true'` returned `curl: (7) Failed to connect to 127.0.0.1 port 4802` and HTTP 000, so no browser validation was possible without restarting worker services.
-- Commit: `3539fad` (`refactor(chat-ui): extract chat stream event helpers`).
+- Commit: `bec57f4` (`refactor(chat-ui): extract chat stream event helpers`).
 - Blockers: worker Chat Web server on port 4802 is still not serving the route during smoke validation; no restart performed per operating rules.
 - Exact next step: Continue `SessionTracePane` test-safety/refactoring with pure helpers around raw-event compaction/fork-entry annotation or a small `useSessionTraceLiveStream` hook only after identifying existing trace reducer coverage; avoid moving `SessionTracePane` wholesale until its live stream, web annotation, upload, and composer responsibilities are split.
 
