@@ -40,6 +40,13 @@ import { collectBackendNodes, isTraceSnapshotCollectionEnabled } from "./tracing
 import { type SessionBreadcrumbItem, type SessionDerivationLink, type SessionOriginLink } from "./tracing/TraceTimeline";
 import { JsonRenderer } from "./tracing/JsonRenderer";
 import { compactRawEvents } from "./tracing/raw-events";
+import {
+	annotateLiveTraceForkEntryIds,
+	collectPersistedUserMessageIndex,
+	isUserMessageQueuedEvent,
+	overlayIncludesOptimisticUserMessage,
+	reconcileOptimisticUserMessages,
+} from "./tracing/optimistic-user-messages";
 import { countRender } from "./renderMetrics";
 import { patchTraceViewWithEvents } from "../../../shared/trace-engine.js";
 import { applyTraceLiveEvents } from "./traceLiveReducer";
@@ -3642,59 +3649,6 @@ function piboSessionFromSessionNode(node: PiboWebSessionNode, base: PiboSession)
 	};
 }
 
-function reconcileOptimisticUserMessages(view: PiboSessionTraceView): PiboSessionTraceView {
-	const persistedByText = new Map<string, number>();
-	collectPersistedUserMessageText(view.nodes, persistedByText);
-	if (!persistedByText.size) return view;
-	const { nodes, changed } = dropReplacedOptimisticUserMessages(view.nodes, persistedByText);
-	return changed ? { ...view, nodes } : view;
-}
-
-function overlayIncludesOptimisticUserMessage(events: readonly ChatWebStoredEvent[]): boolean {
-	return events.some(isUserMessageQueuedEvent);
-}
-
-function collectPersistedUserMessageText(nodes: readonly PiboTraceNode[], byText: Map<string, number>): void {
-	for (const node of nodes) {
-		if (node.type === "user.message" && !isOptimisticUserMessageNode(node)) {
-			const text = traceNodeText(node);
-			if (text) byText.set(text, (byText.get(text) ?? 0) + 1);
-		}
-		collectPersistedUserMessageText(node.children, byText);
-	}
-}
-
-function dropReplacedOptimisticUserMessages(
-	nodes: readonly PiboTraceNode[],
-	persistedByText: Map<string, number>,
-): { nodes: PiboTraceNode[]; changed: boolean } {
-	let changed = false;
-	const next: PiboTraceNode[] = [];
-	for (const node of nodes) {
-		if (isOptimisticUserMessageNode(node)) {
-			const text = traceNodeText(node);
-			const persistedCount = text ? persistedByText.get(text) ?? 0 : 0;
-			if (persistedCount > 0) {
-				persistedByText.set(text, persistedCount - 1);
-				changed = true;
-				continue;
-			}
-		}
-		const childResult = dropReplacedOptimisticUserMessages(node.children, persistedByText);
-		changed = changed || childResult.changed;
-		next.push(childResult.changed ? { ...node, children: childResult.nodes } : node);
-	}
-	return { nodes: changed ? next : nodes as PiboTraceNode[], changed };
-}
-
-function isOptimisticUserMessageNode(node: PiboTraceNode): boolean {
-	if (node.type !== "user.message") return false;
-	if (node.source === "event-log" && node.id.startsWith("event:message_queued:")) return true;
-	return [node.id, node.stableKey, node.eventId]
-		.filter((value): value is string => typeof value === "string")
-		.some((value) => value.startsWith("optimistic:user-message:") || value.includes(":optimistic:user-message:"));
-}
-
 function trimLiveOverlayForBaseTrace(overlay: LiveTraceOverlay | null, baseTrace: PiboSessionTraceView): LiveTraceOverlay | null {
 	if (!overlay || overlay.piboSessionId !== baseTrace.piboSessionId) return overlay;
 	const latestStreamId = baseTrace.latestStreamId;
@@ -3719,18 +3673,6 @@ function confirmedTranscriptUserMessageTexts(nodes: readonly PiboTraceNode[]): S
 		for (const text of confirmedTranscriptUserMessageTexts(node.children)) texts.add(text);
 	}
 	return texts;
-}
-
-function isUserMessageQueuedEvent(event: ChatWebStoredEvent): event is ChatWebStoredEvent & { payload: { type: "message_queued"; source: "user"; text: string } } {
-	const payload = event.payload;
-	return Boolean(
-		payload &&
-		typeof payload === "object" &&
-		!Array.isArray(payload) &&
-		"type" in payload && payload.type === "message_queued" &&
-		"source" in payload && payload.source === "user" &&
-		"text" in payload && typeof payload.text === "string"
-	);
 }
 
 function confirmedTraceEventKeys(trace: PiboSessionTraceView): Set<string> {
@@ -5268,34 +5210,6 @@ function parseForkActionResponse(value: unknown): ForkActionResponse | null {
 function getResultPiboSessionId(value: unknown): string | undefined {
 	if (!isRecord(value) || !isRecord(value.result)) return undefined;
 	return typeof value.result.piboSessionId === "string" ? value.result.piboSessionId : undefined;
-}
-
-function collectPersistedUserMessageIndex(nodes: readonly PiboTraceNode[]): Map<string, string[]> {
-	const messagesByText = new Map<string, string[]>();
-	forEachPiboTraceNode(nodes, (node) => {
-		if (node.type !== "user.message" || !node.entryId) return;
-		const text = traceNodeText(node);
-		const entryIds = messagesByText.get(text);
-		if (entryIds) entryIds.push(node.entryId);
-		else messagesByText.set(text, [node.entryId]);
-	});
-	return messagesByText;
-}
-
-function annotateLiveTraceForkEntryIds(liveNodes: PiboTraceNode[], persistedUserMessageIndex: ReadonlyMap<string, readonly string[]>): void {
-	if (!persistedUserMessageIndex.size) return;
-	const nextIndexByText = new Map<string, number>();
-	forEachPiboTraceNode(liveNodes, (node) => {
-		if (node.type !== "user.message" || node.entryId) return;
-		const text = traceNodeText(node);
-		const entryIds = persistedUserMessageIndex.get(text);
-		if (!entryIds?.length) return;
-		const nextIndex = nextIndexByText.get(text) ?? 0;
-		const entryId = entryIds[nextIndex];
-		if (!entryId) return;
-		node.entryId = entryId;
-		nextIndexByText.set(text, nextIndex + 1);
-	});
 }
 
 function forEachPiboTraceNode(nodes: readonly PiboTraceNode[], visitNode: (node: PiboTraceNode) => void): void {
