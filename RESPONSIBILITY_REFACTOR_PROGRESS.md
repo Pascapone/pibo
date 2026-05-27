@@ -69,7 +69,7 @@ Initial high-priority candidates from line-count scan:
 - Result: `web-app.ts` now matches the capability-management routes, performs same-origin and session checks, and delegates request parsing, Pi-package persistence, MCP description persistence, custom-agent package-selection delete conflicts, response shaping, and bootstrap catalog invalidation through callbacks to `chat-capability-routes.ts`.
 - Evidence: line counts after extraction: `web-app.ts` 5,170 LOC, `chat-capability-routes.ts` 112 LOC. `test/web-channel.test.mjs` covers Pi-package registration, enable/delete conflict behavior, non-`pi.dev` source rejection, and MCP description persistence.
 - Validation: host `git diff --check` passed; Docker source/import sanity plus `npm run build` passed; Docker `node --test test/web-channel.test.mjs` passed (85 tests); Docker `npm run typecheck` passed; worker route smoke `curl http://127.0.0.1:4802/apps/chat` returned exit 7/HTTP 000 connection refused without restarting services.
-- Commit: pending hash recording after commit.
+- Commit: `4980610` (`refactor(chat): extract capability route helpers`).
 - Blockers: none.
 - Exact next step: Add focused web-route test-safety for user-skill create/update/delete and built-in name conflicts, then extract user-skill web route handling behind a callback-driven helper that owns request parsing and sync/cache invalidation.
 
