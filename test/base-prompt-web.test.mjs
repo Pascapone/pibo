@@ -66,6 +66,59 @@ async function fetchJson(url, init = {}) {
 	return { response, data: await response.json() };
 }
 
+test("chat user-settings API validates same-origin mutations and persists sanitized values", async () => {
+	const originalPiboHome = process.env.PIBO_HOME;
+	const dir = mkdtempSync(join(tmpdir(), "pibo-user-settings-web-"));
+	process.env.PIBO_HOME = join(dir, "pibo-home");
+	const { channel, baseURL } = await startChatHost(dir);
+	try {
+		const current = await fetchJson(`${baseURL}/api/chat/user-settings`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(current.response.status, 200);
+		assert.equal(current.data.userSettings.timezone, "UTC");
+
+		const missingOrigin = await fetch(`${baseURL}/api/chat/user-settings`, {
+			method: "PATCH",
+			headers: { "x-test-user": "user-1", "content-type": "application/json" },
+			body: JSON.stringify({ timezone: "Europe/Berlin" }),
+		});
+		assert.equal(missingOrigin.status, 403);
+
+		const invalidTimezone = await fetchJson(`${baseURL}/api/chat/user-settings`, {
+			method: "PATCH",
+			headers: authHeaders(baseURL),
+			body: JSON.stringify({ timezone: "Not/AZone" }),
+		});
+		assert.equal(invalidTimezone.response.status, 400);
+		assert.match(invalidTimezone.data.error, /Invalid timezone/);
+
+		const saved = await fetchJson(`${baseURL}/api/chat/user-settings`, {
+			method: "PATCH",
+			headers: authHeaders(baseURL),
+			body: JSON.stringify({
+				timezone: "Europe/Berlin",
+				shortcuts: { webAnnotationsToggle: " Ctrl+Shift+P\u0000" },
+			}),
+		});
+		assert.equal(saved.response.status, 200);
+		assert.equal(saved.data.userSettings.timezone, "Europe/Berlin");
+		assert.equal(saved.data.userSettings.shortcuts.webAnnotationsToggle, "Ctrl+Shift+P");
+
+		const reloaded = await fetchJson(`${baseURL}/api/chat/user-settings`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(reloaded.response.status, 200);
+		assert.equal(reloaded.data.userSettings.timezone, "Europe/Berlin");
+		assert.equal(reloaded.data.userSettings.shortcuts.webAnnotationsToggle, "Ctrl+Shift+P");
+	} finally {
+		await channel.stop?.();
+		if (originalPiboHome === undefined) delete process.env.PIBO_HOME;
+		else process.env.PIBO_HOME = originalPiboHome;
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
 test("chat base-prompt API validates same-origin mutations and accepts empty custom markdown", async () => {
 	const originalCwd = process.cwd();
 	const dir = mkdtempSync(join(tmpdir(), "pibo-base-prompt-web-"));

@@ -32,6 +32,9 @@ test("Workflow V2 security boundary surfaces auth, capability, compute, and data
 
 test("Workflow V2 security boundary is covered by backend auth, validation, redaction, and visibility gates", async () => {
 	const webAppSource = await readSource("src/apps/chat/web-app.ts");
+	const workflowV2SecurityValidationSource = await readSource("src/apps/chat/workflow-v2-security-validation.ts");
+	const workflowJsonSchemaValidationSource = await readSource("src/apps/chat/workflow-json-schema-validation.ts");
+	const workflowPersistenceModelSource = await readSource("src/apps/chat/workflow-persistence-model.ts");
 	const webChannelTests = await readSource("test/web-channel.test.mjs");
 	const deferralTests = await readSource("test/workflow-v2-deferrals.test.mjs");
 
@@ -40,10 +43,19 @@ test("Workflow V2 security boundary is covered by backend auth, validation, reda
 		["Project visibility remains owner-scoped", /function requireOwnedProject[\s\S]*project\.ownerScope !== webSession\.ownerScope/],
 		["Pibo Session visibility remains owner-scoped", /function requireOwnedSession[\s\S]*selected\.ownerScope !== webSession\.ownerScope/],
 		["Workflow profile refs resolve through the registered profile picker", /function buildWorkflowProfilePicker/],
+	]);
+
+	assertAllMatch(workflowV2SecurityValidationSource, [
 		["inline executable IR fields are rejected", /WorkflowSecurityError\.inlineExecutableCode/],
 		["raw XState fields are rejected by validation", /WorkflowSecurityError\.rawXStateAuthoring/],
 		["hidden LLM coercion is rejected", /WorkflowSecurityError\.hiddenLlmCoercion/],
+	]);
+
+	assertAllMatch(workflowJsonSchemaValidationSource, [
 		["Zod is excluded by the JSON Schema subset validator", /Zod schemas are not part of V2 authoring/],
+	]);
+
+	assertAllMatch(workflowPersistenceModelSource, [
 		["diagnostics are sanitized before storage or responses", /function sanitizeWorkflowDiagnostics/],
 		["diagnostic text redacts sensitive workflow values", /function redactWorkflowDiagnosticText/],
 	]);

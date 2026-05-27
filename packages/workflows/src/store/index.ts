@@ -2,541 +2,170 @@ import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-import { canonicalWorkflowDefinitionJson, hashWorkflowDefinition } from "../definition-hash.js";
 import type {
   EdgeTransfer,
   EdgeTransferId,
   NodeAttempt,
   NodeAttemptId,
-  NodeAttemptStatus,
   WorkflowArchiveStateRecord,
   WorkflowCheckpoint,
   WorkflowCheckpointId,
-  WorkflowDefinition,
   WorkflowDefinitionSnapshot,
   WorkflowDefinitionSnapshotId,
   WorkflowDeleteTombstoneRecord,
   WorkflowDraftRecord,
-  WorkflowDraftValidationState,
   WorkflowEventId,
   WorkflowEventRecord,
-  WorkflowExecutionEnvironment,
   WorkflowHumanActionId,
-  WorkflowHumanActionKind,
   WorkflowHumanActionRecord,
   WorkflowIdentityRecord,
   WorkflowPublishedVersionRecord,
-  WorkflowRecordSource,
-  WorkflowRecordStatus,
   WorkflowRun,
   WorkflowRunId,
-  WorkflowRunStatus,
-  WorkflowValue,
   WorkflowWakeup,
   WorkflowWakeupId,
   WorkflowWaitToken,
   WorkflowWaitTokenId,
-  WorkflowWaitTokenStatus,
 } from "../types/index.js";
+import {
+  assertPublishedWorkflowVersionIsSame,
+  assertWorkflowRecordStatusValue,
+  assertWorkflowUiRecordSource,
+  createWorkflowPublishedVersionRecord,
+} from "./catalog-records.js";
+import { assertNoActiveWorkflowDraftConflict, updateWorkflowIdentityCurrentDraft } from "./draft-writes.js";
+import type {
+  WorkflowArchiveStateListFilter,
+  WorkflowArchiveStateStore,
+  WorkflowCheckpointListFilter,
+  WorkflowCheckpointStore,
+  WorkflowDefinitionSnapshotListFilter,
+  WorkflowDefinitionSnapshotStore,
+  WorkflowDeleteTombstoneListFilter,
+  WorkflowDeleteTombstoneStore,
+  WorkflowDraftListFilter,
+  WorkflowDraftStore,
+  WorkflowEdgeTransferListFilter,
+  WorkflowEdgeTransferStore,
+  WorkflowEventListFilter,
+  WorkflowEventStore,
+  WorkflowHumanActionListFilter,
+  WorkflowHumanActionStore,
+  WorkflowIdentityListFilter,
+  WorkflowIdentityStore,
+  WorkflowNodeAttemptListFilter,
+  WorkflowNodeAttemptStore,
+  WorkflowPublishedVersionListFilter,
+  WorkflowPublishedVersionStore,
+  WorkflowRunListFilter,
+  WorkflowRunStore,
+  WorkflowWaitTokenListFilter,
+  WorkflowWaitTokenStore,
+  WorkflowWakeupListFilter,
+  WorkflowWakeupStore,
+} from "./contracts.js";
+import { buildWorkflowStoreListQuery, workflowStoreListLimit } from "./list-query.js";
+import {
+  workflowArchiveStateFromRow,
+  workflowCheckpointFromRow,
+  workflowDefinitionSnapshotFromRow,
+  workflowDeleteTombstoneFromRow,
+  workflowDraftFromRow,
+  workflowEdgeTransferFromRow,
+  workflowEventFromRow,
+  workflowHumanActionFromRow,
+  workflowIdentityFromRow,
+  workflowNodeAttemptFromRow,
+  workflowPublishedVersionFromRow,
+  workflowRunFromRow,
+  workflowWaitTokenFromRow,
+  workflowWakeupFromRow,
+  type WorkflowArchiveStateRow,
+  type WorkflowCheckpointRow,
+  type WorkflowDefinitionSnapshotRow,
+  type WorkflowDeleteTombstoneRow,
+  type WorkflowDraftRow,
+  type WorkflowEdgeTransferRow,
+  type WorkflowEventRow,
+  type WorkflowHumanActionRow,
+  type WorkflowIdentityRow,
+  type WorkflowNodeAttemptRow,
+  type WorkflowPublishedVersionRow,
+  type WorkflowRunRow,
+  type WorkflowWaitTokenRow,
+  type WorkflowWakeupRow,
+} from "./row-mappers.js";
+import { installWorkflowSqliteSchema } from "./schema.js";
+import {
+  workflowArchiveStateWriteValues,
+  workflowCheckpointWriteValues,
+  workflowDefinitionSnapshotWriteValues,
+  workflowDeleteTombstoneWriteValues,
+  workflowDraftWriteValues,
+  workflowEdgeTransferWriteValues,
+  workflowEventWriteValues,
+  workflowHumanActionWriteValues,
+  workflowIdentityWriteValues,
+  workflowNodeAttemptWriteValues,
+  workflowPublishedVersionWriteValues,
+  workflowRunWriteValues,
+  workflowWaitTokenWriteValues,
+  workflowWakeupWriteValues,
+} from "./write-values.js";
 
-export const WORKFLOW_SQLITE_FILENAME = "pibo-workflows.sqlite";
-export const WORKFLOW_SQLITE_SCHEMA_VERSION = 3;
+export {
+  assertPublishedWorkflowVersionRecord,
+  assertWorkflowRecordSource,
+  assertWorkflowRecordStatus,
+  createWorkflowPublishedVersionRecord,
+  isWorkflowRecordSource,
+  isWorkflowRecordStatus,
+  WORKFLOW_RECORD_SOURCES,
+  WORKFLOW_RECORD_STATUSES,
+  type CreateWorkflowPublishedVersionRecordInput,
+} from "./catalog-records.js";
 
-export const WORKFLOW_SQLITE_TABLES = [
-  "workflow_definition_snapshots",
-  "workflow_identities",
-  "workflow_drafts",
-  "workflow_published_versions",
-  "workflow_archive_states",
-  "workflow_delete_tombstones",
-  "workflow_runs",
-  "workflow_events",
-  "workflow_node_attempts",
-  "workflow_edge_transfers",
-  "workflow_checkpoints",
-  "workflow_wakeups",
-  "workflow_wait_tokens",
-  "workflow_human_actions",
-] as const;
+export {
+  createWorkflowSqlitePath,
+  isNormalSessionFactStorageName,
+  WORKFLOW_SQLITE_FILENAME,
+  WORKFLOW_SQLITE_NORMAL_SESSION_FACT_KEYWORDS,
+  WORKFLOW_SQLITE_SCHEMA_VERSION,
+  WORKFLOW_SQLITE_SESSION_LINK_COLUMNS,
+  WORKFLOW_SQLITE_TABLES,
+  type WorkflowSqliteTableName,
+} from "./schema.js";
 
-export type WorkflowSqliteTableName = (typeof WORKFLOW_SQLITE_TABLES)[number];
-
-export const WORKFLOW_SQLITE_SESSION_LINK_COLUMNS = ["pibo_session_id", "project_id"] as const;
-
-export const WORKFLOW_SQLITE_NORMAL_SESSION_FACT_KEYWORDS = [
-  "session_record",
-  "session_trace",
-  "session_transcript",
-  "transcript",
-  "tool_call",
-  "span",
-] as const;
-
-export function isNormalSessionFactStorageName(name: string): boolean {
-  const normalized = name.toLowerCase();
-  return WORKFLOW_SQLITE_NORMAL_SESSION_FACT_KEYWORDS.some((keyword) => normalized.includes(keyword));
-}
-
-export function createWorkflowSqlitePath(baseDirectory: string): string {
-  return resolve(baseDirectory, WORKFLOW_SQLITE_FILENAME);
-}
-
-export type WorkflowRunStore = {
-  saveRun(run: WorkflowRun): void | Promise<void>;
-  getRun(id: WorkflowRunId): WorkflowRun | undefined | Promise<WorkflowRun | undefined>;
-};
-
-export type WorkflowDefinitionSnapshotStore = {
-  saveDefinitionSnapshot(snapshot: WorkflowDefinitionSnapshot): void | Promise<void>;
-  getDefinitionSnapshot(id: WorkflowDefinitionSnapshotId): WorkflowDefinitionSnapshot | undefined | Promise<WorkflowDefinitionSnapshot | undefined>;
-  listDefinitionSnapshots(filter?: WorkflowDefinitionSnapshotListFilter): WorkflowDefinitionSnapshot[] | Promise<WorkflowDefinitionSnapshot[]>;
-};
-
-export type WorkflowIdentityStore = {
-  saveWorkflowIdentity(record: WorkflowIdentityRecord): void | Promise<void>;
-  getWorkflowIdentity(workflowId: string): WorkflowIdentityRecord | undefined | Promise<WorkflowIdentityRecord | undefined>;
-  listWorkflowIdentities(filter?: WorkflowIdentityListFilter): WorkflowIdentityRecord[] | Promise<WorkflowIdentityRecord[]>;
-};
-
-export type WorkflowDraftStore = {
-  saveWorkflowDraft(record: WorkflowDraftRecord): void | Promise<void>;
-  getWorkflowDraft(draftId: string): WorkflowDraftRecord | undefined | Promise<WorkflowDraftRecord | undefined>;
-  listWorkflowDrafts(filter?: WorkflowDraftListFilter): WorkflowDraftRecord[] | Promise<WorkflowDraftRecord[]>;
-};
-
-export type WorkflowArchiveStateStore = {
-  saveWorkflowArchiveState(record: WorkflowArchiveStateRecord): void | Promise<void>;
-  getWorkflowArchiveState(workflowId: string): WorkflowArchiveStateRecord | undefined | Promise<WorkflowArchiveStateRecord | undefined>;
-  listWorkflowArchiveStates(filter?: WorkflowArchiveStateListFilter): WorkflowArchiveStateRecord[] | Promise<WorkflowArchiveStateRecord[]>;
-};
-
-export type WorkflowDeleteTombstoneStore = {
-  saveWorkflowDeleteTombstone(record: WorkflowDeleteTombstoneRecord): void | Promise<void>;
-  getWorkflowDeleteTombstone(workflowId: string): WorkflowDeleteTombstoneRecord | undefined | Promise<WorkflowDeleteTombstoneRecord | undefined>;
-  listWorkflowDeleteTombstones(filter?: WorkflowDeleteTombstoneListFilter): WorkflowDeleteTombstoneRecord[] | Promise<WorkflowDeleteTombstoneRecord[]>;
-};
-
-export type CreateWorkflowPublishedVersionRecordInput = Omit<WorkflowPublishedVersionRecord, "source" | "status" | "definitionHash"> & {
-  source?: "ui";
-  status?: "published";
-  definitionHash?: string;
-};
-
-export type WorkflowPublishedVersionStore = {
-  savePublishedWorkflowVersion(record: WorkflowPublishedVersionRecord): void | Promise<void>;
-  getPublishedWorkflowVersion(workflowId: string, version: string): WorkflowPublishedVersionRecord | undefined | Promise<WorkflowPublishedVersionRecord | undefined>;
-  listPublishedWorkflowVersions(filter?: WorkflowPublishedVersionListFilter): WorkflowPublishedVersionRecord[] | Promise<WorkflowPublishedVersionRecord[]>;
-};
-
-export type WorkflowEventStore = {
-  saveEvent(event: WorkflowEventRecord): void | Promise<void>;
-  getEvent(id: WorkflowEventId): WorkflowEventRecord | undefined | Promise<WorkflowEventRecord | undefined>;
-  listEvents(filter?: WorkflowEventListFilter): WorkflowEventRecord[] | Promise<WorkflowEventRecord[]>;
-};
-
-export type WorkflowWaitTokenStore = {
-  saveWaitToken(token: WorkflowWaitToken): void | Promise<void>;
-  getWaitToken(id: WorkflowWaitTokenId): WorkflowWaitToken | undefined | Promise<WorkflowWaitToken | undefined>;
-  listWaitTokens(filter?: WorkflowWaitTokenListFilter): WorkflowWaitToken[] | Promise<WorkflowWaitToken[]>;
-};
-
-export type WorkflowNodeAttemptStore = {
-  saveNodeAttempt(nodeAttempt: NodeAttempt): void | Promise<void>;
-  getNodeAttempt(id: NodeAttemptId): NodeAttempt | undefined | Promise<NodeAttempt | undefined>;
-  listNodeAttempts(filter?: WorkflowNodeAttemptListFilter): NodeAttempt[] | Promise<NodeAttempt[]>;
-};
-
-export type WorkflowEdgeTransferStore = {
-  saveEdgeTransfer(transfer: EdgeTransfer): void | Promise<void>;
-  getEdgeTransfer(id: EdgeTransferId): EdgeTransfer | undefined | Promise<EdgeTransfer | undefined>;
-  listEdgeTransfers(filter?: WorkflowEdgeTransferListFilter): EdgeTransfer[] | Promise<EdgeTransfer[]>;
-};
-
-export type WorkflowCheckpointStore = {
-  saveCheckpoint(checkpoint: WorkflowCheckpoint): void | Promise<void>;
-  getCheckpoint(id: WorkflowCheckpointId): WorkflowCheckpoint | undefined | Promise<WorkflowCheckpoint | undefined>;
-  listCheckpoints(filter?: WorkflowCheckpointListFilter): WorkflowCheckpoint[] | Promise<WorkflowCheckpoint[]>;
-};
-
-export type WorkflowWakeupStore = {
-  saveWakeup(wakeup: WorkflowWakeup): void | Promise<void>;
-  getWakeup(id: WorkflowWakeupId): WorkflowWakeup | undefined | Promise<WorkflowWakeup | undefined>;
-  listWakeups(filter?: WorkflowWakeupListFilter): WorkflowWakeup[] | Promise<WorkflowWakeup[]>;
-};
-
-export type WorkflowHumanActionStore = {
-  saveHumanAction(action: WorkflowHumanActionRecord): void | Promise<void>;
-  getHumanAction(id: WorkflowHumanActionId): WorkflowHumanActionRecord | undefined | Promise<WorkflowHumanActionRecord | undefined>;
-  listHumanActions(filter?: WorkflowHumanActionListFilter): WorkflowHumanActionRecord[] | Promise<WorkflowHumanActionRecord[]>;
-};
-
-export type WorkflowRunListFilter = {
-  workflowId?: string;
-  status?: WorkflowRunStatus;
-  ownerScope?: string;
-  limit?: number;
-};
-
-export type WorkflowDefinitionSnapshotListFilter = {
-  workflowId?: string;
-  workflowVersion?: string;
-  hash?: string;
-  limit?: number;
-};
-
-export type WorkflowIdentityListFilter = {
-  workflowId?: string;
-  limit?: number;
-};
-
-export type WorkflowDraftListFilter = {
-  workflowId?: string;
-  validationState?: WorkflowDraftValidationState;
-  limit?: number;
-};
-
-export type WorkflowArchiveStateListFilter = {
-  archived?: boolean;
-  limit?: number;
-};
-
-export type WorkflowDeleteTombstoneListFilter = {
-  limit?: number;
-};
-
-export type WorkflowPublishedVersionListFilter = {
-  workflowId?: string;
-  limit?: number;
-};
-
-export type WorkflowEventListFilter = {
-  workflowRunId?: WorkflowRunId;
-  type?: string;
-  nodeId?: string;
-  edgeId?: string;
-  attemptId?: NodeAttemptId;
-  limit?: number;
-};
-
-export type WorkflowWaitTokenListFilter = {
-  workflowRunId?: WorkflowRunId;
-  status?: WorkflowWaitTokenStatus;
-  humanNodeId?: string;
-  limit?: number;
-};
-
-export type WorkflowNodeAttemptListFilter = {
-  workflowRunId?: WorkflowRunId;
-  nodeId?: string;
-  kind?: NodeAttempt["kind"];
-  status?: NodeAttemptStatus;
-  limit?: number;
-};
-
-export type WorkflowEdgeTransferListFilter = {
-  workflowRunId?: WorkflowRunId;
-  edgeId?: string;
-  targetNodeId?: string;
-  status?: EdgeTransfer["status"];
-  limit?: number;
-};
-
-export type WorkflowCheckpointListFilter = {
-  workflowRunId?: WorkflowRunId;
-  namespace?: string;
-  limit?: number;
-};
-
-export type WorkflowWakeupListFilter = {
-  workflowRunId?: WorkflowRunId;
-  nodeAttemptId?: NodeAttemptId;
-  kind?: WorkflowWakeup["kind"];
-  correlationId?: string;
-  limit?: number;
-};
-
-export type WorkflowHumanActionListFilter = {
-  workflowRunId?: WorkflowRunId;
-  waitTokenId?: WorkflowWaitTokenId;
-  kind?: WorkflowHumanActionKind;
-  limit?: number;
-};
-
-type WorkflowRunRow = {
-  id: string;
-  workflow_id: string;
-  workflow_version: string;
-  workflow_definition_hash: string | null;
-  definition_snapshot_id: string | null;
-  owner_scope: string;
-  parent_run_id: string | null;
-  parent_node_attempt_id: string | null;
-  pibo_session_id: string | null;
-  project_id: string | null;
-  environment_json: string | null;
-  status: WorkflowRunStatus;
-  current_node_id: string | null;
-  current_edge_id: string | null;
-  current_status: WorkflowRunStatus | null;
-  current_json: string;
-  input_json: string;
-  output_json: string | null;
-  output_present: number;
-  state_json: string;
-  checkpoint_json: string | null;
-  created_at: string;
-  updated_at: string;
-  completed_at: string | null;
-  failed_at: string | null;
-  cancelled_at: string | null;
-};
-
-type WorkflowDefinitionSnapshotRow = {
-  id: string;
-  workflow_id: string;
-  workflow_version: string;
-  definition_hash: string;
-  compiled_definition_json: string;
-  created_at: string;
-};
-
-type WorkflowIdentityRow = {
-  workflow_id: string;
-  source: WorkflowRecordSource;
-  title: string;
-  description: string | null;
-  tags_json: string;
-  current_draft_id: string | null;
-  latest_version: string | null;
-  created_by: string | null;
-  created_at: string;
-  updated_by: string | null;
-  updated_at: string;
-};
-
-type WorkflowDraftRow = {
-  draft_id: string;
-  workflow_id: string;
-  source: WorkflowRecordSource;
-  status: WorkflowRecordStatus;
-  base_workflow_id: string | null;
-  base_workflow_version: string | null;
-  base_definition_hash: string | null;
-  version_intent: "patch" | "minor" | "major";
-  definition_json: string;
-  diagnostics_json: string;
-  validation_state: WorkflowDraftValidationState;
-  revision: number;
-  created_by: string | null;
-  created_at: string;
-  updated_by: string | null;
-  updated_at: string;
-};
-
-type WorkflowArchiveStateRow = {
-  workflow_id: string;
-  source: WorkflowRecordSource;
-  archived: number;
-  archived_at: string | null;
-  archived_by: string | null;
-  archive_reason: string | null;
-  updated_at: string;
-};
-
-type WorkflowDeleteTombstoneRow = {
-  workflow_id: string;
-  source: WorkflowRecordSource;
-  deleted: number;
-  deleted_at: string | null;
-  deleted_by: string | null;
-  last_known_title: string;
-  last_known_version: string | null;
-  last_definition_hash: string | null;
-  created_at: string;
-};
-
-type WorkflowPublishedVersionRow = {
-  workflow_id: string;
-  version: string;
-  source: WorkflowRecordSource;
-  status: WorkflowRecordStatus;
-  definition_hash: string;
-  definition_json: string;
-  published_from_draft_id: string | null;
-  published_by: string | null;
-  published_at: string;
-  created_at: string;
-};
-
-type WorkflowEventRow = {
-  id: string;
-  workflow_run_id: string;
-  type: string;
-  node_id: string | null;
-  edge_id: string | null;
-  attempt_id: string | null;
-  payload_json: string | null;
-  created_at: string;
-};
-
-type WorkflowWaitTokenRow = {
-  id: string;
-  workflow_run_id: string;
-  node_attempt_id: string | null;
-  human_node_id: string | null;
-  kind: string | null;
-  available_actions_json: string | null;
-  actions_json?: string | null;
-  prompt: string;
-  schema_json: string | null;
-  status: WorkflowWaitTokenStatus;
-  resume_payload_json: string | null;
-  resume_payload_present: number;
-  created_at: string;
-  expires_at: string | null;
-  resolved_at: string | null;
-  resumed_at?: string | null;
-};
-
-type WorkflowNodeAttemptRow = {
-  id: string;
-  workflow_run_id: string;
-  node_id: string;
-  attempt_number: number | null;
-  attempt?: number | null;
-  kind: NodeAttempt["kind"];
-  status: NodeAttemptStatus;
-  environment_json: string | null;
-  input_json: string;
-  output_json: string | null;
-  output_present: number;
-  local_state_json: string | null;
-  metadata_json: string | null;
-  error_json: string | null;
-  lease_json: string | null;
-  started_at: string | null;
-  heartbeat_at: string | null;
-  completed_at: string | null;
-  failed_at: string | null;
-  available_at: string | null;
-};
-
-type WorkflowEdgeTransferRow = {
-  id: string;
-  workflow_run_id: string;
-  edge_id: string;
-  source_node_attempt_id: string;
-  target_node_id: string;
-  payload_json: string;
-  adapter_attempt_id: string | null;
-  status: EdgeTransfer["status"];
-  created_at: string;
-};
-
-type WorkflowCheckpointRow = {
-  id: string;
-  workflow_run_id: string;
-  namespace: string;
-  cursor_json: string;
-  state_json: string;
-  pending_json: string;
-  created_at: string;
-};
-
-type WorkflowWakeupRow = {
-  id: string;
-  workflow_run_id: string;
-  node_attempt_id: string | null;
-  kind: WorkflowWakeup["kind"];
-  available_at: string;
-  correlation_id: string | null;
-  payload_json: string | null;
-  created_at: string;
-};
-
-type WorkflowHumanActionRow = {
-  id: string;
-  workflow_run_id: string;
-  wait_token_id: string;
-  kind: WorkflowHumanActionKind;
-  actor_json: string | null;
-  payload_json: string | null;
-  created_at: string;
-};
-
-export const WORKFLOW_RECORD_SOURCES = ["code", "ui"] as const satisfies readonly WorkflowRecordSource[];
-export const WORKFLOW_RECORD_STATUSES = ["draft", "published", "archived"] as const satisfies readonly WorkflowRecordStatus[];
-
-export function isWorkflowRecordSource(value: unknown): value is WorkflowRecordSource {
-  return typeof value === "string" && (WORKFLOW_RECORD_SOURCES as readonly string[]).includes(value);
-}
-
-export function isWorkflowRecordStatus(value: unknown): value is WorkflowRecordStatus {
-  return typeof value === "string" && (WORKFLOW_RECORD_STATUSES as readonly string[]).includes(value);
-}
-
-export function assertWorkflowRecordSource(value: unknown): asserts value is WorkflowRecordSource {
-  if (!isWorkflowRecordSource(value)) {
-    throw new Error(`Workflow record source must be one of: ${WORKFLOW_RECORD_SOURCES.join(", ")}.`);
-  }
-}
-
-export function assertWorkflowRecordStatus(value: unknown): asserts value is WorkflowRecordStatus {
-  if (!isWorkflowRecordStatus(value)) {
-    throw new Error(`Workflow record status must be one of: ${WORKFLOW_RECORD_STATUSES.join(", ")}.`);
-  }
-}
-
-function assertWorkflowUiRecordSource(value: unknown, entity: string): asserts value is "ui" {
-  assertWorkflowRecordSource(value);
-  if (value !== "ui") {
-    throw new Error(`${entity} records must use source 'ui'. Code workflows are catalog projections and are not persisted UI records.`);
-  }
-}
-
-function assertWorkflowRecordStatusValue(value: unknown, expected: WorkflowRecordStatus, entity: string): void {
-  assertWorkflowRecordStatus(value);
-  if (value !== expected) {
-    throw new Error(`${entity} records must use status '${expected}'.`);
-  }
-}
-
-export function createWorkflowPublishedVersionRecord(
-  input: CreateWorkflowPublishedVersionRecordInput,
-): WorkflowPublishedVersionRecord {
-  const record: WorkflowPublishedVersionRecord = {
-    ...input,
-    source: input.source ?? "ui",
-    status: input.status ?? "published",
-    definitionHash: input.definitionHash ?? hashWorkflowDefinition(input.definition),
-  };
-  assertPublishedWorkflowVersionRecord(record);
-  return record;
-}
-
-export function assertPublishedWorkflowVersionRecord(record: WorkflowPublishedVersionRecord): void {
-  assertWorkflowUiRecordSource(record.source, "Workflow published version");
-  assertWorkflowRecordStatusValue(record.status, "published", "Workflow published version");
-  if (record.definition.id !== record.workflowId || record.definition.version !== record.version) {
-    throw new Error(`Workflow '${record.workflowId}@${record.version}' published record does not match its definition id/version.`);
-  }
-  const computedHash = hashWorkflowDefinition(record.definition);
-  if (record.definitionHash !== computedHash) {
-    throw new Error(`Workflow '${record.workflowId}@${record.version}' published record has an invalid definition hash.`);
-  }
-}
-
-function assertPublishedWorkflowVersionIsSame(
-  existing: WorkflowPublishedVersionRecord,
-  next: WorkflowPublishedVersionRecord,
-): void {
-  if (
-    existing.definitionHash !== next.definitionHash ||
-    canonicalWorkflowDefinitionJson(existing.definition) !== canonicalWorkflowDefinitionJson(next.definition)
-  ) {
-    throw new Error(`Published workflow '${next.workflowId}@${next.version}' is immutable and cannot be replaced.`);
-  }
-}
+export type {
+  WorkflowArchiveStateListFilter,
+  WorkflowArchiveStateStore,
+  WorkflowCheckpointListFilter,
+  WorkflowCheckpointStore,
+  WorkflowDefinitionSnapshotListFilter,
+  WorkflowDefinitionSnapshotStore,
+  WorkflowDeleteTombstoneListFilter,
+  WorkflowDeleteTombstoneStore,
+  WorkflowDraftListFilter,
+  WorkflowDraftStore,
+  WorkflowEdgeTransferListFilter,
+  WorkflowEdgeTransferStore,
+  WorkflowEventListFilter,
+  WorkflowEventStore,
+  WorkflowHumanActionListFilter,
+  WorkflowHumanActionStore,
+  WorkflowIdentityListFilter,
+  WorkflowIdentityStore,
+  WorkflowNodeAttemptListFilter,
+  WorkflowNodeAttemptStore,
+  WorkflowPublishedVersionListFilter,
+  WorkflowPublishedVersionStore,
+  WorkflowRunListFilter,
+  WorkflowRunStore,
+  WorkflowWaitTokenListFilter,
+  WorkflowWaitTokenStore,
+  WorkflowWakeupListFilter,
+  WorkflowWakeupStore,
+} from "./contracts.js";
 
 export class SqliteWorkflowRunStore implements
   WorkflowRunStore,
@@ -562,303 +191,7 @@ export class SqliteWorkflowRunStore implements
     }
 
     this.db = new DatabaseSync(resolvedPath);
-    this.db.exec("PRAGMA busy_timeout = 5000");
-    if (resolvedPath !== ":memory:") this.db.exec("PRAGMA journal_mode = WAL");
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS workflow_definition_snapshots (
-        id TEXT PRIMARY KEY,
-        workflow_id TEXT NOT NULL,
-        workflow_version TEXT NOT NULL,
-        definition_hash TEXT NOT NULL,
-        compiled_definition_json TEXT NOT NULL,
-        created_at TEXT NOT NULL
-      );
-
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_workflow_definition_snapshots_hash
-        ON workflow_definition_snapshots(workflow_id, workflow_version, definition_hash);
-
-      CREATE TABLE IF NOT EXISTS workflow_identities (
-        workflow_id TEXT PRIMARY KEY,
-        source TEXT NOT NULL,
-        title TEXT NOT NULL,
-        description TEXT,
-        tags_json TEXT NOT NULL,
-        current_draft_id TEXT,
-        latest_version TEXT,
-        created_by TEXT,
-        created_at TEXT NOT NULL,
-        updated_by TEXT,
-        updated_at TEXT NOT NULL
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_workflow_identities_updated
-        ON workflow_identities(updated_at, workflow_id);
-
-      CREATE TABLE IF NOT EXISTS workflow_drafts (
-        draft_id TEXT PRIMARY KEY,
-        workflow_id TEXT NOT NULL,
-        source TEXT NOT NULL,
-        status TEXT NOT NULL,
-        base_workflow_id TEXT,
-        base_workflow_version TEXT,
-        base_definition_hash TEXT,
-        version_intent TEXT NOT NULL,
-        definition_json TEXT NOT NULL,
-        diagnostics_json TEXT NOT NULL,
-        validation_state TEXT NOT NULL,
-        revision INTEGER NOT NULL,
-        created_by TEXT,
-        created_at TEXT NOT NULL,
-        updated_by TEXT,
-        updated_at TEXT NOT NULL
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_workflow_drafts_workflow
-        ON workflow_drafts(workflow_id, updated_at);
-      CREATE INDEX IF NOT EXISTS idx_workflow_drafts_validation
-        ON workflow_drafts(validation_state, updated_at);
-
-      CREATE TABLE IF NOT EXISTS workflow_published_versions (
-        workflow_id TEXT NOT NULL,
-        version TEXT NOT NULL,
-        source TEXT NOT NULL,
-        status TEXT NOT NULL,
-        definition_hash TEXT NOT NULL,
-        definition_json TEXT NOT NULL,
-        published_from_draft_id TEXT,
-        published_by TEXT,
-        published_at TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        PRIMARY KEY (workflow_id, version)
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_workflow_published_versions_workflow
-        ON workflow_published_versions(workflow_id, version);
-      CREATE INDEX IF NOT EXISTS idx_workflow_published_versions_published_at
-        ON workflow_published_versions(published_at);
-
-      CREATE TABLE IF NOT EXISTS workflow_archive_states (
-        workflow_id TEXT PRIMARY KEY,
-        source TEXT NOT NULL,
-        archived INTEGER NOT NULL,
-        archived_at TEXT,
-        archived_by TEXT,
-        archive_reason TEXT,
-        updated_at TEXT NOT NULL
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_workflow_archive_states_archived
-        ON workflow_archive_states(archived, updated_at);
-
-      CREATE TABLE IF NOT EXISTS workflow_delete_tombstones (
-        workflow_id TEXT PRIMARY KEY,
-        source TEXT NOT NULL,
-        deleted INTEGER NOT NULL,
-        deleted_at TEXT,
-        deleted_by TEXT,
-        last_known_title TEXT NOT NULL,
-        last_known_version TEXT,
-        last_definition_hash TEXT,
-        created_at TEXT NOT NULL
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_workflow_delete_tombstones_created
-        ON workflow_delete_tombstones(created_at);
-
-      CREATE TABLE IF NOT EXISTS workflow_runs (
-        id TEXT PRIMARY KEY,
-        workflow_id TEXT NOT NULL,
-        workflow_version TEXT NOT NULL,
-        workflow_definition_hash TEXT,
-        definition_snapshot_id TEXT,
-        owner_scope TEXT NOT NULL,
-        parent_run_id TEXT,
-        parent_node_attempt_id TEXT,
-        pibo_session_id TEXT,
-        project_id TEXT,
-        environment_json TEXT,
-        status TEXT NOT NULL,
-        current_node_id TEXT,
-        current_edge_id TEXT,
-        current_status TEXT,
-        current_json TEXT NOT NULL,
-        input_json TEXT NOT NULL,
-        output_json TEXT,
-        output_present INTEGER NOT NULL DEFAULT 0,
-        state_json TEXT NOT NULL,
-        checkpoint_json TEXT,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        completed_at TEXT,
-        failed_at TEXT,
-        cancelled_at TEXT
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_workflow_runs_workflow
-        ON workflow_runs(workflow_id, workflow_version, updated_at);
-      CREATE INDEX IF NOT EXISTS idx_workflow_runs_status
-        ON workflow_runs(status, updated_at);
-      CREATE INDEX IF NOT EXISTS idx_workflow_runs_owner
-        ON workflow_runs(owner_scope, updated_at);
-      CREATE INDEX IF NOT EXISTS idx_workflow_runs_current_node
-        ON workflow_runs(current_node_id, updated_at);
-      CREATE INDEX IF NOT EXISTS idx_workflow_runs_pibo_session
-        ON workflow_runs(pibo_session_id, updated_at);
-      CREATE INDEX IF NOT EXISTS idx_workflow_runs_project
-        ON workflow_runs(project_id, updated_at);
-
-      CREATE TABLE IF NOT EXISTS workflow_events (
-        id TEXT PRIMARY KEY,
-        workflow_run_id TEXT NOT NULL,
-        type TEXT NOT NULL,
-        node_id TEXT,
-        edge_id TEXT,
-        attempt_id TEXT,
-        payload_json TEXT,
-        created_at TEXT NOT NULL
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_workflow_events_run
-        ON workflow_events(workflow_run_id, created_at);
-      CREATE INDEX IF NOT EXISTS idx_workflow_events_type
-        ON workflow_events(type, created_at);
-      CREATE INDEX IF NOT EXISTS idx_workflow_events_node
-        ON workflow_events(workflow_run_id, node_id, created_at);
-
-      CREATE TABLE IF NOT EXISTS workflow_node_attempts (
-        id TEXT PRIMARY KEY,
-        workflow_run_id TEXT NOT NULL,
-        node_id TEXT NOT NULL,
-        attempt_number INTEGER NOT NULL,
-        kind TEXT NOT NULL,
-        status TEXT NOT NULL,
-        environment_json TEXT,
-        input_json TEXT NOT NULL,
-        output_json TEXT,
-        output_present INTEGER NOT NULL DEFAULT 0,
-        local_state_json TEXT,
-        metadata_json TEXT,
-        error_json TEXT,
-        lease_json TEXT,
-        available_at TEXT,
-        started_at TEXT,
-        heartbeat_at TEXT,
-        completed_at TEXT,
-        failed_at TEXT
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_workflow_node_attempts_run
-        ON workflow_node_attempts(workflow_run_id, node_id);
-      CREATE INDEX IF NOT EXISTS idx_workflow_node_attempts_status
-        ON workflow_node_attempts(status, started_at);
-      CREATE INDEX IF NOT EXISTS idx_workflow_node_attempts_kind
-        ON workflow_node_attempts(kind, started_at);
-      CREATE INDEX IF NOT EXISTS idx_workflow_node_attempts_available
-        ON workflow_node_attempts(status, available_at);
-
-      CREATE TABLE IF NOT EXISTS workflow_edge_transfers (
-        id TEXT PRIMARY KEY,
-        workflow_run_id TEXT NOT NULL,
-        edge_id TEXT NOT NULL,
-        source_node_attempt_id TEXT NOT NULL,
-        target_node_id TEXT NOT NULL,
-        payload_json TEXT NOT NULL,
-        adapter_attempt_id TEXT,
-        status TEXT NOT NULL,
-        created_at TEXT NOT NULL
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_workflow_edge_transfers_run
-        ON workflow_edge_transfers(workflow_run_id, created_at);
-      CREATE INDEX IF NOT EXISTS idx_workflow_edge_transfers_edge
-        ON workflow_edge_transfers(edge_id, created_at);
-      CREATE INDEX IF NOT EXISTS idx_workflow_edge_transfers_target
-        ON workflow_edge_transfers(workflow_run_id, target_node_id, created_at);
-
-      CREATE TABLE IF NOT EXISTS workflow_checkpoints (
-        id TEXT PRIMARY KEY,
-        workflow_run_id TEXT NOT NULL,
-        namespace TEXT NOT NULL,
-        cursor_json TEXT NOT NULL,
-        state_json TEXT NOT NULL,
-        pending_json TEXT NOT NULL,
-        created_at TEXT NOT NULL
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_workflow_checkpoints_run
-        ON workflow_checkpoints(workflow_run_id, namespace, created_at);
-
-      CREATE TABLE IF NOT EXISTS workflow_wakeups (
-        id TEXT PRIMARY KEY,
-        workflow_run_id TEXT NOT NULL,
-        node_attempt_id TEXT,
-        kind TEXT NOT NULL,
-        available_at TEXT NOT NULL,
-        correlation_id TEXT,
-        payload_json TEXT,
-        created_at TEXT NOT NULL
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_workflow_wakeups_available
-        ON workflow_wakeups(kind, available_at);
-      CREATE INDEX IF NOT EXISTS idx_workflow_wakeups_run
-        ON workflow_wakeups(workflow_run_id, available_at);
-      CREATE INDEX IF NOT EXISTS idx_workflow_wakeups_correlation
-        ON workflow_wakeups(correlation_id);
-
-      CREATE TABLE IF NOT EXISTS workflow_wait_tokens (
-        id TEXT PRIMARY KEY,
-        workflow_run_id TEXT NOT NULL,
-        node_attempt_id TEXT,
-        human_node_id TEXT,
-        kind TEXT,
-        available_actions_json TEXT NOT NULL,
-        prompt TEXT NOT NULL,
-        schema_json TEXT,
-        status TEXT NOT NULL,
-        resume_payload_json TEXT,
-        resume_payload_present INTEGER NOT NULL DEFAULT 0,
-        expires_at TEXT,
-        created_at TEXT NOT NULL,
-        resolved_at TEXT
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_workflow_wait_tokens_run
-        ON workflow_wait_tokens(workflow_run_id, created_at);
-      CREATE INDEX IF NOT EXISTS idx_workflow_wait_tokens_status
-        ON workflow_wait_tokens(status, created_at);
-      CREATE INDEX IF NOT EXISTS idx_workflow_wait_tokens_node
-        ON workflow_wait_tokens(human_node_id, created_at);
-
-      CREATE TABLE IF NOT EXISTS workflow_human_actions (
-        id TEXT PRIMARY KEY,
-        workflow_run_id TEXT NOT NULL,
-        wait_token_id TEXT NOT NULL,
-        kind TEXT NOT NULL,
-        actor_json TEXT,
-        payload_json TEXT,
-        created_at TEXT NOT NULL
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_workflow_human_actions_run
-        ON workflow_human_actions(workflow_run_id, created_at);
-      CREATE INDEX IF NOT EXISTS idx_workflow_human_actions_wait_token
-        ON workflow_human_actions(wait_token_id, created_at);
-    `);
-
-    this.ensureColumn("workflow_runs", "workflow_definition_hash", "TEXT");
-    this.ensureColumn("workflow_runs", "definition_snapshot_id", "TEXT");
-    this.ensureColumn("workflow_node_attempts", "attempt_number", "INTEGER");
-    this.ensureColumn("workflow_node_attempts", "environment_json", "TEXT");
-    this.ensureColumn("workflow_wait_tokens", "kind", "TEXT");
-    this.ensureColumn("workflow_wait_tokens", "available_actions_json", "TEXT");
-    this.ensureColumn("workflow_wait_tokens", "resolved_at", "TEXT");
-  }
-
-  private ensureColumn(table: string, column: string, definition: string): void {
-    const columns = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
-    if (columns.some((row) => row.name === column)) return;
-    this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    installWorkflowSqliteSchema(this.db, { enableWal: resolvedPath !== ":memory:" });
   }
 
   saveDefinitionSnapshot(snapshot: WorkflowDefinitionSnapshot): void {
@@ -877,14 +210,7 @@ export class SqliteWorkflowRunStore implements
         definition_hash = excluded.definition_hash,
         compiled_definition_json = excluded.compiled_definition_json,
         created_at = excluded.created_at
-    `).run(
-      snapshot.id,
-      snapshot.workflowId,
-      snapshot.workflowVersion,
-      snapshot.hash,
-      serialize(snapshot.definition),
-      snapshot.createdAt,
-    );
+    `).run(...workflowDefinitionSnapshotWriteValues(snapshot));
   }
 
   getDefinitionSnapshot(id: WorkflowDefinitionSnapshotId): WorkflowDefinitionSnapshot | undefined {
@@ -895,25 +221,14 @@ export class SqliteWorkflowRunStore implements
   }
 
   listDefinitionSnapshots(filter: WorkflowDefinitionSnapshotListFilter = {}): WorkflowDefinitionSnapshot[] {
-    const clauses: string[] = [];
-    const values: Array<string | number> = [];
-    if (filter.workflowId !== undefined) {
-      clauses.push("workflow_id = ?");
-      values.push(filter.workflowId);
-    }
-    if (filter.workflowVersion !== undefined) {
-      clauses.push("workflow_version = ?");
-      values.push(filter.workflowVersion);
-    }
-    if (filter.hash !== undefined) {
-      clauses.push("definition_hash = ?");
-      values.push(filter.hash);
-    }
-    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-    const limit = listLimit(filter.limit);
+    const query = buildWorkflowStoreListQuery([
+      { clause: "workflow_id = ?", value: filter.workflowId },
+      { clause: "workflow_version = ?", value: filter.workflowVersion },
+      { clause: "definition_hash = ?", value: filter.hash },
+    ], filter.limit);
     const rows = this.db
-      .prepare(`SELECT * FROM workflow_definition_snapshots ${where} ORDER BY created_at DESC LIMIT ?`)
-      .all(...values, limit) as WorkflowDefinitionSnapshotRow[];
+      .prepare(`SELECT * FROM workflow_definition_snapshots ${query.where} ORDER BY created_at DESC LIMIT ?`)
+      .all(...query.values, query.limit) as WorkflowDefinitionSnapshotRow[];
     return rows.map(workflowDefinitionSnapshotFromRow);
   }
 
@@ -945,19 +260,7 @@ export class SqliteWorkflowRunStore implements
         created_at = excluded.created_at,
         updated_by = excluded.updated_by,
         updated_at = excluded.updated_at
-    `).run(
-      record.workflowId,
-      record.source,
-      record.title,
-      record.description ?? null,
-      serialize(record.tags),
-      record.currentDraftId ?? null,
-      record.latestVersion ?? null,
-      record.createdBy ?? null,
-      record.createdAt,
-      record.updatedBy ?? null,
-      record.updatedAt,
-    );
+    `).run(...workflowIdentityWriteValues(record));
   }
 
   getWorkflowIdentity(workflowId: string): WorkflowIdentityRecord | undefined {
@@ -968,17 +271,12 @@ export class SqliteWorkflowRunStore implements
   }
 
   listWorkflowIdentities(filter: WorkflowIdentityListFilter = {}): WorkflowIdentityRecord[] {
-    const clauses: string[] = [];
-    const values: Array<string | number> = [];
-    if (filter.workflowId !== undefined) {
-      clauses.push("workflow_id = ?");
-      values.push(filter.workflowId);
-    }
-    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-    const limit = listLimit(filter.limit);
+    const query = buildWorkflowStoreListQuery([
+      { clause: "workflow_id = ?", value: filter.workflowId },
+    ], filter.limit);
     const rows = this.db
-      .prepare(`SELECT * FROM workflow_identities ${where} ORDER BY updated_at DESC, workflow_id ASC LIMIT ?`)
-      .all(...values, limit) as WorkflowIdentityRow[];
+      .prepare(`SELECT * FROM workflow_identities ${query.where} ORDER BY updated_at DESC, workflow_id ASC LIMIT ?`)
+      .all(...query.values, query.limit) as WorkflowIdentityRow[];
     return rows.map(workflowIdentityFromRow);
   }
 
@@ -986,12 +284,7 @@ export class SqliteWorkflowRunStore implements
     assertWorkflowUiRecordSource(record.source, "Workflow draft");
     assertWorkflowRecordStatusValue(record.status, "draft", "Workflow draft");
 
-    const conflict = this.db
-      .prepare("SELECT draft_id FROM workflow_drafts WHERE workflow_id = ? AND status = 'draft' AND draft_id <> ? LIMIT 1")
-      .get(record.workflowId, record.draftId) as { draft_id: string } | undefined;
-    if (conflict) {
-      throw new Error(`Workflow '${record.workflowId}' already has an active draft '${conflict.draft_id}'.`);
-    }
+    assertNoActiveWorkflowDraftConflict(this.db, record);
 
     this.db.prepare(`
       INSERT INTO workflow_drafts (
@@ -1028,32 +321,9 @@ export class SqliteWorkflowRunStore implements
         created_at = excluded.created_at,
         updated_by = excluded.updated_by,
         updated_at = excluded.updated_at
-    `).run(
-      record.draftId,
-      record.workflowId,
-      record.source,
-      record.status,
-      record.baseWorkflowId ?? null,
-      record.baseWorkflowVersion ?? null,
-      record.baseDefinitionHash ?? null,
-      record.versionIntent,
-      serialize(record.definition),
-      serialize(record.diagnostics),
-      record.validationState,
-      record.revision,
-      record.createdBy ?? null,
-      record.createdAt,
-      record.updatedBy ?? null,
-      record.updatedAt,
-    );
+    `).run(...workflowDraftWriteValues(record));
 
-    this.db.prepare(`
-      UPDATE workflow_identities
-      SET current_draft_id = ?,
-          updated_by = COALESCE(?, updated_by),
-          updated_at = ?
-      WHERE workflow_id = ?
-    `).run(record.draftId, record.updatedBy ?? null, record.updatedAt, record.workflowId);
+    updateWorkflowIdentityCurrentDraft(this.db, record);
   }
 
   getWorkflowDraft(draftId: string): WorkflowDraftRecord | undefined {
@@ -1062,21 +332,13 @@ export class SqliteWorkflowRunStore implements
   }
 
   listWorkflowDrafts(filter: WorkflowDraftListFilter = {}): WorkflowDraftRecord[] {
-    const clauses: string[] = [];
-    const values: Array<string | number> = [];
-    if (filter.workflowId !== undefined) {
-      clauses.push("workflow_id = ?");
-      values.push(filter.workflowId);
-    }
-    if (filter.validationState !== undefined) {
-      clauses.push("validation_state = ?");
-      values.push(filter.validationState);
-    }
-    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-    const limit = listLimit(filter.limit);
+    const query = buildWorkflowStoreListQuery([
+      { clause: "workflow_id = ?", value: filter.workflowId },
+      { clause: "validation_state = ?", value: filter.validationState },
+    ], filter.limit);
     const rows = this.db
-      .prepare(`SELECT * FROM workflow_drafts ${where} ORDER BY updated_at DESC, draft_id ASC LIMIT ?`)
-      .all(...values, limit) as WorkflowDraftRow[];
+      .prepare(`SELECT * FROM workflow_drafts ${query.where} ORDER BY updated_at DESC, draft_id ASC LIMIT ?`)
+      .all(...query.values, query.limit) as WorkflowDraftRow[];
     return rows.map(workflowDraftFromRow);
   }
 
@@ -1100,15 +362,7 @@ export class SqliteWorkflowRunStore implements
         archived_by = excluded.archived_by,
         archive_reason = excluded.archive_reason,
         updated_at = excluded.updated_at
-    `).run(
-      record.workflowId,
-      record.source,
-      record.archived ? 1 : 0,
-      record.archivedAt ?? null,
-      record.archivedBy ?? null,
-      record.archiveReason ?? null,
-      record.updatedAt,
-    );
+    `).run(...workflowArchiveStateWriteValues(record));
   }
 
   getWorkflowArchiveState(workflowId: string): WorkflowArchiveStateRecord | undefined {
@@ -1119,17 +373,12 @@ export class SqliteWorkflowRunStore implements
   }
 
   listWorkflowArchiveStates(filter: WorkflowArchiveStateListFilter = {}): WorkflowArchiveStateRecord[] {
-    const clauses: string[] = [];
-    const values: Array<string | number> = [];
-    if (filter.archived !== undefined) {
-      clauses.push("archived = ?");
-      values.push(filter.archived ? 1 : 0);
-    }
-    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-    const limit = listLimit(filter.limit);
+    const query = buildWorkflowStoreListQuery([
+      { clause: "archived = ?", value: filter.archived === undefined ? undefined : filter.archived ? 1 : 0 },
+    ], filter.limit);
     const rows = this.db
-      .prepare(`SELECT * FROM workflow_archive_states ${where} ORDER BY updated_at DESC, workflow_id ASC LIMIT ?`)
-      .all(...values, limit) as WorkflowArchiveStateRow[];
+      .prepare(`SELECT * FROM workflow_archive_states ${query.where} ORDER BY updated_at DESC, workflow_id ASC LIMIT ?`)
+      .all(...query.values, query.limit) as WorkflowArchiveStateRow[];
     return rows.map(workflowArchiveStateFromRow);
   }
 
@@ -1160,17 +409,7 @@ export class SqliteWorkflowRunStore implements
         last_known_version = excluded.last_known_version,
         last_definition_hash = excluded.last_definition_hash,
         created_at = excluded.created_at
-    `).run(
-      record.workflowId,
-      record.source,
-      1,
-      record.deletedAt ?? null,
-      record.deletedBy ?? null,
-      record.lastKnownTitle,
-      record.lastKnownVersion ?? null,
-      record.lastDefinitionHash ?? null,
-      record.createdAt,
-    );
+    `).run(...workflowDeleteTombstoneWriteValues(record));
   }
 
   getWorkflowDeleteTombstone(workflowId: string): WorkflowDeleteTombstoneRecord | undefined {
@@ -1181,7 +420,7 @@ export class SqliteWorkflowRunStore implements
   }
 
   listWorkflowDeleteTombstones(filter: WorkflowDeleteTombstoneListFilter = {}): WorkflowDeleteTombstoneRecord[] {
-    const limit = listLimit(filter.limit);
+    const limit = workflowStoreListLimit(filter.limit);
     const rows = this.db
       .prepare("SELECT * FROM workflow_delete_tombstones ORDER BY created_at DESC, workflow_id ASC LIMIT ?")
       .all(limit) as WorkflowDeleteTombstoneRow[];
@@ -1209,18 +448,7 @@ export class SqliteWorkflowRunStore implements
         published_at,
         created_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      normalized.workflowId,
-      normalized.version,
-      normalized.source,
-      normalized.status,
-      normalized.definitionHash,
-      canonicalWorkflowDefinitionJson(normalized.definition),
-      normalized.publishedFromDraftId ?? null,
-      normalized.publishedBy ?? null,
-      normalized.publishedAt,
-      normalized.createdAt,
-    );
+    `).run(...workflowPublishedVersionWriteValues(normalized));
   }
 
   getPublishedWorkflowVersion(workflowId: string, version: string): WorkflowPublishedVersionRecord | undefined {
@@ -1231,17 +459,12 @@ export class SqliteWorkflowRunStore implements
   }
 
   listPublishedWorkflowVersions(filter: WorkflowPublishedVersionListFilter = {}): WorkflowPublishedVersionRecord[] {
-    const clauses: string[] = [];
-    const values: Array<string | number> = [];
-    if (filter.workflowId !== undefined) {
-      clauses.push("workflow_id = ?");
-      values.push(filter.workflowId);
-    }
-    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-    const limit = listLimit(filter.limit);
+    const query = buildWorkflowStoreListQuery([
+      { clause: "workflow_id = ?", value: filter.workflowId },
+    ], filter.limit);
     const rows = this.db
-      .prepare(`SELECT * FROM workflow_published_versions ${where} ORDER BY workflow_id ASC, version ASC LIMIT ?`)
-      .all(...values, limit) as WorkflowPublishedVersionRow[];
+      .prepare(`SELECT * FROM workflow_published_versions ${query.where} ORDER BY workflow_id ASC, version ASC LIMIT ?`)
+      .all(...query.values, query.limit) as WorkflowPublishedVersionRow[];
     return rows.map(workflowPublishedVersionFromRow);
   }
 
@@ -1300,34 +523,7 @@ export class SqliteWorkflowRunStore implements
         completed_at = excluded.completed_at,
         failed_at = excluded.failed_at,
         cancelled_at = excluded.cancelled_at
-    `).run(
-      run.id,
-      run.workflowId,
-      run.workflowVersion,
-      run.workflowDefinitionHash ?? null,
-      run.definitionSnapshotId ?? null,
-      run.ownerScope,
-      run.parentRunId ?? null,
-      run.parentNodeAttemptId ?? null,
-      run.piboSessionId ?? null,
-      run.projectId ?? null,
-      serializeOptional(run.environment),
-      run.status,
-      run.current.nodeId ?? null,
-      run.current.edgeId ?? null,
-      run.current.status ?? null,
-      serialize(run.current),
-      serialize(run.input),
-      run.output === undefined ? null : serialize(run.output),
-      run.output === undefined ? 0 : 1,
-      serialize(run.state),
-      serializeOptional(run.checkpoint),
-      run.createdAt,
-      run.updatedAt,
-      run.completedAt ?? null,
-      run.failedAt ?? null,
-      run.cancelledAt ?? null,
-    );
+    `).run(...workflowRunWriteValues(run));
   }
 
   getRun(id: WorkflowRunId): WorkflowRun | undefined {
@@ -1336,27 +532,14 @@ export class SqliteWorkflowRunStore implements
   }
 
   listRuns(filter: WorkflowRunListFilter = {}): WorkflowRun[] {
-    const clauses: string[] = [];
-    const values: Array<string | number> = [];
-
-    if (filter.workflowId !== undefined) {
-      clauses.push("workflow_id = ?");
-      values.push(filter.workflowId);
-    }
-    if (filter.status !== undefined) {
-      clauses.push("status = ?");
-      values.push(filter.status);
-    }
-    if (filter.ownerScope !== undefined) {
-      clauses.push("owner_scope = ?");
-      values.push(filter.ownerScope);
-    }
-
-    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-    const limit = listLimit(filter.limit);
+    const query = buildWorkflowStoreListQuery([
+      { clause: "workflow_id = ?", value: filter.workflowId },
+      { clause: "status = ?", value: filter.status },
+      { clause: "owner_scope = ?", value: filter.ownerScope },
+    ], filter.limit);
     const rows = this.db
-      .prepare(`SELECT * FROM workflow_runs ${where} ORDER BY updated_at DESC LIMIT ?`)
-      .all(...values, limit) as WorkflowRunRow[];
+      .prepare(`SELECT * FROM workflow_runs ${query.where} ORDER BY updated_at DESC LIMIT ?`)
+      .all(...query.values, query.limit) as WorkflowRunRow[];
     return rows.map(workflowRunFromRow);
   }
 
@@ -1380,16 +563,7 @@ export class SqliteWorkflowRunStore implements
         attempt_id = excluded.attempt_id,
         payload_json = excluded.payload_json,
         created_at = excluded.created_at
-    `).run(
-      event.id,
-      event.workflowRunId,
-      event.type,
-      event.nodeId ?? null,
-      event.edgeId ?? null,
-      event.attemptId ?? null,
-      serializeOptional(event.payload),
-      event.createdAt,
-    );
+    `).run(...workflowEventWriteValues(event));
   }
 
   getEvent(id: WorkflowEventId): WorkflowEventRecord | undefined {
@@ -1398,33 +572,16 @@ export class SqliteWorkflowRunStore implements
   }
 
   listEvents(filter: WorkflowEventListFilter = {}): WorkflowEventRecord[] {
-    const clauses: string[] = [];
-    const values: Array<string | number> = [];
-    if (filter.workflowRunId !== undefined) {
-      clauses.push("workflow_run_id = ?");
-      values.push(filter.workflowRunId);
-    }
-    if (filter.type !== undefined) {
-      clauses.push("type = ?");
-      values.push(filter.type);
-    }
-    if (filter.nodeId !== undefined) {
-      clauses.push("node_id = ?");
-      values.push(filter.nodeId);
-    }
-    if (filter.edgeId !== undefined) {
-      clauses.push("edge_id = ?");
-      values.push(filter.edgeId);
-    }
-    if (filter.attemptId !== undefined) {
-      clauses.push("attempt_id = ?");
-      values.push(filter.attemptId);
-    }
-    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-    const limit = listLimit(filter.limit);
+    const query = buildWorkflowStoreListQuery([
+      { clause: "workflow_run_id = ?", value: filter.workflowRunId },
+      { clause: "type = ?", value: filter.type },
+      { clause: "node_id = ?", value: filter.nodeId },
+      { clause: "edge_id = ?", value: filter.edgeId },
+      { clause: "attempt_id = ?", value: filter.attemptId },
+    ], filter.limit);
     const rows = this.db
-      .prepare(`SELECT * FROM workflow_events ${where} ORDER BY created_at ASC, id ASC LIMIT ?`)
-      .all(...values, limit) as WorkflowEventRow[];
+      .prepare(`SELECT * FROM workflow_events ${query.where} ORDER BY created_at ASC, id ASC LIMIT ?`)
+      .all(...query.values, query.limit) as WorkflowEventRow[];
     return rows.map(workflowEventFromRow);
   }
 
@@ -1470,27 +627,7 @@ export class SqliteWorkflowRunStore implements
         completed_at = excluded.completed_at,
         failed_at = excluded.failed_at,
         available_at = excluded.available_at
-    `).run(
-      nodeAttempt.id,
-      nodeAttempt.workflowRunId,
-      nodeAttempt.nodeId,
-      nodeAttempt.attempt,
-      nodeAttempt.kind,
-      nodeAttempt.status,
-      serializeOptional(nodeAttempt.environment),
-      serialize(nodeAttempt.input),
-      nodeAttempt.output === undefined ? null : serialize(nodeAttempt.output),
-      nodeAttempt.output === undefined ? 0 : 1,
-      serializeOptional(nodeAttempt.localState),
-      serializeOptional(nodeAttempt.metadata),
-      serializeOptional(nodeAttempt.error),
-      serializeOptional(nodeAttempt.lease),
-      nodeAttempt.startedAt ?? null,
-      nodeAttempt.heartbeatAt ?? null,
-      nodeAttempt.completedAt ?? null,
-      nodeAttempt.failedAt ?? null,
-      nodeAttempt.availableAt ?? null,
-    );
+    `).run(...workflowNodeAttemptWriteValues(nodeAttempt));
   }
 
   getNodeAttempt(id: NodeAttemptId): NodeAttempt | undefined {
@@ -1501,31 +638,15 @@ export class SqliteWorkflowRunStore implements
   }
 
   listNodeAttempts(filter: WorkflowNodeAttemptListFilter = {}): NodeAttempt[] {
-    const clauses: string[] = [];
-    const values: Array<string | number> = [];
-
-    if (filter.workflowRunId !== undefined) {
-      clauses.push("workflow_run_id = ?");
-      values.push(filter.workflowRunId);
-    }
-    if (filter.nodeId !== undefined) {
-      clauses.push("node_id = ?");
-      values.push(filter.nodeId);
-    }
-    if (filter.kind !== undefined) {
-      clauses.push("kind = ?");
-      values.push(filter.kind);
-    }
-    if (filter.status !== undefined) {
-      clauses.push("status = ?");
-      values.push(filter.status);
-    }
-
-    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-    const limit = listLimit(filter.limit);
+    const query = buildWorkflowStoreListQuery([
+      { clause: "workflow_run_id = ?", value: filter.workflowRunId },
+      { clause: "node_id = ?", value: filter.nodeId },
+      { clause: "kind = ?", value: filter.kind },
+      { clause: "status = ?", value: filter.status },
+    ], filter.limit);
     const rows = this.db
-      .prepare(`SELECT * FROM workflow_node_attempts ${where} ORDER BY started_at DESC, id DESC LIMIT ?`)
-      .all(...values, limit) as WorkflowNodeAttemptRow[];
+      .prepare(`SELECT * FROM workflow_node_attempts ${query.where} ORDER BY started_at DESC, id DESC LIMIT ?`)
+      .all(...query.values, query.limit) as WorkflowNodeAttemptRow[];
     return rows.map(workflowNodeAttemptFromRow);
   }
 
@@ -1551,17 +672,7 @@ export class SqliteWorkflowRunStore implements
         adapter_attempt_id = excluded.adapter_attempt_id,
         status = excluded.status,
         created_at = excluded.created_at
-    `).run(
-      transfer.id,
-      transfer.workflowRunId,
-      transfer.edgeId,
-      transfer.sourceNodeAttemptId,
-      transfer.targetNodeId,
-      serialize(transfer.payload),
-      transfer.adapterAttemptId ?? null,
-      transfer.status,
-      transfer.createdAt,
-    );
+    `).run(...workflowEdgeTransferWriteValues(transfer));
   }
 
   getEdgeTransfer(id: EdgeTransferId): EdgeTransfer | undefined {
@@ -1572,29 +683,15 @@ export class SqliteWorkflowRunStore implements
   }
 
   listEdgeTransfers(filter: WorkflowEdgeTransferListFilter = {}): EdgeTransfer[] {
-    const clauses: string[] = [];
-    const values: Array<string | number> = [];
-    if (filter.workflowRunId !== undefined) {
-      clauses.push("workflow_run_id = ?");
-      values.push(filter.workflowRunId);
-    }
-    if (filter.edgeId !== undefined) {
-      clauses.push("edge_id = ?");
-      values.push(filter.edgeId);
-    }
-    if (filter.targetNodeId !== undefined) {
-      clauses.push("target_node_id = ?");
-      values.push(filter.targetNodeId);
-    }
-    if (filter.status !== undefined) {
-      clauses.push("status = ?");
-      values.push(filter.status);
-    }
-    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-    const limit = listLimit(filter.limit);
+    const query = buildWorkflowStoreListQuery([
+      { clause: "workflow_run_id = ?", value: filter.workflowRunId },
+      { clause: "edge_id = ?", value: filter.edgeId },
+      { clause: "target_node_id = ?", value: filter.targetNodeId },
+      { clause: "status = ?", value: filter.status },
+    ], filter.limit);
     const rows = this.db
-      .prepare(`SELECT * FROM workflow_edge_transfers ${where} ORDER BY created_at ASC, id ASC LIMIT ?`)
-      .all(...values, limit) as WorkflowEdgeTransferRow[];
+      .prepare(`SELECT * FROM workflow_edge_transfers ${query.where} ORDER BY created_at ASC, id ASC LIMIT ?`)
+      .all(...query.values, query.limit) as WorkflowEdgeTransferRow[];
     return rows.map(workflowEdgeTransferFromRow);
   }
 
@@ -1616,19 +713,7 @@ export class SqliteWorkflowRunStore implements
         state_json = excluded.state_json,
         pending_json = excluded.pending_json,
         created_at = excluded.created_at
-    `).run(
-      checkpoint.id,
-      checkpoint.workflowRunId,
-      checkpoint.namespace,
-      serialize(checkpoint.cursor),
-      serialize(checkpoint.globalState),
-      serialize({
-        pendingNodeIds: checkpoint.pendingNodeIds,
-        completedNodeIds: checkpoint.completedNodeIds,
-        edgePayloadRefs: checkpoint.edgePayloadRefs,
-      }),
-      checkpoint.createdAt,
-    );
+    `).run(...workflowCheckpointWriteValues(checkpoint));
   }
 
   getCheckpoint(id: WorkflowCheckpointId): WorkflowCheckpoint | undefined {
@@ -1639,21 +724,13 @@ export class SqliteWorkflowRunStore implements
   }
 
   listCheckpoints(filter: WorkflowCheckpointListFilter = {}): WorkflowCheckpoint[] {
-    const clauses: string[] = [];
-    const values: Array<string | number> = [];
-    if (filter.workflowRunId !== undefined) {
-      clauses.push("workflow_run_id = ?");
-      values.push(filter.workflowRunId);
-    }
-    if (filter.namespace !== undefined) {
-      clauses.push("namespace = ?");
-      values.push(filter.namespace);
-    }
-    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-    const limit = listLimit(filter.limit);
+    const query = buildWorkflowStoreListQuery([
+      { clause: "workflow_run_id = ?", value: filter.workflowRunId },
+      { clause: "namespace = ?", value: filter.namespace },
+    ], filter.limit);
     const rows = this.db
-      .prepare(`SELECT * FROM workflow_checkpoints ${where} ORDER BY created_at DESC, id DESC LIMIT ?`)
-      .all(...values, limit) as WorkflowCheckpointRow[];
+      .prepare(`SELECT * FROM workflow_checkpoints ${query.where} ORDER BY created_at DESC, id DESC LIMIT ?`)
+      .all(...query.values, query.limit) as WorkflowCheckpointRow[];
     return rows.map(workflowCheckpointFromRow);
   }
 
@@ -1677,16 +754,7 @@ export class SqliteWorkflowRunStore implements
         correlation_id = excluded.correlation_id,
         payload_json = excluded.payload_json,
         created_at = excluded.created_at
-    `).run(
-      wakeup.id,
-      wakeup.workflowRunId,
-      wakeup.nodeAttemptId ?? null,
-      wakeup.kind,
-      wakeup.availableAt,
-      wakeup.correlationId ?? null,
-      serializeOptional(wakeup.payload),
-      wakeup.createdAt,
-    );
+    `).run(...workflowWakeupWriteValues(wakeup));
   }
 
   getWakeup(id: WorkflowWakeupId): WorkflowWakeup | undefined {
@@ -1695,29 +763,15 @@ export class SqliteWorkflowRunStore implements
   }
 
   listWakeups(filter: WorkflowWakeupListFilter = {}): WorkflowWakeup[] {
-    const clauses: string[] = [];
-    const values: Array<string | number> = [];
-    if (filter.workflowRunId !== undefined) {
-      clauses.push("workflow_run_id = ?");
-      values.push(filter.workflowRunId);
-    }
-    if (filter.nodeAttemptId !== undefined) {
-      clauses.push("node_attempt_id = ?");
-      values.push(filter.nodeAttemptId);
-    }
-    if (filter.kind !== undefined) {
-      clauses.push("kind = ?");
-      values.push(filter.kind);
-    }
-    if (filter.correlationId !== undefined) {
-      clauses.push("correlation_id = ?");
-      values.push(filter.correlationId);
-    }
-    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-    const limit = listLimit(filter.limit);
+    const query = buildWorkflowStoreListQuery([
+      { clause: "workflow_run_id = ?", value: filter.workflowRunId },
+      { clause: "node_attempt_id = ?", value: filter.nodeAttemptId },
+      { clause: "kind = ?", value: filter.kind },
+      { clause: "correlation_id = ?", value: filter.correlationId },
+    ], filter.limit);
     const rows = this.db
-      .prepare(`SELECT * FROM workflow_wakeups ${where} ORDER BY available_at ASC, id ASC LIMIT ?`)
-      .all(...values, limit) as WorkflowWakeupRow[];
+      .prepare(`SELECT * FROM workflow_wakeups ${query.where} ORDER BY available_at ASC, id ASC LIMIT ?`)
+      .all(...query.values, query.limit) as WorkflowWakeupRow[];
     return rows.map(workflowWakeupFromRow);
   }
 
@@ -1752,22 +806,7 @@ export class SqliteWorkflowRunStore implements
         resume_payload_present = excluded.resume_payload_present,
         expires_at = excluded.expires_at,
         resolved_at = excluded.resolved_at
-    `).run(
-      token.id,
-      token.workflowRunId,
-      token.nodeAttemptId ?? null,
-      token.humanNodeId ?? null,
-      token.kind ?? null,
-      serialize(token.actions),
-      token.prompt,
-      serializeOptional(token.schema),
-      token.status,
-      token.resumePayload === undefined ? null : serialize(token.resumePayload),
-      token.resumePayload === undefined ? 0 : 1,
-      token.expiresAt ?? null,
-      token.createdAt,
-      token.resumedAt ?? null,
-    );
+    `).run(...workflowWaitTokenWriteValues(token));
   }
 
   getWaitToken(id: WorkflowWaitTokenId): WorkflowWaitToken | undefined {
@@ -1778,27 +817,14 @@ export class SqliteWorkflowRunStore implements
   }
 
   listWaitTokens(filter: WorkflowWaitTokenListFilter = {}): WorkflowWaitToken[] {
-    const clauses: string[] = [];
-    const values: Array<string | number> = [];
-
-    if (filter.workflowRunId !== undefined) {
-      clauses.push("workflow_run_id = ?");
-      values.push(filter.workflowRunId);
-    }
-    if (filter.status !== undefined) {
-      clauses.push("status = ?");
-      values.push(filter.status);
-    }
-    if (filter.humanNodeId !== undefined) {
-      clauses.push("human_node_id = ?");
-      values.push(filter.humanNodeId);
-    }
-
-    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-    const limit = listLimit(filter.limit);
+    const query = buildWorkflowStoreListQuery([
+      { clause: "workflow_run_id = ?", value: filter.workflowRunId },
+      { clause: "status = ?", value: filter.status },
+      { clause: "human_node_id = ?", value: filter.humanNodeId },
+    ], filter.limit);
     const rows = this.db
-      .prepare(`SELECT * FROM workflow_wait_tokens ${where} ORDER BY created_at DESC LIMIT ?`)
-      .all(...values, limit) as WorkflowWaitTokenRow[];
+      .prepare(`SELECT * FROM workflow_wait_tokens ${query.where} ORDER BY created_at DESC LIMIT ?`)
+      .all(...query.values, query.limit) as WorkflowWaitTokenRow[];
     return rows.map(workflowWaitTokenFromRow);
   }
 
@@ -1820,15 +846,7 @@ export class SqliteWorkflowRunStore implements
         actor_json = excluded.actor_json,
         payload_json = excluded.payload_json,
         created_at = excluded.created_at
-    `).run(
-      action.id,
-      action.workflowRunId,
-      action.waitTokenId,
-      action.kind,
-      serializeOptional(action.actor),
-      serializeOptional(action.payload),
-      action.createdAt,
-    );
+    `).run(...workflowHumanActionWriteValues(action));
   }
 
   getHumanAction(id: WorkflowHumanActionId): WorkflowHumanActionRecord | undefined {
@@ -1839,271 +857,18 @@ export class SqliteWorkflowRunStore implements
   }
 
   listHumanActions(filter: WorkflowHumanActionListFilter = {}): WorkflowHumanActionRecord[] {
-    const clauses: string[] = [];
-    const values: Array<string | number> = [];
-    if (filter.workflowRunId !== undefined) {
-      clauses.push("workflow_run_id = ?");
-      values.push(filter.workflowRunId);
-    }
-    if (filter.waitTokenId !== undefined) {
-      clauses.push("wait_token_id = ?");
-      values.push(filter.waitTokenId);
-    }
-    if (filter.kind !== undefined) {
-      clauses.push("kind = ?");
-      values.push(filter.kind);
-    }
-    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-    const limit = listLimit(filter.limit);
+    const query = buildWorkflowStoreListQuery([
+      { clause: "workflow_run_id = ?", value: filter.workflowRunId },
+      { clause: "wait_token_id = ?", value: filter.waitTokenId },
+      { clause: "kind = ?", value: filter.kind },
+    ], filter.limit);
     const rows = this.db
-      .prepare(`SELECT * FROM workflow_human_actions ${where} ORDER BY created_at ASC, id ASC LIMIT ?`)
-      .all(...values, limit) as WorkflowHumanActionRow[];
+      .prepare(`SELECT * FROM workflow_human_actions ${query.where} ORDER BY created_at ASC, id ASC LIMIT ?`)
+      .all(...query.values, query.limit) as WorkflowHumanActionRow[];
     return rows.map(workflowHumanActionFromRow);
   }
 
   close(): void {
     this.db.close();
   }
-}
-
-function workflowDefinitionSnapshotFromRow(row: WorkflowDefinitionSnapshotRow): WorkflowDefinitionSnapshot {
-  return {
-    id: row.id,
-    workflowId: row.workflow_id,
-    workflowVersion: row.workflow_version,
-    hash: row.definition_hash,
-    definition: parseJson(row.compiled_definition_json),
-    createdAt: row.created_at,
-  };
-}
-
-function workflowIdentityFromRow(row: WorkflowIdentityRow): WorkflowIdentityRecord {
-  return {
-    workflowId: row.workflow_id,
-    source: "ui",
-    title: row.title,
-    ...(row.description ? { description: row.description } : {}),
-    tags: parseJson<string[]>(row.tags_json),
-    ...(row.current_draft_id ? { currentDraftId: row.current_draft_id } : {}),
-    ...(row.latest_version ? { latestVersion: row.latest_version } : {}),
-    ...(row.created_by ? { createdBy: row.created_by } : {}),
-    createdAt: row.created_at,
-    ...(row.updated_by ? { updatedBy: row.updated_by } : {}),
-    updatedAt: row.updated_at,
-  };
-}
-
-function workflowDraftFromRow(row: WorkflowDraftRow): WorkflowDraftRecord {
-  return {
-    draftId: row.draft_id,
-    workflowId: row.workflow_id,
-    source: "ui",
-    status: "draft",
-    ...(row.base_workflow_id ? { baseWorkflowId: row.base_workflow_id } : {}),
-    ...(row.base_workflow_version ? { baseWorkflowVersion: row.base_workflow_version } : {}),
-    ...(row.base_definition_hash ? { baseDefinitionHash: row.base_definition_hash } : {}),
-    versionIntent: row.version_intent,
-    definition: parseJson<WorkflowDraftRecord["definition"]>(row.definition_json),
-    diagnostics: parseJson<WorkflowDraftRecord["diagnostics"]>(row.diagnostics_json),
-    validationState: row.validation_state,
-    revision: row.revision,
-    ...(row.created_by ? { createdBy: row.created_by } : {}),
-    createdAt: row.created_at,
-    ...(row.updated_by ? { updatedBy: row.updated_by } : {}),
-    updatedAt: row.updated_at,
-  };
-}
-
-function workflowArchiveStateFromRow(row: WorkflowArchiveStateRow): WorkflowArchiveStateRecord {
-  return {
-    workflowId: row.workflow_id,
-    source: "ui",
-    archived: Boolean(row.archived),
-    ...(row.archived_at ? { archivedAt: row.archived_at } : {}),
-    ...(row.archived_by ? { archivedBy: row.archived_by } : {}),
-    ...(row.archive_reason ? { archiveReason: row.archive_reason } : {}),
-    updatedAt: row.updated_at,
-  };
-}
-
-function workflowDeleteTombstoneFromRow(row: WorkflowDeleteTombstoneRow): WorkflowDeleteTombstoneRecord {
-  return {
-    workflowId: row.workflow_id,
-    source: "ui",
-    deleted: true,
-    ...(row.deleted_at ? { deletedAt: row.deleted_at } : {}),
-    ...(row.deleted_by ? { deletedBy: row.deleted_by } : {}),
-    lastKnownTitle: row.last_known_title,
-    ...(row.last_known_version ? { lastKnownVersion: row.last_known_version } : {}),
-    ...(row.last_definition_hash ? { lastDefinitionHash: row.last_definition_hash } : {}),
-    createdAt: row.created_at,
-  };
-}
-
-function workflowPublishedVersionFromRow(row: WorkflowPublishedVersionRow): WorkflowPublishedVersionRecord {
-  return {
-    workflowId: row.workflow_id,
-    version: row.version,
-    source: "ui",
-    status: "published",
-    definitionHash: row.definition_hash,
-    definition: parseJson<WorkflowDefinition>(row.definition_json),
-    ...(row.published_from_draft_id ? { publishedFromDraftId: row.published_from_draft_id } : {}),
-    ...(row.published_by ? { publishedBy: row.published_by } : {}),
-    publishedAt: row.published_at,
-    createdAt: row.created_at,
-  };
-}
-
-function workflowRunFromRow(row: WorkflowRunRow): WorkflowRun {
-  return {
-    id: row.id,
-    workflowId: row.workflow_id,
-    workflowVersion: row.workflow_version,
-    ...(row.workflow_definition_hash ? { workflowDefinitionHash: row.workflow_definition_hash } : {}),
-    ...(row.definition_snapshot_id ? { definitionSnapshotId: row.definition_snapshot_id } : {}),
-    ownerScope: row.owner_scope,
-    ...(row.parent_run_id ? { parentRunId: row.parent_run_id } : {}),
-    ...(row.parent_node_attempt_id ? { parentNodeAttemptId: row.parent_node_attempt_id } : {}),
-    ...(row.pibo_session_id ? { piboSessionId: row.pibo_session_id } : {}),
-    ...(row.project_id ? { projectId: row.project_id } : {}),
-    ...(row.environment_json ? { environment: parseJson<WorkflowExecutionEnvironment>(row.environment_json) } : {}),
-    status: row.status,
-    current: parseJson(row.current_json),
-    input: parseJson(row.input_json) as WorkflowValue,
-    ...(row.output_present ? { output: parseJson(row.output_json ?? "null") as WorkflowValue } : {}),
-    state: parseJson(row.state_json),
-    ...(row.checkpoint_json ? { checkpoint: parseJson(row.checkpoint_json) } : {}),
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    ...(row.completed_at ? { completedAt: row.completed_at } : {}),
-    ...(row.failed_at ? { failedAt: row.failed_at } : {}),
-    ...(row.cancelled_at ? { cancelledAt: row.cancelled_at } : {}),
-  };
-}
-
-function workflowEventFromRow(row: WorkflowEventRow): WorkflowEventRecord {
-  return {
-    id: row.id,
-    workflowRunId: row.workflow_run_id,
-    type: row.type,
-    ...(row.node_id ? { nodeId: row.node_id } : {}),
-    ...(row.edge_id ? { edgeId: row.edge_id } : {}),
-    ...(row.attempt_id ? { attemptId: row.attempt_id } : {}),
-    ...(row.payload_json ? { payload: parseJson(row.payload_json) } : {}),
-    createdAt: row.created_at,
-  };
-}
-
-function workflowWaitTokenFromRow(row: WorkflowWaitTokenRow): WorkflowWaitToken {
-  return {
-    id: row.id,
-    workflowRunId: row.workflow_run_id,
-    ...(row.node_attempt_id ? { nodeAttemptId: row.node_attempt_id } : {}),
-    ...(row.human_node_id ? { humanNodeId: row.human_node_id } : {}),
-    ...(row.kind ? { kind: row.kind } : {}),
-    actions: parseJson(row.available_actions_json ?? row.actions_json ?? "[]"),
-    prompt: row.prompt,
-    ...(row.schema_json ? { schema: parseJson(row.schema_json) } : {}),
-    status: row.status,
-    ...(row.resume_payload_present ? { resumePayload: parseJson(row.resume_payload_json ?? "null") as WorkflowValue } : {}),
-    createdAt: row.created_at,
-    ...(row.expires_at ? { expiresAt: row.expires_at } : {}),
-    ...(row.resolved_at ?? row.resumed_at ? { resumedAt: (row.resolved_at ?? row.resumed_at) as string } : {}),
-  };
-}
-
-function workflowNodeAttemptFromRow(row: WorkflowNodeAttemptRow): NodeAttempt {
-  return {
-    id: row.id,
-    workflowRunId: row.workflow_run_id,
-    nodeId: row.node_id,
-    attempt: row.attempt_number ?? row.attempt ?? 0,
-    kind: row.kind,
-    status: row.status,
-    ...(row.environment_json ? { environment: parseJson<WorkflowExecutionEnvironment>(row.environment_json) } : {}),
-    input: parseJson(row.input_json) as WorkflowValue,
-    ...(row.output_present ? { output: parseJson(row.output_json ?? "null") as WorkflowValue } : {}),
-    ...(row.local_state_json ? { localState: parseJson(row.local_state_json) } : {}),
-    ...(row.metadata_json ? { metadata: parseJson(row.metadata_json) } : {}),
-    ...(row.error_json ? { error: parseJson(row.error_json) } : {}),
-    ...(row.lease_json ? { lease: parseJson(row.lease_json) } : {}),
-    ...(row.started_at ? { startedAt: row.started_at } : {}),
-    ...(row.heartbeat_at ? { heartbeatAt: row.heartbeat_at } : {}),
-    ...(row.completed_at ? { completedAt: row.completed_at } : {}),
-    ...(row.failed_at ? { failedAt: row.failed_at } : {}),
-    ...(row.available_at ? { availableAt: row.available_at } : {}),
-  };
-}
-
-function workflowEdgeTransferFromRow(row: WorkflowEdgeTransferRow): EdgeTransfer {
-  return {
-    id: row.id,
-    workflowRunId: row.workflow_run_id,
-    edgeId: row.edge_id,
-    sourceNodeAttemptId: row.source_node_attempt_id,
-    targetNodeId: row.target_node_id,
-    status: row.status,
-    payload: parseJson(row.payload_json) as WorkflowValue,
-    ...(row.adapter_attempt_id ? { adapterAttemptId: row.adapter_attempt_id } : {}),
-    createdAt: row.created_at,
-  };
-}
-
-function workflowCheckpointFromRow(row: WorkflowCheckpointRow): WorkflowCheckpoint {
-  const pending = parseJson<Partial<Pick<WorkflowCheckpoint, "pendingNodeIds" | "completedNodeIds" | "edgePayloadRefs">>>(
-    row.pending_json,
-  );
-  return {
-    id: row.id,
-    workflowRunId: row.workflow_run_id,
-    namespace: row.namespace,
-    cursor: parseJson(row.cursor_json),
-    globalState: parseJson(row.state_json),
-    pendingNodeIds: pending.pendingNodeIds ?? [],
-    completedNodeIds: pending.completedNodeIds ?? [],
-    edgePayloadRefs: pending.edgePayloadRefs ?? [],
-    createdAt: row.created_at,
-  };
-}
-
-function workflowWakeupFromRow(row: WorkflowWakeupRow): WorkflowWakeup {
-  return {
-    id: row.id,
-    workflowRunId: row.workflow_run_id,
-    ...(row.node_attempt_id ? { nodeAttemptId: row.node_attempt_id } : {}),
-    kind: row.kind,
-    availableAt: row.available_at,
-    ...(row.correlation_id ? { correlationId: row.correlation_id } : {}),
-    ...(row.payload_json ? { payload: parseJson(row.payload_json) as WorkflowValue } : {}),
-    createdAt: row.created_at,
-  };
-}
-
-function workflowHumanActionFromRow(row: WorkflowHumanActionRow): WorkflowHumanActionRecord {
-  return {
-    id: row.id,
-    workflowRunId: row.workflow_run_id,
-    waitTokenId: row.wait_token_id,
-    kind: row.kind,
-    ...(row.actor_json ? { actor: parseJson(row.actor_json) } : {}),
-    ...(row.payload_json ? { payload: parseJson(row.payload_json) as WorkflowValue } : {}),
-    createdAt: row.created_at,
-  };
-}
-
-function listLimit(limit: number | undefined): number {
-  return Math.max(1, Math.min(limit ?? 100, 1000));
-}
-
-function serialize(value: unknown): string {
-  return JSON.stringify(value);
-}
-
-function serializeOptional(value: unknown | undefined): string | null {
-  return value === undefined ? null : serialize(value);
-}
-
-function parseJson<T = unknown>(value: string): T {
-  return JSON.parse(value) as T;
 }

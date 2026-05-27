@@ -14,7 +14,7 @@ import {
 	ShieldCheck,
 	Wrench,
 } from "lucide-react";
-import { getContextBuild, type ContextBuildNode, type ContextBuildSnapshot } from "../api";
+import { getContextBuild, type ContextBuildNode, type ContextBuildSnapshot } from "../api-agent-designer";
 import { JsonRenderer } from "../tracing/JsonRenderer";
 
 type ContextBuildViewProps = {

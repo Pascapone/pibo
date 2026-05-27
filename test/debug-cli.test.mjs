@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
 import { PiboReliabilityStore } from "../dist/reliability/store.js";
+import { sliceTextByBytes } from "../dist/debug/detail-format.js";
 import { attachStreamingProviderTelemetryToBenchmark, collectStreamingProviderTelemetryFromSelectedBrowserSession, collectStreamingProviderTelemetryFromSession, collectStreamingProviderTelemetryFromTurn, evaluateStreamingBenchmarkAssertion, evaluateStreamingBenchmarkUrlComparisonRegressions, evaluateStreamingLivePipelineRegressions, evaluateStreamingProviderRegressions, formatStreamingBenchmarkAssertionSummary, formatStreamingBenchmarkUrlComparison, formatWatch, inferWatchFlickers, resolveStreamingBenchmarkHostedCompareUrlFromValues, summarizeStreamingBenchmarkUrlComparison, summarizeStreamingBenchmarks, summarizeStreamingLivePipeline, summarizeStreamingProviderPreservation, summarizeStreamingProviderTelemetry, summarizeStreamingSelectedLiveEventSource } from "../dist/debug/web.js";
 
 const execFileAsyncRaw = promisify(execFile);
@@ -24,6 +25,16 @@ function execFileAsync(file, args, options = {}) {
 		},
 	});
 }
+
+test("debug byte slicing preserves UTF-8 characters", () => {
+	const text = "Hamburg Grüße Straße";
+	const first = sliceTextByBytes(text, { maxBytes: 12 });
+	assert.equal(first.text, "Hamburg Grü");
+	assert.equal(first.truncatedAfter, true);
+	const second = sliceTextByBytes(text, { from: first.from + first.bytesShown, bytes: 5 });
+	assert.doesNotMatch(second.text, /�/);
+	assert.equal(`${first.text}${second.text}`, "Hamburg Grüße S");
+});
 
 test("pibo debug web watch rejects action flags", async () => {
 	await assert.rejects(
@@ -1518,6 +1529,61 @@ test("pibo debug events extracts selected payload fields", async () => {
 	}
 });
 
+test("pibo debug messages, final, and events show drill down without SQL", async () => {
+	const cwd = await makeDebugFixture();
+	try {
+		const list = await execFileAsync("node", [cliPath, "debug", "messages", "ps_parent", "list"], { cwd });
+		assert.match(list.stdout, /idx\trole\tstream_id\tevent_id\tbytes\ttruncated\tpreview/);
+		assert.match(list.stdout, /assistant\t5\tevt_5/);
+		assert.match(list.stdout, /pibo debug messages ps_parent show assistant:last --full/);
+
+		const final = await execFileAsync("node", [cliPath, "debug", "final", "ps_parent"], { cwd });
+		assert.match(final.stdout, /Content:\nTagesbericht für Hamburg: Grüße, Straße\./);
+		assert.match(final.stdout, /Source:/);
+		assert.match(final.stdout, /pibo debug events ps_parent show 5 --field attributes_json.inlinePayload.text/);
+
+		const field = await execFileAsync("node", [cliPath, "debug", "events", "ps_parent", "show", "5", "--field", "attributes_json.inlinePayload.text"], { cwd });
+		assert.equal(field.stdout.trim(), "Tagesbericht für Hamburg: Grüße, Straße.");
+
+		const json = await execFileAsync("node", [cliPath, "debug", "messages", "ps_parent", "show", "assistant:last", "--json"], { cwd });
+		const parsed = JSON.parse(json.stdout);
+		assert.equal(parsed.message.role, "assistant");
+		assert.equal(parsed.message.streamId, 5);
+		assert.equal(parsed.source.path, "attributes_json.inlinePayload.text");
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test("pibo debug tool, failures, summary, and trace show expose next drill-down commands", async () => {
+	const cwd = await makeDebugFixture();
+	try {
+		const tool = await execFileAsync("node", [cliPath, "debug", "tool", "ps_parent", "tool_wait"], { cwd });
+		assert.match(tool.stdout, /toolCallId: tool_wait/);
+		assert.match(tool.stdout, /toolName: pibo_run_wait/);
+		assert.match(tool.stdout, /status: completed/);
+
+		const failures = await execFileAsync("node", [cliPath, "debug", "failures", "ps_parent"], { cwd });
+		assert.match(failures.stdout, /failures: 0/);
+		assert.match(failures.stdout, /pibo debug trace ps_parent --check/);
+
+		const summary = await execFileAsync("node", [cliPath, "debug", "summary", "ps_parent"], { cwd });
+		assert.match(summary.stdout, /finalAssistant: available, \d+ bytes, stream_id=5/);
+		assert.match(summary.stdout, /pibo debug final ps_parent/);
+
+		const trace = await execFileAsync("node", [cliPath, "debug", "trace", "ps_running", "--medium"], { cwd });
+		assert.match(trace.stdout, /toolCallId/);
+		assert.match(trace.stdout, /tool_1/);
+		const traceJson = await execFileAsync("node", [cliPath, "debug", "trace", "ps_running", "--json"], { cwd });
+		const node = JSON.parse(traceJson.stdout).nodes.find((item) => item.toolCallId === "tool_1");
+		const shown = await execFileAsync("node", [cliPath, "debug", "trace", "ps_running", "show", node.id], { cwd });
+		assert.match(shown.stdout, new RegExp(`nodeId: ${node.id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+		assert.match(shown.stdout, /toolCallId: tool_1/);
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
 test("pibo debug events inspects Pibo event streams and consumers", async () => {
 	const cwd = await makeDebugFixture();
 	try {
@@ -1821,6 +1887,21 @@ async function makeDebugFixture() {
 				toolName: "pibo_run_wait",
 				result: { details: { status: "completed" } },
 				isError: false,
+			},
+		});
+		insertEvent(data.db, {
+			streamId: 5,
+			sessionId: "ps_parent",
+			sequence: 3,
+			roomId: "room_one",
+			eventId: "evt_5",
+			type: "assistant_message",
+			createdAt: "2026-05-01T10:03:02.000Z",
+			payload: {
+				type: "assistant_message",
+				piboSessionId: "ps_parent",
+				eventId: "evt_5",
+				text: "Tagesbericht für Hamburg: Grüße, Straße.",
 			},
 		});
 		insertEvent(data.db, {

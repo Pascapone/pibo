@@ -7,6 +7,7 @@ import type { ChatWebStoredPiboEvent } from "../apps/chat/read-model.js";
 import { compareTraceOrder } from "../shared/trace-order.js";
 import type { ResolvedPiboDebugStore } from "./stores.js";
 import { openReadOnlyDebugDatabase, withStorePath } from "./sql.js";
+import { formatNextCommands } from "./next-commands.js";
 
 type SessionRow = {
 	id: string;
@@ -45,6 +46,7 @@ export type DebugTraceResult = {
 	nodes: DebugTraceNodeRow[];
 	rawNodeCount: number;
 	checks?: DebugTraceCheckResult;
+	nextCommands?: string[];
 };
 
 export type DebugTraceNodeRow = {
@@ -52,6 +54,7 @@ export type DebugTraceNodeRow = {
 	type: string;
 	title: string;
 	id: string;
+	parentId?: string;
 	runId?: string;
 	toolCallId?: string;
 	linkedPiboSessionId?: string;
@@ -60,7 +63,17 @@ export type DebugTraceNodeRow = {
 	order?: string;
 	startedAt?: string;
 	completedAt?: string;
+	childrenCount?: number;
 	depth: number;
+};
+
+export type DebugTraceNodeResult = {
+	piboSessionId: string;
+	resultType: "debug.trace.show";
+	nodeId: string;
+	node?: DebugTraceNodeRow;
+	children: DebugTraceNodeRow[];
+	nextCommands: string[];
 };
 
 export type DebugTraceCheckResult = {
@@ -114,6 +127,7 @@ export async function inspectDebugTrace(
 			nodes: filtered,
 			rawNodeCount: rows.length,
 			...(options.check ? { checks: checkTraceView(view) } : {}),
+			nextCommands: buildTraceNextCommands(view.piboSessionId, filtered),
 		};
 	} catch (error) {
 		throw withStorePath(withStorePath(error, stores.chat), stores.sessions);
@@ -123,7 +137,25 @@ export async function inspectDebugTrace(
 	}
 }
 
-export function formatDebugTrace(result: DebugTraceResult): string {
+export async function inspectDebugTraceNode(
+	piboSessionId: string,
+	stores: { sessions: ResolvedPiboDebugStore; chat: ResolvedPiboDebugStore },
+	nodeId: string,
+): Promise<DebugTraceNodeResult> {
+	const trace = await inspectDebugTrace(piboSessionId, stores, {});
+	const node = trace.nodes.find((item) => item.id === nodeId);
+	const children = trace.nodes.filter((item) => item.parentId === nodeId);
+	return {
+		piboSessionId,
+		resultType: "debug.trace.show",
+		nodeId,
+		node,
+		children,
+		nextCommands: node ? buildNodeNextCommands(piboSessionId, node) : [`pibo debug trace ${piboSessionId}`],
+	};
+}
+
+export function formatDebugTrace(result: DebugTraceResult, options: { medium?: boolean } = {}): string {
 	const lines = [
 		`piboSessionId: ${result.piboSessionId}`,
 		`piSessionId: ${result.piSessionId}`,
@@ -135,19 +167,25 @@ export function formatDebugTrace(result: DebugTraceResult): string {
 		lines.push("nodes: 0");
 		return lines.join("\n");
 	}
-	lines.push("status\ttype\ttitle\tid\trunId\tlinkedPiboSessionId");
+	const columns = options.medium
+		? ["status", "type", "title", "id", "runId", "toolCallId", "linkedPiboSessionId", "source", "stableKey", "order"]
+		: ["status", "type", "title", "id", "runId", "linkedPiboSessionId"];
+	lines.push(columns.join("\t"));
 	for (const node of result.nodes) {
 		const title = `${"  ".repeat(node.depth)}${node.title}`;
-		lines.push(
-			[
-				node.status,
-				node.type,
-				title,
-				node.id,
-				node.runId ?? "",
-				node.linkedPiboSessionId ?? "",
-			].join("\t"),
-		);
+		const values: Record<string, string | undefined> = {
+			status: node.status,
+			type: node.type,
+			title,
+			id: node.id,
+			runId: node.runId,
+			toolCallId: node.toolCallId,
+			linkedPiboSessionId: node.linkedPiboSessionId,
+			source: node.source,
+			stableKey: node.stableKey,
+			order: node.order,
+		};
+		lines.push(columns.map((column) => values[column] ?? "").join("\t"));
 	}
 	lines.push(`nodes: ${result.nodes.length}${result.nodes.length !== result.rawNodeCount ? ` of ${result.rawNodeCount}` : ""}`);
 	if (result.checks) {
@@ -158,6 +196,29 @@ export function formatDebugTrace(result: DebugTraceResult): string {
 		}
 		if (result.checks.issues.length === 0) lines.push("issues: 0");
 	}
+	lines.push(...formatNextCommands(result.nextCommands ?? []));
+	return lines.join("\n");
+}
+
+export function formatDebugTraceNode(result: DebugTraceNodeResult): string {
+	if (!result.node) return [`node: not found`, ...formatNextCommands(result.nextCommands)].join("\n");
+	const node = result.node;
+	const lines: string[] = [];
+	lines.push(`nodeId: ${node.id}`);
+	lines.push(`type: ${node.type}`);
+	lines.push(`title: ${node.title}`);
+	lines.push(`status: ${node.status}`);
+	if (node.parentId) lines.push(`parentId: ${node.parentId}`);
+	if (node.startedAt) lines.push(`startedAt: ${node.startedAt}`);
+	if (node.completedAt) lines.push(`completedAt: ${node.completedAt}`);
+	if (node.source) lines.push(`source: ${node.source}`);
+	if (node.stableKey) lines.push(`stableKey: ${node.stableKey}`);
+	if (node.order) lines.push(`order: ${node.order}`);
+	lines.push(`children: ${result.children.length}`);
+	if (node.linkedPiboSessionId) lines.push(`linkedPiboSessionId: ${node.linkedPiboSessionId}`);
+	if (node.runId) lines.push(`runId: ${node.runId}`);
+	if (node.toolCallId) lines.push(`toolCallId: ${node.toolCallId}`);
+	lines.push(...formatNextCommands(result.nextCommands));
 	return lines.join("\n");
 }
 
@@ -168,6 +229,7 @@ function flattenTraceNodes(nodes: PiboTraceNode[], depth = 0): DebugTraceNodeRow
 			type: node.type,
 			title: node.title,
 			id: node.id,
+			parentId: node.parentId,
 			runId: node.runId,
 			toolCallId: node.toolCallId,
 			linkedPiboSessionId: node.linkedPiboSessionId,
@@ -176,6 +238,7 @@ function flattenTraceNodes(nodes: PiboTraceNode[], depth = 0): DebugTraceNodeRow
 			order: formatOrderKey(node),
 			startedAt: node.startedAt,
 			completedAt: node.completedAt,
+			childrenCount: node.children.length,
 			depth,
 		},
 		...flattenTraceNodes(node.children, depth + 1),
@@ -262,6 +325,26 @@ function compareOrder(left: PiboTraceNode, right: PiboTraceNode): number {
 
 function flattenPiboTraceNodes(nodes: PiboTraceNode[]): PiboTraceNode[] {
 	return nodes.flatMap((node) => [node, ...flattenPiboTraceNodes(node.children)]);
+}
+
+function buildTraceNextCommands(piboSessionId: string, nodes: DebugTraceNodeRow[]): string[] {
+	const errorNode = nodes.find((node) => node.status === "error");
+	const firstNode = nodes[0];
+	return [
+		errorNode ? `pibo debug trace ${piboSessionId} show ${errorNode.id}` : firstNode ? `pibo debug trace ${piboSessionId} show ${firstNode.id}` : undefined,
+		nodes.some((node) => node.status === "error") ? `pibo debug failures ${piboSessionId}` : undefined,
+		`pibo debug messages ${piboSessionId} list`,
+	].filter((command): command is string => Boolean(command));
+}
+
+function buildNodeNextCommands(piboSessionId: string, node: DebugTraceNodeRow): string[] {
+	return [
+		node.toolCallId ? `pibo debug tool ${piboSessionId} ${node.toolCallId}` : undefined,
+		node.linkedPiboSessionId ? `pibo debug session ${node.linkedPiboSessionId}` : undefined,
+		node.linkedPiboSessionId ? `pibo debug trace ${node.linkedPiboSessionId}` : undefined,
+		`pibo debug trace ${piboSessionId} --medium`,
+		`pibo debug events ${piboSessionId} --limit 20`,
+	].filter((command): command is string => Boolean(command));
 }
 
 function formatOrderKey(node: PiboTraceNode): string | undefined {

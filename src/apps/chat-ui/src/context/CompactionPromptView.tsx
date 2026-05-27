@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Brain, Check, RefreshCw, Save } from "lucide-react";
+import { type SaveState } from "../api";
 import {
 	getCompactionPrompt,
 	saveCustomCompactionPrompt,
 	setCompactionPromptMode,
 	type CompactionPromptMode,
 	type CompactionPromptSnapshot,
-	type SaveState,
-} from "../api";
+} from "../api-settings";
 
 export function CompactionPromptView() {
 	const [snapshot, setSnapshot] = useState<CompactionPromptSnapshot | null>(null);

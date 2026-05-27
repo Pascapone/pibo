@@ -10,7 +10,7 @@ import {
 	runCronJobNow,
 	type CronJobInput,
 	type CronScheduleInput,
-} from "./api";
+} from "./api-cron";
 import type { AgentProfile, BootstrapData, CustomAgent, PiboCronJob, PiboCronRun, PiboCronStatus, PiboRoom } from "./types";
 
 type ScheduleKind = "in" | "at" | "every" | "daily" | "weekly" | "monthly" | "cron";

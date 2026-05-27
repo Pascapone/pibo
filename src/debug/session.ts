@@ -1,6 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import type { ResolvedPiboDebugStore } from "./stores.js";
 import { normalizeLimit, openReadOnlyDebugDatabase, withStorePath } from "./sql.js";
+import { formatNextCommands } from "./next-commands.js";
 
 export type ParsedDebugSessionInput = {
 	raw: string;
@@ -21,6 +22,7 @@ export type DebugSessionSummary = {
 	children: Array<Record<string, unknown>>;
 	chat?: Record<string, unknown>;
 	events?: Array<Record<string, unknown>>;
+	nextCommands?: string[];
 };
 
 type SessionRow = {
@@ -91,6 +93,13 @@ export function inspectDebugSession(
 			},
 			children: listChildSessions(sessionsDb, parsed.piboSessionId, limit),
 		};
+		summary.nextCommands = [
+			`pibo debug messages ${parsed.piboSessionId} list`,
+			`pibo debug final ${parsed.piboSessionId}`,
+			`pibo debug trace ${parsed.piboSessionId} --check`,
+			`pibo debug failures ${parsed.piboSessionId}`,
+			`pibo debug events ${parsed.piboSessionId} --limit 20`,
+		];
 		if (stores.chat.exists) {
 			const chatDb = stores.chat.path === stores.sessions.path ? sessionsDb : openReadOnlyDebugDatabase(stores.chat);
 			try {
@@ -150,6 +159,7 @@ export function formatDebugSessionSummary(summary: DebugSessionSummary): string 
 			lines.push(`  ${formatValue(event.created_at)}\t${formatValue(event.type)}\t${formatValue(event.event_id)}`);
 		}
 	}
+	lines.push(...formatNextCommands(summary.nextCommands ?? []));
 	return lines.join("\n");
 }
 

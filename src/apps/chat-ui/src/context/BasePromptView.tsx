@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BookOpenText, Check, RefreshCw, Save } from "lucide-react";
+import { type SaveState } from "../api";
 import {
 	getBasePrompt,
 	saveCustomBasePrompt,
 	setBasePromptMode,
 	type BasePromptMode,
 	type BasePromptSnapshot,
-	type SaveState,
-} from "../api";
+} from "../api-settings";
 
 export function BasePromptView() {
 	const [snapshot, setSnapshot] = useState<BasePromptSnapshot | null>(null);
