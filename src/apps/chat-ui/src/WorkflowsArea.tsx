@@ -59,17 +59,23 @@ import {
 } from "./api-workflows";
 import { MarkdownEditor } from "./context/MarkdownEditor";
 import {
+	addWorkflowGraphEdge,
+	addWorkflowGraphNodeDefinition,
 	createWorkflowGraphProjection,
+	deleteWorkflowGraphEdge,
+	deleteWorkflowGraphNode,
 	isWorkflowJsonObject,
 	nextGraphNodePosition,
+	nextWorkflowEdgeId,
+	nextWorkflowNodeId,
 	projectionHasElement,
 	readEdgeEndpointNodeId,
 	readWorkflowEdgeDefinitions,
 	readWorkflowNodeDefinitions,
 	readWorkflowPositions,
-	workflowInitialNodeIds,
 	workflowNodeKind,
 	workflowNodeLabel,
+	writeWorkflowGraphPositions,
 	type GraphPosition,
 	type SelectedGraphElement,
 	type WorkflowGraphFlowEdge,
@@ -3169,49 +3175,12 @@ const WORKFLOW_GRAPH_NODE_TYPES = {
 	workflowNode: WorkflowGraphNodeCard,
 };
 
-function nextWorkflowNodeId(definition: WorkflowDraftDefinition, prefix: string): string {
-	const nodes = readWorkflowNodeDefinitions(definition);
-	if (!Object.hasOwn(nodes, prefix)) return prefix;
-	let index = 2;
-	while (Object.hasOwn(nodes, `${prefix}_${index}`)) index += 1;
-	return `${prefix}_${index}`;
-}
-
-function nextWorkflowEdgeId(definition: WorkflowDraftDefinition, sourceId: string, targetId: string): string {
-	const edges = readWorkflowEdgeDefinitions(definition);
-	const base = `edge_${sourceId}_to_${targetId}`.replace(/[^a-zA-Z0-9_-]/g, "-");
-	if (!Object.hasOwn(edges, base)) return base;
-	let index = 2;
-	while (Object.hasOwn(edges, `${base}_${index}`)) index += 1;
-	return `${base}_${index}`;
-}
-
 function addWorkflowGraphNode(definition: WorkflowDraftDefinition, nodeId: string, position: GraphPosition, profileId: string): WorkflowDraftDefinition {
-	const nodes = readWorkflowNodeDefinitions(definition);
-	const nextDefinition: WorkflowDraftDefinition = {
-		...definition,
-		nodes: {
-			...nodes,
-			[nodeId]: createDefaultAgentNodeDefinition(nodeId, profileId),
-		},
-		edges: isWorkflowJsonObject(definition.edges) ? definition.edges : {},
-	};
-	if (!workflowInitialNodeIds(nextDefinition).length) nextDefinition.initial = nodeId;
-	return writeWorkflowGraphPositions(nextDefinition, { ...readWorkflowPositions(definition), [nodeId]: position });
+	return addWorkflowGraphNodeDefinition(definition, nodeId, position, createDefaultAgentNodeDefinition(nodeId, profileId));
 }
 
 function addWorkflowGraphWorkflowNode(definition: WorkflowDraftDefinition, nodeId: string, position: GraphPosition, workflow: WorkflowVersionPickerOption): WorkflowDraftDefinition {
-	const nodes = readWorkflowNodeDefinitions(definition);
-	const nextDefinition: WorkflowDraftDefinition = {
-		...definition,
-		nodes: {
-			...nodes,
-			[nodeId]: createDefaultWorkflowNodeDefinition(nodeId, workflow),
-		},
-		edges: isWorkflowJsonObject(definition.edges) ? definition.edges : {},
-	};
-	if (!workflowInitialNodeIds(nextDefinition).length) nextDefinition.initial = nodeId;
-	return writeWorkflowGraphPositions(nextDefinition, { ...readWorkflowPositions(definition), [nodeId]: position });
+	return addWorkflowGraphNodeDefinition(definition, nodeId, position, createDefaultWorkflowNodeDefinition(nodeId, workflow));
 }
 
 function createDefaultAgentNodeDefinition(nodeId: string, profileId: string): WorkflowJsonObject {
@@ -3235,17 +3204,7 @@ function createDefaultWorkflowNodeDefinition(nodeId: string, workflow: WorkflowV
 }
 
 function addWorkflowGraphAdapterNode(definition: WorkflowDraftDefinition, nodeId: string, position: GraphPosition, adapterRef: string): WorkflowDraftDefinition {
-	const nodes = readWorkflowNodeDefinitions(definition);
-	const nextDefinition: WorkflowDraftDefinition = {
-		...definition,
-		nodes: {
-			...nodes,
-			[nodeId]: createDefaultAdapterNodeDefinition(nodeId, adapterRef),
-		},
-		edges: isWorkflowJsonObject(definition.edges) ? definition.edges : {},
-	};
-	if (!workflowInitialNodeIds(nextDefinition).length) nextDefinition.initial = nodeId;
-	return writeWorkflowGraphPositions(nextDefinition, { ...readWorkflowPositions(definition), [nodeId]: position });
+	return addWorkflowGraphNodeDefinition(definition, nodeId, position, createDefaultAdapterNodeDefinition(nodeId, adapterRef));
 }
 
 function createDefaultAdapterNodeDefinition(nodeId: string, adapterRef: string, input?: WorkflowJsonObject, output?: WorkflowJsonObject): WorkflowJsonObject {
@@ -3260,17 +3219,7 @@ function createDefaultAdapterNodeDefinition(nodeId: string, adapterRef: string, 
 }
 
 function addWorkflowGraphHumanNode(definition: WorkflowDraftDefinition, nodeId: string, position: GraphPosition, action: WorkflowHumanActionFormChoice): WorkflowDraftDefinition {
-	const nodes = readWorkflowNodeDefinitions(definition);
-	const nextDefinition: WorkflowDraftDefinition = {
-		...definition,
-		nodes: {
-			...nodes,
-			[nodeId]: createDefaultHumanNodeDefinition(nodeId, action),
-		},
-		edges: isWorkflowJsonObject(definition.edges) ? definition.edges : {},
-	};
-	if (!workflowInitialNodeIds(nextDefinition).length) nextDefinition.initial = nodeId;
-	return writeWorkflowGraphPositions(nextDefinition, { ...readWorkflowPositions(definition), [nodeId]: position });
+	return addWorkflowGraphNodeDefinition(definition, nodeId, position, createDefaultHumanNodeDefinition(nodeId, action));
 }
 
 function createDefaultHumanNodeDefinition(nodeId: string, action: WorkflowHumanActionFormChoice): WorkflowJsonObject {
@@ -3283,68 +3232,6 @@ function createDefaultHumanNodeDefinition(nodeId: string, action: WorkflowHumanA
 		schema: cloneWorkflowJsonObject(DEFAULT_WORKFLOW_JSON_SCHEMA),
 		actions: [createHumanActionObject(action)],
 		timeout: { kind: "minutes", value: 60 },
-	};
-}
-
-function addWorkflowGraphEdge(definition: WorkflowDraftDefinition, edgeId: string, sourceId: string, targetId: string): WorkflowDraftDefinition {
-	return {
-		...definition,
-		edges: {
-			...readWorkflowEdgeDefinitions(definition),
-			[edgeId]: {
-				id: edgeId,
-				from: { nodeId: sourceId },
-				to: { nodeId: targetId },
-				kind: "data",
-			},
-		},
-	};
-}
-
-function deleteWorkflowGraphNode(definition: WorkflowDraftDefinition, nodeId: string): WorkflowDraftDefinition {
-	const nodes = readWorkflowNodeDefinitions(definition);
-	delete nodes[nodeId];
-	const edges = Object.fromEntries(Object.entries(readWorkflowEdgeDefinitions(definition)).filter(([, edgeDefinition]) => {
-		return readEdgeEndpointNodeId(edgeDefinition.from) !== nodeId && readEdgeEndpointNodeId(edgeDefinition.to) !== nodeId;
-	}));
-	const positions = readWorkflowPositions(definition);
-	delete positions[nodeId];
-	return normalizeInitialAfterDelete(writeWorkflowGraphPositions({ ...definition, nodes, edges }, positions), nodeId, Object.keys(nodes));
-}
-
-function deleteWorkflowGraphEdge(definition: WorkflowDraftDefinition, edgeId: string): WorkflowDraftDefinition {
-	const edges = readWorkflowEdgeDefinitions(definition);
-	delete edges[edgeId];
-	return { ...definition, edges };
-}
-
-function normalizeInitialAfterDelete(definition: WorkflowDraftDefinition, deletedNodeId: string, remainingNodeIds: string[]): WorkflowDraftDefinition {
-	const nextDefinition: WorkflowDraftDefinition = { ...definition };
-	if (typeof nextDefinition.initial === "string") {
-		if (nextDefinition.initial === deletedNodeId) {
-			if (remainingNodeIds[0]) nextDefinition.initial = remainingNodeIds[0];
-			else delete nextDefinition.initial;
-		}
-		return nextDefinition;
-	}
-	if (Array.isArray(nextDefinition.initial)) {
-		const nextInitial = nextDefinition.initial.filter((entry) => entry !== deletedNodeId);
-		if (nextInitial.length) nextDefinition.initial = nextInitial;
-		else if (remainingNodeIds[0]) nextDefinition.initial = remainingNodeIds[0];
-		else delete nextDefinition.initial;
-	}
-	return nextDefinition;
-}
-
-function writeWorkflowGraphPositions(definition: WorkflowDraftDefinition, positions: Record<string, GraphPosition>): WorkflowDraftDefinition {
-	const ui = isWorkflowJsonObject(definition.ui) ? definition.ui : {};
-	return {
-		...definition,
-		ui: {
-			...ui,
-			layout: "manual",
-			positions,
-		},
 	};
 }
 

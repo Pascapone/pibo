@@ -9,8 +9,14 @@ async function runWorkflowGraphModelScenario() {
 	const script = `
 		import assert from "node:assert/strict";
 		import {
+			addWorkflowGraphEdge,
+			addWorkflowGraphNodeDefinition,
 			createWorkflowGraphProjection,
+			deleteWorkflowGraphEdge,
+			deleteWorkflowGraphNode,
 			nextGraphNodePosition,
+			nextWorkflowEdgeId,
+			nextWorkflowNodeId,
 			projectionHasElement,
 			readEdgeEndpointNodeId,
 			readWorkflowEdgeDefinitions,
@@ -19,6 +25,7 @@ async function runWorkflowGraphModelScenario() {
 			workflowInitialNodeIds,
 			workflowNodeKind,
 			workflowNodeLabel,
+			writeWorkflowGraphPositions,
 		} from "./src/apps/chat-ui/src/workflows/workflow-graph-model.ts";
 
 		const definition = {
@@ -77,6 +84,67 @@ async function runWorkflowGraphModelScenario() {
 		assert.equal(workflowNodeLabel("fallback", {}), "Node fallback");
 		assert.equal(readEdgeEndpointNodeId({ nodeId: "  human_1  " }), "human_1");
 		assert.deepEqual(nextGraphNodePosition(projection.nodes), { x: 80, y: 230 });
+
+		assert.equal(nextWorkflowNodeId({ nodes: { agent: {}, agent_2: {} } }, "agent"), "agent_3");
+		assert.equal(nextWorkflowNodeId({ nodes: { agent_2: {} } }, "agent"), "agent");
+		assert.equal(nextWorkflowEdgeId({ edges: {} }, "source.one", "target/two"), "edge_source-one_to_target-two");
+		assert.equal(nextWorkflowEdgeId({ edges: { "edge_a_to_b": {}, "edge_a_to_b_2": {} } }, "a", "b"), "edge_a_to_b_3");
+
+		const addedFirstNode = addWorkflowGraphNodeDefinition(
+			{ nodes: null, edges: "invalid", ui: { theme: "dark" } },
+			"agent",
+			{ x: 20, y: 30 },
+			{ kind: "agent", label: "Agent" },
+		);
+		assert.deepEqual(addedFirstNode.nodes, { agent: { kind: "agent", label: "Agent" } });
+		assert.deepEqual(addedFirstNode.edges, {});
+		assert.equal(addedFirstNode.initial, "agent");
+		assert.deepEqual(addedFirstNode.ui, { theme: "dark", layout: "manual", positions: { agent: { x: 20, y: 30 } } });
+
+		const addedSecondNode = addWorkflowGraphNodeDefinition(
+			addedFirstNode,
+			"human",
+			{ x: 40, y: 50 },
+			{ kind: "human" },
+		);
+		assert.equal(addedSecondNode.initial, "agent");
+		assert.deepEqual(readWorkflowPositions(addedSecondNode), { agent: { x: 20, y: 30 }, human: { x: 40, y: 50 } });
+
+		const withEdge = addWorkflowGraphEdge(addedSecondNode, "edge_agent_to_human", "agent", "human");
+		assert.deepEqual(withEdge.edges.edge_agent_to_human, {
+			id: "edge_agent_to_human",
+			from: { nodeId: "agent" },
+			to: { nodeId: "human" },
+			kind: "data",
+		});
+		assert.deepEqual(deleteWorkflowGraphEdge(withEdge, "edge_agent_to_human").edges, {});
+
+		const multiInitialDefinition = {
+			initial: ["agent", "adapter", "missing"],
+			nodes: {
+				agent: { kind: "agent" },
+				adapter: { kind: "adapter" },
+				human: { kind: "human" },
+			},
+			edges: {
+				kept: { from: { nodeId: "adapter" }, to: { nodeId: "human" } },
+				removed_from: { from: { nodeId: "agent" }, to: { nodeId: "adapter" } },
+				removed_to: { from: { nodeId: "human" }, to: { nodeId: "agent" } },
+			},
+			ui: { positions: { agent: { x: 1, y: 2 }, adapter: { x: 3, y: 4 }, human: { x: 5, y: 6 } } },
+		};
+		const deletedAgent = deleteWorkflowGraphNode(multiInitialDefinition, "agent");
+		assert.deepEqual(Object.keys(deletedAgent.nodes), ["adapter", "human"]);
+		assert.deepEqual(Object.keys(deletedAgent.edges), ["kept"]);
+		assert.deepEqual(deletedAgent.initial, ["adapter", "missing"]);
+		assert.deepEqual(readWorkflowPositions(deletedAgent), { adapter: { x: 3, y: 4 }, human: { x: 5, y: 6 } });
+		assert.equal(deleteWorkflowGraphNode({ initial: "only", nodes: { only: {} }, edges: {}, ui: { positions: { only: { x: 1, y: 1 } } } }, "only").initial, undefined);
+
+		assert.deepEqual(writeWorkflowGraphPositions({ ui: { color: "blue", layout: "auto" } }, { node: { x: 7, y: 8 } }).ui, {
+			color: "blue",
+			layout: "manual",
+			positions: { node: { x: 7, y: 8 } },
+		});
 	`;
 	return execFileAsync("npx", ["tsx", "--eval", script], {
 		cwd: "/workspace",

@@ -158,6 +158,99 @@ export function nextGraphNodePosition(nodes: WorkflowGraphFlowNode[]): GraphPosi
 	};
 }
 
+export function nextWorkflowNodeId(definition: WorkflowDraftDefinition, prefix: string): string {
+	const nodes = readWorkflowNodeDefinitions(definition);
+	if (!Object.hasOwn(nodes, prefix)) return prefix;
+	let index = 2;
+	while (Object.hasOwn(nodes, `${prefix}_${index}`)) index += 1;
+	return `${prefix}_${index}`;
+}
+
+export function nextWorkflowEdgeId(definition: WorkflowDraftDefinition, sourceId: string, targetId: string): string {
+	const edges = readWorkflowEdgeDefinitions(definition);
+	const base = `edge_${sourceId}_to_${targetId}`.replace(/[^a-zA-Z0-9_-]/g, "-");
+	if (!Object.hasOwn(edges, base)) return base;
+	let index = 2;
+	while (Object.hasOwn(edges, `${base}_${index}`)) index += 1;
+	return `${base}_${index}`;
+}
+
+export function addWorkflowGraphNodeDefinition(definition: WorkflowDraftDefinition, nodeId: string, position: GraphPosition, nodeDefinition: WorkflowJsonObject): WorkflowDraftDefinition {
+	const nodes = readWorkflowNodeDefinitions(definition);
+	const nextDefinition: WorkflowDraftDefinition = {
+		...definition,
+		nodes: {
+			...nodes,
+			[nodeId]: nodeDefinition,
+		},
+		edges: isWorkflowJsonObject(definition.edges) ? definition.edges : {},
+	};
+	if (!workflowInitialNodeIds(nextDefinition).length) nextDefinition.initial = nodeId;
+	return writeWorkflowGraphPositions(nextDefinition, { ...readWorkflowPositions(definition), [nodeId]: position });
+}
+
+export function addWorkflowGraphEdge(definition: WorkflowDraftDefinition, edgeId: string, sourceId: string, targetId: string): WorkflowDraftDefinition {
+	return {
+		...definition,
+		edges: {
+			...readWorkflowEdgeDefinitions(definition),
+			[edgeId]: {
+				id: edgeId,
+				from: { nodeId: sourceId },
+				to: { nodeId: targetId },
+				kind: "data",
+			},
+		},
+	};
+}
+
+export function deleteWorkflowGraphNode(definition: WorkflowDraftDefinition, nodeId: string): WorkflowDraftDefinition {
+	const nodes = readWorkflowNodeDefinitions(definition);
+	delete nodes[nodeId];
+	const edges = Object.fromEntries(Object.entries(readWorkflowEdgeDefinitions(definition)).filter(([, edgeDefinition]) => {
+		return readEdgeEndpointNodeId(edgeDefinition.from) !== nodeId && readEdgeEndpointNodeId(edgeDefinition.to) !== nodeId;
+	}));
+	const positions = readWorkflowPositions(definition);
+	delete positions[nodeId];
+	return normalizeInitialAfterDelete(writeWorkflowGraphPositions({ ...definition, nodes, edges }, positions), nodeId, Object.keys(nodes));
+}
+
+export function deleteWorkflowGraphEdge(definition: WorkflowDraftDefinition, edgeId: string): WorkflowDraftDefinition {
+	const edges = readWorkflowEdgeDefinitions(definition);
+	delete edges[edgeId];
+	return { ...definition, edges };
+}
+
+function normalizeInitialAfterDelete(definition: WorkflowDraftDefinition, deletedNodeId: string, remainingNodeIds: string[]): WorkflowDraftDefinition {
+	const nextDefinition: WorkflowDraftDefinition = { ...definition };
+	if (typeof nextDefinition.initial === "string") {
+		if (nextDefinition.initial === deletedNodeId) {
+			if (remainingNodeIds[0]) nextDefinition.initial = remainingNodeIds[0];
+			else delete nextDefinition.initial;
+		}
+		return nextDefinition;
+	}
+	if (Array.isArray(nextDefinition.initial)) {
+		const nextInitial = nextDefinition.initial.filter((entry) => entry !== deletedNodeId);
+		if (nextInitial.length) nextDefinition.initial = nextInitial;
+		else if (remainingNodeIds[0]) nextDefinition.initial = remainingNodeIds[0];
+		else delete nextDefinition.initial;
+	}
+	return nextDefinition;
+}
+
+export function writeWorkflowGraphPositions(definition: WorkflowDraftDefinition, positions: Record<string, GraphPosition>): WorkflowDraftDefinition {
+	const ui = isWorkflowJsonObject(definition.ui) ? definition.ui : {};
+	return {
+		...definition,
+		ui: {
+			...ui,
+			layout: "manual",
+			positions,
+		},
+	};
+}
+
 export function workflowInitialNodeIds(definition: WorkflowDraftDefinition): string[] {
 	if (typeof definition.initial === "string") return [definition.initial];
 	return Array.isArray(definition.initial) ? definition.initial.filter((entry): entry is string => typeof entry === "string") : [];

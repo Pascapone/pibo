@@ -64,13 +64,13 @@ Initial high-priority candidates from line-count scan:
 
 ## Current state
 
-- Last batch: Extracted Workflows graph projection/read-model helpers into `src/apps/chat-ui/src/workflows/workflow-graph-model.ts`.
-- Result: `WorkflowsArea.tsx` no longer owns React Flow projection, workflow node/edge object readers, saved/auto position calculation, initial-node normalization, or selected-element presence checks; the new graph model seam has focused coverage.
-- Evidence: `WorkflowsArea.tsx` dropped from 4,465 to 4,311 LOC; the new graph model module is 172 LOC and `test/chat-ui-workflow-graph-model.test.mjs` covers node filtering, saved/node UI/auto positions, diagnostics counts, initial flags, invalid-edge dropping, graph element detection, readers, fallback labels, and next-node positioning.
+- Last batch: Extracted Workflow Builder graph mutation/write helpers into `src/apps/chat-ui/src/workflows/workflow-graph-model.ts`.
+- Result: `WorkflowsArea.tsx` no longer owns pure graph id generation, generic node insertion with position/initial handling, edge insertion/deletion, node-deletion edge cleanup, initial normalization after deletion, or layout position writes; it keeps feature-specific default node-definition builders and adapter insertion orchestration.
+- Evidence: `WorkflowsArea.tsx` dropped from 4,311 to 4,198 LOC; `workflow-graph-model.ts` grew from 172 to 265 LOC as the graph model seam now covers read projection plus write mutations; `test/chat-ui-workflow-graph-model.test.mjs` now covers id generation, node insertion, initial preservation, edge insertion/deletion, node deletion cleanup, initial normalization, and position writes.
 - Validation: host `git diff --check` passed; Docker focused `node --test test/chat-ui-workflow-graph-model.test.mjs` passed; Docker `npm run chat-ui:typecheck` passed; Docker root `npm run typecheck` passed. Docker route smoke `curl http://127.0.0.1:4802/apps/chat` returned curl exit 7/HTTP 000 because port 4802 was not listening; no service restart was performed.
-- Commit: `7d54056` (`refactor(chat-ui): extract workflow graph model`).
-- Blockers: worker Chat Web server on port 4802 is still not listening for route smoke checks; not blocking this pure graph model extraction because focused tests and typechecks passed.
-- Exact next step: Continue `WorkflowsArea.tsx` by extracting graph mutation/write helpers (`addWorkflowGraph*`, edge insertion/deletion, position writes) into the same graph model seam with focused tests for id generation, initial-node normalization, edge cleanup, and adapter insertion behavior.
+- Commit: `a5ce862` (`refactor(chat-ui): extract workflow graph mutations`).
+- Blockers: worker Chat Web server on port 4802 is still not listening for route smoke checks; not blocking this pure graph-model extraction because focused tests and typechecks passed.
+- Exact next step: Continue `WorkflowsArea.tsx` with a focused analysis/test-safety slice for adapter-edge insertion (`insertWorkflowAdapterNodeForEdge`, edge adapter choice, port compatibility details) before moving it, because it couples graph writes with port schema helpers and adapter refs.
 
 ## Progress log
 
@@ -175,3 +175,4 @@ Initial high-priority candidates from line-count scan:
 - 2026-05-27: Extracted Chat UI App destructive-delete side-effect orchestration into `src/apps/chat-ui/src/app-delete-actions.ts`; source/import sanity, host `git diff --check`, Docker focused delete-flow test, Docker `npm run chat-ui:typecheck`, and root `npm run typecheck` passed. Worker route smoke returned curl exit 7/HTTP 000 without restarting services.
 - 2026-05-27: Extracted Workflow Library version-history model helpers into `src/apps/chat-ui/src/workflows/workflow-version-history-model.ts` and added `test/chat-ui-workflow-version-history-model.test.mjs`; host `git diff --check`, Docker focused test, Docker `npm run chat-ui:typecheck`, and root `npm run typecheck` passed. Worker route smoke returned curl exit 7/HTTP 000 without restarting services.
 - 2026-05-27: Extracted Workflows graph projection/read-model helpers into `src/apps/chat-ui/src/workflows/workflow-graph-model.ts` and added `test/chat-ui-workflow-graph-model.test.mjs`; host `git diff --check`, Docker focused test, Docker `npm run chat-ui:typecheck`, and root `npm run typecheck` passed. Worker route smoke returned curl exit 7/HTTP 000 without restarting services.
+- 2026-05-27: Extracted Workflow Builder graph mutation/write helpers into `src/apps/chat-ui/src/workflows/workflow-graph-model.ts`; host `git diff --check`, Docker focused graph-model test, Docker `npm run chat-ui:typecheck`, and root `npm run typecheck` passed. Worker route smoke returned curl exit 7/HTTP 000 without restarting services.
