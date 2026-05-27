@@ -68,7 +68,7 @@ Initial high-priority candidates from line-count scan:
 - Result: `web-streaming-benchmark-analysis.ts` now owns smoothness scoring, cadence/live-pipeline/provider preservation summaries, benchmark grouping/comparison, assertion matching, artifact normalization, and numeric helper logic. `web.ts` keeps CLI command dispatch, CDP navigation/evaluation, fixture preparation, hosted compare URL resolution, artifact writing, and snapshot/watch scripts.
 - Evidence: `src/debug/web.ts` dropped from 1,855 to 1,247 LOC. The new benchmark analysis module is 636 LOC and preserves the old public helper exports through `src/debug/web.ts`.
 - Validation: host `git diff --check` passed; Docker `npm run build` passed; Docker focused `node --test test/debug-cli.test.mjs` passed; Docker root `npm run typecheck` passed; Docker CLI smoke `node dist/bin/pibo.js debug web scenario --help` printed help successfully.
-- Commit: `6df66e9` (`refactor(debug): extract web benchmark analysis`).
+- Commit: `9e4db01` (`refactor(debug): extract web benchmark analysis`).
 - Blockers: none for this batch.
 - Exact next step: Continue `src/debug/web.ts` with a focused extraction of remaining artifact I/O/output helpers or run an analysis batch to rank the last debug-web seams. Avoid moving CDP navigation/evaluation orchestration until artifact, benchmark analysis, browser-script, report, and provider seams remain stable under review.
 
