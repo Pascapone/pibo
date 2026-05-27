@@ -90,6 +90,12 @@
 - `src/shared/trace-engine.ts` still owns event/transcript projection, live patch orchestration, event dedupe/stream cursors, delta merging, subagent/yielded-run linking, and run-notification parsing. Further trace splitting now needs a clearly test-backed seam because the remaining responsibilities are more intertwined with event projection semantics.
 - Focused trace coverage is strong for future trace refactors: `test/chat-trace-materialization.test.mjs`, `test/chat-ui-integration.test.mjs`, `test/trace-live-reducer.test.mjs`, `test/trace-patch-identity.test.mjs`, and `test/debug-cli.test.mjs` exercise full trace materialization, incremental patch identity, live reducer dedupe, debug trace output, and CLI-adjacent trace behavior.
 
+## Chat UI API client seams
+
+- `src/apps/chat-ui/src/api-http.ts` now owns the shared Chat UI `requestJson` helper and error-shaping contract used by feature-specific API modules. Keep response parsing/error handling here rather than duplicating it in each extracted client module.
+- `src/apps/chat-ui/src/api-ralph.ts` now owns Ralph job/run/status/condition/template API client functions and `RalphJobInput`. `src/apps/chat-ui/src/api.ts` re-exports this module for compatibility, while `RalphArea` imports it directly to make the feature boundary explicit.
+- `src/apps/chat-ui/src/api.ts` remains large and still mixes workflow, project, Cron, session, context-file, agent, room, annotation, auth, and download concerns. The next low-risk seam is likely Cron API extraction because its request functions and input type are clustered and use the same `requestJson` helper.
+
 ## Telemetry data seams
 
 - `src/data/telemetry-rows.ts` now owns SQLite row shapes and row-to-domain hydration for telemetry turns, phases, provider requests, provider events, and tool calls. It also owns read-side JSON parsing for persisted telemetry metadata/counters/safe fields/argument-key arrays.

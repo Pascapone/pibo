@@ -64,12 +64,12 @@ Initial high-priority candidates from line-count scan:
 
 ## Current state
 
-- Last batch: Extracted trace live-patch node structural sharing helpers into `src/shared/trace-patch-nodes.ts` while keeping `patchTraceViewWithEvents` in `src/shared/trace-engine.ts` as the live event orchestration seam.
-- Result: `src/shared/trace-engine.ts` dropped from 1,736 to 1,636 LOC; mutable copied-node nesting, unchanged-node identity reuse, shallow node equality, and order-key equality now live in a focused helper module. The extraction also removed an unused private `mapFlatTraceNodesById` helper from the moved seam.
-- Validation: `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && npm run build'`, `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && node --test test/chat-trace-materialization.test.mjs test/chat-ui-integration.test.mjs test/trace-live-reducer.test.mjs test/trace-patch-identity.test.mjs test/debug-cli.test.mjs'` (90 tests), and `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && npm run typecheck'` passed. No browser/manual check was needed because this was a pure shared trace helper extraction with preserved runtime behavior.
-- Commit: `299bf0e59ea7411b4900c92ba149650a34c4bbfe` (`refactor(trace): extract patch node helpers`).
+- Last batch: Extracted the Ralph Chat UI API client seam from `src/apps/chat-ui/src/api.ts` into `src/apps/chat-ui/src/api-ralph.ts`, and moved the shared JSON request helper into `src/apps/chat-ui/src/api-http.ts`.
+- Result: `RalphArea` now imports Ralph client functions directly from the focused module, while `api.ts` re-exports them for existing callers. `api.ts` no longer imports Ralph-specific types and remains the compatibility barrel for the broader Chat UI API client.
+- Validation: `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && node --test test/workflow-v2-lifecycle-checklist.test.mjs'` (6 tests), `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && npm run build'`, and `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && npm run typecheck'` passed. No browser/manual check was needed because this was a pure client module extraction with preserved exported names and request paths.
+- Commit: pending.
 - Blockers: none.
-- Exact next step: Continue `src/shared/trace-engine.ts` only if another clear, test-backed seam appears; otherwise pivot to a test-safety/analysis batch for `src/apps/chat-ui/src/api.ts` or another high-value Chat UI/API boundary.
+- Exact next step: Continue the Chat UI API boundary by extracting the similarly focused Cron client functions from `src/apps/chat-ui/src/api.ts`, or do a quick analysis pass first if a broader API grouping is more valuable.
 
 ## Progress log
 
@@ -111,3 +111,4 @@ Initial high-priority candidates from line-count scan:
 - 2026-05-27: Extracted telemetry read/query helpers into `src/data/telemetry-queries.ts`; build, focused telemetry store/runtime/validation tests, and root typecheck passed in Docker.
 - 2026-05-27: Extracted trace node sorting/tree helpers into `src/shared/trace-nodes.ts`; build, focused trace/debug tests, and root typecheck passed in Docker.
 - 2026-05-27: Extracted trace live-patch structural sharing helpers into `src/shared/trace-patch-nodes.ts`; build, focused trace/debug tests, and root typecheck passed in Docker.
+- 2026-05-27: Extracted the Ralph Chat UI API client seam into `src/apps/chat-ui/src/api-ralph.ts` and shared request helper into `src/apps/chat-ui/src/api-http.ts`; workflow API source checklist, build, and root typecheck passed in Docker.

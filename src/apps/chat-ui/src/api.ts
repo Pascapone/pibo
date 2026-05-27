@@ -1,4 +1,5 @@
-import type { AgentCatalog, BootstrapData, ChatSessionPage, CreateSessionData, CustomAgent, ModelDefaults, ModelProfile, NavigationData, PiboCronJob, PiboCronRun, PiboCronSchedule, PiboCronStatus, PiboCronTarget, PiboProject, PiboProjectSession, ProjectsBootstrapData, PiboRoom, PiboSession, PiboSessionTraceSummary, PiboSessionTraceView, UserSkill, PiboSignalPatch, PiboSignalSnapshot, PiboRalphJob, PiboRalphJobTemplate, PiboRalphRun, PiboRalphStatus, PiboRalphStopConditionInfo, PiboRalphStopPolicy, PiboRalphTarget, ThinkingLevel } from "./types";
+import { requestJson } from "./api-http";
+import type { AgentCatalog, BootstrapData, ChatSessionPage, CreateSessionData, CustomAgent, ModelDefaults, ModelProfile, NavigationData, PiboCronJob, PiboCronRun, PiboCronSchedule, PiboCronStatus, PiboCronTarget, PiboProject, PiboProjectSession, ProjectsBootstrapData, PiboRoom, PiboSession, PiboSessionTraceSummary, PiboSessionTraceView, UserSkill, PiboSignalPatch, PiboSignalSnapshot } from "./types";
 
 const DOWNLOAD_FILENAME_RE = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i;
 
@@ -1573,20 +1574,6 @@ function compactObject<T extends Record<string, unknown>>(input: T): Partial<T> 
 	return Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined && value !== "")) as Partial<T>;
 }
 
-async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-	const response = await fetch(path, init);
-	const payload = await response.json().catch(() => undefined);
-	if (!response.ok) {
-		const message =
-			payload && typeof payload === "object" && "error" in payload ? String(payload.error) : "Request failed";
-		const error = new Error(message) as Error & { status?: number; data?: unknown };
-		error.status = response.status;
-		error.data = payload;
-		throw error;
-	}
-	return payload as T;
-}
-
 function createNavigationParams(piboSessionId?: string, includeArchived = false, roomId?: string): URLSearchParams {
 	const params = new URLSearchParams();
 	if (piboSessionId) params.set("piboSessionId", piboSessionId);
@@ -1653,15 +1640,4 @@ function fromEtag(value: string | null): string | undefined {
 }
 
 
-export type RalphJobInput = { name?: string; description?: string; enabled?: boolean; target: PiboRalphTarget; profile: string; prompt: string; maxIterations?: number | null; stopPolicy?: PiboRalphStopPolicy | null; modelOverride?: ModelProfile | null; thinkingLevel?: ThinkingLevel | null; fastMode?: boolean | null };
-export async function getRalphStatus(): Promise<{ status: PiboRalphStatus }> { return requestJson<{ status: PiboRalphStatus }>("/api/chat/ralph/status"); }
-export async function getRalphConditions(): Promise<{ conditions: PiboRalphStopConditionInfo[] }> { return requestJson<{ conditions: PiboRalphStopConditionInfo[] }>("/api/chat/ralph/conditions"); }
-export async function getRalphTemplates(): Promise<{ templates: PiboRalphJobTemplate[] }> { return requestJson<{ templates: PiboRalphJobTemplate[] }>("/api/chat/ralph/templates"); }
-export async function getRalphJobs(includeDisabled = true): Promise<{ jobs: PiboRalphJob[] }> { const suffix = includeDisabled ? "?includeDisabled=true" : ""; return requestJson<{ jobs: PiboRalphJob[] }>(`/api/chat/ralph/jobs${suffix}`); }
-export async function postRalphJob(input: RalphJobInput): Promise<{ job: PiboRalphJob }> { return requestJson<{ job: PiboRalphJob }>("/api/chat/ralph/jobs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) }); }
-export async function patchRalphJob(id: string, input: Partial<RalphJobInput>): Promise<{ job: PiboRalphJob }> { return requestJson<{ job: PiboRalphJob }>(`/api/chat/ralph/jobs/${encodeURIComponent(id)}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(input) }); }
-export async function deleteRalphJob(id: string): Promise<{ removed: boolean }> { return requestJson<{ removed: boolean }>(`/api/chat/ralph/jobs/${encodeURIComponent(id)}`, { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({}) }); }
-export async function startRalphJob(id: string): Promise<{ run: PiboRalphRun }> { return requestJson<{ run: PiboRalphRun }>(`/api/chat/ralph/jobs/${encodeURIComponent(id)}/start`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({}) }); }
-export async function stopRalphJob(id: string): Promise<{ job: PiboRalphJob }> { return requestJson<{ job: PiboRalphJob }>(`/api/chat/ralph/jobs/${encodeURIComponent(id)}/stop`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({}) }); }
-export async function cancelRalphJob(id: string): Promise<{ job: PiboRalphJob }> { return requestJson<{ job: PiboRalphJob }>(`/api/chat/ralph/jobs/${encodeURIComponent(id)}/cancel`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({}) }); }
-export async function getRalphRuns(jobId?: string, limit = 100): Promise<{ runs: PiboRalphRun[] }> { const params = new URLSearchParams(); if (jobId) params.set("jobId", jobId); params.set("limit", String(limit)); return requestJson<{ runs: PiboRalphRun[] }>(`/api/chat/ralph/runs?${params.toString()}`); }
+export * from "./api-ralph";
