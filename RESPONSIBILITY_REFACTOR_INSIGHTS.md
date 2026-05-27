@@ -83,6 +83,12 @@
 - Existing workflow store/persistence tests (`workflow-store-facts`, `workflow-persistence-validation`, `workflow-run-inspection`, `workflow-sqlite-schema`, node-attempt persistence, catalog/published version tests) provide broad coverage for store refactors; add focused mapper/schema/catalog/list-query/write-value/draft-write tests only if extraction changes visibility, null/optional handling, migration behavior, catalog immutability semantics, bind ordering, canonical-definition write behavior, active-draft conflicts, or current-draft identity updates.
 - Store entry point responsibility is much improved and under the target size. Further store splitting likely has diminishing returns; pivot to another high-value large target unless review identifies a specific store seam.
 
+## Debug web seams
+
+- `src/debug/web-render-analysis.ts` now owns the pure `pibo debug web` render snapshot/watch analysis seam: snapshot/watch types, snapshot formatting, snapshot diffing, compact watch formatting, logical node matching, and flicker inference. `src/debug/web.ts` re-exports `formatWatch` and `inferWatchFlickers` so existing tests/imports from the debug web entry point keep working.
+- `test/debug-cli.test.mjs` covers the render-analysis seam indirectly through `dist/debug/web.js`: watch final-snapshot delta output, flicker matching order, and debug web/report CLI behavior. Re-run it before changing snapshot/watch formatting, logical node matching, flicker thresholds, or public debug web helper exports.
+- `src/debug/web.ts` is still large (~4,129 LOC) but now has a clearer boundary: command dispatch/CDP capture, browser-injected benchmark scripts, streaming benchmark summary/report formatting, provider telemetry collection, and artifact I/O remain in the entry module. The next useful debug-web refactor should pick one of those seams with existing `test/debug-cli.test.mjs` coverage; streaming benchmark report/summary formatting and provider telemetry collection are likely safer than CDP orchestration.
+
 ## Trace engine seams
 
 - `src/shared/trace-nodes.ts` now owns generic trace node tree helpers: node sorting/order comparison, pre-order flattening, parent/child nesting, and id mapping. `src/shared/trace-engine.ts` re-exports these helpers to preserve existing imports from the trace-engine barrel.
