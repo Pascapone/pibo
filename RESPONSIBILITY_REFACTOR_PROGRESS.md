@@ -68,7 +68,7 @@ Initial high-priority candidates from line-count scan:
 - Result: `WorkflowsArea.tsx` no longer owns React Flow imports, graph edit state/callbacks, graph node-card rendering, selected-element descriptions, graph picker loading, or layout-save orchestration; it keeps Workflow Builder inspector rendering behind the explicit `WorkflowGraphInspectorSlotProps` render slot.
 - Evidence: `WorkflowsArea.tsx` dropped from 2,659 to 2,166 LOC; the new `WorkflowGraphCanvas.tsx` is 511 LOC and keeps the canvas/controller below the 1,000 LOC target.
 - Validation: host `git diff --check` passed; Docker Workflow Builder helper group `node --test test/chat-ui-workflow-settings-model.test.mjs test/chat-ui-workflow-node-defaults.test.mjs test/chat-ui-workflow-graph-model.test.mjs test/chat-ui-workflow-edge-adapters.test.mjs test/chat-ui-workflow-inspector-forms.test.mjs test/chat-ui-workflow-version-history-model.test.mjs` passed; Docker `npm run chat-ui:typecheck` passed; Docker root `npm run typecheck` passed. Docker route smoke `curl http://127.0.0.1:4802/apps/chat` returned curl exit 7/HTTP 000 because port 4802 was not listening; no service restart was performed.
-- Commit: pending.
+- Commit: `f6f4acf` (`refactor(chat-ui): extract workflow graph canvas`).
 - Blockers: worker Chat Web server on port 4802 remains unavailable for route smoke checks; not blocking this component extraction because focused tests and typechecks passed.
 - Exact next step: Continue shrinking `WorkflowsArea.tsx`; the next safe seams are the focused node/edge inspector React rendering modules, or the prompt-asset editor UI/effect boundary now that graph canvas ownership is isolated.
 
