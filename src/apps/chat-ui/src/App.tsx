@@ -47,7 +47,8 @@ import {
 	Wrench,
 	X,
 } from "lucide-react";
-import { createWebAnnotationBinding, deleteProject, deleteRoom, deleteSession, fetchSignalTree, downloadChatFile, getBootstrap, getNavigation, getProjectsBootstrap, getSessionPage, getTrace, getTraceSummary, injectWebAnnotationBinding, listWebAnnotations, listWebAnnotationTargets, markRoomRead, markSessionRead, patchProject, patchProjectSession, patchRoom, patchSession, patchWebAnnotation, postAction, postMessage, postProject, postProjectMessage, postProjectSession, postRoom, postSession, signInWithGoogle, signOut, subscribeSignalTree, uploadChatFiles, type ChatUploadedFile, type WebAnnotationBindingResponse, type WebAnnotationMessageAttachment, type WebAnnotationOverlayConfig, type WebAnnotationTargetSummary } from "./api";
+import { deleteProject, deleteRoom, deleteSession, fetchSignalTree, downloadChatFile, getBootstrap, getNavigation, getProjectsBootstrap, getSessionPage, getTrace, getTraceSummary, markRoomRead, markSessionRead, patchProject, patchProjectSession, patchRoom, patchSession, postAction, postMessage, postProject, postProjectMessage, postProjectSession, postRoom, postSession, signInWithGoogle, signOut, subscribeSignalTree, uploadChatFiles, type ChatUploadedFile } from "./api";
+import { createWebAnnotationBinding, injectWebAnnotationBinding, listWebAnnotations, listWebAnnotationTargets, patchWebAnnotation, type WebAnnotationBindingResponse, type WebAnnotationMessageAttachment, type WebAnnotationOverlayConfig, type WebAnnotationTargetSummary } from "./api-web-annotations";
 import { createUserSkill, deleteCustomAgent, deletePiPackage, deleteUserSkill, getUserSkill, installUserSkill, listUserSkills, patchCustomAgent, patchPiPackage, postCustomAgent, postPiPackage, updateUserSkill, type SaveCustomAgentInput } from "./api-agent-designer";
 import { postContextFile } from "./api-context-files";
 import { getUserSettings, patchModelDefaults, patchUserSettings } from "./api-settings";

@@ -64,12 +64,12 @@ Initial high-priority candidates from line-count scan:
 
 ## Current state
 
-- Last batch: Extracted the Chat UI Agent Designer/capability-management API seam from `src/apps/chat-ui/src/api.ts` into `src/apps/chat-ui/src/api-agent-designer.ts`.
-- Result: Custom-agent, agent catalog, context-build, MCP description, Pi package, and user-skill request/types now live in `api-agent-designer.ts`; `App.tsx`, `ContextBuildView.tsx`, and `McpToolsView.tsx` import that focused client directly, while `api.ts` re-exports it for compatibility. `api.ts` dropped from 768 LOC to 573 LOC.
-- Validation: `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && test -f src/apps/chat-ui/src/api-agent-designer.ts && grep -R "api-agent-designer" src/apps/chat-ui/src/App.tsx src/apps/chat-ui/src/context/ContextBuildView.tsx src/apps/chat-ui/src/context/McpToolsView.tsx && ! grep -E "getAgentCatalog|getCustomAgents|getContextBuild|postCustomAgent|patchCustomAgent|deleteCustomAgent|patchMcpServerDescription|postPiPackage|patchPiPackage|deletePiPackage|listUserSkills|getUserSkill|createUserSkill|updateUserSkill|deleteUserSkill|installUserSkill|type SaveCustomAgentInput|type ContextBuildSnapshot|type ContextBuildNode|type ContextBuildDiagnostic" src/apps/chat-ui/src/api.ts && npm run build && npm run typecheck'` passed (source sanity check, root build, root typecheck). No browser/manual check was needed because this was a pure client module extraction with preserved request paths and exported names.
-- Commit: `9e703a3` (`refactor(chat-ui): extract agent designer api client`).
+- Last batch: Extracted the Chat UI Web Annotation API seam from `src/apps/chat-ui/src/api.ts` into `src/apps/chat-ui/src/api-web-annotations.ts`.
+- Result: Web annotation target/binding/overlay/message types and list/patch/target/binding/inject client functions now live in `api-web-annotations.ts`; `App.tsx` imports that focused client directly, while `api.ts` re-exports it for compatibility. `api.ts` dropped from 573 LOC to 452 LOC.
+- Validation: `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && test -f src/apps/chat-ui/src/api-web-annotations.ts && grep -q "export \\* from \"./api-web-annotations\"" src/apps/chat-ui/src/api.ts && grep -q "./api-web-annotations" src/apps/chat-ui/src/App.tsx && ! grep -E "export type WebAnnotation|listWebAnnotations|patchWebAnnotation|createWebAnnotationBinding|injectWebAnnotationBinding|listWebAnnotationTargets|compactObject" src/apps/chat-ui/src/api.ts && npm run build && npm run typecheck'` passed (source/import sanity check, root build, root typecheck). No browser/manual check was needed because this was a pure client module extraction with preserved request paths and exported names.
+- Commit: pending.
 - Blockers: none.
-- Exact next step: Continue shrinking the Chat UI API boundary with another cohesive request family from `api.ts`, likely room/session messaging APIs, web-annotation APIs, or auth/upload/download helpers.
+- Exact next step: Continue shrinking the Chat UI API boundary with another cohesive request family from `api.ts`, likely auth/upload/download helpers, trace/signal polling, or room/session messaging APIs.
 
 ## Progress log
 
@@ -117,3 +117,4 @@ Initial high-priority candidates from line-count scan:
 - 2026-05-27: Extracted the Workflow Chat UI API client seam into `src/apps/chat-ui/src/api-workflows.ts`; source sanity check, build, and root typecheck passed in Docker.
 - 2026-05-27: Extracted the prompt/settings Chat UI API client seam into `src/apps/chat-ui/src/api-settings.ts`; source sanity check, build, and root typecheck passed in Docker.
 - 2026-05-27: Extracted the Agent Designer/capability-management Chat UI API client seam into `src/apps/chat-ui/src/api-agent-designer.ts`; source sanity check, build, and root typecheck passed in Docker.
+- 2026-05-27: Extracted the Web Annotation Chat UI API client seam into `src/apps/chat-ui/src/api-web-annotations.ts`; source/import sanity check, build, and root typecheck passed in Docker.
