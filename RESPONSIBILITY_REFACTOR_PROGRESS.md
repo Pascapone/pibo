@@ -68,7 +68,7 @@ Initial high-priority candidates from line-count scan:
 - Result: `src/shared/trace-engine.ts` dropped from 1,418 LOC to 1,049 LOC; transcript projection now lives in a 391 LOC focused helper module that owns `traceNodesFromEntries`, transcript entry filtering while a live turn is open, user/session-info nodes, persisted assistant turn/message/reasoning/tool nodes, persisted tool results, and transcript run-notification nodes.
 - Evidence: The extraction is behavior-preserving: `trace-engine.ts` imports transcript projection helpers and re-exports `traceNodesFromEntries` for existing callers, while event-log/live-patch orchestration remains in the trace engine.
 - Validation: host `git diff --check` passed; Docker `npm run build` passed; Docker focused `node --test test/chat-trace-materialization.test.mjs test/trace-patch-identity.test.mjs test/terminal-parity-fixtures.test.mjs` passed; Docker root `npm run typecheck` passed; Docker CLI smoke `node dist/bin/pibo.js debug trace --help` passed and showed trace rebuild/check help.
-- Commit: pending (`refactor(trace): extract transcript projection`).
+- Commit: `5e93889` (`refactor(trace): extract transcript projection`).
 - Blockers: none.
 - Exact next step: Re-rank the remaining `src/shared/trace-engine.ts` responsibilities before more extraction; likely next candidates are event-to-node projection or subagent child-session link helpers, but event projection should get focused tests first because it is intertwined with live patch merge semantics.
 
