@@ -69,7 +69,7 @@ Initial high-priority candidates from line-count scan:
 - Result: `web-app.ts` now matches settings route paths, performs same-origin and session checks, delegates request parsing/persistence/response shaping to `chat-settings-routes.ts`, and invalidates the bootstrap catalog for model-default updates. Added web-route coverage for `/api/chat/user-settings` same-origin enforcement, invalid timezone rejection, shortcut sanitization, and persistence.
 - Evidence: line counts after extraction: `web-app.ts` 5,238 LOC, `chat-settings-routes.ts` 90 LOC. `test/base-prompt-web.test.mjs` now covers both base-prompt and user-settings routes; `test/web-channel.test.mjs` still covers broader Chat Web route behavior.
 - Validation: host `git diff --check` passed; Docker `npm run build` passed; Docker `node --test test/base-prompt-web.test.mjs test/web-channel.test.mjs` passed (87 tests); Docker `npm run typecheck` passed; worker route smoke `curl http://127.0.0.1:4802/apps/chat` returned exit 56/HTTP 000 connection reset without restarting services.
-- Commit: `8584262` (`refactor(chat): extract settings route helpers`).
+- Commit: `e4f8c26` (`refactor(chat): extract settings route helpers`).
 - Blockers: none.
 - Exact next step: Extract Pi-package and MCP-server description route helpers from the same settings/capability-management cluster, passing cache invalidation and custom-agent selection checks as callbacks; run `test/web-channel.test.mjs`, `npm run build`, and `npm run typecheck`.
 
