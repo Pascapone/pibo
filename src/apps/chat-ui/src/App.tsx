@@ -24,10 +24,8 @@ import { downloadChatFile } from "./api-chat-files";
 import { fetchSignalTree, getTrace, getTraceSummary, subscribeSignalTree } from "./api-trace-signals";
 import { listUserSkills } from "./api-agent-designer";
 import { getWorkflowVersionPicker, postProjectWorkflowSession, postProjectWorkflowSessionStart, type WorkflowVersionPickerOption } from "./api-workflows";
-import { THINKING_LEVELS } from "./types";
-import type { AgentCatalog, BootstrapData, ModelProfile, NavigationData, PiboProject, PiboProjectSession, ProjectsBootstrapData, PiboRoom, PiboSession, PiboSessionTraceSummary, PiboSessionTraceView, PiboSignalPatch, PiboSignalSnapshot, PiboTraceNode, PiboTraceOrderKey, PiboWebSessionNode, PiboWebSessionStatus, ThinkingLevel, UserSkill, WorkflowLifecycleEventRecord } from "./types";
+import type { AgentCatalog, BootstrapData, ModelProfile, NavigationData, PiboProject, PiboProjectSession, ProjectsBootstrapData, PiboRoom, PiboSession, PiboSessionTraceSummary, PiboSessionTraceView, PiboSignalPatch, PiboSignalSnapshot, PiboTraceNode, PiboWebSessionNode, PiboWebSessionStatus, ThinkingLevel, UserSkill, WorkflowLifecycleEventRecord } from "./types";
 import { collectBackendNodes, isTraceSnapshotCollectionEnabled } from "./tracing/snapshotCollector";
-import { type SessionBreadcrumbItem, type SessionDerivationLink, type SessionOriginLink } from "./tracing/TraceTimeline";
 import { RawEventsSidebar } from "./tracing/RawEventsSidebar";
 import { TraceHistoryLoadMore } from "./tracing/TraceHistoryLoadMore";
 import {
@@ -71,6 +69,7 @@ import {
 } from "./app-storage";
 import { compactWebAnnotationError, WebAnnotationsSessionPanel } from "./web-annotations";
 import { SessionTraceHeader } from "./session-trace-header";
+import { createSessionTraceViewLinks, createSessionTraceViewProps, resolveSessionTraceModelBadge } from "./session-trace-view-props";
 import { Composer } from "./composer/Composer";
 import { appendComposerOptimisticEvent, createComposerSendPlan } from "./composer-send";
 import {
@@ -2621,24 +2620,15 @@ function SessionTracePane({
 		onError,
 	});
 
-	const selectedTrace = null;
-	const selectedSessionNode = selectedPiboSessionId ? findSessionNode(bootstrap.sessions, selectedPiboSessionId) : undefined;
-	const traceThinkingState = resolveTraceThinkingState(currentTraceView);
-	const sessionActiveModelBadge = formatSessionModelBadge(
+	const sessionActiveModelBadge = resolveSessionTraceModelBadge({
+		bootstrap,
+		selectedPiboSessionId,
+		selectedSessionProfile,
 		selectedSessionActiveModel,
-		bootstrap.runtimeStatus?.thinkingLevel ?? traceThinkingState.level ?? resolveSessionThinkingLevel(bootstrap, selectedSessionProfile, Boolean(selectedSessionNode?.parentId)),
-		bootstrap.runtimeStatus?.fastMode ?? traceThinkingState.fast ?? resolveSessionFastMode(bootstrap, selectedSessionProfile, Boolean(selectedSessionNode?.parentId)) ?? false,
-	);
-	const sessionBreadcrumbs = useMemo(
-		() => selectedPiboSessionId ? createSessionBreadcrumbs(bootstrap.sessions, selectedPiboSessionId) : [],
-		[bootstrap.sessions, selectedPiboSessionId],
-	);
-	const originSession = useMemo(
-		() => selectedPiboSessionId ? createOriginSessionLink(bootstrap.sessions, selectedPiboSessionId) : undefined,
-		[bootstrap.sessions, selectedPiboSessionId],
-	);
-	const derivedSessions = useMemo(
-		() => selectedPiboSessionId ? createDerivedSessionLinks(bootstrap.sessions, selectedPiboSessionId) : [],
+		currentTraceView,
+	});
+	const sessionLinks = useMemo(
+		() => createSessionTraceViewLinks(bootstrap.sessions, selectedPiboSessionId),
 		[bootstrap.sessions, selectedPiboSessionId],
 	);
 	const loadingTrace = Boolean(selectedPiboSessionId) && tracePageQuery.isFetching && !currentTraceView;
@@ -2679,6 +2669,30 @@ function SessionTracePane({
 		clearSelectedUploadAttachments();
 		await Promise.all([tracePageQuery.refetch(), webAnnotationsQuery.refetch()]);
 	};
+
+	const sessionViewProps = createSessionTraceViewProps({
+		currentTraceView,
+		isLoading: loadingTrace,
+		showThinking,
+		expandThinking,
+		selectedSessionProfile,
+		sessionActiveModelBadge,
+		selectedSessionStatus,
+		selectedSessionSignal,
+		workflowProjectSession,
+		workflowLifecycleEvents,
+		sessionNodes: bootstrap.sessions,
+		sessionLinks,
+		agentProfiles: bootstrap.agents,
+		sessionProfileChangeDisabled: creatingSession || selectedRoomArchived,
+		onSessionAgentProfileChange,
+		onFork,
+		onOpenSession,
+		onThinkingLevelChange,
+		onRefreshTrace,
+		onRefreshBootstrap,
+		onError,
+	});
 
 	return (
 		<>
@@ -2733,35 +2747,7 @@ function SessionTracePane({
 				{traceError && !currentTraceView ? (
 					<div className="min-h-0 flex-1 p-4 text-sm text-red-200">{traceError}</div>
 				) : (
-					currentSessionView.render({
-						traceView: currentTraceView,
-						selectedTrace,
-						isLoading: loadingTrace,
-						showThinking,
-						expandThinking,
-						sessionAgentProfile: selectedSessionProfile,
-						sessionActiveModel: sessionActiveModelBadge,
-						selectedSessionStatus,
-						selectedSessionSignal,
-						workflowProjectSession,
-						workflowLifecycleEvents,
-						sessionNodes: bootstrap.sessions,
-						sessionBreadcrumbs,
-						originSession,
-						derivedSessions,
-						agentProfiles: bootstrap.agents,
-						sessionProfileChangeDisabled: creatingSession || selectedRoomArchived,
-						onSessionAgentProfileChange,
-						onFork,
-						onOpenSession,
-						onThinkingLevelChange,
-						onModelChanged: async () => {
-							await onRefreshBootstrap();
-							await onRefreshTrace();
-						},
-						onRefreshBootstrap,
-						onError,
-					})
+					currentSessionView.render(sessionViewProps)
 				)}
 				{webAnnotationsPanelRendered ? (
 					<WebAnnotationsSessionPanel
@@ -3260,34 +3246,6 @@ function MobileUnreadBadge({ count }: { count?: number }) {
 }
 
 
-function createOriginSessionLink(nodes: PiboWebSessionNode[], piboSessionId: string): SessionOriginLink | undefined {
-	const selected = findSessionNode(nodes, piboSessionId);
-	if (!selected?.originId) return undefined;
-	const origin = findSessionNode(nodes, selected.originId);
-	return {
-		piboSessionId: selected.originId,
-		label: origin ? sessionBreadcrumbLabel(origin, 0) : selected.originId,
-	};
-}
-
-function createDerivedSessionLinks(nodes: PiboWebSessionNode[], piboSessionId: string): SessionDerivationLink[] {
-	const selected = findSessionNode(nodes, piboSessionId);
-	return selected?.derivedSessions.map((session) => ({
-		piboSessionId: session.piboSessionId,
-		label: sessionLabel(session),
-		profile: session.profile,
-		status: session.status,
-	})) ?? [];
-}
-
-function createSessionBreadcrumbs(nodes: PiboWebSessionNode[], piboSessionId: string): SessionBreadcrumbItem[] {
-	const path = findSessionPath(nodes, piboSessionId);
-	return path.map((node, index) => ({
-		piboSessionId: node.piboSessionId,
-		label: sessionBreadcrumbLabel(node, index),
-	}));
-}
-
 function defaultProfileFromBootstrap(bootstrap: BootstrapData): string {
 	return bootstrap.session?.profile ?? bootstrap.agents[0]?.name ?? bootstrap.customAgents[0]?.profileName ?? "";
 }
@@ -3322,49 +3280,6 @@ function resolveSessionActiveModel(
 	return profileModel?.mainModel ?? bootstrap.modelDefaults?.main;
 }
 
-function resolveSessionThinkingLevel(bootstrap: BootstrapData, profileName: string, isSubagent = false): ThinkingLevel | undefined {
-	const staticAgent = bootstrap.agents.find((agent) => agent.name === profileName);
-	const customAgent = bootstrap.customAgents.find((agent) => agent.profileName === profileName);
-	const profile = staticAgent ?? customAgent;
-	if (isSubagent) return profile?.subagentThinkingLevel ?? profile?.thinkingLevel ?? bootstrap.modelDefaults?.subagentThinking ?? bootstrap.modelDefaults?.thinking;
-	return profile?.mainThinkingLevel ?? profile?.thinkingLevel ?? bootstrap.modelDefaults?.mainThinking ?? bootstrap.modelDefaults?.thinking;
-}
-
-function resolveSessionFastMode(bootstrap: BootstrapData, profileName: string, isSubagent = false): boolean | undefined {
-	const staticAgent = bootstrap.agents.find((agent) => agent.name === profileName);
-	const customAgent = bootstrap.customAgents.find((agent) => agent.profileName === profileName);
-	const profile = staticAgent ?? customAgent;
-	if (isSubagent) return profile?.subagentFast ?? profile?.fast ?? bootstrap.modelDefaults?.subagentFast ?? bootstrap.modelDefaults?.fast;
-	return profile?.mainFast ?? profile?.fast ?? bootstrap.modelDefaults?.mainFast ?? bootstrap.modelDefaults?.fast;
-}
-
-function formatSessionModelBadge(modelLabel: string | undefined, thinkingLevel: ThinkingLevel | undefined, fast: boolean): string | undefined {
-	if (!modelLabel) return undefined;
-	return [modelLabel, thinkingLevel, fast ? "fast" : undefined].filter(Boolean).join(" ");
-}
-
-function resolveTraceThinkingState(traceView: PiboSessionTraceView | null): { level?: ThinkingLevel; fast?: boolean } {
-	let state: { level?: ThinkingLevel; fast?: boolean } = {};
-	if (!traceView) return state;
-	for (const node of flattenTraceNodes(traceView.nodes)) {
-		if (node.type !== "execution.command" || (node.title !== "thinking" && node.title !== "fast_mode")) continue;
-		const output = node.output && typeof node.output === "object" ? node.output as Record<string, unknown> : undefined;
-		const level = typeof output?.level === "string" && isThinkingLevel(output.level) ? output.level : undefined;
-		state = {
-			level: level ?? state.level,
-			fast: node.title === "fast_mode" ? output?.mode === "fast" : state.fast,
-		};
-	}
-	return state;
-}
-
-function flattenTraceNodes(nodes: readonly PiboTraceNode[]): PiboTraceNode[] {
-	return nodes.flatMap((node) => [node, ...flattenTraceNodes(node.children)]);
-}
-
-function isThinkingLevel(value: string): value is ThinkingLevel {
-	return THINKING_LEVELS.includes(value as ThinkingLevel);
-}
 
 function findSessionNode(nodes: PiboWebSessionNode[], piboSessionId: string): PiboWebSessionNode | undefined {
 	for (const node of nodes) {
@@ -3387,17 +3302,6 @@ function findSessionPath(
 		if (childPath.length) return childPath;
 	}
 	return [];
-}
-
-function sessionBreadcrumbLabel(node: PiboWebSessionNode, index: number): string {
-	if (!index) return node.profile || node.title;
-	if (node.subagentName && node.subagentName !== node.profile) return `${node.subagentName} (${node.profile})`;
-	return node.profile || node.subagentName || node.title;
-}
-
-function sessionLabel(session: Pick<PiboWebSessionNode, "title" | "profile" | "subagentName">): string {
-	if (session.subagentName && session.subagentName !== session.profile) return `${session.subagentName} (${session.profile})`;
-	return session.title || session.profile || session.subagentName || "Untitled Session";
 }
 
 
