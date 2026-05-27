@@ -64,12 +64,12 @@ Initial high-priority candidates from line-count scan:
 
 ## Current state
 
-- Last batch: Extracted workflow UI/catalog record invariants and published-version record factory/assertions into `packages/workflows/src/store/catalog-records.ts`.
-- Result: `packages/workflows/src/store/index.ts` is down from 1,380 to 1,316 LOC and now keeps store interfaces plus the `SqliteWorkflowRunStore` API/write/query methods; public record constants, guards, and published-version helpers remain re-exported from the store entry point.
-- Validation: `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace/packages/workflows && npm test -- src/testing/workflow-store-facts.test.ts src/testing/workflow-persistence-validation.test.ts src/testing/workflow-run-inspection.test.ts src/testing/workflow-sqlite-schema.test.ts src/testing/node-attempt-persistence.test.ts src/testing/workflow-catalog-entities.test.ts src/testing/workflow-published-versions.test.ts'` passed (138 passing because the package test script also includes `src/**/*.test.ts`); `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && npm run typecheck'` passed. Closest practical store E2E is the workflow package catalog/published-version/persistence coverage across SQLite restarts.
-- Commit: `3cdbcc7f8b9e4b4f64a6531e24374bcab3fdf498` (`refactor(workflows): extract store catalog records`).
+- Last batch: Extracted repeated workflow store list-query construction into `packages/workflows/src/store/list-query.ts`.
+- Result: `packages/workflows/src/store/index.ts` is down from 1,316 to 1,173 LOC. Store list methods now delegate `WHERE` assembly, bind ordering, and limit clamping to a focused store-local helper while keeping SQL text and row hydration at call sites.
+- Validation: `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace/packages/workflows && npm test -- src/testing/workflow-store-facts.test.ts src/testing/workflow-persistence-validation.test.ts src/testing/workflow-run-inspection.test.ts src/testing/workflow-sqlite-schema.test.ts src/testing/node-attempt-persistence.test.ts src/testing/workflow-catalog-entities.test.ts src/testing/workflow-published-versions.test.ts'` passed (138 passing because the package test script also includes `src/**/*.test.ts`); `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && npm run typecheck'` passed. Closest practical store E2E is the workflow package list/persistence coverage across SQLite restarts.
+- Commit: pending (`refactor(workflows): extract store list query helper`).
 - Blockers: none.
-- Exact next step: Continue `packages/workflows/src/store/index.ts` with a small test-backed extraction of repeated list-query construction helpers (where-clause assembly plus `listLimit`) or, if that proves too coupled, record a short analysis of the remaining store class seams before moving more code.
+- Exact next step: Continue `packages/workflows/src/store/index.ts` with a type-only extraction of public store interfaces and list filter types into a `store/contracts.ts` module re-exported from the entry point, or first inspect downstream imports if contract movement looks risky.
 
 ## Progress log
 
@@ -101,3 +101,4 @@ Initial high-priority candidates from line-count scan:
 - 2026-05-27: Extracted workflow store row types/mappers into `packages/workflows/src/store/row-mappers.ts`; focused store/persistence/schema/inspection command (package script ran all 138 workflow tests) and root typecheck passed in Docker.
 - 2026-05-27: Extracted workflow store schema metadata and install/migration setup into `packages/workflows/src/store/schema.ts`; focused store/persistence/schema/inspection command (package script ran all 138 workflow tests) and root typecheck passed in Docker.
 - 2026-05-27: Extracted workflow store catalog record constants/guards and published-version record helpers into `packages/workflows/src/store/catalog-records.ts`; focused store/persistence/schema/inspection command (package script ran all 138 workflow tests) and root typecheck passed in Docker.
+- 2026-05-27: Extracted workflow store list-query construction and limit clamping into `packages/workflows/src/store/list-query.ts`; focused store/persistence/schema/inspection command (package script ran all 138 workflow tests) and root typecheck passed in Docker.

@@ -41,6 +41,7 @@ import {
   assertWorkflowUiRecordSource,
   createWorkflowPublishedVersionRecord,
 } from "./catalog-records.js";
+import { buildWorkflowStoreListQuery, workflowStoreListLimit } from "./list-query.js";
 import {
   workflowArchiveStateFromRow,
   workflowCheckpointFromRow,
@@ -332,25 +333,14 @@ export class SqliteWorkflowRunStore implements
   }
 
   listDefinitionSnapshots(filter: WorkflowDefinitionSnapshotListFilter = {}): WorkflowDefinitionSnapshot[] {
-    const clauses: string[] = [];
-    const values: Array<string | number> = [];
-    if (filter.workflowId !== undefined) {
-      clauses.push("workflow_id = ?");
-      values.push(filter.workflowId);
-    }
-    if (filter.workflowVersion !== undefined) {
-      clauses.push("workflow_version = ?");
-      values.push(filter.workflowVersion);
-    }
-    if (filter.hash !== undefined) {
-      clauses.push("definition_hash = ?");
-      values.push(filter.hash);
-    }
-    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-    const limit = listLimit(filter.limit);
+    const query = buildWorkflowStoreListQuery([
+      { clause: "workflow_id = ?", value: filter.workflowId },
+      { clause: "workflow_version = ?", value: filter.workflowVersion },
+      { clause: "definition_hash = ?", value: filter.hash },
+    ], filter.limit);
     const rows = this.db
-      .prepare(`SELECT * FROM workflow_definition_snapshots ${where} ORDER BY created_at DESC LIMIT ?`)
-      .all(...values, limit) as WorkflowDefinitionSnapshotRow[];
+      .prepare(`SELECT * FROM workflow_definition_snapshots ${query.where} ORDER BY created_at DESC LIMIT ?`)
+      .all(...query.values, query.limit) as WorkflowDefinitionSnapshotRow[];
     return rows.map(workflowDefinitionSnapshotFromRow);
   }
 
@@ -405,17 +395,12 @@ export class SqliteWorkflowRunStore implements
   }
 
   listWorkflowIdentities(filter: WorkflowIdentityListFilter = {}): WorkflowIdentityRecord[] {
-    const clauses: string[] = [];
-    const values: Array<string | number> = [];
-    if (filter.workflowId !== undefined) {
-      clauses.push("workflow_id = ?");
-      values.push(filter.workflowId);
-    }
-    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-    const limit = listLimit(filter.limit);
+    const query = buildWorkflowStoreListQuery([
+      { clause: "workflow_id = ?", value: filter.workflowId },
+    ], filter.limit);
     const rows = this.db
-      .prepare(`SELECT * FROM workflow_identities ${where} ORDER BY updated_at DESC, workflow_id ASC LIMIT ?`)
-      .all(...values, limit) as WorkflowIdentityRow[];
+      .prepare(`SELECT * FROM workflow_identities ${query.where} ORDER BY updated_at DESC, workflow_id ASC LIMIT ?`)
+      .all(...query.values, query.limit) as WorkflowIdentityRow[];
     return rows.map(workflowIdentityFromRow);
   }
 
@@ -499,21 +484,13 @@ export class SqliteWorkflowRunStore implements
   }
 
   listWorkflowDrafts(filter: WorkflowDraftListFilter = {}): WorkflowDraftRecord[] {
-    const clauses: string[] = [];
-    const values: Array<string | number> = [];
-    if (filter.workflowId !== undefined) {
-      clauses.push("workflow_id = ?");
-      values.push(filter.workflowId);
-    }
-    if (filter.validationState !== undefined) {
-      clauses.push("validation_state = ?");
-      values.push(filter.validationState);
-    }
-    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-    const limit = listLimit(filter.limit);
+    const query = buildWorkflowStoreListQuery([
+      { clause: "workflow_id = ?", value: filter.workflowId },
+      { clause: "validation_state = ?", value: filter.validationState },
+    ], filter.limit);
     const rows = this.db
-      .prepare(`SELECT * FROM workflow_drafts ${where} ORDER BY updated_at DESC, draft_id ASC LIMIT ?`)
-      .all(...values, limit) as WorkflowDraftRow[];
+      .prepare(`SELECT * FROM workflow_drafts ${query.where} ORDER BY updated_at DESC, draft_id ASC LIMIT ?`)
+      .all(...query.values, query.limit) as WorkflowDraftRow[];
     return rows.map(workflowDraftFromRow);
   }
 
@@ -556,17 +533,12 @@ export class SqliteWorkflowRunStore implements
   }
 
   listWorkflowArchiveStates(filter: WorkflowArchiveStateListFilter = {}): WorkflowArchiveStateRecord[] {
-    const clauses: string[] = [];
-    const values: Array<string | number> = [];
-    if (filter.archived !== undefined) {
-      clauses.push("archived = ?");
-      values.push(filter.archived ? 1 : 0);
-    }
-    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-    const limit = listLimit(filter.limit);
+    const query = buildWorkflowStoreListQuery([
+      { clause: "archived = ?", value: filter.archived === undefined ? undefined : filter.archived ? 1 : 0 },
+    ], filter.limit);
     const rows = this.db
-      .prepare(`SELECT * FROM workflow_archive_states ${where} ORDER BY updated_at DESC, workflow_id ASC LIMIT ?`)
-      .all(...values, limit) as WorkflowArchiveStateRow[];
+      .prepare(`SELECT * FROM workflow_archive_states ${query.where} ORDER BY updated_at DESC, workflow_id ASC LIMIT ?`)
+      .all(...query.values, query.limit) as WorkflowArchiveStateRow[];
     return rows.map(workflowArchiveStateFromRow);
   }
 
@@ -618,7 +590,7 @@ export class SqliteWorkflowRunStore implements
   }
 
   listWorkflowDeleteTombstones(filter: WorkflowDeleteTombstoneListFilter = {}): WorkflowDeleteTombstoneRecord[] {
-    const limit = listLimit(filter.limit);
+    const limit = workflowStoreListLimit(filter.limit);
     const rows = this.db
       .prepare("SELECT * FROM workflow_delete_tombstones ORDER BY created_at DESC, workflow_id ASC LIMIT ?")
       .all(limit) as WorkflowDeleteTombstoneRow[];
@@ -668,17 +640,12 @@ export class SqliteWorkflowRunStore implements
   }
 
   listPublishedWorkflowVersions(filter: WorkflowPublishedVersionListFilter = {}): WorkflowPublishedVersionRecord[] {
-    const clauses: string[] = [];
-    const values: Array<string | number> = [];
-    if (filter.workflowId !== undefined) {
-      clauses.push("workflow_id = ?");
-      values.push(filter.workflowId);
-    }
-    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-    const limit = listLimit(filter.limit);
+    const query = buildWorkflowStoreListQuery([
+      { clause: "workflow_id = ?", value: filter.workflowId },
+    ], filter.limit);
     const rows = this.db
-      .prepare(`SELECT * FROM workflow_published_versions ${where} ORDER BY workflow_id ASC, version ASC LIMIT ?`)
-      .all(...values, limit) as WorkflowPublishedVersionRow[];
+      .prepare(`SELECT * FROM workflow_published_versions ${query.where} ORDER BY workflow_id ASC, version ASC LIMIT ?`)
+      .all(...query.values, query.limit) as WorkflowPublishedVersionRow[];
     return rows.map(workflowPublishedVersionFromRow);
   }
 
@@ -773,27 +740,14 @@ export class SqliteWorkflowRunStore implements
   }
 
   listRuns(filter: WorkflowRunListFilter = {}): WorkflowRun[] {
-    const clauses: string[] = [];
-    const values: Array<string | number> = [];
-
-    if (filter.workflowId !== undefined) {
-      clauses.push("workflow_id = ?");
-      values.push(filter.workflowId);
-    }
-    if (filter.status !== undefined) {
-      clauses.push("status = ?");
-      values.push(filter.status);
-    }
-    if (filter.ownerScope !== undefined) {
-      clauses.push("owner_scope = ?");
-      values.push(filter.ownerScope);
-    }
-
-    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-    const limit = listLimit(filter.limit);
+    const query = buildWorkflowStoreListQuery([
+      { clause: "workflow_id = ?", value: filter.workflowId },
+      { clause: "status = ?", value: filter.status },
+      { clause: "owner_scope = ?", value: filter.ownerScope },
+    ], filter.limit);
     const rows = this.db
-      .prepare(`SELECT * FROM workflow_runs ${where} ORDER BY updated_at DESC LIMIT ?`)
-      .all(...values, limit) as WorkflowRunRow[];
+      .prepare(`SELECT * FROM workflow_runs ${query.where} ORDER BY updated_at DESC LIMIT ?`)
+      .all(...query.values, query.limit) as WorkflowRunRow[];
     return rows.map(workflowRunFromRow);
   }
 
@@ -835,33 +789,16 @@ export class SqliteWorkflowRunStore implements
   }
 
   listEvents(filter: WorkflowEventListFilter = {}): WorkflowEventRecord[] {
-    const clauses: string[] = [];
-    const values: Array<string | number> = [];
-    if (filter.workflowRunId !== undefined) {
-      clauses.push("workflow_run_id = ?");
-      values.push(filter.workflowRunId);
-    }
-    if (filter.type !== undefined) {
-      clauses.push("type = ?");
-      values.push(filter.type);
-    }
-    if (filter.nodeId !== undefined) {
-      clauses.push("node_id = ?");
-      values.push(filter.nodeId);
-    }
-    if (filter.edgeId !== undefined) {
-      clauses.push("edge_id = ?");
-      values.push(filter.edgeId);
-    }
-    if (filter.attemptId !== undefined) {
-      clauses.push("attempt_id = ?");
-      values.push(filter.attemptId);
-    }
-    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-    const limit = listLimit(filter.limit);
+    const query = buildWorkflowStoreListQuery([
+      { clause: "workflow_run_id = ?", value: filter.workflowRunId },
+      { clause: "type = ?", value: filter.type },
+      { clause: "node_id = ?", value: filter.nodeId },
+      { clause: "edge_id = ?", value: filter.edgeId },
+      { clause: "attempt_id = ?", value: filter.attemptId },
+    ], filter.limit);
     const rows = this.db
-      .prepare(`SELECT * FROM workflow_events ${where} ORDER BY created_at ASC, id ASC LIMIT ?`)
-      .all(...values, limit) as WorkflowEventRow[];
+      .prepare(`SELECT * FROM workflow_events ${query.where} ORDER BY created_at ASC, id ASC LIMIT ?`)
+      .all(...query.values, query.limit) as WorkflowEventRow[];
     return rows.map(workflowEventFromRow);
   }
 
@@ -938,31 +875,15 @@ export class SqliteWorkflowRunStore implements
   }
 
   listNodeAttempts(filter: WorkflowNodeAttemptListFilter = {}): NodeAttempt[] {
-    const clauses: string[] = [];
-    const values: Array<string | number> = [];
-
-    if (filter.workflowRunId !== undefined) {
-      clauses.push("workflow_run_id = ?");
-      values.push(filter.workflowRunId);
-    }
-    if (filter.nodeId !== undefined) {
-      clauses.push("node_id = ?");
-      values.push(filter.nodeId);
-    }
-    if (filter.kind !== undefined) {
-      clauses.push("kind = ?");
-      values.push(filter.kind);
-    }
-    if (filter.status !== undefined) {
-      clauses.push("status = ?");
-      values.push(filter.status);
-    }
-
-    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-    const limit = listLimit(filter.limit);
+    const query = buildWorkflowStoreListQuery([
+      { clause: "workflow_run_id = ?", value: filter.workflowRunId },
+      { clause: "node_id = ?", value: filter.nodeId },
+      { clause: "kind = ?", value: filter.kind },
+      { clause: "status = ?", value: filter.status },
+    ], filter.limit);
     const rows = this.db
-      .prepare(`SELECT * FROM workflow_node_attempts ${where} ORDER BY started_at DESC, id DESC LIMIT ?`)
-      .all(...values, limit) as WorkflowNodeAttemptRow[];
+      .prepare(`SELECT * FROM workflow_node_attempts ${query.where} ORDER BY started_at DESC, id DESC LIMIT ?`)
+      .all(...query.values, query.limit) as WorkflowNodeAttemptRow[];
     return rows.map(workflowNodeAttemptFromRow);
   }
 
@@ -1009,29 +930,15 @@ export class SqliteWorkflowRunStore implements
   }
 
   listEdgeTransfers(filter: WorkflowEdgeTransferListFilter = {}): EdgeTransfer[] {
-    const clauses: string[] = [];
-    const values: Array<string | number> = [];
-    if (filter.workflowRunId !== undefined) {
-      clauses.push("workflow_run_id = ?");
-      values.push(filter.workflowRunId);
-    }
-    if (filter.edgeId !== undefined) {
-      clauses.push("edge_id = ?");
-      values.push(filter.edgeId);
-    }
-    if (filter.targetNodeId !== undefined) {
-      clauses.push("target_node_id = ?");
-      values.push(filter.targetNodeId);
-    }
-    if (filter.status !== undefined) {
-      clauses.push("status = ?");
-      values.push(filter.status);
-    }
-    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-    const limit = listLimit(filter.limit);
+    const query = buildWorkflowStoreListQuery([
+      { clause: "workflow_run_id = ?", value: filter.workflowRunId },
+      { clause: "edge_id = ?", value: filter.edgeId },
+      { clause: "target_node_id = ?", value: filter.targetNodeId },
+      { clause: "status = ?", value: filter.status },
+    ], filter.limit);
     const rows = this.db
-      .prepare(`SELECT * FROM workflow_edge_transfers ${where} ORDER BY created_at ASC, id ASC LIMIT ?`)
-      .all(...values, limit) as WorkflowEdgeTransferRow[];
+      .prepare(`SELECT * FROM workflow_edge_transfers ${query.where} ORDER BY created_at ASC, id ASC LIMIT ?`)
+      .all(...query.values, query.limit) as WorkflowEdgeTransferRow[];
     return rows.map(workflowEdgeTransferFromRow);
   }
 
@@ -1076,21 +983,13 @@ export class SqliteWorkflowRunStore implements
   }
 
   listCheckpoints(filter: WorkflowCheckpointListFilter = {}): WorkflowCheckpoint[] {
-    const clauses: string[] = [];
-    const values: Array<string | number> = [];
-    if (filter.workflowRunId !== undefined) {
-      clauses.push("workflow_run_id = ?");
-      values.push(filter.workflowRunId);
-    }
-    if (filter.namespace !== undefined) {
-      clauses.push("namespace = ?");
-      values.push(filter.namespace);
-    }
-    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-    const limit = listLimit(filter.limit);
+    const query = buildWorkflowStoreListQuery([
+      { clause: "workflow_run_id = ?", value: filter.workflowRunId },
+      { clause: "namespace = ?", value: filter.namespace },
+    ], filter.limit);
     const rows = this.db
-      .prepare(`SELECT * FROM workflow_checkpoints ${where} ORDER BY created_at DESC, id DESC LIMIT ?`)
-      .all(...values, limit) as WorkflowCheckpointRow[];
+      .prepare(`SELECT * FROM workflow_checkpoints ${query.where} ORDER BY created_at DESC, id DESC LIMIT ?`)
+      .all(...query.values, query.limit) as WorkflowCheckpointRow[];
     return rows.map(workflowCheckpointFromRow);
   }
 
@@ -1132,29 +1031,15 @@ export class SqliteWorkflowRunStore implements
   }
 
   listWakeups(filter: WorkflowWakeupListFilter = {}): WorkflowWakeup[] {
-    const clauses: string[] = [];
-    const values: Array<string | number> = [];
-    if (filter.workflowRunId !== undefined) {
-      clauses.push("workflow_run_id = ?");
-      values.push(filter.workflowRunId);
-    }
-    if (filter.nodeAttemptId !== undefined) {
-      clauses.push("node_attempt_id = ?");
-      values.push(filter.nodeAttemptId);
-    }
-    if (filter.kind !== undefined) {
-      clauses.push("kind = ?");
-      values.push(filter.kind);
-    }
-    if (filter.correlationId !== undefined) {
-      clauses.push("correlation_id = ?");
-      values.push(filter.correlationId);
-    }
-    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-    const limit = listLimit(filter.limit);
+    const query = buildWorkflowStoreListQuery([
+      { clause: "workflow_run_id = ?", value: filter.workflowRunId },
+      { clause: "node_attempt_id = ?", value: filter.nodeAttemptId },
+      { clause: "kind = ?", value: filter.kind },
+      { clause: "correlation_id = ?", value: filter.correlationId },
+    ], filter.limit);
     const rows = this.db
-      .prepare(`SELECT * FROM workflow_wakeups ${where} ORDER BY available_at ASC, id ASC LIMIT ?`)
-      .all(...values, limit) as WorkflowWakeupRow[];
+      .prepare(`SELECT * FROM workflow_wakeups ${query.where} ORDER BY available_at ASC, id ASC LIMIT ?`)
+      .all(...query.values, query.limit) as WorkflowWakeupRow[];
     return rows.map(workflowWakeupFromRow);
   }
 
@@ -1215,27 +1100,14 @@ export class SqliteWorkflowRunStore implements
   }
 
   listWaitTokens(filter: WorkflowWaitTokenListFilter = {}): WorkflowWaitToken[] {
-    const clauses: string[] = [];
-    const values: Array<string | number> = [];
-
-    if (filter.workflowRunId !== undefined) {
-      clauses.push("workflow_run_id = ?");
-      values.push(filter.workflowRunId);
-    }
-    if (filter.status !== undefined) {
-      clauses.push("status = ?");
-      values.push(filter.status);
-    }
-    if (filter.humanNodeId !== undefined) {
-      clauses.push("human_node_id = ?");
-      values.push(filter.humanNodeId);
-    }
-
-    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-    const limit = listLimit(filter.limit);
+    const query = buildWorkflowStoreListQuery([
+      { clause: "workflow_run_id = ?", value: filter.workflowRunId },
+      { clause: "status = ?", value: filter.status },
+      { clause: "human_node_id = ?", value: filter.humanNodeId },
+    ], filter.limit);
     const rows = this.db
-      .prepare(`SELECT * FROM workflow_wait_tokens ${where} ORDER BY created_at DESC LIMIT ?`)
-      .all(...values, limit) as WorkflowWaitTokenRow[];
+      .prepare(`SELECT * FROM workflow_wait_tokens ${query.where} ORDER BY created_at DESC LIMIT ?`)
+      .all(...query.values, query.limit) as WorkflowWaitTokenRow[];
     return rows.map(workflowWaitTokenFromRow);
   }
 
@@ -1276,35 +1148,20 @@ export class SqliteWorkflowRunStore implements
   }
 
   listHumanActions(filter: WorkflowHumanActionListFilter = {}): WorkflowHumanActionRecord[] {
-    const clauses: string[] = [];
-    const values: Array<string | number> = [];
-    if (filter.workflowRunId !== undefined) {
-      clauses.push("workflow_run_id = ?");
-      values.push(filter.workflowRunId);
-    }
-    if (filter.waitTokenId !== undefined) {
-      clauses.push("wait_token_id = ?");
-      values.push(filter.waitTokenId);
-    }
-    if (filter.kind !== undefined) {
-      clauses.push("kind = ?");
-      values.push(filter.kind);
-    }
-    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-    const limit = listLimit(filter.limit);
+    const query = buildWorkflowStoreListQuery([
+      { clause: "workflow_run_id = ?", value: filter.workflowRunId },
+      { clause: "wait_token_id = ?", value: filter.waitTokenId },
+      { clause: "kind = ?", value: filter.kind },
+    ], filter.limit);
     const rows = this.db
-      .prepare(`SELECT * FROM workflow_human_actions ${where} ORDER BY created_at ASC, id ASC LIMIT ?`)
-      .all(...values, limit) as WorkflowHumanActionRow[];
+      .prepare(`SELECT * FROM workflow_human_actions ${query.where} ORDER BY created_at ASC, id ASC LIMIT ?`)
+      .all(...query.values, query.limit) as WorkflowHumanActionRow[];
     return rows.map(workflowHumanActionFromRow);
   }
 
   close(): void {
     this.db.close();
   }
-}
-
-function listLimit(limit: number | undefined): number {
-  return Math.max(1, Math.min(limit ?? 100, 1000));
 }
 
 function serialize(value: unknown): string {
