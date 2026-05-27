@@ -67,7 +67,7 @@ Initial high-priority candidates from line-count scan:
 - Last batch: Extracted the Context Files Chat UI API client seam from `src/apps/chat-ui/src/api.ts` into `src/apps/chat-ui/src/api-context-files.ts`.
 - Result: `ContextFilesView` and the App context upload path now import context-file client functions directly from the focused module, while `api.ts` re-exports the module for compatibility. `api.ts` dropped from 1,573 LOC to 1,415 LOC.
 - Validation: `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && node --test test/context-files-web.test.mjs && npm run build && npm run typecheck'` passed (`context-files-web` 3 tests, root build, root typecheck). No browser/manual check was needed because this was a pure client module extraction with preserved request paths and exported names.
-- Commit: pending.
+- Commit: `c4d067a6c08e01c300905e3db29c07fa984ff8fa` (`refactor(chat-ui): extract context files api client`).
 - Blockers: none.
 - Exact next step: Continue the Chat UI API boundary by extracting another cohesive request family from `src/apps/chat-ui/src/api.ts`, likely settings/prompt APIs or project/session APIs, with direct imports at owning UI call sites and compatibility re-exports from `api.ts`.
 
