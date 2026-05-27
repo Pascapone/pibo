@@ -1,6 +1,5 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { getPiboHome } from "../core/pibo-home.js";
 import { listBrowserUseCdpTargets, selectBestChatTarget, formatBrowserUseTargets, type BrowserUseCdpTarget } from "../tools/browser-use-cdp.js";
 import { CdpClient } from "../tools/cdp-client.js";
 import { diffSnapshots, formatSnapshot, formatSnapshotDiff, formatWatch, inferWatchFlickers, type SnapshotNode, type WebSnapshot, type WatchEvent, type WebWatch } from "./web-render-analysis.js";
@@ -59,6 +58,7 @@ import {
 	collectStreamingProviderTelemetryFromTurn,
 } from "./web-streaming-provider-telemetry.js";
 import { buildStreamingBenchmarkExpression, streamingBenchmarkEventSourceProbeScript, streamingBenchmarkFixtureHtml, type StreamingFixtureMix, type StreamingFixtureProfile } from "./web-streaming-browser-scripts.js";
+import { compactTarget, limitStdout, readBaselineSnapshot, writeArtifact, writeLastSnapshot, writeReportOutput, writeTextArtifact } from "./web-artifacts.js";
 export { formatStreamingBenchmarkAssertionSummary, formatStreamingBenchmarkUrlComparison, summarizeStreamingSelectedLiveEventSource } from "./web-streaming-report.js";
 export { attachStreamingProviderTelemetryToBenchmark, evaluateStreamingBenchmarkAssertion, evaluateStreamingBenchmarkUrlComparisonRegressions, evaluateStreamingLivePipelineRegressions, evaluateStreamingProviderRegressions, summarizeStreamingBenchmarkUrlComparison, summarizeStreamingBenchmarks, summarizeStreamingLivePipeline, summarizeStreamingProviderPreservation } from "./web-streaming-benchmark-analysis.js";
 export { collectStreamingProviderTelemetryFromSelectedBrowserSession, collectStreamingProviderTelemetryFromSession, collectStreamingProviderTelemetryFromTurn, summarizeStreamingProviderTelemetry } from "./web-streaming-provider-telemetry.js";
@@ -70,7 +70,6 @@ const DEFAULT_NODE_LIMIT = 250;
 const DEFAULT_DEPTH_LIMIT = 8;
 const DEFAULT_EVENT_LIMIT = 500;
 const DEFAULT_TEXT_LIMIT = 80;
-const STDOUT_BUDGET = 12_000;
 const BATCH_NEGATIVE_EXPECTED_REGRESSIONS = ["positive DOM updates", "DOM max jump", "SSE text events per chunk", "live pipeline flush/enqueue", "live pipeline overlay updates/flushed"] as const;
 const OVERLAY_DROP_NEGATIVE_EXPECTED_REGRESSIONS = ["positive DOM updates", "live pipeline flushed events/overlay expected", "live pipeline overlay events/input expected", "live pipeline current text/expected", "live pipeline flush/enqueue", "live pipeline overlay updates/flushed"] as const;
 
@@ -1168,69 +1167,6 @@ function stripEnvQuotes(value: string): string {
 	return value;
 }
 
-
-async function writeLastSnapshot(snapshot: WebSnapshot | undefined): Promise<void> {
-	if (!snapshot) return;
-	const file = lastSnapshotPath();
-	await mkdir(path.dirname(file), { recursive: true });
-	await writeFile(file, JSON.stringify(snapshot, null, 2), "utf-8");
-}
-
-async function readBaselineSnapshot(file?: string): Promise<WebSnapshot> {
-	const target = file ?? lastSnapshotPath();
-	let text: string;
-	try {
-		text = await readFile(target, "utf-8");
-	} catch {
-		throw new Error(`Baseline snapshot not found at ${target}. Run pibo debug web snapshot first or pass --from <artifact>.`);
-	}
-	const parsed = JSON.parse(text) as unknown;
-	if (isSnapshot(parsed)) return parsed;
-	if (isRecord(parsed) && isSnapshot(parsed.snapshot)) return parsed.snapshot;
-	if (isRecord(parsed) && isSnapshot(parsed.current)) return parsed.current;
-	throw new Error(`File is not a web render snapshot: ${target}`);
-}
-
-async function writeArtifact(kind: string, payload: unknown): Promise<string> {
-	return writeTextArtifact(kind, "json", JSON.stringify(payload, null, 2));
-}
-
-async function writeTextArtifact(kind: string, extension: string, content: string): Promise<string> {
-	const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-	const dir = path.join(getPiboHome(), "debug", "web-render", stamp);
-	await mkdir(dir, { recursive: true });
-	const file = path.join(dir, `${kind}.${extension}`);
-	await writeFile(file, content, "utf-8");
-	return file;
-}
-
-async function writeReportOutput(outputPath: string, content: string): Promise<string> {
-	const file = path.resolve(outputPath);
-	await mkdir(path.dirname(file), { recursive: true });
-	await writeFile(file, content, "utf-8");
-	return file;
-}
-
-function lastSnapshotPath(): string {
-	return path.join(getPiboHome(), "debug", "web-render", "last-snapshot.json");
-}
-
-function compactTarget(target: BrowserUseCdpTarget | { id: string; url: string; title: string; webSocketDebuggerUrl?: string }): Record<string, unknown> {
-	return { id: target.id, url: target.url, title: target.title, webSocketDebuggerUrl: target.webSocketDebuggerUrl };
-}
-
-function limitStdout(value: string): string {
-	if (value.length <= STDOUT_BUDGET) return value;
-	return `${value.slice(0, STDOUT_BUDGET)}\n... truncated ${value.length - STDOUT_BUDGET} chars by stdout budget ...`;
-}
-
-function isSnapshot(value: unknown): value is WebSnapshot {
-	return isRecord(value) && value.kind === "snapshot" && typeof value.scope === "string" && Array.isArray(value.nodes);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function isWebSocketUrl(value?: string): boolean {
 	return Boolean(value && /^wss?:\/\//.test(value));

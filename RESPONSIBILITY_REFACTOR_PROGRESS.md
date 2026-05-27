@@ -64,16 +64,17 @@ Initial high-priority candidates from line-count scan:
 
 ## Current state
 
-- Last batch: Extracted `pibo debug web` streaming benchmark scoring, preservation, regression, summary/comparison, and artifact normalization helpers from `src/debug/web.ts` into `src/debug/web-streaming-benchmark-analysis.ts`.
-- Result: `web-streaming-benchmark-analysis.ts` now owns smoothness scoring, cadence/live-pipeline/provider preservation summaries, benchmark grouping/comparison, assertion matching, artifact normalization, and numeric helper logic. `web.ts` keeps CLI command dispatch, CDP navigation/evaluation, fixture preparation, hosted compare URL resolution, artifact writing, and snapshot/watch scripts.
-- Evidence: `src/debug/web.ts` dropped from 1,855 to 1,247 LOC. The new benchmark analysis module is 636 LOC and preserves the old public helper exports through `src/debug/web.ts`.
-- Validation: host `git diff --check` passed; Docker `npm run build` passed; Docker focused `node --test test/debug-cli.test.mjs` passed; Docker root `npm run typecheck` passed; Docker CLI smoke `node dist/bin/pibo.js debug web scenario --help` printed help successfully.
-- Commit: `9e4db01` (`refactor(debug): extract web benchmark analysis`).
+- Last batch: Extracted `pibo debug web` artifact/output I/O helpers from `src/debug/web.ts` into `src/debug/web-artifacts.ts`.
+- Result: `web-artifacts.ts` now owns last-snapshot persistence, baseline snapshot artifact reads, timestamped artifact/report output writes, compact target shaping, and stdout budget limiting. `web.ts` keeps CLI command dispatch, CDP navigation/evaluation, fixture/probe preparation, hosted compare URL resolution, and snapshot/watch browser scripts.
+- Evidence: `src/debug/web.ts` dropped from 1,247 to 1,183 LOC. The new artifact/output module is 70 LOC and keeps filesystem path creation out of the debug-web command orchestrator.
+- Validation: host `git diff --check` passed; Docker `npm run build` passed; Docker focused `node --test test/debug-cli.test.mjs` passed (66 tests); Docker root `npm run typecheck` passed; Docker CLI smoke `node dist/bin/pibo.js debug web report --help` printed help successfully.
+- Commit: `32e8d50` (`refactor(debug): extract web artifact helpers`).
 - Blockers: none for this batch.
-- Exact next step: Continue `src/debug/web.ts` with a focused extraction of remaining artifact I/O/output helpers or run an analysis batch to rank the last debug-web seams. Avoid moving CDP navigation/evaluation orchestration until artifact, benchmark analysis, browser-script, report, and provider seams remain stable under review.
+- Exact next step: Run a short analysis batch on the remaining `src/debug/web.ts` responsibilities before extracting more. The next likely seams are option parsing/validation or browser snapshot/watch script generation, but CDP navigation/evaluation orchestration should stay put until a clearer boundary and focused validation target are recorded.
 
 ## Progress log
 
+- 2026-05-27: Extracted debug web artifact/output I/O helpers into `src/debug/web-artifacts.ts`; host `git diff --check`, Docker `npm run build`, focused `test/debug-cli.test.mjs` (66 tests), root `npm run typecheck`, and `node dist/bin/pibo.js debug web report --help` smoke passed.
 - 2026-05-27: Extracted debug web benchmark scoring/regression/summary/artifact normalization into `src/debug/web-streaming-benchmark-analysis.ts`; host `git diff --check`, Docker `npm run build`, focused `test/debug-cli.test.mjs`, root `npm run typecheck`, and `node dist/bin/pibo.js debug web scenario --help` smoke passed.
 - 2026-05-27: Extracted debug web browser-injected streaming benchmark scripts into `src/debug/web-streaming-browser-scripts.ts` and `src/debug/web-streaming-browser-library.ts`; host `git diff --check`, Docker `npm run build`, focused `test/debug-cli.test.mjs` (66 tests), root `npm run typecheck`, and `node dist/bin/pibo.js debug web scenario --help` smoke passed.
 - 2026-05-27: Extracted debug web provider telemetry summarization/discovery into `src/debug/web-streaming-provider-telemetry.ts`; host `git diff --check`, Docker `npm run build`, focused `test/debug-cli.test.mjs` (66 tests), root `npm run typecheck`, and `node dist/bin/pibo.js debug web scenario --help` smoke passed.
