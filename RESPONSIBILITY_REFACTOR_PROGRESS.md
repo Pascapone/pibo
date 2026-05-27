@@ -68,7 +68,7 @@ Initial high-priority candidates from line-count scan:
 - Result: `App.tsx` no longer owns signal snapshot-to-bootstrap status reconciliation, signal patch application, legacy signal-status mapping, timestamp selection, or signal snapshot node/session map merging.
 - Evidence: `App.tsx` dropped from 1,932 LOC to 1,837 LOC; the new `app-signal-status.ts` is 97 LOC.
 - Validation: host `git diff --check` passed; Docker focused `node --test test/chat-ui-app-signal-status.test.mjs` passed; Docker `npm run chat-ui:typecheck` passed; Docker root `npm run typecheck` passed. Docker route smoke `curl http://127.0.0.1:4802/apps/chat` returned connection failure/HTTP 000 because port 4802 was not listening; no service restart was performed.
-- Commit: pending implementation commit for this batch.
+- Commit: `ab697db` (`refactor(chat-ui): extract app signal status helpers`).
 - Blockers: worker Chat Web server on port 4802 is still not listening for route smoke checks; not blocking this behavior-preserving pure helper extraction because focused tests and typechecks passed.
 - Exact next step: Continue reducing `App.tsx` with another low-risk pure seam, preferably the navigation/bootstrap merge helpers near the top of `App.tsx` (`mergeNavigationIntoBootstrap`, unread-count preservation, room unread merge, and `appendSessionRoots`) with focused tests before moving more route/effect logic.
 
