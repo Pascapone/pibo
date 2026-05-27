@@ -67,7 +67,7 @@ Initial high-priority candidates from line-count scan:
 - Last batch: Extracted telemetry retention stats and prune planning/deletion helpers into `src/data/telemetry-retention.ts` while preserving the public `src/data/telemetry.ts` export surface.
 - Result: `src/data/telemetry.ts` dropped from 1,193 to 1,129 LOC; retention classes, stats row/result types, prune inputs/results, stats aggregation, dry-run planning, and delete execution now live in a focused telemetry retention module.
 - Validation: `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && npm run build && node --test test/telemetry-store.test.mjs test/runtime-telemetry.test.mjs test/telemetry-validation-fixtures.test.mjs && npm run typecheck'` passed (30 telemetry tests plus root/chat-ui/context-files typecheck). No browser/manual check was needed because this was a pure telemetry persistence helper extraction without user-facing route changes.
-- Commit: pending.
+- Commit: `f2e43dfe2df7a886d800817d112b9d6913533678` (`refactor(telemetry): extract retention helpers`).
 - Blockers: none.
 - Exact next step: Continue reducing `src/data/telemetry.ts` by extracting telemetry read/query helpers such as list-limit paging and correlated session/timeline composition, or pivot to `src/shared/trace-engine.ts` if telemetry review prefers a pause.
 
