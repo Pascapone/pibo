@@ -86,9 +86,10 @@
 ## Telemetry data seams
 
 - `src/data/telemetry-rows.ts` now owns SQLite row shapes and row-to-domain hydration for telemetry turns, phases, provider requests, provider events, and tool calls. It also owns read-side JSON parsing for persisted telemetry metadata/counters/safe fields/argument-key arrays.
-- `src/data/telemetry.ts` still owns the concrete `TelemetryStore`, SQL statements, bounded preview helpers, safe JSON/key filtering helpers, stale/session timeline composition, prune table metadata, next-command hints, and `BestEffortTelemetryService`.
-- Existing focused coverage for this seam is `test/runtime-telemetry.test.mjs` plus `test/telemetry-validation-fixtures.test.mjs`; these exercise runtime/provider/tool-call persistence, debug drill-down output, stale work, retention stats/prune, bounded preview metadata, and secret omission.
-- Next telemetry refactors should keep SQL text close to the `TelemetryStore` methods unless the extraction names a clearer responsibility. Good candidates are bounded preview/safe JSON helpers (pure data-safety logic) or prune/list-query helpers; avoid moving CLI/debug output concerns into row hydration.
+- `src/data/telemetry-preview.ts` now owns telemetry data-safety helpers and types: bounded preview shaping/truncation, preview capture-mode types, primitive-only safe JSON object filtering, and safe top-level key extraction. `src/data/telemetry.ts` re-exports these names to preserve the existing import surface.
+- `src/data/telemetry.ts` still owns the concrete `TelemetryStore`, SQL statements, stale/session timeline composition, prune table metadata, next-command hints, and `BestEffortTelemetryService`.
+- Existing focused coverage for this seam is `test/telemetry-store.test.mjs`, `test/runtime-telemetry.test.mjs`, and `test/telemetry-validation-fixtures.test.mjs`; these exercise preview volume controls, safe metadata omission, runtime/provider/tool-call persistence, debug drill-down output, stale work, retention stats/prune, and disabled preview behavior.
+- Next telemetry refactors should keep SQL text close to the `TelemetryStore` methods unless the extraction names a clearer responsibility. Good candidates are prune/list-query helpers or stale-work/session-summary composition; avoid moving CLI/debug output concerns into row hydration or preview safety.
 
 ## Commit policy
 

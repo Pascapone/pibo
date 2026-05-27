@@ -1,11 +1,11 @@
 import type { PiboJsonObject } from "../core/events.js";
+import type { TelemetryCaptureMode } from "./telemetry-preview.js";
 import type {
 	StoredTelemetryPhase,
 	StoredTelemetryProviderEvent,
 	StoredTelemetryProviderRequest,
 	StoredTelemetryToolCall,
 	StoredTelemetryTurn,
-	TelemetryCaptureMode,
 	TelemetryPhaseName,
 	TelemetryPhaseStatus,
 	TelemetryProviderEventParseStatus,

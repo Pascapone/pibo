@@ -64,12 +64,12 @@ Initial high-priority candidates from line-count scan:
 
 ## Current state
 
-- Last batch: Extracted telemetry SQLite row types and row-to-domain mappers into `src/data/telemetry-rows.ts`.
-- Result: `src/data/telemetry.ts` dropped from 1,576 to 1,278 LOC and now delegates read-side row hydration to a focused telemetry data module; public telemetry store APIs are unchanged.
-- Validation: `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && npm run build && node --test test/runtime-telemetry.test.mjs test/telemetry-validation-fixtures.test.mjs'` passed (20 tests); `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && npm run typecheck'` passed. No browser/manual check was needed because this was a persistence mapper extraction without user-facing route changes.
-- Commit: `0ed361822a7699d849677d8f0d6cfe0278407978` (`refactor(telemetry): extract row mappers`).
+- Last batch: Extracted telemetry bounded-preview and safe-field helpers into `src/data/telemetry-preview.ts` while preserving the public `src/data/telemetry.ts` export surface.
+- Result: `src/data/telemetry.ts` dropped from 1,278 to 1,193 LOC; preview volume-control, safe JSON object filtering, safe top-level key extraction, and preview capture-mode types now live in a focused telemetry data-safety module.
+- Validation: `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && npm run build && node --test test/telemetry-store.test.mjs test/runtime-telemetry.test.mjs test/telemetry-validation-fixtures.test.mjs'` passed (30 tests); `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && npm run typecheck'` passed. No browser/manual check was needed because this was a pure telemetry helper extraction without user-facing route changes.
+- Commit: pending.
 - Blockers: none.
-- Exact next step: Continue reducing `src/data/telemetry.ts` by extracting either bounded preview/safe JSON helpers or prune/list-query helpers, or pivot to `src/shared/trace-engine.ts` if telemetry review prefers a pause.
+- Exact next step: Continue reducing `src/data/telemetry.ts` by extracting prune/list-query helpers, or pivot to `src/shared/trace-engine.ts` if telemetry review prefers a pause.
 
 ## Progress log
 
@@ -106,3 +106,4 @@ Initial high-priority candidates from line-count scan:
 - 2026-05-27: Extracted workflow store write-side SQLite value serialization into `packages/workflows/src/store/write-values.ts`; focused store/persistence/schema/inspection command (package script ran all 138 workflow tests) and root typecheck passed in Docker.
 - 2026-05-27: Extracted workflow draft conflict and identity current-draft side-effect helpers into `packages/workflows/src/store/draft-writes.ts`; focused store/catalog/persistence command and root typecheck passed in Docker.
 - 2026-05-27: Extracted telemetry SQLite row types and row-to-domain mappers into `src/data/telemetry-rows.ts`; focused runtime/validation telemetry tests and root typecheck passed in Docker.
+- 2026-05-27: Extracted telemetry bounded-preview and safe-field helpers into `src/data/telemetry-preview.ts`; focused telemetry store/runtime/validation tests and root typecheck passed in Docker.
