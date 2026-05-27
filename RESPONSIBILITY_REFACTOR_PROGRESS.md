@@ -69,7 +69,7 @@ Initial high-priority candidates from line-count scan:
 - Result: Added `src/apps/chat/project-workflow-sessions.ts` for configured Project workflow session request normalization, unsupported override-field rejection, prompt-override eligibility, snapshot creation, workflow-version projection from snapshots, and run current-state shaping. `web-app.ts` now keeps route authorization, workflow validation calls, project-service mutations, session metadata updates, and lifecycle event recording.
 - Evidence: `web-app.ts` is now 7,740 LOC (down from 7,972); new `project-workflow-sessions.ts` is 295 LOC. Focused coverage in `test/web-channel.test.mjs` includes configured Project workflow session creation/start, unsupported creation input rejection, persisted UI-published definition validation, blocked diagnostics, and human wait-token paths.
 - Validation: host `git diff --check` passed; Docker `npm run build` passed; Docker `node --test test/web-channel.test.mjs` passed (84 tests); Docker `npm run typecheck` passed. Worker route smoke to `http://127.0.0.1:4802/apps/chat` returned curl exit 7/HTTP 000 connection refused because the worker web server was not listening; no restart was performed.
-- Commit: pending.
+- Commit: `0ba013f` (`refactor(chat): extract project workflow session helpers`).
 - Blockers: none.
 - Exact next step: Extract or analyze the remaining Project workflow start/create route orchestration only if a cohesive route-handler seam emerges; otherwise pivot to another high-value `web-app.ts` seam such as project/session request path parsing or workflow validation response shaping.
 
