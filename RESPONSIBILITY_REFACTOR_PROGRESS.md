@@ -68,7 +68,7 @@ Initial high-priority candidates from line-count scan:
 - Result: `app-storage.ts` now owns persisted show-thinking, expand-thinking, raw-events, archived-sessions, archived-rooms, and preferred new-session profile access; `App.tsx`/`SettingsView.tsx` call named helpers instead of duplicating string keys and default semantics.
 - Evidence: Added focused coverage in `test/chat-ui-app-storage.test.mjs` for default values, boolean/profile writes, invalid stored boolean fallback, and storage-unavailable safety. `App.tsx` direct references to these preference keys are gone.
 - Validation: host `git diff --check` passed; Docker focused `node --test test/chat-ui-app-storage.test.mjs` passed; Docker source import sanity for `app-storage.ts` and `SettingsView.tsx` passed; Docker `npm run chat-ui:typecheck` passed; Docker root `npm run typecheck` passed. Docker route smoke `curl http://127.0.0.1:4802/apps/chat` returned connection failure/HTTP 000 because port 4802 was not listening; no service restart was performed.
-- Commit: `d579bf1` (`refactor(chat-ui): extract app storage preferences`).
+- Commit: `ec7af0e` (`refactor(chat-ui): extract app storage preferences`).
 - Blockers: worker Chat Web server on port 4802 is still not listening for route smoke checks; not blocking this behavior-preserving storage helper extraction because focused tests and typechecks passed.
 - Exact next step: Continue reducing `App.tsx` by extracting route navigation path planning or room/session selection flow helpers after a small seam analysis; avoid additional generic storage work unless another raw preference key becomes duplicated.
 
