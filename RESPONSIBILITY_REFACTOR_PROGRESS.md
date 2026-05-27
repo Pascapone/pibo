@@ -64,12 +64,12 @@ Initial high-priority candidates from line-count scan:
 
 ## Current state
 
-- Last batch: Extracted the Chat Web workflow validation request/response helper seam out of `src/apps/chat/web-app.ts`.
+- Last batch: Extracted the Chat Web Workflow V2 security-boundary diagnostic seam out of `src/apps/chat/web-app.ts`.
 - Selected batch and planned validation: extracted the pure Workflow UI Authoring V2 security-boundary diagnostics (inline executable field detection, hidden LLM coercion checks, raw XState field rejection, and owner-label formatting) from `src/apps/chat/web-app.ts` into a focused Chat Web validation module while leaving shape/catalog validation and route-side validation orchestration local; validated with host `git diff --check`, Docker `npm run build`, focused `node --test test/web-channel.test.mjs test/workflow-v2-security-boundary.test.mjs`, Docker `npm run typecheck`, and a worker route smoke against `http://127.0.0.1:4802/apps/chat` without restarting services.
 - Result: Added `src/apps/chat/workflow-v2-security-validation.ts` for pure Workflow V2 security diagnostics and updated the security-boundary source audit test to follow the extracted module. `web-app.ts` now imports this boundary and keeps workflow shape validation, registry/catalog-backed node checks, JSON Schema validation, route dispatch, store writes, lifecycle events, and validation response assembly local.
 - Evidence: `web-app.ts` is now 6,417 LOC (down from 6,514); new `workflow-v2-security-validation.ts` is 110 LOC.
 - Validation: host `git diff --check` passed; Docker `npm run build` passed; Docker `node --test test/web-channel.test.mjs test/workflow-v2-security-boundary.test.mjs` passed (87 tests); Docker `npm run typecheck` passed. Worker route smoke to `http://127.0.0.1:4802/apps/chat` returned curl exit 7/HTTP 000 connection refused; no restart was performed.
-- Commit: `e56edac` (`refactor(chat): extract workflow v2 security validation`).
+- Commit: `a12a59a` (`refactor(chat): extract workflow v2 security validation`).
 - Blockers: none.
 - Exact next step: Inspect the remaining Chat Web workflow V2 validator for the next pure extraction seam, preferably JSON Schema subset validation or registered-ref params validation, before moving any route handlers.
 
