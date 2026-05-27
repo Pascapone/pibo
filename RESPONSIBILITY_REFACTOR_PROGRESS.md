@@ -67,7 +67,7 @@ Initial high-priority candidates from line-count scan:
 - Last batch: Extracted the Ralph Chat UI API client seam from `src/apps/chat-ui/src/api.ts` into `src/apps/chat-ui/src/api-ralph.ts`, and moved the shared JSON request helper into `src/apps/chat-ui/src/api-http.ts`.
 - Result: `RalphArea` now imports Ralph client functions directly from the focused module, while `api.ts` re-exports them for existing callers. `api.ts` no longer imports Ralph-specific types and remains the compatibility barrel for the broader Chat UI API client.
 - Validation: `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && node --test test/workflow-v2-lifecycle-checklist.test.mjs'` (6 tests), `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && npm run build'`, and `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && npm run typecheck'` passed. No browser/manual check was needed because this was a pure client module extraction with preserved exported names and request paths.
-- Commit: pending.
+- Commit: `e57ec21aeef45f209820276480e554e7524d102f` (`refactor(chat-ui): extract ralph api client`).
 - Blockers: none.
 - Exact next step: Continue the Chat UI API boundary by extracting the similarly focused Cron client functions from `src/apps/chat-ui/src/api.ts`, or do a quick analysis pass first if a broader API grouping is more valuable.
 
