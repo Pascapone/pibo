@@ -25,8 +25,7 @@ import { fetchSignalTree, subscribeSignalTree } from "./api-trace-signals";
 import { listUserSkills } from "./api-agent-designer";
 import { getWorkflowVersionPicker, postProjectWorkflowSession, postProjectWorkflowSessionStart, type WorkflowVersionPickerOption } from "./api-workflows";
 import type { AgentCatalog, BootstrapData, NavigationData, PiboProject, PiboProjectSession, ProjectsBootstrapData, PiboRoom, PiboSignalPatch, PiboSignalSnapshot, PiboWebSessionNode, PiboWebSessionStatus, ThinkingLevel, UserSkill, WorkflowLifecycleEventRecord } from "./types";
-import { RawEventsSidebar } from "./tracing/RawEventsSidebar";
-import { TraceHistoryLoadMore } from "./tracing/TraceHistoryLoadMore";
+import { SessionTraceLayout } from "./session-trace-layout";
 import type { LiveTraceOverlay } from "./tracing/live-overlay";
 import { useCurrentSessionTrace } from "./tracing/use-current-session-trace";
 import { useSessionTracePage } from "./tracing/use-session-trace-page";
@@ -82,10 +81,8 @@ import {
 	updateSessionNodeInBootstrap,
 	type BootstrapMutationSnapshot,
 } from "./app-bootstrap-mutations";
-import { compactWebAnnotationError, WebAnnotationsSessionPanel } from "./web-annotations";
-import { SessionTraceHeader } from "./session-trace-header";
+import { compactWebAnnotationError } from "./web-annotations";
 import { createSessionTraceViewLinks, createSessionTraceViewProps, resolveSessionTraceModelBadge } from "./session-trace-view-props";
-import { Composer } from "./composer/Composer";
 import { appendComposerOptimisticEvent, createComposerSendPlan } from "./composer-send";
 import {
 	chatBootstrapQueryKey,
@@ -2546,103 +2543,81 @@ function SessionTracePane({
 	});
 
 	return (
-		<>
-			<main
-				data-pibo-debug="chat-shell"
-				data-pibo-session-id={selectedPiboSessionId ?? undefined}
-				data-pibo-room-id={selectedRoomId ?? bootstrap.selectedRoomId ?? undefined}
-				data-pibo-view-id={sessionViewId}
-				data-pibo-state={loadingTrace ? "loading" : traceError ? "error" : selectedPiboSessionId ? "ready" : "empty"}
-				className="min-h-0 flex flex-col"
-			>
-				<SessionTraceHeader
-					title={currentTraceView?.title ?? selectedPiboSessionId ?? bootstrap.room?.name ?? selectedRoomId}
-					roomLabel={bootstrap.room?.name ?? selectedRoomId ?? "Room"}
-					headerPiboSessionId={headerPiboSessionId}
-					piboSessionId={selectedPiboSessionId}
-					piboRoomId={selectedRoomId ?? bootstrap.selectedRoomId ?? undefined}
-					webAnnotationsDisabled={!selectedPiboSessionId || selectedRoomArchived}
-					webAnnotationsPanelRendered={webAnnotationsPanelRendered}
-					workflowHeader={workflowHeader}
-					sessionViewId={sessionViewId}
-					sessionViews={sessionViews}
-					currentSessionView={currentSessionView}
-					allowedSessionViewIds={allowedSessionViewIds}
-					showRawEvents={showRawEvents}
-					showThinking={showThinking}
-					expandThinking={expandThinking}
-					onShowWebAnnotationsPanel={() => setWebAnnotationsPanelVisible(true)}
-					onHideWebAnnotationsPanel={() => setWebAnnotationsPanelVisible(false)}
-					onSelectSessionView={onSelectSessionView}
-					onToggleRawEvents={onToggleRawEvents}
-					onToggleThinking={onToggleThinking}
-					onToggleExpandThinking={onToggleExpandThinking}
-					onError={onError}
-				/>
-				{projectSessionCreatePanel ? (
-					<div className="border-b border-slate-800 bg-[#101d22] px-4 py-3">
-						{projectSessionCreatePanel}
-					</div>
-				) : null}
-				{workflowStartPanel ? (
-					<div className="border-b border-slate-800 bg-[#101d22] px-4 py-3">
-						{workflowStartPanel}
-					</div>
-				) : null}
-				<TraceHistoryLoadMore
-					traceView={currentTraceView}
-					eventLimit={traceEventLimit}
-					isFetching={tracePageQuery.isFetching}
-					onLoadOlder={() => void loadOlderTracePage(currentTraceView?.nextBeforeSequence)}
-				/>
-				{traceError && !currentTraceView ? (
-					<div className="min-h-0 flex-1 p-4 text-sm text-red-200">{traceError}</div>
-				) : (
-					currentSessionView.render(sessionViewProps)
-				)}
-				{webAnnotationsPanelRendered ? (
-					<WebAnnotationsSessionPanel
-						piboSessionId={selectedPiboSessionId}
-						annotations={visibleWebAnnotations}
-						selectedIds={selectedWebAnnotationIds}
-						loading={webAnnotationsQuery.isLoading || webAnnotationsQuery.isFetching || clearingWebAnnotations}
-						error={webAnnotationsQuery.error ? errorMessage(webAnnotationsQuery.error) : null}
-						collapsed={webAnnotationsPanelCollapsed}
-						onRefresh={() => void webAnnotationsQuery.refetch()}
-						onToggle={toggleWebAnnotationAttachment}
-						onClear={() => void clearVisibleWebAnnotations()}
-						onCollapse={toggleWebAnnotationsPanelCollapsed}
-						onClose={() => setWebAnnotationsPanelVisible(false)}
-					/>
-				) : null}
-				<Composer
-					sessionId={selectedPiboSessionId}
-					disabled={!selectedPiboSessionId || selectedRoomArchived}
-					commands={commands}
-					skills={skills}
-					value={composerText}
-					focusSignal={composerFocusSignal}
-					selectedWebAnnotations={selectedWebAnnotations}
-					selectedUploadAttachments={selectedUploadAttachments}
-					onValueChange={onComposerTextChange}
-					onCommand={onCommand}
-					onDetachWebAnnotation={detachWebAnnotationAttachment}
-					onClearWebAnnotations={clearSelectedWebAnnotationAttachments}
-					onAttachUploadedFiles={attachUploadedFiles}
-					onDetachUploadAttachment={detachUploadAttachment}
-					onClearUploadAttachments={clearSelectedUploadAttachments}
-					onSend={handleComposerSend}
-				/>
-			</main>
-
-			<RawEventsSidebar
-				traceView={currentTraceView}
-				eventLimit={rawEventLimit}
-				isFetching={tracePageQuery.isFetching}
-				visible={showRawEvents}
-				onLoadOlder={loadMoreRawEvents}
-			/>
-		</>
+		<SessionTraceLayout
+			selectedPiboSessionId={selectedPiboSessionId}
+			selectedRoomId={selectedRoomId}
+			fallbackRoomId={bootstrap.selectedRoomId ?? undefined}
+			sessionViewId={sessionViewId}
+			loadingTrace={loadingTrace}
+			traceError={traceError}
+			showRawEvents={showRawEvents}
+			currentTraceView={currentTraceView}
+			traceEventLimit={traceEventLimit}
+			rawEventLimit={rawEventLimit}
+			tracePageFetching={tracePageQuery.isFetching}
+			onLoadOlderTracePage={(beforeSequence) => void loadOlderTracePage(beforeSequence)}
+			onLoadMoreRawEvents={loadMoreRawEvents}
+			headerProps={{
+				title: currentTraceView?.title ?? selectedPiboSessionId ?? bootstrap.room?.name ?? selectedRoomId,
+				roomLabel: bootstrap.room?.name ?? selectedRoomId ?? "Room",
+				headerPiboSessionId,
+				piboSessionId: selectedPiboSessionId,
+				piboRoomId: selectedRoomId ?? bootstrap.selectedRoomId ?? undefined,
+				webAnnotationsDisabled: !selectedPiboSessionId || selectedRoomArchived,
+				webAnnotationsPanelRendered,
+				workflowHeader,
+				sessionViewId,
+				sessionViews,
+				currentSessionView,
+				allowedSessionViewIds,
+				showRawEvents,
+				showThinking,
+				expandThinking,
+				onShowWebAnnotationsPanel: () => setWebAnnotationsPanelVisible(true),
+				onHideWebAnnotationsPanel: () => setWebAnnotationsPanelVisible(false),
+				onSelectSessionView,
+				onToggleRawEvents,
+				onToggleThinking,
+				onToggleExpandThinking,
+				onError,
+			}}
+			projectSessionCreatePanel={projectSessionCreatePanel}
+			workflowStartPanel={workflowStartPanel}
+			currentSessionView={currentSessionView}
+			sessionViewProps={sessionViewProps}
+			webAnnotationsPanelRendered={webAnnotationsPanelRendered}
+			webAnnotationsPanelProps={{
+				piboSessionId: selectedPiboSessionId,
+				annotations: visibleWebAnnotations,
+				selectedIds: selectedWebAnnotationIds,
+				loading: webAnnotationsQuery.isLoading || webAnnotationsQuery.isFetching || clearingWebAnnotations,
+				error: webAnnotationsQuery.error ? errorMessage(webAnnotationsQuery.error) : null,
+				collapsed: webAnnotationsPanelCollapsed,
+				onRefresh: () => void webAnnotationsQuery.refetch(),
+				onToggle: toggleWebAnnotationAttachment,
+				onClear: () => void clearVisibleWebAnnotations(),
+				onCollapse: toggleWebAnnotationsPanelCollapsed,
+				onClose: () => setWebAnnotationsPanelVisible(false),
+			}}
+			composerProps={{
+				sessionId: selectedPiboSessionId,
+				disabled: !selectedPiboSessionId || selectedRoomArchived,
+				commands,
+				skills,
+				value: composerText,
+				focusSignal: composerFocusSignal,
+				selectedWebAnnotations,
+				selectedUploadAttachments,
+				onValueChange: onComposerTextChange,
+				onCommand,
+				onDetachWebAnnotation: detachWebAnnotationAttachment,
+				onClearWebAnnotations: clearSelectedWebAnnotationAttachments,
+				onAttachUploadedFiles: attachUploadedFiles,
+				onDetachUploadAttachment: detachUploadAttachment,
+				onClearUploadAttachments: clearSelectedUploadAttachments,
+				onSend: handleComposerSend,
+			}}
+		/>
 	);
 }
 
