@@ -68,7 +68,7 @@ Initial high-priority candidates from line-count scan:
 - Result: `WorkflowsArea.tsx` no longer owns version-history grouping, status copy, action label text, or action availability checks; the helper seam now has focused unit coverage.
 - Evidence: `WorkflowsArea.tsx` dropped from 4,513 to 4,465 LOC; the new model module is 60 LOC and `test/chat-ui-workflow-version-history-model.test.mjs` covers grouping, published-row title/source promotion, status descriptions, action labels, and action checks.
 - Validation: host `git diff --check` passed; Docker focused `node --test test/chat-ui-workflow-version-history-model.test.mjs` passed; Docker `npm run chat-ui:typecheck` passed; Docker root `npm run typecheck` passed. Docker route smoke `curl http://127.0.0.1:4802/apps/chat` returned curl exit 7/HTTP 000 because port 4802 was not listening; no service restart was performed.
-- Commit: `b200868` (`refactor(chat-ui): extract workflow history model`).
+- Commit: `4165cc7` (`refactor(chat-ui): extract workflow history model`).
 - Blockers: worker Chat Web server on port 4802 is still not listening for route smoke checks; not blocking this pure model extraction because focused tests and typechecks passed.
 - Exact next step: Continue `WorkflowsArea.tsx` by extracting the Workflow Library panel side-effect hook/component boundary, or extract graph projection/model helpers after adding focused tests around node/edge projection semantics.
 
