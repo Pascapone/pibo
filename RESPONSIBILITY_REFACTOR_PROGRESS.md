@@ -67,7 +67,7 @@ Initial high-priority candidates from line-count scan:
 - Last batch: Extracted trace live-patch node structural sharing helpers into `src/shared/trace-patch-nodes.ts` while keeping `patchTraceViewWithEvents` in `src/shared/trace-engine.ts` as the live event orchestration seam.
 - Result: `src/shared/trace-engine.ts` dropped from 1,736 to 1,636 LOC; mutable copied-node nesting, unchanged-node identity reuse, shallow node equality, and order-key equality now live in a focused helper module. The extraction also removed an unused private `mapFlatTraceNodesById` helper from the moved seam.
 - Validation: `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && npm run build'`, `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && node --test test/chat-trace-materialization.test.mjs test/chat-ui-integration.test.mjs test/trace-live-reducer.test.mjs test/trace-patch-identity.test.mjs test/debug-cli.test.mjs'` (90 tests), and `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && npm run typecheck'` passed. No browser/manual check was needed because this was a pure shared trace helper extraction with preserved runtime behavior.
-- Commit: pending.
+- Commit: `299bf0e59ea7411b4900c92ba149650a34c4bbfe` (`refactor(trace): extract patch node helpers`).
 - Blockers: none.
 - Exact next step: Continue `src/shared/trace-engine.ts` only if another clear, test-backed seam appears; otherwise pivot to a test-safety/analysis batch for `src/apps/chat-ui/src/api.ts` or another high-value Chat UI/API boundary.
 
