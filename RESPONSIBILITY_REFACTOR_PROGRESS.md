@@ -68,7 +68,7 @@ Initial high-priority candidates from line-count scan:
 - Result: `App.tsx` now delegates deleted subtree id collection, selected-session/room deletion detection, restore-selection capture, post-delete bootstrap selection, and direct selected-room target matching to a focused helper module before any larger delete orchestration refactor.
 - Evidence: Added `test/chat-ui-app-delete-flow.test.mjs` covering nested session/room subtree deletion planning, selected-state restore values, response-vs-optimistic selected-session detection, post-delete selected-session request shaping, and direct room target matching.
 - Validation: host `git diff --check` passed; Docker focused `node --test test/chat-ui-app-delete-flow.test.mjs` passed; Docker `npm run chat-ui:typecheck` passed; Docker root `npm run typecheck` passed. Docker route smoke `curl http://127.0.0.1:4802/apps/chat` returned connection failure/HTTP 000 because port 4802 was not listening; no service restart was performed.
-- Commit: pending.
+- Commit: `fba40dd` (`refactor(chat-ui): extract app delete flow helpers`).
 - Blockers: worker Chat Web server on port 4802 is still not listening for route smoke checks; not blocking this pure helper extraction because focused tests and typechecks passed.
 - Exact next step: Extract the App destructive delete side-effect orchestration only if it can stay small and callback-driven, or pivot to a fresh high-value target such as `WorkflowsArea.tsx` for component/hook seam ranking.
 
