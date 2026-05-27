@@ -64,17 +64,18 @@ Initial high-priority candidates from line-count scan:
 
 ## Current state
 
-- Last batch: Completed an analysis-only responsibility review of `src/apps/chat/web-app.ts` before changing that very large server module.
-- Selected batch and planned validation: rank safe Chat Web server/API seams using file outline, line counts, existing extracted modules, and nearby web-channel/source-check tests; validate the tracking-only change with host `git diff --check`.
-- Result: Identified three high-value, low-to-medium-risk extraction candidates: static asset/legacy shell serving, workflow web-store persistence classes/row mappers, and project/workflow session API orchestration; recorded lower-priority route/normalizer and EventSource seams.
-- Evidence: `src/apps/chat/web-app.ts` is 11,096 LOC; `createChatWebApp` route dispatch spans ~1,701 LOC; `createChatHtml` fallback shell spans ~857 LOC; workflow store classes plus row mappers occupy roughly lines 851-1664; existing coverage includes `test/web-channel.test.mjs`, `test/base-prompt-web.test.mjs`, `test/chat-signals-api.test.mjs`, and workflow V2 checklist/source tests that mention `web-app.ts`.
-- Validation: host `git diff --check` passed for this tracking-only analysis artifact.
-- Commit: `c6296c5` (`docs(refactor): analyze chat web seams`).
+- Last batch: Extracted Chat Web built static asset/public-file/index/fallback-shell serving out of `src/apps/chat/web-app.ts`.
+- Selected batch and planned validation: move static asset and legacy shell responsibilities into `src/apps/chat/static-assets.ts`; validate with host `git diff --check`, Docker `npm run build`, focused `node --test test/web-channel.test.mjs`, root `npm run typecheck`, and static route/shell smoke.
+- Result: Added `src/apps/chat/static-assets.ts` for `CHAT_WEB_MOUNT_PATH`, built index/asset/public-file responses, asset compression/cache headers, app-path detection, and the legacy fallback shell response. `web-app.ts` now delegates static route handling to that module and preserves the public `CHAT_WEB_MOUNT_PATH` export.
+- Evidence: `web-app.ts` is now 10,150 LOC (down from 11,096); `static-assets.ts` is 958 LOC and contains the formerly embedded `createChatHtml` fallback shell plus built-asset helpers. A Docker direct dist smoke reported `appPath:true`, `assetPath:false`, shell HTTP 200/text-html, and manifest HTTP 200/no-cache.
+- Validation: host `git diff --check` passed; Docker `npm run build` passed; Docker `node --test test/web-channel.test.mjs` passed; Docker `npm run typecheck` passed. Worker web route smoke to `http://127.0.0.1:4802/apps/chat` and `/apps/chat/manifest.webmanifest` returned curl exit 56 connection reset, so no browser/route assertion was possible without restarting worker services.
+- Commit: Pending.
 - Blockers: none.
-- Exact next step: Extract static asset and legacy fallback shell serving from `src/apps/chat/web-app.ts` into a focused module (for example `src/apps/chat/static-assets.ts`), then run Docker `npm run build`, focused `node --test test/web-channel.test.mjs`, root `npm run typecheck`, and a built-shell/static-asset smoke if the worker web server is reachable.
+- Exact next step: Extract Chat Web workflow persistence stores/row mappers (`ChatWorkflowDraftStore`, published versions, prompt assets, archive/tombstone/lifecycle stores) from `src/apps/chat/web-app.ts` into a focused module, preserving V2 source-check expectations and running web-channel plus workflow source/check tests.
 
 ## Progress log
 
+- 2026-05-27: Extracted Chat Web static asset/public-file/index/fallback-shell serving into `src/apps/chat/static-assets.ts`; host `git diff --check`, Docker `npm run build`, focused `node --test test/web-channel.test.mjs`, root `npm run typecheck`, and direct dist static shell/manifest smoke passed. Worker route smoke returned curl exit 56 connection reset without restarting services.
 - 2026-05-27: Completed analysis-only review of `src/apps/chat/web-app.ts` server/API responsibility seams; ranked static asset/legacy shell serving as the safest first extraction, workflow web-store persistence as the largest clear backend seam, and project/workflow session API orchestration as valuable but requiring web-channel coverage. Host `git diff --check` passed for the tracking-only artifact.
 - 2026-05-27: Extracted trace event-log projection into `src/shared/trace-event-projection.ts`: event-to-node shaping, transcript echo filtering, delta/final merge helpers, event id/order/stable-key helpers, event dedupe, latest-stream tracking, and patch content-delta id helpers; host `git diff --check`, Docker `npm run build`, focused trace materialization/patch-identity/terminal-parity tests, root `npm run typecheck`, and `pibo debug trace --help` smoke passed.
 - 2026-05-27: Added test-safety coverage for trace event-log projection: turn/reasoning/assistant nesting and status merging, tool lifecycle merging, and compaction lifecycle merging; host `git diff --check`, Docker `npm run build`, focused trace materialization/patch-identity/terminal-parity tests, root `npm run typecheck`, and `pibo debug trace --help` smoke passed.
