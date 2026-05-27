@@ -67,7 +67,7 @@ Initial high-priority candidates from line-count scan:
 - Last batch: Extracted telemetry SQLite row types and row-to-domain mappers into `src/data/telemetry-rows.ts`.
 - Result: `src/data/telemetry.ts` dropped from 1,576 to 1,278 LOC and now delegates read-side row hydration to a focused telemetry data module; public telemetry store APIs are unchanged.
 - Validation: `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && npm run build && node --test test/runtime-telemetry.test.mjs test/telemetry-validation-fixtures.test.mjs'` passed (20 tests); `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && npm run typecheck'` passed. No browser/manual check was needed because this was a persistence mapper extraction without user-facing route changes.
-- Commit: pending.
+- Commit: `0ed361822a7699d849677d8f0d6cfe0278407978` (`refactor(telemetry): extract row mappers`).
 - Blockers: none.
 - Exact next step: Continue reducing `src/data/telemetry.ts` by extracting either bounded preview/safe JSON helpers or prune/list-query helpers, or pivot to `src/shared/trace-engine.ts` if telemetry review prefers a pause.
 
