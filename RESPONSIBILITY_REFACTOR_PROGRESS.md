@@ -67,7 +67,7 @@ Initial high-priority candidates from line-count scan:
 - Last batch: Extracted the Chat UI chat-file upload/download API seam from `src/apps/chat-ui/src/api.ts` into `src/apps/chat-ui/src/api-chat-files.ts`.
 - Result: `ChatUploadedFile`, `ChatUploadResult`, `uploadChatFiles`, `downloadChatFile`, and the download filename helper now live in `api-chat-files.ts`; `App.tsx` imports the file client directly, while `api.ts` re-exports it for compatibility. `api.ts` dropped from 360 LOC to 303 LOC.
 - Validation: `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && test -f src/apps/chat-ui/src/api-chat-files.ts && grep -q "export \\* from \"./api-chat-files\"" src/apps/chat-ui/src/api.ts && grep -q "./api-chat-files" src/apps/chat-ui/src/App.tsx && ! grep -E "export async function uploadChatFiles|export async function downloadChatFile|type ChatUploadedFile|type ChatUploadResult|function downloadFilename|DOWNLOAD_FILENAME_RE" src/apps/chat-ui/src/api.ts && npm run build && npm run typecheck'` passed (source/import sanity check, root build, root typecheck). A best-effort route smoke check with `curl -fsS http://127.0.0.1:4802/apps/chat` inside the Docker worker could not connect because the worker web server was not running; no service restart was performed for this pure module extraction.
-- Commit: pending (`refactor(chat-ui): extract chat file api client`).
+- Commit: `6a89eee` (`refactor(chat-ui): extract chat file api client`).
 - Blockers: none.
 - Exact next step: Continue shrinking the remaining Chat UI API boundary by extracting the auth helpers (`signOut`, `signInWithGoogle`) into `api-auth.ts`, or take the larger session/navigation split if import churn is acceptable.
 
