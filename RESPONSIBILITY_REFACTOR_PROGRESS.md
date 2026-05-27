@@ -68,7 +68,7 @@ Initial high-priority candidates from line-count scan:
 - Result: `web-streaming-report.ts` now owns streaming benchmark Markdown/compact report formatting, report-row shaping, assertion summary/error text, and selected-live stream aggregation used by reports; `web-streaming-types.ts` owns the shared streaming benchmark contracts. `web.ts` keeps command orchestration, CDP/browser probes, telemetry collection, benchmark summarization/scoring, artifact I/O, and public re-exports for compatibility.
 - Evidence: `src/debug/web.ts` dropped from 4,129 to 3,173 LOC; the extracted report module is 492 LOC and the type module is 535 LOC. Existing debug CLI tests still import the public report/assertion helpers from `dist/debug/web.js`, proving compatibility through the old entry point.
 - Validation: host `git diff --check` passed; Docker `npm run build` passed; Docker focused `node --test test/debug-cli.test.mjs` passed (66 tests); Docker root `npm run typecheck` passed; Docker CLI smoke `node dist/bin/pibo.js debug web report --help` printed the report help.
-- Commit: pending before commit.
+- Commit: `17ae92a` (`refactor(debug): extract web streaming reports`).
 - Blockers: none for this batch.
 - Exact next step: Continue `src/debug/web.ts` with provider telemetry collection or browser-injected streaming benchmark script extraction. Prefer provider telemetry next because it is a narrower TypeScript seam with existing `test/debug-cli.test.mjs` coverage; avoid moving CDP command orchestration until the remaining helper/report seams are stable.
 
