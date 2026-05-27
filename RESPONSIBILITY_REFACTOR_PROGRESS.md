@@ -68,7 +68,7 @@ Initial high-priority candidates from line-count scan:
 - Result: `WorkflowsArea.tsx` no longer owns React Flow projection, workflow node/edge object readers, saved/auto position calculation, initial-node normalization, or selected-element presence checks; the new graph model seam has focused coverage.
 - Evidence: `WorkflowsArea.tsx` dropped from 4,465 to 4,311 LOC; the new graph model module is 172 LOC and `test/chat-ui-workflow-graph-model.test.mjs` covers node filtering, saved/node UI/auto positions, diagnostics counts, initial flags, invalid-edge dropping, graph element detection, readers, fallback labels, and next-node positioning.
 - Validation: host `git diff --check` passed; Docker focused `node --test test/chat-ui-workflow-graph-model.test.mjs` passed; Docker `npm run chat-ui:typecheck` passed; Docker root `npm run typecheck` passed. Docker route smoke `curl http://127.0.0.1:4802/apps/chat` returned curl exit 7/HTTP 000 because port 4802 was not listening; no service restart was performed.
-- Commit: pending.
+- Commit: `7d54056` (`refactor(chat-ui): extract workflow graph model`).
 - Blockers: worker Chat Web server on port 4802 is still not listening for route smoke checks; not blocking this pure graph model extraction because focused tests and typechecks passed.
 - Exact next step: Continue `WorkflowsArea.tsx` by extracting graph mutation/write helpers (`addWorkflowGraph*`, edge insertion/deletion, position writes) into the same graph model seam with focused tests for id generation, initial-node normalization, edge cleanup, and adapter insertion behavior.
 
