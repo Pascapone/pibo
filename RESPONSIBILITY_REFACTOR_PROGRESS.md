@@ -68,7 +68,7 @@ Initial high-priority candidates from line-count scan:
 - Result: `web-streaming-provider-telemetry.ts` now owns provider telemetry summarization, selected-browser session discovery, provider request paging, session/turn metadata discovery, and provider event field/stat parsing. `web.ts` keeps command orchestration, benchmark execution/scoring, live pipeline/preservation evaluation, artifact I/O, and compatibility re-exports from the old `dist/debug/web.js` entry point.
 - Evidence: `src/debug/web.ts` dropped from 3,193 to 3,028 LOC; the extracted provider telemetry module is 201 LOC. Existing debug CLI tests still import provider telemetry summary/discovery helpers from `dist/debug/web.js`, proving compatibility through the old entry point.
 - Validation: host `git diff --check` passed; Docker `npm run build` passed; Docker focused `node --test test/debug-cli.test.mjs` passed (66 tests); Docker root `npm run typecheck` passed; Docker CLI smoke `node dist/bin/pibo.js debug web scenario --help` printed streaming-benchmark provider telemetry help. A more specific `debug web scenario streaming-benchmark --help` smoke returned the expected progressive-discovery guidance to use `debug web scenario --help`.
-- Commit: pending.
+- Commit: `2302db6` (`refactor(debug): extract web provider telemetry`).
 - Blockers: none for this batch.
 - Exact next step: Continue `src/debug/web.ts` with a browser-injected streaming benchmark script extraction or an analysis batch that ranks remaining debug-web seams. Prefer the injected benchmark script only if the extracted module can stay focused on browser-side fixture/probe JavaScript; avoid moving CDP command orchestration until script/report/provider seams remain stable.
 
