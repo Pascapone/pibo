@@ -64,12 +64,12 @@ Initial high-priority candidates from line-count scan:
 
 ## Current state
 
-- Last batch: Extracted the Cron Chat UI API client seam from `src/apps/chat-ui/src/api.ts` into `src/apps/chat-ui/src/api-cron.ts`.
-- Result: `CronArea` now imports Cron client functions and input types directly from the focused module, while `api.ts` re-exports them for existing compatibility. `api.ts` no longer imports Cron-specific types and dropped from 1,643 LOC to 1,573 LOC.
-- Validation: `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && node --test test/workflow-v2-lifecycle-checklist.test.mjs'` (6 tests), `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && npm run build'`, and `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && npm run typecheck'` passed. No browser/manual check was needed because this was a pure client module extraction with preserved exported names and request paths.
-- Commit: `19a0e9eb3dc2381ee738eb6df5b7266a81c4c8ac` (`refactor(chat-ui): extract cron api client`).
+- Last batch: Extracted the Context Files Chat UI API client seam from `src/apps/chat-ui/src/api.ts` into `src/apps/chat-ui/src/api-context-files.ts`.
+- Result: `ContextFilesView` and the App context upload path now import context-file client functions directly from the focused module, while `api.ts` re-exports the module for compatibility. `api.ts` dropped from 1,573 LOC to 1,415 LOC.
+- Validation: `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && node --test test/context-files-web.test.mjs && npm run build && npm run typecheck'` passed (`context-files-web` 3 tests, root build, root typecheck). No browser/manual check was needed because this was a pure client module extraction with preserved request paths and exported names.
+- Commit: pending.
 - Blockers: none.
-- Exact next step: Continue the Chat UI API boundary by extracting the next clearly clustered feature client from `src/apps/chat-ui/src/api.ts` (likely context-file, settings, or project/session clients), or do an API grouping analysis first if the next seam is not obvious.
+- Exact next step: Continue the Chat UI API boundary by extracting another cohesive request family from `src/apps/chat-ui/src/api.ts`, likely settings/prompt APIs or project/session APIs, with direct imports at owning UI call sites and compatibility re-exports from `api.ts`.
 
 ## Progress log
 
@@ -113,3 +113,4 @@ Initial high-priority candidates from line-count scan:
 - 2026-05-27: Extracted trace live-patch structural sharing helpers into `src/shared/trace-patch-nodes.ts`; build, focused trace/debug tests, and root typecheck passed in Docker.
 - 2026-05-27: Extracted the Ralph Chat UI API client seam into `src/apps/chat-ui/src/api-ralph.ts` and shared request helper into `src/apps/chat-ui/src/api-http.ts`; workflow API source checklist, build, and root typecheck passed in Docker.
 - 2026-05-27: Extracted the Cron Chat UI API client seam into `src/apps/chat-ui/src/api-cron.ts`; workflow API source checklist, build, and root typecheck passed in Docker.
+- 2026-05-27: Extracted the Context Files Chat UI API client seam into `src/apps/chat-ui/src/api-context-files.ts`; context-files web tests, build, and root typecheck passed in Docker.

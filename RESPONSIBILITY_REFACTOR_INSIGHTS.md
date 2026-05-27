@@ -96,6 +96,7 @@
 - `src/apps/chat-ui/src/api-ralph.ts` now owns Ralph job/run/status/condition/template API client functions and `RalphJobInput`. `src/apps/chat-ui/src/api.ts` re-exports this module for compatibility, while `RalphArea` imports it directly to make the feature boundary explicit.
 - `src/apps/chat-ui/src/api.ts` remains large and still mixes workflow, project, session, context-file, agent, room, annotation, auth, and download concerns. Cron and Ralph are now extracted into focused feature clients, so the next low-risk seam should be chosen from another clustered request family rather than splitting individual functions.
 - `src/apps/chat-ui/src/api-cron.ts` now owns Cron job/run/status API client functions plus `CronJobInput` and `CronScheduleInput`. `src/apps/chat-ui/src/api.ts` re-exports this module for compatibility, while `CronArea` imports it directly to make the Cron feature boundary explicit.
+- `src/apps/chat-ui/src/api-context-files.ts` now owns Context Files API document/revision/diff types and create/list/read/update/delete/source-adoption/revision client functions. `src/apps/chat-ui/src/api.ts` re-exports this module for compatibility, while `ContextFilesView` and the App context upload path import it directly to make the context-file boundary explicit.
 
 ## Telemetry data seams
 

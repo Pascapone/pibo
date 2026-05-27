@@ -17,9 +17,8 @@ import {
 	type ContextFileDocument,
 	type ContextFileInfo,
 	type ContextFileRevision,
-	type ProductEvent,
-	type SaveState,
-} from "../api";
+} from "../api-context-files";
+import type { ProductEvent, SaveState } from "../api";
 import { MarkdownEditor, type MarkdownEditorHandle } from "./MarkdownEditor";
 
 type ContextFileScope = "global" | "agent";
