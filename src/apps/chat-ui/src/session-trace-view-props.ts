@@ -1,4 +1,5 @@
 import { THINKING_LEVELS, type BootstrapData, type PiboProjectSession, type PiboSessionSignalSnapshot, type PiboSessionTraceView, type PiboTraceNode, type PiboWebSessionNode, type PiboWebSessionStatus, type ThinkingLevel, type WorkflowLifecycleEventRecord } from "./types";
+import { findSessionNode, findSessionPath } from "./app-session-model";
 import type { ChatSessionViewProps } from "./session-views/types";
 import type { SessionBreadcrumbItem, SessionDerivationLink, SessionOriginLink } from "./tracing/TraceTimeline";
 
@@ -169,29 +170,6 @@ function flattenTraceNodes(nodes: readonly PiboTraceNode[]): PiboTraceNode[] {
 
 function isThinkingLevel(value: string): value is ThinkingLevel {
 	return THINKING_LEVELS.includes(value as ThinkingLevel);
-}
-
-function findSessionNode(nodes: readonly PiboWebSessionNode[], piboSessionId: string): PiboWebSessionNode | undefined {
-	for (const node of nodes) {
-		if (node.piboSessionId === piboSessionId) return node;
-		const child = findSessionNode(node.children, piboSessionId);
-		if (child) return child;
-	}
-	return undefined;
-}
-
-function findSessionPath(
-	nodes: readonly PiboWebSessionNode[],
-	piboSessionId: string,
-	path: readonly PiboWebSessionNode[] = [],
-): PiboWebSessionNode[] {
-	for (const node of nodes) {
-		const nextPath = [...path, node];
-		if (node.piboSessionId === piboSessionId) return nextPath;
-		const childPath = findSessionPath(node.children, piboSessionId, nextPath);
-		if (childPath.length) return childPath;
-	}
-	return [];
 }
 
 function sessionBreadcrumbLabel(node: PiboWebSessionNode, index: number): string {

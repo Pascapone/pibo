@@ -24,7 +24,7 @@ import { downloadChatFile } from "./api-chat-files";
 import { fetchSignalTree, getTrace, getTraceSummary, subscribeSignalTree } from "./api-trace-signals";
 import { listUserSkills } from "./api-agent-designer";
 import { getWorkflowVersionPicker, postProjectWorkflowSession, postProjectWorkflowSessionStart, type WorkflowVersionPickerOption } from "./api-workflows";
-import type { AgentCatalog, BootstrapData, ModelProfile, NavigationData, PiboProject, PiboProjectSession, ProjectsBootstrapData, PiboRoom, PiboSessionTraceSummary, PiboSessionTraceView, PiboSignalPatch, PiboSignalSnapshot, PiboTraceNode, PiboWebSessionNode, PiboWebSessionStatus, ThinkingLevel, UserSkill, WorkflowLifecycleEventRecord } from "./types";
+import type { AgentCatalog, BootstrapData, NavigationData, PiboProject, PiboProjectSession, ProjectsBootstrapData, PiboRoom, PiboSessionTraceSummary, PiboSessionTraceView, PiboSignalPatch, PiboSignalSnapshot, PiboTraceNode, PiboWebSessionNode, PiboWebSessionStatus, ThinkingLevel, UserSkill, WorkflowLifecycleEventRecord } from "./types";
 import { collectBackendNodes, isTraceSnapshotCollectionEnabled } from "./tracing/snapshotCollector";
 import { RawEventsSidebar } from "./tracing/RawEventsSidebar";
 import { TraceHistoryLoadMore } from "./tracing/TraceHistoryLoadMore";
@@ -119,6 +119,14 @@ import {
 	nextRecentSessionSignalExpiryMs,
 	splitSessionNodesByArchive,
 } from "./session-sidebar-helpers";
+import {
+	createClientTxnId,
+	defaultProfileFromBootstrap,
+	findSessionNode,
+	findSessionPath,
+	identityFromBootstrap,
+	resolveSessionActiveModelLabel,
+} from "./app-session-model";
 import { SettingsSidebar } from "./settings/SettingsSidebar";
 import { SettingsView } from "./settings/SettingsView";
 import type { SettingsPanel } from "./settings/types";
@@ -3004,69 +3012,6 @@ function MobileUnreadBadge({ count }: { count?: number }) {
 }
 
 
-function defaultProfileFromBootstrap(bootstrap: BootstrapData): string {
-	return bootstrap.session?.profile ?? bootstrap.agents[0]?.name ?? bootstrap.customAgents[0]?.profileName ?? "";
-}
-
-function identityFromBootstrap(bootstrap: BootstrapData | null | undefined): BootstrapData["identity"] {
-	return bootstrap?.identity ?? { userId: "user" };
-}
-
-function resolveSessionActiveModelLabel(
-	bootstrap: BootstrapData,
-	session: Pick<PiboWebSessionNode, "profile" | "parentId" | "activeModel">,
-): string | undefined {
-	const model = resolveSessionActiveModel(bootstrap, session);
-	return model ? formatModelProfile(model) : undefined;
-}
-
-function formatModelProfile(model: ModelProfile): string {
-	return `${model.provider}/${model.id}`;
-}
-
-function resolveSessionActiveModel(
-	bootstrap: BootstrapData,
-	session: Pick<PiboWebSessionNode, "profile" | "parentId" | "activeModel">,
-): ModelProfile | undefined {
-	if (session.activeModel) return session.activeModel;
-	const staticAgent = bootstrap.agents.find((agent) => agent.name === session.profile);
-	if (staticAgent?.model) return staticAgent.model;
-
-	const customAgent = bootstrap.customAgents.find((agent) => agent.profileName === session.profile);
-	const profileModel = staticAgent ?? customAgent;
-	if (session.parentId) return profileModel?.subagentModel ?? bootstrap.modelDefaults?.subagent;
-	return profileModel?.mainModel ?? bootstrap.modelDefaults?.main;
-}
-
-
-function findSessionNode(nodes: PiboWebSessionNode[], piboSessionId: string): PiboWebSessionNode | undefined {
-	for (const node of nodes) {
-		if (node.piboSessionId === piboSessionId) return node;
-		const child = findSessionNode(node.children, piboSessionId);
-		if (child) return child;
-	}
-	return undefined;
-}
-
-function findSessionPath(
-	nodes: PiboWebSessionNode[],
-	piboSessionId: string,
-	path: PiboWebSessionNode[] = [],
-): PiboWebSessionNode[] {
-	for (const node of nodes) {
-		const nextPath = [...path, node];
-		if (node.piboSessionId === piboSessionId) return nextPath;
-		const childPath = findSessionPath(node.children, piboSessionId, nextPath);
-		if (childPath.length) return childPath;
-	}
-	return [];
-}
-
-
-function createClientTxnId(): string {
-	const randomId = globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
-	return `web-${Date.now().toString(36)}-${randomId}`;
-}
 
 function ContextSidebar({
 	activePanel,
