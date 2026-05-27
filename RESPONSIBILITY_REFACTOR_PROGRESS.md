@@ -68,7 +68,7 @@ Initial high-priority candidates from line-count scan:
 - Result: `App.tsx` now imports the route-level trace pane instead of owning its orchestration; shared slash-command typing moved to `chat-commands.ts`, and shared thrown-value formatting moved to `error-message.ts` so App and the pane do not import from each other.
 - Evidence: `App.tsx` dropped from 3,060 LOC to 2,758 LOC; the new `session-trace-pane.tsx` is 301 LOC, `chat-commands.ts` is 5 LOC, and `error-message.ts` is 3 LOC.
 - Validation: `git diff --check` passed; Docker source/import sanity check with `grep` passed; Docker focused `node --test test/chat-ui-current-trace-view.test.mjs test/chat-ui-trace-page-merge.test.mjs test/chat-ui-session-trace-view-props.test.mjs test/chat-ui-composer-send.test.mjs` passed; Docker `npm run chat-ui:typecheck` passed; Docker root `npm run typecheck` passed. Docker route smoke `curl http://127.0.0.1:4802/apps/chat` returned connection failure/HTTP 000 because port 4802 was not listening; no service restart was performed.
-- Commit: `b6eabe2` (`refactor(chat-ui): extract session trace pane`).
+- Commit: `b5f82ac` (`refactor(chat-ui): extract session trace pane`).
 - Blockers: worker Chat Web server on port 4802 is still not listening for route smoke checks; not blocking this behavior-preserving module move because focused tests and typechecks passed.
 - Exact next step: Continue App modularization by extracting a Projects route side-effect hook or moving `ProjectsArea` only after breaking remaining App-local helper dependencies; alternatively run an App seam analysis to rank the next safe extraction now that `SessionTracePane` is module-owned.
 
