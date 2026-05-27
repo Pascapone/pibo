@@ -64,13 +64,13 @@ Initial high-priority candidates from line-count scan:
 
 ## Current state
 
-- Last batch: Moved the `ProjectsArea` route component out of `src/apps/chat-ui/src/App.tsx` into `src/apps/chat-ui/src/projects/ProjectsArea.tsx` now that the trace pane and project helper dependencies are module-owned.
-- Result: `App.tsx` now imports the Projects route feature module instead of owning its load/create/start/archive side effects and project-session trace-pane wiring; the unused ProjectsArea `sessionViewId` prop was removed during the move.
-- Evidence: `App.tsx` dropped from 2,758 LOC to 2,339 LOC; new `projects/ProjectsArea.tsx` is 437 LOC and keeps Projects route orchestration below the 1,000 LOC target.
+- Last batch: Extracted the App-owned Context sidebar presentation into `src/apps/chat-ui/src/context/ContextSidebar.tsx`, with `ContextPanel` moved to `src/apps/chat-ui/src/context/types.ts`.
+- Result: `App.tsx` now keeps context route/panel state but no longer owns Context sidebar chrome or context navigation icon imports.
+- Evidence: `App.tsx` dropped from 2,338 LOC to 2,217 LOC; the new `ContextSidebar.tsx` is 118 LOC and lives with the context feature modules.
 - Validation: Docker source/import sanity check passed; `git diff --check` passed; Docker `npm run chat-ui:typecheck` passed; Docker root `npm run typecheck` passed. Docker route smoke `curl http://127.0.0.1:4802/apps/chat` returned connection failure/HTTP 000 because port 4802 was not listening; no service restart was performed.
-- Commit: `4450dd0` (`refactor(chat-ui): extract projects route area`).
-- Blockers: worker Chat Web server on port 4802 is still not listening for route smoke checks; not blocking this behavior-preserving module move because focused source checks and typechecks passed.
-- Exact next step: Continue reducing `App.tsx` by extracting a focused non-route seam such as context sidebar presentation or delete-room/delete-session modal components, unless a fresh App seam analysis identifies a better lower-risk boundary.
+- Commit: `4874ff9` (`refactor(chat-ui): extract context sidebar`).
+- Blockers: worker Chat Web server on port 4802 is still not listening for route smoke checks; not blocking this behavior-preserving presentation extraction because focused source checks and typechecks passed.
+- Exact next step: Continue reducing `App.tsx` by extracting the delete-room/delete-session modal components or by splitting another focused App-owned presentation seam; avoid moving route side effects back into App.
 
 ## Progress log
 
@@ -160,3 +160,4 @@ Initial high-priority candidates from line-count scan:
 - 2026-05-27: Extracted `SessionTracePane` shell/layout JSX into `src/apps/chat-ui/src/session-trace-layout.tsx`; `git diff --check`, Docker source/import sanity, focused current-trace/trace-page/session-view-props/composer-send tests, Docker `npm run chat-ui:typecheck`, and root `npm run typecheck` passed. Worker route smoke returned curl connection failure/HTTP 000 without restarting services.
 - 2026-05-27: Moved `SessionTracePane` orchestration into `src/apps/chat-ui/src/session-trace-pane.tsx` with shared `chat-commands.ts` and `error-message.ts`; `git diff --check`, Docker source/import sanity, focused current-trace/trace-page/session-view-props/composer-send tests, Docker `npm run chat-ui:typecheck`, and root `npm run typecheck` passed. Worker route smoke returned curl connection failure/HTTP 000 without restarting services.
 - 2026-05-27: Moved the Projects route component into `src/apps/chat-ui/src/projects/ProjectsArea.tsx`; Docker source/import sanity, `git diff --check`, Docker `npm run chat-ui:typecheck`, and root `npm run typecheck` passed. Worker route smoke returned curl connection failure/HTTP 000 without restarting services.
+- 2026-05-27: Extracted the Context sidebar presentation into `src/apps/chat-ui/src/context/ContextSidebar.tsx` and moved `ContextPanel` into `src/apps/chat-ui/src/context/types.ts`; Docker source/import sanity, `git diff --check`, Docker `npm run chat-ui:typecheck`, and root `npm run typecheck` passed. Worker route smoke returned curl connection failure/HTTP 000 without restarting services.
