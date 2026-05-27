@@ -67,7 +67,7 @@ Initial high-priority candidates from line-count scan:
 - Last batch: Extracted workflow store SQLite row types, row-to-domain mappers, and row JSON parsing into `packages/workflows/src/store/row-mappers.ts`.
 - Result: `packages/workflows/src/store/index.ts` is down from 2,109 to 1,707 LOC and keeps the SQLite store interfaces, schema setup, write methods, query methods, list-limit handling, and write-side JSON serialization; row hydration now has a named module boundary.
 - Validation: `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace/packages/workflows && npm test -- src/testing/workflow-store-facts.test.ts src/testing/workflow-persistence-validation.test.ts src/testing/workflow-run-inspection.test.ts src/testing/workflow-sqlite-schema.test.ts src/testing/node-attempt-persistence.test.ts src/testing/workflow-catalog-entities.test.ts src/testing/workflow-published-versions.test.ts'` passed (138 passing because the package test script also includes `src/**/*.test.ts`); `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && npm run typecheck'` passed. Closest practical store E2E is the workflow package persistence/schema/inspection coverage across SQLite restarts.
-- Commit: `8f8a11588e3d41a2b5d36a3c195ac063407eecb9` (`refactor(workflows): extract store row mappers`).
+- Commit: `fdf1f17f53a0dea61be4b788079de2d97c09e7d6` (`refactor(workflows): extract store row mappers`).
 - Blockers: none.
 - Exact next step: Continue `packages/workflows/src/store/index.ts` with a focused schema-boundary extraction: move SQLite table/schema creation and schema metadata constants into a store-owned schema module, keeping public constants re-exported from the store entry point.
 
