@@ -67,7 +67,7 @@ Initial high-priority candidates from line-count scan:
 - Last batch: Extracted the Chat UI prompt/settings API seam from `src/apps/chat-ui/src/api.ts` into `src/apps/chat-ui/src/api-settings.ts`.
 - Result: Base prompt, compaction prompt, model-defaults, and user-settings types/functions now live in `api-settings.ts`; `App.tsx`, `BasePromptView.tsx`, and `CompactionPromptView.tsx` import that focused client directly, while `api.ts` re-exports it for compatibility. `api.ts` dropped from 868 LOC to 768 LOC.
 - Validation: `docker exec pibo-dev-refactor-responsibility-ralph bash -lc 'cd /workspace && test -f src/apps/chat-ui/src/api-settings.ts && grep -R "api-settings" src/apps/chat-ui/src/App.tsx src/apps/chat-ui/src/context/BasePromptView.tsx src/apps/chat-ui/src/context/CompactionPromptView.tsx && ! grep -E "getBasePrompt|setBasePromptMode|saveCustomBasePrompt|getCompactionPrompt|setCompactionPromptMode|saveCustomCompactionPrompt|getUserSettings|patchUserSettings|patchModelDefaults|type BasePromptMode|type CompactionPromptMode|type UserSettings|type BasePromptSnapshot|type CompactionPromptSnapshot" src/apps/chat-ui/src/api.ts && npm run build && npm run typecheck'` passed (source sanity check, root build, root typecheck). No browser/manual check was needed because this was a pure client module extraction with preserved request paths and exported names.
-- Commit: `a338694` (`refactor(chat-ui): extract settings api client`).
+- Commit: `029f038` (`refactor(chat-ui): extract settings api client`).
 - Blockers: none.
 - Exact next step: Continue the Chat UI API boundary with another cohesive request family from `api.ts`, likely agent-designer capability management or room/session messaging APIs.
 
