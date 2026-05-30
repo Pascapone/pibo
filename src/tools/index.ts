@@ -679,11 +679,11 @@ function printRalphDiscovery(): void {
 
 Commands:
   pibo ralph templates --json
-  pibo ralph add --template <id> --owner-scope <scope> --room <room-id> --start --json
-  pibo ralph list --owner-scope <scope> --all --json
-  pibo ralph runs --owner-scope <scope> --job <job-id> --json
-  pibo ralph stop --owner-scope <scope> <job-id>
-  pibo ralph cancel --owner-scope <scope> <job-id>
+  pibo ralph add --template <id> --room <room-id> --start --json
+  pibo ralph list --all --json
+  pibo ralph runs --job <job-id> --json
+  pibo ralph stop <job-id>
+  pibo ralph cancel <job-id>
 
 Next:
   pibo tools guide ralph ralph

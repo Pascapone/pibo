@@ -142,7 +142,8 @@ test("pibo tools exposes Ralph guides and helper discovery", async () => {
 		const helper = await execFileAsync("node", [cliPath, "tools", "ralph"], { cwd, env });
 		assert.match(helper.stdout, /pibo tools ralph - Ralph job helpers/);
 		assert.match(helper.stdout, /pibo ralph add --template <id>/);
-		assert.match(helper.stdout, /pibo ralph runs --owner-scope <scope> --job <job-id> --json/);
+		assert.match(helper.stdout, /pibo ralph runs --job <job-id> --json/);
+		assert.doesNotMatch(helper.stdout, /--owner-scope <scope>/);
 
 		const guide = await execFileAsync("node", [cliPath, "tools", "guide", "ralph", "ralph"], { cwd, env });
 		assert.match(guide.stdout, /# Ralph CLI Tool/);

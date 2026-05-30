@@ -247,7 +247,7 @@ Usage:
 
 Options:
   --session <id>       Open a specific Pibo session id
-  --owner-scope <id>   Limit local/direct discovery to one owner scope
+  --owner-scope <id>   Legacy/debug compatibility hint; shared-app mode ignores ownership
   --max-rows <count>   Limit rendered transcript rows (default: 20)
   --demo               Use deterministic fake session data for smoke testing
   -h, --help           Show this help

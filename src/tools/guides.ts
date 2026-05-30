@@ -19,11 +19,10 @@ Ralph runs repeatable Pibo agent jobs. Use it when the user wants an implementat
 
 ## Required Context
 
-Most commands need an owner scope. In this runtime, prefer the current session context values:
+Ralph jobs are app-global. Normal commands do not need an owner scope. Choose either:
 
-- owner scope: \`user:<current-user-id>\`
 - room target: \`--room <current-room-id>\`
-- personal target: \`--personal --principal-id <principal-id>\`
+- shared default target: \`--personal\`
 
 Inside the Pibo source repo, use \`npm run --silent dev -- ralph ...\` for uninstalled local changes. For the installed CLI, use \`pibo ralph ...\`.
 
@@ -47,7 +46,6 @@ Create stopped, inspect, then start:
 
 \`\`\`bash
 pibo ralph add \\
-  --owner-scope "user:<user-id>" \\
   --room "<room-id>" \\
   --template prd-single-story-standard \\
   --name "Implement story X" \\
@@ -61,7 +59,6 @@ Create and start immediately:
 
 \`\`\`bash
 pibo ralph add \\
-  --owner-scope "user:<user-id>" \\
   --room "<room-id>" \\
   --template single-run-objective \\
   --name "Fix bug Y" \\
@@ -76,9 +73,9 @@ Explicit options override template fields.
 
 \`\`\`bash
 pibo ralph status --json
-pibo ralph list --owner-scope "user:<user-id>" --all --json
-pibo ralph runs --owner-scope "user:<user-id>" --job <job-id> --json
-pibo ralph policy show --owner-scope "user:<user-id>" <job-id> --json
+pibo ralph list --all --json
+pibo ralph runs --job <job-id> --json
+pibo ralph policy show <job-id> --json
 \`\`\`
 
 Use \`runs --json\` to debug failures, session ids, completion state, and recent activity. Prefer bounded JSON output when another agent will parse it.
@@ -86,10 +83,10 @@ Use \`runs --json\` to debug failures, session ids, completion state, and recent
 ## Control Jobs
 
 \`\`\`bash
-pibo ralph stop --owner-scope "user:<user-id>" <job-id>      # finish current session, then stop
-pibo ralph cancel --owner-scope "user:<user-id>" <job-id>    # abort current session and stop
-pibo ralph edit --owner-scope "user:<user-id>" <job-id> --prompt "Updated objective" --json
-pibo ralph remove --owner-scope "user:<user-id>" <job-id>
+pibo ralph stop <job-id>      # finish current session, then stop
+pibo ralph cancel <job-id>    # abort current session and stop
+pibo ralph edit <job-id> --prompt "Updated objective" --json
+pibo ralph remove <job-id>
 \`\`\`
 
 Prefer \`stop\` for normal shutdown and \`cancel\` only when the active run is stuck or unsafe.

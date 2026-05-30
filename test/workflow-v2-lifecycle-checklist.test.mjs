@@ -6,6 +6,19 @@ async function readSource(relativePath) {
 	return readFile(new URL(`../${relativePath}`, import.meta.url), "utf8");
 }
 
+async function readWorkflowUiSourceBundle() {
+	return (await Promise.all([
+		"src/apps/chat-ui/src/WorkflowsArea.tsx",
+		"src/apps/chat-ui/src/workflows/WorkflowBuilderNodeEditors.tsx",
+		"src/apps/chat-ui/src/workflows/WorkflowGraphCanvas.tsx",
+		"src/apps/chat-ui/src/workflows/WorkflowInspectorsPanel.tsx",
+		"src/apps/chat-ui/src/workflows/WorkflowLibraryPanel.tsx",
+		"src/apps/chat-ui/src/workflows/WorkflowRawIrEditor.tsx",
+		"src/apps/chat-ui/src/workflows/WorkflowPromptAssetEditor.tsx",
+		"src/apps/chat-ui/src/workflows/WorkflowVersionViewer.tsx",
+	].map(readSource))).join("\n");
+}
+
 function assertAllMatch(source, checks) {
 	for (const [label, pattern] of checks) {
 		assert.match(source, pattern, label);
@@ -89,8 +102,8 @@ test("Workflow V2 lifecycle tests cover version bumps and one-active-draft enfor
 });
 
 test("Workflow V2 completeness covers publish and version lifecycle UI wiring", async () => {
-	const apiSource = await readSource("src/apps/chat-ui/src/api.ts");
-	const workflowsAreaSource = await readSource("src/apps/chat-ui/src/WorkflowsArea.tsx");
+	const apiSource = await readSource("src/apps/chat-ui/src/api-workflows.ts");
+	const workflowsAreaSource = await readWorkflowUiSourceBundle();
 	const webChannelTests = await readSource("test/web-channel.test.mjs");
 
 	assertAllMatch(apiSource, [
@@ -124,8 +137,8 @@ test("Workflow V2 completeness covers publish and version lifecycle UI wiring", 
 });
 
 test("Workflow V2 completeness covers archive/delete lifecycle UI and deleted-definition run links", async () => {
-	const apiSource = await readSource("src/apps/chat-ui/src/api.ts");
-	const workflowsAreaSource = await readSource("src/apps/chat-ui/src/WorkflowsArea.tsx");
+	const apiSource = await readSource("src/apps/chat-ui/src/api-workflows.ts");
+	const workflowsAreaSource = await readWorkflowUiSourceBundle();
 	const workflowViewSource = await readSource("src/apps/chat-ui/src/session-views/WorkflowXStateSessionView.tsx");
 	const webChannelTests = await readSource("test/web-channel.test.mjs");
 

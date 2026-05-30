@@ -4,6 +4,8 @@ import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { piboHomePath } from "../core/pibo-home.js";
 import type { PiboJsonObject } from "../core/events.js";
+import { getSharedAppLegacyOwnerScope } from "../shared-app.js";
+import { sqliteTableColumns } from "../data/sqlite-schema.js";
 import {
 	isWebAnnotationBindingState,
 	isWebAnnotationStatus,
@@ -43,7 +45,7 @@ export type WebAnnotationBindingListFilter = {
 
 type WebAnnotationBindingRow = {
 	id: string;
-	owner_scope: string;
+	owner_scope?: string;
 	pibo_session_id: string;
 	pibo_room_id: string | null;
 	state: WebAnnotationBindingState;
@@ -60,7 +62,7 @@ type WebAnnotationBindingRow = {
 
 type WebAnnotationRow = {
 	id: string;
-	owner_scope: string;
+	owner_scope?: string;
 	pibo_session_id: string;
 	pibo_room_id: string | null;
 	binding_id: string | null;
@@ -147,7 +149,7 @@ function validateAnnotationPatch(patch: PatchWebAnnotationInput): void {
 function bindingFromRow(row: WebAnnotationBindingRow): WebAnnotationBinding {
 	return {
 		id: row.id,
-		ownerScope: row.owner_scope,
+		ownerScope: row.owner_scope ?? getSharedAppLegacyOwnerScope(),
 		piboSessionId: row.pibo_session_id,
 		piboRoomId: row.pibo_room_id ?? undefined,
 		state: row.state,
@@ -166,7 +168,7 @@ function bindingFromRow(row: WebAnnotationBindingRow): WebAnnotationBinding {
 function annotationFromRow(row: WebAnnotationRow): WebAnnotation {
 	return {
 		id: row.id,
-		ownerScope: row.owner_scope,
+		ownerScope: row.owner_scope ?? getSharedAppLegacyOwnerScope(),
 		piboSessionId: row.pibo_session_id,
 		piboRoomId: row.pibo_room_id ?? undefined,
 		bindingId: row.binding_id ?? undefined,
@@ -212,7 +214,7 @@ export class WebAnnotationStore {
 		const timestamp = nowIso(now);
 		const binding: WebAnnotationBinding = {
 			id: normalized.id ?? `wab_${randomUUID()}`,
-			ownerScope: normalized.ownerScope,
+			ownerScope: getSharedAppLegacyOwnerScope(),
 			piboSessionId: normalized.piboSessionId,
 			piboRoomId: normalized.piboRoomId,
 			state: normalized.state ?? "active",
@@ -223,14 +225,15 @@ export class WebAnnotationStore {
 			createdAt: timestamp,
 			updatedAt: timestamp,
 		};
+		const hasOwnerScope = sqliteTableColumns(this.db, "web_annotation_bindings").has("owner_scope");
 		this.db.prepare(`
 			INSERT OR IGNORE INTO web_annotation_bindings (
-				id, owner_scope, pibo_session_id, pibo_room_id, state, url, title, target_id,
+				id, ${hasOwnerScope ? "owner_scope, " : ""}pibo_session_id, pibo_room_id, state, url, title, target_id,
 				created_at, updated_at, last_injected_at, closed_at, error, metadata_json
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			) VALUES (${Array.from({ length: hasOwnerScope ? 14 : 13 }, () => "?").join(", ")})
 		`).run(
 			binding.id,
-			binding.ownerScope,
+			...(hasOwnerScope ? [binding.ownerScope] : []),
 			binding.piboSessionId,
 			binding.piboRoomId ?? null,
 			binding.state,
@@ -253,17 +256,17 @@ export class WebAnnotationStore {
 		const limit = normalizeLimit(input.limit, 100, 500);
 		return (this.db.prepare(`
 			SELECT * FROM web_annotation_bindings
-			WHERE owner_scope = ? AND pibo_session_id = ? AND state != 'removed'
+			WHERE pibo_session_id = ? AND state != 'removed'
 			ORDER BY created_at DESC, id DESC
 			LIMIT ?
-		`).all(input.ownerScope, input.piboSessionId, limit) as WebAnnotationBindingRow[]).map(bindingFromRow);
+		`).all(input.piboSessionId, limit) as WebAnnotationBindingRow[]).map(bindingFromRow);
 	}
 
 	getBinding(ownerScope: string, piboSessionId: string, id: string): WebAnnotationBinding | undefined {
 		const row = this.db.prepare(`
 			SELECT * FROM web_annotation_bindings
-			WHERE id = ? AND owner_scope = ? AND pibo_session_id = ?
-		`).get(id, ownerScope, piboSessionId) as WebAnnotationBindingRow | undefined;
+			WHERE id = ? AND pibo_session_id = ?
+		`).get(id, piboSessionId) as WebAnnotationBindingRow | undefined;
 		return row ? bindingFromRow(row) : undefined;
 	}
 
@@ -284,7 +287,7 @@ export class WebAnnotationStore {
 		this.db.prepare(`
 			UPDATE web_annotation_bindings
 			SET state = ?, title = ?, target_id = ?, updated_at = ?, last_injected_at = ?, closed_at = ?, error = ?, metadata_json = ?
-			WHERE id = ? AND owner_scope = ? AND pibo_session_id = ?
+			WHERE id = ? AND pibo_session_id = ?
 		`).run(
 			state,
 			normalized.title !== undefined ? normalized.title : existing.title ?? null,
@@ -295,7 +298,6 @@ export class WebAnnotationStore {
 			normalized.error !== undefined ? normalized.error : existing.error ?? null,
 			normalized.metadata !== undefined ? stringifyJson(normalized.metadata) : stringifyJson(existing.metadata),
 			id,
-			ownerScope,
 			piboSessionId,
 		);
 		return this.getBinding(ownerScope, piboSessionId, id);
@@ -305,8 +307,8 @@ export class WebAnnotationStore {
 		const result = this.db.prepare(`
 			UPDATE web_annotation_bindings
 			SET state = 'removed', updated_at = ?
-			WHERE id = ? AND owner_scope = ? AND pibo_session_id = ?
-		`).run(nowIso(now), id, ownerScope, piboSessionId);
+			WHERE id = ? AND pibo_session_id = ?
+		`).run(nowIso(now), id, piboSessionId);
 		return Number(result.changes ?? 0) > 0;
 	}
 
@@ -315,7 +317,7 @@ export class WebAnnotationStore {
 		const timestamp = nowIso(now);
 		const annotation: WebAnnotation = {
 			id: normalized.id ?? `ann_${randomUUID()}`,
-			ownerScope: normalized.ownerScope,
+			ownerScope: getSharedAppLegacyOwnerScope(),
 			piboSessionId: normalized.piboSessionId,
 			piboRoomId: normalized.piboRoomId,
 			bindingId: normalized.bindingId,
@@ -332,15 +334,16 @@ export class WebAnnotationStore {
 			createdAt: timestamp,
 			updatedAt: timestamp,
 		};
+		const hasOwnerScope = sqliteTableColumns(this.db, "web_annotations").has("owner_scope");
 		this.db.prepare(`
 			INSERT OR IGNORE INTO web_annotations (
-				id, owner_scope, pibo_session_id, pibo_room_id, binding_id, status, note, url, title,
+				id, ${hasOwnerScope ? "owner_scope, " : ""}pibo_session_id, pibo_room_id, binding_id, status, note, url, title,
 				target_id, target_kind, viewport_json, target_json, screenshot_ref_json, thread_json,
 				created_at, updated_at, resolved_at, resolved_by, summary, metadata_json
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			) VALUES (${Array.from({ length: hasOwnerScope ? 21 : 20 }, () => "?").join(", ")})
 		`).run(
 			annotation.id,
-			annotation.ownerScope,
+			...(hasOwnerScope ? [annotation.ownerScope] : []),
 			annotation.piboSessionId,
 			annotation.piboRoomId ?? null,
 			annotation.bindingId ?? null,
@@ -368,8 +371,8 @@ export class WebAnnotationStore {
 
 	listAnnotations(input: WebAnnotationListFilter): WebAnnotation[] {
 		const limit = normalizeLimit(input.limit, 100, 500);
-		const clauses = ["owner_scope = ?"];
-		const values: Array<string | number> = [input.ownerScope];
+		const clauses: string[] = [];
+		const values: Array<string | number> = [];
 		if (input.piboSessionId !== undefined) {
 			clauses.push("pibo_session_id = ?");
 			values.push(input.piboSessionId);
@@ -379,9 +382,10 @@ export class WebAnnotationStore {
 			clauses.push("status = ?");
 			values.push(input.status);
 		}
+		const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
 		return (this.db.prepare(`
 			SELECT * FROM web_annotations
-			WHERE ${clauses.join(" AND ")}
+			${where}
 			ORDER BY created_at DESC, id DESC
 			LIMIT ?
 		`).all(...values, limit) as WebAnnotationRow[]).map(annotationFromRow);
@@ -390,16 +394,16 @@ export class WebAnnotationStore {
 	getAnnotation(ownerScope: string, piboSessionId: string, id: string): WebAnnotation | undefined {
 		const row = this.db.prepare(`
 			SELECT * FROM web_annotations
-			WHERE id = ? AND owner_scope = ? AND pibo_session_id = ?
-		`).get(id, ownerScope, piboSessionId) as WebAnnotationRow | undefined;
+			WHERE id = ? AND pibo_session_id = ?
+		`).get(id, piboSessionId) as WebAnnotationRow | undefined;
 		return row ? annotationFromRow(row) : undefined;
 	}
 
 	getAnnotationForOwner(ownerScope: string, id: string): WebAnnotation | undefined {
 		const row = this.db.prepare(`
 			SELECT * FROM web_annotations
-			WHERE id = ? AND owner_scope = ?
-		`).get(id, ownerScope) as WebAnnotationRow | undefined;
+			WHERE id = ?
+		`).get(id) as WebAnnotationRow | undefined;
 		return row ? annotationFromRow(row) : undefined;
 	}
 
@@ -413,7 +417,7 @@ export class WebAnnotationStore {
 		this.db.prepare(`
 			UPDATE web_annotations
 			SET status = ?, updated_at = ?, resolved_at = ?, resolved_by = ?, summary = ?, metadata_json = ?
-			WHERE id = ? AND owner_scope = ? AND pibo_session_id = ?
+			WHERE id = ? AND pibo_session_id = ?
 		`).run(
 			status,
 			timestamp,
@@ -422,7 +426,6 @@ export class WebAnnotationStore {
 			normalized.summary !== undefined ? normalized.summary : existing.summary ?? null,
 			normalized.metadata !== undefined ? stringifyJson(normalized.metadata) : stringifyJson(existing.metadata),
 			id,
-			ownerScope,
 			piboSessionId,
 		);
 		return this.getAnnotation(ownerScope, piboSessionId, id);
@@ -454,8 +457,8 @@ export class WebAnnotationStore {
 		this.db.prepare(`
 			UPDATE web_annotations
 			SET thread_json = ?, updated_at = ?
-			WHERE id = ? AND owner_scope = ? AND pibo_session_id = ?
-		`).run(stringifyJson(nextThread), timestamp, normalized.annotationId, normalized.ownerScope, normalized.piboSessionId);
+			WHERE id = ? AND pibo_session_id = ?
+		`).run(stringifyJson(nextThread), timestamp, normalized.annotationId, normalized.piboSessionId);
 		return this.getAnnotation(normalized.ownerScope, normalized.piboSessionId, normalized.annotationId);
 	}
 
@@ -463,7 +466,6 @@ export class WebAnnotationStore {
 		this.db.exec(`
 			CREATE TABLE IF NOT EXISTS web_annotation_bindings (
 				id TEXT PRIMARY KEY,
-				owner_scope TEXT NOT NULL,
 				pibo_session_id TEXT NOT NULL,
 				pibo_room_id TEXT,
 				state TEXT NOT NULL,
@@ -478,13 +480,12 @@ export class WebAnnotationStore {
 				metadata_json TEXT
 			);
 			CREATE INDEX IF NOT EXISTS idx_web_annotation_bindings_session
-				ON web_annotation_bindings(owner_scope, pibo_session_id, created_at DESC);
+				ON web_annotation_bindings(pibo_session_id, created_at DESC);
 			CREATE INDEX IF NOT EXISTS idx_web_annotation_bindings_target
 				ON web_annotation_bindings(target_id, state);
 
 			CREATE TABLE IF NOT EXISTS web_annotations (
 				id TEXT PRIMARY KEY,
-				owner_scope TEXT NOT NULL,
 				pibo_session_id TEXT NOT NULL,
 				pibo_room_id TEXT,
 				binding_id TEXT,
@@ -506,9 +507,9 @@ export class WebAnnotationStore {
 				metadata_json TEXT
 			);
 			CREATE INDEX IF NOT EXISTS idx_web_annotations_session_status_created
-				ON web_annotations(owner_scope, pibo_session_id, status, created_at DESC);
+				ON web_annotations(pibo_session_id, status, created_at DESC);
 			CREATE INDEX IF NOT EXISTS idx_web_annotations_session_created
-				ON web_annotations(owner_scope, pibo_session_id, created_at DESC);
+				ON web_annotations(pibo_session_id, created_at DESC);
 		`);
 	}
 }

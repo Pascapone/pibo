@@ -527,7 +527,7 @@ test("status command result rows preserve transcript flow with row-first command
 	assert.match(output, /• Ran \/status/);
 	assert.doesNotMatch(output, /▣ Command/);
 	assert.match(output, /Status — status · done/);
-	assert.match(output, /Identity: owner Web user alpha · session Status Session · profile base\s*· model openai\/gpt-status/);
+	assert.match(output, /Identity: owner Web user alpha · session Status Session · profile base ·\s*model openai\/gpt-status/);
 	assert.doesNotMatch(output, /Owner: Web user alpha/);
 	assert.doesNotMatch(output, /Session: Status Session \| ps_status/);
 	assert.match(output, /Context: .*50\.0%/);
@@ -881,7 +881,7 @@ test("runCliSessionsUi rejects non-interactive stdin or stdout before rendering"
 test("pibo tui:sessions command help and root discovery describe the new UI without hiding existing TUI commands", async () => {
 	const help = cliSessionsHelpText();
 	assert.match(help, /reduced Web Chat-derived session UI/);
-	assert.match(help, /Commands: \/help \/new \/room \/session \/agent \/owner \/repair-user-unknown/);
+	assert.match(help, /Commands: \/help \/new \/room \/session \/agent \/profile \/repair-user-unknown/);
 	assert.match(help, /pibo tui\n/);
 	assert.match(help, /pibo tui:routed/);
 

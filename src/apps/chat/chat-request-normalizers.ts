@@ -662,7 +662,7 @@ export function createRoomUpdate(room: PiboRoom, body: ChatRoomPatchBody): {
 	metadata?: PiboJsonObject;
 } {
 	if (isDefaultPiboRoom(room)) {
-		throw new PiboWebHttpError("Personal Chat cannot be changed", 400);
+		throw new PiboWebHttpError("Shared Chat cannot be changed", 400);
 	}
 	const update: {
 		name?: string;

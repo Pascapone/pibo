@@ -21,7 +21,7 @@ The current implementation lives in `src/data/cli.ts` and is dispatched from `sr
 
 - `inventory` for read-only store size, WAL, integrity, and table-count reporting.
 - `migrate sessions-to-v2` for idempotent import from `pibo-sessions.sqlite` into `pibo.sqlite`.
-- `repair unread-baseline` for seeding `principal_session_stats` read cursors for historical events up to a caller-supplied timestamp.
+- `repair unread-baseline` for legacy seeding of `principal_session_stats` read cursors for historical events up to a caller-supplied timestamp.
 
 Tests in `test/data-cli.test.mjs` and `test/pibo-data-session-store.test.mjs` cover inventory, unread baseline repair, and idempotent session migration.
 
@@ -104,7 +104,7 @@ The `migrate sessions-to-v2` command MUST copy legacy Pibo Session rows into the
 
 #### Current
 
-`migrateSessionsToV2()` reads `pibo_sessions` from a legacy source path, creates/opens the target `PiboDataStore`, inserts missing sessions, updates existing sessions only when the legacy `updated_at` is newer, and skips older or equal rows. It preserves Pibo Session id, Pi Session id, owner scope, channel, kind, profile, parent/origin ids, workspace, title, metadata, active model JSON, and derives `root_session_id` from metadata or parent/session id.
+`migrateSessionsToV2()` reads `pibo_sessions` from a legacy source path, creates/opens the target `PiboDataStore`, inserts missing sessions, updates existing sessions only when the legacy `updated_at` is newer, and skips older or equal rows. It preserves Pibo Session id, Pi Session id, legacy owner compatibility value, channel, kind, profile, parent/origin ids, workspace, title, metadata, active model JSON, and derives `root_session_id` from metadata or parent/session id.
 
 #### Target
 
@@ -116,7 +116,7 @@ Legacy migration can be rerun safely during a local data transition and continue
 - A source without `pibo_sessions` returns a zero-read report.
 - Running the same migration twice does not create duplicate v2 sessions.
 - Existing v2 rows are updated only when the legacy row is newer.
-- Missing legacy owner scope is normalized to `user:unknown`.
+- Missing legacy owner scope is normalized to `user:unknown` only for old migration compatibility.
 
 #### Scenario: Rerun migration
 
@@ -127,7 +127,7 @@ Legacy migration can be rerun safely during a local data transition and continue
 
 ### Requirement: Unread baseline repair requires owner and cutoff
 
-The `repair unread-baseline` command MUST require an explicit owner scope and cutoff timestamp before it changes read cursors.
+The legacy `repair unread-baseline` command MUST require an explicit owner scope and cutoff timestamp before it changes read cursors.
 
 #### Current
 
@@ -141,7 +141,7 @@ Agents cannot accidentally mark all historical messages read for all users or al
 
 - Missing `--owner-scope` fails before opening the target database.
 - Missing `--before` fails before opening the target database.
-- The report echoes `ownerScope`, `before`, `to`, and `dryRun`.
+- The legacy report echoes `ownerScope`, `before`, `to`, and `dryRun`.
 - A missing target database returns `inputExists: false` instead of creating a new store.
 
 #### Scenario: Missing owner scope
@@ -208,7 +208,7 @@ Automation can parse stable report fields while operators can still inspect resu
 - A listed inventory store may exist but lack expected tables; the command reports available counts without treating absence as fatal.
 - Malformed legacy session metadata or active-model JSON is copied as stored JSON text where applicable, while metadata parsing falls back to `{}` for derived v2 fields.
 - Lexicographic timestamp comparison assumes ISO timestamp strings; callers must supply ISO-like `--before` values for repair.
-- Repair uses `owner_scope` as both owner and principal id in `principal_session_stats`, matching current single-owner Chat Web semantics.
+- Repair uses legacy `owner_scope` as both owner and principal id in `principal_session_stats`; this is migration/debug compatibility and not current shared-app semantics.
 - The data CLI does not verify that a gateway is stopped; callers remain responsible for avoiding concurrent operational maintenance risks.
 
 ## Constraints
@@ -231,7 +231,7 @@ Automation can parse stable report fields while operators can still inspect resu
 
 ### Assumptions
 
-- `ownerScope` is the correct principal id for current Chat Web read-state repair.
+- `ownerScope` is the legacy principal id for unread-baseline repair; current shared-app repair should use shared-app migration commands.
 - Legacy session timestamps are ISO-formatted strings that can be compared lexicographically.
 - The data CLI is an operator/agent tool and can expose local paths in reports.
 

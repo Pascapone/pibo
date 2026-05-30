@@ -14,13 +14,13 @@ This capability needs a separate behavior contract because it owns a dedicated s
 
 ## Goal
 
-Ralph MUST let an owner create, inspect, start, stop, cancel, and delete continuous Pibo agent jobs that run in visible Chat Web sessions with bounded ownership, target, and completion behavior.
+Ralph MUST let an allowed operator create, inspect, start, stop, cancel, and delete continuous Pibo agent jobs that run in visible Chat Web sessions with shared-app target and completion behavior.
 
 ## Background / Current State
 
 The current code registers `pibo.ralph` as a plugin channel in the web gateway. The channel starts a `PiboRalphService`, which uses `pibo-ralph.sqlite` by default to persist jobs and runs.
 
-A job stores owner scope, target, profile, prompt, optional maximum completed run attempts, optional stop policy, enabled state, runtime overrides, and run state. When the service reserves a run, it first evaluates before-run stop conditions, creates a routed Pibo Session with `kind: "ralph"`, channel metadata for the target Chat room, and `ralphJobId` / `ralphRunId` metadata, sends a service-authored message containing the job prompt, and waits for the correlated session to finish.
+A job stores target, profile, prompt, optional maximum completed run attempts, optional stop policy, enabled state, runtime overrides, and run state. Legacy stores may retain an owner value for migration compatibility. When the service reserves a run, it first evaluates before-run stop conditions, creates a routed Pibo Session with `kind: "ralph"`, channel metadata for the target Chat room, and `ralphJobId` / `ralphRunId` metadata, sends a service-authored message containing the job prompt, and waits for the correlated session to finish.
 
 Stop behavior is now policy-driven. Built-in stop conditions cover maximum completed run attempts, a completion marker that must appear on its own line in a successful final answer, and fact-count checks. Plugins can register additional stop conditions; policy evaluation supports `any` and `all` modes, per-condition enablement, fail-closed errors, timeouts, and persisted condition state.
 
@@ -31,9 +31,9 @@ Chat Web exposes `/api/chat/ralph/*` endpoints, registered stop-condition metada
 ### In Scope
 
 - Durable Ralph job and run records.
-- Owner-scoped CLI and Chat Web management operations.
+- Shared-app CLI and Chat Web management operations.
 - Continuous run reservation, routed session creation, run completion, and interruption recovery.
-- Room and personal targets.
+- Room and shared default Chat targets.
 - Stop, cancel, maximum-iteration, timeout, stop-policy, and completion-marker behavior.
 - Chat Web Ralph API and UI behavior visible to users.
 - Built-in Ralph templates and registered stop-condition metadata.
@@ -47,17 +47,17 @@ Chat Web exposes `/api/chat/ralph/*` endpoints, registered stop-condition metada
 
 ## Requirements
 
-### Requirement: Ralph jobs are durable owner-scoped product records
+### Requirement: Ralph jobs are durable shared-app product records
 
-The system MUST persist each Ralph job with a stable id, owner scope, name, optional description, enabled flag, target, profile, prompt, optional maximum iterations, optional stop policy, optional runtime overrides, state, and timestamps.
+The system MUST persist each Ralph job with a stable id, name, optional description, enabled flag, target, profile, prompt, optional maximum iterations, optional stop policy, optional runtime overrides, state, and timestamps. Legacy owner fields are compatibility metadata only.
 
 #### Current
 
-`PiboRalphStore` stores jobs in `pibo_ralph_jobs` under `pibo-ralph.sqlite` by default. Job ids use the `ralph_` prefix. Empty owner scope, profile, prompt, room target id, or personal principal id are rejected. `maxIterations` must be a positive integer when provided. `stopPolicy` is normalized before persistence and can be cleared back to the default policy. Runtime overrides may include `modelOverride`, `thinkingLevel`, and tri-state `fastMode`.
+`PiboRalphStore` stores jobs in `pibo_ralph_jobs` under `pibo-ralph.sqlite` by default. Job ids use the `ralph_` prefix. Empty profile, prompt, or required target ids are rejected. Legacy owner fields are normalized to the shared app compatibility value when old schemas require them. `maxIterations` must be a positive integer when provided. `stopPolicy` is normalized before persistence and can be cleared back to the default policy. Runtime overrides may include `modelOverride`, `thinkingLevel`, and tri-state `fastMode`.
 
 #### Target
 
-All Ralph job management surfaces preserve the same ownership and validation semantics.
+All Ralph job management surfaces preserve the same shared-app validation semantics.
 
 #### Acceptance
 
@@ -65,14 +65,14 @@ All Ralph job management surfaces preserve the same ownership and validation sem
 - Creating a job with `maxIterations: 0` fails.
 - Creating or editing a job with runtime overrides persists and returns those overrides.
 - Editing a job can clear `modelOverride`, `thinkingLevel`, `fastMode`, `maxIterations`, and `stopPolicy` to return to inherited defaults.
-- Listing jobs for one owner scope does not return another owner's jobs.
+- Listing jobs returns shared-app jobs for any allowed account.
 - A job without an explicit name receives a name derived from the prompt, capped by current store behavior.
 
 #### Scenario: Create a stopped room job
 
-- GIVEN owner scope `user:a` has write access to room `room_1`
+- GIVEN room `room_1` exists and is not archived
 - WHEN the user creates a Ralph job for `room_1` with profile `default`, prompt `Check the repo`, and no `enabled` flag
-- THEN the store creates a `ralph_` job owned by `user:a`
+- THEN the store creates a shared `ralph_` job
 - AND the job is initially stopped
 - AND its state includes `completedIterations: 0`.
 
@@ -82,24 +82,24 @@ The system MUST resolve every run to a Chat Web room before creating the routed 
 
 #### Current
 
-Room targets require an existing non-archived room. Personal targets call `ensureDefaultRoom` for the owner/principal and use the resulting personal Chat room.
+Room targets require an existing non-archived room. Shared default targets call `ensureDefaultRoom` and use the shared Chat room.
 
 #### Target
 
-Ralph never starts hidden or orphan sessions. Each run is placed into a room that the owner can open in Chat Web.
+Ralph never starts hidden or orphan sessions. Each run is placed into a room that any allowed account can open in Chat Web.
 
 #### Acceptance
 
 - A run against a missing room fails and records an error.
 - A run against an archived room fails and records an error.
-- A personal target creates or reuses the owner's default personal room.
-- Chat Web rejects a personal target whose principal differs from the authenticated owner.
+- A shared default target creates or reuses the shared default Chat room.
+- Chat Web normalizes deprecated personal target inputs to the shared default target.
 
-#### Scenario: Personal target creates default room
+#### Scenario: Shared default target creates default room
 
-- GIVEN owner scope `user:a` has no existing personal room
-- WHEN a Ralph job with target `{ kind: "personal", principalId: "user:a" }` runs
-- THEN the room service creates or returns the default personal room
+- GIVEN the shared app has no default Chat room
+- WHEN a Ralph job uses the shared default target
+- THEN the room service creates or returns the shared default room
 - AND the Ralph session metadata includes that room id.
 
 ### Requirement: Run reservation is exclusive and bounded by service capacity
@@ -135,7 +135,7 @@ The system MUST execute each reserved run through a new routed Pibo Session and 
 
 #### Current
 
-`executeJob()` creates a session with channel `pibo.chat-web`, kind `ralph`, the job profile, owner scope, target workspace, title, optional active model override, and metadata including `chatRoomId`, `ralphJobId`, `ralphRunId`, `ralphTargetKind`, and optional initial thinking/fast-mode overrides. `emitMessageAndWait()` emits a `message` input with source `service` and an event id prefixed by `ralph_msg_`, then listens only to output events with the same Pibo Session id and event id when present.
+`executeJob()` creates a session with channel `pibo.chat-web`, kind `ralph`, the job profile, target workspace, title, optional active model override, and metadata including `chatRoomId`, `ralphJobId`, `ralphRunId`, `ralphTargetKind`, and optional initial thinking/fast-mode overrides. `emitMessageAndWait()` emits a `message` input with source `service` and an event id prefixed by `ralph_msg_`, then listens only to output events with the same Pibo Session id and event id when present.
 
 #### Target
 
@@ -240,7 +240,7 @@ A cancel request prevents future runs and makes the current run terminal as canc
 - Cancel disables the job.
 - If the job has a running session, Ralph emits an abort execution event for that session.
 - A cancelled run completes with status `cancelled` and no non-cancel error.
-- A cancel request for an unknown owned job returns not found through API/service surfaces.
+- A cancel request for an unknown job returns not found through API/service surfaces.
 
 #### Scenario: User cancels active run
 
@@ -277,24 +277,24 @@ Unexpected interruption does not leave a job permanently marked running without 
 - AND the job no longer has `runningAt`
 - AND the error explains that the run was interrupted by gateway restart.
 
-### Requirement: Chat Web Ralph API is authenticated, owner-scoped, and same-origin protected
+### Requirement: Chat Web Ralph API is authenticated, shared-app, and same-origin protected
 
-The Chat Web API MUST allow only the authenticated owner to manage their Ralph jobs and MUST require same-origin JSON requests for mutations.
+The Chat Web API MUST allow any allowed account to manage shared Ralph jobs and MUST require same-origin JSON requests for mutations.
 
 #### Current
 
-`handleChatRalphApiRequest()` uses the authenticated `webSession.ownerScope`, requires JSON content type and matching `Origin` for POST/PATCH/DELETE and start/stop/cancel actions, validates room write access for room targets, and resolves requested profiles from the channel context profile list.
+`handleChatRalphApiRequest()` uses the shared app context, requires JSON content type and matching `Origin` for POST/PATCH/DELETE and start/stop/cancel actions, validates room existence/state for room targets, and resolves requested profiles from the channel context profile list.
 
 #### Target
 
-A browser user cannot create or mutate another owner's Ralph job, target a room they cannot write to, or submit cross-site mutations.
+A browser user cannot bypass same-origin mutation guards, target missing or archived rooms, or submit cross-site mutations.
 
 #### Acceptance
 
-- `GET /api/chat/ralph/jobs` returns only jobs owned by the current owner scope.
+- `GET /api/chat/ralph/jobs` returns shared app jobs.
 - Mutating requests without `Content-Type: application/json` fail.
 - Mutating requests without an Origin header or with a different Origin fail.
-- A room target without write access fails.
+- A missing or archived room target fails.
 - An unknown profile fails before job creation or update.
 
 #### Scenario: Cross-site mutation is rejected
@@ -327,7 +327,7 @@ Agents and users can operate Ralph without reading source code.
 
 #### Scenario: User opens Ralph area with no jobs
 
-- GIVEN the authenticated owner has no Ralph jobs
+- GIVEN the shared app has no Ralph jobs
 - WHEN the user opens `/apps/chat/ralph`
 - THEN the UI shows zero jobs, zero running jobs, and an empty job list state
 - AND the user can create a new Ralph job from the page.
@@ -364,8 +364,8 @@ Ralph resource ownership is explicit. Pibo labels or records assigned workers, b
 
 This capability participates in the compute/browser resource lifecycle change. It must follow the canonical model in `docs/project/compute-browser-resource-operating-model.md` and the rollout checks in `docs/project/compute-browser-resource-rollout-checklist.md`.
 
-- Ralph jobs and runs that use compute/browser resources must record assigned worker ids, browser lease ids when known, owner scope, cleanup status, and retained/dirty reasons.
-- Ralph-owned compute containers must carry `pibo.ralph.jobId`, `pibo.ralph.runId`, and `pibo.compute.ownerScope` labels when Ralph owns or directly assigns the worker.
+- Ralph jobs and runs that use compute/browser resources must record assigned worker ids, browser lease ids when known, cleanup status, and retained/dirty reasons.
+- Ralph-owned compute containers must carry `pibo.ralph.jobId` and `pibo.ralph.runId` labels when Ralph owns or directly assigns the worker. Legacy compute owner labels, when present, are compatibility metadata only.
 - Run completion, promise-complete, max-iteration, stop, cancel, and interrupted-run paths must release browser leases and mark workers released, idle-retained, or dirty according to policy.
 - CLI/API status must show disabled jobs with retained resources or cleanup failures.
 - Prompt text cannot override Docker resource budgets, hard TTLs, browser-pool reaping, or dirty-worker recycling.
@@ -374,8 +374,8 @@ This capability participates in the compute/browser resource lifecycle change. I
 
 - A run can have no Pibo Session id if target resolution or session creation fails before attachment.
 - `removeJob` deletes the job record and relies on database behavior for existing run rows; consumers SHOULD treat old runs as historical diagnostics when present.
-- `startJob` may return undefined if the job is unknown, belongs to another owner, is already running, or has reached `maxIterations`.
-- CLI operations require an owner scope from `--owner-scope` or `PIBO_OWNER_SCOPE`.
+- `startJob` may return undefined if the job is unknown, already running, or has reached `maxIterations`.
+- Deprecated `--owner-scope` inputs are ignored compatibility options; normal CLI operations do not require them.
 - The current Chat Web delete call sends an empty JSON body to satisfy mutation request requirements.
 - The completion marker is exact and case-sensitive, and the built-in condition requires it on its own line.
 - A Ralph prompt may request worker reuse for debugging, but machine-enforced TTL, resource limits, and cleanup policy still apply.
@@ -383,7 +383,7 @@ This capability participates in the compute/browser resource lifecycle change. I
 ## Constraints
 
 - **Compatibility:** Ralph job ids and run ids remain opaque strings; callers MUST NOT parse them beyond displaying or passing them back.
-- **Security / Privacy:** Chat Web API operations are scoped to `webSession.ownerScope`; local CLI operations rely on explicit owner scope and trusted local access.
+- **Security / Privacy:** Chat Web API operations require authenticated same-origin requests. Local CLI operations rely on trusted local access; auth account values do not partition Ralph jobs.
 - **Performance:** The service polls on a timer and limits concurrent active runs by configuration.
 - **Durability:** `pibo-ralph.sqlite` is a Pibo-owned store under Pibo home unless an explicit path is provided.
 - **Routing:** Ralph-created sessions use Pibo Session IDs and Chat room metadata; Pi Session IDs are not the public run identity.
@@ -391,10 +391,10 @@ This capability participates in the compute/browser resource lifecycle change. I
 
 ## Success Criteria
 
-- [ ] SC-001: A Ralph job can be created, listed, started, stopped, cancelled, and removed through owner-scoped API or CLI surfaces.
+- [ ] SC-001: A Ralph job can be created, listed, started, stopped, cancelled, and removed through shared-app API or CLI surfaces.
 - [ ] SC-002: Each successful run creates a visible routed Pibo Session with Ralph metadata, selected runtime overrides, and a stored run record.
 - [ ] SC-003: Stop, cancel, max iterations, stop-policy, timeout, restart recovery, and completion-marker outcomes are distinguishable in job/run state.
-- [ ] SC-004: Cross-owner, cross-origin, invalid target, and invalid profile operations fail without creating or mutating jobs.
+- [ ] SC-004: Cross-origin, invalid target, and invalid profile operations fail without creating or mutating jobs.
 - [ ] SC-005: Chat Web and CLI expose enough status and run history to diagnose the current Ralph loop state.
 - [ ] SC-006: Built-CLI verification covers `pibo ralph` discovery output and at least one JSON-producing management path without using the live default store.
 - [ ] SC-007: Ralph resource policy tests cover worker labels/metadata, browser-lease release, idle retention, dirty-worker marking, and prompt text not overriding hard cleanup policy.
@@ -410,34 +410,34 @@ This capability participates in the compute/browser resource lifecycle change. I
 
 ### Source-Inspected Only
 
-- Store validation, owner-scoped listing, run reservation, completion state, restart recovery, stop-policy persistence, condition state, and run history beyond direct tests are source-inspected from `src/ralph/store.ts`.
+- Store validation, shared-app listing, run reservation, completion state, restart recovery, stop-policy persistence, condition state, and run history beyond direct tests are source-inspected from `src/ralph/store.ts`.
 - Routed session creation, target resolution, message correlation, timeout, stop, cancel, and stop-policy evaluation beyond direct tests are source-inspected from `src/ralph/service.ts` and `src/ralph/stopping.ts`.
-- Chat Web API ownership, same-origin mutation checks, profile validation, room access checks, stop-condition/template endpoints, stop-policy normalization, and run listing are source-inspected from `src/apps/chat/ralph-api.ts`.
+- Chat Web API shared-app access, same-origin mutation checks, profile validation, room access checks, stop-condition/template endpoints, stop-policy normalization, and run listing are source-inspected from `src/apps/chat/ralph-api.ts`.
 - CLI discovery, templates, conditions, policy management, and management command output are source-inspected from `src/ralph/cli.ts`, `src/ralph/templates.ts`, and `src/cli.ts`.
 - Chat Web Ralph navigation, empty state, form behavior, and run display are source-inspected from `src/apps/chat-ui/src/RalphArea.tsx`, `src/apps/chat-ui/src/api.ts`, `src/apps/chat-ui/src/types.ts`, `src/apps/chat-ui/src/App.tsx`, and `src/apps/chat-ui/src/main.tsx`.
 
 ### Test Gaps
 
-- Add isolated store tests for invalid job input, owner filtering, max-iteration reservation blocking, stop/cancel state, stop-policy clearing, and interrupted-run recovery.
+- Add isolated store tests for invalid job input, shared listing, max-iteration reservation blocking, stop/cancel state, stop-policy clearing, and interrupted-run recovery.
 - Add a service-level test with a fake channel context to verify routed session metadata, service message correlation, timeout handling, before-run stop evaluation, and cancel abort emission.
-- Add Chat Web API tests for cross-origin rejection, cross-owner filtering, invalid profile rejection, room access checks, personal target ownership, stop-policy validation, conditions/templates endpoints, and start/stop/cancel error paths.
-- Add built-CLI tests for `pibo ralph` discovery output, missing owner scope errors, `add --json`, `list --json`, `conditions --json`, `templates --json`, `policy show|set|clear`, and `runs --json` against a temporary `--store` path.
+- Add Chat Web API tests for cross-origin rejection, shared listing, invalid profile rejection, room state checks, shared default target normalization, stop-policy validation, conditions/templates endpoints, and start/stop/cancel error paths.
+- Add built-CLI tests for `pibo ralph` discovery output, deprecated owner-scope no-op behavior, `add --json`, `list --json`, `conditions --json`, `templates --json`, `policy show|set|clear`, and `runs --json` against a temporary `--store` path.
 - Add a UI-level test or browser check for the `/ralph` empty state, completion-marker guidance, template loading, stop-policy JSON editor, save/start/stop/cancel controls, and run-history rendering.
 
 ### Recommended Test Matrix
 
 | Test target | Required cases | Primary requirements | Suggested file |
 |---|---|---|---|
-| Store validation and ownership | Reject blank owner/profile/prompt/target ids; reject non-positive `maxIterations`; normalize and clear stop policies; persist and clear runtime overrides; default names are prompt-derived and capped; owner-scoped `listJobs`, `getOwnedJob`, `updateJob`, `removeJob`, and `listRuns` exclude other owners. | REQ-001, REQ-006, REQ-009 | `test/ralph-store.test.mjs`, `test/ralph-runtime-overrides.test.mjs`, `test/ralph-stop-conditions.test.mjs` |
+| Store validation and shared visibility | Reject blank profile/prompt/target ids; reject non-positive `maxIterations`; normalize and clear stop policies; persist and clear runtime overrides; default names are prompt-derived and capped; shared-app `listJobs`, `getOwnedJob` compatibility, `updateJob`, `removeJob`, and `listRuns` include historical owner rows. | REQ-001, REQ-006, REQ-009 | `test/ralph-store.test.mjs`, `test/ralph-runtime-overrides.test.mjs`, `test/ralph-stop-conditions.test.mjs` |
 | Store reservation and state transitions | Reserve only enabled non-running jobs; return no reservation at capacity-equivalent duplicate reservation; block jobs that reached `maxIterations`; `requestStop` disables without clearing `runningAt`; `requestCancel` records both stop and cancel timestamps. | REQ-003, REQ-005, REQ-007 | `test/ralph-store.test.mjs` |
 | Store completion and recovery | Successful completion increments `completedIterations`; error completion increments `consecutiveErrors`; later success resets `consecutiveErrors`; stop-policy and max-iteration paths disable the job; `recoverInterruptedRuns` marks stale running runs as `error` with reason `interrupted`. | REQ-005, REQ-006, REQ-008 | `test/ralph-store.test.mjs`, `test/ralph-stop-conditions.test.mjs` |
 | Stop-condition evaluation | Default policies include max-iterations when configured and the completion-marker condition; custom conditions compose in `any` and `all` modes; stateful conditions persist state; condition errors honor fail-open/fail-closed behavior. | REQ-005, REQ-006 | `test/ralph-stop-conditions.test.mjs` |
-| Service target and session creation | Room target fails for missing or archived rooms; personal target creates/reuses default room; created sessions use channel `pibo.chat-web`, kind `ralph`, owner scope, profile, workspace, title, `chatRoomId`, `ralphJobId`, `ralphRunId`, and `ralphTargetKind`. | REQ-002, REQ-004 | `test/ralph-service.test.mjs` |
+| Service target and session creation | Room target fails for missing or archived rooms; shared default target creates/reuses the shared default room; created sessions use channel `pibo.chat-web`, kind `ralph`, shared app compatibility context, profile, workspace, title, `chatRoomId`, `ralphJobId`, `ralphRunId`, and `ralphTargetKind`. | REQ-002, REQ-004 | `test/ralph-service.test.mjs` |
 | Service message correlation | Ralph emits one service message with an id prefixed `ralph_msg_`; unrelated sessions and unrelated event ids do not complete the run; correlated deltas plus `message_finished` complete the run; final assistant message overrides accumulated deltas. | REQ-004 | `test/ralph-service.test.mjs` |
 | Service stop, cancel, timeout | Completion-marker stop evaluation disables future runs only for successful own-line marker output; `stopJob` disables but does not abort the current session; `cancelJob` emits an `abort` execution event for the last running Pibo Session and completes as `cancelled`; timeout records an error unless the run was cancelled. | REQ-005, REQ-007, REQ-008 | `test/ralph-service.test.mjs`, `test/ralph-stop-conditions.test.mjs` |
-| Chat Web API security and validation | GET lists only current-owner jobs; POST/PATCH/DELETE and start/stop/cancel reject missing JSON content type, missing Origin, and foreign Origin; room targets require write access and reject archived rooms; personal targets must match current owner; unknown profiles and invalid stop policies fail before persistence. | REQ-001, REQ-002, REQ-009 | `test/chat-ralph-api.test.mjs` |
-| Chat Web API operations | Create returns `201`; start returns `202` with a run when service is available; start returns `503` when service is missing; stop/cancel/delete return bounded not-found behavior; conditions/templates endpoints return catalog data; run listing clamps invalid or excessive limits through store behavior and rejects another owner's `jobId`. | REQ-007, REQ-009, REQ-010 | `test/chat-ralph-api.test.mjs` |
-| CLI discovery and JSON paths | `pibo ralph` with no subcommand prints compact command discovery and `Next: pibo ralph add --help`; owner-scoped commands fail without `--owner-scope` or `PIBO_OWNER_SCOPE`; `status --json`, `add --json`, `list --json`, `conditions --json`, `templates --json`, `policy show|set|clear`, and `runs --json` use a temporary `--store` and produce parseable JSON. | REQ-001, REQ-010 | `test/ralph-cli.test.mjs` |
+| Chat Web API security and validation | GET lists shared jobs; POST/PATCH/DELETE and start/stop/cancel reject missing JSON content type, missing Origin, and foreign Origin; room targets require an existing non-archived room; shared default targets normalize deprecated personal inputs; unknown profiles and invalid stop policies fail before persistence. | REQ-001, REQ-002, REQ-009 | `test/chat-ralph-api.test.mjs` |
+| Chat Web API operations | Create returns `201`; start returns `202` with a run when service is available; start returns `503` when service is missing; stop/cancel/delete return bounded not-found behavior; conditions/templates endpoints return catalog data; run listing clamps invalid or excessive limits through store behavior and rejects an unknown `jobId`. | REQ-007, REQ-009, REQ-010 | `test/chat-ralph-api.test.mjs` |
+| CLI discovery and JSON paths | `pibo ralph` with no subcommand prints compact command discovery and `Next: pibo ralph add --help`; deprecated owner-scope inputs warn/no-op; `status --json`, `add --json`, `list --json`, `conditions --json`, `templates --json`, `policy show|set|clear`, and `runs --json` use a temporary `--store` and produce parseable JSON. | REQ-001, REQ-010 | `test/ralph-cli.test.mjs` |
 | Built-in templates | Templates provide safe starter prompts and explicit default stop policies for standard, PRD-batch, and single-run jobs. | REQ-010 | `test/ralph-templates.test.mjs` |
 | Chat Web UI smoke | `/ralph` shows zero-job empty state; creation form explains completion-marker behavior; template loading, stop-policy JSON editing, save/start/stop/cancel/delete controls call the matching API paths; run history displays run status, session id when present, stop evaluation, and error text when present. | REQ-005, REQ-006, REQ-010 | component test or browser check |
 
@@ -459,7 +459,7 @@ This capability participates in the compute/browser resource lifecycle change. I
 
 | Requirement | Scenario / Story | Plan / Task | Status |
 |---|---|---|---|
-| REQ-001: Durable owner-scoped records | Create a stopped room job | Current `PiboRalphStore` behavior, including `stopPolicy` normalization | Source-backed |
+| REQ-001: Durable shared-app records | Create a stopped room job | Current `PiboRalphStore` behavior, including `stopPolicy` normalization | Source-backed |
 | REQ-002: Targets resolve to Chat rooms | Personal target creates default room | Current `PiboRalphService.resolveTarget` and Chat API behavior | Source-backed |
 | REQ-003: Exclusive bounded reservation | Duplicate tick | Current `reserveJob` and service capacity behavior | Source-backed |
 | REQ-004: Routed session execution | Session finishes normally | Current `executeJob` / `emitMessageAndWait` behavior | Source-backed |
@@ -467,7 +467,7 @@ This capability participates in the compute/browser resource lifecycle change. I
 | REQ-006: Extensible stop policies | Custom stop condition reaches threshold | `src/ralph/stopping.ts`, plugin registry stop-condition registration, `test/ralph-stop-conditions.test.mjs` | Source-backed |
 | REQ-007: Cancel aborts active session | User cancels active run | Current `requestCancel` and `abortJobIfRunning` behavior | Source-backed |
 | REQ-008: Auditable errors and recovery | Gateway restarts during active run | Current timeout and recovery behavior | Source-backed |
-| REQ-009: Authenticated API | Cross-site mutation is rejected | Current `handleChatRalphApiRequest` behavior | Source-backed |
+| REQ-009: Authenticated shared-app API | Cross-site mutation is rejected | Current `handleChatRalphApiRequest` behavior | Source-backed |
 | REQ-010: Discoverable management | User opens Ralph area with no jobs | Current CLI, templates, conditions, policy commands, and `RalphArea` behavior | Source-backed |
 | REQ-011: Ralph-owned compute resources are policy-managed | Completed Ralph loop releases browser resources | Compute/browser resource lifecycle change | Draft |
 

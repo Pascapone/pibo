@@ -167,13 +167,13 @@ export function RalphArea({ bootstrap, mobileSidebarOpen = false, onCloseMobileS
 							<div className="space-y-2">
 								<div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Target</div>
 								<div className="grid grid-cols-2 gap-2">
-									<RadioCard name="ralph-target-kind" checked={draft.targetKind === "personal"} title="Personal Chat" description="Runs in your personal chat" onChange={() => setDraft({ ...draft, targetKind: "personal" })} />
+									<RadioCard name="ralph-target-kind" checked={draft.targetKind === "personal"} title="Shared Chat" description="Runs in the shared default chat" onChange={() => setDraft({ ...draft, targetKind: "personal" })} />
 									<RadioCard name="ralph-target-kind" checked={draft.targetKind === "room"} title="Room" description="Uses a room workspace" onChange={() => setDraft({ ...draft, targetKind: "room" })} />
 								</div>
 							</div>
 							{draft.targetKind === "room" ? <Field label="Room"><select className={inputClass} value={draft.roomId} onChange={(event) => setDraft({ ...draft, roomId: event.target.value })}>{rooms.map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}</select></Field> : null}
 							<Field label="Max Iterations"><input className={inputClass} type="number" min="1" value={draft.maxIterations} onChange={(event) => setDraft({ ...draft, maxIterations: event.target.value })} placeholder="Unlimited" /></Field>
-							<div className="rounded-sm border border-slate-800 bg-[#101d22] px-3 py-2 text-xs text-slate-500">Target: <span className="text-slate-300">{draft.targetKind === "room" ? selectedRoomName : "Personal Chat"}</span></div>
+							<div className="rounded-sm border border-slate-800 bg-[#101d22] px-3 py-2 text-xs text-slate-500">Target: <span className="text-slate-300">{draft.targetKind === "room" ? selectedRoomName : "Shared Chat"}</span></div>
 						</Panel>
 
 						<Panel title="Runtime">

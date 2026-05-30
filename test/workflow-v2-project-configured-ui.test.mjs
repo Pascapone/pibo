@@ -3,7 +3,11 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 async function readAppSource() {
-	return readFile(new URL("../src/apps/chat-ui/src/App.tsx", import.meta.url), "utf8");
+	return (await Promise.all([
+		"../src/apps/chat-ui/src/App.tsx",
+		"../src/apps/chat-ui/src/projects/ProjectWorkflowPanels.tsx",
+		"../src/apps/chat-ui/src/projects/ProjectsAreaModel.ts",
+	].map((relativePath) => readFile(new URL(relativePath, import.meta.url), "utf8")))).join("\n");
 }
 
 test("Project workflow configured-session UI exposes review, start, and empty run-history state", async () => {

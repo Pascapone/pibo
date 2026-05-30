@@ -40,23 +40,25 @@ test("Ink CLI V2 current-state audit documents shared surface, scope, commands, 
 	assert.match(report, /Project, Workflow, Cron, Ralph, Settings, Context Files/);
 });
 
-test("V2 CLI owner resolution prevents implicit user:unknown writes", async () => {
+test("V2 CLI writes shared-app sessions instead of implicit user:unknown rows", async () => {
 	const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pibo-ink-cli-v2-owner-required-"));
 	const dataStore = new PiboDataStore(path.join(tempDir, "pibo.sqlite"), { payloadRootDir: path.join(tempDir, "payloads") });
 	const sessionStore = new PiboDataSessionStore(dataStore);
 	const source = new LocalCliSessionSource({ dataStore, sessionStore, now: () => fixedNow });
 
 	try {
-		const created = await source.createSession({ roomId: "room_owner_required", title: "Owner must be explicit", profile: "base" });
-		await source.sendMessage(created.id, "message that should keep selected owner fallback");
-		assert.equal(created.ownerScope, "local:root");
+		const created = await source.createSession({ roomId: "room_owner_required", title: "Shared app session", profile: "base" });
+		await source.sendMessage(created.id, "message that should keep the shared app fallback");
+		assert.equal(created.ownerScope, "shared:app");
 
-		const sessionRow = dataStore.db.prepare("SELECT owner_scope, room_id FROM sessions WHERE id = ?").get(created.id);
-		assert.equal(sessionRow.owner_scope, "local:root");
+		const sessionColumns = tableColumns(dataStore.db, "sessions");
+		const sessionRow = dataStore.db.prepare(`${sessionColumns.has("owner_scope") ? "SELECT owner_scope, room_id" : "SELECT room_id"} FROM sessions WHERE id = ?`).get(created.id);
+		if (sessionColumns.has("owner_scope")) assert.equal(sessionRow.owner_scope, "shared:app");
 		assert.equal(sessionRow.room_id, "room_owner_required");
 
-		const navigationRow = dataStore.db.prepare("SELECT owner_scope, room_id, session_id FROM session_navigation WHERE session_id = ?").get(created.id);
-		assert.equal(navigationRow.owner_scope, "local:root");
+		const navigationColumns = tableColumns(dataStore.db, "session_navigation");
+		const navigationRow = dataStore.db.prepare(`${navigationColumns.has("owner_scope") ? "SELECT owner_scope, room_id, session_id" : "SELECT room_id, session_id"} FROM session_navigation WHERE session_id = ?`).get(created.id);
+		if (navigationColumns.has("owner_scope")) assert.equal(navigationRow.owner_scope, "shared:app");
 		assert.equal(navigationRow.room_id, "room_owner_required");
 
 		assert.equal(sessionStore.find({ ownerScope: "user:unknown" }).some((session) => session.id === created.id), false);
@@ -66,6 +68,10 @@ test("V2 CLI owner resolution prevents implicit user:unknown writes", async () =
 		fs.rmSync(tempDir, { recursive: true, force: true });
 	}
 });
+
+function tableColumns(db, table) {
+	return new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((row) => row.name));
+}
 
 function escapeRegExp(value) {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

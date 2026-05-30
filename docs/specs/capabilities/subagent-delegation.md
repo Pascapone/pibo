@@ -19,7 +19,7 @@ Define the observable contract for registering subagents, exposing them as tools
 
 Subagents are registered as `SubagentProfile` records with a `name`, `targetProfile`, optional `description`, optional timeout, and optional max depth. Profiles select subagents through `InitialSessionContextBuilder.addSubagent` or `addSubagents`. Runtime creation converts enabled selected subagents into generated tools named `pibo_subagent_<normalized-name>`.
 
-When such a tool runs, the session router resolves or creates a child Pibo Session with channel `pibo.subagents`, kind `subagent`, the parent's owner scope and workspace, and a parent-child relationship through `parentId`. The router emits a `subagent_session` output event on the parent before waiting for the child assistant reply.
+When such a tool runs, the session router resolves or creates a child Pibo Session with channel `pibo.subagents`, kind `subagent`, the parent's workspace and shared app compatibility context, and a parent-child relationship through `parentId`. The router emits a `subagent_session` output event on the parent before waiting for the child assistant reply.
 
 ## Scope
 
@@ -28,7 +28,7 @@ When such a tool runs, the session router resolves or creates a child Pibo Sessi
 - Plugin-registered and custom-agent-selected subagent definitions.
 - Generated subagent tool names, descriptions, parameters, and return shape.
 - Parent-to-child routed session creation and reuse.
-- Depth, timeout, owner scope, workspace, model, and room inheritance behavior.
+- Depth, timeout, workspace, model, shared app compatibility, and room inheritance behavior.
 - Delegation events used by Chat Web traces, streams, ingestion, and signals.
 
 ### Out of Scope
@@ -121,7 +121,7 @@ The session router MUST resolve each subagent call to a child Pibo Session keyed
 
 #### Current
 
-A missing or blank `threadKey` is replaced with a new UUID. A nonblank `threadKey` is trimmed. Existing matching child sessions are reused. New child sessions use channel `pibo.subagents`, kind `subagent`, the resolved target profile, the parent's owner scope, parent id, workspace, and subagent metadata.
+A missing or blank `threadKey` is replaced with a new UUID. A nonblank `threadKey` is trimmed. Existing matching child sessions are reused. New child sessions use channel `pibo.subagents`, kind `subagent`, the resolved target profile, the parent's shared app compatibility context, parent id, workspace, and subagent metadata.
 
 #### Target
 
@@ -132,7 +132,7 @@ Repeated calls with the same parent, subagent, target profile, and thread key co
 - A first call with a new `threadKey` creates a child Pibo Session.
 - A later call with the same parent, subagent, target profile, and `threadKey` reuses that child session.
 - A call with no `threadKey` creates a new child session with a generated thread key.
-- The child session has the same `ownerScope` and `workspace` as the parent.
+- The child session has the same workspace as the parent and uses shared app compatibility metadata when old stores require it.
 
 #### Scenario: Thread key reuse
 
@@ -278,7 +278,7 @@ Subagent work is distinguishable from direct user input and cannot block the par
 ## Constraints
 
 - **Compatibility:** Generated tool names and `subagent_session` event fields are public contracts for traces and Chat Web stream adaptation.
-- **Security / Privacy:** Child sessions inherit owner scope from the parent and MUST NOT be visible outside that owner scope.
+- **Security / Privacy:** Child sessions inherit shared app compatibility metadata from the parent and are visible through the shared app session tree.
 - **Performance:** Delegation event emission and child-session lookup must stay bounded by indexed session-store queries and parent-depth traversal.
 - **Dependencies:** Subagent execution depends on the session router, plugin registry profile resolution, runtime tool creation, and Chat Web projections.
 

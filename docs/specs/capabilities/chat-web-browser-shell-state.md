@@ -121,7 +121,7 @@ Browser preferences improve continuity but never become required for authenticat
 
 #### Acceptance
 
-A browser test can make `localStorage.getItem` and `setItem` throw and verify that Chat Web still renders, defaults are used, and server requests remain owner-scoped through authenticated APIs.
+A browser test can make `localStorage.getItem` and `setItem` throw and verify that Chat Web still renders, defaults are used, and server requests remain authenticated shared-app API calls.
 
 #### Scenario: Locked-down browser storage
 
@@ -309,7 +309,7 @@ A browser test can force service worker registration and `/health` to fail and v
 ## Constraints
 
 - **Compatibility:** Existing Chat Web paths under `/apps/chat` must remain deep-link compatible.
-- **Security / Privacy:** Browser-local state is not an access-control mechanism. All room, project, session, and mutation requests must remain authenticated and owner-scoped by the server.
+- **Security / Privacy:** Browser-local state is not an access-control mechanism. All room, project, session, and mutation requests must remain authenticated and resolved by shared resource semantics on the server.
 - **Performance:** Live stream handlers should patch small local state immediately and defer full bootstrap refreshes with a short debounce instead of reloading on every delta.
 - **Reliability:** The UI must tolerate missing storage, failed service worker registration, health timeouts, stale remembered ids, and missed signal patches.
 - **Dependencies:** The behavior depends on TanStack Router, TanStack Query, browser `localStorage`, EventSource, and the Chat Web server APIs.
@@ -330,7 +330,7 @@ A browser test can force service worker registration and `/health` to fail and v
 ### Assumptions
 
 - Browser-local preferences are intentionally per-browser, not synced through Pibo accounts.
-- The backend remains the authority for owner scope, room membership, project membership, and session existence.
+- The backend remains the authority for shared room, project, and session existence. Legacy membership/owner fields do not authorize current product behavior.
 - The current two supported session views are the default trace-style view and the terminal view.
 
 ### Open Questions

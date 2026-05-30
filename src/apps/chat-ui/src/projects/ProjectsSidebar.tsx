@@ -50,7 +50,7 @@ export function ProjectsSidebar({
 	onAutoRenameConsumed,
 }: {
 	data: {
-		personalProject: PiboProject;
+		sharedDefaultProject: PiboProject;
 		sessions: PiboWebSessionNode[];
 	};
 	selectedProject?: PiboProject;
@@ -99,8 +99,8 @@ export function ProjectsSidebar({
 			</div>
 			<div className="p-2 space-y-3">
 				<div>
-					<div className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Personal Chat</div>
-					<ProjectRow project={data.personalProject} selected={selectedProject?.id === data.personalProject.id} onSelect={() => onSelectProject(data.personalProject.id)} />
+					<div className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Shared Chat</div>
+					<ProjectRow project={data.sharedDefaultProject} selected={selectedProject?.id === data.sharedDefaultProject.id} onSelect={() => onSelectProject(data.sharedDefaultProject.id)} />
 				</div>
 				<div>
 					<div className="flex items-center justify-between gap-2 px-1 pb-1">
@@ -197,7 +197,7 @@ function WorkflowRunsPanel({
 }
 
 function ProjectRow({ project, selected, archived, onSelect, onRename, onArchive, onDelete }: { project: PiboProject; selected: boolean; archived?: boolean; onSelect: () => void; onRename?: (name: string) => void; onArchive?: () => void; onDelete?: () => void }) {
-	const personal = project.metadata?.personal === true;
+	const sharedDefault = project.metadata?.default === true || project.metadata?.personal === true;
 	const [editing, setEditing] = useState(false);
 	const [draftName, setDraftName] = useState(project.name);
 	const [menuOpen, setMenuOpen] = useState(false);
@@ -231,7 +231,7 @@ function ProjectRow({ project, selected, archived, onSelect, onRename, onArchive
 
 	return (
 		<div className={`group flex items-center gap-2 rounded-sm border px-2 py-2 text-sm ${
-			personal
+			sharedDefault
 				? selected
 					? "border-[#0bda57] bg-[#0bda57]/10 text-green-100"
 					: "border-[#0bda57]/50 bg-[#0bda57]/5 text-slate-300 hover:border-[#0bda57]"
@@ -239,8 +239,8 @@ function ProjectRow({ project, selected, archived, onSelect, onRename, onArchive
 					? "border-[#11a4d4] bg-[#11a4d4]/10 text-sky-100"
 					: "border-transparent text-slate-300 hover:border-slate-700 hover:bg-slate-900/40"
 		}`}>
-			<span className={`h-6 w-6 shrink-0 inline-flex items-center justify-center rounded-sm ${personal ? "bg-[#0bda57]/15 text-[#0bda57]" : archived ? "bg-[#f59e0b]/15 text-[#f59e0b]" : "bg-[#151f24] text-slate-500"}`}>
-				{personal ? <Lock size={13} /> : archived ? <Archive size={13} /> : <FolderPlus size={13} />}
+			<span className={`h-6 w-6 shrink-0 inline-flex items-center justify-center rounded-sm ${sharedDefault ? "bg-[#0bda57]/15 text-[#0bda57]" : archived ? "bg-[#f59e0b]/15 text-[#f59e0b]" : "bg-[#151f24] text-slate-500"}`}>
+				{sharedDefault ? <Lock size={13} /> : archived ? <Archive size={13} /> : <FolderPlus size={13} />}
 			</span>
 			{editing ? (
 				<form
@@ -269,11 +269,11 @@ function ProjectRow({ project, selected, archived, onSelect, onRename, onArchive
 			) : (
 				<button type="button" onClick={onSelect} className="min-w-0 flex-1 text-left">
 					<span className="block truncate font-medium">{project.name}</span>
-					<span className="block truncate text-[11px] text-slate-500">{personal ? "locked personal project chat" : project.projectFolder}</span>
+					<span className="block truncate text-[11px] text-slate-500">{sharedDefault ? "shared default project chat" : project.projectFolder}</span>
 				</button>
 			)}
-			{personal ? (
-				<span title="Personal Chat is locked" aria-label="Personal Chat is locked" className="h-7 w-7 max-[980px]:h-9 max-[980px]:w-9 inline-flex items-center justify-center border border-[#0bda57]/50 rounded-sm text-[#0bda57]">
+			{sharedDefault ? (
+				<span title="Shared Chat is locked" aria-label="Shared Chat is locked" className="h-7 w-7 max-[980px]:h-9 max-[980px]:w-9 inline-flex items-center justify-center border border-[#0bda57]/50 rounded-sm text-[#0bda57]">
 					<Lock size={24} className="w-3.5 h-3.5 max-[980px]:w-5 max-[980px]:h-5" />
 				</span>
 			) : editing ? null : (

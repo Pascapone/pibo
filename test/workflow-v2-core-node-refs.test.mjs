@@ -6,6 +6,19 @@ async function readSource(relativePath) {
 	return readFile(new URL(`../${relativePath}`, import.meta.url), "utf8");
 }
 
+async function readWorkflowUiSourceBundle() {
+	return (await Promise.all([
+		"src/apps/chat-ui/src/WorkflowsArea.tsx",
+		"src/apps/chat-ui/src/workflows/WorkflowBuilderNodeEditors.tsx",
+		"src/apps/chat-ui/src/workflows/WorkflowGraphCanvas.tsx",
+		"src/apps/chat-ui/src/workflows/WorkflowInspectorsPanel.tsx",
+		"src/apps/chat-ui/src/workflows/WorkflowLibraryPanel.tsx",
+		"src/apps/chat-ui/src/workflows/WorkflowRawIrEditor.tsx",
+		"src/apps/chat-ui/src/workflows/WorkflowPromptAssetEditor.tsx",
+		"src/apps/chat-ui/src/workflows/WorkflowVersionViewer.tsx",
+	].map(readSource))).join("\n");
+}
+
 function assertAllMatch(source, checks) {
 	for (const [label, pattern] of checks) {
 		assert.match(source, pattern, label);
@@ -13,8 +26,8 @@ function assertAllMatch(source, checks) {
 }
 
 test("Workflow V2 core node refs use registered pickers and separate workflow navigation", async () => {
-	const workflowsAreaSource = await readSource("src/apps/chat-ui/src/WorkflowsArea.tsx");
-	const chatApiSource = await readSource("src/apps/chat-ui/src/api.ts");
+	const workflowsAreaSource = await readWorkflowUiSourceBundle();
+	const chatApiSource = await readSource("src/apps/chat-ui/src/api-workflows.ts");
 	const webChannelTests = await readSource("test/web-channel.test.mjs");
 	const registryTests = await readSource("packages/workflows/src/testing/registry.test.ts");
 

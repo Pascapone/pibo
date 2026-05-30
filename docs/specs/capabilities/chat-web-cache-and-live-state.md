@@ -224,7 +224,7 @@ The browser MUST merge navigation responses with local unread-clearing intent so
 ## Constraints
 
 - **Compatibility:** Cache keys must remain stable for current Chat Web React Query callers.
-- **Security / Privacy:** Cache entries are browser-local and must not mix owner scopes; all authoritative data still comes from authenticated APIs.
+- **Security / Privacy:** Cache entries are browser-local and must not be used as authorization; all authoritative shared app data still comes from authenticated APIs.
 - **Performance:** Live frames should patch status locally and debounce full refreshes; trace invalidation should be session-scoped.
 - **Dependencies:** The client depends on React Query, Chat Web API contracts, room SSE frames, and Pibo Session Signals.
 

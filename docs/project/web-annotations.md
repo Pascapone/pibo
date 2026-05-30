@@ -6,7 +6,7 @@ Web Annotations let a user point at a live browser target and send that referenc
 
 1. Open Chat Web and select an active Pibo Session.
 2. Use **Annotate URL** to open a target, or use **Attach Browser Target** to select an already-open CDP target.
-3. Pibo stores a binding for the owner scope, Pibo Session ID, optional Room ID, target URL, and CDP target ID.
+3. Pibo stores a binding for the Pibo Session ID, optional Room ID, target URL, and CDP target ID. Legacy owner fields may exist only as migration compatibility.
 4. Pibo injects the overlay only into the selected target.
 5. In the target page, create an element annotation or a pin annotation and submit a note.
 6. Return to Chat Web, refresh the session annotations, and attach one or more annotations to the next message.
@@ -28,7 +28,7 @@ Profiles that select the `web-annotation-agent-tools` package expose these tools
 - `web_annotations_resolve`: mark work complete with a summary.
 - `web_annotations_dismiss`: close an irrelevant annotation with an optional reason.
 
-Tools derive owner scope from runtime context. The model cannot provide an owner scope to bypass authorization.
+Tools derive session context from runtime context. The model cannot provide an owner or session id to bypass authorization.
 
 ## Source hints
 
@@ -51,7 +51,7 @@ If the CDP target closes, Pibo marks the binding `closed` with a recoverable err
 
 Web Annotations copy only bounded fields by default. They do not send full DOM dumps, full page HTML, or inline screenshot data into model-visible context. Screenshot data, when present, must remain an artifact reference.
 
-The server treats overlay payloads as untrusted. It derives owner scope, session ID, and Room ID from the authenticated request or binding token, caps text and metadata fields, redacts common secret-like values where prompt/UI/tool serializers render text, and rejects stale or unauthorized message attachments.
+The server treats overlay payloads as untrusted. It derives session ID and Room ID from the authenticated request or binding token, caps text and metadata fields, redacts common secret-like values where prompt/UI/tool serializers render text, and rejects stale or unauthorized message attachments.
 
 ## Common errors
 
@@ -62,7 +62,7 @@ The server treats overlay payloads as untrusted. It derives owner scope, session
 | Target not found | The selected target closed or the ID is stale. | Refresh the target list and select the target again. |
 | Injection failed | CDP could not evaluate the overlay in the selected page. | Reload the page, reinject, or bind a fresh target. |
 | Cross-origin iframe unavailable | The top-level overlay cannot inspect frame contents. | Annotate the iframe element or open the framed page directly when allowed. |
-| Unauthorized annotation | The owner scope or session does not match the caller. | Use the originating Chat Web session or an authorized runtime. |
+| Unauthorized annotation | The session is unavailable or does not match the trusted binding. | Use the originating Chat Web session or an authorized runtime. |
 | Oversized payload | A note, selector, metadata field, or attachment list exceeded limits. | Shorten the note or reduce selected attachments. |
 
 ## Out of scope for V1

@@ -5,6 +5,7 @@ import { getDefaultPiboWorkspace } from "../core/workspace.js";
 import { PiboDataStore } from "../data/pibo-store.js";
 import { ChatRoomService } from "../apps/chat/data/room-service.js";
 import { isPiboRoomArchived } from "../apps/chat/types/rooms.js";
+import { getSharedAppLegacyOwnerScope } from "../shared-app.js";
 import { formatSchedule } from "./schedule.js";
 import { createDefaultPiboCronStore, PiboCronStore } from "./store.js";
 import type { PiboCronJob, PiboCronRun, PiboCronStatus } from "./types.js";
@@ -79,7 +80,8 @@ export class PiboCronService {
 	}
 
 	async runJobNow(ownerScope: string, id: string): Promise<PiboCronRun> {
-		const reserved = this.store.reserveManualRun(ownerScope, id);
+		void ownerScope;
+		const reserved = this.store.reserveManualRun(getSharedAppLegacyOwnerScope(), id);
 		if (!reserved) throw new Error("Cron job not found");
 		void this.executeReserved(reserved.job, reserved.run).finally(() => this.armSoon());
 		return reserved.run;
@@ -131,7 +133,7 @@ export class PiboCronService {
 			channel: CHAT_WEB_CHANNEL,
 			kind: "cron",
 			profile: job.profile,
-			ownerScope: job.ownerScope,
+			ownerScope: getSharedAppLegacyOwnerScope(),
 			workspace: target.workspace ?? getDefaultPiboWorkspace(),
 			title: job.name,
 			metadata: {
@@ -153,7 +155,7 @@ export class PiboCronService {
 			if (isPiboRoomArchived(room)) throw new Error("Target room is archived");
 			return { roomId: room.id, workspace: room.workspace ?? getDefaultPiboWorkspace() };
 		}
-		const room = this.roomService.ensureDefaultRoom({ ownerScope: job.ownerScope, principalId: job.target.principalId, name: "Personal Chat" });
+		const room = this.roomService.ensureDefaultRoom({ ownerScope: getSharedAppLegacyOwnerScope(), principalId: getSharedAppLegacyOwnerScope(), name: "Shared Chat" });
 		return { roomId: room.id, workspace: room.workspace ?? getDefaultPiboWorkspace() };
 	}
 

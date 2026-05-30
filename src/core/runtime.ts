@@ -44,6 +44,7 @@ import { createPiboCompactionPromptExtension } from "./compaction-prompt.js";
 import { getPiPackageRuntimeOptions } from "../pi-packages/runtime.js";
 import { getDefaultPiboWorkspace } from "./workspace.js";
 import { DEFAULT_USER_TIMEZONE } from "./user-settings.js";
+import { SHARED_APP_CONTEXT } from "../shared-app.js";
 import { createRuntimeToolDefinition, type PiboRuntimeToolController } from "../tools/runtime/tool.js";
 import { RuntimeSessionRegistry } from "../tools/runtime/registry.js";
 import { compactValidationToolResultForContext } from "./test-output-compaction.js";
@@ -66,7 +67,7 @@ export type PiboRuntimeOptions = {
 };
 
 export type PiboRuntimeSessionContext = {
-	userId?: string;
+	/** @deprecated Legacy storage compatibility for tools that still write owner_scope columns. */
 	ownerScope?: string;
 	piboSessionId?: string;
 	piboRoomId?: string;
@@ -105,8 +106,6 @@ async function loadContextFiles(
 }
 
 function createSessionContextFile(context: PiboRuntimeSessionContext | undefined): { path: string; content: string } {
-	const userId = context?.userId?.trim() || userIdFromOwnerScope(context?.ownerScope) || "unknown";
-	const ownerScope = context?.ownerScope?.trim() || "unknown";
 	const piboSessionId = context?.piboSessionId?.trim() || "unknown";
 	const piboRoomId = context?.piboRoomId?.trim() || "unknown";
 	const timezone = context?.timezone?.trim() || DEFAULT_USER_TIMEZONE;
@@ -115,20 +114,14 @@ function createSessionContextFile(context: PiboRuntimeSessionContext | undefined
 		content: [
 			"# Pibo Runtime Context",
 			"",
-			`- User ID: ${userId}`,
-			`- Owner scope: ${ownerScope}`,
+			`- App context: ${SHARED_APP_CONTEXT.id}`,
 			`- Pibo Session ID: ${piboSessionId}`,
 			`- Pibo Room ID: ${piboRoomId}`,
 			`- User timezone: ${timezone}`,
 			"",
-			"Use these product-level identifiers when scheduling jobs, correlating events, or referring to the current Pibo session or room.",
+			"Login identity gates app access only. Use the Pibo Session ID or Room ID when scheduling jobs, correlating events, or referring to the current session or room.",
 		].join("\n"),
 	};
-}
-
-function userIdFromOwnerScope(ownerScope: string | undefined): string | undefined {
-	if (!ownerScope) return undefined;
-	return ownerScope.startsWith("user:") ? ownerScope.slice("user:".length) : ownerScope;
 }
 
 function mergeContextFiles(

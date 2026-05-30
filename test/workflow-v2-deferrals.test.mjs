@@ -4,7 +4,13 @@ import test from "node:test";
 
 const uiSourceFiles = [
 	"src/apps/chat-ui/src/WorkflowsArea.tsx",
+	"src/apps/chat-ui/src/workflows/WorkflowBuilderNodeEditors.tsx",
+	"src/apps/chat-ui/src/workflows/WorkflowGraphCanvas.tsx",
+	"src/apps/chat-ui/src/workflows/WorkflowInspectorsPanel.tsx",
+	"src/apps/chat-ui/src/workflows/WorkflowLibraryPanel.tsx",
+	"src/apps/chat-ui/src/workflows/WorkflowRawIrEditor.tsx",
 	"src/apps/chat-ui/src/App.tsx",
+	"src/apps/chat-ui/src/projects/ProjectWorkflowPanels.tsx",
 	"src/apps/chat-ui/src/session-views/WorkflowXStateSessionView.tsx",
 ];
 
@@ -95,7 +101,7 @@ function collectInteractiveFragments(source, filePath) {
 
 test("workflow V2 UI names every explicit deferral in scope-boundary copy", async () => {
 	const workflowsSource = await readSource("src/apps/chat-ui/src/WorkflowsArea.tsx");
-	const appSource = await readSource("src/apps/chat-ui/src/App.tsx");
+	const appSource = await readSource("src/apps/chat-ui/src/projects/ProjectWorkflowPanels.tsx");
 
 	assert.match(workflowsSource, /aria-label=\"Workflow V2 explicit non-goals\"/);
 	for (const phrase of workflowBoundaryPhrases) {

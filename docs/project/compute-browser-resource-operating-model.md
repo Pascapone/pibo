@@ -26,7 +26,7 @@ This model defines the resource terms used by Pibo compute workers, browser auto
 3. Compute containers must start with host-safe memory, swap, PID, shm, restart, init, and log policies. These limits are system policy, not prompt guidance.
 4. Browser-pool cleanup may close tabs/contexts, release leases, kill stale managed `chrome|chromium` process trees, and remove stale state files tied to Pibo-managed profiles.
 5. Auth profile cleanup must preserve the authenticated template profile unless the operator explicitly targets that template workflow.
-6. Ralph-owned resources must be machine-readable: worker ids, browser lease ids, owner scope, job id, run id, cleanup state, and retention/dirty reasons should be visible to status and diagnostic commands.
+6. Ralph-owned resources must be machine-readable: worker ids, browser lease ids, job id, run id, cleanup state, and retention/dirty reasons should be visible to status and diagnostic commands. Legacy compute owner labels, when present, are compatibility metadata only.
 7. Worktree deletion is not part of normal browser or container reaping. Operators must opt into worktree cleanup separately.
 
 ## Default ownership flow

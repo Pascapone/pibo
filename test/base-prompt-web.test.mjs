@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { createChatWebApp } from "../dist/apps/chat/web-app.js";
+import { LEGACY_SHARED_APP_OWNER_SCOPE } from "../dist/shared-app.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
 import { createWebHostChannel } from "../dist/web/channel.js";
 
@@ -111,6 +112,14 @@ test("chat user-settings API validates same-origin mutations and persists saniti
 		assert.equal(reloaded.response.status, 200);
 		assert.equal(reloaded.data.userSettings.timezone, "Europe/Berlin");
 		assert.equal(reloaded.data.userSettings.shortcuts.webAnnotationsToggle, "Ctrl+Shift+P");
+
+		const reloadedOtherAccount = await fetchJson(`${baseURL}/api/chat/user-settings`, {
+			headers: { "x-test-user": "user-2" },
+		});
+		assert.equal(reloadedOtherAccount.response.status, 200);
+		assert.equal(reloadedOtherAccount.data.userSettings.timezone, "Europe/Berlin");
+		const persisted = JSON.parse(readFileSync(join(process.env.PIBO_HOME, "user-settings.json"), "utf-8"));
+		assert.deepEqual(Object.keys(persisted.users), [LEGACY_SHARED_APP_OWNER_SCOPE]);
 	} finally {
 		await channel.stop?.();
 		if (originalPiboHome === undefined) delete process.env.PIBO_HOME;

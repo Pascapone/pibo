@@ -93,7 +93,7 @@ The system MUST inject Pibo-owned runtime identifiers into the runtime context w
 
 #### Current
 
-`createSessionContextFile()` creates `pibo://runtime/session-context.md` with user id, owner scope, Pibo Session ID, Pibo Room ID, and timezone. `createPiboRuntime()` merges it into the agent context files.
+`createSessionContextFile()` creates `pibo://runtime/session-context.md` with shared app context, Pibo Session ID, Pibo Room ID, and timezone. It must not expose auth user id or owner scope as product ownership. `createPiboRuntime()` merges it into the agent context files.
 
 #### Acceptance
 
@@ -104,7 +104,7 @@ The system MUST inject Pibo-owned runtime identifiers into the runtime context w
 
 #### Scenario: Scheduled room job starts a session
 
-- GIVEN runtime options include owner scope, Pibo Session ID, Pibo Room ID, and timezone
+- GIVEN runtime options include shared app compatibility context, Pibo Session ID, Pibo Room ID, and timezone
 - WHEN the scheduled job runtime starts
 - THEN the context includes those exact product identifiers for the agent.
 
@@ -271,7 +271,7 @@ The system MUST expose an inspection snapshot that explains startup context asse
 
 #### Current
 
-`inspectPiboContextBuild()` calls `createPiboRuntime()` with `persistSession: false`, uses inert subagent and run-control controllers when needed, omits requested model auth resolution for inspection, reads loaded runtime resources, redacts secret-like values in text, metadata, schema, payload, and diagnostics, estimates direct and subtree tokens, and disposes the runtime in a `finally` block. Chat Web requires an authenticated owned session for `GET /api/chat/context-build?piboSessionId=...` and passes the selected session's profile, active model, workspace, owner scope, room id, and timezone into the snapshot.
+`inspectPiboContextBuild()` calls `createPiboRuntime()` with `persistSession: false`, uses inert subagent and run-control controllers when needed, omits requested model auth resolution for inspection, reads loaded runtime resources, redacts secret-like values in text, metadata, schema, payload, and diagnostics, estimates direct and subtree tokens, and disposes the runtime in a `finally` block. Chat Web requires an authenticated shared session for `GET /api/chat/context-build?piboSessionId=...` and passes the selected session's profile, active model, workspace, shared app compatibility context, room id, and timezone into the snapshot.
 
 #### Acceptance
 
@@ -321,7 +321,7 @@ The system MUST prevent direct Pi TUI startup for profiles that require routed P
 ## Constraints
 
 - **Compatibility:** Pibo runtime assembly must remain compatible with Pi Coding Agent `createAgentSessionRuntime`, `createAgentSessionServices`, and `SessionManager` contracts.
-- **Security / Privacy:** Runtime context may expose product identifiers and owner scope to the agent, but it must not include provider secrets or web auth tokens.
+- **Security / Privacy:** Runtime context may expose product identifiers and shared app context to the agent, but it must not include owner scope, auth user id, provider secrets, or web auth tokens.
 - **Performance:** Profile and Build Context inspection may instantiate a runtime but must dispose it and must not perform long-running subagent or yielded work.
 - **Dependencies:** Model lookup, auth status, resource loading, and session persistence depend on Pi Coding Agent services.
 

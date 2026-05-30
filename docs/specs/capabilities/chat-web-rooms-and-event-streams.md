@@ -7,13 +7,13 @@
 
 ## Why
 
-Chat Web needs a user-facing container above Pibo Sessions. Rooms give users a place to group sessions, keep a Personal Chat, choose a workspace, see unread activity, and follow live output without exposing raw router internals.
+Chat Web needs a user-facing container above Pibo Sessions. Rooms give users a shared place to group sessions, choose a workspace, see unread activity, and follow live output without exposing raw router internals.
 
 The room and event-stream layer must stay separate from the Pibo Session source of truth. Pibo Sessions own runtime identity and routing. Chat Web rooms, membership, read state, event log rows, SSE frames, and navigation projections make those sessions usable in the browser.
 
 ## Goal
 
-Pibo MUST provide authenticated Chat Web rooms and event streams that group owned Pibo Sessions, enforce room access, persist trace/chat events, resume live streams with cursors, and maintain unread state for rooms and session trees.
+Pibo MUST provide authenticated Chat Web rooms and event streams that group shared Pibo Sessions, persist trace/chat events, resume live streams with cursors, and maintain app-global unread state for rooms and session trees.
 
 ## Background / Current State
 
@@ -25,9 +25,9 @@ Rooms, room members, event logs, read state, sessions, payloads, observations, a
 
 ### In Scope
 
-- Personal Chat default room creation per owner scope.
+- Shared default Chat room creation for the app.
 - Room listing, hierarchy, creation, update, archive, restore, and permanent deletion.
-- Room membership roles and read/write/admin access checks.
+- Room existence/state checks; legacy membership rows are migration compatibility only.
 - Room workspace metadata and session workspace inheritance.
 - Room-scoped session creation, selection, metadata mutation, archiving, deletion, and tree rendering.
 - Runtime termination controls for selected Chat Web sessions.
@@ -43,74 +43,72 @@ Rooms, room members, event logs, read state, sessions, payloads, observations, a
 - Custom-agent profile design — covered by the custom-agents spec.
 - Project-specific containers and workflows — covered by the Projects spec.
 - Distributed event storage or multi-gateway stream fanout.
-- Rich team permission management beyond the current local room roles.
+- Team, role, admin, or per-resource permission management.
 
 ## Requirements
 
-### Requirement: Default Personal Chat room is created on demand
+### Requirement: Shared default Chat room is created on demand
 
-The system MUST ensure each authenticated owner scope has a default Personal Chat room before Chat Web returns a default session or navigation payload.
+The system MUST ensure the shared app has a default Chat room before Chat Web returns a default session or navigation payload.
 
 #### Current
 
-`ChatRoomService.ensureDefaultRoom()` finds a room with `metadata.default === true` for the owner scope or creates one named `Personal Chat` and grants the principal owner membership.
+`ChatRoomService.ensureDefaultRoom()` finds a shared default room with `metadata.default === true` or creates one named `Shared Chat`. Legacy member rows may be written for migration compatibility, but they do not gate access.
 
 #### Acceptance
 
 - Bootstrap or session APIs create a default room when none exists.
-- The default room is associated with the authenticated owner scope.
-- The current principal is an owner member of the default room.
+- The default room belongs to the shared app context.
 - Existing default rooms are reused instead of duplicated.
-- The Personal Chat room cannot be renamed, archived, or deleted through normal room mutation flows.
+- The shared default room cannot be archived or deleted through normal room mutation flows.
 
 #### Scenario: First Chat Web open
 
-- GIVEN an authenticated user has no rooms
-- WHEN the user opens Chat Web bootstrap
-- THEN Pibo creates a Personal Chat room and returns it as the selected room.
+- GIVEN the shared app has no rooms
+- WHEN an allowed user opens Chat Web bootstrap
+- THEN Pibo creates a Shared Chat room and returns it as the selected room.
 
-### Requirement: Rooms are owner-scoped hierarchical containers
+### Requirement: Rooms are shared hierarchical containers
 
-The system MUST list and mutate rooms only inside the authenticated user's owner scope and MUST preserve parent-child room relationships.
+The system MUST list and mutate rooms in the shared app context and MUST preserve parent-child room relationships.
 
 #### Current
 
-Room records include `owner_scope`, `parent_room_id`, `metadata_json`, and timestamps. `listRoomTree()` builds a tree from the current owner's rooms.
+Fresh room records are app-global. Legacy `owner_scope` and membership data may exist in migrated stores, but active room APIs build one shared room tree.
 
 #### Acceptance
 
-- `GET /api/chat/rooms`, bootstrap, and navigation return only rooms for the current owner scope.
-- Creating a child room requires admin access to the parent room.
-- Moving a room under a new parent requires admin access to that parent.
-- Room tree output nests children under their parent when the parent is visible.
-- Missing parents do not expose rooms across owner scopes.
+- `GET /api/chat/rooms`, bootstrap, and navigation return the same rooms for all allowed accounts.
+- Creating or moving a child room requires the parent room to exist and not be archived.
+- Room tree output nests children under their parent when the parent exists.
+- Missing parents do not crash tree rendering.
 
 #### Scenario: Create child room
 
-- GIVEN a user owns room `A`
-- WHEN the user creates room `B` with parent `A`
-- THEN `B` appears as a child of `A` in the room tree.
+- GIVEN shared room `A` exists
+- WHEN an allowed user creates room `B` with parent `A`
+- THEN `B` appears as a child of `A` in the room tree for all allowed accounts.
 
-### Requirement: Room access controls all room-scoped actions
+### Requirement: Room state controls room-scoped actions
 
-The system MUST enforce room membership and role checks before reading, writing, or administering room resources.
+The system MUST use room existence and archive state, not account membership, before reading, writing, or mutating room resources.
 
 #### Current
 
-`requireRoomAccess()` validates membership and rejects write actions for viewers and admin actions for non-admin members.
+`ChatRoomService` resolves rooms by shared resource existence. Legacy membership records are retained only for migration/debug compatibility.
 
 #### Acceptance
 
-- Reading a room requires membership.
-- Sending a room message or creating a session in a room requires write access.
-- Updating, archiving, restoring, or deleting a room requires admin access.
+- Reading a room requires an authenticated request and an existing room.
+- Sending a room message or creating a session in a room requires a non-archived room.
+- Updating, archiving, restoring, or deleting a room requires a valid room id and normal mutation guards.
 - Archived rooms reject new sessions, messages, and runtime actions.
-- Cross-owner room ids are reported as unavailable rather than exposed.
+- Missing room ids are reported as unavailable.
 
 #### Scenario: Archived room is read-only
 
 - GIVEN a room has `chatRoomArchivedAt` metadata
-- WHEN a user tries to create a session or send a message in that room
+- WHEN an allowed user tries to create a session or send a message in that room
 - THEN the API rejects the request and creates no session or message.
 
 ### Requirement: Room workspaces seed new session workspaces
@@ -191,7 +189,7 @@ The system MUST expose SSE streams that can replay missed persisted frames and t
 
 - Event streams require an authenticated session.
 - Room streams require read access to the room.
-- Session streams require ownership of the selected session and, when room-scoped, membership in the room.
+- Session streams require the selected session to exist and, when room-scoped, to be associated with the room.
 - `since=<streamId>:<frameIndex>` skips already delivered frames for the same stream id.
 - Stored events are emitted before live events.
 - Room streams include the `piboSessionId` for unfocused sessions.
@@ -206,15 +204,15 @@ The system MUST expose SSE streams that can replay missed persisted frames and t
 
 ### Requirement: Read state drives unread session and room counts
 
-The system MUST track read cursors per principal and use them to compute unread counts for visible sessions and rooms.
+The system MUST track app-global read cursors and use them to compute unread counts for visible sessions and rooms.
 
 #### Current
 
-`ChatReadStateService` writes `principal_session_stats`. Bootstrap and navigation call `countUnreadMessagesBySession()` and aggregate counts to rooms through `buildRoomUnreadCounts()`.
+`ChatReadStateService` writes app-global read state. Legacy `principal_session_stats` rows may be read during migration, but fresh schemas use app read-state tables. Bootstrap and navigation call `countUnreadMessagesBySession()` and aggregate counts to rooms through `buildRoomUnreadCounts()`.
 
 #### Acceptance
 
-- Unread counts exclude events authored by the same principal.
+- Unread counts exclude events authored by the same app actor.
 - Unread session counts include chat messages and session errors.
 - Unread room counts aggregate visible non-archived session and child-session counts.
 - Opening a room-level stream alone does not mark assistant messages read.
@@ -235,14 +233,14 @@ The system MUST allow Chat Web to patch only supported Pibo Session metadata and
 
 #### Current
 
-`PATCH /api/chat/sessions/:id` accepts title, archived state, profile, and active model updates. It resolves the session through the authenticated owner scope, requires same-origin JSON, delegates persistence to the channel session store, and rejects profile changes when the session has an active trace or indexed activity.
+`PATCH /api/chat/sessions/:id` accepts title, archived state, profile, and active model updates. It resolves the session by shared resource existence, requires same-origin JSON, delegates persistence to the channel session store, and rejects profile changes when the session has an active trace or indexed activity.
 
 #### Acceptance
 
 - Session patch mutations require an authenticated same-origin JSON request.
-- The addressed session must belong to the authenticated owner scope.
+- The addressed session must exist and be in a state that allows the requested mutation.
 - Title updates are normalized through the session update path.
-- Archiving a session marks the selected session subtree read for the current principal.
+- Archiving a session marks the selected session subtree read for the shared app read state.
 - Profile changes are accepted only before the session has active trace state or indexed activity.
 - Active-model changes update the Pibo Session record without changing unrelated room metadata.
 - If the channel cannot update sessions, the API returns an explicit not-implemented failure.
@@ -260,21 +258,21 @@ The system MUST expose authenticated Chat Web controls that terminate only the a
 
 #### Current
 
-`POST /api/chat/sessions/:id/kill` and `POST /api/chat/sessions/:id/kill-all` resolve the requested session for the authenticated owner and emit execution actions `kill` or `kill_all` to the channel context.
+`POST /api/chat/sessions/:id/kill` and `POST /api/chat/sessions/:id/kill-all` resolve the requested shared session and emit execution actions `kill` or `kill_all` to the channel context.
 
 #### Acceptance
 
 - Termination mutations require same-origin JSON requests.
 - Invalid or path-like session ids fail before action emission.
-- The addressed session is resolved through the authenticated owner scope before emission.
+- The addressed session is resolved by Pibo Session ID before emission.
 - `/kill` emits an execution event with action `kill` for the selected Pibo Session ID.
 - `/kill-all` emits an execution event with action `kill_all` for the selected Pibo Session ID.
 - The HTTP response returns the correlated execution output from the channel context.
 - Termination controls do not archive, delete, or mutate room membership by themselves.
 
-#### Scenario: Kill owned session
+#### Scenario: Kill selected session
 
-- GIVEN a user owns session `S`
+- GIVEN session `S` exists
 - WHEN the user posts to `/api/chat/sessions/S/kill`
 - THEN Chat Web emits an execution event targeting Pibo Session `S` with action `kill`
 - AND returns the execution result.
@@ -290,7 +288,7 @@ Room deletion rejects default rooms and requires confirmation by room name. Sess
 #### Acceptance
 
 - Active rooms cannot be permanently deleted until archived.
-- Default Personal Chat rooms cannot be permanently deleted.
+- Shared default Chat rooms cannot be permanently deleted.
 - Active sessions cannot be permanently deleted until archived.
 - Deleting a room deletes contained sessions and descendant room data.
 - Deleting a session deletes its child-session subtree.
@@ -323,40 +321,40 @@ Room deletion rejects default rooms and requires confirmation by room name. Sess
 
 ## Success Criteria
 
-- [ ] SC-001: Opening Chat Web for a new owner creates one Personal Chat room and one default selected session.
-- [ ] SC-002: Room CRUD is owner-scoped and enforces read, write, and admin roles.
+- [ ] SC-001: Opening Chat Web in a fresh shared app creates one Shared Chat room and one default selected session.
+- [ ] SC-002: Room CRUD is app-global and enforces room existence/archive-state rules.
 - [ ] SC-003: New sessions created in a workspace room inherit that room workspace.
 - [ ] SC-004: User message posts are authenticated, same-origin, room-safe, and idempotent by client transaction id.
 - [ ] SC-005: Router output updates event log, session navigation, trace freshness, live listeners, and reliability mirror events.
 - [ ] SC-006: SSE streams replay persisted events after a cursor and forward only room- or session-matching live events.
 - [ ] SC-007: Unread counts update for sessions, child-session trees, and rooms, and read endpoints clear the selected subtree.
-- [ ] SC-008: Session metadata patches enforce owner scope, same-origin JSON, archive-read side effects, and profile-change limits.
-- [ ] SC-009: Runtime termination endpoints emit only `kill` or `kill_all` execution actions for the resolved owned session.
+- [ ] SC-008: Session metadata patches enforce shared session resolution, same-origin JSON, archive-read side effects, and profile-change limits.
+- [ ] SC-009: Runtime termination endpoints emit only `kill` or `kill_all` execution actions for the resolved session.
 - [ ] SC-010: Permanent deletion requires prior archive and exact confirmation, and removes associated projections.
 
 ## Assumptions and Open Questions
 
 ### Assumptions
 
-- Owner scope plus room membership is the current Chat Web authorization boundary.
+- Authentication is the app access gate; room membership is legacy storage compatibility, not a product authorization boundary.
 - The default room bridge for sessions without `chatRoomId` is still required for compatibility.
 - Room-level streams are for observation and should not mark messages read unless a session is actively selected.
 
 ### Open Questions
 
-- Should `room_members.lastReadStreamId` be removed or wired to the current `principal_room_stats` read model?
+- When should legacy `room_members` and old principal read-state columns be fully removed from migrated stores?
 - Should archived rooms still allow read-only SSE replay indefinitely?
 - Should room deletion offer export before deleting sessions and event history?
 - Should runtime termination endpoints be hidden or disabled for already-terminal session signals?
-- Should room roles become first-class multi-user sharing permissions in a future release?
+- No room roles are planned in this shared-app migration; any future permission model requires a separate spec.
 
 ## Traceability
 
 | Requirement | Scenario / Story | Code basis | Status |
 |---|---|---|---|
-| REQ-001 Default Personal Chat room is created on demand | First Chat Web open | `src/apps/chat/data/room-service.ts`, `src/apps/chat/web-app.ts` | Implemented |
-| REQ-002 Rooms are owner-scoped hierarchical containers | Create child room | `src/apps/chat/data/room-service.ts`, `src/data/schema.ts` | Implemented |
-| REQ-003 Room access controls all room-scoped actions | Archived room is read-only | `src/apps/chat/data/room-service.ts`, `src/apps/chat/web-app.ts` | Implemented |
+| REQ-001 Shared default Chat room is created on demand | First Chat Web open | `src/apps/chat/data/room-service.ts`, `src/apps/chat/web-app.ts` | Implemented |
+| REQ-002 Rooms are shared hierarchical containers | Create child room | `src/apps/chat/data/room-service.ts`, `src/data/schema.ts` | Implemented |
+| REQ-003 Room state controls room-scoped actions | Archived room is read-only | `src/apps/chat/data/room-service.ts`, `src/apps/chat/web-app.ts` | Implemented |
 | REQ-004 Room workspaces seed new session workspaces | New session in workspace room | `src/apps/chat/web-app.ts`, `src/apps/chat/types/rooms.ts` | Implemented |
 | REQ-005 Chat messages are accepted once per client transaction | Browser retries message post | `src/apps/chat/data/event-command-service.ts`, `src/apps/chat/web-app.ts` | Implemented |
 | REQ-006 Runtime output is ingested into Chat Web projections | Assistant finishes a message | `src/apps/chat/web-app.ts`, `src/data/ingest-service.ts`, `src/apps/chat/output-compactor.ts` | Implemented |

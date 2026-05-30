@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { getSharedAppLegacyOwnerScope } from "../shared-app.js";
 import { PiboWebHttpError, readJsonBody, responseJson } from "../web/http.js";
 import type { PiboWebApp, PiboWebAppContext, PiboWebSession } from "../web/types.js";
 import { buildWebAnnotationOverlayScript, createWebAnnotationCdpService, type WebAnnotationCdpService, type WebAnnotationBindingContext } from "./cdp.js";
@@ -355,14 +356,13 @@ function serviceForRequest(baseService: WebAnnotationCdpService, cdpUrl: string 
 	return createWebAnnotationCdpService({ store, cdpUrl, apiBaseUrl: new URL(request.url).origin });
 }
 
-function resolveBindingContext(context: PiboWebAppContext, webSession: PiboWebSession, input: { piboSessionId?: string; piboRoomId?: string }): WebAnnotationBindingContext {
+function resolveBindingContext(context: PiboWebAppContext, _webSession: PiboWebSession, input: { piboSessionId?: string; piboRoomId?: string }): WebAnnotationBindingContext {
 	const piboSessionId = input.piboSessionId?.trim();
 	if (!piboSessionId) throw new PiboWebHttpError("piboSessionId is required", 400);
 	const session = context.channelContext.getSession(piboSessionId);
 	if (!session) throw new PiboWebHttpError("Pibo session not found", 404);
-	if (session.ownerScope && session.ownerScope !== webSession.ownerScope) throw new PiboWebHttpError("Pibo session is not authorized for this user", 403);
 	return {
-		ownerScope: webSession.ownerScope,
+		ownerScope: getSharedAppLegacyOwnerScope(),
 		piboSessionId,
 		piboRoomId: input.piboRoomId?.trim() || undefined,
 	};

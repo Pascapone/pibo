@@ -18,10 +18,10 @@ import type { BootstrapData, PiboRoom, PiboWebSessionNode } from "./types";
 import { copyTextToClipboard } from "./clipboard";
 import { SessionNode } from "./session-node";
 import {
-	findPersonalRoom,
+	findSharedDefaultRoom,
 	formatRoomSummary,
 	isArchivedRoom,
-	isPersonalRoom,
+	isSharedDefaultRoom,
 	roomNodeTooltip,
 	splitRoomNodes,
 } from "./session-sidebar-helpers";
@@ -132,7 +132,7 @@ export function SessionSidebar({
 }: SessionSidebarProps) {
 	const roomsSupported = Boolean(bootstrap.selectedRoomId || bootstrap.room || bootstrap.rooms.length);
 	const newSessionProfileOptions = bootstrap.agents;
-	const personalRoom = findPersonalRoom(bootstrap.rooms);
+	const sharedDefaultRoom = findSharedDefaultRoom(bootstrap.rooms);
 	const roomGroups = splitRoomNodes(bootstrap.rooms);
 
 	return (
@@ -145,11 +145,11 @@ export function SessionSidebar({
 		>
 			{roomsSupported ? (
 				<>
-					{personalRoom ? (
+					{sharedDefaultRoom ? (
 							<div className="shrink-0">
-								<div className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Personal Chat</div>
+								<div className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Shared Chat</div>
 								<RoomNode
-									room={personalRoom}
+									room={sharedDefaultRoom}
 									selectedRoomId={selectedRoomId}
 									onSelect={(roomId) => void onSelectRoom(roomId)}
 									onUpdate={(roomId, input) => void onUpdateRoom(roomId, input)}
@@ -509,7 +509,7 @@ function RoomNode({
 	const [draftName, setDraftName] = useState(room.name);
 	const [draftTopic, setDraftTopic] = useState(room.topic ?? "");
 	const [draftWorkspace, setDraftWorkspace] = useState(room.workspace ?? "");
-	const personal = isPersonalRoom(room);
+	const personal = isSharedDefaultRoom(room);
 	const archived = isArchivedRoom(room);
 	const [menuOpen, setMenuOpen] = useState(false);
 	const menuRef = useRef<HTMLDivElement>(null);
@@ -611,13 +611,13 @@ function RoomNode({
 							</span>
 							<span className="min-w-0">
 								<span className={`block text-sm truncate ${archived ? "text-slate-500" : "text-slate-200"}`}>{room.name}</span>
-								<span className="block text-[10px] font-mono truncate text-slate-500">{personal ? "locked personal room" : archived ? "archived" : formatRoomSummary(room)}</span>
+								<span className="block text-[10px] font-mono truncate text-slate-500">{personal ? "shared default room" : archived ? "archived" : formatRoomSummary(room)}</span>
 							</span>
 							<UnreadBadge count={room.unreadCount} />
 						</button>
 						<div className="flex items-center gap-1 pr-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity max-[980px]:opacity-100">
 							{personal ? (
-								<span title="Personal Chat is locked" aria-label="Personal Chat is locked" className="h-7 w-7 max-[980px]:h-9 max-[980px]:w-9 inline-flex items-center justify-center border border-[#0bda57]/50 rounded-sm text-[#0bda57]">
+								<span title="Shared Chat is locked" aria-label="Shared Chat is locked" className="h-7 w-7 max-[980px]:h-9 max-[980px]:w-9 inline-flex items-center justify-center border border-[#0bda57]/50 rounded-sm text-[#0bda57]">
 									<Lock size={24} className="w-3.5 h-3.5 max-[980px]:w-5 max-[980px]:h-5" />
 								</span>
 							) : (

@@ -4,6 +4,8 @@ import { dirname, isAbsolute, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { piboHomePath } from "../../../core/pibo-home.js";
 import type { PiboJsonObject, PiboJsonValue } from "../../../core/events.js";
+import { getSharedAppLegacyOwnerScope } from "../../../shared-app.js";
+import { sqliteTableColumns } from "../../../data/sqlite-schema.js";
 import type { ModelProfile } from "../../../core/profiles.js";
 import type { PiboThinkingLevel } from "../../../core/thinking.js";
 
@@ -253,15 +255,17 @@ export class ChatProjectService {
 		this.db.close();
 	}
 
-	ensurePersonalProject(input: { ownerScope: string; projectFolder?: string }): PiboProject {
-		const id = personalProjectId(input.ownerScope);
+	ensureSharedDefaultProject(input: { ownerScope: string; projectFolder?: string }): PiboProject {
+		const ownerScope = getSharedAppLegacyOwnerScope();
+		const id = sharedDefaultProjectId(ownerScope);
 		const existing = this.getProject(id, { includeArchived: true });
 		if (existing) return existing;
 		const folder = resolve(input.projectFolder ?? piboHomePath("projects/workspace"));
 		mkdirSync(folder, { recursive: true });
 		const now = new Date().toISOString();
-		this.db.prepare(`INSERT INTO projects (id, owner_scope, name, description, project_folder, configuration_status, metadata_json, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, 'configured', ?, ?, ?)`).run(id, input.ownerScope, "Personal Chat", null, folder, JSON.stringify({ personal: true }), now, now);
+		const hasOwnerScope = sqliteTableColumns(this.db, "projects").has("owner_scope");
+		this.db.prepare(`INSERT INTO projects (id, ${hasOwnerScope ? "owner_scope, " : ""}name, description, project_folder, configuration_status, metadata_json, created_at, updated_at)
+			VALUES (${Array.from({ length: hasOwnerScope ? 9 : 8 }, () => "?").join(", ")})`).run(id, ...(hasOwnerScope ? [ownerScope] : []), "Shared Project", null, folder, "configured", JSON.stringify({ default: true, legacySharedDefaultProject: true }), now, now);
 		return this.requireProject(id);
 	}
 
@@ -289,8 +293,9 @@ export class ChatProjectService {
 		if (input.createFolder) mkdirSync(projectFolder, { recursive: true });
 		const now = new Date().toISOString();
 		const id = `prj_${randomUUID()}`;
-		this.db.prepare(`INSERT INTO projects (id, owner_scope, name, description, project_folder, configuration_status, metadata_json, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, 'configured', ?, ?, ?)`).run(id, input.ownerScope, name, normalizeOptionalString(input.description) ?? null, projectFolder, "{}", now, now);
+		const hasOwnerScope = sqliteTableColumns(this.db, "projects").has("owner_scope");
+		this.db.prepare(`INSERT INTO projects (id, ${hasOwnerScope ? "owner_scope, " : ""}name, description, project_folder, configuration_status, metadata_json, created_at, updated_at)
+			VALUES (${Array.from({ length: hasOwnerScope ? 9 : 8 }, () => "?").join(", ")})`).run(id, ...(hasOwnerScope ? [getSharedAppLegacyOwnerScope()] : []), name, normalizeOptionalString(input.description) ?? null, projectFolder, "configured", "{}", now, now);
 		return this.requireProject(id);
 	}
 
@@ -783,7 +788,6 @@ export class ChatProjectService {
 		this.db.exec(`
 			CREATE TABLE IF NOT EXISTS projects (
 				id TEXT PRIMARY KEY,
-				owner_scope TEXT NOT NULL,
 				name TEXT NOT NULL,
 				description TEXT,
 				project_folder TEXT NOT NULL,
@@ -915,7 +919,7 @@ export class ChatProjectService {
 
 type ProjectRow = {
 	id: string;
-	owner_scope: string;
+	owner_scope?: string;
 	name: string;
 	description: string | null;
 	project_folder: string;
@@ -1012,7 +1016,7 @@ type ProjectWorkflowHumanActionRow = {
 function projectFromRow(row: ProjectRow): PiboProject {
 	return {
 		id: row.id,
-		ownerScope: row.owner_scope,
+		ownerScope: row.owner_scope ?? getSharedAppLegacyOwnerScope(),
 		name: row.name,
 		...(row.description ? { description: row.description } : {}),
 		projectFolder: row.project_folder,
@@ -1276,6 +1280,6 @@ function isStringRecord(value: unknown): value is Record<string, string> {
 		&& Object.values(value as Record<string, unknown>).every((entry) => typeof entry === "string");
 }
 
-export function personalProjectId(ownerScope: string): string {
+export function sharedDefaultProjectId(ownerScope: string): string {
 	return `personal_${Buffer.from(ownerScope).toString("base64url")}`;
 }

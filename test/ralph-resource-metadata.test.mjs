@@ -10,7 +10,7 @@ function createJob(store, ownerScope = "user:a") {
 	return store.createJob({ ownerScope, target: { kind: "personal", principalId: ownerScope }, profile: "codex", prompt: "work", enabled: true });
 }
 
-test("Ralph store persists owner-scoped job and run resource metadata", () => {
+test("Ralph store persists app-global job and run resource metadata", () => {
 	const store = new PiboRalphStore({ path: ":memory:" });
 	try {
 		const job = store.createJob({
@@ -21,13 +21,17 @@ test("Ralph store persists owner-scoped job and run resource metadata", () => {
 			enabled: true,
 			resources: { workerId: " worker-1 ", browserLeaseIds: ["lease-a", "lease-a", " "], cleanupState: "active" },
 		});
+		assert.equal(job.ownerScope, "shared:app");
+		assert.deepEqual(job.target, { kind: "personal", principalId: "shared:app" });
 		assert.deepEqual(job.resources, { workerId: "worker-1", browserLeaseIds: ["lease-a"], cleanupState: "active" });
 
 		const retainedUntil = "2026-05-18T00:00:00.000Z";
 		const updated = store.updateJobResources("user:a", job.id, { workerId: "worker-2", browserLeaseIds: ["lease-b"], cleanupState: "retained", retainedUntil, dirtyReason: "needs inspection" }, new Date("2026-05-17T12:00:00.000Z"));
 		assert.equal(updated.updatedAt, "2026-05-17T12:00:00.000Z");
 		assert.deepEqual(updated.resources, { workerId: "worker-2", browserLeaseIds: ["lease-b"], cleanupState: "retained", retainedUntil, dirtyReason: "needs inspection" });
-		assert.equal(store.updateJobResources("user:b", job.id, { workerId: "wrong-owner" }), undefined);
+		const crossAccountUpdate = store.updateJobResources("user:b", job.id, { workerId: "worker-cross" });
+		assert.equal(crossAccountUpdate.resources.workerId, "worker-cross");
+		store.updateJobResources("user:a", job.id, updated.resources);
 
 		const reserved = store.reserveRun("user:a", job.id, new Date("2026-05-17T12:01:00.000Z"));
 		assert.ok(reserved);
@@ -36,12 +40,14 @@ test("Ralph store persists owner-scoped job and run resource metadata", () => {
 		const runUpdated = store.updateRunResources({ ownerScope: "user:a", runId: reserved.run.id, resources: { workerId: "worker-2", browserLeaseIds: ["lease-c"], cleanupState: "dirty", dirtyReason: "cdp release failed" } }, new Date("2026-05-17T12:02:00.000Z"));
 		assert.deepEqual(runUpdated.resources, { workerId: "worker-2", browserLeaseIds: ["lease-c"], cleanupState: "dirty", dirtyReason: "cdp release failed" });
 		assert.equal(runUpdated.updatedAt, "2026-05-17T12:02:00.000Z");
-		assert.equal(store.updateRunResources({ ownerScope: "user:b", runId: reserved.run.id, resources: { workerId: "wrong-owner" } }), undefined);
+		const crossRunUpdate = store.updateRunResources({ ownerScope: "user:b", runId: reserved.run.id, resources: { workerId: "worker-run-cross" } });
+		assert.equal(crossRunUpdate.resources.workerId, "worker-run-cross");
+		store.updateRunResources({ ownerScope: "user:a", runId: reserved.run.id, resources: runUpdated.resources });
 
 		assert.deepEqual(store.listJobs({ ownerScope: "user:a", includeDisabled: true })[0].resources, updated.resources);
 		assert.deepEqual(store.listRuns({ ownerScope: "user:a" })[0].resources, runUpdated.resources);
-		assert.deepEqual(store.listJobs({ ownerScope: "user:b", includeDisabled: true }), []);
-		assert.deepEqual(store.listRuns({ ownerScope: "user:b" }), []);
+		assert.deepEqual(store.listJobs({ ownerScope: "user:b", includeDisabled: true }).map((item) => item.id), [job.id]);
+		assert.deepEqual(store.listRuns({ ownerScope: "user:b" }).map((item) => item.id), [reserved.run.id]);
 	} finally { store.close(); }
 });
 
@@ -64,8 +70,8 @@ test("Ralph resource metadata remains compatible with older store rows", async (
 		assert.equal(oldJob.resources, undefined);
 		assert.equal(store.listRuns({ ownerScope: "user:a" })[0].resources, undefined);
 
-		const updatedJob = store.updateJobResources("user:a", "ralph_old", { workerId: "worker-old", cleanupState: "active" });
-		const updatedRun = store.updateRunResources({ ownerScope: "user:a", runId: "rrun_old", resources: { browserLeaseIds: ["lease-old"], cleanupState: "released" } });
+		const updatedJob = store.updateJobResources("user:b", "ralph_old", { workerId: "worker-old", cleanupState: "active" });
+		const updatedRun = store.updateRunResources({ ownerScope: "user:b", runId: "rrun_old", resources: { browserLeaseIds: ["lease-old"], cleanupState: "released" } });
 		assert.deepEqual(updatedJob.resources, { workerId: "worker-old", cleanupState: "active" });
 		assert.deepEqual(updatedRun.resources, { browserLeaseIds: ["lease-old"], cleanupState: "released" });
 	} finally { store.close(); await rm(dir, { recursive: true, force: true }); }

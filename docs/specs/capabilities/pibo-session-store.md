@@ -8,7 +8,7 @@
 
 ## Why
 
-Pibo needs a durable product-level session record that remains stable while runtimes, browser views, subagents, and Pi session files change around it. The store is the boundary that preserves Pibo Session IDs, Pi Session bindings, owner scope, hierarchy, workspace, metadata, and active model selection.
+Pibo needs a durable product-level session record that remains stable while runtimes, browser views, subagents, and Pi session files change around it. The store is the boundary that preserves Pibo Session IDs, Pi Session bindings, hierarchy, workspace, metadata, and active model selection. Legacy owner fields are compatibility data only.
 
 Without an explicit store contract, session routing could accidentally reuse a Pi session from another Pibo Session, lose parent or origin relationships, or make session lists slow and inconsistent as the database grows.
 
@@ -136,7 +136,7 @@ Callers can switch between test and durable stores without changing query result
 #### Acceptance
 
 - `ids` filters return only requested existing ids and return an empty list for an empty id array.
-- `channel`, `kind`, `ownerScope`, `originId`, and `profile` use exact string matching.
+- `channel`, `kind`, `originId`, and `profile` use exact string matching. `ownerScope` filtering is legacy compatibility and must not be used by current product visibility paths.
 - `parentId: null` matches only root sessions with no parent.
 - `parentId: <id>` matches only direct children of that parent.
 - `activeModel: null` matches sessions with no active model.
@@ -146,10 +146,10 @@ Callers can switch between test and durable stores without changing query result
 
 #### Scenario: Metadata and indexed filters compose
 
-- GIVEN sessions in different rooms and owned by different users
-- WHEN a caller finds sessions with `ownerScope: "user:a"` and `metadata: { room: "room-1" }`
-- THEN only sessions matching both filters are returned
-- AND SQLite may use the owner index before metadata comparison.
+- GIVEN sessions in different rooms
+- WHEN a caller finds sessions with `metadata: { room: "room-1" }`
+- THEN only sessions in that room are returned
+- AND SQLite may use indexed predicates before metadata comparison.
 
 ### Requirement: SQLite store initializes and migrates safely
 
@@ -167,7 +167,7 @@ Opening the default store is idempotent and compatible with older Pibo Session d
 
 - `:memory:` opens without creating filesystem directories.
 - File-backed stores create the parent directory when needed.
-- Opening a new store creates `pibo_sessions` and indexes for owner, parent, origin, and channel/kind filters.
+- Opening a new legacy store creates `pibo_sessions` and indexes for parent, origin, channel/kind, and legacy owner compatibility filters.
 - Opening an older table without `active_model_json` adds the column without dropping data.
 - Reopening a database returns previously persisted sessions.
 
@@ -192,7 +192,7 @@ Callers can move from legacy `pibo-sessions.sqlite` to the v2 data store without
 
 #### Acceptance
 
-- Creating a v2-backed session persists Pibo Session ID, Pi Session ID, owner scope, channel, kind, profile, title, metadata, workspace, and active model.
+- Creating a v2-backed session persists Pibo Session ID, Pi Session ID, channel, kind, profile, title, metadata, workspace, active model, and any legacy owner compatibility value required by an older schema.
 - Reopening the same v2 store returns the persisted session fields.
 - Updating a v2-backed session preserves omitted fields, clears nullable fields such as `activeModel` when explicitly set to `null`, and refreshes `updatedAt`.
 - The v2 store rejects attaching a Pi Session ID already used by another non-deleted session.
@@ -253,7 +253,7 @@ A corrupted metadata or active-model field does not prevent session listing, rou
 ## Constraints
 
 - **Compatibility:** Store implementations must preserve the `PiboSessionStore` interface and keep in-memory, legacy SQLite, and v2 data-backed find semantics aligned.
-- **Security / Privacy:** Owner Scope is stored as data and used by callers for access control; the store itself does not authenticate callers.
+- **Security / Privacy:** The store itself does not authenticate callers. Current product access must not use legacy owner values for account isolation.
 - **Performance:** SQLite queries must apply simple indexed filters before semantic JSON matching to avoid full scans when common filters are present.
 - **Dependencies:** The durable implementation depends on Node's `node:sqlite` `DatabaseSync` API and Pibo home path resolution.
 

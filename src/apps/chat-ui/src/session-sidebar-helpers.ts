@@ -86,10 +86,10 @@ export function limitSessionNodesForSidebar(
 	return [...visible, selectedTopLevel];
 }
 
-export function findPersonalRoom(rooms: PiboRoom[]): PiboRoom | undefined {
+export function findSharedDefaultRoom(rooms: PiboRoom[]): PiboRoom | undefined {
 	for (const room of rooms) {
-		if (isPersonalRoom(room)) return room;
-		const child = findPersonalRoom(room.children ?? []);
+		if (isSharedDefaultRoom(room)) return room;
+		const child = findSharedDefaultRoom(room.children ?? []);
 		if (child) return child;
 	}
 	return undefined;
@@ -115,7 +115,7 @@ export function splitRoomNodes(nodes: PiboRoom[]): {
 	const active: PiboRoom[] = [];
 	const archived: PiboRoom[] = [];
 	for (const node of nodes) {
-		if (isPersonalRoom(node)) {
+		if (isSharedDefaultRoom(node)) {
 			const children = splitRoomNodes(node.children ?? []);
 			active.push(...children.active);
 			archived.push(...children.archived);
@@ -132,7 +132,7 @@ export function splitRoomNodes(nodes: PiboRoom[]): {
 	return { active, archived };
 }
 
-export function isPersonalRoom(room: PiboRoom): boolean {
+export function isSharedDefaultRoom(room: PiboRoom): boolean {
 	return room.metadata.default === true;
 }
 

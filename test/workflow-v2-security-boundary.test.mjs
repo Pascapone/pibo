@@ -40,8 +40,8 @@ test("Workflow V2 security boundary is covered by backend auth, validation, reda
 
 	assertAllMatch(webAppSource, [
 		["same-origin mutation gate remains in Chat Web", /function requireSameOriginJsonRequest/],
-		["Project visibility remains owner-scoped", /function requireOwnedProject[\s\S]*project\.ownerScope !== webSession\.ownerScope/],
-		["Pibo Session visibility remains owner-scoped", /function requireOwnedSession[\s\S]*selected\.ownerScope !== webSession\.ownerScope/],
+		["Project routes use shared-resource Project access", /function requireSharedProject[\s\S]*Project not found/],
+		["Pibo Session routes use shared-resource session access", /function requireSharedSession[\s\S]*Session not found/],
 		["Workflow profile refs resolve through the registered profile picker", /function buildWorkflowProfilePicker/],
 	]);
 
@@ -63,7 +63,7 @@ test("Workflow V2 security boundary is covered by backend auth, validation, reda
 	assertAllMatch(webChannelTests, [
 		["catalog auth baseline is integration-tested", /workflow catalog authentication and permission baseline treats UI workflows as global/],
 		["Project and session visibility redaction test is integration-tested", /workflow diagnostics are redacted and scoped to owning Project sessions/],
-		["cross-user Project bootstrap is hidden", /otherUserBootstrapResponse\.status, 404/],
+		["cross-account Project bootstrap is shared", /otherUserBootstrapResponse\.status, 200/],
 		["unsupported Project workflow override families are rejected", /chat web app rejects unsupported Project workflow session creation inputs[\s\S]*Agent profile overrides[\s\S]*Handler overrides[\s\S]*Adapter overrides[\s\S]*Guard overrides[\s\S]*Arbitrary options/],
 		["registered-ref security validation is integration-tested", /workflow security boundary validates registered refs and rejects inline execution paths/],
 		["raw XState API payloads are publish-blocked", /WorkflowSecurityError\.rawXStateAuthoring/],

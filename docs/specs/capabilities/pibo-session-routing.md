@@ -7,7 +7,7 @@
 
 ## Why
 
-Pibo needs a stable product-level session identity that survives runtime recreation, Chat Web navigation, subagent delegation, forks, clones, model changes, and gateway restarts. Pi Coding Agent sessions are technical transcript/runtime records; they are not enough to express product ownership, channel, room association, profile selection, hierarchy, or derivation history.
+Pibo needs a stable product-level session identity that survives runtime recreation, Chat Web navigation, subagent delegation, forks, clones, model changes, and gateway restarts. Pi Coding Agent sessions are technical transcript/runtime records; they are not enough to express product channel, room association, profile selection, hierarchy, or derivation history.
 
 Pibo Session Routing keeps that boundary explicit. Channels and web APIs work with Pibo Session IDs, while the router opens or reopens the linked Pi session only when runtime work is needed.
 
@@ -19,7 +19,7 @@ Pibo MUST treat `PiboSession` records as the product source of truth for routed 
 
 The current implementation defines the session model and in-memory store in `src/sessions/store.ts`, SQLite-backed stores in `src/sessions/sqlite-store.ts` and `src/sessions/pibo-data-store.ts`, routing in `src/core/session-router.ts`, active-model resolution in `src/core/session-model.ts`, gateway channel context in `src/gateway/server.ts`, and Chat Web projections in `src/apps/chat/trace.ts` and `src/apps/chat/web-app.ts`.
 
-A `PiboSession` stores product identity and metadata: `id`, `piSessionId`, `channel`, `kind`, `profile`, optional `ownerScope`, `parentId`, `originId`, `workspace`, `title`, `metadata`, `activeModel`, and timestamps. Runtime creation uses the stored profile, workspace, Pi session id, parent Pi session id, selected context, active model, and owner context.
+A `PiboSession` stores product identity and metadata: `id`, `piSessionId`, `channel`, `kind`, `profile`, legacy-compatible `ownerScope` when old stores need it, `parentId`, `originId`, `workspace`, `title`, `metadata`, `activeModel`, and timestamps. Runtime creation uses the stored profile, workspace, Pi session id, parent Pi session id, selected context, and active model. Auth account identity must not select the workspace or product visibility.
 
 ## Scope
 
@@ -27,7 +27,7 @@ A `PiboSession` stores product identity and metadata: `id`, `piSessionId`, `chan
 
 - `PiboSession` identity, persistence, lookup, listing, update, deletion, and filtering.
 - Lazy creation of fallback runtime sessions when a requested Pibo Session does not exist.
-- Runtime creation from stored Pibo Session profile, workspace, owner scope, active model, and Pi session id.
+- Runtime creation from stored Pibo Session profile, workspace, active model, and Pi session id.
 - Parent-child hierarchy for subagents and recursive session interruption.
 - Origin derivation for fork and clone branch sessions.
 - Active model freezing on session creation or first runtime open.
@@ -151,7 +151,7 @@ The system MUST use `parentId` for true session hierarchy created by subagent de
 
 #### Current
 
-`PiboSessionRouter.resolveSubagentSession()` creates or reuses a child session with channel `pibo.subagents`, kind `subagent`, `parentId` pointing to the parent Pibo Session, inherited owner scope and workspace, target profile, thread-key metadata, and optional chat room metadata.
+`PiboSessionRouter.resolveSubagentSession()` creates or reuses a child session with channel `pibo.subagents`, kind `subagent`, `parentId` pointing to the parent Pibo Session, inherited workspace, target profile, thread-key metadata, and optional chat room metadata. Legacy owner compatibility is pinned to the shared app value.
 
 #### Target
 
@@ -161,7 +161,7 @@ Subagent sessions are visible as children of their parent and can be recursively
 
 - A subagent call emits a `subagent_session` output event with parent and child Pibo Session IDs.
 - Reusing the same subagent name, target profile, parent, and thread key returns the existing child session.
-- Child sessions inherit parent owner scope and workspace.
+- Child sessions inherit the parent workspace and shared app compatibility context.
 - Child sessions inherit parent Chat Web room metadata when present.
 - Subagent depth is bounded by the subagent profile `maxDepth`.
 - Killing a parent session recursively kills child sessions.
@@ -178,7 +178,7 @@ The system MUST use `originId` for derivation relationships created by fork or c
 
 #### Current
 
-When a runtime operation returns `session.fork` or `session.clone`, the router creates a new `kind: "branch"` Pibo Session with `originId` set to the source session, the new Pi session id, source owner/profile/title/active model, and origin metadata.
+When a runtime operation returns `session.fork` or `session.clone`, the router creates a new `kind: "branch"` Pibo Session with `originId` set to the source session, the new Pi session id, source profile/title/active model, and origin metadata.
 
 #### Target
 
@@ -239,13 +239,13 @@ Channels do not bypass the Pibo Session Store when creating or mutating routed s
 - Channel-created sessions are stored before runtime input is emitted.
 - Profile names are resolved through the plugin registry during creation.
 - Created sessions receive active-model selection unless explicitly supplied.
-- Channel updates can mutate title, metadata, profile, workspace, owner scope, origin, parent, Pi session id, and active model through store update semantics.
+- Channel updates can mutate title, metadata, profile, workspace, legacy compatibility owner value, origin, parent, Pi session id, and active model through store update semantics.
 
 #### Scenario: Chat Web creates a room session
 
 - GIVEN an authenticated Chat Web request creates a session for a room
 - WHEN the web channel calls `createSession`
-- THEN the session is persisted with owner scope, room metadata, profile, active model, and a Pibo Session ID that the composer can send to.
+- THEN the session is persisted with room metadata, profile, active model, a shared app compatibility context when needed by legacy storage, and a Pibo Session ID that the composer can send to.
 
 ### Requirement: Chat Web projections keep product session identity separate from traces
 
@@ -282,8 +282,8 @@ The Pibo Session Store remains the source of truth for product session metadata 
 
 ## Constraints
 
-- **Product Boundary:** Pibo owns Pibo Session records, routing identity, hierarchy, origin metadata, owner scope, active model, and channel metadata. Pi Coding Agent owns transcript entries and low-level session files.
-- **Security / Privacy:** Access control is enforced by channels and APIs using owner scope and room membership before they expose or mutate sessions.
+- **Product Boundary:** Pibo owns Pibo Session records, routing identity, hierarchy, origin metadata, active model, and channel metadata. Legacy owner values are compatibility fields only. Pi Coding Agent owns transcript entries and low-level session files.
+- **Security / Privacy:** Web access is authenticated by the channel/API layer. Product session visibility is shared app state and must not be partitioned by auth account.
 - **Compatibility:** Existing fallback runtime behavior for unknown Pibo Session IDs remains available for direct/local integrations.
 - **Reliability:** Store-backed gateways MUST persist Pibo Session state so routed sessions can reopen after process restart.
 - **Context Economy:** Chat Web and traces SHOULD load only metadata needed for visible session trees and selected-session trace views.
@@ -291,8 +291,8 @@ The Pibo Session Store remains the source of truth for product session metadata 
 ## Success Criteria
 
 - [ ] SC-001: A persisted Pibo Session can be reopened by Pibo Session ID and continues the linked Pi transcript.
-- [ ] SC-002: Runtime creation uses the stored profile, workspace, owner scope, Pi session id, and active model.
-- [ ] SC-003: Subagent calls create or reuse child Pibo Sessions with `parentId`, inherited owner/workspace, and bounded depth.
+- [ ] SC-002: Runtime creation uses the stored profile, workspace, Pi session id, and active model.
+- [ ] SC-003: Subagent calls create or reuse child Pibo Sessions with `parentId`, inherited workspace, shared app context, and bounded depth.
 - [ ] SC-004: Fork and clone operations create visible branch sessions with `originId` without mutating the source Pi session id.
 - [ ] SC-005: Session switch updates the current Pibo Session before observers handle the execution result.
 - [ ] SC-006: Chat Web session trees and trace views remain addressable by Pibo Session ID even when transcript metadata is incomplete.

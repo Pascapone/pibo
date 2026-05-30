@@ -7,7 +7,7 @@
 
 ## Why
 
-Pibo needs a durable way to run agent work later or on a repeating schedule. Scheduled jobs let a user ask an agent to perform recurring room or personal-chat tasks without keeping a browser interaction open.
+Pibo needs a durable way to run agent work later or on a repeating schedule. Scheduled jobs let a user ask an agent to perform recurring room or shared default Chat tasks without keeping a browser interaction open.
 
 The behavior crosses the product boundary: jobs are configured through Chat Web or the operator CLI, persisted in a Pibo-owned store, executed by a channel service, and materialized as normal routed Pibo Sessions.
 
@@ -19,7 +19,7 @@ Pibo MUST persist scheduled agent jobs, reserve due runs without double executio
 
 The current implementation defines a cron subsystem under `src/cron/`. It stores jobs and runs in SQLite, supports one-shot, interval, and five-field cron schedules, exposes `pibo cron` CLI operations, and exposes Chat Web APIs under `/api/chat/cron/*`. A `pibo.cron` channel starts `PiboCronService`, which polls due jobs and sends a generated task prompt into a newly created Pibo Session.
 
-The Chat Web UI has a `Cron` area that lists jobs, builds schedules, targets Personal Chat or a Room, saves jobs, triggers manual runs, and shows recent runs.
+The Chat Web UI has a `Cron` area that lists jobs, builds schedules, targets Shared Chat or a Room, saves jobs, triggers manual runs, and shows recent runs.
 
 ## Scope
 
@@ -27,8 +27,8 @@ The Chat Web UI has a `Cron` area that lists jobs, builds schedules, targets Per
 
 - Cron job creation, update, delete, list, pause, resume, status, and run history.
 - Schedule parsing and next-run computation for one-shot, interval, daily, weekly, monthly, and raw cron schedules.
-- Room and Personal Chat targets.
-- Owner-scoped access control for Chat Web and CLI store operations.
+- Room and shared default Chat targets.
+- Shared-app Chat Web and CLI store operations.
 - Scheduled and manual run reservation.
 - Creation of a routed Pibo Session for each run.
 - Run completion, error recording, interrupted-run recovery, and one-shot cleanup behavior.
@@ -44,9 +44,9 @@ The Chat Web UI has a `Cron` area that lists jobs, builds schedules, targets Per
 
 ## Requirements
 
-### Requirement: Jobs are durable and owner-scoped
+### Requirement: Jobs are durable shared-app records
 
-The system MUST store cron jobs with an owner scope, target, profile, prompt, schedule, enabled flag, delete-after-run flag, timestamps, and scheduler state.
+The system MUST store cron jobs with target, profile, prompt, schedule, enabled flag, delete-after-run flag, timestamps, and scheduler state. Legacy owner fields are compatibility metadata only.
 
 #### Current
 
@@ -55,18 +55,18 @@ The system MUST store cron jobs with an owner scope, target, profile, prompt, sc
 #### Acceptance
 
 - Creating a valid job returns an id beginning with `cron_`.
-- Listing jobs with an owner scope returns only jobs for that owner unless lower-level store code is explicitly called without an owner filter.
+- Listing jobs returns shared-app jobs for any allowed account.
 - Disabled jobs remain stored but are excluded from default active lists.
 
 #### Scenario: Create a room-targeted job
 
 - GIVEN a user has write access to a non-archived room
 - WHEN the user creates a cron job with target `{ kind: "room", roomId }`
-- THEN the job is stored with that owner scope, room target, selected profile, prompt, schedule, and computed `state.nextRunAt` when enabled.
+- THEN the job is stored with the room target, selected profile, prompt, schedule, and computed `state.nextRunAt` when enabled.
 
 #### Scenario: Invalid job input
 
-- GIVEN a create or update request with an empty owner scope, profile, prompt, or required target id
+- GIVEN a create or update request with an empty profile, prompt, or required target id
 - WHEN the store validates the job
 - THEN it rejects the request with a validation error and does not write a partial job.
 
@@ -125,7 +125,7 @@ The system MUST execute each reserved run by creating a Pibo Session through the
 
 #### Current
 
-`PiboCronService.executeJob` creates a session with channel `pibo.chat-web`, kind `cron`, the job profile, owner scope, target workspace, title, and cron metadata. It then emits the generated cron prompt and waits for `message_finished` or `session_error`.
+`PiboCronService.executeJob` creates a session with channel `pibo.chat-web`, kind `cron`, the job profile, target workspace, title, and cron metadata. It then emits the generated cron prompt and waits for `message_finished` or `session_error`.
 
 #### Acceptance
 
@@ -140,19 +140,19 @@ The system MUST execute each reserved run by creating a Pibo Session through the
 - WHEN the run executes
 - THEN the new Pibo Session is associated with that room and uses the room workspace when present.
 
-#### Scenario: Personal target execution
+#### Scenario: Shared default target execution
 
-- GIVEN a cron job targets Personal Chat for the current principal
+- GIVEN a cron job targets Shared Chat
 - WHEN the run executes
-- THEN Pibo ensures the principal's default room exists and creates the cron session in that room.
+- THEN Pibo ensures the shared default room exists and creates the cron session in that room.
 
 ### Requirement: Target access and safety are enforced
 
-The system MUST prevent Chat Web users from creating or changing jobs that target rooms they cannot write to or personal targets that do not belong to them.
+The system MUST prevent Chat Web users from creating or changing jobs that target missing or archived rooms. Deprecated personal targets normalize to the shared default target.
 
 #### Current
 
-`handleChatCronApiRequest` validates same-origin JSON mutations, room write access, archived-room state, profile names, prompt length, and personal principal ownership.
+`handleChatCronApiRequest` validates same-origin JSON mutations, room existence, archived-room state, profile names, prompt length, and shared default target normalization.
 
 #### Acceptance
 
@@ -160,7 +160,7 @@ The system MUST prevent Chat Web users from creating or changing jobs that targe
 - JSON mutations without a same-origin `Origin` header are rejected.
 - Archived room targets are rejected.
 - Unknown profiles are rejected.
-- Personal cron targets for a different principal are rejected.
+- Deprecated personal cron targets are normalized to the shared default target.
 
 #### Scenario: Archived room
 
@@ -201,8 +201,8 @@ The `pibo cron` CLI MUST provide compact discovery output and focused subcommand
 #### Acceptance
 
 - `pibo cron` or `pibo cron --help` prints only the cron command surface and a next-step hint.
-- Mutating and owner-scoped read commands require `--owner-scope`.
-- `status` can read the store without owner scope.
+- Normal commands do not require `--owner-scope`; deprecated owner-scope inputs are ignored compatibility options.
+- `status` can read the store without legacy owner-scope compatibility input.
 - `add` accepts exactly one schedule source among friendly flags or a raw cron expression.
 - `--json` outputs machine-readable objects where supported.
 
@@ -225,16 +225,16 @@ The API lives under `/api/chat/cron/*`, and `CronArea` provides the UI for job l
 #### Acceptance
 
 - `GET /api/chat/cron/status` returns scheduler and store status.
-- `GET /api/chat/cron/jobs` returns the current owner scope's jobs.
+- `GET /api/chat/cron/jobs` returns shared app jobs.
 - `POST /api/chat/cron/jobs` creates a job after validation.
-- `GET/PATCH/DELETE /api/chat/cron/jobs/:id` operate only on the current owner scope's job.
+- `GET/PATCH/DELETE /api/chat/cron/jobs/:id` operate on shared app jobs by id.
 - `POST /api/chat/cron/jobs/:id/run` starts a manual run when the cron service is running.
-- `GET /api/chat/cron/runs` lists the current owner scope's runs, optionally filtered by job.
-- The UI can select Personal Chat or a Room target and select a registered agent profile.
+- `GET /api/chat/cron/runs` lists shared app runs, optionally filtered by job.
+- The UI can select Shared Chat or a Room target and select a registered agent profile.
 
 #### Scenario: Manual run from Chat Web
 
-- GIVEN a saved cron job belongs to the current owner scope and the cron service is running
+- GIVEN a saved shared cron job exists and the cron service is running
 - WHEN the user clicks Run now
 - THEN the API returns `202` with a running run record and the run later appears in recent runs with its final status.
 
@@ -252,7 +252,7 @@ Users can round-trip an existing cron job through the UI without losing its targ
 
 #### Acceptance
 
-- New drafts default to an enabled Personal Chat daily schedule, the first available non-archived room option, and the first visible agent profile.
+- New drafts default to an enabled Shared Chat daily schedule, the first available non-archived room option, and the first visible agent profile.
 - One-shot `in` and `at` drafts are sent as friendly schedule inputs that the backend normalizes to absolute `at` schedules.
 - Recurring daily, weekly, monthly, interval, and raw cron drafts are sent as backend-supported cron inputs with optional timezone.
 - Weekly drafts require at least one weekday before previewing or saving a generated cron expression.
@@ -268,7 +268,7 @@ Users can round-trip an existing cron job through the UI without losing its targ
 
 ### Requirement: Chat Web run history remains bounded and navigable
 
-The Cron area MUST show recent run status for the selected owner and provide a direct path from a completed cron run to its created Pibo Session when one exists.
+The Cron area MUST show recent shared run status and provide a direct path from a completed cron run to its created Pibo Session when one exists.
 
 #### Current
 
@@ -285,7 +285,7 @@ Users can inspect recent job outcomes without scanning unrelated rooms, and can 
 - Running a job manually refreshes history for the selected job after the API accepts the run.
 - Recent-run rows display status, start time, optional session link, and error text.
 - Session links use `/apps/chat/sessions/<piboSessionId>` and do not expose unrelated run payload data.
-- API run-list requests reject `jobId` filters for jobs outside the current owner scope.
+- API run-list requests filter by existing shared job id when supplied.
 
 #### Scenario: Open a completed cron session
 
@@ -305,7 +305,7 @@ Users can inspect recent job outcomes without scanning unrelated rooms, and can 
 ## Constraints
 
 - **Compatibility:** Cron-created sessions MUST use normal Pibo Session routing and Chat Web room metadata instead of a separate transcript system.
-- **Security / Privacy:** Chat Web mutation APIs MUST require same-origin JSON requests and owner-scoped access. Personal targets MUST be limited to the authenticated principal.
+- **Security / Privacy:** Chat Web mutation APIs MUST require authenticated same-origin JSON requests. Auth account values do not partition Cron jobs; deprecated personal targets normalize to the shared default target.
 - **Performance:** The scheduler SHOULD poll at bounded intervals and reserve only up to configured capacity per tick.
 - **Reliability:** Store writes that reserve or complete runs MUST be transactional enough to avoid duplicate running records for the same job.
 - **Product Boundary:** Cron jobs are Pibo product objects. The Pi Coding Agent only receives the generated task prompt inside the created routed session.
@@ -316,7 +316,7 @@ Users can inspect recent job outcomes without scanning unrelated rooms, and can 
 - [ ] SC-002: A due job creates exactly one visible cron-kind Pibo Session per reserved run.
 - [ ] SC-003: A successful run records `ok`, `completedAt`, and the created `piboSessionId`.
 - [ ] SC-004: A failed run records `error`, increments `consecutiveErrors`, and does not lose the run record.
-- [ ] SC-005: `pibo cron list --owner-scope <scope>` lists jobs for that owner and excludes disabled jobs by default.
+- [ ] SC-005: `pibo cron list` lists shared app jobs and excludes disabled jobs by default.
 - [ ] SC-006: Chat Web rejects cron job mutations for archived or inaccessible rooms.
 - [ ] SC-007: Interrupted running jobs are recovered as errors after service restart and cutoff.
 - [ ] SC-008: Existing Chat Web cron jobs with friendly schedule metadata round-trip through the schedule builder without changing their effective backend schedule.
@@ -327,7 +327,7 @@ Users can inspect recent job outcomes without scanning unrelated rooms, and can 
 ### Assumptions
 
 - The active gateway process is the only scheduler owner in normal local deployments.
-- Owner scope is the correct authorization boundary for listing jobs and runs.
+- Authentication is only the app access gate; Cron jobs and runs are shared app resources.
 - A cron run is complete when the initial generated message finishes or the session errors; follow-up user interaction happens in the created session outside the cron scheduler.
 
 ### Open Questions
@@ -341,10 +341,10 @@ Users can inspect recent job outcomes without scanning unrelated rooms, and can 
 
 | Requirement | Scenario / Story | Code basis | Status |
 |---|---|---|---|
-| REQ-001 Jobs are durable and owner-scoped | Create a room-targeted job; invalid input | `src/cron/types.ts`, `src/cron/store.ts` | Implemented |
+| REQ-001 Jobs are durable shared-app records | Create a room-targeted job; invalid input | `src/cron/types.ts`, `src/cron/store.ts` | Implemented |
 | REQ-002 Schedules are validated before persistence | Repeating interval; friendly weekly schedule | `src/cron/schedule.ts` | Implemented |
 | REQ-003 The scheduler reserves due work atomically | Concurrent capacity is full | `src/cron/store.ts`, `src/cron/service.ts` | Implemented |
-| REQ-004 Each run creates a visible routed Pibo Session | Room target execution; personal target execution | `src/cron/service.ts` | Implemented |
+| REQ-004 Each run creates a visible routed Pibo Session | Room target execution; shared default target execution | `src/cron/service.ts` | Implemented |
 | REQ-005 Target access and safety are enforced | Archived room | `src/apps/chat/cron-api.ts` | Implemented |
 | REQ-006 Run outcomes update both run and job state | Gateway restart recovery | `src/cron/store.ts` | Implemented |
 | REQ-007 CLI management is progressively discoverable | Pause and resume | `src/cron/cli.ts`, `src/cli.ts` | Implemented |

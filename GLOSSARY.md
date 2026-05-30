@@ -98,7 +98,7 @@ The Pibo component that owns routed sessions, queues input by Pibo Session ID, a
 A single Pibo conversation managed by the session router.
 
 **Pibo Session**:
-The stable product-level session record owned by Pibo. It carries route identity, channel, kind, profile, owner scope, hierarchy, derivation metadata, and the linked Pi Session ID.
+The stable product-level session record owned by Pibo. It carries route identity, channel, kind, profile, legacy owner compatibility metadata when needed, hierarchy, derivation metadata, and the linked Pi Session ID.
 
 **Pibo Session ID**:
 The opaque `PiboSession.id` value used by channels, APIs, UI, routing, access control, and event correlation.
@@ -109,8 +109,11 @@ The Pibo-owned store for Pibo Session records, backed by `.pibo/pibo-sessions.sq
 **Pi Session ID**:
 The technical Pi Coding Agent session identifier stored as `PiboSession.piSessionId`, used for Pi persistence, transcript files, provider cache affinity, fork, clone, switch, tree navigation, and compaction.
 
+**Shared App Context**:
+The single product data context for a Pibo host after login. Auth decides whether a person may enter the app; it does not create a separate product space.
+
 **Owner Scope**:
-The product-level ownership string used for access control and listing, such as `user:<auth-user-id>`.
+A legacy compatibility storage term from the previous account-partitioned model, such as `user:<auth-user-id>` or `shared:app`. Current product behavior must not use Owner Scope for visibility, routing, workspace selection, profile registration, job control, or write location. Use it only in explicit legacy migration, debug, or compatibility code until old schemas are removed.
 
 **Parent Session**:
 A true hierarchical child relationship represented by `PiboSession.parentId`, used for subagents and nested agent work.
@@ -238,11 +241,11 @@ A URL under `/apps/chat/*` that can be opened directly or reloaded and restores 
 **Pibo Room**:
 A user-facing Chat Web container that groups one or more Pibo Sessions for display, membership, room events, and room-scoped sending.
 
-**Personal Chat Room**:
-The default Pibo Room automatically created for an owner scope when that user first opens the Chat Web App.
+**Shared Default Chat Room**:
+The default Pibo Room automatically created for the shared app when Chat Web needs a room and none exists. Legacy storage may still mark older rows with personal/default metadata, but the room is not account-owned.
 
 **Room Membership**:
-The Chat Web access record that links a principal to a Pibo Room with a role and read cursor.
+A legacy Chat Web record that used to link a principal to a Pibo Room with a role and read cursor. Current shared-app behavior does not use room membership for access control.
 
 **Chat Event Log**:
 The durable Pibo-owned event store for Chat Web room and session events, backed by `chat_events` in `.pibo/web-chat.sqlite`.
@@ -322,7 +325,7 @@ A Pibo-owned wrapper-level process that summarizes tool usage in a Pibo Session 
 - A **Pibo Room** is a user-facing Chat Web container; it does not replace a **Pibo Session**.
 - A **Pibo Session** belongs to a **Pibo Room** through `PiboSession.metadata.chatRoomId` in the current migration bridge.
 - A **Canonical Chat URL** is the browser-visible route for a **Pibo Room** and **Pibo Session** selection; browser-local last-selection state is only an entry fallback.
-- A **Personal Chat Room** is created automatically for a new **Owner Scope** when the Chat Web App bootstraps.
+- A **Shared Default Chat Room** is created automatically for the **Shared App Context** when the Chat Web App bootstraps.
 - The **Chat Web Read Model** is a projection and is not the source of truth for Pibo Sessions or Pi transcripts.
 - The **Chat Event Log** is durable Chat Web room/session event storage, while the **Raw Pibo Event Log** remains a read-model/debugging projection of normalized output events.
 - A **Chat Web Trace View** is reconstructed from Pi transcript data plus the **Raw Pibo Event Log**.
@@ -350,7 +353,7 @@ A Pibo-owned wrapper-level process that summarizes tool usage in a Pibo Session 
 - Use **Pibo Session ID** for product routing identity and **Pi Session ID** for Pi's technical persistence/cache identity.
 - Use **parentId** only for true hierarchy and UI nesting. Use **originId** for fork or clone derivation.
 - Use **Pibo Room** for the user-facing chat container and **Pibo Session** for the runtime conversation. Do not call rooms "sessions".
-- Use **Personal Chat Room** for the automatically created first room. Do not call it a "global default room"; it is scoped to one owner.
+- Use **Shared Default Chat Room** for the automatically created first room. Do not call it personal or owner-scoped in current docs; legacy personal/default metadata is migration context only.
 - Use **Channel** for Pibo transport adapters and **Transport** for the underlying communication mechanism.
 - Use **Plugin** for internal static extension modules and **MCP Server** for external Model Context Protocol processes.
 - Use **Native Tool** for Pibo plugin tools selected in profiles, **Built-In Pi Tool** for Pi engine tools, **Curated CLI Tool** for `pibo tools` entries, and **MCP Server** for external MCP integrations.

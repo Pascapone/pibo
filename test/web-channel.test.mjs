@@ -9,6 +9,7 @@ import { PiboAuthError } from "../dist/auth/types.js";
 import { createWebHostChannel } from "../dist/web/channel.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
 import { upsertPiPackage } from "../dist/pi-packages/store.js";
+import { LEGACY_SHARED_APP_OWNER_SCOPE } from "../dist/shared-app.js";
 
 function createFakeAuthService() {
 	return {
@@ -713,7 +714,7 @@ test("chat web app maps authenticated users to chat sessions", async () => {
 		assert.equal(session.session.channel, "pibo.chat-web");
 		assert.equal(session.session.kind, "chat");
 		assert.equal(session.session.profile, "base");
-		assert.equal(session.session.ownerScope, "user:user-1");
+		assert.equal(session.session.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
 
 		const message = await fetch(`${baseURL}/api/chat/message`, {
 			method: "POST",
@@ -776,7 +777,7 @@ test("chat web app default data path runs without creating the legacy web-chat s
 	}
 });
 
-test("chat web app creates user-owned sessions", async () => {
+test("chat web app creates shared app sessions", async () => {
 	const { channel, baseURL, emitted } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 	});
@@ -794,7 +795,7 @@ test("chat web app creates user-owned sessions", async () => {
 		assert.equal(created.status, 201);
 		const payload = await created.json();
 		assert.match(payload.session.id, /^ps_[0-9a-f-]{36}$/);
-		assert.equal(payload.session.ownerScope, "user:user-1");
+		assert.equal(payload.session.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
 		assert.equal(payload.session.parentId, undefined);
 		assert.equal(payload.session.workspace, homedir());
 
@@ -2367,6 +2368,7 @@ test("chat web app creates custom agents from the native capability catalog", as
 		assert.deepEqual(agentPayload.agent.builtinToolNames, ["read", "bash"]);
 		assert.equal(agentPayload.agent.autoContextFiles, false);
 		assert.equal(agentPayload.agent.runControl, true);
+		assert.equal(agentPayload.agent.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
 
 		const session = await fetch(`${baseURL}/api/chat/sessions`, {
 			method: "POST",
@@ -2388,6 +2390,116 @@ test("chat web app creates custom agents from the native capability catalog", as
 		const listedPayload = await listed.json();
 		assert.deepEqual(listedPayload.agents.map((agent) => agent.displayName), ["research-agent"]);
 		assert.equal(listedPayload.agents[0].autoContextFiles, false);
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("chat web app exposes custom agents across authenticated accounts", async () => {
+	const { channel, baseURL, sessions } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		profiles: [{ name: "base", aliases: ["default"] }],
+	});
+
+	try {
+		const createdAgent = await fetch(`${baseURL}/api/chat/agents`, {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				origin: baseURL,
+				"x-test-user": "account-a",
+			},
+			body: JSON.stringify({
+				displayName: "cross-account-agent",
+				description: "Created by account A.",
+				skills: ["pi-agent-harness"],
+			}),
+		});
+		assert.equal(createdAgent.status, 201);
+		const createdPayload = await createdAgent.json();
+		assert.equal(createdPayload.agent.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
+
+		const listedByAccountB = await fetch(`${baseURL}/api/chat/agents`, {
+			headers: { "x-test-user": "account-b" },
+		});
+		assert.equal(listedByAccountB.status, 200);
+		const listedByAccountBPayload = await listedByAccountB.json();
+		assert.deepEqual(listedByAccountBPayload.agents.map((agent) => agent.profileName), ["cross-account-agent"]);
+
+		const accountBSession = await fetch(`${baseURL}/api/chat/sessions`, {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				origin: baseURL,
+				"x-test-user": "account-b",
+			},
+			body: JSON.stringify({ profile: "cross-account-agent" }),
+		});
+		assert.equal(accountBSession.status, 201);
+		const accountBSessionPayload = await accountBSession.json();
+		assert.equal(accountBSessionPayload.session.profile, "cross-account-agent");
+
+		const updatedByAccountB = await fetch(`${baseURL}/api/chat/agents/${encodeURIComponent(createdPayload.agent.id)}`, {
+			method: "PATCH",
+			headers: {
+				"content-type": "application/json",
+				origin: baseURL,
+				"x-test-user": "account-b",
+			},
+			body: JSON.stringify({ description: "Updated by account B." }),
+		});
+		assert.equal(updatedByAccountB.status, 200);
+		const updatedByAccountBPayload = await updatedByAccountB.json();
+		assert.equal(updatedByAccountBPayload.agent.description, "Updated by account B.");
+
+		const archivedByAccountB = await fetch(`${baseURL}/api/chat/agents/${encodeURIComponent(createdPayload.agent.id)}`, {
+			method: "PATCH",
+			headers: {
+				"content-type": "application/json",
+				origin: baseURL,
+				"x-test-user": "account-b",
+			},
+			body: JSON.stringify({ archived: true }),
+		});
+		assert.equal(archivedByAccountB.status, 200);
+		assert.equal(typeof (await archivedByAccountB.json()).agent.archivedAt, "string");
+
+		const restoredByAccountA = await fetch(`${baseURL}/api/chat/agents/${encodeURIComponent(createdPayload.agent.id)}`, {
+			method: "PATCH",
+			headers: {
+				"content-type": "application/json",
+				origin: baseURL,
+				"x-test-user": "account-a",
+			},
+			body: JSON.stringify({ archived: false }),
+		});
+		assert.equal(restoredByAccountA.status, 200);
+		assert.equal((await restoredByAccountA.json()).agent.archivedAt, undefined);
+
+		await fetch(`${baseURL}/api/chat/agents/${encodeURIComponent(createdPayload.agent.id)}`, {
+			method: "PATCH",
+			headers: {
+				"content-type": "application/json",
+				origin: baseURL,
+				"x-test-user": "account-b",
+			},
+			body: JSON.stringify({ archived: true }),
+		});
+
+		const deletedByAccountB = await fetch(`${baseURL}/api/chat/agents/${encodeURIComponent(createdPayload.agent.id)}`, {
+			method: "DELETE",
+			headers: {
+				"content-type": "application/json",
+				origin: baseURL,
+				"x-test-user": "account-b",
+			},
+			body: JSON.stringify({ confirmName: "cross-account-agent" }),
+		});
+		assert.equal(deletedByAccountB.status, 200);
+		const deletedByAccountBPayload = await deletedByAccountB.json();
+		assert.equal(deletedByAccountBPayload.deletedAgentId, createdPayload.agent.id);
+		assert.deepEqual(deletedByAccountBPayload.deletedSessionIds, [accountBSessionPayload.session.id]);
+		assert.equal(sessions.get(accountBSessionPayload.session.id), undefined);
 	} finally {
 		await channel.stop?.();
 	}
@@ -2927,7 +3039,7 @@ test("workflow catalog authentication and permission baseline treats UI workflow
 		const userTwoPublishPayload = await userTwoPublish.json();
 		assert.equal(userTwoPublishPayload.publishedVersion.workflowId, "ui-global-permission-draft");
 		assert.equal(userTwoPublishPayload.publishedVersion.version, "0.1.1");
-		assert.equal(userTwoPublishPayload.publishedVersion.publishedBy, "user:user-2");
+		assert.equal(userTwoPublishPayload.publishedVersion.publishedBy, LEGACY_SHARED_APP_OWNER_SCOPE);
 
 		const userOneVersion = await fetch(`${baseURL}/api/chat/workflows/ui-global-permission-draft/versions/0.1.1`, {
 			headers: { "x-test-user": "user-1" },
@@ -3587,7 +3699,7 @@ test("workflow delete API tombstones UI workflows while preserving Project snaps
 		assert.equal(deletePayload.workflowId, "ui-review-workflow");
 		assert.equal(deletePayload.deleted, true);
 		assert.equal(deletePayload.tombstone.workflowId, "ui-review-workflow");
-		assert.equal(deletePayload.tombstone.deletedBy, "user:user-1");
+		assert.equal(deletePayload.tombstone.deletedBy, LEGACY_SHARED_APP_OWNER_SCOPE);
 		assert.equal(deletePayload.tombstone.lastKnownTitle, "UI Review Workflow");
 		assert.equal(deletePayload.tombstone.lastKnownVersion, "2.0.0");
 		assert.match(deletePayload.tombstone.lastDefinitionHash, /^sha256:[a-f0-9]{64}$/);
@@ -3966,7 +4078,7 @@ test("workflow security boundary validates registered refs and rejects inline ex
 });
 
 test("workflow prompt asset revisions create managed assets and draft prompt refs", async () => {
-	const { channel, baseURL } = await startWebHostChannel({
+	const { channel, baseURL, dataStorePath } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 		profiles: [{ name: "base", aliases: ["default"] }],
 	});
@@ -4013,13 +4125,58 @@ test("workflow prompt asset revisions create managed assets and draft prompt ref
 		const promptAssetPayload = await promptAssetResponse.json();
 		assert.equal(promptAssetPayload.asset.revisionId, saveAssetPayload.asset.revisionId);
 
+		const otherUserPromptAssetResponse = await fetch(`${baseURL}/api/chat/workflows/prompt-assets/${encodeURIComponent(saveAssetPayload.asset.id)}`, {
+			headers: { "x-test-user": "user-2" },
+		});
+		assert.equal(otherUserPromptAssetResponse.status, 200);
+		const otherUserPromptAssetPayload = await otherUserPromptAssetResponse.json();
+		assert.equal(otherUserPromptAssetPayload.asset.revisionId, saveAssetPayload.asset.revisionId);
+
+		const historicalDb = new DatabaseSync(dataStorePath);
+		try {
+			historicalDb.exec(`
+				ALTER TABLE workflow_prompt_assets ADD COLUMN owner_scope TEXT NOT NULL DEFAULT 'shared:app';
+				ALTER TABLE workflow_prompt_asset_revisions ADD COLUMN owner_scope TEXT NOT NULL DEFAULT 'shared:app';
+			`);
+			historicalDb.prepare(`INSERT INTO workflow_prompt_assets (asset_id, owner_scope, source, display_name, description, active_revision_id, created_at, updated_at)
+				VALUES (?, ?, 'ui', ?, ?, ?, ?, ?)`).run(
+				"ui.promptAssets.historicalUser",
+				"user:historical",
+				"Historical user prompt asset",
+				"Legacy owner-scoped prompt asset fixture.",
+				"wpar_historical_user",
+				"2026-05-30T00:00:00.000Z",
+				"2026-05-30T00:00:00.000Z",
+			);
+			historicalDb.prepare(`INSERT INTO workflow_prompt_asset_revisions (revision_id, asset_id, owner_scope, content_hash, markdown, created_at, created_by, based_on_revision_id)
+				VALUES (?, ?, ?, ?, ?, ?, ?, NULL)`).run(
+				"wpar_historical_user",
+				"ui.promptAssets.historicalUser",
+				"user:historical",
+				"sha256:historical",
+				"# Historical prompt asset",
+				"2026-05-30T00:00:00.000Z",
+				"legacy-user",
+			);
+		} finally {
+			historicalDb.close();
+		}
+
+		const historicalPromptAssetResponse = await fetch(`${baseURL}/api/chat/workflows/prompt-assets/ui.promptAssets.historicalUser`, {
+			headers: { "x-test-user": "user-2" },
+		});
+		assert.equal(historicalPromptAssetResponse.status, 200);
+		const historicalPromptAssetPayload = await historicalPromptAssetResponse.json();
+		assert.equal(historicalPromptAssetPayload.asset.revisionId, "wpar_historical_user");
+
 		const pickerResponse = await fetch(`${baseURL}/api/chat/workflows/pickers/prompt-assets?selectedRefId=${encodeURIComponent(saveAssetPayload.asset.id)}`, {
-			headers: { "x-test-user": "user-1" },
+			headers: { "x-test-user": "user-2" },
 		});
 		assert.equal(pickerResponse.status, 200);
 		const pickerPayload = await pickerResponse.json();
 		assert.equal(pickerPayload.selectedRefId, saveAssetPayload.asset.id);
 		assert.ok(pickerPayload.options.some((option) => option.id === saveAssetPayload.asset.id && option.kind === "ui"));
+		assert.ok(pickerPayload.options.some((option) => option.id === "ui.promptAssets.historicalUser" && option.kind === "ui"));
 
 		const definition = structuredClone(duplicatePayload.draft.definition);
 		definition.nodes.agent = {
@@ -4071,7 +4228,7 @@ test("workflow prompt asset revisions create managed assets and draft prompt ref
 
 		const secondRevisionResponse = await fetch(`${baseURL}/api/chat/workflows/prompt-assets`, {
 			method: "POST",
-			headers: jsonHeaders,
+			headers: { ...jsonHeaders, "x-test-user": "user-2" },
 			body: JSON.stringify({
 				assetId: saveAssetPayload.asset.id,
 				displayName: "Agent prompt asset",
@@ -4084,6 +4241,16 @@ test("workflow prompt asset revisions create managed assets and draft prompt ref
 		assert.notEqual(secondRevisionPayload.asset.revisionId, saveAssetPayload.asset.revisionId);
 		assert.notEqual(secondRevisionPayload.asset.contentHash, saveAssetPayload.asset.contentHash);
 		assert.equal(secondRevisionPayload.asset.markdown, "# Draft prompt\n\nUse {{input}} and include acceptance criteria.");
+
+		const db = new DatabaseSync(dataStorePath, { readOnly: true });
+		try {
+			const assetRow = db.prepare("SELECT owner_scope FROM workflow_prompt_assets WHERE asset_id = ?").get(saveAssetPayload.asset.id);
+			const revisionRows = db.prepare("SELECT owner_scope FROM workflow_prompt_asset_revisions WHERE asset_id = ? ORDER BY created_at").all(saveAssetPayload.asset.id);
+			assert.equal(assetRow.owner_scope, LEGACY_SHARED_APP_OWNER_SCOPE);
+			assert.deepEqual(revisionRows.map((row) => row.owner_scope), [LEGACY_SHARED_APP_OWNER_SCOPE, LEGACY_SHARED_APP_OWNER_SCOPE]);
+		} finally {
+			db.close();
+		}
 	} finally {
 		await channel.stop?.();
 	}
@@ -4804,7 +4971,7 @@ test("chat web app creates configured Project workflow sessions and starts one w
 		assert.equal(createdPayload.snapshot.schemaVersion, 1);
 		assert.match(createdPayload.snapshot.createdAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
 		assert.equal(createdPayload.snapshot.createdBy, "user-1");
-		assert.equal(createdPayload.snapshot.ownerScope, "user:user-1");
+		assert.equal(createdPayload.snapshot.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
 		assert.equal(createdPayload.snapshot.projectId, projectPayload.project.id);
 		assert.equal(createdPayload.snapshot.piboSessionId, createdPayload.session.id);
 		assert.equal(createdPayload.snapshot.workflow.id, "standard-project");
@@ -5332,12 +5499,12 @@ test("workflow diagnostics are redacted and scoped to owning Project sessions", 
 		});
 		assert.equal(otherUserProjectsResponse.status, 200);
 		const otherUserProjectsPayload = await otherUserProjectsResponse.json();
-		assert.equal(otherUserProjectsPayload.projects.some((project) => project.id === projectPayload.project.id), false);
+		assert.equal(otherUserProjectsPayload.projects.some((project) => project.id === projectPayload.project.id), true);
 
 		const otherUserBootstrapResponse = await fetch(`${baseURL}/api/chat/projects/bootstrap?projectId=${encodeURIComponent(projectPayload.project.id)}`, {
 			headers: { "x-test-user": "user-2" },
 		});
-		assert.equal(otherUserBootstrapResponse.status, 404);
+		assert.equal(otherUserBootstrapResponse.status, 200);
 
 		const duplicateResponse = await fetch(`${baseURL}/api/chat/workflows/standard-project/duplicate`, {
 			method: "POST",
@@ -5529,7 +5696,7 @@ test("chat web app project bootstrap includes real workflow session descendants 
 		const createdPayload = await createdResponse.json();
 		const root = createdPayload.session;
 		const ownerScope = root.ownerScope;
-		assert.equal(ownerScope, "user:user-1");
+		assert.equal(ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
 
 		const nested = sessions.create({
 			channel: "pibo.workflow",
@@ -6250,7 +6417,7 @@ test("chat web app archives sessions as read and excludes them from room unread 
 	}
 });
 
-test("chat web app renames and archives owned sessions", async () => {
+test("chat web app renames and archives shared sessions", async () => {
 	const { channel, baseURL } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 	});
@@ -6593,7 +6760,7 @@ test("chat web app accepts same-origin mutations behind a local reverse proxy", 
 		});
 		assert.equal(response.status, 201);
 		const payload = await response.json();
-		assert.equal(payload.session.ownerScope, "user:user-1");
+		assert.equal(payload.session.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
 	} finally {
 		await channel.stop?.();
 	}

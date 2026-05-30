@@ -7,7 +7,7 @@
 
 ## Why
 
-Pibo sessions must run on a model that is known, authenticated, and stable for the lifetime of the product session. Operators and Chat Web users also need a discoverable provider catalog, safe login actions, and owner-scoped settings that affect runtime context without leaking between users.
+Pibo sessions must run on a model that is known, authenticated, and stable for the lifetime of the product session. Operators and Chat Web users also need a discoverable provider catalog, safe login actions, and shared app settings that affect runtime context consistently for all allowed accounts.
 
 Without this contract, changing global defaults could silently move old sessions to different models, unauthenticated providers could be selected, and provider-specific login state could be confused with Pibo Web authentication.
 
@@ -17,7 +17,7 @@ Define how Pibo discovers model providers, stores provider credentials, chooses 
 
 ## Background / Current State
 
-Pibo builds the model catalog from Pi Coding Agent services, groups models by provider, and annotates each provider with auth status. Model defaults live in Pibo home as `model-defaults.json`. User settings live in Pibo home as `user-settings.json` and are keyed by Owner Scope.
+Pibo builds the model catalog from Pi Coding Agent services, groups models by provider, and annotates each provider with auth status. Model defaults live in Pibo home as `model-defaults.json`. User settings live in Pibo home as `user-settings.json` and are keyed by the shared app compatibility key. Older owner-keyed entries are migration fallback only.
 
 When the Session Router creates a routed runtime, it resolves the Pibo Session's active model from the stored session record first, then profile overrides, then main/subagent defaults. If a resolved model exists and the session has no stored active model, the router backfills the session store so later default changes do not alter that Pibo Session.
 
@@ -277,30 +277,30 @@ Provider operations remain usable from slash-command output while preserving ses
 - THEN Chat Web calls `login.start` and `login.complete` against the selected Pibo Session
 - AND the card reports success or the returned action error without exposing stored credential material.
 
-### Requirement: User timezone is owner-scoped runtime context
+### Requirement: User timezone is shared app runtime context
 
-The system MUST store user settings by Owner Scope and inject the sanitized timezone into runtime session context.
+The system MUST store user settings at shared app scope and inject the sanitized timezone into runtime session context.
 
 #### Current
 
-Chat Web exposes authenticated `GET` and same-origin `PATCH` endpoints for user settings. The Session Router loads settings using the session owner scope and passes `timezone` into runtime session context.
+Chat Web exposes authenticated `GET` and same-origin `PATCH` endpoints for user settings. The Session Router loads shared app settings and passes `timezone` into runtime session context.
 
 #### Target
 
-Scheduled jobs, sessions, and agents can rely on a concrete IANA timezone value while settings remain isolated per owner.
+Scheduled jobs, sessions, and agents can rely on a concrete IANA timezone value while settings remain shared across allowed accounts.
 
 #### Acceptance
 
 - Missing user settings load as timezone `UTC`.
 - Invalid timezone values are rejected by the Chat Web PATCH endpoint.
-- Valid timezone values are persisted under the authenticated user's Owner Scope.
-- A session for one Owner Scope does not read another Owner Scope's timezone.
-- Runtime session context includes the sanitized timezone for the session owner.
+- Valid timezone values are persisted under the shared app settings key.
+- Any allowed account reads the same timezone.
+- Runtime session context includes the sanitized shared app timezone.
 
 #### Scenario: User sets timezone
 
 - GIVEN an authenticated user patches user settings with `Europe/Berlin`
-- WHEN a new routed runtime is created for that user's Pibo Session
+- WHEN a new routed runtime is created
 - THEN the runtime session context includes timezone `Europe/Berlin`.
 
 ### Requirement: Provider usage is optional and provider-specific
@@ -374,7 +374,7 @@ This section separates currently direct verification from source-inspected behav
 - OpenAI Codex usage status is implemented in `src/auth/openai-codex-usage.ts`; it only runs for active `openai-codex` OAuth credentials, derives account id from stored credential or JWT claim, normalizes rate-limit windows and credits, and throws explicit errors for failed usage responses.
 - Runtime rejection of unknown or unauthenticated selected models is implemented in `src/core/runtime.ts` and selected by `src/core/session-router.ts`, but current direct tests focus on selection/freezing rather than runtime provider-auth failure.
 - Terminal action-card behavior for `/login`, `/model`, and `/status` is implemented in `src/apps/chat-ui/src/session-views/compact-terminal/*` and remains source-inspected only.
-- Owner-scoped user settings and timezone injection are implemented in `src/core/user-settings.ts`, `src/apps/chat/web-app.ts`, and `src/core/session-router.ts`; current tests do not directly exercise the Chat Web settings mutation plus runtime-context path.
+- Shared app user settings and timezone injection are implemented in `src/core/user-settings.ts`, `src/apps/chat/web-app.ts`, and `src/core/session-router.ts`; current tests do not directly exercise the Chat Web settings mutation plus runtime-context path.
 
 ### Recommended Test Matrix
 
@@ -386,7 +386,7 @@ This section separates currently direct verification from source-inspected behav
 | Runtime model validation | Unknown provider/model fails before Pi session creation; known unauthenticated model fails before Pi session creation; authenticated model is passed to Pi runtime options without fallback. | Runtime rejects unknown or unauthenticated selected models | `test/runtime-model-validation.test.mjs` |
 | Gateway model menu | Menu payload uses `show_model_menu`; unauthenticated providers and explicitly unauthenticated models are excluded; empty authenticated-provider state returns a bounded empty menu. | Model menu exposes only authenticated model choices | `test/gateway-model-action.test.mjs` |
 | OpenAI Codex provider usage | Non-`openai-codex` active models return no usage; API-key credentials return no usage; OAuth credentials add bearer and account headers; snake_case and camelCase usage payloads normalize to limit windows, reset times, remaining percentages, plan type, and credits; failed HTTP status throws a usage error. | Provider usage is optional and provider-specific | `test/openai-codex-usage.test.mjs` |
-| Owner-scoped user settings | Missing settings default to `UTC`; invalid timezones are rejected by the Chat Web PATCH endpoint; valid timezones persist per Owner Scope; a runtime for another Owner Scope does not read them; runtime session context includes the sanitized timezone. | User timezone is owner-scoped runtime context | `test/user-settings-runtime-context.test.mjs` |
+| Shared app user settings | Missing settings default to `UTC`; invalid timezones are rejected by the Chat Web PATCH endpoint; valid timezones persist at shared app scope; any allowed account reads them; runtime session context includes the sanitized timezone. | User timezone is shared app runtime context | `test/user-settings-runtime-context.test.mjs` |
 | Terminal provider cards | Recognized login/model/status payloads render cards; missing selected session blocks session-bound actions; API keys are not echoed after save; model selection patches the selected Pibo Session; malformed or unrecognized payloads fall back to normal tool output. | Terminal action cards provide safe provider operations | component test or browser-independent terminal renderer test |
 
 ## Assumptions and Open Questions
@@ -400,7 +400,7 @@ This section separates currently direct verification from source-inspected behav
 ### Open Questions
 
 - Should Chat Web validate selected `activeModel` against the current authenticated catalog before writing it, or is runtime-time validation sufficient?
-- Should model defaults become owner-scoped instead of global Pibo-home settings?
+- Should model defaults stay Pibo-home-global or move to another non-account-scoped app setting file?
 - Should provider usage failures be hidden from `/status` to avoid making status unreliable when an external provider endpoint is down?
 
 ## Traceability
@@ -415,7 +415,7 @@ This section separates currently direct verification from source-inspected behav
 | REQ-006 Runtime rejects unknown or unauthenticated selected models | User chooses an unauthenticated model | Add runtime validation test | Pending |
 | REQ-007 Model menu exposes only authenticated model choices | No providers are authenticated | Add gateway action test | Pending |
 | REQ-008 Terminal action cards provide safe provider operations | Select an authenticated model from the terminal; Complete provider login from the terminal | `src/apps/chat-ui/src/session-views/compact-terminal/TerminalLoginCard.tsx`, `TerminalModelCard.tsx`, `TerminalStatusCard.tsx`, `loginMenu.ts`, `terminalRows.ts`; add terminal-card tests | Source-inspected only |
-| REQ-009 User timezone is owner-scoped runtime context | User sets timezone | Add user-settings API/router test | Pending |
+| REQ-009 User timezone is shared app runtime context | User sets timezone | Add user-settings API/router test | Pending |
 | REQ-010 Provider usage is optional and provider-specific | API key credential has no usage status | `src/auth/openai-codex-usage.ts`; add provider usage test | Source-inspected only |
 
 ## Verification Basis

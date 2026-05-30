@@ -1,0 +1,304 @@
+{
+  "project": "Shared App Without Owner Scope",
+  "branchName": "shared-app-no-owner-scope-ralph",
+  "description": "Remove account-derived owner/principal product boundaries so authenticated users share one app space, one history, one workspace model, and one automation/configuration state.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Establish shared-app baseline inventory and regression gates",
+      "description": "As a maintainer, I want a precise baseline of owner/principal usage and tests before changes so that the Ralph loop can remove artifacts without losing track of regressions.",
+      "acceptanceCriteria": [
+        "Create or update IMPLEMENTATION_PROGRESS.md with branch, worktree, Docker worker, PRD paths, current status, and story progress",
+        "Record current rg inventory for ownerScope, owner_scope, principalId, principal_id, room_members, getOwned, listOwned, requireOwned, personal target, and --owner-scope",
+        "Record current SQLite owner/principal counts for all reachable affected stores without mutating data",
+        "Run baseline npm run typecheck and npm run build, and record results in the progress file",
+        "Do not modify runtime behavior in this story",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Baseline only; no runtime behavior changed. Evidence: docs/reports/us-001-owner-principal-source-inventory.md records rg inventory; docs/reports/us-001-sqlite-owner-principal-counts.md records read-only sandbox SQLite owner/principal counts via node:sqlite; Docker validation passed with .pibo/ralph-worker.sh 'npm run typecheck' and .pibo/ralph-worker.sh 'npm run build'. Caveat: worker lacks rg, so exact rg inventory used host /usr/bin/rg against source only; see progress. Story commit: 89dfc3b."
+    },
+    {
+      "id": "US-002",
+      "title": "Make web auth an access gate, not product ownership",
+      "description": "As an allowed Pibo user, I want authentication to grant app access without creating account-owned product state so that every allowed account enters the same shared app space.",
+      "acceptanceCriteria": [
+        "Change web session/auth types so normal product handlers do not receive account-derived ownerScope as product state",
+        "requireWebSession or its equivalent keeps 401 behavior for unauthenticated requests",
+        "Authenticated requests no longer derive product owner, principal, workspace, or visibility keys from auth user id",
+        "Add tests proving two allowed auth identities resolve to the same shared app context",
+        "Focused auth tests pass, including better-auth/dev-auth tests touched by the change",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Implemented shared app auth boundary: src/shared-app.ts defines the neutral shared app context and legacy storage owner scope; requireWebSession now preserves auth identity for access/display but returns appContext and a compatibility ownerScope pinned to shared:app instead of user:<auth-user-id>. Added test/web-auth-shared-app-context.test.mjs proving unauthenticated 401 behavior and two auth identities resolving to the same shared app context. Docker evidence: .pibo/ralph-worker.sh 'npm run typecheck' passed; .pibo/ralph-worker.sh 'npm run build && node --test test/web-auth-shared-app-context.test.mjs test/better-auth-config.test.mjs test/dev-auth.test.mjs' passed 9 tests. Caveat: downstream handlers still carry deprecated ownerScope compatibility fields for later stories; this story stops auth-derived owner scope at the web session boundary. Story implementation commit: 9b19d8f."
+    },
+    {
+      "id": "US-003",
+      "title": "Remove user ownership from runtime context and workspace selection",
+      "description": "As an allowed Pibo user, I want sessions and runtimes to keep the same working directories and runtime context regardless of login account so that work never splits into user spaces.",
+      "acceptanceCriteria": [
+        "Runtime session context no longer tells agents that the auth account owns product data",
+        "Session creation, routed runtime startup, subagent creation, workflow runs, Ralph runs, and Cron-triggered runs do not derive cwd or workspace from auth user id",
+        "Existing workspace/project selection remains stable when the same session is opened by another allowed account",
+        "Add or update tests/debug assertions for account-independent workspace behavior where practical",
+        "Relevant session/router/runtime tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "Runtime/session context and core routed-session write paths converted for shared-app compatibility: src/core/runtime.ts no longer emits auth user id or owner-scope lines in pibo://runtime/session-context.md and instead emits App context: shared-app plus session/room/timezone; src/core/session-router.ts loads shared-app settings and writes legacy shared owner scope for implicit runtime sessions, derived branch sessions, and new subagent sessions while preserving stored workspaces; Chat Web context-build inspection no longer passes auth user id, and Settings UI copy no longer says runtime context carries user ID. Docker evidence via .pibo/ralph-worker.sh with sandbox PIBO_HOME: initial npm run typecheck failed on a leftover userId field in src/apps/chat/web-app.ts, then npm run typecheck passed after removal; npm run build && node --test test/context-build-inspector.test.mjs test/session-router-store.test.mjs test/subagents.test.mjs passed 21 tests with pre-existing Vite chunk-size warnings; node --test test/session-router-store.test.mjs passed 10 tests after adding the implicit shared-session assertion. Caveat: legacy owner/principal APIs in Chat/Ralph/Cron/resource stores remain for later stories. Story committed as feat: US-003 - remove user ownership from runtime context; final hash recorded in git log/session result."
+    },
+    {
+      "id": "US-004",
+      "title": "Convert Chat session reads and writes to shared app behavior",
+      "description": "As a Chat Web user, I want historical shared and user-scoped sessions to be listed, opened, and continued through one shared session model.",
+      "acceptanceCriteria": [
+        "Replace active listOwnedSession/getOwnedSession/requireOwnedSession semantics with shared list/get/require behavior",
+        "Session list and direct session bootstrap jointly read historical shared:app and user:* rows before migration",
+        "Message send appends to an existing session based on resource existence/state, not owner equality",
+        "Fork, clone, archive, restore, delete, and session state checks do not use auth-account owner equality",
+        "Add regression tests for historical shared:app and user:* sessions opening and receiving messages",
+        "Relevant Chat API/session tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": "Implemented shared Chat session behavior in src/apps/chat/web-app.ts: active session list/open helpers now use shared resource semantics instead of webSession owner equality, so historical shared:app and user:* sessions are listed, opened, messaged, routed through actions, traced/signaled, marked read, archived/restored, and deleted by resource existence/state. Added test/chat-web-shared-sessions.test.mjs for mixed historical shared:user session listing/direct open/send and cross-account rename/action/archive/restore/delete; updated focused web-channel expectations for newly created Chat sessions to use the legacy shared app storage scope. Docker evidence via .pibo/ralph-worker.sh with sandbox PIBO_HOME: npm run typecheck passed; npm run build && node --test test/chat-web-shared-sessions.test.mjs test/web-auth-shared-app-context.test.mjs passed; focused node --test --test-name-pattern for relevant web-channel Chat session tests passed after stale user-scope test expectations were updated; node --test test/chat-web-shared-sessions.test.mjs passed. Caveat: rooms/navigation/read-state membership filters and app-global room/sidebar behavior are intentionally left for US-005; Projects/Workflows remain for US-008. Story commit: ba15f3c."
+    },
+    {
+      "id": "US-005",
+      "title": "Make rooms, navigation, and read-state app-global",
+      "description": "As a Chat Web user, I want all allowed accounts to see the same room tree and navigation state so that there is one conversation history.",
+      "acceptanceCriteria": [
+        "Remove or neutralize room membership as an access-control check",
+        "Room list and room mutations are app-global and do not filter by auth user owner",
+        "Navigation/read-state no longer partitions by account-derived principal; implement app-global state or documented browser-local state",
+        "Personal Chat/personal copy is removed or renamed to shared/default wording in touched surfaces",
+        "Add tests for mixed historical room/navigation data and cross-account sidebar visibility",
+        "Relevant Chat UI/navigation/session tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": "Implemented app-global Chat rooms/navigation/read-state: ChatRoomService list/tree/subtree and access checks now use resource existence rather than owner or membership; default room creation writes the legacy shared app storage scope and Shared Chat label; room_members/principal read-state compatibility writes are pinned to shared:app instead of auth accounts; Chat Web room fallback and read-state principal selection no longer derive from session/auth owner equality. Added mixed historical shared:user room and app-global read-state tests in test/chat-web-shared-sessions.test.mjs; updated web-channel expectations for shared workflow/project owner/principal effects exposed by the shared Chat principal. Docker evidence via .pibo/ralph-worker.sh with sandbox PIBO_HOME: npm run typecheck passed; npm run build && node --test test/chat-web-shared-sessions.test.mjs test/web-channel.test.mjs test/chat-ui-app-navigation-merge.test.mjs initially failed on stale user-scope web-channel expectations, then node --test test/chat-web-shared-sessions.test.mjs test/web-channel.test.mjs test/chat-ui-app-navigation-merge.test.mjs passed 92 tests after updates. Caveat: fresh schema cleanup/migration still leaves legacy owner/member/stat tables for later US-012 through US-015. Story commit: 86650f4."
+    },
+    {
+      "id": "US-006",
+      "title": "Validate Chat Web shared-app real paths",
+      "description": "As an operator, I want real Chat Web paths validated so that the shared session model works beyond isolated unit tests.",
+      "acceptanceCriteria": [
+        "Add API or integration validation for bootstrap/open/send using a historical shared:app session fixture",
+        "Add API or integration validation for bootstrap/open/send using a historical user:* session fixture",
+        "Add API or integration validation for a newly created shared-app session",
+        "When browser tooling is available, validate sidebar and direct session open in Chat Web and record evidence",
+        "Relevant Chat Web tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 6,
+      "passes": true,
+      "notes": "Added route-level and browser real-path Chat Web validation. test/chat-web-shared-sessions.test.mjs now covers /api/chat/sessions, /api/chat/bootstrap, /api/chat/navigation, and /api/chat/message for historical shared:app, historical user:*, and newly created shared-app sessions opened/sent by another authenticated account. Docker evidence via .pibo/ralph-worker.sh with sandbox PIBO_HOME: npm run typecheck passed; npm run build passed with pre-existing Vite chunk-size warnings; node --test test/chat-web-shared-sessions.test.mjs passed 5 tests. Browser evidence in Docker: agent-browser health initially found missing executable, fixed with npm run --silent dev -- tools install agent-browser in the sandbox; a temporary same-origin Chat Web server on 127.0.0.1:4823 opened /apps/chat/rooms/:roomId/sessions/:piboSessionId with Agent Browser and validated sidebar text/direct open for historical user, historical shared, and new shared sessions. Caveat: worker pibo gateway dev start uses systemd and failed in the container, so browser validation used an isolated in-process Chat Web server instead of the worker dev gateway. Story commit: e4d6243."
+    },
+    {
+      "id": "US-007",
+      "title": "Convert Custom Agents and dynamic profiles to app-global resources",
+      "description": "As an allowed Pibo user, I want custom agents created by any allowed account to be visible and usable by all accounts.",
+      "acceptanceCriteria": [
+        "Custom Agent list/get/create/update/archive/restore/delete paths do not filter or write by auth user owner",
+        "Dynamic profile registration for custom agents is global to the app instance",
+        "Historical shared:app and user:* custom agents are jointly visible before migration",
+        "Add tests proving Account B can see and use a custom agent created by Account A",
+        "Agent store/profile tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 7,
+      "passes": true,
+      "notes": "Converted Custom Agents and dynamic profile exposure to shared-app behavior: CustomAgentStore.list now reads all historical shared:app and user:* rows, new Custom Agent writes use the legacy shared app compatibility scope, and Chat Web agent list/create/update/archive/restore/delete routes use resource existence rather than auth-owner equality. Workflow profile picker and bootstrap catalog read app-global custom agents; active dynamic profile registration was already global via state.agentStore.list(). Added store tests for mixed historical owner rows and API tests proving Account B can list, use, update, archive, Account A can restore, and Account B can delete a Custom Agent created by Account A. Docker evidence via .pibo/ralph-worker.sh with sandbox PIBO_HOME: npm run typecheck passed; npm run build && node --test test/agent-store.test.mjs test/agent-profiles.test.mjs test/web-channel.test.mjs passed. Caveat: owner_scope remains in chat-agents.sqlite as legacy storage pending migration/schema cleanup in later stories. Story implementation commit: 616a3dd."
+    },
+    {
+      "id": "US-008",
+      "title": "Convert Projects and Workflows to app-global resources",
+      "description": "As an allowed Pibo user, I want projects and workflows to be shared across the app so that workflow work does not disappear under a different login.",
+      "acceptanceCriteria": [
+        "Project list/get/create/update/delete paths do not use auth-account owner filters",
+        "Personal project behavior is removed or replaced with an app-global default project behavior",
+        "Workflow drafts, assets, runs, lifecycle events, and project links do not partition by auth user owner",
+        "Add tests proving cross-account visibility/mutation for projects and workflow resources touched by the change",
+        "Project/workflow focused tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 8,
+      "passes": true,
+      "notes": "Converted Projects and Workflows to shared-app behavior: Project create/default/list/require/API paths no longer use auth-account owner filters, new Project/default Project writes use shared:app, Project route mutations use resource existence, and Project session tree bootstrap uses all shared sessions. Workflow draft saves, Project workflow session snapshots, prompt asset writes, and lifecycle events now write shared:app; prompt asset and lifecycle event reads ignore legacy owner filters so historical user:* rows remain visible. Added project service mixed historical owner tests and cross-account/historical prompt asset API coverage. Docker evidence via .pibo/ralph-worker.sh with sandbox PIBO_HOME: npm run typecheck passed; npm run build passed before the first focused test run; node --test test/project-service-workflow-link.test.mjs test/web-channel.test.mjs passed 94 tests after fixing one test expectation for the shared default Project. Caveat: owner_scope columns remain legacy storage until migration/schema cleanup stories. Story commit: 251431c."
+    },
+    {
+      "id": "US-009",
+      "title": "Convert Web Annotations, settings, and app configuration to shared resources",
+      "description": "As an allowed Pibo user, I want annotations and configuration to be shared so that the host has one configured app state.",
+      "acceptanceCriteria": [
+        "Web annotation bindings and annotation list/get/create/update/delete paths do not partition by auth user owner",
+        "Provider settings, tool/profile settings, MCP configuration, skills, context files, and Pi package surfaces are audited for account-derived partitioning and fixed where active",
+        "Add or update tests for cross-account annotation visibility and any changed settings/config surface",
+        "Web annotation focused tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 9,
+      "passes": true,
+      "notes": "Converted Web Annotations and user settings to shared-app behavior: new annotation/binding writes and user-settings writes use shared:app; annotation list/get/patch/remove/thread/attachment paths ignore legacy owner filters while keeping session scoping; Web Annotation API/CDP/tools no longer reject historical user:* sessions by auth-owner equality; user settings read from the shared app key with deterministic historical fallback. Audited provider/model defaults, base/compaction prompts, MCP config, skills/context files, and Pi package surfaces: active storage is file/app-local or already shared through prior Custom Agent work, not auth-account partitioned. Docker evidence via .pibo/ralph-worker.sh with sandbox PIBO_HOME: npm run typecheck passed; npm run build && node --test test/web-annotations-store.test.mjs test/web-annotations-tools.test.mjs test/web-annotations-cdp-api.test.mjs test/web-annotations-attachments.test.mjs test/base-prompt-web.test.mjs passed. Caveat: owner_scope columns remain legacy storage until migration/schema cleanup stories. Story commit: 179fdf8."
+    },
+    {
+      "id": "US-010",
+      "title": "Make Ralph jobs, runs, resources, and CLI controls app-global",
+      "description": "As an operator, I want Ralph automation to belong to the shared app so that jobs can be seen and controlled from any allowed account.",
+      "acceptanceCriteria": [
+        "Ralph job/run create/list/show/start/stop/cancel/update/cleanup paths do not require or enforce account-derived ownerScope",
+        "Ralph personal targets are removed or converted to a neutral app-global target without changing working directories by account",
+        "Historical shared:app and user:* Ralph jobs/runs are jointly visible before migration",
+        "Normal Ralph CLI discovery and commands work without --owner-scope; deprecated flags warn/no-op if retained temporarily",
+        "Add tests for shared Ralph visibility/control and real CLI validation where feasible",
+        "Ralph focused tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 10,
+      "passes": true,
+      "notes": "Converted Ralph jobs, runs, resources, API, CLI, and Chat UI target copy to app-global behavior. Active store/API/CLI list/show/start/stop/cancel/update/remove/runs/resource paths ignore legacy owner filters and jointly expose historical shared:app and user:* records; new jobs, runs, and run facts write shared:app, and personal/default targets normalize to the shared default target. Deprecated --owner-scope remains accepted as a no-op with stderr warning; normal CLI discovery/control works without it. Docker evidence via .pibo/ralph-worker.sh with sandbox PIBO_HOME: npm run typecheck passed after fixing one missing comma; npm run build && node --test test/ralph-resource-metadata.test.mjs test/ralph-resource-visibility.test.mjs test/ralph-resource-cleanup.test.mjs test/ralph-runtime-overrides.test.mjs test/ralph-stop-conditions.test.mjs test/ralph-templates.test.mjs passed 27 tests; real CLI smoke without --owner-scope created/listed/started a shared-app Ralph job and verified deprecated --owner-scope no-op behavior. Caveat: owner_scope columns and getOwnedJob compatibility method remain legacy storage/API until migration/schema cleanup stories. Story implementation commit: 2765c14."
+    },
+    {
+      "id": "US-011",
+      "title": "Make Cron, scheduled work, and yielded-run product state app-global",
+      "description": "As an operator, I want scheduled automation and yielded-run product state to be shared so that automation behavior is not tied to a login account.",
+      "acceptanceCriteria": [
+        "Cron schedule create/list/show/enable/disable/delete/run/history paths do not require or enforce account-derived ownerScope",
+        "Scheduled Pibo jobs and yielded-run persisted product state are audited and fixed where they use account-derived owner/principal boundaries",
+        "Historical shared:app and user:* Cron records are jointly visible before migration",
+        "Normal Cron CLI/API flows work without owner-scope arguments",
+        "Add tests for shared Cron visibility/control and touched yielded-run behavior",
+        "Cron focused tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 11,
+      "passes": true,
+      "notes": "Converted Cron schedules, runs, service execution, Chat API, CLI, and Chat UI target copy to app-global behavior. Active store/API/CLI create/list/get/update/delete/manual-run/history paths ignore legacy owner filters and jointly expose historical shared:app and user:* records; new jobs and runs write shared:app, and personal/default targets normalize to the shared default target. Deprecated --owner-scope remains accepted as a no-op with stderr warning; normal Cron CLI discovery/control works without it. Yielded-run persisted state was audited: pibo_runs.owner_pibo_session_id is tied to Pibo session/run-control lifecycle, not auth account identity, so no account-derived owner/principal boundary required code changes. Docker evidence via .pibo/ralph-worker.sh with sandbox PIBO_HOME: npm run typecheck passed; npm run build && node --test test/cron-schedule-store.test.mjs test/cron-store-lifecycle.test.mjs test/cron-schedule.test.mjs test/chat-cron-api.test.mjs test/runs.test.mjs test/reliability-store.test.mjs passed 53 tests; real Cron CLI smoke without --owner-scope created/listed/paused/resumed/listed-runs for a shared-app Cron job and verified deprecated --owner-scope warning/no-op behavior. Caveat: owner_scope columns and getOwnedJob compatibility method remain legacy storage/API until migration/schema cleanup stories. Story implementation commit: 7606d58."
+    },
+    {
+      "id": "US-012",
+      "title": "Build backup-backed migration inspector and dry-run framework",
+      "description": "As an operator, I want a safe migration framework so that historical owner/principal data can be inspected and normalized only after conflicts are understood.",
+      "acceptanceCriteria": [
+        "Add a discoverable migration/debug command or script that reports owner/principal counts by affected store/table without writes",
+        "Dry-run mode reports planned changes and conflicts without writes",
+        "Mutation mode refuses to run without creating or referencing a fresh backup",
+        "Migration output avoids secrets and records backup/rollback instructions",
+        "Add tests for inspect, dry-run, backup-required, and JSON/text output where applicable",
+        "Migration framework tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 12,
+      "passes": true,
+      "notes": "Added pibo data shared-app inspect/dry-run/apply framework with read-only owner/principal counts across affected primary and auxiliary SQLite stores, planned normalization counts, generic unique-index conflict reporting, rollback instructions, and a guarded apply entrypoint that refuses without --backup and remains non-mutating until store-specific migration stories. Tests: test/data-shared-app-migration.test.mjs covers inspect/dry-run counts, conflict reporting, JSON/text CLI output, non-mutation, backup-required, and existing-backup apply guard. Docker evidence via .pibo/ralph-worker.sh with sandbox PIBO_HOME: npm run typecheck passed; npm run build && node --test test/data-shared-app-migration.test.mjs passed; real sandbox CLI smoke for node dist/bin/pibo.js data shared-app inspect --json, dry-run --json, and apply --json without --backup verified inspect/dry-run willWrite=false and apply guard. Caveat: Story implementation commit: 72be1e6. Actual pibo.sqlite and auxiliary-store mutation remains for US-013/US-014; this framework intentionally writes nothing."
+    },
+    {
+      "id": "US-013",
+      "title": "Migrate pibo.sqlite shared-app tables safely",
+      "description": "As an operator, I want the primary Pibo database migrated to shared app state without losing sessions, rooms, navigation, or stats.",
+      "acceptanceCriteria": [
+        "Implement dry-run and mutation support for pibo.sqlite sessions, rooms, session_navigation, room_members, principal_session_stats, and principal_room_stats",
+        "Handle duplicate default rooms, navigation/read-state collisions, and stats collisions deterministically",
+        "Keep session ids and room ids stable unless a documented merge requires a mapping",
+        "Mutation is transactional and idempotent",
+        "Add synthetic mixed-owner fixture tests covering conflicts and idempotency",
+        "Post-check can verify sample shared:app, user:*, and newly shared sessions open through supported paths",
+        "Typecheck passes"
+      ],
+      "priority": 13,
+      "passes": true,
+      "notes": "Implemented pibo.sqlite dry-run/apply support in pibo data shared-app: backup-gated apply now runs a transactional, idempotent pibo.sqlite migration for sessions, rooms, session_navigation, room_members, principal_session_stats, and principal_room_stats; duplicate default rooms are deterministically retired while preserving ids; membership/read-state collisions are merged to the shared app legacy principal. Reports include action plans, applied counts, and post-checks. Docker evidence via .pibo/ralph-worker.sh with sandbox PIBO_HOME: npm run typecheck passed; npm run build && node --test test/data-shared-app-migration.test.mjs passed. Focused tests cover dry-run non-mutation, conflict reporting, backup-required guard, pibo.sqlite mutation, stable ids, duplicate default-room retirement, merged stats, idempotent re-run, and full-schema PiboDataStore post-checks proving historical shared:app, historical user:*, and newly shared sessions remain openable/listable through shared navigation paths. Caveat: auxiliary stores remain inspect/dry-run/report-only for US-014. Story implementation commit: b9acc10."
+    },
+    {
+      "id": "US-014",
+      "title": "Migrate auxiliary stores safely",
+      "description": "As an operator, I want all non-primary SQLite stores migrated so that agents, automation, annotations, projects, and workflows converge to the shared app model.",
+      "acceptanceCriteria": [
+        "Implement dry-run and mutation support for chat-agents.sqlite, pibo-ralph.sqlite, pibo-cron.sqlite, web-annotations.sqlite, web-projects.sqlite if active, and workflow persistence stores",
+        "Handle custom-agent profile name collisions by deterministic rename or documented no-conflict proof",
+        "Handle Ralph/Cron active job safety by refusing unsafe mutation or documenting safe metadata-only mutation",
+        "Mutation is transactional and idempotent per store where SQLite supports it",
+        "Add synthetic mixed-owner fixture tests for each affected store",
+        "Auxiliary migration tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 14,
+      "passes": true,
+      "notes": "Implemented auxiliary shared-app migration support for chat-agents.sqlite, pibo-ralph.sqlite, pibo-cron.sqlite, web-annotations.sqlite, web-projects.sqlite, and pibo.sqlite workflow persistence tables. Apply is backup-gated, per-store transactional, and idempotent; owner_scope rows normalize to shared:app, Ralph/Cron personal target principal values normalize to shared:app without changing job/run ids, statuses, schedules, prompts, resources, or working directories, and duplicate Custom Agent profile names are preserved by deterministic legacy-hash renames before owner normalization. Docker evidence via .pibo/ralph-worker.sh with sandbox PIBO_HOME: npm run typecheck passed; npm run build && node --test test/data-shared-app-migration.test.mjs passed 5 focused migration tests. Tests cover dry-run non-mutation, backup-required apply, pibo.sqlite workflow tables, chat-agent duplicate profile-name renames, Ralph/Cron active-job metadata-only target normalization, web annotations, web projects, idempotency, post-checks, and CLI JSON dry-run/apply smoke against a temporary Pibo home. Caveat: fresh schema/type cleanup is deferred to US-015. Story implementation commit: bc34752."
+    },
+    {
+      "id": "US-015",
+      "title": "Remove owner/principal artifacts from fresh schemas and product types",
+      "description": "As a maintainer, I want fresh installs and TypeScript product models to omit owner/principal product boundaries so that new deployments never recreate user spaces.",
+      "acceptanceCriteria": [
+        "Fresh schema creation does not create owner_scope/principal_id/room_members access-control structures for product data",
+        "Owner-scoped indices and constraints are removed or marked legacy-only for migration paths",
+        "Product TypeScript models no longer require ownerScope or account-derived principalId",
+        "Active getOwned/listOwned/requireOwned/requireRoomAccess semantics are removed or renamed to shared resource semantics",
+        "Add fresh-schema tests and type/model regression tests",
+        "Schema/type focused tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 15,
+      "passes": true,
+      "notes": "Fresh schema cleanup implemented for primary Pibo data, Custom Agents, Ralph, Cron, Web Annotations, Projects, and Workflow persistence: new stores omit owner_scope/principal_id access-control columns, room_members, and principal stats tables, while existing legacy stores are handled through explicit column/table compatibility. Added sqlite schema helpers and fresh-schema regression coverage. Docker evidence via .pibo/ralph-worker.sh with sandbox PIBO_HOME: npm run typecheck passed; npm run build && node --test test/shared-app-fresh-schema.test.mjs test/data-v2-store.test.mjs test/data-shared-app-migration.test.mjs passed 10 tests; focused store/API regression node --test test/agent-store.test.mjs test/cron-schedule-store.test.mjs test/web-annotations-store.test.mjs test/project-service-workflow-link.test.mjs test/web-channel.test.mjs passed 118 tests. Caveat: legacy owner/principal types and fields remain where explicit compatibility/migration or user-facing cleanup is deferred to US-016/US-017. Story implementation commit: 205ee09."
+    },
+    {
+      "id": "US-016",
+      "title": "Clean API, CLI help, UI copy, and enforce artifact search gates",
+      "description": "As a maintainer, I want user-facing and agent-facing contracts to stop teaching owner scope so that future agents do not reintroduce it.",
+      "acceptanceCriteria": [
+        "Normal API payloads and responses no longer expose owner/principal fields as product ownership",
+        "Normal CLI help for Chat/session/Ralph/Cron/debug/data workflows does not require or teach owner-scope for current operations",
+        "UI copy removes owner/owned/principal/personal target/personal chat wording or replaces it with shared/default wording",
+        "Add an allowlisted search gate for active owner/principal artifacts and document the allowlist",
+        "Remaining matches are confined to explicit legacy migration/debug evidence or archived docs",
+        "CLI/API/UI focused tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 16,
+      "passes": true,
+      "notes": "Cleaned user-facing shared-app API/CLI/UI artifacts. Chat Ralph and Cron APIs now serialize normal job/run responses without ownerScope and without personal-target principalId values; Chat UI types accept the sanitized target shape. Project/default-room UI copy now says Shared Chat/shared default, Project bootstrap uses sharedDefaultProject, and active helper names were renamed from personal/default-owner wording where touched. CLI help now labels --owner-scope as legacy/debug compatibility and shared-app migration help reflects primary plus auxiliary apply support. Added test/shared-app-artifact-search-gate.test.mjs as an allowlisted user-facing artifact search gate; remaining matches are explicit legacy/deprecated/migration/debug evidence. Docker evidence: .pibo/ralph-worker.sh npm run typecheck passed; .pibo/ralph-worker.sh npm run build >/tmp/pibo-build.log && node --test test/chat-cron-api.test.mjs test/ralph-resource-visibility.test.mjs test/project-service-workflow-link.test.mjs test/web-channel.test.mjs test/session-ui-view-models.test.mjs test/cli-ui-session-app.test.mjs test/shared-app-artifact-search-gate.test.mjs passed. Real CLI smoke: node dist/bin/pibo.js tui:sessions --help, data --help, and data shared-app --help showed deprecated/legacy owner-scope wording only. Caveat: legacy store/type compatibility names and TUI /owner alias remain as documented compatibility until broader docs/final validation cleanup. Story implementation commit: 9832f54."
+    },
+    {
+      "id": "US-017",
+      "title": "Update glossary, capability specs, and current docs to shared-app model",
+      "description": "As a future agent, I want current documentation to describe the shared app model so that implementation decisions stay aligned after this migration.",
+      "acceptanceCriteria": [
+        "GLOSSARY.md marks Owner Scope as legacy or removes it from current product vocabulary after dependent docs are updated",
+        "Add or update a current shared-app capability/spec document if needed",
+        "Update auth, rooms/sessions, session routing/store, custom agents, Ralph, Cron, projects/workflows, annotations, and data-store capability specs to remove user-owner isolation",
+        "Move obsolete owner-isolation docs to docs/legacy or rewrite them as historical migration context",
+        "Documentation search for owner/principal terms is reviewed and remaining current-doc matches are justified",
+        "Typecheck passes"
+      ],
+      "priority": 17,
+      "passes": true,
+      "notes": "Updated current shared-app documentation and glossary. GLOSSARY.md now defines Shared App Context, marks Owner Scope as legacy compatibility vocabulary, and renames the default room concept to Shared Default Chat Room. Capability specs for auth, rooms/bootstrap/session routing/session store, custom agents, Ralph, Cron, Projects/Workflows, Web Annotations, settings, data store, and related current docs now describe auth as an access gate and resources as shared app state. Added docs/reports/us-017-current-docs-owner-principal-review.md with the documentation search command and remaining-match categories. Validation: .pibo/ralph-worker.sh 'npm run typecheck' passed in Docker with sandbox PIBO_HOME. Caveat: broad generic \u201cowned by\u201d language remains where it means technical lifecycle ownership by a store, Pibo Session, plugin, or CLI module; legacy owner/principal terms remain only as documented compatibility/migration/debug evidence or future cleanup questions. Story implementation commit: 1d2cc4a."
+    },
+    {
+      "id": "US-018",
+      "title": "Complete dev validation, rollout reports, and PR readiness",
+      "description": "As an operator, I want dev validation and rollout evidence captured before production changes so that the migration can be reviewed and deployed safely.",
+      "acceptanceCriteria": [
+        "Run npm run typecheck, npm run build, npm test, focused tests, and artifact search gate successfully",
+        "Deploy to Dev with ./scripts/deploy-web-dev.sh and restart Dev through the Pibo CLI",
+        "Validate Dev API/browser paths for historical shared:app session, historical user:* session, and newly created shared-app session",
+        "Validate real Ralph and Cron CLI/API shared-app paths without required owner-scope",
+        "Save Dev validation report under docs/reports/ with commands, evidence, and any limitations",
+        "Prepare Production rollout and rollback notes, including backup/migration approval gates, without running production mutation unless explicitly approved",
+        "Commit completed coherent changes and leave the branch ready for upstream PR review"
+      ],
+      "priority": 18,
+      "passes": true,
+      "notes": "US-018 complete. Evidence: prior Docker .pibo/ralph-worker.sh gates passed (npm run typecheck, npm run build, broad npm test with 895 tests, focused final-readiness/search/migration/API tests with 137 tests, Workflow V2/session-data retest with 40 tests); real Ralph/Cron CLI smokes passed without --owner-scope; approved host Dev deploy/restart/status and unauthenticated auth-boundary checks passed. Final authenticated Chat Web validation completed via the user-approved isolated Docker gateway/dev-auth path: dev-auth session dev@pibo.local; API bootstrap/navigation/message-event checks passed for historical shared:app session ps_cd450c31-33b1-413b-b574-66ef55a5258f, historical user:* session ps_43d015b4-e9af-4502-8bb5-3ef266a0392e, and newly created shared-app session ps_45133920-06d8-4a4a-b2b5-8b16e3e8e2e5. Browser validation with Agent Browser confirmed authenticated direct/sidebar opens and composer availability for Recovery, Umbauprobleme, and the new Untitled Session. Caveat: first message sends reached runtime provider-auth failure for openai-codex/gpt-5.5 because no provider credentials are configured in the worker; duplicate clientTxnId responses proved Chat had already persisted user.message.accepted events with actor shared:app. Report: docs/reports/us-018-validation-rollout-readiness.md. Production deploy/migration were not run and remain separately approval-gated. Story completion body commit: 3ec5fa2."
+    }
+  ]
+}

@@ -17,7 +17,7 @@ Pibo MUST provide a plugin-owned Web Annotations capability that can bind an exp
 
 ### In Scope
 
-- Session-scoped annotation records bound to owner scope, Pibo Session ID, optional Room ID, target URL, target kind, status, timestamps, user note, viewport, and target metadata.
+- Session-scoped annotation records bound to Pibo Session ID, optional Room ID, target URL, target kind, status, timestamps, user note, viewport, and target metadata. Legacy owner fields, when present, are compatibility metadata only.
 - Durable binding records for URL annotation flows and existing CDP targets.
 - CDP-first runtime overlay injection for selected targets. Target apps do not need source-code changes for basic annotation.
 - Chat Web entry points for annotating a URL or attaching an existing target from an active session.
@@ -48,12 +48,12 @@ The system MUST register Web Annotations through the plugin registry and capabil
 
 ### Requirement: Annotations are session-scoped
 
-The system MUST keep annotations isolated by owner scope and Pibo Session ID.
+The system MUST keep annotations scoped to Pibo Sessions in the shared app context.
 
 #### Acceptance
 
 - Listing annotations for one session does not return another session's records.
-- Tools and APIs derive owner scope from authenticated/runtime context, not model or overlay input.
+- Tools and APIs derive session and room context from authenticated/runtime context, not model or overlay input.
 - Binding removal or target cleanup does not delete historical annotations.
 
 ### Requirement: Browser target binding is explicit
@@ -107,7 +107,7 @@ V1 implementation work may defer CLI helpers while still completing the Chat Web
 ## Security and Privacy
 
 - Injection requires explicit user action.
-- Server-side code derives owner/session/room from authenticated session or server-created binding token.
+- Server-side code derives session/room context from authenticated session or server-created binding token.
 - Overlay-submitted owner, session, room, or status fields are ignored or rejected unless they match the trusted binding.
 - Cross-origin iframe details are represented as unavailable when they cannot be inspected.
 - Model-visible blocks remain concise and omit full DOM/page dumps.
@@ -118,6 +118,6 @@ The canonical V1 operator guide is `docs/project/web-annotations.md`. It covers 
 
 ## Validation
 
-Before production deployment, validation MUST include Docker worker typecheck, focused store/API/tool/UI tests, browser/CDP overlay checks, owner-scope isolation, payload-limit and redaction tests, dev gateway deployment, and explicit production approval.
+Before production deployment, validation MUST include Docker worker typecheck, focused store/API/tool/UI tests, browser/CDP overlay checks, shared session visibility, payload-limit and redaction tests, dev gateway deployment, and explicit production approval.
 
 Browser fixtures live in `test/fixtures/web-annotations/`. After building, run `node scripts/validate-web-annotations-browser.mjs` in the Docker worker to verify target open/attach, overlay injection, annotation creation, reload/re-inject, attachment context rendering, and API resolution. The rollout checklist is `docs/project/web-annotations-rollout-checklist.md`.

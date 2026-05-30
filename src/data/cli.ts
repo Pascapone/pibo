@@ -40,6 +40,10 @@ export async function runDataCli(argv: string[]): Promise<void> {
 		else printInventory(inventory);
 		return;
 	}
+	if (args[0] === "shared-app") {
+		await runSharedAppMigrationCommand(args.slice(1));
+		return;
+	}
 	if (args[0] === "migrate" && args[1] === "sessions-to-v2") {
 		const json = args.includes("--json");
 		const root = optionValue(args, "--root") ?? process.env.PIBO_HOME;
@@ -77,6 +81,10 @@ function dataPath(root: string | undefined, file: string): string {
 
 function hasTable(db: DatabaseSync, table: string): boolean {
 	return Boolean(db.prepare("SELECT 1 AS found FROM sqlite_master WHERE type = 'table' AND name = ?").get(table));
+}
+
+function tableColumns(db: DatabaseSync, table: string): Set<string> {
+	return new Set((db.prepare(`PRAGMA table_info(${quoteIdent(table)})`).all() as Array<{ name: string }>).map((row) => row.name));
 }
 
 function inventoryStore(name: string, file: string, expectedTables: string[], root?: string): StoreInventory {
@@ -144,21 +152,25 @@ function migrateSessionsToV2(input: { from: string; to: string }): SessionMigrat
 		if (!hasTable(source, "pibo_sessions")) return report;
 		const rows = source.prepare("SELECT * FROM pibo_sessions ORDER BY created_at ASC").all() as LegacySessionRow[];
 		report.read = rows.length;
+		const targetSessionColumns = tableColumns(target.db, "sessions");
+		const hasOwnerScope = targetSessionColumns.has("owner_scope");
 		for (const row of rows) {
 			const existing = target.db.prepare("SELECT updated_at FROM sessions WHERE id = ?").get(row.id) as { updated_at: string } | undefined;
 			const metadata = parseJsonObject(row.metadata_json);
 			const rootSessionId = row.parent_id ? (typeof metadata.rootSessionId === "string" ? metadata.rootSessionId : row.parent_id) : row.id;
 			if (!existing) {
+				const columns = [
+					"id", "pi_session_id", ...(hasOwnerScope ? ["owner_scope"] : []), "room_id", "root_session_id", "parent_id", "origin_id",
+					"channel", "kind", "profile", "active_model_json", "workspace", "title", "status",
+					"metadata_json", "created_at", "updated_at", "last_activity_at",
+				];
 				target.db.prepare(`
-					INSERT INTO sessions (
-						id, pi_session_id, owner_scope, room_id, root_session_id, parent_id, origin_id,
-						channel, kind, profile, active_model_json, workspace, title, status,
-						metadata_json, created_at, updated_at, last_activity_at
-					) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+					INSERT INTO sessions (${columns.join(", ")})
+					VALUES (${columns.map(() => "?").join(", ")})
 				`).run(
 					row.id,
 					row.pi_session_id,
-					row.owner_scope ?? "user:unknown",
+					...(hasOwnerScope ? [row.owner_scope ?? "user:unknown"] : []),
 					typeof metadata.chatRoomId === "string" ? metadata.chatRoomId : null,
 					rootSessionId,
 					row.parent_id,
@@ -179,13 +191,13 @@ function migrateSessionsToV2(input: { from: string; to: string }): SessionMigrat
 			} else if (row.updated_at > existing.updated_at) {
 				target.db.prepare(`
 					UPDATE sessions SET
-						pi_session_id = ?, owner_scope = ?, root_session_id = ?, parent_id = ?, origin_id = ?,
+						pi_session_id = ?, ${hasOwnerScope ? "owner_scope = ?," : ""} root_session_id = ?, parent_id = ?, origin_id = ?,
 						channel = ?, kind = ?, profile = ?, active_model_json = ?, workspace = ?, title = ?,
 						metadata_json = ?, updated_at = ?, last_activity_at = MAX(last_activity_at, ?)
 					WHERE id = ?
 				`).run(
 					row.pi_session_id,
-					row.owner_scope ?? "user:unknown",
+					...(hasOwnerScope ? [row.owner_scope ?? "user:unknown"] : []),
 					rootSessionId,
 					row.parent_id,
 					row.origin_id,
@@ -338,6 +350,26 @@ function printSessionMigrationReport(report: SessionMigrationReport): void {
 	console.log(`skipped\t${report.skipped}`);
 }
 
+async function runSharedAppMigrationCommand(args: string[]): Promise<void> {
+	if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
+		printSharedAppMigrationHelp();
+		return;
+	}
+	const command = args[0];
+	if (command !== "inspect" && command !== "dry-run" && command !== "apply") {
+		throw new Error(`Unknown pibo data shared-app command "${command}". Run pibo data shared-app --help.`);
+	}
+	const { formatSharedAppMigrationText, inspectSharedAppMigration } = await import("./shared-app-migration.js");
+	const json = args.includes("--json");
+	const report = inspectSharedAppMigration({
+		mode: command,
+		root: optionValue(args, "--root") ?? process.env.PIBO_HOME,
+		backupPath: optionValue(args, "--backup"),
+	});
+	if (json) console.log(JSON.stringify(report, null, 2));
+	else console.log(formatSharedAppMigrationText(report));
+}
+
 function printUnreadBaselineRepairReport(report: UnreadBaselineRepairReport): void {
 	console.log(`to\t${report.to}`);
 	console.log(`inputExists\t${report.inputExists}`);
@@ -384,6 +416,7 @@ function printDataHelp(): void {
 
 Commands:
   inventory           Read-only row counts, sizes, WAL sizes, and integrity checks; legacy-* rows are archived stores
+  shared-app          Inspect and dry-run the shared-app owner/principal migration framework
   migrate sessions-to-v2  Import an explicit legacy pibo-sessions.sqlite into pibo.sqlite idempotently
   repair unread-baseline  Seed read cursors for historical imported chat events
 
@@ -391,13 +424,33 @@ Options:
   --json              Print machine-readable JSON
   --root DIR          Inspect a specific Pibo home directory instead of ~/.pibo
   --to FILE           Target pibo.sqlite path for migration or repair
-  --owner-scope ID    Owner/principal for unread-baseline repair
+  --owner-scope ID    Legacy technical principal for unread-baseline repair only
   --before TIMESTAMP  Baseline events at or before this ISO timestamp
   --dry-run           Report unread-baseline changes without writing
 
 Next:
   pibo data inventory --json
+  pibo data shared-app --help
   pibo data migrate sessions-to-v2 --from /path/to/pibo-sessions.sqlite --json
-  pibo data repair unread-baseline --owner-scope <ownerScope> --before <isoTimestamp> --dry-run --json
+`);
+}
+
+function printSharedAppMigrationHelp(): void {
+	console.log(`pibo data shared-app - backup-gated shared-app migration inspection
+
+Commands:
+  inspect   Read-only counts by affected store, table, and legacy owner/principal value
+  dry-run   Read-only planned normalization and conflict report; writes nothing
+  apply     Backup-gated mutation for primary and auxiliary shared-app stores
+
+Options:
+  --json        Print machine-readable JSON
+  --root DIR    Inspect a specific Pibo home directory instead of ~/.pibo
+  --backup DIR  Existing fresh backup directory containing affected SQLite file copies; required by apply mode
+
+Next:
+  pibo data shared-app inspect --json
+  pibo data shared-app dry-run --json
+  pibo data shared-app apply --backup /path/to/fresh-backup --json
 `);
 }

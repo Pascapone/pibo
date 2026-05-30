@@ -6,6 +6,19 @@ async function readSource(relativePath) {
 	return readFile(new URL(`../${relativePath}`, import.meta.url), "utf8");
 }
 
+async function readWorkflowUiSourceBundle() {
+	return (await Promise.all([
+		"src/apps/chat-ui/src/WorkflowsArea.tsx",
+		"src/apps/chat-ui/src/workflows/WorkflowBuilderNodeEditors.tsx",
+		"src/apps/chat-ui/src/workflows/WorkflowGraphCanvas.tsx",
+		"src/apps/chat-ui/src/workflows/WorkflowInspectorsPanel.tsx",
+		"src/apps/chat-ui/src/workflows/WorkflowLibraryPanel.tsx",
+		"src/apps/chat-ui/src/workflows/WorkflowRawIrEditor.tsx",
+		"src/apps/chat-ui/src/workflows/WorkflowPromptAssetEditor.tsx",
+		"src/apps/chat-ui/src/workflows/WorkflowVersionViewer.tsx",
+	].map(readSource))).join("\n");
+}
+
 function assertAllMatch(source, checks) {
 	for (const [label, pattern] of checks) {
 		assert.match(source, pattern, label);
@@ -16,7 +29,7 @@ test("Workflow V2 composition boundary tests cover registered node and picker pa
 	const webChannelTests = await readSource("test/web-channel.test.mjs");
 	const registryTests = await readSource("packages/workflows/src/testing/registry.test.ts");
 	const runtimeMixedNodeTests = await readSource("packages/workflows/src/testing/runtime-mixed-node-workflow.test.ts");
-	const workflowsAreaSource = await readSource("src/apps/chat-ui/src/WorkflowsArea.tsx");
+	const workflowsAreaSource = await readWorkflowUiSourceBundle();
 
 	assertAllMatch(runtimeMixedNodeTests, [
 		["mixed workflow execution covers code, agent, human, adapter, and nested workflow nodes", /dispatches a validated mixed workflow through code, agent, human, adapter, and nested workflow nodes/],
@@ -64,7 +77,7 @@ test("Workflow V2 composition boundary tests cover registered node and picker pa
 
 test("Workflow V2 composition boundary tests cover state mapping UI and raw IR boundary", async () => {
 	const stateMappingTests = await readSource("test/workflow-v2-state-mapping-ui.test.mjs");
-	const workflowsAreaSource = await readSource("src/apps/chat-ui/src/WorkflowsArea.tsx");
+	const workflowsAreaSource = await readWorkflowUiSourceBundle();
 
 	assertAllMatch(stateMappingTests, [
 		["simple state mapping dropdown controls are source-tested", /Workflow Builder exposes simple state mapping dropdown controls/],

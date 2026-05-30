@@ -95,7 +95,7 @@ See `docs/project/workflow-xstate-projection.md` for the detailed projection sem
 
 ## Security and privacy rules
 
-Workflow execution must not bypass existing Pibo auth, owner scope, project/session routing, tool, skill, context, profile, or compute-worker policies.
+Workflow execution must not bypass existing Pibo auth, shared app project/session routing, tool, skill, context, profile, or compute-worker policies.
 
 Additional V1 rules:
 

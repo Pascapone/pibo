@@ -172,24 +172,24 @@ The system MUST upsert session metadata and navigation rows when session-store o
 
 #### Current
 
-The `sessions` table stores Pibo Session identity, linked Pi session id, owner scope, room id, root/parent/origin ids, channel, kind, profile, active model, workspace, title, status, metadata, timestamps, and first-message preview. In normal gateway startup, `PiboDataSessionStore` uses this table as the routed Pibo Session Store. The navigation projection stores owner, room, session hierarchy, title, profile, status, last activity, last message preview, child count, sort key, and archive state.
+The `sessions` table stores Pibo Session identity, linked Pi session id, legacy owner compatibility value when present, room id, root/parent/origin ids, channel, kind, profile, active model, workspace, title, status, metadata, timestamps, and first-message preview. In normal gateway startup, `PiboDataSessionStore` uses this table as the routed Pibo Session Store. The navigation projection stores shared app room, session hierarchy, title, profile, status, last activity, last message preview, child count, sort key, and archive state.
 
 #### Target
 
-Routing can use the v2 session table through `PiboDataSessionStore`, and room/session lists can query v2 projections by owner and room without scanning transcripts or raw events.
+Routing can use the v2 session table through `PiboDataSessionStore`, and room/session lists can query v2 projections by room without scanning transcripts or raw events.
 
 #### Acceptance
 
 - V2-backed session-store create, update, delete, list, and find operations preserve Pibo Session identity semantics.
 - User-message ingestion sets first message preview only when not already present.
 - Root session id is the session id for roots and uses parent/root metadata for children.
-- Navigation listing filters by owner, optional room id, archive visibility, and bounded limit, ordered by sort key descending.
+- Navigation listing filters by optional room id, archive visibility, and bounded limit, ordered by sort key descending. Legacy owner filters are migration compatibility only.
 
 #### Scenario: New room activity
 
 - GIVEN a session has no v2 projection row
 - WHEN its first user message is ingested for a room
-- THEN the session row has that room id and the navigation row appears in that room for the owner scope
+- THEN the session row has that room id and the navigation row appears in that room for all allowed accounts
 
 ### Requirement: V2-native Chat Web services read and write through the v2 store
 
@@ -197,7 +197,7 @@ The system MUST provide Chat Web service adapters for rooms, sessions, timelines
 
 #### Current
 
-`ChatRoomService`, `ChatSessionQueryService`, `ChatTimelineQueryService`, `ChatEventCommandService`, and `ChatReadStateService` wrap `PiboDataStore`. They create default rooms and memberships, upsert sessions and navigation rows, append idempotent chat events, list bounded room/session timelines, expose trace events in session order, and track per-principal read progress.
+`ChatRoomService`, `ChatSessionQueryService`, `ChatTimelineQueryService`, `ChatEventCommandService`, and `ChatReadStateService` wrap `PiboDataStore`. They create shared default rooms, upsert sessions and navigation rows, append idempotent chat events, list bounded room/session timelines, expose trace events in session order, and track app-global read progress.
 
 #### Target
 
@@ -205,17 +205,17 @@ Chat Web call sites can move to v2-native services while retaining existing room
 
 #### Acceptance
 
-- Default room creation is owner-scoped and ensures an owner membership for the principal.
+- Default room creation is app-global. Legacy membership rows are compatibility data only.
 - Session upsert writes both the session projection and navigation projection.
 - Chat event append with the same room, actor, and client transaction id returns the first stored event.
 - Timeline listing supports room id, Pibo Session id, `afterStreamId`, and bounded limits ordered by ascending stream id.
 - Trace event listing excludes live-only event types by default and orders by ascending session sequence.
-- Read-state counting excludes messages sent by the same principal and ignores events at or below that principal's last-read stream id.
+- Read-state counting excludes messages sent by the same app actor and ignores events at or below the app read cursor.
 - Marking a session read is monotonic; a lower later cursor does not reduce the stored read cursor.
 
 #### Scenario: V2-native chat service flow
 
-- GIVEN a fresh v2 store and an owner principal
+- GIVEN a fresh v2 store and the shared app read-state actor
 - WHEN Chat Web ensures the default room, upserts a Pibo Session, appends a user event and an assistant event, lists the timeline, and marks the session read
 - THEN the duplicate user append returns the first event
 - AND the timeline returns the stored events in stream order
@@ -227,7 +227,7 @@ The system MUST expose operator-facing data diagnostics and repairs without muta
 
 #### Current
 
-`pibo data inventory` reports selected store files, sizes, WAL sizes, integrity, page stats, and table counts. `pibo data migrate sessions-to-v2` copies legacy session metadata into the v2 store. `pibo data repair unread-baseline` requires owner scope and cutoff timestamp and supports dry-run mode.
+`pibo data inventory` reports selected store files, sizes, WAL sizes, integrity, page stats, and table counts. `pibo data migrate sessions-to-v2` copies legacy session metadata into the v2 store. `pibo data repair unread-baseline` is a legacy compatibility command that requires owner scope and cutoff timestamp and supports dry-run mode.
 
 #### Target
 
@@ -237,7 +237,7 @@ Operators and agents can inspect data-store state, migrate session projections, 
 
 - Inventory can run against a configured root and includes v2, v2-shadow, legacy sessions, legacy chat, reliability, and auth stores.
 - Session migration reports read, inserted, updated, skipped, and source-existence counts.
-- Unread repair refuses to run without owner scope and cutoff timestamp and reports candidate and changed sessions.
+- Unread repair is a legacy compatibility command that refuses to run without owner scope and cutoff timestamp; shared-app migration uses `pibo data shared-app` instead.
 
 #### Scenario: Inventory for missing root store
 

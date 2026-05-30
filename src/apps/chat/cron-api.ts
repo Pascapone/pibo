@@ -2,8 +2,9 @@ import { PiboWebHttpError, readJsonBody, responseJson } from "../../web/http.js"
 import type { PiboWebAppContext, PiboWebSession } from "../../web/types.js";
 import { getPiboCronService } from "../../cron/channel.js";
 import { parseFriendlySchedule } from "../../cron/schedule.js";
-import type { PiboCronJobPatchInput, PiboCronSchedule, PiboCronScheduleUi, PiboCronTarget } from "../../cron/types.js";
+import type { PiboCronJob, PiboCronJobPatchInput, PiboCronRun, PiboCronSchedule, PiboCronScheduleUi, PiboCronTarget } from "../../cron/types.js";
 import type { PiboCronStore } from "../../cron/store.js";
+import { getSharedAppLegacyOwnerScope } from "../../shared-app.js";
 import { isPiboRoomArchived, type PiboRoom, type PiboRoomMember, type PiboRoomNode, type PiboRoomRole } from "./types/rooms.js";
 
 const CHAT_WEB_API_PREFIX = "/api/chat";
@@ -38,7 +39,8 @@ type CronJobBody = {
 };
 
 function principalIdFor(webSession: PiboWebSession): string {
-	return webSession.ownerScope;
+	void webSession;
+	return getSharedAppLegacyOwnerScope();
 }
 
 function requireSameOriginJsonRequest(request: Request): void {
@@ -86,9 +88,8 @@ function normalizeTarget(value: unknown, options: ChatCronApiOptions): PiboCronT
 		return { kind: "room", roomId };
 	}
 	if (raw.kind === "personal") {
-		const principalId = typeof raw.principalId === "string" && raw.principalId.trim() ? raw.principalId.trim() : principalIdFor(options.webSession);
-		if (principalId !== principalIdFor(options.webSession)) throw new PiboWebHttpError("Personal cron target must belong to the current user", 403);
-		options.roomService.ensureDefaultRoom({ ownerScope: options.webSession.ownerScope, principalId });
+		const principalId = getSharedAppLegacyOwnerScope();
+		options.roomService.ensureDefaultRoom({ ownerScope: getSharedAppLegacyOwnerScope(), principalId, name: "Shared Chat" });
 		return { kind: "personal", principalId };
 	}
 	throw new PiboWebHttpError("target.kind must be room or personal", 400);
@@ -129,6 +130,21 @@ function jobResource(pathname: string): { id: string; child?: "run" } | undefine
 	return { id: parts[0], child: parts[1] as "run" | undefined };
 }
 
+type CronApiTarget = { kind: "room"; roomId: string } | { kind: "personal" };
+type CronApiJob = Omit<PiboCronJob, "ownerScope" | "target"> & { target: CronApiTarget };
+type CronApiRun = Omit<PiboCronRun, "ownerScope">;
+function serializeTarget(target: PiboCronTarget): CronApiTarget {
+	return target.kind === "room" ? target : { kind: "personal" };
+}
+function serializeJob(job: PiboCronJob): CronApiJob {
+	const { ownerScope: _ownerScope, target, ...rest } = job;
+	return { ...rest, target: serializeTarget(target) };
+}
+function serializeRun(run: PiboCronRun): CronApiRun {
+	const { ownerScope: _ownerScope, ...rest } = run;
+	return rest;
+}
+
 function createPatch(body: CronJobBody, options: ChatCronApiOptions): PiboCronJobPatchInput {
 	const patch: PiboCronJobPatchInput = {};
 	const name = normalizeString(body.name, "name", { max: 120 });
@@ -153,7 +169,7 @@ function createPatch(body: CronJobBody, options: ChatCronApiOptions): PiboCronJo
 }
 
 export async function handleChatCronApiRequest(options: ChatCronApiOptions): Promise<Response | undefined> {
-	const { request, cronStore, webSession } = options;
+	const { request, cronStore } = options;
 	const url = new URL(request.url);
 	if (!url.pathname.startsWith(`${CHAT_WEB_API_PREFIX}/cron`)) return undefined;
 
@@ -162,7 +178,7 @@ export async function handleChatCronApiRequest(options: ChatCronApiOptions): Pro
 	}
 
 	if (url.pathname === `${CHAT_WEB_API_PREFIX}/cron/jobs` && request.method === "GET") {
-		return responseJson({ jobs: cronStore.listJobs({ ownerScope: webSession.ownerScope, includeDisabled: url.searchParams.get("includeDisabled") === "true" }) });
+		return responseJson({ jobs: cronStore.listJobs({ includeDisabled: url.searchParams.get("includeDisabled") === "true" }).map(serializeJob) });
 	}
 
 	if (url.pathname === `${CHAT_WEB_API_PREFIX}/cron/jobs` && request.method === "POST") {
@@ -170,7 +186,7 @@ export async function handleChatCronApiRequest(options: ChatCronApiOptions): Pro
 		const body = await readJsonBody<CronJobBody>(request);
 		const normalized = normalizeSchedule(body.schedule);
 		const job = cronStore.createJob({
-			ownerScope: webSession.ownerScope,
+			ownerScope: getSharedAppLegacyOwnerScope(),
 			name: normalizeString(body.name, "name", { max: 120 }),
 			description: normalizeString(body.description, "description", { max: 500 }),
 			enabled: normalizeEnabled(body.enabled),
@@ -181,14 +197,14 @@ export async function handleChatCronApiRequest(options: ChatCronApiOptions): Pro
 			scheduleUi: normalized.scheduleUi,
 			deleteAfterRun: body.deleteAfterRun === true,
 		});
-		return responseJson({ job }, { status: 201 });
+		return responseJson({ job: serializeJob(job) }, { status: 201 });
 	}
 
 	if (url.pathname === `${CHAT_WEB_API_PREFIX}/cron/runs` && request.method === "GET") {
 		const jobId = url.searchParams.get("jobId") || undefined;
 		const limit = Number(url.searchParams.get("limit") ?? "100");
-		if (jobId && !cronStore.getOwnedJob(webSession.ownerScope, jobId)) throw new PiboWebHttpError("Cron job not found", 404);
-		return responseJson({ runs: cronStore.listRuns({ ownerScope: webSession.ownerScope, jobId, limit: Number.isFinite(limit) ? limit : 100 }) });
+		if (jobId && !cronStore.getJob(jobId)) throw new PiboWebHttpError("Cron job not found", 404);
+		return responseJson({ runs: cronStore.listRuns({ jobId, limit: Number.isFinite(limit) ? limit : 100 }).map(serializeRun) });
 	}
 
 	const resource = jobResource(url.pathname);
@@ -198,28 +214,28 @@ export async function handleChatCronApiRequest(options: ChatCronApiOptions): Pro
 		requireSameOriginJsonRequest(request);
 		const service = getPiboCronService();
 		if (!service) throw new PiboWebHttpError("Cron service is not running", 503);
-		return responseJson({ run: await service.runJobNow(webSession.ownerScope, resource.id) }, { status: 202 });
+		return responseJson({ run: serializeRun(await service.runJobNow(getSharedAppLegacyOwnerScope(), resource.id)) }, { status: 202 });
 	}
 
 	if (resource.child) return undefined;
 
 	if (request.method === "GET") {
-		const job = cronStore.getOwnedJob(webSession.ownerScope, resource.id);
+		const job = cronStore.getJob(resource.id);
 		if (!job) throw new PiboWebHttpError("Cron job not found", 404);
-		return responseJson({ job });
+		return responseJson({ job: serializeJob(job) });
 	}
 
 	if (request.method === "PATCH") {
 		requireSameOriginJsonRequest(request);
 		const body = await readJsonBody<CronJobBody>(request);
-		const job = cronStore.updateJob(webSession.ownerScope, resource.id, createPatch(body, options));
+		const job = cronStore.updateJob(getSharedAppLegacyOwnerScope(), resource.id, createPatch(body, options));
 		if (!job) throw new PiboWebHttpError("Cron job not found", 404);
-		return responseJson({ job });
+		return responseJson({ job: serializeJob(job) });
 	}
 
 	if (request.method === "DELETE") {
 		requireSameOriginJsonRequest(request);
-		return responseJson({ removed: cronStore.removeJob(webSession.ownerScope, resource.id) });
+		return responseJson({ removed: cronStore.removeJob(getSharedAppLegacyOwnerScope(), resource.id) });
 	}
 
 	return undefined;

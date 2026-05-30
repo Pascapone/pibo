@@ -124,7 +124,7 @@ Pibo MUST inject product-level runtime identity into each runtime as a context f
 
 #### Current
 
-`createPiboRuntime` creates an in-memory context file with user ID, owner scope, Pibo Session ID, and timezone, then merges it with Pi and profile context files.
+`createPiboRuntime` creates an in-memory context file with shared app context, Pibo Session ID, optional room ID, and timezone, then merges it with Pi and profile context files.
 
 #### Target
 
@@ -133,13 +133,13 @@ Agents can reference product identity for scheduling jobs, correlation, and sess
 #### Acceptance
 
 - The injected context includes `User ID`, `Owner scope`, `Pibo Session ID`, and `User timezone`.
-- If no user ID is passed, Pibo derives it from `ownerScope` when possible.
+- Runtime context does not derive user identity from owner scope; auth identity is not product context.
 - If no timezone is passed, Pibo uses the default user timezone.
 - Duplicate context-file paths are merged so the first occurrence wins.
 
 #### Scenario: Routed room session starts
 
-- GIVEN a Chat Web routed session has owner scope `user:abc` and Pibo Session ID `ps_123`
+- GIVEN a Chat Web routed session has Pibo Session ID `ps_123`
 - WHEN Pibo creates the runtime
 - THEN the runtime context includes `Owner scope: user:abc`
 - AND `Pibo Session ID: ps_123`.
@@ -304,13 +304,13 @@ Users can inspect the active prompt, edit custom content, save changes, and swit
 
 ### Assumptions
 
-- Prompt selection is workspace-local, not owner-scoped, in the current implementation.
+- Prompt selection is workspace-local, not account-scoped, in the current implementation.
 - The library prompt files in `context/` are package-owned and read-only from Chat Web.
 - Chat Web users who can access the prompt panels are trusted to edit prompts for that workspace.
 
 ### Open Questions
 
-- Should prompt configuration become owner-scoped or profile-scoped when multiple users share one web gateway workspace?
+- Should prompt configuration remain workspace-scoped or become profile-scoped? It must not become account-scoped in the shared app model.
 - Should base prompt saves receive structural validation beyond requiring markdown to be a string?
 - Should prompt snapshots include revision metadata or conflict detection like managed context files?
 

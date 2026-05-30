@@ -6,6 +6,19 @@ async function readSource(relativePath) {
 	return readFile(new URL(`../${relativePath}`, import.meta.url), "utf8");
 }
 
+async function readWorkflowUiSourceBundle() {
+	return (await Promise.all([
+		"src/apps/chat-ui/src/WorkflowsArea.tsx",
+		"src/apps/chat-ui/src/workflows/WorkflowBuilderNodeEditors.tsx",
+		"src/apps/chat-ui/src/workflows/WorkflowGraphCanvas.tsx",
+		"src/apps/chat-ui/src/workflows/WorkflowInspectorsPanel.tsx",
+		"src/apps/chat-ui/src/workflows/WorkflowLibraryPanel.tsx",
+		"src/apps/chat-ui/src/workflows/WorkflowRawIrEditor.tsx",
+		"src/apps/chat-ui/src/workflows/WorkflowPromptAssetEditor.tsx",
+		"src/apps/chat-ui/src/workflows/WorkflowVersionViewer.tsx",
+	].map(readSource))).join("\n");
+}
+
 function assertAllMatch(source, checks) {
 	for (const [label, pattern] of checks) {
 		assert.match(source, pattern, label);
@@ -32,7 +45,7 @@ function runtimeSemanticsJson(definition) {
 
 test("Workflow V2 builder tests cover visual editing and publish flow", async () => {
 	const webChannelTests = await readSource("test/web-channel.test.mjs");
-	const workflowsAreaSource = await readSource("src/apps/chat-ui/src/WorkflowsArea.tsx");
+	const workflowsAreaSource = await readWorkflowUiSourceBundle();
 
 	assertAllMatch(webChannelTests, [
 		["duplicate/open builder wrappers are integration-tested", /workflow builder draft loader opens starter and duplicated UI draft wrappers/],
@@ -65,7 +78,7 @@ test("Workflow V2 builder tests cover visual editing and publish flow", async ()
 
 test("Workflow V2 builder tests cover raw IR safe sync and last-valid preservation", async () => {
 	const webChannelTests = await readSource("test/web-channel.test.mjs");
-	const workflowsAreaSource = await readSource("src/apps/chat-ui/src/WorkflowsArea.tsx");
+	const workflowsAreaSource = await readWorkflowUiSourceBundle();
 
 	assertAllMatch(webChannelTests, [
 		["raw IR valid sync patches through rawDefinitionText", /rawDefinitionText: JSON\.stringify\(validDefinition\)[\s\S]*rawPatchPayload\.validation\.trigger, "raw_ir_edit"[\s\S]*rawPatchPayload\.validation\.ok, true/],
@@ -87,7 +100,7 @@ test("Workflow V2 builder tests cover raw IR safe sync and last-valid preservati
 
 test("Workflow V2 builder tests cover raw/schema/prompt panel completeness", async () => {
 	const webChannelTests = await readSource("test/web-channel.test.mjs");
-	const workflowsAreaSource = await readSource("src/apps/chat-ui/src/WorkflowsArea.tsx");
+	const workflowsAreaSource = await readWorkflowUiSourceBundle();
 	const markdownEditorSource = await readSource("src/apps/chat-ui/src/context/MarkdownEditor.tsx");
 
 	assertAllMatch(workflowsAreaSource, [
@@ -98,7 +111,7 @@ test("Workflow V2 builder tests cover raw/schema/prompt panel completeness", asy
 		["human node renders resume payload schema JSON editor", /<WorkflowSchemaTextEditor label="Human node resume payload schema JSON"/],
 		["schema editor advertises the existing subset boundary", /Raw JSON Schema subset only\. Unsupported keywords return workflow diagnostics; no Zod, AJV, or form-builder schema layer is introduced\./],
 		["agent node direct prompt template editor writes promptTemplate IR", /<span>Prompt template<\/span>[\s\S]*Saving direct prompt text writes[\s\S]*promptTemplate/],
-		["prompt assets use the shared Markdown editor component", /import \{ MarkdownEditor \} from "\.\/context\/MarkdownEditor";[\s\S]*aria-label="Prompt asset Markdown editor"[\s\S]*<MarkdownEditor/],
+		["prompt assets use the shared Markdown editor component", /import \{ MarkdownEditor \} from "\.\.\/context\/MarkdownEditor";[\s\S]*aria-label="Prompt asset Markdown editor"[\s\S]*<MarkdownEditor/],
 		["prompt asset editor documents revision and hash pinning", /Saving creates a managed UI asset revision[\s\S]*pins the revision id plus content hash in the Pibo Workflow IR/],
 	]);
 

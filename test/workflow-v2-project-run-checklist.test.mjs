@@ -6,6 +6,17 @@ async function readSource(relativePath) {
 	return readFile(new URL(`../${relativePath}`, import.meta.url), "utf8");
 }
 
+async function readProjectUiSourceBundle() {
+	return (await Promise.all([
+		"src/apps/chat-ui/src/App.tsx",
+		"src/apps/chat-ui/src/projects/ProjectWorkflowPanels.tsx",
+		"src/apps/chat-ui/src/projects/ProjectsAreaModel.ts",
+		"src/apps/chat-ui/src/projects/ProjectsSidebar.tsx",
+		"src/apps/chat-ui/src/projects/project-session-workflow.tsx",
+		"src/apps/chat-ui/src/session-node.tsx",
+	].map(readSource))).join("\n");
+}
+
 function assertAllMatch(source, checks) {
 	for (const [label, pattern] of checks) {
 		assert.match(source, pattern, label);
@@ -15,7 +26,7 @@ function assertAllMatch(source, checks) {
 test("Workflow V2 Project execution checklist covers configured sessions, snapshots, and one-run start", async () => {
 	const projectServiceTests = await readSource("test/project-service-workflow-link.test.mjs");
 	const configuredUiTests = await readSource("test/workflow-v2-project-configured-ui.test.mjs");
-	const appSource = await readSource("src/apps/chat-ui/src/App.tsx");
+	const appSource = await readProjectUiSourceBundle();
 	const webChannelTests = await readSource("test/web-channel.test.mjs");
 
 	assertAllMatch(projectServiceTests, [
@@ -56,7 +67,7 @@ test("Workflow V2 Project execution checklist covers configured sessions, snapsh
 
 test("Workflow V2 Project run-view checklist covers sidebar routing, inspection, nested links, and deleted definitions", async () => {
 	const sessionKindTests = await readSource("test/workflow-session-kind.test.mjs");
-	const appSource = await readSource("src/apps/chat-ui/src/App.tsx");
+	const appSource = await readProjectUiSourceBundle();
 	const workflowViewSource = await readSource("src/apps/chat-ui/src/session-views/WorkflowXStateSessionView.tsx");
 	const webChannelTests = await readSource("test/web-channel.test.mjs");
 

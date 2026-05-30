@@ -13,7 +13,7 @@ Pibo Session Signals provide that read model at the Product Boundary. They summa
 
 ## Goal
 
-Expose owner-scoped live session activity snapshots and monotonic patches that describe local and descendant activity for Pibo Session trees.
+Expose shared-app live session activity snapshots and monotonic patches that describe local and descendant activity for Pibo Session trees.
 
 ## Background / Current State
 
@@ -188,17 +188,17 @@ For one root, each emitted patch starts at the previous `toVersion`. Repeated id
 - THEN no patch is emitted
 - AND the session snapshot `updatedAt` does not change.
 
-### Requirement: Chat Web signal APIs are authenticated and owner-scoped
+### Requirement: Chat Web signal APIs are authenticated and shared-app
 
 The system MUST require an authenticated web session and ownership of the requested root or session before returning signal snapshots or streams.
 
 #### Current
 
-Signal HTTP handlers call `requireSession` and `requireOwnedSession`. Cross-owner access returns the same not-found style behavior used by other Chat Web session APIs.
+Signal HTTP handlers call `requireSession` and resolve shared Pibo Sessions by resource existence. Unknown sessions return the same not-found style behavior used by other Chat Web session APIs.
 
 #### Acceptance
 
-A user cannot fetch or subscribe to another owner scope's session signals.
+An unauthenticated request cannot fetch or subscribe to session signals; allowed accounts see shared session signals.
 
 #### Scenario: Cross-owner signal request
 
@@ -321,7 +321,7 @@ The project SHOULD provide an operator-run benchmark that measures signal regist
 ## Constraints
 
 - **Compatibility:** Public signal API fields use JSON-compatible records and Pibo Session IDs.
-- **Security / Privacy:** Signal snapshots are owner-scoped and must not leak another user's session ids, tool names, run ids, or error text.
+- **Security / Privacy:** Signal snapshots require authenticated access and must not leak provider secrets or unrelated private credentials.
 - **Performance:** Navigation overlays should use compact snapshot summaries; full trace reconstruction must not be required for basic running/error indicators. The benchmark is diagnostic, not a fixed performance budget.
 - **Durability:** Current signal state is in-memory and can be reconstructed only from currently known sessions, runs, and future events. Durable signals require a separate spec or extension.
 - **Product boundary:** Signals summarize Product Boundary events. They do not replace Pi transcript files or Pibo-owned durable stores.
@@ -329,7 +329,7 @@ The project SHOULD provide an operator-run benchmark that measures signal regist
 ## Success Criteria
 
 - [ ] SC-001: `test/signal-registry.test.mjs` verifies tree aggregation, queue changes, run signals, patch versions, pruning, and error semantics.
-- [ ] SC-002: `test/chat-signals-api.test.mjs` verifies owner-scoped snapshots, tree snapshots, SSE snapshot-before-patch behavior, and navigation/bootstrap status overlays.
+- [ ] SC-002: `test/chat-signals-api.test.mjs` verifies shared-app snapshots, tree snapshots, SSE snapshot-before-patch behavior, and navigation/bootstrap status overlays.
 - [ ] SC-003: Chat Web can show running, idle, and error state for a selected session tree without reading the full trace.
 - [ ] SC-004: A failed tool call or yielded run remains visible as a node error without incorrectly marking the whole session failed.
 - [ ] SC-005: `scripts/bench-signal-registry.mjs` runs after build and prints timing for deep-tree propagation, no-op queue updates, and metadata-changing tool updates.

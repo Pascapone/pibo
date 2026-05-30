@@ -5,6 +5,7 @@ import type { PiboChannelContext } from '../channels/types.js';
 import type { PiboJsonObject, PiboOutputEvent } from '../core/events.js';
 import { getDefaultPiboWorkspace } from '../core/workspace.js';
 import { PiboDataStore } from '../data/pibo-store.js';
+import { getSharedAppLegacyOwnerScope } from '../shared-app.js';
 import { ChatRoomService } from '../apps/chat/data/room-service.js';
 import { isPiboRoomArchived } from '../apps/chat/types/rooms.js';
 import { browserPoolPaths, releaseBrowserPoolLease, type BrowserPoolIdentity, type BrowserPoolPaths, type BrowserPoolReleaseOptions, type BrowserPoolReleaseResult } from '../tools/browser-pool.js';
@@ -63,7 +64,7 @@ export class PiboRalphService {
 	async cancelJob(ownerScope: string, id: string): Promise<PiboRalphJob | undefined> {
 		const job = this.store.requestCancel(ownerScope, id); if (!job) return undefined;
 		await this.abortJobIfRunning(job);
-		this.armSoon(); return this.store.getOwnedJob(ownerScope, id);
+		this.armSoon(); return this.store.getJob(id);
 	}
 	private arm(delayMs?: number): void { if (this.stopped) return; if (this.timer) clearTimeout(this.timer); this.timer = setTimeout(() => void this.tick(), delayMs ?? this.intervalMs); }
 	private armSoon(): void { this.arm(250); }
@@ -156,9 +157,9 @@ export class PiboRalphService {
 		if (event.type !== 'pibo.ralph.fact' && event.type !== 'ralph.fact') return;
 		const payload = event.payload;
 		if (!isJsonObject(payload.payload)) return;
-		if (typeof payload.ownerScope !== 'string' || typeof payload.jobId !== 'string' || typeof payload.type !== 'string') return;
+		if (typeof payload.jobId !== 'string' || typeof payload.type !== 'string') return;
 		const source = payload.source === 'pi-extension' || payload.source === 'tool' || payload.source === 'plugin' || payload.source === 'pibo' ? payload.source : 'plugin';
-		try { this.store.appendRunFact({ ownerScope: payload.ownerScope, jobId: payload.jobId, runId: typeof payload.runId === 'string' ? payload.runId : undefined, piboSessionId: typeof payload.piboSessionId === 'string' ? payload.piboSessionId : undefined, type: payload.type, source: source as PiboRalphRunFact['source'], payload: payload.payload }); } catch (error) { console.error('[ralph] failed to append run fact', error); }
+		try { this.store.appendRunFact({ ownerScope: getSharedAppLegacyOwnerScope(), jobId: payload.jobId, runId: typeof payload.runId === 'string' ? payload.runId : undefined, piboSessionId: typeof payload.piboSessionId === 'string' ? payload.piboSessionId : undefined, type: payload.type, source: source as PiboRalphRunFact['source'], payload: payload.payload }); } catch (error) { console.error('[ralph] failed to append run fact', error); }
 	}
 	private async executeJob(job: PiboRalphJob, run: PiboRalphRun): Promise<{ piboSessionId: string; finalAnswer: string }> {
 		const target = this.resolveTarget(job);
@@ -166,7 +167,7 @@ export class PiboRalphService {
 			channel: CHAT_WEB_CHANNEL,
 			kind: 'ralph',
 			profile: job.profile,
-			ownerScope: job.ownerScope,
+			ownerScope: getSharedAppLegacyOwnerScope(),
 			workspace: target.workspace ?? getDefaultPiboWorkspace(),
 			title: job.name,
 			activeModel: job.modelOverride ? { ...job.modelOverride } : undefined,
@@ -183,7 +184,7 @@ export class PiboRalphService {
 		this.store.attachRunSession(job.id, run.id, session.id);
 		const finalAnswer = await this.emitMessageAndWait(session.id, buildRalphPrompt(job), { isCancelled: () => this.cancelledRuns.has(run.id) }); return { piboSessionId: session.id, finalAnswer };
 	}
-	private resolveTarget(job: PiboRalphJob): { roomId: string; workspace?: string; metadata?: Record<string, unknown> } { if (job.target.kind === 'room') { const room = this.roomService.getRoom(job.target.roomId); if (!room) throw new Error('Target room no longer exists'); if (isPiboRoomArchived(room)) throw new Error('Target room is archived'); return { roomId: room.id, workspace: room.workspace ?? getDefaultPiboWorkspace() }; } const room = this.roomService.ensureDefaultRoom({ ownerScope: job.ownerScope, principalId: job.target.principalId, name: 'Personal Chat' }); return { roomId: room.id, workspace: room.workspace ?? getDefaultPiboWorkspace() }; }
+	private resolveTarget(job: PiboRalphJob): { roomId: string; workspace?: string; metadata?: Record<string, unknown> } { if (job.target.kind === 'room') { const room = this.roomService.getRoom(job.target.roomId); if (!room) throw new Error('Target room no longer exists'); if (isPiboRoomArchived(room)) throw new Error('Target room is archived'); return { roomId: room.id, workspace: room.workspace ?? getDefaultPiboWorkspace() }; } const room = this.roomService.ensureDefaultRoom({ ownerScope: getSharedAppLegacyOwnerScope(), principalId: getSharedAppLegacyOwnerScope(), name: 'Shared Chat' }); return { roomId: room.id, workspace: room.workspace ?? getDefaultPiboWorkspace() }; }
 	private async emitMessageAndWait(piboSessionId: string, text: string, options: { isCancelled?: () => boolean } = {}): Promise<string> {
 		const eventId = `ralph_msg_${randomUUID()}`;
 		return await new Promise<string>((resolve, reject) => { let settled = false; let deltaAnswer = ''; let finalAnswer = ''; let lastSessionError: string | undefined; let unsubscribe: (() => void) | undefined; const timeout = setTimeout(() => finish(new Error(lastSessionError ? `Ralph run timed out after session error: ${lastSessionError}` : 'Ralph run timed out')), this.runTimeoutMs); const finish = (error?: Error) => { if (settled) return; settled = true; clearTimeout(timeout); unsubscribe?.(); if (error) reject(error); else resolve(finalAnswer || deltaAnswer); }; unsubscribe = this.options.context.subscribe((event: PiboOutputEvent) => { if (event.piboSessionId !== piboSessionId) return; if ('eventId' in event && event.eventId !== eventId) return; if (event.type === 'assistant_delta') deltaAnswer += event.text; if (event.type === 'assistant_message') finalAnswer = event.text; if (event.type === 'message_finished') finish(); if (event.type === 'session_error') { lastSessionError = event.error; if (options.isCancelled?.()) finish(new Error(event.error)); } }); this.options.context.emit({ type: 'message', piboSessionId, id: eventId, source: 'service', text }).catch((error) => finish(error instanceof Error ? error : new Error(String(error)))); });

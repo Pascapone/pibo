@@ -622,7 +622,7 @@ export function parseCliSessionInput(input: string): ParsedCliSessionInput {
 
 export function cliCommandSummaryText(catalog: readonly SlashCommandDescriptor[] = buildSlashCommandCatalog()): string {
 	const availableSlashes = new Set(catalog.map((command) => command.slash));
-	const preferred: `/${string}`[] = ["/help", "/new", "/room", "/session", "/agent", "/owner", "/repair-user-unknown", "/status", "/clear", "/exit", "/quit"];
+	const preferred: `/${string}`[] = ["/help", "/new", "/room", "/session", "/agent", "/profile", "/repair-user-unknown", "/status", "/clear", "/exit", "/quit"];
 	const commands = preferred.filter((slash) => availableSlashes.has(slash));
 	return `Commands: ${commands.join(" ")} (type / for suggestions, /help for catalog)`;
 }

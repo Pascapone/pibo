@@ -2,9 +2,59 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
+import { LEGACY_SHARED_APP_OWNER_SCOPE } from "../dist/shared-app.js";
 import { ChatProjectService } from "../dist/apps/chat/data/project-service.js";
+
+test("project service uses shared app storage and lists historical owner projects", () => {
+	const tempRoot = mkdtempSync(join(tmpdir(), "pibo-project-shared-app-"));
+	const service = new ChatProjectService(join(tempRoot, "web-projects.sqlite"));
+
+	try {
+		const defaultA = service.ensureSharedDefaultProject({ ownerScope: "user:a", projectFolder: join(tempRoot, "default") });
+		const defaultB = service.ensureSharedDefaultProject({ ownerScope: "user:b", projectFolder: join(tempRoot, "ignored-default") });
+		assert.equal(defaultA.id, defaultB.id);
+		assert.equal(defaultA.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
+		assert.equal(defaultA.name, "Shared Project");
+		assert.equal(defaultA.metadata.default, true);
+
+		const created = service.createProject({
+			ownerScope: "user:a",
+			name: "Shared Feature Project",
+			projectFolder: join(tempRoot, "shared-feature"),
+			createFolder: true,
+		});
+		assert.equal(created.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
+
+		const db = new DatabaseSync(service.path);
+		try {
+			db.exec("ALTER TABLE projects ADD COLUMN owner_scope TEXT NOT NULL DEFAULT 'shared:app'");
+			db.prepare(`INSERT INTO projects (id, owner_scope, name, description, project_folder, configuration_status, metadata_json, created_at, updated_at)
+				VALUES (?, ?, ?, ?, ?, 'configured', '{}', ?, ?)`).run(
+				"prj_historical_user",
+				"user:historical",
+				"Historical User Project",
+				null,
+				join(tempRoot, "historical-user"),
+				"2026-05-30T00:00:00.000Z",
+				"2026-05-30T00:00:00.000Z",
+			);
+		} finally {
+			db.close();
+		}
+
+		const projects = service.listProjects();
+		assert.deepEqual(projects.map((project) => project.name).sort(), ["Historical User Project", "Shared Feature Project", "Shared Project"]);
+		assert.equal(service.requireProject("prj_historical_user").ownerScope, "user:historical");
+		const renamedHistorical = service.updateProject("prj_historical_user", { name: "Historical Project Renamed" });
+		assert.equal(renamedHistorical?.name, "Historical Project Renamed");
+	} finally {
+		service.close();
+		rmSync(tempRoot, { recursive: true, force: true });
+	}
+});
 
 test("project workflow session records persist selection metadata before runs start", () => {
 	const tempRoot = mkdtempSync(join(tmpdir(), "pibo-project-workflow-record-"));

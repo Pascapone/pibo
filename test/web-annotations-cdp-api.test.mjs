@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { LEGACY_SHARED_APP_OWNER_SCOPE } from "../dist/shared-app.js";
 import { listCdpTargets, openCdpTarget } from "../dist/tools/cdp-client.js";
 import { createWebAnnotationsWebApp } from "../dist/web-annotations/api.js";
 import { WebAnnotationCdpService } from "../dist/web-annotations/cdp.js";
@@ -75,6 +76,7 @@ test("Web Annotation CDP service creates selected bindings and marks missing tar
 		}, async () => {
 			const service = new WebAnnotationCdpService({ store, cdpUrl: "http://127.0.0.1:9999" });
 			const urlBinding = await service.createUrlBinding({ ownerScope: "user:a", piboSessionId: "ps_a", piboRoomId: "room_a", url: "http://localhost:3000/opened" });
+			assert.equal(urlBinding.binding.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
 			assert.equal(urlBinding.binding.targetId, "target-url");
 			assert.equal(urlBinding.binding.state, "active");
 
@@ -103,7 +105,7 @@ test("Web Annotation API creates same-origin bindings and serves standalone over
 		}), context);
 		assert.equal(response.status, 201);
 		const json = await response.json();
-		assert.equal(json.binding.ownerScope, "user:a");
+		assert.equal(json.binding.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
 		assert.equal(json.binding.state, "active");
 		assert.equal(json.binding.metadata.source, "same-origin");
 		assert.equal(json.overlay.bindingId, json.binding.id);
@@ -176,7 +178,7 @@ test("Web Annotation overlay submissions use binding token and derive session sc
 		assert.equal(response.status, 201);
 		assert.equal(response.headers.get("access-control-allow-origin"), "*");
 		const json = await response.json();
-		assert.equal(json.annotation.ownerScope, "user:a");
+		assert.equal(json.annotation.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
 		assert.equal(json.annotation.piboSessionId, "ps_a");
 		assert.equal(json.annotation.piboRoomId, "room_a");
 		assert.equal(json.annotation.bindingId, "binding-submit");
@@ -198,7 +200,7 @@ test("Web Annotation overlay submissions use binding token and derive session sc
 			}),
 		}), noAuthContext);
 		const spoofedJson = await spoofed.json();
-		assert.equal(spoofedJson.annotation.ownerScope, "user:a");
+		assert.equal(spoofedJson.annotation.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
 		assert.equal(spoofedJson.annotation.piboSessionId, "ps_a");
 		assert.equal(spoofedJson.annotation.piboRoomId, "room_a");
 
@@ -277,7 +279,7 @@ test("Web Annotation API lists gets and patches authorized session annotations",
 	}
 });
 
-test("Web Annotation API rejects cross-owner cross-session and invalid status updates", async () => {
+test("Web Annotation API allows cross-account access while preserving session scope and invalid status checks", async () => {
 	const store = new WebAnnotationStore({ path: ":memory:" });
 	try {
 		store.createAnnotation({
@@ -313,10 +315,11 @@ test("Web Annotation API rejects cross-owner cross-session and invalid status up
 		const sameOwnerContext = createContext({ webOwnerScope: "user:a", sessions: { ps_a: { ownerScope: "user:a" }, ps_b: { ownerScope: "user:a" } } });
 		const otherOwnerContext = createContext({ webOwnerScope: "user:b", sessions: { ps_a: { ownerScope: "user:a" } } });
 
-		await assert.rejects(
-			() => app.handleRequest(new Request("http://127.0.0.1/api/web-annotations?piboSessionId=ps_a"), otherOwnerContext),
-			/Pibo session is not authorized/,
-		);
+		const crossAccountList = await app.handleRequest(new Request("http://127.0.0.1/api/web-annotations?piboSessionId=ps_a"), otherOwnerContext);
+		const crossAccountJson = await crossAccountList.json();
+		assert.deepEqual(crossAccountJson.annotations.map((annotation) => annotation.id), ["ann_resolved", "ann_api_a"]);
+		const crossAccountPatch = await app.handleRequest(createRequest("/api/web-annotations/ann_api_a", { piboSessionId: "ps_a", status: "attached" }, "PATCH"), otherOwnerContext);
+		assert.equal((await crossAccountPatch.json()).annotation.status, "attached");
 		await assert.rejects(
 			() => app.handleRequest(new Request("http://127.0.0.1/api/web-annotations/ann_api_a?piboSessionId=ps_b"), sameOwnerContext),
 			/Web Annotation was not found/,
@@ -325,7 +328,7 @@ test("Web Annotation API rejects cross-owner cross-session and invalid status up
 			() => app.handleRequest(createRequest("/api/web-annotations/ann_api_a", { piboSessionId: "ps_b", status: "attached" }, "PATCH"), sameOwnerContext),
 			/Web Annotation was not found/,
 		);
-		assert.equal(store.getAnnotation("user:a", "ps_a", "ann_api_a").status, "open");
+		assert.equal(store.getAnnotation("user:a", "ps_a", "ann_api_a").status, "attached");
 
 		await assert.rejects(
 			() => app.handleRequest(createRequest("/api/web-annotations/ann_resolved", { piboSessionId: "ps_a", status: "acknowledged" }, "PATCH"), sameOwnerContext),
@@ -360,7 +363,7 @@ test("Web Annotation API enforces same-origin session authorization and routes b
 	const created = await app.handleRequest(createRequest("/api/web-annotations/bindings", { piboSessionId: "ps_a", piboRoomId: "room_a", url: "http://localhost:3000" }), context);
 	assert.equal(created.status, 201);
 	assert.equal((await created.json()).binding.id, "binding-url");
-	assert.equal(calls[0][1].ownerScope, "user:a");
+	assert.equal(calls[0][1].ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
 
 	const injected = await app.handleRequest(createRequest("/api/web-annotations/bindings/binding-url/inject", { piboSessionId: "ps_a" }), context);
 	assert.equal((await injected.json()).injected, true);

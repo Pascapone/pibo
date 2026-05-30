@@ -1,0 +1,350 @@
+# US-001 Owner/Principal Source Inventory
+
+Generated: 2026-05-30
+
+Note: Docker worker lacks `rg`; source inventory was captured from the host worktree with `/usr/bin/rg` and excludes `.pibo/ralph-sandbox`, `.git`, and `node_modules`. Build/test/database validation remains in Docker.
+
+## ownerScope
+- files: 185
+- matches: 1486
+- top matching files:
+  - IMPLEMENTATION_PROGRESS.md
+  - docs/legacy/progress.md
+  - docs/legacy/specs/spec-infrastructure-web-auth-chat.md
+  - docs/legacy/specs/spec-architecture-pibo-session-model.md
+  - docs/legacy/specs/spec-product-projects-area.backup-2026-05-10.md
+  - docs/legacy/specs/spec-architecture-plane-integration.md
+  - docs/legacy/chat-rooms-event-log.md
+  - test/performance-optimizations.test.mjs
+  - test/subagents.test.mjs
+  - src/web/auth.ts
+  - src/web/types.ts
+  - test/workflow-session-kind.test.mjs
+  - test/ralph-resource-metadata.test.mjs
+  - docs/project/workflow-registry-and-debug-serialization.md
+  - test/cli-session-source.test.mjs
+  - test/chat-cron-api.test.mjs
+  - test/web-annotations-cdp-api.test.mjs
+  - test/debug-cli.test.mjs
+  - docs/legacy/plans/future-pibo-collaboration-platform.md
+  - docs/project/architecture/chat-runtime-call-stack.md
+  - test/compute-resource-policy.test.mjs
+  - docs/reports/compute-browser-resource-lifecycle-implementation-progress.md
+  - test/chat-ui-app-delete-flow.test.mjs
+  - docs/plans/no-owner-scope-shared-app-umbauplan-2026-05-28.md
+  - test/context-build-inspector.test.mjs
+  - test/ralph-resource-visibility.test.mjs
+  - docs/plans/cron-jobs-implementation-plan.md
+  - docs/legacy/plans/2026-05-06-notifications-system-hardening-plan.md
+  - docs/legacy/architecture.md
+  - test/cron-schedule-store.test.mjs
+  - docs/reports/artifacts/signals-reliability-fix-validation-2026-05-19/live-spark-host/live-spark-signal-smoke-fixed.mjs
+  - docs/legacy/plans/implement-pibo-chat-rooms-event-log.md
+  - src/debug/trace.ts
+  - test/chat-ui-app-bootstrap-mutations.test.mjs
+  - test/cron-store-lifecycle.test.mjs
+  - test/chat-signals-api.test.mjs
+  - test/session-store.test.mjs
+  - docs/reports/ink-cli-session-ui-v2-current-state.md
+  - test/web-annotations-tools.test.mjs
+  - src/web-annotations/store.ts
+  - test/cli-ui-session-app.test.mjs
+  - test/channel-runtime.test.mjs
+  - src/web-annotations/tools.ts
+  - src/web-annotations/validation.ts
+  - test/session-router-store.test.mjs
+  - test/session-ui-view-models.test.mjs
+  - docs/reports/web-annotations-remote-architecture-assessment.md
+  - src/web-annotations/types.ts
+  - test/chat-ui-app-navigation-merge.test.mjs
+  - test/web-annotations-store.test.mjs
+  - src/web-annotations/attachments.ts
+  - test/ralph-runtime-overrides.test.mjs
+  - docs/legacy/reports/2026-05-06-firebase-push-notifications-solid-version-plan.md
+  - src/web-annotations/cdp.ts
+  - test/web-channel.test.mjs
+  - src/web-annotations/api.ts
+  - test/agent-profiles.test.mjs
+  - test/project-service-workflow-link.test.mjs
+  - docs/legacy/reports/pibo-architektur-datentfluss-uebersicht.md
+  - test/ralph-stop-conditions.test.mjs
+
+## owner_scope
+- files: 56
+- matches: 290
+- top matching files:
+  - IMPLEMENTATION_PROGRESS.md
+  - test/ralph-resource-metadata.test.mjs
+  - test/cli-session-source.test.mjs
+  - test/data-cli.test.mjs
+  - test/agent-store.test.mjs
+  - test/debug-cli.test.mjs
+  - docs/legacy/plans/pibo-chat-data-system-final-rearchitecture-plan-2026-05-08.md
+  - test/session-model-source-of-truth.test.mjs
+  - test/ink-cli-v2-current-state.test.mjs
+  - docs/legacy/plans/implement-pibo-debug-sql-cli.md
+  - test/pibo-data-session-store.test.mjs
+  - docs/legacy/plans/2026-05-09-chat-data-v2-cleanup-and-session-unification-plan.md
+  - src/debug/session.ts
+  - docs/legacy/specs/spec-architecture-pibo-session-model.md
+  - docs/plans/no-owner-scope-shared-app-umbauplan-2026-05-28.md
+  - docs/legacy/reports/2026-05-06-firebase-push-notifications-solid-version-plan.md
+  - src/debug/trace.ts
+  - docs/plans/cron-jobs-implementation-plan.md
+  - docs/legacy/reports/2026-05-09-chat-signals-unread-debug-report.md
+  - src/web-annotations/store.ts
+  - src/cli-session/localSessionSource.ts
+  - packages/workflows/src/testing/workflow-sqlite-schema.test.ts
+  - src/sessions/pibo-data-store.ts
+  - src/sessions/sqlite-store.ts
+  - packages/workflows/src/store/row-mappers.ts
+  - docs/reports/ink-cli-session-ui-v2-current-state.md
+  - packages/workflows/src/store/index.ts
+  - docs/reports/sql-database-inventory-2026-05-10.md
+  - packages/workflows/src/store/schema.ts
+  - src/cron/store.ts
+  - src/data/navigation-store.ts
+  - src/data/session-store.ts
+  - src/data/cli.ts
+  - src/ralph/store.ts
+  - src/data/schema.ts
+  - docs/specs/capabilities/chat-web-rooms-and-event-streams.md
+  - docs/specs/capabilities/data-maintenance-cli.md
+  - src/apps/chat/workflow-persistence.ts
+  - src/apps/chat/agent-store.ts
+  - src/apps/chat/data/chat-data-mappers.ts
+  - src/apps/chat/data/project-service.ts
+  - src/apps/chat/data/room-service.ts
+  - docs/specs/changes/pibo-workflow-system-v1/design-runtime-kernel.md
+  - docs/specs/changes/extensible-ralph-stop-conditions/design.md
+  - docs/specs/changes/pibo-workflow-system-v1/prds/09-implementation-completeness-contract.md
+  - docs/specs/changes/shared-app-no-owner-scope/proposal.md
+  - docs/specs/changes/shared-app-no-owner-scope/spec.md
+  - docs/specs/changes/shared-app-no-owner-scope/tasks.md
+  - docs/specs/changes/ink-cli-session-ui-v2-web-parity/prds/prd_01_product_scope_and_current_state.json
+  - docs/specs/changes/shared-app-no-owner-scope/prds/ralph-loop-prompt.md
+  - docs/specs/changes/shared-app-no-owner-scope/design.md
+  - docs/specs/changes/shared-app-no-owner-scope/prds/shared-app-no-owner-scope.prd.json
+  - docs/specs/changes/ink-cli-session-ui-v2-web-parity/prds/prd_07_web_parity_rendering_and_pty_validation.json
+  - docs/specs/changes/ink-cli-session-ui-v2-web-parity/prds/README.md
+  - docs/specs/changes/ink-cli-session-ui-v2-web-parity/prds/prd_02_owner_scope_recovery_profile.json
+  - docs/specs/changes/ink-cli-session-ui-v2-web-parity/prds/prd_04_room_session_navigation.json
+
+## principalId
+- files: 46
+- matches: 207
+- top matching files:
+  - IMPLEMENTATION_PROGRESS.md
+  - docs/plans/no-owner-scope-shared-app-umbauplan-2026-05-28.md
+  - docs/plans/cron-jobs-implementation-plan.md
+  - docs/plans/2026-05-18-observer-gated-chat-streaming-implementation-plan.md
+  - src/cron/service.ts
+  - src/cron/store.ts
+  - docs/reports/2026-05-18-observer-gated-chat-streaming.md
+  - src/cron/types.ts
+  - src/cron/cli.ts
+  - docs/legacy/plans/implement-pibo-chat-rooms-event-log.md
+  - src/ralph/service.ts
+  - src/ralph/store.ts
+  - src/ralph/types.ts
+  - test/ralph-resource-metadata.test.mjs
+  - src/ralph/cli.ts
+  - test/cli-session-source.test.mjs
+  - test/chat-cron-api.test.mjs
+  - test/ralph-resource-visibility.test.mjs
+  - test/cron-schedule-store.test.mjs
+  - test/cron-store-lifecycle.test.mjs
+  - docs/legacy/reports/2026-05-06-firebase-push-notifications-solid-version-plan.md
+  - test/ralph-runtime-overrides.test.mjs
+  - docs/legacy/reports/2026-05-09-chat-signals-unread-debug-report.md
+  - test/chat-v2-native-services.test.mjs
+  - test/ralph-resource-cleanup.test.mjs
+  - test/ralph-stop-conditions.test.mjs
+  - src/apps/chat-ui/src/CronArea.tsx
+  - docs/specs/capabilities/continuous-ralph-jobs.md
+  - src/apps/chat-ui/src/types.ts
+  - src/apps/chat-ui/src/RalphArea.tsx
+  - src/cli-session/localSessionSource.ts
+  - docs/reports/cron-test-reports/2026-05-10-1438-chat-cron-api.md
+  - docs/specs/changes/shared-app-no-owner-scope/proposal.md
+  - docs/specs/changes/shared-app-no-owner-scope/spec.md
+  - docs/specs/changes/shared-app-no-owner-scope/tasks.md
+  - docs/specs/changes/shared-app-no-owner-scope/prds/ralph-loop-prompt.md
+  - scripts/ink-cli-v2-pty-smoke.mjs
+  - docs/specs/changes/shared-app-no-owner-scope/prds/shared-app-no-owner-scope.prd.json
+  - docs/specs/changes/shared-app-no-owner-scope/prds/shared-app-no-owner-scope-prd.md
+  - src/apps/chat/ralph-api.ts
+  - src/apps/chat/web-app.ts
+  - src/apps/chat/cron-api.ts
+  - src/apps/chat/types/rooms.ts
+  - src/apps/chat/types/event-store.ts
+  - src/apps/chat/data/read-state-service.ts
+  - src/apps/chat/data/room-service.ts
+
+## principal_id
+- files: 16
+- matches: 68
+- top matching files:
+  - IMPLEMENTATION_PROGRESS.md
+  - docs/legacy/plans/pibo-chat-data-system-final-rearchitecture-plan-2026-05-08.md
+  - docs/plans/no-owner-scope-shared-app-umbauplan-2026-05-28.md
+  - docs/reports/sql-database-inventory-2026-05-10.md
+  - src/data/cli.ts
+  - src/data/schema.ts
+  - docs/legacy/reports/2026-05-06-firebase-push-notifications-solid-version-plan.md
+  - docs/legacy/reports/2026-05-09-chat-signals-unread-debug-report.md
+  - test/data-cli.test.mjs
+  - src/apps/chat/data/chat-data-mappers.ts
+  - src/apps/chat/data/room-service.ts
+  - src/apps/chat/data/read-state-service.ts
+  - docs/specs/changes/shared-app-no-owner-scope/spec.md
+  - docs/specs/changes/shared-app-no-owner-scope/tasks.md
+  - docs/specs/changes/shared-app-no-owner-scope/prds/ralph-loop-prompt.md
+  - docs/specs/changes/shared-app-no-owner-scope/prds/shared-app-no-owner-scope.prd.json
+
+## room_members
+- files: 21
+- matches: 53
+- top matching files:
+  - IMPLEMENTATION_PROGRESS.md
+  - handoffs/pibo-chat-data-v2-rearchitecture-handover-2026-05-08.md
+  - test/data-v2-store.test.mjs
+  - docs/legacy/plans/pibo-chat-data-system-final-rearchitecture-plan-2026-05-08.md
+  - docs/legacy/architecture.md
+  - docs/legacy/plans/2026-05-09-v2-native-query-services-finalization-plan.md
+  - docs/legacy/plans/2026-05-09-chat-data-v2-cleanup-and-session-unification-plan.md
+  - docs/legacy/reports/2026-05-09-chat-data-v2-no-legacy-cutover-progress.md
+  - docs/legacy/reports/2026-05-09-chat-data-v2-no-legacy-cutover-implementation.md
+  - docs/legacy/chat-rooms-event-log.md
+  - docs/legacy/chat-web-trace-streaming-architecture.md
+  - docs/project/architecture/chat-runtime-call-stack.md
+  - docs/plans/no-owner-scope-shared-app-umbauplan-2026-05-28.md
+  - src/data/schema.ts
+  - docs/reports/sql-database-inventory-2026-05-10.md
+  - src/apps/chat/data/room-service.ts
+  - docs/specs/capabilities/chat-web-rooms-and-event-streams.md
+  - docs/specs/changes/shared-app-no-owner-scope/spec.md
+  - docs/specs/changes/shared-app-no-owner-scope/tasks.md
+  - docs/specs/changes/shared-app-no-owner-scope/design.md
+  - docs/specs/changes/shared-app-no-owner-scope/prds/shared-app-no-owner-scope.prd.json
+
+## getOwned
+- files: 15
+- matches: 34
+- top matching files:
+  - IMPLEMENTATION_PROGRESS.md
+  - docs/plans/no-owner-scope-shared-app-umbauplan-2026-05-28.md
+  - src/tools/runtime/registry.ts
+  - src/cron/store.ts
+  - src/ralph/service.ts
+  - src/ralph/store.ts
+  - src/ralph/cli.ts
+  - docs/specs/capabilities/continuous-ralph-jobs.md
+  - docs/reports/cron-test-reports/2026-05-10-1438-chat-cron-api.md
+  - src/apps/chat/ralph-api.ts
+  - src/apps/chat/cron-api.ts
+  - docs/specs/changes/shared-app-no-owner-scope/spec.md
+  - docs/specs/changes/shared-app-no-owner-scope/tasks.md
+  - docs/specs/changes/shared-app-no-owner-scope/prds/shared-app-no-owner-scope.prd.json
+  - docs/specs/changes/shared-app-no-owner-scope/design.md
+
+## listOwned
+- files: 8
+- matches: 33
+- top matching files:
+  - IMPLEMENTATION_PROGRESS.md
+  - docs/plans/no-owner-scope-shared-app-umbauplan-2026-05-28.md
+  - src/apps/chat/web-app.ts
+  - docs/reports/ink-cli-session-ui-v2-current-state.md
+  - docs/specs/changes/shared-app-no-owner-scope/spec.md
+  - docs/specs/changes/shared-app-no-owner-scope/tasks.md
+  - docs/specs/changes/shared-app-no-owner-scope/prds/shared-app-no-owner-scope.prd.json
+  - docs/specs/changes/shared-app-no-owner-scope/design.md
+
+## requireOwned
+- files: 13
+- matches: 44
+- top matching files:
+  - IMPLEMENTATION_PROGRESS.md
+  - docs/plans/no-owner-scope-shared-app-umbauplan-2026-05-28.md
+  - test/workflow-v2-security-boundary.test.mjs
+  - docs/specs/capabilities/yielded-run-control.md
+  - docs/specs/capabilities/custom-agents.md
+  - docs/specs/capabilities/pibo-session-signals.md
+  - src/runs/registry.ts
+  - docs/reports/cron-test-reports/2026-05-10-1519-signal-registry.md
+  - src/apps/chat/web-app.ts
+  - docs/specs/changes/shared-app-no-owner-scope/spec.md
+  - docs/specs/changes/shared-app-no-owner-scope/tasks.md
+  - docs/specs/changes/shared-app-no-owner-scope/prds/shared-app-no-owner-scope.prd.json
+  - docs/specs/changes/shared-app-no-owner-scope/design.md
+
+## personal target
+- files: 15
+- matches: 30
+- top matching files:
+  - IMPLEMENTATION_PROGRESS.md
+  - docs/plans/no-owner-scope-shared-app-umbauplan-2026-05-28.md
+  - docs/plans/cron-jobs-implementation-plan.md
+  - test/cron-schedule-store.test.mjs
+  - src/tools/guides.ts
+  - src/cron/cli.ts
+  - docs/specs/coverage/ralph-verification-gap-analysis-2026-05-11.md
+  - docs/specs/coverage/source-test-gap-priorities-2026-05-11.md
+  - docs/specs/capabilities/continuous-ralph-jobs.md
+  - docs/specs/capabilities/scheduled-pibo-jobs.md
+  - docs/specs/changes/shared-app-no-owner-scope/spec.md
+  - docs/specs/changes/shared-app-no-owner-scope/tasks.md
+  - docs/specs/changes/shared-app-no-owner-scope/design.md
+  - docs/specs/changes/shared-app-no-owner-scope/prds/shared-app-no-owner-scope.prd.json
+  - docs/specs/changes/shared-app-no-owner-scope/prds/shared-app-no-owner-scope-prd.md
+
+## --owner-scope
+- files: 44
+- matches: 109
+- top matching files:
+  - IMPLEMENTATION_PROGRESS.md
+  - IMPLEMENTATION_INSIGHTS.md
+  - scripts/ink-cli-v2-pty-smoke.mjs
+  - src/tools/registry.ts
+  - skills/builtin/ralph-loop/SKILL.md
+  - src/data/cli.ts
+  - src/tools/index.ts
+  - src/cron/cli.ts
+  - src/tools/guides.ts
+  - src/ralph/cli.ts
+  - test/ralph-resource-visibility.test.mjs
+  - test/cron-schedule-store.test.mjs
+  - test/tools-cli.test.mjs
+  - docs/legacy/reports/2026-05-09-chat-signals-unread-debug-report.md
+  - docs/plans/no-owner-scope-shared-app-umbauplan-2026-05-28.md
+  - test/data-cli.test.mjs
+  - src/cli.ts
+  - docs/specs/coverage/ralph-verification-gap-analysis-2026-05-11.md
+  - docs/reports/compute-browser-resource-lifecycle-implementation-progress.md
+  - docs/specs/capabilities/operator-cli-discovery-and-dispatch.md
+  - docs/reports/ink-cli-session-ui-v2-current-state.md
+  - docs/specs/capabilities/scheduled-pibo-jobs.md
+  - docs/specs/capabilities/data-maintenance-cli.md
+  - src/apps/cli-ui/cliSessionsCommand.ts
+  - docs/specs/changes/ink-cli-terminal-rendering-parity/prds/prd_12_slash_commands_room_session_resolution_and_pickers.json
+  - docs/specs/capabilities/continuous-ralph-jobs.md
+  - docs/reports/artifacts/signals-e2e-root-cause-2026-05-19/host-logs/signals_e2e_reload_error_bootstrap.json
+  - docs/reports/artifacts/signals-e2e-root-cause-2026-05-19/host-logs/signals_e2e_after_archive_bootstrap.json
+  - docs/specs/changes/ink-cli-session-ui-v2-web-parity/spec.md
+  - docs/reports/ink-cli-terminal-rendering-parity-final-2026-05-17.md
+  - docs/specs/changes/shared-app-no-owner-scope/spec.md
+  - docs/specs/changes/ink-cli-session-ui-v2-web-parity/prds/prd_06_interactive_keyboard_flows.json
+  - docs/specs/changes/shared-app-no-owner-scope/tasks.md
+  - docs/specs/changes/ink-cli-session-ui-v2-web-parity/prds/prd_07_web_parity_rendering_and_pty_validation.json
+  - docs/specs/changes/ink-cli-session-ui-v2-web-parity/prds/02-owner-scope-recovery-profile.md
+  - docs/specs/changes/ink-cli-session-ui-v2-web-parity/prds/prd_05_slash_command_catalog_and_actions.json
+  - docs/specs/changes/ink-cli-session-ui-v2-web-parity/design.md
+  - docs/specs/changes/ink-cli-session-ui-v2-web-parity/prds/prd_02_owner_scope_recovery_profile.json
+  - docs/specs/changes/ink-cli-session-ui-v2-web-parity/prds/prd_04_room_session_navigation.json
+  - docs/specs/changes/shared-app-no-owner-scope/prds/shared-app-no-owner-scope.prd.json
+  - docs/specs/changes/shared-app-no-owner-scope/design.md
+  - docs/specs/changes/shared-app-no-owner-scope/prds/shared-app-no-owner-scope-prd.md
+  - docs/specs/changes/compute-browser-resource-lifecycle/design.md
+  - docs/specs/changes/ink-cli-session-ui/prds/06-ssh-recovery-hardening.md
+

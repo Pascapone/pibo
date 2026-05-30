@@ -6,6 +6,30 @@ async function readSource(relativePath) {
 	return readFile(new URL(`../${relativePath}`, import.meta.url), "utf8");
 }
 
+async function readProjectUiSourceBundle() {
+	return (await Promise.all([
+		"src/apps/chat-ui/src/App.tsx",
+		"src/apps/chat-ui/src/projects/ProjectWorkflowPanels.tsx",
+		"src/apps/chat-ui/src/projects/ProjectsAreaModel.ts",
+		"src/apps/chat-ui/src/projects/ProjectsSidebar.tsx",
+		"src/apps/chat-ui/src/projects/project-session-workflow.tsx",
+		"src/apps/chat-ui/src/session-node.tsx",
+	].map(readSource))).join("\n");
+}
+
+async function readWorkflowUiSourceBundle() {
+	return (await Promise.all([
+		"src/apps/chat-ui/src/WorkflowsArea.tsx",
+		"src/apps/chat-ui/src/workflows/WorkflowBuilderNodeEditors.tsx",
+		"src/apps/chat-ui/src/workflows/WorkflowGraphCanvas.tsx",
+		"src/apps/chat-ui/src/workflows/WorkflowInspectorsPanel.tsx",
+		"src/apps/chat-ui/src/workflows/WorkflowLibraryPanel.tsx",
+		"src/apps/chat-ui/src/workflows/WorkflowRawIrEditor.tsx",
+		"src/apps/chat-ui/src/workflows/WorkflowPromptAssetEditor.tsx",
+		"src/apps/chat-ui/src/workflows/WorkflowVersionViewer.tsx",
+	].map(readSource))).join("\n");
+}
+
 function assertMatches(source, pattern, label) {
 	assert.match(source, pattern, label);
 }
@@ -63,8 +87,8 @@ test("Workflow V2 release integration coverage maps Project workflow snapshots a
 });
 
 test("Workflow V2 release UI coverage maps Builder, routing, and human action surfaces", async () => {
-	const workflowsAreaSource = await readSource("src/apps/chat-ui/src/WorkflowsArea.tsx");
-	const appSource = await readSource("src/apps/chat-ui/src/App.tsx");
+	const workflowsAreaSource = await readWorkflowUiSourceBundle();
+	const appSource = await readProjectUiSourceBundle();
 	const workflowViewSource = await readSource("src/apps/chat-ui/src/session-views/WorkflowXStateSessionView.tsx");
 
 	assertAllMatch(workflowsAreaSource, [

@@ -1730,42 +1730,84 @@ function makeWatchSnapshot(nodes) {
 	};
 }
 
+function tableHasColumn(db, table, column) {
+	return db.prepare(`PRAGMA table_info(${table})`).all().some((row) => row.name === column);
+}
+
 function insertSession(db, input) {
-	db.prepare(`
-		INSERT INTO sessions (
-			id, pi_session_id, owner_scope, room_id, root_session_id, parent_id, origin_id,
-			channel, kind, profile, active_model_json, workspace, title, status,
-			metadata_json, created_at, updated_at, last_activity_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)
-	`).run(
-		input.id,
-		input.piSessionId,
-		input.ownerScope,
-		input.roomId ?? null,
-		input.rootSessionId ?? input.id,
-		input.parentId ?? null,
-		null,
-		input.channel,
-		input.kind,
-		input.profile,
-		"/workspace",
-		input.title,
-		input.status,
-		JSON.stringify(input.metadata ?? {}),
-		input.createdAt,
-		input.updatedAt,
-		input.lastActivityAt,
-	);
+	const sessionsHaveOwnerScope = tableHasColumn(db, "sessions", "owner_scope");
+	if (sessionsHaveOwnerScope) {
+		db.prepare(`
+			INSERT INTO sessions (
+				id, pi_session_id, owner_scope, room_id, root_session_id, parent_id, origin_id,
+				channel, kind, profile, active_model_json, workspace, title, status,
+				metadata_json, created_at, updated_at, last_activity_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)
+		`).run(
+			input.id,
+			input.piSessionId,
+			input.ownerScope,
+			input.roomId ?? null,
+			input.rootSessionId ?? input.id,
+			input.parentId ?? null,
+			null,
+			input.channel,
+			input.kind,
+			input.profile,
+			"/workspace",
+			input.title,
+			input.status,
+			JSON.stringify(input.metadata ?? {}),
+			input.createdAt,
+			input.updatedAt,
+			input.lastActivityAt,
+		);
+	} else {
+		db.prepare(`
+			INSERT INTO sessions (
+				id, pi_session_id, room_id, root_session_id, parent_id, origin_id,
+				channel, kind, profile, active_model_json, workspace, title, status,
+				metadata_json, created_at, updated_at, last_activity_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)
+		`).run(
+			input.id,
+			input.piSessionId,
+			input.roomId ?? null,
+			input.rootSessionId ?? input.id,
+			input.parentId ?? null,
+			null,
+			input.channel,
+			input.kind,
+			input.profile,
+			"/workspace",
+			input.title,
+			input.status,
+			JSON.stringify(input.metadata ?? {}),
+			input.createdAt,
+			input.updatedAt,
+			input.lastActivityAt,
+		);
+	}
 	db.prepare(`
 		INSERT INTO session_stats (session_id, message_count, tool_call_count, error_count, last_event_stream_id, last_activity_at, status, updated_at)
 		VALUES (?, 0, 0, 0, NULL, ?, ?, ?)
 	`).run(input.id, input.lastActivityAt, input.status, input.updatedAt);
-	db.prepare(`
-		INSERT INTO session_navigation (
-			owner_scope, room_id, session_id, root_session_id, parent_id, origin_id,
-			title, profile, status, last_activity_at, child_count, sort_key, updated_at
-		) VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, 0, ?, ?)
-	`).run(input.ownerScope, input.roomId ?? null, input.id, input.rootSessionId ?? input.id, input.parentId ?? null, input.title, input.profile, input.status, input.lastActivityAt, input.lastActivityAt, input.updatedAt);
+	const navigationHasOwnerScope = tableHasColumn(db, "session_navigation", "owner_scope");
+	if (navigationHasOwnerScope) {
+		db.prepare(`
+			INSERT INTO session_navigation (
+				owner_scope, room_id, session_id, root_session_id, parent_id, origin_id,
+				title, profile, status, last_activity_at, child_count, sort_key, updated_at
+			) VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, 0, ?, ?)
+		`).run(input.ownerScope, input.roomId ?? null, input.id, input.rootSessionId ?? input.id, input.parentId ?? null, input.title, input.profile, input.status, input.lastActivityAt, input.lastActivityAt, input.updatedAt);
+	} else {
+		db.prepare(`
+			INSERT INTO session_navigation (
+				room_id, session_id, root_session_id, parent_id, origin_id,
+				title, profile, status, last_activity_at, child_count, sort_key, updated_at
+			) VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, 0, ?, ?)
+		`).run(input.roomId ?? null, input.id, input.rootSessionId ?? input.id, input.parentId ?? null, input.title, input.profile, input.status, input.lastActivityAt, input.lastActivityAt, input.updatedAt);
+	}
 }
 
 function insertEvent(db, input) {

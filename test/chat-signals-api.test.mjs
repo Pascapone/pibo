@@ -111,7 +111,7 @@ async function readSseEvents(response, count) {
 	return events;
 }
 
-test("chat signal snapshots enforce ownership and include local session state", async () => {
+test("chat signal snapshots are app-global and include local session state", async () => {
 	const { channel, baseURL, sessions, signals } = await startSignalWebHost();
 	try {
 		const session = createSession(sessions, "ps_signal_root");
@@ -123,8 +123,10 @@ test("chat signal snapshots enforce ownership and include local session state", 
 		const snapshot = await ok.json();
 		assert.equal(snapshot.sessions[session.id].isTreeActive, true);
 
-		const denied = await fetch(`${baseURL}/api/chat/signals/session/${session.id}`, { headers: { "x-test-user": "user-2" } });
-		assert.equal(denied.status, 404);
+		const crossAccount = await fetch(`${baseURL}/api/chat/signals/session/${session.id}`, { headers: { "x-test-user": "user-2" } });
+		assert.equal(crossAccount.status, 200);
+		const crossAccountSnapshot = await crossAccount.json();
+		assert.equal(crossAccountSnapshot.sessions[session.id].isTreeActive, true);
 	} finally {
 		await channel.stop?.();
 	}
@@ -178,13 +180,16 @@ test("chat signal SSE rejects missing root session id", async () => {
 });
 
 
-test("chat signal SSE enforces root ownership", async () => {
+test("chat signal SSE is app-global for an existing root", async () => {
 	const { channel, baseURL, sessions, signals } = await startSignalWebHost();
 	try {
 		const session = createSession(sessions, "ps_signal_sse_owner");
 		signals.project({ type: "session_created", session });
 		const response = await fetch(`${baseURL}/api/chat/signals/events?rootPiboSessionId=${session.id}`, { headers: { "x-test-user": "user-2" } });
-		assert.equal(response.status, 404);
+		assert.equal(response.status, 200);
+		const events = await readSseEvents(response, 1);
+		assert.equal(events[0].event, "signal_snapshot");
+		assert.ok(events[0].data.sessions[session.id]);
 	} finally {
 		await channel.stop?.();
 	}

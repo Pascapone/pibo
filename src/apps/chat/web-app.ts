@@ -50,6 +50,7 @@ import {
 } from "../../core/model-defaults.js";
 import { inspectPiboContextBuild } from "../../core/context-build.js";
 import { loadPiboUserSettings } from "../../core/user-settings.js";
+import { getSharedAppLegacyOwnerScope } from "../../shared-app.js";
 import { loadModelCatalog } from "./model-catalog.js";
 import { createCustomAgentProfileDefinition } from "./agent-profiles.js";
 import { createDefaultPiboReliabilityStore, PiboReliabilityStore } from "../../reliability/store.js";
@@ -325,8 +326,8 @@ type ChatRoomActions = {
 	updateRoom(id: string, input: UpdatePiboRoomInput): PiboRoom | undefined;
 	deleteRooms(ids: string[]): number;
 	getRoom(id: string): PiboRoom | undefined;
-	listRooms(ownerScope: string): PiboRoom[];
-	listRoomTree(ownerScope: string): PiboRoomNode[];
+	listRooms(ownerScope?: string): PiboRoom[];
+	listRoomTree(ownerScope?: string): PiboRoomNode[];
 	listRoomSubtree(rootRoomId: string): PiboRoom[];
 	ensureDefaultRoom(input: { ownerScope: string; principalId: string; name?: string }): PiboRoom;
 	ensureMember(input: { roomId: string; principalId: string; role: PiboRoomRole }): PiboRoomMember;
@@ -398,7 +399,7 @@ function loadBootstrapCatalog(
 		buildAgentCatalog(context, state),
 	]).then(([modelCatalog, agentCatalog]) => ({
 		agents: context.channelContext.getProfiles?.() ?? [],
-		customAgents: serializeCustomAgents(state.agentStore.list(webSession.ownerScope, { includeArchived: true }), context),
+		customAgents: serializeCustomAgents(state.agentStore.list(undefined, { includeArchived: true }), context),
 		modelDefaults: loadChatModelDefaults(process.cwd()),
 		modelCatalog,
 		agentCatalog,
@@ -420,7 +421,7 @@ type WorkflowProfilePickerOption = {
 	paramsSchema: PiboJsonObject | null;
 	aliases: string[];
 	source: "custom" | "global";
-	visibility: "private" | "global";
+	visibility: "global";
 	archived: false;
 	nativeTools: string[];
 	skills: string[];
@@ -500,7 +501,7 @@ type WorkflowPromptAssetSaveBody = {
 
 type ChatProjectsBootstrap = ChatBootstrapCatalog & {
 	identity: PiboWebSession["authSession"]["identity"];
-	personalProject: PiboProject;
+	sharedDefaultProject: PiboProject;
 	project?: PiboProject;
 	projects: PiboProject[];
 	projectSessions: PiboProjectSession[];
@@ -620,8 +621,8 @@ function isJsonValue(value: unknown): value is PiboJsonValue {
 	return false;
 }
 
-function principalIdFor(webSession: PiboWebSession): string {
-	return webSession.ownerScope;
+function principalIdFor(_webSession: PiboWebSession): string {
+	return getSharedAppLegacyOwnerScope();
 }
 
 function recordWorkflowLifecycleEvent(
@@ -631,7 +632,7 @@ function recordWorkflowLifecycleEvent(
 ): WorkflowLifecycleEventRecord {
 	return state.workflowLifecycleEventStore.record({
 		...input,
-		ownerScope: webSession.ownerScope,
+		ownerScope: getSharedAppLegacyOwnerScope(),
 		actorId: input.actorId ?? principalIdFor(webSession),
 	});
 }
@@ -856,8 +857,9 @@ function markActiveSessionRead(state: ChatWebAppState, piboSessionId: string, st
 	}
 }
 
-function listOwnedSessions(context: PiboWebAppContext, webSession: PiboWebSession): PiboSession[] {
-	return context.channelContext.findSessions({ ownerScope: webSession.ownerScope })
+function listSharedSessions(context: PiboWebAppContext): PiboSession[] {
+	const sessions = context.channelContext.listSessions?.() ?? context.channelContext.findSessions({});
+	return sessions
 		.map((session) => canonicalizeSessionProfile(context, session))
 		.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 }
@@ -878,7 +880,7 @@ function canonicalProfileName(context: PiboWebAppContext, profileName: string): 
 	return matched?.name;
 }
 
-function visibleOwnedSessions(
+function visibleSharedSessions(
 	sessions: PiboSession[],
 	selectedSession: PiboSession,
 	includeArchived: boolean,
@@ -931,7 +933,7 @@ function visibleSessionsInRoom(input: {
 	if (!roomSessions.some((session) => session.id === input.selectedSession.id)) {
 		roomSessions.push(roomSessionWithRoom(input.selectedSession, input.selectedRoomId));
 	}
-	return visibleOwnedSessions(roomSessions, input.selectedSession, input.includeArchived);
+	return visibleSharedSessions(roomSessions, input.selectedSession, input.includeArchived);
 }
 
 function roomSessionWithRoom(session: PiboSession, roomId: string): PiboSession {
@@ -984,7 +986,7 @@ function ensureDefaultChatSession(
 				ownerScope: webSession.ownerScope,
 				principalId: principalIdFor(webSession),
 			});
-	const existing = listOwnedSessions(context, webSession).find(
+	const existing = listSharedSessions(context).find(
 		(session) =>
 			!session.parentId &&
 			!isChatWebSessionArchived(session) &&
@@ -992,13 +994,13 @@ function ensureDefaultChatSession(
 	);
 	if (existing) return existing;
 	if (isPiboRoomArchived(room)) {
-		const archivedExisting = listOwnedSessions(context, webSession).find(
+		const archivedExisting = listSharedSessions(context).find(
 			(session) => !session.parentId && chatRoomIdFromMetadata(session.metadata) === room.id,
 		);
 		if (archivedExisting) return archivedExisting;
 		throw new PiboWebHttpError("Archived room has no sessions", 404);
 	}
-	return createPersonalChatSession(context, webSession, defaultProfile, room);
+	return createSharedChatSession(context, webSession, defaultProfile, room);
 }
 
 function ensureSessionRoom(
@@ -1010,11 +1012,8 @@ function ensureSessionRoom(
 	const roomId = chatRoomIdFromMetadata(session.metadata);
 	const existingRoom = roomId ? state.roomService.getRoom(roomId) : undefined;
 	if (existingRoom) return existingRoom;
-	const ownerScope = session.ownerScope ?? webSession?.ownerScope;
-	if (!ownerScope) {
-		return state.roomService.ensureDefaultRoom({ ownerScope: "system:unknown", principalId: "system:unknown" });
-	}
-	const principalId = webSession ? principalIdFor(webSession) : ownerScope;
+	const ownerScope = webSession?.ownerScope ?? getSharedAppLegacyOwnerScope();
+	const principalId = webSession ? principalIdFor(webSession) : getSharedAppLegacyOwnerScope();
 	const room = state.roomService.ensureDefaultRoom({ ownerScope, principalId });
 	if (!chatRoomIdFromMetadata(session.metadata)) {
 		context.channelContext.updateSession?.(session.id, { metadata: withChatRoomId(session.metadata, room.id) });
@@ -1040,27 +1039,24 @@ function requireRoom(
 	return room;
 }
 
-function listOwnedProjects(state: ChatWebAppState, webSession: PiboWebSession, options: { includeArchived?: boolean } = {}): PiboProject[] {
-	return state.projectService.listProjects(options).filter((project) => project.ownerScope === webSession.ownerScope);
+function listSharedProjects(state: ChatWebAppState, _webSession: PiboWebSession, options: { includeArchived?: boolean } = {}): PiboProject[] {
+	return state.projectService.listProjects(options);
 }
 
-function requireOwnedProject(
+function requireSharedProject(
 	state: ChatWebAppState,
-	webSession: PiboWebSession,
+	_webSession: PiboWebSession,
 	projectId: string,
 	options: { includeArchived?: boolean } = {},
 ): PiboProject {
-	let project: PiboProject;
 	try {
-		project = state.projectService.requireProject(projectId, options);
+		return state.projectService.requireProject(projectId, options);
 	} catch {
 		throw new PiboWebHttpError("Project not found", 404);
 	}
-	if (project.ownerScope !== webSession.ownerScope) throw new PiboWebHttpError("Project not found", 404);
-	return project;
 }
 
-function createPersonalChatSession(
+function createSharedChatSession(
 	context: PiboWebAppContext,
 	webSession: PiboWebSession,
 	profile: string,
@@ -1070,7 +1066,7 @@ function createPersonalChatSession(
 		channel: CHAT_WEB_CHANNEL,
 		kind: "chat",
 		profile,
-		ownerScope: webSession.ownerScope,
+		ownerScope: getSharedAppLegacyOwnerScope(),
 		workspace: roomWorkspaceFromMetadata(room.metadata) ?? getDefaultPiboWorkspace(),
 		metadata: withChatRoomId(undefined, room.id),
 	});
@@ -1093,7 +1089,7 @@ function createProjectChatSession(input: {
 		channel: CHAT_WEB_CHANNEL,
 		kind: "chat",
 		profile: input.profile,
-		ownerScope: input.webSession.ownerScope,
+		ownerScope: getSharedAppLegacyOwnerScope(),
 		workspace: input.project.projectFolder,
 		...(input.title ? { title: input.title } : {}),
 		...(input.configuration?.model ? { activeModel: input.configuration.model } : {}),
@@ -1323,9 +1319,9 @@ function requireAgentProfileNameAvailable(
 	if (matchedProfile) throw new PiboWebHttpError(`Agent name "${profileName}" conflicts with an existing profile`, 400);
 }
 
-function requireOwnedAgent(agent: CustomAgentDefinition | undefined, webSession: PiboWebSession): CustomAgentDefinition {
-	if (!agent || agent.ownerScope !== webSession.ownerScope) {
-		throw new PiboWebHttpError("Agent is not available for this user", 404);
+function requireSharedAgent(agent: CustomAgentDefinition | undefined): CustomAgentDefinition {
+	if (!agent) {
+		throw new PiboWebHttpError("Agent not found", 404);
 	}
 	return agent;
 }
@@ -1351,10 +1347,10 @@ async function buildAgentCatalog(context: PiboWebAppContext, state: ChatWebAppSt
 function buildWorkflowProfilePicker(
 	state: ChatWebAppState,
 	context: PiboWebAppContext,
-	webSession: PiboWebSession,
+	_webSession: PiboWebSession,
 	selectedProfileId?: string,
 ): WorkflowProfilePickerResponse {
-	const customAgents = state.agentStore.list(webSession.ownerScope, { includeArchived: true });
+	const customAgents = state.agentStore.list(undefined, { includeArchived: true });
 	const allCustomProfileNames = new Set(customAgents.map((agent) => agent.profileName));
 	const archivedCustomAgents = new Map(
 		customAgents.filter((agent) => agent.archivedAt).map((agent) => [agent.profileName, agent]),
@@ -1370,7 +1366,7 @@ function buildWorkflowProfilePicker(
 			paramsSchema: null,
 			aliases: [],
 			source: "custom",
-			visibility: "private",
+			visibility: "global",
 			archived: false,
 			nativeTools: [...agent.nativeTools],
 			skills: [...agent.skills],
@@ -1415,7 +1411,7 @@ function buildWorkflowProfilePicker(
 		} else {
 			diagnostics.push({
 				code: "WorkflowGraphError.unknownAgentProfileRef",
-				message: `Agent node references Agent Designer profile '${normalizedSelection}', but it is not available to this user.`,
+				message: `Agent node references Agent Designer profile '${normalizedSelection}', but it is not available in the shared app.`,
 				severity: "error",
 				path: "$.nodes.agent.profile.id",
 				registryRef: normalizedSelection,
@@ -1506,7 +1502,7 @@ function saveWorkflowPromptAssetRevision(
 		? body.description.trim()
 		: sourceDocument?.description ?? "Managed Workflow Builder prompt asset revision.";
 	return state.workflowPromptAssetStore.saveRevision({
-		ownerScope: webSession.ownerScope,
+		ownerScope: getSharedAppLegacyOwnerScope(),
 		assetId: requestedAssetId,
 		displayName,
 		description,
@@ -1554,7 +1550,7 @@ function createWorkflowDraftIdentity(
 		revision: 1,
 		createdAt: now,
 		updatedAt: now,
-		ownerScope: webSession.ownerScope,
+		ownerScope: getSharedAppLegacyOwnerScope(),
 	};
 	state.workflowDraftStore.saveDraft(draft);
 	recordWorkflowLifecycleEvent(state, webSession, {
@@ -1743,7 +1739,7 @@ function duplicateWorkflowIntoDraft(
 		revision: 1,
 		createdAt: now,
 		updatedAt: now,
-		ownerScope: webSession.ownerScope,
+		ownerScope: getSharedAppLegacyOwnerScope(),
 	};
 	state.workflowDraftStore.saveDraft(draft);
 	recordWorkflowLifecycleEvent(state, webSession, {
@@ -1808,7 +1804,7 @@ function createNextVersionDraftFromPublishedWorkflow(
 		revision: 1,
 		createdAt: now,
 		updatedAt: now,
-		ownerScope: webSession.ownerScope,
+		ownerScope: getSharedAppLegacyOwnerScope(),
 	};
 	state.workflowDraftStore.saveDraft(draft);
 	recordWorkflowLifecycleEvent(state, webSession, {
@@ -1975,7 +1971,7 @@ function createStarterWorkflowDraft(webSession: PiboWebSession): OwnedWorkflowDr
 		revision: 1,
 		createdAt: now,
 		updatedAt: now,
-		ownerScope: webSession.ownerScope,
+		ownerScope: getSharedAppLegacyOwnerScope(),
 	};
 }
 
@@ -2564,7 +2560,7 @@ function deleteSessionsForAgentProfile(
 ): string[] {
 	const deleteSession = context.channelContext.deleteSession;
 	if (!deleteSession) throw new PiboWebHttpError("Session deletion is not available", 501);
-	const ownedSessions = listOwnedSessions(context, webSession);
+	const ownedSessions = listSharedSessions(context);
 	const sessionsById = new Map(ownedSessions.map((session) => [session.id, session]));
 	const ids = new Set(ownedSessions.filter((session) => session.profile === profileName).map((session) => session.id));
 	let changed = true;
@@ -2594,7 +2590,7 @@ function deleteSessionSubtree(
 ): string[] {
 	const deleteSession = context.channelContext.deleteSession;
 	if (!deleteSession) throw new PiboWebHttpError("Session deletion is not available", 501);
-	const ownedSessions = listOwnedSessions(context, webSession);
+	const ownedSessions = listSharedSessions(context);
 	const sessionsById = new Map(ownedSessions.map((session) => [session.id, session]));
 	const ids = new Set([rootSession.id]);
 	let changed = true;
@@ -2623,7 +2619,7 @@ function deleteRoomTree(
 	room: PiboRoom,
 	confirmName: string,
 ): { deletedRoomIds: string[]; deletedSessionIds: string[] } {
-	if (isDefaultPiboRoom(room)) throw new PiboWebHttpError("Personal Chat cannot be deleted", 400);
+	if (isDefaultPiboRoom(room)) throw new PiboWebHttpError("Default chat cannot be deleted", 400);
 	if (!isPiboRoomArchived(room)) throw new PiboWebHttpError("Archive the room before permanently deleting it.", 400);
 	if (confirmName !== room.name) throw new PiboWebHttpError(`Type "${room.name}" to permanently delete this room.`, 400);
 	const deleteSession = context.channelContext.deleteSession;
@@ -2631,7 +2627,7 @@ function deleteRoomTree(
 	const rooms = state.roomService.listRoomSubtree(room.id);
 	const roomIds = rooms.map((item) => item.id);
 	const roomIdSet = new Set(roomIds);
-	const ownedSessions = listOwnedSessions(context, webSession);
+	const ownedSessions = listSharedSessions(context);
 	const sessionsById = new Map(ownedSessions.map((session) => [session.id, session]));
 	const ids = new Set(
 		ownedSessions
@@ -2673,10 +2669,10 @@ function sessionDepth(session: PiboSession | undefined, sessionsById: ReadonlyMa
 	return depth;
 }
 
-function requireOwnedSession(context: PiboWebAppContext, webSession: PiboWebSession, piboSessionId: string): PiboSession {
+function requireSharedSession(context: PiboWebAppContext, piboSessionId: string): PiboSession {
 	const session = context.channelContext.getSession(piboSessionId);
-	if (!session || session.ownerScope !== webSession.ownerScope) {
-		throw new PiboWebHttpError("Session is not available for this user", 404);
+	if (!session) {
+		throw new PiboWebHttpError("Session not found", 404);
 	}
 	return canonicalizeSessionProfile(context, session);
 }
@@ -2691,8 +2687,8 @@ function resolveRequestedSession(
 ): PiboSession {
 	if (!piboSessionId) return ensureDefaultChatSession(state, context, webSession, defaultProfile, roomId);
 	const selected = context.channelContext.getSession(piboSessionId);
-	if (!selected || selected.ownerScope !== webSession.ownerScope) {
-		throw new PiboWebHttpError("Session is not available for this user", 404);
+	if (!selected) {
+		throw new PiboWebHttpError("Session not found", 404);
 	}
 	const canonicalSelected = canonicalizeSessionProfile(context, selected);
 	const selectedRoom = ensureSessionRoom(state, context, canonicalSelected, webSession);
@@ -2709,7 +2705,7 @@ async function buildContextBuildSnapshotForRequest(input: {
 	if (!createProfile) throw new PiboWebHttpError("Profile inspection is not available", 503);
 	if (!input.piboSessionId) throw new PiboWebHttpError("piboSessionId is required", 400);
 
-	const selectedSession = requireOwnedSession(input.context, input.webSession, input.piboSessionId);
+	const selectedSession = requireSharedSession(input.context, input.piboSessionId);
 	const profile = createProfile(selectedSession.profile);
 	const userSettings = loadPiboUserSettings(input.webSession.ownerScope);
 	const cwd = selectedSession?.workspace ?? getDefaultPiboWorkspace();
@@ -2719,7 +2715,6 @@ async function buildContextBuildSnapshotForRequest(input: {
 		activeModel: selectedSession?.activeModel,
 		persistSession: false,
 		sessionContext: {
-			userId: input.webSession.authSession.identity.userId,
 			ownerScope: input.webSession.ownerScope,
 			piboSessionId: selectedSession?.id,
 			piboRoomId: selectedSession ? chatRoomIdFromMetadata(selectedSession.metadata) : undefined,
@@ -2728,7 +2723,7 @@ async function buildContextBuildSnapshotForRequest(input: {
 	});
 }
 
-function indexOwnedSessions(sessionQuery: ChatSessionQuery, sessions: PiboSession[]): void {
+function indexSharedSessions(sessionQuery: ChatSessionQuery, sessions: PiboSession[]): void {
 	sessionQuery.upsertSessionsIfChanged(sessions);
 }
 
@@ -3079,15 +3074,15 @@ async function buildProjectsBootstrap(input: {
 	piboSessionId?: string;
 	includeArchived?: boolean;
 }): Promise<ChatProjectsBootstrap> {
-	const personalProject = input.state.projectService.ensurePersonalProject({ ownerScope: input.webSession.ownerScope });
-	const selectedProject = input.projectId ? requireOwnedProject(input.state, input.webSession, input.projectId, { includeArchived: true }) : personalProject;
+	const sharedDefaultProject = input.state.projectService.ensureSharedDefaultProject({ ownerScope: input.webSession.ownerScope });
+	const selectedProject = input.projectId ? requireSharedProject(input.state, input.webSession, input.projectId, { includeArchived: true }) : sharedDefaultProject;
 	let storedProjectSessions = input.state.projectService.listProjectSessions(selectedProject.id, { includeArchived: input.includeArchived });
-	if (selectedProject.id === personalProject.id && storedProjectSessions.length === 0) {
+	if (selectedProject.id === sharedDefaultProject.id && storedProjectSessions.length === 0) {
 		const session = createProjectChatSession({
 			state: input.state,
 			context: input.context,
 			webSession: input.webSession,
-			project: personalProject,
+			project: sharedDefaultProject,
 			profile: input.defaultProfile,
 			workflowId: "simple-chat",
 		});
@@ -3099,11 +3094,11 @@ async function buildProjectsBootstrap(input: {
 		.filter((session): session is PiboSession => Boolean(session));
 	const sessions = collectProjectSessionTreeSessions(
 		rootSessions,
-		input.context.channelContext.findSessions({ ownerScope: input.webSession.ownerScope }),
+		listSharedSessions(input.context),
 	);
 	const requestedSession = input.piboSessionId ? sessions.find((session) => session.id === input.piboSessionId) : undefined;
 	const selectedSession = requestedSession ?? sessions.find((session) => session.id === selectedProject.currentMainSessionId) ?? sessions[0];
-	indexOwnedSessions(input.state.sessionQuery, sessions);
+	indexSharedSessions(input.state.sessionQuery, sessions);
 	const nodes = await buildSessionNodes(sessions, input.state.sessionQuery.listSessions(), selectedProject.projectFolder, new Map(), { skipPiMetadataFallback: true });
 	applyProjectSessionArchiveState(nodes, new Map(projectSessions.map((projectSession) => [projectSession.piboSessionId, Boolean(projectSession.archived)])));
 	const workflowLifecycleEvents = input.state.workflowLifecycleEventStore.listEvents({
@@ -3113,9 +3108,9 @@ async function buildProjectsBootstrap(input: {
 	});
 	return {
 		identity: input.webSession.authSession.identity,
-		personalProject,
+		sharedDefaultProject,
 		project: selectedProject,
-		projects: listOwnedProjects(input.state, input.webSession, { includeArchived: input.includeArchived }),
+		projects: listSharedProjects(input.state, input.webSession, { includeArchived: input.includeArchived }),
 		projectSessions,
 		workflowLifecycleEvents,
 		...(selectedSession ? { session: selectedSession, selectedPiboSessionId: selectedSession.id } : {}),
@@ -3201,8 +3196,8 @@ function submitProjectWorkflowHumanAction(input: {
 	piboSessionId: string;
 	body: ChatProjectWorkflowHumanActionBody;
 }): Response {
-	const project = requireOwnedProject(input.state, input.webSession, input.projectId);
-	const session = requireOwnedSession(input.context, input.webSession, input.piboSessionId);
+	const project = requireSharedProject(input.state, input.webSession, input.projectId);
+	const session = requireSharedSession(input.context, input.piboSessionId);
 	const projectSession = input.state.projectService.getProjectSession(session.id);
 	if (!projectSession || projectSession.projectId !== project.id) throw new PiboWebHttpError("Project workflow session not found", 404);
 	if (!projectSession.workflowRunId) {
@@ -3323,8 +3318,7 @@ async function sendProjectMessage(input: {
 	const text = normalizeMessageText(input.body.text);
 	const clientTxnId = normalizeClientTxnId(input.body.clientTxnId);
 	if (typeof input.body.piboSessionId !== "string") throw new PiboWebHttpError("Project session is required", 400);
-	const selectedSession = input.context.channelContext.getSession(input.body.piboSessionId);
-	if (!selectedSession || selectedSession.ownerScope !== input.webSession.ownerScope) throw new PiboWebHttpError("Session not found", 404);
+	const selectedSession = requireSharedSession(input.context, input.body.piboSessionId);
 	const projectSession = input.state.projectService.getProjectSession(selectedSession.id);
 	if (!projectSession) throw new PiboWebHttpError("Project session not found", 404);
 	const actorId = principalIdFor(input.webSession);
@@ -3681,7 +3675,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					requestedRoomId,
 				);
 				const selectedRoomId = selectedRoomIdForSession(state, context, selectedSession);
-				const ownedSessions = listOwnedSessions(context, webSession);
+				const ownedSessions = listSharedSessions(context);
 				const roomSessions = visibleSessionsInRoom({
 					state,
 					context,
@@ -3695,7 +3689,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					ownerScope: webSession.ownerScope,
 					principalId,
 				});
-				indexOwnedSessions(state.sessionQuery, roomSessions);
+				indexSharedSessions(state.sessionQuery, roomSessions);
 				const sessionUnreadCounts = buildSessionUnreadCounts(state, ownedSessions, principalId);
 				const sessions = await buildSessionNodes(
 					roomSessions,
@@ -3736,7 +3730,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					requestedRoomId,
 				);
 				const selectedRoomId = selectedRoomIdForSession(state, context, selectedSession);
-				const ownedSessions = listOwnedSessions(context, webSession);
+				const ownedSessions = listSharedSessions(context);
 				const roomSessions = visibleSessionsInRoom({
 					state,
 					context,
@@ -3753,7 +3747,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				if (markRead) {
 					markSessionsRead(state, sessionSubtree(ownedSessions, selectedSession.id), principalId);
 				}
-				indexOwnedSessions(state.sessionQuery, roomSessions);
+				indexSharedSessions(state.sessionQuery, roomSessions);
 				const sessionUnreadCounts = buildSessionUnreadCounts(state, ownedSessions, principalId);
 				const [sessions, catalog] = await Promise.all([
 					buildSessionNodes(
@@ -3840,7 +3834,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/projects` && request.method === "GET") {
 				const webSession = await requireSession(request, context);
-				return responseJson({ projects: listOwnedProjects(state, webSession, { includeArchived: parseBooleanSearchParam(url, "includeArchived") }) });
+				return responseJson({ projects: listSharedProjects(state, webSession, { includeArchived: parseBooleanSearchParam(url, "includeArchived") }) });
 			}
 
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/projects` && request.method === "POST") {
@@ -3849,7 +3843,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const body = await readJsonBody<ChatProjectCreateBody>(request);
 				try {
 					const project = state.projectService.createProject({
-						ownerScope: webSession.ownerScope,
+						ownerScope: getSharedAppLegacyOwnerScope(),
 						name: normalizeRoomName(body.name),
 						description: normalizeProjectDescription(body.description),
 						projectFolder: normalizeProjectPath(body.projectFolder),
@@ -3867,7 +3861,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const webSession = await requireSession(request, context);
 				const body = await readJsonBody<ChatProjectPatchBody>(request);
 				try {
-					requireOwnedProject(state, webSession, projectResource.projectId, { includeArchived: true });
+					requireSharedProject(state, webSession, projectResource.projectId, { includeArchived: true });
 					const project = state.projectService.updateProject(projectResource.projectId, {
 						...(body.name !== undefined ? { name: normalizeRoomName(body.name) } : {}),
 						...(body.description !== undefined ? { description: normalizeProjectDescription(body.description) ?? null } : {}),
@@ -3886,7 +3880,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const webSession = await requireSession(request, context);
 				const body = await readJsonBody<ChatProjectDeleteBody>(request);
 				try {
-					requireOwnedProject(state, webSession, projectResource.projectId, { includeArchived: true });
+					requireSharedProject(state, webSession, projectResource.projectId, { includeArchived: true });
 					return responseJson(state.projectService.deleteProject(projectResource.projectId, {
 						confirmName: normalizeRoomDeleteConfirmation(body.confirmName),
 						deleteFiles: body.deleteFiles === true,
@@ -3916,7 +3910,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				requireSameOriginJsonRequest(request);
 				const webSession = await requireSession(request, context);
 				const body = await readJsonBody<ChatProjectSessionCreateBody>(request);
-				const project = requireOwnedProject(state, webSession, projectResource.projectId);
+				const project = requireSharedProject(state, webSession, projectResource.projectId);
 				const profile = resolveCreateSessionProfile(context, defaultProfile, body.profile);
 				const workflowSelection = resolveProjectWorkflowSelection(state, body.workflowId, body.workflowVersion, { requireExplicitWorkflowId: true, requireExplicitVersion: true });
 				const publishedWorkflow = resolvePublishedWorkflowDefinitionForProfile(state, workflowSelection, profile);
@@ -3982,8 +3976,8 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 			if (workflowSessionStart && request.method === "POST") {
 				requireSameOriginJsonRequest(request);
 				const webSession = await requireSession(request, context);
-				const session = requireOwnedSession(context, webSession, workflowSessionStart.piboSessionId);
-				const project = requireOwnedProject(state, webSession, workflowSessionStart.projectId);
+				const session = requireSharedSession(context, workflowSessionStart.piboSessionId);
+				const project = requireSharedProject(state, webSession, workflowSessionStart.projectId);
 				const projectSession = state.projectService.getProjectSession(session.id);
 				if (!projectSession || projectSession.projectId !== project.id) throw new PiboWebHttpError("Project workflow session not found", 404);
 				const snapshot = state.projectService.getWorkflowSessionSnapshotForSession(session.id);
@@ -4088,7 +4082,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				requireSameOriginJsonRequest(request);
 				const webSession = await requireSession(request, context);
 				const body = await readJsonBody<ChatProjectSessionCreateBody>(request);
-				const project = requireOwnedProject(state, webSession, projectResource.projectId);
+				const project = requireSharedProject(state, webSession, projectResource.projectId);
 				const profile = resolveCreateSessionProfile(context, defaultProfile, body.profile);
 				const workflowId = normalizeLegacyProjectWorkflowId(body.workflowId);
 				const session = createProjectChatSession({ state, context, webSession, project, profile, workflowId });
@@ -4120,7 +4114,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 			const requestedSignal = signalResource(url.pathname);
 			if (requestedSignal && request.method === "GET") {
 				const webSession = await requireSession(request, context);
-				requireOwnedSession(context, webSession, requestedSignal.piboSessionId);
+				requireSharedSession(context, requestedSignal.piboSessionId);
 				const snapshot = requestedSignal.kind === "session"
 					? context.channelContext.snapshotSignalSession?.(requestedSignal.piboSessionId)
 					: context.channelContext.snapshotSignalTree?.(requestedSignal.piboSessionId);
@@ -4132,7 +4126,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const webSession = await requireSession(request, context);
 				const rootPiboSessionId = url.searchParams.get("rootPiboSessionId") ?? url.searchParams.get("piboSessionId");
 				if (!rootPiboSessionId) throw new PiboWebHttpError("rootPiboSessionId is required", 400);
-				requireOwnedSession(context, webSession, rootPiboSessionId);
+				requireSharedSession(context, rootPiboSessionId);
 				if (!context.channelContext.snapshotSignalTree || !context.channelContext.subscribeSignalTree) {
 					throw new PiboWebHttpError("Signal registry is not available", 503);
 				}
@@ -4468,14 +4462,14 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/agents` && request.method === "GET") {
 				const webSession = await requireSession(request, context);
 				const includeArchived = parseBooleanSearchParam(url, "includeArchived");
-				return responseJson({ agents: serializeCustomAgents(state.agentStore.list(webSession.ownerScope, { includeArchived }), context) });
+				return responseJson({ agents: serializeCustomAgents(state.agentStore.list(undefined, { includeArchived }), context) });
 			}
 
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/agents` && request.method === "POST") {
 				requireSameOriginJsonRequest(request);
 				const webSession = await requireSession(request, context);
 				const body = await readJsonBody<ChatAgentBody>(request);
-				const input = createAgentInput(webSession.ownerScope, body);
+				const input = createAgentInput(getSharedAppLegacyOwnerScope(), body);
 				requireAgentProfileNameAvailable(state, context, input.displayName);
 				const agent = state.agentStore.create(input);
 				context.channelContext.upsertProfile?.(createCustomAgentProfileDefinition(agent));
@@ -4487,29 +4481,29 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 			if (patchAgentId && request.method === "PATCH") {
 				requireSameOriginJsonRequest(request);
 				const webSession = await requireSession(request, context);
-				const existing = requireOwnedAgent(state.agentStore.get(patchAgentId), webSession);
+				const existing = requireSharedAgent(state.agentStore.get(patchAgentId));
 				const body = await readJsonBody<ChatAgentBody>(request);
 				const update = createAgentUpdate(body);
 				const archived = normalizeAgentArchived(body.archived);
 				if (update.displayName) requireAgentProfileNameAvailable(state, context, update.displayName, existing.id);
 				const updated = Object.keys(update).length ? state.agentStore.update(patchAgentId, update) : existing;
-				const afterUpdate = requireOwnedAgent(updated, webSession);
+				const afterUpdate = requireSharedAgent(updated);
 				const agent = archived === undefined ? afterUpdate : state.agentStore.setArchived(patchAgentId, archived);
-				const owned = requireOwnedAgent(agent, webSession);
-				if (existing.profileName !== owned.profileName) context.channelContext.removeProfile?.(existing.profileName);
-				if (owned.archivedAt) {
-					context.channelContext.removeProfile?.(owned.profileName);
+				const sharedAgent = requireSharedAgent(agent);
+				if (existing.profileName !== sharedAgent.profileName) context.channelContext.removeProfile?.(existing.profileName);
+				if (sharedAgent.archivedAt) {
+					context.channelContext.removeProfile?.(sharedAgent.profileName);
 				} else {
-					context.channelContext.upsertProfile?.(createCustomAgentProfileDefinition(owned));
+					context.channelContext.upsertProfile?.(createCustomAgentProfileDefinition(sharedAgent));
 				}
 				invalidateBootstrapCatalogCache(state);
-				return responseJson({ agent: serializeCustomAgent(owned, context) });
+				return responseJson({ agent: serializeCustomAgent(sharedAgent, context) });
 			}
 
 			if (patchAgentId && request.method === "DELETE") {
 				requireSameOriginJsonRequest(request);
 				const webSession = await requireSession(request, context);
-				const agent = requireOwnedAgent(state.agentStore.get(patchAgentId), webSession);
+				const agent = requireSharedAgent(state.agentStore.get(patchAgentId));
 				if (!agent.archivedAt) throw new PiboWebHttpError("Archive the agent before permanently deleting it.", 400);
 				const body = await readJsonBody<ChatAgentBody>(request);
 				const confirmName = normalizeAgentDeleteConfirmation(body.confirmName);
@@ -4554,7 +4548,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					roomId,
 				);
 				const selectedRoomId = selectedRoomIdForSession(state, context, selectedSession);
-				const ownedSessions = listOwnedSessions(context, webSession);
+				const ownedSessions = listSharedSessions(context);
 				const roomSessions = visibleSessionsInRoom({
 					state,
 					context,
@@ -4564,7 +4558,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					selectedRoomId,
 					includeArchived,
 				});
-				indexOwnedSessions(state.sessionQuery, roomSessions);
+				indexSharedSessions(state.sessionQuery, roomSessions);
 				const nodes = await buildSessionNodes(
 					roomSessions,
 					state.sessionQuery.listSessions(),
@@ -4595,7 +4589,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 								ownerScope: webSession.ownerScope,
 								principalId: principalIdFor(webSession),
 							});
-				const created = createPersonalChatSession(context, webSession, profile, room);
+				const created = createSharedChatSession(context, webSession, profile, room);
 				state.sessionQuery.upsertSession(created);
 				return responseJson({ session: created }, { status: 201 });
 			}
@@ -4631,8 +4625,8 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 			if (roomResource && roomResource.child === undefined && request.method === "GET") {
 				const webSession = await requireSession(request, context);
 				const room = requireRoom(state, roomResource.roomId, webSession, "read");
-				const ownedSessions = sessionsInRoom(listOwnedSessions(context, webSession), room.id);
-				indexOwnedSessions(state.sessionQuery, ownedSessions);
+				const ownedSessions = sessionsInRoom(listSharedSessions(context), room.id);
+				indexSharedSessions(state.sessionQuery, ownedSessions);
 				return responseJson({
 					room,
 					member: state.roomService.getMember(room.id, principalIdFor(webSession)),
@@ -4704,7 +4698,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				requireSameOriginJsonRequest(request);
 				const webSession = await requireSession(request, context);
 				const room = requireRoom(state, roomResource.roomId, webSession, "read");
-				const roomSessions = sessionsInRoomSubtree(listOwnedSessions(context, webSession), room.id);
+				const roomSessions = sessionsInRoomSubtree(listSharedSessions(context), room.id);
 				markSessionsRead(state, roomSessions, principalIdFor(webSession));
 				return responseJson({ ok: true, roomId: room.id, readSessionIds: roomSessions.map((session) => session.id) });
 			}
@@ -4714,7 +4708,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				requireSameOriginJsonRequest(request);
 				const webSession = await requireSession(request, context);
 				const selectedSession = resolveRequestedSession(state, context, webSession, defaultProfile, sessionAction.piboSessionId);
-				markSessionsRead(state, sessionSubtree(listOwnedSessions(context, webSession), selectedSession.id), principalIdFor(webSession));
+				markSessionsRead(state, sessionSubtree(listSharedSessions(context), selectedSession.id), principalIdFor(webSession));
 				return responseJson({ ok: true, piboSessionId: selectedSession.id });
 			}
 
@@ -4744,7 +4738,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const updated = updateSession(selectedSession.id, update);
 				if (!updated) throw new PiboWebHttpError("Session not found", 404);
 				if (body.archived === true) {
-					markSessionsRead(state, sessionSubtree(listOwnedSessions(context, webSession), selectedSession.id), principalIdFor(webSession));
+					markSessionsRead(state, sessionSubtree(listSharedSessions(context), selectedSession.id), principalIdFor(webSession));
 				}
 				state.sessionQuery.upsertSession(updated);
 				return responseJson({ session: updated });
@@ -4798,7 +4792,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const latestStreamId = state.timelineQuery.getLatestStreamId({ piboSessionId: selectedSession.id });
 				const version = createTraceViewVersion({
 					session: selectedSession,
-					sessions: listOwnedSessions(context, webSession),
+					sessions: listSharedSessions(context),
 					events: lastEventSequence > 0
 						? [{ id: `seq:${lastEventSequence}`, eventSequence: lastEventSequence, createdAt: indexedSession?.lastActivityAt ?? "" }]
 						: [],
@@ -4847,7 +4841,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					url.searchParams.get("piboSessionId") || undefined,
 				);
 				state.sessionQuery.upsertSession(selectedSession);
-				const ownedSessions = listOwnedSessions(context, webSession);
+				const ownedSessions = listSharedSessions(context);
 				const indexedSession = state.sessionQuery.getSession(selectedSession.id);
 				const metadataStartedAt = performance.now();
 				const metadata = await loadPiSessionMetadata(selectedSession, selectedSession.workspace ?? process.cwd());
@@ -4939,7 +4933,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				}
 				const session = context.channelContext.getSession(piboSessionId);
 				if (!session) throw new PiboWebHttpError("Session not found", 404);
-				const ownedSessions = listOwnedSessions(context, await requireSession(request, context));
+				const ownedSessions = listSharedSessions(context);
 				const indexedSession = state.sessionQuery.getSession(piboSessionId);
 				const trace = await buildTraceView({
 					session,

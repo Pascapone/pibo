@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
+import { getSharedAppLegacyOwnerScope } from "../shared-app.js";
 import { piboHomePath } from "./pibo-home.js";
 import { sanitizeTelemetryStaleThresholdSettings, type TelemetryStaleThresholdSettings } from "./telemetry-staleness.js";
 
@@ -23,15 +24,23 @@ type PiboUserSettingsState = {
 
 export function loadPiboUserSettings(ownerScope: string): PiboUserSettings {
 	const state = readState();
-	return sanitizeUserSettings(state.users[ownerScope]);
+	return sanitizeUserSettings(selectSharedAppUserSettings(state, ownerScope));
 }
 
 export function updatePiboUserSettings(ownerScope: string, patch: Partial<PiboUserSettings>): PiboUserSettings {
 	const state = readState();
-	const next = sanitizeUserSettings({ ...state.users[ownerScope], ...patch });
-	state.users[ownerScope] = next;
+	const sharedKey = getSharedAppLegacyOwnerScope();
+	const next = sanitizeUserSettings({ ...selectSharedAppUserSettings(state, ownerScope), ...patch });
+	state.users[sharedKey] = next;
 	writeState(state);
 	return next;
+}
+
+function selectSharedAppUserSettings(state: PiboUserSettingsState, legacyOwnerScope?: string): PiboUserSettings | undefined {
+	const sharedKey = getSharedAppLegacyOwnerScope();
+	return state.users[sharedKey]
+		?? (legacyOwnerScope ? state.users[legacyOwnerScope] : undefined)
+		?? state.users[Object.keys(state.users).sort()[0] ?? ""];
 }
 
 export function sanitizeShortcutSettings(value: unknown): PiboShortcutSettings {

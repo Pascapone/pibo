@@ -123,7 +123,7 @@ test("selected profile exposes Web Annotation tools during runtime assembly", as
 	}
 });
 
-test("annotation list and get tools derive owner/session from runtime context and bound output", async () => {
+test("annotation list and get tools derive shared app/session from runtime context and bound output", async () => {
 	const store = new WebAnnotationStore({ path: ":memory:" });
 	try {
 		store.createAnnotation(createAnnotationInput({ id: "ann_visible", note: "v".repeat(400) }), new Date("2026-05-16T10:00:00.000Z"));
@@ -133,23 +133,23 @@ test("annotation list and get tools derive owner/session from runtime context an
 
 		const list = await execute(tools.get("web_annotations_list"), { limit: 10 });
 		assert.equal(list.details.ok, true);
-		assert.deepEqual(list.details.annotations.map((annotation) => annotation.id), ["ann_visible"]);
-		assert.ok(list.details.annotations[0].note.endsWith("…"));
+		assert.deepEqual(list.details.annotations.map((annotation) => annotation.id), ["ann_other_owner", "ann_visible"]);
+		assert.ok(list.details.annotations.find((annotation) => annotation.id === "ann_visible").note.endsWith("…"));
 
 		const detail = await execute(tools.get("web_annotations_get"), { annotationId: "ann_visible" });
 		assert.equal(detail.details.ok, true);
 		assert.equal(detail.details.annotation.target.sourceHints[0].kind, "test-id");
 		assert.equal(detail.details.annotation.target.htmlHint.includes("<button"), true);
 
-		const unauthorized = await execute(createToolMap(store, { ownerScope: "user:b", piboSessionId: "ps_a" }).get("web_annotations_get"), { annotationId: "ann_visible" });
-		assert.equal(unauthorized.isError, true);
-		assert.match(unauthorized.content[0].text, /not found/);
+		const crossAccount = await execute(createToolMap(store, { ownerScope: "user:b", piboSessionId: "ps_a" }).get("web_annotations_get"), { annotationId: "ann_visible" });
+		assert.equal(crossAccount.details.ok, true);
+		assert.equal(crossAccount.details.annotation.id, "ann_visible");
 	} finally {
 		store.close();
 	}
 });
 
-test("annotation lifecycle tools enforce authorization and valid terminal transitions", async () => {
+test("annotation lifecycle tools enforce valid terminal transitions with shared app access", async () => {
 	const store = new WebAnnotationStore({ path: ":memory:" });
 	try {
 		store.createAnnotation(createAnnotationInput({ id: "ann_lifecycle" }), new Date("2026-05-16T10:00:00.000Z"));
@@ -168,8 +168,8 @@ test("annotation lifecycle tools enforce authorization and valid terminal transi
 		assert.equal(repeat.isError, true);
 		assert.match(repeat.content[0].text, /already resolved/);
 
-		const otherOwner = await execute(createToolMap(store, { ownerScope: "user:b", piboSessionId: "ps_a" }).get("web_annotations_dismiss"), { annotationId: "ann_lifecycle", reason: "not mine" });
-		assert.equal(otherOwner.isError, true);
+		const otherAccount = await execute(createToolMap(store, { ownerScope: "user:b", piboSessionId: "ps_a" }).get("web_annotations_dismiss"), { annotationId: "ann_lifecycle", reason: "not mine" });
+		assert.equal(otherAccount.isError, true);
 		assert.equal(store.getAnnotation("user:a", "ps_a", "ann_lifecycle").status, "resolved");
 
 		const applyingDismiss = await execute(tools.get("web_annotations_dismiss"), { annotationId: "ann_applying", reason: "not actionable" });
@@ -181,7 +181,7 @@ test("annotation lifecycle tools enforce authorization and valid terminal transi
 	}
 });
 
-test("annotation tools keep explicit session access within owner scope", async () => {
+test("annotation tools keep explicit session access session-scoped and app-global", async () => {
 	const store = new WebAnnotationStore({ path: ":memory:" });
 	try {
 		store.createAnnotation(createAnnotationInput({ id: "ann_session_a" }), new Date("2026-05-16T10:00:00.000Z"));
@@ -193,11 +193,11 @@ test("annotation tools keep explicit session access within owner scope", async (
 		assert.deepEqual(defaultList.details.annotations.map((annotation) => annotation.id), ["ann_session_a"]);
 
 		const explicitList = await execute(tools.get("web_annotations_list"), { piboSessionId: "ps_b", limit: 10 });
-		assert.deepEqual(explicitList.details.annotations.map((annotation) => annotation.id), ["ann_session_b"]);
+		assert.deepEqual(explicitList.details.annotations.map((annotation) => annotation.id), ["ann_other_owner_session_b", "ann_session_b"]);
 
 		const crossOwnerGet = await execute(tools.get("web_annotations_get"), { piboSessionId: "ps_b", annotationId: "ann_other_owner_session_b" });
-		assert.equal(crossOwnerGet.isError, true);
-		assert.match(crossOwnerGet.content[0].text, /not found/);
+		assert.equal(crossOwnerGet.details.ok, true);
+		assert.equal(crossOwnerGet.details.annotation.id, "ann_other_owner_session_b");
 	} finally {
 		store.close();
 	}

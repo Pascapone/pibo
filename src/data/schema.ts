@@ -1,13 +1,12 @@
 import type { DatabaseSync } from "node:sqlite";
 
-export const PIBO_DATA_SCHEMA_VERSION = 2;
+export const PIBO_DATA_SCHEMA_VERSION = 3;
 
 export function applyPiboDataSchema(db: DatabaseSync): void {
 	db.exec(`
 		CREATE TABLE IF NOT EXISTS sessions (
 			id TEXT PRIMARY KEY,
 			pi_session_id TEXT UNIQUE,
-			owner_scope TEXT NOT NULL,
 			room_id TEXT,
 			root_session_id TEXT,
 			parent_id TEXT,
@@ -30,7 +29,6 @@ export function applyPiboDataSchema(db: DatabaseSync): void {
 
 		CREATE TABLE IF NOT EXISTS rooms (
 			id TEXT PRIMARY KEY,
-			owner_scope TEXT NOT NULL,
 			name TEXT NOT NULL,
 			topic TEXT,
 			type TEXT NOT NULL,
@@ -43,13 +41,6 @@ export function applyPiboDataSchema(db: DatabaseSync): void {
 			updated_at TEXT NOT NULL
 		);
 
-		CREATE TABLE IF NOT EXISTS room_members (
-			room_id TEXT NOT NULL,
-			principal_id TEXT NOT NULL,
-			role TEXT NOT NULL,
-			joined_at TEXT NOT NULL,
-			PRIMARY KEY(room_id, principal_id)
-		);
 
 		CREATE TABLE IF NOT EXISTS payloads (
 			id TEXT PRIMARY KEY,
@@ -159,29 +150,24 @@ export function applyPiboDataSchema(db: DatabaseSync): void {
 			updated_at TEXT NOT NULL
 		);
 
-		CREATE TABLE IF NOT EXISTS principal_session_stats (
-			session_id TEXT NOT NULL,
-			principal_id TEXT NOT NULL,
+		CREATE TABLE IF NOT EXISTS app_session_read_state (
+			session_id TEXT PRIMARY KEY,
 			unread_count INTEGER NOT NULL DEFAULT 0,
 			last_read_stream_id INTEGER NOT NULL DEFAULT 0,
 			last_read_message_sequence INTEGER NOT NULL DEFAULT 0,
 			last_read_at TEXT,
-			updated_at TEXT NOT NULL,
-			PRIMARY KEY(session_id, principal_id)
+			updated_at TEXT NOT NULL
 		);
 
-		CREATE TABLE IF NOT EXISTS principal_room_stats (
-			room_id TEXT NOT NULL,
-			principal_id TEXT NOT NULL,
+		CREATE TABLE IF NOT EXISTS app_room_read_state (
+			room_id TEXT PRIMARY KEY,
 			unread_count INTEGER NOT NULL DEFAULT 0,
 			last_read_stream_id INTEGER NOT NULL DEFAULT 0,
 			last_read_at TEXT,
-			updated_at TEXT NOT NULL,
-			PRIMARY KEY(room_id, principal_id)
+			updated_at TEXT NOT NULL
 		);
 
 		CREATE TABLE IF NOT EXISTS session_navigation (
-			owner_scope TEXT NOT NULL,
 			room_id TEXT,
 			session_id TEXT PRIMARY KEY,
 			root_session_id TEXT,
@@ -361,8 +347,6 @@ export function applyPiboDataSchema(db: DatabaseSync): void {
 			updated_at TEXT NOT NULL
 		);
 
-		CREATE INDEX IF NOT EXISTS idx_sessions_owner_activity
-			ON sessions(owner_scope, archived_at, last_activity_at DESC);
 		CREATE INDEX IF NOT EXISTS idx_sessions_room_activity
 			ON sessions(room_id, archived_at, last_activity_at DESC);
 		CREATE INDEX IF NOT EXISTS idx_sessions_parent_activity
@@ -371,8 +355,6 @@ export function applyPiboDataSchema(db: DatabaseSync): void {
 			ON sessions(origin_id, updated_at DESC);
 		CREATE INDEX IF NOT EXISTS idx_sessions_channel_kind_activity
 			ON sessions(channel, kind, updated_at DESC);
-		CREATE INDEX IF NOT EXISTS idx_room_members_principal
-			ON room_members(principal_id, room_id);
 		CREATE INDEX IF NOT EXISTS idx_event_log_session_stream
 			ON event_log(session_id, stream_id);
 		CREATE INDEX IF NOT EXISTS idx_event_log_room_stream
@@ -386,8 +368,8 @@ export function applyPiboDataSchema(db: DatabaseSync): void {
 			ON chat_messages(session_id, sequence);
 		CREATE INDEX IF NOT EXISTS idx_observations_session_sequence
 			ON observations(session_id, sequence);
-		CREATE INDEX IF NOT EXISTS idx_session_navigation_owner_room_sort
-			ON session_navigation(owner_scope, room_id, archived_at, sort_key DESC);
+		CREATE INDEX IF NOT EXISTS idx_session_navigation_room_sort
+			ON session_navigation(room_id, archived_at, sort_key DESC);
 		CREATE INDEX IF NOT EXISTS idx_session_navigation_root
 			ON session_navigation(root_session_id, parent_id);
 		CREATE INDEX IF NOT EXISTS idx_telemetry_turns_session_updated

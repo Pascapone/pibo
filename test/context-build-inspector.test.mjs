@@ -7,6 +7,7 @@ import { InitialSessionContext } from "../dist/core/profiles.js";
 import { inspectPiboContextBuild } from "../dist/core/context-build.js";
 import { createDefaultPiboProfile } from "../dist/plugins/builtin.js";
 import { createWebSearchToolProfile } from "../dist/tools/web-search.js";
+import { LEGACY_SHARED_APP_OWNER_SCOPE } from "../dist/shared-app.js";
 
 function findNode(nodes, predicate) {
 	for (const node of nodes) {
@@ -38,7 +39,6 @@ test("context build snapshot exposes runtime context and provider-backed web sea
 		cwd,
 		profile,
 		sessionContext: {
-			userId: "user_test",
 			ownerScope: "user:user_test",
 			piboSessionId: "ps_test",
 			piboRoomId: "room_test",
@@ -55,8 +55,10 @@ test("context build snapshot exposes runtime context and provider-backed web sea
 
 	const runtimeContext = findNode(snapshot.nodes, (node) => node.path === "pibo://runtime/session-context.md");
 	assert.ok(runtimeContext, "runtime session context node should exist");
+	assert.match(runtimeContext.hydratedText, /App context: shared-app/);
 	assert.match(runtimeContext.hydratedText, /Pibo Session ID: ps_test/);
 	assert.match(runtimeContext.hydratedText, /Pibo Room ID: room_test/);
+	assert.doesNotMatch(runtimeContext.hydratedText, /User ID|Owner scope|user_test|user:user_test/);
 	assert.ok(runtimeContext.estimatedTokens > 0, "context file node should include direct estimated tokens");
 	assert.ok(runtimeContext.estimatedSubtreeTokens >= runtimeContext.estimatedTokens, "context file node should include subtree estimated tokens");
 
@@ -69,4 +71,30 @@ test("context build snapshot exposes runtime context and provider-backed web sea
 	assert.equal(providerPayload.payloadJson.provider, "openai");
 	assert.equal(providerPayload.payloadJson.openAiWebSearch.search_context_size, "low");
 	assert.deepEqual(providerPayload.payloadJson.openAiWebSearch.filters.allowed_domains, ["example.com"]);
+});
+
+test("runtime context is the same shared app context for different legacy owners", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pibo-runtime-shared-context-"));
+	const profile = new InitialSessionContext({
+		profileName: "shared-context-test",
+		autoContextFiles: false,
+		builtinToolNames: ["read"],
+	});
+	const baseContext = {
+		piboSessionId: "ps_shared",
+		piboRoomId: "room_shared",
+		timezone: "UTC",
+	};
+
+	const [first, second] = await Promise.all([
+		inspectPiboContextBuild({ cwd, profile, sessionContext: { ...baseContext, ownerScope: "user:alpha" } }),
+		inspectPiboContextBuild({ cwd, profile, sessionContext: { ...baseContext, ownerScope: "user:beta" } }),
+	]);
+	const firstContext = findNode(first.nodes, (node) => node.path === "pibo://runtime/session-context.md");
+	const secondContext = findNode(second.nodes, (node) => node.path === "pibo://runtime/session-context.md");
+
+	assert.equal(firstContext.hydratedText, secondContext.hydratedText);
+	assert.match(firstContext.hydratedText, /App context: shared-app/);
+	assert.doesNotMatch(firstContext.hydratedText, /user:alpha|user:beta|Owner scope|User ID/);
+	assert.equal(LEGACY_SHARED_APP_OWNER_SCOPE, "shared:app");
 });

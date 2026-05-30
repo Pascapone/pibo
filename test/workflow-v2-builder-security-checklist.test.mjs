@@ -6,6 +6,19 @@ async function readSource(relativePath) {
 	return readFile(new URL(`../${relativePath}`, import.meta.url), "utf8");
 }
 
+async function readWorkflowUiSourceBundle() {
+	return (await Promise.all([
+		"src/apps/chat-ui/src/WorkflowsArea.tsx",
+		"src/apps/chat-ui/src/workflows/WorkflowBuilderNodeEditors.tsx",
+		"src/apps/chat-ui/src/workflows/WorkflowGraphCanvas.tsx",
+		"src/apps/chat-ui/src/workflows/WorkflowInspectorsPanel.tsx",
+		"src/apps/chat-ui/src/workflows/WorkflowLibraryPanel.tsx",
+		"src/apps/chat-ui/src/workflows/WorkflowRawIrEditor.tsx",
+		"src/apps/chat-ui/src/workflows/WorkflowPromptAssetEditor.tsx",
+		"src/apps/chat-ui/src/workflows/WorkflowVersionViewer.tsx",
+	].map(readSource))).join("\n");
+}
+
 function assertAllMatch(source, checks) {
 	for (const [label, pattern] of checks) {
 		assert.match(source, pattern, label);
@@ -14,7 +27,7 @@ function assertAllMatch(source, checks) {
 
 test("Workflow V2 builder/security checklist covers builder authoring and validation surfaces", async () => {
 	const builderTests = await readSource("test/workflow-v2-builder-editing-raw-ir.test.mjs");
-	const workflowsAreaSource = await readSource("src/apps/chat-ui/src/WorkflowsArea.tsx");
+	const workflowsAreaSource = await readWorkflowUiSourceBundle();
 	const webChannelTests = await readSource("test/web-channel.test.mjs");
 
 	assertAllMatch(builderTests, [
@@ -49,7 +62,7 @@ test("Workflow V2 builder/security checklist covers builder authoring and valida
 test("Workflow V2 builder/security checklist covers registered composition boundaries", async () => {
 	const compositionTests = await readSource("test/workflow-v2-composition-boundaries.test.mjs");
 	const stateMappingTests = await readSource("test/workflow-v2-state-mapping-ui.test.mjs");
-	const workflowsAreaSource = await readSource("src/apps/chat-ui/src/WorkflowsArea.tsx");
+	const workflowsAreaSource = await readWorkflowUiSourceBundle();
 	const webChannelTests = await readSource("test/web-channel.test.mjs");
 
 	assertAllMatch(compositionTests, [
@@ -87,8 +100,11 @@ test("Workflow V2 builder/security checklist covers registered composition bound
 test("Workflow V2 builder/security checklist covers explicit security non-goals", async () => {
 	const securityTests = await readSource("test/workflow-v2-security-boundary.test.mjs");
 	const deferralTests = await readSource("test/workflow-v2-deferrals.test.mjs");
-	const workflowsAreaSource = await readSource("src/apps/chat-ui/src/WorkflowsArea.tsx");
-	const webAppSource = await readSource("src/apps/chat/web-app.ts");
+	const workflowsAreaSource = await readWorkflowUiSourceBundle();
+	const workflowSecuritySource = [
+		await readSource("src/apps/chat/workflow-v2-security-validation.ts"),
+		await readSource("src/apps/chat/workflow-json-schema-validation.ts"),
+	].join("\n");
 	const webChannelTests = await readSource("test/web-channel.test.mjs");
 
 	assertAllMatch(securityTests, [
@@ -112,7 +128,7 @@ test("Workflow V2 builder/security checklist covers explicit security non-goals"
 		["visible non-goals name templates, slash commands, tools, raw XState, and Zod", /No raw XState editing, workflow templates, workflow slash commands, or workflow tools for agents[\s\S]*No Zod schema authoring/],
 	]);
 
-	assertAllMatch(webAppSource, [
+	assertAllMatch(workflowSecuritySource, [
 		["server keeps inline executable paths out of V2", /WorkflowSecurityError\.inlineExecutableCode/],
 		["server rejects raw XState authoring", /WorkflowSecurityError\.rawXStateAuthoring/],
 		["server rejects hidden LLM coercion", /WorkflowSecurityError\.hiddenLlmCoercion/],

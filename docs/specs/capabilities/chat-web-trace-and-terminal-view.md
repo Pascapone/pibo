@@ -44,13 +44,13 @@ The active frontend session view is the compact terminal in `src/apps/chat-ui/sr
 
 ## Requirements
 
-### Requirement: Trace APIs are authenticated, owner-scoped, and cache-aware
+### Requirement: Trace APIs are authenticated, shared-app, and cache-aware
 
 The system MUST serve trace summaries and trace views only for sessions the authenticated web user can access, and MUST expose version metadata that allows clients to avoid rebuilding unchanged traces.
 
 #### Current
 
-`/api/chat/trace/summary` and `/api/chat/trace` call `requireSession`, resolve the requested Pibo Session through the current owner context, compute a trace version, return `ETag` and `x-pibo-trace-version`, and return `304` when the request version matches. Structural traces are cached by session id, version, event limit, and page cursor.
+`/api/chat/trace/summary` and `/api/chat/trace` call `requireSession`, resolve the requested Pibo Session through shared resource semantics, compute a trace version, return `ETag` and `x-pibo-trace-version`, and return `304` when the request version matches. Structural traces are cached by session id, version, event limit, and page cursor.
 
 #### Acceptance
 
@@ -246,7 +246,7 @@ The Chat Web session surface MUST expose only supported active session views to 
 ## Constraints
 
 - **Compatibility:** Trace node types and fields are consumed by Chat Web, debug tooling, and tests; additions must be backward-compatible.
-- **Security / Privacy:** Trace APIs must use authenticated owner scope and must not expose raw events by default.
+- **Security / Privacy:** Trace APIs must require authenticated access and must not expose raw events by default.
 - **Performance:** The server should page event reads, cache structural traces, avoid loading raw payloads unless requested, and let the terminal virtualize long sessions.
 - **Identity:** Live updates should preserve unchanged node and row identity to avoid unnecessary rerenders and lost expansion state.
 - **Source of Truth:** Current Pibo Session records, stored Chat Web events, Pi transcript metadata, and runtime status are authoritative over legacy docs.
@@ -279,7 +279,7 @@ The Chat Web session surface MUST expose only supported active session views to 
 
 | Requirement | Scenario / Story | Code Basis | Status |
 |---|---|---|---|
-| REQ-001 Trace APIs are authenticated, owner-scoped, and cache-aware | Unchanged trace summary | `src/apps/chat/web-app.ts` trace endpoints | Implemented |
+| REQ-001 Trace APIs are authenticated, shared-app, and cache-aware | Unchanged trace summary | `src/apps/chat/web-app.ts` trace endpoints | Implemented |
 | REQ-002 Trace versions change when observable trace inputs change | Child session updates trace version | `src/apps/chat/trace.ts`, `test/chat-trace-materialization.test.mjs` | Implemented |
 | REQ-003 Trace materialization produces stable ordered execution nodes | Tool call lifecycle | `src/shared/trace-engine.ts`, `src/shared/trace-order.ts`, `src/shared/trace-types.ts` | Implemented |
 | REQ-004 Persisted transcript echoes do not duplicate live event nodes | Transcript catches up after streaming | `src/shared/trace-engine.ts`, `src/apps/chat/trace.ts` | Implemented |

@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 async function readWorkflowsAreaSource() {
-	return readFile(new URL("../src/apps/chat-ui/src/WorkflowsArea.tsx", import.meta.url), "utf8");
+	return readFile(new URL("../src/apps/chat-ui/src/workflows/WorkflowLibraryPanel.tsx", import.meta.url), "utf8");
 }
 
 test("Workflow Library renders source/status action metadata from catalog actions", async () => {

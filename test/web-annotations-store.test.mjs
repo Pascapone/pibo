@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { LEGACY_SHARED_APP_OWNER_SCOPE } from "../dist/shared-app.js";
 import { renderAttachedWebAnnotations, WEB_ANNOTATION_LIMITS, WebAnnotationStore } from "../dist/web-annotations/index.js";
 
 function createAnnotationInput(overrides = {}) {
@@ -26,7 +27,7 @@ function createAnnotationInput(overrides = {}) {
 	};
 }
 
-test("web annotation bindings persist by owner and session without deleting annotations", () => {
+test("web annotation bindings persist by shared app and session without deleting annotations", () => {
 	const store = new WebAnnotationStore({ path: ":memory:" });
 	try {
 		const binding = store.createBinding({
@@ -37,6 +38,7 @@ test("web annotation bindings persist by owner and session without deleting anno
 			url: "http://localhost:3000/settings",
 			targetId: "target-a",
 		}, new Date("2026-05-16T10:00:00.000Z"));
+		assert.equal(binding.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
 		assert.equal(binding.state, "active");
 
 		const injected = store.patchBinding("user:a", "ps_a", binding.id, {
@@ -140,19 +142,22 @@ test("web annotations normalize oversized and secret-like payloads", () => {
 	}
 });
 
-test("web annotations enforce owner and session isolation", () => {
+test("web annotations are app-global across historical owner scopes while staying session-scoped", () => {
 	const store = new WebAnnotationStore({ path: ":memory:" });
 	try {
 		const ownerA = store.createAnnotation(createAnnotationInput({ id: "ann-owner-a" }));
-		store.createAnnotation(createAnnotationInput({ id: "ann-owner-b", ownerScope: "user:b" }));
+		store.db.exec("ALTER TABLE web_annotations ADD COLUMN owner_scope TEXT NOT NULL DEFAULT 'shared:app'");
+		const historicalUser = store.createAnnotation(createAnnotationInput({ id: "ann-owner-b", ownerScope: "user:b" }));
+		store.db.prepare("UPDATE web_annotations SET owner_scope = ? WHERE id = ?").run("user:historical", historicalUser.id);
 		store.createAnnotation(createAnnotationInput({ id: "ann-session-b", piboSessionId: "ps_b" }));
 
-		assert.deepEqual(store.listAnnotations({ ownerScope: "user:a", piboSessionId: "ps_a" }).map((annotation) => annotation.id), [ownerA.id]);
-		assert.equal(store.getAnnotation("user:b", "ps_a", ownerA.id), undefined);
+		assert.equal(ownerA.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
+		assert.deepEqual(store.listAnnotations({ ownerScope: "user:a", piboSessionId: "ps_a" }).map((annotation) => annotation.id), [historicalUser.id, ownerA.id]);
+		assert.equal(store.getAnnotation("user:b", "ps_a", ownerA.id)?.id, ownerA.id);
 		assert.equal(store.getAnnotation("user:a", "ps_b", ownerA.id), undefined);
-		assert.equal(store.patchAnnotation("user:b", "ps_a", ownerA.id, { status: "resolved" }), undefined);
-		assert.equal(store.patchAnnotation("user:a", "ps_b", ownerA.id, { status: "resolved" }), undefined);
-		assert.equal(store.getAnnotation("user:a", "ps_a", ownerA.id)?.status, "open");
+		assert.equal(store.patchAnnotation("user:b", "ps_a", ownerA.id, { status: "resolved" })?.status, "resolved");
+		assert.equal(store.patchAnnotation("user:a", "ps_b", ownerA.id, { status: "acknowledged" }), undefined);
+		assert.equal(store.getAnnotation("user:a", "ps_a", ownerA.id)?.status, "resolved");
 	} finally {
 		store.close();
 	}

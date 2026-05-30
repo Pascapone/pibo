@@ -7,9 +7,9 @@
 
 ## Why
 
-Pibo users need to compose their own agent profiles without changing plugin source code. A custom agent should be a durable, owner-scoped profile that selects tools, skills, context files, subagents, MCP servers, Pi packages, model options, thinking options, built-in tools, automatic context, and run control.
+Pibo users need to compose their own agent profiles without changing plugin source code. A custom agent should be a durable shared-app profile that selects tools, skills, context files, subagents, MCP servers, Pi packages, model options, thinking options, built-in tools, automatic context, and run control.
 
-The Agent Designer keeps this behavior in the product boundary. Plugin profiles remain read-only. Custom agents are user-owned records that become dynamic profiles for routed sessions.
+The Agent Designer keeps this behavior in the product boundary. Plugin profiles remain read-only. Custom agents are shared-app records that become dynamic profiles for routed sessions.
 
 ## Goal
 
@@ -25,7 +25,7 @@ Custom agents are persisted in `chat-agents.sqlite`. Each active record is regis
 
 ### In Scope
 
-- Owner-scoped custom-agent listing, creation, update, archive, restore, and permanent deletion.
+- Shared-app custom-agent listing, creation, update, archive, restore, and permanent deletion.
 - Dynamic profile registration for active custom agents.
 - Agent Designer catalog data for selectable capabilities.
 - Selections for native tools, skills, context files, subagents, MCP servers, Pi packages, models, thinking levels, fast mode, built-in tools, automatic context files, and run control.
@@ -33,15 +33,15 @@ Custom agents are persisted in `chat-agents.sqlite`. Each active record is regis
 - Agent-scoped context-file creation from the Agent Designer.
 - Broken context-file reporting for saved custom agents.
 - Legacy profile-name migration from `custom-agent:<id>` names to valid profile names.
-- Deleting sessions owned by a permanently deleted custom-agent profile.
+- Deleting sessions that use a permanently deleted custom-agent profile.
 
 ### Out of Scope
 
 - Editing plugin profiles in place — plugin profiles are read-only.
-- Sharing custom agents across owners.
+- Per-account custom-agent isolation or sharing controls.
 - Version history for custom-agent definitions.
 - Automatic repair of missing selected tools, packages, skills, or context files.
-- Multi-user role permissions beyond the current authenticated owner-scope boundary.
+- Team, role, admin, or per-resource permissions.
 
 ## Requirements
 
@@ -66,26 +66,26 @@ The system MUST expose a catalog that lets the Agent Designer show available pro
 - WHEN the app fetches bootstrap or `/api/chat/agent-catalog`
 - THEN the UI can render selectable capabilities and read-only plugin profiles.
 
-### Requirement: Custom agents are durable and owner-scoped
+### Requirement: Custom agents are durable shared-app resources
 
-The system MUST store custom agents with an owner scope and MUST list only agents owned by the authenticated user through Chat Web APIs.
+The system MUST store custom agents as shared app resources and MUST list the same active agents for all allowed accounts.
 
 #### Current
 
-`CustomAgentStore` persists rows in `chat_agents`. `GET /api/chat/agents` filters by `webSession.ownerScope` and can include archived records when requested.
+`CustomAgentStore` persists rows in `chat_agents`. Legacy owner columns may remain in older stores, but active list/get/create/update/archive/restore/delete paths do not filter by auth account.
 
 #### Acceptance
 
-- Creating an agent stores an id beginning with `agent_`, an owner scope, a profile name, selected capabilities, timestamps, and optional archive state.
-- Listing agents through Chat Web returns only agents for the current web session owner scope.
+- Creating an agent stores an id beginning with `agent_`, a profile name, selected capabilities, timestamps, and optional archive state.
+- Listing agents through Chat Web returns shared app agents for any allowed account.
 - Archived agents are excluded by default and included when `includeArchived=true`.
-- Store-level reads can list all agents for profile synchronization, but authenticated APIs stay owner-scoped.
+- Dynamic profile synchronization registers all active shared custom agents.
 
-#### Scenario: User lists custom agents
+#### Scenario: Allowed user lists custom agents
 
-- GIVEN two users have custom agents in the same local store
-- WHEN one user calls `GET /api/chat/agents`
-- THEN only that user's agents are returned.
+- GIVEN Account A created a custom agent
+- WHEN Account B calls `GET /api/chat/agents`
+- THEN that custom agent is returned.
 
 ### Requirement: Agent names are valid unique profile names
 
@@ -272,14 +272,14 @@ The system MUST require a custom agent to be archived before permanent deletion,
 - Deleting an active custom agent fails with a message to archive first.
 - Deleting an archived custom agent requires `confirmName` equal to the agent profile name.
 - Permanent deletion removes the custom-agent record and dynamic profile registration.
-- Permanent deletion removes sessions owned by the current user that use that profile, including descendant child sessions.
+- Permanent deletion removes shared sessions that use that profile, including descendant child sessions.
 - Deletion returns the deleted agent id and deleted Pibo Session ids.
 
 #### Scenario: Delete archived agent and sessions
 
-- GIVEN an archived custom agent has sessions owned by the current user
+- GIVEN an archived custom agent has sessions that use its profile
 - WHEN the user confirms deletion with the exact profile name
-- THEN the agent record is deleted, its profile is unregistered, and its owned sessions and child sessions are deleted.
+- THEN the agent record is deleted, its profile is unregistered, and matching sessions and child sessions are deleted.
 
 ### Requirement: Chat Web mutations are authenticated same-origin JSON requests
 
@@ -287,20 +287,20 @@ The system MUST protect custom-agent mutations with the same Chat Web authentica
 
 #### Current
 
-Create, update, archive, restore, and delete routes call `requireSameOriginJsonRequest` and `requireSession`. Ownership is checked through `requireOwnedAgent` for per-agent mutations.
+Create, update, archive, restore, and delete routes call `requireSameOriginJsonRequest` and `requireSession`. Per-agent mutations resolve the shared resource by id.
 
 #### Acceptance
 
 - Mutating requests without a valid web session are rejected.
 - Mutating requests without JSON content type or same-origin origin are rejected.
-- Updating, archiving, restoring, or deleting an agent not owned by the current owner scope returns not found.
-- Read-only list routes require authentication and remain owner-scoped.
+- Updating, archiving, restoring, or deleting an unknown agent returns not found.
+- Read-only list routes require authentication and return shared app agents.
 
-#### Scenario: Cross-owner update
+#### Scenario: Cross-account update
 
-- GIVEN user A owns a custom agent
-- WHEN user B sends a PATCH request for that agent id
-- THEN the request fails as unavailable for user B.
+- GIVEN Account A created a custom agent
+- WHEN Account B sends a PATCH request for that agent id
+- THEN the request updates the shared custom agent if the mutation is otherwise valid.
 
 ## Edge Cases
 
@@ -308,13 +308,13 @@ Create, update, archive, restore, and delete routes call `requireSameOriginJsonR
 - Native tool selections are resolved during profile construction; stale native-tool references may fail profile registration until corrected.
 - Archived agents keep their names reserved so restoring them does not collide with newer records.
 - Renaming an active custom agent affects future session creation but does not automatically migrate existing Pibo Sessions that already store the old profile name.
-- Deleting a custom agent removes owned sessions for that profile; sessions owned by another owner scope are not deleted through that user's request.
+- Deleting a custom agent removes shared sessions for that profile.
 - The store may contain legacy rows with old profile names; listing or reading must migrate them before returning data.
 
 ## Constraints
 
-- **Product Boundary:** Pibo owns custom-agent records, dynamic profile registration, owner scoping, and designer APIs. Plugin profiles remain plugin-owned.
-- **Security / Privacy:** Custom-agent APIs MUST require authenticated Chat Web sessions. Mutations MUST require same-origin JSON requests and owner checks.
+- **Product Boundary:** Pibo owns custom-agent records, dynamic profile registration, and designer APIs. Plugin profiles remain plugin-owned.
+- **Security / Privacy:** Custom-agent APIs MUST require authenticated Chat Web sessions. Mutations MUST require same-origin JSON requests; auth is an access gate, not a custom-agent ownership boundary.
 - **Compatibility:** Existing plugin profiles and aliases MUST remain selectable and MUST not be overwritten by custom-agent names.
 - **Reliability:** Custom-agent definitions MUST be durable in SQLite and recoverable across gateway restarts.
 - **Context Economy:** Runtime profiles load only the selected skills, context files, packages, tools, and automatic context allowed by the custom-agent settings.
@@ -322,19 +322,19 @@ Create, update, archive, restore, and delete routes call `requireSameOriginJsonR
 ## Success Criteria
 
 - [ ] SC-001: An authenticated user can create a valid custom agent and immediately create a Pibo Session with that profile.
-- [ ] SC-002: A user sees only their own custom agents through Chat Web APIs, with archived agents hidden by default.
+- [ ] SC-002: All allowed accounts see the same shared custom agents through Chat Web APIs, with archived agents hidden by default.
 - [ ] SC-003: Invalid, duplicate, or plugin-conflicting agent names are rejected before persistence.
 - [ ] SC-004: Archiving removes a dynamic profile; restoring registers it again.
 - [ ] SC-005: A custom-agent runtime profile applies selected tools, skills, context files, subagents, MCP servers, Pi packages, models, thinking options, built-in tools, automatic context, and run control.
 - [ ] SC-006: Stale skill and context-file references do not prevent profile creation, and broken context files are visible in serialized agent data.
 - [ ] SC-007: Unknown Pi package ids are rejected, and built-in tool selections are filtered to supported built-in tools.
-- [ ] SC-008: Permanent deletion requires archive plus exact name confirmation and deletes owned sessions for that profile.
+- [ ] SC-008: Permanent deletion requires archive plus exact name confirmation and deletes shared sessions for that profile.
 
 ## Assumptions and Open Questions
 
 ### Assumptions
 
-- Owner scope is the current authorization boundary for custom-agent management.
+- Authentication is the access gate for custom-agent management; custom agents are shared app resources.
 - Profile name equality is the correct collision check for dynamic profile registration.
 - Custom-agent edits affect future runtime creation; existing active runtimes are not rebuilt automatically.
 
@@ -350,7 +350,7 @@ Create, update, archive, restore, and delete routes call `requireSameOriginJsonR
 | Requirement | Scenario / Story | Code basis | Status |
 |---|---|---|---|
 | REQ-001 Agent catalog is discoverable for the designer | Open Agent Designer | `src/apps/chat/web-app.ts`, `src/apps/chat-ui/src/App.tsx` | Implemented |
-| REQ-002 Custom agents are durable and owner-scoped | User lists custom agents | `src/apps/chat/agent-store.ts`, `src/apps/chat/web-app.ts` | Implemented |
+| REQ-002 Custom agents are durable shared-app resources | User lists custom agents | `src/apps/chat/agent-store.ts`, `src/apps/chat/web-app.ts` | Implemented |
 | REQ-003 Agent names are valid unique profile names | Plugin profile conflict | `src/apps/chat/agent-store.ts`, `src/apps/chat/web-app.ts` | Implemented |
 | REQ-004 Active custom agents register dynamic profiles | Archive removes profile | `src/apps/chat/web-app.ts`, `src/apps/chat/agent-profiles.ts` | Implemented |
 | REQ-005 Custom profile creation applies selected capabilities | Agent with run control and package selection | `src/apps/chat/agent-profiles.ts`, `src/core/profiles.ts` | Implemented |

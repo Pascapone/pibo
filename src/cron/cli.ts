@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import { getSharedAppLegacyOwnerScope } from "../shared-app.js";
 import { parseFriendlySchedule } from "./schedule.js";
 import { createDefaultPiboCronStore } from "./store.js";
 import type { PiboCronTarget } from "./types.js";
@@ -26,15 +27,18 @@ function printJson(value: unknown): void {
 	console.log(JSON.stringify(value, null, 2));
 }
 
-function requireOwnerScope(value: string | undefined): string {
+function ownerScope(value: string | undefined): string {
 	const trimmed = value?.trim();
-	if (!trimmed) throw new Error("--owner-scope is required for cron operations");
-	return trimmed;
+	if (trimmed && trimmed !== getSharedAppLegacyOwnerScope()) console.error("--owner-scope is deprecated for Cron and ignored; Cron jobs are app-global.");
+	return getSharedAppLegacyOwnerScope();
 }
 
 function targetFromOptions(options: { room?: string; personal?: boolean; principalId?: string; ownerScope: string }): PiboCronTarget {
 	if (options.room) return { kind: "room", roomId: options.room };
-	if (options.personal || options.principalId) return { kind: "personal", principalId: options.principalId || options.ownerScope };
+	if (options.personal || options.principalId) {
+		if (options.principalId) console.error("--principal-id is deprecated for Cron and ignored; the default target is shared.");
+		return { kind: "personal", principalId: getSharedAppLegacyOwnerScope() };
+	}
 	throw new Error("Choose --room <roomId> or --personal");
 }
 
@@ -86,7 +90,7 @@ export async function runCronCli(argv = process.argv): Promise<void> {
 	const program = new Command();
 	program.name("pibo cron").description("Manage scheduled Pibo jobs").helpOption("-h, --help");
 	program.option("--store <path>", "Cron store path");
-	program.option("--owner-scope <scope>", "Owner scope for local CLI operations (required except status)");
+	program.option("--owner-scope <scope>", "Deprecated no-op; Cron jobs are app-global", process.env.PIBO_OWNER_SCOPE);
 
 	program.command("status").description("Show cron store status").option("--json", "Print JSON").action((options) => {
 		const store = createDefaultPiboCronStore({ path: program.opts().store });
@@ -101,9 +105,9 @@ export async function runCronCli(argv = process.argv): Promise<void> {
 	});
 
 	program.command("list").description("List cron jobs").option("--all", "Include disabled jobs").option("--json", "Print JSON").action((options) => {
-		const scope = requireOwnerScope(program.opts().ownerScope);
+		ownerScope(program.opts().ownerScope);
 		const store = createDefaultPiboCronStore({ path: program.opts().store });
-		const jobs = store.listJobs({ ownerScope: scope, includeDisabled: options.all });
+		const jobs = store.listJobs({ includeDisabled: options.all });
 		if (options.json) printJson(jobs);
 		else for (const job of jobs) console.log(`${job.id}\t${job.enabled ? "enabled" : "disabled"}\t${job.state.nextRunAt ?? "-"}\t${job.name}`);
 		store.close();
@@ -113,8 +117,8 @@ export async function runCronCli(argv = process.argv): Promise<void> {
 		.description("Create a cron job")
 		.argument("[cronExpr...]", "Raw 5-field cron expression, e.g. \"0 8 * * *\"")
 		.option("--room <roomId>", "Target room")
-		.option("--personal", "Target personal chat")
-		.option("--principal-id <id>", "Principal id for personal target")
+		.option("--personal", "Target the shared default chat")
+		.option("--principal-id <id>", "Deprecated no-op for shared default target")
 		.option("--agent <profile>", "Agent/profile", "base")
 		.option("--name <name>", "Job name")
 		.requiredOption("--prompt <text>", "Prompt/task")
@@ -131,7 +135,7 @@ export async function runCronCli(argv = process.argv): Promise<void> {
 		.option("--delete-after-run", "Delete successful one-shot job")
 		.option("--json", "Print JSON")
 		.action((cronExprParts: string[], options) => {
-			const scope = requireOwnerScope(program.opts().ownerScope);
+			const scope = ownerScope(program.opts().ownerScope);
 			const store = createDefaultPiboCronStore({ path: program.opts().store });
 			const positionalCron = Array.isArray(cronExprParts) && cronExprParts.length ? cronExprParts.join(" ") : undefined;
 			const normalized = scheduleFromOptions(options, positionalCron);
@@ -156,8 +160,8 @@ export async function runCronCli(argv = process.argv): Promise<void> {
 		.argument("<id>", "Cron job id")
 		.argument("[cronExpr...]", "Raw 5-field cron expression, e.g. \"0 8 * * *\"")
 		.option("--room <roomId>", "Target room")
-		.option("--personal", "Target personal chat")
-		.option("--principal-id <id>", "Principal id for personal target")
+		.option("--personal", "Target the shared default chat")
+		.option("--principal-id <id>", "Deprecated no-op for shared default target")
 		.option("--agent <profile>", "Agent/profile")
 		.option("--name <name>", "Job name")
 		.option("--description <text>", "Job description")
@@ -177,7 +181,7 @@ export async function runCronCli(argv = process.argv): Promise<void> {
 		.option("--keep-after-run", "Keep job after successful one-shot run")
 		.option("--json", "Print JSON")
 		.action((id: string, cronExprParts: string[], options) => {
-			const scope = requireOwnerScope(program.opts().ownerScope);
+			const scope = ownerScope(program.opts().ownerScope);
 			const store = createDefaultPiboCronStore({ path: program.opts().store });
 			const positionalCron = Array.isArray(cronExprParts) && cronExprParts.length ? cronExprParts.join(" ") : undefined;
 			const normalized = hasScheduleOptions(options, positionalCron) ? scheduleFromOptions(options, positionalCron) : undefined;
@@ -204,7 +208,7 @@ export async function runCronCli(argv = process.argv): Promise<void> {
 
 	for (const [name, enabled] of [["pause", false], ["resume", true]] as const) {
 		program.command(name).argument("<id>").description(enabled ? "Enable a cron job" : "Disable a cron job").option("--json", "Print JSON").action((id, options) => {
-			const scope = requireOwnerScope(program.opts().ownerScope);
+			const scope = ownerScope(program.opts().ownerScope);
 			const store = createDefaultPiboCronStore({ path: program.opts().store });
 			const job = store.updateJob(scope, id, { enabled });
 			if (!job) throw new Error("Cron job not found");
@@ -215,7 +219,7 @@ export async function runCronCli(argv = process.argv): Promise<void> {
 	}
 
 	program.command("remove").argument("<id>").description("Delete a cron job").option("--json", "Print JSON").action((id, options) => {
-		const scope = requireOwnerScope(program.opts().ownerScope);
+		const scope = ownerScope(program.opts().ownerScope);
 		const store = createDefaultPiboCronStore({ path: program.opts().store });
 		const removed = store.removeJob(scope, id);
 		if (options.json) printJson({ removed });
@@ -224,9 +228,9 @@ export async function runCronCli(argv = process.argv): Promise<void> {
 	});
 
 	program.command("runs").description("List cron runs").option("--job <id>", "Filter by job").option("--json", "Print JSON").action((options) => {
-		const scope = requireOwnerScope(program.opts().ownerScope);
+		ownerScope(program.opts().ownerScope);
 		const store = createDefaultPiboCronStore({ path: program.opts().store });
-		const runs = store.listRuns({ ownerScope: scope, jobId: options.job });
+		const runs = store.listRuns({ jobId: options.job });
 		if (options.json) printJson(runs);
 		else for (const run of runs) console.log(`${run.id}\t${run.status}\t${run.createdAt}\t${run.piboSessionId ?? "-"}`);
 		store.close();

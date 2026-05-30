@@ -179,7 +179,7 @@ export class WebAnnotationCdpService {
 	private requireBinding(context: WebAnnotationBindingContext, bindingId: string): WebAnnotationBinding {
 		const id = requireNonEmpty(bindingId, "bindingId");
 		const binding = this.store.getBinding(context.ownerScope, context.piboSessionId, id);
-		if (!binding || binding.state === "removed") throw new Error("Web Annotation binding was not found for this owner/session");
+		if (!binding || binding.state === "removed") throw new Error("Web Annotation binding was not found for this session");
 		return binding;
 	}
 

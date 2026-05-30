@@ -107,12 +107,12 @@ const REGISTRY: CliToolEntry[] = [
     guides: [RALPH_GUIDE],
     notes: [
       'Ralph is built into the pibo CLI; no external runtime installation is required.',
-      'Use the current Pibo owner scope and target room/personal context when creating jobs.',
+      'Ralph jobs are app-global; use room targets or the shared default target when creating jobs.',
       'Prefer templates for repeatable jobs, and use --json for automation-safe inspection.',
     ],
     agentContextSnippet: [
       'Continuous Pibo agent job runner for implementation/debug loops.',
-      'Use `pibo ralph templates`, then create with `pibo ralph add --template <id> --owner-scope <scope> --room <room-id> --start`.',
+      'Use `pibo ralph templates`, then create with `pibo ralph add --template <id> --room <room-id> --start`.',
       'Inspect/control with `pibo ralph list --json`, `runs --job <id> --json`, `stop <id>`, `cancel <id>`.',
       'Guide: `pibo tools guide ralph ralph`.',
     ].join('\n'),

@@ -6,6 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { CustomAgentStore } from "../dist/apps/chat/agent-store.js";
 import { upsertPiPackage } from "../dist/pi-packages/store.js";
+import { LEGACY_SHARED_APP_OWNER_SCOPE } from "../dist/shared-app.js";
 
 async function withCwd(cwd, run) {
 	const previous = process.cwd();
@@ -21,6 +22,7 @@ test("custom agent store migrates legacy profile names before listing", () => {
 	const path = join(mkdtempSync(join(tmpdir(), "pibo-agent-store-")), "agents.sqlite");
 	const store = new CustomAgentStore(path);
 	const db = new DatabaseSync(path);
+	db.exec("ALTER TABLE chat_agents ADD COLUMN owner_scope TEXT NOT NULL DEFAULT 'shared:app'");
 	db.prepare(`
 		INSERT INTO chat_agents (
 			id,
@@ -53,7 +55,7 @@ test("custom agent store migrates legacy profile names before listing", () => {
 		"2026-05-01T00:00:00.000Z",
 	);
 
-	const [agent] = store.list("user:test");
+	const [agent] = store.list("user:another-account");
 	assert.equal(agent.profileName, "test-agent-2");
 	assert.equal(agent.displayName, "test-agent-2");
 	assert.equal(
@@ -144,6 +146,7 @@ test("custom agent store archives and deletes agents", () => {
 	const path = join(mkdtempSync(join(tmpdir(), "pibo-agent-store-")), "agents.sqlite");
 	const store = new CustomAgentStore(path);
 	const agent = store.create({ ownerScope: "user:test", displayName: "archive-me" });
+	assert.equal(agent.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
 
 	assert.deepEqual(store.list("user:test").map((item) => item.profileName), ["archive-me"]);
 	const archived = store.setArchived(agent.id, true);
@@ -159,17 +162,67 @@ test("custom agent store archives and deletes agents", () => {
 	store.close();
 });
 
-test("custom agent names are globally unique across owners", () => {
+test("custom agent names are globally unique and lists are app-global across legacy owners", () => {
 	const path = join(mkdtempSync(join(tmpdir(), "pibo-agent-store-")), "agents.sqlite");
 	const store = new CustomAgentStore(path);
-	store.create({ ownerScope: "user:first", displayName: "shared-agent" });
+	const first = store.create({ ownerScope: "user:first", displayName: "shared-agent" });
+	assert.equal(first.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
 
 	assert.throws(
 		() => store.create({ ownerScope: "user:second", displayName: "shared-agent" }),
 		/Agent name "shared-agent" already exists/,
 	);
 	assert.deepEqual(store.list("user:first").map((agent) => agent.profileName), ["shared-agent"]);
-	assert.deepEqual(store.list("user:second"), []);
+	assert.deepEqual(store.list("user:second").map((agent) => agent.profileName), ["shared-agent"]);
+
+	store.close();
+});
+
+test("custom agent store lists historical shared and user agents for every account", () => {
+	const path = join(mkdtempSync(join(tmpdir(), "pibo-agent-store-")), "agents.sqlite");
+	const db = new DatabaseSync(path);
+	db.exec(`
+		CREATE TABLE chat_agents (
+			id TEXT PRIMARY KEY,
+			profile_name TEXT NOT NULL UNIQUE,
+			owner_scope TEXT NOT NULL,
+			display_name TEXT NOT NULL,
+			description TEXT,
+			native_tools_json TEXT NOT NULL,
+			skills_json TEXT NOT NULL,
+			context_files_json TEXT NOT NULL,
+			subagents_json TEXT NOT NULL,
+			builtin_tools TEXT NOT NULL,
+			run_control INTEGER NOT NULL,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		)
+	`);
+	const insert = db.prepare(`
+		INSERT INTO chat_agents (
+			id,
+			profile_name,
+			owner_scope,
+			display_name,
+			description,
+			native_tools_json,
+			skills_json,
+			context_files_json,
+			subagents_json,
+			builtin_tools,
+			run_control,
+			created_at,
+			updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`);
+	insert.run("agent_shared", "shared-history", LEGACY_SHARED_APP_OWNER_SCOPE, "shared-history", null, "[]", "[]", "[]", "[]", "default", 0, "2026-05-01T00:00:00.000Z", "2026-05-01T00:00:00.000Z");
+	insert.run("agent_user", "user-history", "user:legacy-account", "user-history", null, "[]", "[]", "[]", "[]", "default", 0, "2026-05-02T00:00:00.000Z", "2026-05-02T00:00:00.000Z");
+	db.close();
+
+	const store = new CustomAgentStore(path);
+	assert.deepEqual(store.list("user:other-account").map((agent) => agent.profileName).sort(), ["shared-history", "user-history"]);
+	assert.deepEqual(store.list(LEGACY_SHARED_APP_OWNER_SCOPE).map((agent) => agent.profileName).sort(), ["shared-history", "user-history"]);
+	assert.equal(store.get("agent_user").ownerScope, "user:legacy-account");
 
 	store.close();
 });

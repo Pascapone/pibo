@@ -238,7 +238,7 @@ export function CronArea({ bootstrap, mobileSidebarOpen = false, onCloseMobileSi
 						<div>
 							<div className="text-xs uppercase tracking-[0.16em] text-[#11a4d4] font-bold">Scheduled Pibo Sessions</div>
 							<h1 className="text-2xl font-bold text-slate-100">{selectedJob ? selectedJob.name : "New cron job"}</h1>
-							<p className="text-sm text-slate-400">Each run creates a visible Pibo Session in the selected Personal Chat or Room.</p>
+							<p className="text-sm text-slate-400">Each run creates a visible Pibo Session in the selected Shared Chat or Room.</p>
 						</div>
 						<div className="flex items-center gap-2">
 							{selectedJobIsRecurring ? <button type="button" onClick={() => void toggleSelectedJobEnabled()} disabled={saving} className={`h-9 px-3 inline-flex items-center gap-2 rounded-sm border disabled:opacity-50 ${selectedJob?.enabled ? "border-amber-500/50 text-amber-300 hover:border-amber-400" : "border-emerald-500/50 text-emerald-300 hover:border-emerald-400"}`}>{selectedJob?.enabled ? <Pause size={14} /> : <Play size={14} />} {selectedJob?.enabled ? "Stop" : "Resume"}</button> : null}
@@ -258,7 +258,7 @@ export function CronArea({ bootstrap, mobileSidebarOpen = false, onCloseMobileSi
 							<div className="space-y-2">
 								<div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Target</div>
 								<div className="grid grid-cols-2 gap-2">
-									<RadioCard name="target-kind" checked={draft.targetKind === "personal"} title="Personal Chat" description="Runs in your personal chat" onChange={() => setDraft({ ...draft, targetKind: "personal" })} />
+									<RadioCard name="target-kind" checked={draft.targetKind === "personal"} title="Shared Chat" description="Runs in the shared default chat" onChange={() => setDraft({ ...draft, targetKind: "personal" })} />
 									<RadioCard name="target-kind" checked={draft.targetKind === "room"} title="Room" description="Uses the room workspace" onChange={() => setDraft({ ...draft, targetKind: "room" })} />
 								</div>
 							</div>

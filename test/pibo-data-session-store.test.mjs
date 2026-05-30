@@ -31,13 +31,14 @@ test("pibo data session store persists structured session fields", () => {
 		store = new PiboDataSessionStore(join(dir, "pibo.sqlite"));
 		const reopened = store.get(created.id);
 		assert.equal(reopened?.piSessionId, "pi_one");
-		assert.equal(reopened?.ownerScope, "user:test");
+		assert.equal(reopened?.ownerScope, "shared:app");
 		assert.equal(reopened?.metadata?.chatRoomId, "room_one");
 		assert.equal(reopened?.activeModel?.id, "gpt-test");
 		const updated = store.update(created.id, { title: "Renamed", activeModel: null });
 		assert.equal(updated?.title, "Renamed");
 		assert.equal(updated?.activeModel, undefined);
-		assert.equal(store.find({ ownerScope: "user:test" }).length, 1);
+		assert.equal(store.find({ ownerScope: "shared:app" }).length, 1);
+		assert.equal(store.find({ ownerScope: "user:test" }).length, 0);
 		assert.equal(store.delete(created.id), true);
 		assert.equal(store.get(created.id), undefined);
 		store.close();

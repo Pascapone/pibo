@@ -212,7 +212,7 @@ function UserTimezoneSettings() {
 
 	return (
 		<div className="border-b border-slate-800 pb-4 mb-4">
-			<div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">User timezone</div>
+			<div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">App timezone</div>
 			<div className="max-w-xl">
 				<select
 					value={draft}
@@ -229,7 +229,7 @@ function UserTimezoneSettings() {
 					))}
 				</select>
 			</div>
-			<div className="mt-2 text-[11px] text-slate-500">Choose a city-based timezone. Changes are saved automatically and loaded into every runtime context together with the user ID and current Pibo Session ID.</div>
+			<div className="mt-2 text-[11px] text-slate-500">Choose a city-based timezone. Changes are saved automatically and loaded into every runtime context together with the current Pibo Session ID.</div>
 			{saving ? <div className="mt-2 text-xs text-slate-400">Saving…</div> : null}
 			{error ? <div className="mt-2 text-xs text-red-300">{error}</div> : null}
 		</div>

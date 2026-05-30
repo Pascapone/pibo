@@ -1,6 +1,7 @@
 import { StringEnum, Type } from "@mariozechner/pi-ai";
 import { defineTool, type ToolDefinition } from "@mariozechner/pi-coding-agent";
 import type { ToolDefinitionContext, ToolProfile } from "../core/profiles.js";
+import { getSharedAppLegacyOwnerScope } from "../shared-app.js";
 import {
 	WEB_ANNOTATION_STATUSES,
 	type WebAnnotation,
@@ -73,12 +74,10 @@ function truncate(value: string | undefined, max = TEXT_LIMIT): string | undefin
 }
 
 function requireContext(context: ToolDefinitionContext, params: ToolParams): RequiredToolContext {
-	const ownerScope = context.ownerScope?.trim();
-	if (!ownerScope) throw new Error("Web Annotation tools require an owner scope from runtime context");
 	const piboSessionId = params.piboSessionId?.trim() || context.piboSessionId?.trim();
 	if (!piboSessionId) throw new Error("Web Annotation tools require a Pibo Session ID from runtime context or piboSessionId input");
 	return {
-		ownerScope,
+		ownerScope: getSharedAppLegacyOwnerScope(),
 		piboSessionId,
 		piboRoomId: context.piboRoomId,
 	};
@@ -255,7 +254,7 @@ function createGetTool(store: WebAnnotationStore, context: ToolDefinitionContext
 				const resolved = requireContext(context, params);
 				const id = requireAnnotationId(params);
 				const annotation = store.getAnnotation(resolved.ownerScope, resolved.piboSessionId, id);
-				if (!annotation) return fail(`Annotation ${id} was not found for this owner/session`, { ok: false, annotationId: id, piboSessionId: resolved.piboSessionId });
+				if (!annotation) return fail(`Annotation ${id} was not found for this session`, { ok: false, annotationId: id, piboSessionId: resolved.piboSessionId });
 				const detail = detailedAnnotation(annotation);
 				return ok(formatJson({ ok: true, annotation: detail }), { ok: true, annotation: detail });
 			} catch (error) {
@@ -287,7 +286,7 @@ function createLifecycleTool(
 				const resolved = requireContext(context, params);
 				const id = requireAnnotationId(params);
 				const existing = getAnnotationForLifecycle(store, resolved, id);
-				if (!existing) return fail(`Annotation ${id} was not found for this owner/session`, { ok: false, annotationId: id, piboSessionId: resolved.piboSessionId });
+				if (!existing) return fail(`Annotation ${id} was not found for this session`, { ok: false, annotationId: id, piboSessionId: resolved.piboSessionId });
 				assertLifecycleTransition(existing, action);
 
 				const updated = action === "acknowledge"

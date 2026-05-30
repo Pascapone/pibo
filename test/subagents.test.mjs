@@ -12,6 +12,7 @@ import { createDefaultPiboPluginRegistry } from "../dist/plugins/builtin.js";
 import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
 import { findCliToolEntry, getInstalledCliToolContextFile } from "../dist/tools/registry.js";
+import { LEGACY_SHARED_APP_OWNER_SCOPE } from "../dist/shared-app.js";
 import { getToolPythonRuntimePaths } from "../dist/tools/python-runtime.js";
 
 const noopSubagentRunner = {
@@ -281,6 +282,7 @@ test("subagent runner emits a parent link event before waiting for the child rep
 		assert.equal(linkEvent.childPiboSessionId, result.piboSessionId);
 		assert.equal(linkEvent.threadKey, "inspect");
 		assert.equal(store.get(result.piboSessionId).parentId, "ps_parent");
+		assert.equal(store.get(result.piboSessionId).ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
 		assert.equal(store.get(result.piboSessionId).metadata.chatRoomId, "room_parent");
 		assert.equal(store.get(result.piboSessionId).metadata.workflowSessionKind, "subagent");
 	} finally {

@@ -6,6 +6,8 @@ import { DatabaseSync } from "node:sqlite";
 import { DEFAULT_BUILTIN_TOOL_NAMES, type BuiltinToolsMode, type ModelProfile } from "../../core/profiles.js";
 import { isPiboThinkingLevel, type PiboThinkingLevel } from "../../core/thinking.js";
 import { findPiPackage } from "../../pi-packages/store.js";
+import { getSharedAppLegacyOwnerScope } from "../../shared-app.js";
+import { sqliteTableColumns } from "../../data/sqlite-schema.js";
 
 export type CustomAgentSubagent = {
 	name: string;
@@ -75,7 +77,7 @@ export type UpdateCustomAgentInput = Partial<Omit<CreateCustomAgentInput, "owner
 type AgentRow = {
 	id: string;
 	profile_name: string;
-	owner_scope: string;
+	owner_scope?: string;
 	display_name: string;
 	description: string | null;
 	native_tools_json: string;
@@ -114,7 +116,6 @@ export class CustomAgentStore {
 			CREATE TABLE IF NOT EXISTS chat_agents (
 				id TEXT PRIMARY KEY,
 				profile_name TEXT NOT NULL UNIQUE,
-				owner_scope TEXT NOT NULL,
 				display_name TEXT NOT NULL,
 				description TEXT,
 				native_tools_json TEXT NOT NULL,
@@ -140,8 +141,6 @@ export class CustomAgentStore {
 				archived_at TEXT
 			);
 
-			CREATE INDEX IF NOT EXISTS idx_chat_agents_owner
-				ON chat_agents(owner_scope, updated_at);
 		`);
 		this.migrateArchivedAtColumn();
 		this.migrateAutoContextFilesColumn();
@@ -154,12 +153,10 @@ export class CustomAgentStore {
 		this.migrateLegacyProfileNames();
 	}
 
-	list(ownerScope?: string, options: { includeArchived?: boolean } = {}): CustomAgentDefinition[] {
+	list(_ownerScope?: string, options: { includeArchived?: boolean } = {}): CustomAgentDefinition[] {
 		this.migrateLegacyProfileNames();
 		const archivedClause = options.includeArchived ? "" : " AND archived_at IS NULL";
-		const rows = ownerScope
-			? this.db.prepare(`SELECT * FROM chat_agents WHERE owner_scope = ?${archivedClause} ORDER BY updated_at DESC`).all(ownerScope)
-			: this.db.prepare(`SELECT * FROM chat_agents WHERE 1 = 1${archivedClause} ORDER BY updated_at DESC`).all();
+		const rows = this.db.prepare(`SELECT * FROM chat_agents WHERE 1 = 1${archivedClause} ORDER BY updated_at DESC`).all();
 		return (rows as AgentRow[]).map(agentFromRow);
 	}
 
@@ -178,7 +175,7 @@ export class CustomAgentStore {
 		const agent: CustomAgentDefinition = {
 			id,
 			profileName,
-			ownerScope: input.ownerScope,
+			ownerScope: getSharedAppLegacyOwnerScope(),
 			displayName: input.displayName,
 			description: input.description,
 			nativeTools: [...(input.nativeTools ?? [])],
@@ -315,12 +312,13 @@ export class CustomAgentStore {
 	}
 
 	private insert(agent: CustomAgentDefinition): void {
+		const hasOwnerScope = sqliteTableColumns(this.db, "chat_agents").has("owner_scope");
 		this.db
 			.prepare(`
 				INSERT INTO chat_agents (
 					id,
 					profile_name,
-					owner_scope,
+					${hasOwnerScope ? "owner_scope," : ""}
 					display_name,
 					description,
 					native_tools_json,
@@ -344,12 +342,12 @@ export class CustomAgentStore {
 					created_at,
 					updated_at,
 					archived_at
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				) VALUES (${Array.from({ length: hasOwnerScope ? 26 : 25 }, () => "?").join(", ")})
 			`)
 			.run(
 				agent.id,
 				agent.profileName,
-				agent.ownerScope,
+				...(hasOwnerScope ? [agent.ownerScope] : []),
 				agent.displayName,
 				agent.description ?? null,
 				JSON.stringify(agent.nativeTools),
@@ -495,7 +493,7 @@ function agentFromRow(row: AgentRow): CustomAgentDefinition {
 	return {
 		id: row.id,
 		profileName: row.profile_name,
-		ownerScope: row.owner_scope,
+		ownerScope: row.owner_scope ?? getSharedAppLegacyOwnerScope(),
 		displayName: row.display_name,
 		description: row.description ?? undefined,
 		nativeTools: parseStringArray(row.native_tools_json),
