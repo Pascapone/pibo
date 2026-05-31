@@ -1,104 +1,76 @@
-# Shared App Without Owner Scope Implementation Insights
+# Final Owner Scope Removal Implementation Insights
 
 This file is mandatory reading at the start of every Ralph session. Keep durable findings here so later sessions do not rediscover the same facts.
 
 ## Product invariants
 
-- Auth is only an access gate. It must not decide product visibility, ownership, routing, workspace selection, profile registration, job control, or write location.
-- US-002 introduced `src/shared-app.ts` with `SHARED_APP_CONTEXT` and `LEGACY_SHARED_APP_OWNER_SCOPE = "shared:app"`. Use this helper for temporary compatibility with legacy `owner_scope` columns; do not derive compatibility owner scope from `authSession.identity.userId`.
-- There is no user space in the target model. All allowed accounts share one app space.
-- Temporary values such as `shared:app` may exist only as legacy storage or migration compatibility. They are not user identity and must not be taught as product ownership.
-- US-003 changed `pibo://runtime/session-context.md`: it now shows `App context: shared-app`, Pibo Session ID, Pibo Room ID, and timezone only. Do not add auth user id, owner scope, or principal id back to agent-visible runtime context.
-- `PiboRuntimeSessionContext.ownerScope` remains only as a deprecated compatibility input for transitional tool definitions (for example stores that still require `owner_scope`). Runtime context text must ignore it.
-- `PiboSessionRouter` now uses `getSharedAppLegacyOwnerScope()` for implicit runtime sessions, derived branch sessions, new subagent sessions, and transitional runtime tool context owner scope. It still preserves stored `workspace`/Pi cwd so opening a historical `user:*` session does not move workspaces.
-- Remaining owner/principal references after the cleanup must be explicitly legacy migration/debug evidence or archived documentation.
-- US-004 converted Chat Web's active session helpers in `src/apps/chat/web-app.ts` from owner-scoped `listOwnedSessions` / `requireOwnedSession` semantics to shared resource helpers. Use `listSharedSessions(context)` and `requireSharedSession(context, piboSessionId)` for Chat session open/list/send/mutation paths; these read historical `shared:app` and `user:*` Pibo sessions together and only require resource existence.
-- During US-005, `ChatRoomService` was moved to app-global list/tree/subtree and resource-existence room access semantics. `room_members` writes/reads are legacy compatibility only and are pinned to the shared app legacy principal; do not reintroduce membership as access control.
-- US-005 chose app-global persisted read-state for the active migration slice. Chat Web should use the shared app legacy principal for `principal_session_stats` until the schema is cleaned up; do not key read/unread by auth account.
-- US-007 converted active Custom Agent behavior to app-global semantics. `CustomAgentStore.list(ownerScope, ...)` now intentionally ignores the legacy owner argument and returns all historical `shared:app` and `user:*` agents; new `CustomAgentStore.create(...)` writes `shared:app` via `getSharedAppLegacyOwnerScope()` regardless of input. Chat Web agent list/create/update/archive/restore/delete routes should use shared resource existence (`requireSharedAgent`) rather than auth-owner equality, and workflow profile picker custom-agent options are app-global.
-- Dynamic custom-agent profile registration is already app-global when callers use `state.agentStore.list()` with no owner filter. Do not reintroduce per-account custom profile registration; if profile-name collisions appear during migration, handle them in the migration story with deterministic renaming rather than runtime owner filtering.
-- US-008 converted active Projects and Workflow resources to app-global behavior. `ChatProjectService.createProject(...)` and `ensurePersonalProject(...)` write the shared app legacy scope regardless of input; `ensurePersonalProject(...)` now creates the shared default Project label `Shared Project` while retaining the old method name for compatibility. Chat Web Project routes should use `listSharedProjects` and `requireSharedProject`, never owner equality. Project session tree collection must start from all shared sessions via `listSharedSessions(context)`, not `findSessions({ ownerScope })`.
-- Workflow draft save paths, Project workflow snapshots, Workflow prompt assets, and Workflow lifecycle events now pin writes to `getSharedAppLegacyOwnerScope()`. Prompt asset list/get and lifecycle event list ignore the legacy owner argument so historical `user:*` and `shared:app` rows are jointly visible. If later migration work needs prompt asset conflicts, `asset_id` is already global in the active schema, so resolve by deterministic rename only when colliding historical data is discovered.
-- US-009 converted active Web Annotation behavior to app-global semantics. `WebAnnotationStore` still exposes legacy owner arguments for compatibility, but create paths write `getSharedAppLegacyOwnerScope()` and list/get/patch/remove/thread/attachment paths ignore owner filters while retaining Pibo-session scoping where the API/tool contract requires a session. `createWebAnnotationsWebApp` must not reject historical `user:*` Pibo sessions by comparing session owner to the authenticated web session; it should resolve bindings through the shared app legacy scope.
-- US-009 made user settings shared at the app level. `loadPiboUserSettings(ownerScope)` and `updatePiboUserSettings(ownerScope, ...)` still accept a legacy owner argument, but reads prefer the shared key and deterministically fall back to historical user entries; writes always persist under `shared:app`. Provider/model defaults, base prompt, compaction prompt, MCP config, skills, context files, and Pi package surfaces audited in this story are file/app-local rather than auth-account keyed in active code.
-- US-010 converted active Ralph job/run/resource behavior to app-global semantics. `PiboRalphStore` still exposes legacy owner arguments and `getOwnedJob(...)` for compatibility, but active methods ignore owner filters; new jobs, runs, and run facts write `shared:app`. Ralph personal/default targets are transitional storage only and normalize to `{ kind: 'personal', principalId: 'shared:app' }`; UI/help should call this the shared default target or `Shared Chat`, not a personal user target. `pibo ralph --owner-scope ...` remains accepted as a deprecated no-op and warns to stderr.
-- US-011 converted active Cron behavior to app-global semantics. `PiboCronStore` still exposes legacy owner arguments and `getOwnedJob(...)` for compatibility, but active methods ignore owner filters; new jobs and runs write `shared:app`. Cron personal/default targets are transitional storage only and normalize to `{ kind: 'personal', principalId: 'shared:app' }`; UI/help should call this the shared default target or `Shared Chat`, not a personal user target. `pibo cron --owner-scope ...` remains accepted as a deprecated no-op and warns to stderr. Persisted yielded-run state uses `owner_pibo_session_id` to tie run-control records to the owning Pibo session/tool lifecycle, not to auth identity; do not convert that field to account ownership.
-- US-012 added the backup-gated migration framework at `pibo data shared-app`. Use `inspect` for read-only counts and `dry-run` for planned normalization/conflict reporting. The implementation lives in `src/data/shared-app-migration.ts`. It reports `owner_scope` and `principal_id` tables across `pibo.sqlite`, `chat-agents.sqlite`, `pibo-ralph.sqlite`, `pibo-cron.sqlite`, `web-annotations.sqlite`, `web-projects.sqlite`, and treats `pibo-events.sqlite/pibo_runs.owner_pibo_session_id` as a technical session-owner lifecycle field with no planned mutation.
-- US-013 made `pibo data shared-app apply --backup <path>` mutate primary `pibo.sqlite` Chat tables. Apply is transactional and idempotent for `sessions.owner_scope`, `rooms.owner_scope`, `session_navigation.owner_scope`, `room_members.principal_id`, `principal_session_stats.principal_id`, and `principal_room_stats.principal_id`. It retires duplicate default-room metadata without deleting room ids or moving sessions; canonical default-room choice prefers an existing `shared:app` default, then most recent `updated_at`, then id. Room-member merges prefer the highest role (`owner` > `admin` > `member` > `viewer`) and earliest `joined_at`. Principal stats merges keep the latest unread count and max read cursor/timestamp values.
-- US-014 extended `pibo data shared-app apply --backup <path>` to auxiliary shared-app stores. It mutates `chat-agents.sqlite`, `pibo-ralph.sqlite`, `pibo-cron.sqlite`, `web-annotations.sqlite`, `web-projects.sqlite`, and the pibo.sqlite workflow persistence tables (`workflow_lifecycle_events`, `workflow_prompt_assets`, `workflow_prompt_asset_revisions`, `workflow_ui_drafts`) inside per-store transactions. Custom Agent duplicate `profile_name` rows are preserved by deterministic renames of non-canonical rows to `<name> legacy <short-hash>` before `owner_scope` normalization; canonical choice prefers `shared:app`, then latest `updated_at`, then earliest `created_at`, then id. Ralph/Cron migrations are metadata-only: normalize `owner_scope` and personal target `principalId` to `shared:app` without changing job/run ids, statuses, schedules, prompts, resource metadata, state, or working directories, including active jobs. `pibo-events.sqlite/pibo_runs.owner_pibo_session_id` remains technical session lifecycle state and is not mutated.
-- US-015 changed fresh schema creation to omit owner/principal product-boundary structures. New `pibo.sqlite` schemas no longer create `sessions.owner_scope`, `rooms.owner_scope`, `session_navigation.owner_scope`, `room_members`, `principal_session_stats`, or `principal_room_stats`; app-global read state uses `app_session_read_state` and `app_room_read_state`. Fresh Custom Agent, Ralph, Cron, Web Annotation, Project, and Workflow persistence schemas no longer create `owner_scope` columns or owner-scoped indexes. Existing legacy stores remain readable/writable through explicit `sqliteTableColumns`/`sqliteTableExists` compatibility checks. Tests that need historical `user:*` fixtures against a fresh store must first add the legacy `owner_scope` column/table they are simulating.
-- US-016 added normal Chat Ralph/Cron API serializers that strip legacy `ownerScope` from job/run responses and strip `principalId` from shared default (`kind: "personal"`) targets. Stores still keep compatibility fields internally; UI response types should treat these fields as optional or absent on normal API payloads.
-- US-016 renamed the active Project default helper/API surface from personal wording to shared-default wording in touched code: `ensureSharedDefaultProject`, `sharedDefaultProjectId`, and Projects bootstrap `sharedDefaultProject`. Historical IDs still use the `personal_...` prefix for compatibility; do not infer current ownership from that prefix.
-- US-016 introduced `test/shared-app-artifact-search-gate.test.mjs`. It is intentionally a user-facing active-source copy gate, not a raw source inventory. It allowlists deprecated CLI compatibility, migration/debug evidence, and historical compatibility literals; update the allowlist with a reason when a remaining owner/principal/personal phrase is deliberately legacy/debug-only.
-- US-017 updated current shared-app docs. `GLOSSARY.md` now defines **Shared App Context**, marks **Owner Scope** as legacy compatibility vocabulary, and uses **Shared Default Chat Room** for the default room. The documentation review report is `docs/reports/us-017-current-docs-owner-principal-review.md`; use it when judging remaining owner/principal terms. Remaining allowed doc matches should be legacy migration/debug compatibility, technical lifecycle ownership by a Pibo Session/store/plugin/CLI module, architecture examples that label legacy fields, or explicit future cleanup questions.
-- US-018 final validation exposed one remaining active owner partition in the Local CLI/TUI session source. `LocalCliSessionSource` should not filter `listSessions`, `openSession`, router event handling, or writes by selected owner scope; it now writes new CLI sessions/navigation and message actor ids with the shared app legacy compatibility value and uses `Shared Chat` for the shared default room. The `/owner` picker can remain a legacy/debug display affordance, but it must not hide sessions or control writes.
-- Debug CLI tests and debug session code must tolerate fresh shared-app schemas without `owner_scope` columns. Use `PRAGMA table_info(...)` or equivalent compatibility projections such as `NULL AS owner_scope` when debug code reads legacy columns.
-- US-018 broad-test cleanup resolved the stale Workflow V2 source-coverage failures by retargeting source inspections at the actual split Chat UI component files (`workflows/*`, `projects/*`, `session-node.tsx`, and `projects/project-session-workflow.tsx`) instead of assuming all Workflow/Project UI text lives in `WorkflowsArea.tsx` or `App.tsx`. Future source-coverage tests should inspect a component bundle when UI code is intentionally split.
-- The legacy `pibo data migrate sessions-to-v2` command must tolerate fresh shared-app schemas without `sessions.owner_scope`. Check `PRAGMA table_info(sessions)` before including legacy owner columns in insert/update SQL.
-- `npm test` Workflow V2 checklist/source-coverage blockers have focused-test fixes in progress, but do not mark US-018 complete until broad `npm test` passes and host Dev deploy/restart/browser validation is approved and completed or explicitly waived.
+- The final product has exactly one product data space: the app.
+- Auth is only an access gate. It must not decide product visibility, ownership, routing, workspace selection, profile registration, job control, read-state, or write location.
+- `shared:app` is not the target model. It is a legacy storage value that must disappear from active runtime code and fresh schemas after the final cutover.
+- Do not replace Owner Scope with another synthetic owner value.
+- Better Auth tables and sessions are out of scope for removal; they remain auth/access state, not product ownership state.
+- Production data mutation, Production migration apply, Production deploy, and Production restart are forbidden unless the user gives separate explicit approval at that time.
 
-## Current starting facts
+## Source docs and inputs
 
-- The current repo has significant owner/principal artifacts in Chat Web, sessions, rooms, Projects, Custom Agents, Workflows, Ralph, Cron, Web Annotations, data schemas, tests, and docs.
-- Historical production data has mixed `shared:app` and `user:*` rows.
-- Data mutation must come after compatibility reads and must be backup-backed, dry-run-first, idempotent, and conflict-aware.
-- Active production services must not be restarted or migrated by the Ralph loop without explicit user approval.
+- Main plan: `docs/plans/final-owner-scope-removal-umbauplan-2026-05-31.md`.
+- Text PRD: `docs/specs/changes/final-owner-scope-removal/prds/final-owner-scope-removal-prd.md`.
+- Ralph stories: `docs/specs/changes/final-owner-scope-removal/prds/final-owner-scope-removal.prd.json`.
+- Inventory summary: `docs/reports/owner-scope-final-removal-inventory-2026-05-31.md`.
+- Raw inventory: `docs/reports/owner-scope-final-removal-raw-inventory-2026-05-31.txt`.
+- Backup report: `docs/reports/final-owner-scope-removal-precutover-backup-2026-05-31.md`.
 
-## Docker and worktree notes
+## Backup and sandbox facts
 
-- Host worktree: `/root/code/pibo/.worktrees/shared-app-no-owner-scope-ralph`.
+- Verified host backup: `/root/.pibo/backups/final-owner-scope-removal-precutover-vacuum-20260531T194546Z`.
+- Backup method: SQLite `VACUUM INTO` per DB.
+- Backup verification: every included backup DB passed `PRAGMA quick_check = ok`.
+- Included DBs: `pibo.sqlite`, `chat-agents.sqlite`, `pibo-ralph.sqlite`, `pibo-cron.sqlite`, `web-annotations.sqlite`, `web-projects.sqlite`, `pibo-events.sqlite`, `auth.sqlite`, `context-files/context-files.sqlite`.
+- `pibo-sessions.sqlite` and `pibo-workflows.sqlite` were not present at `/root/.pibo` during backup.
+- Worker sandbox Pibo home: `/workspace/.pibo/ralph-sandbox` in the container; host path `/root/code/pibo/.worktrees/final-owner-scope-removal-ralph/.pibo/ralph-sandbox`.
+- Use `.pibo/ralph-worker.sh '<command>'` from the worktree to run worker commands with `PIBO_HOME=/workspace/.pibo/ralph-sandbox`.
+- Do not run migration tests or exploratory data commands against `/root/.pibo`.
+
+## Docker and worktree facts
+
+- Host worktree: `/root/code/pibo/.worktrees/final-owner-scope-removal-ralph`.
+- Branch: `final-owner-scope-removal-ralph`.
+- Base: `upstream/dev` at `f0c588e`.
+- Docker worker: `pibo-dev-final-owner-scope-removal-ralph`.
 - Container workspace: `/workspace`.
-- Worker name: `pibo-dev-shared-app-no-owner-scope-ralph`.
-- Run shell commands through Docker, for example:
-  `docker exec pibo-dev-shared-app-no-owner-scope-ralph bash -lc 'cd /workspace && npm run typecheck'`.
-- Git commands should run on the host worktree because Docker may not resolve the host `.git` worktree metadata.
+- Ports: gateway `4830`, CDP `4831`, web `4832`, Chat UI `4833`, Context UI `4834`.
+- Git commands must run on the host worktree. The Docker worker may not resolve host worktree Git metadata.
+- Use Docker for builds, tests, gateway/browser checks, PTY checks, and runtime validation.
+- Do not create/release/replace Docker workers unless the user explicitly asks.
 
-## Validation expectations
+## Implementation strategy
 
-- Always run `npm run typecheck` before story completion unless the story documents why it cannot.
-- Run focused tests for touched areas before broad tests.
-- Run `npm run build` and eventually `npm test` before PR readiness.
-- User-facing Web/CLI/runtime/persistence changes need the closest practical real-path validation, not only mocks.
-- Dev deployment and production rollout are later gated steps and require explicit approval for production.
+- Prefer dependency order from the PRD JSON: gates/baseline, app context/auth/runtime, sessions/schemas, Chat rooms/navigation, feature stores, Ralph/Cron, workflows, CLI/TUI, migration tooling, docs, validation.
+- Keep changes small and story-scoped. Commit each completed story or coherent story group.
+- Mark a story `passes: true` only after code, tests, validation evidence, and notes are complete.
+- For user-facing Web/CLI/TUI/runtime/persistence changes, use the closest practical real/default path, not only mocks.
+- Record evidence in both the PRD JSON story `notes` and `IMPLEMENTATION_PROGRESS.md`.
+- Add durable patterns and gotchas here, not just in the progress log.
 
-## Open questions to resolve during implementation
+## Search-gate target
 
-- Whether the default room display name becomes `Shared Chat` or another shared/default label.
-- Whether read-state becomes app-global or browser-local.
-- How long deprecated `--owner-scope` flags remain accepted before removal.
-- Which schema columns can be physically dropped in the first implementation pass versus marked legacy-only for a follow-up migration.
+The final branch should remove active product matches for:
 
-## Database safety
+```text
+ownerScope, owner_scope, OwnerScope, owner scope, owner-scope,
+getSharedAppLegacyOwnerScope, LEGACY_SHARED_APP_OWNER_SCOPE, shared:app,
+PIBO_OWNER_SCOPE, principalId, principal_id, room_members,
+listOwned, getOwned, requireOwned, OwnedSession, OwnedProject,
+active owner, current owner, listOwners, setActiveOwner, getActiveOwner,
+OwnerSummary, ownerSummaries, personal target, Personal Chat,
+Personal Project, personal room, web-user, auth user id, authUserId
+```
 
-- Verified backup directory: `/root/.pibo/backups/shared-app-no-owner-scope-vacuum-20260530T003254Z`. The backup was created before starting the Ralph job. `pibo.sqlite` was copied with SQLite `VACUUM INTO`; all copied SQLite files passed `PRAGMA quick_check`.
-- Worker sandbox Pibo home: `/workspace/.pibo/ralph-sandbox` inside the Docker worker, host path `/root/code/pibo/.worktrees/shared-app-no-owner-scope-ralph/.pibo/ralph-sandbox`.
-- Use `.pibo/ralph-worker.sh '<command>'` for Docker commands; it exports the sandbox `PIBO_HOME`.
-- Do not point migration tests, exploratory Pibo CLI commands, or dry-runs at `/root/.pibo`.
-- The Docker image currently does not include the `sqlite3` CLI. Use Pibo/Node code or `node:sqlite` helpers for SQLite inspection inside the worker.
-- The Docker worker currently does not include `rg`. For exact ripgrep inventories, use host `/usr/bin/rg` only for source-tree searches that do not touch Pibo runtime data, or add a project-local alternative later. Record this exception in progress/reports.
-- Node v24 in the Docker worker exposes `node:sqlite` (`DatabaseSync`), which works for read-only sandbox SQLite inspection with `PRAGMA query_only = ON`.
-- US-006 browser validation lesson: `pibo gateway dev start` inside the Docker worker currently fails because it tries `systemctl start pibo-web-dev` and the container is not booted with systemd. For browser checks that do not need the gateway daemon, use an isolated in-process HTTP server wrapping `createChatWebApp` plus Agent Browser against `127.0.0.1:<worker-port>`. If `pibo tools agent-browser health` reports the wrapper exists but the executable is missing, `npm run --silent dev -- tools install agent-browser` installs it inside the sandbox tool home.
+Temporary exceptions are allowed only for the isolated final migration module and explicitly historical `docs/legacy` material. The post-cutover target is zero active-source matches.
 
-## Dev validation approval
+## Open questions / caution areas
 
-- 2026-05-30: User approved host Dev deploy/restart/API/browser validation for US-018. Production deploy, Production restart, and Production migration remain forbidden unless separately approved. Ralph may run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, `pibo gateway dev status`, and Dev API/browser checks on the host for US-018.
-- 2026-05-30 US-018 host Dev lesson: deploy/restart can be run against the Ralph branch by setting `PIBO_DEV_BRANCH=shared-app-no-owner-scope-ralph`, `PIBO_DEV_WORKTREE=$PWD`, a loopback `PIBO_DEV_PUBLIC_URL`, and a temporary local remote that exposes the local branch, then removing the temporary remote afterward. Authenticated Dev API/browser validation still needs a real Better Auth browser/profile; Agent Browser, Browser Use lease profiles, and auth-template were unauthenticated in this run, and host Dev correctly rejected `x-test-user` with 401.
-- 2026-05-30T09:07Z US-018 repeat auth check: `agent-browser attach-chat` still found no authenticated Dev Chat composer target; fresh Agent Browser and Browser Use `pibo-chat` leases both opened Dev Chat unauthenticated at Google sign-in/`Unauthenticated` state. Release any leases acquired during these checks, and do not try fake host auth or host dev-auth flags.
-- 2026-05-30T09:14Z US-018 repeat auth check: browser target discovery can also show unrelated public-site targets instead of Chat. Treat them as non-evidence for Dev auth. If Browser Use reports the managed browser pool is occupied by an unrelated lease, release any newly acquired `pibo-chat` lease and record the limitation; do not force-close unrelated browser work.
-- 2026-05-30T09:30Z US-018 repeat auth check: target discovery again found only an unrelated public-site target and no authenticated Chat composer. A fresh Agent Browser `pibo-chat` lease reached Dev Chat but remained unauthenticated; Browser Use was still blocked by the unrelated managed pool lease until at least `2026-05-30T09:34:49.818Z`, and a delayed retry found that lease extended until `2026-05-30T09:45:38.200Z`. If Agent Browser release leaves a duplicate active record for a slot created by the current run, correct only that current-run record and leave pre-existing root-owned active slots untouched.
-- 2026-05-30T09:46Z US-018 repeat auth check: target discovery still found only unrelated targets and no authenticated Chat composer; a fresh Agent Browser `pibo-chat` lease reached Dev Chat but remained unauthenticated. A delayed Browser Use retry after the previous expiry still found the unrelated `browser-use:harz-webdesign-krpoun` managed-pool lease extended until `2026-05-30T09:55:57.424Z`; release the newly acquired `pibo-chat` lease and do not force-close unrelated browser work.
-
-- 2026-05-30T09:56Z US-018 repeat auth check: target discovery still found only an unrelated public-site target and no authenticated Chat composer; a fresh Agent Browser `pibo-chat` lease reached Dev Chat but remained unauthenticated. Browser Use was still blocked by the unrelated `browser-use:harz-webdesign-krpoun` managed-pool lease: first until `2026-05-30T09:56:09.802Z`, then extended until `2026-05-30T10:04:22.503Z`. Release newly acquired pibo-chat leases, do not force-close unrelated browser work, and if Agent Browser release leaves duplicate active records for current-run slots, correct only those current-run records.
-- 2026-05-30T10:05Z US-018 repeat auth check: target discovery still found only unrelated public-site targets and no authenticated Chat composer; a fresh Agent Browser `pibo-chat` lease reached Dev Chat but remained unauthenticated. A delayed Browser Use retry after the previous pool expiry still found the unrelated `browser-use:harz-webdesign-krpoun` managed-pool lease extended until `2026-05-30T10:10:47.738Z`; release the newly acquired `pibo-chat` lease and do not force-close unrelated browser work.
-- 2026-05-30T10:18Z US-018 repeat auth check: target discovery still found only unrelated public-site/recaptcha targets and no authenticated Chat composer; a fresh Agent Browser `pibo-chat` lease reached Dev Chat but remained unauthenticated at the Google sign-in page. Browser Use remained blocked by unrelated `browser-use:harz-webdesign-krpoun` pool work until at least `2026-05-30T10:24:13.946Z`; release newly acquired pibo-chat leases, do not force-close unrelated browser work, and correct only current-run duplicate Agent Browser lease records if release leaves them active.
-- 2026-05-30T10:15Z US-018 repeat auth check: target discovery still found only unrelated public-site/Google Maps/recaptcha targets and no authenticated Chat composer; a fresh Agent Browser `pibo-chat` lease reached Dev Chat but remained unauthenticated at the Google sign-in page. Browser Use remained blocked by unrelated `browser-use:harz-webdesign-krpoun` pool work until at least `2026-05-30T10:24:13.946Z`; release newly acquired pibo-chat leases and do not force-close unrelated browser work.
-- 2026-05-30T10:10Z US-018 repeat auth check: target discovery still found only an unrelated public-site target (`https://www.foto-rensen.com/`) and no authenticated Chat composer; a fresh Agent Browser `pibo-chat` lease reached Dev Chat but remained unauthenticated at the Google sign-in page. Use `npm run --silent dev -- tools env agent-browser` before calling the upstream `agent-browser open/snapshot/close` commands; the `pibo tools agent-browser` wrapper only exposes Pibo management subcommands. Browser Use remained blocked by unrelated `browser-use:harz-webdesign-krpoun` pool work until at least `2026-05-30T10:17:05.112Z`; release newly acquired pibo-chat leases and do not force-close unrelated browser work.
-- 2026-05-30T10:23Z US-018 repeat auth check: target discovery still found only unrelated public-site/recaptcha targets and no authenticated Chat composer; a fresh Agent Browser `pibo-chat` lease reached Dev Chat but remained unauthenticated at the Google sign-in page. Browser Use remained blocked by unrelated `browser-use:harz-webdesign-krpoun` pool work until at least `2026-05-30T10:32:52.952Z`; release newly acquired pibo-chat leases, do not force-close unrelated browser work, and correct only current-run duplicate Agent Browser lease records if release leaves them active.
-- 2026-05-30T10:35Z US-018 repeat auth check: target discovery still found only unrelated public-site/Google Maps/recaptcha targets and no authenticated Chat composer; fresh Agent Browser `pibo-chat` leases reached Dev Chat but remained unauthenticated at the Google sign-in page. Browser Use remained blocked by unrelated `browser-use:harz-webdesign-krpoun` pool work first until `2026-05-30T10:35:07.910Z`, then until `2026-05-30T10:42:11.109Z` after a delayed retry; release newly acquired pibo-chat leases, do not force-close unrelated browser work, and correct only current-run duplicate Agent Browser lease records if release leaves them active.
-- 2026-05-30T10:50Z US-018 repeat auth check: target discovery found only unrelated public-site targets (`mactown.de`, then `autoglas-spezialist.com`) and no authenticated Chat composer; a fresh Agent Browser `pibo-chat` lease reached Dev Chat but remained unauthenticated at the Google sign-in page. Browser Use remained blocked by unrelated `browser-use:harz-webdesign-krpoun` pool work first until `2026-05-30T10:49:15.709Z`, then until `2026-05-30T10:56:13.431Z` after a delayed retry. Avoid `agent-browser close --all` in repeat checks because it can close unrelated Agent Browser sessions in the shared tool home; close only the current session when the tool supports it, then release the current lease and correct only current-run duplicate lease records if needed.
-- 2026-05-30T11:02Z US-018 final validation lesson: if Better Auth host Dev profiles are unavailable and the user approves the clarified path, start the existing Docker worker web gateway directly with `node -e 'import("./dist/gateway/web.js").then(m => m.runWebGatewayServer({ devAuth: true, web: { host: "0.0.0.0", port: 4788 } }))'` under `.pibo/ralph-worker.sh` so it uses sandbox `PIBO_HOME`. Host port `4822` maps to worker port `4788`. Authenticate with `/api/auth/sign-in/social` and the dev-auth cookie, then validate `/api/chat/bootstrap`, `/api/chat/navigation`, `/api/chat/sessions`, and `/api/chat/message` against the sandbox. If `/api/chat/message` reaches runtime provider-auth failure, a duplicate request with the same `clientTxnId` returns the already persisted `user.message.accepted` event; this proves Chat accepted the app-global message event while avoiding a second provider run. Browser validation can use Agent Browser inside the worker at `http://127.0.0.1:4788`; close the specific session with `agent-browser --session <name> close`, not `close --all`.
-- 2026-05-30T09:20Z US-018 browser tooling lesson: Agent Browser lease acquire exports `AGENT_BROWSER_SESSION` plus `PIBO_AGENT_BROWSER_LEASE_ID`; Browser Use exports `PIBO_BROWSER_USE_SESSION` plus `PIBO_BROWSER_USE_LEASE_ID`. Evaluate only `export ...` lines from lease output because Browser Use may include warning/comment lines. Agent Browser lease history can contain duplicate ids; after releasing a lease, verify active slots with `npm run --silent dev -- tools agent-browser lease list --json` and only clean up records created by the current run if the release command left a duplicate active record.
-
-## Docker gateway validation clarification
-
-- 2026-05-30: User clarified that Ralph should use its isolated Docker worker/gateway/dev-auth flow for authenticated Chat Web validation. Host Dev is primarily for the user to test manually. For US-018, Docker gateway/dev-auth validation may satisfy the authenticated API/browser acceptance criteria; host Dev deploy/restart status remains useful rollout evidence but authenticated Better Auth host Dev browser validation is no longer a blocker. Production remains forbidden.
+- The final cutover migrator may need old column names temporarily. Keep it isolated and removable.
+- Decide later whether the migrator is deleted after approved Production cutover or retained as operator-only legacy tooling. The plan prefers deletion after cutover.
+- Existing root progress/insights from earlier work were replaced in this branch with final-owner-scope-specific files to avoid misleading Ralph sessions.
+- The current codebase may still contain many transitional shared-app compatibility helpers from the previous PR. Do not mistake those for the final target.
