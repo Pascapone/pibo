@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import {
 	Archive,
 	ArchiveRestore,
@@ -27,6 +28,9 @@ import {
 } from "./session-sidebar-helpers";
 
 const SESSION_INFINITE_SCROLL_ROOT_MARGIN = "240px 0px";
+const ROOM_ACTION_MENU_WIDTH = 192;
+const ROOM_ACTION_MENU_GAP = 4;
+const ROOM_ACTION_MENU_VIEWPORT_MARGIN = 8;
 
 function unreadBadgeLabel(count: number): string {
 	return count > 99 ? "99+" : String(count);
@@ -512,17 +516,56 @@ function RoomNode({
 	const personal = isSharedDefaultRoom(room);
 	const archived = isArchivedRoom(room);
 	const [menuOpen, setMenuOpen] = useState(false);
-	const menuRef = useRef<HTMLDivElement>(null);
+	const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
+	const menuButtonRef = useRef<HTMLButtonElement>(null);
+	const menuPanelRef = useRef<HTMLDivElement>(null);
 	const roomTooltip = roomNodeTooltip(room);
 
 	const copyRoomId = () => {
 		void copyTextToClipboard(room.id).catch(() => undefined);
 	};
 
+	const updateMenuPosition = useCallback(() => {
+		const button = menuButtonRef.current;
+		if (!button) return;
+		const rect = button.getBoundingClientRect();
+		const menuWidth = menuPanelRef.current?.offsetWidth ?? ROOM_ACTION_MENU_WIDTH;
+		const fallbackMenuHeight = archived ? 144 : 192;
+		const menuHeight = menuPanelRef.current?.offsetHeight ?? fallbackMenuHeight;
+		const maxLeft = Math.max(ROOM_ACTION_MENU_VIEWPORT_MARGIN, window.innerWidth - menuWidth - ROOM_ACTION_MENU_VIEWPORT_MARGIN);
+		const left = Math.min(Math.max(ROOM_ACTION_MENU_VIEWPORT_MARGIN, rect.right - menuWidth), maxLeft);
+		const belowTop = rect.bottom + ROOM_ACTION_MENU_GAP;
+		const top = belowTop + menuHeight <= window.innerHeight - ROOM_ACTION_MENU_VIEWPORT_MARGIN
+			? belowTop
+			: Math.max(ROOM_ACTION_MENU_VIEWPORT_MARGIN, rect.top - ROOM_ACTION_MENU_GAP - menuHeight);
+		setMenuPosition((current) => current?.top === top && current.left === left ? current : { top, left });
+	}, [archived]);
+
+	useEffect(() => {
+		if (!menuOpen) {
+			setMenuPosition(null);
+			return;
+		}
+		updateMenuPosition();
+		const handleViewportChange = () => updateMenuPosition();
+		window.addEventListener("resize", handleViewportChange);
+		window.addEventListener("scroll", handleViewportChange, true);
+		return () => {
+			window.removeEventListener("resize", handleViewportChange);
+			window.removeEventListener("scroll", handleViewportChange, true);
+		};
+	}, [menuOpen, updateMenuPosition]);
+
+	useLayoutEffect(() => {
+		if (menuOpen && menuPosition) updateMenuPosition();
+	}, [menuOpen, menuPosition, updateMenuPosition]);
+
 	useEffect(() => {
 		if (!menuOpen) return;
 		const handle = (e: MouseEvent) => {
-			if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+			const target = e.target as Node;
+			if (menuButtonRef.current?.contains(target) || menuPanelRef.current?.contains(target)) return;
+			setMenuOpen(false);
 		};
 		document.addEventListener("mousedown", handle);
 		return () => document.removeEventListener("mousedown", handle);
@@ -621,8 +664,9 @@ function RoomNode({
 									<Lock size={24} className="w-3.5 h-3.5 max-[980px]:w-5 max-[980px]:h-5" />
 								</span>
 							) : (
-								<div className="relative" ref={menuRef}>
+								<div className="relative">
 									<button
+										ref={menuButtonRef}
 										type="button"
 										onClick={() => setMenuOpen((v) => !v)}
 										title="Room actions"
@@ -631,8 +675,12 @@ function RoomNode({
 									>
 										<MoreVertical size={24} className="w-3.5 h-3.5 max-[980px]:w-5 max-[980px]:h-5" />
 									</button>
-									{menuOpen && (
-										<div className="absolute right-0 top-full z-50 mt-1 w-48 bg-[#1a262b] border border-slate-700 rounded-sm shadow-lg py-1">
+									{menuOpen && menuPosition ? createPortal(
+										<div
+											ref={menuPanelRef}
+											className="fixed z-[1000] bg-[#1a262b] border border-slate-700 rounded-sm shadow-lg py-1"
+											style={{ top: menuPosition.top, left: menuPosition.left, width: ROOM_ACTION_MENU_WIDTH }}
+										>
 											{archived ? (
 												<>
 													<button
@@ -689,8 +737,9 @@ function RoomNode({
 													</button>
 												</>
 											)}
-										</div>
-									)}
+										</div>,
+										document.body,
+									) : null}
 								</div>
 							)}
 						</div>
