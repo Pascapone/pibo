@@ -25,8 +25,9 @@
 - Max iterations safety net: `90` (`3 x 30` PRD stories)
 - Stop condition: promise-complete only after all PRD stories pass.
 - Verified host DB backup: `/root/.pibo/backups/final-owner-scope-removal-precutover-vacuum-20260531T194546Z`
-- Worker sandbox Pibo home: `/workspace/.pibo/ralph-sandbox` (host path: `/root/code/pibo/.worktrees/final-owner-scope-removal-ralph/.pibo/ralph-sandbox`)
-- Worker helper: `.pibo/ralph-worker.sh '<command>'` exports `PIBO_HOME=/workspace/.pibo/ralph-sandbox`
+- Worker fresh test Pibo home: `/workspace/.pibo/ralph-test-home` (host path: `/root/code/pibo/.worktrees/final-owner-scope-removal-ralph/.pibo/ralph-test-home`)
+- Worker migration sandbox home: `/workspace/.pibo/ralph-migration-sandbox` (host path: `/root/code/pibo/.worktrees/final-owner-scope-removal-ralph/.pibo/ralph-migration-sandbox`, backed by the copied verified backup)
+- Worker helper: `.pibo/ralph-worker.sh '<command>'` exports `PIBO_HOME=/workspace/.pibo/ralph-test-home` and `PIBO_MIGRATION_SANDBOX_HOME=/workspace/.pibo/ralph-migration-sandbox`
 
 ## Mandatory startup checklist for every Ralph session
 
@@ -43,15 +44,16 @@
 
 - Final target: no active Owner Scope model, no `shared:app` replacement owner, and no account-derived product Principal.
 - Auth remains only an access gate; it must not control product visibility, workspace, route, jobs, profiles, read-state, or write location.
-- Use the Docker worker for shell commands, builds, tests, gateway/browser checks, and runtime validation. Prefer: `.pibo/ralph-worker.sh '<command>'`.
-- The helper runs commands in `/workspace` with `PIBO_HOME=/workspace/.pibo/ralph-sandbox`, a copy of the verified backup.
-- Never run migration tests, dry-runs, exploratory data commands, or destructive CLI commands against `/root/.pibo`; use the sandbox copy.
+- Use the Docker worker for all shell commands, builds, tests, deploy/gateway checks, browser checks, PTY checks, runtime validation, and data/migration commands. Prefer: `.pibo/ralph-worker.sh '<command>'`.
+- The helper runs commands in `/workspace` with a fresh test home at `PIBO_HOME=/workspace/.pibo/ralph-test-home`.
+- Historical-data migration checks must use `PIBO_MIGRATION_SANDBOX_HOME=/workspace/.pibo/ralph-migration-sandbox`, not the fresh test home and never `/root/.pibo`.
+- Never run migration tests, dry-runs, exploratory data commands, or destructive CLI commands against `/root/.pibo`; use Docker test homes only.
 - Keep source edits and git commits in the host worktree path above.
 - Git commands must run on the host worktree; Docker may not resolve worktree Git metadata.
 - Do not run builds/tests against the host checkout.
-- Do not restart or modify host production/dev gateways or host services.
-- Do not deploy, restart Production, force-restart Production, or mutate Production data.
-- Production migration/apply remains separately approval-gated by the user.
+- Deploy/restart/gateway validation is allowed only inside Docker or worker-local processes. Do not restart or modify host production/dev gateways or host services.
+- Do not deploy, restart Production, force-restart Production, mutate Production data, or create an upstream PR.
+- Before real database cutover or PR creation, stop and hand off for user review. Production migration/apply remains separately approval-gated by the user.
 - Do not create, release, or replace Docker workers unless the user explicitly approves.
 - Commit after each completed story or coherent story group.
 - Only set a PRD story's `passes` to `true` after implementation and evidence are complete.
@@ -62,5 +64,6 @@
 - 2026-05-31T20:11Z: Setup started for final Owner Scope removal Ralph loop. Created/attached branch `final-owner-scope-removal-ralph` from `upstream/dev` at `f0c588e`, copied plan/PRD/inventory/backup docs, and committed setup docs as `ff4e454 docs: prepare final owner scope removal Ralph batch`.
 - 2026-05-31T20:11Z: Docker dev worker created: `pibo-dev-final-owner-scope-removal-ralph` with ports gateway `4830`, CDP `4831`, web `4832`, Chat UI `4833`, Context UI `4834`; worktree `/root/code/pibo/.worktrees/final-owner-scope-removal-ralph`; container workspace `/workspace`.
 - 2026-05-31T20:11Z: Created Chat room `room_130a1897-996d-47e2-b805-b8e93f10a53d` named `Ralph: Final Owner Scope Removal` with workspace metadata pointing to the worktree.
-- 2026-05-31T20:15Z: Created sandbox Pibo home at `.pibo/ralph-sandbox` from verified backup `/root/.pibo/backups/final-owner-scope-removal-precutover-vacuum-20260531T194546Z` and added untracked helper `.pibo/ralph-worker.sh` for Docker commands.
+- 2026-05-31T20:15Z: Created copied migration sandbox at `.pibo/ralph-sandbox` from verified backup `/root/.pibo/backups/final-owner-scope-removal-precutover-vacuum-20260531T194546Z`; exposed it as `.pibo/ralph-migration-sandbox`. Created separate fresh test home `.pibo/ralph-test-home`. Updated helper `.pibo/ralph-worker.sh` so normal commands use the fresh test home and migration validation can opt into `PIBO_MIGRATION_SANDBOX_HOME`.
 - 2026-05-31T20:16Z: Created Ralph job `ralph_66995290-8189-43a3-a735-27d23e0230e4` stopped, target room `room_130a1897-996d-47e2-b805-b8e93f10a53d`, profile `pibo-agent`, template `prd-batch-stories`, max iterations `90`, prompt from `/tmp/final-owner-scope-ralph-prompt.txt`. Start command after review: `pibo ralph start ralph_66995290-8189-43a3-a735-27d23e0230e4`.
+- 2026-05-31T20:31Z: User clarified loop safety boundaries. Updated PRD, PRD JSON, progress/insights, helper, and job prompt requirements: all runtime/deploy/gateway/data work must happen only in Docker; normal validation uses a fresh test database home; historical migration validation uses the copied migration sandbox; host/Production databases and host gateways remain untouched; Ralph must stop for user review before real database cutover and before PR creation.

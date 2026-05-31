@@ -9,7 +9,8 @@ This file is mandatory reading at the start of every Ralph session. Keep durable
 - `shared:app` is not the target model. It is a legacy storage value that must disappear from active runtime code and fresh schemas after the final cutover.
 - Do not replace Owner Scope with another synthetic owner value.
 - Better Auth tables and sessions are out of scope for removal; they remain auth/access state, not product ownership state.
-- Production data mutation, Production migration apply, Production deploy, and Production restart are forbidden unless the user gives separate explicit approval at that time.
+- Production data mutation, Production migration apply, Production deploy, Production restart, host Dev deploy/restart, and upstream PR creation are forbidden unless the user gives separate explicit approval at that time.
+- The loop must stop for user review before the final real database cutover and before PR creation.
 
 ## Source docs and inputs
 
@@ -27,8 +28,9 @@ This file is mandatory reading at the start of every Ralph session. Keep durable
 - Backup verification: every included backup DB passed `PRAGMA quick_check = ok`.
 - Included DBs: `pibo.sqlite`, `chat-agents.sqlite`, `pibo-ralph.sqlite`, `pibo-cron.sqlite`, `web-annotations.sqlite`, `web-projects.sqlite`, `pibo-events.sqlite`, `auth.sqlite`, `context-files/context-files.sqlite`.
 - `pibo-sessions.sqlite` and `pibo-workflows.sqlite` were not present at `/root/.pibo` during backup.
-- Worker sandbox Pibo home: `/workspace/.pibo/ralph-sandbox` in the container; host path `/root/code/pibo/.worktrees/final-owner-scope-removal-ralph/.pibo/ralph-sandbox`.
-- Use `.pibo/ralph-worker.sh '<command>'` from the worktree to run worker commands with `PIBO_HOME=/workspace/.pibo/ralph-sandbox`.
+- Worker fresh test Pibo home: `/workspace/.pibo/ralph-test-home` in the container; host path `/root/code/pibo/.worktrees/final-owner-scope-removal-ralph/.pibo/ralph-test-home`. Normal build/runtime/gateway/browser/CLI validation should use this fresh test home.
+- Worker migration sandbox home: `/workspace/.pibo/ralph-migration-sandbox`; host path `/root/code/pibo/.worktrees/final-owner-scope-removal-ralph/.pibo/ralph-migration-sandbox`, backed by the copied verified backup. Historical-data migration validation may use this path only.
+- Use `.pibo/ralph-worker.sh '<command>'` from the worktree to run worker commands with `PIBO_HOME=/workspace/.pibo/ralph-test-home` and `PIBO_MIGRATION_SANDBOX_HOME=/workspace/.pibo/ralph-migration-sandbox`.
 - Do not run migration tests or exploratory data commands against `/root/.pibo`.
 
 ## Docker and worktree facts
@@ -40,7 +42,7 @@ This file is mandatory reading at the start of every Ralph session. Keep durable
 - Container workspace: `/workspace`.
 - Ports: gateway `4830`, CDP `4831`, web `4832`, Chat UI `4833`, Context UI `4834`.
 - Git commands must run on the host worktree. The Docker worker may not resolve host worktree Git metadata.
-- Use Docker for builds, tests, gateway/browser checks, PTY checks, and runtime validation.
+- Use Docker for builds, tests, deploy/gateway restarts, browser checks, PTY checks, runtime validation, and all data/migration commands. Host gateway and host databases are out of bounds.
 - Do not create/release/replace Docker workers unless the user explicitly asks.
 
 ## Implementation strategy
@@ -48,7 +50,7 @@ This file is mandatory reading at the start of every Ralph session. Keep durable
 - Prefer dependency order from the PRD JSON: gates/baseline, app context/auth/runtime, sessions/schemas, Chat rooms/navigation, feature stores, Ralph/Cron, workflows, CLI/TUI, migration tooling, docs, validation.
 - Keep changes small and story-scoped. Commit each completed story or coherent story group.
 - Mark a story `passes: true` only after code, tests, validation evidence, and notes are complete.
-- For user-facing Web/CLI/TUI/runtime/persistence changes, use the closest practical real/default path, not only mocks.
+- For user-facing Web/CLI/TUI/runtime/persistence changes, use the closest practical real/default path inside Docker, not only mocks. Do not use host gateways for this loop.
 - Record evidence in both the PRD JSON story `notes` and `IMPLEMENTATION_PROGRESS.md`.
 - Add durable patterns and gotchas here, not just in the progress log.
 

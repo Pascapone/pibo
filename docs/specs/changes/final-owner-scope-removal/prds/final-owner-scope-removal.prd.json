@@ -1,7 +1,7 @@
 {
   "project": "Final Owner Scope Removal",
   "branchName": "ralph/final-owner-scope-removal",
-  "description": "Fully remove Owner Scope from Pibo's active product model, schemas, APIs, CLI/TUI, automation, workflows, tests, and current docs. Auth remains only an access gate; legacy data is handled through a safe final cutover migration without using shared:app as a replacement owner.",
+  "description": "Fully remove Owner Scope from Pibo's active product model, schemas, APIs, CLI/TUI, automation, workflows, tests, and current docs. The Ralph loop must work and validate only inside its Docker worker using isolated test databases; Production data migration and PR creation are final manual review-gated steps, not autonomous loop actions.",
   "userStories": [
     {
       "id": "US-001",
@@ -12,6 +12,8 @@
         "Link the plan, PRD, inventory summary, and raw inventory files",
         "Record baseline rg counts for ownerScope, owner_scope, OwnerScope, owner-scope, shared:app, principalId, principal_id, room_members, listOwned, getOwned, requireOwned, personal target, active owner, and --owner-scope",
         "Record read-only SQLite schema/column inventory for reachable affected stores without mutating data",
+        "Record Docker-only execution boundaries: runtime, deploy, gateway restart, CLI data commands, and DB mutation must use the Docker worker and isolated PIBO_HOME only",
+        "Create or verify a fresh ownerless Docker test PIBO_HOME separate from the copied migration sandbox",
         "Run baseline npm run typecheck and npm run build, and record results",
         "Do not change runtime behavior in this story",
         "Typecheck passes"
@@ -109,7 +111,8 @@
         "Preserve session ids, piSessionIds, hierarchy, metadata, profile, workspace, and timestamps",
         "Assert new databases do not contain owner_scope columns or owner indexes",
         "Migration fixture tests pass",
-        "Typecheck passes"
+        "Typecheck passes",
+        "Any migration fixture or schema validation runs only against temp files or Docker sandbox homes, never /root/.pibo"
       ],
       "priority": 7,
       "passes": false,
@@ -141,7 +144,8 @@
         "Add migration fixture coverage for duplicate default rooms, duplicate navigation rows, and principal read-state merge rules",
         "Assert new Chat data databases do not create owner/principal columns or membership tables",
         "Migration and schema tests pass",
-        "Typecheck passes"
+        "Typecheck passes",
+        "Any migration fixture or schema validation runs only against temp files or Docker sandbox homes, never /root/.pibo"
       ],
       "priority": 9,
       "passes": false,
@@ -158,7 +162,8 @@
         "Add API tests proving payloads contain no ownerScope or principalId fields",
         "Run browser validation for sidebar, direct session open, create session, send message, archive/restore, and room navigation",
         "Chat UI/API tests pass",
-        "Typecheck passes"
+        "Typecheck passes",
+        "Real-path validation runs only in the Docker worker or isolated container ports, not host gateways"
       ],
       "priority": 10,
       "passes": false,
@@ -174,7 +179,8 @@
         "Add deterministic migration handling for duplicate profile names that were previously separated by owner",
         "Update Agent Designer tests and API tests for ownerless payloads",
         "Agent store/profile tests pass",
-        "Typecheck passes"
+        "Typecheck passes",
+        "Any migration fixture or schema validation runs only against temp files or Docker sandbox homes, never /root/.pibo"
       ],
       "priority": 11,
       "passes": false,
@@ -190,7 +196,8 @@
         "Rename OwnedWorkflow* model names to neutral names where they refer to product ownership",
         "Add migration fixture coverage for project/workflow UI rows with historical owner values",
         "Project/workflow UI tests pass",
-        "Typecheck passes"
+        "Typecheck passes",
+        "Any migration fixture or schema validation runs only against temp files or Docker sandbox homes, never /root/.pibo"
       ],
       "priority": 12,
       "passes": false,
@@ -206,7 +213,8 @@
         "Add migration fixture coverage for historical annotation rows with different owner values",
         "Run focused Web Annotation tests and browser/API validation where practical",
         "Web Annotation tests pass",
-        "Typecheck passes"
+        "Typecheck passes",
+        "Any migration fixture or schema validation runs only against temp files or Docker sandbox homes, never /root/.pibo"
       ],
       "priority": 13,
       "passes": false,
@@ -223,7 +231,8 @@
         "Update fresh Ralph schemas to omit owner_scope columns and indexes",
         "Add migration fixture coverage for existing personal/shared/user Ralph jobs and runs",
         "Ralph store tests pass",
-        "Typecheck passes"
+        "Typecheck passes",
+        "Any migration fixture or schema validation runs only against temp files or Docker sandbox homes, never /root/.pibo"
       ],
       "priority": 14,
       "passes": false,
@@ -239,7 +248,8 @@
         "Ensure pibo ralph add/list/start/stop/cancel/runs --json contains no ownerScope",
         "Run real CLI validation for Ralph list/add/start/stop or the closest safe non-provider path",
         "Ralph CLI/API/UI tests pass",
-        "Typecheck passes"
+        "Typecheck passes",
+        "Real-path validation runs only in the Docker worker or isolated container ports, not host gateways"
       ],
       "priority": 15,
       "passes": false,
@@ -256,7 +266,8 @@
         "Update fresh Cron schemas to omit owner_scope columns and indexes",
         "Add migration fixture coverage for existing personal/shared/user Cron jobs and runs",
         "Cron store tests pass",
-        "Typecheck passes"
+        "Typecheck passes",
+        "Any migration fixture or schema validation runs only against temp files or Docker sandbox homes, never /root/.pibo"
       ],
       "priority": 16,
       "passes": false,
@@ -272,7 +283,8 @@
         "Ensure pibo cron JSON outputs contain no ownerScope",
         "Run real CLI validation for safe Cron list/create/enable/disable flows or closest safe path",
         "Cron CLI/API/UI tests pass",
-        "Typecheck passes"
+        "Typecheck passes",
+        "Real-path validation runs only in the Docker worker or isolated container ports, not host gateways"
       ],
       "priority": 17,
       "passes": false,
@@ -288,7 +300,8 @@
         "Update row mappers, write values, store contracts, and tests",
         "Add migration fixture coverage for workflow_runs with historical owner_scope values",
         "packages/workflows tests pass",
-        "Typecheck passes"
+        "Typecheck passes",
+        "Any migration fixture or schema validation runs only against temp files or Docker sandbox homes, never /root/.pibo"
       ],
       "priority": 18,
       "passes": false,
@@ -305,7 +318,8 @@
         "Update workflow runtime and inspection tests",
         "Real or integration workflow run inspection path shows no owner field",
         "Workflow runtime/inspection tests pass",
-        "Typecheck passes"
+        "Typecheck passes",
+        "Real-path validation runs only in the Docker worker or isolated container ports, not host gateways"
       ],
       "priority": 19,
       "passes": false,
@@ -337,7 +351,8 @@
         "Update shared session-ui view models to use app/source/room/session descriptors without owner descriptors",
         "Run PTY validation showing pibo tui:sessions can open/create/select a session and send through the closest real path without an owner picker",
         "Ink/TUI tests pass",
-        "Typecheck passes"
+        "Typecheck passes",
+        "Real-path validation runs only in the Docker worker or isolated container ports, not host gateways"
       ],
       "priority": 21,
       "passes": false,
@@ -345,13 +360,14 @@
     },
     {
       "id": "US-022",
-      "title": "Create final owner-scope cutover migration inspect and dry-run",
-      "description": "As an operator, I want a final migration command that reports old Owner Scope data without mutating it so that cutover can be reviewed safely.",
+      "title": "Create final owner-scope cutover migration inspect and dry-run for isolated homes",
+      "description": "As an operator, I want a final migration command that can inspect and dry-run old Owner Scope data inside isolated test homes so that cutover can be reviewed without touching Production.",
       "acceptanceCriteria": [
         "Create an operator-only final cutover migration module/command with inspect and dry-run modes",
         "Inspect reports affected files, tables, columns, indexes, row counts, legacy values, and conflict groups without secrets",
         "Dry-run reports planned table rebuilds, merge/rename decisions, and unresolved blockers without writes",
-        "Command refuses Production apply unless explicit operator flags and backup path are provided in later apply story",
+        "The command defaults to an explicit --root or sandbox path and refuses to target /root/.pibo unless a future manual-production flag is added outside this autonomous loop",
+        "All inspect/dry-run validation uses Docker worker test homes or temporary fixture databases only",
         "Migration inspect/dry-run fixture tests pass",
         "Typecheck passes"
       ],
@@ -361,14 +377,16 @@
     },
     {
       "id": "US-023",
-      "title": "Implement final owner-scope cutover migration apply and rollback checks",
-      "description": "As an operator, I want transactional apply behavior with backup verification and post-checks so that owner columns can be removed safely.",
+      "title": "Implement final owner-scope cutover migration apply for Docker test databases only",
+      "description": "As an operator, I want transactional apply behavior with backup verification and post-checks that is proven on isolated Docker test databases before any real data cutover is considered.",
       "acceptanceCriteria": [
-        "Apply mode requires a fresh verified backup path and refuses unresolved conflicts",
+        "Apply mode requires a verified backup path and refuses unresolved conflicts",
         "Apply rebuilds affected SQLite tables without owner/principal columns, membership tables, or owner indexes",
         "Apply is transactional per database file and idempotent on already-migrated schemas",
         "Post-check runs row-count checks and PRAGMA quick_check and writes a migration report",
         "Rollback instructions are generated or documented with the backup path",
+        "Apply tests run only against temporary fixture DBs or the Docker migration sandbox, never Production or /root/.pibo",
+        "The autonomous Ralph loop must not run apply against the host Production database",
         "Migration apply/idempotency/rollback fixture tests pass",
         "Typecheck passes"
       ],
@@ -378,13 +396,14 @@
     },
     {
       "id": "US-024",
-      "title": "Remove temporary runtime compatibility after migrated schemas are supported",
-      "description": "As a maintainer, I want runtime code to require final ownerless schemas so that no long-lived shared:app compatibility remains.",
+      "title": "Remove temporary runtime compatibility for fresh ownerless test schemas",
+      "description": "As a maintainer, I want normal runtime code to operate on fresh ownerless schemas while preserving final cutover safety so that Production is not broken before the manual migration gate.",
       "acceptanceCriteria": [
-        "Remove runtime branches that read or write old owner_scope/principal_id columns outside the isolated migration module",
+        "Remove runtime branches that read or write old owner_scope/principal_id columns outside the isolated migration module after fresh ownerless schemas are supported",
         "Ensure fresh schemas and normal runtime code do not reference shared:app as storage",
-        "Shrink the search-gate allowlist to only the migration module and historical legacy docs, or document any unavoidable external term",
-        "Run focused regression tests for creating new sessions, rooms, agents, projects, annotations, Ralph, Cron, and workflows on fresh schemas",
+        "Keep any remaining legacy-column knowledge isolated in the cutover migration module and tests only",
+        "Run focused regression tests for creating new sessions, rooms, agents, projects, annotations, Ralph, Cron, and workflows on a fresh Docker test PIBO_HOME",
+        "Do not require or mutate the live host database while proving ownerless runtime behavior",
         "Regression tests pass",
         "Typecheck passes"
       ],
@@ -410,13 +429,14 @@
     },
     {
       "id": "US-026",
-      "title": "Run full Docker validation on ownerless fresh schemas",
-      "description": "As a maintainer, I want full validation in Docker so that the ownerless code works in a clean environment.",
+      "title": "Run full Docker validation on ownerless fresh test databases",
+      "description": "As a maintainer, I want full validation in Docker against a fresh isolated PIBO_HOME so that the ownerless code is proven without relying on or mutating host data.",
       "acceptanceCriteria": [
-        "Run npm run typecheck in Docker worker with sandboxed PIBO_HOME",
-        "Run npm run build in Docker worker with sandboxed PIBO_HOME",
-        "Run npm test in Docker worker with sandboxed PIBO_HOME",
+        "Run npm run typecheck in Docker worker with fresh isolated PIBO_HOME",
+        "Run npm run build in Docker worker with fresh isolated PIBO_HOME",
+        "Run npm test in Docker worker with fresh isolated PIBO_HOME",
         "Run schema assertions proving fresh databases have no owner/principal product columns or membership tables",
+        "Confirm no validation command targets /root/.pibo or host gateways",
         "Record validation evidence in IMPLEMENTATION_PROGRESS.md and docs/reports",
         "Typecheck passes",
         "Build passes",
@@ -428,13 +448,14 @@
     },
     {
       "id": "US-027",
-      "title": "Validate migrated sandbox data through real Chat Web and CLI paths",
-      "description": "As an operator, I want migrated data validated through real user paths so that cutover is more than unit-tested.",
+      "title": "Validate migrated sandbox data through Docker Chat Web and CLI paths",
+      "description": "As an operator, I want migrated copied data validated through Docker-only user paths so that the future cutover is more than unit-tested and Production remains untouched.",
       "acceptanceCriteria": [
-        "Run migration apply against copied/sandboxed historical fixture home, not Production",
-        "Start or emulate the Dev Chat Web path in Docker and validate bootstrap, sidebar, direct session open, send, agents, projects, Ralph, Cron, workflows, and annotations where available",
-        "Run CLI/TUI PTY validation for ownerless session open/create/send path",
-        "Run safe Ralph and Cron CLI JSON checks proving no owner fields/options",
+        "Run migration apply against copied/sandboxed historical fixture home inside the Docker worker, not Production",
+        "Start or emulate the Chat Web path only inside Docker and validate bootstrap, sidebar, direct session open, send, agents, projects, Ralph, Cron, workflows, and annotations where available",
+        "If gateway restart/deploy validation is needed, run it only inside the Docker worker or worker-local process, never the host gateway",
+        "Run CLI/TUI PTY validation for ownerless session open/create/send path inside Docker",
+        "Run safe Ralph and Cron CLI JSON checks proving no owner fields/options inside Docker",
         "Record browser/API/PTY/CLI evidence in docs/reports",
         "Relevant validation commands pass",
         "Typecheck passes"
@@ -445,12 +466,13 @@
     },
     {
       "id": "US-028",
-      "title": "Prepare Dev deployment and production migration runbook without mutating Production",
-      "description": "As an operator, I want a deploy and cutover runbook so that Dev can be tested and Production remains gated by explicit approval.",
+      "title": "Prepare Docker-only deployment validation and manual production cutover runbook",
+      "description": "As an operator, I want Docker-only deploy/gateway validation plus a production runbook so that the user can review before any PR, host deploy, or real database cutover.",
       "acceptanceCriteria": [
-        "Document Dev deploy steps, Dev gateway restart, and Dev post-deploy validation commands",
+        "Document Docker-only deploy/build/gateway restart validation steps and results using worker ports",
+        "Document that host Dev, host Production, and host gateways are not changed by the Ralph loop",
         "Document Production prerequisites, active-session safety, backup verification, dry-run review, apply approval, rollback, and post-check steps",
-        "Explicitly state that Ralph must not mutate Production data or force-restart Production without separate user approval",
+        "Explicitly state that Ralph must stop before real Production database migration and before upstream PR creation unless the user separately approves continuation",
         "Add a final checklist for removing the temporary migration module after approved Production cutover if that policy is chosen",
         "Docs/report validation passes",
         "Typecheck passes"
@@ -461,14 +483,14 @@
     },
     {
       "id": "US-029",
-      "title": "Final zero-regression sweep for active Owner Scope artifacts",
-      "description": "As a maintainer, I want the final branch to have no active product Owner Scope artifacts so that the transition model is gone.",
+      "title": "Final zero-regression sweep for active Owner Scope artifacts in Docker",
+      "description": "As a maintainer, I want the final branch to have no active product Owner Scope artifacts and to prove that state through Docker-only checks.",
       "acceptanceCriteria": [
         "Run the strict active-source owner/principal search gate and record output",
-        "Run CLI help checks for pibo ralph, pibo cron, pibo tui:sessions, data migration, and debug commands to ensure no active --owner-scope guidance remains",
-        "Run API/JSON payload checks for Chat bootstrap, Ralph, Cron, agents, projects, workflows, and annotations to ensure no owner fields remain",
+        "Run CLI help checks for pibo ralph, pibo cron, pibo tui:sessions, data migration, and debug commands inside Docker to ensure no active --owner-scope guidance remains",
+        "Run API/JSON payload checks for Chat bootstrap, Ralph, Cron, agents, projects, workflows, and annotations inside Docker to ensure no owner fields remain",
         "Ensure any remaining matches are only in the isolated migration command, generated migration reports, or docs/legacy, and are documented",
-        "Full npm run typecheck, npm run build, and npm test pass",
+        "Full npm run typecheck, npm run build, and npm test pass in Docker",
         "Typecheck passes",
         "Build passes",
         "Tests pass"
@@ -479,14 +501,16 @@
     },
     {
       "id": "US-030",
-      "title": "Close the Ralph batch with implementation summary and PR readiness",
-      "description": "As a maintainer, I want a final implementation summary so that the branch is ready for review, Dev deploy, and separately approved Production cutover.",
+      "title": "Stop for user review with PR-readiness and production cutover handoff",
+      "description": "As a maintainer, I want the Ralph loop to stop with a complete handoff so that the user can review before PR creation and before any real Production database migration.",
       "acceptanceCriteria": [
         "Update IMPLEMENTATION_PROGRESS.md with all completed stories, commits, evidence, remaining risks, and explicit Production non-action statement",
-        "Create docs/reports final validation report summarizing tests, migrations, search gates, browser/PTY evidence, and known limitations",
+        "Create docs/reports final validation report summarizing Docker tests, sandbox migrations, search gates, browser/PTY evidence, and known limitations",
+        "Prepare a draft PR summary/body and list exact commands for a future human-approved PR, but do not create the PR automatically",
         "Ensure git status is clean except intended files before final commit",
-        "Do not run Production migration or Production restart in this story",
-        "Final full validation commands are recorded",
+        "Do not run Production migration, Production deploy, host Dev deploy, host gateway restart, or Production restart in this story",
+        "End with a clear user-review checkpoint: code ready for review, Production DB untouched, PR not opened unless separately approved",
+        "Final full Docker validation commands are recorded",
         "Typecheck passes",
         "Build passes",
         "Tests pass"
