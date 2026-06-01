@@ -392,4 +392,4 @@
   - Evidence tier: Docker build/typecheck, worker-local gateway start/restart with dev-auth API checks on the mapped worker port, report section validation, and manual runbook documentation.
   - Safety: no host Dev or Production deploy script was run; no host Dev/Production gateway restart was run; no migration command targeted `/root/.pibo`; host `/root/.pibo`, Production data, and upstream PR creation were not touched.
   - PRD update: US-028 set to `passes: true` with evidence notes. Next failing story: US-029 (`Final zero-regression sweep for active Owner Scope artifacts in Docker`).
-- 2026-06-02T03:45Z: US-028 implementation commit created: `3a2c3f9 docs: US-028 - add cutover runbook`.
+- 2026-06-02T03:45Z: US-028 implementation commit created: `aac62d6 docs: US-028 - add cutover runbook`.
