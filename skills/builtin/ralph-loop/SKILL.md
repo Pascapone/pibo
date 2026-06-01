@@ -85,7 +85,7 @@ Create or update `IMPLEMENTATION_PROGRESS.md` in the worktree root:
 ## Ralph job setup
 
 - Created: <date>
-- Owner scope: `<owner-scope>`
+- Target scope: app-global
 - Target room: `<room-id>`
 - Profile: `pibo-agent`
 - Template: `<template-id>`
@@ -132,13 +132,11 @@ Prefer this sequence:
 Example:
 
 ```bash
-OWNER_SCOPE='user:<user-id>'
 ROOM_ID='<room-id>'
 
 pibo ralph templates --json
 
 pibo ralph add \
-  --owner-scope "$OWNER_SCOPE" \
   --room "$ROOM_ID" \
   --profile pibo-agent \
   --template prd-batch-stories \
@@ -146,8 +144,8 @@ pibo ralph add \
   --prompt "$(cat /tmp/ralph-loop-prompt.txt)" \
   --json
 
-pibo ralph list --owner-scope "$OWNER_SCOPE" --all --json
-pibo ralph start --owner-scope "$OWNER_SCOPE" <job-id>
+pibo ralph list --all --json
+pibo ralph start <job-id>
 ```
 
 Use `--start` only when the user explicitly wants immediate launch or the job has already been reviewed.
@@ -279,8 +277,8 @@ For user-facing CLI, TUI, Web UI, gateway, runtime, auth, persistence, or agent-
 Use read-only checks unless the user asks for intervention:
 
 ```bash
-pibo ralph list --owner-scope "$OWNER_SCOPE" --all --json
-pibo ralph runs --owner-scope "$OWNER_SCOPE" --job <job-id> --json
+pibo ralph list --all --json
+pibo ralph runs --job <job-id> --json
 pibo debug session <pibo-session-id>
 pibo debug events <pibo-session-id> --limit 30
 pibo debug trace <pibo-session-id> --running-only --check

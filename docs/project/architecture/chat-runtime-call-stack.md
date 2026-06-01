@@ -234,7 +234,7 @@ class PiboSessionRouter {
       activeModel,
       sessionContext: {
         piboSessionId: piboSession.id,
-        ownerScope: piboSession.ownerScope,
+        appContext: piboSession.appContext,
         piboRoomId: piboSession.metadata.chatRoomId,
       },
       subagentRunner,
@@ -418,7 +418,7 @@ async function streamAssistantResponse(...) {
 
 | Point | Storage |
 |---|---|
-| Session and room exist | `~/.pibo/pibo.sqlite`: `sessions`, `rooms`, `room_members` |
+| Session and room exist | `~/.pibo/pibo.sqlite`: `sessions`, `rooms`, `room metadata` |
 | User sends message | `pibo.sqlite`: `event_log`, `chat_messages`, `session_navigation` |
 | Large payload | `~/.pibo/payloads` |
 | Runtime output | `pibo.sqlite`: `event_log`, `observations`, optional `chat_messages` |

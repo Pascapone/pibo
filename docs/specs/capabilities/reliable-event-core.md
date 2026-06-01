@@ -241,7 +241,7 @@ A completed tracked run that is not consumed is not deleted by terminal-run prun
 ## Constraints
 
 - **Compatibility:** Public behavior must keep using `Pibo Session ID` for run ownership and `runId` for yielded-run identity.
-- **Security / Privacy:** Reliability payloads may contain operational data; debug and API access must remain owner-scoped where exposed above the store.
+- **Security / Privacy:** Reliability payloads may contain operational data; debug and API access must remain app-spaced where exposed above the store.
 - **Performance:** Queries must remain bounded by limits and indexes for event replay, job claim selection, dead-job listing, and run lookup.
 - **Dependencies:** The current implementation depends on Node SQLite via `node:sqlite` and local filesystem access.
 

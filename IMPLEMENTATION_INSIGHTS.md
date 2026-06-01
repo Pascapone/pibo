@@ -276,3 +276,11 @@ Temporary exceptions are allowed only for the isolated final migration module an
 - Compute worker technical labeling is now `holder` / `pibo.compute.holder`; avoid `ownerScope` even for non-product Docker metadata because it trips product vocabulary gates and confuses agents.
 - Fresh ownerless runtime regression lives in `test/ownerless-fresh-runtime-regression.test.mjs`; it is the quick proof that new sessions, rooms, agents, projects, annotations, Ralph, Cron, and workflow runs can be created without owner/principal payloads.
 - Useful US-024 source gate: `rg -n "owner_scope|principal_id|shared:app|legacyOwnerScopeForPreCutoverSchemas|ownerScope" src packages --glob "*.ts" --glob "!src/data/final-app-space-cutover-migration.ts"` should return no matches. Current historical tests/docs still need cleanup in US-025/US-026/US-029.
+
+## US-025 docs/help cleanup lessons
+
+- Current canonical docs should teach the one app-space model: auth grants access only and does not partition visibility, routing, workspace, jobs, read-state, profiles, or write location.
+- Superseded plans/specs that still teach older account-partition or personal-target behavior now live under `docs/legacy/`; do not move them back into `docs/project`, `docs/specs`, or `docs/plans` unless they are rewritten for the final app model.
+- `scripts/legacy-product-vocabulary-gate.mjs` has a temporary final-removal documentation allowlist because the active Ralph batch docs necessarily record removed historical vocabulary. The reviewed allowed current-doc files are limited to the final-removal plan, text PRD, and PRD JSON. After user-approved cutover/archival, shrink this allowlist again.
+- Built tool guides must not teach removed partition flags. Ralph examples should use `--room` or the default-chat target; Web Annotation docs should describe app resources keyed by Pibo Session/resource metadata.
+- Useful US-025 current-docs gate: `node scripts/legacy-product-vocabulary-gate.mjs --roots GLOSSARY.md,docs/project,docs/specs,docs/plans,skills,src/tools/guides.ts --json` should have zero failures; allowed matches should be only final-removal implementation docs until they are archived.

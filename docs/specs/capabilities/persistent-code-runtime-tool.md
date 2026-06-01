@@ -9,7 +9,7 @@
 
 Agents often need to run exploratory Python or Node code, inspect live objects, and continue from partial failures without losing state. Shell commands are good for process-level work, but they force agents to rebuild interpreter state for each snippet and can waste context with repeated setup.
 
-Pibo exposes a profile-selectable `runtime` native tool that starts persistent Python or Node worker sessions owned by the current Pibo Session. The behavior must stay predictable, owner-scoped, bounded by timeouts, and safe to use with yielded-run control.
+Pibo exposes a profile-selectable `runtime` native tool that starts persistent Python or Node worker sessions owned by the current Pibo Session. The behavior must stay predictable, app-spaced, bounded by timeouts, and safe to use with yielded-run control.
 
 ## Goal
 
@@ -66,7 +66,7 @@ Profiles that select `runtime` get an active `runtime` tool. Profiles that omit 
 - WHEN profile inspection runs
 - THEN `runtime` appears as a registered, active tool with a generated definition
 
-### Requirement: Exec auto-starts an owner-scoped default session
+### Requirement: Exec auto-starts an app-spaced default session
 
 The tool MUST start a default runtime session for the owner when `exec` is called without a `sessionId`, and subsequent default calls of the same runtime kind MUST reuse the live owned session.
 
@@ -319,7 +319,7 @@ Agents see an explicit unsupported-target result instead of a partial or mislead
 | Requirement | Scenario / Story | Plan / Task | Status |
 |---|---|---|---|
 | REQ-001 Runtime tool activation is profile-gated | Codex-compatible profile includes runtime | Existing implementation | Implemented |
-| REQ-002 Exec auto-starts an owner-scoped default session | Preserve Python variable | Existing implementation | Implemented |
+| REQ-002 Exec auto-starts an app-spaced default session | Preserve Python variable | Existing implementation | Implemented |
 | REQ-003 Runtime sessions preserve state after code errors | Node exception keeps prior state | Existing implementation | Implemented |
 | REQ-004 Outputs and value summaries are separated | Separate Python streams | `src/tools/runtime/python-worker-source.ts`, `src/tools/runtime/node-worker-source.ts`, `test/runtime-tool.test.mjs` | Runtime-tested |
 | REQ-005 Worker protocol isolates control frames from user streams | Node output does not corrupt protocol | `src/tools/runtime/python-worker-source.ts`, `src/tools/runtime/node-worker-source.ts`, `src/tools/runtime/python-backend.ts`, `src/tools/runtime/node-backend.ts`, `test/runtime-tool.test.mjs` | Partial: stdout/stderr tested; JSON-looking output and unknown protocol source-inspected |

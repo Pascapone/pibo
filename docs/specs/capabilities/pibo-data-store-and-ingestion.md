@@ -227,7 +227,7 @@ The system MUST expose operator-facing data diagnostics and repairs without muta
 
 #### Current
 
-`pibo data inventory` reports selected store files, sizes, WAL sizes, integrity, page stats, and table counts. `pibo data migrate sessions-to-v2` copies legacy session metadata into the v2 store. `pibo data repair unread-baseline` is a legacy compatibility command that requires owner scope and cutoff timestamp and supports dry-run mode.
+`pibo data inventory` reports selected store files, sizes, WAL sizes, integrity, page stats, and table counts. `pibo data migrate sessions-to-v2` copies legacy session metadata into the v2 store. `pibo data repair unread-baseline` is a legacy compatibility command that requires app partition and cutoff timestamp and supports dry-run mode.
 
 #### Target
 
@@ -237,7 +237,7 @@ Operators and agents can inspect data-store state, migrate session projections, 
 
 - Inventory can run against a configured root and includes v2, v2-shadow, legacy sessions, legacy chat, reliability, and auth stores.
 - Session migration reports read, inserted, updated, skipped, and source-existence counts.
-- Unread repair is a legacy compatibility command that refuses to run without owner scope and cutoff timestamp; shared-app migration uses `pibo data shared-app` instead.
+- Unread repair is a legacy compatibility command that refuses to run without app partition and cutoff timestamp; shared-app migration uses `pibo data shared-app` instead.
 
 #### Scenario: Inventory for missing root store
 

@@ -24,7 +24,7 @@ Use this checklist before enabling Web Annotations outside the dedicated Docker 
 
 ## Security and privacy gates
 
-- [ ] Verify owner-scope and Pibo Session isolation for API and tool reads and writes.
+- [ ] Verify app-space and Pibo Session isolation for API and tool reads and writes.
 - [ ] Verify stale or unauthorized composer attachment IDs are rejected.
 - [ ] Verify payload bounds for notes, selectors, DOM paths, text snippets, HTML hints, class summaries, accessibility hints, source raw metadata, thread messages, and attachment counts.
 - [ ] Verify prompt/UI/tool rendering redacts secret-like text and omits inline base64 screenshot data.

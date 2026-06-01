@@ -19,7 +19,7 @@ Pibo MUST treat `PiboSession` records as the product source of truth for routed 
 
 The current implementation defines the session model and in-memory store in `src/sessions/store.ts`, SQLite-backed stores in `src/sessions/sqlite-store.ts` and `src/sessions/pibo-data-store.ts`, routing in `src/core/session-router.ts`, active-model resolution in `src/core/session-model.ts`, gateway channel context in `src/gateway/server.ts`, and Chat Web projections in `src/apps/chat/trace.ts` and `src/apps/chat/web-app.ts`.
 
-A `PiboSession` stores product identity and metadata: `id`, `piSessionId`, `channel`, `kind`, `profile`, legacy-compatible `ownerScope` when old stores need it, `parentId`, `originId`, `workspace`, `title`, `metadata`, `activeModel`, and timestamps. Runtime creation uses the stored profile, workspace, Pi session id, parent Pi session id, selected context, and active model. Auth account identity must not select the workspace or product visibility.
+A `PiboSession` stores product identity and metadata: `id`, `piSessionId`, `channel`, `kind`, `profile`, legacy-compatible `appContext` when old stores need it, `parentId`, `originId`, `workspace`, `title`, `metadata`, `activeModel`, and timestamps. Runtime creation uses the stored profile, workspace, Pi session id, parent Pi session id, selected context, and active model. Auth account identity must not select the workspace or product visibility.
 
 ## Scope
 

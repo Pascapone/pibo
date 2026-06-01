@@ -59,6 +59,8 @@ const TERM_PARTS = [
 
 const FINAL_ALLOWED_PATHS = [
 	/^docs\/legacy\//,
+	/^docs\/plans\/final-owner-scope-removal-umbauplan-2026-05-31\.md$/,
+	/^docs\/specs\/changes\/final-owner-scope-removal\//,
 	/^src\/data\/final-app-space-cutover-migration\.ts$/,
 	/^src\/data\/final-app-space-cutover-migration\//,
 ];
@@ -168,8 +170,9 @@ Options:
   -h, --help           Show this help.
 
 Allowlist policy:
-  Only docs/legacy and the isolated final app-space cutover migration path are allowed.
-  After approved cutover, shrink FINAL_ALLOWED_PATHS in this script to an empty list.
+  Allowed matches must stay limited to docs/legacy, the final removal implementation docs,
+  and the isolated final app-space cutover migration path.
+  After approved cutover and historical-doc archival, shrink FINAL_ALLOWED_PATHS in this script.
 `);
 }
 

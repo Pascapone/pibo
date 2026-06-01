@@ -424,8 +424,8 @@
         "Typecheck passes"
       ],
       "priority": 25,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed 2026-06-01. Updated current docs, glossary, built-in skills, and active Ralph guide text for the final one-app-space model. GLOSSARY.md now treats Owner Scope as a removed historical storage concept only; current capability/project docs were rewritten away from active owner/principal/personal-target wording. Archived superseded plans/spec changes that taught older owner-scoped or personal-target behavior under docs/legacy/, including the older shared-app/no-owner-scope, Cron jobs, Ink CLI, Web Annotations, compute browser lifecycle, Ralph stop conditions, workflow system/UI, and related coverage docs. Updated skills/builtin/ralph-loop/SKILL.md to show app-global Ralph commands with --room/default targets and no --owner-scope, updated skills/builtin/web-annotations/SKILL.md for app-resource annotation wording, and updated src/tools/guides.ts Ralph help to use --default-chat. Added docs/reports/final-owner-scope-current-docs-cleanup-us-025.md with the reviewed temporary docs allowlist: only docs/legacy, the final-removal implementation docs, and the isolated final cutover migration module may retain legacy vocabulary until post-cutover archival. Updated scripts/legacy-product-vocabulary-gate.mjs and focused tests for this temporary final-removal-doc allowlist. Docker validation passed with PIBO_HOME=/workspace/.pibo/ralph-test-home: npm run build; node --test test/legacy-product-vocabulary-gate.test.mjs test/shared-app-artifact-search-gate.test.mjs; docs/help search gate over GLOSSARY.md, docs/project, docs/specs, docs/plans, skills, and src/tools/guides.ts with 0 failures and allowed matches only in final-removal implementation docs; npm run typecheck. Built guide checks for pibo tools guide ralph ralph and web-annotations found no owner-scope/owner/principal option wording. Host /root/.pibo, host gateways, Production data, deploys, migrations, and PR creation were not touched."
     },
     {
       "id": "US-026",

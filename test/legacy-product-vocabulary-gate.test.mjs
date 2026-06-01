@@ -89,6 +89,15 @@ test("current docs are not allowed", () => {
 	assert.equal(result.failures.length, 1);
 });
 
+test("final removal implementation docs are temporarily allowed", () => {
+	const root = fixtureRoot();
+	writeFixture(root, "docs/specs/changes/final-owner-scope-removal/prds/final-owner-scope-removal.prd.json", `${term.camel}\n`);
+	writeFixture(root, "docs/plans/final-owner-scope-removal-umbauplan-2026-05-31.md", `${term.sharedValue}\n`);
+	const result = scan(root, ["docs/specs", "docs/plans"]);
+	assert.equal(result.failures.length, 0);
+	assert.equal(result.allowed.length, 2);
+});
+
 test("isolated cutover migration path is allowed", () => {
 	const root = fixtureRoot();
 	writeFixture(root, "src/data/final-app-space-cutover-migration.ts", `${term.sharedValue}\n`);

@@ -322,7 +322,7 @@ The Context Files API MUST require an authenticated web session for reads and mu
 ## Constraints
 
 - **Product Boundary:** Pibo owns managed context-file metadata, revisions, source links, and registry updates. Plugin context files remain plugin-owned sources.
-- **Security / Privacy:** Context File APIs MUST require an authenticated web session. Managed mutations record the web session owner scope as revision actor metadata when available. Current Context Files mutation handlers require JSON bodies where a body is consumed, but they do not perform the Chat Web `Origin` header guard.
+- **Security / Privacy:** Context File APIs MUST require an authenticated web session. Managed mutations record the web session app partition as revision actor metadata when available. Current Context Files mutation handlers require JSON bodies where a body is consumed, but they do not perform the Chat Web `Origin` header guard.
 - **Compatibility:** Legacy managed JSON metadata MUST be migrated forward without treating it as the post-migration source of truth.
 - **Reliability:** Revision history MUST preserve enough content to recover a managed file when its backing markdown file is missing.
 - **UX Safety:** The browser editor MUST prefer visible warnings and raw-markdown fallback over silently dropping content.
@@ -353,7 +353,7 @@ The Context Files API MUST require an authenticated web session for reads and mu
 
 ### Open Questions
 
-- Should managed context files become owner-scoped rather than shared within the local Pibo home?
+- Should managed context files become app-spaced rather than shared within the local Pibo home?
 - Should Context Files mutations adopt the shared Chat Web same-origin `Origin` guard, or remain authenticated-session plus JSON-body guarded because the app is mounted as a separate same-origin web app?
 - Should source adoption and source reset remain separate actions, or should the UI merge them with clearer copy?
 - Should large context files have size limits or warnings before runtime injection?

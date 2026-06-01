@@ -138,7 +138,7 @@ The CLI MUST keep direct Pi TUI execution, routed Pibo TUI execution, and the re
 - `pibo tui:routed --show-thinking` enables local display of routed thinking deltas.
 - `pibo tui:routed --thinking <level>` accepts only levels parsed by `parsePiboThinkingLevel`.
 - `pibo tui:sessions --help` prints the CLI Session UI help, including `/help /new /session /agent /status /clear /exit /quit` and existing TUI command boundaries.
-- `pibo tui:sessions` accepts `--session`, `--owner-scope`, `--max-rows`, and `--demo` without changing `pibo tui` or `pibo tui:routed` behavior.
+- `pibo tui:sessions` accepts `--session`, `--app-space`, `--max-rows`, and `--demo` without changing `pibo tui` or `pibo tui:routed` behavior.
 
 #### Scenario: Routed QA with thinking
 

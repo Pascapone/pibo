@@ -132,8 +132,8 @@ Agents can reference product identity for scheduling jobs, correlation, and sess
 
 #### Acceptance
 
-- The injected context includes `User ID`, `Owner scope`, `Pibo Session ID`, and `User timezone`.
-- Runtime context does not derive user identity from owner scope; auth identity is not product context.
+- The injected context includes `User ID`, `App partition`, `Pibo Session ID`, and `User timezone`.
+- Runtime context does not derive user identity from app partition; auth identity is not product context.
 - If no timezone is passed, Pibo uses the default user timezone.
 - Duplicate context-file paths are merged so the first occurrence wins.
 
@@ -141,7 +141,7 @@ Agents can reference product identity for scheduling jobs, correlation, and sess
 
 - GIVEN a Chat Web routed session has Pibo Session ID `ps_123`
 - WHEN Pibo creates the runtime
-- THEN the runtime context includes `Owner scope: user:abc`
+- THEN the runtime context includes `App partition: user:abc`
 - AND `Pibo Session ID: ps_123`.
 
 ### Requirement: Compaction prompt mode is persisted per workspace

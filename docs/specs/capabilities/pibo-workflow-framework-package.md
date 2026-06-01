@@ -227,7 +227,7 @@ Workflow definitions, catalog/editor records, runs, events, attempts, transfers,
 
 #### Scenario: Workflow run round trip
 
-- GIVEN a workflow run with owner scope, workflow id/version, input, state, and status
+- GIVEN a workflow run with app partition, workflow id/version, input, state, and status
 - WHEN the SQLite workflow store saves and reads that run
 - THEN the returned run preserves the workflow fields
 - AND any linked Pibo Session id remains a link, not a session-store replacement.
@@ -287,7 +287,7 @@ Future changes can validate core workflow behavior without inventing ad hoc defi
 
 - Workflow version ordering is currently string-based; authors SHOULD choose sortable version strings when relying on implicit latest-version resolution.
 - Runtime helper timeouts and missing output events MUST fail workflow dispatch explicitly rather than hang indefinitely.
-- Store list limits constrain returned rows but do not authorize access; callers remain responsible for owner-scope checks at product boundaries.
+- Store list limits constrain returned rows but do not authorize access; callers remain responsible for app-space checks at product boundaries.
 - Human wait actions can be submitted after a token has already been resolved; runtime helpers MUST reject stale or non-pending wait tokens.
 - XState projection is inspectable metadata. It MUST NOT be used to replay private payloads or infer data that the workflow kernel did not record.
 
@@ -373,7 +373,7 @@ The following package-local test files are part of this spec's direct verificati
 ### Open Questions
 
 - Should implicit latest-version resolution move from lexicographic ordering to semantic-version ordering before workflows become user-authored?
-- Should workflow inspection include an owner-scope filter at the helper level, or remain a low-level store/read utility?
+- Should workflow inspection include an app-space filter at the helper level, or remain a low-level store/read utility?
 - Should XState projection snapshots be persisted by the workflow store, or generated on demand from definitions and run facts only?
 
 ## Traceability

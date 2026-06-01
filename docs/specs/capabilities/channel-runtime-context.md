@@ -209,7 +209,7 @@ Gateway shutdown MUST stop started channels before stopping auth, destroying soc
 
 - If a channel throws during startup after earlier channels started, future cleanup must not assume unstarted channels have `stop` state.
 - Optional context methods may be absent from non-gateway test contexts; channel implementations should treat optional members as optional unless the channel contract requires them.
-- Auth mode `trusted-local` still relies on the transport boundary to decide who can reach the channel; it is not a web-user auth substitute.
+- Auth mode `trusted-local` still relies on the transport boundary to decide who can reach the channel; it is not a authenticated-user auth substitute.
 - Dynamic registry mutations affect future discovery and runtime creation; existing routed runtimes may keep their already assembled runtime context.
 
 ## Constraints
@@ -238,7 +238,7 @@ Gateway shutdown MUST stop started channels before stopping auth, destroying soc
 ### Open Questions
 
 - Should `auth.mode = "trusted-local"` receive stronger validation based on bind host or transport type?
-- Should dynamic registry mutation methods require owner-scope parameters for auditability?
+- Should dynamic registry mutation methods require app-space parameters for auditability?
 
 ## Traceability
 

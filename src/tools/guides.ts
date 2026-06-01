@@ -19,10 +19,10 @@ Ralph runs repeatable Pibo agent jobs. Use it when the user wants an implementat
 
 ## Required Context
 
-Ralph jobs are app-global. Normal commands do not need an owner scope. Choose either:
+Ralph jobs are app-global. Choose either:
 
 - room target: \`--room <current-room-id>\`
-- shared default target: \`--personal\`
+- shared default target: \`--default-chat\`
 
 Inside the Pibo source repo, use \`npm run --silent dev -- ralph ...\` for uninstalled local changes. For the installed CLI, use \`pibo ralph ...\`.
 

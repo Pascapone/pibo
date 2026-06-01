@@ -175,7 +175,7 @@ Agent nodes must select a fixed Agent Designer profile in V1:
 profile: fixedProfile("pibo-agent")
 ```
 
-Runtime profile resolution records selected profile metadata plus effective tools, skills, context files, and session routing on the node attempt. Use node-level `routing` for concrete routing fields such as legacy `ownerScope` compatibility, `projectId`, `roomId`, `parentSessionId`, and `channel`. Use `workflow.metadata.routingHints` for non-authoritative hints that help plugin/UI selection but do not affect execution by themselves.
+Runtime profile resolution records selected profile metadata plus effective tools, skills, context files, and session routing on the node attempt. Use node-level `routing` for concrete routing fields such as legacy `appContext` compatibility, `projectId`, `roomId`, `parentSessionId`, and `channel`. Use `workflow.metadata.routingHints` for non-authoritative hints that help plugin/UI selection but do not affect execution by themselves.
 
 Simple chat sessions should remain unbadged unless they are linked to workflow metadata. Workflow-backed sessions should persist workflow run ids through the normal project/session linkage rather than duplicating Pibo/Pi traces in the workflow store.
 
@@ -221,7 +221,7 @@ Recommended debug snapshot contents:
 4. Projection summary from `projectWorkflowToXStateProjection(definition)` when graph visualization is relevant.
 5. Persisted run facts from `inspectWorkflowRun(store, runId)` for runtime debugging.
 
-Keep executable functions, raw private payloads, prompts, and credentials out of normal debug snapshots unless the caller is explicitly authorized for owner-scope debug access. Store refs and metadata instead of function source.
+Keep executable functions, raw private payloads, prompts, and credentials out of normal debug snapshots unless the caller is explicitly authorized for app-space debug access. Store refs and metadata instead of function source.
 
 A small deterministic helper can be kept next to plugin tests:
 
