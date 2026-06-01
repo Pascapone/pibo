@@ -244,3 +244,4 @@
   - Evidence tier: Docker build/typecheck, focused Ralph store/service/API/CLI tests, real built-CLI temp-store path, and targeted Ralph source search gate.
   - Safety: all tests used Docker temp files or `/workspace/.pibo/ralph-test-home`; no migration inspect/dry-run/apply command was run against `/root/.pibo`; host `/root/.pibo`, host Dev/Production gateways, Production data, deploys, and PR creation were not touched.
   - PRD update: US-015 set to `passes: true` with evidence notes. Next failing story: US-016 (`Remove Owner Scope from Cron data model and store schema`).
+- 2026-06-01T16:40Z: US-015 implementation commit created: `0bd056f feat: US-015 - clean Ralph owner surfaces`.
