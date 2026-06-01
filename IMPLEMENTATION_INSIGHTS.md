@@ -190,3 +190,11 @@ Temporary exceptions are allowed only for the isolated final migration module an
 - Fresh `pibo-ralph.sqlite` schemas must not create `owner_scope` columns or owner indexes. Historical owner-column rebuild lives in `src/ralph/store.ts` until US-024/final cutover isolation removes runtime compatibility.
 - Useful US-014 regression gates: `rg -n "ownerScope|getOwnedJob|PiboRalphJobCreateInput.*ownerScope|PiboRalph(Job|Run|RunFact).*ownerScope|kind: .personal.|principalId" src/ralph/types.ts src/ralph/store.ts src/ralph/service.ts` should return no matches, and `rg -n "owner_scope TEXT|owner_scope,|ON pibo_ralph_.*owner" src/ralph/store.ts` should return no fresh-schema creation matches.
 - US-015 still owns the visible Ralph CLI/API/UI cleanup for deprecated `--owner-scope`, `--personal`, `--principal-id`, and Chat UI target labels. Do not confuse those transitional surfaces with the ownerless store model.
+
+## US-015 Ralph CLI/API/UI lessons
+
+- Ralph active user-facing surfaces now use only `room` and `default-chat` targets. Do not add `--owner-scope`, `PIBO_OWNER_SCOPE`, `--personal`, `--principal-id`, `principalId`, or `ownerScope` back to `src/ralph/cli.ts`, Chat Ralph API serializers, or Chat UI Ralph types/forms.
+- `pibo ralph add` and `pibo ralph edit` use `--default-chat` for the shared default target and `--room <room-id>` for room targets. The built CLI real-path validation in `test/ralph-resource-visibility.test.mjs` covers help/list/add/start/stop/runs JSON against a temp store.
+- Chat Ralph API request payloads should reject legacy personal/principal targets and serialize only `{ kind: "default-chat" }` or `{ kind: "room", roomId }`.
+- Useful US-015 regression gate: `rg -n -e --owner-scope -e PIBO_OWNER_SCOPE -e --personal -e --principal-id -e ownerScope -e getOwnedJob -e principalId src/ralph src/apps/chat/ralph-api.ts src/apps/chat-ui/src/RalphArea.tsx src/apps/chat-ui/src/api-ralph.ts` should return no matches. Ralph-target matches in `src/apps/chat-ui/src/types.ts` should show only `room` and `default-chat`; Cron owner/personal matches in the same shared types file are US-016/US-017 targets.
+- The broader shared-app artifact search gate still sees out-of-scope Cron/data compatibility imports before US-016/US-024. Do not treat those as Ralph regressions; remove them when their stories are selected.

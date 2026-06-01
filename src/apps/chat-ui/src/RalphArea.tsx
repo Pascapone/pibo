@@ -11,7 +11,7 @@ type Draft = {
 	prompt: string;
 	maxIterations: string;
 	stopPolicyText: string;
-	targetKind: "room" | "personal";
+	targetKind: "room" | "default-chat";
 	roomId: string;
 	modelOverride?: ModelProfile;
 	thinkingLevel?: ThinkingLevel;
@@ -167,7 +167,7 @@ export function RalphArea({ bootstrap, mobileSidebarOpen = false, onCloseMobileS
 							<div className="space-y-2">
 								<div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Target</div>
 								<div className="grid grid-cols-2 gap-2">
-									<RadioCard name="ralph-target-kind" checked={draft.targetKind === "personal"} title="Shared Chat" description="Runs in the shared default chat" onChange={() => setDraft({ ...draft, targetKind: "personal" })} />
+									<RadioCard name="ralph-target-kind" checked={draft.targetKind === "default-chat"} title="Shared Chat" description="Runs in the shared default chat" onChange={() => setDraft({ ...draft, targetKind: "default-chat" })} />
 									<RadioCard name="ralph-target-kind" checked={draft.targetKind === "room"} title="Room" description="Uses a room workspace" onChange={() => setDraft({ ...draft, targetKind: "room" })} />
 								</div>
 							</div>
@@ -295,10 +295,10 @@ function RunStatusBadge({ status }: { status: PiboRalphRun["status"] }) {
 	return <span className={`inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 text-[11px] ${styles}`}>{status === "running" ? <Loader2 size={11} className="animate-spin" /> : null}{status}</span>;
 }
 
-function emptyDraft(defaultProfile: string, roomId?: string): Draft { return { name: "", description: "", profile: defaultProfile, prompt: "", maxIterations: "", stopPolicyText: "", targetKind: roomId ? "room" : "personal", roomId: roomId ?? "" }; }
+function emptyDraft(defaultProfile: string, roomId?: string): Draft { return { name: "", description: "", profile: defaultProfile, prompt: "", maxIterations: "", stopPolicyText: "", targetKind: roomId ? "room" : "default-chat", roomId: roomId ?? "" }; }
 function draftFromTemplate(template: PiboRalphJobTemplate, defaultProfile: string, roomId?: string): Draft { return { ...emptyDraft(defaultProfile, roomId), name: template.job.name, description: template.job.description ?? "", prompt: template.job.prompt, maxIterations: template.job.maxIterations ? String(template.job.maxIterations) : "", stopPolicyText: template.job.stopPolicy ? JSON.stringify(template.job.stopPolicy, null, 2) : "" }; }
 function draftFromJob(job: PiboRalphJob, defaultProfile: string, roomId?: string): Draft { return { name: job.name, description: job.description ?? "", profile: job.profile || defaultProfile, prompt: job.prompt, maxIterations: job.maxIterations ? String(job.maxIterations) : "", targetKind: job.target.kind, roomId: job.target.kind === "room" ? job.target.roomId : roomId ?? "", modelOverride: job.modelOverride, thinkingLevel: job.thinkingLevel, fastMode: job.fastMode, stopPolicyText: job.stopPolicy ? JSON.stringify(job.stopPolicy, null, 2) : "" }; }
-function inputFromDraft(draft: Draft): RalphJobInput { return { name: draft.name.trim() || undefined, description: draft.description.trim() || undefined, profile: draft.profile, prompt: draft.prompt, maxIterations: draft.maxIterations.trim() ? Number(draft.maxIterations) : null, stopPolicy: parseStopPolicyText(draft.stopPolicyText), modelOverride: draft.modelOverride ?? null, thinkingLevel: draft.thinkingLevel ?? null, fastMode: draft.fastMode ?? null, target: draft.targetKind === "room" ? { kind: "room", roomId: draft.roomId } : { kind: "personal", principalId: "" } }; }
+function inputFromDraft(draft: Draft): RalphJobInput { return { name: draft.name.trim() || undefined, description: draft.description.trim() || undefined, profile: draft.profile, prompt: draft.prompt, maxIterations: draft.maxIterations.trim() ? Number(draft.maxIterations) : null, stopPolicy: parseStopPolicyText(draft.stopPolicyText), modelOverride: draft.modelOverride ?? null, thinkingLevel: draft.thinkingLevel ?? null, fastMode: draft.fastMode ?? null, target: draft.targetKind === "room" ? { kind: "room", roomId: draft.roomId } : { kind: "default-chat" } }; }
 function parseStopPolicyText(value: string): PiboRalphStopPolicy | null { const trimmed = value.trim(); if (!trimmed) return null; return JSON.parse(trimmed) as PiboRalphStopPolicy; }
 function profileOptions(agents: AgentProfile[], customAgents: CustomAgent[]): AgentOption[] { const options = new Map<string, AgentOption>(); for (const agent of agents) options.set(agent.name, { name: agent.name, label: agent.name, description: agent.description }); for (const agent of customAgents) if (!agent.archivedAt) options.set(agent.profileName, { name: agent.profileName, label: agent.displayName === agent.profileName ? agent.profileName : `${agent.displayName} (${agent.profileName})`, description: agent.description }); return [...options.values()]; }
 function runtimeSummary(job: PiboRalphJob): string { const parts = [job.modelOverride ? `${job.modelOverride.provider}/${job.modelOverride.id}` : undefined, job.thinkingLevel ? `thinking ${job.thinkingLevel}` : undefined, job.fastMode !== undefined ? job.fastMode ? "fast on" : "fast off" : undefined].filter(Boolean); return parts.length ? parts.join(" · ") : "default runtime"; }

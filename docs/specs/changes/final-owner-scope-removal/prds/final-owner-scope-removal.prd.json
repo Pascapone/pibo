@@ -252,8 +252,8 @@
         "Real-path validation runs only in the Docker worker or isolated container ports, not host gateways"
       ],
       "priority": 15,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed 2026-06-01. Removed active Ralph owner/principal CLI/API/UI surfaces: pibo ralph no longer registers --owner-scope, reads PIBO_OWNER_SCOPE, or accepts --personal/--principal-id; Ralph add/edit now use --room <room-id> or --default-chat. Chat Ralph API target normalization now accepts only room/default-chat, and Chat UI Ralph types/forms send { kind: \"default-chat\" } for the shared default target with no ownerScope on Ralph jobs/runs. Updated Ralph API/CLI tests to recursively assert JSON payloads contain no ownerScope or principalId keys and to exercise real CLI help/list/add/start/stop/runs JSON paths against a temp Ralph store. Docker validation passed with PIBO_HOME=/workspace/.pibo/ralph-test-home: npm run build; node --test test/ralph-resource-visibility.test.mjs test/ralph-resource-metadata.test.mjs test/ralph-stop-conditions.test.mjs test/ralph-runtime-overrides.test.mjs; npm run typecheck. Targeted Docker rg gate over src/ralph, Chat Ralph API, and Chat UI Ralph API/area source found no --owner-scope, PIBO_OWNER_SCOPE, --personal, --principal-id, ownerScope, getOwnedJob, or principalId matches. A broader shared-app artifact search test was attempted and failed only on out-of-scope Cron/data compatibility imports scheduled for later stories; focused Ralph evidence passed. All validation used Docker temp files/fresh test home; host /root/.pibo, host gateways, Production data, deploys, and PR creation were not touched."
     },
     {
       "id": "US-016",

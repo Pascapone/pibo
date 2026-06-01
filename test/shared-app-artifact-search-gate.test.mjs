@@ -25,7 +25,6 @@ const ALLOWLIST = [
 	{ path: "src/apps/cli-ui/cliSessionsCommand.ts", pattern: /Personal Chat/g, reason: "debug fixture parser accepts historical room titles as legacy compatibility" },
 	{ path: "src/data/cli.ts", pattern: /owner-scope/g, reason: "legacy unread-baseline repair option only, not a normal current workflow selector" },
 	{ path: "src/cli-session/localSessionSource.ts", pattern: /Personal Chat/g, reason: "legacy fallback recognizes historical default room titles while displaying Shared Chat for new fallback rows" },
-	{ path: "src/ralph/cli.ts", pattern: /owner-scope/g, reason: "deprecated compatibility flag; CLI warns and ignores it" },
 	{ path: "src/cron/cli.ts", pattern: /owner-scope/g, reason: "deprecated compatibility flag; CLI warns and ignores it" },
 	{ path: "src/data/shared-app-migration.ts", pattern: /owner-scope/g, reason: "explicit migration action labels for legacy storage metadata" },
 	{ path: "src/data/shared-app-migration.ts", pattern: /personal target/g, reason: "explicit migration warning for legacy Ralph/Cron target metadata" },
