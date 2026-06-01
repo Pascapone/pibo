@@ -404,4 +404,4 @@
   - Evidence tier: Docker active-root search gate, focused search-gate tests, built CLI help checks, worker-local API payload checks, full Docker typecheck/build/npm test, and validation report.
   - Safety: no command targeted or mutated `/root/.pibo`; no host Dev/Production gateway restart, deploy script, Production migration/apply, Production data mutation, or upstream PR creation occurred.
   - PRD update: US-029 set to `passes: true` with evidence notes. Next failing story: US-030 (`Stop for user review with PR-readiness and production cutover handoff`).
-- 2026-06-02T05:00Z: US-029 implementation commit created: `16aaeb4 test: US-029 - final owner scope sweep`.
+- 2026-06-02T05:00Z: US-029 implementation commit created: `5ceae4d test: US-029 - final owner scope sweep`.
