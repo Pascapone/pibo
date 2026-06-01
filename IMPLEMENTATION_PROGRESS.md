@@ -302,3 +302,4 @@
   - Evidence tier: Docker build/typecheck, focused fake/local CLI source tests, shared session-ui regression, current Ink CLI state regression, and targeted source search gate.
   - Safety: all validation used Docker temp files or `/workspace/.pibo/ralph-test-home`; no migration inspect/dry-run/apply command was run; host `/root/.pibo`, host Dev/Production gateways, Production data, deploys, and PR creation were not touched.
   - PRD update: US-020 set to `passes: true` with evidence notes. Next failing story: US-021 (`Remove owner picker and owner status from Ink TUI`).
+- 2026-06-01T22:05Z: US-020 implementation commit created: `ed7e896 feat: US-020 - remove CLI session owner contracts`.
