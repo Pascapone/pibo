@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { piboHomePath } from "../../core/pibo-home.js";
@@ -6,8 +6,6 @@ import { DatabaseSync } from "node:sqlite";
 import { DEFAULT_BUILTIN_TOOL_NAMES, type BuiltinToolsMode, type ModelProfile } from "../../core/profiles.js";
 import { isPiboThinkingLevel, type PiboThinkingLevel } from "../../core/thinking.js";
 import { findPiPackage } from "../../pi-packages/store.js";
-import { legacyOwnerScopeForPreCutoverSchemas } from "../../owner-scope-compat.js";
-import { sqliteTableColumns } from "../../data/sqlite-schema.js";
 
 export type CustomAgentSubagent = {
 	name: string;
@@ -20,7 +18,6 @@ export type CustomAgentSubagent = {
 export type CustomAgentDefinition = {
 	id: string;
 	profileName: string;
-	ownerScope: string;
 	displayName: string;
 	description?: string;
 	nativeTools: string[];
@@ -49,7 +46,6 @@ export type CustomAgentDefinition = {
 const CUSTOM_AGENT_NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 
 export type CreateCustomAgentInput = {
-	ownerScope: string;
 	displayName: string;
 	description?: string;
 	nativeTools?: string[];
@@ -72,12 +68,11 @@ export type CreateCustomAgentInput = {
 	runControl?: boolean;
 };
 
-export type UpdateCustomAgentInput = Partial<Omit<CreateCustomAgentInput, "ownerScope">>;
+export type UpdateCustomAgentInput = Partial<CreateCustomAgentInput>;
 
 type AgentRow = {
 	id: string;
 	profile_name: string;
-	owner_scope?: string;
 	display_name: string;
 	description: string | null;
 	native_tools_json: string;
@@ -151,10 +146,13 @@ export class CustomAgentStore {
 		this.migrateThinkingOptionColumns();
 		this.migrateBuiltinToolNamesColumn();
 		this.migrateLegacyProfileNames();
+		this.migrateDuplicateProfileNames();
+		this.migrateOwnerScopeColumn();
 	}
 
-	list(_ownerScope?: string, options: { includeArchived?: boolean } = {}): CustomAgentDefinition[] {
+	list(options: { includeArchived?: boolean } = {}): CustomAgentDefinition[] {
 		this.migrateLegacyProfileNames();
+		this.migrateDuplicateProfileNames();
 		const archivedClause = options.includeArchived ? "" : " AND archived_at IS NULL";
 		const rows = this.db.prepare(`SELECT * FROM chat_agents WHERE 1 = 1${archivedClause} ORDER BY updated_at DESC`).all();
 		return (rows as AgentRow[]).map(agentFromRow);
@@ -175,7 +173,6 @@ export class CustomAgentStore {
 		const agent: CustomAgentDefinition = {
 			id,
 			profileName,
-			ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 			displayName: input.displayName,
 			description: input.description,
 			nativeTools: [...(input.nativeTools ?? [])],
@@ -312,13 +309,11 @@ export class CustomAgentStore {
 	}
 
 	private insert(agent: CustomAgentDefinition): void {
-		const hasOwnerScope = sqliteTableColumns(this.db, "chat_agents").has("owner_scope");
 		this.db
 			.prepare(`
 				INSERT INTO chat_agents (
 					id,
 					profile_name,
-					${hasOwnerScope ? "owner_scope," : ""}
 					display_name,
 					description,
 					native_tools_json,
@@ -342,12 +337,11 @@ export class CustomAgentStore {
 					created_at,
 					updated_at,
 					archived_at
-				) VALUES (${Array.from({ length: hasOwnerScope ? 26 : 25 }, () => "?").join(", ")})
+				) VALUES (${Array.from({ length: 25 }, () => "?").join(", ")})
 			`)
 			.run(
 				agent.id,
 				agent.profileName,
-				...(hasOwnerScope ? [agent.ownerScope] : []),
 				agent.displayName,
 				agent.description ?? null,
 				JSON.stringify(agent.nativeTools),
@@ -395,6 +389,89 @@ export class CustomAgentStore {
 				.prepare("UPDATE chat_agents SET profile_name = ?, display_name = ? WHERE id = ?")
 				.run(nextName, nextName, row.id);
 		}
+	}
+
+	private migrateDuplicateProfileNames(): void {
+		const rows = this.db.prepare("SELECT id, profile_name, display_name, created_at, updated_at FROM chat_agents ORDER BY profile_name ASC, updated_at DESC, created_at DESC, id DESC").all() as Array<{
+			id: string;
+			profile_name: string;
+			display_name: string;
+			created_at: string;
+			updated_at: string;
+		}>;
+		const used = new Set<string>();
+		for (const row of rows) {
+			if (!used.has(row.profile_name)) {
+				used.add(row.profile_name);
+				continue;
+			}
+			const nextName = uniqueAgentName(legacyAgentNameCandidate(row.profile_name, row.id), used);
+			used.add(nextName);
+			this.db
+				.prepare("UPDATE chat_agents SET profile_name = ?, display_name = ? WHERE id = ?")
+				.run(nextName, nextName, row.id);
+		}
+	}
+
+	private migrateOwnerScopeColumn(): void {
+		const columns = this.tableColumns();
+		if (!columns.has("owner_scope")) return;
+		this.db.exec("BEGIN IMMEDIATE");
+		try {
+			this.db.exec(`
+				CREATE TABLE chat_agents_ownerless (
+					id TEXT PRIMARY KEY,
+					profile_name TEXT NOT NULL UNIQUE,
+					display_name TEXT NOT NULL,
+					description TEXT,
+					native_tools_json TEXT NOT NULL,
+					skills_json TEXT NOT NULL,
+					context_files_json TEXT NOT NULL,
+					subagents_json TEXT NOT NULL,
+					mcp_servers_json TEXT NOT NULL DEFAULT '[]',
+					pi_packages_json TEXT NOT NULL DEFAULT '[]',
+					main_model_json TEXT,
+					subagent_model_json TEXT,
+					thinking_level TEXT,
+					main_thinking_level TEXT,
+					subagent_thinking_level TEXT,
+					fast INTEGER,
+					main_fast INTEGER,
+					subagent_fast INTEGER,
+					builtin_tools TEXT NOT NULL,
+					builtin_tool_names_json TEXT NOT NULL DEFAULT '["read","bash","edit","write"]',
+					auto_context_files INTEGER NOT NULL DEFAULT 1,
+					run_control INTEGER NOT NULL,
+					created_at TEXT NOT NULL,
+					updated_at TEXT NOT NULL,
+					archived_at TEXT
+				);
+				INSERT INTO chat_agents_ownerless (
+					id, profile_name, display_name, description, native_tools_json, skills_json, context_files_json,
+					subagents_json, mcp_servers_json, pi_packages_json, main_model_json, subagent_model_json,
+					thinking_level, main_thinking_level, subagent_thinking_level, fast, main_fast, subagent_fast,
+					builtin_tools, builtin_tool_names_json, auto_context_files, run_control, created_at, updated_at, archived_at
+				)
+				SELECT
+					id, profile_name, display_name, description, native_tools_json, skills_json, context_files_json,
+					subagents_json, mcp_servers_json, pi_packages_json, main_model_json, subagent_model_json,
+					thinking_level, main_thinking_level, subagent_thinking_level, fast, main_fast, subagent_fast,
+					builtin_tools, builtin_tool_names_json, auto_context_files, run_control, created_at, updated_at, archived_at
+				FROM chat_agents;
+				DROP TABLE chat_agents;
+				ALTER TABLE chat_agents_ownerless RENAME TO chat_agents;
+			`);
+			this.db.exec("COMMIT");
+		} catch (error) {
+			this.db.exec("ROLLBACK");
+			throw error;
+		}
+	}
+
+	private tableColumns(): Set<string> {
+		return new Set(
+			(this.db.prepare("PRAGMA table_info(chat_agents)").all() as Array<{ name: string }>).map((column) => column.name),
+		);
 	}
 
 	private migrateArchivedAtColumn(): void {
@@ -493,7 +570,6 @@ function agentFromRow(row: AgentRow): CustomAgentDefinition {
 	return {
 		id: row.id,
 		profileName: row.profile_name,
-		ownerScope: row.owner_scope ?? legacyOwnerScopeForPreCutoverSchemas(),
 		displayName: row.display_name,
 		description: row.description ?? undefined,
 		nativeTools: parseStringArray(row.native_tools_json),
@@ -622,6 +698,12 @@ function agentNameCandidate(displayName: string, id: string): string {
 		.replace(/-+/g, "-");
 	if (isValidCustomAgentName(candidate)) return candidate;
 	return `agent-${id.replace(/^agent_/, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")}`;
+}
+
+function legacyAgentNameCandidate(profileName: string, id: string): string {
+	const baseName = agentNameCandidate(profileName, id);
+	const hash = createHash("sha256").update(id).digest("hex").slice(0, 8);
+	return `${baseName}-legacy-${hash}`;
 }
 
 function uniqueAgentName(baseName: string, used: Set<string>): string {

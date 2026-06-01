@@ -395,7 +395,7 @@ function loadBootstrapCatalog(
 		buildAgentCatalog(context, state),
 	]).then(([modelCatalog, agentCatalog]) => ({
 		agents: context.channelContext.getProfiles?.() ?? [],
-		customAgents: serializeCustomAgents(state.agentStore.list(undefined, { includeArchived: true }), context),
+		customAgents: serializeCustomAgents(state.agentStore.list({ includeArchived: true }), context),
 		modelDefaults: loadChatModelDefaults(process.cwd()),
 		modelCatalog,
 		agentCatalog,
@@ -1292,7 +1292,7 @@ function requireAgentProfileNameAvailable(
 ): void {
 	const currentAgent = currentAgentId ? state.agentStore.get(currentAgentId) : undefined;
 	if (currentAgent?.profileName === profileName) return;
-	for (const agent of state.agentStore.list(undefined, { includeArchived: true })) {
+	for (const agent of state.agentStore.list({ includeArchived: true })) {
 		if (agent.id !== currentAgentId && agent.profileName === profileName) {
 			throw new PiboWebHttpError(`Agent name "${profileName}" already exists`, 400);
 		}
@@ -1334,7 +1334,7 @@ function buildWorkflowProfilePicker(
 	_webSession: PiboWebSession,
 	selectedProfileId?: string,
 ): WorkflowProfilePickerResponse {
-	const customAgents = state.agentStore.list(undefined, { includeArchived: true });
+	const customAgents = state.agentStore.list({ includeArchived: true });
 	const allCustomProfileNames = new Set(customAgents.map((agent) => agent.profileName));
 	const archivedCustomAgents = new Map(
 		customAgents.filter((agent) => agent.archivedAt).map((agent) => [agent.profileName, agent]),
@@ -2525,7 +2525,7 @@ function agentsSelectingPiPackage(state: ChatWebAppState, packageId: string): Cu
 	const pkg = findPiPackage(packageId);
 	const aliases = new Set([packageId, ...(pkg ? [pkg.id, pkg.name] : [])]);
 	return state.agentStore
-		.list(undefined, { includeArchived: true })
+		.list({ includeArchived: true })
 		.filter((agent) => agent.piPackages.some((selected) => aliases.has(selected)));
 }
 
@@ -4434,14 +4434,14 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/agents` && request.method === "GET") {
 				const webSession = await requireSession(request, context);
 				const includeArchived = parseBooleanSearchParam(url, "includeArchived");
-				return responseJson({ agents: serializeCustomAgents(state.agentStore.list(undefined, { includeArchived }), context) });
+				return responseJson({ agents: serializeCustomAgents(state.agentStore.list({ includeArchived }), context) });
 			}
 
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/agents` && request.method === "POST") {
 				requireSameOriginJsonRequest(request);
 				const webSession = await requireSession(request, context);
 				const body = await readJsonBody<ChatAgentBody>(request);
-				const input = createAgentInput(legacyOwnerScopeForPreCutoverSchemas(), body);
+				const input = createAgentInput(body);
 				requireAgentProfileNameAvailable(state, context, input.displayName);
 				const agent = state.agentStore.create(input);
 				context.channelContext.upsertProfile?.(createCustomAgentProfileDefinition(agent));

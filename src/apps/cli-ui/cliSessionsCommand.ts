@@ -116,13 +116,7 @@ function createLocalCliSessionSourceContext(): { dataStore: PiboDataStore; sessi
 		...builtInAgentSummaries,
 		...customAgents.map((agent) => ({ id: agent.profileName, name: agent.profileName, description: agent.description || agent.displayName, profileName: agent.profileName })),
 	];
-	const ownerSummaries = Array.from(new Set(customAgents.map((agent) => agent.ownerScope))).map((ownerScope) => ({
-		ownerScope,
-		label: ownerScope.startsWith("user:") ? `Web user ${ownerScope.slice("user:".length)}` : ownerScope,
-		description: "Discovered from custom agents",
-		kind: ownerScope.startsWith("user:") ? "web-user" as const : "local" as const,
-	}));
-	return { dataStore, sessionStore, pluginRegistry, agentSummaries, ownerSummaries };
+	return { dataStore, sessionStore, pluginRegistry, agentSummaries, ownerSummaries: [] };
 }
 
 function createLocalCliSessionSourceFromContext(input: { ownerScope?: string; dataStore: PiboDataStore; sessionStore: PiboDataSessionStore; pluginRegistry: ReturnType<typeof createDefaultPiboPluginRegistry>; router: LocalCliSessionRouter; ownsRouter: boolean; agentSummaries: { id: string; name: string; description?: string; profileName: string }[]; ownerSummaries: CliOwnerSummary[]; roomProvider?: { listRooms(input?: { ownerScope?: string }): Promise<readonly CliRoomSummary[]> | readonly CliRoomSummary[] }; statusMessage?: string }): LocalCliSessionSource {

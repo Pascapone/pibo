@@ -714,7 +714,7 @@ test("chat web app maps authenticated users to chat sessions", async () => {
 		assert.equal(session.session.channel, "pibo.chat-web");
 		assert.equal(session.session.kind, "chat");
 		assert.equal(session.session.profile, "base");
-		assert.equal(session.session.ownerScope, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
+		assert.equal("ownerScope" in session.session, false);
 
 		const message = await fetch(`${baseURL}/api/chat/message`, {
 			method: "POST",
@@ -795,7 +795,7 @@ test("chat web app creates shared app sessions", async () => {
 		assert.equal(created.status, 201);
 		const payload = await created.json();
 		assert.match(payload.session.id, /^ps_[0-9a-f-]{36}$/);
-		assert.equal(payload.session.ownerScope, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
+		assert.equal("ownerScope" in payload.session, false);
 		assert.equal(payload.session.parentId, undefined);
 		assert.equal(payload.session.workspace, homedir());
 
@@ -2368,7 +2368,7 @@ test("chat web app creates custom agents from the native capability catalog", as
 		assert.deepEqual(agentPayload.agent.builtinToolNames, ["read", "bash"]);
 		assert.equal(agentPayload.agent.autoContextFiles, false);
 		assert.equal(agentPayload.agent.runControl, true);
-		assert.equal(agentPayload.agent.ownerScope, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
+		assert.equal("ownerScope" in agentPayload.agent, false);
 
 		const session = await fetch(`${baseURL}/api/chat/sessions`, {
 			method: "POST",
@@ -2417,7 +2417,7 @@ test("chat web app exposes custom agents across authenticated accounts", async (
 		});
 		assert.equal(createdAgent.status, 201);
 		const createdPayload = await createdAgent.json();
-		assert.equal(createdPayload.agent.ownerScope, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
+		assert.equal("ownerScope" in createdPayload.agent, false);
 
 		const listedByAccountB = await fetch(`${baseURL}/api/chat/agents`, {
 			headers: { "x-test-user": "account-b" },
@@ -5695,14 +5695,12 @@ test("chat web app project bootstrap includes real workflow session descendants 
 		assert.equal(createdResponse.status, 201);
 		const createdPayload = await createdResponse.json();
 		const root = createdPayload.session;
-		const ownerScope = root.ownerScope;
-		assert.equal(ownerScope, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
+		assert.equal("ownerScope" in root, false);
 
 		const nested = sessions.create({
 			channel: "pibo.workflow",
 			kind: "workflow",
 			profile: "base",
-			ownerScope,
 			parentId: root.id,
 			workspace: projectPayload.project.projectFolder,
 			title: "Nested Review Workflow",
@@ -5712,7 +5710,6 @@ test("chat web app project bootstrap includes real workflow session descendants 
 			channel: "pibo.workflow",
 			kind: "agent-node",
 			profile: "base",
-			ownerScope,
 			parentId: nested.id,
 			workspace: projectPayload.project.projectFolder,
 			title: "Drafting Agent Node",
@@ -5722,7 +5719,6 @@ test("chat web app project bootstrap includes real workflow session descendants 
 			channel: "pibo.subagents",
 			kind: "subagent",
 			profile: "reviewer-agent",
-			ownerScope,
 			parentId: agent.id,
 			workspace: projectPayload.project.projectFolder,
 			title: "Reviewer Subagent",
@@ -5732,7 +5728,6 @@ test("chat web app project bootstrap includes real workflow session descendants 
 			channel: "pibo.workflow",
 			kind: "agent-node",
 			profile: "base",
-			ownerScope,
 			workspace: projectPayload.project.projectFolder,
 			title: "Unrelated Workflow Node",
 			metadata: { workflowSessionKind: "agent_node", workflowNodeId: "unrelated" },
@@ -6760,7 +6755,7 @@ test("chat web app accepts same-origin mutations behind a local reverse proxy", 
 		});
 		assert.equal(response.status, 201);
 		const payload = await response.json();
-		assert.equal(payload.session.ownerScope, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
+		assert.equal("ownerScope" in payload.session, false);
 	} finally {
 		await channel.stop?.();
 	}

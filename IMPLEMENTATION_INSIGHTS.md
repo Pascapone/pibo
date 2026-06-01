@@ -157,3 +157,12 @@ Temporary exceptions are allowed only for the isolated final migration module an
 - Useful US-010 payload regression pattern: recursively assert Chat Web JSON responses do not contain keys named `ownerScope` or `principalId`; this catches nested bootstrap/navigation/session/room/settings leaks better than shallow checks.
 - Worker-local web validation can use `runWebGatewayServer({ devAuth: true, web: { host: "0.0.0.0", port: 4788 } })` inside Docker with `PIBO_HOME=/workspace/.pibo/ralph-test-home`; do not use the normal `gateway:web` CLI without dev auth config and do not touch host gateways. Stop the worker-local gateway and any headless Chromium processes after validation.
 - Remaining Chat UI `ownerScope`/`principalId` type matches belong to later story areas: Custom Agents, Projects/workflow UI, Ralph/Cron, workflows, and annotations. Do not broaden US-010 to those domains unless selected stories require it.
+
+## US-011 Custom Agent lessons
+
+- `CustomAgentDefinition`, `CreateCustomAgentInput`, Custom Agent API payloads, and the Chat UI `CustomAgent` type are now ownerless. Do not add `ownerScope` back to Agent Designer, profile registration, or custom-agent API serializers.
+- `CustomAgentStore.list()` now takes only `{ includeArchived?: boolean }`; it intentionally ignores historical account boundaries and returns app-global custom agents.
+- Fresh `chat_agents.sqlite` schemas must not include `owner_scope`. Historical `owner_scope` knowledge is confined to the `CustomAgentStore` constructor-time table rebuild until US-024/final migration isolation removes runtime compatibility.
+- Historical duplicate Custom Agent `profile_name` rows are resolved by keeping the newest updated row under the original exact name and renaming older rows to `<name>-legacy-<8 hex hash>`. Keep this deterministic rule aligned with final cutover tooling.
+- CLI session source should treat custom agents as app-global profile options only; custom agents must not create CLI owner summaries.
+- Useful US-011 regression gates: `rg -n "ownerScope|legacyOwnerScopeForPreCutoverSchemas|shared:app" src/apps/chat/agent-store.ts src/apps/chat/agent-profiles.ts src/apps/chat/chat-request-normalizers.ts src/apps/chat-ui/src/agents src/apps/chat-ui/src/api-agent-designer.ts` should return no matches; `rg -n "owner_scope" src/apps/chat/agent-store.ts` should show only the temporary historical-column rebuild guard until US-024 removes it.
