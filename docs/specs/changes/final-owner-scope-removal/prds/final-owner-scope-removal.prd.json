@@ -372,8 +372,8 @@
         "Typecheck passes"
       ],
       "priority": 22,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed 2026-06-01. Added operator-only pibo data final-cutover inspect and dry-run commands backed by src/data/final-app-space-cutover-migration.ts. The command requires an explicit --root or PIBO_MIGRATION_SANDBOX_HOME sandbox, opens known affected SQLite files read-only, and refuses /root/.pibo or paths under it. Inspect reports affected database files, tables, legacy owner/principal columns, owner/principal indexes, row counts, redacted legacy values, and conflict groups without dumping secret content. Dry-run adds planned rebuild/drop/merge/rename/default-chat-normalization actions and unresolved blocker reporting without writes. Conflict detection currently covers duplicate default Chat rooms, duplicate session_navigation rows, duplicate Custom Agent profile names, and legacy Ralph/Cron personal/principal targets. Added focused fixture and CLI tests in test/final-app-space-cutover-migration.test.mjs covering inspect, dry-run, redaction, no-write behavior, CLI JSON output, sandbox/env root requirements, and /root/.pibo refusal. Docker validation passed with PIBO_HOME=/workspace/.pibo/ralph-test-home: npm run build; node --test test/final-app-space-cutover-migration.test.mjs; npm run typecheck. Docker migration sandbox validation ran final-cutover inspect/dry-run against /workspace/.pibo/ralph-migration-sandbox and produced totals: inspect affectedDatabases=6, legacyColumns=19, legacyIndexes=15, legacyRows=4349, conflictGroups=1, plannedActions=0, unresolvedBlockers=0; dry-run same affected totals with plannedActions=20 and unresolvedBlockers=0. All migration inspect/dry-run commands used Docker fixture roots or the Docker migration sandbox only; host /root/.pibo, host gateways, Production data, deploys, apply mode, and PR creation were not touched."
     },
     {
       "id": "US-023",
