@@ -353,7 +353,7 @@ pibo debug telemetry tool <tool-call-id>
 ### Open Questions
 
 - Should destructive debug maintenance actions require a consistent `--destructive` or `--apply` confirmation model across all branches?
-- Should debug commands eventually support owner-scope filtering for safer multi-user local installations?
+- Should debug commands eventually support app-space filtering for safer multi-user local installations?
 - Should live signal inspection use the authenticated same-origin web session or remain a local gateway diagnostic endpoint?
 
 ## Traceability

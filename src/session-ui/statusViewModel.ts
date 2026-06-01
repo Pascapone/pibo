@@ -28,7 +28,6 @@ export type TerminalStatusViewModel = {
 };
 
 export type BuildTerminalStatusInput = {
-	owner?: { label?: string; scope?: string };
 	session?: { id?: string; title?: string; profile?: string; status?: string };
 	model?: { provider?: string; id?: string; label?: string };
 	runtime?: { state?: string; connected?: boolean; queuedMessages?: number; processing?: boolean; streaming?: boolean; disposed?: boolean };
@@ -54,10 +53,6 @@ export function buildTerminalStatusViewModel(input: BuildTerminalStatusInput = {
 	const warnings = sanitizeTextList(input.warnings);
 	const errors = sanitizeTextList(input.errors);
 
-	const ownerLabel = input.owner?.label ?? input.owner?.scope;
-	if (ownerLabel || input.owner?.scope) {
-		fields.push({ id: "owner", label: "Owner", value: redactTerminalSecret([ownerLabel, input.owner?.scope ? `(${input.owner.scope})` : undefined].filter(Boolean).join(" ")) });
-	}
 	if (input.session?.id || input.session?.title) {
 		fields.push({ id: "session", label: "Session", value: redactTerminalSecret([input.session?.title, input.session?.id].filter(Boolean).join(" | ")) });
 	}

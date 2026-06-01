@@ -112,7 +112,6 @@ export type WebAnnotationThreadMessage = {
 
 export type WebAnnotationBinding = {
 	id: string;
-	ownerScope: string;
 	piboSessionId: string;
 	piboRoomId?: string;
 	state: WebAnnotationBindingState;
@@ -129,7 +128,6 @@ export type WebAnnotationBinding = {
 
 export type WebAnnotation = {
 	id: string;
-	ownerScope: string;
 	piboSessionId: string;
 	piboRoomId?: string;
 	bindingId?: string;
@@ -153,7 +151,6 @@ export type WebAnnotation = {
 
 export type CreateWebAnnotationBindingInput = {
 	id?: string;
-	ownerScope: string;
 	piboSessionId: string;
 	piboRoomId?: string;
 	url: string;
@@ -175,7 +172,6 @@ export type PatchWebAnnotationBindingInput = {
 
 export type CreateWebAnnotationInput = {
 	id?: string;
-	ownerScope: string;
 	piboSessionId: string;
 	piboRoomId?: string;
 	bindingId?: string;
@@ -192,7 +188,6 @@ export type CreateWebAnnotationInput = {
 };
 
 export type WebAnnotationListFilter = {
-	ownerScope: string;
 	piboSessionId?: string;
 	status?: WebAnnotationStatus;
 	limit?: number;
@@ -207,7 +202,6 @@ export type PatchWebAnnotationInput = {
 
 export type AddWebAnnotationThreadMessageInput = {
 	annotationId: string;
-	ownerScope: string;
 	piboSessionId: string;
 	role: WebAnnotationThreadRole;
 	content: string;

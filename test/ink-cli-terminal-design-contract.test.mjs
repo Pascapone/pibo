@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
 
-const contractPath = "docs/specs/changes/ink-cli-terminal-rendering-parity/terminal-design-contract.md";
+const contractPath = "docs/legacy/specs/changes/ink-cli-terminal-rendering-parity/terminal-design-contract.md";
 
 test("Ink terminal design contract records non-negotiable rendering rules", () => {
 	const contract = fs.readFileSync(contractPath, "utf8");
@@ -25,7 +25,7 @@ test("Ink terminal design contract records non-negotiable rendering rules", () =
 
 test("Ink terminal visual evidence gate is reusable and linked from PRD catalog", () => {
 	const contract = fs.readFileSync(contractPath, "utf8");
-	const readme = fs.readFileSync("docs/specs/changes/ink-cli-terminal-rendering-parity/prds/README.md", "utf8");
+	const readme = fs.readFileSync("docs/legacy/specs/changes/ink-cli-terminal-rendering-parity/prds/README.md", "utf8");
 	for (const phrase of [
 		"Story id(s)",
 		"Design rules checked",

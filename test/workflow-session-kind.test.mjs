@@ -15,7 +15,6 @@ function session(id, metadata, parentId) {
 		channel: "pibo.chat-web",
 		kind: "chat",
 		profile: "default",
-		ownerScope: "user:workflow-session-kind",
 		...(parentId ? { parentId } : {}),
 		workspace: "/tmp/pibo-workflow-session-kind",
 		title: id,

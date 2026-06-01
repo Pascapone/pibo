@@ -33,7 +33,7 @@ The frontend registers `/apps/chat/sw.js` on browser load when service workers a
 
 ### Out of Scope
 
-- Auth session creation and owner-scope mapping — covered by Web Auth and Same-Origin Host.
+- Auth session creation and app-space mapping — covered by Web Auth and Same-Origin Host.
 - Chat Web API semantics for rooms, sessions, traces, cron, prompts, tools, or settings — covered by their capability specs.
 - Browser UI state after the shell loads — covered by Chat Web Browser Shell State.
 - Deployment and build script behavior — covered by Web Deployment Scripts.

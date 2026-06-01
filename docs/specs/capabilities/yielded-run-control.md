@@ -101,7 +101,7 @@ The system MUST allow only the run owner Pibo Session to inspect, read, acknowle
 
 #### Current
 
-`PiboRunRegistry.requireOwned()` rejects unknown run ids and run ids owned by a different Pibo Session.
+`PiboRunRegistry.requireById()` rejects unknown run ids and run ids owned by a different Pibo Session.
 
 #### Target
 

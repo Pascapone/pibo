@@ -141,7 +141,6 @@ const WORKFLOW_SQLITE_SCHEMA_SQL = `
     workflow_version TEXT NOT NULL,
     workflow_definition_hash TEXT,
     definition_snapshot_id TEXT,
-    owner_scope TEXT NOT NULL,
     parent_run_id TEXT,
     parent_node_attempt_id TEXT,
     pibo_session_id TEXT,
@@ -168,8 +167,6 @@ const WORKFLOW_SQLITE_SCHEMA_SQL = `
     ON workflow_runs(workflow_id, workflow_version, updated_at);
   CREATE INDEX IF NOT EXISTS idx_workflow_runs_status
     ON workflow_runs(status, updated_at);
-  CREATE INDEX IF NOT EXISTS idx_workflow_runs_owner
-    ON workflow_runs(owner_scope, updated_at);
   CREATE INDEX IF NOT EXISTS idx_workflow_runs_current_node
     ON workflow_runs(current_node_id, updated_at);
   CREATE INDEX IF NOT EXISTS idx_workflow_runs_pibo_session

@@ -214,8 +214,7 @@ test("Ink status card renders compact runtime fields bars unavailable states too
 	const output = renderToString(React.createElement(InkTerminalView, { rows, maxRows: 10, maxLineChars: 180 }));
 
 	assert.match(output, /Status — status · done · idle · session Terminal parity fixture/);
-	assert.match(output, /model GPT\s*Test · owner Web user Fixture/);
-	assert.match(output, /Identity: owner Web user Fixture · session Terminal parity fixture · profile\s*base · model GPT\s*Test/);
+		assert.match(output, /Identity: session Terminal parity fixture · profile\s*base · model GPT\s*Test/);
 	assert.match(output, /Runtime: idle · queue 3/);
 	assert.match(output, /Provider: plan pro · credits unlimited/);
 	assert.match(output, /Tools: enabled 3 folded · active bash · names in details/);
@@ -248,21 +247,19 @@ test("Ink status progress bars use readable ASCII fallback when color or glyph s
 	}
 });
 
-test("Ink Session app keeps owner, session, error, and command state readable at narrow widths", () => {
+test("Ink Session app keeps room session error and command state readable at narrow widths", () => {
 	const state = {
 		loading: false,
 		status: {
 			source: "local/direct",
 			mode: "local",
 			connected: true,
-			activeOwnerLabel: "Web user narrow",
-			activeOwnerScope: "user:narrow",
 			activeRoomId: "room_narrow",
 			activeAgentId: "base",
 			activeModel: { provider: "openai", id: "gpt-test", label: "GPT Test" },
 		},
-		activeRoom: { id: "room_narrow", title: "Narrow Room", ownerScope: "user:narrow" },
-		session: { id: "ps_narrow", title: "Narrow Session", roomId: "room_narrow", ownerScope: "user:narrow", profile: "base", status: "idle" },
+		activeRoom: { id: "room_narrow", title: "Narrow Room" },
+		session: { id: "ps_narrow", title: "Narrow Session", roomId: "room_narrow", profile: "base", status: "idle" },
 		rows: [
 			{ id: "err", kind: "error", status: "error", lines: [], error: "Provider TOKEN=secret-value failed in a narrow terminal", sourceNodeIds: ["err"] },
 		],
@@ -272,11 +269,11 @@ test("Ink Session app keeps owner, session, error, and command state readable at
 		message: "Status card remains readable.",
 	};
 	const headerLines = formatStatusHeaderLines(state, 60);
-	assert.ok(headerLines.some((line) => line.includes("owner Web user narrow") && line.includes("room Narrow Room")), "narrow header includes owner and room names");
+	assert.ok(headerLines.some((line) => line.includes("room Narrow Room")), "narrow header includes room name");
 	assert.ok(headerLines.some((line) => line.includes("session Narrow Session")), "narrow header includes a session line");
 	const output = renderToString(React.createElement(InkSessionAppView, { state, maxRows: 5, maxLineChars: 60 }));
 
-	assert.match(output, /owner Web user narrow · room Narrow Room/);
+	assert.match(output, /room Narrow Room/);
 	assert.match(output, /session Narrow Session/);
 	assert.match(output, /Error:/);
 	assert.match(output, /Status card remains readable/);

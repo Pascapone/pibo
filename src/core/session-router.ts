@@ -42,7 +42,6 @@ import { withWorkflowSessionKind } from "../sessions/workflow-session-kind.js";
 import { PiboRuntimeTelemetryRecorder } from "./runtime-telemetry.js";
 import { createPiboProviderTelemetryExtension } from "./provider-telemetry.js";
 import type { TelemetryStore } from "../data/telemetry.js";
-import { getSharedAppLegacyOwnerScope } from "../shared-app.js";
 
 export type {
 	PiboEventListener,
@@ -437,8 +436,7 @@ export class PiboSessionRouter {
 		const modelDefaults = this.resolveModelDefaults();
 		const activeModel = this.ensureSessionActiveModel(piboSession, profile, parentPiSessionId, modelDefaults);
 		const initialThinkingLevel = resolvePiboSessionInitialThinkingLevel(piboSession);
-		const legacySharedAppOwnerScope = getSharedAppLegacyOwnerScope();
-		const userSettings = loadPiboUserSettings(legacySharedAppOwnerScope);
+		const userSettings = loadPiboUserSettings();
 		const telemetryExtension = this.telemetryStore
 			? createPiboProviderTelemetryExtension({ store: this.telemetryStore, session: piboSession, model: activeModel })
 			: undefined;
@@ -457,7 +455,6 @@ export class PiboSessionRouter {
 			modelDefaults,
 			activeModel,
 			sessionContext: {
-				ownerScope: legacySharedAppOwnerScope,
 				piboSessionId: piboSession.id,
 				piboRoomId: piboRoomIdFromMetadata(piboSession.metadata),
 				timezone: userSettings.timezone,
@@ -535,7 +532,6 @@ export class PiboSessionRouter {
 			channel: source.channel,
 			kind: "branch",
 			profile: source.profile,
-			ownerScope: getSharedAppLegacyOwnerScope(),
 			parentId: source.kind === "subagent" ? source.parentId : undefined,
 			originId: source.id,
 			piSessionId: result.current.piSessionId,
@@ -567,7 +563,6 @@ export class PiboSessionRouter {
 			channel: "pibo.runtime",
 			kind: "runtime",
 			profile: this.baseProfile.profileName,
-			ownerScope: getSharedAppLegacyOwnerScope(),
 			workspace: this.options.cwd ?? getDefaultPiboWorkspace(),
 		});
 		this.signalRegistry.project({ type: "session_created", session: created });
@@ -730,7 +725,6 @@ export class PiboSessionRouter {
 			channel: "pibo.subagents",
 			kind: "subagent",
 			profile: targetProfile,
-			ownerScope: getSharedAppLegacyOwnerScope(),
 			parentId: parent.id,
 			workspace: parent.workspace,
 			metadata,

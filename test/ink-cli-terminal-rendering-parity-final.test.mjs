@@ -24,14 +24,12 @@ function baseAppState() {
 			source: "debug/final",
 			mode: "local",
 			connected: true,
-			activeOwnerLabel: "Web user final",
-			activeOwnerScope: "user:final",
-			activeRoomTitle: "Personal Chat",
+			activeRoomTitle: "Default Chat",
 			activeAgentId: "base",
 			activeModel: { provider: "openai", id: "gpt-test", label: "GPT Test" },
 		},
-		session: { id: "ps_final", title: "Final parity session", ownerScope: "user:final", profile: "base", status: "idle" },
-		activeRoom: { id: "room_final", title: "Personal Chat" },
+		session: { id: "ps_final", title: "Final parity session", profile: "base", status: "idle" },
+		activeRoom: { id: "room_final", title: "Default Chat" },
 		rows: buildStreamingTerminalRows(),
 		input: "/status",
 		mode: "transcript",
@@ -56,7 +54,7 @@ test("Web-derived validation suite maps checks to matrix areas", async () => {
 test("final PTY smoke runner exposes rendering-parity scenarios with bounded assertions", async () => {
 	const list = await execFileAsync("node", ["scripts/ink-cli-v2-pty-smoke.mjs", "--list"]);
 	for (const name of [
-		"owner-room-session-message",
+		"room-session-message",
 		"slash-suggestions-status-thinking",
 		"overlay-keyboard-model-login",
 		"mixed-transcript-fixture",

@@ -3,8 +3,7 @@ import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { piboHomePath } from "../core/pibo-home.js";
-import { getSharedAppLegacyOwnerScope } from "../shared-app.js";
-import { sqliteTableColumns } from "../data/sqlite-schema.js";
+
 import { computeNextRunAt, validateSchedule } from "./schedule.js";
 import type { PiboCronJob, PiboCronJobCreateInput, PiboCronJobPatchInput, PiboCronJobState, PiboCronRun, PiboCronRunStatus } from "./types.js";
 
@@ -14,7 +13,6 @@ export type PiboCronStoreOptions = {
 
 type CronJobRow = {
 	id: string;
-	owner_scope?: string;
 	name: string;
 	description: string | null;
 	enabled: number;
@@ -32,7 +30,6 @@ type CronJobRow = {
 type CronRunRow = {
 	id: string;
 	job_id: string;
-	owner_scope?: string;
 	pibo_session_id: string | null;
 	status: PiboCronRunStatus;
 	reason: string | null;
@@ -54,11 +51,10 @@ function parseJson<T>(json: string): T {
 function jobFromRow(row: CronJobRow): PiboCronJob {
 	return {
 		id: row.id,
-		ownerScope: row.owner_scope ?? getSharedAppLegacyOwnerScope(),
 		name: row.name,
 		description: row.description ?? undefined,
 		enabled: row.enabled === 1,
-		target: parseJson(row.target_json),
+		target: parseTarget(row.target_json),
 		profile: row.profile,
 		prompt: row.prompt,
 		schedule: parseJson(row.schedule_json),
@@ -74,7 +70,6 @@ function runFromRow(row: CronRunRow): PiboCronRun {
 	return {
 		id: row.id,
 		jobId: row.job_id,
-		ownerScope: row.owner_scope ?? getSharedAppLegacyOwnerScope(),
 		piboSessionId: row.pibo_session_id ?? undefined,
 		status: row.status,
 		reason: row.reason ?? undefined,
@@ -91,15 +86,23 @@ function defaultName(prompt: string): string {
 	return normalized ? normalized.slice(0, 80) : "Scheduled job";
 }
 
-function normalizeTarget(target: PiboCronJobCreateInput["target"]): PiboCronJobCreateInput["target"] {
-	return target.kind === "personal" ? { kind: "personal", principalId: getSharedAppLegacyOwnerScope() } : target;
+function normalizeTarget(target: PiboCronJobCreateInput["target"] | { kind?: unknown; roomId?: unknown }): PiboCronJobCreateInput["target"] {
+	if (target.kind === "room") return { kind: "room", roomId: String(target.roomId ?? "").trim() };
+	return { kind: "default-chat" };
+}
+
+function parseTarget(json: string): PiboCronJobCreateInput["target"] {
+	return normalizeTarget(parseJson(json));
+}
+
+function targetJson(target: PiboCronJobCreateInput["target"]): string {
+	return JSON.stringify(normalizeTarget(target));
 }
 
 function validateJobInput(input: Pick<PiboCronJobCreateInput, "target" | "profile" | "prompt" | "schedule">): void {
 	if (!input.profile.trim()) throw new Error("profile is required");
 	if (!input.prompt.trim()) throw new Error("prompt is required");
 	if (input.target.kind === "room" && !input.target.roomId.trim()) throw new Error("target.roomId is required");
-	if (input.target.kind === "personal" && !input.target.principalId.trim()) throw new Error("target.principalId is required");
 	validateSchedule(input.schedule);
 }
 
@@ -122,7 +125,6 @@ export class PiboCronStore {
 	}
 
 	createJob(input: PiboCronJobCreateInput, now = new Date()): PiboCronJob {
-		const ownerScope = getSharedAppLegacyOwnerScope();
 		const target = normalizeTarget(input.target);
 		validateJobInput({ ...input, target });
 		const timestamp = nowIso(now);
@@ -130,7 +132,6 @@ export class PiboCronStore {
 		if (input.enabled !== false && !nextRunAt) throw new Error("schedule has no future run");
 		const job: PiboCronJob = {
 			id: `cron_${randomUUID()}`,
-			ownerScope,
 			name: (input.name ?? defaultName(input.prompt)).trim(),
 			description: input.description?.trim() || undefined,
 			enabled: input.enabled !== false,
@@ -153,13 +154,7 @@ export class PiboCronStore {
 		return row ? jobFromRow(row) : undefined;
 	}
 
-	getOwnedJob(ownerScope: string, id: string): PiboCronJob | undefined {
-		void ownerScope;
-		return this.getJob(id);
-	}
-
-	listJobs(input: { ownerScope?: string; includeDisabled?: boolean } = {}): PiboCronJob[] {
-		void input.ownerScope;
+	listJobs(input: { includeDisabled?: boolean } = {}): PiboCronJob[] {
 		const clauses: string[] = [];
 		const values: Array<string | number> = [];
 		if (!input.includeDisabled) clauses.push("enabled = 1");
@@ -167,8 +162,7 @@ export class PiboCronStore {
 		return (this.db.prepare(`SELECT * FROM pibo_cron_jobs ${where} ORDER BY updated_at DESC, id ASC`).all(...values) as CronJobRow[]).map(jobFromRow);
 	}
 
-	updateJob(ownerScope: string, id: string, patch: PiboCronJobPatchInput, now = new Date()): PiboCronJob | undefined {
-		void ownerScope;
+	updateJob(id: string, patch: PiboCronJobPatchInput, now = new Date()): PiboCronJob | undefined {
 		const existing = this.getJob(id);
 		if (!existing) return undefined;
 		const nextTarget = patch.target ? normalizeTarget(patch.target) : existing.target;
@@ -197,14 +191,12 @@ export class PiboCronStore {
 		return this.getJob(id);
 	}
 
-	removeJob(ownerScope: string, id: string): boolean {
-		void ownerScope;
+	removeJob(id: string): boolean {
 		const result = this.db.prepare("DELETE FROM pibo_cron_jobs WHERE id = ?").run(id);
 		return Number(result.changes ?? 0) > 0;
 	}
 
-	listRuns(input: { ownerScope?: string; jobId?: string; limit?: number } = {}): PiboCronRun[] {
-		void input.ownerScope;
+	listRuns(input: { jobId?: string; limit?: number } = {}): PiboCronRun[] {
 		const clauses: string[] = [];
 		const values: Array<string | number> = [];
 		if (input.jobId) { clauses.push("job_id = ?"); values.push(input.jobId); }
@@ -245,8 +237,7 @@ export class PiboCronStore {
 		return result;
 	}
 
-	reserveManualRun(ownerScope: string, id: string, now = new Date()): { job: PiboCronJob; run: PiboCronRun } | undefined {
-		void ownerScope;
+	reserveManualRun(id: string, now = new Date()): { job: PiboCronJob; run: PiboCronRun } | undefined {
 		const timestamp = nowIso(now);
 		this.db.exec("BEGIN IMMEDIATE");
 		try {
@@ -324,6 +315,10 @@ export class PiboCronStore {
 	}
 
 	private applySchema(): void {
+		this.createFreshSchema();
+	}
+
+	private createFreshSchema(): void {
 		this.db.exec(`
 			CREATE TABLE IF NOT EXISTS pibo_cron_jobs (
 				id TEXT PRIMARY KEY,
@@ -359,20 +354,18 @@ export class PiboCronStore {
 	}
 
 	private insertJob(job: PiboCronJob): void {
-		const hasOwnerScope = sqliteTableColumns(this.db, "pibo_cron_jobs").has("owner_scope");
 		this.db.prepare(`
-			INSERT INTO pibo_cron_jobs (id, ${hasOwnerScope ? "owner_scope, " : ""}name, description, enabled, target_json, profile, prompt, schedule_json, schedule_ui_json, delete_after_run, state_json, created_at, updated_at)
-			VALUES (${Array.from({ length: hasOwnerScope ? 14 : 13 }, () => "?").join(", ")})
-		`).run(job.id, ...(hasOwnerScope ? [job.ownerScope] : []), job.name, job.description ?? null, job.enabled ? 1 : 0, JSON.stringify(job.target), job.profile, job.prompt, JSON.stringify(job.schedule), job.scheduleUi ? JSON.stringify(job.scheduleUi) : null, job.deleteAfterRun ? 1 : 0, JSON.stringify(job.state), job.createdAt, job.updatedAt);
+			INSERT INTO pibo_cron_jobs (id, name, description, enabled, target_json, profile, prompt, schedule_json, schedule_ui_json, delete_after_run, state_json, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`).run(job.id, job.name, job.description ?? null, job.enabled ? 1 : 0, targetJson(job.target), job.profile, job.prompt, JSON.stringify(job.schedule), job.scheduleUi ? JSON.stringify(job.scheduleUi) : null, job.deleteAfterRun ? 1 : 0, JSON.stringify(job.state), job.createdAt, job.updatedAt);
 	}
 
 	private writeJob(job: PiboCronJob): void {
-		const hasOwnerScope = sqliteTableColumns(this.db, "pibo_cron_jobs").has("owner_scope");
 		this.db.prepare(`
 			UPDATE pibo_cron_jobs
 			SET name = ?, description = ?, enabled = ?, target_json = ?, profile = ?, prompt = ?, schedule_json = ?, schedule_ui_json = ?, delete_after_run = ?, state_json = ?, updated_at = ?
-			WHERE id = ?${hasOwnerScope ? " AND owner_scope = ?" : ""}
-		`).run(job.name, job.description ?? null, job.enabled ? 1 : 0, JSON.stringify(job.target), job.profile, job.prompt, JSON.stringify(job.schedule), job.scheduleUi ? JSON.stringify(job.scheduleUi) : null, job.deleteAfterRun ? 1 : 0, JSON.stringify(job.state), job.updatedAt, job.id, ...(hasOwnerScope ? [job.ownerScope] : []));
+			WHERE id = ?
+		`).run(job.name, job.description ?? null, job.enabled ? 1 : 0, targetJson(job.target), job.profile, job.prompt, JSON.stringify(job.schedule), job.scheduleUi ? JSON.stringify(job.scheduleUi) : null, job.deleteAfterRun ? 1 : 0, JSON.stringify(job.state), job.updatedAt, job.id);
 	}
 
 	private updateJobStateLocked(id: string, state: PiboCronJobState, updatedAt: string): void {
@@ -380,12 +373,11 @@ export class PiboCronStore {
 	}
 
 	private createRunLocked(job: PiboCronJob, timestamp: string, status: PiboCronRunStatus, reason?: string): PiboCronRun {
-		const run: PiboCronRun = { id: `crun_${randomUUID()}`, jobId: job.id, ownerScope: getSharedAppLegacyOwnerScope(), status, reason, startedAt: timestamp, createdAt: timestamp, updatedAt: timestamp };
-		const hasOwnerScope = sqliteTableColumns(this.db, "pibo_cron_runs").has("owner_scope");
+		const run: PiboCronRun = { id: `crun_${randomUUID()}`, jobId: job.id, status, reason, startedAt: timestamp, createdAt: timestamp, updatedAt: timestamp };
 		this.db.prepare(`
-			INSERT INTO pibo_cron_runs (id, job_id, ${hasOwnerScope ? "owner_scope, " : ""}pibo_session_id, status, reason, error, started_at, completed_at, created_at, updated_at)
-			VALUES (${Array.from({ length: hasOwnerScope ? 11 : 10 }, () => "?").join(", ")})
-		`).run(run.id, run.jobId, ...(hasOwnerScope ? [run.ownerScope] : []), null, run.status, run.reason ?? null, null, run.startedAt ?? null, null, run.createdAt, run.updatedAt);
+			INSERT INTO pibo_cron_runs (id, job_id, pibo_session_id, status, reason, error, started_at, completed_at, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`).run(run.id, run.jobId, null, run.status, run.reason ?? null, null, run.startedAt ?? null, null, run.createdAt, run.updatedAt);
 		return run;
 	}
 }

@@ -20,7 +20,6 @@ export type WebAnnotationCdpServiceOptions = {
 };
 
 export type WebAnnotationBindingContext = {
-	ownerScope: string;
 	piboSessionId: string;
 	piboRoomId?: string;
 };
@@ -81,14 +80,13 @@ export class WebAnnotationCdpService {
 	}
 
 	listBindings(context: WebAnnotationBindingContext, limit?: number): WebAnnotationBinding[] {
-		return this.store.listBindings({ ownerScope: context.ownerScope, piboSessionId: context.piboSessionId, limit });
+		return this.store.listBindings({ piboSessionId: context.piboSessionId, limit });
 	}
 
 	async createUrlBinding(input: CreateUrlBindingInput): Promise<BindingOperationResult> {
 		const url = normalizeUserUrl(input.url);
 		const target = await openCdpTarget(url, { cdpUrl: this.cdpUrl, timeoutMs: this.timeoutMs });
 		const binding = this.store.createBinding({
-			ownerScope: input.ownerScope,
 			piboSessionId: input.piboSessionId,
 			piboRoomId: input.piboRoomId,
 			url: target.url || url,
@@ -107,7 +105,6 @@ export class WebAnnotationCdpService {
 		if (!target) throw new Error("Selected CDP target was not found");
 		if (!target.webSocketDebuggerUrl) throw new Error("Selected CDP target is not attachable");
 		const binding = this.store.createBinding({
-			ownerScope: input.ownerScope,
 			piboSessionId: input.piboSessionId,
 			piboRoomId: input.piboRoomId,
 			url: target.url,
@@ -133,7 +130,7 @@ export class WebAnnotationCdpService {
 				annotationShortcut: overlayOptions.annotationShortcut,
 			}), this.timeoutMs);
 			if (!result?.ok) throw new Error("Overlay injection did not report success");
-			const updated = this.store.patchBinding(context.ownerScope, context.piboSessionId, binding.id, {
+			const updated = this.store.patchBinding(context.piboSessionId, binding.id, {
 				state: "injected",
 				title: trim(result.title, MAX_TITLE_LENGTH) ?? binding.title,
 				targetId: target.id,
@@ -144,7 +141,7 @@ export class WebAnnotationCdpService {
 			});
 			return { binding: updated ?? binding, target: targetSummary(target), injected: true };
 		} catch (error) {
-			this.store.patchBinding(context.ownerScope, context.piboSessionId, binding.id, {
+			this.store.patchBinding(context.piboSessionId, binding.id, {
 				state: "error",
 				error: error instanceof Error ? error.message : String(error),
 			});
@@ -160,7 +157,7 @@ export class WebAnnotationCdpService {
 		const client = await connectCdpTarget(target, this.timeoutMs);
 		try {
 			await client.evaluate<{ ok?: boolean }>(buildStopExpression(), this.timeoutMs);
-			const updated = this.store.patchBinding(context.ownerScope, context.piboSessionId, binding.id, {
+			const updated = this.store.patchBinding(context.piboSessionId, binding.id, {
 				state: "active",
 				targetId: target.id,
 				error: null,
@@ -173,12 +170,12 @@ export class WebAnnotationCdpService {
 	}
 
 	removeBinding(context: WebAnnotationBindingContext, bindingId: string): boolean {
-		return this.store.removeBinding(context.ownerScope, context.piboSessionId, bindingId);
+		return this.store.removeBinding(context.piboSessionId, bindingId);
 	}
 
 	private requireBinding(context: WebAnnotationBindingContext, bindingId: string): WebAnnotationBinding {
 		const id = requireNonEmpty(bindingId, "bindingId");
-		const binding = this.store.getBinding(context.ownerScope, context.piboSessionId, id);
+		const binding = this.store.getBinding(context.piboSessionId, id);
 		if (!binding || binding.state === "removed") throw new Error("Web Annotation binding was not found for this session");
 		return binding;
 	}
@@ -186,7 +183,7 @@ export class WebAnnotationCdpService {
 	private ensureOverlaySubmissionToken(binding: WebAnnotationBinding): WebAnnotationBinding {
 		if (typeof binding.metadata?.overlaySubmissionToken === "string" && binding.metadata.overlaySubmissionToken) return binding;
 		const metadata = mergeMetadata(binding.metadata, { overlaySubmissionToken: createOverlaySubmissionToken() });
-		const updated = this.store.patchBinding(binding.ownerScope, binding.piboSessionId, binding.id, { metadata });
+		const updated = this.store.patchBinding(binding.piboSessionId, binding.id, { metadata });
 		return updated ?? { ...binding, metadata };
 	}
 
@@ -195,7 +192,7 @@ export class WebAnnotationCdpService {
 		const targets = await listCdpTargets({ cdpUrl: this.cdpUrl, timeoutMs: this.timeoutMs });
 		const target = findCdpTarget(targets, binding.targetId);
 		if (target?.webSocketDebuggerUrl) return target;
-		this.store.patchBinding(binding.ownerScope, binding.piboSessionId, binding.id, {
+		this.store.patchBinding(binding.piboSessionId, binding.id, {
 			state: "closed",
 			closedAt: new Date().toISOString(),
 			error: "Bound CDP target is no longer reachable",

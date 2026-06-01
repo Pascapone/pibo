@@ -115,7 +115,6 @@ export type WorkflowHumanActionStore = {
 export type WorkflowRunListFilter = {
   workflowId?: string;
   status?: WorkflowRunStatus;
-  ownerScope?: string;
   limit?: number;
 };
 

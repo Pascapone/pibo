@@ -31,7 +31,6 @@ export type WorkflowRunRow = {
   workflow_version: string;
   workflow_definition_hash: string | null;
   definition_snapshot_id: string | null;
-  owner_scope: string;
   parent_run_id: string | null;
   parent_node_attempt_id: string | null;
   pibo_session_id: string | null;
@@ -353,7 +352,6 @@ export function workflowRunFromRow(row: WorkflowRunRow): WorkflowRun {
     ...(row.definition_snapshot_id
       ? { definitionSnapshotId: row.definition_snapshot_id }
       : {}),
-    ownerScope: row.owner_scope,
     ...(row.parent_run_id ? { parentRunId: row.parent_run_id } : {}),
     ...(row.parent_node_attempt_id
       ? { parentNodeAttemptId: row.parent_node_attempt_id }

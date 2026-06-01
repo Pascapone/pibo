@@ -93,13 +93,13 @@ The system MUST inject Pibo-owned runtime identifiers into the runtime context w
 
 #### Current
 
-`createSessionContextFile()` creates `pibo://runtime/session-context.md` with shared app context, Pibo Session ID, Pibo Room ID, and timezone. It must not expose auth user id or owner scope as product ownership. `createPiboRuntime()` merges it into the agent context files.
+`createSessionContextFile()` creates `pibo://runtime/session-context.md` with shared app context, Pibo Session ID, Pibo Room ID, and timezone. It must not expose auth identity id or app partition as product ownership. `createPiboRuntime()` merges it into the agent context files.
 
 #### Acceptance
 
 - Every runtime gets a `pibo://runtime/session-context.md` context file.
 - Missing values are rendered as `unknown`, except timezone defaults to `UTC`.
-- Owner scopes of the form `user:<id>` expose `<id>` as the user id when no explicit user id is provided.
+- App partitions of the form `user:<id>` expose `<id>` as the user id when no explicit user id is provided.
 - Runtime context injection does not depend on profile `autoContextFiles`.
 
 #### Scenario: Scheduled room job starts a session
@@ -321,7 +321,7 @@ The system MUST prevent direct Pi TUI startup for profiles that require routed P
 ## Constraints
 
 - **Compatibility:** Pibo runtime assembly must remain compatible with Pi Coding Agent `createAgentSessionRuntime`, `createAgentSessionServices`, and `SessionManager` contracts.
-- **Security / Privacy:** Runtime context may expose product identifiers and shared app context to the agent, but it must not include owner scope, auth user id, provider secrets, or web auth tokens.
+- **Security / Privacy:** Runtime context may expose product identifiers and shared app context to the agent, but it must not include app partition, auth identity id, provider secrets, or web auth tokens.
 - **Performance:** Profile and Build Context inspection may instantiate a runtime but must dispose it and must not perform long-running subagent or yielded work.
 - **Dependencies:** Model lookup, auth status, resource loading, and session persistence depend on Pi Coding Agent services.
 

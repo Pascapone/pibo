@@ -49,7 +49,6 @@ import { createTimestampFactory } from "./time.js";
 
 export type OneNodeAgentWorkflowOptions = {
   registry?: Pick<WorkflowRegistry, "promptBuilders">;
-  ownerScope?: string;
   initialGlobalState?: Record<string, JsonValue>;
   initialLocalState?: Record<NodeId, Record<string, JsonValue>>;
   now?: () => Date | string;
@@ -217,7 +216,6 @@ export async function runOneNodeAgentWorkflow(
     id: options.createRunId?.() ?? createId("wfr"),
     workflowId: definition.id,
     workflowVersion: definition.version,
-    ownerScope: options.ownerScope ?? "workflow:local",
     status: "running",
     current: { nodeId, status: "running" },
     input,

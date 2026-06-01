@@ -11,7 +11,6 @@ import { WebAnnotationStore } from "../dist/web-annotations/store.js";
 function annotation(overrides = {}) {
 	return {
 		id: "ann_1",
-		ownerScope: "user:a",
 		piboSessionId: "ps_a",
 		status: "open",
 		note: "Make <this> wider and align it with the footer",
@@ -86,7 +85,6 @@ test("web annotation composer attachments reject stale and terminal annotation i
 
 		const prepared = prepareWebAnnotationMessageAttachments({
 			store,
-			ownerScope: "user:a",
 			piboSessionId: "ps_a",
 			messageText: "Please fix this",
 			attachmentIds: ["ann_open"],
@@ -96,14 +94,14 @@ test("web annotation composer attachments reject stale and terminal annotation i
 		assert.match(prepared.messageText, /<attached-web-annotations>/);
 
 		assert.throws(
-			() => prepareWebAnnotationMessageAttachments({ store, ownerScope: "user:a", piboSessionId: "ps_a", messageText: "x", attachmentIds: ["ann_missing"] }),
+			() => prepareWebAnnotationMessageAttachments({ store, piboSessionId: "ps_a", messageText: "x", attachmentIds: ["ann_missing"] }),
 			/not available in this app/,
 		);
-		const crossSession = prepareWebAnnotationMessageAttachments({ store, ownerScope: "user:a", piboSessionId: "ps_a", messageText: "x", attachmentIds: ["ann_other_session"] });
+		const crossSession = prepareWebAnnotationMessageAttachments({ store, piboSessionId: "ps_a", messageText: "x", attachmentIds: ["ann_other_session"] });
 		assert.equal(crossSession.attachments[0].piboSessionId, "ps_b");
 		assert.match(crossSession.modelContext, /sourceSession: ps_b/);
 		assert.throws(
-			() => prepareWebAnnotationMessageAttachments({ store, ownerScope: "user:a", piboSessionId: "ps_a", messageText: "x", attachmentIds: ["ann_resolved"] }),
+			() => prepareWebAnnotationMessageAttachments({ store, piboSessionId: "ps_a", messageText: "x", attachmentIds: ["ann_resolved"] }),
 			/cannot be attached because it is resolved/,
 		);
 	} finally {

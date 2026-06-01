@@ -1,5 +1,4 @@
 import { randomBytes } from "node:crypto";
-import { getSharedAppLegacyOwnerScope } from "../shared-app.js";
 import { PiboWebHttpError, readJsonBody, responseJson } from "../web/http.js";
 import type { PiboWebApp, PiboWebAppContext, PiboWebSession } from "../web/types.js";
 import { buildWebAnnotationOverlayScript, createWebAnnotationCdpService, type WebAnnotationCdpService, type WebAnnotationBindingContext } from "./cdp.js";
@@ -154,9 +153,8 @@ export function createWebAnnotationsWebApp(options: WebAnnotationsWebAppOptions 
 					const piboSessionId = requireQueryParam(url, "piboSessionId", "sessionId");
 					const bindingContext = resolveBindingContext(context, webSession, { piboSessionId });
 					const status = optionalStatus(url.searchParams.get("status"));
-					const scope = url.searchParams.get("scope") === "owner" || url.searchParams.get("allSessions") === "true" ? "owner" : "session";
+					const scope = url.searchParams.get("scope") === "app" || url.searchParams.get("allSessions") === "true" ? "app" : "session";
 					const annotations = store.listAnnotations({
-						ownerScope: bindingContext.ownerScope,
 						...(scope === "session" ? { piboSessionId: bindingContext.piboSessionId } : {}),
 						status,
 						limit: parseLimit(url.searchParams.get("limit")),
@@ -169,7 +167,7 @@ export function createWebAnnotationsWebApp(options: WebAnnotationsWebAppOptions 
 					if (request.method === "GET") {
 						const piboSessionId = requireQueryParam(url, "piboSessionId", "sessionId");
 						const bindingContext = resolveBindingContext(context, webSession, { piboSessionId });
-						const annotation = store.getAnnotation(bindingContext.ownerScope, bindingContext.piboSessionId, annotationResource.id);
+						const annotation = store.getAnnotation(bindingContext.piboSessionId, annotationResource.id);
 						if (!annotation) throw new PiboWebHttpError("Web Annotation was not found", 404);
 						return responseJson({ ok: true, annotation });
 					}
@@ -178,14 +176,14 @@ export function createWebAnnotationsWebApp(options: WebAnnotationsWebAppOptions 
 						const body = await readJsonBody<AnnotationPatchBody>(request);
 						const bindingContext = resolveBindingContext(context, webSession, body);
 						const status = optionalStatus(body.status);
-						const existing = store.getAnnotation(bindingContext.ownerScope, bindingContext.piboSessionId, annotationResource.id);
+						const existing = store.getAnnotation(bindingContext.piboSessionId, annotationResource.id);
 						if (!existing) throw new PiboWebHttpError("Web Annotation was not found", 404);
 						try {
 							assertWebAnnotationStatusTransition(existing.status, status);
 						} catch (error) {
 							throw new PiboWebHttpError(error instanceof Error ? error.message : String(error), 400);
 						}
-						const annotation = store.patchAnnotation(bindingContext.ownerScope, bindingContext.piboSessionId, annotationResource.id, {
+						const annotation = store.patchAnnotation(bindingContext.piboSessionId, annotationResource.id, {
 							...(status ? { status } : {}),
 							...(body.summary !== undefined ? { summary: body.summary } : {}),
 						});
@@ -244,7 +242,6 @@ async function handleOverlaySubmission(store: WebAnnotationStore, request: Reque
 	const targetKind = requireTargetKind(body.targetKind);
 	const viewport = normalizeViewport(body.viewport);
 	return store.createAnnotation({
-		ownerScope: binding.ownerScope,
 		piboSessionId: binding.piboSessionId,
 		piboRoomId: binding.piboRoomId,
 		bindingId: binding.id,
@@ -362,7 +359,6 @@ function resolveBindingContext(context: PiboWebAppContext, _webSession: PiboWebS
 	const session = context.channelContext.getSession(piboSessionId);
 	if (!session) throw new PiboWebHttpError("Pibo session not found", 404);
 	return {
-		ownerScope: getSharedAppLegacyOwnerScope(),
 		piboSessionId,
 		piboRoomId: input.piboRoomId?.trim() || undefined,
 	};

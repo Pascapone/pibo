@@ -2,7 +2,7 @@ import type { PiboJsonObject } from "../core/events.js";
 
 export type PiboCronTarget =
 	| { kind: "room"; roomId: string }
-	| { kind: "personal"; principalId: string };
+	| { kind: "default-chat" };
 
 export type PiboCronSchedule =
 	| { kind: "at"; at: string }
@@ -31,7 +31,6 @@ export type PiboCronJobState = {
 
 export type PiboCronJob = {
 	id: string;
-	ownerScope: string;
 	name: string;
 	description?: string;
 	enabled: boolean;
@@ -51,7 +50,6 @@ export type PiboCronRunStatus = "queued" | "running" | "ok" | "error" | "skipped
 export type PiboCronRun = {
 	id: string;
 	jobId: string;
-	ownerScope: string;
 	piboSessionId?: string;
 	status: PiboCronRunStatus;
 	reason?: string;
@@ -63,7 +61,6 @@ export type PiboCronRun = {
 };
 
 export type PiboCronJobCreateInput = {
-	ownerScope: string;
 	name?: string;
 	description?: string;
 	enabled?: boolean;

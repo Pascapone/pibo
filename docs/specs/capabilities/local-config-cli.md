@@ -228,7 +228,7 @@ Deleting a supported key MUST remove that value. If the `auth` section becomes e
 
 ### Assumptions
 
-- Local config is machine-scoped, not owner-scoped.
+- Local config is machine-scoped, not app-spaced.
 - Plain JSON storage is intentional for current local development and gateway operation.
 - The auth key list is the complete supported local config surface in the current code.
 

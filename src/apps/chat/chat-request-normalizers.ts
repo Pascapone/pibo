@@ -692,9 +692,8 @@ export function createRoomUpdate(room: PiboRoom, body: ChatRoomPatchBody): {
 	return update;
 }
 
-export function createAgentInput(ownerScope: string, body: ChatAgentBody) {
+export function createAgentInput(body: ChatAgentBody) {
 	return {
-		ownerScope,
 		displayName: normalizeAgentDisplayName(body.displayName),
 		description: normalizeAgentDescription(body.description),
 		nativeTools: normalizeNameArray(body.nativeTools, "nativeTools"),

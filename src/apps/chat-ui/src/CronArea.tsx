@@ -14,7 +14,7 @@ import {
 import type { AgentProfile, BootstrapData, CustomAgent, PiboCronJob, PiboCronRun, PiboCronStatus, PiboRoom } from "./types";
 
 type ScheduleKind = "in" | "at" | "every" | "daily" | "weekly" | "monthly" | "cron";
-type TargetKind = "personal" | "room";
+type TargetKind = "default-chat" | "room";
 type DurationUnit = "minutes" | "hours" | "days";
 
 type CronDraft = {
@@ -258,7 +258,7 @@ export function CronArea({ bootstrap, mobileSidebarOpen = false, onCloseMobileSi
 							<div className="space-y-2">
 								<div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Target</div>
 								<div className="grid grid-cols-2 gap-2">
-									<RadioCard name="target-kind" checked={draft.targetKind === "personal"} title="Shared Chat" description="Runs in the shared default chat" onChange={() => setDraft({ ...draft, targetKind: "personal" })} />
+									<RadioCard name="target-kind" checked={draft.targetKind === "default-chat"} title="Shared Chat" description="Runs in the shared default chat" onChange={() => setDraft({ ...draft, targetKind: "default-chat" })} />
 									<RadioCard name="target-kind" checked={draft.targetKind === "room"} title="Room" description="Uses the room workspace" onChange={() => setDraft({ ...draft, targetKind: "room" })} />
 								</div>
 							</div>
@@ -319,7 +319,7 @@ export function CronArea({ bootstrap, mobileSidebarOpen = false, onCloseMobileSi
 								<div className="mt-1 font-mono text-sm text-slate-100">{schedulePreview.value}</div>
 								<div className="mt-1 text-xs text-slate-500">{schedulePreview.description}</div>
 							</div>
-							<div className="text-xs text-slate-500">Agents use the CLI for the same result, e.g. <code className="text-slate-300">pibo cron add --cron "{schedulePreview.kind === "cron" ? schedulePreview.value : "0 8 * * *"}" --prompt "..." --personal</code>.</div>
+							<div className="text-xs text-slate-500">Agents use the CLI for the same result, e.g. <code className="text-slate-300">pibo cron add --cron "{schedulePreview.kind === "cron" ? schedulePreview.value : "0 8 * * *"}" --prompt "..." --default-chat</code>.</div>
 						</Panel>
 					</section>
 
@@ -428,7 +428,7 @@ function createEmptyDraft(defaultProfile: string, rooms: RoomOption[]): CronDraf
 		name: "",
 		description: "",
 		enabled: true,
-		targetKind: "personal",
+		targetKind: "default-chat",
 		roomId: rooms.find((room) => !room.archived)?.id ?? "",
 		profile: defaultProfile,
 		prompt: "",
@@ -497,7 +497,7 @@ function applyScheduleUi(draft: CronDraft, scheduleUi: NonNullable<PiboCronJob["
 }
 
 function inputFromDraft(draft: CronDraft): CronJobInput {
-	const target = draft.targetKind === "room" ? { kind: "room" as const, roomId: draft.roomId } : { kind: "personal" as const, principalId: "" };
+	const target = draft.targetKind === "room" ? { kind: "room" as const, roomId: draft.roomId } : { kind: "default-chat" as const };
 	return {
 		name: draft.name.trim() || undefined,
 		description: draft.description.trim() || undefined,

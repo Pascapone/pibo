@@ -1,7 +1,6 @@
 import { StringEnum, Type } from "@mariozechner/pi-ai";
 import { defineTool, type ToolDefinition } from "@mariozechner/pi-coding-agent";
 import type { ToolDefinitionContext, ToolProfile } from "../core/profiles.js";
-import { getSharedAppLegacyOwnerScope } from "../shared-app.js";
 import {
 	WEB_ANNOTATION_STATUSES,
 	type WebAnnotation,
@@ -38,7 +37,6 @@ type ToolParams = {
 };
 
 type RequiredToolContext = {
-	ownerScope: string;
 	piboSessionId: string;
 	piboRoomId?: string;
 };
@@ -77,7 +75,6 @@ function requireContext(context: ToolDefinitionContext, params: ToolParams): Req
 	const piboSessionId = params.piboSessionId?.trim() || context.piboSessionId?.trim();
 	if (!piboSessionId) throw new Error("Web Annotation tools require a Pibo Session ID from runtime context or piboSessionId input");
 	return {
-		ownerScope: getSharedAppLegacyOwnerScope(),
 		piboSessionId,
 		piboRoomId: context.piboRoomId,
 	};
@@ -178,7 +175,6 @@ function detailedAnnotation(annotation: WebAnnotation) {
 
 function listFilter(context: RequiredToolContext, params: ToolParams): WebAnnotationListFilter {
 	return {
-		ownerScope: context.ownerScope,
 		piboSessionId: context.piboSessionId,
 		status: params.status,
 		limit: normalizeLimit(params.limit),
@@ -202,7 +198,7 @@ function fail(message: string, details?: unknown) {
 }
 
 function getAnnotationForLifecycle(store: WebAnnotationStore, context: RequiredToolContext, id: string): WebAnnotation | undefined {
-	return store.getAnnotation(context.ownerScope, context.piboSessionId, id);
+	return store.getAnnotation(context.piboSessionId, id);
 }
 
 function assertLifecycleTransition(annotation: WebAnnotation, action: "acknowledge" | "resolve" | "dismiss"): void {
@@ -253,7 +249,7 @@ function createGetTool(store: WebAnnotationStore, context: ToolDefinitionContext
 			try {
 				const resolved = requireContext(context, params);
 				const id = requireAnnotationId(params);
-				const annotation = store.getAnnotation(resolved.ownerScope, resolved.piboSessionId, id);
+				const annotation = store.getAnnotation(resolved.piboSessionId, id);
 				if (!annotation) return fail(`Annotation ${id} was not found for this session`, { ok: false, annotationId: id, piboSessionId: resolved.piboSessionId });
 				const detail = detailedAnnotation(annotation);
 				return ok(formatJson({ ok: true, annotation: detail }), { ok: true, annotation: detail });
@@ -290,10 +286,10 @@ function createLifecycleTool(
 				assertLifecycleTransition(existing, action);
 
 				const updated = action === "acknowledge"
-					? store.acknowledgeAnnotation(resolved.ownerScope, resolved.piboSessionId, id, params.summary)
+					? store.acknowledgeAnnotation(resolved.piboSessionId, id, params.summary)
 					: action === "resolve"
-						? store.resolveAnnotation(resolved.ownerScope, resolved.piboSessionId, id, params.summary, "agent")
-						: store.dismissAnnotation(resolved.ownerScope, resolved.piboSessionId, id, params.reason);
+						? store.resolveAnnotation(resolved.piboSessionId, id, params.summary, "agent")
+						: store.dismissAnnotation(resolved.piboSessionId, id, params.reason);
 				if (!updated) return fail(`Annotation ${id} could not be updated`, { ok: false, annotationId: id });
 				const detail = compactAnnotation(updated);
 				return ok(formatJson({ ok: true, annotation: detail }), { ok: true, annotation: detail });

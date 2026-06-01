@@ -113,7 +113,7 @@ The technical Pi Coding Agent session identifier stored as `PiboSession.piSessio
 The single product data context for a Pibo host after login. Auth decides whether a person may enter the app; it does not create a separate product space.
 
 **Owner Scope**:
-A legacy compatibility storage term from the previous account-partitioned model, such as `user:<auth-user-id>` or `shared:app`. Current product behavior must not use Owner Scope for visibility, routing, workspace selection, profile registration, job control, or write location. Use it only in explicit legacy migration, debug, or compatibility code until old schemas are removed.
+A removed historical storage concept from the previous account-partitioned model. Current product behavior has one app space after login and must not use historical partition values for visibility, routing, workspace selection, profile registration, job control, read-state, or write location. Remaining references belong only to reviewed historical documentation or explicit final cutover migration evidence.
 
 **Parent Session**:
 A true hierarchical child relationship represented by `PiboSession.parentId`, used for subagents and nested agent work.
@@ -353,7 +353,7 @@ A Pibo-owned wrapper-level process that summarizes tool usage in a Pibo Session 
 - Use **Pibo Session ID** for product routing identity and **Pi Session ID** for Pi's technical persistence/cache identity.
 - Use **parentId** only for true hierarchy and UI nesting. Use **originId** for fork or clone derivation.
 - Use **Pibo Room** for the user-facing chat container and **Pibo Session** for the runtime conversation. Do not call rooms "sessions".
-- Use **Shared Default Chat Room** for the automatically created first room. Do not call it personal or owner-scoped in current docs; legacy personal/default metadata is migration context only.
+- Use **Shared Default Chat Room** for the automatically created first room. Do not call it personal or partitioned in current docs; legacy personal/default metadata is migration context only.
 - Use **Channel** for Pibo transport adapters and **Transport** for the underlying communication mechanism.
 - Use **Plugin** for internal static extension modules and **MCP Server** for external Model Context Protocol processes.
 - Use **Native Tool** for Pibo plugin tools selected in profiles, **Built-In Pi Tool** for Pi engine tools, **Curated CLI Tool** for `pibo tools` entries, and **MCP Server** for external MCP integrations.

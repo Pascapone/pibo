@@ -51,8 +51,7 @@ export const CLI_ONLY_SLASH_COMMANDS: readonly SlashCommandDescriptor[] = [
 	{ id: "room", slash: "/room", description: "Select the active room in the shared app.", group: "navigation", support: "supported" },
 	{ id: "session", slash: "/session", description: "Select a room, then open or create a session.", group: "navigation", support: "supported" },
 	{ id: "agent", slash: "/agent", description: "Select an existing agent/profile for the session.", group: "navigation", support: "supported" },
-	{ id: "owner", slash: "/owner", description: "Legacy alias for /profile.", group: "navigation", support: "supported", aliases: ["/profile"] },
-	{ id: "profile", slash: "/profile", description: "Select the shared app profile/context picker.", group: "navigation", support: "supported" },
+	{ id: "profile", slash: "/profile", description: "Select an existing agent/profile for the session.", group: "navigation", support: "supported" },
 	{ id: "repair-user-unknown", slash: "/repair-user-unknown", description: "Repair legacy CLI sessions stored under user:unknown.", group: "cli", support: "supported" },
 	{ id: "exit", slash: "/exit", description: "Exit the terminal UI.", group: "cli", support: "supported", aliases: ["/quit"] },
 	{ id: "quit", slash: "/quit", description: "Exit the terminal UI.", group: "cli", support: "supported" },
@@ -158,7 +157,7 @@ function slashArgumentBehavior(command: SlashCommandDescriptor): string {
 function slashEnterBehavior(command: SlashCommandDescriptor): string {
 	if (command.slash === "/help") return "append help text above transcript guidance";
 	if (command.slash === "/new") return "create session in active or selected room";
-	if (["/room", "/session", "/owner", "/profile", "/agent"].includes(command.slash)) return "open keyboard picker overlay";
+	if (["/room", "/session", "/profile", "/agent"].includes(command.slash)) return "open keyboard picker overlay";
 	if (["/exit", "/quit"].includes(command.slash)) return "exit terminal UI";
 	if (command.slash === "/repair-user-unknown") return "append compact repair result";
 	if (["/model", "/login", "/thinking"].includes(command.slash)) return "open picker without arguments or append result with arguments";
@@ -169,14 +168,14 @@ function slashEnterBehavior(command: SlashCommandDescriptor): string {
 
 function slashResultPlacement(command: SlashCommandDescriptor): SlashCommandBehaviorMatrixEntry["resultPlacement"] {
 	if (["/exit", "/quit"].includes(command.slash)) return "exit";
-	if (["/room", "/session", "/owner", "/profile", "/agent"].includes(command.slash)) return "overlay";
+	if (["/room", "/session", "/profile", "/agent"].includes(command.slash)) return "overlay";
 	if (command.slash === "/new") return "navigation";
 	if (["/model", "/login", "/thinking", "/fork-candidates"].includes(command.slash)) return "transcript-or-overlay";
 	return "transcript";
 }
 
 function slashContextRequirement(command: SlashCommandDescriptor): string {
-	if (["/room", "/session", "/new", "/owner", "/profile", "/repair-user-unknown"].includes(command.slash)) return "context/room navigation";
+	if (["/room", "/session", "/new", "/profile", "/repair-user-unknown"].includes(command.slash)) return "app room/session navigation";
 	if (["/status", "/sessions", "/session-current", "/clone", "/fork-candidates"].includes(command.slash)) return "active session when available; named room context preferred";
 	if (["/compact", "/clear", "/abort", "/kill", "/kill-all", "/fast", "/thinking", "/model", "/login"].includes(command.slash)) return "active routed session/runtime";
 	if (["/download", "/upload"].includes(command.slash)) return "terminal path argument";
@@ -185,7 +184,7 @@ function slashContextRequirement(command: SlashCommandDescriptor): string {
 
 function slashErrorBehavior(command: SlashCommandDescriptor): string {
 	if (command.support === "browser-only" || command.support === "product-area" || command.support === "deferred") return "render compact unsupported result";
-	if (["/room", "/session", "/owner", "/profile", "/agent", "/model", "/login", "/thinking", "/fork-candidates"].includes(command.slash)) return "keep overlay compact or append redacted error row after confirmed action";
+	if (["/room", "/session", "/profile", "/agent", "/model", "/login", "/thinking", "/fork-candidates"].includes(command.slash)) return "keep overlay compact or append redacted error row after confirmed action";
 	return "append redacted command error row";
 }
 
@@ -202,7 +201,7 @@ function expandGatewayCommandCapabilities(capabilities: readonly GatewayCommandC
 }
 
 function isCliOwnedCommand(command: SlashCommandDescriptor): boolean {
-	return command.group === "cli" || command.slash === "/new" || command.slash === "/room" || command.slash === "/session" || command.slash === "/agent" || command.slash === "/owner" || command.slash === "/profile";
+	return command.group === "cli" || command.slash === "/new" || command.slash === "/room" || command.slash === "/session" || command.slash === "/agent" || command.slash === "/profile";
 }
 
 function normalizeSlash(value: string | undefined): `/${string}` | undefined {

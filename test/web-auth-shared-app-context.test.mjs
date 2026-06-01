@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { PiboAuthError } from "../dist/auth/types.js";
 import { requireWebSession } from "../dist/web/auth.js";
-import { LEGACY_SHARED_APP_OWNER_SCOPE } from "../dist/shared-app.js";
 
 function createRequest() {
 	return new Request("http://localhost/api/test");
@@ -39,8 +38,15 @@ test("web auth maps different identities to the same shared app context", async 
 	assert.equal(second.authSession.identity.userId, "account-b");
 	assert.deepEqual(first.appContext, second.appContext);
 	assert.equal(first.appContext.kind, "shared-app");
-	assert.equal(first.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
-	assert.equal(second.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
-	assert.notEqual(first.ownerScope, `user:${first.authSession.identity.userId}`);
-	assert.notEqual(second.ownerScope, `user:${second.authSession.identity.userId}`);
+	assert.equal(first.appContext.id, "shared-app");
+	assert.equal("legacyOwnerScope" in first, false);
+	assert.equal("ownerScope" in first, false);
+	assert.equal("legacyOwnerScope" in second, false);
+	assert.equal("ownerScope" in second, false);
+	assert.equal("legacyOwnerScope" in first.appContext, false);
+	assert.equal("ownerScope" in first.appContext, false);
+	assert.equal("legacyOwnerScope" in second.appContext, false);
+	assert.equal("ownerScope" in second.appContext, false);
+	assert.notEqual(first.appContext.id, `user:${first.authSession.identity.userId}`);
+	assert.notEqual(second.appContext.id, `user:${second.authSession.identity.userId}`);
 });

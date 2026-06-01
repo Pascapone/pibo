@@ -44,11 +44,10 @@ export function chatSettingsRouteInvalidatesBootstrapCatalog(route: ChatSettings
 export async function handleChatSettingsRoute(input: {
 	route: ChatSettingsRoute;
 	request: Request;
-	ownerScope: string;
 	cwd?: string;
 }): Promise<Response> {
 	const cwd = input.cwd ?? process.cwd();
-	const { route, request, ownerScope } = input;
+	const { route, request } = input;
 
 	if (route.kind === "model-defaults") {
 		const body = await readJsonBody<ChatModelDefaultsBody>(request);
@@ -56,9 +55,9 @@ export async function handleChatSettingsRoute(input: {
 	}
 
 	if (route.kind === "user-settings") {
-		if (route.action === "read") return responseJson({ userSettings: loadPiboUserSettings(ownerScope) });
+		if (route.action === "read") return responseJson({ userSettings: loadPiboUserSettings() });
 		const body = await readJsonBody<ChatUserSettingsBody>(request);
-		return responseJson({ userSettings: updatePiboUserSettings(ownerScope, userSettingsPatch(body)) });
+		return responseJson({ userSettings: updatePiboUserSettings(userSettingsPatch(body)) });
 	}
 
 	if (route.kind === "base-prompt") {
@@ -78,8 +77,8 @@ export async function handleChatSettingsRoute(input: {
 	return responseJson({ compactionPrompt: await savePiboCustomCompactionPrompt(normalizeCompactionPromptMarkdown(body.markdown), cwd) });
 }
 
-function userSettingsPatch(body: ChatUserSettingsBody): Parameters<typeof updatePiboUserSettings>[1] {
-	const patch: Parameters<typeof updatePiboUserSettings>[1] = {};
+function userSettingsPatch(body: ChatUserSettingsBody): Parameters<typeof updatePiboUserSettings>[0] {
+	const patch: Parameters<typeof updatePiboUserSettings>[0] = {};
 	if (body.timezone !== undefined) {
 		const timezone = sanitizeTimezone(body.timezone);
 		if (!timezone) throw new PiboWebHttpError("Invalid timezone", 400);

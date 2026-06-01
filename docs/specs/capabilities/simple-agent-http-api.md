@@ -243,7 +243,7 @@ This section records the current verification state for the Simple Agent HTTP AP
 ### Open Questions
 
 - Should future versions add a streaming endpoint instead of extending `/api/send-message`?
-- Should API keys become owner-scoped records instead of one process-level secret?
+- Should API keys become app-spaced records instead of one process-level secret?
 
 ## Traceability
 

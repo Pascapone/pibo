@@ -11,6 +11,7 @@ import { PiboCronStore } from "../dist/cron/store.js";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
 import { PiboRalphStore } from "../dist/ralph/store.js";
 import { WebAnnotationStore } from "../dist/web-annotations/store.js";
+import { SqliteWorkflowRunStore } from "../packages/workflows/dist/index.js";
 
 function tempDir(prefix) {
 	return mkdtempSync(join(tmpdir(), prefix));
@@ -73,4 +74,10 @@ test("fresh shared-app schemas omit owner/principal access-control structures", 
 	assertNoColumns(projectDb, "projects", ["owner_scope", "principal_id"]);
 	projectDb.close();
 	projects.close();
+
+	const workflows = new SqliteWorkflowRunStore(join(dir, "pibo-workflows.sqlite"));
+	const workflowsDb = new DatabaseSync(join(dir, "pibo-workflows.sqlite"), { readOnly: true });
+	assertNoColumns(workflowsDb, "workflow_runs", ["owner_scope", "principal_id"]);
+	workflowsDb.close();
+	workflows.close();
 });

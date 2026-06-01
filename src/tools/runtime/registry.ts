@@ -115,7 +115,7 @@ export class RuntimeSessionRegistry {
 
 	async exec(ownerPiboSessionId: string, input: RuntimeExecInput): Promise<RuntimeExecResult> {
 		const session = input.sessionId
-			? this.getOwned(ownerPiboSessionId, input.sessionId)
+			? this.getSessionForController(ownerPiboSessionId, input.sessionId)
 			: await this.getOrStartDefault(ownerPiboSessionId, input);
 		const sessionId = input.sessionId ?? session?.sessionId ?? "auto";
 		if (!session) return notFoundExec(sessionId);
@@ -160,21 +160,21 @@ export class RuntimeSessionRegistry {
 	}
 
 	async inspect(ownerPiboSessionId: string, input: RuntimeInspectInput): Promise<RuntimeInspectResult> {
-		const session = input.sessionId ? this.getOwned(ownerPiboSessionId, input.sessionId) : this.getDefault(ownerPiboSessionId, input.runtime ?? "python");
+		const session = input.sessionId ? this.getSessionForController(ownerPiboSessionId, input.sessionId) : this.getDefault(ownerPiboSessionId, input.runtime ?? "python");
 		if (!session) return notFoundInspect(input.sessionId);
 		const result = await session.backend.inspect(input);
 		return { ...result, sessionId: session.sessionId };
 	}
 
 	async vars(ownerPiboSessionId: string, input: RuntimeVarsInput): Promise<RuntimeVarsResult> {
-		const session = input.sessionId ? this.getOwned(ownerPiboSessionId, input.sessionId) : this.getDefault(ownerPiboSessionId, input.runtime ?? "python");
+		const session = input.sessionId ? this.getSessionForController(ownerPiboSessionId, input.sessionId) : this.getDefault(ownerPiboSessionId, input.runtime ?? "python");
 		if (!session) return notFoundVars(input.sessionId);
 		const result = await session.backend.vars(input);
 		return { ...result, sessionId: session.sessionId };
 	}
 
 	async interrupt(ownerPiboSessionId: string, input: RuntimeInterruptInput): Promise<RuntimeInterruptResult> {
-		const session = input.sessionId ? this.getOwned(ownerPiboSessionId, input.sessionId) : this.getDefault(ownerPiboSessionId, input.runtime ?? "python");
+		const session = input.sessionId ? this.getSessionForController(ownerPiboSessionId, input.sessionId) : this.getDefault(ownerPiboSessionId, input.runtime ?? "python");
 		const sessionId = input.sessionId ?? session?.sessionId ?? "auto";
 		if (!session) return { status: "not_found", sessionId, message: `Runtime session "${sessionId}" was not found.` };
 		const result = await session.backend.interrupt();
@@ -182,7 +182,7 @@ export class RuntimeSessionRegistry {
 	}
 
 	async close(ownerPiboSessionId: string, input: RuntimeCloseInput): Promise<RuntimeCloseResult> {
-		const session = this.getOwned(ownerPiboSessionId, input.sessionId);
+		const session = this.getSessionForController(ownerPiboSessionId, input.sessionId);
 		if (!session) return { status: "not_found", sessionId: input.sessionId, closed: false, message: `Runtime session "${input.sessionId}" was not found.` };
 		try {
 			await session.backend.close(input.force);
@@ -262,10 +262,10 @@ export class RuntimeSessionRegistry {
 			target: input.target,
 			timeoutMs: input.timeoutMs,
 		});
-		return started.sessionId ? this.getOwned(ownerPiboSessionId, started.sessionId) : undefined;
+		return started.sessionId ? this.getSessionForController(ownerPiboSessionId, started.sessionId) : undefined;
 	}
 
-	private getOwned(ownerPiboSessionId: string, sessionId: string): RuntimeSession | undefined {
+	private getSessionForController(ownerPiboSessionId: string, sessionId: string): RuntimeSession | undefined {
 		const session = this.sessions.get(sessionId);
 		if (!session || session.ownerPiboSessionId !== ownerPiboSessionId) return undefined;
 		return session;

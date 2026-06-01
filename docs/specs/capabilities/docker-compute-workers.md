@@ -219,7 +219,7 @@ Compute workers MUST start with host-safe resource limits and MUST expose those 
 
 #### Current
 
-Docker run commands apply the default compute resource policy to one-time and dev workers: `memory=2g`, `memory-swap=2g`, `pids-limit=512`, `shm-size=512m`, `--init`, `restart=no`, and bounded Docker JSON logs. The same policy is written to inspectable labels. Worker metadata labels include role, created time, worktree/path when known, port block or dynamic ports, TTL/idle seconds, and Ralph job/run ids when supplied by the spawn caller. Legacy owner-scope labels, when present, are compatibility metadata only.
+Docker run commands apply the default compute resource policy to one-time and dev workers: `memory=2g`, `memory-swap=2g`, `pids-limit=512`, `shm-size=512m`, `--init`, `restart=no`, and bounded Docker JSON logs. The same policy is written to inspectable labels. Worker metadata labels include role, created time, worktree/path when known, port block or dynamic ports, TTL/idle seconds, and Ralph job/run ids when supplied by the spawn caller. Legacy app-space labels, when present, are compatibility metadata only.
 
 #### Target
 
@@ -323,7 +323,7 @@ Operators and agents MUST have one Pibo-native health command that summarizes br
 This capability participates in the compute/browser resource lifecycle change. It must follow the canonical model in `docs/project/compute-browser-resource-operating-model.md` and the rollout checks in `docs/project/compute-browser-resource-rollout-checklist.md`.
 
 - Compute workers must enforce memory, memory-swap, PID, shm, init, restart, and log budgets by default.
-- Worker labels/status must expose resource policy, worktree, Ralph job/run ids when present, last-used time, dirty state, and cleanup eligibility. Legacy owner-scope labels may be shown only as compatibility metadata.
+- Worker labels/status must expose resource policy, worktree, Ralph job/run ids when present, last-used time, dirty state, and cleanup eligibility. Legacy app-space labels may be shown only as compatibility metadata.
 - `pibo compute list --all` and reap dry-run behavior must include running, stopped, OOM-killed, dirty, one-time, and dev workers.
 - Docker hygiene diagnostics must distinguish image reuse from container writable state, BuildKit cache, volumes, logs, browser state, screenshots, and worktrees.
 - `pibo compute health` must stay read-only and report browser leaks, active leases, stale CDP files, dirty/OOM workers, Docker disk pressure, and reaper/timer status with safe next commands.

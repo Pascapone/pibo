@@ -16,8 +16,7 @@ const execFileAsync = promisify(execFile);
 export const IMAGE_NAME = "pibo:latest";
 export const LABEL_ROLE = "pibo.compute.role";
 export const LABEL_CREATED_AT = "pibo.compute.createdAt";
-export const LABEL_OWNER = "pibo.compute.owner";
-export const LABEL_OWNER_SCOPE = "pibo.compute.ownerScope";
+export const LABEL_HOLDER = "pibo.compute.holder";
 export const LABEL_WORKTREE = "pibo.compute.worktree";
 export const LABEL_WORKTREE_PATH = "pibo.compute.worktreePath";
 export const LABEL_PORT_BLOCK = "pibo.compute.portBlock";
@@ -199,7 +198,7 @@ export function resolveComputeWorkerLifecycle(options: { ttlSeconds?: number; id
 interface ComputeWorkerMetadataLabelOptions {
 	role: "worker" | "dev" | string;
 	createdAt: string;
-	owner?: string;
+	holder?: string;
 	worktree?: string;
 	worktreePath?: string;
 	portBlock: string;
@@ -224,7 +223,7 @@ function buildComputeWorkerMetadataLabels(options: ComputeWorkerMetadataLabelOpt
 		`${LABEL_PORT_BLOCK}=${options.portBlock}`,
 		`${LABEL_TTL_SECONDS}=${options.ttlSeconds}`,
 		`${LABEL_IDLE_SECONDS}=${options.idleSeconds}`,
-		...(options.owner ? [`${LABEL_OWNER}=${options.owner}`, `${LABEL_OWNER_SCOPE}=${options.owner}`] : []),
+		...(options.holder ? [`${LABEL_HOLDER}=${options.holder}`] : []),
 		...(options.worktree ? [`${LABEL_WORKTREE}=${options.worktree}`] : []),
 		...(options.worktreePath ? [`${LABEL_WORKTREE_PATH}=${options.worktreePath}`] : []),
 		...Object.entries(options.ports).map(([name, value]) => `pibo.compute.port.${name}=${value}`),
@@ -266,7 +265,7 @@ export interface BuildDevWorkerDockerRunArgsOptions {
 	webUIPortChat: number;
 	webUIPortContext: number;
 	createdAt: string;
-	owner?: string;
+	holder?: string;
 	ttlSeconds?: number;
 	idleSeconds?: number;
 	ralphJobId?: string;
@@ -302,7 +301,7 @@ export function buildDevWorkerDockerRunArgs(options: BuildDevWorkerDockerRunArgs
 		...buildComputeWorkerMetadataLabels({
 			role: "dev",
 			createdAt: options.createdAt,
-			owner: options.owner,
+			holder: options.holder,
 			worktree: options.worktreeName,
 			worktreePath: options.worktreePath,
 			portBlock: String(options.block),
@@ -330,7 +329,7 @@ export function buildDevWorkerDockerRunArgs(options: BuildDevWorkerDockerRunArgs
 export async function spawnDevWorker(options: {
 	repoDir: string;
 	worktreeName: string;
-	owner?: string;
+	holder?: string;
 	ttlSeconds?: number;
 	idleSeconds?: number;
 	ralphJobId?: string;
@@ -371,7 +370,7 @@ export async function spawnDevWorker(options: {
 		webUIPortChat,
 		webUIPortContext,
 		createdAt,
-		owner: options.owner,
+		holder: options.holder,
 		ttlSeconds: options.ttlSeconds,
 		idleSeconds: options.idleSeconds,
 		ralphJobId: options.ralphJobId,
@@ -400,7 +399,7 @@ export async function spawnDevWorker(options: {
 export interface BuildWorkerDockerRunArgsOptions {
 	id: string;
 	createdAt: string;
-	owner?: string;
+	holder?: string;
 	worktreePath?: string;
 	ttlSeconds?: number;
 	idleSeconds?: number;
@@ -427,7 +426,7 @@ export function buildWorkerDockerRunArgs(options: BuildWorkerDockerRunArgsOption
 		...buildComputeWorkerMetadataLabels({
 			role: "worker",
 			createdAt: options.createdAt,
-			owner: options.owner,
+			holder: options.holder,
 			worktree: options.worktreePath ? path.basename(options.worktreePath) : undefined,
 			worktreePath: options.worktreePath,
 			portBlock: "dynamic",
@@ -446,7 +445,7 @@ export function buildWorkerDockerRunArgs(options: BuildWorkerDockerRunArgsOption
 export async function spawnWorker(options: {
 	workspaceDir: string;
 	name?: string;
-	owner?: string;
+	holder?: string;
 	ttlSeconds?: number;
 	idleSeconds?: number;
 	ralphJobId?: string;
@@ -458,7 +457,7 @@ export async function spawnWorker(options: {
 	const args = buildWorkerDockerRunArgs({
 		id,
 		createdAt,
-		owner: options.owner,
+		holder: options.holder,
 		worktreePath: options.workspaceDir,
 		ttlSeconds: options.ttlSeconds,
 		idleSeconds: options.idleSeconds,
@@ -534,7 +533,7 @@ export interface WorkerInfo {
 	hostPid?: number;
 	createdAt: string;
 	lastUsedAt?: string;
-	ownerScope?: string;
+	holder?: string;
 	worktree?: string;
 	worktreePath?: string;
 	ralphJobId?: string;
@@ -681,7 +680,7 @@ function workerFromLabels(base: { id: string; name: string; state: string; statu
 		hostPid: base.hostPid,
 		createdAt: base.labels[LABEL_CREATED_AT] ?? "unknown",
 		lastUsedAt: base.labels[LABEL_LAST_USED_AT],
-		ownerScope: base.labels[LABEL_OWNER_SCOPE] ?? base.labels[LABEL_OWNER],
+		holder: base.labels[LABEL_HOLDER],
 		worktree: base.labels[LABEL_WORKTREE],
 		worktreePath: base.labels[LABEL_WORKTREE_PATH],
 		ralphJobId: base.labels[LABEL_RALPH_JOB_ID],

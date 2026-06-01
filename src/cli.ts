@@ -344,14 +344,12 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 		.command("tui:sessions")
 		.description("Start the reduced Web Chat-derived session UI")
 		.option("--session <id>", "Open a specific Pibo session id")
-		.option("--owner-scope <id>", "Legacy/debug compatibility hint; shared-app mode ignores ownership")
 		.option("--max-rows <count>", "Limit rendered transcript rows", parsePositiveInteger)
 		.option("--demo", "Use deterministic fake session data for smoke testing")
-		.action(async (options: { session?: string; ownerScope?: string; maxRows?: number; demo?: boolean }) => {
+		.action(async (options: { session?: string; maxRows?: number; demo?: boolean }) => {
 			const { runCliSessionsUi } = await import("./apps/cli-ui/index.js");
 			await runCliSessionsUi({
 				initialSessionId: options.session,
-				ownerScope: options.ownerScope,
 				maxRows: options.maxRows,
 				useFakeSource: options.demo === true,
 			});

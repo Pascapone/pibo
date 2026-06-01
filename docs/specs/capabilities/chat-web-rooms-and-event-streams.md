@@ -74,7 +74,7 @@ The system MUST list and mutate rooms in the shared app context and MUST preserv
 
 #### Current
 
-Fresh room records are app-global. Legacy `owner_scope` and membership data may exist in migrated stores, but active room APIs build one shared room tree.
+Fresh room records are app-global. Legacy `app_scope_marker` and membership data may exist in migrated stores, but active room APIs build one shared room tree.
 
 #### Acceptance
 
@@ -342,7 +342,7 @@ Room deletion rejects default rooms and requires confirmation by room name. Sess
 
 ### Open Questions
 
-- When should legacy `room_members` and old principal read-state columns be fully removed from migrated stores?
+- When should legacy `room metadata` and old principal read-state columns be fully removed from migrated stores?
 - Should archived rooms still allow read-only SSE replay indefinitely?
 - Should room deletion offer export before deleting sessions and event history?
 - Should runtime termination endpoints be hidden or disabled for already-terminal session signals?

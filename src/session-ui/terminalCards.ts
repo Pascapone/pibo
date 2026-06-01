@@ -71,7 +71,6 @@ function buildStatusCard(row: CompactTerminalRow): TerminalCardDescriptor {
 	const data = parseRecord(row.output);
 	const model = recordField(data, "activeModel") ?? recordField(data, "model");
 	const statusView = buildTerminalStatusViewModel({
-		owner: { label: stringField(data, "activeOwnerLabel") ?? stringField(data, "ownerLabel"), scope: stringField(data, "activeOwnerScope") ?? stringField(data, "ownerScope") },
 		session: {
 			id: stringField(data, "piboSessionId") ?? stringField(data, "sessionId"),
 			title: stringField(data, "sessionTitle") ?? stringField(data, "title"),

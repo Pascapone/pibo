@@ -11,25 +11,20 @@ const options = parseArgs(process.argv.slice(2));
 
 const scenarios = [
 	{
-		name: "owner-room-session-message",
-		description: "Owner picker -> room picker -> session creation -> mocked message send.",
+		name: "room-session-message",
+		description: "Room picker -> session creation -> mocked message send.",
 		cols: 110,
 		rows: 32,
 		timeoutMs: 70_000,
 		idleTimeoutMs: 15_000,
 		env: {
 			PIBO_DEBUG_PTY_CLI_SESSIONS_MOCKED: "1",
-			PIBO_DEBUG_PTY_CLI_SESSIONS_OWNERS: "user:alpha,user:beta",
-			PIBO_DEBUG_PTY_CLI_SESSIONS_ROOMS: "user:alpha|room_alpha|Alpha Room;user:beta|room_beta|Beta Room",
+			PIBO_DEBUG_PTY_CLI_SESSIONS_ROOMS: "room_alpha|Alpha Room;room_beta|Beta Room",
 			PIBO_DEBUG_PTY_ASSISTANT_REPLY: "Smoke assistant reply",
 		},
 		steps: [
-			["--wait-for", "select owner"],
-			["--expect", "Web user alpha"],
-			["--expect", "Web user beta"],
-			["--press", "Down"],
-			["--press", "Enter"],
-			["--wait-for", "select room — Web user beta"],
+			["--wait-for", "select room"],
+			["--expect", "Alpha Room"],
 			["--expect", "Beta Room"],
 			["--press", "Down"],
 			["--press", "Enter"],
@@ -53,10 +48,9 @@ const scenarios = [
 		idleTimeoutMs: 15_000,
 		env: {
 			PIBO_DEBUG_PTY_CLI_SESSIONS_MOCKED: "1",
-			PIBO_DEBUG_PTY_CLI_SESSIONS_OWNERS: "user:smoke",
 		},
 		steps: [
-			["--wait-for", "select room — Web user smoke"],
+			["--wait-for", "select room"],
 			["--press", "Enter"],
 			["--wait-for", "New session"],
 			["--press", "Enter"],
@@ -77,7 +71,7 @@ const scenarios = [
 			["--press", "Enter"],
 			["--wait-for", "▣ Status — status · done"],
 			["--expect", "Ran /status"],
-			["--expect", "Identity: owner Web user smoke"],
+			["--expect", "Identity: session"],
 			["--expect", "Context:"],
 			["--type", "/download"],
 			["--press", "Enter"],
@@ -100,7 +94,7 @@ const scenarios = [
 			["--expect", "› /th"],
 			["--press", "CtrlC"],
 		],
-		command: ["node", "dist/bin/pibo.js", "tui:sessions", "--owner-scope", "user:smoke"],
+		command: ["node", "dist/bin/pibo.js", "tui:sessions"],
 	},
 	{
 		name: "overlay-keyboard-model-login",
@@ -111,10 +105,9 @@ const scenarios = [
 		idleTimeoutMs: 15_000,
 		env: {
 			PIBO_DEBUG_PTY_CLI_SESSIONS_MOCKED: "1",
-			PIBO_DEBUG_PTY_CLI_SESSIONS_OWNERS: "user:overlay",
 		},
 		steps: [
-			["--wait-for", "select room — Web user overlay"],
+			["--wait-for", "select room"],
 			["--press", "Enter"],
 			["--wait-for", "New session"],
 			["--press", "Enter"],
@@ -142,14 +135,14 @@ const scenarios = [
 			["--wait-for", "requires secret input"],
 			["--type", "/session"],
 			["--press", "Enter"],
-			["--wait-for", "select room — sessions for Web user overlay"],
+			["--wait-for", "select room — sessions"],
 			["--type", "/status"],
 			["--press", "Enter"],
 			["--wait-for", "▣ Status — status · done"],
 			["--expect", "Ran /status"],
 			["--press", "CtrlC"],
 		],
-		command: ["node", "dist/bin/pibo.js", "tui:sessions", "--owner-scope", "user:overlay"],
+		command: ["node", "dist/bin/pibo.js", "tui:sessions"],
 	},
 	{
 		name: "mixed-transcript-fixture",
@@ -211,7 +204,7 @@ const scenarios = [
 			["--expect", "Smoke Existing"],
 			["--press", "CtrlC"],
 		],
-		command: ["node", "dist/bin/pibo.js", "tui:sessions", "--owner-scope", "user:history", "--session", "ps_smoke_history"],
+		command: ["node", "dist/bin/pibo.js", "tui:sessions", "--session", "ps_smoke_history"],
 	},
 ];
 
@@ -299,20 +292,19 @@ async function prepareExistingSessionFixture({ homeDir }) {
 		const rooms = new ChatRoomService(dataStore);
 		const sessionStore = new PiboDataSessionStore(dataStore);
 		const now = "2026-05-17T00:00:00.000Z";
-		const room = rooms.ensureDefaultRoom({ ownerScope: "user:history", principalId: "user:history", name: "Personal Chat" });
+		const room = rooms.ensureDefaultRoom({ name: "Shared Chat" });
 		const session = sessionStore.create({
 			id: "ps_smoke_history",
 			piSessionId: "pi_smoke_history",
 			channel: "chat-web",
 			kind: "chat",
 			profile: "pibo-agent",
-			ownerScope: "user:history",
 			title: "Smoke Existing Session",
-			metadata: { chatRoomId: room.id, chatRoomName: "Personal Chat", status: "idle" },
+			metadata: { chatRoomId: room.id, chatRoomName: "Shared Chat", status: "idle" },
 		});
 		dataStore.sessions.upsertSession({ session, roomId: room.id, status: "idle", firstMessagePreview: "Smoke existing user prompt", lastActivityAt: now });
-		dataStore.navigation.upsertSession({ ownerScope: "user:history", roomId: room.id, sessionId: session.id, rootSessionId: session.id, title: "Smoke Existing Session", profile: "pibo-agent", status: "idle", lastActivityAt: now, lastMessagePreview: "Smoke existing assistant reply", sortKey: now, updatedAt: now });
-		dataStore.eventLog.appendEvent({ sessionId: session.id, sessionSequence: 1, roomId: room.id, topic: "chat", type: "user.message.accepted", source: "pty-smoke", actorType: "user", actorId: "user:history", eventId: "evt_smoke_user", retentionClass: "chat_message", previewText: "Smoke existing user prompt", attributes: { inlineText: "Smoke existing user prompt", clientTxnId: "txn_smoke_user" }, createdAt: now });
+		dataStore.navigation.upsertSession({ roomId: room.id, sessionId: session.id, rootSessionId: session.id, title: "Smoke Existing Session", profile: "pibo-agent", status: "idle", lastActivityAt: now, lastMessagePreview: "Smoke existing assistant reply", sortKey: now, updatedAt: now });
+		dataStore.eventLog.appendEvent({ sessionId: session.id, sessionSequence: 1, roomId: room.id, topic: "chat", type: "user.message.accepted", source: "pty-smoke", actorType: "user", actorId: "cli-user", eventId: "evt_smoke_user", retentionClass: "chat_message", previewText: "Smoke existing user prompt", attributes: { inlineText: "Smoke existing user prompt", clientTxnId: "txn_smoke_user" }, createdAt: now });
 		dataStore.eventLog.appendEvent({ sessionId: session.id, sessionSequence: 2, roomId: room.id, topic: "chat", type: "assistant_message", source: "pty-smoke", actorType: "assistant", actorId: "pibo-agent", eventId: "evt_smoke_assistant", retentionClass: "chat_message", previewText: "Smoke existing assistant reply", createdAt: now });
 	} finally {
 		dataStore.close();

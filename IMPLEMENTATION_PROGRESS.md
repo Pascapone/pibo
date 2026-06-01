@@ -1,2147 +1,415 @@
-# Shared App Without Owner Scope Implementation Progress
+# Final Owner Scope Removal Implementation Progress
 
 ## Ralph job setup
 
-- Created: 2026-05-29
-- Source PRD: `docs/specs/changes/shared-app-no-owner-scope/prds/shared-app-no-owner-scope-prd.md`
-- Ralph JSON: `docs/specs/changes/shared-app-no-owner-scope/prds/shared-app-no-owner-scope.prd.json`
-- Spec: `docs/specs/changes/shared-app-no-owner-scope/spec.md`
-- Design: `docs/specs/changes/shared-app-no-owner-scope/design.md`
-- Tasks: `docs/specs/changes/shared-app-no-owner-scope/tasks.md`
-- Host worktree: `/root/code/pibo/.worktrees/shared-app-no-owner-scope-ralph`
-- Branch: `shared-app-no-owner-scope-ralph`
-- Upstream base: `upstream/dev`
-- Docker dev worker: `pibo-dev-shared-app-no-owner-scope-ralph`
+- Created: 2026-05-31
+- Source plan: `docs/plans/final-owner-scope-removal-umbauplan-2026-05-31.md`
+- Text PRD: `docs/specs/changes/final-owner-scope-removal/prds/final-owner-scope-removal-prd.md`
+- Ralph PRD JSON: `docs/specs/changes/final-owner-scope-removal/prds/final-owner-scope-removal.prd.json`
+- Inventory report: `docs/reports/owner-scope-final-removal-inventory-2026-05-31.md`
+- Raw inventory: `docs/reports/owner-scope-final-removal-raw-inventory-2026-05-31.txt`
+- Pre-cutover backup report: `docs/reports/final-owner-scope-removal-precutover-backup-2026-05-31.md`
+- Host worktree: `/root/code/pibo/.worktrees/final-owner-scope-removal-ralph`
+- Branch: `final-owner-scope-removal-ralph`
+- Upstream base: `upstream/dev` at `f0c588e`
+- Docker dev worker: `pibo-dev-final-owner-scope-removal-ralph`
 - Container workspace: `/workspace`
-- Worker gateway port: `4820`
-- Worker CDP port: `4821`
-- Worker web port: `4822`
-- Worker Chat UI port: `4823`
-- Worker Context UI port: `4824`
-- Chat room: `room_4a58fe2a-7972-4e67-af79-3383ff1a4906`
-- Ralph job: `ralph_6594adad-a1dc-4b71-836e-14ea2bfb9816` (created stopped; start only after user approval)
-- Room workspace: `/root/code/pibo/.worktrees/shared-app-no-owner-scope-ralph`
-- Progress file: `IMPLEMENTATION_PROGRESS.md`
-- Insights file: `IMPLEMENTATION_INSIGHTS.md`
-- Max iterations safety net: `150`
-- Stop condition: promise-complete marker only after all PRD stories pass.
-- Host DB backup: `/root/.pibo/backups/shared-app-no-owner-scope-vacuum-20260530T003254Z` (SQLite `VACUUM INTO` copy, `PRAGMA quick_check` verified)
-- Worker sandbox Pibo home: `/workspace/.pibo/ralph-sandbox` (host path: `/root/code/pibo/.worktrees/shared-app-no-owner-scope-ralph/.pibo/ralph-sandbox`)
-- Worker helper: `.pibo/ralph-worker.sh '<command>'` exports `PIBO_HOME=/workspace/.pibo/ralph-sandbox`
+- Worker gateway port: `4830`
+- Worker CDP port: `4831`
+- Worker web port: `4832`
+- Worker Chat UI port: `4833`
+- Worker Context UI port: `4834`
+- Chat room: `room_130a1897-996d-47e2-b805-b8e93f10a53d`
+- Room workspace: `/root/code/pibo/.worktrees/final-owner-scope-removal-ralph`
+- Ralph job: `ralph_66995290-8189-43a3-a735-27d23e0230e4` (created stopped; start only after final review/approval)
+- Max iterations safety net: `90` (`3 x 30` PRD stories)
+- Stop condition: promise-complete only after all PRD stories pass.
+- Verified host DB backup: `/root/.pibo/backups/final-owner-scope-removal-precutover-vacuum-20260531T194546Z`
+- Worker fresh test Pibo home: `/workspace/.pibo/ralph-test-home` (host path: `/root/code/pibo/.worktrees/final-owner-scope-removal-ralph/.pibo/ralph-test-home`)
+- Worker migration sandbox home: `/workspace/.pibo/ralph-migration-sandbox` (host path: `/root/code/pibo/.worktrees/final-owner-scope-removal-ralph/.pibo/ralph-migration-sandbox`, backed by the copied verified backup)
+- Worker helper: `.pibo/ralph-worker.sh '<command>'` exports `PIBO_HOME=/workspace/.pibo/ralph-test-home` and `PIBO_MIGRATION_SANDBOX_HOME=/workspace/.pibo/ralph-migration-sandbox`
 
 ## Mandatory startup checklist for every Ralph session
 
-1. `cd /root/code/pibo/.worktrees/shared-app-no-owner-scope-ralph`.
+1. `cd /root/code/pibo/.worktrees/final-owner-scope-removal-ralph`.
 2. Run `git status --short --branch` and inspect recent commits.
 3. Read `IMPLEMENTATION_PROGRESS.md` completely.
 4. Read `IMPLEMENTATION_INSIGHTS.md` completely.
-5. Read `docs/specs/changes/shared-app-no-owner-scope/prds/shared-app-no-owner-scope.prd.json`.
-6. Read the related PRD/spec/design/tasks files when choosing the next story.
-7. Pick the highest-priority story with `passes: false`, unless the progress/insights files document a safer dependency order.
-8. Record the selected story and plan in this file before editing.
+5. Read `docs/specs/changes/final-owner-scope-removal/prds/final-owner-scope-removal.prd.json`.
+6. Read the related PRD, plan, inventory, and backup report before selecting work.
+7. Pick the highest-priority `passes: false` story unless this file or insights document a safer dependency order.
+8. Record the selected story group and plan in this file before editing.
 
 ## Operating rules
 
-- Treat authentication only as an app access gate. Do not introduce roles, teams, admins, multi-tenant isolation, or another account-based data partition.
-- The final product has no user space. All allowed accounts share the same sessions, rooms, workspaces, agents, projects, workflows, Ralph jobs, Cron jobs, settings, and diagnostics.
-- Use the Docker worker for shell commands, builds, tests, gateway/browser checks, and runtime validation. Prefer the sandbox helper:
-  `.pibo/ralph-worker.sh '<command>'`
-- The helper runs commands in `/workspace` with `PIBO_HOME=/workspace/.pibo/ralph-sandbox`, a copy of the host databases.
-- Never run migration tests, dry-runs, or exploratory Pibo CLI commands against `/root/.pibo`; use the sandbox copy.
+- Final target: no active Owner Scope model, no `shared:app` replacement owner, and no account-derived product Principal.
+- Auth remains only an access gate; it must not control product visibility, workspace, route, jobs, profiles, read-state, or write location.
+- Use the Docker worker for all shell commands, builds, tests, deploy/gateway checks, browser checks, PTY checks, runtime validation, and data/migration commands. Prefer: `.pibo/ralph-worker.sh '<command>'`.
+- The helper runs commands in `/workspace` with a fresh test home at `PIBO_HOME=/workspace/.pibo/ralph-test-home`.
+- Historical-data migration checks must use `PIBO_MIGRATION_SANDBOX_HOME=/workspace/.pibo/ralph-migration-sandbox`, not the fresh test home and never `/root/.pibo`.
+- Never run migration tests, dry-runs, exploratory data commands, or destructive CLI commands against `/root/.pibo`; use Docker test homes only.
 - Keep source edits and git commits in the host worktree path above.
+- Git commands must run on the host worktree; Docker may not resolve worktree Git metadata.
 - Do not run builds/tests against the host checkout.
-- Do not restart or modify host production/dev gateways or host services.
+- Deploy/restart/gateway validation is allowed only inside Docker or worker-local processes. Do not restart or modify host production/dev gateways or host services.
+- Do not deploy, restart Production, force-restart Production, mutate Production data, or create an upstream PR.
+- Before real database cutover or PR creation, stop and hand off for user review. Production migration/apply remains separately approval-gated by the user.
 - Do not create, release, or replace Docker workers unless the user explicitly approves.
 - Commit after each completed story or coherent story group.
 - Only set a PRD story's `passes` to `true` after implementation and evidence are complete.
-- Keep `IMPLEMENTATION_INSIGHTS.md` updated with reusable discoveries, gotchas, schema notes, and validation lessons for later sessions.
+- Keep `IMPLEMENTATION_INSIGHTS.md` updated with durable discoveries, gotchas, schema notes, and validation lessons.
 
 ## Progress log
 
-- 2026-05-30T10:53:21Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review. Prior Docker final gates, approved host Dev deploy/restart/status, real Ralph/Cron CLI smokes, and unauthenticated host Dev auth-boundary checks are recorded as passing. The US-018 report now records a user clarification that the remaining authenticated Chat Web validation should be completed through the isolated Docker gateway/dev-auth flow rather than requiring a Better Auth host Dev browser profile.
-  Plan:
-  1. Use only the existing Docker dev worker and sandbox `PIBO_HOME` for the remaining authenticated Chat Web validation; do not create, replace, or release workers and do not touch Production.
-  2. Discover the worker gateway/dev-auth state, authenticate via the Docker dev-auth cookie flow, and validate Chat API/browser paths for a historical `shared:app` session, a historical `user:*` session, and a newly created shared-app session.
-  3. If validation passes, update the US-018 report, PRD JSON, progress, and insights, mark US-018 passing, run any necessary focused evidence checks, and commit the final US-018 readiness batch. If the Docker dev-auth path is unavailable, document the blocker without marking US-018 complete.
-  Intended validation: `.pibo/ralph-worker.sh` CLI/gateway discovery as needed, Docker dev-auth `curl` API checks against worker web port, Agent Browser/Browser Use or direct CDP browser validation against the worker Chat URL where practical, plus prior Docker typecheck/build/npm test evidence unless source/runtime files change.
-
-- 2026-05-30T11:02:00Z: US-018 completed through the clarified Docker gateway/dev-auth validation path.
-  - Commands run: `.pibo/ralph-worker.sh 'npm run --silent dev -- gateway --help'`, Docker/host port checks, yielded Docker `runWebGatewayServer({ devAuth: true, web: { host: "0.0.0.0", port: 4788 } })`, dev-auth `curl -L -c /tmp/pibo-dev-auth-cookie.txt`, authenticated `/api/auth/session`, `/api/chat/bootstrap`, `/api/chat/navigation`, `/api/chat/sessions`, `/api/chat/message`, Agent Browser `doctor/open/snapshot/click/get url/close` inside the worker.
-  - Docker dev-auth identity validated as `dev-user-001` / `dev@pibo.local`.
-  - API validation passed for historical `shared:app` session `ps_cd450c31-33b1-413b-b574-66ef55a5258f`, historical `user:*` session `ps_43d015b4-e9af-4502-8bb5-3ef266a0392e`, and newly created shared-app session `ps_45133920-06d8-4a4a-b2b5-8b16e3e8e2e5` in `room_209cf2ff-6b46-4705-a216-a6d2138604bd`.
-  - Bootstrap/navigation selected and listed each target. New session creation returned `ownerScope: shared:app`. Message validation persisted `user.message.accepted` events with actor `shared:app`; first runtime sends for sessions without duplicate events hit expected provider-auth errors for `openai-codex/gpt-5.5`, then duplicate `clientTxnId` responses returned 200 and proved the accepted Chat event was stored without re-running the provider path.
-  - Browser validation passed with Agent Browser in the Docker worker: authenticated Chat UI showed `dev@pibo.local`, sidebar/direct-open state, headings `Recovery`, `Umbauprobleme`, and `Untitled Session`, and composer availability for the historical shared, historical user, and new shared sessions. The historical user session was opened through the visible sidebar after one Agent Browser direct navigation timed out; `agent-browser get url` confirmed the canonical URL.
-  - Updated `docs/reports/us-018-validation-rollout-readiness.md` to complete status, set US-018 `passes: true` in the PRD JSON, and updated insights/progress. No Production deploy, Production restart, Production migration, host production data mutation, or `/root/.pibo` migration/dry-run was run.
-  - Prior Docker typecheck/build/npm test/focused/search/Workflow/Ralph/Cron evidence remains unchanged; no source/runtime files changed in this final pass, so broad gates were not rerun.
-  - US-018 completion body commit: `3ec5fa2 feat: US-018 - complete dev validation readiness`.
-  - Next recommended action: final clean status check, verify all PRD stories pass and branch is clean. Production rollout remains separately approval-gated.
-
-- 2026-05-30T10:40:46Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review. Prior Docker final gates, approved host Dev deploy/restart/status, real Ralph/Cron CLI smokes, and unauthenticated/auth-boundary checks are recorded as passing; authenticated Better Auth Dev API/browser validation for historical `shared:app`, historical `user:*`, and newly created shared-app sessions remains the only acceptance gap.
-  Plan:
-  1. Re-check approved host Dev gateway status and supported authenticated Chat Web target/profile availability, starting from existing Agent Browser/Browser Use targets before acquiring fresh leases.
-  2. If a real authenticated Better Auth Dev Chat target/profile is available, run the required Dev Chat API/browser validations and mark US-018 complete only if all criteria pass.
-  3. If authentication remains unavailable, update the US-018 report, PRD JSON notes, insights/progress, and commit the blocker evidence without marking US-018 complete.
-  Intended validation: approved host Dev `pibo gateway dev status`, Agent Browser/Browser Use target discovery and optional fresh `pibo-chat` leases. Docker typecheck/build/tests are not rerun unless source/runtime behavior changes because prior US-018 Docker gates already passed. No Production, fake host auth, host dev-auth flag, or `/root/.pibo` migration/dry-run will be used.
-
-- 2026-05-30T10:50:10Z: US-018 remains blocked after another approved host Dev auth availability check.
-  - Commands run: host `pibo gateway dev status`, `npm run --silent dev -- tools browser-use targets`, `npm run --silent dev -- tools agent-browser targets`, `npm run --silent dev -- tools agent-browser attach-chat --json`, fresh Agent Browser `pibo-chat` lease acquire/open/snapshot/close/release plus current-run duplicate lease correction, fresh Browser Use `pibo-chat` lease acquire/release attempt, delayed Browser Use retry after the reported pool-lease expiry, mandatory source/doc reads, and PRD false-story query.
-  - Dev gateway remained reachable in `mode: dev` with no runtime sessions or active yielded runs.
-  - Target discovery found only unrelated public-site targets (`mactown.de`, then `autoglas-spezialist.com`) and no authenticated Chat Web composer target. `agent-browser attach-chat --json` failed accordingly.
-  - Fresh Agent Browser `pibo-chat-slot-003` opened Dev Chat through the loopback Dev URL redirect and landed unauthenticated at `Unauthenticated / Sign in with Google`; the lease was released, and the current-run duplicate active lease record created at `2026-05-30T10:41:29.308Z` was corrected. The close command also reported closing a stale `harz-waescherei` Agent Browser session while closing pibo-chat; future repeated checks should avoid `agent-browser close --all`.
-  - Fresh Browser Use `pibo-chat-slot-002` could not provide authenticated evidence because the managed browser pool remained occupied by unrelated `browser-use:harz-webdesign-krpoun` work until at least `2026-05-30T10:49:15.709Z`; a delayed retry found the unrelated lease extended until `2026-05-30T10:56:13.431Z`. Newly acquired pibo-chat leases were released and no unrelated Browser Use pool work was force-closed.
-  - Updated `docs/reports/us-018-validation-rollout-readiness.md`, this progress file, `IMPLEMENTATION_INSIGHTS.md`, and the US-018 PRD JSON notes with the unchanged blocker.
-  - No Docker tests were rerun because no source/runtime behavior changed; prior Docker typecheck/build/npm test/focused/CLI-smoke evidence remains the validation basis.
-  - No fake host auth, host dev-auth flag, Production deploy/restart/migration, or `/root/.pibo` migration/dry-run was used.
-  - US-018 remains `passes: false`. Blocker documentation commit before hash-record correction: `f78b5e3 docs: record US-018 auth blocker`. Next recommended action: provide an authenticated Better Auth browser/profile for Dev validation or explicitly waive the authenticated Dev API/browser criterion.
-
-- 2026-05-30T10:26:30Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review. Prior Docker final gates, approved host Dev deploy/restart/status, real Ralph/Cron CLI smokes, and unauthenticated/auth-boundary checks are recorded as passing; authenticated Better Auth Dev API/browser validation for historical `shared:app`, historical `user:*`, and newly created shared-app sessions remains the only acceptance gap.
-  Plan:
-  1. Re-check approved host Dev gateway status and supported browser targets/leases, starting from existing Agent Browser/Browser Use targets before acquiring fresh leases.
-  2. If a real authenticated Better Auth Dev Chat target/profile is available, run the required Dev Chat API/browser validations and mark US-018 complete only if all criteria pass.
-  3. If authentication remains unavailable, update the US-018 report, PRD JSON notes, insights/progress, and commit the blocker evidence without marking US-018 complete.
-  Intended validation: approved host Dev `pibo gateway dev status`, Agent Browser/Browser Use target discovery and optional fresh `pibo-chat` leases. Docker typecheck/build/tests are not rerun unless source/runtime behavior changes because prior US-018 Docker gates already passed. No Production, fake host auth, host dev-auth flag, or `/root/.pibo` migration/dry-run will be used.
-
-- 2026-05-30T10:35:45Z: US-018 remains blocked after another approved host Dev auth availability check.
-  - Commands run: host `pibo gateway dev status`, `npm run --silent dev -- tools browser-use targets`, `npm run --silent dev -- tools agent-browser targets`, `npm run --silent dev -- tools agent-browser attach-chat --json`, fresh Agent Browser `pibo-chat` lease acquire/open/snapshot/close/release plus current-run duplicate lease correction, fresh Browser Use `pibo-chat` lease acquire/open/state/close/release attempt, delayed Browser Use retry after the reported pool-lease expiry, mandatory source/doc reads, and PRD false-story query.
-  - Dev gateway remained reachable in `mode: dev` with no runtime sessions or active yielded runs.
-  - Target discovery found only unrelated public-site/Google Maps/recaptcha targets for `gebaeudereinigung-in-goslar.de` and no authenticated Chat Web composer target. `agent-browser attach-chat --json` failed accordingly.
-  - Fresh Agent Browser `pibo-chat-slot-003`/`pibo-chat-slot-004` opened Dev Chat through the Dev URL and landed unauthenticated at `Unauthenticated / Sign in with Google`; the browser was closed and release was attempted. The lease registry left current-run duplicate active records, so this run corrected only records created at `2026-05-30T10:27Z`; pre-existing root-owned active slots were not force-released.
-  - Fresh Browser Use `pibo-chat-slot-002` could not provide authenticated evidence because the managed browser pool remained occupied by unrelated `browser-use:harz-webdesign-krpoun` work until at least `2026-05-30T10:35:07.910Z`; a delayed retry after that expiry found the lease extended until `2026-05-30T10:42:11.109Z`. The newly acquired pibo-chat leases were released and no unrelated browser work was force-closed.
-  - Updated `docs/reports/us-018-validation-rollout-readiness.md`, this progress file, `IMPLEMENTATION_INSIGHTS.md`, and the US-018 PRD JSON notes with the unchanged blocker.
-  - No Docker tests were rerun because no source/runtime behavior changed; prior Docker typecheck/build/npm test/focused/CLI-smoke evidence remains the validation basis.
-  - No fake host auth, host dev-auth flag, Production deploy/restart/migration, or `/root/.pibo` migration/dry-run was used.
-  - US-018 remains `passes: false`. Blocker body commit before hash-record correction: `8121b52 docs: record US-018 auth blocker`. Next recommended action: provide an authenticated Better Auth browser/profile for Dev validation or explicitly waive the authenticated Dev API/browser criterion.
-
-- 2026-05-30T10:21:18Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review. Prior Docker validation plus approved host Dev deploy/restart/status passed; authenticated Better Auth Dev API/browser validation for historical `shared:app`, historical `user:*`, and newly created shared-app sessions remains the only acceptance gap.
-  Plan:
-  1. Re-check approved host Dev gateway status and supported browser targets, starting from existing Agent Browser/Browser Use targets before acquiring fresh leases.
-  2. If a real authenticated Better Auth Dev Chat target/profile is available, run the required Dev Chat API/browser validations and mark US-018 complete only if all criteria pass.
-  3. If authentication remains unavailable, update the US-018 report, PRD JSON notes, insights/progress, and commit the blocker evidence without marking US-018 complete.
-  Intended validation: approved host Dev `pibo gateway dev status`, Agent Browser/Browser Use target discovery and optional fresh `pibo-chat` leases. Docker typecheck/build/tests are not rerun unless source/runtime behavior changes because prior US-018 Docker gates already passed. No Production, fake host auth, host dev-auth flag, or `/root/.pibo` migration/dry-run will be used.
-
-- 2026-05-30T10:23:20Z: US-018 remains blocked after another approved host Dev auth availability check.
-  - Commands run: host `pibo gateway dev status`, `npm run --silent dev -- tools browser-use targets`, `npm run --silent dev -- tools agent-browser targets`, `npm run --silent dev -- tools agent-browser attach-chat --json`, fresh Agent Browser `pibo-chat` lease acquire/open/snapshot/close/release plus current-run duplicate lease correction, fresh Browser Use `pibo-chat` lease acquire/release attempt, mandatory source/doc reads, and PRD false-story query.
-  - Dev gateway remained reachable in `mode: dev` with no runtime sessions or active yielded runs.
-  - Target discovery found only unrelated public-site/recaptcha targets for `spatzenwerkstatt.de` and no authenticated Chat Web composer target. `agent-browser attach-chat --json` failed accordingly.
-  - Fresh Agent Browser `pibo-chat-slot-003` opened Dev Chat through the Dev URL and landed unauthenticated at `Unauthenticated / Sign in with Google`; the browser was closed, release was attempted through the supported positional lease command, and this run corrected only its own duplicate active lease record after the registry still counted it active. Pre-existing root-owned active slots were not force-released.
-  - Fresh Browser Use `pibo-chat-slot-002` could not provide authenticated evidence because the managed browser pool remained occupied by unrelated `browser-use:harz-webdesign-krpoun` work until at least `2026-05-30T10:32:52.952Z`; the newly acquired pibo-chat lease was released and no unrelated browser work was force-closed.
-  - Updated `docs/reports/us-018-validation-rollout-readiness.md`, this progress file, `IMPLEMENTATION_INSIGHTS.md`, and the US-018 PRD JSON notes with the unchanged blocker.
-  - No Docker tests were rerun because no source/runtime behavior changed; prior Docker typecheck/build/npm test/focused/CLI-smoke evidence remains the validation basis.
-  - No fake host auth, host dev-auth flag, Production deploy/restart/migration, or `/root/.pibo` migration/dry-run was used.
-  - US-018 remains `passes: false`. Blocker documentation commit before hash-record correction: `192a4ff docs: record US-018 auth blocker`. Next recommended action: provide an authenticated Better Auth browser/profile for Dev validation or explicitly waive the authenticated Dev API/browser criterion.
-
-- 2026-05-30T10:17:02Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review. Prior Docker gates and approved host Dev deploy/restart/status passed; the only remaining acceptance gap is authenticated Better Auth Dev API/browser validation for historical `shared:app`, historical `user:*`, and newly created shared-app sessions.
-  Plan:
-  1. Re-check approved host Dev gateway status and discover whether any authenticated Chat Web/browser target is now available, starting from existing Agent Browser/Browser Use targets before acquiring fresh leases.
-  2. If a real authenticated Better Auth Dev Chat target/profile is available, run the required Dev Chat API/browser validations and mark US-018 complete only if all criteria pass.
-  3. If authentication remains unavailable, update the US-018 report, PRD JSON notes, insights/progress, and commit the blocker evidence without marking US-018 complete.
-  Intended validation: approved host Dev `pibo gateway dev status`, Agent Browser/Browser Use target discovery and optional fresh `pibo-chat` leases. Docker typecheck/build/tests are not rerun unless source/runtime behavior changes because prior US-018 Docker gates already passed. No Production, fake host auth, host dev-auth flag, or `/root/.pibo` migration/dry-run will be used.
-
-- 2026-05-30T10:18:50Z: US-018 remains blocked after another approved host Dev auth availability check.
-  - Commands run: host `pibo gateway dev status`, `npm run --silent dev -- tools browser-use targets`, `npm run --silent dev -- tools agent-browser targets`, `npm run --silent dev -- tools agent-browser attach-chat --json`, fresh Agent Browser `pibo-chat` lease acquire/open/snapshot/close/release with current-run duplicate lease correction, fresh Browser Use `pibo-chat` lease acquire/open/state/close/release attempt, mandatory source/doc reads, and PRD false-story query.
-  - Dev gateway remained reachable in `mode: dev` with no runtime sessions or active yielded runs.
-  - Target discovery found only unrelated public-site/recaptcha targets for `mahnkopf-seesen.de` and no authenticated Chat Web composer target. `agent-browser attach-chat --json` failed accordingly.
-  - Fresh Agent Browser `pibo-chat-slot-003` opened Dev Chat through the Dev URL and landed unauthenticated at `Unauthenticated / Sign in with Google`; the browser was closed and the lease was released. The lease registry again left a duplicate active current-run record, so this run corrected only its own `shared-app-no-owner-scope-ralph-461255` record and left pre-existing root-owned active slots untouched.
-  - Fresh Browser Use `pibo-chat-slot-002` could not provide authenticated evidence because the managed browser pool remained occupied by unrelated `browser-use:harz-webdesign-krpoun` work until at least `2026-05-30T10:24:13.946Z`; the newly acquired pibo-chat lease was released and no unrelated browser work was force-closed.
-  - Updated `docs/reports/us-018-validation-rollout-readiness.md`, this progress file, `IMPLEMENTATION_INSIGHTS.md`, and the US-018 PRD JSON notes with the unchanged blocker.
-  - No Docker tests were rerun because no source/runtime behavior changed; prior Docker typecheck/build/npm test/focused/CLI-smoke evidence remains the validation basis.
-  - No fake host auth, host dev-auth flag, Production deploy/restart/migration, or `/root/.pibo` migration/dry-run was used.
-  - US-018 remains `passes: false`. Blocker documentation commit: `dc46a01 docs: record US-018 auth blocker`. Next recommended action: provide an authenticated Better Auth browser/profile for Dev validation or explicitly waive the authenticated Dev API/browser criterion.
-
-- 2026-05-30T10:12:43Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review. Prior Docker validation plus approved host Dev deploy/restart/status passed; authenticated Better Auth Dev API/browser validation for historical `shared:app`, historical `user:*`, and newly created shared-app sessions remains the only acceptance gap.
-  Plan:
-  1. Re-check approved host Dev gateway status and discover any existing authenticated Chat Web targets with supported browser tooling before acquiring new leases.
-  2. If a real authenticated Better Auth Chat Web target/profile is available, validate the required Dev Chat API/browser paths and mark US-018 complete only if all acceptance criteria pass.
-  3. If authentication remains unavailable, update the US-018 report, PRD JSON notes, insights/progress, and commit the blocker evidence without marking US-018 complete.
-  Intended validation: approved host Dev `pibo gateway dev status`, browser target/attach checks, optional fresh pibo-chat leases only if discovery fails, and authenticated API/browser checks only if a real Better Auth session is available. Docker typecheck/build/tests are not rerun unless source/runtime files change because prior US-018 Docker gates already passed.
-
-- 2026-05-30T10:15:10Z: US-018 remains blocked after another approved host Dev auth availability check.
-  - Commands run: host `pibo gateway dev status`, `npm run --silent dev -- tools browser-use targets`, `npm run --silent dev -- tools agent-browser targets`, `npm run --silent dev -- tools agent-browser attach-chat --json`, fresh Agent Browser `pibo-chat` lease acquire/open/snapshot/close/release using the real `agent-browser` executable after wrapper command discovery, current-run Agent Browser lease-record correction, fresh Browser Use `pibo-chat` lease acquire/open/state/close/release attempt, mandatory source/doc reads, and PRD false-story query.
-  - Dev gateway remained reachable in `mode: dev` with no runtime sessions or active yielded runs.
-  - Target discovery found only unrelated public-site/Google Maps/recaptcha targets for `ohrwerk-hoergeraete.de` and no authenticated Chat Web composer target. `agent-browser attach-chat --json` failed accordingly.
-  - Fresh Agent Browser `pibo-chat-slot-003` opened Dev Chat through the Dev URL and landed unauthenticated at `Unauthenticated / Sign in with Google`; the browser was closed and the lease release command was run. The lease registry again left a duplicate active current-run record, so this run corrected only its own `shared-app-no-owner-scope-ralph-1013` record and left pre-existing active root-owned slots untouched.
-  - Fresh Browser Use `pibo-chat-slot-002` could not provide authenticated evidence because the managed browser pool remained occupied by unrelated `browser-use:harz-webdesign-krpoun` work until at least `2026-05-30T10:24:13.946Z`; the newly acquired pibo-chat lease was released and no unrelated browser work was force-closed.
-  - Updated `docs/reports/us-018-validation-rollout-readiness.md`, this progress file, `IMPLEMENTATION_INSIGHTS.md`, and the US-018 PRD JSON notes with the unchanged blocker.
-  - No Docker tests were rerun because no source/runtime behavior changed; prior Docker typecheck/build/npm test/focused/CLI-smoke evidence remains the validation basis.
-  - No fake host auth, host dev-auth flag, Production deploy/restart/migration, or `/root/.pibo` migration/dry-run was used.
-  - US-018 remains `passes: false`. Next recommended action: provide an authenticated Better Auth browser/profile for Dev validation or explicitly waive the authenticated Dev API/browser criterion.
-
-- 2026-05-30T10:07:57Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review. Prior Docker validation plus approved host Dev deploy/restart/status passed; authenticated Better Auth Dev API/browser validation for historical `shared:app`, historical `user:*`, and newly created shared-app sessions remains the only acceptance gap.
-  Plan:
-  1. Re-check approved host Dev gateway status and discover any existing authenticated Chat Web targets with supported browser tooling before acquiring new leases.
-  2. If a real authenticated Better Auth Chat Web target/profile is available, validate the required Dev Chat API/browser paths and mark US-018 complete only if all acceptance criteria pass.
-  3. If authentication remains unavailable, update the US-018 report, PRD JSON notes, insights/progress, and commit the blocker evidence without marking US-018 complete.
-  Intended validation: approved host Dev `pibo gateway dev status`, browser target/attach checks, optional fresh pibo-chat leases only if discovery fails, and authenticated API/browser checks only if a real Better Auth session is available. Docker typecheck/build/tests are not rerun unless source/runtime files change because prior US-018 Docker gates already passed.
-
-- 2026-05-30T10:10:01Z: US-018 remains blocked after another approved host Dev auth availability check.
-  - Commands run: host `pibo gateway dev status`, `npm run --silent dev -- tools browser-use targets`, `npm run --silent dev -- tools agent-browser targets`, `npm run --silent dev -- tools agent-browser attach-chat --json`, fresh Agent Browser `pibo-chat` lease acquire/open/snapshot/close/release using the real `agent-browser` executable after wrapper command discovery, current-run Agent Browser lease-record correction, fresh Browser Use `pibo-chat` lease acquire/open/state/close/release attempt, mandatory source/doc reads, and PRD false-story query.
-  - Dev gateway remained reachable in `mode: dev` with no runtime sessions or active yielded runs.
-  - Target discovery found only an unrelated public-site target (`https://www.foto-rensen.com/`) and no authenticated Chat Web composer target. `agent-browser attach-chat --json` failed accordingly.
-  - Fresh Agent Browser `pibo-chat-slot-003` opened Dev Chat through `https://dev.pibo.neuralnexus.me/apps/chat` and landed unauthenticated at `Unauthenticated / Sign in with Google`; the session was closed and the lease release command was run. The lease registry again left a duplicate active current-run record, so this run corrected only its own `shared-app-no-owner-scope-ralph-1008` record and left pre-existing active root-owned slots untouched.
-  - Fresh Browser Use `pibo-chat-slot-002` could not provide authenticated evidence because the managed browser pool remained occupied by unrelated `browser-use:harz-webdesign-krpoun` work until at least `2026-05-30T10:17:05.112Z`; the newly acquired pibo-chat lease was released and no unrelated browser work was force-closed.
-  - Updated `docs/reports/us-018-validation-rollout-readiness.md`, this progress file, `IMPLEMENTATION_INSIGHTS.md`, and the US-018 PRD JSON notes with the unchanged blocker.
-  - No Docker tests were rerun because no source/runtime behavior changed; prior Docker typecheck/build/npm test/focused/CLI-smoke evidence remains the validation basis.
-  - No fake host auth, host dev-auth flag, Production deploy/restart/migration, or `/root/.pibo` migration/dry-run was used.
-  - US-018 remains `passes: false`. Next recommended action: provide an authenticated Better Auth browser/profile for Dev validation or explicitly waive the authenticated Dev API/browser criterion.
-
-- 2026-05-30T10:00:09Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review. Prior Docker validation plus approved host Dev deploy/restart/status passed; authenticated Better Auth Dev API/browser validation for historical `shared:app`, historical `user:*`, and newly created shared-app sessions remains the only acceptance gap.
-  Plan:
-  1. Re-check approved host Dev gateway status and discover any existing authenticated Chat Web targets with supported browser tooling before acquiring new leases.
-  2. If a real authenticated Better Auth Chat Web target/profile is available, validate the required Dev Chat API/browser paths and mark US-018 complete only if all acceptance criteria pass.
-  3. If authentication remains unavailable, update the US-018 report, PRD JSON notes, insights/progress, and commit the blocker evidence without marking US-018 complete.
-  Intended validation: approved host Dev `pibo gateway dev status`, browser target/attach checks, optional fresh pibo-chat leases only if discovery fails, and authenticated API/browser checks only if a real Better Auth session is available. Docker typecheck/build/tests are not rerun unless source/runtime files change because prior US-018 Docker gates already passed.
-
-- 2026-05-30T10:05:30Z: US-018 remains blocked after another approved host Dev auth availability check.
-  - Commands run: host `pibo gateway dev status`, `npm run --silent dev -- tools browser-use targets`, `npm run --silent dev -- tools agent-browser targets`, `npm run --silent dev -- tools agent-browser attach-chat --json`, fresh Agent Browser `pibo-chat` lease acquire/open/snapshot/close/release plus current-run duplicate lease correction, delayed Browser Use target retry, fresh Browser Use `pibo-chat` lease acquire/open/state/close/release attempt, mandatory source/doc reads, and PRD false-story query.
-  - Dev gateway remained reachable in `mode: dev` with no runtime sessions or active yielded runs.
-  - Target discovery found only unrelated public-site targets and no authenticated Chat Web composer target. `agent-browser attach-chat --json` failed accordingly.
-  - Fresh Agent Browser `pibo-chat-slot-003` opened Dev Chat unauthenticated at `Unauthenticated / Sign in with Google`; the session was closed and the lease was released. The run corrected only its own duplicate Agent Browser lease record after the release command left it counted active; pre-existing active root-owned slots were not force-released.
-  - Delayed Browser Use target retry at `2026-05-30T10:04:41Z` still found only an unrelated public-site target. Fresh Browser Use `pibo-chat-slot-002` could not provide authenticated evidence because the unrelated `browser-use:harz-webdesign-krpoun` managed-pool lease extended until at least `2026-05-30T10:10:47.738Z`; the newly acquired pibo-chat lease was released and no unrelated browser work was force-closed.
-  - Updated `docs/reports/us-018-validation-rollout-readiness.md`, this progress file, `IMPLEMENTATION_INSIGHTS.md`, and the US-018 PRD JSON notes with the unchanged blocker.
-  - No Docker tests were rerun because no source/runtime behavior changed; prior Docker typecheck/build/npm test/focused/CLI-smoke evidence remains the validation basis.
-  - No fake host auth, host dev-auth flag, Production deploy/restart/migration, or `/root/.pibo` migration/dry-run was used.
-  - US-018 remains `passes: false`. Blocker documentation commit before hash-record correction: `b87ab7e docs: record US-018 auth blocker`. Next recommended action: provide an authenticated Better Auth browser/profile for Dev validation or explicitly waive the authenticated Dev API/browser criterion.
-
-- 2026-05-30T09:49:08Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review. Prior Docker validation plus approved host Dev deploy/restart/status passed; authenticated Better Auth Dev API/browser validation for historical `shared:app`, historical `user:*`, and newly created shared-app sessions remains the only acceptance gap.
-  Plan:
-  1. Re-check approved host Dev gateway status and supported authenticated Chat Web target/profile availability using existing Browser Use/Agent Browser targets before acquiring any fresh lease.
-  2. If a real authenticated Better Auth Chat Web target/profile is available, validate the required Dev Chat API/browser paths and mark US-018 complete only if all acceptance criteria pass.
-  3. If authentication remains unavailable, update the US-018 report, PRD JSON notes, insights/progress, and commit the blocker evidence without marking US-018 complete.
-  Intended validation: approved host Dev `pibo gateway dev status`, browser target/attach checks, optional fresh pibo-chat leases if target discovery fails, and authenticated API/browser checks only if a real Better Auth session is available. Docker typecheck/build/tests are not rerun unless source/runtime files change because prior US-018 Docker gates already passed.
-
-- 2026-05-30T09:56:25Z: US-018 remains blocked after another approved host Dev auth availability check.
-  - Commands run: host `pibo gateway dev status`, `npm run --silent dev -- tools browser-use targets`, `npm run --silent dev -- tools agent-browser targets`, `npm run --silent dev -- tools agent-browser attach-chat --json`, Agent Browser `pibo-chat` lease acquire/open/snapshot/close/release, Browser Use `pibo-chat` lease acquire/open/state/close/release attempt, delayed Browser Use retry after the reported pool-lease expiry, mandatory source/doc reads, and PRD false-story query.
-  - Dev gateway remained reachable in `mode: dev` with no runtime sessions or active yielded runs.
-  - Target discovery found only an unrelated public-site target and no authenticated Chat Web composer target. `agent-browser attach-chat --json` failed accordingly.
-  - Fresh Agent Browser `pibo-chat-slot-004` opened Dev Chat unauthenticated at `Unauthenticated / Sign in with Google`; the session was closed and the lease was released. The run corrected only current-run duplicate Agent Browser lease records for `pibo-chat-slot-003`/`pibo-chat-slot-004` after release left them counted active; pre-existing active root-owned slots were not force-released.
-  - Fresh Browser Use `pibo-chat-slot-002` could not provide authenticated evidence because the managed browser pool was occupied by unrelated `browser-use:harz-webdesign-krpoun` work until at least `2026-05-30T09:56:09.802Z`; a delayed retry found that lease extended until `2026-05-30T10:04:22.503Z`. Both newly acquired pibo-chat leases were released and no unrelated browser work was force-closed.
-  - Updated `docs/reports/us-018-validation-rollout-readiness.md`, this progress file, `IMPLEMENTATION_INSIGHTS.md`, and the US-018 PRD JSON notes with the unchanged blocker.
-  - No Docker tests were rerun because no source/runtime behavior changed; prior Docker typecheck/build/npm test/focused/CLI-smoke evidence remains the validation basis.
-  - No fake host auth, host dev-auth flag, Production deploy/restart/migration, or `/root/.pibo` migration/dry-run was used.
-  - US-018 remains `passes: false`. Blocker documentation commit before hash-record correction: `20da6cf docs: record US-018 auth blocker`. Next recommended action: provide an authenticated Better Auth browser/profile for Dev validation or explicitly waive the authenticated Dev API/browser criterion.
-
-- 2026-05-30T09:37:40Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review. Prior Docker validation plus approved host Dev deploy/restart/status passed; authenticated Better Auth Dev API/browser validation for historical `shared:app`, historical `user:*`, and newly created shared-app sessions remains the only acceptance gap.
-  Plan:
-  1. Re-check approved host Dev gateway status and supported authenticated browser target availability, starting from existing Browser Use/Agent Browser targets before acquiring any fresh lease.
-  2. If a real authenticated Better Auth Chat Web target/profile is available, validate the required Dev Chat paths and update US-018 to passing only if all acceptance criteria pass.
-  3. If authentication remains unavailable, update the US-018 report, PRD JSON notes, insights/progress, and commit the blocker evidence without marking US-018 complete.
-  Intended validation: approved host Dev `pibo gateway dev status`, browser target/attach checks, optional fresh pibo-chat leases if target discovery fails, and authenticated API/browser checks only if a real Better Auth session is available. Docker typecheck/build/tests are not rerun unless source/runtime files change because prior US-018 Docker gates already passed.
-
-- 2026-05-30T09:46:05Z: US-018 remains blocked after another approved host Dev auth availability check.
-  - Commands run: host `pibo gateway dev status`, `npm run --silent dev -- tools browser-use targets`, `npm run --silent dev -- tools agent-browser targets`, `npm run --silent dev -- tools agent-browser attach-chat --json`, fresh Agent Browser `pibo-chat` lease acquire/open/snapshot/close/release, delayed fresh Browser Use `pibo-chat` lease acquire/open/state/close/release attempt, mandatory source/doc reads, and PRD false-story query.
-  - Dev gateway remained reachable in `mode: dev` with no runtime sessions or active yielded runs.
-  - Target discovery found only unrelated public-site/service-worker targets and no authenticated Chat Web composer target. `agent-browser attach-chat --json` failed accordingly.
-  - Fresh Agent Browser `pibo-chat-slot-003` opened Dev Chat unauthenticated at `Unauthenticated / Sign in with Google`; the session was closed and the lease was released. The run corrected only its own duplicate Agent Browser lease record after the release command left it counted active; pre-existing active root-owned slots were not force-released.
-  - Delayed Browser Use `pibo-chat-slot-002` retry at `2026-05-30T09:46:05Z` could not provide authenticated evidence because the managed browser pool was still occupied by unrelated `browser-use:harz-webdesign-krpoun` work until at least `2026-05-30T09:55:57.424Z`; the newly acquired pibo-chat lease was released and no unrelated browser work was force-closed.
-  - Updated `docs/reports/us-018-validation-rollout-readiness.md`, this progress file, `IMPLEMENTATION_INSIGHTS.md`, and the US-018 PRD JSON notes with the unchanged blocker.
-  - No Docker tests were rerun because no source/runtime behavior changed; prior Docker typecheck/build/npm test/focused/CLI-smoke evidence remains the validation basis.
-  - No fake host auth, host dev-auth flag, Production deploy/restart/migration, or `/root/.pibo` migration/dry-run was used.
-  - US-018 remains `passes: false`. Blocker documentation commit before hash-record correction: `ca83ad0 docs: record US-018 auth blocker`. Next recommended action: provide an authenticated Better Auth browser/profile for Dev validation or explicitly waive the authenticated Dev API/browser criterion.
-
-- 2026-05-30T09:28:12Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review. Prior Docker validation and approved host Dev deploy/restart/status have passed; the remaining acceptance gap is authenticated Better Auth Dev API/browser validation for historical `shared:app`, historical `user:*`, and newly created shared-app sessions.
-  Plan:
-  1. Re-check approved host Dev gateway status and supported authenticated browser target availability, starting from existing Browser Use/Agent Browser targets before acquiring any fresh lease.
-  2. If a real authenticated Better Auth Chat Web target/profile is available, validate the required Dev Chat paths and update US-018 only if all acceptance criteria pass.
-  3. If authentication remains unavailable, update the US-018 report, PRD JSON notes, insights/progress, and commit the blocker evidence without marking US-018 complete.
-  Intended validation: approved host Dev `pibo gateway dev status`, browser target/attach checks, optional fresh pibo-chat leases if target discovery fails, and authenticated API/browser checks only if a real Better Auth session is available. Docker typecheck/build/tests are not rerun unless source/runtime files change because prior US-018 Docker gates already passed.
-
-- 2026-05-30T09:16:54Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review. Prior evidence shows Docker validation and approved host Dev deploy/restart/status passed; authenticated Better Auth Dev API/browser validation for historical `shared:app`, historical `user:*`, and newly created shared-app sessions remains the only acceptance gap.
-  Plan:
-  1. Re-check approved host Dev gateway status and available authenticated Chat Web targets using supported Pibo browser tooling, starting from existing targets before acquiring fresh leases.
-  2. If a real authenticated Better Auth Chat Web target/profile is available, validate the three required Dev Chat paths and mark US-018 complete only if all acceptance criteria pass.
-  3. If authentication remains unavailable, update the US-018 report, PRD JSON notes, insights/progress, and commit the blocker evidence without marking US-018 complete.
-  Intended validation: approved host Dev `pibo gateway dev status`, browser target/attach checks, fresh authenticated-lease checks only if needed, and authenticated API/browser checks only if a real Better Auth session is available. Docker typecheck/build/tests are not rerun unless source/runtime files change because prior US-018 Docker gates already passed.
-
-- 2026-05-30T09:13:52Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review. Docker validation and approved host Dev deploy/restart/status already passed; the only remaining acceptance gap is authenticated Better Auth Dev API/browser validation for historical `shared:app`, historical `user:*`, and newly created shared-app sessions.
-  Plan:
-  1. Re-check approved host Dev gateway status and available authenticated Chat Web targets using supported Pibo browser tooling, starting from existing targets before acquiring fresh leases.
-  2. If a real authenticated Better Auth Chat Web target/profile is available, validate the required Dev Chat paths and mark US-018 complete only after all acceptance criteria pass.
-  3. If authentication remains unavailable, update the US-018 report, PRD JSON notes, and this progress file with precise blocker evidence; do not use fake host auth, host dev-auth flags, Production services, or `/root/.pibo` migration/dry-runs.
-  Intended validation: approved host Dev `pibo gateway dev status`, browser target/attach checks, fresh authenticated-lease checks only if necessary, and authenticated API/browser checks only if a real Better Auth session is available. Docker typecheck/build/tests are not rerun unless source/runtime files change because prior US-018 Docker gates already passed.
-
-- 2026-05-30T09:10:36Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review. Docker validation and approved host Dev deploy/restart/status already passed; the remaining acceptance gap is authenticated Better Auth Dev API/browser validation for historical `shared:app`, historical `user:*`, and newly created shared-app sessions.
-  Plan:
-  1. Re-check approved host Dev status and authenticated browser availability using the supported Pibo browser tooling, starting from existing targets before acquiring fresh leases.
-  2. If a real authenticated Better Auth Chat Web target/profile is available, validate the three required Dev Chat paths and update US-018 to passing only if all acceptance criteria pass.
-  3. If authentication remains unavailable, update the US-018 report, PRD JSON notes, and this progress file with the latest blocker evidence; do not use fake host auth, host dev-auth flags, Production services, or `/root/.pibo` migration/dry-runs.
-  Intended validation: approved host Dev `pibo gateway dev status`, browser target/attach checks, fresh authenticated-lease checks only if necessary, and authenticated API/browser checks only if a real authenticated Better Auth session is available. Docker typecheck/build/tests are not rerun because this session is validation/bookkeeping only and no source/runtime files are planned to change.
-
-- 2026-05-30T09:06:46Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review. Current evidence shows Docker validation and approved host Dev deploy/restart/status have passed, but authenticated Better Auth Dev API/browser validation for historical `shared:app`, historical `user:*`, and newly created shared-app sessions remains blocked by lack of an authenticated Dev browser/profile.
-  Plan:
-  1. Re-check host Dev gateway status and available authenticated browser/CDP targets using the approved US-018 host Dev validation boundary; do not use fake host auth, host dev-auth flags, Production services, or `/root/.pibo` migration/dry-runs.
-  2. If an authenticated Better Auth Chat Web target/profile is available, validate the three required Dev Chat paths and update the report/PRD/progress to mark US-018 complete only if all criteria pass.
-  3. If authentication remains unavailable, record the precise blocker in `docs/reports/us-018-validation-rollout-readiness.md`, this progress file, and the PRD JSON notes without marking US-018 complete.
-  Intended validation: host Dev `pibo gateway dev status`, browser target discovery/lease checks, and authenticated API/browser checks only if a real Better Auth session is available. Docker typecheck/build/tests are not rerun unless source/runtime files change because the prior US-018 Docker gates already passed and this session is validation/bookkeeping only.
-
-
-- 2026-05-30T09:30:07Z: US-018 remains blocked after another approved host Dev auth availability check.
-  - Commands run: host `pibo gateway dev status`, `npm run --silent dev -- tools browser-use targets`, `npm run --silent dev -- tools agent-browser targets`, `npm run --silent dev -- tools agent-browser attach-chat --json`, fresh Agent Browser `pibo-chat` lease acquire/open/snapshot/close/release, fresh Browser Use `pibo-chat` lease acquire/open/state/close/release attempt, mandatory source/doc reads, and PRD false-story query.
-  - Dev gateway remained reachable in `mode: dev` with no runtime sessions or active yielded runs.
-  - Target discovery found only an unrelated public-site target and no authenticated Chat Web composer target. `agent-browser attach-chat --json` failed accordingly.
-  - Fresh Agent Browser `pibo-chat-slot-003` opened Dev Chat unauthenticated at `Unauthenticated / Sign in with Google`; the session was closed and the lease was released. The run corrected only its own duplicate Agent Browser lease record after the release command left it counted active; pre-existing active slots were not force-released.
-  - Fresh Browser Use `pibo-chat-slot-002` could not provide authenticated evidence because the managed browser pool was still occupied by unrelated `browser-use:harz-webdesign-krpoun` work until at least `2026-05-30T09:34:49.818Z`; the newly acquired pibo-chat lease was released and no unrelated browser work was force-closed. A delayed retry after that expiry found the unrelated pool lease extended until `2026-05-30T09:45:38.200Z`; that retry lease was also released.
-  - Updated `docs/reports/us-018-validation-rollout-readiness.md`, this progress file, `IMPLEMENTATION_INSIGHTS.md`, and the US-018 PRD JSON notes with the unchanged blocker.
-  - No Docker tests were rerun because no source/runtime behavior changed; prior Docker typecheck/build/npm test/focused/CLI-smoke evidence remains the validation basis.
-  - No fake host auth, host dev-auth flag, Production deploy/restart/migration, or `/root/.pibo` migration/dry-run was used.
-  - US-018 remains `passes: false`. Blocker documentation commit before hash-record correction: `03a2695 docs: record US-018 auth blocker`. Next recommended action: provide an authenticated Better Auth browser/profile for Dev validation or explicitly waive the authenticated Dev API/browser criterion.
-
-- 2026-05-30T09:25:52Z: US-018 remains blocked after another approved host Dev auth availability check.
-  - Commands run: host `pibo gateway dev status`, `npm run --silent dev -- tools browser-use targets`, `npm run --silent dev -- tools agent-browser targets`, `npm run --silent dev -- tools agent-browser attach-chat --json`, Agent Browser `pibo-chat` lease acquire/open/snapshot/close/release, Browser Use `pibo-chat` lease acquire/open/state/close/release attempt, mandatory source/doc reads, and PRD false-story query.
-  - Dev gateway remained reachable in `mode: dev` with no runtime sessions or active yielded runs.
-  - Target discovery found only unrelated public-site targets; no authenticated Chat Web target with a composer textarea was available. `agent-browser attach-chat --json` failed accordingly.
-  - Fresh Agent Browser `pibo-chat-slot-003` opened Dev Chat unauthenticated at `Unauthenticated / Sign in with Google`; the session was closed and the lease was released. The run corrected only its own duplicate Agent Browser lease records after the release command left them counted active; pre-existing active slots were not force-released.
-  - Fresh Browser Use `pibo-chat-slot-002` could not provide authenticated evidence because the managed browser pool was occupied by unrelated `browser-use:harz-webdesign-krpoun` work until at least `2026-05-30T09:34:49.818Z`; the newly acquired pibo-chat lease was released and no unrelated browser work was force-closed.
-  - Updated `docs/reports/us-018-validation-rollout-readiness.md`, this progress file, `IMPLEMENTATION_INSIGHTS.md`, and the US-018 PRD JSON notes with the unchanged blocker.
-  - No Docker tests were rerun because no source/runtime behavior changed; prior Docker typecheck/build/npm test/focused/CLI-smoke evidence remains the validation basis.
-  - No fake host auth, host dev-auth flag, Production deploy/restart/migration, or `/root/.pibo` migration/dry-run was used.
-  - US-018 remains `passes: false`. Blocker documentation commit before hash-record correction: `c7ddc04 docs: record US-018 auth blocker`. Next recommended action: provide an authenticated Better Auth browser/profile for Dev validation or explicitly waive the authenticated Dev API/browser criterion.
-
-- 2026-05-30T09:14:50Z: US-018 remains blocked after another approved host Dev auth availability check.
-  - Commands run: host `pibo gateway dev status`, `npm run --silent dev -- tools browser-use targets`, `npm run --silent dev -- tools agent-browser targets`, `npm run --silent dev -- tools agent-browser attach-chat --json`, fresh Agent Browser `pibo-chat` lease acquire/open/snapshot/close/release, attempted fresh Browser Use `pibo-chat` lease acquire/open/state/close/release, mandatory source/doc reads, and PRD false-story query.
-  - Dev gateway remained reachable in `mode: dev` with no runtime sessions or active yielded runs.
-  - Target discovery found only unrelated public-site/browser targets and no authenticated Chat Web composer target. `agent-browser attach-chat --json` failed with no authenticated composer target.
-  - Fresh Agent Browser `pibo-chat` lease `pibo-chat-slot-004` opened Dev Chat unauthenticated at `Unauthenticated / Sign in with Google`; the session was closed and the lease was released.
-  - Fresh Browser Use `pibo-chat` lease `pibo-chat-slot-002` was released after the managed browser pool reported it was occupied by an unrelated Browser Use lease; no authenticated Browser Use profile evidence was available in this pass.
-  - Updated `docs/reports/us-018-validation-rollout-readiness.md`, this progress file, `IMPLEMENTATION_INSIGHTS.md`, and the US-018 PRD JSON notes with the unchanged blocker.
-  - No Docker tests were rerun because no source/runtime behavior changed; prior Docker typecheck/build/npm test/focused/CLI-smoke evidence remains the validation basis.
-  - No fake host auth, host dev-auth flag, Production deploy/restart/migration, or `/root/.pibo` migration/dry-run was used.
-  - US-018 remains `passes: false`. Blocker documentation commit before hash-record correction: `c3187fd docs: record US-018 auth blocker`. Next recommended action: provide an authenticated Better Auth browser/profile for Dev validation or explicitly waive the authenticated Dev API/browser criterion.
-
-- 2026-05-30T09:10:36Z: US-018 remains blocked after another approved host Dev auth availability check.
-  - Commands run: host `pibo gateway dev status`, `npm run --silent dev -- tools browser-use targets`, `npm run --silent dev -- tools agent-browser targets`, `npm run --silent dev -- tools agent-browser attach-chat --json`, `curl http://127.0.0.1:4808/apps/chat`, fresh Agent Browser `pibo-chat` lease acquire/open/snapshot/close/release, and fresh Browser Use `pibo-chat` lease acquire/open/state/close/release.
-  - Dev gateway remained reachable in `mode: dev` with no runtime sessions or active yielded runs.
-  - Target discovery found no authenticated Chat Web composer target. Fresh Agent Browser and Browser Use `pibo-chat` leases both opened Dev Chat unauthenticated at the Google sign-in page / `Unauthenticated` state; no credentials or human OAuth step are available to this Ralph run.
-  - Updated `docs/reports/us-018-validation-rollout-readiness.md`, this progress file, and the US-018 PRD JSON notes with the unchanged blocker.
-  - No Docker tests were rerun because no source/runtime behavior changed; prior Docker typecheck/build/npm test/focused/CLI-smoke evidence remains the validation basis.
-  - No fake host auth, host dev-auth flag, Production deploy/restart/migration, or `/root/.pibo` migration/dry-run was used. Browser leases acquired for this check were closed/released.
-  - US-018 remains `passes: false`. Blocker body commit before hash-record correction: `7ef0cef docs: record US-018 auth blocker`. Next recommended action: provide an authenticated Better Auth browser/profile for Dev validation or explicitly waive the authenticated Dev API/browser criterion.
-
-- 2026-05-30T09:08:00Z: US-018 remains blocked after another approved host Dev auth availability check.
-  - Commands run: host `pibo gateway dev status`, `npm run --silent dev -- tools browser-use targets`, `npm run --silent dev -- tools agent-browser targets`, `npm run --silent dev -- tools agent-browser attach-chat --json`, fresh Agent Browser `pibo-chat` lease acquire/open/snapshot/close/release, and fresh Browser Use `pibo-chat` lease acquire/open/state/close/release.
-  - Dev gateway remained reachable in `mode: dev` with no runtime sessions or active yielded runs.
-  - Browser target discovery found only `about:blank` and a Dev Chat service-worker target; no authenticated Chat Web target with a composer textarea was available.
-  - Fresh Agent Browser and Browser Use `pibo-chat` leases both opened Dev Chat unauthenticated at `Unauthenticated / Sign in with Google`; no credentials or human OAuth step are available to this Ralph run.
-  - Updated `docs/reports/us-018-validation-rollout-readiness.md`, this progress file, and the US-018 PRD JSON notes with the unchanged blocker.
-  - No Docker tests were rerun because no source/runtime behavior changed; previous Docker typecheck/build/npm test/focused/CLI-smoke evidence remains the validation basis.
-  - No fake host auth, host dev-auth flag, Production deploy/restart/migration, or `/root/.pibo` migration/dry-run was used. Leases acquired for this check were released.
-  - US-018 remains `passes: false`. Blocker documentation commit before hash-record correction: `9819fc2 docs: record US-018 auth validation blocker`. Next recommended action: provide an authenticated Better Auth browser/profile for Dev validation or explicitly waive the authenticated Dev API/browser criterion.
-
-- 2026-05-30T09:02:34Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review. The last session completed approved host Dev deploy/restart/status plus unauthenticated/auth-boundary checks, but authenticated Better Auth Dev API/browser validation for historical `shared:app`, historical `user:*`, and newly created shared-app sessions remains blocked by lack of an authenticated browser/profile.
-  Plan:
-  1. Inspect current host Dev URL/status and browser/CDP/agent-browser/browser-use targets to see whether an authenticated Better Auth Chat Web target or reusable auth profile is now available; do not use fake host auth or production services.
-  2. If an authenticated Dev session is available, validate the required three Dev Chat paths (historical `shared:app`, historical `user:*`, and newly created shared-app session) via API/browser, update the US-018 report/PRD/progress, and commit final readiness only if all acceptance criteria pass.
-  3. If authenticated Dev validation remains unavailable, record the precise blocker in the report, PRD JSON notes, and progress without marking US-018 complete; no Production deploy/restart/migration and no `/root/.pibo` migration/dry-run.
-  Intended validation: approved host Dev API/browser checks only if authenticated Better Auth access is available; Docker typecheck/focused gates are not rerun unless source/runtime files change or new validation scripts require them, because the previous session already refreshed Docker typecheck/build/npm test/focused/CLI-smoke evidence.
-
-- 2026-05-30T09:07:00Z: US-018 remains blocked after rechecking authenticated Dev browser availability.
-  - Commands run: host `pibo gateway dev status`, `npm run --silent dev -- tools browser-use targets`, `npm run --silent dev -- tools agent-browser targets`, `npm run --silent dev -- tools agent-browser attach-chat --json`, Agent Browser lease acquire/open/snapshot/release, Browser Use lease acquire/open/state/release, mandatory source/doc reads, and PRD false-story query.
-  - Dev gateway remained reachable in `mode: dev` with no runtime sessions or active yielded runs.
-  - No authenticated Chat Web target was available. Agent Browser and Browser Use leases both opened Dev Chat unauthenticated at the Google sign-in page / `Unauthenticated` state; no credentials or human OAuth step are available to this Ralph run.
-  - Updated `docs/reports/us-018-validation-rollout-readiness.md`, this progress file, and the US-018 PRD JSON notes with the unchanged blocker.
-  - No Docker tests were rerun because no source/runtime behavior changed; previous fresh Docker typecheck/build/npm test/focused/CLI-smoke evidence remains the validation basis.
-  - No fake host auth, host dev-auth flag, Production deploy/restart/migration, or `/root/.pibo` migration/dry-run was used. Agent Browser and Browser Use leases acquired for this check were released.
-  - US-018 remains `passes: false`. Blocker documentation commit before hash-record correction: `a24bd7b docs: record US-018 auth validation blocker`. Next recommended action: provide an authenticated Better Auth browser/profile for Dev validation or explicitly waive the authenticated Dev API/browser criterion.
-
-- 2026-05-30T08:50:51Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review. The current task and progress notes now include explicit user approval for host Dev deploy/restart/API/browser validation for US-018 only; Production remains forbidden without separate approval.
-  Plan:
-  1. Re-run final Docker validation gates needed for current evidence freshness unless time or failures force a narrower documented retry: `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, and real Ralph/Cron CLI smokes through `.pibo/ralph-worker.sh` with sandbox `PIBO_HOME`.
-  2. Run approved host Dev operations for US-018 only: `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, `pibo gateway dev status`, then validate Dev API/browser paths for historical `shared:app`, historical `user:*`, and newly created shared-app sessions.
-  3. Update `docs/reports/us-018-validation-rollout-readiness.md`, the US-018 PRD JSON notes/pass flag, progress/insights as needed, and commit a coherent final US-018 readiness batch if all acceptance criteria pass.
-  Intended validation: Docker broad/focused gates via the worker sandbox; host Dev deploy/restart/status and API/browser checks on the approved Dev gateway; no Production deploy, Production restart, Production migration, or `/root/.pibo` mutation.
-
-- 2026-05-30T08:58:57Z: US-018 remains blocked after approved host Dev partial validation.
-  - Docker commands run through `.pibo/ralph-worker.sh` with sandbox `PIBO_HOME`: `npm run typecheck`, `npm run build`, broad `npm test` (895 tests), focused final-readiness/search/migration/API tests (137 tests), focused Workflow V2/session-data retest (40 tests), and a real Ralph/Cron CLI smoke using temporary stores without `--owner-scope`; all passed.
-  - Host Dev commands run with user approval for US-018 only: `./scripts/deploy-web-dev.sh` against the local Ralph branch via a temporary local remote, `pibo gateway dev restart`, and `pibo gateway dev status`; all passed. The temporary local remote and browser leases were removed/released afterward.
-  - Host Dev auth-boundary checks: unauthenticated `/api/chat/bootstrap` returned 401, the same request with `x-test-user` also returned 401, and Agent Browser reached the Dev Chat app/Google sign-in page.
-  - Blocker: authenticated host Dev API/browser validation for historical `shared:app`, historical `user:*`, and newly created shared-app sessions could not be completed because no authenticated Better Auth browser/profile was available to this Ralph run. Browser Use target discovery failed, Agent Browser/Browser Use lease profiles and auth-template were unauthenticated, and no fake host auth/dev-auth was used.
-  - Files changed: `docs/reports/us-018-validation-rollout-readiness.md`, `docs/specs/changes/shared-app-no-owner-scope/prds/shared-app-no-owner-scope.prd.json`, `IMPLEMENTATION_PROGRESS.md`, and `IMPLEMENTATION_INSIGHTS.md`.
-  - US-018 remains `passes: false`; no Production deploy, Production restart, Production migration, or `/root/.pibo` migration/dry-run was run.
-  - Bookkeeping/partial-validation commit: `ba45d33 docs: record US-018 partial dev validation`.
-  - Next recommended action: provide an authenticated Better Auth browser/profile for Dev validation or explicitly waive the authenticated Dev API/browser criterion; then validate the three required Dev Chat paths before marking US-018 complete.
-
-- 2026-05-30T07:16:22Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the current failing story set and re-check the existing US-018 validation/rollout readiness report.
-  2. Preserve the Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, host service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and the PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing US-018 evidence already records passing Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T07:16:22Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `pwd && git status --short --branch && git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Bookkeeping commit for this blocked status: final hash recorded in this session result (`docs: record US-018 approval blocker`).
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T07:13:45Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the current failing story set and re-check the existing US-018 validation/rollout readiness report.
-  2. Preserve the Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, host service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and the PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing US-018 evidence already records passing Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T07:13:45Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `pibo-docker-system`, `github-server-flow`, and `ralph-loop` skill reads, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, host `date -u +%Y-%m-%dT%H:%M:%SZ`, and progress/PRD JSON blocker note update.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Bookkeeping commit for this blocked status: final hash recorded in this session result (`docs: record US-018 approval blocker`).
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T07:11:55Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the current failing story set and re-check the existing US-018 validation/rollout readiness report.
-  2. Preserve the Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, host service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and the PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing US-018 evidence already records passing Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T07:11:55Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, host `date -u +%Y-%m-%dT%H:%M:%SZ`, and progress/PRD JSON blocker note update.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T07:09:19Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the current failing story set and re-check the existing US-018 validation/rollout readiness report.
-  2. Preserve the Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, host service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and the PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing US-018 evidence already records passing Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T07:09:19Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `pwd && git status --short --branch && git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T07:06:47Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the current failing story set and re-check the existing US-018 validation/rollout readiness report.
-  2. Preserve the Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, host service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and the PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing US-018 evidence already records passing Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T07:06:47Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `pwd && git status --short --branch && git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, host `date -u +%Y-%m-%dT%H:%M:%SZ`, and progress/PRD JSON blocker note update.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Bookkeeping commit for this blocked status: final hash recorded in this session result (`docs: record US-018 approval blocker`).
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T07:04:42Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the current failing story set and re-check the existing US-018 validation/rollout readiness report.
-  2. Preserve the Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, host service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and the PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing US-018 evidence already records passing Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T07:04:42Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `pibo-docker-system`, `github-server-flow`, `ralph-loop`, and writing skill reads, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, host `date -u +%Y-%m-%dT%H:%M:%SZ`, and PRD JSON blocker note update.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Bookkeeping commit for this blocked status: final hash recorded in the session result (`docs: record US-018 approval blocker`).
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T07:02:38Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the current failing story set and re-check the existing US-018 validation/rollout readiness report.
-  2. Preserve the Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, host service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and the PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing US-018 evidence already records passing Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T07:02:38Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `pwd && git status --short --branch && git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `pibo-docker-system`, `github-server-flow`, and `ralph-loop` skills, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, host `date -u +%Y-%m-%dT%H:%M:%SZ`, and host `git status --short`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Bookkeeping commit for this blocked status: final hash recorded in session result (`docs: record US-018 approval blocker`).
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T07:00:51Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the current failing story set and re-check the existing US-018 validation/rollout readiness report.
-  2. Preserve the Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, host service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and the PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing US-018 evidence already records passing Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T07:00:51Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `pibo-docker-system`, `ralph-loop`, and `github-server-flow` skills, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, and host `date -u +%Y-%m-%dT%H:%M:%SZ`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T06:58:32Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the current failing story set and re-check the existing US-018 validation/rollout readiness report.
-  2. Preserve the Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, host service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and the PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing US-018 evidence already records passing Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T06:58:32Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `pibo-docker-system` and `ralph-loop` skills, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, host `date -u +%Y-%m-%dT%H:%M:%SZ`, and PRD JSON blocker note update.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Blocker body commit before hash-record correction: `ca517d8 docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T06:56:54Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the current failing story set and re-check the existing US-018 validation/rollout readiness report.
-  2. Preserve the Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, host service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and the PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing US-018 evidence already records passing Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T06:56:54Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `pwd && git status --short --branch && git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `pibo-docker-system` skill, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, host `date -u +%Y-%m-%dT%H:%M:%SZ`, and PRD JSON blocker note update.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Blocker body commit before hash-record correction: `4ca9de0 docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T06:54:46Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the current failing story set and re-check the existing US-018 validation/rollout readiness report.
-  2. Preserve the Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, host service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and the PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing US-018 evidence already records passing Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T06:54:46Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `pibo-docker-system` skill, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, host `date -u +%Y-%m-%dT%H:%M:%SZ`, and PRD JSON blocker note update.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T06:53:00Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the current failing story set and re-check the existing US-018 validation/rollout readiness report.
-  2. Preserve the Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, host service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and the PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing US-018 evidence already records passing Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T06:53:00Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `pibo-docker-system` and `ralph-loop` skills, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, host `date -u +%Y-%m-%dT%H:%M:%SZ`, and PRD JSON blocker note update.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T06:50:41Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the current failing story set and re-check the existing US-018 validation/rollout readiness report.
-  2. Preserve the Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, host service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and the PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing US-018 evidence already records passing Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T06:50:41Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `pwd && git status --short --branch && git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `pibo-docker-system` skill, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, host `date -u +%Y-%m-%dT%H:%M:%SZ`, and PRD JSON blocker note update.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Blocker body commit before hash-record correction: `768b785 docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T06:49:10Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the failing story set and re-check the existing US-018 validation/rollout readiness report.
-  2. Preserve the Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, host service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and the PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing US-018 evidence already records passing Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T06:49:10Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `pibo-docker-system` skill, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, and host `date -u +%Y-%m-%dT%H:%M:%SZ`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T06:46:52Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the current failing story set and review the existing US-018 validation/rollout readiness report.
-  2. Preserve the Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, host service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and the PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing US-018 evidence already records passing Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T06:46:52Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `github-server-flow` and `pibo-docker-system` skills, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, host `date -u +%Y-%m-%dT%H:%M:%SZ`, and PRD JSON blocker note update.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T06:43:50Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the failing story set and review the existing US-018 validation/rollout readiness report.
-  2. Preserve the Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, host service mutation, or migration mutation without explicit user approval/waiver.
-  3. Stop with the existing US-018 approval/waiver blocker still in place; do not mark the story complete.
-  Intended validation: no Docker rerun is needed because this session changes no source/runtime behavior; existing US-018 evidence already records passing Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T06:43:50Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `pibo-docker-system` skill, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, and host `date -u +%Y-%m-%dT%H:%M:%SZ` / `git status --short`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated the US-018 PRD JSON notes and this progress file to document the unchanged approval/waiver blocker.
-  - Bookkeeping commit for this blocked status: final hash recorded in the session result (`docs: record US-018 approval blocker`).
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T06:41:24Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the failing story set and review the existing US-018 validation/rollout readiness report.
-  2. Preserve the Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, host service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T06:41:24Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `pibo-docker-system` skill, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, host `date -u +%Y-%m-%dT%H:%M:%SZ`, PRD JSON blocker note update, and host `git diff` review.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Blocker body commit before hash-record correction: `2053f76 docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T06:39:23Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the failing story set and review the existing US-018 validation/rollout readiness report.
-  2. Preserve the Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, host service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T06:39:23Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `github-server-flow` and `pibo-docker-system` skills, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, host `date -u +%Y-%m-%dT%H:%M:%SZ`, PRD JSON blocker note update, and host `git diff` review.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T06:36:45Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the failing story set and review the existing US-018 validation/rollout readiness report.
-  2. Preserve the Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, host service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T06:36:45Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `github-server-flow` and `pibo-docker-system` skills, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, host `date -u +%Y-%m-%dT%H:%M:%SZ`, PRD JSON blocker note update, and host `git diff` review.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T06:35:07Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the failing story set and review the existing US-018 validation/rollout readiness report.
-  2. Preserve the Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, host service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T06:35:07Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `pibo-docker-system` skill, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, host `date -u +%Y-%m-%dT%H:%M:%SZ`, and PRD JSON blocker note update.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T06:31:52Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the failing story set and review the existing US-018 validation/rollout readiness report.
-  2. Preserve the Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, host service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T06:31:52Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `pwd && git status --short --branch && git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `pibo-docker-system` skill, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, host `date -u +%Y-%m-%dT%H:%M:%SZ`, and PRD JSON blocker note update.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Bookkeeping commit for this blocked status: final hash recorded in session result (`docs: record US-018 approval blocker`).
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T06:30:04Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the failing story set and re-check the existing US-018 validation/rollout readiness report.
-  2. Preserve the Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, host service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T06:30:04Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `pwd && git status --short --branch && git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `github-server-flow` and `pibo-docker-system` skills, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, host `date -u +%Y-%m-%dT%H:%M:%SZ`, and PRD JSON blocker note update.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T06:28:10Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the failing story set and re-check the existing US-018 validation/rollout readiness report.
-  2. Preserve the Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, host service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T06:28:10Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `github-server-flow` and `pibo-docker-system` skills, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, host `date -u +%Y-%m-%dT%H:%M:%SZ`, and PRD JSON blocker note update.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Blocker body commit before hash-record correction: `10dedfc docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T06:25:52Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the failing story set and re-check the existing US-018 validation/rollout readiness report.
-  2. Preserve the Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, host service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T06:25:52Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `github-server-flow` and `pibo-docker-system` skills, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, and host `date -u +%Y-%m-%dT%H:%M:%SZ`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Blocker body commit before hash-record correction: `fbd12a7 docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T06:23:22Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the failing story set and re-check the existing US-018 validation/rollout readiness report.
-  2. Preserve the Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, host service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T06:23:22Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `github-server-flow` and `pibo-docker-system` skills, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, and host `date -u +%Y-%m-%dT%H:%M:%SZ`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Blocker body commit before hash-record correction: `8202253 docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T06:20:37Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the failing story set and re-check the existing US-018 validation/rollout readiness report.
-  2. Preserve the Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, host service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T06:20:37Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `github-server-flow` and `pibo-docker-system` skills, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, host `date -u +%Y-%m-%dT%H:%M:%SZ`, and PRD JSON blocker note update.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Blocker body commit before hash-record correction: `f5f43eb docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T06:18:50Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the failing story set and re-check the existing US-018 validation/rollout readiness report.
-  2. Preserve the Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, host service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T06:18:50Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `pibo-docker-system` and `ralph-loop` skills, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, host `date -u +%Y-%m-%dT%H:%M:%SZ`, and progress/PRD JSON blocker note update.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T06:15:59Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the failing story set and review the existing US-018 validation/rollout readiness report.
-  2. Preserve the Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, host service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T06:15:59Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `pwd && git status --short --branch && git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `pibo-docker-system` and `ralph-loop` skills, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, host `date -u +%Y-%m-%dT%H:%M:%SZ`, and progress/PRD JSON blocker note update.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Blocker body commit before hash-record correction: `a0bbf27 docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T06:13:37Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the failing story set and re-check the existing US-018 validation/rollout readiness report.
-  2. Preserve the Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, host service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T06:13:37Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `pibo-docker-system` and `ralph-loop` skills, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, host `date -u +%Y-%m-%dT%H:%M:%SZ`, and progress/PRD JSON blocker note update.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Blocker body commit before hash-record correction: `789b198 docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T06:10:54Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the failing story set and re-check the existing US-018 validation/rollout readiness report.
-  2. Preserve the Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, host service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T06:10:54Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `pwd && git status --short --branch && git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `github-server-flow` and `pibo-docker-system` skills, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, host `date -u +%Y-%m-%dT%H:%M:%SZ`, and PRD JSON blocker note update.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Blocker body commit before hash-record correction: `cc18499 docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T06:08:56Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the current failing story set and re-check the existing US-018 validation/rollout readiness report.
-  2. Preserve the active Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, host service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T06:08:56Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `pwd && git status --short --branch && git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `pibo-docker-system` and `ralph-loop` skills, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, host `date -u +%Y-%m-%dT%H:%M:%SZ`, and PRD JSON blocker note update.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Blocker body commit before hash-record correction: `59bbe1c docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T06:06:28Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the failing story set and re-check the existing US-018 validation/rollout readiness report.
-  2. Preserve the active Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, host service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T06:06:28Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `pibo-docker-system` and `github-server-flow` skills, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, host `date -u +%Y-%m-%dT%H:%M:%SZ`, and progress/PRD JSON blocker note update.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Bookkeeping commit for this blocked status: `1963070 docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T06:03:52Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the current failing story set and review the existing US-018 validation/rollout readiness report.
-  2. Preserve the active Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, host service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T06:03:52Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `pwd && git status --short --branch && git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `pibo-docker-system` and `github-server-flow` skills, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, host `date -u +%Y-%m-%dT%H:%M:%SZ`, and progress/PRD JSON blocker note update.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Blocker body commit before hash-record correction: `befd504 docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T06:02:09Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the failing story set and re-check the existing US-018 validation/rollout readiness report.
-  2. Preserve the active Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, host service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T06:02:09Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `pwd && git status --short --branch && git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `pibo-docker-system` skill, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, host `date -u +%Y-%m-%dT%H:%M:%SZ`, and host `git status --short`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Blocker body commit before hash-record correction: `29fbcac docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T05:59:51Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the current failing story set and re-check the existing US-018 validation/rollout readiness report.
-  2. Preserve the active Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, host service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T05:59:51Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `pibo-docker-system` and `github-server-flow` skills, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, host `date -u +%Y-%m-%dT%H:%M:%SZ`, and host `git diff` review.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Bookkeeping commit for this blocked status: `5ab4651 docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T05:58:40Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the current failing story set and review the existing US-018 validation/rollout report.
-  2. Preserve the active Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, host service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T05:58:40Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `pwd && git status --short --branch && git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `ralph-loop` and `pibo-docker-system` skills, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, host `date -u +%Y-%m-%dT%H:%M:%SZ`, and host `git diff`/`git status --short` review.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T05:56:20Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the current failing story set and re-check the existing US-018 validation/rollout report.
-  2. Preserve the active Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, host service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T05:56:20Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `ralph-loop` and `pibo-docker-system` skills, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, host `date -u +%Y-%m-%dT%H:%M:%SZ`, and host `git diff`/`git status --short` review.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T05:53:08Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the current failing story set and re-check the existing US-018 validation/rollout report.
-  2. Respect the active Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, host service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T05:53:08Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `pwd && git status --short --branch && git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `ralph-loop` and `pibo-docker-system` skills, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, host `date -u +%Y-%m-%dT%H:%M:%SZ`, and host `git status --short`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T05:51:00Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the current failing story set and review the existing US-018 validation/rollout readiness report.
-  2. Respect the active Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T05:51:00Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `pwd && git status --short --branch && git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, host `date -u +%Y-%m-%dT%H:%M:%SZ`, and host `git status --short`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Bookkeeping commit for this blocked status: `66a71c8 docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T05:49:38Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the current failing story set and review the existing US-018 validation/rollout readiness report.
-  2. Respect the active Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T05:49:38Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `ralph-loop` and `pibo-docker-system` skills, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, host `date -u +%Y-%m-%dT%H:%M:%SZ`, and host `git status --short`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T05:47:47Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the current failing story set and review the existing US-018 validation/rollout readiness report.
-  2. Respect the active Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T05:47:47Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `pibo-docker-system` skill, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, host `date -u +%Y-%m-%dT%H:%M:%SZ`, and host `git status --short`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T05:45:11Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the failing story set and re-check the existing US-018 validation/rollout report.
-  2. Respect the active Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T05:45:11Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `pwd && git status --short --branch && git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `ralph-loop` and `pibo-docker-system` skills, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, host `date -u +%Y-%m-%dT%H:%M:%SZ`, and host `git status --short`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Blocker body commit before hash-record correction: `113d524 docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T05:44:22Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the failing story set and re-check the existing US-018 validation/rollout report.
-  2. Respect the active Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T05:44:22Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `pwd && git status --short --branch && git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `ralph-loop` and `pibo-docker-system` skills, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, and host `git status --short`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T05:41:41Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the current failing story set and re-check the existing US-018 validation/rollout report.
-  2. Respect the active Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T05:41:41Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `pibo-docker-system` skill, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - No commit was created in this blocked bookkeeping session.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T05:39:42Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the current failing story set and re-check the existing US-018 validation/rollout report.
-  2. Respect the active Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T05:39:42Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `pibo-docker-system` and `github-server-flow` skills, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T05:38:05Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the current failing story set and re-check the existing US-018 validation/rollout report.
-  2. Respect the active Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T05:38:05Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `pibo-docker-system` and `github-server-flow` skills, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Bookkeeping commit for this blocked status: `4b448aa docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T05:35:55Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the current failing story set and re-check the existing US-018 validation/rollout report.
-  2. Respect the active Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T05:35:55Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `pibo-docker-system` and `github-server-flow` skills, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Blocker body commit before hash-record correction: `582d3ed docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T05:33:55Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the current failing story set and review the existing US-018 validation/rollout report.
-  2. Respect the active Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T05:33:55Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `pibo-docker-system` skill, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, and PRD JSON blocker note update.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Bookkeeping commit for this blocked status: `e888314 docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T05:32:16Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the current failing story set and review the existing US-018 validation/rollout report.
-  2. Respect the active Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T05:32:16Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `pibo-docker-system` skill, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, and PRD JSON blocker note update.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T05:30:29Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the current failing story set and review the existing US-018 validation/rollout report.
-  2. Respect the active Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T05:30:29Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `pibo-docker-system` skill, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-
-- 2026-05-30T05:28:03Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the failing story set and re-check the existing US-018 rollout readiness report.
-  2. Respect the active Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T05:28:03Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Blocker body commit before hash-record correction: `084eaed docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T05:26:20Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the failing story set and re-check the existing US-018 rollout readiness report.
-  2. Respect the active Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T05:26:20Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, `pibo-docker-system` skill, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T05:24:14Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the failing story set and re-check the existing US-018 rollout readiness report.
-  2. Respect the active Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T05:24:14Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Bookkeeping commit for this blocked status: `e096336 docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T05:20:42Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the failing story set and re-check the existing US-018 rollout readiness report.
-  2. Respect the active Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T05:20:42Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Bookkeeping commit for this blocked status: `60475e2 docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T05:18:42Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the failing story set and re-check the existing US-018 rollout readiness report.
-  2. Respect the active Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior changed; existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T05:18:42Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T05:17:00Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false` after mandatory startup review.
-  Plan:
-  1. Confirm the failing story set and re-check the existing US-018 readiness report.
-  2. Respect the active Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, service mutation, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because no source/runtime behavior is changing; existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T05:17:00Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Blocker bookkeeping commit before hash-record correction: `689d6ae docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T05:14:27Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false`.
-  Plan:
-  1. Complete mandatory startup review and confirm the failing story set.
-  2. Respect the active Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, service mutation, or migration mutation without explicit user approval/waiver.
-  3. Re-record the unchanged host Dev approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T05:14:27Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `pwd && git status --short --branch && git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Blocker body commit before hash-record correction: `7dc0a0e docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T05:12:48Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false`.
-  Plan:
-  1. Complete mandatory startup review and confirm the failing story set.
-  2. Respect the Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, service mutation, or migration mutation without explicit user approval/waiver.
-  3. Re-record the unchanged host Dev approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T05:12:48Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T05:11:02Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false`.
-  Plan:
-  1. Complete mandatory startup review and confirm the failing story set.
-  2. Respect the active Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, service mutation, or migration mutation without explicit user approval/waiver.
-  3. Re-record the unchanged blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T05:11:02Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T05:09:07Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false`.
-  Plan:
-  1. Complete mandatory startup review and confirm the failing story set.
-  2. Respect the active Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, service mutation, or migration mutation without explicit user approval/waiver.
-  3. Re-record the unchanged blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T05:09:07Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `pwd && git status --short --branch && git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md`, skills, progress/insights, PRD/spec/design/tasks reads, `jq` query for `passes: false`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Bookkeeping commit for this blocked status: `3d2a432 docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T05:07:35Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false`.
-  Plan:
-  1. Complete mandatory startup review and confirm the failing story set.
-  2. Respect the active Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, service mutation, or migration mutation without explicit user approval/waiver.
-  3. Re-record the unchanged blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T05:07:35Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `pwd && git status --short --branch && git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md` and source document reads, `jq` query for `passes: false`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T05:05:14Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false`.
-  Plan:
-  1. Complete mandatory startup review and confirm the failing story set.
-  2. Respect the active Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, service mutation, or migration mutation without explicit user approval/waiver.
-  3. Re-record the unchanged blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T05:05:14Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md` and source document reads, `jq` query for `passes: false`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Blocker body commit before hash-record correction: `9235029 docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T05:03:46Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false`.
-  Plan:
-  1. Complete mandatory startup review and confirm the failing story set.
-  2. Respect the active Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, service mutation, or migration mutation without explicit user approval/waiver.
-  3. Re-record the unchanged blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T05:03:46Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md` and source document reads, `jq` query for `passes: false`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T05:02:32Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false`.
-  Plan:
-  1. Complete mandatory startup review and confirm the failing story set.
-  2. Respect the active Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, service mutation, or migration mutation without explicit user approval/waiver.
-  3. Re-record the unchanged blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T05:02:32Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md` and source document reads, `jq` query for `passes: false`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T05:00:58Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false`.
-  Plan:
-  1. Complete mandatory startup review and confirm the failing story set.
-  2. Respect the active Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, service mutation, or migration mutation without explicit user approval/waiver.
-  3. Re-record the unchanged blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T05:00:58Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md` and source document reads, `jq` query for `passes: false`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T04:58:49Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false`.
-  Plan:
-  1. Complete mandatory startup review and confirm the failing story set.
-  2. Respect the active Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, service mutation, or migration mutation without explicit user approval/waiver.
-  3. Re-record the unchanged blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T04:58:49Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md` and source document reads, `jq` query for `passes: false`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T04:57:17Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false`.
-  Plan:
-  1. Complete mandatory startup review and confirm the failing story set.
-  2. Respect the active Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, service mutation, or migration mutation without explicit user approval/waiver.
-  3. Re-record the unchanged blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T04:57:17Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md` and source document reads, `jq` query for `passes: false`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-
-- 2026-05-30T04:56:06Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false`.
-  Plan:
-  1. Complete mandatory startup review and confirm the failing story set.
-  2. Respect the active Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, service mutation, or migration mutation without explicit user approval/waiver.
-  3. Re-record the unchanged blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T04:56:06Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md` and source document reads, `jq` query for `passes: false`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T04:55:20Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false`.
-  Plan:
-  1. Complete mandatory startup review and confirm the failing story set.
-  2. Respect the active Ralph host-service boundary: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, service mutation, or migration mutation without explicit user approval/waiver.
-  3. Re-record the unchanged blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no Docker rerun is needed for this blocked bookkeeping-only pass because committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T04:55:20Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `pwd && git status --short --branch && git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md` and source document reads, `jq` query for `passes: false`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-
-- 2026-05-30T04:52:42Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false`.
-  Plan:
-  1. Complete the mandatory startup review, confirm the current failing story set, and re-check the existing US-018 rollout readiness evidence.
-  2. Respect the active Ralph task restriction: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, migration mutation, or any host service mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and the PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no new Docker validation is required because this session changes only blocker bookkeeping. Existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused final-readiness/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T04:52:42Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `pwd && git status --short --branch && git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md` and source document reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, and PRD JSON blocker note update.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Blocker body commit for this status before hash-record correction: `1a20f5c docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T04:51:11Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false`.
-  Plan:
-  1. Complete the mandatory startup review, confirm the current failing story set, and re-check the existing US-018 rollout readiness evidence.
-  2. Respect the active Ralph task restriction: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, migration mutation, or any host service mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and the PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no new Docker validation is required because this session changes only blocker bookkeeping. Existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused final-readiness/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T04:51:11Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md` and source document reads, `jq` query for `passes: false`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Blocker body commit for this status before hash-record correction: `7689b19 docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-
-- 2026-05-30T04:49:15Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false`.
-  Plan:
-  1. Complete the mandatory startup review, confirm no earlier story regressed, and re-check the existing US-018 rollout readiness evidence.
-  2. Respect the active Ralph task restriction: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, migration mutation, or any host service mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and the PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no new Docker validation is required because this session changes only blocker bookkeeping. Existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused final-readiness/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T04:49:15Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md` and source document reads, `jq` query for `passes: false`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Blocker body commit for this status before hash-record correction: `5bbce12 docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T04:46:55Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false`.
-  Plan:
-  1. Complete mandatory startup review and confirm no earlier story regressed.
-  2. Respect the active Ralph task restriction: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, migration mutation, or any host service mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and the PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no new Docker validation is required because this session changes only blocker bookkeeping. Existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused final-readiness/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T04:46:55Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `pwd && git status --short --branch && git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md` and source document reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, and PRD JSON blocker note update.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Blocker body commit for this status before hash-record correction: `0eef0c4 docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T04:45:03Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false`.
-  Plan:
-  1. Complete the mandatory startup review, confirm no earlier story regressed, and re-check the existing US-018 rollout readiness evidence.
-  2. Respect the active Ralph task restriction: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, migration mutation, or any host service mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and the PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no new Docker validation is required because this session changes only blocker bookkeeping. Existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused final-readiness/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T04:45:03Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `pwd && git status --short --branch && git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md` and source document reads, `jq` query for `passes: false`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Bookkeeping commit for this blocked status: `220bb6e docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T04:43:16Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false`.
-  Plan:
-  1. Complete the mandatory startup review, confirm no earlier story regressed, and re-check the existing US-018 rollout readiness evidence.
-  2. Respect the active Ralph task restriction: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, migration mutation, or any host service mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and the PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no new Docker validation is required because this session changes only blocker bookkeeping. Existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused final-readiness/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T04:43:16Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md` and source document reads, `jq` query for `passes: false`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Bookkeeping commit for this blocked status: `75c70b9 docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T04:41:36Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false`.
-  Plan:
-  1. Complete the mandatory startup review, confirm no earlier story regressed, and re-check the existing US-018 rollout readiness evidence.
-  2. Respect the active Ralph task restriction: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, migration mutation, or any host service mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and the PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no new Docker validation is required because this session changes only blocker bookkeeping. Existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused final-readiness/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T04:41:36Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `pwd && git status --short --branch && git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md` and source document reads, `jq` query for `passes: false`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Bookkeeping commit for this blocked status: `9feb81e docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T04:39:57Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false`.
-  Plan:
-  1. Complete the mandatory startup review, confirm no earlier story regressed, and re-check the existing US-018 rollout readiness evidence.
-  2. Respect the active Ralph task restriction: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, migration mutation, or any host service mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and the PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no new Docker validation is required because this session changes only blocker bookkeeping. Existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused final-readiness/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T04:39:57Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `pwd && git status --short --branch && git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md` and source document reads, `jq` query for `passes: false`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Bookkeeping commit for this blocked status: `5183a8c docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T04:38:16Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false`.
-  Plan:
-  1. Complete the mandatory startup review, confirm no earlier story regressed, and re-check the existing US-018 rollout readiness evidence.
-  2. Respect the active Ralph task restriction: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, migration mutation, or any host service mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and the PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no new Docker validation is required because this session changes only blocker bookkeeping. Existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused final-readiness/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T04:38:16Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md` and source document reads, `jq` query for `passes: false`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Bookkeeping commit for this blocked status: `33ec1d0 docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T04:36:30Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false`.
-  Plan:
-  1. Complete the mandatory startup review, confirm no earlier story regressed, and re-check the existing US-018 rollout readiness evidence.
-  2. Respect the active Ralph task restriction: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, migration mutation, or any host service mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and the PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no new Docker validation is required because this session changes only blocker bookkeeping. Existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused final-readiness/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T04:36:30Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md` and source document reads, `jq` query for `passes: false`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Bookkeeping commit for this blocked status: `c375426 docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T04:35:06Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false`.
-  Plan:
-  1. Complete the mandatory startup review, confirm no earlier story regressed, and re-check the existing US-018 rollout readiness evidence.
-  2. Respect the active Ralph task restriction: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, migration mutation, or any host service mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and the PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no new Docker validation is required because this session changes only blocker bookkeeping. Existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused final-readiness/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T04:35:06Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `pwd && git status --short --branch && git log --oneline --decorate -n 8`, mandatory `GLOSSARY.md` and source document reads, `jq` query for `passes: false`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T04:32:46Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false`.
-  Plan:
-  1. Complete the mandatory startup review, confirm no earlier story regressed, and re-check the existing US-018 rollout readiness evidence.
-  2. Respect the active Ralph task restriction: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, migration mutation, or any host service mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and the PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no new Docker validation is required because this session changes only blocker bookkeeping. Existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused final-readiness/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T04:32:46Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory source document reads, `jq` query for `passes: false`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Blocker body commit for this status before hash-record correction: `f29b003 docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T04:31:10Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false`.
-  Plan:
-  1. Complete the mandatory startup review, confirm no earlier story regressed, and re-check the existing US-018 rollout readiness evidence.
-  2. Respect the active Ralph task restriction: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, migration mutation, or any host service mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and the PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no new Docker validation is required because this session changes only blocker bookkeeping. Existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused final-readiness/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-
-
-- 2026-05-30T04:31:10Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory source document reads, `jq` query for `passes: false`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Bookkeeping commit for this blocked status: `c8445ef docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T04:29:29Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false`.
-  Plan:
-  1. Complete the mandatory startup review, confirm no earlier story regressed, and review the existing US-018 rollout readiness evidence.
-  2. Respect the active Ralph task restriction: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, migration mutation, or any host service mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and the PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no new Docker validation is required because this session changes only blocker bookkeeping. Existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused final-readiness/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T04:29:29Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `pwd && git status --short --branch && git log --oneline --decorate -n 8`, mandatory source document reads, `jq` query for `passes: false`, report review for `docs/reports/us-018-validation-rollout-readiness.md`, and PRD JSON blocker note update.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T04:28:02Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false`.
-  Plan:
-  1. Complete the mandatory startup review, confirm no earlier story regressed, and review the existing US-018 rollout readiness evidence.
-  2. Respect the active Ralph task restriction: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, migration mutation, or any host service mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and the PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no new Docker validation is required because this session changes only blocker bookkeeping. Existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused final-readiness/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T04:28:02Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory source document reads, `jq` query for `passes: false`, host `git status --short`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-
-- 2026-05-30T04:26:29Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false`.
-  Plan:
-  1. Complete the mandatory startup review, confirm no earlier story regressed, and review the existing US-018 rollout readiness evidence.
-  2. Respect the active Ralph task restriction: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, migration mutation, or any host service mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and the PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no new Docker validation is required because this session changes only blocker bookkeeping. Existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused final-readiness/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T04:26:29Z: US-018 remains blocked after this mandatory startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory source document reads, `jq` query for `passes: false`, host `git status --short`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T04:24:39Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false`.
-  Plan:
-  1. Complete the mandatory startup review and confirm no earlier story regressed to `passes: false`.
-  2. Respect the active Ralph task restriction: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, migration mutation, or any host service mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and the PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no new Docker validation is required because this session changes only blocker bookkeeping. Existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused final-readiness/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T04:24:39Z: US-018 remains blocked after this startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory source document reads, `jq` query for `passes: false`, host `git status --short`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Bookkeeping commit for this blocked status: `a7be6b4 docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T04:22:50Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false`.
-  Plan:
-  1. Re-run the mandatory startup review and confirm no earlier story regressed to `passes: false`.
-  2. Respect the active Ralph task restriction: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, migration mutation, or any host service mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and the PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no new Docker validation is required because this session changes only blocker bookkeeping. Existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused final-readiness/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T04:22:50Z: US-018 remains blocked after this startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory source document reads, `jq` query for `passes: false`, host `git status --short`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Bookkeeping commit for this blocked status: `7f303d6 docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T04:20:58Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false`.
-  Plan:
-  1. Re-run the mandatory startup review, confirm `US-018` is still the only failing story, and re-check the existing rollout readiness report.
-  2. Respect the active Ralph task restriction: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, or migration mutation without explicit user approval/waiver.
-  3. Record the unchanged approval/waiver blocker in progress and PRD JSON, then stop without marking US-018 complete.
-  Intended validation: no new Docker validation is required because this session changes only blocker bookkeeping. Existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused final-readiness/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T04:20:58Z: US-018 remains blocked after this startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory source document reads, `jq` query for `passes: false`, host `git status --short`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Bookkeeping commit for this blocked status: `2ddbf80 docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T04:19:32Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false`.
-  Plan:
-  1. Re-read mandatory startup documents and confirm the only remaining failing story.
-  2. Preserve the Ralph task restriction: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser checks, production deploy, or migration mutation without explicit user approval.
-  3. Record the unchanged approval/waiver blocker in progress and the PRD JSON; do not mark US-018 complete.
-  Intended validation: no new Docker validation is needed because this session changes only blocker bookkeeping. Existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app/search/migration/API gates, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T04:19:32Z: US-018 remains blocked after this startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, mandatory source document reads, `jq` query for `passes: false`, host `git status --short`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, service mutation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Bookkeeping commit for this blocked status: `819b87a docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T04:17:26Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false`.
-  Plan:
-  1. Re-read startup documents, the US-018 PRD entry, and the rollout readiness report.
-  2. Do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev API/browser validation, production deploy, or migration mutation because the active Ralph instructions still forbid host service/gateway mutation without explicit user approval.
-  3. Record the unchanged approval/waiver blocker and stop without marking US-018 complete.
-  Intended validation: no new Docker validation is required because no source/runtime behavior changes are planned; existing committed US-018 evidence already covers Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app gates, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T04:17:26Z: US-018 remains blocked after this startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, source document reads, `jq` query for `passes: false`, host `git status --short`, and report review for `docs/reports/us-018-validation-rollout-readiness.md`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, host gateway restart, host Dev API/browser check, production operation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged required approval/waiver blocker.
-  - Bookkeeping commit: `57f843b docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/API/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, keep `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30T04:15:13Z: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false`.
-  Plan:
-  1. Re-read startup docs and US-018 evidence/blockers.
-  2. Respect the Ralph task's forbidden-action rule: do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, host Dev browser/API checks, or any host service mutation without explicit user approval.
-  3. Record the unchanged blocker and stop without marking US-018 complete.
-  Intended validation: no new Docker validation is needed because this session performs only blocker bookkeeping. Existing committed US-018 evidence already includes Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused final readiness/search/migration/API tests, Workflow V2/session-data retests, and real Ralph/Cron CLI smokes.
-
-- 2026-05-30T04:15:13Z: US-018 remains blocked after startup review.
-  - Commands run: host `git status --short --branch`, host `git log --oneline --decorate -n 8`, source document reads, `jq` query for `passes: false`, and host `git status --short`.
-  - Confirmed `US-018` is still the only story with `passes: false`.
-  - No Docker tests were rerun because no source/runtime behavior changed in this session.
-  - No host Dev deploy, gateway restart, API/browser check, production operation, or migration mutation was run.
-  - Updated this progress file and US-018 PRD JSON notes to document the unchanged approval/waiver blocker.
-  - Bookkeeping commit: `0c89e26 docs: record US-018 approval blocker`.
-  - Next recommended action: ask the user to explicitly approve host Dev deployment/restart/browser validation despite the Ralph host-service-mutation restriction, or explicitly waive that acceptance criterion. Until then, leave `US-018` with `passes: false` and omit the completion marker.
-
-- 2026-05-30: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the only remaining story with `passes: false`.
-  Plan:
-  1. Re-check current branch state and existing US-018 evidence/blockers.
-  2. Do not run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, or host Dev browser/API validation because the active Ralph task forbids restarting or modifying host dev gateways/services without explicit user approval.
-  3. Keep US-018 blocked and unpassed unless the user grants a host-Dev operation exception or an explicit waiver for that acceptance criterion.
-  Intended validation: no new Docker validation is required for this blocked bookkeeping pass because the previous committed US-018 batch already passed Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused shared-app gates, and real Ralph/Cron CLI smokes. This session will only record the remaining blocker.
-
-- 2026-05-30: US-018 remains blocked in this session.
-  - Host worktree status was clean at startup, and recent commits show the prior US-018 Docker validation batch at `6699351` followed by bookkeeping commit `1241f11`.
-  - Re-read the US-018 report and PRD JSON: all Docker validation evidence is already recorded, and the only remaining failing acceptance criterion is host Dev deploy/restart/API/browser validation.
-  - No host Dev deploy, host gateway restart, production deploy, or migration mutation was executed because those actions are explicitly forbidden by the Ralph task without user approval.
-  - Bookkeeping commit for this blocked status: `f4d7dc9 docs: record US-018 host dev blocker`.
-  - Next recommended action: ask the user to approve either (a) running the host Dev deployment/restart/browser validation despite the forbidden-action rule, or (b) waiving that acceptance criterion for this branch. Until then, keep `US-018` with `passes: false` and do not emit the completion marker.
-
-- 2026-05-30: Continuing `US-018 Complete dev validation, rollout reports, and PR readiness` as the highest-priority story with `passes: false`.
-  Plan:
-  1. Reproduce the remaining broad `npm test` failure in the Docker worker and classify whether the Workflow V2 checklist/source-coverage failures are fixable in this branch or require an explicit waiver.
-  2. If fixable, make the smallest focused changes to satisfy the Workflow V2 coverage/checklist gates without expanding the shared-app migration scope; rerun focused Workflow V2 tests, shared-app artifact/search gates, `npm run typecheck`, `npm run build`, and `npm test` in Docker.
-  3. Re-check US-018 Dev validation requirements. Because this Ralph task forbids host dev gateway/service mutation, do not deploy or restart host Dev without explicit approval; record any remaining blocker in the report/PRD JSON.
-  Intended validation: Docker `npm run typecheck`, `npm run build`, broad `npm test`, focused Workflow V2 tests, focused shared-app readiness tests, and real CLI smokes through `.pibo/ralph-worker.sh` using sandbox `PIBO_HOME`. Story completion still requires either approved Dev deploy/restart/browser validation or a documented user-approved exception.
-
-- 2026-05-30: US-018 final broad-test cleanup in progress.
-  - Reproduced `npm test` in Docker; failures were stale expectations from the shared-app migration plus pre-existing brittle Workflow V2 source-coverage tests after Chat UI Workflow/Project components had been split from `WorkflowsArea.tsx` and `App.tsx`.
-  - Implemented small fixes so the legacy `pibo data migrate sessions-to-v2` command works against fresh owner-scope-free schemas, updated session/CLI tests to assert shared-app writes or owner-column absence, and retargeted Workflow V2 source-coverage tests at the actual split component/API files.
-  - Focused Docker validation so far: `npm run build >/tmp/build-us018.log && node --test ...` for the previously failing session/data/Workflow V2 tests now passes all but one prompt-asset source bundle issue; after adding `WorkflowPromptAssetEditor.tsx` to the Workflow source bundle, `node --test test/workflow-v2-builder-editing-raw-ir.test.mjs` passes.
-  - Next validation: rerun the full focused failing set, then `npm run typecheck`, `npm run build`, broad `npm test`, the shared-app artifact gate, and CLI smokes. Dev deploy/restart remains blocked by the no-host-service-mutation rule unless the user approves an exception.
-
-- 2026-05-30: US-018 Docker validation gates now pass.
-  - Docker `.pibo/ralph-worker.sh` validation: `npm run typecheck` passed.
-  - Docker `.pibo/ralph-worker.sh` validation: `npm run build >/tmp/build-us018.log && node --test ...` for the previously failing session-data and Workflow V2 tests passed 40 tests.
-  - Docker `.pibo/ralph-worker.sh` validation: broad `npm test` passed 895 tests.
-  - Docker `.pibo/ralph-worker.sh` validation: focused final-readiness/search/migration/API tests passed 137 tests: `node --test test/shared-app-artifact-search-gate.test.mjs test/chat-signals-api.test.mjs test/chat-web-shared-sessions.test.mjs test/cli-session-source.test.mjs test/debug-cli.test.mjs test/tools-cli.test.mjs test/data-v2-store.test.mjs test/data-shared-app-migration.test.mjs test/ralph-resource-visibility.test.mjs test/chat-cron-api.test.mjs`.
-  - Docker real CLI smoke: `node dist/bin/pibo.js ralph ... add/list --json` and `node dist/bin/pibo.js cron ... add/list --json` against temporary stores passed without `--owner-scope`, with JSON assertions for `ownerScope: shared:app` and shared default targets.
-  - Updated `docs/reports/us-018-validation-rollout-readiness.md`, `shared-app-no-owner-scope.prd.json`, and `IMPLEMENTATION_INSIGHTS.md` with the new evidence. US-018 remains `passes: false` because required host Dev deploy/restart/API/browser validation is still blocked by the task's no-host-service-mutation rule unless the user approves an exception.
-  - Committed this coherent US-018 Docker validation batch as `6699351 feat: US-018 - pass final docker validation gates`.
-  - Next recommended action: get explicit approval or waiver for the host Dev deploy/restart/browser validation, then run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, Dev API/browser validation, update US-018 to passing if successful, and commit the final story.
-
-- 2026-05-30: Selected `US-018 Complete dev validation, rollout reports, and PR readiness` as the highest-priority story with `passes: false`.
-  Plan:
-  1. Run final validation gates in the Docker worker against the sandbox (`npm run typecheck`, `npm run build`, `npm test`, focused shared-app/migration/search-gate tests, and a closest-practical real CLI/API/browser validation pass).
-  2. Attempt the required Dev deployment/restart validation only if it can be done without violating the Ralph forbidden-action rule against restarting host dev gateways; otherwise record the blocker/limitation instead of mutating host services.
-  3. Write Dev validation, migration/production rollout, and rollback reports under `docs/reports/`, update the PRD JSON only when acceptance evidence is complete, and commit coherent changes from the host worktree.
-  Intended validation: Docker broad gates and focused shared-app tests via `.pibo/ralph-worker.sh`; sandbox CLI migration/Ralph/Cron smokes; isolated Chat Web API/browser validation if gateway-host dev validation is blocked by the task rules. Story completion requires either successful Dev deploy/restart/browser checks or a documented user-approved exception, so this session will not mark US-018 complete unless all criteria are satisfied.
-
-- 2026-05-30: US-018 validation in progress.
-  - Docker validation via `.pibo/ralph-worker.sh` with sandbox `PIBO_HOME`: `npm run typecheck` passed.
-  - Docker validation via `.pibo/ralph-worker.sh` with sandbox `PIBO_HOME`: `npm run build` passed with pre-existing Vite chunk-size warnings only.
-  - First `npm test` run failed on remaining shared-app/fresh-schema gaps plus unrelated Workflow V2 checklist tests. Fixed the shared-app/fresh-schema gaps found in that run:
-    - Chat signals now validate app-global signal snapshot/SSE access instead of owner denial.
-    - Chat Web historical-room fixtures add legacy room/member structures only when simulating old data; fresh read-state assertions use `app_session_read_state`.
-    - `LocalCliSessionSource` no longer uses selected owner scope to filter active list/open/router paths or write new CLI sessions/navigation/message actors; default CLI room copy now uses `Shared Chat`.
-    - Debug session fixtures and `src/debug/session.ts` tolerate fresh schemas without `owner_scope` columns.
-    - Ralph tool helper tests now expect owner-scope-free helper output.
-  - Focused Docker validation after fixes passed: `node --test test/shared-app-artifact-search-gate.test.mjs test/chat-signals-api.test.mjs test/chat-web-shared-sessions.test.mjs test/cli-session-source.test.mjs test/debug-cli.test.mjs test/tools-cli.test.mjs` passed 120 tests; `node --test test/data-v2-store.test.mjs` passed.
-  - Second `npm test` run still failed on Workflow V2 checklist/source-coverage tests unrelated to this migration (`test/workflow-v2-*.test.mjs` failures for builder editing/security/composition/library/project-run/release/state-mapping coverage). US-018 remains blocked on either fixing those tests/features or obtaining an explicit waiver.
-  - Host Dev deploy/restart/browser validation was not attempted because this Ralph task forbids restarting or modifying host dev gateways/services. US-018 remains blocked until the user clarifies/approves that host operation or grants an exception.
-  - Added `docs/reports/us-018-validation-rollout-readiness.md` with completed validation, blockers, and rollout/rollback notes. Updated US-018 PRD JSON notes with the blocked status; `passes` remains `false`.
-  - Partial US-018 validation-fix commit: `99480ab feat: US-018 - address final validation gaps`.
-  - Next recommended action: resolve or explicitly waive the Workflow V2 `npm test` failures, obtain approval/clarification for Dev deploy/restart, then rerun final gates and Dev API/browser validation before marking US-018 complete.
-
-- 2026-05-30: Selected `US-017 Update glossary, capability specs, and current docs to shared-app model` as the highest-priority story with `passes: false`.
-  Plan:
-  1. Inventory current docs and glossary owner/principal/personal wording in current documentation, focusing on the capability specs named by US-017 and preserving explicit legacy/migration/debug context.
-  2. Rewrite current docs to describe auth as an access gate and product data as one shared app space; update `GLOSSARY.md` so owner/principal terms are legacy compatibility vocabulary, not current product boundaries.
-  3. Add a documentation search review/report or gate evidence, mark US-017 complete only after docs are updated, remaining current-doc matches are justified, and Docker `npm run typecheck` passes.
-  Intended validation: host source-only documentation search, Docker `npm run typecheck` via `.pibo/ralph-worker.sh`, and focused documentation review evidence recorded in `IMPLEMENTATION_PROGRESS.md` and the PRD JSON. No production data or host gateways will be touched.
-
-- 2026-05-30: US-017 docs rewrite in progress.
-  - Files changed so far: `GLOSSARY.md`, shared-app tasks, auth/rooms/bootstrap/session routing/session store/custom agents/Ralph/Cron/Projects/Web Annotations/settings/data/local-store capability specs, selected current project docs, and `docs/reports/us-017-current-docs-owner-principal-review.md`.
-  - Current docs now describe auth as an access gate and product resources as shared app state. Remaining owner/principal matches are categorized in the US-017 review report as legacy migration/debug compatibility, technical lifecycle ownership, open-question text, or architecture examples with legacy fields.
-  - Docker validation via `.pibo/ralph-worker.sh` with sandbox `PIBO_HOME`: `npm run typecheck` passed.
-  - Added `docs/reports/us-017-current-docs-owner-principal-review.md` with the current-doc search command and remaining-match categories. Remaining owner/principal terms are documented as legacy migration/debug compatibility, technical lifecycle ownership, architecture/debug examples with legacy fields, or future cleanup questions rather than current auth-account product boundaries.
-  - Story marked complete in `shared-app-no-owner-scope.prd.json`. Story implementation commit: `1d2cc4a feat: US-017 - update shared app docs`.
-  - Next recommended action: start `US-018 Complete dev validation, rollout reports, and PR readiness`.
-
-- 2026-05-30: Selected `US-016 Clean API, CLI help, UI copy, and enforce artifact search gates` as the highest-priority story with `passes: false`.
-  Plan:
-  1. Inventory current active-code/API/CLI/UI owner-principal wording and existing guard/test structure; identify remaining matches that are active product contracts versus explicit legacy migration/debug compatibility.
-  2. Remove or relabel user-facing/API-facing owner/principal/personal copy for normal Chat/session/Ralph/Cron/data/debug flows without changing migration/debug legacy evidence semantics.
-  3. Add an allowlisted artifact search gate test/report for active owner/principal terms, update focused API/CLI/UI tests, and validate in Docker with focused tests plus `npm run typecheck`.
-  Intended validation: Docker `npm run typecheck`, focused CLI/API/UI/search-gate tests for touched Chat/Ralph/Cron/data/debug surfaces, and an artifact gate command proving remaining active matches are allowlisted legacy/migration/debug evidence. The PRD story will be marked complete only after all US-016 acceptance criteria pass.
-
-- 2026-05-30: US-016 implementation completed.
-  - Files changed: Chat Ralph/Cron APIs, Chat UI Projects/session sidebar copy/types, Project service/bootstrap helper names, CLI/data help text, session UI command catalog summary copy, focused tests, `test/shared-app-artifact-search-gate.test.mjs`, PRD JSON, progress/insights.
-  - Normal Chat Ralph and Cron HTTP API job/run responses now omit `ownerScope`; shared default targets serialize as `{ kind: "personal" }` without exposing a legacy `principalId`. Chat UI target types accept the sanitized shape while request compatibility still accepts old `principalId` inputs.
-  - User-facing copy touched in Chat UI now says `Shared Chat`, `shared default room`, and `shared default project chat`; Projects bootstrap now exposes `sharedDefaultProject`, and touched active helper names no longer teach personal/default owner semantics.
-  - CLI help smoke in Docker showed `pibo tui:sessions --help` labels `--owner-scope` as a legacy/debug compatibility hint ignored by shared-app mode; `pibo data --help` limits `--owner-scope` to legacy unread-baseline repair; `pibo data shared-app --help` says apply covers primary and auxiliary shared-app stores.
-  - Added `test/shared-app-artifact-search-gate.test.mjs`, an allowlisted user-facing artifact gate for active source copy. Remaining allowed matches are explicit deprecated CLI compatibility, migration action/warning text, or debug/historical compatibility literals.
-  - Docker validation via `.pibo/ralph-worker.sh` with sandbox `PIBO_HOME`: `npm run typecheck` passed; `npm run build >/tmp/pibo-build.log && node --test test/chat-cron-api.test.mjs test/ralph-resource-visibility.test.mjs test/project-service-workflow-link.test.mjs test/web-channel.test.mjs test/session-ui-view-models.test.mjs test/cli-ui-session-app.test.mjs test/shared-app-artifact-search-gate.test.mjs` passed. Build emitted only pre-existing Vite chunk-size warnings hidden in `/tmp/pibo-build.log`.
-  - Story marked complete in `shared-app-no-owner-scope.prd.json`. Story implementation commit: `9832f54 feat: US-016 - clean shared app owner artifacts`. Remaining caveat: legacy compatibility type/store names and the TUI `/owner` alias remain until broader documentation/final validation cleanup; current docs cleanup is deferred to US-017.
-  - Next recommended action: start `US-017 Update glossary, capability specs, and current docs to shared-app model`.
-
-- 2026-05-30: Selected `US-015 Remove owner/principal artifacts from fresh schemas and product types` as the highest-priority story with `passes: false`.
-  Plan:
-  1. Inspect fresh schema creation and active product model/helper names for owner/principal artifacts that still create product boundaries after US-014.
-  2. Remove or neutralize owner/principal structures from fresh schemas where safe, keep legacy migration compatibility isolated and explicitly named, and rename active get/list/require-owned semantics to shared-resource semantics.
-  3. Add fresh-schema/type regression tests proving new installs avoid owner/principal access-control structures while legacy migrations/tests still work; run focused schema/model tests plus `npm run typecheck` in Docker via `.pibo/ralph-worker.sh`.
-  Intended validation: Docker `npm run typecheck`, focused fresh-schema/model tests for pibo/chat agents/Ralph/Cron/annotations/projects/workflow stores, and migration regression tests for legacy compatibility. The PRD story will be marked complete only after all US-015 acceptance criteria pass.
-
-- 2026-05-30: US-015 implementation completed.
-  - Files changed: `src/data/schema.ts`, `src/data/sqlite-schema.ts`, `src/data/session-store.ts`, `src/data/navigation-store.ts`, `src/sessions/pibo-data-store.ts`, `src/apps/chat/data/chat-data-mappers.ts`, `src/apps/chat/data/room-service.ts`, `src/apps/chat/data/read-state-service.ts`, `src/apps/chat/agent-store.ts`, `src/ralph/store.ts`, `src/cron/store.ts`, `src/web-annotations/store.ts`, `src/apps/chat/data/project-service.ts`, `src/apps/chat/workflow-persistence.ts`, focused tests, `shared-app-no-owner-scope.prd.json`, `IMPLEMENTATION_PROGRESS.md`, and `IMPLEMENTATION_INSIGHTS.md`.
-  - Fresh schema creation now omits legacy `owner_scope`, `principal_id`, `room_members`, and principal stats structures for primary Pibo data, Custom Agents, Ralph, Cron, Web Annotations, Projects, and touched Workflow stores; existing legacy stores keep compatibility via explicit column/table detection.
-  - Product model compatibility: fresh stores return the legacy shared app scope only as a synthesized compatibility value for older TypeScript fields, while no new fresh storage column models account ownership. Legacy fixture tests now add legacy columns explicitly when simulating historical `user:*` data.
-  - Docker validation via `.pibo/ralph-worker.sh` with sandbox `PIBO_HOME`: `npm run typecheck` passed; `npm run build && node --test test/shared-app-fresh-schema.test.mjs test/data-v2-store.test.mjs test/data-shared-app-migration.test.mjs` passed 10 tests after updating the full migration fixture to add legacy columns explicitly. Focused store/API regression `node --test test/agent-store.test.mjs test/cron-schedule-store.test.mjs test/web-annotations-store.test.mjs test/project-service-workflow-link.test.mjs test/web-channel.test.mjs` passed 118 tests after updating historical fixture setup.
-  - Story marked complete in `shared-app-no-owner-scope.prd.json`. Story implementation commit: `205ee09 feat: US-015 - remove owner artifacts from fresh schemas`. Remaining caveat: user-facing API/CLI/UI copy and owner/principal search allowlist cleanup are deferred to US-016; glossary/current docs cleanup is deferred to US-017.
-  - Next recommended action: start `US-016 Clean API, CLI help, UI copy, and enforce artifact search gates`.
-
-- 2026-05-30: Selected `US-014 Migrate auxiliary stores safely` as the highest-priority story with `passes: false`.
-  Plan:
-  1. Inspect the shared-app migration framework plus auxiliary store schemas/tests for chat-agents, Ralph, Cron, Web Annotations, web-projects, and workflow persistence tables.
-  2. Implement dry-run/apply support for auxiliary stores with per-store transactions, deterministic custom-agent profile-name conflict renames if needed, idempotent owner/target normalization, and safe metadata-only handling for Ralph/Cron active jobs.
-  3. Extend synthetic mixed-owner migration fixtures/tests for each affected auxiliary store, including idempotency and no-op/no-conflict behavior, then run focused migration tests plus `npm run typecheck` in Docker via `.pibo/ralph-worker.sh`.
-  Intended validation: Docker `npm run typecheck`, focused `npm run build && node --test test/data-shared-app-migration.test.mjs`, and a sandbox CLI smoke for `data shared-app dry-run/apply --backup` against a temporary Pibo home. The PRD story will be marked complete only after all US-014 acceptance criteria pass.
-
-- 2026-05-30: US-014 implementation completed.
-  - Files changed: `src/data/shared-app-migration.ts`, `test/data-shared-app-migration.test.mjs`, `docs/specs/changes/shared-app-no-owner-scope/prds/shared-app-no-owner-scope.prd.json`, `IMPLEMENTATION_PROGRESS.md`, `IMPLEMENTATION_INSIGHTS.md`.
-  - Implemented auxiliary migration dry-run/apply actions for `chat-agents.sqlite`, `pibo-ralph.sqlite`, `pibo-cron.sqlite`, `web-annotations.sqlite`, `web-projects.sqlite`, and pibo.sqlite workflow persistence tables. Apply remains backup-gated, uses per-store `BEGIN IMMEDIATE` transactions, and is idempotent.
-  - Deterministic conflict/safety behavior: duplicate Custom Agent `profile_name` rows are preserved by renaming non-canonical rows to `<name> legacy <short-hash>` before owner normalization; canonical selection prefers `shared:app`, latest `updated_at`, earliest `created_at`, then id. Ralph/Cron active jobs are treated as safe metadata-only mutations: owner and personal-target principal values normalize to `shared:app` without changing job/run ids, statuses, schedules, prompts, resources, states, or working directories.
-  - Docker validation via `.pibo/ralph-worker.sh` with sandbox `PIBO_HOME`: `npm run typecheck` passed. First `npm run build && node --test test/data-shared-app-migration.test.mjs` failed only on stale test expectations for the number of fixture stores and planned owner updates; after adjusting the expectations, `node --test test/data-shared-app-migration.test.mjs` passed and then `npm run build && node --test test/data-shared-app-migration.test.mjs` passed 5 tests. Build emitted only pre-existing Vite chunk-size warnings.
-  - Focused tests cover dry-run non-mutation, backup-required apply, CLI JSON dry-run/apply smoke against a temporary Pibo home, pibo.sqlite workflow owner normalization, Custom Agent duplicate profile-name renames, Ralph/Cron active-job metadata-only target normalization, Web Annotation and Web Project owner normalization, post-checks, and idempotent re-run.
-  - Real sandbox dry-run smoke in Docker: `node dist/bin/pibo.js data shared-app dry-run --json` against `/workspace/.pibo/ralph-sandbox` parsed successfully with `willWrite: false`, 7 existing stores, 23 action rows, and metadata-only Ralph/Cron warnings.
-  - Story marked complete in `shared-app-no-owner-scope.prd.json`. Story implementation commit: `bc34752 feat: US-014 - migrate auxiliary shared app stores`. Remaining caveat: fresh schemas/types still carry legacy owner/principal artifacts until US-015.
-  - Next recommended action: start `US-015 Remove owner/principal artifacts from fresh schemas and product types`.
-
-- 2026-05-30: Selected `US-013 Migrate pibo.sqlite shared-app tables safely` as the highest-priority story with `passes: false`.
-  Plan:
-  1. Inspect the existing shared-app migration framework, pibo.sqlite schema/store helpers, and focused tests to identify safe transactional normalization points for sessions, rooms, navigation, room membership, and principal stats.
-  2. Implement pibo.sqlite dry-run/apply support with deterministic conflict handling for duplicate default rooms, navigation/read-state collisions, stable session/room ids, idempotency, and backup-gated mutation.
-  3. Add synthetic mixed-owner fixture tests covering conflicts, idempotency, non-mutation dry-runs, backup-required apply, and post-check/shared-path evidence; run focused migration tests and `npm run typecheck` in Docker via `.pibo/ralph-worker.sh`.
-  Intended validation: Docker `npm run typecheck`, focused `test/data-shared-app-migration.test.mjs` updates, and a sandbox CLI smoke for `data shared-app dry-run/apply --backup` against a temporary pibo home. The PRD story will be marked complete only after all US-013 acceptance criteria pass.
-
-- 2026-05-30: US-013 implementation completed.
-  - Files changed: `src/data/shared-app-migration.ts`, `src/data/cli.ts`, `test/data-shared-app-migration.test.mjs`, `docs/specs/changes/shared-app-no-owner-scope/prds/shared-app-no-owner-scope.prd.json`, `IMPLEMENTATION_PROGRESS.md`, `IMPLEMENTATION_INSIGHTS.md`.
-  - Implemented `pibo data shared-app apply --backup ...` mutation support for `pibo.sqlite` only. The migration runs in one `BEGIN IMMEDIATE` transaction, normalizes `sessions.owner_scope`, `rooms.owner_scope`, and `session_navigation.owner_scope` to the legacy shared app compatibility value, merges `room_members`, `principal_session_stats`, and `principal_room_stats` principal rows to the shared app principal, and retires duplicate default-room metadata while preserving room/session ids.
-  - Dry-run/apply reports now include pibo action plans, applied counts, and post-checks for remaining non-shared owner/principal rows and default-room count. Auxiliary stores remain inspect/dry-run/report-only for US-014.
-  - Deterministic conflict rules implemented: duplicate default rooms prefer an existing `shared:app` default, then most recent update, then id; room-member role merge prefers owner/admin/member/viewer and earliest join timestamp; principal stats merge preserves the newest unread count and max read cursors/timestamps.
-  - Docker validation via `.pibo/ralph-worker.sh` with sandbox `PIBO_HOME`: first `npm run typecheck` failed on `unknown` values passed to SQLite bindings; after adding explicit SQL value conversion, `npm run typecheck` passed. `npm run build && node --test test/data-shared-app-migration.test.mjs` passed after replacing one Node SQLite null-prototype deep equality assertion with field assertions. Focused tests cover dry-run non-mutation, conflict reporting, backup-required apply, transactional pibo.sqlite mutation, stable ids, post-migration shared owner/principal values, duplicate default-room retirement, merged read-state, idempotent re-run, and a full-schema PiboDataStore post-check proving historical `shared:app`, historical `user:*`, and newly shared sessions remain openable/listable through shared navigation store paths.
-  - Story marked complete in `shared-app-no-owner-scope.prd.json`. Story implementation commit: `b9acc10 feat: US-013 - migrate pibo sqlite shared app tables`. Remaining caveat: auxiliary stores (`chat-agents.sqlite`, `pibo-ralph.sqlite`, `pibo-cron.sqlite`, `web-annotations.sqlite`, `web-projects.sqlite`, workflow persistence) are intentionally not mutated until US-014.
-  - Next recommended action: start `US-014 Migrate auxiliary stores safely`.
-
-- 2026-05-30: Selected `US-012 Build backup-backed migration inspector and dry-run framework` as the highest-priority story with `passes: false`.
-  Plan:
-  1. Inspect existing CLI/debug/data command structure, SQLite store path helpers, and tests to add a progressive migration command without touching production data.
-  2. Implement inspect and dry-run reporting for affected owner/principal tables across sandbox stores, plus mutation-mode guardrails that require an explicit backup reference before any write path can proceed.
-  3. Add focused tests for inspect, dry-run, backup-required guard behavior, and JSON/text output; run focused migration CLI tests plus `npm run typecheck` in Docker through `.pibo/ralph-worker.sh`.
-  Intended validation: Docker `npm run typecheck`, focused migration tests, and a sandbox CLI smoke proving inspect/dry-run avoid writes and mutation refuses without backup. The PRD story will be marked complete only after those checks pass.
-
-- 2026-05-30: US-012 implementation in progress.
-  - Added `src/data/shared-app-migration.ts` with a read-only shared-app migration report over primary and auxiliary SQLite stores, planned normalization counts, generic unique-index conflict detection, rollback instructions, and an apply-mode backup guard that remains non-mutating for the framework story.
-  - Added `pibo data shared-app` discovery with `inspect`, `dry-run`, and guarded `apply` subcommands.
-  - Added focused tests in `test/data-shared-app-migration.test.mjs` for inspect/dry-run counts, conflict reporting, non-mutation, JSON CLI output, and apply backup requirements.
-  - Docker validation via `.pibo/ralph-worker.sh`: `npm run typecheck` passed.
-  - Docker focused validation via `.pibo/ralph-worker.sh`: `npm run build && node --test test/data-shared-app-migration.test.mjs` passed. Build emitted only pre-existing Vite chunk-size warnings.
-  - Real sandbox CLI smoke in Docker: `node dist/bin/pibo.js data shared-app inspect --json` and `dry-run --json` parsed successfully with `willWrite: false`; `node dist/bin/pibo.js data shared-app apply --json` without `--backup` failed as expected with the backup-required guard. Text help/output were also checked with `pibo data shared-app --help` and `inspect`.
-  - Story marked complete in `shared-app-no-owner-scope.prd.json`. Story implementation commit: `72be1e6 feat: US-012 - add shared app migration dry-run framework`. Remaining caveat: actual pibo.sqlite and auxiliary store mutations are intentionally deferred to US-013 and US-014; US-012 only adds the inspect/dry-run/backup-gated framework.
-  - Next recommended action: start `US-013 Migrate pibo.sqlite shared-app tables safely`.
-
-- 2026-05-30: Selected `US-011 Make Cron, scheduled work, and yielded-run product state app-global` as the highest-priority story with `passes: false`.
-  Plan:
-  1. Inspect Cron store/scheduler/CLI/API tests plus yielded-run persistence/product state for active account-derived `ownerScope` or `principalId` filtering/control.
-  2. Convert active Cron create/list/show/enable/disable/delete/run/history paths to shared-app semantics while keeping historical `shared:app` and `user:*` records jointly visible and writing new rows with the legacy shared app compatibility scope.
-  3. Audit yielded-run persisted product state and add focused tests proving shared Cron visibility/control plus touched yielded-run behavior; keep deprecated owner-scope inputs as no-op compatibility only if needed.
-  Intended validation: run focused Cron/yielded-run tests plus closest practical Cron CLI/API smoke and `npm run typecheck` in Docker via `.pibo/ralph-worker.sh`; update the PRD story only after all US-011 acceptance criteria pass.
-
-- 2026-05-30: US-011 implementation in progress.
-  - Files changed so far: `src/cron/store.ts`, `src/cron/cli.ts`, `src/cron/service.ts`, `src/apps/chat/cron-api.ts`, `src/apps/chat-ui/src/CronArea.tsx`, `test/cron-schedule-store.test.mjs`, `test/cron-store-lifecycle.test.mjs`, `test/chat-cron-api.test.mjs`.
-  - Cron store/API/CLI create/list/get/update/delete/manual-run/history paths now ignore legacy owner filters; new jobs/runs write the legacy shared app compatibility scope and personal/default targets normalize to the shared default target.
-  - Cron service creates scheduled sessions with the shared app compatibility scope and resolves default targets through `Shared Chat`; Chat UI and CLI help copy no longer teaches personal Cron targets as account-owned.
-  - Yielded-run audit so far: persisted `pibo_runs.owner_pibo_session_id` is scoped to the owning Pibo session/run-control tool lifecycle rather than an auth account; no account-derived owner/principal boundary found in active yielded-run persistence.
-  - Docker validation via `.pibo/ralph-worker.sh` with sandbox `PIBO_HOME`: `npm run typecheck` passed; `npm run build && node --test test/cron-schedule-store.test.mjs test/cron-store-lifecycle.test.mjs test/cron-schedule.test.mjs test/chat-cron-api.test.mjs test/runs.test.mjs test/reliability-store.test.mjs` passed 53 tests. Build emitted only pre-existing Vite chunk-size warnings.
-  - Real CLI smoke in Docker: using `node dist/bin/pibo.js cron --store <temp> add --personal --daily 09:10 --prompt ... --json`, `list --all --json`, `pause <job-id> --json`, `resume <job-id> --json`, and `runs --json` succeeded without `--owner-scope`; JSON assertions verified the new job used `ownerScope: shared:app` and target principal `shared:app`. A deprecated `--owner-scope user:legacy list --all --json` invocation succeeded and warned to stderr.
-  - Story marked complete in `shared-app-no-owner-scope.prd.json`. Story implementation commit: `7606d58 feat: US-011 - make cron app-global`. Remaining caveat: `owner_scope` columns and `getOwnedJob` compatibility remain until migration/schema cleanup stories.
-  - Next recommended action: start `US-012 Build backup-backed migration inspector and dry-run framework`.
-
-- 2026-05-30: Selected `US-010 Make Ralph jobs, runs, resources, and CLI controls app-global` as the highest-priority story with `passes: false`.
-  Plan:
-  1. Inspect Ralph job/run stores, resource cleanup, target handling, CLI commands/help, Chat Web/API integration, and focused Ralph tests for account-derived `ownerScope` or personal-target enforcement.
-  2. Convert active Ralph create/list/show/start/stop/cancel/update/cleanup paths to shared-app semantics while keeping historical `shared:app` and `user:*` jobs/runs jointly visible and writing new rows with the legacy shared app compatibility scope.
-  3. Keep deprecated `--owner-scope` CLI inputs accepted only as no-op compatibility, update progressive help/copy away from required ownership, and remove/neutralize personal target partitioning without changing working directories by account.
-  Intended validation: run focused Ralph tests plus closest practical CLI discovery/control checks and `npm run typecheck` in Docker via `.pibo/ralph-worker.sh`; update the PRD story only after all US-010 acceptance criteria pass.
-
-- 2026-05-30: US-010 implementation in progress.
-  - Files changed so far: `src/ralph/store.ts`, `src/ralph/service.ts`, `src/ralph/cli.ts`, `src/apps/chat/ralph-api.ts`, `src/apps/chat-ui/src/RalphArea.tsx`, `src/tools/registry.ts`, `src/tools/index.ts`, `src/tools/guides.ts`, `test/ralph-resource-metadata.test.mjs`, `test/ralph-resource-visibility.test.mjs`.
-  - Ralph store/API/CLI list, show, update, start/stop/cancel, runs, and resource metadata paths now ignore legacy owner filters; new Ralph jobs/runs/facts write the legacy shared app compatibility scope and personal/default targets normalize to the shared app target.
-  - Ralph service creates run sessions with the shared app compatibility scope and resolves default targets through `Shared Chat`; Chat UI and Ralph tool guide copy no longer teaches personal/owner-scoped targets.
-  - Docker validation so far via `.pibo/ralph-worker.sh`: first `npm run typecheck` failed on a missing comma in `src/tools/registry.ts`; after fixing, `npm run typecheck` passed.
-
-- 2026-05-30: US-010 implementation completed.
-  - Added/updated focused tests: `test/ralph-resource-metadata.test.mjs` now asserts shared-app writes, shared default targets, and cross-account resource updates; `test/ralph-resource-visibility.test.mjs` now asserts CLI list/runs are app-global without `--owner-scope`, deprecated `--owner-scope` warns/no-ops, and Chat Ralph API cross-account list/get/create/patch/delete behavior works.
-  - Docker validation via `.pibo/ralph-worker.sh` with sandbox `PIBO_HOME`: `npm run typecheck` passed; `npm run build && node --test test/ralph-resource-metadata.test.mjs test/ralph-resource-visibility.test.mjs test/ralph-resource-cleanup.test.mjs test/ralph-runtime-overrides.test.mjs test/ralph-stop-conditions.test.mjs test/ralph-templates.test.mjs` passed 27 tests. Build emitted only pre-existing Vite chunk-size warnings.
-  - Real CLI smoke in Docker: using `node dist/bin/pibo.js ralph --store <temp> add --personal --profile default --prompt ... --json`, `list --all --json`, `start <job-id> --json`, and `runs --json` succeeded without `--owner-scope`; JSON assertions verified the new job used `ownerScope: shared:app` and target principal `shared:app`. A deprecated `--owner-scope user:legacy list --all --json` invocation succeeded and warned to stderr.
-  - Story marked complete in `shared-app-no-owner-scope.prd.json`. Story implementation commit: `2765c14 feat: US-010 - make Ralph jobs app-global`. Remaining caveat: `owner_scope` columns and `getOwnedJob` compatibility remain until migration/schema cleanup stories.
-  - Next recommended action: start `US-011 Make Cron, scheduled work, and yielded-run product state app-global`.
-
-- 2026-05-30: Selected `US-009 Convert Web Annotations, settings, and app configuration to shared resources` as the highest-priority story with `passes: false`.
-  Plan:
-  1. Inspect Web Annotation stores/tools/API tests plus provider/settings/config surfaces for active account-derived owner/principal partitioning.
-  2. Convert Web Annotation active list/get/create/update/delete/binding behavior to shared-app semantics while keeping historical `shared:app` and `user:*` rows jointly visible and writing new rows with the legacy shared app compatibility scope.
-  3. Add focused cross-account tests proving Account B can see/mutate Web Annotation resources created under Account A or historical user storage; audit settings/config surfaces and document findings/fixes.
-  Intended validation: run focused Web Annotation tests plus any touched settings/config tests and `npm run typecheck` in Docker via `.pibo/ralph-worker.sh`; update the PRD story only after all US-009 acceptance criteria pass.
-
-- 2026-05-30: US-009 implementation in progress.
-  - Files changed so far: `src/web-annotations/store.ts`, `src/web-annotations/api.ts`, `src/web-annotations/cdp.ts`, `src/web-annotations/tools.ts`, `src/web-annotations/attachments.ts`, `src/core/user-settings.ts`, `src/apps/chat-ui/src/settings/SettingsView.tsx`, `test/web-annotations-store.test.mjs`, `test/web-annotations-tools.test.mjs`, `test/web-annotations-cdp-api.test.mjs`, `test/web-annotations-attachments.test.mjs`, `test/base-prompt-web.test.mjs`.
-  - Web Annotation bindings and annotations now write new rows with the legacy shared app compatibility scope and ignore legacy owner filters for list/get/patch/remove/thread/attachment paths while retaining session scoping.
-  - Web Annotation API/CDP/tool contexts no longer reject historical `user:*` sessions/annotations by auth-owner equality; tool errors now describe session/app availability rather than ownership.
-  - User settings now resolve and write through the shared app compatibility key with deterministic fallback to historical user settings, and Settings UI labels timezone as app-scoped.
-  - Docker validation so far via `.pibo/ralph-worker.sh`: `npm run typecheck` passed.
-
-- 2026-05-30: US-009 implementation completed.
-  - Added focused tests: `test/web-annotations-store.test.mjs` now asserts shared-app writes plus historical `user:*` annotation visibility/mutation; `test/web-annotations-tools.test.mjs` now asserts runtime tools can list/get/update cross-account annotations while preserving explicit session scoping; `test/web-annotations-cdp-api.test.mjs` now asserts API/CDP binding/annotation paths use shared app storage and allow cross-account list/patch for historical sessions; `test/base-prompt-web.test.mjs` now asserts user settings are shared across authenticated accounts and persisted under `shared:app`.
-  - Settings/config audit: provider/model defaults, base prompt, compaction prompt, MCP config, skills/context files, and Pi package surfaces are file/app-local or already shared through prior Custom Agent work; no active auth-account storage partition was found in these audited surfaces. `src/core/user-settings.ts` was the active account-keyed settings surface changed in this story.
-  - Docker validation via `.pibo/ralph-worker.sh` with sandbox `PIBO_HOME`: `npm run typecheck` passed; `npm run build && node --test test/web-annotations-store.test.mjs test/web-annotations-tools.test.mjs test/web-annotations-cdp-api.test.mjs test/web-annotations-attachments.test.mjs test/base-prompt-web.test.mjs` passed. Build emitted only pre-existing Vite chunk-size warnings.
-  - Story marked complete in `shared-app-no-owner-scope.prd.json` and committed as `179fdf8 feat: US-009 - make annotations and settings app-global`.
-  - Next recommended action: start `US-010 Make Ralph jobs, runs, resources, and CLI controls app-global`.
-
-- 2026-05-30: Selected `US-008 Convert Projects and Workflows to app-global resources` as the highest-priority story with `passes: false`.
-  Plan:
-  1. Inspect Project and Workflow stores/services, Chat Web routes, UI/API tests, and any owner-scoped personal/default project behavior.
-  2. Convert active Project and Workflow paths to shared-app semantics while keeping historical `shared:app` and `user:*` rows jointly visible before migration and writing new rows with the legacy shared app compatibility scope.
-  3. Add focused cross-account tests proving Account B can list, mutate, and use Projects/Workflow resources created under Account A or historical user storage.
-  Intended validation: run focused Project/Workflow tests and `npm run typecheck` in Docker via `.pibo/ralph-worker.sh`; update the PRD story only after all US-008 acceptance criteria pass.
-
-- 2026-05-30: US-008 implementation in progress.
-  - Files changed so far: `src/apps/chat/data/project-service.ts`, `src/apps/chat/workflow-persistence.ts`, `src/apps/chat/project-workflow-sessions.ts`, `src/apps/chat/web-app.ts`, `test/project-service-workflow-link.test.mjs`, `test/web-channel.test.mjs`.
-  - Project service now writes new Projects/default Project with the legacy shared app compatibility scope, uses a shared default Project label, and lists/requires Projects by resource existence instead of owner equality.
-  - Workflow drafts, prompt assets, session snapshots, and lifecycle events now write shared app compatibility scope; prompt asset and lifecycle event reads ignore legacy owner filters so historical `user:*` and `shared:app` rows are jointly visible.
-  - Chat Web Project routes now use shared Project helpers and collect Project session trees from all shared sessions instead of owner-filtered session lists.
-  - Docker validation so far via `.pibo/ralph-worker.sh`: `npm run typecheck` passed.
-
-- 2026-05-30: US-008 implementation completed.
-  - Added focused tests: `test/project-service-workflow-link.test.mjs` now asserts shared-app Project writes, a shared default Project, and historical `user:*` Project visibility/mutation; `test/web-channel.test.mjs` now asserts cross-account Workflow prompt asset read/update, historical `user:*` prompt asset visibility, and shared-app storage for new prompt asset revisions.
-  - Docker validation via `.pibo/ralph-worker.sh` with sandbox `PIBO_HOME`: `npm run typecheck` passed. `npm run build && node --test test/project-service-workflow-link.test.mjs test/web-channel.test.mjs` built successfully but first failed one new assertion because the shared default Project is now intentionally visible in `listProjects()`. After fixing that expectation, `node --test test/project-service-workflow-link.test.mjs test/web-channel.test.mjs` passed 94 tests.
-  - Story marked complete in `shared-app-no-owner-scope.prd.json` and committed as `251431c feat: US-008 - make projects and workflows app-global`.
-  - Next recommended action: start `US-009 Convert Web Annotations, settings, and app configuration to shared resources`.
-
-- 2026-05-30: Selected `US-007 Convert Custom Agents and dynamic profiles to app-global resources` as the highest-priority story with `passes: false`.
-  Plan:
-  1. Inspect Custom Agent store, Agent Designer API routes, dynamic profile registration, and focused agent/profile tests for owner-scoped list/get/create/update/archive/restore/delete behavior.
-  2. Convert active Custom Agent paths to shared-app semantics while keeping historical `shared:app` and `user:*` rows jointly visible before migration and writing new rows with the legacy shared app compatibility scope.
-  3. Add focused cross-account tests proving Account B can list, mutate, and use/register a custom agent created under Account A or historical user storage.
-  Intended validation: run focused agent store/profile tests and `npm run typecheck` in Docker via `.pibo/ralph-worker.sh`; update the PRD story only after all US-007 acceptance criteria pass.
-
-- 2026-05-30: US-007 implementation in progress.
-  - Files changed so far: `src/apps/chat/agent-store.ts`, `src/apps/chat/web-app.ts`, `test/agent-store.test.mjs`, `test/web-channel.test.mjs`.
-  - CustomAgentStore list behavior now ignores legacy owner filters, new custom-agent writes use the shared app legacy compatibility scope, and Chat Web agent list/create/update/archive/restore/delete routes use shared resource existence instead of auth-owner equality.
-  - Added focused store/API tests for mixed historical shared/user custom agents and cross-account list/use/update/archive/restore/delete through Chat Web routes.
-  - Docker validation via `.pibo/ralph-worker.sh` with sandbox `PIBO_HOME`: `npm run typecheck` passed; `npm run build && node --test test/agent-store.test.mjs test/agent-profiles.test.mjs test/web-channel.test.mjs` passed. Build emitted only pre-existing Vite chunk-size warnings.
-  - Story marked complete in `shared-app-no-owner-scope.prd.json` and committed as `616a3dd feat: US-007 - make custom agents app-global`.
-  - Next recommended action: start `US-008 Convert Projects and Workflows to app-global resources`.
-
-- 2026-05-30: Selected `US-006 Validate Chat Web shared-app real paths` as the highest-priority story with `passes: false`.
-  Plan:
-  1. Inspect existing Chat Web shared-app tests and real API/bootstrap/send helpers to identify the closest integration-level path for historical `shared:app`, historical `user:*`, and newly created shared-app sessions.
-  2. Add focused API/integration validation that exercises bootstrap/direct open/send via the actual Chat Web route handlers and session store, not only isolated service helpers.
-  3. Attempt practical Docker/browser validation using the worker tooling if available; if unavailable, record the limitation and rely on the added real route validation.
-  Intended validation: run focused Chat Web integration tests and `npm run typecheck` in Docker via `.pibo/ralph-worker.sh`; update PRD only after US-006 acceptance criteria pass.
-
-- 2026-05-30: US-006 implementation completed.
-  - Files changed: `test/chat-web-shared-sessions.test.mjs`, `docs/specs/changes/shared-app-no-owner-scope/prds/shared-app-no-owner-scope.prd.json`, `IMPLEMENTATION_PROGRESS.md`, `IMPLEMENTATION_INSIGHTS.md`.
-  - Added a route-level Chat Web validation test covering `/api/chat/sessions`, `/api/chat/bootstrap`, `/api/chat/navigation`, and `/api/chat/message` for a historical `shared:app` session, a historical `user:*` session, and a newly created shared-app session, all opened/sent by a different authenticated account.
-  - Docker validation via `.pibo/ralph-worker.sh` with sandbox `PIBO_HOME`: `npm run typecheck && npm run build && node --test test/chat-web-shared-sessions.test.mjs` passed. Build emitted only pre-existing Vite chunk-size warnings; focused test passed 5 tests.
-  - Worker gateway/browser evidence: `npm run --silent dev -- gateway dev status` reported no reachable dev gateway; `npm run --silent dev -- gateway dev start` failed because the Docker worker is not booted with systemd, so gateway-managed browser validation was not practical in this container. Agent Browser was installed into the sandbox after `pibo tools agent-browser health` found the executable missing. A temporary in-process same-origin Chat Web server on `127.0.0.1:4823` was opened with Agent Browser at `/apps/chat/rooms/:roomId/sessions/:piboSessionId`; browser text checks validated direct open/sidebar visibility for the historical `user:*`, historical `shared:app`, and newly created shared-app sessions.
-  - Story marked complete in `shared-app-no-owner-scope.prd.json` and committed as `e4d6243 feat: US-006 - validate chat web shared app real paths`.
-  - Next recommended action: start `US-007 Convert Custom Agents and dynamic profiles to app-global resources`.
-
-- 2026-05-30: Selected `US-005 Make rooms, navigation, and read-state app-global` as the highest-priority story with `passes: false`.
-  Plan:
-  1. Inspect Chat Web room, membership, session navigation, and read/read-state paths for owner/principal filters and personal-room wording.
-  2. Convert active room/sidebar/navigation behavior to shared app semantics while preserving legacy mixed `shared:app` and `user:*` readability; choose app-global read/navigation state for this iteration unless code shows browser-local is safer.
-  3. Add focused mixed-history/cross-account tests for room/sidebar visibility, room mutations, and navigation/read-state behavior.
-  Intended validation: focused Chat API/navigation/session tests in Docker plus `npm run typecheck` in Docker via `.pibo/ralph-worker.sh`; update PRD only after all US-005 acceptance criteria pass.
-
-- 2026-05-30: US-005 implementation in progress.
-  - Files changed so far: `src/apps/chat/data/room-service.ts`, `src/apps/chat/web-app.ts`, `test/chat-web-shared-sessions.test.mjs`.
-  - Room service list/tree/subtree and room access now use app-global resource existence semantics; membership is retained only as legacy storage compatibility and writes/checks use the shared app legacy principal rather than auth-derived principals.
-  - Default Chat room creation now uses legacy shared app storage scope and the default display name `Shared Chat`; default-room deletion copy no longer says `Personal Chat`.
-  - Added focused tests for mixed historical shared/user room listing/opening/mutation/sidebar visibility and app-global read-state shared across authenticated accounts.
-  - Docker validation via `.pibo/ralph-worker.sh` with sandbox `PIBO_HOME`: `npm run typecheck` passed. `npm run build && node --test test/chat-web-shared-sessions.test.mjs test/web-channel.test.mjs test/chat-ui-app-navigation-merge.test.mjs` built successfully but initially failed 5 stale `test/web-channel.test.mjs` expectations that still asserted user-scoped workflow/project owner or visibility values. After updating those expectations to shared-app behavior, `node --test test/chat-web-shared-sessions.test.mjs test/web-channel.test.mjs test/chat-ui-app-navigation-merge.test.mjs` passed 92 tests.
-  - Story marked complete in `shared-app-no-owner-scope.prd.json` and committed as `86650f4 feat: US-005 - make chat rooms app-global`.
-  - Next recommended action: start `US-006 Validate Chat Web shared-app real paths`.
-
-- 2026-05-30: Selected `US-004 Convert Chat session reads and writes to shared app behavior` as the highest-priority story with `passes: false`.
-  Plan:
-  1. Inspect Chat Web session list/open/send/fork/clone/archive/restore/delete paths and focused Chat API/session tests for owner-equality checks.
-  2. Replace active Chat session ownership helpers with shared resource helpers that read historical `shared:app` and `user:*` sessions together and require resource existence/state rather than auth-owner equality.
-  3. Add focused regression tests for direct open/list/send and session mutations against historical mixed-owner sessions.
-  Intended validation: focused Chat API/session tests in Docker plus `npm run typecheck` in Docker via `.pibo/ralph-worker.sh`; update the PRD story only if all US-004 acceptance criteria pass.
-
-- 2026-05-30: US-004 implementation in progress.
-  - Files changed so far: `src/apps/chat/web-app.ts`, `test/chat-web-shared-sessions.test.mjs`, `test/web-channel.test.mjs`, `IMPLEMENTATION_INSIGHTS.md`.
-  - Chat Web session list/open helpers now use shared resource semantics (`listSharedSessions`, `requireSharedSession`) instead of filtering by `webSession.ownerScope`; direct bootstrap/open, send, action routing, trace, signal, read, archive/restore, and delete paths now require session existence/state rather than auth-owner equality.
-  - Added focused mixed-history tests covering `shared:app` plus historical `user:*` sessions listed together, direct open, message send, action routing, rename, archive/restore, and delete from another authenticated account.
-  - Validation run in Docker via `.pibo/ralph-worker.sh` with sandbox `PIBO_HOME`: `npm run typecheck` passed. `npm run build && node --test test/chat-web-shared-sessions.test.mjs test/web-auth-shared-app-context.test.mjs` passed. A focused `test/web-channel.test.mjs` pattern initially exposed stale `user:user-1` expectations for new Chat sessions; after updating those expectations/names to the shared app legacy scope, the same pattern passed for authenticated session creation, session mutation, legacy profile canonicalization, origin rendering, and reverse-proxy mutation creation. `node --test test/chat-web-shared-sessions.test.mjs` passed after the test copy update.
-  - Story marked complete in `shared-app-no-owner-scope.prd.json` and committed as `ba15f3c feat: US-004 - convert chat sessions to shared app`.
-  - Next recommended action: start `US-005 Make rooms, navigation, and read-state app-global`.
-
-- 2026-05-30: Selected `US-003 Remove user ownership from runtime context and workspace selection` as the highest-priority story with `passes: false`.
-  Plan:
-  1. Inspect runtime/session-context, session creation/router, subagent, workflow, Ralph, and Cron paths that pass `ownerScope` or auth-derived principal values into cwd/workspace/runtime context.
-  2. Replace account-derived runtime/workspace context with the neutral shared-app context where practical, keeping legacy storage compatibility pinned to `shared:app`.
-  3. Add focused tests proving cross-account continuation keeps the same runtime context/workspace assumptions and that runtime session context no longer exposes account ownership semantics.
-  Intended validation: focused runtime/session/router tests in Docker, plus `npm run typecheck` in Docker via `.pibo/ralph-worker.sh`; record commands and update the PRD story only if all acceptance criteria pass.
-
-- 2026-05-30: US-003 implementation completed.
-  - Files changed: `src/core/runtime.ts`, `src/core/session-router.ts`, `src/apps/chat/web-app.ts`, `src/apps/chat-ui/src/settings/SettingsView.tsx`, `test/context-build-inspector.test.mjs`, `test/session-router-store.test.mjs`, `test/subagents.test.mjs`.
-  - Runtime context file now exposes `App context: shared-app`, Pibo Session ID, Room ID, and timezone; it no longer includes auth user id or owner-scope lines.
-  - Routed runtime startup loads shared-app settings and passes only the legacy shared owner scope to transitional tool definitions; implicit runtime sessions, derived branch sessions, and new subagent sessions write the legacy compatibility scope `shared:app` instead of carrying `user:*` owners forward.
-  - Chat Web context-build inspection stopped passing auth user id into runtime session context; Settings UI copy no longer says runtime context carries user ID.
-  - Validation in Docker via `.pibo/ralph-worker.sh` with sandbox `PIBO_HOME`: first `npm run typecheck` failed on the now-removed `userId` field in `src/apps/chat/web-app.ts`; after the fix, `npm run typecheck` passed. `npm run build && node --test test/context-build-inspector.test.mjs test/session-router-store.test.mjs test/subagents.test.mjs` passed 21 tests with pre-existing Vite chunk-size warnings. After adding an implicit-session regression assertion, `node --test test/session-router-store.test.mjs` passed 10 tests.
-  - Story marked complete in the PRD JSON and committed as `feat: US-003 - remove user ownership from runtime context` (final hash recorded in git log/session result). Remaining caveat: active Chat/Ralph/Cron/resource stores still carry legacy owner/principal APIs and are handled by later stories.
-  - Next recommended action: start `US-004 Convert Chat session reads and writes to shared app behavior`.
-
-- 2026-05-30: Selected `US-002 Make web auth an access gate, not product ownership` as the highest-priority story with `passes: false`.
-  Plan:
-  1. Inspect web auth/session contracts and consumers that derive product owner/principal context from auth identity.
-  2. Introduce or reuse a neutral shared-app context shape so authenticated web requests keep 401 gating but stop exposing account-derived owner scope to normal product handlers.
-  3. Add focused tests proving two authenticated identities resolve to the same shared app context, including touched better-auth/dev-auth coverage.
-  Intended validation: focused auth tests in Docker, plus `npm run typecheck` in Docker through `.pibo/ralph-worker.sh`; record commands and update the PRD story only if all acceptance criteria pass.
-
-- 2026-05-30: US-002 implementation started.
-  - Files changed so far: added `src/shared-app.ts`; updated `src/web/auth.ts` and `src/web/types.ts`; added `test/web-auth-shared-app-context.test.mjs`.
-  - Authenticated web sessions now preserve `authSession` for display/logout while adding a neutral `appContext`; the compatibility `ownerScope` is pinned to legacy storage value `shared:app` instead of deriving from `authSession.identity.userId`.
-  - Next validation: run Docker typecheck and focused auth tests after building `dist`.
-
-- 2026-05-30: US-002 validation passed in Docker via `.pibo/ralph-worker.sh` with sandbox `PIBO_HOME`.
-  - `npm run typecheck` passed.
-  - `npm run build && node --test test/web-auth-shared-app-context.test.mjs test/better-auth-config.test.mjs test/dev-auth.test.mjs` passed 9 tests. Vite emitted pre-existing chunk-size warnings only.
-  - Focused evidence covers unauthenticated 401 behavior and two authenticated identities resolving to the same shared app context with compatibility owner scope pinned to `shared:app`, not `user:<auth-user-id>`.
-  - Story marked complete in `shared-app-no-owner-scope.prd.json` and committed as `9b19d8f feat: US-002 - make web auth shared app gate`.
-  - Next recommended action: start `US-003 Remove user ownership from runtime context and workspace selection`.
-
-- 2026-05-30: Selected `US-001 Establish shared-app baseline inventory and regression gates` as the highest-priority story with `passes: false`.
-  Plan:
-  1. Capture a source inventory for `ownerScope`, `owner_scope`, `principalId`, `principal_id`, `room_members`, `getOwned`, `listOwned`, `requireOwned`, `personal target`, and `--owner-scope` without changing runtime behavior.
-  2. Inspect the sandbox SQLite stores from Docker with `PIBO_HOME=/workspace/.pibo/ralph-sandbox` and record owner/principal counts without mutation.
-  3. Run baseline `npm run typecheck` and `npm run build` in Docker.
-  Intended validation: inventory artifacts and command results recorded in this file; no source behavior changes; `npm run typecheck` must pass before marking the story complete.
-
-- 2026-05-30: US-001 source inventory captured in `docs/reports/us-001-owner-principal-source-inventory.md`.
-  - `rg` was not installed in Docker, so the exact `rg` inventory was captured from the host worktree while excluding `.pibo/ralph-sandbox`, `.git`, and `node_modules`; this did not touch Pibo runtime data.
-  - Summary counts: `ownerScope` 185 files / 1486 matches; `owner_scope` 56 / 290; `principalId` 46 / 207; `principal_id` 16 / 68; `room_members` 21 / 53; `getOwned` 15 / 34; `listOwned` 8 / 33; `requireOwned` 13 / 44; `personal target` 15 / 30; `--owner-scope` 44 / 109.
-
-- 2026-05-30: US-001 sandbox SQLite inventory captured in `docs/reports/us-001-sqlite-owner-principal-counts.md` using `.pibo/ralph-worker.sh` with `PIBO_HOME=/workspace/.pibo/ralph-sandbox` and read-only `node:sqlite` connections.
-  - `pibo.sqlite`: `sessions` 515 rows (`shared:app` 458, `user:Z0xS45cCzyDBL7bAxQLyD1YNfC1mWnnB` 57), `rooms` 28 rows (`shared:app` 25, user 3), `session_navigation` 514 rows (`shared:app` 457, user 57), `room_members` 30 rows (`shared:app` 26, user 4), `principal_session_stats` 321 rows (`shared:app` 302, user 19), `principal_room_stats` 0 rows, workflow owner tables present with 0 rows.
-  - Auxiliary stores: `chat-agents.sqlite` has 3 `user:*` agents; `pibo-ralph.sqlite` has 7 jobs (4 shared, 3 user) and 411 runs (360 shared, 51 user); `pibo-cron.sqlite` has 1 shared job and 6 shared runs; `web-annotations.sqlite` has 1 shared binding and 0 annotation rows; `web-projects.sqlite` has 1 shared project; `pibo-events.sqlite` has 3 `pibo_runs` keyed by `owner_pibo_session_id`; `auth.sqlite` has no owner/principal columns.
-
-- 2026-05-30: US-001 baseline validation passed in Docker via `.pibo/ralph-worker.sh` with sandbox `PIBO_HOME`.
-  - `npm run typecheck` passed: root `tsc --noEmit`, Chat UI typecheck, and Context Files UI typecheck.
-  - `npm run build` passed: root TypeScript compile, Chat UI Vite build, Context Files UI Vite build, and bin executable check. Vite emitted pre-existing chunk-size warnings only.
-  - Runtime behavior was not changed for this story; only progress/insight/report/PRD tracking files were updated.
-  - Story marked complete in `shared-app-no-owner-scope.prd.json` and committed as `89dfc3b feat: US-001 - establish shared app baseline`; follow-up bookkeeping records this hash.
-  - Next action: start `US-002 Make web auth an access gate, not product ownership`.
-
-- 2026-05-29: Loop environment prepared. Worktree and Docker worker created. PRD/spec docs copied into the worktree. Room created with workspace pointing at the worktree. Ralph job `ralph_6594adad-a1dc-4b71-836e-14ea2bfb9816` created stopped with `maxIterations=150`; intentionally not started pending user review.
-
-- 2026-05-30: Created verified host database backup `/root/.pibo/backups/shared-app-no-owner-scope-vacuum-20260530T003254Z` using SQLite `VACUUM INTO` for `pibo.sqlite`; copied verified SQLite stores plus payloads into sandbox `/root/code/pibo/.worktrees/shared-app-no-owner-scope-ralph/.pibo/ralph-sandbox`. Docker commands must use `PIBO_HOME=/workspace/.pibo/ralph-sandbox` via `.pibo/ralph-worker.sh`.
-
-- 2026-05-30: User approved host Dev deploy/restart/API/browser validation for US-018. Production deploy, Production restart, and Production migration remain forbidden unless separately approved. Ralph may run `./scripts/deploy-web-dev.sh`, `pibo gateway dev restart`, `pibo gateway dev status`, and Dev API/browser checks on the host for US-018.
-
-- 2026-05-30: User clarified that Ralph should use its isolated Docker worker/gateway/dev-auth flow for authenticated Chat Web validation. Host Dev is primarily for the user to test manually. For US-018, Docker gateway/dev-auth validation may satisfy the authenticated API/browser acceptance criteria; host Dev deploy/restart status remains useful rollout evidence but authenticated Better Auth host Dev browser validation is no longer a blocker. Production remains forbidden.
+- 2026-05-31T20:11Z: Setup started for final Owner Scope removal Ralph loop. Created/attached branch `final-owner-scope-removal-ralph` from `upstream/dev` at `f0c588e`, copied plan/PRD/inventory/backup docs, and committed setup docs as `ff4e454 docs: prepare final owner scope removal Ralph batch`.
+- 2026-05-31T20:11Z: Docker dev worker created: `pibo-dev-final-owner-scope-removal-ralph` with ports gateway `4830`, CDP `4831`, web `4832`, Chat UI `4833`, Context UI `4834`; worktree `/root/code/pibo/.worktrees/final-owner-scope-removal-ralph`; container workspace `/workspace`.
+- 2026-05-31T20:11Z: Created Chat room `room_130a1897-996d-47e2-b805-b8e93f10a53d` named `Ralph: Final Owner Scope Removal` with workspace metadata pointing to the worktree.
+- 2026-05-31T20:15Z: Created copied migration sandbox at `.pibo/ralph-sandbox` from verified backup `/root/.pibo/backups/final-owner-scope-removal-precutover-vacuum-20260531T194546Z`; exposed it as `.pibo/ralph-migration-sandbox`. Created separate fresh test home `.pibo/ralph-test-home`. Updated helper `.pibo/ralph-worker.sh` so normal commands use the fresh test home and migration validation can opt into `PIBO_MIGRATION_SANDBOX_HOME`.
+- 2026-05-31T20:16Z: Created Ralph job `ralph_66995290-8189-43a3-a735-27d23e0230e4` stopped, target room `room_130a1897-996d-47e2-b805-b8e93f10a53d`, profile `pibo-agent`, template `prd-batch-stories`, max iterations `90`, prompt from `/tmp/final-owner-scope-ralph-prompt.txt`. Start command after review: `pibo ralph start ralph_66995290-8189-43a3-a735-27d23e0230e4`.
+- 2026-05-31T20:31Z: User clarified loop safety boundaries. Updated PRD, PRD JSON, progress/insights, helper, and job prompt requirements: all runtime/deploy/gateway/data work must happen only in Docker; normal validation uses a fresh test database home; historical migration validation uses the copied migration sandbox; host/Production databases and host gateways remain untouched; Ralph must stop for user review before real database cutover and before PR creation.
+- 2026-06-01T04:36Z: Selected story US-001 (`Establish final owner-scope removal baseline and progress tracking`) as the highest-priority `passes: false` story. Plan: (1) capture current owner/principal/search baseline counts inside the Docker worker using the fresh test home, (2) inspect reachable SQLite schemas read-only in the fresh Docker test home and copied migration sandbox without mutating data, (3) verify the fresh ownerless test home remains separate from the migration sandbox, (4) run `npm run typecheck` and `npm run build` inside Docker, (5) update US-001 notes/progress/insights and commit documentation-only baseline evidence. No runtime behavior changes planned.
+- 2026-06-01T04:43Z: Completed US-001 baseline without runtime behavior changes.
+  - Files changed: `docs/reports/final-owner-scope-removal-baseline-2026-06-01.md`, `docs/specs/changes/final-owner-scope-removal/prds/final-owner-scope-removal.prd.json`, `IMPLEMENTATION_PROGRESS.md`, `IMPLEMENTATION_INSIGHTS.md`.
+  - Baseline search evidence: inside Docker, `node_modules/@vscode/ripgrep-linux-x64/bin/rg -F` captured active source/docs counts for `ownerScope` 157 files / 1380 matches; `owner_scope` 59 / 350; `OwnerScope` 43 / 327; `owner-scope` 88 / 291; `shared:app` 23 / 140; `principalId` 44 / 216; `principal_id` 17 / 84; `room_members` 14 / 51; `listOwned` 7 / 18; `getOwned` 11 / 31; `requireOwned` 9 / 25; `personal target` 15 / 29; `active owner` 21 / 40; `--owner-scope` 36 / 102. Full worktree counts including current reports/raw inventory are recorded in the baseline report.
+  - SQLite schema evidence: read-only Python `sqlite3` `mode=ro` inventory against `/workspace/.pibo/ralph-migration-sandbox` recorded owner/principal-like tables, columns, and indexes for affected copied sandbox DBs; `/workspace/.pibo/ralph-test-home` was verified as separate and currently contains no SQLite DBs.
+  - Docker validation: `npm run typecheck` passed with `PIBO_HOME=/workspace/.pibo/ralph-test-home`; `npm run build` passed with the same fresh home. Build emitted only existing Vite chunk-size warnings.
+  - Evidence tier: Docker build/typecheck plus read-only sandbox schema inspection and Docker search baseline.
+  - Safety: no migration inspect/dry-run/apply commands were run; host `/root/.pibo`, host Dev/Production gateways, and Production data were not touched.
+  - PRD update: US-001 set to `passes: true` with evidence notes.
+  - Commit: `8ef39c9 docs: US-001 baseline owner scope removal`.
+- 2026-06-01T05:02Z: Selected story US-002 (`Add strict owner-scope search gates with temporary allowlist`) as the highest-priority `passes: false` story. Plan: (1) inspect existing package scripts/tests and repository validation patterns, (2) add an automated search-gate script for active product Owner Scope vocabulary with an explicit temporary allowlist limited to final migration paths and historical docs, (3) add focused tests for pass/fail and allowlist behavior, (4) document how to run the gate and how to shrink the allowlist after cutover, (5) run focused tests plus `npm run typecheck` inside Docker, then update PRD/progress/insights and commit.
+- 2026-06-01T05:13Z: Completed US-002 strict search gate setup.
+  - Files changed: `package.json`, `scripts/legacy-product-vocabulary-gate.mjs`, `test/legacy-product-vocabulary-gate.test.mjs`, `docs/reports/final-owner-scope-search-gate-us-002.md`, `docs/specs/changes/final-owner-scope-removal/prds/final-owner-scope-removal.prd.json`, `IMPLEMENTATION_PROGRESS.md`, `IMPLEMENTATION_INSIGHTS.md`.
+  - Implementation: added `npm run check:product-vocab` as a standalone strict active-root vocabulary gate. The script scans `src`, `packages`, `scripts`, `skills`, `test`, `docs/project`, `docs/specs`, and `docs/plans`; it exits non-zero on disallowed final-removal vocabulary. Terms are generated in code so the gate script and its focused tests do not self-match on literal legacy product terms.
+  - Temporary allowlist: limited to `docs/legacy/**` and the isolated final app-space cutover migration path (`src/data/final-app-space-cutover-migration.ts` or directory). Current source, tests, scripts, skills, and current docs are not allowlisted.
+  - Documentation: `docs/reports/final-owner-scope-search-gate-us-002.md` records the command, roots, term coverage, allowlist policy, and post-cutover allowlist-shrink steps; `npm run check:product-vocab -- --help` prints the operational summary.
+  - Docker validation: `node --test test/legacy-product-vocabulary-gate.test.mjs` passed (7 tests); `npm run check:product-vocab -- --help` printed expected usage; direct Docker scan summary found 3703 expected current-branch failures, 0 allowed matches, 1019 scanned files, proving the gate catches remaining active artifacts for later stories.
+  - Docker typecheck: `npm run typecheck` passed with `PIBO_HOME=/workspace/.pibo/ralph-test-home`.
+  - Evidence tier: Docker focused unit tests plus CLI help/default scan summary and full typecheck.
+  - Safety: no migration inspect/dry-run/apply commands were run; host `/root/.pibo`, host Dev/Production gateways, and Production data were not touched.
+  - PRD update: US-002 set to `passes: true` with evidence notes.
+- 2026-06-01T05:13Z: Completed US-002 strict search gate setup.
+  - Files changed: `package.json`, `scripts/legacy-product-vocabulary-gate.mjs`, `test/legacy-product-vocabulary-gate.test.mjs`, `docs/reports/final-owner-scope-search-gate-us-002.md`, `docs/specs/changes/final-owner-scope-removal/prds/final-owner-scope-removal.prd.json`, `IMPLEMENTATION_PROGRESS.md`, `IMPLEMENTATION_INSIGHTS.md`.
+  - Implementation: added `npm run check:product-vocab` as a standalone strict active-root vocabulary gate. The script scans `src`, `packages`, `scripts`, `skills`, `test`, `docs/project`, `docs/specs`, and `docs/plans`; it exits non-zero on disallowed final-removal vocabulary. Terms are generated in code so the gate script and its focused tests do not self-match on literal legacy product terms.
+  - Temporary allowlist: limited to `docs/legacy/**` and the isolated final app-space cutover migration path (`src/data/final-app-space-cutover-migration.ts` or directory). Current source, tests, scripts, skills, and current docs are not allowlisted.
+  - Documentation: `docs/reports/final-owner-scope-search-gate-us-002.md` records the command, roots, term coverage, allowlist policy, and post-cutover allowlist-shrink steps; `npm run check:product-vocab -- --help` prints the operational summary.
+  - Docker validation: `node --test test/legacy-product-vocabulary-gate.test.mjs` passed (7 tests); `npm run check:product-vocab -- --help` printed expected usage; direct Docker scan summary found 3703 expected current-branch failures, 0 allowed matches, 1019 scanned files, proving the gate catches remaining active artifacts for later stories.
+  - Docker typecheck: `npm run typecheck` passed with `PIBO_HOME=/workspace/.pibo/ralph-test-home`.
+  - Evidence tier: Docker focused unit tests plus CLI help/default scan summary and full typecheck.
+  - Safety: no migration inspect/dry-run/apply commands were run; host `/root/.pibo`, host Dev/Production gateways, and Production data were not touched.
+  - PRD update: US-002 set to `passes: true` with evidence notes.
+- 2026-06-01T05:17Z: US-002 implementation commit created: `3ed867c test: US-002 - add owner scope search gate`.
+- 2026-06-01T05:35Z: Selected story US-003 (`Replace shared-app legacy owner helpers with neutral app context`) as the highest-priority `passes: false` story. Plan: (1) inspect the shared app context, web session auth types, and exact helper/constant call sites, (2) make `src/shared-app.ts` a neutral app-context-only module with no `legacyOwnerScope`, `ownerScope`, `LEGACY_SHARED_APP_OWNER_SCOPE`, or `getSharedAppLegacyOwnerScope` export, (3) isolate any unavoidable pre-cutover schema compatibility value outside the app-context module only where existing owner-scoped schemas still require it until later stories remove those schemas, (4) add/update focused tests proving `requireWebSession` returns the same neutral app context for different auth users and no legacy owner fields, (5) run focused tests plus `npm run typecheck` inside Docker, then update PRD/progress/insights and commit if the story evidence is complete.
+- 2026-06-01T06:05Z: Completed US-003 neutral shared-app context extraction.
+  - Files changed: `src/shared-app.ts`, `src/owner-scope-compat.ts`, source imports/callers that previously imported shared-app legacy helpers, affected tests importing the old shared-app legacy constant, `test/web-auth-shared-app-context.test.mjs`, PRD JSON, progress/insights.
+  - Implementation: `src/shared-app.ts` now exposes only the neutral app context (`kind` and `id`) and no legacy owner field, constant, or helper. The exact legacy shared-app helper exports were removed from active source. Existing pre-cutover owner-scoped schemas still need temporary storage compatibility until later stories remove those schemas, so the unavoidable storage value is isolated in `src/owner-scope-compat.ts` with comments that it is not product context and must be deleted by later schema/API stories.
+  - Focused test evidence: `test/web-auth-shared-app-context.test.mjs` now asserts two authenticated identities receive the same app context and that the context has no `legacyOwnerScope` or `ownerScope` field.
+  - Docker validation: `npm run typecheck` passed with `PIBO_HOME=/workspace/.pibo/ralph-test-home`; `npm run build` passed with the same fresh home (only existing Vite chunk-size warnings); `node --test test/web-auth-shared-app-context.test.mjs` passed (2 tests); `node_modules/@vscode/ripgrep-linux-x64/bin/rg -n "getSharedAppLegacyOwnerScope|LEGACY_SHARED_APP_OWNER_SCOPE" src packages scripts test` returned no matches.
+  - Evidence tier: Docker typecheck/build, focused Node test, exact-symbol source/test search gate.
+  - Safety: no migration inspect/dry-run/apply commands were run; host `/root/.pibo`, host Dev/Production gateways, and Production data were not touched.
+  - PRD update: US-003 set to `passes: true` with evidence notes. Temporary pre-cutover compatibility remains intentionally visible for later owner-column removal stories; it is not a final target.
+  - Additional Docker focused regression: `node --test test/context-build-inspector.test.mjs test/cron-store-lifecycle.test.mjs test/session-router-store.test.mjs` passed (18 tests), covering representative tests that now import the temporary pre-cutover compatibility value from `dist/owner-scope-compat.js` instead of `dist/shared-app.js`.
+  - Commit: `c45e739 feat: US-003 - neutral shared app context`.
+- 2026-06-01T06:20Z: Selected story US-004 (`Make web auth an access gate without product owner fields`) as the highest-priority `passes: false` story. Plan: (1) inspect `src/web/auth.ts`, `src/web/types.ts`, and authenticated Chat/API handler call sites for `PiboWebSession.ownerScope`; (2) remove `ownerScope` from web session types and auth/session construction while keeping auth identity and neutral `appContext`; (3) update handlers/tests so auth identity is used only for access/display/audit, not product visibility or write location; (4) add focused tests proving unauthenticated requests still receive 401 and two auth identities receive the same ownerless app context; (5) run focused web-auth tests plus `npm run typecheck` and `npm run build` inside Docker; (6) update PRD/progress/insights and commit if evidence is complete.
+- 2026-06-01T07:02Z: Completed US-004 web auth ownerless session contract.
+  - Files changed: `src/web/types.ts`, `src/web/auth.ts`, `src/apps/chat/web-app.ts`, `src/apps/chat/workflow-registered-ref-pickers.ts`, `src/plugins/context-files.ts`, `test/web-auth-shared-app-context.test.mjs`, PRD JSON, progress/insights.
+  - Implementation: removed `ownerScope` from `PiboWebSession`; `requireWebSession` now returns only `authSession` and the neutral `appContext`. Chat Web handlers that still need pre-cutover storage compatibility now call `legacyOwnerScopeForPreCutoverSchemas()` directly at legacy schema boundaries instead of receiving a product owner through web auth. Context Files change/revision actor ids now use `webSession.authSession.identity.userId` as audit metadata, not product visibility or write-location state.
+  - Focused test evidence: `test/web-auth-shared-app-context.test.mjs` asserts unauthenticated requests still fail with `PiboAuthError` 401 and two auth identities receive the same ownerless app context with no `ownerScope`/`legacyOwnerScope` on the web session or app context.
+  - Docker validation: `npm run typecheck` passed with `PIBO_HOME=/workspace/.pibo/ralph-test-home`; `npm run build` passed with the same fresh home (only existing Vite chunk-size warnings); `node --test test/web-auth-shared-app-context.test.mjs test/context-files-web.test.mjs` passed (5 tests); Docker grep over `src/web src/apps/chat src/plugins test/web-auth-shared-app-context.test.mjs` found no `webSession.ownerScope`, optional `webSession?.ownerScope`, or `PiboWebSession` owner field call sites.
+  - Evidence tier: Docker typecheck/build, focused web-auth/context-files tests, and exact source/test grep for removed web-session owner call sites.
+  - Safety: no migration inspect/dry-run/apply commands were run; host `/root/.pibo`, host Dev/Production gateways, and Production data were not touched.
+  - PRD update: US-004 set to `passes: true` with evidence notes. Remaining runtime/session-context `ownerScope` fields are intentionally left for US-005/US-006.
+- 2026-06-01T07:05Z: US-004 implementation commit created: `e052341 feat: US-004 - make web auth ownerless`.
+
+- 2026-06-01T07:20Z: Selected story US-005 (`Remove Owner Scope from runtime and session context`) as the highest-priority `passes: false` story. Plan: (1) inspect runtime session context construction, session router/subagent startup, debug/context tests, and exact ownerScope context call sites; (2) remove `ownerScope` from `PiboRuntimeSessionContext` and generated `pibo://runtime/session-context.md` text without introducing a replacement owner value; (3) update runtime/router/subagent tests and snapshots to assert ownerless shared app context text; (4) run focused runtime/router/subagent/context tests plus exact search gates inside Docker; (5) run `npm run typecheck` and `npm run build` inside Docker; (6) update PRD/progress/insights and commit if evidence is complete.
+- 2026-06-01T07:33Z: Completed US-005 runtime/session context ownerless contract.
+  - Files changed: `src/core/runtime.ts`, `src/core/profiles.ts`, `src/core/session-router.ts`, `src/apps/chat/web-app.ts`, `test/context-build-inspector.test.mjs`, `test/web-annotations-tools.test.mjs`, PRD JSON, progress/insights.
+  - Implementation: removed `ownerScope` from `PiboRuntimeSessionContext`; stopped `createPiboRuntime` from passing owner scope through `ToolDefinitionContext`; removed runtime `sessionContext.ownerScope` construction from session-router and Chat Web context-build paths. Runtime context injection now contains only neutral shared app context text plus Pibo Session ID, Pibo Room ID, and timezone.
+  - Test evidence: `test/context-build-inspector.test.mjs` now asserts generated `pibo://runtime/session-context.md` contains resource ids and no `ownerScope`, `legacyOwnerScope`, Owner Scope/User ID/Principal/user:* text. Web Annotation runtime assembly tests now construct runtime session context without owner fields while remaining pre-cutover annotation storage compatibility stays local to annotation code for later US-013 removal.
+  - Docker validation: `npm run typecheck` passed with `PIBO_HOME=/workspace/.pibo/ralph-test-home`; `npm run build` passed with the same fresh home (only existing Vite chunk-size warnings); `node --test test/context-build-inspector.test.mjs test/subagents.test.mjs test/session-router-store.test.mjs test/web-annotations-tools.test.mjs` passed (28 tests).
+  - Docker search gates: `rg -n "ownerScope|legacyOwnerScope|Owner scope|User ID|Principal|auth user id|sessionContext\?\.ownerScope" src/core/runtime.ts src/core/profiles.ts src/core/context-build.ts` returned no source matches; `rg -n "sessionContext: \{[^\n]*ownerScope|ownerScope: .*sessionContext|sessionContext\?\.ownerScope" src packages test --glob "*.ts" --glob "*.tsx" --glob "*.mjs"` returned no call-site matches.
+  - Evidence tier: Docker typecheck/build, focused runtime/router/subagent/context/tool assembly tests, and exact source/call-site search gates.
+  - Safety: no migration inspect/dry-run/apply commands were run; host `/root/.pibo`, host Dev/Production gateways, and Production data were not touched.
+  - PRD update: US-005 set to `passes: true` with evidence notes. Remaining `PiboSession.ownerScope` storage compatibility is intentionally left for US-006/US-007.
+- 2026-06-01T07:37Z: US-005 implementation commit created: `3866753 feat: US-005 - remove runtime owner context`.
+- 2026-06-01T05:08Z: Selected story US-006 (`Remove Owner Scope from Pibo session store contracts`) as the highest-priority `passes: false` story. Plan: (1) inspect Pibo session store types, in-memory/SQLite implementations, and session callers/tests for ownerScope/listOwned/getOwned/requireOwned contracts; (2) remove ownerScope from PiboSession create/update/find models and store matching while preserving id, hierarchy, origin, metadata, workspace, profile, timestamps, and legacy schema writes only if unavoidable until US-007; (3) rename owner-scoped helper methods to neutral list/get/require session helpers and update callers/tests; (4) run focused session-store/router tests and exact search gates inside Docker; (5) run `npm run typecheck` and `npm run build` inside Docker; (6) update PRD/progress/insights and commit if evidence is complete.
+- 2026-06-01T05:18Z: Completed US-006 Pibo session store ownerless contracts.
+  - Files changed: `src/sessions/store.ts`, `src/sessions/sqlite-store.ts`, `src/sessions/pibo-data-store.ts`, `src/data/session-store.ts`, `src/data/ingest-service.ts`, `src/apps/chat/data/session-query-service.ts`, `src/core/session-router.ts`, `src/apps/chat/web-app.ts`, `src/ralph/service.ts`, `src/cron/service.ts`, `src/debug/trace.ts`, `src/cli-session/localSessionSource.ts`, focused session tests, PRD JSON, progress/insights.
+  - Implementation: removed `ownerScope` from `PiboSession`, `CreatePiboSessionInput`, `UpdatePiboSessionInput`, and `FindPiboSessionsInput`; removed owner matching from in-memory/SQLite-backed session store find logic; updated session-router, Chat Web, Ralph/Cron, debug trace, data ingest/query, and CLI session source call sites so `PiboSession` is app-global and no caller reads `session.ownerScope`.
+  - Compatibility boundary: `owner_scope` columns/index creation remain only in `src/sessions/sqlite-store.ts` and legacy `src/sessions/pibo-data-store.ts` write/update compatibility for US-007 schema rebuild and US-024 runtime compatibility removal. These are not public PiboSession contract fields.
+  - Docker validation: `npm run typecheck` passed with `PIBO_HOME=/workspace/.pibo/ralph-test-home`; `npm run build` passed with the same fresh home (only existing Vite chunk-size warnings); `node --test test/session-store.test.mjs test/pibo-data-session-store.test.mjs test/session-router-store.test.mjs test/workflow-session-kind.test.mjs` passed (21 tests).
+  - Docker search gates: `rg -n "ownerScope|listOwned|getOwned|requireOwned|OwnedSession" src/sessions src/core/session-router.ts src/debug/trace.ts` returned no matches; follow-up schema-target search for `owner_scope|idx_pibo_sessions_owner` returned only expected US-007 targets in `src/sessions/sqlite-store.ts` and `src/sessions/pibo-data-store.ts`.
+  - Evidence tier: Docker typecheck/build, focused session/router/pibo-data tests, and exact session-contract search gates.
+  - Safety: no migration inspect/dry-run/apply commands were run; host `/root/.pibo`, host Dev/Production gateways, and Production data were not touched.
+  - PRD update: US-006 set to `passes: true` with evidence notes. US-007 is the next failing story and should remove fresh `pibo-sessions` owner columns/indexes and add migration fixture coverage.
+- 2026-06-01T05:19Z: US-006 implementation commit created: `67ff14c feat: US-006 - remove session owner contracts`.
+- 2026-06-01T08:05Z: Selected story US-007 (`Rebuild sessions database schema without owner columns`) as the highest-priority `passes: false` story. Plan: (1) inspect session SQLite schemas/stores and existing migration/schema tests, (2) update fresh `pibo-sessions` and Pibo data session schemas to omit `owner_scope` columns/indexes while preserving ownerless session contracts, (3) add temp-file migration fixture coverage for historical `shared:app` and `user:*` session rows migrating to ownerless rows with ids, piSessionIds, hierarchy, metadata, profile, workspace, and timestamps preserved, (4) assert newly created session databases have no owner columns or owner indexes, (5) run focused session migration/schema tests plus `npm run typecheck` and `npm run build` inside Docker, then update PRD/progress/insights and commit if evidence is complete.
+- 2026-06-01T08:34Z: Completed US-007 sessions schema owner-column removal.
+  - Files changed: `src/sessions/sqlite-store.ts`, `src/sessions/pibo-data-store.ts`, `src/data/cli.ts`, `test/session-store.test.mjs`, `test/pibo-data-session-store.test.mjs`, PRD JSON, progress/insights.
+  - Implementation: fresh `pibo_sessions` schema now omits `owner_scope` and `idx_pibo_sessions_owner`; `SqlitePiboSessionStore` rebuilds historical `pibo_sessions` tables that still contain `owner_scope` into an ownerless table while preserving session id, Pi session id, channel/kind/profile, parent/origin hierarchy, workspace, title, metadata, active model, and timestamps. `PiboDataSessionStore` and `pibo data migrate sessions-to-v2` no longer write owner_scope into pibo.sqlite sessions rows.
+  - Migration fixture evidence: temp-file tests cover historical `shared:app` and `user:*` rows for both standalone `pibo-sessions.sqlite` and `pibo data migrate sessions-to-v2`, and assert resulting fresh schemas have no `owner_scope` columns or owner indexes.
+  - Docker validation: `npm run build && node --test test/session-store.test.mjs test/pibo-data-session-store.test.mjs test/session-model-source-of-truth.test.mjs && npm run typecheck` passed with `PIBO_HOME=/workspace/.pibo/ralph-test-home`; targeted Docker rg gate `! rg -n "owner_scope TEXT|ON pibo_sessions\\(owner_scope|owner_scope," src/sessions/sqlite-store.ts src/sessions/pibo-data-store.ts src/data/cli.ts` passed with no output.
+  - Evidence tier: Docker build/typecheck plus focused temp-file migration/schema fixture tests and targeted fresh-schema source search gate.
+  - Safety: migration/schema tests used only temp files in the Docker worker; no migration inspect/dry-run/apply was run against `/root/.pibo`; host Dev/Production gateways and Production data were not touched.
+  - PRD update: US-007 set to `passes: true` with evidence notes. Remaining `src/data/cli.ts` `owner_scope` references belong to unread-baseline/read-state repair and are scheduled for Chat read-state/schema stories.
+- 2026-06-01T08:36Z: US-007 implementation commit created: `cbe7acd feat: US-007 - rebuild sessions schema ownerless`.
+- 2026-06-01T09:05Z: Selected story US-008 (`Make Chat rooms, navigation, and read-state ownerless`) as the highest-priority `passes: false` story. Plan: (1) inspect Chat room/navigation/read-state services, Chat Web call sites, and focused tests for owner/principal parameters and membership access checks; (2) remove owner/principal parameters from active room service, navigation store, and read-state APIs while preserving ownerless resource-id behavior; (3) stop active behavior from requiring room_members for access and move read cursors to app-level read-state where the fresh schema already supports it; (4) update focused tests for mixed historical owner/principal data where practical without dropping legacy tables yet because US-009 owns schema rebuild/migration fixtures; (5) run focused Chat data/API tests plus `npm run typecheck` and `npm run build` inside Docker; (6) update PRD notes/progress/insights and commit if evidence is complete.
+- 2026-06-01T09:39Z: Completed US-008 Chat room/navigation/read-state ownerless active behavior.
+  - Files changed: `src/apps/chat/data/room-service.ts`, `src/data/navigation-store.ts`, `src/apps/chat/data/read-state-service.ts`, Chat Web/cron/Ralph API call sites, local session source adapter calls, focused Chat/Ralph/Cron tests, PRD JSON, progress/insights.
+  - Implementation: removed owner/principal parameters from active Chat room service APIs (`listRooms`, `listRoomTree`, `ensureDefaultRoom`, `requireRoom`, `getMember`, `updateReadCursor`), removed membership creation/checking from active room behavior, removed `ownerScope` from navigation store upsert/list contracts and owner filtering, and changed Chat read state to app-level `app_session_read_state` only. Chat Web active event-stream tracking now stores stream ids only and marks shared app read state once per session instead of per principal. Cron/Ralph Chat API room-target validation now uses resource-id room checks.
+  - Scope note: fresh schema rebuild/drop of `room_members`, `principal_*_stats`, and room/navigation owner columns remains US-009; API/UI payload cleanup for exposed room owner/principal fields remains US-010. This story removed active service/API parameters and membership access checks without broad CLI/TUI owner-model cleanup, which is scheduled for US-020/US-021.
+  - Docker validation: `npm run typecheck` passed with `PIBO_HOME=/workspace/.pibo/ralph-test-home`; `npm run build` passed with the same fresh home (only existing Vite chunk-size warnings); `node --test test/chat-v2-native-services.test.mjs test/chat-cron-api.test.mjs test/ralph-resource-visibility.test.mjs` passed (9 tests); `node --test test/chat-api-routes.test.mjs test/chat-web-shared-sessions.test.mjs` passed (6 tests) and covered real Chat Web handler paths for bootstrap, open, send, room navigation/mutations, and shared read-state across authenticated accounts.
+  - Search evidence: exact source search over `src/apps/chat src/data src/cron src/ralph src/cli-session/localSessionSource.ts` for `requireRoomAccess`, `ensureMember(`, owner/principal `ensureDefaultRoom` args, owner-arg `listRoomTree`, 3-argument `markSessionRead`, and principal-based unread-state patterns returned no active API matches except a false-positive `target.principalId` parse in the later Ralph target compatibility model.
+  - Evidence tier: Docker typecheck/build plus focused service/API tests and real Chat Web handler-path tests.
+  - Safety: no migration inspect/dry-run/apply commands were run; host `/root/.pibo`, host Dev/Production gateways, and Production data were not touched.
+  - PRD update: US-008 set to `passes: true` with evidence notes. Next failing story: US-009 (`Rebuild Chat data schemas without owner/principal tables`).
+- 2026-06-01T09:42Z: US-008 implementation commit created: `9594a68 feat: US-008 - make chat read state ownerless`.
+- 2026-06-01T10:05Z: Selected story US-009 (`Rebuild Chat data schemas without owner/principal tables`) as the highest-priority `passes: false` story. Plan: (1) inspect Chat data schemas, mappers, room/navigation/read-state stores, and existing migration/schema tests for remaining owner/principal table/column creation; (2) update fresh `pibo.sqlite` Chat schemas so `rooms` and `session_navigation` omit `owner_scope`/owner indexes and active fresh schemas do not create `room_members`, `principal_session_stats`, or `principal_room_stats`; (3) keep any historical-column/table knowledge isolated to constructor-time/fixture migration compatibility needed to read old temp DBs, not active product APIs; (4) add temp-file migration fixture coverage for duplicate default rooms, duplicate navigation rows, and principal read-state merge rules with schema assertions proving new DBs have no owner/principal columns or membership/principal stats tables; (5) run focused Chat data/schema tests plus `npm run typecheck` and `npm run build` inside Docker; (6) update PRD/progress/insights and commit if evidence is complete.
+- 2026-06-01T10:44Z: Completed US-009 Chat data fresh schema and migration fixture coverage.
+  - Files changed: `src/data/schema.ts`, `src/data/final-app-space-cutover-migration.ts`, `src/data/navigation-store.ts`, `src/apps/chat/data/room-service.ts`, `test/data-v2-store.test.mjs`, PRD JSON, progress/insights.
+  - Implementation: fresh `pibo.sqlite` Chat schema remains ownerless for `rooms`, `session_navigation`, `app_session_read_state`, and `app_room_read_state`, with no fresh `room_members`, `principal_session_stats`, or `principal_room_stats` tables. Active room/navigation writes no longer bind legacy `owner_scope`: `ChatRoomService` no longer inserts `rooms.owner_scope` or deletes `room_members`, and `NavigationStore` no longer inserts/updates `session_navigation.owner_scope`.
+  - Migration fixture evidence: added explicit temp-DB `migrateLegacyChatDataSchemaToOwnerless` coverage in the isolated `src/data/final-app-space-cutover-migration.ts` path for historical `rooms.owner_scope`, duplicate default rooms, duplicate `session_navigation` rows by `session_id`, `room_members`, `principal_session_stats`, and `principal_room_stats`. The fixture proves duplicate defaults retire to the newest non-archived app default, duplicate navigation keeps the newest row while preserving session/resource ids, principal session read-state merges max stream/message cursors plus newest read timestamp into `app_session_read_state`, principal room read-state merges into `app_room_read_state`, and legacy membership/principal stats tables plus owner/principal columns/indexes are removed.
+  - Docker validation: `npm run build && node --test test/data-v2-store.test.mjs test/chat-v2-native-services.test.mjs test/chat-api-routes.test.mjs test/chat-web-shared-sessions.test.mjs && npm run typecheck` passed with `PIBO_HOME=/workspace/.pibo/ralph-test-home` (build emitted only existing Vite chunk-size warnings). Additional Docker regression `node --test test/data-shared-app-migration.test.mjs` passed (7 tests), proving the earlier shared-app migration command still handles its temp fixture path after room/navigation active writes stopped binding owner columns. Targeted Docker rg gate `! rg -n "CREATE TABLE IF NOT EXISTS (room_members|principal_session_stats|principal_room_stats)|owner_scope TEXT|principal_id TEXT|idx_.*(owner|principal)|\[\"owner_scope\"\]|\[\"principal_id\"\]" src/data/schema.ts src/data/navigation-store.ts src/apps/chat/data/room-service.ts` passed with no output.
+  - Evidence tier: Docker build/typecheck, focused Chat data/API tests, temp-file schema migration fixture tests, and targeted fresh-schema/source search gate.
+  - Safety: migration/schema tests used only temp files in the Docker worker; no migration inspect/dry-run/apply command was run against `/root/.pibo`; host Dev/Production gateways and Production data were not touched.
+  - PRD update: US-009 set to `passes: true` with evidence notes. Next failing story: US-010 (`Clean Chat Web API and UI payloads`).
+- 2026-06-01T10:52Z: US-009 implementation commit created: `e1ccfb8 feat: US-009 - rebuild chat schemas ownerless`.
+
+- 2026-06-01T11:10Z: Selected story US-010 (`Clean Chat Web API and UI payloads`) as the highest-priority `passes: false` story. Plan: (1) inspect Chat Web API serializers/types/components/tests for remaining ownerScope/principalId/personal wording in bootstrap, room, navigation, session, action, and settings payloads; (2) remove these fields from active Chat API/UI contracts without changing persistence scope beyond already-ownerless stores; (3) update API/UI tests to assert payloads contain no owner/principal fields and copy uses shared/default app wording; (4) run focused Chat API/UI tests plus Docker typecheck/build; (5) perform closest practical Docker real-path validation for bootstrap/sidebar/direct session/create/send/archive-restore/room navigation via Chat Web handler/API paths and browser/CDP if feasible; (6) update PRD notes/progress/insights and commit if evidence is complete.
+- 2026-06-01T12:05Z: Completed US-010 Chat Web API/UI payload cleanup.
+  - Files changed: `src/apps/chat/types/rooms.ts`, `src/apps/chat/rooms.ts`, `src/apps/chat/data/room-service.ts`, `src/apps/chat/data/chat-data-mappers.ts`, `src/apps/chat/web-app.ts`, `src/apps/chat-ui/src/types.ts`, `src/apps/chat-ui/src/app-bootstrap-mutations.ts`, `src/apps/chat-ui/src/App.tsx`, `src/cli-session/localSessionSource.ts`, `test/chat-web-shared-sessions.test.mjs`, `test/chat-ui-app-bootstrap-mutations.test.mjs`, PRD JSON, progress/insights.
+  - Implementation: removed `PiboRoom.ownerScope` and membership/principal room payload types from active Chat room contracts; stopped Chat room service and row mapping from synthesizing a legacy owner value; removed `member` from room-detail responses; removed `ownerScope` from Chat UI room/session types and optimistic room state. `src/cli-session/localSessionSource.ts` now compiles against ownerless `PiboRoom` while its broader owner model remains for US-020/US-021.
+  - API/UI test evidence: `test/chat-web-shared-sessions.test.mjs` now recursively asserts no `ownerScope` or `principalId` keys in bootstrap, navigation, rooms list/detail/create/patch, session create/patch/archive/restore/action, and user-settings payloads while mixed historical shared/user fixture sessions still list/open/send by resource id. `test/chat-ui-app-bootstrap-mutations.test.mjs` asserts optimistic room state has no `ownerScope`.
+  - Docker validation: `node --test test/chat-web-shared-sessions.test.mjs test/chat-ui-app-bootstrap-mutations.test.mjs test/chat-v2-native-services.test.mjs test/chat-api-routes.test.mjs` passed (8 tests); `npm run typecheck` passed; `npm run build` passed with only existing Vite chunk-size warnings.
+  - Docker search evidence: targeted gate `! rg -n "ownerScope|principalId|PiboRoomMember|PiboRoomRole|member:" src/apps/chat/types/rooms.ts src/apps/chat/data/room-service.ts src/apps/chat/data/chat-data-mappers.ts src/apps/chat-ui/src/app-bootstrap-mutations.ts` passed with no output.
+  - Docker real-path/browser evidence: started worker-local dev-auth web gateway on container port `4788` exposed as host `4832` using `PIBO_HOME=/workspace/.pibo/ralph-test-home`; `curl` login via `/api/auth/sign-in/social` returned dev auth session `dev-user-001`; `/apps/chat/` returned HTML; `/api/chat/bootstrap` returned one room and one selected session and recursive JSON check found no `ownerScope`/`principalId`; headless Chromium inside the Docker worker captured login and Chat app screenshots using `/workspace/.pibo/ralph-test-home/chrome-us010` profile. The worker-local gateway and Chromium processes were stopped after validation.
+  - Evidence tier: Docker typecheck/build, focused API/UI/service tests, targeted search gate, worker-local API and headless browser smoke through real Chat Web dev-auth gateway.
+  - Safety: no migration inspect/dry-run/apply commands were run; host `/root/.pibo`, host Dev/Production gateways, Production data, deploy scripts, and PR creation were not touched.
+  - PRD update: US-010 set to `passes: true` with evidence notes. Next failing story: US-011 (`Convert Custom Agents to app-global resources`).
+- 2026-06-01T12:08Z: US-010 implementation commit created: `ff5c140 feat: US-010 - clean chat web owner payloads`.
+- 2026-06-01T12:20Z: Selected story US-011 (`Convert Custom Agents to app-global resources`) as the highest-priority `passes: false` story. Plan: (1) inspect Custom Agent store/schema/API/dynamic profile registration code and focused Agent Designer tests for ownerScope inputs, rows, payloads, and list filters; (2) remove ownerScope from CustomAgentDefinition/create/update/list contracts and active Chat API/UI payloads without introducing a replacement owner; (3) rebuild fresh `chat_agents.sqlite` schema without owner_scope/owner indexes and add temp-file migration fixture coverage for historical duplicate profile names, preserving stable ids while deterministically renaming older duplicates; (4) update dynamic profile registration to load all app-global custom agents; (5) run focused custom-agent store/API/profile/UI tests plus `npm run typecheck` and `npm run build` inside Docker; (6) update PRD notes/progress/insights and commit if evidence is complete.
+- 2026-06-01T12:41Z: Completed US-011 Custom Agents app-global conversion.
+  - Files changed: `src/apps/chat/agent-store.ts`, `src/apps/chat/chat-request-normalizers.ts`, `src/apps/chat/web-app.ts`, `src/apps/chat-ui/src/types.ts`, `src/apps/cli-ui/cliSessionsCommand.ts`, `test/agent-store.test.mjs`, `test/agent-profiles.test.mjs`, `test/web-channel.test.mjs`, PRD JSON, progress/insights.
+  - Implementation: removed `ownerScope` from `CustomAgentDefinition`, create/update input contracts, Chat API create normalizer, API serialization payloads, and Chat UI `CustomAgent` type. `CustomAgentStore` now creates and lists app-global agents without owner inputs, and Chat Web dynamic profile registration loads all active custom agents without owner filters. CLI session source no longer derives owner summaries from custom agents.
+  - Schema/migration evidence: fresh `chat_agents` schema has no `owner_scope`; constructor-time historical migration rebuilds old `chat_agents` tables with `owner_scope` into ownerless tables. Duplicate historical `profile_name` groups are resolved before rebuild by keeping the newest updated row under the exact name and deterministically renaming older duplicates to `<name>-legacy-<8 hex hash>`, while dropping owner indexes.
+  - Docker validation: `npm run build` passed with `PIBO_HOME=/workspace/.pibo/ralph-test-home` (only existing Vite chunk-size warnings); `node --test test/agent-store.test.mjs test/agent-profiles.test.mjs test/web-channel.test.mjs test/chat-ui-app-agent-catalog-mutations.test.mjs` passed (103 tests); `npm run typecheck` passed.
+  - Search evidence: targeted Docker gate found no `ownerScope`, `legacyOwnerScopeForPreCutoverSchemas`, or `shared:app` in `src/apps/chat/agent-store.ts`, `src/apps/chat/agent-profiles.ts`, `src/apps/chat/chat-request-normalizers.ts`, `src/apps/chat-ui/src/agents`, or `src/apps/chat-ui/src/api-agent-designer.ts`; the only `owner_scope` match in `src/apps/chat/agent-store.ts` is the constructor-time historical-column rebuild guard.
+  - Evidence tier: Docker build/typecheck, focused Custom Agent store/profile tests, full Chat Web handler-path test file covering Custom Agent API/Profile flows, Chat UI Agent catalog mutation test, targeted source search, and temp-file migration/schema fixtures.
+  - Safety: migration fixtures used only Docker temp files and the fresh Docker test home; no migration inspect/dry-run/apply command was run against `/root/.pibo`; host `/root/.pibo`, host Dev/Production gateways, Production data, deploys, and PR creation were not touched.
+  - PRD update: US-011 set to `passes: true` with evidence notes. Next failing story: US-012 (`Convert Projects and workflow UI persistence to app-global resources`).
+- 2026-06-01T12:44Z: US-011 implementation commit created: `bc2241d feat: US-011 - convert custom agents ownerless`.
+- 2026-06-01T12:58Z: Selected story US-012 (`Convert Projects and workflow UI persistence to app-global resources`) as the highest-priority `passes: false` story. Plan: (1) inspect project service/store types, workflow UI persistence models/schema, Chat Web/API/UI call sites, and focused tests for remaining ownerScope/OwnedWorkflow* usage; (2) remove ownerScope from active project and workflow UI persistence contracts and rename owned workflow UI models to neutral names where local; (3) rebuild fresh `web-projects.sqlite` schemas without owner columns and add constructor/temp-file migration coverage for historical owner-scoped project/workflow UI rows; (4) update API/UI tests to assert project/workflow UI payloads have no owner fields; (5) run focused project/workflow UI tests plus `npm run typecheck` and `npm run build` inside Docker; (6) update PRD/progress/insights and commit if evidence is complete.
+- 2026-06-01T13:45Z: Completed US-012 Projects and workflow UI ownerless conversion.
+  - Files changed: `src/apps/chat/data/project-service.ts`, `src/apps/chat/project-workflow-sessions.ts`, `src/apps/chat/workflow-persistence-model.ts`, `src/apps/chat/workflow-persistence.ts`, `src/apps/chat/workflow-catalog.ts`, `src/apps/chat/workflow-registered-ref-pickers.ts`, `src/apps/chat/web-app.ts`, `src/apps/chat-ui/src/types.ts`, `test/project-service-workflow-link.test.mjs`, `test/web-channel.test.mjs`, PRD JSON, progress/insights.
+  - Implementation: removed `ownerScope` from `PiboProject`, `CreateProjectInput`, project workflow session snapshots, workflow prompt asset records/revisions, workflow lifecycle event records/inputs, and active workflow draft model names. Replaced `OwnedWorkflowDraftRecord` usage with neutral `WorkflowDraftRecord`. Project creation/default-project APIs and workflow UI prompt asset/lifecycle APIs no longer accept owner parameters or write owner values.
+  - Schema/migration evidence: fresh `web-projects.sqlite` project and workflow UI tables stay ownerless. Added temp-file constructor migration fixtures proving historical `projects.owner_scope`, workflow session snapshot `ownerScope` JSON, `workflow_ui_drafts.owner_scope`, `workflow_prompt_assets.owner_scope`, `workflow_prompt_asset_revisions.owner_scope`, and `workflow_lifecycle_events.owner_scope` are rebuilt/stripped to ownerless schemas and ownerless returned records while preserving resource ids and content.
+  - Docker validation: `npm run build && node --test test/project-service-workflow-link.test.mjs test/web-channel.test.mjs && npm run typecheck` passed with `PIBO_HOME=/workspace/.pibo/ralph-test-home`; `node --test test/chat-ui-workflow-version-history-model.test.mjs test/workflow-v2-project-configured-ui.test.mjs test/workflow-v2-run-inspection-human-actions.test.mjs` passed (6 tests).
+  - Docker search evidence: targeted gate over project/workflow UI source for active `PiboProject`/`CreateProjectInput` owner contracts, `OwnedWorkflow*` names, ownerful prompt asset/list/get/listEvents signatures, and fresh owner-column creation returned only expected constructor-time legacy JSON stripping/owner-column rebuild matches; `! rg -n "owner_scope TEXT|owner_scope TEXT NOT NULL|owner_scope," src/apps/chat/data/project-service.ts src/apps/chat/workflow-persistence.ts src/apps/chat/workflow-persistence-model.ts src/apps/chat/project-workflow-sessions.ts` passed with no output.
+  - Evidence tier: Docker build/typecheck, focused project/workflow API + UI tests, temp-file schema migration fixtures, and targeted source/schema search gates.
+  - Safety: all fixtures used Docker temp files or `/workspace/.pibo/ralph-test-home`; no migration inspect/dry-run/apply command was run against `/root/.pibo`; host `/root/.pibo`, host Dev/Production gateways, Production data, deploys, and PR creation were not touched.
+  - PRD update: US-012 set to `passes: true` with evidence notes. Next failing story: US-013 (`Convert Web Annotations to ownerless app resources`).
+- 2026-06-01T13:48Z: US-012 implementation commit created: `cc4bd72 feat: US-012 - convert projects workflow UI ownerless`.
+- 2026-06-01T14:05Z: Selected story US-013 (`Convert Web Annotations to ownerless app resources`) as the highest-priority `passes: false` story. Plan: (1) inspect Web Annotation store/types/API/tool/CDP/attachment/validation paths and focused tests for remaining ownerScope/owner_scope signatures, filters, payloads, and schema compatibility; (2) remove ownerScope from active annotation and binding models plus API/tool/CDP/attachment signatures without adding a replacement owner; (3) ensure fresh `web-annotations.sqlite` schemas omit owner columns and add temp-file migration/rebuild fixtures for historical annotation/binding rows with mixed owner values while preserving ids, session/resource metadata, statuses, targets, notes, attachments, and timestamps; (4) update focused Web Annotation tests and closest practical Docker API/CDP/tool/browser validation to assert ownerless payloads and behavior; (5) run focused Web Annotation tests plus `npm run typecheck` and `npm run build` inside Docker; (6) update PRD/progress/insights and commit if evidence is complete.
+- 2026-06-01T14:50Z: Completed US-013 Web Annotations ownerless conversion.
+  - Files changed: `src/web-annotations/types.ts`, `src/web-annotations/validation.ts`, `src/web-annotations/store.ts`, `src/web-annotations/cdp.ts`, `src/web-annotations/api.ts`, `src/web-annotations/tools.ts`, `src/web-annotations/attachments.ts`, `src/apps/chat/web-app.ts`, `scripts/validate-web-annotations-browser.mjs`, focused Web Annotation tests, PRD JSON, progress/insights.
+  - Implementation: removed `ownerScope` from active Web Annotation binding/annotation models, create/list/thread inputs, CDP binding context and create/inject/remove signatures, API list/get/patch/overlay submission paths, tool runtime context, and Chat Web annotation attachment preparation. App-wide list API now returns `scope: "app"` via `scope=app`/`allSessions=true` instead of owner wording. Serialized API/tool/attachment payloads no longer include owner fields.
+  - Schema/migration evidence: fresh `web-annotations.sqlite` schemas still omit owner columns. `WebAnnotationStore` now rebuilds historical `web_annotation_bindings` and `web_annotations` tables that contain `owner_scope` into ownerless tables on open, preserving ids, session/room ids, binding links, states/statuses, URL/target/note/thread/screenshot/metadata content, and timestamps while dropping legacy owner indexes. Added temp-file fixture coverage for mixed historical rows and schema assertions proving no `owner_scope` columns or owner indexes remain after rebuild.
+  - Docker validation: `npm run build` passed with `PIBO_HOME=/workspace/.pibo/ralph-test-home` (only existing Vite chunk-size warnings); `node --test test/web-annotations-store.test.mjs test/web-annotations-tools.test.mjs test/web-annotations-cdp-api.test.mjs test/web-annotations-attachments.test.mjs` passed (23 tests); `node scripts/validate-web-annotations-browser.mjs` passed and exercised real worker-local Chromium/CDP overlay injection, element/pin annotations, reinjection, attachment preparation, and API resolve flow; `npm run typecheck` passed; `node --test test/shared-app-fresh-schema.test.mjs test/data-shared-app-migration.test.mjs` passed (8 tests).
+  - Docker search evidence: `rg -n "ownerScope|legacyOwnerScopeForPreCutoverSchemas|shared:app|principalId|principal_id" src/web-annotations scripts/validate-web-annotations-browser.mjs test/web-annotations*.mjs` returned no matches; `rg -n "owner_scope TEXT|owner_scope," src/web-annotations/store.ts` returned no fresh-schema creation matches.
+  - Evidence tier: Docker build/typecheck, focused Web Annotation store/tool/CDP/API/attachment tests, temp-file migration fixture tests, fresh-schema/shared-app migration regression tests, targeted source/test search gates, and real worker-local browser/CDP validation.
+  - Safety: all fixtures used Docker temp files or `/workspace/.pibo/ralph-test-home`; browser validation used worker-local Chromium/CDP only; no migration inspect/dry-run/apply command was run against `/root/.pibo`; host `/root/.pibo`, host Dev/Production gateways, Production data, deploys, and PR creation were not touched.
+  - PRD update: US-013 set to `passes: true` with evidence notes. Next failing story: US-014 (`Remove Owner Scope from Ralph data model and store schema`).
+- 2026-06-01T14:53Z: US-013 implementation commit created: `b8c7839 feat: US-013 - convert web annotations ownerless`.
+
+- 2026-06-01T15:10Z: Selected story US-014 (`Remove Owner Scope from Ralph data model and store schema`) as the highest-priority `passes: false` story. Plan: (1) inspect Ralph types/store/service/API/CLI/tests for ownerScope, owner_scope, getOwnedJob, and personal.principalId target usage; (2) remove owner fields from Ralph job/run/fact/create/store contracts and replace personal targets with neutral `default-chat` while preserving room targets; (3) rebuild fresh Ralph schemas without owner columns/indexes and add temp-file migration fixtures for historical shared/user/personal Ralph jobs/runs/facts/resources/targets; (4) keep CLI/API surface cleanup that is explicitly US-015 out of scope except for compile updates required by ownerless store contracts; (5) run focused Ralph store/service/API tests plus targeted search gates, `npm run typecheck`, and `npm run build` inside Docker; (6) update PRD/progress/insights and commit if evidence is complete.
+- 2026-06-01T15:55Z: Completed US-014 Ralph data model/store ownerless conversion.
+  - Files changed: `src/ralph/types.ts`, `src/ralph/store.ts`, `src/ralph/service.ts`, `src/ralph/cli.ts`, `src/apps/chat/ralph-api.ts`, focused Ralph tests, PRD JSON, progress/insights.
+  - Implementation: removed `ownerScope` from Ralph job/run/fact/create types and active store/service contracts; removed `getOwnedJob`; removed owner parameters from Ralph store list/create/update/remove/reserve/run/fact/resource APIs; changed Ralph target model to `room` or neutral `default-chat`. Historical `personal` target JSON is normalized to `default-chat` on row read and during ownerless table rebuild.
+  - Schema/migration evidence: fresh `pibo-ralph.sqlite` schemas create `pibo_ralph_jobs`, `pibo_ralph_runs`, and `pibo_ralph_run_facts` without `owner_scope` columns or owner indexes. Added temp-file migration fixture coverage for historical owner-scoped jobs/runs/facts and owner indexes, preserving ids, run history, facts, resources, state, timestamps, and converting personal target JSON to `default-chat` while dropping owner columns/indexes.
+  - Scope note: CLI/API deprecated `--owner-scope`, `--personal`, and `--principal-id` surface cleanup is intentionally left for US-015, but those paths now write ownerless jobs through ownerless store APIs. The Chat Ralph API accepts legacy `personal` input only as request compatibility and normalizes it to `default-chat`.
+  - Docker validation: `npm run build` passed with `PIBO_HOME=/workspace/.pibo/ralph-test-home` (only existing Vite chunk-size warnings); `node --test test/ralph-resource-metadata.test.mjs test/ralph-stop-conditions.test.mjs test/ralph-resource-cleanup.test.mjs test/ralph-runtime-overrides.test.mjs test/ralph-resource-visibility.test.mjs` passed; `node --test test/shared-app-fresh-schema.test.mjs test/ralph-resource-metadata.test.mjs` passed; `npm run typecheck` passed.
+  - Docker search evidence: targeted gate over `src/ralph/types.ts src/ralph/store.ts src/ralph/service.ts` for active `ownerScope`, `getOwnedJob`, Ralph owner model fields, `personal` target shape, and `principalId` returned no matches; fresh-schema gate for `owner_scope TEXT`, `owner_scope,`, and owner indexes in `src/ralph/store.ts` returned no matches.
+  - Evidence tier: Docker build/typecheck, focused Ralph service/store/API/resource/stop-condition tests, fresh shared schema test, temp-file migration fixture tests, and targeted source/schema search gates.
+  - Safety: all migration fixtures used Docker temp files or `/workspace/.pibo/ralph-test-home`; no migration inspect/dry-run/apply command was run against `/root/.pibo`; host `/root/.pibo`, host Dev/Production gateways, Production data, deploys, and PR creation were not touched.
+  - PRD update: US-014 set to `passes: true` with evidence notes. Next failing story: US-015 (`Clean Ralph service, CLI, API, and UI surfaces`).
+  - Commit: `4b55ab1 feat: US-014 - remove Ralph owner scope model`.
+- 2026-06-01T16:10Z: Selected story US-015 (`Clean Ralph service, CLI, API, and UI surfaces`) as the highest-priority `passes: false` story. Plan: (1) inspect Ralph CLI/service/API/UI serializers and tests for deprecated `--owner-scope`, `PIBO_OWNER_SCOPE`, `--personal`, `--principal-id`, `ownerScope`, `principalId`, and personal-target payload surfaces; (2) remove those active CLI/API/UI surfaces while keeping ownerless `room` and `default-chat` targets from US-014; (3) update Chat UI/Ralph types/components and focused tests so JSON/API payloads expose no owner/principal fields; (4) run focused Ralph CLI/API/UI tests and real Docker CLI help/list/add/start/stop/runs JSON checks against the fresh test home; (5) run `npm run typecheck` and `npm run build` inside Docker; (6) update PRD/progress/insights and commit if evidence is complete.
+- 2026-06-01T16:35Z: Completed US-015 Ralph service/CLI/API/UI surface cleanup.
+  - Files changed: `src/ralph/cli.ts`, `src/apps/chat/ralph-api.ts`, `src/apps/chat-ui/src/RalphArea.tsx`, `src/apps/chat-ui/src/types.ts`, `test/ralph-resource-visibility.test.mjs`, `test/shared-app-artifact-search-gate.test.mjs`, PRD JSON, progress/insights.
+  - Implementation: removed active Ralph `--owner-scope`/`PIBO_OWNER_SCOPE` handling, removed deprecated `--personal` and `--principal-id` CLI targets, and replaced CLI targeting with `--room <room-id>` or `--default-chat`. Chat Ralph API now accepts only `room` and `default-chat` target payloads. Chat UI Ralph types and form state now use `default-chat` and no longer include Ralph job/run `ownerScope` fields or personal/principal target payloads.
+  - Docker validation: `npm run build` passed with `PIBO_HOME=/workspace/.pibo/ralph-test-home` (only existing Vite chunk-size warnings); `node --test test/ralph-resource-visibility.test.mjs test/ralph-resource-metadata.test.mjs test/ralph-stop-conditions.test.mjs test/ralph-runtime-overrides.test.mjs` passed (14 tests); `npm run typecheck` passed.
+  - Real CLI/API evidence: `test/ralph-resource-visibility.test.mjs` exercises the built CLI with a temp Ralph store for `pibo ralph add --help`, `list --json`, `runs`, `add --default-chat --json`, `start --json`, and `stop --json`, and recursively asserts Ralph JSON has no owner/principal keys. The same test exercises Chat Ralph API list/get/create/patch/delete paths and asserts ownerless payloads.
+  - Docker search evidence: targeted rg gate over `src/ralph`, `src/apps/chat/ralph-api.ts`, `src/apps/chat-ui/src/RalphArea.tsx`, and `src/apps/chat-ui/src/api-ralph.ts` for `--owner-scope`, `PIBO_OWNER_SCOPE`, `--personal`, `--principal-id`, `ownerScope`, `getOwnedJob`, and `principalId` returned no matches.
+  - Observed out-of-scope validation note: an attempted broader `test/shared-app-artifact-search-gate.test.mjs` run failed on existing Cron/data compatibility imports (`src/cron/service.ts`, `src/cron/store.ts`, `src/data/session-store.ts`) scheduled for US-016/US-024; the Ralph allowlist entry was removed, and focused Ralph gates passed.
+  - Evidence tier: Docker build/typecheck, focused Ralph store/service/API/CLI tests, real built-CLI temp-store path, and targeted Ralph source search gate.
+  - Safety: all tests used Docker temp files or `/workspace/.pibo/ralph-test-home`; no migration inspect/dry-run/apply command was run against `/root/.pibo`; host `/root/.pibo`, host Dev/Production gateways, Production data, deploys, and PR creation were not touched.
+  - PRD update: US-015 set to `passes: true` with evidence notes. Next failing story: US-016 (`Remove Owner Scope from Cron data model and store schema`).
+- 2026-06-01T16:40Z: US-015 implementation commit created: `0bd056f feat: US-015 - clean Ralph owner surfaces`.
+- 2026-06-01T17:05Z: Selected story US-016 (`Remove Owner Scope from Cron data model and store schema`) as the highest-priority `passes: false` story. Plan: (1) inspect Cron types/store/service/CLI/API/UI/tests for `ownerScope`, `owner_scope`, `personal.principalId`, and owner-filtered store APIs; (2) remove owner fields from Cron job/run/fact/create/store/service active contracts and normalize historical personal/principal targets to neutral `default-chat`; (3) rebuild fresh Cron schemas without owner columns/indexes and add Docker temp-file migration fixtures for historical shared/user/personal Cron jobs/runs; (4) keep user-facing CLI/API/UI surface cleanup limited to compile compatibility where possible because US-017 owns deprecated options/payload cleanup; (5) run focused Cron store/service/API tests plus targeted search gates, `npm run typecheck`, and `npm run build` inside Docker; (6) update PRD/progress/insights and commit if evidence is complete.
+- 2026-06-01T17:35Z: Completed US-016 Cron data model/store ownerless conversion.
+  - Files changed: `src/cron/types.ts`, `src/cron/store.ts`, `src/cron/service.ts`, `src/cron/cli.ts`, `src/apps/chat/cron-api.ts`, `test/cron-schedule-store.test.mjs`, `test/cron-store-lifecycle.test.mjs`, `test/chat-cron-api.test.mjs`, PRD JSON, progress/insights.
+  - Implementation: removed `ownerScope` from active Cron job/run/create types and from Cron store/service active APIs. Removed owner filters and `getOwnedJob`; store methods are app-global (`createJob`, `listJobs`, `updateJob`, `removeJob`, `listRuns`, `reserveManualRun`) and `PiboCronService.runJobNow(id)` no longer accepts an owner. Cron targets now persist as `room` or neutral `default-chat`; historical `personal.principalId` target JSON is normalized to `default-chat` on read and during schema rebuild.
+  - Schema/migration evidence: fresh `pibo-cron.sqlite` schemas create `pibo_cron_jobs` and `pibo_cron_runs` without `owner_scope` columns or owner indexes. Added temp-file migration fixture coverage for historical owner-scoped jobs/runs plus owner indexes, preserving ids, prompts, schedules, state, run history, timestamps, and `piboSessionId` while dropping owner columns/indexes and converting personal targets to `default-chat`.
+  - Scope note: Chat Cron API and CLI were adjusted enough to compile and write ownerless/default-chat store rows. Deprecated visible `--owner-scope`, `--personal`, `--principal-id`, and API/UI personal-target surfaces remain scheduled for US-017.
+  - Docker validation: `npm run build` passed with `PIBO_HOME=/workspace/.pibo/ralph-test-home` (only existing Vite chunk-size warnings); `node --test test/cron-schedule-store.test.mjs test/cron-store-lifecycle.test.mjs test/chat-cron-api.test.mjs test/shared-app-fresh-schema.test.mjs` passed (20 tests); `npm run typecheck` passed; after adding API store-target evidence, `node --test test/chat-cron-api.test.mjs test/cron-schedule-store.test.mjs test/cron-store-lifecycle.test.mjs` passed (19 tests).
+  - Docker search evidence: targeted gate over `src/cron/types.ts src/cron/store.ts src/cron/service.ts` for active `ownerScope`, `getOwnedJob`, Cron owner model fields, `personal` target shape, and `principalId` returned no matches; fresh-schema gate for `owner_scope TEXT`, `owner_scope,`, and owner indexes in `src/cron/store.ts` returned no matches.
+  - Evidence tier: Docker build/typecheck, focused Cron store/lifecycle/API tests, fresh shared schema regression, temp-file migration fixture tests, CLI temp-store add/edit paths in focused tests, and targeted source/schema search gates.
+  - Safety: all fixtures used Docker temp files or `/workspace/.pibo/ralph-test-home`; no migration inspect/dry-run/apply command was run against `/root/.pibo`; host `/root/.pibo`, host Dev/Production gateways, Production data, deploys, and PR creation were not touched.
+  - PRD update: US-016 set to `passes: true` with evidence notes. Next failing story: US-017 (`Clean Cron service, CLI, API, and UI surfaces`).
+- 2026-06-01T17:42Z: US-016 implementation commit created: `7f45d74 feat: US-016 - remove Cron owner scope model`.
+- 2026-06-01T18:05Z: Selected story US-017 (`Clean Cron service, CLI, API, and UI surfaces`) as the highest-priority `passes: false` story. Plan: (1) inspect Cron CLI/service/API/UI serializers and tests for deprecated `--owner-scope`, `PIBO_OWNER_SCOPE`, `--personal`, `--principal-id`, `ownerScope`, `principalId`, and personal-target payload surfaces; (2) remove those active CLI/API/UI surfaces while keeping ownerless `room` and `default-chat` targets from US-016; (3) update Chat UI Cron types/components and focused tests so JSON/API payloads expose no owner/principal fields; (4) run focused Cron CLI/API/UI tests and real Docker CLI help/list/add/enable/disable or closest safe JSON checks against temp stores/fresh test home; (5) run `npm run typecheck` and `npm run build` inside Docker; (6) update PRD notes/progress/insights and commit if evidence is complete.
+- 2026-06-01T18:35Z: Completed US-017 Cron service/CLI/API/UI surface cleanup.
+  - Files changed: `src/cron/cli.ts`, `src/apps/chat/cron-api.ts`, `src/apps/chat-ui/src/CronArea.tsx`, `src/apps/chat-ui/src/types.ts`, `test/chat-cron-api.test.mjs`, `test/cron-schedule-store.test.mjs`, `test/shared-app-artifact-search-gate.test.mjs`, PRD JSON, progress/insights.
+  - Implementation: removed active Cron `--owner-scope`/`PIBO_OWNER_SCOPE` handling, removed deprecated `--personal` and `--principal-id` CLI targets, and replaced CLI targeting with `--room <roomId>` or `--default-chat`. Chat Cron API accepts only `room` and `default-chat`, rejects legacy personal/principal target payloads, and serializes `default-chat` directly. Chat UI Cron types/form state now use `default-chat` and expose no Cron job/run owner fields.
+  - Docker validation: `npm run build` passed with `PIBO_HOME=/workspace/.pibo/ralph-test-home` (only existing Vite chunk-size warnings); `node --test test/cron-schedule-store.test.mjs test/cron-store-lifecycle.test.mjs test/chat-cron-api.test.mjs` passed (20 tests); `npm run typecheck` passed.
+  - Real CLI/API evidence: built CLI temp-store tests exercise `pibo cron add --default-chat --json`, `pibo cron add --help` option output, and `pibo cron edit --room --json`; Chat Cron API tests exercise create/list/get/patch/delete paths, assert no owner/principal fields in returned jobs, and reject legacy personal-target payloads.
+  - Docker search evidence: targeted rg over `src/cron`, `src/apps/chat/cron-api.ts`, `src/apps/chat-ui/src/CronArea.tsx`, `src/apps/chat-ui/src/api-cron.ts`, and `src/apps/chat-ui/src/types.ts` for `--owner-scope`, `PIBO_OWNER_SCOPE`, `--personal`, `--principal-id`, `ownerScope`, `getOwnedJob`, and `principalId` returned no matches.
+  - Observed out-of-scope validation note: `node --test test/shared-app-artifact-search-gate.test.mjs` now fails only on `src/data/session-store.ts:4: owner-scope`, which is scheduled for later CLI/data compatibility cleanup; the previous Cron allowlist entry was removed.
+  - Evidence tier: Docker build/typecheck, focused Cron store/API/CLI tests, real built-CLI temp-store path, and targeted Cron source/UI/API search gate.
+  - Safety: all tests used Docker temp files or `/workspace/.pibo/ralph-test-home`; no migration inspect/dry-run/apply command was run against `/root/.pibo`; host `/root/.pibo`, host Dev/Production gateways, Production data, deploys, and PR creation were not touched.
+  - PRD update: US-017 set to `passes: true` with evidence notes. Next failing story: US-018 (`Remove Owner Scope from workflows package store and public types`).
+- 2026-06-01T18:42Z: US-017 implementation commit created: `6c37ae4 feat: US-017 - clean Cron owner surfaces`.
+- 2026-06-01T19:05Z: Selected story US-018 (`Remove Owner Scope from workflows package store and public types`) as the highest-priority `passes: false` story. Plan: (1) inspect `packages/workflows` public types, SQLite store schema/mappers/write values/contracts, runtime routing, inspection, and focused workflow tests for `ownerScope`, `owner_scope`, and owner-index usage; (2) remove `ownerScope` from `WorkflowRun` and workflow run list/filter/create/write contracts while preserving workflow/run ids, status, timestamps, inputs, outputs, trace events, and metadata; (3) rebuild fresh `workflow_runs` schema without `owner_scope` or owner indexes and add temp-file fixture coverage proving historical owner-scoped rows migrate to ownerless rows while preserving data; (4) update package tests and any compile callers for ownerless workflow run APIs while leaving runtime/inspection wording cleanup that belongs to US-019 for the next story if not part of public store types; (5) run focused `packages/workflows` tests, targeted search gates, `npm run typecheck`, and `npm run build` inside Docker; (6) update PRD/progress/insights and commit if evidence is complete.
+- 2026-06-01T19:55Z: Completed US-018 Workflow package store/public run contract ownerless conversion.
+  - Files changed: `packages/workflows/src/types/index.ts`, `packages/workflows/src/store/{contracts,index,row-mappers,schema,write-values}.ts`, `packages/workflows/src/inspection/index.ts`, `packages/workflows/src/runtime/{agent-runtime,one-node-agent,pibo-routing}.ts`, package workflow tests, `test/shared-app-fresh-schema.test.mjs`, PRD JSON, progress/insights.
+  - Implementation: removed `ownerScope` from `WorkflowRun`, `WorkflowRunListFilter`, workflow run row mappers, write values, `saveRun` SQL, and `listRuns` filtering. Fresh `workflow_runs` schema no longer creates `owner_scope` or `idx_workflow_runs_owner`. `SqliteWorkflowRunStore` rebuilds historical `workflow_runs` tables with `owner_scope` into ownerless tables on open while preserving run ids, workflow ids/versions/hash/snapshot ids, parent run/node attempt links, Pibo session/project links, environment, status/current cursor, input/output, state, checkpoint, and timestamps.
+  - Runtime compile bridge: workflow runtime/inspection paths no longer read `run.ownerScope`; routed session owner fallback from persisted run state was removed. Remaining workflow routing and prompt trace owner terminology is intentionally left for US-019.
+  - Docker validation: `cd packages/workflows && npm run typecheck` passed; `cd packages/workflows && npm run build` passed; `cd packages/workflows && npm run test` passed; `npm run typecheck` passed; `npm run build` passed with only existing Vite chunk-size warnings; `node --test test/shared-app-fresh-schema.test.mjs` passed.
+  - Docker search evidence: targeted gate `! rg -n "WorkflowRun.*ownerScope|WorkflowRunListFilter.*ownerScope|owner_scope TEXT|ON workflow_runs\\(owner_scope|owner_scope," packages/workflows/src/types/index.ts packages/workflows/src/store/contracts.ts packages/workflows/src/store/index.ts packages/workflows/src/store/row-mappers.ts packages/workflows/src/store/write-values.ts packages/workflows/src/store/schema.ts` passed with no output. Broader package matches now belong to US-019 routing/prompt cleanup or migration fixture assertions.
+  - Evidence tier: Docker package typecheck/build/test, root typecheck/build, shared fresh-schema regression, temp-file workflow schema migration fixture, and targeted source/schema search gate.
+  - Safety: all fixtures used Docker temp files or `/workspace/.pibo/ralph-test-home`; no migration inspect/dry-run/apply command was run against `/root/.pibo`; host `/root/.pibo`, host Dev/Production gateways, Production data, deploys, and PR creation were not touched.
+  - PRD update: US-018 set to `passes: true` with evidence notes. Next failing story: US-019 (`Clean workflow runtime, routing, inspection, and prompts`).
+- 2026-06-01T19:58Z: US-018 implementation commit created: `b9ecf3c feat: US-018 - remove workflow run owner scope`.
+- 2026-06-01T20:10Z: Selected story US-019 (`Clean workflow runtime, routing, inspection, and prompts`) as the highest-priority `passes: false` story. Plan: (1) inspect workflow runtime/routing/inspection/prompt trace code and focused workflow tests for remaining `ownerScope`, owner routing policy, and inspection owner output; (2) remove workflow runtime/routing owner propagation and replace prompt trace privacy terminology with neutral app/run wording without adding a replacement owner; (3) update workflow inspection output/tests and routing tests so real/integration workflow run inspection shows no owner fields; (4) run focused `packages/workflows` runtime/inspection tests and targeted package search gates inside Docker; (5) run package/root typecheck and build as needed inside Docker; (6) update PRD notes/progress/insights and commit if evidence is complete.
+- 2026-06-01T20:55Z: Completed US-019 workflow runtime/routing/inspection/prompt cleanup.
+  - Files changed: `packages/workflows/src/types/index.ts`, `packages/workflows/src/runtime/pibo-routing.ts`, `packages/workflows/src/runtime/agent-runtime.ts`, `packages/workflows/src/runtime/prompts.ts`, focused package workflow runtime/inspection tests, PRD JSON, progress/insights.
+  - Implementation: removed `ownerScope` from workflow routing public contracts (`SessionRoutingPolicy`, `PiboWorkflowSession`, `PiboWorkflowSessionCreateInput`) and stopped workflow runtime metadata/session creation from propagating an owner value. Routed workflow agent sessions now carry parent, project, room, channel, and workflow run/node metadata only. Renamed recorded prompt trace privacy kind from the owner terminology to neutral `workflowRun` while retaining node-attempt storage and redaction metadata.
+  - Inspection evidence: `workflow-run-inspection.test.ts` now validates a persisted/reopened workflow inspection object and formatted output contain no owner keys or owner lines while preserving run/session/project/status/checkpoint/event facts.
+  - Docker validation: focused package runtime/inspection test run passed; `cd packages/workflows && npm run typecheck && npm run build && npm run test` passed (139 tests); root `npm run typecheck` passed; root `npm run build` passed with only existing Vite chunk-size warnings.
+  - Docker search evidence: targeted gate over package workflow runtime/types/inspection and updated tests for `ownerScope`, `kind: "ownerScope"`, `principalId`, `shared:app`, workflow routing owner contracts, and Pibo workflow session owner fields passed with no output.
+  - Evidence tier: Docker package typecheck/build/test, root typecheck/build, focused workflow runtime/inspection tests, real persisted SQLite workflow inspection path, and targeted source/test search gate.
+  - Safety: no migration inspect/dry-run/apply command was run; host `/root/.pibo`, host Dev/Production gateways, Production data, deploys, and PR creation were not touched.
+  - PRD update: US-019 set to `passes: true` with evidence notes. Next failing story: US-020 (`Remove owner model from CLI session source contracts`).
+- 2026-06-01T20:58Z: US-019 implementation commit created: `c8bed5a feat: US-019 - clean workflow owner routing`.
+
+- 2026-06-01T21:10Z: Selected story US-020 (`Remove owner model from CLI session source contracts`) as the highest-priority `passes: false` story. Plan: (1) inspect CLI session source contracts, fake/local implementations, session-ui view models, root recovery naming, and focused tests for `CliOwnerSummary`, `getActiveOwner`, `setActiveOwner`, `listOwners`, `ownerSummaries`, owner mismatch, and recovery owner concepts; (2) remove owner-selection methods and payload fields from the session source contract and implementations while keeping app-global room/session flows by resource id; (3) rename root recovery owner concepts to neutral recovery source/mode names where still needed; (4) update focused CLI/session-ui tests and search gates for ownerless contracts; (5) run focused tests plus `npm run typecheck` and `npm run build` inside Docker; (6) update PRD/progress/insights and commit if evidence is complete.
+- 2026-06-01T21:55Z: Completed US-020 CLI session source owner-model removal.
+  - Files changed: `src/cli-session/sessionSource.ts`, `src/cli-session/fakeSessionSource.ts`, `src/cli-session/localSessionSource.ts`, `src/apps/cli-ui/cliSessionsCommand.ts`, `src/apps/cli-ui/InkSessionApp.ts`, `src/cli.ts`, `test/cli-session-source.test.mjs`, `test/ink-cli-v2-current-state.test.mjs`, PRD JSON, progress/insights.
+  - Implementation: removed `CliOwnerSummary`, `getActiveOwner`, `setActiveOwner`, `listOwners`, `ownerSummaries`, owner-scoped room/session filters, `ownerScope` create/list/slash command inputs, active owner status fields, and fake-source session owner mismatch behavior from the CLI session source contracts and implementations. `LocalCliSessionSource` now lists app-global rooms/sessions, creates sessions in a neutral shared default room (`room_cli_default`), writes Chat navigation/message read models without owner fields, and exposes neutral `repairLegacyCliSessions` output. Root recovery owner constants were renamed to neutral local recovery source constants. `pibo tui:sessions` source setup no longer accepts `--owner-scope` or mocked owner fixtures.
+  - Scope note: `InkSessionApp` still contains owner-picker UI compatibility and is temporarily `ts-nocheck` because US-021 owns full TUI owner-picker/header/command removal. The selected source contract no longer exposes those owner methods or fields, and US-021 should remove the UI compatibility shim rather than preserving it.
+  - Docker validation: `npm run build` passed with `PIBO_HOME=/workspace/.pibo/ralph-test-home`; `node --test test/cli-session-source.test.mjs test/session-ui-view-models.test.mjs test/ink-cli-v2-current-state.test.mjs` passed; `npm run typecheck` passed.
+  - Docker search evidence: targeted source gate `! rg -n "CliOwnerSummary|getActiveOwner\(|setActiveOwner\(|listOwners\(|ownerSummaries|activeOwnerScope|activeOwnerLabel|session_owner_mismatch|Root recovery owner|selected owner|owner mismatch|ownerScope" src/cli-session src/apps/cli-ui/cliSessionsCommand.ts` passed with no output.
+  - Evidence tier: Docker build/typecheck, focused fake/local CLI source tests, shared session-ui regression, current Ink CLI state regression, and targeted source search gate.
+  - Safety: all validation used Docker temp files or `/workspace/.pibo/ralph-test-home`; no migration inspect/dry-run/apply command was run; host `/root/.pibo`, host Dev/Production gateways, Production data, deploys, and PR creation were not touched.
+  - PRD update: US-020 set to `passes: true` with evidence notes. Next failing story: US-021 (`Remove owner picker and owner status from Ink TUI`).
+- 2026-06-01T22:05Z: US-020 implementation commit created: `ed7e896 feat: US-020 - remove CLI session owner contracts`.
+- 2026-06-01T22:20Z: Selected story US-021 (`Remove owner picker and owner status from Ink TUI`) as the highest-priority `passes: false` story. Plan: (1) inspect Ink TUI/session-ui source, `tui:sessions` CLI wiring, PTY tests, and current docs/PRD inventory for remaining owner picker/status/command surfaces; (2) remove `/owner`, owner picker state/components, active-owner header/status text, owner-specific room/session copy, and the temporary `ts-nocheck` compatibility shim from `InkSessionApp`; (3) ensure `pibo tui:sessions` CLI help/env setup exposes no owner-scope or mocked-owner options and shared session-ui descriptors remain app/source/room/session based; (4) update focused Ink/TUI/session-ui tests and add/adjust PTY validation for open/create/select/send path without an owner picker; (5) run focused tests, PTY check, targeted search gates, `npm run typecheck`, and `npm run build` inside Docker; (6) update PRD notes/progress/insights and commit if evidence is complete.
+- 2026-06-01T22:55Z: Completed US-021 Ink TUI owner picker/status removal.
+  - Files changed: `src/apps/cli-ui/InkSessionApp.ts`, `src/apps/cli-ui/InkTerminalRow.ts`, `src/apps/cli-ui/cliSessionsCommand.ts`, `src/session-ui/{commandCatalog,index,roomSessionViewModel,statusViewModel,terminalCards}.ts`, removed `src/session-ui/ownerViewModel.ts`, updated `scripts/ink-cli-v2-pty-smoke.mjs`, focused CLI/session-ui/PTI tests, `docs/reports/ink-cli-v2-pty-smoke-scenarios.md`, PRD JSON, progress/insights.
+  - Implementation: deleted the local Ink owner picker model (`CliOwnerSummary`, active-owner state, owner picker item/state variants, `skipOwnerPicker`, owner helper functions, selected-owner startup flow, `/owner` command handling, owner-specific room/session picker titles, owner status/header fields, owner command-status payload fields, and `session_owner_mismatch` recovery). Startup now opens the app-global room picker directly unless an explicit session id is supplied. `/new`, `/room`, and `/session` use app-global room/session ids only; `/profile` opens the existing agent/profile picker; repair uses neutral `repairLegacyCliSessions({ roomId })`.
+  - Shared view models: removed exported `ownerViewModel`, stripped owner fields from room/session picker descriptors, status view model input/output, terminal status card mapping, and Ink status card summaries.
+  - CLI/help/automation: removed `--owner-scope` from `pibo tui:sessions` help. Updated the reusable PTY smoke scenario from owner-room-session to `room-session-message` and removed `PIBO_DEBUG_PTY_CLI_SESSIONS_OWNERS`/`--owner-scope` from those active automation paths.
+  - Docker validation: `npm run build >/tmp/pibo-build-us021.log && node --test test/session-ui-view-models.test.mjs test/cli-ui-ink-renderer.test.mjs test/cli-ui-session-app.test.mjs test/ink-cli-v2-current-state.test.mjs test/ink-cli-v2-pty-smoke.test.mjs && npm run typecheck` passed with `PIBO_HOME=/workspace/.pibo/ralph-test-home`.
+  - Real PTY evidence: `node scripts/ink-cli-v2-pty-smoke.mjs --scenario room-session-message --artifact-root /workspace/.tmp/us021-pty-final` passed inside the Docker worker. The PTY selected a room, created a session, sent `Smoke message`, received `Smoke assistant reply`, and showed `Message sent` without an owner picker.
+  - Search evidence: targeted Docker gate over active CLI/TUI/session-ui source, smoke automation, and focused tests found no `CliOwnerSummary`, `buildOwnerPickerDescriptor`, `getActiveOwner(`, `setActiveOwner(`, `listOwners(`, `activeOwner`, owner picker/selected-owner text, `session_owner_mismatch`, `--owner-scope`, `PIBO_DEBUG_PTY_CLI_SESSIONS_OWNERS`, `Personal Chat`, or `ownerScope` matches.
+  - Evidence tier: Docker build/typecheck, focused Ink/session-ui tests, built CLI help check, targeted source/test search gates, and real PTY-backed TUI flow in Docker.
+  - Safety: all validation used Docker temp files or `/workspace/.pibo/ralph-test-home`; no migration inspect/dry-run/apply command was run; host `/root/.pibo`, host Dev/Production gateways, Production data, deploys, and PR creation were not touched.
+  - PRD update: US-021 set to `passes: true` with evidence notes. Next failing story: US-022 (`Create final owner-scope cutover migration inspect and dry-run for isolated homes`).
+- 2026-06-01T22:58Z: US-021 implementation commit created: `1d45c68 feat: US-021 - remove Ink TUI owner picker`.
+- 2026-06-01T23:10Z: Selected story US-022 (`Create final owner-scope cutover migration inspect and dry-run for isolated homes`) as the highest-priority `passes: false` story. Plan: (1) inspect existing data CLI/migration helpers and active legacy-column rebuild helpers for reusable table/merge rules; (2) add an operator-only final cutover migration command with `inspect` and `dry-run` modes that requires an explicit isolated `--root`, reports affected DB files/tables/columns/indexes/row counts/legacy values/conflicts without secrets, and refuses `/root/.pibo`; (3) keep historical Owner Scope vocabulary isolated to the final cutover migration module and tests; (4) add Docker temp-home fixture tests covering inspect/dry-run reports and the `/root/.pibo` safety refusal; (5) run focused migration command tests plus `npm run typecheck` and `npm run build` inside Docker; (6) update PRD/progress/insights and commit if evidence is complete.
+- 2026-06-01T23:55Z: Completed US-022 final cutover inspect/dry-run command.
+  - Files changed: `src/data/final-app-space-cutover-migration.ts`, `src/data/cli.ts`, `test/final-app-space-cutover-migration.test.mjs`, PRD JSON, progress/insights.
+  - Implementation: added `pibo data final-cutover inspect|dry-run` as an operator-only preview path for isolated SQLite homes. The command requires `--root` or `PIBO_MIGRATION_SANDBOX_HOME`, refuses `/root/.pibo` and paths under it, opens known affected DBs read-only, and reports affected files, tables, legacy columns/indexes, row counts, redacted legacy values, conflict groups, and unresolved blockers. Dry-run adds planned table rebuild/drop/merge/rename/default-chat-normalization actions without writes.
+  - Conflict/decision coverage: duplicate default Chat rooms, duplicate `session_navigation` rows, duplicate Custom Agent `profile_name` groups with redacted keys, and legacy Ralph/Cron personal/principal targets normalized to `default-chat` for the future apply story.
+  - Focused Docker validation: `npm run build >/tmp/us022-build.log && node --test test/final-app-space-cutover-migration.test.mjs && npm run typecheck` passed with `PIBO_HOME=/workspace/.pibo/ralph-test-home`; reran `node --test test/final-app-space-cutover-migration.test.mjs` and all 4 tests passed, covering inspect, dry-run, no-write behavior, redaction, CLI JSON, sandbox/env requirements, and `/root/.pibo` refusal.
+  - Docker migration sandbox evidence: worker-local `node dist/bin/pibo.js data final-cutover inspect --root "$PIBO_MIGRATION_SANDBOX_HOME" --json` and `dry-run` wrote `/tmp/us022-inspect.json` and `/tmp/us022-dry-run.json`; parser summary showed sandbox inspect totals `{databases:8, affectedDatabases:6, legacyColumns:19, legacyIndexes:15, legacyRows:4349, conflictGroups:1, plannedActions:0, unresolvedBlockers:0}` and sandbox dry-run totals `{databases:8, affectedDatabases:6, legacyColumns:19, legacyIndexes:15, legacyRows:4349, conflictGroups:1, plannedActions:20, unresolvedBlockers:0}`.
+  - Evidence tier: Docker build/typecheck, focused temp-fixture migration command tests, real built-CLI JSON inspect/dry-run against temp fixtures, and read-only inspect/dry-run against the Docker migration sandbox.
+  - Safety: all inspect/dry-run validation used Docker temp fixture roots or `/workspace/.pibo/ralph-migration-sandbox`; no apply command was implemented or run; host `/root/.pibo`, host Dev/Production gateways, Production data, deploys, and PR creation were not touched.
+  - PRD update: US-022 set to `passes: true` with evidence notes. Next failing story: US-023 (`Implement final owner-scope cutover migration apply for Docker test databases only`).
+- 2026-06-01T23:58Z: US-022 implementation commit created: `9767288 feat: US-022 - add final cutover dry-run`.
+- 2026-06-01T23:59Z: Selected story US-023 (`Implement final owner-scope cutover migration apply for Docker test databases only`) as the highest-priority `passes: false` story. Plan: (1) inspect the existing final-cutover migration module/CLI/tests from US-022 and schema rebuild helpers for affected stores; (2) implement an `apply` mode that requires an explicit isolated root plus verified backup path, refuses `/root/.pibo`, refuses unresolved blockers, runs per-database transactional rebuild/drop/merge actions, is idempotent, runs row-count and `PRAGMA quick_check` post-checks, and writes a migration report with rollback instructions; (3) add Docker temp-home fixture tests for apply, idempotency, backup verification failure/refusal, unresolved conflict refusal where practical, report contents, rollback instructions, and no-host-root safety; (4) validate only in the Docker worker against temp fixture DBs and, if safe and bounded, a copied Docker sandbox clone, never host `/root/.pibo`; (5) run focused migration tests plus `npm run typecheck` and `npm run build` inside Docker; (6) update PRD/progress/insights and commit if evidence is complete.
+- 2026-06-01T23:59Z: Completed US-023 final cutover apply for Docker fixture databases.
+  - Files changed: `src/data/final-app-space-cutover-migration.ts`, `src/data/cli.ts`, `test/final-app-space-cutover-migration.test.mjs`, PRD JSON, progress/insights.
+  - Implementation: added `pibo data final-cutover apply` as a backup-gated isolated-root mutation path. Apply requires `--backup`, verifies backup copies for each existing affected SQLite DB with read-only `PRAGMA quick_check`, refuses backups inside the target root, and keeps the existing refusal for `/root/.pibo` and descendants. Apply refuses unresolved inspect blockers before writes.
+  - Migration behavior: per-database `BEGIN IMMEDIATE` transactions apply the dry-run decisions, including Chat duplicate default-room cleanup, duplicate session-navigation merge by newest row, principal read-state merge into app read-state, membership/principal-stat table drops, Custom Agent deterministic duplicate profile rename, Ralph/Cron personal/principal target normalization to `default-chat`, and generic owner/principal column rebuilds for affected DBs. Post-apply checks record row counts, `PRAGMA quick_check`, and a JSON report with rollback instructions under `<root>/migration-reports/`.
+  - Docker validation: `npm run build >/tmp/us023-build2.log && node --test test/final-app-space-cutover-migration.test.mjs && npm run typecheck` passed with `PIBO_HOME=/workspace/.pibo/ralph-test-home`. The focused test file covers inspect, dry-run, apply, idempotency, missing backup refusal, host-root refusal, report persistence, no legacy columns/tables/indexes after apply, Chat merge/read-state results, Custom Agent rename, Ralph/Cron target normalization, and built CLI inspect/dry-run/apply JSON paths.
+  - Evidence tier: Docker build/typecheck plus focused temp-fixture migration apply/idempotency/rollback-report tests and real built-CLI JSON apply path against temp roots.
+  - Safety: apply validation used only Docker temp fixture homes and temp backup directories. No apply was run against host `/root/.pibo`, the copied host backup, or Production; host Dev/Production gateways, deploy scripts, and PR creation were not touched.
+  - PRD update: US-023 set to `passes: true` with evidence notes. Next failing story: US-024 (`Remove temporary runtime compatibility for fresh ownerless test schemas`).
+- 2026-06-01T23:59Z: US-023 implementation commit created: `ad5d647 feat: US-023 - add final cutover apply`.
+- 2026-06-02T00:10Z: Selected story US-024 (`Remove temporary runtime compatibility for fresh ownerless test schemas`) as the highest-priority `passes: false` story. Plan: (1) search active runtime/source for remaining `owner_scope`, `principal_id`, `shared:app`, and `legacyOwnerScopeForPreCutoverSchemas` compatibility outside the isolated final cutover migration module/tests/docs; (2) remove normal runtime read/write/rebuild branches that support old owner/principal columns now that fresh ownerless schemas and final cutover tooling exist, keeping old-column knowledge only in `src/data/final-app-space-cutover-migration.ts` and targeted migration tests; (3) update focused tests so historical compatibility expectations move to final-cutover fixtures or are removed from active store tests; (4) run fresh-home regression tests for creating sessions, rooms, agents, projects, annotations, Ralph, Cron, and workflows inside Docker; (5) run targeted search gates plus `npm run typecheck` and `npm run build` inside Docker; (6) update PRD/progress/insights and commit if evidence is complete.
+- 2026-06-02T01:05Z: Completed US-024 runtime compatibility removal for fresh ownerless schemas.
+  - Files changed: removed `src/owner-scope-compat.ts`, removed old `src/data/shared-app-migration.ts`, removed obsolete `test/data-shared-app-migration.test.mjs`, updated normal runtime stores/settings/debug/compute/workflow source, removed active shared-app/unread-baseline data CLI surfaces, added `test/ownerless-fresh-runtime-regression.test.mjs`, and updated PRD JSON/progress/insights.
+  - Implementation: normal runtime code no longer imports the pre-cutover compatibility helper or writes/detects/rebuilds old product `owner_scope`/`principal_id` columns. Constructor-time owner-column rebuilds were removed from Pibo session store, pibo.sqlite session upserts, Custom Agents, Projects/workflow snapshots, Workflow UI persistence, Web Annotations, Ralph, Cron, and `packages/workflows` run schema installation. User settings are now stored as one app-level settings object and Chat/runtime callers no longer pass a synthetic storage owner. Debug session summaries no longer project `owner_scope`. Compute worker technical labels were renamed from ownerScope to holder to avoid active product vocabulary confusion.
+  - Migration boundary: the only active TypeScript source that still contains final-removal legacy vocabulary is `src/data/final-app-space-cutover-migration.ts`; old shared-app normalization CLI/module was deleted so future legacy data handling uses final-cutover inspect/dry-run/apply only.
+  - Docker validation: `npm run typecheck` passed with `PIBO_HOME=/workspace/.pibo/ralph-test-home`; `npm run build` passed with only existing Vite chunk-size warnings; `cd packages/workflows && npm run typecheck && npm run build && npm run test` passed; `node --test test/ownerless-fresh-runtime-regression.test.mjs test/shared-app-fresh-schema.test.mjs test/data-cli.test.mjs test/final-app-space-cutover-migration.test.mjs` passed (8 tests).
+  - Docker fresh runtime evidence: `test/ownerless-fresh-runtime-regression.test.mjs` creates a fresh Pibo Session, Chat room/navigation row, Custom Agent, Project, Web Annotation, Ralph job, Cron job, and Workflow run under a temp Docker root and recursively asserts returned records do not expose `ownerScope` or `principalId`.
+  - Docker search evidence: targeted gate `! rg -n "owner_scope|principal_id|shared:app|legacyOwnerScopeForPreCutoverSchemas|ownerScope" src packages --glob "*.ts" --glob "!src/data/final-app-space-cutover-migration.ts"` passed with no output, and a second gate confirmed no `shared-app` migration command/source remains outside the final cutover module.
+  - Evidence tier: Docker typecheck/build, package workflow typecheck/build/test, focused fresh-runtime regression, final-cutover fixture regression, data CLI inventory regression, fresh-schema regression, and targeted source search gates.
+  - Safety: no migration inspect/dry-run/apply command was run against `/root/.pibo`; no host/Production DB, host Dev/Production gateway, deploy script, or PR creation was touched.
+  - PRD update: US-024 set to `passes: true` with evidence notes. Next failing story: US-025 (`Update current docs, glossary, skills, and help text`).
+- 2026-06-02T01:08Z: US-024 implementation commit created: `895ef04 feat: US-024 - remove runtime owner compatibility`.
+- 2026-06-01T09:23Z: Selected story US-025 (`Update current docs, glossary, skills, and help text`) as the highest-priority `passes: false` story. Plan: (1) inspect current docs, glossary, skills, and active CLI/tool help sources for remaining Owner Scope / Principal / personal-owner wording after US-024; (2) rewrite current canonical docs and help to describe the final one-app-space model and move/archive superseded active-model specs or plans to `docs/legacy` where they are historical; (3) keep final-cutover PRD/plan/report materials clearly marked as historical/removal evidence rather than active behavior; (4) run the docs/current-root vocabulary gate and focused help/search checks inside Docker, then `npm run typecheck`; (5) update US-025 notes, progress, and insights with exact files and evidence, then commit if complete.
+- 2026-06-01T09:35Z: Completed US-025 current docs/help cleanup.
+  - Files changed: `GLOSSARY.md`, `scripts/legacy-product-vocabulary-gate.mjs`, `test/legacy-product-vocabulary-gate.test.mjs`, `skills/builtin/ralph-loop/SKILL.md`, `skills/builtin/web-annotations/SKILL.md`, `src/tools/guides.ts`, current capability/project docs, archived historical docs under `docs/legacy/`, `docs/reports/final-owner-scope-current-docs-cleanup-us-025.md`, PRD JSON, progress/insights.
+  - Implementation: updated current glossary/capability/project docs and active skill/help text to describe the final one-app-space model. Archived superseded plans/specs/coverage docs that taught older account-partition, personal-target, or pre-final compatibility behavior under `docs/legacy/`. Updated the product vocabulary gate to temporarily allow only `docs/legacy/**`, the final-removal implementation docs, and the isolated final cutover migration module.
+  - Docker validation: `npm run build >/tmp/us025-build.log && node --test test/legacy-product-vocabulary-gate.test.mjs test/shared-app-artifact-search-gate.test.mjs && node scripts/legacy-product-vocabulary-gate.mjs --roots GLOSSARY.md,docs/project,docs/specs,docs/plans,skills,src/tools/guides.ts --json >/tmp/us025-doc-gate-final.json && npm run typecheck` passed with `PIBO_HOME=/workspace/.pibo/ralph-test-home`. Build emitted only existing Vite chunk-size warnings.
+  - Docker docs/help gate evidence after PRD note update: docs/help scan over `GLOSSARY.md`, `docs/project`, `docs/specs`, `docs/plans`, `skills`, and `src/tools/guides.ts` reported 0 failures, 511 allowed matches, 180 scanned files, with allowed matches only in the three final-removal implementation docs (`docs/plans/final-owner-scope-removal-umbauplan-2026-05-31.md`, text PRD, and PRD JSON).
+  - Real help evidence: built `pibo tools guide ralph ralph` and `pibo tools guide web-annotations web-annotations` output contained no `ownerScope`, `owner_scope`, `owner-scope`, `--owner-scope`, `principalId`, `personal target`, `Personal Chat`, or `owner scope` wording.
+  - Evidence tier: Docker build/typecheck, focused gate tests, current-docs search gate, and built CLI guide output checks.
+  - Safety: no migration inspect/dry-run/apply command was run against `/root/.pibo`; host `/root/.pibo`, host Dev/Production gateways, Production data, deploys, and PR creation were not touched.
+  - PRD update: US-025 set to `passes: true` with evidence notes. Next failing story: US-026 (`Run full Docker validation on ownerless fresh test databases`).
+- 2026-06-01T09:38Z: US-025 implementation commit created: `b43e1c3 docs: US-025 - update ownerless docs and help`.
+- 2026-06-02T01:20Z: Selected story US-026 (`Run full Docker validation on ownerless fresh test databases`) as the highest-priority `passes: false` story. Plan: (1) reset only the Docker worker fresh test home `/workspace/.pibo/ralph-test-home` and confirm `/root/.pibo`/host gateways are not targeted; (2) run full Docker validation through `.pibo/ralph-worker.sh`: `npm run typecheck`, `npm run build`, `npm test`, and focused fresh-schema assertions; (3) capture schema/search/test evidence in a validation report under `docs/reports/`; (4) update US-026 PRD notes, progress, and insights with exact commands/results; (5) commit documentation/report updates if validation passes. No source behavior changes planned.
+- 2026-06-02T02:05Z: Completed US-026 full Docker validation on ownerless fresh test databases.
+  - Files changed: stale/obsolete test expectations updated for the post-US-024 ownerless runtime (`test/agent-store.test.mjs`, `test/base-prompt-web.test.mjs`, `test/compute-resource-policy.test.mjs`, `test/cron-schedule-store.test.mjs`, `test/ink-cli-terminal-design-contract.test.mjs`, `test/ink-cli-terminal-rendering-parity-final.test.mjs`, `test/performance-optimizations.test.mjs`, `test/project-service-workflow-link.test.mjs`, `test/ralph-resource-metadata.test.mjs`, `test/session-store.test.mjs`, `test/subagents.test.mjs`, `test/terminal-parity-fixtures.test.mjs`, `test/web-annotations-store.test.mjs`, `test/web-channel.test.mjs`, `test/workflow-v2-traceability-checklist.test.mjs`), plus `docs/reports/final-owner-scope-full-docker-validation-us-026.md`, PRD JSON, progress/insights.
+  - Test maintenance: removed or rewrote tests that still expected normal runtime stores to migrate historical owner/principal columns after US-024 removed runtime compatibility; those historical migration assertions now belong to `test/final-app-space-cutover-migration.test.mjs`. Updated compute tests from technical `ownerScope` labels to `holder`; user-settings tests to app-level settings storage; Ink/TUI tests to the ownerless `room-session-message` PTY scenario and archived historical-doc paths; workflow audit expectations to auth audit ids rather than product owners.
+  - Docker validation: reset only `/workspace/.pibo/ralph-test-home`, then ran through `.pibo/ralph-worker.sh` with `PIBO_HOME=/workspace/.pibo/ralph-test-home`: `npm run typecheck` passed; `npm run build` passed with only existing Vite chunk-size warnings; `npm test` passed with 895 tests / 4 suites / 895 pass / 0 fail; `node --test test/shared-app-fresh-schema.test.mjs test/ownerless-fresh-runtime-regression.test.mjs` passed with 2 tests / 0 fail.
+  - Fresh schema evidence: read-only Python SQLite inventory over `/workspace/.pibo/ralph-test-home` found zero forbidden product columns (`owner_scope`, `principal_id`) and zero forbidden membership/principal tables (`room_members`, `principal_session_stats`, `principal_room_stats`) across 6 fresh-home DBs: `pibo.sqlite`, `pibo-events.sqlite`, `pibo-ralph.sqlite`, `pibo-cron.sqlite`, `web-annotations.sqlite`, and `web-projects.sqlite`.
+  - Evidence tier: full Docker typecheck/build/npm test, explicit fresh ownerless schema/runtime tests, read-only fresh-home SQLite schema inventory, and validation report.
+  - Safety: no migration inspect/dry-run/apply command was run against `/root/.pibo`; no host/Production DB, host Dev/Production gateway, deploy script, or PR creation was touched.
+  - PRD update: US-026 set to `passes: true` with evidence notes. Next failing story: US-027 (`Validate migrated sandbox data through Docker Chat Web and CLI paths`).
+- 2026-06-02T02:12Z: US-026 implementation commit created: `e3d82c8 test: US-026 - validate ownerless fresh runtime`.
+- 2026-06-02T02:25Z: Selected story US-027 (`Validate migrated sandbox data through Docker Chat Web and CLI paths`) as the highest-priority `passes: false` story. Plan: (1) create a Docker temp copy of the migration sandbox plus a verified backup outside that copy, then run `pibo data final-cutover apply` only against the copy; (2) validate the migrated copy through worker-local Chat Web dev-auth/API paths for bootstrap, sidebar/session open/send, agents, projects, Ralph, Cron, workflows, and annotations where available; (3) run Docker PTY validation for the ownerless `tui:sessions` create/select/send path plus safe Ralph/Cron CLI JSON/help checks; (4) run focused migration/API/PTY/CLI validations and `npm run typecheck` inside Docker; (5) write a validation report, update PRD notes/progress/insights, and commit if evidence is complete. Host `/root/.pibo`, host gateways, host deploys, Production data, and PR creation remain out of scope.
+- 2026-06-02T03:05Z: Completed US-027 migrated sandbox Docker Chat Web/CLI validation.
+  - Files changed: `docs/reports/final-owner-scope-migrated-sandbox-validation-us-027.md`, PRD JSON, progress/insights.
+  - Migration apply evidence: copied `/workspace/.pibo/ralph-migration-sandbox` to `/workspace/.tmp/us027-migrated-home` and ran `node dist/bin/pibo.js data final-cutover apply --root /workspace/.tmp/us027-migrated-home --backup "$PIBO_MIGRATION_SANDBOX_HOME" --json` inside Docker only. Apply reported `appliedDatabases=6`, six `quick_check` `ok` results, and post-apply totals of 0 affected databases, 0 legacy columns/indexes/rows, 0 conflict groups, and 0 unresolved blockers.
+  - Migrated schema evidence: read-only SQLite inventory over the migrated copy found no forbidden `owner_scope`/`principal_id` product columns and no `room_members`, `principal_session_stats`, or `principal_room_stats` tables across 9 SQLite DBs.
+  - Chat Web/API evidence: started a worker-local dev-auth web gateway on `127.0.0.1:4791` with `PIBO_HOME=/workspace/.tmp/us027-migrated-home`; logged in through dev auth; fetched `/apps/chat/`; exercised bootstrap/sidebar/direct session open/session create/room detail/provider-free streaming fixture send, Agent list/create, Project list/create/bootstrap, Workflow catalog/picker, Ralph API list/create/get/runs, Cron API list/create/get/runs, and Web Annotation same-origin binding/submission/app list. Recursive payload checks found no `ownerScope`, `owner_scope`, `principalId`, or `principal_id` keys.
+  - CLI/PTY evidence: safe Ralph/Cron CLI JSON checks ran against the migrated copy and recursive scans found no owner/principal keys; help checks for `pibo ralph`, `pibo cron add`, and `pibo tui:sessions` found no removed owner/personal options or wording. PTY smoke `node scripts/ink-cli-v2-pty-smoke.mjs --scenario room-session-message --artifact-root /workspace/.tmp/us027-pty` passed inside Docker without an owner picker.
+  - Docker validation: `npm run typecheck` passed with `PIBO_HOME=/workspace/.pibo/ralph-test-home`.
+  - Evidence tier: Docker copied-sandbox apply, read-only migrated schema inventory, worker-local Chat Web dev-auth API path validation, safe migrated-home CLI JSON/help checks, PTY-backed TUI smoke, and typecheck.
+  - Safety: host `/root/.pibo`, host Dev/Production gateways, Production data, deploy scripts, migration apply against host data, and PR creation were not touched.
+  - PRD update: US-027 set to `passes: true` with evidence notes. Next failing story: US-028 (`Prepare Docker-only deployment validation and manual production cutover runbook`).
+- 2026-06-02T03:20Z: Selected story US-028 (`Prepare Docker-only deployment validation and manual production cutover runbook`) as the highest-priority `passes: false` story. Plan: (1) inspect existing deploy/gateway docs and final cutover reports for runbook details; (2) run lightweight Docker-only build/typecheck and worker-local web gateway start/restart validation against the fresh test home on an isolated port, with no host gateway/deploy action; (3) create a runbook/report documenting Docker-only validation results plus future manual Production prerequisites, backup/dry-run/apply/rollback/post-check steps, and the explicit stop-before-PR/cutover gate; (4) update PRD notes, progress, and insights with concrete evidence; (5) commit the US-028 docs/report if validation passes.
+- 2026-06-02T03:08Z: US-027 implementation commit created: `027561f test: US-027 - validate migrated sandbox paths`.
+- 2026-06-02T03:40Z: Completed US-028 Docker-only deployment validation and manual production cutover runbook.
+  - Files changed: `docs/reports/final-owner-scope-deploy-cutover-runbook-us-028.md`, PRD JSON, progress/insights.
+  - Docker validation: `npm run build >/tmp/us028-build.log && npm run typecheck >/tmp/us028-typecheck.log` passed inside the Docker worker with `PIBO_HOME=/workspace/.pibo/ralph-test-home`; build emitted only existing Vite chunk-size warnings.
+  - Worker-local gateway validation: started built `dist/gateway/web.js` with `devAuth: true` on container port `4788` / host-mapped worker web port `4832`, logged in through `/api/auth/sign-in/social`, verified `/api/auth/session`, fetched `/api/chat/bootstrap`, recursively checked for no `ownerScope`, `owner_scope`, `principalId`, or `principal_id` keys, stopped the process, restarted it on the same worker port, and repeated the checks successfully. Summary artifact: `/workspace/.tmp/us028-gateway/summary.json` with `restarted: true`, `rooms: 1` on both starts, and dev user `dev-user-001`.
+  - Report/runbook: added `docs/reports/final-owner-scope-deploy-cutover-runbook-us-028.md` documenting Docker-only validation, explicit non-actions, future manual PR/cutover gates, active-session safety, backup verification, inspect/dry-run review, apply approval, deploy/restart through Pibo CLI only, post-checks, rollback, and a post-cutover checklist for removing the temporary final cutover migration module if chosen.
+  - Report validation: Docker `node --input-type=module` check verified the report contains required sections for Docker validation, manual production runbook, backup/dry-run/apply gates, rollback, temporary migration cleanup, and the stop-before-real-cutover/PR checkpoint.
+  - Evidence tier: Docker build/typecheck, worker-local gateway start/restart with dev-auth API checks on the mapped worker port, report section validation, and manual runbook documentation.
+  - Safety: no host Dev or Production deploy script was run; no host Dev/Production gateway restart was run; no migration command targeted `/root/.pibo`; host `/root/.pibo`, Production data, and upstream PR creation were not touched.
+  - PRD update: US-028 set to `passes: true` with evidence notes. Next failing story: US-029 (`Final zero-regression sweep for active Owner Scope artifacts in Docker`).
+- 2026-06-02T03:45Z: US-028 implementation commit created: `aac62d6 docs: US-028 - add cutover runbook`.
+- 2026-06-02T04:05Z: Selected story US-029 (`Final zero-regression sweep for active Owner Scope artifacts in Docker`) as the highest-priority `passes: false` story. Plan: (1) inspect existing search-gate, full-validation, migrated-sandbox, and runbook evidence to reuse the safest Docker-only checks; (2) run the strict active-source product vocabulary gate and broader residual match inventory inside the Docker worker, documenting any allowed historical/migration-only matches; (3) run Docker CLI help checks for Ralph, Cron, `tui:sessions`, final-cutover data migration, and debug commands to ensure no active owner-scope guidance remains; (4) run worker-local Chat Web dev-auth API/JSON payload checks for bootstrap, agents, projects, workflows, Ralph, Cron, and Web Annotations with recursive no-owner-field assertions; (5) run full Docker `npm run typecheck`, `npm run build`, and `npm test`; (6) write a US-029 validation report, update PRD/progress/insights, and commit if every gate passes. Host `/root/.pibo`, host gateways, host deploys, Production data, and PR creation remain out of scope.
+- 2026-06-02T04:55Z: Completed US-029 final zero-regression sweep for active Owner Scope artifacts.
+  - Files changed: `scripts/legacy-product-vocabulary-gate.mjs`, `scripts/compute-limited-worker-smoke.mjs`, `src/apps/chat/event-log.ts`, `src/apps/chat/types/event-store.ts`, `src/cli-session/localSessionSource.ts`, `src/runs/registry.ts`, `src/tools/runtime/registry.ts`, `src/skills/pibo-debug-auth/SKILL.md`, `docs/reports/final-owner-scope-zero-regression-sweep-us-029.md`, PRD JSON, progress/insights.
+  - Cleanup: removed an unused Chat unread-count principal type/export, renamed technical runtime/run helper methods away from `getOwned`/`requireOwned` search-gate terms, renamed CLI legacy repair metadata away from OwnerScope wording, updated compute smoke metadata to `holder`, and rewrote Docker dev-auth skill copy to avoid teaching identity-owned product data.
+  - Search gate evidence: Docker `npm run --silent check:product-vocab -- --json` passed with 0 failures, 540 allowed matches, 683 scanned active-root files, and allowed paths limited to the final-removal implementation docs plus `src/data/final-app-space-cutover-migration.ts`. Focused gate tests `node --test test/legacy-product-vocabulary-gate.test.mjs test/shared-app-artifact-search-gate.test.mjs` passed (9 tests).
+  - CLI help evidence: built `pibo ralph --help`, `pibo ralph add --help`, `pibo cron --help`, `pibo cron add --help`, `pibo tui:sessions --help`, `pibo data final-cutover --help`, `pibo data final-cutover inspect --help`, `pibo debug --help`, and `pibo debug session --help` all returned zero removed owner/principal option or wording hits.
+  - API/JSON evidence: worker-local dev-auth gateway on `127.0.0.1:4792` with `PIBO_HOME=/workspace/.pibo/ralph-test-home` returned 200 for Chat bootstrap, agents, projects, projects bootstrap, workflows, Ralph, Cron, and Web Annotations; recursive JSON key scan found no `ownerScope`, `owner_scope`, `principalId`, or `principal_id` keys.
+  - Full Docker validation: `npm run typecheck` passed; `npm run build` passed with only existing Vite chunk-size warnings; `npm test` passed with 895 tests / 4 suites / 895 pass / 0 fail.
+  - Evidence tier: Docker active-root search gate, focused search-gate tests, built CLI help checks, worker-local API payload checks, full Docker typecheck/build/npm test, and validation report.
+  - Safety: no command targeted or mutated `/root/.pibo`; no host Dev/Production gateway restart, deploy script, Production migration/apply, Production data mutation, or upstream PR creation occurred.
+  - PRD update: US-029 set to `passes: true` with evidence notes. Next failing story: US-030 (`Stop for user review with PR-readiness and production cutover handoff`).
+- 2026-06-02T05:00Z: US-029 implementation commit created: `5ceae4d test: US-029 - final owner scope sweep`.
+- 2026-06-01T10:41Z: Selected story US-030 (`Stop for user review with PR-readiness and production cutover handoff`) as the highest-priority `passes: false` story. Plan: (1) verify all PRD stories except US-030 are passing and inspect current branch status/commits; (2) run final Docker gates needed for handoff (`npm run typecheck`, `npm run build`, `npm test`, and `npm run check:product-vocab`) using the fresh Docker test home; (3) create a final handoff report under `docs/reports/` summarizing story completion, commits, Docker validation, sandbox migration/API/browser/PTY evidence, known limitations, safety non-actions, draft PR body, and manual next-step commands; (4) update US-030 PRD notes, progress, and insights with concrete evidence; (5) commit the handoff materials and confirm the worktree is clean before returning for user review. No PR creation, host deploy/restart, or Production/host database migration will be performed.
+- 2026-06-01T10:45Z: Completed US-030 final review handoff.
+  - Files changed: `docs/reports/final-owner-scope-review-handoff-us-030.md`, PRD JSON, progress/insights.
+  - Handoff: created the final review report with story completion summary, primary validation report links, final Docker validation commands/results, migration/runtime evidence, remaining intentional exceptions, draft PR body, future human-approved PR commands, production cutover runbook pointer, and explicit stop-before-PR/cutover checkpoint.
+  - Docker validation: inside worker `pibo-dev-final-owner-scope-removal-ralph` with `PIBO_HOME=/workspace/.pibo/ralph-test-home`, ran `npm run --silent check:product-vocab -- --json`, `npm run typecheck`, `npm run build`, and `npm test`. Results: vocabulary gate passed with 0 failures, 551 allowed matches, 683 scanned files, allowed paths limited to final-removal implementation docs plus `src/data/final-app-space-cutover-migration.ts`; typecheck passed; build passed with only existing Vite chunk-size warnings; npm test passed with 895 tests / 4 suites / 895 pass / 0 fail.
+  - Evidence tier: final Docker active-root search gate, full Docker typecheck/build/npm test, handoff report, and prior linked fresh-home/migrated-sandbox/API/browser/PTY/gateway validation reports.
+  - Safety: host `/root/.pibo`, host Dev/Production gateways, Production data, deploy scripts, real migration apply, and upstream PR creation were not touched. The branch stops here for user review before PR creation or real database cutover.
+  - PRD update: US-030 set to `passes: true` with evidence notes; all 30 PRD JSON stories now pass.

@@ -40,7 +40,6 @@ export type WorkflowRunInspectionSummary = {
   workflowId: string;
   workflowVersion: string;
   status: WorkflowRun["status"];
-  ownerScope: string;
   piboSessionId?: string;
   projectId?: string;
   currentNodeId?: string;
@@ -121,7 +120,6 @@ export function formatWorkflowRunInspection(inspection: WorkflowRunInspection): 
     `run\t${summary.runId}`,
     `workflow\t${summary.workflowId}@${summary.workflowVersion}`,
     `status\t${summary.status}`,
-    `owner\t${summary.ownerScope}`,
   ];
   if (summary.piboSessionId) lines.push(`pibo_session\t${summary.piboSessionId}`);
   if (summary.projectId) lines.push(`project\t${summary.projectId}`);
@@ -159,7 +157,6 @@ function createInspectionSummary(
     workflowId: run.workflowId,
     workflowVersion: run.workflowVersion,
     status: run.status,
-    ownerScope: run.ownerScope,
     ...(run.piboSessionId ? { piboSessionId: run.piboSessionId } : {}),
     ...(run.projectId ? { projectId: run.projectId } : {}),
     ...(run.current.nodeId ? { currentNodeId: run.current.nodeId } : {}),

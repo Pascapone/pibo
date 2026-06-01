@@ -72,15 +72,15 @@ async function runRalphOnce({ resources, maxIterations, prompt = "work", finalAn
 		resourceCleanup: { browserPoolRootDir: join(dir, "pool"), releaseBrowserPoolLease },
 	});
 	try {
-		const job = store.createJob({ ownerScope: "user:a", target: { kind: "personal", principalId: "user:a" }, profile: "codex", prompt, enabled: true, maxIterations, resources });
-		const reserved = store.reserveRun("user:a", job.id);
+		const job = store.createJob({ target: { kind: "default-chat" }, profile: "codex", prompt, enabled: true, maxIterations, resources });
+		const reserved = store.reserveRun(job.id);
 		assert.ok(reserved);
 		const executing = service.executeReserved(reserved.job, reserved.run);
 		await controlled.waitForMessage();
 		await beforeFinish?.({ store, service, job, reserved, controlled });
 		if (finish) controlled.finish(finalAnswer);
 		await executing;
-		return { job: store.getJob(job.id), run: store.listRuns({ ownerScope: "user:a", jobId: job.id })[0], controlled };
+		return { job: store.getJob(job.id), run: store.listRuns({ jobId: job.id })[0], controlled };
 	} finally {
 		service.stop();
 		await rm(dir, { recursive: true, force: true });
@@ -141,7 +141,7 @@ test("Ralph stop request disables future runs and still cleans up after the acti
 		resources: { workerId: "worker-stop", browserLeaseIds: ["lease-stop"], cleanupState: "active" },
 		releaseBrowserPoolLease: createSuccessfulRelease(releases),
 		beforeFinish: async ({ store, job }) => {
-			const stopped = store.requestStop("user:a", job.id);
+			const stopped = store.requestStop(job.id);
 			assert.equal(stopped.enabled, false);
 		},
 	});
@@ -190,7 +190,7 @@ test("Ralph cancel request aborts the active session and releases browser leases
 		resources: { workerId: "worker-cancel", browserLeaseIds: ["lease-cancel"], cleanupState: "active" },
 		releaseBrowserPoolLease: createSuccessfulRelease(releases),
 		beforeFinish: async ({ service, job }) => {
-			const cancelled = await service.cancelJob("user:a", job.id);
+			const cancelled = await service.cancelJob(job.id);
 			assert.equal(cancelled.enabled, false);
 		},
 	});
@@ -209,7 +209,7 @@ test("Ralph cancel request marks resources dirty when abort cannot be sent", asy
 		contextOptions: { abortError: new Error("gateway unavailable") },
 		releaseBrowserPoolLease: createSuccessfulRelease([]),
 		beforeFinish: async ({ service, store, job }) => {
-			await service.cancelJob("user:a", job.id);
+			await service.cancelJob(job.id);
 			const dirty = store.getJob(job.id).resources;
 			assert.equal(dirty.cleanupState, "dirty");
 			assert.match(dirty.dirtyReason, /abort failed: gateway unavailable/);
@@ -238,13 +238,13 @@ test("Ralph timeout path still releases browser leases", async () => {
 test("Ralph interrupted-run recovery marks possible browser resources dirty", () => {
 	const store = new PiboRalphStore({ path: ":memory:" });
 	try {
-		const job = store.createJob({ ownerScope: "user:a", target: { kind: "personal", principalId: "user:a" }, profile: "codex", prompt: "work", enabled: true, resources: { workerId: "worker-interrupted", browserLeaseIds: ["lease-interrupted"], cleanupState: "active" } });
-		const reserved = store.reserveRun("user:a", job.id, new Date("2026-05-17T00:00:00.000Z"));
+		const job = store.createJob({ target: { kind: "default-chat" }, profile: "codex", prompt: "work", enabled: true, resources: { workerId: "worker-interrupted", browserLeaseIds: ["lease-interrupted"], cleanupState: "active" } });
+		const reserved = store.reserveRun(job.id, new Date("2026-05-17T00:00:00.000Z"));
 		assert.ok(reserved);
 
 		assert.equal(store.recoverInterruptedRuns(new Date("2026-05-17T00:10:00.000Z")), 1);
 		const recoveredJob = store.getJob(job.id);
-		const recoveredRun = store.listRuns({ ownerScope: "user:a", jobId: job.id })[0];
+		const recoveredRun = store.listRuns({ jobId: job.id })[0];
 		assert.equal(recoveredRun.status, "error");
 		assert.equal(recoveredRun.reason, "interrupted");
 		assert.equal(recoveredJob.resources.cleanupState, "dirty");

@@ -100,7 +100,7 @@ export function renderComputeWorkerListText(workers: WorkerInfo[], options: { al
 	}
 	const lines = ["NAME\tROLE\tSTATE\tSTATUS\tOOM\tPORTS\tCREATED\tLAST_USED\tOWNER\tWORKTREE\tRALPH_JOB\tRALPH_RUN\tRESOURCE\tCLEANUP"];
 	for (const w of workers) {
-		lines.push(`${w.name}\t${w.role}\t${w.state}\t${w.status}\t${w.oomKilled ? "yes" : "no"}\t${formatPorts(w, options.verbose === true)}\t${w.createdAt}\t${w.lastUsedAt ?? "-"}\t${w.ownerScope ?? "-"}\t${w.worktree ?? "-"}\t${w.ralphJobId ?? "-"}\t${w.ralphRunId ?? "-"}\t${formatResourcePolicy(w)}\t${formatCleanup(w)}`);
+		lines.push(`${w.name}\t${w.role}\t${w.state}\t${w.status}\t${w.oomKilled ? "yes" : "no"}\t${formatPorts(w, options.verbose === true)}\t${w.createdAt}\t${w.lastUsedAt ?? "-"}\t${w.holder ?? "-"}\t${w.worktree ?? "-"}\t${w.ralphJobId ?? "-"}\t${w.ralphRunId ?? "-"}\t${formatResourcePolicy(w)}\t${formatCleanup(w)}`);
 	}
 	lines.push(options.verbose ? "Next: pibo compute list --all --json" : "Next: pibo compute list --all --verbose for full Docker port bindings");
 	lines.push("Next: pibo compute list --all --json");
@@ -223,7 +223,7 @@ Next:
 		.command("spawn")
 		.description("Create a one-time worker from the current Docker image")
 		.option("--name <name>", "Set the container name")
-		.option("--owner <owner>", "Tag the container owner scope")
+		.option("--holder <holder>", "Tag the container holder")
 		.option("--ttl-seconds <n>", "Tag the worker TTL in seconds")
 		.option("--idle-seconds <n>", "Tag the worker idle retention in seconds")
 		.option("--ralph-job-id <id>", "Tag the Ralph job id when this worker is Ralph-owned")
@@ -237,7 +237,7 @@ Use this for quick isolated checks. For code changes, prefer:
   $ pibo compute dev spawn --worktree my-fix
 `,
 		)
-		.action(async (options: { name?: string; owner?: string; ttlSeconds?: string; idleSeconds?: string; ralphJobId?: string; ralphRunId?: string }) => {
+		.action(async (options: { name?: string; holder?: string; ttlSeconds?: string; idleSeconds?: string; ralphJobId?: string; ralphRunId?: string }) => {
 			await mkdir(path.dirname(HASH_FILE), { recursive: true });
 
 			const needsBuild = !(await imageExists(IMAGE_NAME)) || (await shouldRebuild(WORKSPACE_DIR, HASH_FILE));
@@ -251,7 +251,7 @@ Use this for quick isolated checks. For code changes, prefer:
 			const worker = await spawnWorker({
 				workspaceDir: WORKSPACE_DIR,
 				name: options.name,
-				owner: options.owner,
+				holder: options.holder,
 				ttlSeconds: parsePositiveIntegerOption(options.ttlSeconds),
 				idleSeconds: parsePositiveIntegerOption(options.idleSeconds),
 				ralphJobId: options.ralphJobId,
@@ -280,7 +280,7 @@ Next:
 		.description("Create a development worker with a Git worktree")
 		.requiredOption("--worktree <name>", "Name the Git worktree and branch")
 		.option("--repo <path>", "Use this repository", WORKSPACE_DIR)
-		.option("--owner <owner>", "Tag the container owner scope")
+		.option("--holder <holder>", "Tag the container holder")
 		.option("--ttl-seconds <n>", "Tag the worker TTL in seconds")
 		.option("--idle-seconds <n>", "Tag the worker idle retention in seconds")
 		.option("--ralph-job-id <id>", "Tag the Ralph job id when this worker is Ralph-owned")
@@ -294,7 +294,7 @@ Example:
   $ pibo compute dev spawn --worktree my-fix
 `,
 		)
-		.action(async (options: { worktree: string; repo: string; owner?: string; ttlSeconds?: string; idleSeconds?: string; ralphJobId?: string; ralphRunId?: string }) => {
+		.action(async (options: { worktree: string; repo: string; holder?: string; ttlSeconds?: string; idleSeconds?: string; ralphJobId?: string; ralphRunId?: string }) => {
 			await mkdir(path.dirname(DEP_HASH_FILE), { recursive: true });
 
 			console.error("[pibo compute] Checking Docker image status...");
@@ -313,7 +313,7 @@ Example:
 			const worker = await spawnDevWorker({
 				repoDir: options.repo,
 				worktreeName: options.worktree,
-				owner: options.owner,
+				holder: options.holder,
 				ttlSeconds: parsePositiveIntegerOption(options.ttlSeconds),
 				idleSeconds: parsePositiveIntegerOption(options.idleSeconds),
 				ralphJobId: options.ralphJobId,
@@ -353,7 +353,7 @@ Rebuilds from the current workspace and refreshes compute image hashes.
 		.addHelpText(
 			"after",
 			`
-Shows each worker's name, role, status, mapped ports, creation time, owner, and Ralph ownership when labeled.
+Shows each worker's name, role, status, mapped ports, creation time, holder, and Ralph labels when present.
 
 Next:
   $ pibo compute list --all --json

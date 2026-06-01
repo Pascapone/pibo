@@ -32,7 +32,7 @@ Bootstrap additionally loads catalog data through `loadBootstrapCatalog()`, incl
 - Owner-scoped session and room selection from `piboSessionId` and `roomId` query parameters.
 - Default room and default session creation when no session is requested.
 - Room-scoped visible session tree construction, archived filtering, unread counts, and signal status overlays.
-- Bootstrap catalog loading, caching, invalidation boundaries, owner-scope caveats, and response shape.
+- Bootstrap catalog loading, caching, invalidation boundaries, app-space caveats, and response shape.
 - Navigation endpoint omission of catalog data and heavy Pi metadata fallback.
 
 ### Out of Scope
@@ -104,7 +104,7 @@ The API MUST return session trees for the selected room, include the selected se
 
 #### Current
 
-`visibleSessionsInRoom()` filters owned sessions by selected room, maps legacy roomless sessions into the default room, adds the selected session if absent, and calls `visibleOwnedSessions()` with `includeArchived`.
+`visibleSessionsInRoom()` filters owned sessions by selected room, maps legacy roomless sessions into the default room, adds the selected session if absent, and calls `visibleSessionRecords()` with `includeArchived`.
 
 #### Target
 

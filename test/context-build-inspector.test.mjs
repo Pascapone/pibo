@@ -7,7 +7,6 @@ import { InitialSessionContext } from "../dist/core/profiles.js";
 import { inspectPiboContextBuild } from "../dist/core/context-build.js";
 import { createDefaultPiboProfile } from "../dist/plugins/builtin.js";
 import { createWebSearchToolProfile } from "../dist/tools/web-search.js";
-import { LEGACY_SHARED_APP_OWNER_SCOPE } from "../dist/shared-app.js";
 
 function findNode(nodes, predicate) {
 	for (const node of nodes) {
@@ -39,7 +38,6 @@ test("context build snapshot exposes runtime context and provider-backed web sea
 		cwd,
 		profile,
 		sessionContext: {
-			ownerScope: "user:user_test",
 			piboSessionId: "ps_test",
 			piboRoomId: "room_test",
 			timezone: "UTC",
@@ -73,28 +71,27 @@ test("context build snapshot exposes runtime context and provider-backed web sea
 	assert.deepEqual(providerPayload.payloadJson.openAiWebSearch.filters.allowed_domains, ["example.com"]);
 });
 
-test("runtime context is the same shared app context for different legacy owners", async () => {
+test("runtime context exposes shared app and resource ids without owner fields", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pibo-runtime-shared-context-"));
 	const profile = new InitialSessionContext({
 		profileName: "shared-context-test",
 		autoContextFiles: false,
 		builtinToolNames: ["read"],
 	});
-	const baseContext = {
-		piboSessionId: "ps_shared",
-		piboRoomId: "room_shared",
-		timezone: "UTC",
-	};
 
-	const [first, second] = await Promise.all([
-		inspectPiboContextBuild({ cwd, profile, sessionContext: { ...baseContext, ownerScope: "user:alpha" } }),
-		inspectPiboContextBuild({ cwd, profile, sessionContext: { ...baseContext, ownerScope: "user:beta" } }),
-	]);
-	const firstContext = findNode(first.nodes, (node) => node.path === "pibo://runtime/session-context.md");
-	const secondContext = findNode(second.nodes, (node) => node.path === "pibo://runtime/session-context.md");
+	const snapshot = await inspectPiboContextBuild({
+		cwd,
+		profile,
+		sessionContext: {
+			piboSessionId: "ps_shared",
+			piboRoomId: "room_shared",
+			timezone: "UTC",
+		},
+	});
+	const runtimeContext = findNode(snapshot.nodes, (node) => node.path === "pibo://runtime/session-context.md");
 
-	assert.equal(firstContext.hydratedText, secondContext.hydratedText);
-	assert.match(firstContext.hydratedText, /App context: shared-app/);
-	assert.doesNotMatch(firstContext.hydratedText, /user:alpha|user:beta|Owner scope|User ID/);
-	assert.equal(LEGACY_SHARED_APP_OWNER_SCOPE, "shared:app");
+	assert.match(runtimeContext.hydratedText, /App context: shared-app/);
+	assert.match(runtimeContext.hydratedText, /Pibo Session ID: ps_shared/);
+	assert.match(runtimeContext.hydratedText, /Pibo Room ID: room_shared/);
+	assert.doesNotMatch(runtimeContext.hydratedText, /ownerScope|Owner scope|legacyOwnerScope|User ID|Principal|user:/);
 });

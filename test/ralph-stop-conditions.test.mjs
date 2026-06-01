@@ -22,19 +22,19 @@ test("Ralph store persists stop policies, state, and run facts", () => {
 	const store = new PiboRalphStore({ path: ":memory:" });
 	try {
 		const stopPolicy = { mode: "any", conditions: [{ id: "fact", type: "pibo.ralph.fact-count", options: { factType: "git.commit.created" } }] };
-		const job = store.createJob({ ownerScope: "user:a", target: { kind: "personal", principalId: "user:a" }, profile: "codex", prompt: "work", stopPolicy });
+		const job = store.createJob({ target: { kind: "default-chat" }, profile: "codex", prompt: "work", stopPolicy });
 		assert.deepEqual(store.getJob(job.id).stopPolicy, stopPolicy);
-		const fact = store.appendRunFact({ ownerScope: "user:a", jobId: job.id, runId: "rrun_1", type: "git.commit.created", source: "plugin", payload: { sha: "abc" } });
+		const fact = store.appendRunFact({ jobId: job.id, runId: "rrun_1", type: "git.commit.created", source: "plugin", payload: { sha: "abc" } });
 		assert.equal(fact.type, "git.commit.created");
 		assert.equal(store.createFactReader(job).count({ type: "git.commit.created", runId: "rrun_1" }), 1);
-		const cleared = store.updateJob("user:a", job.id, { stopPolicy: null });
+		const cleared = store.updateJob(job.id, { stopPolicy: null });
 		assert.equal(cleared.stopPolicy, undefined);
 	} finally { store.close(); }
 });
 
 test("Ralph stop evaluator composes any, all, and stateful custom conditions", async () => {
 	const definitions = [{ type: "test.counter", name: "Counter", phases: ["after-run"], evaluate(context) { const count = Number(context.state.count ?? 0) + 1; return { action: count >= 2 ? "stop-after-run" : "continue", reason: count >= 2 ? "counter" : undefined, nextState: { count } }; } }];
-	const job = { id: "ralph_1", ownerScope: "user:a", name: "job", enabled: true, target: { kind: "personal", principalId: "user:a" }, profile: "codex", prompt: "work", stopPolicy: { mode: "any", conditions: [{ id: "counter", type: "test.counter" }] }, state: { completedIterations: 0 }, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+	const job = { id: "ralph_1", name: "job", enabled: true, target: { kind: "default-chat" }, profile: "codex", prompt: "work", stopPolicy: { mode: "any", conditions: [{ id: "counter", type: "test.counter" }] }, state: { completedIterations: 0 }, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
 	const facts = { list: () => [], count: () => 0 };
 	const first = await evaluateRalphStopPolicy({ job, phase: "after-run", definitions, facts });
 	assert.equal(first.evaluation.finalAction, "continue");
@@ -49,8 +49,8 @@ test("Ralph stop evaluator composes any, all, and stateful custom conditions", a
 test("Ralph max-iterations counts completed run attempts regardless of outcome", async () => {
 	const store = new PiboRalphStore({ path: ":memory:" });
 	try {
-		const job = store.createJob({ ownerScope: "user:a", target: { kind: "personal", principalId: "user:a" }, profile: "codex", prompt: "work", enabled: true, maxIterations: 1 });
-		const reserved = store.reserveRun("user:a", job.id);
+		const job = store.createJob({ target: { kind: "default-chat" }, profile: "codex", prompt: "work", enabled: true, maxIterations: 1 });
+		const reserved = store.reserveRun(job.id);
 		assert.ok(reserved);
 
 		store.completeRun({ jobId: job.id, runId: reserved.run.id, status: "error", error: "failed" });
@@ -63,7 +63,7 @@ test("Ralph max-iterations counts completed run attempts regardless of outcome",
 });
 
 test("Ralph max-iterations stop condition counts failed after-run outcomes", async () => {
-	const job = { id: "ralph_1", ownerScope: "user:a", name: "job", enabled: true, target: { kind: "personal", principalId: "user:a" }, profile: "codex", prompt: "work", maxIterations: 1, state: { completedIterations: 0 }, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+	const job = { id: "ralph_1", name: "job", enabled: true, target: { kind: "default-chat" }, profile: "codex", prompt: "work", maxIterations: 1, state: { completedIterations: 0 }, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
 	const facts = { list: () => [], count: () => 0 };
 	const result = await evaluateRalphStopPolicy({
 		job,
@@ -79,7 +79,7 @@ test("Ralph max-iterations stop condition counts failed after-run outcomes", asy
 });
 
 test("Ralph promise-complete condition requires marker on its own line", async () => {
-	const job = { id: "ralph_1", ownerScope: "user:a", name: "job", enabled: true, target: { kind: "personal", principalId: "user:a" }, profile: "codex", prompt: "work", state: { completedIterations: 0 }, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+	const job = { id: "ralph_1", name: "job", enabled: true, target: { kind: "default-chat" }, profile: "codex", prompt: "work", state: { completedIterations: 0 }, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
 	const facts = { list: () => [], count: () => 0 };
 	const inline = await evaluateRalphStopPolicy({ job, phase: "after-run", definitions: createBuiltInRalphStopConditions(), facts, outcome: { status: "ok", finalAnswer: `Kein ${PROMISE_COMPLETE_STOP_TOKEN}, da noch Arbeit offen ist.` } });
 	assert.equal(inline.evaluation.finalAction, "continue");
@@ -105,8 +105,8 @@ test("Ralph service preserves promise-complete and max-iteration stop behavior t
 	};
 	const service = new PiboRalphService({ store, context, dataStorePath: join(dir, "data.sqlite"), dataPayloadRootDir: join(dir, "payloads"), runTimeoutMs: 5_000 });
 	try {
-		const job = store.createJob({ ownerScope: "user:a", target: { kind: "personal", principalId: "user:a" }, profile: "codex", prompt: "work", maxIterations: 5 });
-		const run = await service.startJob("user:a", job.id);
+		const job = store.createJob({ target: { kind: "default-chat" }, profile: "codex", prompt: "work", maxIterations: 5 });
+		const run = await service.startJob(job.id);
 		assert.ok(run);
 		await waitFor(() => store.getJob(job.id).state.lastStatus === "ok");
 		const saved = store.getJob(job.id);

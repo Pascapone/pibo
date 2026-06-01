@@ -248,7 +248,6 @@ export class ChatDataIngestService {
 
 	private upsertNavigation(session: PiboSession, roomId: string, lastMessagePreview: string | undefined, now: string, status: string): void {
 		this.store.navigation.upsertSession({
-			ownerScope: session.ownerScope ?? "user:unknown",
 			roomId,
 			sessionId: session.id,
 			rootSessionId: rootSessionId(session),

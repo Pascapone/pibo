@@ -1,0 +1,523 @@
+{
+  "project": "Final Owner Scope Removal",
+  "branchName": "ralph/final-owner-scope-removal",
+  "description": "Fully remove Owner Scope from Pibo's active product model, schemas, APIs, CLI/TUI, automation, workflows, tests, and current docs. The Ralph loop must work and validate only inside its Docker worker using isolated test databases; Production data migration and PR creation are final manual review-gated steps, not autonomous loop actions.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Establish final owner-scope removal baseline and progress tracking",
+      "description": "As a maintainer, I want an implementation baseline and progress record so that the Ralph loop can remove Owner Scope across the app without losing traceability.",
+      "acceptanceCriteria": [
+        "Create or update IMPLEMENTATION_PROGRESS.md with branch, worktree, Docker worker, PRD paths, current status, and story progress",
+        "Link the plan, PRD, inventory summary, and raw inventory files",
+        "Record baseline rg counts for ownerScope, owner_scope, OwnerScope, owner-scope, shared:app, principalId, principal_id, room_members, listOwned, getOwned, requireOwned, personal target, active owner, and --owner-scope",
+        "Record read-only SQLite schema/column inventory for reachable affected stores without mutating data",
+        "Record Docker-only execution boundaries: runtime, deploy, gateway restart, CLI data commands, and DB mutation must use the Docker worker and isolated PIBO_HOME only",
+        "Create or verify a fresh ownerless Docker test PIBO_HOME separate from the copied migration sandbox",
+        "Run baseline npm run typecheck and npm run build, and record results",
+        "Do not change runtime behavior in this story",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Completed 2026-06-01 in Docker worker pibo-dev-final-owner-scope-removal-ralph. Added docs/reports/final-owner-scope-removal-baseline-2026-06-01.md with baseline rg-compatible counts using node_modules/@vscode/ripgrep-linux-x64/bin/rg -F, active source/docs scope counts, and full worktree counts. Read-only SQLite schema inventory used Python sqlite3 URI mode=ro against the copied migration sandbox; fresh test home /workspace/.pibo/ralph-test-home was verified separate and empty of SQLite DBs. Validation passed inside Docker with PIBO_HOME=/workspace/.pibo/ralph-test-home: npm run typecheck and npm run build. No runtime behavior changes; host /root/.pibo and host gateways were not touched."
+    },
+    {
+      "id": "US-002",
+      "title": "Add strict owner-scope search gates with temporary allowlist",
+      "description": "As a maintainer, I want automated gates for Owner Scope vocabulary so that new work cannot reintroduce product ownership artifacts.",
+      "acceptanceCriteria": [
+        "Add a test or script that fails on active product matches for ownerScope, owner_scope, OwnerScope, owner-scope, shared:app, principalId, principal_id, room_members, listOwned, getOwned, and requireOwned",
+        "Support a narrow temporary allowlist for the final migration module and historical docs only",
+        "Document how to run the gate and how to shrink the allowlist to zero after cutover",
+        "Add focused tests for the gate behavior",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Completed 2026-06-01. Added npm script check:product-vocab backed by scripts/legacy-product-vocabulary-gate.mjs. The gate scans active product roots (src, packages, scripts, skills, test, docs/project, docs/specs, docs/plans) for the US-002 required terms and the broader final-removal vocabulary. The built-in temporary allowlist is limited to docs/legacy/** and the isolated final app-space cutover migration path. Documented usage and post-cutover allowlist shrink policy in docs/reports/final-owner-scope-search-gate-us-002.md and script --help. Added focused tests in test/legacy-product-vocabulary-gate.test.mjs for clean pass, active failures, multiple required spellings, historical-doc allowlisting, current-doc rejection, and isolated cutover migration allowlisting. Docker validation passed with PIBO_HOME=/workspace/.pibo/ralph-test-home: node --test test/legacy-product-vocabulary-gate.test.mjs and npm run typecheck. A Docker scan summary of the current branch reported 3703 expected failures and 0 allowed matches across 1019 files because later removal stories have not yet removed active Owner Scope artifacts; this is not wired into npm test yet."
+    },
+    {
+      "id": "US-003",
+      "title": "Replace shared-app legacy owner helpers with neutral app context",
+      "description": "As an allowed Pibo user, I want the shared app context to be represented without a synthetic Owner Scope so that shared:app is not a product owner value.",
+      "acceptanceCriteria": [
+        "Remove LEGACY_SHARED_APP_OWNER_SCOPE and getSharedAppLegacyOwnerScope from active runtime code",
+        "Keep a neutral app context representation that has no legacyOwnerScope or ownerScope field",
+        "Update imports and callers to stop requesting a replacement owner value",
+        "Focused tests cover neutral app context creation and absence of legacy owner fields",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "Completed 2026-06-01. Replaced src/shared-app.ts with a neutral app-context-only module: PiboSharedAppContext now has only kind and id, SHARED_APP_CONTEXT has no legacyOwnerScope/ownerScope, and the removed exports LEGACY_SHARED_APP_OWNER_SCOPE/getSharedAppLegacyOwnerScope no longer exist in src/packages/scripts/test. Existing pre-cutover schemas still require temporary owner_scope/principal_id write values until later schema-removal stories, so unavoidable legacy storage compatibility was isolated in src/owner-scope-compat.ts with explicit deletion guidance; later stories must remove those callers rather than treating it as product context. Updated source imports away from shared-app legacy helpers, updated tests to stop importing legacy owner symbols from shared-app, and updated web-auth focused tests to prove different auth identities share the same neutral appContext with no legacy owner fields. Docker validation passed with PIBO_HOME=/workspace/.pibo/ralph-test-home: npm run typecheck; npm run build; node --test test/web-auth-shared-app-context.test.mjs; node --test test/context-build-inspector.test.mjs test/cron-store-lifecycle.test.mjs test/session-router-store.test.mjs; and rg gate for getSharedAppLegacyOwnerScope|LEGACY_SHARED_APP_OWNER_SCOPE over src packages scripts test returned no matches. Host /root/.pibo and host gateways were not touched."
+    },
+    {
+      "id": "US-004",
+      "title": "Make web auth an access gate without product owner fields",
+      "description": "As an allowed web user, I want login to grant app access without creating product ownership state so that two accounts enter the same app context.",
+      "acceptanceCriteria": [
+        "Remove ownerScope from PiboWebSession and related web auth/session types",
+        "Keep unauthenticated 401 behavior where auth is required",
+        "Ensure authenticated handlers receive auth identity only for access/display/audit, not visibility or write location",
+        "Add tests proving two allowed auth identities resolve to the same app context and no owner field",
+        "Focused web auth tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": "Completed 2026-06-01. Removed ownerScope from PiboWebSession in src/web/types.ts and stopped requireWebSession from constructing a product owner field; it now returns only authSession plus the neutral appContext. Updated Chat Web and Context Files handlers that previously read webSession.ownerScope: unavoidable pre-cutover owner_scope storage compatibility now calls legacyOwnerScopeForPreCutoverSchemas() directly at legacy schema boundaries, while Context Files revision/change actor ids use the auth identity only as audit metadata. Focused web auth tests now assert unauthenticated requests still reject with PiboAuthError 401 and two authenticated identities receive the same ownerless app context with no ownerScope/legacyOwnerScope on either the web session or appContext. Docker validation passed with PIBO_HOME=/workspace/.pibo/ralph-test-home: npm run typecheck; npm run build; node --test test/web-auth-shared-app-context.test.mjs test/context-files-web.test.mjs; and grep over src/web src/apps/chat src/plugins plus the focused test found no webSession.ownerScope/PiboWebSession ownerScope call sites. Host /root/.pibo and host gateways were not touched."
+    },
+    {
+      "id": "US-005",
+      "title": "Remove Owner Scope from runtime and session context",
+      "description": "As an agent/runtime user, I want runtime context to describe the shared app without owner state so that agents do not treat auth accounts as product owners.",
+      "acceptanceCriteria": [
+        "Remove ownerScope from PiboRuntimeSessionContext and generated pibo://runtime/session-context.md content",
+        "Ensure session router, subagent creation, and runtime startup do not derive workspace or route state from auth user id",
+        "Update debug/context inspection tests for the new context text",
+        "Relevant runtime/router/subagent tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": "Completed 2026-06-01. Removed ownerScope from PiboRuntimeSessionContext and stopped runtime assembly from passing ownerScope through ToolDefinitionContext/toolContext. The generated pibo://runtime/session-context.md now exposes only the neutral shared app context plus Pibo Session ID, Pibo Room ID, and timezone; tests assert it contains no ownerScope, legacyOwnerScope, Owner scope, User ID, Principal, or user:* text. Session router and Chat Web context-build paths now pass only resource ids/timezone into runtime session context; remaining pre-cutover legacyOwnerScopeForPreCutoverSchemas() usage in those files is limited to existing storage/user-settings compatibility and PiboSession owner columns that are explicitly scheduled for US-006 and later schema stories, not runtime context. Docker validation passed with PIBO_HOME=/workspace/.pibo/ralph-test-home: npm run typecheck; npm run build; node --test test/context-build-inspector.test.mjs test/subagents.test.mjs test/session-router-store.test.mjs test/web-annotations-tools.test.mjs. Docker exact search gates over src/core/runtime.ts, src/core/profiles.ts, src/core/context-build.ts and sessionContext ownerScope call-site patterns returned no source matches. Host /root/.pibo and host gateways were not touched."
+    },
+    {
+      "id": "US-006",
+      "title": "Remove Owner Scope from Pibo session store contracts",
+      "description": "As a maintainer, I want Pibo session models and stores to use resource identity instead of owner filters so that sessions are app-global.",
+      "acceptanceCriteria": [
+        "Remove ownerScope from PiboSession, CreatePiboSessionInput, UpdatePiboSessionInput, and FindPiboSessionsInput",
+        "Remove owner matching from in-memory and SQLite-backed session store logic",
+        "Rename listOwned/getOwned/requireOwned session helpers to neutral list/get/require helpers where present",
+        "Update callers and tests for app-global session behavior",
+        "Session store tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 6,
+      "passes": true,
+      "notes": "Completed 2026-06-01. Removed ownerScope from PiboSession, CreatePiboSessionInput, UpdatePiboSessionInput, and FindPiboSessionsInput in src/sessions/store.ts. In-memory find matching no longer filters by owner and session creation/update no longer carries owner fields. Updated SqlitePiboSessionStore and PiboDataSessionStore to return ownerless PiboSession objects and to ignore owner as a public find/update/create contract; temporary owner_scope column write compatibility remains only at legacy schema boundaries for US-007/US-024. Updated session-router, Chat Web session creation, Ralph/Cron session creation, debug trace row mapping, and local CLI session source call sites so PiboSession is app-global and actor/session metadata no longer reads PiboSession.ownerScope. Focused tests now assert no ownerScope own property on built, stored, implicit, and derived sessions. Docker validation passed with PIBO_HOME=/workspace/.pibo/ralph-test-home: npm run typecheck; npm run build; node --test test/session-store.test.mjs test/pibo-data-session-store.test.mjs test/session-router-store.test.mjs test/workflow-session-kind.test.mjs. Docker exact search over src/sessions src/core/session-router.ts src/debug/trace.ts for ownerScope/listOwned/getOwned/requireOwned/OwnedSession returned no matches. A follow-up schema search still shows owner_scope/idx_pibo_sessions_owner only in src/sessions/sqlite-store.ts and src/sessions/pibo-data-store.ts as the expected US-007 schema-removal target. Host /root/.pibo and host gateways were not touched."
+    },
+    {
+      "id": "US-007",
+      "title": "Rebuild sessions database schema without owner columns",
+      "description": "As an operator, I want fresh session schemas without owner columns so that new data cannot persist product owner scope.",
+      "acceptanceCriteria": [
+        "Update fresh pibo-sessions SQLite schema to omit owner_scope and owner indexes",
+        "Add migration fixture coverage for old sessions with shared:app and user:* rows migrating to ownerless rows",
+        "Preserve session ids, piSessionIds, hierarchy, metadata, profile, workspace, and timestamps",
+        "Assert new databases do not contain owner_scope columns or owner indexes",
+        "Migration fixture tests pass",
+        "Typecheck passes",
+        "Any migration fixture or schema validation runs only against temp files or Docker sandbox homes, never /root/.pibo"
+      ],
+      "priority": 7,
+      "passes": true,
+      "notes": "Completed 2026-06-01. Updated fresh SqlitePiboSessionStore pibo_sessions schema to omit owner_scope and idx_pibo_sessions_owner, and added constructor-time table rebuild for historical pibo_sessions tables that still contain owner_scope. The rebuild copies id, pi_session_id, channel, kind, profile, parent_id, origin_id, workspace, title, metadata_json, active_model_json when present, created_at, and updated_at into an ownerless table, then drops the legacy owner index/table. PiboDataSessionStore and pibo data migrate sessions-to-v2 no longer write owner_scope values even when importing historical pibo-sessions rows. Added temp-file fixture coverage for shared:app and user:* historical rows migrating to ownerless SqlitePiboSessionStore and pibo.sqlite sessions rows while preserving ids, piSessionIds, hierarchy/origin, metadata, active model, profile, workspace, titles, and timestamps. Added schema assertions that fresh pibo-sessions.sqlite and pibo.sqlite sessions tables contain no owner_scope column or owner index. Docker validation passed with PIBO_HOME=/workspace/.pibo/ralph-test-home: npm run build; node --test test/session-store.test.mjs test/pibo-data-session-store.test.mjs test/session-model-source-of-truth.test.mjs; npm run typecheck. A targeted Docker rg gate over src/sessions/sqlite-store.ts src/sessions/pibo-data-store.ts src/data/cli.ts for fresh owner column/index creation patterns returned no matches. Migration fixtures used only temp files in the Docker worker; host /root/.pibo and host gateways were not touched. Remaining src/data/cli.ts owner_scope references are in unread-baseline repair/read-state code scheduled for Chat read-state stories, not the pibo-sessions fresh schema."
+    },
+    {
+      "id": "US-008",
+      "title": "Make Chat rooms, navigation, and read-state ownerless",
+      "description": "As a Chat Web user, I want one shared room and navigation state so that no sidebar data is hidden by Owner Scope or Principal state.",
+      "acceptanceCriteria": [
+        "Remove owner/principal parameters from room service, navigation store, session navigation, and read-state service APIs",
+        "Remove room membership as an access-control check in active behavior",
+        "Replace principal read-state with app-level read-state or documented browser-local state",
+        "Update tests for mixed historical room/navigation/read-state data",
+        "Relevant Chat room/navigation/read-state tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 8,
+      "passes": true,
+      "notes": "Completed 2026-06-01. Removed owner/principal parameters from active Chat room, navigation, and read-state service contracts: ChatRoomService listRooms/listRoomTree/ensureDefaultRoom/requireRoom/getMember/updateReadCursor are resource-id/app-level APIs; NavigationStore upsert/list inputs no longer accept ownerScope or filter by owner; ChatReadStateService writes and reads only app_session_read_state. Chat Web bootstrap/navigation/SSE/read endpoints now mark read state once per app session instead of per principal, active event-stream tracking no longer stores principals, and room access checks are resource existence plus archived write guard rather than room_members membership. Cron/Ralph Chat API room-target validation was updated to use requireRoom/ensureDefaultRoom without owner/principal room-service parameters. Focused tests updated for app-level unread counts and ownerless room-service calls. Docker validation passed with PIBO_HOME=/workspace/.pibo/ralph-test-home: npm run typecheck; npm run build; node --test test/chat-v2-native-services.test.mjs test/chat-cron-api.test.mjs test/ralph-resource-visibility.test.mjs; node --test test/chat-api-routes.test.mjs test/chat-web-shared-sessions.test.mjs. Exact Docker source search for requireRoomAccess/ensureMember/owner-principal ensureDefaultRoom/listRoomTree owner args/three-arg markSessionRead/principal unread-state patterns over src/apps/chat src/data src/cron src/ralph returned no active API matches except a false-positive raw target.principalId parse in the later Ralph target model. Host /root/.pibo, host Dev/Production gateways, and Production data were not touched. Remaining room ownerScope/principalId payload fields and fresh schema drops are left for US-009/US-010 as planned."
+    },
+    {
+      "id": "US-009",
+      "title": "Rebuild Chat data schemas without owner/principal tables",
+      "description": "As an operator, I want Chat fresh schemas without Owner Scope, Principal stats, or room membership so that data layout matches app-global behavior.",
+      "acceptanceCriteria": [
+        "Update rooms and session_navigation fresh schemas to omit owner_scope and owner indexes",
+        "Drop active creation/use of room_members, principal_session_stats, and principal_room_stats in final schemas",
+        "Add migration fixture coverage for duplicate default rooms, duplicate navigation rows, and principal read-state merge rules",
+        "Assert new Chat data databases do not create owner/principal columns or membership tables",
+        "Migration and schema tests pass",
+        "Typecheck passes",
+        "Any migration fixture or schema validation runs only against temp files or Docker sandbox homes, never /root/.pibo"
+      ],
+      "priority": 9,
+      "passes": true,
+      "notes": "Completed 2026-06-01. Fresh pibo.sqlite Chat data schema already creates ownerless rooms, session_navigation, app_session_read_state, and app_room_read_state; this story added focused schema assertions proving fresh rooms/session_navigation/app read-state tables contain no owner_scope or principal_id columns, no owner/principal indexes, and do not create room_members, principal_session_stats, or principal_room_stats. Removed active Chat room/navigation writes to legacy owner columns: ChatRoomService no longer inserts rooms.owner_scope or deletes room_members, and NavigationStore no longer inserts/updates session_navigation.owner_scope. Added explicit temp-DB fixture migration helper migrateLegacyChatDataSchemaToOwnerless in the isolated src/data/final-app-space-cutover-migration.ts path for pibo.sqlite Chat tables: it retires duplicate default room metadata using newest non-archived room selection, rebuilds rooms and session_navigation without owner_scope while preserving IDs and choosing newest duplicate session_navigation rows by session_id, merges principal_session_stats into app_session_read_state by max stream/message cursors and newest read timestamp, merges principal_room_stats into app_room_read_state, drops room_members/principal stats tables, and recreates neutral navigation indexes. Docker validation passed with PIBO_HOME=/workspace/.pibo/ralph-test-home: npm run build; node --test test/data-v2-store.test.mjs test/chat-v2-native-services.test.mjs test/chat-api-routes.test.mjs test/chat-web-shared-sessions.test.mjs; npm run typecheck; and node --test test/data-shared-app-migration.test.mjs. Targeted Docker rg gate over src/data/schema.ts src/data/navigation-store.ts src/apps/chat/data/room-service.ts for fresh owner/principal table/column/index creation patterns returned no matches. Migration fixtures used only temp files in the Docker worker; host /root/.pibo, host Dev/Production gateways, and Production data were not touched. Remaining Chat API/UI ownerScope/principalId payload fields are intentionally left for US-010."
+    },
+    {
+      "id": "US-010",
+      "title": "Clean Chat Web API and UI payloads",
+      "description": "As a Chat Web user, I want API and UI state to expose shared resources without owner fields or personal wording.",
+      "acceptanceCriteria": [
+        "Remove ownerScope/principalId fields from Chat Web bootstrap, room, navigation, session, action, and settings payloads",
+        "Replace Personal Chat/personal room/product owner copy with shared/default app wording",
+        "Update Chat UI TypeScript types and components for ownerless data",
+        "Add API tests proving payloads contain no ownerScope or principalId fields",
+        "Run browser validation for sidebar, direct session open, create session, send message, archive/restore, and room navigation",
+        "Chat UI/API tests pass",
+        "Typecheck passes",
+        "Real-path validation runs only in the Docker worker or isolated container ports, not host gateways"
+      ],
+      "priority": 10,
+      "passes": true,
+      "notes": "Completed 2026-06-01. Removed ownerScope from active Chat room/session API/UI payload contracts by dropping PiboRoom.ownerScope and PiboRoomMember/principal membership payload types, stopping ChatRoomService and roomFromRow from synthesizing legacy owner values, removing member from room detail responses, and removing ownerScope from Chat UI PiboRoom/PiboSession types plus optimistic room state. Local CLI session source was adjusted only to compile against ownerless PiboRoom while its broader owner-selection cleanup remains US-020/US-021. Added API payload assertions in Chat Web real handler-path tests proving bootstrap, navigation, rooms list/detail/create/patch, session create/patch/archive/restore/action, and user-settings payloads recursively contain no ownerScope or principalId fields while mixed historical shared/user fixture sessions still open and send by resource id. Docker validation passed with PIBO_HOME=/workspace/.pibo/ralph-test-home: node --test test/chat-web-shared-sessions.test.mjs test/chat-ui-app-bootstrap-mutations.test.mjs test/chat-v2-native-services.test.mjs test/chat-api-routes.test.mjs; npm run typecheck; npm run build. Targeted Docker search gate over Chat room types/data/UI mutation code for ownerScope/principalId/PiboRoomMember/PiboRoomRole/member payload patterns returned no matches. Real-path Docker evidence: started a worker-local dev-auth web gateway on container port 4788/host port 4832 using the fresh test home, logged in via dev auth with curl, fetched /apps/chat and /api/chat/bootstrap, recursively verified bootstrap JSON had no ownerScope/principalId, and captured headless Chromium screenshots for login and Chat app using a profile under the fresh test home. Host /root/.pibo, host Dev/Production gateways, Production data, and PR creation were not touched. Remaining ownerScope/principalId in Chat UI types/API are in Custom Agents, Projects, Ralph/Cron, workflows, and annotations scheduled for later stories."
+    },
+    {
+      "id": "US-011",
+      "title": "Convert Custom Agents to app-global resources",
+      "description": "As an allowed user, I want custom agents to be app-global so that profiles do not depend on an owner value.",
+      "acceptanceCriteria": [
+        "Remove ownerScope from CustomAgentDefinition, create/update/list inputs, store rows, and API payloads",
+        "Update dynamic profile registration to read all app-global custom agents without owner filters",
+        "Add deterministic migration handling for duplicate profile names that were previously separated by owner",
+        "Update Agent Designer tests and API tests for ownerless payloads",
+        "Agent store/profile tests pass",
+        "Typecheck passes",
+        "Any migration fixture or schema validation runs only against temp files or Docker sandbox homes, never /root/.pibo"
+      ],
+      "priority": 11,
+      "passes": true,
+      "notes": "Completed 2026-06-01. Removed ownerScope from CustomAgentDefinition, CreateCustomAgentInput, UpdateCustomAgentInput-derived payloads, Chat API create normalizers, Chat UI CustomAgent type, and active custom-agent API serialization. CustomAgentStore now creates/list/gets app-global agents without owner input or owner payload fields; Agent Designer and Chat Web handlers call list({ includeArchived }) and create ownerless inputs, and dynamic profile registration loads every active custom agent app-globally. Fresh chat_agents schema remains ownerless and constructor-time temp/historical migration rebuilds old chat_agents tables that still contain owner_scope into ownerless tables. Historical duplicate profile names that were previously separated by owner are resolved deterministically before the rebuild: newest updated row keeps the exact profile_name, older duplicates are renamed to <name>-legacy-<8 hex hash>, with display_name kept in sync. CLI session source no longer derives owner summaries from custom agents. Focused tests assert created/listed/custom-agent API payloads have no ownerScope; temp-file fixtures cover shared/user historical rows, legacy custom-agent profile aliases, duplicate profile-name migration, owner-column drop, and owner-index removal. Docker validation passed with PIBO_HOME=/workspace/.pibo/ralph-test-home: npm run build; node --test test/agent-store.test.mjs test/agent-profiles.test.mjs test/web-channel.test.mjs test/chat-ui-app-agent-catalog-mutations.test.mjs; npm run typecheck. Targeted Docker search found no ownerScope/legacyOwnerScopeForPreCutoverSchemas/shared:app in active custom-agent store/profile/normalizer/UI Agent Designer paths; the only owner_scope match in src/apps/chat/agent-store.ts is the constructor-time historical-column rebuild guard. Tests and migration fixtures used only Docker temp files/fresh test home; host /root/.pibo, host gateways, Production data, deploys, and PR creation were not touched."
+    },
+    {
+      "id": "US-012",
+      "title": "Convert Projects and workflow UI persistence to app-global resources",
+      "description": "As an allowed user, I want projects and workflow UI drafts/assets to be shared app resources without owner columns.",
+      "acceptanceCriteria": [
+        "Remove ownerScope from project types, create inputs, project services, and workflow session snapshots",
+        "Remove owner columns from workflow UI drafts, prompt assets, revisions, and lifecycle event schemas",
+        "Rename OwnedWorkflow* model names to neutral names where they refer to product ownership",
+        "Add migration fixture coverage for project/workflow UI rows with historical owner values",
+        "Project/workflow UI tests pass",
+        "Typecheck passes",
+        "Any migration fixture or schema validation runs only against temp files or Docker sandbox homes, never /root/.pibo"
+      ],
+      "priority": 12,
+      "passes": true,
+      "notes": "Completed 2026-06-01. Removed ownerScope from PiboProject, CreateProjectInput, project workflow session snapshots, WorkflowPromptAsset records/revisions, WorkflowLifecycleEvent records/inputs, and active workflow draft model names by renaming OwnedWorkflowDraftRecord usage to neutral WorkflowDraftRecord. Chat Project service now creates the app default project and user-created projects without owner inputs or owner payloads; workflow session snapshot creation/storage strips legacy ownerScope JSON while preserving createdBy as audit metadata. Workflow UI persistence APIs now list/get/save prompt assets, drafts, and lifecycle events without owner parameters or owner writes. Fresh project and workflow UI schemas omit owner_scope. Added constructor/temp-file migration coverage for historical web-projects.sqlite projects/snapshots and pibo.sqlite workflow_ui_drafts, workflow_prompt_assets, workflow_prompt_asset_revisions, and workflow_lifecycle_events with owner_scope columns, proving rows remain readable and rebuilt schemas/records expose no owner fields. Updated Chat Web workflow/project API tests so project snapshots and prompt assets expose no ownerScope. Docker validation passed with PIBO_HOME=/workspace/.pibo/ralph-test-home: npm run build; node --test test/project-service-workflow-link.test.mjs test/web-channel.test.mjs; npm run typecheck; node --test test/chat-ui-workflow-version-history-model.test.mjs test/workflow-v2-project-configured-ui.test.mjs test/workflow-v2-run-inspection-human-actions.test.mjs. Targeted Docker search gate over project/workflow UI persistence source found no active project/workflow owner API/model patterns; remaining owner_scope/ownerScope matches in touched source are constructor-time legacy column rebuild/JSON stripping only, while Chat settings/annotations/Ralph/Cron matches are scheduled later. Fixtures used only Docker temp files/fresh test home; host /root/.pibo, host gateways, Production data, deploys, and PR creation were not touched."
+    },
+    {
+      "id": "US-013",
+      "title": "Convert Web Annotations to ownerless app resources",
+      "description": "As a Web Annotations user, I want annotations and bindings to be keyed by app/session/resource ids instead of Owner Scope.",
+      "acceptanceCriteria": [
+        "Remove ownerScope from web annotation types, API/tool/CDP/attachment signatures, validation helpers, and store filters",
+        "Update web_annotation_bindings and web_annotations fresh schemas to omit owner_scope",
+        "Add migration fixture coverage for historical annotation rows with different owner values",
+        "Run focused Web Annotation tests and browser/API validation where practical",
+        "Web Annotation tests pass",
+        "Typecheck passes",
+        "Any migration fixture or schema validation runs only against temp files or Docker sandbox homes, never /root/.pibo"
+      ],
+      "priority": 13,
+      "passes": true,
+      "notes": "Completed 2026-06-01. Removed ownerScope from active Web Annotation binding/annotation models, create inputs, list filters, thread-message inputs, CDP binding context and create/inject/remove signatures, API resolve/list/patch paths, tool runtime context, and Chat Web annotation attachment preparation. Active API/tool/CDP payloads now use Pibo Session/resource ids only; list-all behavior uses scope=app/allSessions instead of owner wording, and serialized attachments expose no owner fields. Fresh web-annotations.sqlite schemas still omit owner_scope. WebAnnotationStore now rebuilds historical web_annotation_bindings and web_annotations tables that contain owner_scope into ownerless tables on constructor open, preserving binding ids, annotation ids, piboSessionId/piboRoomId, binding links, statuses, URLs, target metadata, notes, thread/screenshot/metadata JSON, and timestamps while dropping owner indexes. Added temp-file migration fixture coverage for mixed historical user/shared rows and schema assertions that migrated tables contain no owner_scope column or owner indexes. Updated focused store, tool, CDP/API, browser-validation, and attachment tests for ownerless contracts. Docker validation passed with PIBO_HOME=/workspace/.pibo/ralph-test-home: npm run build; node --test test/web-annotations-store.test.mjs test/web-annotations-tools.test.mjs test/web-annotations-cdp-api.test.mjs test/web-annotations-attachments.test.mjs; node scripts/validate-web-annotations-browser.mjs; npm run typecheck; node --test test/shared-app-fresh-schema.test.mjs test/data-shared-app-migration.test.mjs. Targeted Docker rg found no ownerScope/legacyOwnerScopeForPreCutoverSchemas/shared:app/principalId/principal_id matches in src/web-annotations, web-annotation tests, or the browser validation script; fresh-schema source rg for owner_scope column creation in src/web-annotations/store.ts returned no matches. Fixtures and browser validation used only Docker temp files/fresh test home; host /root/.pibo, host gateways, Production data, deploys, and PR creation were not touched."
+    },
+    {
+      "id": "US-014",
+      "title": "Remove Owner Scope from Ralph data model and store schema",
+      "description": "As an operator, I want Ralph jobs and runs to be app-global so that Ralph state is not tied to ownerScope.",
+      "acceptanceCriteria": [
+        "Remove ownerScope from PiboRalphJob, PiboRalphRun, PiboRalphRunFact, and PiboRalphJobCreateInput",
+        "Remove ownerScope parameters and getOwnedJob-style methods from Ralph store APIs",
+        "Replace personal.principalId target shape with a neutral default-chat target",
+        "Update fresh Ralph schemas to omit owner_scope columns and indexes",
+        "Add migration fixture coverage for existing personal/shared/user Ralph jobs and runs",
+        "Ralph store tests pass",
+        "Typecheck passes",
+        "Any migration fixture or schema validation runs only against temp files or Docker sandbox homes, never /root/.pibo"
+      ],
+      "priority": 14,
+      "passes": true,
+      "notes": "Completed 2026-06-01. Removed ownerScope from PiboRalphJob, PiboRalphRun, PiboRalphRunFact, PiboRalphJobCreateInput, and Ralph store/service active contracts. Ralph targets now persist as { kind: \"room\", roomId } or { kind: \"default-chat\" }; historical personal/principal targets are normalized to default-chat when rows are read or rebuilt. Removed getOwnedJob and owner parameters/filters from Ralph store methods (list/create/update/remove/reserve/run/fact/resource APIs). Fresh pibo-ralph.sqlite schemas create pibo_ralph_jobs, pibo_ralph_runs, and pibo_ralph_run_facts without owner_scope columns or owner indexes. Added temp-file migration fixture coverage for historical user owner_scope jobs/runs/facts and owner indexes, proving rows preserve ids, run history, facts, resource metadata compatibility, timestamps, state, and convert personal target JSON to default-chat while dropping owner columns/indexes. Updated Ralph service and Chat API call sites to use ownerless store APIs; CLI deprecated option cleanup is left to US-015, but it now writes ownerless jobs. Docker validation passed with PIBO_HOME=/workspace/.pibo/ralph-test-home: npm run build; node --test test/ralph-resource-metadata.test.mjs test/ralph-stop-conditions.test.mjs test/ralph-resource-cleanup.test.mjs test/ralph-runtime-overrides.test.mjs test/ralph-resource-visibility.test.mjs; node --test test/shared-app-fresh-schema.test.mjs test/ralph-resource-metadata.test.mjs; npm run typecheck. Targeted source gate over src/ralph/types.ts src/ralph/store.ts src/ralph/service.ts found no ownerScope/getOwnedJob/personal target/principalId model matches, and fresh-schema rg for owner_scope column/index creation in src/ralph/store.ts returned no matches. Fixtures used only Docker temp files/fresh test home; host /root/.pibo, host gateways, Production data, deploys, and PR creation were not touched."
+    },
+    {
+      "id": "US-015",
+      "title": "Clean Ralph service, CLI, API, and UI surfaces",
+      "description": "As a Ralph user, I want Ralph commands and Chat UI/API to expose app-global jobs without owner options or fields.",
+      "acceptanceCriteria": [
+        "Remove --owner-scope and PIBO_OWNER_SCOPE handling from Ralph CLI and help output",
+        "Remove ownerScope from Ralph service signatures, Chat API serializers, and Chat UI types/components",
+        "Ensure pibo ralph add/list/start/stop/cancel/runs --json contains no ownerScope",
+        "Run real CLI validation for Ralph list/add/start/stop or the closest safe non-provider path",
+        "Ralph CLI/API/UI tests pass",
+        "Typecheck passes",
+        "Real-path validation runs only in the Docker worker or isolated container ports, not host gateways"
+      ],
+      "priority": 15,
+      "passes": true,
+      "notes": "Completed 2026-06-01. Removed active Ralph owner/principal CLI/API/UI surfaces: pibo ralph no longer registers --owner-scope, reads PIBO_OWNER_SCOPE, or accepts --personal/--principal-id; Ralph add/edit now use --room <room-id> or --default-chat. Chat Ralph API target normalization now accepts only room/default-chat, and Chat UI Ralph types/forms send { kind: \"default-chat\" } for the shared default target with no ownerScope on Ralph jobs/runs. Updated Ralph API/CLI tests to recursively assert JSON payloads contain no ownerScope or principalId keys and to exercise real CLI help/list/add/start/stop/runs JSON paths against a temp Ralph store. Docker validation passed with PIBO_HOME=/workspace/.pibo/ralph-test-home: npm run build; node --test test/ralph-resource-visibility.test.mjs test/ralph-resource-metadata.test.mjs test/ralph-stop-conditions.test.mjs test/ralph-runtime-overrides.test.mjs; npm run typecheck. Targeted Docker rg gate over src/ralph, Chat Ralph API, and Chat UI Ralph API/area source found no --owner-scope, PIBO_OWNER_SCOPE, --personal, --principal-id, ownerScope, getOwnedJob, or principalId matches. A broader shared-app artifact search test was attempted and failed only on out-of-scope Cron/data compatibility imports scheduled for later stories; focused Ralph evidence passed. All validation used Docker temp files/fresh test home; host /root/.pibo, host gateways, Production data, deploys, and PR creation were not touched."
+    },
+    {
+      "id": "US-016",
+      "title": "Remove Owner Scope from Cron data model and store schema",
+      "description": "As an operator, I want Cron schedules and execution history to be app-global so that scheduled work is not tied to ownerScope.",
+      "acceptanceCriteria": [
+        "Remove ownerScope from Cron job/run/fact/create types and store inputs",
+        "Remove owner filters from Cron store/service methods",
+        "Replace personal.principalId target shape with a neutral default-chat target",
+        "Update fresh Cron schemas to omit owner_scope columns and indexes",
+        "Add migration fixture coverage for existing personal/shared/user Cron jobs and runs",
+        "Cron store tests pass",
+        "Typecheck passes",
+        "Any migration fixture or schema validation runs only against temp files or Docker sandbox homes, never /root/.pibo"
+      ],
+      "priority": 16,
+      "passes": true,
+      "notes": "Completed 2026-06-01. Removed ownerScope from Cron active data contracts: PiboCronJob, PiboCronRun, and PiboCronJobCreateInput no longer expose or accept ownerScope, and Cron store/service APIs are app-global (createJob, listJobs, updateJob, removeJob, listRuns, reserveManualRun, runJobNow) with no owner filters or getOwnedJob helper. Cron targets now persist as { kind: \"room\", roomId } or neutral { kind: \"default-chat\" }; historical personal/principal target JSON is normalized to default-chat when read or during schema rebuild. Fresh pibo-cron.sqlite schemas create pibo_cron_jobs and pibo_cron_runs without owner_scope columns or owner indexes, and constructor-time temp-file migration rebuilds historical owner-scoped Cron jobs/runs while preserving ids, prompts, schedules, state, run history, timestamps, and piboSessionIds. Chat Cron API and CLI were adjusted only enough to compile and write ownerless/default-chat store data; deprecated visible --owner-scope/--personal/principal surfaces remain scheduled for US-017. Docker validation passed with PIBO_HOME=/workspace/.pibo/ralph-test-home: npm run build; node --test test/cron-schedule-store.test.mjs test/cron-store-lifecycle.test.mjs test/chat-cron-api.test.mjs test/shared-app-fresh-schema.test.mjs; npm run typecheck; reran node --test test/chat-cron-api.test.mjs test/cron-schedule-store.test.mjs test/cron-store-lifecycle.test.mjs after adding API store-target evidence. Targeted Docker rg over src/cron/types.ts src/cron/store.ts src/cron/service.ts found no ownerScope/getOwnedJob/principal/personal target model matches, and fresh-schema rg in src/cron/store.ts found no owner_scope column/index creation. Fixtures used only Docker temp files/fresh test home; host /root/.pibo, host gateways, Production data, deploys, and PR creation were not touched."
+    },
+    {
+      "id": "US-017",
+      "title": "Clean Cron service, CLI, API, and UI surfaces",
+      "description": "As a Cron user, I want Cron commands and Chat UI/API to expose app-global schedules without owner options or fields.",
+      "acceptanceCriteria": [
+        "Remove --owner-scope and PIBO_OWNER_SCOPE handling from Cron CLI and help output",
+        "Remove ownerScope from Cron service signatures, Chat API serializers, and Chat UI types/components",
+        "Ensure pibo cron JSON outputs contain no ownerScope",
+        "Run real CLI validation for safe Cron list/create/enable/disable flows or closest safe path",
+        "Cron CLI/API/UI tests pass",
+        "Typecheck passes",
+        "Real-path validation runs only in the Docker worker or isolated container ports, not host gateways"
+      ],
+      "priority": 17,
+      "passes": true,
+      "notes": "Completed 2026-06-01. Removed active Cron owner/principal CLI/API/UI surfaces: pibo cron no longer registers --owner-scope, reads PIBO_OWNER_SCOPE, or accepts --personal/--principal-id; Cron add/edit now use --room <roomId> or --default-chat. Chat Cron API now accepts only room/default-chat targets, rejects legacy personal/principal target payloads, and serializes default-chat jobs as { kind: \"default-chat\" } with no ownerScope or principalId fields. Chat UI Cron types and CronArea form state now use default-chat and no longer include Cron job/run ownerScope fields or personal/principal target payloads; visible CLI guidance now uses --default-chat. Docker validation passed with PIBO_HOME=/workspace/.pibo/ralph-test-home: npm run build; node --test test/cron-schedule-store.test.mjs test/cron-store-lifecycle.test.mjs test/chat-cron-api.test.mjs; npm run typecheck. The built CLI temp-store tests cover add --default-chat --json, add --help target options, and edit --room --json; Chat Cron API tests cover create/list/get/patch/delete and legacy personal-target rejection. Targeted Docker rg over src/cron, Chat Cron API, Chat UI Cron area/API/types found no --owner-scope, PIBO_OWNER_SCOPE, --personal, --principal-id, ownerScope, getOwnedJob, or principalId matches. An attempted broader shared-app artifact gate now fails only on out-of-scope src/data/session-store.ts owner-scope compatibility scheduled for later stories, with the Cron allowlist removed. All validation used Docker temp files/fresh test home; host /root/.pibo, host gateways, Production data, deploys, and PR creation were not touched."
+    },
+    {
+      "id": "US-018",
+      "title": "Remove Owner Scope from workflows package store and public types",
+      "description": "As a workflow user, I want WorkflowRun persistence and listing to be app-global so that workflow runs are not filtered by ownerScope.",
+      "acceptanceCriteria": [
+        "Remove ownerScope from WorkflowRun and workflow run list/filter types in packages/workflows",
+        "Remove workflow_runs.owner_scope and idx_workflow_runs_owner from fresh schema",
+        "Update row mappers, write values, store contracts, and tests",
+        "Add migration fixture coverage for workflow_runs with historical owner_scope values",
+        "packages/workflows tests pass",
+        "Typecheck passes",
+        "Any migration fixture or schema validation runs only against temp files or Docker sandbox homes, never /root/.pibo"
+      ],
+      "priority": 18,
+      "passes": true,
+      "notes": "Completed 2026-06-01. Removed ownerScope from package-level WorkflowRun and WorkflowRunListFilter contracts, store row mapping, write values, saveRun SQL, and listRuns filtering. Fresh pibo-workflows.sqlite workflow_runs schema no longer creates owner_scope or idx_workflow_runs_owner. SqliteWorkflowRunStore now rebuilds historical workflow_runs tables that contain owner_scope into ownerless tables on open, preserving run ids, workflow/version/hash/snapshot ids, parent run/node attempt links, Pibo session/project links, environment, status/current cursor, input/output, state, checkpoint, timestamps, and terminal status timestamps while dropping the legacy owner index. Updated workflow runtime compile paths that previously fell back to run.ownerScope so run storage remains ownerless; remaining workflow routing/prompt owner terminology is left for US-019. Added temp-file schema migration fixture coverage and shared fresh-schema assertions for pibo-workflows.sqlite. Docker validation passed with PIBO_HOME=/workspace/.pibo/ralph-test-home: cd packages/workflows && npm run typecheck; cd packages/workflows && npm run build; cd packages/workflows && npm run test; npm run typecheck; npm run build; node --test test/shared-app-fresh-schema.test.mjs. Targeted Docker search gate over package WorkflowRun/store files found no WorkflowRun ownerScope, WorkflowRunListFilter ownerScope, fresh owner_scope column/index creation, or owner_scope write/filter patterns; remaining package ownerScope matches are runtime routing/prompt terminology scheduled for US-019 and migration fixture assertions. Fixtures used only Docker temp files/fresh test home; host /root/.pibo, host gateways, Production data, deploys, and PR creation were not touched."
+    },
+    {
+      "id": "US-019",
+      "title": "Clean workflow runtime, routing, inspection, and prompts",
+      "description": "As a workflow operator, I want workflow runtime and inspection output to avoid owner terminology so that tooling reflects app-global runs.",
+      "acceptanceCriteria": [
+        "Remove workflow runtime/routing owner propagation",
+        "Remove owner lines/fields from workflow inspection output",
+        "Rename prompt trace privacy kind or fields that use ownerScope terminology",
+        "Update workflow runtime and inspection tests",
+        "Real or integration workflow run inspection path shows no owner field",
+        "Workflow runtime/inspection tests pass",
+        "Typecheck passes",
+        "Real-path validation runs only in the Docker worker or isolated container ports, not host gateways"
+      ],
+      "priority": 19,
+      "passes": true,
+      "notes": "Completed 2026-06-01. Removed workflow runtime/routing owner propagation from package public routing contracts and Pibo session routing bridge: SessionRoutingPolicy, RuntimeSelectionMetadata routing, PiboWorkflowSession, and PiboWorkflowSessionCreateInput no longer expose or forward ownerScope. createPiboSessionRoutingAgentExecutor now creates routed workflow agent sessions with parent/project/room/channel metadata only. Renamed recorded prompt trace privacy kind from the ownerScope terminology to neutral workflowRun while keeping storage at workflow-node-attempt and redacted=false. Updated workflow runtime, prompt, and inspection tests; workflow inspection now recursively asserts no owner keys in the inspection object and formatted output. Docker validation passed with PIBO_HOME=/workspace/.pibo/ralph-test-home: focused package runtime/inspection test run; cd packages/workflows && npm run typecheck && npm run build && npm run test; root npm run typecheck; root npm run build. Targeted Docker search gate over package workflow runtime/types/inspection and updated tests found no ownerScope/kind ownerScope/principalId/shared:app routing or prompt artifacts. No migration inspect/dry-run/apply was run; host /root/.pibo, host gateways, Production data, deploys, and PR creation were not touched."
+    },
+    {
+      "id": "US-020",
+      "title": "Remove owner model from CLI session source contracts",
+      "description": "As a CLI user, I want the local session source to expose app rooms and sessions directly without owner selection.",
+      "acceptanceCriteria": [
+        "Remove CliOwnerSummary, getActiveOwner, setActiveOwner, listOwners, and ownerSummaries from CLI session source contracts and implementations",
+        "Remove owner mismatch errors and selected-owner repair behavior",
+        "Rename root recovery owner concepts to neutral recovery source/mode concepts where still needed",
+        "Update fake and local source tests for ownerless app-global behavior",
+        "CLI session source tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 20,
+      "passes": true,
+      "notes": "Completed 2026-06-01. Removed the CLI session source owner-selection contract from src/cli-session: CliOwnerSummary, getActiveOwner, setActiveOwner, listOwners, ownerSummaries, activeOwnerScope/activeOwnerLabel status fields, create/list ownerScope inputs, slash command ownerScope inputs, session owner mismatch checks, and owner-filtered fake/local source behavior are gone. LocalCliSessionSource now lists app-global rooms/sessions, creates sessions in a neutral shared default room id, writes Chat navigation and message read models without owner fields, and exposes a neutral repairLegacyCliSessions result instead of selected-owner repair. Root recovery owner constants were replaced by neutral local recovery source constants. The tui:sessions command source setup no longer accepts --owner-scope or PIBO_DEBUG_PTY_CLI_SESSIONS_OWNERS mocked-owner fixtures; debug mocked rooms are app-global. Focused CLI source tests were rewritten for ownerless fake/local behavior, recursive no-owner-field assertions, app-global session listing, real local navigation/message persistence, slash action routing without owner parameters, and neutral legacy repair output. Docker validation passed with PIBO_HOME=/workspace/.pibo/ralph-test-home: npm run build; node --test test/cli-session-source.test.mjs test/session-ui-view-models.test.mjs test/ink-cli-v2-current-state.test.mjs; npm run typecheck. Targeted Docker source gate over src/cli-session and src/apps/cli-ui/cliSessionsCommand.ts found no CliOwnerSummary/getActiveOwner/setActiveOwner/listOwners/ownerSummaries/active owner status/session_owner_mismatch/ownerScope matches. Host /root/.pibo, host gateways, Production data, deploys, migrations, and PR creation were not touched. InkSessionApp still contains owner-picker UI compatibility under US-021 scope and is temporarily ts-nocheck after the source contract removal; US-021 is the next failing story and should remove that UI surface rather than preserving the compatibility shim."
+    },
+    {
+      "id": "US-021",
+      "title": "Remove owner picker and owner status from Ink TUI",
+      "description": "As a TUI user, I want pibo tui:sessions to start in the app-global session flow without an owner picker.",
+      "acceptanceCriteria": [
+        "Remove /owner command, owner picker UI, active owner header/status, and owner-specific room picker text from InkSessionApp",
+        "Remove --owner-scope CLI option and mocked owner env variables for TUI/session commands",
+        "Update shared session-ui view models to use app/source/room/session descriptors without owner descriptors",
+        "Run PTY validation showing pibo tui:sessions can open/create/select a session and send through the closest real path without an owner picker",
+        "Ink/TUI tests pass",
+        "Typecheck passes",
+        "Real-path validation runs only in the Docker worker or isolated container ports, not host gateways"
+      ],
+      "priority": 21,
+      "passes": true,
+      "notes": "Completed 2026-06-01. Removed the remaining Ink TUI owner picker/status surface: InkSessionApp no longer has CliOwnerSummary, activeOwner state, skipOwnerPicker, owner picker item/state variants, /owner handling, selected-owner startup flow, owner-specific room/session picker copy, owner fields in headers, /status rows, command status payloads, or session_owner_mismatch recovery. Startup now opens the app-global room picker directly (or an explicit session by id), /new uses the active or selected room, /room and /session are room-first app-global flows, /profile now opens the existing agent/profile picker, and repair uses the neutral repairLegacyCliSessions({ roomId }) hook. Deleted the shared owner picker view model export and removed owner fields from session-ui room/session/status/card descriptors. Removed --owner-scope from pibo tui:sessions help and updated the reusable PTY smoke script/docs to use room-session-message with no mocked-owner env seam. Docker validation passed with PIBO_HOME=/workspace/.pibo/ralph-test-home: npm run build; node --test test/session-ui-view-models.test.mjs test/cli-ui-ink-renderer.test.mjs test/cli-ui-session-app.test.mjs test/ink-cli-v2-current-state.test.mjs test/ink-cli-v2-pty-smoke.test.mjs; npm run typecheck. Real PTY validation passed inside the Docker worker: node scripts/ink-cli-v2-pty-smoke.mjs --scenario room-session-message --artifact-root /workspace/.tmp/us021-pty-final, selecting a room, creating a session, sending Smoke message, receiving Smoke assistant reply, and observing Message sent without owner picker. Targeted source/test search found no CliOwnerSummary/buildOwnerPickerDescriptor/getActiveOwner/setActiveOwner/listOwners/activeOwner/owner picker/Select effective owner/selected owner/session_owner_mismatch/--owner-scope/PIBO_DEBUG_PTY_CLI_SESSIONS_OWNERS/Personal Chat/ownerScope in active CLI/TUI/session-ui paths. Host /root/.pibo, host gateways, Production data, deploys, migrations, and PR creation were not touched."
+    },
+    {
+      "id": "US-022",
+      "title": "Create final owner-scope cutover migration inspect and dry-run for isolated homes",
+      "description": "As an operator, I want a final migration command that can inspect and dry-run old Owner Scope data inside isolated test homes so that cutover can be reviewed without touching Production.",
+      "acceptanceCriteria": [
+        "Create an operator-only final cutover migration module/command with inspect and dry-run modes",
+        "Inspect reports affected files, tables, columns, indexes, row counts, legacy values, and conflict groups without secrets",
+        "Dry-run reports planned table rebuilds, merge/rename decisions, and unresolved blockers without writes",
+        "The command defaults to an explicit --root or sandbox path and refuses to target /root/.pibo unless a future manual-production flag is added outside this autonomous loop",
+        "All inspect/dry-run validation uses Docker worker test homes or temporary fixture databases only",
+        "Migration inspect/dry-run fixture tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 22,
+      "passes": true,
+      "notes": "Completed 2026-06-01. Added operator-only pibo data final-cutover inspect and dry-run commands backed by src/data/final-app-space-cutover-migration.ts. The command requires an explicit --root or PIBO_MIGRATION_SANDBOX_HOME sandbox, opens known affected SQLite files read-only, and refuses /root/.pibo or paths under it. Inspect reports affected database files, tables, legacy owner/principal columns, owner/principal indexes, row counts, redacted legacy values, and conflict groups without dumping secret content. Dry-run adds planned rebuild/drop/merge/rename/default-chat-normalization actions and unresolved blocker reporting without writes. Conflict detection currently covers duplicate default Chat rooms, duplicate session_navigation rows, duplicate Custom Agent profile names, and legacy Ralph/Cron personal/principal targets. Added focused fixture and CLI tests in test/final-app-space-cutover-migration.test.mjs covering inspect, dry-run, redaction, no-write behavior, CLI JSON output, sandbox/env root requirements, and /root/.pibo refusal. Docker validation passed with PIBO_HOME=/workspace/.pibo/ralph-test-home: npm run build; node --test test/final-app-space-cutover-migration.test.mjs; npm run typecheck. Docker migration sandbox validation ran final-cutover inspect/dry-run against /workspace/.pibo/ralph-migration-sandbox and produced totals: inspect affectedDatabases=6, legacyColumns=19, legacyIndexes=15, legacyRows=4349, conflictGroups=1, plannedActions=0, unresolvedBlockers=0; dry-run same affected totals with plannedActions=20 and unresolvedBlockers=0. All migration inspect/dry-run commands used Docker fixture roots or the Docker migration sandbox only; host /root/.pibo, host gateways, Production data, deploys, apply mode, and PR creation were not touched."
+    },
+    {
+      "id": "US-023",
+      "title": "Implement final owner-scope cutover migration apply for Docker test databases only",
+      "description": "As an operator, I want transactional apply behavior with backup verification and post-checks that is proven on isolated Docker test databases before any real data cutover is considered.",
+      "acceptanceCriteria": [
+        "Apply mode requires a verified backup path and refuses unresolved conflicts",
+        "Apply rebuilds affected SQLite tables without owner/principal columns, membership tables, or owner indexes",
+        "Apply is transactional per database file and idempotent on already-migrated schemas",
+        "Post-check runs row-count checks and PRAGMA quick_check and writes a migration report",
+        "Rollback instructions are generated or documented with the backup path",
+        "Apply tests run only against temporary fixture DBs or the Docker migration sandbox, never Production or /root/.pibo",
+        "The autonomous Ralph loop must not run apply against the host Production database",
+        "Migration apply/idempotency/rollback fixture tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 23,
+      "passes": true,
+      "notes": "Completed 2026-06-01. Extended the operator-only pibo data final-cutover command with backup-gated apply mode for isolated Docker fixture/sandbox roots. Apply requires --root plus --backup, refuses /root/.pibo through the existing root guard, requires the backup directory to live outside the target root, verifies matching backup copies for each existing affected SQLite database with PRAGMA quick_check, and refuses unresolved inspect blockers before writes. Apply runs per-database BEGIN IMMEDIATE transactions, applies database-specific conflict decisions (Chat duplicate defaults/navigation and principal read-state merge, Custom Agent duplicate profile-name rename, Ralph/Cron personal/principal target normalization), drops membership/principal stats tables, rebuilds remaining tables without owner_scope/principal_id columns, removes owner/principal indexes, runs row-count checks and post-apply PRAGMA quick_check, writes a JSON migration report under migration-reports, and includes rollback instructions referencing the verified backup path. Added fixture coverage for apply, idempotency, missing/invalid backup refusal, host-root refusal, schema cleanup, target normalization, report persistence, row-count/post-check output, and CLI inspect/dry-run/apply JSON paths. Docker validation passed with PIBO_HOME=/workspace/.pibo/ralph-test-home: npm run build; node --test test/final-app-space-cutover-migration.test.mjs; npm run typecheck. Apply validation used only Docker temp fixture homes/backups; no apply was run against host /root/.pibo or Production, and host gateways/deploys/PR creation were not touched."
+    },
+    {
+      "id": "US-024",
+      "title": "Remove temporary runtime compatibility for fresh ownerless test schemas",
+      "description": "As a maintainer, I want normal runtime code to operate on fresh ownerless schemas while preserving final cutover safety so that Production is not broken before the manual migration gate.",
+      "acceptanceCriteria": [
+        "Remove runtime branches that read or write old owner_scope/principal_id columns outside the isolated migration module after fresh ownerless schemas are supported",
+        "Ensure fresh schemas and normal runtime code do not reference shared:app as storage",
+        "Keep any remaining legacy-column knowledge isolated in the cutover migration module and tests only",
+        "Run focused regression tests for creating new sessions, rooms, agents, projects, annotations, Ralph, Cron, and workflows on a fresh Docker test PIBO_HOME",
+        "Do not require or mutate the live host database while proving ownerless runtime behavior",
+        "Regression tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 24,
+      "passes": true,
+      "notes": "Completed 2026-06-01. Removed temporary runtime compatibility for pre-cutover owner/principal schemas from normal source paths. Deleted the old shared-app normalization migration command/module and the pre-cutover owner-scope compat module; active data migration is now isolated to src/data/final-app-space-cutover-migration.ts and its focused tests. Normal stores no longer detect, write, or rebuild old owner_scope/principal_id columns: Pibo sessions, pibo.sqlite session upserts, Custom Agents, Projects/workflow snapshots, Workflow UI persistence, Web Annotations, Ralph, Cron, and package workflow run schema installation now assume fresh ownerless schemas after cutover. User settings now persist one app-level settings record instead of account/owner-keyed entries, and Chat/Runtime settings callers no longer pass a synthetic storage owner. Compute worker technical labeling was renamed from ownerScope to holder to avoid product Owner Scope vocabulary in active source. Debug session summaries no longer project owner_scope. Added test/ownerless-fresh-runtime-regression.test.mjs to create fresh sessions, rooms/navigation entries, Custom Agents, Projects, Web Annotations, Ralph jobs, Cron jobs, and Workflow runs and recursively assert no ownerScope/principalId payloads. Docker validation passed with PIBO_HOME=/workspace/.pibo/ralph-test-home: npm run typecheck; npm run build; cd packages/workflows && npm run typecheck && npm run build && npm run test; node --test test/ownerless-fresh-runtime-regression.test.mjs test/shared-app-fresh-schema.test.mjs test/data-cli.test.mjs test/final-app-space-cutover-migration.test.mjs. Targeted Docker search gates over src/packages active TypeScript found owner_scope/principal_id/shared:app/legacyOwnerScopeForPreCutoverSchemas/ownerScope only in the isolated final cutover migration module. Host /root/.pibo, host gateways, Production data, deploys, and PR creation were not touched. Remaining test/doc historical vocabulary cleanup is scheduled for US-025/US-026/US-029."
+    },
+    {
+      "id": "US-025",
+      "title": "Update current docs, glossary, skills, and help text",
+      "description": "As a maintainer, I want current documentation and help to describe the final app-space model so that agents do not learn old Owner Scope behavior.",
+      "acceptanceCriteria": [
+        "Update GLOSSARY.md so Owner Scope is a removed historical migration term, not an active compatibility model",
+        "Update current docs/specs/plans/project docs to describe one app space and no shared:app owner value",
+        "Move superseded Owner Scope docs to docs/legacy or clearly mark them as historical reports",
+        "Update CLI/help text and tool/skill docs that mention active owner selection or --owner-scope",
+        "Documentation search gate for current docs passes or has a reviewed legacy-only allowlist",
+        "Typecheck passes"
+      ],
+      "priority": 25,
+      "passes": true,
+      "notes": "Completed 2026-06-01. Updated current docs, glossary, built-in skills, and active Ralph guide text for the final one-app-space model. GLOSSARY.md now treats Owner Scope as a removed historical storage concept only; current capability/project docs were rewritten away from active owner/principal/personal-target wording. Archived superseded plans/spec changes that taught older owner-scoped or personal-target behavior under docs/legacy/, including the older shared-app/no-owner-scope, Cron jobs, Ink CLI, Web Annotations, compute browser lifecycle, Ralph stop conditions, workflow system/UI, and related coverage docs. Updated skills/builtin/ralph-loop/SKILL.md to show app-global Ralph commands with --room/default targets and no --owner-scope, updated skills/builtin/web-annotations/SKILL.md for app-resource annotation wording, and updated src/tools/guides.ts Ralph help to use --default-chat. Added docs/reports/final-owner-scope-current-docs-cleanup-us-025.md with the reviewed temporary docs allowlist: only docs/legacy, the final-removal implementation docs, and the isolated final cutover migration module may retain legacy vocabulary until post-cutover archival. Updated scripts/legacy-product-vocabulary-gate.mjs and focused tests for this temporary final-removal-doc allowlist. Docker validation passed with PIBO_HOME=/workspace/.pibo/ralph-test-home: npm run build; node --test test/legacy-product-vocabulary-gate.test.mjs test/shared-app-artifact-search-gate.test.mjs; docs/help search gate over GLOSSARY.md, docs/project, docs/specs, docs/plans, skills, and src/tools/guides.ts with 0 failures and allowed matches only in final-removal implementation docs; npm run typecheck. Built guide checks for pibo tools guide ralph ralph and web-annotations found no owner-scope/owner/principal option wording. Host /root/.pibo, host gateways, Production data, deploys, migrations, and PR creation were not touched."
+    },
+    {
+      "id": "US-026",
+      "title": "Run full Docker validation on ownerless fresh test databases",
+      "description": "As a maintainer, I want full validation in Docker against a fresh isolated PIBO_HOME so that the ownerless code is proven without relying on or mutating host data.",
+      "acceptanceCriteria": [
+        "Run npm run typecheck in Docker worker with fresh isolated PIBO_HOME",
+        "Run npm run build in Docker worker with fresh isolated PIBO_HOME",
+        "Run npm test in Docker worker with fresh isolated PIBO_HOME",
+        "Run schema assertions proving fresh databases have no owner/principal product columns or membership tables",
+        "Confirm no validation command targets /root/.pibo or host gateways",
+        "Record validation evidence in IMPLEMENTATION_PROGRESS.md and docs/reports",
+        "Typecheck passes",
+        "Build passes",
+        "Tests pass"
+      ],
+      "priority": 26,
+      "passes": true,
+      "notes": "Completed 2026-06-01. Ran full validation inside Docker worker pibo-dev-final-owner-scope-removal-ralph after resetting only the worker-local fresh test home /workspace/.pibo/ralph-test-home. Environment evidence printed PIBO_HOME=/workspace/.pibo/ralph-test-home and PIBO_MIGRATION_SANDBOX_HOME=/workspace/.pibo/ralph-migration-sandbox; no command targeted /root/.pibo or host gateways. Updated stale tests that still expected runtime stores to rebuild historical owner/principal schemas or current docs to contain archived specs; historical data migration coverage remains in final-cutover migration tests. Docker validation passed: npm run typecheck; npm run build (only existing Vite chunk-size warnings); npm test with 895 tests / 4 suites / 895 pass / 0 fail; node --test test/shared-app-fresh-schema.test.mjs test/ownerless-fresh-runtime-regression.test.mjs with 2 pass / 0 fail. A read-only Python SQLite inventory over fresh-home DBs found zero forbidden product owner/principal columns or membership/principal stats tables across pibo.sqlite, pibo-ralph.sqlite, pibo-cron.sqlite, pibo-events.sqlite, web-annotations.sqlite, and web-projects.sqlite. Report written to docs/reports/final-owner-scope-full-docker-validation-us-026.md. Host /root/.pibo, host Dev/Production gateways, Production data, deploys, migrations against host data, and PR creation were not touched."
+    },
+    {
+      "id": "US-027",
+      "title": "Validate migrated sandbox data through Docker Chat Web and CLI paths",
+      "description": "As an operator, I want migrated copied data validated through Docker-only user paths so that the future cutover is more than unit-tested and Production remains untouched.",
+      "acceptanceCriteria": [
+        "Run migration apply against copied/sandboxed historical fixture home inside the Docker worker, not Production",
+        "Start or emulate the Chat Web path only inside Docker and validate bootstrap, sidebar, direct session open, send, agents, projects, Ralph, Cron, workflows, and annotations where available",
+        "If gateway restart/deploy validation is needed, run it only inside the Docker worker or worker-local process, never the host gateway",
+        "Run CLI/TUI PTY validation for ownerless session open/create/send path inside Docker",
+        "Run safe Ralph and Cron CLI JSON checks proving no owner fields/options inside Docker",
+        "Record browser/API/PTY/CLI evidence in docs/reports",
+        "Relevant validation commands pass",
+        "Typecheck passes"
+      ],
+      "priority": 27,
+      "passes": true,
+      "notes": "Completed 2026-06-01. Created a Docker-local copy of the migration sandbox at /workspace/.tmp/us027-migrated-home and ran pibo data final-cutover apply against that copy only, using /workspace/.pibo/ralph-migration-sandbox as the verified external backup. Apply reported appliedDatabases=6, six quick_check ok results, and post-apply totals of 0 affected databases, 0 legacy columns, 0 legacy indexes, 0 legacy rows, 0 conflict groups, and 0 unresolved blockers. A read-only schema inventory of the migrated copy found no owner_scope/principal_id product columns and no room_members/principal stats tables across 9 SQLite DBs. Started a worker-local dev-auth Chat Web gateway on 127.0.0.1:4791 with PIBO_HOME=/workspace/.tmp/us027-migrated-home, logged in through dev auth, loaded /apps/chat, and validated Chat bootstrap/sidebar/direct session open/session create/room detail/provider-free streaming fixture send, Agent list/create, Project list/create/bootstrap, Workflow catalog/picker, Ralph API list/create/get/runs, Cron API list/create/get/runs, and Web Annotation same-origin binding/submission/app list. The validation recursively asserted no ownerScope, owner_scope, principalId, or principal_id keys in all JSON payloads and recorded created resource ids in docs/reports/final-owner-scope-migrated-sandbox-validation-us-027.md. Safe Ralph/Cron CLI JSON checks ran against the migrated copy and found no owner/principal keys; help checks for Ralph, Cron add, and tui:sessions found no removed owner/personal options or wording. PTY validation passed with node scripts/ink-cli-v2-pty-smoke.mjs --scenario room-session-message --artifact-root /workspace/.tmp/us027-pty, selecting a room, creating a session, sending a mocked message, and receiving the mocked reply without an owner picker. Docker typecheck passed with PIBO_HOME=/workspace/.pibo/ralph-test-home. Host /root/.pibo, host Dev/Production gateways, Production data, deploy scripts, and PR creation were not touched."
+    },
+    {
+      "id": "US-028",
+      "title": "Prepare Docker-only deployment validation and manual production cutover runbook",
+      "description": "As an operator, I want Docker-only deploy/gateway validation plus a production runbook so that the user can review before any PR, host deploy, or real database cutover.",
+      "acceptanceCriteria": [
+        "Document Docker-only deploy/build/gateway restart validation steps and results using worker ports",
+        "Document that host Dev, host Production, and host gateways are not changed by the Ralph loop",
+        "Document Production prerequisites, active-session safety, backup verification, dry-run review, apply approval, rollback, and post-check steps",
+        "Explicitly state that Ralph must stop before real Production database migration and before upstream PR creation unless the user separately approves continuation",
+        "Add a final checklist for removing the temporary migration module after approved Production cutover if that policy is chosen",
+        "Docs/report validation passes",
+        "Typecheck passes"
+      ],
+      "priority": 28,
+      "passes": true,
+      "notes": "Completed 2026-06-01. Added docs/reports/final-owner-scope-deploy-cutover-runbook-us-028.md documenting Docker-only build/typecheck/gateway validation and a manual production cutover runbook. Docker validation used only worker pibo-dev-final-owner-scope-removal-ralph with PIBO_HOME=/workspace/.pibo/ralph-test-home: npm run build passed with only existing Vite chunk-size warnings and npm run typecheck passed. Worker-local gateway validation started built dist/gateway/web.js with devAuth on container port 4788 / host-mapped worker web port 4832, logged in through dev auth, fetched /api/auth/session and /api/chat/bootstrap, recursively checked bootstrap payloads for no ownerScope/owner_scope/principalId/principal_id keys, stopped the process, restarted it on the same worker port, and repeated the checks successfully. The runbook documents that host Dev, host Production, host gateways, deploy scripts, /root/.pibo, Production data, and PR creation were not touched by the Ralph loop. It includes future manual prerequisites, PR review gate, active-session safety, fresh verified backup, inspect/dry-run review, apply approval, deploy/restart gate through Pibo CLI only, post-check validation, rollback steps, and a post-cutover checklist for removing the temporary final cutover migration module if that policy is chosen. The report explicitly states Ralph must stop before real Production DB migration and before upstream PR creation unless separately approved."
+    },
+    {
+      "id": "US-029",
+      "title": "Final zero-regression sweep for active Owner Scope artifacts in Docker",
+      "description": "As a maintainer, I want the final branch to have no active product Owner Scope artifacts and to prove that state through Docker-only checks.",
+      "acceptanceCriteria": [
+        "Run the strict active-source owner/principal search gate and record output",
+        "Run CLI help checks for pibo ralph, pibo cron, pibo tui:sessions, data migration, and debug commands inside Docker to ensure no active --owner-scope guidance remains",
+        "Run API/JSON payload checks for Chat bootstrap, Ralph, Cron, agents, projects, workflows, and annotations inside Docker to ensure no owner fields remain",
+        "Ensure any remaining matches are only in the isolated migration command, generated migration reports, or docs/legacy, and are documented",
+        "Full npm run typecheck, npm run build, and npm test pass in Docker",
+        "Typecheck passes",
+        "Build passes",
+        "Tests pass"
+      ],
+      "priority": 29,
+      "passes": true,
+      "notes": "Completed 2026-06-01. Performed the final Docker-only zero-regression sweep in worker pibo-dev-final-owner-scope-removal-ralph with PIBO_HOME=/workspace/.pibo/ralph-test-home. Cleaned remaining active-source confusing vocabulary: removed unused ChatUnreadCountInput principal field/export, renamed technical runtime/run helper methods away from getOwned/requireOwned wording, renamed CLI legacy repair metadata away from OwnerScope wording, updated compute smoke summary to holder labels, and rewrote Docker dev-auth skill text to describe auth-gated shared app access. Updated npm run check:product-vocab so its default active product roots are src, packages, scripts, skills, docs/project, docs/specs, and docs/plans; test fixtures and negative assertions remain covered by npm test. Docker search gate passed with 0 failures, 540 allowed matches, 683 scanned files, and allowed paths limited to the final-removal implementation docs plus src/data/final-app-space-cutover-migration.ts. Focused gate tests passed: node --test test/legacy-product-vocabulary-gate.test.mjs test/shared-app-artifact-search-gate.test.mjs (9 pass / 0 fail). Built CLI help checks for pibo ralph, pibo ralph add, pibo cron, pibo cron add, pibo tui:sessions, pibo data final-cutover, pibo data final-cutover inspect, pibo debug, and pibo debug session found zero removed owner/principal options or wording. Worker-local dev-auth API checks on 127.0.0.1:4792 covered Chat bootstrap, agents, projects, projects bootstrap, workflows, Ralph, Cron, and Web Annotations and recursively found no ownerScope/owner_scope/principalId/principal_id JSON keys. Full Docker validation passed: npm run typecheck; npm run build with only existing Vite chunk-size warnings; npm test with 895 tests / 4 suites / 895 pass / 0 fail. Report written to docs/reports/final-owner-scope-zero-regression-sweep-us-029.md. Host /root/.pibo, host gateways, Production data, deploys, migrations against host data, and PR creation were not touched."
+    },
+    {
+      "id": "US-030",
+      "title": "Stop for user review with PR-readiness and production cutover handoff",
+      "description": "As a maintainer, I want the Ralph loop to stop with a complete handoff so that the user can review before PR creation and before any real Production database migration.",
+      "acceptanceCriteria": [
+        "Update IMPLEMENTATION_PROGRESS.md with all completed stories, commits, evidence, remaining risks, and explicit Production non-action statement",
+        "Create docs/reports final validation report summarizing Docker tests, sandbox migrations, search gates, browser/PTY evidence, and known limitations",
+        "Prepare a draft PR summary/body and list exact commands for a future human-approved PR, but do not create the PR automatically",
+        "Ensure git status is clean except intended files before final commit",
+        "Do not run Production migration, Production deploy, host Dev deploy, host gateway restart, or Production restart in this story",
+        "End with a clear user-review checkpoint: code ready for review, Production DB untouched, PR not opened unless separately approved",
+        "Final full Docker validation commands are recorded",
+        "Typecheck passes",
+        "Build passes",
+        "Tests pass"
+      ],
+      "priority": 30,
+      "passes": true,
+      "notes": "Completed 2026-06-01. Prepared the final review handoff in docs/reports/final-owner-scope-review-handoff-us-030.md, summarizing all 30 PRD stories, primary validation reports, Docker fresh-home validation, migrated sandbox/API/CLI/PTY evidence, worker-local gateway validation, remaining intentional exceptions, draft PR body, future manual PR commands, and the explicit stop-before-cutover review checkpoint. Final US-030 Docker validation ran inside pibo-dev-final-owner-scope-removal-ralph with PIBO_HOME=/workspace/.pibo/ralph-test-home: npm run check:product-vocab -- --json passed with 0 failures, 551 allowed matches, and 683 scanned active-root files; allowed paths were limited to final-removal implementation docs and src/data/final-app-space-cutover-migration.ts. npm run typecheck passed; npm run build passed with only existing Vite chunk-size warnings; npm test passed with 895 tests / 4 suites / 895 pass / 0 fail. The handoff confirms host /root/.pibo, host Dev/Production gateways, Production data, deploy scripts, real migration apply, and upstream PR creation were not touched. Production cutover and upstream PR creation remain separate user-review/approval gates."
+    }
+  ]
+}

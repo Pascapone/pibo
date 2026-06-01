@@ -3,8 +3,29 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { DatabaseSync } from "node:sqlite";
 import { InMemoryPiboSessionStore, createPiboSession } from "../dist/sessions/store.js";
 import { SqlitePiboSessionStore, createDefaultPiboSessionStore } from "../dist/sessions/sqlite-store.js";
+
+function tableColumns(db, table) {
+	return new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((column) => column.name));
+}
+
+function indexNames(db, table) {
+	return db.prepare(`PRAGMA index_list(${table})`).all().map((index) => index.name).sort();
+}
+
+function assertOwnerlessPiboSessionsSchema(dbPath) {
+	const db = new DatabaseSync(dbPath, { readOnly: true });
+	try {
+		const columns = tableColumns(db, "pibo_sessions");
+		assert.equal(columns.has("owner_scope"), false);
+		assert.equal(columns.has("active_model_json"), true);
+		assert.equal(indexNames(db, "pibo_sessions").includes("idx_pibo_sessions_owner"), false);
+	} finally {
+		db.close();
+	}
+}
 
 test("pibo session builder creates opaque product and Pi identities", () => {
 	const session = createPiboSession(
@@ -12,7 +33,6 @@ test("pibo session builder creates opaque product and Pi identities", () => {
 			channel: "pibo.chat-web",
 			kind: "chat",
 			profile: "base",
-			ownerScope: "user:user-1",
 			workspace: "/workspace",
 			metadata: { source: "test" },
 		},
@@ -24,7 +44,7 @@ test("pibo session builder creates opaque product and Pi identities", () => {
 	assert.equal(session.channel, "pibo.chat-web");
 	assert.equal(session.kind, "chat");
 	assert.equal(session.profile, "base");
-	assert.equal(session.ownerScope, "user:user-1");
+	assert.equal(Object.hasOwn(session, "ownerScope"), false);
 	assert.equal(session.workspace, "/workspace");
 	assert.deepEqual(session.metadata, { source: "test" });
 	assert.equal(session.createdAt, "2026-04-28T00:00:00.000Z");
@@ -38,14 +58,12 @@ test("in-memory pibo session store creates, updates, and finds sessions", () => 
 		channel: "pibo.chat-web",
 		kind: "chat",
 		profile: "base",
-		ownerScope: "user:user-1",
 	});
 	const child = store.create({
 		id: "ps_child",
 		channel: "pibo.subagents",
 		kind: "subagent",
 		profile: "researcher",
-		ownerScope: "user:user-1",
 		parentId: parent.id,
 		metadata: { subagentName: "researcher", threadKey: "auth" },
 	});
@@ -55,7 +73,7 @@ test("in-memory pibo session store creates, updates, and finds sessions", () => 
 	assert.equal(updated.id, child.id);
 	assert.equal(updated.title, "Research");
 	assert.equal(updated.workspace, "/workspace");
-	assert.deepEqual(store.find({ ownerScope: "user:user-1" }).map((session) => session.id).sort(), [
+	assert.deepEqual(store.find({}).map((session) => session.id).sort(), [
 		"ps_child",
 		"ps_parent",
 	]);
@@ -100,12 +118,14 @@ test("default sqlite pibo session store uses PIBO_HOME, not cwd", async () => {
 			kind: "chat",
 			profile: "base",
 		});
-		const reopened = new SqlitePiboSessionStore(join(dir, "pibo-sessions.sqlite"));
+		const dbPath = join(dir, "pibo-sessions.sqlite");
+		const reopened = new SqlitePiboSessionStore(dbPath);
 		try {
 			assert.equal(reopened.get("ps_home")?.id, "ps_home");
 		} finally {
 			reopened.close();
 		}
+		assertOwnerlessPiboSessionsSchema(dbPath);
 	} finally {
 		store.close();
 		if (previousPiboHome === undefined) delete process.env.PIBO_HOME;
@@ -147,7 +167,6 @@ for (const factory of contractStoreFactories) {
 				channel: "pibo.chat-web",
 				kind: "chat",
 				profile: "base",
-				ownerScope: "user:user-1",
 				activeModel: { provider: "openai", id: "gpt-4.1" },
 			});
 			const child = store.create({
@@ -156,7 +175,6 @@ for (const factory of contractStoreFactories) {
 				channel: "pibo.subagents",
 				kind: "subagent",
 				profile: "researcher",
-				ownerScope: "user:user-1",
 				parentId: parent.id,
 				originId: parent.id,
 				workspace: "/workspace",
@@ -203,7 +221,6 @@ test("sqlite pibo session store persists structured session fields", async () =>
 			channel: "pibo.chat-web",
 			kind: "chat",
 			profile: "base",
-			ownerScope: "user:user-1",
 		});
 		const child = store.create({
 			id: "ps_child",
@@ -211,7 +228,6 @@ test("sqlite pibo session store persists structured session fields", async () =>
 			channel: "pibo.subagents",
 			kind: "subagent",
 			profile: "researcher",
-			ownerScope: "user:user-1",
 			parentId: parent.id,
 			originId: parent.id,
 			metadata: { subagentName: "researcher", threadKey: "auth" },
@@ -231,6 +247,7 @@ test("sqlite pibo session store persists structured session fields", async () =>
 		} finally {
 			reopened.close();
 		}
+		assertOwnerlessPiboSessionsSchema(dbPath);
 	} finally {
 		store.close();
 		await rm(dir, { recursive: true, force: true });

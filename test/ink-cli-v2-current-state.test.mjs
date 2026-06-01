@@ -10,7 +10,7 @@ import { PiboDataSessionStore } from "../dist/sessions/pibo-data-store.js";
 const reportPath = path.resolve("docs/reports/ink-cli-session-ui-v2-current-state.md");
 const fixedNow = "2026-05-17T12:00:00.000Z";
 
-test("Ink CLI V2 current-state audit documents shared surface, scope, commands, and PTY validation", () => {
+test("Ink CLI V2 current-state audit remains historical until the TUI cleanup story", () => {
 	const report = fs.readFileSync(reportPath, "utf8");
 
 	for (const expected of [
@@ -27,11 +27,7 @@ test("Ink CLI V2 current-state audit documents shared surface, scope, commands, 
 		"/login",
 		"/download",
 		"/upload",
-		"/owner",
 		"/room",
-		"user:unknown",
-		"sessions.owner_scope",
-		"session_navigation.owner_scope",
 	]) {
 		assert.match(report, new RegExp(escapeRegExp(expected)), `report should document ${expected}`);
 	}
@@ -40,28 +36,26 @@ test("Ink CLI V2 current-state audit documents shared surface, scope, commands, 
 	assert.match(report, /Project, Workflow, Cron, Ralph, Settings, Context Files/);
 });
 
-test("V2 CLI writes shared-app sessions instead of implicit user:unknown rows", async () => {
-	const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pibo-ink-cli-v2-owner-required-"));
+test("V2 CLI writes ownerless app-global sessions", async () => {
+	const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pibo-ink-cli-v2-ownerless-"));
 	const dataStore = new PiboDataStore(path.join(tempDir, "pibo.sqlite"), { payloadRootDir: path.join(tempDir, "payloads") });
 	const sessionStore = new PiboDataSessionStore(dataStore);
 	const source = new LocalCliSessionSource({ dataStore, sessionStore, now: () => fixedNow });
 
 	try {
-		const created = await source.createSession({ roomId: "room_owner_required", title: "Shared app session", profile: "base" });
-		await source.sendMessage(created.id, "message that should keep the shared app fallback");
-		assert.equal(created.ownerScope, "shared:app");
+		const created = await source.createSession({ roomId: "room_app_required", title: "Shared app session", profile: "base" });
+		await source.sendMessage(created.id, "message that should keep the app-global path");
+		assert.equal("ownerScope" in created, false);
 
 		const sessionColumns = tableColumns(dataStore.db, "sessions");
-		const sessionRow = dataStore.db.prepare(`${sessionColumns.has("owner_scope") ? "SELECT owner_scope, room_id" : "SELECT room_id"} FROM sessions WHERE id = ?`).get(created.id);
-		if (sessionColumns.has("owner_scope")) assert.equal(sessionRow.owner_scope, "shared:app");
-		assert.equal(sessionRow.room_id, "room_owner_required");
+		assert.equal(sessionColumns.has("owner_scope"), false);
+		const sessionRow = dataStore.db.prepare("SELECT room_id FROM sessions WHERE id = ?").get(created.id);
+		assert.equal(sessionRow.room_id, "room_app_required");
 
 		const navigationColumns = tableColumns(dataStore.db, "session_navigation");
-		const navigationRow = dataStore.db.prepare(`${navigationColumns.has("owner_scope") ? "SELECT owner_scope, room_id, session_id" : "SELECT room_id, session_id"} FROM session_navigation WHERE session_id = ?`).get(created.id);
-		if (navigationColumns.has("owner_scope")) assert.equal(navigationRow.owner_scope, "shared:app");
-		assert.equal(navigationRow.room_id, "room_owner_required");
-
-		assert.equal(sessionStore.find({ ownerScope: "user:unknown" }).some((session) => session.id === created.id), false);
+		assert.equal(navigationColumns.has("owner_scope"), false);
+		const navigationRow = dataStore.db.prepare("SELECT room_id, session_id FROM session_navigation WHERE session_id = ?").get(created.id);
+		assert.equal(navigationRow.room_id, "room_app_required");
 	} finally {
 		await source.close();
 		dataStore.close();

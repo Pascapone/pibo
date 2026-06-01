@@ -3,7 +3,7 @@ import React from "react";
 import { render } from "ink";
 import { createCustomAgentProfileDefinition } from "../../apps/chat/agent-profiles.js";
 import { createDefaultCustomAgentStore } from "../../apps/chat/agent-store.js";
-import { createDefaultFakeCliSessionSource, LocalCliSessionSource, type CliOwnerSummary, type CliRoomSummary, type CliSessionSource, type LocalCliSessionRouter } from "../../cli-session/index.js";
+import { createDefaultFakeCliSessionSource, LocalCliSessionSource, type CliRoomSummary, type CliSessionSource, type LocalCliSessionRouter } from "../../cli-session/index.js";
 import type { PiboEventListener, PiboInputEvent, PiboOutputEvent, PiboSessionStatus } from "../../core/events.js";
 import { PiboSessionRouter } from "../../core/session-router.js";
 import { PiboDataStore } from "../../data/pibo-store.js";
@@ -15,7 +15,6 @@ export type RunCliSessionsUiOptions = {
 	source?: CliSessionSource;
 	useFakeSource?: boolean;
 	initialSessionId?: string;
-	ownerScope?: string;
 	maxRows?: number;
 	maxLineChars?: number;
 	stdin?: NodeJS.ReadStream;
@@ -37,11 +36,10 @@ export async function runCliSessionsUi(options: RunCliSessionsUiOptions = {}): P
 	const source = options.source ?? (options.useFakeSource
 		? createDefaultFakeCliSessionSource()
 		: debugPtyMockedSource
-			? createDebugMockedLocalCliSessionSource({ ownerScope: options.ownerScope, assistantReply: process.env.PIBO_DEBUG_PTY_ASSISTANT_REPLY ?? "Mocked PTY assistant response" })
-			: createDefaultLocalCliSessionSource({ ownerScope: options.ownerScope }));
+			? createDebugMockedLocalCliSessionSource({ assistantReply: process.env.PIBO_DEBUG_PTY_ASSISTANT_REPLY ?? "Mocked PTY assistant response" })
+			: createDefaultLocalCliSessionSource());
 	const instance = render(React.createElement(InkSessionApp, {
 		initialSessionId: options.initialSessionId,
-		skipOwnerPicker: options.ownerScope !== undefined,
 		maxLineChars: options.maxLineChars ?? terminalLineLimitFromColumns(stdout.columns),
 		maxRows: options.maxRows,
 		source,
@@ -53,24 +51,21 @@ export async function runCliSessionsUi(options: RunCliSessionsUiOptions = {}): P
 	await instance.waitUntilExit();
 }
 
-export function createDefaultLocalCliSessionSource(options: { ownerScope?: string } = {}): LocalCliSessionSource {
+export function createDefaultLocalCliSessionSource(): LocalCliSessionSource {
 	const context = createLocalCliSessionSourceContext();
 	const router = new PiboSessionRouter({ sessionStore: context.sessionStore, pluginRegistry: context.pluginRegistry });
-	return createLocalCliSessionSourceFromContext({ ...context, ownerScope: options.ownerScope, router, ownsRouter: true });
+	return createLocalCliSessionSourceFromContext({ ...context, router, ownsRouter: true });
 }
 
-function createDebugMockedLocalCliSessionSource(options: { ownerScope?: string; assistantReply: string }): LocalCliSessionSource {
+function createDebugMockedLocalCliSessionSource(options: { assistantReply: string }): LocalCliSessionSource {
 	const context = createLocalCliSessionSourceContext();
-	const debugOwners = debugOwnerSummariesFromEnv();
 	const debugRooms = debugRoomSummariesFromEnv();
 	const router = new DebugMockCliSessionRouter(options.assistantReply);
 	return createLocalCliSessionSourceFromContext({
 		...context,
-		ownerScope: options.ownerScope,
 		router,
 		ownsRouter: true,
-		ownerSummaries: debugOwners.length > 0 ? debugOwners : context.ownerSummaries,
-		roomProvider: debugRooms.length > 0 ? { listRooms: ({ ownerScope } = {}) => debugRooms.filter((room) => room.ownerScope === undefined || room.ownerScope === ownerScope) } : undefined,
+		roomProvider: debugRooms.length > 0 ? { listRooms: () => debugRooms } : undefined,
 		statusMessage: "Debug PTY mocked local router",
 	});
 }
@@ -80,27 +75,14 @@ function debugRoomSummariesFromEnv(): CliRoomSummary[] {
 	if (!raw) return [];
 	const rooms: CliRoomSummary[] = [];
 	for (const entry of raw.split(";").map((value) => value.trim()).filter(Boolean)) {
-		const [ownerScope, id, title, description] = entry.split("|").map((part) => part?.trim());
-		if (ownerScope && id && title) rooms.push({ ownerScope, id, title, description: description || "Debug PTY room fixture", isDefault: title === "Personal Chat" });
+		const parts = entry.split("|").map((part) => part?.trim());
+		const [id, title, description] = parts.length >= 4 ? parts.slice(1) : parts;
+		if (id && title) rooms.push({ id, title, description: description || "Debug PTY room fixture", isDefault: title === "Shared Chat" });
 	}
 	return rooms;
 }
 
-function debugOwnerSummariesFromEnv(): CliOwnerSummary[] {
-	const raw = process.env.PIBO_DEBUG_PTY_CLI_SESSIONS_OWNERS;
-	if (!raw) return [];
-	return raw.split(",")
-		.map((value) => value.trim())
-		.filter(Boolean)
-		.map((ownerScope) => ({
-			ownerScope,
-			label: ownerScope.startsWith("user:") ? `Web user ${ownerScope.slice("user:".length)}` : ownerScope,
-			description: "Debug PTY owner fixture",
-			kind: ownerScope.startsWith("user:") ? "web-user" as const : "local" as const,
-		}));
-}
-
-function createLocalCliSessionSourceContext(): { dataStore: PiboDataStore; sessionStore: PiboDataSessionStore; pluginRegistry: ReturnType<typeof createDefaultPiboPluginRegistry>; agentSummaries: { id: string; name: string; description?: string; profileName: string }[]; ownerSummaries: CliOwnerSummary[] } {
+function createLocalCliSessionSourceContext(): { dataStore: PiboDataStore; sessionStore: PiboDataSessionStore; pluginRegistry: ReturnType<typeof createDefaultPiboPluginRegistry>; agentSummaries: { id: string; name: string; description?: string; profileName: string }[] } {
 	const dataStore = new PiboDataStore();
 	const sessionStore = new PiboDataSessionStore(dataStore);
 	const pluginRegistry = createDefaultPiboPluginRegistry();
@@ -116,18 +98,11 @@ function createLocalCliSessionSourceContext(): { dataStore: PiboDataStore; sessi
 		...builtInAgentSummaries,
 		...customAgents.map((agent) => ({ id: agent.profileName, name: agent.profileName, description: agent.description || agent.displayName, profileName: agent.profileName })),
 	];
-	const ownerSummaries = Array.from(new Set(customAgents.map((agent) => agent.ownerScope))).map((ownerScope) => ({
-		ownerScope,
-		label: ownerScope.startsWith("user:") ? `Web user ${ownerScope.slice("user:".length)}` : ownerScope,
-		description: "Discovered from custom agents",
-		kind: ownerScope.startsWith("user:") ? "web-user" as const : "local" as const,
-	}));
-	return { dataStore, sessionStore, pluginRegistry, agentSummaries, ownerSummaries };
+	return { dataStore, sessionStore, pluginRegistry, agentSummaries };
 }
 
-function createLocalCliSessionSourceFromContext(input: { ownerScope?: string; dataStore: PiboDataStore; sessionStore: PiboDataSessionStore; pluginRegistry: ReturnType<typeof createDefaultPiboPluginRegistry>; router: LocalCliSessionRouter; ownsRouter: boolean; agentSummaries: { id: string; name: string; description?: string; profileName: string }[]; ownerSummaries: CliOwnerSummary[]; roomProvider?: { listRooms(input?: { ownerScope?: string }): Promise<readonly CliRoomSummary[]> | readonly CliRoomSummary[] }; statusMessage?: string }): LocalCliSessionSource {
+function createLocalCliSessionSourceFromContext(input: { dataStore: PiboDataStore; sessionStore: PiboDataSessionStore; pluginRegistry: ReturnType<typeof createDefaultPiboPluginRegistry>; router: LocalCliSessionRouter; ownsRouter: boolean; agentSummaries: { id: string; name: string; description?: string; profileName: string }[]; roomProvider?: { listRooms(): Promise<readonly CliRoomSummary[]> | readonly CliRoomSummary[] }; statusMessage?: string }): LocalCliSessionSource {
 	return new LocalCliSessionSource({
-		ownerScope: input.ownerScope,
 		sessionStore: input.sessionStore,
 		ownsSessionStore: true,
 		pluginRegistry: input.pluginRegistry,
@@ -136,7 +111,6 @@ function createLocalCliSessionSourceFromContext(input: { ownerScope?: string; da
 		dataStore: input.dataStore,
 		ownsDataStore: true,
 		agentSummaries: input.agentSummaries,
-		ownerSummaries: input.ownerSummaries,
 		roomProvider: input.roomProvider,
 		statusMessage: input.statusMessage,
 	});
@@ -247,7 +221,6 @@ Usage:
 
 Options:
   --session <id>       Open a specific Pibo session id
-  --owner-scope <id>   Legacy/debug compatibility hint; shared-app mode ignores ownership
   --max-rows <count>   Limit rendered transcript rows (default: 20)
   --demo               Use deterministic fake session data for smoke testing
   -h, --help           Show this help

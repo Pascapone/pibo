@@ -1,7 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { PiboJsonObject } from "../core/events.js";
 import type { PiboSession } from "../sessions/store.js";
-import { sqliteTableColumns } from "./sqlite-schema.js";
 
 export type SessionUpsertInput = {
 	session: PiboSession;
@@ -17,15 +16,12 @@ export class SessionStore {
 	upsertSession(input: SessionUpsertInput): void {
 		const now = input.lastActivityAt ?? new Date().toISOString();
 		const title = input.session.title || previewText(input.firstMessagePreview ?? "") || "Untitled Session";
-		const columns = sqliteTableColumns(this.db, "sessions");
 		const baseColumns = [
 			"id", "pi_session_id", "room_id", "root_session_id", "parent_id", "origin_id", "channel", "kind", "profile", "active_model_json", "workspace", "title", "first_message_preview", "status", "metadata_json", "created_at", "updated_at", "last_activity_at",
 		];
-		const insertColumns = columns.has("owner_scope") ? ["id", "pi_session_id", "owner_scope", ...baseColumns.slice(2)] : baseColumns;
 		const values = [
 			input.session.id,
 			input.session.piSessionId,
-			...(columns.has("owner_scope") ? [input.session.ownerScope ?? "user:unknown"] : []),
 			input.roomId,
 			rootSessionId(input.session),
 			input.session.parentId ?? null,
@@ -45,7 +41,6 @@ export class SessionStore {
 		];
 		const assignments = [
 			"pi_session_id = excluded.pi_session_id",
-			...(columns.has("owner_scope") ? ["owner_scope = excluded.owner_scope"] : []),
 			"room_id = excluded.room_id",
 			"root_session_id = excluded.root_session_id",
 			"parent_id = excluded.parent_id",
@@ -63,8 +58,8 @@ export class SessionStore {
 			"last_activity_at = excluded.last_activity_at",
 		];
 		this.db.prepare(`
-			INSERT INTO sessions (${insertColumns.join(", ")})
-			VALUES (${insertColumns.map(() => "?").join(", ")})
+			INSERT INTO sessions (${baseColumns.join(", ")})
+			VALUES (${baseColumns.map(() => "?").join(", ")})
 			ON CONFLICT(id) DO UPDATE SET ${assignments.join(", ")}
 		`).run(...values);
 	}

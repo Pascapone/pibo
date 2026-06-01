@@ -114,7 +114,6 @@ export function workflowRunWriteValues(run: WorkflowRun): SqliteWriteValue[] {
     run.workflowVersion,
     run.workflowDefinitionHash ?? null,
     run.definitionSnapshotId ?? null,
-    run.ownerScope,
     run.parentRunId ?? null,
     run.parentNodeAttemptId ?? null,
     run.piboSessionId ?? null,

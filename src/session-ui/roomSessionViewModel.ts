@@ -4,7 +4,6 @@ export type RoomPickerInput = {
 	id: string;
 	title?: string;
 	description?: string;
-	ownerScope?: string;
 	isDefault?: boolean;
 	archived?: boolean;
 	disabled?: boolean;
@@ -17,7 +16,6 @@ export type SessionPickerInput = {
 	profile?: string;
 	status?: string;
 	roomId?: string;
-	ownerScope?: string;
 	updatedAt?: string;
 	archived?: boolean;
 	disabled?: boolean;
@@ -28,7 +26,6 @@ export type PickerItemDescriptor = {
 	kind: "room" | "session" | "create-session" | "back";
 	label: string;
 	description?: string;
-	ownerScope?: string;
 	roomId?: string;
 	sessionId?: string;
 	active?: boolean;
@@ -54,12 +51,10 @@ export type SessionPickerDescriptor = {
 	selectedIndex: number;
 	emptyMessage: string;
 	roomId?: string;
-	ownerScope?: string;
 };
 
 export function buildRoomPickerDescriptor(input: {
 	rooms: readonly RoomPickerInput[];
-	ownerLabel?: string;
 	activeRoomId?: string;
 	defaultRoomId?: string;
 	title?: string;
@@ -70,16 +65,16 @@ export function buildRoomPickerDescriptor(input: {
 	const selectedIndex = Math.max(0, activeIndex >= 0 ? activeIndex : defaultIndex);
 	return {
 		kind: "room",
-		title: input.title ?? `Select room${input.ownerLabel ? ` for ${redactTerminalSecret(input.ownerLabel)}` : ""}`,
+		title: input.title ?? "Select room",
 		items,
 		selectedIndex,
-		emptyMessage: "No rooms are available for the selected owner.",
+		emptyMessage: "No rooms are available.",
 	};
 }
 
 export function buildSessionPickerDescriptor(input: {
 	sessions: readonly SessionPickerInput[];
-	room: { id: string; title?: string; ownerScope?: string };
+	room: { id: string; title?: string };
 	activeSessionId?: string;
 	includeCreateAction?: boolean;
 	includeBackAction?: boolean;
@@ -94,7 +89,6 @@ export function buildSessionPickerDescriptor(input: {
 		label: `+ New session in ${roomTitle}`,
 		description: "Create and open a new CLI session in this room",
 		roomId: input.room.id,
-		ownerScope: input.room.ownerScope,
 		markers: ["new"],
 	}];
 	const items = [...backItem, ...sessionItems, ...createItem];
@@ -106,7 +100,6 @@ export function buildSessionPickerDescriptor(input: {
 		selectedIndex,
 		emptyMessage: `No sessions in ${roomTitle}. Create a new session to start chatting.`,
 		roomId: input.room.id,
-		ownerScope: input.room.ownerScope,
 	};
 }
 
@@ -118,7 +111,6 @@ function roomPickerItem(room: RoomPickerInput, active: boolean, isDefault: boole
 		kind: "room",
 		label: redactTerminalSecret(room.title ?? room.id),
 		description: redactTerminalSecret([room.description, markers.join(", ")].filter(Boolean).join(" | ")) || undefined,
-		ownerScope: room.ownerScope,
 		roomId: room.id,
 		active,
 		default: isDefault,
@@ -136,7 +128,6 @@ function sessionPickerItem(session: SessionPickerInput, current: boolean): Picke
 		kind: "session",
 		label: redactTerminalSecret(session.title ?? session.id),
 		description: redactTerminalSecret([session.profile, session.description, session.updatedAt, markers.join(", ")].filter(Boolean).join(" | ")) || undefined,
-		ownerScope: session.ownerScope,
 		roomId: session.roomId,
 		sessionId: session.id,
 		current,

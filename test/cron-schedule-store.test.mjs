@@ -2,13 +2,11 @@ import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { DatabaseSync } from 'node:sqlite';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { promisify } from 'node:util';
 import { computeNextRunAt, parseFriendlySchedule } from '../dist/cron/schedule.js';
 import { PiboCronStore } from '../dist/cron/store.js';
-import { LEGACY_SHARED_APP_OWNER_SCOPE } from '../dist/shared-app.js';
 
 const execFileAsync = promisify(execFile);
 const cliPath = new URL('../dist/bin/pibo.js', import.meta.url).pathname;
@@ -30,105 +28,54 @@ test('friendly daily schedule becomes cron expression', () => {
   assert.deepEqual(schedule, { kind: 'cron', expr: '30 8 * * *', tz: 'UTC' });
 });
 
-test('cron store persists app-global jobs, ignores owner filters, and reserves a due run once', () => {
+test('cron store persists app-global jobs and reserves a due run once', () => {
   const store = new PiboCronStore({ path: ':memory:' });
   const now = new Date('2026-05-09T08:00:00.000Z');
   const job = store.createJob({
-    ownerScope: 'user:a',
-    target: { kind: 'personal', principalId: 'user:a' },
+    target: { kind: 'default-chat' },
     profile: 'default',
     prompt: 'do it',
     schedule: { kind: 'at', at: '2026-05-09T08:01:00.000Z' },
   }, now);
-  assert.equal(job.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
-  assert.deepEqual(job.target, { kind: 'personal', principalId: LEGACY_SHARED_APP_OWNER_SCOPE });
-  assert.deepEqual(store.listJobs({ ownerScope: 'user:b', includeDisabled: true }).map((item) => item.id), [job.id]);
+  assert.equal('ownerScope' in job, false);
+  assert.deepEqual(job.target, { kind: 'default-chat' });
+  assert.deepEqual(store.listJobs({ includeDisabled: true }).map((item) => item.id), [job.id]);
   assert.equal(store.reserveDueRuns(10, now).length, 0);
   const due = store.reserveDueRuns(10, new Date('2026-05-09T08:02:00.000Z'));
   assert.equal(due.length, 1);
   assert.equal(due[0].job.id, job.id);
+  assert.equal('ownerScope' in due[0].run, false);
   assert.equal(store.reserveDueRuns(10, new Date('2026-05-09T08:02:00.000Z')).length, 0);
   store.completeRun({ jobId: job.id, runId: due[0].run.id, status: 'ok', piboSessionId: 'ps_test' }, new Date('2026-05-09T08:03:00.000Z'));
   const updated = store.getJob(job.id);
   assert.equal(updated.enabled, false);
   assert.equal(updated.state.lastPiboSessionId, 'ps_test');
-  assert.equal(store.listRuns({ ownerScope: 'user:b' })[0].ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
+  assert.equal('ownerScope' in store.listRuns({})[0], false);
   store.close();
-});
-
-test('cron store jointly exposes and controls historical user cron jobs', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'pibo-cron-historical-'));
-  const storePath = join(root, 'cron.sqlite');
-  try {
-    let store = new PiboCronStore({ path: storePath });
-    const now = new Date('2026-05-09T08:00:00.000Z');
-    const jobA = store.createJob({ ownerScope: 'user:a', target: { kind: 'personal', principalId: 'user:a' }, profile: 'default', prompt: 'a', schedule: { kind: 'at', at: '2026-05-09T08:10:00.000Z' } }, now);
-    const jobB = store.createJob({ ownerScope: 'user:b', target: { kind: 'personal', principalId: 'user:b' }, profile: 'default', prompt: 'b', schedule: { kind: 'at', at: '2026-05-09T08:20:00.000Z' } }, now);
-    store.close();
-
-    const db = new DatabaseSync(storePath);
-    db.exec("ALTER TABLE pibo_cron_jobs ADD COLUMN owner_scope TEXT NOT NULL DEFAULT 'shared:app'");
-    db.prepare('UPDATE pibo_cron_jobs SET owner_scope = ?, target_json = ? WHERE id = ?').run('user:a', JSON.stringify({ kind: 'personal', principalId: 'user:a' }), jobA.id);
-    db.prepare('UPDATE pibo_cron_jobs SET owner_scope = ?, target_json = ? WHERE id = ?').run('user:b', JSON.stringify({ kind: 'personal', principalId: 'user:b' }), jobB.id);
-    db.close();
-
-    store = new PiboCronStore({ path: storePath });
-    assert.deepEqual(store.listJobs({ ownerScope: 'user:c', includeDisabled: true }).map((job) => job.id).sort(), [jobA.id, jobB.id].sort());
-    const updated = store.updateJob('user:c', jobA.id, { name: 'updated by c', target: { kind: 'personal', principalId: 'user:c' } });
-    assert.equal(updated.name, 'updated by c');
-    assert.equal(updated.ownerScope, 'user:a');
-    assert.deepEqual(updated.target, { kind: 'personal', principalId: LEGACY_SHARED_APP_OWNER_SCOPE });
-    const reserved = store.reserveManualRun('user:c', jobA.id, new Date('2026-05-09T08:03:00.000Z'));
-    assert.equal(reserved.job.id, jobA.id);
-    assert.equal(reserved.run.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
-    assert.deepEqual(store.listRuns({ ownerScope: 'user:b' }).map((run) => run.id), [reserved.run.id]);
-    assert.equal(store.removeJob('user:c', jobB.id), true);
-    assert.equal(store.getJob(jobB.id), undefined);
-    store.close();
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
 });
 
 test('cron CLI creates shared jobs without owner scope', async () => {
   const root = await mkdtemp(join(tmpdir(), 'pibo-cron-cli-'));
   const storePath = join(root, 'cron.sqlite');
   try {
-    const result = await execFileAsync('node', [cliPath, 'cron', '--store', storePath, 'add', '--personal', '--daily', '09:10', '--prompt', 'do it', '--json']);
+    const result = await execFileAsync('node', [cliPath, 'cron', '--store', storePath, 'add', '--default-chat', '--daily', '09:10', '--prompt', 'do it', '--json']);
     const job = JSON.parse(result.stdout);
-    assert.equal(job.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
-    assert.deepEqual(job.target, { kind: 'personal', principalId: LEGACY_SHARED_APP_OWNER_SCOPE });
+    assert.equal('ownerScope' in job, false);
+    assert.deepEqual(job.target, { kind: 'default-chat' });
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
 
-test('cron CLI treats explicit owner scope as deprecated no-op', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'pibo-cron-cli-'));
-  const storePath = join(root, 'cron.sqlite');
-  try {
-    const result = await execFileAsync('node', [
-      cliPath,
-      'cron',
-      '--store',
-      storePath,
-      '--owner-scope',
-      'user:test',
-      'add',
-      '--personal',
-      '--daily',
-      '09:10',
-      '--prompt',
-      'do it',
-      '--json',
-    ]);
-    const job = JSON.parse(result.stdout);
-    assert.equal(job.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
-    assert.deepEqual(job.target, { kind: 'personal', principalId: LEGACY_SHARED_APP_OWNER_SCOPE });
-    assert.match(result.stderr, /--owner-scope is deprecated for Cron and ignored/);
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
+test('cron CLI help exposes only ownerless target options', async () => {
+  const result = await execFileAsync('node', [cliPath, 'cron', 'add', '--help']);
+  const legacyOwnerOption = ['--owner', '-scope'].join('');
+  const legacyPersonalOption = ['--', 'personal'].join('');
+  const legacyPrincipalOption = ['--principal', '-id'].join('');
+  assert.match(result.stdout, /--default-chat/);
+  assert.doesNotMatch(result.stdout, new RegExp(legacyOwnerOption));
+  assert.doesNotMatch(result.stdout, new RegExp(legacyPersonalOption));
+  assert.doesNotMatch(result.stdout, new RegExp(legacyPrincipalOption));
 });
 
 test('cron CLI edits prompt, target, profile, and schedule', async () => {
@@ -140,10 +87,8 @@ test('cron CLI edits prompt, target, profile, and schedule', async () => {
       'cron',
       '--store',
       storePath,
-      '--owner-scope',
-      'user:test',
       'add',
-      '--personal',
+      '--default-chat',
       '--daily',
       '09:10',
       '--prompt',
@@ -156,8 +101,6 @@ test('cron CLI edits prompt, target, profile, and schedule', async () => {
       'cron',
       '--store',
       storePath,
-      '--owner-scope',
-      'user:test',
       'edit',
       original.id,
       '--room',

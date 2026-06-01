@@ -20,7 +20,6 @@ import {
 
 export const WEB_ANNOTATION_LIMITS = {
 	id: 160,
-	ownerScope: 240,
 	piboSessionId: 160,
 	piboRoomId: 160,
 	url: 2_000,
@@ -106,7 +105,6 @@ export function normalizeWebAnnotationBindingInput(input: CreateWebAnnotationBin
 	const normalized: CreateWebAnnotationBindingInput = {
 		...input,
 		id: sanitizeWebAnnotationText(input.id, { max: WEB_ANNOTATION_LIMITS.id, field: "id", redactSecrets: false }),
-		ownerScope: requireWebAnnotationText(input.ownerScope, { max: WEB_ANNOTATION_LIMITS.ownerScope, field: "ownerScope", redactSecrets: false }),
 		piboSessionId: requireWebAnnotationText(input.piboSessionId, { max: WEB_ANNOTATION_LIMITS.piboSessionId, field: "piboSessionId", redactSecrets: false }),
 		piboRoomId: sanitizeWebAnnotationText(input.piboRoomId, { max: WEB_ANNOTATION_LIMITS.piboRoomId, field: "piboRoomId", redactSecrets: false }),
 		url: requireWebAnnotationText(input.url, { max: WEB_ANNOTATION_LIMITS.url, field: "url", redactSecrets: false }),
@@ -134,7 +132,6 @@ export function normalizeWebAnnotationCreateInput(input: CreateWebAnnotationInpu
 	return {
 		...input,
 		id: sanitizeWebAnnotationText(input.id, { max: WEB_ANNOTATION_LIMITS.id, field: "id", redactSecrets: false }),
-		ownerScope: requireWebAnnotationText(input.ownerScope, { max: WEB_ANNOTATION_LIMITS.ownerScope, field: "ownerScope", redactSecrets: false }),
 		piboSessionId: requireWebAnnotationText(input.piboSessionId, { max: WEB_ANNOTATION_LIMITS.piboSessionId, field: "piboSessionId", redactSecrets: false }),
 		piboRoomId: sanitizeWebAnnotationText(input.piboRoomId, { max: WEB_ANNOTATION_LIMITS.piboRoomId, field: "piboRoomId", redactSecrets: false }),
 		bindingId: sanitizeWebAnnotationText(input.bindingId, { max: WEB_ANNOTATION_LIMITS.id, field: "bindingId", redactSecrets: false }),
@@ -173,7 +170,6 @@ export function normalizeWebAnnotationThreadMessageInput(input: AddWebAnnotation
 	return {
 		...input,
 		annotationId: requireWebAnnotationText(input.annotationId, { max: WEB_ANNOTATION_LIMITS.id, field: "annotationId", redactSecrets: false }),
-		ownerScope: requireWebAnnotationText(input.ownerScope, { max: WEB_ANNOTATION_LIMITS.ownerScope, field: "ownerScope", redactSecrets: false }),
 		piboSessionId: requireWebAnnotationText(input.piboSessionId, { max: WEB_ANNOTATION_LIMITS.piboSessionId, field: "piboSessionId", redactSecrets: false }),
 		content: requireWebAnnotationText(input.content, { max: WEB_ANNOTATION_LIMITS.threadMessage, field: "content" }),
 		id: sanitizeWebAnnotationText(input.id, { max: WEB_ANNOTATION_LIMITS.id, field: "id", redactSecrets: false }),

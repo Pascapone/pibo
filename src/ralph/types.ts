@@ -4,7 +4,7 @@ import type { PiboThinkingLevel } from '../core/thinking.js';
 
 export type PiboRalphTarget =
 	| { kind: 'room'; roomId: string }
-	| { kind: 'personal'; principalId: string };
+	| { kind: 'default-chat' };
 
 export type PiboRalphStopConditionPhase = 'before-run' | 'after-run';
 export type PiboRalphStopAction = 'continue' | 'stop-after-run' | 'cancel-current-run';
@@ -80,7 +80,6 @@ export type PiboRalphJobState = {
 
 export type PiboRalphJob = {
 	id: string;
-	ownerScope: string;
 	name: string;
 	description?: string;
 	enabled: boolean;
@@ -103,7 +102,6 @@ export type PiboRalphRunStatus = 'running' | 'ok' | 'error' | 'cancelled';
 export type PiboRalphRun = {
 	id: string;
 	jobId: string;
-	ownerScope: string;
 	piboSessionId?: string;
 	status: PiboRalphRunStatus;
 	reason?: string;
@@ -117,7 +115,6 @@ export type PiboRalphRun = {
 
 export type PiboRalphRunFact = {
 	id: string;
-	ownerScope: string;
 	jobId: string;
 	runId?: string;
 	piboSessionId?: string;
@@ -176,7 +173,6 @@ export type PiboRalphStopConditionInfo = {
 };
 
 export type PiboRalphJobCreateInput = {
-	ownerScope: string;
 	name?: string;
 	description?: string;
 	enabled?: boolean;

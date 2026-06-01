@@ -82,7 +82,6 @@ export function serializeWebAnnotationAttachment(annotation: WebAnnotation): Web
 
 export function prepareWebAnnotationMessageAttachments(input: {
 	store: WebAnnotationStore;
-	ownerScope: string;
 	piboSessionId: string;
 	messageText: string;
 	attachmentIds: unknown;
@@ -92,7 +91,7 @@ export function prepareWebAnnotationMessageAttachments(input: {
 		return { ids: [], annotations: [], attachments: [], modelContext: "", messageText: input.messageText };
 	}
 	const annotations = ids.map((id) => {
-		const annotation = input.store.getAnnotationForOwner(input.ownerScope, id);
+		const annotation = input.store.getAnnotationById(id);
 		if (!annotation) throw new Error(`Web Annotation ${id} is not available in this app`);
 		if (annotation.status === "resolved" || annotation.status === "dismissed") {
 			throw new Error(`Web Annotation ${id} cannot be attached because it is ${annotation.status}`);

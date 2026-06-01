@@ -1,8 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { PiboJsonObject } from "../core/events.js";
 import { PiboDataStore } from "../data/pibo-store.js";
-import { getSharedAppLegacyOwnerScope } from "../shared-app.js";
-import { sqliteTableColumns } from "../data/sqlite-schema.js";
 import {
 	createPiboSession,
 	matchesFindInput,
@@ -16,7 +14,6 @@ import {
 type SessionRow = {
 	id: string;
 	pi_session_id: string | null;
-	owner_scope?: string;
 	room_id: string | null;
 	root_session_id: string | null;
 	parent_id: string | null;
@@ -78,7 +75,6 @@ export class PiboDataSessionStore implements PiboSessionStore {
 			...existing,
 			piSessionId: input.piSessionId ?? existing.piSessionId,
 			profile: input.profile ?? existing.profile,
-			ownerScope: input.ownerScope ?? existing.ownerScope,
 			parentId: input.parentId === null ? undefined : input.parentId ?? existing.parentId,
 			originId: input.originId === null ? undefined : input.originId ?? existing.originId,
 			workspace: input.workspace === null ? undefined : input.workspace ?? existing.workspace,
@@ -87,11 +83,9 @@ export class PiboDataSessionStore implements PiboSessionStore {
 			activeModel: input.activeModel === null ? undefined : input.activeModel ? { ...input.activeModel } : existing.activeModel,
 			updatedAt: new Date().toISOString(),
 		};
-		const hasOwnerScope = sqliteTableColumns(this.db, "sessions").has("owner_scope");
 		this.db.prepare(`
 			UPDATE sessions SET
 				pi_session_id = ?,
-				${hasOwnerScope ? "owner_scope = ?," : ""}
 				root_session_id = ?,
 				parent_id = ?,
 				origin_id = ?,
@@ -105,7 +99,6 @@ export class PiboDataSessionStore implements PiboSessionStore {
 			WHERE id = ? AND deleted_at IS NULL
 		`).run(
 			updated.piSessionId,
-			...(hasOwnerScope ? [updated.ownerScope ?? getSharedAppLegacyOwnerScope()] : []),
 			rootSessionId(updated),
 			updated.parentId ?? null,
 			updated.originId ?? null,
@@ -136,7 +129,6 @@ export class PiboDataSessionStore implements PiboSessionStore {
 		}
 		if (input.channel !== undefined) { clauses.push("channel = ?"); values.push(input.channel); }
 		if (input.kind !== undefined) { clauses.push("kind = ?"); values.push(input.kind); }
-		if (input.ownerScope !== undefined && sqliteTableColumns(this.db, "sessions").has("owner_scope")) { clauses.push("owner_scope = ?"); values.push(input.ownerScope); }
 		if (input.parentId !== undefined) {
 			if (input.parentId === null) clauses.push("parent_id IS NULL");
 			else { clauses.push("parent_id = ?"); values.push(input.parentId); }
@@ -160,9 +152,8 @@ export class PiboDataSessionStore implements PiboSessionStore {
 	}
 
 	private insertSession(session: PiboSession): void {
-		const hasOwnerScope = sqliteTableColumns(this.db, "sessions").has("owner_scope");
 		const columns = [
-			"id", "pi_session_id", ...(hasOwnerScope ? ["owner_scope"] : []), "room_id", "root_session_id", "parent_id", "origin_id",
+			"id", "pi_session_id", "room_id", "root_session_id", "parent_id", "origin_id",
 			"channel", "kind", "profile", "active_model_json", "workspace", "title", "first_message_preview",
 			"status", "metadata_json", "created_at", "updated_at", "last_activity_at",
 		];
@@ -171,7 +162,6 @@ export class PiboDataSessionStore implements PiboSessionStore {
 		`).run(
 			session.id,
 			session.piSessionId,
-			...(hasOwnerScope ? [session.ownerScope ?? getSharedAppLegacyOwnerScope()] : []),
 			roomIdFromMetadata(session.metadata),
 			rootSessionId(session),
 			session.parentId ?? null,
@@ -203,7 +193,6 @@ function sessionFromRow(row: SessionRow): PiboSession {
 		channel: row.channel,
 		kind: row.kind,
 		profile: row.profile,
-		ownerScope: row.owner_scope ?? getSharedAppLegacyOwnerScope(),
 		parentId: row.parent_id ?? undefined,
 		originId: row.origin_id ?? undefined,
 		workspace: row.workspace ?? undefined,

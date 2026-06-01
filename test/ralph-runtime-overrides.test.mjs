@@ -12,9 +12,7 @@ test("Ralph store persists and clears runtime overrides", () => {
 	const store = new PiboRalphStore({ path: ":memory:" });
 	try {
 		const job = store.createJob({
-			ownerScope: "user:a",
-			target: { kind: "personal", principalId: "user:a" },
-			profile: "codex",
+			target: { kind: "default-chat" }, profile: "codex",
 			prompt: "Keep checking the inbox.",
 			maxIterations: 3,
 			modelOverride: { provider: "openai", id: "gpt-5" },
@@ -28,7 +26,7 @@ test("Ralph store persists and clears runtime overrides", () => {
 		assert.equal(reloaded?.fastMode, true);
 		assert.equal(reloaded?.maxIterations, 3);
 
-		const cleared = store.updateJob("user:a", job.id, {
+		const cleared = store.updateJob(job.id, {
 			modelOverride: null,
 			thinkingLevel: null,
 			fastMode: null,
@@ -83,16 +81,14 @@ test("Ralph service passes runtime overrides to created sessions", async () => {
 
 	try {
 		const job = store.createJob({
-			ownerScope: "user:a",
-			target: { kind: "personal", principalId: "user:a" },
-			profile: "codex",
+			target: { kind: "default-chat" }, profile: "codex",
 			prompt: "Keep checking the inbox.",
 			modelOverride: { provider: "openai", id: "gpt-5" },
 			thinkingLevel: "high",
 			fastMode: true,
 		});
 
-		const run = await service.startJob("user:a", job.id);
+		const run = await service.startJob(job.id);
 		assert.ok(run);
 		await waitFor(() => store.getJob(job.id)?.state.lastStatus === "ok");
 

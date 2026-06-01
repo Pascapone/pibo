@@ -43,7 +43,6 @@ export type PiboWebDerivedSessionNode = {
 
 export type PiboRoom = {
 	id: string;
-	ownerScope: string;
 	name: string;
 	topic?: string;
 	workspace?: string;
@@ -59,7 +58,6 @@ export type PiboRoom = {
 
 export type PiboProject = {
 	id: string;
-	ownerScope: string;
 	name: string;
 	description?: string;
 	projectFolder: string;
@@ -158,7 +156,6 @@ export type PiboProjectSession = {
 export type WorkflowLifecycleEventRecord = {
 	id: string;
 	type: string;
-	ownerScope: string;
 	actorId?: string;
 	workflowId?: string;
 	workflowVersion?: string;
@@ -198,7 +195,6 @@ export type PiboSession = {
 	channel: string;
 	kind: string;
 	profile: string;
-	ownerScope?: string;
 	parentId?: string;
 	originId?: string;
 	workspace?: string;
@@ -340,7 +336,7 @@ export type ProjectsBootstrapData = {
 
 export type PiboCronTarget =
 	| { kind: "room"; roomId: string }
-	| { kind: "personal"; principalId?: string };
+	| { kind: "default-chat" };
 
 export type PiboCronSchedule =
 	| { kind: "at"; at: string }
@@ -358,7 +354,6 @@ export type PiboCronScheduleUi =
 
 export type PiboCronJob = {
 	id: string;
-	ownerScope?: string;
 	name: string;
 	description?: string;
 	enabled: boolean;
@@ -385,7 +380,6 @@ export type PiboCronJob = {
 export type PiboCronRun = {
 	id: string;
 	jobId: string;
-	ownerScope?: string;
 	piboSessionId?: string;
 	status: "queued" | "running" | "ok" | "error" | "skipped";
 	reason?: string;
@@ -543,7 +537,6 @@ export type CustomAgentSubagent = {
 export type CustomAgent = {
 	id: string;
 	profileName: string;
-	ownerScope: string;
 	displayName: string;
 	description?: string;
 	nativeTools: string[];
@@ -625,12 +618,12 @@ export type Trace = {
 
 export type PiboRalphTarget =
 	| { kind: "room"; roomId: string }
-	| { kind: "personal"; principalId?: string };
+	| { kind: "default-chat" };
 export type PiboRalphStopConditionInstance = { id: string; type: string; enabled?: boolean; options?: Record<string, unknown>; failClosed?: boolean; timeoutMs?: number };
 export type PiboRalphStopPolicy = { mode: "any" | "all"; conditions: PiboRalphStopConditionInstance[] };
 export type PiboRalphStopConditionInfo = { type: string; name: string; description?: string; phases: Array<"before-run" | "after-run">; optionsSchema?: Record<string, unknown>; defaultOptions?: Record<string, unknown>; pluginId?: string; pluginName?: string };
 export type PiboRalphStopEvaluationSummary = { id: string; phase: "before-run" | "after-run"; at: string; mode: "any" | "all"; finalAction: "continue" | "stop-after-run" | "cancel-current-run"; reason?: string; decisions: Array<{ id: string; type: string; phase: "before-run" | "after-run"; action: "continue" | "stop-after-run" | "cancel-current-run"; reason?: string; details?: Record<string, unknown>; skipped?: boolean; error?: string }> };
-export type PiboRalphJob = { id: string; ownerScope?: string; name: string; description?: string; enabled: boolean; target: PiboRalphTarget; profile: string; prompt: string; maxIterations?: number; stopPolicy?: PiboRalphStopPolicy; modelOverride?: ModelProfile; thinkingLevel?: ThinkingLevel; fastMode?: boolean; state: { runningAt?: string; lastRunAt?: string; lastStatus?: "ok" | "error" | "cancelled"; lastError?: string; lastRunId?: string; lastPiboSessionId?: string; consecutiveErrors?: number; stopRequestedAt?: string; cancelRequestedAt?: string; completedIterations?: number; conditionStates?: Record<string, Record<string, unknown>>; lastStopEvaluation?: PiboRalphStopEvaluationSummary }; createdAt: string; updatedAt: string };
-export type PiboRalphRun = { id: string; jobId: string; ownerScope?: string; piboSessionId?: string; status: "running" | "ok" | "error" | "cancelled"; reason?: string; error?: string; startedAt?: string; completedAt?: string; createdAt: string; updatedAt: string };
+export type PiboRalphJob = { id: string; name: string; description?: string; enabled: boolean; target: PiboRalphTarget; profile: string; prompt: string; maxIterations?: number; stopPolicy?: PiboRalphStopPolicy; modelOverride?: ModelProfile; thinkingLevel?: ThinkingLevel; fastMode?: boolean; state: { runningAt?: string; lastRunAt?: string; lastStatus?: "ok" | "error" | "cancelled"; lastError?: string; lastRunId?: string; lastPiboSessionId?: string; consecutiveErrors?: number; stopRequestedAt?: string; cancelRequestedAt?: string; completedIterations?: number; conditionStates?: Record<string, Record<string, unknown>>; lastStopEvaluation?: PiboRalphStopEvaluationSummary }; createdAt: string; updatedAt: string };
+export type PiboRalphRun = { id: string; jobId: string; piboSessionId?: string; status: "running" | "ok" | "error" | "cancelled"; reason?: string; error?: string; startedAt?: string; completedAt?: string; createdAt: string; updatedAt: string };
 export type PiboRalphStatus = { enabled: boolean; jobs: number; running: number };
 export type PiboRalphJobTemplate = { id: string; name: string; description: string; category: "prd" | "general"; job: { name: string; description?: string; prompt: string; maxIterations?: number; stopPolicy?: PiboRalphStopPolicy } };

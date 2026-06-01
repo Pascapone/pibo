@@ -76,7 +76,6 @@ function createRun(): WorkflowRun {
     id: "wfr_code",
     workflowId: "test.code-node-dispatch",
     workflowVersion: "1.0.0",
-    ownerScope: "user:test",
     status: "running",
     current: { nodeId: "normalize", status: "running" },
     input: { topic: "Workflows" },

@@ -15,7 +15,6 @@ type SessionRow = {
 	channel: string;
 	kind: string;
 	profile: string;
-	owner_scope: string | null;
 	parent_id: string | null;
 	origin_id: string | null;
 	workspace: string | null;
@@ -368,7 +367,6 @@ function sessionFromRow(row: SessionRow): PiboSession {
 		channel: row.channel,
 		kind: row.kind,
 		profile: row.profile,
-		ownerScope: row.owner_scope ?? undefined,
 		parentId: row.parent_id ?? undefined,
 		originId: row.origin_id ?? undefined,
 		workspace: row.workspace ?? undefined,

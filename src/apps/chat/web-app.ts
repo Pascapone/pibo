@@ -17,9 +17,7 @@ import {
 	withPiboRoomWorkspace,
 	type CreatePiboRoomInput,
 	type PiboRoom,
-	type PiboRoomMember,
 	type PiboRoomNode,
-	type PiboRoomRole,
 	type UpdatePiboRoomInput,
 } from "./types/rooms.js";
 import { chatStreamFramesFromOutputEvent, createChatStreamState, nextTransientChatStreamFrameId, type ChatStreamEvent } from "./stream.js";
@@ -50,7 +48,6 @@ import {
 } from "../../core/model-defaults.js";
 import { inspectPiboContextBuild } from "../../core/context-build.js";
 import { loadPiboUserSettings } from "../../core/user-settings.js";
-import { getSharedAppLegacyOwnerScope } from "../../shared-app.js";
 import { loadModelCatalog } from "./model-catalog.js";
 import { createCustomAgentProfileDefinition } from "./agent-profiles.js";
 import { createDefaultPiboReliabilityStore, PiboReliabilityStore } from "../../reliability/store.js";
@@ -170,7 +167,6 @@ import {
 	normalizeWorkflowPromptAssetLabel,
 	parseWorkflowSemver,
 	sanitizeWorkflowDiagnostics,
-	type OwnedWorkflowDraftRecord,
 	type WorkflowArchiveStateRecord,
 	type WorkflowDraftDiagnostic,
 	type WorkflowDraftRecord,
@@ -317,8 +313,8 @@ type ChatEventCommands = {
 };
 
 type ChatReadState = {
-	markSessionRead(piboSessionId: string, principalId: string, lastReadStreamId: number): void;
-	countUnreadMessagesBySession(input: { piboSessionIds: string[]; principalId: string }): Map<string, number>;
+	markSessionRead(piboSessionId: string, lastReadStreamId: number): void;
+	countUnreadMessagesBySession(input: { piboSessionIds: string[] }): Map<string, number>;
 };
 
 type ChatRoomActions = {
@@ -326,14 +322,12 @@ type ChatRoomActions = {
 	updateRoom(id: string, input: UpdatePiboRoomInput): PiboRoom | undefined;
 	deleteRooms(ids: string[]): number;
 	getRoom(id: string): PiboRoom | undefined;
-	listRooms(ownerScope?: string): PiboRoom[];
-	listRoomTree(ownerScope?: string): PiboRoomNode[];
+	listRooms(): PiboRoom[];
+	listRoomTree(): PiboRoomNode[];
 	listRoomSubtree(rootRoomId: string): PiboRoom[];
-	ensureDefaultRoom(input: { ownerScope: string; principalId: string; name?: string }): PiboRoom;
-	ensureMember(input: { roomId: string; principalId: string; role: PiboRoomRole }): PiboRoomMember;
-	getMember(roomId: string, principalId: string): PiboRoomMember | undefined;
-	updateReadCursor(roomId: string, principalId: string, lastReadStreamId: number): PiboRoomMember | undefined;
-	requireRoomAccess(roomId: string, principalId: string, action?: "read" | "write" | "admin"): PiboRoom;
+	ensureDefaultRoom(input?: { name?: string }): PiboRoom;
+	updateReadCursor(roomId: string, lastReadStreamId: number): void;
+	requireRoom(roomId: string): PiboRoom;
 	close?(): void;
 };
 
@@ -359,7 +353,7 @@ type ChatWebAppState = {
 	transientReplaySequence: number;
 	transientReplayBuffer: TransientChatReplayRecord[];
 	transientReplayEvictedBeforeByScope: Map<string, number>;
-	activeEventStreams: Map<string, Map<string, string>>;
+	activeEventStreams: Map<string, Set<string>>;
 	activeTraceSessions: Set<string>;
 	persistenceMetrics: ChatPersistenceMetrics;
 	userSkillManager: UserSkillManager;
@@ -399,7 +393,7 @@ function loadBootstrapCatalog(
 		buildAgentCatalog(context, state),
 	]).then(([modelCatalog, agentCatalog]) => ({
 		agents: context.channelContext.getProfiles?.() ?? [],
-		customAgents: serializeCustomAgents(state.agentStore.list(undefined, { includeArchived: true }), context),
+		customAgents: serializeCustomAgents(state.agentStore.list({ includeArchived: true }), context),
 		modelDefaults: loadChatModelDefaults(process.cwd()),
 		modelCatalog,
 		agentCatalog,
@@ -621,19 +615,18 @@ function isJsonValue(value: unknown): value is PiboJsonValue {
 	return false;
 }
 
-function principalIdFor(_webSession: PiboWebSession): string {
-	return getSharedAppLegacyOwnerScope();
+function auditActorIdFor(webSession: PiboWebSession): string {
+	return webSession.authSession.identity.userId;
 }
 
 function recordWorkflowLifecycleEvent(
 	state: ChatWebAppState,
 	webSession: PiboWebSession,
-	input: Omit<WorkflowLifecycleEventInput, "ownerScope" | "actorId"> & { actorId?: string },
+	input: Omit<WorkflowLifecycleEventInput, "actorId"> & { actorId?: string },
 ): WorkflowLifecycleEventRecord {
 	return state.workflowLifecycleEventStore.record({
 		...input,
-		ownerScope: getSharedAppLegacyOwnerScope(),
-		actorId: input.actorId ?? principalIdFor(webSession),
+		actorId: input.actorId ?? auditActorIdFor(webSession),
 	});
 }
 
@@ -645,7 +638,6 @@ function getChatWebAnnotationStore(): WebAnnotationStore {
 }
 
 function prepareWebAnnotationAttachments(input: {
-	ownerScope: string;
 	piboSessionId: string;
 	messageText: string;
 	attachmentIds: unknown;
@@ -653,7 +645,6 @@ function prepareWebAnnotationAttachments(input: {
 	try {
 		return prepareWebAnnotationMessageAttachments({
 			store: getChatWebAnnotationStore(),
-			ownerScope: input.ownerScope,
 			piboSessionId: input.piboSessionId,
 			messageText: input.messageText,
 			attachmentIds: input.attachmentIds,
@@ -670,7 +661,7 @@ function markWebAnnotationsAttached(prepared: PreparedWebAnnotationAttachments):
 	const store = getChatWebAnnotationStore();
 	for (const annotation of prepared.annotations) {
 		if (annotation.status !== "attached") {
-			store.patchAnnotation(annotation.ownerScope, annotation.piboSessionId, annotation.id, { status: "attached" });
+			store.patchAnnotation(annotation.piboSessionId, annotation.id, { status: "attached" });
 		}
 	}
 }
@@ -744,7 +735,7 @@ function ensureEventIndexing(state: ChatWebAppState, context: PiboWebAppContext)
 				if (!isPersistableOutputEvent(persistableEvent)) continue;
 				let stored = state.eventCommands.appendOutputEvent(persistableEvent, {
 					roomId: room?.id,
-					actorId: session?.ownerScope,
+					actorId: session?.id,
 				});
 				if (!stored && session) {
 					try {
@@ -752,7 +743,7 @@ function ensureEventIndexing(state: ChatWebAppState, context: PiboWebAppContext)
 						const ingested = state.ingestService.ingestOutputEvent({
 							session,
 							roomId: room?.id,
-							actorId: session.ownerScope,
+							actorId: session.id,
 							event: persistableEvent,
 							createdAt,
 						});
@@ -763,7 +754,7 @@ function ensureEventIndexing(state: ChatWebAppState, context: PiboWebAppContext)
 							eventId: "eventId" in persistableEvent && typeof persistableEvent.eventId === "string" ? persistableEvent.eventId : `pibo.output:${persistableEvent.type}:${ingested.streamId}`,
 							eventType: persistableEvent.type,
 							actorType: "assistant",
-							actorId: session.ownerScope,
+							actorId: session.id,
 							createdAt,
 							retentionClass: reliabilityRetentionClassForOutputEvent(persistableEvent) as StoredChatEvent["retentionClass"],
 							payload: persistableEvent as unknown as PiboJsonValue,
@@ -818,9 +809,9 @@ function appendEventStreamDisconnectEvent(
 	});
 }
 
-function markEventStreamConnected(state: ChatWebAppState, piboSessionId: string, streamId: string, principalId: string): void {
-	const streams = state.activeEventStreams.get(piboSessionId) ?? new Map<string, string>();
-	streams.set(streamId, principalId);
+function markEventStreamConnected(state: ChatWebAppState, piboSessionId: string, streamId: string): void {
+	const streams = state.activeEventStreams.get(piboSessionId) ?? new Set<string>();
+	streams.add(streamId);
 	state.activeEventStreams.set(piboSessionId, streams);
 }
 
@@ -850,11 +841,8 @@ function listLiveObservers(state: ChatWebAppState): Array<{ piboSessionId: strin
 }
 
 function markActiveSessionRead(state: ChatWebAppState, piboSessionId: string, streamId: number): void {
-	const streams = state.activeEventStreams.get(piboSessionId);
-	if (!streams) return;
-	for (const principalId of new Set(streams.values())) {
-		state.readState.markSessionRead(piboSessionId, principalId, streamId);
-	}
+	if (!state.activeEventStreams.get(piboSessionId)?.size) return;
+	state.readState.markSessionRead(piboSessionId, streamId);
 }
 
 function listSharedSessions(context: PiboWebAppContext): PiboSession[] {
@@ -919,10 +907,7 @@ function visibleSessionsInRoom(input: {
 	includeArchived: boolean;
 }): PiboSession[] {
 	const roomSessions: PiboSession[] = [];
-	const defaultRoom = input.state.roomService.ensureDefaultRoom({
-		ownerScope: input.webSession.ownerScope,
-		principalId: principalIdFor(input.webSession),
-	});
+	const defaultRoom = input.state.roomService.ensureDefaultRoom();
 	const selectedRoomIsDefault = input.selectedRoomId === defaultRoom.id;
 	for (const session of input.sessions) {
 		const roomId = chatRoomIdFromMetadata(session.metadata);
@@ -982,10 +967,7 @@ function ensureDefaultChatSession(
 ): PiboSession {
 	const room = roomId
 		? requireRoom(state, roomId, webSession, "read")
-		: state.roomService.ensureDefaultRoom({
-				ownerScope: webSession.ownerScope,
-				principalId: principalIdFor(webSession),
-			});
+		: state.roomService.ensureDefaultRoom();
 	const existing = listSharedSessions(context).find(
 		(session) =>
 			!session.parentId &&
@@ -1012,9 +994,8 @@ function ensureSessionRoom(
 	const roomId = chatRoomIdFromMetadata(session.metadata);
 	const existingRoom = roomId ? state.roomService.getRoom(roomId) : undefined;
 	if (existingRoom) return existingRoom;
-	const ownerScope = webSession?.ownerScope ?? getSharedAppLegacyOwnerScope();
-	const principalId = webSession ? principalIdFor(webSession) : getSharedAppLegacyOwnerScope();
-	const room = state.roomService.ensureDefaultRoom({ ownerScope, principalId });
+	void webSession;
+	const room = state.roomService.ensureDefaultRoom();
 	if (!chatRoomIdFromMetadata(session.metadata)) {
 		context.channelContext.updateSession?.(session.id, { metadata: withChatRoomId(session.metadata, room.id) });
 	}
@@ -1029,7 +1010,7 @@ function requireRoom(
 ): PiboRoom {
 	let room: PiboRoom;
 	try {
-		room = state.roomService.requireRoomAccess(roomId, principalIdFor(webSession), action);
+		room = state.roomService.requireRoom(roomId);
 	} catch (error) {
 		accessDenied(error);
 	}
@@ -1066,7 +1047,6 @@ function createSharedChatSession(
 		channel: CHAT_WEB_CHANNEL,
 		kind: "chat",
 		profile,
-		ownerScope: getSharedAppLegacyOwnerScope(),
 		workspace: roomWorkspaceFromMetadata(room.metadata) ?? getDefaultPiboWorkspace(),
 		metadata: withChatRoomId(undefined, room.id),
 	});
@@ -1089,7 +1069,6 @@ function createProjectChatSession(input: {
 		channel: CHAT_WEB_CHANNEL,
 		kind: "chat",
 		profile: input.profile,
-		ownerScope: getSharedAppLegacyOwnerScope(),
 		workspace: input.project.projectFolder,
 		...(input.title ? { title: input.title } : {}),
 		...(input.configuration?.model ? { activeModel: input.configuration.model } : {}),
@@ -1308,7 +1287,7 @@ function requireAgentProfileNameAvailable(
 ): void {
 	const currentAgent = currentAgentId ? state.agentStore.get(currentAgentId) : undefined;
 	if (currentAgent?.profileName === profileName) return;
-	for (const agent of state.agentStore.list(undefined, { includeArchived: true })) {
+	for (const agent of state.agentStore.list({ includeArchived: true })) {
 		if (agent.id !== currentAgentId && agent.profileName === profileName) {
 			throw new PiboWebHttpError(`Agent name "${profileName}" already exists`, 400);
 		}
@@ -1350,7 +1329,7 @@ function buildWorkflowProfilePicker(
 	_webSession: PiboWebSession,
 	selectedProfileId?: string,
 ): WorkflowProfilePickerResponse {
-	const customAgents = state.agentStore.list(undefined, { includeArchived: true });
+	const customAgents = state.agentStore.list({ includeArchived: true });
 	const allCustomProfileNames = new Set(customAgents.map((agent) => agent.profileName));
 	const archivedCustomAgents = new Map(
 		customAgents.filter((agent) => agent.archivedAt).map((agent) => [agent.profileName, agent]),
@@ -1502,7 +1481,6 @@ function saveWorkflowPromptAssetRevision(
 		? body.description.trim()
 		: sourceDocument?.description ?? "Managed Workflow Builder prompt asset revision.";
 	return state.workflowPromptAssetStore.saveRevision({
-		ownerScope: getSharedAppLegacyOwnerScope(),
 		assetId: requestedAssetId,
 		displayName,
 		description,
@@ -1530,7 +1508,7 @@ function createWorkflowDraftIdentity(
 	const definition = inputDefinition
 		? workflowCreateDefinitionWithIdentity(inputDefinition, { workflowId, title, description, tags })
 		: createEmptyWorkflowDraftDefinition({ workflowId, title, description, tags });
-	const draft: OwnedWorkflowDraftRecord = {
+	const draft: WorkflowDraftRecord = {
 		draftId,
 		workflowId,
 		source: "ui",
@@ -1550,7 +1528,6 @@ function createWorkflowDraftIdentity(
 		revision: 1,
 		createdAt: now,
 		updatedAt: now,
-		ownerScope: getSharedAppLegacyOwnerScope(),
 	};
 	state.workflowDraftStore.saveDraft(draft);
 	recordWorkflowLifecycleEvent(state, webSession, {
@@ -1626,11 +1603,10 @@ function workflowDraftBuilderPath(draftId: string): string {
 	return `${CHAT_WEB_MOUNT_PATH}/workflows/drafts/${encodeURIComponent(draftId)}`;
 }
 
-function serializeWorkflowDraft(record: OwnedWorkflowDraftRecord): WorkflowDraftRecord {
-	const { ownerScope: _ownerScope, ...draft } = record;
+function serializeWorkflowDraft(record: WorkflowDraftRecord): WorkflowDraftRecord {
 	return {
-		...draft,
-		diagnostics: sanitizeWorkflowDiagnostics(draft.diagnostics),
+		...record,
+		diagnostics: sanitizeWorkflowDiagnostics(record.diagnostics),
 	};
 }
 
@@ -1716,7 +1692,7 @@ function duplicateWorkflowIntoDraft(
 
 	const now = new Date().toISOString();
 	const draftId = `draft_${published.id.replace(/[^a-zA-Z0-9_-]/g, "-")}_${published.version.replace(/[^a-zA-Z0-9_-]/g, "-")}_${randomUUID().slice(0, 8)}`;
-	const draft: OwnedWorkflowDraftRecord = {
+	const draft: WorkflowDraftRecord = {
 		draftId,
 		workflowId: copyWorkflowId,
 		source: "ui",
@@ -1739,7 +1715,6 @@ function duplicateWorkflowIntoDraft(
 		revision: 1,
 		createdAt: now,
 		updatedAt: now,
-		ownerScope: getSharedAppLegacyOwnerScope(),
 	};
 	state.workflowDraftStore.saveDraft(draft);
 	recordWorkflowLifecycleEvent(state, webSession, {
@@ -1780,7 +1755,7 @@ function createNextVersionDraftFromPublishedWorkflow(
 	const now = new Date().toISOString();
 	const targetWorkflowVersion = nextPatchWorkflowVersion(published.version);
 	const draftId = `draft_${published.id.replace(/[^a-zA-Z0-9_-]/g, "-")}_${published.version.replace(/[^a-zA-Z0-9_-]/g, "-")}_next_${randomUUID().slice(0, 8)}`;
-	const draft: OwnedWorkflowDraftRecord = {
+	const draft: WorkflowDraftRecord = {
 		draftId,
 		workflowId: published.id,
 		source: "ui",
@@ -1804,7 +1779,6 @@ function createNextVersionDraftFromPublishedWorkflow(
 		revision: 1,
 		createdAt: now,
 		updatedAt: now,
-		ownerScope: getSharedAppLegacyOwnerScope(),
 	};
 	state.workflowDraftStore.saveDraft(draft);
 	recordWorkflowLifecycleEvent(state, webSession, {
@@ -1840,7 +1814,7 @@ function archiveWorkflowIdentity(
 	}
 	const archiveState = state.workflowArchiveStore.setWorkflowArchived({
 		workflowId,
-		archivedBy: principalIdFor(webSession),
+		archivedBy: auditActorIdFor(webSession),
 		archiveReason: normalizeWorkflowArchiveReason(reasonValue),
 	});
 	recordWorkflowLifecycleEvent(state, webSession, {
@@ -1877,7 +1851,7 @@ function deleteWorkflowIdentity(
 	const displayVersion = selectWorkflowCatalogDisplayVersion(workflow.versions);
 	const tombstone = state.workflowTombstoneStore.setWorkflowDeleted({
 		workflowId,
-		deletedBy: principalIdFor(webSession),
+		deletedBy: auditActorIdFor(webSession),
 		lastKnownTitle: workflow.title,
 		...(displayVersion?.version ? { lastKnownVersion: displayVersion.version } : {}),
 		...(displayVersion?.definitionHash ? { lastDefinitionHash: displayVersion.definitionHash } : {}),
@@ -1935,7 +1909,7 @@ function nextPatchWorkflowVersion(version: string): string {
 	return `${match[1]}.${match[2]}.${Number(match[3]) + 1}`;
 }
 
-function createStarterWorkflowDraft(webSession: PiboWebSession): OwnedWorkflowDraftRecord {
+function createStarterWorkflowDraft(webSession: PiboWebSession): WorkflowDraftRecord {
 	const now = new Date().toISOString();
 	return {
 		draftId: WORKFLOW_STARTER_DRAFT_ID,
@@ -1971,7 +1945,6 @@ function createStarterWorkflowDraft(webSession: PiboWebSession): OwnedWorkflowDr
 		revision: 1,
 		createdAt: now,
 		updatedAt: now,
-		ownerScope: getSharedAppLegacyOwnerScope(),
 	};
 }
 
@@ -2038,7 +2011,7 @@ function clonePublishedWorkflowDefinitionForDraft(
 	return definition;
 }
 
-function requireMutableWorkflowDraft(state: ChatWebAppState, webSession: PiboWebSession, draftId: string): OwnedWorkflowDraftRecord {
+function requireMutableWorkflowDraft(state: ChatWebAppState, webSession: PiboWebSession, draftId: string): WorkflowDraftRecord {
 	let record = state.workflowDraftStore.getDraft(draftId);
 	if (!record && draftId === WORKFLOW_STARTER_DRAFT_ID) {
 		record = createStarterWorkflowDraft(webSession);
@@ -2064,7 +2037,7 @@ function runWorkflowDraftValidation(
 	state: ChatWebAppState,
 	context: PiboWebAppContext,
 	webSession: PiboWebSession,
-	record: OwnedWorkflowDraftRecord,
+	record: WorkflowDraftRecord,
 	trigger: WorkflowValidationTrigger,
 ): WorkflowValidationResponse {
 	const diagnostics = sanitizeWorkflowDiagnostics([
@@ -2541,7 +2514,7 @@ function agentsSelectingPiPackage(state: ChatWebAppState, packageId: string): Cu
 	const pkg = findPiPackage(packageId);
 	const aliases = new Set([packageId, ...(pkg ? [pkg.id, pkg.name] : [])]);
 	return state.agentStore
-		.list(undefined, { includeArchived: true })
+		.list({ includeArchived: true })
 		.filter((agent) => agent.piPackages.some((selected) => aliases.has(selected)));
 }
 
@@ -2707,7 +2680,7 @@ async function buildContextBuildSnapshotForRequest(input: {
 
 	const selectedSession = requireSharedSession(input.context, input.piboSessionId);
 	const profile = createProfile(selectedSession.profile);
-	const userSettings = loadPiboUserSettings(input.webSession.ownerScope);
+	const userSettings = loadPiboUserSettings();
 	const cwd = selectedSession?.workspace ?? getDefaultPiboWorkspace();
 	return inspectPiboContextBuild({
 		cwd,
@@ -2715,7 +2688,6 @@ async function buildContextBuildSnapshotForRequest(input: {
 		activeModel: selectedSession?.activeModel,
 		persistSession: false,
 		sessionContext: {
-			ownerScope: input.webSession.ownerScope,
 			piboSessionId: selectedSession?.id,
 			piboRoomId: selectedSession ? chatRoomIdFromMetadata(selectedSession.metadata) : undefined,
 			timezone: userSettings.timezone,
@@ -2727,10 +2699,10 @@ function indexSharedSessions(sessionQuery: ChatSessionQuery, sessions: PiboSessi
 	sessionQuery.upsertSessionsIfChanged(sessions);
 }
 
-function markSessionsRead(state: ChatWebAppState, sessions: PiboSession[], principalId: string): void {
+function markSessionsRead(state: ChatWebAppState, sessions: PiboSession[]): void {
 	for (const session of sessions) {
 		const latestStreamId = state.timelineQuery.getLatestStreamId({ piboSessionId: session.id });
-		if (latestStreamId !== undefined) state.readState.markSessionRead(session.id, principalId, latestStreamId);
+		if (latestStreamId !== undefined) state.readState.markSessionRead(session.id, latestStreamId);
 	}
 }
 
@@ -2754,7 +2726,6 @@ function sessionSubtree(sessions: readonly PiboSession[], rootSessionId: string)
 function buildSessionUnreadCounts(
 	state: ChatWebAppState,
 	sessions: PiboSession[],
-	principalId: string,
 ): Map<string, number> {
 	const sessionsById = new Map(sessions.map((session) => [session.id, session]));
 	const visibleSessionIds = sessions
@@ -2762,7 +2733,6 @@ function buildSessionUnreadCounts(
 		.map((session) => session.id);
 	return state.readState.countUnreadMessagesBySession({
 		piboSessionIds: visibleSessionIds,
-		principalId,
 	});
 }
 
@@ -2978,7 +2948,6 @@ function createEventStream(input: {
 	piboSessionId?: string;
 	activePiboSessionId?: string;
 	mode: ChatEventStreamMode;
-	principalId: string;
 	context: PiboWebAppContext;
 	state: ChatWebAppState;
 	cursor?: ChatEventCursor;
@@ -2991,7 +2960,7 @@ function createEventStream(input: {
 	const stream = new ReadableStream<Uint8Array>({
 		start(controller) {
 			if (input.mode === "live" && input.activePiboSessionId) {
-				markEventStreamConnected(input.state, input.activePiboSessionId, streamId, input.principalId);
+				markEventStreamConnected(input.state, input.activePiboSessionId, streamId);
 				registeredLiveObserver = true;
 			}
 			const streamState = createChatStreamState();
@@ -3074,7 +3043,7 @@ async function buildProjectsBootstrap(input: {
 	piboSessionId?: string;
 	includeArchived?: boolean;
 }): Promise<ChatProjectsBootstrap> {
-	const sharedDefaultProject = input.state.projectService.ensureSharedDefaultProject({ ownerScope: input.webSession.ownerScope });
+	const sharedDefaultProject = input.state.projectService.ensureSharedDefaultProject();
 	const selectedProject = input.projectId ? requireSharedProject(input.state, input.webSession, input.projectId, { includeArchived: true }) : sharedDefaultProject;
 	let storedProjectSessions = input.state.projectService.listProjectSessions(selectedProject.id, { includeArchived: input.includeArchived });
 	if (selectedProject.id === sharedDefaultProject.id && storedProjectSessions.length === 0) {
@@ -3102,7 +3071,6 @@ async function buildProjectsBootstrap(input: {
 	const nodes = await buildSessionNodes(sessions, input.state.sessionQuery.listSessions(), selectedProject.projectFolder, new Map(), { skipPiMetadataFallback: true });
 	applyProjectSessionArchiveState(nodes, new Map(projectSessions.map((projectSession) => [projectSession.piboSessionId, Boolean(projectSession.archived)])));
 	const workflowLifecycleEvents = input.state.workflowLifecycleEventStore.listEvents({
-		ownerScope: input.webSession.ownerScope,
 		projectId: selectedProject.id,
 		limit: 100,
 	});
@@ -3249,7 +3217,6 @@ function submitProjectWorkflowHumanAction(input: {
 			...(validation.actionRef?.id ? { actionId: validation.actionRef.id } : {}),
 			kind: validation.actionKind!,
 			actor: {
-				ownerScope: input.webSession.ownerScope,
 				userId: input.webSession.authSession.identity.userId,
 				...(input.webSession.authSession.identity.email ? { email: input.webSession.authSession.identity.email } : {}),
 			},
@@ -3321,7 +3288,7 @@ async function sendProjectMessage(input: {
 	const selectedSession = requireSharedSession(input.context, input.body.piboSessionId);
 	const projectSession = input.state.projectService.getProjectSession(selectedSession.id);
 	if (!projectSession) throw new PiboWebHttpError("Project session not found", 404);
-	const actorId = principalIdFor(input.webSession);
+	const actorId = auditActorIdFor(input.webSession);
 	const duplicate = clientTxnId ? input.state.eventCommands.findByClientTxn(undefined, actorId, clientTxnId) : undefined;
 	if (duplicate) return responseJson({ duplicate: true, event: duplicate });
 	const accepted = input.state.eventCommands.appendEvent({
@@ -3484,11 +3451,10 @@ async function sendChatMessage(input: {
 		throw new PiboWebHttpError("Archived rooms are read-only", 403);
 	}
 	input.state.sessionQuery.upsertSession(selectedSession);
-	const actorId = principalIdFor(input.webSession);
+	const actorId = auditActorIdFor(input.webSession);
 	const duplicate = clientTxnId ? input.state.eventCommands.findByClientTxn(room.id, actorId, clientTxnId) : undefined;
 	if (duplicate) return responseJson({ duplicate: true, event: duplicate });
 	const webAnnotationContext = prepareWebAnnotationAttachments({
-		ownerScope: input.webSession.ownerScope,
 		piboSessionId: selectedSession.id,
 		messageText: text,
 		attachmentIds: input.body.webAnnotationIds,
@@ -3665,7 +3631,6 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const webSession = await requireSession(request, context);
 				const includeArchived = parseBooleanSearchParam(url, "includeArchived");
 				const requestedRoomId = url.searchParams.get("roomId") || undefined;
-				const principalId = principalIdFor(webSession);
 				const selectedSession = resolveRequestedSession(
 					state,
 					context,
@@ -3685,12 +3650,9 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					selectedRoomId,
 					includeArchived,
 				});
-				const defaultRoom = state.roomService.ensureDefaultRoom({
-					ownerScope: webSession.ownerScope,
-					principalId,
-				});
+				const defaultRoom = state.roomService.ensureDefaultRoom();
 				indexSharedSessions(state.sessionQuery, roomSessions);
-				const sessionUnreadCounts = buildSessionUnreadCounts(state, ownedSessions, principalId);
+				const sessionUnreadCounts = buildSessionUnreadCounts(state, ownedSessions);
 				const sessions = await buildSessionNodes(
 					roomSessions,
 					sessionIndexItemsWithSignalState(context, roomSessions, state.sessionQuery.listSessions(), sessionUnreadCounts),
@@ -3698,7 +3660,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					sessionUnreadCounts,
 					{ skipPiMetadataFallback: true },
 				);
-				const roomTree = state.roomService.listRoomTree(webSession.ownerScope);
+				const roomTree = state.roomService.listRoomTree();
 				const roomUnreadCounts = buildRoomUnreadCounts(ownedSessions, sessionUnreadCounts, defaultRoom.id);
 				const rooms = roomsWithUnreadCounts(roomTree, roomUnreadCounts);
 				return responseJson({
@@ -3720,7 +3682,6 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const includeArchived = parseBooleanSearchParam(url, "includeArchived");
 				const markRead = parseBooleanSearchParam(url, "markRead");
 				const requestedRoomId = url.searchParams.get("roomId") || undefined;
-				const principalId = principalIdFor(webSession);
 				const selectedSession = resolveRequestedSession(
 					state,
 					context,
@@ -3740,15 +3701,12 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					selectedRoomId,
 					includeArchived,
 				});
-				const defaultRoom = state.roomService.ensureDefaultRoom({
-					ownerScope: webSession.ownerScope,
-					principalId,
-				});
+				const defaultRoom = state.roomService.ensureDefaultRoom();
 				if (markRead) {
-					markSessionsRead(state, sessionSubtree(ownedSessions, selectedSession.id), principalId);
+					markSessionsRead(state, sessionSubtree(ownedSessions, selectedSession.id));
 				}
 				indexSharedSessions(state.sessionQuery, roomSessions);
-				const sessionUnreadCounts = buildSessionUnreadCounts(state, ownedSessions, principalId);
+				const sessionUnreadCounts = buildSessionUnreadCounts(state, ownedSessions);
 				const [sessions, catalog] = await Promise.all([
 					buildSessionNodes(
 						roomSessions,
@@ -3758,7 +3716,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					),
 					loadBootstrapCatalog(state, context, webSession),
 				]);
-				const roomTree = state.roomService.listRoomTree(webSession.ownerScope);
+				const roomTree = state.roomService.listRoomTree();
 				const roomUnreadCounts = buildRoomUnreadCounts(ownedSessions, sessionUnreadCounts, defaultRoom.id);
 				const rooms = roomsWithUnreadCounts(roomTree, roomUnreadCounts);
 				return responseJson({
@@ -3843,7 +3801,6 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const body = await readJsonBody<ChatProjectCreateBody>(request);
 				try {
 					const project = state.projectService.createProject({
-						ownerScope: getSharedAppLegacyOwnerScope(),
 						name: normalizeRoomName(body.name),
 						description: normalizeProjectDescription(body.description),
 						projectFolder: normalizeProjectPath(body.projectFolder),
@@ -4234,7 +4191,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const publishResult = state.workflowPublishedVersionStore.publishDraft({
 					draft: record,
 					versionIntent: record.versionIntent,
-					publishedBy: principalIdFor(webSession),
+					publishedBy: auditActorIdFor(webSession),
 					reservedVersions: STATIC_WORKFLOW_VERSION_CATALOG
 						.filter((workflow) => workflow.id === record.workflowId && workflow.status === "published")
 						.map((workflow) => workflow.version),
@@ -4331,7 +4288,6 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const webSession = await requireSession(request, context);
 				return responseJson({
 					events: state.workflowLifecycleEventStore.listEvents({
-						ownerScope: webSession.ownerScope,
 						type: url.searchParams.get("type") ?? undefined,
 						workflowId: url.searchParams.get("workflowId") ?? undefined,
 						draftId: url.searchParams.get("draftId") ?? undefined,
@@ -4422,7 +4378,6 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const response = await handleChatSettingsRoute({
 					route: settingsRoute,
 					request,
-					ownerScope: webSession.ownerScope,
 					cwd: process.cwd(),
 				});
 				if (chatSettingsRouteInvalidatesBootstrapCatalog(settingsRoute)) invalidateBootstrapCatalogCache(state);
@@ -4462,14 +4417,14 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/agents` && request.method === "GET") {
 				const webSession = await requireSession(request, context);
 				const includeArchived = parseBooleanSearchParam(url, "includeArchived");
-				return responseJson({ agents: serializeCustomAgents(state.agentStore.list(undefined, { includeArchived }), context) });
+				return responseJson({ agents: serializeCustomAgents(state.agentStore.list({ includeArchived }), context) });
 			}
 
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/agents` && request.method === "POST") {
 				requireSameOriginJsonRequest(request);
 				const webSession = await requireSession(request, context);
 				const body = await readJsonBody<ChatAgentBody>(request);
-				const input = createAgentInput(getSharedAppLegacyOwnerScope(), body);
+				const input = createAgentInput(body);
 				requireAgentProfileNameAvailable(state, context, input.displayName);
 				const agent = state.agentStore.create(input);
 				context.channelContext.upsertProfile?.(createCustomAgentProfileDefinition(agent));
@@ -4585,10 +4540,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const room =
 					typeof body.roomId === "string"
 						? requireRoom(state, body.roomId, webSession, "write")
-						: state.roomService.ensureDefaultRoom({
-								ownerScope: webSession.ownerScope,
-								principalId: principalIdFor(webSession),
-							});
+						: state.roomService.ensureDefaultRoom();
 				const created = createSharedChatSession(context, webSession, profile, room);
 				state.sessionQuery.upsertSession(created);
 				return responseJson({ session: created }, { status: 201 });
@@ -4596,11 +4548,8 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/rooms` && request.method === "GET") {
 				const webSession = await requireSession(request, context);
-				state.roomService.ensureDefaultRoom({
-					ownerScope: webSession.ownerScope,
-					principalId: principalIdFor(webSession),
-				});
-				return responseJson({ rooms: state.roomService.listRoomTree(webSession.ownerScope) });
+				state.roomService.ensureDefaultRoom();
+				return responseJson({ rooms: state.roomService.listRoomTree() });
 			}
 
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/rooms` && request.method === "POST") {
@@ -4610,14 +4559,12 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const parentRoomId = normalizeParentRoomId(body.parentRoomId);
 				if (parentRoomId) requireRoom(state, parentRoomId, webSession, "admin");
 				const room = state.roomService.createRoom({
-					ownerScope: webSession.ownerScope,
 					name: normalizeRoomName(body.name),
 					topic: normalizeRoomTopic(body.topic),
 					metadata: withPiboRoomWorkspace(undefined, normalizeRoomWorkspace(body.workspace)),
 					type: normalizeRoomType(body.type),
 					parentRoomId,
 				});
-				state.roomService.ensureMember({ roomId: room.id, principalId: principalIdFor(webSession), role: "owner" });
 				return responseJson({ room }, { status: 201 });
 			}
 
@@ -4629,7 +4576,6 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				indexSharedSessions(state.sessionQuery, ownedSessions);
 				return responseJson({
 					room,
-					member: state.roomService.getMember(room.id, principalIdFor(webSession)),
 					sessions: await buildSessionNodes(
 						ownedSessions,
 						state.sessionQuery.listSessions(),
@@ -4699,7 +4645,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const webSession = await requireSession(request, context);
 				const room = requireRoom(state, roomResource.roomId, webSession, "read");
 				const roomSessions = sessionsInRoomSubtree(listSharedSessions(context), room.id);
-				markSessionsRead(state, roomSessions, principalIdFor(webSession));
+				markSessionsRead(state, roomSessions);
 				return responseJson({ ok: true, roomId: room.id, readSessionIds: roomSessions.map((session) => session.id) });
 			}
 
@@ -4708,7 +4654,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				requireSameOriginJsonRequest(request);
 				const webSession = await requireSession(request, context);
 				const selectedSession = resolveRequestedSession(state, context, webSession, defaultProfile, sessionAction.piboSessionId);
-				markSessionsRead(state, sessionSubtree(listSharedSessions(context), selectedSession.id), principalIdFor(webSession));
+				markSessionsRead(state, sessionSubtree(listSharedSessions(context), selectedSession.id));
 				return responseJson({ ok: true, piboSessionId: selectedSession.id });
 			}
 
@@ -4738,7 +4684,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const updated = updateSession(selectedSession.id, update);
 				if (!updated) throw new PiboWebHttpError("Session not found", 404);
 				if (body.archived === true) {
-					markSessionsRead(state, sessionSubtree(listSharedSessions(context), selectedSession.id), principalIdFor(webSession));
+					markSessionsRead(state, sessionSubtree(listSharedSessions(context), selectedSession.id));
 				}
 				state.sessionQuery.upsertSession(updated);
 				return responseJson({ session: updated });
@@ -5017,7 +4963,6 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 						piboSessionId: selectedSession.id,
 						activePiboSessionId: selectedSession.id,
 						mode: streamMode,
-						principalId: principalIdFor(webSession),
 						context,
 						state,
 						cursor,
@@ -5032,7 +4977,6 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					piboSessionId: streamPiboSessionId,
 					activePiboSessionId: streamPiboSessionId ? selectedSession.id : undefined,
 					mode: streamMode,
-					principalId: principalIdFor(webSession),
 					context,
 					state,
 					cursor,

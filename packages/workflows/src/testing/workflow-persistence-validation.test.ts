@@ -45,7 +45,6 @@ function createRun(id: string, overrides: Partial<WorkflowRun> = {}): WorkflowRu
     id,
     workflowId: "workflow.persistence-validation",
     workflowVersion: "1.0.0",
-    ownerScope: "user:persistence-validation",
     status: "running",
     current: { nodeId: "review", status: "running" },
     input: { title: "Persistence", body: "Validate workflow persistence." },

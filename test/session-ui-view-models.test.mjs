@@ -3,7 +3,6 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import {
-	buildOwnerPickerDescriptor,
 	buildRoomPickerDescriptor,
 	buildSessionPickerDescriptor,
 	buildSlashCommandBehaviorMatrix,
@@ -67,7 +66,6 @@ test("shared terminal card descriptors cover rich terminal row kinds", () => {
 
 test("shared status view model preserves unavailable usage and redacts secrets", () => {
 	const unavailable = buildTerminalStatusViewModel({
-		owner: { label: "Web user", scope: "user:alpha" },
 		message: "OPENAI_API_KEY=sk_secret123456789 should hide",
 	});
 	assert.equal(unavailable.progress.find((item) => item.id === "context").state, "unavailable");
@@ -129,7 +127,7 @@ test("shared command catalog merges gateway capabilities and filters prefixes", 
 		{ name: "session_id", slashCommands: ["session"], description: "Gateway session id should not replace CLI room-first session navigation" },
 	]);
 	assert.ok(catalog.some((command) => command.slash === "/help"));
-	assert.ok(catalog.some((command) => command.slash === "/owner"));
+	assert.ok(!catalog.some((command) => command.id === "owner"));
 	assert.ok(catalog.some((command) => command.slash === "/thinking" && command.terminalAdaptation));
 	const custom = catalog.find((command) => command.slash === "/custom-action");
 	assert.equal(custom.actionName, "custom.action");
@@ -142,7 +140,7 @@ test("shared command catalog merges gateway capabilities and filters prefixes", 
 	const grouped = groupSlashCommandsForHelp(catalog);
 	assert.ok(grouped.available.some((command) => command.slash === "/status"));
 	assert.ok(grouped.available.some((command) => command.slash === "/download"));
-	assert.ok(grouped.navigation.some((command) => command.slash === "/owner"));
+	assert.ok(!grouped.navigation.some((command) => command.id === "owner"));
 	assert.ok(grouped.unsupported.some((command) => command.slash === "/thinking-show"));
 });
 
@@ -164,39 +162,28 @@ test("shared command result descriptors normalize menus status links unsupported
 	assert.doesNotMatch(error.message, /supersecretvalue/);
 });
 
-test("shared owner room session picker descriptors include defaults empty rooms and create actions", () => {
-	const owners = buildOwnerPickerDescriptor({
-		activeOwnerScope: "user:beta",
-		owners: [
-			{ ownerScope: "user:alpha", label: "Web user alpha", kind: "web-user" },
-			{ ownerScope: "user:beta", label: "Web user beta", kind: "web-user" },
-			{ ownerScope: "local:root", label: "Root recovery", kind: "root-recovery", isFallback: true },
-		],
-	});
-	assert.equal(owners.selectedIndex, 1);
-	assert.ok(owners.items[2].markers.includes("root recovery"));
+test("shared app room session picker descriptors include defaults empty rooms and create actions", () => {
 
 	const rooms = buildRoomPickerDescriptor({
-		ownerLabel: "Web user beta",
 		activeRoomId: "room_project",
 		rooms: [
-			{ id: "room_personal", title: "Personal Chat", isDefault: true },
+			{ id: "room_shared", title: "Shared Chat", isDefault: true },
 			{ id: "room_project", title: "Project Room" },
 		],
 	});
 	assert.equal(rooms.items[0].default, true);
 	assert.equal(rooms.selectedIndex, 1);
 
-	const emptySessions = buildSessionPickerDescriptor({ sessions: [], room: { id: "room_personal", title: "Personal Chat", ownerScope: "user:beta" } });
+	const emptySessions = buildSessionPickerDescriptor({ sessions: [], room: { id: "room_shared", title: "Shared Chat" } });
 	assert.equal(emptySessions.items.length, 1);
 	assert.equal(emptySessions.items[0].kind, "create-session");
-	assert.match(emptySessions.emptyMessage, /No sessions in Personal Chat/);
+	assert.match(emptySessions.emptyMessage, /No sessions in Shared Chat/);
 
 	const sessions = buildSessionPickerDescriptor({
 		activeSessionId: "ps_active",
 		includeBackAction: true,
-		room: { id: "room_project", title: "Project Room", ownerScope: "user:beta" },
-		sessions: [{ id: "ps_active", title: "Active", profile: "base", status: "idle", roomId: "room_project", ownerScope: "user:beta" }],
+		room: { id: "room_project", title: "Project Room" },
+		sessions: [{ id: "ps_active", title: "Active", profile: "base", status: "idle", roomId: "room_project" }],
 	});
 	assert.equal(sessions.items[0].kind, "back");
 	assert.ok(sessions.items[1].markers.includes("current"));

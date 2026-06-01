@@ -2,54 +2,41 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
-import { LEGACY_SHARED_APP_OWNER_SCOPE } from "../dist/shared-app.js";
 import { ChatProjectService } from "../dist/apps/chat/data/project-service.js";
 
-test("project service uses shared app storage and lists historical owner projects", () => {
+test("project service uses app-global storage and lists projects", () => {
 	const tempRoot = mkdtempSync(join(tmpdir(), "pibo-project-shared-app-"));
 	const service = new ChatProjectService(join(tempRoot, "web-projects.sqlite"));
 
 	try {
-		const defaultA = service.ensureSharedDefaultProject({ ownerScope: "user:a", projectFolder: join(tempRoot, "default") });
-		const defaultB = service.ensureSharedDefaultProject({ ownerScope: "user:b", projectFolder: join(tempRoot, "ignored-default") });
+		const defaultA = service.ensureSharedDefaultProject({ projectFolder: join(tempRoot, "default") });
+		const defaultB = service.ensureSharedDefaultProject({ projectFolder: join(tempRoot, "ignored-default") });
 		assert.equal(defaultA.id, defaultB.id);
-		assert.equal(defaultA.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
+		assert.equal("ownerScope" in defaultA, false);
 		assert.equal(defaultA.name, "Shared Project");
 		assert.equal(defaultA.metadata.default, true);
 
 		const created = service.createProject({
-			ownerScope: "user:a",
 			name: "Shared Feature Project",
 			projectFolder: join(tempRoot, "shared-feature"),
 			createFolder: true,
 		});
-		assert.equal(created.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
+		assert.equal("ownerScope" in created, false);
 
-		const db = new DatabaseSync(service.path);
-		try {
-			db.exec("ALTER TABLE projects ADD COLUMN owner_scope TEXT NOT NULL DEFAULT 'shared:app'");
-			db.prepare(`INSERT INTO projects (id, owner_scope, name, description, project_folder, configuration_status, metadata_json, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, 'configured', '{}', ?, ?)`).run(
-				"prj_historical_user",
-				"user:historical",
-				"Historical User Project",
-				null,
-				join(tempRoot, "historical-user"),
-				"2026-05-30T00:00:00.000Z",
-				"2026-05-30T00:00:00.000Z",
-			);
-		} finally {
-			db.close();
-		}
+		const second = service.createProject({
+			name: "Second Shared Project",
+			projectFolder: join(tempRoot, "second-shared"),
+			createFolder: true,
+		});
+		assert.equal("ownerScope" in second, false);
 
 		const projects = service.listProjects();
-		assert.deepEqual(projects.map((project) => project.name).sort(), ["Historical User Project", "Shared Feature Project", "Shared Project"]);
-		assert.equal(service.requireProject("prj_historical_user").ownerScope, "user:historical");
-		const renamedHistorical = service.updateProject("prj_historical_user", { name: "Historical Project Renamed" });
-		assert.equal(renamedHistorical?.name, "Historical Project Renamed");
+		assert.deepEqual(projects.map((project) => project.name).sort(), ["Second Shared Project", "Shared Feature Project", "Shared Project"]);
+		assert.equal("ownerScope" in service.requireProject(second.id), false);
+		const renamedSecond = service.updateProject(second.id, { name: "Second Project Renamed" });
+		assert.equal(renamedSecond?.name, "Second Project Renamed");
 	} finally {
 		service.close();
 		rmSync(tempRoot, { recursive: true, force: true });
@@ -62,7 +49,6 @@ test("project workflow session records persist selection metadata before runs st
 
 	try {
 		const project = service.createProject({
-			ownerScope: "user:workflow-record",
 			name: "Workflow Record Project",
 			projectFolder: join(tempRoot, "project"),
 			createFolder: true,
@@ -133,7 +119,6 @@ test("project workflow session selection and configuration stay immutable after 
 
 	try {
 		const project = service.createProject({
-			ownerScope: "user:workflow-immutable",
 			name: "Workflow Immutable Project",
 			projectFolder: join(tempRoot, "project"),
 			createFolder: true,
@@ -200,7 +185,6 @@ test("project workflow session selection and configuration stay immutable after 
 			schemaVersion: 1,
 			createdAt: "2026-05-12T02:00:00.000Z",
 			createdBy: "user-1",
-			ownerScope: "user:workflow-immutable",
 			projectId: project.id,
 			piboSessionId: "ps_immutable_workflow",
 			workflow: {
@@ -259,7 +243,6 @@ test("project workflow session snapshots persist configuration and effective def
 
 	try {
 		const project = service.createProject({
-			ownerScope: "user:workflow-snapshot",
 			name: "Workflow Snapshot Project",
 			projectFolder: join(tempRoot, "project"),
 			createFolder: true,
@@ -278,7 +261,6 @@ test("project workflow session snapshots persist configuration and effective def
 			schemaVersion: 1,
 			createdAt: "2026-05-12T00:00:00.000Z",
 			createdBy: "user-1",
-			ownerScope: "user:workflow-snapshot",
 			projectId: project.id,
 			piboSessionId: "ps_snapshot_workflow",
 			workflow: {
@@ -333,7 +315,6 @@ test("project workflow start creates one run per configured session", () => {
 
 	try {
 		const project = service.createProject({
-			ownerScope: "user:workflow-start",
 			name: "Workflow Start Project",
 			projectFolder: join(tempRoot, "project"),
 			createFolder: true,
@@ -352,7 +333,6 @@ test("project workflow start creates one run per configured session", () => {
 			schemaVersion: 1,
 			createdAt: "2026-05-12T01:00:00.000Z",
 			createdBy: "user-1",
-			ownerScope: "user:workflow-start",
 			projectId: project.id,
 			piboSessionId: "ps_start_workflow",
 			workflow: {
@@ -430,7 +410,6 @@ test("project sessions can link back to workflow run ids", () => {
 
 	try {
 		const project = service.createProject({
-			ownerScope: "user:workflow-link",
 			name: "Workflow Link Project",
 			projectFolder: join(tempRoot, "project"),
 			createFolder: true,

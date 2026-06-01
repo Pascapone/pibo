@@ -5,11 +5,8 @@ const CHAT_ROOM_ARCHIVED_AT_METADATA_KEY = "chatRoomArchivedAt";
 const CHAT_ROOM_WORKSPACE_METADATA_KEY = "workspace";
 
 export type PiboRoomType = "space" | "chat" | "agent";
-export type PiboRoomRole = "owner" | "admin" | "member" | "viewer";
-
 export type PiboRoom = {
 	id: string;
-	ownerScope: string;
 	name: string;
 	topic?: string;
 	workspace?: string;
@@ -21,21 +18,12 @@ export type PiboRoom = {
 	metadata: PiboJsonObject;
 };
 
-export type PiboRoomMember = {
-	roomId: string;
-	principalId: string;
-	role: PiboRoomRole;
-	joinedAt: string;
-	lastReadStreamId?: number;
-};
-
 export type PiboRoomNode = PiboRoom & {
 	children: PiboRoomNode[];
 };
 
 export type CreatePiboRoomInput = {
 	id?: string;
-	ownerScope: string;
 	name: string;
 	topic?: string;
 	type?: PiboRoomType;

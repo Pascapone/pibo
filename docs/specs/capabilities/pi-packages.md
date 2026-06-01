@@ -291,7 +291,7 @@ The system SHOULD keep a previously installed package registration when a later 
 ### Open Questions
 
 - Should Chat Web eventually support local package registration through a safer file-picker or trusted-operator mode?
-- Should Pi Package enablement become owner-scoped instead of global to the local Pibo home?
+- Should Pi Package enablement become app-spaced instead of global to the local Pibo home?
 - Should package install and refresh run as yielded jobs so long npm installs do not block web requests?
 - Should package resource discovery distinguish extension packages from packages that contain only skills/prompts/themes at runtime load time?
 

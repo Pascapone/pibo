@@ -20,7 +20,6 @@ import {
 import type {
 	CliAgentSummary,
 	CliOpenSession,
-	CliOwnerSummary,
 	CliRoomSummary,
 	CliRuntimeStatus,
 	CliSessionSource,
@@ -33,8 +32,7 @@ export type InkSessionPickerItem = {
 	id: string;
 	label: string;
 	description?: string;
-	kind?: "owner" | "room" | "session" | "create-session" | "agent" | "command-option";
-	ownerScope?: string;
+	kind?: "room" | "session" | "create-session" | "agent" | "command-option";
 	roomId?: string;
 	value?: unknown;
 	disabled?: boolean;
@@ -43,13 +41,12 @@ export type InkSessionPickerItem = {
 const IDENTIFIER_PATTERN = /^(?:user|room|ps|pi|entry|evt|run|create|provider|model|agent)[_:]/i;
 
 export type InkSessionPickerState = {
-	kind: "owner" | "room" | "session" | "agent" | "command-menu";
+	kind: "room" | "session" | "agent" | "command-menu";
 	title: string;
 	items: readonly InkSessionPickerItem[];
 	selectedIndex: number;
 	emptyMessage: string;
 	action?: "select-session" | "select-room" | "create-session" | "thinking-level" | "model-provider" | "model-choice" | "login-provider" | "login-method" | "fork-candidate";
-	ownerScope?: string;
 	roomId?: string;
 	commandName?: string;
 	parent?: InkSessionPickerState;
@@ -70,7 +67,6 @@ export type InkSlashSuggestionState = {
 export type InkSessionAppState = {
 	loading: boolean;
 	status?: CliRuntimeStatus;
-	activeOwner?: CliOwnerSummary;
 	activeRoom?: CliRoomSummary;
 	session?: CliSessionSummary;
 	rows: readonly CompactTerminalRow[];
@@ -89,7 +85,6 @@ export type InkSessionAppState = {
 export type InkSessionAppProps = {
 	source: CliSessionSource;
 	initialSessionId?: string;
-	skipOwnerPicker?: boolean;
 	maxRows?: number;
 	maxLineChars?: number;
 	onExit?: () => void;
@@ -102,7 +97,7 @@ const INITIAL_STATE: InkSessionAppState = {
 	mode: "transcript",
 };
 
-export function InkSessionApp({ source, initialSessionId, skipOwnerPicker = false, maxRows, maxLineChars, onExit }: InkSessionAppProps): React.ReactElement {
+export function InkSessionApp({ source, initialSessionId, maxRows, maxLineChars, onExit }: InkSessionAppProps): React.ReactElement {
 	const app = useApp();
 	const [state, setState] = useState<InkSessionAppState>(INITIAL_STATE);
 	const openedRef = useRef<CliOpenSession | undefined>(undefined);
@@ -130,7 +125,7 @@ export function InkSessionApp({ source, initialSessionId, skipOwnerPicker = fals
 		const opened = await source.openSession(sessionId);
 		openedRef.current = opened;
 		const activeRoom = opened.session.roomId
-			? (await source.listRooms({ ownerScope: opened.session.ownerScope })).find((room) => room.id === opened.session.roomId)
+			? (await source.listRooms()).find((room) => room.id === opened.session.roomId)
 			: undefined;
 		const rows = [...(localRows ?? []), ...buildCompactTerminalRows(opened.traceView, { showThinking: false })];
 		setState((current) => normalizeInkRowSelection({
@@ -166,15 +161,14 @@ export function InkSessionApp({ source, initialSessionId, skipOwnerPicker = fals
 		await handleCliSessionSubmittedInput(rawInput, source, stateRef.current, setState, openSession, requestExit);
 	}, [openSession, requestExit, source]);
 
-	const openSessionPickerForRoom = useCallback(async (room: CliRoomSummary, ownerScope: string, parent?: InkSessionPickerState) => {
-		const sessions = await source.listSessions({ roomId: room.id, ownerScope });
+	const openSessionPickerForRoom = useCallback(async (room: CliRoomSummary, parent?: InkSessionPickerState) => {
+		const sessions = await source.listSessions({ roomId: room.id });
 		const createItem: InkSessionPickerItem = {
 			id: `create:${room.id}`,
 			kind: "create-session",
 			label: "+ New session",
 			description: ["create and open", `room ${abbreviateIdentifier(room.id)}`].join(" · "),
 			roomId: room.id,
-			ownerScope,
 		};
 		const status = await source.getStatus();
 		setState((current) => ({
@@ -189,7 +183,6 @@ export function InkSessionApp({ source, initialSessionId, skipOwnerPicker = fals
 				items: [...sessions.map(sessionPickerItem), createItem],
 				selectedIndex: 0,
 				emptyMessage: `No sessions in ${room.title}. Create a new session to start chatting.`,
-				ownerScope,
 				roomId: room.id,
 				parent,
 			},
@@ -198,28 +191,26 @@ export function InkSessionApp({ source, initialSessionId, skipOwnerPicker = fals
 		}));
 	}, [source]);
 
-	const openRoomPicker = useCallback(async (owner: CliOwnerSummary) => {
-		const rooms = await source.listRooms({ ownerScope: owner.ownerScope });
+	const openRoomPicker = useCallback(async () => {
+		const rooms = await source.listRooms();
 		const defaultIndex = Math.max(0, rooms.findIndex((room) => room.isDefault));
 		const status = await source.getStatus();
 		setState((current) => ({
 			...current,
 			loading: false,
 			status,
-			activeOwner: owner,
 			activeRoom: undefined,
 			session: undefined,
 			rows: [],
 			mode: "picker",
 			picker: {
 				kind: "room",
-				title: `Select room for ${owner.label}`,
+				title: "Select room",
 				items: rooms.map(roomPickerItem),
 				selectedIndex: defaultIndex,
-				emptyMessage: "No rooms are available for the selected owner.",
-				ownerScope: owner.ownerScope,
+				emptyMessage: "No rooms are available.",
 			},
-			message: rooms.length === 0 ? "No rooms are available for the selected owner." : "Select a room with arrow keys.",
+			message: rooms.length === 0 ? "No rooms are available." : "Select a room with arrow keys.",
 			error: undefined,
 		}));
 	}, [source]);
@@ -232,17 +223,10 @@ export function InkSessionApp({ source, initialSessionId, skipOwnerPicker = fals
 			return;
 		}
 		try {
-			if (picker.kind === "owner") {
-				closeOpenSession();
-				const owner = await source.setActiveOwner(item.ownerScope ?? item.id);
-				await openRoomPicker(owner);
-				return;
-			}
 			if (picker.kind === "room") {
-				const room = { id: item.roomId ?? item.id, title: item.label, description: item.description, ownerScope: item.ownerScope ?? picker.ownerScope, isDefault: item.id === stateRef.current.status?.activeRoomId };
-				const ownerScope = item.ownerScope ?? picker.ownerScope ?? stateRef.current.activeOwner?.ownerScope ?? "";
+				const room = { id: item.roomId ?? item.id, title: item.label, description: item.description, isDefault: item.id === stateRef.current.status?.activeRoomId };
 				if (picker.action === "create-session") {
-					const created = await source.createSession({ roomId: room.id, ownerScope, agentId: stateRef.current.status?.activeAgentId });
+					const created = await source.createSession({ roomId: room.id, agentId: stateRef.current.status?.activeAgentId });
 					await openSession(created.id, `Created session ${created.title}.`);
 					return;
 				}
@@ -251,12 +235,12 @@ export function InkSessionApp({ source, initialSessionId, skipOwnerPicker = fals
 					setState((current) => ({ ...current, status, activeRoom: room, mode: "transcript", picker: undefined, overlayStack: undefined, message: `Selected room ${room.title}.`, error: undefined }));
 					return;
 				}
-				await openSessionPickerForRoom(room, ownerScope, picker);
+				await openSessionPickerForRoom(room, picker);
 				return;
 			}
 			if (picker.kind === "session") {
 				if (item.kind === "create-session") {
-					const created = await source.createSession({ roomId: item.roomId ?? picker.roomId, ownerScope: item.ownerScope ?? picker.ownerScope, agentId: stateRef.current.status?.activeAgentId });
+					const created = await source.createSession({ roomId: item.roomId ?? picker.roomId, agentId: stateRef.current.status?.activeAgentId });
 					await openSession(created.id, `Created session ${created.title}.`);
 					return;
 				}
@@ -283,7 +267,7 @@ export function InkSessionApp({ source, initialSessionId, skipOwnerPicker = fals
 		} catch (error) {
 			setState((current) => ({ ...current, mode: "transcript", picker: undefined, error: formatCliSessionError(error), message: undefined }));
 		}
-	}, [closeOpenSession, openRoomPicker, openSession, openSessionPickerForRoom, source]);
+	}, [openSession, openSessionPickerForRoom, source]);
 
 	useEffect(() => {
 		closedRef.current = false;
@@ -295,31 +279,7 @@ export function InkSessionApp({ source, initialSessionId, skipOwnerPicker = fals
 					await openSession(initialSessionId);
 					return;
 				}
-				const activeOwner = await source.getActiveOwner();
-				const owners = await source.listOwners();
-				const nonFallbackOwners = owners.filter((owner) => owner.isFallback !== true);
-				if (!skipOwnerPicker && nonFallbackOwners.length > 1) {
-					const selectedIndex = Math.max(0, owners.findIndex((owner) => owner.ownerScope === activeOwner.ownerScope));
-					const status = await source.getStatus();
-					setState((current) => ({
-						...current,
-						loading: false,
-						status,
-						activeOwner,
-						mode: "picker",
-						picker: {
-							kind: "owner",
-							title: "Select effective owner",
-							items: owners.map(ownerPickerItem),
-							selectedIndex,
-							emptyMessage: "No owners are available.",
-						},
-						message: "Select the Web user or Root recovery owner to use in this CLI session.",
-						error: undefined,
-					}));
-					return;
-				}
-				await openRoomPicker(activeOwner);
+				await openRoomPicker();
 			} catch (error) {
 				setState((current) => ({ ...current, loading: false, error: formatCliSessionError(error) }));
 			}
@@ -329,7 +289,7 @@ export function InkSessionApp({ source, initialSessionId, skipOwnerPicker = fals
 			closedRef.current = true;
 			cleanup();
 		};
-	}, [cleanup, initialSessionId, openRoomPicker, openSession, skipOwnerPicker, source]);
+	}, [cleanup, initialSessionId, openRoomPicker, openSession, source]);
 
 	useInput((input, key) => {
 		if (closedRef.current) return;
@@ -645,7 +605,7 @@ export function cliSessionSlashHelpText(catalog: readonly SlashCommandDescriptor
 		navigation,
 		"Unsupported or deferred terminal commands:",
 		unsupported,
-		"Keyboard controls: type / for suggestions; ↑/↓ selects suggestions, pickers, or expandable transcript rows; Enter accepts/runs or opens focused details when the composer is empty; d toggles focused details; Esc closes suggestions or backs out of pickers; room flow is owner → room → session.",
+		"Keyboard controls: type / for suggestions; ↑/↓ selects suggestions, pickers, or expandable transcript rows; Enter accepts/runs or opens focused details when the composer is empty; d toggles focused details; Esc closes suggestions or backs out of pickers; room flow is room → session.",
 	].join("\n");
 }
 
@@ -655,7 +615,6 @@ export function formatCliSessionStatus(status: CliRuntimeStatus | undefined, ses
 		`source=${status?.source ?? "unknown"}`,
 		`mode=${status?.mode ?? "unknown"}`,
 		`connected=${status?.connected === false ? "no" : "yes"}`,
-		`owner=${status?.activeOwnerLabel ?? "unknown"} (${status?.activeOwnerScope ?? session?.ownerScope ?? "unknown"})`,
 		`session=${session?.id ?? status?.activeSessionId ?? "none"}`,
 		`agent=${session?.agentId ?? session?.profile ?? status?.activeAgentId ?? "default"}`,
 		`model=${status?.activeModel ? `${status.activeModel.provider}/${status.activeModel.id}` : "unknown"}`,
@@ -710,13 +669,13 @@ async function handleSlashCommand(
 		return;
 	}
 	if (command.name === "status") {
-		const result = await source.executeSlashCommand({ command: command.name, args: command.args, sessionId: state.session?.id, ownerScope: state.activeOwner?.ownerScope });
+		const result = await source.executeSlashCommand({ command: command.name, args: command.args, sessionId: state.session?.id });
 		const status = await source.getStatus({ sessionId: state.session?.id });
 		setState((current) => applyCommandResultToState(current, command, result.descriptor, status));
 		return;
 	}
 	if (command.name === "clear") {
-		const result = await source.executeSlashCommand({ command: command.name, args: command.args, sessionId: state.session?.id, ownerScope: state.activeOwner?.ownerScope });
+		const result = await source.executeSlashCommand({ command: command.name, args: command.args, sessionId: state.session?.id });
 		setState((current) => normalizeInkRowSelection({ ...current, rows: [], message: `${renderCommandResultDescriptorText(result.descriptor, current.session)}\nCleared local display. Session data was not deleted.`, error: undefined }));
 		return;
 	}
@@ -725,59 +684,33 @@ async function handleSlashCommand(
 		return;
 	}
 	if (command.name === "new") {
-		const owner = state.activeOwner ?? await source.getActiveOwner();
 		if (!state.activeRoom?.id) {
-			const rooms = await source.listRooms({ ownerScope: owner.ownerScope });
+			const rooms = await source.listRooms();
 			const defaultIndex = Math.max(0, rooms.findIndex((room) => room.isDefault));
 			const status = await source.getStatus({ sessionId: state.session?.id });
 			setState((current) => ({
 				...current,
 				status,
-				activeOwner: owner,
 				mode: "picker",
 				picker: {
 					kind: "room",
 					action: "create-session",
-					title: `Select room for new session for ${owner.label}`,
+					title: "Select room for new session",
 					items: rooms.map(roomPickerItem),
 					selectedIndex: defaultIndex,
-					emptyMessage: "No rooms are available for the selected owner.",
-					ownerScope: owner.ownerScope,
+					emptyMessage: "No rooms are available.",
 				},
-				message: rooms.length === 0 ? "No rooms are available for the selected owner." : "Select the room for the new session.",
+				message: rooms.length === 0 ? "No rooms are available." : "Select the room for the new session.",
 				error: undefined,
 			}));
 			return;
 		}
-		const created = await source.createSession({ roomId: state.activeRoom.id, ownerScope: owner.ownerScope, agentId: state.status?.activeAgentId });
+		const created = await source.createSession({ roomId: state.activeRoom.id, agentId: state.status?.activeAgentId });
 		await openSession(created.id, `Created session ${created.title}.`);
 		return;
 	}
-	if (command.name === "owner" || command.name === "profile") {
-		const activeOwner = await source.getActiveOwner();
-		const owners = await source.listOwners();
-		const selectedIndex = Math.max(0, owners.findIndex((owner) => owner.ownerScope === activeOwner.ownerScope));
-		const status = await source.getStatus({ sessionId: state.session?.id });
-		setState((current) => ({
-			...current,
-			status,
-			activeOwner,
-			mode: "picker",
-			picker: {
-				kind: "owner",
-				title: "Select effective owner",
-				items: owners.map(ownerPickerItem),
-				selectedIndex,
-				emptyMessage: "No owners are available.",
-			},
-			message: "Select the Web user or Root recovery owner to use in this CLI session.",
-			error: undefined,
-		}));
-		return;
-	}
 	if (command.name === "session" || command.name === "room") {
-		const owner = state.activeOwner ?? await source.getActiveOwner();
-		const rooms = await source.listRooms({ ownerScope: owner.ownerScope });
+		const rooms = await source.listRooms();
 		const status = await source.getStatus({ sessionId: state.session?.id });
 		const activeRoomId = state.activeRoom?.id ?? status.activeRoomId;
 		const activeRoomIndex = rooms.findIndex((room) => room.id === activeRoomId);
@@ -785,36 +718,33 @@ async function handleSlashCommand(
 		setState((current) => ({
 			...current,
 			status,
-			activeOwner: owner,
 			mode: "picker",
 			picker: {
 				kind: "room",
 				action: command.name === "room" ? "select-room" : undefined,
-				title: command.name === "room" ? `Select active room for ${owner.label}` : `Select room for sessions for ${owner.label}`,
+				title: command.name === "room" ? "Select active room" : "Select room for sessions",
 				items: rooms.map(roomPickerItem),
 				selectedIndex,
-				emptyMessage: "No rooms are available for the selected owner.",
-				ownerScope: owner.ownerScope,
+				emptyMessage: "No rooms are available.",
 			},
-			message: rooms.length === 0 ? "No rooms are available for the selected owner." : command.name === "room" ? "Select the active room with arrow keys." : "Select a room, then choose or create a session.",
+			message: rooms.length === 0 ? "No rooms are available." : command.name === "room" ? "Select the active room with arrow keys." : "Select a room, then choose or create a session.",
 			error: undefined,
 		}));
 		return;
 	}
 	if (command.name === "repair-user-unknown") {
-		if (!source.repairLegacyUserUnknownSessions) throw new Error("This source does not support legacy user:unknown repair.");
-		const owner = state.activeOwner ?? await source.getActiveOwner();
-		const result = await source.repairLegacyUserUnknownSessions({ ownerScope: owner.ownerScope, roomId: state.activeRoom?.id });
+		if (!source.repairLegacyCliSessions) throw new Error("This source does not support legacy CLI session repair.");
+		const result = await source.repairLegacyCliSessions({ roomId: state.activeRoom?.id });
 		const status = await source.getStatus({ sessionId: state.session?.id });
 		setState((current) => ({
 			...current,
 			status,
-			message: `Repaired ${result.repaired}/${result.scanned} legacy user:unknown CLI session${result.scanned === 1 ? "" : "s"} to ${owner.label} (${result.ownerScope})${result.roomId ? ` in ${result.roomId}` : ""}.`,
+			message: `Repaired ${result.repaired}/${result.scanned} legacy CLI session${result.scanned === 1 ? "" : "s"}${result.roomId ? ` in ${result.roomId}` : ""}.`,
 			error: undefined,
 		}));
 		return;
 	}
-	if (command.name === "agent") {
+	if (command.name === "agent" || command.name === "profile") {
 		const agents = await source.listAgents();
 		setState((current) => ({
 			...current,
@@ -834,7 +764,7 @@ async function handleSlashCommand(
 	if (command.name === "thinking") {
 		if (command.args.trim()) {
 			validateThinkingLevel(command.args);
-			const result = await source.executeSlashCommand({ command: command.name, args: command.args, sessionId: state.session?.id, ownerScope: state.activeOwner?.ownerScope });
+			const result = await source.executeSlashCommand({ command: command.name, args: command.args, sessionId: state.session?.id });
 			const status = await source.getStatus({ sessionId: state.session?.id });
 			setState((current) => applyCommandResultToState(current, command, result.descriptor, status));
 			return;
@@ -848,7 +778,7 @@ async function handleSlashCommand(
 		return;
 	}
 	if (command.name === "model") {
-		const result = await source.executeSlashCommand({ command: command.name, args: command.args, sessionId: state.session?.id, ownerScope: state.activeOwner?.ownerScope });
+		const result = await source.executeSlashCommand({ command: command.name, args: command.args, sessionId: state.session?.id });
 		if (command.args.trim()) {
 			const status = await source.getStatus({ sessionId: state.session?.id });
 			setState((current) => applyCommandResultToState(current, command, result.descriptor, status));
@@ -868,7 +798,7 @@ async function handleSlashCommand(
 		return;
 	}
 	if (command.name === "login") {
-		const result = await source.executeSlashCommand({ command: command.name, args: command.args, sessionId: state.session?.id, ownerScope: state.activeOwner?.ownerScope });
+		const result = await source.executeSlashCommand({ command: command.name, args: command.args, sessionId: state.session?.id });
 		if (command.args.trim()) {
 			const status = await source.getStatus({ sessionId: state.session?.id });
 			setState((current) => applyCommandResultToState(current, command, result.descriptor, status));
@@ -888,7 +818,7 @@ async function handleSlashCommand(
 		return;
 	}
 	if (command.name === "fork-candidates") {
-		const result = await source.executeSlashCommand({ command: command.name, args: command.args, sessionId: state.session?.id, ownerScope: state.activeOwner?.ownerScope });
+		const result = await source.executeSlashCommand({ command: command.name, args: command.args, sessionId: state.session?.id });
 		const descriptor = result.descriptor;
 		if (command.args.trim() || descriptor.kind !== "menu" || descriptor.items.length === 0) {
 			const status = await source.getStatus({ sessionId: state.session?.id });
@@ -922,7 +852,7 @@ async function executeSharedSlashCommand(
 	const catalog = state.slashCommands ?? buildSlashCommandCatalog();
 	const descriptor = catalog.find((candidate) => candidate.slash === `/${command.name}` || candidate.aliases?.includes(`/${command.name}` as `/${string}`));
 	if (!descriptor || descriptor.group === "cli" || descriptor.group === "navigation") return false;
-	const result = await source.executeSlashCommand({ command: command.name, args: command.args, sessionId: state.session?.id, ownerScope: state.activeOwner?.ownerScope });
+	const result = await source.executeSlashCommand({ command: command.name, args: command.args, sessionId: state.session?.id });
 	const status = await source.getStatus({ sessionId: state.session?.id });
 	if (result.openSessionId && result.openSessionId !== state.session?.id) {
 		const localRows = commandResultDescriptorRows(command, result.descriptor, status, state.session, 0);
@@ -958,7 +888,7 @@ async function selectCommandMenuItem(
 			return;
 		}
 		validateThinkingLevel(level);
-		const result = await source.executeSlashCommand({ command: "thinking", args: level, sessionId: state.session?.id, ownerScope: state.activeOwner?.ownerScope });
+		const result = await source.executeSlashCommand({ command: "thinking", args: level, sessionId: state.session?.id });
 		const status = await source.getStatus({ sessionId: state.session?.id });
 		setState((current) => applyCommandResultToState(current, { name: "thinking", args: level, raw: `/thinking ${level}` }, result.descriptor, status));
 		return;
@@ -976,7 +906,7 @@ async function selectCommandMenuItem(
 		const providerId = String(providerValue?.id ?? itemValue?.provider ?? "");
 		const modelId = String(itemValue?.id ?? item.id);
 		const args = providerId ? `${providerId}/${modelId}` : modelId;
-		const result = await source.executeSlashCommand({ command: "model", args, sessionId: state.session?.id, ownerScope: state.activeOwner?.ownerScope });
+		const result = await source.executeSlashCommand({ command: "model", args, sessionId: state.session?.id });
 		const status = await source.getStatus({ sessionId: state.session?.id });
 		const command = { name: "model", args, raw: `/model ${args}` };
 		if (result.openSessionId && result.openSessionId !== state.session?.id) {
@@ -999,13 +929,13 @@ async function selectCommandMenuItem(
 		const providerId = String(providerValue?.id ?? "");
 		const methodId = String(item.id);
 		const args = providerId ? `${providerId}/${methodId}` : methodId;
-		const result = await source.executeSlashCommand({ command: "login", args, sessionId: state.session?.id, ownerScope: state.activeOwner?.ownerScope });
+		const result = await source.executeSlashCommand({ command: "login", args, sessionId: state.session?.id });
 		const status = await source.getStatus({ sessionId: state.session?.id });
 		setState((current) => applyCommandResultToState(current, { name: "login", args, raw: `/login ${args}` }, result.descriptor, status));
 		return;
 	}
 	if (picker.action === "fork-candidate") {
-		const result = await source.executeSlashCommand({ command: "fork-candidates", args: item.id, sessionId: state.session?.id, ownerScope: state.activeOwner?.ownerScope });
+		const result = await source.executeSlashCommand({ command: "fork-candidates", args: item.id, sessionId: state.session?.id });
 		const status = await source.getStatus({ sessionId: state.session?.id });
 		const command = { name: "fork-candidates", args: item.id, raw: `/fork-candidates ${item.id}` };
 		if (result.openSessionId && result.openSessionId !== state.session?.id) {
@@ -1266,8 +1196,6 @@ function commandStatusRowOutput(rawStatus: unknown, status?: CliRuntimeStatus, s
 	const descriptorStatus = rawStatus && typeof rawStatus === "object" && !Array.isArray(rawStatus) ? rawStatus as Record<string, unknown> : {};
 	return {
 		...descriptorStatus,
-		activeOwnerLabel: status?.activeOwnerLabel,
-		activeOwnerScope: status?.activeOwnerScope ?? session?.ownerScope,
 		piboSessionId: session?.id ?? status?.activeSessionId ?? descriptorStatus.piboSessionId,
 		sessionTitle: session?.title,
 		profile: session?.profile ?? session?.agentId ?? status?.activeAgentId,
@@ -1315,7 +1243,6 @@ export function renderCliStatusCardText(status: CliRuntimeStatus | undefined, se
 function statusViewModelInput(status: CliRuntimeStatus | undefined, session?: CliSessionSummary): BuildTerminalStatusInput {
 	const runtimeState = status?.connected === false ? "disconnected" : status?.processing ? "processing" : status?.streaming ? "streaming" : status?.mode ?? "unknown";
 	return {
-		owner: { label: status?.activeOwnerLabel, scope: status?.activeOwnerScope ?? session?.ownerScope },
 		session: { id: session?.id ?? status?.activeSessionId, title: session?.title, profile: session?.profile ?? session?.agentId ?? status?.activeAgentId, status: session?.status },
 		model: status?.activeModel ?? session?.model ?? { provider: "unknown", id: "unknown", label: "unknown" },
 		runtime: { state: runtimeState, connected: status?.connected, queuedMessages: status?.queuedMessages, processing: status?.processing, streaming: status?.streaming, disposed: status?.disposed },
@@ -1333,7 +1260,6 @@ function statusViewModelInput(status: CliRuntimeStatus | undefined, session?: Cl
 
 function compactOverlayTitle(title: string): string {
 	return title
-		.replace(/^Select effective owner$/i, "select owner")
 		.replace(/^Select existing agent\/profile$/i, "select agent")
 		.replace(/^Select thinking level$/i, "select thinking level")
 		.replace(/^Select model provider$/i, "select model provider")
@@ -1342,9 +1268,9 @@ function compactOverlayTitle(title: string): string {
 		.replace(/^Select auth method for /i, "select login method — ")
 		.replace(/^Select model for /i, "select model — ")
 		.replace(/^Select session in /i, "select session — ")
-		.replace(/^Select room for new session for /i, "select room — new session for ")
-		.replace(/^Select active room for /i, "select room — ")
-		.replace(/^Select room for sessions for /i, "select room — sessions for ")
+		.replace(/^Select room for new session$/i, "select room — new session")
+		.replace(/^Select active room$/i, "select room")
+		.replace(/^Select room for sessions$/i, "select room — sessions")
 		.replace(/^Select room for /i, "select room — ")
 		.replace(/^Select /i, "select ");
 }
@@ -1370,26 +1296,9 @@ function itemMetadata(...parts: Array<string | undefined | false>): string | und
 	return parts.filter(Boolean).join(" · ") || undefined;
 }
 
-function ownerKindLabel(owner: CliOwnerSummary): string {
-	if (owner.kind === "web-user") return "Web user";
-	if (owner.kind === "root-recovery") return "Root recovery";
-	if (owner.kind === "legacy") return "Legacy owner";
-	return "Local owner";
-}
-
 function modelLabel(model: CliSessionSummary["model"]): string | undefined {
 	if (!model) return undefined;
 	return `${model.provider}/${model.id}`;
-}
-
-function ownerPickerItem(owner: CliOwnerSummary): InkSessionPickerItem {
-	return {
-		id: owner.ownerScope,
-		kind: "owner",
-		ownerScope: owner.ownerScope,
-		label: owner.label,
-		description: itemMetadata(ownerKindLabel(owner), abbreviateIdentifier(owner.ownerScope), owner.description),
-	};
 }
 
 function roomPickerItem(room: CliRoomSummary): InkSessionPickerItem {
@@ -1398,7 +1307,6 @@ function roomPickerItem(room: CliRoomSummary): InkSessionPickerItem {
 		id: room.id,
 		kind: "room",
 		roomId: room.id,
-		ownerScope: room.ownerScope,
 		label,
 		description: itemMetadata(room.isDefault ? "default" : undefined, room.description, `room ${abbreviateIdentifier(room.id)}`),
 	};
@@ -1409,7 +1317,6 @@ function sessionPickerItem(session: CliSessionSummary): InkSessionPickerItem {
 		id: session.id,
 		kind: "session",
 		roomId: session.roomId,
-		ownerScope: session.ownerScope,
 		label: session.title || abbreviateIdentifier(session.id) || session.id,
 		description: itemMetadata(session.status, session.profile || session.agentId, modelLabel(session.model), session.updatedAt ? `updated ${session.updatedAt}` : undefined, abbreviateIdentifier(session.id)),
 	};
@@ -1429,29 +1336,20 @@ function renderBoundedTextLines(value: string, color: string, _max: number, keyP
 
 export function formatStatusHeaderLines(state: InkSessionAppState, max = 220): string[] {
 	const source = state.status?.source ?? "starting";
-	const owner = statusHeaderOwner(state);
 	const room = statusHeaderRoom(state);
 	const session = state.session?.title ?? state.status?.activeSessionId ?? "no session";
 	const agent = state.session?.agentId ?? state.session?.profile ?? state.status?.activeAgentId ?? "default";
 	const model = state.status?.activeModel ? `${state.status.activeModel.provider}/${state.status.activeModel.id}` : "model unknown";
 	const mode = state.mode === "transcript" ? "transcript" : state.mode;
-	const parts = [`pibo sessions`, source, mode, `owner ${owner}`, room ? `room ${room}` : undefined, `session ${session}`, `agent ${agent}`, `model ${model}`].filter(Boolean);
+	const parts = [`pibo sessions`, source, mode, room ? `room ${room}` : undefined, `session ${session}`, `agent ${agent}`, `model ${model}`].filter(Boolean);
 	const full = parts.join(" · ");
 	if (max >= 112 || full.length <= max) return [full];
 	return [
 		`pibo sessions · ${source} · ${mode}`,
-		`owner ${owner}${room ? ` · room ${room}` : ""}`,
+		room ? `room ${room}` : "room none",
 		`session ${session}`,
 		`agent ${agent} · model ${model}`,
 	];
-}
-
-function statusHeaderOwner(state: InkSessionAppState): string {
-	return state.status?.activeOwnerLabel
-		?? state.activeOwner?.label
-		?? state.status?.activeOwnerScope
-		?? state.session?.ownerScope
-		?? "owner unknown";
 }
 
 function statusHeaderRoom(state: InkSessionAppState): string | undefined {
@@ -1504,7 +1402,6 @@ export function formatCliSessionError(error: unknown): string {
 	if (isCliSourceError(error)) {
 		if (error.code === "source_closed") return `${message}. Recovery: restart pibo tui:sessions.`;
 		if (error.code === "session_not_found") return `${message}. Recovery: use /session to select another session or /new to create one.`;
-		if (error.code === "session_owner_mismatch") return `${message}. Recovery: use /owner to switch back, or /session to select a session for the active owner.`;
 		if (error.code === "agent_not_found") return `${message}. Recovery: use /agent to pick an available existing profile.`;
 		if (error.code === "empty_message") return `${message}. Type a message or use /help.`;
 		return `${message}. Recovery: check local Pibo state, then use /status, /session, or /new.`;

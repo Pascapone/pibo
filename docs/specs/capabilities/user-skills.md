@@ -262,13 +262,13 @@ When runtime text references selected skills with `$skill-name`, the system MUST
 
 ### Assumptions
 
-- User skills are local user-home product resources, not owner-scoped database records or workspace-local records, in the current CLI and Chat Web implementation.
+- User skills are local user-home product resources, not app-spaced database records or workspace-local records, in the current CLI and Chat Web implementation.
 - The current simple YAML parser only needs key/value frontmatter for `name` and `description`.
 - Remote source trust will be specified separately if Pibo adds signatures, review, or allowlists.
 
 ### Open Questions
 
-- Should user skills become owner-scoped or workspace-scoped records instead of `os.homedir()` resources?
+- Should user skills become app-spaced or workspace-scoped records instead of `os.homedir()` resources?
 - Should deleting or disabling a skill warn when Custom Agents currently select it?
 - Should remote installation support branches other than the default branch through GitHub API URLs?
 - Should skill markdown size be bounded at API and CLI input boundaries?

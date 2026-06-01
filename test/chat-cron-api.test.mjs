@@ -3,7 +3,6 @@ import test from "node:test";
 import { handleChatCronApiRequest } from "../dist/apps/chat/cron-api.js";
 import { PiboCronStore } from "../dist/cron/store.js";
 import { PiboWebHttpError } from "../dist/web/http.js";
-import { LEGACY_SHARED_APP_OWNER_SCOPE } from "../dist/shared-app.js";
 
 function makeOptions(request) {
 	return {
@@ -13,13 +12,12 @@ function makeOptions(request) {
 				getProfiles: () => [{ name: "test-profile", aliases: [] }],
 			},
 		},
-		webSession: { ownerScope: "user:current" },
+		webSession: {},
 		roomService: {
 			getRoom: () => undefined,
 			listRoomTree: () => [],
-			requireRoomAccess: () => ({ id: "room-1", name: "Room", ownerScope: "user:current", createdAt: Date.now(), updatedAt: Date.now() }),
-			ensureDefaultRoom: () => ({ id: "default-room", name: "Default", ownerScope: "user:current", createdAt: Date.now(), updatedAt: Date.now() }),
-			ensureMember: () => ({ roomId: "room-1", principalId: "user:current", role: "owner", createdAt: Date.now(), updatedAt: Date.now() }),
+			requireRoom: () => ({ id: "room-1", name: "Room", createdAt: Date.now(), updatedAt: Date.now() }),
+			ensureDefaultRoom: () => ({ id: "default-room", name: "Default", createdAt: Date.now(), updatedAt: Date.now() }),
 		},
 		cronStore: new PiboCronStore({ path: ":memory:" }),
 		defaultProfile: "test-profile",
@@ -31,7 +29,7 @@ function postCronJob({ headers = {}, body = {} } = {}) {
 		method: "POST",
 		headers,
 		body: JSON.stringify({
-			target: { kind: "personal" },
+			target: { kind: "default-chat" },
 			profile: "test-profile",
 			prompt: "run this later",
 			schedule: { kind: "every", everyMs: 60_000 },
@@ -73,15 +71,15 @@ test("chat cron API rejects mutating requests from a different Origin", async ()
 	);
 });
 
-test("chat cron API normalizes personal cron targets to the shared default target", async () => {
+test("chat cron API creates default-chat cron targets without owner payloads", async () => {
 	const options = makeOptions(postCronJob({
 		headers: { origin: "http://chat.local", "content-type": "application/json" },
-		body: { target: { kind: "personal", principalId: "user:other" } },
+		body: { target: { kind: "default-chat" } },
 	}));
 	const defaultCalls = [];
 	options.roomService.ensureDefaultRoom = (input) => {
 		defaultCalls.push(input);
-		return { id: "default-room", name: "Shared Chat", ownerScope: input.ownerScope, createdAt: Date.now(), updatedAt: Date.now() };
+		return { id: "default-room", name: "Shared Chat", createdAt: Date.now(), updatedAt: Date.now() };
 	};
 	try {
 		const response = await handleChatCronApiRequest(options);
@@ -89,40 +87,53 @@ test("chat cron API normalizes personal cron targets to the shared default targe
 
 		assert.equal(response.status, 201);
 		assert.equal("ownerScope" in body.job, false);
-		assert.deepEqual(body.job.target, { kind: "personal" });
-		assert.deepEqual(defaultCalls, [{ ownerScope: LEGACY_SHARED_APP_OWNER_SCOPE, principalId: LEGACY_SHARED_APP_OWNER_SCOPE, name: "Shared Chat" }]);
+		assert.equal("principalId" in body.job.target, false);
+		assert.deepEqual(body.job.target, { kind: "default-chat" });
+		assert.deepEqual(options.cronStore.listJobs({ includeDisabled: true })[0].target, { kind: "default-chat" });
+		assert.deepEqual(defaultCalls, [{ name: "Shared Chat" }]);
 	} finally {
 		options.cronStore.close();
 	}
+});
+
+test("chat cron API rejects legacy personal cron targets", async () => {
+	await assertHttpError(
+		handleChatCronApiRequest(makeOptions(postCronJob({
+			headers: { origin: "http://chat.local", "content-type": "application/json" },
+			body: { target: { kind: "personal", principalId: "user:other" } },
+		}))),
+		400,
+		/target\.kind must be room or default-chat/,
+	);
 });
 
 test("chat cron API exposes created Cron jobs across authenticated accounts", async () => {
 	const store = new PiboCronStore({ path: ":memory:" });
 	const createOptions = makeOptions(postCronJob({ headers: { origin: "http://chat.local", "content-type": "application/json" } }));
 	createOptions.cronStore = store;
-	createOptions.webSession = { ownerScope: "user:a" };
+	createOptions.webSession = {};
 	try {
 		const createResponse = await handleChatCronApiRequest(createOptions);
 		const created = (await createResponse.json()).job;
 		assert.equal("ownerScope" in created, false);
 
-		const listResponse = await handleChatCronApiRequest({ ...makeOptions(new Request("http://chat.local/api/chat/cron/jobs?includeDisabled=true")), cronStore: store, webSession: { ownerScope: "user:b" } });
+		const listResponse = await handleChatCronApiRequest({ ...makeOptions(new Request("http://chat.local/api/chat/cron/jobs?includeDisabled=true")), cronStore: store, webSession: {} });
 		assert.deepEqual((await listResponse.json()).jobs.map((job) => job.id), [created.id]);
 
-		const getResponse = await handleChatCronApiRequest({ ...makeOptions(new Request(`http://chat.local/api/chat/cron/jobs/${created.id}`)), cronStore: store, webSession: { ownerScope: "user:b" } });
+		const getResponse = await handleChatCronApiRequest({ ...makeOptions(new Request(`http://chat.local/api/chat/cron/jobs/${created.id}`)), cronStore: store, webSession: {} });
 		assert.equal((await getResponse.json()).job.id, created.id);
 
 		const patchResponse = await handleChatCronApiRequest({
 			...makeOptions(new Request(`http://chat.local/api/chat/cron/jobs/${created.id}`, { method: "PATCH", headers: { origin: "http://chat.local", "content-type": "application/json" }, body: JSON.stringify({ name: "patched by B" }) })),
 			cronStore: store,
-			webSession: { ownerScope: "user:b" },
+			webSession: {},
 		});
 		assert.equal((await patchResponse.json()).job.name, "patched by B");
 
 		const deleteResponse = await handleChatCronApiRequest({
 			...makeOptions(new Request(`http://chat.local/api/chat/cron/jobs/${created.id}`, { method: "DELETE", headers: { origin: "http://chat.local", "content-type": "application/json" } })),
 			cronStore: store,
-			webSession: { ownerScope: "user:b" },
+			webSession: {},
 		});
 		assert.deepEqual(await deleteResponse.json(), { removed: true });
 	} finally {
@@ -130,18 +141,17 @@ test("chat cron API exposes created Cron jobs across authenticated accounts", as
 	}
 });
 
-test("chat cron API requires write access before creating room cron targets", async () => {
+test("chat cron API requires an existing writable room before creating room cron targets", async () => {
 	const options = makeOptions(postCronJob({
 		headers: { origin: "http://chat.local", "content-type": "application/json" },
 		body: { target: { kind: "room", roomId: "room-42" } },
 	}));
 	const accessCalls = [];
-	options.roomService.requireRoomAccess = (roomId, principalId, action) => {
-		accessCalls.push([roomId, principalId, action]);
+	options.roomService.requireRoom = (roomId) => {
+		accessCalls.push([roomId]);
 		return {
 			id: roomId,
 			name: "Room 42",
-			ownerScope: "user:current",
 			type: "chat",
 			createdAt: "2026-05-11T00:00:00.000Z",
 			updatedAt: "2026-05-11T00:00:00.000Z",
@@ -154,7 +164,7 @@ test("chat cron API requires write access before creating room cron targets", as
 		const body = await response.json();
 
 		assert.equal(response.status, 201);
-		assert.deepEqual(accessCalls, [["room-42", LEGACY_SHARED_APP_OWNER_SCOPE, "write"]]);
+		assert.deepEqual(accessCalls, [["room-42"]]);
 		assert.equal("ownerScope" in body.job, false);
 		assert.deepEqual(body.job.target, { kind: "room", roomId: "room-42" });
 	} finally {

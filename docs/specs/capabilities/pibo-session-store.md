@@ -108,7 +108,7 @@ Callers can safely patch one field without losing unrelated session state, and c
 
 #### Acceptance
 
-- Omitting `profile`, `ownerScope`, `workspace`, `title`, `metadata`, or `activeModel` preserves the existing value.
+- Omitting `profile`, `appContext`, `workspace`, `title`, `metadata`, or `activeModel` preserves the existing value.
 - Setting `parentId`, `originId`, `workspace`, `title`, or `activeModel` to `null` removes that value.
 - Setting `metadata` replaces the metadata object.
 - `updatedAt` changes after a successful update.
@@ -136,7 +136,7 @@ Callers can switch between test and durable stores without changing query result
 #### Acceptance
 
 - `ids` filters return only requested existing ids and return an empty list for an empty id array.
-- `channel`, `kind`, `originId`, and `profile` use exact string matching. `ownerScope` filtering is legacy compatibility and must not be used by current product visibility paths.
+- `channel`, `kind`, `originId`, and `profile` use exact string matching. `appContext` filtering is legacy compatibility and must not be used by current product visibility paths.
 - `parentId: null` matches only root sessions with no parent.
 - `parentId: <id>` matches only direct children of that parent.
 - `activeModel: null` matches sessions with no active model.

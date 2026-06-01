@@ -9,9 +9,7 @@ export {
 	withPiboRoomWorkspace,
 	type CreatePiboRoomInput,
 	type PiboRoom,
-	type PiboRoomMember,
 	type PiboRoomNode,
-	type PiboRoomRole,
 	type PiboRoomType,
 	type UpdatePiboRoomInput,
 } from "./types/rooms.js";

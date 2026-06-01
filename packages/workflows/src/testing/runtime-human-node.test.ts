@@ -71,7 +71,6 @@ function createRun(): WorkflowRun {
     id: "wfr_human",
     workflowId: "test.human-node-dispatch",
     workflowVersion: "1.0.0",
-    ownerScope: "user:human",
     status: "running",
     current: { nodeId: "review", status: "running" },
     input: { title: "Workflow waits", body: "Draft body" },

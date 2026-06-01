@@ -6,7 +6,6 @@ test("custom agent profiles skip unknown context file references", () => {
 	const profile = createCustomAgentProfileDefinition({
 		id: "agent_test",
 		profileName: "main-agent",
-		ownerScope: "user:test",
 		displayName: "main-agent",
 		nativeTools: [],
 		skills: [],
@@ -51,7 +50,6 @@ test("custom agent profiles skip unknown skill references", () => {
 	const profile = createCustomAgentProfileDefinition({
 		id: "agent_test",
 		profileName: "main-agent",
-		ownerScope: "user:test",
 		displayName: "main-agent",
 		nativeTools: [],
 		skills: ["pi-agent-harness", "writing-clearly-and-concisely"],

@@ -862,7 +862,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 		await queryClient.cancelQueries({ queryKey: ["chat", "bootstrap"] });
 		const snapshot = createBootstrapMutationSnapshot(queryClient, bootstrap);
 		const tempId = `optimistic-room-${createClientTxnId()}`;
-		const optimisticRoom = createOptimisticRoom(tempId, identityFromBootstrap(bootstrap).userId, "New Chat");
+		const optimisticRoom = createOptimisticRoom(tempId, "New Chat");
 		setSelectedRoomId(tempId);
 		setSelectedPiboSessionId(null);
 		updateBootstrapCache((data) => addRoomToBootstrap(data, optimisticRoom));

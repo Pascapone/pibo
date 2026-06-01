@@ -38,13 +38,6 @@ export type ChatEventListInput = {
 	limit?: number;
 };
 
-export type ChatUnreadCountInput = {
-	roomId?: string;
-	piboSessionId?: string;
-	principalId: string;
-	afterStreamId?: number;
-};
-
 export type ChatRetentionPolicy = {
 	id: string;
 	deleteLiveDeltasAfterMs?: number;

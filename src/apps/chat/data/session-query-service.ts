@@ -54,7 +54,6 @@ export class ChatSessionQueryService {
 
 	private upsertNavigation(session: PiboSession, roomId: string, status: string, now: string): void {
 		this.store.navigation.upsertSession({
-			ownerScope: session.ownerScope ?? "user:unknown",
 			roomId,
 			sessionId: session.id,
 			rootSessionId: session.parentId ? (typeof session.metadata?.rootSessionId === "string" ? session.metadata.rootSessionId : session.parentId) : session.id,

@@ -2,7 +2,6 @@ import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import type { PiboThinkingLevel } from "./thinking.js";
 
 export type ToolDefinitionContext = {
-	ownerScope?: string;
 	piboSessionId?: string;
 	piboRoomId?: string;
 };

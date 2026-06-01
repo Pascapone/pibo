@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { PiboCronStore } from '../dist/cron/store.js';
-import { LEGACY_SHARED_APP_OWNER_SCOPE } from '../dist/shared-app.js';
 
 function createStore() {
   return new PiboCronStore({ path: ':memory:' });
@@ -9,8 +8,7 @@ function createStore() {
 
 function baseJobInput(overrides = {}) {
   return {
-    ownerScope: 'user:test',
-    target: { kind: 'personal', principalId: 'user:test' },
+    target: { kind: 'default-chat' },
     profile: 'default',
     prompt: 'run lifecycle check',
     schedule: {
@@ -25,9 +23,9 @@ function baseJobInput(overrides = {}) {
 test('cron store validates required job fields before persisting', () => {
   const store = createStore();
   try {
-    const sharedJob = store.createJob(baseJobInput({ ownerScope: '  ', enabled: false }));
-    assert.equal(sharedJob.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
-    assert.deepEqual(sharedJob.target, { kind: 'personal', principalId: LEGACY_SHARED_APP_OWNER_SCOPE });
+    const sharedJob = store.createJob(baseJobInput({ enabled: false }));
+    assert.equal('ownerScope' in sharedJob, false);
+    assert.deepEqual(sharedJob.target, { kind: 'default-chat' });
     assert.throws(
       () => store.createJob(baseJobInput({ profile: '  ' })),
       /profile is required/,
@@ -46,7 +44,7 @@ test('cron store validates required job fields before persisting', () => {
       }), new Date('2026-05-09T07:30:00.000Z')),
       /schedule has no future run/,
     );
-    assert.deepEqual(store.listJobs({ ownerScope: 'user:other', includeDisabled: true }).map((job) => job.id), [sharedJob.id]);
+    assert.deepEqual(store.listJobs({ includeDisabled: true }).map((job) => job.id), [sharedJob.id]);
   } finally {
     store.close();
   }
@@ -80,7 +78,7 @@ test('cron store error completion increments and later success resets consecutiv
   try {
     const job = store.createJob(baseJobInput(), new Date('2026-05-09T07:30:00.000Z'));
 
-    const first = store.reserveManualRun('user:other', job.id, new Date('2026-05-09T08:00:00.000Z'));
+    const first = store.reserveManualRun(job.id, new Date('2026-05-09T08:00:00.000Z'));
     store.completeRun({ jobId: job.id, runId: first.run.id, status: 'error', error: 'boom' }, new Date('2026-05-09T08:01:00.000Z'));
     const failed = store.getJob(job.id);
     assert.equal(failed.state.runningAt, undefined);
@@ -88,7 +86,7 @@ test('cron store error completion increments and later success resets consecutiv
     assert.equal(failed.state.lastError, 'boom');
     assert.equal(failed.state.consecutiveErrors, 1);
 
-    const second = store.reserveManualRun('user:test', job.id, new Date('2026-05-09T08:02:00.000Z'));
+    const second = store.reserveManualRun(job.id, new Date('2026-05-09T08:02:00.000Z'));
     store.completeRun({ jobId: job.id, runId: second.run.id, status: 'ok' }, new Date('2026-05-09T08:03:00.000Z'));
     const recovered = store.getJob(job.id);
     assert.equal(recovered.state.lastStatus, 'ok');

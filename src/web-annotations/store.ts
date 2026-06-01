@@ -4,8 +4,6 @@ import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { piboHomePath } from "../core/pibo-home.js";
 import type { PiboJsonObject } from "../core/events.js";
-import { getSharedAppLegacyOwnerScope } from "../shared-app.js";
-import { sqliteTableColumns } from "../data/sqlite-schema.js";
 import {
 	isWebAnnotationBindingState,
 	isWebAnnotationStatus,
@@ -38,14 +36,12 @@ export type WebAnnotationStoreOptions = {
 };
 
 export type WebAnnotationBindingListFilter = {
-	ownerScope: string;
 	piboSessionId: string;
 	limit?: number;
 };
 
 type WebAnnotationBindingRow = {
 	id: string;
-	owner_scope?: string;
 	pibo_session_id: string;
 	pibo_room_id: string | null;
 	state: WebAnnotationBindingState;
@@ -62,7 +58,6 @@ type WebAnnotationBindingRow = {
 
 type WebAnnotationRow = {
 	id: string;
-	owner_scope?: string;
 	pibo_session_id: string;
 	pibo_room_id: string | null;
 	binding_id: string | null;
@@ -83,6 +78,45 @@ type WebAnnotationRow = {
 	summary: string | null;
 	metadata_json: string | null;
 };
+
+const BINDING_COLUMNS = [
+	"id",
+	"pibo_session_id",
+	"pibo_room_id",
+	"state",
+	"url",
+	"title",
+	"target_id",
+	"created_at",
+	"updated_at",
+	"last_injected_at",
+	"closed_at",
+	"error",
+	"metadata_json",
+] as const;
+
+const ANNOTATION_COLUMNS = [
+	"id",
+	"pibo_session_id",
+	"pibo_room_id",
+	"binding_id",
+	"status",
+	"note",
+	"url",
+	"title",
+	"target_id",
+	"target_kind",
+	"viewport_json",
+	"target_json",
+	"screenshot_ref_json",
+	"thread_json",
+	"created_at",
+	"updated_at",
+	"resolved_at",
+	"resolved_by",
+	"summary",
+	"metadata_json",
+] as const;
 
 function nowIso(now = new Date()): string {
 	return now.toISOString();
@@ -112,7 +146,6 @@ function validateJsonObject(value: PiboJsonObject | undefined, field: string): v
 }
 
 function validateBindingInput(input: CreateWebAnnotationBindingInput): void {
-	requireNonEmpty(input.ownerScope, "ownerScope");
 	requireNonEmpty(input.piboSessionId, "piboSessionId");
 	requireNonEmpty(input.url, "url");
 	if (input.state !== undefined && !isWebAnnotationBindingState(input.state)) throw new Error(`Invalid binding state: ${input.state}`);
@@ -125,7 +158,6 @@ function validateBindingPatch(patch: PatchWebAnnotationBindingInput): void {
 }
 
 function validateAnnotationInput(input: CreateWebAnnotationInput): void {
-	requireNonEmpty(input.ownerScope, "ownerScope");
 	requireNonEmpty(input.piboSessionId, "piboSessionId");
 	requireNonEmpty(input.note, "note");
 	requireNonEmpty(input.url, "url");
@@ -149,7 +181,6 @@ function validateAnnotationPatch(patch: PatchWebAnnotationInput): void {
 function bindingFromRow(row: WebAnnotationBindingRow): WebAnnotationBinding {
 	return {
 		id: row.id,
-		ownerScope: row.owner_scope ?? getSharedAppLegacyOwnerScope(),
 		piboSessionId: row.pibo_session_id,
 		piboRoomId: row.pibo_room_id ?? undefined,
 		state: row.state,
@@ -168,7 +199,6 @@ function bindingFromRow(row: WebAnnotationBindingRow): WebAnnotationBinding {
 function annotationFromRow(row: WebAnnotationRow): WebAnnotation {
 	return {
 		id: row.id,
-		ownerScope: row.owner_scope ?? getSharedAppLegacyOwnerScope(),
 		piboSessionId: row.pibo_session_id,
 		piboRoomId: row.pibo_room_id ?? undefined,
 		bindingId: row.binding_id ?? undefined,
@@ -191,8 +221,12 @@ function annotationFromRow(row: WebAnnotationRow): WebAnnotation {
 	};
 }
 
+function quoteIdentifier(value: string): string {
+	return `"${value.replaceAll('"', '""')}"`;
+}
+
 export class WebAnnotationStore {
-	private readonly db: DatabaseSync;
+	readonly db: DatabaseSync;
 
 	constructor(options: WebAnnotationStoreOptions = {}) {
 		const dbPath = options.path ?? piboHomePath("web-annotations.sqlite");
@@ -203,6 +237,7 @@ export class WebAnnotationStore {
 		this.db.exec("PRAGMA foreign_keys = ON");
 		if (resolved !== ":memory:") this.db.exec("PRAGMA journal_mode = WAL");
 		this.applySchema();
+		this.applySchema();
 	}
 
 	close(): void {
@@ -211,10 +246,10 @@ export class WebAnnotationStore {
 
 	createBinding(input: CreateWebAnnotationBindingInput, now = new Date()): WebAnnotationBinding {
 		const normalized = normalizeWebAnnotationBindingInput(input);
+		validateBindingInput(normalized);
 		const timestamp = nowIso(now);
 		const binding: WebAnnotationBinding = {
 			id: normalized.id ?? `wab_${randomUUID()}`,
-			ownerScope: getSharedAppLegacyOwnerScope(),
 			piboSessionId: normalized.piboSessionId,
 			piboRoomId: normalized.piboRoomId,
 			state: normalized.state ?? "active",
@@ -225,15 +260,13 @@ export class WebAnnotationStore {
 			createdAt: timestamp,
 			updatedAt: timestamp,
 		};
-		const hasOwnerScope = sqliteTableColumns(this.db, "web_annotation_bindings").has("owner_scope");
 		this.db.prepare(`
 			INSERT OR IGNORE INTO web_annotation_bindings (
-				id, ${hasOwnerScope ? "owner_scope, " : ""}pibo_session_id, pibo_room_id, state, url, title, target_id,
+				id, pibo_session_id, pibo_room_id, state, url, title, target_id,
 				created_at, updated_at, last_injected_at, closed_at, error, metadata_json
-			) VALUES (${Array.from({ length: hasOwnerScope ? 14 : 13 }, () => "?").join(", ")})
+			) VALUES (${Array.from({ length: BINDING_COLUMNS.length }, () => "?").join(", ")})
 		`).run(
 			binding.id,
-			...(hasOwnerScope ? [binding.ownerScope] : []),
 			binding.piboSessionId,
 			binding.piboRoomId ?? null,
 			binding.state,
@@ -247,7 +280,7 @@ export class WebAnnotationStore {
 			null,
 			stringifyJson(binding.metadata),
 		);
-		const existing = this.getBinding(binding.ownerScope, binding.piboSessionId, binding.id);
+		const existing = this.getBinding(binding.piboSessionId, binding.id);
 		if (!existing) throw new Error("Failed to create web annotation binding");
 		return existing;
 	}
@@ -262,7 +295,7 @@ export class WebAnnotationStore {
 		`).all(input.piboSessionId, limit) as WebAnnotationBindingRow[]).map(bindingFromRow);
 	}
 
-	getBinding(ownerScope: string, piboSessionId: string, id: string): WebAnnotationBinding | undefined {
+	getBinding(piboSessionId: string, id: string): WebAnnotationBinding | undefined {
 		const row = this.db.prepare(`
 			SELECT * FROM web_annotation_bindings
 			WHERE id = ? AND pibo_session_id = ?
@@ -278,9 +311,10 @@ export class WebAnnotationStore {
 		return row ? bindingFromRow(row) : undefined;
 	}
 
-	patchBinding(ownerScope: string, piboSessionId: string, id: string, patch: PatchWebAnnotationBindingInput, now = new Date()): WebAnnotationBinding | undefined {
+	patchBinding(piboSessionId: string, id: string, patch: PatchWebAnnotationBindingInput, now = new Date()): WebAnnotationBinding | undefined {
 		const normalized = normalizeWebAnnotationBindingPatch(patch);
-		const existing = this.getBinding(ownerScope, piboSessionId, id);
+		validateBindingPatch(normalized);
+		const existing = this.getBinding(piboSessionId, id);
 		if (!existing) return undefined;
 		const state = normalized.state ?? existing.state;
 		const timestamp = nowIso(now);
@@ -300,10 +334,10 @@ export class WebAnnotationStore {
 			id,
 			piboSessionId,
 		);
-		return this.getBinding(ownerScope, piboSessionId, id);
+		return this.getBinding(piboSessionId, id);
 	}
 
-	removeBinding(ownerScope: string, piboSessionId: string, id: string, now = new Date()): boolean {
+	removeBinding(piboSessionId: string, id: string, now = new Date()): boolean {
 		const result = this.db.prepare(`
 			UPDATE web_annotation_bindings
 			SET state = 'removed', updated_at = ?
@@ -314,10 +348,10 @@ export class WebAnnotationStore {
 
 	createAnnotation(input: CreateWebAnnotationInput, now = new Date()): WebAnnotation {
 		const normalized = normalizeWebAnnotationCreateInput(input);
+		validateAnnotationInput(normalized);
 		const timestamp = nowIso(now);
 		const annotation: WebAnnotation = {
 			id: normalized.id ?? `ann_${randomUUID()}`,
-			ownerScope: getSharedAppLegacyOwnerScope(),
 			piboSessionId: normalized.piboSessionId,
 			piboRoomId: normalized.piboRoomId,
 			bindingId: normalized.bindingId,
@@ -334,16 +368,14 @@ export class WebAnnotationStore {
 			createdAt: timestamp,
 			updatedAt: timestamp,
 		};
-		const hasOwnerScope = sqliteTableColumns(this.db, "web_annotations").has("owner_scope");
 		this.db.prepare(`
 			INSERT OR IGNORE INTO web_annotations (
-				id, ${hasOwnerScope ? "owner_scope, " : ""}pibo_session_id, pibo_room_id, binding_id, status, note, url, title,
+				id, pibo_session_id, pibo_room_id, binding_id, status, note, url, title,
 				target_id, target_kind, viewport_json, target_json, screenshot_ref_json, thread_json,
 				created_at, updated_at, resolved_at, resolved_by, summary, metadata_json
-			) VALUES (${Array.from({ length: hasOwnerScope ? 21 : 20 }, () => "?").join(", ")})
+			) VALUES (${Array.from({ length: ANNOTATION_COLUMNS.length }, () => "?").join(", ")})
 		`).run(
 			annotation.id,
-			...(hasOwnerScope ? [annotation.ownerScope] : []),
 			annotation.piboSessionId,
 			annotation.piboRoomId ?? null,
 			annotation.bindingId ?? null,
@@ -364,12 +396,12 @@ export class WebAnnotationStore {
 			null,
 			stringifyJson(annotation.metadata),
 		);
-		const existing = this.getAnnotation(annotation.ownerScope, annotation.piboSessionId, annotation.id);
+		const existing = this.getAnnotation(annotation.piboSessionId, annotation.id);
 		if (!existing) throw new Error("Failed to create web annotation");
 		return existing;
 	}
 
-	listAnnotations(input: WebAnnotationListFilter): WebAnnotation[] {
+	listAnnotations(input: WebAnnotationListFilter = {}): WebAnnotation[] {
 		const limit = normalizeLimit(input.limit, 100, 500);
 		const clauses: string[] = [];
 		const values: Array<string | number> = [];
@@ -391,7 +423,7 @@ export class WebAnnotationStore {
 		`).all(...values, limit) as WebAnnotationRow[]).map(annotationFromRow);
 	}
 
-	getAnnotation(ownerScope: string, piboSessionId: string, id: string): WebAnnotation | undefined {
+	getAnnotation(piboSessionId: string, id: string): WebAnnotation | undefined {
 		const row = this.db.prepare(`
 			SELECT * FROM web_annotations
 			WHERE id = ? AND pibo_session_id = ?
@@ -399,7 +431,7 @@ export class WebAnnotationStore {
 		return row ? annotationFromRow(row) : undefined;
 	}
 
-	getAnnotationForOwner(ownerScope: string, id: string): WebAnnotation | undefined {
+	getAnnotationById(id: string): WebAnnotation | undefined {
 		const row = this.db.prepare(`
 			SELECT * FROM web_annotations
 			WHERE id = ?
@@ -407,9 +439,10 @@ export class WebAnnotationStore {
 		return row ? annotationFromRow(row) : undefined;
 	}
 
-	patchAnnotation(ownerScope: string, piboSessionId: string, id: string, patch: PatchWebAnnotationInput, now = new Date()): WebAnnotation | undefined {
+	patchAnnotation(piboSessionId: string, id: string, patch: PatchWebAnnotationInput, now = new Date()): WebAnnotation | undefined {
 		const normalized = normalizeWebAnnotationPatchInput(patch);
-		const existing = this.getAnnotation(ownerScope, piboSessionId, id);
+		validateAnnotationPatch(normalized);
+		const existing = this.getAnnotation(piboSessionId, id);
 		if (!existing) return undefined;
 		const timestamp = nowIso(now);
 		const status = normalized.status ?? existing.status;
@@ -428,24 +461,24 @@ export class WebAnnotationStore {
 			id,
 			piboSessionId,
 		);
-		return this.getAnnotation(ownerScope, piboSessionId, id);
+		return this.getAnnotation(piboSessionId, id);
 	}
 
-	acknowledgeAnnotation(ownerScope: string, piboSessionId: string, id: string, summary?: string, now = new Date()): WebAnnotation | undefined {
-		return this.patchAnnotation(ownerScope, piboSessionId, id, { status: "acknowledged", summary }, now);
+	acknowledgeAnnotation(piboSessionId: string, id: string, summary?: string, now = new Date()): WebAnnotation | undefined {
+		return this.patchAnnotation(piboSessionId, id, { status: "acknowledged", summary }, now);
 	}
 
-	resolveAnnotation(ownerScope: string, piboSessionId: string, id: string, summary?: string, resolvedBy: WebAnnotationResolvedBy = "agent", now = new Date()): WebAnnotation | undefined {
-		return this.patchAnnotation(ownerScope, piboSessionId, id, { status: "resolved", summary, resolvedBy }, now);
+	resolveAnnotation(piboSessionId: string, id: string, summary?: string, resolvedBy: WebAnnotationResolvedBy = "agent", now = new Date()): WebAnnotation | undefined {
+		return this.patchAnnotation(piboSessionId, id, { status: "resolved", summary, resolvedBy }, now);
 	}
 
-	dismissAnnotation(ownerScope: string, piboSessionId: string, id: string, reason?: string, now = new Date()): WebAnnotation | undefined {
-		return this.patchAnnotation(ownerScope, piboSessionId, id, { status: "dismissed", summary: reason }, now);
+	dismissAnnotation(piboSessionId: string, id: string, reason?: string, now = new Date()): WebAnnotation | undefined {
+		return this.patchAnnotation(piboSessionId, id, { status: "dismissed", summary: reason }, now);
 	}
 
 	addThreadMessage(input: AddWebAnnotationThreadMessageInput, now = new Date()): WebAnnotation | undefined {
 		const normalized = normalizeWebAnnotationThreadMessageInput(input);
-		const existing = this.getAnnotation(normalized.ownerScope, normalized.piboSessionId, normalized.annotationId);
+		const existing = this.getAnnotation(normalized.piboSessionId, normalized.annotationId);
 		if (!existing) return undefined;
 		const thread = existing.thread ?? [];
 		if (thread.length >= WEB_ANNOTATION_LIMITS.threadMessages) throw new Error("annotation thread message limit reached");
@@ -459,7 +492,7 @@ export class WebAnnotationStore {
 			SET thread_json = ?, updated_at = ?
 			WHERE id = ? AND pibo_session_id = ?
 		`).run(stringifyJson(nextThread), timestamp, normalized.annotationId, normalized.piboSessionId);
-		return this.getAnnotation(normalized.ownerScope, normalized.piboSessionId, normalized.annotationId);
+		return this.getAnnotation(normalized.piboSessionId, normalized.annotationId);
 	}
 
 	private applySchema(): void {

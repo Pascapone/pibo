@@ -257,7 +257,6 @@ test("status progress fixture preserves unavailable zero warning high labels per
 
 test("status fixtures cover full partial unavailable zero non-OpenAI queued streaming and disposed states", () => {
 	const full = buildTerminalStatusViewModel({
-		owner: { label: fullStatusPayload().activeOwnerLabel, scope: fullStatusPayload().activeOwnerScope },
 		session: { id: fullStatusPayload().piboSessionId, title: fullStatusPayload().sessionTitle, profile: fullStatusPayload().profile, status: "running" },
 		model: fullStatusPayload().activeModel,
 		runtime: { state: "queued", connected: fullStatusPayload().connected, queuedMessages: fullStatusPayload().queuedMessages, processing: fullStatusPayload().processing, streaming: fullStatusPayload().streaming },
@@ -267,7 +266,7 @@ test("status fixtures cover full partial unavailable zero non-OpenAI queued stre
 		tools: { enabled: fullStatusPayload().enabledTools, active: fullStatusPayload().activeTools },
 	});
 	assert.equal(full.title, "Status");
-	assert.ok(full.fields.some((field) => field.id === "owner" && field.value.includes("Web user Fixture")));
+	assert.equal(full.fields.some((field) => field.id === "owner"), false);
 	assert.ok(full.fields.some((field) => field.id === "session" && field.value.includes(TERMINAL_PARITY_SESSION_ID)));
 	assert.equal(full.fields.find((field) => field.id === "profile").value, "base");
 	assert.equal(full.fields.find((field) => field.id === "model").value, "GPT Test");
@@ -279,7 +278,6 @@ test("status fixtures cover full partial unavailable zero non-OpenAI queued stre
 	assert.equal(full.fields.find((field) => field.id === "provider-credits").value, "unlimited");
 
 	const partial = buildTerminalStatusViewModel({
-		owner: { label: partialStatusPayload().activeOwnerLabel, scope: partialStatusPayload().activeOwnerScope },
 		runtime: { state: "streaming", queuedMessages: partialStatusPayload().queuedMessages, processing: partialStatusPayload().processing, streaming: partialStatusPayload().streaming },
 		contextUsage: partialStatusPayload().contextUsage,
 		providerUsage: partialStatusPayload().providerUsage,

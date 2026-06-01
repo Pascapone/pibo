@@ -230,7 +230,7 @@ The system MUST expose debug store names as read-only diagnostics and MUST disti
 - A projection can lag behind its source event; readers that need canonical behavior must consult the owning store or rebuild the projection.
 - A focused store may reference a missing external id, such as a deleted room or package; validation happens at use time and must not silently mutate the owning record unless the user requested cleanup.
 - Store constructors may use `:memory:` for tests; behavior must match file-backed stores except for persistence and WAL mode.
-- Debug aliases may include legacy or currently unused store names; diagnostics must label missing files without implying current ownership.
+- Debug aliases may include legacy or currently unused store names; diagnostics must label missing files without implying current app contextship.
 - JSON fields must degrade safely when malformed in stores that explicitly sanitize on read.
 
 ## Constraints

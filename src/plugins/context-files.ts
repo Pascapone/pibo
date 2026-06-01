@@ -506,7 +506,7 @@ class ContextFileService {
 			kind: "working",
 			contentHash: hashContextFileContent(markdown),
 			content: markdown,
-			actorId: webSession.ownerScope,
+			actorId: webSession.authSession.identity.userId,
 			note: "Managed context file created",
 		});
 		const updated = this.store.updateFile({
@@ -517,7 +517,7 @@ class ContextFileService {
 		this.upsertManaged(updated);
 		const document = await this.read(context, updated.key);
 		this.snapshots.set(updated.key, this.snapshotFromInfo(document));
-		this.emitChanged(context, "context-file.created", "web", webSession.ownerScope, document);
+		this.emitChanged(context, "context-file.created", "web", webSession.authSession.identity.userId, document);
 		return document;
 	}
 
@@ -546,7 +546,7 @@ class ContextFileService {
 			kind: "source-snapshot",
 			contentHash: sourceDescriptor.contentHash!,
 			content: sourceDescriptor.content ?? "",
-			actorId: webSession.ownerScope,
+			actorId: webSession.authSession.identity.userId,
 			sourceHashAtCreation: sourceDescriptor.contentHash,
 			note: "Plugin source linked",
 		});
@@ -555,7 +555,7 @@ class ContextFileService {
 			kind: "working",
 			contentHash: sourceDescriptor.contentHash!,
 			content: sourceDescriptor.content ?? "",
-			actorId: webSession.ownerScope,
+			actorId: webSession.authSession.identity.userId,
 			basedOnRevisionId: sourceRevision.id,
 			sourceHashAtCreation: sourceDescriptor.contentHash,
 			note: "Managed working copy created from plugin source",
@@ -569,7 +569,7 @@ class ContextFileService {
 		this.upsertManaged(updated);
 		const document = await this.read(context, updated.key);
 		this.snapshots.set(updated.key, this.snapshotFromInfo(document));
-		this.emitChanged(context, "context-file.linked_from_plugin", "web", webSession.ownerScope, document);
+		this.emitChanged(context, "context-file.linked_from_plugin", "web", webSession.authSession.identity.userId, document);
 		return document;
 	}
 
@@ -584,12 +584,12 @@ class ContextFileService {
 		if (current.markdown === markdown) return current;
 
 		const updatedRecord = await this.writeWorkingContent(record, markdown, {
-			actorId: webSession.ownerScope,
+			actorId: webSession.authSession.identity.userId,
 			note: "Managed context file updated",
 		});
 		const updated = await this.read(context, updatedRecord.key);
 		this.snapshots.set(updated.key, this.snapshotFromInfo(updated));
-		this.emitChanged(context, "context-file.updated", "web", webSession.ownerScope, updated);
+		this.emitChanged(context, "context-file.updated", "web", webSession.authSession.identity.userId, updated);
 		return updated;
 	}
 
@@ -621,7 +621,7 @@ class ContextFileService {
 		this.upsertManaged(updated);
 		const document = await this.read(context, key);
 		this.snapshots.set(key, this.snapshotFromInfo(document));
-		this.emitChanged(context, "context-file.metadata_updated", "web", webSession.ownerScope, document);
+		this.emitChanged(context, "context-file.metadata_updated", "web", webSession.authSession.identity.userId, document);
 		return document;
 	}
 
@@ -629,15 +629,15 @@ class ContextFileService {
 		const record = this.requireManagedRecord(key);
 		if (!record.sourceRef) throw new PiboWebHttpError("Only linked managed files can be reset to source", 400);
 		const liveSource = this.requireLiveSourceForRecord(context, record);
-		this.ensureSourceSnapshot(record, liveSource, webSession.ownerScope, "Source snapshot refreshed during reset");
+		this.ensureSourceSnapshot(record, liveSource, webSession.authSession.identity.userId, "Source snapshot refreshed during reset");
 		const updatedRecord = await this.writeWorkingContent(record, liveSource.content ?? "", {
-			actorId: webSession.ownerScope,
+			actorId: webSession.authSession.identity.userId,
 			sourceHash: liveSource.contentHash,
 			note: "Working copy reset to source",
 		});
 		const document = await this.read(context, updatedRecord.key);
 		this.snapshots.set(updatedRecord.key, this.snapshotFromInfo(document));
-		this.emitChanged(context, "context-file.reset_to_source", "web", webSession.ownerScope, document);
+		this.emitChanged(context, "context-file.reset_to_source", "web", webSession.authSession.identity.userId, document);
 		return document;
 	}
 
@@ -645,15 +645,15 @@ class ContextFileService {
 		const record = this.requireManagedRecord(key);
 		if (!record.sourceRef) throw new PiboWebHttpError("Only linked managed files can adopt a source", 400);
 		const liveSource = this.requireLiveSourceForRecord(context, record);
-		this.ensureSourceSnapshot(record, liveSource, webSession.ownerScope, "Source snapshot adopted");
+		this.ensureSourceSnapshot(record, liveSource, webSession.authSession.identity.userId, "Source snapshot adopted");
 		const updatedRecord = await this.writeWorkingContent(record, liveSource.content ?? "", {
-			actorId: webSession.ownerScope,
+			actorId: webSession.authSession.identity.userId,
 			sourceHash: liveSource.contentHash,
 			note: "Plugin source adopted",
 		});
 		const document = await this.read(context, updatedRecord.key);
 		this.snapshots.set(updatedRecord.key, this.snapshotFromInfo(document));
-		this.emitChanged(context, "context-file.source_adopted", "web", webSession.ownerScope, document);
+		this.emitChanged(context, "context-file.source_adopted", "web", webSession.authSession.identity.userId, document);
 		return document;
 	}
 
@@ -663,13 +663,13 @@ class ContextFileService {
 		const revision = this.store.getRevision(revisionId);
 		if (!revision || revision.contextFileKey !== key) throw new PiboWebHttpError(`Unknown revision "${revisionId}"`, 404);
 		const updatedRecord = await this.writeWorkingContent(record, revision.content, {
-			actorId: webSession.ownerScope,
+			actorId: webSession.authSession.identity.userId,
 			basedOnRevisionId: revision.id,
 			note: `Revision restored from ${revision.id}`,
 		});
 		const document = await this.read(context, updatedRecord.key);
 		this.snapshots.set(updatedRecord.key, this.snapshotFromInfo(document));
-		this.emitChanged(context, "context-file.revision_restored", "web", webSession.ownerScope, document);
+		this.emitChanged(context, "context-file.revision_restored", "web", webSession.authSession.identity.userId, document);
 		return document;
 	}
 
@@ -708,7 +708,7 @@ class ContextFileService {
 		this.store.deleteFile(key);
 		this.api.removeContextFile(key);
 		this.snapshots.delete(key);
-		this.emitChanged(context, "context-file.removed", "web", webSession.ownerScope, file);
+		this.emitChanged(context, "context-file.removed", "web", webSession.authSession.identity.userId, file);
 		return { removed: key };
 	}
 

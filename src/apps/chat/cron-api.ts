@@ -4,17 +4,15 @@ import { getPiboCronService } from "../../cron/channel.js";
 import { parseFriendlySchedule } from "../../cron/schedule.js";
 import type { PiboCronJob, PiboCronJobPatchInput, PiboCronRun, PiboCronSchedule, PiboCronScheduleUi, PiboCronTarget } from "../../cron/types.js";
 import type { PiboCronStore } from "../../cron/store.js";
-import { getSharedAppLegacyOwnerScope } from "../../shared-app.js";
-import { isPiboRoomArchived, type PiboRoom, type PiboRoomMember, type PiboRoomNode, type PiboRoomRole } from "./types/rooms.js";
+import { isPiboRoomArchived, type PiboRoom, type PiboRoomNode } from "./types/rooms.js";
 
 const CHAT_WEB_API_PREFIX = "/api/chat";
 
 type ChatRoomActions = {
 	getRoom(id: string): PiboRoom | undefined;
-	listRoomTree(ownerScope: string): PiboRoomNode[];
-	requireRoomAccess(roomId: string, principalId: string, action?: "read" | "write" | "admin"): PiboRoom;
-	ensureDefaultRoom(input: { ownerScope: string; principalId: string; name?: string }): PiboRoom;
-	ensureMember(input: { roomId: string; principalId: string; role: PiboRoomRole }): PiboRoomMember;
+	listRoomTree(): PiboRoomNode[];
+	requireRoom(roomId: string): PiboRoom;
+	ensureDefaultRoom(input?: { name?: string }): PiboRoom;
 };
 
 export type ChatCronApiOptions = {
@@ -37,11 +35,6 @@ type CronJobBody = {
 	scheduleUi?: unknown;
 	deleteAfterRun?: unknown;
 };
-
-function principalIdFor(webSession: PiboWebSession): string {
-	void webSession;
-	return getSharedAppLegacyOwnerScope();
-}
 
 function requireSameOriginJsonRequest(request: Request): void {
 	const contentType = request.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase();
@@ -75,24 +68,23 @@ function normalizeEnabled(value: unknown): boolean | undefined {
 
 function normalizeTarget(value: unknown, options: ChatCronApiOptions): PiboCronTarget {
 	if (!value || typeof value !== "object" || Array.isArray(value)) throw new PiboWebHttpError("target is required", 400);
-	const raw = value as { kind?: unknown; roomId?: unknown; principalId?: unknown };
+	const raw = value as { kind?: unknown; roomId?: unknown };
 	if (raw.kind === "room") {
 		const roomId = normalizeString(raw.roomId, "target.roomId", { required: true })!;
 		let room: PiboRoom;
 		try {
-			room = options.roomService.requireRoomAccess(roomId, principalIdFor(options.webSession), "write");
+			room = options.roomService.requireRoom(roomId);
 		} catch (error) {
 			accessDenied(error);
 		}
 		if (isPiboRoomArchived(room)) throw new PiboWebHttpError("Archived rooms are read-only", 403);
 		return { kind: "room", roomId };
 	}
-	if (raw.kind === "personal") {
-		const principalId = getSharedAppLegacyOwnerScope();
-		options.roomService.ensureDefaultRoom({ ownerScope: getSharedAppLegacyOwnerScope(), principalId, name: "Shared Chat" });
-		return { kind: "personal", principalId };
+	if (raw.kind === "default-chat") {
+		options.roomService.ensureDefaultRoom({ name: "Shared Chat" });
+		return { kind: "default-chat" };
 	}
-	throw new PiboWebHttpError("target.kind must be room or personal", 400);
+	throw new PiboWebHttpError("target.kind must be room or default-chat", 400);
 }
 
 function normalizeSchedule(value: unknown): { schedule: PiboCronSchedule; scheduleUi?: PiboCronScheduleUi } {
@@ -130,19 +122,12 @@ function jobResource(pathname: string): { id: string; child?: "run" } | undefine
 	return { id: parts[0], child: parts[1] as "run" | undefined };
 }
 
-type CronApiTarget = { kind: "room"; roomId: string } | { kind: "personal" };
-type CronApiJob = Omit<PiboCronJob, "ownerScope" | "target"> & { target: CronApiTarget };
-type CronApiRun = Omit<PiboCronRun, "ownerScope">;
-function serializeTarget(target: PiboCronTarget): CronApiTarget {
-	return target.kind === "room" ? target : { kind: "personal" };
-}
-function serializeJob(job: PiboCronJob): CronApiJob {
-	const { ownerScope: _ownerScope, target, ...rest } = job;
-	return { ...rest, target: serializeTarget(target) };
+type CronApiRun = PiboCronRun;
+function serializeJob(job: PiboCronJob): PiboCronJob {
+	return job;
 }
 function serializeRun(run: PiboCronRun): CronApiRun {
-	const { ownerScope: _ownerScope, ...rest } = run;
-	return rest;
+	return run;
 }
 
 function createPatch(body: CronJobBody, options: ChatCronApiOptions): PiboCronJobPatchInput {
@@ -186,7 +171,6 @@ export async function handleChatCronApiRequest(options: ChatCronApiOptions): Pro
 		const body = await readJsonBody<CronJobBody>(request);
 		const normalized = normalizeSchedule(body.schedule);
 		const job = cronStore.createJob({
-			ownerScope: getSharedAppLegacyOwnerScope(),
 			name: normalizeString(body.name, "name", { max: 120 }),
 			description: normalizeString(body.description, "description", { max: 500 }),
 			enabled: normalizeEnabled(body.enabled),
@@ -214,7 +198,7 @@ export async function handleChatCronApiRequest(options: ChatCronApiOptions): Pro
 		requireSameOriginJsonRequest(request);
 		const service = getPiboCronService();
 		if (!service) throw new PiboWebHttpError("Cron service is not running", 503);
-		return responseJson({ run: serializeRun(await service.runJobNow(getSharedAppLegacyOwnerScope(), resource.id)) }, { status: 202 });
+		return responseJson({ run: serializeRun(await service.runJobNow(resource.id)) }, { status: 202 });
 	}
 
 	if (resource.child) return undefined;
@@ -228,14 +212,14 @@ export async function handleChatCronApiRequest(options: ChatCronApiOptions): Pro
 	if (request.method === "PATCH") {
 		requireSameOriginJsonRequest(request);
 		const body = await readJsonBody<CronJobBody>(request);
-		const job = cronStore.updateJob(getSharedAppLegacyOwnerScope(), resource.id, createPatch(body, options));
+		const job = cronStore.updateJob(resource.id, createPatch(body, options));
 		if (!job) throw new PiboWebHttpError("Cron job not found", 404);
 		return responseJson({ job: serializeJob(job) });
 	}
 
 	if (request.method === "DELETE") {
 		requireSameOriginJsonRequest(request);
-		return responseJson({ removed: cronStore.removeJob(getSharedAppLegacyOwnerScope(), resource.id) });
+		return responseJson({ removed: cronStore.removeJob(resource.id) });
 	}
 
 	return undefined;

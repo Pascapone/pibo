@@ -1,8 +1,7 @@
 import { randomUUID } from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import type { PiboJsonObject } from "../../core/events.js";
 import type { PiboDataStore } from "../../data/pibo-store.js";
-import { getSharedAppLegacyOwnerScope } from "../../shared-app.js";
-import { sqliteTableColumns } from "../../data/sqlite-schema.js";
 import { PiboWebHttpError } from "../../web/http.js";
 import {
 	allocateWorkflowPublishedVersion,
@@ -12,7 +11,6 @@ import {
 	normalizeWorkflowPromptAssetLabel,
 	sanitizeWorkflowDiagnostics,
 	workflowDraftDefinitionForPublishedVersion,
-	type OwnedWorkflowDraftRecord,
 	type WorkflowArchiveStateRecord,
 	type WorkflowDraftDiagnostic,
 	type WorkflowDraftRecord,
@@ -37,7 +35,6 @@ export {
 	sanitizeWorkflowDiagnostics,
 } from "./workflow-persistence-model.js";
 export type {
-	OwnedWorkflowDraftRecord,
 	WorkflowArchiveStateRecord,
 	WorkflowDraftDiagnostic,
 	WorkflowDraftRecord,
@@ -57,7 +54,6 @@ export type {
 type WorkflowDraftStoreRow = {
 	draft_id: string;
 	workflow_id: string;
-	owner_scope?: string;
 	source: "ui";
 	status: "draft";
 	base_workflow_id: string | null;
@@ -76,7 +72,6 @@ type WorkflowDraftStoreRow = {
 
 type WorkflowPromptAssetStoreRow = {
 	asset_id: string;
-	owner_scope?: string;
 	source: "ui";
 	display_name: string;
 	description: string | null;
@@ -88,7 +83,6 @@ type WorkflowPromptAssetStoreRow = {
 type WorkflowPromptAssetRevisionStoreRow = {
 	revision_id: string;
 	asset_id: string;
-	owner_scope?: string;
 	content_hash: string;
 	markdown: string;
 	created_at: string;
@@ -134,7 +128,6 @@ type WorkflowTombstoneStoreRow = {
 type WorkflowLifecycleEventStoreRow = {
 	id: string;
 	type: WorkflowLifecycleEventType;
-	owner_scope?: string;
 	actor_id: string | null;
 	workflow_id: string | null;
 	workflow_version: string | null;
@@ -179,19 +172,19 @@ export class ChatWorkflowDraftStore {
 		`);
 	}
 
-	getDraft(draftId: string): OwnedWorkflowDraftRecord | undefined {
+	getDraft(draftId: string): WorkflowDraftRecord | undefined {
 		const row = this.dataStore.db.prepare("SELECT * FROM workflow_ui_drafts WHERE draft_id = ?").get(draftId) as WorkflowDraftStoreRow | undefined;
 		return row ? workflowDraftFromStoreRow(row) : undefined;
 	}
 
-	findActiveDraftByWorkflowId(workflowId: string): OwnedWorkflowDraftRecord | undefined {
+	findActiveDraftByWorkflowId(workflowId: string): WorkflowDraftRecord | undefined {
 		const row = this.dataStore.db
 			.prepare("SELECT * FROM workflow_ui_drafts WHERE workflow_id = ? AND status = 'draft' ORDER BY updated_at DESC, draft_id ASC LIMIT 1")
 			.get(workflowId) as WorkflowDraftStoreRow | undefined;
 		return row ? workflowDraftFromStoreRow(row) : undefined;
 	}
 
-	listDrafts(filter: { workflowId?: string } = {}): OwnedWorkflowDraftRecord[] {
+	listDrafts(filter: { workflowId?: string } = {}): WorkflowDraftRecord[] {
 		const rows = filter.workflowId
 			? this.dataStore.db
 				.prepare("SELECT * FROM workflow_ui_drafts WHERE workflow_id = ? ORDER BY updated_at DESC, draft_id ASC")
@@ -202,8 +195,7 @@ export class ChatWorkflowDraftStore {
 		return rows.map(workflowDraftFromStoreRow);
 	}
 
-	saveDraft(record: OwnedWorkflowDraftRecord): void {
-		record.ownerScope = getSharedAppLegacyOwnerScope();
+	saveDraft(record: WorkflowDraftRecord): void {
 		this.dataStore.transaction(() => {
 			const conflict = this.dataStore.db
 				.prepare("SELECT draft_id FROM workflow_ui_drafts WHERE workflow_id = ? AND status = 'draft' AND draft_id <> ? LIMIT 1")
@@ -212,12 +204,10 @@ export class ChatWorkflowDraftStore {
 				throw new PiboWebHttpError(`Workflow '${record.workflowId}' already has an active draft '${conflict.draft_id}'`, 409);
 			}
 
-			const hasOwnerScope = sqliteTableColumns(this.dataStore.db, "workflow_ui_drafts").has("owner_scope");
 			this.dataStore.db.prepare(`
 				INSERT INTO workflow_ui_drafts (
 					draft_id,
 					workflow_id,
-					${hasOwnerScope ? "owner_scope," : ""}
 					source,
 					status,
 					base_workflow_id,
@@ -232,10 +222,9 @@ export class ChatWorkflowDraftStore {
 					revision,
 					created_at,
 					updated_at
-				) VALUES (${Array.from({ length: hasOwnerScope ? 17 : 16 }, () => "?").join(", ")})
+				) VALUES (${Array.from({ length: 16 }, () => "?").join(", ")})
 				ON CONFLICT(draft_id) DO UPDATE SET
 					workflow_id = excluded.workflow_id,
-					${hasOwnerScope ? "owner_scope = excluded.owner_scope," : ""}
 					source = excluded.source,
 					status = excluded.status,
 					base_workflow_id = excluded.base_workflow_id,
@@ -253,7 +242,6 @@ export class ChatWorkflowDraftStore {
 			`).run(
 				record.draftId,
 				record.workflowId,
-				...(hasOwnerScope ? [record.ownerScope] : []),
 				record.source,
 				record.status,
 				record.baseWorkflowId ?? null,
@@ -273,7 +261,7 @@ export class ChatWorkflowDraftStore {
 	}
 }
 
-function workflowDraftFromStoreRow(row: WorkflowDraftStoreRow): OwnedWorkflowDraftRecord {
+function workflowDraftFromStoreRow(row: WorkflowDraftStoreRow): WorkflowDraftRecord {
 	return {
 		draftId: row.draft_id,
 		workflowId: row.workflow_id,
@@ -291,7 +279,6 @@ function workflowDraftFromStoreRow(row: WorkflowDraftStoreRow): OwnedWorkflowDra
 		revision: row.revision,
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
-		ownerScope: row.owner_scope ?? getSharedAppLegacyOwnerScope(),
 	};
 }
 
@@ -342,7 +329,7 @@ export class ChatWorkflowPublishedVersionStore {
 	}
 
 	publishDraft(input: {
-		draft: OwnedWorkflowDraftRecord;
+		draft: WorkflowDraftRecord;
 		versionIntent: "patch" | "minor" | "major";
 		publishedBy: string;
 		reservedVersions: string[];
@@ -451,22 +438,22 @@ export class ChatWorkflowPromptAssetStore {
 		`);
 	}
 
-	listAssets(_ownerScope: string): WorkflowPromptAssetRecord[] {
+	listAssets(): WorkflowPromptAssetRecord[] {
 		const rows = this.dataStore.db
 			.prepare("SELECT * FROM workflow_prompt_assets ORDER BY display_name ASC, asset_id ASC")
 			.all() as WorkflowPromptAssetStoreRow[];
 		return rows.map(workflowPromptAssetFromStoreRow);
 	}
 
-	getAsset(_ownerScope: string, assetId: string): WorkflowPromptAssetRecord | undefined {
+	getAsset(assetId: string): WorkflowPromptAssetRecord | undefined {
 		const row = this.dataStore.db
 			.prepare("SELECT * FROM workflow_prompt_assets WHERE asset_id = ?")
 			.get(assetId) as WorkflowPromptAssetStoreRow | undefined;
 		return row ? workflowPromptAssetFromStoreRow(row) : undefined;
 	}
 
-	getActiveRevision(ownerScope: string, assetId: string): WorkflowPromptAssetRevisionRecord | undefined {
-		const asset = this.getAsset(ownerScope, assetId);
+	getActiveRevision(assetId: string): WorkflowPromptAssetRevisionRecord | undefined {
+		const asset = this.getAsset(assetId);
 		if (!asset?.activeRevisionId) return undefined;
 		const row = this.dataStore.db
 			.prepare("SELECT * FROM workflow_prompt_asset_revisions WHERE asset_id = ? AND revision_id = ?")
@@ -475,7 +462,6 @@ export class ChatWorkflowPromptAssetStore {
 	}
 
 	saveRevision(input: {
-		ownerScope: string;
 		assetId?: string;
 		displayName: string;
 		description?: string;
@@ -483,33 +469,28 @@ export class ChatWorkflowPromptAssetStore {
 		actorId?: string;
 	}): WorkflowPromptAssetDocument {
 		return this.dataStore.transaction(() => {
-			const ownerScope = getSharedAppLegacyOwnerScope();
 			const now = new Date().toISOString();
 			const assetId = input.assetId?.trim() || `ui.promptAssets.${randomUUID()}`;
-			const existing = this.getAsset(ownerScope, assetId);
+			const existing = this.getAsset(assetId);
 			const revisionId = `wpar_${randomUUID()}`;
 			const contentHash = hashPromptAssetMarkdown(input.markdown);
-			const assetsHaveOwnerScope = sqliteTableColumns(this.dataStore.db, "workflow_prompt_assets").has("owner_scope");
 			this.dataStore.db.prepare(`
 				INSERT INTO workflow_prompt_assets (
 					asset_id,
-					${assetsHaveOwnerScope ? "owner_scope," : ""}
 					source,
 					display_name,
 					description,
 					active_revision_id,
 					created_at,
 					updated_at
-				) VALUES (${Array.from({ length: assetsHaveOwnerScope ? 8 : 7 }, () => "?").join(", ")})
+				) VALUES (${Array.from({ length: 7 }, () => "?").join(", ")})
 				ON CONFLICT(asset_id) DO UPDATE SET
-					${assetsHaveOwnerScope ? "owner_scope = excluded.owner_scope," : ""}
 					display_name = excluded.display_name,
 					description = excluded.description,
 					active_revision_id = excluded.active_revision_id,
 					updated_at = excluded.updated_at
 			`).run(
 				assetId,
-				...(assetsHaveOwnerScope ? [ownerScope] : []),
 				"ui",
 				normalizeWorkflowPromptAssetLabel(input.displayName),
 				input.description?.trim() || null,
@@ -517,30 +498,27 @@ export class ChatWorkflowPromptAssetStore {
 				existing?.createdAt ?? now,
 				now,
 			);
-			const revisionsHaveOwnerScope = sqliteTableColumns(this.dataStore.db, "workflow_prompt_asset_revisions").has("owner_scope");
 			this.dataStore.db.prepare(`
 				INSERT INTO workflow_prompt_asset_revisions (
 					revision_id,
 					asset_id,
-					${revisionsHaveOwnerScope ? "owner_scope," : ""}
 					content_hash,
 					markdown,
 					created_at,
 					created_by,
 					based_on_revision_id
-				) VALUES (${Array.from({ length: revisionsHaveOwnerScope ? 8 : 7 }, () => "?").join(", ")})
+				) VALUES (${Array.from({ length: 7 }, () => "?").join(", ")})
 			`).run(
 				revisionId,
 				assetId,
-				...(revisionsHaveOwnerScope ? [ownerScope] : []),
 				contentHash,
 				input.markdown,
 				now,
 				input.actorId ?? null,
 				existing?.activeRevisionId ?? null,
 			);
-			const asset = this.getAsset(ownerScope, assetId);
-			const revision = this.getActiveRevision(ownerScope, assetId);
+			const asset = this.getAsset(assetId);
+			const revision = this.getActiveRevision(assetId);
 			if (!asset || !revision) throw new Error(`Failed to save workflow prompt asset '${assetId}'`);
 			return workflowPromptAssetDocumentFromRecords(asset, revision);
 		});
@@ -550,7 +528,6 @@ export class ChatWorkflowPromptAssetStore {
 function workflowPromptAssetFromStoreRow(row: WorkflowPromptAssetStoreRow): WorkflowPromptAssetRecord {
 	return {
 		assetId: row.asset_id,
-		ownerScope: row.owner_scope ?? getSharedAppLegacyOwnerScope(),
 		source: row.source,
 		displayName: row.display_name,
 		...(row.description ? { description: row.description } : {}),
@@ -564,7 +541,6 @@ function workflowPromptAssetRevisionFromStoreRow(row: WorkflowPromptAssetRevisio
 	return {
 		revisionId: row.revision_id,
 		assetId: row.asset_id,
-		ownerScope: row.owner_scope ?? getSharedAppLegacyOwnerScope(),
 		contentHash: row.content_hash,
 		markdown: row.markdown,
 		createdAt: row.created_at,
@@ -802,7 +778,6 @@ export class ChatWorkflowLifecycleEventStore {
 		const event: WorkflowLifecycleEventRecord = {
 			id: input.id ?? `wfle_${randomUUID()}`,
 			type: input.type,
-			ownerScope: getSharedAppLegacyOwnerScope(),
 			...(input.actorId ? { actorId: input.actorId } : {}),
 			...(input.workflowId ? { workflowId: input.workflowId } : {}),
 			...(input.workflowVersion ? { workflowVersion: input.workflowVersion } : {}),
@@ -816,12 +791,10 @@ export class ChatWorkflowLifecycleEventStore {
 			...(input.payload ? { payload: input.payload } : {}),
 			createdAt: input.createdAt ?? new Date().toISOString(),
 		};
-		const hasOwnerScope = sqliteTableColumns(this.dataStore.db, "workflow_lifecycle_events").has("owner_scope");
 		this.dataStore.db.prepare(`
 			INSERT INTO workflow_lifecycle_events (
 				id,
 				type,
-				${hasOwnerScope ? "owner_scope," : ""}
 				actor_id,
 				workflow_id,
 				workflow_version,
@@ -834,11 +807,10 @@ export class ChatWorkflowLifecycleEventStore {
 				diagnostics_json,
 				payload_json,
 				created_at
-			) VALUES (${Array.from({ length: hasOwnerScope ? 15 : 14 }, () => "?").join(", ")})
+			) VALUES (${Array.from({ length: 14 }, () => "?").join(", ")})
 		`).run(
 			event.id,
 			event.type,
-			...(hasOwnerScope ? [event.ownerScope] : []),
 			event.actorId ?? null,
 			event.workflowId ?? null,
 			event.workflowVersion ?? null,
@@ -856,7 +828,6 @@ export class ChatWorkflowLifecycleEventStore {
 	}
 
 	listEvents(filter: {
-		ownerScope: string;
 		type?: string;
 		workflowId?: string;
 		draftId?: string;
@@ -906,7 +877,6 @@ function workflowLifecycleEventFromStoreRow(row: WorkflowLifecycleEventStoreRow)
 	return {
 		id: row.id,
 		type: row.type,
-		ownerScope: row.owner_scope ?? getSharedAppLegacyOwnerScope(),
 		...(row.actor_id ? { actorId: row.actor_id } : {}),
 		...(row.workflow_id ? { workflowId: row.workflow_id } : {}),
 		...(row.workflow_version ? { workflowVersion: row.workflow_version } : {}),
@@ -920,4 +890,8 @@ function workflowLifecycleEventFromStoreRow(row: WorkflowLifecycleEventStoreRow)
 		...(row.payload_json ? { payload: JSON.parse(row.payload_json) as PiboJsonObject } : {}),
 		createdAt: row.created_at,
 	};
+}
+
+function quoteIdentifier(value: string): string {
+	return `"${value.replaceAll('"', '""')}"`;
 }

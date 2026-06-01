@@ -31,7 +31,6 @@ type SessionRow = {
 	channel: string;
 	kind: string;
 	profile: string;
-	owner_scope: string | null;
 	room_id: string | null;
 	root_session_id: string | null;
 	parent_id: string | null;
@@ -164,11 +163,10 @@ export function formatDebugSessionSummary(summary: DebugSessionSummary): string 
 }
 
 function listChildSessions(db: DatabaseSync, piboSessionId: string, limit: number): Array<Record<string, unknown>> {
-	const ownerScopeProjection = tableHasColumn(db, "sessions", "owner_scope") ? "owner_scope" : "NULL AS owner_scope";
 	const rows = db
 		.prepare(
 			`
-				SELECT id, pi_session_id, channel, kind, profile, ${ownerScopeProjection}, room_id, root_session_id, parent_id, origin_id, workspace, title, status, metadata_json, created_at, updated_at, last_activity_at
+				SELECT id, pi_session_id, channel, kind, profile, room_id, root_session_id, parent_id, origin_id, workspace, title, status, metadata_json, created_at, updated_at, last_activity_at
 				FROM sessions
 				WHERE parent_id = ?
 				ORDER BY created_at
@@ -237,10 +235,6 @@ function tableExists(db: DatabaseSync, table: string): boolean {
 	return row !== undefined;
 }
 
-function tableHasColumn(db: DatabaseSync, table: string, column: string): boolean {
-	return db.prepare(`PRAGMA table_info(${table})`).all().some((row) => (row as { name?: unknown }).name === column);
-}
-
 function compactSessionRow(row: SessionRow): Record<string, unknown> {
 	return {
 		id: row.id,
@@ -248,7 +242,6 @@ function compactSessionRow(row: SessionRow): Record<string, unknown> {
 		channel: row.channel,
 		kind: row.kind,
 		profile: row.profile,
-		owner_scope: row.owner_scope,
 		parent_id: row.parent_id,
 		origin_id: row.origin_id,
 		workspace: row.workspace,

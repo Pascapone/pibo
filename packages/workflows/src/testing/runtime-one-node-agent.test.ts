@@ -31,7 +31,6 @@ describe("one-node agent workflow runtime path", () => {
         channel: string;
         kind: string;
         profile: string;
-        ownerScope?: string;
         parentId?: string;
         metadata?: Record<string, unknown>;
       }) {
@@ -64,13 +63,11 @@ describe("one-node agent workflow runtime path", () => {
     const definition = cloneMinimalWorkflow();
     (definition.nodes.answer as AgentNodeDefinition).routing = {
       parentSessionId: "ps_parent",
-      ownerScope: "user:routing",
       roomId: "room_routing",
       channel: "chat",
     };
 
     const result = await runOneNodeAgentWorkflow(definition, "Use routing.", {
-      ownerScope: "user:fallback",
       now: () => "2026-05-10T22:57:00.000Z",
       createRunId: () => "wfr_routing",
       createNodeAttemptId: () => "wna_routing",
@@ -88,7 +85,6 @@ describe("one-node agent workflow runtime path", () => {
         channel: "chat",
         kind: "workflow-agent",
         profile: "pibo-agent",
-        ownerScope: "user:routing",
         parentId: "ps_parent",
         workspace: undefined,
         title: "Workflow agent node",
@@ -124,12 +120,10 @@ describe("one-node agent workflow runtime path", () => {
     const definition = cloneMinimalWorkflow();
     (definition.nodes.answer as AgentNodeDefinition).routing = {
       parentSessionId: "ps_project_main",
-      ownerScope: "user:project-link",
       projectId: "project_workflow_link",
     };
 
     const result = await runOneNodeAgentWorkflow(definition, "Link the workflow session.", {
-      ownerScope: "user:fallback",
       now: () => "2026-05-11T02:30:00.000Z",
       createRunId: () => "wfr_project_link",
       createNodeAttemptId: () => "wna_project_link",
@@ -181,7 +175,6 @@ describe("one-node agent workflow runtime path", () => {
         workflowNodeId: "answer",
         workflowNodeAttemptId: "wna_project_link",
         parentPiboSessionId: "ps_project_main",
-        ownerScope: "user:project-link",
         title: "Project workflow agent",
       },
     ]);
@@ -197,7 +190,6 @@ describe("one-node agent workflow runtime path", () => {
 
     try {
       const result = await runOneNodeAgentWorkflow(cloneMinimalWorkflow(), "Keep session facts separate.", {
-        ownerScope: "user:session-boundary",
         now: () => "2026-05-11T02:20:00.000Z",
         createRunId: () => "wfr_session_boundary",
         createNodeAttemptId: () => "wna_session_boundary",
@@ -276,7 +268,6 @@ describe("one-node agent workflow runtime path", () => {
     assert.equal(definitionValidation.ok, true);
 
     const result = await runOneNodeAgentWorkflow(definition, "Use the registered profile.", {
-      ownerScope: "user:pibo-agent-profile",
       now: () => "2026-05-11T00:35:00.000Z",
       createRunId: () => "wfr_pibo_agent_profile",
       createNodeAttemptId: () => "wna_pibo_agent_profile",
@@ -326,7 +317,6 @@ describe("one-node agent workflow runtime path", () => {
         channel: "pibo.workflows",
         kind: "workflow-agent",
         profile: "pibo-agent",
-        ownerScope: "user:pibo-agent-profile",
         parentId: undefined,
         workspace: undefined,
         title: "Registered pibo-agent workflow",
@@ -360,7 +350,6 @@ describe("one-node agent workflow runtime path", () => {
       skills: [],
       contextFiles: [],
       routing: {
-        ownerScope: "user:pibo-agent-profile",
       },
     });
     assert.equal(result.nodeAttempt.metadata?.piboSessionId, "ps_pibo_agent_profile");
@@ -378,7 +367,6 @@ describe("one-node agent workflow runtime path", () => {
     const definition = cloneMinimalWorkflow();
     (definition.nodes.answer as AgentNodeDefinition).routing = {
       parentSessionId: "ps_parent_single_prompt",
-      ownerScope: "user:single-prompt",
       projectId: "project_single_prompt",
       roomId: "room_single_prompt",
       channel: "chat",
@@ -391,7 +379,6 @@ describe("one-node agent workflow runtime path", () => {
 
     try {
       const result = await runOneNodeAgentWorkflow(definition, "Summarize the workflow system.", {
-        ownerScope: "user:fallback",
         now: () => "2026-05-10T23:12:00.000Z",
         createRunId: () => "wfr_single_prompt",
         createNodeAttemptId: () => "wna_single_prompt",
@@ -446,7 +433,7 @@ describe("one-node agent workflow runtime path", () => {
         text: "Answer the user request using normal Pibo Runtime routing: Summarize the workflow system.",
         source: "promptTemplate",
         tracePrivacy: {
-          kind: "ownerScope",
+          kind: "workflowRun",
           storage: "workflow-node-attempt",
           redacted: false,
         },
@@ -462,7 +449,6 @@ describe("one-node agent workflow runtime path", () => {
           channel: "chat",
           kind: "workflow-agent",
           profile: "pibo-agent",
-          ownerScope: "user:single-prompt",
           parentId: "ps_parent_single_prompt",
           workspace: undefined,
           title: "Single prompt workflow",
@@ -518,7 +504,6 @@ describe("one-node agent workflow runtime path", () => {
     const order: string[] = [];
 
     const result = await runOneNodeAgentWorkflow(definition, "Explain profile resolution.", {
-      ownerScope: "user:profile-resolution",
       createRunId: () => "wfr_profile_resolution",
       createNodeAttemptId: () => "wna_profile_resolution",
       profileResolver: ({ selection, nodeId }) => {
@@ -544,7 +529,6 @@ describe("one-node agent workflow runtime path", () => {
 
   it("runs a minimal pibo-agent workflow from input to completion", async () => {
     const result = await runOneNodeAgentWorkflow(minimalOneNodePiboAgentWorkflowFixture, "Explain workflow runs.", {
-      ownerScope: "user:test",
       now: () => "2026-05-10T22:55:00.000Z",
       createRunId: () => "wfr_test",
       createNodeAttemptId: () => "wna_test",
@@ -586,7 +570,6 @@ describe("one-node agent workflow runtime path", () => {
     const emittedEvents: WorkflowRuntimeEvent[] = [];
 
     const result = await runOneNodeAgentWorkflow(minimalOneNodePiboAgentWorkflowFixture, "Trace this run.", {
-      ownerScope: "user:trace",
       now: () => "2026-05-10T23:07:00.000Z",
       createRunId: () => "wfr_trace",
       createNodeAttemptId: () => "wna_trace",
@@ -633,7 +616,6 @@ describe("one-node agent workflow runtime path", () => {
 
     try {
       const result = await runOneNodeAgentWorkflow(minimalOneNodePiboAgentWorkflowFixture, "Persist this run.", {
-        ownerScope: "user:persist",
         now: () => "2026-05-10T23:03:00.000Z",
         createRunId: () => "wfr_persisted",
         createNodeAttemptId: () => "wna_persisted",
@@ -685,7 +667,6 @@ describe("one-node agent workflow runtime path", () => {
 
     try {
       const result = await runOneNodeAgentWorkflow(definition, "Persist global state.", {
-        ownerScope: "user:state",
         initialGlobalState: { projectGoal: "Ship workflow state" },
         initialLocalState: { answer: { previousDraft: "Outline v1" } },
         now: () => "2026-05-11T00:15:00.000Z",

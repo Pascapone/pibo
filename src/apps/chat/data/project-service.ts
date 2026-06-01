@@ -4,8 +4,6 @@ import { dirname, isAbsolute, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { piboHomePath } from "../../../core/pibo-home.js";
 import type { PiboJsonObject, PiboJsonValue } from "../../../core/events.js";
-import { getSharedAppLegacyOwnerScope } from "../../../shared-app.js";
-import { sqliteTableColumns } from "../../../data/sqlite-schema.js";
 import type { ModelProfile } from "../../../core/profiles.js";
 import type { PiboThinkingLevel } from "../../../core/thinking.js";
 
@@ -42,7 +40,6 @@ export type PiboProjectWorkflowSessionSnapshot = {
 	schemaVersion: 1;
 	createdAt: string;
 	createdBy: string;
-	ownerScope: string;
 	projectId: string;
 	piboSessionId: string;
 	workflow: {
@@ -197,7 +194,6 @@ export type StartProjectWorkflowRunResult = {
 
 export type PiboProject = {
 	id: string;
-	ownerScope: string;
 	name: string;
 	description?: string;
 	projectFolder: string;
@@ -230,7 +226,6 @@ export type PiboProjectSession = {
 };
 
 export type CreateProjectInput = {
-	ownerScope: string;
 	name: string;
 	description?: string;
 	projectFolder: string;
@@ -255,17 +250,15 @@ export class ChatProjectService {
 		this.db.close();
 	}
 
-	ensureSharedDefaultProject(input: { ownerScope: string; projectFolder?: string }): PiboProject {
-		const ownerScope = getSharedAppLegacyOwnerScope();
-		const id = sharedDefaultProjectId(ownerScope);
+	ensureSharedDefaultProject(input: { projectFolder?: string } = {}): PiboProject {
+		const id = sharedDefaultProjectId();
 		const existing = this.getProject(id, { includeArchived: true });
 		if (existing) return existing;
 		const folder = resolve(input.projectFolder ?? piboHomePath("projects/workspace"));
 		mkdirSync(folder, { recursive: true });
 		const now = new Date().toISOString();
-		const hasOwnerScope = sqliteTableColumns(this.db, "projects").has("owner_scope");
-		this.db.prepare(`INSERT INTO projects (id, ${hasOwnerScope ? "owner_scope, " : ""}name, description, project_folder, configuration_status, metadata_json, created_at, updated_at)
-			VALUES (${Array.from({ length: hasOwnerScope ? 9 : 8 }, () => "?").join(", ")})`).run(id, ...(hasOwnerScope ? [ownerScope] : []), "Shared Project", null, folder, "configured", JSON.stringify({ default: true, legacySharedDefaultProject: true }), now, now);
+		this.db.prepare(`INSERT INTO projects (id, name, description, project_folder, configuration_status, metadata_json, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, "Shared Project", null, folder, "configured", JSON.stringify({ default: true }), now, now);
 		return this.requireProject(id);
 	}
 
@@ -293,9 +286,8 @@ export class ChatProjectService {
 		if (input.createFolder) mkdirSync(projectFolder, { recursive: true });
 		const now = new Date().toISOString();
 		const id = `prj_${randomUUID()}`;
-		const hasOwnerScope = sqliteTableColumns(this.db, "projects").has("owner_scope");
-		this.db.prepare(`INSERT INTO projects (id, ${hasOwnerScope ? "owner_scope, " : ""}name, description, project_folder, configuration_status, metadata_json, created_at, updated_at)
-			VALUES (${Array.from({ length: hasOwnerScope ? 9 : 8 }, () => "?").join(", ")})`).run(id, ...(hasOwnerScope ? [getSharedAppLegacyOwnerScope()] : []), name, normalizeOptionalString(input.description) ?? null, projectFolder, "configured", "{}", now, now);
+		this.db.prepare(`INSERT INTO projects (id, name, description, project_folder, configuration_status, metadata_json, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, name, normalizeOptionalString(input.description) ?? null, projectFolder, "configured", "{}", now, now);
 		return this.requireProject(id);
 	}
 
@@ -919,7 +911,6 @@ export class ChatProjectService {
 
 type ProjectRow = {
 	id: string;
-	owner_scope?: string;
 	name: string;
 	description: string | null;
 	project_folder: string;
@@ -1016,7 +1007,6 @@ type ProjectWorkflowHumanActionRow = {
 function projectFromRow(row: ProjectRow): PiboProject {
 	return {
 		id: row.id,
-		ownerScope: row.owner_scope ?? getSharedAppLegacyOwnerScope(),
 		name: row.name,
 		...(row.description ? { description: row.description } : {}),
 		projectFolder: row.project_folder,
@@ -1087,7 +1077,6 @@ function workflowSessionSnapshotFromRow(row: ProjectWorkflowSessionSnapshotRow):
 		},
 		createdAt: typeof snapshot.createdAt === "string" ? snapshot.createdAt : row.created_at,
 		createdBy: typeof snapshot.createdBy === "string" ? snapshot.createdBy : "unknown",
-		ownerScope: typeof snapshot.ownerScope === "string" ? snapshot.ownerScope : "unknown",
 		...(snapshot.model ? { model: snapshot.model } : {}),
 		...(snapshot.thinkingLevel ? { thinkingLevel: snapshot.thinkingLevel } : {}),
 		...(snapshot.fastMode !== undefined ? { fastMode: snapshot.fastMode } : {}),
@@ -1280,6 +1269,6 @@ function isStringRecord(value: unknown): value is Record<string, string> {
 		&& Object.values(value as Record<string, unknown>).every((entry) => typeof entry === "string");
 }
 
-export function sharedDefaultProjectId(ownerScope: string): string {
-	return `personal_${Buffer.from(ownerScope).toString("base64url")}`;
+export function sharedDefaultProjectId(): string {
+	return "prj_default";
 }

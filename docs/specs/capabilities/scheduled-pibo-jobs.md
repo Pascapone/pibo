@@ -148,7 +148,7 @@ The system MUST execute each reserved run by creating a Pibo Session through the
 
 ### Requirement: Target access and safety are enforced
 
-The system MUST prevent Chat Web users from creating or changing jobs that target missing or archived rooms. Deprecated personal targets normalize to the shared default target.
+The system MUST prevent Chat Web users from creating or changing jobs that target missing or archived rooms. Deprecated default-chat targets normalize to the shared default target.
 
 #### Current
 
@@ -201,8 +201,8 @@ The `pibo cron` CLI MUST provide compact discovery output and focused subcommand
 #### Acceptance
 
 - `pibo cron` or `pibo cron --help` prints only the cron command surface and a next-step hint.
-- Normal commands do not require `--owner-scope`; deprecated owner-scope inputs are ignored compatibility options.
-- `status` can read the store without legacy owner-scope compatibility input.
+- Normal commands do not require `--app-space`; deprecated app-space inputs are ignored compatibility options.
+- `status` can read the store without legacy app-space compatibility input.
 - `add` accepts exactly one schedule source among friendly flags or a raw cron expression.
 - `--json` outputs machine-readable objects where supported.
 
@@ -305,7 +305,7 @@ Users can inspect recent job outcomes without scanning unrelated rooms, and can 
 ## Constraints
 
 - **Compatibility:** Cron-created sessions MUST use normal Pibo Session routing and Chat Web room metadata instead of a separate transcript system.
-- **Security / Privacy:** Chat Web mutation APIs MUST require authenticated same-origin JSON requests. Auth account values do not partition Cron jobs; deprecated personal targets normalize to the shared default target.
+- **Security / Privacy:** Chat Web mutation APIs MUST require authenticated same-origin JSON requests. Auth account values do not partition Cron jobs; deprecated default-chat targets normalize to the shared default target.
 - **Performance:** The scheduler SHOULD poll at bounded intervals and reserve only up to configured capacity per tick.
 - **Reliability:** Store writes that reserve or complete runs MUST be transactional enough to avoid duplicate running records for the same job.
 - **Product Boundary:** Cron jobs are Pibo product objects. The Pi Coding Agent only receives the generated task prompt inside the created routed session.

@@ -87,7 +87,7 @@ When the profile selects the `web-annotation-agent-tools` capability package, th
 
 ## Important Notes
 
-- Annotations are **session-scoped** by owner scope and Pibo Session ID. They are never visible to other users or sessions.
+- Annotations are app resources keyed by Pibo Session ID and annotated page/resource metadata. They are visible through shared app access and are not partitioned by login account.
 - The overlay does **not** modify the target page permanently. It is a runtime script injection.
 - Full DOM dumps, inline screenshots, or page HTML are **not** sent to the model by default. Only bounded metadata (selector, hints, note, viewport) is included.
 - The default CDP URL is `http://127.0.0.1:56663`. If your Chrome runs on a different port, enter it in the CDP URL field.

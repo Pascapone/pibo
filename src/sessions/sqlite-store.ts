@@ -19,7 +19,6 @@ type SessionRow = {
 	channel: string;
 	kind: string;
 	profile: string;
-	owner_scope: string | null;
 	parent_id: string | null;
 	origin_id: string | null;
 	workspace: string | null;
@@ -41,6 +40,11 @@ export class SqlitePiboSessionStore implements PiboSessionStore {
 		this.db = new DatabaseSync(resolvedPath);
 		this.db.exec("PRAGMA busy_timeout = 5000");
 		if (resolvedPath !== ":memory:") this.db.exec("PRAGMA journal_mode = WAL");
+		this.applySchema();
+		this.ensureActiveModelColumn();
+	}
+
+	private applySchema(): void {
 		this.db.exec(`
 			CREATE TABLE IF NOT EXISTS pibo_sessions (
 				id TEXT PRIMARY KEY,
@@ -48,7 +52,6 @@ export class SqlitePiboSessionStore implements PiboSessionStore {
 				channel TEXT NOT NULL,
 				kind TEXT NOT NULL,
 				profile TEXT NOT NULL,
-				owner_scope TEXT,
 				parent_id TEXT,
 				origin_id TEXT,
 				workspace TEXT,
@@ -61,8 +64,6 @@ export class SqlitePiboSessionStore implements PiboSessionStore {
 				FOREIGN KEY(origin_id) REFERENCES pibo_sessions(id)
 			);
 
-			CREATE INDEX IF NOT EXISTS idx_pibo_sessions_owner
-				ON pibo_sessions(owner_scope, updated_at);
 			CREATE INDEX IF NOT EXISTS idx_pibo_sessions_parent
 				ON pibo_sessions(parent_id, updated_at);
 			CREATE INDEX IF NOT EXISTS idx_pibo_sessions_origin
@@ -70,14 +71,11 @@ export class SqlitePiboSessionStore implements PiboSessionStore {
 			CREATE INDEX IF NOT EXISTS idx_pibo_sessions_channel_kind
 				ON pibo_sessions(channel, kind, updated_at);
 		`);
-		this.ensureActiveModelColumn();
 	}
 
 	private ensureActiveModelColumn(): void {
-		const columns = this.db.prepare("PRAGMA table_info(pibo_sessions)").all() as Array<{ name: string }>;
-		if (!columns.some((column) => column.name === "active_model_json")) {
-			this.db.exec("ALTER TABLE pibo_sessions ADD COLUMN active_model_json TEXT");
-		}
+		const columns = new Set((this.db.prepare("PRAGMA table_info(pibo_sessions)").all() as Array<{ name: string }>).map((column) => column.name));
+		if (!columns.has("active_model_json")) this.db.exec("ALTER TABLE pibo_sessions ADD COLUMN active_model_json TEXT");
 	}
 
 	get(id: string): PiboSession | undefined {
@@ -101,7 +99,6 @@ export class SqlitePiboSessionStore implements PiboSessionStore {
 					channel,
 					kind,
 					profile,
-					owner_scope,
 					parent_id,
 					origin_id,
 					workspace,
@@ -110,7 +107,7 @@ export class SqlitePiboSessionStore implements PiboSessionStore {
 					active_model_json,
 					created_at,
 					updated_at
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			`)
 			.run(
 				session.id,
@@ -118,7 +115,6 @@ export class SqlitePiboSessionStore implements PiboSessionStore {
 				session.channel,
 				session.kind,
 				session.profile,
-				session.ownerScope ?? null,
 				session.parentId ?? null,
 				session.originId ?? null,
 				session.workspace ?? null,
@@ -142,7 +138,6 @@ export class SqlitePiboSessionStore implements PiboSessionStore {
 			...existing,
 			piSessionId: input.piSessionId ?? existing.piSessionId,
 			profile: input.profile ?? existing.profile,
-			ownerScope: input.ownerScope ?? existing.ownerScope,
 			parentId: input.parentId === null ? undefined : input.parentId ?? existing.parentId,
 			originId: input.originId === null ? undefined : input.originId ?? existing.originId,
 			workspace: input.workspace === null ? undefined : input.workspace ?? existing.workspace,
@@ -157,7 +152,6 @@ export class SqlitePiboSessionStore implements PiboSessionStore {
 				UPDATE pibo_sessions SET
 					pi_session_id = ?,
 					profile = ?,
-					owner_scope = ?,
 					parent_id = ?,
 					origin_id = ?,
 					workspace = ?,
@@ -170,7 +164,6 @@ export class SqlitePiboSessionStore implements PiboSessionStore {
 			.run(
 				updated.piSessionId,
 				updated.profile,
-				updated.ownerScope ?? null,
 				updated.parentId ?? null,
 				updated.originId ?? null,
 				updated.workspace ?? null,
@@ -199,7 +192,6 @@ export class SqlitePiboSessionStore implements PiboSessionStore {
 		}
 		if (input.channel !== undefined) { clauses.push("channel = ?"); values.push(input.channel); }
 		if (input.kind !== undefined) { clauses.push("kind = ?"); values.push(input.kind); }
-		if (input.ownerScope !== undefined) { clauses.push("owner_scope = ?"); values.push(input.ownerScope); }
 		if (input.parentId !== undefined) {
 			if (input.parentId === null) clauses.push("parent_id IS NULL");
 			else { clauses.push("parent_id = ?"); values.push(input.parentId); }
@@ -235,7 +227,6 @@ function sessionFromRow(row: SessionRow): PiboSession {
 		channel: row.channel,
 		kind: row.kind,
 		profile: row.profile,
-		ownerScope: row.owner_scope ?? undefined,
 		parentId: row.parent_id ?? undefined,
 		originId: row.origin_id ?? undefined,
 		workspace: row.workspace ?? undefined,

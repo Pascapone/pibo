@@ -100,7 +100,6 @@ const requiredColumns: Record<(typeof WORKFLOW_SQLITE_TABLES)[number], string[]>
     "workflow_version",
     "workflow_definition_hash",
     "definition_snapshot_id",
-    "owner_scope",
     "parent_run_id",
     "parent_node_attempt_id",
     "pibo_session_id",

@@ -13,7 +13,6 @@ import { WebAnnotationCdpService } from "../dist/web-annotations/cdp.js";
 import { WebAnnotationStore } from "../dist/web-annotations/store.js";
 import { connectCdpTarget, listCdpTargets, openCdpTarget } from "../dist/tools/cdp-client.js";
 
-const OWNER_SCOPE = "user:web-annotation-fixture";
 const PIBO_SESSION_ID = "ps_web_annotation_fixture";
 const PIBO_ROOM_ID = "room_web_annotation_fixture";
 const CHROME_BIN = process.env.CHROME_BIN || "chromium";
@@ -57,9 +56,9 @@ async function main() {
 
 async function validateStaticFixture({ service, store, cdpUrl, fixtureBaseUrl }) {
 	const targetUrl = `${fixtureBaseUrl}/static/index.html`;
-	const opened = await service.createUrlBinding({ ownerScope: OWNER_SCOPE, piboSessionId: PIBO_SESSION_ID, piboRoomId: PIBO_ROOM_ID, url: targetUrl });
+	const opened = await service.createUrlBinding({ piboSessionId: PIBO_SESSION_ID, piboRoomId: PIBO_ROOM_ID, url: targetUrl });
 	assert.equal(opened.binding.state, "active");
-	const injected = await service.injectBinding({ ownerScope: OWNER_SCOPE, piboSessionId: PIBO_SESSION_ID }, opened.binding.id);
+	const injected = await service.injectBinding({ piboSessionId: PIBO_SESSION_ID }, opened.binding.id);
 	assert.equal(injected.injected, true);
 
 	let target = await findTargetById(cdpUrl, opened.binding.targetId);
@@ -68,7 +67,6 @@ async function validateStaticFixture({ service, store, cdpUrl, fixtureBaseUrl })
 		assert.equal(await overlayPresent(client, opened.binding.id), true);
 		await createElementAnnotation(client, "#primary-action", "Make this checkout action more prominent");
 		const elementAnnotation = await waitForAnnotation(store, (annotation) => annotation.bindingId === opened.binding.id && annotation.targetKind === "element");
-		assert.equal(elementAnnotation.ownerScope, OWNER_SCOPE);
 		assert.equal(elementAnnotation.piboSessionId, PIBO_SESSION_ID);
 		assert.equal(
 			elementAnnotation.target?.selector?.includes("checkout-save")
@@ -94,7 +92,7 @@ async function validateStaticFixture({ service, store, cdpUrl, fixtureBaseUrl })
 		client.close();
 	}
 
-	const reinjected = await service.injectBinding({ ownerScope: OWNER_SCOPE, piboSessionId: PIBO_SESSION_ID }, opened.binding.id);
+	const reinjected = await service.injectBinding({ piboSessionId: PIBO_SESSION_ID }, opened.binding.id);
 	assert.equal(reinjected.injected, true);
 	target = await findTargetById(cdpUrl, opened.binding.targetId);
 	client = await connectCdpTarget(target, 5_000);
@@ -107,7 +105,7 @@ async function validateStaticFixture({ service, store, cdpUrl, fixtureBaseUrl })
 	return {
 		url: targetUrl,
 		bindingId: opened.binding.id,
-		elementAnnotationId: store.listAnnotations({ ownerScope: OWNER_SCOPE, piboSessionId: PIBO_SESSION_ID, limit: 10 }).find((annotation) => annotation.targetKind === "element")?.id,
+		elementAnnotationId: store.listAnnotations({ piboSessionId: PIBO_SESSION_ID, limit: 10 }).find((annotation) => annotation.targetKind === "element")?.id,
 		reloadedAndReinjected: true,
 	};
 }
@@ -115,9 +113,9 @@ async function validateStaticFixture({ service, store, cdpUrl, fixtureBaseUrl })
 async function validateExistingTargetFixture({ service, store, cdpUrl, fixtureBaseUrl }) {
 	const targetUrl = `${fixtureBaseUrl}/react-like/index.html`;
 	const openedTarget = await openCdpTarget(targetUrl, { cdpUrl, timeoutMs: 5_000 });
-	const bindingResult = await service.createTargetBinding({ ownerScope: OWNER_SCOPE, piboSessionId: PIBO_SESSION_ID, piboRoomId: PIBO_ROOM_ID, targetId: openedTarget.id });
+	const bindingResult = await service.createTargetBinding({ piboSessionId: PIBO_SESSION_ID, piboRoomId: PIBO_ROOM_ID, targetId: openedTarget.id });
 	assert.equal(bindingResult.binding.targetId, openedTarget.id);
-	const injected = await service.injectBinding({ ownerScope: OWNER_SCOPE, piboSessionId: PIBO_SESSION_ID }, bindingResult.binding.id);
+	const injected = await service.injectBinding({ piboSessionId: PIBO_SESSION_ID }, bindingResult.binding.id);
 	assert.equal(injected.injected, true);
 	const target = await findTargetById(cdpUrl, openedTarget.id);
 	const client = await connectCdpTarget(target, 5_000);
@@ -136,7 +134,6 @@ async function validateAttachmentAndResolve({ apiApp, store, annotationId, apiBa
 	assert.ok(annotationId, "element annotation id is required for attachment validation");
 	const prepared = prepareWebAnnotationMessageAttachments({
 		store,
-		ownerScope: OWNER_SCOPE,
 		piboSessionId: PIBO_SESSION_ID,
 		messageText: "Please fix the annotated target.",
 		attachmentIds: [annotationId],
@@ -145,7 +142,7 @@ async function validateAttachmentAndResolve({ apiApp, store, annotationId, apiBa
 	assert.doesNotMatch(prepared.messageText, /base64/i);
 	assert.equal(prepared.attachments.length, 1);
 
-	const attached = store.patchAnnotation(OWNER_SCOPE, PIBO_SESSION_ID, annotationId, { status: "attached" });
+	const attached = store.patchAnnotation(PIBO_SESSION_ID, annotationId, { status: "attached" });
 	assert.equal(attached?.status, "attached");
 
 	const response = await apiApp.handleRequest(new Request(`${apiBaseUrl}/api/web-annotations/${encodeURIComponent(annotationId)}`, {
@@ -156,7 +153,7 @@ async function validateAttachmentAndResolve({ apiApp, store, annotationId, apiBa
 	assert.equal(response.status, 200);
 	const json = await response.json();
 	assert.equal(json.annotation.status, "resolved");
-	const resolved = store.getAnnotation(OWNER_SCOPE, PIBO_SESSION_ID, annotationId);
+	const resolved = store.getAnnotation(PIBO_SESSION_ID, annotationId);
 	assert.match(resolved?.summary, /Validated browser fixture flow/);
 	return { annotationId, attached: true, resolved: true };
 }
@@ -223,7 +220,7 @@ async function overlayPresent(client, bindingId) {
 
 async function waitForAnnotation(store, predicate) {
 	for (let i = 0; i < 40; i += 1) {
-		const annotation = store.listAnnotations({ ownerScope: OWNER_SCOPE, piboSessionId: PIBO_SESSION_ID, limit: 50 }).find(predicate);
+		const annotation = store.listAnnotations({ piboSessionId: PIBO_SESSION_ID, limit: 50 }).find(predicate);
 		if (annotation) return annotation;
 		await delay(100);
 	}
@@ -280,11 +277,11 @@ function fakeContext() {
 	return {
 		channelContext: {
 			getSession(id) {
-				return id === PIBO_SESSION_ID ? { id, piSessionId: "pi_fixture", channel: "web", kind: "chat", profile: "pibo-agent", ownerScope: OWNER_SCOPE, createdAt: "now", updatedAt: "now" } : undefined;
+				return id === PIBO_SESSION_ID ? { id, piSessionId: "pi_fixture", channel: "web", kind: "chat", profile: "pibo-agent", createdAt: "now", updatedAt: "now" } : undefined;
 			},
 		},
 		requireSession() {
-			return Promise.resolve({ ownerScope: OWNER_SCOPE, authSession: { user: { id: "fixture-user" } } });
+			return Promise.resolve({ authSession: { user: { id: "fixture-user" } }, appContext: { kind: "shared-app", id: "app" } });
 		},
 	};
 }

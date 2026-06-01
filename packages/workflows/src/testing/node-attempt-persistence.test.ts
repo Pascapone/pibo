@@ -26,7 +26,6 @@ function createAttempts(): NodeAttempt[] {
           tools: ["read"],
           skills: ["workflow-review"],
           contextFiles: ["AGENTS.md"],
-          routing: { ownerScope: "user:node-attempts", projectId: "project_1" },
         },
         piboSessionId: "ps_agent",
         piSessionId: "pi_agent",

@@ -139,7 +139,7 @@ Every authenticated web app request that requires a session MUST expose the same
 
 - Missing sessions fail with `401 Unauthenticated`.
 - Two allowed authenticated identities resolve to the same shared app context.
-- Web app code does not receive product visibility keys from request bodies, query parameters, or auth user ids.
+- Web app code does not receive product visibility keys from request bodies, query parameters, or auth identity ids.
 
 #### Scenario: Chat API request uses the shared app context
 

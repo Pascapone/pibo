@@ -1,6 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { getSharedAppLegacyOwnerScope } from "../shared-app.js";
 import { piboHomePath } from "./pibo-home.js";
 import { sanitizeTelemetryStaleThresholdSettings, type TelemetryStaleThresholdSettings } from "./telemetry-staleness.js";
 
@@ -19,28 +18,19 @@ export type PiboUserSettings = {
 };
 
 type PiboUserSettingsState = {
-	users: Record<string, PiboUserSettings>;
+	settings?: PiboUserSettings;
 };
 
-export function loadPiboUserSettings(ownerScope: string): PiboUserSettings {
-	const state = readState();
-	return sanitizeUserSettings(selectSharedAppUserSettings(state, ownerScope));
+export function loadPiboUserSettings(): PiboUserSettings {
+	return sanitizeUserSettings(readState().settings);
 }
 
-export function updatePiboUserSettings(ownerScope: string, patch: Partial<PiboUserSettings>): PiboUserSettings {
+export function updatePiboUserSettings(patch: Partial<PiboUserSettings>): PiboUserSettings {
 	const state = readState();
-	const sharedKey = getSharedAppLegacyOwnerScope();
-	const next = sanitizeUserSettings({ ...selectSharedAppUserSettings(state, ownerScope), ...patch });
-	state.users[sharedKey] = next;
+	const next = sanitizeUserSettings({ ...(state.settings ?? {}), ...patch });
+	state.settings = next;
 	writeState(state);
 	return next;
-}
-
-function selectSharedAppUserSettings(state: PiboUserSettingsState, legacyOwnerScope?: string): PiboUserSettings | undefined {
-	const sharedKey = getSharedAppLegacyOwnerScope();
-	return state.users[sharedKey]
-		?? (legacyOwnerScope ? state.users[legacyOwnerScope] : undefined)
-		?? state.users[Object.keys(state.users).sort()[0] ?? ""];
 }
 
 export function sanitizeShortcutSettings(value: unknown): PiboShortcutSettings {
@@ -81,22 +71,15 @@ function sanitizeUserSettings(value: unknown): PiboUserSettings {
 
 function readState(): PiboUserSettingsState {
 	const path = piboHomePath(DEFAULT_PIBO_USER_SETTINGS_PATH);
-	if (!existsSync(path)) return { users: {} };
+	if (!existsSync(path)) return {};
 	try {
 		const parsed = JSON.parse(readFileSync(path, "utf-8")) as unknown;
 		const raw = parsed && typeof parsed === "object" && !Array.isArray(parsed)
 			? parsed as Record<string, unknown>
 			: {};
-		const rawUsers = raw.users && typeof raw.users === "object" && !Array.isArray(raw.users)
-			? raw.users as Record<string, unknown>
-			: {};
-		const users: Record<string, PiboUserSettings> = {};
-		for (const [ownerScope, settings] of Object.entries(rawUsers)) {
-			users[ownerScope] = sanitizeUserSettings(settings);
-		}
-		return { users };
+		return { settings: sanitizeUserSettings(raw.settings) };
 	} catch {
-		return { users: {} };
+		return {};
 	}
 }
 

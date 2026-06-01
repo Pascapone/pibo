@@ -476,7 +476,6 @@ export class SqliteWorkflowRunStore implements
         workflow_version,
         workflow_definition_hash,
         definition_snapshot_id,
-        owner_scope,
         parent_run_id,
         parent_node_attempt_id,
         pibo_session_id,
@@ -497,13 +496,12 @@ export class SqliteWorkflowRunStore implements
         completed_at,
         failed_at,
         cancelled_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         workflow_id = excluded.workflow_id,
         workflow_version = excluded.workflow_version,
         workflow_definition_hash = excluded.workflow_definition_hash,
         definition_snapshot_id = excluded.definition_snapshot_id,
-        owner_scope = excluded.owner_scope,
         parent_run_id = excluded.parent_run_id,
         parent_node_attempt_id = excluded.parent_node_attempt_id,
         pibo_session_id = excluded.pibo_session_id,
@@ -535,7 +533,6 @@ export class SqliteWorkflowRunStore implements
     const query = buildWorkflowStoreListQuery([
       { clause: "workflow_id = ?", value: filter.workflowId },
       { clause: "status = ?", value: filter.status },
-      { clause: "owner_scope = ?", value: filter.ownerScope },
     ], filter.limit);
     const rows = this.db
       .prepare(`SELECT * FROM workflow_runs ${query.where} ORDER BY updated_at DESC LIMIT ?`)

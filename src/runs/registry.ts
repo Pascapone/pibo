@@ -220,11 +220,11 @@ export class PiboRunRegistry {
 	}
 
 	status(ownerPiboSessionId: string, runId: string): PiboRunSnapshot {
-		return snapshot(this.requireOwned(ownerPiboSessionId, runId));
+		return snapshot(this.requireRunForController(ownerPiboSessionId, runId));
 	}
 
 	async wait(ownerPiboSessionId: string, runId: string, timeoutMs: number): Promise<PiboRunWaitResult> {
-		const record = this.requireOwned(ownerPiboSessionId, runId);
+		const record = this.requireRunForController(ownerPiboSessionId, runId);
 		if (terminal(record.status)) return { ...snapshot(record), timedOut: false };
 
 		const boundedTimeoutMs = Math.max(0, Math.min(timeoutMs, 300000));
@@ -256,7 +256,7 @@ export class PiboRunRegistry {
 	}
 
 	read(ownerPiboSessionId: string, runId: string): PiboRunReadResult {
-		const record = this.requireOwned(ownerPiboSessionId, runId);
+		const record = this.requireRunForController(ownerPiboSessionId, runId);
 		if (terminal(record.status)) {
 			record.consumed = true;
 			record.updatedAt = now();
@@ -270,7 +270,7 @@ export class PiboRunRegistry {
 	}
 
 	cancel(ownerPiboSessionId: string, runId: string): PiboRunSnapshot {
-		const record = this.requireOwned(ownerPiboSessionId, runId);
+		const record = this.requireRunForController(ownerPiboSessionId, runId);
 		const previousStatus = record.status;
 		if (!terminal(record.status)) {
 			record.status = "cancelled";
@@ -287,7 +287,7 @@ export class PiboRunRegistry {
 	}
 
 	ack(ownerPiboSessionId: string, runId: string): PiboRunSnapshot {
-		const record = this.requireOwned(ownerPiboSessionId, runId);
+		const record = this.requireRunForController(ownerPiboSessionId, runId);
 		record.acknowledgedStatus = record.status;
 		if (terminal(record.status)) record.consumed = true;
 		record.updatedAt = now();
@@ -403,7 +403,7 @@ export class PiboRunRegistry {
 		return pruned;
 	}
 
-	private requireOwned(ownerPiboSessionId: string, runId: string): PiboRunRecord {
+	private requireRunForController(ownerPiboSessionId: string, runId: string): PiboRunRecord {
 		const record = this.runs.get(runId);
 		if (!record || record.ownerPiboSessionId !== ownerPiboSessionId) {
 			throw new Error(`Unknown run "${runId}" for session "${ownerPiboSessionId}"`);

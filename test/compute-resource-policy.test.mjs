@@ -17,7 +17,7 @@ import {
 	LABEL_DIRTY_REASON,
 	LABEL_IDLE_SECONDS,
 	LABEL_LAST_USED_AT,
-	LABEL_OWNER_SCOPE,
+	LABEL_HOLDER,
 	LABEL_PORT_BLOCK,
 	LABEL_RALPH_JOB_ID,
 	LABEL_RALPH_RUN_ID,
@@ -113,7 +113,7 @@ test('one-time worker docker run args include resource policy and inspectable la
 	const args = buildWorkerDockerRunArgs({
 		id: 'pibo-worker-test',
 		createdAt: '2026-05-17T00:00:00.000Z',
-		owner: 'user:test',
+		holder: 'user:test',
 		worktreePath: '/repo/worktree',
 		ttlSeconds: 7200,
 		idleSeconds: 1800,
@@ -136,8 +136,7 @@ test('one-time worker docker run args include resource policy and inspectable la
 
 	const runLabels = labels(args);
 	assert.ok(runLabels.includes('pibo.compute.role=worker'));
-	assert.ok(runLabels.includes('pibo.compute.owner=user:test'));
-	assert.ok(runLabels.includes(`${LABEL_OWNER_SCOPE}=user:test`));
+	assert.ok(runLabels.includes(`${LABEL_HOLDER}=user:test`));
 	assert.ok(runLabels.includes(`${LABEL_WORKTREE}=worktree`));
 	assert.ok(runLabels.includes(`${LABEL_WORKTREE_PATH}=/repo/worktree`));
 	assert.ok(runLabels.includes(`${LABEL_PORT_BLOCK}=dynamic`));
@@ -159,7 +158,7 @@ test('ralph-owned worker labels omit unsafe prompt-like values', () => {
 	const args = buildWorkerDockerRunArgs({
 		id: 'pibo-worker-unsafe',
 		createdAt: '2026-05-17T00:00:00.000Z',
-		owner: 'user:test',
+		holder: 'user:test',
 		ralphJobId: 'This is a full prompt with spaces and secrets',
 		ralphRunId: 'rrun_safe-1',
 		policy: customPolicy,
@@ -170,7 +169,7 @@ test('ralph-owned worker labels omit unsafe prompt-like values', () => {
 	assert.ok(runLabels.includes(`${LABEL_RALPH_RUN_ID}=rrun_safe-1`));
 });
 
-test('compute list parsing exposes Ralph ownership from Docker labels', () => {
+test('compute list parsing exposes Ralph metadata from Docker labels', () => {
 	const line = [
 		'abc123',
 		'pibo-dev-ralph-test',
@@ -180,7 +179,7 @@ test('compute list parsing exposes Ralph ownership from Docker labels', () => {
 		[
 			'pibo.compute.role=dev',
 			'pibo.compute.createdAt=2026-05-17T00:00:00.000Z',
-			'pibo.compute.ownerScope=user:test',
+			'pibo.compute.holder=user:test',
 			'pibo.compute.worktree=ralph-test',
 			'pibo.compute.worktreePath=/repo/.worktrees/ralph-test',
 			`${LABEL_LAST_USED_AT}=2026-05-17T00:10:00.000Z`,
@@ -200,7 +199,7 @@ test('compute list parsing exposes Ralph ownership from Docker labels', () => {
 	assert.equal(worker.ports, '0.0.0.0:4830->4789/tcp');
 	assert.equal(worker.createdAt, '2026-05-17T00:00:00.000Z');
 	assert.equal(worker.lastUsedAt, '2026-05-17T00:10:00.000Z');
-	assert.equal(worker.ownerScope, 'user:test');
+	assert.equal(worker.holder, 'user:test');
 	assert.equal(worker.worktree, 'ralph-test');
 	assert.equal(worker.worktreePath, '/repo/.worktrees/ralph-test');
 	assert.equal(worker.ralphJobId, 'ralph_job_1');
@@ -222,7 +221,7 @@ function inspectFixture(overrides = {}) {
 			Labels: {
 				'pibo.compute.role': 'worker',
 				'pibo.compute.createdAt': '2026-05-17T00:00:00.000Z',
-				'pibo.compute.ownerScope': 'user:test',
+				'pibo.compute.holder': 'user:test',
 				'pibo.compute.worktree': 'repo',
 				...(overrides.omitPortLabel ? {} : { 'pibo.compute.port.gateway': '4789' }),
 				[COMPUTE_RESOURCE_POLICY_LABELS.memory]: '2g',
@@ -423,7 +422,7 @@ test('dev worker docker run args include resource policy labels worktree metadat
 		webUIPortChat: 4873,
 		webUIPortContext: 4874,
 		createdAt: '2026-05-17T00:00:00.000Z',
-		owner: 'user:test',
+		holder: 'user:test',
 		ttlSeconds: 5400,
 		idleSeconds: 2700,
 		ralphJobId: 'ralph-job-2',
@@ -452,8 +451,7 @@ test('dev worker docker run args include resource policy labels worktree metadat
 	assert.ok(runLabels.includes(`${LABEL_PORT_BLOCK}=7`));
 	assert.ok(runLabels.includes(`${LABEL_WORKTREE}=policy`));
 	assert.ok(runLabels.includes(`${LABEL_WORKTREE_PATH}=/repo/.worktrees/policy`));
-	assert.ok(runLabels.includes('pibo.compute.owner=user:test'));
-	assert.ok(runLabels.includes(`${LABEL_OWNER_SCOPE}=user:test`));
+	assert.ok(runLabels.includes(`${LABEL_HOLDER}=user:test`));
 	assert.ok(runLabels.includes('pibo.compute.port.gateway=4870'));
 	assert.ok(runLabels.includes('pibo.compute.port.cdp=4871'));
 	assert.ok(runLabels.includes('pibo.compute.port.chatUi=4873'));

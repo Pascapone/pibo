@@ -93,7 +93,7 @@ Ralph never starts hidden or orphan sessions. Each run is placed into a room tha
 - A run against a missing room fails and records an error.
 - A run against an archived room fails and records an error.
 - A shared default target creates or reuses the shared default Chat room.
-- Chat Web normalizes deprecated personal target inputs to the shared default target.
+- Chat Web normalizes deprecated default-chat target inputs to the shared default target.
 
 #### Scenario: Shared default target creates default room
 
@@ -375,7 +375,7 @@ This capability participates in the compute/browser resource lifecycle change. I
 - A run can have no Pibo Session id if target resolution or session creation fails before attachment.
 - `removeJob` deletes the job record and relies on database behavior for existing run rows; consumers SHOULD treat old runs as historical diagnostics when present.
 - `startJob` may return undefined if the job is unknown, already running, or has reached `maxIterations`.
-- Deprecated `--owner-scope` inputs are ignored compatibility options; normal CLI operations do not require them.
+- Deprecated `--app-space` inputs are ignored compatibility options; normal CLI operations do not require them.
 - The current Chat Web delete call sends an empty JSON body to satisfy mutation request requirements.
 - The completion marker is exact and case-sensitive, and the built-in condition requires it on its own line.
 - A Ralph prompt may request worker reuse for debugging, but machine-enforced TTL, resource limits, and cleanup policy still apply.
@@ -421,14 +421,14 @@ This capability participates in the compute/browser resource lifecycle change. I
 - Add isolated store tests for invalid job input, shared listing, max-iteration reservation blocking, stop/cancel state, stop-policy clearing, and interrupted-run recovery.
 - Add a service-level test with a fake channel context to verify routed session metadata, service message correlation, timeout handling, before-run stop evaluation, and cancel abort emission.
 - Add Chat Web API tests for cross-origin rejection, shared listing, invalid profile rejection, room state checks, shared default target normalization, stop-policy validation, conditions/templates endpoints, and start/stop/cancel error paths.
-- Add built-CLI tests for `pibo ralph` discovery output, deprecated owner-scope no-op behavior, `add --json`, `list --json`, `conditions --json`, `templates --json`, `policy show|set|clear`, and `runs --json` against a temporary `--store` path.
+- Add built-CLI tests for `pibo ralph` discovery output, deprecated app-space no-op behavior, `add --json`, `list --json`, `conditions --json`, `templates --json`, `policy show|set|clear`, and `runs --json` against a temporary `--store` path.
 - Add a UI-level test or browser check for the `/ralph` empty state, completion-marker guidance, template loading, stop-policy JSON editor, save/start/stop/cancel controls, and run-history rendering.
 
 ### Recommended Test Matrix
 
 | Test target | Required cases | Primary requirements | Suggested file |
 |---|---|---|---|
-| Store validation and shared visibility | Reject blank profile/prompt/target ids; reject non-positive `maxIterations`; normalize and clear stop policies; persist and clear runtime overrides; default names are prompt-derived and capped; shared-app `listJobs`, `getOwnedJob` compatibility, `updateJob`, `removeJob`, and `listRuns` include historical owner rows. | REQ-001, REQ-006, REQ-009 | `test/ralph-store.test.mjs`, `test/ralph-runtime-overrides.test.mjs`, `test/ralph-stop-conditions.test.mjs` |
+| Store validation and shared visibility | Reject blank profile/prompt/target ids; reject non-positive `maxIterations`; normalize and clear stop policies; persist and clear runtime overrides; default names are prompt-derived and capped; shared-app `listJobs`, `getByIdJob` compatibility, `updateJob`, `removeJob`, and `listRuns` include historical owner rows. | REQ-001, REQ-006, REQ-009 | `test/ralph-store.test.mjs`, `test/ralph-runtime-overrides.test.mjs`, `test/ralph-stop-conditions.test.mjs` |
 | Store reservation and state transitions | Reserve only enabled non-running jobs; return no reservation at capacity-equivalent duplicate reservation; block jobs that reached `maxIterations`; `requestStop` disables without clearing `runningAt`; `requestCancel` records both stop and cancel timestamps. | REQ-003, REQ-005, REQ-007 | `test/ralph-store.test.mjs` |
 | Store completion and recovery | Successful completion increments `completedIterations`; error completion increments `consecutiveErrors`; later success resets `consecutiveErrors`; stop-policy and max-iteration paths disable the job; `recoverInterruptedRuns` marks stale running runs as `error` with reason `interrupted`. | REQ-005, REQ-006, REQ-008 | `test/ralph-store.test.mjs`, `test/ralph-stop-conditions.test.mjs` |
 | Stop-condition evaluation | Default policies include max-iterations when configured and the completion-marker condition; custom conditions compose in `any` and `all` modes; stateful conditions persist state; condition errors honor fail-open/fail-closed behavior. | REQ-005, REQ-006 | `test/ralph-stop-conditions.test.mjs` |
@@ -437,7 +437,7 @@ This capability participates in the compute/browser resource lifecycle change. I
 | Service stop, cancel, timeout | Completion-marker stop evaluation disables future runs only for successful own-line marker output; `stopJob` disables but does not abort the current session; `cancelJob` emits an `abort` execution event for the last running Pibo Session and completes as `cancelled`; timeout records an error unless the run was cancelled. | REQ-005, REQ-007, REQ-008 | `test/ralph-service.test.mjs`, `test/ralph-stop-conditions.test.mjs` |
 | Chat Web API security and validation | GET lists shared jobs; POST/PATCH/DELETE and start/stop/cancel reject missing JSON content type, missing Origin, and foreign Origin; room targets require an existing non-archived room; shared default targets normalize deprecated personal inputs; unknown profiles and invalid stop policies fail before persistence. | REQ-001, REQ-002, REQ-009 | `test/chat-ralph-api.test.mjs` |
 | Chat Web API operations | Create returns `201`; start returns `202` with a run when service is available; start returns `503` when service is missing; stop/cancel/delete return bounded not-found behavior; conditions/templates endpoints return catalog data; run listing clamps invalid or excessive limits through store behavior and rejects an unknown `jobId`. | REQ-007, REQ-009, REQ-010 | `test/chat-ralph-api.test.mjs` |
-| CLI discovery and JSON paths | `pibo ralph` with no subcommand prints compact command discovery and `Next: pibo ralph add --help`; deprecated owner-scope inputs warn/no-op; `status --json`, `add --json`, `list --json`, `conditions --json`, `templates --json`, `policy show|set|clear`, and `runs --json` use a temporary `--store` and produce parseable JSON. | REQ-001, REQ-010 | `test/ralph-cli.test.mjs` |
+| CLI discovery and JSON paths | `pibo ralph` with no subcommand prints compact command discovery and `Next: pibo ralph add --help`; deprecated app-space inputs warn/no-op; `status --json`, `add --json`, `list --json`, `conditions --json`, `templates --json`, `policy show|set|clear`, and `runs --json` use a temporary `--store` and produce parseable JSON. | REQ-001, REQ-010 | `test/ralph-cli.test.mjs` |
 | Built-in templates | Templates provide safe starter prompts and explicit default stop policies for standard, PRD-batch, and single-run jobs. | REQ-010 | `test/ralph-templates.test.mjs` |
 | Chat Web UI smoke | `/ralph` shows zero-job empty state; creation form explains completion-marker behavior; template loading, stop-policy JSON editing, save/start/stop/cancel/delete controls call the matching API paths; run history displays run status, session id when present, stop evaluation, and error text when present. | REQ-005, REQ-006, REQ-010 | component test or browser check |
 

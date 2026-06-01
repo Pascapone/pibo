@@ -99,9 +99,9 @@ function assertMeaningfulTitleOverlap(requirementTitle, tableTitle, requirementI
 }
 
 test("Workflow V2 requirement traceability maps every spec requirement to PRDs and completeness sections", async () => {
-	const spec = await readSource("docs/specs/changes/pibo-workflow-ui-authoring-v2/spec.md");
-	const contract = await readSource("docs/specs/changes/pibo-workflow-ui-authoring-v2/prds/09-implementation-completeness-contract.md");
-	const prdFiles = await listSource("docs/specs/changes/pibo-workflow-ui-authoring-v2/prds");
+	const spec = await readSource("docs/legacy/specs/changes/pibo-workflow-ui-authoring-v2/spec.md");
+	const contract = await readSource("docs/legacy/specs/changes/pibo-workflow-ui-authoring-v2/prds/09-implementation-completeness-contract.md");
+	const prdFiles = await listSource("docs/legacy/specs/changes/pibo-workflow-ui-authoring-v2/prds");
 
 	const requirements = [...spec.matchAll(/^### Requirement: (.+)$/gm)].map((match, index) => ({
 		id: `REQ-${String(index + 1).padStart(3, "0")}`,
@@ -130,8 +130,8 @@ test("Workflow V2 requirement traceability maps every spec requirement to PRDs a
 });
 
 test("Workflow V2 task traceability maps every tasks.md group to implementation areas and validation gates", async () => {
-	const tasks = await readSource("docs/specs/changes/pibo-workflow-ui-authoring-v2/tasks.md");
-	const contract = await readSource("docs/specs/changes/pibo-workflow-ui-authoring-v2/prds/09-implementation-completeness-contract.md");
+	const tasks = await readSource("docs/legacy/specs/changes/pibo-workflow-ui-authoring-v2/tasks.md");
+	const contract = await readSource("docs/legacy/specs/changes/pibo-workflow-ui-authoring-v2/prds/09-implementation-completeness-contract.md");
 
 	const taskGroups = [...tasks.matchAll(/^## (\d+\. .+)$/gm)].map((match) => match[1].trim());
 	assert.equal(taskGroups.length, 16, "tasks.md task-group count is part of the traceability contract");
@@ -149,7 +149,7 @@ test("Workflow V2 task traceability maps every tasks.md group to implementation 
 });
 
 test("Workflow V2 MUST checklist remains reviewable as pass/fail items", async () => {
-	const contract = await readSource("docs/specs/changes/pibo-workflow-ui-authoring-v2/prds/09-implementation-completeness-contract.md");
+	const contract = await readSource("docs/legacy/specs/changes/pibo-workflow-ui-authoring-v2/prds/09-implementation-completeness-contract.md");
 	const checklist = sectionBetween(contract, "### 4.11 Implementation Checklist", "### 4.12 Traceability to Task Groups");
 	assert.match(checklist, /Reviewer rule:[\s\S]*independent pass\/fail item/);
 

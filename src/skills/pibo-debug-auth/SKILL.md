@@ -23,7 +23,7 @@ The plugin provides a cookie-based session with a fixed identity:
 - User ID: `dev-user-001`
 - Name: `Dev User`
 
-The Chat Web App sees a normal authenticated session. All owner-scoped data (sessions, chat history) belongs to this dev identity.
+The Chat Web App sees a normal authenticated session. All shared app data (sessions, chat history) is available after this dev identity passes the auth gate.
 
 ## Log in programmatically
 
