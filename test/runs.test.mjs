@@ -7,7 +7,7 @@ import { PiboReliabilityStore } from "../dist/reliability/store.js";
 
 function startRun(registry, options = {}) {
 	return registry.startToolRun({
-		ownerPiboSessionId: options.ownerPiboSessionId ?? "parent",
+		controllerPiboSessionId: options.controllerPiboSessionId ?? "parent",
 		toolName: options.toolName ?? "helper",
 		completionPolicy: options.completionPolicy,
 	});
@@ -17,7 +17,7 @@ function runSnapshot(run, options = {}) {
 	return {
 		runId: options.runId ?? "run_1",
 		kind: "tool",
-		ownerPiboSessionId: "parent",
+		controllerPiboSessionId: "parent",
 		status: options.status ?? "running",
 		completionPolicy: options.completionPolicy ?? "tracked",
 		consumed: false,
@@ -84,12 +84,12 @@ test("wait returns timeout as normal state and resolves on completion", async ()
 	assert.equal(completed.timedOut, false);
 });
 
-test("disposing an owner cancels running runs and resolves waiters", async () => {
+test("disposing a controller cancels running runs and resolves waiters", async () => {
 	const registry = new PiboRunRegistry();
 	const run = startRun(registry);
 	const waited = registry.wait("parent", run.runId, 1000);
 
-	const cancelled = registry.cancelOwnerRuns("parent", "test dispose");
+	const cancelled = registry.cancelControllerRuns("parent", "test dispose");
 	assert.equal(cancelled.length, 1);
 	assert.equal(cancelled[0].status, "cancelled");
 

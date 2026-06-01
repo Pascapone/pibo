@@ -2,12 +2,12 @@
 
 **Status:** Draft
 **Created:** 2026-05-10
-**Owner / Source:** Scheduled Pibo Source Specs Coverage
+**Controller / Source:** Scheduled Pibo Source Specs Coverage
 **Related docs:** [Pibo Session Routing](./pibo-session-routing.md), [Custom Agents and Agent Designer](./custom-agents.md), [Yielded Run Control](./yielded-run-control.md)
 
 ## Why
 
-Pibo profiles can expose other profiles as callable subagents. This lets a runtime delegate bounded work while Pibo keeps product-level ownership, session hierarchy, room placement, and trace visibility.
+Pibo profiles can expose other profiles as callable subagents. This lets a runtime delegate bounded work while Pibo keeps product-level stewardship, session hierarchy, room placement, and trace visibility.
 
 Delegation is a product-boundary behavior, not only a tool implementation detail. Operators and UIs must be able to see which parent session delegated to which child session, and agents must be able to reuse a child conversation by `threadKey` without losing routing isolation.
 
@@ -19,7 +19,7 @@ Define the observable contract for registering subagents, exposing them as tools
 
 Subagents are registered as `SubagentProfile` records with a `name`, `targetProfile`, optional `description`, optional timeout, and optional max depth. Profiles select subagents through `InitialSessionContextBuilder.addSubagent` or `addSubagents`. Runtime creation converts enabled selected subagents into generated tools named `pibo_subagent_<normalized-name>`.
 
-When such a tool runs, the session router resolves or creates a child Pibo Session with channel `pibo.subagents`, kind `subagent`, the parent's workspace and shared app compatibility context, and a parent-child relationship through `parentId`. The router emits a `subagent_session` output event on the parent before waiting for the child assistant reply.
+When such a tool runs, the session router resolves or creates a child Pibo Session with channel `pibo.subagents`, kind `subagent`, the parent's workspace and app context compatibility context, and a parent-child relationship through `parentId`. The router emits a `subagent_session` output event on the parent before waiting for the child assistant reply.
 
 ## Scope
 
@@ -28,7 +28,7 @@ When such a tool runs, the session router resolves or creates a child Pibo Sessi
 - Plugin-registered and custom-agent-selected subagent definitions.
 - Generated subagent tool names, descriptions, parameters, and return shape.
 - Parent-to-child routed session creation and reuse.
-- Depth, timeout, workspace, model, shared app compatibility, and room inheritance behavior.
+- Depth, timeout, workspace, model, app context compatibility, and room inheritance behavior.
 - Delegation events used by Chat Web traces, streams, ingestion, and signals.
 
 ### Out of Scope
@@ -121,7 +121,7 @@ The session router MUST resolve each subagent call to a child Pibo Session keyed
 
 #### Current
 
-A missing or blank `threadKey` is replaced with a new UUID. A nonblank `threadKey` is trimmed. Existing matching child sessions are reused. New child sessions use channel `pibo.subagents`, kind `subagent`, the resolved target profile, the parent's shared app compatibility context, parent id, workspace, and subagent metadata.
+A missing or blank `threadKey` is replaced with a new UUID. A nonblank `threadKey` is trimmed. Existing matching child sessions are reused. New child sessions use channel `pibo.subagents`, kind `subagent`, the resolved target profile, the parent's app context compatibility context, parent id, workspace, and subagent metadata.
 
 #### Target
 
@@ -132,7 +132,7 @@ Repeated calls with the same parent, subagent, target profile, and thread key co
 - A first call with a new `threadKey` creates a child Pibo Session.
 - A later call with the same parent, subagent, target profile, and `threadKey` reuses that child session.
 - A call with no `threadKey` creates a new child session with a generated thread key.
-- The child session has the same workspace as the parent and uses shared app compatibility metadata when old stores require it.
+- The child session has the same workspace as the parent and uses app context compatibility metadata when old stores require it.
 
 #### Scenario: Thread key reuse
 
@@ -278,7 +278,7 @@ Subagent work is distinguishable from direct user input and cannot block the par
 ## Constraints
 
 - **Compatibility:** Generated tool names and `subagent_session` event fields are public contracts for traces and Chat Web stream adaptation.
-- **Security / Privacy:** Child sessions inherit shared app compatibility metadata from the parent and are visible through the shared app session tree.
+- **Security / Privacy:** Child sessions inherit app context compatibility metadata from the parent and are visible through the app context session tree.
 - **Performance:** Delegation event emission and child-session lookup must stay bounded by indexed session-store queries and parent-depth traversal.
 - **Dependencies:** Subagent execution depends on the session router, plugin registry profile resolution, runtime tool creation, and Chat Web projections.
 

@@ -1,8 +1,8 @@
 # Spec: Context Files
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Owner / Source:** Current Pibo codebase  
+**Status:** Draft
+**Created:** 2026-05-10
+**Controller / Source:** Current Pibo codebase
 **Related docs:** `GLOSSARY.md`, `docs/specs/README.md`
 
 ## Why
@@ -321,7 +321,7 @@ The Context Files API MUST require an authenticated web session for reads and mu
 
 ## Constraints
 
-- **Product Boundary:** Pibo owns managed context-file metadata, revisions, source links, and registry updates. Plugin context files remain plugin-owned sources.
+- **Product Boundary:** Pibo owns managed context-file metadata, revisions, source links, and registry updates. Plugin context files remain plugin-managed sources.
 - **Security / Privacy:** Context File APIs MUST require an authenticated web session. Managed mutations record the web session app partition as revision actor metadata when available. Current Context Files mutation handlers require JSON bodies where a body is consumed, but they do not perform the Chat Web `Origin` header guard.
 - **Compatibility:** Legacy managed JSON metadata MUST be migrated forward without treating it as the post-migration source of truth.
 - **Reliability:** Revision history MUST preserve enough content to recover a managed file when its backing markdown file is missing.

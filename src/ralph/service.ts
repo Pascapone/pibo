@@ -129,7 +129,7 @@ export class PiboRalphService {
 
 		for (const leaseId of leaseIds) {
 			try {
-				const result = await release(paths, identity, { leaseId, lockOptions: { owner: `ralph:${run.id}` } });
+				const result = await release(paths, identity, { leaseId, lockOptions: { holder: `ralph:${run.id}` } });
 				if (result.cleanupStatus === 'failed' || result.state.state === 'dirty' || (!result.released && !!result.state.activeLeaseId)) dirtyReason = result.lastError || `Browser lease ${leaseId} cleanup failed`;
 			} catch (error) {
 				dirtyReason = `Browser lease ${leaseId} cleanup failed: ${errorMessage(error)}`;

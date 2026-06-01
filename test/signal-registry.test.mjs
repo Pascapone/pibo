@@ -19,7 +19,7 @@ function run(id, status, extra = {}) {
 	return {
 		runId: id,
 		kind: "tool",
-		ownerPiboSessionId: "root",
+		controllerPiboSessionId: "root",
 		status,
 		completionPolicy: "tracked",
 		consumed: false,

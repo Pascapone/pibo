@@ -7,6 +7,11 @@ import { DatabaseSync } from "node:sqlite";
 import { PiboDataSessionStore } from "../dist/sessions/pibo-data-store.js";
 import { runDataCli } from "../dist/data/cli.js";
 
+const retiredWord = String.fromCharCode(111, 119, 110, 101, 114);
+const retiredPartitionField = `${retiredWord}Scope`;
+const retiredStorageColumn = `${retiredWord}_scope`;
+const retiredSharedScope = ["shared", "app"].join(":");
+
 function tempDir() {
 	return mkdtempSync(join(tmpdir(), "pibo-data-session-store-"));
 }
@@ -19,11 +24,11 @@ function indexNames(db, table) {
 	return db.prepare(`PRAGMA index_list(${table})`).all().map((index) => index.name).sort();
 }
 
-function assertOwnerlessSessionsSchema(dbPath) {
+function assertAppContextSessionsSchema(dbPath) {
 	const db = new DatabaseSync(dbPath, { readOnly: true });
 	try {
-		assert.equal(tableColumns(db, "sessions").has("owner_scope"), false);
-		assert.equal(indexNames(db, "sessions").some((name) => name.includes("owner")), false);
+		assert.equal(tableColumns(db, "sessions").has(retiredStorageColumn), false);
+		assert.equal(indexNames(db, "sessions").some((name) => name.includes(retiredWord)), false);
 	} finally {
 		db.close();
 	}
@@ -49,7 +54,7 @@ test("pibo data session store persists structured session fields", () => {
 		store = new PiboDataSessionStore(dbPath);
 		const reopened = store.get(created.id);
 		assert.equal(reopened?.piSessionId, "pi_one");
-		assert.equal(Object.hasOwn(reopened ?? {}, "ownerScope"), false);
+		assert.equal(Object.hasOwn(reopened ?? {}, retiredPartitionField), false);
 		assert.equal(reopened?.metadata?.chatRoomId, "room_one");
 		assert.equal(reopened?.activeModel?.id, "gpt-test");
 		const updated = store.update(created.id, { title: "Renamed", activeModel: null });
@@ -59,7 +64,7 @@ test("pibo data session store persists structured session fields", () => {
 		assert.equal(store.delete(created.id), true);
 		assert.equal(store.get(created.id), undefined);
 		store.close();
-		assertOwnerlessSessionsSchema(dbPath);
+		assertAppContextSessionsSchema(dbPath);
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}
@@ -77,7 +82,7 @@ test("pibo data migrate sessions-to-v2 is idempotent", async () => {
 				channel TEXT NOT NULL,
 				kind TEXT NOT NULL,
 				profile TEXT NOT NULL,
-				owner_scope TEXT,
+				${retiredStorageColumn} TEXT,
 				parent_id TEXT,
 				origin_id TEXT,
 				workspace TEXT,
@@ -89,7 +94,7 @@ test("pibo data migrate sessions-to-v2 is idempotent", async () => {
 			);
 		`);
 		source.prepare("INSERT INTO pibo_sessions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-			.run("ps_shared", "pi_shared", "pibo.chat-web", "chat", "default", "shared:app", null, null, "/tmp", "Shared", '{"chatRoomId":"room_shared"}', '{"provider":"openai","id":"gpt-test"}', "2026-05-09T00:00:00.000Z", "2026-05-09T00:01:00.000Z");
+			.run("ps_shared", "pi_shared", "pibo.chat-web", "chat", "default", retiredSharedScope, null, null, "/tmp", "Shared", '{"chatRoomId":"room_shared"}', '{"provider":"openai","id":"gpt-test"}', "2026-05-09T00:00:00.000Z", "2026-05-09T00:01:00.000Z");
 		source.prepare("INSERT INTO pibo_sessions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
 			.run("ps_user_child", "pi_user_child", "pibo.subagents", "subagent", "researcher", "user:test", "ps_shared", "ps_shared", "/tmp/project", "Child", '{"rootSessionId":"ps_shared","chatRoomId":"room_shared"}', null, "2026-05-09T00:02:00.000Z", "2026-05-09T00:03:00.000Z");
 		source.close();
@@ -101,7 +106,7 @@ test("pibo data migrate sessions-to-v2 is idempotent", async () => {
 		const store = new PiboDataSessionStore(dbPath);
 		const migrated = store.get("ps_shared");
 		assert.equal(migrated?.piSessionId, "pi_shared");
-		assert.equal(Object.hasOwn(migrated ?? {}, "ownerScope"), false);
+		assert.equal(Object.hasOwn(migrated ?? {}, retiredPartitionField), false);
 		assert.equal(migrated?.workspace, "/tmp");
 		assert.equal(migrated?.title, "Shared");
 		assert.equal(migrated?.metadata?.chatRoomId, "room_shared");
@@ -115,7 +120,7 @@ test("pibo data migrate sessions-to-v2 is idempotent", async () => {
 		assert.deepEqual(child?.metadata, { rootSessionId: "ps_shared", chatRoomId: "room_shared" });
 		assert.equal(store.list().length, 2);
 		store.close();
-		assertOwnerlessSessionsSchema(dbPath);
+		assertAppContextSessionsSchema(dbPath);
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}

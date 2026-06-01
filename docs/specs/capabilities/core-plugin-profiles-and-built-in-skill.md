@@ -1,8 +1,8 @@
 # Spec: Core Plugin Profiles and Built-In Skills
 
-**Status:** Draft  
-**Created:** 2026-05-11  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code  
+**Status:** Draft
+**Created:** 2026-05-11
+**Controller / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code
 **Related docs:** [Plugin Registry and Capability Catalog](./plugin-registry-and-capability-catalog.md), [Codex-Compatible Runtime Profile](./codex-compatible-runtime-profile.md), [Operator CLI Discovery and Dispatch](./operator-cli-discovery-and-dispatch.md), [Local Gateway Protocol and Lifecycle](./local-gateway-protocol-and-lifecycle.md)
 
 ## Why
@@ -69,7 +69,7 @@ Default profile creation and capability catalog inspection see the same built-in
 
 ### Requirement: Built-in skills are registered by core
 
-The core plugin MUST register the Pibo-owned built-in skill set at repository skill paths.
+The core plugin MUST register the Pibo-managed built-in skill set at repository skill paths.
 
 #### Current
 
@@ -91,7 +91,7 @@ Profiles that explicitly include a built-in skill can rely on stable names and p
 - GIVEN the default registry is created
 - WHEN the capability catalog is requested
 - THEN it includes the core built-in skills
-- AND those entries are attributed as built-in/plugin skills, not as user-owned skills.
+- AND those entries are attributed as built-in/plugin skills, not as user-managed skills.
 
 ### Requirement: Base core profiles include harness skill and native tooling context without implicit tool broadening
 
@@ -208,7 +208,7 @@ Normal default registries do not expose a gateway-send capable profile, but lega
 
 - **Compatibility:** Existing aliases `codex`, `kimi`, `kimi-coding`, `gateway-producer`, and `pibo-gateway-producer` must keep their current meanings where their registry composition includes them.
 - **Security / Privacy:** Gateway-send capability must not appear in the default profile registry by accident.
-- **Product Boundary:** Built-in skills and profiles are Pibo-owned registry resources; user skills and custom agents remain separate product records.
+- **Product Boundary:** Built-in skills and profiles are Pibo-managed registry resources; user skills and custom agents remain separate product records.
 - **Dependencies:** Runtime loading of skill content depends on Pi Coding Agent resource loading from resolved profile paths.
 
 ## Success Criteria

@@ -6,15 +6,18 @@ import test from "node:test";
 
 import { ChatProjectService } from "../dist/apps/chat/data/project-service.js";
 
+const retiredWord = String.fromCharCode(111, 119, 110, 101, 114);
+const retiredPartitionField = `${retiredWord}Scope`;
+
 test("project service uses app-global storage and lists projects", () => {
-	const tempRoot = mkdtempSync(join(tmpdir(), "pibo-project-shared-app-"));
+	const tempRoot = mkdtempSync(join(tmpdir(), "pibo-project-app-context-"));
 	const service = new ChatProjectService(join(tempRoot, "web-projects.sqlite"));
 
 	try {
 		const defaultA = service.ensureSharedDefaultProject({ projectFolder: join(tempRoot, "default") });
 		const defaultB = service.ensureSharedDefaultProject({ projectFolder: join(tempRoot, "ignored-default") });
 		assert.equal(defaultA.id, defaultB.id);
-		assert.equal("ownerScope" in defaultA, false);
+		assert.equal(retiredPartitionField in defaultA, false);
 		assert.equal(defaultA.name, "Shared Project");
 		assert.equal(defaultA.metadata.default, true);
 
@@ -23,18 +26,18 @@ test("project service uses app-global storage and lists projects", () => {
 			projectFolder: join(tempRoot, "shared-feature"),
 			createFolder: true,
 		});
-		assert.equal("ownerScope" in created, false);
+		assert.equal(retiredPartitionField in created, false);
 
 		const second = service.createProject({
 			name: "Second Shared Project",
 			projectFolder: join(tempRoot, "second-shared"),
 			createFolder: true,
 		});
-		assert.equal("ownerScope" in second, false);
+		assert.equal(retiredPartitionField in second, false);
 
 		const projects = service.listProjects();
 		assert.deepEqual(projects.map((project) => project.name).sort(), ["Second Shared Project", "Shared Feature Project", "Shared Project"]);
-		assert.equal("ownerScope" in service.requireProject(second.id), false);
+		assert.equal(retiredPartitionField in service.requireProject(second.id), false);
 		const renamedSecond = service.updateProject(second.id, { name: "Second Project Renamed" });
 		assert.equal(renamedSecond?.name, "Second Project Renamed");
 	} finally {

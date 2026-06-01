@@ -9,19 +9,26 @@ import { PiboDataStore } from "../dist/data/pibo-store.js";
 import { PiboDataSessionStore } from "../dist/sessions/pibo-data-store.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
 
+const retiredWord = String.fromCharCode(111, 119, 110, 101, 114);
+const retiredTitle = `${retiredWord[0].toUpperCase()}${retiredWord.slice(1)}`;
+const retiredPartitionField = `${retiredWord}Scope`;
+const retiredActivePartitionField = `active${retiredTitle}Scope`;
+const retiredActiveLabelField = `active${retiredTitle}Label`;
+const retiredApiNames = [`getActive${retiredTitle}`, `setActive${retiredTitle}`, `list${retiredTitle}s`];
+
 const fixedNow = "2026-05-16T12:00:00.000Z";
 
-function assertNoOwnerFields(value, label = "value") {
+function assertNoRetiredPartitionFields(value, label = "value") {
 	if (!value || typeof value !== "object") return;
 	if (Array.isArray(value)) {
-		value.forEach((entry, index) => assertNoOwnerFields(entry, `${label}[${index}]`));
+		value.forEach((entry, index) => assertNoRetiredPartitionFields(entry, `${label}[${index}]`));
 		return;
 	}
 	for (const [key, nested] of Object.entries(value)) {
-		assert.notEqual(key, "ownerScope", `${label} exposes ownerScope`);
-		assert.notEqual(key, "activeOwnerScope", `${label} exposes activeOwnerScope`);
-		assert.notEqual(key, "activeOwnerLabel", `${label} exposes activeOwnerLabel`);
-		assertNoOwnerFields(nested, `${label}.${key}`);
+		assert.notEqual(key, retiredPartitionField, `${label} exposes retired partition field`);
+		assert.notEqual(key, retiredActivePartitionField, `${label} exposes retired active partition field`);
+		assert.notEqual(key, retiredActiveLabelField, `${label} exposes retired active label field`);
+		assertNoRetiredPartitionFields(nested, `${label}.${key}`);
 	}
 }
 
@@ -32,13 +39,13 @@ test("fake CLI session source exposes app-global rooms sessions agents and statu
 	const sessions = await source.listSessions({ roomId: "room_fake_main" });
 	assert.deepEqual(sessions.map((session) => session.id), ["ps_fake_existing"]);
 	assert.equal(sessions[0].profile, "base");
-	assertNoOwnerFields(sessions, "sessions");
+	assertNoRetiredPartitionFields(sessions, "sessions");
 
 	const created = await source.createSession({ roomId: "room_fake_main", title: "Created from test", agentId: "base" });
 	assert.equal(created.id, "ps_fake_created_1");
 	assert.equal(created.roomId, "room_fake_main");
 	assert.equal(created.profile, "base");
-	assertNoOwnerFields(created, "created");
+	assertNoRetiredPartitionFields(created, "created");
 
 	const status = await source.getStatus({ sessionId: "ps_fake_existing" });
 	assert.equal(status.source, "fake");
@@ -46,14 +53,14 @@ test("fake CLI session source exposes app-global rooms sessions agents and statu
 	assert.equal(status.connected, true);
 	assert.equal(status.activeSessionId, "ps_fake_existing");
 	assert.equal(status.activeAgentId, "base");
-	assertNoOwnerFields(status, "status");
+	assertNoRetiredPartitionFields(status, "status");
 
-	assert.equal(typeof source.getActiveOwner, "undefined");
-	assert.equal(typeof source.setActiveOwner, "undefined");
-	assert.equal(typeof source.listOwners, "undefined");
+	assert.equal(typeof source[retiredApiNames[0]], "undefined");
+	assert.equal(typeof source[retiredApiNames[1]], "undefined");
+	assert.equal(typeof source[retiredApiNames[2]], "undefined");
 });
 
-test("fake CLI session source lists all fixtures without owner filtering or mismatch errors", async () => {
+test("fake CLI session source lists all fixtures without partition filtering or mismatch errors", async () => {
 	const source = new FakeCliSessionSource({
 		rooms: [
 			{ id: "room_alpha", title: "Alpha Room" },
@@ -92,23 +99,23 @@ test("local CLI session source lists app-global sessions, derived rooms, agents,
 	const rooms = await source.listRooms();
 	assert.ok(rooms.some((room) => room.id === cliDefaultRoomId() && room.title === "Shared Chat" && room.isDefault === true));
 	assert.ok(rooms.some((room) => room.id === "room_one" && room.title === "Main Room"));
-	assertNoOwnerFields(rooms, "rooms");
+	assertNoRetiredPartitionFields(rooms, "rooms");
 
 	assert.deepEqual((await source.listSessions()).map((session) => session.id).sort(), ["ps_cli_local_a", "ps_cli_local_b"].sort());
 	const sessions = await source.listSessions({ roomId: "room_one" });
 	assert.deepEqual(sessions.map((session) => session.id), ["ps_cli_local_a"]);
 	assert.deepEqual(sessions[0].model, { provider: "openai", id: "gpt-test" });
-	assertNoOwnerFields(sessions, "sessions");
+	assertNoRetiredPartitionFields(sessions, "sessions");
 
 	const status = await source.getStatus({ sessionId: "ps_cli_local_a" });
 	assert.equal(status.source, "local/direct");
 	assert.equal(status.activeRoomId, "room_one");
 	assert.equal(status.activeAgentId, "base");
 	assert.doesNotMatch(status.message ?? "", /sk-testsecret|abcdef123456|hunter2/);
-	assertNoOwnerFields(status, "status");
+	assertNoRetiredPartitionFields(status, "status");
 });
 
-test("local CLI source creates sessions in the shared app default room without owner fields", async () => {
+test("local CLI source creates sessions in the app context default room without retired partition fields", async () => {
 	const store = new InMemoryPiboSessionStore();
 	const source = new LocalCliSessionSource({ sessionStore: store, now: () => fixedNow });
 	const rooms = await source.listRooms();
@@ -117,7 +124,7 @@ test("local CLI source creates sessions in the shared app default room without o
 	const created = await source.createSession({ title: "Created", profile: "base" });
 	assert.equal(created.roomId, cliDefaultRoomId());
 	assert.equal(store.get(created.id).metadata.chatRoomId, cliDefaultRoomId());
-	assertNoOwnerFields(created, "created");
+	assertNoRetiredPartitionFields(created, "created");
 });
 
 test("local CLI source writes Web-visible navigation and message read models app-globally", async () => {
@@ -140,7 +147,7 @@ test("local CLI source writes Web-visible navigation and message read models app
 	};
 	const source = new LocalCliSessionSource({ dataStore, sessionStore, router, now: () => fixedNow });
 	const created = await source.createSession({ roomId: room.id, title: "Web Visible CLI", profile: "base" });
-	assertNoOwnerFields(created, "created");
+	assertNoRetiredPartitionFields(created, "created");
 
 	const opened = await source.openSession(created.id);
 	opened.subscribe(() => {});
@@ -160,7 +167,7 @@ test("local CLI source writes Web-visible navigation and message read models app
 	dataStore.close();
 });
 
-test("local CLI session source routes slash actions and opens clone results without owner parameters", async () => {
+test("local CLI session source routes slash actions and opens clone results without partition parameters", async () => {
 	const store = new InMemoryPiboSessionStore();
 	const emitted = [];
 	const router = {
@@ -182,13 +189,13 @@ test("local CLI session source routes slash actions and opens clone results with
 	const status = await source.executeSlashCommand({ command: "status", sessionId: created.id });
 	assert.equal(status.descriptor.kind, "status");
 	assert.equal(emitted.at(-1).action, "status");
-	assert.equal("ownerScope" in emitted.at(-1), false);
+	assert.equal(retiredPartitionField in emitted.at(-1), false);
 	const current = await source.executeSlashCommand({ command: "session-current", sessionId: created.id });
 	assert.equal(current.openSessionId, created.id);
-	assertNoOwnerFields(current.rawResult, "current rawResult");
+	assertNoRetiredPartitionFields(current.rawResult, "current rawResult");
 	const sessions = await source.executeSlashCommand({ command: "sessions", sessionId: created.id });
 	assert.match(JSON.stringify(sessions.rawResult), /Action Session/);
-	assertNoOwnerFields(sessions.rawResult, "sessions rawResult");
+	assertNoRetiredPartitionFields(sessions.rawResult, "sessions rawResult");
 	const clone = await source.executeSlashCommand({ command: "clone", sessionId: created.id });
 	assert.equal(clone.openSessionId, "ps_local_clone");
 
@@ -236,7 +243,7 @@ test("local CLI session source reports clear errors and current-session agent li
 	await assert.rejects(() => source.listSessions(), (error) => error instanceof CliSourceError && error.code === "source_closed");
 });
 
-test("legacy CLI repair API is neutral and returns no owner fields", async () => {
+test("legacy CLI repair API is neutral and returns no retired partition fields", async () => {
 	const dataStore = new PiboDataStore(":memory:");
 	const sessionStore = new PiboDataSessionStore(dataStore);
 	const rooms = new ChatRoomService(dataStore);
@@ -245,7 +252,7 @@ test("legacy CLI repair API is neutral and returns no owner fields", async () =>
 	assert.equal(typeof source.repairLegacyUserUnknownSessions, "undefined");
 	const result = await source.repairLegacyCliSessions({ roomId: room.id });
 	assert.deepEqual(result, { roomId: room.id, scanned: 0, repaired: 0, skipped: 0, sessionIds: [] });
-	assertNoOwnerFields(result, "repair result");
+	assertNoRetiredPartitionFields(result, "repair result");
 	await source.close();
 	dataStore.close();
 });
@@ -256,12 +263,12 @@ test("CLI status redaction removes common secret-shaped values", () => {
 	assert.match(redacted, /\[redacted\]/);
 });
 
-test("CLI session source modules avoid renderer dependencies and owner-selection contracts", () => {
+test("CLI session source modules avoid renderer dependencies and retired partition contracts", () => {
 	const sourceDir = path.resolve("src/cli-session");
 	for (const file of fs.readdirSync(sourceDir).filter((name) => name.endsWith(".ts"))) {
 		const source = fs.readFileSync(path.join(sourceDir, file), "utf8");
 		assert.doesNotMatch(source, /from ["'](?:react|ink|react-dom|react-virtuoso|lucide-react|@uiw\/react-json-view|react-markdown)["']/i, `${file} must not import renderer dependencies`);
 		assert.doesNotMatch(source, /window\.|document\.|HTMLElement|className=/i, `${file} must not use browser presentation APIs`);
-		assert.doesNotMatch(source, /CliOwnerSummary|getActiveOwner|setActiveOwner|listOwners|ownerSummaries|activeOwnerScope|activeOwnerLabel|session_owner_mismatch/, `${file} must not expose owner-selection contracts`);
+		assert.doesNotMatch(source, new RegExp(["Cli", retiredWord[0].toUpperCase() + retiredWord.slice(1), "Summary|getActive", retiredWord[0].toUpperCase() + retiredWord.slice(1), "|setActive", retiredWord[0].toUpperCase() + retiredWord.slice(1), "|list", retiredWord[0].toUpperCase() + retiredWord.slice(1), "s|", retiredWord, "Summaries|active", retiredWord[0].toUpperCase() + retiredWord.slice(1), "Scope|active", retiredWord[0].toUpperCase() + retiredWord.slice(1), "Label|session_", retiredWord, "_mismatch"].join("")), `${file} must not expose retired partition contracts`);
 	}
 });

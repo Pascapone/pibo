@@ -1,8 +1,8 @@
 # Spec: Standalone Docker Runtime
 
-**Status:** Draft  
-**Created:** 2026-05-11  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage; current workspace code  
+**Status:** Draft
+**Created:** 2026-05-11
+**Controller / Source:** Scheduled Pibo Source Specs Coverage; current workspace code
 **Related docs:** [Docker Compute Workers](./docker-compute-workers.md), [Browser Automation Desktop Environment](./browser-automation-desktop-environment.md), [Web Auth and Same-Origin Host](./web-auth-and-same-origin-host.md), [Local Gateway Protocol and Lifecycle](./local-gateway-protocol-and-lifecycle.md)
 
 ## Why

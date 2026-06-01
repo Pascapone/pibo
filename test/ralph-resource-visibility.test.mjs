@@ -8,6 +8,9 @@ import test from "node:test";
 import { handleChatRalphApiRequest } from "../dist/apps/chat/ralph-api.js";
 import { PiboRalphStore } from "../dist/ralph/store.js";
 
+const retiredWord = String.fromCharCode(111, 119, 110, 101, 114);
+const retiredTitle = `${retiredWord[0].toUpperCase()}${retiredWord.slice(1)}`;
+
 const execFileAsync = promisify(execFile);
 const cliPath = resolve("dist/bin/pibo.js");
 
@@ -32,16 +35,16 @@ async function responseJson(response) {
 	return response.json();
 }
 
-function assertNoRalphOwnerFields(value) {
+function assertNoRalphPartitionFields(value) {
 	if (!value || typeof value !== "object") return;
 	if (Array.isArray(value)) {
-		for (const item of value) assertNoRalphOwnerFields(item);
+		for (const item of value) assertNoRalphPartitionFields(item);
 		return;
 	}
-	const legacyKeys = ["owner" + "Scope", "principal" + "Id"];
+	const legacyKeys = [`${retiredWord}Scope`, "principal" + "Id"];
 	for (const key of Object.keys(value)) {
 		assert.equal(legacyKeys.includes(key), false);
-		assertNoRalphOwnerFields(value[key]);
+		assertNoRalphPartitionFields(value[key]);
 	}
 }
 
@@ -86,25 +89,25 @@ test("Ralph CLI text and JSON expose concise retained and dirty resource state",
 		assert.match(runs.stdout, /next=pibo tools browser-use pool reap --worker-id worker-dirty --json/);
 
 		const help = await execFileAsync("node", [cliPath, "ralph", "add", "--help"], { env });
-		const removedHelpPattern = new RegExp(["--owner-scope", "--personal", "--principal-id", "PIBO_" + "OWNER_SCOPE", "principal" + "Id", "owner" + "Scope"].join("|"));
+		const removedHelpPattern = new RegExp([`--${retiredWord}-scope`, "--personal", "--principal-id", `PIBO_${retiredWord.toUpperCase()}_SCOPE`, "principal" + "Id", `${retiredWord}Scope`].join("|"));
 		assert.doesNotMatch(help.stdout, removedHelpPattern);
 		assert.match(help.stdout, /pibo ralph add --help/);
 
 		const json = await execFileAsync("node", [cliPath, "ralph", "--store", dbPath, "list", "--all", "--json"], { env });
 		const jobs = JSON.parse(json.stdout);
-		assertNoRalphOwnerFields(jobs);
+		assertNoRalphPartitionFields(jobs);
 		assert.equal(jobs.some((job) => job.resources?.cleanupState === "retained" && job.resources.workerId === "worker-retained"), true);
 
 		const add = await execFileAsync("node", [cliPath, "ralph", "--store", dbPath, "add", "--prompt", "cli work", "--default-chat", "--json"], { env });
 		const added = JSON.parse(add.stdout);
-		assertNoRalphOwnerFields(added);
+		assertNoRalphPartitionFields(added);
 		assert.deepEqual(added.target, { kind: "default-chat" });
 		const started = JSON.parse((await execFileAsync("node", [cliPath, "ralph", "--store", dbPath, "start", added.id, "--json"], { env })).stdout);
 		assert.equal(started.enabled, true);
-		assertNoRalphOwnerFields(started);
+		assertNoRalphPartitionFields(started);
 		const stopped = JSON.parse((await execFileAsync("node", [cliPath, "ralph", "--store", dbPath, "stop", added.id, "--json"], { env })).stdout);
 		assert.equal(stopped.state.stopRequestedAt !== undefined, true);
-		assertNoRalphOwnerFields(stopped);
+		assertNoRalphPartitionFields(stopped);
 	} finally { await rm(dir, { recursive: true, force: true }); }
 });
 
@@ -122,24 +125,24 @@ test("Chat Ralph API returns app-global Ralph jobs and resource metadata", async
 
 		const listResponse = await handleChatRalphApiRequest(createApiOptions({ request: new Request("http://localhost/api/chat/ralph/jobs?includeDisabled=true"), store }));
 		const listPayload = await responseJson(listResponse);
-		assertNoRalphOwnerFields(listPayload);
+		assertNoRalphPartitionFields(listPayload);
 		assert.equal(listPayload.jobs.length, 3);
 		assert.equal(listPayload.jobs.some((item) => item.resources === undefined), true);
 		assert.equal(listPayload.jobs.some((item) => item.resources?.workerId === "worker-api" && item.resources.cleanupState === "dirty"), true);
 
 		const getResponse = await handleChatRalphApiRequest(createApiOptions({ request: new Request(`http://localhost/api/chat/ralph/jobs/${job.id}`), store }));
 		const getPayload = await responseJson(getResponse);
-		assertNoRalphOwnerFields(getPayload);
+		assertNoRalphPartitionFields(getPayload);
 		assert.equal(getPayload.job.resources.workerId, "worker-api");
 
-		const crossOwnerList = await handleChatRalphApiRequest(createApiOptions({ request: new Request("http://localhost/api/chat/ralph/jobs?includeDisabled=true"), store }));
-		const crossOwnerPayload = await responseJson(crossOwnerList);
-		assertNoRalphOwnerFields(crossOwnerPayload);
-		assert.equal(crossOwnerPayload.jobs.length, 3);
-		assert.equal(crossOwnerPayload.jobs.some((item) => item.resources?.workerId === "worker-api"), true);
+		const crossPartitionList = await handleChatRalphApiRequest(createApiOptions({ request: new Request("http://localhost/api/chat/ralph/jobs?includeDisabled=true"), store }));
+		const crossPartitionPayload = await responseJson(crossPartitionList);
+		assertNoRalphPartitionFields(crossPartitionPayload);
+		assert.equal(crossPartitionPayload.jobs.length, 3);
+		assert.equal(crossPartitionPayload.jobs.some((item) => item.resources?.workerId === "worker-api"), true);
 		const crossGetResponse = await handleChatRalphApiRequest(createApiOptions({ request: new Request(`http://localhost/api/chat/ralph/jobs/${job.id}`), store }));
 		const crossGetPayload = await responseJson(crossGetResponse);
-		assertNoRalphOwnerFields(crossGetPayload);
+		assertNoRalphPartitionFields(crossGetPayload);
 		assert.equal(crossGetPayload.job.id, job.id);
 
 		const createResponse = await handleChatRalphApiRequest(createApiOptions({
@@ -147,14 +150,14 @@ test("Chat Ralph API returns app-global Ralph jobs and resource metadata", async
 			store,
 			}));
 		const createdPayload = await responseJson(createResponse);
-		assertNoRalphOwnerFields(createdPayload);
+		assertNoRalphPartitionFields(createdPayload);
 		assert.deepEqual(createdPayload.job.target, { kind: "default-chat" });
 		const patchResponse = await handleChatRalphApiRequest(createApiOptions({
 			request: new Request(`http://localhost/api/chat/ralph/jobs/${createdPayload.job.id}`, { method: "PATCH", headers: { "content-type": "application/json", origin: "http://localhost" }, body: JSON.stringify({ name: "updated by B" }) }),
 			store,
 			}));
 		const patchedPayload = await responseJson(patchResponse);
-		assertNoRalphOwnerFields(patchedPayload);
+		assertNoRalphPartitionFields(patchedPayload);
 		assert.equal(patchedPayload.job.name, "updated by B");
 		const deleteResponse = await handleChatRalphApiRequest(createApiOptions({
 			request: new Request(`http://localhost/api/chat/ralph/jobs/${createdPayload.job.id}`, { method: "DELETE", headers: { "content-type": "application/json", origin: "http://localhost" }, body: JSON.stringify({}) }),

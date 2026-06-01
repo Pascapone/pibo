@@ -1,8 +1,8 @@
 # Coverage Analysis: Non-Source Artifact Spec Coverage
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage from current workspace code  
+**Status:** Draft
+**Created:** 2026-05-10
+**Controller / Source:** Scheduled Pibo Source Specs Coverage from current workspace code
 **Related docs:** `GLOSSARY.md`, `docs/specs/coverage/source-specs-coverage-2026-05-10.md`, `docs/specs/capabilities/package-build-and-distribution.md`, `docs/specs/capabilities/docker-compute-workers.md`, `docs/specs/capabilities/browser-automation-desktop-environment.md`, `docs/specs/capabilities/chat-web-static-shell-and-pwa-assets.md`, `docs/specs/capabilities/web-deployment-scripts.md`
 
 ## Why

@@ -1,7 +1,7 @@
 # PRD: Pibo Observability and Debug Telemetry — Store, Links, Volume, and Retention
 
-**Status:** Draft  
-**Created:** 2026-05-16  
+**Status:** Draft
+**Created:** 2026-05-16
 **Related docs:** `../spec.md`, `../design.md`, `../tasks.md`
 
 ## 1. Executive Summary
@@ -95,7 +95,7 @@
   - v1.1: optional bounded payload preview support and aggregated provider-event compaction if needed.
 
 - **Technical Risks**:
-  - Schema placement may conflict with existing store boundaries; mitigate with additive `pibo.sqlite` migrations and clear table ownership.
+  - Schema placement may conflict with existing store boundaries; mitigate with additive `pibo.sqlite` migrations and clear table stewardship.
   - Store writes may become too frequent or too large; mitigate with summary rows, counters, aggregation/sampling, and bounded event summaries.
   - Bounded metadata may omit useful fields; mitigate by exposing safe structural fields such as event type, ids, counters, byte sizes, and selected safe dot-paths.
   - Retention pruning may delete evidence too soon; mitigate with separate classes and documented defaults.

@@ -1,9 +1,9 @@
 # Spec: Operator CLI Discovery and Dispatch
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Updated:** 2026-05-17  
-**Owner / Source:** Scheduled Pibo source-spec coverage job  
+**Status:** Draft
+**Created:** 2026-05-10
+**Updated:** 2026-05-17
+**Controller / Source:** Scheduled Pibo source-spec coverage job
 **Related docs:** [Local Config CLI](./local-config-cli.md), [MCP Server Integration](./mcp-server-integration.md), [Curated CLI Tools](./curated-cli-tools.md), [Local Gateway Protocol and Lifecycle](./local-gateway-protocol-and-lifecycle.md), [Continuous Ralph Jobs](./continuous-ralph-jobs.md)
 
 ## Why
@@ -14,7 +14,7 @@ Without a durable contract for root discovery and dispatch, new commands can acc
 
 ## Goal
 
-The top-level `pibo` command MUST provide compact progressive discovery, delegate owned command families to their specialized CLIs, and expose direct runtime commands with predictable profile defaults.
+The top-level `pibo` command MUST provide compact progressive discovery, delegate managed command families to their specialized CLIs, and expose direct runtime commands with predictable profile defaults.
 
 ## Background / Current State
 
@@ -29,8 +29,8 @@ Tests in `test/mcp-cli.test.mjs` already assert that root help is compact and do
 - Root `pibo` no-argument and help output.
 - Top-level dispatch to specialized Pibo CLIs.
 - `config` discovery delegation at the root CLI layer.
-- Direct runtime, CLI Session UI, and gateway commands still owned by `src/cli.ts`.
-- Profile resolution defaults used by root-owned commands.
+- Direct runtime, CLI Session UI, and gateway commands still managed by `src/cli.ts`.
+- Profile resolution defaults used by root-managed commands.
 
 ### Out of Scope
 
@@ -102,7 +102,7 @@ The CLI MUST show compact config discovery for `pibo config`, `pibo config --hel
 - WHEN it runs `pibo config --help`
 - THEN the output points to `pibo config keys` instead of dumping all config details
 
-### Requirement: Root-owned profile commands use the default plugin registry
+### Requirement: Root-managed profile commands use the default plugin registry
 
 The `profile` and direct `tui` commands MUST create profiles through the default Pibo plugin registry unless the gateway-producer compatibility alias is requested.
 
@@ -158,7 +158,7 @@ The root CLI MUST expose safe gateway management through the delegated `gateway`
 
 #### Current
 
-`pibo gateway` delegates to `runGatewayCli(argv)`. `pibo gateway:web` is root-owned and calls `runWebGatewayServer` with optional `--web-host` and `--web-port` values.
+`pibo gateway` delegates to `runGatewayCli(argv)`. `pibo gateway:web` is root-managed and calls `runWebGatewayServer` with optional `--web-host` and `--web-port` values.
 
 #### Acceptance
 
@@ -175,7 +175,7 @@ The root CLI MUST expose safe gateway management through the delegated `gateway`
 
 ### Requirement: Compatibility commands remain bounded and explicit
 
-Root-owned compatibility commands MUST keep their narrow current purpose and must not become broad hidden operational surfaces.
+Root-managed compatibility commands MUST keep their narrow current purpose and must not become broad hidden operational surfaces.
 
 #### Current
 
@@ -207,7 +207,7 @@ Root-owned compatibility commands MUST keep their narrow current purpose and mus
 - **Compatibility:** Keep the installed binary entry point at `dist/bin/pibo.js` through `package.json` and `src/bin/pibo.ts`.
 - **Progressive discovery:** Root output must show only immediate command families and next-step hints.
 - **Safety:** Host gateway management must remain behind the gateway CLI's safety checks; `gateway:web` must remain an explicit runtime start command.
-- **Dependencies:** Commander may define root-owned commands, but custom discovery text controls the root help path.
+- **Dependencies:** Commander may define root-managed commands, but custom discovery text controls the root help path.
 
 ## Success Criteria
 
@@ -232,7 +232,7 @@ Root-owned compatibility commands MUST keep their narrow current purpose and mus
 
 - Early dispatch and fallback Commander passthrough for `mcp`, `tools`, `pi-packages`, `debug`, `data`, `gateway`, `compute`, `skills`, `cron`, and `ralph` are source-inspected from `src/cli.ts`.
 - Root discovery output is source-inspected from `printRootDiscoveryText()` in `src/cli.ts`.
-- Root-owned `profile`, `tui`, `tui:routed`, `tui:sessions`, `router`, `gateway:web`, and `client` command behavior is source-inspected from `src/cli.ts`.
+- Root-managed `profile`, `tui`, `tui:routed`, `tui:sessions`, `router`, `gateway:web`, and `client` command behavior is source-inspected from `src/cli.ts`.
 - The binary entry point is source-inspected from `src/bin/pibo.ts` and `package.json`.
 
 ### Test Gaps
@@ -240,7 +240,7 @@ Root-owned compatibility commands MUST keep their narrow current purpose and mus
 - Add a root-dispatch parity test that stubs or invokes each early-dispatched family with `--help` and verifies the root CLI does not emit Commander `Usage:` output or reject delegated options.
 - Add a regression test that the command names shown in root discovery match the current early-dispatch list and fallback Commander passthrough list.
 - Add built-CLI tests for `pibo ralph --help`, `pibo compute --help`, and `pibo skills --help`, because newer command families are weakest in direct progressive-discovery coverage.
-- Add root-owned command tests for invalid `gateway:web --web-port`, profile default selection, `tui:routed --thinking` validation, and `tui:sessions --max-rows` validation without starting long-running runtimes.
+- Add root-managed command tests for invalid `gateway:web --web-port`, profile default selection, `tui:routed --thinking` validation, and `tui:sessions --max-rows` validation without starting long-running runtimes.
 
 ## Assumptions and Open Questions
 
@@ -252,7 +252,7 @@ Root-owned compatibility commands MUST keep their narrow current purpose and mus
 
 ### Open Questions
 
-- Should `gateway:web` eventually move under the delegated gateway CLI, or remain root-owned for backward compatibility?
+- Should `gateway:web` eventually move under the delegated gateway CLI, or remain root-managed for backward compatibility?
 - Should `router` remain public discovery output or become a debug-only command once debug coverage is complete?
 
 ## Traceability
@@ -262,7 +262,7 @@ Root-owned compatibility commands MUST keep their narrow current purpose and mus
 | REQ-001 Root discovery is compact and progressive | Agent starts discovery | Existing tests in `test/mcp-cli.test.mjs` | Draft |
 | REQ-002 Specialized command families bypass root Commander parsing | MCP version passthrough | `src/cli.ts` early dispatch for `mcp`, `tools`, `pi-packages`, `debug`, `data`, `gateway`, `compute`, `skills`, `cron`, and `ralph` | Source-inspected |
 | REQ-003 Config discovery is handled before full config parsing | Agent inspects config safely | Existing tests in `test/mcp-cli.test.mjs` | Draft |
-| REQ-004 Root-owned profile commands use the default plugin registry | Inspect default profile | `createCliProfile()` | Draft |
+| REQ-004 Root-managed profile commands use the default plugin registry | Inspect default profile | `createCliProfile()` | Draft |
 | REQ-005 Direct, routed, and session TUI commands remain distinct | Routed QA with thinking; Session UI help | `tui`, `tui:routed`, and `tui:sessions` command actions; `test/cli-ui-session-app.test.mjs` | Partly component-tested |
 | REQ-006 Root gateway commands expose only explicit entry points | Invalid web port | `parsePort()` and gateway dispatch | Draft |
 | REQ-007 Compatibility commands remain bounded and explicit | Demo router status | `router` and `client` command actions | Draft |

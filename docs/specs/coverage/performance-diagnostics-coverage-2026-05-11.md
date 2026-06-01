@@ -1,8 +1,8 @@
 # Coverage Analysis: Performance Diagnostics Coverage 2026-05-11
 
-**Status:** Draft  
-**Created:** 2026-05-11  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage; current workspace code  
+**Status:** Draft
+**Created:** 2026-05-11
+**Controller / Source:** Scheduled Pibo Source Specs Coverage; current workspace code
 **Related docs:** [Pibo Session Signals](../capabilities/pibo-session-signals.md), [Chat Web Virtualized Session Scrolling](../capabilities/chat-web-virtualized-session-scrolling.md), [Chat Web Trace Render Diagnostics](../capabilities/chat-web-trace-render-diagnostics.md), [Project Validation Harness](../capabilities/project-validation-harness.md)
 
 ## Why

@@ -1,8 +1,8 @@
 # Spec: Chat Web File Download
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Owner / Source:** Current Pibo codebase  
+**Status:** Draft
+**Created:** 2026-05-10
+**Controller / Source:** Current Pibo codebase
 **Related docs:** `GLOSSARY.md`, `docs/specs/capabilities/chat-web-browser-shell-state.md`, `docs/specs/capabilities/chat-web-rooms-and-event-streams.md`, `docs/specs/capabilities/web-auth-and-same-origin-host.md`
 
 ## Why

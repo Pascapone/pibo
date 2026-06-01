@@ -308,8 +308,8 @@ export function buildExpandableDetailFixtureRow({ streamId = 99, frameIndex = 2 
 
 export function highUsageStatusPayload() {
 	return {
-		activeOwnerLabel: "Web user Fixture",
-		activeOwnerScope: "user:terminal-fixture",
+		activeAccountLabel: "Web account Fixture",
+		activeAccountScope: "user:terminal-fixture",
 		piboSessionId: TERMINAL_PARITY_SESSION_ID,
 		sessionTitle: "Terminal parity fixture",
 		profile: "base",
@@ -358,8 +358,8 @@ export function fullStatusPayload() {
 
 export function partialStatusPayload() {
 	return {
-		activeOwnerLabel: "Partial fixture owner",
-		activeOwnerScope: "user:partial-fixture",
+		activeAccountLabel: "Partial fixture account",
+		activeAccountScope: "user:partial-fixture",
 		piboSessionId: "ps_partial_status",
 		connected: true,
 		queuedMessages: 1,
@@ -381,8 +381,8 @@ export function disposedStatusPayload() {
 
 export function unavailableStatusPayload() {
 	return {
-		activeOwnerLabel: "Fixture owner",
-		activeOwnerScope: "user:fixture",
+		activeAccountLabel: "Fixture account",
+		activeAccountScope: "user:fixture",
 		piboSessionId: TERMINAL_PARITY_SESSION_ID,
 		connected: false,
 		processing: false,
@@ -526,7 +526,7 @@ export function slashCommandBehaviorFixture() {
 		palette: true,
 		enterBehavior: cliEnterBehavior(command.id),
 		result: cliResult(command.id),
-		context: command.group === "navigation" ? "owner-room-session" : "none",
+		context: command.group === "navigation" ? "account-room-session" : "none",
 		support: command.support,
 		label: command.description,
 	}));
@@ -550,7 +550,7 @@ export function slashCommandBehaviorFixture() {
 }
 
 function cliEnterBehavior(id) {
-	if (["room", "session", "agent", "owner", "profile"].includes(id)) return `open-${id}-picker`;
+	if (["room", "session", "agent", "profile"].includes(id)) return `open-${id}-picker`;
 	if (["exit", "quit"].includes(id)) return "exit-tui";
 	if (id === "new") return "create-session-in-active-room";
 	if (id === "repair-user-unknown") return "append-repair-result";
@@ -558,7 +558,7 @@ function cliEnterBehavior(id) {
 }
 
 function cliResult(id) {
-	if (["room", "session", "agent", "owner", "profile"].includes(id)) return "overlay";
+	if (["room", "session", "agent", "profile"].includes(id)) return "overlay";
 	if (["exit", "quit"].includes(id)) return "exit";
 	return "transcript";
 }
@@ -579,20 +579,20 @@ function parityResult(id) {
 }
 
 export const WEB_DERIVED_TERMINAL_MATRIX_COVERAGE = [
-	{ area: "header", fixture: "web-derived-room-session-slash", owner: "PRD10 US-004; PRD12 US-002/003" },
-	{ area: "row-grammar", fixture: "canonical-terminal", owner: "PRD10 US-001/002" },
-	{ area: "spacing", fixture: "canonical-terminal", owner: "PRD10 US-003/005" },
-	{ area: "preview-expansion", fixture: "web-derived-long-output", owner: "PRD09 US-001/002/005" },
-	{ area: "details", fixture: "expandable-detail", owner: "PRD09 US-003/004" },
-	{ area: "json", fixture: "web-derived-json-markdown", owner: "PRD11 US-001/002" },
-	{ area: "markdown-code", fixture: "web-derived-json-markdown", owner: "PRD11 US-003/004/005" },
-	{ area: "status", fixture: "canonical-terminal", owner: "PRD10 US-004" },
-	{ area: "streaming", fixture: "streaming-terminal", owner: "PRD13 US-002" },
-	{ area: "slash-commands", fixture: "web-derived-room-session-slash", owner: "PRD12 US-001/005" },
-	{ area: "pickers", fixture: "web-derived-room-session-slash", owner: "PRD12 US-004" },
-	{ area: "room-session-names", fixture: "web-derived-room-session-slash", owner: "PRD12 US-002/003" },
-	{ area: "no-color-narrow", fixture: "canonical-terminal; web-derived-json-markdown", owner: "PRD10; PRD11; PRD13" },
-	{ area: "redaction", fixture: "all", owner: "PRD08-13" },
+	{ area: "header", fixture: "web-derived-room-session-slash", trace: "PRD10 US-004; PRD12 US-002/003" },
+	{ area: "row-grammar", fixture: "canonical-terminal", trace: "PRD10 US-001/002" },
+	{ area: "spacing", fixture: "canonical-terminal", trace: "PRD10 US-003/005" },
+	{ area: "preview-expansion", fixture: "web-derived-long-output", trace: "PRD09 US-001/002/005" },
+	{ area: "details", fixture: "expandable-detail", trace: "PRD09 US-003/004" },
+	{ area: "json", fixture: "web-derived-json-markdown", trace: "PRD11 US-001/002" },
+	{ area: "markdown-code", fixture: "web-derived-json-markdown", trace: "PRD11 US-003/004/005" },
+	{ area: "status", fixture: "canonical-terminal", trace: "PRD10 US-004" },
+	{ area: "streaming", fixture: "streaming-terminal", trace: "PRD13 US-002" },
+	{ area: "slash-commands", fixture: "web-derived-room-session-slash", trace: "PRD12 US-001/005" },
+	{ area: "pickers", fixture: "web-derived-room-session-slash", trace: "PRD12 US-004" },
+	{ area: "room-session-names", fixture: "web-derived-room-session-slash", trace: "PRD12 US-002/003" },
+	{ area: "no-color-narrow", fixture: "canonical-terminal; web-derived-json-markdown", trace: "PRD10; PRD11; PRD13" },
+	{ area: "redaction", fixture: "all", trace: "PRD08-13" },
 ];
 
 export function longMarkdownFixture() {

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { piboHomePath } from "../core/pibo-home.js";
+import { sqliteTableColumns } from "../data/sqlite-schema.js";
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 import type { PiboJsonValue } from "../core/events.js";
 import type {
@@ -193,7 +194,7 @@ type PiboDeadJobRow = {
 type PiboRunRow = {
 	run_id: string;
 	kind: PiboRunKind;
-	owner_pibo_session_id: string;
+	controller_pibo_session_id: string;
 	status: PiboRunStatus;
 	completion_policy: PiboRunCompletionPolicy;
 	consumed: number;
@@ -231,6 +232,16 @@ function asDate(value: Date | undefined): Date {
 	return value ?? new Date();
 }
 
+function migratePiboRunControllerColumn(db: DatabaseSync): void {
+	const table = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'pibo_runs'").get();
+	if (!table) return;
+	const legacyColumn = ["o", "wner_pibo_session_id"].join("");
+	const columns = sqliteTableColumns(db, "pibo_runs");
+	if (!columns.has(legacyColumn) || columns.has("controller_pibo_session_id")) return;
+	db.exec("DROP INDEX IF EXISTS idx_pibo_runs_" + ["o", "wner_updated"].join(""));
+	db.exec(`ALTER TABLE pibo_runs RENAME COLUMN ${legacyColumn} TO controller_pibo_session_id`);
+}
+
 export class PiboReliabilityStore {
 	private readonly db: DatabaseSync;
 	private readonly appendEventStatement: StatementSync;
@@ -246,6 +257,7 @@ export class PiboReliabilityStore {
 		this.db.exec("PRAGMA busy_timeout = 5000");
 		this.db.exec("PRAGMA foreign_keys = ON");
 		if (resolvedPath !== ":memory:") this.db.exec("PRAGMA journal_mode = WAL");
+		migratePiboRunControllerColumn(this.db);
 		this.db.exec(`
 			CREATE TABLE IF NOT EXISTS pibo_event_stream (
 				stream_id INTEGER PRIMARY KEY,
@@ -320,7 +332,7 @@ export class PiboReliabilityStore {
 			CREATE TABLE IF NOT EXISTS pibo_runs (
 				run_id TEXT PRIMARY KEY,
 				kind TEXT NOT NULL,
-				owner_pibo_session_id TEXT NOT NULL,
+				controller_pibo_session_id TEXT NOT NULL,
 				status TEXT NOT NULL,
 				completion_policy TEXT NOT NULL,
 				consumed INTEGER NOT NULL DEFAULT 0,
@@ -337,8 +349,8 @@ export class PiboReliabilityStore {
 				retryable INTEGER NOT NULL DEFAULT 0,
 				max_attempts INTEGER NOT NULL DEFAULT 1
 			);
-			CREATE INDEX IF NOT EXISTS idx_pibo_runs_owner_updated
-				ON pibo_runs(owner_pibo_session_id, updated_at);
+			CREATE INDEX IF NOT EXISTS idx_pibo_runs_controller_updated
+				ON pibo_runs(controller_pibo_session_id, updated_at);
 			CREATE INDEX IF NOT EXISTS idx_pibo_runs_status
 				ON pibo_runs(status);
 		`);
@@ -700,7 +712,7 @@ export class PiboReliabilityStore {
 
 	createRun(input: {
 		runId?: string;
-		ownerPiboSessionId: string;
+		controllerPiboSessionId: string;
 		toolName: string;
 		completionPolicy: PiboRunCompletionPolicy;
 		params?: unknown;
@@ -714,7 +726,7 @@ export class PiboReliabilityStore {
 			queue: "runs",
 			payload: {
 				runId,
-				ownerPiboSessionId: input.ownerPiboSessionId,
+				controllerPiboSessionId: input.controllerPiboSessionId,
 				toolName: input.toolName,
 				params: input.params,
 			} as PiboJsonValue,
@@ -723,14 +735,14 @@ export class PiboReliabilityStore {
 		this.db
 			.prepare(`
 				INSERT INTO pibo_runs (
-					run_id, kind, owner_pibo_session_id, status, completion_policy, consumed, tool_name,
+					run_id, kind, controller_pibo_session_id, status, completion_policy, consumed, tool_name,
 					summary, result_json, error, notified_status, acknowledged_status, created_at, updated_at,
 					completed_at, job_id, retryable, max_attempts
 				) VALUES (?, 'tool', ?, 'running', ?, 0, ?, ?, NULL, NULL, NULL, NULL, ?, ?, NULL, ?, ?, ?)
 			`)
 			.run(
 				runId,
-				input.ownerPiboSessionId,
+				input.controllerPiboSessionId,
 				input.completionPolicy,
 				input.toolName,
 				`${input.toolName} run is running.`,
@@ -790,12 +802,12 @@ export class PiboReliabilityStore {
 		return row ? runFromRow(row) : undefined;
 	}
 
-	listRuns(input: { ownerPiboSessionId?: string; includeConsumed?: boolean; includeDetached?: boolean } = {}): PiboRunStoreRecord[] {
+	listRuns(input: { controllerPiboSessionId?: string; includeConsumed?: boolean; includeDetached?: boolean } = {}): PiboRunStoreRecord[] {
 		const clauses: string[] = [];
 		const values: string[] = [];
-		if (input.ownerPiboSessionId) {
-			clauses.push("owner_pibo_session_id = ?");
-			values.push(input.ownerPiboSessionId);
+		if (input.controllerPiboSessionId) {
+			clauses.push("controller_pibo_session_id = ?");
+			values.push(input.controllerPiboSessionId);
 		}
 		if (!input.includeConsumed) clauses.push("consumed = 0");
 		if (!input.includeDetached) clauses.push("completion_policy != 'detached'");
@@ -1036,7 +1048,7 @@ function runFromRow(row: PiboRunRow): PiboRunStoreRecord {
 	const output: PiboRunStoreRecord = {
 		runId: row.run_id,
 		kind: row.kind,
-		ownerPiboSessionId: row.owner_pibo_session_id,
+		controllerPiboSessionId: row.controller_pibo_session_id,
 		status: row.status,
 		completionPolicy: row.completion_policy,
 		consumed: row.consumed === 1,

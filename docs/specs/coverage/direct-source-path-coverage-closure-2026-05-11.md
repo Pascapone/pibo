@@ -1,8 +1,8 @@
 # Coverage Analysis: Direct Source Path Coverage Closure 2026-05-11
 
-**Status:** Draft  
-**Created:** 2026-05-11  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage; current workspace code  
+**Status:** Draft
+**Created:** 2026-05-11
+**Controller / Source:** Scheduled Pibo Source Specs Coverage; current workspace code
 **Related docs:** `GLOSSARY.md`, `AGENTS.md`, [Source Test Gap Priorities 2026-05-11](./source-test-gap-priorities-2026-05-11.md), [Unreferenced Artifact Triage 2026-05-11](./unreferenced-artifact-triage-2026-05-11.md), [Pibo Workflow Framework Package](../capabilities/pibo-workflow-framework-package.md)
 
 ## Why
@@ -55,7 +55,7 @@ The current spec tree also directly references current checked-in scripts, inclu
 
 The unmatched package-level paths are concentrated in `packages/workflows/package-lock.json`, `packages/workflows/tsconfig.json`, workflow package test files under `packages/workflows/src/testing/`, and the XState projection snapshot JSON.
 
-These files are already owned at the behavior level by `pibo-workflow-framework-package.md` and by the previous unreferenced-artifact triage decision. They should stay as verification evidence unless the package exposes a new public workflow behavior that is not captured by the workflow package spec.
+These files are already managed at the behavior level by `pibo-workflow-framework-package.md` and by the previous unreferenced-artifact triage decision. They should stay as verification evidence unless the package exposes a new public workflow behavior that is not captured by the workflow package spec.
 
 #### Acceptance
 

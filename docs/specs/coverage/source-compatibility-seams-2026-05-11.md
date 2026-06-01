@@ -1,8 +1,8 @@
 # Coverage Analysis: Source Compatibility Seams 2026-05-11
 
-**Status:** Draft  
-**Created:** 2026-05-11  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage; current workspace code  
+**Status:** Draft
+**Created:** 2026-05-11
+**Controller / Source:** Scheduled Pibo Source Specs Coverage; current workspace code
 **Related docs:** `GLOSSARY.md`, `AGENTS.md`, [Source Specs Gap Analysis 2026-05-11](./source-specs-gap-analysis-2026-05-11.md), [Residual Source Islands 2026-05-11](./residual-source-islands-2026-05-11.md)
 
 ## Why
@@ -13,7 +13,7 @@ Creating standalone capability specs for these files would duplicate the owning 
 
 ## Goal
 
-Future scheduled coverage runs SHALL treat source compatibility seams as owned by their downstream behavior specs unless the seam exposes independent observable behavior, validation, persistence, security, or operator output.
+Future scheduled coverage runs SHALL treat source compatibility seams as managed by their downstream behavior specs unless the seam exposes independent observable behavior, validation, persistence, security, or operator output.
 
 ## Scope
 
@@ -33,7 +33,7 @@ Future scheduled coverage runs SHALL treat source compatibility seams as owned b
 
 ## Findings
 
-### Finding: Chat Web compatibility exports are owned by Chat Web data specs
+### Finding: Chat Web compatibility exports are managed by Chat Web data specs
 
 `src/apps/chat/event-log.ts`, `src/apps/chat/read-model.ts`, `src/apps/chat/rooms.ts`, `src/apps/chat/types/event-store.ts`, and `src/apps/chat/types/read-model.ts` preserve named import surfaces for Chat Web event, read-model, and room types. They do not add runtime behavior beyond the data services and room/event APIs.
 
@@ -42,7 +42,7 @@ Future scheduled coverage runs SHALL treat source compatibility seams as owned b
 - `docs/specs/capabilities/chat-web-rooms-and-event-streams.md`
 - `docs/specs/capabilities/chat-web-bootstrap-and-navigation-api.md`
 - `docs/specs/capabilities/pibo-data-store-and-ingestion.md`
-- `docs/specs/capabilities/local-store-ownership-and-canonical-data-boundaries.md`
+- `docs/specs/capabilities/local-store-stewardship-and-canonical-data-boundaries.md`
 
 #### Future acceptance
 
@@ -50,7 +50,7 @@ Future scheduled coverage runs SHALL treat source compatibility seams as owned b
 - If a compatibility module starts validating, migrating, filtering, or serializing data at runtime, add a requirement to the owning Chat Web/data spec with a direct scenario.
 - Do not make the facade file path itself the durable behavior; the contract is the API and data shape consumed by Chat Web.
 
-### Finding: Plugin wrapper seams are owned by registry and capability specs
+### Finding: Plugin wrapper seams are managed by registry and capability specs
 
 `src/plugins/chat-web.ts` and `src/cron/plugin.ts` register a web app or channel through `definePiboPlugin`. Their observable behavior is the registered capability, not the wrapper file.
 
@@ -118,7 +118,7 @@ Component seams such as `TerminalLine.tsx`, `TerminalLoginCard.tsx`, `TerminalMo
 
 ## Coverage Decision
 
-No new capability spec was created in this run. The inspected files are compatibility or helper seams whose observable behavior is already owned by existing specs. This coverage artifact is the single new spec-tree document for this run and prevents future duplicate specs for facade modules.
+No new capability spec was created in this run. The inspected files are compatibility or helper seams whose observable behavior is already managed by existing specs. This coverage artifact is the single new spec-tree document for this run and prevents future duplicate specs for facade modules.
 
 ## Success Criteria
 
@@ -132,11 +132,11 @@ No new capability spec was created in this run. The inspected files are compatib
 
 | Seam | Source basis | Owning spec | Status |
 |---|---|---|---|
-| Chat Web event/read-model/room facades | `src/apps/chat/event-log.ts`, `src/apps/chat/read-model.ts`, `src/apps/chat/rooms.ts`, `src/apps/chat/types/*` | Chat Web rooms/bootstrap/data-store specs | Covered by owner specs |
-| Plugin registration wrappers | `src/plugins/chat-web.ts`, `src/cron/plugin.ts` | Plugin registry, Chat Web, scheduled jobs specs | Covered by owner specs |
-| Product type modules | `src/auth/types.ts`, `src/pi-packages/types.ts`, `src/user-skills/types.ts`, `src/signals/events.ts` | Auth, Pi Packages, User Skills, Session Signals specs | Covered by owner specs |
-| Runtime and MCP helpers | `src/tools/runtime/index.ts`, `src/mcp/output.ts`, `src/mcp/version.ts` | Runtime tool, MCP integration, package/build specs | Covered by owner specs |
-| Compact terminal subcomponents | `src/apps/chat-ui/src/session-views/compact-terminal/*` | Trace/terminal, safe rendering, provider settings specs | Covered by owner specs |
+| Chat Web event/read-model/room facades | `src/apps/chat/event-log.ts`, `src/apps/chat/read-model.ts`, `src/apps/chat/rooms.ts`, `src/apps/chat/types/*` | Chat Web rooms/bootstrap/data-store specs | Covered by controller specs |
+| Plugin registration wrappers | `src/plugins/chat-web.ts`, `src/cron/plugin.ts` | Plugin registry, Chat Web, scheduled jobs specs | Covered by controller specs |
+| Product type modules | `src/auth/types.ts`, `src/pi-packages/types.ts`, `src/user-skills/types.ts`, `src/signals/events.ts` | Auth, Pi Packages, User Skills, Session Signals specs | Covered by controller specs |
+| Runtime and MCP helpers | `src/tools/runtime/index.ts`, `src/mcp/output.ts`, `src/mcp/version.ts` | Runtime tool, MCP integration, package/build specs | Covered by controller specs |
+| Compact terminal subcomponents | `src/apps/chat-ui/src/session-views/compact-terminal/*` | Trace/terminal, safe rendering, provider settings specs | Covered by controller specs |
 
 ## Verification Basis
 

@@ -1,13 +1,13 @@
 # Coverage Analysis: OpenAI Codex Usage Verification Gap 2026-05-11
 
-**Status:** Draft  
-**Created:** 2026-05-11  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage; current workspace code  
+**Status:** Draft
+**Created:** 2026-05-11
+**Controller / Source:** Scheduled Pibo Source Specs Coverage; current workspace code
 **Related docs:** `GLOSSARY.md`, `AGENTS.md`, [Model Provider Auth and Session Model Selection](../capabilities/model-provider-auth-and-session-selection.md), [Source Test Gap Priorities 2026-05-11](./source-test-gap-priorities-2026-05-11.md)
 
 ## Why
 
-The current spec inventory already contains a durable provider-auth and model-selection contract. Creating a separate capability spec for OpenAI Codex usage would duplicate that owner spec because usage status is only exposed as provider-specific status metadata for an active `openai-codex` session.
+The current spec inventory already contains a durable provider-auth and model-selection contract. Creating a separate capability spec for OpenAI Codex usage would duplicate that controller spec because usage status is only exposed as provider-specific status metadata for an active `openai-codex` session.
 
 This coverage note records the remaining source-backed verification gap for `src/auth/openai-codex-usage.ts` so future work can add focused tests without splitting the capability contract.
 
@@ -20,7 +20,7 @@ Future verification work SHOULD test OpenAI Codex usage normalization and reques
 ### In Scope
 
 - Current OpenAI Codex usage source behavior in `src/auth/openai-codex-usage.ts`.
-- Existing provider/model capability spec ownership.
+- Existing provider/model capability spec stewardship.
 - Testable cases that are not directly covered by the current `test/*.test.mjs` inventory.
 
 ### Out of Scope
@@ -110,7 +110,7 @@ For non-OK HTTP responses, the helper reads response text when possible and thro
 
 ## Coverage Decision
 
-Do not create a new capability spec for OpenAI Codex usage. The behavior is already owned by `model-provider-auth-and-session-selection.md`; the missing work is direct verification. This note narrows the test matrix from the broader source-test gap artifact to the exact source helper and expected request/normalization branches.
+Do not create a new capability spec for OpenAI Codex usage. The behavior is already managed by `model-provider-auth-and-session-selection.md`; the missing work is direct verification. This note narrows the test matrix from the broader source-test gap artifact to the exact source helper and expected request/normalization branches.
 
 ## Success Criteria
 

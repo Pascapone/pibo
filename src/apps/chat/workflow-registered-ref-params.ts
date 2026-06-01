@@ -4,12 +4,12 @@ import type { WorkflowDraftDiagnostic } from "./workflow-persistence.js";
 type WorkflowRegisteredRefParamsTarget = Pick<WorkflowDraftDiagnostic, "nodeId" | "edgeId"> & {
 	kind: "guard" | "adapter";
 	path: string;
-	ownerLabel: string;
+	diagnosticLabel: string;
 	registryRef: string;
 };
 
 type WorkflowRegisteredRefParamsValidationTarget = Pick<WorkflowDraftDiagnostic, "nodeId" | "edgeId"> & {
-	ownerLabel: string;
+	diagnosticLabel: string;
 	registryRef: string;
 };
 
@@ -24,7 +24,7 @@ export function validateWorkflowRegisteredRefParamsLike(
 	if (!paramsSchema) {
 		diagnostics.push({
 			code: target.kind === "guard" ? "WorkflowGraphError.unexpectedGuardParams" : "WorkflowGraphError.unexpectedAdapterParams",
-			message: `${target.ownerLabel} declares params, but registry ref '${target.registryRef}' does not expose a paramsSchema.`,
+			message: `${target.diagnosticLabel} declares params, but registry ref '${target.registryRef}' does not expose a paramsSchema.`,
 			severity: "error",
 			path: target.path,
 			nodeId: target.nodeId,
@@ -37,7 +37,7 @@ export function validateWorkflowRegisteredRefParamsLike(
 	if (!isJsonObject(value)) {
 		diagnostics.push({
 			code,
-			message: `${target.ownerLabel} params for '${target.registryRef}' must be a JSON object matching the registry paramsSchema.`,
+			message: `${target.diagnosticLabel} params for '${target.registryRef}' must be a JSON object matching the registry paramsSchema.`,
 			severity: "error",
 			path: target.path,
 			nodeId: target.nodeId,
@@ -62,7 +62,7 @@ function validateWorkflowParamsValueAgainstSchema(
 	if (typeNames.length && !typeNames.some((typeName) => workflowParamValueMatchesType(value, typeName))) {
 		diagnostics.push({
 			code,
-			message: `${target.ownerLabel} params for '${target.registryRef}' do not match the registry paramsSchema type at '${path}'.`,
+			message: `${target.diagnosticLabel} params for '${target.registryRef}' do not match the registry paramsSchema type at '${path}'.`,
 			severity: "error",
 			path,
 			nodeId: target.nodeId,
@@ -78,7 +78,7 @@ function validateWorkflowParamsValueAgainstSchema(
 			if (Object.hasOwn(value, requiredKey)) continue;
 			diagnostics.push({
 				code,
-				message: `${target.ownerLabel} params for '${target.registryRef}' are missing required registry paramsSchema field '${requiredKey}'.`,
+				message: `${target.diagnosticLabel} params for '${target.registryRef}' are missing required registry paramsSchema field '${requiredKey}'.`,
 				severity: "error",
 				path: workflowParamsChildPath(path, requiredKey),
 				nodeId: target.nodeId,
@@ -95,7 +95,7 @@ function validateWorkflowParamsValueAgainstSchema(
 			} else if (schema.additionalProperties === false) {
 				diagnostics.push({
 					code,
-					message: `${target.ownerLabel} params for '${target.registryRef}' include field '${key}', which is not allowed by the registry paramsSchema.`,
+					message: `${target.diagnosticLabel} params for '${target.registryRef}' include field '${key}', which is not allowed by the registry paramsSchema.`,
 					severity: "error",
 					path: workflowParamsChildPath(path, key),
 					nodeId: target.nodeId,

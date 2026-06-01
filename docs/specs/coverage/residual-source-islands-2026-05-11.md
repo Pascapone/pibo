@@ -1,15 +1,15 @@
 # Coverage Analysis: Residual Source Islands 2026-05-11
 
-**Status:** Draft  
-**Created:** 2026-05-11  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage; current workspace code  
+**Status:** Draft
+**Created:** 2026-05-11
+**Controller / Source:** Scheduled Pibo Source Specs Coverage; current workspace code
 **Related docs:** `GLOSSARY.md`, `AGENTS.md`, [Source Specs Gap Analysis 2026-05-11](./source-specs-gap-analysis-2026-05-11.md), [Chat Web Rooms and Event Streams](../capabilities/chat-web-rooms-and-event-streams.md), [Chat Web Output Compaction and Stream Projection](../capabilities/chat-web-output-compaction-and-stream-projection.md), [Web Auth and Same-Origin Host](../capabilities/web-auth-and-same-origin-host.md), [MCP Server Integration](../capabilities/mcp-server-integration.md), [Pibo Workflow Framework Package](../capabilities/pibo-workflow-framework-package.md)
 
 ## Why
 
 The current `docs/specs/` tree now covers the major product, runtime, gateway, web, data, MCP, workflow, tool, cron, Ralph, auth, and deployment capabilities. A new broad capability spec in this run would duplicate existing contracts.
 
-This artifact records the remaining small source islands inspected in this run. Each island is real implementation behavior, but each is better owned by an existing capability spec unless it grows into a separate public contract.
+This artifact records the remaining small source islands inspected in this run. Each island is real implementation behavior, but each is better managed by an existing capability spec unless it grows into a separate public contract.
 
 ## Goal
 
@@ -94,7 +94,7 @@ A new workflow spec should be created only for a new product capability, such as
 
 ## Coverage Decision
 
-No new capability spec was created in this run because the inspected seams are already owned by existing behavior specs. The most useful action was to add this residual coverage note so future runs can avoid duplicating helper-level specs and instead tighten the owning capability specs or tests.
+No new capability spec was created in this run because the inspected seams are already managed by existing behavior specs. The most useful action was to add this residual coverage note so future runs can avoid duplicating helper-level specs and instead tighten the owning capability specs or tests.
 
 ## Success Criteria
 

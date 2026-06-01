@@ -1,7 +1,7 @@
 # PRD: Pibo Observability and Debug Telemetry — Debug CLI
 
-**Status:** Draft  
-**Created:** 2026-05-16  
+**Status:** Draft
+**Created:** 2026-05-16
 **Related docs:** `../spec.md`, `../design.md`, `../tasks.md`, `../../../capabilities/debug-cli.md`
 
 ## 1. Executive Summary

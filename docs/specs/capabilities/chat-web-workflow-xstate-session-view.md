@@ -1,14 +1,14 @@
 # Spec: Chat Web Workflow XState Session View
 
-**Status:** Draft  
-**Created:** 2026-05-11  
+**Status:** Draft
+**Created:** 2026-05-11
 **Updated:** 2026-05-17
-**Owner / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code  
+**Controller / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code
 **Related docs:** [Chat Web Projects Area](./chat-web-projects-area.md), [Chat Web Trace and Terminal View](./chat-web-trace-and-terminal-view.md), [Pibo Workflow System V1](../changes/pibo-workflow-system-v1/spec.md)
 
 ## Why
 
-Chat Web has a dedicated session-view plugin for workflow-backed Project Sessions. The current workflow system is still TypeScript-owned and read-only from the browser, but users need a visible projection that explains which Project Session is linked to a workflow run, what state the run appears to be in, and what final output or validation diagnostics can be inferred from the current trace.
+Chat Web has a dedicated session-view plugin for workflow-backed Project Sessions. The current workflow system is still TypeScript-managed and read-only from the browser, but users need a visible projection that explains which Project Session is linked to a workflow run, what state the run appears to be in, and what final output or validation diagnostics can be inferred from the current trace.
 
 This view must not imply that the browser owns workflow execution or edits workflow definitions. It is a UI projection over Project Session metadata, live session status, and trace data.
 

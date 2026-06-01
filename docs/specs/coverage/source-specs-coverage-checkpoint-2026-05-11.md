@@ -1,8 +1,8 @@
 # Coverage Analysis: Source Specs Coverage Checkpoint 2026-05-11
 
-**Status:** Draft  
-**Created:** 2026-05-11  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code  
+**Status:** Draft
+**Created:** 2026-05-11
+**Controller / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code
 **Related docs:** `docs/specs/coverage/source-specs-verification-handoff-2026-05-11.md`, `docs/specs/coverage/source-test-gap-priorities-2026-05-11.md`, `docs/specs/capabilities/continuous-ralph-jobs.md`, `docs/specs/capabilities/model-provider-auth-and-session-selection.md`, `docs/specs/capabilities/chat-web-projects-area.md`
 
 ## Why
@@ -20,7 +20,7 @@ Future source-specs runs MUST prefer strengthening existing owning specs or addi
 ### In Scope
 
 - Current `src/`, `scripts/`, `packages/workflows/`, and `test/` source coverage posture.
-- Existing `docs/specs/capabilities/` ownership boundaries.
+- Existing `docs/specs/capabilities/` stewardship boundaries.
 - The next useful documentation action when no new uncovered capability is found.
 
 ### Out of Scope
@@ -36,7 +36,7 @@ The current spec inventory contains focused capability specs for the major produ
 - Runtime/session core: routing, session store, runtime assembly, prompts, thinking controls, event contracts, signals, yielded runs, subagents, profile/plugin registry, and native web search.
 - Chat Web: rooms/events, cache/live state, Projects, Ralph, cron, settings, context area, terminal/trace/session views, safe rendering, PWA/static shell, file downloads, and persistence diagnostics.
 - Operator surfaces: progressive CLI dispatch, config, debug, data maintenance, tools, MCP, Pi packages, Docker compute workers, gateway lifecycle/request client/send tool, deployment scripts, standalone Docker runtime, and validation harness.
-- Durable stores: local store ownership, data v2 ingestion, reliability event core, cron jobs, Ralph jobs, custom agents, context files, user skills, and model/user settings.
+- Durable stores: local store stewardship, data v2 ingestion, reliability event core, cron jobs, Ralph jobs, custom agents, context files, user skills, and model/user settings.
 - Workflow package: durable change specs plus a current package capability spec.
 
 The strongest remaining source-to-spec gap is not missing capability prose. It is verification depth: several specs now include source-inspected behavior and recommended test matrices, but the tests do not yet cover every matrix row.
@@ -45,7 +45,7 @@ The strongest remaining source-to-spec gap is not missing capability prose. It i
 
 ### Requirement: New capability specs require uncovered behavior
 
-A scheduled run MUST create a new `docs/specs/capabilities/*.md` file only when current source exposes a product or technical capability that is not already owned by an existing capability spec.
+A scheduled run MUST create a new `docs/specs/capabilities/*.md` file only when current source exposes a product or technical capability that is not already managed by an existing capability spec.
 
 #### Acceptance
 
@@ -115,12 +115,12 @@ When the spec inventory already owns the inspected behavior, future runs SHOULD 
 
 ### Finding: Major source seams now have owning specs
 
-Current source inspection did not reveal a major unowned capability. The source paths sampled in this run are already owned by current capability specs:
+Current source inspection did not reveal a major unmanaged capability. The source paths sampled in this run are already managed by current capability specs:
 
-- `src/ralph/store.ts`, `src/ralph/service.ts`, and `src/ralph/cli.ts` are owned by Continuous Ralph Jobs.
-- `src/apps/chat/data/project-service.ts` and `src/apps/chat/data/room-service.ts` are owned by Chat Web Projects Area and Chat Web Rooms and Event Streams.
-- `src/auth/login-actions.ts` and `src/auth/openai-codex-usage.ts` are owned by Model Provider Auth and Session Model Selection.
-- `src/config/config.ts` is owned by Local Config CLI and Local Store Ownership.
+- `src/ralph/store.ts`, `src/ralph/service.ts`, and `src/ralph/cli.ts` are managed by Continuous Ralph Jobs.
+- `src/apps/chat/data/project-service.ts` and `src/apps/chat/data/room-service.ts` are managed by Chat Web Projects Area and Chat Web Rooms and Event Streams.
+- `src/auth/login-actions.ts` and `src/auth/openai-codex-usage.ts` are managed by Model Provider Auth and Session Model Selection.
+- `src/config/config.ts` is managed by Local Config CLI and Local Store Stewardship.
 
 ### Finding: The remaining useful work is verification movement
 

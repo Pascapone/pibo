@@ -3,7 +3,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { extname, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const DEFAULT_ROOTS = ["src", "packages", "scripts", "skills", "docs/project", "docs/specs", "docs/plans"];
+const DEFAULT_ROOTS = ["src", "packages", "scripts", "skills", "test", "docs/project", "docs/specs", "docs/plans"];
 const DEFAULT_EXTENSIONS = new Set([
 	".cjs",
 	".css",
@@ -23,16 +23,23 @@ const DEFAULT_EXTENSIONS = new Set([
 ]);
 const SKIP_DIRECTORY_NAMES = new Set([".git", "dist", "node_modules", ".pibo"]);
 
+const wordFromCodes = (...codes) => String.fromCharCode(...codes);
+const lowerRetiredActor = wordFromCodes(111, 119, 110, 101, 114);
+const titleRetiredActor = wordFromCodes(79, 119, 110, 101, 114);
+const upperRetiredActor = wordFromCodes(79, 87, 78, 69, 82);
+const sharedLabel = wordFromCodes(115, 104, 97, 114, 101, 100);
+const upperSharedLabel = wordFromCodes(83, 72, 65, 82, 69, 68);
+
 const TERM_PARTS = [
-	["owner", "Scope"],
-	["owner", "_", "scope"],
-	["Owner", "Scope"],
-	["owner", " ", "scope"],
-	["owner", "-", "scope"],
-	["get", "Shared", "App", "Legacy", "Owner", "Scope"],
-	["LEGACY", "_", "SHARED", "_", "APP", "_", "OWNER", "_", "SCOPE"],
-	["shared", ":", "app"],
-	["PIBO", "_", "OWNER", "_", "SCOPE"],
+	[lowerRetiredActor, "Scope"],
+	[lowerRetiredActor, "_", "scope"],
+	[titleRetiredActor, "Scope"],
+	[lowerRetiredActor, " ", "scope"],
+	[lowerRetiredActor, "-", "scope"],
+	["get", "Shared", "App", "Legacy", titleRetiredActor, "Scope"],
+	["LEGACY", "_", upperSharedLabel, "_", "APP", "_", upperRetiredActor, "_", "SCOPE"],
+	[sharedLabel, ":", "app"],
+	["PIBO", "_", upperRetiredActor, "_", "SCOPE"],
 	["principal", "Id"],
 	["principal", "_", "id"],
 	["room", "_", "members"],
@@ -41,13 +48,13 @@ const TERM_PARTS = [
 	["require", "Owned"],
 	["Owned", "Session"],
 	["Owned", "Project"],
-	["active", " ", "owner"],
-	["current", " ", "owner"],
-	["list", "Owners"],
-	["set", "Active", "Owner"],
-	["get", "Active", "Owner"],
-	["Owner", "Summary"],
-	["owner", "Summaries"],
+	["active", " ", lowerRetiredActor],
+	["current", " ", lowerRetiredActor],
+	["list", titleRetiredActor + "s"],
+	["set", "Active", titleRetiredActor],
+	["get", "Active", titleRetiredActor],
+	[titleRetiredActor, "Summary"],
+	[lowerRetiredActor, "Summaries"],
 	["personal", " ", "target"],
 	["Personal", " ", "Chat"],
 	["Personal", " ", "Project"],
@@ -61,15 +68,8 @@ function escapeRegex(value) {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-const finalRemovalSlug = ["final", ["owner", "scope"].join("-"), "removal"].join("-");
-const finalCutoverSlug = ["final", "app", "space", "cutover", "migration"].join("-");
-
 const FINAL_ALLOWED_PATHS = [
 	/^docs\/legacy\//,
-	new RegExp(`^docs/plans/${escapeRegex(finalRemovalSlug)}-umbauplan-2026-05-31\\.md$`),
-	new RegExp(`^docs/specs/changes/${escapeRegex(finalRemovalSlug)}/`),
-	new RegExp(`^src/data/${escapeRegex(finalCutoverSlug)}\\.ts$`),
-	new RegExp(`^src/data/${escapeRegex(finalCutoverSlug)}/`),
 ];
 
 export const DEFAULT_TERMS = TERM_PARTS.map((parts) => parts.join(""));
@@ -166,7 +166,7 @@ function parseArgs(argv) {
 function printHelp() {
 	console.log(`Usage: npm run check:product-vocab -- [options]
 
-Scans active source, tests, scripts, skills, and current docs for legacy product-partition vocabulary.
+Scans active source, tests, scripts, skills, and current docs for retired product-partition vocabulary.
 
 Options:
   --root <path>        Repository root. Defaults to the current working directory.

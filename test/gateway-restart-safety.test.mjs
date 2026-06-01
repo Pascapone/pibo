@@ -104,8 +104,8 @@ describe('gateway status endpoint', () => {
     await channel.start({
       listSessionRuntimeStatuses: () => [],
       listRuns: () => [
-        { runId: 'run_active', kind: 'tool', ownerPiboSessionId: 'ps_1', status: 'running', completionPolicy: 'tracked', consumed: false, toolName: 'bash', createdAt: '2026-05-16T00:00:00.000Z', updatedAt: '2026-05-16T00:00:00.000Z' },
-        { runId: 'run_done', kind: 'tool', ownerPiboSessionId: 'ps_1', status: 'completed', completionPolicy: 'tracked', consumed: false, toolName: 'bash', createdAt: '2026-05-16T00:00:00.000Z', updatedAt: '2026-05-16T00:00:00.000Z', completedAt: '2026-05-16T00:00:01.000Z' },
+        { runId: 'run_active', kind: 'tool', controllerPiboSessionId: 'ps_1', status: 'running', completionPolicy: 'tracked', consumed: false, toolName: 'bash', createdAt: '2026-05-16T00:00:00.000Z', updatedAt: '2026-05-16T00:00:00.000Z' },
+        { runId: 'run_done', kind: 'tool', controllerPiboSessionId: 'ps_1', status: 'completed', completionPolicy: 'tracked', consumed: false, toolName: 'bash', createdAt: '2026-05-16T00:00:00.000Z', updatedAt: '2026-05-16T00:00:00.000Z', completedAt: '2026-05-16T00:00:01.000Z' },
       ],
       listSessions: () => { throw new Error('status endpoint should not scan all stored sessions'); },
       snapshotSignalTree: () => { throw new Error('status endpoint should not snapshot session trees'); },

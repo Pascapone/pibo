@@ -697,7 +697,7 @@ export type WorkflowErrorSummary = {
 };
 
 export type WorkflowLease = {
-  ownerId: string;
+  holderId: string;
   token: string;
   acquiredAt: string;
   expiresAt: string;

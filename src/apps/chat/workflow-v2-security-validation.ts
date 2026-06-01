@@ -60,7 +60,7 @@ export function validateNoInlineExecutableCode(
 		if (!INLINE_EXECUTABLE_FIELD_NAMES.has(normalizeWorkflowSecurityFieldName(key))) continue;
 		diagnostics.push({
 			code: "WorkflowSecurityError.inlineExecutableCode",
-			message: `${workflowDiagnosticOwnerLabel(target)} declares inline executable field '${key}', which is not allowed in Workflow UI Authoring V2.`,
+			message: `${workflowDiagnosticTargetLabel(target)} declares inline executable field '${key}', which is not allowed in Workflow UI Authoring V2.`,
 			severity: "error",
 			path: `${path}.${key}`,
 			...target,
@@ -79,7 +79,7 @@ export function validateNoHiddenLlmCoercion(
 		if (!HIDDEN_LLM_COERCION_FIELD_NAMES.has(normalizeWorkflowSecurityFieldName(key))) continue;
 		diagnostics.push({
 			code: "WorkflowSecurityError.hiddenLlmCoercion",
-			message: `${workflowDiagnosticOwnerLabel(target)} declares hidden LLM coercion field '${key}', which is not allowed in Workflow UI Authoring V2.`,
+			message: `${workflowDiagnosticTargetLabel(target)} declares hidden LLM coercion field '${key}', which is not allowed in Workflow UI Authoring V2.`,
 			severity: "error",
 			path: `${path}.${key}`,
 			...target,
@@ -90,7 +90,7 @@ export function validateNoHiddenLlmCoercion(
 	if (kind === "llm" || kind === "llmadapter" || kind === "llmcoercion") {
 		diagnostics.push({
 			code: "WorkflowSecurityError.hiddenLlmCoercion",
-			message: `${workflowDiagnosticOwnerLabel(target)} uses LLM coercion kind '${value.kind}', which is not allowed in Workflow UI Authoring V2.`,
+			message: `${workflowDiagnosticTargetLabel(target)} uses LLM coercion kind '${value.kind}', which is not allowed in Workflow UI Authoring V2.`,
 			severity: "error",
 			path: `${path}.kind`,
 			...target,
@@ -99,7 +99,7 @@ export function validateNoHiddenLlmCoercion(
 	}
 }
 
-function workflowDiagnosticOwnerLabel(target: WorkflowSecurityDiagnosticTarget): string {
+function workflowDiagnosticTargetLabel(target: WorkflowSecurityDiagnosticTarget): string {
 	if (target.nodeId) return `Workflow node '${target.nodeId}'`;
 	if (target.edgeId) return `Workflow edge '${target.edgeId}'`;
 	return "Workflow definition";

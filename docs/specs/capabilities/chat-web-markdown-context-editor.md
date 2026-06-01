@@ -1,8 +1,8 @@
 # Spec: Chat Web Markdown Context Editor
 
-**Status:** Draft  
-**Created:** 2026-05-11  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code  
+**Status:** Draft
+**Created:** 2026-05-11
+**Controller / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code
 **Related docs:** [Chat Web Context Area](./chat-web-context-area.md), [Context Files](./context-files.md), [Chat Web Safe Content Rendering](./chat-web-safe-content-rendering.md)
 
 ## Why

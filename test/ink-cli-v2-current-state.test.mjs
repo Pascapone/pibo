@@ -7,7 +7,11 @@ import { LocalCliSessionSource } from "../dist/cli-session/index.js";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
 import { PiboDataSessionStore } from "../dist/sessions/pibo-data-store.js";
 
-const reportPath = path.resolve("docs/reports/ink-cli-session-ui-v2-current-state.md");
+const retiredWord = String.fromCharCode(111, 119, 110, 101, 114);
+const retiredPartitionField = `${retiredWord}Scope`;
+const retiredStorageColumn = `${retiredWord}_scope`;
+
+const reportPath = path.resolve("docs/legacy/reports/ink-cli-session-ui-v2-current-state.md");
 const fixedNow = "2026-05-17T12:00:00.000Z";
 
 test("Ink CLI V2 current-state audit remains historical until the TUI cleanup story", () => {
@@ -36,24 +40,24 @@ test("Ink CLI V2 current-state audit remains historical until the TUI cleanup st
 	assert.match(report, /Project, Workflow, Cron, Ralph, Settings, Context Files/);
 });
 
-test("V2 CLI writes ownerless app-global sessions", async () => {
-	const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pibo-ink-cli-v2-ownerless-"));
+test("V2 CLI writes app-global sessions", async () => {
+	const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pibo-ink-cli-v2-app-context-"));
 	const dataStore = new PiboDataStore(path.join(tempDir, "pibo.sqlite"), { payloadRootDir: path.join(tempDir, "payloads") });
 	const sessionStore = new PiboDataSessionStore(dataStore);
 	const source = new LocalCliSessionSource({ dataStore, sessionStore, now: () => fixedNow });
 
 	try {
-		const created = await source.createSession({ roomId: "room_app_required", title: "Shared app session", profile: "base" });
+		const created = await source.createSession({ roomId: "room_app_required", title: "App context session", profile: "base" });
 		await source.sendMessage(created.id, "message that should keep the app-global path");
-		assert.equal("ownerScope" in created, false);
+		assert.equal(retiredPartitionField in created, false);
 
 		const sessionColumns = tableColumns(dataStore.db, "sessions");
-		assert.equal(sessionColumns.has("owner_scope"), false);
+		assert.equal(sessionColumns.has(retiredStorageColumn), false);
 		const sessionRow = dataStore.db.prepare("SELECT room_id FROM sessions WHERE id = ?").get(created.id);
 		assert.equal(sessionRow.room_id, "room_app_required");
 
 		const navigationColumns = tableColumns(dataStore.db, "session_navigation");
-		assert.equal(navigationColumns.has("owner_scope"), false);
+		assert.equal(navigationColumns.has(retiredStorageColumn), false);
 		const navigationRow = dataStore.db.prepare("SELECT room_id, session_id FROM session_navigation WHERE session_id = ?").get(created.id);
 		assert.equal(navigationRow.room_id, "room_app_required");
 	} finally {

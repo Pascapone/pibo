@@ -49,7 +49,7 @@ function createControlledContext(options = {}) {
 
 function createSuccessfulRelease(recorder) {
 	return async (paths, identity, options = {}) => {
-		recorder.push({ paths, identity, leaseId: options.leaseId, lockOwner: options.lockOptions?.owner });
+		recorder.push({ paths, identity, leaseId: options.leaseId, lockHolder: options.lockOptions?.holder });
 		return {
 			released: true,
 			cleanupStatus: "success",
@@ -97,7 +97,7 @@ test("Ralph service releases browser leases after ok run completion", async () =
 	assert.equal(releases.length, 1);
 	assert.equal(releases[0].identity.workerId, "worker-a");
 	assert.equal(releases[0].leaseId, "lease-a");
-	assert.equal(releases[0].lockOwner, `ralph:${result.run.id}`);
+	assert.equal(releases[0].lockHolder, `ralph:${result.run.id}`);
 	assert.equal(result.run.status, "ok");
 	assert.equal(result.run.resources.cleanupState, "released");
 	assert.equal(result.run.resources.workerId, "worker-a");

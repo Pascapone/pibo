@@ -101,7 +101,7 @@
       "acceptanceCriteria": [
         "Default preview capture and preview persistence are disabled/unavailable unless an explicit service option enables bounded previews",
         "Preview read APIs return a typed unavailable/disabled result by default and never fall back to arbitrary raw provider payload reads",
-        "If a later explicit preview mode is enabled, saved previews include owner kind, owner id, byte size, truncation flag, volume-control flag, content type, preview text, createdAt, and payload_preview retention class",
+        "If a later explicit preview mode is enabled, saved previews include controller kind, controller id, byte size, truncation flag, volume-control flag, content type, preview text, createdAt, and payload_preview retention class",
         "Preview text, when enabled, is capped by a default byte limit and a hard maximum limit",
         "Tests prove disabled preview capture and reads return clear unavailable results",
         "Tests pass",

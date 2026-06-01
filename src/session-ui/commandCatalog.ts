@@ -48,7 +48,7 @@ export type SlashCommandBehaviorMatrixEntry = {
 export const CLI_ONLY_SLASH_COMMANDS: readonly SlashCommandDescriptor[] = [
 	{ id: "help", slash: "/help", description: "Show command help and keyboard controls.", group: "cli", support: "supported" },
 	{ id: "new", slash: "/new", description: "Create a new session in the active or selected room.", group: "navigation", support: "supported" },
-	{ id: "room", slash: "/room", description: "Select the active room in the shared app.", group: "navigation", support: "supported" },
+	{ id: "room", slash: "/room", description: "Select the active room in the app context.", group: "navigation", support: "supported" },
 	{ id: "session", slash: "/session", description: "Select a room, then open or create a session.", group: "navigation", support: "supported" },
 	{ id: "agent", slash: "/agent", description: "Select an existing agent/profile for the session.", group: "navigation", support: "supported" },
 	{ id: "profile", slash: "/profile", description: "Select an existing agent/profile for the session.", group: "navigation", support: "supported" },

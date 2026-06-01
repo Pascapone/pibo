@@ -17,7 +17,6 @@ const session = {
 	channel: "pibo.test",
 	kind: "chat",
 	profile: "test-profile",
-	ownerScope: "user:test",
 	metadata: { chatRoomId: "room_runtime_telemetry" },
 	createdAt: "2026-05-16T00:00:00.000Z",
 	updatedAt: "2026-05-16T00:00:00.000Z",

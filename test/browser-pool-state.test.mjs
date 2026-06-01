@@ -41,7 +41,7 @@ test("browser pool state writes and reads a complete round trip", async () => {
 			cdpUrl: "http://127.0.0.1:4831",
 			userDataDir: join(dir, "profile"),
 			activeLeaseId: "lease-1",
-			owner: "user:test",
+			holder: "user:test",
 			lastUsedAt: "2026-05-17T00:00:00.000Z",
 			idleExpiresAt: "2026-05-17T00:05:00.000Z",
 			state: "leased",
@@ -95,13 +95,13 @@ test("browser pool lock serializes a successful mutation", async () => {
 test("browser pool lock times out when another mutation holds it", async () => {
 	await withTempDir(async (dir) => {
 		const paths = browserPoolPaths(dir, identity);
-		const releaseHeldLock = withBrowserPoolLock(paths.lockPath, { timeoutMs: 200, owner: "holder" }, async () => {
+		const releaseHeldLock = withBrowserPoolLock(paths.lockPath, { timeoutMs: 200, holder: "holder" }, async () => {
 			await new Promise((resolve) => setTimeout(resolve, 150));
 		});
 		await new Promise((resolve) => setTimeout(resolve, 10));
 
 		await assert.rejects(
-			withBrowserPoolLock(paths.lockPath, { timeoutMs: 25, pollIntervalMs: 5, staleMs: 0, owner: "waiter" }, async () => undefined),
+			withBrowserPoolLock(paths.lockPath, { timeoutMs: 25, pollIntervalMs: 5, staleMs: 0, holder: "waiter" }, async () => undefined),
 			BrowserPoolLockTimeoutError,
 		);
 		await releaseHeldLock;
@@ -162,7 +162,7 @@ test("browser pool acquire reuses a healthy recorded CDP browser", async () => {
 
 		const result = await acquireBrowserPoolLease(paths, identity, {
 			leaseId: "lease-reuse",
-			owner: "user:test",
+			holder: "user:test",
 			isPidAlive: () => true,
 			checkCdpHealth: async () => ({ ok: true, browser: "Chrome/124.0.0.0" }),
 			startBrowser: async () => { throw new Error("must not start replacement"); },
@@ -174,7 +174,7 @@ test("browser pool acquire reuses a healthy recorded CDP browser", async () => {
 		const saved = await loadBrowserPoolState(paths.statePath, identity);
 		assert.equal(saved.state, "leased");
 		assert.equal(saved.activeLeaseId, "lease-reuse");
-		assert.equal(saved.owner, "user:test");
+		assert.equal(saved.holder, "user:test");
 	});
 });
 
@@ -278,7 +278,7 @@ test("browser pool acquire fails clearly when a one-lane pool is busy", async ()
 			cdpUrl: "http://127.0.0.1:4831",
 			userDataDir: join(dir, "profile"),
 			activeLeaseId: "lease-a",
-			owner: "owner-a",
+			holder: "holder-a",
 			idleExpiresAt: "2026-05-17T00:10:00.000Z",
 			state: "leased",
 		});
@@ -407,7 +407,7 @@ test("browser pool release closes page targets through bounded CDP cleanup", asy
 				userDataDir: join(dir, "profile"),
 				activeLeaseId: "lease-a",
 				activeLeaseCount: 1,
-				owner: "owner-a",
+				holder: "holder-a",
 				state: "leased",
 			});
 
@@ -426,7 +426,7 @@ test("browser pool release closes page targets through bounded CDP cleanup", asy
 			assert.equal(saved.state, "ready");
 			assert.equal(saved.activeLeaseId, undefined);
 			assert.equal(saved.activeLeaseCount, 0);
-			assert.equal(saved.owner, undefined);
+			assert.equal(saved.holder, undefined);
 			assert.equal(saved.cleanupStatus, "success");
 			assert.equal(saved.lastError, undefined);
 			assert.equal(saved.lastUsedAt, "2026-05-17T00:30:00.000Z");
@@ -459,7 +459,7 @@ test("browser pool release clears the lease and records CDP cleanup failure", as
 				userDataDir: join(dir, "profile"),
 				activeLeaseId: "lease-a",
 				activeLeaseCount: 1,
-				owner: "owner-a",
+				holder: "holder-a",
 				state: "leased",
 			});
 
@@ -495,7 +495,7 @@ test("browser pool release after browser process exit clears lease state and rec
 			userDataDir: join(dir, "profile"),
 			activeLeaseId: "lease-a",
 			activeLeaseCount: 1,
-			owner: "owner-a",
+			holder: "holder-a",
 			state: "leased",
 		});
 
@@ -511,7 +511,7 @@ test("browser pool release after browser process exit clears lease state and rec
 		assert.equal(saved.state, "stale");
 		assert.equal(saved.activeLeaseId, undefined);
 		assert.equal(saved.activeLeaseCount, 0);
-		assert.equal(saved.owner, undefined);
+		assert.equal(saved.holder, undefined);
 		assert.equal(saved.cleanupStatus, "skipped");
 		assert.match(saved.lastError, /pid 4321 is not alive/);
 	});
@@ -573,7 +573,7 @@ test("browser pool reap skips active and not-yet-idle pools", async () => {
 			userDataDir: join(dir, "profile"),
 			activeLeaseId: "lease-a",
 			activeLeaseCount: 1,
-			owner: "owner-a",
+			holder: "holder-a",
 			lastUsedAt: "2026-05-17T00:00:00.000Z",
 			idleExpiresAt: "2026-05-17T01:00:00.000Z",
 			state: "leased",

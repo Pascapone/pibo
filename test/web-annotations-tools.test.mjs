@@ -122,7 +122,7 @@ test("selected profile exposes Web Annotation tools during runtime assembly", as
 	}
 });
 
-test("annotation list and get tools derive shared app/session from runtime context and bound output", async () => {
+test("annotation list and get tools derive app context/session from runtime context and bound output", async () => {
 	const store = new WebAnnotationStore({ path: ":memory:" });
 	try {
 		store.createAnnotation(createAnnotationInput({ id: "ann_visible", note: "v".repeat(400) }), new Date("2026-05-16T10:00:00.000Z"));
@@ -148,7 +148,7 @@ test("annotation list and get tools derive shared app/session from runtime conte
 	}
 });
 
-test("annotation lifecycle tools enforce valid terminal transitions with shared app access", async () => {
+test("annotation lifecycle tools enforce valid terminal transitions with app context access", async () => {
 	const store = new WebAnnotationStore({ path: ":memory:" });
 	try {
 		store.createAnnotation(createAnnotationInput({ id: "ann_lifecycle" }), new Date("2026-05-16T10:00:00.000Z"));

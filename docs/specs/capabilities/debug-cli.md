@@ -1,8 +1,8 @@
 # Spec: Debug CLI
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage  
+**Status:** Draft
+**Created:** 2026-05-10
+**Controller / Source:** Scheduled Pibo Source Specs Coverage
 **Related docs:** `GLOSSARY.md`, [Pibo Session Routing](./pibo-session-routing.md), [Chat Web Rooms and Event Streams](./chat-web-rooms-and-event-streams.md), [Yielded Run Control](./yielded-run-control.md), [Runtime Observability Telemetry](./runtime-observability-telemetry.md)
 
 ## Why
@@ -26,7 +26,7 @@ Automated coverage lives in `test/debug-cli.test.mjs` and asserts progressive he
 ### In Scope
 
 - `pibo debug` root discovery and subcommand discovery.
-- Local store discovery for Pibo-owned SQLite stores.
+- Local store discovery for Pibo-managed SQLite stores.
 - Read-only table, schema, and SQL query inspection.
 - Pibo Session inspection by id or Chat Web URL.
 - Chat Web trace reconstruction and consistency checks.
@@ -221,9 +221,9 @@ The Debug CLI MUST list queued jobs, list dead-letter jobs, and replay a dead jo
 - THEN the job appears as pending work again
 - AND it no longer appears in the dead-letter list.
 
-### Requirement: Durable yielded runs are inspectable by owner session or id
+### Requirement: Durable yielded runs are inspectable by controller session or id
 
-The Debug CLI MUST expose durable yielded-run records without using agent-facing run-control ownership checks.
+The Debug CLI MUST expose durable yielded-run records without using agent-facing run-control stewardship checks.
 
 #### Current
 
@@ -231,7 +231,7 @@ The Debug CLI MUST expose durable yielded-run records without using agent-facing
 
 #### Acceptance
 
-- List output includes run id, owner Pibo Session id, status, tool name, completion policy, consumed flag, update time, and summary.
+- List output includes run id, controller Pibo Session id, status, tool name, completion policy, consumed flag, update time, and summary.
 - Inspect output can include stored result or error data in JSON.
 - Unknown run ids fail clearly.
 
@@ -239,7 +239,7 @@ The Debug CLI MUST expose durable yielded-run records without using agent-facing
 
 - GIVEN a completed yielded run exists in the reliability store
 - WHEN an operator runs `pibo debug runs inspect <run-id> --json`
-- THEN the JSON result includes the run id, owner Pibo Session id, status, and stored terminal result.
+- THEN the JSON result includes the run id, controller Pibo Session id, status, and stored terminal result.
 
 ### Requirement: Live signals require an explicit gateway URL
 

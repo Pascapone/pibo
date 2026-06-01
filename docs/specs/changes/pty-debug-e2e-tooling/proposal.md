@@ -1,8 +1,8 @@
 # Proposal: PTY Debug and E2E Tooling
 
-**Status:** Implemented  
-**Created:** 2026-05-16  
-**Updated:** 2026-05-17  
+**Status:** Implemented
+**Created:** 2026-05-16
+**Updated:** 2026-05-17
 **Related docs:** `docs/specs/capabilities/cli-pty-validation.md`
 
 ## Summary

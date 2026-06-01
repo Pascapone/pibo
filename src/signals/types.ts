@@ -155,7 +155,7 @@ export type PiboSignalInput =
 	| { type: "session_disposed"; piboSessionId: string; reason?: string }
 	| { type: "session_processing_changed"; piboSessionId: string; processing: boolean; queuedMessages: number }
 	| { type: "run_changed"; run: PiboRunSnapshot; previousStatus?: PiboRunStatus; reason?: string }
-	| { type: "run_removed"; runId: string; ownerPiboSessionId: string }
+	| { type: "run_removed"; runId: string; controllerPiboSessionId: string }
 	| { type: "queue_changed"; piboSessionId: string; queuedMessages: number }
 	| { type: "recovery"; piboSessionId: string; reason: string }
 	| { type: string; [key: string]: unknown };

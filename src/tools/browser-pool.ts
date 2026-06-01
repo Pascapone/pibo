@@ -19,7 +19,7 @@ export interface BrowserPoolState {
 	userDataDir?: string;
 	activeLeaseId?: string;
 	activeLeaseCount?: number;
-	owner?: string;
+	holder?: string;
 	lastUsedAt?: string;
 	idleExpiresAt?: string;
 	state: BrowserPoolLifecycleState;
@@ -42,7 +42,7 @@ export interface BrowserPoolLockOptions {
 	timeoutMs?: number;
 	pollIntervalMs?: number;
 	staleMs?: number;
-	owner?: string;
+	holder?: string;
 }
 
 export interface BrowserPoolStateLoadOptions extends BrowserPoolIdentity {
@@ -81,7 +81,7 @@ export interface BrowserPoolStartedBrowser {
 }
 
 export interface BrowserPoolAcquireOptions {
-	owner?: string;
+	holder?: string;
 	leaseId?: string;
 	idleTimeoutMs?: number;
 	cdpTimeoutMs?: number;
@@ -236,7 +236,7 @@ export async function withBrowserPoolLock<T>(lockPath: string, options: BrowserP
 	const timeoutMs = options.timeoutMs ?? DEFAULT_LOCK_TIMEOUT_MS;
 	const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_LOCK_POLL_INTERVAL_MS;
 	const staleMs = options.staleMs ?? DEFAULT_LOCK_STALE_MS;
-	const owner = options.owner ?? `${process.pid}`;
+	const holder = options.holder ?? `${process.pid}`;
 	const startedAt = Date.now();
 
 	while (true) {
@@ -244,7 +244,7 @@ export async function withBrowserPoolLock<T>(lockPath: string, options: BrowserP
 			await mkdir(dirname(lockPath), { recursive: true });
 			const handle = await open(lockPath, "wx");
 			try {
-				await handle.writeFile(JSON.stringify({ owner, pid: process.pid, createdAt: new Date().toISOString() }), "utf8");
+				await handle.writeFile(JSON.stringify({ holder, pid: process.pid, createdAt: new Date().toISOString() }), "utf8");
 			} finally {
 				await handle.close();
 			}
@@ -271,7 +271,7 @@ export async function mutateBrowserPoolState<T>(
 	mutation: (state: BrowserPoolState) => Promise<{ state: BrowserPoolState; result: T }>,
 	lockOptions: BrowserPoolLockOptions = {},
 ): Promise<T> {
-	return withBrowserPoolLock(paths.lockPath, { ...lockOptions, owner: lockOptions.owner ?? kind }, async () => {
+	return withBrowserPoolLock(paths.lockPath, { ...lockOptions, holder: lockOptions.holder ?? kind }, async () => {
 		const current = await loadBrowserPoolState(paths.statePath, identity);
 		const next = await mutation(current);
 		await saveBrowserPoolState(paths.statePath, next.state);
@@ -354,7 +354,7 @@ export async function acquireBrowserPoolLease(
 				state: "leased" as const,
 				activeLeaseId: leaseId,
 				activeLeaseCount: 1,
-				owner: options.owner,
+				holder: options.holder,
 				lastUsedAt,
 				idleExpiresAt,
 				cleanupStatus: "not-attempted" as const,
@@ -371,7 +371,7 @@ export async function acquireBrowserPoolLease(
 			state: current.state === "dirty" ? "dirty" as const : "stale" as const,
 			activeLeaseId: undefined,
 			activeLeaseCount: 0,
-			owner: undefined,
+			holder: undefined,
 			lastUsedAt,
 			idleExpiresAt: undefined,
 			lastError: reusable.reason,
@@ -394,7 +394,7 @@ export async function acquireBrowserPoolLease(
 				userDataDir: started.userDataDir,
 				activeLeaseId: leaseId,
 				activeLeaseCount: 1,
-				owner: options.owner,
+				holder: options.holder,
 				lastUsedAt,
 				idleExpiresAt,
 				state: "leased" as const,
@@ -433,7 +433,7 @@ export async function releaseBrowserPoolLease(
 				...current,
 				activeLeaseId: undefined,
 				activeLeaseCount: 0,
-				owner: undefined,
+				holder: undefined,
 				lastUsedAt,
 				cleanupStatus: "skipped" as const,
 				lastError: "No active browser pool lease to release",
@@ -466,7 +466,7 @@ export async function releaseBrowserPoolLease(
 			state: nextLifecycleState,
 			activeLeaseId: undefined,
 			activeLeaseCount: 0,
-			owner: undefined,
+			holder: undefined,
 			lastUsedAt,
 			idleExpiresAt: nextLifecycleState === "ready" ? idleExpiresAt : undefined,
 			cleanupStatus: cleanup.status,
@@ -587,7 +587,7 @@ export function normalizeBrowserPoolState(value: unknown, identity: BrowserPoolI
 		userDataDir: readOptionalString(record.userDataDir, "userDataDir"),
 		activeLeaseId: readOptionalString(record.activeLeaseId, "activeLeaseId"),
 		activeLeaseCount: readOptionalNonNegativeInteger(record.activeLeaseCount, "activeLeaseCount"),
-		owner: readOptionalString(record.owner, "owner"),
+		holder: readOptionalString(record.holder, "holder"),
 		lastUsedAt: readOptionalString(record.lastUsedAt, "lastUsedAt"),
 		idleExpiresAt: readOptionalString(record.idleExpiresAt, "idleExpiresAt"),
 		state,
@@ -599,9 +599,9 @@ export function normalizeBrowserPoolState(value: unknown, identity: BrowserPoolI
 function activeLeaseBusyReason(state: BrowserPoolState, requestedLeaseId: string, now: Date): string | undefined {
 	if (state.state !== "leased" || !state.activeLeaseId || state.activeLeaseId === requestedLeaseId) return undefined;
 	if (leaseExpired(state.idleExpiresAt, now)) return undefined;
-	const owner = state.owner ? ` owned by ${state.owner}` : "";
+	const holder = state.holder ? ` owned by ${state.holder}` : "";
 	const until = state.idleExpiresAt ? ` until ${state.idleExpiresAt}` : "";
-	return `pool-exhausted: browser pool ${state.poolId} is already leased by ${state.activeLeaseId}${owner}${until}`;
+	return `pool-exhausted: browser pool ${state.poolId} is already leased by ${state.activeLeaseId}${holder}${until}`;
 }
 
 function skippedReapResult(state: BrowserPoolState, reason: string): BrowserPoolReapResult {

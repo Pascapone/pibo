@@ -40,10 +40,6 @@ export async function runDataCli(argv: string[]): Promise<void> {
 		else printInventory(inventory);
 		return;
 	}
-	if (args[0] === "final-cutover") {
-		await runFinalCutoverCommand(args.slice(1));
-		return;
-	}
 	if (args[0] === "migrate" && args[1] === "sessions-to-v2") {
 		const json = args.includes("--json");
 		const root = optionValue(args, "--root") ?? process.env.PIBO_HOME;
@@ -221,26 +217,6 @@ function printSessionMigrationReport(report: SessionMigrationReport): void {
 	console.log(`skipped\t${report.skipped}`);
 }
 
-async function runFinalCutoverCommand(args: string[]): Promise<void> {
-	if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
-		printFinalCutoverHelp();
-		return;
-	}
-	const command = args[0];
-	if (command !== "inspect" && command !== "dry-run" && command !== "apply") {
-		throw new Error(`Unknown pibo data final-cutover command "${command}". Run pibo data final-cutover --help.`);
-	}
-	const { formatFinalAppSpaceCutoverReport, inspectFinalAppSpaceCutoverMigration } = await import("./final-app-space-cutover-migration.js");
-	const json = args.includes("--json");
-	const report = inspectFinalAppSpaceCutoverMigration({ mode: command, root: optionValue(args, "--root"), backupPath: optionValue(args, "--backup") });
-	if (json) console.log(JSON.stringify(report, null, 2));
-	else console.log(formatFinalAppSpaceCutoverReport(report));
-}
-
-function formatCounts(counts: Record<string, number>): string {
-	return Object.entries(counts).map(([name, count]) => `${name}:${count}`).join(",") || "-";
-}
-
 function quoteIdent(name: string): string {
 	return `"${name.replaceAll('"', '""')}"`;
 }
@@ -264,7 +240,6 @@ function printDataHelp(): void {
 
 Commands:
   inventory           Read-only row counts, sizes, WAL sizes, and integrity checks; legacy-* rows are archived stores
-  final-cutover       Inspect or dry-run the final app-space SQLite cutover against an isolated root
   migrate sessions-to-v2  Import an explicit legacy pibo-sessions.sqlite into pibo.sqlite idempotently
 
 Options:
@@ -274,31 +249,7 @@ Options:
 
 Next:
   pibo data inventory --json
-  pibo data final-cutover --help
   pibo data migrate sessions-to-v2 --from /path/to/pibo-sessions.sqlite --json
-`);
-}
-
-function printFinalCutoverHelp(): void {
-	console.log(`pibo data final-cutover - inspect isolated SQLite homes before final app-space cutover
-
-Commands:
-  inspect   Read-only affected-file, table, column, index, row-count, legacy-value, and conflict report
-  dry-run   Read-only planned table rebuild, merge, rename, and blocker report; writes nothing
-  apply     Backup-gated transactional apply for Docker fixture or sandbox roots only
-
-Options:
-  --json        Print machine-readable JSON
-  --root DIR    Required unless PIBO_MIGRATION_SANDBOX_HOME points at a Docker sandbox or temporary fixture root
-  --backup DIR  Required by apply; verified backup directory containing copies of existing affected DB files
-
-Safety:
-  Refuses /root/.pibo and paths under it. This command is for Docker sandboxes and fixture roots only.
-
-Next:
-  pibo data final-cutover inspect --root /workspace/.pibo/ralph-migration-sandbox --json
-  pibo data final-cutover dry-run --root /workspace/.pibo/ralph-migration-sandbox --json
-  pibo data final-cutover apply --root /tmp/pibo-fixture-home --backup /tmp/pibo-fixture-backup --json
 `);
 }
 

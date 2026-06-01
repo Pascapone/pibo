@@ -1,8 +1,8 @@
 # Spec: Chat Web Output Compaction and Stream Projection
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code  
+**Status:** Draft
+**Created:** 2026-05-10
+**Controller / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code
 **Related docs:** [Chat Web Rooms and Event Streams](./chat-web-rooms-and-event-streams.md), [Pibo Data Store and Chat Ingestion](./pibo-data-store-and-ingestion.md), [Chat Web Trace and Terminal View](./chat-web-trace-and-terminal-view.md)
 
 ## Why
@@ -34,7 +34,7 @@ The current implementation uses `OutputCompactor` and `output-event-policy` in `
 
 - Room membership, unread counts, and SSE cursor access control — covered by the Chat Web Rooms and Event Streams spec.
 - Trace row ordering and terminal UI rendering — covered by the Chat Web Trace and Terminal View spec.
-- The canonical Pibo output event type definitions — owned by the routed runtime and event-core specs.
+- The canonical Pibo output event type definitions — managed by the routed runtime and event-core specs.
 - Pi transcript persistence and Pi session compaction prompts.
 
 ## Requirements

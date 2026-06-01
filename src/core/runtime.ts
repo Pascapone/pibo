@@ -44,7 +44,7 @@ import { createPiboCompactionPromptExtension } from "./compaction-prompt.js";
 import { getPiPackageRuntimeOptions } from "../pi-packages/runtime.js";
 import { getDefaultPiboWorkspace } from "./workspace.js";
 import { DEFAULT_USER_TIMEZONE } from "./user-settings.js";
-import { SHARED_APP_CONTEXT } from "../shared-app.js";
+import { PIBO_APP_CONTEXT } from "../app-context.js";
 import { createRuntimeToolDefinition, type PiboRuntimeToolController } from "../tools/runtime/tool.js";
 import { RuntimeSessionRegistry } from "../tools/runtime/registry.js";
 import { compactValidationToolResultForContext } from "./test-output-compaction.js";
@@ -112,7 +112,7 @@ function createSessionContextFile(context: PiboRuntimeSessionContext | undefined
 		content: [
 			"# Pibo Runtime Context",
 			"",
-			`- App context: ${SHARED_APP_CONTEXT.id}`,
+			`- App context: ${PIBO_APP_CONTEXT.id}`,
 			`- Pibo Session ID: ${piboSessionId}`,
 			`- Pibo Room ID: ${piboRoomId}`,
 			`- User timezone: ${timezone}`,
@@ -401,7 +401,7 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 		if (localRuntimeRegistry) {
 			const originalDispose = created.session.dispose.bind(created.session);
 			created.session.dispose = () => {
-				void localRuntimeRegistry.closeOwnerSessions(profile.sessionId ?? "local", { force: true });
+				void localRuntimeRegistry.closeControllerSessions(profile.sessionId ?? "local", { force: true });
 				originalDispose();
 			};
 		}

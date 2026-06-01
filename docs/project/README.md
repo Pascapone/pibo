@@ -17,4 +17,4 @@ Current canonical docs:
 - [Web Annotations V1](./web-annotations.md) — Chat Web, CDP overlay, annotation attachment, lifecycle, privacy, and troubleshooting guide.
 - [Web Annotations Rollout Checklist](./web-annotations-rollout-checklist.md) — worker validation, browser checks, security gates, and deployment gates.
 
-Future canonical docs should be added here with clear ownership and current-state wording.
+Future canonical docs should be added here with clear stewardship and current-state wording.

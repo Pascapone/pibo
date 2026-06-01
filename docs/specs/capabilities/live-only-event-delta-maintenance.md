@@ -1,8 +1,8 @@
 # Spec: Live-Only Event Delta Maintenance
 
-**Status:** Draft  
-**Created:** 2026-05-11  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code  
+**Status:** Draft
+**Created:** 2026-05-11
+**Controller / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code
 **Related docs:** [Debug CLI](./debug-cli.md), [Chat Web Output Compaction and Stream Projection](./chat-web-output-compaction-and-stream-projection.md), [Reliable Event Core](./reliable-event-core.md), [Pibo Data Store and Chat Ingestion](./pibo-data-store-and-ingestion.md)
 
 ## Why

@@ -1,8 +1,8 @@
 # Spec: Pibo Pi Packages
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Owner / Source:** Current Pibo codebase  
+**Status:** Draft
+**Created:** 2026-05-10
+**Controller / Source:** Current Pibo codebase
 **Related docs:** `GLOSSARY.md`, `docs/specs/README.md`, `docs/specs/capabilities/custom-agents.md`
 
 ## Why

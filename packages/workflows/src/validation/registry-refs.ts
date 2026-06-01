@@ -30,7 +30,7 @@ export function validateWorkflowEdgeGuardRef(
   validateWorkflowGuardRef(edge.guard, diagnostics, options, {
     edgeId,
     path: `$.edges.${edgeId}.guard.handler`,
-    ownerLabel: `Workflow edge '${edgeId}'`,
+    diagnosticLabel: `Workflow edge '${edgeId}'`,
   });
 }
 
@@ -38,12 +38,12 @@ export function validateWorkflowGuardRef(
   guard: GuardRef,
   diagnostics: WorkflowDiagnostic[],
   options: WorkflowValidationOptions,
-  target: Pick<WorkflowDiagnostic, "edgeId"> & { path: string; ownerLabel: string },
+  target: Pick<WorkflowDiagnostic, "edgeId"> & { path: string; diagnosticLabel: string },
 ): void {
   if (!isRecord(guard) || typeof guard.handler !== "string" || guard.handler.length === 0) {
     diagnostics.push({
       code: "WorkflowGraphError.invalidGuardRef",
-      message: `${target.ownerLabel} must use a registered guard handler ref.`,
+      message: `${target.diagnosticLabel} must use a registered guard handler ref.`,
       severity: "error",
       edgeId: target.edgeId,
       path: target.path,
@@ -55,7 +55,7 @@ export function validateWorkflowGuardRef(
   if (guard.priority !== undefined && (!Number.isInteger(guard.priority) || guard.priority < 0)) {
     diagnostics.push({
       code: "WorkflowGraphError.invalidGuardPriority",
-      message: `${target.ownerLabel} guard priority must be a non-negative integer when declared.`,
+      message: `${target.diagnosticLabel} guard priority must be a non-negative integer when declared.`,
       severity: "error",
       edgeId: target.edgeId,
       path: target.path.replace(/\.handler$/, ".priority"),
@@ -69,7 +69,7 @@ export function validateWorkflowGuardRef(
 
   diagnostics.push({
     code: "WorkflowGraphError.unknownGuardRef",
-    message: `${target.ownerLabel} references guard '${guard.handler}', but it is not registered in the Workflow Registry.`,
+    message: `${target.diagnosticLabel} references guard '${guard.handler}', but it is not registered in the Workflow Registry.`,
     severity: "error",
     edgeId: target.edgeId,
     path: target.path,
@@ -283,7 +283,7 @@ export function validateWorkflowAdapterNodeRef(
   validateRegisteredAdapterExists(node.handler, diagnostics, options, {
     nodeId,
     path: `$.nodes.${nodeId}.handler.id`,
-    ownerLabel: `Workflow adapter node '${nodeId}'`,
+    diagnosticLabel: `Workflow adapter node '${nodeId}'`,
   });
 }
 
@@ -348,7 +348,7 @@ export function validateRegisteredAdapterExists(
   ref: AdapterRef,
   diagnostics: WorkflowDiagnostic[],
   options: WorkflowValidationOptions,
-  target: Pick<WorkflowDiagnostic, "nodeId" | "edgeId"> & { path: string; ownerLabel: string },
+  target: Pick<WorkflowDiagnostic, "nodeId" | "edgeId"> & { path: string; diagnosticLabel: string },
 ): void {
   if (!options.registry?.adapters || options.registry.adapters.has(ref.id)) {
     return;
@@ -356,7 +356,7 @@ export function validateRegisteredAdapterExists(
 
   diagnostics.push({
     code: "WorkflowGraphError.unknownAdapterRef",
-    message: `${target.ownerLabel} references adapter '${ref.id}', but it is not registered in the Workflow Registry.`,
+    message: `${target.diagnosticLabel} references adapter '${ref.id}', but it is not registered in the Workflow Registry.`,
     severity: "error",
     nodeId: target.nodeId,
     edgeId: target.edgeId,

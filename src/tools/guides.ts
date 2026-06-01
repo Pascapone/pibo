@@ -173,7 +173,7 @@ Treat profiles, saved states, auth vaults, cookies, and headers as secrets. Do n
 Prefer isolated leases when more than one agent may use authenticated Chat Web:
 
 \`\`\`bash
-eval "$(pibo tools agent-browser lease acquire --app pibo-chat --owner "$USER")"
+eval "$(pibo tools agent-browser lease acquire --app pibo-chat --holder "$USER")"
 agent-browser open http://4788.192.168.0.204.sslip.io/apps/chat
 agent-browser snapshot -i
 \`\`\`
@@ -316,7 +316,7 @@ browser-use close --all
 For the Pibo Chat Web App, prefer an isolated authenticated lease when multiple agents may use the browser at the same time:
 
 \`\`\`bash
-eval "$(pibo tools browser-use lease acquire --app pibo-chat --owner "$USER")"
+eval "$(pibo tools browser-use lease acquire --app pibo-chat --holder "$USER")"
 browser-use state
 \`\`\`
 

@@ -1,8 +1,8 @@
 # Spec: MCP Registry Python Runtimes
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage  
+**Status:** Draft
+**Created:** 2026-05-10
+**Controller / Source:** Scheduled Pibo Source Specs Coverage
 **Related docs:** [MCP Server Integration](./mcp-server-integration.md), [Pibo Home and Workspace State](./pibo-home-and-workspace-state.md)
 
 ## Why
@@ -13,7 +13,7 @@ The current registry contains no bundled presets, but the code already defines t
 
 ## Goal
 
-Pibo SHALL install, inspect, configure, and remove registry-owned Python MCP runtimes in deterministic Pibo-home locations, and SHALL fail with actionable CLI errors when required runtime tools are unavailable.
+Pibo SHALL install, inspect, configure, and remove registry-managed Python MCP runtimes in deterministic Pibo-home locations, and SHALL fail with actionable CLI errors when required runtime tools are unavailable.
 
 ## Background / Current State
 
@@ -25,7 +25,7 @@ Pibo SHALL install, inspect, configure, and remove registry-owned Python MCP run
 
 ### In Scope
 
-- Runtime path resolution for registry-owned Python MCP servers.
+- Runtime path resolution for registry-managed Python MCP servers.
 - Doctor output for `uv`, requested Python version, virtual environment, and executable presence.
 - Installation through `uv venv` and `uv pip install`.
 - Optional post-install executable invocation.
@@ -131,7 +131,7 @@ If a registry entry declares post-install arguments, Pibo MUST run the installed
 
 #### Target
 
-Presets can perform package-owned initialization steps without requiring a separate manual command.
+Presets can perform package-managed initialization steps without requiring a separate manual command.
 
 #### Acceptance
 
@@ -181,7 +181,7 @@ For registry removal, `registryCommand()` calls `configCommand({ action: "remove
 
 #### Target
 
-A removed registry preset leaves no Pibo-owned virtual environment files behind, even if the runtime directory is already missing.
+A removed registry preset leaves no Pibo-managed virtual environment files behind, even if the runtime directory is already missing.
 
 #### Acceptance
 

@@ -1,10 +1,10 @@
 import type { PiboChannelContext } from "../channels/types.js";
 import type { PiboAuthSession } from "../auth/types.js";
-import type { PiboSharedAppContext } from "../shared-app.js";
+import type { PiboAppContext } from "../app-context.js";
 
 export type PiboWebSession = {
 	authSession: PiboAuthSession;
-	appContext: PiboSharedAppContext;
+	appContext: PiboAppContext;
 };
 
 export type PiboWebAppContext = {

@@ -4,7 +4,7 @@ import type { UserSkill } from "./types.js";
 import { createUserSkill, defaultUserSkillDir, parseSkillMd } from "./store.js";
 
 type ParsedSource = {
-  owner: string;
+  account: string;
   repo: string;
   path?: string; // e.g. "skills/frontend-design"
   skillName?: string;
@@ -13,59 +13,59 @@ type ParsedSource = {
 export function parseSkillUrl(url: string): ParsedSource | undefined {
   const trimmed = url.trim();
 
-  // skills.sh: https://skills.sh/{owner}/skills/{skill-name}
-  // skills.sh: https://skills.sh/{owner}/{repo}/{skill-name}
+  // skills.sh: https://skills.sh/{account}/skills/{skill-name}
+  // skills.sh: https://skills.sh/{account}/{repo}/{skill-name}
   if (trimmed.startsWith("https://skills.sh/")) {
     const rest = trimmed.slice("https://skills.sh/".length);
     const parts = rest.split("/").filter(Boolean);
     if (parts.length >= 3) {
-      // Format: {owner}/{repo}/{skill-name} (e.g. softaworks/agent-toolkit/writing-clearly)
-      const owner = parts[0];
+      // Format: {account}/{repo}/{skill-name} (e.g. softaworks/agent-toolkit/writing-clearly)
+      const account = parts[0];
       const repo = parts[1];
       const skillName = parts[2];
-      return { owner, repo, path: `skills/${skillName}`, skillName };
+      return { account, repo, path: `skills/${skillName}`, skillName };
     }
     if (parts.length >= 2 && parts[1] === "skills") {
-      const owner = parts[0];
+      const account = parts[0];
       const skillName = parts[2] ?? parts[0];
-      return { owner, repo: "skills", path: `skills/${skillName}`, skillName };
+      return { account, repo: "skills", path: `skills/${skillName}`, skillName };
     }
     if (parts.length === 2) {
-      // Format: {owner}/skills or {owner}/{repo}
+      // Format: {account}/skills or {account}/{repo}
       if (parts[1] === "skills") {
-        return { owner: parts[0], repo: "skills" };
+        return { account: parts[0], repo: "skills" };
       }
-      return { owner: parts[0], repo: parts[1] };
+      return { account: parts[0], repo: parts[1] };
     }
     if (parts.length === 1) {
-      return { owner: parts[0], repo: "skills" };
+      return { account: parts[0], repo: "skills" };
     }
   }
 
-  // GitHub tree URL: https://github.com/{owner}/{repo}/tree/{branch}/{path}
+  // GitHub tree URL: https://github.com/{account}/{repo}/tree/{branch}/{path}
   const githubTreeMatch = trimmed.match(/^https:\/\/github\.com\/([^\/]+)\/([^\/]+)\/tree\/[^\/]+\/(.+)$/);
   if (githubTreeMatch) {
-    const owner = githubTreeMatch[1];
+    const account = githubTreeMatch[1];
     const repo = githubTreeMatch[2];
     const path = githubTreeMatch[3];
     const skillName = path.split("/").pop() ?? repo;
-    return { owner, repo, path, skillName };
+    return { account, repo, path, skillName };
   }
 
-  // GitHub shorthand or repo URL: https://github.com/{owner}/{repo}
+  // GitHub shorthand or repo URL: https://github.com/{account}/{repo}
   const githubRepoMatch = trimmed.match(/^https:\/\/github\.com\/([^\/]+)\/([^\/]+)$/);
   if (githubRepoMatch) {
-    return { owner: githubRepoMatch[1], repo: githubRepoMatch[2] };
+    return { account: githubRepoMatch[1], repo: githubRepoMatch[2] };
   }
 
-  // Bare shorthand: {owner}/{repo} or {owner}/{repo}/{skill-path}
+  // Bare shorthand: {account}/{repo} or {account}/{repo}/{skill-path}
   const shorthandMatch = trimmed.match(/^([^\/\s]+)\/([^\/\s]+)(?:\/(.+))?$/);
   if (shorthandMatch && !trimmed.startsWith("http")) {
-    const owner = shorthandMatch[1];
+    const account = shorthandMatch[1];
     const repo = shorthandMatch[2];
     const path = shorthandMatch[3];
     const skillName = path?.split("/").pop() ?? repo;
-    return { owner, repo, path, skillName };
+    return { account, repo, path, skillName };
   }
 
   return undefined;
@@ -79,8 +79,8 @@ type GitHubContentItem = {
   url: string;
 };
 
-async function fetchGitHubContents(owner: string, repo: string, path: string): Promise<GitHubContentItem[]> {
-  const apiUrl = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodeURIComponent(path)}`;
+async function fetchGitHubContents(account: string, repo: string, path: string): Promise<GitHubContentItem[]> {
+  const apiUrl = `https://api.github.com/repos/${encodeURIComponent(account)}/${encodeURIComponent(repo)}/contents/${encodeURIComponent(path)}`;
   const response = await fetch(apiUrl, {
     headers: { Accept: "application/vnd.github.v3+json", "User-Agent": "pibo-skills-installer" },
   });
@@ -104,12 +104,12 @@ async function fetchGitHubFile(downloadUrl: string): Promise<Uint8Array> {
 }
 
 async function downloadDirectory(
-  owner: string,
+  account: string,
   repo: string,
   path: string,
   targetDir: string,
 ): Promise<void> {
-  const items = await fetchGitHubContents(owner, repo, path);
+  const items = await fetchGitHubContents(account, repo, path);
   for (const item of items) {
     const targetPath = join(targetDir, item.name);
     if (item.type === "file") {
@@ -119,7 +119,7 @@ async function downloadDirectory(
       writeFileSync(targetPath, content);
     } else if (item.type === "dir") {
       mkdirSync(targetPath, { recursive: true });
-      await downloadDirectory(owner, repo, item.path, targetPath);
+      await downloadDirectory(account, repo, item.path, targetPath);
     }
   }
 }
@@ -128,9 +128,9 @@ async function findSkillMdPath(items: GitHubContentItem[]): Promise<GitHubConten
   return items.find((item) => item.type === "file" && item.name.toLowerCase() === "skill.md");
 }
 
-async function findSkillDirectory(owner: string, repo: string, path?: string): Promise<{ path: string; skillName: string }> {
+async function findSkillDirectory(account: string, repo: string, path?: string): Promise<{ path: string; skillName: string }> {
   if (path) {
-    const items = await fetchGitHubContents(owner, repo, path);
+    const items = await fetchGitHubContents(account, repo, path);
     const skillMd = await findSkillMdPath(items);
     if (skillMd) {
       return { path, skillName: path.split("/").pop() ?? repo };
@@ -138,7 +138,7 @@ async function findSkillDirectory(owner: string, repo: string, path?: string): P
     // If no SKILL.md at this path, search subdirectories one level deep
     for (const item of items) {
       if (item.type === "dir") {
-        const subItems = await fetchGitHubContents(owner, repo, item.path).catch(() => []);
+        const subItems = await fetchGitHubContents(account, repo, item.path).catch(() => []);
         const subSkillMd = await findSkillMdPath(subItems);
         if (subSkillMd) {
           return { path: item.path, skillName: item.name };
@@ -150,7 +150,7 @@ async function findSkillDirectory(owner: string, repo: string, path?: string): P
   // Try common skill directories
   const candidates = ["skills", "skill", "src/skills", "agents/skills"];
   for (const candidate of candidates) {
-    const items = await fetchGitHubContents(owner, repo, candidate).catch(() => []);
+    const items = await fetchGitHubContents(account, repo, candidate).catch(() => []);
     const skillMd = await findSkillMdPath(items);
     if (skillMd) {
       return { path: candidate, skillName: candidate };
@@ -158,7 +158,7 @@ async function findSkillDirectory(owner: string, repo: string, path?: string): P
     // Search one level deep
     for (const item of items) {
       if (item.type === "dir") {
-        const subItems = await fetchGitHubContents(owner, repo, item.path).catch(() => []);
+        const subItems = await fetchGitHubContents(account, repo, item.path).catch(() => []);
         const subSkillMd = await findSkillMdPath(subItems);
         if (subSkillMd) {
           return { path: item.path, skillName: item.name };
@@ -168,13 +168,13 @@ async function findSkillDirectory(owner: string, repo: string, path?: string): P
   }
 
   // Search repository root for SKILL.md
-  const rootItems = await fetchGitHubContents(owner, repo, "").catch(() => []);
+  const rootItems = await fetchGitHubContents(account, repo, "").catch(() => []);
   const rootSkillMd = await findSkillMdPath(rootItems);
   if (rootSkillMd) {
     return { path: "", skillName: repo };
   }
 
-  throw new Error(`Could not find a SKILL.md in ${owner}/${repo}${path ? `/${path}` : ""}`);
+  throw new Error(`Could not find a SKILL.md in ${account}/${repo}${path ? `/${path}` : ""}`);
 }
 
 export async function installSkillFromUrl(url: string, cwd = process.cwd()): Promise<UserSkill> {
@@ -183,10 +183,10 @@ export async function installSkillFromUrl(url: string, cwd = process.cwd()): Pro
     throw new Error(`Unsupported skill URL format: ${url}`);
   }
 
-  const { owner, repo, path, skillName } = source;
+  const { account, repo, path, skillName } = source;
   const resolved = path
     ? { path, skillName: skillName ?? path.split("/").pop() ?? repo }
-    : await findSkillDirectory(owner, repo);
+    : await findSkillDirectory(account, repo);
 
   const targetName = resolved.skillName;
   const targetDir = join(defaultUserSkillDir(cwd), targetName);
@@ -198,7 +198,7 @@ export async function installSkillFromUrl(url: string, cwd = process.cwd()): Pro
   mkdirSync(targetDir, { recursive: true });
 
   try {
-    await downloadDirectory(owner, repo, resolved.path, targetDir);
+    await downloadDirectory(account, repo, resolved.path, targetDir);
   } catch (error) {
     // Clean up on failure
     try {

@@ -1,8 +1,8 @@
 # Coverage Analysis: Source Specs No-New-Capability Decision 2026-05-11
 
-**Status:** Draft  
-**Created:** 2026-05-11  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage; current workspace code  
+**Status:** Draft
+**Created:** 2026-05-11
+**Controller / Source:** Scheduled Pibo Source Specs Coverage; current workspace code
 **Related docs:** `GLOSSARY.md`, `AGENTS.md`, [Source Specs Coverage Checkpoint 2026-05-11](./source-specs-coverage-checkpoint-2026-05-11.md), [Direct Source Path Coverage Closure 2026-05-11](./direct-source-path-coverage-closure-2026-05-11.md), [Source Test Gap Priorities 2026-05-11](./source-test-gap-priorities-2026-05-11.md), [Spec Inventory Deduplication 2026-05-11](./spec-inventory-deduplication-2026-05-11.md)
 
 ## Why
@@ -13,7 +13,7 @@ The useful finding is negative: no current `src/` or checked-in `scripts/` path 
 
 ## Goal
 
-Future scheduled source-spec runs SHOULD create a new capability spec only when current source introduces a user-visible or operator-visible behavior that is not already owned by an existing spec; otherwise they SHOULD update the owning spec or write a short coverage decision instead of duplicating contracts.
+Future scheduled source-spec runs SHOULD create a new capability spec only when current source introduces a user-visible or operator-visible behavior that is not already managed by an existing spec; otherwise they SHOULD update the owning spec or write a short coverage decision instead of duplicating contracts.
 
 ## Scope
 
@@ -30,7 +30,7 @@ Future scheduled source-spec runs SHOULD create a new capability spec only when 
 - Source-code or test-code changes.
 - Docker worker setup, gateway restarts, browser checks, or external services.
 - Generated `dist/`, local `.pibo` state, worktrees, dependencies, and legacy documents as source of truth.
-- Creating component-level specs for implementation helpers already owned by broader behavior specs.
+- Creating component-level specs for implementation helpers already managed by broader behavior specs.
 
 ## Findings
 

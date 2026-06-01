@@ -2,14 +2,14 @@
 
 **Status:** Draft
 **Created:** 2026-05-10
-**Owner / Source:** Scheduled Pibo Source Specs Coverage; current workspace code
+**Controller / Source:** Scheduled Pibo Source Specs Coverage; current workspace code
 **Related docs:** [Yielded Run Control](./yielded-run-control.md), [Plugin Registry and Capability Catalog](./plugin-registry-and-capability-catalog.md), [Runtime Prompt and Compaction Configuration](./runtime-prompt-and-compaction.md)
 
 ## Why
 
 Agents often need to run exploratory Python or Node code, inspect live objects, and continue from partial failures without losing state. Shell commands are good for process-level work, but they force agents to rebuild interpreter state for each snippet and can waste context with repeated setup.
 
-Pibo exposes a profile-selectable `runtime` native tool that starts persistent Python or Node worker sessions owned by the current Pibo Session. The behavior must stay predictable, app-spaced, bounded by timeouts, and safe to use with yielded-run control.
+Pibo exposes a profile-selectable `runtime` native tool that starts persistent Python or Node worker sessions managed by the current Pibo Session. The behavior must stay predictable, app-spaced, bounded by timeouts, and safe to use with yielded-run control.
 
 ## Goal
 
@@ -19,7 +19,7 @@ Pibo MUST provide a profile-gated `runtime` tool for persistent Python and Node 
 
 The core plugin registers a native tool profile named `runtime` with `builtInPiboTool: "runtime"`. Runtime creation only materializes the Pi tool definition when the selected profile enables that tool and a runtime-tool controller is available.
 
-A `RuntimeSessionRegistry` owns in-memory runtime worker sessions. Each session has an owner Pibo Session ID, runtime kind, current working directory, process metadata, status, execution count, and bounded history. If no controller is supplied and the profile enables the runtime tool, `createPiboRuntime` creates a local registry and closes owner sessions when the Pi session is disposed.
+A `RuntimeSessionRegistry` owns in-memory runtime worker sessions. Each session has an controller Pibo Session ID, runtime kind, current working directory, process metadata, status, execution count, and bounded history. If no controller is supplied and the profile enables the runtime tool, `createPiboRuntime` creates a local registry and closes controller sessions when the Pi session is disposed.
 
 Worker backends currently support local Python (`python3`) and Node (`node`) subprocesses. Declared `docker` and `ssh` targets are accepted by the input type but return an unsupported-target error.
 
@@ -29,7 +29,7 @@ Worker backends currently support local Python (`python3`) and Node (`node`) sub
 
 - The `runtime` native tool as exposed to agent profiles.
 - Python and Node local worker behavior.
-- Runtime session ownership, default session selection, listing, interruption, and cleanup.
+- Runtime session stewardship, default session selection, listing, interruption, and cleanup.
 - Tool-result status and formatting semantics that agents observe.
 - Interaction with run-control as a yieldable tool.
 
@@ -68,11 +68,11 @@ Profiles that select `runtime` get an active `runtime` tool. Profiles that omit 
 
 ### Requirement: Exec auto-starts an app-spaced default session
 
-The tool MUST start a default runtime session for the owner when `exec` is called without a `sessionId`, and subsequent default calls of the same runtime kind MUST reuse the live owned session.
+The tool MUST start a default runtime session for the controller when `exec` is called without a `sessionId`, and subsequent default calls of the same runtime kind MUST reuse the live managed session.
 
 #### Current
 
-`RuntimeSessionRegistry.exec` calls `getOrStartDefault` when no `sessionId` is provided. Defaults are keyed by owner Pibo Session ID and runtime kind.
+`RuntimeSessionRegistry.exec` calls `getOrStartDefault` when no `sessionId` is provided. Defaults are keyed by controller Pibo Session ID and runtime kind.
 
 #### Target
 
@@ -81,15 +81,15 @@ Agents can begin with one `exec` call and keep state across later calls without 
 #### Acceptance
 
 - A first Python `exec` without `sessionId` returns `status: ok`, a `sessionId`, and `runtime: python` unless startup fails.
-- A later Python `exec` by the same owner can read variables created by the first call.
-- A different owner cannot read or list that session.
+- A later Python `exec` by the same controller can read variables created by the first call.
+- A different controller cannot read or list that session.
 
 #### Scenario: Preserve Python variable
 
-- GIVEN owner `A` calls `runtime.exec` with Python code `x = 1`
-- WHEN owner `A` calls `runtime.exec` again with Python code that evaluates `x + 1`
+- GIVEN controller `A` calls `runtime.exec` with Python code `x = 1`
+- WHEN controller `A` calls `runtime.exec` again with Python code that evaluates `x + 1`
 - THEN the result summary represents `2`
-- AND owner `B` receives `not_found` when using owner `A`'s `sessionId`
+- AND controller `B` receives `not_found` when using controller `A`'s `sessionId`
 
 ### Requirement: Runtime sessions preserve state after code errors
 
@@ -115,7 +115,7 @@ An exception in user code should be recoverable. Agents can inspect or continue 
 - WHEN code sets `globalThis.x = 1` and then throws an error
 - THEN the result status is `error`
 - AND a later exec can evaluate `x`
-- AND the session remains listed for the same owner
+- AND the session remains listed for the same controller
 
 ### Requirement: Outputs and value summaries are separated and bounded by action results
 
@@ -172,7 +172,7 @@ Agents can print arbitrary normal text from Python or Node snippets without brea
 
 ### Requirement: Inspect and vars read live runtime state without executing new user code blocks
 
-The tool MUST support `inspect` and `vars` actions for the selected owned runtime session.
+The tool MUST support `inspect` and `vars` actions for the selected managed runtime session.
 
 #### Current
 
@@ -186,12 +186,12 @@ Agents can examine live state before deciding what to run next.
 
 - `vars` omits private variables by default.
 - `inspect` of a function can return its signature when supported by the backend.
-- Missing or cross-owner sessions return `not_found` for inspect and vars.
+- Missing or cross-controller sessions return `not_found` for inspect and vars.
 
 #### Scenario: Inspect Python function
 
 - GIVEN a Python session defines `def f(a, b=1): return a + b`
-- WHEN the owner inspects expression `f` with `what: signature`
+- WHEN the controller inspects expression `f` with `what: signature`
 - THEN the response status is `ok`
 - AND the signature is `(a, b=1)`
 
@@ -201,7 +201,7 @@ The system MUST expose operational states as explicit result statuses instead of
 
 #### Current
 
-The registry rejects concurrent exec on a busy session with `RuntimeBusy`. Backend requests return `timeout` when they exceed the action timeout. `interrupt` sends `SIGINT` to a live worker. Closed, failed, missing, or cross-owner sessions return `not_found`.
+The registry rejects concurrent exec on a busy session with `RuntimeBusy`. Backend requests return `timeout` when they exceed the action timeout. `interrupt` sends `SIGINT` to a live worker. Closed, failed, missing, or cross-controller sessions return `not_found`.
 
 #### Target
 
@@ -212,22 +212,22 @@ Agents can choose whether to wait, interrupt, retry, or start a new session base
 - A second exec against a busy session returns `status: failed` with `RuntimeBusy`.
 - An action timeout returns `status: timeout` for exec.
 - Interrupting a live session returns `status: ok` with a message.
-- Actions against closed or unowned sessions return `not_found`.
+- Actions against closed or unmanaged sessions return `not_found`.
 
 #### Scenario: Exec timeout is not a silent success
 
-- GIVEN an owned runtime session
+- GIVEN an managed runtime session
 - WHEN an exec request exceeds its `timeoutMs`
 - THEN the result status is `timeout`
 - AND the error summary names the timeout condition
 
 ### Requirement: Session cleanup is explicit and automatic on runtime disposal
 
-The system MUST close sessions on explicit close requests and MUST force-close locally owned runtime-tool sessions when the owning Pi session is disposed.
+The system MUST close sessions on explicit close requests and MUST force-close locally managed runtime-tool sessions when the owning Pi session is disposed.
 
 #### Current
 
-`RuntimeSessionRegistry.close` sends shutdown or a force kill and removes the session record on success. `createPiboRuntime` wraps Pi session disposal to close owner runtime sessions when it created the local registry.
+`RuntimeSessionRegistry.close` sends shutdown or a force kill and removes the session record on success. `createPiboRuntime` wraps Pi session disposal to close controller runtime sessions when it created the local registry.
 
 #### Target
 
@@ -237,15 +237,15 @@ Runtime subprocesses do not remain indefinitely after the owning agent session e
 
 - `close` returns `closed: true` and removes the session from `list`.
 - `closeOnSuccess: true` closes only after an `ok` exec result and sets `autoClosed: true`.
-- Disposing a runtime that owns a local registry force-closes all sessions owned by that profile session ID.
+- Disposing a runtime that owns a local registry force-closes all sessions managed by that profile session ID.
 - Idle pruning may close idle sessions after the configured timeout.
 
 #### Scenario: closeOnSuccess removes session
 
-- GIVEN an owned runtime session with variable `y = 2`
+- GIVEN an managed runtime session with variable `y = 2`
 - WHEN exec evaluates `y + 1` with `closeOnSuccess: true`
 - THEN the result is `ok` and `autoClosed: true`
-- AND listing sessions for that owner no longer includes the session
+- AND listing sessions for that controller no longer includes the session
 
 ### Requirement: Unsupported targets fail before worker startup
 
@@ -279,13 +279,13 @@ Agents see an explicit unsupported-target result instead of a partial or mislead
 - A worker that writes invalid protocol JSON is treated as failed and pending requests are rejected.
 - User code that prints JSON-looking or newline-delimited text must be captured as output, not interpreted as backend protocol.
 - An interrupt can kill or destabilize the worker; later exec may return `not_found` or `failed` if the backend exits.
-- `list` only returns sessions owned by the current Pibo Session.
+- `list` only returns sessions managed by the current Pibo Session.
 - Runtime history is retained only in memory and capped by `maxHistoryEntries`.
 
 ## Constraints
 
 - **Compatibility:** The public tool name remains `runtime`, and existing action names remain `exec`, `inspect`, `vars`, `interrupt`, and `list`.
-- **Security / Privacy:** Runtime state is scoped by owner Pibo Session ID. The tool executes arbitrary local code with the gateway process environment, so profile selection is the safety boundary.
+- **Security / Privacy:** Runtime state is scoped by controller Pibo Session ID. The tool executes arbitrary local code with the gateway process environment, so profile selection is the safety boundary.
 - **Performance:** Default startup timeout is 10 seconds. Default exec timeout is 30 seconds. Inspect and vars use 15-second backend request timeouts.
 - **Dependencies:** Local Python requires `python3` by default. Local Node requires `node` by default.
 
@@ -294,10 +294,10 @@ Agents see an explicit unsupported-target result instead of a partial or mislead
 - [ ] SC-001: Profile inspection shows `runtime` active only for profiles that select it.
 - [ ] SC-002: Python and Node sessions preserve variables across successful exec calls.
 - [ ] SC-003: Python and Node language errors keep prior state and do not trigger `closeOnSuccess`.
-- [ ] SC-004: Owner isolation prevents one Pibo Session from listing or using another session's runtime workers.
+- [ ] SC-004: Controller isolation prevents one Pibo Session from listing or using another session's runtime workers.
 - [ ] SC-005: `stdout`, `stderr`, value summaries, and error summaries remain separate in tool details.
 - [ ] SC-006: Worker protocol frames remain isolated from user stdout/stderr for Python and Node workers.
-- [ ] SC-007: Explicit close and `closeOnSuccess` remove sessions from owner listings.
+- [ ] SC-007: Explicit close and `closeOnSuccess` remove sessions from controller listings.
 - [ ] SC-008: Unsupported `docker` and `ssh` targets return explicit unsupported-target errors.
 
 ## Assumptions and Open Questions
@@ -305,7 +305,7 @@ Agents see an explicit unsupported-target result instead of a partial or mislead
 ### Assumptions
 
 - The current in-memory registry is intentional; durable recovery is not part of the runtime tool contract.
-- The owning Pibo Session ID is the correct security boundary for runtime sessions, matching run-control ownership behavior.
+- The owning Pibo Session ID is the correct security boundary for runtime sessions, matching run-control stewardship behavior.
 - Agents should prefer this tool over shell only for Python/Node snippets where persistence or inspection helps.
 
 ### Open Questions

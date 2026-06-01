@@ -1,9 +1,9 @@
 # Spec: Chat Web Safe Content Rendering
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Updated:** 2026-05-11  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage; current workspace code  
+**Status:** Draft
+**Created:** 2026-05-10
+**Updated:** 2026-05-11
+**Controller / Source:** Scheduled Pibo Source Specs Coverage; current workspace code
 **Related docs:** [Chat Web Trace and Terminal View](./chat-web-trace-and-terminal-view.md), [Chat Web Browser Shell State](./chat-web-browser-shell-state.md), [Curated CLI Tools](./curated-cli-tools.md)
 
 ## Why

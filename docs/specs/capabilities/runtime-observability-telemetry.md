@@ -1,8 +1,8 @@
 # Spec: Runtime Observability Telemetry
 
-**Status:** Draft  
-**Created:** 2026-05-16  
-**Owner / Source:** Observability and Debug Telemetry change set  
+**Status:** Draft
+**Created:** 2026-05-16
+**Controller / Source:** Observability and Debug Telemetry change set
 **Related docs:** `GLOSSARY.md`, [Debug CLI](./debug-cli.md), [Pibo Data Store and Ingestion](./pibo-data-store-and-ingestion.md), [Pibo Event Contract](./pibo-event-contract.md), [Pibo Session Signals](./pibo-session-signals.md), `../changes/pibo-observability-debug-telemetry/spec.md`, `../../project/observability-telemetry-playbooks.md`, `../../project/observability-telemetry-rollout-verification.md`
 
 ## Why

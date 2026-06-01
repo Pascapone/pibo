@@ -281,7 +281,7 @@ function fakeContext() {
 			},
 		},
 		requireSession() {
-			return Promise.resolve({ authSession: { user: { id: "fixture-user" } }, appContext: { kind: "shared-app", id: "app" } });
+			return Promise.resolve({ authSession: { user: { id: "fixture-user" } }, appContext: { kind: "app-context", id: "app" } });
 		},
 	};
 }

@@ -244,7 +244,7 @@ export function buildContextFileGroups(files: ContextFileCatalogItem[], selected
 		const key = isBuiltIn ? "builtin" : isCustom ? "custom" : `plugin:${file.pluginId}`;
 		const group = getOrCreateCatalogGroup(groups, key, {
 			title: isBuiltIn ? "Built-in Context Files" : isCustom ? "Custom" : pluginDisplayName(file.pluginId, file.pluginName),
-			description: isBuiltIn ? "Pibo-owned built-in context file catalog" : isCustom ? "Loose context files without a plugin owner" : file.pluginId ?? "plugin",
+			description: isBuiltIn ? "Pibo built-in context file catalog" : isCustom ? "Loose context files without a plugin namespace" : file.pluginId ?? "plugin",
 			kind: isBuiltIn ? "builtin" : isCustom ? "custom" : "plugin",
 		});
 		group.items.push(file);

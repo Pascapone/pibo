@@ -98,7 +98,7 @@ export function renderComputeWorkerListText(workers: WorkerInfo[], options: { al
 			"Next: pibo compute reap --help",
 		].join("\n");
 	}
-	const lines = ["NAME\tROLE\tSTATE\tSTATUS\tOOM\tPORTS\tCREATED\tLAST_USED\tOWNER\tWORKTREE\tRALPH_JOB\tRALPH_RUN\tRESOURCE\tCLEANUP"];
+	const lines = ["NAME\tROLE\tSTATE\tSTATUS\tOOM\tPORTS\tCREATED\tLAST_USED\tHOLDER\tWORKTREE\tRALPH_JOB\tRALPH_RUN\tRESOURCE\tCLEANUP"];
 	for (const w of workers) {
 		lines.push(`${w.name}\t${w.role}\t${w.state}\t${w.status}\t${w.oomKilled ? "yes" : "no"}\t${formatPorts(w, options.verbose === true)}\t${w.createdAt}\t${w.lastUsedAt ?? "-"}\t${w.holder ?? "-"}\t${w.worktree ?? "-"}\t${w.ralphJobId ?? "-"}\t${w.ralphRunId ?? "-"}\t${formatResourcePolicy(w)}\t${formatCleanup(w)}`);
 	}

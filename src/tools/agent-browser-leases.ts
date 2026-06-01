@@ -13,7 +13,7 @@ type LeaseStatus = 'active' | 'released';
 type AgentBrowserLease = {
   id: string;
   app: string;
-  owner: string;
+  holder: string;
   slot: string;
   sessionName: string;
   profileDir: string;
@@ -30,7 +30,7 @@ type LeaseRegistry = {
 
 export type AgentBrowserLeaseAcquireOptions = {
   app?: string;
-  owner?: string;
+  holder?: string;
   ttlMs?: number;
   maxSlots?: number;
   json?: boolean;
@@ -154,7 +154,7 @@ export async function printAgentBrowserAuthTemplateEnv(status: CliToolStatus, ap
 
 export async function acquireAgentBrowserLease(status: CliToolStatus, options: AgentBrowserLeaseAcquireOptions): Promise<void> {
   const app = sanitize(options.app || DEFAULT_APP);
-  const owner = options.owner || process.env.USER || 'unknown';
+  const holder = options.holder || process.env.USER || 'unknown';
   const ttlMs = options.ttlMs ?? DEFAULT_TTL_MS;
   const maxSlots = options.maxSlots ?? 4;
 
@@ -189,7 +189,7 @@ export async function acquireAgentBrowserLease(status: CliToolStatus, options: A
     const lease: AgentBrowserLease = {
       id: `${app}-${slot}`,
       app,
-      owner,
+      holder,
       slot,
       sessionName,
       profileDir,
@@ -229,9 +229,9 @@ export async function listAgentBrowserLeases(status: CliToolStatus, json = false
     console.log('No agent-browser leases.');
     return;
   }
-  console.log('id\tapp\tstatus\towner\tsession\texpires\tprofile');
+  console.log('id\tapp\tstatus\tholder\tsession\texpires\tprofile');
   for (const lease of registry.leases) {
-    console.log(`${lease.id}\t${lease.app}\t${lease.status}\t${lease.owner}\t${lease.sessionName}\t${lease.expiresAt}\t${lease.profileDir}`);
+    console.log(`${lease.id}\t${lease.app}\t${lease.status}\t${lease.holder}\t${lease.sessionName}\t${lease.expiresAt}\t${lease.profileDir}`);
   }
 }
 

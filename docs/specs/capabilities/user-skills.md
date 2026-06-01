@@ -1,13 +1,13 @@
 # Spec: User Skills
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code  
+**Status:** Draft
+**Created:** 2026-05-10
+**Controller / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code
 **Related docs:** `GLOSSARY.md`, `docs/specs/capabilities/custom-agents.md`, `docs/specs/capabilities/plugin-registry-and-capability-catalog.md`, `docs/specs/capabilities/runtime-prompt-and-compaction.md`
 
 ## Why
 
-Users need reusable instruction packages that can be created, edited, installed, selected by Custom Agents, and loaded into runtimes without changing plugin source code. These skills must remain distinct from plugin-shipped skills so user-owned behavior can evolve locally while preserving capability catalog integrity.
+Users need reusable instruction packages that can be created, edited, installed, selected by Custom Agents, and loaded into runtimes without changing plugin source code. These skills must remain distinct from plugin-shipped skills so user-managed behavior can evolve locally while preserving capability catalog integrity.
 
 ## Goal
 
@@ -41,7 +41,7 @@ Skill descriptions live in `SKILL.md` frontmatter. The JSON store keeps identity
 
 ### Requirement: User skills are durable local resources
 
-The system MUST store user skill metadata in the local Pibo store and store skill content in a `SKILL.md` file owned by that skill.
+The system MUST store user skill metadata in the local Pibo store and store skill content in a `SKILL.md` file managed by that skill.
 
 #### Current
 
@@ -129,7 +129,7 @@ The system MUST install remote skills only from supported URL and shorthand form
 
 #### Current
 
-`parseSkillUrl` accepts `https://skills.sh/...`, GitHub repository or tree URLs, and non-HTTP owner/repo shorthand. The installer searches common skill directories, downloads the selected GitHub directory, and cleans up the target directory on failure.
+`parseSkillUrl` accepts `https://skills.sh/...`, GitHub repository or tree URLs, and non-HTTP controller/repo shorthand. The installer searches common skill directories, downloads the selected GitHub directory, and cleans up the target directory on failure.
 
 #### Acceptance
 
@@ -168,7 +168,7 @@ Chat Web MUST expose user skill management only to authenticated web sessions an
 
 ### Requirement: Enabled user skills synchronize into the capability catalog
 
-The system MUST register enabled user skills as user-owned skill capabilities and unregister disabled or removed user skills.
+The system MUST register enabled user skills as user-managed skill capabilities and unregister disabled or removed user skills.
 
 #### Current
 

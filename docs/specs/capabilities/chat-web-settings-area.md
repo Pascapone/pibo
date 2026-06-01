@@ -1,13 +1,13 @@
 # Spec: Chat Web Settings Area
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage; current workspace code  
+**Status:** Draft
+**Created:** 2026-05-10
+**Controller / Source:** Scheduled Pibo Source Specs Coverage; current workspace code
 **Related docs:** [Chat Web Browser Shell State](./chat-web-browser-shell-state.md), [Model Provider Auth and Session Model Selection](./model-provider-auth-and-session-selection.md), [Pibo Pi Packages](./pi-packages.md), [User Skills](./user-skills.md), [Runtime Prompt and Compaction Configuration](./runtime-prompt-and-compaction.md), [Web Auth and Same-Origin Host](./web-auth-and-same-origin-host.md)
 
 ## Why
 
-Chat Web is the primary place where a user changes runtime-affecting preferences after a Pibo session already exists. Those settings combine browser-local display preferences, shared app user settings, workspace-scoped model defaults, provider credential actions, Pi Package registration, and user-skill management.
+Chat Web is the primary place where a user changes runtime-affecting preferences after a Pibo session already exists. Those settings combine browser-local display preferences, app context user settings, workspace-scoped model defaults, provider credential actions, Pi Package registration, and user-skill management.
 
 This area needs its own behavior contract because it coordinates several lower-level capabilities. A settings change must be safe, authenticated, scoped to the right persistence boundary, and reflected in the catalog or runtime context without confusing browser-only preferences with product state.
 
@@ -17,9 +17,9 @@ Chat Web MUST provide a settings workbench whose panels expose runtime preferenc
 
 ## Background / Current State
 
-`src/apps/chat-ui/src/App.tsx` defines the top-level `settings` area and the `general`, `pi-packages`, `skills`, and `providers` panels. General settings include browser-local thinking display toggles, shared app timezone, and workspace-scoped runtime model defaults. The Providers panel in `src/apps/chat-ui/src/settings/ProviderSettingsView.tsx` calls routed session actions for login, API-key, status, and logout operations.
+`src/apps/chat-ui/src/App.tsx` defines the top-level `settings` area and the `general`, `pi-packages`, `skills`, and `providers` panels. General settings include browser-local thinking display toggles, app context timezone, and workspace-scoped runtime model defaults. The Providers panel in `src/apps/chat-ui/src/settings/ProviderSettingsView.tsx` calls routed session actions for login, API-key, status, and logout operations.
 
-`src/apps/chat/web-app.ts` exposes authenticated settings endpoints under `/api/chat`, including `model-defaults`, `user-settings`, `pi-packages`, and `user-skills`. `src/core/user-settings.ts` persists shared app user settings under the Pibo home. Pi Packages and user skills synchronize back into the capability catalog so Custom Agents and runtimes can select them.
+`src/apps/chat/web-app.ts` exposes authenticated settings endpoints under `/api/chat`, including `model-defaults`, `user-settings`, `pi-packages`, and `user-skills`. `src/core/user-settings.ts` persists app context user settings under the Pibo home. Pi Packages and user skills synchronize back into the capability catalog so Custom Agents and runtimes can select them.
 
 ## Scope
 
@@ -27,7 +27,7 @@ Chat Web MUST provide a settings workbench whose panels expose runtime preferenc
 
 - Settings area routing and panel selection for General, Pi Packages, Skills, and Providers.
 - Browser-local thinking display preferences.
-- Owner-scoped timezone setting and runtime-context propagation.
+- Controller-scoped timezone setting and runtime-context propagation.
 - Workspace-scoped main-agent and subagent model defaults, thinking defaults, and fast-mode defaults.
 - Provider credential status, OAuth/API-key actions, and logout entry points from Chat Web.
 - Pi Package list, create, update, enable/disable, and delete behavior as exposed in the settings area.
@@ -40,7 +40,7 @@ Chat Web MUST provide a settings workbench whose panels expose runtime preferenc
 - Pi Package source inspection and runtime loading semantics — covered by the Pi Packages spec.
 - User skill markdown parsing and runtime expansion semantics — covered by the User Skills spec.
 - Route canonicalization outside the settings area — covered by the browser shell-state spec.
-- Per-setting multi-user ACLs beyond authenticated owner scoping.
+- Per-setting multi-user ACLs beyond authenticated controller scoping.
 
 ## Requirements
 
@@ -62,7 +62,7 @@ Users and agents can deep-link to a settings panel without relying on hidden bro
 - `/settings/pi-packages` renders Pi Packages settings.
 - `/settings/skills` renders Skills settings.
 - `/settings/providers` renders Providers settings.
-- An unsupported settings subpath falls back to a known route or error behavior owned by the router, not to an untyped panel.
+- An unsupported settings subpath falls back to a known route or error behavior managed by the router, not to an untyped panel.
 
 #### Scenario: Deep link to Providers
 
@@ -97,22 +97,22 @@ A user can change how thinking blocks render in one browser without changing fut
 - THEN thinking blocks become visible in that browser
 - AND no runtime model or user setting is changed on the server.
 
-### Requirement: User timezone is shared-app and validated
+### Requirement: User timezone is app-context and validated
 
-The timezone setting MUST be saved for the shared app, MUST reject invalid timezone values, and MUST be available to later runtime context assembly.
+The timezone setting MUST be saved for the app context, MUST reject invalid timezone values, and MUST be available to later runtime context assembly.
 
 #### Current
 
-`GET /api/chat/user-settings` loads shared app settings. `PATCH /api/chat/user-settings` validates `timezone` with `sanitizeTimezone` and persists it through `updatePiboUserSettings` under the shared app compatibility key. `UserTimezoneSettings` autosaves select changes and displays save errors.
+`GET /api/chat/user-settings` loads app context settings. `PATCH /api/chat/user-settings` validates `timezone` with `sanitizeTimezone` and persists it through `updatePiboUserSettings` under the app context compatibility key. `UserTimezoneSettings` autosaves select changes and displays save errors.
 
 #### Target
 
-Changing timezone affects the user's future runtime context without changing other owners or browser-only preferences.
+Changing timezone affects the user's future runtime context without changing other controllers or browser-only preferences.
 
 #### Acceptance
 
-- Loading General settings returns the shared app timezone or `UTC` by default.
-- Saving a valid IANA timezone persists it for the shared app.
+- Loading General settings returns the app context timezone or `UTC` by default.
+- Saving a valid IANA timezone persists it for the app context.
 - Saving an invalid timezone returns a 4xx error and does not overwrite the previous timezone.
 - Later runtime creation injects the selected timezone into `pibo://runtime/session-context.md`.
 
@@ -218,14 +218,14 @@ Agents and custom-agent forms see newly added, enabled, disabled, or removed cap
 
 - **Compatibility:** Settings routes must preserve existing `/settings`, `/settings/pi-packages`, `/settings/skills`, and `/settings/providers` links.
 - **Security / Privacy:** Server mutations must require authenticated sessions and same-origin JSON checks where applicable. API-key values must not be echoed back into persistent browser UI after save.
-- **Persistence:** Browser display preferences stay in browser local storage; user timezone is shared-app state in Pibo home; model defaults are workspace-scoped; packages and skills use their existing product stores.
+- **Persistence:** Browser display preferences stay in browser local storage; user timezone is app-context state in Pibo home; model defaults are workspace-scoped; packages and skills use their existing product stores.
 - **Dependencies:** Provider actions require a selected routed Pibo Session and the gateway action registry.
 
 ## Success Criteria
 
 - [ ] SC-001: Each settings panel can be opened directly by URL and shows the correct active sidebar item.
 - [ ] SC-002: Thinking display toggles change only browser-local state.
-- [ ] SC-003: Invalid timezone saves fail without overwriting the previous shared app timezone.
+- [ ] SC-003: Invalid timezone saves fail without overwriting the previous app context timezone.
 - [ ] SC-004: Runtime model default selectors omit unauthenticated providers from normal choices and preserve visible stale values.
 - [ ] SC-005: Provider login, API-key, status, and logout actions are unavailable without a selected Pibo Session and routed through gateway actions with one.
 - [ ] SC-006: Package and skill mutations refresh catalog-dependent UI and enforce conflict checks.
@@ -240,8 +240,8 @@ Agents and custom-agent forms see newly added, enabled, disabled, or removed cap
 
 ### Open Questions
 
-- Should provider credential management have a shared app API that does not require selecting a chat session, or is session-action routing a deliberate product constraint?
-- Should browser-local thinking display preferences eventually migrate to shared app settings for multi-device consistency?
+- Should provider credential management have a app context API that does not require selecting a chat session, or is session-action routing a deliberate product constraint?
+- Should browser-local thinking display preferences eventually migrate to app context settings for multi-device consistency?
 
 ## Traceability
 
@@ -249,7 +249,7 @@ Agents and custom-agent forms see newly added, enabled, disabled, or removed cap
 |---|---|---|---|
 | REQ-001: Settings panels are URL-addressable and bounded | Deep link to Providers | Source coverage | Pending |
 | REQ-002: Browser display preferences remain browser-local | Local thinking display change | Source coverage | Pending |
-| REQ-003: User timezone is shared-app and validated | Invalid timezone rejected | Source coverage | Pending |
+| REQ-003: User timezone is app-context and validated | Invalid timezone rejected | Source coverage | Pending |
 | REQ-004: Runtime model defaults are workspace-scoped and catalog-aware | Provider loses authentication | Source coverage | Pending |
 | REQ-005: Provider credential actions require a selected Pibo Session | Save API key | Source coverage | Pending |
 | REQ-006: Runtime capability settings synchronize catalog state | Delete selected Pi Package is blocked | Source coverage | Pending |

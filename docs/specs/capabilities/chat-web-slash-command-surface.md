@@ -1,15 +1,15 @@
 # Spec: Chat Web Slash Command Surface
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage  
+**Status:** Draft
+**Created:** 2026-05-10
+**Controller / Source:** Scheduled Pibo Source Specs Coverage
 **Related docs:** `docs/specs/capabilities/core-gateway-actions-and-session-controls.md`, `docs/specs/capabilities/chat-web-file-download.md`, `docs/specs/capabilities/chat-web-settings-area.md`, `docs/specs/spec-product-projects-area.md`
 
 ## Why
 
 Chat Web exposes runtime actions through the message composer. Users can type a normal message, choose a slash command, toggle browser-only display state, or trigger a file download from the same input. Without a focused contract, future UI changes can accidentally send local commands to the router, submit incomplete commands as messages, or run gateway actions against the wrong Pibo Session.
 
-This spec covers the browser command surface only. The meaning of each gateway action remains owned by the gateway-action spec.
+This spec covers the browser command surface only. The meaning of each gateway action remains managed by the gateway-action spec.
 
 ## Goal
 
@@ -91,7 +91,7 @@ When trimmed input starts with `/`, the composer filters commands by the first t
 
 ### Requirement: Browser-local commands do not enter the runtime router
 
-Browser-local slash commands MUST complete entirely in the browser or through their owned browser API and MUST NOT be emitted as Pibo execution events.
+Browser-local slash commands MUST complete entirely in the browser or through their managed browser API and MUST NOT be emitted as Pibo execution events.
 
 #### Current
 
@@ -161,7 +161,7 @@ The `/api/chat/action` endpoint MUST accept only authenticated same-origin JSON 
 
 #### Current
 
-The endpoint requires same-origin JSON, calls `requireSession`, validates `body.action`, rejects non-JSON-compatible params, resolves the requested session through the authenticated owner context, ensures the session room exists and is not archived, upserts the session projection, and emits an `execution` input event through the channel context.
+The endpoint requires same-origin JSON, calls `requireSession`, validates `body.action`, rejects non-JSON-compatible params, resolves the requested session through the authenticated controller context, ensures the session room exists and is not archived, upserts the session projection, and emits an `execution` input event through the channel context.
 
 #### Acceptance
 
@@ -204,7 +204,7 @@ The endpoint requires same-origin JSON, calls `requireSession`, validates `body.
 ### Assumptions
 
 - The Sessions area remains the primary Chat Web command surface for gateway actions.
-- The gateway action catalog remains the source for action-owned slash commands.
+- The gateway action catalog remains the source for action-managed slash commands.
 - `/tree` is intentionally hidden because Chat Web already renders session hierarchy through navigation and trace views.
 
 ### Open Questions

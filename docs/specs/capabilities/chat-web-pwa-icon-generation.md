@@ -1,8 +1,8 @@
 # Spec: Chat Web PWA Icon Generation
 
-**Status:** Draft  
-**Created:** 2026-05-11  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code  
+**Status:** Draft
+**Created:** 2026-05-11
+**Controller / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code
 **Related docs:** [Chat Web Static Shell and PWA Assets](./chat-web-static-shell-and-pwa-assets.md), [Package Build and Distribution](./package-build-and-distribution.md)
 
 ## Why

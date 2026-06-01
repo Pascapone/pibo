@@ -405,7 +405,7 @@ export function normalizeUserSkillUrl(value: unknown): string {
 	}
 	const url = value.trim();
 	if (!url.startsWith("http://") && !url.startsWith("https://") && !url.includes("/")) {
-		throw new PiboWebHttpError("Skill URL must be a valid URL or owner/repo shorthand", 400);
+		throw new PiboWebHttpError("Skill URL must be a valid URL or account/repo shorthand", 400);
 	}
 	return url;
 }

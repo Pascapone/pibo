@@ -1,9 +1,9 @@
 # Spec: Docker Compute Workers
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Updated:** 2026-05-17  
-**Owner / Source:** Current Pibo codebase; Scheduled Pibo Source Specs Coverage; 2026-05-17 compute/browser resource incident analysis  
+**Status:** Draft
+**Created:** 2026-05-10
+**Updated:** 2026-05-17
+**Controller / Source:** Current Pibo codebase; Scheduled Pibo Source Specs Coverage; 2026-05-17 compute/browser resource incident analysis
 **Related docs:** `GLOSSARY.md`, `AGENTS.md`, `docs/specs/README.md`, `docs/specs/capabilities/web-auth-and-same-origin-host.md`, `docs/specs/changes/compute-browser-resource-lifecycle/spec.md`
 
 ## Why
@@ -30,7 +30,7 @@ The current implementation is centered on `src/compute/cli.ts`, `src/compute/doc
 - Docker image build, rebuild, and hash-based rebuild checks.
 - One-time worker spawn with dynamic Docker-assigned ports.
 - Development worker spawn with Git worktree creation and deterministic port blocks.
-- Container labels for role, created time, owner, port block, and worktree metadata.
+- Container labels for role, created time, controller, port block, and worktree metadata.
 - Worker release and old one-time-worker reaping.
 - Docker entrypoint behavior for gateway, web gateway, shell, and CLI commands.
 - Worker-only dev auth and browser automation prerequisites.
@@ -101,7 +101,7 @@ One-time `spawn` checks `imageExists()` and `shouldRebuild()` using a source has
 
 - The returned JSON includes `id`, `image`, `gatewayHost`, `gatewayPort`, `cdpPort`, `webPort`, and `connect`.
 - Container names default to `pibo-worker-<random>` when no name is supplied.
-- Custom `--name` and `--owner` values are applied to the container name or labels.
+- Custom `--name` and `--controller` values are applied to the container name or labels.
 - `gatewayPort` maps container port `4789`.
 - `cdpPort` maps container port `56663`.
 - `webPort` maps container port `4788`.
@@ -110,8 +110,8 @@ One-time `spawn` checks `imageExists()` and `shouldRebuild()` using a source has
 #### Scenario: Spawn isolated worker
 
 - GIVEN Docker is available and the image is current
-- WHEN an operator runs `pibo compute spawn --owner alice`
-- THEN Pibo starts a worker container, prints JSON with mapped ports, and labels the container with owner `alice`.
+- WHEN an operator runs `pibo compute spawn --controller alice`
+- THEN Pibo starts a worker container, prints JSON with mapped ports, and labels the container with controller `alice`.
 
 ### Requirement: Development workers use Git worktrees and deterministic port blocks
 
@@ -126,7 +126,7 @@ One-time `spawn` checks `imageExists()` and `shouldRebuild()` using a source has
 - Dev spawn creates or attaches the named Git worktree under `.worktrees/<name>`.
 - Dev worker ids use `pibo-dev-<worktree>`.
 - The returned JSON includes `worktree`, `gatewayPort`, `cdpPort`, `webPort`, `webUIPortChat`, `webUIPortContext`, and `connect`.
-- The container is labeled with role `dev`, created time, port block, worktree name, and optional owner.
+- The container is labeled with role `dev`, created time, port block, worktree name, and optional controller.
 - Port blocks do not overlap with currently running dev containers that carry a port-block label.
 - Host `node_modules` is mounted into `/workspace/node_modules` when it exists.
 
@@ -225,7 +225,7 @@ Docker run commands apply the default compute resource policy to one-time and de
 
 Every compute worker has a resource policy. Defaults protect small hosts, and operators can override limits for larger hosts through documented settings.
 
-Default policy values are intentionally conservative for small hosts: `memory=2g`, `memory-swap=2g`, `pids-limit=512`, `shm-size=512m`, `--init`, `restart=no`, Docker JSON logs with `max-size=10m`, and `max-file=3`. Larger hosts may override only the sizing fields through environment variables read at spawn time: `PIBO_COMPUTE_MEMORY`, `PIBO_COMPUTE_MEMORY_SWAP`, `PIBO_COMPUTE_PIDS_LIMIT`, `PIBO_COMPUTE_SHM_SIZE`, `PIBO_COMPUTE_INIT`, `PIBO_COMPUTE_LOG_MAX_SIZE`, and `PIBO_COMPUTE_LOG_MAX_FILE`. TTL and idle labels default to 3600 and 1800 seconds and can be overridden with `PIBO_COMPUTE_TTL_SECONDS`, `PIBO_COMPUTE_IDLE_SECONDS`, or the `pibo compute spawn` / `pibo compute dev spawn` options `--ttl-seconds` and `--idle-seconds`. Ralph-owned callers can pass `--ralph-job-id` and `--ralph-run-id` so the worker is traceable. The restart policy remains `no` so OOM or PID-limit failures do not create restart loops.
+Default policy values are intentionally conservative for small hosts: `memory=2g`, `memory-swap=2g`, `pids-limit=512`, `shm-size=512m`, `--init`, `restart=no`, Docker JSON logs with `max-size=10m`, and `max-file=3`. Larger hosts may override only the sizing fields through environment variables read at spawn time: `PIBO_COMPUTE_MEMORY`, `PIBO_COMPUTE_MEMORY_SWAP`, `PIBO_COMPUTE_PIDS_LIMIT`, `PIBO_COMPUTE_SHM_SIZE`, `PIBO_COMPUTE_INIT`, `PIBO_COMPUTE_LOG_MAX_SIZE`, and `PIBO_COMPUTE_LOG_MAX_FILE`. TTL and idle labels default to 3600 and 1800 seconds and can be overridden with `PIBO_COMPUTE_TTL_SECONDS`, `PIBO_COMPUTE_IDLE_SECONDS`, or the `pibo compute spawn` / `pibo compute dev spawn` options `--ttl-seconds` and `--idle-seconds`. Ralph-managed callers can pass `--ralph-job-id` and `--ralph-run-id` so the worker is traceable. The restart policy remains `no` so OOM or PID-limit failures do not create restart loops.
 
 #### Acceptance
 
@@ -257,7 +257,7 @@ Operators can inspect all Pibo compute containers and preview cleanup for stoppe
 #### Acceptance
 
 - `pibo compute list --all` or an equivalent command shows running and stopped Pibo compute containers.
-- Output includes status, OOM flag when available, role, owner, worktree, Ralph ids, created time, last-used time, and cleanup eligibility.
+- Output includes status, OOM flag when available, role, controller, worktree, Ralph ids, created time, last-used time, and cleanup eligibility.
 - Reap supports dry-run/preview output and `--apply` for destructive cleanup.
 - Reap selectors cover stopped containers, dirty/OOM workers, age filters, one-time workers, and explicitly included dev workers.
 - Reap explains why each worker is selected or skipped.
@@ -267,7 +267,7 @@ Operators can inspect all Pibo compute containers and preview cleanup for stoppe
 
 - GIVEN a dev worker exited after host pressure
 - WHEN an operator lists all compute workers
-- THEN the stopped container appears with its worktree, owner, OOM/exit status, and next cleanup command.
+- THEN the stopped container appears with its worktree, controller, OOM/exit status, and next cleanup command.
 
 ### Requirement: Docker build context and cache stay bounded
 
@@ -378,7 +378,7 @@ This capability participates in the compute/browser resource lifecycle change. I
 | CLI discovery | `pibo compute --help` lists `spawn`, `dev`, `rebuild`, `list`, `release`, and `reap`; output points to `pibo compute spawn --help` and `pibo compute dev --help`; `pibo compute dev --help` points only to `pibo compute dev spawn --help`. | REQ-001 | `test/compute-cli.test.mjs` |
 | CLI validation without Docker | `pibo compute dev spawn` without `--worktree` fails through Commander before Docker or Git commands run; unknown compute subcommands fail with help/error output. | REQ-001, REQ-004 | `test/compute-cli.test.mjs` |
 | Hash predicates | Dependency hash changes for `package.json`, `package-lock.json`, or `Dockerfile`; source hash includes TypeScript/TSX and package/Dockerfile inputs while skipping generated or local-state directories. | REQ-002 | unit test with temporary workspace |
-| Docker command construction | Mock `docker` and `git` commands to verify one-time worker labels, dynamic exposed ports, dev worker labels, deterministic port mapping, optional owner labels, and node_modules mount behavior. | REQ-003, REQ-004 | command-stub unit test |
+| Docker command construction | Mock `docker` and `git` commands to verify one-time worker labels, dynamic exposed ports, dev worker labels, deterministic port mapping, optional controller labels, and node_modules mount behavior. | REQ-003, REQ-004 | command-stub unit test |
 | Cleanup selection | `listWorkers()` includes worker and dev roles by default; `reapWorkers()` removes only role `worker` by default and includes old dev workers only with `includeDev: true`; release never removes worktree directories. | REQ-007 | command-stub unit test |
 
 ### Verification Gaps
@@ -392,11 +392,11 @@ This capability participates in the compute/browser resource lifecycle change. I
   npm run compute:limited-worker-smoke -- --apply --json
   ```
 
-  The apply path creates a temporary one-time worker with the default resource policy, verifies shell access, runs a bounded Chromium smoke command when browser dependencies are present, records Docker inspect values for memory, swap, PID, shm, restart, log, TTL/idle, owner, and resource-policy labels, confirms the worker appears in `pibo compute list --all --json`, and releases the worker in a `finally` cleanup path. Operators who need each primitive command can run the equivalent manual sequence:
+  The apply path creates a temporary one-time worker with the default resource policy, verifies shell access, runs a bounded Chromium smoke command when browser dependencies are present, records Docker inspect values for memory, swap, PID, shm, restart, log, TTL/idle, controller, and resource-policy labels, confirms the worker appears in `pibo compute list --all --json`, and releases the worker in a `finally` cleanup path. Operators who need each primitive command can run the equivalent manual sequence:
 
   ```bash
   worker="pibo-worker-policy-smoke-$(date +%s)"
-  npm run dev -- compute spawn --name "$worker" --owner user:smoke --ttl-seconds 600 --idle-seconds 300
+  npm run dev -- compute spawn --name "$worker" --controller user:smoke --ttl-seconds 600 --idle-seconds 300
   docker inspect "$worker" --format '{{json .HostConfig.Memory}} {{json .HostConfig.MemorySwap}} {{json .HostConfig.PidsLimit}} {{json .HostConfig.ShmSize}} {{json .HostConfig.RestartPolicy}} {{json .HostConfig.LogConfig}} {{json .Config.Labels}}'
   docker exec "$worker" bash -lc 'node --version && test -x /usr/bin/chromium && /usr/bin/chromium --version'
   docker exec "$worker" bash -lc "export DISPLAY=:99; timeout 20s /usr/bin/chromium --headless --no-sandbox --disable-gpu --dump-dom 'data:text/html,<p>pibo-smoke</p>' | grep pibo-smoke"

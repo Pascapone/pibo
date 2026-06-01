@@ -6,7 +6,7 @@ Web Annotations let a user point at a live browser target and send that referenc
 
 1. Open Chat Web and select an active Pibo Session.
 2. Use **Annotate URL** to open a target, or use **Attach Browser Target** to select an already-open CDP target.
-3. Pibo stores a binding for the Pibo Session ID, optional Room ID, target URL, and CDP target ID. Legacy owner fields may exist only as migration compatibility.
+3. Pibo stores a binding for the Pibo Session ID, optional Room ID, target URL, and CDP target ID. Legacy controller fields may exist only as migration compatibility.
 4. Pibo injects the overlay only into the selected target.
 5. In the target page, create an element annotation or a pin annotation and submit a note.
 6. Return to Chat Web, refresh the session annotations, and attach one or more annotations to the next message.
@@ -28,7 +28,7 @@ Profiles that select the `web-annotation-agent-tools` package expose these tools
 - `web_annotations_resolve`: mark work complete with a summary.
 - `web_annotations_dismiss`: close an irrelevant annotation with an optional reason.
 
-Tools derive session context from runtime context. The model cannot provide an owner or session id to bypass authorization.
+Tools derive session context from runtime context. The model cannot provide an controller or session id to bypass authorization.
 
 ## Source hints
 

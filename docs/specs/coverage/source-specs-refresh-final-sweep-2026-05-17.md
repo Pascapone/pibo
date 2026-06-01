@@ -2,7 +2,7 @@
 
 **Status:** Coverage note, not a behavior spec
 **Created:** 2026-05-17
-**Owner / Source:** Ralph Source Specs Refresh Ledger
+**Controller / Source:** Ralph Source Specs Refresh Ledger
 **Related docs:** `docs/reports/source-specs-refresh/source-specs-refresh-ledger.json`, `docs/specs/capabilities/spec-status-and-traceability.md`
 
 ## Purpose
@@ -23,7 +23,7 @@ The sweep looked for source-backed current-behavior claims under `docs/specs/cap
   - `docs/specs/capabilities/chat-web-static-shell-and-pwa-assets.md`
   - `docs/specs/capabilities/mcp-registry-python-runtimes.md`
 - No new capability spec was created.
-- One prior queue item remains intentionally blocked by the open bootstrap catalog owner-cache decision request recorded in the ledger.
+- One prior queue item remains intentionally blocked by the open bootstrap catalog controller-cache decision request recorded in the ledger.
 
 ## Source-Backed Findings
 

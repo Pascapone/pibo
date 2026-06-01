@@ -1,8 +1,8 @@
 # Spec: Operator CLI Error Contract
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage; current workspace code  
+**Status:** Draft
+**Created:** 2026-05-10
+**Controller / Source:** Scheduled Pibo Source Specs Coverage; current workspace code
 **Related docs:** `GLOSSARY.md`, `docs/specs/capabilities/operator-cli-discovery-and-dispatch.md`, `docs/specs/capabilities/mcp-server-integration.md`, `docs/specs/capabilities/curated-cli-tools.md`
 
 ## Why
@@ -84,9 +84,9 @@ The system MUST format CLI errors as a short, stable, line-oriented block that i
 - THEN stderr starts with `Error [INVALID_JSON_ARGUMENTS]: Invalid JSON in tool arguments`
 - AND includes a suggestion to use valid JSON or inspect the tool schema.
 
-### Requirement: Exit categories distinguish failure ownership
+### Requirement: Exit categories distinguish failure stewardship
 
-The system MUST map expected CLI failures to exit categories that identify the likely owner of the next fix.
+The system MUST map expected CLI failures to exit categories that identify the likely controller of the next fix.
 
 #### Current
 
@@ -212,7 +212,7 @@ The root CLI and nested command families print compact discovery text for normal
 |---|---|---|---|
 | Expected CLI failures use the shared error shape | Missing curated CLI tool | Add/maintain command validation tests | Pending |
 | Formatted errors are compact and line-oriented | Invalid JSON arguments | Unit-test `formatCliError()` and MCP invalid JSON | Pending |
-| Exit categories distinguish failure ownership | MCP server cannot be reached | Assert MCP command exit codes | Pending |
+| Exit categories distinguish failure stewardship | MCP server cannot be reached | Assert MCP command exit codes | Pending |
 | Suggestions are command-aware | Ambiguous MCP command | Assert recovery suggestions for common aliases | Pending |
 | Diagnostic details are bounded | Tool list is large | Assert truncation and summary counts | Pending |
 | Structured error behavior coexists with progressive discovery | Unknown option points to discovery | Assert help remains non-error output | Pending |

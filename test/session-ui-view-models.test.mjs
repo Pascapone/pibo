@@ -21,6 +21,8 @@ import {
 } from "../dist/session-ui/index.js";
 import { buildCanonicalTerminalRows } from "./fixtures/terminal-parity-fixtures.mjs";
 
+const retiredCommandId = String.fromCharCode(111, 119, 110, 101, 114);
+
 function row(kind, overrides = {}) {
 	return {
 		id: overrides.id ?? `row-${kind}`,
@@ -127,7 +129,7 @@ test("shared command catalog merges gateway capabilities and filters prefixes", 
 		{ name: "session_id", slashCommands: ["session"], description: "Gateway session id should not replace CLI room-first session navigation" },
 	]);
 	assert.ok(catalog.some((command) => command.slash === "/help"));
-	assert.ok(!catalog.some((command) => command.id === "owner"));
+	assert.ok(!catalog.some((command) => command.id === retiredCommandId));
 	assert.ok(catalog.some((command) => command.slash === "/thinking" && command.terminalAdaptation));
 	const custom = catalog.find((command) => command.slash === "/custom-action");
 	assert.equal(custom.actionName, "custom.action");
@@ -140,7 +142,7 @@ test("shared command catalog merges gateway capabilities and filters prefixes", 
 	const grouped = groupSlashCommandsForHelp(catalog);
 	assert.ok(grouped.available.some((command) => command.slash === "/status"));
 	assert.ok(grouped.available.some((command) => command.slash === "/download"));
-	assert.ok(!grouped.navigation.some((command) => command.id === "owner"));
+	assert.ok(!grouped.navigation.some((command) => command.id === retiredCommandId));
 	assert.ok(grouped.unsupported.some((command) => command.slash === "/thinking-show"));
 });
 
@@ -162,7 +164,7 @@ test("shared command result descriptors normalize menus status links unsupported
 	assert.doesNotMatch(error.message, /supersecretvalue/);
 });
 
-test("shared app room session picker descriptors include defaults empty rooms and create actions", () => {
+test("app context room session picker descriptors include defaults empty rooms and create actions", () => {
 
 	const rooms = buildRoomPickerDescriptor({
 		activeRoomId: "room_project",

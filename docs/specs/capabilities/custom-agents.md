@@ -1,15 +1,15 @@
 # Spec: Custom Agents and Agent Designer
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Owner / Source:** Current Pibo codebase  
+**Status:** Draft
+**Created:** 2026-05-10
+**Controller / Source:** Current Pibo codebase
 **Related docs:** `GLOSSARY.md`, `docs/specs/README.md`, `docs/specs/capabilities/context-files.md`, `docs/specs/capabilities/yielded-run-control.md`
 
 ## Why
 
-Pibo users need to compose their own agent profiles without changing plugin source code. A custom agent should be a durable shared-app profile that selects tools, skills, context files, subagents, MCP servers, Pi packages, model options, thinking options, built-in tools, automatic context, and run control.
+Pibo users need to compose their own agent profiles without changing plugin source code. A custom agent should be a durable app-context profile that selects tools, skills, context files, subagents, MCP servers, Pi packages, model options, thinking options, built-in tools, automatic context, and run control.
 
-The Agent Designer keeps this behavior in the product boundary. Plugin profiles remain read-only. Custom agents are shared-app records that become dynamic profiles for routed sessions.
+The Agent Designer keeps this behavior in the product boundary. Plugin profiles remain read-only. Custom agents are app-context records that become dynamic profiles for routed sessions.
 
 ## Goal
 
@@ -25,7 +25,7 @@ Custom agents are persisted in `chat-agents.sqlite`. Each active record is regis
 
 ### In Scope
 
-- Shared-app custom-agent listing, creation, update, archive, restore, and permanent deletion.
+- App-context custom-agent listing, creation, update, archive, restore, and permanent deletion.
 - Dynamic profile registration for active custom agents.
 - Agent Designer catalog data for selectable capabilities.
 - Selections for native tools, skills, context files, subagents, MCP servers, Pi packages, models, thinking levels, fast mode, built-in tools, automatic context files, and run control.
@@ -66,18 +66,18 @@ The system MUST expose a catalog that lets the Agent Designer show available pro
 - WHEN the app fetches bootstrap or `/api/chat/agent-catalog`
 - THEN the UI can render selectable capabilities and read-only plugin profiles.
 
-### Requirement: Custom agents are durable shared-app resources
+### Requirement: Custom agents are durable app-context resources
 
-The system MUST store custom agents as shared app resources and MUST list the same active agents for all allowed accounts.
+The system MUST store custom agents as app context resources and MUST list the same active agents for all allowed accounts.
 
 #### Current
 
-`CustomAgentStore` persists rows in `chat_agents`. Legacy owner columns may remain in older stores, but active list/get/create/update/archive/restore/delete paths do not filter by auth account.
+`CustomAgentStore` persists rows in `chat_agents`. Legacy controller columns may remain in older stores, but active list/get/create/update/archive/restore/delete paths do not filter by auth account.
 
 #### Acceptance
 
 - Creating an agent stores an id beginning with `agent_`, a profile name, selected capabilities, timestamps, and optional archive state.
-- Listing agents through Chat Web returns shared app agents for any allowed account.
+- Listing agents through Chat Web returns app context agents for any allowed account.
 - Archived agents are excluded by default and included when `includeArchived=true`.
 - Dynamic profile synchronization registers all active shared custom agents.
 
@@ -294,7 +294,7 @@ Create, update, archive, restore, and delete routes call `requireSameOriginJsonR
 - Mutating requests without a valid web session are rejected.
 - Mutating requests without JSON content type or same-origin origin are rejected.
 - Updating, archiving, restoring, or deleting an unknown agent returns not found.
-- Read-only list routes require authentication and return shared app agents.
+- Read-only list routes require authentication and return app context agents.
 
 #### Scenario: Cross-account update
 
@@ -313,8 +313,8 @@ Create, update, archive, restore, and delete routes call `requireSameOriginJsonR
 
 ## Constraints
 
-- **Product Boundary:** Pibo owns custom-agent records, dynamic profile registration, and designer APIs. Plugin profiles remain plugin-owned.
-- **Security / Privacy:** Custom-agent APIs MUST require authenticated Chat Web sessions. Mutations MUST require same-origin JSON requests; auth is an access gate, not a custom-agent ownership boundary.
+- **Product Boundary:** Pibo owns custom-agent records, dynamic profile registration, and designer APIs. Plugin profiles remain plugin-managed.
+- **Security / Privacy:** Custom-agent APIs MUST require authenticated Chat Web sessions. Mutations MUST require same-origin JSON requests; auth is an access gate, not a custom-agent stewardship boundary.
 - **Compatibility:** Existing plugin profiles and aliases MUST remain selectable and MUST not be overwritten by custom-agent names.
 - **Reliability:** Custom-agent definitions MUST be durable in SQLite and recoverable across gateway restarts.
 - **Context Economy:** Runtime profiles load only the selected skills, context files, packages, tools, and automatic context allowed by the custom-agent settings.
@@ -334,7 +334,7 @@ Create, update, archive, restore, and delete routes call `requireSameOriginJsonR
 
 ### Assumptions
 
-- Authentication is the access gate for custom-agent management; custom agents are shared app resources.
+- Authentication is the access gate for custom-agent management; custom agents are app context resources.
 - Profile name equality is the correct collision check for dynamic profile registration.
 - Custom-agent edits affect future runtime creation; existing active runtimes are not rebuilt automatically.
 
@@ -350,7 +350,7 @@ Create, update, archive, restore, and delete routes call `requireSameOriginJsonR
 | Requirement | Scenario / Story | Code basis | Status |
 |---|---|---|---|
 | REQ-001 Agent catalog is discoverable for the designer | Open Agent Designer | `src/apps/chat/web-app.ts`, `src/apps/chat-ui/src/App.tsx` | Implemented |
-| REQ-002 Custom agents are durable shared-app resources | User lists custom agents | `src/apps/chat/agent-store.ts`, `src/apps/chat/web-app.ts` | Implemented |
+| REQ-002 Custom agents are durable app-context resources | User lists custom agents | `src/apps/chat/agent-store.ts`, `src/apps/chat/web-app.ts` | Implemented |
 | REQ-003 Agent names are valid unique profile names | Plugin profile conflict | `src/apps/chat/agent-store.ts`, `src/apps/chat/web-app.ts` | Implemented |
 | REQ-004 Active custom agents register dynamic profiles | Archive removes profile | `src/apps/chat/web-app.ts`, `src/apps/chat/agent-profiles.ts` | Implemented |
 | REQ-005 Custom profile creation applies selected capabilities | Agent with run control and package selection | `src/apps/chat/agent-profiles.ts`, `src/core/profiles.ts` | Implemented |
@@ -360,7 +360,7 @@ Create, update, archive, restore, and delete routes call `requireSameOriginJsonR
 | REQ-009 Agent Designer supports read-only profiles and copy-to-custom | Copy plugin profile | `src/apps/chat-ui/src/App.tsx` | Implemented |
 | REQ-010 Agent-scoped context files can be created from the designer | Add private agent context | `src/apps/chat-ui/src/App.tsx`, `src/plugins/context-files.ts` | Implemented |
 | REQ-011 Archive precedes destructive deletion | Delete archived agent and sessions | `src/apps/chat/web-app.ts` | Implemented |
-| REQ-012 Chat Web mutations are authenticated same-origin JSON requests | Cross-owner update | `src/apps/chat/web-app.ts`, `src/web/http.ts` | Implemented |
+| REQ-012 Chat Web mutations are authenticated same-origin JSON requests | Cross-controller update | `src/apps/chat/web-app.ts`, `src/web/http.ts` | Implemented |
 
 ## Verification Basis
 

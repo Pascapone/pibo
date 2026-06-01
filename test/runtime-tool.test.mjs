@@ -21,13 +21,13 @@ async function withRuntimeRegistry(run) {
 
 test("python runtime preserves variables across exec calls", async () => {
 	await withRuntimeRegistry(async (registry) => {
-		const start = await registry.start("owner", { runtime: "python" });
+		const start = await registry.start("controller", { runtime: "python" });
 		assert.equal(start.status, "ok");
 		const sessionId = start.sessionId;
 		assert.ok(sessionId);
 
-		assert.equal((await registry.exec("owner", { sessionId, code: "x = 1" })).status, "ok");
-		const result = await registry.exec("owner", { sessionId, code: "x + 1", mode: "eval" });
+		assert.equal((await registry.exec("controller", { sessionId, code: "x = 1" })).status, "ok");
+		const result = await registry.exec("controller", { sessionId, code: "x + 1", mode: "eval" });
 		assert.equal(result.status, "ok");
 		assert.equal(result.result?.repr, "2");
 	});
@@ -35,11 +35,11 @@ test("python runtime preserves variables across exec calls", async () => {
 
 test("python runtime errors keep prior state and expose failing line", async () => {
 	await withRuntimeRegistry(async (registry) => {
-		const start = await registry.start("owner", { runtime: "python" });
+		const start = await registry.start("controller", { runtime: "python" });
 		const sessionId = start.sessionId;
 		assert.ok(sessionId);
 
-		const failed = await registry.exec("owner", {
+		const failed = await registry.exec("controller", {
 			sessionId,
 			code: "x = 1\nraise Exception('boom')",
 			closeOnSuccess: true,
@@ -48,7 +48,7 @@ test("python runtime errors keep prior state and expose failing line", async () 
 		assert.equal(failed.autoClosed, undefined);
 		assert.equal(failed.error?.line, 2);
 
-		const result = await registry.exec("owner", { sessionId, code: "x", mode: "eval" });
+		const result = await registry.exec("controller", { sessionId, code: "x", mode: "eval" });
 		assert.equal(result.status, "ok");
 		assert.equal(result.result?.repr, "1");
 	});
@@ -56,32 +56,32 @@ test("python runtime errors keep prior state and expose failing line", async () 
 
 test("closeOnSuccess closes only after successful exec", async () => {
 	await withRuntimeRegistry(async (registry) => {
-		const start = await registry.start("owner", { runtime: "python" });
+		const start = await registry.start("controller", { runtime: "python" });
 		const sessionId = start.sessionId;
 		assert.ok(sessionId);
 
-		const failed = await registry.exec("owner", { sessionId, code: "y = 2\nraise RuntimeError('no')", closeOnSuccess: true });
+		const failed = await registry.exec("controller", { sessionId, code: "y = 2\nraise RuntimeError('no')", closeOnSuccess: true });
 		assert.equal(failed.status, "error");
-		assert.equal(registry.list("owner").sessions.length, 1);
+		assert.equal(registry.list("controller").sessions.length, 1);
 
-		const success = await registry.exec("owner", { sessionId, code: "y + 1", mode: "eval", closeOnSuccess: true });
+		const success = await registry.exec("controller", { sessionId, code: "y + 1", mode: "eval", closeOnSuccess: true });
 		assert.equal(success.status, "ok");
 		assert.equal(success.autoClosed, true);
 		assert.equal(success.result?.repr, "3");
-		assert.equal(registry.list("owner").sessions.length, 0);
+		assert.equal(registry.list("controller").sessions.length, 0);
 
-		const afterClose = await registry.exec("owner", { sessionId, code: "y", mode: "eval" });
+		const afterClose = await registry.exec("controller", { sessionId, code: "y", mode: "eval" });
 		assert.equal(afterClose.status, "not_found");
 	});
 });
 
 test("runtime captures stdout and stderr separately", async () => {
 	await withRuntimeRegistry(async (registry) => {
-		const start = await registry.start("owner", { runtime: "python" });
+		const start = await registry.start("controller", { runtime: "python" });
 		const sessionId = start.sessionId;
 		assert.ok(sessionId);
 
-		const result = await registry.exec("owner", {
+		const result = await registry.exec("controller", {
 			sessionId,
 			code: "import sys\nprint('out')\nprint('err', file=sys.stderr)",
 		});
@@ -91,36 +91,36 @@ test("runtime captures stdout and stderr separately", async () => {
 	});
 });
 
-test("runtime vars, inspect, and owner isolation work", async () => {
+test("runtime vars, inspect, and controller isolation work", async () => {
 	await withRuntimeRegistry(async (registry) => {
-		const start = await registry.start("owner-a", { runtime: "python" });
+		const start = await registry.start("controller-a", { runtime: "python" });
 		const sessionId = start.sessionId;
 		assert.ok(sessionId);
 
-		await registry.exec("owner-a", { sessionId, code: "_private = 1\npublic = 2\ndef f(a, b=1):\n    return a + b" });
-		const vars = await registry.vars("owner-a", { sessionId });
+		await registry.exec("controller-a", { sessionId, code: "_private = 1\npublic = 2\ndef f(a, b=1):\n    return a + b" });
+		const vars = await registry.vars("controller-a", { sessionId });
 		assert.equal(vars.status, "ok");
 		assert.ok(vars.variables.some((entry) => entry.name === "public"));
 		assert.ok(!vars.variables.some((entry) => entry.name === "_private"));
 
-		const inspected = await registry.inspect("owner-a", { sessionId, expression: "f", what: "signature" });
+		const inspected = await registry.inspect("controller-a", { sessionId, expression: "f", what: "signature" });
 		assert.equal(inspected.status, "ok");
 		assert.equal(inspected.signature, "(a, b=1)");
 
-		assert.deepEqual(registry.list("owner-b").sessions, []);
-		assert.equal((await registry.exec("owner-b", { sessionId, code: "public", mode: "eval" })).status, "not_found");
+		assert.deepEqual(registry.list("controller-b").sessions, []);
+		assert.equal((await registry.exec("controller-b", { sessionId, code: "public", mode: "eval" })).status, "not_found");
 	});
 });
 
 test("node runtime preserves variables across exec calls", async () => {
 	await withRuntimeRegistry(async (registry) => {
-		const start = await registry.start("owner", { runtime: "node" });
+		const start = await registry.start("controller", { runtime: "node" });
 		assert.equal(start.status, "ok");
 		const sessionId = start.sessionId;
 		assert.ok(sessionId);
 
-		assert.equal((await registry.exec("owner", { sessionId, code: "let x = 1" })).status, "ok");
-		const result = await registry.exec("owner", { sessionId, code: "x + 1", mode: "eval" });
+		assert.equal((await registry.exec("controller", { sessionId, code: "let x = 1" })).status, "ok");
+		const result = await registry.exec("controller", { sessionId, code: "x + 1", mode: "eval" });
 		assert.equal(result.status, "ok");
 		assert.equal(result.result?.repr, "2");
 	});
@@ -128,11 +128,11 @@ test("node runtime preserves variables across exec calls", async () => {
 
 test("node runtime errors keep prior state and expose failing line", async () => {
 	await withRuntimeRegistry(async (registry) => {
-		const start = await registry.start("owner", { runtime: "node" });
+		const start = await registry.start("controller", { runtime: "node" });
 		const sessionId = start.sessionId;
 		assert.ok(sessionId);
 
-		const failed = await registry.exec("owner", {
+		const failed = await registry.exec("controller", {
 			sessionId,
 			code: "globalThis.x = 1\nthrow new Error('boom')",
 			closeOnSuccess: true,
@@ -141,7 +141,7 @@ test("node runtime errors keep prior state and expose failing line", async () =>
 		assert.equal(failed.autoClosed, undefined);
 		assert.equal(failed.error?.line, 2);
 
-		const result = await registry.exec("owner", { sessionId, code: "x", mode: "eval" });
+		const result = await registry.exec("controller", { sessionId, code: "x", mode: "eval" });
 		assert.equal(result.status, "ok");
 		assert.equal(result.result?.repr, "1");
 	});
@@ -149,11 +149,11 @@ test("node runtime errors keep prior state and expose failing line", async () =>
 
 test("node runtime captures stdout, stderr, inspect, vars, and closeOnSuccess", async () => {
 	await withRuntimeRegistry(async (registry) => {
-		const start = await registry.start("owner", { runtime: "node" });
+		const start = await registry.start("controller", { runtime: "node" });
 		const sessionId = start.sessionId;
 		assert.ok(sessionId);
 
-		const output = await registry.exec("owner", {
+		const output = await registry.exec("controller", {
 			sessionId,
 			code: "globalThis.public = 2; console.log('out'); console.error('err'); function f(a, b = 1) { return a + b; } globalThis.f = f;",
 		});
@@ -161,19 +161,19 @@ test("node runtime captures stdout, stderr, inspect, vars, and closeOnSuccess", 
 		assert.equal(output.stdout, "out\n");
 		assert.equal(output.stderr, "err\n");
 
-		const vars = await registry.vars("owner", { sessionId });
+		const vars = await registry.vars("controller", { sessionId });
 		assert.equal(vars.status, "ok");
 		assert.ok(vars.variables.some((entry) => entry.name === "public"));
 
-		const inspected = await registry.inspect("owner", { sessionId, expression: "f", what: "signature" });
+		const inspected = await registry.inspect("controller", { sessionId, expression: "f", what: "signature" });
 		assert.equal(inspected.status, "ok");
 		assert.match(inspected.signature, /function f\(a, b = 1\)/);
 
-		const success = await registry.exec("owner", { sessionId, code: "public + 1", mode: "eval", closeOnSuccess: true });
+		const success = await registry.exec("controller", { sessionId, code: "public + 1", mode: "eval", closeOnSuccess: true });
 		assert.equal(success.status, "ok");
 		assert.equal(success.autoClosed, true);
 		assert.equal(success.result?.repr, "3");
-		assert.equal(registry.list("owner").sessions.length, 0);
+		assert.equal(registry.list("controller").sessions.length, 0);
 	});
 });
 

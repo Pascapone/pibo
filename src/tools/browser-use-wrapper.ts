@@ -496,7 +496,7 @@ except Exception as exc:
     print("malformed")
     print(str(exc))
     raise SystemExit(0)
-for key in ("state", "pid", "cdpPort", "cdpUrl", "userDataDir", "activeLeaseId", "activeLeaseCount", "idleExpiresAt", "owner"):
+for key in ("state", "pid", "cdpPort", "cdpUrl", "userDataDir", "activeLeaseId", "activeLeaseCount", "idleExpiresAt", "holder"):
     value = data.get(key, "")
     print(value if value is not None else "")
 PYSUMMARY
@@ -533,9 +533,9 @@ browser_pool_write_state() {
   cdp_url=$5
   user_data_dir=$6
   active_lease_id=$7
-  owner=$8
+  holder=$8
   last_error=$9
-  "$python_cmd" - "$state_file" "$(browser_pool_worker_id)" "$(browser_pool_id)" "\${PIBO_BROWSER_POOL_MAX_PROCESSES:-1}" "$lifecycle_state" "$chrome_pid" "$chrome_port" "$cdp_url" "$user_data_dir" "$active_lease_id" "$owner" "$last_error" <<'PYSTATE'
+  "$python_cmd" - "$state_file" "$(browser_pool_worker_id)" "$(browser_pool_id)" "\${PIBO_BROWSER_POOL_MAX_PROCESSES:-1}" "$lifecycle_state" "$chrome_pid" "$chrome_port" "$cdp_url" "$user_data_dir" "$active_lease_id" "$holder" "$last_error" <<'PYSTATE'
 import json
 import os
 import sys
@@ -543,7 +543,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 state_file = Path(sys.argv[1])
 worker_id, pool_id, max_processes, lifecycle_state = sys.argv[2:6]
-pid, port, cdp_url, user_data_dir, lease_id, owner, last_error = sys.argv[6:13]
+pid, port, cdp_url, user_data_dir, lease_id, holder, last_error = sys.argv[6:13]
 now = datetime.now(timezone.utc)
 record = {
     "workerId": worker_id,
@@ -568,8 +568,8 @@ if lease_id:
     record["idleExpiresAt"] = (now + timedelta(milliseconds=int(os.environ.get("PIBO_BROWSER_POOL_IDLE_TIMEOUT_MS", "600000")))).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 else:
     record["activeLeaseCount"] = 0
-if owner:
-    record["owner"] = owner
+if holder:
+    record["holder"] = holder
 if last_error:
     record["lastError"] = last_error
 state_file.parent.mkdir(parents=True, exist_ok=True)
@@ -586,7 +586,7 @@ browser_pool_acquire() {
   mkdir -p "$(dirname "$state_file")"
   safe_session=$(browser_pool_safe_segment "$session")
   lease_id=\${PIBO_BROWSER_POOL_LEASE_ID:-browser-use:$safe_session}
-  owner=\${PIBO_BROWSER_POOL_OWNER:-browser-use:$session}
+  holder=\${PIBO_BROWSER_POOL_HOLDER:-browser-use:$session}
   attempts=0
   while ! mkdir "$lock_dir" 2>/dev/null; do
     attempts=$((attempts + 1))
@@ -602,7 +602,7 @@ browser_pool_acquire() {
   summary_state=$(printf '%s\n' "$summary" | sed -n '1p')
   if [ "$summary_state" = "malformed" ]; then
     malformed_reason=$(printf '%s\n' "$summary" | sed -n '2p')
-    browser_pool_write_state "$state_file" dirty "" "" "" "" "" "$owner" "Malformed browser pool state: $malformed_reason"
+    browser_pool_write_state "$state_file" dirty "" "" "" "" "" "$holder" "Malformed browser pool state: $malformed_reason"
   elif [ "$summary_state" != "missing" ]; then
     recorded_state=$summary_state
     recorded_pid=$(printf '%s\n' "$summary" | sed -n '2p')
@@ -611,7 +611,7 @@ browser_pool_acquire() {
     recorded_user_data_dir=$(printf '%s\n' "$summary" | sed -n '5p')
     recorded_active_lease_id=$(printf '%s\n' "$summary" | sed -n '6p')
     recorded_idle_expires_at=$(printf '%s\n' "$summary" | sed -n '8p')
-    recorded_owner=$(printf '%s\n' "$summary" | sed -n '9p')
+    recorded_holder=$(printf '%s\n' "$summary" | sed -n '9p')
     if [ "$recorded_state" = "leased" ] && browser_pool_lease_is_busy "$recorded_active_lease_id" "$lease_id" "$recorded_idle_expires_at" && [ -n "$recorded_pid" ] && [ -n "$recorded_port" ] && [ -n "$recorded_cdp_url" ] && kill -0 "$recorded_pid" 2>/dev/null && pibo_cdp_is_ready "$recorded_port"; then
       busy_reason="pool-exhausted: browser pool $(browser_pool_id) is already leased by $recorded_active_lease_id until \${recorded_idle_expires_at:-unknown}"
       echo "pibo browser-use: $busy_reason" >&2
@@ -620,17 +620,17 @@ browser_pool_acquire() {
       return 1
     fi
     if [ "$recorded_state" != "dirty" ] && [ -n "$recorded_pid" ] && [ -n "$recorded_port" ] && [ -n "$recorded_cdp_url" ] && kill -0 "$recorded_pid" 2>/dev/null && pibo_cdp_is_ready "$recorded_port"; then
-      browser_pool_write_state "$state_file" leased "$recorded_pid" "$recorded_port" "$recorded_cdp_url" "$recorded_user_data_dir" "$lease_id" "$owner" ""
+      browser_pool_write_state "$state_file" leased "$recorded_pid" "$recorded_port" "$recorded_cdp_url" "$recorded_user_data_dir" "$lease_id" "$holder" ""
       rm -rf "$lock_dir"
       trap - EXIT INT TERM
       printf '%s\n' "$recorded_cdp_url"
       return 0
     fi
-    browser_pool_write_state "$state_file" stale "$recorded_pid" "$recorded_port" "$recorded_cdp_url" "$recorded_user_data_dir" "" "$owner" "Recorded browser is not alive or CDP is unreachable"
+    browser_pool_write_state "$state_file" stale "$recorded_pid" "$recorded_port" "$recorded_cdp_url" "$recorded_user_data_dir" "" "$holder" "Recorded browser is not alive or CDP is unreachable"
   fi
 
   start_result=$(start_persistent_chrome) || {
-    browser_pool_write_state "$state_file" dirty "" "" "" "" "" "$owner" "Managed browser start failed"
+    browser_pool_write_state "$state_file" dirty "" "" "" "" "" "$holder" "Managed browser start failed"
     rm -rf "$lock_dir"
     trap - EXIT INT TERM
     return 1
@@ -639,7 +639,7 @@ browser_pool_acquire() {
   chrome_port=$(printf '%s\n' "$start_result" | sed -n '2p')
   cdp_url=$(printf '%s\n' "$start_result" | sed -n '3p')
   user_data_dir=$(printf '%s\n' "$start_result" | sed -n '4p')
-  browser_pool_write_state "$state_file" leased "$chrome_pid" "$chrome_port" "$cdp_url" "$user_data_dir" "$lease_id" "$owner" ""
+  browser_pool_write_state "$state_file" leased "$chrome_pid" "$chrome_port" "$cdp_url" "$user_data_dir" "$lease_id" "$holder" ""
   rm -rf "$lock_dir"
   trap - EXIT INT TERM
   printf '%s\n' "$cdp_url"

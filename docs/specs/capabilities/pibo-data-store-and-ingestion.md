@@ -3,7 +3,7 @@
 **Status:** Draft
 **Created:** 2026-05-10
 **Updated:** 2026-05-17
-**Owner / Source:** Scheduled Pibo Source Specs Coverage
+**Controller / Source:** Scheduled Pibo Source Specs Coverage
 **Related docs:** [Chat Web Rooms and Event Streams](./chat-web-rooms-and-event-streams.md), [Pibo Session Routing](./pibo-session-routing.md), [Debug CLI](./debug-cli.md)
 
 ## Why
@@ -18,7 +18,7 @@ Pibo SHALL maintain a SQLite-backed v2 data store that can serve as the default 
 
 ## Background / Current State
 
-The current implementation creates `.pibo/pibo.sqlite` through `PiboDataStore`, applies schema version 2, enables foreign keys, sets a busy timeout, and uses WAL for file-backed stores. The store owns sub-stores for payloads, event log rows, chat messages, observations, session navigation, sessions, and runtime telemetry. Chat Web also creates workflow authoring/catalog tables in this same database; those tables are covered by workflow specs and local store ownership docs rather than by the `src/data` sub-store contract.
+The current implementation creates `.pibo/pibo.sqlite` through `PiboDataStore`, applies schema version 2, enables foreign keys, sets a busy timeout, and uses WAL for file-backed stores. The store owns sub-stores for payloads, event log rows, chat messages, observations, session navigation, sessions, and runtime telemetry. Chat Web also creates workflow authoring/catalog tables in this same database; those tables are covered by workflow specs and local store stewardship docs rather than by the `src/data` sub-store contract.
 
 `PiboDataSessionStore` implements the default gateway `PiboSessionStore` on the shared `sessions` table. `ChatDataIngestService` writes accepted user messages and normalized `PiboOutputEvent` records. It records append-only event rows, creates message and observation projections, upserts session and navigation metadata, and externalizes large content into a compressed payload directory.
 
@@ -39,7 +39,7 @@ The current implementation creates `.pibo/pibo.sqlite` through `PiboDataStore`, 
 - Legacy Chat Web read model semantics — covered by Chat Web specs.
 - Session-store semantics above the v2 table adapter — covered by the Pibo Session Store spec.
 - Runtime telemetry table semantics — covered by Runtime Observability Telemetry.
-- Workflow UI authoring/catalog tables created in `pibo.sqlite` by Chat Web — covered by workflow and local-store ownership specs.
+- Workflow UI authoring/catalog tables created in `pibo.sqlite` by Chat Web — covered by workflow and local-store stewardship specs.
 - Reliability event streams, durable jobs, and yielded-run records in `.pibo/pibo-events.sqlite` — separate capability.
 - UI rendering of messages and observations — consumers of this store decide presentation.
 
@@ -172,7 +172,7 @@ The system MUST upsert session metadata and navigation rows when session-store o
 
 #### Current
 
-The `sessions` table stores Pibo Session identity, linked Pi session id, legacy owner compatibility value when present, room id, root/parent/origin ids, channel, kind, profile, active model, workspace, title, status, metadata, timestamps, and first-message preview. In normal gateway startup, `PiboDataSessionStore` uses this table as the routed Pibo Session Store. The navigation projection stores shared app room, session hierarchy, title, profile, status, last activity, last message preview, child count, sort key, and archive state.
+The `sessions` table stores Pibo Session identity, linked Pi session id, legacy controller compatibility value when present, room id, root/parent/origin ids, channel, kind, profile, active model, workspace, title, status, metadata, timestamps, and first-message preview. In normal gateway startup, `PiboDataSessionStore` uses this table as the routed Pibo Session Store. The navigation projection stores app context room, session hierarchy, title, profile, status, last activity, last message preview, child count, sort key, and archive state.
 
 #### Target
 
@@ -183,7 +183,7 @@ Routing can use the v2 session table through `PiboDataSessionStore`, and room/se
 - V2-backed session-store create, update, delete, list, and find operations preserve Pibo Session identity semantics.
 - User-message ingestion sets first message preview only when not already present.
 - Root session id is the session id for roots and uses parent/root metadata for children.
-- Navigation listing filters by optional room id, archive visibility, and bounded limit, ordered by sort key descending. Legacy owner filters are migration compatibility only.
+- Navigation listing filters by optional room id, archive visibility, and bounded limit, ordered by sort key descending. Legacy controller filters are migration compatibility only.
 
 #### Scenario: New room activity
 
@@ -215,7 +215,7 @@ Chat Web call sites can move to v2-native services while retaining existing room
 
 #### Scenario: V2-native chat service flow
 
-- GIVEN a fresh v2 store and the shared app read-state actor
+- GIVEN a fresh v2 store and the app context read-state actor
 - WHEN Chat Web ensures the default room, upserts a Pibo Session, appends a user event and an assistant event, lists the timeline, and marks the session read
 - THEN the duplicate user append returns the first event
 - AND the timeline returns the stored events in stream order
@@ -237,7 +237,7 @@ Operators and agents can inspect data-store state, migrate session projections, 
 
 - Inventory can run against a configured root and includes v2, v2-shadow, legacy sessions, legacy chat, reliability, and auth stores.
 - Session migration reports read, inserted, updated, skipped, and source-existence counts.
-- Unread repair is a legacy compatibility command that refuses to run without app partition and cutoff timestamp; shared-app migration uses `pibo data shared-app` instead.
+- Unread repair is a legacy compatibility command that refuses to run without app partition and cutoff timestamp; app-context migration uses `pibo data app-context` instead.
 
 #### Scenario: Inventory for missing root store
 
@@ -252,7 +252,7 @@ Operators and agents can inspect data-store state, migrate session projections, 
 - Large JSON and text payloads are externalized only above the inline threshold; small payloads may remain in row attributes.
 - Payload deduplication is byte-based after serialization; semantically equivalent JSON with different serialized form is not guaranteed to dedupe.
 - The v2 store can coexist with legacy stores; migration must not delete legacy rows.
-- V2-native services must not reinsert runtime output events that are already owned by `ChatDataIngestService`.
+- V2-native services must not reinsert runtime output events that are already managed by `ChatDataIngestService`.
 
 ## Constraints
 

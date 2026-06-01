@@ -2,7 +2,7 @@
 
 **Status:** Draft
 **Created:** 2026-05-10
-**Owner / Source:** Source coverage job, based on current workspace code
+**Controller / Source:** Source coverage job, based on current workspace code
 **Related docs:**
 - [Chat Web Trace and Terminal View](./chat-web-trace-and-terminal-view.md)
 - [Chat Web Cache and Live State](./chat-web-cache-and-live-state.md)

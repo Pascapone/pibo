@@ -1,9 +1,9 @@
 # Spec: Browser Automation Desktop Environment
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Updated:** 2026-05-17  
-**Owner / Source:** Current Pibo codebase; 2026-05-17 compute/browser resource incident analysis  
+**Status:** Draft
+**Created:** 2026-05-10
+**Updated:** 2026-05-17
+**Controller / Source:** Current Pibo codebase; 2026-05-17 compute/browser resource incident analysis
 **Related docs:** `GLOSSARY.md`, `docs/specs/capabilities/curated-cli-tools.md`, `docs/specs/capabilities/docker-compute-workers.md`, `docs/specs/changes/compute-browser-resource-lifecycle/spec.md`
 
 ## Why

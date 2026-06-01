@@ -1,8 +1,8 @@
 # Spec: Web Deployment Scripts
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage  
+**Status:** Draft
+**Created:** 2026-05-10
+**Controller / Source:** Scheduled Pibo Source Specs Coverage
 **Related docs:** [Local Gateway Protocol and Lifecycle](./local-gateway-protocol-and-lifecycle.md), [Docker Compute Workers](./docker-compute-workers.md), `AGENTS.md`
 
 ## Why
@@ -176,7 +176,7 @@ The production deployment script MUST leave production activation to the Pibo ga
 ### Assumptions
 
 - Operators run these scripts only after validating changes through the Docker compute worker flow described in project instructions.
-- Gateway process activation remains owned by `pibo gateway web|dev start|restart`, not by deployment scripts.
+- Gateway process activation remains managed by `pibo gateway web|dev start|restart`, not by deployment scripts.
 
 ### Open Questions
 

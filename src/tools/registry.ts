@@ -70,7 +70,7 @@ const REGISTRY: CliToolEntry[] = [
     agentContextSnippet: [
       'Browser automation CLI for frontend development and web testing.',
       'Start in one persistent shell with `eval "$(npm run --silent dev -- tools env browser-use)"`.',
-      'For authenticated Pibo Chat Web App testing, prefer `eval "$(npm run --silent dev -- tools browser-use lease acquire --app pibo-chat --owner "$USER")"`.',
+      'For authenticated Pibo Chat Web App testing, prefer `eval "$(npm run --silent dev -- tools browser-use lease acquire --app pibo-chat --holder "$USER")"`.',
       'Discover details with `npm run dev -- tools show browser-use` and `npm run dev -- tools guide browser-use browser-use`.',
     ].join('\n'),
   },
@@ -96,7 +96,7 @@ const REGISTRY: CliToolEntry[] = [
     agentContextSnippet: [
       'Browser automation CLI for frontend development and web testing.',
       'Start in one persistent shell with `eval "$(npm run --silent dev -- tools env agent-browser)"`.',
-      'For authenticated Pibo Chat Web App testing, prefer `eval "$(npm run --silent dev -- tools agent-browser lease acquire --app pibo-chat --owner "$USER")"`.',
+      'For authenticated Pibo Chat Web App testing, prefer `eval "$(npm run --silent dev -- tools agent-browser lease acquire --app pibo-chat --holder "$USER")"`.',
       'Discover details with `npm run dev -- tools show agent-browser` and `npm run dev -- tools guide agent-browser agent-browser`.',
     ].join('\n'),
   },

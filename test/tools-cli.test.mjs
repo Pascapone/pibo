@@ -143,7 +143,7 @@ test("pibo tools exposes Ralph guides and helper discovery", async () => {
 		assert.match(helper.stdout, /pibo tools ralph - Ralph job helpers/);
 		assert.match(helper.stdout, /pibo ralph add --template <id>/);
 		assert.match(helper.stdout, /pibo ralph runs --job <job-id> --json/);
-		assert.doesNotMatch(helper.stdout, /--owner-scope <scope>/);
+		assert.doesNotMatch(helper.stdout, /--holder-scope <scope>/);
 
 		const guide = await execFileAsync("node", [cliPath, "tools", "guide", "ralph", "ralph"], { cwd, env });
 		assert.match(guide.stdout, /# Ralph CLI Tool/);
@@ -251,7 +251,7 @@ test("pibo tools exposes agent-browser npm runtime, guide, wrapper, and helpers"
 		assert.match(helper.stdout, /pibo tools agent-browser - Agent Browser helpers/);
 		assert.match(helper.stdout, /lease acquire/);
 
-		const lease = await execFileAsync("node", [cliPath, "tools", "agent-browser", "lease", "acquire", "--owner", "test"], { cwd, env });
+		const lease = await execFileAsync("node", [cliPath, "tools", "agent-browser", "lease", "acquire", "--holder", "test"], { cwd, env });
 		assert.match(lease.stdout, /PIBO_AGENT_BROWSER_LEASE_ID/);
 		assert.match(lease.stdout, /AGENT_BROWSER_PROFILE/);
 	} finally {
@@ -345,7 +345,7 @@ test("pibo tools env wraps browser-use with the PIBo default profile", async () 
 				BROWSER_USE_HOME: browserUseHome,
 				PIBO_BROWSER_POOL_WORKER_ID: "test-worker",
 				PIBO_BROWSER_POOL_LEASE_ID: "lease-default",
-				PIBO_BROWSER_POOL_OWNER: "test-owner",
+				PIBO_BROWSER_POOL_HOLDER: "test-holder",
 				PIBO_BROWSER_USE_CHROME: fakeChromePath,
 				PIBO_BROWSER_USE_CHROME_USER_DATA_DIR: chromeUserDataDir,
 				PIBO_BROWSER_USE_SKIP_CDP_WAIT: "1",
@@ -360,7 +360,7 @@ test("pibo tools env wraps browser-use with the PIBo default profile", async () 
 		assert.equal(poolState.poolId, "default");
 		assert.equal(poolState.maxBrowserProcesses, 1);
 		assert.equal(poolState.activeLeaseId, "lease-default");
-		assert.equal(poolState.owner, "test-owner");
+		assert.equal(poolState.holder, "test-holder");
 		assert.match(poolState.cdpUrl, /^http:\/\/127\.0\.0\.1:\d+$/);
 		assert.equal(poolState.userDataDir, chromeUserDataDir);
 
@@ -383,7 +383,7 @@ test("pibo tools env wraps browser-use with the PIBo default profile", async () 
 				cdpPort: busyAddress.port,
 				cdpUrl: `http://127.0.0.1:${busyAddress.port}`,
 				activeLeaseId: "other-lease",
-				owner: "other-owner",
+				holder: "other-holder",
 				idleExpiresAt: "2099-01-01T00:00:00.000Z",
 			}, null, 2)}\n`, "utf8");
 			await assert.rejects(
@@ -718,7 +718,7 @@ test("pibo tools browser-use manages isolated authenticated leases", async () =>
 			"acquire",
 			"--app",
 			"pibo-chat",
-			"--owner",
+			"--holder",
 			"agent-a",
 			"--template-dir",
 			templateDir,
@@ -777,7 +777,7 @@ test("pibo tools browser-use auth leases coordinate managed browser-pool leases"
 			"acquire",
 			"--app",
 			"pibo-chat",
-			"--owner",
+			"--holder",
 			"agent-missing",
 			"--template-dir",
 			join(cwd, "empty-template"),
@@ -797,7 +797,7 @@ test("pibo tools browser-use auth leases coordinate managed browser-pool leases"
 			"acquire",
 			"--app",
 			"pibo-chat",
-			"--owner",
+			"--holder",
 			"agent-release",
 			"--template-dir",
 			join(cwd, "empty-template"),
@@ -815,7 +815,7 @@ test("pibo tools browser-use auth leases coordinate managed browser-pool leases"
 			userDataDir: releaseLease.userDataDir,
 			activeLeaseId: releaseLease.browserPoolLeaseId,
 			activeLeaseCount: 1,
-			owner: "agent-release",
+			holder: "agent-release",
 			state: "leased",
 			cleanupStatus: "not-attempted",
 		}, null, 2)}\n`, "utf8");
@@ -833,7 +833,7 @@ test("pibo tools browser-use auth leases coordinate managed browser-pool leases"
 			"acquire",
 			"--app",
 			"pibo-chat",
-			"--owner",
+			"--holder",
 			"agent-expired",
 			"--template-dir",
 			join(cwd, "empty-template"),
@@ -857,7 +857,7 @@ test("pibo tools browser-use auth leases coordinate managed browser-pool leases"
 			userDataDir: expiredLease.userDataDir,
 			activeLeaseId: expiredLease.browserPoolLeaseId,
 			activeLeaseCount: 1,
-			owner: "agent-expired",
+			holder: "agent-expired",
 			state: "leased",
 			cleanupStatus: "not-attempted",
 		}, null, 2)}\n`, "utf8");

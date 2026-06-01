@@ -1,8 +1,8 @@
 # Tasks: PTY Debug and E2E Tooling
 
-**Status:** Implemented with follow-up test gaps  
-**Created:** 2026-05-16  
-**Updated:** 2026-05-17  
+**Status:** Implemented with follow-up test gaps
+**Created:** 2026-05-16
+**Updated:** 2026-05-17
 **Related docs:** `proposal.md`, `spec.md`, `design.md`, `docs/specs/capabilities/cli-pty-validation.md`
 
 ## Phase 1: Command and Scenario Contract

@@ -477,7 +477,7 @@ function browserPoolState(overrides = {}) {
 		userDataDir: overrides.userDataDir,
 		activeLeaseId: overrides.activeLeaseId,
 		activeLeaseCount: overrides.activeLeaseCount,
-		owner: overrides.owner,
+		holder: overrides.holder,
 		lastUsedAt: overrides.lastUsedAt,
 		idleExpiresAt: overrides.idleExpiresAt,
 		state: overrides.state ?? 'ready',

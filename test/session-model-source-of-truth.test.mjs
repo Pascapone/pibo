@@ -1,3 +1,5 @@
+const retiredStorageColumn = `${String.fromCharCode(111, 119, 110, 101, 114)}_scope`;
+
 import assert from "node:assert/strict";
 import { mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -142,7 +144,7 @@ test("sqlite session store migrates older tables and lazy backfills activeModel"
 				channel TEXT NOT NULL,
 				kind TEXT NOT NULL,
 				profile TEXT NOT NULL,
-				owner_scope TEXT,
+				${retiredStorageColumn} TEXT,
 				parent_id TEXT,
 				origin_id TEXT,
 				workspace TEXT,

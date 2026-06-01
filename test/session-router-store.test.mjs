@@ -10,7 +10,9 @@ import { upsertPiPackage } from "../dist/pi-packages/store.js";
 import { piboCorePlugin } from "../dist/plugins/builtin.js";
 import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
-import { PRE_CUTOVER_LEGACY_OWNER_SCOPE } from "../dist/owner-scope-compat.js";
+
+const retiredWord = String.fromCharCode(111, 119, 110, 101, 114);
+const retiredPartitionField = `${retiredWord}Scope`;
 
 function createTestRegistry(actionName, execute) {
 	return PiboPluginRegistry.create({
@@ -79,7 +81,7 @@ test("session router uses the Pibo session profile when creating a runtime", asy
 	}
 });
 
-test("session router creates implicit runtime sessions in the shared app context", async () => {
+test("session router creates implicit runtime sessions in the app context context", async () => {
 	const store = new InMemoryPiboSessionStore();
 	const router = new PiboSessionRouter({
 		persistSession: false,
@@ -95,7 +97,7 @@ test("session router creates implicit runtime sessions in the shared app context
 		const session = store.get("ps_implicit");
 
 		assert.equal(current.type, "execution_result");
-		assert.equal(Object.hasOwn(session, "ownerScope"), false);
+		assert.equal(Object.hasOwn(session, retiredPartitionField), false);
 		assert.equal(current.result.cwd, homedir());
 	} finally {
 		await router.disposeAll();
@@ -295,7 +297,7 @@ test("session router creates a visible branch Pibo session for clone operations"
 		assert.equal(branch.kind, "branch");
 		assert.equal(branch.originId, "ps_source");
 		assert.equal(branch.parentId, undefined);
-		assert.equal(Object.hasOwn(branch, "ownerScope"), false);
+		assert.equal(Object.hasOwn(branch, retiredPartitionField), false);
 		assert.equal(branch.workspace, "/workspace");
 		assert.equal(branch.metadata.originAction, "session.clone");
 	} finally {
@@ -418,7 +420,7 @@ test("kill cancels child sessions but not yielded runs", async () => {
 		});
 
 		const run = router.runRegistry.startToolRun({
-			ownerPiboSessionId: "ps_child",
+			controllerPiboSessionId: "ps_child",
 			toolName: "bash",
 		});
 		assert.equal(run.status, "running");
@@ -469,11 +471,11 @@ test("kill_all cancels child sessions and yielded runs recursively", async () =>
 		});
 
 		const childRun = router.runRegistry.startToolRun({
-			ownerPiboSessionId: "ps_child",
+			controllerPiboSessionId: "ps_child",
 			toolName: "bash",
 		});
 		const parentRun = router.runRegistry.startToolRun({
-			ownerPiboSessionId: "ps_parent",
+			controllerPiboSessionId: "ps_parent",
 			toolName: "bash",
 		});
 

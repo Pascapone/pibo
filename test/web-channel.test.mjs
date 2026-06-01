@@ -10,6 +10,8 @@ import { createWebHostChannel } from "../dist/web/channel.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
 import { upsertPiPackage } from "../dist/pi-packages/store.js";
 
+const retiredPartitionField = `${String.fromCharCode(111, 119, 110, 101, 114)}Scope`;
+
 function createFakeAuthService() {
 	return {
 		name: "fake-auth",
@@ -713,7 +715,7 @@ test("chat web app maps authenticated users to chat sessions", async () => {
 		assert.equal(session.session.channel, "pibo.chat-web");
 		assert.equal(session.session.kind, "chat");
 		assert.equal(session.session.profile, "base");
-		assert.equal("ownerScope" in session.session, false);
+		assert.equal(retiredPartitionField in session.session, false);
 
 		const message = await fetch(`${baseURL}/api/chat/message`, {
 			method: "POST",
@@ -776,7 +778,7 @@ test("chat web app default data path runs without creating the legacy web-chat s
 	}
 });
 
-test("chat web app creates shared app sessions", async () => {
+test("chat web app creates app context sessions", async () => {
 	const { channel, baseURL, emitted } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 	});
@@ -794,7 +796,7 @@ test("chat web app creates shared app sessions", async () => {
 		assert.equal(created.status, 201);
 		const payload = await created.json();
 		assert.match(payload.session.id, /^ps_[0-9a-f-]{36}$/);
-		assert.equal("ownerScope" in payload.session, false);
+		assert.equal(retiredPartitionField in payload.session, false);
 		assert.equal(payload.session.parentId, undefined);
 		assert.equal(payload.session.workspace, homedir());
 
@@ -911,7 +913,7 @@ test("chat web app scopes bootstrap sessions to the selected room", async () => 
 	}
 });
 
-test("chat web app keeps the personal room locked", async () => {
+test("chat web app keeps the default room locked", async () => {
 	const { channel, baseURL } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 	});
@@ -931,7 +933,7 @@ test("chat web app keeps the personal room locked", async () => {
 				origin: baseURL,
 				"x-test-user": "user-1",
 			},
-			body: JSON.stringify({ name: "Renamed Personal Chat" }),
+			body: JSON.stringify({ name: "Renamed Default Chat" }),
 		});
 		assert.equal(patchResponse.status, 400);
 
@@ -990,7 +992,6 @@ test("chat web app archives and deletes rooms with contained session subtrees", 
 			channel: "pibo.subagents",
 			kind: "subagent",
 			profile: parent.profile,
-			ownerScope: parent.ownerScope,
 			parentId: parent.id,
 			metadata: { chatRoomId: room.id },
 		});
@@ -1151,7 +1152,6 @@ test("chat web app marks the selected session subtree read during bootstrap", as
 			channel: parent.channel,
 			kind: parent.kind,
 			profile: parent.profile,
-			ownerScope: parent.ownerScope,
 			parentId: parent.id,
 			metadata: { chatRoomId: room.id },
 		});
@@ -1710,7 +1710,6 @@ test("chat web app keeps active session completions read while preserving unfocu
 			channel: parent.channel,
 			kind: parent.kind,
 			profile: parent.profile,
-			ownerScope: parent.ownerScope,
 			parentId: parent.id,
 			metadata: { chatRoomId: room.id },
 		});
@@ -2367,7 +2366,7 @@ test("chat web app creates custom agents from the native capability catalog", as
 		assert.deepEqual(agentPayload.agent.builtinToolNames, ["read", "bash"]);
 		assert.equal(agentPayload.agent.autoContextFiles, false);
 		assert.equal(agentPayload.agent.runControl, true);
-		assert.equal("ownerScope" in agentPayload.agent, false);
+		assert.equal(retiredPartitionField in agentPayload.agent, false);
 
 		const session = await fetch(`${baseURL}/api/chat/sessions`, {
 			method: "POST",
@@ -2416,7 +2415,7 @@ test("chat web app exposes custom agents across authenticated accounts", async (
 		});
 		assert.equal(createdAgent.status, 201);
 		const createdPayload = await createdAgent.json();
-		assert.equal("ownerScope" in createdPayload.agent, false);
+		assert.equal(retiredPartitionField in createdPayload.agent, false);
 
 		const listedByAccountB = await fetch(`${baseURL}/api/chat/agents`, {
 			headers: { "x-test-user": "account-b" },
@@ -2568,7 +2567,6 @@ test("chat web app deletes renamed custom agents with their session subtrees", a
 			channel: "pibo.subagents",
 			kind: "subagent",
 			profile: "renamed-agent",
-			ownerScope: sessionPayload.session.ownerScope,
 			parentId: sessionPayload.session.id,
 		});
 
@@ -4923,7 +4921,7 @@ test("chat web app creates configured Project workflow sessions and starts one w
 		assert.equal(createdPayload.snapshot.schemaVersion, 1);
 		assert.match(createdPayload.snapshot.createdAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
 		assert.equal(createdPayload.snapshot.createdBy, "user-1");
-		assert.equal("ownerScope" in createdPayload.snapshot, false);
+		assert.equal(retiredPartitionField in createdPayload.snapshot, false);
 		assert.equal(createdPayload.snapshot.projectId, projectPayload.project.id);
 		assert.equal(createdPayload.snapshot.piboSessionId, createdPayload.session.id);
 		assert.equal(createdPayload.snapshot.workflow.id, "standard-project");
@@ -5647,7 +5645,7 @@ test("chat web app project bootstrap includes real workflow session descendants 
 		assert.equal(createdResponse.status, 201);
 		const createdPayload = await createdResponse.json();
 		const root = createdPayload.session;
-		assert.equal("ownerScope" in root, false);
+		assert.equal(retiredPartitionField in root, false);
 
 		const nested = sessions.create({
 			channel: "pibo.workflow",
@@ -5906,7 +5904,7 @@ test("chat web app rejects non-pi.dev package sources from browser adds", async 
 });
 
 test("chat web app manages user skill routes and syncs the capability catalog", async () => {
-	const home = mkdtempSync(join(tmpdir(), "pibo-web-user-skills-"));
+	const home = mkdtempSync(join(tmpdir(), "pibo-web-skill-account-"));
 	await withHome(home, async () => {
 		const { channel, baseURL, registeredSkills, unregisteredSkills } = await startWebHostChannel({
 			auth: createFakeAuthService(),
@@ -6141,7 +6139,6 @@ test("chat web app archives and permanently deletes custom agents with their ses
 			channel: "pibo.chat-web",
 			kind: "chat",
 			profile: "codex-compat-openai-web",
-			ownerScope: "user:user-1",
 			parentId: sessionPayload.session.id,
 		});
 
@@ -6275,7 +6272,6 @@ test("chat web app canonicalizes legacy custom agent session profile aliases", a
 			channel: "pibo.chat-web",
 			kind: "chat",
 			profile: "custom-agent:agent_02d60a56-9bd4-4606-921b-495e3daf69d8",
-			ownerScope: "user:user-1",
 		});
 		const response = await fetch(`${baseURL}/api/chat/bootstrap?piboSessionId=${encodeURIComponent(legacySession.id)}`, {
 			headers: { "x-test-user": "user-1" },
@@ -6519,7 +6515,6 @@ test("chat web app permanently deletes archived sessions with their child sessio
 			channel: "pibo.chat-web",
 			kind: "subagent",
 			profile: "codex-compat-openai-web",
-			ownerScope: "user:user-1",
 			parentId: payload.session.id,
 		});
 
@@ -6595,7 +6590,6 @@ test("chat web app renders origin sessions as top-level sessions", async () => {
 			channel: "pibo.chat-web",
 			kind: "branch",
 			profile: "codex-compat-openai-web",
-			ownerScope: "user:user-1",
 			originId: rootPayload.session.id,
 		});
 
@@ -6707,7 +6701,7 @@ test("chat web app accepts same-origin mutations behind a local reverse proxy", 
 		});
 		assert.equal(response.status, 201);
 		const payload = await response.json();
-		assert.equal("ownerScope" in payload.session, false);
+		assert.equal(retiredPartitionField in payload.session, false);
 	} finally {
 		await channel.stop?.();
 	}

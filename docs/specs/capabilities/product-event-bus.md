@@ -2,7 +2,7 @@
 
 **Status:** Draft
 **Created:** 2026-05-10
-**Owner / Source:** Scheduled Pibo Source Specs Coverage
+**Controller / Source:** Scheduled Pibo Source Specs Coverage
 **Related docs:** [Plugin Registry and Capability Catalog](./plugin-registry-and-capability-catalog.md), [Channel Runtime Context](./channel-runtime-context.md), [Context Files](./context-files.md)
 
 ## Why
@@ -122,7 +122,7 @@ Gateway server channel context maps `emitProductEvent` to `pluginRegistry.emitPr
 
 #### Target
 
-A web app receives enough context to publish and subscribe to product events, while registry ownership and listener storage stay inside the gateway boundary.
+A web app receives enough context to publish and subscribe to product events, while registry stewardship and listener storage stay inside the gateway boundary.
 
 #### Acceptance
 

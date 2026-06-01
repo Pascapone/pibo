@@ -159,7 +159,7 @@ export const runSignalProducer: PiboSignalProducer = {
 		if (data.type === "run_removed") return [{ type: "remove_node", nodeId: `run:${data.runId}` }];
 		if (data.type !== "run_changed") return [];
 		const run = data.run;
-		return [{ type: "upsert_node", node: node({ id: `run:${run.runId}`, kind: "yielded_run", status: runStatus(run.status), piboSessionId: run.ownerPiboSessionId, startedAt: run.createdAt, completedAt: run.completedAt, error: run.status === "failed" ? { message: run.summary ?? "Run failed.", source: "run" } : undefined, metadata: { runId: run.runId, toolName: run.toolName, completionPolicy: run.completionPolicy, consumed: run.consumed, summary: run.summary, previousStatus: data.previousStatus, reason: data.reason } }, context) }];
+		return [{ type: "upsert_node", node: node({ id: `run:${run.runId}`, kind: "yielded_run", status: runStatus(run.status), piboSessionId: run.controllerPiboSessionId, startedAt: run.createdAt, completedAt: run.completedAt, error: run.status === "failed" ? { message: run.summary ?? "Run failed.", source: "run" } : undefined, metadata: { runId: run.runId, toolName: run.toolName, completionPolicy: run.completionPolicy, consumed: run.consumed, summary: run.summary, previousStatus: data.previousStatus, reason: data.reason } }, context) }];
 	},
 };
 

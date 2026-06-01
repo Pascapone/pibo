@@ -1,7 +1,7 @@
 # PRD Catalog: Pibo Observability and Debug Telemetry
 
-**Status:** Draft  
-**Created:** 2026-05-16  
+**Status:** Draft
+**Created:** 2026-05-16
 **Source change:** `docs/specs/changes/pibo-observability-debug-telemetry/`
 
 This directory translates the observability/debug telemetry proposal, spec, design, task list, and incident report into implementation-grade PRDs and Ralph-ready `prd_*.json` files.
@@ -70,7 +70,7 @@ No open issue blocks PRD 02 storage work. The remaining TBDs are implementation 
 - **Bounded storage:** telemetry tables store metadata and links, not full content bodies. Byte counts are allowed; body copies are not.
 - **Preview contract:** V1 must handle preview-disabled/unavailable states cleanly. Preview persistence and preview CLI output are optional and must not be implemented as automatic raw capture unless explicitly approved. If enabled later, use default preview size `2048` bytes and hard maximum `16384` bytes unless existing debug conventions already define stricter limits.
 - **Stale threshold output:** stale/status JSON should include the applied threshold and its source: provider/profile override or default.
-- **Dependency policy:** instrumentation must use Pibo-owned wrappers/seams where possible and must not edit `node_modules`.
+- **Dependency policy:** instrumentation must use Pibo-managed wrappers/seams where possible and must not edit `node_modules`.
 
 ## Assumptions / TBD
 

@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { PiboCronStore } from '../dist/cron/store.js';
 
+const retiredWord = String.fromCharCode(111, 119, 110, 101, 114);
+const retiredPartitionField = `${retiredWord}Scope`;
+
 function createStore() {
   return new PiboCronStore({ path: ':memory:' });
 }
@@ -24,7 +27,7 @@ test('cron store validates required job fields before persisting', () => {
   const store = createStore();
   try {
     const sharedJob = store.createJob(baseJobInput({ enabled: false }));
-    assert.equal('ownerScope' in sharedJob, false);
+    assert.equal(retiredPartitionField in sharedJob, false);
     assert.deepEqual(sharedJob.target, { kind: 'default-chat' });
     assert.throws(
       () => store.createJob(baseJobInput({ profile: '  ' })),

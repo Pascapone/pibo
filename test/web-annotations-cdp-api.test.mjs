@@ -36,7 +36,7 @@ function createContext(options = {}) {
 			},
 		},
 		requireSession() {
-			return Promise.resolve({ authSession: { user: { id: options.authUserId ?? "u" } }, appContext: { kind: "shared-app", id: "app" } });
+			return Promise.resolve({ authSession: { user: { id: options.accountId ?? "u" } }, appContext: { kind: "app-context", id: "app" } });
 		},
 	};
 }
@@ -296,8 +296,8 @@ test("Web Annotation API allows cross-account access while preserving session sc
 			viewport: { width: 100, height: 100 },
 		});
 		const app = createWebAnnotationsWebApp({ store });
-		const sameAppContext = createContext({ authUserId: "user-a", sessions: ["ps_a", "ps_b"] });
-		const otherAccountContext = createContext({ authUserId: "user-b", sessions: ["ps_a"] });
+		const sameAppContext = createContext({ accountId: "user-a", sessions: ["ps_a", "ps_b"] });
+		const otherAccountContext = createContext({ accountId: "user-b", sessions: ["ps_a"] });
 
 		const otherAccountList = await app.handleRequest(new Request("http://127.0.0.1/api/web-annotations?piboSessionId=ps_a"), otherAccountContext);
 		const otherAccountJson = await otherAccountList.json();

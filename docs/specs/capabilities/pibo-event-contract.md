@@ -1,8 +1,8 @@
 # Spec: Pibo Input and Output Event Contract
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code  
+**Status:** Draft
+**Created:** 2026-05-10
+**Controller / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code
 **Related docs:** [Pibo Session Routing](./pibo-session-routing.md), [Local Gateway Protocol and Lifecycle](./local-gateway-protocol-and-lifecycle.md), [Chat Web Output Compaction and Stream Projection](./chat-web-output-compaction-and-stream-projection.md), [Pibo Session Signals](./pibo-session-signals.md)
 
 ## Why
@@ -26,7 +26,7 @@ Downstream code consumes the same event union: the local gateway serializes it, 
 ### In Scope
 
 - Product-level input events sent into the session router.
-- Product-level output events emitted by routed sessions and router-owned actions.
+- Product-level output events emitted by routed sessions and router-managed actions.
 - Message correlation through optional input ids and output `eventId` values.
 - Normalization of Pi Coding Agent stream events into Pibo output events.
 - Execution action result and failure behavior.
@@ -148,7 +148,7 @@ Wrapper-level controls such as status, abort, dispose, tree navigation, thinking
 
 ### Requirement: Normalized assistant and thinking events hide raw provider shape
 
-The system MUST convert supported Pi stream events into Pibo assistant and thinking output events with product-owned fields.
+The system MUST convert supported Pi stream events into Pibo assistant and thinking output events with product-managed fields.
 
 #### Current
 

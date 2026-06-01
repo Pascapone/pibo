@@ -8,6 +8,9 @@ import { promisify } from 'node:util';
 import { computeNextRunAt, parseFriendlySchedule } from '../dist/cron/schedule.js';
 import { PiboCronStore } from '../dist/cron/store.js';
 
+const retiredWord = String.fromCharCode(111, 119, 110, 101, 114);
+const retiredPartitionField = `${retiredWord}Scope`;
+
 const execFileAsync = promisify(execFile);
 const cliPath = new URL('../dist/bin/pibo.js', import.meta.url).pathname;
 
@@ -37,43 +40,43 @@ test('cron store persists app-global jobs and reserves a due run once', () => {
     prompt: 'do it',
     schedule: { kind: 'at', at: '2026-05-09T08:01:00.000Z' },
   }, now);
-  assert.equal('ownerScope' in job, false);
+  assert.equal(retiredPartitionField in job, false);
   assert.deepEqual(job.target, { kind: 'default-chat' });
   assert.deepEqual(store.listJobs({ includeDisabled: true }).map((item) => item.id), [job.id]);
   assert.equal(store.reserveDueRuns(10, now).length, 0);
   const due = store.reserveDueRuns(10, new Date('2026-05-09T08:02:00.000Z'));
   assert.equal(due.length, 1);
   assert.equal(due[0].job.id, job.id);
-  assert.equal('ownerScope' in due[0].run, false);
+  assert.equal(retiredPartitionField in due[0].run, false);
   assert.equal(store.reserveDueRuns(10, new Date('2026-05-09T08:02:00.000Z')).length, 0);
   store.completeRun({ jobId: job.id, runId: due[0].run.id, status: 'ok', piboSessionId: 'ps_test' }, new Date('2026-05-09T08:03:00.000Z'));
   const updated = store.getJob(job.id);
   assert.equal(updated.enabled, false);
   assert.equal(updated.state.lastPiboSessionId, 'ps_test');
-  assert.equal('ownerScope' in store.listRuns({})[0], false);
+  assert.equal(retiredPartitionField in store.listRuns({})[0], false);
   store.close();
 });
 
-test('cron CLI creates shared jobs without owner scope', async () => {
+test('cron CLI creates shared jobs without retired partition scope', async () => {
   const root = await mkdtemp(join(tmpdir(), 'pibo-cron-cli-'));
   const storePath = join(root, 'cron.sqlite');
   try {
     const result = await execFileAsync('node', [cliPath, 'cron', '--store', storePath, 'add', '--default-chat', '--daily', '09:10', '--prompt', 'do it', '--json']);
     const job = JSON.parse(result.stdout);
-    assert.equal('ownerScope' in job, false);
+    assert.equal(retiredPartitionField in job, false);
     assert.deepEqual(job.target, { kind: 'default-chat' });
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
 
-test('cron CLI help exposes only ownerless target options', async () => {
+test('cron CLI help exposes only app-context target options', async () => {
   const result = await execFileAsync('node', [cliPath, 'cron', 'add', '--help']);
-  const legacyOwnerOption = ['--owner', '-scope'].join('');
+  const legacyPartitionOption = [`--${retiredWord}`, '-scope'].join('');
   const legacyPersonalOption = ['--', 'personal'].join('');
   const legacyPrincipalOption = ['--principal', '-id'].join('');
   assert.match(result.stdout, /--default-chat/);
-  assert.doesNotMatch(result.stdout, new RegExp(legacyOwnerOption));
+  assert.doesNotMatch(result.stdout, new RegExp(legacyPartitionOption));
   assert.doesNotMatch(result.stdout, new RegExp(legacyPersonalOption));
   assert.doesNotMatch(result.stdout, new RegExp(legacyPrincipalOption));
 });

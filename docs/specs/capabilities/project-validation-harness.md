@@ -1,9 +1,9 @@
 # Spec: Project Validation Harness
 
-**Status:** Draft  
-**Created:** 2026-05-11  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage  
-**Related docs:** `docs/specs/capabilities/package-build-and-distribution.md`, `docs/specs/capabilities/operator-cli-discovery-and-dispatch.md`, `docs/specs/capabilities/local-store-ownership-and-canonical-data-boundaries.md`
+**Status:** Draft
+**Created:** 2026-05-11
+**Controller / Source:** Scheduled Pibo Source Specs Coverage
+**Related docs:** `docs/specs/capabilities/package-build-and-distribution.md`, `docs/specs/capabilities/operator-cli-discovery-and-dispatch.md`, `docs/specs/capabilities/local-store-stewardship-and-canonical-data-boundaries.md`
 
 ## Why
 
@@ -38,7 +38,7 @@ CLI-oriented tests execute `node dist/bin/pibo.js ...` through `execFile`. Store
 - Docker compute worker lifecycle and gateway browser checks.
 - Production or dev gateway restarts during validation.
 - Publishing, release approval, or deployment workflows.
-- Detailed behavior of each product subsystem, which remains owned by its capability spec.
+- Detailed behavior of each product subsystem, which remains managed by its capability spec.
 
 ## Requirements
 
@@ -83,7 +83,7 @@ Validation runs do not read, modify, or depend on live user sessions, credential
 #### Acceptance
 
 - Tests that create SQLite stores use `:memory:` or temporary file paths.
-- Tests that mutate Pibo-owned stores set a temporary root or storage directory.
+- Tests that mutate Pibo-managed stores set a temporary root or storage directory.
 - Tests that override process environment restore the previous value after the assertion path completes.
 - Tests do not require a pre-existing `.pibo/` directory in the repository or user home.
 

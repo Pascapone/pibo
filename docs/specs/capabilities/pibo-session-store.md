@@ -1,14 +1,14 @@
 # Spec: Pibo Session Store
 
-**Status:** Draft  
-**Created:** 2026-05-10  
+**Status:** Draft
+**Created:** 2026-05-10
 **Updated:** 2026-05-17
-**Owner / Source:** Scheduled Pibo Source Specs Coverage; current workspace code  
+**Controller / Source:** Scheduled Pibo Source Specs Coverage; current workspace code
 **Related docs:** [Pibo Session Routing](./pibo-session-routing.md), [Pibo Home and Workspace State Layout](./pibo-home-and-workspace-state.md), [Model Provider Auth and Session Model Selection](./model-provider-auth-and-session-selection.md)
 
 ## Why
 
-Pibo needs a durable product-level session record that remains stable while runtimes, browser views, subagents, and Pi session files change around it. The store is the boundary that preserves Pibo Session IDs, Pi Session bindings, hierarchy, workspace, metadata, and active model selection. Legacy owner fields are compatibility data only.
+Pibo needs a durable product-level session record that remains stable while runtimes, browser views, subagents, and Pi session files change around it. The store is the boundary that preserves Pibo Session IDs, Pi Session bindings, hierarchy, workspace, metadata, and active model selection. Legacy controller fields are compatibility data only.
 
 Without an explicit store contract, session routing could accidentally reuse a Pi session from another Pibo Session, lose parent or origin relationships, or make session lists slow and inconsistent as the database grows.
 
@@ -38,7 +38,7 @@ The legacy SQLite store creates the `pibo_sessions` table, enables a busy timeou
 - Runtime queueing and event routing — covered by Pibo Session Routing.
 - Chat room, project, and navigation projections — covered by Chat Web Rooms and Event Streams and Chat Web Projects Area.
 - Active model selection policy before persistence — covered by Model Provider Auth and Session Model Selection.
-- Pi Coding Agent transcript file format — owned by Pi Coding Agent, not the Pibo Session Store.
+- Pi Coding Agent transcript file format — managed by Pi Coding Agent, not the Pibo Session Store.
 
 ## Requirements
 
@@ -69,7 +69,7 @@ Every created session can be routed by Pibo identity and attached to exactly one
 - THEN the returned record has generated Pibo and Pi identities
 - AND the record can be read back by Pibo Session ID.
 
-### Requirement: Pi session ownership is unique
+### Requirement: Pi session stewardship is unique
 
 The store MUST prevent two Pibo Sessions from owning the same Pi Session ID.
 
@@ -87,7 +87,7 @@ A Pi Session file or runtime state cannot be ambiguously attached to multiple pr
 - Updating a session to another session's Pi Session ID fails.
 - Updating a session without changing its Pi Session ID succeeds.
 
-#### Scenario: Duplicate Pi ownership is rejected
+#### Scenario: Duplicate Pi stewardship is rejected
 
 - GIVEN session `ps_a` owns Pi Session ID `pi_1`
 - WHEN a caller creates or updates `ps_b` to use `pi_1`
@@ -167,7 +167,7 @@ Opening the default store is idempotent and compatible with older Pibo Session d
 
 - `:memory:` opens without creating filesystem directories.
 - File-backed stores create the parent directory when needed.
-- Opening a new legacy store creates `pibo_sessions` and indexes for parent, origin, channel/kind, and legacy owner compatibility filters.
+- Opening a new legacy store creates `pibo_sessions` and indexes for parent, origin, channel/kind, and legacy controller compatibility filters.
 - Opening an older table without `active_model_json` adds the column without dropping data.
 - Reopening a database returns previously persisted sessions.
 
@@ -192,7 +192,7 @@ Callers can move from legacy `pibo-sessions.sqlite` to the v2 data store without
 
 #### Acceptance
 
-- Creating a v2-backed session persists Pibo Session ID, Pi Session ID, channel, kind, profile, title, metadata, workspace, active model, and any legacy owner compatibility value required by an older schema.
+- Creating a v2-backed session persists Pibo Session ID, Pi Session ID, channel, kind, profile, title, metadata, workspace, active model, and any legacy controller compatibility value required by an older schema.
 - Reopening the same v2 store returns the persisted session fields.
 - Updating a v2-backed session preserves omitted fields, clears nullable fields such as `activeModel` when explicitly set to `null`, and refreshes `updatedAt`.
 - The v2 store rejects attaching a Pi Session ID already used by another non-deleted session.
@@ -253,7 +253,7 @@ A corrupted metadata or active-model field does not prevent session listing, rou
 ## Constraints
 
 - **Compatibility:** Store implementations must preserve the `PiboSessionStore` interface and keep in-memory, legacy SQLite, and v2 data-backed find semantics aligned.
-- **Security / Privacy:** The store itself does not authenticate callers. Current product access must not use legacy owner values for account isolation.
+- **Security / Privacy:** The store itself does not authenticate callers. Current product access must not use legacy controller values for account isolation.
 - **Performance:** SQLite queries must apply simple indexed filters before semantic JSON matching to avoid full scans when common filters are present.
 - **Dependencies:** The durable implementation depends on Node's `node:sqlite` `DatabaseSync` API and Pibo home path resolution.
 
@@ -289,7 +289,7 @@ This matrix records current protection separately from the behavior contract. `S
 | Requirement | Current direct tests | Verification kind | Remaining gap |
 |---|---|---|---|
 | REQ-001 Session creation produces stable product and Pi identities | `test/session-store.test.mjs` (`pibo session builder creates opaque product and Pi identities`) | Direct unit test | Add a copy-by-value assertion for supplied `activeModel` if that behavior becomes risky. |
-| REQ-002 Pi session ownership is unique | `test/session-store.test.mjs` (`in-memory pibo session store rejects duplicate Pi session ownership`) | Partial direct unit test | Add SQLite duplicate-create coverage and update-path duplicate coverage for both stores. |
+| REQ-002 Pi session stewardship is unique | `test/session-store.test.mjs` (`in-memory pibo session store rejects duplicate Pi session stewardship`) | Partial direct unit test | Add SQLite duplicate-create coverage and update-path duplicate coverage for both stores. |
 | REQ-003 Updates preserve omitted fields and clear nullable fields explicitly | `test/session-store.test.mjs` (`in-memory pibo session store creates, updates, and finds sessions`) | Partial direct unit test | Add explicit null-clearing tests for parent, origin, workspace, title, and `activeModel`; add unknown-session update coverage. |
 | REQ-004 Find behavior is shared and semantically stable | `test/session-store.test.mjs` (`in-memory pibo session store creates, updates, and finds sessions`, `sqlite pibo session store persists structured session fields`); `test/performance-optimizations.test.mjs` (`sqlite session find applies indexed filters before semantic matching`) | Direct and partial performance regression tests | Add side-by-side memory/SQLite tests for empty `ids`, `activeModel: null`, and ordered results. |
 | REQ-005 SQLite store initializes and migrates safely | `test/session-store.test.mjs` (`default sqlite pibo session store uses PIBO_HOME, not cwd`, `sqlite pibo session store persists structured session fields`) | Partial direct integration test | Add an older-schema migration fixture without `active_model_json`. |
@@ -301,7 +301,7 @@ This matrix records current protection separately from the behavior contract. `S
 | Requirement | Scenario / Story | Plan / Task | Status |
 |---|---|---|---|
 | REQ-001 Session creation produces stable product and Pi identities | Default identities are generated | `test/session-store.test.mjs` | Covered |
-| REQ-002 Pi session ownership is unique | Duplicate Pi ownership is rejected | `test/session-store.test.mjs`; add SQLite/update coverage | Partial |
+| REQ-002 Pi session stewardship is unique | Duplicate Pi stewardship is rejected | `test/session-store.test.mjs`; add SQLite/update coverage | Partial |
 | REQ-003 Updates preserve omitted fields and clear nullable fields explicitly | Active model is cleared | Add update-null behavior tests | Pending |
 | REQ-004 Find behavior is shared and semantically stable | Metadata and indexed filters compose | `test/session-store.test.mjs`; `test/performance-optimizations.test.mjs` | Partial |
 | REQ-005 SQLite store initializes and migrates safely | Older database opens after active-model migration | `test/session-store.test.mjs`; add migration compatibility test | Partial |

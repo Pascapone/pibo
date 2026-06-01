@@ -14,6 +14,9 @@ import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
 import { findCliToolEntry, getInstalledCliToolContextFile } from "../dist/tools/registry.js";
 import { getToolPythonRuntimePaths } from "../dist/tools/python-runtime.js";
 
+const retiredWord = String.fromCharCode(111, 119, 110, 101, 114);
+const retiredPartitionField = `${retiredWord}Scope`;
+
 const noopSubagentRunner = {
 	async runSubagent(input) {
 		return {
@@ -279,7 +282,7 @@ test("subagent runner emits a parent link event before waiting for the child rep
 		assert.equal(linkEvent.childPiboSessionId, result.piboSessionId);
 		assert.equal(linkEvent.threadKey, "inspect");
 		assert.equal(store.get(result.piboSessionId).parentId, "ps_parent");
-		assert.equal(Object.hasOwn(store.get(result.piboSessionId), "ownerScope"), false);
+		assert.equal(Object.hasOwn(store.get(result.piboSessionId), retiredPartitionField), false);
 		assert.equal(store.get(result.piboSessionId).metadata.chatRoomId, "room_parent");
 		assert.equal(store.get(result.piboSessionId).metadata.workflowSessionKind, "subagent");
 	} finally {

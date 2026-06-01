@@ -3,7 +3,7 @@
 Status: design spec / implementation planning
 Date: 2026-05-08
 Owner area: Pibo product boundary, native tools, routed sessions
-Related specs: `docs/terminal-pty-session-spec.md`
+Related specs: `docs/legacy/specs/terminal-pty-session-spec.md`
 
 ## 1. Purpose
 
@@ -21,7 +21,7 @@ A runtime session should behave more like a notebook kernel or REPL-backed works
 - a failed later command does not destroy earlier successful state
 - the agent can close the session when finished, releasing memory
 
-This spec intentionally separates structured runtime sessions from terminal PTY sessions. Runtime sessions are for reliable stateful code execution with structured results. Terminal PTY sessions are for shells, Docker/SSH terminals, TUIs, and interactive CLIs; see `docs/terminal-pty-session-spec.md`.
+This spec intentionally separates structured runtime sessions from terminal PTY sessions. Runtime sessions are for reliable stateful code execution with structured results. Terminal PTY sessions are for shells, Docker/SSH terminals, TUIs, and interactive CLIs; see `docs/legacy/specs/terminal-pty-session-spec.md`.
 
 ## 2. Problem statement
 

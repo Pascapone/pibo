@@ -844,11 +844,11 @@ function SkillInstallModal({
 				<input
 					value={url}
 					onChange={(e) => setUrl(e.target.value)}
-					placeholder="https://skills.sh/owner/skills/skill-name"
+					placeholder="https://skills.sh/account/skills/skill-name"
 					className="min-w-0 bg-[#0e1116] border border-slate-700 rounded-sm px-3 py-2 text-sm outline-none focus:border-[#11a4d4]"
 				/>
 				<div className="text-[11px] text-slate-500">
-					Supports skills.sh URLs, GitHub tree URLs, or owner/repo shorthand.
+					Supports skills.sh URLs, GitHub tree URLs, or account/repo shorthand.
 				</div>
 				<div className="flex justify-end gap-2">
 					<button type="button" onClick={onClose} className="px-3 py-2 text-sm border border-slate-700 rounded-sm hover:border-slate-500">Cancel</button>

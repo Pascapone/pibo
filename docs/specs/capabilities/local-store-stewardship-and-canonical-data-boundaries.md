@@ -1,20 +1,20 @@
-# Spec: Local Store Ownership and Canonical Data Boundaries
+# Spec: Local Store Stewardship and Canonical Data Boundaries
 
-**Status:** Draft  
-**Created:** 2026-05-10  
+**Status:** Draft
+**Created:** 2026-05-10
 **Updated:** 2026-05-17
-**Owner / Source:** Scheduled Pibo Source Specs Coverage  
+**Controller / Source:** Scheduled Pibo Source Specs Coverage
 **Related docs:** `GLOSSARY.md`, `docs/specs/README.md`, `docs/specs/capabilities/pibo-home-and-workspace-state.md`, `docs/specs/capabilities/pibo-data-store-and-ingestion.md`, `docs/specs/capabilities/pibo-session-store.md`, `docs/specs/capabilities/reliable-event-core.md`, `docs/specs/capabilities/debug-cli.md`
 
 ## Why
 
 Pibo persists product state in several local stores. Agents, web handlers, CLIs, and debug tools need a clear boundary for which store owns each product fact. Without that boundary, future code can accidentally treat projections, debug aliases, or legacy stores as canonical and create inconsistent session, room, event, or runtime state.
 
-This spec captures the current source-owned local storage contract: where stores live, what each store owns, which data is derived, and how consumers must recover when a store is missing or contains stale projection data.
+This spec captures the current source-managed local storage contract: where stores live, what each store owns, which data is derived, and how consumers must recover when a store is missing or contains stale projection data.
 
 ## Goal
 
-Pibo MUST keep each local product fact owned by exactly one current store and MUST treat read models, projections, and debug aliases as derived views unless their source module explicitly owns mutation for that fact.
+Pibo MUST keep each local product fact managed by exactly one current store and MUST treat read models, projections, and debug aliases as derived views unless their source module explicitly owns mutation for that fact.
 
 ## Background / Current State
 
@@ -30,8 +30,8 @@ Other durable stores own focused facts: `web-projects.sqlite` for Projects, Proj
 
 ### In Scope
 
-- Store path ownership under Pibo home and workspace `.pibo/` directories.
-- Canonical ownership of sessions, rooms, chat events, runtime telemetry, workflow authoring/catalog rows, Projects, reliability events, cron jobs, Ralph jobs, custom agents, auth data, managed context files, Pi packages, prompts, model defaults, and user settings.
+- Store path stewardship under Pibo home and workspace `.pibo/` directories.
+- Canonical stewardship of sessions, rooms, chat events, runtime telemetry, workflow authoring/catalog rows, Projects, reliability events, cron jobs, Ralph jobs, custom agents, auth data, managed context files, Pi packages, prompts, model defaults, and user settings.
 - Projection and read-model rules for Chat Web data and debug store aliases.
 - Idempotency, migration, and recovery behavior at store boundaries.
 - Operator/debug visibility for store paths and missing stores.
@@ -68,18 +68,18 @@ The system MUST resolve product-wide stores from the configured Pibo home and wo
 
 ### Requirement: Pibo Session identity has one routing source of truth
 
-The system MUST use the router's Pibo Session Store as the canonical source for Pibo Session identity, hierarchy, profile, active model, and Pi session binding. Legacy owner fields are compatibility metadata only.
+The system MUST use the router's Pibo Session Store as the canonical source for Pibo Session identity, hierarchy, profile, active model, and Pi session binding. Legacy controller fields are compatibility metadata only.
 
 #### Current
 
-The active `PiboSessionStore` owns `PiboSession` records with unique `piSessionId`, parent and origin ids, profile, workspace, metadata, title, active model, and any legacy owner compatibility value needed by old stores. In normal gateway startup, `createDefaultPiboDataSessionStore()` stores those records in `pibo.sqlite.sessions`. The legacy `SqlitePiboSessionStore` still owns `pibo-sessions.sqlite` records when explicitly used or during migration, and Chat Web ingestion may also update indexed session/navigation fields for room and trace queries.
+The active `PiboSessionStore` owns `PiboSession` records with unique `piSessionId`, parent and origin ids, profile, workspace, metadata, title, active model, and any legacy controller compatibility value needed by old stores. In normal gateway startup, `createDefaultPiboDataSessionStore()` stores those records in `pibo.sqlite.sessions`. The legacy `SqlitePiboSessionStore` still owns `pibo-sessions.sqlite` records when explicitly used or during migration, and Chat Web ingestion may also update indexed session/navigation fields for room and trace queries.
 
 #### Acceptance
 
 - Runtime routing resolves a Pibo Session from the session store before creating or resuming a runtime.
 - The configured router session store is the authority for creating or resuming a routed runtime; in normal gateway startup that store is `PiboDataSessionStore` backed by `pibo.sqlite.sessions`.
 - Updating a routed session's profile, title, workspace, metadata, or active model must go through the session store or a channel service that delegates to it.
-- Duplicate Pi session ownership is rejected by the canonical session store.
+- Duplicate Pi session stewardship is rejected by the canonical session store.
 
 #### Scenario: Projection missing for an existing session
 
@@ -180,28 +180,28 @@ The system MUST keep focused product records in their owning stores and referenc
 - GIVEN a custom agent stores a selected Pi package id
 - AND that package is removed from the workspace Pi package store
 - WHEN the custom-agent profile is assembled
-- THEN the package is skipped or diagnosed by runtime/profile assembly, and the custom-agent record remains the owner of the user's selection.
+- THEN the package is skipped or diagnosed by runtime/profile assembly, and the custom-agent record remains the controller of the user's selection.
 
-### Requirement: Local settings stores have narrow, typed ownership
+### Requirement: Local settings stores have narrow, typed stewardship
 
 The system MUST keep local configuration, model defaults, user settings, and prompt choices in separate typed stores with bounded recovery behavior.
 
 #### Current
 
-`config.json` stores local operator config such as auth settings. `model-defaults.json` stores provider/model defaults. `user-settings.json` stores shared app settings such as timezone; older per-owner entries are read only as migration fallback. Workspace `.pibo/base-prompt.*` and `.pibo/compaction-prompt.*` store runtime prompt modes and custom content.
+`config.json` stores local operator config such as auth settings. `model-defaults.json` stores provider/model defaults. `user-settings.json` stores app context settings such as timezone; older per-controller entries are read only as migration fallback. Workspace `.pibo/base-prompt.*` and `.pibo/compaction-prompt.*` store runtime prompt modes and custom content.
 
 #### Acceptance
 
 - Config display redacts secrets and rejects unknown keys through the config CLI contract.
 - Invalid or missing model defaults fall back to supported defaults without corrupting sessions that already froze an active model.
-- Invalid or missing shared app timezone falls back to `UTC`.
+- Invalid or missing app context timezone falls back to `UTC`.
 - Prompt stores preserve custom content across mode switches and remain workspace-scoped.
 - None of these settings stores owns session, room, event, or auth identity records.
 
 #### Scenario: Corrupt user settings file
 
 - GIVEN `user-settings.json` is missing or cannot be parsed as valid state
-- WHEN runtime context asks for the shared app timezone
+- WHEN runtime context asks for the app context timezone
 - THEN Pibo returns the default timezone and does not alter session identity.
 
 ### Requirement: Debug store names are diagnostic aliases
@@ -215,7 +215,7 @@ The system MUST expose debug store names as read-only diagnostics and MUST disti
 #### Acceptance
 
 - `pibo debug stores` shows each known store name, resolved path, and whether the file exists.
-- `sessions` and `chat` debug names are aliases for different views of `pibo.sqlite`, not separate owners of session or chat facts.
+- `sessions` and `chat` debug names are aliases for different views of `pibo.sqlite`, not separate controllers of session or chat facts.
 - A missing debug store is reported as missing instead of being created by read-only diagnostics.
 - Debug SQL rejects mutating statements.
 
@@ -235,19 +235,19 @@ The system MUST expose debug store names as read-only diagnostics and MUST disti
 
 ## Constraints
 
-- **Product Boundary:** Pibo-owned stores define product state. Pi Coding Agent transcripts are separate engine persistence and are used for trace reconstruction, not for Pibo room or routing ownership.
+- **Product Boundary:** Pibo-managed stores define product state. Pi Coding Agent transcripts are separate engine persistence and are used for trace reconstruction, not for Pibo room or routing stewardship.
 - **Compatibility:** Existing store paths remain stable unless a migration explicitly moves data and updates debug discovery.
 - **Security / Privacy:** Auth state and secrets must not be exposed through debug or config display beyond redacted, read-only diagnostics.
 - **Reliability:** Projection repair may use durable events, but canonical stores must remain idempotent and avoid duplicating facts.
-- **Context Economy:** Specs and debug output should name store ownership compactly instead of repeating full schemas at every command level.
+- **Context Economy:** Specs and debug output should name store stewardship compactly instead of repeating full schemas at every command level.
 
 ## Success Criteria
 
 - [ ] SC-001: Product-wide store paths resolve from `PIBO_HOME` or `~/.pibo`, while workspace stores remain under the effective workspace `.pibo/` directory.
 - [ ] SC-002: Routed runtime creation depends on the Pibo Session Store, not on Chat Web projection tables.
-- [ ] SC-003: Chat Web room, event, app read-state, and navigation behavior is owned by `pibo.sqlite` services.
-- [ ] SC-004: Reliability replay, durable jobs, and yielded-run records are owned by `pibo-events.sqlite` without replacing Chat Web event-log state.
-- [ ] SC-005: Cron jobs, custom agents, Better Auth, context files, Pi packages, prompts, model defaults, config, and user settings each have narrow store ownership.
+- [ ] SC-003: Chat Web room, event, app read-state, and navigation behavior is managed by `pibo.sqlite` services.
+- [ ] SC-004: Reliability replay, durable jobs, and yielded-run records are managed by `pibo-events.sqlite` without replacing Chat Web event-log state.
+- [ ] SC-005: Cron jobs, custom agents, Better Auth, context files, Pi packages, prompts, model defaults, config, and user settings each have narrow store stewardship.
 - [ ] SC-006: Debug store commands reveal resolved paths and aliases without creating or mutating stores.
 - [x] SC-007: Normal gateway and Chat Web runtime wiring stay on v2-native data services and do not reintroduce legacy Chat Web data-mode flags, as covered by `test/chat-data-v2-legacy-guard.test.mjs`.
 
@@ -274,7 +274,7 @@ The system MUST expose debug store names as read-only diagnostics and MUST disti
 | REQ-004 Runtime wiring stays on v2-native data services | Legacy Chat Web mode is not reintroduced | `src/gateway/server.ts`, `src/apps/chat/web-app.ts`, `src/apps/chat/data/*.ts`, `test/chat-data-v2-legacy-guard.test.mjs` | Covered |
 | REQ-005 Reliability state is operational | Reliability mirror is pruned | `src/reliability/store.ts`, `src/apps/chat/web-app.ts`, `src/data/ingest-service.ts` | Draft |
 | REQ-006 Focused stores own focused product records | Referenced custom-agent package is removed | `src/apps/chat/data/project-service.ts`, `src/cron/store.ts`, `src/ralph/store.ts`, `src/apps/chat/agent-store.ts`, `src/auth/better-auth.ts`, `src/plugins/context-files-store.ts`, `src/pi-packages/store.ts` | Draft |
-| REQ-007 Local settings stores have narrow ownership | Corrupt user settings file | `src/config/config.ts`, `src/core/model-defaults.ts`, `src/core/user-settings.ts`, `src/core/base-prompt.ts`, `src/core/compaction-prompt.ts` | Draft |
+| REQ-007 Local settings stores have narrow stewardship | Corrupt user settings file | `src/config/config.ts`, `src/core/model-defaults.ts`, `src/core/user-settings.ts`, `src/core/base-prompt.ts`, `src/core/compaction-prompt.ts` | Draft |
 | REQ-008 Debug store names are diagnostic aliases | Debug alias inspection | `src/debug/stores.ts`, `src/debug/sql.ts`, `src/debug/index.ts` | Draft |
 
 ## Verification Basis

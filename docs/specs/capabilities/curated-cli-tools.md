@@ -1,8 +1,8 @@
 # Spec: Curated CLI Tools
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code  
+**Status:** Draft
+**Created:** 2026-05-10
+**Controller / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code
 **Related docs:** `GLOSSARY.md`, `AGENTS.md`, `docs/specs/capabilities/plugin-registry-and-capability-catalog.md`, `docs/specs/capabilities/docker-compute-workers.md`
 
 ## Why
@@ -13,7 +13,7 @@ Curated CLI tools keep external command setup outside profiles and MCP. The CLI 
 
 ## Goal
 
-Pibo MUST provide a progressive `pibo tools` interface for curated external CLI tools, install each tool into an isolated Pibo-owned runtime, and expose only compact installed-tool context to agent runtimes.
+Pibo MUST provide a progressive `pibo tools` interface for curated external CLI tools, install each tool into an isolated Pibo-managed runtime, and expose only compact installed-tool context to agent runtimes.
 
 ## Background / Current State
 
@@ -31,7 +31,7 @@ Tool runtimes use `~/.pibo/tools/<name>` unless `PIBO_HOME` overrides the Pibo h
 - Tool guides stored behind explicit `guide` commands.
 - Compact installed-tool context injection into Pibo runtimes.
 - Browser-use wrapper behavior for Pibo-managed persistent Chrome via CDP.
-- Agent Browser wrapper behavior for Pibo-owned state and default profiles.
+- Agent Browser wrapper behavior for Pibo-managed state and default profiles.
 - Browser-use and Agent Browser authenticated template profiles, leases, target discovery, and health checks.
 
 ### Out of Scope
@@ -67,7 +67,7 @@ The `pibo tools` CLI MUST expose only the immediate command surface at each leve
 - WHEN it runs `pibo tools --help`, `pibo tools list`, and `pibo tools show browser-use`
 - THEN it sees the next setup and guide commands without receiving the full browser-use guide at the root level.
 
-### Requirement: Curated tools install into isolated Pibo-owned runtimes
+### Requirement: Curated tools install into isolated Pibo-managed runtimes
 
 The system MUST install each curated CLI into a tool-specific runtime under the Pibo home directory and MUST NOT depend on global Python or npm package state for normal use.
 
@@ -138,7 +138,7 @@ The runtime MUST inject compact installed-tool hints only for tools that are ins
 
 ### Requirement: Agent Browser wrapper keeps state under the Pibo tool home
 
-The Agent Browser executable exposed by Pibo MUST prefer a Pibo-owned home and default profile, while preserving explicit upstream flags.
+The Agent Browser executable exposed by Pibo MUST prefer a Pibo-managed home and default profile, while preserving explicit upstream flags.
 
 #### Current
 
@@ -274,7 +274,7 @@ The browser-use and Agent Browser helpers MUST inspect Chrome CDP targets and id
 | Requirement | Scenario / Story | Plan / Task | Status |
 |---|---|---|---|
 | REQ-001 Tool CLI discovery is progressive | Agent discovers browser-use | None | Pending |
-| REQ-002 Curated tools install into isolated Pibo-owned runtimes | Install target is local to Pibo | None | Pending |
+| REQ-002 Curated tools install into isolated Pibo-managed runtimes | Install target is local to Pibo | None | Pending |
 | REQ-003 Tool doctor output reports missing prerequisites and runtime state | Browser-use wrapper is missing | None | Pending |
 | REQ-004 Installed tools contribute compact runtime context only | Browser-use is installed | None | Pending |
 | REQ-005 Browser-use wrapper defaults to Pibo-managed persistent Chrome | Reuse existing managed Chrome | None | Pending |

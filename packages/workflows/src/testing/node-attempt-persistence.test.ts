@@ -80,7 +80,7 @@ function createAttempts(): NodeAttempt[] {
       localState: { attempts: 2 },
       metadata: { adapterId: "workflow.adapter.to-json" },
       lease: {
-        ownerId: "worker-a",
+        holderId: "worker-a",
         token: "lease-token",
         acquiredAt: "2026-05-11T02:00:08.000Z",
         expiresAt: "2026-05-11T02:05:08.000Z",

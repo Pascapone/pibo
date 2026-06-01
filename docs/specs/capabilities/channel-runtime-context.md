@@ -1,20 +1,20 @@
 # Spec: Channel Runtime Context
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Updated:** 2026-05-17  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage  
+**Status:** Draft
+**Created:** 2026-05-10
+**Updated:** 2026-05-17
+**Controller / Source:** Scheduled Pibo Source Specs Coverage
 **Related docs:** [Plugin Registry and Capability Catalog](./plugin-registry-and-capability-catalog.md), [Pibo Session Routing](./pibo-session-routing.md), [Local Gateway Protocol and Lifecycle](./local-gateway-protocol-and-lifecycle.md), [Web Auth and Same-Origin Host](./web-auth-and-same-origin-host.md)
 
 ## Why
 
 Channels are Pibo's transport adapters. They let web, local, messaging, and custom front ends talk to routed runtimes without reaching through to Pi Coding Agent directly.
 
-The channel boundary needs its own behavior contract because it joins several product systems: plugin registration, auth services, session storage, runtime routing, signal snapshots, dynamic profiles, context files, skills, product events, and registered web apps. A channel must receive enough authority to serve its transport, but not bypass Pibo-owned routing and ownership rules.
+The channel boundary needs its own behavior contract because it joins several product systems: plugin registration, auth services, session storage, runtime routing, signal snapshots, dynamic profiles, context files, skills, product events, and registered web apps. A channel must receive enough authority to serve its transport, but not bypass Pibo-managed routing and stewardship rules.
 
 ## Goal
 
-The gateway MUST start plugin-registered channels with a single Pibo-owned channel context that routes runtime work, session mutations, catalog reads, auth, signals, yielded-run inspection, Ralph stop-condition discovery, product events, and web-app discovery through the product boundary.
+The gateway MUST start plugin-registered channels with a single Pibo-managed channel context that routes runtime work, session mutations, catalog reads, auth, signals, yielded-run inspection, Ralph stop-condition discovery, product events, and web-app discovery through the product boundary.
 
 ## Background / Current State
 
@@ -30,7 +30,7 @@ The context exposes router operations (`emit`, `subscribe`, status, signals, yie
 - Channel auth-mode validation before startup.
 - The runtime/session/catalog/signal/run-control/Ralph/auth/web-app operations exposed through `PiboChannelContext`.
 - Session creation behavior performed on behalf of channels.
-- Shutdown ordering for started channels and gateway-owned services.
+- Shutdown ordering for started channels and gateway-managed services.
 
 ### Out of Scope
 
@@ -89,7 +89,7 @@ The channel context MUST submit user and execution input events through the `Pib
 
 #### Current
 
-`context.emit` delegates to `router.emit`. `context.subscribe` delegates to `router.subscribe`. Runtime status and signal snapshots also delegate to router-owned registries.
+`context.emit` delegates to `router.emit`. `context.subscribe` delegates to `router.subscribe`. Runtime status and signal snapshots also delegate to router-managed registries.
 
 #### Acceptance
 
@@ -146,27 +146,27 @@ The context delegates `getGatewayActions`, `getProfiles`, `createProfile`, `getC
 
 ### Requirement: Channel context exposes runtime status, run-control, and signal inspection
 
-The context MUST let channels inspect routed runtime status, yielded-run snapshots, and signal trees through router-owned APIs without owning router internals.
+The context MUST let channels inspect routed runtime status, yielded-run snapshots, and signal trees through router-managed APIs without owning router internals.
 
 #### Current
 
-The context exposes `getSessionRuntimeStatus`, `listSessionRuntimeStatuses`, `listRuns`, `snapshotSignalSession`, `snapshotSignalTree`, and `subscribeSignalTree` as delegates to the gateway-owned `PiboSessionRouter`.
+The context exposes `getSessionRuntimeStatus`, `listSessionRuntimeStatuses`, `listRuns`, `snapshotSignalSession`, `snapshotSignalTree`, and `subscribeSignalTree` as delegates to the gateway-managed `PiboSessionRouter`.
 
 #### Acceptance
 
 - A channel can list runtime statuses and yielded-run snapshots for UI/status rendering.
 - A channel can snapshot or subscribe to a signal tree through the router boundary.
-- These reads do not create new sessions or bypass router ownership.
+- These reads do not create new sessions or bypass router stewardship.
 
 #### Scenario: Web channel inspects active work
 
 - GIVEN a web channel has started
 - WHEN it calls `context.listRuns()` and `context.snapshotSignalTree(rootSessionId)`
-- THEN the data comes from router-owned registries and remains scoped to Pibo session identifiers.
+- THEN the data comes from router-managed registries and remains scoped to Pibo session identifiers.
 
 ### Requirement: Channel context controls dynamic product resources through registry methods
 
-The context MUST allow authorized channels and apps to mutate dynamic profiles, context files, skills, and product events only through registry-owned methods.
+The context MUST allow authorized channels and apps to mutate dynamic profiles, context files, skills, and product events only through registry-managed methods.
 
 #### Current
 
@@ -184,13 +184,13 @@ The context exposes `upsertProfile`, `removeProfile`, `upsertContextFile`, `remo
 - WHEN it calls `context.upsertProfile` with the generated profile definition
 - THEN the profile becomes visible through `context.getProfiles()`
 
-### Requirement: Shutdown stops channels before disposing router-owned work
+### Requirement: Shutdown stops channels before disposing router-managed work
 
-Gateway shutdown MUST stop started channels before stopping auth, destroying socket clients, disposing routed sessions, and closing the owned session store.
+Gateway shutdown MUST stop started channels before stopping auth, destroying socket clients, disposing routed sessions, and closing the managed session store.
 
 #### Current
 
-`PiboGatewayServer.stop` calls `stopChannels`, stops the auth service, unsubscribes router broadcasts, destroys TCP connections, closes the server, disposes routed sessions, and closes the owned session store.
+`PiboGatewayServer.stop` calls `stopChannels`, stops the auth service, unsubscribes router broadcasts, destroys TCP connections, closes the server, disposes routed sessions, and closes the managed session store.
 
 #### Acceptance
 
@@ -214,7 +214,7 @@ Gateway shutdown MUST stop started channels before stopping auth, destroying soc
 
 ## Constraints
 
-- **Security / Privacy:** Required-auth channels cannot start without an auth service. Owner-scoped behavior must be enforced by the channel or app before it calls context mutations that affect user data.
+- **Security / Privacy:** Required-auth channels cannot start without an auth service. Controller-scoped behavior must be enforced by the channel or app before it calls context mutations that affect user data.
 - **Compatibility:** The context is TypeScript-level API for Pibo channels; adding fields must preserve existing channel implementations.
 - **Performance:** Catalog reads and signal snapshots should be lightweight enough for UI polling or status endpoints.
 - **Dependencies:** Channel context behavior depends on the plugin registry, session store, model defaults, session router, and optional auth service.
@@ -233,7 +233,7 @@ Gateway shutdown MUST stop started channels before stopping auth, destroying soc
 ### Assumptions
 
 - Channel implementations are trusted product/plugin code, not untrusted third-party scripts.
-- The gateway remains the owner that assembles channel context; channels should not construct their own routers or session stores.
+- The gateway remains the controller that assembles channel context; channels should not construct their own routers or session stores.
 
 ### Open Questions
 
@@ -251,7 +251,7 @@ Gateway shutdown MUST stop started channels before stopping auth, destroying soc
 | REQ-005 Channel context exposes product catalogs without activating resources | Web host discovers apps | `src/gateway/server.ts`, `src/plugins/registry.ts`, `src/web/channel.ts`, `src/ralph/types.ts` | Source-inspected |
 | REQ-006 Channel context exposes runtime status, run-control, and signal inspection | Web channel inspects active work | `src/channels/types.ts`, `src/gateway/server.ts`, `src/core/session-router.ts` | Source-inspected |
 | REQ-007 Channel context controls dynamic product resources through registry methods | Custom agent profile is registered | `src/gateway/server.ts`, `src/apps/chat/web-app.ts`, `src/apps/chat/agent-profiles.ts` | Draft |
-| REQ-008 Shutdown stops channels before disposing router-owned work | Started channel is stopped | `src/gateway/server.ts`, `test/channel-runtime.test.mjs` | Draft |
+| REQ-008 Shutdown stops channels before disposing router-managed work | Started channel is stopped | `src/gateway/server.ts`, `test/channel-runtime.test.mjs` | Draft |
 
 ## Verification Basis
 

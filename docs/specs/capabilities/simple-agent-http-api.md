@@ -3,7 +3,7 @@
 **Status:** Draft
 **Created:** 2026-05-10
 **Updated:** 2026-05-11
-**Owner / Source:** Scheduled Pibo Source Specs Coverage; current workspace code
+**Controller / Source:** Scheduled Pibo Source Specs Coverage; current workspace code
 **Related docs:** [Web Auth and Same-Origin Host](./web-auth-and-same-origin-host.md), [Pibo Session Routing](./pibo-session-routing.md), [Local Gateway Protocol and Lifecycle](./local-gateway-protocol-and-lifecycle.md)
 
 ## Why

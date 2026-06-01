@@ -9,7 +9,7 @@ function parseArgs(argv) {
 		apply: false,
 		json: false,
 		name: `pibo-worker-policy-smoke-${Date.now()}`,
-		owner: 'user:smoke',
+		holder: 'user:smoke',
 		ttlSeconds: '600',
 		idleSeconds: '300',
 		browserSmoke: true,
@@ -21,7 +21,7 @@ function parseArgs(argv) {
 		else if (arg === '--json') options.json = true;
 		else if (arg === '--skip-browser-smoke') options.browserSmoke = false;
 		else if (arg === '--name') options.name = argv[++i];
-		else if (arg === '--owner') options.owner = argv[++i];
+		else if (arg === '--holder') options.holder = argv[++i];
 		else if (arg === '--ttl-seconds') options.ttlSeconds = argv[++i];
 		else if (arg === '--idle-seconds') options.idleSeconds = argv[++i];
 		else if (arg === '--help' || arg === '-h') {
@@ -39,7 +39,7 @@ function piboArgs(...args) {
 
 function plannedCommands(options) {
 	return [
-		`npm run --silent dev -- compute spawn --name ${options.name} --owner ${options.owner} --ttl-seconds ${options.ttlSeconds} --idle-seconds ${options.idleSeconds}`,
+		`npm run --silent dev -- compute spawn --name ${options.name} --holder ${options.holder} --ttl-seconds ${options.ttlSeconds} --idle-seconds ${options.idleSeconds}`,
 		`docker inspect ${options.name}`,
 		`docker exec ${options.name} bash -lc 'node --version && test -x /usr/bin/chromium'`,
 		...(options.browserSmoke ? [`docker exec ${options.name} bash -lc 'export DISPLAY=:99; timeout 20s /usr/bin/chromium --headless --no-sandbox --disable-gpu --dump-dom data:text/html,pibo-smoke'`] : []),
@@ -149,7 +149,7 @@ async function run(options) {
 	let spawned;
 	const evidence = { plannedCommands: plan };
 	try {
-		const spawn = await execCapture('npm', piboArgs('compute', 'spawn', '--name', options.name, '--owner', options.owner, '--ttl-seconds', options.ttlSeconds, '--idle-seconds', options.idleSeconds), { timeout: 300_000 });
+		const spawn = await execCapture('npm', piboArgs('compute', 'spawn', '--name', options.name, '--holder', options.holder, '--ttl-seconds', options.ttlSeconds, '--idle-seconds', options.idleSeconds), { timeout: 300_000 });
 		spawned = parseSpawnOutput(spawn.stdout);
 		evidence.spawned = spawned;
 

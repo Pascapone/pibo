@@ -628,7 +628,7 @@ async function runDebugRuns(args: string[]): Promise<void> {
 		if (command === "list") {
 			const piboSessionId = options.positionals[0];
 			if (!piboSessionId) throw new Error("pibo debug runs list requires <pibo-session-id>");
-			const runs = reliability.listRuns({ ownerPiboSessionId: piboSessionId, includeConsumed: true, includeDetached: true });
+			const runs = reliability.listRuns({ controllerPiboSessionId: piboSessionId, includeConsumed: true, includeDetached: true });
 			if (options.json) console.log(formatJson({ runs }));
 			else console.log(formatRows(runs.map(compactRunRow)));
 			return;
@@ -913,10 +913,10 @@ function compactDeadJobRow(job: { jobId: string; queue: string; attempts: number
 	};
 }
 
-function compactRunRow(run: { runId: string; ownerPiboSessionId: string; status: string; toolName: string; completionPolicy: string; consumed: boolean; updatedAt: string; summary?: string }): Record<string, unknown> {
+function compactRunRow(run: { runId: string; controllerPiboSessionId: string; status: string; toolName: string; completionPolicy: string; consumed: boolean; updatedAt: string; summary?: string }): Record<string, unknown> {
 	return {
 		runId: run.runId,
-		piboSessionId: run.ownerPiboSessionId,
+		piboSessionId: run.controllerPiboSessionId,
 		status: run.status,
 		toolName: run.toolName,
 		policy: run.completionPolicy,

@@ -1,8 +1,8 @@
 # Coverage Analysis: Source Specs Continuation Readiness 2026-05-11
 
-**Status:** Draft  
-**Created:** 2026-05-11  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage; current workspace code and spec inventory  
+**Status:** Draft
+**Created:** 2026-05-11
+**Controller / Source:** Scheduled Pibo Source Specs Coverage; current workspace code and spec inventory
 **Related docs:** `GLOSSARY.md`, `AGENTS.md`, [Direct Source Path Coverage Closure](./direct-source-path-coverage-closure-2026-05-11.md), [Source Test Gap Priorities](./source-test-gap-priorities-2026-05-11.md), [Residual Source Islands](./residual-source-islands-2026-05-11.md)
 
 ## Why
@@ -26,7 +26,7 @@ Future source-spec runs SHOULD use the current docs/specs tree as a coverage bas
 ### Out of Scope
 
 - Source-code, test-code, build, gateway, browser, or Docker changes.
-- Repeating full capability requirements already owned by existing specs.
+- Repeating full capability requirements already managed by existing specs.
 - Treating legacy documents as source of truth over current code.
 
 ## Findings
@@ -58,7 +58,7 @@ The workspace contains many uncommitted `docs/specs/` changes from prior schedul
 #### Acceptance for future runs
 
 - Future scheduled jobs should read the full spec inventory, including uncommitted docs, before deciding whether a gap remains.
-- If a future job finds two specs with the same behavior owner, it should create a coverage triage note or consolidate only with explicit user approval.
+- If a future job finds two specs with the same behavior controller, it should create a coverage triage note or consolidate only with explicit user approval.
 
 ## Success Criteria
 

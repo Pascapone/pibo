@@ -171,7 +171,7 @@ Target flow:
 
 Betroffene Flächen:
 
-- `src/web/auth.ts`, `src/web/types.ts`, `src/shared-app.ts`, Runtime-Kontext.
+- `src/web/auth.ts`, `src/web/types.ts`, `src/app-context.ts`, Runtime-Kontext.
 - `src/sessions`, `src/data`, Chat rooms/navigation/read-state/session APIs.
 - Chat UI bootstrap, API types und copy.
 - Custom Agent Store und Dynamic Profile Registration.

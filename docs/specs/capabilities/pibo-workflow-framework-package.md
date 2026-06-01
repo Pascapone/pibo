@@ -3,7 +3,7 @@
 **Status:** Draft
 **Created:** 2026-05-11
 **Updated:** 2026-05-17
-**Owner / Source:** Scheduled Pibo Source Specs Coverage; current workspace code
+**Controller / Source:** Scheduled Pibo Source Specs Coverage; current workspace code
 **Related docs:** [Pibo Workflow System V1](../changes/pibo-workflow-system-v1/spec.md), [Workflow Runtime Kernel Design](../changes/pibo-workflow-system-v1/design-runtime-kernel.md), [Workflow Structured Outputs JSON Schema Subset](../changes/pibo-workflow-system-v1/structured-outputs-json-schema-subset.md), [Chat Web Workflow Session View](./chat-web-workflow-session-view.md)
 
 ## Why
@@ -14,7 +14,7 @@ Without this contract, future agents can confuse workflow definitions with norma
 
 ## Goal
 
-Pibo MUST expose a workflow framework package whose public helpers create validated workflow definitions, resolve registered executable references, run node-level workflow behavior through explicit runtime adapters, persist workflow facts in a workflow-owned SQLite store, and project runs for inspection without replacing Pibo Session or Chat Web sources of truth.
+Pibo MUST expose a workflow framework package whose public helpers create validated workflow definitions, resolve registered executable references, run node-level workflow behavior through explicit runtime adapters, persist workflow facts in a workflow-managed SQLite store, and project runs for inspection without replacing Pibo Session or Chat Web sources of truth.
 
 ## Background / Current State
 
@@ -31,7 +31,7 @@ The current runtime code supports dispatch helpers for Pibo agent nodes, TypeScr
 - Workflow registry semantics for definitions, UI published-version records, profiles, handlers, adapters, guards, prompt builders, and human actions.
 - Validation behavior for ports, JSON Schema subset, registry refs, graph shape, state access, loops, and runtime values.
 - Runtime helper behavior for agent, code, nested workflow, human wait, adapter, retry, and edge-transfer paths.
-- Workflow-owned SQLite persistence and list/filter behavior.
+- Workflow-managed SQLite persistence and list/filter behavior.
 - Workflow run inspection and XState/UI model projection.
 - Test fixture exports used as package-level behavioral examples.
 
@@ -39,7 +39,7 @@ The current runtime code supports dispatch helpers for Pibo agent nodes, TypeScr
 
 - A full Chat Web workflow editor — V1 authoring controls remain deferred to change specs.
 - The embedded Pi Coding Agent runtime internals — workflow agent nodes call Pibo session routing through an adapter.
-- Pibo Session Store, Chat Event Log, or Chat Web Read Model ownership — workflow stores may link to sessions but do not own them.
+- Pibo Session Store, Chat Event Log, or Chat Web Read Model stewardship — workflow stores may link to sessions but do not own them.
 - Distributed workflow workers or cross-machine scheduling — current package helpers are local library contracts.
 
 ## Requirements
@@ -149,9 +149,9 @@ Authors and tests can inspect precise validation failures before runtime dispatc
 - THEN the result is not ok
 - AND a diagnostic identifies the node and missing handler reference.
 
-### Requirement: Runtime dispatch separates workflow nodes from Pibo Session ownership
+### Requirement: Runtime dispatch separates workflow nodes from Pibo Session stewardship
 
-Runtime helpers MUST execute node behavior through explicit adapters and MUST record Pibo Session links as metadata, not as workflow-owned session records.
+Runtime helpers MUST execute node behavior through explicit adapters and MUST record Pibo Session links as metadata, not as workflow-managed session records.
 
 #### Current
 
@@ -205,7 +205,7 @@ Workflow recovery and inspection can explain why a node retried, why an edge tra
 - THEN edge adapter transfer returns a failure with validation diagnostics
 - AND no successful transfer is recorded for that invalid payload.
 
-### Requirement: Workflow persistence uses a workflow-owned SQLite store
+### Requirement: Workflow persistence uses a workflow-managed SQLite store
 
 Workflow persistence MUST use the workflow package's SQLite schema and MUST keep normal session facts out of workflow fact tables.
 
@@ -294,7 +294,7 @@ Future changes can validate core workflow behavior without inventing ad hoc defi
 ## Constraints
 
 - **Serialization:** Workflow definitions and persisted run facts must remain JSON-compatible except for registered executable ids.
-- **Data ownership:** Workflow stores may link to Pibo Sessions and projects but must not own normal session transcripts, trace rows, or chat room events.
+- **Data stewardship:** Workflow stores may link to Pibo Sessions and projects but must not own normal session transcripts, trace rows, or chat room events.
 - **Security / Privacy:** Inspection and XState UI models must stay bounded and avoid exposing private payloads by default.
 - **Compatibility:** Public exports should change only with matching spec and test updates because other Pibo modules can import the package root.
 - **Testability:** Each requirement maps to existing or expected package tests under `packages/workflows/src/testing/`.
@@ -346,7 +346,7 @@ The following package-local test files are part of this spec's direct verificati
 | `packages/workflows/src/testing/workflow-published-versions.test.ts` | UI published-version registration, definition hash checks, and immutable published record behavior. |
 | `packages/workflows/src/testing/workflow-catalog-entities.test.ts` | Workflow catalog entity shapes shared with Chat Web workflow catalog surfaces. |
 | `packages/workflows/src/testing/workflow-run-inspection.test.ts` | Inspection summaries, bounded fact inclusion, and failure explanation output. |
-| `packages/workflows/src/testing/workflow-sqlite-schema.test.ts` | SQLite schema initialization, schema version, catalog/runtime tables, and workflow table ownership. |
+| `packages/workflows/src/testing/workflow-sqlite-schema.test.ts` | SQLite schema initialization, schema version, catalog/runtime tables, and workflow table stewardship. |
 | `packages/workflows/src/testing/workflow-store-facts.test.ts` | Workflow run, event, attempt, transfer, checkpoint, wakeup, wait-token, and human-action fact round trips. |
 | `packages/workflows/src/testing/xstate-projection-snapshots.test.ts` | XState projection snapshot stability, backed by `packages/workflows/src/testing/__snapshots__/xstate-projection.snap.json`. |
 | `packages/workflows/src/testing/xstate-shape.test.ts` | XState-compatible machine shape and kernel-durable-truth metadata. |
@@ -368,7 +368,7 @@ The following package-local test files are part of this spec's direct verificati
 
 - `packages/workflows` is the durable package boundary for Workflow System V1 behavior that has landed in the current workspace.
 - The change specs under `docs/specs/changes/pibo-workflow-system-v1/` remain the design source for planned workflow expansion, while this spec records the current package capability contract.
-- Product-level owner access checks will be applied by the APIs or UIs that call the workflow package.
+- Product-level controller access checks will be applied by the APIs or UIs that call the workflow package.
 
 ### Open Questions
 
@@ -384,9 +384,9 @@ The following package-local test files are part of this spec's direct verificati
 | REQ-002 Authoring helpers create serializable workflow IR fragments | Adapter edge remains serializable | `packages/workflows/src/api/index.ts`, `packages/workflows/src/types/index.ts` | `packages/workflows/src/testing/ports.test.ts` | Package-tested |
 | REQ-003 Registry resolution is deterministic and guarded against accidental overwrite | Duplicate handler is rejected | `packages/workflows/src/registry/index.ts`, `packages/workflows/src/definition-hash.ts` | `packages/workflows/src/testing/registry.test.ts`, `packages/workflows/src/testing/workflow-published-versions.test.ts` | Package-tested |
 | REQ-004 Validation reports structured diagnostics instead of throwing for invalid definitions | Missing code handler is diagnosable | `packages/workflows/src/validation/index.ts` | `packages/workflows/src/testing/interface-values.test.ts`, `packages/workflows/src/testing/validation.test.ts` | Package-tested |
-| REQ-005 Runtime dispatch separates workflow nodes from Pibo Session ownership | Agent node uses routing adapter | `packages/workflows/src/runtime/index.ts` | `runtime-agent-node.test.ts`, `runtime-one-node-agent.test.ts`, `runtime-mixed-node-workflow.test.ts` | Package-tested |
+| REQ-005 Runtime dispatch separates workflow nodes from Pibo Session stewardship | Agent node uses routing adapter | `packages/workflows/src/runtime/index.ts` | `runtime-agent-node.test.ts`, `runtime-one-node-agent.test.ts`, `runtime-mixed-node-workflow.test.ts` | Package-tested |
 | REQ-006 Retry and edge transfer behavior is explicit and recordable | Adapter output is rejected | `packages/workflows/src/runtime/index.ts`, `packages/workflows/src/store/index.ts` | `runtime-edge-transfer.test.ts`, `runtime-retry-policy.test.ts`, `runtime-state-loop-integration.test.ts` | Package-tested |
-| REQ-007 Workflow persistence uses a workflow-owned SQLite store | Workflow run round trip | `packages/workflows/src/store/index.ts` | `workflow-sqlite-schema.test.ts`, `workflow-store-facts.test.ts`, `node-attempt-persistence.test.ts`, `workflow-persistence-validation.test.ts` | Package-tested |
+| REQ-007 Workflow persistence uses a workflow-managed SQLite store | Workflow run round trip | `packages/workflows/src/store/index.ts` | `workflow-sqlite-schema.test.ts`, `workflow-store-facts.test.ts`, `node-attempt-persistence.test.ts`, `workflow-persistence-validation.test.ts` | Package-tested |
 | REQ-008 Inspection and XState projection are derived views | Failed workflow is explainable | `packages/workflows/src/inspection/index.ts`, `packages/workflows/src/xstate/index.ts` | `workflow-run-inspection.test.ts`, `xstate-shape.test.ts`, `xstate-ui-model.test.ts`, `xstate-projection-snapshots.test.ts` | Package-tested |
 | REQ-009 Fixtures remain executable behavioral examples | Required fixtures validate | `packages/workflows/src/fixtures/index.ts`, `packages/workflows/src/testing/*` | `packages/workflows/src/testing/validation.test.ts` | Package-tested |
 

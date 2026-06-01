@@ -1390,7 +1390,7 @@ function buildWorkflowProfilePicker(
 		} else {
 			diagnostics.push({
 				code: "WorkflowGraphError.unknownAgentProfileRef",
-				message: `Agent node references Agent Designer profile '${normalizedSelection}', but it is not available in the shared app.`,
+				message: `Agent node references Agent Designer profile '${normalizedSelection}', but it is not available in the app context.`,
 				severity: "error",
 				path: "$.nodes.agent.profile.id",
 				registryRef: normalizedSelection,
@@ -2339,7 +2339,7 @@ function validateWorkflowAdapterNodeLike(nodeId: string, node: PiboJsonObject, d
 	validateRegisteredAdapterRefLike(node.handler, diagnostics, {
 		nodeId,
 		path: `$.nodes.${nodeId}.handler`,
-		ownerLabel: `Adapter node '${nodeId}'`,
+		diagnosticLabel: `Adapter node '${nodeId}'`,
 	});
 	if (node.mode !== undefined && node.mode !== "deterministic") {
 		diagnostics.push({
@@ -2423,7 +2423,7 @@ function validateWorkflowEdgeAdapterLike(
 	validateRegisteredAdapterRefLike(value.transform, diagnostics, {
 		edgeId,
 		path: `${path}.transform`,
-		ownerLabel: `Workflow edge '${edgeId}'`,
+		diagnosticLabel: `Workflow edge '${edgeId}'`,
 	});
 	validateWorkflowPortLike(value.output, `${path}.output`, diagnostics, { edgeId });
 	validateWorkflowEdgeAdapterOutputCompatibilityLike(edgeId, value.output, edge, nodes, diagnostics);

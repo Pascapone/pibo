@@ -1,8 +1,8 @@
 # Spec: Runtime Prompt and Compaction Configuration
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code  
+**Status:** Draft
+**Created:** 2026-05-10
+**Controller / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code
 **Related docs:** `GLOSSARY.md`, `docs/specs/capabilities/context-files.md`, `docs/specs/capabilities/custom-agents.md`, `docs/specs/capabilities/pibo-session-routing.md`
 
 ## Why
@@ -30,7 +30,7 @@ Runtime creation loads the active Pibo base prompt, renders template markers for
 - Chat Web prompt-management API and UI behavior.
 - Runtime prompt-template rendering for available tools and guidelines.
 - Runtime context-file injection for Pibo Session metadata.
-- Pi session compaction behavior owned by Pibo.
+- Pi session compaction behavior managed by Pibo.
 
 ### Out of Scope
 
@@ -124,7 +124,7 @@ Pibo MUST inject product-level runtime identity into each runtime as a context f
 
 #### Current
 
-`createPiboRuntime` creates an in-memory context file with shared app context, Pibo Session ID, optional room ID, and timezone, then merges it with Pi and profile context files.
+`createPiboRuntime` creates an in-memory context file with app context context, Pibo Session ID, optional room ID, and timezone, then merges it with Pi and profile context files.
 
 #### Target
 
@@ -305,12 +305,12 @@ Users can inspect the active prompt, edit custom content, save changes, and swit
 ### Assumptions
 
 - Prompt selection is workspace-local, not account-scoped, in the current implementation.
-- The library prompt files in `context/` are package-owned and read-only from Chat Web.
+- The library prompt files in `context/` are package-managed and read-only from Chat Web.
 - Chat Web users who can access the prompt panels are trusted to edit prompts for that workspace.
 
 ### Open Questions
 
-- Should prompt configuration remain workspace-scoped or become profile-scoped? It must not become account-scoped in the shared app model.
+- Should prompt configuration remain workspace-scoped or become profile-scoped? It must not become account-scoped in the app context model.
 - Should base prompt saves receive structural validation beyond requiring markdown to be a string?
 - Should prompt snapshots include revision metadata or conflict detection like managed context files?
 

@@ -66,7 +66,7 @@ function validateWorkflowLoopPolicies(
       validateWorkflowGuardRef(guard, diagnostics, options, {
         edgeId: typeof edgeId === "string" ? edgeId : undefined,
         path: loop.guard ? `${path}.guard.handler` : `$.edges.${edgeId}.guard.handler`,
-        ownerLabel: `Workflow loop policy${edgeId ? ` for edge '${edgeId}'` : ""}`,
+        diagnosticLabel: `Workflow loop policy${edgeId ? ` for edge '${edgeId}'` : ""}`,
       });
     }
   }

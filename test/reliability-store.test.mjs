@@ -136,7 +136,7 @@ test("recoverInterruptedRuns fails non-retryable expired runs and moves their jo
 	const store = new PiboReliabilityStore(":memory:");
 	try {
 		const run = store.createRun({
-			ownerPiboSessionId: "ps_parent",
+			controllerPiboSessionId: "ps_parent",
 			toolName: "slow_tool",
 			completionPolicy: "tracked",
 			retryable: false,
@@ -165,7 +165,7 @@ test("recoverInterruptedRuns queues retryable expired runs and makes their jobs 
 	const store = new PiboReliabilityStore(":memory:");
 	try {
 		const run = store.createRun({
-			ownerPiboSessionId: "ps_parent",
+			controllerPiboSessionId: "ps_parent",
 			toolName: "retryable_tool",
 			completionPolicy: "tracked",
 			retryable: true,

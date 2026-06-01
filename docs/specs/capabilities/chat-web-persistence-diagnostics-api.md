@@ -1,8 +1,8 @@
 # Spec: Chat Web Persistence Diagnostics API
 
-**Status:** Draft  
-**Created:** 2026-05-11  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage; current workspace code  
+**Status:** Draft
+**Created:** 2026-05-11
+**Controller / Source:** Scheduled Pibo Source Specs Coverage; current workspace code
 **Related docs:** [Chat Web Rooms and Event Streams](./chat-web-rooms-and-event-streams.md), [Chat Web Trace and Terminal View](./chat-web-trace-and-terminal-view.md), [Pibo Data Store and Chat Ingestion](./pibo-data-store-and-ingestion.md), [Web Auth and Same-Origin Host](./web-auth-and-same-origin-host.md)
 
 ## Why
@@ -34,7 +34,7 @@ Chat Web MUST expose an authenticated, read-only persistence diagnostics endpoin
 ### Out of Scope
 
 - Durable storage of diagnostics across gateway restarts.
-- Per-owner, per-room, or per-session metric partitioning.
+- Per-controller, per-room, or per-session metric partitioning.
 - Operator CLI diagnostics for the same metrics.
 - Trace-at-sequence replay diagnostics — covered by trace render diagnostics.
 - Guarantees that every indexing failure can be recovered automatically.
@@ -142,7 +142,7 @@ Metrics live in `ChatWebAppState` memory and are created when the Chat Web app s
 #### Acceptance
 
 - Restarting the web gateway resets the counters.
-- Metrics are not joined with owner, model, provider, or billing state.
+- Metrics are not joined with controller, model, provider, or billing state.
 - Operators use these metrics only to diagnose current gateway indexing health.
 
 #### Scenario: Gateway restart resets counters

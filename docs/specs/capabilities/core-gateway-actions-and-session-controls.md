@@ -2,7 +2,7 @@
 
 **Status:** Draft
 **Created:** 2026-05-10
-**Owner / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code
+**Controller / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code
 **Related docs:** [Plugin Registry and Capability Catalog](./plugin-registry-and-capability-catalog.md), [Pibo Session Routing](./pibo-session-routing.md), [Model Provider Auth and Session Model Selection](./model-provider-auth-and-session-selection.md), [Runtime Prompt and Compaction Configuration](./runtime-prompt-and-compaction.md)
 
 ## Why
@@ -90,7 +90,7 @@ A status action result includes `piboSessionId`, `queuedMessages`, `processing`,
 
 ### Requirement: Queue and stop controls mutate only the addressed routed session tree
 
-Core stop controls MUST expose bounded, explicit behavior: `clear_queue` clears not-yet-started messages, `abort` aborts the active Pi run, `dispose` disposes the addressed runtime, `kill` aborts the addressed session and child sessions, and `kill_all` also cancels yielded runs owned by the killed tree.
+Core stop controls MUST expose bounded, explicit behavior: `clear_queue` clears not-yet-started messages, `abort` aborts the active Pi run, `dispose` disposes the addressed runtime, `kill` aborts the addressed session and child sessions, and `kill_all` also cancels yielded runs managed by the killed tree.
 
 #### Current
 

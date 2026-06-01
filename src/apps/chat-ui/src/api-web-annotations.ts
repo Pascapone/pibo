@@ -61,11 +61,11 @@ export type WebAnnotationMessageAttachment = {
 
 export type WebAnnotationListResponse = {
 	ok: true;
-	scope?: "session" | "owner";
+	scope?: "session" | "app";
 	annotations: WebAnnotationMessageAttachment[];
 };
 
-export async function listWebAnnotations(piboSessionId: string, input: { status?: WebAnnotationStatus; limit?: number; scope?: "session" | "owner" } = {}): Promise<WebAnnotationListResponse> {
+export async function listWebAnnotations(piboSessionId: string, input: { status?: WebAnnotationStatus; limit?: number; scope?: "session" | "app" } = {}): Promise<WebAnnotationListResponse> {
 	const params = new URLSearchParams({ piboSessionId });
 	if (input.status) params.set("status", input.status);
 	if (input.limit) params.set("limit", String(input.limit));

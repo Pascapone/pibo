@@ -1,8 +1,8 @@
 # Spec: Package Build and Distribution
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage  
+**Status:** Draft
+**Created:** 2026-05-10
+**Controller / Source:** Scheduled Pibo Source Specs Coverage
 **Related docs:** `docs/specs/capabilities/operator-cli-discovery-and-dispatch.md`, `docs/specs/capabilities/chat-web-static-shell-and-pwa-assets.md`, `docs/specs/capabilities/context-files.md`
 
 ## Why

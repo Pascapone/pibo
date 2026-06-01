@@ -26,7 +26,7 @@ type LeaseStatus = 'active' | 'released';
 type BrowserUseLease = {
   id: string;
   app: string;
-  owner: string;
+  holder: string;
   sessionName: string;
   userDataDir: string;
   profileName: string;
@@ -47,7 +47,7 @@ type LeaseRegistry = {
 
 export type BrowserUseLeaseAcquireOptions = {
   app?: string;
-  owner?: string;
+  holder?: string;
   ttlMinutes?: number;
   maxSlots?: number;
   templateDir?: string;
@@ -243,7 +243,7 @@ async function reapAssociatedBrowserPoolLeaseProcess(status: CliToolStatus, leas
   if (!lease.browserPoolLeaseId) return false;
   const identity = browserPoolIdentityForLease(status, lease);
   const paths = browserPoolPaths(browserPoolRootForLease(status, lease), identity);
-  return withBrowserPoolLock(paths.lockPath, { owner: `auth-lease-reap:${lease.id}` }, async () => {
+  return withBrowserPoolLock(paths.lockPath, { holder: `auth-lease-reap:${lease.id}` }, async () => {
     const state = await loadBrowserPoolState(paths.statePath, { ...identity, onMissing: 'empty', onMalformed: 'empty' });
     if (!browserPoolStateMatchesAuthLease(state, lease)) return false;
     const terminated = await terminateManagedBrowserProcess(state);
@@ -253,7 +253,7 @@ async function reapAssociatedBrowserPoolLeaseProcess(status: CliToolStatus, leas
       state: terminated ? 'stale' : state.state,
       activeLeaseId: undefined,
       activeLeaseCount: 0,
-      owner: undefined,
+      holder: undefined,
       lastUsedAt: reapedAt,
       idleExpiresAt: undefined,
       cleanupStatus: terminated ? 'success' : 'skipped',
@@ -351,7 +351,7 @@ function nextSlotNumber(leases: BrowserUseLease[], app: string): number {
 function createLease(
   status: CliToolStatus,
   app: string,
-  owner: string,
+  holder: string,
   ttlMinutes: number,
   profileName: string,
   leases: BrowserUseLease[],
@@ -365,7 +365,7 @@ function createLease(
   return {
     id,
     app,
-    owner,
+    holder,
     sessionName,
     userDataDir: join(appPoolDir(status, app), slotName),
     profileName,
@@ -422,7 +422,7 @@ export async function acquireBrowserUseLease(
   options: BrowserUseLeaseAcquireOptions = {},
 ): Promise<void> {
   const app = options.app?.trim() || DEFAULT_APP;
-  const owner = options.owner?.trim() || process.env.PIBO_BROWSER_USE_LEASE_OWNER || process.env.USER || 'unknown';
+  const holder = options.holder?.trim() || process.env.PIBO_BROWSER_USE_LEASE_HOLDER || process.env.USER || 'unknown';
   const ttlMinutes = options.ttlMinutes ?? DEFAULT_TTL_MINUTES;
   const profileName = options.profileName?.trim() || BROWSER_USE_DEFAULT_PROFILE;
   const templateDir = options.templateDir?.trim() || defaultTemplateDir(context.status);
@@ -433,7 +433,7 @@ export async function acquireBrowserUseLease(
     let lease = selectReusableLease(context.status, registry.leases, app);
     if (lease) {
       await copyTemplateProfile(templateDir, lease.userDataDir);
-      lease.owner = owner;
+      lease.holder = holder;
       lease.status = 'active';
       lease.profileName = profileName;
       lease.browserPoolLeaseId = browserPoolLeaseIdForSession(lease.sessionName);
@@ -459,7 +459,7 @@ export async function acquireBrowserUseLease(
           }),
         );
       }
-      lease = createLease(context.status, app, owner, ttlMinutes, profileName, registry.leases);
+      lease = createLease(context.status, app, holder, ttlMinutes, profileName, registry.leases);
       await copyTemplateProfile(templateDir, lease.userDataDir);
       registry.leases.push(lease);
     }
@@ -574,7 +574,7 @@ export async function listBrowserUseLeases(context: LeaseCommandContext, json = 
   }
   for (const row of rows) {
     const state = row.status === 'active' && !row.expired ? 'active' : row.expired ? 'expired' : row.status;
-    console.log(`${row.id}\t${state}\t${row.owner}\t${row.sessionName}\t${row.userDataDir}`);
+    console.log(`${row.id}\t${state}\t${row.holder}\t${row.sessionName}\t${row.userDataDir}`);
   }
 }
 

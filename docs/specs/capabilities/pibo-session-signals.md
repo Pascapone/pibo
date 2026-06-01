@@ -1,8 +1,8 @@
 # Spec: Pibo Session Signals
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code  
+**Status:** Draft
+**Created:** 2026-05-10
+**Controller / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code
 **Related docs:** `GLOSSARY.md`, [Pibo Session Routing](./pibo-session-routing.md), [Chat Web Rooms and Event Streams](./chat-web-rooms-and-event-streams.md), [Yielded Run Control](./yielded-run-control.md), [Debug CLI](./debug-cli.md)
 
 ## Why
@@ -13,7 +13,7 @@ Pibo Session Signals provide that read model at the Product Boundary. They summa
 
 ## Goal
 
-Expose shared-app live session activity snapshots and monotonic patches that describe local and descendant activity for Pibo Session trees.
+Expose app-context live session activity snapshots and monotonic patches that describe local and descendant activity for Pibo Session trees.
 
 ## Background / Current State
 
@@ -33,7 +33,7 @@ Current snapshots can also include a compact `activeTelemetry` hint derived from
 - Projection from router lifecycle events, Pibo output events, and yielded-run registry events.
 - Local session status versus aggregate descendant status.
 - Chat Web signal HTTP and SSE APIs.
-- Ownership checks for signal access.
+- Stewardship checks for signal access.
 - UI-facing status overlays derived from signal snapshots.
 - Compact active-telemetry hints derived from signal state.
 - Registry diagnostics and terminal node pruning.
@@ -62,7 +62,7 @@ A caller can request signals by Pibo Session ID. A Pi Session ID alone is not ac
 #### Scenario: Request session snapshot
 
 - GIVEN a routed Pibo Session `ps_root`
-- WHEN an authenticated owner requests `GET /api/chat/signals/session/ps_root`
+- WHEN an authenticated controller requests `GET /api/chat/signals/session/ps_root`
 - THEN the response contains a snapshot keyed by `sessions.ps_root`
 - AND the snapshot root is a Pibo Session ID.
 
@@ -138,7 +138,7 @@ The system MUST show active yielded runs in the owning session while treating fa
 
 #### Acceptance
 
-A running yielded run makes its owner tree active. A failed yielded run records an error on the run node but does not set `hasError` for the session unless a separate session error exists.
+A running yielded run makes its controller tree active. A failed yielded run records an error on the run node but does not set `hasError` for the session unless a separate session error exists.
 
 #### Scenario: Failed background command
 
@@ -188,9 +188,9 @@ For one root, each emitted patch starts at the previous `toVersion`. Repeated id
 - THEN no patch is emitted
 - AND the session snapshot `updatedAt` does not change.
 
-### Requirement: Chat Web signal APIs are authenticated and shared-app
+### Requirement: Chat Web signal APIs are authenticated and app-context
 
-The system MUST require an authenticated web session and ownership of the requested root or session before returning signal snapshots or streams.
+The system MUST require an authenticated web session and stewardship of the requested root or session before returning signal snapshots or streams.
 
 #### Current
 
@@ -200,7 +200,7 @@ Signal HTTP handlers call `requireSession` and resolve shared Pibo Sessions by r
 
 An unauthenticated request cannot fetch or subscribe to session signals; allowed accounts see shared session signals.
 
-#### Scenario: Cross-owner signal request
+#### Scenario: Cross-controller signal request
 
 - GIVEN session `ps_other` belongs to `user:a`
 - WHEN `user:b` requests `/api/chat/signals/session/ps_other`
@@ -324,12 +324,12 @@ The project SHOULD provide an operator-run benchmark that measures signal regist
 - **Security / Privacy:** Signal snapshots require authenticated access and must not leak provider secrets or unrelated private credentials.
 - **Performance:** Navigation overlays should use compact snapshot summaries; full trace reconstruction must not be required for basic running/error indicators. The benchmark is diagnostic, not a fixed performance budget.
 - **Durability:** Current signal state is in-memory and can be reconstructed only from currently known sessions, runs, and future events. Durable signals require a separate spec or extension.
-- **Product boundary:** Signals summarize Product Boundary events. They do not replace Pi transcript files or Pibo-owned durable stores.
+- **Product boundary:** Signals summarize Product Boundary events. They do not replace Pi transcript files or Pibo-managed durable stores.
 
 ## Success Criteria
 
 - [ ] SC-001: `test/signal-registry.test.mjs` verifies tree aggregation, queue changes, run signals, patch versions, pruning, and error semantics.
-- [ ] SC-002: `test/chat-signals-api.test.mjs` verifies shared-app snapshots, tree snapshots, SSE snapshot-before-patch behavior, and navigation/bootstrap status overlays.
+- [ ] SC-002: `test/chat-signals-api.test.mjs` verifies app-context snapshots, tree snapshots, SSE snapshot-before-patch behavior, and navigation/bootstrap status overlays.
 - [ ] SC-003: Chat Web can show running, idle, and error state for a selected session tree without reading the full trace.
 - [ ] SC-004: A failed tool call or yielded run remains visible as a node error without incorrectly marking the whole session failed.
 - [ ] SC-005: `scripts/bench-signal-registry.mjs` runs after build and prints timing for deep-tree propagation, no-op queue updates, and metadata-changing tool updates.
@@ -340,7 +340,7 @@ The project SHOULD provide an operator-run benchmark that measures signal regist
 ### Assumptions
 
 - The in-memory registry is the intended current behavior; durability is not assumed until implemented.
-- Pibo Session Store ownership remains the authority for signal access checks.
+- Pibo Session Store stewardship remains the authority for signal access checks.
 - Coarse UI status remains limited to `idle`, `running`, and `error` for current Chat Web navigation.
 
 ### Open Questions
@@ -360,7 +360,7 @@ The project SHOULD provide an operator-run benchmark that measures signal regist
 | REQ-005 Yielded runs | Failed background command | `src/signals/projector.ts`, `src/runs/registry.ts`, `test/signal-registry.test.mjs` | Draft |
 | REQ-006 Runtime errors distinct from tool errors | Tool fails but message finishes | `src/signals/projector.ts`, `test/signal-registry.test.mjs` | Draft |
 | REQ-007 Monotonic patches | Repeated queue event | `src/signals/registry.ts`, `src/apps/chat-ui/src/App.tsx`, `test/signal-registry.test.mjs` | Draft |
-| REQ-008 Owner-scoped APIs | Cross-owner signal request | `src/apps/chat/web-app.ts`, `test/chat-signals-api.test.mjs` | Draft |
+| REQ-008 Controller-scoped APIs | Cross-controller signal request | `src/apps/chat/web-app.ts`, `test/chat-signals-api.test.mjs` | Draft |
 | REQ-009 SSE snapshot before patches | Subscribe to root tree | `src/apps/chat/web-app.ts`, `src/apps/chat-ui/src/api.ts`, `test/chat-signals-api.test.mjs` | Draft |
 | REQ-010 Navigation overlays | Settled signal clears stale navigation | `src/apps/chat/web-app.ts`, `src/apps/chat-ui/src/App.tsx`, `test/chat-signals-api.test.mjs` | Draft |
 | REQ-011 Active telemetry hints stay compact | Active tool exposes a compact hint | `src/signals/types.ts`, `src/signals/registry.ts`, `test/signal-registry.test.mjs` | Draft |

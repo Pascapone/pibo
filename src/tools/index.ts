@@ -356,7 +356,7 @@ function printBrowserPoolStatusText(result: BrowserPoolStatusResult): void {
   console.log(`  CDP port: ${result.cdpPort ?? '-'}`);
   console.log(`  user-data dir: ${result.userDataDir ?? '-'}`);
   console.log(`  active lease id: ${result.activeLeaseId ?? '-'}`);
-  console.log(`  owner: ${result.owner ?? '-'}`);
+  console.log(`  holder: ${result.holder ?? '-'}`);
   console.log(`  last used at: ${result.lastUsedAt ?? '-'}`);
   console.log(`  idle expiry: ${result.idleExpiresAt ?? '-'}`);
   console.log(`  root: ${result.rootDir}`);
@@ -919,11 +919,11 @@ Commands:
     .command('acquire')
     .description('Acquire an isolated authenticated browser slot')
     .option('--app <name>', 'Auth pool app name', 'pibo-chat')
-    .option('--owner <owner>', 'Lease owner label')
+    .option('--holder <holder>', 'Lease holder label')
     .option('--ttl-ms <ms>', 'Lease time-to-live in milliseconds', parsePositiveInteger)
     .option('--max-slots <count>', 'Maximum active slots for the app', parsePositiveInteger)
     .option('--json', 'Print machine-readable lease data')
-    .action(async (options: { app?: string; owner?: string; ttlMs?: number; maxSlots?: number; json?: boolean }) => {
+    .action(async (options: { app?: string; holder?: string; ttlMs?: number; maxSlots?: number; json?: boolean }) => {
       await acquireAgentBrowserLease(getCliToolStatus(requireEntry('agent-browser')), options);
     });
 
@@ -1087,7 +1087,7 @@ Commands:
     .command('acquire')
     .description('Acquire an isolated authenticated browser slot')
     .option('--app <name>', 'Auth pool app name', 'pibo-chat')
-    .option('--owner <owner>', 'Lease owner label')
+    .option('--holder <holder>', 'Lease holder label')
     .option('--ttl-minutes <minutes>', 'Lease time-to-live in minutes', parsePositiveInteger)
     .option('--max-slots <count>', 'Maximum active slots for the app', parsePositiveInteger)
     .option('--template-dir <path>', 'Authenticated Chrome user-data-dir template to clone')
@@ -1095,7 +1095,7 @@ Commands:
     .option('--json', 'Print machine-readable lease data')
     .action(async (options: {
       app?: string;
-      owner?: string;
+      holder?: string;
       ttlMinutes?: number;
       maxSlots?: number;
       templateDir?: string;

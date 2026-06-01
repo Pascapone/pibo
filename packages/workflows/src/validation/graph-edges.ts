@@ -57,7 +57,7 @@ export function validateWorkflowEdgeAdapterRef(
     validateRegisteredAdapterExists(edge.adapter.transform, diagnostics, options, {
       edgeId,
       path: `$.edges.${edgeId}.adapter.transform.id`,
-      ownerLabel: `Workflow edge '${edgeId}'`,
+      diagnosticLabel: `Workflow edge '${edgeId}'`,
     });
   }
 }

@@ -40,10 +40,10 @@ export function useSessionWebAnnotations({
 	const webAnnotationsPanelRendered = Boolean(selectedPiboSessionId) && (webAnnotationsPanelVisible || webAnnotationOverlayInstalled);
 
 	const webAnnotationsQuery = useQuery({
-		queryKey: ["web-annotations", "owner", selectedPiboSessionId],
+		queryKey: ["web-annotations", "app", selectedPiboSessionId],
 		queryFn: async () => {
 			if (!selectedPiboSessionId) throw new Error("Session is required");
-			return listWebAnnotations(selectedPiboSessionId, { limit: 100, scope: "owner" });
+			return listWebAnnotations(selectedPiboSessionId, { limit: 100, scope: "app" });
 		},
 		enabled: Boolean(selectedPiboSessionId) && (webAnnotationsPanelRendered || selectedWebAnnotationIds.length > 0),
 		staleTime: 1_000,

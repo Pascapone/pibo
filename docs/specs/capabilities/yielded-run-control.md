@@ -1,19 +1,19 @@
 # Spec: Yielded Run Control
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Owner / Source:** Current Pibo codebase  
+**Status:** Draft
+**Created:** 2026-05-10
+**Controller / Source:** Current Pibo codebase
 **Related docs:** `GLOSSARY.md`, `docs/specs/README.md`
 
 ## Why
 
 Agents often need to start work that may take longer than a useful model turn: shell commands, delegated subagents, browser checks, or other yieldable tools. Pibo needs a product-level lifecycle for that work so the parent agent can continue, inspect progress, wait when blocked, read terminal results, or cancel work safely.
 
-Yielded run control keeps this lifecycle inside Pibo's product boundary. The Pi Coding Agent still executes tools, but Pibo owns run ids, ownership, reminders, persistence, cancellation semantics, and profile-level exposure through the `pibo-run-control` capability package.
+Yielded run control keeps this lifecycle inside Pibo's product boundary. The Pi Coding Agent still executes tools, but Pibo owns run ids, stewardship, reminders, persistence, cancellation semantics, and profile-level exposure through the `pibo-run-control` capability package.
 
 ## Goal
 
-Pibo MUST expose a session-owned run-control tool package that starts yieldable tools in the background and lets the same owning Pibo Session list, inspect, wait for, read, acknowledge, or cancel those runs.
+Pibo MUST expose a session-managed run-control tool package that starts yieldable tools in the background and lets the same owning Pibo Session list, inspect, wait for, read, acknowledge, or cancel those runs.
 
 ## Background / Current State
 
@@ -27,11 +27,11 @@ The capability catalog exposes one package named `pibo-run-control`. When a prof
 
 - The `pibo-run-control` capability package and its generated agent-facing tools.
 - Starting yieldable tool calls as yielded runs.
-- Session-owned run listing, status, bounded waiting, terminal reading, acknowledgement, and cancellation.
+- Session-managed run listing, status, bounded waiting, terminal reading, acknowledgement, and cancellation.
 - Tracked and detached completion policies.
 - Compact service reminders for tracked runs.
 - Durable run records and interrupted-run recovery when a reliability store is attached.
-- Owner-session cleanup and router disposal behavior.
+- Controller-session cleanup and router disposal behavior.
 
 ### Out of Scope
 
@@ -68,9 +68,9 @@ A profile that enables run control can start and manage yielded runs. A profile 
 - WHEN Pibo creates the runtime
 - THEN the runtime exposes `pibo_run_start`, `pibo_run_list`, `pibo_run_status`, `pibo_run_wait`, `pibo_run_read`, `pibo_run_cancel`, and `pibo_run_ack`.
 
-### Requirement: Starting a yielded run returns an owned run id
+### Requirement: Starting a yielded run returns an managed run id
 
-`pibo_run_start` MUST start exactly one selected yieldable tool call and return a run snapshot owned by the current Pibo Session.
+`pibo_run_start` MUST start exactly one selected yieldable tool call and return a run snapshot managed by the current Pibo Session.
 
 #### Current
 
@@ -97,11 +97,11 @@ The parent agent receives a `runId` immediately and uses later run-control calls
 
 ### Requirement: Run access is scoped to the owning Pibo Session
 
-The system MUST allow only the run owner Pibo Session to inspect, read, acknowledge, wait for, or cancel a run through the run-control controller.
+The system MUST allow only the run controller Pibo Session to inspect, read, acknowledge, wait for, or cancel a run through the run-control controller.
 
 #### Current
 
-`PiboRunRegistry.requireById()` rejects unknown run ids and run ids owned by a different Pibo Session.
+`PiboRunRegistry.requireById()` rejects unknown run ids and run ids managed by a different Pibo Session.
 
 #### Target
 
@@ -112,7 +112,7 @@ A run id is not a global capability for other sessions. Cross-session inspection
 - `pibo_run_status` for another session's run fails.
 - `pibo_run_read` for another session's run fails.
 - `pibo_run_cancel` for another session's run fails.
-- `pibo_run_list` returns only runs owned by the current Pibo Session.
+- `pibo_run_list` returns only runs managed by the current Pibo Session.
 
 #### Scenario: Child cannot read parent run
 
@@ -166,7 +166,7 @@ Detached is reserved for intentional fire-and-forget work. Agents can still list
 - `pibo_run_start` accepts `completionPolicy: "detached"`.
 - Detached runs do not create pending notifications while running or terminal.
 - `pibo_run_list` excludes detached runs by default.
-- `pibo_run_list` with `includeDetached: true` includes detached runs owned by the current session.
+- `pibo_run_list` with `includeDetached: true` includes detached runs managed by the current session.
 - `pibo_run_status` can inspect a known detached run id while the record remains available.
 
 #### Scenario: Fire-and-forget background work
@@ -224,7 +224,7 @@ Large or sensitive terminal output is pulled only when the agent asks for it, wh
 #### Scenario: Read completed result
 
 - GIVEN a tracked run completed with text output
-- WHEN the owner calls `pibo_run_read`
+- WHEN the controller calls `pibo_run_read`
 - THEN the response contains that text
 - AND later notifications no longer include that run.
 
@@ -234,7 +234,7 @@ Large or sensitive terminal output is pulled only when the agent asks for it, wh
 
 #### Current
 
-`PiboRunRegistry.cancel()` changes non-terminal status to `cancelled`, completes timestamps, marks the run consumed, persists the update, and resolves waiters. Router owner cleanup calls `cancelOwnerRuns()`.
+`PiboRunRegistry.cancel()` changes non-terminal status to `cancelled`, completes timestamps, marks the run consumed, persists the update, and resolves waiters. Router controller cleanup calls `cancelControllerRuns()`.
 
 #### Target
 
@@ -246,9 +246,9 @@ Cancellation gives the agent a consistent terminal state even when the underlyin
 - The cancelled run is marked consumed.
 - Waiters on the run resolve with `timedOut: false` and status `cancelled`.
 - Cancelling a terminal run leaves it terminal and consumed.
-- Disposing or killing an owner session cancels that owner's non-terminal runs.
+- Disposing or killing an controller session cancels that controller's non-terminal runs.
 
-#### Scenario: Owner session is disposed
+#### Scenario: Controller session is disposed
 
 - GIVEN a session has running yielded runs
 - WHEN the router disposes that session or executes kill-all behavior for it
@@ -305,7 +305,7 @@ Run state stays small without losing unread tracked results.
 
 - GIVEN a tracked run completed but has not been read or acknowledged
 - WHEN pruning runs
-- THEN Pibo keeps that run so the owner can still receive reminders and read the result.
+- THEN Pibo keeps that run so the controller can still receive reminders and read the result.
 
 ## Edge Cases
 
@@ -318,7 +318,7 @@ Run state stays small without losing unread tracked results.
 
 ## Constraints
 
-- **Product Boundary:** Pibo owns run ids, lifecycle state, notifications, ownership, and durable records. Pi tools remain the execution payload.
+- **Product Boundary:** Pibo owns run ids, lifecycle state, notifications, stewardship, and durable records. Pi tools remain the execution payload.
 - **Security / Privacy:** Agent-facing run-control operations MUST be scoped by owning Pibo Session id.
 - **Compatibility:** Direct tool calls remain synchronous. Run control wraps tools only when `pibo_run_start` is used.
 - **Context Economy:** Automatic reminders MUST stay compact and MUST NOT include full terminal output.
@@ -327,8 +327,8 @@ Run state stays small without losing unread tracked results.
 ## Success Criteria
 
 - [ ] SC-001: A run-control-enabled profile exposes all seven `pibo_run_*` tools when yieldable tools are available.
-- [ ] SC-002: `pibo_run_start` returns a `run_` id and records ownership by the current Pibo Session.
-- [ ] SC-003: The owner can list, status, wait, read, acknowledge, and cancel its run; another session cannot.
+- [ ] SC-002: `pibo_run_start` returns a `run_` id and records stewardship by the current Pibo Session.
+- [ ] SC-003: The controller can list, status, wait, read, acknowledge, and cancel its run; another session cannot.
 - [ ] SC-004: Tracked runs produce compact reminders and stop reminding after read, cancel, or current-state acknowledgement.
 - [ ] SC-005: Detached runs never remind and are hidden from default list output.
 - [ ] SC-006: `pibo_run_wait` treats timeout as normal state and clamps excessive timeouts.
@@ -355,13 +355,13 @@ Run state stays small without losing unread tracked results.
 | Requirement | Scenario / Story | Code basis | Status |
 |---|---|---|---|
 | REQ-001 Run-control tools are exposed as one package | Agent profile enables run control | `src/plugins/registry.ts`, `src/core/runtime.ts`, `src/apps/chat-ui/src/App.tsx` | Implemented |
-| REQ-002 Starting a yielded run returns an owned run id | Start a background subagent or shell task | `src/runs/tools.ts`, `src/core/session-router.ts`, `src/runs/registry.ts` | Implemented |
+| REQ-002 Starting a yielded run returns an managed run id | Start a background subagent or shell task | `src/runs/tools.ts`, `src/core/session-router.ts`, `src/runs/registry.ts` | Implemented |
 | REQ-003 Run access is scoped to the owning Pibo Session | Child cannot read parent run | `src/runs/registry.ts`, `src/core/session-router.ts` | Implemented |
 | REQ-004 Tracked runs create compact reminders until handled | Tracked run completes after initial notification | `src/runs/registry.ts`, `src/core/session-router.ts`, `src/shared/trace-engine.ts` | Implemented |
 | REQ-005 Detached runs are inspectable but do not remind | Fire-and-forget background work | `src/runs/registry.ts`, `src/runs/tools.ts` | Implemented |
 | REQ-006 Waiting is bounded and timeout is normal | Long command is still running | `src/runs/registry.ts`, `src/runs/tools.ts` | Implemented |
 | REQ-007 Terminal results are read explicitly | Read completed result | `src/runs/registry.ts`, `src/runs/tools.ts` | Implemented |
-| REQ-008 Cancellation records terminal state and suppresses reminders | Owner session is disposed | `src/runs/registry.ts`, `src/core/session-router.ts` | Implemented |
+| REQ-008 Cancellation records terminal state and suppresses reminders | Controller session is disposed | `src/runs/registry.ts`, `src/core/session-router.ts` | Implemented |
 | REQ-009 Durable stores recover interrupted runs conservatively | Gateway process dies during a background run | `src/reliability/store.ts`, `src/runs/registry.ts` | Implemented |
 | REQ-010 Terminal run records are pruned after policy-specific TTLs | Unread completed run remains available | `src/runs/registry.ts`, `src/reliability/store.ts` | Implemented |
 

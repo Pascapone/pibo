@@ -27,7 +27,7 @@ export type RuntimeSessionRegistryOptions = {
 };
 
 type RuntimeSession = RuntimeSessionRecord & {
-	ownerPiboSessionId: string;
+	controllerPiboSessionId: string;
 	backend: RuntimeBackend;
 	history: RuntimeHistoryEntry[];
 };
@@ -70,7 +70,7 @@ export class RuntimeSessionRegistry {
 		this.maxHistoryEntries = options.maxHistoryEntries ?? 100;
 	}
 
-	async start(ownerPiboSessionId: string, input: RuntimeStartInput): Promise<RuntimeStartResult> {
+	async start(controllerPiboSessionId: string, input: RuntimeStartInput): Promise<RuntimeStartResult> {
 		if (input.target?.type && input.target.type !== "local") {
 			return {
 				status: "error",
@@ -95,7 +95,7 @@ export class RuntimeSessionRegistry {
 				executionCount: 0,
 				pid: record.pid,
 				executable: record.executable,
-				ownerPiboSessionId,
+				controllerPiboSessionId,
 				backend,
 				history: [],
 			};
@@ -113,10 +113,10 @@ export class RuntimeSessionRegistry {
 		}
 	}
 
-	async exec(ownerPiboSessionId: string, input: RuntimeExecInput): Promise<RuntimeExecResult> {
+	async exec(controllerPiboSessionId: string, input: RuntimeExecInput): Promise<RuntimeExecResult> {
 		const session = input.sessionId
-			? this.getSessionForController(ownerPiboSessionId, input.sessionId)
-			: await this.getOrStartDefault(ownerPiboSessionId, input);
+			? this.getSessionForController(controllerPiboSessionId, input.sessionId)
+			: await this.getOrStartDefault(controllerPiboSessionId, input);
 		const sessionId = input.sessionId ?? session?.sessionId ?? "auto";
 		if (!session) return notFoundExec(sessionId);
 		if (session.status === "closed" || session.status === "failed") return notFoundExec(sessionId);
@@ -153,36 +153,36 @@ export class RuntimeSessionRegistry {
 			error: result.error,
 		});
 		if (input.closeOnSuccess === true && result.status === "ok") {
-			await this.close(ownerPiboSessionId, { sessionId: session.sessionId });
+			await this.close(controllerPiboSessionId, { sessionId: session.sessionId });
 			result.autoClosed = true;
 		}
 		return result;
 	}
 
-	async inspect(ownerPiboSessionId: string, input: RuntimeInspectInput): Promise<RuntimeInspectResult> {
-		const session = input.sessionId ? this.getSessionForController(ownerPiboSessionId, input.sessionId) : this.getDefault(ownerPiboSessionId, input.runtime ?? "python");
+	async inspect(controllerPiboSessionId: string, input: RuntimeInspectInput): Promise<RuntimeInspectResult> {
+		const session = input.sessionId ? this.getSessionForController(controllerPiboSessionId, input.sessionId) : this.getDefault(controllerPiboSessionId, input.runtime ?? "python");
 		if (!session) return notFoundInspect(input.sessionId);
 		const result = await session.backend.inspect(input);
 		return { ...result, sessionId: session.sessionId };
 	}
 
-	async vars(ownerPiboSessionId: string, input: RuntimeVarsInput): Promise<RuntimeVarsResult> {
-		const session = input.sessionId ? this.getSessionForController(ownerPiboSessionId, input.sessionId) : this.getDefault(ownerPiboSessionId, input.runtime ?? "python");
+	async vars(controllerPiboSessionId: string, input: RuntimeVarsInput): Promise<RuntimeVarsResult> {
+		const session = input.sessionId ? this.getSessionForController(controllerPiboSessionId, input.sessionId) : this.getDefault(controllerPiboSessionId, input.runtime ?? "python");
 		if (!session) return notFoundVars(input.sessionId);
 		const result = await session.backend.vars(input);
 		return { ...result, sessionId: session.sessionId };
 	}
 
-	async interrupt(ownerPiboSessionId: string, input: RuntimeInterruptInput): Promise<RuntimeInterruptResult> {
-		const session = input.sessionId ? this.getSessionForController(ownerPiboSessionId, input.sessionId) : this.getDefault(ownerPiboSessionId, input.runtime ?? "python");
+	async interrupt(controllerPiboSessionId: string, input: RuntimeInterruptInput): Promise<RuntimeInterruptResult> {
+		const session = input.sessionId ? this.getSessionForController(controllerPiboSessionId, input.sessionId) : this.getDefault(controllerPiboSessionId, input.runtime ?? "python");
 		const sessionId = input.sessionId ?? session?.sessionId ?? "auto";
 		if (!session) return { status: "not_found", sessionId, message: `Runtime session "${sessionId}" was not found.` };
 		const result = await session.backend.interrupt();
 		return { ...result, sessionId: session.sessionId };
 	}
 
-	async close(ownerPiboSessionId: string, input: RuntimeCloseInput): Promise<RuntimeCloseResult> {
-		const session = this.getSessionForController(ownerPiboSessionId, input.sessionId);
+	async close(controllerPiboSessionId: string, input: RuntimeCloseInput): Promise<RuntimeCloseResult> {
+		const session = this.getSessionForController(controllerPiboSessionId, input.sessionId);
 		if (!session) return { status: "not_found", sessionId: input.sessionId, closed: false, message: `Runtime session "${input.sessionId}" was not found.` };
 		try {
 			await session.backend.close(input.force);
@@ -203,71 +203,71 @@ export class RuntimeSessionRegistry {
 		}
 	}
 
-	list(ownerPiboSessionId: string): RuntimeListResult {
+	list(controllerPiboSessionId: string): RuntimeListResult {
 		return {
 			status: "ok",
 			sessions: [...this.sessions.values()]
-				.filter((session) => session.ownerPiboSessionId === ownerPiboSessionId)
+				.filter((session) => session.controllerPiboSessionId === controllerPiboSessionId)
 				.map(toRecord),
 		};
 	}
 
-	async closeOwnerSessions(ownerPiboSessionId: string, options: { force?: boolean } = {}): Promise<void> {
-		const sessions = [...this.sessions.values()].filter((session) => session.ownerPiboSessionId === ownerPiboSessionId);
-		await Promise.all(sessions.map((session) => this.close(ownerPiboSessionId, { sessionId: session.sessionId, force: options.force })));
+	async closeControllerSessions(controllerPiboSessionId: string, options: { force?: boolean } = {}): Promise<void> {
+		const sessions = [...this.sessions.values()].filter((session) => session.controllerPiboSessionId === controllerPiboSessionId);
+		await Promise.all(sessions.map((session) => this.close(controllerPiboSessionId, { sessionId: session.sessionId, force: options.force })));
 	}
 
 	async closeAll(options: { force?: boolean } = {}): Promise<void> {
 		const sessions = [...this.sessions.values()];
-		await Promise.all(sessions.map((session) => this.close(session.ownerPiboSessionId, { sessionId: session.sessionId, force: options.force })));
+		await Promise.all(sessions.map((session) => this.close(session.controllerPiboSessionId, { sessionId: session.sessionId, force: options.force })));
 	}
 
 	pruneIdle(now = Date.now(), idleTimeoutMs = 30 * 60 * 1000): void {
 		for (const session of this.sessions.values()) {
 			if (session.status !== "idle") continue;
 			if (now - Date.parse(session.updatedAt) > idleTimeoutMs) {
-				void this.close(session.ownerPiboSessionId, { sessionId: session.sessionId, force: true });
+				void this.close(session.controllerPiboSessionId, { sessionId: session.sessionId, force: true });
 			}
 		}
 	}
 
-	createController(ownerPiboSessionId: string) {
+	createController(controllerPiboSessionId: string) {
 		return {
-			start: (input: RuntimeStartInput) => this.start(ownerPiboSessionId, input),
-			exec: (input: RuntimeExecInput) => this.exec(ownerPiboSessionId, input),
-			inspect: (input: RuntimeInspectInput) => this.inspect(ownerPiboSessionId, input),
-			vars: (input: RuntimeVarsInput) => this.vars(ownerPiboSessionId, input),
-			interrupt: (input: RuntimeInterruptInput) => this.interrupt(ownerPiboSessionId, input),
-			close: (input: RuntimeCloseInput) => this.close(ownerPiboSessionId, input),
-			list: () => this.list(ownerPiboSessionId),
+			start: (input: RuntimeStartInput) => this.start(controllerPiboSessionId, input),
+			exec: (input: RuntimeExecInput) => this.exec(controllerPiboSessionId, input),
+			inspect: (input: RuntimeInspectInput) => this.inspect(controllerPiboSessionId, input),
+			vars: (input: RuntimeVarsInput) => this.vars(controllerPiboSessionId, input),
+			interrupt: (input: RuntimeInterruptInput) => this.interrupt(controllerPiboSessionId, input),
+			close: (input: RuntimeCloseInput) => this.close(controllerPiboSessionId, input),
+			list: () => this.list(controllerPiboSessionId),
 		};
 	}
 
-	private getDefault(ownerPiboSessionId: string, runtime: RuntimeStartInput["runtime"]): RuntimeSession | undefined {
+	private getDefault(controllerPiboSessionId: string, runtime: RuntimeStartInput["runtime"]): RuntimeSession | undefined {
 		return [...this.sessions.values()].find((session) =>
-			session.ownerPiboSessionId === ownerPiboSessionId &&
+			session.controllerPiboSessionId === controllerPiboSessionId &&
 			session.runtime === runtime &&
 			session.status !== "closed" &&
 			session.status !== "failed"
 		);
 	}
 
-	private async getOrStartDefault(ownerPiboSessionId: string, input: RuntimeExecInput): Promise<RuntimeSession | undefined> {
+	private async getOrStartDefault(controllerPiboSessionId: string, input: RuntimeExecInput): Promise<RuntimeSession | undefined> {
 		const runtime = input.runtime ?? "python";
-		const existing = this.getDefault(ownerPiboSessionId, runtime);
+		const existing = this.getDefault(controllerPiboSessionId, runtime);
 		if (existing) return existing;
-		const started = await this.start(ownerPiboSessionId, {
+		const started = await this.start(controllerPiboSessionId, {
 			runtime,
 			name: input.name,
 			target: input.target,
 			timeoutMs: input.timeoutMs,
 		});
-		return started.sessionId ? this.getSessionForController(ownerPiboSessionId, started.sessionId) : undefined;
+		return started.sessionId ? this.getSessionForController(controllerPiboSessionId, started.sessionId) : undefined;
 	}
 
-	private getSessionForController(ownerPiboSessionId: string, sessionId: string): RuntimeSession | undefined {
+	private getSessionForController(controllerPiboSessionId: string, sessionId: string): RuntimeSession | undefined {
 		const session = this.sessions.get(sessionId);
-		if (!session || session.ownerPiboSessionId !== ownerPiboSessionId) return undefined;
+		if (!session || session.controllerPiboSessionId !== controllerPiboSessionId) return undefined;
 		return session;
 	}
 

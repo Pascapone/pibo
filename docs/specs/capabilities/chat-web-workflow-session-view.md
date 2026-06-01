@@ -1,9 +1,9 @@
 # Spec: Chat Web Workflow Session View
 
-**Status:** Draft  
-**Created:** 2026-05-11  
+**Status:** Draft
+**Created:** 2026-05-11
 **Updated:** 2026-05-17
-**Owner / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code  
+**Controller / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code
 **Related docs:** [Chat Web Projects Area](./chat-web-projects-area.md), [Chat Web Trace and Terminal View](./chat-web-trace-and-terminal-view.md), [Chat Web Browser Shell State](./chat-web-browser-shell-state.md), [Pibo Workflow System V1](../changes/pibo-workflow-system-v1/spec.md)
 
 ## Why
@@ -36,7 +36,7 @@ The session-view registry currently exposes two active view ids: `terminal` and 
 
 ### Out of Scope
 
-- Workflow definition authoring, graph editing, and raw XState editing inside the Project session view — authoring is owned by the Workflows tab.
+- Workflow definition authoring, graph editing, and raw XState editing inside the Project session view — authoring is managed by the Workflows tab.
 - Durable workflow kernel storage and execution — covered by the Workflow System V1 change specs.
 - The compact terminal transcript behavior — covered by Chat Web Trace and Terminal View.
 - Projects CRUD and Project Session linking APIs — covered by Chat Web Projects Area.

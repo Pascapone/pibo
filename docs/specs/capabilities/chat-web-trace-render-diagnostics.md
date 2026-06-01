@@ -1,8 +1,8 @@
 # Spec: Chat Web Trace Render Diagnostics
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage  
+**Status:** Draft
+**Created:** 2026-05-10
+**Controller / Source:** Scheduled Pibo Source Specs Coverage
 **Related docs:** [Chat Web Trace and Terminal View](./chat-web-trace-and-terminal-view.md), [Debug CLI](./debug-cli.md), [Chat Web Browser Shell State](./chat-web-browser-shell-state.md)
 
 ## Why
@@ -141,7 +141,7 @@ The system MUST rebuild diagnostic trace views only for authenticated users and 
 
 #### Current
 
-`POST /api/chat/debug/trace-at-sequence` calls `requireSameOriginJsonRequest`, `requireSession`, validates `piboSessionId` and numeric `eventSequence`, rejects unknown sessions, lists owned sessions, loads trace events before or at the sequence, and returns a rebuilt trace view.
+`POST /api/chat/debug/trace-at-sequence` calls `requireSameOriginJsonRequest`, `requireSession`, validates `piboSessionId` and numeric `eventSequence`, rejects unknown sessions, lists managed sessions, loads trace events before or at the sequence, and returns a rebuilt trace view.
 
 #### Target
 

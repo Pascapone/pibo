@@ -207,7 +207,7 @@ export function registerHumanActions(registry: WorkflowRegistry): void {
 }
 ```
 
-Runtime human-action handling validates token status, availability, action kind, payload schema, and ownership context before resolving the token. Accepted actions are recorded in `workflow_human_actions`, resolve the wait token, and schedule a human wakeup so resumed waits survive restart.
+Runtime human-action handling validates token status, availability, action kind, payload schema, and stewardship context before resolving the token. Accepted actions are recorded in `workflow_human_actions`, resolve the wait token, and schedule a human wakeup so resumed waits survive restart.
 
 ## Debug serialization
 

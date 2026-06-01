@@ -1,8 +1,8 @@
 # Coverage Analysis: Source Specs Verification Handoff 2026-05-11
 
-**Status:** Draft  
-**Created:** 2026-05-11  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage; current workspace code and specs  
+**Status:** Draft
+**Created:** 2026-05-11
+**Controller / Source:** Scheduled Pibo Source Specs Coverage; current workspace code and specs
 **Related docs:** [Direct Source Path Coverage Closure](./direct-source-path-coverage-closure-2026-05-11.md), [Source Test Gap Priorities](./source-test-gap-priorities-2026-05-11.md), [Spec Status and Traceability](../capabilities/spec-status-and-traceability.md), [Project Validation Harness](../capabilities/project-validation-harness.md)
 
 ## Why
@@ -100,7 +100,7 @@ The test inventory has broad coverage for stores, routing, gateway, MCP, model d
 
 #### Acceptance
 
-- A requirement marked `Source-inspected only` is treated as a test candidate when it touches auth, ownership, data deletion, external credentials, untrusted rendering, routing, or gateway control.
+- A requirement marked `Source-inspected only` is treated as a test candidate when it touches auth, stewardship, data deletion, external credentials, untrusted rendering, routing, or gateway control.
 - A requirement marked `Covered` is not retested solely to increase file-count coverage.
 - Verification work uses isolated stores and built artifacts where the validation harness requires them.
 

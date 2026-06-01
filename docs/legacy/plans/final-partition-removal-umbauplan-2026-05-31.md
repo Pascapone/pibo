@@ -17,7 +17,7 @@ Das bisherige Übergangsmodell wird beendet:
 - keine `owner_scope`-Spalten in aktiven Schemas;
 - keine `principal_id`-Read-State- oder Membership-Tabellen für Produktzugriff;
 - keine `shared:app`-Konstante als Speicherwert;
-- kein `getSharedAppLegacyOwnerScope()`;
+- kein `getAppContextLegacyOwnerScope()`;
 - keine CLI-/API-Parameter wie `--owner-scope`;
 - keine Owner-Auswahl im TUI;
 - keine Ralph-/Cron-/Workflow-/Annotation-/Project-/Agent-Ziele mit persönlichem Principal;
@@ -31,7 +31,7 @@ Die Occurrence-Suche lief über Source, Packages, Tests, Scripts, Skills und Dok
 
 ```text
 ownerScope, owner_scope, OwnerScope, owner scope, owner-scope,
-getSharedAppLegacyOwnerScope, LEGACY_SHARED_APP_OWNER_SCOPE, shared:app,
+getAppContextLegacyOwnerScope, LEGACY_SHARED_APP_OWNER_SCOPE, shared:app,
 principalId, principal_id, room_members, listOwned, getOwned,
 requireOwned, user:, PIBO_OWNER_SCOPE
 ```
@@ -56,7 +56,7 @@ Wichtige Match-Zahlen aus der Inventur:
 | `owner scope` | 187 |
 | `principalId` | 186 |
 | `shared:app` | 178 |
-| `getSharedAppLegacyOwnerScope` | 125 |
+| `getAppContextLegacyOwnerScope` | 125 |
 | `principal_id` | 107 |
 | `LEGACY_SHARED_APP_OWNER_SCOPE` | 90 |
 | `room_members` | 74 |
@@ -77,7 +77,7 @@ Die größten aktiven Flächen sind:
 | Cron | Same pattern as Ralph: signatures and model fields remain; target `personal.principalId`; CLI no-op `--owner-scope`. |
 | Web Annotations | `ownerScope` in types, validation, APIs, tools, CDP, attachments; store ignores it for filtering but keeps it in signatures and legacy columns. |
 | Workflow package | `workflow_runs.owner_scope` is still a fresh schema column and list filter; `WorkflowRun.ownerScope` is a package-level type. |
-| Migration tooling | `pibo data shared-app` currently normalizes legacy values to `shared:app`; final target needs schema rebuild/drop, not normalization. |
+| Migration tooling | `pibo data app-context` currently normalizes legacy values to `shared:app`; final target needs schema rebuild/drop, not normalization. |
 | Docs/tests/reports | Many current specs and tests still teach Owner Scope, `shared:app`, personal targets, or owner recovery. |
 
 ## 3. Aktuelle Lage in einem Satz
@@ -126,7 +126,7 @@ Die App ist funktional weitgehend app-global, aber das Datenmodell und viele öf
 ```ts
 type PiboWebSession = {
   authSession: PiboAuthSession;
-  appContext: { kind: "shared-app"; id: "shared-app" };
+  appContext: { kind: "app-context"; id: "app-context" };
 };
 ```
 
@@ -300,7 +300,7 @@ Debug tools may inspect historical backups, but current commands must not presen
 Target:
 
 - `pibo debug session` shows legacy owner values only when reading an unmigrated backup or when `--legacy-columns` is requested.
-- `pibo data shared-app` is retired after final migration. Replace with a final cutover tool name such as `pibo data app-space-migration` during implementation, then remove or hide it after Production migration.
+- `pibo data app-context` is retired after final migration. Replace with a final cutover tool name such as `pibo data app-space-migration` during implementation, then remove or hide it after Production migration.
 
 ## 8. Datenmigration
 
@@ -380,24 +380,24 @@ Deliverables:
 Acceptance:
 
 ```bash
-rg "ownerScope|owner_scope|OwnerScope|owner-scope|getSharedAppLegacyOwnerScope|LEGACY_SHARED_APP_OWNER_SCOPE|shared:app|PIBO_OWNER_SCOPE" src packages scripts skills test docs/project docs/specs docs/plans
+rg "ownerScope|owner_scope|OwnerScope|owner-scope|getAppContextLegacyOwnerScope|LEGACY_SHARED_APP_OWNER_SCOPE|shared:app|PIBO_OWNER_SCOPE" src packages scripts skills test docs/project docs/specs docs/plans
 ```
 
 At the end of the full work this command must return no active-model matches. Historical `docs/legacy` may remain only if explicitly accepted; otherwise rewrite or archive outside current docs.
 
-### Phase 1 — Remove shared-app-as-owner vocabulary
+### Phase 1 — Remove app-context-as-owner vocabulary
 
 Tasks:
 
-- Replace `src/shared-app.ts` with a pure app-context module or inline `SHARED_APP_CONTEXT` without legacy owner value.
-- Remove `legacyOwnerScope` from `PiboSharedAppContext`.
+- Replace `src/app-context.ts` with a pure app-context module or inline `PIBO_APP_CONTEXT` without legacy owner value.
+- Remove `legacyOwnerScope` from `PiboAppContext`.
 - Remove `PiboWebSession.ownerScope`.
 - Remove `PiboRuntimeSessionContext.ownerScope` and generated context mentions.
 - Replace helper calls with no value, not with another constant.
 
 Acceptance:
 
-- `rg "getSharedAppLegacyOwnerScope|LEGACY_SHARED_APP_OWNER_SCOPE|shared:app" src packages scripts test` returns zero, except inside a temporary migration tool during the migration phase.
+- `rg "getAppContextLegacyOwnerScope|LEGACY_SHARED_APP_OWNER_SCOPE|shared:app" src packages scripts test` returns zero, except inside a temporary migration tool during the migration phase.
 
 ### Phase 2 — Core sessions and Chat data
 
@@ -520,7 +520,7 @@ Acceptance:
 | TypeScript | `npm run typecheck` |
 | Build | `npm run build` |
 | Full tests | `npm test` |
-| Search gates | strict `rg` gates for owner/principal/shared-app legacy terms |
+| Search gates | strict `rg` gates for owner/principal/app-context legacy terms |
 | Fresh schema | tests assert no owner/principal columns/tables in new DBs |
 | Migration | fixture DBs with old `user:*` and `shared:app` rows migrate to final schemas and preserve data |
 | Chat Web API | bootstrap, sessions, rooms, messages, settings, agents, projects, workflows contain no owner fields |
@@ -534,7 +534,7 @@ Acceptance:
 Final active-source gate:
 
 ```bash
-rg -n "ownerScope|owner_scope|OwnerScope|owner scope|owner-scope|getSharedAppLegacyOwnerScope|LEGACY_SHARED_APP_OWNER_SCOPE|shared:app|PIBO_OWNER_SCOPE|principalId|principal_id|room_members|listOwned|getOwned|requireOwned|OwnedSession|OwnedProject" \
+rg -n "ownerScope|owner_scope|OwnerScope|owner scope|owner-scope|getAppContextLegacyOwnerScope|LEGACY_SHARED_APP_OWNER_SCOPE|shared:app|PIBO_OWNER_SCOPE|principalId|principal_id|room_members|listOwned|getOwned|requireOwned|OwnedSession|OwnedProject" \
   src packages scripts skills test docs/project docs/specs docs/plans
 ```
 
@@ -591,7 +591,7 @@ Production requires explicit approval immediately before action.
 
 The work is done only when all are true:
 
-- `ownerScope`, `owner_scope`, `shared:app`, and shared-app legacy helpers are absent from active source.
+- `ownerScope`, `owner_scope`, `shared:app`, and app-context legacy helpers are absent from active source.
 - Active schemas do not create owner/principal product columns or membership tables.
 - Runtime code does not read old owner/principal columns.
 - CLI/API/UI payloads do not expose Owner Scope.

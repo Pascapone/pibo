@@ -245,10 +245,10 @@ export class PiboSessionRouter {
 		if (session) {
 			killed.push(await session.kill());
 			if (options?.includeRuns) {
-				const runs = this.runRegistry.cancelOwnerRuns(piboSessionId);
+				const runs = this.runRegistry.cancelControllerRuns(piboSessionId);
 				cancelledRuns.push(...runs.map((r) => r.runId));
 			}
-			await this.runtimeRegistry.closeOwnerSessions(piboSessionId, { force: true });
+			await this.runtimeRegistry.closeControllerSessions(piboSessionId, { force: true });
 			this.signalRegistry.project({ type: "session_interrupted", piboSessionId, reason: "kill" });
 			const children = await this.killChildSessions(piboSessionId, options);
 			killed.push(...children.killed);
@@ -260,8 +260,8 @@ export class PiboSessionRouter {
 	private disposeSignalSubtree(piboSessionId: string, reason: string): void {
 		const descendants = this.descendantSessionIds(piboSessionId);
 		for (const id of [piboSessionId, ...descendants]) {
-			this.runRegistry.cancelOwnerRuns(id);
-			void this.runtimeRegistry.closeOwnerSessions(id, { force: true });
+			this.runRegistry.cancelControllerRuns(id);
+			void this.runtimeRegistry.closeControllerSessions(id, { force: true });
 			this.signalRegistry.project({ type: "session_disposed", piboSessionId: id, reason });
 			this.scheduledRunReminders.delete(id);
 			this.sessions.delete(id);
@@ -288,7 +288,7 @@ export class PiboSessionRouter {
 					killed.push(await childSession.kill());
 				}
 				if (options?.includeRuns) {
-					const runs = this.runRegistry.cancelOwnerRuns(session.id);
+					const runs = this.runRegistry.cancelControllerRuns(session.id);
 					cancelledRuns.push(...runs.map((r) => r.runId));
 				}
 				const nested = await this.killChildSessions(session.id, options);
@@ -549,7 +549,7 @@ export class PiboSessionRouter {
 	private async resetCachedSession(piboSessionId: string, reason?: string): Promise<void> {
 		const cached = this.sessions.get(piboSessionId);
 		this.sessions.delete(piboSessionId);
-		await this.runtimeRegistry.closeOwnerSessions(piboSessionId, { force: true });
+		await this.runtimeRegistry.closeControllerSessions(piboSessionId, { force: true });
 		await cached?.dispose();
 		if (reason) this.signalRegistry.project({ type: "session_disposed", piboSessionId, reason });
 	}
@@ -607,7 +607,7 @@ export class PiboSessionRouter {
 		return {
 			startToolRun: ({ toolName, params, completionPolicy, retryable, maxAttempts, execute }) => {
 				const run = this.runRegistry.startToolRun({
-					ownerPiboSessionId: parentPiboSessionId,
+					controllerPiboSessionId: parentPiboSessionId,
 					toolName,
 					params,
 					completionPolicy,
@@ -761,7 +761,7 @@ export class PiboSessionRouter {
 
 	private projectRunRegistryEvent(event: PiboRunRegistryEvent): void {
 		if (event.type === "run_removed") {
-			this.signalRegistry.project({ type: "run_removed", runId: event.runId, ownerPiboSessionId: event.ownerPiboSessionId });
+			this.signalRegistry.project({ type: "run_removed", runId: event.runId, controllerPiboSessionId: event.controllerPiboSessionId });
 			return;
 		}
 		this.signalRegistry.project({ type: "run_changed", run: event.run, previousStatus: "previousStatus" in event ? event.previousStatus : undefined, reason: "reason" in event ? event.reason : event.type });

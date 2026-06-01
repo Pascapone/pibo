@@ -1,20 +1,20 @@
 # Spec: Web Auth and Same-Origin Host
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Updated:** 2026-05-11  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage  
+**Status:** Draft
+**Created:** 2026-05-10
+**Updated:** 2026-05-11
+**Controller / Source:** Scheduled Pibo Source Specs Coverage
 **Related docs:** [Chat Web Rooms and Event Streams](./chat-web-rooms-and-event-streams.md), [Custom Agents and Agent Designer](./custom-agents.md), [Scheduled Pibo Jobs](./scheduled-pibo-jobs.md)
 
 ## Why
 
-Pibo's Chat Web App, auth routes, and web APIs share one HTTP origin. This boundary decides who may use web apps, how auth differs between production and Docker development, and how browser requests are routed to registered apps. Authenticated identity is kept for display, logout, and technical auth diagnostics; product handlers use the shared app context.
+Pibo's Chat Web App, auth routes, and web APIs share one HTTP origin. This boundary decides who may use web apps, how auth differs between production and Docker development, and how browser requests are routed to registered apps. Authenticated identity is kept for display, logout, and technical auth diagnostics; product handlers use the app context context.
 
-A spec is needed because several capabilities depend on the same behavior: Better Auth in normal gateways, dev auth only inside Docker workers, shared-app Chat Web APIs, and safe same-origin routing.
+A spec is needed because several capabilities depend on the same behavior: Better Auth in normal gateways, dev auth only inside Docker workers, app-context Chat Web APIs, and safe same-origin routing.
 
 ## Goal
 
-The web host MUST expose auth, health/status, simple-agent, and registered web app routes through one predictable HTTP channel while mapping every authenticated web request to the shared app context.
+The web host MUST expose auth, health/status, simple-agent, and registered web app routes through one predictable HTTP channel while mapping every authenticated web request to the app context context.
 
 ## Background / Current State
 
@@ -26,10 +26,10 @@ Normal web gateways register Better Auth. Docker worker gateways may opt into de
 
 ### In Scope
 
-- HTTP route ownership for the web host channel.
+- HTTP route stewardship for the web host channel.
 - Better Auth service requirements for normal web gateways.
 - Docker-only dev auth behavior.
-- Mapping auth sessions to the shared app context.
+- Mapping auth sessions to the app context context.
 - Registered web app route dispatch and route conflict constraints.
 - Basic request/response handling that is externally observable.
 
@@ -127,25 +127,25 @@ The dev auth service MUST be selectable only for Docker worker runtimes and MUST
 - WHEN the normal web gateway resolves auth mode
 - THEN it fails and tells the operator to use the Docker worker entrypoint
 
-### Requirement: Authenticated web requests enter the shared app context
+### Requirement: Authenticated web requests enter the app context context
 
-Every authenticated web app request that requires a session MUST expose the same shared app context to product handlers. The auth session remains available for display, logout, and technical diagnostics only.
+Every authenticated web app request that requires a session MUST expose the same app context context to product handlers. The auth session remains available for display, logout, and technical diagnostics only.
 
 #### Current
 
-`requireWebSession` calls the channel auth service and returns the authenticated session plus `appContext`. A deprecated compatibility owner value may be present for legacy storage paths, but it is pinned to the shared app and is not derived from the authenticated user id.
+`requireWebSession` calls the channel auth service and returns the authenticated session plus `appContext`. A deprecated compatibility controller value may be present for legacy storage paths, but it is pinned to the app context and is not derived from the authenticated user id.
 
 #### Acceptance
 
 - Missing sessions fail with `401 Unauthenticated`.
-- Two allowed authenticated identities resolve to the same shared app context.
+- Two allowed authenticated identities resolve to the same app context context.
 - Web app code does not receive product visibility keys from request bodies, query parameters, or auth identity ids.
 
-#### Scenario: Chat API request uses the shared app context
+#### Scenario: Chat API request uses the app context context
 
 - GIVEN a request carries a valid auth session for user id `abc123`
 - WHEN a registered web app calls `requireSession`
-- THEN it receives the shared app context used by any other allowed account.
+- THEN it receives the app context context used by any other allowed account.
 
 ### Requirement: Web host routes same-origin requests deterministically
 
@@ -231,7 +231,7 @@ Non-GET/HEAD request bodies are limited to 4 MiB. JSON responses may be gzip-com
 
 ## Edge Cases
 
-- Better Auth may return no session; Pibo must treat that as `401`, not as an anonymous owner.
+- Better Auth may return no session; Pibo must treat that as `401`, not as an anonymous controller.
 - Dev auth must check both `Host` and `X-Forwarded-Host` so a remote forwarded request cannot obtain a dev session.
 - If no web apps are registered, `/` returns a small HTML page instead of failing server startup.
 - If an auth service does not expose HTTP routes, `/api/auth/*` returns `500` because the selected web auth mode is misconfigured.
@@ -249,7 +249,7 @@ Non-GET/HEAD request bodies are limited to 4 MiB. JSON responses may be gzip-com
 - [ ] SC-001: A normal gateway with complete Better Auth config starts and serves `/health`, `/gateway/status`, `/api/auth/*`, and registered apps from one origin.
 - [x] SC-002: Better Auth rejects an empty allowed-email list and weak secrets before accepting authenticated app traffic, as covered by `test/better-auth-config.test.mjs`.
 - [x] SC-003: Docker worker dev auth safety is fail-closed at the host boundary and loopback-gated at auth routes, as covered by `test/web-gateway.test.mjs` and `test/dev-auth.test.mjs`.
-- [x] SC-004: Web app handlers receive the shared app context for authenticated requests, as covered by `test/web-auth-shared-app-context.test.mjs` and `test/web-channel.test.mjs`.
+- [x] SC-004: Web app handlers receive the app context context for authenticated requests, as covered by `test/web-auth-app-context-context.test.mjs` and `test/web-channel.test.mjs`.
 - [x] SC-005: Overlapping web app routes are rejected at plugin registration time, as covered by `test/plugin-registry.test.mjs`.
 
 ## Verification Coverage
@@ -261,7 +261,7 @@ This section records which parts of the web-auth and same-origin host contract a
 - Better Auth configuration rejects empty `allowedEmails`, rejects secrets shorter than 32 characters, and preserves trusted origin expansion. Verified by `test/better-auth-config.test.mjs`.
 - Legacy host dev-auth activation fails closed: `PIBO_DEV_AUTH=1` does not enable `gateway:web`, and the default auth mode remains Better Auth. Verified by `test/web-gateway.test.mjs`.
 - Dev-auth route access is loopback-gated by both `Host` and `X-Forwarded-Host`; public forwarded host values are rejected by the loopback predicate. Verified by `test/dev-auth.test.mjs`.
-- Authenticated Chat Web requests receive shared app product context while preserving auth errors; forbidden auth errors surface as `403`, cross-origin mutations are rejected, local reverse-proxy same-origin mutations are accepted, and oversized bodies return `413`. Verified by `test/web-auth-shared-app-context.test.mjs` and `test/web-channel.test.mjs`.
+- Authenticated Chat Web requests receive app context product context while preserving auth errors; forbidden auth errors surface as `403`, cross-origin mutations are rejected, local reverse-proxy same-origin mutations are accepted, and oversized bodies return `413`. Verified by `test/web-auth-app-context-context.test.mjs` and `test/web-channel.test.mjs`.
 - Duplicate auth service registration and overlapping web app routes fail during plugin registry creation. Verified by `test/plugin-registry.test.mjs`.
 - Dynamic JSON response compression honors gzip support, rejects `gzip;q=0`, does not use Brotli for dynamic JSON, and leaves small JSON uncompressed. Verified by `test/web-http.test.mjs`.
 
@@ -297,7 +297,7 @@ This section records which parts of the web-auth and same-origin host contract a
 | REQ-002 Normal web gateways use Better Auth configuration | Missing allowed email list | `src/auth/better-auth.ts`, `src/config/config.ts` | `test/better-auth-config.test.mjs` | Component-tested |
 | REQ-003 Better Auth authorizes only allowed emails | Signed-in user is not allowed | `src/auth/better-auth.ts`, `src/web/channel.ts` | `test/web-channel.test.mjs` covers auth-service `403`; real Better Auth allowlist path is source-inspected | Partly tested |
 | REQ-004 Dev auth is available only inside Docker workers | Host tries env dev auth | `src/gateway/web.ts`, `src/plugins/dev-auth.ts` | `test/web-gateway.test.mjs`, `test/dev-auth.test.mjs` | Component-tested |
-| REQ-005 Authenticated web requests enter the shared app context | Chat API request uses shared app context | `src/web/auth.ts`, `src/web/types.ts`, `src/apps/chat/web-app.ts` | `test/web-auth-shared-app-context.test.mjs`, `test/web-channel.test.mjs` | Integration-tested |
+| REQ-005 Authenticated web requests enter the app context context | Chat API request uses app context context | `src/web/auth.ts`, `src/web/types.ts`, `src/apps/chat/web-app.ts` | `test/web-auth-app-context-context.test.mjs`, `test/web-channel.test.mjs` | Integration-tested |
 | REQ-006 Web host routes same-origin requests deterministically | Auth route is not claimed by an app | `src/web/channel.ts` | Component behavior source-inspected; app shell/authenticated API routes covered by `test/web-channel.test.mjs` | Partly tested |
 | REQ-007 Canonical redirects protect browser-facing origins | OAuth callback reaches loopback origin | `src/web/channel.ts`, `src/gateway/web.ts` | `test/web-channel.test.mjs` covers app-link redirect; auth-callback redirect is source-inspected | Partly tested |
 | REQ-008 Registered web app routes must not overlap | Two apps claim same API prefix | `src/plugins/registry.ts`, `src/web/types.ts` | `test/plugin-registry.test.mjs` | Component-tested |

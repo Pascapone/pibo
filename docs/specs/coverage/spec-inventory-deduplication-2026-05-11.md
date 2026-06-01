@@ -1,25 +1,25 @@
 # Coverage Analysis: Spec Inventory Deduplication 2026-05-11
 
-**Status:** Draft  
-**Created:** 2026-05-11  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage; current workspace code and `docs/specs/` inventory  
+**Status:** Draft
+**Created:** 2026-05-11
+**Controller / Source:** Scheduled Pibo Source Specs Coverage; current workspace code and `docs/specs/` inventory
 **Related docs:** `docs/specs/README.md`, `docs/specs/capabilities/spec-status-and-traceability.md`, `docs/specs/coverage/source-specs-continuation-readiness-2026-05-11.md`, `docs/specs/coverage/source-specs-verification-handoff-2026-05-11.md`
 
 ## Why
 
-The scheduled source-spec job must keep expanding useful coverage without creating duplicate contracts. The current workspace already contains capability specs for the major source-owned surfaces: routed sessions, gateway protocol, Chat Web, auth, context files, tools, MCP, Pi packages, scheduled jobs, Ralph, reliability, data stores, workflow packages, Docker runtime, and validation.
+The scheduled source-spec job must keep expanding useful coverage without creating duplicate contracts. The current workspace already contains capability specs for the major source-managed surfaces: routed sessions, gateway protocol, Chat Web, auth, context files, tools, MCP, Pi packages, scheduled jobs, Ralph, reliability, data stores, workflow packages, Docker runtime, and validation.
 
 This run found that the next safest artifact is not another capability spec. A new behavior spec would mostly restate existing files. This coverage note records the duplicate-avoidance decision and points future runs toward source changes or verification-specific gaps instead.
 
 ## Goal
 
-Prevent duplicate capability specs by documenting which source areas are already owned by existing specs and what evidence a future run needs before adding another source-backed spec.
+Prevent duplicate capability specs by documenting which source areas are already managed by existing specs and what evidence a future run needs before adding another source-backed spec.
 
 ## Scope
 
 ### In Scope
 
-- Current `docs/specs/` inventory and capability ownership.
+- Current `docs/specs/` inventory and capability stewardship.
 - Source areas inspected during this run.
 - Criteria for when a future scheduled run should create a new spec instead of a coverage note.
 - Remaining weak spots that are better handled by verification or focused amendments to existing specs.
@@ -49,7 +49,7 @@ The inspected spec inventory already contains current source-backed coverage for
 
 ## Findings
 
-### Finding: No unowned major product capability was found in this run
+### Finding: No unmanaged major product capability was found in this run
 
 #### Current
 
@@ -57,7 +57,7 @@ The source tree and existing specs were inspected before writing this note. Ever
 
 #### Acceptance for future runs
 
-A future run SHOULD create a new capability spec only when it can name an implemented source behavior that has no owner in the table above and is not covered by the related specs listed in that file.
+A future run SHOULD create a new capability spec only when it can name an implemented source behavior that has no controller in the table above and is not covered by the related specs listed in that file.
 
 ### Finding: The strongest remaining work is verification traceability
 

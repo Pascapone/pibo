@@ -1,6 +1,6 @@
 import { createUnauthenticatedError, type PiboAuthSession } from "../auth/types.js";
 import type { PiboChannelContext } from "../channels/types.js";
-import { SHARED_APP_CONTEXT } from "../shared-app.js";
+import { PIBO_APP_CONTEXT } from "../app-context.js";
 import type { PiboWebSession } from "./types.js";
 
 export async function getWebAuthSession(
@@ -19,6 +19,6 @@ export async function requireWebSession(
 
 	return {
 		authSession,
-		appContext: SHARED_APP_CONTEXT,
+		appContext: PIBO_APP_CONTEXT,
 	};
 }

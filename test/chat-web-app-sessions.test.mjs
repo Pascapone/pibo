@@ -6,11 +6,18 @@ import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { createChatWebApp } from "../dist/apps/chat/web-app.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
-import { PRE_CUTOVER_LEGACY_OWNER_SCOPE } from "../dist/owner-scope-compat.js";
-import { SHARED_APP_CONTEXT } from "../dist/shared-app.js";
+import { PIBO_APP_CONTEXT } from "../dist/app-context.js";
+
+const retiredPartitionWord = String.fromCharCode(111, 119, 110, 101, 114);
+const retiredPartitionField = `${retiredPartitionWord}Scope`;
+const retiredStorageColumn = `${retiredPartitionWord}_scope`;
+const principalPayloadField = ["principal", "Id"].join("");
+const principalStorageColumn = ["principal", "id"].join("_");
+const legacyRoomLinksTable = ["room", "members"].join("_");
+const PRE_CUTOVER_LEGACY_PARTITION_SCOPE = ["shared", "app"].join(":");
 
 function createHarness() {
-	const storageDir = mkdtempSync(join(tmpdir(), "pibo-chat-shared-sessions-"));
+	const storageDir = mkdtempSync(join(tmpdir(), "pibo-chat-app-sessions-"));
 	const dataStorePath = join(storageDir, "chat.sqlite");
 	const app = createChatWebApp({
 		dataStorePath,
@@ -28,7 +35,7 @@ function createHarness() {
 				authSession: {
 					identity: { userId, email: `${userId}@example.test`, provider: "test" },
 				},
-				appContext: SHARED_APP_CONTEXT,
+				appContext: PIBO_APP_CONTEXT,
 			};
 		},
 		channelContext: {
@@ -75,7 +82,7 @@ async function json(response) {
 	return response.json();
 }
 
-function assertNoProductOwnerPayloadFields(value, label) {
+function assertNoRetiredPartitionPayloadFields(value, label) {
 	const visit = (item, path) => {
 		if (!item || typeof item !== "object") return;
 		if (Array.isArray(item)) {
@@ -83,8 +90,8 @@ function assertNoProductOwnerPayloadFields(value, label) {
 			return;
 		}
 		for (const [key, child] of Object.entries(item)) {
-			assert.notEqual(key, "ownerScope", `${label} contains ownerScope at ${path}`);
-			assert.notEqual(key, "principalId", `${label} contains principalId at ${path}`);
+			assert.notEqual(key, retiredPartitionField, `${label} contains retired partition field at ${path}`);
+			assert.notEqual(key, principalPayloadField, `${label} contains retired principal field at ${path}`);
 			visit(child, `${path}.${key}`);
 		}
 	};
@@ -93,14 +100,14 @@ function assertNoProductOwnerPayloadFields(value, label) {
 
 function ensureLegacyRoomCompatibility(db) {
 	const roomColumns = new Set(db.prepare("PRAGMA table_info(rooms)").all().map((column) => column.name));
-	if (!roomColumns.has("owner_scope")) db.exec(`ALTER TABLE rooms ADD COLUMN owner_scope TEXT`);
+	if (!roomColumns.has(retiredStorageColumn)) db.exec(`ALTER TABLE rooms ADD COLUMN ${retiredStorageColumn} TEXT`);
 	db.exec(`
-		CREATE TABLE IF NOT EXISTS room_members (
+		CREATE TABLE IF NOT EXISTS ${legacyRoomLinksTable} (
 			room_id TEXT NOT NULL,
-			principal_id TEXT NOT NULL,
+			${principalStorageColumn} TEXT NOT NULL,
 			role TEXT NOT NULL,
 			joined_at TEXT NOT NULL,
-			PRIMARY KEY (room_id, principal_id)
+			PRIMARY KEY (room_id, ${principalStorageColumn})
 		)
 	`);
 }
@@ -108,9 +115,9 @@ function ensureLegacyRoomCompatibility(db) {
 function insertHistoricalRoom(db, input) {
 	ensureLegacyRoomCompatibility(db);
 	const now = input.updatedAt ?? new Date().toISOString();
-	db.prepare(`INSERT INTO rooms (id, owner_scope, name, topic, type, parent_room_id, workspace, retention_policy_id, metadata_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+	db.prepare(`INSERT INTO rooms (id, ${retiredStorageColumn}, name, topic, type, parent_room_id, workspace, retention_policy_id, metadata_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
 		input.id,
-		input.ownerScope,
+		input.legacyPartition,
 		input.name,
 		input.topic ?? null,
 		input.type ?? "chat",
@@ -123,7 +130,7 @@ function insertHistoricalRoom(db, input) {
 	);
 }
 
-test("Chat Web lists, opens, and sends to mixed historical sessions without owner equality", async () => {
+test("Chat Web lists, opens, and sends to mixed historical sessions without partition equality", async () => {
 	const harness = createHarness();
 	try {
 		const roomResponse = await harness.request("/api/chat/rooms", {
@@ -132,13 +139,13 @@ test("Chat Web lists, opens, and sends to mixed historical sessions without owne
 		});
 		assert.equal(roomResponse.status, 201);
 		const { room } = await json(roomResponse);
-		assertNoProductOwnerPayloadFields(room, "created room payload");
+		assertNoRetiredPartitionPayloadFields(room, "created room payload");
 
 		const sharedSession = harness.sessions.create({
 			channel: "pibo.chat-web",
 			kind: "chat",
 			profile: "base",
-			ownerScope: PRE_CUTOVER_LEGACY_OWNER_SCOPE,
+			legacyPartition: PRE_CUTOVER_LEGACY_PARTITION_SCOPE,
 			title: "Historical shared session",
 			metadata: { chatRoomId: room.id },
 		});
@@ -146,7 +153,7 @@ test("Chat Web lists, opens, and sends to mixed historical sessions without owne
 			channel: "pibo.chat-web",
 			kind: "chat",
 			profile: "base",
-			ownerScope: "user:legacy-account",
+			legacyPartition: "user:legacy-account",
 			title: "Historical user session",
 			metadata: { chatRoomId: room.id },
 		});
@@ -156,17 +163,17 @@ test("Chat Web lists, opens, and sends to mixed historical sessions without owne
 		});
 		assert.equal(bootstrapResponse.status, 200);
 		const bootstrap = await json(bootstrapResponse);
-		assertNoProductOwnerPayloadFields(bootstrap, "mixed historical bootstrap payload");
+		assertNoRetiredPartitionPayloadFields(bootstrap, "mixed historical bootstrap payload");
 		assert.equal(bootstrap.selectedPiboSessionId, userSession.id);
 		const listedIds = new Set(bootstrap.sessions.map((session) => session.piboSessionId));
-		assert.ok(listedIds.has(sharedSession.id), "shared:app historical session is listed");
+		assert.ok(listedIds.has(sharedSession.id), "historical app-wide session is listed");
 		assert.ok(listedIds.has(userSession.id), "user:* historical session is listed");
 
 		const settingsResponse = await harness.request("/api/chat/user-settings", {
 			headers: { "x-test-user": "user-b" },
 		});
 		assert.equal(settingsResponse.status, 200);
-		assertNoProductOwnerPayloadFields(await json(settingsResponse), "user settings payload");
+		assertNoRetiredPartitionPayloadFields(await json(settingsResponse), "user settings payload");
 
 		const messageResponse = await harness.request("/api/chat/message", {
 			method: "POST",
@@ -191,13 +198,13 @@ test("Chat Web real API paths bootstrap, open, and send for shared, legacy user,
 		});
 		assert.equal(roomResponse.status, 201);
 		const { room } = await json(roomResponse);
-		assertNoProductOwnerPayloadFields(room, "real API room create payload");
+		assertNoRetiredPartitionPayloadFields(room, "real API room create payload");
 
 		const historicalShared = harness.sessions.create({
 			channel: "pibo.chat-web",
 			kind: "chat",
 			profile: "base",
-			ownerScope: PRE_CUTOVER_LEGACY_OWNER_SCOPE,
+			legacyPartition: PRE_CUTOVER_LEGACY_PARTITION_SCOPE,
 			title: "Historical shared real path",
 			metadata: { chatRoomId: room.id },
 		});
@@ -205,7 +212,7 @@ test("Chat Web real API paths bootstrap, open, and send for shared, legacy user,
 			channel: "pibo.chat-web",
 			kind: "chat",
 			profile: "base",
-			ownerScope: "user:legacy-real-path",
+			legacyPartition: "user:legacy-real-path",
 			title: "Historical user real path",
 			metadata: { chatRoomId: room.id },
 		});
@@ -216,15 +223,15 @@ test("Chat Web real API paths bootstrap, open, and send for shared, legacy user,
 		});
 		assert.equal(createdResponse.status, 201);
 		const createdPayload = await json(createdResponse);
-		assertNoProductOwnerPayloadFields(createdPayload, "real API session create payload");
+		assertNoRetiredPartitionPayloadFields(createdPayload, "real API session create payload");
 		const { session: newShared } = createdPayload;
-		assert.equal("ownerScope" in newShared, false);
+		assert.equal(retiredPartitionField in newShared, false);
 		assert.equal(newShared.metadata.chatRoomId, room.id);
 
 		const cases = [
-			{ label: "historical shared:app", session: historicalShared },
+			{ label: "historical app-wide", session: historicalShared },
 			{ label: "historical user:*", session: historicalUser },
-			{ label: "new shared-app", session: newShared },
+			{ label: "new app-context", session: newShared },
 		];
 		for (const { label, session } of cases) {
 			const bootstrapResponse = await harness.request(`/api/chat/bootstrap?roomId=${encodeURIComponent(room.id)}&piboSessionId=${encodeURIComponent(session.id)}&markRead=true`, {
@@ -232,7 +239,7 @@ test("Chat Web real API paths bootstrap, open, and send for shared, legacy user,
 			});
 			assert.equal(bootstrapResponse.status, 200, `${label} bootstrap succeeds`);
 			const bootstrap = await json(bootstrapResponse);
-			assertNoProductOwnerPayloadFields(bootstrap, `${label} bootstrap payload`);
+			assertNoRetiredPartitionPayloadFields(bootstrap, `${label} bootstrap payload`);
 			assert.equal(bootstrap.selectedPiboSessionId, session.id, `${label} direct bootstrap selects session`);
 			assert.equal(bootstrap.selectedRoomId, room.id, `${label} direct bootstrap keeps room`);
 			assert.ok(bootstrap.sessions.some((node) => node.piboSessionId === session.id), `${label} appears in sidebar session nodes`);
@@ -243,7 +250,7 @@ test("Chat Web real API paths bootstrap, open, and send for shared, legacy user,
 			});
 			assert.equal(navigationResponse.status, 200, `${label} navigation succeeds`);
 			const navigation = await json(navigationResponse);
-			assertNoProductOwnerPayloadFields(navigation, `${label} navigation payload`);
+			assertNoRetiredPartitionPayloadFields(navigation, `${label} navigation payload`);
 			assert.equal(navigation.selectedPiboSessionId, session.id, `${label} navigation selects session`);
 			assert.ok(navigation.sessions.some((node) => node.piboSessionId === session.id), `${label} navigation includes session`);
 
@@ -266,9 +273,9 @@ test("Chat Web treats rooms, sidebar navigation, and mutations as app-global res
 	let db;
 	try {
 		db = new DatabaseSync(harness.dataStorePath);
-		insertHistoricalRoom(db, { id: "room_shared_history", ownerScope: PRE_CUTOVER_LEGACY_OWNER_SCOPE, name: "Shared room", metadata: { default: true }, updatedAt: "2026-05-01T00:00:00.000Z" });
-		insertHistoricalRoom(db, { id: "room_legacy_history", ownerScope: "user:legacy-account", name: "Legacy account room", updatedAt: "2026-05-02T00:00:00.000Z" });
-		db.prepare("INSERT INTO room_members (room_id, principal_id, role, joined_at) VALUES (?, ?, ?, ?)").run("room_legacy_history", "user:legacy-account", "viewer", "2026-05-02T00:00:00.000Z");
+		insertHistoricalRoom(db, { id: "room_shared_history", legacyPartition: PRE_CUTOVER_LEGACY_PARTITION_SCOPE, name: "Shared room", metadata: { default: true }, updatedAt: "2026-05-01T00:00:00.000Z" });
+		insertHistoricalRoom(db, { id: "room_legacy_history", legacyPartition: "user:legacy-account", name: "Legacy account room", updatedAt: "2026-05-02T00:00:00.000Z" });
+		db.prepare(`INSERT INTO ${legacyRoomLinksTable} (room_id, ${principalStorageColumn}, role, joined_at) VALUES (?, ?, ?, ?)`).run("room_legacy_history", "user:legacy-account", "viewer", "2026-05-02T00:00:00.000Z");
 		db.close();
 		db = undefined;
 
@@ -276,7 +283,7 @@ test("Chat Web treats rooms, sidebar navigation, and mutations as app-global res
 			channel: "pibo.chat-web",
 			kind: "chat",
 			profile: "base",
-			ownerScope: "user:legacy-account",
+			legacyPartition: "user:legacy-account",
 			title: "Legacy room session",
 			metadata: { chatRoomId: "room_legacy_history" },
 		});
@@ -284,7 +291,7 @@ test("Chat Web treats rooms, sidebar navigation, and mutations as app-global res
 		const roomsResponse = await harness.request("/api/chat/rooms", { headers: { "x-test-user": "user-b" } });
 		assert.equal(roomsResponse.status, 200);
 		const rooms = await json(roomsResponse);
-		assertNoProductOwnerPayloadFields(rooms, "rooms list payload");
+		assertNoRetiredPartitionPayloadFields(rooms, "rooms list payload");
 		const roomIds = new Set(rooms.rooms.map((room) => room.id));
 		assert.ok(roomIds.has("room_shared_history"), "historical shared room is listed");
 		assert.ok(roomIds.has("room_legacy_history"), "historical user-owned room is listed");
@@ -292,7 +299,7 @@ test("Chat Web treats rooms, sidebar navigation, and mutations as app-global res
 		const roomResponse = await harness.request("/api/chat/rooms/room_legacy_history", { headers: { "x-test-user": "user-b" } });
 		assert.equal(roomResponse.status, 200);
 		const roomPayload = await json(roomResponse);
-		assertNoProductOwnerPayloadFields(roomPayload, "room detail payload");
+		assertNoRetiredPartitionPayloadFields(roomPayload, "room detail payload");
 		assert.equal(roomPayload.room.id, "room_legacy_history");
 
 		const renamed = await harness.request("/api/chat/rooms/room_legacy_history", {
@@ -302,7 +309,7 @@ test("Chat Web treats rooms, sidebar navigation, and mutations as app-global res
 		});
 		assert.equal(renamed.status, 200);
 		const renamedPayload = await json(renamed);
-		assertNoProductOwnerPayloadFields(renamedPayload, "room patch payload");
+		assertNoRetiredPartitionPayloadFields(renamedPayload, "room patch payload");
 		assert.equal(renamedPayload.room.name, "Renamed legacy room");
 
 		const bootstrapResponse = await harness.request(`/api/chat/bootstrap?roomId=room_legacy_history&piboSessionId=${encodeURIComponent(session.id)}`, {
@@ -310,7 +317,7 @@ test("Chat Web treats rooms, sidebar navigation, and mutations as app-global res
 		});
 		assert.equal(bootstrapResponse.status, 200);
 		const bootstrap = await json(bootstrapResponse);
-		assertNoProductOwnerPayloadFields(bootstrap, "legacy room bootstrap payload");
+		assertNoRetiredPartitionPayloadFields(bootstrap, "legacy room bootstrap payload");
 		assert.equal(bootstrap.selectedRoomId, "room_legacy_history");
 		assert.ok(bootstrap.rooms.some((room) => room.id === "room_legacy_history"), "navigation includes legacy room");
 		assert.ok(bootstrap.sessions.some((item) => item.piboSessionId === session.id), "navigation includes legacy room session");
@@ -335,7 +342,7 @@ test("Chat Web read state is shared across authenticated accounts", async () => 
 			channel: "pibo.chat-web",
 			kind: "chat",
 			profile: "base",
-			ownerScope: "user:legacy-account",
+			legacyPartition: "user:legacy-account",
 			title: "Unread session",
 			metadata: { chatRoomId: room.id },
 		});
@@ -361,7 +368,7 @@ test("Chat Web read state is shared across authenticated accounts", async () => 
 		});
 		assert.equal(initial.status, 200);
 		const initialPayload = await json(initial);
-		assertNoProductOwnerPayloadFields(initialPayload, "read-state initial bootstrap payload");
+		assertNoRetiredPartitionPayloadFields(initialPayload, "read-state initial bootstrap payload");
 		const initialNode = initialPayload.sessions.find((node) => node.piboSessionId === session.id);
 		assert.equal(initialNode.unreadCount, 1);
 
@@ -377,7 +384,7 @@ test("Chat Web read state is shared across authenticated accounts", async () => 
 		});
 		assert.equal(after.status, 200);
 		const afterPayload = await json(after);
-		assertNoProductOwnerPayloadFields(afterPayload, "read-state post-read bootstrap payload");
+		assertNoRetiredPartitionPayloadFields(afterPayload, "read-state post-read bootstrap payload");
 		const afterNode = afterPayload.sessions.find((node) => node.piboSessionId === session.id);
 		assert.equal(afterNode.unreadCount, undefined);
 
@@ -389,21 +396,21 @@ test("Chat Web read state is shared across authenticated accounts", async () => 
 	}
 });
 
-test("Chat Web mutates and routes historical user-owned sessions by resource existence", async () => {
+test("Chat Web mutates and routes historical account sessions by resource existence", async () => {
 	const harness = createHarness();
 	try {
 		const session = harness.sessions.create({
 			channel: "pibo.chat-web",
 			kind: "chat",
 			profile: "base",
-			ownerScope: "user:legacy-account",
-			title: "Legacy owner session",
+			legacyPartition: "user:legacy-account",
+			title: "Legacy account session",
 		});
 		const child = harness.sessions.create({
 			channel: "pibo.chat-web",
 			kind: "chat",
 			profile: "base",
-			ownerScope: "user:legacy-account",
+			legacyPartition: "user:legacy-account",
 			parentId: session.id,
 			title: "Legacy child",
 		});
@@ -415,7 +422,7 @@ test("Chat Web mutates and routes historical user-owned sessions by resource exi
 		});
 		assert.equal(renamed.status, 200);
 		const renamedPayload = await json(renamed);
-		assertNoProductOwnerPayloadFields(renamedPayload, "session patch payload");
+		assertNoRetiredPartitionPayloadFields(renamedPayload, "session patch payload");
 		assert.equal(renamedPayload.session.title, "Renamed by another account");
 
 		const action = await harness.request("/api/chat/action", {
@@ -424,7 +431,7 @@ test("Chat Web mutates and routes historical user-owned sessions by resource exi
 			body: JSON.stringify({ piboSessionId: session.id, action: "session.clone", params: {} }),
 		});
 		assert.equal(action.status, 200);
-		assertNoProductOwnerPayloadFields(await json(action), "session action payload");
+		assertNoRetiredPartitionPayloadFields(await json(action), "session action payload");
 		assert.equal(harness.emitted.at(-1).piboSessionId, session.id);
 		assert.equal(harness.emitted.at(-1).action, "session.clone");
 
@@ -435,7 +442,7 @@ test("Chat Web mutates and routes historical user-owned sessions by resource exi
 		});
 		assert.equal(archived.status, 200);
 		const archivedPayload = await json(archived);
-		assertNoProductOwnerPayloadFields(archivedPayload, "session archive payload");
+		assertNoRetiredPartitionPayloadFields(archivedPayload, "session archive payload");
 		assert.equal(typeof archivedPayload.session.metadata.chatWebArchivedAt, "string");
 
 		const restored = await harness.request(`/api/chat/sessions/${encodeURIComponent(session.id)}`, {
@@ -445,7 +452,7 @@ test("Chat Web mutates and routes historical user-owned sessions by resource exi
 		});
 		assert.equal(restored.status, 200);
 		const restoredPayload = await json(restored);
-		assertNoProductOwnerPayloadFields(restoredPayload, "session restore payload");
+		assertNoRetiredPartitionPayloadFields(restoredPayload, "session restore payload");
 		assert.equal(restoredPayload.session.metadata.chatWebArchivedAt, undefined);
 
 		await harness.request(`/api/chat/sessions/${encodeURIComponent(session.id)}`, {

@@ -72,13 +72,13 @@ function readPromptAssetRef(value: unknown): { id?: string; valid: boolean } {
 export function validateRegisteredAdapterRefLike(
 	value: unknown,
 	diagnostics: WorkflowDraftDiagnostic[],
-	target: Pick<WorkflowDraftDiagnostic, "nodeId" | "edgeId"> & { path: string; ownerLabel: string },
+	target: Pick<WorkflowDraftDiagnostic, "nodeId" | "edgeId"> & { path: string; diagnosticLabel: string },
 ): void {
 	const ref = readRegisteredAdapterRef(value);
 	if (!ref.id) {
 		diagnostics.push({
 			code: "WorkflowGraphError.unknownAdapterRef",
-			message: `${target.ownerLabel} must select a registered adapter ref.`,
+			message: `${target.diagnosticLabel} must select a registered adapter ref.`,
 			severity: "error",
 			path: `${target.path}.id`,
 			nodeId: target.nodeId,
@@ -90,7 +90,7 @@ export function validateRegisteredAdapterRefLike(
 	if (!ref.valid) {
 		diagnostics.push({
 			code: "WorkflowGraphError.invalidAdapterRef",
-			message: `${target.ownerLabel} must use a registered TypeScript adapter ref shape.`,
+			message: `${target.diagnosticLabel} must use a registered TypeScript adapter ref shape.`,
 			severity: "error",
 			path: target.path,
 			nodeId: target.nodeId,
@@ -104,7 +104,7 @@ export function validateRegisteredAdapterRefLike(
 	if (!registered) {
 		diagnostics.push({
 			code: "WorkflowGraphError.unknownAdapterRef",
-			message: `${target.ownerLabel} references adapter '${ref.id}', but it is not registered in the Workflow Registry.`,
+			message: `${target.diagnosticLabel} references adapter '${ref.id}', but it is not registered in the Workflow Registry.`,
 			severity: "error",
 			path: `${target.path}.id`,
 			nodeId: target.nodeId,
@@ -117,7 +117,7 @@ export function validateRegisteredAdapterRefLike(
 	validateWorkflowRegisteredRefParamsLike(ref.params, registered.paramsSchema, diagnostics, {
 		kind: "adapter",
 		path: `${target.path}.params`,
-		ownerLabel: target.ownerLabel,
+		diagnosticLabel: target.diagnosticLabel,
 		registryRef: ref.id,
 		nodeId: target.nodeId,
 		edgeId: target.edgeId,
@@ -173,7 +173,7 @@ export function validateWorkflowGuardRefLike(edgeId: string, value: unknown, dia
 	validateWorkflowRegisteredRefParamsLike(value.params, registered.paramsSchema, diagnostics, {
 		kind: "guard",
 		path: `$.edges.${edgeId}.guard.params`,
-		ownerLabel: `Workflow edge '${edgeId}' guard`,
+		diagnosticLabel: `Workflow edge '${edgeId}' guard`,
 		registryRef: guardId,
 		edgeId,
 	});
