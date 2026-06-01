@@ -35,6 +35,7 @@
     "build": "tsc -p tsconfig.json && npm run web-ui:build && node scripts/ensure-bin-executable.mjs",
     "start": "node dist/bin/pibo.js",
     "test": "npm run build && node --test test/*.test.mjs",
+    "check:product-vocab": "node scripts/legacy-product-vocabulary-gate.mjs",
     "validate:ink-web-derived": "node scripts/ink-cli-web-derived-parity-validate.mjs",
     "compute:limited-worker-smoke": "node scripts/compute-limited-worker-smoke.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit && npm run chat-ui:typecheck && npm run context-files-ui:typecheck",

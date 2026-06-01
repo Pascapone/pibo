@@ -35,8 +35,8 @@
         "Typecheck passes"
       ],
       "priority": 2,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed 2026-06-01. Added npm script check:product-vocab backed by scripts/legacy-product-vocabulary-gate.mjs. The gate scans active product roots (src, packages, scripts, skills, test, docs/project, docs/specs, docs/plans) for the US-002 required terms and the broader final-removal vocabulary. The built-in temporary allowlist is limited to docs/legacy/** and the isolated final app-space cutover migration path. Documented usage and post-cutover allowlist shrink policy in docs/reports/final-owner-scope-search-gate-us-002.md and script --help. Added focused tests in test/legacy-product-vocabulary-gate.test.mjs for clean pass, active failures, multiple required spellings, historical-doc allowlisting, current-doc rejection, and isolated cutover migration allowlisting. Docker validation passed with PIBO_HOME=/workspace/.pibo/ralph-test-home: node --test test/legacy-product-vocabulary-gate.test.mjs and npm run typecheck. A Docker scan summary of the current branch reported 3703 expected failures and 0 allowed matches across 1019 files because later removal stories have not yet removed active Owner Scope artifacts; this is not wired into npm test yet."
     },
     {
       "id": "US-003",

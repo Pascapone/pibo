@@ -83,3 +83,19 @@ Temporary exceptions are allowed only for the isolated final migration module an
 - Search baselines should distinguish active source/docs scope (`src packages scripts skills test docs/project docs/specs docs/plans`) from full worktree scope, because `docs/reports/owner-scope-final-removal-raw-inventory-2026-05-31.txt` intentionally contains many historical matches.
 - The fresh test home `/workspace/.pibo/ralph-test-home` is currently empty of SQLite databases; the copied historical sandbox is available through `/workspace/.pibo/ralph-migration-sandbox`, a symlink to `/workspace/.pibo/ralph-sandbox`. Use `find -L` or resolve the symlink when inventorying sandbox files.
 - Python `sqlite3` URI `mode=ro` is available in the worker and was sufficient for read-only schema inventory without installing `sqlite3` CLI.
+
+## US-002 search gate lessons
+
+- The strict vocabulary gate lives at `scripts/legacy-product-vocabulary-gate.mjs` and is exposed as `npm run check:product-vocab`.
+- The gate intentionally is not a default `npm test` dependency yet because the current branch still contains active artifacts that later stories must remove. It should become a final zero-regression check once the active matches are gone.
+- The script constructs legacy terms from string segments so that the gate implementation and its focused tests do not create self-matches in the active scan roots.
+- The only built-in allowed paths are `docs/legacy/**` and the isolated final app-space cutover migration path. If later migration fixtures need legacy vocabulary, prefer keeping those fixtures under the isolated migration path or revisiting the allowlist explicitly rather than broadening it silently.
+- Current Docker scan after US-002: 3703 disallowed matches, 0 allowed matches, 1019 scanned files. This is expected until later PRD stories remove active source/current-doc artifacts.
+
+## US-002 search gate lessons
+
+- The strict vocabulary gate lives at `scripts/legacy-product-vocabulary-gate.mjs` and is exposed as `npm run check:product-vocab`.
+- The gate intentionally is not a default `npm test` dependency yet because the current branch still contains active artifacts that later stories must remove. It should become a final zero-regression check once the active matches are gone.
+- The script constructs legacy terms from string segments so that the gate implementation and its focused tests do not create self-matches in the active scan roots.
+- The only built-in allowed paths are `docs/legacy/**` and the isolated final app-space cutover migration path. If later migration fixtures need legacy vocabulary, prefer keeping those fixtures under the isolated migration path or revisiting the allowlist explicitly rather than broadening it silently.
+- Current Docker scan after US-002: 3703 disallowed matches, 0 allowed matches, 1019 scanned files. This is expected until later PRD stories remove active source/current-doc artifacts.
