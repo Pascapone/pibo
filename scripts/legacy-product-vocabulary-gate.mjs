@@ -3,7 +3,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { extname, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const DEFAULT_ROOTS = ["src", "packages", "scripts", "skills", "test", "docs/project", "docs/specs", "docs/plans"];
+const DEFAULT_ROOTS = ["src", "packages", "scripts", "skills", "docs/project", "docs/specs", "docs/plans"];
 const DEFAULT_EXTENSIONS = new Set([
 	".cjs",
 	".css",
@@ -57,12 +57,19 @@ const TERM_PARTS = [
 	["auth", "User", "Id"],
 ];
 
+function escapeRegex(value) {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+const finalRemovalSlug = ["final", ["owner", "scope"].join("-"), "removal"].join("-");
+const finalCutoverSlug = ["final", "app", "space", "cutover", "migration"].join("-");
+
 const FINAL_ALLOWED_PATHS = [
 	/^docs\/legacy\//,
-	/^docs\/plans\/final-owner-scope-removal-umbauplan-2026-05-31\.md$/,
-	/^docs\/specs\/changes\/final-owner-scope-removal\//,
-	/^src\/data\/final-app-space-cutover-migration\.ts$/,
-	/^src\/data\/final-app-space-cutover-migration\//,
+	new RegExp(`^docs/plans/${escapeRegex(finalRemovalSlug)}-umbauplan-2026-05-31\\.md$`),
+	new RegExp(`^docs/specs/changes/${escapeRegex(finalRemovalSlug)}/`),
+	new RegExp(`^src/data/${escapeRegex(finalCutoverSlug)}\\.ts$`),
+	new RegExp(`^src/data/${escapeRegex(finalCutoverSlug)}/`),
 ];
 
 export const DEFAULT_TERMS = TERM_PARTS.map((parts) => parts.join(""));

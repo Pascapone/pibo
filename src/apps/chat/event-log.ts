@@ -4,6 +4,5 @@ export type {
 	ChatEventListInput,
 	ChatRetentionClass,
 	ChatRetentionPolicy,
-	ChatUnreadCountInput,
 	StoredChatEvent,
 } from "./types/event-store.js";

@@ -97,7 +97,7 @@ function summarizeInspect(inspect) {
 		logConfig: hostConfig.LogConfig,
 		labels: {
 			role: labels['pibo.compute.role'],
-			ownerScope: labels['pibo.compute.ownerScope'],
+			holder: labels['pibo.compute.holder'],
 			ttlSeconds: labels['pibo.compute.ttlSeconds'],
 			idleSeconds: labels['pibo.compute.idleSeconds'],
 			memory: labels['pibo.compute.resource.memory'],

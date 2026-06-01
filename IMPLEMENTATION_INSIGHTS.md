@@ -310,3 +310,10 @@ Temporary exceptions are allowed only for the isolated final migration module an
 - A safe gateway restart check is process-level inside the worker: start the worker-local gateway, dev-auth login, fetch `/api/chat/bootstrap`, stop the process, start it again, and repeat. Do not call `pibo gateway web restart` or `pibo gateway dev restart` from this loop.
 - The US-028 runbook report is `docs/reports/final-owner-scope-deploy-cutover-runbook-us-028.md`. It is the source for future manual cutover sequencing: review gate, backup gate, dry-run gate, apply gate, deploy/restart gate, post-checks, rollback, and optional temporary migration module removal after approved cutover.
 - The autonomous Ralph loop must still stop before upstream PR creation and before any real Production database migration. US-030 should reuse the US-028 runbook rather than creating a new cutover sequence from scratch.
+
+## US-029 zero-regression sweep lessons
+
+- `npm run check:product-vocab` now defaults to active product roots (`src`, `packages`, `scripts`, `skills`, `docs/project`, `docs/specs`, `docs/plans`) so negative assertions and historical fixture literals in `test/` do not mask active product regressions. Keep test coverage for migration and no-owner-payload assertions in `npm test`; do not use tests as product behavior docs.
+- Active-source residual vocabulary after US-029 is limited to the final-removal implementation docs and `src/data/final-app-space-cutover-migration.ts`. The temporary implementation-doc allowlist should be shrunk after user-approved archival/cutover.
+- Technical helper names can trip product-vocabulary gates even when they refer to controller/run ownership rather than product Owner Scope. Prefer neutral names such as `getSessionForController`, `requireRunForController`, and `holder` for active source.
+- Worker-local API sweeps can reuse a built `dist/gateway/web.js` dev-auth server on an isolated worker port and recursively scan JSON keys for owner/principal fields across Chat bootstrap, agents, projects, workflows, Ralph, Cron, and Web Annotations without touching host gateways.

@@ -419,7 +419,7 @@ export class LocalCliSessionSource implements CliSessionSource {
       const metadata = {
         ...(session.metadata ?? {}),
         ...buildSessionMetadata(roomId, status, room?.title),
-        repairedFromOwnerScope: "user:unknown",
+        repairedFromLegacyScope: "user:unknown",
         repairedAt: this.now(),
       };
       const updated = this.sessionStore.update(session.id, { metadata }) ?? {

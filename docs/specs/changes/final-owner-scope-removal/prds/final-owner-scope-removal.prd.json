@@ -496,8 +496,8 @@
         "Tests pass"
       ],
       "priority": 29,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed 2026-06-01. Performed the final Docker-only zero-regression sweep in worker pibo-dev-final-owner-scope-removal-ralph with PIBO_HOME=/workspace/.pibo/ralph-test-home. Cleaned remaining active-source confusing vocabulary: removed unused ChatUnreadCountInput principal field/export, renamed technical runtime/run helper methods away from getOwned/requireOwned wording, renamed CLI legacy repair metadata away from OwnerScope wording, updated compute smoke summary to holder labels, and rewrote Docker dev-auth skill text to describe auth-gated shared app access. Updated npm run check:product-vocab so its default active product roots are src, packages, scripts, skills, docs/project, docs/specs, and docs/plans; test fixtures and negative assertions remain covered by npm test. Docker search gate passed with 0 failures, 540 allowed matches, 683 scanned files, and allowed paths limited to the final-removal implementation docs plus src/data/final-app-space-cutover-migration.ts. Focused gate tests passed: node --test test/legacy-product-vocabulary-gate.test.mjs test/shared-app-artifact-search-gate.test.mjs (9 pass / 0 fail). Built CLI help checks for pibo ralph, pibo ralph add, pibo cron, pibo cron add, pibo tui:sessions, pibo data final-cutover, pibo data final-cutover inspect, pibo debug, and pibo debug session found zero removed owner/principal options or wording. Worker-local dev-auth API checks on 127.0.0.1:4792 covered Chat bootstrap, agents, projects, projects bootstrap, workflows, Ralph, Cron, and Web Annotations and recursively found no ownerScope/owner_scope/principalId/principal_id JSON keys. Full Docker validation passed: npm run typecheck; npm run build with only existing Vite chunk-size warnings; npm test with 895 tests / 4 suites / 895 pass / 0 fail. Report written to docs/reports/final-owner-scope-zero-regression-sweep-us-029.md. Host /root/.pibo, host gateways, Production data, deploys, migrations against host data, and PR creation were not touched."
     },
     {
       "id": "US-030",
