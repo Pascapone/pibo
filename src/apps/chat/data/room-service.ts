@@ -3,7 +3,6 @@ import { legacyOwnerScopeForPreCutoverSchemas } from "../../../owner-scope-compa
 import { roomWorkspaceFromMetadata, type CreatePiboRoomInput, type PiboRoom, type PiboRoomMember, type PiboRoomNode, type UpdatePiboRoomInput } from "../types/rooms.js";
 import type { PiboDataStore } from "../../../data/pibo-store.js";
 import { roomFromRow, type RoomRow } from "./chat-data-mappers.js";
-import { sqliteTableColumns, sqliteTableExists } from "../../../data/sqlite-schema.js";
 
 export class ChatRoomService {
 	constructor(private readonly store: PiboDataStore) {}
@@ -11,9 +10,8 @@ export class ChatRoomService {
 	createRoom(input: CreatePiboRoomInput): PiboRoom {
 		const now = new Date().toISOString();
 		const room: PiboRoom = { id: input.id ?? `room_${randomUUID()}`, ownerScope: legacyOwnerScopeForPreCutoverSchemas(), name: input.name, topic: input.topic, workspace: roomWorkspaceFromMetadata(input.metadata), type: input.type ?? "chat", parentRoomId: input.parentRoomId, createdAt: now, updatedAt: now, retentionPolicyId: input.retentionPolicyId, metadata: input.metadata ?? {} };
-		const hasOwnerScope = sqliteTableColumns(this.store.db, "rooms").has("owner_scope");
-		const columns = ["id", ...(hasOwnerScope ? ["owner_scope"] : []), "name", "topic", "type", "parent_room_id", "workspace", "retention_policy_id", "metadata_json", "created_at", "updated_at"];
-		this.store.db.prepare(`INSERT INTO rooms (${columns.join(", ")}) VALUES (${columns.map(() => "?").join(", ")})`).run(room.id, ...(hasOwnerScope ? [room.ownerScope] : []), room.name, room.topic ?? null, room.type, room.parentRoomId ?? null, room.workspace ?? null, room.retentionPolicyId ?? null, JSON.stringify(room.metadata), room.createdAt, room.updatedAt);
+		const columns = ["id", "name", "topic", "type", "parent_room_id", "workspace", "retention_policy_id", "metadata_json", "created_at", "updated_at"];
+		this.store.db.prepare(`INSERT INTO rooms (${columns.join(", ")}) VALUES (${columns.map(() => "?").join(", ")})`).run(room.id, room.name, room.topic ?? null, room.type, room.parentRoomId ?? null, room.workspace ?? null, room.retentionPolicyId ?? null, JSON.stringify(room.metadata), room.createdAt, room.updatedAt);
 		return room;
 	}
 
@@ -28,7 +26,6 @@ export class ChatRoomService {
 	deleteRooms(ids: string[]): number {
 		if (!ids.length) return 0;
 		const placeholders = ids.map(() => "?").join(", ");
-		if (sqliteTableExists(this.store.db, "room_members")) this.store.db.prepare(`DELETE FROM room_members WHERE room_id IN (${placeholders})`).run(...ids);
 		const result = this.store.db.prepare(`DELETE FROM rooms WHERE id IN (${placeholders})`).run(...ids);
 		return Number(result.changes ?? 0);
 	}

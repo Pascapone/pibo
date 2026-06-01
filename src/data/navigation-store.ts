@@ -1,5 +1,4 @@
 import type { DatabaseSync } from "node:sqlite";
-import { sqliteTableColumns } from "./sqlite-schema.js";
 
 export type SessionNavigationUpsertInput = {
 	roomId?: string;
@@ -51,13 +50,10 @@ export class NavigationStore {
 	}
 
 	upsertSession(input: SessionNavigationUpsertInput): StoredSessionNavigation {
-		const hasOwnerScope = sqliteTableColumns(this.db, "session_navigation").has("owner_scope");
 		const insertColumns = [
-			...(hasOwnerScope ? ["owner_scope"] : []),
 			"room_id", "session_id", "root_session_id", "parent_id", "origin_id", "title", "profile", "status", "archived_at", "last_activity_at", "last_message_preview", "child_count", "sort_key", "updated_at",
 		];
 		const assignments = [
-			...(hasOwnerScope ? ["owner_scope = COALESCE(session_navigation.owner_scope, excluded.owner_scope)"] : []),
 			"room_id = excluded.room_id",
 			"root_session_id = excluded.root_session_id",
 			"parent_id = excluded.parent_id",
@@ -77,7 +73,6 @@ export class NavigationStore {
 			VALUES (${insertColumns.map(() => "?").join(", ")})
 			ON CONFLICT(session_id) DO UPDATE SET ${assignments.join(", ")}
 		`).run(
-			...(hasOwnerScope ? [""] : []),
 			input.roomId ?? null,
 			input.sessionId,
 			input.rootSessionId ?? null,
