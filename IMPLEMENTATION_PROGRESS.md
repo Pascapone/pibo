@@ -98,3 +98,4 @@
   - Evidence tier: Docker focused unit tests plus CLI help/default scan summary and full typecheck.
   - Safety: no migration inspect/dry-run/apply commands were run; host `/root/.pibo`, host Dev/Production gateways, and Production data were not touched.
   - PRD update: US-002 set to `passes: true` with evidence notes.
+- 2026-06-01T05:17Z: US-002 implementation commit created: `3ed867c test: US-002 - add owner scope search gate`.
