@@ -8,7 +8,6 @@ export type PiboSession = {
 	channel: string;
 	kind: string;
 	profile: string;
-	ownerScope?: string;
 	parentId?: string;
 	originId?: string;
 	workspace?: string;
@@ -24,7 +23,6 @@ export type CreatePiboSessionInput = {
 	channel: string;
 	kind: string;
 	profile: string;
-	ownerScope?: string;
 	parentId?: string;
 	originId?: string;
 	piSessionId?: string;
@@ -37,7 +35,6 @@ export type CreatePiboSessionInput = {
 export type UpdatePiboSessionInput = {
 	piSessionId?: string;
 	profile?: string;
-	ownerScope?: string;
 	parentId?: string | null;
 	originId?: string | null;
 	workspace?: string | null;
@@ -50,7 +47,6 @@ export type FindPiboSessionsInput = {
 	ids?: string[];
 	channel?: string;
 	kind?: string;
-	ownerScope?: string;
 	parentId?: string | null;
 	originId?: string;
 	profile?: string;
@@ -83,7 +79,6 @@ export function createPiboSession(input: CreatePiboSessionInput, now = new Date(
 		channel: input.channel,
 		kind: input.kind,
 		profile: input.profile,
-		ownerScope: input.ownerScope,
 		parentId: input.parentId,
 		originId: input.originId,
 		workspace: input.workspace,
@@ -133,7 +128,6 @@ export class InMemoryPiboSessionStore implements PiboSessionStore {
 			...existing,
 			piSessionId: input.piSessionId ?? existing.piSessionId,
 			profile: input.profile ?? existing.profile,
-			ownerScope: input.ownerScope ?? existing.ownerScope,
 			parentId: input.parentId === null ? undefined : input.parentId ?? existing.parentId,
 			originId: input.originId === null ? undefined : input.originId ?? existing.originId,
 			workspace: input.workspace === null ? undefined : input.workspace ?? existing.workspace,
@@ -175,7 +169,6 @@ export function matchesFindInput(session: PiboSession, input: FindPiboSessionsIn
 	if (input.ids && !input.ids.includes(session.id)) return false;
 	if (input.channel !== undefined && session.channel !== input.channel) return false;
 	if (input.kind !== undefined && session.kind !== input.kind) return false;
-	if (input.ownerScope !== undefined && session.ownerScope !== input.ownerScope) return false;
 	if (input.parentId !== undefined) {
 		if (input.parentId === null) {
 			if (session.parentId !== undefined) return false;

@@ -98,8 +98,8 @@
         "Typecheck passes"
       ],
       "priority": 6,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed 2026-06-01. Removed ownerScope from PiboSession, CreatePiboSessionInput, UpdatePiboSessionInput, and FindPiboSessionsInput in src/sessions/store.ts. In-memory find matching no longer filters by owner and session creation/update no longer carries owner fields. Updated SqlitePiboSessionStore and PiboDataSessionStore to return ownerless PiboSession objects and to ignore owner as a public find/update/create contract; temporary owner_scope column write compatibility remains only at legacy schema boundaries for US-007/US-024. Updated session-router, Chat Web session creation, Ralph/Cron session creation, debug trace row mapping, and local CLI session source call sites so PiboSession is app-global and actor/session metadata no longer reads PiboSession.ownerScope. Focused tests now assert no ownerScope own property on built, stored, implicit, and derived sessions. Docker validation passed with PIBO_HOME=/workspace/.pibo/ralph-test-home: npm run typecheck; npm run build; node --test test/session-store.test.mjs test/pibo-data-session-store.test.mjs test/session-router-store.test.mjs test/workflow-session-kind.test.mjs. Docker exact search over src/sessions src/core/session-router.ts src/debug/trace.ts for ownerScope/listOwned/getOwned/requireOwned/OwnedSession returned no matches. A follow-up schema search still shows owner_scope/idx_pibo_sessions_owner only in src/sessions/sqlite-store.ts and src/sessions/pibo-data-store.ts as the expected US-007 schema-removal target. Host /root/.pibo and host gateways were not touched."
     },
     {
       "id": "US-007",

@@ -120,3 +120,10 @@ Temporary exceptions are allowed only for the isolated final migration module an
 - `ToolDefinitionContext` is now ownerless too. Runtime-selected tools may receive Pibo Session ID and Pibo Room ID, but not a product owner. Until Web Annotations are fully removed from owner schemas in US-013, their temporary storage compatibility must stay local to Web Annotation code via `legacyOwnerScopeForPreCutoverSchemas()`, not runtime context.
 - Generated `pibo://runtime/session-context.md` should mention the neutral app context and resource ids only. Useful regression gate: `rg -n "ownerScope|legacyOwnerScope|Owner scope|User ID|Principal|auth user id|sessionContext\?\.ownerScope" src/core/runtime.ts src/core/profiles.ts src/core/context-build.ts` should return no source matches.
 - Session router and Chat Web context-build paths may still use the pre-cutover compatibility helper for existing storage/user-settings boundaries until later stories remove those schemas, but they must not pass that value into runtime session context.
+
+## US-006 Pibo session contract lessons
+
+- `PiboSession`, `CreatePiboSessionInput`, `UpdatePiboSessionInput`, and `FindPiboSessionsInput` are now ownerless. Do not add `ownerScope` back to `src/sessions/store.ts` or session-router create/update/find paths.
+- `session.ownerScope` is no longer available as a fallback actor, room, or CLI summary source. For temporary pre-cutover Chat navigation/read-state boundaries, call `legacyOwnerScopeForPreCutoverSchemas()` locally until the relevant later story removes that schema.
+- `src/sessions/sqlite-store.ts` and `src/sessions/pibo-data-store.ts` still mention `owner_scope` only as the expected schema-removal target for US-007/US-024. They must not expose that value through `PiboSession` or use it for find matching.
+- Useful US-006 regression gate: `rg -n "ownerScope|listOwned|getOwned|requireOwned|OwnedSession" src/sessions src/core/session-router.ts src/debug/trace.ts` should return no matches.

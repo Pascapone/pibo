@@ -744,7 +744,7 @@ function ensureEventIndexing(state: ChatWebAppState, context: PiboWebAppContext)
 				if (!isPersistableOutputEvent(persistableEvent)) continue;
 				let stored = state.eventCommands.appendOutputEvent(persistableEvent, {
 					roomId: room?.id,
-					actorId: session?.ownerScope,
+					actorId: session?.id,
 				});
 				if (!stored && session) {
 					try {
@@ -752,7 +752,7 @@ function ensureEventIndexing(state: ChatWebAppState, context: PiboWebAppContext)
 						const ingested = state.ingestService.ingestOutputEvent({
 							session,
 							roomId: room?.id,
-							actorId: session.ownerScope,
+							actorId: session.id,
 							event: persistableEvent,
 							createdAt,
 						});
@@ -763,7 +763,7 @@ function ensureEventIndexing(state: ChatWebAppState, context: PiboWebAppContext)
 							eventId: "eventId" in persistableEvent && typeof persistableEvent.eventId === "string" ? persistableEvent.eventId : `pibo.output:${persistableEvent.type}:${ingested.streamId}`,
 							eventType: persistableEvent.type,
 							actorType: "assistant",
-							actorId: session.ownerScope,
+							actorId: session.id,
 							createdAt,
 							retentionClass: reliabilityRetentionClassForOutputEvent(persistableEvent) as StoredChatEvent["retentionClass"],
 							payload: persistableEvent as unknown as PiboJsonValue,
@@ -1066,7 +1066,6 @@ function createSharedChatSession(
 		channel: CHAT_WEB_CHANNEL,
 		kind: "chat",
 		profile,
-		ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 		workspace: roomWorkspaceFromMetadata(room.metadata) ?? getDefaultPiboWorkspace(),
 		metadata: withChatRoomId(undefined, room.id),
 	});
@@ -1089,7 +1088,6 @@ function createProjectChatSession(input: {
 		channel: CHAT_WEB_CHANNEL,
 		kind: "chat",
 		profile: input.profile,
-		ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 		workspace: input.project.projectFolder,
 		...(input.title ? { title: input.title } : {}),
 		...(input.configuration?.model ? { activeModel: input.configuration.model } : {}),

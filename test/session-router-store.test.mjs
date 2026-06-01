@@ -38,7 +38,6 @@ function createStoredSession(store, overrides = {}) {
 		channel: "pibo.test",
 		kind: "chat",
 		profile: "test-profile",
-		ownerScope: "user:test",
 		workspace: process.cwd(),
 		...overrides,
 	});
@@ -52,7 +51,6 @@ test("session router uses the Pibo session profile when creating a runtime", asy
 		channel: "pibo.test",
 		kind: "chat",
 		profile: "base",
-		ownerScope: "user:test",
 	});
 	const router = new PiboSessionRouter({
 		persistSession: false,
@@ -97,7 +95,7 @@ test("session router creates implicit runtime sessions in the shared app context
 		const session = store.get("ps_implicit");
 
 		assert.equal(current.type, "execution_result");
-		assert.equal(session.ownerScope, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
+		assert.equal(Object.hasOwn(session, "ownerScope"), false);
 		assert.equal(current.result.cwd, homedir());
 	} finally {
 		await router.disposeAll();
@@ -112,7 +110,6 @@ test("session router defaults runtimes to the user home workspace", async () => 
 		channel: "pibo.test",
 		kind: "chat",
 		profile: "base",
-		ownerScope: "user:test",
 	});
 	const router = new PiboSessionRouter({
 		persistSession: false,
@@ -146,7 +143,6 @@ test("session router applies product model defaults instead of workspace-local d
 		channel: "pibo.test",
 		kind: "chat",
 		profile: "base",
-		ownerScope: "user:test",
 		workspace: cwd,
 	});
 	const router = new PiboSessionRouter({
@@ -230,7 +226,6 @@ export default function(pi) {
 		channel: "pibo.test",
 		kind: "chat",
 		profile: "package-profile",
-		ownerScope: "user:test",
 		workspace: cwd,
 	});
 	const router = new PiboSessionRouter({
@@ -300,7 +295,7 @@ test("session router creates a visible branch Pibo session for clone operations"
 		assert.equal(branch.kind, "branch");
 		assert.equal(branch.originId, "ps_source");
 		assert.equal(branch.parentId, undefined);
-		assert.equal(branch.ownerScope, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
+		assert.equal(Object.hasOwn(branch, "ownerScope"), false);
 		assert.equal(branch.workspace, "/workspace");
 		assert.equal(branch.metadata.originAction, "session.clone");
 	} finally {
@@ -396,7 +391,6 @@ test("kill cancels child sessions but not yielded runs", async () => {
 		channel: "pibo.test",
 		kind: "chat",
 		profile: "base",
-		ownerScope: "user:test",
 	});
 	store.create({
 		id: "ps_child",
@@ -405,7 +399,6 @@ test("kill cancels child sessions but not yielded runs", async () => {
 		kind: "subagent",
 		profile: "base",
 		parentId: "ps_parent",
-		ownerScope: "user:test",
 	});
 	const router = new PiboSessionRouter({
 		persistSession: false,
@@ -449,7 +442,6 @@ test("kill_all cancels child sessions and yielded runs recursively", async () =>
 		channel: "pibo.test",
 		kind: "chat",
 		profile: "base",
-		ownerScope: "user:test",
 	});
 	store.create({
 		id: "ps_child",
@@ -458,7 +450,6 @@ test("kill_all cancels child sessions and yielded runs recursively", async () =>
 		kind: "subagent",
 		profile: "base",
 		parentId: "ps_parent",
-		ownerScope: "user:test",
 	});
 	const router = new PiboSessionRouter({
 		persistSession: false,

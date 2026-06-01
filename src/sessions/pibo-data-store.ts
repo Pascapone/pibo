@@ -78,7 +78,6 @@ export class PiboDataSessionStore implements PiboSessionStore {
 			...existing,
 			piSessionId: input.piSessionId ?? existing.piSessionId,
 			profile: input.profile ?? existing.profile,
-			ownerScope: input.ownerScope ?? existing.ownerScope,
 			parentId: input.parentId === null ? undefined : input.parentId ?? existing.parentId,
 			originId: input.originId === null ? undefined : input.originId ?? existing.originId,
 			workspace: input.workspace === null ? undefined : input.workspace ?? existing.workspace,
@@ -105,7 +104,7 @@ export class PiboDataSessionStore implements PiboSessionStore {
 			WHERE id = ? AND deleted_at IS NULL
 		`).run(
 			updated.piSessionId,
-			...(hasOwnerScope ? [updated.ownerScope ?? legacyOwnerScopeForPreCutoverSchemas()] : []),
+			...(hasOwnerScope ? [legacyOwnerScopeForPreCutoverSchemas()] : []),
 			rootSessionId(updated),
 			updated.parentId ?? null,
 			updated.originId ?? null,
@@ -136,7 +135,6 @@ export class PiboDataSessionStore implements PiboSessionStore {
 		}
 		if (input.channel !== undefined) { clauses.push("channel = ?"); values.push(input.channel); }
 		if (input.kind !== undefined) { clauses.push("kind = ?"); values.push(input.kind); }
-		if (input.ownerScope !== undefined && sqliteTableColumns(this.db, "sessions").has("owner_scope")) { clauses.push("owner_scope = ?"); values.push(input.ownerScope); }
 		if (input.parentId !== undefined) {
 			if (input.parentId === null) clauses.push("parent_id IS NULL");
 			else { clauses.push("parent_id = ?"); values.push(input.parentId); }
@@ -171,7 +169,7 @@ export class PiboDataSessionStore implements PiboSessionStore {
 		`).run(
 			session.id,
 			session.piSessionId,
-			...(hasOwnerScope ? [session.ownerScope ?? legacyOwnerScopeForPreCutoverSchemas()] : []),
+			...(hasOwnerScope ? [legacyOwnerScopeForPreCutoverSchemas()] : []),
 			roomIdFromMetadata(session.metadata),
 			rootSessionId(session),
 			session.parentId ?? null,
@@ -203,7 +201,6 @@ function sessionFromRow(row: SessionRow): PiboSession {
 		channel: row.channel,
 		kind: row.kind,
 		profile: row.profile,
-		ownerScope: row.owner_scope ?? legacyOwnerScopeForPreCutoverSchemas(),
 		parentId: row.parent_id ?? undefined,
 		originId: row.origin_id ?? undefined,
 		workspace: row.workspace ?? undefined,

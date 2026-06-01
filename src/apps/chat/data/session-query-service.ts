@@ -3,6 +3,7 @@ import { chatRoomIdFromMetadata } from "../types/rooms.js";
 import type { ChatWebSessionBootstrapIndexResult, ChatWebSessionIndexItem, ChatWebStoredPiboEvent } from "../types/read-model.js";
 import type { PiboSession } from "../../../sessions/store.js";
 import type { PiboDataStore } from "../../../data/pibo-store.js";
+import { legacyOwnerScopeForPreCutoverSchemas } from "../../../owner-scope-compat.js";
 import { sessionFromRow, statusFromOutputEvent, type SessionRow } from "./chat-data-mappers.js";
 
 export class ChatSessionQueryService {
@@ -54,7 +55,7 @@ export class ChatSessionQueryService {
 
 	private upsertNavigation(session: PiboSession, roomId: string, status: string, now: string): void {
 		this.store.navigation.upsertSession({
-			ownerScope: session.ownerScope ?? "user:unknown",
+			ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 			roomId,
 			sessionId: session.id,
 			rootSessionId: session.parentId ? (typeof session.metadata?.rootSessionId === "string" ? session.metadata.rootSessionId : session.parentId) : session.id,

@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { PiboJsonObject, PiboJsonValue, PiboOutputEvent } from "../core/events.js";
 import type { PiboSession } from "../sessions/store.js";
 import type { PiboDataStore } from "./pibo-store.js";
+import { legacyOwnerScopeForPreCutoverSchemas } from "../owner-scope-compat.js";
 import { rootSessionId } from "./session-store.js";
 
 export type UserMessageAcceptedIngestInput = {
@@ -248,7 +249,7 @@ export class ChatDataIngestService {
 
 	private upsertNavigation(session: PiboSession, roomId: string, lastMessagePreview: string | undefined, now: string, status: string): void {
 		this.store.navigation.upsertSession({
-			ownerScope: session.ownerScope ?? "user:unknown",
+			ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 			roomId,
 			sessionId: session.id,
 			rootSessionId: rootSessionId(session),

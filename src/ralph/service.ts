@@ -167,7 +167,6 @@ export class PiboRalphService {
 			channel: CHAT_WEB_CHANNEL,
 			kind: 'ralph',
 			profile: job.profile,
-			ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 			workspace: target.workspace ?? getDefaultPiboWorkspace(),
 			title: job.name,
 			activeModel: job.modelOverride ? { ...job.modelOverride } : undefined,

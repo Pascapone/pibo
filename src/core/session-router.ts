@@ -534,7 +534,6 @@ export class PiboSessionRouter {
 			channel: source.channel,
 			kind: "branch",
 			profile: source.profile,
-			ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 			parentId: source.kind === "subagent" ? source.parentId : undefined,
 			originId: source.id,
 			piSessionId: result.current.piSessionId,
@@ -566,7 +565,6 @@ export class PiboSessionRouter {
 			channel: "pibo.runtime",
 			kind: "runtime",
 			profile: this.baseProfile.profileName,
-			ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 			workspace: this.options.cwd ?? getDefaultPiboWorkspace(),
 		});
 		this.signalRegistry.project({ type: "session_created", session: created });
@@ -729,7 +727,6 @@ export class PiboSessionRouter {
 			channel: "pibo.subagents",
 			kind: "subagent",
 			profile: targetProfile,
-			ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 			parentId: parent.id,
 			workspace: parent.workspace,
 			metadata,

@@ -176,7 +176,6 @@ export class LocalCliSessionSource implements CliSessionSource {
 			channel: "cli-session-ui",
 			kind: "chat",
 			profile,
-			ownerScope,
 			workspace: input.workspace ?? getDefaultPiboWorkspace(),
 			title: input.title?.trim() || "New CLI session",
 			metadata,
@@ -212,7 +211,7 @@ export class LocalCliSessionSource implements CliSessionSource {
 		const traceView = await this.loadTraceView(session);
 		this.traceViews.set(sessionId, traceView);
 		return {
-			session: sessionToSummary(session, this.ensureDefaultRoomForOwner(normalizeOwnerScope(session.ownerScope)).id),
+			session: sessionToSummary(session, this.ensureDefaultRoomForOwner(legacyOwnerScopeForPreCutoverSchemas()).id),
 			traceView: cloneJson(traceView),
 			status: await this.getStatus({ sessionId }),
 			subscribe: (listener) => {
@@ -299,7 +298,7 @@ export class LocalCliSessionSource implements CliSessionSource {
 		this.assertOpen();
 		const session = this.resolveSession(sessionId);
 		const agent = this.resolveAgent(agentId);
-		if (agent.profileName === session.profile || agent.id === session.profile) return sessionToSummary(session, this.ensureDefaultRoomForOwner(normalizeOwnerScope(session.ownerScope)).id);
+		if (agent.profileName === session.profile || agent.id === session.profile) return sessionToSummary(session, this.ensureDefaultRoomForOwner(legacyOwnerScopeForPreCutoverSchemas()).id);
 		throw new CliSourceError("unsupported", "Changing an existing local session profile is not supported by the CLI source. Use /new after selecting the desired profile, or start a new session with that profile.");
 	}
 
@@ -309,17 +308,15 @@ export class LocalCliSessionSource implements CliSessionSource {
 		if (ownerScope === "user:unknown") throw new CliSourceError("invalid_owner", "Refusing to repair legacy sessions to user:unknown. Select a real owner first.");
 		const room = input.roomId ? await this.findRoomSummary(ownerScope, input.roomId) : this.ensureDefaultRoomForOwner(ownerScope);
 		const roomId = input.roomId ?? room?.id;
-		const requestedIds = input.sessionIds ? new Set(input.sessionIds) : undefined;
-		const candidates = (this.sessionStore.list ? this.sessionStore.list() : this.sessionStore.find({ ownerScope: "user:unknown" }))
-			.filter((session) => session.ownerScope === "user:unknown")
-			.filter((session) => requestedIds === undefined || requestedIds.has(session.id));
+		void input.sessionIds;
+		const candidates: PiboSession[] = [];
 		let repaired = 0;
 		const repairedIds: string[] = [];
 		for (const session of candidates) {
 			if (!isLegacyCliUnknownSession(session)) continue;
 			const status = statusFromSession(session) === "unknown" ? "idle" : statusFromSession(session);
 			const metadata = { ...(session.metadata ?? {}), ...buildSessionMetadata(roomId, status, room?.title), repairedFromOwnerScope: "user:unknown", repairedAt: this.now() };
-			const updated = this.sessionStore.update(session.id, { ownerScope, metadata }) ?? { ...session, ownerScope, metadata, updatedAt: this.now() };
+			const updated = this.sessionStore.update(session.id, { metadata }) ?? { ...session, metadata, updatedAt: this.now() };
 			if (this.dataStore && roomId) this.dataStore.sessions.upsertSession({ session: updated, roomId, status, lastActivityAt: updated.updatedAt });
 			if (roomId) this.upsertSessionNavigation(updated, roomId, undefined, status);
 			repaired += 1;
@@ -401,7 +398,7 @@ export class LocalCliSessionSource implements CliSessionSource {
 		}
 		if (input.command === "session-current") {
 			if (!input.session) return { supported: false, unsupportedReason: "No session is open." };
-			const ownerScope = normalizeOwnerScope(input.session.ownerScope);
+			const ownerScope = legacyOwnerScopeForPreCutoverSchemas();
 			const defaultRoomId = this.ensureDefaultRoomForOwner(ownerScope).id;
 			const roomId = roomIdFromSession(input.session, defaultRoomId);
 			const room = roomId ? await this.findRoomSummary(ownerScope, roomId) : undefined;
@@ -606,7 +603,7 @@ export class LocalCliSessionSource implements CliSessionSource {
 		traceView.eventCount = traceView.rawEvents.length;
 		traceView.version = `local-${traceView.rawEvents.length}-${session.updatedAt}`;
 		this.traceViews.set(sessionId, traceView);
-		this.emit(sessionId, { type: "trace", session: sessionToSummary(session, this.ensureDefaultRoomForOwner(normalizeOwnerScope(session.ownerScope)).id), traceView: cloneJson(traceView) });
+		this.emit(sessionId, { type: "trace", session: sessionToSummary(session, this.ensureDefaultRoomForOwner(legacyOwnerScopeForPreCutoverSchemas()).id), traceView: cloneJson(traceView) });
 	}
 
 	private appendRawEvent(sessionId: string, event: PiboOutputEvent): void {
@@ -616,13 +613,13 @@ export class LocalCliSessionSource implements CliSessionSource {
 		traceView.eventCount = traceView.rawEvents.length;
 		traceView.version = `local-${traceView.rawEvents.length}-${session.updatedAt}`;
 		this.traceViews.set(sessionId, traceView);
-		this.emit(sessionId, { type: "trace", session: sessionToSummary(session, this.ensureDefaultRoomForOwner(normalizeOwnerScope(session.ownerScope)).id), traceView: cloneJson(traceView) });
+		this.emit(sessionId, { type: "trace", session: sessionToSummary(session, this.ensureDefaultRoomForOwner(legacyOwnerScopeForPreCutoverSchemas()).id), traceView: cloneJson(traceView) });
 	}
 
 	private updateSessionStatus(sessionId: string, status: CliSessionSummary["status"]): void {
 		const session = this.resolveSession(sessionId);
 		const updated = this.sessionStore.update(sessionId, { metadata: { ...(session.metadata ?? {}), status } }) ?? session;
-		const summary = sessionToSummary(updated, this.ensureDefaultRoomForOwner(normalizeOwnerScope(updated.ownerScope)).id);
+		const summary = sessionToSummary(updated, this.ensureDefaultRoomForOwner(legacyOwnerScopeForPreCutoverSchemas()).id);
 		this.emit(sessionId, { type: "session", session: summary, status: this.buildStatus(updated) });
 	}
 
@@ -765,7 +762,7 @@ function sessionToSummary(session: PiboSession, defaultRoomId?: string): CliSess
 		roomId: roomIdFromSession(session, defaultRoomId),
 		profile: session.profile,
 		agentId: session.profile,
-		ownerScope: session.ownerScope,
+		ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 		workspace: session.workspace,
 		status: statusFromSession(session),
 		model: session.activeModel,
@@ -783,7 +780,7 @@ function deriveRoomsFromSessions(sessions: readonly PiboSession[]): CliRoomSumma
 			id: roomId,
 			title: stringMetadata(session, "chatRoomName") ?? stringMetadata(session, "roomName") ?? roomId,
 			description: "Derived from local session metadata",
-			ownerScope: session.ownerScope,
+			ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 		});
 	}
 	return [...rooms.values()].sort((left, right) => left.title.localeCompare(right.title));
@@ -815,7 +812,7 @@ function rootSessionIdFromSession(session: PiboSession): string {
 }
 
 function isLegacyCliUnknownSession(session: PiboSession): boolean {
-	return session.ownerScope === "user:unknown" && (session.channel === "cli-session-ui" || session.metadata?.source === "pibo tui:sessions");
+	return session.channel === "cli-session-ui" || session.metadata?.source === "pibo tui:sessions";
 }
 
 function eventLogRowToV2MapperRow(row: StoredPiboEventLogRow): EventLogRow {
@@ -894,8 +891,6 @@ function resolveCliOwnerContext(input: { explicitOwnerScope?: string; sessionSto
 	};
 	if (input.explicitOwnerScope) addOwner(ownerSummaryForScope(input.explicitOwnerScope, { explicit: true }), { explicit: true });
 	for (const owner of input.ownerSummaries ?? []) addOwner(owner);
-	const sessions = input.sessionStore.list ? input.sessionStore.list() : input.sessionStore.find({});
-	for (const session of sessions) if (session.ownerScope) addOwner(ownerSummaryForScope(session.ownerScope));
 	for (const ownerScope of discoverOwnerScopesFromDataStore(input.dataStore)) addOwner(ownerSummaryForScope(ownerScope));
 	addOwner(rootRecoveryOwnerSummary(), { explicit: true });
 	const ownerList = [...owners.values()].sort(compareOwners);
@@ -1076,7 +1071,7 @@ function sessionMetadataResult(session: PiboSession, defaultRoomId?: string, roo
 		title: session.title,
 		sessionTitle: session.title,
 		profile: session.profile,
-		ownerScope: session.ownerScope,
+		ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 		roomId: roomIdFromSession(session, defaultRoomId),
 		roomTitle,
 		workspace: session.workspace,

@@ -133,7 +133,6 @@ export class PiboCronService {
 			channel: CHAT_WEB_CHANNEL,
 			kind: "cron",
 			profile: job.profile,
-			ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 			workspace: target.workspace ?? getDefaultPiboWorkspace(),
 			title: job.name,
 			metadata: {

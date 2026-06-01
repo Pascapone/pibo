@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { PiboJsonObject } from "../core/events.js";
 import type { PiboSession } from "../sessions/store.js";
+import { legacyOwnerScopeForPreCutoverSchemas } from "../owner-scope-compat.js";
 import { sqliteTableColumns } from "./sqlite-schema.js";
 
 export type SessionUpsertInput = {
@@ -25,7 +26,7 @@ export class SessionStore {
 		const values = [
 			input.session.id,
 			input.session.piSessionId,
-			...(columns.has("owner_scope") ? [input.session.ownerScope ?? "user:unknown"] : []),
+			...(columns.has("owner_scope") ? [legacyOwnerScopeForPreCutoverSchemas()] : []),
 			input.roomId,
 			rootSessionId(input.session),
 			input.session.parentId ?? null,

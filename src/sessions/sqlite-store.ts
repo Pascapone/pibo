@@ -19,7 +19,7 @@ type SessionRow = {
 	channel: string;
 	kind: string;
 	profile: string;
-	owner_scope: string | null;
+	owner_scope?: string | null;
 	parent_id: string | null;
 	origin_id: string | null;
 	workspace: string | null;
@@ -118,7 +118,7 @@ export class SqlitePiboSessionStore implements PiboSessionStore {
 				session.channel,
 				session.kind,
 				session.profile,
-				session.ownerScope ?? null,
+				null,
 				session.parentId ?? null,
 				session.originId ?? null,
 				session.workspace ?? null,
@@ -142,7 +142,6 @@ export class SqlitePiboSessionStore implements PiboSessionStore {
 			...existing,
 			piSessionId: input.piSessionId ?? existing.piSessionId,
 			profile: input.profile ?? existing.profile,
-			ownerScope: input.ownerScope ?? existing.ownerScope,
 			parentId: input.parentId === null ? undefined : input.parentId ?? existing.parentId,
 			originId: input.originId === null ? undefined : input.originId ?? existing.originId,
 			workspace: input.workspace === null ? undefined : input.workspace ?? existing.workspace,
@@ -157,7 +156,6 @@ export class SqlitePiboSessionStore implements PiboSessionStore {
 				UPDATE pibo_sessions SET
 					pi_session_id = ?,
 					profile = ?,
-					owner_scope = ?,
 					parent_id = ?,
 					origin_id = ?,
 					workspace = ?,
@@ -170,7 +168,6 @@ export class SqlitePiboSessionStore implements PiboSessionStore {
 			.run(
 				updated.piSessionId,
 				updated.profile,
-				updated.ownerScope ?? null,
 				updated.parentId ?? null,
 				updated.originId ?? null,
 				updated.workspace ?? null,
@@ -199,7 +196,6 @@ export class SqlitePiboSessionStore implements PiboSessionStore {
 		}
 		if (input.channel !== undefined) { clauses.push("channel = ?"); values.push(input.channel); }
 		if (input.kind !== undefined) { clauses.push("kind = ?"); values.push(input.kind); }
-		if (input.ownerScope !== undefined) { clauses.push("owner_scope = ?"); values.push(input.ownerScope); }
 		if (input.parentId !== undefined) {
 			if (input.parentId === null) clauses.push("parent_id IS NULL");
 			else { clauses.push("parent_id = ?"); values.push(input.parentId); }
@@ -235,7 +231,6 @@ function sessionFromRow(row: SessionRow): PiboSession {
 		channel: row.channel,
 		kind: row.kind,
 		profile: row.profile,
-		ownerScope: row.owner_scope ?? undefined,
 		parentId: row.parent_id ?? undefined,
 		originId: row.origin_id ?? undefined,
 		workspace: row.workspace ?? undefined,
