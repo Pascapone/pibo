@@ -111,15 +111,13 @@ function statusCardSummary(card: TerminalCardDescriptor): string {
 	const runtime = fields.get("runtime") ?? card.status;
 	const session = shortStatusValue(fields.get("session"));
 	const model = shortStatusValue(fields.get("model"));
-	const owner = abbreviateOwner(fields.get("owner"));
-	return [runtime, session ? `session ${session}` : undefined, model ? `model ${model}` : undefined, owner ? `owner ${owner}` : undefined].filter(Boolean).join(" · ");
+	return [runtime, session ? `session ${session}` : undefined, model ? `model ${model}` : undefined].filter(Boolean).join(" · ");
 }
 
 function statusCardCompactRows(card: TerminalCardDescriptor): React.ReactElement[] {
 	const fields = statusFieldMap(card);
 	const rows: React.ReactElement[] = [];
 	const identity = [
-		fields.get("owner") ? `owner ${abbreviateOwner(fields.get("owner"))}` : undefined,
 		fields.get("session") ? `session ${shortStatusValue(fields.get("session"))}` : undefined,
 		fields.get("profile") ? `profile ${fields.get("profile")}` : undefined,
 		fields.get("model") ? `model ${fields.get("model")}` : undefined,
@@ -201,11 +199,6 @@ function activeToolSummary(value: string | undefined): string | undefined {
 function shortStatusValue(value: string | undefined): string | undefined {
 	if (!value) return undefined;
 	return value.split("|")[0]?.trim() || value;
-}
-
-function abbreviateOwner(value: string | undefined): string | undefined {
-	if (!value) return undefined;
-	return value.replace(/\s*\([^)]*\)\s*$/, "").trim() || value;
 }
 
 function cardLine(value: string): string {

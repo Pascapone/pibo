@@ -144,7 +144,7 @@ test("InkSessionAppView renders status bar transcript viewport and input line", 
 		maxRows: 20,
 	}));
 
-	assert.match(output, /pibo sessions · fake · transcript · owner owner unknown · session CLI app shell\s*fixture · agent base/);
+	assert.match(output, /pibo sessions · fake · transcript · session CLI app shell\s*fixture · agent base/);
 	assert.match(output, /commands: \/ opens palette · \/status runtime · \/room \/session navigate/);
 	assert.match(output, /\/help\s*catalog/);
 	assert.match(output, /› Show me status/);
@@ -175,28 +175,28 @@ test("InkSessionAppView renders slash suggestions", () => {
 	assert.ok(output.indexOf("slash commands") < output.indexOf("› /th"));
 });
 
-test("InkSessionAppView renders owner room and create-session pickers", () => {
-	const ownerOutput = renderToString(React.createElement(InkSessionAppView, {
+test("InkSessionAppView renders room and create-session pickers", () => {
+	const roomOutput = renderToString(React.createElement(InkSessionAppView, {
 		state: {
 			...baseState(),
 			mode: "picker",
 			picker: {
-				kind: "owner",
-				title: "Select effective owner",
+				kind: "room",
+				title: "Select room",
 				items: [
-					{ id: "user:alpha", kind: "owner", ownerScope: "user:alpha", label: "Web user alpha", description: "user:alpha" },
-					{ id: "user:beta", kind: "owner", ownerScope: "user:beta", label: "Web user beta", description: "user:beta" },
+					{ id: "room_alpha", kind: "room", roomId: "room_alpha", label: "Alpha Room", description: "default" },
+					{ id: "room_beta", kind: "room", roomId: "room_beta", label: "Beta Room" },
 				],
 				selectedIndex: 1,
-				emptyMessage: "No owners",
+				emptyMessage: "No rooms",
 			},
-			message: "Select the Web user or Root recovery owner to use in this CLI session.",
+			message: "Select a room with arrow keys.",
 		},
 	}));
-	assert.match(ownerOutput, /select owner/);
-	assert.match(ownerOutput, /Web user alpha · user:alpha/);
-	assert.match(ownerOutput, /❯ Web user beta · user:beta/);
-	assert.match(ownerOutput, /↑↓ select · enter confirm · esc back\/cancel · ctrl-c exit/);
+	assert.match(roomOutput, /select room/);
+	assert.match(roomOutput, /Alpha Room · default/);
+	assert.match(roomOutput, /❯ Beta Room/);
+	assert.match(roomOutput, /↑↓ select · enter confirm · esc back\/cancel · ctrl-c exit/);
 
 	const sessionOutput = renderToString(React.createElement(InkSessionAppView, {
 		state: {
@@ -204,17 +204,16 @@ test("InkSessionAppView renders owner room and create-session pickers", () => {
 			mode: "session-picker",
 			picker: {
 				kind: "session",
-				title: "Select session in Personal Chat",
-				items: [{ id: "create:room_personal", kind: "create-session", roomId: "room_personal", ownerScope: "user:alpha", label: "+ New session in Personal Chat", description: "Create and open" }],
+				title: "Select session in Shared Chat",
+				items: [{ id: "create:room_shared", kind: "create-session", roomId: "room_shared", label: "+ New session in Shared Chat", description: "Create and open" }],
 				selectedIndex: 0,
 				emptyMessage: "No sessions",
-				roomId: "room_personal",
-				ownerScope: "user:alpha",
+				roomId: "room_shared",
 			},
 		},
 	}));
-	assert.match(sessionOutput, /select session — Personal Chat/);
-	assert.match(sessionOutput, /❯ \+ New session in Personal Chat · Create and open/);
+	assert.match(sessionOutput, /select session — Shared Chat/);
+	assert.match(sessionOutput, /❯ \+ New session in Shared Chat · Create and open/);
 });
 
 test("Ink compact overlay style prioritizes labels, dims metadata, and marks disabled items", () => {
@@ -296,16 +295,16 @@ test("Ink session input reducer selects expandable rows and toggles inline detai
 });
 
 test("generic Ink overlay stack supports nested picker back and active overlay", () => {
-	const ownerPicker = { kind: "owner", title: "Owner", items: [{ id: "user:alpha", label: "Alpha" }], selectedIndex: 0, emptyMessage: "No owners" };
-	const roomPicker = { kind: "room", title: "Room", items: [{ id: "room_alpha", label: "Alpha Room" }], selectedIndex: 0, emptyMessage: "No rooms", parent: ownerPicker };
-	const stack = pushInkSessionOverlay(pushInkSessionOverlay(undefined, { kind: "picker", picker: ownerPicker }), { kind: "picker", picker: roomPicker });
-	assert.equal(activeInkSessionOverlay(stack).picker.title, "Room");
-	assert.equal(activeInkSessionOverlay(popInkSessionOverlay(stack)).picker.title, "Owner");
+	const roomPicker = { kind: "room", title: "Room", items: [{ id: "room_alpha", label: "Alpha Room" }], selectedIndex: 0, emptyMessage: "No rooms" };
+	const sessionPicker = { kind: "session", title: "Session", items: [{ id: "ps_alpha", label: "Alpha Session" }], selectedIndex: 0, emptyMessage: "No sessions", parent: roomPicker };
+	const stack = pushInkSessionOverlay(pushInkSessionOverlay(undefined, { kind: "picker", picker: roomPicker }), { kind: "picker", picker: sessionPicker });
+	assert.equal(activeInkSessionOverlay(stack).picker.title, "Session");
+	assert.equal(activeInkSessionOverlay(popInkSessionOverlay(stack)).picker.title, "Room");
 
-	const escaped = reduceInkSessionInputState({ loading: false, rows: [], input: "", mode: "picker", picker: roomPicker, overlayStack: stack }, { type: "escape" });
-	assert.equal(escaped.picker.title, "Owner");
+	const escaped = reduceInkSessionInputState({ loading: false, rows: [], input: "", mode: "picker", picker: sessionPicker, overlayStack: stack }, { type: "escape" });
+	assert.equal(escaped.picker.title, "Room");
 	assert.equal(escaped.mode, "picker");
-	assert.equal(activeInkSessionOverlay(escaped.overlayStack).picker.title, "Owner");
+	assert.equal(activeInkSessionOverlay(escaped.overlayStack).picker.title, "Room");
 });
 
 test("command result rows prefer named room labels for session links", () => {
@@ -329,8 +328,6 @@ test("renderCliStatusCardText renders shared status bars and redacts secrets", (
 		rooms: "supported",
 		sessions: "supported",
 		agents: "supported",
-		activeOwnerLabel: "Web user alpha",
-		activeOwnerScope: "user:alpha",
 		activeSessionId: "ps_status",
 		activeModel: { provider: "openai", id: "gpt-status" },
 		queuedMessages: 2,
@@ -346,7 +343,7 @@ test("renderCliStatusCardText renders shared status bars and redacts secrets", (
 	}, { id: "ps_status", title: "Status Session", profile: "base", status: "running" });
 
 	assert.match(text, /Status: source=fake/);
-	assert.match(text, /Owner: Web user alpha \(user:alpha\)/);
+	assert.doesNotMatch(text, /Owner:/);
 	assert.match(text, /Session: Status Session \| ps_status/);
 	assert.match(text, /Model: openai\/gpt-status/);
 	assert.match(text, /Runtime: processing/);
@@ -392,34 +389,30 @@ test("exit cleanup closes open session subscriptions and source idempotently", a
 	assert.throws(() => source.setStatus({ message: "after-close" }), /source is closed/);
 });
 
-test("Slash /new uses selected owner and room from Ink state", async () => {
+test("Slash /new uses selected room from Ink state", async () => {
 	const source = new FakeCliSessionSource({
-		owners: [{ ownerScope: "user:alpha", label: "Alpha", kind: "web-user" }],
-		rooms: [{ id: "room_alpha", title: "Alpha Room", ownerScope: "user:alpha" }],
+		rooms: [{ id: "room_alpha", title: "Alpha Room" }],
 		sessions: [],
 	});
-	const harness = stateHarness({ ...baseState(), session: undefined, activeOwner: { ownerScope: "user:alpha", label: "Alpha", kind: "web-user" }, activeRoom: { id: "room_alpha", title: "Alpha Room", ownerScope: "user:alpha" }, rows: [] });
+	const harness = stateHarness({ ...baseState(), session: undefined, activeRoom: { id: "room_alpha", title: "Alpha Room" }, rows: [] });
 	const openSession = (sessionId, message, localRows) => openFakeSessionInto(source, harness, sessionId, message, localRows);
 
 	await handleCliSessionSubmittedInput("/new", source, harness.state, harness.setState, openSession, () => {});
 
 	assert.match(harness.state.session.id, /^ps_fake_created_/);
-	assert.equal(harness.state.session.ownerScope, "user:alpha");
-	assert.equal(harness.state.session.roomId, "room_alpha");
+		assert.equal(harness.state.session.roomId, "room_alpha");
 	assert.match(harness.state.message, /Created session/);
 });
 
 test("Slash /new without an active room opens default-first room picker", async () => {
 	const source = new FakeCliSessionSource({
-		owners: [{ ownerScope: "user:alpha", label: "Alpha", kind: "web-user" }],
-		activeOwnerScope: "user:alpha",
 		rooms: [
-			{ id: "room_project", title: "Project Room", ownerScope: "user:alpha" },
-			{ id: "room_personal", title: "Personal Chat", ownerScope: "user:alpha", isDefault: true },
+			{ id: "room_project", title: "Project Room" },
+			{ id: "room_shared", title: "Shared Chat", isDefault: true },
 		],
 		sessions: [],
 	});
-	const harness = stateHarness({ ...baseState(), session: undefined, activeOwner: { ownerScope: "user:alpha", label: "Alpha", kind: "web-user" }, activeRoom: undefined, rows: [] });
+	const harness = stateHarness({ ...baseState(), session: undefined, activeRoom: undefined, rows: [] });
 	const openSession = (sessionId, message, localRows) => openFakeSessionInto(source, harness, sessionId, message, localRows);
 
 	await handleCliSessionSubmittedInput("/new", source, harness.state, harness.setState, openSession, () => {});
@@ -427,91 +420,68 @@ test("Slash /new without an active room opens default-first room picker", async 
 	assert.equal(harness.state.mode, "picker");
 	assert.equal(harness.state.picker.kind, "room");
 	assert.equal(harness.state.picker.action, "create-session");
-	assert.match(harness.state.picker.title, /Select room for new session for Alpha/);
-	assert.equal(harness.state.picker.items[harness.state.picker.selectedIndex].roomId, "room_personal");
+	assert.match(harness.state.picker.title, /Select room for new session/);
+	assert.equal(harness.state.picker.items[harness.state.picker.selectedIndex].roomId, "room_shared");
 	assert.match(harness.state.message, /Select the room for the new session/);
 });
 
-test("Slash /owner opens owner picker and cross-owner sends are rejected", async () => {
+test("Slash /profile opens agent/profile picker", async () => {
 	const source = new FakeCliSessionSource({
-		owners: [
-			{ ownerScope: "user:alpha", label: "Alpha", kind: "web-user" },
-			{ ownerScope: "user:beta", label: "Beta", kind: "web-user" },
-		],
-		activeOwnerScope: "user:alpha",
-		rooms: [
-			{ id: "room_alpha", title: "Alpha Room", ownerScope: "user:alpha" },
-			{ id: "room_beta", title: "Beta Room", ownerScope: "user:beta" },
-		],
-		sessions: [
-			{ id: "ps_alpha", title: "Alpha Session", roomId: "room_alpha", profile: "base", ownerScope: "user:alpha", status: "idle" },
-			{ id: "ps_beta", title: "Beta Session", roomId: "room_beta", profile: "base", ownerScope: "user:beta", status: "idle" },
-		],
+		agents: [{ id: "base", name: "base", profileName: "base" }, { id: "custom", name: "custom", profileName: "custom" }],
 	});
-	const harness = stateHarness({ ...baseState(), activeOwner: { ownerScope: "user:alpha", label: "Alpha", kind: "web-user" }, session: { id: "ps_alpha", title: "Alpha Session", profile: "base", ownerScope: "user:alpha", status: "idle" }, rows: [] });
+	const harness = stateHarness({ ...baseState(), session: { id: "ps_alpha", title: "Alpha Session", profile: "base", status: "idle" }, rows: [] });
 	const openSession = (sessionId, message, localRows) => openFakeSessionInto(source, harness, sessionId, message, localRows);
-	const submit = (input) => handleCliSessionSubmittedInput(input, source, harness.state, harness.setState, openSession, () => {});
-
-	await submit("/owner");
-	assert.equal(harness.state.mode, "picker");
-	assert.equal(harness.state.picker.kind, "owner");
-	assert.match(harness.state.picker.title, /Select effective owner/);
-	assert.deepEqual(harness.state.picker.items.map((item) => item.ownerScope), ["user:alpha", "user:beta"]);
-
-	await source.setActiveOwner("user:beta");
-	await submit("message should not cross owners");
-	assert.match(harness.state.error, /belongs to user:alpha; active owner is user:beta/);
-	assert.match(harness.state.error, /Recovery: use \/owner/);
+	await handleCliSessionSubmittedInput("/profile", source, harness.state, harness.setState, openSession, () => {});
+	assert.equal(harness.state.mode, "agent-picker");
+	assert.equal(harness.state.picker.kind, "agent");
+	assert.deepEqual(harness.state.picker.items.map((item) => item.label), ["base", "custom"]);
 });
 
-test("Slash /session and /room open owner-scoped room-first pickers", async () => {
+test("Slash /session and /room open room-first pickers", async () => {
 	const source = new FakeCliSessionSource({
-		owners: [{ ownerScope: "user:alpha", label: "Alpha", kind: "web-user" }],
-		activeOwnerScope: "user:alpha",
 		rooms: [
-			{ id: "room_personal", title: "Personal Chat", ownerScope: "user:alpha", isDefault: true },
-			{ id: "room_project", title: "Project Room", ownerScope: "user:alpha" },
+			{ id: "room_shared", title: "Shared Chat", isDefault: true },
+			{ id: "room_project", title: "Project Room" },
 		],
 		sessions: [
-			{ id: "ps_personal", title: "Personal Session", roomId: "room_personal", profile: "base", ownerScope: "user:alpha", status: "idle", updatedAt: "2026-05-16T12:00:00.000Z" },
-			{ id: "ps_project", title: "Project Session", roomId: "room_project", profile: "base", ownerScope: "user:alpha", status: "idle", updatedAt: "2026-05-16T12:01:00.000Z" },
+			{ id: "ps_shared", title: "Shared Session", roomId: "room_shared", profile: "base", status: "idle", updatedAt: "2026-05-16T12:00:00.000Z" },
+			{ id: "ps_project", title: "Project Session", roomId: "room_project", profile: "base", status: "idle", updatedAt: "2026-05-16T12:01:00.000Z" },
 		],
 	});
-	const harness = stateHarness({ ...baseState(), activeOwner: { ownerScope: "user:alpha", label: "Alpha", kind: "web-user" }, activeRoom: { id: "room_project", title: "Project Room", ownerScope: "user:alpha" }, session: undefined, rows: [] });
+	const harness = stateHarness({ ...baseState(), activeRoom: { id: "room_project", title: "Project Room" }, session: undefined, rows: [] });
 	const openSession = (sessionId, message, localRows) => openFakeSessionInto(source, harness, sessionId, message, localRows);
 	const submit = (input) => handleCliSessionSubmittedInput(input, source, harness.state, harness.setState, openSession, () => {});
 
 	await submit("/session");
 	assert.equal(harness.state.mode, "picker");
 	assert.equal(harness.state.picker.kind, "room");
-	assert.match(harness.state.picker.title, /Select room for sessions for Alpha/);
+	assert.match(harness.state.picker.title, /Select room for sessions/);
 	assert.equal(harness.state.picker.items[harness.state.picker.selectedIndex].roomId, "room_project");
 
 	await submit("/room");
 	assert.equal(harness.state.mode, "picker");
 	assert.equal(harness.state.picker.kind, "room");
-	assert.match(harness.state.picker.title, /Select active room for Alpha/);
+	assert.match(harness.state.picker.title, /Select active room/);
 	assert.equal(harness.state.picker.items[harness.state.picker.selectedIndex].roomId, "room_project");
 });
 
-test("Slash /repair-user-unknown runs source repair for the active owner and room", async () => {
+test("Slash /repair-user-unknown runs source repair for the active room", async () => {
 	const source = createDefaultFakeCliSessionSource();
 	let repairInput;
-	source.repairLegacyUserUnknownSessions = async (input) => {
+	source.repairLegacyCliSessions = async (input) => {
 		repairInput = input;
-		return { ownerScope: input.ownerScope, roomId: input.roomId, scanned: 2, repaired: 1, skipped: 1, sessionIds: ["ps_legacy"] };
+		return { roomId: input.roomId, scanned: 2, repaired: 1, skipped: 1, sessionIds: ["ps_legacy"] };
 	};
 	const harness = stateHarness({
 		...baseState(),
-		activeOwner: { ownerScope: "user:alpha", label: "Alpha", kind: "web-user" },
-		activeRoom: { id: "room_alpha", title: "Alpha Room", ownerScope: "user:alpha" },
+		activeRoom: { id: "room_alpha", title: "Alpha Room" },
 	});
 	const openSession = (sessionId, message, localRows) => openFakeSessionInto(source, harness, sessionId, message, localRows);
 
 	await handleCliSessionSubmittedInput("/repair-user-unknown", source, harness.state, harness.setState, openSession, () => {});
 
-	assert.deepEqual(repairInput, { ownerScope: "user:alpha", roomId: "room_alpha" });
-	assert.match(harness.state.message, /Repaired 1\/2 legacy user:unknown CLI sessions to Alpha \(user:alpha\) in room_alpha/);
+	assert.deepEqual(repairInput, { roomId: "room_alpha" });
+	assert.match(harness.state.message, /Repaired 1\/2 legacy CLI sessions in room_alpha/);
 	assert.equal(harness.state.error, undefined);
 });
 
@@ -519,16 +489,16 @@ test("status command result rows preserve transcript flow with row-first command
 	const rows = commandResultDescriptorRows(
 		{ name: "status", args: "", raw: "/status" },
 		{ kind: "status", title: "Status", status: { contextUsage: { tokens: 50, contextWindow: 100, percent: 50 }, providerUsage: { provider: "openai", limits: [{ label: "requests", usedPercent: 75 }] } } },
-		{ source: "fake", mode: "fake", connected: true, rooms: "supported", sessions: "supported", agents: "supported", activeOwnerLabel: "Web user alpha", activeOwnerScope: "user:alpha", activeSessionId: "ps_status", activeModel: { provider: "openai", id: "gpt-status" }, updatedAt: "2026-05-17T00:00:00.000Z" },
-		{ id: "ps_status", title: "Status Session", profile: "base", ownerScope: "user:alpha", status: "idle" },
+		{ source: "fake", mode: "fake", connected: true, rooms: "supported", sessions: "supported", agents: "supported", activeSessionId: "ps_status", activeModel: { provider: "openai", id: "gpt-status" }, updatedAt: "2026-05-17T00:00:00.000Z" },
+		{ id: "ps_status", title: "Status Session", profile: "base", status: "idle" },
 	);
 	assert.deepEqual(rows.map((row) => row.kind), ["execution.command", "tool.status"]);
 	const output = renderToString(React.createElement(InkTerminalView, { rows, maxRows: 10, maxLineChars: 140 }));
 	assert.match(output, /• Ran \/status/);
 	assert.doesNotMatch(output, /▣ Command/);
 	assert.match(output, /Status — status · done/);
-	assert.match(output, /Identity: owner Web user alpha · session Status Session · profile base ·\s*model openai\/gpt-status/);
-	assert.doesNotMatch(output, /Owner: Web user alpha/);
+	assert.match(output, /Identity: session Status Session · profile base ·\s*model openai\/gpt-status/);
+	assert.doesNotMatch(output, /Owner:/);
 	assert.doesNotMatch(output, /Session: Status Session \| ps_status/);
 	assert.match(output, /Context: .*50\.0%/);
 	assert.match(output, /openai requests: .*25\.0%/);
@@ -623,7 +593,7 @@ test("Slash commands handle help status clear pickers unknown exit and normal se
 		...(statusCard.statusView?.warnings ?? []),
 		...(statusCard.statusView?.errors ?? []),
 	].join("\n");
-	assert.match(statusText, /Owner:/);
+	assert.doesNotMatch(statusText, /Owner:/);
 	assert.match(statusText, /Session: Existing fake session \| ps_fake_existing/);
 	assert.match(statusText, /Runtime: fake/);
 	assert.match(statusText, /Context: 0\/1000 tokens \(0\.0%\)/);
@@ -681,7 +651,7 @@ test("Slash commands handle help status clear pickers unknown exit and normal se
 
 test("Slash /thinking supports direct levels and picker flow", async () => {
 	const source = createDefaultFakeCliSessionSource();
-	const harness = stateHarness({ ...baseState(), activeOwner: { ownerScope: "user:fake", label: "Fake user", kind: "web-user" }, session: { id: "ps_fake_existing", title: "Existing fake session", profile: "base", agentId: "base", ownerScope: "user:fake", roomId: "room_fake_main", status: "idle" } });
+	const harness = stateHarness({ ...baseState(), session: { id: "ps_fake_existing", title: "Existing fake session", profile: "base", agentId: "base", roomId: "room_fake_main", status: "idle" } });
 	const openSession = (sessionId, message, localRows) => openFakeSessionInto(source, harness, sessionId, message, localRows);
 	const submit = (input) => handleCliSessionSubmittedInput(input, source, harness.state, harness.setState, openSession, () => {});
 
@@ -705,7 +675,7 @@ test("Slash /thinking supports direct levels and picker flow", async () => {
 
 test("Slash /model opens provider and model command menus", async () => {
 	const source = createDefaultFakeCliSessionSource();
-	const harness = stateHarness({ ...baseState(), activeOwner: { ownerScope: "user:fake", label: "Fake user", kind: "web-user" }, session: { id: "ps_fake_existing", title: "Existing fake session", profile: "base", agentId: "base", ownerScope: "user:fake", roomId: "room_fake_main", status: "idle" } });
+	const harness = stateHarness({ ...baseState(), session: { id: "ps_fake_existing", title: "Existing fake session", profile: "base", agentId: "base", roomId: "room_fake_main", status: "idle" } });
 	const openSession = (sessionId, message, localRows) => openFakeSessionInto(source, harness, sessionId, message, localRows);
 	const submit = (input) => handleCliSessionSubmittedInput(input, source, harness.state, harness.setState, openSession, () => {});
 
@@ -728,7 +698,7 @@ test("Slash /model opens provider and model command menus", async () => {
 
 test("Slash /login opens provider auth-method menus and safe API-key instructions", async () => {
 	const source = createDefaultFakeCliSessionSource();
-	const harness = stateHarness({ ...baseState(), activeOwner: { ownerScope: "user:fake", label: "Fake user", kind: "web-user" }, session: { id: "ps_fake_existing", title: "Existing fake session", profile: "base", agentId: "base", ownerScope: "user:fake", roomId: "room_fake_main", status: "idle" } });
+	const harness = stateHarness({ ...baseState(), session: { id: "ps_fake_existing", title: "Existing fake session", profile: "base", agentId: "base", roomId: "room_fake_main", status: "idle" } });
 	const openSession = (sessionId, message, localRows) => openFakeSessionInto(source, harness, sessionId, message, localRows);
 	const submit = (input) => handleCliSessionSubmittedInput(input, source, harness.state, harness.setState, openSession, () => {});
 
@@ -747,7 +717,7 @@ test("Slash /login opens provider auth-method menus and safe API-key instruction
 
 test("Slash /fork-candidates opens a candidate picker and can fork by entry id", async () => {
 	const source = createDefaultFakeCliSessionSource();
-	const harness = stateHarness({ ...baseState(), activeOwner: { ownerScope: "user:fake", label: "Fake user", kind: "web-user" }, session: { id: "ps_fake_existing", title: "Existing fake session", profile: "base", agentId: "base", ownerScope: "user:fake", roomId: "room_fake_main", status: "idle" } });
+	const harness = stateHarness({ ...baseState(), session: { id: "ps_fake_existing", title: "Existing fake session", profile: "base", agentId: "base", roomId: "room_fake_main", status: "idle" } });
 	const openSession = (sessionId, message, localRows) => openFakeSessionInto(source, harness, sessionId, message, localRows);
 	const submit = (input) => handleCliSessionSubmittedInput(input, source, harness.state, harness.setState, openSession, () => {});
 
@@ -770,7 +740,7 @@ test("Slash command errors append redacted transcript rows instead of header err
 			return undefined;
 		},
 	});
-	const harness = stateHarness({ ...baseState(), activeOwner: { ownerScope: "user:fake", label: "Fake user", kind: "web-user" }, session: { id: "ps_fake_existing", title: "Existing fake session", profile: "base", agentId: "base", ownerScope: "user:fake", roomId: "room_fake_main", status: "idle" } });
+	const harness = stateHarness({ ...baseState(), session: { id: "ps_fake_existing", title: "Existing fake session", profile: "base", agentId: "base", roomId: "room_fake_main", status: "idle" } });
 	const openSession = (sessionId, message, localRows) => openFakeSessionInto(source, harness, sessionId, message, localRows);
 
 	await handleCliSessionSubmittedInput("/fast", source, harness.state, harness.setState, openSession, () => {});
@@ -784,7 +754,7 @@ test("Slash command errors append redacted transcript rows instead of header err
 
 test("Slash Web action commands render shared results and open clone sessions", async () => {
 	const source = createDefaultFakeCliSessionSource();
-	const harness = stateHarness({ ...baseState(), activeOwner: { ownerScope: "user:fake", label: "Fake user", kind: "web-user" }, session: { id: "ps_fake_existing", title: "Existing fake session", profile: "base", agentId: "base", ownerScope: "user:fake", roomId: "room_fake_main", status: "idle" } });
+	const harness = stateHarness({ ...baseState(), session: { id: "ps_fake_existing", title: "Existing fake session", profile: "base", agentId: "base", roomId: "room_fake_main", status: "idle" } });
 	const openSession = (sessionId, message, localRows) => openFakeSessionInto(source, harness, sessionId, message, localRows);
 	const submit = (input) => handleCliSessionSubmittedInput(input, source, harness.state, harness.setState, openSession, () => {});
 

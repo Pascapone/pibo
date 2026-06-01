@@ -240,3 +240,12 @@ Temporary exceptions are allowed only for the isolated final migration module an
 - `pibo tui:sessions` source construction no longer accepts `--owner-scope` or `PIBO_DEBUG_PTY_CLI_SESSIONS_OWNERS`; debug mocked rooms are app-global.
 - `InkSessionApp` still carries the UI owner picker/header compatibility and is temporarily `ts-nocheck` after the source contract removal. US-021 should delete that UI surface and the shim rather than adapting it back to source owner methods.
 - Useful US-020 regression gate: `rg -n "CliOwnerSummary|getActiveOwner\(|setActiveOwner\(|listOwners\(|ownerSummaries|activeOwnerScope|activeOwnerLabel|session_owner_mismatch|Root recovery owner|selected owner|owner mismatch|ownerScope" src/cli-session src/apps/cli-ui/cliSessionsCommand.ts` should return no matches.
+
+## US-021 Ink TUI lessons
+
+- `InkSessionApp` is now owner-picker-free and typechecked without `ts-nocheck`. Do not add `CliOwnerSummary`, `activeOwner`, `skipOwnerPicker`, `/owner`, selected-owner startup, or owner-scoped source calls back to the TUI.
+- `pibo tui:sessions` starts directly at the app-global room picker (or opens an explicit Pibo Session ID). Room/session flows pass only resource ids; slash execution no longer receives owner parameters.
+- `/profile` is a neutral alias-style UI path for selecting an existing agent/profile, not an owner/context picker.
+- `src/session-ui/ownerViewModel.ts` was deleted. Shared room/session/status descriptors must not carry owner fields; terminal status cards should show session/profile/model/runtime facts only.
+- The active PTY smoke scenario is `room-session-message`; it must not use `--owner-scope` or `PIBO_DEBUG_PTY_CLI_SESSIONS_OWNERS`. Useful regression command inside Docker: `node scripts/ink-cli-v2-pty-smoke.mjs --scenario room-session-message --artifact-root /workspace/.tmp/us021-pty-final`.
+- Useful US-021 regression gate: `rg -n "CliOwnerSummary|buildOwnerPickerDescriptor|getActiveOwner\\(|setActiveOwner\\(|listOwners\\(|activeOwner|owner picker|Select effective owner|selected owner|session_owner_mismatch|--owner-scope|PIBO_DEBUG_PTY_CLI_SESSIONS_OWNERS|Personal Chat|ownerScope" src/apps/cli-ui src/session-ui scripts/ink-cli-v2-pty-smoke.mjs test/cli-ui-session-app.test.mjs test/session-ui-view-models.test.mjs test/cli-ui-ink-renderer.test.mjs test/ink-cli-v2-pty-smoke.test.mjs` should return no matches.

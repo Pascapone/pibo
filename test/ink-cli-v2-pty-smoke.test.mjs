@@ -9,7 +9,7 @@ const script = "scripts/ink-cli-v2-pty-smoke.mjs";
 
 test("Ink CLI V2 PTY smoke runner lists required reusable scenarios", async () => {
 	const result = await execFileAsync("node", [script, "--list"]);
-	assert.match(result.stdout, /owner-room-session-message\t.*Owner picker/);
+	assert.match(result.stdout, /room-session-message\t.*Room picker/);
 	assert.match(result.stdout, /slash-suggestions-status-thinking\t.*Slash suggestions/);
 	assert.match(result.stdout, /overlay-keyboard-model-login\t.*Picker overlays/);
 	assert.match(result.stdout, /existing-session-hydration\t.*--session/);
@@ -29,7 +29,7 @@ test("Ink CLI V2 PTY smoke runner dry-run emits bounded pibo debug pty commands"
 
 test("Ink CLI V2 PTY smoke documentation records artifact evidence rules", () => {
 	const doc = fs.readFileSync("docs/reports/ink-cli-v2-pty-smoke-scenarios.md", "utf8");
-	assert.match(doc, /owner-room-session-message/);
+	assert.match(doc, /room-session-message/);
 	assert.match(doc, /slash-suggestions-status-thinking/);
 	assert.match(doc, /existing-session-hydration/);
 	assert.match(doc, /raw artifact path and clean artifact path/);
