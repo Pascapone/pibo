@@ -76,3 +76,10 @@ Temporary exceptions are allowed only for the isolated final migration module an
 - Decide later whether the migrator is deleted after approved Production cutover or retained as operator-only legacy tooling. The plan prefers deletion after cutover.
 - Existing root progress/insights from earlier work were replaced in this branch with final-owner-scope-specific files to avoid misleading Ralph sessions.
 - The current codebase may still contain many transitional shared-app compatibility helpers from the previous PR. Do not mistake those for the final target.
+
+## US-001 baseline lessons
+
+- The Docker worker does not expose a global `rg` binary, but the dependency binary works at `node_modules/@vscode/ripgrep-linux-x64/bin/rg`. Use that path for repeatable search-gate work unless a later story adds a repo script wrapper.
+- Search baselines should distinguish active source/docs scope (`src packages scripts skills test docs/project docs/specs docs/plans`) from full worktree scope, because `docs/reports/owner-scope-final-removal-raw-inventory-2026-05-31.txt` intentionally contains many historical matches.
+- The fresh test home `/workspace/.pibo/ralph-test-home` is currently empty of SQLite databases; the copied historical sandbox is available through `/workspace/.pibo/ralph-migration-sandbox`, a symlink to `/workspace/.pibo/ralph-sandbox`. Use `find -L` or resolve the symlink when inventorying sandbox files.
+- Python `sqlite3` URI `mode=ro` is available in the worker and was sufficient for read-only schema inventory without installing `sqlite3` CLI.

@@ -19,8 +19,8 @@
         "Typecheck passes"
       ],
       "priority": 1,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed 2026-06-01 in Docker worker pibo-dev-final-owner-scope-removal-ralph. Added docs/reports/final-owner-scope-removal-baseline-2026-06-01.md with baseline rg-compatible counts using node_modules/@vscode/ripgrep-linux-x64/bin/rg -F, active source/docs scope counts, and full worktree counts. Read-only SQLite schema inventory used Python sqlite3 URI mode=ro against the copied migration sandbox; fresh test home /workspace/.pibo/ralph-test-home was verified separate and empty of SQLite DBs. Validation passed inside Docker with PIBO_HOME=/workspace/.pibo/ralph-test-home: npm run typecheck and npm run build. No runtime behavior changes; host /root/.pibo and host gateways were not touched."
     },
     {
       "id": "US-002",
