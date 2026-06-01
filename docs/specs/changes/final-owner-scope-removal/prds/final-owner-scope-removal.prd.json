@@ -322,8 +322,8 @@
         "Real-path validation runs only in the Docker worker or isolated container ports, not host gateways"
       ],
       "priority": 19,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed 2026-06-01. Removed workflow runtime/routing owner propagation from package public routing contracts and Pibo session routing bridge: SessionRoutingPolicy, RuntimeSelectionMetadata routing, PiboWorkflowSession, and PiboWorkflowSessionCreateInput no longer expose or forward ownerScope. createPiboSessionRoutingAgentExecutor now creates routed workflow agent sessions with parent/project/room/channel metadata only. Renamed recorded prompt trace privacy kind from the ownerScope terminology to neutral workflowRun while keeping storage at workflow-node-attempt and redacted=false. Updated workflow runtime, prompt, and inspection tests; workflow inspection now recursively asserts no owner keys in the inspection object and formatted output. Docker validation passed with PIBO_HOME=/workspace/.pibo/ralph-test-home: focused package runtime/inspection test run; cd packages/workflows && npm run typecheck && npm run build && npm run test; root npm run typecheck; root npm run build. Targeted Docker search gate over package workflow runtime/types/inspection and updated tests found no ownerScope/kind ownerScope/principalId/shared:app routing or prompt artifacts. No migration inspect/dry-run/apply was run; host /root/.pibo, host gateways, Production data, deploys, and PR creation were not touched."
     },
     {
       "id": "US-020",

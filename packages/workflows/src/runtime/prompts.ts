@@ -174,7 +174,7 @@ function createRecordedAgentPrompt(
     text,
     source,
     tracePrivacy: {
-      kind: "ownerScope",
+      kind: "workflowRun",
       storage: "workflow-node-attempt",
       redacted: false,
     },

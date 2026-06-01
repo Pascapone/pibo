@@ -148,7 +148,6 @@ function createAgentRuntimeRoutingMetadata(
     ...(routing?.parentSessionId
       ? { parentSessionId: routing.parentSessionId }
       : {}),
-    ...(routing?.ownerScope ? { ownerScope: routing.ownerScope } : {}),
     ...(routing?.projectId ? { projectId: routing.projectId } : {}),
     ...(routing?.roomId ? { roomId: routing.roomId } : {}),
     ...(routing?.channel ? { channel: routing.channel } : {}),

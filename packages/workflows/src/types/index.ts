@@ -119,7 +119,6 @@ export type ContextSelectionPolicy = SelectionPolicy;
 
 export type SessionRoutingPolicy = {
   parentSessionId?: string;
-  ownerScope?: string;
   projectId?: string;
   roomId?: string;
   channel?: string;
@@ -742,7 +741,7 @@ export type RecordedAgentPrompt = {
   text: string;
   source: RecordedAgentPromptSource;
   tracePrivacy: {
-    kind: "ownerScope";
+    kind: "workflowRun";
     storage: "workflow-node-attempt";
     redacted: false;
   };

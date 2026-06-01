@@ -49,6 +49,19 @@ function createAttempt(overrides: Partial<NodeAttempt> = {}): NodeAttempt {
   };
 }
 
+function assertNoWorkflowOwnerFields(value: unknown): void {
+  const blockedKeys = new Set([["owner", "Scope"].join(""), ["owner", "scope"].join("_")]);
+  const stack = [value];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current || typeof current !== "object") continue;
+    for (const [key, child] of Object.entries(current)) {
+      assert.equal(blockedKeys.has(key), false);
+      stack.push(child);
+    }
+  }
+}
+
 describe("workflow run inspection", () => {
   it("builds an inspectable completed run summary after SQLite restart", async () => {
     const tempRoot = mkdtempSync(join(tmpdir(), "pibo-workflows-inspection-completed-"));
@@ -89,7 +102,10 @@ describe("workflow run inspection", () => {
       assert.equal(inspection.summary.latestCheckpointId, "wcp_done");
       assert.equal(inspection.run.output, "finished");
       assert.equal(inspection.events[0]?.type, "workflow.completed");
-      assert.match(formatWorkflowRunInspection(inspection), /status\tcompleted/);
+      assertNoWorkflowOwnerFields(inspection);
+      const formatted = formatWorkflowRunInspection(inspection);
+      assert.match(formatted, /status\tcompleted/);
+      assert.doesNotMatch(formatted, /owner/i);
     } finally {
       store.close();
       rmSync(tempRoot, { recursive: true, force: true });

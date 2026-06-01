@@ -109,7 +109,7 @@ describe("fixed and variable prompt workflow runtime coverage", () => {
       text: "Answer the user request using normal Pibo Runtime routing: Explain fixed workflow prompts.",
       source: "promptTemplate",
       tracePrivacy: {
-        kind: "ownerScope",
+        kind: "workflowRun",
         storage: "workflow-node-attempt",
         redacted: false,
       },
@@ -176,7 +176,7 @@ describe("fixed and variable prompt workflow runtime coverage", () => {
       text: "Write a concise note about prompt builders for workflow authors. Previous: Use examples.",
       source: "promptBuilder",
       tracePrivacy: {
-        kind: "ownerScope",
+        kind: "workflowRun",
         storage: "workflow-node-attempt",
         redacted: false,
       },

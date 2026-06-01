@@ -31,7 +31,6 @@ describe("one-node agent workflow runtime path", () => {
         channel: string;
         kind: string;
         profile: string;
-        ownerScope?: string;
         parentId?: string;
         metadata?: Record<string, unknown>;
       }) {
@@ -434,7 +433,7 @@ describe("one-node agent workflow runtime path", () => {
         text: "Answer the user request using normal Pibo Runtime routing: Summarize the workflow system.",
         source: "promptTemplate",
         tracePrivacy: {
-          kind: "ownerScope",
+          kind: "workflowRun",
           storage: "workflow-node-attempt",
           redacted: false,
         },

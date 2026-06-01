@@ -119,7 +119,7 @@ describe("workflow agent node dispatch", () => {
       text: "Draft an answer for: Explain workflows",
       source: "promptTemplate",
       tracePrivacy: {
-        kind: "ownerScope",
+        kind: "workflowRun",
         storage: "workflow-node-attempt",
         redacted: false,
       },
@@ -314,7 +314,7 @@ describe("workflow agent node dispatch", () => {
       text: "Draft about registered prompt builders for workflow authors in a concise tone using edge payload.",
       source: "promptBuilder",
       tracePrivacy: {
-        kind: "ownerScope",
+        kind: "workflowRun",
         storage: "workflow-node-attempt",
         redacted: false,
       },
