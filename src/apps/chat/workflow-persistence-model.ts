@@ -74,10 +74,6 @@ export type WorkflowDraftRecord = {
 	updatedAt: string;
 };
 
-export type OwnedWorkflowDraftRecord = WorkflowDraftRecord & {
-	ownerScope: string;
-};
-
 export type WorkflowPublishedVersionRecord = {
 	workflowId: string;
 	version: string;
@@ -93,7 +89,6 @@ export type WorkflowPublishedVersionRecord = {
 
 export type WorkflowPromptAssetRecord = {
 	assetId: string;
-	ownerScope: string;
 	source: "ui";
 	displayName: string;
 	description?: string;
@@ -105,7 +100,6 @@ export type WorkflowPromptAssetRecord = {
 export type WorkflowPromptAssetRevisionRecord = {
 	revisionId: string;
 	assetId: string;
-	ownerScope: string;
 	contentHash: string;
 	markdown: string;
 	createdAt: string;
@@ -152,7 +146,6 @@ export type WorkflowLifecycleEventType =
 export type WorkflowLifecycleEventRecord = {
 	id: string;
 	type: WorkflowLifecycleEventType;
-	ownerScope: string;
 	actorId?: string;
 	workflowId?: string;
 	workflowVersion?: string;
@@ -167,9 +160,8 @@ export type WorkflowLifecycleEventRecord = {
 	createdAt: string;
 };
 
-export type WorkflowLifecycleEventInput = Omit<WorkflowLifecycleEventRecord, "id" | "ownerScope" | "diagnostics" | "createdAt"> & {
+export type WorkflowLifecycleEventInput = Omit<WorkflowLifecycleEventRecord, "id" | "diagnostics" | "createdAt"> & {
 	id?: string;
-	ownerScope: string;
 	diagnostics?: WorkflowDraftDiagnostic[];
 	createdAt?: string;
 };
@@ -245,7 +237,7 @@ export function normalizeWorkflowPromptAssetLabel(value: unknown): string {
 type ParsedWorkflowSemver = { major: number; minor: number; patch: number };
 
 export function allocateWorkflowPublishedVersion(input: {
-	draft: OwnedWorkflowDraftRecord;
+	draft: WorkflowDraftRecord;
 	versionIntent: "patch" | "minor" | "major";
 	existingVersions: string[];
 }): string {

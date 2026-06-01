@@ -4,8 +4,6 @@ import { dirname, isAbsolute, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { piboHomePath } from "../../../core/pibo-home.js";
 import type { PiboJsonObject, PiboJsonValue } from "../../../core/events.js";
-import { legacyOwnerScopeForPreCutoverSchemas } from "../../../owner-scope-compat.js";
-import { sqliteTableColumns } from "../../../data/sqlite-schema.js";
 import type { ModelProfile } from "../../../core/profiles.js";
 import type { PiboThinkingLevel } from "../../../core/thinking.js";
 
@@ -42,7 +40,6 @@ export type PiboProjectWorkflowSessionSnapshot = {
 	schemaVersion: 1;
 	createdAt: string;
 	createdBy: string;
-	ownerScope: string;
 	projectId: string;
 	piboSessionId: string;
 	workflow: {
@@ -197,7 +194,6 @@ export type StartProjectWorkflowRunResult = {
 
 export type PiboProject = {
 	id: string;
-	ownerScope: string;
 	name: string;
 	description?: string;
 	projectFolder: string;
@@ -230,7 +226,6 @@ export type PiboProjectSession = {
 };
 
 export type CreateProjectInput = {
-	ownerScope: string;
 	name: string;
 	description?: string;
 	projectFolder: string;
@@ -255,17 +250,15 @@ export class ChatProjectService {
 		this.db.close();
 	}
 
-	ensureSharedDefaultProject(input: { ownerScope: string; projectFolder?: string }): PiboProject {
-		const ownerScope = legacyOwnerScopeForPreCutoverSchemas();
-		const id = sharedDefaultProjectId(ownerScope);
+	ensureSharedDefaultProject(input: { projectFolder?: string } = {}): PiboProject {
+		const id = sharedDefaultProjectId();
 		const existing = this.getProject(id, { includeArchived: true });
 		if (existing) return existing;
 		const folder = resolve(input.projectFolder ?? piboHomePath("projects/workspace"));
 		mkdirSync(folder, { recursive: true });
 		const now = new Date().toISOString();
-		const hasOwnerScope = sqliteTableColumns(this.db, "projects").has("owner_scope");
-		this.db.prepare(`INSERT INTO projects (id, ${hasOwnerScope ? "owner_scope, " : ""}name, description, project_folder, configuration_status, metadata_json, created_at, updated_at)
-			VALUES (${Array.from({ length: hasOwnerScope ? 9 : 8 }, () => "?").join(", ")})`).run(id, ...(hasOwnerScope ? [ownerScope] : []), "Shared Project", null, folder, "configured", JSON.stringify({ default: true, legacySharedDefaultProject: true }), now, now);
+		this.db.prepare(`INSERT INTO projects (id, name, description, project_folder, configuration_status, metadata_json, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, "Shared Project", null, folder, "configured", JSON.stringify({ default: true }), now, now);
 		return this.requireProject(id);
 	}
 
@@ -293,9 +286,8 @@ export class ChatProjectService {
 		if (input.createFolder) mkdirSync(projectFolder, { recursive: true });
 		const now = new Date().toISOString();
 		const id = `prj_${randomUUID()}`;
-		const hasOwnerScope = sqliteTableColumns(this.db, "projects").has("owner_scope");
-		this.db.prepare(`INSERT INTO projects (id, ${hasOwnerScope ? "owner_scope, " : ""}name, description, project_folder, configuration_status, metadata_json, created_at, updated_at)
-			VALUES (${Array.from({ length: hasOwnerScope ? 9 : 8 }, () => "?").join(", ")})`).run(id, ...(hasOwnerScope ? [legacyOwnerScopeForPreCutoverSchemas()] : []), name, normalizeOptionalString(input.description) ?? null, projectFolder, "configured", "{}", now, now);
+		this.db.prepare(`INSERT INTO projects (id, name, description, project_folder, configuration_status, metadata_json, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, name, normalizeOptionalString(input.description) ?? null, projectFolder, "configured", "{}", now, now);
 		return this.requireProject(id);
 	}
 
@@ -386,18 +378,19 @@ export class ChatProjectService {
 		}
 		const existingForSession = this.getWorkflowSessionSnapshotForSession(snapshot.piboSessionId);
 		if (existingForSession) throw new Error(`Project workflow session '${snapshot.piboSessionId}' already has a configuration snapshot`);
+		const ownerlessSnapshot = stripWorkflowSessionSnapshotOwnerScope(snapshot);
 		this.db.prepare(`INSERT INTO project_workflow_session_snapshots (id, schema_version, project_id, pibo_session_id, workflow_id, workflow_version, base_definition_hash, effective_definition_hash, snapshot_json, created_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-			snapshot.id,
-			snapshot.schemaVersion,
-			snapshot.projectId,
-			snapshot.piboSessionId,
-			snapshot.workflow.id,
-			snapshot.workflow.version,
-			snapshot.workflow.baseDefinitionHash,
-			snapshot.workflow.effectiveDefinitionHash,
-			JSON.stringify(snapshot),
-			snapshot.createdAt,
+			ownerlessSnapshot.id,
+			ownerlessSnapshot.schemaVersion,
+			ownerlessSnapshot.projectId,
+			ownerlessSnapshot.piboSessionId,
+			ownerlessSnapshot.workflow.id,
+			ownerlessSnapshot.workflow.version,
+			ownerlessSnapshot.workflow.baseDefinitionHash,
+			ownerlessSnapshot.workflow.effectiveDefinitionHash,
+			JSON.stringify(ownerlessSnapshot),
+			ownerlessSnapshot.createdAt,
 		);
 		return this.getWorkflowSessionSnapshot(snapshot.id)!;
 	}
@@ -888,8 +881,52 @@ export class ChatProjectService {
 			CREATE INDEX IF NOT EXISTS project_workflow_human_actions_run_idx ON project_workflow_human_actions(workflow_run_id, created_at);
 			CREATE INDEX IF NOT EXISTS project_workflow_human_actions_wait_token_idx ON project_workflow_human_actions(wait_token_id, created_at);
 		`);
+		this.removeLegacyProjectOwnerScopeColumn();
+		this.removeLegacyWorkflowSessionSnapshotOwnerScope();
 		this.ensureProjectSessionWorkflowVersionColumn();
 		this.ensureProjectSessionConfigurationColumn();
+	}
+
+	private removeLegacyProjectOwnerScopeColumn(): void {
+		const columnNames = new Set((this.db.prepare("PRAGMA table_info(projects)").all() as Array<{ name: string }>).map((column) => column.name));
+		if (!columnNames.has("owner_scope")) return;
+		const now = new Date().toISOString();
+		this.db.exec(`
+			PRAGMA foreign_keys = OFF;
+			BEGIN IMMEDIATE;
+			ALTER TABLE projects RENAME TO __pibo_legacy_projects_owner_scope;
+			CREATE TABLE projects (
+				id TEXT PRIMARY KEY,
+				name TEXT NOT NULL,
+				description TEXT,
+				project_folder TEXT NOT NULL,
+				configuration_status TEXT NOT NULL DEFAULT 'configured',
+				current_main_session_id TEXT,
+				archived_at TEXT,
+				metadata_json TEXT NOT NULL DEFAULT '{}',
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL
+			);
+			INSERT INTO projects (id, name, description, project_folder, configuration_status, current_main_session_id, archived_at, metadata_json, created_at, updated_at)
+				SELECT ${projectColumnSelect(columnNames, "id", "'prj_legacy_' || lower(hex(randomblob(8)))")}, ${projectColumnSelect(columnNames, "name", "'Untitled Project'")}, ${projectColumnSelect(columnNames, "description", "NULL")}, ${projectColumnSelect(columnNames, "project_folder", "id")}, ${projectColumnSelect(columnNames, "configuration_status", "'configured'")}, ${projectColumnSelect(columnNames, "current_main_session_id", "NULL")}, ${projectColumnSelect(columnNames, "archived_at", "NULL")}, ${projectColumnSelect(columnNames, "metadata_json", "'{}'")}, ${projectColumnSelect(columnNames, "created_at", `'${now}'`)}, ${projectColumnSelect(columnNames, "updated_at", `'${now}'`)}
+				FROM __pibo_legacy_projects_owner_scope;
+			DROP TABLE __pibo_legacy_projects_owner_scope;
+			COMMIT;
+			PRAGMA foreign_keys = ON;
+			CREATE UNIQUE INDEX IF NOT EXISTS projects_name_unique ON projects (lower(name));
+			CREATE UNIQUE INDEX IF NOT EXISTS projects_folder_unique ON projects (project_folder);
+		`);
+	}
+
+	private removeLegacyWorkflowSessionSnapshotOwnerScope(): void {
+		const rows = this.db.prepare("SELECT id, snapshot_json FROM project_workflow_session_snapshots").all() as Array<{ id: string; snapshot_json: string }>;
+		const update = this.db.prepare("UPDATE project_workflow_session_snapshots SET snapshot_json = ? WHERE id = ?");
+		for (const row of rows) {
+			const snapshot = safeJsonObject(row.snapshot_json) as Partial<PiboProjectWorkflowSessionSnapshot> & { ownerScope?: unknown };
+			if (!("ownerScope" in snapshot)) continue;
+			delete snapshot.ownerScope;
+			update.run(JSON.stringify(snapshot), row.id);
+		}
 	}
 
 	private ensureProjectSessionWorkflowVersionColumn(): void {
@@ -919,7 +956,6 @@ export class ChatProjectService {
 
 type ProjectRow = {
 	id: string;
-	owner_scope?: string;
 	name: string;
 	description: string | null;
 	project_folder: string;
@@ -1016,7 +1052,6 @@ type ProjectWorkflowHumanActionRow = {
 function projectFromRow(row: ProjectRow): PiboProject {
 	return {
 		id: row.id,
-		ownerScope: row.owner_scope ?? legacyOwnerScopeForPreCutoverSchemas(),
 		name: row.name,
 		...(row.description ? { description: row.description } : {}),
 		projectFolder: row.project_folder,
@@ -1051,7 +1086,7 @@ function projectSessionFromRow(row: ProjectSessionRow): PiboProjectSession {
 }
 
 function workflowSessionSnapshotFromRow(row: ProjectWorkflowSessionSnapshotRow): PiboProjectWorkflowSessionSnapshot {
-	const snapshot = safeJsonObject(row.snapshot_json) as Partial<PiboProjectWorkflowSessionSnapshot>;
+	const snapshot = stripWorkflowSessionSnapshotOwnerScope(safeJsonObject(row.snapshot_json) as Partial<PiboProjectWorkflowSessionSnapshot>);
 	return {
 		...snapshot,
 		id: row.id,
@@ -1087,7 +1122,6 @@ function workflowSessionSnapshotFromRow(row: ProjectWorkflowSessionSnapshotRow):
 		},
 		createdAt: typeof snapshot.createdAt === "string" ? snapshot.createdAt : row.created_at,
 		createdBy: typeof snapshot.createdBy === "string" ? snapshot.createdBy : "unknown",
-		ownerScope: typeof snapshot.ownerScope === "string" ? snapshot.ownerScope : "unknown",
 		...(snapshot.model ? { model: snapshot.model } : {}),
 		...(snapshot.thinkingLevel ? { thinkingLevel: snapshot.thinkingLevel } : {}),
 		...(snapshot.fastMode !== undefined ? { fastMode: snapshot.fastMode } : {}),
@@ -1280,6 +1314,20 @@ function isStringRecord(value: unknown): value is Record<string, string> {
 		&& Object.values(value as Record<string, unknown>).every((entry) => typeof entry === "string");
 }
 
-export function sharedDefaultProjectId(ownerScope: string): string {
-	return `personal_${Buffer.from(ownerScope).toString("base64url")}`;
+function stripWorkflowSessionSnapshotOwnerScope<T extends Partial<PiboProjectWorkflowSessionSnapshot>>(snapshot: T): T {
+	const clone = { ...snapshot } as T & { ownerScope?: unknown };
+	delete clone.ownerScope;
+	return clone;
+}
+
+function projectColumnSelect(columns: Set<string>, columnName: string, fallback: string): string {
+	return columns.has(columnName) ? quoteIdentifier(columnName) : `${fallback} AS ${quoteIdentifier(columnName)}`;
+}
+
+function quoteIdentifier(value: string): string {
+	return `"${value.replaceAll('"', '""')}"`;
+}
+
+export function sharedDefaultProjectId(): string {
+	return "prj_default";
 }

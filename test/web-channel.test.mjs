@@ -4132,43 +4132,6 @@ test("workflow prompt asset revisions create managed assets and draft prompt ref
 		const otherUserPromptAssetPayload = await otherUserPromptAssetResponse.json();
 		assert.equal(otherUserPromptAssetPayload.asset.revisionId, saveAssetPayload.asset.revisionId);
 
-		const historicalDb = new DatabaseSync(dataStorePath);
-		try {
-			historicalDb.exec(`
-				ALTER TABLE workflow_prompt_assets ADD COLUMN owner_scope TEXT NOT NULL DEFAULT 'shared:app';
-				ALTER TABLE workflow_prompt_asset_revisions ADD COLUMN owner_scope TEXT NOT NULL DEFAULT 'shared:app';
-			`);
-			historicalDb.prepare(`INSERT INTO workflow_prompt_assets (asset_id, owner_scope, source, display_name, description, active_revision_id, created_at, updated_at)
-				VALUES (?, ?, 'ui', ?, ?, ?, ?, ?)`).run(
-				"ui.promptAssets.historicalUser",
-				"user:historical",
-				"Historical user prompt asset",
-				"Legacy owner-scoped prompt asset fixture.",
-				"wpar_historical_user",
-				"2026-05-30T00:00:00.000Z",
-				"2026-05-30T00:00:00.000Z",
-			);
-			historicalDb.prepare(`INSERT INTO workflow_prompt_asset_revisions (revision_id, asset_id, owner_scope, content_hash, markdown, created_at, created_by, based_on_revision_id)
-				VALUES (?, ?, ?, ?, ?, ?, ?, NULL)`).run(
-				"wpar_historical_user",
-				"ui.promptAssets.historicalUser",
-				"user:historical",
-				"sha256:historical",
-				"# Historical prompt asset",
-				"2026-05-30T00:00:00.000Z",
-				"legacy-user",
-			);
-		} finally {
-			historicalDb.close();
-		}
-
-		const historicalPromptAssetResponse = await fetch(`${baseURL}/api/chat/workflows/prompt-assets/ui.promptAssets.historicalUser`, {
-			headers: { "x-test-user": "user-2" },
-		});
-		assert.equal(historicalPromptAssetResponse.status, 200);
-		const historicalPromptAssetPayload = await historicalPromptAssetResponse.json();
-		assert.equal(historicalPromptAssetPayload.asset.revisionId, "wpar_historical_user");
-
 		const pickerResponse = await fetch(`${baseURL}/api/chat/workflows/pickers/prompt-assets?selectedRefId=${encodeURIComponent(saveAssetPayload.asset.id)}`, {
 			headers: { "x-test-user": "user-2" },
 		});
@@ -4176,7 +4139,6 @@ test("workflow prompt asset revisions create managed assets and draft prompt ref
 		const pickerPayload = await pickerResponse.json();
 		assert.equal(pickerPayload.selectedRefId, saveAssetPayload.asset.id);
 		assert.ok(pickerPayload.options.some((option) => option.id === saveAssetPayload.asset.id && option.kind === "ui"));
-		assert.ok(pickerPayload.options.some((option) => option.id === "ui.promptAssets.historicalUser" && option.kind === "ui"));
 
 		const definition = structuredClone(duplicatePayload.draft.definition);
 		definition.nodes.agent = {
@@ -4242,15 +4204,6 @@ test("workflow prompt asset revisions create managed assets and draft prompt ref
 		assert.notEqual(secondRevisionPayload.asset.contentHash, saveAssetPayload.asset.contentHash);
 		assert.equal(secondRevisionPayload.asset.markdown, "# Draft prompt\n\nUse {{input}} and include acceptance criteria.");
 
-		const db = new DatabaseSync(dataStorePath, { readOnly: true });
-		try {
-			const assetRow = db.prepare("SELECT owner_scope FROM workflow_prompt_assets WHERE asset_id = ?").get(saveAssetPayload.asset.id);
-			const revisionRows = db.prepare("SELECT owner_scope FROM workflow_prompt_asset_revisions WHERE asset_id = ? ORDER BY created_at").all(saveAssetPayload.asset.id);
-			assert.equal(assetRow.owner_scope, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
-			assert.deepEqual(revisionRows.map((row) => row.owner_scope), [PRE_CUTOVER_LEGACY_OWNER_SCOPE, PRE_CUTOVER_LEGACY_OWNER_SCOPE]);
-		} finally {
-			db.close();
-		}
 	} finally {
 		await channel.stop?.();
 	}
@@ -4971,7 +4924,7 @@ test("chat web app creates configured Project workflow sessions and starts one w
 		assert.equal(createdPayload.snapshot.schemaVersion, 1);
 		assert.match(createdPayload.snapshot.createdAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
 		assert.equal(createdPayload.snapshot.createdBy, "user-1");
-		assert.equal(createdPayload.snapshot.ownerScope, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
+		assert.equal("ownerScope" in createdPayload.snapshot, false);
 		assert.equal(createdPayload.snapshot.projectId, projectPayload.project.id);
 		assert.equal(createdPayload.snapshot.piboSessionId, createdPayload.session.id);
 		assert.equal(createdPayload.snapshot.workflow.id, "standard-project");

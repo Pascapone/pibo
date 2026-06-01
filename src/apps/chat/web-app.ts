@@ -168,7 +168,6 @@ import {
 	normalizeWorkflowPromptAssetLabel,
 	parseWorkflowSemver,
 	sanitizeWorkflowDiagnostics,
-	type OwnedWorkflowDraftRecord,
 	type WorkflowArchiveStateRecord,
 	type WorkflowDraftDiagnostic,
 	type WorkflowDraftRecord,
@@ -624,11 +623,10 @@ function principalIdFor(_webSession: PiboWebSession): string {
 function recordWorkflowLifecycleEvent(
 	state: ChatWebAppState,
 	webSession: PiboWebSession,
-	input: Omit<WorkflowLifecycleEventInput, "ownerScope" | "actorId"> & { actorId?: string },
+	input: Omit<WorkflowLifecycleEventInput, "actorId"> & { actorId?: string },
 ): WorkflowLifecycleEventRecord {
 	return state.workflowLifecycleEventStore.record({
 		...input,
-		ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 		actorId: input.actorId ?? principalIdFor(webSession),
 	});
 }
@@ -1486,7 +1484,6 @@ function saveWorkflowPromptAssetRevision(
 		? body.description.trim()
 		: sourceDocument?.description ?? "Managed Workflow Builder prompt asset revision.";
 	return state.workflowPromptAssetStore.saveRevision({
-		ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 		assetId: requestedAssetId,
 		displayName,
 		description,
@@ -1514,7 +1511,7 @@ function createWorkflowDraftIdentity(
 	const definition = inputDefinition
 		? workflowCreateDefinitionWithIdentity(inputDefinition, { workflowId, title, description, tags })
 		: createEmptyWorkflowDraftDefinition({ workflowId, title, description, tags });
-	const draft: OwnedWorkflowDraftRecord = {
+	const draft: WorkflowDraftRecord = {
 		draftId,
 		workflowId,
 		source: "ui",
@@ -1534,7 +1531,6 @@ function createWorkflowDraftIdentity(
 		revision: 1,
 		createdAt: now,
 		updatedAt: now,
-		ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 	};
 	state.workflowDraftStore.saveDraft(draft);
 	recordWorkflowLifecycleEvent(state, webSession, {
@@ -1610,11 +1606,10 @@ function workflowDraftBuilderPath(draftId: string): string {
 	return `${CHAT_WEB_MOUNT_PATH}/workflows/drafts/${encodeURIComponent(draftId)}`;
 }
 
-function serializeWorkflowDraft(record: OwnedWorkflowDraftRecord): WorkflowDraftRecord {
-	const { ownerScope: _ownerScope, ...draft } = record;
+function serializeWorkflowDraft(record: WorkflowDraftRecord): WorkflowDraftRecord {
 	return {
-		...draft,
-		diagnostics: sanitizeWorkflowDiagnostics(draft.diagnostics),
+		...record,
+		diagnostics: sanitizeWorkflowDiagnostics(record.diagnostics),
 	};
 }
 
@@ -1700,7 +1695,7 @@ function duplicateWorkflowIntoDraft(
 
 	const now = new Date().toISOString();
 	const draftId = `draft_${published.id.replace(/[^a-zA-Z0-9_-]/g, "-")}_${published.version.replace(/[^a-zA-Z0-9_-]/g, "-")}_${randomUUID().slice(0, 8)}`;
-	const draft: OwnedWorkflowDraftRecord = {
+	const draft: WorkflowDraftRecord = {
 		draftId,
 		workflowId: copyWorkflowId,
 		source: "ui",
@@ -1723,7 +1718,6 @@ function duplicateWorkflowIntoDraft(
 		revision: 1,
 		createdAt: now,
 		updatedAt: now,
-		ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 	};
 	state.workflowDraftStore.saveDraft(draft);
 	recordWorkflowLifecycleEvent(state, webSession, {
@@ -1764,7 +1758,7 @@ function createNextVersionDraftFromPublishedWorkflow(
 	const now = new Date().toISOString();
 	const targetWorkflowVersion = nextPatchWorkflowVersion(published.version);
 	const draftId = `draft_${published.id.replace(/[^a-zA-Z0-9_-]/g, "-")}_${published.version.replace(/[^a-zA-Z0-9_-]/g, "-")}_next_${randomUUID().slice(0, 8)}`;
-	const draft: OwnedWorkflowDraftRecord = {
+	const draft: WorkflowDraftRecord = {
 		draftId,
 		workflowId: published.id,
 		source: "ui",
@@ -1788,7 +1782,6 @@ function createNextVersionDraftFromPublishedWorkflow(
 		revision: 1,
 		createdAt: now,
 		updatedAt: now,
-		ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 	};
 	state.workflowDraftStore.saveDraft(draft);
 	recordWorkflowLifecycleEvent(state, webSession, {
@@ -1919,7 +1912,7 @@ function nextPatchWorkflowVersion(version: string): string {
 	return `${match[1]}.${match[2]}.${Number(match[3]) + 1}`;
 }
 
-function createStarterWorkflowDraft(webSession: PiboWebSession): OwnedWorkflowDraftRecord {
+function createStarterWorkflowDraft(webSession: PiboWebSession): WorkflowDraftRecord {
 	const now = new Date().toISOString();
 	return {
 		draftId: WORKFLOW_STARTER_DRAFT_ID,
@@ -1955,7 +1948,6 @@ function createStarterWorkflowDraft(webSession: PiboWebSession): OwnedWorkflowDr
 		revision: 1,
 		createdAt: now,
 		updatedAt: now,
-		ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 	};
 }
 
@@ -2022,7 +2014,7 @@ function clonePublishedWorkflowDefinitionForDraft(
 	return definition;
 }
 
-function requireMutableWorkflowDraft(state: ChatWebAppState, webSession: PiboWebSession, draftId: string): OwnedWorkflowDraftRecord {
+function requireMutableWorkflowDraft(state: ChatWebAppState, webSession: PiboWebSession, draftId: string): WorkflowDraftRecord {
 	let record = state.workflowDraftStore.getDraft(draftId);
 	if (!record && draftId === WORKFLOW_STARTER_DRAFT_ID) {
 		record = createStarterWorkflowDraft(webSession);
@@ -2048,7 +2040,7 @@ function runWorkflowDraftValidation(
 	state: ChatWebAppState,
 	context: PiboWebAppContext,
 	webSession: PiboWebSession,
-	record: OwnedWorkflowDraftRecord,
+	record: WorkflowDraftRecord,
 	trigger: WorkflowValidationTrigger,
 ): WorkflowValidationResponse {
 	const diagnostics = sanitizeWorkflowDiagnostics([
@@ -3054,7 +3046,7 @@ async function buildProjectsBootstrap(input: {
 	piboSessionId?: string;
 	includeArchived?: boolean;
 }): Promise<ChatProjectsBootstrap> {
-	const sharedDefaultProject = input.state.projectService.ensureSharedDefaultProject({ ownerScope: legacyOwnerScopeForPreCutoverSchemas() });
+	const sharedDefaultProject = input.state.projectService.ensureSharedDefaultProject();
 	const selectedProject = input.projectId ? requireSharedProject(input.state, input.webSession, input.projectId, { includeArchived: true }) : sharedDefaultProject;
 	let storedProjectSessions = input.state.projectService.listProjectSessions(selectedProject.id, { includeArchived: input.includeArchived });
 	if (selectedProject.id === sharedDefaultProject.id && storedProjectSessions.length === 0) {
@@ -3082,7 +3074,6 @@ async function buildProjectsBootstrap(input: {
 	const nodes = await buildSessionNodes(sessions, input.state.sessionQuery.listSessions(), selectedProject.projectFolder, new Map(), { skipPiMetadataFallback: true });
 	applyProjectSessionArchiveState(nodes, new Map(projectSessions.map((projectSession) => [projectSession.piboSessionId, Boolean(projectSession.archived)])));
 	const workflowLifecycleEvents = input.state.workflowLifecycleEventStore.listEvents({
-		ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 		projectId: selectedProject.id,
 		limit: 100,
 	});
@@ -3229,7 +3220,6 @@ function submitProjectWorkflowHumanAction(input: {
 			...(validation.actionRef?.id ? { actionId: validation.actionRef.id } : {}),
 			kind: validation.actionKind!,
 			actor: {
-				ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 				userId: input.webSession.authSession.identity.userId,
 				...(input.webSession.authSession.identity.email ? { email: input.webSession.authSession.identity.email } : {}),
 			},
@@ -3815,7 +3805,6 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const body = await readJsonBody<ChatProjectCreateBody>(request);
 				try {
 					const project = state.projectService.createProject({
-						ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 						name: normalizeRoomName(body.name),
 						description: normalizeProjectDescription(body.description),
 						projectFolder: normalizeProjectPath(body.projectFolder),
@@ -4303,7 +4292,6 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const webSession = await requireSession(request, context);
 				return responseJson({
 					events: state.workflowLifecycleEventStore.listEvents({
-						ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 						type: url.searchParams.get("type") ?? undefined,
 						workflowId: url.searchParams.get("workflowId") ?? undefined,
 						draftId: url.searchParams.get("draftId") ?? undefined,

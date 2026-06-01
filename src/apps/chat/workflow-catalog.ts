@@ -6,7 +6,6 @@ import {
 	hashWorkflowDefinitionJson,
 	parseWorkflowSemver,
 	sanitizeWorkflowDiagnostics,
-	type OwnedWorkflowDraftRecord,
 	type WorkflowArchiveStateRecord,
 	type WorkflowDraftDiagnostic,
 	type WorkflowDraftRecord,
@@ -146,9 +145,9 @@ export type WorkflowVersionInspectResponse = {
 
 export type WorkflowCatalogState = {
 	workflowDraftStore: {
-		listDrafts(): OwnedWorkflowDraftRecord[];
-		getDraft(draftId: string): OwnedWorkflowDraftRecord | undefined;
-		findActiveDraftByWorkflowId(workflowId: string): OwnedWorkflowDraftRecord | undefined;
+		listDrafts(): WorkflowDraftRecord[];
+		getDraft(draftId: string): WorkflowDraftRecord | undefined;
+		findActiveDraftByWorkflowId(workflowId: string): WorkflowDraftRecord | undefined;
 	};
 	workflowPublishedVersionStore: {
 		listPublishedVersions(options?: { workflowId?: string }): WorkflowPublishedVersionRecord[];
@@ -164,8 +163,8 @@ export type WorkflowCatalogState = {
 export type WorkflowCatalogServices<TState extends WorkflowCatalogState> = {
 	validateDefinition(definition: PiboJsonObject, input: { state: TState; context: PiboWebAppContext; webSession: PiboWebSession }): WorkflowDraftDiagnostic[];
 	summarizeDiagnostics(diagnostics: WorkflowDraftDiagnostic[], trigger: WorkflowValidationTrigger): WorkflowValidationSummary;
-	runDraftValidation(state: TState, context: PiboWebAppContext, webSession: PiboWebSession, record: OwnedWorkflowDraftRecord, trigger: WorkflowValidationTrigger): unknown;
-	serializeDraft(record: OwnedWorkflowDraftRecord): WorkflowDraftRecord;
+	runDraftValidation(state: TState, context: PiboWebAppContext, webSession: PiboWebSession, record: WorkflowDraftRecord, trigger: WorkflowValidationTrigger): unknown;
+	serializeDraft(record: WorkflowDraftRecord): WorkflowDraftRecord;
 };
 
 export const STATIC_WORKFLOW_VERSION_CATALOG: WorkflowCatalogVersionRecord[] = [
@@ -511,7 +510,7 @@ function workflowCatalogVersionSummaryFromPublishedVersion<TState extends Workfl
 	};
 }
 
-function workflowCatalogVersionSummaryFromDraft(draft: OwnedWorkflowDraftRecord, state: WorkflowCatalogState): WorkflowCatalogVersionSummary {
+function workflowCatalogVersionSummaryFromDraft(draft: WorkflowDraftRecord, state: WorkflowCatalogState): WorkflowCatalogVersionSummary {
 	const record = workflowCatalogRecordWithArchiveState(workflowCatalogRecordFromDraft(draft), state);
 	const diagnostics = sanitizeWorkflowDiagnostics(draft.diagnostics);
 	return {
@@ -523,7 +522,7 @@ function workflowCatalogVersionSummaryFromDraft(draft: OwnedWorkflowDraftRecord,
 	};
 }
 
-function workflowCatalogRecordFromDraft(draft: OwnedWorkflowDraftRecord): WorkflowCatalogVersionRecord {
+function workflowCatalogRecordFromDraft(draft: WorkflowDraftRecord): WorkflowCatalogVersionRecord {
 	return {
 		id: draft.workflowId,
 		version: workflowDraftVersionLabel(draft),
@@ -535,7 +534,7 @@ function workflowCatalogRecordFromDraft(draft: OwnedWorkflowDraftRecord): Workfl
 	};
 }
 
-function workflowDraftVersionLabel(draft: OwnedWorkflowDraftRecord): string {
+function workflowDraftVersionLabel(draft: WorkflowDraftRecord): string {
 	if (typeof draft.definition.version === "string" && draft.definition.version.trim()) return draft.definition.version.trim();
 	return draft.targetWorkflowVersion ?? "draft";
 }
@@ -626,7 +625,7 @@ export function buildWorkflowCatalogInspect<TState extends WorkflowCatalogState>
 	workflowId: string,
 	options: { includeArchived?: boolean; version?: string; draftId?: string } = {},
 ): WorkflowCatalogInspectResponse {
-	let selectedDraft: OwnedWorkflowDraftRecord | undefined;
+	let selectedDraft: WorkflowDraftRecord | undefined;
 	if (options.draftId) {
 		selectedDraft = state.workflowDraftStore.getDraft(options.draftId);
 		if (!selectedDraft || selectedDraft.workflowId !== workflowId) throw new PiboWebHttpError("Workflow draft not found", 404);

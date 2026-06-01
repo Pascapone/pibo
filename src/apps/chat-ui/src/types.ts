@@ -58,7 +58,6 @@ export type PiboRoom = {
 
 export type PiboProject = {
 	id: string;
-	ownerScope: string;
 	name: string;
 	description?: string;
 	projectFolder: string;
@@ -157,7 +156,6 @@ export type PiboProjectSession = {
 export type WorkflowLifecycleEventRecord = {
 	id: string;
 	type: string;
-	ownerScope: string;
 	actorId?: string;
 	workflowId?: string;
 	workflowVersion?: string;
