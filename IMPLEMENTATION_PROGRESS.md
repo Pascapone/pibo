@@ -208,3 +208,4 @@
   - Evidence tier: Docker build/typecheck, focused project/workflow API + UI tests, temp-file schema migration fixtures, and targeted source/schema search gates.
   - Safety: all fixtures used Docker temp files or `/workspace/.pibo/ralph-test-home`; no migration inspect/dry-run/apply command was run against `/root/.pibo`; host `/root/.pibo`, host Dev/Production gateways, Production data, deploys, and PR creation were not touched.
   - PRD update: US-012 set to `passes: true` with evidence notes. Next failing story: US-013 (`Convert Web Annotations to ownerless app resources`).
+- 2026-06-01T13:48Z: US-012 implementation commit created: `cc4bd72 feat: US-012 - convert projects workflow UI ownerless`.
