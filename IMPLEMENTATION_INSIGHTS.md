@@ -113,3 +113,10 @@ Temporary exceptions are allowed only for the isolated final migration module an
 - If a pre-cutover owner column is still unavoidable before the schema-removal stories, call `legacyOwnerScopeForPreCutoverSchemas()` at that legacy schema boundary. Do not pass it through web auth or treat it as product context.
 - Auth identity may be used as audit/display metadata. `src/plugins/context-files.ts` now uses `webSession.authSession.identity.userId` for revision/change actor ids; it must not be reused as a product partition key.
 - Useful US-004 regression grep: `grep -R -n "webSession\\.ownerScope\\|ownerScope: .*webSession\\|PiboWebSession.*ownerScope" src/web src/apps/chat src/plugins test/web-auth-shared-app-context.test.mjs` should return no matches.
+
+## US-005 runtime/session context lessons
+
+- `PiboRuntimeSessionContext` is now ownerless. Do not add `ownerScope`, `legacyOwnerScope`, principal, or auth-user-derived fields back to runtime session context.
+- `ToolDefinitionContext` is now ownerless too. Runtime-selected tools may receive Pibo Session ID and Pibo Room ID, but not a product owner. Until Web Annotations are fully removed from owner schemas in US-013, their temporary storage compatibility must stay local to Web Annotation code via `legacyOwnerScopeForPreCutoverSchemas()`, not runtime context.
+- Generated `pibo://runtime/session-context.md` should mention the neutral app context and resource ids only. Useful regression gate: `rg -n "ownerScope|legacyOwnerScope|Owner scope|User ID|Principal|auth user id|sessionContext\?\.ownerScope" src/core/runtime.ts src/core/profiles.ts src/core/context-build.ts` should return no source matches.
+- Session router and Chat Web context-build paths may still use the pre-cutover compatibility helper for existing storage/user-settings boundaries until later stories remove those schemas, but they must not pass that value into runtime session context.

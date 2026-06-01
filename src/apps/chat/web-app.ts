@@ -2715,7 +2715,6 @@ async function buildContextBuildSnapshotForRequest(input: {
 		activeModel: selectedSession?.activeModel,
 		persistSession: false,
 		sessionContext: {
-			ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 			piboSessionId: selectedSession?.id,
 			piboRoomId: selectedSession ? chatRoomIdFromMetadata(selectedSession.metadata) : undefined,
 			timezone: userSettings.timezone,

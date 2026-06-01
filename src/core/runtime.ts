@@ -67,8 +67,6 @@ export type PiboRuntimeOptions = {
 };
 
 export type PiboRuntimeSessionContext = {
-	/** @deprecated Legacy storage compatibility for tools that still write owner_scope columns. */
-	ownerScope?: string;
 	piboSessionId?: string;
 	piboRoomId?: string;
 	timezone?: string;
@@ -366,7 +364,6 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 				shellCommandPrefix: services.settingsManager.getShellCommandPrefix(),
 				shellPath: services.settingsManager.getShellPath(),
 				toolContext: {
-					ownerScope: options.sessionContext?.ownerScope,
 					piboSessionId: options.sessionContext?.piboSessionId ?? profile.sessionId,
 					piboRoomId: options.sessionContext?.piboRoomId,
 				},

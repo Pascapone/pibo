@@ -457,7 +457,6 @@ export class PiboSessionRouter {
 			modelDefaults,
 			activeModel,
 			sessionContext: {
-				ownerScope: legacySharedAppOwnerScope,
 				piboSessionId: piboSession.id,
 				piboRoomId: piboRoomIdFromMetadata(piboSession.metadata),
 				timezone: userSettings.timezone,

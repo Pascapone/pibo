@@ -100,7 +100,7 @@ test("selected profile exposes Web Annotation tools during runtime assembly", as
 			profile,
 			persistSession: false,
 			modelDefaults: {},
-			sessionContext: { ownerScope: "user:a", piboSessionId: "ps_a", piboRoomId: "room_a" },
+			sessionContext: { piboSessionId: "ps_a", piboRoomId: "room_a" },
 		});
 		const activeTools = new Set(inspection.tools.filter((tool) => tool.active).map((tool) => tool.name));
 		for (const name of WEB_ANNOTATION_TOOL_NAMES) assert.equal(activeTools.has(name), true, `${name} should be active`);
@@ -110,7 +110,7 @@ test("selected profile exposes Web Annotation tools during runtime assembly", as
 			profile,
 			persistSession: false,
 			modelDefaults: {},
-			sessionContext: { ownerScope: "user:a", piboSessionId: "ps_a", piboRoomId: "room_a" },
+			sessionContext: { piboSessionId: "ps_a", piboRoomId: "room_a" },
 		});
 		try {
 			const runtimeTools = new Set(runtime.session.getActiveToolNames());

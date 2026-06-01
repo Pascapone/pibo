@@ -82,8 +82,8 @@
         "Typecheck passes"
       ],
       "priority": 5,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed 2026-06-01. Removed ownerScope from PiboRuntimeSessionContext and stopped runtime assembly from passing ownerScope through ToolDefinitionContext/toolContext. The generated pibo://runtime/session-context.md now exposes only the neutral shared app context plus Pibo Session ID, Pibo Room ID, and timezone; tests assert it contains no ownerScope, legacyOwnerScope, Owner scope, User ID, Principal, or user:* text. Session router and Chat Web context-build paths now pass only resource ids/timezone into runtime session context; remaining pre-cutover legacyOwnerScopeForPreCutoverSchemas() usage in those files is limited to existing storage/user-settings compatibility and PiboSession owner columns that are explicitly scheduled for US-006 and later schema stories, not runtime context. Docker validation passed with PIBO_HOME=/workspace/.pibo/ralph-test-home: npm run typecheck; npm run build; node --test test/context-build-inspector.test.mjs test/subagents.test.mjs test/session-router-store.test.mjs test/web-annotations-tools.test.mjs. Docker exact search gates over src/core/runtime.ts, src/core/profiles.ts, src/core/context-build.ts and sessionContext ownerScope call-site patterns returned no source matches. Host /root/.pibo and host gateways were not touched."
     },
     {
       "id": "US-006",
