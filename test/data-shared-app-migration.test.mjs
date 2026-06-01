@@ -137,7 +137,7 @@ async function makeFullPiboHome() {
 				status: "idle",
 				lastActivityAt: now,
 			});
-			store.navigation.upsertSession({ ownerScope, roomId, sessionId: id, rootSessionId: id, title, profile: "default", status: "idle", lastActivityAt: now, sortKey: now, updatedAt: now });
+			store.navigation.upsertSession({ roomId, sessionId: id, rootSessionId: id, title, profile: "default", status: "idle", lastActivityAt: now, sortKey: now, updatedAt: now });
 		}
 		store.db.prepare("INSERT INTO principal_session_stats (session_id, principal_id, unread_count, last_read_stream_id, last_read_message_sequence, updated_at) VALUES (?, ?, ?, ?, ?, ?)").run("ps_historical_user", "user:legacy", 2, 7, 3, now);
 	} finally {
@@ -280,7 +280,7 @@ test("pibo.sqlite apply post-check keeps historical and new shared sessions open
 			for (const sessionId of ["ps_historical_shared", "ps_historical_user", "ps_new_shared"]) {
 				assert.ok(store.navigation.getSession(sessionId), `${sessionId} navigation remains openable`);
 			}
-			const listed = store.navigation.listSessions({ ownerScope: "shared:app", includeArchived: true, limit: 10 }).map((session) => session.sessionId).sort();
+			const listed = store.navigation.listSessions({ includeArchived: true, limit: 10 }).map((session) => session.sessionId).sort();
 			assert.deepEqual(listed, ["ps_historical_shared", "ps_historical_user", "ps_new_shared"]);
 		} finally {
 			store.close();

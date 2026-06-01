@@ -139,9 +139,9 @@ export class LocalCliSessionSource implements CliSessionSource {
 			return ensureDefaultRoomSummary(appOwnerScope, (await this.roomProvider.listRooms({ ownerScope: appOwnerScope })).map(cloneJson));
 		}
 		if (this.roomService) {
-			const defaultRoom = this.roomService.ensureDefaultRoom({ ownerScope: appOwnerScope, principalId: appOwnerScope, name: "Shared Chat" });
+			const defaultRoom = this.roomService.ensureDefaultRoom({ name: "Shared Chat" });
 			const rooms = mergeRoomSummaries([
-				...this.roomService.listRooms(appOwnerScope).map((room) => ({
+				...this.roomService.listRooms().map((room) => ({
 					id: room.id,
 					title: room.name,
 					description: room.topic,
@@ -708,7 +708,7 @@ export class LocalCliSessionSource implements CliSessionSource {
 	private ensureDefaultRoomForOwner(_ownerScope: string): CliRoomSummary {
 		const appOwnerScope = legacyOwnerScopeForPreCutoverSchemas();
 		if (this.roomService) {
-			const room = this.roomService.ensureDefaultRoom({ ownerScope: appOwnerScope, principalId: appOwnerScope, name: "Shared Chat" });
+			const room = this.roomService.ensureDefaultRoom({ name: "Shared Chat" });
 			return { id: room.id, title: room.name, description: room.topic, ownerScope: room.ownerScope, isDefault: true };
 		}
 		return defaultCliRoomSummary(appOwnerScope);
@@ -718,7 +718,6 @@ export class LocalCliSessionSource implements CliSessionSource {
 		if (!this.dataStore) return;
 		const now = this.now();
 		this.dataStore.navigation.upsertSession({
-			ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 			roomId,
 			sessionId: session.id,
 			rootSessionId: rootSessionIdFromSession(session),
@@ -780,7 +779,6 @@ function deriveRoomsFromSessions(sessions: readonly PiboSession[]): CliRoomSumma
 			id: roomId,
 			title: stringMetadata(session, "chatRoomName") ?? stringMetadata(session, "roomName") ?? roomId,
 			description: "Derived from local session metadata",
-			ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 		});
 	}
 	return [...rooms.values()].sort((left, right) => left.title.localeCompare(right.title));

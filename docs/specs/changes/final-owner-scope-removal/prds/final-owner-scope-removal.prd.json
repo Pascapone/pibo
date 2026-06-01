@@ -131,8 +131,8 @@
         "Typecheck passes"
       ],
       "priority": 8,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed 2026-06-01. Removed owner/principal parameters from active Chat room, navigation, and read-state service contracts: ChatRoomService listRooms/listRoomTree/ensureDefaultRoom/requireRoom/getMember/updateReadCursor are resource-id/app-level APIs; NavigationStore upsert/list inputs no longer accept ownerScope or filter by owner; ChatReadStateService writes and reads only app_session_read_state. Chat Web bootstrap/navigation/SSE/read endpoints now mark read state once per app session instead of per principal, active event-stream tracking no longer stores principals, and room access checks are resource existence plus archived write guard rather than room_members membership. Cron/Ralph Chat API room-target validation was updated to use requireRoom/ensureDefaultRoom without owner/principal room-service parameters. Focused tests updated for app-level unread counts and ownerless room-service calls. Docker validation passed with PIBO_HOME=/workspace/.pibo/ralph-test-home: npm run typecheck; npm run build; node --test test/chat-v2-native-services.test.mjs test/chat-cron-api.test.mjs test/ralph-resource-visibility.test.mjs; node --test test/chat-api-routes.test.mjs test/chat-web-shared-sessions.test.mjs. Exact Docker source search for requireRoomAccess/ensureMember/owner-principal ensureDefaultRoom/listRoomTree owner args/three-arg markSessionRead/principal unread-state patterns over src/apps/chat src/data src/cron src/ralph returned no active API matches except a false-positive raw target.principalId parse in the later Ralph target model. Host /root/.pibo, host Dev/Production gateways, and Production data were not touched. Remaining room ownerScope/principalId payload fields and fresh schema drops are left for US-009/US-010 as planned."
     },
     {
       "id": "US-009",

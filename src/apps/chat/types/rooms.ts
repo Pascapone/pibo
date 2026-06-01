@@ -35,7 +35,6 @@ export type PiboRoomNode = PiboRoom & {
 
 export type CreatePiboRoomInput = {
 	id?: string;
-	ownerScope: string;
 	name: string;
 	topic?: string;
 	type?: PiboRoomType;

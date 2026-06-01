@@ -154,7 +154,7 @@ export class PiboCronService {
 			if (isPiboRoomArchived(room)) throw new Error("Target room is archived");
 			return { roomId: room.id, workspace: room.workspace ?? getDefaultPiboWorkspace() };
 		}
-		const room = this.roomService.ensureDefaultRoom({ ownerScope: legacyOwnerScopeForPreCutoverSchemas(), principalId: legacyOwnerScopeForPreCutoverSchemas(), name: "Shared Chat" });
+		const room = this.roomService.ensureDefaultRoom({ name: "Shared Chat" });
 		return { roomId: room.id, workspace: room.workspace ?? getDefaultPiboWorkspace() };
 	}
 

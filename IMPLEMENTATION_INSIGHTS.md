@@ -134,3 +134,11 @@ Temporary exceptions are allowed only for the isolated final migration module an
 - Standalone historical `pibo-sessions.sqlite` rows with `shared:app` or `user:*` values are migrated by table rebuild: preserve session identifiers and session facts, drop owner columns/indexes, and expose ownerless `PiboSession` objects.
 - `PiboDataSessionStore` and `pibo data migrate sessions-to-v2` no longer write owner_scope to `pibo.sqlite.sessions`. Fresh pibo.sqlite session schema was already ownerless; tests now assert this explicitly.
 - Useful US-007 regression gate: `rg -n "owner_scope TEXT|ON pibo_sessions\\(owner_scope|owner_scope," src/sessions/sqlite-store.ts src/sessions/pibo-data-store.ts src/data/cli.ts` should return no matches. Remaining data CLI owner/principal read-state repair references are Chat read-state cleanup targets for US-008/US-009, not pibo-sessions schema targets.
+
+## US-008 Chat room/navigation/read-state lessons
+
+- Active Chat room access is now resource-id based. Use `ChatRoomService.requireRoom(roomId)` plus the archived-room write guard; do not reintroduce `requireRoomAccess(roomId, principalId, action)` or room membership as an access gate.
+- `ChatRoomService.ensureDefaultRoom()` accepts only an optional name and must not require owner/principal input. It no longer creates `room_members`; member payload cleanup is a later API/UI story.
+- `NavigationStore` upsert/list contracts are ownerless. It does not expose `ownerScope` and does not filter `session_navigation` by owner. Temporary legacy-column binding remains only to keep pre-US-009 legacy schemas writable until the schema rebuild removes the column.
+- `ChatReadStateService` uses `app_session_read_state`; unread state is shared-app state, not principal state. Active SSE observer tracking stores stream ids only and marks a session read once, not once per auth account.
+- Useful US-008 regression search: `rg -n "requireRoomAccess|ensureMember\\(|markSessionRead\\([^,]+,[^,]+,[^)]|countUnreadMessagesBySession\\([^)]*principalId|listRoomTree\\([^)]|ensureDefaultRoom\\(\\{[^\\n]*(ownerScope|principalId)" src/apps/chat src/data src/cron src/ralph src/cli-session/localSessionSource.ts` should return no real active API matches. Current known false positive is parsing `target.principalId` in Ralph/Cron target compatibility, scheduled for automation target cleanup.

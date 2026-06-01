@@ -192,7 +192,7 @@ test("Chat Web real API paths bootstrap, open, and send for shared, legacy user,
 		});
 		assert.equal(createdResponse.status, 201);
 		const { session: newShared } = await json(createdResponse);
-		assert.equal(newShared.ownerScope, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
+		assert.equal("ownerScope" in newShared, false);
 		assert.equal(newShared.metadata.chatRoomId, room.id);
 
 		const cases = [

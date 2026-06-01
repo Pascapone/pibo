@@ -5,16 +5,15 @@ import { parseFriendlySchedule } from "../../cron/schedule.js";
 import type { PiboCronJob, PiboCronJobPatchInput, PiboCronRun, PiboCronSchedule, PiboCronScheduleUi, PiboCronTarget } from "../../cron/types.js";
 import type { PiboCronStore } from "../../cron/store.js";
 import { legacyOwnerScopeForPreCutoverSchemas } from "../../owner-scope-compat.js";
-import { isPiboRoomArchived, type PiboRoom, type PiboRoomMember, type PiboRoomNode, type PiboRoomRole } from "./types/rooms.js";
+import { isPiboRoomArchived, type PiboRoom, type PiboRoomNode } from "./types/rooms.js";
 
 const CHAT_WEB_API_PREFIX = "/api/chat";
 
 type ChatRoomActions = {
 	getRoom(id: string): PiboRoom | undefined;
-	listRoomTree(ownerScope: string): PiboRoomNode[];
-	requireRoomAccess(roomId: string, principalId: string, action?: "read" | "write" | "admin"): PiboRoom;
-	ensureDefaultRoom(input: { ownerScope: string; principalId: string; name?: string }): PiboRoom;
-	ensureMember(input: { roomId: string; principalId: string; role: PiboRoomRole }): PiboRoomMember;
+	listRoomTree(): PiboRoomNode[];
+	requireRoom(roomId: string): PiboRoom;
+	ensureDefaultRoom(input?: { name?: string }): PiboRoom;
 };
 
 export type ChatCronApiOptions = {
@@ -37,11 +36,6 @@ type CronJobBody = {
 	scheduleUi?: unknown;
 	deleteAfterRun?: unknown;
 };
-
-function principalIdFor(webSession: PiboWebSession): string {
-	void webSession;
-	return legacyOwnerScopeForPreCutoverSchemas();
-}
 
 function requireSameOriginJsonRequest(request: Request): void {
 	const contentType = request.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase();
@@ -80,7 +74,7 @@ function normalizeTarget(value: unknown, options: ChatCronApiOptions): PiboCronT
 		const roomId = normalizeString(raw.roomId, "target.roomId", { required: true })!;
 		let room: PiboRoom;
 		try {
-			room = options.roomService.requireRoomAccess(roomId, principalIdFor(options.webSession), "write");
+			room = options.roomService.requireRoom(roomId);
 		} catch (error) {
 			accessDenied(error);
 		}
@@ -89,7 +83,7 @@ function normalizeTarget(value: unknown, options: ChatCronApiOptions): PiboCronT
 	}
 	if (raw.kind === "personal") {
 		const principalId = legacyOwnerScopeForPreCutoverSchemas();
-		options.roomService.ensureDefaultRoom({ ownerScope: legacyOwnerScopeForPreCutoverSchemas(), principalId, name: "Shared Chat" });
+		options.roomService.ensureDefaultRoom({ name: "Shared Chat" });
 		return { kind: "personal", principalId };
 	}
 	throw new PiboWebHttpError("target.kind must be room or personal", 400);

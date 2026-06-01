@@ -21,9 +21,8 @@ function createApiOptions({ request, store, ownerScope = "user:a" }) {
 		roomService: {
 			getRoom: () => undefined,
 			listRoomTree: () => [],
-			requireRoomAccess: () => { throw new Error("unused"); },
+			requireRoom: () => { throw new Error("unused"); },
 			ensureDefaultRoom: () => ({ id: "room", ownerScope, name: "room", members: [] }),
-			ensureMember: () => ({ roomId: "room", principalId: ownerScope, role: "owner" }),
 		},
 	};
 }

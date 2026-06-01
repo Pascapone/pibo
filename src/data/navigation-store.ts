@@ -1,9 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
-import { legacyOwnerScopeForPreCutoverSchemas } from "../owner-scope-compat.js";
 import { sqliteTableColumns } from "./sqlite-schema.js";
 
 export type SessionNavigationUpsertInput = {
-	ownerScope: string;
 	roomId?: string;
 	sessionId: string;
 	rootSessionId?: string;
@@ -23,14 +21,12 @@ export type SessionNavigationUpsertInput = {
 export type StoredSessionNavigation = SessionNavigationUpsertInput;
 
 export type SessionNavigationListInput = {
-	ownerScope: string;
 	roomId?: string;
 	includeArchived?: boolean;
 	limit?: number;
 };
 
 type SessionNavigationRow = {
-	owner_scope?: string;
 	room_id: string | null;
 	session_id: string;
 	root_session_id: string | null;
@@ -61,7 +57,7 @@ export class NavigationStore {
 			"room_id", "session_id", "root_session_id", "parent_id", "origin_id", "title", "profile", "status", "archived_at", "last_activity_at", "last_message_preview", "child_count", "sort_key", "updated_at",
 		];
 		const assignments = [
-			...(hasOwnerScope ? ["owner_scope = excluded.owner_scope"] : []),
+			...(hasOwnerScope ? ["owner_scope = COALESCE(session_navigation.owner_scope, excluded.owner_scope)"] : []),
 			"room_id = excluded.room_id",
 			"root_session_id = excluded.root_session_id",
 			"parent_id = excluded.parent_id",
@@ -81,7 +77,7 @@ export class NavigationStore {
 			VALUES (${insertColumns.map(() => "?").join(", ")})
 			ON CONFLICT(session_id) DO UPDATE SET ${assignments.join(", ")}
 		`).run(
-			...(hasOwnerScope ? [input.ownerScope] : []),
+			...(hasOwnerScope ? [""] : []),
 			input.roomId ?? null,
 			input.sessionId,
 			input.rootSessionId ?? null,
@@ -107,13 +103,9 @@ export class NavigationStore {
 		return row ? sessionNavigationFromRow(row) : undefined;
 	}
 
-	listSessions(input: SessionNavigationListInput): StoredSessionNavigation[] {
+	listSessions(input: SessionNavigationListInput = {}): StoredSessionNavigation[] {
 		const clauses: string[] = [];
 		const values: Array<string | number> = [];
-		if (sqliteTableColumns(this.db, "session_navigation").has("owner_scope")) {
-			clauses.push("owner_scope = ?");
-			values.push(input.ownerScope);
-		}
 		if (input.roomId !== undefined) {
 			clauses.push("room_id = ?");
 			values.push(input.roomId);
@@ -132,7 +124,6 @@ export class NavigationStore {
 
 function sessionNavigationFromRow(row: SessionNavigationRow): StoredSessionNavigation {
 	return {
-		ownerScope: row.owner_scope ?? legacyOwnerScopeForPreCutoverSchemas(),
 		roomId: row.room_id ?? undefined,
 		sessionId: row.session_id,
 		rootSessionId: row.root_session_id ?? undefined,

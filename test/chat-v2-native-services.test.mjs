@@ -38,7 +38,7 @@ test("V2-native chat services cover rooms, sessions, timeline, commands, and rea
 	const commands = new ChatEventCommandService(store);
 	const readState = new ChatReadStateService(store);
 
-	const room = rooms.ensureDefaultRoom({ ownerScope: "user:test", principalId: "user:test" });
+	const room = rooms.ensureDefaultRoom();
 	const piboSession = session("ps_test", room.id);
 	sessions.upsertSession(piboSession);
 
@@ -77,9 +77,9 @@ test("V2-native chat services cover rooms, sessions, timeline, commands, and rea
 	assert.equal(timeline.listEvents({ roomId: room.id }).length, 2);
 	assert.deepEqual(timeline.listTraceEvents({ piboSessionId: piboSession.id }).map((event) => event.type), ["user.message.accepted", "assistant_message"]);
 	assert.equal(timeline.getLatestEventSequence(piboSession.id), 2);
-	assert.equal(readState.countUnreadMessagesBySession({ piboSessionIds: [piboSession.id], principalId: "user:test" }).get(piboSession.id), 1);
-	readState.markSessionRead(piboSession.id, "user:test", timeline.getLatestStreamId({ piboSessionId: piboSession.id }));
-	assert.equal(readState.countUnreadMessagesBySession({ piboSessionIds: [piboSession.id], principalId: "user:test" }).has(piboSession.id), false);
+	assert.equal(readState.countUnreadMessagesBySession({ piboSessionIds: [piboSession.id] }).get(piboSession.id), 2);
+	readState.markSessionRead(piboSession.id, timeline.getLatestStreamId({ piboSessionId: piboSession.id }));
+	assert.equal(readState.countUnreadMessagesBySession({ piboSessionIds: [piboSession.id] }).has(piboSession.id), false);
 
 	store.close();
 });
