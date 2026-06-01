@@ -1,15 +1,15 @@
 # Spec: Scheduled Pibo Jobs
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Owner / Source:** Current Pibo codebase  
+**Status:** Draft
+**Created:** 2026-05-10
+**Controller / Source:** Current Pibo codebase
 **Related docs:** `GLOSSARY.md`, `docs/specs/README.md`
 
 ## Why
 
 Pibo needs a durable way to run agent work later or on a repeating schedule. Scheduled jobs let a user ask an agent to perform recurring room or shared default Chat tasks without keeping a browser interaction open.
 
-The behavior crosses the product boundary: jobs are configured through Chat Web or the operator CLI, persisted in a Pibo-owned store, executed by a channel service, and materialized as normal routed Pibo Sessions.
+The behavior crosses the product boundary: jobs are configured through Chat Web or the operator CLI, persisted in a Pibo-managed store, executed by a channel service, and materialized as normal routed Pibo Sessions.
 
 ## Goal
 
@@ -28,7 +28,7 @@ The Chat Web UI has a `Cron` area that lists jobs, builds schedules, targets Sha
 - Cron job creation, update, delete, list, pause, resume, status, and run history.
 - Schedule parsing and next-run computation for one-shot, interval, daily, weekly, monthly, and raw cron schedules.
 - Room and shared default Chat targets.
-- Shared-app Chat Web and CLI store operations.
+- App-context Chat Web and CLI store operations.
 - Scheduled and manual run reservation.
 - Creation of a routed Pibo Session for each run.
 - Run completion, error recording, interrupted-run recovery, and one-shot cleanup behavior.
@@ -46,7 +46,7 @@ The Chat Web UI has a `Cron` area that lists jobs, builds schedules, targets Sha
 
 ### Requirement: Jobs are durable app-context records
 
-The system MUST store cron jobs with target, profile, prompt, schedule, enabled flag, delete-after-run flag, timestamps, and scheduler state. Legacy owner fields are compatibility metadata only.
+The system MUST store cron jobs with target, profile, prompt, schedule, enabled flag, delete-after-run flag, timestamps, and scheduler state. Legacy controller fields are compatibility metadata only.
 
 #### Current
 
@@ -208,10 +208,10 @@ The `pibo cron` CLI MUST provide compact discovery output and focused subcommand
 
 #### Scenario: Pause and resume
 
-- GIVEN an owner has an enabled cron job
-- WHEN the owner runs `pibo cron pause <id>`
+- GIVEN an controller has an enabled cron job
+- WHEN the controller runs `pibo cron pause <id>`
 - THEN the job is disabled and has no next scheduled run.
-- WHEN the owner runs `pibo cron resume <id>`
+- WHEN the controller runs `pibo cron resume <id>`
 - THEN the job is enabled and `nextRunAt` is recomputed from the current time.
 
 ### Requirement: Chat Web exposes cron APIs and UI
@@ -326,7 +326,7 @@ Users can inspect recent job outcomes without scanning unrelated rooms, and can 
 
 ### Assumptions
 
-- The active gateway process is the only scheduler owner in normal local deployments.
+- The active gateway process is the only scheduler controller in normal local deployments.
 - Authentication is only the app access gate; Cron jobs and runs are app context resources.
 - A cron run is complete when the initial generated message finishes or the session errors; follow-up user interaction happens in the created session outside the cron scheduler.
 

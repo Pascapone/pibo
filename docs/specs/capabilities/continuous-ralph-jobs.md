@@ -1,9 +1,9 @@
 # Spec: Continuous Ralph Jobs
 
-**Status:** Draft  
-**Created:** 2026-05-11  
-**Updated:** 2026-05-17  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code; 2026-05-17 compute/browser resource incident analysis  
+**Status:** Draft
+**Created:** 2026-05-11
+**Updated:** 2026-05-17
+**Controller / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code; 2026-05-17 compute/browser resource incident analysis
 **Related docs:** `docs/specs/capabilities/pibo-session-routing.md`, `docs/specs/capabilities/chat-web-rooms-and-event-streams.md`, `docs/specs/capabilities/scheduled-pibo-jobs.md`, `docs/specs/capabilities/web-auth-and-same-origin-host.md`, `docs/specs/changes/extensible-ralph-stop-conditions/spec.md`, `docs/specs/changes/compute-browser-resource-lifecycle/spec.md`
 
 ## Why
@@ -20,7 +20,7 @@ Ralph MUST let an allowed operator create, inspect, start, stop, cancel, and del
 
 The current code registers `pibo.ralph` as a plugin channel in the web gateway. The channel starts a `PiboRalphService`, which uses `pibo-ralph.sqlite` by default to persist jobs and runs.
 
-A job stores target, profile, prompt, optional maximum completed run attempts, optional stop policy, enabled state, runtime overrides, and run state. Legacy stores may retain an owner value for migration compatibility. When the service reserves a run, it first evaluates before-run stop conditions, creates a routed Pibo Session with `kind: "ralph"`, channel metadata for the target Chat room, and `ralphJobId` / `ralphRunId` metadata, sends a service-authored message containing the job prompt, and waits for the correlated session to finish.
+A job stores target, profile, prompt, optional maximum completed run attempts, optional stop policy, enabled state, runtime overrides, and run state. Legacy stores may retain an controller value for migration compatibility. When the service reserves a run, it first evaluates before-run stop conditions, creates a routed Pibo Session with `kind: "ralph"`, channel metadata for the target Chat room, and `ralphJobId` / `ralphRunId` metadata, sends a service-authored message containing the job prompt, and waits for the correlated session to finish.
 
 Stop behavior is now policy-driven. Built-in stop conditions cover maximum completed run attempts, a completion marker that must appear on its own line in a successful final answer, and fact-count checks. Plugins can register additional stop conditions; policy evaluation supports `any` and `all` modes, per-condition enablement, fail-closed errors, timeouts, and persisted condition state.
 
@@ -31,7 +31,7 @@ Chat Web exposes `/api/chat/ralph/*` endpoints, registered stop-condition metada
 ### In Scope
 
 - Durable Ralph job and run records.
-- Shared-app CLI and Chat Web management operations.
+- App-context CLI and Chat Web management operations.
 - Continuous run reservation, routed session creation, run completion, and interruption recovery.
 - Room and shared default Chat targets.
 - Stop, cancel, maximum-iteration, timeout, stop-policy, and completion-marker behavior.
@@ -49,11 +49,11 @@ Chat Web exposes `/api/chat/ralph/*` endpoints, registered stop-condition metada
 
 ### Requirement: Ralph jobs are durable app-context product records
 
-The system MUST persist each Ralph job with a stable id, name, optional description, enabled flag, target, profile, prompt, optional maximum iterations, optional stop policy, optional runtime overrides, state, and timestamps. Legacy owner fields are compatibility metadata only.
+The system MUST persist each Ralph job with a stable id, name, optional description, enabled flag, target, profile, prompt, optional maximum iterations, optional stop policy, optional runtime overrides, state, and timestamps. Legacy controller fields are compatibility metadata only.
 
 #### Current
 
-`PiboRalphStore` stores jobs in `pibo_ralph_jobs` under `pibo-ralph.sqlite` by default. Job ids use the `ralph_` prefix. Empty profile, prompt, or required target ids are rejected. Legacy owner fields are normalized to the app context compatibility value when old schemas require them. `maxIterations` must be a positive integer when provided. `stopPolicy` is normalized before persistence and can be cleared back to the default policy. Runtime overrides may include `modelOverride`, `thinkingLevel`, and tri-state `fastMode`.
+`PiboRalphStore` stores jobs in `pibo_ralph_jobs` under `pibo-ralph.sqlite` by default. Job ids use the `ralph_` prefix. Empty profile, prompt, or required target ids are rejected. Legacy controller fields are normalized to the app context compatibility value when old schemas require them. `maxIterations` must be a positive integer when provided. `stopPolicy` is normalized before persistence and can be cleared back to the default policy. Runtime overrides may include `modelOverride`, `thinkingLevel`, and tri-state `fastMode`.
 
 #### Target
 
@@ -245,7 +245,7 @@ A cancel request prevents future runs and makes the current run terminal as canc
 #### Scenario: User cancels active run
 
 - GIVEN a Ralph job is running in Pibo Session `ps_1`
-- WHEN the owner cancels the job
+- WHEN the controller cancels the job
 - THEN Ralph emits an abort execution event to `ps_1`
 - AND the job remains disabled
 - AND the run outcome is `cancelled` when the run settles.
@@ -332,7 +332,7 @@ Agents and users can operate Ralph without reading source code.
 - THEN the UI shows zero jobs, zero running jobs, and an empty job list state
 - AND the user can create a new Ralph job from the page.
 
-### Requirement: Ralph-owned compute resources are policy-managed
+### Requirement: Ralph-managed compute resources are policy-managed
 
 Ralph jobs that use Docker compute workers or browser automation MUST bind those resources to job/run metadata and MUST release, idle-retain, or recycle them by policy.
 
@@ -342,7 +342,7 @@ Ralph job prompts can instruct agents to reuse or not release containers, but pr
 
 #### Target
 
-Ralph resource ownership is explicit. Pibo labels or records assigned workers, browser leases, and cleanup state. Stop, cancel, max-iteration, and promise-complete paths apply deterministic cleanup policy regardless of prompt wording.
+Ralph resource stewardship is explicit. Pibo labels or records assigned workers, browser leases, and cleanup state. Stop, cancel, max-iteration, and promise-complete paths apply deterministic cleanup policy regardless of prompt wording.
 
 #### Acceptance
 
@@ -365,7 +365,7 @@ Ralph resource ownership is explicit. Pibo labels or records assigned workers, b
 This capability participates in the compute/browser resource lifecycle change. It must follow the canonical model in `docs/project/compute-browser-resource-operating-model.md` and the rollout checks in `docs/project/compute-browser-resource-rollout-checklist.md`.
 
 - Ralph jobs and runs that use compute/browser resources must record assigned worker ids, browser lease ids when known, cleanup status, and retained/dirty reasons.
-- Ralph-owned compute containers must carry `pibo.ralph.jobId` and `pibo.ralph.runId` labels when Ralph owns or directly assigns the worker. Legacy compute owner labels, when present, are compatibility metadata only.
+- Ralph-managed compute containers must carry `pibo.ralph.jobId` and `pibo.ralph.runId` labels when Ralph owns or directly assigns the worker. Legacy compute controller labels, when present, are compatibility metadata only.
 - Run completion, promise-complete, max-iteration, stop, cancel, and interrupted-run paths must release browser leases and mark workers released, idle-retained, or dirty according to policy.
 - CLI/API status must show disabled jobs with retained resources or cleanup failures.
 - Prompt text cannot override Docker resource budgets, hard TTLs, browser-pool reaping, or dirty-worker recycling.
@@ -385,7 +385,7 @@ This capability participates in the compute/browser resource lifecycle change. I
 - **Compatibility:** Ralph job ids and run ids remain opaque strings; callers MUST NOT parse them beyond displaying or passing them back.
 - **Security / Privacy:** Chat Web API operations require authenticated same-origin requests. Local CLI operations rely on trusted local access; auth account values do not partition Ralph jobs.
 - **Performance:** The service polls on a timer and limits concurrent active runs by configuration.
-- **Durability:** `pibo-ralph.sqlite` is a Pibo-owned store under Pibo home unless an explicit path is provided.
+- **Durability:** `pibo-ralph.sqlite` is a Pibo-managed store under Pibo home unless an explicit path is provided.
 - **Routing:** Ralph-created sessions use Pibo Session IDs and Chat room metadata; Pi Session IDs are not the public run identity.
 - **Runtime defaults:** Unset Ralph runtime overrides inherit the selected agent and current model defaults.
 
@@ -428,7 +428,7 @@ This capability participates in the compute/browser resource lifecycle change. I
 
 | Test target | Required cases | Primary requirements | Suggested file |
 |---|---|---|---|
-| Store validation and shared visibility | Reject blank profile/prompt/target ids; reject non-positive `maxIterations`; normalize and clear stop policies; persist and clear runtime overrides; default names are prompt-derived and capped; app-context `listJobs`, `getByIdJob` compatibility, `updateJob`, `removeJob`, and `listRuns` include historical owner rows. | REQ-001, REQ-006, REQ-009 | `test/ralph-store.test.mjs`, `test/ralph-runtime-overrides.test.mjs`, `test/ralph-stop-conditions.test.mjs` |
+| Store validation and shared visibility | Reject blank profile/prompt/target ids; reject non-positive `maxIterations`; normalize and clear stop policies; persist and clear runtime overrides; default names are prompt-derived and capped; app-context `listJobs`, `getByIdJob` compatibility, `updateJob`, `removeJob`, and `listRuns` include historical controller rows. | REQ-001, REQ-006, REQ-009 | `test/ralph-store.test.mjs`, `test/ralph-runtime-overrides.test.mjs`, `test/ralph-stop-conditions.test.mjs` |
 | Store reservation and state transitions | Reserve only enabled non-running jobs; return no reservation at capacity-equivalent duplicate reservation; block jobs that reached `maxIterations`; `requestStop` disables without clearing `runningAt`; `requestCancel` records both stop and cancel timestamps. | REQ-003, REQ-005, REQ-007 | `test/ralph-store.test.mjs` |
 | Store completion and recovery | Successful completion increments `completedIterations`; error completion increments `consecutiveErrors`; later success resets `consecutiveErrors`; stop-policy and max-iteration paths disable the job; `recoverInterruptedRuns` marks stale running runs as `error` with reason `interrupted`. | REQ-005, REQ-006, REQ-008 | `test/ralph-store.test.mjs`, `test/ralph-stop-conditions.test.mjs` |
 | Stop-condition evaluation | Default policies include max-iterations when configured and the completion-marker condition; custom conditions compose in `any` and `all` modes; stateful conditions persist state; condition errors honor fail-open/fail-closed behavior. | REQ-005, REQ-006 | `test/ralph-stop-conditions.test.mjs` |
@@ -469,7 +469,7 @@ This capability participates in the compute/browser resource lifecycle change. I
 | REQ-008: Auditable errors and recovery | Gateway restarts during active run | Current timeout and recovery behavior | Source-backed |
 | REQ-009: Authenticated app-context API | Cross-site mutation is rejected | Current `handleChatRalphApiRequest` behavior | Source-backed |
 | REQ-010: Discoverable management | User opens Ralph area with no jobs | Current CLI, templates, conditions, policy commands, and `RalphArea` behavior | Source-backed |
-| REQ-011: Ralph-owned compute resources are policy-managed | Completed Ralph loop releases browser resources | Compute/browser resource lifecycle change | Draft |
+| REQ-011: Ralph-managed compute resources are policy-managed | Completed Ralph loop releases browser resources | Compute/browser resource lifecycle change | Draft |
 
 ## Verification Basis
 

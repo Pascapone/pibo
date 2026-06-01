@@ -1,7 +1,7 @@
 # PRD: Pibo Observability and Debug Telemetry — Product Overview
 
-**Status:** Draft  
-**Created:** 2026-05-16  
+**Status:** Draft
+**Created:** 2026-05-16
 **Related docs:** `../proposal.md`, `../spec.md`, `../design.md`, `../tasks.md`
 
 ## 1. Executive Summary

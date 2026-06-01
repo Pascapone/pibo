@@ -1,8 +1,8 @@
 # Spec: Runtime Thinking and Fast Mode Controls
 
-**Status:** Draft  
-**Created:** 2026-05-11  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code  
+**Status:** Draft
+**Created:** 2026-05-11
+**Controller / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code
 **Related docs:** [Model Provider Auth and Session Model Selection](./model-provider-auth-and-session-selection.md), [Pibo Runtime Assembly and Profile Inspection](./pibo-runtime-assembly-and-inspection.md), [Chat Web Output Compaction and Stream Projection](./chat-web-output-compaction-and-stream-projection.md), [Core Gateway Actions and Session Controls](./core-gateway-actions-and-session-controls.md)
 
 ## Why

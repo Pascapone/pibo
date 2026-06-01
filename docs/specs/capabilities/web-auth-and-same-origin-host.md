@@ -1,9 +1,9 @@
 # Spec: Web Auth and Same-Origin Host
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Updated:** 2026-05-11  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage  
+**Status:** Draft
+**Created:** 2026-05-10
+**Updated:** 2026-05-11
+**Controller / Source:** Scheduled Pibo Source Specs Coverage
 **Related docs:** [Chat Web Rooms and Event Streams](./chat-web-rooms-and-event-streams.md), [Custom Agents and Agent Designer](./custom-agents.md), [Scheduled Pibo Jobs](./scheduled-pibo-jobs.md)
 
 ## Why
@@ -26,7 +26,7 @@ Normal web gateways register Better Auth. Docker worker gateways may opt into de
 
 ### In Scope
 
-- HTTP route ownership for the web host channel.
+- HTTP route stewardship for the web host channel.
 - Better Auth service requirements for normal web gateways.
 - Docker-only dev auth behavior.
 - Mapping auth sessions to the app context context.
@@ -133,7 +133,7 @@ Every authenticated web app request that requires a session MUST expose the same
 
 #### Current
 
-`requireWebSession` calls the channel auth service and returns the authenticated session plus `appContext`. A deprecated compatibility owner value may be present for legacy storage paths, but it is pinned to the app context and is not derived from the authenticated user id.
+`requireWebSession` calls the channel auth service and returns the authenticated session plus `appContext`. A deprecated compatibility controller value may be present for legacy storage paths, but it is pinned to the app context and is not derived from the authenticated user id.
 
 #### Acceptance
 
@@ -231,7 +231,7 @@ Non-GET/HEAD request bodies are limited to 4 MiB. JSON responses may be gzip-com
 
 ## Edge Cases
 
-- Better Auth may return no session; Pibo must treat that as `401`, not as an anonymous owner.
+- Better Auth may return no session; Pibo must treat that as `401`, not as an anonymous controller.
 - Dev auth must check both `Host` and `X-Forwarded-Host` so a remote forwarded request cannot obtain a dev session.
 - If no web apps are registered, `/` returns a small HTML page instead of failing server startup.
 - If an auth service does not expose HTTP routes, `/api/auth/*` returns `500` because the selected web auth mode is misconfigured.

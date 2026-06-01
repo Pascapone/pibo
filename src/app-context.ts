@@ -1,4 +1,4 @@
-// Shared-app context for the one product space behind web auth.
+// App context for the one product space behind web auth.
 //
 // Auth gates access to this app context. The context is not a user, tenant,
 // principal, role, account, tenant, or storage partition.

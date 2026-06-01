@@ -2,7 +2,7 @@
 
 **Status:** Draft
 **Created:** 2026-05-18
-**Owner / Source:** Server migration and install streamlining discussion
+**Controller / Source:** Server migration and install streamlining discussion
 **Related docs:** `docs/ops/install-user-host.md`, `docs/ops/install-developer-host.md`, `docs/ops/upgrade-user-to-developer-host.md`
 
 ## Why
@@ -69,7 +69,7 @@ Both setup modes include a next step that mentions DNS and certificates when Cad
 
 - **Compatibility:** Pibo requires Node `>=24`.
 - **Security:** Generated plans must not print secrets. Secret setup remains explicit.
-- **Safety:** Initial CLI behavior renders plans and files; it does not overwrite root-owned files.
+- **Safety:** Initial CLI behavior renders plans and files; it does not overwrite root-managed files.
 - **Packaging:** The CLI path must work from the npm package, so core setup planning lives under `src/` and builds into `dist/`.
 
 ## Success Criteria

@@ -1,8 +1,8 @@
 # Coverage Analysis: API Surface Coverage 2026-05-11
 
-**Status:** Draft  
-**Created:** 2026-05-11  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage; current workspace code  
+**Status:** Draft
+**Created:** 2026-05-11
+**Controller / Source:** Scheduled Pibo Source Specs Coverage; current workspace code
 **Related docs:** `GLOSSARY.md`, [Chat Web Bootstrap and Navigation API](../capabilities/chat-web-bootstrap-and-navigation-api.md), [Chat Web Rooms and Event Streams](../capabilities/chat-web-rooms-and-event-streams.md), [Context Files](../capabilities/context-files.md), [Simple Agent HTTP API](../capabilities/simple-agent-http-api.md), [Web Auth and Same-Origin Host](../capabilities/web-auth-and-same-origin-host.md)
 
 ## Why
@@ -32,7 +32,7 @@ Confirm that the current source-backed HTTP API surface is mapped to durable spe
 
 ## Current Coverage Matrix
 
-| Implemented API surface | Primary source | Existing spec owner | Coverage decision |
+| Implemented API surface | Primary source | Existing spec controller | Coverage decision |
 |---|---|---|---|
 | Chat bootstrap, navigation, session pages, selected session reads | `src/apps/chat/web-app.ts`, `src/apps/chat/data/*query-service.ts` | `chat-web-bootstrap-and-navigation-api.md` | Covered |
 | Rooms, room membership checks, read marks, SSE event replay | `src/apps/chat/web-app.ts`, `src/apps/chat/data/room-service.ts`, `src/apps/chat/data/read-state-service.ts`, `src/apps/chat/data/timeline-query-service.ts` | `chat-web-rooms-and-event-streams.md` | Covered |
@@ -69,7 +69,7 @@ The source tree groups routes by product capability, and the existing specs foll
 #### Acceptance for future scheduled runs
 
 - New API routes should be added to the owning capability spec before creating a generic API spec.
-- If a route crosses multiple capabilities, the spec should name the source-of-truth owner and link related specs.
+- If a route crosses multiple capabilities, the spec should name the source-of-truth controller and link related specs.
 - Coverage analyses should be used only when the API surface is already mapped and no new behavior contract is needed.
 
 ### Finding: Cross-cutting same-origin JSON mutation rules are scattered but sufficiently specified
@@ -89,7 +89,7 @@ No new capability spec is warranted from this run. The implemented API surface i
 ## Success Criteria
 
 - [x] SC-001: Existing specs were inspected before creating this coverage artifact.
-- [x] SC-002: Current API routes were grouped by source-backed capability owner.
+- [x] SC-002: Current API routes were grouped by source-backed capability controller.
 - [x] SC-003: No duplicate broad API capability spec was created.
 - [x] SC-004: Remaining weak seams are stated as future acceptance checks.
 

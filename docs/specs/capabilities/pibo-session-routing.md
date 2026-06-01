@@ -1,8 +1,8 @@
 # Spec: Pibo Session Routing
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Owner / Source:** Current Pibo codebase  
+**Status:** Draft
+**Created:** 2026-05-10
+**Controller / Source:** Current Pibo codebase
 **Related docs:** `GLOSSARY.md`, `docs/specs/README.md`
 
 ## Why
@@ -36,7 +36,7 @@ A `PiboSession` stores product identity and metadata: `id`, `piSessionId`, `chan
 
 ### Out of Scope
 
-- The Pi transcript JSONL format — it remains owned by Pi Coding Agent.
+- The Pi transcript JSONL format — it remains managed by Pi Coding Agent.
 - Chat room membership, room events, and SSE frame durability — those are Chat Web concerns.
 - Yielded-run lifecycle — covered by `docs/specs/capabilities/yielded-run-control.md`.
 - Scheduled-job creation and run reservation — covered by `docs/specs/capabilities/scheduled-pibo-jobs.md`.
@@ -151,7 +151,7 @@ The system MUST use `parentId` for true session hierarchy created by subagent de
 
 #### Current
 
-`PiboSessionRouter.resolveSubagentSession()` creates or reuses a child session with channel `pibo.subagents`, kind `subagent`, `parentId` pointing to the parent Pibo Session, inherited workspace, target profile, thread-key metadata, and optional chat room metadata. Legacy owner compatibility is pinned to the app context value.
+`PiboSessionRouter.resolveSubagentSession()` creates or reuses a child session with channel `pibo.subagents`, kind `subagent`, `parentId` pointing to the parent Pibo Session, inherited workspace, target profile, thread-key metadata, and optional chat room metadata. Legacy controller compatibility is pinned to the app context value.
 
 #### Target
 
@@ -239,7 +239,7 @@ Channels do not bypass the Pibo Session Store when creating or mutating routed s
 - Channel-created sessions are stored before runtime input is emitted.
 - Profile names are resolved through the plugin registry during creation.
 - Created sessions receive active-model selection unless explicitly supplied.
-- Channel updates can mutate title, metadata, profile, workspace, legacy compatibility owner value, origin, parent, Pi session id, and active model through store update semantics.
+- Channel updates can mutate title, metadata, profile, workspace, legacy compatibility controller value, origin, parent, Pi session id, and active model through store update semantics.
 
 #### Scenario: Chat Web creates a room session
 
@@ -282,7 +282,7 @@ The Pibo Session Store remains the source of truth for product session metadata 
 
 ## Constraints
 
-- **Product Boundary:** Pibo owns Pibo Session records, routing identity, hierarchy, origin metadata, active model, and channel metadata. Legacy owner values are compatibility fields only. Pi Coding Agent owns transcript entries and low-level session files.
+- **Product Boundary:** Pibo owns Pibo Session records, routing identity, hierarchy, origin metadata, active model, and channel metadata. Legacy controller values are compatibility fields only. Pi Coding Agent owns transcript entries and low-level session files.
 - **Security / Privacy:** Web access is authenticated by the channel/API layer. Product session visibility is app context state and must not be partitioned by auth account.
 - **Compatibility:** Existing fallback runtime behavior for unknown Pibo Session IDs remains available for direct/local integrations.
 - **Reliability:** Store-backed gateways MUST persist Pibo Session state so routed sessions can reopen after process restart.

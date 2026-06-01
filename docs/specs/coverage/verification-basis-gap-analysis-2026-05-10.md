@@ -1,8 +1,8 @@
 # Coverage Analysis: Verification Basis Gaps
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code and `docs/specs/`  
+**Status:** Draft
+**Created:** 2026-05-10
+**Controller / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code and `docs/specs/`
 **Related docs:** [Spec Status and Traceability](../capabilities/spec-status-and-traceability.md), [Source Specs Coverage Snapshot](./source-specs-coverage-2026-05-10.md), [Test Traceability Across Source Specs](./test-traceability-coverage-2026-05-10.md)
 
 ## Why

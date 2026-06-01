@@ -1,8 +1,8 @@
 # Coverage Analysis: Unreferenced Artifact Triage 2026-05-11
 
-**Status:** Draft  
-**Created:** 2026-05-11  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage; current workspace code and specs  
+**Status:** Draft
+**Created:** 2026-05-11
+**Controller / Source:** Scheduled Pibo Source Specs Coverage; current workspace code and specs
 **Related docs:** `GLOSSARY.md`, `AGENTS.md`, [Package Build and Distribution](../capabilities/package-build-and-distribution.md), [Chat Web Trace and Terminal View](../capabilities/chat-web-trace-and-terminal-view.md), [Chat Web Safe Content Rendering](../capabilities/chat-web-safe-content-rendering.md), [Docker Compute Workers](../capabilities/docker-compute-workers.md), [Web Auth and Same-Origin Host](../capabilities/web-auth-and-same-origin-host.md), [Pibo Workflow Framework Package](../capabilities/pibo-workflow-framework-package.md)
 
 ## Why
@@ -20,7 +20,7 @@ Identify remaining source-adjacent artifacts that are not directly referenced fr
 ### In Scope
 
 - Files under `src/`, `packages/workflows/src/`, `scripts/`, and `examples/` that are not directly named in current markdown specs.
-- Coverage ownership decisions for small UI support files, package build config, embedded skills, workflow test fixtures, and examples.
+- Coverage stewardship decisions for small UI support files, package build config, embedded skills, workflow test fixtures, and examples.
 - Future acceptance checks for promoting any remaining artifact into a capability spec.
 
 ### Out of Scope
@@ -40,11 +40,11 @@ Unreferenced artifacts include:
 - `src/apps/context-files-ui/tsconfig.json`
 - `src/apps/context-files-ui/index.html`
 
-These files are owned by the package/build and static-shell contracts. Their externally visible behavior is whether Chat UI and Context Files UI can typecheck, build, and serve from their configured bases. A separate spec for each config file would duplicate the package-build contract.
+These files are managed by the package/build and static-shell contracts. Their externally visible behavior is whether Chat UI and Context Files UI can typecheck, build, and serve from their configured bases. A separate spec for each config file would duplicate the package-build contract.
 
 #### Future acceptance
 
-- Keep this ownership unless a config file begins to expose user-visible routing, auth, or runtime behavior that is not already covered by build/static-shell specs.
+- Keep this stewardship unless a config file begins to expose user-visible routing, auth, or runtime behavior that is not already covered by build/static-shell specs.
 - If that happens, extend `package-build-and-distribution.md` or the relevant web-app static asset spec rather than creating a config-file spec.
 
 ### Finding: UI style files are presentation support under existing UI behavior specs
@@ -64,7 +64,7 @@ The CSS files and terminal line component implement visual presentation for beha
 
 ### Finding: The Docker dev-auth skill is instructional context for existing dev-auth behavior
 
-`src/skills/pibo-debug-auth/SKILL.md` is not referenced by current specs. The skill describes how agents log into Chat Web inside Docker compute workers using the worker-only dev-auth plugin. The actual behavior is owned by Docker Compute Workers, Web Auth and Same-Origin Host, Standalone Docker Runtime, and Browser-use Authenticated Leases.
+`src/skills/pibo-debug-auth/SKILL.md` is not referenced by current specs. The skill describes how agents log into Chat Web inside Docker compute workers using the worker-only dev-auth plugin. The actual behavior is managed by Docker Compute Workers, Web Auth and Same-Origin Host, Standalone Docker Runtime, and Browser-use Authenticated Leases.
 
 The skill itself is a context artifact: it must remain aligned with the current worker login flow, fixed dev identity, cookie name behavior, loopback-only constraint, and host-gateway fail-closed rule. It does not create a new auth surface.
 
@@ -91,7 +91,7 @@ Unreferenced artifacts include:
 - `examples/gateway/README.md`
 - `examples/web/README.md`
 
-The gateway example demonstrates the local gateway, console client, `/status`, `/clear`, `/abort`, and TUI gateway producer tool. The web example demonstrates Better Auth configuration, OAuth redirect origins, sign-in/out behavior, same-origin mutation protection, and stable Chat Web routes. Those behaviors are already owned by the local gateway, gateway request client, web auth, Chat Web bootstrap/navigation, and config specs.
+The gateway example demonstrates the local gateway, console client, `/status`, `/clear`, `/abort`, and TUI gateway producer tool. The web example demonstrates Better Auth configuration, OAuth redirect origins, sign-in/out behavior, same-origin mutation protection, and stable Chat Web routes. Those behaviors are already managed by the local gateway, gateway request client, web auth, Chat Web bootstrap/navigation, and config specs.
 
 The examples SHOULD remain executable documentation, but they do not need separate capability specs unless examples become tested release artifacts.
 

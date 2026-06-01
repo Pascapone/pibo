@@ -1,8 +1,8 @@
 # Spec: Web Annotations Plugin
 
-**Status:** Draft  
-**Created:** 2026-05-16  
-**Owner / Source:** Web Annotations Plugin change set  
+**Status:** Draft
+**Created:** 2026-05-16
+**Controller / Source:** Web Annotations Plugin change set
 **Related docs:** [Web Annotations proposal](../changes/web-annotations-plugin/proposal.md), [Web Annotations spec](../changes/web-annotations-plugin/spec.md), [Web Annotations design](../changes/web-annotations-plugin/design.md), [Web Render Debug Tool](./web-render-debug-tool.md), [Chat Web Rooms and Event Streams](./chat-web-rooms-and-event-streams.md), [Plugin Registry and Capability Catalog](./plugin-registry-and-capability-catalog.md)
 
 ## Why
@@ -11,13 +11,13 @@ Pibo users often describe frontend changes with vague text or screenshots. A Web
 
 ## Goal
 
-Pibo MUST provide a plugin-owned Web Annotations capability that can bind an explicitly selected CDP browser target to the current Pibo Session, collect bounded annotation payloads, show those annotations in Chat Web, and expose optional native tools to selected agent profiles.
+Pibo MUST provide a plugin-managed Web Annotations capability that can bind an explicitly selected CDP browser target to the current Pibo Session, collect bounded annotation payloads, show those annotations in Chat Web, and expose optional native tools to selected agent profiles.
 
 ## Scope
 
 ### In Scope
 
-- Session-scoped annotation records bound to Pibo Session ID, optional Room ID, target URL, target kind, status, timestamps, user note, viewport, and target metadata. Legacy owner fields, when present, are compatibility metadata only.
+- Session-scoped annotation records bound to Pibo Session ID, optional Room ID, target URL, target kind, status, timestamps, user note, viewport, and target metadata. Legacy controller fields, when present, are compatibility metadata only.
 - Durable binding records for URL annotation flows and existing CDP targets.
 - CDP-first runtime overlay injection for selected targets. Target apps do not need source-code changes for basic annotation.
 - Chat Web entry points for annotating a URL or attaching an existing target from an active session.
@@ -36,7 +36,7 @@ Pibo MUST provide a plugin-owned Web Annotations capability that can bind an exp
 
 ## Requirements
 
-### Requirement: Capability is plugin-owned and selectable
+### Requirement: Capability is plugin-managed and selectable
 
 The system MUST register Web Annotations through the plugin registry and capability catalog rather than exposing it as an always-on core tool.
 
@@ -108,7 +108,7 @@ V1 implementation work may defer CLI helpers while still completing the Chat Web
 
 - Injection requires explicit user action.
 - Server-side code derives session/room context from authenticated session or server-created binding token.
-- Overlay-submitted owner, session, room, or status fields are ignored or rejected unless they match the trusted binding.
+- Overlay-submitted controller, session, room, or status fields are ignored or rejected unless they match the trusted binding.
 - Cross-origin iframe details are represented as unavailable when they cannot be inspected.
 - Model-visible blocks remain concise and omit full DOM/page dumps.
 

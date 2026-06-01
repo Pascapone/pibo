@@ -225,8 +225,8 @@ Optional bounded payload previews. V1 should avoid payload previews unless expli
 ```ts
 type TelemetryPayloadPreview = {
   payloadPreviewRef: string;
-  ownerKind: "provider_event" | "provider_request" | "tool_args";
-  ownerId: string;
+  controllerKind: "provider_event" | "provider_request" | "tool_args";
+  controllerId: string;
   createdAt: string;
   byteSize: number;
   truncated: boolean;

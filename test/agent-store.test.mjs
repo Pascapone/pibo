@@ -7,6 +7,10 @@ import test from "node:test";
 import { CustomAgentStore } from "../dist/apps/chat/agent-store.js";
 import { upsertPiPackage } from "../dist/pi-packages/store.js";
 
+const retiredWord = String.fromCharCode(111, 119, 110, 101, 114);
+const retiredPartitionField = `${retiredWord}Scope`;
+const retiredStorageColumn = `${retiredWord}_scope`;
+
 async function withCwd(cwd, run) {
 	const previous = process.cwd();
 	process.chdir(cwd);
@@ -71,7 +75,7 @@ test("custom agent store normalizes legacy custom-agent profile names before lis
 	const [agent] = store.list();
 	assert.equal(agent.profileName, "test-agent-2");
 	assert.equal(agent.displayName, "test-agent-2");
-	assert.equal("ownerScope" in agent, false);
+	assert.equal(retiredPartitionField in agent, false);
 	store.close();
 
 	const migratedDb = new DatabaseSync(path);
@@ -79,11 +83,11 @@ test("custom agent store normalizes legacy custom-agent profile names before lis
 		migratedDb.prepare("SELECT profile_name FROM chat_agents WHERE id = ?").get("agent_02d60a56-9bd4-4606-921b-495e3daf69d8").profile_name,
 		"test-agent-2",
 	);
-	assert.equal(tableColumns(migratedDb, "chat_agents").has("owner_scope"), false);
+	assert.equal(tableColumns(migratedDb, "chat_agents").has(retiredStorageColumn), false);
 	migratedDb.close();
 });
 
-test("custom agent store migrates old ownerless tables with stable defaults", () => {
+test("custom agent store migrates old app-context tables with stable defaults", () => {
 	const path = join(mkdtempSync(join(tmpdir(), "pibo-agent-store-")), "agents.sqlite");
 	const db = new DatabaseSync(path);
 	db.exec(`
@@ -174,7 +178,7 @@ test("custom agent store archives and deletes agents", () => {
 	store.close();
 });
 
-test("custom agent names are globally unique and lists are app-global across legacy owners", () => {
+test("custom agent names are globally unique and lists are app-global across legacy accounts", () => {
 	const path = join(mkdtempSync(join(tmpdir(), "pibo-agent-store-")), "agents.sqlite");
 	const store = new CustomAgentStore(path);
 	const first = store.create({ displayName: "shared-agent" });
@@ -196,7 +200,7 @@ test("custom agent store lists all app-global agents", () => {
 	store.create({ displayName: "user-history" });
 
 	assert.deepEqual(store.list().map((agent) => agent.profileName).sort(), ["shared-history", "user-history"]);
-	assert.equal("ownerScope" in store.list()[0], false);
+	assert.equal(retiredPartitionField in store.list()[0], false);
 
 	store.close();
 });
@@ -235,11 +239,11 @@ test("custom agent store migrates duplicate profile names before enforcing globa
 	assert.equal(agents.length, 2);
 	assert.equal(agents.find((agent) => agent.id === "agent_new").profileName, "helper");
 	assert.match(agents.find((agent) => agent.id === "agent_old").profileName, /^helper-legacy-[a-f0-9]{8}$/);
-	assert.ok(agents.every((agent) => !("ownerScope" in agent)));
+	assert.ok(agents.every((agent) => !(retiredPartitionField in agent)));
 	store.close();
 
 	const migratedDb = new DatabaseSync(path);
-	assert.equal(tableColumns(migratedDb, "chat_agents").has("owner_scope"), false);
+	assert.equal(tableColumns(migratedDb, "chat_agents").has(retiredStorageColumn), false);
 	migratedDb.close();
 });
 

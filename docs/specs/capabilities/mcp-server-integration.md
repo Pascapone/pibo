@@ -1,8 +1,8 @@
 # Spec: MCP Server Integration
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Owner / Source:** Current Pibo codebase  
+**Status:** Draft
+**Created:** 2026-05-10
+**Controller / Source:** Current Pibo codebase
 **Related docs:** `GLOSSARY.md`, `docs/specs/README.md`, `docs/specs/capabilities/custom-agents.md`
 
 ## Why
@@ -226,7 +226,7 @@ The MCP registry command surface MUST be present and report clearly when no pres
 
 ### Requirement: Chat Web exposes MCP server metadata, not full config editing
 
-Chat Web MUST show configured MCP servers in the Agent Designer catalog and MUST allow editing only Pibo-owned agent-facing descriptions.
+Chat Web MUST show configured MCP servers in the Agent Designer catalog and MUST allow editing only Pibo-managed agent-facing descriptions.
 
 #### Current
 

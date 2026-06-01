@@ -167,7 +167,7 @@ This keeps browser state derived from durable workflow facts and makes reload/re
 
 ## Inspection events
 
-Workflow inspection events use Pibo-owned event names, not raw XState internals. The type surface includes events for actor creation, event dispatch, transition, snapshot, action, child workflow output, wait entered, and wait resumed.
+Workflow inspection events use Pibo-managed event names, not raw XState internals. The type surface includes events for actor creation, event dispatch, transition, snapshot, action, child workflow output, wait entered, and wait resumed.
 
 Use these events for debugging and trace correlation. Persisted workflow run facts remain the recovery source; inspection streams are auxiliary diagnostics.
 

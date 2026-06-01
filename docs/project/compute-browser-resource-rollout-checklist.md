@@ -1,6 +1,6 @@
 # Compute Browser Resource Lifecycle Rollout Checklist
 
-**Status:** Draft  
+**Status:** Draft
 **Change:** `docs/specs/changes/compute-browser-resource-lifecycle/`
 
 Use this checklist before enabling automatic browser-pool or compute-worker cleanup timers. Prefer read-only diagnostics and dry-run plans first. Do not delete Git worktrees as part of container/browser cleanup unless a separate explicit worktree cleanup command or approval is used.
@@ -39,7 +39,7 @@ Use this checklist before enabling automatic browser-pool or compute-worker clea
 - [ ] Run browser-use or the closest browser automation wrapper path repeatedly with `DISPLAY` set and record browser process counts before and after.
 - [ ] Run `pibo compute health --json` after repeated browser checks and confirm managed browser main-process counts remain bounded or warnings point to `pibo tools browser-use pool reap --json` / `pibo compute reap --dry-run --json`.
 - [ ] Confirm a stale browser-pool reap removes only Pibo-managed processes and leaves unrelated host/browser profiles untouched.
-- [ ] Confirm `pibo compute list --all --json` or equivalent shows resource policy, status, OOM flag, owner, worktree, age, and cleanup eligibility.
+- [ ] Confirm `pibo compute list --all --json` or equivalent shows resource policy, status, OOM flag, controller, worktree, age, and cleanup eligibility.
 - [ ] Confirm stopped/OOM container visibility with fixture tests or an operator-approved disposable worker; do not create OOM conditions on the shared host.
 - [ ] Confirm Ralph terminal cleanup by inspecting `pibo ralph list --json` and `pibo ralph runs --json` for released/dirty resource metadata after promise-complete, max-iteration, stop, cancel, and interrupted-run scenarios.
 
@@ -50,7 +50,7 @@ Use this checklist before enabling automatic browser-pool or compute-worker clea
 3. Land compute all-state list/reap dry-run and validate `pibo compute reap --dry-run --json` for one-time, dev, stopped, dirty, and max-age selectors.
 4. Land Docker run limits and labels.
 5. Land managed browser-pool acquire/release/reap in a Docker worker.
-6. Land Ralph resource ownership metadata and cleanup recording.
+6. Land Ralph resource stewardship metadata and cleanup recording.
 7. Run one manual apply on an operator-approved disposable browser pool or worker before enabling any timer.
 8. Enable automatic browser idle reaping only after manual validation passes.
 9. Enable broader compute reaping timers only after real Docker worker validation and operator approval.

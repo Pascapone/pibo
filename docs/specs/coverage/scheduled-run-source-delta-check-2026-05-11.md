@@ -1,8 +1,8 @@
 # Coverage Analysis: Scheduled Run Source Delta Check 2026-05-11
 
-**Status:** Draft  
-**Created:** 2026-05-11  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage; current workspace code  
+**Status:** Draft
+**Created:** 2026-05-11
+**Controller / Source:** Scheduled Pibo Source Specs Coverage; current workspace code
 **Related docs:** `GLOSSARY.md`, `AGENTS.md`, [Direct Source Path Coverage Closure](./direct-source-path-coverage-closure-2026-05-11.md), [Source Test Gap Priorities](./source-test-gap-priorities-2026-05-11.md), [Spec Inventory Deduplication](./spec-inventory-deduplication-2026-05-11.md)
 
 ## Why
@@ -13,7 +13,7 @@ This run found no changed source files in the workspace. The visible workspace d
 
 ## Goal
 
-Future scheduled source-spec runs SHOULD create or extend capability specs only when the current workspace contains new or changed source behavior that is not already owned by an existing spec; otherwise they SHOULD record a narrow coverage or verification-readiness note.
+Future scheduled source-spec runs SHOULD create or extend capability specs only when the current workspace contains new or changed source behavior that is not already managed by an existing spec; otherwise they SHOULD record a narrow coverage or verification-readiness note.
 
 ## Scope
 

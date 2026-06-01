@@ -3,7 +3,7 @@
 **Status:** Draft
 **Created:** 2026-05-16
 **Updated:** 2026-05-17
-**Owner / Source:** `docs/reports/ink-cli-session-subset-report.md`; current workspace source
+**Controller / Source:** `docs/reports/ink-cli-session-subset-report.md`; current workspace source
 **Related docs:** `docs/specs/capabilities/cli-session-ui.md`, `docs/specs/capabilities/chat-web-trace-and-terminal-view.md`, `docs/specs/changes/ink-cli-session-ui/`
 
 ## Why

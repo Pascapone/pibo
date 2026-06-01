@@ -1,6 +1,6 @@
 ---
 name: pi-agent-harness
-description: Use when designing, specifying, implementing, or reviewing a modular system built around Pi Coding Agent / Pi Agent as an embedded agent engine. Trigger for Pi Agent docking, createAgentSession, custom tools, SessionManager, ResourceLoader, ExtensionRunner, Pi events, OpenClaw-style harnesses, plugin ecosystems, web chat channels, MCP/tool adapters, system prompt ownership, policy layers, or minimal runtimes around packages/coding-agent.
+description: Use when designing, specifying, implementing, or reviewing a modular system built around Pi Coding Agent / Pi Agent as an embedded agent engine. Trigger for Pi Agent docking, createAgentSession, custom tools, SessionManager, ResourceLoader, ExtensionRunner, Pi events, OpenClaw-style harnesses, plugin ecosystems, web chat channels, MCP/tool adapters, system prompt stewardship, policy layers, or minimal runtimes around packages/coding-agent.
 ---
 
 # Pi Agent Harness
@@ -51,7 +51,7 @@ OpenClaw reference pattern:
 - `<HOME>/code/openclaw/src/agents/pi-tools.ts` - OpenClaw tool catalog assembler.
 - `<HOME>/code/openclaw/src/agents/pi-tool-definition-adapter.ts` - OpenClaw tool to Pi `ToolDefinition` adapter.
 - `<HOME>/code/openclaw/src/agents/pi-embedded-runner/tool-split.ts` - custom-tool authority pattern.
-- `<HOME>/code/openclaw/src/agents/pi-embedded-runner/system-prompt.ts` - external system prompt ownership.
+- `<HOME>/code/openclaw/src/agents/pi-embedded-runner/system-prompt.ts` - external system prompt stewardship.
 - `<HOME>/code/openclaw/src/agents/pi-embedded-subscribe.ts` - Pi event subscription to product output.
 - `<HOME>/code/openclaw/src/plugins/types.ts` - broad plugin-hook vocabulary, useful as design reference.
 
@@ -159,7 +159,7 @@ For MCP, browser tools, filesystem tools, subprocesses, message sending, or host
 
 OpenClaw reference: `src/agents/pi-tool-definition-adapter.ts`.
 
-## Prompt Ownership
+## Prompt Stewardship
 
 Pi can build a good default system prompt, but a product harness usually needs one explicit runtime contract.
 

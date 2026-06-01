@@ -1,8 +1,8 @@
 # Spec: Data Maintenance CLI
 
-**Status:** Current  
-**Created:** 2026-05-11  
-**Updated:** 2026-06-01  
+**Status:** Current
+**Created:** 2026-05-11
+**Updated:** 2026-06-01
 **Related docs:** [Pibo Data Store and Chat Ingestion](./pibo-data-store-and-ingestion.md), [Operator CLI Discovery and Dispatch](./operator-cli-discovery-and-dispatch.md), [Pibo Session Store](./pibo-session-store.md)
 
 ## Purpose
@@ -46,7 +46,7 @@ Pibo has one product app space after login. Data maintenance commands must not c
 | Compact discovery and JSON output | `src/data/cli.ts`, `test/data-cli.test.mjs` |
 | Session import idempotency | `src/data/cli.ts`, `test/pibo-data-session-store.test.mjs` |
 | Final cutover inspect/dry-run/apply | `src/data/final-app-space-cutover-migration.ts`, `test/final-app-space-cutover-migration.test.mjs` |
-| Fresh app-space schemas | `test/app-context-fresh-schema.test.mjs`, `test/ownerless-fresh-runtime-regression.test.mjs` |
+| Fresh app-space schemas | `test/app-context-fresh-schema.test.mjs`, `test/app-global-fresh-runtime-regression.test.mjs` |
 
 ## Notes
 

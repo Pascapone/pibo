@@ -76,8 +76,8 @@ async function startSignalWebHost(options = {}) {
 	};
 }
 
-function createSession(store, id, ownerScope = "user:user-1", parentId, metadata) {
-	return store.create({ id, channel: "test", kind: parentId ? "subagent" : "runtime", profile: "test-profile", ownerScope, parentId, metadata });
+function createSession(store, id, parentId, metadata) {
+	return store.create({ id, channel: "test", kind: parentId ? "subagent" : "runtime", profile: "test-profile", parentId, metadata });
 }
 
 function findSessionNode(nodes, piboSessionId) {
@@ -136,8 +136,8 @@ test("chat signal tree snapshot includes descendants", async () => {
 	const { channel, baseURL, sessions, signals } = await startSignalWebHost();
 	try {
 		const root = createSession(sessions, "ps_tree_root");
-		const child = createSession(sessions, "ps_tree_child", "user:user-1", root.id);
-		const grandchild = createSession(sessions, "ps_tree_grandchild", "user:user-1", child.id);
+		const child = createSession(sessions, "ps_tree_child", root.id);
+		const grandchild = createSession(sessions, "ps_tree_grandchild", child.id);
 		for (const session of [root, child, grandchild]) signals.project({ type: "session_created", session });
 
 		const response = await fetch(`${baseURL}/api/chat/signals/tree/${root.id}`, { headers: { "x-test-user": "user-1" } });
@@ -183,7 +183,7 @@ test("chat signal SSE rejects missing root session id", async () => {
 test("chat signal SSE is app-global for an existing root", async () => {
 	const { channel, baseURL, sessions, signals } = await startSignalWebHost();
 	try {
-		const session = createSession(sessions, "ps_signal_sse_owner");
+		const session = createSession(sessions, "ps_signal_sse_account");
 		signals.project({ type: "session_created", session });
 		const response = await fetch(`${baseURL}/api/chat/signals/events?rootPiboSessionId=${session.id}`, { headers: { "x-test-user": "user-2" } });
 		assert.equal(response.status, 200);

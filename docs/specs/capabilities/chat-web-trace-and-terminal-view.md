@@ -3,7 +3,7 @@
 **Status:** Draft
 **Created:** 2026-05-10
 **Updated:** 2026-05-11
-**Owner / Source:** Scheduled Pibo Source Specs Coverage
+**Controller / Source:** Scheduled Pibo Source Specs Coverage
 **Related docs:** [Chat Web Rooms and Event Streams](./chat-web-rooms-and-event-streams.md), [Pibo Data Store and Chat Ingestion](./pibo-data-store-and-ingestion.md), [Pibo Session Routing](./pibo-session-routing.md), [Pibo Session Signals](./pibo-session-signals.md), [Yielded Run Control](./yielded-run-control.md)
 
 ## Why
@@ -20,7 +20,7 @@ Pibo MUST materialize authenticated Chat Web trace data into stable ordered trac
 
 The server builds trace views in `src/apps/chat/trace.ts` from Pibo Sessions, Chat Web stored events, Pi transcript entries, and session metadata. The shared trace engine in `src/shared/trace-engine.ts` maps transcript entries and output events to `PiboTraceNode` records, deduplicates events, merges live deltas, orders nodes with `TraceOrderKey`, links child subagent sessions, and can patch an existing view with a single stored event.
 
-Chat Web exposes `/api/chat/trace/summary`, `/api/chat/trace`, and a debug-only trace-at-sequence endpoint from `src/apps/chat/web-app.ts`. These endpoints require the authenticated web session, resolve only owned sessions, use ETags based on trace versions, page trace events, optionally include a bounded raw-event tail, and cache structural trace views without raw events.
+Chat Web exposes `/api/chat/trace/summary`, `/api/chat/trace`, and a debug-only trace-at-sequence endpoint from `src/apps/chat/web-app.ts`. These endpoints require the authenticated web session, resolve only managed sessions, use ETags based on trace versions, page trace events, optionally include a bounded raw-event tail, and cache structural trace views without raw events.
 
 The active frontend session view is the compact terminal in `src/apps/chat-ui/src/session-views/compact-terminal/*`. It derives terminal rows from trace nodes, hides model reasoning unless enabled, groups routine exploration tools, shows profile/model/breadcrumb/session-derivation context, supports sticky scrolling, preserves row identity during live patches, exposes expandable details, and lets users open linked sessions or fork from user-message rows.
 

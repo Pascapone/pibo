@@ -1,8 +1,8 @@
 # Coverage Analysis: Capability Seam Gap Analysis 2026-05-11
 
-**Status:** Draft  
-**Created:** 2026-05-11  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage; current workspace code  
+**Status:** Draft
+**Created:** 2026-05-11
+**Controller / Source:** Scheduled Pibo Source Specs Coverage; current workspace code
 **Related docs:** [Source Specs Gap Analysis 2026-05-11](./source-specs-gap-analysis-2026-05-11.md), [Model Provider Auth and Session Model Selection](../capabilities/model-provider-auth-and-session-selection.md), [Custom Agents and Agent Designer](../capabilities/custom-agents.md), [Local Gateway Protocol and Lifecycle](../capabilities/local-gateway-protocol-and-lifecycle.md), [Pibo Session Store](../capabilities/pibo-session-store.md)
 
 ## Why
@@ -54,7 +54,7 @@ This behavior is covered at a product level by `model-provider-auth-and-session-
 
 `src/apps/chat/agent-profiles.ts` converts custom-agent records into dynamic profile definitions. The behavior includes alias registration, selected built-in tools, MCP servers, Pi packages, run control, model/thinking/fast settings, native tools, subagents, skills, and context files. Tests verify that unknown skills and context files are skipped with warnings rather than breaking profile creation.
 
-This is properly owned by `custom-agents.md`; a separate spec would duplicate the Agent Designer and dynamic-profile contract.
+This is properly managed by `custom-agents.md`; a separate spec would duplicate the Agent Designer and dynamic-profile contract.
 
 #### Acceptance for a future spec update
 

@@ -1,8 +1,8 @@
 # Spec: Pibo Observability and Debug Telemetry
 
-**Status:** Draft  
-**Created:** 2026-05-16  
-**Owner / Source:** User request in Pibo session `ps_d9c7dfdf-3959-4236-ad89-d4ffab3f7066`  
+**Status:** Draft
+**Created:** 2026-05-16
+**Controller / Source:** User request in Pibo session `ps_d9c7dfdf-3959-4236-ad89-d4ffab3f7066`
 **Related docs:** `docs/specs/capabilities/debug-cli.md`, `docs/specs/capabilities/pibo-event-contract.md`, `docs/specs/capabilities/pibo-data-store-and-ingestion.md`, `docs/specs/capabilities/pibo-session-signals.md`, `docs/specs/capabilities/local-gateway-protocol-and-lifecycle.md`, `docs/reports/incident-2026-05-16-stuck-toolcall-stream.md`
 
 ## Why

@@ -1,7 +1,7 @@
 # PRD: Pibo Observability and Debug Telemetry — Runtime, Provider, and Tool Capture
 
-**Status:** Draft  
-**Created:** 2026-05-16  
+**Status:** Draft
+**Created:** 2026-05-16
 **Related docs:** `../spec.md`, `../design.md`, `../tasks.md`, `../../../../reports/incident-2026-05-16-stuck-toolcall-stream.md`
 
 ## 1. Executive Summary
@@ -79,8 +79,8 @@
 
 - **Integration Points**:
   - `src/core/session-router.ts` and `src/core/routed-session.ts` for queue/turn state.
-  - Pi agent loop behavior as upstream package behavior to observe through Pibo-owned seams/wrappers where feasible; do not edit `node_modules`.
-  - OpenAI/Codex Responses parser behavior as provider capture targets through Pibo-owned provider wrappers/seams where feasible; do not edit `node_modules`.
+  - Pi agent loop behavior as upstream package behavior to observe through Pibo-managed seams/wrappers where feasible; do not edit `node_modules`.
+  - OpenAI/Codex Responses parser behavior as provider capture targets through Pibo-managed provider wrappers/seams where feasible; do not edit `node_modules`.
   - Existing Pibo event stream ids and normalized event persistence for correlation.
 
 - **Security & Privacy**:
@@ -96,7 +96,7 @@
   - v1.1: optional bounded sample references if preview storage is explicitly approved later.
 
 - **Technical Risks**:
-  - Some capture targets live inside dependency packages; mitigate by wrapping provider calls or adding narrow instrumentation seams in Pibo-owned code where direct edits are not appropriate.
+  - Some capture targets live inside dependency packages; mitigate by wrapping provider calls or adding narrow instrumentation seams in Pibo-managed code where direct edits are not appropriate.
   - Interleaved provider items may be mis-associated; mitigate by tracking item ids, output indexes, tool call ids, and provider request ids.
   - Telemetry writes may slow streaming or grow storage too quickly; mitigate with bounded summaries, counters, aggregation/sampling, and best-effort error isolation.
   - Argument parsing may be expensive or unsafe on partial JSON; mitigate with byte limits and tolerant parse-state detection.

@@ -3,7 +3,7 @@
 **Status:** Draft
 **Created:** 2026-05-10
 **Updated:** 2026-05-17
-**Owner / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code
+**Controller / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code
 **Related docs:** [Chat Web Rooms and Event Streams](./chat-web-rooms-and-event-streams.md), [Chat Web Cache and Live State](./chat-web-cache-and-live-state.md), [Custom Agents and Agent Designer](./custom-agents.md), [Pibo Session Signals](./pibo-session-signals.md)
 
 ## Why
@@ -29,7 +29,7 @@ Bootstrap additionally loads catalog data through `loadBootstrapCatalog()`, incl
 - `GET /api/chat/bootstrap` response behavior.
 - `GET /api/chat/navigation` response behavior.
 - `GET /api/chat/catalog` response behavior for bootstrap catalog refreshes.
-- Owner-scoped session and room selection from `piboSessionId` and `roomId` query parameters.
+- Controller-scoped session and room selection from `piboSessionId` and `roomId` query parameters.
 - Default room and default session creation when no session is requested.
 - Room-scoped visible session tree construction, archived filtering, unread counts, and signal status overlays.
 - Bootstrap catalog loading, caching, invalidation boundaries, app-space caveats, and response shape.
@@ -44,13 +44,13 @@ Bootstrap additionally loads catalog data through `loadBootstrapCatalog()`, incl
 
 ## Requirements
 
-### Requirement: Bootstrap and navigation require authenticated owner context
+### Requirement: Bootstrap and navigation require authenticated controller context
 
-The system MUST require an authenticated web session before returning bootstrap or navigation data, and all returned sessions, rooms, agents, and mutable catalog rows MUST be scoped to that session's owner or to registered read-only product capabilities.
+The system MUST require an authenticated web session before returning bootstrap or navigation data, and all returned sessions, rooms, agents, and mutable catalog rows MUST be scoped to that session's controller or to registered read-only product capabilities.
 
 #### Current
 
-Both endpoint handlers call `requireSession()`. Session lookup uses shared resource semantics and selected-session validation checks resource existence/state, not auth-owner equality.
+Both endpoint handlers call `requireSession()`. Session lookup uses shared resource semantics and selected-session validation checks resource existence/state, not auth-controller equality.
 
 #### Target
 
@@ -63,7 +63,7 @@ A browser cannot use another user's room id or Pibo Session id to discover state
 - Room trees contain app context rooms.
 - Custom agents are serialized from the app context resource set, while plugin profiles and product capabilities remain read-only catalog entries.
 
-#### Scenario: Cross-owner session is requested
+#### Scenario: Cross-controller session is requested
 
 - GIVEN user A owns session `ps_a`
 - AND user B is authenticated
@@ -104,7 +104,7 @@ The API MUST return session trees for the selected room, include the selected se
 
 #### Current
 
-`visibleSessionsInRoom()` filters owned sessions by selected room, maps legacy roomless sessions into the default room, adds the selected session if absent, and calls `visibleSessionRecords()` with `includeArchived`.
+`visibleSessionsInRoom()` filters managed sessions by selected room, maps legacy roomless sessions into the default room, adds the selected session if absent, and calls `visibleSessionRecords()` with `includeArchived`.
 
 #### Target
 
@@ -126,9 +126,9 @@ Navigation reflects the selected room without losing the current selection or sh
 - WHEN bootstrap runs with `includeArchived=true`
 - THEN the child is returned with archived state.
 
-### Requirement: Read markers and unread counts are computed for visible owner state
+### Requirement: Read markers and unread counts are computed for visible controller state
 
-The API MUST compute unread counts from owner-visible, non-archived sessions and MUST support explicit selected-subtree read marking during bootstrap.
+The API MUST compute unread counts from controller-visible, non-archived sessions and MUST support explicit selected-subtree read marking during bootstrap.
 
 #### Current
 
@@ -252,7 +252,7 @@ Repeated bootstrap calls avoid unnecessary catalog work, while settings and Agen
 
 ## Success Criteria
 
-- [ ] SC-001: Bootstrap and navigation reject cross-owner requested sessions and room mismatches.
+- [ ] SC-001: Bootstrap and navigation reject cross-controller requested sessions and room mismatches.
 - [ ] SC-002: Missing selection creates or reuses a default session in the requested or default room.
 - [ ] SC-003: Bootstrap includes catalog fields; navigation omits them.
 - [ ] SC-004: `markRead=true` on bootstrap clears unread counts for the selected session subtree.
@@ -265,7 +265,7 @@ Repeated bootstrap calls avoid unnecessary catalog work, while settings and Agen
 ### Assumptions
 
 - The Chat Web browser uses bootstrap for full app initialization and navigation for cheaper refreshes.
-- Registered plugin capabilities are read-only product catalog entries and can be shared across owners.
+- Registered plugin capabilities are read-only product catalog entries and can be shared across controllers.
 - Custom agents are app context resources in cached bootstrap catalog paths.
 
 ### Decisions
@@ -281,10 +281,10 @@ Repeated bootstrap calls avoid unnecessary catalog work, while settings and Agen
 
 | Requirement | Scenario / Story | Source Basis | Status |
 |---|---|---|---|
-| Bootstrap and navigation require authenticated owner context | Cross-owner session is requested | `src/apps/chat/web-app.ts`; positive-path auth in `test/web-channel.test.mjs` | Partial; cross-owner bootstrap/navigation rejection is source-inspected but lacks a targeted test |
+| Bootstrap and navigation require authenticated controller context | Cross-controller session is requested | `src/apps/chat/web-app.ts`; positive-path auth in `test/web-channel.test.mjs` | Partial; cross-controller bootstrap/navigation rejection is source-inspected but lacks a targeted test |
 | Selection resolves to a valid room-scoped Pibo Session | Session-room mismatch | `src/apps/chat/web-app.ts`; room-scoped positive paths in `test/web-channel.test.mjs` | Partial; mismatch rejection is source-inspected but lacks a targeted test |
 | Visible session trees are room-filtered and archive-aware | Archived child is hidden by default | `src/apps/chat/web-app.ts`, `test/web-channel.test.mjs` | Implemented |
-| Read markers and unread counts are computed for visible owner state | Bootstrap marks selected subtree read | `src/apps/chat/web-app.ts`, `src/apps/chat/data/read-state-service.ts`, `test/web-channel.test.mjs` | Implemented |
+| Read markers and unread counts are computed for visible controller state | Bootstrap marks selected subtree read | `src/apps/chat/web-app.ts`, `src/apps/chat/data/read-state-service.ts`, `test/web-channel.test.mjs` | Implemented |
 | Runtime and signal state overlays do not replace durable session identity | Running signal overlays selected session | `src/apps/chat/web-app.ts`, `test/chat-signals-api.test.mjs` | Implemented |
 | Bootstrap returns full catalog state and navigation omits it | Cheap navigation refresh | `src/apps/chat/web-app.ts`, `src/apps/chat-ui/src/types.ts`, `test/web-channel.test.mjs` | Implemented; `/api/chat/catalog` source-inspected |
 | Bootstrap catalog cache is short-lived, invalidated by catalog mutations, and safe for shared custom agents | User skill catalog changes; shared custom agents invalidate correctly after mutations | `src/apps/chat/web-app.ts` | Partial; invalidation is source-inspected, the shared custom-agent behavior is decided, and code follow-up may add direct cache invalidation coverage |

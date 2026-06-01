@@ -2,14 +2,14 @@
 
 **Status:** Draft
 **Created:** 2026-05-10
-**Owner / Source:** Scheduled Pibo Source Specs Coverage
+**Controller / Source:** Scheduled Pibo Source Specs Coverage
 **Related docs:** [Local Config CLI](./local-config-cli.md), [Pibo Data Store and Chat Ingestion](./pibo-data-store-and-ingestion.md), [Runtime Prompt and Compaction Configuration](./runtime-prompt-and-compaction.md), [Pibo Runtime Assembly and Profile Inspection](./pibo-runtime-assembly-and-inspection.md), [Pibo Pi Packages](./pi-packages.md)
 
 ## Why
 
 Pibo stores both user-wide product state and workspace-local runtime customization. Agents and operators need predictable paths so they can inspect, back up, isolate, and debug Pibo without mixing global account data with repository-local agent configuration.
 
-The current code uses two storage roots: a Pibo home directory for owner-wide product services, and each runtime workspace's `.pibo/` directory for workspace-scoped prompt and package state. This spec captures that boundary as a durable behavior contract.
+The current code uses two storage roots: a Pibo home directory for controller-wide product services, and each runtime workspace's `.pibo/` directory for workspace-scoped prompt and package state. This spec captures that boundary as a durable behavior contract.
 
 ## Goal
 
@@ -67,7 +67,7 @@ All product-wide default paths use this resolver or an equivalent resolver with 
 
 ### Requirement: Product-wide stores live under Pibo home by default
 
-The system MUST keep owner-wide product services in Pibo home unless a caller passes an explicit path.
+The system MUST keep controller-wide product services in Pibo home unless a caller passes an explicit path.
 
 #### Current
 
@@ -162,7 +162,7 @@ Session resume, fork, clone, subagent delegation, trace metadata, file download,
 - WHEN the gateway restarts and receives input for that Pibo Session
 - THEN the runtime is recreated with `/work/project-a` as its cwd
 
-### Requirement: Path APIs create only their owned directories
+### Requirement: Path APIs create only their managed directories
 
 The system MUST create parent directories only for the store or workspace state it owns, and MUST NOT create unrelated source or user directories as a side effect of path resolution alone.
 
@@ -230,7 +230,7 @@ An agent can discover where Pibo is reading and writing product state without in
 - [ ] SC-001: A test can set `PIBO_HOME` and observe all default product stores under that directory.
 - [ ] SC-002: A test can save workspace-local prompts or Pi packages in two workspaces without cross-writing state.
 - [ ] SC-003: A routed session created with an explicit workspace resumes with the same cwd after router recreation.
-- [ ] SC-004: Missing config/model-default JSON loads do not create files, while save operations create only owned parent directories.
+- [ ] SC-004: Missing config/model-default JSON loads do not create files, while save operations create only managed parent directories.
 - [ ] SC-005: Debug or config discovery surfaces the active Pibo home or default config path.
 
 ## Assumptions and Open Questions
@@ -256,7 +256,7 @@ An agent can discover where Pibo is reading and writing product state without in
 | REQ-003 Workspace state is local to the effective workspace | Two workspaces with different prompts | Add workspace isolation tests | Pending |
 | REQ-004 Default workspace is stable for runtimes | Scheduled job without explicit workspace | Add scheduler/router workspace tests | Pending |
 | REQ-005 Pibo Sessions persist effective workspace identity | Resume session after gateway restart | Add routed resume workspace test | Pending |
-| REQ-006 Path APIs create only their owned directories | Read-only discovery | Add no-write load tests | Pending |
+| REQ-006 Path APIs create only their managed directories | Read-only discovery | Add no-write load tests | Pending |
 | REQ-007 Path discovery is operator-visible | Agent diagnoses wrong home | Add CLI snapshot/contract test | Pending |
 
 ## Verification Basis

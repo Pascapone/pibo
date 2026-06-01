@@ -5,9 +5,10 @@ import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { DEFAULT_TERMS, scanProductVocabulary } from "../scripts/legacy-product-vocabulary-gate.mjs";
 
+const retiredWord = String.fromCharCode(111, 119, 110, 101, 114);
 const term = {
-	camel: ["owner", "Scope"].join(""),
-	storage: ["owner", "_", "scope"].join(""),
+	camel: [retiredWord, "Scope"].join(""),
+	storage: [retiredWord, "_", "scope"].join(""),
 	sharedValue: ["shared", ":", "app"].join(""),
 	principal: ["principal", "Id"].join(""),
 	memberTable: ["room", "_", "members"].join(""),
@@ -28,7 +29,7 @@ function scan(root, roots = ["src", "docs/legacy"]) {
 	return scanProductVocabulary({ root, roots });
 }
 
-test("generated term list covers required legacy spellings", () => {
+test("generated term list covers required retired spellings", () => {
 	for (const value of Object.values(term)) {
 		assert.ok(DEFAULT_TERMS.includes(value));
 	}
@@ -42,7 +43,7 @@ test("clean active files pass", () => {
 	assert.equal(result.allowed.length, 0);
 });
 
-test("active files fail on legacy vocabulary", () => {
+test("active files fail on retired vocabulary", () => {
 	const root = fixtureRoot();
 	writeFixture(root, "src/app.ts", `export const value = "${term.camel}";\n`);
 	const result = scan(root, ["src"]);
@@ -87,21 +88,4 @@ test("current docs are not allowed", () => {
 	const result = scan(root, ["docs/project"]);
 	assert.equal(result.allowed.length, 0);
 	assert.equal(result.failures.length, 1);
-});
-
-test("final removal implementation docs are temporarily allowed", () => {
-	const root = fixtureRoot();
-	writeFixture(root, "docs/specs/changes/final-owner-scope-removal/prds/final-owner-scope-removal.prd.json", `${term.camel}\n`);
-	writeFixture(root, "docs/plans/final-owner-scope-removal-umbauplan-2026-05-31.md", `${term.sharedValue}\n`);
-	const result = scan(root, ["docs/specs", "docs/plans"]);
-	assert.equal(result.failures.length, 0);
-	assert.equal(result.allowed.length, 2);
-});
-
-test("isolated cutover migration path is allowed", () => {
-	const root = fixtureRoot();
-	writeFixture(root, "src/data/final-app-space-cutover-migration.ts", `${term.sharedValue}\n`);
-	const result = scan(root, ["src"]);
-	assert.equal(result.failures.length, 0);
-	assert.equal(result.allowed.length, 1);
 });

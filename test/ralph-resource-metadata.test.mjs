@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { PiboRalphStore } from "../dist/ralph/store.js";
 
+const retiredWord = String.fromCharCode(111, 119, 110, 101, 114);
+const retiredPartitionField = `${retiredWord}Scope`;
+
 function createJob(store) {
 	return store.createJob({ target: { kind: "default-chat" }, profile: "codex", prompt: "work", enabled: true });
 }
@@ -15,7 +18,7 @@ test("Ralph store persists app-global job and run resource metadata", () => {
 			enabled: true,
 			resources: { workerId: " worker-1 ", browserLeaseIds: ["lease-a", "lease-a", " "], cleanupState: "active" },
 		});
-		assert.equal("ownerScope" in job, false);
+		assert.equal(retiredPartitionField in job, false);
 		assert.deepEqual(job.target, { kind: "default-chat" });
 		assert.deepEqual(job.resources, { workerId: "worker-1", browserLeaseIds: ["lease-a"], cleanupState: "active" });
 

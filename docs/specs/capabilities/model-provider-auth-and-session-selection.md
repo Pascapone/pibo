@@ -2,7 +2,7 @@
 
 **Status:** Draft
 **Created:** 2026-05-10
-**Owner / Source:** Scheduled Pibo Source Specs Coverage
+**Controller / Source:** Scheduled Pibo Source Specs Coverage
 **Related docs:** [Pibo Session Routing](./pibo-session-routing.md), [Runtime Prompt and Compaction Configuration](./runtime-prompt-and-compaction.md), [Web Auth and Same-Origin Host](./web-auth-and-same-origin-host.md)
 
 ## Why
@@ -17,7 +17,7 @@ Define how Pibo discovers model providers, stores provider credentials, chooses 
 
 ## Background / Current State
 
-Pibo builds the model catalog from Pi Coding Agent services, groups models by provider, and annotates each provider with auth status. Model defaults live in Pibo home as `model-defaults.json`. User settings live in Pibo home as `user-settings.json` and are keyed by the app context compatibility key. Older owner-keyed entries are migration fallback only.
+Pibo builds the model catalog from Pi Coding Agent services, groups models by provider, and annotates each provider with auth status. Model defaults live in Pibo home as `model-defaults.json`. User settings live in Pibo home as `user-settings.json` and are keyed by the app context compatibility key. Older controller-keyed entries are migration fallback only.
 
 When the Session Router creates a routed runtime, it resolves the Pibo Session's active model from the stored session record first, then profile overrides, then main/subagent defaults. If a resolved model exists and the session has no stored active model, the router backfills the session store so later default changes do not alter that Pibo Session.
 
@@ -250,7 +250,7 @@ The compact terminal maps `login` tool output with `action: "show_login_menu"` t
 
 #### Target
 
-Provider operations remain usable from slash-command output while preserving session ownership, avoiding accidental credential display, and degrading safely when payloads cannot be parsed.
+Provider operations remain usable from slash-command output while preserving session stewardship, avoiding accidental credential display, and degrading safely when payloads cannot be parsed.
 
 #### Acceptance
 

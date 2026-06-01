@@ -2,12 +2,12 @@
 
 **Status:** Draft
 **Created:** 2026-05-10
-**Owner / Source:** Scheduled Pibo Source Specs Coverage
+**Controller / Source:** Scheduled Pibo Source Specs Coverage
 **Related docs:** [Pibo Session Routing](./pibo-session-routing.md), [Custom Agents and Agent Designer](./custom-agents.md), [Yielded Run Control](./yielded-run-control.md)
 
 ## Why
 
-Pibo profiles can expose other profiles as callable subagents. This lets a runtime delegate bounded work while Pibo keeps product-level ownership, session hierarchy, room placement, and trace visibility.
+Pibo profiles can expose other profiles as callable subagents. This lets a runtime delegate bounded work while Pibo keeps product-level stewardship, session hierarchy, room placement, and trace visibility.
 
 Delegation is a product-boundary behavior, not only a tool implementation detail. Operators and UIs must be able to see which parent session delegated to which child session, and agents must be able to reuse a child conversation by `threadKey` without losing routing isolation.
 

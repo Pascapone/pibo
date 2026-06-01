@@ -1,15 +1,15 @@
 # Coverage Analysis: Static Assets, Sketches, and Verification Artifacts 2026-05-11
 
-**Status:** Draft  
-**Created:** 2026-05-11  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage; current workspace code and artifacts  
+**Status:** Draft
+**Created:** 2026-05-11
+**Controller / Source:** Scheduled Pibo Source Specs Coverage; current workspace code and artifacts
 **Related docs:** `GLOSSARY.md`, `AGENTS.md`, [Chat Web PWA Icon Generation](../capabilities/chat-web-pwa-icon-generation.md), [Chat Web Static Shell and PWA Assets](../capabilities/chat-web-static-shell-and-pwa-assets.md), [Pibo Workflow Framework Package](../capabilities/pibo-workflow-framework-package.md), [Core Plugin Profiles and Built-In Skill](../capabilities/core-plugin-profiles-and-built-in-skill.md), [Unreferenced Artifact Triage 2026-05-11](./unreferenced-artifact-triage-2026-05-11.md), [Direct Source Path Coverage Closure 2026-05-11](./direct-source-path-coverage-closure-2026-05-11.md)
 
 ## Why
 
 The current `docs/specs/` tree already names every TypeScript source path under `src/` and all checked-in scripts. A broader scan still finds source-adjacent artifacts that are easy to misclassify: generated PWA PNG assets, workflow package test fixtures, `.gitkeep` placeholders, and `sketches/profiles.ts`.
 
-Creating a new capability spec for these files would duplicate existing behavior contracts. This coverage artifact records their ownership so future scheduled runs can keep expanding source-backed specs without turning generated assets, tests, or abandoned sketches into false product surfaces.
+Creating a new capability spec for these files would duplicate existing behavior contracts. This coverage artifact records their stewardship so future scheduled runs can keep expanding source-backed specs without turning generated assets, tests, or abandoned sketches into false product surfaces.
 
 ## Goal
 
@@ -38,7 +38,7 @@ Future source-spec runs SHOULD treat these artifacts as covered by existing capa
 
 The public PWA image tree currently contains Android, iOS, and Windows PNG variants under `src/apps/chat-ui/public/assets/pwa-images/`. The current manifest references the Android `192x192` and `512x512` launcher icons, and the Chat UI HTML shell references the iOS `180.png` Apple touch icon.
 
-The durable behavior is already owned by `chat-web-pwa-icon-generation.md` and `chat-web-static-shell-and-pwa-assets.md`: generation must preserve served paths, install metadata must point at existing assets, and the web host/service worker must serve or cache assets under `/apps/chat/assets/`.
+The durable behavior is already managed by `chat-web-pwa-icon-generation.md` and `chat-web-static-shell-and-pwa-assets.md`: generation must preserve served paths, install metadata must point at existing assets, and the web host/service worker must serve or cache assets under `/apps/chat/assets/`.
 
 #### Future acceptance
 
@@ -69,7 +69,7 @@ The sketch is not part of the build, package exports, tests, CLI, web app, gatew
 
 - Do not create a capability spec from `sketches/profiles.ts` unless it is moved into executed source or package exports.
 - If the sketch is promoted into real code, base the spec on the promoted implementation, not the old sketch comments.
-- Until then, implemented profile behavior remains owned by `core-plugin-profiles-and-built-in-skill.md`, `pibo-runtime-assembly-and-inspection.md`, `context-files.md`, `user-skills.md`, `curated-cli-tools.md`, `subagent-delegation.md`, and `pi-packages.md`.
+- Until then, implemented profile behavior remains managed by `core-plugin-profiles-and-built-in-skill.md`, `pibo-runtime-assembly-and-inspection.md`, `context-files.md`, `user-skills.md`, `curated-cli-tools.md`, `subagent-delegation.md`, and `pi-packages.md`.
 
 ## Coverage Decision
 

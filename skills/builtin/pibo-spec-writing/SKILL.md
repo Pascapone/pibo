@@ -87,7 +87,7 @@ Use this template unless the task clearly needs a smaller artifact.
 
 **Status:** Draft | Approved | Implementing | Done
 **Created:** YYYY-MM-DD
-**Owner / Source:** [user, issue, discussion, or change]
+**Requester / Source:** [user, issue, discussion, or change]
 **Related docs:** [links]
 
 ## Why

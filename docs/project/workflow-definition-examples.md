@@ -1,6 +1,6 @@
 # Minimal Workflow Definition Examples
 
-This document shows small TypeScript-owned workflow definitions for Pibo Workflow System V1. The examples use the public `@pasko70/pibo-workflows` package surface and keep executable code behind Workflow Registry refs so definitions remain serializable.
+This document shows small TypeScript-managed workflow definitions for Pibo Workflow System V1. The examples use the public `@pasko70/pibo-workflows` package surface and keep executable code behind Workflow Registry refs so definitions remain serializable.
 
 For the overall workflow capability contract, see `docs/project/workflows.md`.
 

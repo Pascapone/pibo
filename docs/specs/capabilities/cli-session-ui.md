@@ -1,9 +1,9 @@
 # Spec: CLI Session UI
 
-**Status:** Draft  
-**Created:** 2026-05-16  
-**Updated:** 2026-05-17  
-**Owner / Source:** User request and `docs/reports/ink-cli-session-subset-report.md`  
+**Status:** Draft
+**Created:** 2026-05-16
+**Updated:** 2026-05-17
+**Controller / Source:** User request and `docs/reports/ink-cli-session-subset-report.md`
 **Related docs:** `docs/specs/capabilities/chat-web-trace-and-terminal-view.md`, `docs/specs/capabilities/local-routed-tui.md`, `docs/specs/capabilities/shared-terminal-view-model.md`, `docs/specs/changes/ink-cli-session-ui/`
 
 ## Why

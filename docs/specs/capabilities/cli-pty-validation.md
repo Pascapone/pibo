@@ -1,9 +1,9 @@
 # Spec: CLI PTY Validation
 
-**Status:** Draft  
-**Created:** 2026-05-16  
-**Updated:** 2026-05-17  
-**Owner / Source:** User investigation after Ink CLI Session UI validation gap  
+**Status:** Draft
+**Created:** 2026-05-16
+**Updated:** 2026-05-17
+**Controller / Source:** User investigation after Ink CLI Session UI validation gap
 **Related docs:** `docs/specs/changes/pty-debug-e2e-tooling/`, `docs/specs/capabilities/cli-session-ui.md`
 
 ## Why

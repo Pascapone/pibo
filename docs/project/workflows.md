@@ -21,7 +21,7 @@ V1 intentionally does not provide a full visual workflow editor, raw XState edit
 
 ## Authoring model
 
-Workflow definitions are TypeScript-owned canonical IR. Authors use the public `@pasko70/pibo-workflows` package surface and keep executable behavior outside the definition object behind registry refs.
+Workflow definitions are TypeScript-managed canonical IR. Authors use the public `@pasko70/pibo-workflows` package surface and keep executable behavior outside the definition object behind registry refs.
 
 Primary authoring helpers:
 
@@ -101,7 +101,7 @@ Additional V1 rules:
 
 - Agent nodes must use fixed profile selection.
 - Code and adapter nodes must use trusted registered TypeScript handlers.
-- Human actions must validate token status, availability, payload schema, expiry, and run ownership before resolving waits.
+- Human actions must validate token status, availability, payload schema, expiry, and run stewardship before resolving waits.
 - Inputs, outputs, state, prompts, edge payloads, wait payloads, and human action payloads are sensitive workflow data and should follow existing trace/privacy rules.
 - Diagnostics should identify code, severity, path/node/edge context, and actionable hints without leaking hidden payloads into normal UI surfaces.
 

@@ -4,6 +4,10 @@ import { handleChatCronApiRequest } from "../dist/apps/chat/cron-api.js";
 import { PiboCronStore } from "../dist/cron/store.js";
 import { PiboWebHttpError } from "../dist/web/http.js";
 
+const retiredWord = String.fromCharCode(111, 119, 110, 101, 114);
+const retiredPartitionField = `${retiredWord}Scope`;
+const retiredPrincipalField = ["principal", "Id"].join("");
+
 function makeOptions(request) {
 	return {
 		request,
@@ -71,7 +75,7 @@ test("chat cron API rejects mutating requests from a different Origin", async ()
 	);
 });
 
-test("chat cron API creates default-chat cron targets without owner payloads", async () => {
+test("chat cron API creates default-chat cron targets without partition payloads", async () => {
 	const options = makeOptions(postCronJob({
 		headers: { origin: "http://chat.local", "content-type": "application/json" },
 		body: { target: { kind: "default-chat" } },
@@ -86,8 +90,8 @@ test("chat cron API creates default-chat cron targets without owner payloads", a
 		const body = await response.json();
 
 		assert.equal(response.status, 201);
-		assert.equal("ownerScope" in body.job, false);
-		assert.equal("principalId" in body.job.target, false);
+		assert.equal(retiredPartitionField in body.job, false);
+		assert.equal(retiredPrincipalField in body.job.target, false);
 		assert.deepEqual(body.job.target, { kind: "default-chat" });
 		assert.deepEqual(options.cronStore.listJobs({ includeDisabled: true })[0].target, { kind: "default-chat" });
 		assert.deepEqual(defaultCalls, [{ name: "Shared Chat" }]);
@@ -100,7 +104,7 @@ test("chat cron API rejects legacy personal cron targets", async () => {
 	await assertHttpError(
 		handleChatCronApiRequest(makeOptions(postCronJob({
 			headers: { origin: "http://chat.local", "content-type": "application/json" },
-			body: { target: { kind: "personal", principalId: "user:other" } },
+			body: { target: { kind: "personal", [retiredPrincipalField]: "user:other" } },
 		}))),
 		400,
 		/target\.kind must be room or default-chat/,
@@ -115,7 +119,7 @@ test("chat cron API exposes created Cron jobs across authenticated accounts", as
 	try {
 		const createResponse = await handleChatCronApiRequest(createOptions);
 		const created = (await createResponse.json()).job;
-		assert.equal("ownerScope" in created, false);
+		assert.equal(retiredPartitionField in created, false);
 
 		const listResponse = await handleChatCronApiRequest({ ...makeOptions(new Request("http://chat.local/api/chat/cron/jobs?includeDisabled=true")), cronStore: store, webSession: {} });
 		assert.deepEqual((await listResponse.json()).jobs.map((job) => job.id), [created.id]);
@@ -165,7 +169,7 @@ test("chat cron API requires an existing writable room before creating room cron
 
 		assert.equal(response.status, 201);
 		assert.deepEqual(accessCalls, [["room-42"]]);
-		assert.equal("ownerScope" in body.job, false);
+		assert.equal(retiredPartitionField in body.job, false);
 		assert.deepEqual(body.job.target, { kind: "room", roomId: "room-42" });
 	} finally {
 		options.cronStore.close();

@@ -1,8 +1,8 @@
 # PRD Catalog: PTY Debug and E2E Tooling
 
-**Status:** Draft  
-**Created:** 2026-05-16  
-**Source change:** `docs/specs/changes/pty-debug-e2e-tooling/`  
+**Status:** Draft
+**Created:** 2026-05-16
+**Source change:** `docs/specs/changes/pty-debug-e2e-tooling/`
 **Capability:** `docs/specs/capabilities/cli-pty-validation.md`
 
 This directory translates the PTY Debug and E2E Tooling specs into implementation-grade Markdown PRDs and Ralph-compatible JSON story batches.

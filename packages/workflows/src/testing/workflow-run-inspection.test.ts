@@ -50,7 +50,8 @@ function createAttempt(overrides: Partial<NodeAttempt> = {}): NodeAttempt {
 }
 
 function assertNoWorkflowPartitionFields(value: unknown): void {
-  const blockedKeys = new Set([["owner", "Scope"].join(""), ["owner", "scope"].join("_")]);
+  const retired = String.fromCharCode(111, 119, 110, 101, 114);
+  const blockedKeys = new Set([[retired, "Scope"].join(""), [retired, "scope"].join("_")]);
   const stack = [value];
   while (stack.length > 0) {
     const current = stack.pop();

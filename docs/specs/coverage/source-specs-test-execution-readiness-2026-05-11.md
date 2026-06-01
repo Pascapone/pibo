@@ -1,8 +1,8 @@
 # Coverage Analysis: Source Specs Test Execution Readiness 2026-05-11
 
-**Status:** Draft  
-**Created:** 2026-05-11  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage; current workspace code and specs  
+**Status:** Draft
+**Created:** 2026-05-11
+**Controller / Source:** Scheduled Pibo Source Specs Coverage; current workspace code and specs
 **Related docs:** `GLOSSARY.md`, `AGENTS.md`, [Direct Source Path Coverage Closure](./direct-source-path-coverage-closure-2026-05-11.md), [Source Test Gap Priorities](./source-test-gap-priorities-2026-05-11.md), [Continuous Ralph Jobs](../capabilities/continuous-ralph-jobs.md), [Chat Web Projects Area](../capabilities/chat-web-projects-area.md), [Chat Web Safe Content Rendering](../capabilities/chat-web-safe-content-rendering.md)
 
 ## Why

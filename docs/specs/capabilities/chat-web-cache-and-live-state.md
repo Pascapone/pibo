@@ -1,8 +1,8 @@
 # Spec: Chat Web Cache and Live State
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code  
+**Status:** Draft
+**Created:** 2026-05-10
+**Controller / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code
 **Related docs:** [Chat Web Rooms and Event Streams](./chat-web-rooms-and-event-streams.md), [Chat Web Browser Shell State](./chat-web-browser-shell-state.md), [Chat Web Trace and Terminal View](./chat-web-trace-and-terminal-view.md), [Pibo Session Signals](./pibo-session-signals.md)
 
 ## Why

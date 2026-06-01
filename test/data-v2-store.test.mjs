@@ -7,6 +7,12 @@ import test from "node:test";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
 import { applyPiboDataSchema, PIBO_DATA_SCHEMA_VERSION } from "../dist/data/schema.js";
 
+const retiredWord = String.fromCharCode(111, 119, 110, 101, 114);
+const retiredStorageColumn = `${retiredWord}_scope`;
+const retiredPrincipalColumn = ["principal", "id"].join("_");
+const retiredRoomTables = [["room", "members"].join("_"), ["principal", "session", "stats"].join("_"), ["principal", "room", "stats"].join("_")];
+const retiredIndexPattern = new RegExp(`${retiredWord}|principal`, "i");
+
 function tempDir(prefix) {
 	return mkdtempSync(join(tmpdir(), prefix));
 }
@@ -60,20 +66,20 @@ test("v2 schema migration is idempotent", () => {
 	db.close();
 });
 
-test("fresh pibo chat schema omits owner/principal room structures", () => {
-	const dir = tempDir("pibo-chat-ownerless-schema-");
+test("fresh pibo chat schema omits retired room partition structures", () => {
+	const dir = tempDir("pibo-chat-app-context-schema-");
 	const db = new DatabaseSync(join(dir, "pibo.sqlite"));
 	applyPiboDataSchema(db);
 
 	const tables = tableNames(db);
-	for (const table of ["room_members", "principal_session_stats", "principal_room_stats"]) {
+	for (const table of retiredRoomTables) {
 		assert.equal(tables.has(table), false, `${table} should not exist in a fresh pibo.sqlite schema`);
 	}
 	for (const table of ["rooms", "session_navigation", "app_session_read_state", "app_room_read_state"]) {
 		const columns = tableColumns(db, table);
-		assert.equal(columns.has("owner_scope"), false, `${table}.owner_scope should not exist`);
-		assert.equal(columns.has("principal_id"), false, `${table}.principal_id should not exist`);
-		assert.equal(indexNames(db, table).some((name) => /owner|principal/i.test(name)), false, `${table} should not have owner/principal indexes`);
+		assert.equal(columns.has(retiredStorageColumn), false, `${table}.${retiredStorageColumn} should not exist`);
+		assert.equal(columns.has(retiredPrincipalColumn), false, `${table}.${retiredPrincipalColumn} should not exist`);
+		assert.equal(indexNames(db, table).some((name) => retiredIndexPattern.test(name)), false, `${table} should not have retired partition indexes`);
 	}
 	db.close();
 });

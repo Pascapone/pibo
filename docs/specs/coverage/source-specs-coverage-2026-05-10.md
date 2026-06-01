@@ -1,8 +1,8 @@
 # Coverage Analysis: Source Specs Coverage Snapshot
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage  
+**Status:** Draft
+**Created:** 2026-05-10
+**Controller / Source:** Scheduled Pibo Source Specs Coverage
 **Related docs:** `docs/specs/README.md`, `GLOSSARY.md`, `AGENTS.md`
 
 ## Why
@@ -62,11 +62,11 @@ Several specs mark implemented current behavior as `Draft`, while traceability r
 
 **Suggested next artifact:** `docs/specs/capabilities/spec-status-and-traceability.md` or a small extension to `docs/specs/README.md` if that file already owns conventions.
 
-### Gap: Cross-spec ownership of Chat Web v2 data vs legacy stores is hard to audit
+### Gap: Cross-spec stewardship of Chat Web v2 data vs legacy stores is hard to audit
 
 The specs correctly distinguish Pibo Session Store, Chat Web Read Model, Chat Event Log, v2 Pibo Data Store, Projects Store, Cron Store, Auth Store, and Reliability Store. However, no single current spec lists which store owns which product fact and which consumers may treat it as canonical.
 
-**Suggested next artifact:** a capability spec for local store ownership and canonical-data boundaries, unless future inspection finds this already captured in `docs/project/` and better suited as canonical documentation.
+**Suggested next artifact:** a capability spec for local store stewardship and canonical-data boundaries, unless future inspection finds this already captured in `docs/project/` and better suited as canonical documentation.
 
 ### Gap: Test coverage pointers are uneven
 

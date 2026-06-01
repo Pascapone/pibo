@@ -1,7 +1,7 @@
 # Decisions: Pibo Observability and Debug Telemetry
 
-**Status:** Draft decisions in progress  
-**Created:** 2026-05-16  
+**Status:** Draft decisions in progress
+**Created:** 2026-05-16
 **Source:** User review before Ralph implementation loop
 
 ## Decided
@@ -52,7 +52,7 @@
    - Stale/status output should show the applied threshold and whether it came from provider/profile config or a default.
 
 10. **Dependency instrumentation policy**
-    - Prefer Pibo-owned wrappers/seams. Do not edit `node_modules` directly.
+    - Prefer Pibo-managed wrappers/seams. Do not edit `node_modules` directly.
     - During implementation, inspect Pi agent/provider extension points before introducing patches.
 
 11. **Provider event storage policy**

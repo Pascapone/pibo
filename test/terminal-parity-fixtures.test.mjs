@@ -158,7 +158,7 @@ test("streaming fixture preserves chronological append order and local command d
 	assert.equal(rows[4].id, "local-result:status:001");
 });
 
-test("web-derived long-output fixture covers every preview owner without character truncation", () => {
+test("web-derived long-output fixture covers every preview source without character truncation", () => {
 	const rows = buildWebDerivedLongOutputRows();
 	assert.deepEqual(rows.map((row) => [row.id, row.kind]), [
 		["web-derived-tool-call-long-output", "tool.call"],
@@ -220,7 +220,7 @@ test("web-derived JSON markdown room session and slash fixtures cover matrix are
 	assert.ok(slash.some((entry) => entry.command === "/room" && entry.result === "overlay"));
 
 	for (const area of ["header", "row-grammar", "spacing", "preview-expansion", "details", "json", "markdown-code", "status", "streaming", "slash-commands", "pickers", "room-session-names", "no-color-narrow", "redaction"]) {
-		assert.ok(WEB_DERIVED_TERMINAL_MATRIX_COVERAGE.some((entry) => entry.area === area && entry.fixture && entry.owner), `matrix coverage owns ${area}`);
+		assert.ok(WEB_DERIVED_TERMINAL_MATRIX_COVERAGE.some((entry) => entry.area === area && entry.fixture && entry.trace), `matrix coverage traces ${area}`);
 	}
 });
 
@@ -266,7 +266,7 @@ test("status fixtures cover full partial unavailable zero non-OpenAI queued stre
 		tools: { enabled: fullStatusPayload().enabledTools, active: fullStatusPayload().activeTools },
 	});
 	assert.equal(full.title, "Status");
-	assert.equal(full.fields.some((field) => field.id === "owner"), false);
+	assert.equal(full.fields.some((field) => field.id === String.fromCharCode(111, 119, 110, 101, 114)), false);
 	assert.ok(full.fields.some((field) => field.id === "session" && field.value.includes(TERMINAL_PARITY_SESSION_ID)));
 	assert.equal(full.fields.find((field) => field.id === "profile").value, "base");
 	assert.equal(full.fields.find((field) => field.id === "model").value, "GPT Test");

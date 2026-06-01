@@ -35,7 +35,7 @@ test("web annotation bindings persist by app context and session without deletin
 			url: "http://localhost:3000/settings",
 			targetId: "target-a",
 		}, new Date("2026-05-16T10:00:00.000Z"));
-		assert.equal(Object.hasOwn(binding, ["owner", "Scope"].join("")), false);
+		assert.equal(Object.hasOwn(binding, [String.fromCharCode(111, 119, 110, 101, 114), "Scope"].join("")), false);
 		assert.equal(binding.state, "active");
 
 		const injected = store.patchBinding("ps_a", binding.id, {

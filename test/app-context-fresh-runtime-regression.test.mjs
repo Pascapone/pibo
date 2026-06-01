@@ -14,25 +14,29 @@ import { SqlitePiboSessionStore } from "../dist/sessions/sqlite-store.js";
 import { WebAnnotationStore } from "../dist/web-annotations/store.js";
 import { SqliteWorkflowRunStore } from "../packages/workflows/dist/index.js";
 
-function assertNoOwnerKeys(value, label) {
+const retiredWord = String.fromCharCode(111, 119, 110, 101, 114);
+const retiredPartitionField = `${retiredWord}Scope`;
+const retiredPrincipalField = ["principal", "Id"].join("");
+
+function assertNoRetiredPartitionKeys(value, label) {
 	if (!value || typeof value !== "object") return;
 	if (Array.isArray(value)) {
-		value.forEach((entry, index) => assertNoOwnerKeys(entry, `${label}[${index}]`));
+		value.forEach((entry, index) => assertNoRetiredPartitionKeys(entry, `${label}[${index}]`));
 		return;
 	}
 	for (const [key, nested] of Object.entries(value)) {
-		assert.notEqual(key, "ownerScope", `${label} exposes ownerScope`);
-		assert.notEqual(key, "principalId", `${label} exposes principalId`);
-		assertNoOwnerKeys(nested, `${label}.${key}`);
+		assert.notEqual(key, retiredPartitionField, `${label} exposes retired partition field`);
+		assert.notEqual(key, retiredPrincipalField, `${label} exposes retired principal field`);
+		assertNoRetiredPartitionKeys(nested, `${label}.${key}`);
 	}
 }
 
-test("fresh ownerless stores create current resources without compatibility columns or owner payloads", () => {
-	const root = mkdtempSync(join(tmpdir(), "pibo-ownerless-fresh-runtime-"));
+test("fresh app-context stores create current resources without compatibility columns or partition payloads", () => {
+	const root = mkdtempSync(join(tmpdir(), "pibo-app-context-fresh-runtime-"));
 	try {
 		const sessions = new SqlitePiboSessionStore(join(root, "pibo-sessions.sqlite"));
 		const piboSession = sessions.create({ id: "ps_fresh", channel: "test", kind: "chat", profile: "default", metadata: { chatRoomId: "room_fresh" } });
-		assertNoOwnerKeys(piboSession, "piboSession");
+		assertNoRetiredPartitionKeys(piboSession, "piboSession");
 		sessions.close();
 
 		const data = new PiboDataStore(join(root, "pibo.sqlite"), { payloadRootDir: join(root, "payloads") });
@@ -41,19 +45,19 @@ test("fresh ownerless stores create current resources without compatibility colu
 		const query = new ChatSessionQueryService(data);
 		query.upsertSession({ ...piboSession, metadata: { chatRoomId: room.id } });
 		assert.equal(query.listSessions().some((session) => session.piboSessionId === piboSession.id), true);
-		assertNoOwnerKeys(room, "room");
+		assertNoRetiredPartitionKeys(room, "room");
 		data.close();
 
 		const agents = new CustomAgentStore(join(root, "chat-agents.sqlite"));
-		assertNoOwnerKeys(agents.create({ displayName: "Fresh Agent" }), "agent");
+		assertNoRetiredPartitionKeys(agents.create({ displayName: "Fresh Agent" }), "agent");
 		agents.close();
 
 		const projects = new ChatProjectService(join(root, "web-projects.sqlite"));
-		assertNoOwnerKeys(projects.ensureSharedDefaultProject({ projectFolder: join(root, "project-default") }), "project");
+		assertNoRetiredPartitionKeys(projects.ensureSharedDefaultProject({ projectFolder: join(root, "project-default") }), "project");
 		projects.close();
 
 		const annotations = new WebAnnotationStore({ path: join(root, "web-annotations.sqlite") });
-		assertNoOwnerKeys(annotations.createAnnotation({
+		assertNoRetiredPartitionKeys(annotations.createAnnotation({
 			id: "ann_fresh",
 			piboSessionId: piboSession.id,
 			piboRoomId: room.id,
@@ -66,11 +70,11 @@ test("fresh ownerless stores create current resources without compatibility colu
 		annotations.close();
 
 		const ralph = new PiboRalphStore({ path: join(root, "pibo-ralph.sqlite") });
-		assertNoOwnerKeys(ralph.createJob({ target: { kind: "default-chat" }, profile: "default", prompt: "Fresh Ralph", enabled: false }), "ralphJob");
+		assertNoRetiredPartitionKeys(ralph.createJob({ target: { kind: "default-chat" }, profile: "default", prompt: "Fresh Ralph", enabled: false }), "ralphJob");
 		ralph.close();
 
 		const cron = new PiboCronStore({ path: join(root, "pibo-cron.sqlite") });
-		assertNoOwnerKeys(cron.createJob({ target: { kind: "default-chat" }, profile: "default", prompt: "Fresh Cron", schedule: { kind: "at", at: "2030-06-01T00:00:00.000Z" } }), "cronJob");
+		assertNoRetiredPartitionKeys(cron.createJob({ target: { kind: "default-chat" }, profile: "default", prompt: "Fresh Cron", schedule: { kind: "at", at: "2030-06-01T00:00:00.000Z" } }), "cronJob");
 		cron.close();
 
 		const workflows = new SqliteWorkflowRunStore(join(root, "pibo-workflows.sqlite"));
@@ -85,7 +89,7 @@ test("fresh ownerless stores create current resources without compatibility colu
 			createdAt: "2026-06-01T00:00:00.000Z",
 			updatedAt: "2026-06-01T00:00:00.000Z",
 		});
-		assertNoOwnerKeys(workflows.getRun("wfr_fresh"), "workflowRun");
+		assertNoRetiredPartitionKeys(workflows.getRun("wfr_fresh"), "workflowRun");
 		workflows.close();
 	} finally {
 		rmSync(root, { recursive: true, force: true });

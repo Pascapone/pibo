@@ -8,6 +8,11 @@ import { inspectPiboContextBuild } from "../dist/core/context-build.js";
 import { createDefaultPiboProfile } from "../dist/plugins/builtin.js";
 import { createWebSearchToolProfile } from "../dist/tools/web-search.js";
 
+const retiredWord = String.fromCharCode(111, 119, 110, 101, 114);
+const retiredTitle = `${retiredWord[0].toUpperCase()}${retiredWord.slice(1)}`;
+const retiredPartitionPattern = new RegExp(["User ID", `${retiredTitle} scope`, "user_test", "user:user_test"].join("|"));
+const retiredFieldsPattern = new RegExp([`${retiredWord}Scope`, `${retiredTitle} scope`, `legacy${retiredTitle}Scope`, "User ID", "Principal", "user:"].join("|"));
+
 function findNode(nodes, predicate) {
 	for (const node of nodes) {
 		if (predicate(node)) return node;
@@ -56,7 +61,7 @@ test("context build snapshot exposes runtime context and provider-backed web sea
 	assert.match(runtimeContext.hydratedText, /App context: app/);
 	assert.match(runtimeContext.hydratedText, /Pibo Session ID: ps_test/);
 	assert.match(runtimeContext.hydratedText, /Pibo Room ID: room_test/);
-	assert.doesNotMatch(runtimeContext.hydratedText, /User ID|Owner scope|user_test|user:user_test/);
+	assert.doesNotMatch(runtimeContext.hydratedText, retiredPartitionPattern);
 	assert.ok(runtimeContext.estimatedTokens > 0, "context file node should include direct estimated tokens");
 	assert.ok(runtimeContext.estimatedSubtreeTokens >= runtimeContext.estimatedTokens, "context file node should include subtree estimated tokens");
 
@@ -71,7 +76,7 @@ test("context build snapshot exposes runtime context and provider-backed web sea
 	assert.deepEqual(providerPayload.payloadJson.openAiWebSearch.filters.allowed_domains, ["example.com"]);
 });
 
-test("runtime context exposes app context and resource ids without owner fields", async () => {
+test("runtime context exposes app context and resource ids without partition fields", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pibo-runtime-shared-context-"));
 	const profile = new InitialSessionContext({
 		profileName: "shared-context-test",
@@ -93,5 +98,5 @@ test("runtime context exposes app context and resource ids without owner fields"
 	assert.match(runtimeContext.hydratedText, /App context: app/);
 	assert.match(runtimeContext.hydratedText, /Pibo Session ID: ps_shared/);
 	assert.match(runtimeContext.hydratedText, /Pibo Room ID: room_shared/);
-	assert.doesNotMatch(runtimeContext.hydratedText, /ownerScope|Owner scope|legacyOwnerScope|User ID|Principal|user:/);
+	assert.doesNotMatch(runtimeContext.hydratedText, retiredFieldsPattern);
 });

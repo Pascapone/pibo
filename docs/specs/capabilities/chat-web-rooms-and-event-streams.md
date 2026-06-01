@@ -1,8 +1,8 @@
 # Spec: Chat Web Rooms and Event Streams
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Owner / Source:** Current Pibo codebase  
+**Status:** Draft
+**Created:** 2026-05-10
+**Controller / Source:** Current Pibo codebase
 **Related docs:** `GLOSSARY.md`, `docs/specs/README.md`, `docs/specs/capabilities/pibo-session-routing.md`
 
 ## Why
@@ -254,7 +254,7 @@ The system MUST allow Chat Web to patch only supported Pibo Session metadata and
 
 ### Requirement: Runtime termination controls are explicit session actions
 
-The system MUST expose authenticated Chat Web controls that terminate only the addressed owned Pibo Session or its session tree through router execution events.
+The system MUST expose authenticated Chat Web controls that terminate only the addressed managed Pibo Session or its session tree through router execution events.
 
 #### Current
 
@@ -361,7 +361,7 @@ Room deletion rejects default rooms and requires confirmation by room name. Sess
 | REQ-007 Event streams replay persisted events and forward live events | Resume after disconnect | `src/apps/chat/web-app.ts`, `src/apps/chat/stream.ts`, `src/apps/chat/data/timeline-query-service.ts` | Implemented |
 | REQ-008 Read state drives unread session and room counts | Mark child session read | `src/apps/chat/data/read-state-service.ts`, `src/apps/chat/web-app.ts` | Implemented |
 | REQ-009 Session metadata mutations are bounded | Profile change after activity is rejected | `src/apps/chat/web-app.ts`, `src/sessions/store.ts`, `src/sessions/sqlite-store.ts` | Implemented |
-| REQ-010 Runtime termination controls are explicit session actions | Kill owned session | `src/apps/chat/web-app.ts`, `src/core/events.ts`, `src/core/session-router.ts` | Implemented |
+| REQ-010 Runtime termination controls are explicit session actions | Kill managed session | `src/apps/chat/web-app.ts`, `src/core/events.ts`, `src/core/session-router.ts` | Implemented |
 | REQ-011 Destructive deletion requires archive and confirmation | Delete archived room tree | `src/apps/chat/web-app.ts`, `src/apps/chat/data/session-query-service.ts`, `src/apps/chat/data/event-command-service.ts` | Implemented |
 
 ## Verification Basis

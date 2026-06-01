@@ -1,8 +1,8 @@
 # Spec: Web Render Debug Tool
 
-**Status:** Draft  
-**Created:** 2026-05-16  
-**Owner / Source:** User request in Pibo Session `ps_042af0fc-2e94-4ea4-9fb4-074cf674e9d6`  
+**Status:** Draft
+**Created:** 2026-05-16
+**Controller / Source:** User request in Pibo Session `ps_042af0fc-2e94-4ea4-9fb4-074cf674e9d6`
 **Related docs:** [Debug CLI](./debug-cli.md), [Chat Web Bootstrap and Navigation API](./chat-web-bootstrap-and-navigation-api.md), [Chat Web Browser Shell State](./chat-web-browser-shell-state.md), [Chat Web Cache and Live State](./chat-web-cache-and-live-state.md), [Chat Web Trace Render Diagnostics](./chat-web-trace-render-diagnostics.md), [Browser Use Authenticated Leases](./browser-use-authenticated-leases.md), [Browser Automation Desktop Environment](./browser-automation-desktop-environment.md)
 
 ## Why

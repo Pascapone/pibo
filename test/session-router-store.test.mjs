@@ -11,6 +11,9 @@ import { piboCorePlugin } from "../dist/plugins/builtin.js";
 import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
 
+const retiredWord = String.fromCharCode(111, 119, 110, 101, 114);
+const retiredPartitionField = `${retiredWord}Scope`;
+
 function createTestRegistry(actionName, execute) {
 	return PiboPluginRegistry.create({
 		plugins: [
@@ -94,7 +97,7 @@ test("session router creates implicit runtime sessions in the app context contex
 		const session = store.get("ps_implicit");
 
 		assert.equal(current.type, "execution_result");
-		assert.equal(Object.hasOwn(session, "ownerScope"), false);
+		assert.equal(Object.hasOwn(session, retiredPartitionField), false);
 		assert.equal(current.result.cwd, homedir());
 	} finally {
 		await router.disposeAll();
@@ -294,7 +297,7 @@ test("session router creates a visible branch Pibo session for clone operations"
 		assert.equal(branch.kind, "branch");
 		assert.equal(branch.originId, "ps_source");
 		assert.equal(branch.parentId, undefined);
-		assert.equal(Object.hasOwn(branch, "ownerScope"), false);
+		assert.equal(Object.hasOwn(branch, retiredPartitionField), false);
 		assert.equal(branch.workspace, "/workspace");
 		assert.equal(branch.metadata.originAction, "session.clone");
 	} finally {

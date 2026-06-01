@@ -1,8 +1,8 @@
 # Spec: Spec Status and Traceability
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage  
+**Status:** Draft
+**Created:** 2026-05-10
+**Controller / Source:** Scheduled Pibo Source Specs Coverage
 **Related docs:** `docs/specs/README.md`, `docs/specs/coverage/source-specs-coverage-2026-05-10.md`, `GLOSSARY.md`, `AGENTS.md`
 
 ## Why

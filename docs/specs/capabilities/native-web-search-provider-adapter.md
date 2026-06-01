@@ -1,8 +1,8 @@
 # Spec: Native Web Search Provider Adapter
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage  
+**Status:** Draft
+**Created:** 2026-05-10
+**Controller / Source:** Scheduled Pibo Source Specs Coverage
 **Related docs:** `docs/specs/capabilities/plugin-registry-and-capability-catalog.md`, `docs/specs/capabilities/custom-agents.md`, `docs/specs/capabilities/runtime-prompt-and-compaction.md`
 
 ## Why

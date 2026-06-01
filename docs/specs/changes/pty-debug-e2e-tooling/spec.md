@@ -1,9 +1,9 @@
 # Spec: PTY Debug and E2E Tooling
 
-**Status:** Done  
-**Created:** 2026-05-16  
-**Updated:** 2026-05-17  
-**Owner / Source:** User request after Ink CLI Session UI validation failure  
+**Status:** Done
+**Created:** 2026-05-16
+**Updated:** 2026-05-17
+**Controller / Source:** User request after Ink CLI Session UI validation failure
 **Related docs:** `proposal.md`, `design.md`, `tasks.md`, `docs/specs/capabilities/cli-pty-validation.md`
 
 ## Why

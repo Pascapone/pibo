@@ -1,8 +1,8 @@
 # Spec: Codex-Compatible Runtime Profile
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code  
+**Status:** Draft
+**Created:** 2026-05-10
+**Controller / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code
 **Related docs:** `GLOSSARY.md`, [Plugin Registry and Capability Catalog](./plugin-registry-and-capability-catalog.md), [Yielded Run Control](./yielded-run-control.md), [Subagent Delegation](./subagent-delegation.md), [Native Web Search Provider Adapter](./native-web-search-provider-adapter.md), [Runtime Prompt and Compaction Configuration](./runtime-prompt-and-compaction.md)
 
 ## Why
@@ -34,7 +34,7 @@ Runtime creation adds Codex compatibility tool definitions and a prompt extensio
 ### Out of Scope
 
 - Provider-specific web-search request serialization — covered by `native-web-search-provider-adapter.md`.
-- General run-control ownership, reminder, and pruning semantics — covered by `yielded-run-control.md`.
+- General run-control stewardship, reminder, and pruning semantics — covered by `yielded-run-control.md`.
 - Subagent session hierarchy and delegation lifecycle — covered by `subagent-delegation.md`.
 - Custom-agent editing of Codex-like profiles — covered by `custom-agents.md`.
 - Full Pi Coding Agent built-in tool behavior outside the profile allowlist.
@@ -60,7 +60,7 @@ A profile lookup for `codex` returns an initial session context whose `profileNa
 - THEN the returned profile uses canonical name `codex-compat-openai-web`
 - AND downstream session records store the canonical profile identity.
 
-### Requirement: The default tool surface is compact and Pibo-owned
+### Requirement: The default tool surface is compact and Pibo-managed
 
 The Codex-compatible profile MUST expose only the supported Pibo and Pi tools selected by the profile and generated runtime packages.
 
@@ -240,7 +240,7 @@ A valid image path returns one image content item with base64 data, inferred MIM
 | Requirement | Scenario / Story | Source / Test Basis | Status |
 |---|---|---|---|
 | REQ-001 The Codex alias resolves to one canonical Pibo profile | Operator selects alias | `src/plugins/codex-compat.ts`, `src/plugins/registry.ts`, `test/codex-compat.test.mjs` | Implemented |
-| REQ-002 The default tool surface is compact and Pibo-owned | Inspect default profile | `src/plugins/codex-compat.ts`, `src/core/runtime.ts`, `test/codex-compat.test.mjs` | Implemented |
+| REQ-002 The default tool surface is compact and Pibo-managed | Inspect default profile | `src/plugins/codex-compat.ts`, `src/core/runtime.ts`, `test/codex-compat.test.mjs` | Implemented |
 | REQ-003 Shell execution goes through yielded run control | Start background shell work | `src/core/runtime.ts`, `test/codex-compat.test.mjs`, `test/runs.test.mjs` | Implemented |
 | REQ-004 Provider-backed web search remains selected but locally undefined | Inspect web-search activation | `src/plugins/codex-compat.ts`, `src/tools/web-search.ts`, `test/codex-compat.test.mjs` | Implemented |
 | REQ-005 Compatibility prompt describes Pibo behavior without inventing unsupported tools | Render main-agent prompt | `src/core/codex-compat.ts`, `test/codex-compat.test.mjs` | Implemented |

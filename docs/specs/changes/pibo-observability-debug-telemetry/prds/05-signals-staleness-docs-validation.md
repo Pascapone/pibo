@@ -1,7 +1,7 @@
 # PRD: Pibo Observability and Debug Telemetry — Signals, Staleness, Documentation, and Validation
 
-**Status:** Draft  
-**Created:** 2026-05-16  
+**Status:** Draft
+**Created:** 2026-05-16
 **Related docs:** `../spec.md`, `../design.md`, `../tasks.md`, `../../../capabilities/pibo-session-signals.md`, `../../../../reports/incident-2026-05-16-stuck-toolcall-stream.md`
 
 ## 1. Executive Summary

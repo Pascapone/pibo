@@ -35,8 +35,7 @@ test("gateway starts plugin channels with router and session session context", a
 							channel: "web",
 							kind: "chat",
 							profile: "base",
-							ownerScope: "user:user-1",
-						});
+									});
 					},
 					stop() {
 						stopped = true;

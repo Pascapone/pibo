@@ -1,8 +1,8 @@
 # Spec: Chat Web Context Area
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage  
+**Status:** Draft
+**Created:** 2026-05-10
+**Controller / Source:** Scheduled Pibo Source Specs Coverage
 **Related docs:** [Context Files](./context-files.md), [Runtime Prompt and Compaction Configuration](./runtime-prompt-and-compaction.md), [Curated CLI Tools](./curated-cli-tools.md), [MCP Server Integration](./mcp-server-integration.md), [Chat Web Bootstrap and Navigation API](./chat-web-bootstrap-and-navigation-api.md)
 
 ## Why
@@ -25,7 +25,7 @@ The main pane renders the owning view for the selected panel:
 - `BasePromptView` for the workspace base prompt mode and custom content.
 - `CompactionPromptView` for the workspace compaction prompt mode and custom content.
 - `PiboToolsView` for installed curated-tool context snippets from the agent catalog.
-- `McpToolsView` for configured MCP server metadata and Pibo-owned descriptions.
+- `McpToolsView` for configured MCP server metadata and Pibo-managed descriptions.
 - `ContextBuildView` for a read-only selected-session runtime context snapshot.
 
 The Chat Web bootstrap/catalog API builds context-facing catalog data from the channel capability catalog, `listMcpServerInfos()`, installed Pi packages, and user skills.
@@ -87,7 +87,7 @@ The Context sidebar MUST expose only the supported context panels and MUST rende
 
 #### Target
 
-Users cannot enter an unsupported Context panel state through normal UI actions, and each supported panel has an explicit owner.
+Users cannot enter an unsupported Context panel state through normal UI actions, and each supported panel has an explicit controller.
 
 #### Acceptance
 
@@ -145,7 +145,7 @@ Agent Designer and catalog links can send users to the correct editor without ad
 
 ### Requirement: Catalog-derived context views are read-only unless their owning capability supports editing
 
-The Context area MUST distinguish read-only catalog hints from panels that edit Pibo-owned resource state.
+The Context area MUST distinguish read-only catalog hints from panels that edit Pibo-managed resource state.
 
 #### Current
 
@@ -159,7 +159,7 @@ Users can inspect which context snippets enter agent runtimes without confusing 
 
 - Pibo Tools shows the number of installed tools and renders an empty state when no tools are installed.
 - Pibo Tools does not offer install, remove, or edit controls; those remain CLI/curated-tool behavior.
-- MCP Tools may save Pibo-owned server descriptions but does not expose full MCP config editing.
+- MCP Tools may save Pibo-managed server descriptions but does not expose full MCP config editing.
 - Prompt and context-file panels remain the only Context panels that edit prompt files or managed context-file documents.
 
 #### Scenario: No curated tools installed

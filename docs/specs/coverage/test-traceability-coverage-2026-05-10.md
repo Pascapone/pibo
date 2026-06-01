@@ -1,8 +1,8 @@
 # Coverage Analysis: Test Traceability Across Source Specs
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage  
+**Status:** Draft
+**Created:** 2026-05-10
+**Controller / Source:** Scheduled Pibo Source Specs Coverage
 **Related docs:** `docs/specs/coverage/source-specs-coverage-2026-05-10.md`, `docs/specs/capabilities/spec-status-and-traceability.md`, `docs/specs/README.md`, `GLOSSARY.md`, `AGENTS.md`
 
 ## Why

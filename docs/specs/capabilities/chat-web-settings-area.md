@@ -1,8 +1,8 @@
 # Spec: Chat Web Settings Area
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage; current workspace code  
+**Status:** Draft
+**Created:** 2026-05-10
+**Controller / Source:** Scheduled Pibo Source Specs Coverage; current workspace code
 **Related docs:** [Chat Web Browser Shell State](./chat-web-browser-shell-state.md), [Model Provider Auth and Session Model Selection](./model-provider-auth-and-session-selection.md), [Pibo Pi Packages](./pi-packages.md), [User Skills](./user-skills.md), [Runtime Prompt and Compaction Configuration](./runtime-prompt-and-compaction.md), [Web Auth and Same-Origin Host](./web-auth-and-same-origin-host.md)
 
 ## Why
@@ -27,7 +27,7 @@ Chat Web MUST provide a settings workbench whose panels expose runtime preferenc
 
 - Settings area routing and panel selection for General, Pi Packages, Skills, and Providers.
 - Browser-local thinking display preferences.
-- Owner-scoped timezone setting and runtime-context propagation.
+- Controller-scoped timezone setting and runtime-context propagation.
 - Workspace-scoped main-agent and subagent model defaults, thinking defaults, and fast-mode defaults.
 - Provider credential status, OAuth/API-key actions, and logout entry points from Chat Web.
 - Pi Package list, create, update, enable/disable, and delete behavior as exposed in the settings area.
@@ -40,7 +40,7 @@ Chat Web MUST provide a settings workbench whose panels expose runtime preferenc
 - Pi Package source inspection and runtime loading semantics — covered by the Pi Packages spec.
 - User skill markdown parsing and runtime expansion semantics — covered by the User Skills spec.
 - Route canonicalization outside the settings area — covered by the browser shell-state spec.
-- Per-setting multi-user ACLs beyond authenticated owner scoping.
+- Per-setting multi-user ACLs beyond authenticated controller scoping.
 
 ## Requirements
 
@@ -62,7 +62,7 @@ Users and agents can deep-link to a settings panel without relying on hidden bro
 - `/settings/pi-packages` renders Pi Packages settings.
 - `/settings/skills` renders Skills settings.
 - `/settings/providers` renders Providers settings.
-- An unsupported settings subpath falls back to a known route or error behavior owned by the router, not to an untyped panel.
+- An unsupported settings subpath falls back to a known route or error behavior managed by the router, not to an untyped panel.
 
 #### Scenario: Deep link to Providers
 
@@ -107,7 +107,7 @@ The timezone setting MUST be saved for the app context, MUST reject invalid time
 
 #### Target
 
-Changing timezone affects the user's future runtime context without changing other owners or browser-only preferences.
+Changing timezone affects the user's future runtime context without changing other controllers or browser-only preferences.
 
 #### Acceptance
 

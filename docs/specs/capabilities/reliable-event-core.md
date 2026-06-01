@@ -1,8 +1,8 @@
 # Spec: Reliable Event Core
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code  
+**Status:** Draft
+**Created:** 2026-05-10
+**Controller / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code
 **Related docs:** `GLOSSARY.md`, [Pibo Data Store and Chat Ingestion](./pibo-data-store-and-ingestion.md), [Yielded Run Control](./yielded-run-control.md), [Debug CLI](./debug-cli.md)
 
 ## Why
@@ -40,7 +40,7 @@ The current code implements `PiboReliabilityStore` in `src/reliability/store.ts`
 
 ## Requirements
 
-### Requirement: Reliability state is stored in a Pibo-owned SQLite store
+### Requirement: Reliability state is stored in a Pibo-managed SQLite store
 
 The system MUST store reliability events, consumer offsets, durable jobs, dead jobs, and durable yielded-run records in `.pibo/pibo-events.sqlite` by default.
 
@@ -50,7 +50,7 @@ The system MUST store reliability events, consumer offsets, durable jobs, dead j
 
 #### Target
 
-The reliability store remains a Pibo-owned operational store and does not become the canonical Chat Web transcript, Pibo Session store, or Pi transcript store.
+The reliability store remains a Pibo-managed operational store and does not become the canonical Chat Web transcript, Pibo Session store, or Pi transcript store.
 
 #### Acceptance
 
@@ -145,7 +145,7 @@ The system MUST let workers claim due jobs by queue with exclusive leases, visib
 
 #### Target
 
-Only the active lease owner can complete, retry, fail, or extend a claimed job. Expired jobs become claimable again.
+Only the active lease controller can complete, retry, fail, or extend a claimed job. Expired jobs become claimable again.
 
 #### Acceptance
 
@@ -226,7 +226,7 @@ A completed tracked run that is not consumed is not deleted by terminal-run prun
 - GIVEN a tracked run completed earlier than the consumed-run TTL
 - AND the run has not been consumed
 - WHEN terminal run pruning executes
-- THEN the run remains listed for its owner session
+- THEN the run remains listed for its controller session
 
 ## Edge Cases
 
@@ -240,7 +240,7 @@ A completed tracked run that is not consumed is not deleted by terminal-run prun
 
 ## Constraints
 
-- **Compatibility:** Public behavior must keep using `Pibo Session ID` for run ownership and `runId` for yielded-run identity.
+- **Compatibility:** Public behavior must keep using `Pibo Session ID` for run stewardship and `runId` for yielded-run identity.
 - **Security / Privacy:** Reliability payloads may contain operational data; debug and API access must remain app-spaced where exposed above the store.
 - **Performance:** Queries must remain bounded by limits and indexes for event replay, job claim selection, dead-job listing, and run lookup.
 - **Dependencies:** The current implementation depends on Node SQLite via `node:sqlite` and local filesystem access.
@@ -270,7 +270,7 @@ A completed tracked run that is not consumed is not deleted by terminal-run prun
 
 | Requirement | Scenario / Story | Plan / Task | Status |
 |---|---|---|---|
-| REQ-001 Reliability state is stored in a Pibo-owned SQLite store | Fresh default store | Existing implementation | Draft |
+| REQ-001 Reliability state is stored in a Pibo-managed SQLite store | Fresh default store | Existing implementation | Draft |
 | REQ-002 Event append is ordered and idempotent | Retried output event append | Existing test coverage | Draft |
 | REQ-003 Consumer replay is cursor-based and monotonic | Stale projector offset save | Existing test coverage | Draft |
 | REQ-004 Event pruning protects unread consumer data by default | Retain unread live delta | Existing test coverage | Draft |

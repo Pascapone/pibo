@@ -1,8 +1,8 @@
 # Coverage Analysis: Source Specs Gap Analysis 2026-05-11
 
-**Status:** Draft  
-**Created:** 2026-05-11  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage; current workspace code  
+**Status:** Draft
+**Created:** 2026-05-11
+**Controller / Source:** Scheduled Pibo Source Specs Coverage; current workspace code
 **Related docs:** `GLOSSARY.md`, `AGENTS.md`, `docs/specs/coverage/source-specs-coverage-2026-05-10.md`, `docs/specs/coverage/test-traceability-coverage-2026-05-10.md`
 
 ## Why
@@ -13,7 +13,7 @@ This analysis records the remaining weak spots found after inspecting the curren
 
 ## Goal
 
-Future source-spec runs SHALL improve weak verification and ownership coverage before adding overlapping capability specs for already covered product areas.
+Future source-spec runs SHALL improve weak verification and stewardship coverage before adding overlapping capability specs for already covered product areas.
 
 ## Scope
 

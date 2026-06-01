@@ -1,8 +1,8 @@
 # Spec: Local Config CLI
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage  
+**Status:** Draft
+**Created:** 2026-05-10
+**Controller / Source:** Scheduled Pibo Source Specs Coverage
 **Related docs:** `docs/specs/capabilities/web-auth-and-same-origin-host.md`, `docs/specs/capabilities/model-provider-auth-and-session-selection.md`
 
 ## Why
@@ -34,7 +34,7 @@ The implementation stores local config in `config.json` under `PIBO_HOME` or the
 
 - Validation of whether configured OAuth credentials work against Google — provider login and Better Auth startup own that behavior.
 - Editing MCP server config — covered by the MCP integration spec and MCP-specific config files.
-- Profile, room, session, or per-owner settings — this spec covers machine-local config only.
+- Profile, room, session, or per-controller settings — this spec covers machine-local config only.
 - Secret encryption at rest — the current code redacts display output but stores JSON values directly.
 
 ## Requirements

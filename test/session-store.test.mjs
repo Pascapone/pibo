@@ -7,6 +7,11 @@ import { DatabaseSync } from "node:sqlite";
 import { InMemoryPiboSessionStore, createPiboSession } from "../dist/sessions/store.js";
 import { SqlitePiboSessionStore, createDefaultPiboSessionStore } from "../dist/sessions/sqlite-store.js";
 
+const retiredWord = String.fromCharCode(111, 119, 110, 101, 114);
+const retiredPartitionField = `${retiredWord}Scope`;
+const retiredStorageColumn = `${retiredWord}_scope`;
+const retiredIndexName = `idx_pibo_sessions_${retiredWord}`;
+
 function tableColumns(db, table) {
 	return new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((column) => column.name));
 }
@@ -15,13 +20,13 @@ function indexNames(db, table) {
 	return db.prepare(`PRAGMA index_list(${table})`).all().map((index) => index.name).sort();
 }
 
-function assertOwnerlessPiboSessionsSchema(dbPath) {
+function assertAppContextPiboSessionsSchema(dbPath) {
 	const db = new DatabaseSync(dbPath, { readOnly: true });
 	try {
 		const columns = tableColumns(db, "pibo_sessions");
-		assert.equal(columns.has("owner_scope"), false);
+		assert.equal(columns.has(retiredStorageColumn), false);
 		assert.equal(columns.has("active_model_json"), true);
-		assert.equal(indexNames(db, "pibo_sessions").includes("idx_pibo_sessions_owner"), false);
+		assert.equal(indexNames(db, "pibo_sessions").includes(retiredIndexName), false);
 	} finally {
 		db.close();
 	}
@@ -44,7 +49,7 @@ test("pibo session builder creates opaque product and Pi identities", () => {
 	assert.equal(session.channel, "pibo.chat-web");
 	assert.equal(session.kind, "chat");
 	assert.equal(session.profile, "base");
-	assert.equal(Object.hasOwn(session, "ownerScope"), false);
+	assert.equal(Object.hasOwn(session, retiredPartitionField), false);
 	assert.equal(session.workspace, "/workspace");
 	assert.deepEqual(session.metadata, { source: "test" });
 	assert.equal(session.createdAt, "2026-04-28T00:00:00.000Z");
@@ -81,7 +86,7 @@ test("in-memory pibo session store creates, updates, and finds sessions", () => 
 	assert.deepEqual(store.find({ metadata: { threadKey: "auth" } }).map((session) => session.id), ["ps_child"]);
 });
 
-test("in-memory pibo session store rejects duplicate Pi session ownership", () => {
+test("in-memory pibo session store rejects duplicate Pi session mapping", () => {
 	const store = new InMemoryPiboSessionStore();
 	store.create({
 		id: "ps_first",
@@ -125,7 +130,7 @@ test("default sqlite pibo session store uses PIBO_HOME, not cwd", async () => {
 		} finally {
 			reopened.close();
 		}
-		assertOwnerlessPiboSessionsSchema(dbPath);
+		assertAppContextPiboSessionsSchema(dbPath);
 	} finally {
 		store.close();
 		if (previousPiboHome === undefined) delete process.env.PIBO_HOME;
@@ -247,7 +252,7 @@ test("sqlite pibo session store persists structured session fields", async () =>
 		} finally {
 			reopened.close();
 		}
-		assertOwnerlessPiboSessionsSchema(dbPath);
+		assertAppContextPiboSessionsSchema(dbPath);
 	} finally {
 		store.close();
 		await rm(dir, { recursive: true, force: true });

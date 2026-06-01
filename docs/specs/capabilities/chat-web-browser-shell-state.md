@@ -1,8 +1,8 @@
 # Spec: Chat Web Browser Shell State
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage; current workspace code  
+**Status:** Draft
+**Created:** 2026-05-10
+**Controller / Source:** Scheduled Pibo Source Specs Coverage; current workspace code
 **Related docs:** [Chat Web Rooms and Event Streams](./chat-web-rooms-and-event-streams.md), [Chat Web Trace and Terminal View](./chat-web-trace-and-terminal-view.md), [Custom Agents and Agent Designer](./custom-agents.md), [Scheduled Pibo Jobs](./scheduled-pibo-jobs.md), [Continuous Ralph Jobs](./continuous-ralph-jobs.md)
 
 ## Why
@@ -27,7 +27,7 @@ The composer stores per-session drafts, keeps a bounded message history, support
 
 - Browser route parsing for Chat Web areas, room/session routes, project/session routes, settings panels, and session-view query state.
 - Browser-side canonicalization from stale, partial, or remembered selections to authoritative server-selected room and session ids.
-- `localStorage` preferences and continuity state owned by the Chat Web browser shell.
+- `localStorage` preferences and continuity state managed by the Chat Web browser shell.
 - Session and project composer draft, history, slash-command, and skill-insertion behavior.
 - Browser-side live navigation refresh behavior from room event streams and session signal streams.
 - Optional service worker registration and gateway health display behavior as browser-shell concerns.
@@ -117,7 +117,7 @@ The app stores state such as last selection, session view, composer drafts, comp
 
 #### Target
 
-Browser preferences improve continuity but never become required for authentication, authorization, session ownership, or data correctness.
+Browser preferences improve continuity but never become required for authentication, authorization, session stewardship, or data correctness.
 
 #### Acceptance
 
@@ -141,7 +141,7 @@ The browser shell MUST remember the latest selected room and Pibo Session for th
 
 #### Target
 
-A refresh without explicit route ids restores the user's last usable selection when the backend still permits it, while cross-owner or deleted records are rejected by the server and recovered by the route fallback logic.
+A refresh without explicit route ids restores the user's last usable selection when the backend still permits it, while cross-controller or deleted records are rejected by the server and recovered by the route fallback logic.
 
 #### Acceptance
 
@@ -163,7 +163,7 @@ The app reads `view` from route search, falls back to `pibo.chat.sessionView`, v
 
 #### Target
 
-Deep links can request a supported view, invalid view values fall back to the default, and switching views updates future navigation without changing selected session ownership.
+Deep links can request a supported view, invalid view values fall back to the default, and switching views updates future navigation without changing selected session stewardship.
 
 #### Acceptance
 
@@ -330,7 +330,7 @@ A browser test can force service worker registration and `/health` to fail and v
 ### Assumptions
 
 - Browser-local preferences are intentionally per-browser, not synced through Pibo accounts.
-- The backend remains the authority for shared room, project, and session existence. Legacy membership/owner fields do not authorize current product behavior.
+- The backend remains the authority for shared room, project, and session existence. Legacy membership/controller fields do not authorize current product behavior.
 - The current two supported session views are the default trace-style view and the terminal view.
 
 ### Open Questions

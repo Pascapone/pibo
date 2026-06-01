@@ -2,7 +2,7 @@
 
 **Status:** Draft
 **Created:** 2026-05-10
-**Owner / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code
+**Controller / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code
 **Related docs:** `GLOSSARY.md`, `docs/specs/capabilities/custom-agents.md`, `docs/specs/capabilities/context-files.md`, `docs/specs/capabilities/pibo-session-routing.md`, `docs/specs/capabilities/web-auth-and-same-origin-host.md`, `docs/specs/capabilities/yielded-run-control.md`
 
 ## Why
@@ -176,7 +176,7 @@ The plugin API adds plugin kind and plugin id to skills unless a skill has kind 
 
 #### Target
 
-User-owned skills can coexist with plugin-provided skills without being attributed to the plugin that performed dynamic registration.
+User-managed skills can coexist with plugin-provided skills without being attributed to the plugin that performed dynamic registration.
 
 #### Acceptance
 
@@ -187,7 +187,7 @@ User-owned skills can coexist with plugin-provided skills without being attribut
 
 - GIVEN a registry
 - WHEN `personal-helper` is registered as a user skill
-- THEN the skill catalog lists it as kind `user` and does not claim plugin ownership
+- THEN the skill catalog lists it as kind `user` and does not claim plugin stewardship
 
 ### Requirement: Gateway action slash commands are explicit and collision-free
 
@@ -315,7 +315,7 @@ Plugin event integrations remain observable while failures are reported through 
 - Context-file keys default to `key`, then `label`, then `path`; collisions at the resolved key are duplicate context files.
 - Managed context files are not re-attributed to the registering plugin when they are upserted.
 - Provider-backed native tools may have no local function definition but still appear as available native tools.
-- Ralph stop-condition catalog entries describe policy metadata only; evaluation remains owned by Ralph.
+- Ralph stop-condition catalog entries describe policy metadata only; evaluation remains managed by Ralph.
 - Hidden gateway actions can still be fetched by name, but they do not appear in discovery output and do not claim slash commands.
 - A registry composition can intentionally differ by environment, such as the gateway producer registry exposing `pibo-gateway-producer` while the default registry does not.
 

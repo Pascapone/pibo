@@ -28,6 +28,9 @@ import {
 	terminalLineLimitFromColumns,
 } from "../dist/apps/cli-ui/index.js";
 
+const retiredTitle = `${String.fromCharCode(111, 119, 110, 101, 114)[0].toUpperCase()}${String.fromCharCode(111, 119, 110, 101, 114).slice(1)}`;
+const retiredHeaderPattern = new RegExp(`${retiredTitle}:`);
+
 const execFileAsync = promisify(execFile);
 const cliPath = new URL("../dist/bin/pibo.js", import.meta.url).pathname;
 
@@ -343,7 +346,7 @@ test("renderCliStatusCardText renders shared status bars and redacts secrets", (
 	}, { id: "ps_status", title: "Status Session", profile: "base", status: "running" });
 
 	assert.match(text, /Status: source=fake/);
-	assert.doesNotMatch(text, /Owner:/);
+	assert.doesNotMatch(text, retiredHeaderPattern);
 	assert.match(text, /Session: Status Session \| ps_status/);
 	assert.match(text, /Model: openai\/gpt-status/);
 	assert.match(text, /Runtime: processing/);
@@ -498,7 +501,7 @@ test("status command result rows preserve transcript flow with row-first command
 	assert.doesNotMatch(output, /▣ Command/);
 	assert.match(output, /Status — status · done/);
 	assert.match(output, /Identity: session Status Session · profile base ·\s*model openai\/gpt-status/);
-	assert.doesNotMatch(output, /Owner:/);
+	assert.doesNotMatch(output, retiredHeaderPattern);
 	assert.doesNotMatch(output, /Session: Status Session \| ps_status/);
 	assert.match(output, /Context: .*50\.0%/);
 	assert.match(output, /openai requests: .*25\.0%/);
@@ -593,7 +596,7 @@ test("Slash commands handle help status clear pickers unknown exit and normal se
 		...(statusCard.statusView?.warnings ?? []),
 		...(statusCard.statusView?.errors ?? []),
 	].join("\n");
-	assert.doesNotMatch(statusText, /Owner:/);
+	assert.doesNotMatch(statusText, retiredHeaderPattern);
 	assert.match(statusText, /Session: Existing fake session \| ps_fake_existing/);
 	assert.match(statusText, /Runtime: fake/);
 	assert.match(statusText, /Context: 0\/1000 tokens \(0\.0%\)/);

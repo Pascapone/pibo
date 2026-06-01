@@ -2,7 +2,7 @@
 
 **Status:** Draft
 **Created:** 2026-05-18
-**Owner / Source:** Server migration and Pibo restore work
+**Controller / Source:** Server migration and Pibo restore work
 
 ## Why
 

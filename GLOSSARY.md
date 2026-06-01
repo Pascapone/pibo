@@ -11,7 +11,7 @@ The thin TypeScript product harness around Pi Coding Agent.
 The embedded inner agent engine responsible for model turns, tools, streaming, sessions, and compaction.
 
 **Product Boundary**:
-The outer layer owned by Pibo, including profiles, plugins, channels, routing, auth, policy, Pibo Sessions, and transport adapters.
+The outer layer managed by Pibo, including profiles, plugins, channels, routing, auth, policy, Pibo Sessions, and transport adapters.
 
 **Runtime**:
 The executable agent environment created from a selected profile and backed by Pi Coding Agent.
@@ -26,7 +26,7 @@ A named selection of tools, subagents, skills, context files, and runtime option
 The Chat Web App area used to inspect plugin profiles and create, edit, archive, restore, or delete custom agents.
 
 **Custom Agent**:
-A user-owned editable agent definition persisted by Chat Web and registered as a profile for routed sessions.
+A user-managed editable agent definition persisted by Chat Web and registered as a profile for routed sessions.
 
 **Dynamic Profile**:
 A profile registered from product state, such as a saved custom agent, rather than from static plugin code.
@@ -53,7 +53,7 @@ The product-facing catalog of registered native tools, skills, subagents, contex
 A named profile option that enables a group of generated capabilities, such as the `pibo-run-control` tools.
 
 **Pi Package**:
-A Pi Coding Agent package that can provide Pi-owned extensions, skills, prompt templates, or themes through npm, git, a `pi.dev/packages` listing, or a local path.
+A Pi Coding Agent package that can provide Pi-managed extensions, skills, prompt templates, or themes through npm, git, a `pi.dev/packages` listing, or a local path.
 
 **Pibo Pi Package**:
 A Pi Package registered in Pibo's local package store with source, install spec, metadata, discovered resources, install status, and diagnostics.
@@ -68,16 +68,16 @@ A profile-selected markdown resource loaded into runtime context alongside proje
 A repo-level `AGENTS.md` context file that is loaded into the agent context at startup, usually from the repository root.
 
 **Managed Context File**:
-An editable Pibo-owned context file stored with metadata and revisions by the Context Files system.
+An editable Pibo-managed context file stored with metadata and revisions by the Context Files system.
 
 **Plugin Context File**:
 A read-only context file shipped by a plugin and registered in the capability catalog.
 
 **Pibo Base Prompt**:
-The Pibo-owned base system prompt template, using either the library prompt or a persisted custom prompt.
+The Pibo-managed base system prompt template, using either the library prompt or a persisted custom prompt.
 
 **Pibo Compaction Prompt**:
-The Pibo-owned prompt set used for Pi session compaction summaries, using either the library prompt or a persisted custom prompt.
+The Pibo-managed prompt set used for Pi session compaction summaries, using either the library prompt or a persisted custom prompt.
 
 **Plugin**:
 A statically loaded internal module that registers Pibo capabilities with the plugin registry.
@@ -86,7 +86,7 @@ A statically loaded internal module that registers Pibo capabilities with the pl
 The catalog where plugins register tools, subagents, skills, context files, profiles, gateway actions, event listeners, channels, auth services, and web apps.
 
 **Channel**:
-A plugin-owned adapter that maps an external transport into Pibo input events and maps Pibo output events back to that transport.
+A plugin-managed adapter that maps an external transport into Pibo input events and maps Pibo output events back to that transport.
 
 **Transport**:
 The external communication mechanism used by a channel, such as local TCP, same-origin HTTP, or an in-process TUI adapter.
@@ -98,13 +98,13 @@ The Pibo component that owns routed sessions, queues input by Pibo Session ID, a
 A single Pibo conversation managed by the session router.
 
 **Pibo Session**:
-The stable product-level session record owned by Pibo. It carries route identity, channel, kind, profile, legacy owner compatibility metadata when needed, hierarchy, derivation metadata, and the linked Pi Session ID.
+The stable product-level session record managed by Pibo. It carries route identity, channel, kind, profile, legacy controller compatibility metadata when needed, hierarchy, derivation metadata, and the linked Pi Session ID.
 
 **Pibo Session ID**:
 The opaque `PiboSession.id` value used by channels, APIs, UI, routing, access control, and event correlation.
 
 **Pibo Session Store**:
-The Pibo-owned store for Pibo Session records, backed by `.pibo/pibo-sessions.sqlite` in the gateway path or by memory in local adapters.
+The Pibo-managed store for Pibo Session records, backed by `.pibo/pibo-sessions.sqlite` in the gateway path or by memory in local adapters.
 
 **Pi Session ID**:
 The technical Pi Coding Agent session identifier stored as `PiboSession.piSessionId`, used for Pi persistence, transcript files, provider cache affinity, fork, clone, switch, tree navigation, and compaction.
@@ -112,7 +112,7 @@ The technical Pi Coding Agent session identifier stored as `PiboSession.piSessio
 **App Context Context**:
 The single product data context for a Pibo host after login. Auth decides whether a person may enter the app; it does not create a separate product space.
 
-**Owner Scope**:
+**Controller Scope**:
 A removed historical storage concept from the previous account-partitioned model. Current product behavior has one app space after login and must not use historical partition values for visibility, routing, workspace selection, profile registration, job control, read-state, or write location. Remaining references belong only to reviewed historical documentation or explicit final cutover migration evidence.
 
 **Parent Session**:
@@ -152,7 +152,7 @@ A profile-scoped capability exposed to Pi as a generated tool that calls another
 A long-running tool invocation started through run-control tools so the agent can continue work and inspect the result later.
 
 **Run Registry**:
-The in-memory Pibo component that tracks yielded run ids, owners, status, policy, summaries, results, cancellation, and cleanup.
+The in-memory Pibo component that tracks yielded run ids, controllers, status, policy, summaries, results, cancellation, and cleanup.
 
 **runId**:
 The stable identifier for one yielded run.
@@ -194,7 +194,7 @@ A time-bounded claim on a browser pool's CDP browser for one automation task, Pi
 An isolated browser-use profile slot cloned from a closed authenticated template profile. It is distinct from a browser process lease.
 
 **Ralph Job**:
-A durable continuous-work definition owned by Ralph, with a target, profile, prompt, stop policy, and run state.
+A durable continuous-work definition managed by Ralph, with a target, profile, prompt, stop policy, and run state.
 
 **Ralph Run**:
 One execution attempt for a Ralph Job, usually backed by a routed Pibo Session and resource cleanup state.
@@ -242,13 +242,13 @@ A URL under `/apps/chat/*` that can be opened directly or reloaded and restores 
 A user-facing Chat Web container that groups one or more Pibo Sessions for display, membership, room events, and room-scoped sending.
 
 **Shared Default Chat Room**:
-The default Pibo Room automatically created for the app context when Chat Web needs a room and none exists. Legacy storage may still mark older rows with personal/default metadata, but the room is not account-owned.
+The default Pibo Room automatically created for the app context when Chat Web needs a room and none exists. Legacy storage may still mark older rows with personal/default metadata, but the room is not account-managed.
 
 **Room Membership**:
 A legacy Chat Web record that used to link a principal to a Pibo Room with a role and read cursor. Current app-context behavior does not use room membership for access control.
 
 **Chat Event Log**:
-The durable Pibo-owned event store for Chat Web room and session events, backed by `chat_events` in `.pibo/web-chat.sqlite`.
+The durable Pibo-managed event store for Chat Web room and session events, backed by `chat_events` in `.pibo/web-chat.sqlite`.
 
 **Chat Event Cursor**:
 The frame-specific SSE resume cursor formatted as `<streamId>:<frameIndex>`.
@@ -287,7 +287,7 @@ An AG-UI-inspired live UI frame derived from a normalized `PiboOutputEvent`, suc
 The Chat Event Log category that controls how long a stored chat event should be kept, such as `live_delta`, `trace_event`, `chat_message`, or `audit_event`.
 
 **Reliable Event Core**:
-The Pibo-owned local reliability layer for append-only product events, consumer offsets, durable jobs, yielded-run records, and operational replay.
+The Pibo-managed local reliability layer for append-only product events, consumer offsets, durable jobs, yielded-run records, and operational replay.
 
 **Pibo Reliability Store**:
 The SQLite store at `.pibo/pibo-events.sqlite` used by the Reliable Event Core.
@@ -296,7 +296,7 @@ The SQLite store at `.pibo/pibo-events.sqlite` used by the Reliable Event Core.
 The reliability event stream topic that mirrors normalized Pibo output events for operational replay and debugging.
 
 **Debug CLI**:
-The `pibo debug` operator CLI for compact read-only diagnostics against Pibo-owned SQLite stores and Chat Web projections.
+The `pibo debug` operator CLI for compact read-only diagnostics against Pibo-managed SQLite stores and Chat Web projections.
 
 **Config CLI**:
 The `pibo config` operator CLI for managing local runtime config in `.pibo/config.json`.
@@ -305,7 +305,7 @@ The `pibo config` operator CLI for managing local runtime config in `.pibo/confi
 Machine-local Pibo configuration stored in `.pibo/config.json`.
 
 **Tool Review**:
-A Pibo-owned wrapper-level process that summarizes tool usage in a Pibo Session and asks an agent to evaluate tool or workflow quality.
+A Pibo-managed wrapper-level process that summarizes tool usage in a Pibo Session and asks an agent to evaluate tool or workflow quality.
 
 ## Relationships
 
@@ -319,7 +319,7 @@ A Pibo-owned wrapper-level process that summarizes tool usage in a Pibo Session 
 - The **Pibo Base Prompt** is applied before project context, selected **Context Files**, and skills are appended.
 - A **Channel** translates a **Transport** into **Input Events** and translates **Output Events** back to that transport.
 - The **Session Router** owns many **Routed Sessions**.
-- A **Pibo Session** is the product session record used for routing, profile selection, ownership, hierarchy, and plugin metadata.
+- A **Pibo Session** is the product session record used for routing, profile selection, stewardship, hierarchy, and plugin metadata.
 - A **Pibo Session** links to one **Pi Session ID** for Pi Coding Agent persistence.
 - The **Pibo Session Store** is the source of truth for Pibo Session metadata.
 - A **Pibo Room** is a user-facing Chat Web container; it does not replace a **Pibo Session**.
@@ -338,18 +338,18 @@ A Pibo-owned wrapper-level process that summarizes tool usage in a Pibo Session 
 - A **Docker Image** may be reused by many **Compute Containers**, but each container owns separate runtime state.
 - A **Dev Worker** is a long-lived **Compute Container** tied to a **Worktree**; releasing the container does not delete the worktree.
 - A **Browser Pool** grants **Browser Leases** for managed Chromium CDP use, while an **Auth Profile Lease** grants isolated authenticated profile state.
-- A **Ralph Job** creates **Ralph Runs**; when runs use compute/browser resources, Ralph policy records ownership and cleanup state.
+- A **Ralph Job** creates **Ralph Runs**; when runs use compute/browser resources, Ralph policy records stewardship and cleanup state.
 - The **Reliable Event Core** uses the **Pibo Reliability Store** and mirrors normalized output events into the **pibo.output Topic**.
 - The **MCP CLI** manages **MCP Servers** outside the Pibo plugin runtime.
 - `pibo tools` manages **Curated CLI Tools** outside profiles and MCP.
-- The **Debug CLI** inspects Pibo-owned stores and projections; it is not an agent-facing profile tool.
+- The **Debug CLI** inspects Pibo-managed stores and projections; it is not an agent-facing profile tool.
 - The **Same-Origin Web Host** serves **Auth Service** routes and registered **Web Apps**.
 - **Tool Review** runs at the **Product Boundary** and uses **Pibo Session IDs**, not **Pi Session IDs**, as its review target identity.
 
 ## Ambiguities
 
 - Use **Pibo** for the product harness and **Pi Coding Agent** for the embedded engine; do not call both "the agent runtime" without context.
-- Use **Profile** for the runtime capability selection and **Custom Agent** for a user-owned editable profile definition. Do not call every profile an agent.
+- Use **Profile** for the runtime capability selection and **Custom Agent** for a user-managed editable profile definition. Do not call every profile an agent.
 - Use **Pibo Session ID** for product routing identity and **Pi Session ID** for Pi's technical persistence/cache identity.
 - Use **parentId** only for true hierarchy and UI nesting. Use **originId** for fork or clone derivation.
 - Use **Pibo Room** for the user-facing chat container and **Pibo Session** for the runtime conversation. Do not call rooms "sessions".
@@ -357,7 +357,7 @@ A Pibo-owned wrapper-level process that summarizes tool usage in a Pibo Session 
 - Use **Channel** for Pibo transport adapters and **Transport** for the underlying communication mechanism.
 - Use **Plugin** for internal static extension modules and **MCP Server** for external Model Context Protocol processes.
 - Use **Native Tool** for Pibo plugin tools selected in profiles, **Built-In Pi Tool** for Pi engine tools, **Curated CLI Tool** for `pibo tools` entries, and **MCP Server** for external MCP integrations.
-- Use **Context File** for runtime context resources, **Managed Context File** for editable product-owned content, and **Plugin Context File** for read-only shipped content.
+- Use **Context File** for runtime context resources, **Managed Context File** for editable product-managed content, and **Plugin Context File** for read-only shipped content.
 - Use **Pibo Base Prompt** for Pibo's base system prompt template. Use **Codex Base Prompt** only for Codex-compatibility context.
 - Use **Chat Web Trace View** for the data projection and **Chat Session View** for the UI renderer that presents it.
 - Use **Pibo Reliability Store**, **Pibo Session Store**, **Chat Event Log**, and **Chat Web Read Model** for their separate stores; do not collapse them into one "session database".

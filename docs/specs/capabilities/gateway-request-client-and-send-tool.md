@@ -1,8 +1,8 @@
 # Spec: Gateway Request Client and Send Tool
 
-**Status:** Draft  
-**Created:** 2026-05-11  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code  
+**Status:** Draft
+**Created:** 2026-05-11
+**Controller / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code
 **Related docs:** [Local Gateway Protocol and Lifecycle](./local-gateway-protocol-and-lifecycle.md), [Core Plugin Profiles and Built-In Harness Skill](./core-plugin-profiles-and-built-in-skill.md), [Pibo Input and Output Event Contract](./pibo-event-contract.md)
 
 ## Why

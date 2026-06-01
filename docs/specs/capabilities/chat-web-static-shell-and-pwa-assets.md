@@ -2,7 +2,7 @@
 
 **Status:** Draft
 **Created:** 2026-05-10
-**Owner / Source:** Scheduled Pibo Source Specs Coverage
+**Controller / Source:** Scheduled Pibo Source Specs Coverage
 **Related docs:** [Chat Web Browser Shell State](./chat-web-browser-shell-state.md), [Web Auth and Same-Origin Host](./web-auth-and-same-origin-host.md), [Chat Web Safe Content Rendering](./chat-web-safe-content-rendering.md)
 
 ## Why

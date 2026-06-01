@@ -2,7 +2,7 @@
 
 **Status:** Draft
 **Created:** 2026-05-10
-**Owner / Source:** Scheduled Pibo source-spec coverage from current workspace code
+**Controller / Source:** Scheduled Pibo source-spec coverage from current workspace code
 **Related docs:** `GLOSSARY.md`, `docs/specs/capabilities/pibo-session-routing.md`, `docs/specs/capabilities/plugin-registry-and-capability-catalog.md`, `docs/specs/capabilities/runtime-prompt-and-compaction.md`
 
 ## Why

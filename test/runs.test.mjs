@@ -84,7 +84,7 @@ test("wait returns timeout as normal state and resolves on completion", async ()
 	assert.equal(completed.timedOut, false);
 });
 
-test("disposing an owner cancels running runs and resolves waiters", async () => {
+test("disposing a controller cancels running runs and resolves waiters", async () => {
 	const registry = new PiboRunRegistry();
 	const run = startRun(registry);
 	const waited = registry.wait("parent", run.runId, 1000);

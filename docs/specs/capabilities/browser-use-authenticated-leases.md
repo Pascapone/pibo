@@ -1,9 +1,9 @@
 # Spec: Browser-use Authenticated Leases
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Updated:** 2026-05-17  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage; 2026-05-17 compute/browser resource incident analysis  
+**Status:** Draft
+**Created:** 2026-05-10
+**Updated:** 2026-05-17
+**Controller / Source:** Scheduled Pibo Source Specs Coverage; 2026-05-17 compute/browser resource incident analysis
 **Related docs:** [Browser Automation Desktop Environment](./browser-automation-desktop-environment.md), [Curated CLI Tools](./curated-cli-tools.md), [Docker Compute Workers](./docker-compute-workers.md), `docs/specs/changes/compute-browser-resource-lifecycle/spec.md`, `AGENTS.md`
 
 ## Why
@@ -29,7 +29,7 @@ The lease system complements, but is distinct from, the desktop and CDP health b
 - `pibo tools browser-use` progressive discovery for auth-template, target, attach, health, and lease commands.
 - Auth template path and environment export commands.
 - Lease acquisition from a template Chrome profile into isolated slot directories.
-- Lease registry locking, slot naming, TTLs, owner labels, maximum active slot limits, and JSON/text output.
+- Lease registry locking, slot naming, TTLs, controller labels, maximum active slot limits, and JSON/text output.
 - Warm-up of acquired slots through the browser-use wrapper.
 - Listing, releasing, deleting slot profiles, and reaping expired active leases.
 - Safety checks that prevent copying a running template profile.
@@ -96,7 +96,7 @@ The acquire command MUST allocate a lease id, copy the configured template profi
 #### Acceptance
 
 - Slot ids are deterministic per app and use sanitized app names.
-- Acquired leases include app, owner, session name, profile name, user-data dir, status, timestamps, and expiry.
+- Acquired leases include app, controller, session name, profile name, user-data dir, status, timestamps, and expiry.
 - Copied profiles preserve authentication files such as cookies.
 - Transient Chrome lock and DevTools files are not copied.
 - `--json` returns the lease record plus an `exports` object instead of shell exports.
@@ -104,7 +104,7 @@ The acquire command MUST allocate a lease id, copy the configured template profi
 #### Scenario: Acquire isolated Chat Web slot
 
 - GIVEN a closed authenticated template profile contains a cookie file
-- WHEN an agent runs `pibo tools browser-use lease acquire --app pibo-chat --owner agent-a --template-dir <template>`
+- WHEN an agent runs `pibo tools browser-use lease acquire --app pibo-chat --controller agent-a --template-dir <template>`
 - THEN Pibo creates `pibo-chat-slot-001`, copies the cookie into that slot, omits transient Chrome files, and prints shell exports for the isolated browser-use session.
 
 ### Requirement: Active lease counts and registry writes are concurrency-safe
@@ -171,11 +171,11 @@ After writing the registry and printing the lease output, acquire runs the brows
 
 ### Requirement: Listing and release reflect live lease state
 
-The CLI MUST make lease ownership and lifecycle visible, and release MUST stop any matching browser-use process before marking the lease released.
+The CLI MUST make lease stewardship and lifecycle visible, and release MUST stop any matching browser-use process before marking the lease released.
 
 #### Current
 
-`lease list` auto-reaps stale leases, then prints rows with id, state, owner, session name, and user-data dir. JSON output includes `expired` and `processAlive`. `lease release <id>` kills the CDP pid for the lease session when present, marks the lease released, and optionally deletes the slot profile.
+`lease list` auto-reaps stale leases, then prints rows with id, state, controller, session name, and user-data dir. JSON output includes `expired` and `processAlive`. `lease release <id>` kills the CDP pid for the lease session when present, marks the lease released, and optionally deletes the slot profile.
 
 #### Acceptance
 
@@ -244,7 +244,7 @@ An acquired auth slot can be bound to a browser-pool lease. Release closes or re
 This capability participates in the compute/browser resource lifecycle change. It must follow the canonical model in `docs/project/compute-browser-resource-operating-model.md` and the rollout checks in `docs/project/compute-browser-resource-rollout-checklist.md`.
 
 - Auth profile leases are separate from browser-pool leases; automation in compute workers must coordinate both when managed pool mode is active.
-- Lease acquire should expose enough state for agents to distinguish auth slot identity, browser-pool lease identity, CDP URL, owner, expiry, and cleanup status.
+- Lease acquire should expose enough state for agents to distinguish auth slot identity, browser-pool lease identity, CDP URL, controller, expiry, and cleanup status.
 - Lease release and stale reap must release matching managed browser leases when safe, while preserving the authenticated template profile unless the user explicitly targets template cleanup.
 - Cleanup must match stale `chrome|chromium` processes only when tied to Pibo-managed lease or profile metadata.
 
@@ -252,7 +252,7 @@ This capability participates in the compute/browser resource lifecycle change. I
 
 - The lease registry file may be missing; Pibo MUST treat that as an empty versioned registry.
 - The registry file may be malformed; commands that need it MUST fail rather than silently discarding state.
-- App, owner, and profile labels can contain unsafe characters; slot ids MUST sanitize app names while retaining the display owner in the lease record.
+- App, controller, and profile labels can contain unsafe characters; slot ids MUST sanitize app names while retaining the display controller in the lease record.
 - The template directory can be absent; Pibo MUST create a clean isolated slot rather than cloning any active default profile.
 - CDP pid files can be stale or unreadable; process checks MUST degrade safely.
 - A lease can expire while another command is listing or acquiring; the locked mutation path MUST be the authority for state transitions.
@@ -284,7 +284,7 @@ This section separates behavior with direct tests from behavior that is currentl
 - `pibo tools browser-use` discovery lists the browser-use helper surface and points to environment setup, guides, targets, attach-chat, and lease acquisition. Verified by `test/tools-cli.test.mjs`.
 - `pibo tools browser-use auth-template env` prints shell exports for the reusable authenticated template session and user-data directory. Verified by `test/tools-cli.test.mjs`.
 - `pibo tools browser-use lease acquire` creates `pibo-chat-slot-001`, prints shell exports for the isolated session, copies ordinary template files such as `Cookies`, and omits `DevToolsActivePort`. Verified by `test/tools-cli.test.mjs`.
-- `pibo tools browser-use lease list` reports the active lease id, owner, session name, and user-data directory. Verified by `test/tools-cli.test.mjs`.
+- `pibo tools browser-use lease list` reports the active lease id, controller, session name, and user-data directory. Verified by `test/tools-cli.test.mjs`.
 - `pibo tools browser-use lease release <id> --delete-profile` prints the release confirmation and deletes the slot profile directory. Verified by `test/tools-cli.test.mjs`.
 
 ### Source-Inspected Only

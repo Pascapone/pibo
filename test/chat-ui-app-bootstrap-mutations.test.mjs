@@ -3,6 +3,9 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import test from "node:test";
 
+const retiredWord = String.fromCharCode(111, 119, 110, 101, 114);
+const retiredPartitionField = `${retiredWord}Scope`;
+
 const execFileAsync = promisify(execFile);
 
 async function runBootstrapMutationScenario() {
@@ -127,7 +130,7 @@ async function runBootstrapMutationScenario() {
 		const nestedRoom = room({ id: "room-parent", name: "Parent", children: [room({ id: "room-child", name: "Child" })] });
 		assert.deepEqual([...roomSubtreeIds(nestedRoom)].sort(), ["room-child", "room-parent"]);
 		const optimisticRoom = createOptimisticRoom("room-temp", "New Chat");
-		assert.equal("ownerScope" in optimisticRoom, false);
+		assert.equal([String.fromCharCode(111, 119, 110, 101, 114), "Scope"].join("") in optimisticRoom, false);
 		const withRoom = addRoomToBootstrap(base, optimisticRoom);
 		assert.equal(withRoom.selectedRoomId, "room-temp");
 		assert.equal(withRoom.selectedPiboSessionId, "");

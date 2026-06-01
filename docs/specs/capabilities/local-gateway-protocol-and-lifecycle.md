@@ -1,9 +1,9 @@
 # Spec: Local Gateway Protocol and Lifecycle
 
-**Status:** Draft  
-**Created:** 2026-05-10  
-**Updated:** 2026-05-17  
-**Owner / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code  
+**Status:** Draft
+**Created:** 2026-05-10
+**Updated:** 2026-05-17
+**Controller / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code
 **Related docs:** [Pibo Session Routing](./pibo-session-routing.md), [Web Auth and Same-Origin Host](./web-auth-and-same-origin-host.md), [Yielded Run Control](./yielded-run-control.md)
 
 ## Why
@@ -210,7 +210,7 @@ The gateway MUST provide channels with product-level operations instead of direc
 
 #### Target
 
-Channels implement transports and web apps through the context contract while the gateway keeps ownership of router and session store lifecycles.
+Channels implement transports and web apps through the context contract while the gateway keeps stewardship of router and session store lifecycles.
 
 #### Acceptance
 

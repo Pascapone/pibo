@@ -32,7 +32,6 @@ async function runAppSignalStatusScenario() {
 		function room(overrides = {}) {
 			return {
 				id: overrides.id ?? "room-root",
-				ownerScope: "user:user-1",
 				name: overrides.name ?? "Room",
 				type: "chat",
 				createdAt: "2026-05-27T00:00:00.000Z",
