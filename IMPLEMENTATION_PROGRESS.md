@@ -152,3 +152,4 @@
   - Evidence tier: Docker build/typecheck plus focused temp-file migration/schema fixture tests and targeted fresh-schema source search gate.
   - Safety: migration/schema tests used only temp files in the Docker worker; no migration inspect/dry-run/apply was run against `/root/.pibo`; host Dev/Production gateways and Production data were not touched.
   - PRD update: US-007 set to `passes: true` with evidence notes. Remaining `src/data/cli.ts` `owner_scope` references belong to unread-baseline/read-state repair and are scheduled for Chat read-state/schema stories.
+- 2026-06-01T08:36Z: US-007 implementation commit created: `cbe7acd feat: US-007 - rebuild sessions schema ownerless`.
