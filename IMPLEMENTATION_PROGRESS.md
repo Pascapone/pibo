@@ -186,3 +186,4 @@
   - Evidence tier: Docker typecheck/build, focused API/UI/service tests, targeted search gate, worker-local API and headless browser smoke through real Chat Web dev-auth gateway.
   - Safety: no migration inspect/dry-run/apply commands were run; host `/root/.pibo`, host Dev/Production gateways, Production data, deploy scripts, and PR creation were not touched.
   - PRD update: US-010 set to `passes: true` with evidence notes. Next failing story: US-011 (`Convert Custom Agents to app-global resources`).
+- 2026-06-01T12:08Z: US-010 implementation commit created: `ff5c140 feat: US-010 - clean chat web owner payloads`.
