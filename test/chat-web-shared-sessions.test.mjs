@@ -29,7 +29,6 @@ function createHarness() {
 					identity: { userId, email: `${userId}@example.test`, provider: "test" },
 				},
 				appContext: SHARED_APP_CONTEXT,
-				ownerScope: PRE_CUTOVER_LEGACY_OWNER_SCOPE,
 			};
 		},
 		channelContext: {
@@ -76,6 +75,22 @@ async function json(response) {
 	return response.json();
 }
 
+function assertNoProductOwnerPayloadFields(value, label) {
+	const visit = (item, path) => {
+		if (!item || typeof item !== "object") return;
+		if (Array.isArray(item)) {
+			item.forEach((entry, index) => visit(entry, `${path}[${index}]`));
+			return;
+		}
+		for (const [key, child] of Object.entries(item)) {
+			assert.notEqual(key, "ownerScope", `${label} contains ownerScope at ${path}`);
+			assert.notEqual(key, "principalId", `${label} contains principalId at ${path}`);
+			visit(child, `${path}.${key}`);
+		}
+	};
+	visit(value, "$payload");
+}
+
 function ensureLegacyRoomCompatibility(db) {
 	const roomColumns = new Set(db.prepare("PRAGMA table_info(rooms)").all().map((column) => column.name));
 	if (!roomColumns.has("owner_scope")) db.exec(`ALTER TABLE rooms ADD COLUMN owner_scope TEXT`);
@@ -117,6 +132,7 @@ test("Chat Web lists, opens, and sends to mixed historical sessions without owne
 		});
 		assert.equal(roomResponse.status, 201);
 		const { room } = await json(roomResponse);
+		assertNoProductOwnerPayloadFields(room, "created room payload");
 
 		const sharedSession = harness.sessions.create({
 			channel: "pibo.chat-web",
@@ -140,10 +156,17 @@ test("Chat Web lists, opens, and sends to mixed historical sessions without owne
 		});
 		assert.equal(bootstrapResponse.status, 200);
 		const bootstrap = await json(bootstrapResponse);
+		assertNoProductOwnerPayloadFields(bootstrap, "mixed historical bootstrap payload");
 		assert.equal(bootstrap.selectedPiboSessionId, userSession.id);
 		const listedIds = new Set(bootstrap.sessions.map((session) => session.piboSessionId));
 		assert.ok(listedIds.has(sharedSession.id), "shared:app historical session is listed");
 		assert.ok(listedIds.has(userSession.id), "user:* historical session is listed");
+
+		const settingsResponse = await harness.request("/api/chat/user-settings", {
+			headers: { "x-test-user": "user-b" },
+		});
+		assert.equal(settingsResponse.status, 200);
+		assertNoProductOwnerPayloadFields(await json(settingsResponse), "user settings payload");
 
 		const messageResponse = await harness.request("/api/chat/message", {
 			method: "POST",
@@ -168,6 +191,7 @@ test("Chat Web real API paths bootstrap, open, and send for shared, legacy user,
 		});
 		assert.equal(roomResponse.status, 201);
 		const { room } = await json(roomResponse);
+		assertNoProductOwnerPayloadFields(room, "real API room create payload");
 
 		const historicalShared = harness.sessions.create({
 			channel: "pibo.chat-web",
@@ -191,7 +215,9 @@ test("Chat Web real API paths bootstrap, open, and send for shared, legacy user,
 			body: JSON.stringify({ roomId: room.id }),
 		});
 		assert.equal(createdResponse.status, 201);
-		const { session: newShared } = await json(createdResponse);
+		const createdPayload = await json(createdResponse);
+		assertNoProductOwnerPayloadFields(createdPayload, "real API session create payload");
+		const { session: newShared } = createdPayload;
 		assert.equal("ownerScope" in newShared, false);
 		assert.equal(newShared.metadata.chatRoomId, room.id);
 
@@ -206,6 +232,7 @@ test("Chat Web real API paths bootstrap, open, and send for shared, legacy user,
 			});
 			assert.equal(bootstrapResponse.status, 200, `${label} bootstrap succeeds`);
 			const bootstrap = await json(bootstrapResponse);
+			assertNoProductOwnerPayloadFields(bootstrap, `${label} bootstrap payload`);
 			assert.equal(bootstrap.selectedPiboSessionId, session.id, `${label} direct bootstrap selects session`);
 			assert.equal(bootstrap.selectedRoomId, room.id, `${label} direct bootstrap keeps room`);
 			assert.ok(bootstrap.sessions.some((node) => node.piboSessionId === session.id), `${label} appears in sidebar session nodes`);
@@ -216,6 +243,7 @@ test("Chat Web real API paths bootstrap, open, and send for shared, legacy user,
 			});
 			assert.equal(navigationResponse.status, 200, `${label} navigation succeeds`);
 			const navigation = await json(navigationResponse);
+			assertNoProductOwnerPayloadFields(navigation, `${label} navigation payload`);
 			assert.equal(navigation.selectedPiboSessionId, session.id, `${label} navigation selects session`);
 			assert.ok(navigation.sessions.some((node) => node.piboSessionId === session.id), `${label} navigation includes session`);
 
@@ -256,13 +284,16 @@ test("Chat Web treats rooms, sidebar navigation, and mutations as app-global res
 		const roomsResponse = await harness.request("/api/chat/rooms", { headers: { "x-test-user": "user-b" } });
 		assert.equal(roomsResponse.status, 200);
 		const rooms = await json(roomsResponse);
+		assertNoProductOwnerPayloadFields(rooms, "rooms list payload");
 		const roomIds = new Set(rooms.rooms.map((room) => room.id));
 		assert.ok(roomIds.has("room_shared_history"), "historical shared room is listed");
 		assert.ok(roomIds.has("room_legacy_history"), "historical user-owned room is listed");
 
 		const roomResponse = await harness.request("/api/chat/rooms/room_legacy_history", { headers: { "x-test-user": "user-b" } });
 		assert.equal(roomResponse.status, 200);
-		assert.equal((await json(roomResponse)).room.id, "room_legacy_history");
+		const roomPayload = await json(roomResponse);
+		assertNoProductOwnerPayloadFields(roomPayload, "room detail payload");
+		assert.equal(roomPayload.room.id, "room_legacy_history");
 
 		const renamed = await harness.request("/api/chat/rooms/room_legacy_history", {
 			method: "PATCH",
@@ -270,13 +301,16 @@ test("Chat Web treats rooms, sidebar navigation, and mutations as app-global res
 			body: JSON.stringify({ name: "Renamed legacy room" }),
 		});
 		assert.equal(renamed.status, 200);
-		assert.equal((await json(renamed)).room.name, "Renamed legacy room");
+		const renamedPayload = await json(renamed);
+		assertNoProductOwnerPayloadFields(renamedPayload, "room patch payload");
+		assert.equal(renamedPayload.room.name, "Renamed legacy room");
 
 		const bootstrapResponse = await harness.request(`/api/chat/bootstrap?roomId=room_legacy_history&piboSessionId=${encodeURIComponent(session.id)}`, {
 			headers: { "x-test-user": "user-b" },
 		});
 		assert.equal(bootstrapResponse.status, 200);
 		const bootstrap = await json(bootstrapResponse);
+		assertNoProductOwnerPayloadFields(bootstrap, "legacy room bootstrap payload");
 		assert.equal(bootstrap.selectedRoomId, "room_legacy_history");
 		assert.ok(bootstrap.rooms.some((room) => room.id === "room_legacy_history"), "navigation includes legacy room");
 		assert.ok(bootstrap.sessions.some((item) => item.piboSessionId === session.id), "navigation includes legacy room session");
@@ -326,7 +360,9 @@ test("Chat Web read state is shared across authenticated accounts", async () => 
 			headers: { "x-test-user": "user-a" },
 		});
 		assert.equal(initial.status, 200);
-		const initialNode = (await json(initial)).sessions.find((node) => node.piboSessionId === session.id);
+		const initialPayload = await json(initial);
+		assertNoProductOwnerPayloadFields(initialPayload, "read-state initial bootstrap payload");
+		const initialNode = initialPayload.sessions.find((node) => node.piboSessionId === session.id);
 		assert.equal(initialNode.unreadCount, 1);
 
 		const readResponse = await harness.request(`/api/chat/sessions/${encodeURIComponent(session.id)}/read`, {
@@ -340,7 +376,9 @@ test("Chat Web read state is shared across authenticated accounts", async () => 
 			headers: { "x-test-user": "user-b" },
 		});
 		assert.equal(after.status, 200);
-		const afterNode = (await json(after)).sessions.find((node) => node.piboSessionId === session.id);
+		const afterPayload = await json(after);
+		assertNoProductOwnerPayloadFields(afterPayload, "read-state post-read bootstrap payload");
+		const afterNode = afterPayload.sessions.find((node) => node.piboSessionId === session.id);
 		assert.equal(afterNode.unreadCount, undefined);
 
 		db = new DatabaseSync(harness.dataStorePath);
@@ -376,7 +414,9 @@ test("Chat Web mutates and routes historical user-owned sessions by resource exi
 			body: JSON.stringify({ title: "Renamed by another account" }),
 		});
 		assert.equal(renamed.status, 200);
-		assert.equal((await json(renamed)).session.title, "Renamed by another account");
+		const renamedPayload = await json(renamed);
+		assertNoProductOwnerPayloadFields(renamedPayload, "session patch payload");
+		assert.equal(renamedPayload.session.title, "Renamed by another account");
 
 		const action = await harness.request("/api/chat/action", {
 			method: "POST",
@@ -384,6 +424,7 @@ test("Chat Web mutates and routes historical user-owned sessions by resource exi
 			body: JSON.stringify({ piboSessionId: session.id, action: "session.clone", params: {} }),
 		});
 		assert.equal(action.status, 200);
+		assertNoProductOwnerPayloadFields(await json(action), "session action payload");
 		assert.equal(harness.emitted.at(-1).piboSessionId, session.id);
 		assert.equal(harness.emitted.at(-1).action, "session.clone");
 
@@ -393,7 +434,9 @@ test("Chat Web mutates and routes historical user-owned sessions by resource exi
 			body: JSON.stringify({ archived: true }),
 		});
 		assert.equal(archived.status, 200);
-		assert.equal(typeof (await json(archived)).session.metadata.chatWebArchivedAt, "string");
+		const archivedPayload = await json(archived);
+		assertNoProductOwnerPayloadFields(archivedPayload, "session archive payload");
+		assert.equal(typeof archivedPayload.session.metadata.chatWebArchivedAt, "string");
 
 		const restored = await harness.request(`/api/chat/sessions/${encodeURIComponent(session.id)}`, {
 			method: "PATCH",
@@ -401,7 +444,9 @@ test("Chat Web mutates and routes historical user-owned sessions by resource exi
 			body: JSON.stringify({ archived: false }),
 		});
 		assert.equal(restored.status, 200);
-		assert.equal((await json(restored)).session.metadata.chatWebArchivedAt, undefined);
+		const restoredPayload = await json(restored);
+		assertNoProductOwnerPayloadFields(restoredPayload, "session restore payload");
+		assert.equal(restoredPayload.session.metadata.chatWebArchivedAt, undefined);
 
 		await harness.request(`/api/chat/sessions/${encodeURIComponent(session.id)}`, {
 			method: "PATCH",

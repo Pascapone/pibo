@@ -60,7 +60,6 @@ async function runBootstrapMutationScenario() {
 		function room(overrides = {}) {
 			return {
 				id: overrides.id ?? "room-root",
-				ownerScope: "user:user-1",
 				name: overrides.name ?? "Root Room",
 				type: overrides.type ?? "chat",
 				createdAt: overrides.createdAt ?? "2026-05-27T00:00:00.000Z",
@@ -127,8 +126,8 @@ async function runBootstrapMutationScenario() {
 
 		const nestedRoom = room({ id: "room-parent", name: "Parent", children: [room({ id: "room-child", name: "Child" })] });
 		assert.deepEqual([...roomSubtreeIds(nestedRoom)].sort(), ["room-child", "room-parent"]);
-		const optimisticRoom = createOptimisticRoom("room-temp", "user-1", "New Chat");
-		assert.equal(optimisticRoom.ownerScope, "user:user-1");
+		const optimisticRoom = createOptimisticRoom("room-temp", "New Chat");
+		assert.equal("ownerScope" in optimisticRoom, false);
 		const withRoom = addRoomToBootstrap(base, optimisticRoom);
 		assert.equal(withRoom.selectedRoomId, "room-temp");
 		assert.equal(withRoom.selectedPiboSessionId, "");

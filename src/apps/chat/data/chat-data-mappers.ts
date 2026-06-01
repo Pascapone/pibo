@@ -1,10 +1,9 @@
 import type { PiboJsonObject, PiboJsonValue, PiboOutputEvent } from "../../../core/events.js";
 import { normalizeSessionErrorDetails } from "../../../core/session-errors.js";
 import type { StoredChatEvent } from "../types/event-store.js";
-import { roomWorkspaceFromMetadata, type PiboRoom, type PiboRoomRole } from "../types/rooms.js";
+import { roomWorkspaceFromMetadata, type PiboRoom } from "../types/rooms.js";
 import type { ChatWebSessionIndexItem, ChatWebStoredPiboEvent } from "../types/read-model.js";
 import type { PiboDataStore } from "../../../data/pibo-store.js";
-import { legacyOwnerScopeForPreCutoverSchemas } from "../../../owner-scope-compat.js";
 
 export type EventLogRow = {
 	stream_id: number;
@@ -37,7 +36,6 @@ export type SessionRow = {
 
 export type RoomRow = {
 	id: string;
-	owner_scope?: string;
 	name: string;
 	topic: string | null;
 	type: "space" | "chat" | "agent";
@@ -48,14 +46,6 @@ export type RoomRow = {
 	metadata_json: string;
 	created_at: string;
 	updated_at: string;
-};
-
-export type MemberRow = {
-	room_id: string;
-	principal_id: string;
-	role: PiboRoomRole;
-	joined_at: string;
-	last_read_stream_id?: number | null;
 };
 
 export function storedPiboEventFromV2Row(row: EventLogRow): ChatWebStoredPiboEvent | undefined {
@@ -96,7 +86,7 @@ function outputPayloadFromV2Row(row: EventLogRow, attributes: PiboJsonObject): P
 }
 
 export function sessionFromRow(row: SessionRow): ChatWebSessionIndexItem { return { piboSessionId: row.id, piSessionId: row.pi_session_id ?? row.id, parentId: row.parent_id ?? undefined, profile: row.profile, channel: row.channel, kind: row.kind, createdAt: row.created_at, updatedAt: row.updated_at, lastActivityAt: row.last_activity_at, status: row.status === "running" || row.status === "error" ? row.status : "idle" }; }
-export function roomFromRow(row: RoomRow): PiboRoom { const metadata = parseJsonObject(row.metadata_json); return { id: row.id, ownerScope: row.owner_scope ?? legacyOwnerScopeForPreCutoverSchemas(), name: row.name, topic: row.topic ?? undefined, workspace: row.workspace ?? roomWorkspaceFromMetadata(metadata), type: row.type, parentRoomId: row.parent_room_id ?? undefined, createdAt: row.created_at, updatedAt: row.updated_at, retentionPolicyId: row.retention_policy_id ?? undefined, metadata }; }
+export function roomFromRow(row: RoomRow): PiboRoom { const metadata = parseJsonObject(row.metadata_json); return { id: row.id, name: row.name, topic: row.topic ?? undefined, workspace: row.workspace ?? roomWorkspaceFromMetadata(metadata), type: row.type, parentRoomId: row.parent_room_id ?? undefined, createdAt: row.created_at, updatedAt: row.updated_at, retentionPolicyId: row.retention_policy_id ?? undefined, metadata }; }
 export function parseJsonObject(value: string): PiboJsonObject { try { const parsed = JSON.parse(value) as unknown; return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as PiboJsonObject : {}; } catch { return {}; } }
 export function stringAttribute(attributes: PiboJsonObject, key: string): string | undefined { const value = attributes[key]; return typeof value === "string" ? value : undefined; }
 function booleanAttribute(attributes: PiboJsonObject, key: string): boolean | undefined { const value = attributes[key]; return typeof value === "boolean" ? value : undefined; }

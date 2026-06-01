@@ -145,7 +145,7 @@ export class LocalCliSessionSource implements CliSessionSource {
 					id: room.id,
 					title: room.name,
 					description: room.topic,
-					ownerScope: room.ownerScope,
+					ownerScope: appOwnerScope,
 					isDefault: room.id === defaultRoom.id || room.metadata.default === true,
 				})),
 				...deriveRoomsFromSessions(this.readSessions()),
@@ -709,7 +709,7 @@ export class LocalCliSessionSource implements CliSessionSource {
 		const appOwnerScope = legacyOwnerScopeForPreCutoverSchemas();
 		if (this.roomService) {
 			const room = this.roomService.ensureDefaultRoom({ name: "Shared Chat" });
-			return { id: room.id, title: room.name, description: room.topic, ownerScope: room.ownerScope, isDefault: true };
+			return { id: room.id, title: room.name, description: room.topic, ownerScope: appOwnerScope, isDefault: true };
 		}
 		return defaultCliRoomSummary(appOwnerScope);
 	}

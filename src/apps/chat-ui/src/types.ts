@@ -43,7 +43,6 @@ export type PiboWebDerivedSessionNode = {
 
 export type PiboRoom = {
 	id: string;
-	ownerScope: string;
 	name: string;
 	topic?: string;
 	workspace?: string;
@@ -198,7 +197,6 @@ export type PiboSession = {
 	channel: string;
 	kind: string;
 	profile: string;
-	ownerScope?: string;
 	parentId?: string;
 	originId?: string;
 	workspace?: string;

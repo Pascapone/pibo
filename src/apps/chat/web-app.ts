@@ -17,7 +17,6 @@ import {
 	withPiboRoomWorkspace,
 	type CreatePiboRoomInput,
 	type PiboRoom,
-	type PiboRoomMember,
 	type PiboRoomNode,
 	type UpdatePiboRoomInput,
 } from "./types/rooms.js";
@@ -329,8 +328,7 @@ type ChatRoomActions = {
 	listRoomTree(): PiboRoomNode[];
 	listRoomSubtree(rootRoomId: string): PiboRoom[];
 	ensureDefaultRoom(input?: { name?: string }): PiboRoom;
-	getMember(roomId: string): PiboRoomMember | undefined;
-	updateReadCursor(roomId: string, lastReadStreamId: number): PiboRoomMember | undefined;
+	updateReadCursor(roomId: string, lastReadStreamId: number): void;
 	requireRoom(roomId: string): PiboRoom;
 	close?(): void;
 };
@@ -4595,7 +4593,6 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				indexSharedSessions(state.sessionQuery, ownedSessions);
 				return responseJson({
 					room,
-					member: state.roomService.getMember(room.id),
 					sessions: await buildSessionNodes(
 						ownedSessions,
 						state.sessionQuery.listSessions(),

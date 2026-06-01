@@ -174,11 +174,10 @@ function removeRoomNodes(nodes: PiboRoom[], roomIds: ReadonlySet<string>): PiboR
 	return changed ? next : nodes;
 }
 
-export function createOptimisticRoom(id: string, userId: string, name: string): PiboRoom {
+export function createOptimisticRoom(id: string, name: string): PiboRoom {
 	const now = new Date().toISOString();
 	return {
 		id,
-		ownerScope: `user:${userId}`,
 		name,
 		type: "chat",
 		createdAt: now,
