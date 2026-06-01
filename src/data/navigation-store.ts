@@ -1,5 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
-import { getSharedAppLegacyOwnerScope } from "../shared-app.js";
+import { legacyOwnerScopeForPreCutoverSchemas } from "../owner-scope-compat.js";
 import { sqliteTableColumns } from "./sqlite-schema.js";
 
 export type SessionNavigationUpsertInput = {
@@ -132,7 +132,7 @@ export class NavigationStore {
 
 function sessionNavigationFromRow(row: SessionNavigationRow): StoredSessionNavigation {
 	return {
-		ownerScope: row.owner_scope ?? getSharedAppLegacyOwnerScope(),
+		ownerScope: row.owner_scope ?? legacyOwnerScopeForPreCutoverSchemas(),
 		roomId: row.room_id ?? undefined,
 		sessionId: row.session_id,
 		rootSessionId: row.root_session_id ?? undefined,

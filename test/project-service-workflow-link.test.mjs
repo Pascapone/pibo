@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
-import { LEGACY_SHARED_APP_OWNER_SCOPE } from "../dist/shared-app.js";
+import { PRE_CUTOVER_LEGACY_OWNER_SCOPE } from "../dist/owner-scope-compat.js";
 import { ChatProjectService } from "../dist/apps/chat/data/project-service.js";
 
 test("project service uses shared app storage and lists historical owner projects", () => {
@@ -16,7 +16,7 @@ test("project service uses shared app storage and lists historical owner project
 		const defaultA = service.ensureSharedDefaultProject({ ownerScope: "user:a", projectFolder: join(tempRoot, "default") });
 		const defaultB = service.ensureSharedDefaultProject({ ownerScope: "user:b", projectFolder: join(tempRoot, "ignored-default") });
 		assert.equal(defaultA.id, defaultB.id);
-		assert.equal(defaultA.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
+		assert.equal(defaultA.ownerScope, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
 		assert.equal(defaultA.name, "Shared Project");
 		assert.equal(defaultA.metadata.default, true);
 
@@ -26,7 +26,7 @@ test("project service uses shared app storage and lists historical owner project
 			projectFolder: join(tempRoot, "shared-feature"),
 			createFolder: true,
 		});
-		assert.equal(created.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
+		assert.equal(created.ownerScope, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
 
 		const db = new DatabaseSync(service.path);
 		try {

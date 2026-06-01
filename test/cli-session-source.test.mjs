@@ -8,7 +8,7 @@ import { CliSourceError, CLI_ROOT_RECOVERY_OWNER_SCOPE, cliDefaultRoomIdForOwner
 import { PiboDataStore } from "../dist/data/pibo-store.js";
 import { PiboDataSessionStore } from "../dist/sessions/pibo-data-store.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
-import { LEGACY_SHARED_APP_OWNER_SCOPE } from "../dist/shared-app.js";
+import { PRE_CUTOVER_LEGACY_OWNER_SCOPE } from "../dist/owner-scope-compat.js";
 
 const fixedNow = "2026-05-16T12:00:00.000Z";
 
@@ -174,7 +174,7 @@ test("local CLI session source lists existing sessions, derived rooms, agents, a
 	});
 
 	const rooms = await source.listRooms();
-	assert.ok(rooms.some((room) => room.title === "Shared Chat" && room.ownerScope === LEGACY_SHARED_APP_OWNER_SCOPE && room.isDefault === true));
+	assert.ok(rooms.some((room) => room.title === "Shared Chat" && room.ownerScope === PRE_CUTOVER_LEGACY_OWNER_SCOPE && room.isDefault === true));
 	assert.ok(rooms.some((room) => room.id === "room_one" && room.title === "Main Room" && room.ownerScope === "user:one"));
 
 	const sessions = await source.listSessions({ roomId: "room_one" });
@@ -210,15 +210,15 @@ test("local CLI session source resolves Root recovery owner and default Personal
 	assert.deepEqual((await source.listOwners()).map((owner) => owner.ownerScope), [CLI_ROOT_RECOVERY_OWNER_SCOPE]);
 
 	const rooms = await source.listRooms();
-	assert.equal(rooms[0].id, cliDefaultRoomIdForOwner(LEGACY_SHARED_APP_OWNER_SCOPE));
+	assert.equal(rooms[0].id, cliDefaultRoomIdForOwner(PRE_CUTOVER_LEGACY_OWNER_SCOPE));
 	assert.equal(rooms[0].title, "Shared Chat");
-	assert.equal(rooms[0].ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
+	assert.equal(rooms[0].ownerScope, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
 	assert.equal(rooms[0].isDefault, true);
 
 	const created = await source.createSession({ title: "Root recovery created", profile: "base" });
-	assert.equal(created.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
+	assert.equal(created.ownerScope, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
 	assert.equal(created.roomId, rooms[0].id);
-	assert.equal(store.get(created.id).ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
+	assert.equal(store.get(created.id).ownerScope, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
 	assert.notEqual(created.ownerScope, "user:unknown");
 });
 
@@ -230,7 +230,7 @@ test("local CLI session source discovers one owner and multiple owners from sess
 	dataStore.navigation.upsertSession({ ownerScope: "user:three", roomId: "room_three", sessionId: "ps_nav_three", title: "Nav Three", profile: "base", status: "idle", lastActivityAt: fixedNow, sortKey: fixedNow, updatedAt: fixedNow });
 	dataStore.eventLog.appendEvent({ sessionId: "ps_event_four", roomId: "room_four", topic: "chat", type: "message.accepted", source: "test", actorType: "user", actorId: "user:four", retentionClass: "standard", previewText: "owner discovery", createdAt: fixedNow });
 	const session = sessionStore.create({ id: "ps_owner_one", piSessionId: "pi_owner_one", channel: "chat-web", kind: "chat", profile: "base", ownerScope: "user:one", title: "Owner One", metadata: { chatRoomId: "room_one", chatRoomName: "One Room", status: "idle" } });
-	assert.equal(session.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
+	assert.equal(session.ownerScope, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
 
 	const source = new LocalCliSessionSource({
 		dataStore,
@@ -240,12 +240,12 @@ test("local CLI session source discovers one owner and multiple owners from sess
 	});
 
 	const ownerScopes = (await source.listOwners()).map((owner) => owner.ownerScope);
-	assert.deepEqual(ownerScopes, ["user:custom", "user:four", LEGACY_SHARED_APP_OWNER_SCOPE, CLI_ROOT_RECOVERY_OWNER_SCOPE]);
+	assert.deepEqual(ownerScopes, ["user:custom", "user:four", PRE_CUTOVER_LEGACY_OWNER_SCOPE, CLI_ROOT_RECOVERY_OWNER_SCOPE]);
 	assert.equal((await source.getActiveOwner()).ownerScope, "user:custom");
 
 	await source.setActiveOwner("user:two");
 	assert.equal((await source.getActiveOwner()).ownerScope, "user:two");
-	assert.ok((await source.listRooms()).every((room) => room.ownerScope === LEGACY_SHARED_APP_OWNER_SCOPE));
+	assert.ok((await source.listRooms()).every((room) => room.ownerScope === PRE_CUTOVER_LEGACY_OWNER_SCOPE));
 
 	const oneSource = new LocalCliSessionSource({ sessionStore, ownerScope: "user:one", dataStore, now: () => fixedNow });
 	assert.equal((await oneSource.getActiveOwner()).ownerScope, "user:one");
@@ -272,10 +272,10 @@ test("local CLI session source owner and room contract filters sessions and crea
 	assert.deepEqual((await source.listSessions({ roomId: defaultRoom.id })).map((session) => session.id), [one.id]);
 
 	const created = await source.createSession({ title: "Created in default", profile: "base" });
-	assert.equal(created.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
+	assert.equal(created.ownerScope, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
 	assert.equal(created.roomId, defaultRoom.id);
 	const persisted = dataStore.db.prepare("SELECT room_id FROM sessions WHERE id = ?").get(created.id);
-	assert.equal(sessionStore.get(created.id).ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
+	assert.equal(sessionStore.get(created.id).ownerScope, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
 	assert.equal(persisted.room_id, defaultRoom.id);
 
 	await source.close();
@@ -306,11 +306,11 @@ test("local CLI session source writes Web-visible navigation and message read mo
 	const source = new LocalCliSessionSource({ dataStore, sessionStore, router, ownerScope: "user:web", now: () => fixedNow });
 
 	const created = await source.createSession({ roomId: room.id, title: "Web Visible CLI", profile: "base" });
-	assert.equal(created.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
+	assert.equal(created.ownerScope, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
 	assert.equal(created.roomId, room.id);
 
 	const sessionRow = dataStore.db.prepare("SELECT room_id FROM sessions WHERE id = ?").get(created.id);
-	assert.equal(sessionStore.get(created.id).ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
+	assert.equal(sessionStore.get(created.id).ownerScope, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
 	assert.equal(sessionRow.room_id, room.id);
 	const navigationAfterCreate = dataStore.db.prepare("SELECT room_id, status FROM session_navigation WHERE session_id = ?").get(created.id);
 	assert.equal(navigationAfterCreate.room_id, room.id);
@@ -326,7 +326,7 @@ test("local CLI session source writes Web-visible navigation and message read mo
 	assert.match(navigationAfterSend.last_message_preview, /Persisted assistant reply|Persist this CLI message/);
 	const messages = dataStore.db.prepare("SELECT role, actor_id, room_id, content_preview FROM chat_messages WHERE session_id = ? ORDER BY sequence ASC").all(created.id);
 	assert.deepEqual(messages.map((row) => row.role), ["user", "assistant"]);
-	assert.equal(messages[0].actor_id, LEGACY_SHARED_APP_OWNER_SCOPE);
+	assert.equal(messages[0].actor_id, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
 	assert.equal(messages[0].room_id, room.id);
 	assert.match(messages[0].content_preview, /Persist this CLI message/);
 	assert.equal(messages[1].room_id, room.id);
@@ -348,7 +348,7 @@ test("local CLI session source creates opens sends and cleans local trace subscr
 	const created = await source.createSession({ roomId: "room_one", title: "CLI Created", agentId: "base", workspace: "/workspace/cli" });
 	assert.equal(created.title, "CLI Created");
 	assert.equal(created.profile, "base");
-	assert.equal(created.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
+	assert.equal(created.ownerScope, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
 	assert.equal(created.roomId, "room_one");
 	assert.equal(created.workspace, "/workspace/cli");
 	assert.equal(created.status, "idle");
@@ -604,7 +604,7 @@ test("local CLI session source reports clear errors and current-session agent li
 	const source = new LocalCliSessionSource({ sessionStore: store, now: () => fixedNow, agentSummaries: [{ id: "base", name: "base", profileName: "base", description: "Built-in" }, { id: "custom-agent", name: "custom-agent", profileName: "custom-agent", description: "Custom agent" }] });
 	const rooms = await source.listRooms();
 	assert.equal(rooms.length, 1);
-	assert.equal(rooms[0].ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
+	assert.equal(rooms[0].ownerScope, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
 	assert.deepEqual(await source.listSessions(), []);
 	const status = await source.getStatus();
 	assert.equal(status.rooms, "supported");
@@ -655,7 +655,7 @@ test("local CLI session source repairs legacy user:unknown CLI sessions to selec
 	});
 	const source = new LocalCliSessionSource({ dataStore, sessionStore, ownerScope: "user:repair", now: () => fixedNow });
 
-	assert.deepEqual((await source.listOwners()).map((owner) => owner.ownerScope), ["user:repair", LEGACY_SHARED_APP_OWNER_SCOPE, CLI_ROOT_RECOVERY_OWNER_SCOPE]);
+	assert.deepEqual((await source.listOwners()).map((owner) => owner.ownerScope), ["user:repair", PRE_CUTOVER_LEGACY_OWNER_SCOPE, CLI_ROOT_RECOVERY_OWNER_SCOPE]);
 	assert.deepEqual((await source.listSessions()).map((session) => session.id).sort(), ["ps_non_cli_unknown", "ps_legacy_unknown"].sort());
 	const result = await source.repairLegacyUserUnknownSessions({ ownerScope: "user:repair", roomId: targetRoom.id });
 
@@ -663,8 +663,8 @@ test("local CLI session source repairs legacy user:unknown CLI sessions to selec
 	assert.equal(result.repaired, 0);
 	assert.equal(result.skipped, 0);
 	assert.deepEqual(result.sessionIds, []);
-	assert.equal(sessionStore.get(legacy.id).ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
-	assert.equal(sessionStore.get("ps_non_cli_unknown").ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
+	assert.equal(sessionStore.get(legacy.id).ownerScope, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
+	assert.equal(sessionStore.get("ps_non_cli_unknown").ownerScope, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
 	await assert.rejects(() => source.repairLegacyUserUnknownSessions({ ownerScope: "user:unknown" }), (error) => error instanceof CliSourceError && error.code === "invalid_owner");
 
 	await source.close();

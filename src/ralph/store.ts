@@ -4,7 +4,7 @@ import { dirname, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { piboHomePath } from '../core/pibo-home.js';
 import { isPiboThinkingLevel } from '../core/thinking.js';
-import { getSharedAppLegacyOwnerScope } from '../shared-app.js';
+import { legacyOwnerScopeForPreCutoverSchemas } from '../owner-scope-compat.js';
 import { sqliteTableColumns } from '../data/sqlite-schema.js';
 import type { PiboJsonObject } from '../core/events.js';
 import type { ModelProfile } from '../core/profiles.js';
@@ -27,7 +27,7 @@ type RalphRuntimeOptions = { modelOverride?: ModelProfile; thinkingLevel?: PiboT
 const cleanupStates = new Set<PiboRalphResourceCleanupState>(['none', 'active', 'released', 'retained', 'dirty']);
 
 function normalizeRalphTargetForSharedApp(target: PiboRalphTarget): PiboRalphTarget {
-	return target.kind === 'personal' ? { kind: 'personal', principalId: getSharedAppLegacyOwnerScope() } : target;
+	return target.kind === 'personal' ? { kind: 'personal', principalId: legacyOwnerScopeForPreCutoverSchemas() } : target;
 }
 
 function optionalString(value: unknown, field: string): string | undefined {
@@ -72,11 +72,11 @@ function resourceMetadataJson(resources: PiboRalphResourceMetadata | null | unde
 
 function jobFromRow(row: RalphJobRow): PiboRalphJob {
 	const resources = parseResourceMetadata(row.resource_json);
-	return { id: row.id, ownerScope: row.owner_scope ?? getSharedAppLegacyOwnerScope(), name: row.name, description: row.description ?? undefined, enabled: row.enabled === 1, target: parseJson(row.target_json), profile: row.profile, prompt: row.prompt, maxIterations: row.max_iterations ?? undefined, stopPolicy: parseStopPolicy(row.stop_policy_json), ...parseRuntimeOptions(row.runtime_options_json), ...(resources ? { resources } : {}), state: parseJson(row.state_json), createdAt: row.created_at, updatedAt: row.updated_at };
+	return { id: row.id, ownerScope: row.owner_scope ?? legacyOwnerScopeForPreCutoverSchemas(), name: row.name, description: row.description ?? undefined, enabled: row.enabled === 1, target: parseJson(row.target_json), profile: row.profile, prompt: row.prompt, maxIterations: row.max_iterations ?? undefined, stopPolicy: parseStopPolicy(row.stop_policy_json), ...parseRuntimeOptions(row.runtime_options_json), ...(resources ? { resources } : {}), state: parseJson(row.state_json), createdAt: row.created_at, updatedAt: row.updated_at };
 }
 function runFromRow(row: RalphRunRow): PiboRalphRun {
 	const resources = parseResourceMetadata(row.resource_json);
-	return { id: row.id, jobId: row.job_id, ownerScope: row.owner_scope ?? getSharedAppLegacyOwnerScope(), piboSessionId: row.pibo_session_id ?? undefined, status: row.status, reason: row.reason ?? undefined, error: row.error ?? undefined, startedAt: row.started_at ?? undefined, completedAt: row.completed_at ?? undefined, ...(resources ? { resources } : {}), createdAt: row.created_at, updatedAt: row.updated_at };
+	return { id: row.id, jobId: row.job_id, ownerScope: row.owner_scope ?? legacyOwnerScopeForPreCutoverSchemas(), piboSessionId: row.pibo_session_id ?? undefined, status: row.status, reason: row.reason ?? undefined, error: row.error ?? undefined, startedAt: row.started_at ?? undefined, completedAt: row.completed_at ?? undefined, ...(resources ? { resources } : {}), createdAt: row.created_at, updatedAt: row.updated_at };
 }
 function mergeResourceMetadata(jobResources: PiboRalphResourceMetadata | undefined, runResources: PiboRalphResourceMetadata | undefined): PiboRalphResourceMetadata | undefined {
 	if (!jobResources && !runResources) return undefined;
@@ -84,7 +84,7 @@ function mergeResourceMetadata(jobResources: PiboRalphResourceMetadata | undefin
 	return { ...(jobResources ?? {}), ...(runResources ?? {}), ...(browserLeaseIds.length ? { browserLeaseIds } : {}) };
 }
 function factFromRow(row: RalphRunFactRow): PiboRalphRunFact {
-	return { id: row.id, ownerScope: row.owner_scope ?? getSharedAppLegacyOwnerScope(), jobId: row.job_id, runId: row.run_id ?? undefined, piboSessionId: row.pibo_session_id ?? undefined, type: row.type, source: row.source, payload: parseJson(row.payload_json), createdAt: row.created_at };
+	return { id: row.id, ownerScope: row.owner_scope ?? legacyOwnerScopeForPreCutoverSchemas(), jobId: row.job_id, runId: row.run_id ?? undefined, piboSessionId: row.pibo_session_id ?? undefined, type: row.type, source: row.source, payload: parseJson(row.payload_json), createdAt: row.created_at };
 }
 function normalizeMaxIterations(value: number | undefined): number | undefined {
 	if (value === undefined) return undefined;
@@ -176,7 +176,7 @@ export class PiboRalphStore {
 	}
 	close(): void { this.db.close(); }
 	createJob(input: PiboRalphJobCreateInput, now = new Date()): PiboRalphJob {
-		const ownerScope = getSharedAppLegacyOwnerScope();
+		const ownerScope = legacyOwnerScopeForPreCutoverSchemas();
 		const target = normalizeRalphTargetForSharedApp(input.target);
 		validateJobInput({ ...input, ownerScope, target });
 		const timestamp = nowIso(now);
@@ -279,7 +279,7 @@ export class PiboRalphStore {
 		if (!isJsonObject(input.payload)) throw new Error('fact payload must be an object');
 		const payloadJson = JSON.stringify(input.payload);
 		if (payloadJson.length > 16_384) throw new Error('fact payload is too large');
-		const fact: PiboRalphRunFact = { id: input.id ?? `rfact_${randomUUID()}`, ownerScope: getSharedAppLegacyOwnerScope(), jobId: input.jobId, runId: input.runId, piboSessionId: input.piboSessionId, type: input.type.trim(), source: input.source, payload: input.payload, createdAt: input.createdAt ?? nowIso() };
+		const fact: PiboRalphRunFact = { id: input.id ?? `rfact_${randomUUID()}`, ownerScope: legacyOwnerScopeForPreCutoverSchemas(), jobId: input.jobId, runId: input.runId, piboSessionId: input.piboSessionId, type: input.type.trim(), source: input.source, payload: input.payload, createdAt: input.createdAt ?? nowIso() };
 		const hasOwnerScope = sqliteTableColumns(this.db, 'pibo_ralph_run_facts').has('owner_scope');
 		this.db.prepare(`INSERT INTO pibo_ralph_run_facts (id, ${hasOwnerScope ? 'owner_scope, ' : ''}job_id, run_id, pibo_session_id, type, source, payload_json, created_at) VALUES (${Array.from({ length: hasOwnerScope ? 9 : 8 }, () => '?').join(', ')})`).run(fact.id, ...(hasOwnerScope ? [fact.ownerScope] : []), fact.jobId, fact.runId ?? null, fact.piboSessionId ?? null, fact.type, fact.source, payloadJson, fact.createdAt);
 		return fact;
@@ -329,6 +329,6 @@ export class PiboRalphStore {
 	private insertJob(job: PiboRalphJob): void { const hasOwnerScope = sqliteTableColumns(this.db, 'pibo_ralph_jobs').has('owner_scope'); this.db.prepare(`INSERT INTO pibo_ralph_jobs (id, ${hasOwnerScope ? 'owner_scope, ' : ''}name, description, enabled, target_json, profile, prompt, max_iterations, runtime_options_json, stop_policy_json, resource_json, state_json, created_at, updated_at) VALUES (${Array.from({ length: hasOwnerScope ? 15 : 14 }, () => '?').join(', ')})`).run(job.id, ...(hasOwnerScope ? [job.ownerScope] : []), job.name, job.description ?? null, job.enabled ? 1 : 0, JSON.stringify(job.target), job.profile, job.prompt, job.maxIterations ?? null, runtimeOptionsJson(job), stopPolicyJson(job.stopPolicy), resourceMetadataJson(job.resources), JSON.stringify(job.state), job.createdAt, job.updatedAt); }
 	private writeJob(job: PiboRalphJob): void { this.db.prepare('UPDATE pibo_ralph_jobs SET name = ?, description = ?, enabled = ?, target_json = ?, profile = ?, prompt = ?, max_iterations = ?, runtime_options_json = ?, stop_policy_json = ?, resource_json = ?, state_json = ?, updated_at = ? WHERE id = ?').run(job.name, job.description ?? null, job.enabled ? 1 : 0, JSON.stringify(job.target), job.profile, job.prompt, job.maxIterations ?? null, runtimeOptionsJson(job), stopPolicyJson(job.stopPolicy), resourceMetadataJson(job.resources), JSON.stringify(job.state), job.updatedAt, job.id); }
 	private updateJobStateLocked(id: string, state: PiboRalphJobState, updatedAt: string): void { this.db.prepare('UPDATE pibo_ralph_jobs SET state_json = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(state), updatedAt, id); }
-	private createRunLocked(job: PiboRalphJob, timestamp: string): PiboRalphRun { const run: PiboRalphRun = { id: `rrun_${randomUUID()}`, jobId: job.id, ownerScope: getSharedAppLegacyOwnerScope(), status: 'running', startedAt: timestamp, ...(job.resources ? { resources: job.resources } : {}), createdAt: timestamp, updatedAt: timestamp }; const hasOwnerScope = sqliteTableColumns(this.db, 'pibo_ralph_runs').has('owner_scope'); this.db.prepare(`INSERT INTO pibo_ralph_runs (id, job_id, ${hasOwnerScope ? 'owner_scope, ' : ''}pibo_session_id, status, reason, error, resource_json, started_at, completed_at, created_at, updated_at) VALUES (${Array.from({ length: hasOwnerScope ? 12 : 11 }, () => '?').join(', ')})`).run(run.id, run.jobId, ...(hasOwnerScope ? [run.ownerScope] : []), null, run.status, null, null, resourceMetadataJson(run.resources), run.startedAt ?? null, null, run.createdAt, run.updatedAt); return run; }
+	private createRunLocked(job: PiboRalphJob, timestamp: string): PiboRalphRun { const run: PiboRalphRun = { id: `rrun_${randomUUID()}`, jobId: job.id, ownerScope: legacyOwnerScopeForPreCutoverSchemas(), status: 'running', startedAt: timestamp, ...(job.resources ? { resources: job.resources } : {}), createdAt: timestamp, updatedAt: timestamp }; const hasOwnerScope = sqliteTableColumns(this.db, 'pibo_ralph_runs').has('owner_scope'); this.db.prepare(`INSERT INTO pibo_ralph_runs (id, job_id, ${hasOwnerScope ? 'owner_scope, ' : ''}pibo_session_id, status, reason, error, resource_json, started_at, completed_at, created_at, updated_at) VALUES (${Array.from({ length: hasOwnerScope ? 12 : 11 }, () => '?').join(', ')})`).run(run.id, run.jobId, ...(hasOwnerScope ? [run.ownerScope] : []), null, run.status, null, null, resourceMetadataJson(run.resources), run.startedAt ?? null, null, run.createdAt, run.updatedAt); return run; }
 }
 export function createDefaultPiboRalphStore(options: PiboRalphStoreOptions = {}): PiboRalphStore { return new PiboRalphStore(options); }

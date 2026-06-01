@@ -5,7 +5,7 @@ import { isPiboThinkingLevel, type PiboThinkingLevel } from "../../core/thinking
 import type { PiboSession } from "../../sessions/store.js";
 import { PiboWebHttpError } from "../../web/http.js";
 import type { PiboWebSession } from "../../web/types.js";
-import { getSharedAppLegacyOwnerScope } from "../../shared-app.js";
+import { legacyOwnerScopeForPreCutoverSchemas } from "../../owner-scope-compat.js";
 import type { PiboProject, PiboProjectWorkflowSessionConfiguration, PiboProjectWorkflowSessionSnapshot } from "./data/project-service.js";
 import {
 	hashWorkflowDefinitionJson,
@@ -105,7 +105,7 @@ export function createProjectWorkflowSessionSnapshot(input: {
 		schemaVersion: 1,
 		createdAt: now,
 		createdBy: input.webSession.authSession.identity.userId,
-		ownerScope: getSharedAppLegacyOwnerScope(),
+		ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 		projectId: input.project.id,
 		piboSessionId: input.session.id,
 		workflow: {

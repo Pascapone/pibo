@@ -1,7 +1,7 @@
 import { StringEnum, Type } from "@mariozechner/pi-ai";
 import { defineTool, type ToolDefinition } from "@mariozechner/pi-coding-agent";
 import type { ToolDefinitionContext, ToolProfile } from "../core/profiles.js";
-import { getSharedAppLegacyOwnerScope } from "../shared-app.js";
+import { legacyOwnerScopeForPreCutoverSchemas } from "../owner-scope-compat.js";
 import {
 	WEB_ANNOTATION_STATUSES,
 	type WebAnnotation,
@@ -77,7 +77,7 @@ function requireContext(context: ToolDefinitionContext, params: ToolParams): Req
 	const piboSessionId = params.piboSessionId?.trim() || context.piboSessionId?.trim();
 	if (!piboSessionId) throw new Error("Web Annotation tools require a Pibo Session ID from runtime context or piboSessionId input");
 	return {
-		ownerScope: getSharedAppLegacyOwnerScope(),
+		ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 		piboSessionId,
 		piboRoomId: context.piboRoomId,
 	};

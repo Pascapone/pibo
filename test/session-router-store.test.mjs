@@ -10,7 +10,7 @@ import { upsertPiPackage } from "../dist/pi-packages/store.js";
 import { piboCorePlugin } from "../dist/plugins/builtin.js";
 import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
-import { LEGACY_SHARED_APP_OWNER_SCOPE } from "../dist/shared-app.js";
+import { PRE_CUTOVER_LEGACY_OWNER_SCOPE } from "../dist/owner-scope-compat.js";
 
 function createTestRegistry(actionName, execute) {
 	return PiboPluginRegistry.create({
@@ -97,7 +97,7 @@ test("session router creates implicit runtime sessions in the shared app context
 		const session = store.get("ps_implicit");
 
 		assert.equal(current.type, "execution_result");
-		assert.equal(session.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
+		assert.equal(session.ownerScope, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
 		assert.equal(current.result.cwd, homedir());
 	} finally {
 		await router.disposeAll();
@@ -300,7 +300,7 @@ test("session router creates a visible branch Pibo session for clone operations"
 		assert.equal(branch.kind, "branch");
 		assert.equal(branch.originId, "ps_source");
 		assert.equal(branch.parentId, undefined);
-		assert.equal(branch.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
+		assert.equal(branch.ownerScope, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
 		assert.equal(branch.workspace, "/workspace");
 		assert.equal(branch.metadata.originAction, "session.clone");
 	} finally {

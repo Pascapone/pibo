@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { getSharedAppLegacyOwnerScope } from "../shared-app.js";
+import { legacyOwnerScopeForPreCutoverSchemas } from "../owner-scope-compat.js";
 import { parseFriendlySchedule } from "./schedule.js";
 import { createDefaultPiboCronStore } from "./store.js";
 import type { PiboCronTarget } from "./types.js";
@@ -29,15 +29,15 @@ function printJson(value: unknown): void {
 
 function ownerScope(value: string | undefined): string {
 	const trimmed = value?.trim();
-	if (trimmed && trimmed !== getSharedAppLegacyOwnerScope()) console.error("--owner-scope is deprecated for Cron and ignored; Cron jobs are app-global.");
-	return getSharedAppLegacyOwnerScope();
+	if (trimmed && trimmed !== legacyOwnerScopeForPreCutoverSchemas()) console.error("--owner-scope is deprecated for Cron and ignored; Cron jobs are app-global.");
+	return legacyOwnerScopeForPreCutoverSchemas();
 }
 
 function targetFromOptions(options: { room?: string; personal?: boolean; principalId?: string; ownerScope: string }): PiboCronTarget {
 	if (options.room) return { kind: "room", roomId: options.room };
 	if (options.personal || options.principalId) {
 		if (options.principalId) console.error("--principal-id is deprecated for Cron and ignored; the default target is shared.");
-		return { kind: "personal", principalId: getSharedAppLegacyOwnerScope() };
+		return { kind: "personal", principalId: legacyOwnerScopeForPreCutoverSchemas() };
 	}
 	throw new Error("Choose --room <roomId> or --personal");
 }

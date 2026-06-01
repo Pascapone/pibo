@@ -9,7 +9,7 @@ import { PiboAuthError } from "../dist/auth/types.js";
 import { createWebHostChannel } from "../dist/web/channel.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
 import { upsertPiPackage } from "../dist/pi-packages/store.js";
-import { LEGACY_SHARED_APP_OWNER_SCOPE } from "../dist/shared-app.js";
+import { PRE_CUTOVER_LEGACY_OWNER_SCOPE } from "../dist/owner-scope-compat.js";
 
 function createFakeAuthService() {
 	return {
@@ -714,7 +714,7 @@ test("chat web app maps authenticated users to chat sessions", async () => {
 		assert.equal(session.session.channel, "pibo.chat-web");
 		assert.equal(session.session.kind, "chat");
 		assert.equal(session.session.profile, "base");
-		assert.equal(session.session.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
+		assert.equal(session.session.ownerScope, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
 
 		const message = await fetch(`${baseURL}/api/chat/message`, {
 			method: "POST",
@@ -795,7 +795,7 @@ test("chat web app creates shared app sessions", async () => {
 		assert.equal(created.status, 201);
 		const payload = await created.json();
 		assert.match(payload.session.id, /^ps_[0-9a-f-]{36}$/);
-		assert.equal(payload.session.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
+		assert.equal(payload.session.ownerScope, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
 		assert.equal(payload.session.parentId, undefined);
 		assert.equal(payload.session.workspace, homedir());
 
@@ -2368,7 +2368,7 @@ test("chat web app creates custom agents from the native capability catalog", as
 		assert.deepEqual(agentPayload.agent.builtinToolNames, ["read", "bash"]);
 		assert.equal(agentPayload.agent.autoContextFiles, false);
 		assert.equal(agentPayload.agent.runControl, true);
-		assert.equal(agentPayload.agent.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
+		assert.equal(agentPayload.agent.ownerScope, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
 
 		const session = await fetch(`${baseURL}/api/chat/sessions`, {
 			method: "POST",
@@ -2417,7 +2417,7 @@ test("chat web app exposes custom agents across authenticated accounts", async (
 		});
 		assert.equal(createdAgent.status, 201);
 		const createdPayload = await createdAgent.json();
-		assert.equal(createdPayload.agent.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
+		assert.equal(createdPayload.agent.ownerScope, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
 
 		const listedByAccountB = await fetch(`${baseURL}/api/chat/agents`, {
 			headers: { "x-test-user": "account-b" },
@@ -3039,7 +3039,7 @@ test("workflow catalog authentication and permission baseline treats UI workflow
 		const userTwoPublishPayload = await userTwoPublish.json();
 		assert.equal(userTwoPublishPayload.publishedVersion.workflowId, "ui-global-permission-draft");
 		assert.equal(userTwoPublishPayload.publishedVersion.version, "0.1.1");
-		assert.equal(userTwoPublishPayload.publishedVersion.publishedBy, LEGACY_SHARED_APP_OWNER_SCOPE);
+		assert.equal(userTwoPublishPayload.publishedVersion.publishedBy, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
 
 		const userOneVersion = await fetch(`${baseURL}/api/chat/workflows/ui-global-permission-draft/versions/0.1.1`, {
 			headers: { "x-test-user": "user-1" },
@@ -3699,7 +3699,7 @@ test("workflow delete API tombstones UI workflows while preserving Project snaps
 		assert.equal(deletePayload.workflowId, "ui-review-workflow");
 		assert.equal(deletePayload.deleted, true);
 		assert.equal(deletePayload.tombstone.workflowId, "ui-review-workflow");
-		assert.equal(deletePayload.tombstone.deletedBy, LEGACY_SHARED_APP_OWNER_SCOPE);
+		assert.equal(deletePayload.tombstone.deletedBy, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
 		assert.equal(deletePayload.tombstone.lastKnownTitle, "UI Review Workflow");
 		assert.equal(deletePayload.tombstone.lastKnownVersion, "2.0.0");
 		assert.match(deletePayload.tombstone.lastDefinitionHash, /^sha256:[a-f0-9]{64}$/);
@@ -4246,8 +4246,8 @@ test("workflow prompt asset revisions create managed assets and draft prompt ref
 		try {
 			const assetRow = db.prepare("SELECT owner_scope FROM workflow_prompt_assets WHERE asset_id = ?").get(saveAssetPayload.asset.id);
 			const revisionRows = db.prepare("SELECT owner_scope FROM workflow_prompt_asset_revisions WHERE asset_id = ? ORDER BY created_at").all(saveAssetPayload.asset.id);
-			assert.equal(assetRow.owner_scope, LEGACY_SHARED_APP_OWNER_SCOPE);
-			assert.deepEqual(revisionRows.map((row) => row.owner_scope), [LEGACY_SHARED_APP_OWNER_SCOPE, LEGACY_SHARED_APP_OWNER_SCOPE]);
+			assert.equal(assetRow.owner_scope, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
+			assert.deepEqual(revisionRows.map((row) => row.owner_scope), [PRE_CUTOVER_LEGACY_OWNER_SCOPE, PRE_CUTOVER_LEGACY_OWNER_SCOPE]);
 		} finally {
 			db.close();
 		}
@@ -4971,7 +4971,7 @@ test("chat web app creates configured Project workflow sessions and starts one w
 		assert.equal(createdPayload.snapshot.schemaVersion, 1);
 		assert.match(createdPayload.snapshot.createdAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
 		assert.equal(createdPayload.snapshot.createdBy, "user-1");
-		assert.equal(createdPayload.snapshot.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
+		assert.equal(createdPayload.snapshot.ownerScope, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
 		assert.equal(createdPayload.snapshot.projectId, projectPayload.project.id);
 		assert.equal(createdPayload.snapshot.piboSessionId, createdPayload.session.id);
 		assert.equal(createdPayload.snapshot.workflow.id, "standard-project");
@@ -5696,7 +5696,7 @@ test("chat web app project bootstrap includes real workflow session descendants 
 		const createdPayload = await createdResponse.json();
 		const root = createdPayload.session;
 		const ownerScope = root.ownerScope;
-		assert.equal(ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
+		assert.equal(ownerScope, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
 
 		const nested = sessions.create({
 			channel: "pibo.workflow",
@@ -6760,7 +6760,7 @@ test("chat web app accepts same-origin mutations behind a local reverse proxy", 
 		});
 		assert.equal(response.status, 201);
 		const payload = await response.json();
-		assert.equal(payload.session.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
+		assert.equal(payload.session.ownerScope, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
 	} finally {
 		await channel.stop?.();
 	}

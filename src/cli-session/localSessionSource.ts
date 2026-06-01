@@ -13,7 +13,7 @@ import type { StoredPiboEventLogRow } from "../data/event-log.js";
 import type { PiboDataStore } from "../data/pibo-store.js";
 import { buildSlashCommandCatalog, normalizeCommandErrorDescriptor, normalizeCommandResultDescriptor, type SlashCommandDescriptor } from "../session-ui/index.js";
 import type { PiboSessionTraceView, PiboTraceNode, PiboTraceNodeStatus } from "../shared/trace-types.js";
-import { getSharedAppLegacyOwnerScope } from "../shared-app.js";
+import { legacyOwnerScopeForPreCutoverSchemas } from "../owner-scope-compat.js";
 import {
 	CliSourceError,
 	type CliAgentSummary,
@@ -134,7 +134,7 @@ export class LocalCliSessionSource implements CliSessionSource {
 	async listRooms(input: { ownerScope?: string } = {}): Promise<readonly CliRoomSummary[]> {
 		this.assertOpen();
 		void input;
-		const appOwnerScope = getSharedAppLegacyOwnerScope();
+		const appOwnerScope = legacyOwnerScopeForPreCutoverSchemas();
 		if (this.roomProvider) {
 			return ensureDefaultRoomSummary(appOwnerScope, (await this.roomProvider.listRooms({ ownerScope: appOwnerScope })).map(cloneJson));
 		}
@@ -158,7 +158,7 @@ export class LocalCliSessionSource implements CliSessionSource {
 	async listSessions(input: { roomId?: string; ownerScope?: string } = {}): Promise<readonly CliSessionSummary[]> {
 		this.assertOpen();
 		void input.ownerScope;
-		const defaultRoomId = this.ensureDefaultRoomForOwner(getSharedAppLegacyOwnerScope()).id;
+		const defaultRoomId = this.ensureDefaultRoomForOwner(legacyOwnerScopeForPreCutoverSchemas()).id;
 		return this.readSessions()
 			.filter((session) => input.roomId === undefined || roomIdFromSession(session, defaultRoomId) === input.roomId)
 			.map((session) => sessionToSummary(session, defaultRoomId));
@@ -168,7 +168,7 @@ export class LocalCliSessionSource implements CliSessionSource {
 		this.assertOpen();
 		const agent = input.agentId ? this.resolveAgent(input.agentId) : undefined;
 		const profile = this.resolveProfile(input.profile ?? agent?.profileName ?? agent?.id ?? this.defaultProfileName());
-		const ownerScope = getSharedAppLegacyOwnerScope();
+		const ownerScope = legacyOwnerScopeForPreCutoverSchemas();
 		const room = input.roomId ? await this.findRoomSummary(ownerScope, input.roomId) : this.ensureDefaultRoomForOwner(ownerScope);
 		const roomId = input.roomId ?? room?.id;
 		const metadata = buildSessionMetadata(roomId, "idle", room?.title);
@@ -343,7 +343,7 @@ export class LocalCliSessionSource implements CliSessionSource {
 			rooms,
 			activeOwnerScope: this.activeOwner.ownerScope,
 			activeOwnerLabel: this.activeOwner.label,
-			activeRoomId: this.ensureDefaultRoomForOwner(getSharedAppLegacyOwnerScope()).id,
+			activeRoomId: this.ensureDefaultRoomForOwner(legacyOwnerScopeForPreCutoverSchemas()).id,
 			sessions: "supported",
 			agents: "supported",
 			message: redactCliSecretText(this.statusMessage ?? `Local CLI source ready; discovered ${sessions.length} session${sessions.length === 1 ? "" : "s"}.`),
@@ -408,7 +408,7 @@ export class LocalCliSessionSource implements CliSessionSource {
 			return sessionMetadataResult(input.session, defaultRoomId, room?.title);
 		}
 		if (input.command === "sessions") {
-				const ownerScope = getSharedAppLegacyOwnerScope();
+				const ownerScope = legacyOwnerScopeForPreCutoverSchemas();
 			const roomId = input.session ? roomIdFromSession(input.session, this.ensureDefaultRoomForOwner(ownerScope).id) : undefined;
 			const rooms = new Map((await this.listRooms({ ownerScope })).map((room) => [room.id, room]));
 			return (await this.listSessions({ ownerScope, roomId })).map((session) => ({
@@ -649,7 +649,7 @@ export class LocalCliSessionSource implements CliSessionSource {
 			this.ingestService.ingestUserMessageAccepted({
 				session,
 				roomId,
-				actorId: getSharedAppLegacyOwnerScope(),
+				actorId: legacyOwnerScopeForPreCutoverSchemas(),
 				text,
 				clientTxnId: eventId,
 				legacyEvent: { eventId, createdAt: this.now() },
@@ -685,7 +685,7 @@ export class LocalCliSessionSource implements CliSessionSource {
 			activeOwnerLabel: this.activeOwner.label,
 			sessions: "supported",
 			agents: "supported",
-			activeRoomId: roomIdFromSession(session) ?? this.ensureDefaultRoomForOwner(getSharedAppLegacyOwnerScope()).id,
+			activeRoomId: roomIdFromSession(session) ?? this.ensureDefaultRoomForOwner(legacyOwnerScopeForPreCutoverSchemas()).id,
 			activeSessionId: session.id,
 			activeAgentId: session.profile,
 			activeModel: session.activeModel,
@@ -709,7 +709,7 @@ export class LocalCliSessionSource implements CliSessionSource {
 	}
 
 	private ensureDefaultRoomForOwner(_ownerScope: string): CliRoomSummary {
-		const appOwnerScope = getSharedAppLegacyOwnerScope();
+		const appOwnerScope = legacyOwnerScopeForPreCutoverSchemas();
 		if (this.roomService) {
 			const room = this.roomService.ensureDefaultRoom({ ownerScope: appOwnerScope, principalId: appOwnerScope, name: "Shared Chat" });
 			return { id: room.id, title: room.name, description: room.topic, ownerScope: room.ownerScope, isDefault: true };
@@ -721,7 +721,7 @@ export class LocalCliSessionSource implements CliSessionSource {
 		if (!this.dataStore) return;
 		const now = this.now();
 		this.dataStore.navigation.upsertSession({
-			ownerScope: getSharedAppLegacyOwnerScope(),
+			ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 			roomId,
 			sessionId: session.id,
 			rootSessionId: rootSessionIdFromSession(session),

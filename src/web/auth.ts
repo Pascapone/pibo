@@ -1,6 +1,7 @@
 import { createUnauthenticatedError, type PiboAuthSession } from "../auth/types.js";
 import type { PiboChannelContext } from "../channels/types.js";
-import { SHARED_APP_CONTEXT, getSharedAppLegacyOwnerScope } from "../shared-app.js";
+import { legacyOwnerScopeForPreCutoverSchemas } from "../owner-scope-compat.js";
+import { SHARED_APP_CONTEXT } from "../shared-app.js";
 import type { PiboWebSession } from "./types.js";
 
 export async function getWebAuthSession(
@@ -20,6 +21,6 @@ export async function requireWebSession(
 	return {
 		authSession,
 		appContext: SHARED_APP_CONTEXT,
-		ownerScope: getSharedAppLegacyOwnerScope(),
+		ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 	};
 }

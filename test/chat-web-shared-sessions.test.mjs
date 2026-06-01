@@ -6,7 +6,8 @@ import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { createChatWebApp } from "../dist/apps/chat/web-app.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
-import { LEGACY_SHARED_APP_OWNER_SCOPE, SHARED_APP_CONTEXT } from "../dist/shared-app.js";
+import { PRE_CUTOVER_LEGACY_OWNER_SCOPE } from "../dist/owner-scope-compat.js";
+import { SHARED_APP_CONTEXT } from "../dist/shared-app.js";
 
 function createHarness() {
 	const storageDir = mkdtempSync(join(tmpdir(), "pibo-chat-shared-sessions-"));
@@ -28,7 +29,7 @@ function createHarness() {
 					identity: { userId, email: `${userId}@example.test`, provider: "test" },
 				},
 				appContext: SHARED_APP_CONTEXT,
-				ownerScope: LEGACY_SHARED_APP_OWNER_SCOPE,
+				ownerScope: PRE_CUTOVER_LEGACY_OWNER_SCOPE,
 			};
 		},
 		channelContext: {
@@ -121,7 +122,7 @@ test("Chat Web lists, opens, and sends to mixed historical sessions without owne
 			channel: "pibo.chat-web",
 			kind: "chat",
 			profile: "base",
-			ownerScope: LEGACY_SHARED_APP_OWNER_SCOPE,
+			ownerScope: PRE_CUTOVER_LEGACY_OWNER_SCOPE,
 			title: "Historical shared session",
 			metadata: { chatRoomId: room.id },
 		});
@@ -172,7 +173,7 @@ test("Chat Web real API paths bootstrap, open, and send for shared, legacy user,
 			channel: "pibo.chat-web",
 			kind: "chat",
 			profile: "base",
-			ownerScope: LEGACY_SHARED_APP_OWNER_SCOPE,
+			ownerScope: PRE_CUTOVER_LEGACY_OWNER_SCOPE,
 			title: "Historical shared real path",
 			metadata: { chatRoomId: room.id },
 		});
@@ -191,7 +192,7 @@ test("Chat Web real API paths bootstrap, open, and send for shared, legacy user,
 		});
 		assert.equal(createdResponse.status, 201);
 		const { session: newShared } = await json(createdResponse);
-		assert.equal(newShared.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
+		assert.equal(newShared.ownerScope, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
 		assert.equal(newShared.metadata.chatRoomId, room.id);
 
 		const cases = [
@@ -237,7 +238,7 @@ test("Chat Web treats rooms, sidebar navigation, and mutations as app-global res
 	let db;
 	try {
 		db = new DatabaseSync(harness.dataStorePath);
-		insertHistoricalRoom(db, { id: "room_shared_history", ownerScope: LEGACY_SHARED_APP_OWNER_SCOPE, name: "Shared room", metadata: { default: true }, updatedAt: "2026-05-01T00:00:00.000Z" });
+		insertHistoricalRoom(db, { id: "room_shared_history", ownerScope: PRE_CUTOVER_LEGACY_OWNER_SCOPE, name: "Shared room", metadata: { default: true }, updatedAt: "2026-05-01T00:00:00.000Z" });
 		insertHistoricalRoom(db, { id: "room_legacy_history", ownerScope: "user:legacy-account", name: "Legacy account room", updatedAt: "2026-05-02T00:00:00.000Z" });
 		db.prepare("INSERT INTO room_members (room_id, principal_id, role, joined_at) VALUES (?, ?, ?, ?)").run("room_legacy_history", "user:legacy-account", "viewer", "2026-05-02T00:00:00.000Z");
 		db.close();

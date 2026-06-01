@@ -3,7 +3,7 @@ import { existsSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { piboHomePath } from "../core/pibo-home.js";
-import { getSharedAppLegacyOwnerScope } from "../shared-app.js";
+import { legacyOwnerScopeForPreCutoverSchemas } from "../owner-scope-compat.js";
 
 export type SharedAppMigrationMode = "inspect" | "dry-run" | "apply";
 
@@ -128,7 +128,7 @@ type SharedAppMigrationOptions = {
 	backupPath?: string;
 };
 
-const SHARED_APP_VALUE = getSharedAppLegacyOwnerScope();
+const SHARED_APP_VALUE = legacyOwnerScopeForPreCutoverSchemas();
 
 const AUXILIARY_MIGRATION_STORES: readonly AuxiliaryStoreMigrationSpec[] = [
 	{ store: "pibo", file: "pibo.sqlite", ownerTables: ["workflow_lifecycle_events", "workflow_prompt_assets", "workflow_prompt_asset_revisions", "workflow_ui_drafts"] },

@@ -4,7 +4,7 @@ import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { piboHomePath } from "../core/pibo-home.js";
 import type { PiboJsonObject } from "../core/events.js";
-import { getSharedAppLegacyOwnerScope } from "../shared-app.js";
+import { legacyOwnerScopeForPreCutoverSchemas } from "../owner-scope-compat.js";
 import { sqliteTableColumns } from "../data/sqlite-schema.js";
 import {
 	isWebAnnotationBindingState,
@@ -149,7 +149,7 @@ function validateAnnotationPatch(patch: PatchWebAnnotationInput): void {
 function bindingFromRow(row: WebAnnotationBindingRow): WebAnnotationBinding {
 	return {
 		id: row.id,
-		ownerScope: row.owner_scope ?? getSharedAppLegacyOwnerScope(),
+		ownerScope: row.owner_scope ?? legacyOwnerScopeForPreCutoverSchemas(),
 		piboSessionId: row.pibo_session_id,
 		piboRoomId: row.pibo_room_id ?? undefined,
 		state: row.state,
@@ -168,7 +168,7 @@ function bindingFromRow(row: WebAnnotationBindingRow): WebAnnotationBinding {
 function annotationFromRow(row: WebAnnotationRow): WebAnnotation {
 	return {
 		id: row.id,
-		ownerScope: row.owner_scope ?? getSharedAppLegacyOwnerScope(),
+		ownerScope: row.owner_scope ?? legacyOwnerScopeForPreCutoverSchemas(),
 		piboSessionId: row.pibo_session_id,
 		piboRoomId: row.pibo_room_id ?? undefined,
 		bindingId: row.binding_id ?? undefined,
@@ -214,7 +214,7 @@ export class WebAnnotationStore {
 		const timestamp = nowIso(now);
 		const binding: WebAnnotationBinding = {
 			id: normalized.id ?? `wab_${randomUUID()}`,
-			ownerScope: getSharedAppLegacyOwnerScope(),
+			ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 			piboSessionId: normalized.piboSessionId,
 			piboRoomId: normalized.piboRoomId,
 			state: normalized.state ?? "active",
@@ -317,7 +317,7 @@ export class WebAnnotationStore {
 		const timestamp = nowIso(now);
 		const annotation: WebAnnotation = {
 			id: normalized.id ?? `ann_${randomUUID()}`,
-			ownerScope: getSharedAppLegacyOwnerScope(),
+			ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 			piboSessionId: normalized.piboSessionId,
 			piboRoomId: normalized.piboRoomId,
 			bindingId: normalized.bindingId,

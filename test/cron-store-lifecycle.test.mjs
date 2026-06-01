@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { PiboCronStore } from '../dist/cron/store.js';
-import { LEGACY_SHARED_APP_OWNER_SCOPE } from '../dist/shared-app.js';
+import { PRE_CUTOVER_LEGACY_OWNER_SCOPE } from '../dist/owner-scope-compat.js';
 
 function createStore() {
   return new PiboCronStore({ path: ':memory:' });
@@ -26,8 +26,8 @@ test('cron store validates required job fields before persisting', () => {
   const store = createStore();
   try {
     const sharedJob = store.createJob(baseJobInput({ ownerScope: '  ', enabled: false }));
-    assert.equal(sharedJob.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
-    assert.deepEqual(sharedJob.target, { kind: 'personal', principalId: LEGACY_SHARED_APP_OWNER_SCOPE });
+    assert.equal(sharedJob.ownerScope, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
+    assert.deepEqual(sharedJob.target, { kind: 'personal', principalId: PRE_CUTOVER_LEGACY_OWNER_SCOPE });
     assert.throws(
       () => store.createJob(baseJobInput({ profile: '  ' })),
       /profile is required/,

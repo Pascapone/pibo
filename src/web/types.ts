@@ -1,6 +1,7 @@
 import type { PiboChannelContext } from "../channels/types.js";
 import type { PiboAuthSession } from "../auth/types.js";
-import type { PiboSharedAppContext, LEGACY_SHARED_APP_OWNER_SCOPE } from "../shared-app.js";
+import type { PRE_CUTOVER_LEGACY_OWNER_SCOPE } from "../owner-scope-compat.js";
+import type { PiboSharedAppContext } from "../shared-app.js";
 
 export type PiboWebSession = {
 	authSession: PiboAuthSession;
@@ -9,7 +10,7 @@ export type PiboWebSession = {
 	 * @deprecated Legacy storage compatibility for owner_scope columns only.
 	 * This value is pinned to the shared app and must not be derived from auth identity.
 	 */
-	ownerScope: typeof LEGACY_SHARED_APP_OWNER_SCOPE;
+	ownerScope: typeof PRE_CUTOVER_LEGACY_OWNER_SCOPE;
 };
 
 export type PiboWebAppContext = {

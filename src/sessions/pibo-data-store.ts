@@ -1,7 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { PiboJsonObject } from "../core/events.js";
 import { PiboDataStore } from "../data/pibo-store.js";
-import { getSharedAppLegacyOwnerScope } from "../shared-app.js";
+import { legacyOwnerScopeForPreCutoverSchemas } from "../owner-scope-compat.js";
 import { sqliteTableColumns } from "../data/sqlite-schema.js";
 import {
 	createPiboSession,
@@ -105,7 +105,7 @@ export class PiboDataSessionStore implements PiboSessionStore {
 			WHERE id = ? AND deleted_at IS NULL
 		`).run(
 			updated.piSessionId,
-			...(hasOwnerScope ? [updated.ownerScope ?? getSharedAppLegacyOwnerScope()] : []),
+			...(hasOwnerScope ? [updated.ownerScope ?? legacyOwnerScopeForPreCutoverSchemas()] : []),
 			rootSessionId(updated),
 			updated.parentId ?? null,
 			updated.originId ?? null,
@@ -171,7 +171,7 @@ export class PiboDataSessionStore implements PiboSessionStore {
 		`).run(
 			session.id,
 			session.piSessionId,
-			...(hasOwnerScope ? [session.ownerScope ?? getSharedAppLegacyOwnerScope()] : []),
+			...(hasOwnerScope ? [session.ownerScope ?? legacyOwnerScopeForPreCutoverSchemas()] : []),
 			roomIdFromMetadata(session.metadata),
 			rootSessionId(session),
 			session.parentId ?? null,
@@ -203,7 +203,7 @@ function sessionFromRow(row: SessionRow): PiboSession {
 		channel: row.channel,
 		kind: row.kind,
 		profile: row.profile,
-		ownerScope: row.owner_scope ?? getSharedAppLegacyOwnerScope(),
+		ownerScope: row.owner_scope ?? legacyOwnerScopeForPreCutoverSchemas(),
 		parentId: row.parent_id ?? undefined,
 		originId: row.origin_id ?? undefined,
 		workspace: row.workspace ?? undefined,

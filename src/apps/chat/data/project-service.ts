@@ -4,7 +4,7 @@ import { dirname, isAbsolute, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { piboHomePath } from "../../../core/pibo-home.js";
 import type { PiboJsonObject, PiboJsonValue } from "../../../core/events.js";
-import { getSharedAppLegacyOwnerScope } from "../../../shared-app.js";
+import { legacyOwnerScopeForPreCutoverSchemas } from "../../../owner-scope-compat.js";
 import { sqliteTableColumns } from "../../../data/sqlite-schema.js";
 import type { ModelProfile } from "../../../core/profiles.js";
 import type { PiboThinkingLevel } from "../../../core/thinking.js";
@@ -256,7 +256,7 @@ export class ChatProjectService {
 	}
 
 	ensureSharedDefaultProject(input: { ownerScope: string; projectFolder?: string }): PiboProject {
-		const ownerScope = getSharedAppLegacyOwnerScope();
+		const ownerScope = legacyOwnerScopeForPreCutoverSchemas();
 		const id = sharedDefaultProjectId(ownerScope);
 		const existing = this.getProject(id, { includeArchived: true });
 		if (existing) return existing;
@@ -295,7 +295,7 @@ export class ChatProjectService {
 		const id = `prj_${randomUUID()}`;
 		const hasOwnerScope = sqliteTableColumns(this.db, "projects").has("owner_scope");
 		this.db.prepare(`INSERT INTO projects (id, ${hasOwnerScope ? "owner_scope, " : ""}name, description, project_folder, configuration_status, metadata_json, created_at, updated_at)
-			VALUES (${Array.from({ length: hasOwnerScope ? 9 : 8 }, () => "?").join(", ")})`).run(id, ...(hasOwnerScope ? [getSharedAppLegacyOwnerScope()] : []), name, normalizeOptionalString(input.description) ?? null, projectFolder, "configured", "{}", now, now);
+			VALUES (${Array.from({ length: hasOwnerScope ? 9 : 8 }, () => "?").join(", ")})`).run(id, ...(hasOwnerScope ? [legacyOwnerScopeForPreCutoverSchemas()] : []), name, normalizeOptionalString(input.description) ?? null, projectFolder, "configured", "{}", now, now);
 		return this.requireProject(id);
 	}
 
@@ -1016,7 +1016,7 @@ type ProjectWorkflowHumanActionRow = {
 function projectFromRow(row: ProjectRow): PiboProject {
 	return {
 		id: row.id,
-		ownerScope: row.owner_scope ?? getSharedAppLegacyOwnerScope(),
+		ownerScope: row.owner_scope ?? legacyOwnerScopeForPreCutoverSchemas(),
 		name: row.name,
 		...(row.description ? { description: row.description } : {}),
 		projectFolder: row.project_folder,

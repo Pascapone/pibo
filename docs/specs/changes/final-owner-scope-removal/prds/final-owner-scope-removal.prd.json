@@ -51,8 +51,8 @@
         "Typecheck passes"
       ],
       "priority": 3,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed 2026-06-01. Replaced src/shared-app.ts with a neutral app-context-only module: PiboSharedAppContext now has only kind and id, SHARED_APP_CONTEXT has no legacyOwnerScope/ownerScope, and the removed exports LEGACY_SHARED_APP_OWNER_SCOPE/getSharedAppLegacyOwnerScope no longer exist in src/packages/scripts/test. Existing pre-cutover schemas still require temporary owner_scope/principal_id write values until later schema-removal stories, so unavoidable legacy storage compatibility was isolated in src/owner-scope-compat.ts with explicit deletion guidance; later stories must remove those callers rather than treating it as product context. Updated source imports away from shared-app legacy helpers, updated tests to stop importing legacy owner symbols from shared-app, and updated web-auth focused tests to prove different auth identities share the same neutral appContext with no legacy owner fields. Docker validation passed with PIBO_HOME=/workspace/.pibo/ralph-test-home: npm run typecheck; npm run build; node --test test/web-auth-shared-app-context.test.mjs; node --test test/context-build-inspector.test.mjs test/cron-store-lifecycle.test.mjs test/session-router-store.test.mjs; and rg gate for getSharedAppLegacyOwnerScope|LEGACY_SHARED_APP_OWNER_SCOPE over src packages scripts test returned no matches. Host /root/.pibo and host gateways were not touched."
     },
     {
       "id": "US-004",

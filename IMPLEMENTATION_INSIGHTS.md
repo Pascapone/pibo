@@ -99,3 +99,10 @@ Temporary exceptions are allowed only for the isolated final migration module an
 - The script constructs legacy terms from string segments so that the gate implementation and its focused tests do not create self-matches in the active scan roots.
 - The only built-in allowed paths are `docs/legacy/**` and the isolated final app-space cutover migration path. If later migration fixtures need legacy vocabulary, prefer keeping those fixtures under the isolated migration path or revisiting the allowlist explicitly rather than broadening it silently.
 - Current Docker scan after US-002: 3703 disallowed matches, 0 allowed matches, 1019 scanned files. This is expected until later PRD stories remove active source/current-doc artifacts.
+
+## US-003 neutral app context lessons
+
+- `src/shared-app.ts` is now the neutral app-context module only. It must not regain legacy storage constants, helpers, `ownerScope`, or `legacyOwnerScope` fields.
+- Any remaining pre-cutover owner-column compatibility is isolated in `src/owner-scope-compat.ts`. Treat this as a deletion target for later schema/API stories, not as an app context or replacement product owner.
+- Tests that still need historical pre-cutover expected values import from `dist/owner-scope-compat.js`, not `dist/shared-app.js`. Later stories should remove those expectations as their feature areas become ownerless.
+- Use the exact-symbol gate `node_modules/@vscode/ripgrep-linux-x64/bin/rg -n "getSharedAppLegacyOwnerScope|LEGACY_SHARED_APP_OWNER_SCOPE" src packages scripts test` to ensure the removed shared-app helper names stay gone.

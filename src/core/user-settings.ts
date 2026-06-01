@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { getSharedAppLegacyOwnerScope } from "../shared-app.js";
+import { legacyOwnerScopeForPreCutoverSchemas } from "../owner-scope-compat.js";
 import { piboHomePath } from "./pibo-home.js";
 import { sanitizeTelemetryStaleThresholdSettings, type TelemetryStaleThresholdSettings } from "./telemetry-staleness.js";
 
@@ -29,7 +29,7 @@ export function loadPiboUserSettings(ownerScope: string): PiboUserSettings {
 
 export function updatePiboUserSettings(ownerScope: string, patch: Partial<PiboUserSettings>): PiboUserSettings {
 	const state = readState();
-	const sharedKey = getSharedAppLegacyOwnerScope();
+	const sharedKey = legacyOwnerScopeForPreCutoverSchemas();
 	const next = sanitizeUserSettings({ ...selectSharedAppUserSettings(state, ownerScope), ...patch });
 	state.users[sharedKey] = next;
 	writeState(state);
@@ -37,7 +37,7 @@ export function updatePiboUserSettings(ownerScope: string, patch: Partial<PiboUs
 }
 
 function selectSharedAppUserSettings(state: PiboUserSettingsState, legacyOwnerScope?: string): PiboUserSettings | undefined {
-	const sharedKey = getSharedAppLegacyOwnerScope();
+	const sharedKey = legacyOwnerScopeForPreCutoverSchemas();
 	return state.users[sharedKey]
 		?? (legacyOwnerScope ? state.users[legacyOwnerScope] : undefined)
 		?? state.users[Object.keys(state.users).sort()[0] ?? ""];

@@ -7,7 +7,7 @@ import { InitialSessionContext } from "../dist/core/profiles.js";
 import { inspectPiboContextBuild } from "../dist/core/context-build.js";
 import { createDefaultPiboProfile } from "../dist/plugins/builtin.js";
 import { createWebSearchToolProfile } from "../dist/tools/web-search.js";
-import { LEGACY_SHARED_APP_OWNER_SCOPE } from "../dist/shared-app.js";
+import { PRE_CUTOVER_LEGACY_OWNER_SCOPE } from "../dist/owner-scope-compat.js";
 
 function findNode(nodes, predicate) {
 	for (const node of nodes) {
@@ -96,5 +96,5 @@ test("runtime context is the same shared app context for different legacy owners
 	assert.equal(firstContext.hydratedText, secondContext.hydratedText);
 	assert.match(firstContext.hydratedText, /App context: shared-app/);
 	assert.doesNotMatch(firstContext.hydratedText, /user:alpha|user:beta|Owner scope|User ID/);
-	assert.equal(LEGACY_SHARED_APP_OWNER_SCOPE, "shared:app");
+	assert.equal(PRE_CUTOVER_LEGACY_OWNER_SCOPE, "shared:app");
 });

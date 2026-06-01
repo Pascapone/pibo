@@ -3,7 +3,7 @@ import test from "node:test";
 import { handleChatCronApiRequest } from "../dist/apps/chat/cron-api.js";
 import { PiboCronStore } from "../dist/cron/store.js";
 import { PiboWebHttpError } from "../dist/web/http.js";
-import { LEGACY_SHARED_APP_OWNER_SCOPE } from "../dist/shared-app.js";
+import { PRE_CUTOVER_LEGACY_OWNER_SCOPE } from "../dist/owner-scope-compat.js";
 
 function makeOptions(request) {
 	return {
@@ -90,7 +90,7 @@ test("chat cron API normalizes personal cron targets to the shared default targe
 		assert.equal(response.status, 201);
 		assert.equal("ownerScope" in body.job, false);
 		assert.deepEqual(body.job.target, { kind: "personal" });
-		assert.deepEqual(defaultCalls, [{ ownerScope: LEGACY_SHARED_APP_OWNER_SCOPE, principalId: LEGACY_SHARED_APP_OWNER_SCOPE, name: "Shared Chat" }]);
+		assert.deepEqual(defaultCalls, [{ ownerScope: PRE_CUTOVER_LEGACY_OWNER_SCOPE, principalId: PRE_CUTOVER_LEGACY_OWNER_SCOPE, name: "Shared Chat" }]);
 	} finally {
 		options.cronStore.close();
 	}
@@ -154,7 +154,7 @@ test("chat cron API requires write access before creating room cron targets", as
 		const body = await response.json();
 
 		assert.equal(response.status, 201);
-		assert.deepEqual(accessCalls, [["room-42", LEGACY_SHARED_APP_OWNER_SCOPE, "write"]]);
+		assert.deepEqual(accessCalls, [["room-42", PRE_CUTOVER_LEGACY_OWNER_SCOPE, "write"]]);
 		assert.equal("ownerScope" in body.job, false);
 		assert.deepEqual(body.job.target, { kind: "room", roomId: "room-42" });
 	} finally {

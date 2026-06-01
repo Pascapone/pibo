@@ -3,7 +3,7 @@ import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { piboHomePath } from "../core/pibo-home.js";
-import { getSharedAppLegacyOwnerScope } from "../shared-app.js";
+import { legacyOwnerScopeForPreCutoverSchemas } from "../owner-scope-compat.js";
 import { sqliteTableColumns } from "../data/sqlite-schema.js";
 import { computeNextRunAt, validateSchedule } from "./schedule.js";
 import type { PiboCronJob, PiboCronJobCreateInput, PiboCronJobPatchInput, PiboCronJobState, PiboCronRun, PiboCronRunStatus } from "./types.js";
@@ -54,7 +54,7 @@ function parseJson<T>(json: string): T {
 function jobFromRow(row: CronJobRow): PiboCronJob {
 	return {
 		id: row.id,
-		ownerScope: row.owner_scope ?? getSharedAppLegacyOwnerScope(),
+		ownerScope: row.owner_scope ?? legacyOwnerScopeForPreCutoverSchemas(),
 		name: row.name,
 		description: row.description ?? undefined,
 		enabled: row.enabled === 1,
@@ -74,7 +74,7 @@ function runFromRow(row: CronRunRow): PiboCronRun {
 	return {
 		id: row.id,
 		jobId: row.job_id,
-		ownerScope: row.owner_scope ?? getSharedAppLegacyOwnerScope(),
+		ownerScope: row.owner_scope ?? legacyOwnerScopeForPreCutoverSchemas(),
 		piboSessionId: row.pibo_session_id ?? undefined,
 		status: row.status,
 		reason: row.reason ?? undefined,
@@ -92,7 +92,7 @@ function defaultName(prompt: string): string {
 }
 
 function normalizeTarget(target: PiboCronJobCreateInput["target"]): PiboCronJobCreateInput["target"] {
-	return target.kind === "personal" ? { kind: "personal", principalId: getSharedAppLegacyOwnerScope() } : target;
+	return target.kind === "personal" ? { kind: "personal", principalId: legacyOwnerScopeForPreCutoverSchemas() } : target;
 }
 
 function validateJobInput(input: Pick<PiboCronJobCreateInput, "target" | "profile" | "prompt" | "schedule">): void {
@@ -122,7 +122,7 @@ export class PiboCronStore {
 	}
 
 	createJob(input: PiboCronJobCreateInput, now = new Date()): PiboCronJob {
-		const ownerScope = getSharedAppLegacyOwnerScope();
+		const ownerScope = legacyOwnerScopeForPreCutoverSchemas();
 		const target = normalizeTarget(input.target);
 		validateJobInput({ ...input, target });
 		const timestamp = nowIso(now);
@@ -380,7 +380,7 @@ export class PiboCronStore {
 	}
 
 	private createRunLocked(job: PiboCronJob, timestamp: string, status: PiboCronRunStatus, reason?: string): PiboCronRun {
-		const run: PiboCronRun = { id: `crun_${randomUUID()}`, jobId: job.id, ownerScope: getSharedAppLegacyOwnerScope(), status, reason, startedAt: timestamp, createdAt: timestamp, updatedAt: timestamp };
+		const run: PiboCronRun = { id: `crun_${randomUUID()}`, jobId: job.id, ownerScope: legacyOwnerScopeForPreCutoverSchemas(), status, reason, startedAt: timestamp, createdAt: timestamp, updatedAt: timestamp };
 		const hasOwnerScope = sqliteTableColumns(this.db, "pibo_cron_runs").has("owner_scope");
 		this.db.prepare(`
 			INSERT INTO pibo_cron_runs (id, job_id, ${hasOwnerScope ? "owner_scope, " : ""}pibo_session_id, status, reason, error, started_at, completed_at, created_at, updated_at)

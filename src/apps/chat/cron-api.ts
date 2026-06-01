@@ -4,7 +4,7 @@ import { getPiboCronService } from "../../cron/channel.js";
 import { parseFriendlySchedule } from "../../cron/schedule.js";
 import type { PiboCronJob, PiboCronJobPatchInput, PiboCronRun, PiboCronSchedule, PiboCronScheduleUi, PiboCronTarget } from "../../cron/types.js";
 import type { PiboCronStore } from "../../cron/store.js";
-import { getSharedAppLegacyOwnerScope } from "../../shared-app.js";
+import { legacyOwnerScopeForPreCutoverSchemas } from "../../owner-scope-compat.js";
 import { isPiboRoomArchived, type PiboRoom, type PiboRoomMember, type PiboRoomNode, type PiboRoomRole } from "./types/rooms.js";
 
 const CHAT_WEB_API_PREFIX = "/api/chat";
@@ -40,7 +40,7 @@ type CronJobBody = {
 
 function principalIdFor(webSession: PiboWebSession): string {
 	void webSession;
-	return getSharedAppLegacyOwnerScope();
+	return legacyOwnerScopeForPreCutoverSchemas();
 }
 
 function requireSameOriginJsonRequest(request: Request): void {
@@ -88,8 +88,8 @@ function normalizeTarget(value: unknown, options: ChatCronApiOptions): PiboCronT
 		return { kind: "room", roomId };
 	}
 	if (raw.kind === "personal") {
-		const principalId = getSharedAppLegacyOwnerScope();
-		options.roomService.ensureDefaultRoom({ ownerScope: getSharedAppLegacyOwnerScope(), principalId, name: "Shared Chat" });
+		const principalId = legacyOwnerScopeForPreCutoverSchemas();
+		options.roomService.ensureDefaultRoom({ ownerScope: legacyOwnerScopeForPreCutoverSchemas(), principalId, name: "Shared Chat" });
 		return { kind: "personal", principalId };
 	}
 	throw new PiboWebHttpError("target.kind must be room or personal", 400);
@@ -186,7 +186,7 @@ export async function handleChatCronApiRequest(options: ChatCronApiOptions): Pro
 		const body = await readJsonBody<CronJobBody>(request);
 		const normalized = normalizeSchedule(body.schedule);
 		const job = cronStore.createJob({
-			ownerScope: getSharedAppLegacyOwnerScope(),
+			ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 			name: normalizeString(body.name, "name", { max: 120 }),
 			description: normalizeString(body.description, "description", { max: 500 }),
 			enabled: normalizeEnabled(body.enabled),
@@ -214,7 +214,7 @@ export async function handleChatCronApiRequest(options: ChatCronApiOptions): Pro
 		requireSameOriginJsonRequest(request);
 		const service = getPiboCronService();
 		if (!service) throw new PiboWebHttpError("Cron service is not running", 503);
-		return responseJson({ run: serializeRun(await service.runJobNow(getSharedAppLegacyOwnerScope(), resource.id)) }, { status: 202 });
+		return responseJson({ run: serializeRun(await service.runJobNow(legacyOwnerScopeForPreCutoverSchemas(), resource.id)) }, { status: 202 });
 	}
 
 	if (resource.child) return undefined;
@@ -228,14 +228,14 @@ export async function handleChatCronApiRequest(options: ChatCronApiOptions): Pro
 	if (request.method === "PATCH") {
 		requireSameOriginJsonRequest(request);
 		const body = await readJsonBody<CronJobBody>(request);
-		const job = cronStore.updateJob(getSharedAppLegacyOwnerScope(), resource.id, createPatch(body, options));
+		const job = cronStore.updateJob(legacyOwnerScopeForPreCutoverSchemas(), resource.id, createPatch(body, options));
 		if (!job) throw new PiboWebHttpError("Cron job not found", 404);
 		return responseJson({ job: serializeJob(job) });
 	}
 
 	if (request.method === "DELETE") {
 		requireSameOriginJsonRequest(request);
-		return responseJson({ removed: cronStore.removeJob(getSharedAppLegacyOwnerScope(), resource.id) });
+		return responseJson({ removed: cronStore.removeJob(legacyOwnerScopeForPreCutoverSchemas(), resource.id) });
 	}
 
 	return undefined;

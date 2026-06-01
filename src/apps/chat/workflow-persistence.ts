@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { PiboJsonObject } from "../../core/events.js";
 import type { PiboDataStore } from "../../data/pibo-store.js";
-import { getSharedAppLegacyOwnerScope } from "../../shared-app.js";
+import { legacyOwnerScopeForPreCutoverSchemas } from "../../owner-scope-compat.js";
 import { sqliteTableColumns } from "../../data/sqlite-schema.js";
 import { PiboWebHttpError } from "../../web/http.js";
 import {
@@ -203,7 +203,7 @@ export class ChatWorkflowDraftStore {
 	}
 
 	saveDraft(record: OwnedWorkflowDraftRecord): void {
-		record.ownerScope = getSharedAppLegacyOwnerScope();
+		record.ownerScope = legacyOwnerScopeForPreCutoverSchemas();
 		this.dataStore.transaction(() => {
 			const conflict = this.dataStore.db
 				.prepare("SELECT draft_id FROM workflow_ui_drafts WHERE workflow_id = ? AND status = 'draft' AND draft_id <> ? LIMIT 1")
@@ -291,7 +291,7 @@ function workflowDraftFromStoreRow(row: WorkflowDraftStoreRow): OwnedWorkflowDra
 		revision: row.revision,
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
-		ownerScope: row.owner_scope ?? getSharedAppLegacyOwnerScope(),
+		ownerScope: row.owner_scope ?? legacyOwnerScopeForPreCutoverSchemas(),
 	};
 }
 
@@ -483,7 +483,7 @@ export class ChatWorkflowPromptAssetStore {
 		actorId?: string;
 	}): WorkflowPromptAssetDocument {
 		return this.dataStore.transaction(() => {
-			const ownerScope = getSharedAppLegacyOwnerScope();
+			const ownerScope = legacyOwnerScopeForPreCutoverSchemas();
 			const now = new Date().toISOString();
 			const assetId = input.assetId?.trim() || `ui.promptAssets.${randomUUID()}`;
 			const existing = this.getAsset(ownerScope, assetId);
@@ -550,7 +550,7 @@ export class ChatWorkflowPromptAssetStore {
 function workflowPromptAssetFromStoreRow(row: WorkflowPromptAssetStoreRow): WorkflowPromptAssetRecord {
 	return {
 		assetId: row.asset_id,
-		ownerScope: row.owner_scope ?? getSharedAppLegacyOwnerScope(),
+		ownerScope: row.owner_scope ?? legacyOwnerScopeForPreCutoverSchemas(),
 		source: row.source,
 		displayName: row.display_name,
 		...(row.description ? { description: row.description } : {}),
@@ -564,7 +564,7 @@ function workflowPromptAssetRevisionFromStoreRow(row: WorkflowPromptAssetRevisio
 	return {
 		revisionId: row.revision_id,
 		assetId: row.asset_id,
-		ownerScope: row.owner_scope ?? getSharedAppLegacyOwnerScope(),
+		ownerScope: row.owner_scope ?? legacyOwnerScopeForPreCutoverSchemas(),
 		contentHash: row.content_hash,
 		markdown: row.markdown,
 		createdAt: row.created_at,
@@ -802,7 +802,7 @@ export class ChatWorkflowLifecycleEventStore {
 		const event: WorkflowLifecycleEventRecord = {
 			id: input.id ?? `wfle_${randomUUID()}`,
 			type: input.type,
-			ownerScope: getSharedAppLegacyOwnerScope(),
+			ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 			...(input.actorId ? { actorId: input.actorId } : {}),
 			...(input.workflowId ? { workflowId: input.workflowId } : {}),
 			...(input.workflowVersion ? { workflowVersion: input.workflowVersion } : {}),
@@ -906,7 +906,7 @@ function workflowLifecycleEventFromStoreRow(row: WorkflowLifecycleEventStoreRow)
 	return {
 		id: row.id,
 		type: row.type,
-		ownerScope: row.owner_scope ?? getSharedAppLegacyOwnerScope(),
+		ownerScope: row.owner_scope ?? legacyOwnerScopeForPreCutoverSchemas(),
 		...(row.actor_id ? { actorId: row.actor_id } : {}),
 		...(row.workflow_id ? { workflowId: row.workflow_id } : {}),
 		...(row.workflow_version ? { workflowVersion: row.workflow_version } : {}),

@@ -6,7 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { DEFAULT_BUILTIN_TOOL_NAMES, type BuiltinToolsMode, type ModelProfile } from "../../core/profiles.js";
 import { isPiboThinkingLevel, type PiboThinkingLevel } from "../../core/thinking.js";
 import { findPiPackage } from "../../pi-packages/store.js";
-import { getSharedAppLegacyOwnerScope } from "../../shared-app.js";
+import { legacyOwnerScopeForPreCutoverSchemas } from "../../owner-scope-compat.js";
 import { sqliteTableColumns } from "../../data/sqlite-schema.js";
 
 export type CustomAgentSubagent = {
@@ -175,7 +175,7 @@ export class CustomAgentStore {
 		const agent: CustomAgentDefinition = {
 			id,
 			profileName,
-			ownerScope: getSharedAppLegacyOwnerScope(),
+			ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 			displayName: input.displayName,
 			description: input.description,
 			nativeTools: [...(input.nativeTools ?? [])],
@@ -493,7 +493,7 @@ function agentFromRow(row: AgentRow): CustomAgentDefinition {
 	return {
 		id: row.id,
 		profileName: row.profile_name,
-		ownerScope: row.owner_scope ?? getSharedAppLegacyOwnerScope(),
+		ownerScope: row.owner_scope ?? legacyOwnerScopeForPreCutoverSchemas(),
 		displayName: row.display_name,
 		description: row.description ?? undefined,
 		nativeTools: parseStringArray(row.native_tools_json),

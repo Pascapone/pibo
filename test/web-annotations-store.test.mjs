@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { LEGACY_SHARED_APP_OWNER_SCOPE } from "../dist/shared-app.js";
+import { PRE_CUTOVER_LEGACY_OWNER_SCOPE } from "../dist/owner-scope-compat.js";
 import { renderAttachedWebAnnotations, WEB_ANNOTATION_LIMITS, WebAnnotationStore } from "../dist/web-annotations/index.js";
 
 function createAnnotationInput(overrides = {}) {
@@ -38,7 +38,7 @@ test("web annotation bindings persist by shared app and session without deleting
 			url: "http://localhost:3000/settings",
 			targetId: "target-a",
 		}, new Date("2026-05-16T10:00:00.000Z"));
-		assert.equal(binding.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
+		assert.equal(binding.ownerScope, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
 		assert.equal(binding.state, "active");
 
 		const injected = store.patchBinding("user:a", "ps_a", binding.id, {
@@ -151,7 +151,7 @@ test("web annotations are app-global across historical owner scopes while stayin
 		store.db.prepare("UPDATE web_annotations SET owner_scope = ? WHERE id = ?").run("user:historical", historicalUser.id);
 		store.createAnnotation(createAnnotationInput({ id: "ann-session-b", piboSessionId: "ps_b" }));
 
-		assert.equal(ownerA.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
+		assert.equal(ownerA.ownerScope, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
 		assert.deepEqual(store.listAnnotations({ ownerScope: "user:a", piboSessionId: "ps_a" }).map((annotation) => annotation.id), [historicalUser.id, ownerA.id]);
 		assert.equal(store.getAnnotation("user:b", "ps_a", ownerA.id)?.id, ownerA.id);
 		assert.equal(store.getAnnotation("user:a", "ps_b", ownerA.id), undefined);

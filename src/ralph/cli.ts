@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { Command } from 'commander';
-import { getSharedAppLegacyOwnerScope } from '../shared-app.js';
+import { legacyOwnerScopeForPreCutoverSchemas } from '../owner-scope-compat.js';
 import { createDefaultPiboRalphStore } from './store.js';
 import { createBuiltInRalphStopConditions } from './stopping.js';
 import { getRalphJobTemplate, listRalphJobTemplates } from './templates.js';
@@ -25,8 +25,8 @@ Commands:
   runs      List Ralph runs
 
 Next: pibo ralph add --help`); }
-function ownerScope(value: unknown): string { const trimmed = typeof value === 'string' ? value.trim() : ''; if (trimmed && trimmed !== getSharedAppLegacyOwnerScope()) console.error('--owner-scope is deprecated for Ralph and ignored; Ralph jobs are app-global.'); return getSharedAppLegacyOwnerScope(); }
-function targetFromOptions(options: { room?: string; personal?: boolean; principalId?: string; ownerScope: string }): PiboRalphTarget { if (options.room) return { kind: 'room', roomId: options.room }; if (options.personal || options.principalId) { if (options.principalId) console.error('--principal-id is deprecated for Ralph and ignored; the default target is shared.'); return { kind: 'personal', principalId: getSharedAppLegacyOwnerScope() }; } throw new Error('Choose a target: --room <room-id> or --personal'); }
+function ownerScope(value: unknown): string { const trimmed = typeof value === 'string' ? value.trim() : ''; if (trimmed && trimmed !== legacyOwnerScopeForPreCutoverSchemas()) console.error('--owner-scope is deprecated for Ralph and ignored; Ralph jobs are app-global.'); return legacyOwnerScopeForPreCutoverSchemas(); }
+function targetFromOptions(options: { room?: string; personal?: boolean; principalId?: string; ownerScope: string }): PiboRalphTarget { if (options.room) return { kind: 'room', roomId: options.room }; if (options.personal || options.principalId) { if (options.principalId) console.error('--principal-id is deprecated for Ralph and ignored; the default target is shared.'); return { kind: 'personal', principalId: legacyOwnerScopeForPreCutoverSchemas() }; } throw new Error('Choose a target: --room <room-id> or --personal'); }
 function maybeTargetFromOptions(options: { room?: string; personal?: boolean; principalId?: string; ownerScope: string }): PiboRalphTarget | undefined { if (options.room || options.personal || options.principalId) return targetFromOptions(options); return undefined; }
 function printJson(value: unknown): void { console.log(JSON.stringify(value, null, 2)); }
 function maxIterations(value: string | undefined): number | undefined { if (value === undefined) return undefined; const parsed = Number(value); if (!Number.isInteger(parsed) || parsed < 1) throw new Error('--max-iterations must be a positive integer'); return parsed; }

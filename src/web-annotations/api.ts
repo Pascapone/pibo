@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { getSharedAppLegacyOwnerScope } from "../shared-app.js";
+import { legacyOwnerScopeForPreCutoverSchemas } from "../owner-scope-compat.js";
 import { PiboWebHttpError, readJsonBody, responseJson } from "../web/http.js";
 import type { PiboWebApp, PiboWebAppContext, PiboWebSession } from "../web/types.js";
 import { buildWebAnnotationOverlayScript, createWebAnnotationCdpService, type WebAnnotationCdpService, type WebAnnotationBindingContext } from "./cdp.js";
@@ -362,7 +362,7 @@ function resolveBindingContext(context: PiboWebAppContext, _webSession: PiboWebS
 	const session = context.channelContext.getSession(piboSessionId);
 	if (!session) throw new PiboWebHttpError("Pibo session not found", 404);
 	return {
-		ownerScope: getSharedAppLegacyOwnerScope(),
+		ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 		piboSessionId,
 		piboRoomId: input.piboRoomId?.trim() || undefined,
 	};

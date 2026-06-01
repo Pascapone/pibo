@@ -6,7 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { CustomAgentStore } from "../dist/apps/chat/agent-store.js";
 import { upsertPiPackage } from "../dist/pi-packages/store.js";
-import { LEGACY_SHARED_APP_OWNER_SCOPE } from "../dist/shared-app.js";
+import { PRE_CUTOVER_LEGACY_OWNER_SCOPE } from "../dist/owner-scope-compat.js";
 
 async function withCwd(cwd, run) {
 	const previous = process.cwd();
@@ -146,7 +146,7 @@ test("custom agent store archives and deletes agents", () => {
 	const path = join(mkdtempSync(join(tmpdir(), "pibo-agent-store-")), "agents.sqlite");
 	const store = new CustomAgentStore(path);
 	const agent = store.create({ ownerScope: "user:test", displayName: "archive-me" });
-	assert.equal(agent.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
+	assert.equal(agent.ownerScope, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
 
 	assert.deepEqual(store.list("user:test").map((item) => item.profileName), ["archive-me"]);
 	const archived = store.setArchived(agent.id, true);
@@ -166,7 +166,7 @@ test("custom agent names are globally unique and lists are app-global across leg
 	const path = join(mkdtempSync(join(tmpdir(), "pibo-agent-store-")), "agents.sqlite");
 	const store = new CustomAgentStore(path);
 	const first = store.create({ ownerScope: "user:first", displayName: "shared-agent" });
-	assert.equal(first.ownerScope, LEGACY_SHARED_APP_OWNER_SCOPE);
+	assert.equal(first.ownerScope, PRE_CUTOVER_LEGACY_OWNER_SCOPE);
 
 	assert.throws(
 		() => store.create({ ownerScope: "user:second", displayName: "shared-agent" }),
@@ -215,13 +215,13 @@ test("custom agent store lists historical shared and user agents for every accou
 			updated_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`);
-	insert.run("agent_shared", "shared-history", LEGACY_SHARED_APP_OWNER_SCOPE, "shared-history", null, "[]", "[]", "[]", "[]", "default", 0, "2026-05-01T00:00:00.000Z", "2026-05-01T00:00:00.000Z");
+	insert.run("agent_shared", "shared-history", PRE_CUTOVER_LEGACY_OWNER_SCOPE, "shared-history", null, "[]", "[]", "[]", "[]", "default", 0, "2026-05-01T00:00:00.000Z", "2026-05-01T00:00:00.000Z");
 	insert.run("agent_user", "user-history", "user:legacy-account", "user-history", null, "[]", "[]", "[]", "[]", "default", 0, "2026-05-02T00:00:00.000Z", "2026-05-02T00:00:00.000Z");
 	db.close();
 
 	const store = new CustomAgentStore(path);
 	assert.deepEqual(store.list("user:other-account").map((agent) => agent.profileName).sort(), ["shared-history", "user-history"]);
-	assert.deepEqual(store.list(LEGACY_SHARED_APP_OWNER_SCOPE).map((agent) => agent.profileName).sort(), ["shared-history", "user-history"]);
+	assert.deepEqual(store.list(PRE_CUTOVER_LEGACY_OWNER_SCOPE).map((agent) => agent.profileName).sort(), ["shared-history", "user-history"]);
 	assert.equal(store.get("agent_user").ownerScope, "user:legacy-account");
 
 	store.close();

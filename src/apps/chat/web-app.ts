@@ -50,7 +50,7 @@ import {
 } from "../../core/model-defaults.js";
 import { inspectPiboContextBuild } from "../../core/context-build.js";
 import { loadPiboUserSettings } from "../../core/user-settings.js";
-import { getSharedAppLegacyOwnerScope } from "../../shared-app.js";
+import { legacyOwnerScopeForPreCutoverSchemas } from "../../owner-scope-compat.js";
 import { loadModelCatalog } from "./model-catalog.js";
 import { createCustomAgentProfileDefinition } from "./agent-profiles.js";
 import { createDefaultPiboReliabilityStore, PiboReliabilityStore } from "../../reliability/store.js";
@@ -622,7 +622,7 @@ function isJsonValue(value: unknown): value is PiboJsonValue {
 }
 
 function principalIdFor(_webSession: PiboWebSession): string {
-	return getSharedAppLegacyOwnerScope();
+	return legacyOwnerScopeForPreCutoverSchemas();
 }
 
 function recordWorkflowLifecycleEvent(
@@ -632,7 +632,7 @@ function recordWorkflowLifecycleEvent(
 ): WorkflowLifecycleEventRecord {
 	return state.workflowLifecycleEventStore.record({
 		...input,
-		ownerScope: getSharedAppLegacyOwnerScope(),
+		ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 		actorId: input.actorId ?? principalIdFor(webSession),
 	});
 }
@@ -1012,8 +1012,8 @@ function ensureSessionRoom(
 	const roomId = chatRoomIdFromMetadata(session.metadata);
 	const existingRoom = roomId ? state.roomService.getRoom(roomId) : undefined;
 	if (existingRoom) return existingRoom;
-	const ownerScope = webSession?.ownerScope ?? getSharedAppLegacyOwnerScope();
-	const principalId = webSession ? principalIdFor(webSession) : getSharedAppLegacyOwnerScope();
+	const ownerScope = webSession?.ownerScope ?? legacyOwnerScopeForPreCutoverSchemas();
+	const principalId = webSession ? principalIdFor(webSession) : legacyOwnerScopeForPreCutoverSchemas();
 	const room = state.roomService.ensureDefaultRoom({ ownerScope, principalId });
 	if (!chatRoomIdFromMetadata(session.metadata)) {
 		context.channelContext.updateSession?.(session.id, { metadata: withChatRoomId(session.metadata, room.id) });
@@ -1066,7 +1066,7 @@ function createSharedChatSession(
 		channel: CHAT_WEB_CHANNEL,
 		kind: "chat",
 		profile,
-		ownerScope: getSharedAppLegacyOwnerScope(),
+		ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 		workspace: roomWorkspaceFromMetadata(room.metadata) ?? getDefaultPiboWorkspace(),
 		metadata: withChatRoomId(undefined, room.id),
 	});
@@ -1089,7 +1089,7 @@ function createProjectChatSession(input: {
 		channel: CHAT_WEB_CHANNEL,
 		kind: "chat",
 		profile: input.profile,
-		ownerScope: getSharedAppLegacyOwnerScope(),
+		ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 		workspace: input.project.projectFolder,
 		...(input.title ? { title: input.title } : {}),
 		...(input.configuration?.model ? { activeModel: input.configuration.model } : {}),
@@ -1502,7 +1502,7 @@ function saveWorkflowPromptAssetRevision(
 		? body.description.trim()
 		: sourceDocument?.description ?? "Managed Workflow Builder prompt asset revision.";
 	return state.workflowPromptAssetStore.saveRevision({
-		ownerScope: getSharedAppLegacyOwnerScope(),
+		ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 		assetId: requestedAssetId,
 		displayName,
 		description,
@@ -1550,7 +1550,7 @@ function createWorkflowDraftIdentity(
 		revision: 1,
 		createdAt: now,
 		updatedAt: now,
-		ownerScope: getSharedAppLegacyOwnerScope(),
+		ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 	};
 	state.workflowDraftStore.saveDraft(draft);
 	recordWorkflowLifecycleEvent(state, webSession, {
@@ -1739,7 +1739,7 @@ function duplicateWorkflowIntoDraft(
 		revision: 1,
 		createdAt: now,
 		updatedAt: now,
-		ownerScope: getSharedAppLegacyOwnerScope(),
+		ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 	};
 	state.workflowDraftStore.saveDraft(draft);
 	recordWorkflowLifecycleEvent(state, webSession, {
@@ -1804,7 +1804,7 @@ function createNextVersionDraftFromPublishedWorkflow(
 		revision: 1,
 		createdAt: now,
 		updatedAt: now,
-		ownerScope: getSharedAppLegacyOwnerScope(),
+		ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 	};
 	state.workflowDraftStore.saveDraft(draft);
 	recordWorkflowLifecycleEvent(state, webSession, {
@@ -1971,7 +1971,7 @@ function createStarterWorkflowDraft(webSession: PiboWebSession): OwnedWorkflowDr
 		revision: 1,
 		createdAt: now,
 		updatedAt: now,
-		ownerScope: getSharedAppLegacyOwnerScope(),
+		ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 	};
 }
 
@@ -3843,7 +3843,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const body = await readJsonBody<ChatProjectCreateBody>(request);
 				try {
 					const project = state.projectService.createProject({
-						ownerScope: getSharedAppLegacyOwnerScope(),
+						ownerScope: legacyOwnerScopeForPreCutoverSchemas(),
 						name: normalizeRoomName(body.name),
 						description: normalizeProjectDescription(body.description),
 						projectFolder: normalizeProjectPath(body.projectFolder),
@@ -4469,7 +4469,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				requireSameOriginJsonRequest(request);
 				const webSession = await requireSession(request, context);
 				const body = await readJsonBody<ChatAgentBody>(request);
-				const input = createAgentInput(getSharedAppLegacyOwnerScope(), body);
+				const input = createAgentInput(legacyOwnerScopeForPreCutoverSchemas(), body);
 				requireAgentProfileNameAvailable(state, context, input.displayName);
 				const agent = state.agentStore.create(input);
 				context.channelContext.upsertProfile?.(createCustomAgentProfileDefinition(agent));
