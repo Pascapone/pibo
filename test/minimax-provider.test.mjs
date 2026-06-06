@@ -117,13 +117,15 @@ test("registerMiniMaxProvider selects CN base URL for minimax-cn", () => {
 	assert.equal(fake.registrations[0].config.baseUrl, "https://api.minimax.cn/v1");
 });
 
-test("registerMiniMaxProvider is idempotent within a process", () => {
-	const fake = makeFakeRegistry();
+test("registerMiniMaxProvider re-registers on a fresh registry", () => {
+	const fakeA = makeFakeRegistry();
+	const fakeB = makeFakeRegistry();
 
-	registerMiniMaxProvider(fake.api, { baseModels: builtInModels });
-	registerMiniMaxProvider(fake.api, { baseModels: builtInModels });
+	registerMiniMaxProvider(fakeA.api, { baseModels: builtInModels });
+	registerMiniMaxProvider(fakeB.api, { baseModels: builtInModels });
 
-	assert.equal(fake.registrations.length, 1);
+	assert.equal(fakeA.registrations.length, 1);
+	assert.equal(fakeB.registrations.length, 1);
 });
 
 test("unregisterMiniMaxProvider clears the registration slot", () => {

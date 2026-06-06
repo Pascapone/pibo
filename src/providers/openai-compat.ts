@@ -93,8 +93,6 @@ export function buildOpenAiCompatConfig(
 	};
 }
 
-const registeredProviderIds = new Set<string>();
-
 export type OpenAiCompatRegistrationResult = {
 	registered: boolean;
 	models: number;
@@ -105,15 +103,10 @@ export function registerOpenAiCompatProvider(
 	spec: OpenAiCompatProviderSpec,
 	options: {
 		baseModels?: readonly Model<any>[];
-		force?: boolean;
 	} = {},
 ): OpenAiCompatRegistrationResult {
-	if (registeredProviderIds.has(spec.id) && !options.force) {
-		return { registered: false, models: 0 };
-	}
 	const config = buildOpenAiCompatConfig(spec, options.baseModels);
 	modelRegistry.registerProvider(spec.id, config);
-	registeredProviderIds.add(spec.id);
 	return { registered: true, models: config.models.length };
 }
 
@@ -121,11 +114,8 @@ export function unregisterOpenAiCompatProvider(
 	modelRegistry: Pick<ModelRegistry, "unregisterProvider">,
 	providerId: string,
 ): void {
-	if (!registeredProviderIds.has(providerId)) return;
 	modelRegistry.unregisterProvider(providerId);
-	registeredProviderIds.delete(providerId);
 }
 
 export function resetOpenAiCompatProviderRegistration(): void {
-	registeredProviderIds.clear();
 }

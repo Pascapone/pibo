@@ -90,7 +90,6 @@ export function registerMiniMaxProvider(
 		providerId?: MiniMaxProviderId;
 		customModels?: readonly OpenAiCompatModelSpec[];
 		baseModels?: readonly Model<any>[];
-		force?: boolean;
 	} = {},
 ): OpenAiCompatRegistrationResult {
 	const providerId = options.providerId ?? MINIMAX_PROVIDER_ID;
@@ -99,7 +98,7 @@ export function registerMiniMaxProvider(
 	return registerOpenAiCompatProvider(
 		modelRegistry as Pick<ModelRegistry, "registerProvider">,
 		spec,
-		{ baseModels, force: options.force },
+		{ baseModels },
 	);
 }
 

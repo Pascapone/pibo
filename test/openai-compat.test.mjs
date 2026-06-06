@@ -161,28 +161,18 @@ test("registerOpenAiCompatProvider calls registerProvider with merged config", (
 	);
 });
 
-test("registerOpenAiCompatProvider is idempotent within a process", () => {
-	const fake = makeFakeRegistry();
+test("registerOpenAiCompatProvider re-registers on a fresh registry", () => {
+	const fakeA = makeFakeRegistry();
+	const fakeB = makeFakeRegistry();
 
-	registerOpenAiCompatProvider(fake.api, sampleSpec, { baseModels: builtInModels });
-	const result = registerOpenAiCompatProvider(fake.api, sampleSpec, {
+	registerOpenAiCompatProvider(fakeA.api, sampleSpec, { baseModels: builtInModels });
+	const result = registerOpenAiCompatProvider(fakeB.api, sampleSpec, {
 		baseModels: builtInModels,
 	});
 
-	assert.equal(fake.registrations.length, 1);
-	assert.equal(result.registered, false);
-});
-
-test("registerOpenAiCompatProvider with force=true re-registers", () => {
-	const fake = makeFakeRegistry();
-
-	registerOpenAiCompatProvider(fake.api, sampleSpec, { baseModels: builtInModels });
-	registerOpenAiCompatProvider(fake.api, sampleSpec, {
-		baseModels: builtInModels,
-		force: true,
-	});
-
-	assert.equal(fake.registrations.length, 2);
+	assert.equal(result.registered, true);
+	assert.equal(fakeA.registrations.length, 1);
+	assert.equal(fakeB.registrations.length, 1);
 });
 
 test("unregisterOpenAiCompatProvider clears the registration slot", () => {
