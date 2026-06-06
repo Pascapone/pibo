@@ -19,6 +19,8 @@ const PROVIDERS: ProviderDef[] = [
 	{ id: "google", name: "Google (Gemini)", authMethod: "api_key" },
 	{ id: "groq", name: "Groq", authMethod: "api_key" },
 	{ id: "ollama", name: "Ollama", authMethod: "api_key" },
+	{ id: "minimax", name: "MiniMax", authMethod: "api_key" },
+	{ id: "minimax-cn", name: "MiniMax (China)", authMethod: "api_key" },
 ];
 
 type ProviderStatus = {

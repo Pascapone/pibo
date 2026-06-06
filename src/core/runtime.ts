@@ -44,6 +44,7 @@ import { createPiboCompactionPromptExtension } from "./compaction-prompt.js";
 import { getPiPackageRuntimeOptions } from "../pi-packages/runtime.js";
 import { getDefaultPiboWorkspace } from "./workspace.js";
 import { DEFAULT_USER_TIMEZONE } from "./user-settings.js";
+import { registerMiniMaxProvider, type MiniMaxModelRegistryLike } from "../providers/minimax.js";
 import { PIBO_APP_CONTEXT } from "../app-context.js";
 import { createRuntimeToolDefinition, type PiboRuntimeToolController } from "../tools/runtime/tool.js";
 import { RuntimeSessionRegistry } from "../tools/runtime/registry.js";
@@ -353,6 +354,7 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 				}),
 			},
 		});
+		registerMiniMaxProvider(services.modelRegistry as MiniMaxModelRegistryLike);
 		const ownsLocalRuntimeRegistry = options.runtimeToolController === undefined && profile.tools.some(isEnabledRuntimeTool);
 		const localRuntimeRegistry = ownsLocalRuntimeRegistry ? new RuntimeSessionRegistry({ cwd: runtimeCwd }) : undefined;
 		const runtimeToolController = options.runtimeToolController
