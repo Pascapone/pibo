@@ -30,12 +30,12 @@ export type MiniMaxModelRegistryLike = Pick<ModelRegistry, "registerProvider" | 
 
 export const MINIMAX_M3_MODEL: OpenAiCompatModelSpec = {
 	id: "MiniMax-M3",
-	name: "MiniMax M3",
-	reasoning: false,
-	contextWindow: 128000,
-	maxTokens: 8192,
+	name: "MiniMax-M3",
+	reasoning: true,
+	contextWindow: 1000000,
+	maxTokens: 131072,
 	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-	input: ["text"],
+	input: ["text", "image"],
 };
 
 function resolveBaseUrl(providerId: MiniMaxProviderId, defaultBaseUrl: string): string {

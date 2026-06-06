@@ -72,10 +72,11 @@ test.beforeEach(() => {
 	resetMiniMaxProviderRegistration();
 });
 
-test("MINIMAX_M3_MODEL is MiniMax-M3 with text input and 128k context", () => {
+test("MINIMAX_M3_MODEL is MiniMax-M3 with multimodal input and 1M context", () => {
 	assert.equal(MINIMAX_M3_MODEL.id, "MiniMax-M3");
-	assert.equal(MINIMAX_M3_MODEL.contextWindow, 128000);
-	assert.deepEqual([...MINIMAX_M3_MODEL.input], ["text"]);
+	assert.equal(MINIMAX_M3_MODEL.contextWindow, 1000000);
+	assert.equal(MINIMAX_M3_MODEL.reasoning, true);
+	assert.deepEqual([...MINIMAX_M3_MODEL.input], ["text", "image"]);
 });
 
 test("registerMiniMaxProvider merges built-in models with MiniMax-M3", () => {
