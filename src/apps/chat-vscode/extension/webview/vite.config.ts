@@ -8,7 +8,7 @@ const root = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
 	root,
-	base: "./",
+	base: "/apps/chat-vscode/",
 	resolve: {
 		dedupe: ["react", "react-dom", "lexical"],
 		tsconfigPaths: true,
