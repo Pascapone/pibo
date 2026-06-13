@@ -348,6 +348,7 @@ A Pibo-managed wrapper-level process that summarizes tool usage in a Pibo Sessio
 - The **Pibo VS Code Extension** is a thin WebView client that reuses the Chat Web **Composer** and **Chat Session View**; it does not own a separate data store.
 - A **VS Code Session Room** is a **Pibo Room** whose `workspace` field equals the canonical path of a VS Code `WorkspaceFolder`; the extension resolves one per folder.
 - The **Workspace Room Resolver** (`resolveRoomForWorkspace`) lists rooms by workspace and auto-creates a room when none match; multi-match results surface a **Room Picker** inside the WebView.
+- The **Pibo VS Code Distribution Flow** ships the extension as a `.vsix` that lives on GitHub Releases and the VS Code Marketplace; `pibo vscode install` downloads the latest VSIX from the GitHub Release of the configured repo and runs `code --install-extension`. The **WebView Bundle** (`dist/apps/chat-vscode-web/`) ships inside the `@pasko70/pibo` npm package so the gateway can serve it same-origin at `/apps/chat-vscode/`.
 
 ## Ambiguities
 

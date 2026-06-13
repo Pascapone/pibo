@@ -127,6 +127,12 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 		return;
 	}
 
+	if (argv[2] === "vscode") {
+		const { runVscodeCli } = await import("./vscode/cli.js");
+		await runVscodeCli([argv[0] ?? "node", "pibo vscode", ...argv.slice(3)]);
+		return;
+	}
+
 	if (argv[2] === "config" && (argv[3] === "--help" || argv[3] === "-h" || argv.length === 3)) {
 		printConfigDiscovery();
 		return;
@@ -259,6 +265,18 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 		.action(async (args: string[]) => {
 			const { runRalphCli } = await import("./ralph/cli.js");
 			await runRalphCli([argv[0] ?? "node", "pibo ralph", ...args]);
+		});
+
+	program
+		.command("vscode")
+		.description("Manage the Pibo VS Code extension")
+		.helpOption(false)
+		.allowUnknownOption(true)
+		.allowExcessArguments(true)
+		.argument("[args...]")
+		.action(async (args: string[]) => {
+			const { runVscodeCli } = await import("./vscode/cli.js");
+			await runVscodeCli([argv[0] ?? "node", "pibo vscode", ...args]);
 		});
 
 	const config = program.command("config").description(`Manage pibo config at ${getDefaultPiboConfigPath()}`).helpOption(false);
@@ -414,6 +432,7 @@ Commands:
   skills       Manage Pibo user skills
   cron         Manage scheduled Pibo jobs
   ralph        Manage continuous Ralph jobs
+  vscode       Manage the Pibo VS Code extension
   profile      Inspect a pibo profile
   tui          Start the direct Pi TUI
   tui:routed   Start the local routed Pibo TUI

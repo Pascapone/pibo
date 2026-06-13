@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Build the Pibo VS Code extension:
-//   1. Bundle the WebView with Vite (src/apps/chat-vscode/extension/webview/ → dist/apps/chat-vscode/webview/).
+//   1. Bundle the WebView with Vite (src/apps/chat-vscode/extension/webview/ → dist/apps/chat-vscode-web/).
 //   2. Bundle the Node-side extension entry with esbuild (src/apps/chat-vscode/extension/src/extension.ts → dist/extension.cjs).
-// The gateway serves the WebView at /apps/chat-vscode/ from dist/apps/chat-vscode/webview/.
+// The gateway serves the WebView at /apps/chat-vscode/ from dist/apps/chat-vscode-web/.
 
 import { execFileSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
@@ -15,7 +15,7 @@ const packageDir = resolve(root, "src/apps/chat-vscode");
 const webviewDir = resolve(packageDir, "extension/webview");
 const extensionSrc = resolve(packageDir, "extension/src/extension.ts");
 const extensionOutDir = resolve(packageDir, "dist/extension");
-const webviewOutDir = resolve(packageDir, "dist/webview");
+const webviewOutDir = resolve(root, "dist/apps/chat-vscode-web");
 
 if (!existsSync(extensionOutDir)) mkdirSync(extensionOutDir, { recursive: true });
 if (!existsSync(webviewOutDir)) mkdirSync(webviewOutDir, { recursive: true });

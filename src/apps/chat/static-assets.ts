@@ -9,7 +9,7 @@ export const CHAT_WEB_MOUNT_PATH = "/apps/chat";
 export const CHAT_VSCODE_MOUNT_PATH = "/apps/chat-vscode";
 
 const CHAT_UI_DIST_DIR = resolve(fileURLToPath(new URL("../../../dist/apps/chat-ui", import.meta.url)));
-const CHAT_VSCODE_DIST_DIR = resolve(fileURLToPath(new URL("../../../src/apps/chat-vscode/dist/webview", import.meta.url)));
+const CHAT_VSCODE_DIST_DIR = resolve(fileURLToPath(new URL("../../../dist/apps/chat-vscode-web", import.meta.url)));
 const compressedAssetCache = new Map<string, Uint8Array>();
 
 export function responseChatAppShell(): Response {

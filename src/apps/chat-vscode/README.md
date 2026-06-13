@@ -4,14 +4,30 @@ The Pibo VS Code extension is a thin client for the [Pibo](https://github.com/Pa
 
 ## Installation
 
-The extension is shipped as a single `.vsix`. To install it locally:
+The Pibo VS Code extension is a thin VS Code client. It requires a running `pibo gateway:web` (so the WebView can load the same-origin composer and session view that the Web App uses). Install the extension after `pibo` is on `PATH`:
 
 ```bash
-npm run vscode:package
-code --install-extension dist/chat-vscode-0.1.0.vsix
+pibo vscode install     # fetch the latest VSIX from GitHub Releases and install via `code`
+pibo vscode status      # confirm the extension is installed
+pibo vscode uninstall   # remove it
 ```
 
-The extension needs a running `pibo gateway:web` instance. By default it expects `http://127.0.0.1:4788`. Override the URL via the `pibo.chatWebUrl` setting (per workspace) or the `PIBO_CHAT_WEB_URL` environment variable.
+The `pibo vscode install` command:
+
+1. Detects the `code` binary on `PATH` (falls back to `code-insiders`, then `codium`).
+2. Downloads the latest `.vsix` from the GitHub Release of the configured GitHub repo (`Pascapone/pibo` by default, override with `--owner` / `--repo`).
+3. Caches the VSIX under `~/.pibo/vscode/cache/<tagName>/pibo.vsix` so subsequent installs of the same version skip the network.
+4. Runs `code --install-extension <path>` and verifies via `code --list-extensions --show-versions`.
+
+The WebView bundle is shipped inside the `pibo` npm package at `dist/apps/chat-vscode-web/` and served by the gateway at `http://<gateway>/apps/chat-vscode/`. There is no need to build the WebView from source — it travels with the `pibo` install.
+
+If you want to install from a local `.vsix` instead (e.g., to test a build), pass the file path:
+
+```bash
+pibo vscode install --vsix ./dist/apps/vscode-artifacts/latest.vsix
+```
+
+The extension expects a running `pibo gateway:web` instance. By default it expects `http://127.0.0.1:4788`. Override the URL via the `pibo.chatWebUrl` setting (per workspace) or the `PIBO_CHAT_WEB_URL` environment variable.
 
 ## How rooms are resolved
 
@@ -81,12 +97,30 @@ The WebView does the actual session work — it fetches `bootstrap`, subscribes 
 ## Build
 
 ```bash
-npm run vscode:webview:build   # Vite build for the WebView
+npm run vscode:webview:build   # Vite build for the WebView → dist/apps/chat-vscode-web/
 npm run vscode:extension:build # esbuild bundle for extension.cjs
-npm run vscode:package         # produce a .vsix
+npm run vscode:package         # produce a .vsix and copy to dist/apps/vscode-artifacts/
 ```
 
-The build artifacts land in `src/apps/chat-vscode/dist/`. The Vite bundle at `src/apps/chat-vscode/dist/webview/` is served by the gateway at `/apps/chat-vscode/`. The esbuild bundle at `src/apps/chat-vscode/dist/extension/extension.cjs` is the extension entry point referenced from `package.json#main`.
+The build pipeline produces three artifact trees:
+
+- `dist/apps/chat-vscode-web/` — the React + Composer + SessionSelector bundle, served by the gateway at `/apps/chat-vscode/`. This is included in the `pibo` npm package.
+- `src/apps/chat-vscode/dist/extension/extension.cjs` — the Node-side extension entry referenced from `src/apps/chat-vscode/package.json#main`. This goes into the `.vsix`.
+- `dist/apps/vscode-artifacts/pibo-vscode-<version>.vsix` — the installable artifact, plus a stable `latest.vsix` symlink for the release script.
+
+The standard `npm run build` runs `vscode:webview:build` so the WebView bundle is part of every npm publish.
+
+## Release
+
+The release script `scripts/release.mjs` orchestrates a full release. Run it from the repo root:
+
+```bash
+node scripts/release.mjs --version 1.3.0                  # bump + build + package
+node scripts/release.mjs --version 1.3.0 --publish-npm    # also publish to npm
+node scripts/release.mjs --version 1.3.0 --create-release # also create a GitHub Release with the VSIX attached
+```
+
+The script bumps the version in **both** `package.json` (root) and `src/apps/chat-vscode/package.json` (extension) so the two stay in sync. The produced VSIX is the artifact to upload to the VS Code Marketplace. See `docs/ops/vscode-extension-release.md` for the full release runbook.
 
 ## Validation
 

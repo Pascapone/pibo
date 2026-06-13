@@ -10,7 +10,7 @@
     "vscode": "^1.96.0",
     "node": ">=24"
   },
-  "main": "./dist/extension.cjs",
+  "main": "./dist/extension/extension.cjs",
   "activationEvents": [
     "onStartupFinished"
   ],

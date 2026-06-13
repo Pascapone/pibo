@@ -1,6 +1,6 @@
 {
   "name": "@pasko70/pibo",
-  "version": "1.0.6",
+  "version": "1.2.0",
   "type": "module",
   "description": "Minimal TypeScript wrapper around Pi Coding Agent.",
   "files": [
@@ -35,8 +35,9 @@
     "vscode:typecheck": "tsc -p src/apps/chat-vscode/extension/tsconfig.json --noEmit && tsc -p src/apps/chat-vscode/extension/webview/tsconfig.json --noEmit",
     "vscode:webview:build": "vite build --config src/apps/chat-vscode/extension/webview/vite.config.ts",
     "vscode:extension:build": "esbuild src/apps/chat-vscode/extension/src/extension.ts --bundle --platform=node --target=node24 --format=cjs --outfile=src/apps/chat-vscode/dist/extension/extension.cjs --external:vscode --sourcemap=inline",
-    "vscode:package": "vsce package --no-dependencies",
-    "build": "tsc -p tsconfig.json && npm run web-ui:build && node scripts/ensure-bin-executable.mjs",
+    "vscode:package": "node scripts/vscode-package.mjs",
+    "release": "node scripts/release.mjs",
+    "build": "tsc -p tsconfig.json && npm run web-ui:build && npm run vscode:webview:build && node scripts/ensure-bin-executable.mjs",
     "start": "node dist/bin/pibo.js",
     "test": "npm run build && node --test test/*.test.mjs test/chat-vscode/*.test.mjs",
     "check:product-vocab": "node scripts/legacy-product-vocabulary-gate.mjs",

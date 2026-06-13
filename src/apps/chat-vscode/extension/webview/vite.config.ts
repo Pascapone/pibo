@@ -15,7 +15,7 @@ export default defineConfig({
 	},
 	plugins: [tailwindcss(), react()],
 	build: {
-		outDir: "../../dist/webview",
+		outDir: "../../../../../dist/apps/chat-vscode-web",
 		emptyOutDir: true,
 	},
 });
