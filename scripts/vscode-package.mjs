@@ -31,7 +31,7 @@ run("npm", ["run", "--silent", "vscode:extension:build"], root);
 
 const manifest = JSON.parse(readFileSync(resolve(packageDir, "package.json"), "utf8"));
 const version = manifest.version ?? "0.0.0";
-const name = manifest.name ?? "pibo-vscode";
+const name = manifest.name ?? "pibo-vscode-ext";
 const expectedFilename = `${name}-${version}.vsix`;
 
 // Clean up any prior .vsix output that vsce left in the extension directory.

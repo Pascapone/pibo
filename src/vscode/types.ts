@@ -8,7 +8,7 @@
  */
 
 export const PIBO_VSCODE_EXTENSION_PUBLISHER = "pibo";
-export const PIBO_VSCODE_EXTENSION_NAME = "pibo-vscode";
+export const PIBO_VSCODE_EXTENSION_NAME = "pibo-vscode-ext";
 export const PIBO_VSCODE_EXTENSION_ID = `${PIBO_VSCODE_EXTENSION_PUBLISHER}.${PIBO_VSCODE_EXTENSION_NAME}`;
 
 export const DEFAULT_GITHUB_OWNER = "Pascapone";
