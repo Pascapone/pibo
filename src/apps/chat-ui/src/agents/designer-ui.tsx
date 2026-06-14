@@ -515,6 +515,7 @@ function ModelSelector({
 						const nextProviderId = event.target.value;
 						setProviderId(nextProviderId);
 						setModelId("");
+						if (!nextProviderId) onChange(undefined);
 					}}
 					className="min-w-0 bg-[#0e1116] border border-slate-700 rounded-sm px-3 py-2 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60"
 				>
@@ -532,7 +533,11 @@ function ModelSelector({
 					onChange={(event) => {
 						const nextModelId = event.target.value;
 						setModelId(nextModelId);
-						if (providerId && nextModelId) onChange({ provider: providerId, id: nextModelId });
+						if (!nextModelId) {
+							if (providerId) onChange(undefined);
+						} else {
+							onChange({ provider: providerId, id: nextModelId });
+						}
 					}}
 					className="min-w-0 bg-[#0e1116] border border-slate-700 rounded-sm px-3 py-2 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60"
 				>
