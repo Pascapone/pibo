@@ -5,6 +5,7 @@ import { dirname, isAbsolute, join } from "node:path";
 import { Command } from "commander";
 import { getPiboConfigValue, loadPiboConfig } from "../config/config.js";
 import { getPiboHome } from "../core/pibo-home.js";
+import { getWslInfo, isWsl, type WslInfo } from "../core/wsl.js";
 
 type SetupMode = "user-host" | "developer-host";
 
@@ -164,6 +165,9 @@ export function createUserHostSetupPlan(options: {
 	const wwwDomain = options.wwwDomain ?? (options.domain ? `www.${options.domain}` : undefined);
 	const warnings: string[] = [];
 	if (!options.domain) warnings.push("No production domain was provided; generated Caddy/Auth examples use placeholders.");
+	if (process.platform === "win32" && !isWsl()) {
+		warnings.push("Pibo host setup targets Linux. Native Windows is not supported. Install WSL2 (https://aka.ms/wsl) and run setup inside the WSL distribution. See docs/guides/pibo-on-windows-via-wsl.md.");
+	}
 	const generatedFiles: GeneratedFile[] = [
 		{
 			path: `/etc/systemd/system/${serviceName}.service`,
@@ -252,6 +256,9 @@ export function createDeveloperHostSetupPlan(options: {
 	const warnings: string[] = [];
 	if (!options.origin) warnings.push("No origin fork was provided. Developer hosts should use a server-specific fork as origin.");
 	if (!options.prodDomain || !options.devDomain) warnings.push("Production and dev domains should both be configured before requesting HTTPS certificates.");
+	if (process.platform === "win32" && !isWsl()) {
+		warnings.push("Pibo developer-host setup targets Linux. Native Windows is not supported. Install WSL2 (https://aka.ms/wsl) and run setup inside the WSL distribution. See docs/guides/pibo-on-windows-via-wsl.md.");
+	}
 	const generatedFiles: GeneratedFile[] = [
 		{
 			path: "/etc/systemd/system/pibo-web.service",
@@ -411,6 +418,7 @@ type DoctorStatus = {
 	platform: string;
 	uid?: number;
 	piboHome: string;
+	wsl: WslInfo;
 	checks: DoctorCheck[];
 	recommendations: string[];
 };
@@ -530,30 +538,55 @@ async function createDoctorStatus(options: { piboHome?: string; domain?: string;
 		const dockerInfo = commandOutput("docker", ["info", "--format", "{{.ServerVersion}}"]);
 		checks.push({ name: "docker.daemon", status: dockerInfo ? "ok" : options.requireDocker ? "fail" : "warn", detail: dockerInfo ? `Docker daemon ${dockerInfo}` : "Docker daemon is not reachable" });
 	}
+	const wslInfo = getWslInfo();
+	if (wslInfo.isWsl) {
+		const versionLabel = wslInfo.version ? `WSL${wslInfo.version}` : "WSL";
+		const distroLabel = wslInfo.distro ? ` (${wslInfo.distro})` : "";
+		checks.push({ name: "platform.wsl", status: "ok", detail: `Running inside ${versionLabel}${distroLabel}; Pibo is fully supported here. See docs/guides/pibo-on-windows-via-wsl.md.` });
+	} else if (process.platform === "win32") {
+		checks.push({
+			name: "platform.wsl",
+			status: "fail",
+			detail: "Native Windows is not supported. Install WSL2 (https://aka.ms/wsl) and run Pibo inside the WSL distribution. See docs/guides/pibo-on-windows-via-wsl.md.",
+		});
+	}
 	checks.push(...swapCheck(options.minSwapGb));
 	checks.push(...authConfigChecks(piboHome));
 	checks.push(...await dnsChecks(options.domain, options.expectedIp, "production"));
 	checks.push(...await dnsChecks(options.devDomain, options.expectedIp, "development"));
+	const recommendations: string[] = [
+		"Use user-host setup for normal npm installs.",
+		"Use developer-host setup only when you need prod/dev gateways, Docker compute workers, GitHub App PR flow, and branch worktrees.",
+		"Configure auth before starting pibo-web; Better Auth requires baseURL, secret, Google OAuth values, and allowed emails.",
+		"Docker is only required for developer-host compute workers; user-host installs can ignore Docker warnings.",
+		"Swap is not created automatically; for developer hosts, provision swap at the OS level and verify it with `--min-swap-gb`.",
+	];
+	if (wslInfo.isWsl) {
+		recommendations.push("You are inside WSL: install pibo with `npm install -g @pasko70/pibo` in the WSL shell, then open this folder in VSCode via the WSL extension so the editor talks to the WSL gateway.");
+		recommendations.push("Browser-Use and Agent-Browser work directly under WSLg on Windows 11. On Windows 10, install an X server (e.g. VcXsrv) and export DISPLAY=:0 inside WSL.");
+	} else if (process.platform === "win32") {
+		recommendations.push("Pibo does not run natively on Windows. Install WSL2 with `wsl --install` and follow docs/guides/pibo-on-windows-via-wsl.md.");
+	}
 	return {
 		node: process.versions.node,
 		nodeMajorOk,
 		platform: process.platform,
 		uid: typeof process.getuid === "function" ? process.getuid() : undefined,
 		piboHome,
+		wsl: wslInfo,
 		checks,
-		recommendations: [
-			"Use user-host setup for normal npm installs.",
-			"Use developer-host setup only when you need prod/dev gateways, Docker compute workers, GitHub App PR flow, and branch worktrees.",
-			"Configure auth before starting pibo-web; Better Auth requires baseURL, secret, Google OAuth values, and allowed emails.",
-			"Docker is only required for developer-host compute workers; user-host installs can ignore Docker warnings.",
-			"Swap is not created automatically; for developer hosts, provision swap at the OS level and verify it with `--min-swap-gb`."
-		],
+		recommendations,
 	};
 }
 
 function printDoctorStatus(status: DoctorStatus): void {
 	console.log(`Node: ${status.node} (${status.nodeMajorOk ? "ok" : "requires >=24"})`);
 	console.log(`Platform: ${status.platform}`);
+	if (status.wsl.isWsl) {
+		const versionLabel = status.wsl.version ? `WSL${status.wsl.version}` : "WSL";
+		const distroLabel = status.wsl.distro ? ` (${status.wsl.distro})` : "";
+		console.log(`WSL: ${versionLabel}${distroLabel}`);
+	}
 	console.log(`PIBO_HOME: ${status.piboHome}`);
 	console.log("Checks:");
 	for (const check of status.checks) console.log(`- ${check.status.toUpperCase()} ${check.name}: ${check.detail}`);

@@ -2,6 +2,21 @@
 
 The Pibo VS Code extension is a thin client for the [Pibo](https://github.com/Pascapone/pibo) chat runtime. It surfaces the same Terminal (Session) View, Composer, and slash-command catalog as the Chat Web App, but renders only the Session View inside a VS Code WebView. The room-resolver maps a VS Code workspace folder to a `PiboRoom` in the same `~/.pibo/pibo.sqlite` database the Web App uses, so sessions you create in the extension appear in the Web App and vice versa.
 
+## Windows users: use WSL2
+
+The Pibo CLI is Linux-first and does not run natively on Windows. Install `pibo` and the VSCode server binary inside a WSL2 distribution, then connect VSCode to that distribution through the **WSL** extension. See [docs/guides/pibo-on-windows-via-wsl.md](../../../../docs/guides/pibo-on-windows-via-wsl.md) for the full walkthrough. In short:
+
+```powershell
+wsl --install                  # PowerShell as Admin, one-time
+wsl                            # enter the WSL shell
+sudo apt install -y nodejs npm # or use nvm/fnm; Pibo needs Node 24+
+npm install -g @pasko70/pibo
+cd ~/projects/my-app
+code .                         # opens VSCode inside WSL
+```
+
+Run `pibo vscode install` from the WSL terminal that the VSCode WSL extension opened.
+
 ## Installation
 
 The Pibo VS Code extension is a thin VS Code client. It requires a running `pibo gateway:web` (so the WebView can load the same-origin composer and session view that the Web App uses). Install the extension after `pibo` is on `PATH`:

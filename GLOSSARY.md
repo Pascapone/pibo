@@ -184,6 +184,9 @@ A long-lived compute container tied to a Git worktree and deterministic port blo
 **Worktree**:
 A Git checkout used by a dev worker. Worktree deletion is explicit and separate from browser or container cleanup.
 
+**WSL (Windows Subsystem for Linux)**:
+A Microsoft-provided Linux compatibility layer that runs a real Linux kernel (WSL2) on Windows. Pibo is not built for native Windows but runs unmodified inside WSL2 distributions. The `platform.wsl` field on Pibo `setup doctor` reports `isWsl`, the major version, and the distro. Native Windows hosts (`process.platform === "win32"` outside WSL) are explicitly unsupported; setup prints a `platform.wsl` failure and a WSL install link.
+
 **Browser Pool**:
 A worker-scoped Pibo authority that starts, reuses, leases, health-checks, and reaps managed Chromium CDP browser processes.
 

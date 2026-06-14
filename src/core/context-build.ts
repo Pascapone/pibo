@@ -337,6 +337,37 @@ async function readSkillMarkdown(path: string): Promise<string | undefined> {
 	}
 }
 
+// Skills are advertised to the model via a small XML summary in the system
+// prompt (see formatSkillsForPrompt in @mariozechner/pi-coding-agent). Only the
+// name, description, and location land in the prompt; the full SKILL.md body
+// is loaded lazily by the model via the read tool. Mirror that exact
+// per-skill entry shape here so the inspector's token estimate matches what
+// the model actually sees, instead of the full markdown body.
+function escapeXmlAttribute(value: string): string {
+	return value
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/"/g, "&quot;")
+		.replace(/'/g, "&apos;");
+}
+
+type SkillEntryLike = {
+	name: string;
+	description: string;
+	filePath: string;
+};
+
+function formatSkillEntryForPrompt(skill: SkillEntryLike): string {
+	return [
+		"  <skill>",
+		`    <name>${escapeXmlAttribute(skill.name)}</name>`,
+		`    <description>${escapeXmlAttribute(skill.description)}</description>`,
+		`    <location>${escapeXmlAttribute(skill.filePath)}</location>`,
+		"  </skill>",
+	].join("\n");
+}
+
 function diagnosticsNodes(diagnostics: readonly PiboContextBuildDiagnostic[]): NodeInput[] {
 	return diagnostics.map((diagnostic, index) => ({
 		id: `diagnostics/${index}`,
@@ -619,20 +650,31 @@ export async function inspectPiboContextBuild(options: PiboRuntimeOptions = {}):
 		const skillChildren: NodeInput[] = [];
 		for (const skill of skills) {
 			const markdown = await readSkillMarkdown(skill.filePath);
+			const promptEntry = formatSkillEntryForPrompt(skill);
+			// The skill node reports only what is actually part of the model
+			// prompt: the formatted <skill>...</skill> entry. The full
+			// SKILL.md body is loaded lazily by the model via the read tool
+			// (or explicitly via /skill:name / $skill-name), so it must not
+			// inflate the model-context token estimate. The full file path
+			// and size are still surfaced via metadata for inspection.
 			skillChildren.push({
 				id: `skills/${skill.name}`,
 				kind: "skill",
 				title: skill.name,
 				source: "plugin",
 				path: skill.filePath,
-				bytes: markdown ? byteLength(markdown) : undefined,
+				bytes: byteLength(promptEntry),
 				badges: ["ACTIVE"],
 				metadata: {
 					description: skill.description,
 					filePath: skill.filePath,
 					disableModelInvocation: skill.disableModelInvocation,
+					fullFileBytes: markdown ? byteLength(markdown) : undefined,
+					fullFileLoadableBy: "read tool, /skill:name command, $skill-name inline expansion",
 				},
-				hydratedText: markdown ?? `Skill metadata is loaded, but ${skill.filePath} could not be read for inspection.`,
+				hydratedText: markdown === undefined
+					? `Skill metadata is loaded, but ${skill.filePath} could not be read for inspection.`
+					: promptEntry,
 				state: markdown ? "active" : "warning",
 			});
 		}

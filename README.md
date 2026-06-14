@@ -4,6 +4,15 @@ Pibo is a thin product boundary around Pi Coding Agent. Pi remains the inner eng
 
 The default posture is intentionally powerful: Pibo is built for agentic coding and server operation, not for a restrictive sandbox. Install and run it as the Linux user that should own its state and credentials.
 
+## Supported platforms
+
+Pibo is Linux-first. The supported hosts are:
+
+- **Linux** (any modern distribution) — primary target
+- **macOS** — supported, same code path as Linux
+- **Windows via WSL2** — fully supported; see [docs/guides/pibo-on-windows-via-wsl.md](./docs/guides/pibo-on-windows-via-wsl.md)
+- **Native Windows** — not supported; `pibo setup doctor` and `pibo setup user-host` will print a clear error pointing to the WSL guide
+
 ## Install
 
 Pibo is distributed as an npm package:
