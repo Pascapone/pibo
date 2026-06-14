@@ -60,6 +60,8 @@ git push origin v1.3.0
 
 ### 4. Create a GitHub Release with the VSIX attached
 
+The maintainer's local machine has the `gh` CLI installed:
+
 ```bash
 gh release create v1.3.0 \
   dist/apps/vscode-artifacts/pibo-vscode-1.3.0.vsix \
@@ -67,7 +69,25 @@ gh release create v1.3.0 \
   --notes "..."
 ```
 
-This makes the VSIX downloadable from a stable URL (`https://github.com/Pascapone/pibo/releases/download/v1.3.0/pibo-vscode-1.3.0.vsix`). The `pibo vscode install` command uses the GitHub Releases API to discover this URL automatically.
+In environments where `gh` is not available (e.g. the pibo compute workers),
+`scripts/create-github-release.mjs` performs the same action via the Pibo
+GitHub App, which has been installed on `Pascapone/pibo` with the
+`contents: write` scope. The script accepts the GitHub App credentials from
+`PIBO_GITHUB_APP_ID` and `PIBO_GITHUB_APP_KEY` environment variables, or
+from the well-known env file at
+`/root/.pibo/uploads/github-app.env` (with the PEM key auto-discovered
+next to it).
+
+```bash
+node scripts/create-github-release.mjs \
+  --tag v1.3.0 \
+  --asset dist/apps/vscode-artifacts/pibo-vscode-1.3.0.vsix
+```
+
+Both paths make the VSIX downloadable from a stable URL
+(`https://github.com/Pascapone/pibo/releases/download/v1.3.0/pibo-vscode-1.3.0.vsix`).
+The `pibo vscode install` command uses the GitHub Releases API to discover
+this URL automatically.
 
 The release script can also do this in one step:
 
@@ -75,7 +95,9 @@ The release script can also do this in one step:
 node scripts/release.mjs --version 1.3.0 --create-release
 ```
 
-…if the tag has already been pushed.
+…if the tag has already been pushed. Internally the release script calls
+`scripts/create-github-release.mjs`, so it works in worker environments
+without `gh`.
 
 ### 5. Publish the npm package
 

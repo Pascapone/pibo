@@ -140,10 +140,23 @@ if (args.createRelease) {
 	if (!headOnTag) {
 		console.log(`[release] head is at ${headSha}; create the tag ${tag} and push it before creating the GitHub Release.`);
 	} else {
-		console.log(`[release] creating GitHub Release ${tag} with the VSIX attached…`);
-		runInherit("gh", ["release", "create", tag, expectedVsix, "--title", `pibo ${args.version}`, "--notes", `VS Code extension: ${expectedVsix}`]);
-		releaseUrl = runCaptured("gh", ["release", "view", tag, "--json", "url", "-q", ".url"]);
-		console.log(`[release] GitHub Release: ${releaseUrl}`);
+		console.log(`[release] creating GitHub Release ${tag} with the VSIX attached (via Pibo GitHub App)…`);
+		const createReleaseScript = resolve(here, "create-github-release.mjs");
+		const output = runCaptured("node", [
+			createReleaseScript,
+			"--tag", tag,
+			"--asset", expectedVsix,
+			"--asset-name", `pibo-vscode-${args.version}.vsix`,
+		]);
+		// Surface the script's own log lines so the user sees progress.
+		for (const line of output.split("\n")) console.log(line);
+		const match = output.match(/https:\/\/github\.com\/[^\s]+\/releases\/tag\/[^\s]+/);
+		if (match) releaseUrl = match[0];
+		if (releaseUrl) {
+			console.log(`[release] GitHub Release: ${releaseUrl}`);
+		} else {
+			console.log(`[release] (could not parse release URL from create-github-release output; check above)`);
+		}
 	}
 } else {
 	console.log(`[release] (skipped GitHub Release; pass --create-release to enable)`);
