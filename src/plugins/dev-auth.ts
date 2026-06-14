@@ -70,7 +70,25 @@ export function isLoopbackDevAuthRequest(request: Request): boolean {
 	return isLoopbackHost(host) && (!forwardedHost || isLoopbackHost(forwardedHost));
 }
 
-function createDevAuthService(): PiboAuthService {
+/**
+ * Headers-only variants of the loopback predicates so `getSession` can
+ * evaluate the same checks without holding on to the full `Request`
+ * object. `getSession` is part of the auth service contract and only
+ * receives `headers`, but the channel guarantees that the same
+ * `host`, `x-forwarded-host`, and `x-pibo-socket-peer` headers are
+ * present as they would be on a full `Request`.
+ */
+export function isLoopbackDevAuthHeaders(headers: Headers): boolean {
+	const host = firstHeaderValue(headers.get("host"));
+	const forwardedHost = firstHeaderValue(headers.get("x-forwarded-host"));
+	return isLoopbackHost(host) && (!forwardedHost || isLoopbackHost(forwardedHost));
+}
+
+export function isLoopbackSocketPeerForDevAuthHeaders(headers: Headers): boolean {
+	return isLoopbackSocketAddress(firstHeaderValue(headers.get(SOCKET_PEER_HEADER)));
+}
+
+export function createDevAuthService(): PiboAuthService {
 	const containerToken = generateToken();
 	const debugSession: PiboAuthSession = {
 		identity: {
@@ -91,6 +109,16 @@ function createDevAuthService(): PiboAuthService {
 		},
 		stop() {},
 		async getSession(headers) {
+			// In local auth mode the loopback bind is the real security
+			// boundary. Once the channel has confirmed that the request
+			// reached us from a loopback host and a loopback TCP socket
+			// peer, the caller is on the same host as the gateway and
+			// there is no cookie jar to share. Headless clients (VS Code
+			// extension, CLI scripts) can use the same dev identity as the
+			// browser without needing the HttpOnly session cookie.
+			if (isLoopbackDevAuthHeaders(headers) && isLoopbackSocketPeerForDevAuthHeaders(headers)) {
+				return debugSession;
+			}
 			const token = getCookieValue(headers);
 			if (token === containerToken) return debugSession;
 			return undefined;

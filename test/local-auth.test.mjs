@@ -3,8 +3,10 @@ import test from "node:test";
 import { stripSocketPeerHeaderFromResponse } from "../dist/web/channel.js";
 import {
 	getSocketPeerForDevAuth,
+	isLoopbackDevAuthHeaders,
 	isLoopbackDevAuthRequest,
 	isLoopbackSocketPeerForDevAuth,
+	isLoopbackSocketPeerForDevAuthHeaders,
 } from "../dist/plugins/dev-auth.js";
 import { resolveWebGatewayAuthMode } from "../dist/gateway/web.js";
 
@@ -35,6 +37,31 @@ test("three safety layers accept a true loopback request", () => {
 
 	assert.equal(isLoopbackDevAuthRequest(request), true);
 	assert.equal(isLoopbackSocketPeerForDevAuth(request), true);
+});
+
+test("headers-only loopback predicates agree with the request-based variants", () => {
+	const loopback = new Headers({
+		host: "127.0.0.1:4788",
+		"x-pibo-socket-peer": "127.0.0.1",
+	});
+	assert.equal(isLoopbackDevAuthHeaders(loopback), true);
+	assert.equal(isLoopbackSocketPeerForDevAuthHeaders(loopback), true);
+
+	const publicHost = new Headers({
+		host: "pibo.neuralnexus.me",
+		"x-pibo-socket-peer": "127.0.0.1",
+	});
+	assert.equal(isLoopbackDevAuthHeaders(publicHost), false);
+
+	const publicPeer = new Headers({
+		host: "127.0.0.1:4788",
+		"x-pibo-socket-peer": "203.0.113.42",
+	});
+	assert.equal(isLoopbackDevAuthHeaders(publicPeer), true);
+	assert.equal(isLoopbackSocketPeerForDevAuthHeaders(publicPeer), false);
+
+	const missingPeer = new Headers({ host: "127.0.0.1:4788" });
+	assert.equal(isLoopbackSocketPeerForDevAuthHeaders(missingPeer), false);
 });
 
 test("stripSocketPeerHeaderFromResponse removes the internal header", () => {
@@ -71,3 +98,4 @@ test("authMode=local with --web-host=0.0.0.0 and a public IP fails closed", () =
 		/Local auth requires a loopback bind/,
 	);
 });
+

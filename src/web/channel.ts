@@ -212,7 +212,13 @@ export function createWebHostChannel(options: WebHostChannelOptions = {}): WebHo
 	const handleRequest = async (nodeRequest: IncomingMessage, nodeResponse: ServerResponse): Promise<void> => {
 		try {
 			const baseURL = createRequestBaseURL(nodeRequest, host, port);
-			const request = await nodeRequestToWebRequest(nodeRequest, baseURL);
+			const baseRequest = await nodeRequestToWebRequest(nodeRequest, baseURL);
+			// Inject the TCP socket peer into every request so the local auth
+			// plugin can apply the same loopback predicate from `getSession`
+			// regardless of whether the call came from a browser cookie, the
+			// VS Code extension, or a CLI script. The header is stripped from
+			// any outgoing response by `stripSocketPeerHeaderFromResponse`.
+			const request = withSocketPeerHeader(baseRequest, nodeRequest.socket.remoteAddress);
 			const url = new URL(request.url);
 			const canonicalRedirect = createCanonicalRedirect(request, options.canonicalBaseURL);
 			if (canonicalRedirect) {
@@ -237,8 +243,7 @@ export function createWebHostChannel(options: WebHostChannelOptions = {}): WebHo
 			}
 
 			if (url.pathname.startsWith("/api/auth/")) {
-				const authRequest = withSocketPeerHeader(request, nodeRequest.socket.remoteAddress);
-				const authResponse = stripSocketPeerHeaderFromResponse(await handleAuthRequest(authRequest));
+				const authResponse = stripSocketPeerHeaderFromResponse(await handleAuthRequest(request));
 				await sendWebResponse(nodeResponse, authResponse);
 				return;
 			}

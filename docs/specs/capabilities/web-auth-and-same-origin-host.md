@@ -149,6 +149,37 @@ The local auth service MUST be selected only when the host bind is loopback, and
 - WHEN the operator runs `pibo gateway:web --auth=local --web-host=0.0.0.0`
 - THEN the pre-flight CLI check refuses the request before the gateway is imported, and the gateway itself would also refuse at startup
 
+### Requirement: Local auth grants a session to loopback callers without a cookie
+
+In local auth mode, the dev session MUST be returned to any request that already passes the loopback host and socket-peer checks, even when no `pibo_dev_session` cookie is present. This is required so headless clients (the VS Code extension, CLI tools, scripted API callers) can use the same dev identity as the browser on the same host, without sharing the browser's HttpOnly cookie jar.
+
+#### Current
+
+The local auth service exposes a `getSession(headers)` contract. Today the implementation checks only the `pibo_dev_session` cookie. The VS Code extension's `room-resolver` calls `/api/chat/rooms` from a Node.js fetch and therefore never carries the browser cookie; in local auth mode this returns `401`. The cookie is not a security boundary in local auth mode because the only way to reach the gateway is from a loopback bind that already passed startup enforcement.
+
+`getSession` is invoked from two paths:
+
+1. The auth plugin's own route handlers (`/api/auth/*`), which already receive a request with the `x-pibo-socket-peer` header injected by the channel.
+2. App and simple-agent API handlers through `requireWebSession`, which call `getSession(request.headers)` with a request whose `host` and (after the channel change in REQ-011) `x-pibo-socket-peer` headers are populated for every request, not only `/api/auth/*`.
+
+The channel MUST inject the `x-pibo-socket-peer` header into every request, not only `/api/auth/*`, so that `getSession` can read the socket peer from `headers` alone and the loopback predicate can be evaluated uniformly.
+
+#### Acceptance
+
+- A request with `Host: 127.0.0.1:4788`, `x-pibo-socket-peer: 127.0.0.1`, and no `pibo_dev_session` cookie returns the dev session in local auth mode.
+- A request with `Host: pibo.neuralnexus.me` and no cookie is rejected with `401` even in local auth mode.
+- A request with `Host: 127.0.0.1:4788`, `x-pibo-socket-peer: 203.0.113.7`, and no cookie is rejected with `401`.
+- The presence of a valid `pibo_dev_session` cookie continues to authorize the request regardless of host or socket peer, matching the existing behavior.
+- Better Auth mode is unchanged: cookies remain the only session source and no loopback fallback is added.
+
+#### Scenario: VS Code extension lists rooms without a cookie
+
+- GIVEN the gateway runs with `auth.mode = "local"` and is bound to `127.0.0.1:4788`
+- AND the VS Code extension's `room-resolver` calls `GET /api/chat/rooms?workspace=/home/user/project` with no cookie
+- WHEN the web host routes the request
+- THEN `getSession` returns the dev session from the loopback host + socket-peer header
+- AND the room list responds with `200` and the matching rooms
+
 ### Requirement: Authenticated web requests enter the app context context
 
 Every authenticated web app request that requires a session MUST expose the same app context context to product handlers. The auth session remains available for display, logout, and technical diagnostics only.
@@ -374,6 +405,7 @@ This section records which parts of the web-auth and same-origin host contract a
 | REQ-008 Registered web app routes must not overlap | Two apps claim same API prefix | `src/plugins/registry.ts`, `src/web/types.ts` | `test/plugin-registry.test.mjs` | Component-tested |
 | REQ-009 HTTP request and response handling is bounded and explicit | Oversized API body | `src/web/http.ts`, `src/web/channel.ts` | `test/web-channel.test.mjs`, `test/web-http.test.mjs` | Component-tested |
 | REQ-010 Local auth enforces three independent request-time safety layers | Reverse proxy rewrites both headers | `src/web/channel.ts`, `src/plugins/dev-auth.ts` | `test/local-auth.test.mjs`, `test/dev-auth.test.mjs` | Component-tested |
+| REQ-011 Local auth grants a session to loopback callers without a cookie | VS Code extension lists rooms without a cookie | `src/web/channel.ts`, `src/plugins/dev-auth.ts` | `test/local-auth.test.mjs`, `test/dev-auth.test.mjs` | Component-tested |
 
 ## Verification Basis
 

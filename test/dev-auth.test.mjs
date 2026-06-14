@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+	createDevAuthService,
 	getSocketPeerForDevAuth,
 	isLoopbackDevAuthRequest,
 	isLoopbackSocketPeerForDevAuth,
@@ -89,4 +90,77 @@ test("dev auth 0.0.0.0 peer is treated as not loopback", () => {
 	});
 
 	assert.equal(isLoopbackSocketPeerForDevAuth(request), false);
+});
+
+test("getSession returns the dev session for loopback callers without a cookie", async () => {
+	const service = createDevAuthService();
+	const headers = new Headers({
+		host: "127.0.0.1:4788",
+		"x-pibo-socket-peer": "127.0.0.1",
+	});
+
+	const session = await service.getSession(headers);
+
+	assert.ok(session, "loopback caller must receive a dev session");
+	assert.equal(session?.identity.userId, "dev-user-001");
+	assert.equal(session?.identity.email, "dev@pibo.local");
+});
+
+test("getSession accepts IPv6 loopback callers without a cookie", async () => {
+	const service = createDevAuthService();
+	const headers = new Headers({
+		host: "[::1]:4788",
+		"x-pibo-socket-peer": "::1",
+	});
+
+	const session = await service.getSession(headers);
+
+	assert.ok(session);
+	assert.equal(session?.identity.userId, "dev-user-001");
+});
+
+test("getSession rejects callers with a public Host header even when peer is loopback", async () => {
+	const service = createDevAuthService();
+	const headers = new Headers({
+		host: "pibo.neuralnexus.me",
+		"x-pibo-socket-peer": "127.0.0.1",
+	});
+
+	const session = await service.getSession(headers);
+
+	assert.equal(session, undefined);
+});
+
+test("getSession rejects callers with a public socket peer", async () => {
+	const service = createDevAuthService();
+	const headers = new Headers({
+		host: "127.0.0.1:4788",
+		"x-pibo-socket-peer": "203.0.113.42",
+	});
+
+	const session = await service.getSession(headers);
+
+	assert.equal(session, undefined);
+});
+
+test("getSession rejects callers when the socket peer header is missing", async () => {
+	const service = createDevAuthService();
+	const headers = new Headers({ host: "127.0.0.1:4788" });
+
+	const session = await service.getSession(headers);
+
+	assert.equal(session, undefined);
+});
+
+test("getSession accepts a forwarded loopback host with a loopback socket peer", async () => {
+	const service = createDevAuthService();
+	const headers = new Headers({
+		host: "localhost:4788",
+		"x-forwarded-host": "localhost",
+		"x-pibo-socket-peer": "127.0.0.1",
+	});
+
+	const session = await service.getSession(headers);
+
+	assert.ok(session);
 });
