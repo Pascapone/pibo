@@ -2,9 +2,10 @@
 
 **Status:** Draft
 **Created:** 2026-05-10
-**Updated:** 2026-05-11
+**Updated:** 2026-06-14
 **Controller / Source:** Scheduled Pibo Source Specs Coverage
-**Related docs:** [Chat Web Rooms and Event Streams](./chat-web-rooms-and-event-streams.md), [Custom Agents and Agent Designer](./custom-agents.md), [Scheduled Pibo Jobs](./scheduled-pibo-jobs.md)
+**Related plan:** [Local Auth Gateway Implementation Plan](../../plans/local-auth-gateway-implementation-plan-2026-06-14.md)
+**Related docs:** [Chat Web Rooms and Event Streams](./chat-web-rooms-and-event-streams.md), [Custom Agents and Agent Designer](./custom-agents.md), [Scheduled Pibo Jobs](./scheduled-pibo-jobs.md), [Local Config CLI](./local-config-cli.md)
 
 ## Why
 
@@ -20,7 +21,7 @@ The web host MUST expose auth, health/status, simple-agent, and registered web a
 
 Current code defines a `web-host` channel with required auth mode. It converts Node HTTP requests to Fetch `Request` objects, enforces a maximum request body size, optionally redirects browser GET/HEAD requests to a canonical base URL, delegates `/api/auth/*` to the registered auth service, and dispatches registered web apps by `mountPath` or `apiPrefix`.
 
-Normal web gateways register Better Auth. Docker worker gateways may opt into dev auth. Dev auth is rejected outside a Docker runtime and the legacy `PIBO_DEV_AUTH=1` environment switch no longer enables host dev auth.
+Normal web gateways register Better Auth. Host gateways and Docker worker gateways may both opt into local auth. Local auth is the same code path on host and in Docker, and is gated by a loopback bind check on the host. The legacy `PIBO_DEV_AUTH=1` environment switch fails closed with a migration message pointing operators to the new explicit mode.
 
 ## Scope
 
@@ -28,10 +29,11 @@ Normal web gateways register Better Auth. Docker worker gateways may opt into de
 
 - HTTP route stewardship for the web host channel.
 - Better Auth service requirements for normal web gateways.
-- Docker-only dev auth behavior.
+- Local auth behavior on host gateways and in Docker workers, including the loopback-bind gate and the three request-time safety layers.
 - Mapping auth sessions to the app context context.
 - Registered web app route dispatch and route conflict constraints.
 - Basic request/response handling that is externally observable.
+- The `auth.mode` config key and `--auth` CLI flag that select the auth service.
 
 ### Out of Scope
 
@@ -39,6 +41,7 @@ Normal web gateways register Better Auth. Docker worker gateways may opt into de
 - Better Auth's internal OAuth implementation — treated as an external dependency behind Pibo's auth service contract.
 - Browser UI design and visual states.
 - Non-web channels such as local TUI or remote agent TCP protocol.
+- Automatic detection of bind address from environment. The bind is always explicit (`--web-host` flag or `127.0.0.1` default).
 
 ## Requirements
 
@@ -48,13 +51,14 @@ The web gateway MUST register exactly one auth service before serving authentica
 
 #### Current
 
-`createWebPiboPluginRegistry` registers either Better Auth or dev auth. The plugin registry rejects a second auth service.
+`createWebPiboPluginRegistry` registers either Better Auth or local auth (`pibo.dev-auth` plugin). The plugin registry rejects a second auth service. The selected mode is determined by, in priority order: an explicit `auth` option on `runWebGatewayServer`, the `auth.mode` value in the persisted Pibo config, and finally the default `"better-auth"`. The legacy `devAuth: true` option is an alias for `auth: "local"` and remains valid for one release.
 
 #### Acceptance
 
 - Starting a normal web gateway registers the Better Auth service.
-- Starting a Docker worker web gateway with dev auth enabled registers the dev auth service.
+- Starting a host or Docker worker web gateway with `auth: "local"` registers the local auth service.
 - Registering two auth services fails before requests are served.
+- `auth.mode` in `pibo config` accepts only `"better-auth"` or `"local"`; other values are rejected.
 
 #### Scenario: Duplicate auth service registration
 
@@ -64,25 +68,34 @@ The web gateway MUST register exactly one auth service before serving authentica
 
 ### Requirement: Normal web gateways use Better Auth configuration
 
-The normal web gateway MUST require Better Auth configuration before accepting sessions.
+The normal web gateway MUST require Better Auth configuration before accepting sessions, unless the active mode is local.
 
 #### Current
 
-Better Auth requires `auth.baseURL`, `auth.secret`, `auth.googleClientId`, `auth.googleClientSecret`, and at least one allowed email. Secrets shorter than 32 characters are rejected. The auth database defaults to `.pibo/auth.sqlite` unless configured otherwise.
+Better Auth requires `auth.baseURL`, `auth.secret`, `auth.googleClientId`, `auth.googleClientSecret`, and at least one allowed email. Secrets shorter than 32 characters are rejected. The auth database defaults to `.pibo/auth.sqlite` unless configured otherwise. When the active mode is `local`, the Better Auth service is not instantiated and none of the five keys are required. The setup doctor warns about missing Google configuration in local mode instead of failing.
 
 #### Acceptance
 
-- Missing required auth config prevents service creation or startup.
-- `auth.secret` shorter than 32 characters is rejected.
-- Empty or missing `auth.allowedEmails` is rejected.
+- With `auth.mode = "better-auth"` (or unset), missing required auth config prevents service creation or startup.
+- With `auth.mode = "local"`, the gateway starts without any of the five Better Auth keys.
+- `auth.secret` shorter than 32 characters is rejected whenever Better Auth is instantiated.
+- Empty or missing `auth.allowedEmails` is rejected whenever Better Auth is instantiated.
 - Configured `auth.trustedOrigins` are combined with the auth base URL origin.
 
 #### Scenario: Missing allowed email list
 
-- GIVEN a normal web gateway config has OAuth credentials and a valid secret
+- GIVEN `auth.mode = "better-auth"`
+- AND the gateway config has OAuth credentials and a valid secret
 - AND `auth.allowedEmails` is missing or empty
 - WHEN the gateway creates the Better Auth service
 - THEN startup fails with a clear configuration error
+
+#### Scenario: Local mode skips Better Auth
+
+- GIVEN `auth.mode = "local"`
+- AND the gateway has no Google OAuth configuration
+- WHEN the web gateway starts
+- THEN the local auth service is registered and the gateway accepts loopback sign-ins
 
 ### Requirement: Better Auth authorizes only allowed emails
 
@@ -105,27 +118,36 @@ The Better Auth service MUST return a Pibo auth session only for signed-in users
 - WHEN a web API requires a session
 - THEN the request fails with `403 Forbidden`
 
-### Requirement: Dev auth is available only inside Docker workers
+### Requirement: Local auth is bound to loopback on the host gateway
 
-The dev auth service MUST be selectable only for Docker worker runtimes and MUST refuse non-loopback auth route requests.
+The local auth service MUST be selected only when the host bind is loopback, and MUST refuse non-loopback auth route requests. Docker workers MAY opt in to local auth with an in-container `0.0.0.0` bind because the container network is the real security boundary.
 
 #### Current
 
-`resolveWebGatewayAuthMode` throws when dev auth is requested outside Docker. Dev auth accepts only loopback host and forwarded host values. It simulates Google sign-in by redirecting through callback routes and setting an HTTP-only, same-site cookie.
+`resolveWebGatewayAuthMode` reads the active mode from the explicit option, then from `auth.mode` in the persisted config, and defaults to `"better-auth"`. When the active mode is `local` (or the legacy `devAuth: true` alias is set), the bind is validated against the loopback predicate. A bind of `127.0.0.1`, `::1`, or `localhost` is loopback; `0.0.0.0` and any other value is not. The Docker worker gateway sets `auth: "local"` with an in-container `0.0.0.0` bind, which is allowed by the host bind check only when `isDockerRuntime()` is true. Local auth accepts only loopback host and forwarded host values. It simulates Google sign-in by redirecting through callback routes and setting an HTTP-only, same-site cookie.
 
 #### Acceptance
 
-- `devAuth: true` outside Docker fails before server startup.
-- `PIBO_DEV_AUTH=1` alone does not enable host dev auth and instead returns an explicit error for normal gateway startup.
-- Dev auth `/api/auth/*` requests with non-loopback host context receive `403`.
-- A loopback dev sign-in creates a session for the fixed dev identity.
+- `auth: "local"` with a non-loopback `--web-host` fails before server startup with a clear "local auth requires loopback bind" error.
+- `auth: "local"` with no `--web-host` defaults to `127.0.0.1` and is allowed.
+- `devAuth: true` is an alias for `auth: "local"` and enforces the same loopback bind gate.
+- `PIBO_DEV_AUTH=1` alone does not enable host dev auth and instead returns an explicit migration error pointing to `--auth=local`.
+- The startup banner prints a loud "LOCAL AUTH ENABLED" warning that names the bind address whenever local auth is the active mode.
+- Local auth `/api/auth/*` requests with non-loopback host context receive `403`.
+- A loopback local sign-in creates a session for the fixed dev identity.
 
 #### Scenario: Host tries to enable dev auth by environment
 
 - GIVEN the gateway is not running inside Docker
 - AND `PIBO_DEV_AUTH=1` is set
 - WHEN the normal web gateway resolves auth mode
-- THEN it fails and tells the operator to use the Docker worker entrypoint
+- THEN it fails with the migration error pointing to `pibo gateway:web --auth=local --web-host=127.0.0.1`
+
+#### Scenario: Operator forces a non-loopback bind with local auth
+
+- GIVEN the gateway is on the host (not in Docker)
+- WHEN the operator runs `pibo gateway:web --auth=local --web-host=0.0.0.0`
+- THEN the pre-flight CLI check refuses the request before the gateway is imported, and the gateway itself would also refuse at startup
 
 ### Requirement: Authenticated web requests enter the app context context
 
@@ -232,14 +254,65 @@ Non-GET/HEAD request bodies are limited to 4 MiB. JSON responses may be gzip-com
 ## Edge Cases
 
 - Better Auth may return no session; Pibo must treat that as `401`, not as an anonymous controller.
-- Dev auth must check both `Host` and `X-Forwarded-Host` so a remote forwarded request cannot obtain a dev session.
+- Local auth must check `Host`, `X-Forwarded-Host`, and the TCP socket peer address so a remote forwarded request cannot obtain a local session, even if both headers are rewritten to `localhost`.
 - If no web apps are registered, `/` returns a small HTML page instead of failing server startup.
 - If an auth service does not expose HTTP routes, `/api/auth/*` returns `500` because the selected web auth mode is misconfigured.
 - Gzip must not apply to `204`, `304`, or already encoded responses.
+- The local auth socket peer is communicated from the channel to the auth plugin through a request header that is stripped from any response before reaching the browser.
 
 ## Constraints
 
-- **Security / Privacy:** Production web gateways use Better Auth, not dev auth. Allowed email checks are enforced after provider session resolution. Auth identity gates access and must not partition product data.
+- **Security / Privacy:** Production web gateways use Better Auth, not local auth. Allowed email checks are enforced after provider session resolution. Auth identity gates access and must not partition product data. Local auth is restricted to loopback binds and to request paths that pass the three safety layers (startup bind, request headers, request socket peer).
+
+## Constraints (Better Auth specifics)
+
+- **Compatibility:** The web host uses Fetch `Request`/`Response` objects internally while serving through Node HTTP.
+- **Performance:** Request bodies are bounded at 4 MiB; large JSON responses can use gzip with low compression level.
+- **Dependencies:** Normal auth depends on Better Auth, Google OAuth settings, and SQLite migrations from Better Auth.
+
+## Requirement: Local auth enforces three independent request-time safety layers
+
+The local auth service MUST reject any request that fails any of the three independent safety layers. Each layer covers a distinct attacker model and they MUST be evaluated for every request that reaches the auth service.
+
+#### Layer 1 — Startup bind
+
+The web gateway process MUST bind to a loopback address (`127.0.0.1`, `::1`, or `localhost`) before local auth is selected on the host. The bind is enforced at startup by `resolveWebGatewayAuthMode` and is reported in the startup banner. Operators that explicitly set `--web-host` to a non-loopback value and `--auth=local` receive a fail-closed error before the gateway module is loaded.
+
+This layer catches: operator misconfiguration, automation that sets `auth: "local"` while leaving `--web-host=0.0.0.0` in place, and copy-paste of unsafe systemd units.
+
+#### Layer 2 — Request headers
+
+For every request handled by the local auth plugin, the `Host` header and the `X-Forwarded-Host` header (when present) MUST both resolve to a loopback host. The existing `isLoopbackDevAuthRequest` predicate is the canonical implementation.
+
+This layer catches: a browser hitting a public hostname, a reverse proxy that forwards the public `Host` header unchanged, and a reverse proxy that sets `X-Forwarded-Host` to the public origin.
+
+#### Layer 3 — TCP socket peer
+
+For every request handled by the local auth plugin, the TCP socket peer address (`request.socket.remoteAddress`) MUST resolve to `127.0.0.1` or `::1`. The channel passes the socket peer to the auth plugin through a request header that the channel MUST strip from the response before forwarding it to the client.
+
+This layer catches: a reverse proxy on the same host that rewrites both `Host` and `X-Forwarded-Host` to `localhost` while accepting public traffic. The socket peer cannot be rewritten by a reverse proxy, so this is the strongest of the three layers.
+
+#### Acceptance
+
+- A request with `Host: localhost`, no `X-Forwarded-Host`, and socket peer `203.0.113.7` is rejected with `403`.
+- A request with `Host: localhost`, `X-Forwarded-Host: localhost`, and socket peer `127.0.0.1` is accepted.
+- A request with `Host: localhost`, `X-Forwarded-Host: pibo.example.com`, and socket peer `127.0.0.1` is rejected.
+- The channel strips the socket-peer header from every response that leaves the web host.
+
+#### Scenario: Reverse proxy rewrites both headers
+
+- GIVEN a public reverse proxy at `pibo.example.com` rewrites `Host: localhost` and strips `X-Forwarded-Host` before forwarding to the gateway
+- AND the gateway is bound to `127.0.0.1` and running local auth
+- WHEN a public request reaches the local auth service
+- THEN the socket peer is `127.0.0.1` only if the proxy is on the same host; a request from a remote client appears with a public IP and is rejected with `403`
+
+## Assumptions and Open Questions
+
+### Assumptions
+
+- `auth.allowedEmails` is the intended production access-control list for Chat Web and other same-origin apps.
+- Local auth is safe when bound to loopback on the host. Docker workers and host loopback are both valid use cases; non-loopback binds require Better Auth.
+- The TCP socket peer is the strongest request-time signal available to the gateway and is not under the control of a reverse proxy.
 - **Compatibility:** The web host uses Fetch `Request`/`Response` objects internally while serving through Node HTTP.
 - **Performance:** Request bodies are bounded at 4 MiB; large JSON responses can use gzip with low compression level.
 - **Dependencies:** Normal auth depends on Better Auth, Google OAuth settings, and SQLite migrations from Better Auth.
@@ -248,13 +321,16 @@ Non-GET/HEAD request bodies are limited to 4 MiB. JSON responses may be gzip-com
 
 - [ ] SC-001: A normal gateway with complete Better Auth config starts and serves `/health`, `/gateway/status`, `/api/auth/*`, and registered apps from one origin.
 - [x] SC-002: Better Auth rejects an empty allowed-email list and weak secrets before accepting authenticated app traffic, as covered by `test/better-auth-config.test.mjs`.
-- [x] SC-003: Docker worker dev auth safety is fail-closed at the host boundary and loopback-gated at auth routes, as covered by `test/web-gateway.test.mjs` and `test/dev-auth.test.mjs`.
+- [x] SC-003: Docker worker local auth safety is fail-closed at the host boundary and loopback-gated at auth routes, as covered by `test/web-gateway.test.mjs` and `test/dev-auth.test.mjs`.
 - [x] SC-004: Web app handlers receive the app context context for authenticated requests, as covered by `test/web-auth-app-context-context.test.mjs` and `test/web-channel.test.mjs`.
 - [x] SC-005: Overlapping web app routes are rejected at plugin registration time, as covered by `test/plugin-registry.test.mjs`.
+- [ ] SC-006: Local auth rejects requests that pass header checks but have a non-loopback TCP socket peer, as covered by `test/local-auth.test.mjs` and `test/dev-auth.test.mjs`.
+- [ ] SC-007: `pibo gateway:web --auth=local --web-host=0.0.0.0` is refused before the gateway module is loaded, as covered by `test/local-auth.test.mjs`.
+- [ ] SC-008: `pibo config set auth.mode local` persists the value and round-trips, and `pibo config set auth.mode bogus` is rejected, as covered by `test/auth-mode-config.test.mjs`.
 
 ## Verification Coverage
 
-This section records which parts of the web-auth and same-origin host contract are directly tested today. Dev-auth safety is intentionally tracked here rather than split into a standalone capability spec because dev auth is not a supported host product mode.
+This section records which parts of the web-auth and same-origin host contract are directly tested today. Local auth safety is intentionally tracked here rather than split into a standalone capability spec because local auth is the same code path on host and in Docker.
 
 ### Directly Tested
 
@@ -279,11 +355,6 @@ This section records which parts of the web-auth and same-origin host contract a
 
 ## Assumptions and Open Questions
 
-### Assumptions
-
-- `auth.allowedEmails` is the intended production access-control list for Chat Web and other same-origin apps.
-- Dev auth is meant for isolated Docker workers only and should not become a general local development mode on the host gateway.
-
 ### Open Questions
 
 - Should `/gateway/status` require authentication, or is current unauthenticated status output intentional for gateway supervision?
@@ -294,17 +365,18 @@ This section records which parts of the web-auth and same-origin host contract a
 | Requirement | Scenario / Story | Code Basis | Verification | Status |
 |---|---|---|---|---|
 | REQ-001 Web gateways select exactly one auth service | Duplicate auth service registration | `src/gateway/web.ts`, `src/plugins/registry.ts` | `test/plugin-registry.test.mjs` | Component-tested |
-| REQ-002 Normal web gateways use Better Auth configuration | Missing allowed email list | `src/auth/better-auth.ts`, `src/config/config.ts` | `test/better-auth-config.test.mjs` | Component-tested |
+| REQ-002 Normal web gateways use Better Auth configuration | Missing allowed email list, local mode skips Better Auth | `src/auth/better-auth.ts`, `src/config/config.ts` | `test/better-auth-config.test.mjs`, `test/local-auth.test.mjs` | Component-tested |
 | REQ-003 Better Auth authorizes only allowed emails | Signed-in user is not allowed | `src/auth/better-auth.ts`, `src/web/channel.ts` | `test/web-channel.test.mjs` covers auth-service `403`; real Better Auth allowlist path is source-inspected | Partly tested |
-| REQ-004 Dev auth is available only inside Docker workers | Host tries env dev auth | `src/gateway/web.ts`, `src/plugins/dev-auth.ts` | `test/web-gateway.test.mjs`, `test/dev-auth.test.mjs` | Component-tested |
+| REQ-004 Local auth is bound to loopback on the host gateway | Host tries env dev auth, operator forces non-loopback bind | `src/gateway/web.ts`, `src/plugins/dev-auth.ts`, `src/cli.ts` | `test/web-gateway.test.mjs`, `test/dev-auth.test.mjs`, `test/local-auth.test.mjs` | Component-tested |
 | REQ-005 Authenticated web requests enter the app context context | Chat API request uses app context context | `src/web/auth.ts`, `src/web/types.ts`, `src/apps/chat/web-app.ts` | `test/web-auth-app-context-context.test.mjs`, `test/web-channel.test.mjs` | Integration-tested |
 | REQ-006 Web host routes same-origin requests deterministically | Auth route is not claimed by an app | `src/web/channel.ts` | Component behavior source-inspected; app shell/authenticated API routes covered by `test/web-channel.test.mjs` | Partly tested |
 | REQ-007 Canonical redirects protect browser-facing origins | OAuth callback reaches loopback origin | `src/web/channel.ts`, `src/gateway/web.ts` | `test/web-channel.test.mjs` covers app-link redirect; auth-callback redirect is source-inspected | Partly tested |
 | REQ-008 Registered web app routes must not overlap | Two apps claim same API prefix | `src/plugins/registry.ts`, `src/web/types.ts` | `test/plugin-registry.test.mjs` | Component-tested |
 | REQ-009 HTTP request and response handling is bounded and explicit | Oversized API body | `src/web/http.ts`, `src/web/channel.ts` | `test/web-channel.test.mjs`, `test/web-http.test.mjs` | Component-tested |
+| REQ-010 Local auth enforces three independent request-time safety layers | Reverse proxy rewrites both headers | `src/web/channel.ts`, `src/plugins/dev-auth.ts` | `test/local-auth.test.mjs`, `test/dev-auth.test.mjs` | Component-tested |
 
 ## Verification Basis
 
 This spec was derived from the current implementation in `src/web/*`, `src/auth/*`, `src/plugins/better-auth.ts`, `src/plugins/dev-auth.ts`, `src/plugins/web.ts`, `src/plugins/registry.ts`, `src/gateway/web.ts`, `src/config/config.ts`, and web app integration points in `src/apps/chat/web-app.ts`.
 
-Verification coverage was updated from `test/better-auth-config.test.mjs`, `test/dev-auth.test.mjs`, `test/web-gateway.test.mjs`, `test/web-channel.test.mjs`, `test/plugin-registry.test.mjs`, and `test/web-http.test.mjs`.
+Verification coverage was updated from `test/better-auth-config.test.mjs`, `test/dev-auth.test.mjs`, `test/web-gateway.test.mjs`, `test/web-channel.test.mjs`, `test/plugin-registry.test.mjs`, `test/web-http.test.mjs`, `test/local-auth.test.mjs`, and `test/auth-mode-config.test.mjs`.

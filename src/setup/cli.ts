@@ -451,7 +451,7 @@ function addCommandCheck(checks: DoctorCheck[], command: string, required: boole
 
 function authConfigChecks(piboHome: string): DoctorCheck[] {
 	const configPath = join(piboHome, "config.json");
-	const notReady = "Pibo web will not start until Better Auth is configured. Set auth.baseURL, auth.secret, auth.googleClientId, auth.googleClientSecret, and auth.allowedEmails.";
+	const notReady = "Pibo web will not start until Better Auth is configured. Set auth.baseURL, auth.secret, auth.googleClientId, auth.googleClientSecret, and auth.allowedEmails. For local-only development, use `pibo config set auth.mode local` and run `pibo gateway:web --auth=local`.";
 	if (!existsSync(configPath)) return [
 		{ name: "auth.ready", status: "fail", detail: notReady },
 		{ name: "auth.config", status: "fail", detail: `${configPath} does not exist yet` },
@@ -460,6 +460,27 @@ function authConfigChecks(piboHome: string): DoctorCheck[] {
 		const config = loadPiboConfig(configPath);
 		const checks: DoctorCheck[] = [];
 		const missing: string[] = [];
+		const authModeValue = getPiboConfigValue(config, "auth.mode");
+		const isLocalMode = authModeValue === "local";
+		const isBetterAuthMode = authModeValue === "better-auth" || authModeValue === undefined;
+
+		checks.push({
+			name: "auth.mode",
+			status: isLocalMode || isBetterAuthMode ? "ok" : "fail",
+			detail: isLocalMode
+				? "auth.mode is 'local' — Google OAuth is not required; gateway must be bound to loopback."
+				: isBetterAuthMode
+					? "auth.mode is unset (defaults to 'better-auth')."
+					: `auth.mode is '${String(authModeValue)}' — must be 'better-auth' or 'local'.`,
+		});
+
+		if (isLocalMode) {
+			// Local mode does not require any of the Better Auth keys. We still
+			// surface what is configured for operator awareness.
+			checks.unshift({ name: "auth.ready", status: "ok", detail: "Auth is in local mode. No Google OAuth required. Bind the gateway to a loopback address." });
+			return checks;
+		}
+
 		const requiredStrings = [
 			{ key: "auth.baseURL", detail: "Set with `pibo config set auth.baseURL https://your-domain.example`." },
 			{ key: "auth.secret", detail: "Set a random value with at least 32 characters." },

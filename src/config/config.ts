@@ -17,6 +17,7 @@ export type PiboConfig = {
 		allowedEmails?: string[];
 		trustedOrigins?: string[];
 		databasePath?: string;
+		mode?: "better-auth" | "local";
 	};
 };
 
@@ -25,6 +26,7 @@ export type PiboConfigKeyDefinition = {
 	description: string;
 	type: "string" | "string[]";
 	secret?: boolean;
+	values?: readonly string[];
 };
 
 export const PIBO_CONFIG_KEYS: PiboConfigKeyDefinition[] = [
@@ -65,6 +67,12 @@ export const PIBO_CONFIG_KEYS: PiboConfigKeyDefinition[] = [
 		type: "string",
 		description: "SQLite path for Better Auth data.",
 	},
+	{
+		key: "auth.mode",
+		type: "string",
+		description: "Auth service mode. Use 'local' to skip Google OAuth on a loopback bind. Default 'better-auth'.",
+		values: ["better-auth", "local"] as const,
+	},
 ];
 
 function getKeyDefinition(key: string): PiboConfigKeyDefinition {
@@ -101,6 +109,9 @@ function parseConfigValue(definition: PiboConfigKeyDefinition, value: string): s
 	if (definition.type === "string[]") return parseListValue(value);
 	if (definition.key === "auth.secret" && value.length < 32) {
 		throw new Error("auth.secret must be at least 32 characters");
+	}
+	if (definition.values && !definition.values.includes(value)) {
+		throw new Error(`${definition.key} must be one of: ${definition.values.join(", ")}`);
 	}
 	return value;
 }

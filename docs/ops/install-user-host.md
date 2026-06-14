@@ -39,6 +39,8 @@ systemctl daemon-reload
 
 ## Configure auth
 
+For a public deployment with Google OAuth:
+
 ```bash
 pibo config set auth.baseURL https://pibo.example.com
 pibo config set auth.secret <at-least-32-characters>
@@ -46,6 +48,24 @@ pibo config set auth.googleClientId <google-client-id>
 pibo config set auth.googleClientSecret <google-client-secret>
 pibo config set auth.allowedEmails you@example.com
 ```
+
+For a local development install on a developer laptop, use the local auth mode. This skips Google OAuth and binds the gateway to loopback only:
+
+```bash
+pibo config set auth.mode local
+pibo gateway:web --auth=local
+# Open http://localhost:4788/apps/chat and click "Sign in with Google".
+# The dev identity dev@pibo.local is auto-attached without OAuth.
+```
+
+Local auth refuses a non-loopback bind:
+
+```bash
+pibo gateway:web --auth=local --web-host=0.0.0.0
+# Error: --auth=local requires a loopback bind (127.0.0.1, ::1, or localhost).
+```
+
+Three independent request-time safety layers guard the local auth service. See `docs/specs/capabilities/web-auth-and-same-origin-host.md` REQ-010 and the `pibo-debug-auth` skill for the full model.
 
 ## Start the gateway
 
@@ -63,7 +83,7 @@ systemctl enable --now pibo-web
 pibo gateway web status
 ```
 
-If you use Caddy, point DNS at the host before expecting Let's Encrypt to issue a certificate.
+If you use Caddy, point DNS at the host before expecting Let's Encrypt to issue a certificate. Local auth mode bypasses the Better Auth requirement and prints a warning instead of a hard blocker.
 
 ## When not to use this path
 

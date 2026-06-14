@@ -88,9 +88,10 @@ Supported keys are declared in `PIBO_CONFIG_KEYS`. Unknown keys throw `Unknown c
 
 #### Acceptance
 
-- `pibo config keys` lists `auth.baseURL`, `auth.secret`, `auth.googleClientId`, `auth.googleClientSecret`, `auth.allowedEmails`, `auth.trustedOrigins`, and `auth.databasePath`.
+- `pibo config keys` lists `auth.baseURL`, `auth.secret`, `auth.googleClientId`, `auth.googleClientSecret`, `auth.allowedEmails`, `auth.trustedOrigins`, `auth.databasePath`, and `auth.mode`.
 - Each listed key includes its value type and either `secret` or `public` visibility.
 - `pibo config set unknown.key value` fails and does not create an unknown top-level config entry.
+- `auth.mode` accepts only the literal values `better-auth` and `local`; other values are rejected before persistence.
 
 #### Scenario: Unknown key rejected
 
@@ -101,23 +102,32 @@ Supported keys are declared in `PIBO_CONFIG_KEYS`. Unknown keys throw `Unknown c
 
 ### Requirement: Values are parsed by declared type
 
-The system MUST parse values according to the supported key definition. String keys MUST store the exact provided string after key-specific validation. String-array keys MUST accept comma-separated text or a JSON string array, trim entries, and drop empty entries.
+The system MUST parse values according to the supported key definition. String keys MUST store the exact provided string after key-specific validation. String-array keys MUST accept comma-separated text or a JSON string array, trim entries, and drop empty entries. Enum string keys MUST accept only the declared values.
 
 #### Current
 
-`parseConfigValue()` dispatches by key definition. `parseListValue()` supports JSON arrays and comma-separated strings.
+`parseConfigValue()` dispatches by key definition. `parseListValue()` supports JSON arrays and comma-separated strings. `auth.mode` is an enum string key with the declared values `better-auth` and `local`.
 
 #### Acceptance
 
 - Setting `auth.allowedEmails` to `a@example.com,b@example.com` stores `['a@example.com', 'b@example.com']`.
 - Setting `auth.trustedOrigins` to a JSON string array stores the array values after trimming.
 - A JSON array containing non-string values is rejected.
+- `pibo config set auth.mode local` stores the literal string `local`.
+- `pibo config set auth.mode bogus` is rejected with a value error.
 
 #### Scenario: List value from comma-separated input
 
 - GIVEN an operator sets `auth.allowedEmails` to `you@example.com, friend@example.com`
 - WHEN the config is loaded
 - THEN `auth.allowedEmails` is an array with those two email strings
+
+#### Scenario: Auth mode enum validation
+
+- GIVEN the local config is empty
+- WHEN an operator sets `auth.mode` to `local`
+- THEN the value is persisted as the literal string `local`
+- AND a later `pibo config get auth.mode` returns `local`
 
 ### Requirement: Auth secret length is validated before persistence
 
@@ -250,6 +260,7 @@ Deleting a supported key MUST remove that value. If the `auth` section becomes e
 | REQ-006 Config load and save preserve a JSON object contract | First config write | `src/config/config.ts` | Implemented |
 | REQ-007 Display output redacts secrets | Redacted full config display | `src/config/config.ts`, `test/config.test.mjs` | Implemented |
 | REQ-008 Delete removes empty auth sections | Delete last auth key | `src/config/config.ts`, `test/config.test.mjs` | Implemented |
+| REQ-009 Auth mode enum selects the auth service | Auth mode enum validation | `src/config/config.ts`, `src/gateway/web.ts`, `test/auth-mode-config.test.mjs` | Implemented |
 
 ## Verification Basis
 

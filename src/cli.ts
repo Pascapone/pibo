@@ -55,6 +55,11 @@ function parsePositiveInteger(value: string): number {
 	return parsed;
 }
 
+function isLoopbackBindForCli(host: string): boolean {
+	const normalized = host.startsWith("[") && host.endsWith("]") ? host.slice(1, -1) : host;
+	return normalized === "127.0.0.1" || normalized === "::1" || normalized === "localhost";
+}
+
 export async function runPiboCli(argv = process.argv): Promise<void> {
 	if (argv[2] === "--help" || argv[2] === "-h") {
 		printRootDiscovery();
@@ -390,11 +395,23 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 	program
 		.command("gateway:web")
 		.description("Start the authenticated web gateway")
+		.option("--auth <mode>", "Auth service mode: 'better-auth' (default) or 'local' (loopback-only, no Google OAuth)")
 		.option("--web-host <host>", "Bind the HTTP web host, for example 0.0.0.0 for LAN access")
 		.option("--web-port <port>", "Bind the HTTP web host port", parsePort)
-		.action(async (options: { webHost?: string; webPort?: number }) => {
+		.action(async (options: { auth?: string; webHost?: string; webPort?: number }) => {
 			const { runWebGatewayServer } = await import("./gateway/web.js");
+			const authMode = options.auth;
+			if (authMode !== undefined && authMode !== "better-auth" && authMode !== "local") {
+				throw new Error(`--auth must be 'better-auth' or 'local', got '${authMode}'`);
+			}
+			if (authMode === "local" && options.webHost !== undefined && !isLoopbackBindForCli(options.webHost)) {
+				throw new Error(
+					`--auth=local requires a loopback bind (127.0.0.1, ::1, or localhost). Got --web-host='${options.webHost}'. ` +
+						"Either drop --web-host or pick --auth=better-auth for a public bind.",
+				);
+			}
 			await runWebGatewayServer({
+				authMode: authMode as "better-auth" | "local" | undefined,
 				web: {
 					host: options.webHost,
 					port: options.webPort,
@@ -438,7 +455,7 @@ Commands:
   tui:routed   Start the local routed Pibo TUI
   tui:sessions  Start the reduced Web Chat-derived session UI
   gateway      Inspect and restart host gateways through safe CLI commands
-  gateway:web  Start a web gateway runtime
+  gateway:web  Start a web gateway runtime (use --auth=local for loopback-only local auth)
 
 Next:
   pibo <command> --help
