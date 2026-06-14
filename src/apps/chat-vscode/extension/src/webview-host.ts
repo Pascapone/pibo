@@ -1,5 +1,11 @@
 import * as vscode from "vscode";
 import type { PiboRoom } from "../../../chat/types/rooms.js";
+import {
+	buildWebviewShellHtml,
+	EMPTY_STATE_COMMAND,
+	GATEWAY_HEALTH_PATH,
+	generateNonce,
+} from "./webview-shell";
 
 export type SelectorMode =
 	| { kind: "sessions"; roomId: string }
@@ -12,7 +18,8 @@ export type HostToWebViewMessage =
 export type WebViewToHostMessage =
 	| { type: "pibo/select-room"; roomId: string }
 	| { type: "pibo/open-external"; uri: string }
-	| { type: "pibo/refresh-bootstrap-request" };
+	| { type: "pibo/refresh-bootstrap-request" }
+	| { type: "pibo/open-terminal"; command: string };
 
 type SelectorModeForWeb =
 	| { kind: "sessions"; roomId: string; sessions: readonly unknown[]; selectedPiboSessionId: string | null }
@@ -82,10 +89,14 @@ export function createWebviewHost(
 				url.searchParams.set("roomId", cachedRoomId);
 			}
 
-			view.webview.html = `<!doctype html>
-<html><head>
-<meta http-equiv="refresh" content="0; url=${url.toString()}" />
-</head><body></body></html>`;
+			const nonce = generateNonce();
+			view.webview.html = buildWebviewShellHtml({
+				healthUrl: `${options.baseUrl}${GATEWAY_HEALTH_PATH}`,
+				targetUrl: url.toString(),
+				baseUrl: options.baseUrl,
+				command: EMPTY_STATE_COMMAND,
+				nonce,
+			});
 
 			view.webview.onDidReceiveMessage(async (raw: unknown) => {
 				const message = raw as WebViewToHostMessage;
@@ -98,6 +109,12 @@ export function createWebviewHost(
 					}
 				} else if (message.type === "pibo/refresh-bootstrap-request") {
 					provider.pushSelectorMode({ kind: "sessions", roomId: provider.getCurrentRoomId() ?? "" });
+				} else if (message.type === "pibo/open-terminal") {
+					if (typeof message.command === "string" && message.command.length > 0) {
+						const term = vscode.window.createTerminal({ name: "Pibo Gateway" });
+						term.show();
+						term.sendText(message.command);
+					}
 				}
 			});
 
