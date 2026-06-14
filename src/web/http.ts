@@ -3,6 +3,7 @@ import { gzipSync } from "node:zlib";
 
 export const MAX_WEB_REQUEST_BODY_BYTES = 4 * 1024 * 1024;
 const MIN_COMPRESS_RESPONSE_BYTES = 1024;
+const INTERNAL_SOCKET_PEER_HEADER = "x-pibo-socket-peer";
 
 export class PiboWebHttpError extends Error {
 	constructor(
@@ -124,9 +125,9 @@ function responseHeaders(webResponse: Response): Record<string, string | string[
 	const headers: Record<string, string | string[]> = {};
 	const setCookie = (webResponse.headers as Headers & { getSetCookie?: () => string[] }).getSetCookie?.();
 	webResponse.headers.forEach((value, key) => {
-		if (key.toLowerCase() !== "set-cookie") {
-			headers[key] = value;
-		}
+		if (key.toLowerCase() === "set-cookie") return;
+		if (key.toLowerCase() === INTERNAL_SOCKET_PEER_HEADER) return;
+		headers[key] = value;
 	});
 	if (setCookie?.length) {
 		headers["set-cookie"] = setCookie;

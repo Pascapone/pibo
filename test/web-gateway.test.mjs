@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { resolveFallbackWebGatewayServerOptions } from "../dist/gateway/fallback.js";
-import { resolveWebGatewayAuthMode, resolveWebGatewayServerOptions } from "../dist/gateway/web.js";
+import { isLoopbackHost, resolveWebGatewayAuthMode, resolveWebGatewayServerOptions } from "../dist/gateway/web.js";
 
 test("web gateway binds publicly when auth base URL is not loopback", () => {
 	const options = resolveWebGatewayServerOptions({
@@ -40,7 +40,10 @@ test("gateway web fails closed when legacy dev auth env is set", () => {
 	const previous = process.env.PIBO_DEV_AUTH;
 	process.env.PIBO_DEV_AUTH = "1";
 	try {
-		assert.throws(() => resolveWebGatewayAuthMode({}), /no longer activates dev auth/);
+		assert.throws(
+			() => resolveWebGatewayAuthMode({}),
+			/PIBO_DEV_AUTH is deprecated.*--auth=local/s,
+		);
 	} finally {
 		if (previous === undefined) delete process.env.PIBO_DEV_AUTH;
 		else process.env.PIBO_DEV_AUTH = previous;
@@ -49,4 +52,45 @@ test("gateway web fails closed when legacy dev auth env is set", () => {
 
 test("gateway web does not enable dev auth by default", () => {
 	assert.equal(resolveWebGatewayAuthMode({}), "better-auth");
+});
+
+test("gateway web selects dev auth when authMode=local and bind is loopback", () => {
+	assert.equal(
+		resolveWebGatewayAuthMode({ authMode: "local", web: { host: "127.0.0.1" } }),
+		"dev-auth",
+	);
+});
+
+test("gateway web rejects authMode=local on a non-loopback host bind", () => {
+	assert.throws(
+		() => resolveWebGatewayAuthMode({ authMode: "local", web: { host: "0.0.0.0" } }),
+		/Local auth requires a loopback bind/,
+	);
+});
+
+test("gateway web accepts authMode=local on the default loopback bind", () => {
+	assert.equal(resolveWebGatewayAuthMode({ authMode: "local" }), "dev-auth");
+});
+
+test("gateway web accepts the legacy devAuth alias with loopback bind", () => {
+	assert.equal(
+		resolveWebGatewayAuthMode({ devAuth: true, web: { host: "127.0.0.1" } }),
+		"dev-auth",
+	);
+});
+
+test("gateway web rejects the legacy devAuth alias on a non-loopback bind", () => {
+	assert.throws(
+		() => resolveWebGatewayAuthMode({ devAuth: true, web: { host: "0.0.0.0" } }),
+		/Local auth requires a loopback bind/,
+	);
+});
+
+test("isLoopbackHost detects 127.0.0.1, ::1, and localhost", () => {
+	assert.equal(isLoopbackHost("127.0.0.1"), true);
+	assert.equal(isLoopbackHost("::1"), true);
+	assert.equal(isLoopbackHost("localhost"), true);
+	assert.equal(isLoopbackHost("0.0.0.0"), false);
+	assert.equal(isLoopbackHost("192.168.1.10"), false);
+	assert.equal(isLoopbackHost(undefined), false);
 });

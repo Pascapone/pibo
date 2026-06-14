@@ -10,6 +10,16 @@ export const DEFAULT_WEB_CHANNEL_HOST = "127.0.0.1";
 export const DEFAULT_WEB_CHANNEL_PORT = 4788;
 export const WEB_CHANNEL_NAME = "web-host";
 
+/**
+ * Internal header that carries the TCP socket peer address from the web host
+ * channel to the auth plugin. This is one of three independent safety layers
+ * for the local auth service (see `docs/specs/capabilities/web-auth-and-same-origin-host.md`
+ * REQ-010). The header is added on the request side by the channel and MUST
+ * be stripped from any response by `sendWebResponse` so it never reaches the
+ * browser.
+ */
+export const SOCKET_PEER_HEADER = "x-pibo-socket-peer";
+
 export type WebHostChannelOptions = {
 	host?: string;
 	port?: number;
@@ -53,6 +63,41 @@ function firstHeaderValue(value: string | string[] | undefined): string | undefi
 
 function isLoopbackAddress(address: string | undefined): boolean {
 	return address === "::1" || address === "127.0.0.1" || address?.startsWith("127.") === true || address?.startsWith("::ffff:127.") === true;
+}
+
+/**
+ * Return a new Request that includes the TCP socket peer address in the
+ * `x-pibo-socket-peer` header. The body is preserved via the request body
+ * stream consumed into a buffer because the original Request is not cloneable
+ * once the body has been read.
+ */
+function withSocketPeerHeader(request: Request, peerAddress: string | undefined): Request {
+	const headers = new Headers(request.headers);
+	if (peerAddress) headers.set(SOCKET_PEER_HEADER, peerAddress);
+	return new Request(request.url, {
+		method: request.method,
+		headers,
+		body: request.body,
+		duplex: "half",
+		redirect: request.redirect,
+		signal: request.signal,
+	});
+}
+
+/**
+ * Strip the internal socket peer header from a Response so it never reaches
+ * the browser. Auth plugins that accidentally echo the header will not leak
+ * the TCP peer information to the client.
+ */
+export function stripSocketPeerHeaderFromResponse(response: Response): Response {
+	if (!response.headers.has(SOCKET_PEER_HEADER)) return response;
+	const headers = new Headers(response.headers);
+	headers.delete(SOCKET_PEER_HEADER);
+	return new Response(response.body, {
+		status: response.status,
+		statusText: response.statusText,
+		headers,
+	});
 }
 
 function createRequestBaseURL(nodeRequest: IncomingMessage, host: string, port: number): string {
@@ -192,7 +237,9 @@ export function createWebHostChannel(options: WebHostChannelOptions = {}): WebHo
 			}
 
 			if (url.pathname.startsWith("/api/auth/")) {
-				await sendWebResponse(nodeResponse, await handleAuthRequest(request));
+				const authRequest = withSocketPeerHeader(request, nodeRequest.socket.remoteAddress);
+				const authResponse = stripSocketPeerHeaderFromResponse(await handleAuthRequest(authRequest));
+				await sendWebResponse(nodeResponse, authResponse);
 				return;
 			}
 

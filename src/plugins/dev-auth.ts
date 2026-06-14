@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { definePiboPlugin } from "./registry.js";
+import { SOCKET_PEER_HEADER } from "../web/channel.js";
 import type { PiboAuthService, PiboAuthSession } from "../auth/types.js";
 
 const COOKIE_NAME = "pibo_dev_session";
@@ -37,6 +38,30 @@ function isLoopbackHost(value: string | undefined): boolean {
 	} catch {
 		return false;
 	}
+}
+
+function isLoopbackSocketAddress(value: string | undefined): boolean {
+	if (!value) return false;
+	const normalized = value.startsWith("::ffff:") ? value.slice("::ffff:".length) : value;
+	return normalized === "::1" || normalized === "127.0.0.1" || normalized.startsWith("127.");
+}
+
+/**
+ * Read the TCP socket peer address attached to the request by the web host
+ * channel via the `x-pibo-socket-peer` header. The header is internal and
+ * stripped from any outgoing response, so it can be trusted.
+ */
+export function getSocketPeerForDevAuth(request: Request): string | undefined {
+	return firstHeaderValue(request.headers.get(SOCKET_PEER_HEADER));
+}
+
+/**
+ * Check whether the TCP socket peer attached by the channel is loopback.
+ * Returns `false` (fail-closed) when the header is missing, so a request
+ * that did not flow through the web host channel is never accepted.
+ */
+export function isLoopbackSocketPeerForDevAuth(request: Request): boolean {
+	return isLoopbackSocketAddress(getSocketPeerForDevAuth(request));
 }
 
 export function isLoopbackDevAuthRequest(request: Request): boolean {
@@ -82,6 +107,9 @@ function createDevAuthService(): PiboAuthService {
 		async handleRequest(request) {
 			if (!isLoopbackDevAuthRequest(request)) {
 				return Response.json({ error: "Dev auth only accepts loopback requests" }, { status: 403 });
+			}
+			if (!isLoopbackSocketPeerForDevAuth(request)) {
+				return Response.json({ error: "Dev auth only accepts loopback socket peers" }, { status: 403 });
 			}
 
 			const url = new URL(request.url);

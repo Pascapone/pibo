@@ -15,8 +15,22 @@ import { loadPiboConfig } from "../config/config.js";
 import { PiboGatewayServer, type GatewayServerOptions } from "./server.js";
 import { clearFallbackPidFile, clearPidFile, writeFallbackGatewayPid, writeGatewayPid } from "./pidfile.js";
 
+export type WebGatewayAuthMode = "better-auth" | "local";
+
 export type WebGatewayServerOptions = GatewayServerOptions & {
 	auth?: BetterAuthServiceOptions;
+	/**
+	 * Selects the auth service. When set, takes priority over the legacy
+	 * `devAuth` flag and the `auth.mode` config key. `"local"` is only safe
+	 * when the host bind is loopback; `resolveWebGatewayAuthMode` enforces
+	 * that gate. Default is `"better-auth"`.
+	 */
+	authMode?: WebGatewayAuthMode;
+	/**
+	 * Legacy alias for `authMode: "local"`. Kept for one release so the
+	 * existing Docker entrypoint and any in-field workers continue to work
+	 * without code changes. Will be removed in a follow-up release.
+	 */
 	devAuth?: boolean;
 	web?: WebHostChannelOptions;
 	chat?: ChatWebAppOptions;
@@ -36,24 +50,76 @@ function isDockerRuntime(): boolean {
 	}
 }
 
+export function isLoopbackHost(value: string | undefined): boolean {
+	if (!value) return false;
+	const normalized = value.startsWith("[") && value.endsWith("]") ? value.slice(1, -1) : value;
+	return LOOPBACK_HOSTS.has(normalized);
+}
+
+function bindHost(options: WebGatewayServerOptions): string {
+	return options.web?.host ?? DEFAULT_WEB_CHANNEL_HOST;
+}
+
+function requireLocalAuthBind(options: WebGatewayServerOptions): void {
+	const host = bindHost(options);
+	if (isLoopbackHost(host)) return;
+	if (isDockerRuntime()) {
+		console.error(
+			`[pibo] WARNING: local auth is active in a Docker worker with bind ${host}. ` +
+				"The Docker network is the security boundary; ensure the host port mapping is loopback-only.",
+		);
+		return;
+	}
+	throw new Error(
+		`Local auth requires a loopback bind (127.0.0.1, ::1, or localhost). Got '${host}'. ` +
+			"Either drop --web-host or pick authMode=better-auth for a public bind.",
+	);
+}
+
+function localAuthStartupWarning(options: WebGatewayServerOptions): void {
+	const host = bindHost(options);
+	console.error(
+		`[pibo] LOCAL AUTH ENABLED — bound to ${host}. ` +
+			"This mode is unsafe if the port is reachable from the public internet. " +
+			"Use authMode=better-auth for production deployments.",
+	);
+}
+
 export function resolveWebGatewayAuthMode(options: WebGatewayServerOptions = {}): "better-auth" | "dev-auth" {
-	if (!options.devAuth) {
-		if (process.env.PIBO_DEV_AUTH === "1") {
-			throw new Error("PIBO_DEV_AUTH no longer activates dev auth for gateway:web; use the Docker worker entrypoint instead.");
-		}
+	const configMode = loadPiboConfig().auth?.mode;
+	const explicit = options.authMode;
+	const legacyDevAuth = options.devAuth === true;
+
+	if (process.env.PIBO_DEV_AUTH === "1") {
+		throw new Error(
+			"PIBO_DEV_AUTH is deprecated. Use `pibo gateway:web --auth=local --web-host=127.0.0.1` on the host, " +
+				"or rely on the Docker worker entrypoint inside a worker.",
+		);
+	}
+
+	if (explicit === "local" || legacyDevAuth || configMode === "local") {
+		requireLocalAuthBind(options);
+		localAuthStartupWarning(options);
+		return "dev-auth";
+	}
+
+	if (explicit === "better-auth" || configMode === "better-auth") {
 		return "better-auth";
 	}
-	if (!isDockerRuntime()) {
-		throw new Error("Pibo dev auth can only be enabled inside a Docker worker runtime.");
-	}
-	return "dev-auth";
+
+	return "better-auth";
 }
 
 function authBaseURL(options: WebGatewayServerOptions): string | undefined {
 	return options.auth?.baseURL ?? loadPiboConfig().auth?.baseURL;
 }
 
-function defaultWebHost(baseURL: string | undefined): string {
+function defaultWebHost(baseURL: string | undefined, options: WebGatewayServerOptions = {}): string {
+	// When local auth is selected, always default to loopback bind to keep the
+	// loopback-bind gate trivially satisfied. The user can still override
+	// --web-host, but `resolveWebGatewayAuthMode` will then enforce the gate.
+	const mode = options.authMode ?? loadPiboConfig().auth?.mode ?? "better-auth";
+	if (mode === "local" && options.web?.host === undefined) return DEFAULT_WEB_CHANNEL_HOST;
 	if (!baseURL) return DEFAULT_WEB_CHANNEL_HOST;
 	try {
 		const hostname = new URL(baseURL).hostname;
@@ -69,7 +135,7 @@ export function resolveWebGatewayServerOptions(options: WebGatewayServerOptions 
 		...options,
 		web: {
 			...options.web,
-			host: options.web?.host ?? defaultWebHost(baseURL),
+			host: options.web?.host ?? defaultWebHost(baseURL, options),
 		},
 	};
 }
@@ -107,7 +173,8 @@ export function createWebPiboPluginRegistry(options: WebGatewayServerOptions = {
 }
 
 function createChatAppURL(options: WebGatewayServerOptions, host: string, port: number): string {
-	if (options.devAuth) {
+	const useLocalAuth = options.authMode === "local" || options.devAuth === true || loadPiboConfig().auth?.mode === "local";
+	if (useLocalAuth) {
 		return `http://${host}:${port}/apps/chat`;
 	}
 	const baseURL = options.auth?.baseURL ?? loadPiboConfig().auth?.baseURL;
