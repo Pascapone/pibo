@@ -111,7 +111,7 @@ pibo config set auth.googleClientSecret <your-google-oauth-client-secret>
 pibo config set auth.allowedEmails you@example.com
 ```
 
-To get Google OAuth credentials, create a Web Application client at <https://console.cloud.google.com/apis/credentials>. The redirect URI is `http://127.0.0.1:4788/api/auth/callback/google`. See the [Quick Start Guide](./pibo-vscode-quickstart.md) for the full walkthrough.
+To get Google OAuth credentials, create a Web Application client at <https://console.cloud.google.com/apis/credentials>. The redirect URI is `http://127.0.0.1:4788/api/auth/callback/google`. See the [Quick Start Guide](./pibo-vscode-ext-quickstart.md) for the full walkthrough.
 
 ## Step 7 — Start the Pibo gateway (1 min)
 

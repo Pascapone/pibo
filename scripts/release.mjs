@@ -95,7 +95,7 @@ const currentRoot = readJson(rootPackageJsonPath);
 const currentExtension = readJson(extensionPackageJsonPath);
 
 console.log(`[release] root @pasko70/pibo: ${currentRoot.version} -> ${args.version}`);
-console.log(`[release] pibo.pibo-vscode: ${currentExtension.version} -> ${args.version}`);
+console.log(`[release] ${currentExtension.publisher}.${currentExtension.name}: ${currentExtension.version} -> ${args.version}`);
 
 if (args.dryRun) {
 	console.log("[release] --dry-run: not writing files or invoking side-effects.");
@@ -116,7 +116,7 @@ console.log(`[release] built server + web UIs + VS Code WebView`);
 runInherit("npm", ["run", "--silent", "vscode:package"]);
 console.log(`[release] packaged VS Code extension`);
 
-const expectedVsix = resolve(artifactsDir, `pibo-vscode-${args.version}.vsix`);
+const expectedVsix = resolve(artifactsDir, `${currentExtension.name}-${args.version}.vsix`);
 if (!existsSync(expectedVsix)) {
 	throw new Error(`Expected VSIX not found at ${expectedVsix}`);
 }
@@ -146,7 +146,7 @@ if (args.createRelease) {
 			createReleaseScript,
 			"--tag", tag,
 			"--asset", expectedVsix,
-			"--asset-name", `pibo-vscode-${args.version}.vsix`,
+			"--asset-name", `${currentExtension.name}-${args.version}.vsix`,
 		]);
 		// Surface the script's own log lines so the user sees progress.
 		for (const line of output.split("\n")) console.log(line);
