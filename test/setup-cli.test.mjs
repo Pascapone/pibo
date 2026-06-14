@@ -40,6 +40,42 @@ test("doctor can enforce a minimum swap recommendation", () => {
 	assert.equal(swap.status, "fail");
 });
 
+test("doctor reports WSL info in the JSON output", () => {
+	const status = JSON.parse(pibo(["setup", "doctor", "--json"]));
+	assert.ok(status.wsl, "doctor JSON should include a wsl field");
+	assert.equal(typeof status.wsl.isWsl, "boolean");
+	assert.equal(typeof status.wsl.hasWindowsMount, "boolean");
+	assert.ok([undefined, 1, 2].includes(status.wsl.version));
+	const wslCheck = status.checks.find((check) => check.name === "platform.wsl");
+	// The platform.wsl check exists only when the host is WSL or native Windows.
+	// Plain Linux and macOS are POSIX targets and need no extra signal.
+	if (status.wsl.isWsl) {
+		assert.equal(wslCheck?.status, "ok");
+	} else if (status.platform === "win32") {
+		assert.equal(wslCheck?.status, "fail");
+	} else {
+		assert.equal(wslCheck, undefined);
+	}
+});
+
+test("user-host setup plan flags native Windows", () => {
+	const plan = JSON.parse(pibo(["setup", "user-host", "--domain", "pibo.example.com", "--json"]));
+	if (process.platform === "win32") {
+		assert.ok(plan.warnings.some((line) => /Native Windows is not supported/.test(line)));
+	} else {
+		assert.ok(!plan.warnings.some((line) => /Native Windows is not supported/.test(line)));
+	}
+});
+
+test("developer-host setup plan flags native Windows", () => {
+	const plan = JSON.parse(pibo(["setup", "developer-host", "--json"]));
+	if (process.platform === "win32") {
+		assert.ok(plan.warnings.some((line) => /Native Windows is not supported/.test(line)));
+	} else {
+		assert.ok(!plan.warnings.some((line) => /Native Windows is not supported/.test(line)));
+	}
+});
+
 test("user-host setup plan is minimal and has one service", () => {
 	const plan = JSON.parse(pibo(["setup", "user-host", "--domain", "pibo.example.com", "--json"]));
 	assert.equal(plan.mode, "user-host");
