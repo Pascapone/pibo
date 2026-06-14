@@ -178,11 +178,11 @@ describe("vscode/install", () => {
 			const spawnImpl = (bin, args) => {
 				if (args[0] === "--install-extension") {
 					installCalls.push({ bin, args });
-					return fakeChild("Extension 'pibo.pibo-vscode' v1.3.0 was successfully installed.\\n", "", 0);
+					return fakeChild("Extension 'pibo.pibo-vscode-ext' v1.3.0 was successfully installed.\\n", "", 0);
 				}
 				if (args[0] === "--list-extensions") {
 					listCalls.push({ bin, args });
-					return fakeChild("pibo.pibo-vscode@1.3.0\\n", "", 0);
+					return fakeChild("pibo.pibo-vscode-ext@1.3.0\\n", "", 0);
 				}
 				return fakeChild("", "", 1);
 			};
@@ -220,7 +220,7 @@ describe("vscode/install", () => {
 					return fakeChild("ok\\n", "", 0);
 				}
 				if (args[0] === "--list-extensions") {
-					return fakeChild("pibo.pibo-vscode@1.3.0\\n", "", 0);
+					return fakeChild("pibo.pibo-vscode-ext@1.3.0\\n", "", 0);
 				}
 				return fakeChild("", "", 1);
 			};

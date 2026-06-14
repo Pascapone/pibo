@@ -75,11 +75,11 @@ describe("vscode/code-cli", () => {
 			const spawnImpl = (bin, args) => {
 				assert.equal(bin, "/fake/code");
 				assert.deepEqual(args, ["--list-extensions"]);
-				return fakeChild("pibo.pibo-vscode@1.3.0\\n", "", 0);
+				return fakeChild("pibo.pibo-vscode-ext@1.3.0\\n", "", 0);
 			};
 			const result = await runCodeCommand({ binary: "/fake/code", args: ["--list-extensions"], spawnImpl });
 			assert.equal(result.exitCode, 0);
-			assert.ok(result.stdout.includes("pibo.pibo-vscode"));
+			assert.ok(result.stdout.includes("pibo.pibo-vscode-ext"));
 		}
 
 		// runCodeCommand: non-zero exit code is surfaced.

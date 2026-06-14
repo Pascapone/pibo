@@ -49,19 +49,19 @@ describe("vscode/uninstall", () => {
 			const uninstallCalls = [];
 			const spawnImpl = (bin, args) => {
 				uninstallCalls.push({ bin, args });
-				return fakeChild("Extension 'pibo.pibo-vscode' was successfully uninstalled!\\n", "", 0);
+				return fakeChild("Extension 'pibo.pibo-vscode-ext' was successfully uninstalled!\\n", "", 0);
 			};
 			const result = await runUninstall({ env: { PATH: codeDir }, spawnImpl });
 			assert.equal(result.status, "uninstalled");
 			assert.equal(uninstallCalls[0].args[0], "--uninstall-extension");
-			assert.equal(uninstallCalls[0].args[1], "pibo.pibo-vscode");
+			assert.equal(uninstallCalls[0].args[1], "pibo.pibo-vscode-ext");
 		}
 
 		// "Extension not found" stderr → not-installed.
 		{
 			const codeDir = mkdtempSync(join(tmpdir(), "pibo-vscode-uninstall-code-"));
 			writeFileSync(join(codeDir, "code"), "#!/bin/sh\\nexit 1\\n");
-			const spawnImpl = () => fakeChild("", "Extension 'pibo.pibo-vscode' is not installed.\\n", 1);
+			const spawnImpl = () => fakeChild("", "Extension 'pibo.pibo-vscode-ext' is not installed.\\n", 1);
 			const result = await runUninstall({ env: { PATH: codeDir }, spawnImpl });
 			assert.equal(result.status, "not-installed");
 		}
