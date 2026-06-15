@@ -6,7 +6,12 @@ export const HEALTH_CHECK_TIMEOUT_MS = 1500;
 export const HEALTH_POLL_INTERVAL_MS = 3000;
 
 export function generateNonce(): string {
-	return crypto.randomBytes(16).toString("base64");
+	// Use base64url (RFC 4648 §5) so the output is restricted to
+	// [A-Za-z0-9_-]. Standard base64 would emit '+', '/', and '=', which
+	// the CSP parser inside VS Code's webview treats as source-expression
+	// separators when the meta CSP is merged with VS Code's default CSP,
+	// breaking the nonce and triggering ERR_BLOCKED_BY_CSP.
+	return crypto.randomBytes(16).toString("base64url");
 }
 
 export type WebviewShellArgs = {
@@ -15,6 +20,15 @@ export type WebviewShellArgs = {
 	baseUrl: string;
 	command: string;
 	nonce: string;
+	/**
+	 * VS Code webview CSP source (e.g. `vscode-webview://<uuid>/`). Added
+	 * to `script-src`, `style-src`, `img-src`, and `connect-src` as
+	 * defense in depth so the merged CSP stays valid on VS Code versions
+	 * that prepend their own default CSP. Optional; defaults to an empty
+	 * string so test renders and other non-VS Code contexts still produce
+	 * a parseable meta tag.
+	 */
+	cspSource?: string;
 	healthCheckTimeoutMs?: number;
 	pollIntervalMs?: number;
 };
@@ -37,6 +51,7 @@ export function buildWebviewShellHtml(args: WebviewShellArgs): string {
 		baseUrl,
 		command,
 		nonce,
+		cspSource = "",
 		healthCheckTimeoutMs = HEALTH_CHECK_TIMEOUT_MS,
 		pollIntervalMs = HEALTH_POLL_INTERVAL_MS,
 	} = args;
@@ -58,7 +73,7 @@ export function buildWebviewShellHtml(args: WebviewShellArgs): string {
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; img-src vscode-resource: https: data:; connect-src ${baseUrl};" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src ${cspSource} 'nonce-${nonce}'; style-src ${cspSource} 'unsafe-inline'; img-src ${cspSource} vscode-resource: https: data:; connect-src ${baseUrl} ${cspSource};" />
 <title>Pibo</title>
 <style>
   body { font-family: var(--vscode-font-family, -apple-system, system-ui, sans-serif);
