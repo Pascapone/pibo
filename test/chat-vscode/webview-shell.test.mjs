@@ -60,8 +60,11 @@ describe("chat-vscode/webview-shell", () => {
 	});
 
 	test("buildWebviewShellHtml includes the nonce on the script tag", () => {
-		const html = buildWebviewShellHtml({ ...baseArgs, nonce: "abc-123" });
-		assert.match(html, /<script nonce="abc-123">/);
+		// Use a real generateNonce() output to also guard against CSP-unsafe
+		// characters leaking into the script tag attribute.
+		const realNonce = generateNonce();
+		const html = buildWebviewShellHtml({ ...baseArgs, nonce: realNonce });
+		assert.match(html, new RegExp(`<script nonce="${realNonce}">`));
 	});
 
 	test("buildWebviewShellHtml injects the health check URL", () => {
@@ -130,11 +133,107 @@ describe("chat-vscode/webview-shell", () => {
 		assert.match(html, /clearInterval\(pollId\)/);
 	});
 
-	test("generateNonce returns a non-empty base64 string", () => {
+	test("generateNonce returns a URL-safe base64url string", () => {
+		// base64url restricts the alphabet to [A-Za-z0-9_-] and strips padding,
+		// so a CSP-unsafe '+', '/', or '=' must never appear in the output.
 		const n = generateNonce();
-		assert.ok(n.length > 16);
-		assert.match(n, /^[A-Za-z0-9+/=]+$/);
-		const n2 = generateNonce();
-		assert.notEqual(n, n2);
+		assert.ok(n.length >= 16, `nonce too short: ${n.length} chars`);
+		assert.match(n, /^[A-Za-z0-9_-]+$/);
+		assert.ok(!n.includes("+"), `nonce contains '+': ${n}`);
+		assert.ok(!n.includes("/"), `nonce contains '/': ${n}`);
+		assert.ok(!n.includes("="), `nonce contains '=': ${n}`);
+	});
+
+	test("generateNonce is unique across 32 invocations", () => {
+		const seen = new Set();
+		for (let i = 0; i < 32; i++) seen.add(generateNonce());
+		assert.equal(seen.size, 32, "expected 32 unique nonces, found duplicates");
+	});
+
+	test("buildWebviewShellHtml embeds cspSource in script-src, style-src, img-src, connect-src", () => {
+		const cspSource = "vscode-webview://test-uuid/";
+		const html = buildWebviewShellHtml({ ...baseArgs, cspSource });
+		const meta = html.match(/<meta http-equiv="Content-Security-Policy" content="([^"]+)"\s*\/>/);
+		assert.ok(meta, "expected a Content-Security-Policy meta tag");
+		const directive = meta[1];
+		// Each directive that should carry the cspSource must list it as a
+		// standalone source expression. We split on ';' to keep the checks
+		// local to each directive and avoid cross-directive false positives.
+		const directives = Object.fromEntries(
+			directive
+				.split(";")
+				.map((part) => part.trim().split(/\s+/))
+				.filter((parts) => parts.length >= 1 && parts[0])
+				.map((parts) => [parts[0], parts.slice(1)]),
+		);
+		assert.ok(
+			(directives["script-src"] ?? []).includes(cspSource),
+			`script-src missing cspSource. Got: ${directive}`,
+		);
+		assert.ok(
+			(directives["style-src"] ?? []).includes(cspSource),
+			`style-src missing cspSource. Got: ${directive}`,
+		);
+		assert.ok(
+			(directives["img-src"] ?? []).includes(cspSource),
+			`img-src missing cspSource. Got: ${directive}`,
+		);
+		assert.ok(
+			(directives["connect-src"] ?? []).includes(cspSource),
+			`connect-src missing cspSource. Got: ${directive}`,
+		);
+	});
+
+	test("buildWebviewShellHtml with no cspSource still renders a parseable meta CSP", () => {
+		const html = buildWebviewShellHtml(baseArgs);
+		const meta = html.match(/<meta http-equiv="Content-Security-Policy" content="([^"]+)"\s*\/>/);
+		assert.ok(meta, "expected a Content-Security-Policy meta tag");
+		const directive = meta[1];
+		// The directive must still be non-empty and contain the script-src /
+		// style-src / img-src / connect-src names. We deliberately do not
+		// require any source tokens inside the unconfigured directives, only
+		// that the meta tag parses and the directive list stays well-formed.
+		for (const name of ["default-src", "script-src", "style-src", "img-src", "connect-src"]) {
+			assert.ok(directive.includes(name), `directive missing ${name}: ${directive}`);
+		}
+		// No standalone empty-token runs like ';;' or '  ;' should appear.
+		assert.ok(!/;\s*;/.test(directive), `directive has empty entries: ${directive}`);
+	});
+
+	test("buildWebviewShellHtml end-to-end with a real nonce has no CSP-unsafe characters in the meta directive", () => {
+		// The killer regression test for the VS Code 1.117.0 bug:
+		// render the shell 100 times with a fresh generateNonce() output and
+		// assert that the nonce value embedded in the meta CSP and on the
+		// <script> tag is restricted to [A-Za-z0-9_-] (no '+', '/', '=').
+		// If generateNonce ever regresses to standard base64 the first render
+		// would fail.
+		for (let i = 0; i < 100; i++) {
+			const html = buildWebviewShellHtml({ ...baseArgs, nonce: generateNonce() });
+			const meta = html.match(/<meta http-equiv="Content-Security-Policy" content="([^"]+)"\s*\/>/);
+			assert.ok(meta, `render ${i}: missing meta CSP`);
+			const directive = meta[1];
+
+			// Extract the nonce-source value from the meta CSP, e.g.
+			// 'nonce-r2Sv/xCx...' -> r2Sv/xCx... . This is the only place
+			// where a CSP-unsafe character would break the directive.
+			const nonceSourceMatch = directive.match(/'nonce-([^']*)'/);
+			assert.ok(nonceSourceMatch, `render ${i}: no nonce-source in directive: ${directive}`);
+			const nonceValue = nonceSourceMatch[1];
+			assert.ok(
+				!/[+/=]/.test(nonceValue),
+				`render ${i}: nonce value contains CSP-unsafe character(s): ${nonceValue}`,
+			);
+			assert.match(nonceValue, /^[A-Za-z0-9_-]+$/);
+
+			// And the same nonce value should be on the <script> tag, also
+			// free of CSP-unsafe characters.
+			const scriptMatch = html.match(/<script nonce="([^"]+)">/);
+			assert.ok(scriptMatch, `render ${i}: no script tag with nonce`);
+			assert.equal(scriptMatch[1], nonceValue);
+			assert.ok(
+				!/[+/=]/.test(scriptMatch[1]),
+				`render ${i}: script nonce attribute contains CSP-unsafe character(s): ${scriptMatch[1]}`,
+			);
+		}
 	});
 });

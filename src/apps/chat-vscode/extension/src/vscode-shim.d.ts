@@ -16,6 +16,14 @@ declare module "vscode" {
 	export interface Webview {
 		html: string;
 		options: WebviewOptions;
+		/**
+		 * A unique origin string (e.g. `vscode-webview://abc123...`) that
+		 * VS Code assigns to this webview. Recommended to be included in
+		 * the meta CSP `script-src` and `style-src` lists so the merged
+		 * CSP stays valid on VS Code versions that prepend their own
+		 * default CSP. See https://code.visualstudio.com/api/extension-guides/webview#content-security-policy
+		 */
+		cspSource: string;
 		postMessage(message: unknown): Thenable<boolean>;
 		onDidReceiveMessage: { (listener: (message: unknown) => unknown): { dispose(): unknown } };
 	}

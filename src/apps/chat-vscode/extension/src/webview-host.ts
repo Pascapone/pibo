@@ -96,6 +96,7 @@ export function createWebviewHost(
 				baseUrl: options.baseUrl,
 				command: EMPTY_STATE_COMMAND,
 				nonce,
+				cspSource: view.webview.cspSource,
 			});
 
 			view.webview.onDidReceiveMessage(async (raw: unknown) => {
