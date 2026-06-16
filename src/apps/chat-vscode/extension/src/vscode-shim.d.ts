@@ -31,12 +31,32 @@ declare module "vscode" {
 	export interface WebviewView {
 		webview: Webview;
 		visible: boolean;
+		/**
+		 * Fires when the webview is disposed. Optional in our shim
+		 * because the real `vscode` types expose it on `WebviewView`
+		 * but older bundled versions only expose it on `Webview`.
+		 */
+		onDidDispose?: { (listener: () => unknown): { dispose(): unknown } };
+	}
+
+	export interface WebviewPortMapping {
+		webviewPort: number;
+		extensionHostPort: number;
 	}
 
 	export interface WebviewOptions {
 		enableScripts?: boolean;
 		retainContextWhenHidden?: boolean;
 		localResourceRoots?: readonly Uri[];
+		/**
+		 * Port-mapped origins: traffic to
+		 * `https://<webviewId>.vscode-resource.vscode-cdn.net:<webviewPort>`
+		 * is forwarded by the workbench to
+		 * `http://127.0.0.1:<extensionHostPort>`. Used to satisfy the
+		 * workbench's strict `connect-src` directive without exposing
+		 * the extension host on a public origin.
+		 */
+		portMapping?: readonly WebviewPortMapping[];
 	}
 
 	export interface WebviewViewProvider {

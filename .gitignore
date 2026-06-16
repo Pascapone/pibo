@@ -20,3 +20,6 @@ get-docker.sh
 *.jpg
 *.jpeg
 *.gif
+
+# Generated VS Code extension packages
+*.vsix

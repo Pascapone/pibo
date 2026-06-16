@@ -175,17 +175,53 @@ In der **CLI**:
 
 ## 7. Konfiguration
 
-Die Extension kennt eine Einstellung:
+Die Extension kennt folgende Einstellungen:
 
 - **`pibo.chatWebUrl`** (default: `http://127.0.0.1:4788`)
   → URL des laufenden Gateway. Anpassen, wenn dein Gateway woanders läuft
   (anderer Port, LAN-IP, Tunnel, etc.). Per-Workspace oder global setzen.
+- **`pibo.sidecar.port`** (default: `4789`)
+  → Loopback-Port für den eingebetteten Sidecar, der ab VS Code 1.117.0
+  die Web-App im Sidebar hostet. Wird automatisch auf einen freien
+  Loopback-Port umgestellt, wenn der Default belegt ist.
+- **`pibo.sidecar.gatewayProbeTimeoutMs`** (default: `1500`)
+  → Timeout für die Erreichbarkeits-Probe des Gateway. Wenn die Probe
+  fehlschlägt, fällt die Sidebar auf den Empty-State-Shell zurück.
 
 Ändern via:
 
-- VS Code: Settings → "Pibo Chat Web Url"
+- VS Code: Settings → "Pibo"
 - JSON: `"pibo.chatWebUrl": "http://192.168.1.50:4788"` in `.vscode/settings.json`
 - Env: `PIBO_CHAT_WEB_URL=http://...` (überschreibt alles)
+
+## 7a. Architektur (ab 1.4.0): Sidecar + Inlined SPA
+
+VS Code ab 1.117.0 hat die Workbench-CSP für Webviews verschärft
+(`frame-src 'self'`). Die ältere Sidebar-Implementierung hat das
+Chat-vscode-SPA über `window.location.replace('http://127.0.0.1:4788/...')`
+geladen — das wird seit 1.117.0 von der Workbench blockiert.
+
+Die neue Architektur umgeht die Sperre, ohne die Workbench-CSP zu lockern:
+
+1. **Sidecar** — eine kleine Node.js HTTP-Server-Instanz im Extension-Host,
+   gebunden an `127.0.0.1:<port>` (Default 4789). Proxied `/api/...`-Calls
+   vom Webview zum Gateway, hält die dev-auth-Cookie-Session im Speicher
+   und streamt Antworten 1:1 (wichtig für SSE). Bindet ausschließlich auf
+   Loopback, erzwingt `vscode-webview://`-CORS, niemals extern erreichbar.
+2. **Port-Mapping** — VS Code routet Anfragen an
+   `https://<webviewId>.vscode-resource.vscode-cdn.net:<port>` intern
+   auf `http://127.0.0.1:<port>` weiter. Diese Origin ist in der
+   Workbench-`connect-src` whitelisted.
+3. **Inlined Bundle** — der gebaute Vite-Output (`assets/index-*.js`,
+   `assets/index-*.css`) wird in den Webview-HTML als `<script nonce=...>`
+   und `<style nonce=...>` inlined. Dadurch umgehen wir die strikte
+   `script-src`-Direktive der Workbench.
+4. **Health-Probe** — beim Webview-Setup prüft der Sidecar, ob das
+   Gateway erreichbar ist. Wenn ja, inlined SPA. Wenn nein, klassische
+   Empty-State-Shell mit `pibo gateway:web`-Hinweis.
+
+Trade-offs und Sicherheitsanalyse stehen im Implementierungs-Plan
+`docs/plans/vscode-webview-sidecar-implementation-plan-2026-06-15.md`.
 
 ## 8. Troubleshooting
 

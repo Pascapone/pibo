@@ -2,9 +2,12 @@
 // Build and package the Pibo VS Code extension into a .vsix file.
 //
 // Pipeline:
-//   1. Run `vscode:extension:build` (esbuild → src/apps/chat-vscode/dist/extension/extension.cjs).
-//   2. Run `vsce package` from the extension directory.
-//   3. Copy the .vsix to a stable path inside the repo so the release script
+//   1. Run `vscode:webview:build` (vite → dist/apps/chat-vscode-web/).
+//   2. Run `vscode:extension:build` (esbuild → src/apps/chat-vscode/dist/extension/extension.cjs).
+//   3. Copy the webview bundle into src/apps/chat-vscode/dist/chat-vscode-web/
+//      so the sidecar can read it at runtime from context.extensionPath.
+//   4. Run `vsce package` from the extension directory.
+//   5. Copy the .vsix to a stable path inside the repo so the release script
 //      can attach it to a GitHub Release without having to discover the
 //      vsce-default output location.
 
@@ -17,6 +20,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..");
 const packageDir = resolve(root, "src/apps/chat-vscode");
 const outDir = resolve(packageDir, "dist/extension");
+const sidecarBundleDir = resolve(packageDir, "dist/chat-vscode-web");
+const webviewOutDir = resolve(root, "dist/apps/chat-vscode-web");
 const artifactsDir = resolve(root, "dist/apps/vscode-artifacts");
 
 if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
@@ -27,7 +32,27 @@ function run(command, args, cwd) {
 	execFileSync(command, args, { cwd, stdio: "inherit" });
 }
 
+function copyDirectory(src, dst) {
+	if (!existsSync(src)) {
+		throw new Error(`source directory not found: ${src}`);
+	}
+	mkdirSync(dst, { recursive: true });
+	for (const entry of readdirSync(src)) {
+		const s = resolve(src, entry);
+		const d = resolve(dst, entry);
+		const stat = statSync(s);
+		if (stat.isDirectory()) {
+			copyDirectory(s, d);
+		} else {
+			copyFileSync(s, d);
+		}
+	}
+}
+
+run("npm", ["run", "--silent", "vscode:webview:build"], root);
 run("npm", ["run", "--silent", "vscode:extension:build"], root);
+copyDirectory(webviewOutDir, sidecarBundleDir);
+console.log(`[vscode-package] copied ${webviewOutDir} -> ${sidecarBundleDir}`);
 
 const manifest = JSON.parse(readFileSync(resolve(packageDir, "package.json"), "utf8"));
 const version = manifest.version ?? "0.0.0";
@@ -57,3 +82,4 @@ console.log(`[vscode-package] wrote ${targetPath} (${sizeBytes} bytes)`);
 const latestPath = resolve(artifactsDir, "latest.vsix");
 copyFileSync(sourcePath, latestPath);
 console.log(`[vscode-package] wrote ${latestPath}`);
+
