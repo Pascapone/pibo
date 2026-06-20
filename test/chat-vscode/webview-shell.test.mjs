@@ -8,7 +8,6 @@ import { describe, test } from "node:test";
 
 const baseArgs = {
 	healthUrl: "http://127.0.0.1:4788/api/chat/bootstrap?roomId=__vscode_health__",
-	targetUrl: "http://127.0.0.1:4788/apps/chat-vscode/?workspace=/home/x",
 	baseUrl: "http://127.0.0.1:4788",
 	command: EMPTY_STATE_COMMAND,
 	nonce: "test-nonce-123",
@@ -75,12 +74,42 @@ describe("chat-vscode/webview-shell", () => {
 		assert.match(html, /HEALTH = "http:\/\/example\.test\/api\/health"/);
 	});
 
-	test("buildWebviewShellHtml injects the target URL", () => {
-		const html = buildWebviewShellHtml({
-			...baseArgs,
-			targetUrl: "http://example.test/webview?roomId=r1",
-		});
-		assert.match(html, /TARGET = "http:\/\/example\.test\/webview\?roomId=r1"/);
+	test("buildWebviewShellHtml does NOT use window.location.replace (CSP-blocked on VS Code 1.117+)", () => {
+		// The old shell navigated to TARGET via `window.location.replace`
+		// when the gateway health probe succeeded. On VS Code 1.117.0+
+		// the workbench CSP `frame-src 'self'` blocks that navigation
+		// (the shell's origin is `vscode-webview://`, not the gateway
+		// origin). The shell must instead ask the extension host to swap
+		// the webview HTML via postMessage. Asserting the absence of
+		// `window.location.replace` here is the regression guard.
+		const html = buildWebviewShellHtml(baseArgs);
+		assert.ok(
+			!html.includes("window.location.replace"),
+			"shell HTML must not use window.location.replace; it is CSP-blocked",
+		);
+		assert.ok(
+			!html.includes("TARGET ="),
+			"shell HTML must not embed a TARGET URL constant; navigation lives on the extension host",
+		);
+	});
+
+	test("buildWebviewShellHtml requests the inlined swap via postMessage when the gateway is reachable", () => {
+		const html = buildWebviewShellHtml(baseArgs);
+		assert.match(html, /type: "pibo\/swap-to-inlined"/);
+		assert.match(html, /vscode\.postMessage\(/);
+		assert.match(html, /pibo\/swap-to-inlined-result/);
+	});
+
+	test("buildWebviewShellHtml renders a hint placeholder for swap failures", () => {
+		// When the swap fails (e.g. dev-auth handshake did not
+		// complete because the gateway is in Better Auth mode), the
+		// shell surfaces the hint from the extension host in a
+		// dedicated <p id="hint"> element. The hint is hidden by
+		// default and the swap-result message handler toggles it on
+		// when a non-ok result arrives.
+		const html = buildWebviewShellHtml(baseArgs);
+		assert.match(html, /<p id="hint" class="hidden">/);
+		assert.match(html, /hintEl\.textContent = data\.hint/);
 	});
 
 	test("buildWebviewShellHtml embeds the health-check timeout", () => {
@@ -121,10 +150,16 @@ describe("chat-vscode/webview-shell", () => {
 		assert.match(html, /cache: "no-store"/);
 	});
 
-	test("buildWebviewShellHtml uses location.replace for the redirect", () => {
+	test("buildWebviewShellHtml uses postMessage for the swap (no top-level navigation)", () => {
 		const html = buildWebviewShellHtml(baseArgs);
-		// Use replace, not href=, so the back button doesn't trap the user
-		assert.match(html, /window\.location\.replace\(TARGET\)/);
+		// The shell must NOT navigate via `window.location.replace`. The
+		// gateway reachable branch must use `vscode.postMessage({ type:
+		// "pibo/swap-to-inlined" })` so the extension host can replace
+		// the webview HTML with the inlined SPA. The shell listens for
+		// `pibo/swap-to-inlined-result` so it can surface failures
+		// inline if the extension reports the gateway is not in
+		// dev-auth mode.
+		assert.match(html, /type: "pibo\/swap-to-inlined"/);
 	});
 
 	test("buildWebviewShellHtml polls while in the empty state", () => {

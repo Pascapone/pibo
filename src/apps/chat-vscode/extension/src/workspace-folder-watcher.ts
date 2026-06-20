@@ -1,10 +1,20 @@
 import * as vscode from "vscode";
-import { canonicalizePath, resolveRoomForWorkspace, type RoomResolution } from "./room-resolver";
+import {
+	canonicalizePath,
+	resolveRoomForWorkspace,
+	type CookieSource,
+	type RoomResolution,
+} from "./room-resolver";
 import type { WebviewProvider } from "./webview-host";
 
 export type WatcherOptions = {
 	baseUrl: string;
 	webviewProvider: WebviewProvider;
+	/**
+	 * Optional dev-auth cookie source. When provided, the resolver
+	 * attaches the cookie so the gateway can identify the request.
+	 */
+	cookieSource?: CookieSource;
 };
 
 const STATE_KEY_ROOM_ID = "pibo-vscode.activeRoomId";
@@ -23,7 +33,9 @@ export function createWorkspaceFolderWatcher(
 		const canonical = await canonicalizePath(folder);
 		let resolution: RoomResolution;
 		try {
-			resolution = await resolveRoomForWorkspace(options.baseUrl, canonical);
+			resolution = await resolveRoomForWorkspace(options.baseUrl, canonical, {
+				cookieSource: options.cookieSource,
+			});
 		} catch (caught) {
 			vscode.window.showErrorMessage(`Pibo: failed to resolve room: ${caught instanceof Error ? caught.message : String(caught)}`);
 			return;

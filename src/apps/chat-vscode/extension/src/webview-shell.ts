@@ -16,7 +16,6 @@ export function generateNonce(): string {
 
 export type WebviewShellArgs = {
 	healthUrl: string;
-	targetUrl: string;
 	baseUrl: string;
 	command: string;
 	nonce: string;
@@ -37,17 +36,22 @@ export type WebviewShellArgs = {
  * Build the WebView HTML shell.
  *
  * The shell probes the gateway health endpoint on load. If the gateway
- * responds, it navigates to the gateway-served webview bundle. If the
- * gateway is not reachable, it shows a clear empty state with the
- * command the user needs to run.
+ * responds, it asks the extension host to swap the webview HTML for
+ * the inlined chat-vscode SPA via a postMessage round-trip
+ * (`pibo/swap-to-inlined`). If the swap succeeds, the extension
+ * replaces the shell with the inlined SPA. If the swap fails (the
+ * gateway is reachable but not in dev-auth mode, for example), the
+ * shell stays put and shows the failure reason inline.
  *
- * The WebView polls every `pollIntervalMs` while in the empty state and
- * auto-navigates as soon as the gateway becomes reachable.
+ * If the gateway is not reachable at all, the shell shows a clear
+ * empty state with the command the user needs to run.
+ *
+ * The shell polls every `pollIntervalMs` while in the empty state and
+ * auto-swaps as soon as the gateway becomes reachable.
  */
 export function buildWebviewShellHtml(args: WebviewShellArgs): string {
 	const {
 		healthUrl,
-		targetUrl,
 		baseUrl,
 		command,
 		nonce,
@@ -101,6 +105,10 @@ export function buildWebviewShellHtml(args: WebviewShellArgs): string {
   #status { margin-top: 14px; font-size: 11.5px;
             color: var(--vscode-descriptionForeground); }
   #empty-state { max-width: 560px; }
+  #hint { color: var(--vscode-errorForeground); font-size: 11.5px;
+          margin-top: 8px; padding: 6px 8px; border-radius: 3px;
+          background: var(--vscode-inputValidation-errorBackground, transparent);
+          border: 1px solid var(--vscode-inputValidation-errorBorder, transparent); }
   .hidden { display: none; }
 </style>
 </head>
@@ -115,24 +123,31 @@ export function buildWebviewShellHtml(args: WebviewShellArgs): string {
       <button id="btn-retry" class="secondary" type="button">Erneut prüfen</button>
     </div>
     <p id="status">Suche Gateway auf <code>${htmlBaseUrl}</code>…</p>
+    <p id="hint" class="hidden"></p>
   </div>
 <script nonce="${nonce}">
 (function () {
   const vscode = acquireVsCodeApi();
   const HEALTH = ${q(healthUrl)};
-  const TARGET = ${q(targetUrl)};
   const CMD = ${q(command)};
   const POLL_MS = ${pollIntervalMs};
   const TIMEOUT_MS = ${healthCheckTimeoutMs};
   const empty = document.getElementById("empty-state");
   const statusEl = document.getElementById("status");
 
-  async function check() {
+  // Track a swap request so we do not fire duplicates while one is
+  // already in flight. The extension host responds with a
+  // \`pibo/swap-to-inlined-result\` postMessage.
+  let swapInFlight = false;
+
+  async function probeGateway() {
+    // \`no-cors\` keeps the response opaque so we never leak token
+    // cookies across origins. The shell only needs to know whether
+    // the gateway is reachable enough to serve a bootstrap response.
     const ctl = new AbortController();
     const t = setTimeout(function () { ctl.abort(); }, TIMEOUT_MS);
     try {
       await fetch(HEALTH, { method: "GET", mode: "no-cors", cache: "no-store", signal: ctl.signal });
-      window.location.replace(TARGET);
       return true;
     } catch (_) {
       return false;
@@ -140,6 +155,42 @@ export function buildWebviewShellHtml(args: WebviewShellArgs): string {
       clearTimeout(t);
     }
   }
+
+  async function requestSwap() {
+    if (swapInFlight) return;
+    swapInFlight = true;
+    try {
+      const probe = await probeGateway();
+      if (!probe) {
+        statusEl.textContent = "Gateway noch nicht erreichbar.";
+        return;
+      }
+      vscode.postMessage({ type: "pibo/swap-to-inlined" });
+    } finally {
+      // We do not clear \`swapInFlight\` here; the response handler
+      // clears it once the extension host has answered.
+    }
+  }
+
+  window.addEventListener("message", function (event) {
+    const data = event.data;
+    if (!data || typeof data !== "object") return;
+    if (data.type === "pibo/swap-to-inlined-result") {
+      swapInFlight = false;
+      if (data.ok) {
+        // The extension host will replace \`window.webview.html\` on
+        // the next tick. Stay silent; do not poke the DOM while the
+        // swap is in flight.
+        statusEl.textContent = "Inlined view wird geladen…";
+      } else {
+        statusEl.textContent = "Swap fehlgeschlagen: " + (data.reason || "Unbekannter Fehler");
+        if (data.hint) {
+          const hintEl = document.getElementById("hint");
+          if (hintEl) hintEl.textContent = data.hint;
+        }
+      }
+    }
+  });
 
   function showEmpty() { empty.classList.remove("hidden"); }
 
@@ -156,15 +207,21 @@ export function buildWebviewShellHtml(args: WebviewShellArgs): string {
   document.getElementById("btn-term").addEventListener("click", function () {
     vscode.postMessage({ type: "pibo/open-terminal", command: CMD });
   });
-  document.getElementById("btn-retry").addEventListener("click", function () { check(); });
+  document.getElementById("btn-retry").addEventListener("click", function () { requestSwap(); });
 
   let pollId = null;
   (async function start() {
-    if (await check()) return;
+    if (await probeGateway()) {
+      requestSwap();
+      return;
+    }
     showEmpty();
     pollId = setInterval(async function () {
       if (document.hidden) return;
-      if (await check() && pollId) { clearInterval(pollId); pollId = null; }
+      if (await probeGateway()) {
+        requestSwap();
+        if (pollId) { clearInterval(pollId); pollId = null; }
+      }
     }, POLL_MS);
   })();
 })();
