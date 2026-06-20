@@ -417,6 +417,69 @@ describe("chat-vscode/sidecar", () => {
 			/authBridge/,
 		);
 	});
+
+	test("tryHandshake returns true and clears lastHandshakeError when the dev-auth flow completes", async () => {
+		const mockGateway = await startMockGateway((req, res) => {
+			res.writeHead(200, { "content-type": "application/json" });
+			res.end(JSON.stringify({ ok: true }));
+		});
+		const authBridge = makeAuthBridge(`http://127.0.0.1:${mockGateway.port}`);
+		const sidecar = createSidecar({
+			gatewayBaseUrl: `http://127.0.0.1:${mockGateway.port}`,
+			webviewId: "abc-handshake-ok",
+			authBridge,
+			logger: silentLogger(),
+		});
+		try {
+			await sidecar.start();
+			assert.equal(await sidecar.tryHandshake(), true);
+			assert.equal(sidecar.lastHandshakeError(), undefined);
+		} finally {
+			await sidecar.stop();
+			await stopServer(mockGateway.server);
+		}
+	});
+
+	test("tryHandshake returns false and exposes the error when the gateway is in Better Auth mode", async () => {
+		// Regression test for the user's 1.4.0 setup: the production
+		// gateway is in Better Auth mode, so the dev-auth handshake
+		// /api/auth/sign-in/social redirects to the real OAuth
+		// provider instead of /api/auth/callback/google?code=dev.
+		const mockGateway = await startMockGateway((req, res) => {
+			res.writeHead(302, { location: "https://pibo.neuralnexus.me/api/auth/sign-in/social" });
+			res.end();
+		});
+		const fetchImpl = async () =>
+			new Response(null, {
+				status: 302,
+				headers: { location: "https://pibo.neuralnexus.me/api/auth/sign-in/social" },
+			});
+		const authBridge = createSidecarAuthBridge({
+			gatewayBaseUrl: `http://127.0.0.1:${mockGateway.port}`,
+			fetchImpl,
+		});
+		const sidecar = createSidecar({
+			gatewayBaseUrl: `http://127.0.0.1:${mockGateway.port}`,
+			webviewId: "abc-better-auth",
+			authBridge,
+			logger: silentLogger(),
+		});
+		try {
+			await sidecar.start();
+			assert.equal(await sidecar.tryHandshake(), false);
+			// The handshake fails because the Better Auth gateway never
+			// sets the pibo_dev_session cookie in its 302 chain. Any of
+			// these error strings prove the handshake was attempted
+			// against Better Auth and not the local dev-auth flow.
+			assert.match(
+				sidecar.lastHandshakeError() ?? "",
+				/did not set pibo_dev_session cookie|missing Location|expected 30x/,
+			);
+		} finally {
+			await sidecar.stop();
+			await stopServer(mockGateway.server);
+		}
+	});
 });
 
 function silentLogger() {

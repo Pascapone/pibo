@@ -98,6 +98,20 @@ export type Sidecar = {
 	 */
 	isHealthy(): Promise<boolean>;
 	/**
+	 * Try to mint the dev-auth session cookie by running the OAuth
+	 * handshake. Returns `true` when the handshake completed, `false`
+	 * when it failed (e.g. the gateway is in Better Auth mode and the
+	 * local dev-auth flow is not available). On failure the error
+	 * message is exposed via `lastHandshakeError`.
+	 */
+	tryHandshake(): Promise<boolean>;
+	/**
+	 * Most recent error message from a failed `tryHandshake`. Used by
+	 * the webview host to surface an actionable hint when the swap
+	 * cannot complete because the gateway is not in dev-auth mode.
+	 */
+	lastHandshakeError(): string | undefined;
+	/**
 	 * Number of proxied requests handled since `start()`. Exposed for
 	 * diagnostics.
 	 */
@@ -122,6 +136,7 @@ export function createSidecar(options: SidecarOptions): Sidecar {
 	let inFlight = 0;
 	let proxiedRequests = 0;
 	let started = false;
+	let lastHandshakeErrorMessage: string | undefined;
 
 	const log: SidecarLogger = {
 		info: (m, ...args) => logger.info(`[pibo-sidecar:${actualPort}] ${m}`, ...args),
@@ -200,6 +215,7 @@ export function createSidecar(options: SidecarOptions): Sidecar {
 			cookieHeader = await authBridge.getCookieHeader();
 		} catch (err) {
 			const message = err instanceof Error ? err.message : String(err);
+			lastHandshakeErrorMessage = message;
 			log.warn(`auth handshake failed for ${method} ${requestPath}: ${message}`);
 			sendError(res, 502, `auth handshake failed: ${message}`, cors);
 			return;
@@ -454,6 +470,19 @@ export function createSidecar(options: SidecarOptions): Sidecar {
 
 	const startTimestamp = Date.now();
 
+	const tryHandshake = async (): Promise<boolean> => {
+		try {
+			await authBridge.handshake();
+			lastHandshakeErrorMessage = undefined;
+			return true;
+		} catch (err) {
+			const message = err instanceof Error ? err.message : String(err);
+			lastHandshakeErrorMessage = message;
+			log.warn(`handshake failed: ${message}`);
+			return false;
+		}
+	};
+
 	return {
 		start,
 		stop,
@@ -461,6 +490,8 @@ export function createSidecar(options: SidecarOptions): Sidecar {
 		isRunning: () => started,
 		getOrigin: () => portMappedOrigin(actualPort),
 		isHealthy: () => probeHealth(fetchImpl, gatewayBaseUrl, healthProbeTimeoutMs),
+		tryHandshake,
+		lastHandshakeError: () => lastHandshakeErrorMessage,
 		requestCount: () => proxiedRequests,
 	};
 }

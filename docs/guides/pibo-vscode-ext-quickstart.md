@@ -228,6 +228,9 @@ Trade-offs und Sicherheitsanalyse stehen im Implementierungs-Plan
 **"Gateway not available" / Sidebar zeigt Fehler**
 → Ist `pibo gateway:web` gestartet? Auf `curl http://127.0.0.1:4788/api/chat/bootstrap` testen.
 
+**Sidebar zeigt "Swap fehlgeschlagen: dev-auth handshake did not complete"**
+→ Du betreibst das Production-Gateway (Better Auth / Google OAuth). Die VS-Code-Extension hat keinen Browser, kann den OAuth-Flow nicht durchlaufen, und braucht den lokalen Dev-Auth-Flow. Lösung: `pibo gateway:web --auth=local` starten oder `pibo config set auth.mode local && pibo gateway:web`. Die Sidebar swapt dann automatisch von der Shell zur inlined SPA.
+
 **Login funktioniert nicht**
 → Google OAuth Client korrekt? Redirect-URI `http://127.0.0.1:4788/api/auth/callback/google` eingetragen? `pibo config show` zeigt deine Werte (redacted)?
 

@@ -6,7 +6,8 @@ import {
 	type Sidecar,
 	type SidecarLogger,
 } from "./sidecar";
-import { createSidecarAuthBridge, type SidecarAuthBridge } from "./sidecar-auth";
+import { createSidecarAuthBridge, type SidecarAuthBridge, DEV_AUTH_COOKIE_NAME } from "./sidecar-auth";
+import type { CookieSource } from "./room-resolver";
 import {
 	buildWebviewShellHtml,
 	EMPTY_STATE_COMMAND,
@@ -26,7 +27,8 @@ export type WebViewToHostMessage =
 	| { type: "pibo/select-room"; roomId: string }
 	| { type: "pibo/open-external"; uri: string }
 	| { type: "pibo/refresh-bootstrap-request" }
-	| { type: "pibo/open-terminal"; command: string };
+	| { type: "pibo/open-terminal"; command: string }
+	| { type: "pibo/swap-to-inlined" };
 
 type SelectorModeForWeb =
 	| { kind: "sessions"; roomId: string; sessions: readonly unknown[]; selectedPiboSessionId: string | null }
@@ -34,6 +36,14 @@ type SelectorModeForWeb =
 
 export type WebviewProviderOptions = {
 	baseUrl: string;
+	/**
+	 * Cookie source for proxied requests. When provided, the sidecar
+	 * uses this bridge for the dev-auth handshake instead of building
+	 * its own. Sharing a bridge between the sidecar and the room
+	 * resolver keeps a single session cookie alive across webview
+	 * dispose / re-render cycles.
+	 */
+	cookieSource?: CookieSource;
 	/**
 	 * Override factory for the sidecar. Defaults to `createSidecar`.
 	 * Tests use this to inject a mock.
@@ -66,6 +76,15 @@ export type WebviewProvider = vscode.WebviewViewProvider & {
 	pushSelectorMode(mode: SelectorMode): void;
 	getCurrentRoomId(): string | null;
 	getCurrentWorkspace(): string | null;
+	/**
+	 * Replace the current shell HTML (empty state) with the inlined
+	 * chat-vscode SPA. Used by the shell when its gateway health probe
+	 * transitions from unhealthy to healthy. Returns a structured
+	 * outcome so the caller can surface failures (e.g. dev-auth
+	 * handshake did not complete) without throwing across the
+	 * postMessage boundary.
+	 */
+	swapToInlinedView(): Promise<{ ok: true } | { ok: false; reason: string }>;
 };
 
 const STATE_KEY_ROOM_ID = "pibo-vscode.activeRoomId";
@@ -138,6 +157,7 @@ export function createWebviewHost(
 		},
 		getCurrentRoomId: () => context.workspaceState.get<string>(STATE_KEY_ROOM_ID) ?? null,
 		getCurrentWorkspace: () => context.workspaceState.get<string>(STATE_KEY_WORKSPACE) ?? null,
+		swapToInlinedView: () => swapToInlinedView(),
 
 		async resolveWebviewView(view: vscode.WebviewView) {
 			// Defensive cleanup if a previous webview session left a sidecar
@@ -155,7 +175,6 @@ export function createWebviewHost(
 			const cachedRoomId = context.workspaceState.get<string>(STATE_KEY_ROOM_ID);
 			const cachedWorkspace = context.workspaceState.get<string>(STATE_KEY_WORKSPACE);
 
-			const nonce = generateNonce();
 			const cspSource = view.webview.cspSource;
 
 			// 1. Start the sidecar so we have a port to embed in the
@@ -163,7 +182,9 @@ export function createWebviewHost(
 			let sidecar: Sidecar;
 			try {
 				const webviewId = webviewIdFromCspSource(cspSource);
-				const authBridge = createAuthBridgeImpl({ gatewayBaseUrl: options.baseUrl });
+				const authBridge = options.cookieSource
+					? wrapCookieSourceAsBridge(options.cookieSource)
+					: createAuthBridgeImpl({ gatewayBaseUrl: options.baseUrl });
 				sidecar = createSidecarImpl({
 					gatewayBaseUrl: options.baseUrl,
 					webviewId,
@@ -175,15 +196,18 @@ export function createWebviewHost(
 				const message = err instanceof Error ? err.message : String(err);
 				sidecarLogger.error(`sidecar failed to start: ${message}`);
 				// Fall back to the empty-state shell with a clear error.
-				view.webview.html = renderShellHtml({
-					baseUrl: options.baseUrl,
-					folder: folder ?? null,
-					roomId: cachedRoomId ?? null,
-					workspace: cachedWorkspace,
-					nonce,
-					cspSource,
-				});
-				view.webview.html = injectShellDiagnostic(view.webview.html, message);
+				const nonce = generateNonce();
+				view.webview.html = injectShellDiagnostic(
+					renderShellHtml({
+						baseUrl: options.baseUrl,
+						folder: folder ?? null,
+						roomId: cachedRoomId ?? null,
+						workspace: cachedWorkspace,
+						nonce,
+						cspSource,
+					}),
+					message,
+				);
 				attachMessageHandler(view, provider, context);
 				flush();
 				return;
@@ -203,43 +227,12 @@ export function createWebviewHost(
 			// 3. Probe the gateway. If reachable, serve the inlined
 			//    chat-vscode bundle. Otherwise fall back to the empty
 			//    state so the user can still start the gateway.
-			const healthy = await sidecar.isHealthy();
-			if (healthy) {
-				try {
-					const inlined = buildInlinedChatHtml({
-						extensionPath: context.extensionPath,
-						portMappedOrigin: sidecar.getOrigin(),
-						cspSource,
-						nonce,
-					});
-					// Append workspace / roomId to the inlined HTML's <base>
-					// href so the SPA's router sees them in window.location.
-					view.webview.html = appendQueryToBaseHref(inlined.html, {
-						workspace: folder,
-						roomId: cachedRoomId && (!folder || cachedWorkspace === folder) ? cachedRoomId : null,
-					});
-				} catch (err) {
-					const message = err instanceof Error ? err.message : String(err);
-					sidecarLogger.error(`inlined HTML build failed: ${message}`);
-					view.webview.html = injectShellDiagnostic(renderShellHtml({
-						baseUrl: options.baseUrl,
-						folder: folder ?? null,
-						roomId: cachedRoomId ?? null,
-						workspace: cachedWorkspace,
-						nonce,
-						cspSource,
-					}), `Inlined bundle unavailable: ${message}`);
-				}
-			} else {
-				view.webview.html = renderShellHtml({
-					baseUrl: options.baseUrl,
-					folder: folder ?? null,
-					roomId: cachedRoomId ?? null,
-					workspace: cachedWorkspace,
-					nonce,
-					cspSource,
-				});
-			}
+			await renderView(view, sidecar, {
+				folder,
+				cachedRoomId,
+				cachedWorkspace,
+				cspSource,
+			});
 
 			// 4. Wire up message handling. The sidecar is bound to the
 			//    webview's lifetime via `onDidDispose` below.
@@ -255,7 +248,138 @@ export function createWebviewHost(
 		},
 	};
 
+	async function renderView(
+		view: vscode.WebviewView,
+		sidecar: Sidecar,
+		args: {
+			folder: string | undefined;
+			cachedRoomId: string | undefined;
+			cachedWorkspace: string | undefined;
+			cspSource: string;
+		},
+	): Promise<void> {
+		const { folder, cachedRoomId, cachedWorkspace, cspSource } = args;
+		const nonce = generateNonce();
+		const healthy = await sidecar.isHealthy();
+		if (healthy) {
+			try {
+				const inlined = buildInlinedChatHtml({
+					extensionPath: context.extensionPath,
+					portMappedOrigin: sidecar.getOrigin(),
+					cspSource,
+					nonce,
+				});
+				view.webview.html = appendQueryToBaseHref(inlined.html, {
+					workspace: folder,
+					roomId: cachedRoomId && (!folder || cachedWorkspace === folder) ? cachedRoomId : null,
+				});
+			} catch (err) {
+				const message = err instanceof Error ? err.message : String(err);
+				sidecarLogger.error(`inlined HTML build failed: ${message}`);
+				view.webview.html = injectShellDiagnostic(
+					renderShellHtml({
+						baseUrl: options.baseUrl,
+						folder: folder ?? null,
+						roomId: cachedRoomId ?? null,
+						workspace: cachedWorkspace,
+						nonce,
+						cspSource,
+					}),
+					`Inlined bundle unavailable: ${message}`,
+				);
+			}
+		} else {
+			view.webview.html = renderShellHtml({
+				baseUrl: options.baseUrl,
+				folder: folder ?? null,
+				roomId: cachedRoomId ?? null,
+				workspace: cachedWorkspace,
+				nonce,
+				cspSource,
+			});
+		}
+	}
+
+	async function swapToInlinedView(): Promise<{ ok: true } | { ok: false; reason: string; hint?: string }> {
+		if (!webviewView) return { ok: false, reason: "no active webview" };
+		if (!activeSidecar || !activeSidecar.isRunning()) {
+			return { ok: false, reason: "sidecar is not running" };
+		}
+		// Run the dev-auth handshake explicitly so we can distinguish
+		// between "gateway unreachable" and "gateway reachable but not
+		// in dev-auth mode". The latter is the common Better-Auth
+		// production setup, and the shell can show an actionable hint.
+		const handshakeOk = await activeSidecar.tryHandshake();
+		const healthy = handshakeOk && await activeSidecar.isHealthy();
+		if (!healthy) {
+			const handshakeError = activeSidecar.lastHandshakeError();
+			const reason = handshakeError
+				? `dev-auth handshake did not complete: ${handshakeError}`
+				: "gateway is not reachable on the dev-auth path";
+			return {
+				ok: false,
+				reason,
+				hint: "Starte das Gateway mit `pibo gateway:web --auth=local`, oder setze `auth.mode = local` in `~/.pibo/config.json`. Der Dev-Auth-Flow ist erforderlich, weil die VS-Code-Extension keinen Browser für Google OAuth hat.",
+			};
+		}
+		const folders = vscode.workspace.workspaceFolders ?? [];
+		const folder = folders[0]?.uri.fsPath;
+		const cachedRoomId = context.workspaceState.get<string>(STATE_KEY_ROOM_ID);
+		const cachedWorkspace = context.workspaceState.get<string>(STATE_KEY_WORKSPACE);
+		await renderView(webviewView, activeSidecar, {
+			folder,
+			cachedRoomId,
+			cachedWorkspace,
+			cspSource: webviewView.webview.cspSource,
+		});
+		flush();
+		return { ok: true };
+	}
+
 	return provider;
+}
+
+/**
+ * Adapt a `CookieSource` (the extension-level singleton) into the
+ * `SidecarAuthBridge` shape the sidecar expects. The sidecar does not
+ * itself need to know whether the bridge was built locally or shared
+ * from the extension.
+ */
+function wrapCookieSourceAsBridge(cookieSource: CookieSource): SidecarAuthBridge {
+	let cachedToken: string | undefined;
+	return {
+		handshake: async () => {
+			const header = await cookieSource.getCookieHeader();
+			const value = parseCookieValue(header, DEV_AUTH_COOKIE_NAME);
+			if (!value) throw new Error("cookie source did not yield a pibo_dev_session value");
+			cachedToken = value;
+			return value;
+		},
+		getCookieHeader: async () => {
+			if (cachedToken) return `${DEV_AUTH_COOKIE_NAME}=${cachedToken}`;
+			const header = await cookieSource.getCookieHeader();
+			const value = parseCookieValue(header, DEV_AUTH_COOKIE_NAME);
+			if (!value) throw new Error("cookie source did not yield a pibo_dev_session value");
+			cachedToken = value;
+			return `${DEV_AUTH_COOKIE_NAME}=${value}`;
+		},
+		reset: () => {
+			cachedToken = undefined;
+		},
+		getCachedToken: () => cachedToken,
+	};
+}
+
+function parseCookieValue(cookieHeader: string | undefined, name: string): string | undefined {
+	if (!cookieHeader) return undefined;
+	for (const part of cookieHeader.split(";")) {
+		const eq = part.indexOf("=");
+		if (eq < 0) continue;
+		const key = part.slice(0, eq).trim();
+		if (key !== name) continue;
+		return part.slice(eq + 1).trim();
+	}
+	return undefined;
 }
 
 function renderShellHtml(args: {
@@ -266,13 +390,11 @@ function renderShellHtml(args: {
 	nonce: string;
 	cspSource: string;
 }): string {
-	const { baseUrl, folder, roomId, workspace, nonce, cspSource } = args;
-	const targetUrl = new URL(`${baseUrl}/apps/chat-vscode/`);
-	if (folder) targetUrl.searchParams.set("workspace", folder);
-	if (roomId && (!folder || workspace === folder)) targetUrl.searchParams.set("roomId", roomId);
+	const { baseUrl, roomId: _roomId, workspace: _workspace, nonce, cspSource } = args;
+	void _roomId;
+	void _workspace;
 	return buildWebviewShellHtml({
 		healthUrl: `${baseUrl}${GATEWAY_HEALTH_PATH}`,
-		targetUrl: targetUrl.toString(),
 		baseUrl,
 		command: EMPTY_STATE_COMMAND,
 		nonce,
@@ -342,6 +464,14 @@ function attachMessageHandler(
 				term.show();
 				term.sendText(message.command);
 			}
+		} else if (message.type === "pibo/swap-to-inlined") {
+			const result = await provider.swapToInlinedView();
+			view.webview.postMessage({
+				type: "pibo/swap-to-inlined-result",
+				ok: result.ok,
+				reason: result.ok ? undefined : result.reason,
+				hint: result.ok ? undefined : "hint" in result ? result.hint : undefined,
+			});
 		}
 	});
 }
