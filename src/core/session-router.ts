@@ -103,6 +103,7 @@ function profileForSession(
 		skills: baseProfile.skills,
 		tools: baseProfile.tools,
 		subagents: baseProfile.subagents,
+		mcpServers: baseProfile.mcpServers,
 		contextFiles: baseProfile.contextFiles,
 		piPackages: baseProfile.piPackages,
 		builtinTools: baseProfile.builtinTools,
