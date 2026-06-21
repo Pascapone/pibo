@@ -24,73 +24,18 @@
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import jwt from "jsonwebtoken";
+import {
+	GITHUB_API_ROOT,
+	getInstallationAccessToken,
+	ghWithFetch,
+	resolveAppCredentials,
+} from "./lib/github-app-auth.mjs";
 
-const here = dirname(fileURLToPath(import.meta.url));
-const root = resolve(here, "..");
-
+const USER_AGENT = "pibo-create-github-release";
 const DEFAULT_OWNER = "Pascapone";
 const DEFAULT_REPO = "pibo";
 const DEFAULT_TARGET = "main";
-const DEFAULT_APP_ENV = "/root/.pibo/uploads/github-app.env";
-const GITHUB_API_ROOT = "https://api.github.com";
-const USER_AGENT = "pibo-create-github-release";
 const ASSET_MAX_BYTES = 64 * 1024 * 1024;
-
-function readEnvFile(path) {
-	const text = readFileSync(path, "utf8");
-	const out = {};
-	for (const raw of text.split("\n")) {
-		const line = raw.trim();
-		if (!line || line.startsWith("#")) continue;
-		const eq = line.indexOf("=");
-		if (eq <= 0) continue;
-		const key = line.slice(0, eq).trim();
-		const value = line.slice(eq + 1).trim();
-		out[key] = value;
-	}
-	return out;
-}
-
-function resolveAppCredentials(cli) {
-	const appId = cli.appId ?? process.env.PIBO_GITHUB_APP_ID;
-	let appKeyPath = cli.appKey ?? process.env.PIBO_GITHUB_APP_KEY;
-	const envPath = cli.appEnv ?? process.env.PIBO_GITHUB_APP_ENV ?? DEFAULT_APP_ENV;
-	const fromFile = readEnvFile(envPath);
-	const finalAppId = appId ?? fromFile.GITHUB_APP_ID;
-	// The env file's GITHUB_APP_PRIVATE_KEY is sometimes a stale absolute
-	// path (e.g. an old server layout). If that path does not exist, fall
-	// back to the well-known sibling of the env file itself.
-	const siblingKey = resolve(dirname(envPath), "github-app-private-key.pem");
-	let finalKeyPath = appKeyPath;
-	if (!finalKeyPath) {
-		const envFileKey = fromFile.GITHUB_APP_PRIVATE_KEY;
-		if (envFileKey && pathExists(envFileKey)) {
-			finalKeyPath = envFileKey;
-		} else if (pathExists(siblingKey)) {
-			finalKeyPath = siblingKey;
-		} else if (envFileKey) {
-			finalKeyPath = envFileKey; // will error later with a clear path
-		} else {
-			finalKeyPath = siblingKey;
-		}
-	}
-	if (!finalAppId || !finalKeyPath) {
-		throw new Error(
-			`GitHub App credentials not found. Provide --app-id and --app-key, set PIBO_GITHUB_APP_ID and PIBO_GITHUB_APP_KEY, or use --app-env to point at a KEY=VALUE file.`,
-		);
-	}
-	return { appId: finalAppId, appKeyPath: finalKeyPath };
-}
-
-function pathExists(p) {
-	try {
-		readFileSync(p, "utf8");
-		return true;
-	} catch {
-		return false;
-	}
-}
 
 function parseArgs(argv) {
 	const parsed = {
@@ -182,7 +127,7 @@ Options:
 Authentication (first match wins):
   --app-id <id> --app-key <pem-path>
   PIBO_GITHUB_APP_ID and PIBO_GITHUB_APP_KEY env vars
-  --app-env <path>        Path to a KEY=VALUE env file. Default: ${DEFAULT_APP_ENV}
+  --app-env <path>        Path to a KEY=VALUE env file. (Default is platform-specific.)
 
 Other:
   --help, -h              Show this help.
@@ -191,68 +136,6 @@ Exit codes:
   0  release created (or already exists for that tag)
   1  any error
 `);
-}
-
-async function gh(method, url, token, body, contentType) {
-	// kept for back-compat; delegates to ghWithFetch
-	return ghWithFetch(fetch, method, url, token, body, contentType);
-}
-
-/**
- * Exchange a GitHub App JWT for an installation access token.
- * @param {string} appId
- * @param {string} privateKeyPem
- * @param {string} owner account login of the installation
- * @param {{ fetchImpl?: typeof fetch }} [options]
- */
-export async function getInstallationAccessToken(appId, privateKeyPem, owner, options = {}) {
-	const fetchImpl = options.fetchImpl ?? fetch;
-	const now = Math.floor(Date.now() / 1000);
-	const jwtToken = jwt.sign({ iat: now, exp: now + 600, iss: appId }, privateKeyPem, {
-		algorithm: "RS256",
-	});
-	const installations = await ghWithFetch(
-		fetchImpl,
-		"GET",
-		`${GITHUB_API_ROOT}/app/installations`,
-		jwtToken,
-	);
-	const inst = Array.isArray(installations)
-		? installations.find((i) => i && i.account && i.account.login === owner)
-		: undefined;
-	if (!inst) {
-		throw new Error(`No GitHub App installation found for account ${owner}`);
-	}
-	const access = await ghWithFetch(
-		fetchImpl,
-		"POST",
-		`${GITHUB_API_ROOT}/app/installations/${inst.id}/access_tokens`,
-		jwtToken,
-	);
-	if (!access || !access.token) {
-		throw new Error("GitHub installation access token response did not include a token");
-	}
-	return { token: access.token, expiresAt: access.expires_at };
-}
-
-async function ghWithFetch(fetchImpl, method, url, token, body, contentType) {
-	const headers = {
-		Authorization: `Bearer ${token}`,
-		Accept: "application/vnd.github+json",
-		"X-GitHub-Api-Version": "2022-11-28",
-		"User-Agent": USER_AGENT,
-	};
-	if (body !== undefined) headers["Content-Type"] = contentType || "application/json";
-	const response = await fetchImpl(url, {
-		method,
-		headers,
-		body: body !== undefined ? (typeof body === "string" ? body : JSON.stringify(body)) : undefined,
-	});
-	const text = await response.text();
-	if (!response.ok) {
-		throw new Error(`${method} ${url} failed: ${response.status} ${response.statusText}\n${text}`);
-	}
-	return text ? JSON.parse(text) : null;
 }
 
 /**
@@ -288,8 +171,9 @@ export async function createRelease(options) {
 		options.appId,
 		privateKeyPem,
 		options.owner,
-		{ fetchImpl },
+		{ fetchImpl, userAgent: USER_AGENT },
 	);
+	const apiOptions = { userAgent: USER_AGENT };
 
 	// Idempotency: if a release for this tag already exists, return it.
 	let existing = null;
@@ -299,6 +183,8 @@ export async function createRelease(options) {
 			"GET",
 			`${GITHUB_API_ROOT}/repos/${encodeURIComponent(options.owner)}/${encodeURIComponent(options.repo)}/releases/tags/${encodeURIComponent(options.tag)}`,
 			accessToken,
+			undefined,
+			apiOptions,
 		);
 	} catch (err) {
 		if (!/404/.test(String(err && err.message))) throw err;
@@ -328,6 +214,7 @@ export async function createRelease(options) {
 			prerelease: options.prerelease ?? false,
 			generate_release_notes: false,
 		},
+		apiOptions,
 	);
 
 	let uploadedAsset;
@@ -384,8 +271,8 @@ async function main() {
 	const creds = resolveAppCredentials(args);
 
 	const result = await createRelease({
-		owner: args.owner ?? DEFAULT_OWNER,
-		repo: args.repo ?? DEFAULT_REPO,
+		owner: args.owner ?? creds.owner ?? DEFAULT_OWNER,
+		repo: args.repo ?? creds.repo ?? DEFAULT_REPO,
 		tag: args.tag,
 		targetCommitish: args.targetCommitish,
 		name: args.name,
@@ -410,6 +297,7 @@ async function main() {
 	}
 }
 
+const here = dirname(fileURLToPath(import.meta.url));
 const isMain =
 	process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1]);
 if (isMain) {
