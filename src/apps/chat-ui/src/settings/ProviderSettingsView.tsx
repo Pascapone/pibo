@@ -21,6 +21,7 @@ const PROVIDERS: ProviderDef[] = [
 	{ id: "ollama", name: "Ollama", authMethod: "api_key" },
 	{ id: "minimax", name: "MiniMax", authMethod: "api_key" },
 	{ id: "minimax-cn", name: "MiniMax (China)", authMethod: "api_key" },
+	{ id: "glm", name: "GLM (Z.ai)", authMethod: "api_key" },
 ];
 
 type ProviderStatus = {

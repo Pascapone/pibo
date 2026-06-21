@@ -1,6 +1,7 @@
 import { createAgentSessionServices } from "@mariozechner/pi-coding-agent";
 import type { Api, Model } from "@mariozechner/pi-ai";
 import { registerMiniMaxProvider, type MiniMaxModelRegistryLike } from "../../providers/minimax.js";
+import { registerGlmProvider, type GlmModelRegistryLike } from "../../providers/glm.js";
 
 export type ModelCatalog = {
 	providers: ProviderCatalogEntry[];
@@ -33,7 +34,7 @@ type ModelCatalogServices = {
 
 type ModelCatalogServicesFactory = (options: { cwd: string }) => Promise<ModelCatalogServices>;
 
-type ModelRegistryExtensionHook = (registry: MiniMaxModelRegistryLike) => void;
+type ModelRegistryExtensionHook = (registry: MiniMaxModelRegistryLike & GlmModelRegistryLike) => void;
 
 export function buildModelCatalogFromRegistry(registry: ModelCatalogRegistry): ModelCatalog {
 	const providers = new Map<string, ProviderCatalogEntry>();
@@ -80,7 +81,7 @@ export async function loadModelCatalogWithServices(
 ): Promise<ModelCatalog> {
 	try {
 		const services = await createServices({ cwd });
-		extensionHook?.(services.modelRegistry as unknown as MiniMaxModelRegistryLike);
+		extensionHook?.(services.modelRegistry as unknown as MiniMaxModelRegistryLike & GlmModelRegistryLike);
 		return buildModelCatalogFromRegistry(services.modelRegistry);
 	} catch {
 		return { providers: [] };
@@ -88,5 +89,8 @@ export async function loadModelCatalogWithServices(
 }
 
 export async function loadModelCatalog(cwd = process.cwd()): Promise<ModelCatalog> {
-	return loadModelCatalogWithServices(createAgentSessionServices, cwd, registerMiniMaxProvider);
+	return loadModelCatalogWithServices(createAgentSessionServices, cwd, (registry) => {
+		registerMiniMaxProvider(registry);
+		registerGlmProvider(registry);
+	});
 }
