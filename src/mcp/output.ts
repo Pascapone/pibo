@@ -34,6 +34,33 @@ function color(text: string, colorCode: string): string {
 }
 
 /**
+ * Default character budget for truncated tool descriptions in compact views.
+ * Single-line summaries stay readable while keeping server overviews short.
+ */
+export const TOOL_DESCRIPTION_TRUNCATE_LENGTH = 100;
+
+/**
+ * Return a compact, single-line summary of a tool description.
+ *
+ * - Prefers the first paragraph (text before a blank line or line break).
+ * - Truncates at `maxLength` characters with an ellipsis suffix when needed.
+ * - Returns undefined when there is no description to summarize.
+ */
+export function truncateToolDescription(
+  description: string | undefined,
+  maxLength: number = TOOL_DESCRIPTION_TRUNCATE_LENGTH,
+): string | undefined {
+  if (!description) return undefined;
+
+  // Collapse whitespace so newlines and runs of spaces become single spaces.
+  const normalized = description.replace(/\s+/g, ' ').trim();
+  if (!normalized) return undefined;
+
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
+}
+
+/**
  * Format server list for display
  */
 export function formatServerList(
@@ -59,8 +86,12 @@ export function formatServerList(
     }
 
     for (const tool of server.tools) {
-      if (withDescriptions && tool.description) {
-        lines.push(`  • ${tool.name} - ${color(tool.description, colors.dim)}`);
+      // Always try to show a short summary so agents can pick a tool without -d.
+      const summary = withDescriptions
+        ? tool.description
+        : truncateToolDescription(tool.description);
+      if (summary) {
+        lines.push(`  • ${tool.name} - ${color(summary, colors.dim)}`);
       } else {
         lines.push(`  • ${tool.name}`);
       }
@@ -84,11 +115,12 @@ export function formatSearchResults(
   for (const result of results) {
     const server = color(result.server, colors.cyan);
     const tool = color(result.tool.name, colors.green);
-    // Always show description if available (grep is for discovery)
-    if (result.tool.description) {
-      lines.push(
-        `${server} ${tool} ${color(result.tool.description, colors.dim)}`,
-      );
+    // Always show a short summary so agents can decide without -d; full text on -d.
+    const summary = withDescriptions
+      ? result.tool.description
+      : truncateToolDescription(result.tool.description);
+    if (summary) {
+      lines.push(`${server} ${tool} ${color(summary, colors.dim)}`);
     } else {
       lines.push(`${server} ${tool}`);
     }
@@ -123,6 +155,14 @@ export function formatServerDetails(
     );
   }
 
+  // Surface the agent-facing Pibo description so it is visible without -d.
+  const piboDescription = config.pibo?.description?.trim();
+  if (piboDescription) {
+    lines.push('');
+    lines.push(`${color('Description:', colors.bold)}`);
+    lines.push(`  ${piboDescription}`);
+  }
+
   if (instructions) {
     lines.push('');
     lines.push(`${color('Instructions:', colors.bold)}`);
@@ -139,8 +179,11 @@ export function formatServerDetails(
 
   for (const tool of tools) {
     lines.push(`  ${color(tool.name, colors.green)}`);
-    if (withDescriptions && tool.description) {
-      lines.push(`    ${color(tool.description, colors.dim)}`);
+    const toolSummary = withDescriptions
+      ? tool.description
+      : truncateToolDescription(tool.description);
+    if (toolSummary) {
+      lines.push(`    ${color(toolSummary, colors.dim)}`);
     }
 
     // Show parameters from schema

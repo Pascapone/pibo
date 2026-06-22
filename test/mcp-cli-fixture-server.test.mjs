@@ -87,22 +87,25 @@ function handleMessage(message) {
 }
 `;
 
-async function withFixtureConfig(run) {
+async function withFixtureConfig(run, options = {}) {
   const cwd = await mkdtemp(join(tmpdir(), "pibo-mcp-fixture-server-"));
   try {
     const serverPath = join(cwd, "fixture-mcp-server.mjs");
     const configPath = join(cwd, "mcp_servers.json");
     await writeFile(serverPath, fixtureServerSource);
+    const fixtureServer = {
+      command: process.execPath,
+      args: [serverPath],
+    };
+    if (options.piboDescription) {
+      fixtureServer.pibo = {
+        description: options.piboDescription,
+        descriptionSource: "user",
+      };
+    }
     await writeFile(
       configPath,
-      JSON.stringify({
-        mcpServers: {
-          fixture: {
-            command: process.execPath,
-            args: [serverPath],
-          },
-        },
-      }),
+      JSON.stringify({ mcpServers: { fixture: fixtureServer } }),
     );
 
     const env = {
@@ -110,6 +113,7 @@ async function withFixtureConfig(run) {
       MCP_NO_DAEMON: "1",
       MCP_TIMEOUT: "5",
       MCP_CONFIG_PATH: configPath,
+      NO_COLOR: "1",
     };
 
     return await run({ cwd, env });
@@ -139,6 +143,48 @@ test("pibo mcp can discover and call a stdio fixture server", async () => {
       { cwd, env },
     );
     assert.equal(call.stdout.trim(), "echo: hi");
+  });
+});
+
+test("pibo mcp shows truncated tool descriptions by default without -d", async () => {
+  await withFixtureConfig(async ({ cwd, env }) => {
+    const list = await execFileAsync("node", [cliPath, "mcp"], { cwd, env });
+    // Default should already surface the tool summary without needing -d.
+    assert.match(list.stdout, /• echo - Echo text content back to the caller\./);
+
+    const info = await execFileAsync("node", [cliPath, "mcp", "info", "fixture"], { cwd, env });
+    assert.match(info.stdout, /Server: fixture/);
+    // Tool summary appears by default; parameter descriptions stay hidden until -d.
+    assert.match(info.stdout, /\becho\n\s+Echo text content back to the caller\./);
+    assert.doesNotMatch(info.stdout, /Text to echo\./);
+
+    const full = await execFileAsync("node", [cliPath, "mcp", "info", "fixture", "-d"], { cwd, env });
+    assert.match(full.stdout, /Text to echo\./);
+  });
+});
+
+test("pibo mcp info surfaces the configured pibo.description in the header", async () => {
+  await withFixtureConfig(
+    async ({ cwd, env }) => {
+      const info = await execFileAsync("node", [cliPath, "mcp", "info", "fixture"], { cwd, env });
+      assert.match(info.stdout, /Server: fixture/);
+      assert.match(info.stdout, /Description:\n\s+Bridge to the Unity Editor\./);
+    },
+    { piboDescription: "Bridge to the Unity Editor." },
+  );
+});
+
+test("pibo mcp reports only valid options in unknown-option errors", async () => {
+  await withFixtureConfig(async ({ cwd, env }) => {
+    await assert.rejects(
+      execFileAsync("node", [cliPath, "mcp", "--bogus"], { cwd, env }),
+      (error) => {
+        assert.match(error.stderr, /Valid options: -c\/--config, -d\/--with-descriptions/);
+        assert.doesNotMatch(error.stderr, /--json/);
+        assert.doesNotMatch(error.stderr, /--raw/);
+        return true;
+      },
+    );
   });
 });
 
