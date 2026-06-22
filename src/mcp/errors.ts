@@ -228,7 +228,7 @@ export function unknownOptionError(option: string): CliError {
     suggestion = `Use 'info' as a subcommand, not option: 'pibo mcp info <server>'`;
   } else {
     suggestion =
-      'Valid options: -c/--config, -j/--json, -d/--with-descriptions, -r/--raw';
+      'Valid options: -c/--config, -d/--with-descriptions';
   }
 
   return {

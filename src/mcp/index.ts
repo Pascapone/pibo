@@ -440,7 +440,7 @@ Commands:
 
 Options:
   -v, --version            Show version number
-  -d, --with-descriptions  Include tool descriptions
+  -d, --with-descriptions  Show full tool descriptions (default: first 100 chars)
   -c, --config <path>      Path to mcp_servers.json config file
   --no-setup               Skip registry setup commands during install
 
