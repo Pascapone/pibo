@@ -25,7 +25,7 @@ export const GLM_5_2_MODEL: OpenAiCompatModelSpec = {
 	id: "GLM-5.2",
 	name: "GLM 5.2",
 	reasoning: false,
-	contextWindow: 200000,
+	contextWindow: 1_000_000,
 	maxTokens: 8192,
 	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 	input: ["text"],
