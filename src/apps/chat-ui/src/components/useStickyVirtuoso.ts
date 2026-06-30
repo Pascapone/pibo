@@ -61,6 +61,7 @@ export function useStickyVirtuoso({
 		clearScheduledScroll();
 		scrollFrameRef.current = requestAnimationFrame(() => {
 			scrollFrameRef.current = undefined;
+			if (!stickyRef.current) return;
 			const lastIndex = itemCountRef.current - 1;
 			if (lastIndex < 0) return;
 
@@ -118,13 +119,14 @@ export function useStickyVirtuoso({
 	const markUserScrollIntent = useCallback((event?: Event) => {
 		userScrollIntentRef.current = true;
 		const scrollingAwayFromBottom = event instanceof WheelEvent && event.deltaY < 0;
+		if (scrollingAwayFromBottom) clearScheduledScroll();
 		if (scrollingAwayFromBottom || (scroller && !isAtBottom(scroller, atBottomThreshold))) setSticky(false);
 		if (userScrollIntentTimerRef.current !== undefined) window.clearTimeout(userScrollIntentTimerRef.current);
 		userScrollIntentTimerRef.current = window.setTimeout(() => {
 			userScrollIntentRef.current = false;
 			userScrollIntentTimerRef.current = undefined;
 		}, USER_SCROLL_INTENT_MS);
-	}, [atBottomThreshold, scroller, setSticky]);
+	}, [atBottomThreshold, clearScheduledScroll, scroller, setSticky]);
 
 	const updateFromScrollPosition = useCallback(() => {
 		if (!scroller) return;
@@ -132,7 +134,7 @@ export function useStickyVirtuoso({
 		const previousScrollTop = lastScrollTopRef.current;
 		lastScrollTopRef.current = scrollTop;
 		if (isAtBottom(scroller, atBottomThreshold)) {
-			setSticky(true);
+			if (!userScrollIntentRef.current) setSticky(true);
 			return;
 		}
 		const scrollingAwayFromBottom = previousScrollTop !== undefined && scrollTop < previousScrollTop - 1;
@@ -182,7 +184,7 @@ export function useStickyVirtuoso({
 
 	const atBottomStateChange = useCallback((atBottom: boolean) => {
 		if (atBottom) {
-			setSticky(true);
+			if (!userScrollIntentRef.current) setSticky(true);
 			return;
 		}
 		if (userScrollIntentRef.current) setSticky(false);
