@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import {
 	Archive,
 	ArchiveRestore,
@@ -16,7 +16,7 @@ import {
 	X,
 } from "lucide-react";
 import { deleteCustomAgent, patchCustomAgent, postCustomAgent, type SaveCustomAgentInput } from "../api-agent-designer";
-import { postContextFile } from "../api-context-files";
+import { listContextFiles, postContextFile } from "../api-context-files";
 import type { AgentCatalog, BootstrapData, CustomAgent, CustomAgentSubagent, ModelCatalog, ModelProfile } from "../types";
 import {
 	BUILTIN_TOOL_DESCRIPTIONS,
@@ -84,6 +84,8 @@ export function AgentsView({
 	const [draft, setDraft] = useState<AgentDraft>(() => createBlankAgentDraft(initialCatalog));
 	const [showUnsavedAgentDraft, setShowUnsavedAgentDraft] = useState(false);
 	const [saving, setSaving] = useState(false);
+	const [refreshingContextFiles, setRefreshingContextFiles] = useState(false);
+	const autoRefreshedBrokenContextFilesRef = useRef(new Set<string>());
 	const [showArchivedAgents, setShowArchivedAgents] = useState(() => localStorage.getItem("pibo.chat.showArchivedAgents") === "true");
 	const [deleteConfirmName, setDeleteConfirmName] = useState("");
 	const [localError, setLocalError] = useState<string | null>(null);
@@ -91,10 +93,41 @@ export function AgentsView({
 	const [newContextFileScope, setNewContextFileScope] = useState<"global" | "agent">("agent");
 	const designerAvailable = Boolean(catalog);
 
+	const refreshContextFileRegistry = useCallback(async () => {
+		setRefreshingContextFiles(true);
+		try {
+			const files = await listContextFiles();
+			const knownKeys = new Set(files.map((file) => file.key));
+			setCatalog((current) => current ? { ...current, contextFiles: files } : current);
+			setCustomAgents((current) => current.map((agent) => ({
+				...agent,
+				brokenContextFiles: (agent.brokenContextFiles ?? []).filter((key) => !knownKeys.has(key)),
+			})));
+			setDraft((current) => ({
+				...current,
+				brokenContextFiles: (current.brokenContextFiles ?? []).filter((key) => !knownKeys.has(key)),
+			}));
+			onAgentsChanged();
+			setLocalError(null);
+		} catch (caught) {
+			setLocalError(caught instanceof Error ? caught.message : String(caught));
+		} finally {
+			setRefreshingContextFiles(false);
+		}
+	}, [onAgentsChanged]);
+
 	useEffect(() => setCustomAgents(initialCustomAgents), [initialCustomAgents]);
 	useEffect(() => {
 		if (initialCatalog) setCatalog(initialCatalog);
 	}, [initialCatalog]);
+	useEffect(() => {
+		const keys = draft.brokenContextFiles ?? [];
+		if (!keys.length || refreshingContextFiles) return;
+		const signature = keys.slice().sort().join("\n");
+		if (autoRefreshedBrokenContextFilesRef.current.has(signature)) return;
+		autoRefreshedBrokenContextFilesRef.current.add(signature);
+		void refreshContextFileRegistry();
+	}, [draft.brokenContextFiles, refreshContextFileRegistry, refreshingContextFiles]);
 	const customProfileNames = useMemo(() => new Set(customAgents.map((agent) => agent.profileName)), [customAgents]);
 	const pluginProfiles = useMemo(
 		() => agents.filter((agent) => !customProfileNames.has(agent.name)),
@@ -487,10 +520,20 @@ export function AgentsView({
 								<div className="flex items-start gap-2 text-red-100">
 									<AlertTriangle size={14} className="mt-0.5 shrink-0" />
 									<div className="space-y-1">
-										<div className="text-sm font-medium">This agent references missing context files.</div>
-										<div className="text-xs text-red-200/90">Remove these broken links and save the agent to persist the cleanup.</div>
+										<div className="text-sm font-medium">This agent references missing or unregistered context files.</div>
+										<div className="text-xs text-red-200/90">Re-check context files before removing links that may still exist on disk.</div>
 									</div>
 								</div>
+								<button
+									type="button"
+									disabled={refreshingContextFiles}
+									onClick={() => void refreshContextFileRegistry()}
+									className="inline-flex w-fit items-center gap-2 border border-red-500/50 rounded-sm px-2 py-1 text-xs font-medium text-red-100 hover:border-red-300 hover:text-white disabled:opacity-50"
+									title="Re-check Context Files"
+								>
+									<RefreshCw size={12} className={refreshingContextFiles ? "animate-spin" : undefined} />
+									{refreshingContextFiles ? "Re-checking..." : "Re-check context files"}
+								</button>
 								<div className="grid gap-2">
 									{draft.brokenContextFiles.map((contextFileKey) => (
 										<div key={contextFileKey} className="flex items-center gap-2 border border-red-500/40 bg-[#2a1417] rounded-sm px-3 py-2">
