@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { withLiveSnapshots } from "../dist/apps/chat/chat-trace-helpers.js";
 import { buildTraceViewFromEvents, patchTraceViewWithEvent, patchTraceViewWithEvents } from "../dist/shared/trace-engine.js";
 
 function createEvent(overrides) {
@@ -120,6 +121,31 @@ test("execution commands issued during streaming attach to the active turn", () 
 	const turn = view.nodes.find((node) => node.type === "agent.turn");
 	assert.ok(turn, "expected active turn");
 	assert.deepEqual(turn.children.map((node) => node.title), ["Thinking", "status", "Agent Message"]);
+});
+
+test("live snapshots keep thinking before the assistant for the same turn", () => {
+	const baseView = createBaseView([
+		createEvent({ seq: 1, type: "message_started", createdAt: "2026-04-29T08:00:00.000Z", payload: { type: "message_started", eventId: "turn-1", text: "Hello", source: "user" } }),
+	], "running");
+
+	const liveView = withLiveSnapshots(baseView, [
+		{ type: "assistant_delta", piboSessionId: "chat:test", eventId: "turn-1", text: "Answer in progress" },
+		{ type: "thinking_delta", piboSessionId: "chat:test", eventId: "turn-1", text: "Reasoning in progress" },
+	], { piboSessionId: "chat:test", lastEventSequence: 1, status: "running" });
+
+	const liveTurn = liveView.nodes.find((node) => node.type === "agent.turn");
+	assert.ok(liveTurn, "expected active turn");
+	assert.deepEqual(liveTurn.children.map((node) => node.type), ["model.reasoning", "assistant.message"]);
+
+	const finalView = applyLiveEvents(liveView, [
+		createEvent({ seq: 4, type: "thinking_finished", createdAt: "2026-04-29T08:00:04.000Z", payload: { type: "thinking_finished", eventId: "turn-1", text: "Reasoning final" } }),
+		createEvent({ seq: 5, type: "assistant_message", createdAt: "2026-04-29T08:00:05.000Z", payload: { type: "assistant_message", eventId: "turn-1", text: "Answer final" } }),
+		createEvent({ seq: 6, type: "message_finished", createdAt: "2026-04-29T08:00:06.000Z", payload: { type: "message_finished", eventId: "turn-1", text: "Answer final" } }),
+	], "idle");
+
+	const finalTurn = finalView.nodes.find((node) => node.type === "agent.turn");
+	assert.ok(finalTurn, "expected finalized turn");
+	assert.deepEqual(finalTurn.children.map((node) => node.type), ["model.reasoning", "assistant.message"]);
 });
 
 test("execution commands after an errored turn remain chronological root nodes", () => {

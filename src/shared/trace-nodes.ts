@@ -20,11 +20,21 @@ function areTraceNodesSorted(nodes: readonly PiboTraceNode[]): boolean {
 }
 
 export function compareTraceNodes(left: PiboTraceNode, right: PiboTraceNode): number {
+	const bySameTurnPhase = compareSameTurnPhase(left, right);
+	if (bySameTurnPhase !== 0) return bySameTurnPhase;
 	const byStartTime = compareOptionalIsoTime(left.startedAt, right.startedAt);
 	if (byStartTime !== 0) return byStartTime;
 	const byOrder = compareTraceOrder(left.orderKey, right.orderKey);
 	if (byOrder !== 0) return byOrder;
 	return left.id.localeCompare(right.id);
+}
+
+function compareSameTurnPhase(left: PiboTraceNode, right: PiboTraceNode): number {
+	if (!left.eventId || left.eventId !== right.eventId) return 0;
+	const leftPhase = left.orderKey?.phaseRank;
+	const rightPhase = right.orderKey?.phaseRank;
+	if (leftPhase === undefined || rightPhase === undefined) return 0;
+	return leftPhase - rightPhase;
 }
 
 function compareOptionalIsoTime(left?: string, right?: string): number {
