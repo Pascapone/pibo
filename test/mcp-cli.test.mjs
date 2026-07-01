@@ -22,7 +22,15 @@ test("pibo root help prints compact discovery", async () => {
 
 	assert.match(stdout, /pibo - agent-oriented CLI/);
 	assert.match(stdout, /pibo <command> --help/);
+	assert.match(stdout, /--version/);
 	assert.doesNotMatch(stdout, /Usage:/);
+});
+
+test("pibo root version prints the package version", async () => {
+	const packageJson = JSON.parse(await readFile(resolve("package.json"), "utf-8"));
+	const { stdout } = await execFileAsync("node", [cliPath, "--version"]);
+
+	assert.equal(stdout, `${packageJson.version}\n`);
 });
 
 test("pibo config and tools help print compact discovery", async () => {

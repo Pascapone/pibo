@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { Command } from "commander";
 import {
 	PIBO_CONFIG_KEYS,
@@ -35,6 +36,18 @@ function printRootDiscovery(): void {
 	console.log(printRootDiscoveryText());
 }
 
+function getPiboVersion(): string {
+	const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf-8")) as { version?: unknown };
+	if (typeof packageJson.version !== "string" || packageJson.version.length === 0) {
+		throw new Error("Unable to read Pibo package version");
+	}
+	return packageJson.version;
+}
+
+function printPiboVersion(): void {
+	console.log(getPiboVersion());
+}
+
 function printConfigDiscovery(): void {
 	console.log(printConfigDiscoveryText());
 }
@@ -63,6 +76,11 @@ function isLoopbackBindForCli(host: string): boolean {
 export async function runPiboCli(argv = process.argv): Promise<void> {
 	if (argv[2] === "--help" || argv[2] === "-h") {
 		printRootDiscovery();
+		return;
+	}
+
+	if (argv[2] === "--version" || argv[2] === "-V") {
+		printPiboVersion();
 		return;
 	}
 
@@ -458,6 +476,9 @@ Commands:
   tui:sessions  Start the reduced Web Chat-derived session UI
   gateway      Inspect and restart host gateways through safe CLI commands
   gateway:web  Start a web gateway runtime (use --auth=local for loopback-only local auth)
+
+Options:
+  --version    Print the Pibo CLI version
 
 Next:
   pibo <command> --help
