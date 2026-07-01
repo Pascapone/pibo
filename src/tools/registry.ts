@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { ensureAgentBrowserWrapper } from './agent-browser-wrapper.js';
 import { detectDesktopEnv, hasDesktopDisplay, printDesktopEnvStatus, printLinuxVirtualDisplayHint } from './desktop-env.js';
-import { type ToolGuide, AGENT_BROWSER_GUIDE, BROWSER_USE_GUIDE, RALPH_GUIDE, REMOTE_BROWSER_GUIDE } from './guides.js';
+import { type ToolGuide, AGENT_BROWSER_GUIDE, BROWSER_USE_GUIDE, GRAPHIFY_GUIDE, RALPH_GUIDE, REMOTE_BROWSER_GUIDE } from './guides.js';
 import { ensureLinuxVirtualDisplay } from './linux-virtual-display.js';
 import {
   type ToolNpmRuntimeSpec,
@@ -57,6 +57,7 @@ const REGISTRY: CliToolEntry[] = [
       executableName: 'browser-use',
       pythonVersion: '3.12',
       homeEnvVar: 'BROWSER_USE_HOME',
+      doctorArgs: ['doctor'],
     },
     guides: [BROWSER_USE_GUIDE, REMOTE_BROWSER_GUIDE],
     notes: [
@@ -98,6 +99,29 @@ const REGISTRY: CliToolEntry[] = [
       'Start in one persistent shell with `eval "$(npm run --silent dev -- tools env agent-browser)"`.',
       'For authenticated Pibo Chat Web App testing, prefer `eval "$(npm run --silent dev -- tools agent-browser lease acquire --app pibo-chat --holder "$USER")"`.',
       'Discover details with `npm run dev -- tools show agent-browser` and `npm run dev -- tools guide agent-browser agent-browser`.',
+    ].join('\n'),
+  },
+  {
+    name: 'graphify',
+    description: 'Codebase visualization CLI that generates interactive knowledge graphs and reports.',
+    runtime: {
+      packageName: 'graphifyy',
+      executableName: 'graphify',
+      pythonVersion: '3.12',
+      postInstallArgs: ['install', '--platform', 'pi'],
+    },
+    guides: [GRAPHIFY_GUIDE],
+    notes: [
+      'Installed on demand into an isolated Python virtual environment from the graphifyy package.',
+      'The installer runs graphify install --platform pi after package installation so Graphify is ready for Pi/Pibo workflows.',
+      'Graphify writes generated graph artifacts under graphify-out/; prefer an ignored room/session artifact directory unless the user explicitly wants repo files.',
+      'Guides are available through pibo tools guide and are not loaded into pibo profiles automatically.',
+    ],
+    agentContextSnippet: [
+      'Codebase visualization CLI for graphify-out/graph.html, graph.json, and GRAPH_REPORT.md.',
+      'Start with `eval "$(npm run --silent dev -- tools env graphify)"`.',
+      'No LLM key: run `graphify .` on code, then `graphify cluster-only . --no-label`.',
+      'Guide: `npm run dev -- tools guide graphify graphify`.',
     ].join('\n'),
   },
   {

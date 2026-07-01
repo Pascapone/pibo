@@ -388,6 +388,78 @@ If \`browser-use --connect\` cannot find Chrome, ask the user whether they want 
 `,
 };
 
+export const GRAPHIFY_GUIDE: ToolGuide = {
+  name: 'graphify',
+  description: 'Generate codebase knowledge graphs with the Graphify CLI.',
+  content: `---
+name: graphify
+description: Generates interactive codebase knowledge graphs and markdown reports from a workspace folder.
+allowed-tools: Bash(graphify:*)
+---
+
+# Codebase Visualization with Graphify
+
+Graphify turns a folder into derived artifacts under \`graphify-out/\`:
+
+- \`graphify-out/graph.html\` — an interactive clickable graph;
+- \`graphify-out/graph.json\` — machine-readable graph data;
+- \`graphify-out/GRAPH_REPORT.md\` — a markdown summary with key concepts and suggested questions.
+
+Use it when a user asks to graph, map, visualize, or quickly understand a repo/workspace shape.
+
+## Prerequisites
+
+Install and apply the Pibo tool environment:
+
+\`\`\`bash
+pibo tools install graphify
+eval "$(pibo tools env graphify)"
+graphify --help
+\`\`\`
+
+Inside the Pibo source repo, use \`npm run --silent dev -- tools ...\` while testing local changes:
+
+\`\`\`bash
+npm run --silent dev -- tools install graphify
+eval "$(npm run --silent dev -- tools env graphify)"
+\`\`\`
+
+The installer uses the PyPI package \`graphifyy\` and runs \`graphify install --platform pi\` so the CLI is ready for Pi/Pibo workflows.
+
+## Core Workflow
+
+1. Choose the workspace path. Prefer the active Pibo Room or session workspace boundary when known.
+2. Run Graphify from that folder or pass the target path explicitly. With \`graphifyy==0.9.x\`, \`graphify .\` writes extraction output under \`graphify-out/\`.
+3. For a code-only workspace without an LLM key, run \`graphify cluster-only . --no-label\` after extraction to produce the HTML graph and markdown report.
+4. Put generated artifacts in an ignored room/session artifact directory when possible; do not commit them unless the user explicitly asks.
+5. Read \`graphify-out/GRAPH_REPORT.md\` first, then open \`graphify-out/graph.html\` when an interactive view is useful.
+
+\`\`\`bash
+cd /path/to/workspace
+graphify .
+graphify cluster-only . --no-label
+ls graphify-out/graph.html graphify-out/graph.json graphify-out/GRAPH_REPORT.md
+\`\`\`
+
+## Pibo Usage Notes
+
+- For Room-bound work, graph the Room workspace rather than the agent harness checkout unless the user asks otherwise.
+- If generating inside a Git repo, check \`git status --short\` before and after so graph artifacts are not accidentally included in unrelated commits.
+- Code-only extraction can run without an LLM API key. Including docs, README files, papers, images, or semantic-labeling steps may require a configured Graphify backend/API key; if no key is available, graph a code-only subdirectory or skip semantic labels with \`cluster-only . --no-label\`.
+- For large monorepos, start with a subdirectory such as \`src/\`, a code package, or a docs folder only when the needed LLM backend is configured.
+- Treat graph output as derived data. Recompute on demand when the branch or workspace changes.
+
+## Next Commands
+
+\`\`\`bash
+pibo tools show graphify
+pibo tools guide graphify graphify
+pibo tools path graphify
+pibo tools doctor graphify
+\`\`\`
+`,
+};
+
 export const REMOTE_BROWSER_GUIDE: ToolGuide = {
   name: 'remote-browser',
   description: 'Browser automation workflow for sandboxed or remote agents.',

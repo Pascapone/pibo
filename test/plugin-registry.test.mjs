@@ -47,7 +47,7 @@ test("default plugin registry builds capabilities without retired built-in codin
 		registry.getCapabilityCatalog().skills
 			.filter((skill) => skill.kind === "builtin")
 			.map((skill) => skill.name),
-		["pi-agent-harness", "pibo-spec-writing", "pibo-docker-system", "prd", "skill-creator", "ralph-loop", "ralph-prd-json", "web-annotations"],
+		["pi-agent-harness", "pibo-spec-writing", "pibo-docker-system", "graphify", "prd", "skill-creator", "ralph-loop", "ralph-prd-json", "web-annotations"],
 	);
 	assert.deepEqual(registry.getGatewayActionInfos(), [
 		{
@@ -143,7 +143,7 @@ test("default plugin registry builds capabilities without retired built-in codin
 		{
 			name: "model",
 			description: "Open the interactive model selector for authenticated providers.",
-			slashCommands: ["model"],
+			slashCommands: ["model", "models"],
 		},
 		{
 			name: "login.start",
@@ -186,27 +186,37 @@ test("gateway producer profile is available only through its parked registry", (
 
 test("capability catalog exposes installed pibo tool context hints", async () => {
 	const browserUse = findCliToolEntry("browser-use");
+	const graphify = findCliToolEntry("graphify");
 	assert.ok(browserUse);
+	assert.ok(graphify);
 	const piboHome = join(tmpdir(), `pibo-plugin-registry-tools-${Math.random().toString(36).slice(2)}`);
 
 	await withPiboHome(piboHome, async () => {
 		const paths = getToolPythonRuntimePaths(browserUse.name, browserUse.runtime);
+		const graphifyPaths = getToolPythonRuntimePaths(graphify.name, graphify.runtime);
 		mkdirSync(paths.binDir, { recursive: true });
+		mkdirSync(graphifyPaths.binDir, { recursive: true });
 		writeFileSync(paths.executablePath, "#!/bin/sh\n");
+		writeFileSync(graphifyPaths.executablePath, "#!/bin/sh\n");
 
 		const registry = createDefaultPiboPluginRegistry();
 		const catalog = registry.getCapabilityCatalog();
 		const browserUseCatalogEntry = catalog.piboTools.find((tool) => tool.name === "browser-use");
+		const graphifyCatalogEntry = catalog.piboTools.find((tool) => tool.name === "graphify");
 		const ralphCatalogEntry = catalog.piboTools.find((tool) => tool.name === "ralph");
 
 		assert.ok(browserUseCatalogEntry);
 		assert.match(browserUseCatalogEntry.snippet, /tools env browser-use/);
 		assert.match(browserUseCatalogEntry.snippet, /tools browser-use lease acquire/);
+		assert.ok(graphifyCatalogEntry);
+		assert.match(graphifyCatalogEntry.snippet, /tools env graphify/);
+		assert.match(graphifyCatalogEntry.snippet, /GRAPH_REPORT\.md/);
 		assert.ok(ralphCatalogEntry);
 		assert.match(ralphCatalogEntry.snippet, /pibo ralph templates/);
 		assert.match(ralphCatalogEntry.snippet, /pibo tools guide ralph ralph/);
 
 		rmSync(paths.rootDir, { recursive: true, force: true });
+		rmSync(graphifyPaths.rootDir, { recursive: true, force: true });
 	});
 });
 

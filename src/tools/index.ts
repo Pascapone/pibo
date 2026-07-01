@@ -215,9 +215,13 @@ function printEnv(name: string): void {
   }
 
   const binDir = status.executablePath.replace(/\/[^/]+$/, '');
-  const wrapperPath = entry.name === 'agent-browser' ? ensureAgentBrowserWrapper(status) : ensureBrowserUseWrapper(status);
-  const wrapperBinDir = wrapperPath ? wrapperPath.replace(/\/[^/]+$/, '') : `${status.homeDir}/bin`;
-  console.log(`export PATH="${wrapperBinDir}:${binDir}:$PATH"`);
+  const wrapperPath = entry.name === 'browser-use'
+    ? ensureBrowserUseWrapper(status)
+    : entry.name === 'agent-browser'
+      ? ensureAgentBrowserWrapper(status)
+      : undefined;
+  const envBinDirs = wrapperPath ? `${wrapperPath.replace(/\/[^/]+$/, '')}:${binDir}` : binDir;
+  console.log(`export PATH="${envBinDirs}:$PATH"`);
   if (entry.runtime.homeEnvVar) console.log(`export ${entry.runtime.homeEnvVar}="${status.homeDir}"`);
   if (desktop.display) console.log(`export DISPLAY="${desktop.display}"`);
   if (desktop.waylandDisplay) console.log(`export WAYLAND_DISPLAY="${desktop.waylandDisplay}"`);

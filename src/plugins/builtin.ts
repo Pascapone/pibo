@@ -158,6 +158,11 @@ export const piboCorePlugin = definePiboPlugin({
 			kind: "builtin",
 		});
 		api.registerSkill({
+			name: "graphify",
+			path: builtinSkillPath("graphify"),
+			kind: "builtin",
+		});
+		api.registerSkill({
 			name: "prd",
 			path: builtinSkillPath("prd"),
 			kind: "builtin",

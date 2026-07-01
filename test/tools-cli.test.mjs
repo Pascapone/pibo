@@ -122,8 +122,40 @@ test("pibo tools lists curated CLI tools", async () => {
 		const result = await execFileAsync("node", [cliPath, "tools", "list"], { cwd, env });
 
 		assert.match(result.stdout, /browser-use/);
+		assert.match(result.stdout, /graphify\tavailable\tCodebase visualization CLI/);
 		assert.match(result.stdout, /available/);
 		assert.match(result.stdout, /ralph\tinstalled\tPibo-native continuous agent job runner/);
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test("pibo tools exposes Graphify as a curated CLI tool", async () => {
+	const cwd = await mkdtemp(join(tmpdir(), "pibo-tools-graphify-"));
+	try {
+		const env = { ...process.env, PIBO_HOME: join(cwd, "pibo-home") };
+
+		const show = await execFileAsync("node", [cliPath, "tools", "show", "graphify"], { cwd, env });
+		assert.match(show.stdout, /package: graphifyy/);
+		assert.match(show.stdout, /pibo tools env graphify/);
+		assert.match(show.stdout, /pibo tools guide graphify graphify/);
+
+		const guide = await execFileAsync("node", [cliPath, "tools", "guide", "graphify", "graphify"], { cwd, env });
+		assert.match(guide.stdout, /# Codebase Visualization with Graphify/);
+		assert.match(guide.stdout, /graphify install --platform pi/);
+		assert.match(guide.stdout, /graphify-out\/GRAPH_REPORT\.md/);
+		assert.match(guide.stdout, /graphify cluster-only \. --no-label/);
+		assert.match(guide.stdout, /LLM API key/);
+		assert.doesNotMatch(guide.stdout, /ls graph\.html graph\.json GRAPH_REPORT\.md/);
+
+		const install = await execFileAsync("node", [cliPath, "tools", "install", "graphify", "--no-setup"], { cwd, env });
+		assert.match(install.stdout, /Install target graphify/);
+		assert.match(install.stdout, /pibo-home\/tools\/graphify/);
+		assert.match(install.stdout, /env: pibo tools env graphify/);
+
+		const envOutput = await execFileAsync("node", [cliPath, "tools", "env", "graphify"], { cwd, env });
+		assert.match(envOutput.stdout, /tools\/graphify\/.venv\/bin/);
+		assert.doesNotMatch(envOutput.stdout, /browser-use/);
 	} finally {
 		await rm(cwd, { recursive: true, force: true });
 	}

@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import { createDefaultPiboPluginRegistry } from "../plugins/builtin.js";
 import { UserSkillManager } from "../user-skills/manager.js";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -12,7 +13,31 @@ export async function runSkillsCli(argv: string[]): Promise<void> {
 	const manager = new UserSkillManager(os.homedir());
 
 	const program = new Command();
-	program.name("pibo skills").description("Manage Pibo user skills (not built-in or plugin skills)");
+	program
+		.name("pibo skills")
+		.description("Manage Pibo user skills and inspect the built-in/plugin skill catalog")
+		.addHelpText("after", "\nBuilt-in/plugin skills are selected by agent profiles. Run `pibo skills catalog` to list them.\n");
+
+	program
+		.command("catalog")
+		.description("List built-in and plugin skills available to profiles")
+		.option("--json", "Print JSON")
+		.action((options: { json?: boolean }) => {
+			const registry = createDefaultPiboPluginRegistry();
+			const skills = registry.getCapabilityCatalog().skills.filter((skill) => skill.kind !== "user");
+			if (options.json) {
+				printJson(skills);
+				return;
+			}
+			if (skills.length === 0) {
+				console.log("No built-in or plugin skills registered.");
+				return;
+			}
+			console.log("NAME\tKIND\tPATH");
+			for (const skill of skills) {
+				console.log(`${skill.name}\t${skill.kind ?? "plugin"}\t${skill.path}`);
+			}
+		});
 
 	program
 		.command("list")

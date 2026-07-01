@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -22,9 +22,25 @@ function runSkills(args, home = tempHome()) {
 test("skills help exits successfully without a subcommand", () => {
 	const result = runSkills([]);
 	assert.equal(result.status, 0);
-	assert.match(result.stdout, /Manage Pibo user skills/);
-	assert.match(result.stdout, /not built-in or plugin skills/);
+	assert.match(result.stdout, /Manage Pibo user skills and inspect the built-in\/plugin skill catalog/);
+	assert.match(result.stdout, /catalog/);
+	assert.match(result.stdout, /pibo skills catalog/);
 	assert.equal(result.stderr, "");
+});
+
+test("skills catalog lists built-in skills", () => {
+	const result = runSkills(["catalog", "--json"]);
+	assert.equal(result.status, 0);
+	const skills = JSON.parse(result.stdout);
+	assert.ok(skills.some((skill) => skill.name === "graphify" && skill.kind === "builtin"));
+});
+
+test("built-in Graphify skill documents the current artifact workflow", () => {
+	const markdown = readFileSync(new URL("../skills/builtin/graphify/SKILL.md", import.meta.url), "utf-8");
+	assert.match(markdown, /graphify-out\/GRAPH_REPORT\.md/);
+	assert.match(markdown, /graphify cluster-only \. --no-label/);
+	assert.match(markdown, /LLM API key/);
+	assert.doesNotMatch(markdown, /ls graph\.html graph\.json GRAPH_REPORT\.md/);
 });
 
 test("skills list supports JSON output", () => {

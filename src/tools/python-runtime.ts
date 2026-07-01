@@ -18,6 +18,7 @@ export interface ToolPythonRuntimeSpec {
   pythonVersion: string;
   homeEnvVar?: string;
   postInstallArgs?: string[];
+  doctorArgs?: string[];
 }
 
 export interface ToolPythonRuntimePaths {
@@ -193,8 +194,8 @@ export async function printToolPythonRuntimeDoctor(
     printLinuxVirtualDisplayHint('  ');
   }
 
-  if (existsSync(paths.executablePath)) {
-    const doctor = await runBuffered(paths.executablePath, ['doctor'], getToolPythonRuntimeEnv(paths, spec));
+  if (existsSync(paths.executablePath) && spec.doctorArgs?.length) {
+    const doctor = await runBuffered(paths.executablePath, spec.doctorArgs, getToolPythonRuntimeEnv(paths, spec));
     console.log(`  tool doctor: ${doctor.ok ? 'ok' : 'failed'}`);
     if (doctor.output) {
       console.log(doctor.output.split('\n').map((line) => `    ${line}`).join('\n'));
