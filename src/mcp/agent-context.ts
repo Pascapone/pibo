@@ -5,8 +5,8 @@ import {
   type McpServersConfig,
   type ServerConfig,
   ensureConfigExists,
-  findConfigPath,
   isHttpServer,
+  loadConfig,
 } from './config.js';
 import { ErrorCode, formatCliError } from './errors.js';
 
@@ -46,10 +46,13 @@ export function normalizeMcpServerDescription(value: string): string {
 }
 
 export async function listMcpServerInfos(configPath?: string): Promise<PiboMcpServerInfo[]> {
-  const path = findConfigPath(configPath);
-  if (!path) return [];
-  const config = await readMcpConfig(path);
-  return Object.entries(config.mcpServers).map(([name, server]) => mcpServerInfoFromConfig(name, server));
+  try {
+    const config = await loadConfig(configPath);
+    return Object.entries(config.mcpServers).map(([name, server]) => mcpServerInfoFromConfig(name, server));
+  } catch (error) {
+    if ((error as Error).message.includes('CONFIG_NOT_FOUND')) return [];
+    throw error;
+  }
 }
 
 export async function setMcpServerDescription(

@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { join, resolve } from "node:path";
@@ -162,6 +162,44 @@ test("pibo mcp config path follows explicit env cwd priority", async () => {
 		await rm(cwd, { recursive: true, force: true });
 	}
 });
+
+test("pibo mcp info unknown server reports merged lookup path details", async () => {
+	const root = await mkdtemp(join(tmpdir(), "pibo-mcp-info-missing-"));
+	try {
+		const cwd = join(root, "project");
+		const home = join(root, "home");
+		await Promise.all([
+			mkdir(cwd, { recursive: true }),
+			mkdir(home, { recursive: true }),
+		]);
+		const localPath = join(cwd, "mcp_servers.json");
+		const globalPath = join(home, ".mcp_servers.json");
+		await writeFile(localPath, JSON.stringify({ mcpServers: {} }));
+		await writeFile(globalPath, JSON.stringify({ mcpServers: { unity: { command: "uvx", args: ["mcp-unity"] } } }));
+
+		await assert.rejects(
+			execFileAsync("node", [cliPath, "mcp", "info", "missing"], {
+				cwd,
+				env: { ...process.env, HOME: home },
+			}),
+			(error) => {
+				assert.equal(error.code, 1);
+				assert.match(error.stderr, /Server "missing" not found in config/);
+				assert.match(error.stderr, /Merged available servers: unity/);
+				assert.match(error.stderr, new RegExp(escapeRegex(localPath)));
+				assert.match(error.stderr, new RegExp(escapeRegex(globalPath)));
+				assert.match(error.stderr, /unity/);
+				return true;
+			},
+		);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+function escapeRegex(value) {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 test("pibo mcp config can create, add, show, and remove servers", async () => {
 	const cwd = await mkdtemp(join(tmpdir(), "pibo-mcp-config-"));

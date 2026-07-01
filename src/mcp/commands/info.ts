@@ -6,7 +6,8 @@ import { type McpConnection, getConnection, safeClose } from '../client.js';
 import {
   type McpServersConfig,
   type ServerConfig,
-  getServerConfig,
+  formatConfigSourceSummaries,
+  getConfigSourceSummaries,
   loadConfig,
 } from '../config.js';
 import {
@@ -49,11 +50,27 @@ export async function infoCommand(options: InfoOptions): Promise<void> {
 
   const { server: serverName, tool: toolName } = parseTarget(options.target);
 
-  let serverConfig: ServerConfig;
-  try {
-    serverConfig = getServerConfig(config, serverName);
-  } catch (error) {
-    console.error((error as Error).message);
+  const serverConfig = config.mcpServers[serverName] as ServerConfig | undefined;
+  if (!serverConfig) {
+    const available = Object.keys(config.mcpServers);
+    const serverList = available.length > 0 ? available.join(', ') : '(none)';
+    const summaries = await getConfigSourceSummaries(options.configPath);
+    console.error(
+      formatCliError({
+        code: ErrorCode.CLIENT_ERROR,
+        type: 'SERVER_NOT_FOUND',
+        message: `Server "${serverName}" not found in config`,
+        details: [
+          `Merged available servers: ${serverList}`,
+          'Config search paths:',
+          formatConfigSourceSummaries(summaries),
+        ].join('\n'),
+        suggestion:
+          available.length > 0
+            ? `Use one of: ${available.map((s) => `pibo mcp info ${s}`).join(', ')}`
+            : `Add server to mcp_servers.json: { "mcpServers": { "${serverName}": { ... } } }`,
+      }),
+    );
     process.exit(ErrorCode.CLIENT_ERROR);
   }
 

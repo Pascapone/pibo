@@ -419,6 +419,24 @@ export function getDefaultConfigPaths(): string[] {
   return paths;
 }
 
+export interface McpConfigSourceSummary {
+  path: string;
+  exists: boolean;
+  servers: string[];
+}
+
+export function getConfigSearchPaths(explicitPath?: string): string[] {
+  const paths: string[] = [];
+  if (explicitPath) {
+    paths.push(resolve(explicitPath));
+  }
+  if (process.env.MCP_CONFIG_PATH) {
+    paths.push(resolve(process.env.MCP_CONFIG_PATH));
+  }
+  paths.push(...getDefaultConfigPaths());
+  return [...new Set(paths)];
+}
+
 export function getPreferredConfigPath(explicitPath?: string): string {
   if (explicitPath) {
     return resolve(explicitPath);
@@ -438,7 +456,6 @@ export function findConfigPath(explicitPath?: string): string | undefined {
     const resolvedPath = resolve(process.env.MCP_CONFIG_PATH);
     return existsSync(resolvedPath) ? resolvedPath : undefined;
   }
-
   return getDefaultConfigPaths().find((path) => existsSync(path));
 }
 
@@ -456,42 +473,7 @@ export async function ensureConfigExists(
   return configPath;
 }
 
-/**
- * Load and parse MCP servers configuration
- */
-export async function loadConfig(
-  explicitPath?: string,
-): Promise<McpServersConfig> {
-  let configPath: string | undefined;
-
-  // Check explicit path from argument or environment
-  if (explicitPath) {
-    configPath = resolve(explicitPath);
-  } else if (process.env.MCP_CONFIG_PATH) {
-    configPath = resolve(process.env.MCP_CONFIG_PATH);
-  }
-
-  // If explicit path provided, it must exist
-  if (configPath) {
-    if (!existsSync(configPath)) {
-      throw new Error(formatCliError(configNotFoundError(configPath)));
-    }
-  } else {
-    // Search default paths
-    const searchPaths = getDefaultConfigPaths();
-    for (const path of searchPaths) {
-      if (existsSync(path)) {
-        configPath = path;
-        break;
-      }
-    }
-
-    if (!configPath) {
-      throw new Error(formatCliError(configSearchError()));
-    }
-  }
-
-  // Read and parse config
+async function readRawConfig(configPath: string): Promise<McpServersConfig> {
   const content = await readFile(configPath, 'utf-8');
 
   let config: McpServersConfig;
@@ -503,58 +485,126 @@ export async function loadConfig(
     );
   }
 
-  // Validate structure
   if (!config.mcpServers || typeof config.mcpServers !== 'object') {
     throw new Error(formatCliError(configMissingFieldError(configPath)));
   }
 
-  // Validate individual server configs
-  for (const [serverName, serverConfig] of Object.entries(config.mcpServers)) {
-    if (!serverConfig || typeof serverConfig !== 'object') {
-      throw new Error(
-        formatCliError({
-          code: ErrorCode.CLIENT_ERROR,
-          type: 'CONFIG_INVALID_SERVER',
-          message: `Invalid server configuration for "${serverName}"`,
-          details: 'Server config must be an object',
-          suggestion: `Use { "command": "..." } for stdio or { "url": "..." } for HTTP`,
-        }),
-      );
-    }
+  return config;
+}
 
-    const hasCommand = 'command' in serverConfig;
-    const hasUrl = 'url' in serverConfig;
+function validateServerConfig(serverName: string, serverConfig: ServerConfig): void {
+  if (!serverConfig || typeof serverConfig !== 'object') {
+    throw new Error(
+      formatCliError({
+        code: ErrorCode.CLIENT_ERROR,
+        type: 'CONFIG_INVALID_SERVER',
+        message: `Invalid server configuration for "${serverName}"`,
+        details: 'Server config must be an object',
+        suggestion: `Use { "command": "..." } for stdio or { "url": "..." } for HTTP`,
+      }),
+    );
+  }
 
-    if (!hasCommand && !hasUrl) {
-      throw new Error(
-        formatCliError({
-          code: ErrorCode.CLIENT_ERROR,
-          type: 'CONFIG_INVALID_SERVER',
-          message: `Server "${serverName}" missing required field`,
-          details: `Must have either "command" (for stdio) or "url" (for HTTP)`,
-          suggestion: `Add "command": "npx ..." for local servers or "url": "https://..." for remote servers`,
-        }),
-      );
-    }
+  const hasCommand = 'command' in serverConfig;
+  const hasUrl = 'url' in serverConfig;
 
-    if (hasCommand && hasUrl) {
-      throw new Error(
-        formatCliError({
-          code: ErrorCode.CLIENT_ERROR,
-          type: 'CONFIG_INVALID_SERVER',
-          message: `Server "${serverName}" has both "command" and "url"`,
-          details:
-            'A server must be either stdio (command) or HTTP (url), not both',
-          suggestion: `Remove one of "command" or "url"`,
-        }),
-      );
+  if (!hasCommand && !hasUrl) {
+    throw new Error(
+      formatCliError({
+        code: ErrorCode.CLIENT_ERROR,
+        type: 'CONFIG_INVALID_SERVER',
+        message: `Server "${serverName}" missing required field`,
+        details: `Must have either "command" (for stdio) or "url" (for HTTP)`,
+        suggestion: `Add "command": "npx ..." for local servers or "url": "https://..." for remote servers`,
+      }),
+    );
+  }
+
+  if (hasCommand && hasUrl) {
+    throw new Error(
+      formatCliError({
+        code: ErrorCode.CLIENT_ERROR,
+        type: 'CONFIG_INVALID_SERVER',
+        message: `Server "${serverName}" has both "command" and "url"`,
+        details:
+          'A server must be either stdio (command) or HTTP (url), not both',
+        suggestion: `Remove one of "command" or "url"`,
+      }),
+    );
+  }
+}
+
+/**
+ * Load and merge MCP servers configuration.
+ * More specific paths appear first and win server-name conflicts.
+ */
+export async function loadConfig(
+  explicitPath?: string,
+): Promise<McpServersConfig> {
+  const explicitOrEnvPath = explicitPath
+    ? resolve(explicitPath)
+    : process.env.MCP_CONFIG_PATH
+      ? resolve(process.env.MCP_CONFIG_PATH)
+      : undefined;
+
+  if (explicitOrEnvPath && !existsSync(explicitOrEnvPath)) {
+    throw new Error(formatCliError(configNotFoundError(explicitOrEnvPath)));
+  }
+
+  const existingPaths = getConfigSearchPaths(explicitPath).filter((path) =>
+    existsSync(path),
+  );
+  if (existingPaths.length === 0) {
+    throw new Error(formatCliError(configSearchError()));
+  }
+
+  const merged: McpServersConfig = { mcpServers: {} };
+  for (const configPath of existingPaths) {
+    const config = await readRawConfig(configPath);
+    for (const [serverName, serverConfig] of Object.entries(config.mcpServers)) {
+      if (!(serverName in merged.mcpServers)) {
+        merged.mcpServers[serverName] = serverConfig;
+      }
     }
   }
 
-  // Substitute environment variables
-  config = substituteEnvVarsInObject(config);
+  for (const [serverName, serverConfig] of Object.entries(merged.mcpServers)) {
+    validateServerConfig(serverName, serverConfig);
+  }
 
-  return config;
+  return substituteEnvVarsInObject(merged);
+}
+
+export async function getConfigSourceSummaries(
+  explicitPath?: string,
+): Promise<McpConfigSourceSummary[]> {
+  const summaries: McpConfigSourceSummary[] = [];
+  for (const configPath of getConfigSearchPaths(explicitPath)) {
+    if (!existsSync(configPath)) {
+      summaries.push({ path: configPath, exists: false, servers: [] });
+      continue;
+    }
+    const config = await readRawConfig(configPath);
+    summaries.push({
+      path: configPath,
+      exists: true,
+      servers: Object.keys(config.mcpServers),
+    });
+  }
+  return summaries;
+}
+
+export function formatConfigSourceSummaries(
+  summaries: McpConfigSourceSummary[],
+): string {
+  return summaries
+    .map((summary) => {
+      const serverList = summary.exists
+        ? summary.servers.join(', ') || '(none)'
+        : '(not found)';
+      return `  - ${summary.path}: ${serverList}`;
+    })
+    .join('\n');
 }
 
 /**

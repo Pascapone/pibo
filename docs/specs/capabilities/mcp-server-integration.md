@@ -68,21 +68,32 @@ The `pibo mcp` CLI MUST expose compact top-level help and move detailed config s
 - WHEN it runs `pibo mcp --help` and then `pibo mcp config help`
 - THEN it sees the next command to inspect the schema without receiving the full schema at the top level.
 
-### Requirement: MCP config lookup and initialization are deterministic
+### Requirement: MCP config lookup, merging, and initialization are deterministic
 
-The CLI MUST use a defined config lookup order and MUST create a valid empty config when initialization is requested.
+The CLI MUST use a defined config lookup order, MUST merge existing MCP server config files for read operations, and MUST create a valid empty config when initialization is requested.
 
 #### Current
 
-`findConfigPath`, `getPreferredConfigPath`, `ensureConfigExists`, and `printConfigPaths` implement lookup order: explicit `--config`, `MCP_CONFIG_PATH`, `./mcp_servers.json`, `~/.mcp_servers.json`, and `~/.config/mcp/mcp_servers.json`.
+`findConfigPath`, `getPreferredConfigPath`, `ensureConfigExists`, and `printConfigPaths` implement lookup order: explicit `--config`, `MCP_CONFIG_PATH`, `./mcp_servers.json`, `~/.mcp_servers.json`, and `~/.config/mcp/mcp_servers.json`. `loadConfig` reads all existing files in that order and additively merges `mcpServers`; when the same server name appears more than once, the more specific earlier path wins. Config mutation commands still edit exactly one file selected by `findConfigPath`/`ensureConfigExists`.
 
 #### Acceptance
 
 - An explicit `--config` path takes precedence over all other paths.
 - `MCP_CONFIG_PATH` takes precedence over default paths when no explicit path is supplied.
+- Read operations merge all existing lookup paths, so a local empty `mcp_servers.json` does not hide globally configured servers.
+- A server entry in a more specific path overrides same-named entries in less specific paths.
+- `pibo mcp info <unknown-server>` reports merged available servers and per-path discovered server names.
 - `pibo mcp config paths` shows the lookup order.
 - `pibo mcp config init` creates `{ "mcpServers": {} }` at the preferred path when no config exists.
+- Config add, remove, describe, show, and path operations continue to use one selected config file rather than rewriting the merged view.
 - Loading a missing explicit config fails instead of silently falling back.
+
+#### Scenario: Local config does not hide global servers
+
+- GIVEN `~/.mcp_servers.json` defines server `unity`
+- AND the current project has an empty `mcp_servers.json`
+- WHEN an operator runs `pibo mcp info unknown`
+- THEN Pibo reports `unity` in the merged available servers and lists both the local and global config paths.
 
 #### Scenario: Initialize in project directory
 
