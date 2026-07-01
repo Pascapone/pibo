@@ -42,6 +42,9 @@ test("default plugin registry builds capabilities without retired built-in codin
 	)));
 	assert.ok(catalog.nativeTools.some((tool) => tool.name === "apply_patch" && tool.pluginId === "pibo.codex-compat"));
 	assert.ok(catalog.nativeTools.some((tool) => tool.name === "view_image" && tool.pluginId === "pibo.codex-compat"));
+	assert.ok(catalog.nativeTools.some((tool) => (
+		tool.name === "codex_image_generation" && tool.pluginId === "pibo.codex-compat" && tool.hasDefinition === true
+	)));
 	assert.deepEqual(registry.getChannels().map((channel) => channel.name), []);
 	assert.deepEqual(
 		registry.getCapabilityCatalog().skills
@@ -143,7 +146,7 @@ test("default plugin registry builds capabilities without retired built-in codin
 		{
 			name: "model",
 			description: "Open the interactive model selector for authenticated providers.",
-			slashCommands: ["model"],
+			slashCommands: ["model", "models"],
 		},
 		{
 			name: "login.start",

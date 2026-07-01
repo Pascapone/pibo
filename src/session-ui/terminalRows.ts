@@ -237,7 +237,7 @@ function createToolRowCandidate(node: PiboTraceNode, turnId?: string): RowCandid
 	const image = classifyImageTool(node);
 	if (image) {
 		const row = createImageToolRow(node, image);
-		return { row, turnId, image: image.detail };
+		return { row, turnId, image: image.groupable ? image.detail : undefined };
 	}
 	const preview = previewLines(node.error ?? node.output, COMPACT_TERMINAL_OUTPUT_PREVIEW_LINES, node.error ? "red" : "dim");
 	const row: CompactTerminalRow = {
@@ -269,7 +269,7 @@ function createToolRowCandidate(node: PiboTraceNode, turnId?: string): RowCandid
 
 function createImageToolRow(node: PiboTraceNode, image: ImageToolClassification): CompactTerminalRow {
 	const status = mapStatus(node.status);
-	const detailLabel = image.path ? `Path: ${image.path}` : image.query ? `Query: ${image.query}` : image.mimeType ? `Type: ${image.mimeType}` : "Image content returned";
+	const detailLabel = image.path ? `Path: ${image.path}` : image.artifactId ? `Artifact: ${image.artifactId}` : image.query ? `Query: ${image.query}` : image.mimeType ? `Type: ${image.mimeType}` : "Image content returned";
 	return {
 		id: node.id,
 		kind: "tool.image",
@@ -278,7 +278,7 @@ function createImageToolRow(node: PiboTraceNode, image: ImageToolClassification)
 		lines: [
 			{
 				prefix: "bullet",
-				tokens: [token(imageToolVerb(node.status, image.count), toneForStatus(node.status), "semibold")],
+				tokens: [token(image.verb, toneForStatus(node.status), "semibold")],
 			},
 			{
 				prefix: "detail",
@@ -297,7 +297,7 @@ function createToolResultRowCandidate(node: PiboTraceNode, turnId?: string): Row
 	const image = classifyImageTool(node);
 	if (image) {
 		const row = createImageToolRow(node, image);
-		return { row, turnId, image: image.detail };
+		return { row, turnId, image: image.groupable ? image.detail : undefined };
 	}
 	return { row: createToolResultRow(node), turnId };
 }
@@ -771,15 +771,24 @@ function detailItemsForGroup(candidates: readonly RowCandidate[], kind: "explori
 type ImageToolClassification = {
 	count: number;
 	path?: string;
+	artifactId?: string;
 	query?: string;
 	mimeType?: string;
+	verb: string;
+	groupable: boolean;
 	summary: unknown;
 	detail: CompactTerminalDetailItem;
 };
 
 type ImagePayloadSummary = {
 	type: "image" | "images" | "image_reference";
+	toolName?: string;
+	operation?: "generate" | "edit";
 	path?: string;
+	savedPath?: string;
+	artifactId?: string;
+	model?: string;
+	referencedImageCount?: number;
 	query?: string;
 	mimeType?: string;
 	count?: number;
@@ -789,32 +798,48 @@ type ImagePayloadSummary = {
 function classifyImageTool(node: PiboTraceNode): ImageToolClassification | undefined {
 	const normalized = (node.title ?? "").trim().toLowerCase();
 	const args = isRecord(node.input) ? node.input : undefined;
-	const path = previewPath(args) ?? previewPath(isRecord(node.output) ? recordField(node.output, "details") : undefined) ?? previewPath(isRecord(node.output) ? node.output : undefined);
+	const output = isRecord(node.output) ? node.output : undefined;
+	const details = recordField(output, "details");
+	const codexOperation = normalized === "codex_image_generation" ? codexImageOperation(details) ?? codexImageOperationFromInput(args) : undefined;
+	const path = codexOperation
+		? stringValue(details?.savedPath) ?? previewPath(details)
+		: previewPath(args) ?? previewPath(details) ?? previewPath(output);
+	const artifactId = codexOperation ? stringValue(details?.artifactId) : undefined;
 	const query = previewQuery(args);
 	const images = collectImagePayloads(node.output);
 	const isImageTool = matchesTool(normalized, ["view_image", "image", "screenshot"]);
-	if (!images.length && !isImageTool) return undefined;
+	if (!images.length && !isImageTool && !codexOperation) return undefined;
 
 	const mimeType = images.map((image) => image.mimeType).find((value): value is string => Boolean(value));
 	const count = Math.max(1, images.length);
 	const summary: ImagePayloadSummary = {
 		type: images.length > 1 ? "images" : images.length === 1 ? "image" : "image_reference",
+		toolName: codexOperation ? node.title : undefined,
+		operation: codexOperation,
 		path,
+		savedPath: codexOperation ? path : undefined,
+		artifactId,
+		model: codexOperation ? stringValue(details?.model) : undefined,
+		referencedImageCount: codexOperation ? numberValue(details?.referencedImageCount) : undefined,
 		query,
 		mimeType,
 		count: count > 1 ? count : undefined,
 		detail: images.length ? "Image data hidden in terminal view." : "Image path only; binary data is hidden in terminal view.",
 	};
-	const labelTarget = path ?? query ?? mimeType ?? "image";
+	const labelTarget = path ?? artifactId ?? query ?? mimeType ?? "image";
+	const verb = codexOperation ? codexImageVerb(node.status, codexOperation) : imageToolVerb(node.status, count);
 	return {
 		count,
 		path,
+		artifactId,
 		query,
 		mimeType,
+		verb,
+		groupable: !codexOperation,
 		summary,
 		detail: {
 			id: node.id,
-			label: `${node.status === "error" ? "Image failed" : "Viewed image"} ${labelTarget}`,
+			label: `${verb} ${labelTarget}`,
 			status: mapStatus(node.status),
 			input: sanitizeImagePayload(node.input),
 			output: summary,
@@ -864,6 +889,30 @@ function imageToolVerb(status: PiboTraceNode["status"], count: number): string {
 	if (status === "running") return count > 1 ? "Viewing images" : "Viewing image";
 	if (status === "error") return count > 1 ? "Image reads failed" : "Image read failed";
 	return count > 1 ? "Viewed images" : "Viewed image";
+}
+
+function codexImageOperation(details: Record<string, unknown> | undefined): "generate" | "edit" | undefined {
+	const operation = stringValue(details?.operation);
+	return operation === "generate" || operation === "edit" ? operation : undefined;
+}
+
+function codexImageOperationFromInput(args: Record<string, unknown> | undefined): "generate" | "edit" | undefined {
+	if (!args) return undefined;
+	const referencedPaths = args.referenced_image_paths;
+	if (Array.isArray(referencedPaths) && referencedPaths.length > 0) return "edit";
+	if (numberValue(args.num_last_images_to_include) !== undefined) return "edit";
+	return "generate";
+}
+
+function codexImageVerb(status: PiboTraceNode["status"], operation: "generate" | "edit"): string {
+	if (operation === "edit") {
+		if (status === "running") return "Editing image";
+		if (status === "error") return "Image edit failed";
+		return "Edited image";
+	}
+	if (status === "running") return "Generating image";
+	if (status === "error") return "Image generation failed";
+	return "Generated image";
 }
 
 function recordField(record: Record<string, unknown> | undefined, key: string): Record<string, unknown> | undefined {
@@ -929,6 +978,10 @@ function previewQuery(value?: Record<string, unknown>): string | undefined {
 		if (candidate) return candidate;
 	}
 	return undefined;
+}
+
+function numberValue(value: unknown): number | undefined {
+	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 type PreviewLinesResult = {
