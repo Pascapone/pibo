@@ -65,6 +65,9 @@ export type PiboThinkingResult = {
 	level: PiboThinkingLevel;
 	availableLevels: PiboThinkingLevel[];
 	supported: boolean;
+	action?: "show_thinking_menu" | "set_thinking_level";
+	previousLevel?: PiboThinkingLevel;
+	changed?: boolean;
 };
 
 export type PiboExecutionEventBase<TAction extends PiboExecutionAction = PiboExecutionAction> = {

@@ -103,6 +103,35 @@ test("compact row generation renders session errors with class details", () => {
 	assert.match(rowText(rows[0]), /Provider: openai-codex-responses \/ openai-codex \/ gpt-5.5/);
 });
 
+test("compact row generation renders thinking level changes as compact lines", () => {
+	const rows = buildCompactTerminalRows(traceView([
+		traceNode("execution.command", "thinking-menu", {
+			order: 1,
+			title: "thinking",
+			output: { action: "show_thinking_menu", level: "off", supported: true, availableLevels: ["off", "low", "high"] },
+		}),
+		traceNode("execution.command", "thinking-high", {
+			order: 2,
+			title: "thinking",
+			output: { action: "set_thinking_level", previousLevel: "off", level: "high", changed: true, supported: true, availableLevels: ["off", "low", "high"] },
+		}),
+		traceNode("execution.command", "thinking-high-again", {
+			order: 3,
+			title: "thinking",
+			output: { action: "set_thinking_level", previousLevel: "high", level: "high", changed: false, supported: true, availableLevels: ["off", "low", "high"] },
+		}),
+	]), { showThinking: false });
+
+	assert.deepEqual(rows.map((row) => [row.id, row.kind]), [
+		["thinking-menu", "tool.thinking"],
+		["thinking-high", "execution.command"],
+		["thinking-high-again", "execution.command"],
+	]);
+	assert.equal(rows[0].output.level, "high", "the existing thinking card should reflect the latest selected level");
+	assert.match(rowText(rows[1]), /Thinking level set to high\./);
+	assert.match(rowText(rows[2]), /Thinking level is already high\./);
+});
+
 test("compact row generation preserves streaming order metadata and running state", () => {
 	const rows = buildCompactTerminalRows(traceView([
 		traceNode("user.message", "node-user", { order: 1, status: "done", output: "Start work", orderKey: { streamId: 1, streamFrameIndex: 0 }, source: "event-log", eventId: "evt-user" }),

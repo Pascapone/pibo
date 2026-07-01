@@ -88,6 +88,7 @@ test("thinking action without level reports current level without cycling", asyn
 		});
 
 		assert.equal(result.type, "execution_result");
+		assert.equal(result.result.action, "show_thinking_menu");
 		assert.equal(result.result.level, before);
 		assert.equal(harness.routed.runtime.session.thinkingLevel, before);
 	} finally {
@@ -118,7 +119,10 @@ test("fast action toggles independently of thinking level", async () => {
 			params: { level: "high" },
 		});
 		assert.equal(thinking.type, "execution_result");
+		assert.equal(thinking.result.action, "set_thinking_level");
+		assert.equal(thinking.result.previousLevel, "medium");
 		assert.equal(thinking.result.level, "high");
+		assert.equal(thinking.result.changed, true);
 		assert.equal(harness.routed.getStatus().fastMode, true);
 
 		const normal = await harness.routed.executeAction({

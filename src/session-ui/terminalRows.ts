@@ -108,7 +108,7 @@ export function buildCompactTerminalRows(
 	const flatNodes = flattenTraceNodes(traceView.nodes)
 		.sort((left, right) => compareTraceNodes(left.node, right.node))
 		.filter((item) => item.node.type !== "agent.turn" && (options.showThinking || item.node.type !== "model.reasoning"));
-	const candidates = flatNodes.map((item) => createRowCandidate(item.node, item.turnId));
+	const candidates = syncThinkingToolRows(flatNodes.map((item) => createRowCandidate(item.node, item.turnId)));
 	return groupRelatedToolCandidates(candidates).map((candidate) => candidate.row);
 }
 
@@ -428,7 +428,7 @@ function createExecutionCommandRow(node: PiboTraceNode): CompactTerminalRow {
 		return createStatusToolRow(node);
 	}
 	if (node.title === "thinking") {
-		return createThinkingToolRow(node);
+		return isThinkingLevelSetOutput(node.output) ? createThinkingLevelSetRow(node) : createThinkingToolRow(node);
 	}
 	if (node.title === "fast_mode") {
 		return createFastModeToolRow(node);
@@ -481,6 +481,35 @@ function createThinkingToolRow(node: PiboTraceNode): CompactTerminalRow {
 		kind: "tool.thinking",
 		status: mapStatus(node.status),
 		lines: [],
+		sourceNodeIds: [node.id],
+		input: node.input,
+		output: node.output,
+		error: node.error,
+		expandable: false,
+	};
+}
+
+function createThinkingLevelSetRow(node: PiboTraceNode): CompactTerminalRow {
+	const result = isRecord(node.output) ? node.output : undefined;
+	const level = stringValue(result?.level);
+	const changed = result?.changed !== false;
+	const supported = result?.supported !== false;
+	const label = !supported
+		? "Thinking level is not supported by this model."
+		: level
+			? changed ? `Thinking level set to ${level}.` : `Thinking level is already ${level}.`
+			: "Thinking level updated.";
+
+	return {
+		id: node.id,
+		kind: "execution.command",
+		status: mapStatus(node.status),
+		lines: [
+			{
+				prefix: "bullet",
+				tokens: [token(label, supported ? "green" : "dim", "semibold")],
+			},
+		],
 		sourceNodeIds: [node.id],
 		input: node.input,
 		output: node.output,
@@ -619,6 +648,34 @@ function sessionErrorDetailLines(details: unknown): CompactTerminalLine[] {
 			prefix: index === 0 ? "detail" : "continuation",
 			tokens: [token(`${label}: `, "dim"), token(value, "red")],
 		}));
+}
+
+function syncThinkingToolRows(candidates: readonly RowCandidate[]): RowCandidate[] {
+	const latest = candidates.map((candidate) => candidate.row.output).filter(isThinkingOutput).at(-1);
+	if (!latest) return [...candidates];
+	return candidates.map((candidate) => {
+		if (candidate.row.kind !== "tool.thinking" || !isRecord(candidate.row.output)) return candidate;
+		return {
+			...candidate,
+			row: {
+				...candidate.row,
+				output: {
+					...candidate.row.output,
+					level: latest.level,
+					availableLevels: latest.availableLevels,
+					supported: latest.supported,
+				},
+			},
+		};
+	});
+}
+
+function isThinkingOutput(value: unknown): value is { level: string; availableLevels: unknown; supported: unknown } {
+	return isRecord(value) && typeof value.level === "string" && Array.isArray(value.availableLevels);
+}
+
+function isThinkingLevelSetOutput(value: unknown): boolean {
+	return isRecord(value) && value.action === "set_thinking_level";
 }
 
 function groupRelatedToolCandidates(candidates: readonly RowCandidate[]): RowCandidate[] {

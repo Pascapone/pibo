@@ -269,7 +269,15 @@ export const piboCorePlugin = definePiboPlugin({
 			slashCommands: ["thinking"],
 			execute(context, event) {
 				const params = getThinkingParams(event);
-				return params.level ? context.setThinkingLevel(params.level) : context.getThinkingLevel();
+				if (!params.level) return { ...context.getThinkingLevel(), action: "show_thinking_menu" };
+				const previousLevel = context.getThinkingLevel().level;
+				const result = context.setThinkingLevel(params.level);
+				return {
+					...result,
+					action: "set_thinking_level",
+					previousLevel,
+					changed: previousLevel !== result.level,
+				};
 			},
 		});
 		api.registerGatewayAction({
