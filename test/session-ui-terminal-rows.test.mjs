@@ -180,6 +180,68 @@ test("compact image tool rows hide binary blobs and show the image path", () => 
 	assert.equal(rows[0].output.detail, "Image data hidden in terminal view.");
 });
 
+test("compact Codex image generation rows show generate/edit labels and hide binary blobs", () => {
+	const generatedBase64 = "iVBOR" + "G".repeat(800);
+	const editedBase64 = "iVBOR" + "E".repeat(800);
+	const rows = buildCompactTerminalRows(traceView([
+		traceNode("tool.call", "node-generated-image", {
+			order: 1,
+			title: "codex_image_generation",
+			input: { prompt: "paint a blue whale" },
+			output: {
+				content: [{ type: "image", data: generatedBase64, mimeType: "image/png" }],
+				details: {
+					operation: "generate",
+					model: "gpt-image-2",
+					savedPath: "/home/pibo/generated_images/ps_1/call_generate.png",
+					artifactId: "ps_1/call_generate.png",
+					referencedImageCount: 0,
+				},
+			},
+		}),
+		traceNode("tool.call", "node-edited-image", {
+			order: 2,
+			title: "codex_image_generation",
+			input: { prompt: "make it cinematic", referenced_image_paths: ["/tmp/input.png"] },
+			output: {
+				content: [{ type: "image", data: editedBase64, mimeType: "image/png" }],
+				details: {
+					operation: "edit",
+					model: "gpt-image-2",
+					savedPath: "/home/pibo/generated_images/ps_1/call_edit.png",
+					artifactId: "ps_1/call_edit.png",
+					referencedImageCount: 1,
+				},
+			},
+		}),
+	]), { showThinking: false });
+
+	assert.equal(rows.length, 2, "Codex image operations should not be grouped as image reads");
+	assert.equal(rows[0].kind, "tool.image");
+	assert.match(rowText(rows[0]), /Generated image/);
+	assert.match(rowText(rows[0]), /Path: \/home\/pibo\/generated_images\/ps_1\/call_generate\.png/);
+	assert.doesNotMatch(rowText(rows[0]), /Viewed image/);
+	assert.doesNotMatch(JSON.stringify(rows[0]), /iVBOR/);
+	assert.equal(rows[0].output.type, "image");
+	assert.equal(rows[0].output.toolName, "codex_image_generation");
+	assert.equal(rows[0].output.operation, "generate");
+	assert.equal(rows[0].output.path, "/home/pibo/generated_images/ps_1/call_generate.png");
+	assert.equal(rows[0].output.savedPath, "/home/pibo/generated_images/ps_1/call_generate.png");
+	assert.equal(rows[0].output.artifactId, "ps_1/call_generate.png");
+	assert.equal(rows[0].output.model, "gpt-image-2");
+	assert.equal(rows[0].output.referencedImageCount, 0);
+	assert.equal(rows[0].output.mimeType, "image/png");
+	assert.equal(rows[0].output.detail, "Image data hidden in terminal view.");
+
+	assert.equal(rows[1].kind, "tool.image");
+	assert.match(rowText(rows[1]), /Edited image/);
+	assert.match(rowText(rows[1]), /Path: \/home\/pibo\/generated_images\/ps_1\/call_edit\.png/);
+	assert.doesNotMatch(rowText(rows[1]), /Viewed image/);
+	assert.doesNotMatch(JSON.stringify(rows[1]), /iVBOR/);
+	assert.equal(rows[1].output.operation, "edit");
+	assert.equal(rows[1].output.referencedImageCount, 1);
+});
+
 test("compact image tool rows group consecutive image reads", () => {
 	const children = Array.from({ length: 3 }, (_, index) => traceNode("tool.call", `image-${index + 1}`, {
 		order: index + 1,
