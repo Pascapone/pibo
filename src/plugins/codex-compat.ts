@@ -1,5 +1,6 @@
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createCodexImageGenerationToolProfile } from "../tools/codex-image-generation.js";
 import { definePiboPlugin } from "./registry.js";
 
 const CODEX_COMPAT_REGISTERED_TOOL_NAMES = [
@@ -26,6 +27,7 @@ export const piboCodexCompatPlugin = definePiboPlugin({
 				description: toolDescriptions[name],
 			});
 		}
+		api.registerTool(createCodexImageGenerationToolProfile());
 
 		api.registerContextFile({
 			key: CODEX_BASE_PROMPT_CONTEXT_FILE_KEY,

@@ -65,6 +65,17 @@ test("default registry exposes web_search as a core native tool", () => {
 	});
 });
 
+test("default registry exposes codex_image_generation as a Codex-compatible native tool", () => {
+	const registry = createDefaultPiboPluginRegistry();
+	const catalog = registry.getCapabilityCatalog();
+	const imageTool = catalog.nativeTools.find((tool) => tool.name === "codex_image_generation");
+
+	assert.ok(imageTool);
+	assert.equal(imageTool.pluginId, "pibo.codex-compat");
+	assert.equal(imageTool.hasDefinition, true);
+	assert.match(imageTool.description, /ChatGPT\/Codex backend API/);
+});
+
 test("codex-compatible prompt adds environment and child-agent framing without plan-mode tools", () => {
 	const prompt = buildCodexCompatSystemPrompt({
 		baseSystemPrompt: "Base prompt with Codex base-prompt context.",

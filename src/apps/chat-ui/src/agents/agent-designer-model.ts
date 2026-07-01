@@ -174,6 +174,7 @@ export type SkillCatalogItem = AgentCatalog["skills"][number];
 export type CatalogGroupKind = "builtin" | "plugin" | "custom" | "user";
 const CODEX_COMPAT_TOOL_NAMES = new Set([
 	"apply_patch",
+	"codex_image_generation",
 	"web_search",
 	"view_image",
 ]);
