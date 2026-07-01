@@ -1295,7 +1295,7 @@ function requireAgentProfileNameAvailable(
 	const matchedProfile = context.channelContext.getProfiles?.().find(
 		(profile) => profile.name === profileName || profile.aliases.includes(profileName),
 	);
-	if (matchedProfile) throw new PiboWebHttpError(`Agent name "${profileName}" conflicts with an existing profile`, 400);
+	if (matchedProfile && matchedProfile.name !== currentAgent?.profileName) throw new PiboWebHttpError(`Agent name "${profileName}" conflicts with an existing profile`, 400);
 }
 
 function requireSharedAgent(agent: CustomAgentDefinition | undefined): CustomAgentDefinition {
@@ -2529,13 +2529,14 @@ function deleteSessionsForAgentProfile(
 	state: ChatWebAppState,
 	context: PiboWebAppContext,
 	webSession: PiboWebSession,
-	profileName: string,
+	profileNames: readonly string[],
 ): string[] {
 	const deleteSession = context.channelContext.deleteSession;
 	if (!deleteSession) throw new PiboWebHttpError("Session deletion is not available", 501);
 	const ownedSessions = listSharedSessions(context);
 	const sessionsById = new Map(ownedSessions.map((session) => [session.id, session]));
-	const ids = new Set(ownedSessions.filter((session) => session.profile === profileName).map((session) => session.id));
+	const profileNameSet = new Set(profileNames);
+	const ids = new Set(ownedSessions.filter((session) => profileNameSet.has(session.profile)).map((session) => session.id));
 	let changed = true;
 	while (changed) {
 		changed = false;
@@ -4471,7 +4472,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				if (confirmName !== agent.profileName) {
 					throw new PiboWebHttpError(`Type "${agent.profileName}" to permanently delete this agent and its sessions.`, 400);
 				}
-				const deletedSessionIds = deleteSessionsForAgentProfile(state, context, webSession, agent.profileName);
+				const deletedSessionIds = deleteSessionsForAgentProfile(state, context, webSession, [agent.profileName, ...agent.profileAliases]);
 				state.agentStore.delete(agent.id);
 				context.channelContext.removeProfile?.(agent.profileName);
 				invalidateBootstrapCatalogCache(state);

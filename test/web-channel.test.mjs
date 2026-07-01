@@ -2549,7 +2549,14 @@ test("chat web app deletes renamed custom agents with their session subtrees", a
 			},
 			body: JSON.stringify({ profile: "disposable-agent" }),
 		});
-		assert.equal(oldProfileSession.status, 400);
+		assert.equal(oldProfileSession.status, 201);
+		const oldProfileSessionPayload = await oldProfileSession.json();
+		assert.equal(oldProfileSessionPayload.session.profile, "renamed-agent");
+		const orphanedOldProfileSession = sessions.create({
+			channel: "pibo.chat",
+			kind: "chat",
+			profile: "disposable-agent",
+		});
 
 		const sessionResponse = await fetch(`${baseURL}/api/chat/sessions`, {
 			method: "POST",
@@ -2595,7 +2602,9 @@ test("chat web app deletes renamed custom agents with their session subtrees", a
 		assert.equal(deletedAgent.status, 200);
 		const deletedPayload = await deletedAgent.json();
 		assert.equal(deletedPayload.deletedAgentId, createdPayload.agent.id);
-		assert.deepEqual(new Set(deletedPayload.deletedSessionIds), new Set([sessionPayload.session.id, child.id]));
+		assert.deepEqual(new Set(deletedPayload.deletedSessionIds), new Set([oldProfileSessionPayload.session.id, orphanedOldProfileSession.id, sessionPayload.session.id, child.id]));
+		assert.equal(sessions.get(oldProfileSessionPayload.session.id), undefined);
+		assert.equal(sessions.get(orphanedOldProfileSession.id), undefined);
 		assert.equal(sessions.get(sessionPayload.session.id), undefined);
 		assert.equal(sessions.get(child.id), undefined);
 

@@ -19,6 +19,7 @@ export type CustomAgentDefinition = {
 	id: string;
 	profileName: string;
 	displayName: string;
+	profileAliases: string[];
 	description?: string;
 	nativeTools: string[];
 	skills: string[];
@@ -106,6 +107,7 @@ export class CustomAgentStore {
 		if (resolvedPath !== ":memory:") mkdirSync(dirname(resolvedPath), { recursive: true });
 		this.db = new DatabaseSync(resolvedPath);
 		this.db.exec("PRAGMA busy_timeout = 5000");
+		this.db.exec("PRAGMA foreign_keys = ON");
 		if (resolvedPath !== ":memory:") this.db.exec("PRAGMA journal_mode = WAL");
 		this.db.exec(`
 			CREATE TABLE IF NOT EXISTS chat_agents (
@@ -137,6 +139,7 @@ export class CustomAgentStore {
 			);
 
 		`);
+		this.migrateProfileAliasTable();
 		this.migrateArchivedAtColumn();
 		this.migrateAutoContextFilesColumn();
 		this.migrateMcpServersColumn();
@@ -155,13 +158,14 @@ export class CustomAgentStore {
 		this.migrateDuplicateProfileNames();
 		const archivedClause = options.includeArchived ? "" : " AND archived_at IS NULL";
 		const rows = this.db.prepare(`SELECT * FROM chat_agents WHERE 1 = 1${archivedClause} ORDER BY updated_at DESC`).all();
-		return (rows as AgentRow[]).map(agentFromRow);
+		const profileAliases = this.profileAliasesByAgentId();
+		return (rows as AgentRow[]).map((row) => agentFromRow(row, profileAliases.get(row.id) ?? []));
 	}
 
 	get(id: string): CustomAgentDefinition | undefined {
 		this.migrateLegacyProfileNames();
 		const row = this.db.prepare("SELECT * FROM chat_agents WHERE id = ?").get(id) as AgentRow | undefined;
-		return row ? agentFromRow(row) : undefined;
+		return row ? agentFromRow(row, this.profileAliasesByAgentId().get(row.id) ?? []) : undefined;
 	}
 
 	create(input: CreateCustomAgentInput): CustomAgentDefinition {
@@ -174,6 +178,7 @@ export class CustomAgentStore {
 			id,
 			profileName,
 			displayName: input.displayName,
+			profileAliases: [],
 			description: input.description,
 			nativeTools: [...(input.nativeTools ?? [])],
 			skills: [...(input.skills ?? [])],
@@ -300,6 +305,7 @@ export class CustomAgentStore {
 	}
 
 	delete(id: string): boolean {
+		this.db.prepare("DELETE FROM chat_agent_profile_aliases WHERE agent_id = ?").run(id);
 		const result = this.db.prepare("DELETE FROM chat_agents WHERE id = ?").run(id);
 		return Number(result.changes ?? 0) > 0;
 	}
@@ -371,6 +377,19 @@ export class CustomAgentStore {
 	private requireProfileNameAvailable(profileName: string, currentId?: string): void {
 		const row = this.db.prepare("SELECT id FROM chat_agents WHERE profile_name = ?").get(profileName) as { id: string } | undefined;
 		if (row && row.id !== currentId) throw new Error(`Agent name "${profileName}" already exists`);
+		const alias = this.db.prepare("SELECT agent_id FROM chat_agent_profile_aliases WHERE old_profile_name = ?").get(profileName) as { agent_id: string } | undefined;
+		if (alias && alias.agent_id !== currentId) throw new Error(`Agent name "${profileName}" already exists`);
+	}
+
+	private profileAliasesByAgentId(): Map<string, string[]> {
+		const rows = this.db.prepare("SELECT agent_id, old_profile_name FROM chat_agent_profile_aliases ORDER BY created_at ASC, old_profile_name ASC").all() as Array<{ agent_id: string; old_profile_name: string }>;
+		const aliases = new Map<string, string[]>();
+		for (const row of rows) {
+			const values = aliases.get(row.agent_id) ?? [];
+			if (!values.includes(row.old_profile_name)) values.push(row.old_profile_name);
+			aliases.set(row.agent_id, values);
+		}
+		return aliases;
 	}
 
 	private migrateLegacyProfileNames(): void {
@@ -411,6 +430,46 @@ export class CustomAgentStore {
 				.prepare("UPDATE chat_agents SET profile_name = ?, display_name = ? WHERE id = ?")
 				.run(nextName, nextName, row.id);
 		}
+	}
+
+	private migrateProfileAliasTable(): void {
+		this.db.exec(`
+			CREATE TABLE IF NOT EXISTS chat_agent_profile_aliases (
+				id TEXT PRIMARY KEY,
+				agent_id TEXT NOT NULL,
+				old_profile_name TEXT NOT NULL UNIQUE,
+				new_profile_name TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				FOREIGN KEY(agent_id) REFERENCES chat_agents(id) ON DELETE CASCADE
+			);
+
+			CREATE TRIGGER IF NOT EXISTS chat_agents_profile_alias_insert
+			AFTER UPDATE OF profile_name ON chat_agents
+			WHEN OLD.profile_name IS NOT NEW.profile_name
+			BEGIN
+				INSERT INTO chat_agent_profile_aliases (
+					id,
+					agent_id,
+					old_profile_name,
+					new_profile_name,
+					created_at
+				) VALUES (
+					'alias_' || lower(hex(randomblob(16))),
+					NEW.id,
+					OLD.profile_name,
+					NEW.profile_name,
+					strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+				)
+				ON CONFLICT(old_profile_name) DO UPDATE SET
+					agent_id = excluded.agent_id,
+					new_profile_name = excluded.new_profile_name,
+					created_at = excluded.created_at
+				WHERE chat_agent_profile_aliases.agent_id = excluded.agent_id;
+
+				DELETE FROM chat_agent_profile_aliases
+				WHERE agent_id = NEW.id AND old_profile_name = NEW.profile_name;
+			END;
+		`);
 	}
 
 	private tableColumns(): Set<string> {
@@ -645,11 +704,12 @@ export function createDefaultCustomAgentStore(_cwd?: string): CustomAgentStore {
 	return new CustomAgentStore(piboHomePath("chat-agents.sqlite"));
 }
 
-function agentFromRow(row: AgentRow): CustomAgentDefinition {
+function agentFromRow(row: AgentRow, profileAliases: readonly string[]): CustomAgentDefinition {
 	return {
 		id: row.id,
 		profileName: row.profile_name,
 		displayName: row.display_name,
+		profileAliases: profileAliases.filter((alias) => alias !== row.profile_name),
 		description: row.description ?? undefined,
 		nativeTools: parseStringArray(row.native_tools_json),
 		skills: parseStringArray(row.skills_json),

@@ -4,7 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
+import { createCustomAgentProfileDefinition } from "../dist/apps/chat/agent-profiles.js";
 import { CustomAgentStore } from "../dist/apps/chat/agent-store.js";
+import { createDefaultPiboPluginRegistry } from "../dist/plugins/builtin.js";
 import { upsertPiPackage } from "../dist/pi-packages/store.js";
 
 const retiredWord = String.fromCharCode(111, 119, 110, 101, 114);
@@ -176,6 +178,41 @@ test("custom agent store archives and deletes agents", () => {
 	assert.equal(store.get(agent.id), undefined);
 
 	store.close();
+});
+
+test("custom agent profile renames leave old session profile names resolvable", () => {
+	const path = join(mkdtempSync(join(tmpdir(), "pibo-agent-store-")), "agents.sqlite");
+	const store = new CustomAgentStore(path);
+	const agent = store.create({ displayName: "dots-grid-agent" });
+	const renamed = store.update(agent.id, { displayName: "unity-agent" });
+
+	assert.equal(renamed.profileName, "unity-agent");
+	assert.deepEqual(renamed.profileAliases, ["dots-grid-agent"]);
+	assert.throws(
+		() => store.create({ displayName: "dots-grid-agent" }),
+		/Agent name "dots-grid-agent" already exists/,
+	);
+
+	const registry = createDefaultPiboPluginRegistry();
+	registry.upsertProfile(createCustomAgentProfileDefinition(renamed));
+	assert.equal(registry.resolveProfileName("dots-grid-agent"), "unity-agent");
+	assert.equal(registry.resolveProfileName(agent.id), "unity-agent");
+
+	store.close();
+
+	const db = new DatabaseSync(path);
+	const aliasRow = db.prepare("SELECT agent_id, old_profile_name, new_profile_name FROM chat_agent_profile_aliases WHERE old_profile_name = ?").get("dots-grid-agent");
+	assert.equal(aliasRow.agent_id, agent.id);
+	assert.equal(aliasRow.old_profile_name, "dots-grid-agent");
+	assert.equal(aliasRow.new_profile_name, "unity-agent");
+	db.prepare("UPDATE chat_agents SET profile_name = ?, display_name = ? WHERE id = ?").run("final-agent", "final-agent", agent.id);
+	db.close();
+
+	const reopened = new CustomAgentStore(path);
+	const directlyRenamed = reopened.get(agent.id);
+	assert.equal(directlyRenamed.profileName, "final-agent");
+	assert.deepEqual(directlyRenamed.profileAliases, ["dots-grid-agent", "unity-agent"]);
+	reopened.close();
 });
 
 test("custom agent store records agent rename and deletion history", () => {

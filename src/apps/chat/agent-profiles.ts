@@ -10,7 +10,7 @@ export function createCustomAgentProfileDefinition(agent: CustomAgentDefinition,
 	const shouldWarnMissingReferences = options.missingReferenceMode !== "silent";
 	return {
 		name: agent.profileName,
-		aliases: [agent.id, `custom-agent:${agent.id}`],
+		aliases: uniqueAliases([agent.id, `custom-agent:${agent.id}`, ...agent.profileAliases], agent.profileName),
 		description: agent.description || agent.displayName,
 		create(context) {
 			const builder = new InitialSessionContextBuilder(agent.profileName)
@@ -51,6 +51,10 @@ export function createCustomAgentProfileDefinition(agent: CustomAgentDefinition,
 			return builder.createSession();
 		},
 	};
+}
+
+function uniqueAliases(aliases: readonly string[], profileName: string): string[] {
+	return [...new Set(aliases.filter((alias) => alias && alias !== profileName))];
 }
 
 function isUnknownContextFileError(error: unknown, contextFileKey: string): boolean {
