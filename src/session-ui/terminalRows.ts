@@ -800,7 +800,7 @@ function classifyImageTool(node: PiboTraceNode): ImageToolClassification | undef
 	const args = isRecord(node.input) ? node.input : undefined;
 	const output = isRecord(node.output) ? node.output : undefined;
 	const details = recordField(output, "details");
-	const codexOperation = normalized === "codex_image_generation" ? codexImageOperation(details) : undefined;
+	const codexOperation = normalized === "codex_image_generation" ? codexImageOperation(details) ?? codexImageOperationFromInput(args) : undefined;
 	const path = codexOperation
 		? stringValue(details?.savedPath) ?? previewPath(details)
 		: previewPath(args) ?? previewPath(details) ?? previewPath(output);
@@ -894,6 +894,14 @@ function imageToolVerb(status: PiboTraceNode["status"], count: number): string {
 function codexImageOperation(details: Record<string, unknown> | undefined): "generate" | "edit" | undefined {
 	const operation = stringValue(details?.operation);
 	return operation === "generate" || operation === "edit" ? operation : undefined;
+}
+
+function codexImageOperationFromInput(args: Record<string, unknown> | undefined): "generate" | "edit" | undefined {
+	if (!args) return undefined;
+	const referencedPaths = args.referenced_image_paths;
+	if (Array.isArray(referencedPaths) && referencedPaths.length > 0) return "edit";
+	if (numberValue(args.num_last_images_to_include) !== undefined) return "edit";
+	return "generate";
 }
 
 function codexImageVerb(status: PiboTraceNode["status"], operation: "generate" | "edit"): string {

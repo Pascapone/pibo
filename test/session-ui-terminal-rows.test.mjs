@@ -242,6 +242,42 @@ test("compact Codex image generation rows show generate/edit labels and hide bin
 	assert.equal(rows[1].output.referencedImageCount, 1);
 });
 
+test("compact Codex image generation running rows infer generate/edit labels from input", () => {
+	const rows = buildCompactTerminalRows(traceView([
+		traceNode("tool.call", "node-generating-image", {
+			order: 1,
+			status: "running",
+			title: "codex_image_generation",
+			input: { prompt: "paint a blue whale" },
+		}),
+		traceNode("tool.call", "node-editing-image", {
+			order: 2,
+			status: "running",
+			title: "codex_image_generation",
+			input: { prompt: "make it cinematic", referenced_image_paths: ["/tmp/input.png"] },
+		}),
+		traceNode("tool.call", "node-editing-recent-image", {
+			order: 3,
+			status: "running",
+			title: "codex_image_generation",
+			input: { prompt: "make the last image cinematic", num_last_images_to_include: 1 },
+		}),
+	]), { showThinking: false });
+
+	assert.equal(rows.length, 3, "Running Codex image operations should not be grouped as image reads");
+	assert.match(rowText(rows[0]), /Generating image/);
+	assert.match(rowText(rows[1]), /Editing image/);
+	assert.match(rowText(rows[2]), /Editing image/);
+	for (const row of rows) {
+		assert.equal(row.kind, "tool.image");
+		assert.doesNotMatch(rowText(row), /Viewing image/);
+		assert.equal(row.output.toolName, "codex_image_generation");
+	}
+	assert.equal(rows[0].output.operation, "generate");
+	assert.equal(rows[1].output.operation, "edit");
+	assert.equal(rows[2].output.operation, "edit");
+});
+
 test("compact image tool rows group consecutive image reads", () => {
 	const children = Array.from({ length: 3 }, (_, index) => traceNode("tool.call", `image-${index + 1}`, {
 		order: index + 1,
