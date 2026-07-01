@@ -398,7 +398,8 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 		.option("--auth <mode>", "Auth service mode: 'better-auth' (default) or 'local' (loopback-only, no Google OAuth)")
 		.option("--web-host <host>", "Bind the HTTP web host, for example 0.0.0.0 for LAN access")
 		.option("--web-port <port>", "Bind the HTTP web host port", parsePort)
-		.action(async (options: { auth?: string; webHost?: string; webPort?: number }) => {
+		.option("--gateway-port <port>", "Bind the agent-runtime gateway port", parsePort)
+		.action(async (options: { auth?: string; webHost?: string; webPort?: number; gatewayPort?: number }) => {
 			const { runWebGatewayServer } = await import("./gateway/web.js");
 			const authMode = options.auth;
 			if (authMode !== undefined && authMode !== "better-auth" && authMode !== "local") {
@@ -412,6 +413,7 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 			}
 			await runWebGatewayServer({
 				authMode: authMode as "better-auth" | "local" | undefined,
+				port: options.gatewayPort,
 				web: {
 					host: options.webHost,
 					port: options.webPort,
