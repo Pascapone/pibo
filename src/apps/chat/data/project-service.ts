@@ -258,12 +258,12 @@ export class ChatProjectService {
 		mkdirSync(folder, { recursive: true });
 		const now = new Date().toISOString();
 		this.db.prepare(`INSERT INTO projects (id, name, description, project_folder, configuration_status, metadata_json, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, "Shared Project", null, folder, "configured", JSON.stringify({ default: true }), now, now);
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, "Project Manager", null, folder, "configured", JSON.stringify({ default: true }), now, now);
 		return this.requireProject(id);
 	}
 
 	listProjects(options: { includeArchived?: boolean } = {}): PiboProject[] {
-		const rows = this.db.prepare(`SELECT * FROM projects WHERE json_extract(metadata_json, '$.personal') IS NOT 1 ${options.includeArchived ? "" : "AND archived_at IS NULL"} ORDER BY lower(name), created_at`).all() as ProjectRow[];
+		const rows = this.db.prepare(`SELECT * FROM projects WHERE json_extract(metadata_json, '$.personal') IS NOT 1 AND json_extract(metadata_json, '$.default') IS NOT 1 ${options.includeArchived ? "" : "AND archived_at IS NULL"} ORDER BY lower(name), created_at`).all() as ProjectRow[];
 		return rows.map(projectFromRow);
 	}
 

@@ -1,6 +1,6 @@
 {
   "name": "pibo-vscode-ext",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "displayName": "Pibo Chat",
   "description": "Run Pibo sessions in VS Code. Reuses the Chat Web App composer and terminal view.",
   "repository": {
