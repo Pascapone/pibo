@@ -71,6 +71,7 @@ const mobileTimelineContentStyle = {
 } as CSSProperties;
 
 const DEFAULT_EXPANSION_DEPTH = 1;
+const OLDER_TRACE_PREFETCH_TOP_THRESHOLD_PX = 1_200;
 const INITIAL_BOTTOM_ITEM = { index: "LAST", align: "end" } as const;
 const AUTO_FILL_OLDER_HISTORY_MIN_ROWS = 40;
 
@@ -132,8 +133,18 @@ export function TraceTimeline({
 		}
 		return rows;
 	}, [expandThinking, expansionDepth, expansionOverrides, spanTree, trace?.id, trace?.status]);
+	const loadOlderAtTop = useCallback(() => {
+		if (!hasOlderTraceEvents || isFetchingOlderTracePage) return;
+		onLoadOlderTracePage?.();
+	}, [hasOlderTraceEvents, isFetchingOlderTracePage, onLoadOlderTracePage]);
 
-	const stickyView = useStickyVirtuoso({ itemCount: visibleRows.length, resetKey: trace?.id, contentKey: visibleRows });
+	const stickyView = useStickyVirtuoso({
+		itemCount: visibleRows.length,
+		resetKey: trace?.id,
+		contentKey: visibleRows,
+		nearTopThreshold: OLDER_TRACE_PREFETCH_TOP_THRESHOLD_PX,
+		onNearTop: loadOlderAtTop,
+	});
 
 	useEffect(() => {
 		setExpansionOverrides({});
@@ -171,10 +182,6 @@ export function TraceTimeline({
 		const parsedLevel = Number.parseInt(levelInput, 10);
 		applyExpansionDepth(Number.isFinite(parsedLevel) && parsedLevel > 0 ? parsedLevel : DEFAULT_EXPANSION_DEPTH);
 	};
-	const loadOlderAtTop = useCallback(() => {
-		if (!hasOlderTraceEvents || isFetchingOlderTracePage) return;
-		onLoadOlderTracePage?.();
-	}, [hasOlderTraceEvents, isFetchingOlderTracePage, onLoadOlderTracePage]);
 	useEffect(() => {
 		if (visibleRows.length === 0 || visibleRows.length >= AUTO_FILL_OLDER_HISTORY_MIN_ROWS) return;
 		loadOlderAtTop();

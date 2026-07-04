@@ -14,6 +14,7 @@ import { TerminalThinkingCard } from "./TerminalThinkingCard";
 import { buildCompactTerminalRows, type CompactTerminalLine, type CompactTerminalRow } from "../../../../../session-ui/terminalRows.js";
 
 const SHOW_LATEST_THRESHOLD_PX = 180;
+const OLDER_TRACE_PREFETCH_TOP_THRESHOLD_PX = 1_200;
 const INITIAL_BOTTOM_ITEM = { index: "LAST", align: "end" } as const;
 const VIRTUOSO_VIEWPORT = { top: 2_400, bottom: 2_400 } as const;
 const DEFAULT_ROW_HEIGHT_PX = 84;
@@ -59,12 +60,18 @@ export function CompactTerminalSessionView({
 	const isStreaming = selectedSessionSignal
 		? selectedSessionSignal.isTreeActive
 		: selectedSessionStatus === "running" || runningCount > 0 || selectedTrace?.status === "UNSET";
+	const loadOlderAtTop = useCallback(() => {
+		if (!hasOlderTraceEvents || isFetchingOlderTracePage) return;
+		onLoadOlderTracePage?.();
+	}, [hasOlderTraceEvents, isFetchingOlderTracePage, onLoadOlderTracePage]);
 
 	const stickyView = useStickyVirtuoso({
 		itemCount: rows.length,
 		resetKey: traceView?.piboSessionId,
 		contentKey: rows,
 		atBottomThreshold: SHOW_LATEST_THRESHOLD_PX,
+		nearTopThreshold: OLDER_TRACE_PREFETCH_TOP_THRESHOLD_PX,
+		onNearTop: loadOlderAtTop,
 	});
 
 	useEffect(() => {
@@ -101,10 +108,6 @@ export function CompactTerminalSessionView({
 			return next;
 		});
 	};
-	const loadOlderAtTop = useCallback(() => {
-		if (!hasOlderTraceEvents || isFetchingOlderTracePage) return;
-		onLoadOlderTracePage?.();
-	}, [hasOlderTraceEvents, isFetchingOlderTracePage, onLoadOlderTracePage]);
 	useEffect(() => {
 		if (rows.length === 0 || rows.length >= AUTO_FILL_OLDER_HISTORY_MIN_ROWS) return;
 		loadOlderAtTop();

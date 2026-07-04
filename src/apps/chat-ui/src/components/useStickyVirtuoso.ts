@@ -23,6 +23,9 @@ type StickyVirtuosoOptions = {
 	/** Schedules a sticky scroll when rendered content changes without changing itemCount. */
 	contentKey?: unknown;
 	atBottomThreshold?: number;
+	/** Calls back while the user is reading near the top of the scroll range. */
+	onNearTop?: () => void;
+	nearTopThreshold?: number;
 };
 
 export function useStickyVirtuoso({
@@ -30,6 +33,8 @@ export function useStickyVirtuoso({
 	resetKey,
 	contentKey,
 	atBottomThreshold = DEFAULT_BOTTOM_THRESHOLD,
+	onNearTop,
+	nearTopThreshold = 0,
 }: StickyVirtuosoOptions) {
 	const virtuosoRef = useRef<VirtuosoHandle>(null);
 	const itemCountRef = useRef(itemCount);
@@ -133,13 +138,15 @@ export function useStickyVirtuoso({
 		const scrollTop = getScrollTop(scroller);
 		const previousScrollTop = lastScrollTopRef.current;
 		lastScrollTopRef.current = scrollTop;
+		const scrollingAwayFromBottom = previousScrollTop !== undefined && scrollTop < previousScrollTop - 1;
+		const readingAwayFromBottom = userScrollIntentRef.current || scrollingAwayFromBottom || !stickyRef.current;
+		if (onNearTop && readingAwayFromBottom && scrollTop <= nearTopThreshold) onNearTop();
 		if (isAtBottom(scroller, atBottomThreshold)) {
 			if (!userScrollIntentRef.current) setSticky(true);
 			return;
 		}
-		const scrollingAwayFromBottom = previousScrollTop !== undefined && scrollTop < previousScrollTop - 1;
 		if (userScrollIntentRef.current || scrollingAwayFromBottom) setSticky(false);
-	}, [atBottomThreshold, scroller, setSticky]);
+	}, [atBottomThreshold, nearTopThreshold, onNearTop, scroller, setSticky]);
 
 	useEffect(() => {
 		if (!scroller) return undefined;
