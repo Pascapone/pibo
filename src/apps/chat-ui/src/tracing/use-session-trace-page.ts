@@ -32,6 +32,7 @@ export function useSessionTracePage({
 	const [rawEventLimit, setRawEventLimit] = useState(DEFAULT_RAW_EVENTS_LIMIT);
 	const [baseTraceView, setBaseTraceView] = useState<PiboSessionTraceView | null>(null);
 	const [rawEventsBeforeSequence, setRawEventsBeforeSequence] = useState<number | undefined>(undefined);
+	const [loadingOlderTracePage, setLoadingOlderTracePage] = useState(false);
 	const loadingOlderTraceBeforeRef = useRef<string | null>(null);
 	const traceSummaryQueryKey = useMemo(
 		() => selectedPiboSessionId ? chatTraceSummaryQueryKey(selectedPiboSessionId) : null,
@@ -84,6 +85,7 @@ export function useSessionTracePage({
 		setTraceEventLimit(DEFAULT_TRACE_EVENTS_PAGE_SIZE);
 		setRawEventLimit(DEFAULT_RAW_EVENTS_LIMIT);
 		setRawEventsBeforeSequence(undefined);
+		setLoadingOlderTracePage(false);
 		setBaseTraceView(null);
 		setLiveTraceOverlay(null);
 	}, [selectedPiboSessionId, setLiveTraceOverlay]);
@@ -141,6 +143,7 @@ export function useSessionTracePage({
 		const loadKey = `${selectedPiboSessionId}:${beforeSequence}`;
 		if (loadingOlderTraceBeforeRef.current === loadKey) return;
 		loadingOlderTraceBeforeRef.current = loadKey;
+		setLoadingOlderTracePage(true);
 		const queryKey = chatTracePageQueryKey(selectedPiboSessionId, {
 			includeRawEvents: showRawEvents,
 			rawEventsLimit: rawEventLimit,
@@ -170,6 +173,7 @@ export function useSessionTracePage({
 			});
 		} finally {
 			if (loadingOlderTraceBeforeRef.current === loadKey) loadingOlderTraceBeforeRef.current = null;
+			setLoadingOlderTracePage(false);
 		}
 	}, [queryClient, rawEventLimit, selectedPiboSessionId, showRawEvents]);
 
@@ -186,6 +190,7 @@ export function useSessionTracePage({
 		traceSummaryQuery,
 		tracePageQuery,
 		rawEventsQuery,
+		loadingOlderTracePage,
 		tracePageReady: Boolean(tracePageQueryKey),
 		loadOlderTracePage,
 		loadMoreRawEvents,

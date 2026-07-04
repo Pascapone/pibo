@@ -22,13 +22,19 @@ export function traceViewFromTimelinePage(page: TraceTimelinePage, rawEvents: Ch
 		eventCount: page.eventCount,
 		eventLimit: page.pageSize,
 		pageSize: page.pageSize,
-		firstEventSequence: page.firstEventSequence,
-		lastEventSequence: page.lastEventSequence,
-		nextBeforeSequence: page.nextBeforeSequence,
+		firstEventSequence: page.firstEventSequence ?? sequenceFromCursor(page.cursor.before),
+		lastEventSequence: page.lastEventSequence ?? sequenceFromCursor(page.cursor.after),
+		nextBeforeSequence: page.nextBeforeSequence ?? sequenceFromCursor(page.cursor.before),
 		hasOlderEvents: page.hasOlderEvents ?? page.cursor.hasOlder,
 		nodes: roots,
 		rawEvents,
 	};
+}
+
+function sequenceFromCursor(cursor: string | undefined): number | undefined {
+	if (!cursor) return undefined;
+	const sequence = Number.parseInt(cursor, 10);
+	return Number.isFinite(sequence) ? sequence : undefined;
 }
 
 function traceNodeFromTimelineNode(row: TraceTimelineNode): PiboTraceNode {

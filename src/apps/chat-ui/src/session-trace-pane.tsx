@@ -145,6 +145,7 @@ export function SessionTracePane({
     traceSummaryQuery,
     tracePageQuery,
     rawEventsQuery,
+    loadingOlderTracePage,
     tracePageReady,
     loadOlderTracePage,
     loadMoreRawEvents,
@@ -304,8 +305,10 @@ export function SessionTracePane({
     onOpenSession,
     onLoadOlderTracePage: () =>
       void loadOlderTracePage(currentTraceView?.nextBeforeSequence),
-    hasOlderTraceEvents: currentTraceView?.hasOlderEvents === true,
-    isFetchingOlderTracePage: tracePageQuery.isFetching,
+    hasOlderTraceEvents:
+      currentTraceView?.hasOlderEvents === true ||
+      typeof currentTraceView?.nextBeforeSequence === "number",
+    isFetchingOlderTracePage: loadingOlderTracePage,
     onThinkingLevelChange,
     onRefreshTrace,
     onRefreshBootstrap,

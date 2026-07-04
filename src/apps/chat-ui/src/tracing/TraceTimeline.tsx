@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Check, ChevronDown, ChevronRight, ChevronsDown, ChevronsUp, GitBranch, GitFork, ListTree, MessageSquarePlus, RefreshCw, RotateCcw } from "lucide-react";
 import { Virtuoso } from "react-virtuoso";
 import { useStickyVirtuoso } from "../components/useStickyVirtuoso";
@@ -72,6 +72,7 @@ const mobileTimelineContentStyle = {
 
 const DEFAULT_EXPANSION_DEPTH = 1;
 const OLDER_TRACE_PREFETCH_TOP_THRESHOLD_PX = 1_200;
+const OLDER_TRACE_PREFETCH_ROW_THRESHOLD = 8;
 const INITIAL_BOTTOM_ITEM = { index: "LAST", align: "end" } as const;
 const AUTO_FILL_OLDER_HISTORY_MIN_ROWS = 40;
 
@@ -98,6 +99,7 @@ export function TraceTimeline({
 	const [expansionDepth, setExpansionDepth] = useState<SpanExpansionDepth>(DEFAULT_EXPANSION_DEPTH);
 	const [levelInput, setLevelInput] = useState(String(DEFAULT_EXPANSION_DEPTH));
 	const [expansionOverrides, setExpansionOverrides] = useState<Record<string, { contentExpanded: boolean; childrenExpanded: boolean }>>({});
+	const rangePrefetchReadyRef = useRef(false);
 
 	const spanTree = useMemo(() => {
 		if (!trace?.spans) return [];
@@ -137,6 +139,10 @@ export function TraceTimeline({
 		if (!hasOlderTraceEvents || isFetchingOlderTracePage) return;
 		onLoadOlderTracePage?.();
 	}, [hasOlderTraceEvents, isFetchingOlderTracePage, onLoadOlderTracePage]);
+	const handleVisibleRangeChanged = useCallback((range: { startIndex: number; endIndex: number }) => {
+		if (!rangePrefetchReadyRef.current) return;
+		if (range.startIndex <= OLDER_TRACE_PREFETCH_ROW_THRESHOLD) loadOlderAtTop();
+	}, [loadOlderAtTop]);
 
 	const stickyView = useStickyVirtuoso({
 		itemCount: visibleRows.length,
@@ -148,6 +154,11 @@ export function TraceTimeline({
 
 	useEffect(() => {
 		setExpansionOverrides({});
+		rangePrefetchReadyRef.current = false;
+		const readyTimer = window.setTimeout(() => {
+			rangePrefetchReadyRef.current = true;
+		}, 600);
+		return () => window.clearTimeout(readyTimer);
 	}, [expandThinking, trace?.id]);
 
 
@@ -270,6 +281,10 @@ export function TraceTimeline({
 						scrollerRef={stickyView.scrollerRef}
 						atBottomStateChange={stickyView.atBottomStateChange}
 						atBottomThreshold={stickyView.atBottomThreshold}
+						atTopStateChange={(atTop) => {
+							if (atTop) loadOlderAtTop();
+						}}
+						rangeChanged={handleVisibleRangeChanged}
 						startReached={loadOlderAtTop}
 						followOutput={stickyView.followOutput}
 						totalListHeightChanged={stickyView.totalListHeightChanged}
