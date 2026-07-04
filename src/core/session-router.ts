@@ -39,7 +39,7 @@ import { resolvePiboSessionActiveModel } from "./session-model.js";
 import { isPiboThinkingLevel, type PiboThinkingLevel } from "./thinking.js";
 import { RuntimeSessionRegistry } from "../tools/runtime/registry.js";
 import { withWorkflowSessionKind } from "../sessions/workflow-session-kind.js";
-import { PiboRuntimeTelemetryRecorder } from "./runtime-telemetry.js";
+import { PiboRuntimeTelemetryRecorder, type ProviderEventTelemetryMode } from "./runtime-telemetry.js";
 import { createPiboProviderTelemetryExtension } from "./provider-telemetry.js";
 import type { TelemetryStore } from "../data/telemetry.js";
 
@@ -181,6 +181,11 @@ function telemetryStoreFromSessionStore(store: PiboSessionStore): TelemetryStore
 	return (store as TelemetrySessionStore).getTelemetryStore?.();
 }
 
+function providerEventTelemetryModeFromEnv(env: NodeJS.ProcessEnv = process.env): ProviderEventTelemetryMode {
+	const value = env.PIBO_TELEMETRY_PROVIDER_EVENTS?.trim().toLowerCase();
+	return value === "1" || value === "true" || value === "detailed" ? "detailed" : "aggregate";
+}
+
 export class PiboSessionRouter {
 	private readonly sessions = new Map<string, RoutedSession>();
 	private readonly pendingSessions = new Map<string, Promise<RoutedSession>>();
@@ -200,7 +205,9 @@ export class PiboSessionRouter {
 		this.pluginRegistry = options.pluginRegistry ?? createDefaultPiboPluginRegistry();
 		this.sessionStore = options.sessionStore ?? new InMemoryPiboSessionStore();
 		this.telemetryStore = options.telemetryStore ?? telemetryStoreFromSessionStore(this.sessionStore);
-		this.telemetryRecorder = this.telemetryStore ? new PiboRuntimeTelemetryRecorder(this.telemetryStore) : undefined;
+		this.telemetryRecorder = this.telemetryStore
+			? new PiboRuntimeTelemetryRecorder(this.telemetryStore, undefined, { providerEventMode: providerEventTelemetryModeFromEnv() })
+			: undefined;
 		const defaultProfileName = selectDefaultPiboProfileName(this.pluginRegistry);
 		this.baseProfile = options.profile ?? createPiboProfileFromRegistryOrDefault(this.pluginRegistry, defaultProfileName);
 		this.reliabilityStore = options.reliabilityStore ?? (options.persistSession === false ? undefined : createDefaultPiboReliabilityStore());

@@ -681,6 +681,15 @@ export class TelemetryStore {
 		return this.getProviderRequest(providerRequestId) ?? fail(`Failed to upsert telemetry provider request ${providerRequestId}`);
 	}
 
+	recordProviderEventSummary(input: TelemetryProviderEventInput): void {
+		const now = input.updatedAt ?? new Date().toISOString();
+		const receivedAt = input.receivedAt ?? now;
+		const byteSize = input.byteSize ?? 0;
+		const parseStatus = input.parseStatus ?? "ok";
+		const normalizedDelta = input.normalizedEventDelta ?? (input.normalizedType ? 1 : 0);
+		this.incrementProviderCounters(input.providerRequestId, input.eventType, receivedAt, byteSize, parseStatus, normalizedDelta);
+	}
+
 	appendProviderEventSummary(input: TelemetryProviderEventInput): StoredTelemetryProviderEvent {
 		const now = input.updatedAt ?? new Date().toISOString();
 		const receivedAt = input.receivedAt ?? now;
@@ -908,6 +917,10 @@ export class BestEffortTelemetryService {
 
 	upsertProviderRequest(input: TelemetryProviderRequestUpsertInput): StoredTelemetryProviderRequest | undefined {
 		return this.safe(() => this.store?.upsertProviderRequest(input));
+	}
+
+	recordProviderEventSummary(input: TelemetryProviderEventInput): void {
+		this.safe(() => this.store?.recordProviderEventSummary(input));
 	}
 
 	appendProviderEventSummary(input: TelemetryProviderEventInput): StoredTelemetryProviderEvent | undefined {

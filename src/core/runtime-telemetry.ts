@@ -21,6 +21,16 @@ type RuntimeTelemetryContext = {
 	activeEventId?: string;
 };
 
+export type ProviderEventTelemetryMode = "aggregate" | "detailed";
+
+export type PiboRuntimeTelemetryRecorderOptions = {
+	/**
+	 * Provider raw stream events are high-volume. Keep aggregate counters by default;
+	 * persist per-event rows only for short, explicit debugging sessions.
+	 */
+	providerEventMode?: ProviderEventTelemetryMode;
+};
+
 type PiProviderEventSummary = {
 	eventType: string;
 	assistantEventType?: string;
@@ -50,9 +60,15 @@ const TERMINAL_TURN_STATUSES = new Set<TelemetryTurnStatus>(["ok", "error", "abo
 
 export class PiboRuntimeTelemetryRecorder {
 	private readonly telemetry: BestEffortTelemetryService;
+	private readonly providerEventMode: ProviderEventTelemetryMode;
 
-	constructor(private readonly store?: TelemetryStore, private readonly onError?: (error: unknown) => void) {
+	constructor(
+		private readonly store?: TelemetryStore,
+		private readonly onError?: (error: unknown) => void,
+		options: PiboRuntimeTelemetryRecorderOptions = {},
+	) {
 		this.telemetry = new BestEffortTelemetryService(store, onError);
+		this.providerEventMode = options.providerEventMode ?? "aggregate";
 	}
 
 	recordOutput(event: PiboOutputEvent, context: RuntimeTelemetryContext = {}): void {
@@ -132,7 +148,7 @@ export class PiboRuntimeTelemetryRecorder {
 		if (summary.upstreamResponseId && summary.upstreamResponseId !== providerRequest.upstreamResponseId) {
 			this.upsertProviderRequestFromExisting(providerRequest, { upstreamResponseId: summary.upstreamResponseId });
 		}
-		this.telemetry.appendProviderEventSummary({
+		const providerEventInput = {
 			providerRequestId: providerRequest.providerRequestId,
 			piboSessionId: turn.piboSessionId,
 			turnId: turn.turnId,
@@ -147,7 +163,12 @@ export class PiboRuntimeTelemetryRecorder {
 			itemId: summary.itemId,
 			toolCallId: summary.toolCallId,
 			safeFields: summary.safeFields,
-		});
+		};
+		if (this.providerEventMode === "detailed") {
+			this.telemetry.appendProviderEventSummary(providerEventInput);
+		} else {
+			this.telemetry.recordProviderEventSummary(providerEventInput);
+		}
 		if (summary.toolCallId && summary.assistantEventType?.startsWith("toolcall_")) {
 			this.recordPiToolCallProgress(turn, providerRequest.providerRequestId, summary, now);
 		}

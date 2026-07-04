@@ -9,6 +9,8 @@ Use these playbooks when a Pibo session stalls or telemetry looks suspicious. St
 - Keep `--limit` small when streams are noisy.
 - Do not expect telemetry to fix a hang. Automatic timeout, abort, retry, and recovery are separate runtime-hardening work.
 - Treat `pibo debug telemetry prune --apply` as destructive. Run the same prune command without `--apply` first.
+- Provider raw stream events are aggregate-only by default. Pibo keeps provider request counters, byte totals, event type counts, parse counts, and timestamps without persisting one row per provider event.
+- Persist per-provider-event detail only during a short incident window by starting the gateway with `PIBO_TELEMETRY_PROVIDER_EVENTS=1` or `PIBO_TELEMETRY_PROVIDER_EVENTS=detailed`; turn it off again after capture.
 
 ## Stuck streaming session
 
@@ -65,7 +67,7 @@ pibo debug telemetry provider <provider-request-id> events --limit 50 --fields e
 pibo debug telemetry provider <provider-request-id> events --after <sequence> --limit 50 --json
 ```
 
-Check `parseErrorCount`, `unknownEventCount`, event `parseStatus`, event type, sequence, and byte size. Default output omits raw provider bodies. If a payload command exists, expect a preview-unavailable result unless a later release enables bounded preview capture.
+Check `parseErrorCount`, `unknownEventCount`, event type counts, and byte totals first. Provider event pages are empty unless detailed provider-event capture was explicitly enabled for the gateway process. Default output omits raw provider bodies. If a payload command exists, expect a preview-unavailable result unless a later release enables bounded preview capture.
 
 ## Unknown provider event type
 
@@ -76,7 +78,7 @@ pibo debug telemetry provider <provider-request-id> --json
 pibo debug telemetry provider <provider-request-id> events --limit 50 --fields eventType,parseStatus,itemId,toolCallId --json
 ```
 
-Use `eventType`, `safeFields`, `itemId`, `toolCallId`, and normalized-event links to decide whether parser support is missing. Do not request raw event bodies in normal triage.
+Use provider request `eventTypeCounts`, `parseErrorCount`, and `unknownEventCount` first. If detailed provider-event capture was explicitly enabled, use `eventType`, `safeFields`, `itemId`, `toolCallId`, and normalized-event links to decide whether parser support is missing. Do not request raw event bodies in normal triage.
 
 ## Stale tool execution
 
