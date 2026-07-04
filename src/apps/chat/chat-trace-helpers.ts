@@ -4,7 +4,7 @@ import { patchTraceViewWithEvent } from "../../shared/trace-engine.js";
 import type { ChatWebStoredEvent } from "../../shared/trace-types.js";
 import type { PiboSessionTraceView, PiboWebSessionStatus } from "./trace.js";
 
-export const DEFAULT_TRACE_EVENTS_PAGE_SIZE = 120;
+export const DEFAULT_TRACE_EVENTS_PAGE_SIZE = 100;
 export const MAX_TRACE_EVENTS_PER_REQUEST = 1000;
 export const TRACE_CACHE_MAX_BYTES = 8 * 1024 * 1024;
 

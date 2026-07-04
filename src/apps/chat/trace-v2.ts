@@ -12,7 +12,7 @@ import type {
 	TraceTimelinePage,
 } from "../../shared/trace-types.js";
 
-export const TRACE_V2_DEFAULT_TIMELINE_LIMIT = 120;
+export const TRACE_V2_DEFAULT_TIMELINE_LIMIT = 100;
 export const TRACE_V2_MAX_TIMELINE_LIMIT = 240;
 export const TRACE_V2_TIMELINE_HARD_BYTES = 256 * 1024;
 export const TRACE_V2_PREVIEW_CHARS = 64;
