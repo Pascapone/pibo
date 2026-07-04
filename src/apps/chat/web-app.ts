@@ -3046,7 +3046,9 @@ async function buildProjectsBootstrap(input: {
 }): Promise<ChatProjectsBootstrap> {
 	const sharedDefaultProject = input.state.projectService.ensureSharedDefaultProject();
 	const selectedProject = input.projectId ? requireSharedProject(input.state, input.webSession, input.projectId, { includeArchived: true }) : sharedDefaultProject;
-	let storedProjectSessions = input.state.projectService.listProjectSessions(selectedProject.id, { includeArchived: input.includeArchived });
+	let storedProjectSessions = input.state.projectService
+		.listProjectSessions(selectedProject.id, { includeArchived: input.includeArchived })
+		.filter((projectSession) => projectSession.workflowId === "simple-chat");
 	if (selectedProject.id === sharedDefaultProject.id && storedProjectSessions.length === 0) {
 		const session = createProjectChatSession({
 			state: input.state,
@@ -3058,7 +3060,7 @@ async function buildProjectsBootstrap(input: {
 		});
 		storedProjectSessions = [input.state.projectService.getProjectSession(session.id)!];
 	}
-	const projectSessions = storedProjectSessions.map((projectSession) => enrichProjectSessionWorkflowWaitTokens(input.state, enrichProjectSessionWorkflowDefinitionLink(input.state, projectSession)));
+	const projectSessions = storedProjectSessions;
 	const rootSessions = projectSessions
 		.map((projectSession) => input.context.channelContext.getSession(projectSession.piboSessionId))
 		.filter((session): session is PiboSession => Boolean(session));
@@ -3071,17 +3073,13 @@ async function buildProjectsBootstrap(input: {
 	indexSharedSessions(input.state.sessionQuery, sessions);
 	const nodes = await buildSessionNodes(sessions, input.state.sessionQuery.listSessions(), selectedProject.projectFolder, new Map(), { skipPiMetadataFallback: true });
 	applyProjectSessionArchiveState(nodes, new Map(projectSessions.map((projectSession) => [projectSession.piboSessionId, Boolean(projectSession.archived)])));
-	const workflowLifecycleEvents = input.state.workflowLifecycleEventStore.listEvents({
-		projectId: selectedProject.id,
-		limit: 100,
-	});
 	return {
 		identity: input.webSession.authSession.identity,
 		sharedDefaultProject,
 		project: selectedProject,
 		projects: listSharedProjects(input.state, input.webSession, { includeArchived: input.includeArchived }),
 		projectSessions,
-		workflowLifecycleEvents,
+		workflowLifecycleEvents: [],
 		...(selectedSession ? { session: selectedSession, selectedPiboSessionId: selectedSession.id } : {}),
 		selectedProjectId: selectedProject.id,
 		sessions: nodes,

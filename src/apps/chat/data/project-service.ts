@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, rmSync, statSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { piboHomePath } from "../../../core/pibo-home.js";
@@ -283,7 +283,7 @@ export class ChatProjectService {
 		const projectFolder = resolve(normalizeProjectFolder(input.projectFolder));
 		this.assertNameAvailable(name);
 		this.assertFolderAvailable(projectFolder);
-		if (input.createFolder) mkdirSync(projectFolder, { recursive: true });
+		this.ensureProjectFolderUsable(projectFolder);
 		const now = new Date().toISOString();
 		const id = `prj_${randomUUID()}`;
 		this.db.prepare(`INSERT INTO projects (id, name, description, project_folder, configuration_status, metadata_json, created_at, updated_at)
@@ -906,6 +906,16 @@ export class ChatProjectService {
 	private assertFolderAvailable(folder: string, exceptId?: string): void {
 		const existing = this.db.prepare("SELECT id FROM projects WHERE project_folder = ? AND (? IS NULL OR id != ?)").get(folder, exceptId ?? null, exceptId ?? null) as { id: string } | undefined;
 		if (existing) throw new Error("Project folder already exists");
+	}
+
+	private ensureProjectFolderUsable(folder: string): void {
+		try {
+			mkdirSync(folder, { recursive: true });
+			if (!statSync(folder).isDirectory()) throw new Error("Project folder is not a directory");
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			throw new Error(`Project folder cannot be created or used: ${message}`);
+		}
 	}
 }
 

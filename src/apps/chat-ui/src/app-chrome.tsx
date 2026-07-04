@@ -5,7 +5,7 @@ import type { BootstrapData } from "./types";
 
 export type AppArea = "sessions" | "projects" | "workflows" | "cron" | "ralph" | "agents" | "context" | "settings";
 
-const MAIN_NAV_AREAS: readonly AppArea[] = ["sessions", "projects", "workflows", "cron", "ralph", "agents", "context", "settings"];
+const MAIN_NAV_AREAS: readonly AppArea[] = ["sessions", "projects", "cron", "ralph", "agents", "context", "settings"];
 
 type AppHeaderProps = {
 	area: AppArea;

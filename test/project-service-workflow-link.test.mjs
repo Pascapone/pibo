@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -24,9 +24,10 @@ test("project service uses app-global storage and lists projects", () => {
 		const created = service.createProject({
 			name: "Shared Feature Project",
 			projectFolder: join(tempRoot, "shared-feature"),
-			createFolder: true,
 		});
 		assert.equal(retiredPartitionField in created, false);
+		assert.equal(existsSync(created.projectFolder), true);
+		assert.equal(statSync(created.projectFolder).isDirectory(), true);
 
 		const second = service.createProject({
 			name: "Second Shared Project",
@@ -34,6 +35,11 @@ test("project service uses app-global storage and lists projects", () => {
 			createFolder: true,
 		});
 		assert.equal(retiredPartitionField in second, false);
+
+		assert.throws(() => service.createProject({ name: "Missing Folder", projectFolder: "" }), /Project folder is required/);
+		const filePath = join(tempRoot, "not-a-directory");
+		writeFileSync(filePath, "not a directory");
+		assert.throws(() => service.createProject({ name: "File Folder", projectFolder: filePath }), /Project folder cannot be created or used/);
 
 		const projects = service.listProjects();
 		assert.deepEqual(projects.map((project) => project.name).sort(), ["Second Shared Project", "Shared Feature Project", "Shared Project"]);
