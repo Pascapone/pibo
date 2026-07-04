@@ -74,6 +74,7 @@ export function WorkflowInspectorsPanel({
 	nodeIds,
 	isSaving,
 	onSaveDefinition,
+	onDraftDefinitionChange,
 }: WorkflowGraphInspectorSlotProps) {
 	const selectedNode = selectedElement?.type === "node" ? readWorkflowNodeDefinitions(draft.definition)[selectedElement.id] : undefined;
 	const selectedEdge = selectedElement?.type === "edge" ? readWorkflowEdgeDefinitions(draft.definition)[selectedElement.id] : undefined;
@@ -86,7 +87,7 @@ export function WorkflowInspectorsPanel({
 					Inspector saves update the same Pibo Workflow IR draft as the graph canvas; XState remains projection-only.
 				</p>
 			</div>
-			<WorkflowSettingsInspector draft={draft} isSaving={isSaving} onSaveDefinition={onSaveDefinition} />
+			<WorkflowSettingsInspector draft={draft} isSaving={isSaving} onSaveDefinition={onSaveDefinition} onDraftDefinitionChange={onDraftDefinitionChange} />
 			{selectedElement?.type === "node" && selectedNode ? (
 				<WorkflowNodeInspector
 					draft={draft}
@@ -121,10 +122,11 @@ function workflowDiagnosticsForEdge(diagnostics: WorkflowDraftDiagnostic[], edge
 	return diagnostics.filter((diagnostic) => diagnostic.edgeId === edgeId || diagnostic.path?.startsWith(`$.edges.${edgeId}`));
 }
 
-function WorkflowSettingsInspector({ draft, isSaving, onSaveDefinition }: {
+function WorkflowSettingsInspector({ draft, isSaving, onSaveDefinition, onDraftDefinitionChange }: {
 	draft: WorkflowDraftRecord;
 	isSaving: boolean;
 	onSaveDefinition: (definition: WorkflowDraftDefinition, successMessage: string, options?: { editTrigger?: WorkflowValidationTrigger }) => Promise<void>;
+	onDraftDefinitionChange?: (definition: WorkflowDraftDefinition) => void;
 }) {
 	const [form, setForm] = useState<WorkflowSettingsFormState>(() => createWorkflowSettingsFormState(draft.definition));
 
@@ -133,28 +135,44 @@ function WorkflowSettingsInspector({ draft, isSaving, onSaveDefinition }: {
 	}, [draft.definition]);
 
 	const update = <K extends keyof WorkflowSettingsFormState>(key: K, value: WorkflowSettingsFormState[K]) => {
-		setForm((current) => ({ ...current, [key]: value }));
+		setForm((current) => {
+			const next = { ...current, [key]: value };
+			onDraftDefinitionChange?.(applyWorkflowSettingsForm(draft.definition, next));
+			return next;
+		});
 	};
 
 	const updateGlobalStateField = <K extends keyof WorkflowGlobalStateFieldFormState>(index: number, key: K, value: WorkflowGlobalStateFieldFormState[K]) => {
-		setForm((current) => ({
-			...current,
-			globalStateFields: current.globalStateFields.map((field, fieldIndex) => fieldIndex === index ? { ...field, [key]: value } : field),
-		}));
+		setForm((current) => {
+			const next = {
+				...current,
+				globalStateFields: current.globalStateFields.map((field, fieldIndex) => fieldIndex === index ? { ...field, [key]: value } : field),
+			};
+			onDraftDefinitionChange?.(applyWorkflowSettingsForm(draft.definition, next));
+			return next;
+		});
 	};
 
 	const addGlobalStateField = () => {
-		setForm((current) => ({
-			...current,
-			globalStateFields: [...current.globalStateFields, createDefaultGlobalStateField(current.globalStateFields)],
-		}));
+		setForm((current) => {
+			const next = {
+				...current,
+				globalStateFields: [...current.globalStateFields, createDefaultGlobalStateField(current.globalStateFields)],
+			};
+			onDraftDefinitionChange?.(applyWorkflowSettingsForm(draft.definition, next));
+			return next;
+		});
 	};
 
 	const removeGlobalStateField = (index: number) => {
-		setForm((current) => ({
-			...current,
-			globalStateFields: current.globalStateFields.filter((_, fieldIndex) => fieldIndex !== index),
-		}));
+		setForm((current) => {
+			const next = {
+				...current,
+				globalStateFields: current.globalStateFields.filter((_, fieldIndex) => fieldIndex !== index),
+			};
+			onDraftDefinitionChange?.(applyWorkflowSettingsForm(draft.definition, next));
+			return next;
+		});
 	};
 
 	const saveSettings = () => {
@@ -175,7 +193,7 @@ function WorkflowSettingsInspector({ draft, isSaving, onSaveDefinition }: {
 					<span>Workflow description</span>
 					<textarea className="min-h-20 rounded-sm border border-slate-700 bg-[#101d22] px-2 py-1.5 text-slate-100" value={form.description} onChange={(event) => update("description", event.target.value)} />
 				</label>
-				<div className="grid gap-2 md:grid-cols-2">
+				<div className="grid gap-2">
 					<WorkflowPortEditor label="Workflow input port" kind={form.inputKind} description={form.inputDescription} schemaText={form.inputSchemaText} onKindChange={(value) => update("inputKind", value)} onDescriptionChange={(value) => update("inputDescription", value)} onSchemaChange={(value) => update("inputSchemaText", value)} />
 					<WorkflowPortEditor label="Workflow output port" kind={form.outputKind} description={form.outputDescription} schemaText={form.outputSchemaText} onKindChange={(value) => update("outputKind", value)} onDescriptionChange={(value) => update("outputDescription", value)} onSchemaChange={(value) => update("outputSchemaText", value)} />
 				</div>
@@ -185,7 +203,7 @@ function WorkflowSettingsInspector({ draft, isSaving, onSaveDefinition }: {
 					onRemoveField={removeGlobalStateField}
 					onUpdateField={updateGlobalStateField}
 				/>
-				<div className="grid gap-2 md:grid-cols-2">
+				<div className="grid gap-2">
 					<WorkflowListTextEditor label="metadata.tags" value={form.metadataTags} onChange={(value) => update("metadataTags", value)} />
 					<WorkflowListTextEditor label="metadata.useWhen" value={form.metadataUseWhen} onChange={(value) => update("metadataUseWhen", value)} />
 					<WorkflowListTextEditor label="metadata.notFor" value={form.metadataNotFor} onChange={(value) => update("metadataNotFor", value)} />
@@ -315,7 +333,7 @@ function WorkflowNodeInspector({ draft, nodeId, node, isSaving, onSaveDefinition
 					<span>Node description</span>
 					<textarea className="min-h-16 rounded-sm border border-slate-700 bg-[#101d22] px-2 py-1.5 text-slate-100" value={form.description} onChange={(event) => update("description", event.target.value)} />
 				</label>
-				<div className="grid gap-2 md:grid-cols-2">
+				<div className="grid gap-2">
 					<WorkflowOptionalPortEditor label="Node input port" kind={form.inputKind} description={form.inputDescription} schemaText={form.inputSchemaText} onKindChange={(value) => update("inputKind", value)} onDescriptionChange={(value) => update("inputDescription", value)} onSchemaChange={(value) => update("inputSchemaText", value)} />
 					<WorkflowOptionalPortEditor label="Node output port" kind={form.outputKind} description={form.outputDescription} schemaText={form.outputSchemaText} onKindChange={(value) => update("outputKind", value)} onDescriptionChange={(value) => update("outputDescription", value)} onSchemaChange={(value) => update("outputSchemaText", value)} />
 				</div>
@@ -615,7 +633,7 @@ function WorkflowEdgeInspector({ draft, edgeId, edge, nodeIds, isSaving, onSaveD
 			<summary className="cursor-pointer text-xs font-bold text-slate-200">Edge inspector: {edgeId}</summary>
 			<div className="mt-3 grid gap-3 text-xs">
 				<div className="flex flex-wrap gap-2 text-[11px]"><WorkflowPill label={`${form.kind} edge`} /><WorkflowPill label={`${edgeDiagnostics.length} diagnostics`} /></div>
-				<div className="grid gap-2 md:grid-cols-2">
+				<div className="grid gap-2">
 					<label className="grid gap-1 font-semibold text-slate-300">
 						<span>Source node</span>
 						<select className="rounded-sm border border-slate-700 bg-[#101d22] px-2 py-1.5 text-slate-100" value={form.sourceNodeId} onChange={(event) => update("sourceNodeId", event.target.value)}>
@@ -648,7 +666,7 @@ function WorkflowEdgeInspector({ draft, edgeId, edge, nodeIds, isSaving, onSaveD
 						<option value="resume">resume</option>
 					</select>
 				</label>
-				<div className="grid gap-2 md:grid-cols-2">
+				<div className="grid gap-2">
 					<label className="grid gap-1 font-semibold text-slate-300">
 						<span>Guard ref</span>
 						<select className="rounded-sm border border-slate-700 bg-[#101d22] px-2 py-1.5 text-slate-100" value={guardPicker?.selectedRefId ?? form.guardHandler} onChange={(event) => update("guardHandler", event.target.value)}>
@@ -775,7 +793,7 @@ function WorkflowEdgeAdapterDialog({ draft, edgeId, edge, edgePortDetails, isSav
 					<button type="button" className="rounded-sm border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition hover:border-[#11a4d4]/60 hover:text-slate-100" onClick={onClose}>Close</button>
 				</div>
 
-				<div className="mt-4 grid gap-3 md:grid-cols-2">
+				<div className="mt-4 grid gap-3">
 					<HandlerSchemaPreview label={`From schema${edgePortDetails.sourceNodeId ? ` (${edgePortDetails.sourceNodeId})` : ""}`} schema={edgePortDetails.sourcePort ?? null} />
 					<HandlerSchemaPreview label={`To schema${edgePortDetails.targetNodeId ? ` (${edgePortDetails.targetNodeId})` : ""}`} schema={edgePortDetails.targetPort ?? null} />
 				</div>
@@ -809,7 +827,7 @@ function WorkflowEdgeAdapterDialog({ draft, edgeId, edge, edgePortDetails, isSav
 						{picker?.options.map((option) => <RegisteredRefOptionCard key={option.id} option={option} badge="compatible adapter" />)}
 					</div>
 
-					<div className="grid gap-2 md:grid-cols-2">
+					<div className="grid gap-2">
 						<button type="button" className="inline-flex items-center justify-center gap-2 rounded-sm border border-[#11a4d4]/50 px-3 py-2 text-xs font-semibold text-[#8bdcf4] transition hover:border-[#11a4d4] hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-50" onClick={() => void useAsEdgeAdapter()} disabled={!canApply}>
 							<Link2 size={13} />
 							Use as edge adapter
@@ -899,7 +917,7 @@ function WorkflowGlobalStateFieldsEditor({ fields, onAddField, onRemoveField, on
 				</p>
 			</div>
 			{fields.length ? fields.map((field, index) => (
-				<div key={`${index}:${field.path}`} className="grid gap-2 rounded-sm border border-slate-800 bg-[#151f24]/70 p-2 md:grid-cols-2">
+				<div key={`${index}:${field.path}`} className="grid gap-2 rounded-sm border border-slate-800 bg-[#151f24]/70 p-2">
 					<label className="grid gap-1 font-semibold text-slate-300">
 						<span>Global state path</span>
 						<input className="rounded-sm border border-slate-700 bg-[#101d22] px-2 py-1.5 text-slate-100" value={field.path} onChange={(event) => onUpdateField(index, "path", event.target.value)} placeholder="projectGoal" />

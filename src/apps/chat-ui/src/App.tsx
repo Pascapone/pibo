@@ -113,6 +113,7 @@ import { SettingsSidebar } from "./settings/SettingsSidebar";
 import { SettingsView } from "./settings/SettingsView";
 import type { SettingsPanel } from "./settings/types";
 import { ProjectsArea } from "./projects/ProjectsArea";
+import { MinimalWorkflowsArea } from "./MinimalWorkflowsArea";
 import { DeleteRoomModal, DeleteSessionModal } from "./delete-confirmation-modals";
 import { AppErrorBanner, AppHeader, FallbackGatewayBanner, SignedOut, type AppArea as Area } from "./app-chrome";
 import { applySignalPatch, applySignalPatchToBootstrap, applySignalSnapshotToBootstrap, signalLegacyStatus } from "./app-signal-status";
@@ -176,6 +177,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const routeProjectId = route.area === "projects" ? route.projectId : undefined;
 	const routePiboSessionId = route.area === "sessions" || route.area === "projects" || route.area === "context" ? route.piboSessionId : undefined;
 	const routeSessionViewId = route.area === "sessions" || route.area === "projects" ? route.sessionViewId : undefined;
+	const routeWorkflowDraftId = route.area === "workflows" ? route.draftId : undefined;
 	const settingsPanel: SettingsPanel = route.area === "settings" ? route.panel ?? "general" : "general";
 	const [bootstrap, setBootstrap] = useState<BootstrapData | null>(null);
 	const [selectedPiboSessionId, setSelectedPiboSessionId] = useState<string | null>(null);
@@ -1144,7 +1146,10 @@ export function App({ route }: { route: ChatAppRoute }) {
 						creatingSession={creatingSession || selectedRoomArchived}
 					/>
 				) : area === "workflows" ? (
-					<WorkflowRedesignNotice />
+					<MinimalWorkflowsArea
+						draftId={routeWorkflowDraftId}
+						onNavigateDraft={(nextDraftId) => navigateToRoute({ area: "workflows", draftId: nextDraftId })}
+					/>
 				) : area === "projects" ? (
 					<ProjectsArea
 						baseBootstrap={bootstrap}
@@ -1434,21 +1439,4 @@ function findAgentProfile(profiles: BootstrapData["agents"], name: string): Boot
 
 function profileExists(profiles: BootstrapData["agents"], name: string): boolean {
 	return Boolean(findAgentProfile(profiles, name));
-}
-
-function WorkflowRedesignNotice() {
-	return (
-		<main className="h-full min-h-0 overflow-auto bg-[#101d22] p-6 text-slate-300">
-			<section className="mx-auto max-w-3xl rounded-sm border border-slate-800 bg-[#151f24] p-5 shadow-lg shadow-black/20">
-				<div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#11a4d4]">Workflow redesign</div>
-				<h1 className="mt-2 text-2xl font-extrabold tracking-tight text-slate-100">Workflows are temporarily disconnected</h1>
-				<p className="mt-3 text-sm leading-6 text-slate-400">
-					The previous workflow builder, graph canvas, and runtime experiments are preserved in the codebase, but they are no longer part of the default Chat Web product surface while Projects are rebuilt around Room-like sessions.
-				</p>
-				<p className="mt-3 text-sm leading-6 text-slate-400">
-					Workflows will return later as a Project module after the Projects foundation is stable. For now, use Projects to create normal sessions that run in the selected project workspace.
-				</p>
-			</section>
-		</main>
-	);
 }
