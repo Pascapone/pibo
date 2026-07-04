@@ -12,11 +12,12 @@ import type {
 	TraceTimelinePage,
 } from "../../shared/trace-types.js";
 
-export const TRACE_V2_DEFAULT_TIMELINE_LIMIT = 100;
+export const TRACE_V2_DEFAULT_TIMELINE_LIMIT = 50;
 export const TRACE_V2_MAX_TIMELINE_LIMIT = 240;
 export const TRACE_V2_TIMELINE_HARD_BYTES = 256 * 1024;
 export const TRACE_V2_PREVIEW_CHARS = 64;
 export const TRACE_V2_INLINE_PAYLOAD_MAX_BYTES = 8 * 1024;
+export const TRACE_V2_INLINE_TRANSCRIPT_PAYLOAD_MAX_BYTES = 64 * 1024;
 export const TRACE_V2_PAYLOAD_REF_THRESHOLD_BYTES = 4096;
 export const TRACE_V2_PAYLOAD_DEFAULT_LIMIT_BYTES = 64 * 1024;
 export const TRACE_V2_PAYLOAD_MAX_LIMIT_BYTES = 1024 * 1024;
@@ -39,6 +40,7 @@ export function traceTimelinePageFromView(input: {
 	payloadStore: PayloadStore;
 	limit: number;
 	byteLimit?: number;
+	fromTail?: boolean;
 }): TraceTimelinePage {
 	const byteLimit = input.byteLimit ?? TRACE_V2_TIMELINE_HARD_BYTES;
 	const nodes = compactTraceNodes({
@@ -46,6 +48,7 @@ export function traceTimelinePageFromView(input: {
 		payloadStore: input.payloadStore,
 		piboSessionId: input.trace.piboSessionId,
 		limit: Math.max(1, Math.min(input.limit, TRACE_V2_MAX_TIMELINE_LIMIT)),
+		fromTail: input.fromTail,
 	});
 	let page: TraceTimelinePage = {
 		piboSessionId: input.trace.piboSessionId,
@@ -170,30 +173,36 @@ function compactTraceNodes(input: {
 	payloadStore: PayloadStore;
 	piboSessionId: string;
 	limit: number;
+	fromTail?: boolean;
 }): TraceTimelineNode[] {
 	const result: TraceTimelineNode[] = [];
 	const visit = (nodes: readonly PiboTraceNode[], depth: number): void => {
 		for (const node of nodes) {
-			if (result.length >= input.limit) return;
 			result.push(compactTraceNode(node, input.payloadStore, input.piboSessionId, depth));
 			visit(node.children, depth + 1);
 		}
 	};
 	visit(input.nodes, 0);
-	return result;
+	return input.fromTail ? result.slice(-input.limit) : result.slice(0, input.limit);
 }
 
 function compactTraceNode(node: PiboTraceNode, payloadStore: PayloadStore, piboSessionId: string, depth: number): TraceTimelineNode {
 	const outputKind = node.type === "model.reasoning" ? "reasoning" : "output";
-	const payloadRefs = compactObject({
-		input: payloadRefForValue({ store: payloadStore, piboSessionId, nodeId: node.id, kind: "input", value: node.input }),
-		[outputKind]: payloadRefForValue({ store: payloadStore, piboSessionId, nodeId: node.id, kind: outputKind, value: node.output }),
-		error: payloadRefForValue({ store: payloadStore, piboSessionId, nodeId: node.id, kind: "error", value: node.error }),
-	});
 	const inlinePayloads = compactObject({
-		input: inlinePayloadForValue(node.input),
-		[outputKind]: inlinePayloadForValue(node.output),
-		error: inlinePayloadForValue(node.error),
+		input: inlinePayloadForNodeValue(node, "input", node.input),
+		[outputKind]: inlinePayloadForNodeValue(node, outputKind, node.output),
+		error: inlinePayloadForNodeValue(node, "error", node.error),
+	});
+	const payloadRefs = compactObject({
+		input: inlinePayloads.input === undefined
+			? payloadRefForValue({ store: payloadStore, piboSessionId, nodeId: node.id, kind: "input", value: node.input })
+			: undefined,
+		[outputKind]: inlinePayloads[outputKind] === undefined
+			? payloadRefForValue({ store: payloadStore, piboSessionId, nodeId: node.id, kind: outputKind, value: node.output })
+			: undefined,
+		error: inlinePayloads.error === undefined
+			? payloadRefForValue({ store: payloadStore, piboSessionId, nodeId: node.id, kind: "error", value: node.error })
+			: undefined,
 	});
 	const preview = previewForNode(node, payloadRefs);
 	return compactObject({
@@ -223,10 +232,21 @@ function compactTraceNode(node: PiboTraceNode, payloadStore: PayloadStore, piboS
 	}) as TraceTimelineNode;
 }
 
-function inlinePayloadForValue(value: unknown): PiboJsonValue | string | undefined {
+function inlinePayloadForNodeValue(node: PiboTraceNode, kind: TracePayloadKind, value: unknown): PiboJsonValue | string | undefined {
+	return inlinePayloadForValue(value, inlinePayloadByteLimit(node, kind));
+}
+
+function inlinePayloadByteLimit(node: PiboTraceNode, kind: TracePayloadKind): number {
+	if ((node.type === "user.message" || node.type === "assistant.message" || node.type === "model.reasoning") && kind !== "error") {
+		return TRACE_V2_INLINE_TRANSCRIPT_PAYLOAD_MAX_BYTES;
+	}
+	return TRACE_V2_INLINE_PAYLOAD_MAX_BYTES;
+}
+
+function inlinePayloadForValue(value: unknown, maxBytes = TRACE_V2_INLINE_PAYLOAD_MAX_BYTES): PiboJsonValue | string | undefined {
 	if (value === undefined || value === null || value === "") return undefined;
 	const { bytes } = payloadBytes(value);
-	if (bytes.byteLength > TRACE_V2_INLINE_PAYLOAD_MAX_BYTES) return undefined;
+	if (bytes.byteLength > maxBytes) return undefined;
 	return toPayloadValue(value);
 }
 

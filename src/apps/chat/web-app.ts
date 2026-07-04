@@ -22,7 +22,7 @@ import {
 	type UpdatePiboRoomInput,
 } from "./types/rooms.js";
 import { chatStreamFramesFromOutputEvent, createChatStreamState, nextTransientChatStreamFrameId, type ChatStreamEvent } from "./stream.js";
-import { buildSessionNodes, buildTraceView, createTraceViewVersion, loadPiSessionMetadata, type PiboSessionTraceView, type PiboWebSessionNode, type PiboWebSessionStatus } from "./trace.js";
+import { buildSessionNodes, buildTraceView, createTraceViewVersion, loadPiSessionMetadata, readTailEntries, type PiboSessionTraceView, type PiboWebSessionNode, type PiboWebSessionStatus } from "./trace.js";
 import type { ChatWebStoredEvent, PiboSessionTraceSummary, TraceTimelinePage } from "../../shared/trace-types.js";
 import {
 	DEFAULT_TRACE_EVENTS_PAGE_SIZE,
@@ -827,6 +827,11 @@ function createFastTraceV2Version(input: {
 	lastActivityAt?: string;
 	status?: PiboWebSessionStatus;
 	latestStreamId?: number;
+	transcript?: {
+		sessionSize?: number;
+		sessionMtimeMs?: number;
+		modified?: string;
+	};
 }): string {
 	const relevantSessions = input.sessions
 		.map((session) => ({
@@ -851,6 +856,11 @@ function createFastTraceV2Version(input: {
 				lastSequence: input.lastEventSequence,
 				lastActivityAt: input.lastActivityAt ?? null,
 				latestStreamId: input.latestStreamId ?? null,
+			},
+			transcript: {
+				sessionSize: input.transcript?.sessionSize ?? null,
+				sessionMtimeMs: input.transcript?.sessionMtimeMs ?? null,
+				modified: input.transcript?.modified ?? null,
 			},
 			sessions: relevantSessions,
 		}))
@@ -5057,6 +5067,9 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const lastEventSequence = state.timelineQuery.getLatestEventSequence(selectedSession.id);
 				const latestStreamId = state.timelineQuery.getLatestStreamId({ piboSessionId: selectedSession.id });
 				const liveSnapshots = beforeSequence === undefined ? state.outputCompactor.snapshotsForSession(selectedSession.id) : [];
+				const transcriptMetadata = beforeSequence === undefined
+					? await loadPiSessionMetadata(selectedSession, selectedSession.workspace ?? process.cwd())
+					: undefined;
 				const baseVersion = createFastTraceV2Version({
 					session: selectedSession,
 					sessions: ownedSessions,
@@ -5064,6 +5077,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					lastActivityAt: indexedSession?.lastActivityAt,
 					status: indexedSession?.status,
 					latestStreamId,
+					transcript: transcriptMetadata,
 				});
 				const snapshotVersion = liveSnapshotVersion(liveSnapshots);
 				const version = snapshotVersion ? `${baseVersion}:live:${snapshotVersion}` : baseVersion;
@@ -5101,13 +5115,17 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 						limit,
 						...(beforeSequence !== undefined ? { beforeSequence } : {}),
 					});
+					const transcriptEntries = beforeSequence === undefined && transcriptMetadata?.sessionPath
+						? readTailEntries(transcriptMetadata.sessionPath)
+						: [];
 					eventCount = events.length;
 					trace = await buildTraceView({
 						session: selectedSession,
 						sessions: ownedSessions,
 						events,
 						status: indexedSession?.status,
-						metadata: {},
+						metadata: transcriptMetadata ?? {},
+						transcriptEntries,
 						includeRawEvents: false,
 						latestStreamId,
 					});
@@ -5120,7 +5138,13 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					status: liveSnapshots.length ? "running" : indexedSession?.status,
 				});
 				trace = { ...trace, version };
-				const page = traceTimelinePageFromView({ trace, payloadStore: state.dataStore.payloads, limit, byteLimit: TRACE_V2_TIMELINE_HARD_BYTES });
+				const page = traceTimelinePageFromView({
+					trace,
+					payloadStore: state.dataStore.payloads,
+					limit,
+					byteLimit: TRACE_V2_TIMELINE_HARD_BYTES,
+					fromTail: beforeSequence === undefined,
+				});
 				setTraceTimelinePageCache(state.traceTimelinePageCache, pageCacheKey, page);
 				return responseJson(page, {
 					headers: {
