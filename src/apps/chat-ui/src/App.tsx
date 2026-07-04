@@ -214,6 +214,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const sessionListScrollRef = useRef<HTMLDivElement>(null);
 	const bootstrapRef = useRef<BootstrapData | null>(null);
 	const bootstrapRequestId = useRef(0);
+	const navigationInFlightRef = useRef(new Map<string, Promise<NavigationData>>());
 	const activeRoomId = selectedRoomId ?? bootstrap?.selectedRoomId ?? null;
 	const selectedRoom = activeRoomId && bootstrap ? findRoomById(bootstrap.rooms, activeRoomId) ?? bootstrap.room : undefined;
 	const selectedRoomArchived = selectedRoom ? isArchivedRoom(selectedRoom) : false;
@@ -402,6 +403,27 @@ export function App({ route }: { route: ChatAppRoute }) {
 		queryClient.setQueriesData<BootstrapData>({ queryKey: ["chat", "bootstrap"] }, (current) => current ? removeAgentCatalogUserSkill(current, skillId) : current);
 	}, [queryClient]);
 
+	const fetchNavigation = useCallback((input: {
+		piboSessionId?: string;
+		includeArchived?: boolean;
+		roomId?: string;
+		force?: boolean;
+	}) => {
+		const key = JSON.stringify([
+			input.piboSessionId ?? "",
+			input.includeArchived === true ? "archived" : "active",
+			input.roomId ?? "",
+			input.force === true ? "force" : "cached",
+		]);
+		const inFlight = navigationInFlightRef.current.get(key);
+		if (inFlight) return inFlight;
+		const request = loadNavigationQueryData(queryClient, input).finally(() => {
+			if (navigationInFlightRef.current.get(key) === request) navigationInFlightRef.current.delete(key);
+		});
+		navigationInFlightRef.current.set(key, request);
+		return request;
+	}, [queryClient]);
+
 	const loadBootstrap = useCallback(async (
 		piboSessionId?: string,
 		includeArchived = showArchivedRef.current,
@@ -413,7 +435,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 			if (piboSessionId) await markSessionRead(piboSessionId);
 			const requestId = bootstrapRequestId.current + 1;
 			bootstrapRequestId.current = requestId;
-			const navigation = await loadNavigationQueryData(queryClient, { piboSessionId, includeArchived, roomId });
+			const navigation = await fetchNavigation({ piboSessionId, includeArchived, roomId });
 			const data = mergeNavigationIntoBootstrap(currentBootstrap, navigation, { readSessionId: piboSessionId });
 			if (requestId !== bootstrapRequestId.current) return data;
 			setBootstrap(data);
@@ -447,14 +469,14 @@ export function App({ route }: { route: ChatAppRoute }) {
 		if (!currentBootstrap) return loadBootstrap(piboSessionId, includeArchived, roomId, { force: options.force });
 		const requestId = bootstrapRequestId.current + 1;
 		bootstrapRequestId.current = requestId;
-		const navigation = await loadNavigationQueryData(queryClient, { piboSessionId, includeArchived, roomId, force: options.force });
+		const navigation = await fetchNavigation({ piboSessionId, includeArchived, roomId, force: options.force });
 		const data = mergeNavigationIntoBootstrap(currentBootstrap, navigation, { readSessionId: options.readSessionId });
 		if (requestId !== bootstrapRequestId.current) return data;
 		setBootstrap(data);
 		setSelectedPiboSessionId(data.selectedPiboSessionId);
 		setSelectedRoomId(data.selectedRoomId);
 		return data;
-	}, [loadBootstrap, queryClient]);
+	}, [fetchNavigation, loadBootstrap]);
 
 	useEffect(() => {
 		if (area !== "sessions") return;
