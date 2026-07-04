@@ -18,20 +18,20 @@ test("project service uses app-global storage and lists projects", () => {
 		const defaultB = service.ensureSharedDefaultProject({ projectFolder: join(tempRoot, "ignored-default") });
 		assert.equal(defaultA.id, defaultB.id);
 		assert.equal(retiredPartitionField in defaultA, false);
-		assert.equal(defaultA.name, "Shared Project");
+		assert.equal(defaultA.name, "Project Manager");
 		assert.equal(defaultA.metadata.default, true);
 
 		const created = service.createProject({
-			name: "Shared Feature Project",
-			projectFolder: join(tempRoot, "shared-feature"),
+			name: "Feature Project",
+			projectFolder: join(tempRoot, "feature"),
 		});
 		assert.equal(retiredPartitionField in created, false);
 		assert.equal(existsSync(created.projectFolder), true);
 		assert.equal(statSync(created.projectFolder).isDirectory(), true);
 
 		const second = service.createProject({
-			name: "Second Shared Project",
-			projectFolder: join(tempRoot, "second-shared"),
+			name: "Second Project",
+			projectFolder: join(tempRoot, "second"),
 			createFolder: true,
 		});
 		assert.equal(retiredPartitionField in second, false);
@@ -42,7 +42,7 @@ test("project service uses app-global storage and lists projects", () => {
 		assert.throws(() => service.createProject({ name: "File Folder", projectFolder: filePath }), /Project folder cannot be created or used/);
 
 		const projects = service.listProjects();
-		assert.deepEqual(projects.map((project) => project.name).sort(), ["Second Shared Project", "Shared Feature Project", "Shared Project"]);
+		assert.deepEqual(projects.map((project) => project.name).sort(), ["Feature Project", "Second Project"]);
 		assert.equal(retiredPartitionField in service.requireProject(second.id), false);
 		const renamedSecond = service.updateProject(second.id, { name: "Second Project Renamed" });
 		assert.equal(renamedSecond?.name, "Second Project Renamed");

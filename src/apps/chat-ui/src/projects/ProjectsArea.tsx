@@ -528,6 +528,8 @@ function ProjectInfoPanel({
   project: PiboProject;
   sessionCount: number;
 }) {
+  const projectDisplayName =
+    project.metadata?.default === true ? "Project Manager" : project.name;
   return (
     <div className="min-h-0 flex-1 overflow-auto bg-[#0e1116] p-4 text-sm text-slate-300">
       <div className="mx-auto max-w-5xl space-y-4">
@@ -536,7 +538,7 @@ function ProjectInfoPanel({
             Project Info
           </div>
           <h2 className="mt-1 text-lg font-bold text-slate-100">
-            {project.name}
+            {projectDisplayName}
           </h2>
           <div className="mt-3 grid gap-3 text-xs md:grid-cols-2">
             <ProjectInfoFact

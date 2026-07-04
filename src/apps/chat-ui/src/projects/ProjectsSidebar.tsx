@@ -81,6 +81,9 @@ export function ProjectsSidebar({
   onAutoRenameConsumed: () => void;
 }) {
   const signalNow = Date.now();
+  const listedActiveProjects = activeProjects.filter(
+    (project) => project.id !== data.sharedDefaultProject.id,
+  );
   return (
     <aside
       className={`min-h-0 overflow-auto bg-[#1a262b] border-r border-slate-800 max-[980px]:fixed max-[980px]:left-0 max-[980px]:top-0 max-[980px]:bottom-0 max-[980px]:z-40 max-[980px]:w-[280px] max-[980px]:transition-transform max-[980px]:duration-200 ${
@@ -115,7 +118,7 @@ export function ProjectsSidebar({
       <div className="p-2 space-y-3">
         <div>
           <div className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-            Shared Project
+            Project Manager
           </div>
           <ProjectRow
             project={data.sharedDefaultProject}
@@ -153,7 +156,7 @@ export function ProjectsSidebar({
               </button>
             </div>
           </div>
-          {activeProjects.map((project) => (
+          {listedActiveProjects.map((project) => (
             <ProjectRow
               key={project.id}
               project={project}
@@ -163,7 +166,7 @@ export function ProjectsSidebar({
               onArchive={() => onSetProjectArchived(project, true)}
             />
           ))}
-          {activeProjects.length === 0 ? (
+          {listedActiveProjects.length === 0 ? (
             <div className="px-2 py-3 text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm">
               No projects
             </div>
@@ -332,6 +335,8 @@ function ProjectRow({
     inputRef.current?.select();
   }, [editing]);
 
+  const displayProjectName = sharedDefault ? "Project Manager" : project.name;
+
   const submitRename = () => {
     const name = draftName.trim();
     if (name && name !== project.name) onRename?.(name);
@@ -409,18 +414,20 @@ function ProjectRow({
           onClick={onSelect}
           className="min-w-0 flex-1 text-left"
         >
-          <span className="block truncate font-medium">{project.name}</span>
+          <span className="block truncate font-medium">
+            {displayProjectName}
+          </span>
           <span className="block truncate text-[11px] text-slate-500">
             {sharedDefault
-              ? "shared default project chat"
+              ? "default project management workspace"
               : project.projectFolder}
           </span>
         </button>
       )}
       {sharedDefault ? (
         <span
-          title="Shared Project is locked"
-          aria-label="Shared Project is locked"
+          title="Project Manager is locked"
+          aria-label="Project Manager is locked"
           className="h-7 w-7 max-[980px]:h-9 max-[980px]:w-9 inline-flex items-center justify-center border border-[#0bda57]/50 rounded-sm text-[#0bda57]"
         >
           <Lock
