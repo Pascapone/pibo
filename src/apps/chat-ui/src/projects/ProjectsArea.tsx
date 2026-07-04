@@ -218,14 +218,6 @@ export function ProjectsArea({
         active: activeProjectViewTab === "info",
         onSelect: () => setActiveProjectViewTab("info"),
       },
-      {
-        id: "project-workflows",
-        label: "Workflows",
-        description:
-          "Project workflows will return as a dedicated project view after the redesign.",
-        disabled: true,
-        onSelect: () => undefined,
-      },
     ],
     [activeProjectViewTab],
   );
