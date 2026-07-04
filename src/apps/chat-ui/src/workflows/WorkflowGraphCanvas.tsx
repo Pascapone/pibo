@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import {
 	Background,
+	BaseEdge,
 	Controls,
+	EdgeLabelRenderer,
 	Handle,
 	MarkerType,
 	MiniMap,
@@ -10,8 +12,10 @@ import {
 	addEdge as addReactFlowEdge,
 	applyEdgeChanges,
 	applyNodeChanges,
+	useReactFlow,
 	type Connection,
 	type EdgeChange,
+	type EdgeProps,
 	type NodeChange,
 	type NodeProps,
 } from "@xyflow/react";
@@ -40,11 +44,14 @@ import {
 	projectionHasElement,
 	readEdgeEndpointNodeId,
 	readWorkflowEdgeDefinitions,
+	readWorkflowEdgeRoutes,
 	readWorkflowNodeDefinitions,
+	readWorkflowPositions,
 	workflowNodeKind,
 	workflowNodeLabel,
-	writeWorkflowGraphPositions,
+	writeWorkflowGraphLayout,
 	type SelectedGraphElement,
+	type WorkflowEdgeRoute,
 	type WorkflowGraphFlowEdge,
 	type WorkflowGraphFlowNode,
 } from "./workflow-graph-model";
@@ -160,9 +167,12 @@ export function WorkflowGraphCanvas({
 	useEffect(() => {
 		setNodes(projection.nodes);
 		setEdges(projection.edges);
-		setLayoutDirty(false);
 		setSelectedElement((current) => current && projectionHasElement(projection, current) ? current : undefined);
 	}, [projection]);
+
+	useEffect(() => {
+		setLayoutDirty(false);
+	}, [draft.draftId, draft.revision]);
 
 	const nodeIds = useMemo(() => nodes.map((node) => node.id), [nodes]);
 
@@ -174,15 +184,34 @@ export function WorkflowGraphCanvas({
 		});
 	}, [nodeIds, sourceNodeId]);
 
+	const materializeGraphLayout = useCallback((definition: WorkflowDraftDefinition, nextNodes = nodes, nextEdges = edges): WorkflowDraftDefinition => {
+		const definitionNodeIds = new Set(Object.keys(readWorkflowNodeDefinitions(definition)));
+		const definitionEdgeIds = new Set(Object.keys(readWorkflowEdgeDefinitions(definition)));
+		const positions = Object.fromEntries(Object.entries(readWorkflowPositions(definition)).filter(([nodeId]) => definitionNodeIds.has(nodeId)));
+		for (const node of nextNodes) {
+			if (definitionNodeIds.has(node.id)) positions[node.id] = node.position;
+		}
+		const edgeRoutes = Object.fromEntries(Object.entries(readWorkflowEdgeRoutes(definition)).filter(([edgeId]) => definitionEdgeIds.has(edgeId)));
+		for (const edge of nextEdges) {
+			if (definitionEdgeIds.has(edge.id) && edge.data?.route) edgeRoutes[edge.id] = edge.data.route;
+		}
+		return writeWorkflowGraphLayout(definition, positions, edgeRoutes);
+	}, [edges, nodes]);
+
+	const syncDraftLayout = useCallback((nextNodes = nodes, nextEdges = edges) => {
+		onDraftDefinitionChange?.(materializeGraphLayout(draft.definition, nextNodes, nextEdges));
+	}, [draft.definition, edges, materializeGraphLayout, nodes, onDraftDefinitionChange]);
+
 	const saveDefinition = useCallback(async (definition: WorkflowDraftDefinition, successMessage: string, options: { clearLayoutDirty?: boolean; editTrigger?: WorkflowValidationTrigger } = {}) => {
 		if (readOnly) {
 			setStatusMessage("This workflow is read-only. Duplicate it before editing.");
 			return;
 		}
+		const definitionWithLayout = materializeGraphLayout(definition);
 		setSaveState("saving");
 		setStatusMessage(undefined);
 		try {
-			const response = await patchWorkflowDraft(draft.draftId, { definition, editTrigger: options.editTrigger ?? "graph_edit" });
+			const response = await patchWorkflowDraft(draft.draftId, { definition: definitionWithLayout, editTrigger: options.editTrigger ?? "graph_edit" });
 			onDraftChange(response.draft);
 			setSaveState("saved");
 			setStatusMessage(successMessage);
@@ -191,7 +220,7 @@ export function WorkflowGraphCanvas({
 			setSaveState("error");
 			setStatusMessage(error instanceof Error ? error.message : "Failed to save graph edit");
 		}
-	}, [draft.draftId, onDraftChange, readOnly]);
+	}, [draft.draftId, materializeGraphLayout, onDraftChange, readOnly]);
 
 	const handleNodesChange = useCallback((changes: NodeChange<WorkflowGraphFlowNode>[]) => {
 		if (readOnly) return;
@@ -199,10 +228,43 @@ export function WorkflowGraphCanvas({
 		if (changes.some((change) => change.type === "position")) setLayoutDirty(true);
 	}, [readOnly]);
 
+	const handleNodeDragStop = useCallback((_: ReactMouseEvent, draggedNode: WorkflowGraphFlowNode) => {
+		if (readOnly) return;
+		const nextNodes = nodes.map((node) => node.id === draggedNode.id ? { ...node, position: draggedNode.position } : node);
+		setNodes(nextNodes);
+		setLayoutDirty(true);
+		syncDraftLayout(nextNodes, edges);
+		setStatusMessage(`Layout updated for ${draggedNode.id}; it will be preserved on save or graph edits.`);
+	}, [edges, nodes, readOnly, syncDraftLayout]);
+
 	const handleEdgesChange = useCallback((changes: EdgeChange<WorkflowGraphFlowEdge>[]) => {
 		if (readOnly) return;
 		setEdges((currentEdges) => applyEdgeChanges(changes, currentEdges));
 	}, [readOnly]);
+
+	const handleEdgeRouteChange = useCallback((edgeId: string, route: WorkflowEdgeRoute) => {
+		if (readOnly) return;
+		setEdges((currentEdges) => {
+			const nextEdges: WorkflowGraphFlowEdge[] = currentEdges.map((edge) => edge.id === edgeId
+				? { ...edge, data: { edgeId: edge.data?.edgeId ?? edge.id, kind: edge.data?.kind ?? "data", ...edge.data, route } }
+				: edge);
+			syncDraftLayout(nodes, nextEdges);
+			return nextEdges;
+		});
+		setLayoutDirty(true);
+		setStatusMessage(`Edge route updated for ${edgeId}; it will be preserved on save or graph edits.`);
+	}, [nodes, readOnly, syncDraftLayout]);
+
+	const renderedEdges = useMemo<WorkflowGraphFlowEdge[]>(() => edges.map((edge) => ({
+		...edge,
+		data: {
+			edgeId: edge.data?.edgeId ?? edge.id,
+			kind: edge.data?.kind ?? "data",
+			...edge.data,
+			onRouteChange: handleEdgeRouteChange,
+			readOnly,
+		},
+	})), [edges, handleEdgeRouteChange, readOnly]);
 
 	const addAgentNode = () => {
 		const nodeId = nextWorkflowNodeId(draft.definition, "agent");
@@ -249,7 +311,7 @@ export function WorkflowGraphCanvas({
 		if (!sourceId || !targetId || sourceId === targetId) return;
 		const edgeId = nextWorkflowEdgeId(draft.definition, sourceId, targetId);
 		const definition = addWorkflowGraphEdge(draft.definition, edgeId, sourceId, targetId);
-		setEdges((currentEdges) => addReactFlowEdge({ id: edgeId, source: sourceId, target: targetId, type: "smoothstep" }, currentEdges));
+		setEdges((currentEdges) => addReactFlowEdge({ id: edgeId, source: sourceId, target: targetId, type: "workflowEdge" }, currentEdges));
 		setSelectedElement({ type: "edge", id: edgeId });
 		void saveDefinition(definition, `Connected ${sourceId} to ${targetId}.`);
 	}, [draft.definition, saveDefinition, sourceNodeId, targetNodeId]);
@@ -265,16 +327,18 @@ export function WorkflowGraphCanvas({
 
 	const nudgeSelectedNode = (dx: number, dy: number) => {
 		if (selectedElement?.type !== "node") return;
-		setNodes((currentNodes) => currentNodes.map((node) => node.id === selectedElement.id
+		const nextNodes = nodes.map((node) => node.id === selectedElement.id
 			? { ...node, position: { x: node.position.x + dx, y: node.position.y + dy }, selected: true }
-			: node));
+			: node);
+		setNodes(nextNodes);
+		syncDraftLayout(nextNodes, edges);
 		setLayoutDirty(true);
-		setStatusMessage(`Moved node ${selectedElement.id}; save layout to persist UI positions.`);
+		setStatusMessage(`Moved node ${selectedElement.id}; layout will be preserved on save or graph edits.`);
 	};
 
 	const saveLayout = () => {
-		const definition = writeWorkflowGraphPositions(draft.definition, Object.fromEntries(nodes.map((node) => [node.id, node.position])));
-		void saveDefinition(definition, "Layout saved to workflow.ui.positions without changing runtime semantics.", { clearLayoutDirty: true });
+		const definition = materializeGraphLayout(draft.definition);
+		void saveDefinition(definition, "Layout saved to workflow.ui.positions and workflow.ui.edgeRoutes without changing runtime semantics.", { clearLayoutDirty: true });
 	};
 
 	const handleConnect = useCallback((connection: Connection) => {
@@ -338,9 +402,11 @@ export function WorkflowGraphCanvas({
 				<div className={`${fullHeight ? "h-full min-h-[360px]" : "h-[420px]"} min-w-0 overflow-hidden rounded-sm border border-slate-800 bg-[#0c171c]`} aria-label="Workflow graph canvas">
 					<ReactFlow<WorkflowGraphFlowNode, WorkflowGraphFlowEdge>
 						nodes={nodes}
-						edges={edges}
+						edges={renderedEdges}
 						nodeTypes={WORKFLOW_GRAPH_NODE_TYPES}
+						edgeTypes={WORKFLOW_GRAPH_EDGE_TYPES}
 						onNodesChange={handleNodesChange}
+						onNodeDragStop={handleNodeDragStop}
 						onEdgesChange={handleEdgesChange}
 						onConnect={handleConnect}
 						onNodeClick={(_, node) => setSelectedElement({ type: "node", id: node.id })}
@@ -353,7 +419,7 @@ export function WorkflowGraphCanvas({
 						nodesDraggable={!readOnly}
 						nodesConnectable={!readOnly}
 						edgesReconnectable={!readOnly}
-						defaultEdgeOptions={{ type: "smoothstep", markerEnd: { type: MarkerType.ArrowClosed, color: "#38bdf8" } }}
+						defaultEdgeOptions={{ type: "workflowEdge", markerEnd: { type: MarkerType.ArrowClosed, color: "#38bdf8" } }}
 					>
 						<Background color="#1f3a44" gap={18} />
 						<MiniMap pannable zoomable nodeColor={(node) => node.selected ? "#38bdf8" : "#1e293b"} />
@@ -504,7 +570,7 @@ export function WorkflowGraphCanvas({
 			</div>
 
 			{compactHeader ? null : <div className="rounded-sm border border-slate-800 bg-[#101d22]/70 p-3 text-[11px] leading-5 text-slate-500">
-				Automatic layout is a canvas projection for workflows without saved positions. Saving layout writes only display metadata and does not change nodes, edges, ports, guards, adapters, runtime routing, or validation semantics.
+				Automatic layout is a canvas projection only for workflows without saved positions. Node positions and edge routes are preserved when you connect, add, inspect, or save graph edits. Saving layout writes only display metadata and does not change nodes, edges, ports, guards, adapters, runtime routing, or validation semantics.
 			</div>}
 		</section>
 	);
@@ -528,8 +594,82 @@ function WorkflowGraphNodeCard({ data, selected }: NodeProps<WorkflowGraphFlowNo
 	);
 }
 
+function WorkflowGraphRoutableEdge({
+	id,
+	sourceX,
+	sourceY,
+	targetX,
+	targetY,
+	markerEnd,
+	style,
+	selected,
+	data,
+	label,
+}: EdgeProps<WorkflowGraphFlowEdge>) {
+	const { screenToFlowPosition } = useReactFlow();
+	const routeCenterX = data?.route?.centerX;
+	const centerX = typeof routeCenterX === "number" && Number.isFinite(routeCenterX)
+		? routeCenterX
+		: sourceX + (targetX - sourceX) / 2;
+	const centerY = typeof data?.route?.centerY === "number" && Number.isFinite(data.route.centerY)
+		? data.route.centerY
+		: sourceY + (targetY - sourceY) / 2;
+	const path = `M ${sourceX},${sourceY} L ${centerX},${sourceY} L ${centerX},${targetY} L ${targetX},${targetY}`;
+	const handlePointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
+		if (data?.readOnly) return;
+		event.preventDefault();
+		event.stopPropagation();
+		const moveRoute = (moveEvent: PointerEvent) => {
+			const position = screenToFlowPosition({ x: moveEvent.clientX, y: moveEvent.clientY });
+			data?.onRouteChange?.(id, { centerX: Math.round(position.x) });
+		};
+		const stopRoute = () => {
+			document.removeEventListener("pointermove", moveRoute);
+			document.removeEventListener("pointerup", stopRoute);
+			document.body.style.cursor = "";
+			document.body.style.userSelect = "";
+		};
+		document.body.style.cursor = "ew-resize";
+		document.body.style.userSelect = "none";
+		document.addEventListener("pointermove", moveRoute);
+		document.addEventListener("pointerup", stopRoute);
+	};
+
+	return (
+		<>
+			<BaseEdge
+				id={id}
+				path={path}
+				markerEnd={markerEnd}
+				style={{ ...style, stroke: selected ? "#facc15" : "#38bdf8", strokeWidth: selected ? 2.2 : 1.5 }}
+				interactionWidth={22}
+			/>
+			<EdgeLabelRenderer>
+				<div
+					className="nodrag nopan absolute flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-full border border-slate-700 bg-[#0f1b20]/95 px-1.5 py-1 text-[10px] text-slate-300 shadow-lg shadow-black/30"
+					style={{ transform: `translate(-50%, -50%) translate(${centerX}px, ${centerY}px)`, pointerEvents: "all" }}
+				>
+					<button
+						type="button"
+						className="h-4 w-4 cursor-ew-resize rounded-full border border-[#38bdf8]/70 bg-[#102a33] text-[#8bdcf4] transition hover:border-[#8bdcf4] hover:bg-[#123847] disabled:cursor-default disabled:opacity-50"
+						onPointerDown={handlePointerDown}
+						disabled={Boolean(data?.readOnly)}
+						aria-label={`Move edge route ${id}`}
+						title="Drag to move this edge route"
+					/>
+					<span>{typeof label === "string" ? label : data?.kind}</span>
+				</div>
+			</EdgeLabelRenderer>
+		</>
+	);
+}
+
 const WORKFLOW_GRAPH_NODE_TYPES = {
 	workflowNode: WorkflowGraphNodeCard,
+};
+
+const WORKFLOW_GRAPH_EDGE_TYPES = {
+	workflowEdge: WorkflowGraphRoutableEdge,
 };
 
 function describeSelectedGraphElement(definition: WorkflowDraftDefinition, selectedElement: SelectedGraphElement): string {

@@ -7,6 +7,7 @@ const GRAPH_ROW_GAP = 150;
 
 export type WorkflowJsonObject = Record<string, unknown>;
 export type GraphPosition = { x: number; y: number };
+export type WorkflowEdgeRoute = { centerX?: number; centerY?: number };
 export type WorkflowGraphNodeData = Record<string, unknown> & {
 	nodeId: string;
 	label: string;
@@ -18,8 +19,11 @@ export type WorkflowGraphFlowNode = Node<WorkflowGraphNodeData, "workflowNode">;
 export type WorkflowGraphEdgeData = Record<string, unknown> & {
 	edgeId: string;
 	kind: string;
+	route?: WorkflowEdgeRoute;
+	onRouteChange?: (edgeId: string, route: WorkflowEdgeRoute) => void;
+	readOnly?: boolean;
 };
-export type WorkflowGraphFlowEdge = Edge<WorkflowGraphEdgeData, "smoothstep">;
+export type WorkflowGraphFlowEdge = Edge<WorkflowGraphEdgeData, "workflowEdge">;
 export type SelectedGraphElement = { type: "node" | "edge"; id: string } | undefined;
 export type WorkflowGraphProjection = {
 	nodes: WorkflowGraphFlowNode[];
@@ -32,6 +36,7 @@ export function createWorkflowGraphProjection(definition: WorkflowDraftDefinitio
 	const nodeDefinitions = readWorkflowNodeDefinitions(definition);
 	const nodeEntries = Object.entries(nodeDefinitions);
 	const workflowPositions = readWorkflowPositions(definition);
+	const workflowEdgeRoutes = readWorkflowEdgeRoutes(definition);
 	const nodeIds = new Set(nodeEntries.map(([nodeId]) => nodeId));
 	let missingPositionCount = 0;
 	const nodes: WorkflowGraphFlowNode[] = nodeEntries.map(([nodeId, nodeDefinition], index) => {
@@ -61,9 +66,9 @@ export function createWorkflowGraphProjection(definition: WorkflowDraftDefinitio
 			id: edgeId,
 			source,
 			target,
-			type: "smoothstep",
+			type: "workflowEdge",
 			label: kind,
-			data: { edgeId, kind },
+			data: { edgeId, kind, route: workflowEdgeRoutes[edgeId] },
 			markerEnd: { type: MarkerType.ArrowClosed, color: "#38bdf8" },
 			style: { stroke: "#38bdf8", strokeWidth: 1.5 },
 		}];
@@ -130,6 +135,18 @@ export function readWorkflowPositions(definition: WorkflowDraftDefinition): Reco
 	return positions;
 }
 
+export function readWorkflowEdgeRoutes(definition: WorkflowDraftDefinition): Record<string, WorkflowEdgeRoute> {
+	const ui = isWorkflowJsonObject(definition.ui) ? definition.ui : undefined;
+	const rawRoutes = ui && isWorkflowJsonObject(ui.edgeRoutes) ? ui.edgeRoutes : undefined;
+	if (!rawRoutes) return {};
+	const routes: Record<string, WorkflowEdgeRoute> = {};
+	for (const [edgeId, value] of Object.entries(rawRoutes)) {
+		const route = readEdgeRoute(value);
+		if (route) routes[edgeId] = route;
+	}
+	return routes;
+}
+
 function readNodeUiPosition(nodeDefinition: WorkflowJsonObject): GraphPosition | undefined {
 	const ui = isWorkflowJsonObject(nodeDefinition.ui) ? nodeDefinition.ui : undefined;
 	return ui ? readPosition(ui.position) : undefined;
@@ -139,6 +156,14 @@ function readPosition(value: unknown): GraphPosition | undefined {
 	if (!isWorkflowJsonObject(value)) return undefined;
 	const { x, y } = value;
 	return typeof x === "number" && Number.isFinite(x) && typeof y === "number" && Number.isFinite(y) ? { x, y } : undefined;
+}
+
+function readEdgeRoute(value: unknown): WorkflowEdgeRoute | undefined {
+	if (!isWorkflowJsonObject(value)) return undefined;
+	const route: WorkflowEdgeRoute = {};
+	if (typeof value.centerX === "number" && Number.isFinite(value.centerX)) route.centerX = value.centerX;
+	if (typeof value.centerY === "number" && Number.isFinite(value.centerY)) route.centerY = value.centerY;
+	return Object.keys(route).length ? route : undefined;
 }
 
 function autoLayoutPosition(index: number, total: number): GraphPosition {
@@ -212,13 +237,19 @@ export function deleteWorkflowGraphNode(definition: WorkflowDraftDefinition, nod
 	}));
 	const positions = readWorkflowPositions(definition);
 	delete positions[nodeId];
-	return normalizeInitialAfterDelete(writeWorkflowGraphPositions({ ...definition, nodes, edges }, positions), nodeId, Object.keys(nodes));
+	const edgeRoutes = readWorkflowEdgeRoutes(definition);
+	for (const edgeId of Object.keys(edgeRoutes)) {
+		if (!Object.hasOwn(edges, edgeId)) delete edgeRoutes[edgeId];
+	}
+	return normalizeInitialAfterDelete(writeWorkflowGraphLayout({ ...definition, nodes, edges }, positions, edgeRoutes), nodeId, Object.keys(nodes));
 }
 
 export function deleteWorkflowGraphEdge(definition: WorkflowDraftDefinition, edgeId: string): WorkflowDraftDefinition {
 	const edges = readWorkflowEdgeDefinitions(definition);
 	delete edges[edgeId];
-	return { ...definition, edges };
+	const edgeRoutes = readWorkflowEdgeRoutes(definition);
+	delete edgeRoutes[edgeId];
+	return writeWorkflowGraphEdgeRoutes({ ...definition, edges }, edgeRoutes);
 }
 
 function normalizeInitialAfterDelete(definition: WorkflowDraftDefinition, deletedNodeId: string, remainingNodeIds: string[]): WorkflowDraftDefinition {
@@ -249,6 +280,21 @@ export function writeWorkflowGraphPositions(definition: WorkflowDraftDefinition,
 			positions,
 		},
 	};
+}
+
+export function writeWorkflowGraphEdgeRoutes(definition: WorkflowDraftDefinition, edgeRoutes: Record<string, WorkflowEdgeRoute>): WorkflowDraftDefinition {
+	const ui = isWorkflowJsonObject(definition.ui) ? definition.ui : {};
+	return {
+		...definition,
+		ui: {
+			...ui,
+			edgeRoutes,
+		},
+	};
+}
+
+export function writeWorkflowGraphLayout(definition: WorkflowDraftDefinition, positions: Record<string, GraphPosition>, edgeRoutes: Record<string, WorkflowEdgeRoute>): WorkflowDraftDefinition {
+	return writeWorkflowGraphEdgeRoutes(writeWorkflowGraphPositions(definition, positions), edgeRoutes);
 }
 
 export function workflowInitialNodeIds(definition: WorkflowDraftDefinition): string[] {
