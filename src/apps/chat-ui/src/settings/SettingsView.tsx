@@ -17,7 +17,7 @@ import {
 	Wrench,
 } from "lucide-react";
 import { createUserSkill, deletePiPackage, deleteUserSkill, getUserSkill, installUserSkill, patchPiPackage, postPiPackage, updateUserSkill } from "../api-agent-designer";
-import { getUserSettings, patchModelDefaults, patchUserSettings } from "../api-settings";
+import { getUserSettings, patchModelDefaults, patchUserSettings, pruneTelemetryRetention } from "../api-settings";
 import { piPackageMeta, type PiPackageCatalogItem } from "../agents/agent-designer-model";
 import { AgentRuntimeOptions, DesignerPanel, EmptyCatalog, InlineCheckboxToggle, PiPackageDetails } from "../agents/designer-ui";
 import { writeStoredExpandThinking, writeStoredShowThinking } from "../app-storage";
@@ -111,6 +111,18 @@ export function SettingsView({
 					Shortcuts
 				</h1>
 				<ShortcutsSettings />
+			</div>
+		);
+	}
+
+	if (activePanel === "maintenance") {
+		return (
+			<div className="p-6 overflow-auto">
+				<h1 className="text-sm font-bold uppercase tracking-wider mb-4 flex items-center gap-2">
+					<Settings size={16} />
+					Maintenance
+				</h1>
+				<TelemetryRetentionSettings />
 			</div>
 		);
 	}
@@ -234,6 +246,146 @@ function UserTimezoneSettings() {
 			{error ? <div className="mt-2 text-xs text-red-300">{error}</div> : null}
 		</div>
 	);
+}
+
+function TelemetryRetentionSettings() {
+	const queryClient = useQueryClient();
+	const { data, isLoading } = useQuery({ queryKey: ["user-settings"], queryFn: getUserSettings });
+	const [days, setDays] = useState(30);
+	const [enabled, setEnabled] = useState(true);
+	const [manualDays, setManualDays] = useState(10);
+	const [saving, setSaving] = useState(false);
+	const [pruning, setPruning] = useState(false);
+	const [message, setMessage] = useState<string | null>(null);
+	const [error, setError] = useState<string | null>(null);
+	const lastPrunedAt = data?.telemetryRetention?.lastPrunedAt;
+
+	useEffect(() => {
+		if (!data?.telemetryRetention) return;
+		setEnabled(data.telemetryRetention.enabled);
+		setDays(data.telemetryRetention.days);
+		setManualDays(data.telemetryRetention.days);
+	}, [data?.telemetryRetention]);
+
+	const save = async (next: { enabled?: boolean; days?: number }) => {
+		const nextEnabled = next.enabled ?? enabled;
+		const nextDays = clampRetentionDays(next.days ?? days);
+		setEnabled(nextEnabled);
+		setDays(nextDays);
+		setSaving(true);
+		setError(null);
+		setMessage(null);
+		try {
+			const saved = await patchUserSettings({ telemetryRetention: { enabled: nextEnabled, days: nextDays } });
+			queryClient.setQueryData(["user-settings"], saved);
+			setEnabled(saved.telemetryRetention.enabled);
+			setDays(saved.telemetryRetention.days);
+			setMessage("Telemetry retention settings saved.");
+		} catch (err) {
+			setError(err instanceof Error ? err.message : String(err));
+		} finally {
+			setSaving(false);
+		}
+	};
+
+	const runManualPrune = async () => {
+		const pruneDays = clampRetentionDays(manualDays);
+		setManualDays(pruneDays);
+		setPruning(true);
+		setError(null);
+		setMessage(null);
+		try {
+			const result = await pruneTelemetryRetention({ days: pruneDays });
+			const saved = await getUserSettings();
+			queryClient.setQueryData(["user-settings"], saved);
+			setMessage(`Deleted ${result.rowsDeleted.toLocaleString()} telemetry rows older than ${pruneDays} days. Cutoff: ${result.cutoff}.`);
+		} catch (err) {
+			setError(err instanceof Error ? err.message : String(err));
+		} finally {
+			setPruning(false);
+		}
+	};
+
+	return (
+		<DesignerPanel title="Telemetry retention">
+			<div className="space-y-5">
+				<div className="rounded-sm border border-slate-800 bg-[#101d22] p-4">
+					<div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-300">Automatic cleanup</div>
+					<p className="mb-4 max-w-2xl text-xs leading-5 text-slate-400">
+						Pibo keeps sessions, rooms, chat messages, and renderable trace events. This retention policy deletes only runtime telemetry/debug rows older than the configured age.
+					</p>
+					<label className="mb-4 flex items-center gap-3 text-sm text-slate-200">
+						<input
+							type="checkbox"
+							checked={enabled}
+							disabled={isLoading || saving}
+							onChange={(event) => void save({ enabled: event.target.checked })}
+							className="h-4 w-4 accent-[#11a4d4]"
+						/>
+						Enable automatic telemetry retention
+					</label>
+					<div className="max-w-xs">
+						<label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Delete telemetry older than</label>
+						<div className="flex items-center gap-2">
+							<input
+								type="number"
+								min={1}
+								max={365}
+								value={days}
+								disabled={isLoading || saving}
+								onChange={(event) => setDays(Number(event.target.value))}
+								onBlur={() => void save({ days })}
+								className="w-24 rounded-sm border border-slate-700 bg-[#0e1116] px-3 py-2 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60"
+							/>
+							<span className="text-xs text-slate-400">days</span>
+						</div>
+					</div>
+					<div className="mt-3 text-[11px] text-slate-500">Default is 30 days. Automatic cleanup skips runs while runtime sessions are processing or streaming.</div>
+					<div className="mt-2 text-[11px] text-slate-500">Last prune: {lastPrunedAt ? new Date(lastPrunedAt).toLocaleString() : "never"}</div>
+				</div>
+
+				<div className="rounded-sm border border-slate-800 bg-[#101d22] p-4">
+					<div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-300">Manual cleanup</div>
+					<p className="mb-4 max-w-2xl text-xs leading-5 text-slate-400">
+						Run retention now with a custom cutoff. This affects telemetry tables only and never deletes sessions, rooms, chat messages, or trace-render events.
+					</p>
+					<div className="flex flex-wrap items-center gap-2">
+						<input
+							type="number"
+							min={1}
+							max={365}
+							value={manualDays}
+							disabled={pruning}
+							onChange={(event) => setManualDays(Number(event.target.value))}
+							className="w-24 rounded-sm border border-slate-700 bg-[#0e1116] px-3 py-2 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60"
+						/>
+						<span className="text-xs text-slate-400">days</span>
+						<button
+							type="button"
+							disabled={pruning}
+							onClick={() => void runManualPrune()}
+							className="inline-flex items-center justify-center gap-2 rounded-sm border border-red-900/70 bg-red-950/30 px-3 py-2 text-xs font-semibold text-red-100 transition hover:border-red-500 disabled:cursor-not-allowed disabled:opacity-60"
+						>
+							<Trash2 size={13} />
+							{pruning ? "Deleting…" : "Delete old telemetry now"}
+						</button>
+					</div>
+				</div>
+
+				<div className="rounded-sm border border-amber-900/50 bg-amber-950/20 p-3 text-[11px] leading-5 text-amber-100">
+					Detailed provider-event capture is intentionally off by default because it can be high-volume. Use the dedicated debug flag only for short incident windows.
+				</div>
+				{saving ? <div className="text-xs text-slate-400">Saving…</div> : null}
+				{message ? <div className="text-xs text-emerald-300">{message}</div> : null}
+				{error ? <div className="text-xs text-red-300">{error}</div> : null}
+			</div>
+		</DesignerPanel>
+	);
+}
+
+function clampRetentionDays(value: number): number {
+	if (!Number.isFinite(value)) return 30;
+	return Math.max(1, Math.min(365, Math.trunc(value)));
 }
 
 function ShortcutsSettings() {

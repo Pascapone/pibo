@@ -77,6 +77,7 @@ test("chat user-settings API validates same-origin mutations and persists saniti
 		});
 		assert.equal(current.response.status, 200);
 		assert.equal(current.data.userSettings.timezone, "UTC");
+		assert.deepEqual(current.data.userSettings.telemetryRetention, { enabled: true, days: 30 });
 
 		const missingOrigin = await fetch(`${baseURL}/api/chat/user-settings`, {
 			method: "PATCH",
@@ -99,11 +100,13 @@ test("chat user-settings API validates same-origin mutations and persists saniti
 			body: JSON.stringify({
 				timezone: "Europe/Berlin",
 				shortcuts: { webAnnotationsToggle: " Ctrl+Shift+P\u0000" },
+				telemetryRetention: { enabled: true, days: 10 },
 			}),
 		});
 		assert.equal(saved.response.status, 200);
 		assert.equal(saved.data.userSettings.timezone, "Europe/Berlin");
 		assert.equal(saved.data.userSettings.shortcuts.webAnnotationsToggle, "Ctrl+Shift+P");
+		assert.deepEqual(saved.data.userSettings.telemetryRetention, { enabled: true, days: 10 });
 
 		const reloaded = await fetchJson(`${baseURL}/api/chat/user-settings`, {
 			headers: { "x-test-user": "user-1" },
@@ -111,6 +114,7 @@ test("chat user-settings API validates same-origin mutations and persists saniti
 		assert.equal(reloaded.response.status, 200);
 		assert.equal(reloaded.data.userSettings.timezone, "Europe/Berlin");
 		assert.equal(reloaded.data.userSettings.shortcuts.webAnnotationsToggle, "Ctrl+Shift+P");
+		assert.deepEqual(reloaded.data.userSettings.telemetryRetention, { enabled: true, days: 10 });
 
 		const reloadedOtherAccount = await fetchJson(`${baseURL}/api/chat/user-settings`, {
 			headers: { "x-test-user": "user-2" },
@@ -120,6 +124,7 @@ test("chat user-settings API validates same-origin mutations and persists saniti
 		const persisted = JSON.parse(readFileSync(join(process.env.PIBO_HOME, "user-settings.json"), "utf-8"));
 		assert.equal(persisted.settings.timezone, "Europe/Berlin");
 		assert.equal(persisted.settings.shortcuts.webAnnotationsToggle, "Ctrl+Shift+P");
+		assert.deepEqual(persisted.settings.telemetryRetention, { enabled: true, days: 10 });
 		assert.equal("users" in persisted, false);
 	} finally {
 		await channel.stop?.();

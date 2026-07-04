@@ -47,7 +47,8 @@ import {
 	type PiboModelDefaults,
 } from "../../core/model-defaults.js";
 import { inspectPiboContextBuild } from "../../core/context-build.js";
-import { loadPiboUserSettings } from "../../core/user-settings.js";
+import { loadPiboUserSettings, updateTelemetryRetentionLastPrunedAt } from "../../core/user-settings.js";
+import { isTelemetryRetentionMaintenanceDue, maybeRunTelemetryRetentionMaintenance, type TelemetryRetentionMaintenanceState } from "./telemetry-retention-service.js";
 import { loadModelCatalog } from "./model-catalog.js";
 import { createCustomAgentProfileDefinition } from "./agent-profiles.js";
 import { createDefaultPiboReliabilityStore, PiboReliabilityStore } from "../../reliability/store.js";
@@ -364,6 +365,7 @@ type ChatWebAppState = {
 	workflowTombstoneStore: ChatWorkflowTombstoneStore;
 	workflowLifecycleEventStore: ChatWorkflowLifecycleEventStore;
 	workflowPromptAssetStore: ChatWorkflowPromptAssetStore;
+	telemetryRetentionMaintenance: TelemetryRetentionMaintenanceState;
 };
 
 type ChatBootstrapCatalog = {
@@ -3569,6 +3571,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 		workflowTombstoneStore: new ChatWorkflowTombstoneStore(dataStore),
 		workflowLifecycleEventStore: new ChatWorkflowLifecycleEventStore(dataStore),
 		workflowPromptAssetStore: new ChatWorkflowPromptAssetStore(dataStore),
+		telemetryRetentionMaintenance: {},
 	};
 
 	const requireSession = (request: Request, context: PiboWebAppContext): Promise<PiboWebSession> =>
@@ -3582,6 +3585,15 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 		apiPrefix: CHAT_WEB_API_PREFIX,
 		async handleRequest(request, context) {
 			const url = new URL(request.url);
+			if (isTelemetryRetentionMaintenanceDue({ state: state.telemetryRetentionMaintenance })) {
+				maybeRunTelemetryRetentionMaintenance({
+					state: state.telemetryRetentionMaintenance,
+					dataStore: state.dataStore,
+					settings: loadPiboUserSettings().telemetryRetention,
+					context,
+					onPruned: updateTelemetryRetentionLastPrunedAt,
+				});
+			}
 			ensureEventIndexing(state, context);
 			ensureCustomAgentProfiles(state, context);
 			syncChatUserSkills({
@@ -4384,6 +4396,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					route: settingsRoute,
 					request,
 					cwd: process.cwd(),
+					dataStore: state.dataStore,
 				});
 				if (chatSettingsRouteInvalidatesBootstrapCatalog(settingsRoute)) invalidateBootstrapCatalogCache(state);
 				return response;

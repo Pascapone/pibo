@@ -35,11 +35,34 @@ export type CompactionPromptSnapshot = {
 	};
 };
 
+export type TelemetryRetentionSettings = {
+	enabled: boolean;
+	days: number;
+	lastPrunedAt?: string;
+};
+
+export type TelemetryRetentionRunResult = {
+	cutoff: string;
+	days: number;
+	applied: boolean;
+	rowsDeleted: number;
+	bytesMatched: number;
+	results: Array<{
+		retentionClass: string;
+		before: string;
+		applied: boolean;
+		rowsMatched: number;
+		bytesMatched: number;
+		rowsDeleted: number;
+	}>;
+};
+
 export type UserSettings = {
 	timezone: string;
 	shortcuts: {
 		webAnnotationsToggle: string;
 	};
+	telemetryRetention: TelemetryRetentionSettings;
 };
 
 export async function getBasePrompt(): Promise<BasePromptSnapshot> {
@@ -100,4 +123,12 @@ export async function patchUserSettings(input: Partial<UserSettings>): Promise<U
 		headers: { "content-type": "application/json" },
 		body: JSON.stringify(input),
 	})).userSettings;
+}
+
+export async function pruneTelemetryRetention(input: { days: number; dryRun?: boolean }): Promise<TelemetryRetentionRunResult> {
+	return (await requestJson<{ telemetryRetention: TelemetryRetentionRunResult }>("/api/chat/telemetry-retention/prune", {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify(input),
+	})).telemetryRetention;
 }

@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { piboHomePath } from "./pibo-home.js";
+import { sanitizeTelemetryRetentionSettings, type TelemetryRetentionSettings } from "./telemetry-retention-settings.js";
 import { sanitizeTelemetryStaleThresholdSettings, type TelemetryStaleThresholdSettings } from "./telemetry-staleness.js";
 
 export const DEFAULT_USER_TIMEZONE = "UTC";
@@ -15,6 +16,7 @@ export type PiboUserSettings = {
 	timezone: string;
 	shortcuts: PiboShortcutSettings;
 	telemetryStaleThresholds: TelemetryStaleThresholdSettings;
+	telemetryRetention: TelemetryRetentionSettings;
 };
 
 type PiboUserSettingsState = {
@@ -31,6 +33,16 @@ export function updatePiboUserSettings(patch: Partial<PiboUserSettings>): PiboUs
 	state.settings = next;
 	writeState(state);
 	return next;
+}
+
+export function updateTelemetryRetentionLastPrunedAt(lastPrunedAt: string): PiboUserSettings {
+	const current = loadPiboUserSettings();
+	return updatePiboUserSettings({
+		telemetryRetention: {
+			...current.telemetryRetention,
+			lastPrunedAt,
+		},
+	});
 }
 
 export function sanitizeShortcutSettings(value: unknown): PiboShortcutSettings {
@@ -66,6 +78,7 @@ function sanitizeUserSettings(value: unknown): PiboUserSettings {
 		timezone: sanitizeTimezone(raw.timezone) ?? DEFAULT_USER_TIMEZONE,
 		shortcuts: sanitizeShortcutSettings(raw.shortcuts),
 		telemetryStaleThresholds: sanitizeTelemetryStaleThresholdSettings(raw.telemetryStaleThresholds),
+		telemetryRetention: sanitizeTelemetryRetentionSettings(raw.telemetryRetention),
 	};
 }
 

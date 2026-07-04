@@ -123,6 +123,12 @@ export type ChatModelDefaultsBody = {
 export type ChatUserSettingsBody = {
 	timezone?: unknown;
 	shortcuts?: unknown;
+	telemetryRetention?: unknown;
+};
+
+export type ChatTelemetryRetentionPruneBody = {
+	days?: unknown;
+	dryRun?: unknown;
 };
 
 export type ChatMessageBody = {

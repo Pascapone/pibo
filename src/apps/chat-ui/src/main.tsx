@@ -92,6 +92,10 @@ const settingsShortcutsRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "settings/shortcuts",
 });
+const settingsMaintenanceRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "settings/maintenance",
+});
 const settingsPiPackagesRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "settings/pi-packages",
@@ -105,7 +109,7 @@ const settingsProvidersRoute = createRoute({
 	path: "settings/providers",
 });
 const router = createRouter({
-	routeTree: rootRoute.addChildren([indexRoute, sessionRoute, roomRoute, roomSessionRoute, projectsRoute, projectRoute, projectSessionRoute, workflowsRoute, workflowDraftRoute, workflowViewRoute, agentsRoute, cronRoute, ralphRoute, contextRoute, settingsRoute, settingsShortcutsRoute, settingsPiPackagesRoute, settingsSkillsRoute, settingsProvidersRoute]),
+	routeTree: rootRoute.addChildren([indexRoute, sessionRoute, roomRoute, roomSessionRoute, projectsRoute, projectRoute, projectSessionRoute, workflowsRoute, workflowDraftRoute, workflowViewRoute, agentsRoute, cronRoute, ralphRoute, contextRoute, settingsRoute, settingsShortcutsRoute, settingsMaintenanceRoute, settingsPiPackagesRoute, settingsSkillsRoute, settingsProvidersRoute]),
 	basepath: "/apps/chat",
 });
 

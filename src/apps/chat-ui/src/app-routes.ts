@@ -19,7 +19,7 @@ export type NavigationOptions = {
 type SessionViewSearch = { view: ChatSessionViewId };
 type ContextSearch = { piboSessionId?: string };
 
-type SettingsNavigationTo = "/settings/shortcuts" | "/settings/pi-packages" | "/settings/skills" | "/settings/providers" | "/settings";
+type SettingsNavigationTo = "/settings/shortcuts" | "/settings/maintenance" | "/settings/pi-packages" | "/settings/skills" | "/settings/providers" | "/settings";
 
 type ChatRouteNavigationRequest =
 	| { to: "/projects/$projectId/sessions/$piboSessionId"; params: { projectId: string; piboSessionId: string }; search: SessionViewSearch; replace: boolean }
@@ -32,6 +32,7 @@ type ChatRouteNavigationRequest =
 	| { to: "/ralph"; replace: boolean }
 	| { to: "/context"; search: ContextSearch; replace: boolean }
 	| { to: "/settings/shortcuts"; replace: boolean }
+	| { to: "/settings/maintenance"; replace: boolean }
 	| { to: "/settings/pi-packages"; replace: boolean }
 	| { to: "/settings/skills"; replace: boolean }
 	| { to: "/settings/providers"; replace: boolean }
@@ -125,6 +126,7 @@ export function navigateToChatRoute(navigate: (options: NavigateOptions) => Prom
 
 function settingsPanelFromPathPart(part: string | undefined): SettingsPanel {
 	if (part === "shortcuts") return "shortcuts";
+	if (part === "maintenance") return "maintenance";
 	if (part === "pi-packages") return "pi-packages";
 	if (part === "skills") return "skills";
 	if (part === "providers") return "providers";
@@ -133,6 +135,7 @@ function settingsPanelFromPathPart(part: string | undefined): SettingsPanel {
 
 function settingsPathForPanel(panel: SettingsPanel | undefined): SettingsNavigationTo {
 	if (panel === "shortcuts") return "/settings/shortcuts";
+	if (panel === "maintenance") return "/settings/maintenance";
 	if (panel === "pi-packages") return "/settings/pi-packages";
 	if (panel === "skills") return "/settings/skills";
 	if (panel === "providers") return "/settings/providers";

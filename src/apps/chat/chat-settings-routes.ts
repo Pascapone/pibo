@@ -1,6 +1,7 @@
 import { readPiboBasePrompt, savePiboCustomBasePrompt, setPiboBasePromptMode } from "../../core/base-prompt.js";
 import { readPiboCompactionPrompt, savePiboCustomCompactionPrompt, setPiboCompactionPromptMode } from "../../core/compaction-prompt.js";
-import { loadPiboUserSettings, sanitizeShortcutSettings, sanitizeTimezone, updatePiboUserSettings } from "../../core/user-settings.js";
+import { sanitizeTelemetryRetentionDays, sanitizeTelemetryRetentionSettings } from "../../core/telemetry-retention-settings.js";
+import { loadPiboUserSettings, sanitizeShortcutSettings, sanitizeTimezone, updatePiboUserSettings, updateTelemetryRetentionLastPrunedAt } from "../../core/user-settings.js";
 import { PiboWebHttpError, readJsonBody, responseJson } from "../../web/http.js";
 import { CHAT_WEB_API_PREFIX } from "./chat-api-routes.js";
 import {
@@ -11,12 +12,15 @@ import {
 	updateChatModelDefaults,
 	type ChatBasePromptBody,
 	type ChatModelDefaultsBody,
+	type ChatTelemetryRetentionPruneBody,
 	type ChatUserSettingsBody,
 } from "./chat-request-normalizers.js";
+import { pruneTelemetryOlderThan } from "./telemetry-retention-service.js";
 
 export type ChatSettingsRoute =
 	| { kind: "model-defaults" }
 	| { kind: "user-settings"; action: "read" | "update" }
+	| { kind: "telemetry-retention"; action: "prune" }
 	| { kind: "base-prompt"; action: "read" | "set-mode" | "save-custom" }
 	| { kind: "compaction-prompt"; action: "read" | "set-mode" | "save-custom" };
 
@@ -24,6 +28,7 @@ export function chatSettingsRoute(pathname: string, method: string): ChatSetting
 	if (pathname === `${CHAT_WEB_API_PREFIX}/model-defaults` && method === "PATCH") return { kind: "model-defaults" };
 	if (pathname === `${CHAT_WEB_API_PREFIX}/user-settings` && method === "GET") return { kind: "user-settings", action: "read" };
 	if (pathname === `${CHAT_WEB_API_PREFIX}/user-settings` && method === "PATCH") return { kind: "user-settings", action: "update" };
+	if (pathname === `${CHAT_WEB_API_PREFIX}/telemetry-retention/prune` && method === "POST") return { kind: "telemetry-retention", action: "prune" };
 	if (pathname === `${CHAT_WEB_API_PREFIX}/base-prompt` && method === "GET") return { kind: "base-prompt", action: "read" };
 	if (pathname === `${CHAT_WEB_API_PREFIX}/base-prompt` && method === "PATCH") return { kind: "base-prompt", action: "set-mode" };
 	if (pathname === `${CHAT_WEB_API_PREFIX}/base-prompt/custom` && method === "PUT") return { kind: "base-prompt", action: "save-custom" };
@@ -45,6 +50,7 @@ export async function handleChatSettingsRoute(input: {
 	route: ChatSettingsRoute;
 	request: Request;
 	cwd?: string;
+	dataStore?: import("../../data/pibo-store.js").PiboDataStore;
 }): Promise<Response> {
 	const cwd = input.cwd ?? process.cwd();
 	const { route, request } = input;
@@ -58,6 +64,16 @@ export async function handleChatSettingsRoute(input: {
 		if (route.action === "read") return responseJson({ userSettings: loadPiboUserSettings() });
 		const body = await readJsonBody<ChatUserSettingsBody>(request);
 		return responseJson({ userSettings: updatePiboUserSettings(userSettingsPatch(body)) });
+	}
+
+	if (route.kind === "telemetry-retention") {
+		if (!input.dataStore) throw new PiboWebHttpError("Telemetry retention store unavailable", 503);
+		const body = await readJsonBody<ChatTelemetryRetentionPruneBody>(request);
+		const days = sanitizeTelemetryRetentionDays(body.days);
+		if (!days) throw new PiboWebHttpError("Invalid telemetry retention days", 400);
+		const result = pruneTelemetryOlderThan({ dataStore: input.dataStore, days, apply: body.dryRun !== true });
+		if (result.applied) updateTelemetryRetentionLastPrunedAt(new Date().toISOString());
+		return responseJson({ telemetryRetention: result });
 	}
 
 	if (route.kind === "base-prompt") {
@@ -85,5 +101,12 @@ function userSettingsPatch(body: ChatUserSettingsBody): Parameters<typeof update
 		patch.timezone = timezone;
 	}
 	if (body.shortcuts !== undefined) patch.shortcuts = sanitizeShortcutSettings(body.shortcuts);
+	if (body.telemetryRetention !== undefined) {
+		const current = loadPiboUserSettings().telemetryRetention;
+		patch.telemetryRetention = {
+			...sanitizeTelemetryRetentionSettings(body.telemetryRetention),
+			...(current.lastPrunedAt ? { lastPrunedAt: current.lastPrunedAt } : {}),
+		};
+	}
 	return patch;
 }

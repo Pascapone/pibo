@@ -1,4 +1,4 @@
-import { Key, Keyboard, Layers, Settings, Wrench } from "lucide-react";
+import { Database, Key, Keyboard, Layers, Settings, Wrench } from "lucide-react";
 import type { SettingsPanel } from "./types";
 
 export function SettingsSidebar({
@@ -44,6 +44,21 @@ export function SettingsSidebar({
 					<div className="min-w-0">
 						<span className="block truncate text-sm text-slate-200">Shortcuts</span>
 						<span className="block truncate font-mono text-[10px] text-slate-500">keyboard</span>
+					</div>
+				</button>
+				<button
+					type="button"
+					onClick={() => onSelect("maintenance")}
+					className={`mb-1 flex w-full items-center gap-2 border p-2 text-left ${
+						activePanel === "maintenance"
+							? "border-[#11a4d4] bg-[#11a4d4]/10"
+							: "border-slate-800 bg-[#151f24] hover:border-slate-700"
+					}`}
+				>
+					<Database size={13} className="text-[#11a4d4]" />
+					<div className="min-w-0">
+						<span className="block truncate text-sm text-slate-200">Maintenance</span>
+						<span className="block truncate font-mono text-[10px] text-slate-500">telemetry retention</span>
 					</div>
 				</button>
 				<button
