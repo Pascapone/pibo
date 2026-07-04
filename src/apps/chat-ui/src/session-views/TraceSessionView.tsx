@@ -16,6 +16,9 @@ export function TraceSessionView({
 	onSessionAgentProfileChange,
 	onFork,
 	onOpenSession,
+	onLoadOlderTracePage,
+	hasOlderTraceEvents,
+	isFetchingOlderTracePage,
 }: ChatSessionViewProps) {
 	return (
 		<TraceTimeline
@@ -33,6 +36,9 @@ export function TraceSessionView({
 			onSessionAgentProfileChange={onSessionAgentProfileChange}
 			onFork={onFork}
 			onOpenSession={onOpenSession}
+			onLoadOlderTracePage={onLoadOlderTracePage}
+			hasOlderTraceEvents={hasOlderTraceEvents}
+			isFetchingOlderTracePage={isFetchingOlderTracePage}
 		/>
 	);
 }

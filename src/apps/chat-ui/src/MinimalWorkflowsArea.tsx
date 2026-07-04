@@ -11,7 +11,7 @@ import {
   type WorkflowCatalogVersionSummary,
   type WorkflowDraftRecord,
 } from "./api-workflows";
-import { WorkflowGraphCanvas, type WorkflowGraphInspectorSlotProps } from "./workflows/WorkflowGraphCanvas";
+import { WorkflowGraphCanvas, type WorkflowGraphInspectorSlotProps, type WorkflowGraphStatusTone } from "./workflows/WorkflowGraphCanvas";
 import { WorkflowInspectorsPanel } from "./workflows/WorkflowInspectorsPanel";
 import { readWorkflowEdgeDefinitions, readWorkflowNodeDefinitions } from "./workflows/workflow-graph-model";
 
@@ -206,10 +206,20 @@ export function MinimalWorkflowsArea({
     setDraft(nextDraft);
     void loadWorkflows();
   }, [loadWorkflows]);
+  const handleGraphStatusMessage = useCallback((nextMessage: string, tone: WorkflowGraphStatusTone = "status") => {
+    if (tone === "error") {
+      setErrorMessage(nextMessage);
+      return;
+    }
+    setErrorMessage(undefined);
+    setMessage(nextMessage);
+  }, []);
 
   const isLoading = loadState === "loading" || draftLoadState === "loading";
   const activeTitle = selectedOption?.label ?? readOnlyView?.title ?? (draft ? draft.workflowId : "No workflow selected");
   const graphDraft = draft ?? readOnlyView?.draft;
+  const statusText = errorMessage ?? (busy ? workflowBusyStatus(busy) : isLoading ? "Loading workflow surface…" : message ?? "Ready");
+  const statusTone = errorMessage ? "error" : busy || isLoading ? "busy" : "status";
 
   return (
     <main className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-[#101d22] text-slate-200" aria-label="Workflows">
@@ -296,12 +306,6 @@ export function MinimalWorkflowsArea({
         </div>
       ) : null}
 
-      {message || errorMessage || isLoading ? (
-        <div className={`shrink-0 border-b px-3 py-1.5 text-xs ${errorMessage ? "border-red-900/70 bg-red-950/40 text-red-200" : "border-slate-800 bg-[#101d22] text-slate-400"}`} role={errorMessage ? "alert" : "status"}>
-          {errorMessage ?? (isLoading ? "Loading workflow surface…" : message)}
-        </div>
-      ) : null}
-
       <div className="min-h-0 min-w-0 flex-1 overflow-hidden p-3">
         {graphDraft ? (
           <WorkflowGraphCanvas
@@ -311,6 +315,7 @@ export function MinimalWorkflowsArea({
             compactHeader
             readOnly={Boolean(readOnlyView)}
             onDraftDefinitionChange={readOnlyView ? undefined : updateDraftDefinition}
+            onStatusMessage={readOnlyView ? undefined : handleGraphStatusMessage}
             renderInspectors={(props) => readOnlyView ? <ReadOnlyWorkflowDetails {...props} /> : <WorkflowInspectorsPanel {...props} />}
           />
         ) : (
@@ -324,6 +329,12 @@ export function MinimalWorkflowsArea({
           </div>
         )}
       </div>
+
+      <div className={`flex h-7 shrink-0 items-center gap-2 border-t px-3 text-[11px] ${workflowStatusBarClass(statusTone)}`} role={errorMessage ? "alert" : "status"} aria-label="Workflow editor status">
+        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${statusTone === "error" ? "bg-red-400" : statusTone === "busy" ? "animate-pulse bg-[#11a4d4]" : "bg-emerald-400"}`} />
+        <span className="shrink-0 font-bold uppercase tracking-[0.16em]">Status</span>
+        <span className="min-w-0 truncate font-mono text-[11px]">{statusText}</span>
+      </div>
     </main>
   );
 }
@@ -335,6 +346,21 @@ type ReadOnlyWorkflowView = {
   source: WorkflowCatalogRecord["source"];
   draft: WorkflowDraftRecord;
 };
+
+type WorkflowStatusBarTone = "status" | "busy" | "error";
+
+function workflowBusyStatus(busy: "new" | "select" | "duplicate" | "save"): string {
+  if (busy === "new") return "Creating workflow…";
+  if (busy === "select") return "Opening workflow…";
+  if (busy === "duplicate") return "Duplicating workflow…";
+  return "Saving workflow…";
+}
+
+function workflowStatusBarClass(tone: WorkflowStatusBarTone): string {
+  if (tone === "error") return "border-red-900/70 bg-red-950/30 text-red-200";
+  if (tone === "busy") return "border-slate-800 bg-[#0f1b20] text-[#8bdcf4]";
+  return "border-slate-800 bg-[#0f1b20] text-slate-400";
+}
 
 type WorkflowPickerOption = {
   workflowId: string;

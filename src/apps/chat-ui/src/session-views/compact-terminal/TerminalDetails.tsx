@@ -1,6 +1,9 @@
+import { useEffect, useState } from "react";
 import { JsonRenderer } from "../../tracing/JsonRenderer";
 import type { CompactTerminalRow } from "../../../../../session-ui/terminalRows.js";
 import { renderableTerminalValue } from "../../../../../session-ui/terminalValue.js";
+import { getTracePayload } from "../../api-trace-signals";
+import type { TracePayloadRef } from "../../types";
 
 type TerminalDetailsProps = {
 	row: CompactTerminalRow;
@@ -28,6 +31,7 @@ export function TerminalDetails({ row, onOpenSession }: TerminalDetailsProps) {
 							</div>
 							<DetailPayload label="Input" value={item.input} />
 							<DetailPayload label="Output" value={item.output} />
+							<PayloadRefs refs={item.payloadRefs} />
 							<CompactedOutputDisclosure value={item.output} />
 							{item.error ? <DetailText label="Error" value={item.error} tone="red" /> : null}
 						</div>
@@ -37,6 +41,7 @@ export function TerminalDetails({ row, onOpenSession }: TerminalDetailsProps) {
 				<div className="space-y-3">
 					<DetailPayload label="Input" value={row.input} />
 					<DetailPayload label="Output" value={row.output} />
+					<PayloadRefs refs={row.payloadRefs} />
 					<CompactedOutputDisclosure value={row.output} />
 					{row.error ? <DetailText label="Error" value={row.error} tone="red" /> : null}
 					{row.linkedPiboSessionId ? (
@@ -50,6 +55,66 @@ export function TerminalDetails({ row, onOpenSession }: TerminalDetailsProps) {
 								{row.linkedPiboSessionId}
 							</button>
 						</div>
+					) : null}
+				</div>
+			)}
+		</div>
+	);
+}
+
+function PayloadRefs({ refs }: { refs?: CompactTerminalRow["payloadRefs"] }) {
+	if (!refs) return null;
+	const entries = Object.entries(refs).filter((entry): entry is [string, TracePayloadRef] => Boolean(entry[1]));
+	if (!entries.length) return null;
+	return (
+		<div className="space-y-2">
+			{entries.map(([kind, ref]) => (
+				<PayloadRefDetail key={`${kind}:${ref.ref}`} kind={kind} refInfo={ref} />
+			))}
+		</div>
+	);
+}
+
+function PayloadRefDetail({ kind, refInfo }: { kind: string; refInfo: TracePayloadRef }) {
+	const [state, setState] = useState<
+		| { status: "loading" }
+		| { status: "loaded"; data: string; hasMore: boolean; nextOffset?: number }
+		| { status: "error"; message: string }
+	>({ status: "loading" });
+
+	useEffect(() => {
+		let cancelled = false;
+		setState({ status: "loading" });
+		getTracePayload(refInfo.ref, { offset: 0, limit: 65536 })
+			.then((chunk) => {
+				if (cancelled) return;
+				setState({ status: "loaded", data: chunk.data, hasMore: chunk.hasMore, nextOffset: chunk.nextOffset });
+			})
+			.catch((error: unknown) => {
+				if (cancelled) return;
+				setState({ status: "error", message: error instanceof Error ? error.message : String(error) });
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [refInfo.ref]);
+
+	return (
+		<div className="space-y-1" data-shared-terminal-payload-ref={kind}>
+			<div className="text-[11px] font-semibold text-[#737373]">
+				{kind} payload ({Math.ceil(refInfo.byteLength / 1024)} KB)
+			</div>
+			{state.status === "loading" ? (
+				<div className="border border-[#2a2a2a] bg-[#0b0b0b] p-2 text-[12px] text-[#737373]">Loading payload preview...</div>
+			) : state.status === "error" ? (
+				<div className="border border-[#2a2a2a] bg-[#0b0b0b] p-2 text-[12px] text-[#ef4444]">{state.message}</div>
+			) : (
+				<div className="space-y-1">
+					<pre className="m-0 max-h-[520px] overflow-auto whitespace-pre-wrap break-words border border-[#2a2a2a] bg-[#0b0b0b] p-2 font-mono text-[12px] leading-[1.45] text-[#d4d4d4]">
+						{state.data}
+					</pre>
+					{state.hasMore ? (
+						<div className="text-[11px] text-[#737373]">Showing first chunk. More payload data is available on demand.</div>
 					) : null}
 				</div>
 			)}

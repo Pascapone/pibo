@@ -23,6 +23,9 @@ type StickyVirtuosoOptions = {
 	/** Schedules a sticky scroll when rendered content changes without changing itemCount. */
 	contentKey?: unknown;
 	atBottomThreshold?: number;
+	/** Calls back while the user is reading near the top of the scroll range. */
+	onNearTop?: () => void;
+	nearTopThreshold?: number;
 };
 
 export function useStickyVirtuoso({
@@ -30,14 +33,18 @@ export function useStickyVirtuoso({
 	resetKey,
 	contentKey,
 	atBottomThreshold = DEFAULT_BOTTOM_THRESHOLD,
+	onNearTop,
+	nearTopThreshold = 0,
 }: StickyVirtuosoOptions) {
 	const virtuosoRef = useRef<VirtuosoHandle>(null);
 	const itemCountRef = useRef(itemCount);
 	const stickyRef = useRef(true);
 	const scrollFrameRef = useRef<number | undefined>(undefined);
+	const nearTopFrameRef = useRef<number | undefined>(undefined);
 	const userScrollIntentRef = useRef(false);
 	const userScrollIntentTimerRef = useRef<number | undefined>(undefined);
 	const lastScrollTopRef = useRef<number | undefined>(undefined);
+	const lastScrollHeightRef = useRef<number | undefined>(undefined);
 	const [isSticky, setIsStickyState] = useState(true);
 	const [scroller, setScroller] = useState<HTMLElement | Window | null>(null);
 
@@ -57,6 +64,16 @@ export function useStickyVirtuoso({
 		}
 	}, []);
 
+	const requestNearTop = useCallback(() => {
+		if (!onNearTop || !scroller) return;
+		if (nearTopFrameRef.current !== undefined) return;
+		nearTopFrameRef.current = requestAnimationFrame(() => {
+			nearTopFrameRef.current = undefined;
+			if (!onNearTop || !scroller) return;
+			if (getScrollTop(scroller) <= nearTopThreshold) onNearTop();
+		});
+	}, [nearTopThreshold, onNearTop, scroller]);
+
 	const scheduleScrollToBottom = useCallback((behavior: NativeScrollBehavior = "auto") => {
 		clearScheduledScroll();
 		scrollFrameRef.current = requestAnimationFrame(() => {
@@ -67,14 +84,22 @@ export function useStickyVirtuoso({
 
 			// autoscrollToBottom catches measured height changes inside the last item;
 			// scrollToIndex catches newly appended rows.
+			if (scroller) scrollToBottom(scroller);
 			virtuosoRef.current?.autoscrollToBottom();
 			virtuosoRef.current?.scrollToIndex({ index: lastIndex, align: "end", behavior });
 
 			requestAnimationFrame(() => {
-				if (stickyRef.current) virtuosoRef.current?.autoscrollToBottom();
+				if (!stickyRef.current) return;
+				if (scroller) scrollToBottom(scroller);
+				virtuosoRef.current?.autoscrollToBottom();
+				requestAnimationFrame(() => {
+					if (!stickyRef.current) return;
+					if (scroller) scrollToBottom(scroller);
+					virtuosoRef.current?.autoscrollToBottom();
+				});
 			});
 		});
-	}, [clearScheduledScroll]);
+	}, [clearScheduledScroll, scroller]);
 
 	const stickToBottom = useCallback((behavior: NativeScrollBehavior = "auto") => {
 		setSticky(true);
@@ -121,25 +146,28 @@ export function useStickyVirtuoso({
 		const scrollingAwayFromBottom = event instanceof WheelEvent && event.deltaY < 0;
 		if (scrollingAwayFromBottom) clearScheduledScroll();
 		if (scrollingAwayFromBottom || (scroller && !isAtBottom(scroller, atBottomThreshold))) setSticky(false);
+		if (isNearTopHistoryIntent(event) && scroller && getScrollTop(scroller) <= nearTopThreshold) requestNearTop();
 		if (userScrollIntentTimerRef.current !== undefined) window.clearTimeout(userScrollIntentTimerRef.current);
 		userScrollIntentTimerRef.current = window.setTimeout(() => {
 			userScrollIntentRef.current = false;
 			userScrollIntentTimerRef.current = undefined;
 		}, USER_SCROLL_INTENT_MS);
-	}, [atBottomThreshold, clearScheduledScroll, scroller, setSticky]);
+	}, [atBottomThreshold, clearScheduledScroll, nearTopThreshold, requestNearTop, scroller, setSticky]);
 
 	const updateFromScrollPosition = useCallback(() => {
 		if (!scroller) return;
 		const scrollTop = getScrollTop(scroller);
 		const previousScrollTop = lastScrollTopRef.current;
 		lastScrollTopRef.current = scrollTop;
+		const scrollingAwayFromBottom = previousScrollTop !== undefined && scrollTop < previousScrollTop - 1;
+		const readingAwayFromBottom = userScrollIntentRef.current || scrollingAwayFromBottom || !stickyRef.current;
+		if (readingAwayFromBottom && scrollTop <= nearTopThreshold) requestNearTop();
 		if (isAtBottom(scroller, atBottomThreshold)) {
 			if (!userScrollIntentRef.current) setSticky(true);
 			return;
 		}
-		const scrollingAwayFromBottom = previousScrollTop !== undefined && scrollTop < previousScrollTop - 1;
 		if (userScrollIntentRef.current || scrollingAwayFromBottom) setSticky(false);
-	}, [atBottomThreshold, scroller, setSticky]);
+	}, [atBottomThreshold, nearTopThreshold, requestNearTop, scroller, setSticky]);
 
 	useEffect(() => {
 		if (!scroller) return undefined;
@@ -147,7 +175,7 @@ export function useStickyVirtuoso({
 		const markIntentFromKey = (event: Event) => {
 			const key = event instanceof KeyboardEvent ? event.key : "";
 			if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(key)) {
-				markUserScrollIntent();
+				markUserScrollIntent(event);
 			}
 		};
 		const markIntentFromPointer = (event: Event) => {
@@ -169,6 +197,7 @@ export function useStickyVirtuoso({
 
 	useLayoutEffect(() => {
 		lastScrollTopRef.current = undefined;
+		lastScrollHeightRef.current = undefined;
 		setSticky(true);
 		scheduleScrollToBottom("auto");
 	}, [resetKey, scheduleScrollToBottom, setSticky]);
@@ -177,8 +206,26 @@ export function useStickyVirtuoso({
 		if (stickyRef.current) scheduleScrollToBottom("auto");
 	}, [contentKey, itemCount, scheduleScrollToBottom]);
 
+	useLayoutEffect(() => {
+		if (!scroller) return;
+		const scrollHeight = getScrollHeight(scroller);
+		const previousScrollHeight = lastScrollHeightRef.current;
+		lastScrollHeightRef.current = scrollHeight;
+		if (stickyRef.current || previousScrollHeight === undefined) return;
+		const scrollTop = getScrollTop(scroller);
+		const addedHeight = scrollHeight - previousScrollHeight;
+		if (addedHeight > 0 && scrollTop <= nearTopThreshold) {
+			setScrollTop(scroller, scrollTop + addedHeight);
+		}
+		requestAnimationFrame(() => {
+			if (!scroller || stickyRef.current) return;
+			if (getScrollTop(scroller) <= nearTopThreshold) requestNearTop();
+		});
+	}, [contentKey, itemCount, nearTopThreshold, requestNearTop, scroller]);
+
 	useEffect(() => () => {
 		clearScheduledScroll();
+		if (nearTopFrameRef.current !== undefined) cancelAnimationFrame(nearTopFrameRef.current);
 		if (userScrollIntentTimerRef.current !== undefined) window.clearTimeout(userScrollIntentTimerRef.current);
 	}, [clearScheduledScroll]);
 
@@ -218,4 +265,25 @@ function isAtBottom(scroller: HTMLElement | Window, threshold: number) {
 function getScrollTop(scroller: HTMLElement | Window) {
 	const element = scroller instanceof Window ? document.scrollingElement : scroller;
 	return element?.scrollTop ?? 0;
+}
+
+function setScrollTop(scroller: HTMLElement | Window, scrollTop: number) {
+	const element = scroller instanceof Window ? document.scrollingElement : scroller;
+	if (element) element.scrollTop = scrollTop;
+}
+
+function getScrollHeight(scroller: HTMLElement | Window) {
+	const element = scroller instanceof Window ? document.scrollingElement : scroller;
+	return element?.scrollHeight ?? 0;
+}
+
+function scrollToBottom(scroller: HTMLElement | Window) {
+	const element = scroller instanceof Window ? document.scrollingElement : scroller;
+	if (element) element.scrollTop = element.scrollHeight;
+}
+
+function isNearTopHistoryIntent(event?: Event) {
+	if (event instanceof WheelEvent) return event.deltaY < 0;
+	if (event instanceof KeyboardEvent) return ["ArrowUp", "PageUp", "Home"].includes(event.key);
+	return event?.type === "touchmove";
 }

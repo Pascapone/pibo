@@ -141,10 +141,11 @@ export function SessionTracePane({
     useState<LiveTraceOverlay | null>(null);
   const {
     baseTraceView,
-    traceEventLimit,
     rawEventLimit,
     traceSummaryQuery,
     tracePageQuery,
+    rawEventsQuery,
+    loadingOlderTracePage,
     tracePageReady,
     loadOlderTracePage,
     loadMoreRawEvents,
@@ -302,6 +303,12 @@ export function SessionTracePane({
     onSessionAgentProfileChange,
     onFork,
     onOpenSession,
+    onLoadOlderTracePage: () =>
+      void loadOlderTracePage(currentTraceView?.nextBeforeSequence),
+    hasOlderTraceEvents:
+      currentTraceView?.hasOlderEvents === true ||
+      typeof currentTraceView?.nextBeforeSequence === "number",
+    isFetchingOlderTracePage: loadingOlderTracePage,
     onThinkingLevelChange,
     onRefreshTrace,
     onRefreshBootstrap,
@@ -318,12 +325,8 @@ export function SessionTracePane({
       traceError={traceError}
       showRawEvents={showRawEvents}
       currentTraceView={currentTraceView}
-      traceEventLimit={traceEventLimit}
       rawEventLimit={rawEventLimit}
-      tracePageFetching={tracePageQuery.isFetching}
-      onLoadOlderTracePage={(beforeSequence) =>
-        void loadOlderTracePage(beforeSequence)
-      }
+      tracePageFetching={showRawEvents ? rawEventsQuery.isFetching : tracePageQuery.isFetching}
       onLoadMoreRawEvents={loadMoreRawEvents}
       headerProps={{
         title:

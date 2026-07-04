@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { parseSessionEntries, SessionManager, type SessionEntry } from "@mariozechner/pi-coding-agent";
@@ -72,6 +72,8 @@ type SessionMetadata = {
 	modified?: string;
 };
 
+export const TRACE_TRANSCRIPT_TAIL_MAX_BYTES = 2 * 1024 * 1024;
+
 type TraceBuildInput = {
 	session: PiboSession;
 	sessions: PiboSession[];
@@ -79,6 +81,7 @@ type TraceBuildInput = {
 	status?: PiboWebSessionStatus;
 	cwd?: string;
 	metadata?: SessionMetadata;
+	transcriptEntries?: SessionEntry[];
 	includeRawEvents?: boolean;
 	rawEventsLimit?: number;
 	latestStreamId?: number;
@@ -200,7 +203,7 @@ function sessionNodeStatus(indexedStatus: PiboWebSessionStatus | undefined): Pib
 
 export async function buildTraceView(input: TraceBuildInput): Promise<PiboSessionTraceView> {
 	const metadata = input.metadata ?? (await loadPiSessionMetadata(input.session, input.session.workspace ?? input.cwd));
-	const allEntries = metadata.sessionPath ? readEntries(metadata.sessionPath) : [];
+	const allEntries = input.transcriptEntries ?? (metadata.sessionPath ? readEntries(metadata.sessionPath) : []);
 	const sessionStatus = input.status ?? "idle";
 
 	const view = buildTraceViewFromEvents({
@@ -237,6 +240,16 @@ export async function buildTraceView(input: TraceBuildInput): Promise<PiboSessio
 			latestStreamId: input.latestStreamId,
 		}),
 	};
+}
+
+export async function loadPiSessionTailEntries(
+	session: PiboSession,
+	cwd = process.cwd(),
+	maxBytes = TRACE_TRANSCRIPT_TAIL_MAX_BYTES,
+): Promise<{ metadata: SessionMetadata; entries: SessionEntry[] }> {
+	const metadata = await loadPiSessionMetadata(session, cwd);
+	if (!metadata.sessionPath) return { metadata, entries: [] };
+	return { metadata, entries: readTailEntries(metadata.sessionPath, maxBytes) };
 }
 
 export function createTraceViewVersion(input: {
@@ -402,6 +415,25 @@ function readEntries(path: string): SessionEntry[] {
 	if (!existsSync(path)) return [];
 	const content = readFileSync(path, "utf8");
 	return parseSessionEntries(content).filter((entry): entry is SessionEntry => entry.type !== "session");
+}
+
+export function readTailEntries(path: string, maxBytes = TRACE_TRANSCRIPT_TAIL_MAX_BYTES): SessionEntry[] {
+	if (!existsSync(path)) return [];
+	const stats = statSync(path);
+	if (stats.size <= maxBytes) return readEntries(path);
+	const length = Math.max(1, Math.min(maxBytes, stats.size));
+	const start = stats.size - length;
+	const buffer = Buffer.alloc(length);
+	const fd = openSync(path, "r");
+	try {
+		const bytesRead = readSync(fd, buffer, 0, length, start);
+		let content = buffer.subarray(0, bytesRead).toString("utf8");
+		const firstNewline = content.indexOf("\n");
+		if (start > 0 && firstNewline >= 0) content = content.slice(firstNewline + 1);
+		return parseSessionEntries(content).filter((entry): entry is SessionEntry => entry.type !== "session");
+	} finally {
+		closeSync(fd);
+	}
 }
 
 function annotateForkableUserMessageNodes(nodes: PiboTraceNode[], entries: SessionEntry[]): void {

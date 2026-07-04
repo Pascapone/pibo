@@ -418,6 +418,7 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 		.option("--web-port <port>", "Bind the HTTP web host port", parsePort)
 		.option("--gateway-port <port>", "Bind the agent-runtime gateway port", parsePort)
 		.action(async (options: { auth?: string; webHost?: string; webPort?: number; gatewayPort?: number }) => {
+			warnIfUnsupportedGatewayNodeVersion();
 			const { runWebGatewayServer } = await import("./gateway/web.js");
 			const authMode = options.auth;
 			if (authMode !== undefined && authMode !== "better-auth" && authMode !== "local") {
@@ -452,6 +453,14 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 		return;
 	}
 	await program.parseAsync(argv);
+}
+
+function warnIfUnsupportedGatewayNodeVersion(): void {
+	const major = Number(process.versions.node.split(".")[0]);
+	if (Number.isFinite(major) && major >= 24) return;
+	const message = `Pibo gateway:web requires Node >=24; current runtime is ${process.version}. Upgrade Node before production gateway use.`;
+	if (process.env.PIBO_STRICT_NODE_ENGINE === "1") throw new Error(message);
+	console.warn(`[pibo] warning: ${message}`);
 }
 
 function printRootDiscoveryText(): string {

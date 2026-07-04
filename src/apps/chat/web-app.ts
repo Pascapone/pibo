@@ -1,5 +1,6 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import os from "node:os";
+import { monitorEventLoopDelay, type IntervalHistogram } from "node:perf_hooks";
 import type { PiboJsonObject, PiboJsonValue, PiboOutputEvent } from "../../core/events.js";
 import { PiboWebHttpError, readJsonBody, responseJson } from "../../web/http.js";
 import type { PiboWebApp, PiboWebAppContext, PiboWebSession } from "../../web/types.js";
@@ -21,13 +22,15 @@ import {
 	type UpdatePiboRoomInput,
 } from "./types/rooms.js";
 import { chatStreamFramesFromOutputEvent, createChatStreamState, nextTransientChatStreamFrameId, type ChatStreamEvent } from "./stream.js";
-import { buildSessionNodes, buildTraceView, createTraceViewVersion, loadPiSessionMetadata, type PiboSessionTraceView, type PiboWebSessionNode, type PiboWebSessionStatus } from "./trace.js";
-import type { ChatWebStoredEvent, PiboSessionTraceSummary } from "../../shared/trace-types.js";
+import { buildSessionNodes, buildTraceView, createTraceViewVersion, loadPiSessionMetadata, readTailEntries, type PiboSessionTraceView, type PiboWebSessionNode, type PiboWebSessionStatus } from "./trace.js";
+import type { ChatWebStoredEvent, PiboSessionTraceSummary, TraceTimelinePage } from "../../shared/trace-types.js";
 import {
 	DEFAULT_TRACE_EVENTS_PAGE_SIZE,
 	MAX_TRACE_EVENTS_PER_REQUEST,
 	annotateTracePage,
 	etagForVersion,
+	estimateTraceViewBytes,
+	traceCacheEstimatedBytes,
 	liveSnapshotVersion,
 	requestMatchesVersion,
 	setTraceCache,
@@ -35,6 +38,19 @@ import {
 	withLiveSnapshots,
 	withRawTraceTail,
 } from "./chat-trace-helpers.js";
+import {
+	TRACE_V2_DEFAULT_TIMELINE_LIMIT,
+	TRACE_V2_MAX_TIMELINE_LIMIT,
+	TRACE_V2_PAYLOAD_DEFAULT_LIMIT_BYTES,
+	TRACE_V2_PAYLOAD_MAX_LIMIT_BYTES,
+	TRACE_V2_RAW_EVENTS_DEFAULT_LIMIT,
+	TRACE_V2_RAW_EVENTS_MAX_LIMIT,
+	TRACE_V2_TIMELINE_HARD_BYTES,
+	parseTracePayloadRef,
+	readTracePayloadChunk,
+	traceRawEventsPageFromEvents,
+	traceTimelinePageFromView,
+} from "./trace-v2.js";
 import { isChatWebSessionArchived } from "./session-metadata.js";
 import { withWorkflowSessionKind } from "../../sessions/workflow-session-kind.js";
 import {
@@ -346,6 +362,7 @@ type ChatWebAppState = {
 	dataStore: PiboDataStore;
 	ingestService: ChatDataIngestService;
 	traceCache: Map<string, PiboSessionTraceView>;
+	traceTimelinePageCache: Map<string, TraceTimelinePage>;
 	bootstrapCatalogCache?: { expiresAt: number; value: Promise<ChatBootstrapCatalog> };
 	outputCompactor: OutputCompactor;
 	subscribedContext?: PiboWebAppContext;
@@ -353,10 +370,13 @@ type ChatWebAppState = {
 	liveListeners: Set<(event: ChatLiveEvent) => void>;
 	transientReplaySequence: number;
 	transientReplayBuffer: TransientChatReplayRecord[];
+	transientReplayBufferBytes: number;
 	transientReplayEvictedBeforeByScope: Map<string, number>;
 	activeEventStreams: Map<string, Set<string>>;
 	activeTraceSessions: Set<string>;
 	persistenceMetrics: ChatPersistenceMetrics;
+	resourceMetrics: ChatGatewayResourceMetrics;
+	eventLoopDelay: IntervalHistogram;
 	userSkillManager: UserSkillManager;
 	syncedUserSkillNames?: Set<string>;
 	workflowDraftStore: ChatWorkflowDraftStore;
@@ -366,6 +386,12 @@ type ChatWebAppState = {
 	workflowLifecycleEventStore: ChatWorkflowLifecycleEventStore;
 	workflowPromptAssetStore: ChatWorkflowPromptAssetStore;
 	telemetryRetentionMaintenance: TelemetryRetentionMaintenanceState;
+};
+
+type ChatGatewayResourceMetrics = {
+	reliabilityPayloadWrites: Record<"inline" | "over_64kb" | "over_1mb" | "over_10mb", number>;
+	reliabilityPayloadExternalized: number;
+	recentWarnings: Array<{ at: string; message: string }>;
 };
 
 type ChatBootstrapCatalog = {
@@ -547,7 +573,11 @@ type PiboRoomNodeWithUnread = PiboRoom & {
 };
 
 const TRACE_CACHE_MAX_ENTRIES = 24;
+const TRACE_TIMELINE_PAGE_CACHE_MAX_BYTES = 2 * 1024 * 1024;
 const TRANSIENT_REPLAY_BUFFER_MAX_EVENTS = 1000;
+const TRANSIENT_REPLAY_BUFFER_MAX_BYTES = 2 * 1024 * 1024;
+const RELIABILITY_INLINE_PAYLOAD_MAX_BYTES = 64 * 1024;
+const RESOURCE_WARNING_RING_MAX = 25;
 
 function writeSse(
 	controller: ReadableStreamDefaultController<Uint8Array>,
@@ -693,6 +723,14 @@ function createPersistenceMetrics(): ChatPersistenceMetrics {
 	return { eventCount: 0, errorCount: 0, totalIndexingMs: 0, maxIndexingMs: 0 };
 }
 
+function createResourceMetrics(): ChatGatewayResourceMetrics {
+	return {
+		reliabilityPayloadWrites: { inline: 0, over_64kb: 0, over_1mb: 0, over_10mb: 0 },
+		reliabilityPayloadExternalized: 0,
+		recentWarnings: [],
+	};
+}
+
 function recordPersistenceDuration(metrics: ChatPersistenceMetrics, durationMs: number): void {
 	metrics.eventCount += 1;
 	metrics.totalIndexingMs += durationMs;
@@ -711,6 +749,122 @@ function serializePersistenceMetrics(metrics: ChatPersistenceMetrics): ChatPersi
 		...metrics,
 		averageIndexingMs: metrics.eventCount > 0 ? metrics.totalIndexingMs / metrics.eventCount : 0,
 	};
+}
+
+function pushResourceWarning(metrics: ChatGatewayResourceMetrics, message: string): void {
+	metrics.recentWarnings.push({ at: new Date().toISOString(), message });
+	while (metrics.recentWarnings.length > RESOURCE_WARNING_RING_MAX) metrics.recentWarnings.shift();
+}
+
+function serializeGatewayResourceDiagnostics(state: ChatWebAppState) {
+	const memory = process.memoryUsage();
+	const activeEventStreams = [...state.activeEventStreams.values()].reduce((total, streams) => total + streams.size, 0);
+	return {
+		memory: {
+			heapUsed: memory.heapUsed,
+			heapTotal: memory.heapTotal,
+			rss: memory.rss,
+			external: memory.external,
+			arrayBuffers: memory.arrayBuffers,
+		},
+		eventLoopDelay: {
+			meanMs: Number.isFinite(state.eventLoopDelay.mean) ? state.eventLoopDelay.mean / 1_000_000 : 0,
+			maxMs: Number.isFinite(state.eventLoopDelay.max) ? state.eventLoopDelay.max / 1_000_000 : 0,
+			p95Ms: state.eventLoopDelay.percentile(95) / 1_000_000,
+		},
+		streams: {
+			liveListeners: state.liveListeners.size,
+			activeEventStreams,
+			activeTraceSessions: state.activeTraceSessions.size,
+		},
+		traceCache: {
+			entries: state.traceCache.size,
+			estimatedBytes: traceCacheEstimatedBytes(state.traceCache),
+		},
+		traceTimelinePageCache: {
+			entries: state.traceTimelinePageCache.size,
+			estimatedBytes: traceTimelinePageCacheEstimatedBytes(state.traceTimelinePageCache),
+			maxBytes: TRACE_TIMELINE_PAGE_CACHE_MAX_BYTES,
+		},
+		transientReplay: {
+			events: state.transientReplayBuffer.length,
+			estimatedBytes: state.transientReplayBufferBytes,
+			maxEvents: TRANSIENT_REPLAY_BUFFER_MAX_EVENTS,
+			maxBytes: TRANSIENT_REPLAY_BUFFER_MAX_BYTES,
+		},
+		reliabilityPayloads: state.resourceMetrics.reliabilityPayloadWrites,
+		reliabilityPayloadExternalized: state.resourceMetrics.reliabilityPayloadExternalized,
+		recentWarnings: state.resourceMetrics.recentWarnings,
+	};
+}
+
+function setTraceTimelinePageCache(
+	cache: Map<string, TraceTimelinePage>,
+	key: string,
+	page: TraceTimelinePage,
+	maxEntries = TRACE_CACHE_MAX_ENTRIES,
+	maxBytes = TRACE_TIMELINE_PAGE_CACHE_MAX_BYTES,
+): void {
+	cache.delete(key);
+	cache.set(key, page);
+	while (cache.size > maxEntries || traceTimelinePageCacheEstimatedBytes(cache) > maxBytes) {
+		const oldestKey = cache.keys().next().value;
+		if (typeof oldestKey !== "string") break;
+		cache.delete(oldestKey);
+	}
+}
+
+function traceTimelinePageCacheEstimatedBytes(cache: ReadonlyMap<string, TraceTimelinePage>): number {
+	let bytes = 0;
+	for (const page of cache.values()) bytes += Buffer.byteLength(JSON.stringify(page), "utf8");
+	return bytes;
+}
+
+function createFastTraceV2Version(input: {
+	session: PiboSession;
+	sessions: PiboSession[];
+	lastEventSequence: number;
+	lastActivityAt?: string;
+	status?: PiboWebSessionStatus;
+	latestStreamId?: number;
+	transcript?: {
+		sessionSize?: number;
+		sessionMtimeMs?: number;
+		modified?: string;
+	};
+}): string {
+	const relevantSessions = input.sessions
+		.map((session) => ({
+			id: session.id,
+			parentId: session.parentId ?? null,
+			originId: session.originId ?? null,
+			updatedAt: session.updatedAt,
+			title: session.title ?? null,
+		}))
+		.sort((left, right) => left.id.localeCompare(right.id));
+	return createHash("sha1")
+		.update(JSON.stringify({
+			session: {
+				id: input.session.id,
+				piSessionId: input.session.piSessionId,
+				profile: input.session.profile,
+				title: input.session.title ?? null,
+				updatedAt: input.session.updatedAt,
+			},
+			status: input.status ?? "idle",
+			events: {
+				lastSequence: input.lastEventSequence,
+				lastActivityAt: input.lastActivityAt ?? null,
+				latestStreamId: input.latestStreamId ?? null,
+			},
+			transcript: {
+				sessionSize: input.transcript?.sessionSize ?? null,
+				sessionMtimeMs: input.transcript?.sessionMtimeMs ?? null,
+				modified: input.transcript?.modified ?? null,
+			},
+			sessions: relevantSessions,
+		}))
+		.digest("hex");
 }
 
 function ensureEventIndexing(state: ChatWebAppState, context: PiboWebAppContext): void {
@@ -775,7 +929,7 @@ function ensureEventIndexing(state: ChatWebAppState, context: PiboWebAppContext)
 					key: persistableEvent.piboSessionId,
 					eventId: `pibo.output:${persistableEvent.piboSessionId}:${persistableEvent.type}:${randomUUID()}`,
 					retentionClass: reliabilityRetentionClassForOutputEvent(persistableEvent),
-					payload: persistableEvent as PiboJsonValue,
+					payload: boundedReliabilityOutputPayload(state, persistableEvent),
 				});
 				for (const listener of state.liveListeners) listener(stored);
 			}
@@ -794,6 +948,67 @@ function reliabilityRetentionClassForOutputEvent(event: PiboOutputEvent): string
 		return "chat_message";
 	}
 	return "trace_event";
+}
+
+function boundedReliabilityOutputPayload(state: ChatWebAppState, event: PiboOutputEvent): PiboJsonValue {
+	const bytes = estimateJsonBytes(event);
+	recordReliabilityPayloadBucket(state.resourceMetrics, bytes);
+	if (bytes <= RELIABILITY_INLINE_PAYLOAD_MAX_BYTES) return event as PiboJsonValue;
+
+	const compacted = compactLargeOutputEventFields(state, event);
+	const compactedBytes = estimateJsonBytes(compacted);
+	if (compactedBytes <= RELIABILITY_INLINE_PAYLOAD_MAX_BYTES) {
+		state.resourceMetrics.reliabilityPayloadExternalized += 1;
+		return compacted;
+	}
+
+	const payload = state.dataStore.payloads.writePayload({
+		value: toPiboJsonValue(event),
+		contentType: "application/json",
+		retentionClass: reliabilityRetentionClassForOutputEvent(event),
+	});
+	state.resourceMetrics.reliabilityPayloadExternalized += 1;
+	pushResourceWarning(state.resourceMetrics, `Externalized over-budget reliability payload for ${event.type} (${bytes} bytes).`);
+	return {
+		type: event.type,
+		piboSessionId: event.piboSessionId,
+		eventId: "eventId" in event && typeof event.eventId === "string" ? event.eventId : undefined,
+		payloadRef: payload.id,
+		payloadBytes: payload.byteSize,
+		preview: payload.previewText,
+		truncated: true,
+	} as PiboJsonValue;
+}
+
+function recordReliabilityPayloadBucket(metrics: ChatGatewayResourceMetrics, bytes: number): void {
+	if (bytes > 10 * 1024 * 1024) metrics.reliabilityPayloadWrites.over_10mb += 1;
+	else if (bytes > 1024 * 1024) metrics.reliabilityPayloadWrites.over_1mb += 1;
+	else if (bytes > RELIABILITY_INLINE_PAYLOAD_MAX_BYTES) metrics.reliabilityPayloadWrites.over_64kb += 1;
+	else metrics.reliabilityPayloadWrites.inline += 1;
+}
+
+function compactLargeOutputEventFields(state: ChatWebAppState, event: PiboOutputEvent): PiboJsonValue {
+	if (!event || typeof event !== "object" || Array.isArray(event)) return event as PiboJsonValue;
+	const result: Record<string, unknown> = { ...event };
+	for (const key of ["result", "partialResult", "text", "args", "errorDetails"]) {
+		if (!(key in result)) continue;
+		const value = result[key];
+		if (value === undefined || value === null || estimateJsonBytes(value) <= RELIABILITY_INLINE_PAYLOAD_MAX_BYTES / 2) continue;
+		const payload = state.dataStore.payloads.writePayload({
+			value: toPiboJsonValue(value),
+			contentType: typeof value === "string" ? "text/plain; charset=utf-8" : "application/json",
+			retentionClass: reliabilityRetentionClassForOutputEvent(event),
+		});
+		result[`${key}PayloadRef`] = payload.id;
+		result[`${key}PayloadBytes`] = payload.byteSize;
+		result[`${key}Preview`] = payload.previewText;
+		result[key] = typeof value === "string" ? payload.previewText ?? "" : undefined;
+	}
+	return toPiboJsonValue(result);
+}
+
+function toPiboJsonValue(value: unknown): PiboJsonValue {
+	return JSON.parse(JSON.stringify(value)) as PiboJsonValue;
 }
 
 function appendEventStreamDisconnectEvent(
@@ -1244,6 +1459,14 @@ function parsePositiveIntSearchParam(url: URL, name: string, fallback: number, m
 	if (!raw) return fallback;
 	const parsed = Number.parseInt(raw, 10);
 	if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+	return Math.min(parsed, max);
+}
+
+function parseNonNegativeIntSearchParam(url: URL, name: string, fallback: number, max: number): number {
+	const raw = url.searchParams.get(name);
+	if (!raw) return fallback;
+	const parsed = Number.parseInt(raw, 10);
+	if (!Number.isFinite(parsed) || parsed < 0) return fallback;
 	return Math.min(parsed, max);
 }
 
@@ -2871,11 +3094,26 @@ function recordTransientReplayEvent(state: ChatWebAppState, event: Omit<Transien
 	const replaySequence = ++state.transientReplaySequence;
 	const recorded: TransientChatReplayRecord = { ...event, replaySequence, createdAtMs: Date.now() };
 	state.transientReplayBuffer.push(recorded);
-	if (state.transientReplayBuffer.length > TRANSIENT_REPLAY_BUFFER_MAX_EVENTS) {
-		const removed = state.transientReplayBuffer.splice(0, state.transientReplayBuffer.length - TRANSIENT_REPLAY_BUFFER_MAX_EVENTS);
+	state.transientReplayBufferBytes += estimateJsonBytes(recorded);
+	while (
+		state.transientReplayBuffer.length > TRANSIENT_REPLAY_BUFFER_MAX_EVENTS ||
+		state.transientReplayBufferBytes > TRANSIENT_REPLAY_BUFFER_MAX_BYTES
+	) {
+		const removed = state.transientReplayBuffer.splice(0, Math.max(1, state.transientReplayBuffer.length - TRANSIENT_REPLAY_BUFFER_MAX_EVENTS));
+		if (!removed.length) break;
 		for (const evicted of removed) recordTransientReplayEviction(state, evicted);
 	}
 	return recorded;
+}
+
+function parseTimelineBeforeCursor(url: URL): number | undefined {
+	const before = parseOptionalPositiveIntSearchParam(url, "beforeSequence");
+	if (before !== undefined) return before;
+	const cursor = url.searchParams.get("before") ?? url.searchParams.get("cursor");
+	if (!cursor || cursor === "tail") return undefined;
+	const parsed = Number.parseInt(cursor, 10);
+	if (!Number.isFinite(parsed) || parsed <= 0) throw new PiboWebHttpError("Trace cursor must be tail or a positive sequence", 400);
+	return parsed;
 }
 
 function transientReplayScopeKeys(input: { roomId?: string; piboSessionId?: string }): string[] {
@@ -2886,8 +3124,17 @@ function transientReplayScopeKeys(input: { roomId?: string; piboSessionId?: stri
 }
 
 function recordTransientReplayEviction(state: ChatWebAppState, event: TransientChatReplayRecord): void {
+	state.transientReplayBufferBytes = Math.max(0, state.transientReplayBufferBytes - estimateJsonBytes(event));
 	for (const key of transientReplayScopeKeys(event)) {
 		state.transientReplayEvictedBeforeByScope.set(key, Math.max(state.transientReplayEvictedBeforeByScope.get(key) ?? 0, event.replaySequence));
+	}
+}
+
+function estimateJsonBytes(value: unknown): number {
+	try {
+		return Buffer.byteLength(JSON.stringify(value), "utf8");
+	} catch {
+		return Buffer.byteLength(String(value), "utf8");
 	}
 }
 
@@ -3542,6 +3789,8 @@ async function sendChatMessage(input: {
 export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 	const defaultProfile = options.defaultProfile ?? "base";
 	const dataStore = createDataStore(options);
+	const eventLoopDelay = monitorEventLoopDelay({ resolution: 20 });
+	eventLoopDelay.enable();
 	const state: ChatWebAppState = {
 		sessionQuery: new ChatSessionQueryService(dataStore),
 		timelineQuery: new ChatTimelineQueryService(dataStore),
@@ -3556,14 +3805,18 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 		dataStore,
 		ingestService: new ChatDataIngestService(dataStore),
 		traceCache: new Map(),
+		traceTimelinePageCache: new Map(),
 		outputCompactor: new OutputCompactor(),
 		liveListeners: new Set(),
 		transientReplaySequence: 0,
 		transientReplayBuffer: [],
+		transientReplayBufferBytes: 0,
 		transientReplayEvictedBeforeByScope: new Map(),
 		activeEventStreams: new Map(),
 		activeTraceSessions: new Set(),
 		persistenceMetrics: createPersistenceMetrics(),
+		resourceMetrics: createResourceMetrics(),
+		eventLoopDelay,
 		userSkillManager: new UserSkillManager(os.homedir()),
 		workflowDraftStore: new ChatWorkflowDraftStore(dataStore),
 		workflowPublishedVersionStore: new ChatWorkflowPublishedVersionStore(dataStore),
@@ -4795,6 +5048,154 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				return responseJson(summary, { headers });
 			}
 
+			if (url.pathname === `${CHAT_WEB_API_PREFIX}/trace/timeline` && request.method === "GET") {
+				const startedAt = performance.now();
+				const webSession = await requireSession(request, context);
+				const beforeSequence = parseTimelineBeforeCursor(url);
+				const limit = parsePositiveIntSearchParam(url, "limit", TRACE_V2_DEFAULT_TIMELINE_LIMIT, TRACE_V2_MAX_TIMELINE_LIMIT);
+				const selectedSession = resolveRequestedSession(
+					state,
+					context,
+					webSession,
+					defaultProfile,
+					url.searchParams.get("piboSessionId") || undefined,
+				);
+				state.sessionQuery.upsertSession(selectedSession);
+				const ownedSessions = listSharedSessions(context);
+				const indexedSession = state.sessionQuery.getSession(selectedSession.id);
+				let metadataMs = 0;
+				const lastEventSequence = state.timelineQuery.getLatestEventSequence(selectedSession.id);
+				const latestStreamId = state.timelineQuery.getLatestStreamId({ piboSessionId: selectedSession.id });
+				const liveSnapshots = beforeSequence === undefined ? state.outputCompactor.snapshotsForSession(selectedSession.id) : [];
+				const transcriptMetadata = beforeSequence === undefined
+					? await loadPiSessionMetadata(selectedSession, selectedSession.workspace ?? process.cwd())
+					: undefined;
+				const baseVersion = createFastTraceV2Version({
+					session: selectedSession,
+					sessions: ownedSessions,
+					lastEventSequence,
+					lastActivityAt: indexedSession?.lastActivityAt,
+					status: indexedSession?.status,
+					latestStreamId,
+					transcript: transcriptMetadata,
+				});
+				const snapshotVersion = liveSnapshotVersion(liveSnapshots);
+				const version = snapshotVersion ? `${baseVersion}:live:${snapshotVersion}` : baseVersion;
+				const pageCursorKey = beforeSequence === undefined ? "tail" : `before:${beforeSequence}`;
+				const cacheKey = traceCacheKey(selectedSession.id, `${baseVersion}:v2:limit:${limit}:${pageCursorKey}`);
+				const pageCacheKey = traceCacheKey(selectedSession.id, `${version}:v2-page:limit:${limit}:${pageCursorKey}`);
+				const cachedPage = state.traceTimelinePageCache.get(pageCacheKey);
+				const cached = state.traceCache.get(cacheKey);
+				const baseHeaders = {
+					etag: etagForVersion(version),
+					"x-pibo-trace-version": version,
+					"cache-control": "no-store",
+				};
+				if (beforeSequence === undefined && requestMatchesVersion(request, version)) {
+					return new Response(null, { status: 304, headers: baseHeaders });
+				}
+				if (cachedPage) {
+					return responseJson(cachedPage, {
+						headers: {
+							...baseHeaders,
+							"server-timing": [
+								`trace_timeline;dur=${(performance.now() - startedAt).toFixed(1)}`,
+								`trace_metadata;dur=${metadataMs.toFixed(1)}`,
+								`trace_events;desc="0"`,
+								`trace_cache;desc="page-hit"`,
+							].join(", "),
+						},
+					});
+				}
+				let trace = cached;
+				let eventCount = 0;
+				if (!trace) {
+					const events = state.timelineQuery.listTraceEvents({
+						piboSessionId: selectedSession.id,
+						limit,
+						...(beforeSequence !== undefined ? { beforeSequence } : {}),
+					});
+					const transcriptEntries = beforeSequence === undefined && transcriptMetadata?.sessionPath
+						? readTailEntries(transcriptMetadata.sessionPath)
+						: [];
+					eventCount = events.length;
+					trace = await buildTraceView({
+						session: selectedSession,
+						sessions: ownedSessions,
+						events,
+						status: indexedSession?.status,
+						metadata: transcriptMetadata ?? {},
+						transcriptEntries,
+						includeRawEvents: false,
+						latestStreamId,
+					});
+					trace = annotateTracePage(trace, events, { lastEventSequence, pageSize: limit, beforeSequence });
+					setTraceCache(state.traceCache, cacheKey, trace, TRACE_CACHE_MAX_ENTRIES);
+				}
+				trace = withLiveSnapshots(trace, liveSnapshots, {
+					piboSessionId: selectedSession.id,
+					lastEventSequence,
+					status: liveSnapshots.length ? "running" : indexedSession?.status,
+				});
+				trace = { ...trace, version };
+				const page = traceTimelinePageFromView({
+					trace,
+					payloadStore: state.dataStore.payloads,
+					limit,
+					byteLimit: TRACE_V2_TIMELINE_HARD_BYTES,
+					fromTail: beforeSequence === undefined,
+				});
+				setTraceTimelinePageCache(state.traceTimelinePageCache, pageCacheKey, page);
+				return responseJson(page, {
+					headers: {
+						...baseHeaders,
+						"server-timing": [
+							`trace_timeline;dur=${(performance.now() - startedAt).toFixed(1)}`,
+							`trace_metadata;dur=${metadataMs.toFixed(1)}`,
+							`trace_events;desc="${eventCount}"`,
+							`trace_cache;desc="${cached ? "hit" : "miss"}"`,
+						].join(", "),
+					},
+				});
+			}
+
+			if (url.pathname.startsWith(`${CHAT_WEB_API_PREFIX}/trace/payload/`) && request.method === "GET") {
+				const webSession = await requireSession(request, context);
+				const ref = decodeURIComponent(url.pathname.slice(`${CHAT_WEB_API_PREFIX}/trace/payload/`.length));
+				const parsed = parseTracePayloadRef(ref);
+				if (!parsed) throw new PiboWebHttpError("Invalid trace payload ref", 400);
+				resolveRequestedSession(state, context, webSession, defaultProfile, parsed.piboSessionId);
+				const offset = parseNonNegativeIntSearchParam(url, "offset", 0, Number.MAX_SAFE_INTEGER);
+				const limit = parsePositiveIntSearchParam(url, "limit", TRACE_V2_PAYLOAD_DEFAULT_LIMIT_BYTES, TRACE_V2_PAYLOAD_MAX_LIMIT_BYTES);
+				const chunk = readTracePayloadChunk({ payloadStore: state.dataStore.payloads, ref, offset, limit });
+				if (!chunk) throw new PiboWebHttpError("Trace payload not found", 404);
+				return responseJson(chunk, { headers: { "cache-control": "no-store" } });
+			}
+
+			if (url.pathname === `${CHAT_WEB_API_PREFIX}/trace/raw-events` && request.method === "GET") {
+				const webSession = await requireSession(request, context);
+				const beforeSequence = parseTimelineBeforeCursor(url);
+				const limit = parsePositiveIntSearchParam(url, "limit", TRACE_V2_RAW_EVENTS_DEFAULT_LIMIT, TRACE_V2_RAW_EVENTS_MAX_LIMIT);
+				const selectedSession = resolveRequestedSession(
+					state,
+					context,
+					webSession,
+					defaultProfile,
+					url.searchParams.get("piboSessionId") || undefined,
+				);
+				const events = state.timelineQuery.listTraceEvents({
+					piboSessionId: selectedSession.id,
+					limit,
+					...(beforeSequence !== undefined ? { beforeSequence } : {}),
+				});
+				return responseJson(traceRawEventsPageFromEvents({
+					piboSessionId: selectedSession.id,
+					events,
+					payloadStore: state.dataStore.payloads,
+					limit,
+				}), { headers: { "cache-control": "no-store" } });
+			}
+
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/trace` && request.method === "GET") {
 				const startedAt = performance.now();
 				const webSession = await requireSession(request, context);
@@ -4873,6 +5274,15 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					lastEventSequence,
 					status: liveSnapshots.length ? "running" : indexedSession?.status,
 				});
+				const estimatedTraceBytes = estimateTraceViewBytes(trace);
+				if (estimatedTraceBytes > TRACE_V2_TIMELINE_HARD_BYTES) {
+					pushResourceWarning(state.resourceMetrics, `Rejected over-budget V1 trace response for ${selectedSession.id} (${estimatedTraceBytes} estimated bytes).`);
+					return responseJson({
+						error: "Full trace response exceeds the V1 compatibility budget. Use /api/chat/trace/timeline and payload refs.",
+						estimatedBytes: estimatedTraceBytes,
+						budgetBytes: TRACE_V2_TIMELINE_HARD_BYTES,
+					}, { status: 413, headers: { ...baseHeaders, "x-pibo-trace-v1-deprecated": "true", ...serverTiming(cached ? "hit" : "miss", eventCount) } });
+				}
 				if (includeRawEvents) {
 					const rawEvents = state.timelineQuery.listTraceEvents({
 						piboSessionId: selectedSession.id,
@@ -4880,9 +5290,9 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 						...(beforeSequence !== undefined ? { beforeSequence } : {}),
 					});
 					eventCount = eventCount || rawEvents.length;
-					return responseJson(withRawTraceTail(trace, rawEvents), { headers: { ...baseHeaders, ...serverTiming(cached ? "hit" : "miss", eventCount) } });
+					return responseJson(withRawTraceTail(trace, rawEvents), { headers: { ...baseHeaders, "x-pibo-trace-v1-deprecated": "true", ...serverTiming(cached ? "hit" : "miss", eventCount) } });
 				}
-				return responseJson({ ...trace, rawEvents: [] }, { headers: { ...baseHeaders, ...serverTiming(cached ? "hit" : "miss", eventCount) } });
+				return responseJson({ ...trace, rawEvents: [] }, { headers: { ...baseHeaders, "x-pibo-trace-v1-deprecated": "true", ...serverTiming(cached ? "hit" : "miss", eventCount) } });
 			}
 
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/debug/persistence` && request.method === "GET") {
@@ -4891,6 +5301,11 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					persistence: serializePersistenceMetrics(state.persistenceMetrics),
 					liveObservers: listLiveObservers(state),
 				});
+			}
+
+			if (url.pathname === `${CHAT_WEB_API_PREFIX}/debug/resources` && request.method === "GET") {
+				await requireSession(request, context);
+				return responseJson({ gateway: serializeGatewayResourceDiagnostics(state) }, { headers: { "cache-control": "no-store" } });
 			}
 
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/debug/trace-at-sequence` && request.method === "POST") {

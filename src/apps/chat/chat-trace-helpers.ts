@@ -4,8 +4,9 @@ import { patchTraceViewWithEvent } from "../../shared/trace-engine.js";
 import type { ChatWebStoredEvent } from "../../shared/trace-types.js";
 import type { PiboSessionTraceView, PiboWebSessionStatus } from "./trace.js";
 
-export const DEFAULT_TRACE_EVENTS_PAGE_SIZE = 2_000;
-export const MAX_TRACE_EVENTS_PER_REQUEST = 50_000;
+export const DEFAULT_TRACE_EVENTS_PAGE_SIZE = 50;
+export const MAX_TRACE_EVENTS_PER_REQUEST = 1000;
+export const TRACE_CACHE_MAX_BYTES = 8 * 1024 * 1024;
 
 export function etagForVersion(version: string): string {
 	return `"${version}"`;
@@ -102,13 +103,62 @@ export function annotateTracePage(
 	};
 }
 
-export function setTraceCache(cache: Map<string, PiboSessionTraceView>, key: string, trace: PiboSessionTraceView, maxEntries: number): void {
+export function setTraceCache(
+	cache: Map<string, PiboSessionTraceView>,
+	key: string,
+	trace: PiboSessionTraceView,
+	maxEntries: number,
+	maxBytes = TRACE_CACHE_MAX_BYTES,
+): void {
 	if (trace.rawEvents.length > 0) return;
 	cache.delete(key);
 	cache.set(key, trace);
-	while (cache.size > maxEntries) {
+	while (cache.size > maxEntries || traceCacheEstimatedBytes(cache) > maxBytes) {
 		const oldestKey = cache.keys().next().value;
 		if (typeof oldestKey !== "string") break;
 		cache.delete(oldestKey);
 	}
+}
+
+export function traceCacheEstimatedBytes(cache: ReadonlyMap<string, PiboSessionTraceView>): number {
+	let bytes = 0;
+	for (const trace of cache.values()) bytes += estimateTraceViewBytes(trace);
+	return bytes;
+}
+
+export function estimateTraceViewBytes(trace: PiboSessionTraceView): number {
+	let bytes = 512;
+	bytes += byteLength(trace.piboSessionId) + byteLength(trace.piSessionId) + byteLength(trace.title) + byteLength(trace.version);
+	for (const node of flattenEstimateNodes(trace.nodes)) {
+		bytes += 256;
+		bytes += byteLength(node.id) + byteLength(node.parentId) + byteLength(node.title) + byteLength(node.summary);
+		bytes += estimatePayloadBytes(node.input) + estimatePayloadBytes(node.output) + byteLength(node.error);
+	}
+	return bytes;
+}
+
+function flattenEstimateNodes(nodes: readonly PiboSessionTraceView["nodes"][number][]): PiboSessionTraceView["nodes"][number][] {
+	const result: PiboSessionTraceView["nodes"][number][] = [];
+	const visit = (items: readonly PiboSessionTraceView["nodes"][number][]) => {
+		for (const item of items) {
+			result.push(item);
+			visit(item.children);
+		}
+	};
+	visit(nodes);
+	return result;
+}
+
+function estimatePayloadBytes(value: unknown): number {
+	if (value === undefined || value === null) return 0;
+	if (typeof value === "string") return byteLength(value);
+	try {
+		return byteLength(JSON.stringify(value));
+	} catch {
+		return byteLength(String(value));
+	}
+}
+
+function byteLength(value: string | undefined): number {
+	return value ? Buffer.byteLength(value, "utf8") : 0;
 }

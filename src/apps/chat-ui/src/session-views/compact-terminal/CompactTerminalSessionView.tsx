@@ -14,9 +14,12 @@ import { TerminalThinkingCard } from "./TerminalThinkingCard";
 import { buildCompactTerminalRows, type CompactTerminalLine, type CompactTerminalRow } from "../../../../../session-ui/terminalRows.js";
 
 const SHOW_LATEST_THRESHOLD_PX = 180;
+const OLDER_TRACE_PREFETCH_TOP_THRESHOLD_PX = 1_200;
+const OLDER_TRACE_PREFETCH_ROW_THRESHOLD = 8;
 const INITIAL_BOTTOM_ITEM = { index: "LAST", align: "end" } as const;
 const VIRTUOSO_VIEWPORT = { top: 2_400, bottom: 2_400 } as const;
 const DEFAULT_ROW_HEIGHT_PX = 84;
+const AUTO_FILL_OLDER_HISTORY_MIN_ROWS = 40;
 const COLLAPSED_EXPLORING_PREVIEW_LINES = 6;
 type TerminalNavigationKind = "system" | "tool" | "user";
 
@@ -38,6 +41,9 @@ export function CompactTerminalSessionView({
 	onSessionAgentProfileChange,
 	onFork,
 	onOpenSession,
+	onLoadOlderTracePage,
+	hasOlderTraceEvents,
+	isFetchingOlderTracePage,
 	onThinkingLevelChange,
 	onModelChanged,
 }: ChatSessionViewProps) {
@@ -48,6 +54,7 @@ export function CompactTerminalSessionView({
 	const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 	const [focusedNavigationRowId, setFocusedNavigationRowId] = useState<string | null>(null);
 	const navigationCursorRef = useRef<Partial<Record<TerminalNavigationKind, string>>>({});
+	const rangePrefetchReadyRef = useRef(false);
 	const runningCount = rows.filter((row) => row.status === "running").length;
 	const userMessageCount = rows.filter((row) => isNavigableTerminalRow(row, "user")).length;
 	const toolErrorCount = rows.filter((row) => isNavigableTerminalRow(row, "tool")).length;
@@ -55,17 +62,35 @@ export function CompactTerminalSessionView({
 	const isStreaming = selectedSessionSignal
 		? selectedSessionSignal.isTreeActive
 		: selectedSessionStatus === "running" || runningCount > 0 || selectedTrace?.status === "UNSET";
+	const loadOlderAtTop = useCallback(() => {
+		if (!hasOlderTraceEvents || isFetchingOlderTracePage) return;
+		onLoadOlderTracePage?.();
+	}, [hasOlderTraceEvents, isFetchingOlderTracePage, onLoadOlderTracePage]);
+	const handleVisibleRangeChanged = useCallback((range: { startIndex: number; endIndex: number }) => {
+		if (!rangePrefetchReadyRef.current) return;
+		if (range.startIndex <= OLDER_TRACE_PREFETCH_ROW_THRESHOLD) loadOlderAtTop();
+	}, [loadOlderAtTop]);
 
 	const stickyView = useStickyVirtuoso({
 		itemCount: rows.length,
 		resetKey: traceView?.piboSessionId,
 		contentKey: rows,
 		atBottomThreshold: SHOW_LATEST_THRESHOLD_PX,
+		nearTopThreshold: OLDER_TRACE_PREFETCH_TOP_THRESHOLD_PX,
+		onNearTop: loadOlderAtTop,
 	});
 
 	useEffect(() => {
 		setExpandedRows((current) => retainExistingExpandedRows(current, rows, expandThinking));
 	}, [expandThinking, rows]);
+
+	useEffect(() => {
+		rangePrefetchReadyRef.current = false;
+		const readyTimer = window.setTimeout(() => {
+			rangePrefetchReadyRef.current = true;
+		}, 600);
+		return () => window.clearTimeout(readyTimer);
+	}, [traceView?.piboSessionId]);
 
 	useEffect(() => {
 		const rowIds = new Set(rows.map((row) => row.id));
@@ -97,6 +122,10 @@ export function CompactTerminalSessionView({
 			return next;
 		});
 	};
+	useEffect(() => {
+		if (rows.length === 0 || rows.length >= AUTO_FILL_OLDER_HISTORY_MIN_ROWS) return;
+		loadOlderAtTop();
+	}, [loadOlderAtTop, rows.length]);
 
 	const renderRow = useCallback((_: number, row: CompactTerminalRow) => (
 		<div className="px-4">
@@ -119,7 +148,14 @@ export function CompactTerminalSessionView({
 	}), [isStreaming]);
 
 	return (
-		<section className="relative min-w-0 flex-1 flex flex-col overflow-hidden bg-[#0b0b0b] text-[#d4d4d4]" data-pibo-component="CompactTerminalSessionView" data-pibo-debug="compact-terminal-session-view" data-pibo-session-id={traceView?.piboSessionId ?? undefined}>
+		<section
+			className="relative min-w-0 flex-1 flex flex-col overflow-hidden bg-[#0b0b0b] text-[#d4d4d4]"
+			data-pibo-component="CompactTerminalSessionView"
+			data-pibo-debug="compact-terminal-session-view"
+			data-pibo-session-id={traceView?.piboSessionId ?? undefined}
+			data-pibo-trace-has-older={traceView?.hasOlderEvents === true ? "true" : "false"}
+			data-pibo-trace-next-before={traceView?.nextBeforeSequence ?? ""}
+		>
 			<TerminalHeader
 				errorCount={errorCount}
 				toolErrorCount={toolErrorCount}
@@ -154,6 +190,11 @@ export function CompactTerminalSessionView({
 						scrollerRef={stickyView.scrollerRef}
 						atBottomStateChange={stickyView.atBottomStateChange}
 						atBottomThreshold={stickyView.atBottomThreshold}
+						atTopStateChange={(atTop) => {
+							if (atTop) loadOlderAtTop();
+						}}
+						rangeChanged={handleVisibleRangeChanged}
+						startReached={loadOlderAtTop}
 						followOutput={stickyView.followOutput}
 						totalListHeightChanged={stickyView.totalListHeightChanged}
 						alignToBottom

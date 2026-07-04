@@ -1,5 +1,5 @@
 import { compareTraceNodes } from "../shared/trace-engine.js";
-import type { PiboSessionTraceView, PiboTraceNode } from "../shared/trace-types.js";
+import type { PiboSessionTraceView, PiboTraceNode, TracePayloadRef } from "../shared/trace-types.js";
 import { terminalTextValue } from "./terminalValue.js";
 
 export type CompactTerminalRowStatus = "running" | "done" | "error" | "neutral";
@@ -55,6 +55,7 @@ export type CompactTerminalDetailItem = {
 	output?: unknown;
 	error?: string;
 	linkedPiboSessionId?: string;
+	payloadRefs?: Partial<Record<"input" | "output" | "reasoning" | "error" | "raw", TracePayloadRef>>;
 	previewOmission?: CompactTerminalPreviewOmission;
 };
 
@@ -76,6 +77,7 @@ export type CompactTerminalRow = {
 	output?: unknown;
 	error?: string;
 	markdown?: string;
+	payloadRefs?: Partial<Record<"input" | "output" | "reasoning" | "error" | "raw", TracePayloadRef>>;
 	expandable?: boolean;
 	previewOmission?: CompactTerminalPreviewOmission;
 	detailItems?: readonly CompactTerminalDetailItem[];
@@ -175,7 +177,7 @@ function createRowCandidate(node: PiboTraceNode, turnId?: string): RowCandidate 
 
 function debugFields(node: PiboTraceNode): Pick<
 	CompactTerminalRow,
-	"eventId" | "runId" | "orderSource" | "orderStreamId" | "orderStreamFrameIndex"
+	"eventId" | "runId" | "orderSource" | "orderStreamId" | "orderStreamFrameIndex" | "payloadRefs"
 > {
 	return {
 		eventId: node.eventId,
@@ -183,6 +185,7 @@ function debugFields(node: PiboTraceNode): Pick<
 		orderSource: node.source,
 		orderStreamId: node.orderKey?.streamId,
 		orderStreamFrameIndex: node.orderKey?.streamFrameIndex,
+		payloadRefs: node.payloadRefs,
 	};
 }
 
@@ -196,6 +199,7 @@ function createUserMessageRow(node: PiboTraceNode): CompactTerminalRow {
 		sourceNodeIds: [node.id],
 		forkEntryId: node.entryId,
 		output: text,
+		payloadRefs: node.payloadRefs,
 	};
 }
 
@@ -208,6 +212,7 @@ function createAssistantMessageRow(node: PiboTraceNode): CompactTerminalRow {
 		sourceNodeIds: [node.id],
 		output: stringValue(node.output) || stringValue(node.summary) || "",
 		error: node.error,
+		payloadRefs: node.payloadRefs,
 	};
 }
 
@@ -225,6 +230,7 @@ function createReasoningRow(node: PiboTraceNode): CompactTerminalRow {
 		],
 		sourceNodeIds: [node.id],
 		markdown: text,
+		payloadRefs: node.payloadRefs,
 	};
 }
 
@@ -819,6 +825,7 @@ function detailItemsForGroup(candidates: readonly RowCandidate[], kind: "explori
 			input: candidate.row.input,
 			output: candidate.row.output,
 			error: candidate.row.error,
+			payloadRefs: candidate.row.payloadRefs,
 			linkedPiboSessionId: candidate.row.linkedPiboSessionId,
 			previewOmission: candidate.row.previewOmission,
 		};

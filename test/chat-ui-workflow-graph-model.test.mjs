@@ -20,11 +20,13 @@ async function runWorkflowGraphModelScenario() {
 			projectionHasElement,
 			readEdgeEndpointNodeId,
 			readWorkflowEdgeDefinitions,
+			readWorkflowEdgeRoutes,
 			readWorkflowNodeDefinitions,
 			readWorkflowPositions,
 			workflowInitialNodeIds,
 			workflowNodeKind,
 			workflowNodeLabel,
+			writeWorkflowGraphLayout,
 			writeWorkflowGraphPositions,
 		} from "./src/apps/chat-ui/src/workflows/workflow-graph-model.ts";
 
@@ -46,6 +48,11 @@ async function runWorkflowGraphModelScenario() {
 				positions: {
 					agent_1: { x: 100, y: 200 },
 					invalid: { x: "bad", y: 0 },
+				},
+				edgeRoutes: {
+					edge_valid: { centerX: 222 },
+					edge_default_kind: { centerY: 333 },
+					invalid: { centerX: "bad" },
 				},
 			},
 		};
@@ -69,16 +76,19 @@ async function runWorkflowGraphModelScenario() {
 		assert.equal(projection.nodes[0].data.isInitial, true);
 		assert.equal(projection.nodes[2].data.isInitial, false);
 
-		assert.deepEqual(projection.edges.map((edge) => [edge.id, edge.source, edge.target, edge.label]), [
-			["edge_valid", "agent_1", "adapter_1", "control"],
-			["edge_default_kind", "adapter_1", "human_1", "data"],
+		assert.deepEqual(projection.edges.map((edge) => [edge.id, edge.source, edge.target, edge.label, edge.type]), [
+			["edge_valid", "agent_1", "adapter_1", "control", "workflowEdge"],
+			["edge_default_kind", "adapter_1", "human_1", "data", "workflowEdge"],
 		]);
+		assert.deepEqual(projection.edges[0].data.route, { centerX: 222 });
+		assert.deepEqual(projection.edges[1].data.route, { centerY: 333 });
 		assert.equal(projectionHasElement(projection, { type: "node", id: "human_1" }), true);
 		assert.equal(projectionHasElement(projection, { type: "edge", id: "edge_missing_target" }), false);
 
 		assert.deepEqual(Object.keys(readWorkflowNodeDefinitions(definition)), ["agent_1", "adapter_1", "human_1"]);
 		assert.deepEqual(Object.keys(readWorkflowEdgeDefinitions(definition)), ["edge_valid", "edge_default_kind", "edge_missing_target"]);
 		assert.deepEqual(readWorkflowPositions(definition), { agent_1: { x: 100, y: 200 } });
+		assert.deepEqual(readWorkflowEdgeRoutes(definition), { edge_valid: { centerX: 222 }, edge_default_kind: { centerY: 333 } });
 		assert.deepEqual(workflowInitialNodeIds(definition), ["agent_1", "adapter_1"]);
 		assert.equal(workflowNodeKind({}), "node");
 		assert.equal(workflowNodeLabel("fallback", {}), "Node fallback");
@@ -117,7 +127,10 @@ async function runWorkflowGraphModelScenario() {
 			to: { nodeId: "human" },
 			kind: "data",
 		});
-		assert.deepEqual(deleteWorkflowGraphEdge(withEdge, "edge_agent_to_human").edges, {});
+		const routedEdge = writeWorkflowGraphLayout(withEdge, readWorkflowPositions(withEdge), { edge_agent_to_human: { centerX: 180 } });
+		const deletedEdge = deleteWorkflowGraphEdge(routedEdge, "edge_agent_to_human");
+		assert.deepEqual(deletedEdge.edges, {});
+		assert.deepEqual(readWorkflowEdgeRoutes(deletedEdge), {});
 
 		const multiInitialDefinition = {
 			initial: ["agent", "adapter", "missing"],
@@ -131,19 +144,29 @@ async function runWorkflowGraphModelScenario() {
 				removed_from: { from: { nodeId: "agent" }, to: { nodeId: "adapter" } },
 				removed_to: { from: { nodeId: "human" }, to: { nodeId: "agent" } },
 			},
-			ui: { positions: { agent: { x: 1, y: 2 }, adapter: { x: 3, y: 4 }, human: { x: 5, y: 6 } } },
+			ui: {
+				positions: { agent: { x: 1, y: 2 }, adapter: { x: 3, y: 4 }, human: { x: 5, y: 6 } },
+				edgeRoutes: { kept: { centerX: 44 }, removed_from: { centerX: 55 }, removed_to: { centerX: 66 } },
+			},
 		};
 		const deletedAgent = deleteWorkflowGraphNode(multiInitialDefinition, "agent");
 		assert.deepEqual(Object.keys(deletedAgent.nodes), ["adapter", "human"]);
 		assert.deepEqual(Object.keys(deletedAgent.edges), ["kept"]);
 		assert.deepEqual(deletedAgent.initial, ["adapter", "missing"]);
 		assert.deepEqual(readWorkflowPositions(deletedAgent), { adapter: { x: 3, y: 4 }, human: { x: 5, y: 6 } });
+		assert.deepEqual(readWorkflowEdgeRoutes(deletedAgent), { kept: { centerX: 44 } });
 		assert.equal(deleteWorkflowGraphNode({ initial: "only", nodes: { only: {} }, edges: {}, ui: { positions: { only: { x: 1, y: 1 } } } }, "only").initial, undefined);
 
 		assert.deepEqual(writeWorkflowGraphPositions({ ui: { color: "blue", layout: "auto" } }, { node: { x: 7, y: 8 } }).ui, {
 			color: "blue",
 			layout: "manual",
 			positions: { node: { x: 7, y: 8 } },
+		});
+		assert.deepEqual(writeWorkflowGraphLayout({ ui: { color: "blue", layout: "auto" } }, { node: { x: 7, y: 8 } }, { edge: { centerX: 99 } }).ui, {
+			color: "blue",
+			layout: "manual",
+			positions: { node: { x: 7, y: 8 } },
+			edgeRoutes: { edge: { centerX: 99 } },
 		});
 	`;
 	return execFileAsync("npx", ["tsx", "--eval", script], {

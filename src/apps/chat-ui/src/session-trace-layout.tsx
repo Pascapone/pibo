@@ -7,7 +7,6 @@ import type { ChatSessionViewProps } from "./session-views/types";
 import type { PiboSessionTraceView } from "./types";
 import { WebAnnotationsSessionPanel } from "./web-annotations";
 import { RawEventsSidebar } from "./tracing/RawEventsSidebar";
-import { TraceHistoryLoadMore } from "./tracing/TraceHistoryLoadMore";
 
 type SessionTraceLayoutProps = {
   selectedPiboSessionId: string | null;
@@ -18,10 +17,8 @@ type SessionTraceLayoutProps = {
   traceError: string | null;
   showRawEvents: boolean;
   currentTraceView: PiboSessionTraceView | null;
-  traceEventLimit: number;
   rawEventLimit: number;
   tracePageFetching: boolean;
-  onLoadOlderTracePage: (beforeSequence?: number) => void;
   onLoadMoreRawEvents: () => void;
   headerProps: ComponentProps<typeof SessionTraceHeader>;
   projectSessionCreatePanel?: ReactNode;
@@ -43,10 +40,8 @@ export function SessionTraceLayout({
   traceError,
   showRawEvents,
   currentTraceView,
-  traceEventLimit,
   rawEventLimit,
   tracePageFetching,
-  onLoadOlderTracePage,
   onLoadMoreRawEvents,
   headerProps,
   projectSessionCreatePanel,
@@ -87,14 +82,6 @@ export function SessionTraceLayout({
             {workflowStartPanel}
           </div>
         ) : null}
-        <TraceHistoryLoadMore
-          traceView={currentTraceView}
-          eventLimit={traceEventLimit}
-          isFetching={tracePageFetching}
-          onLoadOlder={() =>
-            onLoadOlderTracePage(currentTraceView?.nextBeforeSequence)
-          }
-        />
         {projectModulePanel ? (
           projectModulePanel
         ) : traceError && !currentTraceView ? (

@@ -37,6 +37,9 @@ export type ChatSessionViewProps = {
 	onSessionAgentProfileChange(profile: string): void;
 	onFork(entryId: string): void;
 	onOpenSession(piboSessionId: string): void;
+	onLoadOlderTracePage?(): void;
+	hasOlderTraceEvents?: boolean;
+	isFetchingOlderTracePage?: boolean;
 	onThinkingLevelChange(level: ThinkingLevel): void;
 	onModelChanged?(): Promise<void>;
 	onRefreshBootstrap?(): Promise<unknown>;

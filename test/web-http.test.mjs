@@ -47,6 +47,18 @@ test("sendWebResponse compresses large JSON responses with gzip", async () => {
 	});
 });
 
+test("sendWebResponse skips sync gzip for over-budget JSON responses", async () => {
+	await withServer((request, response) => {
+		void sendWebResponse(response, responseJson({ payload: "x".repeat(700 * 1024) }));
+	}, async (baseURL) => {
+		const { response, body } = await rawGet(baseURL, { "accept-encoding": "gzip" });
+		assert.equal(response.statusCode, 200);
+		assert.equal(response.headers["content-encoding"], undefined);
+		assert.equal(response.headers["x-pibo-compression-skipped"], "sync-gzip-size-limit");
+		assert.deepEqual(JSON.parse(body.toString("utf8")), { payload: "x".repeat(700 * 1024) });
+	});
+});
+
 test("sendWebResponse does not use encodings with q=0", async () => {
 	await withServer((request, response) => {
 		void sendWebResponse(response, responseJson({ payload: "x".repeat(2048) }));

@@ -64,6 +64,9 @@ export function createSessionTraceViewProps(input: {
 	onSessionAgentProfileChange: ChatSessionViewProps["onSessionAgentProfileChange"];
 	onFork: ChatSessionViewProps["onFork"];
 	onOpenSession: ChatSessionViewProps["onOpenSession"];
+	onLoadOlderTracePage: ChatSessionViewProps["onLoadOlderTracePage"];
+	hasOlderTraceEvents: boolean;
+	isFetchingOlderTracePage: boolean;
 	onThinkingLevelChange: ChatSessionViewProps["onThinkingLevelChange"];
 	onRefreshTrace: () => Promise<void>;
 	onRefreshBootstrap: () => Promise<unknown>;
@@ -90,6 +93,9 @@ export function createSessionTraceViewProps(input: {
 		onSessionAgentProfileChange: input.onSessionAgentProfileChange,
 		onFork: input.onFork,
 		onOpenSession: input.onOpenSession,
+		onLoadOlderTracePage: input.onLoadOlderTracePage,
+		hasOlderTraceEvents: input.hasOlderTraceEvents,
+		isFetchingOlderTracePage: input.isFetchingOlderTracePage,
 		onThinkingLevelChange: input.onThinkingLevelChange,
 		onModelChanged: async () => {
 			await input.onRefreshBootstrap();

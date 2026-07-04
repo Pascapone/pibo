@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Check, ChevronDown, ChevronRight, ChevronsDown, ChevronsUp, GitBranch, GitFork, ListTree, MessageSquarePlus, RefreshCw, RotateCcw } from "lucide-react";
 import { Virtuoso } from "react-virtuoso";
 import { useStickyVirtuoso } from "../components/useStickyVirtuoso";
@@ -23,6 +23,9 @@ type TraceTimelineProps = {
 	onSessionAgentProfileChange?: (profile: string) => void;
 	onFork: (entryId: string) => void;
 	onOpenSession: (piboSessionId: string) => void;
+	onLoadOlderTracePage?: () => void;
+	hasOlderTraceEvents?: boolean;
+	isFetchingOlderTracePage?: boolean;
 };
 
 type AgentProfileOption = {
@@ -68,7 +71,10 @@ const mobileTimelineContentStyle = {
 } as CSSProperties;
 
 const DEFAULT_EXPANSION_DEPTH = 1;
+const OLDER_TRACE_PREFETCH_TOP_THRESHOLD_PX = 1_200;
+const OLDER_TRACE_PREFETCH_ROW_THRESHOLD = 8;
 const INITIAL_BOTTOM_ITEM = { index: "LAST", align: "end" } as const;
+const AUTO_FILL_OLDER_HISTORY_MIN_ROWS = 40;
 
 export function TraceTimeline({
 	trace,
@@ -85,11 +91,15 @@ export function TraceTimeline({
 	onSessionAgentProfileChange,
 	onFork,
 	onOpenSession,
+	onLoadOlderTracePage,
+	hasOlderTraceEvents,
+	isFetchingOlderTracePage,
 }: TraceTimelineProps) {
 	countRender("TraceTimeline");
 	const [expansionDepth, setExpansionDepth] = useState<SpanExpansionDepth>(DEFAULT_EXPANSION_DEPTH);
 	const [levelInput, setLevelInput] = useState(String(DEFAULT_EXPANSION_DEPTH));
 	const [expansionOverrides, setExpansionOverrides] = useState<Record<string, { contentExpanded: boolean; childrenExpanded: boolean }>>({});
+	const rangePrefetchReadyRef = useRef(false);
 
 	const spanTree = useMemo(() => {
 		if (!trace?.spans) return [];
@@ -125,11 +135,30 @@ export function TraceTimeline({
 		}
 		return rows;
 	}, [expandThinking, expansionDepth, expansionOverrides, spanTree, trace?.id, trace?.status]);
+	const loadOlderAtTop = useCallback(() => {
+		if (!hasOlderTraceEvents || isFetchingOlderTracePage) return;
+		onLoadOlderTracePage?.();
+	}, [hasOlderTraceEvents, isFetchingOlderTracePage, onLoadOlderTracePage]);
+	const handleVisibleRangeChanged = useCallback((range: { startIndex: number; endIndex: number }) => {
+		if (!rangePrefetchReadyRef.current) return;
+		if (range.startIndex <= OLDER_TRACE_PREFETCH_ROW_THRESHOLD) loadOlderAtTop();
+	}, [loadOlderAtTop]);
 
-	const stickyView = useStickyVirtuoso({ itemCount: visibleRows.length, resetKey: trace?.id, contentKey: visibleRows });
+	const stickyView = useStickyVirtuoso({
+		itemCount: visibleRows.length,
+		resetKey: trace?.id,
+		contentKey: visibleRows,
+		nearTopThreshold: OLDER_TRACE_PREFETCH_TOP_THRESHOLD_PX,
+		onNearTop: loadOlderAtTop,
+	});
 
 	useEffect(() => {
 		setExpansionOverrides({});
+		rangePrefetchReadyRef.current = false;
+		const readyTimer = window.setTimeout(() => {
+			rangePrefetchReadyRef.current = true;
+		}, 600);
+		return () => window.clearTimeout(readyTimer);
 	}, [expandThinking, trace?.id]);
 
 
@@ -164,6 +193,10 @@ export function TraceTimeline({
 		const parsedLevel = Number.parseInt(levelInput, 10);
 		applyExpansionDepth(Number.isFinite(parsedLevel) && parsedLevel > 0 ? parsedLevel : DEFAULT_EXPANSION_DEPTH);
 	};
+	useEffect(() => {
+		if (visibleRows.length === 0 || visibleRows.length >= AUTO_FILL_OLDER_HISTORY_MIN_ROWS) return;
+		loadOlderAtTop();
+	}, [loadOlderAtTop, visibleRows.length]);
 
 	return (
 		<section className="min-w-0 flex-1 flex flex-col bg-[#0c1214] relative overflow-hidden">
@@ -248,6 +281,11 @@ export function TraceTimeline({
 						scrollerRef={stickyView.scrollerRef}
 						atBottomStateChange={stickyView.atBottomStateChange}
 						atBottomThreshold={stickyView.atBottomThreshold}
+						atTopStateChange={(atTop) => {
+							if (atTop) loadOlderAtTop();
+						}}
+						rangeChanged={handleVisibleRangeChanged}
+						startReached={loadOlderAtTop}
 						followOutput={stickyView.followOutput}
 						totalListHeightChanged={stickyView.totalListHeightChanged}
 						alignToBottom

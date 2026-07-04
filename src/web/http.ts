@@ -3,6 +3,7 @@ import { gzipSync } from "node:zlib";
 
 export const MAX_WEB_REQUEST_BODY_BYTES = 4 * 1024 * 1024;
 const MIN_COMPRESS_RESPONSE_BYTES = 1024;
+const MAX_SYNC_GZIP_RESPONSE_BYTES = 512 * 1024;
 const INTERNAL_SOCKET_PEER_HEADER = "x-pibo-socket-peer";
 
 export class PiboWebHttpError extends Error {
@@ -16,12 +17,16 @@ export class PiboWebHttpError extends Error {
 }
 
 export function responseJson(payload: unknown, init: ResponseInit = {}): Response {
-	return new Response(JSON.stringify(payload), {
+	const startedAt = performance.now();
+	const body = JSON.stringify(payload);
+	const serializeMs = performance.now() - startedAt;
+	const headers = new Headers(init.headers);
+	headers.set("content-type", "application/json; charset=utf-8");
+	headers.set("x-pibo-response-bytes", String(Buffer.byteLength(body, "utf8")));
+	headers.set("server-timing", appendServerTiming(headers.get("server-timing"), `json_serialize;dur=${serializeMs.toFixed(1)}`));
+	return new Response(body, {
 		...init,
-		headers: {
-			"content-type": "application/json; charset=utf-8",
-			...init.headers,
-		},
+		headers,
 	});
 }
 
@@ -84,7 +89,7 @@ export async function sendWebResponse(response: ServerResponse, webResponse: Res
 
 	if (compressEncoding && webResponse.body) {
 		const body = await readResponseBody(webResponse);
-		if (body.length >= MIN_COMPRESS_RESPONSE_BYTES) {
+		if (body.length >= MIN_COMPRESS_RESPONSE_BYTES && body.length <= MAX_SYNC_GZIP_RESPONSE_BYTES) {
 			const compressed = gzipSync(body, { level: 1 });
 			headers["content-encoding"] = compressEncoding;
 			headers["content-length"] = String(compressed.length);
@@ -92,6 +97,9 @@ export async function sendWebResponse(response: ServerResponse, webResponse: Res
 			response.writeHead(webResponse.status, headers);
 			response.end(compressed);
 			return;
+		}
+		if (body.length > MAX_SYNC_GZIP_RESPONSE_BYTES) {
+			headers["x-pibo-compression-skipped"] = "sync-gzip-size-limit";
 		}
 		response.writeHead(webResponse.status, headers);
 		response.end(body);
@@ -181,4 +189,8 @@ function appendVary(existing: string | string[] | undefined, value: string): str
 	const normalized = values.map((item) => item.trim()).filter(Boolean);
 	if (!normalized.some((item) => item.toLowerCase() === value.toLowerCase())) normalized.push(value);
 	return normalized.join(", ");
+}
+
+function appendServerTiming(existing: string | null, value: string): string {
+	return existing ? `${existing}, ${value}` : value;
 }
