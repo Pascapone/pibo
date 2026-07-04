@@ -23,6 +23,9 @@ type TraceTimelineProps = {
 	onSessionAgentProfileChange?: (profile: string) => void;
 	onFork: (entryId: string) => void;
 	onOpenSession: (piboSessionId: string) => void;
+	onLoadOlderTracePage?: () => void;
+	hasOlderTraceEvents?: boolean;
+	isFetchingOlderTracePage?: boolean;
 };
 
 type AgentProfileOption = {
@@ -69,6 +72,7 @@ const mobileTimelineContentStyle = {
 
 const DEFAULT_EXPANSION_DEPTH = 1;
 const INITIAL_BOTTOM_ITEM = { index: "LAST", align: "end" } as const;
+const AUTO_FILL_OLDER_HISTORY_MIN_ROWS = 40;
 
 export function TraceTimeline({
 	trace,
@@ -85,6 +89,9 @@ export function TraceTimeline({
 	onSessionAgentProfileChange,
 	onFork,
 	onOpenSession,
+	onLoadOlderTracePage,
+	hasOlderTraceEvents,
+	isFetchingOlderTracePage,
 }: TraceTimelineProps) {
 	countRender("TraceTimeline");
 	const [expansionDepth, setExpansionDepth] = useState<SpanExpansionDepth>(DEFAULT_EXPANSION_DEPTH);
@@ -164,6 +171,14 @@ export function TraceTimeline({
 		const parsedLevel = Number.parseInt(levelInput, 10);
 		applyExpansionDepth(Number.isFinite(parsedLevel) && parsedLevel > 0 ? parsedLevel : DEFAULT_EXPANSION_DEPTH);
 	};
+	const loadOlderAtTop = useCallback(() => {
+		if (!hasOlderTraceEvents || isFetchingOlderTracePage) return;
+		onLoadOlderTracePage?.();
+	}, [hasOlderTraceEvents, isFetchingOlderTracePage, onLoadOlderTracePage]);
+	useEffect(() => {
+		if (visibleRows.length === 0 || visibleRows.length >= AUTO_FILL_OLDER_HISTORY_MIN_ROWS) return;
+		loadOlderAtTop();
+	}, [loadOlderAtTop, visibleRows.length]);
 
 	return (
 		<section className="min-w-0 flex-1 flex flex-col bg-[#0c1214] relative overflow-hidden">
@@ -248,6 +263,7 @@ export function TraceTimeline({
 						scrollerRef={stickyView.scrollerRef}
 						atBottomStateChange={stickyView.atBottomStateChange}
 						atBottomThreshold={stickyView.atBottomThreshold}
+						startReached={loadOlderAtTop}
 						followOutput={stickyView.followOutput}
 						totalListHeightChanged={stickyView.totalListHeightChanged}
 						alignToBottom

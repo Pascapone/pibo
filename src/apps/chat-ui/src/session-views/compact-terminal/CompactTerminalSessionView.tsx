@@ -17,6 +17,7 @@ const SHOW_LATEST_THRESHOLD_PX = 180;
 const INITIAL_BOTTOM_ITEM = { index: "LAST", align: "end" } as const;
 const VIRTUOSO_VIEWPORT = { top: 2_400, bottom: 2_400 } as const;
 const DEFAULT_ROW_HEIGHT_PX = 84;
+const AUTO_FILL_OLDER_HISTORY_MIN_ROWS = 40;
 const COLLAPSED_EXPLORING_PREVIEW_LINES = 6;
 type TerminalNavigationKind = "system" | "tool" | "user";
 
@@ -38,6 +39,9 @@ export function CompactTerminalSessionView({
 	onSessionAgentProfileChange,
 	onFork,
 	onOpenSession,
+	onLoadOlderTracePage,
+	hasOlderTraceEvents,
+	isFetchingOlderTracePage,
 	onThinkingLevelChange,
 	onModelChanged,
 }: ChatSessionViewProps) {
@@ -97,6 +101,14 @@ export function CompactTerminalSessionView({
 			return next;
 		});
 	};
+	const loadOlderAtTop = useCallback(() => {
+		if (!hasOlderTraceEvents || isFetchingOlderTracePage) return;
+		onLoadOlderTracePage?.();
+	}, [hasOlderTraceEvents, isFetchingOlderTracePage, onLoadOlderTracePage]);
+	useEffect(() => {
+		if (rows.length === 0 || rows.length >= AUTO_FILL_OLDER_HISTORY_MIN_ROWS) return;
+		loadOlderAtTop();
+	}, [loadOlderAtTop, rows.length]);
 
 	const renderRow = useCallback((_: number, row: CompactTerminalRow) => (
 		<div className="px-4">
@@ -154,6 +166,7 @@ export function CompactTerminalSessionView({
 						scrollerRef={stickyView.scrollerRef}
 						atBottomStateChange={stickyView.atBottomStateChange}
 						atBottomThreshold={stickyView.atBottomThreshold}
+						startReached={loadOlderAtTop}
 						followOutput={stickyView.followOutput}
 						totalListHeightChanged={stickyView.totalListHeightChanged}
 						alignToBottom

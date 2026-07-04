@@ -6,6 +6,8 @@ import type { DatabaseSync } from "node:sqlite";
 import { piboHomePath } from "../core/pibo-home.js";
 import type { PiboJsonValue } from "../core/events.js";
 
+const MAX_SYNC_PAYLOAD_GZIP_BYTES = 512 * 1024;
+
 export type PayloadWriteInput = {
 	value: PiboJsonValue | string | Uint8Array;
 	contentType?: string;
@@ -69,10 +71,13 @@ export class PayloadStore {
 			return this.getPayload(existing.id) ?? existing;
 		}
 
-		const compressed = gzipSync(bytes);
-		const relativePath = buildRelativePayloadPath(sha256, contentType);
+		const shouldCompress = bytes.byteLength <= MAX_SYNC_PAYLOAD_GZIP_BYTES;
+		const encoding = shouldCompress ? "gzip" : "identity";
+		const bytesToStore = shouldCompress ? gzipSync(bytes) : bytes;
+		const compressedByteSize = shouldCompress ? bytesToStore.byteLength : null;
+		const relativePath = buildRelativePayloadPath(sha256, contentType, encoding);
 		const absolutePath = this.rootDir === ":memory:" ? relativePath : join(this.rootDir, relativePath);
-		writeCompressedPayloadFile(absolutePath, compressed);
+		writePayloadFile(absolutePath, bytesToStore);
 		const id = input.id ?? `payload_${randomUUID()}`;
 		this.db.prepare(`
 			INSERT INTO payloads (
@@ -97,9 +102,9 @@ export class PayloadStore {
 			"file",
 			relativePath,
 			contentType,
-			"gzip",
+			encoding,
 			bytes.byteLength,
-			compressed.byteLength,
+			compressedByteSize,
 			previewTextFromValue(input.value) ?? null,
 			input.retentionClass,
 			1,
@@ -123,7 +128,9 @@ export class PayloadStore {
 		if (!payload.storagePath) throw new Error(`Payload \"${id}\" has no storage path`);
 		const absolutePath = this.rootDir === ":memory:" ? payload.storagePath : join(this.rootDir, payload.storagePath);
 		const bytes = readFileSync(absolutePath);
-		return gunzipSync(bytes);
+		if (payload.encoding === "gzip") return gunzipSync(bytes);
+		if (payload.encoding === "identity") return bytes;
+		throw new Error(`Unsupported payload encoding \"${payload.encoding}\"`);
 	}
 
 	readPayloadText(id: string): string {
@@ -160,9 +167,10 @@ function previewTextFromValue(value: PayloadWriteInput["value"]): string | undef
 	return normalized ? normalized.slice(0, 1024) : undefined;
 }
 
-function buildRelativePayloadPath(sha256: string, contentType: string): string {
+function buildRelativePayloadPath(sha256: string, contentType: string, encoding: string): string {
 	const extension = extensionForContentType(contentType);
-	return join("sha256", sha256.slice(0, 2), sha256.slice(2, 4), `${sha256}.${extension}.gz`);
+	const suffix = encoding === "gzip" ? `${extension}.gz` : extension;
+	return join("sha256", sha256.slice(0, 2), sha256.slice(2, 4), `${sha256}.${suffix}`);
 }
 
 function extensionForContentType(contentType: string): string {
@@ -171,12 +179,12 @@ function extensionForContentType(contentType: string): string {
 	return "bin";
 }
 
-function writeCompressedPayloadFile(path: string, compressed: Uint8Array): void {
+function writePayloadFile(path: string, bytes: Uint8Array): void {
 	if (existsSync(path)) return;
 	mkdirSync(dirname(path), { recursive: true });
 	const tempPath = `${path}.tmp-${randomUUID()}${extname(path)}`;
 	try {
-		writeFileSync(tempPath, compressed);
+		writeFileSync(tempPath, bytes);
 		if (!existsSync(path)) renameSync(tempPath, path);
 	} finally {
 		if (existsSync(tempPath)) rmSync(tempPath, { force: true });

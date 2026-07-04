@@ -3,8 +3,9 @@ import type { BootstrapData, ChatSessionPage, NavigationData, PiboWebSessionNode
 export const BOOTSTRAP_STALE_TIME_MS = 30_000;
 export const BOOTSTRAP_GC_TIME_MS = 30 * 60_000;
 export const TRACE_STALE_TIME_MS = 10_000;
-export const TRACE_GC_TIME_MS = 30 * 60_000;
-export const DEFAULT_TRACE_EVENTS_PAGE_SIZE = 2_000;
+export const TRACE_GC_TIME_MS = 5 * 60_000;
+export const TRACE_PAYLOAD_GC_TIME_MS = 60_000;
+export const DEFAULT_TRACE_EVENTS_PAGE_SIZE = 120;
 export const DEFAULT_SESSION_PAGE_SIZE = 120;
 export const DEFAULT_ARCHIVED_SESSION_PAGE_SIZE = 60;
 export const DEFAULT_RAW_EVENTS_LIMIT = 80;

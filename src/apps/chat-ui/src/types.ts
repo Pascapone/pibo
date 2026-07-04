@@ -5,9 +5,28 @@ import type {
 	PiboTraceSource,
 	PiboTraceOrderKey,
 	PiboWebSessionStatus,
+	ChatWebStoredEvent,
+	TracePayloadChunk,
+	TracePayloadRef,
+	TraceRawEventsPage,
+	TraceTimelineNode,
+	TraceTimelinePage,
 } from "../../../shared/trace-types.js";
 
-export type { PiboTraceNode, PiboTraceNodeType, PiboTraceNodeStatus, PiboTraceSource, PiboTraceOrderKey, PiboWebSessionStatus };
+export type {
+	PiboTraceNode,
+	PiboTraceNodeType,
+	PiboTraceNodeStatus,
+	PiboTraceSource,
+	PiboTraceOrderKey,
+	PiboWebSessionStatus,
+	ChatWebStoredEvent,
+	TracePayloadChunk,
+	TracePayloadRef,
+	TraceRawEventsPage,
+	TraceTimelineNode,
+	TraceTimelinePage,
+};
 
 export type PiboWorkflowSessionKind = "main_workflow" | "nested_workflow" | "agent_node" | "subagent";
 
