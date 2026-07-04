@@ -74,6 +74,10 @@ export type WorkflowGraphInspectorSlotProps = {
 	onDraftDefinitionChange?: (definition: WorkflowDraftDefinition) => void;
 };
 
+export type WorkflowGraphStatusTone = "status" | "error";
+
+type WorkflowGraphStatusSink = (message: string, tone?: WorkflowGraphStatusTone) => void;
+
 type WorkflowGraphContextMenuState = {
 	x: number;
 	y: number;
@@ -95,6 +99,7 @@ export function WorkflowGraphCanvas({
 	compactHeader = false,
 	readOnly = false,
 	onDraftDefinitionChange,
+	onStatusMessage,
 }: {
 	draft: WorkflowDraftRecord;
 	onDraftChange: (draft: WorkflowDraftRecord) => void;
@@ -103,6 +108,7 @@ export function WorkflowGraphCanvas({
 	compactHeader?: boolean;
 	readOnly?: boolean;
 	onDraftDefinitionChange?: (definition: WorkflowDraftDefinition) => void;
+	onStatusMessage?: WorkflowGraphStatusSink;
 }) {
 	const projection = useMemo(() => createWorkflowGraphProjection(draft.definition, draft.diagnostics), [draft.definition, draft.diagnostics]);
 	const [nodes, setNodes] = useState<WorkflowGraphFlowNode[]>(projection.nodes);
@@ -217,25 +223,30 @@ export function WorkflowGraphCanvas({
 		onDraftDefinitionChange?.(materializeGraphLayout(draft.definition, nextNodes, nextEdges));
 	}, [draft.definition, edges, materializeGraphLayout, nodes, onDraftDefinitionChange]);
 
+	const publishStatus = useCallback((message: string, tone: WorkflowGraphStatusTone = "status") => {
+		setStatusMessage(message);
+		onStatusMessage?.(message, tone);
+	}, [onStatusMessage]);
+
 	const saveDefinition = useCallback(async (definition: WorkflowDraftDefinition, successMessage: string, options: { clearLayoutDirty?: boolean; editTrigger?: WorkflowValidationTrigger; layoutNodes?: WorkflowGraphFlowNode[]; layoutEdges?: WorkflowGraphFlowEdge[] } = {}) => {
 		if (readOnly) {
-			setStatusMessage("This workflow is read-only. Duplicate it before editing.");
+			publishStatus("This workflow is read-only. Duplicate it before editing.", "error");
 			return;
 		}
 		const definitionWithLayout = materializeGraphLayout(definition, options.layoutNodes, options.layoutEdges);
 		setSaveState("saving");
-		setStatusMessage(undefined);
 		try {
 			const response = await patchWorkflowDraft(draft.draftId, { definition: definitionWithLayout, editTrigger: options.editTrigger ?? "graph_edit" });
 			onDraftChange(response.draft);
 			setSaveState("saved");
-			setStatusMessage(successMessage);
+			publishStatus(successMessage);
 			if (options.clearLayoutDirty) setLayoutDirty(false);
 		} catch (error) {
+			const message = error instanceof Error ? error.message : "Failed to save graph edit";
 			setSaveState("error");
-			setStatusMessage(error instanceof Error ? error.message : "Failed to save graph edit");
+			publishStatus(message, "error");
 		}
-	}, [draft.draftId, materializeGraphLayout, onDraftChange, readOnly]);
+	}, [draft.draftId, materializeGraphLayout, onDraftChange, publishStatus, readOnly]);
 
 	const handleNodesChange = useCallback((changes: NodeChange<WorkflowGraphFlowNode>[]) => {
 		if (readOnly) return;
@@ -249,8 +260,8 @@ export function WorkflowGraphCanvas({
 		setNodes(nextNodes);
 		setLayoutDirty(true);
 		syncDraftLayout(nextNodes, edges);
-		setStatusMessage(`Layout updated for ${draggedNode.id}; it will be preserved on save or graph edits.`);
-	}, [edges, nodes, readOnly, syncDraftLayout]);
+		publishStatus(`Layout updated for ${draggedNode.id}; it will be preserved on save or graph edits.`);
+	}, [edges, nodes, publishStatus, readOnly, syncDraftLayout]);
 
 	const handleEdgesChange = useCallback((changes: EdgeChange<WorkflowGraphFlowEdge>[]) => {
 		if (readOnly) return;
@@ -267,8 +278,8 @@ export function WorkflowGraphCanvas({
 			return nextEdges;
 		});
 		setLayoutDirty(true);
-		setStatusMessage(`Edge route updated for ${edgeId}; it will be preserved on save or graph edits.`);
-	}, [nodes, readOnly, syncDraftLayout]);
+		publishStatus(`Edge route updated for ${edgeId}; it will be preserved on save or graph edits.`);
+	}, [nodes, publishStatus, readOnly, syncDraftLayout]);
 
 	const renderedEdges = useMemo<WorkflowGraphFlowEdge[]>(() => edges.map((edge) => ({
 		...edge,
@@ -391,7 +402,7 @@ export function WorkflowGraphCanvas({
 		else setTargetNodeId(nodeId);
 		setSelectedElement({ type: "node", id: nodeId });
 		setContextMenu(undefined);
-		setStatusMessage(endpoint === "source" ? `Connect from ${nodeId}; choose a target node.` : `Connect to ${nodeId}; choose a source node.`);
+		publishStatus(endpoint === "source" ? `Connect from ${nodeId}; choose a target node.` : `Connect to ${nodeId}; choose a source node.`);
 	};
 
 	const resetEdgeRoute = (edgeId: string) => {
@@ -419,7 +430,7 @@ export function WorkflowGraphCanvas({
 		setSelectedElement({ type: "node", id: nodeId });
 		setContextMenu(undefined);
 		setLayoutDirty(true);
-		setStatusMessage(`Moved node ${nodeId}; layout will be preserved on save or graph edits.`);
+		publishStatus(`Moved node ${nodeId}; layout will be preserved on save or graph edits.`);
 	};
 
 	const nudgeSelectedNode = (dx: number, dy: number) => {
