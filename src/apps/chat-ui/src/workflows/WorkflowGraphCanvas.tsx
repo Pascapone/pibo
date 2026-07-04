@@ -20,7 +20,7 @@ import {
 	type NodeProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Activity, Layers, Link2, Loader2, MousePointer2, MoveRight, Plus, Save, SlidersHorizontal, Trash2, Wrench } from "lucide-react";
+import { Activity, CheckCircle2, Crosshair, Layers, Link2, Loader2, MousePointer2, MoveRight, Plus, RotateCcw, Save, ScanSearch, SlidersHorizontal, Trash2, Wrench, X } from "lucide-react";
 import {
 	getWorkflowAdapterPicker,
 	getWorkflowHumanActionPicker,
@@ -74,6 +74,19 @@ export type WorkflowGraphInspectorSlotProps = {
 	onDraftDefinitionChange?: (definition: WorkflowDraftDefinition) => void;
 };
 
+type WorkflowGraphContextMenuState = {
+	x: number;
+	y: number;
+	target: SelectedGraphElement | { type: "pane" };
+};
+
+type WorkflowGraphContextMenuEvent = {
+	clientX: number;
+	clientY: number;
+	preventDefault: () => void;
+	stopPropagation: () => void;
+};
+
 export function WorkflowGraphCanvas({
 	draft,
 	onDraftChange,
@@ -109,6 +122,8 @@ export function WorkflowGraphCanvas({
 	const [selectedHumanActionRef, setSelectedHumanActionRef] = useState("");
 	const [inspectorWidth, setInspectorWidth] = useState(440);
 	const [inspectorTab, setInspectorTab] = useState<"build" | "inspect" | "status">("inspect");
+	const [contextMenu, setContextMenu] = useState<WorkflowGraphContextMenuState | undefined>();
+	const graphCanvasRef = useRef<HTMLDivElement | null>(null);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -202,12 +217,12 @@ export function WorkflowGraphCanvas({
 		onDraftDefinitionChange?.(materializeGraphLayout(draft.definition, nextNodes, nextEdges));
 	}, [draft.definition, edges, materializeGraphLayout, nodes, onDraftDefinitionChange]);
 
-	const saveDefinition = useCallback(async (definition: WorkflowDraftDefinition, successMessage: string, options: { clearLayoutDirty?: boolean; editTrigger?: WorkflowValidationTrigger } = {}) => {
+	const saveDefinition = useCallback(async (definition: WorkflowDraftDefinition, successMessage: string, options: { clearLayoutDirty?: boolean; editTrigger?: WorkflowValidationTrigger; layoutNodes?: WorkflowGraphFlowNode[]; layoutEdges?: WorkflowGraphFlowEdge[] } = {}) => {
 		if (readOnly) {
 			setStatusMessage("This workflow is read-only. Duplicate it before editing.");
 			return;
 		}
-		const definitionWithLayout = materializeGraphLayout(definition);
+		const definitionWithLayout = materializeGraphLayout(definition, options.layoutNodes, options.layoutEdges);
 		setSaveState("saving");
 		setStatusMessage(undefined);
 		try {
@@ -266,6 +281,35 @@ export function WorkflowGraphCanvas({
 		},
 	})), [edges, handleEdgeRouteChange, readOnly]);
 
+	useEffect(() => {
+		if (!contextMenu) return undefined;
+		const close = () => setContextMenu(undefined);
+		const handleKeyDown = (event: KeyboardEvent) => {
+			if (event.key === "Escape") close();
+		};
+		document.addEventListener("click", close);
+		document.addEventListener("contextmenu", close);
+		document.addEventListener("keydown", handleKeyDown);
+		return () => {
+			document.removeEventListener("click", close);
+			document.removeEventListener("contextmenu", close);
+			document.removeEventListener("keydown", handleKeyDown);
+		};
+	}, [contextMenu]);
+
+	const openContextMenu = useCallback((event: WorkflowGraphContextMenuEvent, target: WorkflowGraphContextMenuState["target"]) => {
+		event.preventDefault();
+		event.stopPropagation();
+		const rect = graphCanvasRef.current?.getBoundingClientRect();
+		const rawX = rect ? event.clientX - rect.left : event.clientX;
+		const rawY = rect ? event.clientY - rect.top : event.clientY;
+		setContextMenu({
+			x: Math.max(8, Math.min(rawX, (rect?.width ?? rawX) - 236)),
+			y: Math.max(8, Math.min(rawY, (rect?.height ?? rawY) - 260)),
+			target,
+		});
+	}, []);
+
 	const addAgentNode = () => {
 		const nodeId = nextWorkflowNodeId(draft.definition, "agent");
 		const position = nextGraphNodePosition(nodes);
@@ -316,24 +360,71 @@ export function WorkflowGraphCanvas({
 		void saveDefinition(definition, `Connected ${sourceId} to ${targetId}.`);
 	}, [draft.definition, saveDefinition, sourceNodeId, targetNodeId]);
 
-	const deleteSelectedElement = () => {
-		if (!selectedElement) return;
-		const definition = selectedElement.type === "node"
-			? deleteWorkflowGraphNode(draft.definition, selectedElement.id)
-			: deleteWorkflowGraphEdge(draft.definition, selectedElement.id);
+	const deleteGraphElement = (element: Exclude<SelectedGraphElement, undefined>) => {
+		const definition = element.type === "node"
+			? deleteWorkflowGraphNode(draft.definition, element.id)
+			: deleteWorkflowGraphEdge(draft.definition, element.id);
 		setSelectedElement(undefined);
-		void saveDefinition(definition, `Deleted ${selectedElement.type} ${selectedElement.id}.`);
+		setContextMenu(undefined);
+		void saveDefinition(definition, `Deleted ${element.type} ${element.id}.`);
 	};
 
-	const nudgeSelectedNode = (dx: number, dy: number) => {
-		if (selectedElement?.type !== "node") return;
-		const nextNodes = nodes.map((node) => node.id === selectedElement.id
+	const deleteSelectedElement = () => {
+		if (!selectedElement) return;
+		deleteGraphElement(selectedElement);
+	};
+
+	const inspectGraphElement = (element: Exclude<SelectedGraphElement, undefined>) => {
+		setSelectedElement(element);
+		setInspectorTab("inspect");
+		setContextMenu(undefined);
+	};
+
+	const setInitialNode = (nodeId: string) => {
+		setSelectedElement({ type: "node", id: nodeId });
+		setContextMenu(undefined);
+		void saveDefinition({ ...draft.definition, initial: nodeId }, `Set ${nodeId} as the initial node.`);
+	};
+
+	const selectConnectEndpoint = (nodeId: string, endpoint: "source" | "target") => {
+		if (endpoint === "source") setSourceNodeId(nodeId);
+		else setTargetNodeId(nodeId);
+		setSelectedElement({ type: "node", id: nodeId });
+		setContextMenu(undefined);
+		setStatusMessage(endpoint === "source" ? `Connect from ${nodeId}; choose a target node.` : `Connect to ${nodeId}; choose a source node.`);
+	};
+
+	const resetEdgeRoute = (edgeId: string) => {
+		const nextEdges: WorkflowGraphFlowEdge[] = edges.map((edge) => {
+			if (edge.id !== edgeId) return edge;
+			const { route, ...dataWithoutRoute } = edge.data ?? {};
+			void route;
+			return { ...edge, data: { edgeId: edge.data?.edgeId ?? edge.id, kind: edge.data?.kind ?? "data", ...dataWithoutRoute } };
+		});
+		const edgeRoutes = readWorkflowEdgeRoutes(draft.definition);
+		delete edgeRoutes[edgeId];
+		const definition = writeWorkflowGraphLayout(draft.definition, readWorkflowPositions(draft.definition), edgeRoutes);
+		setEdges(nextEdges);
+		setSelectedElement({ type: "edge", id: edgeId });
+		setContextMenu(undefined);
+		void saveDefinition(definition, `Reset route for edge ${edgeId}.`, { layoutEdges: nextEdges });
+	};
+
+	const nudgeGraphNode = (nodeId: string, dx: number, dy: number) => {
+		const nextNodes = nodes.map((node) => node.id === nodeId
 			? { ...node, position: { x: node.position.x + dx, y: node.position.y + dy }, selected: true }
 			: node);
 		setNodes(nextNodes);
 		syncDraftLayout(nextNodes, edges);
+		setSelectedElement({ type: "node", id: nodeId });
+		setContextMenu(undefined);
 		setLayoutDirty(true);
-		setStatusMessage(`Moved node ${selectedElement.id}; layout will be preserved on save or graph edits.`);
+		setStatusMessage(`Moved node ${nodeId}; layout will be preserved on save or graph edits.`);
+	};
+
+	const nudgeSelectedNode = (dx: number, dy: number) => {
+		if (selectedElement?.type !== "node") return;
+		nudgeGraphNode(selectedElement.id, dx, dy);
 	};
 
 	const saveLayout = () => {
@@ -369,6 +460,17 @@ export function WorkflowGraphCanvas({
 	const isSaving = saveState === "saving";
 	const editDisabled = isSaving || readOnly;
 	const hasAtLeastTwoNodes = nodeIds.length > 1;
+	const contextMenuTarget = contextMenu?.target;
+	const contextMenuTitle = contextMenuTarget?.type === "node"
+		? `Node ${contextMenuTarget.id}`
+		: contextMenuTarget?.type === "edge"
+			? `Edge ${contextMenuTarget.id}`
+			: "Graph canvas";
+	const contextMenuSubtitle = contextMenuTarget?.type === "node"
+		? "Workflow node actions"
+		: contextMenuTarget?.type === "edge"
+			? "Workflow edge actions"
+			: "Canvas actions";
 	const inspectorTabs = [
 		{ id: "build" as const, label: "Build", icon: Wrench },
 		{ id: "inspect" as const, label: "Inspect", icon: SlidersHorizontal },
@@ -399,7 +501,7 @@ export function WorkflowGraphCanvas({
 				className={`${fullHeight ? "min-h-0 flex-1" : ""} grid min-w-0 gap-3 text-xs`}
 				style={{ gridTemplateColumns: `minmax(0, 1fr) ${inspectorWidth}px` }}
 			>
-				<div className={`${fullHeight ? "h-full min-h-[360px]" : "h-[420px]"} min-w-0 overflow-hidden rounded-sm border border-slate-800 bg-[#0c171c]`} aria-label="Workflow graph canvas">
+				<div ref={graphCanvasRef} className={`${fullHeight ? "h-full min-h-[360px]" : "h-[420px]"} relative min-w-0 overflow-hidden rounded-sm border border-slate-800 bg-[#0c171c]`} aria-label="Workflow graph canvas">
 					<ReactFlow<WorkflowGraphFlowNode, WorkflowGraphFlowEdge>
 						nodes={nodes}
 						edges={renderedEdges}
@@ -411,7 +513,10 @@ export function WorkflowGraphCanvas({
 						onConnect={handleConnect}
 						onNodeClick={(_, node) => setSelectedElement({ type: "node", id: node.id })}
 						onEdgeClick={(_, edge) => setSelectedElement({ type: "edge", id: edge.id })}
-						onPaneClick={() => setSelectedElement(undefined)}
+						onPaneClick={() => { setSelectedElement(undefined); setContextMenu(undefined); }}
+						onNodeContextMenu={(event, node) => { setSelectedElement({ type: "node", id: node.id }); openContextMenu(event, { type: "node", id: node.id }); }}
+						onEdgeContextMenu={(event, edge) => { setSelectedElement({ type: "edge", id: edge.id }); openContextMenu(event, { type: "edge", id: edge.id }); }}
+						onPaneContextMenu={(event) => openContextMenu(event, { type: "pane" })}
 						fitView
 						minZoom={0.35}
 						maxZoom={1.6}
@@ -425,6 +530,47 @@ export function WorkflowGraphCanvas({
 						<MiniMap pannable zoomable nodeColor={(node) => node.selected ? "#38bdf8" : "#1e293b"} />
 						<Controls showInteractive={false} />
 					</ReactFlow>
+					{contextMenu ? (
+						<div
+							className="absolute z-50 w-56 overflow-hidden rounded-sm border border-slate-700 bg-[#1a262b] py-1 text-xs shadow-xl shadow-black/40"
+							style={{ left: contextMenu.x, top: contextMenu.y }}
+							role="menu"
+							aria-label="Workflow graph context menu"
+							onClick={(event) => event.stopPropagation()}
+							onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); }}
+						>
+							<div className="border-b border-slate-800 px-3 py-2">
+								<div className="truncate text-[10px] font-bold uppercase tracking-[0.16em] text-[#11a4d4]">{contextMenuSubtitle}</div>
+								<div className="mt-0.5 truncate font-mono text-[11px] text-slate-400">{contextMenuTitle}</div>
+							</div>
+							{contextMenuTarget?.type === "node" ? (
+								<>
+									<WorkflowGraphContextMenuItem icon={<ScanSearch size={14} />} label="Inspect node" onSelect={() => inspectGraphElement({ type: "node", id: contextMenuTarget.id })} />
+									<WorkflowGraphContextMenuItem icon={<CheckCircle2 size={14} />} label="Set as initial" onSelect={() => setInitialNode(contextMenuTarget.id)} disabled={editDisabled} />
+									<WorkflowGraphContextMenuItem icon={<Link2 size={14} />} label="Connect from this" onSelect={() => selectConnectEndpoint(contextMenuTarget.id, "source")} disabled={editDisabled} />
+									<WorkflowGraphContextMenuItem icon={<Crosshair size={14} />} label="Connect to this" onSelect={() => selectConnectEndpoint(contextMenuTarget.id, "target")} disabled={editDisabled} />
+									<WorkflowGraphContextMenuItem icon={<MoveRight size={14} />} label="Nudge right" onSelect={() => nudgeGraphNode(contextMenuTarget.id, 40, 0)} disabled={editDisabled} />
+									<div className="my-1 border-t border-slate-800" />
+									<WorkflowGraphContextMenuItem icon={<Trash2 size={14} />} label="Delete node" onSelect={() => deleteGraphElement({ type: "node", id: contextMenuTarget.id })} disabled={editDisabled} destructive />
+								</>
+							) : null}
+							{contextMenuTarget?.type === "edge" ? (
+								<>
+									<WorkflowGraphContextMenuItem icon={<ScanSearch size={14} />} label="Inspect edge" onSelect={() => inspectGraphElement({ type: "edge", id: contextMenuTarget.id })} />
+									<WorkflowGraphContextMenuItem icon={<RotateCcw size={14} />} label="Reset edge route" onSelect={() => resetEdgeRoute(contextMenuTarget.id)} disabled={editDisabled} />
+									<div className="my-1 border-t border-slate-800" />
+									<WorkflowGraphContextMenuItem icon={<Trash2 size={14} />} label="Delete edge" onSelect={() => deleteGraphElement({ type: "edge", id: contextMenuTarget.id })} disabled={editDisabled} destructive />
+								</>
+							) : null}
+							{contextMenuTarget?.type === "pane" ? (
+								<>
+									<WorkflowGraphContextMenuItem icon={<Plus size={14} />} label="Add Agent node" onSelect={() => { setContextMenu(undefined); addAgentNode(); }} disabled={editDisabled} />
+									<WorkflowGraphContextMenuItem icon={<Save size={14} />} label="Save layout" onSelect={() => { setContextMenu(undefined); saveLayout(); }} disabled={editDisabled || !nodes.length || !layoutDirty} />
+									<WorkflowGraphContextMenuItem icon={<X size={14} />} label="Clear selection" onSelect={() => { setSelectedElement(undefined); setContextMenu(undefined); }} disabled={!selectedElement} />
+								</>
+							) : null}
+						</div>
+					) : null}
 				</div>
 
 				<aside className="relative flex min-h-0 min-w-0 flex-col overflow-hidden rounded-sm border border-slate-800 bg-[#0f1b20]" aria-label="Workflow editor inspector panel">
@@ -573,6 +719,21 @@ export function WorkflowGraphCanvas({
 				Automatic layout is a canvas projection only for workflows without saved positions. Node positions and edge routes are preserved when you connect, add, inspect, or save graph edits. Saving layout writes only display metadata and does not change nodes, edges, ports, guards, adapters, runtime routing, or validation semantics.
 			</div>}
 		</section>
+	);
+}
+
+function WorkflowGraphContextMenuItem({ icon, label, onSelect, disabled = false, destructive = false }: { icon: ReactNode; label: string; onSelect: () => void; disabled?: boolean; destructive?: boolean }) {
+	return (
+		<button
+			type="button"
+			role="menuitem"
+			onClick={onSelect}
+			disabled={disabled}
+			className={`flex w-full items-center gap-2 px-3 py-2 text-left transition disabled:cursor-not-allowed disabled:opacity-40 ${destructive ? "text-red-300 hover:bg-red-500/10 hover:text-red-100" : "text-slate-300 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4]"}`}
+		>
+			<span className="shrink-0">{icon}</span>
+			<span className="truncate">{label}</span>
+		</button>
 	);
 }
 
