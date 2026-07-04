@@ -4,13 +4,15 @@
 **Created:** 2026-05-10
 **Updated:** 2026-05-11
 **Controller / Source:** Scheduled Pibo Source Specs Coverage
-**Related docs:** [Chat Web Rooms and Event Streams](./chat-web-rooms-and-event-streams.md), [Pibo Data Store and Chat Ingestion](./pibo-data-store-and-ingestion.md), [Pibo Session Routing](./pibo-session-routing.md), [Pibo Session Signals](./pibo-session-signals.md), [Yielded Run Control](./yielded-run-control.md)
+**Related docs:** [Chat Web Rooms and Event Streams](./chat-web-rooms-and-event-streams.md), [Pibo Data Store and Chat Ingestion](./pibo-data-store-and-ingestion.md), [Pibo Session Routing](./pibo-session-routing.md), [Pibo Session Signals](./pibo-session-signals.md), [Yielded Run Control](./yielded-run-control.md), [Chat Web Trace V2 Fast Path](../changes/chat-web-trace-v2-fast-path/spec.md)
 
 ## Why
 
 Chat Web is useful only if users can understand what a routed runtime did. The raw sources for a turn are split across Pibo output events, Pi transcript entries, live stream frames, child sessions, yielded run notifications, compaction events, and session metadata. Users need one stable execution view that shows messages, thinking, tool calls, delegated agents, background runs, errors, and compactions in the right order without duplicating transcript echoes or losing live updates.
 
 The current UI presents the active conversation through a compact terminal session view, while an older nested trace view remains dormant. This spec captures the behavior that must stay true for both the trace materialization contract and the active terminal projection.
+
+The Trace V2 Fast Path change defines the target performance architecture for this capability: compact timeline pages, lazy payload refs, raw events as a separate debug API, and live patches instead of full-history reloads.
 
 ## Goal
 
