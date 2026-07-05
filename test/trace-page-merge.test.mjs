@@ -60,6 +60,28 @@ test("mergeOlderTracePage dedupes overlapping nested timeline nodes", () => {
 	assert.equal(merged.hasOlderEvents, true);
 });
 
+test("mergeOlderTracePage carries string cursors across transcript continuation pages", () => {
+	const current = traceView({
+		nodes: [node("compact", { type: "execution.compaction" })],
+		nextBeforeSequence: 1,
+		nextBeforeCursor: "transcript:4000:Y3V0b2Zm",
+	});
+	const older = traceView({
+		nodes: [node("entry-old", { type: "user.message", source: "transcript" })],
+		beforeCursor: "transcript:4000:Y3V0b2Zm",
+		nextBeforeSequence: undefined,
+		nextBeforeCursor: "transcript:2000:Y3V0b2Zm",
+		hasOlderEvents: true,
+	});
+
+	const merged = mergeOlderTracePage(current, older);
+
+	assert.equal(merged.beforeCursor, "transcript:4000:Y3V0b2Zm");
+	assert.equal(merged.nextBeforeCursor, "transcript:2000:Y3V0b2Zm");
+	assert.equal(merged.hasOlderEvents, true);
+	assert.deepEqual(flattenNodes(merged.nodes).map((entry) => entry.id), ["compact", "entry-old"]);
+});
+
 function traceView(overrides = {}) {
 	return {
 		piboSessionId: "ps_test",

@@ -308,9 +308,10 @@ export function SessionTracePane({
     onFork,
     onOpenSession,
     onLoadOlderTracePage: () =>
-      void loadOlderTracePage(currentTraceView?.nextBeforeSequence),
+      void loadOlderTracePage(currentTraceView?.nextBeforeCursor ?? currentTraceView?.nextBeforeSequence),
     hasOlderTraceEvents:
       currentTraceView?.hasOlderEvents === true ||
+      currentTraceView?.nextBeforeCursor !== undefined ||
       typeof currentTraceView?.nextBeforeSequence === "number",
     isFetchingOlderTracePage: loadingOlderTracePage,
     onThinkingLevelChange,

@@ -159,7 +159,7 @@ export function CompactTerminalSessionView({
 			data-pibo-debug="compact-terminal-session-view"
 			data-pibo-session-id={traceView?.piboSessionId ?? undefined}
 			data-pibo-trace-has-older={traceView?.hasOlderEvents === true ? "true" : "false"}
-			data-pibo-trace-next-before={traceView?.nextBeforeSequence ?? ""}
+			data-pibo-trace-next-before={traceView?.nextBeforeCursor ?? traceView?.nextBeforeSequence ?? ""}
 		>
 			<TerminalHeader
 				errorCount={errorCount}

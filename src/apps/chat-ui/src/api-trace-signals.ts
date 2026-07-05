@@ -69,11 +69,12 @@ export async function getTrace(
 
 export async function getTraceTimeline(
 	piboSessionId: string,
-	options: { limit?: number; beforeSequence?: number; knownVersion?: string; signal?: AbortSignal } = {},
+	options: { limit?: number; beforeSequence?: number; beforeCursor?: string | number; knownVersion?: string; signal?: AbortSignal } = {},
 ): Promise<{ timeline?: TraceTimelinePage; notModified: boolean; version?: string }> {
 	const params = new URLSearchParams({ piboSessionId });
 	if (options.limit) params.set("limit", String(options.limit));
-	if (options.beforeSequence !== undefined) params.set("before", String(options.beforeSequence));
+	if (options.beforeCursor !== undefined) params.set("before", String(options.beforeCursor));
+	else if (options.beforeSequence !== undefined) params.set("before", String(options.beforeSequence));
 	const response = await fetch(`/api/chat/trace/timeline?${params.toString()}`, {
 		headers: options.knownVersion ? { "if-none-match": toEtag(options.knownVersion) } : undefined,
 		signal: options.signal,

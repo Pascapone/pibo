@@ -15,8 +15,10 @@ export function mergeOlderTracePage(current: PiboSessionTraceView, older: PiboSe
 		version: current.version,
 		nodes: mergeTraceNodes(older.nodes, current.nodes),
 		rawEvents,
+		beforeCursor: older.beforeCursor ?? current.beforeCursor,
 		firstEventSequence: older.firstEventSequence ?? current.firstEventSequence,
 		nextBeforeSequence: older.nextBeforeSequence,
+		nextBeforeCursor: older.nextBeforeCursor,
 		hasOlderEvents: older.hasOlderEvents,
 		eventLimit: (current.eventLimit ?? 0) + (older.eventLimit ?? older.pageSize ?? 0),
 	};

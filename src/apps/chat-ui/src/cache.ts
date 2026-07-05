@@ -48,9 +48,10 @@ export function chatSessionPageQueryKey(
 
 export function chatTracePageQueryKey(
 	piboSessionId: string,
-	options: { includeRawEvents?: boolean; rawEventsLimit?: number; eventLimit?: number; beforeSequence?: number; pageSize?: number } = {},
+	options: { includeRawEvents?: boolean; rawEventsLimit?: number; eventLimit?: number; beforeSequence?: number; beforeCursor?: string | number; pageSize?: number } = {},
 ): readonly [string, string, string, string, number, number, string] {
 	const pageSize = options.pageSize ?? options.eventLimit ?? DEFAULT_TRACE_EVENTS_PAGE_SIZE;
+	const beforeCursor = options.beforeCursor ?? options.beforeSequence;
 	return [
 		"chat",
 		"trace-page",
@@ -58,7 +59,7 @@ export function chatTracePageQueryKey(
 		options.includeRawEvents ? "raw" : "compact",
 		options.rawEventsLimit ?? DEFAULT_RAW_EVENTS_LIMIT,
 		pageSize,
-		options.beforeSequence === undefined ? "tail" : String(options.beforeSequence),
+		beforeCursor === undefined ? "tail" : String(beforeCursor),
 	];
 }
 

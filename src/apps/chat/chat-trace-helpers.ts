@@ -83,7 +83,7 @@ export function withLiveSnapshots(
 export function annotateTracePage(
 	trace: PiboSessionTraceView,
 	events: PiboSessionTraceView["rawEvents"],
-	input: { lastEventSequence: number; pageSize: number; beforeSequence?: number },
+	input: { lastEventSequence: number; pageSize: number; beforeSequence?: number; beforeCursor?: string; nextBeforeCursor?: string; hasOlderEvents?: boolean },
 ): PiboSessionTraceView {
 	const sequences = events
 		.map((event) => event.eventSequence)
@@ -96,10 +96,12 @@ export function annotateTracePage(
 		eventLimit: input.pageSize,
 		pageSize: input.pageSize,
 		beforeSequence: input.beforeSequence,
+		beforeCursor: input.beforeCursor,
 		firstEventSequence,
 		lastEventSequence,
 		nextBeforeSequence: firstEventSequence,
-		hasOlderEvents: firstEventSequence !== undefined ? firstEventSequence > 1 : false,
+		nextBeforeCursor: input.nextBeforeCursor ?? (firstEventSequence !== undefined ? String(firstEventSequence) : undefined),
+		hasOlderEvents: input.hasOlderEvents ?? (firstEventSequence !== undefined ? firstEventSequence > 1 : false),
 	};
 }
 

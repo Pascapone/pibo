@@ -147,9 +147,9 @@ export function useSessionTracePage({
 		});
 	}, [rawEventsBeforeSequence, rawEventsQuery.data, selectedPiboSessionId]);
 
-	const loadOlderTracePage = useCallback(async (beforeSequence?: number | null) => {
-		if (!selectedPiboSessionId || !beforeSequence) return;
-		const loadKey = `${selectedPiboSessionId}:${beforeSequence}`;
+	const loadOlderTracePage = useCallback(async (beforeCursor?: string | number | null) => {
+		if (!selectedPiboSessionId || !beforeCursor) return;
+		const loadKey = `${selectedPiboSessionId}:${beforeCursor}`;
 		if (loadingOlderTraceBeforeRef.current) return;
 		if (loadedOlderTraceBeforeRef.current.has(loadKey)) return;
 		const now = Date.now();
@@ -161,7 +161,7 @@ export function useSessionTracePage({
 			includeRawEvents: showRawEvents,
 			rawEventsLimit: rawEventLimit,
 			pageSize: DEFAULT_TRACE_EVENTS_PAGE_SIZE,
-			beforeSequence,
+			beforeCursor,
 		});
 		try {
 			const olderTrace = await queryClient.fetchQuery({
@@ -170,7 +170,7 @@ export function useSessionTracePage({
 					const cached = queryClient.getQueryData<PiboSessionTraceView>(queryKey);
 					const response = await getTraceTimeline(selectedPiboSessionId, {
 						limit: DEFAULT_TRACE_EVENTS_PAGE_SIZE,
-						beforeSequence,
+						beforeCursor,
 						knownVersion: cached?.version,
 						signal,
 					});

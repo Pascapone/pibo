@@ -58,7 +58,7 @@ export function traceTimelinePageFromView(input: {
 		latestStreamId: input.trace.latestStreamId,
 		projectionStatus: "ready",
 		cursor: {
-			before: input.trace.nextBeforeSequence !== undefined ? String(input.trace.nextBeforeSequence) : undefined,
+			before: input.trace.nextBeforeCursor ?? (input.trace.nextBeforeSequence !== undefined ? String(input.trace.nextBeforeSequence) : undefined),
 			after: input.trace.lastEventSequence !== undefined ? String(input.trace.lastEventSequence) : undefined,
 			hasOlder: input.trace.hasOlderEvents === true,
 			hasNewer: false,
@@ -74,6 +74,7 @@ export function traceTimelinePageFromView(input: {
 		firstEventSequence: input.trace.firstEventSequence,
 		lastEventSequence: input.trace.lastEventSequence,
 		nextBeforeSequence: input.trace.nextBeforeSequence,
+		nextBeforeCursor: input.trace.nextBeforeCursor,
 		hasOlderEvents: input.trace.hasOlderEvents,
 	};
 

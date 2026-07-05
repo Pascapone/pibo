@@ -22,7 +22,7 @@ import {
 	type UpdatePiboRoomInput,
 } from "./types/rooms.js";
 import { chatStreamFramesFromOutputEvent, createChatStreamState, nextTransientChatStreamFrameId, type ChatStreamEvent } from "./stream.js";
-import { buildSessionNodes, buildTraceView, createTraceViewVersion, loadPiSessionMetadata, readTailEntries, type PiboSessionTraceView, type PiboWebSessionNode, type PiboWebSessionStatus } from "./trace.js";
+import { buildSessionNodes, buildTraceView, createTraceViewVersion, loadPiSessionMetadata, readTailEntries, readTranscriptHistoryPage, type PiboSessionTraceView, type PiboWebSessionNode, type PiboWebSessionStatus } from "./trace.js";
 import type { ChatWebStoredEvent, PiboSessionTraceSummary, TraceTimelinePage } from "../../shared/trace-types.js";
 import {
 	DEFAULT_TRACE_EVENTS_PAGE_SIZE,
@@ -3107,14 +3107,49 @@ function recordTransientReplayEvent(state: ChatWebAppState, event: Omit<Transien
 	return recorded;
 }
 
-function parseTimelineBeforeCursor(url: URL): number | undefined {
+type TraceTimelineCursor =
+	| { kind: "tail" }
+	| { kind: "event"; beforeSequence: number; raw: string }
+	| { kind: "transcript"; beforeByte: number; beforeTimestamp?: string; raw: string };
+
+function parseTimelineBeforeCursor(url: URL): TraceTimelineCursor {
 	const before = parseOptionalPositiveIntSearchParam(url, "beforeSequence");
-	if (before !== undefined) return before;
+	if (before !== undefined) return { kind: "event", beforeSequence: before, raw: String(before) };
 	const cursor = url.searchParams.get("before") ?? url.searchParams.get("cursor");
-	if (!cursor || cursor === "tail") return undefined;
+	if (!cursor || cursor === "tail") return { kind: "tail" };
+	const transcript = parseTranscriptTimelineCursor(cursor);
+	if (transcript) return transcript;
 	const parsed = Number.parseInt(cursor, 10);
-	if (!Number.isFinite(parsed) || parsed <= 0) throw new PiboWebHttpError("Trace cursor must be tail or a positive sequence", 400);
-	return parsed;
+	if (!Number.isFinite(parsed) || parsed <= 0) throw new PiboWebHttpError("Trace cursor must be tail, transcript, or a positive sequence", 400);
+	return { kind: "event", beforeSequence: parsed, raw: String(parsed) };
+}
+
+function parseTranscriptTimelineCursor(cursor: string): TraceTimelineCursor | undefined {
+	if (!cursor.startsWith("transcript:")) return undefined;
+	const [, byteValue, encodedTimestamp] = cursor.split(":");
+	const beforeByte = Number.parseInt(byteValue ?? "", 10);
+	if (!Number.isFinite(beforeByte) || beforeByte < 0) throw new PiboWebHttpError("Invalid transcript trace cursor", 400);
+	let beforeTimestamp: string | undefined;
+	if (encodedTimestamp) {
+		try {
+			const decoded = Buffer.from(encodedTimestamp, "base64url").toString("utf8");
+			if (decoded) beforeTimestamp = decoded;
+		} catch {
+			throw new PiboWebHttpError("Invalid transcript trace cursor", 400);
+		}
+	}
+	return { kind: "transcript", beforeByte, beforeTimestamp, raw: cursor };
+}
+
+function encodeTranscriptTimelineCursor(beforeByte: number, beforeTimestamp?: string): string {
+	const encodedTimestamp = beforeTimestamp ? Buffer.from(beforeTimestamp, "utf8").toString("base64url") : "";
+	return `transcript:${Math.max(0, Math.floor(beforeByte))}:${encodedTimestamp}`;
+}
+
+function compactionCutoffTimestamp(events: ChatWebStoredPiboEvent[]): string | undefined {
+	const compaction = events.find((event) => event.type === "execution_result" && event.payload.type === "execution_result" && event.payload.action === "compact")
+		?? events.find((event) => event.type === "compaction_end" || event.type === "compaction_start");
+	return compaction?.createdAt;
 }
 
 function transientReplayScopeKeys(input: { roomId?: string; piboSessionId?: string }): string[] {
@@ -5052,7 +5087,8 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/trace/timeline` && request.method === "GET") {
 				const startedAt = performance.now();
 				const webSession = await requireSession(request, context);
-				const beforeSequence = parseTimelineBeforeCursor(url);
+				const timelineCursor = parseTimelineBeforeCursor(url);
+				const beforeSequence = timelineCursor.kind === "event" ? timelineCursor.beforeSequence : undefined;
 				const limit = parsePositiveIntSearchParam(url, "limit", TRACE_V2_DEFAULT_TIMELINE_LIMIT, TRACE_V2_MAX_TIMELINE_LIMIT);
 				const selectedSession = resolveRequestedSession(
 					state,
@@ -5067,8 +5103,8 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				let metadataMs = 0;
 				const lastEventSequence = state.timelineQuery.getLatestEventSequence(selectedSession.id);
 				const latestStreamId = state.timelineQuery.getLatestStreamId({ piboSessionId: selectedSession.id });
-				const liveSnapshots = beforeSequence === undefined ? state.outputCompactor.snapshotsForSession(selectedSession.id) : [];
-				const transcriptMetadata = beforeSequence === undefined
+				const liveSnapshots = timelineCursor.kind === "tail" ? state.outputCompactor.snapshotsForSession(selectedSession.id) : [];
+				const transcriptMetadata = timelineCursor.kind === "tail" || timelineCursor.kind === "transcript"
 					? await loadPiSessionMetadata(selectedSession, selectedSession.workspace ?? process.cwd())
 					: undefined;
 				const baseVersion = createFastTraceV2Version({
@@ -5082,7 +5118,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				});
 				const snapshotVersion = liveSnapshotVersion(liveSnapshots);
 				const version = snapshotVersion ? `${baseVersion}:live:${snapshotVersion}` : baseVersion;
-				const pageCursorKey = beforeSequence === undefined ? "tail" : `before:${beforeSequence}`;
+				const pageCursorKey = timelineCursor.kind === "tail" ? "tail" : `before:${timelineCursor.raw}`;
 				const cacheKey = traceCacheKey(selectedSession.id, `${baseVersion}:v2:limit:${limit}:${pageCursorKey}`);
 				const pageCacheKey = traceCacheKey(selectedSession.id, `${version}:v2-page:limit:${limit}:${pageCursorKey}`);
 				const cachedPage = state.traceTimelinePageCache.get(pageCacheKey);
@@ -5092,7 +5128,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					"x-pibo-trace-version": version,
 					"cache-control": "no-store",
 				};
-				if (beforeSequence === undefined && requestMatchesVersion(request, version)) {
+				if (timelineCursor.kind === "tail" && requestMatchesVersion(request, version)) {
 					return new Response(null, { status: 304, headers: baseHeaders });
 				}
 				if (cachedPage) {
@@ -5111,26 +5147,78 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				let trace = cached;
 				let eventCount = 0;
 				if (!trace) {
-					const events = state.timelineQuery.listTraceEvents({
-						piboSessionId: selectedSession.id,
-						limit,
-						...(beforeSequence !== undefined ? { beforeSequence } : {}),
-					});
-					const transcriptEntries = beforeSequence === undefined && transcriptMetadata?.sessionPath
-						? readTailEntries(transcriptMetadata.sessionPath)
-						: [];
-					eventCount = events.length;
-					trace = await buildTraceView({
-						session: selectedSession,
-						sessions: ownedSessions,
-						events,
-						status: indexedSession?.status,
-						metadata: transcriptMetadata ?? {},
-						transcriptEntries,
-						includeRawEvents: false,
-						latestStreamId,
-					});
-					trace = annotateTracePage(trace, events, { lastEventSequence, pageSize: limit, beforeSequence });
+					if (timelineCursor.kind === "transcript") {
+						const history = transcriptMetadata?.sessionPath
+							? readTranscriptHistoryPage(transcriptMetadata.sessionPath, {
+								beforeByte: timelineCursor.beforeByte,
+								beforeTimestamp: timelineCursor.beforeTimestamp,
+								limit,
+							})
+							: { entries: [], hasOlder: false, scannedBytes: 0, startByte: 0, endByte: 0 };
+						trace = await buildTraceView({
+							session: selectedSession,
+							sessions: ownedSessions,
+							events: [],
+							status: indexedSession?.status,
+							metadata: transcriptMetadata ?? {},
+							transcriptEntries: history.entries,
+							transcriptOrderOffset: history.startByte,
+							includeRawEvents: false,
+							latestStreamId,
+						});
+						trace = {
+							...trace,
+							eventCount: lastEventSequence,
+							eventLimit: limit,
+							pageSize: limit,
+							beforeCursor: timelineCursor.raw,
+							nextBeforeCursor: history.hasOlder && history.nextBeforeByte !== undefined
+								? encodeTranscriptTimelineCursor(history.nextBeforeByte, timelineCursor.beforeTimestamp)
+								: undefined,
+							hasOlderEvents: history.hasOlder,
+						};
+					} else {
+						const events = state.timelineQuery.listTraceEvents({
+							piboSessionId: selectedSession.id,
+							limit,
+							...(beforeSequence !== undefined ? { beforeSequence } : {}),
+						});
+						const transcriptEntries = timelineCursor.kind === "tail" && transcriptMetadata?.sessionPath
+							? readTailEntries(transcriptMetadata.sessionPath)
+							: [];
+						eventCount = events.length;
+						trace = await buildTraceView({
+							session: selectedSession,
+							sessions: ownedSessions,
+							events,
+							status: indexedSession?.status,
+							metadata: transcriptMetadata ?? {},
+							transcriptEntries,
+							includeRawEvents: false,
+							latestStreamId,
+						});
+						trace = annotateTracePage(trace, events, {
+							lastEventSequence,
+							pageSize: limit,
+							beforeSequence,
+							beforeCursor: timelineCursor.kind === "event" ? timelineCursor.raw : undefined,
+						});
+						if (trace.hasOlderEvents !== true && events.length > 0) {
+							const cutoff = compactionCutoffTimestamp(events);
+							if (cutoff) {
+								const metadataStartedAt = performance.now();
+								const metadata = transcriptMetadata ?? await loadPiSessionMetadata(selectedSession, selectedSession.workspace ?? process.cwd());
+								metadataMs += performance.now() - metadataStartedAt;
+								if (metadata.sessionPath && metadata.sessionSize && metadata.sessionSize > 0) {
+									trace = {
+										...trace,
+										nextBeforeCursor: encodeTranscriptTimelineCursor(metadata.sessionSize, cutoff),
+										hasOlderEvents: true,
+									};
+								}
+							}
+						}
+					}
 					setTraceCache(state.traceCache, cacheKey, trace, TRACE_CACHE_MAX_ENTRIES);
 				}
 				trace = withLiveSnapshots(trace, liveSnapshots, {
@@ -5144,7 +5232,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					payloadStore: state.dataStore.payloads,
 					limit,
 					byteLimit: TRACE_V2_TIMELINE_HARD_BYTES,
-					fromTail: beforeSequence === undefined,
+					fromTail: timelineCursor.kind === "tail",
 				});
 				setTraceTimelinePageCache(state.traceTimelinePageCache, pageCacheKey, page);
 				return responseJson(page, {
@@ -5175,7 +5263,9 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/trace/raw-events` && request.method === "GET") {
 				const webSession = await requireSession(request, context);
-				const beforeSequence = parseTimelineBeforeCursor(url);
+				const rawCursor = parseTimelineBeforeCursor(url);
+				if (rawCursor.kind === "transcript") throw new PiboWebHttpError("Raw event cursor must be tail or a positive sequence", 400);
+				const beforeSequence = rawCursor.kind === "event" ? rawCursor.beforeSequence : undefined;
 				const limit = parsePositiveIntSearchParam(url, "limit", TRACE_V2_RAW_EVENTS_DEFAULT_LIMIT, TRACE_V2_RAW_EVENTS_MAX_LIMIT);
 				const selectedSession = resolveRequestedSession(
 					state,

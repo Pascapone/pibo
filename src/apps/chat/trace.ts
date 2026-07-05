@@ -73,6 +73,8 @@ type SessionMetadata = {
 };
 
 export const TRACE_TRANSCRIPT_TAIL_MAX_BYTES = 2 * 1024 * 1024;
+export const TRACE_TRANSCRIPT_HISTORY_PAGE_MAX_BYTES = 512 * 1024;
+export const TRACE_TRANSCRIPT_HISTORY_SCAN_MAX_BYTES = 16 * 1024 * 1024;
 
 type TraceBuildInput = {
 	session: PiboSession;
@@ -82,9 +84,19 @@ type TraceBuildInput = {
 	cwd?: string;
 	metadata?: SessionMetadata;
 	transcriptEntries?: SessionEntry[];
+	transcriptOrderOffset?: number;
 	includeRawEvents?: boolean;
 	rawEventsLimit?: number;
 	latestStreamId?: number;
+};
+
+export type TranscriptHistoryPage = {
+	entries: SessionEntry[];
+	nextBeforeByte?: number;
+	hasOlder: boolean;
+	scannedBytes: number;
+	startByte: number;
+	endByte: number;
 };
 
 export async function loadPiSessionMetadata(
@@ -227,6 +239,9 @@ export async function buildTraceView(input: TraceBuildInput): Promise<PiboSessio
 		includeRawEvents: input.includeRawEvents,
 		rawEventsLimit: input.rawEventsLimit,
 	});
+	if (input.transcriptOrderOffset && input.transcriptOrderOffset > 0) {
+		offsetTranscriptTraceOrder(view.nodes, input.transcriptOrderOffset);
+	}
 	annotateForkableUserMessageNodes(view.nodes, allEntries);
 
 	return {
@@ -433,6 +448,132 @@ export function readTailEntries(path: string, maxBytes = TRACE_TRANSCRIPT_TAIL_M
 		return parseSessionEntries(content).filter((entry): entry is SessionEntry => entry.type !== "session");
 	} finally {
 		closeSync(fd);
+	}
+}
+
+export function readTranscriptHistoryPage(
+	path: string,
+	input: {
+		beforeByte?: number;
+		beforeTimestamp?: string;
+		limit?: number;
+		pageBytes?: number;
+		maxScanBytes?: number;
+	} = {},
+): TranscriptHistoryPage {
+	if (!existsSync(path)) return { entries: [], hasOlder: false, scannedBytes: 0, startByte: 0, endByte: 0 };
+	const stats = statSync(path);
+	const fileSize = Math.max(0, stats.size);
+	const initialEnd = input.beforeByte === undefined
+		? fileSize
+		: Math.max(0, Math.min(input.beforeByte, fileSize));
+	const limit = Math.max(1, Math.min(input.limit ?? 50, 500));
+	const pageBytes = Math.max(1024, Math.min(input.pageBytes ?? TRACE_TRANSCRIPT_HISTORY_PAGE_MAX_BYTES, TRACE_TRANSCRIPT_HISTORY_SCAN_MAX_BYTES));
+	const maxScanBytes = Math.max(pageBytes, Math.min(input.maxScanBytes ?? TRACE_TRANSCRIPT_HISTORY_SCAN_MAX_BYTES, 32 * 1024 * 1024));
+	const beforeTime = input.beforeTimestamp ? Date.parse(input.beforeTimestamp) : undefined;
+	const entries: Array<{ entry: SessionEntry; startByte: number }> = [];
+	let cursorEnd = initialEnd;
+	let scannedBytes = 0;
+	let nextBeforeByte: number | undefined;
+
+	while (cursorEnd > 0 && entries.length < limit && scannedBytes < maxScanBytes) {
+		const chunkStart = Math.max(0, cursorEnd - pageBytes);
+		const chunk = readUtf8Range(path, chunkStart, cursorEnd);
+		scannedBytes += cursorEnd - chunkStart;
+		const records = transcriptLineRecords(chunk, chunkStart, cursorEnd);
+		for (let index = records.length - 1; index >= 0; index -= 1) {
+			const record = records[index];
+			const parsed = parseTranscriptLine(record.text);
+			for (let entryIndex = parsed.length - 1; entryIndex >= 0; entryIndex -= 1) {
+				const entry = parsed[entryIndex];
+				if (beforeTime !== undefined && entryTimestampMs(entry) >= beforeTime) continue;
+				entries.push({ entry, startByte: record.startByte });
+				if (entries.length >= limit) {
+					nextBeforeByte = record.startByte;
+					break;
+				}
+			}
+			if (entries.length >= limit) break;
+		}
+		cursorEnd = chunkStart;
+	}
+
+	if (nextBeforeByte === undefined) nextBeforeByte = cursorEnd > 0 ? cursorEnd : undefined;
+	return {
+		entries: entries.reverse().map((item) => item.entry),
+		nextBeforeByte,
+		hasOlder: nextBeforeByte !== undefined && nextBeforeByte > 0,
+		scannedBytes,
+		startByte: nextBeforeByte ?? 0,
+		endByte: initialEnd,
+	};
+}
+
+function readUtf8Range(path: string, start: number, end: number): string {
+	const length = Math.max(0, end - start);
+	if (length === 0) return "";
+	const buffer = Buffer.alloc(length);
+	const fd = openSync(path, "r");
+	try {
+		const bytesRead = readSync(fd, buffer, 0, length, start);
+		return buffer.subarray(0, bytesRead).toString("utf8");
+	} finally {
+		closeSync(fd);
+	}
+}
+
+function transcriptLineRecords(content: string, startByte: number, endByte: number): Array<{ text: string; startByte: number }> {
+	let text = content;
+	let byteOffset = startByte;
+	if (startByte > 0) {
+		const firstNewline = text.indexOf("\n");
+		if (firstNewline < 0) return [];
+		const skipped = text.slice(0, firstNewline + 1);
+		byteOffset += Buffer.byteLength(skipped, "utf8");
+		text = text.slice(firstNewline + 1);
+	}
+	if (endByte > startByte && text && !text.endsWith("\n")) {
+		const lastNewline = text.lastIndexOf("\n");
+		if (lastNewline >= 0) text = text.slice(0, lastNewline + 1);
+	}
+	const records: Array<{ text: string; startByte: number }> = [];
+	const segments = text.match(/[^\n]*(?:\n|$)/g) ?? [];
+	for (const segment of segments) {
+		if (!segment) continue;
+		const lineStart = byteOffset;
+		byteOffset += Buffer.byteLength(segment, "utf8");
+		const line = segment.replace(/\r?\n$/, "");
+		if (line.trim()) records.push({ text: line, startByte: lineStart });
+	}
+	return records;
+}
+
+function parseTranscriptLine(line: string): SessionEntry[] {
+	try {
+		return parseSessionEntries(`${line}\n`).filter((entry): entry is SessionEntry => entry.type !== "session");
+	} catch {
+		return [];
+	}
+}
+
+function entryTimestampMs(entry: SessionEntry): number {
+	const timestamp = (entry as { timestamp?: unknown }).timestamp;
+	if (typeof timestamp !== "string") return Number.POSITIVE_INFINITY;
+	const parsed = Date.parse(timestamp);
+	return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
+}
+
+function offsetTranscriptTraceOrder(nodes: PiboTraceNode[], offset: number): void {
+	for (const node of nodes) {
+		if (node.source === "transcript" && node.orderKey) {
+			const transcriptIndex = node.orderKey.transcriptIndex;
+			node.orderKey = {
+				...node.orderKey,
+				turnSeq: node.orderKey.turnSeq + offset,
+				transcriptIndex: transcriptIndex === undefined ? undefined : transcriptIndex + offset,
+			};
+		}
+		offsetTranscriptTraceOrder(node.children, offset);
 	}
 }
 

@@ -109,6 +109,7 @@ export type TraceTimelinePage = {
 	firstEventSequence?: number;
 	lastEventSequence?: number;
 	nextBeforeSequence?: number;
+	nextBeforeCursor?: string;
 	hasOlderEvents?: boolean;
 };
 
@@ -170,9 +171,11 @@ export type PiboSessionTraceView = {
 	eventLimit?: number;
 	pageSize?: number;
 	beforeSequence?: number;
+	beforeCursor?: string;
 	firstEventSequence?: number;
 	lastEventSequence?: number;
 	nextBeforeSequence?: number;
+	nextBeforeCursor?: string;
 	hasOlderEvents?: boolean;
 	nodes: PiboTraceNode[];
 	rawEvents: ChatWebStoredEvent[];
