@@ -1,4 +1,3 @@
-import { existsSync, readFileSync } from "node:fs";
 import { createDefaultPiboPlugins } from "../plugins/builtin.js";
 import type { BetterAuthServiceOptions } from "../auth/better-auth.js";
 import { createPiboBetterAuthPlugin } from "../plugins/better-auth.js";
@@ -40,14 +39,8 @@ export type WebGatewayServerOptions = GatewayServerOptions & {
 const PUBLIC_WEB_CHANNEL_HOST = "0.0.0.0";
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 
-function isDockerRuntime(): boolean {
-	if (existsSync("/.dockerenv")) return true;
-	try {
-		const cgroup = readFileSync("/proc/1/cgroup", "utf-8");
-		return /docker|kubepods|containerd/.test(cgroup);
-	} catch {
-		return false;
-	}
+function isComputeWorkerRuntime(): boolean {
+	return process.env.PIBO_COMPUTE_WORKER === "1";
 }
 
 export function isLoopbackHost(value: string | undefined): boolean {
@@ -63,7 +56,7 @@ function bindHost(options: WebGatewayServerOptions): string {
 function requireLocalAuthBind(options: WebGatewayServerOptions): void {
 	const host = bindHost(options);
 	if (isLoopbackHost(host)) return;
-	if (isDockerRuntime()) {
+	if (isComputeWorkerRuntime()) {
 		console.error(
 			`[pibo] WARNING: local auth is active in a Docker worker with bind ${host}. ` +
 				"The Docker network is the security boundary; ensure the host port mapping is loopback-only.",

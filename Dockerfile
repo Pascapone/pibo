@@ -41,7 +41,9 @@ RUN mkdir -p /root/.pibo/tools/agent-browser/home/bin \
     npm install --prefix /root/.pibo/tools/agent-browser/node agent-browser@0.27.0
 
 # Browser Wrapper vorbereiten (Pibo erwartet sie unter home/bin)
-RUN /app/scripts/prepare-browser-use-wrapper.sh && \
+RUN sed -i 's/\r$//' /app/scripts/*.sh && \
+    chmod +x /app/scripts/*.sh && \
+    /app/scripts/prepare-browser-use-wrapper.sh && \
     /app/scripts/prepare-agent-browser-wrapper.sh
 
 # Persistente Verzeichnisse für Pibo

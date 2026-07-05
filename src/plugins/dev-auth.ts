@@ -46,6 +46,25 @@ function isLoopbackSocketAddress(value: string | undefined): boolean {
 	return normalized === "::1" || normalized === "127.0.0.1" || normalized.startsWith("127.");
 }
 
+function isPrivateDockerBridgeSocketAddress(value: string | undefined): boolean {
+	if (!value) return false;
+	const normalized = value.startsWith("::ffff:") ? value.slice("::ffff:".length) : value;
+	if (normalized.startsWith("10.")) return true;
+	if (normalized.startsWith("192.168.")) return true;
+	const match = normalized.match(/^172\.(\d{1,2})\./);
+	if (!match) return false;
+	const secondOctet = Number(match[1]);
+	return secondOctet >= 16 && secondOctet <= 31;
+}
+
+function isComputeWorkerRuntime(env: NodeJS.ProcessEnv = process.env): boolean {
+	return env.PIBO_COMPUTE_WORKER === "1";
+}
+
+function isTrustedLocalSocketAddress(value: string | undefined): boolean {
+	return isLoopbackSocketAddress(value) || (isComputeWorkerRuntime() && isPrivateDockerBridgeSocketAddress(value));
+}
+
 /**
  * Read the TCP socket peer address attached to the request by the web host
  * channel via the `x-pibo-socket-peer` header. The header is internal and
@@ -88,6 +107,14 @@ export function isLoopbackSocketPeerForDevAuthHeaders(headers: Headers): boolean
 	return isLoopbackSocketAddress(firstHeaderValue(headers.get(SOCKET_PEER_HEADER)));
 }
 
+export function isTrustedLocalSocketPeerForDevAuth(request: Request): boolean {
+	return isTrustedLocalSocketAddress(getSocketPeerForDevAuth(request));
+}
+
+export function isTrustedLocalSocketPeerForDevAuthHeaders(headers: Headers): boolean {
+	return isTrustedLocalSocketAddress(firstHeaderValue(headers.get(SOCKET_PEER_HEADER)));
+}
+
 export function createDevAuthService(): PiboAuthService {
 	const containerToken = generateToken();
 	const debugSession: PiboAuthSession = {
@@ -116,7 +143,7 @@ export function createDevAuthService(): PiboAuthService {
 			// there is no cookie jar to share. Headless clients (VS Code
 			// extension, CLI scripts) can use the same dev identity as the
 			// browser without needing the HttpOnly session cookie.
-			if (isLoopbackDevAuthHeaders(headers) && isLoopbackSocketPeerForDevAuthHeaders(headers)) {
+			if (isLoopbackDevAuthHeaders(headers) && isTrustedLocalSocketPeerForDevAuthHeaders(headers)) {
 				return debugSession;
 			}
 			const token = getCookieValue(headers);
@@ -136,7 +163,7 @@ export function createDevAuthService(): PiboAuthService {
 			if (!isLoopbackDevAuthRequest(request)) {
 				return Response.json({ error: "Dev auth only accepts loopback requests" }, { status: 403 });
 			}
-			if (!isLoopbackSocketPeerForDevAuth(request)) {
+			if (!isTrustedLocalSocketPeerForDevAuth(request)) {
 				return Response.json({ error: "Dev auth only accepts loopback socket peers" }, { status: 403 });
 			}
 

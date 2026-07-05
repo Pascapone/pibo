@@ -132,6 +132,7 @@ test('one-time worker docker run args include resource policy and inspectable la
 	assert.ok(args.includes('--init'));
 	assert.ok(args.includes('max-size=12m'));
 	assert.ok(args.includes('max-file=4'));
+	assert.equal(valueAfter(args, '-e'), 'PIBO_COMPUTE_WORKER=1');
 	assert.equal(args.at(-1), 'gateway:web');
 
 	const runLabels = labels(args);
@@ -440,7 +441,7 @@ test('dev worker docker run args include resource policy labels worktree metadat
 	assert.ok(args.includes('--init'));
 	assert.ok(args.includes('max-size=12m'));
 	assert.ok(args.includes('max-file=4'));
-	assert.ok(args.includes('4870:4789'));
+	assert.ok(args.includes('127.0.0.1:4870:4789'));
 	assert.ok(args.includes('/repo/.worktrees/policy:/workspace'));
 	assert.ok(args.includes('/repo/node_modules:/workspace/node_modules'));
 	assert.equal(args.at(-2), '-c');

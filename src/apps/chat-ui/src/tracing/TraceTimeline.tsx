@@ -74,7 +74,6 @@ const DEFAULT_EXPANSION_DEPTH = 1;
 const OLDER_TRACE_PREFETCH_TOP_THRESHOLD_PX = 1_200;
 const OLDER_TRACE_PREFETCH_ROW_THRESHOLD = 8;
 const INITIAL_BOTTOM_ITEM = { index: "LAST", align: "end" } as const;
-const AUTO_FILL_OLDER_HISTORY_MIN_ROWS = 40;
 
 export function TraceTimeline({
 	trace,
@@ -100,6 +99,7 @@ export function TraceTimeline({
 	const [levelInput, setLevelInput] = useState(String(DEFAULT_EXPANSION_DEPTH));
 	const [expansionOverrides, setExpansionOverrides] = useState<Record<string, { contentExpanded: boolean; childrenExpanded: boolean }>>({});
 	const rangePrefetchReadyRef = useRef(false);
+	const olderTraceIntentRef = useRef(false);
 
 	const spanTree = useMemo(() => {
 		if (!trace?.spans) return [];
@@ -135,10 +135,17 @@ export function TraceTimeline({
 		}
 		return rows;
 	}, [expandThinking, expansionDepth, expansionOverrides, spanTree, trace?.id, trace?.status]);
-	const loadOlderAtTop = useCallback(() => {
+	const loadOlderTracePage = useCallback(() => {
 		if (!hasOlderTraceEvents || isFetchingOlderTracePage) return;
 		onLoadOlderTracePage?.();
 	}, [hasOlderTraceEvents, isFetchingOlderTracePage, onLoadOlderTracePage]);
+	const loadOlderAtTop = useCallback(() => {
+		if (!olderTraceIntentRef.current) return;
+		loadOlderTracePage();
+	}, [loadOlderTracePage]);
+	const markOlderTraceIntent = useCallback((event?: Event) => {
+		if (isOlderTraceScrollIntent(event)) olderTraceIntentRef.current = true;
+	}, []);
 	const handleVisibleRangeChanged = useCallback((range: { startIndex: number; endIndex: number }) => {
 		if (!rangePrefetchReadyRef.current) return;
 		if (range.startIndex <= OLDER_TRACE_PREFETCH_ROW_THRESHOLD) loadOlderAtTop();
@@ -150,11 +157,13 @@ export function TraceTimeline({
 		contentKey: visibleRows,
 		nearTopThreshold: OLDER_TRACE_PREFETCH_TOP_THRESHOLD_PX,
 		onNearTop: loadOlderAtTop,
+		onUserScrollIntent: markOlderTraceIntent,
 	});
 
 	useEffect(() => {
 		setExpansionOverrides({});
 		rangePrefetchReadyRef.current = false;
+		olderTraceIntentRef.current = false;
 		const readyTimer = window.setTimeout(() => {
 			rangePrefetchReadyRef.current = true;
 		}, 600);
@@ -193,11 +202,6 @@ export function TraceTimeline({
 		const parsedLevel = Number.parseInt(levelInput, 10);
 		applyExpansionDepth(Number.isFinite(parsedLevel) && parsedLevel > 0 ? parsedLevel : DEFAULT_EXPANSION_DEPTH);
 	};
-	useEffect(() => {
-		if (visibleRows.length === 0 || visibleRows.length >= AUTO_FILL_OLDER_HISTORY_MIN_ROWS) return;
-		loadOlderAtTop();
-	}, [loadOlderAtTop, visibleRows.length]);
-
 	return (
 		<section className="min-w-0 flex-1 flex flex-col bg-[#0c1214] relative overflow-hidden">
 			<div className="min-h-14 px-6 py-1.5 border-b border-slate-800 bg-[#1a262b]/80 flex items-center justify-between gap-3 sticky top-0 z-20 max-[980px]:flex-wrap max-[980px]:px-3">
@@ -673,4 +677,10 @@ export function flattenVisibleSpans(
 		}
 	}
 	return rows;
+}
+
+function isOlderTraceScrollIntent(event?: Event) {
+	if (event instanceof WheelEvent) return event.deltaY < 0;
+	if (event instanceof KeyboardEvent) return ["ArrowUp", "PageUp", "Home"].includes(event.key);
+	return event?.type === "touchmove";
 }

@@ -5,6 +5,7 @@ import {
 	getSocketPeerForDevAuth,
 	isLoopbackDevAuthRequest,
 	isLoopbackSocketPeerForDevAuth,
+	isTrustedLocalSocketPeerForDevAuthHeaders,
 } from "../dist/plugins/dev-auth.js";
 
 test("dev auth accepts loopback requests", () => {
@@ -141,6 +142,32 @@ test("getSession rejects callers with a public socket peer", async () => {
 	const session = await service.getSession(headers);
 
 	assert.equal(session, undefined);
+});
+
+test("getSession accepts Docker bridge callers only inside compute workers", async () => {
+	const previous = process.env.PIBO_COMPUTE_WORKER;
+	try {
+		const headers = new Headers({
+			host: "127.0.0.1:4788",
+			"x-pibo-socket-peer": "172.17.0.1",
+		});
+
+		process.env.PIBO_COMPUTE_WORKER = "1";
+		assert.equal(isTrustedLocalSocketPeerForDevAuthHeaders(headers), true);
+		const service = createDevAuthService();
+		const session = await service.getSession(headers);
+		assert.ok(session);
+		assert.equal(session?.identity.email, "dev@pibo.local");
+
+		process.env.PIBO_COMPUTE_WORKER = "0";
+		assert.equal(isTrustedLocalSocketPeerForDevAuthHeaders(headers), false);
+	} finally {
+		if (previous === undefined) {
+			delete process.env.PIBO_COMPUTE_WORKER;
+		} else {
+			process.env.PIBO_COMPUTE_WORKER = previous;
+		}
+	}
 });
 
 test("getSession rejects callers when the socket peer header is missing", async () => {

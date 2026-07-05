@@ -132,6 +132,13 @@ export type { ChatAppRoute } from "./app-routes";
 type LoadBootstrapOptions = {
 	selectSession?: boolean;
 	force?: boolean;
+	signal?: AbortSignal;
+};
+
+type LoadNavigationOptions = {
+	force?: boolean;
+	readSessionId?: string;
+	signal?: AbortSignal;
 };
 
 const SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS = 750;
@@ -139,6 +146,15 @@ const NAVIGATION_FALLBACK_REFRESH_MS = 30_000;
 const SESSION_PAGE_SIZE = 120;
 const ARCHIVED_SESSION_PAGE_SIZE = 60;
 const EMPTY_SESSION_PATH_IDS = new Set<string>();
+
+function isAbortError(value: unknown): boolean {
+	return value instanceof DOMException && value.name === "AbortError";
+}
+
+function streamIdFromEventSourceId(lastEventId: string): number | undefined {
+	const streamId = Number(lastEventId.split(":", 1)[0]);
+	return Number.isFinite(streamId) ? streamId : undefined;
+}
 
 async function loadBootstrapQueryData(
 	queryClient: QueryClient,
@@ -148,11 +164,12 @@ async function loadBootstrapQueryData(
 		roomId?: string;
 		markRead?: boolean;
 		force?: boolean;
+		signal?: AbortSignal;
 	},
 ): Promise<BootstrapData> {
 	const queryKey = chatBootstrapQueryKey(input.piboSessionId, input.includeArchived, input.roomId);
 	await queryClient.removeQueries({ queryKey, exact: true });
-	return getBootstrap(input.piboSessionId, input.includeArchived, input.roomId, Boolean(input.markRead));
+	return getBootstrap(input.piboSessionId, input.includeArchived, input.roomId, Boolean(input.markRead), { signal: input.signal });
 }
 
 async function loadNavigationQueryData(
@@ -162,11 +179,12 @@ async function loadNavigationQueryData(
 		includeArchived?: boolean;
 		roomId?: string;
 		force?: boolean;
+		signal?: AbortSignal;
 	},
 ): Promise<NavigationData> {
 	const queryKey = chatSessionNavigationQueryKey(input.includeArchived, input.roomId, input.piboSessionId);
 	await queryClient.removeQueries({ queryKey, exact: true });
-	return getNavigation(input.piboSessionId, input.includeArchived, input.roomId);
+	return getNavigation(input.piboSessionId, input.includeArchived, input.roomId, { signal: input.signal });
 }
 
 export function App({ route }: { route: ChatAppRoute }) {
@@ -200,6 +218,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const [visibleActiveSessionCount, setVisibleActiveSessionCount] = useState(SESSION_PAGE_SIZE);
 	const [visibleArchivedSessionCount, setVisibleArchivedSessionCount] = useState(ARCHIVED_SESSION_PAGE_SIZE);
 	const [loadingPiboSessionId, setLoadingPiboSessionId] = useState<string | null>(null);
+	const [loadingRoomId, setLoadingRoomId] = useState<string | null>(null);
 	const [autoRenameSessionId, setAutoRenameSessionId] = useState<string | null>(null);
 	const [contextPanel, setContextPanel] = useState<ContextPanel>("build-context");
 	const [selectedContextFileKey, setSelectedContextFileKey] = useState<string | null>(null);
@@ -216,9 +235,12 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const bootstrapRef = useRef<BootstrapData | null>(null);
 	const bootstrapRequestId = useRef(0);
 	const navigationInFlightRef = useRef(new Map<string, Promise<NavigationData>>());
+	const roomSwitchControllerRef = useRef<AbortController | null>(null);
+	const roomSwitchGenerationRef = useRef(0);
 	const activeRoomId = selectedRoomId ?? bootstrap?.selectedRoomId ?? null;
 	const selectedRoom = activeRoomId && bootstrap ? findRoomById(bootstrap.rooms, activeRoomId) ?? bootstrap.room : undefined;
 	const selectedRoomArchived = selectedRoom ? isArchivedRoom(selectedRoom) : false;
+	const loadingSelectedRoom = Boolean(loadingRoomId && loadingRoomId === selectedRoomId);
 
 	useEffect(() => {
 		showArchivedRef.current = showArchived;
@@ -261,12 +283,14 @@ export function App({ route }: { route: ChatAppRoute }) {
 			return;
 		}
 		let signalRecoveryTimer: ReturnType<typeof setTimeout> | undefined;
+		const controller = new AbortController();
 		const refreshSignalSnapshot = (delayMs: number) => {
 			if (signalRecoveryTimer) clearTimeout(signalRecoveryTimer);
 			signalRecoveryTimer = setTimeout(() => {
 				signalRecoveryTimer = undefined;
-				fetchSignalTree(selectedPiboSessionId)
+				fetchSignalTree(selectedPiboSessionId, { signal: controller.signal })
 					.then((snapshot) => {
+						if (controller.signal.aborted) return;
 						setSessionSignals(snapshot);
 						setBootstrap((latest) => latest ? applySignalSnapshotToBootstrap(latest, snapshot) : latest);
 					})
@@ -293,6 +317,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 			onError: () => refreshSignalSnapshot(SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS),
 		});
 		return () => {
+			controller.abort();
 			if (signalRecoveryTimer) clearTimeout(signalRecoveryTimer);
 			unsubscribe();
 		};
@@ -409,6 +434,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 		includeArchived?: boolean;
 		roomId?: string;
 		force?: boolean;
+		signal?: AbortSignal;
 	}) => {
 		const key = JSON.stringify([
 			input.piboSessionId ?? "",
@@ -416,6 +442,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 			input.roomId ?? "",
 			input.force === true ? "force" : "cached",
 		]);
+		if (input.signal) return loadNavigationQueryData(queryClient, input);
 		const inFlight = navigationInFlightRef.current.get(key);
 		if (inFlight) return inFlight;
 		const request = loadNavigationQueryData(queryClient, input).finally(() => {
@@ -436,7 +463,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 			if (piboSessionId) await markSessionRead(piboSessionId);
 			const requestId = bootstrapRequestId.current + 1;
 			bootstrapRequestId.current = requestId;
-			const navigation = await fetchNavigation({ piboSessionId, includeArchived, roomId });
+			const navigation = await fetchNavigation({ piboSessionId, includeArchived, roomId, signal: options.signal });
 			const data = mergeNavigationIntoBootstrap(currentBootstrap, navigation, { readSessionId: piboSessionId });
 			if (requestId !== bootstrapRequestId.current) return data;
 			setBootstrap(data);
@@ -452,6 +479,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 			roomId,
 			markRead: options.selectSession !== false,
 			force: options.force,
+			signal: options.signal,
 		});
 		if (requestId !== bootstrapRequestId.current) return data;
 		setBootstrap(data);
@@ -464,13 +492,13 @@ export function App({ route }: { route: ChatAppRoute }) {
 		piboSessionId?: string,
 		includeArchived = showArchivedRef.current,
 		roomId?: string,
-		options: { force?: boolean; readSessionId?: string } = {},
+		options: LoadNavigationOptions = {},
 	) => {
 		const currentBootstrap = bootstrapRef.current;
-		if (!currentBootstrap) return loadBootstrap(piboSessionId, includeArchived, roomId, { force: options.force });
+		if (!currentBootstrap) return loadBootstrap(piboSessionId, includeArchived, roomId, { force: options.force, signal: options.signal });
 		const requestId = bootstrapRequestId.current + 1;
 		bootstrapRequestId.current = requestId;
-		const navigation = await fetchNavigation({ piboSessionId, includeArchived, roomId, force: options.force });
+		const navigation = await fetchNavigation({ piboSessionId, includeArchived, roomId, force: options.force, signal: options.signal });
 		const data = mergeNavigationIntoBootstrap(currentBootstrap, navigation, { readSessionId: options.readSessionId });
 		if (requestId !== bootstrapRequestId.current) return data;
 		setBootstrap(data);
@@ -642,35 +670,40 @@ export function App({ route }: { route: ChatAppRoute }) {
 
 	useEffect(() => {
 		if (area !== "sessions" || !activeRoomId) return;
+		if (bootstrap?.selectedRoomId !== activeRoomId || typeof latestRoomStreamId !== "number") return;
 		const params = new URLSearchParams({ roomId: activeRoomId });
 		params.set("mode", "summary");
-		params.set("since", `${latestRoomStreamId ?? 0}:999999`);
+		params.set("since", `${latestRoomStreamId}:999999`);
 		const events = new EventSource(`/api/chat/events?${params.toString()}`);
-		let bootstrapTimer: ReturnType<typeof setTimeout> | undefined;
-		const scheduleFullBootstrapRefresh = () => {
-			if (bootstrapTimer) clearTimeout(bootstrapTimer);
-			bootstrapTimer = setTimeout(() => {
-				bootstrapTimer = undefined;
-				loadBootstrap(selectedPiboSessionId ?? undefined, showArchivedRef.current, activeRoomId, { force: true, selectSession: false })
-					.catch((caught) => setError(errorMessage(caught)));
+		let navigationTimer: ReturnType<typeof setTimeout> | undefined;
+		const scheduleNavigationRefresh = () => {
+			if (navigationTimer) clearTimeout(navigationTimer);
+			navigationTimer = setTimeout(() => {
+				navigationTimer = undefined;
+				loadNavigation(selectedPiboSessionId ?? undefined, showArchivedRef.current, activeRoomId, { force: true })
+					.catch((caught) => {
+						if (!isAbortError(caught)) setError(errorMessage(caught));
+					});
 			}, 900);
 		};
 		events.addEventListener("pibo", (message) => {
 			const event = chatStreamEvent(message);
 			if (!event || event.type === "ready") return;
+			const messageStreamId = streamIdFromEventSourceId((message as MessageEvent).lastEventId);
+			const replayFrame = messageStreamId !== undefined && messageStreamId <= latestRoomStreamId;
 			const targetPiboSessionId = event.piboSessionId;
 			const status = liveSessionStatusFromEvent(event);
 			if (targetPiboSessionId && status) {
 				const lastActivityAt = new Date().toISOString();
 				updateBootstrapCache((data) => updateSessionNodeInBootstrap(data, targetPiboSessionId, (node) => ({ ...node, status, lastActivityAt })));
 			}
-			if (eventShouldRefreshNavigation(event)) scheduleFullBootstrapRefresh();
+			if (!replayFrame && eventShouldRefreshNavigation(event)) scheduleNavigationRefresh();
 		});
 		return () => {
-			if (bootstrapTimer) clearTimeout(bootstrapTimer);
+			if (navigationTimer) clearTimeout(navigationTimer);
 			events.close();
 		};
-	}, [activeRoomId, area, latestRoomStreamId, loadBootstrap, selectedPiboSessionId, updateBootstrapCache]);
+	}, [activeRoomId, area, bootstrap?.selectedRoomId, latestRoomStreamId, loadNavigation, selectedPiboSessionId, updateBootstrapCache]);
 
 	const restoreBootstrapSnapshot = useCallback((snapshot: BootstrapMutationSnapshot | undefined) => {
 		if (!snapshot) return;
@@ -806,17 +839,34 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const selectRoom = useCallback(async (roomId: string, options: NavigationOptions = {}) => {
 		const navigationOptions = { ...options, closeMobileSidebar: false };
 		const storedPiboSessionId = readStoredSelection().sessionsByRoom?.[roomId];
-		setSelectedRoomId(roomId);
-		setSelectedPiboSessionId(storedPiboSessionId ?? null);
+		const generation = roomSwitchGenerationRef.current + 1;
+		roomSwitchGenerationRef.current = generation;
+		roomSwitchControllerRef.current?.abort();
+		const controller = new AbortController();
+		roomSwitchControllerRef.current = controller;
+		flushSync(() => {
+			setSelectedRoomId(roomId);
+			setSelectedPiboSessionId(storedPiboSessionId ?? null);
+			setLoadingRoomId(roomId);
+			setMobileSidebarOpen(false);
+		});
 		try {
-			const data = await loadNavigation(storedPiboSessionId, showArchivedRef.current, roomId);
+			const data = await loadNavigation(storedPiboSessionId, showArchivedRef.current, roomId, { signal: controller.signal });
+			if (roomSwitchGenerationRef.current !== generation || controller.signal.aborted) return;
 			navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId, false, navigationOptions);
 		} catch (caught) {
+			if (isAbortError(caught)) return;
 			if (!storedPiboSessionId) throw caught;
 			removeStoredRoomSelection(roomId);
 			setSelectedPiboSessionId(null);
-			const data = await loadNavigation(undefined, showArchivedRef.current, roomId);
+			const data = await loadNavigation(undefined, showArchivedRef.current, roomId, { signal: controller.signal });
+			if (roomSwitchGenerationRef.current !== generation || controller.signal.aborted) return;
 			navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId, false, navigationOptions);
+		} finally {
+			if (roomSwitchGenerationRef.current === generation) {
+				if (roomSwitchControllerRef.current === controller) roomSwitchControllerRef.current = null;
+				setLoadingRoomId((current) => current === roomId ? null : current);
+			}
 		}
 	}, [loadNavigation, navigateToSelectedSession]);
 
@@ -1282,6 +1332,8 @@ export function App({ route }: { route: ChatAppRoute }) {
 							creatingRoom={creatingRoom}
 							onCreateRoom={() => createRoom()}
 							onSelectRoom={selectRoom}
+							loadingRoomId={loadingRoomId}
+							roomSessionsLoading={loadingSelectedRoom}
 							onUpdateRoom={updateRoom}
 							onArchiveRoom={setRoomArchived}
 							onReadAllRoom={readAllRoom}
@@ -1337,6 +1389,8 @@ export function App({ route }: { route: ChatAppRoute }) {
 						selectedPiboSessionId={selectedPiboSessionId}
 						selectedRoomId={selectedRoomId}
 						selectedRoomArchived={selectedRoomArchived}
+						roomNavigationPending={loadingSelectedRoom}
+						sessionNavigationPending={Boolean(loadingPiboSessionId && loadingPiboSessionId === selectedPiboSessionId)}
 						selectedSessionProfile={selectedSessionNode?.profile ?? defaultProfileFromBootstrap(bootstrap)}
 						selectedSessionActiveModel={selectedSessionActiveModel}
 						selectedSessionStatus={signalLegacyStatus(selectedSessionSignal ?? selectedRootSignal) ?? selectedSessionNode?.status}

@@ -73,6 +73,10 @@ function isLoopbackBindForCli(host: string): boolean {
 	return normalized === "127.0.0.1" || normalized === "::1" || normalized === "localhost";
 }
 
+function isComputeWorkerRuntimeForCli(): boolean {
+	return process.env.PIBO_COMPUTE_WORKER === "1";
+}
+
 export async function runPiboCli(argv = process.argv): Promise<void> {
 	if (argv[2] === "--help" || argv[2] === "-h") {
 		printRootDiscovery();
@@ -424,7 +428,7 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 			if (authMode !== undefined && authMode !== "better-auth" && authMode !== "local") {
 				throw new Error(`--auth must be 'better-auth' or 'local', got '${authMode}'`);
 			}
-			if (authMode === "local" && options.webHost !== undefined && !isLoopbackBindForCli(options.webHost)) {
+			if (authMode === "local" && options.webHost !== undefined && !isLoopbackBindForCli(options.webHost) && !isComputeWorkerRuntimeForCli()) {
 				throw new Error(
 					`--auth=local requires a loopback bind (127.0.0.1, ::1, or localhost). Got --web-host='${options.webHost}'. ` +
 						"Either drop --web-host or pick --auth=better-auth for a public bind.",

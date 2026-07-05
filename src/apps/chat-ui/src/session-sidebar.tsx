@@ -60,6 +60,8 @@ export type SessionSidebarProps = {
 	creatingRoom: boolean;
 	onCreateRoom: () => void | Promise<void>;
 	onSelectRoom: (roomId: string) => void | Promise<void>;
+	loadingRoomId?: string | null;
+	roomSessionsLoading?: boolean;
 	onUpdateRoom: (roomId: string, input: RoomUpdateInput) => void | Promise<void>;
 	onArchiveRoom: (roomId: string, archived: boolean) => void | Promise<void>;
 	onReadAllRoom: (roomId: string) => void | Promise<void>;
@@ -102,6 +104,8 @@ export function SessionSidebar({
 	creatingRoom,
 	onCreateRoom,
 	onSelectRoom,
+	loadingRoomId,
+	roomSessionsLoading = false,
 	onUpdateRoom,
 	onArchiveRoom,
 	onReadAllRoom,
@@ -155,6 +159,7 @@ export function SessionSidebar({
 								<RoomNode
 									room={sharedDefaultRoom}
 									selectedRoomId={selectedRoomId}
+									loadingRoomId={loadingRoomId}
 									onSelect={(roomId) => void onSelectRoom(roomId)}
 									onUpdate={(roomId, input) => void onUpdateRoom(roomId, input)}
 									onArchive={(roomId, archived) => void onArchiveRoom(roomId, archived)}
@@ -194,6 +199,7 @@ export function SessionSidebar({
 								key={room.id}
 								room={room}
 								selectedRoomId={selectedRoomId}
+								loadingRoomId={loadingRoomId}
 								onSelect={(roomId) => void onSelectRoom(roomId)}
 								onUpdate={(roomId, input) => void onUpdateRoom(roomId, input)}
 								onArchive={(roomId, archived) => void onArchiveRoom(roomId, archived)}
@@ -209,6 +215,7 @@ export function SessionSidebar({
 									<ArchivedRoomsList
 										rooms={roomGroups.archived}
 										selectedRoomId={selectedRoomId}
+										loadingRoomId={loadingRoomId}
 										onSelect={(roomId) => void onSelectRoom(roomId)}
 										onUpdate={(roomId, input) => void onUpdateRoom(roomId, input)}
 										onArchive={(roomId, archived) => void onArchiveRoom(roomId, archived)}
@@ -268,6 +275,10 @@ export function SessionSidebar({
 					</div>
 				</div>
 				<div ref={sessionListScrollRef} className="min-h-0 flex-1 overflow-y-auto pr-1">
+				{roomSessionsLoading ? (
+					<RoomSessionsLoadingSkeleton />
+				) : (
+					<>
 				{visibleActiveSessions.map((session) => (
 					<SessionNode
 						key={session.piboSessionId}
@@ -336,6 +347,8 @@ export function SessionSidebar({
 					) : <div className="px-2 py-3 text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm">No archived sessions</div>}
 				</div>
 			) : null}
+					</>
+				)}
 				</div>
 			</div>
 		</div>
@@ -345,6 +358,7 @@ export function SessionSidebar({
 function ArchivedRoomsList({
 	rooms,
 	selectedRoomId,
+	loadingRoomId,
 	onSelect,
 	onUpdate,
 	onArchive,
@@ -353,6 +367,7 @@ function ArchivedRoomsList({
 }: {
 	rooms: PiboRoom[];
 	selectedRoomId: string | null;
+	loadingRoomId?: string | null;
 	onSelect: (roomId: string) => void;
 	onUpdate: (roomId: string, input: { name?: string; topic?: string | null; workspace?: string | null }) => void;
 	onArchive: (roomId: string, archived: boolean) => void;
@@ -366,12 +381,53 @@ function ArchivedRoomsList({
 					key={room.id}
 					room={room}
 					selectedRoomId={selectedRoomId}
+					loadingRoomId={loadingRoomId}
 					onSelect={onSelect}
 					onUpdate={onUpdate}
 					onArchive={onArchive}
 					onReadAll={onReadAll}
 					onDelete={onDelete}
 				/>
+			))}
+		</div>
+	);
+}
+
+function RoomSessionsLoadingSkeleton() {
+	const rows = [0, 1, 2, 3, 4];
+	return (
+		<div
+			data-pibo-debug="room-sessions-loading"
+			className="space-y-1"
+			aria-live="polite"
+			aria-label="Loading room sessions"
+		>
+			{rows.map((row) => (
+				<div
+					key={row}
+					className={`w-full grid grid-cols-[1fr_auto] gap-1 items-center mb-1 border rounded-sm animate-pulse ${
+						row === 0 ? "border-[#11a4d4] bg-[#11a4d4]/10" : "border-transparent"
+					}`}
+					style={{ paddingLeft: 8 }}
+					aria-hidden="true"
+				>
+					<div className="min-w-0 grid grid-cols-[1fr_auto] gap-2 items-center py-1 pr-1">
+						<div className="min-w-0 text-left px-1 py-1 grid grid-cols-[minmax(0,1fr)_auto] gap-2 items-center">
+							<span className="min-w-0">
+								<span className="flex min-w-0 items-center gap-1.5">
+									<span className={`block h-[15px] min-w-0 rounded-sm ${row === 0 ? "w-44 bg-slate-300/75" : row % 2 === 0 ? "w-40 bg-slate-400/35" : "w-36 bg-slate-400/30"}`} />
+								</span>
+								<span className="mt-0.5 flex min-w-0 items-center gap-1.5">
+									<span className={`h-[10px] rounded-sm bg-slate-600/45 ${row % 2 === 0 ? "w-40" : "w-48"}`} />
+								</span>
+							</span>
+						</div>
+						<span className="grid grid-rows-[16px_16px] place-items-center gap-0.5">
+							<span className={`h-2 w-2 rounded-full ${row === 0 ? "bg-[#11a4d4]" : row % 2 === 0 ? "bg-slate-600" : "bg-[#11a4d4]/55"}`} />
+							<span className="h-4 w-4" />
+						</span>
+					</div>
+				</div>
 			))}
 		</div>
 	);
@@ -493,6 +549,7 @@ function ArchivedSessionsList({
 function RoomNode({
 	room,
 	selectedRoomId,
+	loadingRoomId,
 	onSelect,
 	onUpdate,
 	onArchive,
@@ -502,6 +559,7 @@ function RoomNode({
 }: {
 	room: PiboRoom;
 	selectedRoomId: string | null;
+	loadingRoomId?: string | null;
 	onSelect: (roomId: string) => void;
 	onUpdate: (roomId: string, input: { name?: string; topic?: string | null; workspace?: string | null }) => void;
 	onArchive: (roomId: string, archived: boolean) => void;
@@ -515,6 +573,7 @@ function RoomNode({
 	const [draftWorkspace, setDraftWorkspace] = useState(room.workspace ?? "");
 	const personal = isSharedDefaultRoom(room);
 	const archived = isArchivedRoom(room);
+	const loading = room.id === loadingRoomId;
 	const [menuOpen, setMenuOpen] = useState(false);
 	const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
 	const menuButtonRef = useRef<HTMLButtonElement>(null);
@@ -589,6 +648,9 @@ function RoomNode({
 	return (
 		<div>
 			<div
+				data-pibo-debug="room-node"
+				data-pibo-room-id={room.id}
+				data-pibo-state={loading ? "loading" : room.id === selectedRoomId ? "selected" : archived ? "archived" : "idle"}
 				className={`group mb-1 border rounded-sm ${
 					personal
 						? room.id === selectedRoomId
@@ -656,7 +718,10 @@ function RoomNode({
 								<span className={`block text-sm truncate ${archived ? "text-slate-500" : "text-slate-200"}`}>{room.name}</span>
 								<span className="block text-[10px] font-mono truncate text-slate-500">{personal ? "shared default room" : archived ? "archived" : formatRoomSummary(room)}</span>
 							</span>
-							<UnreadBadge count={room.unreadCount} />
+							<span className="inline-flex items-center justify-end gap-1">
+								{loading ? <Loader2 size={13} className="animate-spin text-[#11a4d4]" aria-label="Loading room" /> : null}
+								<UnreadBadge count={room.unreadCount} />
+							</span>
 						</button>
 						<div className="flex items-center gap-1 pr-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity max-[980px]:opacity-100">
 							{personal ? (
@@ -751,6 +816,7 @@ function RoomNode({
 					key={child.id}
 					room={child}
 						selectedRoomId={selectedRoomId}
+						loadingRoomId={loadingRoomId}
 						onSelect={onSelect}
 						onUpdate={onUpdate}
 						onArchive={onArchive}
