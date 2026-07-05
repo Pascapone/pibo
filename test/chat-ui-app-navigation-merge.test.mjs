@@ -10,6 +10,7 @@ async function runNavigationMergeScenario() {
 		import assert from "node:assert/strict";
 		const {
 			appendSessionRoots,
+			markSessionSubtreeReadInBootstrap,
 			mergeNavigationIntoBootstrap,
 		} = await import("./src/apps/chat-ui/src/app-navigation-merge.ts");
 
@@ -100,6 +101,16 @@ async function runNavigationMergeScenario() {
 		assert.equal(merged.sessions[0].children[0].children[0].unreadCount, undefined, "read descendant unread count is cleared");
 		assert.equal(merged.rooms[0].unreadCount, 2, "selected room ancestors subtract the cleared session unread count");
 		assert.equal(merged.rooms[0].children[0].unreadCount, undefined, "selected room unread count clears when all selected unread was read");
+
+		const optimistic = markSessionSubtreeReadInBootstrap(current, "ps-child", "room-child");
+		assert.equal(optimistic.selectedPiboSessionId, "ps-child", "optimistic selection updates the bootstrap selection immediately");
+		assert.equal(optimistic.selectedRoomId, "room-child");
+		assert.equal(optimistic.agents, current.agents, "bootstrap-only fields survive optimistic selection");
+		assert.equal(optimistic.sessions[0].unreadCount, 4, "optimistic read preserves unread outside the selected subtree");
+		assert.equal(optimistic.sessions[0].children[0].unreadCount, undefined, "optimistic read clears selected session unread");
+		assert.equal(optimistic.sessions[0].children[0].children[0].unreadCount, undefined, "optimistic read clears selected descendants");
+		assert.equal(optimistic.rooms[0].unreadCount, 2, "optimistic read subtracts selected unread from room ancestors");
+		assert.equal(optimistic.rooms[0].children[0].unreadCount, undefined, "optimistic read clears the selected room unread count");
 
 		const navigationWithFreshUnread = {
 			...navigation,

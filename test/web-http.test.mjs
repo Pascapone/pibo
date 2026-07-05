@@ -42,8 +42,21 @@ test("sendWebResponse compresses large JSON responses with gzip", async () => {
 		const { response, body } = await rawGet(baseURL, { "accept-encoding": "gzip" });
 		assert.equal(response.statusCode, 200);
 		assert.equal(response.headers["content-encoding"], "gzip");
+		assert.match(response.headers["server-timing"] ?? "", /response_compress/);
 		assert.match(response.headers.vary ?? "", /accept-encoding/i);
 		assert.deepEqual(JSON.parse(gunzipSync(body).toString("utf8")), { payload: "x".repeat(2048) });
+	});
+});
+
+test("sendWebResponse skips sync gzip for medium trace-sized JSON responses", async () => {
+	await withServer((request, response) => {
+		void sendWebResponse(response, responseJson({ payload: "x".repeat(96 * 1024) }));
+	}, async (baseURL) => {
+		const { response, body } = await rawGet(baseURL, { "accept-encoding": "gzip" });
+		assert.equal(response.statusCode, 200);
+		assert.equal(response.headers["content-encoding"], undefined);
+		assert.equal(response.headers["x-pibo-compression-skipped"], "sync-gzip-size-limit");
+		assert.deepEqual(JSON.parse(body.toString("utf8")), { payload: "x".repeat(96 * 1024) });
 	});
 });
 

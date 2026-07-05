@@ -117,7 +117,7 @@ import { MinimalWorkflowsArea } from "./MinimalWorkflowsArea";
 import { DeleteRoomModal, DeleteSessionModal } from "./delete-confirmation-modals";
 import { AppErrorBanner, AppHeader, FallbackGatewayBanner, SignedOut, type AppArea as Area } from "./app-chrome";
 import { applySignalPatch, applySignalPatchToBootstrap, applySignalSnapshotToBootstrap, signalLegacyStatus } from "./app-signal-status";
-import { appendSessionRoots, mergeNavigationIntoBootstrap } from "./app-navigation-merge";
+import { appendSessionRoots, markSessionSubtreeReadInBootstrap, mergeNavigationIntoBootstrap } from "./app-navigation-merge";
 import {
 	removeAgentCatalogPiPackage,
 	removeAgentCatalogUserSkill,
@@ -183,8 +183,15 @@ async function loadNavigationQueryData(
 	},
 ): Promise<NavigationData> {
 	const queryKey = chatSessionNavigationQueryKey(input.includeArchived, input.roomId, input.piboSessionId);
-	await queryClient.removeQueries({ queryKey, exact: true });
-	return getNavigation(input.piboSessionId, input.includeArchived, input.roomId, { signal: input.signal });
+	if (!input.force) {
+		const cached = queryClient.getQueryData<NavigationData>(queryKey);
+		if (cached) return cached;
+	} else {
+		await queryClient.removeQueries({ queryKey, exact: true });
+	}
+	const navigation = await getNavigation(input.piboSessionId, input.includeArchived, input.roomId, { signal: input.signal });
+	queryClient.setQueryData(queryKey, navigation);
+	return navigation;
 }
 
 export function App({ route }: { route: ChatAppRoute }) {
@@ -460,7 +467,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	) => {
 		const currentBootstrap = bootstrapRef.current;
 		if (currentBootstrap && options.selectSession !== false && !options.force) {
-			if (piboSessionId) await markSessionRead(piboSessionId);
+			if (piboSessionId) void markSessionRead(piboSessionId).catch(() => undefined);
 			const requestId = bootstrapRequestId.current + 1;
 			bootstrapRequestId.current = requestId;
 			const navigation = await fetchNavigation({ piboSessionId, includeArchived, roomId, signal: options.signal });
@@ -821,20 +828,30 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const skills = useMemo(() => availableSkillsForSession(bootstrap, selectedPiboSessionId), [bootstrap, selectedPiboSessionId]);
 
 	const selectSession = useCallback(async (piboSessionId: string) => {
+		const targetRoomId = selectedRoomId ?? bootstrap?.selectedRoomId;
 		flushSync(() => {
 			setSelectedPiboSessionId(piboSessionId);
 			setLoadingPiboSessionId(piboSessionId);
 			setMobileSidebarOpen(false);
 		});
-		navigateToSelectedSession(selectedRoomId ?? bootstrap?.selectedRoomId, piboSessionId, false, { closeMobileSidebar: false });
-		try {
-			await markSessionRead(piboSessionId);
-			const data = await loadNavigation(piboSessionId, showArchivedRef.current, selectedRoomId ?? bootstrap?.selectedRoomId, { readSessionId: piboSessionId });
-			navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId, true, { closeMobileSidebar: false });
-		} finally {
+		updateBootstrapCache((current) => markSessionSubtreeReadInBootstrap(current, piboSessionId, targetRoomId ?? current.selectedRoomId));
+		navigateToSelectedSession(targetRoomId, piboSessionId, false, { closeMobileSidebar: false });
+		void markSessionRead(piboSessionId).catch(() => undefined);
+		window.setTimeout(() => {
 			setLoadingPiboSessionId((current) => current === piboSessionId ? null : current);
-		}
-	}, [bootstrap?.selectedRoomId, loadNavigation, navigateToSelectedSession, selectedRoomId]);
+		}, 50);
+		window.setTimeout(() => {
+			if (bootstrapRef.current?.selectedPiboSessionId !== piboSessionId) return;
+			void loadNavigation(piboSessionId, showArchivedRef.current, targetRoomId, { readSessionId: piboSessionId })
+				.then((data) => {
+					if (bootstrapRef.current?.selectedPiboSessionId !== piboSessionId) return;
+					navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId, true, { closeMobileSidebar: false });
+				})
+				.catch((caught) => {
+					if (!isAbortError(caught) && bootstrapRef.current?.selectedPiboSessionId === piboSessionId) setError(errorMessage(caught));
+				});
+		}, 750);
+	}, [bootstrap?.selectedRoomId, loadNavigation, navigateToSelectedSession, selectedRoomId, updateBootstrapCache]);
 
 	const selectRoom = useCallback(async (roomId: string, options: NavigationOptions = {}) => {
 		const navigationOptions = { ...options, closeMobileSidebar: false };

@@ -65,8 +65,14 @@ export class ChatTimelineQueryService {
 	}
 
 	getLatestEventSequence(piboSessionId: string): number {
-		const row = this.store.db.prepare("SELECT COALESCE(MAX(session_sequence), 0) AS latest_sequence FROM event_log WHERE session_id = ?").get(piboSessionId) as { latest_sequence: number };
-		return row.latest_sequence;
+		const row = this.store.db.prepare(`
+			SELECT session_sequence AS latest_sequence
+			FROM event_log
+			WHERE session_id = ?
+			ORDER BY session_sequence DESC, stream_id DESC
+			LIMIT 1
+		`).get(piboSessionId) as { latest_sequence: number } | undefined;
+		return row?.latest_sequence ?? 0;
 	}
 
 	getLatestStreamId(input: { roomId?: string; piboSessionId?: string } = {}): number | undefined {

@@ -40,6 +40,20 @@ test("V2-native chat services cover rooms, sessions, timeline, commands, and rea
 	const room = rooms.ensureDefaultRoom();
 	const piboSession = session("ps_test", room.id);
 	sessions.upsertSession(piboSession);
+	assert.ok(
+		store.db.prepare("PRAGMA index_list(event_log)").all().some((row) => row.name === "idx_event_log_session_sequence_stream"),
+		"event_log has a session-sequence index for trace tail pages",
+	);
+	assert.deepEqual(
+		sessions.upsertSessionsIfChanged([piboSession]),
+		{ checked: 1, written: 0, skipped: 1 },
+		"unchanged session indexing is a no-op",
+	);
+	assert.deepEqual(
+		sessions.upsertSessionsIfChanged([{ ...piboSession, title: "Renamed", updatedAt: "2026-05-09T00:00:02.000Z" }]),
+		{ checked: 1, written: 1, skipped: 0 },
+		"changed session metadata is still written",
+	);
 
 	const accepted = commands.appendEvent({
 		roomId: room.id,

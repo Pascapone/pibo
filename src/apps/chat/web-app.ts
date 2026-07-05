@@ -22,7 +22,7 @@ import {
 	type UpdatePiboRoomInput,
 } from "./types/rooms.js";
 import { chatStreamFramesFromOutputEvent, createChatStreamState, nextTransientChatStreamFrameId, type ChatStreamEvent } from "./stream.js";
-import { buildSessionNodes, buildTraceView, createTraceViewVersion, loadPiSessionMetadata, readTailEntries, readTranscriptHistoryPage, type PiboSessionTraceView, type PiboWebSessionNode, type PiboWebSessionStatus } from "./trace.js";
+import { buildSessionNodes, buildTraceView, createTraceViewVersion, loadPiSessionFastMetadata, loadPiSessionMetadata, readTailEntries, readTranscriptHistoryPage, type PiboSessionTraceView, type PiboWebSessionNode, type PiboWebSessionStatus } from "./trace.js";
 import type { ChatWebStoredEvent, PiboSessionTraceSummary, PiboTraceNode, TraceTimelinePage } from "../../shared/trace-types.js";
 import {
 	DEFAULT_TRACE_EVENTS_PAGE_SIZE,
@@ -5079,7 +5079,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				state.sessionQuery.upsertSession(selectedSession);
 				const indexedSession = state.sessionQuery.getSession(selectedSession.id);
 				const metadataStartedAt = performance.now();
-				const metadata = await loadPiSessionMetadata(selectedSession, selectedSession.workspace ?? process.cwd());
+				const metadata = await loadPiSessionFastMetadata(selectedSession, selectedSession.workspace ?? process.cwd());
 				const metadataMs = performance.now() - metadataStartedAt;
 				const lastEventSequence = state.timelineQuery.getLatestEventSequence(selectedSession.id);
 				const latestStreamId = state.timelineQuery.getLatestStreamId({ piboSessionId: selectedSession.id });
@@ -5137,9 +5137,11 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const lastEventSequence = state.timelineQuery.getLatestEventSequence(selectedSession.id);
 				const latestStreamId = state.timelineQuery.getLatestStreamId({ piboSessionId: selectedSession.id });
 				const liveSnapshots = timelineCursor.kind === "tail" ? state.outputCompactor.snapshotsForSession(selectedSession.id) : [];
+				const metadataStartedAt = performance.now();
 				const transcriptMetadata = timelineCursor.kind === "tail" || timelineCursor.kind === "transcript"
-					? await loadPiSessionMetadata(selectedSession, selectedSession.workspace ?? process.cwd())
+					? await loadPiSessionFastMetadata(selectedSession, selectedSession.workspace ?? process.cwd())
 					: undefined;
+				metadataMs += performance.now() - metadataStartedAt;
 				const baseVersion = createFastTraceV2Version({
 					session: selectedSession,
 					sessions: ownedSessions,

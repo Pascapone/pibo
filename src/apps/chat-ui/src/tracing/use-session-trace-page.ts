@@ -58,7 +58,7 @@ export function useSessionTracePage({
 			if (!response.summary) throw new Error("Trace summary response missing payload.");
 			return response.summary;
 		},
-		enabled: Boolean(selectedPiboSessionId),
+		enabled: false,
 		staleTime: TRACE_STALE_TIME_MS,
 		gcTime: TRACE_GC_TIME_MS,
 		refetchOnWindowFocus: false,
@@ -86,15 +86,16 @@ export function useSessionTracePage({
 	});
 
 	useEffect(() => {
+		const cachedTrace = tracePageQueryKey ? queryClient.getQueryData<PiboSessionTraceView>(tracePageQueryKey) : undefined;
 		setTraceEventLimit(DEFAULT_TRACE_EVENTS_PAGE_SIZE);
 		setRawEventLimit(DEFAULT_RAW_EVENTS_LIMIT);
 		setRawEventsBeforeSequence(undefined);
 		setLoadingOlderTracePage(false);
-		setBaseTraceView(null);
+		setBaseTraceView(cachedTrace?.piboSessionId === selectedPiboSessionId ? cachedTrace : null);
 		setLiveTraceOverlay(null);
 		loadingOlderTraceBeforeRef.current = null;
 		loadedOlderTraceBeforeRef.current = new Set();
-	}, [selectedPiboSessionId, setLiveTraceOverlay]);
+	}, [queryClient, selectedPiboSessionId, setLiveTraceOverlay, tracePageQueryKey]);
 
 	const rawEventsQuery = useQuery({
 		queryKey: selectedPiboSessionId ? ["chat", "trace-raw-events", selectedPiboSessionId, rawEventLimit, rawEventsBeforeSequence ?? "tail"] : ["chat", "trace-raw-events", "idle"],
