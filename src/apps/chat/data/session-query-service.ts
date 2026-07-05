@@ -4,6 +4,7 @@ import type { ChatWebSessionBootstrapIndexResult, ChatWebSessionIndexItem, ChatW
 import type { PiboSession } from "../../../sessions/store.js";
 import type { PiboDataStore } from "../../../data/pibo-store.js";
 import { sessionFromRow, statusFromOutputEvent, type SessionRow } from "./chat-data-mappers.js";
+import { rootSessionId } from "../../../data/session-store.js";
 
 export class ChatSessionQueryService {
 	constructor(private readonly store: PiboDataStore) {}
@@ -15,8 +16,17 @@ export class ChatSessionQueryService {
 	}
 
 	upsertSessionsIfChanged(sessions: PiboSession[]): ChatWebSessionBootstrapIndexResult {
-		for (const session of sessions) this.upsertSession(session);
-		return { checked: sessions.length, written: sessions.length, skipped: 0 };
+		let written = 0;
+		let skipped = 0;
+		for (const session of sessions) {
+			if (this.sessionIndexMatches(session)) {
+				skipped++;
+				continue;
+			}
+			this.upsertSession(session);
+			written++;
+		}
+		return { checked: sessions.length, written, skipped };
 	}
 
 	recordEvent(event: PiboOutputEvent, session?: PiboSession): ChatWebStoredPiboEvent | undefined {
@@ -52,11 +62,86 @@ export class ChatSessionQueryService {
 
 	close(): void {}
 
+	private sessionIndexMatches(session: PiboSession, status: ChatWebSessionIndexItem["status"] = "idle"): boolean {
+		const roomId = chatRoomIdFromMetadata(session.metadata) ?? "room_default";
+		const title = session.title || "Untitled Session";
+		const metadataJson = JSON.stringify(session.metadata ?? {});
+		const activeModelJson = session.activeModel ? JSON.stringify(session.activeModel) : null;
+		const row = this.store.db.prepare(`
+			SELECT
+				s.pi_session_id,
+				s.room_id,
+				s.root_session_id,
+				s.parent_id,
+				s.origin_id,
+				s.channel,
+				s.kind,
+				s.profile,
+				s.active_model_json,
+				s.workspace,
+				s.title,
+				s.status,
+				s.metadata_json,
+				s.created_at,
+				s.updated_at,
+				s.last_activity_at,
+				n.status AS navigation_status,
+				n.title AS navigation_title,
+				n.sort_key AS navigation_sort_key,
+				n.updated_at AS navigation_updated_at
+			FROM sessions s
+			LEFT JOIN session_navigation n ON n.session_id = s.id
+			WHERE s.id = ? AND s.deleted_at IS NULL
+		`).get(session.id) as {
+			pi_session_id: string;
+			room_id: string | null;
+			root_session_id: string | null;
+			parent_id: string | null;
+			origin_id: string | null;
+			channel: string;
+			kind: string;
+			profile: string;
+			active_model_json: string | null;
+			workspace: string | null;
+			title: string;
+			status: string;
+			metadata_json: string;
+			created_at: string;
+			updated_at: string;
+			last_activity_at: string;
+			navigation_status: string | null;
+			navigation_title: string | null;
+			navigation_sort_key: string | null;
+			navigation_updated_at: string | null;
+		} | undefined;
+		if (!row) return false;
+		return row.pi_session_id === session.piSessionId
+			&& row.room_id === roomId
+			&& row.root_session_id === rootSessionId(session)
+			&& row.parent_id === (session.parentId ?? null)
+			&& row.origin_id === (session.originId ?? null)
+			&& row.channel === session.channel
+			&& row.kind === session.kind
+			&& row.profile === session.profile
+			&& row.active_model_json === activeModelJson
+			&& row.workspace === (session.workspace ?? null)
+			&& row.title === title
+			&& row.status === status
+			&& row.metadata_json === metadataJson
+			&& row.created_at === session.createdAt
+			&& row.updated_at === session.updatedAt
+			&& row.last_activity_at === session.updatedAt
+			&& row.navigation_status === status
+			&& row.navigation_title === title
+			&& row.navigation_sort_key === session.updatedAt
+			&& row.navigation_updated_at === session.updatedAt;
+	}
+
 	private upsertNavigation(session: PiboSession, roomId: string, status: string, now: string): void {
 		this.store.navigation.upsertSession({
 			roomId,
 			sessionId: session.id,
-			rootSessionId: session.parentId ? (typeof session.metadata?.rootSessionId === "string" ? session.metadata.rootSessionId : session.parentId) : session.id,
+			rootSessionId: rootSessionId(session),
 			parentId: session.parentId,
 			originId: session.originId,
 			title: session.title || "Untitled Session",

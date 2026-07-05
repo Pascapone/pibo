@@ -111,9 +111,10 @@ export function CompactTerminalSessionView({
 		olderTraceIntentRef.current = false;
 		const readyTimer = window.setTimeout(() => {
 			rangePrefetchReadyRef.current = true;
+			if (stickyView.isAtTop || stickyView.isScrolledToTop()) loadOlderAtTop();
 		}, 250);
 		return () => window.clearTimeout(readyTimer);
-	}, [traceView?.piboSessionId]);
+	}, [loadOlderAtTop, stickyView.isAtTop, stickyView.isScrolledToTop, traceView?.piboSessionId]);
 
 	useEffect(() => {
 		const rowIds = new Set(rows.map((row) => row.id));
