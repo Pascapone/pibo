@@ -15,6 +15,7 @@ type SessionTraceLayoutProps = {
   sessionViewId: string;
   loadingTrace: boolean;
   roomNavigationPending?: boolean;
+  sessionNavigationPending?: boolean;
   traceError: string | null;
   showRawEvents: boolean;
   currentTraceView: PiboSessionTraceView | null;
@@ -39,6 +40,7 @@ export function SessionTraceLayout({
   sessionViewId,
   loadingTrace,
   roomNavigationPending = false,
+  sessionNavigationPending = false,
   traceError,
   showRawEvents,
   currentTraceView,
@@ -55,6 +57,7 @@ export function SessionTraceLayout({
   webAnnotationsPanelProps,
   composerProps,
 }: SessionTraceLayoutProps) {
+  const terminalLoading = roomNavigationPending || sessionNavigationPending || loadingTrace;
   return (
     <>
       <main
@@ -65,6 +68,8 @@ export function SessionTraceLayout({
         data-pibo-state={
           roomNavigationPending
             ? "room-loading"
+            : sessionNavigationPending
+            ? "session-loading"
             : loadingTrace
             ? "loading"
             : traceError
@@ -88,8 +93,8 @@ export function SessionTraceLayout({
         ) : null}
         {projectModulePanel ? (
           projectModulePanel
-        ) : roomNavigationPending ? (
-          <RoomNavigationSkeleton />
+        ) : terminalLoading ? (
+          <TerminalLoadingSkeleton label={roomNavigationPending ? "Loading room" : "Loading session"} />
         ) : traceError && !currentTraceView ? (
           <div className="min-h-0 flex-1 p-4 text-sm text-red-200">
             {traceError}
@@ -114,7 +119,7 @@ export function SessionTraceLayout({
   );
 }
 
-function RoomNavigationSkeleton() {
+function TerminalLoadingSkeleton({ label }: { label: string }) {
 	const rows = [
 		{ kind: "tool", lines: 5 },
 		{ kind: "markdown", lines: 4 },
@@ -127,7 +132,7 @@ function RoomNavigationSkeleton() {
 			data-pibo-debug="room-navigation-loading"
 			className="relative min-w-0 flex-1 overflow-hidden bg-[#0b0b0b] text-[#d4d4d4]"
 			aria-live="polite"
-			aria-label="Loading room"
+			aria-label={label}
 		>
 			<div className="min-h-0 h-full overflow-hidden font-mono text-[12px] leading-[1.45]">
 				<div className="px-4">
@@ -137,7 +142,7 @@ function RoomNavigationSkeleton() {
 								<span className="h-1.5 w-1.5 rounded-full bg-[#38bdf8] animate-pulse" />
 							</span>
 							<span className="flex min-w-0 items-center gap-2">
-								<span className="font-semibold text-[#d4d4d4]">Loading room</span>
+								<span className="font-semibold text-[#d4d4d4]">{label}</span>
 								<span className="h-2 w-24 rounded-sm bg-[#262626] animate-pulse" />
 							</span>
 						</div>

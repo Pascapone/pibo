@@ -47,10 +47,10 @@ export function useSessionTracePage({
 	);
 	const traceSummaryQuery = useQuery({
 		queryKey: traceSummaryQueryKey ?? ["chat", "trace-summary", "idle"],
-		queryFn: async () => {
+		queryFn: async ({ signal }) => {
 			if (!selectedPiboSessionId || !traceSummaryQueryKey) throw new Error("Session is required");
 			const cached = queryClient.getQueryData<PiboSessionTraceSummary>(traceSummaryQueryKey);
-			const response = await getTraceSummary(selectedPiboSessionId, cached?.version);
+			const response = await getTraceSummary(selectedPiboSessionId, cached?.version, { signal });
 			if (response.notModified && cached) return cached;
 			if (!response.summary) throw new Error("Trace summary response missing payload.");
 			return response.summary;
@@ -63,12 +63,13 @@ export function useSessionTracePage({
 	});
 	const tracePageQuery = useQuery({
 		queryKey: tracePageQueryKey ?? ["chat", "trace-page", "idle", "compact", rawEventLimit, DEFAULT_TRACE_EVENTS_PAGE_SIZE, "tail"],
-		queryFn: async () => {
+		queryFn: async ({ signal }) => {
 			if (!selectedPiboSessionId || !tracePageQueryKey) throw new Error("Session is required");
 			const cached = queryClient.getQueryData<PiboSessionTraceView>(tracePageQueryKey);
 			const response = await getTraceTimeline(selectedPiboSessionId, {
 				limit: DEFAULT_TRACE_EVENTS_PAGE_SIZE,
 				knownVersion: cached?.version,
+				signal,
 			});
 			if (response.notModified && cached) return cached;
 			if (!response.timeline) throw new Error("Trace timeline response missing payload.");
@@ -92,9 +93,9 @@ export function useSessionTracePage({
 
 	const rawEventsQuery = useQuery({
 		queryKey: selectedPiboSessionId ? ["chat", "trace-raw-events", selectedPiboSessionId, rawEventLimit, rawEventsBeforeSequence ?? "tail"] : ["chat", "trace-raw-events", "idle"],
-		queryFn: async () => {
+		queryFn: async ({ signal }) => {
 			if (!selectedPiboSessionId) throw new Error("Session is required");
-			return getTraceRawEvents(selectedPiboSessionId, { limit: rawEventLimit, beforeSequence: rawEventsBeforeSequence });
+			return getTraceRawEvents(selectedPiboSessionId, { limit: rawEventLimit, beforeSequence: rawEventsBeforeSequence, signal });
 		},
 		enabled: Boolean(selectedPiboSessionId && showRawEvents),
 		staleTime: TRACE_STALE_TIME_MS,
@@ -153,12 +154,13 @@ export function useSessionTracePage({
 		try {
 			const olderTrace = await queryClient.fetchQuery({
 				queryKey,
-				queryFn: async () => {
+				queryFn: async ({ signal }) => {
 					const cached = queryClient.getQueryData<PiboSessionTraceView>(queryKey);
 					const response = await getTraceTimeline(selectedPiboSessionId, {
 						limit: DEFAULT_TRACE_EVENTS_PAGE_SIZE,
 						beforeSequence,
 						knownVersion: cached?.version,
+						signal,
 					});
 					if (response.notModified && cached) return cached;
 					if (!response.timeline) throw new Error("Trace timeline response missing payload.");

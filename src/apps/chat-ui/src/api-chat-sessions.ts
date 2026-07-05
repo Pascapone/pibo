@@ -6,21 +6,23 @@ export async function getBootstrap(
 	includeArchived = false,
 	roomId?: string,
 	markRead = false,
+	init?: RequestInit,
 ): Promise<BootstrapData> {
 	const params = createNavigationParams(piboSessionId, includeArchived, roomId);
 	if (markRead) params.set("markRead", "true");
 	const suffix = params.size ? `?${params.toString()}` : "";
-	return requestJson<Partial<BootstrapData>>(`/api/chat/bootstrap${suffix}`).then(normalizeBootstrap);
+	return requestJson<Partial<BootstrapData>>(`/api/chat/bootstrap${suffix}`, init).then(normalizeBootstrap);
 }
 
 export async function getNavigation(
 	piboSessionId?: string,
 	includeArchived = false,
 	roomId?: string,
+	init?: RequestInit,
 ): Promise<NavigationData> {
 	const params = createNavigationParams(piboSessionId, includeArchived, roomId);
 	const suffix = params.size ? `?${params.toString()}` : "";
-	return requestJson<Partial<NavigationData>>(`/api/chat/navigation${suffix}`).then(normalizeNavigation);
+	return requestJson<Partial<NavigationData>>(`/api/chat/navigation${suffix}`, init).then(normalizeNavigation);
 }
 
 export async function getProjectsBootstrap(input: { projectId?: string; piboSessionId?: string; includeArchived?: boolean } = {}): Promise<ProjectsBootstrapData> {
@@ -216,6 +218,7 @@ function normalizeNavigation(payload: Partial<NavigationData>): NavigationData {
 		room: payload.room,
 		selectedRoomId: payload.selectedRoomId ?? "",
 		selectedPiboSessionId,
+		latestRoomStreamId: payload.latestRoomStreamId,
 		rooms: payload.rooms ?? [],
 		sessions,
 	};

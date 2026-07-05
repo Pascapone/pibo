@@ -19,7 +19,6 @@ const OLDER_TRACE_PREFETCH_ROW_THRESHOLD = 20;
 const INITIAL_BOTTOM_ITEM = { index: "LAST", align: "end" } as const;
 const VIRTUOSO_VIEWPORT = { top: 2_400, bottom: 2_400 } as const;
 const DEFAULT_ROW_HEIGHT_PX = 84;
-const AUTO_FILL_OLDER_HISTORY_MIN_ROWS = 40;
 const COLLAPSED_EXPLORING_PREVIEW_LINES = 6;
 type TerminalNavigationKind = "system" | "tool" | "user";
 
@@ -55,6 +54,7 @@ export function CompactTerminalSessionView({
 	const [focusedNavigationRowId, setFocusedNavigationRowId] = useState<string | null>(null);
 	const navigationCursorRef = useRef<Partial<Record<TerminalNavigationKind, string>>>({});
 	const rangePrefetchReadyRef = useRef(false);
+	const olderTraceIntentRef = useRef(false);
 	const runningCount = rows.filter((row) => row.status === "running").length;
 	const userMessageCount = rows.filter((row) => isNavigableTerminalRow(row, "user")).length;
 	const toolErrorCount = rows.filter((row) => isNavigableTerminalRow(row, "tool")).length;
@@ -62,10 +62,17 @@ export function CompactTerminalSessionView({
 	const isStreaming = selectedSessionSignal
 		? selectedSessionSignal.isTreeActive
 		: selectedSessionStatus === "running" || runningCount > 0 || selectedTrace?.status === "UNSET";
-	const loadOlderAtTop = useCallback(() => {
+	const loadOlderTracePage = useCallback(() => {
 		if (!hasOlderTraceEvents || isFetchingOlderTracePage) return;
 		onLoadOlderTracePage?.();
 	}, [hasOlderTraceEvents, isFetchingOlderTracePage, onLoadOlderTracePage]);
+	const loadOlderAtTop = useCallback(() => {
+		if (!olderTraceIntentRef.current) return;
+		loadOlderTracePage();
+	}, [loadOlderTracePage]);
+	const markOlderTraceIntent = useCallback((event?: Event) => {
+		if (isOlderTraceScrollIntent(event)) olderTraceIntentRef.current = true;
+	}, []);
 	const handleVisibleRangeChanged = useCallback((range: { startIndex: number; endIndex: number }) => {
 		if (!rangePrefetchReadyRef.current) return;
 		if (range.startIndex <= OLDER_TRACE_PREFETCH_ROW_THRESHOLD) loadOlderAtTop();
@@ -78,6 +85,7 @@ export function CompactTerminalSessionView({
 		atBottomThreshold: SHOW_LATEST_THRESHOLD_PX,
 		nearTopThreshold: OLDER_TRACE_PREFETCH_TOP_THRESHOLD_PX,
 		onNearTop: loadOlderAtTop,
+		onUserScrollIntent: markOlderTraceIntent,
 	});
 
 	useEffect(() => {
@@ -86,6 +94,7 @@ export function CompactTerminalSessionView({
 
 	useEffect(() => {
 		rangePrefetchReadyRef.current = false;
+		olderTraceIntentRef.current = false;
 		const readyTimer = window.setTimeout(() => {
 			rangePrefetchReadyRef.current = true;
 		}, 250);
@@ -122,11 +131,6 @@ export function CompactTerminalSessionView({
 			return next;
 		});
 	};
-	useEffect(() => {
-		if (rows.length === 0 || rows.length >= AUTO_FILL_OLDER_HISTORY_MIN_ROWS) return;
-		loadOlderAtTop();
-	}, [loadOlderAtTop, rows.length]);
-
 	const renderRow = useCallback((_: number, row: CompactTerminalRow) => (
 		<div className="px-4">
 			<TerminalRow
@@ -770,4 +774,10 @@ function sameSet(left: Set<string>, right: Set<string>): boolean {
 		if (!right.has(value)) return false;
 	}
 	return true;
+}
+
+function isOlderTraceScrollIntent(event?: Event) {
+	if (event instanceof WheelEvent) return event.deltaY < 0;
+	if (event instanceof KeyboardEvent) return ["ArrowUp", "PageUp", "Home"].includes(event.key);
+	return event?.type === "touchmove";
 }

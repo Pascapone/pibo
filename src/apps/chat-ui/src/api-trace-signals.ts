@@ -9,10 +9,11 @@ import type {
 	TraceTimelinePage,
 } from "./types";
 
-export async function getTraceSummary(piboSessionId: string, knownVersion?: string): Promise<{ summary?: PiboSessionTraceSummary; notModified: boolean; version?: string }> {
+export async function getTraceSummary(piboSessionId: string, knownVersion?: string, init?: RequestInit): Promise<{ summary?: PiboSessionTraceSummary; notModified: boolean; version?: string }> {
 	const params = new URLSearchParams({ piboSessionId });
 	const response = await fetch(`/api/chat/trace/summary?${params.toString()}`, {
 		headers: knownVersion ? { "if-none-match": toEtag(knownVersion) } : undefined,
+		signal: init?.signal,
 	});
 	if (response.status === 304) {
 		return { notModified: true, version: fromEtag(response.headers.get("etag")) ?? knownVersion };
@@ -35,7 +36,7 @@ export async function getTraceSummary(piboSessionId: string, knownVersion?: stri
 
 export async function getTrace(
 	piboSessionId: string,
-	options: { includeRawEvents?: boolean; rawEventsLimit?: number; eventLimit?: number; beforeSequence?: number; pageSize?: number; knownVersion?: string } = {},
+	options: { includeRawEvents?: boolean; rawEventsLimit?: number; eventLimit?: number; beforeSequence?: number; pageSize?: number; knownVersion?: string; signal?: AbortSignal } = {},
 ): Promise<{ trace?: PiboSessionTraceView; notModified: boolean; version?: string }> {
 	const params = new URLSearchParams({ piboSessionId });
 	if (options.includeRawEvents) params.set("includeRawEvents", "true");
@@ -45,6 +46,7 @@ export async function getTrace(
 	else if (options.eventLimit) params.set("eventLimit", String(options.eventLimit));
 	const response = await fetch(`/api/chat/trace?${params.toString()}`, {
 		headers: options.knownVersion ? { "if-none-match": toEtag(options.knownVersion) } : undefined,
+		signal: options.signal,
 	});
 	if (response.status === 304) {
 		return { notModified: true, version: fromEtag(response.headers.get("etag")) ?? options.knownVersion };
@@ -67,13 +69,14 @@ export async function getTrace(
 
 export async function getTraceTimeline(
 	piboSessionId: string,
-	options: { limit?: number; beforeSequence?: number; knownVersion?: string } = {},
+	options: { limit?: number; beforeSequence?: number; knownVersion?: string; signal?: AbortSignal } = {},
 ): Promise<{ timeline?: TraceTimelinePage; notModified: boolean; version?: string }> {
 	const params = new URLSearchParams({ piboSessionId });
 	if (options.limit) params.set("limit", String(options.limit));
 	if (options.beforeSequence !== undefined) params.set("before", String(options.beforeSequence));
 	const response = await fetch(`/api/chat/trace/timeline?${params.toString()}`, {
 		headers: options.knownVersion ? { "if-none-match": toEtag(options.knownVersion) } : undefined,
+		signal: options.signal,
 	});
 	if (response.status === 304) {
 		return { notModified: true, version: fromEtag(response.headers.get("etag")) ?? options.knownVersion };
@@ -96,12 +99,12 @@ export async function getTraceTimeline(
 
 export async function getTraceRawEvents(
 	piboSessionId: string,
-	options: { limit?: number; beforeSequence?: number } = {},
+	options: { limit?: number; beforeSequence?: number; signal?: AbortSignal } = {},
 ): Promise<TraceRawEventsPage> {
 	const params = new URLSearchParams({ piboSessionId });
 	if (options.limit) params.set("limit", String(options.limit));
 	if (options.beforeSequence !== undefined) params.set("before", String(options.beforeSequence));
-	return requestJson<TraceRawEventsPage>(`/api/chat/trace/raw-events?${params.toString()}`);
+	return requestJson<TraceRawEventsPage>(`/api/chat/trace/raw-events?${params.toString()}`, { signal: options.signal });
 }
 
 export async function getTracePayload(ref: string, options: { offset?: number; limit?: number } = {}): Promise<TracePayloadChunk> {
@@ -112,12 +115,12 @@ export async function getTracePayload(ref: string, options: { offset?: number; l
 	return requestJson<TracePayloadChunk>(`/api/chat/trace/payload/${encodeURIComponent(ref)}${suffix ? `?${suffix}` : ""}`);
 }
 
-export async function fetchSessionSignals(piboSessionId: string): Promise<PiboSignalSnapshot> {
-	return requestJson<PiboSignalSnapshot>(`/api/chat/signals/session/${encodeURIComponent(piboSessionId)}`);
+export async function fetchSessionSignals(piboSessionId: string, init?: RequestInit): Promise<PiboSignalSnapshot> {
+	return requestJson<PiboSignalSnapshot>(`/api/chat/signals/session/${encodeURIComponent(piboSessionId)}`, init);
 }
 
-export async function fetchSignalTree(piboSessionId: string): Promise<PiboSignalSnapshot> {
-	return requestJson<PiboSignalSnapshot>(`/api/chat/signals/tree/${encodeURIComponent(piboSessionId)}`);
+export async function fetchSignalTree(piboSessionId: string, init?: RequestInit): Promise<PiboSignalSnapshot> {
+	return requestJson<PiboSignalSnapshot>(`/api/chat/signals/tree/${encodeURIComponent(piboSessionId)}`, init);
 }
 
 export function subscribeSignalTree(

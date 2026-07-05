@@ -26,6 +26,7 @@ type StickyVirtuosoOptions = {
 	/** Calls back while the user is reading near the top of the scroll range. */
 	onNearTop?: () => void;
 	nearTopThreshold?: number;
+	onUserScrollIntent?: (event?: Event) => void;
 };
 
 export function useStickyVirtuoso({
@@ -35,6 +36,7 @@ export function useStickyVirtuoso({
 	atBottomThreshold = DEFAULT_BOTTOM_THRESHOLD,
 	onNearTop,
 	nearTopThreshold = 0,
+	onUserScrollIntent,
 }: StickyVirtuosoOptions) {
 	const virtuosoRef = useRef<VirtuosoHandle>(null);
 	const itemCountRef = useRef(itemCount);
@@ -143,6 +145,7 @@ export function useStickyVirtuoso({
 
 	const markUserScrollIntent = useCallback((event?: Event) => {
 		userScrollIntentRef.current = true;
+		onUserScrollIntent?.(event);
 		const scrollingAwayFromBottom = event instanceof WheelEvent && event.deltaY < 0;
 		if (scrollingAwayFromBottom) clearScheduledScroll();
 		if (scrollingAwayFromBottom || (scroller && !isAtBottom(scroller, atBottomThreshold))) setSticky(false);
@@ -152,7 +155,7 @@ export function useStickyVirtuoso({
 			userScrollIntentRef.current = false;
 			userScrollIntentTimerRef.current = undefined;
 		}, USER_SCROLL_INTENT_MS);
-	}, [atBottomThreshold, clearScheduledScroll, nearTopThreshold, requestNearTop, scroller, setSticky]);
+	}, [atBottomThreshold, clearScheduledScroll, nearTopThreshold, onUserScrollIntent, requestNearTop, scroller, setSticky]);
 
 	const updateFromScrollPosition = useCallback(() => {
 		if (!scroller) return;
