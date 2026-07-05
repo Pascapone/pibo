@@ -1,4 +1,4 @@
-const CACHE_NAME = "pibo-chat-v1";
+const CACHE_NAME = "pibo-chat-v2";
 const APP_SHELL_URL = "/apps/chat/";
 
 self.addEventListener("install", (event) => {
@@ -15,6 +15,12 @@ self.addEventListener("activate", (event) => {
       .then((names) => Promise.all(names.filter((name) => name !== CACHE_NAME).map((name) => caches.delete(name))))
       .then(() => self.clients.claim()),
   );
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "PIBO_CHAT_SKIP_WAITING") {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener("fetch", (event) => {

@@ -1,4 +1,7 @@
 import { spawn, execFile } from "node:child_process";
+import { existsSync, mkdirSync, openSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import { createConnection } from "node:net";
 import { DEFAULT_GATEWAY_HOST, DEFAULT_GATEWAY_PORT } from "./protocol.js";
@@ -100,6 +103,95 @@ function gatewayServiceName(target: GatewayTarget): string {
 
 function gatewayManagerCommand(): string {
 	return process.env.PIBO_GATEWAY_MANAGER_COMMAND || "systemctl";
+}
+
+function shouldUseWindowsGatewayManager(): boolean {
+	return process.platform === "win32" && !process.env.PIBO_GATEWAY_MANAGER_COMMAND;
+}
+
+function managedGatewayHome(target: GatewayTarget): string {
+	const fromEnv = target === "web" ? process.env.PIBO_GATEWAY_WEB_HOME : process.env.PIBO_GATEWAY_DEV_HOME;
+	return fromEnv || join(homedir(), target === "web" ? ".pibo" : ".pibo-dev");
+}
+
+function targetGatewayPort(target: GatewayTarget): number {
+	const fromEnv = target === "web" ? process.env.PIBO_GATEWAY_WEB_AGENT_PORT : process.env.PIBO_GATEWAY_DEV_AGENT_PORT;
+	const parsed = fromEnv ? Number(fromEnv) : NaN;
+	if (Number.isInteger(parsed) && parsed > 0 && parsed <= 65535) return parsed;
+	return target === "web" ? 4789 : 4809;
+}
+
+function resolveGatewayWebCommand(argv: string[], target: GatewayTarget): { command: string; args: string[] } {
+	const entry = argv[1] ?? "";
+	const args = [
+		entry,
+		"gateway:web",
+		"--auth",
+		"local",
+		"--web-host",
+		"127.0.0.1",
+		"--web-port",
+		String(targetPort(target)),
+		"--gateway-port",
+		String(targetGatewayPort(target)),
+	];
+	return { command: process.execPath, args };
+}
+
+function managedGatewayPidPath(target: GatewayTarget): string {
+	return join(managedGatewayHome(target), "gateway.pid");
+}
+
+function readManagedGatewayPid(target: GatewayTarget): number | undefined {
+	try {
+		const path = managedGatewayPidPath(target);
+		if (!existsSync(path)) return undefined;
+		const pid = Number(readFileSync(path, "utf-8").trim());
+		if (!Number.isInteger(pid) || pid <= 0) return undefined;
+		try {
+			process.kill(pid, 0);
+			return pid;
+		} catch {
+			return undefined;
+		}
+	} catch {
+		return undefined;
+	}
+}
+
+async function waitForTargetGatewayDown(target: GatewayTarget, maxRetries = 40, intervalMs = 250): Promise<boolean> {
+	const port = targetPort(target);
+	for (let i = 0; i < maxRetries; i++) {
+		if (!(await isPortReachable("127.0.0.1", port, 1000))) return true;
+		await new Promise((resolve) => setTimeout(resolve, intervalMs));
+	}
+	return false;
+}
+
+async function runWindowsGatewayManager(action: "start" | "restart", target: GatewayTarget, argv: string[]): Promise<void> {
+	const home = managedGatewayHome(target);
+	mkdirSync(home, { recursive: true });
+	if (action === "restart") {
+		const pid = readManagedGatewayPid(target);
+		if (pid !== undefined) {
+			try { process.kill(pid, "SIGTERM"); } catch {}
+		}
+		const down = await waitForTargetGatewayDown(target);
+		if (!down) throw new Error(`Gateway on port ${targetPort(target)} did not stop in time.`);
+	}
+	const { command, args } = resolveGatewayWebCommand(argv, target);
+	const stdout = openSync(join(home, `gateway-${target}-stdout.log`), "a");
+	const stderr = openSync(join(home, `gateway-${target}-stderr.log`), "a");
+	const child = spawn(command, args, {
+		detached: true,
+		stdio: ["ignore", stdout, stderr],
+		env: {
+			...process.env,
+			PIBO_HOME: home,
+			PIBO_GATEWAY_MODE: expectedMode(target),
+		},
+	});
+	child.unref();
 }
 
 async function fetchJson(url: string): Promise<unknown> {
@@ -216,8 +308,17 @@ function printSafetyStatus(target: GatewayTarget, status: GatewaySafetyStatus): 
 	for (const run of status.activeRuns) console.log(`    ${run.runId ?? "unknown"}: ${run.status ?? "active"}${run.toolName ? ` (${run.toolName})` : ""}`);
 }
 
-async function runGatewayManager(action: "start" | "restart", target: GatewayTarget): Promise<void> {
-	await execFileAsync(gatewayManagerCommand(), [action, gatewayServiceName(target)], { timeout: 60000 });
+function managerRequiresShell(command: string): boolean {
+	return process.platform === "win32" && /\.(?:cmd|bat)$/i.test(command);
+}
+
+async function runGatewayManager(action: "start" | "restart", target: GatewayTarget, argv = process.argv): Promise<void> {
+	if (shouldUseWindowsGatewayManager()) {
+		await runWindowsGatewayManager(action, target, argv);
+		return;
+	}
+	const command = gatewayManagerCommand();
+	await execFileAsync(command, [action, gatewayServiceName(target)], { timeout: 60000, shell: managerRequiresShell(command) });
 }
 
 async function waitForManagedGatewayHealth(target: GatewayTarget): Promise<GatewaySafetyStatus | undefined> {
@@ -231,7 +332,7 @@ async function waitForManagedGatewayHealth(target: GatewayTarget): Promise<Gatew
 	return undefined;
 }
 
-async function runManagedGatewayCommand(target: GatewayTarget, command: string | undefined, args: string[]): Promise<boolean> {
+async function runManagedGatewayCommand(target: GatewayTarget, command: string | undefined, args: string[], argv = process.argv): Promise<boolean> {
 	if (command === "status" || command === "doctor") {
 		const status = await readGatewaySafetyStatus(target);
 		printSafetyStatus(target, status);
@@ -260,7 +361,7 @@ async function runManagedGatewayCommand(target: GatewayTarget, command: string |
 			return true;
 		}
 		console.error(`Starting ${target === "web" ? "production" : "dev"} gateway...`);
-		try { await runGatewayManager("start", target); }
+		try { await runGatewayManager("start", target, argv); }
 		catch (error) { console.error(error instanceof Error ? error.message : String(error)); process.exitCode = 1; return true; }
 		const status = await waitForManagedGatewayHealth(target);
 		if (!status) { console.error("Gateway did not become healthy in time."); process.exitCode = 1; return true; }
@@ -290,7 +391,7 @@ async function runManagedGatewayCommand(target: GatewayTarget, command: string |
 			}
 		}
 		console.error(`Restarting ${target === "web" ? "production" : "dev"} gateway...`);
-		try { await runGatewayManager("restart", target); }
+		try { await runGatewayManager("restart", target, argv); }
 		catch (error) { console.error(error instanceof Error ? error.message : String(error)); process.exitCode = 1; return true; }
 		const status = await waitForManagedGatewayHealth(target);
 		if (!status) { console.error("Gateway did not become healthy in time."); process.exitCode = 1; return true; }
@@ -307,7 +408,7 @@ export async function runGatewayCli(argv = process.argv): Promise<void> {
 	const hasForceFlag = args.includes("--force");
 
 	if (subcommand === "web" || subcommand === "dev") {
-		const handled = await runManagedGatewayCommand(subcommand, args[2], args.slice(3));
+		const handled = await runManagedGatewayCommand(subcommand, args[2], args.slice(3), argv);
 		if (!handled) { console.error(`Unknown gateway ${subcommand} subcommand: ${args[2] ?? ""}`); printGatewayHelp(); process.exitCode = 1; }
 		return;
 	}

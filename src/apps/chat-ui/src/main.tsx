@@ -121,7 +121,26 @@ declare module "@tanstack/react-router" {
 
 if ("serviceWorker" in navigator) {
 	window.addEventListener("load", () => {
-		navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {
+		let reloadingForServiceWorkerUpdate = false;
+		navigator.serviceWorker.addEventListener("controllerchange", () => {
+			if (reloadingForServiceWorkerUpdate) return;
+			reloadingForServiceWorkerUpdate = true;
+			window.location.reload();
+		});
+		navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).then((registration) => {
+			registration.addEventListener("updatefound", () => {
+				const worker = registration.installing;
+				if (!worker) return;
+				worker.addEventListener("statechange", () => {
+					if (worker.state === "installed" && navigator.serviceWorker.controller) {
+						worker.postMessage({ type: "PIBO_CHAT_SKIP_WAITING" });
+					}
+				});
+			});
+			window.setInterval(() => {
+				void registration.update();
+			}, 5 * 60_000);
+		}).catch(() => {
 			// PWA support is optional; keep the chat UI usable when registration is unavailable.
 		});
 	});

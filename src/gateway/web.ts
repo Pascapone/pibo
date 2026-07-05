@@ -142,6 +142,7 @@ export function resolveWebGatewayServerOptions(options: WebGatewayServerOptions 
 
 
 function webGatewayMode(options: WebGatewayServerOptions, useDevAuth: boolean): "dev" | "prod" {
+	if (process.env.PIBO_GATEWAY_MODE === "dev" || process.env.PIBO_GATEWAY_MODE === "prod") return process.env.PIBO_GATEWAY_MODE;
 	if (useDevAuth) return "dev";
 	if (options.web?.port === 4808) return "dev";
 	const baseURL = authBaseURL(options);

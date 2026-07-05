@@ -573,6 +573,7 @@ type PiboRoomNodeWithUnread = PiboRoom & {
 };
 
 const TRACE_CACHE_MAX_ENTRIES = 24;
+const TRACE_V1_COMPAT_MAX_EVENTS_PER_REQUEST = DEFAULT_TRACE_EVENTS_PAGE_SIZE;
 const TRACE_TIMELINE_PAGE_CACHE_MAX_BYTES = 2 * 1024 * 1024;
 const TRANSIENT_REPLAY_BUFFER_MAX_EVENTS = 1000;
 const TRANSIENT_REPLAY_BUFFER_MAX_BYTES = 2 * 1024 * 1024;
@@ -5203,8 +5204,8 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const rawEventsLimit = parsePositiveIntSearchParam(url, "rawEventsLimit", 80, 1000);
 				const beforeSequence = parseOptionalPositiveIntSearchParam(url, "beforeSequence");
 				const eventLimit = url.searchParams.has("pageSize")
-					? parsePositiveIntSearchParam(url, "pageSize", DEFAULT_TRACE_EVENTS_PAGE_SIZE, MAX_TRACE_EVENTS_PER_REQUEST)
-					: parsePositiveIntSearchParam(url, "eventLimit", DEFAULT_TRACE_EVENTS_PAGE_SIZE, MAX_TRACE_EVENTS_PER_REQUEST);
+					? parsePositiveIntSearchParam(url, "pageSize", DEFAULT_TRACE_EVENTS_PAGE_SIZE, TRACE_V1_COMPAT_MAX_EVENTS_PER_REQUEST)
+					: parsePositiveIntSearchParam(url, "eventLimit", DEFAULT_TRACE_EVENTS_PAGE_SIZE, TRACE_V1_COMPAT_MAX_EVENTS_PER_REQUEST);
 				const selectedSession = resolveRequestedSession(
 					state,
 					context,

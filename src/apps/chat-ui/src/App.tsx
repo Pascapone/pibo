@@ -135,6 +135,7 @@ type LoadBootstrapOptions = {
 };
 
 const SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS = 750;
+const NAVIGATION_FALLBACK_REFRESH_MS = 30_000;
 const SESSION_PAGE_SIZE = 120;
 const ARCHIVED_SESSION_PAGE_SIZE = 60;
 const EMPTY_SESSION_PATH_IDS = new Set<string>();
@@ -481,15 +482,27 @@ export function App({ route }: { route: ChatAppRoute }) {
 	useEffect(() => {
 		if (area !== "sessions") return;
 		let stopped = false;
+		let inFlight = false;
 		const refreshVisibleNavigation = () => {
-			if (stopped || document.hidden || !bootstrapRef.current) return;
+			if (stopped || inFlight || document.hidden || !bootstrapRef.current) return;
+			inFlight = true;
 			loadNavigation(selectedPiboSessionId ?? undefined, showArchivedRef.current, activeRoomId ?? undefined, { force: true })
-				.catch(() => undefined);
+				.catch(() => undefined)
+				.finally(() => {
+					inFlight = false;
+				});
 		};
-		const interval = window.setInterval(refreshVisibleNavigation, 2500);
+		const interval = window.setInterval(refreshVisibleNavigation, NAVIGATION_FALLBACK_REFRESH_MS);
+		const refreshWhenVisible = () => {
+			if (!document.hidden) refreshVisibleNavigation();
+		};
+		window.addEventListener("focus", refreshVisibleNavigation);
+		document.addEventListener("visibilitychange", refreshWhenVisible);
 		return () => {
 			stopped = true;
 			window.clearInterval(interval);
+			window.removeEventListener("focus", refreshVisibleNavigation);
+			document.removeEventListener("visibilitychange", refreshWhenVisible);
 		};
 	}, [activeRoomId, area, loadNavigation, selectedPiboSessionId]);
 

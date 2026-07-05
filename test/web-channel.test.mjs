@@ -503,6 +503,44 @@ test("chat web trace supports cursor pages", async () => {
 	}
 });
 
+test("deprecated chat web trace caps oversized compatibility page requests", async () => {
+	const { channel, baseURL, emitOutput } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+	});
+
+	try {
+		const sessionResponse = await fetch(`${baseURL}/api/chat/session`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(sessionResponse.status, 200);
+		const sessionPayload = await sessionResponse.json();
+		for (let index = 1; index <= 200; index += 1) {
+			emitOutput({
+				type: "assistant_message",
+				piboSessionId: sessionPayload.session.id,
+				eventId: `compat-answer-${index}`,
+				text: `compat message ${index}`,
+			});
+		}
+
+		const response = await fetch(
+			`${baseURL}/api/chat/trace?piboSessionId=${encodeURIComponent(sessionPayload.session.id)}&pageSize=2000`,
+			{ headers: { "x-test-user": "user-1" } },
+		);
+		assert.equal(response.status, 200);
+		assert.equal(response.headers.get("x-pibo-trace-v1-deprecated"), "true");
+		const text = await response.text();
+		assert.ok(Buffer.byteLength(text, "utf8") < 256 * 1024);
+		const trace = JSON.parse(text);
+		assert.equal(trace.pageSize, 50);
+		assert.equal(trace.firstEventSequence, 151);
+		assert.equal(trace.lastEventSequence, 200);
+		assert.equal(trace.hasOlderEvents, true);
+	} finally {
+		await channel.stop?.();
+	}
+});
+
 test("chat web sessions supports cursor pages", async () => {
 	const { channel, baseURL } = await startWebHostChannel({
 		auth: createFakeAuthService(),

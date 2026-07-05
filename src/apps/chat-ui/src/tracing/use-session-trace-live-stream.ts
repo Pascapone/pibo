@@ -28,6 +28,7 @@ import type { LiveTraceOverlay } from "./live-overlay";
 const LIVE_STREAM_RECONNECT_BASE_DELAY_MS = 500;
 const LIVE_STREAM_RECONNECT_MAX_DELAY_MS = 10_000;
 const LIVE_STREAM_STALE_MS = 45_000;
+const RUNNING_TRACE_RECOVERY_POLL_MS = 15_000;
 const HIDDEN_STREAM_FLUSH_DELAY_MS = 100;
 
 type SelectedLiveEventStream = {
@@ -326,10 +327,17 @@ export function useSessionTraceLiveStream({
 		if (!selectedPiboSessionId || selectedSessionStatus !== "running") return;
 		const timer = window.setInterval(() => {
 			flushPendingStreamEvents(selectedPiboSessionId);
+			const liveStream = selectedLiveStreamRef.current;
+			const stale = !liveStream
+				|| liveStream.piboSessionId !== selectedPiboSessionId
+				|| liveStream.events.readyState === 2
+				|| Date.now() - liveStream.lastActivityAt > LIVE_STREAM_STALE_MS;
+			if (!stale) return;
 			onRefreshTrace().catch((caught) => onError(errorMessage(caught)));
-		}, 1000);
+			requestSelectedLiveStreamReconnect();
+		}, RUNNING_TRACE_RECOVERY_POLL_MS);
 		return () => window.clearInterval(timer);
-	}, [flushPendingStreamEvents, onError, onRefreshTrace, selectedPiboSessionId, selectedSessionStatus]);
+	}, [flushPendingStreamEvents, onError, onRefreshTrace, requestSelectedLiveStreamReconnect, selectedPiboSessionId, selectedSessionStatus]);
 
 }
 

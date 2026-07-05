@@ -14,8 +14,8 @@ import { TerminalThinkingCard } from "./TerminalThinkingCard";
 import { buildCompactTerminalRows, type CompactTerminalLine, type CompactTerminalRow } from "../../../../../session-ui/terminalRows.js";
 
 const SHOW_LATEST_THRESHOLD_PX = 180;
-const OLDER_TRACE_PREFETCH_TOP_THRESHOLD_PX = 1_200;
-const OLDER_TRACE_PREFETCH_ROW_THRESHOLD = 8;
+const OLDER_TRACE_PREFETCH_TOP_THRESHOLD_PX = 4_800;
+const OLDER_TRACE_PREFETCH_ROW_THRESHOLD = 20;
 const INITIAL_BOTTOM_ITEM = { index: "LAST", align: "end" } as const;
 const VIRTUOSO_VIEWPORT = { top: 2_400, bottom: 2_400 } as const;
 const DEFAULT_ROW_HEIGHT_PX = 84;
@@ -88,7 +88,7 @@ export function CompactTerminalSessionView({
 		rangePrefetchReadyRef.current = false;
 		const readyTimer = window.setTimeout(() => {
 			rangePrefetchReadyRef.current = true;
-		}, 600);
+		}, 250);
 		return () => window.clearTimeout(readyTimer);
 	}, [traceView?.piboSessionId]);
 

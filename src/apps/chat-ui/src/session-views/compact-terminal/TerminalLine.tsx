@@ -7,17 +7,23 @@ type TerminalLineProps = {
 	clampLines?: number;
 };
 
+const MAX_TERMINAL_LINE_TOKEN_SPANS = 120;
+
 export function TerminalLine({ line, status, clampLines }: TerminalLineProps) {
 	const contentClassName = `min-w-0 whitespace-pre-wrap break-words ${clampLines ? "block overflow-hidden" : ""}`;
+	const tokens = compactTerminalLineTokens(line.tokens);
+	const renderPlainText = tokens.length > MAX_TERMINAL_LINE_TOKEN_SPANS;
 	return (
 		<div className="grid grid-cols-[1.9rem_minmax(0,1fr)] gap-2 leading-[1.45]">
 			<span className={`whitespace-pre ${prefixClassName(line.prefix, status)}`}>{prefixText(line.prefix)}</span>
 			<span className={contentClassName} style={clampLines ? { maxHeight: `${clampLines * 1.45}em` } : undefined}>
-				{line.tokens.map((token, index) => (
-					<span key={`${index}:${token.text}`} className={tokenClassName(token)}>
-						{token.text}
-					</span>
-				))}
+				{renderPlainText
+					? <span className="text-[#d4d4d4]">{tokens.map((token) => token.text).join("")}</span>
+					: tokens.map((token, index) => (
+						<span key={`${index}:${token.text}`} className={tokenClassName(token)}>
+							{token.text}
+						</span>
+					))}
 				{line.functionCall ? <TerminalFunctionCall name={line.functionCall.name} input={line.functionCall.input} /> : null}
 			</span>
 		</div>
@@ -73,4 +79,23 @@ function tokenClassName(token: TerminalInlineToken): string {
 		token.weight === "bold" ? "font-bold" : token.weight === "semibold" ? "font-semibold" : "font-normal";
 	const italicClass = token.italic ? "italic" : "";
 	return `${toneClass} ${weightClass} ${italicClass}`.trim();
+}
+
+function compactTerminalLineTokens(tokens: readonly TerminalInlineToken[]): TerminalInlineToken[] {
+	const compacted: TerminalInlineToken[] = [];
+	for (const token of tokens) {
+		if (!token.text) continue;
+		const previous = compacted.at(-1);
+		if (
+			previous
+			&& previous.tone === token.tone
+			&& previous.weight === token.weight
+			&& previous.italic === token.italic
+		) {
+			previous.text += token.text;
+			continue;
+		}
+		compacted.push({ ...token });
+	}
+	return compacted;
 }

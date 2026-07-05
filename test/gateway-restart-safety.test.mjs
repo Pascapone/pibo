@@ -130,13 +130,36 @@ describe('gateway start command', () => {
     const port = await freePort();
     const dir = mkdtempSync(join(tmpdir(), 'pibo-gateway-start-'));
     const pidPath = join(dir, 'gateway.pid');
-    const scriptPath = join(dir, 'manager.sh');
-    writeFileSync(scriptPath, `#!/usr/bin/env bash
-set -euo pipefail
-if [[ "$1" != "start" ]]; then exit 42; fi
-node -e 'const http=require("node:http"); const fs=require("node:fs"); const port=Number(process.env.FAKE_GATEWAY_PORT); const server=http.createServer((req,res)=>{ if(req.url==="/gateway/status"){ res.setHeader("content-type","application/json"); res.end(JSON.stringify({status:"ok",mode:"dev",runtimeStatuses:[],activeRuns:[]})); return; } res.statusCode=404; res.end("not found"); }); server.listen(port,"127.0.0.1",()=>fs.writeFileSync(process.env.FAKE_GATEWAY_PID,String(process.pid)));' >/dev/null 2>&1 &
+    const serverPath = join(dir, 'fake-gateway.mjs');
+    const managerPath = join(dir, 'manager.mjs');
+    const scriptPath = join(dir, process.platform === 'win32' ? 'manager.cmd' : 'manager.sh');
+    writeFileSync(serverPath, `
+import { createServer } from 'node:http';
+import { writeFileSync } from 'node:fs';
+const port = Number(process.env.FAKE_GATEWAY_PORT);
+const server = createServer((req, res) => {
+  if (req.url === '/gateway/status') {
+    res.setHeader('content-type', 'application/json');
+    res.end(JSON.stringify({ status: 'ok', mode: 'dev', runtimeStatuses: [], activeRuns: [] }));
+    return;
+  }
+  res.statusCode = 404;
+  res.end('not found');
+});
+server.listen(port, '127.0.0.1', () => writeFileSync(process.env.FAKE_GATEWAY_PID, String(process.pid)));
 `, 'utf8');
-    chmodSync(scriptPath, 0o755);
+    writeFileSync(managerPath, `
+import { spawn } from 'node:child_process';
+if (process.argv[2] !== 'start') process.exit(42);
+const child = spawn(process.execPath, [${JSON.stringify(serverPath)}], { detached: true, stdio: 'ignore', env: process.env });
+child.unref();
+`, 'utf8');
+    if (process.platform === 'win32') {
+      writeFileSync(scriptPath, `@echo off\r\n"${process.execPath}" "${managerPath}" %1\r\n`, 'utf8');
+    } else {
+      writeFileSync(scriptPath, `#!/usr/bin/env bash\nset -euo pipefail\n"${process.execPath}" "${managerPath}" "$1"\n`, 'utf8');
+      chmodSync(scriptPath, 0o755);
+    }
     const result = spawnSync(process.execPath, ['dist/bin/pibo.js', 'gateway', 'dev', 'start'], {
       encoding: 'utf8',
       env: {
