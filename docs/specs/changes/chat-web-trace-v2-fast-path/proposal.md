@@ -1,7 +1,8 @@
 # Proposal: Chat Web Trace V2 Fast Path
 
-**Status:** Draft
+**Status:** Implemented baseline in v1.7.0; follow-up phases remain active
 **Created:** 2026-07-04
+**Updated:** 2026-07-05
 **Requester / Source:** Chat Web trace performance/OOM incidents and expert report
 **Related docs:**
 
@@ -24,13 +25,13 @@ The trace transport contract must change. Pibo should keep all raw data, but the
 
 ## What Changes
 
-Pibo will introduce Trace V2:
+Pibo introduced the Trace V2 hot path in `v1.7.0`:
 
 1. A compact timeline API returns small rows, previews, payload references, and cursors.
 2. Large input/output/reasoning/error/raw payloads move behind payload refs and range-capable payload endpoints.
 3. Raw events move to a separate debug-only paginated API.
-4. Live trace updates become small patch events instead of full historical trace refetches.
-5. Trace projection becomes a read model that can be built incrementally and later rebuilt in workers.
+4. Normal tail rendering and older-history loading use bounded timeline pages instead of full historical trace refetches.
+5. Trace projection remains a later read-model phase that can be built incrementally and later rebuilt in workers.
 6. Old full-trace APIs remain temporarily for compatibility but are capped, deprecated, and not used by default Chat Web.
 7. Server, network, browser parse, React cache, and render budgets become release gates.
 
@@ -40,9 +41,9 @@ Pibo will introduce Trace V2:
 
 - `trace-v2-read-model`: compact timeline, node detail, payload, raw-event, and projection status queries.
 - `trace-payload-store`: payload refs, previews, range reads, hashes, content types, and download metadata.
-- `trace-live-patches`: small SSE patch frames for running sessions.
+- `trace-live-patches`: small SSE patch frames for running sessions. This remains a follow-up capability; `v1.7.0` ships live overlay compatibility and bounded timeline refresh behavior, not the final patch protocol.
 - `trace-performance-budgets`: hard response, serialization, cache, and browser budgets.
-- `trace-projection-jobs`: rebuild/backfill jobs for old sessions and large raw-source scans.
+- `trace-projection-jobs`: rebuild/backfill jobs for old sessions and large raw-source scans. This remains a later worker/projection capability.
 
 ### Modified Capabilities
 
@@ -62,4 +63,6 @@ Pibo will introduce Trace V2:
 
 ## Success Definition
 
-The change succeeds when opening or switching to a large session uses only bounded timeline responses, first meaningful content appears quickly, large payloads load only on expansion, live output does not trigger full-history reloads, and the gateway remains responsive under large traces.
+The `v1.7.0` baseline succeeds when opening or switching to a large session uses bounded timeline responses, first meaningful content appears quickly, large payloads are represented by payload refs and explicit payload reads, raw events are separate and bounded, and the gateway remains responsive under large traces.
+
+The full roadmap succeeds when persistent projection, formal trace live patches, telemetry archive isolation, and worker-protected rebuild/maintenance jobs are also complete.

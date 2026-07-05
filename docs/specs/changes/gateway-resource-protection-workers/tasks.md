@@ -1,7 +1,8 @@
 # Tasks: Gateway Resource Protection and Isolated Runtime Workers
 
-**Status:** Draft
+**Status:** Draft; Phase 0 gateway survival guardrails shipped in v1.7.0
 **Created:** 2026-07-04
+**Updated:** 2026-07-05
 **Related spec:** `spec.md`
 **Related changes:** `../chat-web-trace-v2-fast-path/`, `../telemetry-opt-in-archive-isolation/`
 
@@ -26,25 +27,27 @@ A smaller first release can ship Linux systemd-backed maintenance jobs and diagn
 
 This phase is smaller than full worker isolation and should ship first.
 
+**v1.7.0 status:** Shipped for the Chat Web gateway hot path. Full job/worker/resource-policy isolation remains pending.
+
 ### Tasks
 
-- [ ] T0.1 Add gateway resource snapshot API/CLI: heap, RSS, external, event-loop delay, active streams, listener counts.
-- [ ] T0.2 Add trace cache byte/count budgets and eviction by estimated size.
-- [ ] T0.3 Add transient replay buffer byte/count budgets and eviction metrics.
-- [ ] T0.4 Add reliability event inline payload budgets and large-payload reference storage.
-- [ ] T0.5 Add memory threshold warnings and degraded-mode flags.
-- [ ] T0.6 Add emergency cache eviction when heap crosses warning thresholds.
-- [ ] T0.7 Add synthetic large trace and large tool-output load tests.
-- [ ] T0.8 Add startup warning/failure for unsupported Node versions.
+- [x] T0.1 Add gateway resource snapshot API/CLI: heap, RSS, external, event-loop delay, active streams, listener counts.
+- [x] T0.2 Add trace cache byte/count budgets and eviction by estimated size for Trace V2 timeline page cache.
+- [x] T0.3 Add transient replay buffer byte/count budgets and eviction metrics.
+- [x] T0.4 Add reliability event inline payload budgets and large-payload reference storage.
+- [x] T0.5 Add memory/resource warning ring for degraded-operation visibility.
+- [x] T0.6 Add cache eviction when configured trace cache budgets are exceeded.
+- [x] T0.7 Add synthetic large trace and large tool-output load tests for the Trace V2 hot path.
+- [x] T0.8 Add startup warning/failure for unsupported Node versions.
 - [ ] T0.9 Add a rolling crash-context file under `$PIBO_HOME/diagnostics/` with fixed size.
-- [ ] T0.10 Apply Trace V2 response-byte and serialization/compression metrics to gateway diagnostics.
+- [x] T0.10 Apply Trace V2 response-byte and serialization/compression metrics to gateway diagnostics.
 
 ### Acceptance
 
-- [ ] Gateway reports memory/cache/replay/payload pressure without scanning large stores.
-- [ ] Synthetic large-output workloads do not OOM the gateway.
-- [ ] Large trace/session switching cannot retain more than the configured cache budget.
-- [ ] Operators get actionable warnings before heap exhaustion.
+- [x] Gateway reports memory/cache/replay/payload pressure without scanning large stores.
+- [x] Synthetic large-output workloads do not OOM the released hot path.
+- [x] Large trace/session switching cannot retain more than the configured timeline page cache budget.
+- [x] Operators get actionable warnings before heap exhaustion through bounded diagnostics and recent warnings.
 
 ## Phase 1: Audit and Immediate Guardrails
 

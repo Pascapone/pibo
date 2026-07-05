@@ -1,7 +1,8 @@
 # Tasks: Telemetry Opt-In Archive Isolation
 
-**Status:** Draft
+**Status:** Draft; Phase 0 hot-path overlap shipped in v1.7.0
 **Created:** 2026-07-04
+**Updated:** 2026-07-05
 **Related spec:** `spec.md`
 **Related changes:** `../chat-web-trace-v2-fast-path/`, `../gateway-resource-protection-workers/`
 
@@ -22,24 +23,26 @@ Suggested delivery:
 
 This phase should ship before the full archive/capture system.
 
+**v1.7.0 status:** Shipped for gateway diagnostics and reliability `pibo.output` hot-path payload bounds. The full telemetry capture/archive system remains pending.
+
 ### Tasks
 
-- [ ] T0.1 Add gateway memory diagnostics: heap, RSS, external, arrayBuffers, event-loop delay.
-- [ ] T0.2 Add bounded counters for trace cache entries/estimated bytes and transient replay buffer size/estimated bytes.
-- [ ] T0.3 Add bounded counters for reliability `pibo.output` writes by payload size bucket.
-- [ ] T0.4 Add a hot-path inline payload limit for reliability events.
-- [ ] T0.5 Store large `tool_execution_finished` and similar output bodies as payload references plus previews.
-- [ ] T0.6 Add startup/runtime warning when Node does not satisfy the package engine requirement.
-- [ ] T0.7 Add a synthetic large-output regression test that repeatedly emits multi-MB tool results.
-- [ ] T0.8 Add a diagnostic report command that does not parse full large payloads.
-- [ ] T0.9 Coordinate payload/ref thresholds with Trace V2 so telemetry, reliability events, and trace rows use one shared hot-path payload policy where practical.
+- [x] T0.1 Add gateway memory diagnostics: heap, RSS, external, arrayBuffers, event-loop delay.
+- [x] T0.2 Add bounded counters for trace cache entries/estimated bytes and transient replay buffer size/estimated bytes.
+- [x] T0.3 Add bounded counters for reliability `pibo.output` writes by payload size bucket.
+- [x] T0.4 Add a hot-path inline payload limit for reliability events.
+- [x] T0.5 Store large `tool_execution_finished` and similar output bodies as payload references plus previews.
+- [x] T0.6 Add startup/runtime warning when Node does not satisfy the package engine requirement.
+- [x] T0.7 Add a synthetic large-output regression test for multi-MB tool results in the Trace V2 hot path.
+- [x] T0.8 Add bounded gateway diagnostics that do not parse full large payloads.
+- [x] T0.9 Coordinate payload/ref thresholds with Trace V2 so reliability events and trace rows share the same hot-path payload principle where practical.
 
 ### Acceptance
 
-- [ ] Repeated multi-MB tool outputs do not grow gateway heap without bound.
-- [ ] Reliability event stream inline payloads remain below the configured threshold.
-- [ ] Operators can see heap/cache/replay/payload pressure before OOM.
-- [ ] Diagnostics are bounded and safe on stores with hundreds of MB of payloads.
+- [x] Repeated multi-MB tool outputs do not grow the default timeline or reliability hot path without bound.
+- [x] Reliability event stream inline payloads remain below the configured threshold.
+- [x] Operators can see heap/cache/replay/payload pressure before OOM.
+- [x] Diagnostics are bounded and safe on stores with hundreds of MB of payloads.
 
 ## Phase 1: Stop New Always-On Detailed Telemetry
 

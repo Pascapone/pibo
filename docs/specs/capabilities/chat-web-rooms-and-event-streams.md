@@ -2,6 +2,7 @@
 
 **Status:** Draft
 **Created:** 2026-05-10
+**Updated:** 2026-07-05
 **Controller / Source:** Current Pibo codebase
 **Related docs:** `GLOSSARY.md`, `docs/specs/README.md`, `docs/specs/capabilities/pibo-session-routing.md`
 
@@ -19,7 +20,7 @@ Pibo MUST provide authenticated Chat Web rooms and event streams that group shar
 
 The current implementation is centered on `src/apps/chat/web-app.ts`, `src/apps/chat/data/room-service.ts`, `src/apps/chat/data/event-command-service.ts`, `src/apps/chat/data/read-state-service.ts`, `src/apps/chat/data/session-query-service.ts`, `src/apps/chat/data/timeline-query-service.ts`, and `src/data/schema.ts`.
 
-Rooms, room members, event logs, read state, sessions, payloads, observations, and navigation projections live in the Pibo data store. Chat Web APIs expose bootstrap, navigation, room CRUD, session CRUD, message send, read marks, trace reads, and SSE streams under `/api/chat/*`. Runtime output is ingested into Chat Web projections and mirrored to the reliability store as `pibo.output` events.
+Rooms, room members, event logs, read state, sessions, payloads, observations, and navigation projections live in the Pibo data store. Chat Web APIs expose bootstrap, navigation, room CRUD, session CRUD, message send, read marks, trace reads, and SSE streams under `/api/chat/*`. Runtime output is ingested into Chat Web projections and mirrored to the reliability store as bounded `pibo.output` events with previews/payload refs for over-budget payloads.
 
 ## Scope
 
@@ -161,7 +162,7 @@ The system MUST subscribe to routed output and update Chat Web event, session, t
 
 #### Current
 
-`ensureEventIndexing()` subscribes to channel output, compacts output events, ingests persistable events through `ChatDataIngestService`, updates session indexes, appends `pibo.output` reliability events, and notifies live listeners.
+`ensureEventIndexing()` subscribes to channel output, compacts output events, ingests persistable events through `ChatDataIngestService`, updates session indexes, appends bounded `pibo.output` reliability events, and notifies live listeners.
 
 #### Acceptance
 
@@ -170,6 +171,7 @@ The system MUST subscribe to routed output and update Chat Web event, session, t
 - Session status and last activity update when output arrives.
 - Assistant completions and session errors can mark active focused streams read.
 - Ingestion errors are counted in persistence metrics and do not silently disappear.
+- Reliability mirror events stay within the inline hot-path payload budget; large output bodies are replaced with previews and payload references.
 
 #### Scenario: Assistant finishes a message
 
@@ -185,6 +187,8 @@ The system MUST expose SSE streams that can replay missed persisted frames and t
 
 `GET /api/chat/events` creates a `text/event-stream` response. It parses `since` or `Last-Event-ID`, replays stored events via `timelineQuery.listEvents()`, adds compactor snapshots for selected sessions, subscribes to live listeners, and sends heartbeat comments.
 
+Live-only transient replay records are held in a bounded in-memory replay buffer with event and byte budgets. When older live-only frames have been evicted, reconnect metadata reports the missed/evicted range instead of retaining unbounded replay data.
+
 #### Acceptance
 
 - Event streams require an authenticated session.
@@ -195,6 +199,7 @@ The system MUST expose SSE streams that can replay missed persisted frames and t
 - Room streams include the `piboSessionId` for unfocused sessions.
 - Session streams only forward frames for the selected session.
 - Streams send heartbeat comments while open and remove listeners when cancelled.
+- Transient live replay buffers have bounded event and byte counts.
 
 #### Scenario: Resume after disconnect
 
@@ -317,7 +322,7 @@ Room deletion rejects default rooms and requires confirmation by room name. Sess
 - **Security / Privacy:** All Chat Web APIs require an authenticated web session. Mutations MUST require same-origin JSON requests.
 - **Compatibility:** Existing Pibo Sessions without room metadata remain reachable through the default room bridge.
 - **Reliability:** Persisted stream ids and SSE cursors provide replay after browser disconnects, but do not guarantee distributed exactly-once delivery.
-- **Performance:** Bootstrap and navigation SHOULD use indexed projections and avoid rebuilding full traces unless explicitly requested.
+- **Performance:** Bootstrap and navigation SHOULD use indexed projections and avoid rebuilding full traces unless explicitly requested. Reliability mirrors and transient replay buffers MUST NOT retain unbounded payload bodies in gateway memory.
 
 ## Success Criteria
 
@@ -331,6 +336,7 @@ Room deletion rejects default rooms and requires confirmation by room name. Sess
 - [ ] SC-008: Session metadata patches enforce shared session resolution, same-origin JSON, archive-read side effects, and profile-change limits.
 - [ ] SC-009: Runtime termination endpoints emit only `kill` or `kill_all` execution actions for the resolved session.
 - [ ] SC-010: Permanent deletion requires prior archive and exact confirmation, and removes associated projections.
+- [x] SC-011: Reliability `pibo.output` mirror events and transient live replay buffers are bounded for large output payloads.
 
 ## Assumptions and Open Questions
 
@@ -363,6 +369,7 @@ Room deletion rejects default rooms and requires confirmation by room name. Sess
 | REQ-009 Session metadata mutations are bounded | Profile change after activity is rejected | `src/apps/chat/web-app.ts`, `src/sessions/store.ts`, `src/sessions/sqlite-store.ts` | Implemented |
 | REQ-010 Runtime termination controls are explicit session actions | Kill managed session | `src/apps/chat/web-app.ts`, `src/core/events.ts`, `src/core/session-router.ts` | Implemented |
 | REQ-011 Destructive deletion requires archive and confirmation | Delete archived room tree | `src/apps/chat/web-app.ts`, `src/apps/chat/data/session-query-service.ts`, `src/apps/chat/data/event-command-service.ts` | Implemented |
+| REQ-012 Reliability mirror and transient replay buffers are bounded | Large tool output while SSE reconnects | `src/apps/chat/web-app.ts`, `src/data/payload-store.ts`, `test/trace-v2-fast-path.test.mjs` | Implemented in v1.7.0 |
 
 ## Verification Basis
 

@@ -1,20 +1,22 @@
 # Design: Chat Web Trace V2 Fast Path
 
-**Status:** Draft
+**Status:** Implemented baseline in v1.7.0; projection/worker design remains active
 **Created:** 2026-07-04
+**Updated:** 2026-07-05
 **Related spec:** `spec.md`
 
 ## Design Summary
 
-Trace V2 separates hot-path structure from cold-path payloads. The gateway serves compact timeline pages and small live patches. Large payloads, raw events, transcript slices, and rebuild work are accessed explicitly through bounded APIs or jobs.
+Trace V2 separates hot-path structure from cold-path payloads. The gateway serves compact timeline pages. Large payloads, raw events, transcript slices, and rebuild work are accessed explicitly through bounded APIs or jobs. Formal small live patch frames remain part of the later design.
 
-The first implementation can be vertical and incremental:
+The first implementation shipped in `v1.7.0` as a vertical hot-path slice:
 
-1. Add DTOs and bounded timeline API backed by current raw sources.
-2. Add payload refs and payload endpoint.
-3. Move Chat Web default session view to the new API.
-4. Add persistent projection tables and live patch integration.
-5. Move rebuild/backfill/debug scans to workers.
+1. Add DTOs and bounded timeline API backed by current raw sources. **Shipped.**
+2. Add payload refs and payload endpoint. **Shipped.**
+3. Move Chat Web default session view to the new API. **Shipped.**
+4. Add separate bounded raw-events endpoint and Raw Events UI split. **Shipped.**
+5. Add persistent projection tables and live patch integration. **Pending.**
+6. Move rebuild/backfill/debug scans to workers. **Pending.**
 
 ## Target Architecture
 
@@ -35,7 +37,7 @@ Projection layer:
 Hot Chat Web path:
   summary -> tiny JSON
   timeline page -> compact rows
-  live patches -> small SSE frames
+  live patches -> small SSE frames (future formal protocol)
   payload expand -> lazy range request
 
 Heavy path:
@@ -165,7 +167,7 @@ Returns bounded metadata for debug panels. Still no large payload bodies.
 GET /api/chat/trace/payload/:payloadRef?offset=0&limit=65536
 ```
 
-Returns a chunk and metadata. Large payloads use range reads or download.
+Returns a chunk and metadata. Large payloads use bounded range reads. A first-class full download route remains a follow-up affordance.
 
 ### Raw Events
 
@@ -179,14 +181,18 @@ Debug-only, paginated, separate from timeline.
 
 ### First Slice: Adapter over Existing Sources
 
-The first slice may generate compact rows from current trace engine/output events, as long as it:
+The `v1.7.0` first slice generates compact rows from current trace engine/output events. It:
 
 - strips large payloads into refs/previews before response;
-- avoids full transcript reads when serving a page;
+- avoids full transcript reads for older pages and uses bounded tail transcript reads for the tail page;
 - enforces byte budgets before returning;
 - stores large payloads or refs in an explicit payload adapter.
 
 This enables fast UX before full projection tables exist.
+
+### Current Payload Storage
+
+The first slice uses the existing Pibo data-store payload service for trace payload refs and reliability payload externalization. Payload refs encode the Pibo Session id and payload id, and the payload endpoint enforces session access before returning bounded chunks.
 
 ### Persistent Projection Tables
 
@@ -321,7 +327,9 @@ Upward infinite scroll uses timeline cursors, not event-log-only cursors. It mus
 
 ### Live Updates
 
-SSE patches update rows by `nodeId`. A patch can update preview/status/payloadRef without refetching historical pages.
+The final design uses SSE patches that update rows by `nodeId`. A patch can update preview/status/payloadRef without refetching historical pages.
+
+`v1.7.0` still uses the existing live overlay compatibility path plus bounded timeline pages. It must not regress to the old full-trace hot path, but the formal patch frame protocol is still future work.
 
 ## Migration Strategy
 
@@ -383,13 +391,14 @@ Expose through resource diagnostics without scanning large payloads.
 
 ## Release Gates
 
-A release must not claim to fix trace performance until:
+A release must not claim the Phase 0-2 hot-path fix until:
 
 - default Chat Web does not call old full trace endpoint;
 - timeline responses are bounded;
 - large payloads load only on expansion;
 - raw events are separate;
 - no large JSON route uses synchronous `gzipSync`;
-- no normal trace request performs full transcript read;
-- live patches do not force full timeline reload;
+- no older-page trace request performs full transcript read and the tail path remains bounded;
 - diagnostics expose route bytes, heap, event-loop delay, and cache sizes.
+
+The later architecture is not complete until persistent projection, formal live patches, and worker-backed rebuild/backfill jobs are also released.

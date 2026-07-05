@@ -265,6 +265,18 @@ The ordered normalized `PiboOutputEvent` records stored by the Chat Web Read Mod
 **Chat Web Trace View**:
 The read-time projection that combines Pi session JSONL, Pibo Sessions, Chat Web Read Model rows, and live Pibo events into nested trace nodes for the Chat Web App.
 
+**Trace V2 Timeline**:
+The compact Chat Web trace transport used by the default session view. It carries ordered trace row structure, status, previews, cursors, inline-small payloads, and payload references, but not unbounded tool outputs or raw event bodies.
+
+**Trace Payload Ref**:
+A bounded reference from a trace row or raw debug row to cold payload content stored outside the hot timeline response. It includes preview, byte length, content type, truncation state, and lookup identity for explicit range reads.
+
+**Cold Trace Payload**:
+Large or detailed trace content that is not required to render the default timeline row, such as large tool output, full tool arguments, raw event payloads, or oversized reasoning/message text. Cold payloads are fetched explicitly through payload endpoints.
+
+**Trace Raw Events Debug API**:
+The separate paginated Chat Web API for inspecting raw stored events. It is not part of the default timeline response and must remain bounded.
+
 **Chat Session View**:
 A Chat Web UI renderer for the selected Pibo Session, backed by the current Chat Web Trace View and session metadata.
 
@@ -276,6 +288,9 @@ The built-in Chat Session View that renders trace data as a compact terminal-sty
 
 **Trace Version**:
 A server-issued freshness token for one Chat Web Trace View, exposed through ETag-style trace responses.
+
+**Gateway Resource Diagnostics**:
+Always-on bounded gateway self-observability for heap/RSS/external memory, event-loop delay, active streams/listeners, trace cache bytes, transient replay buffer bytes, route response sizes, reliability payload buckets, and recent resource warnings.
 
 **Cache Invalidation Matrix**:
 The Chat Web cache contract mapping each mutation or live event to the query classes that must be refreshed or patched.
@@ -332,6 +347,7 @@ A Pibo-managed wrapper-level process that summarizes tool usage in a Pibo Sessio
 - The **Chat Web Read Model** is a projection and is not the source of truth for Pibo Sessions or Pi transcripts.
 - The **Chat Event Log** is durable Chat Web room/session event storage, while the **Raw Pibo Event Log** remains a read-model/debugging projection of normalized output events.
 - A **Chat Web Trace View** is reconstructed from Pi transcript data plus the **Raw Pibo Event Log**.
+- The default Chat Web trace hot path uses the **Trace V2 Timeline**; **Cold Trace Payloads** are accessed through **Trace Payload Refs**, and raw debug data is accessed through the **Trace Raw Events Debug API**.
 - **Chat Session Views** render the selected session from the current **Chat Web Trace View** and related session metadata.
 - A **Trace Version** controls trace freshness; the **Cache Invalidation Matrix** controls which Chat Web caches are updated after mutations or live events.
 - The **Chat Web SSE Stream** carries **Chat Stream Events** for live UI updates; durable frames resume with a **Chat Event Cursor**.

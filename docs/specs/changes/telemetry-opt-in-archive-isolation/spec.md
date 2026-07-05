@@ -1,7 +1,8 @@
 # Spec: Telemetry Opt-In Archive Isolation
 
-**Status:** Draft
+**Status:** Draft; Phase 0 reliability/gateway hot-path bounds shipped in v1.7.0
 **Created:** 2026-07-04
+**Updated:** 2026-07-05
 **Requester / Source:** Production incident caused by large live telemetry retention
 **Related docs:**
 
@@ -151,6 +152,10 @@ Operational data is kept separate from detailed telemetry and remains available 
 
 The system MUST NOT store unbounded tool output or runtime output payloads inline in hot operational event streams.
 
+#### v1.7.0 Status
+
+Implemented for the Chat Web reliability mirror path: over-budget `pibo.output` payloads are compacted to previews and payload references before append. This does not complete the full telemetry capture/archive lifecycle.
+
 #### Current
 
 The reliability event stream can store full `pibo.output` payloads such as `tool_execution_finished` in `pibo-events.sqlite`. Local evidence showed `pibo_event_stream.payload_json` totaling about 629 MB, with individual output events up to about 4.8 MB.
@@ -176,6 +181,10 @@ Operational/reliability streams store small envelopes, status, correlation ids, 
 ### Requirement: Gateway self-observability remains always on and bounded
 
 The system MUST collect minimal gateway health and resource metrics even when detailed telemetry is disabled.
+
+#### v1.7.0 Status
+
+Implemented as bounded gateway diagnostics for memory, event-loop delay, streams/listeners, trace cache bytes, transient replay buffer bytes, reliability payload buckets, externalized payload counts, and recent resource warnings.
 
 #### Target
 
@@ -483,6 +492,8 @@ The system MUST expose telemetry state clearly in settings and CLI.
 - [ ] SC-006: Archive delete/prune runs as a cancellable job outside the gateway request path.
 - [ ] SC-007: Chat Web Settings exposes telemetry state and warns about sensitive debug capture.
 - [ ] SC-008: Tests cover default-off behavior, archive isolation, migration safety, and UI/API lifecycle.
+- [x] SC-009: Reliability `pibo.output` hot-path payloads are bounded with previews/payload refs in the Chat Web gateway path.
+- [x] SC-010: Always-on gateway resource diagnostics expose memory/cache/replay/payload pressure without opening telemetry archives.
 
 ## Assumptions and Open Questions
 

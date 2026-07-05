@@ -2,6 +2,7 @@
 
 **Status:** Draft
 **Created:** 2026-05-10
+**Updated:** 2026-07-05
 **Controller / Source:** Source coverage job, based on current workspace code
 **Related docs:**
 - [Chat Web Trace and Terminal View](./chat-web-trace-and-terminal-view.md)
@@ -10,13 +11,13 @@
 
 ## Why
 
-Long-running Pibo Sessions can produce large trace trees and compact terminal transcripts. The Chat Web App must keep these views usable while runtime output streams, while history is loaded, and while a user inspects older rows.
+Long-running Pibo Sessions can produce large compact terminal transcripts. The Chat Web App must keep these views usable while runtime output streams, while older Trace V2 timeline pages are loaded, and while a user inspects older rows.
 
 Scrolling behavior is user-visible product behavior, not only a rendering optimization. The app must follow new output when the user is reading the latest content and must stop following when the user intentionally scrolls away.
 
 ## Goal
 
-Session views SHALL render large trace and terminal timelines with bounded browser work, stable row identity, and predictable sticky-to-latest behavior.
+Session views SHALL render large trace and terminal timelines with bounded browser work, stable row identity, automatic older-history loading, and predictable sticky-to-latest behavior.
 
 ## Background / Current State
 
@@ -65,6 +66,28 @@ A browser inspection of a large session shows that only the visible row window a
 - THEN the view initially lands at the latest row
 - AND older rows can be reached by scrolling
 - AND the browser does not mount one DOM subtree per trace span.
+
+### Requirement: Older trace history loads automatically near the top
+
+The session view MUST load older Trace V2 timeline pages automatically when the user scrolls near the top of the currently loaded rows. The normal UI MUST NOT require a manual "Load older trace history" button.
+
+#### Current
+
+`TraceTimeline` and `CompactTerminalSessionView` trigger older-page loads through top-distance and visible-range thresholds. `useSessionTracePage` fetches older pages through `/api/chat/trace/timeline?before=...` and merges them by stable node ids.
+
+#### Acceptance
+
+- Scrolling upward with a mouse wheel, touchpad, keyboard, or scrollbar prefetches before the viewport reaches the absolute top.
+- Multiple older pages can load progressively without a visible manual load button.
+- Loading older pages preserves the user's scroll anchor instead of jumping to the bottom.
+- Returning to latest uses the explicit `Scroll to latest` control.
+
+#### Scenario: Wheel-scroll into older history
+
+- GIVEN the selected session has older timeline pages
+- WHEN the user repeatedly scrolls upward toward the top
+- THEN Chat Web starts loading the next older page before the top boundary
+- AND the user can continue scrolling through older history without clicking a load button.
 
 ### Requirement: Row identity is stable across live updates
 
@@ -249,6 +272,7 @@ In a production build, no render counter global is created by the counter helper
 - [ ] SC-004: Session and trace changes reset sticky state and start at the latest row.
 - [ ] SC-005: A CDP performance check writes a long-task report and fails when the configured threshold is exceeded.
 - [ ] SC-006: Render counters mutate diagnostics state only in development builds.
+- [x] SC-007: Older Trace V2 history loads automatically near the top without a manual load button.
 
 ## Assumptions and Open Questions
 
@@ -267,6 +291,7 @@ In a production build, no render counter global is created by the counter helper
 | Requirement | Scenario / Story | Plan / Task | Status |
 |---|---|---|---|
 | REQ-001 Session timelines are virtualized | Large trace opens | Source-backed; add browser fixture test | Draft |
+| REQ-001A Older trace history loads automatically near the top | Wheel-scroll into older history | `src/apps/chat-ui/src/tracing/TraceTimeline.tsx`, `src/apps/chat-ui/src/session-views/compact-terminal/CompactTerminalSessionView.tsx`, `test/chat-ui-trace-infinite-scroll.test.mjs` | Implemented |
 | REQ-002 Row identity is stable across live updates | New output appends | Source-backed; add key stability regression test | Draft |
 | REQ-003 Sticky scrolling follows only when the user is at the latest content | User reads older output during streaming | Source-backed; add sticky-scroll hook test | Draft |
 | REQ-004 A paused viewer can return to the latest content explicitly | Resume following | Source-backed; add UI accessibility test | Draft |

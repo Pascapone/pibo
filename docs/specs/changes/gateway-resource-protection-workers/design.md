@@ -1,13 +1,16 @@
 # Design: Gateway Resource Protection and Isolated Runtime Workers
 
-**Status:** Draft
+**Status:** Draft; Phase 0 gateway survival guardrails shipped in v1.7.0
 **Created:** 2026-07-04
+**Updated:** 2026-07-05
 **Related spec:** `spec.md`
 **Related changes:** `../chat-web-trace-v2-fast-path/`, `../telemetry-opt-in-archive-isolation/`
 
 ## Design Summary
 
 Pibo will separate critical gateway serving from heavy execution. The gateway becomes an orchestrator and status server. Agent runtimes, tools, browser automation, maintenance, telemetry inspection, and long data operations run in worker groups with explicit resource policies. A platform resource-controller layer maps policies to Linux systemd/cgroups, Docker, native Windows Job Objects, or weaker fallbacks.
+
+As of `v1.7.0`, the shipped overlap is limited to gateway survival guardrails: bounded diagnostics, trace timeline cache budgets, transient replay buffer budgets, reliability payload bounds, and large-response compression safety. Full job/worker isolation, resource policies, platform backends, and crash-context files remain pending.
 
 ## Architecture
 

@@ -1,7 +1,8 @@
 # Spec: Gateway Resource Protection and Isolated Runtime Workers
 
-**Status:** Draft
+**Status:** Draft; Phase 0 gateway survival guardrails shipped in v1.7.0
 **Created:** 2026-07-04
+**Updated:** 2026-07-05
 **Requester / Source:** Production reliability incident and gateway starvation from heavy background work
 **Related docs:**
 
@@ -129,6 +130,10 @@ The gateway has protected resources and does not execute heavy work inline. Work
 
 The gateway MUST expose bounded resource-pressure diagnostics that can be read while the system is degraded.
 
+#### v1.7.0 Status
+
+Implemented for the Chat Web gateway hot path: diagnostics expose process memory, event-loop delay, stream/listener counts, trace cache bytes, transient replay buffer bytes, reliability payload buckets, externalized payload count, and recent warnings. Worker/job diagnostics remain pending.
+
 #### Target
 
 Diagnostics include:
@@ -160,6 +165,10 @@ Diagnostics include:
 ### Requirement: Gateway has emergency degradation under memory pressure
 
 The gateway MUST prefer degraded behavior over crashing when memory pressure crosses configured thresholds.
+
+#### v1.7.0 Status
+
+Partially implemented: trace timeline cache and transient replay buffers have byte/count budgets and eviction, V1 trace over-budget responses fail safely, and large reliability payloads are externalized. Full heap-threshold degraded mode and crash-context files remain follow-up work.
 
 #### Target
 
@@ -461,6 +470,8 @@ Diagnostics SHOULD include:
 - [ ] SC-008: Job progress, heartbeat, cancellation, and stale detection are visible in CLI and Web.
 - [ ] SC-009: Worker pool backpressure prevents unbounded process spawning.
 - [ ] SC-010: `pibo resources doctor` reports effective protection and remediation.
+- [x] SC-011: Chat Web gateway hot-path diagnostics report memory, event-loop, trace cache, replay, and reliability payload pressure.
+- [x] SC-012: Trace timeline cache, replay buffers, V1 trace responses, and reliability payloads have bounded survival guardrails before full worker isolation.
 
 ## Assumptions and Open Questions
 

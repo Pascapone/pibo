@@ -1,13 +1,16 @@
 # Design: Telemetry Opt-In Archive Isolation
 
-**Status:** Draft
+**Status:** Draft; Phase 0 reliability/gateway hot-path bounds shipped in v1.7.0
 **Created:** 2026-07-04
+**Updated:** 2026-07-05
 **Related spec:** `spec.md`
 **Related changes:** `../chat-web-trace-v2-fast-path/`, `../gateway-resource-protection-workers/`
 
 ## Design Summary
 
 Move detailed telemetry from an always-on live database feature to explicit capture runs. A capture run owns its own active telemetry store. When stopped, it becomes an archive with a manifest. The live gateway never loads archive databases by default. Legacy live telemetry is made inert on upgrade and handled by offline/batch maintenance tools.
+
+As of `v1.7.0`, only the overlapping hot-path guardrails are shipped: bounded gateway diagnostics and reliability `pibo.output` payload externalization. The capture manager, isolated active stores, archive lifecycle, legacy telemetry migration, and archive UI remain pending.
 
 ## Design Principles
 

@@ -2,6 +2,7 @@
 
 **Status:** Draft
 **Created:** 2026-05-10
+**Updated:** 2026-07-05
 **Controller / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code
 **Related docs:** [Chat Web Rooms and Event Streams](./chat-web-rooms-and-event-streams.md), [Chat Web Browser Shell State](./chat-web-browser-shell-state.md), [Chat Web Trace and Terminal View](./chat-web-trace-and-terminal-view.md), [Pibo Session Signals](./pibo-session-signals.md)
 
@@ -19,7 +20,7 @@ Chat Web MUST keep bootstrap, navigation, session-list, trace, and live-status c
 
 The current implementation defines cache keys and invalidation categories in `src/apps/chat-ui/src/cache.ts`. `src/apps/chat-ui/src/App.tsx` owns bootstrap state, React Query cache updates, optimistic mutations, room and session selection, live room SSE handling, and signal-tree subscription handling.
 
-Bootstrap and navigation data use room id, selected Pibo Session id, and archived visibility in their query keys. Trace summary and trace page caches are keyed by Pibo Session id and trace paging options. Mutations update local bootstrap state optimistically where safe, then refresh or merge authoritative server data. Live SSE and signal patches update coarse navigation status without forcing every trace page to reload.
+Bootstrap and navigation data use room id, selected Pibo Session id, and archived visibility in their query keys. Trace summary and Trace V2 timeline page caches are keyed by Pibo Session id and trace paging options. Raw events use a separate bounded query key. Payload chunks are fetched explicitly from payload refs and must not become durable unbounded React Query or UI state. Mutations update local bootstrap state optimistically where safe, then refresh or merge authoritative server data. Live SSE and signal patches update coarse navigation status without forcing every trace page to reload.
 
 ## Scope
 
@@ -32,11 +33,12 @@ Bootstrap and navigation data use room id, selected Pibo Session id, and archive
 - Signal-tree snapshots and patches that update visible session status.
 - Trace cache invalidation and refetch behavior for selected or affected sessions.
 - Merging older trace pages and navigation unread counts without duplicating entries.
+- Trace V2 cache split between summary, bounded timeline pages, bounded raw event pages, and explicit payload chunks.
 
 ### Out of Scope
 
 - Server-side event storage and replay semantics — covered by Chat Web Rooms and Event Streams and Pibo Data Store specs.
-- Server-side trace materialization and ETag behavior — covered by Chat Web Trace and Terminal View.
+- Server-side trace materialization, payload storage, and ETag behavior — covered by Chat Web Trace and Terminal View.
 - Browser route canonicalization, drafts, and local preferences except where they affect cache keys — covered by Chat Web Browser Shell State.
 - Visual rendering details of trace nodes or navigation rows.
 
@@ -48,21 +50,43 @@ The browser MUST key cached Chat Web data by the identifiers and options that ch
 
 #### Current
 
-`chatBootstrapQueryKey`, `chatSessionNavigationQueryKey`, `chatSessionPageQueryKey`, and `chatTracePageQueryKey` include Pibo Session id, room id, archived visibility, cursor, page size, raw-event mode, raw-event limit, and trace page cursor as applicable.
+`chatBootstrapQueryKey`, `chatSessionNavigationQueryKey`, `chatSessionPageQueryKey`, and `chatTracePageQueryKey` include Pibo Session id, room id, archived visibility, cursor, page size, raw-event mode, raw-event limit, and trace page cursor as applicable. Trace V2 raw event pages use a separate `chat/trace-raw-events` key.
 
 #### Acceptance
 
 - Bootstrap cache entries for active and archived session views are distinct.
 - Navigation cache entries for different rooms or selected sessions are distinct.
-- Trace page cache entries for raw and compact views are distinct.
+- Trace timeline page cache entries and raw event page cache entries are distinct.
 - Loading older trace pages does not overwrite the tail page cache key.
 
-#### Scenario: Raw trace toggle
+#### Scenario: Raw events toggle
 
 - GIVEN a user views a session trace in compact mode
 - WHEN the user enables raw events
-- THEN Chat Web reads or fetches a trace page using a different query key
-- AND the compact trace page remains reusable when raw events are disabled again.
+- THEN Chat Web reads or fetches raw events using the raw-events query key
+- AND the compact timeline page remains reusable when raw events are disabled again.
+
+### Requirement: Payload chunks are not cached as unbounded trace state
+
+The browser MUST NOT keep full large payload bodies in the normal trace page, React Query timeline cache, or long-lived UI state.
+
+#### Current
+
+Trace V2 timeline rows carry previews, inline-small payloads, and payload refs. `TerminalDetails` fetches a bounded first payload chunk only when an expanded row references a payload.
+
+#### Acceptance
+
+- Large payload refs do not inflate trace page query data.
+- Switching sessions clears local trace state and does not keep unexpanded payload bodies.
+- Payload fetches use explicit range/limit options.
+- Future multi-chunk payload UI must evict or scope chunks more aggressively than timeline pages.
+
+#### Scenario: Switch after expanding a large payload
+
+- GIVEN a user expands a row with a large payload ref
+- WHEN the user switches to another session
+- THEN the normal timeline cache for either session does not contain the full payload body
+- AND returning to the first session can re-fetch payload chunks explicitly if needed.
 
 ### Requirement: Bootstrap state and query cache stay in sync
 
@@ -236,6 +260,7 @@ The browser MUST merge navigation responses with local unread-clearing intent so
 - [ ] SC-004: Signal patch failures recover by fetching a fresh signal snapshot.
 - [ ] SC-005: Older trace pages and additional session pages merge without duplicate ids.
 - [ ] SC-006: Selecting an unread session clears local unread counts without restoring stale counts from overlapping navigation responses.
+- [x] SC-007: Trace V2 timeline, raw-event, and payload data are split so large payload bodies are not part of normal trace page cache/state.
 
 ## Assumptions and Open Questions
 
@@ -262,6 +287,7 @@ The browser MUST merge navigation responses with local unread-clearing intent so
 | REQ-006 Trace refresh affects only the addressed session | Rename sibling session | `src/apps/chat-ui/src/cache.ts`, `src/apps/chat-ui/src/App.tsx` | Implemented |
 | REQ-007 Paged data merges without duplicates | Load older trace twice | `src/apps/chat-ui/src/App.tsx` | Implemented |
 | REQ-008 Read-state merges preserve recent unread changes | Select unread child session | `src/apps/chat-ui/src/App.tsx` | Implemented |
+| REQ-009 Payload chunks are not cached as unbounded trace state | Switch after expanding a large payload | `src/apps/chat-ui/src/tracing/use-session-trace-page.ts`, `src/apps/chat-ui/src/session-views/compact-terminal/TerminalDetails.tsx`, `src/apps/chat-ui/src/api-trace-signals.ts` | Implemented baseline |
 
 ## Verification Basis
 

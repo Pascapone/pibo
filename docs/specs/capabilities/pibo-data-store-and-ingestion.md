@@ -2,7 +2,7 @@
 
 **Status:** Draft
 **Created:** 2026-05-10
-**Updated:** 2026-05-17
+**Updated:** 2026-07-05
 **Controller / Source:** Scheduled Pibo Source Specs Coverage
 **Related docs:** [Chat Web Rooms and Event Streams](./chat-web-rooms-and-event-streams.md), [Pibo Session Routing](./pibo-session-routing.md), [Debug CLI](./debug-cli.md)
 
@@ -20,7 +20,7 @@ Pibo SHALL maintain a SQLite-backed v2 data store that can serve as the default 
 
 The current implementation creates `.pibo/pibo.sqlite` through `PiboDataStore`, applies schema version 2, enables foreign keys, sets a busy timeout, and uses WAL for file-backed stores. The store owns sub-stores for payloads, event log rows, chat messages, observations, session navigation, sessions, and runtime telemetry. Chat Web also creates workflow authoring/catalog tables in this same database; those tables are covered by workflow specs and local store stewardship docs rather than by the `src/data` sub-store contract.
 
-`PiboDataSessionStore` implements the default gateway `PiboSessionStore` on the shared `sessions` table. `ChatDataIngestService` writes accepted user messages and normalized `PiboOutputEvent` records. It records append-only event rows, creates message and observation projections, upserts session and navigation metadata, and externalizes large content into a compressed payload directory.
+`PiboDataSessionStore` implements the default gateway `PiboSessionStore` on the shared `sessions` table. `ChatDataIngestService` writes accepted user messages and normalized `PiboOutputEvent` records. It records append-only event rows, creates message and observation projections, upserts session and navigation metadata, and externalizes large content into a compressed payload directory. Trace V2 and Chat Web reliability guardrails also use the payload store to keep large tool outputs and raw/debug payloads out of the default timeline and reliability hot paths.
 
 ## Scope
 
@@ -103,19 +103,27 @@ The system MUST store large or explicitly written payloads as compressed files a
 
 #### Target
 
-Large message and event bodies do not bloat the SQLite event or message rows, while repeated payload content is stored once.
+Large message, trace, reliability, and event bodies do not bloat hot SQLite event/message rows or default API responses, while repeated payload content is stored once.
 
 #### Acceptance
 
 - Writing the same payload bytes twice returns the same payload id and increments `ref_count`.
 - Stored payloads can be read back as bytes, text, or JSON according to caller intent.
 - Inline previews remain bounded and safe for navigation or list views.
+- Trace V2 payload refs can read bounded chunks without loading full payloads into timeline responses.
 
 #### Scenario: Large user message
 
 - GIVEN a user message exceeds the inline message threshold
 - WHEN the message is ingested
 - THEN the message row references a payload id and does not store the full text inline
+
+#### Scenario: Large trace tool output
+
+- GIVEN a tool output exceeds the Trace V2 inline payload threshold
+- WHEN Chat Web builds a timeline row or reliability mirror event
+- THEN the row/event stores a bounded preview and payload reference
+- AND the full output is read only through explicit payload lookup.
 
 ### Requirement: User-message ingestion is idempotent per client transaction
 
@@ -271,6 +279,7 @@ Operators and agents can inspect data-store state, migrate session projections, 
 - [x] SC-005: V2-native Chat Web service tests cover default rooms, session upsert, idempotent event append, timeline ordering, trace-event ordering, and read-state monotonicity, as covered by `test/chat-v2-native-services.test.mjs`.
 - [x] SC-006: Data inventory reports v2 and legacy stores without requiring those files to exist, as covered by `test/data-cli.test.mjs`.
 - [x] SC-007: V2-backed Pibo Session Store semantics and session migration are covered by `test/pibo-data-session-store.test.mjs`.
+- [x] SC-008: Trace V2 large payload refs use the data-store payload service and are covered by `test/trace-v2-fast-path.test.mjs`.
 
 ## Verification Coverage
 
@@ -307,7 +316,7 @@ This section maps current tests to this source-backed contract. It avoids creati
 
 ### Open Questions
 
-- Should `pibo.output` events in the v2 data store eventually replace or mirror the reliability store topic of the same name?
+- Should `pibo.output` events in the v2 data store eventually replace or mirror the reliability store topic of the same name? As of `v1.7.0`, the Chat Web reliability mirror still writes to the reliability store, but over-budget bodies are externalized through data-store payload refs/previews first.
 - Should observation lifecycle updates become explicit updates instead of append/ignore rows for long-running tools?
 - Should payload reference counts be decremented by retention or deletion workflows, and where should that behavior be specified?
 
@@ -318,6 +327,7 @@ This section maps current tests to this source-backed contract. It avoids creati
 | REQ-001 V2 store initializes deterministically | Fresh v2 store | `src/data/schema.ts`, `src/data/pibo-store.ts`, `test/data-v2-store.test.mjs`, `test/telemetry-store.test.mjs` | Covered, with PRAGMA details source-inspected |
 | REQ-002 Event log appends are ordered and idempotent | Retried append | `src/data/event-log.ts`, `test/data-v2-store.test.mjs` | Covered |
 | REQ-003 Payloads are content-addressed and externalized for large values | Large user message | `src/data/payload-store.ts`, `src/data/ingest-service.ts`, `test/data-v2-store.test.mjs`, `test/data-v2-ingest-service.test.mjs` | Covered |
+| REQ-003A Trace and reliability hot paths use payload refs for large values | Large trace tool output | `src/data/payload-store.ts`, `src/apps/chat/trace-v2.ts`, `src/apps/chat/web-app.ts`, `test/trace-v2-fast-path.test.mjs` | Covered in v1.7.0 |
 | REQ-004 User-message ingestion is idempotent per client transaction | Retried accepted input | `src/data/ingest-service.ts`, `test/data-v2-ingest-service.test.mjs` | Covered |
 | REQ-005 Runtime output ingestion shadows messages and observations | Assistant output retry | `src/data/ingest-service.ts`, `src/data/message-store.ts`, `src/data/observation-store.ts`, `test/data-v2-ingest-service.test.mjs` | Covered |
 | REQ-006 Session and navigation rows track current conversation placement | New room activity | `src/data/session-store.ts`, `src/data/navigation-store.ts`, `src/sessions/pibo-data-store.ts`, `test/data-v2-ingest-service.test.mjs`, `test/pibo-data-session-store.test.mjs` | Covered for ingestion and session-store paths; navigation edge cases source-inspected |

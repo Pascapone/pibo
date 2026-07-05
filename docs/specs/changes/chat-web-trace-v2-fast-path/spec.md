@@ -1,7 +1,8 @@
 # Spec: Chat Web Trace V2 Fast Path
 
-**Status:** Draft
+**Status:** Implemented baseline in v1.7.0; later projection/worker phases active
 **Created:** 2026-07-04
+**Updated:** 2026-07-05
 **Requester / Source:** Chat Web trace performance/OOM incidents and expert report
 **Related docs:**
 
@@ -22,9 +23,9 @@ The current full trace contract can carry unbounded payloads. It makes the gatew
 
 Chat Web MUST load and update large trace/session histories through bounded compact timeline pages and lazy payload access, without default full-trace materialization, unbounded JSON serialization, or large payload caching in the gateway or browser.
 
-## Background / Current State
+## Background / Pre-v1.7.0 State
 
-Current flow:
+Pre-v1.7.0 flow:
 
 ```text
 Pi transcript + event_log + reliability store + live snapshots
@@ -38,7 +39,22 @@ Pi transcript + event_log + reliability store + live snapshots
   -> virtualized rendering
 ```
 
-This puts the performance boundary too late. Virtualization helps rendered rows, but not server heap, serialization, compression, transfer, browser parse, or cache memory.
+This put the performance boundary too late. Virtualization helped rendered rows, but not server heap, serialization, compression, transfer, browser parse, or cache memory.
+
+## Implemented v1.7.0 Baseline
+
+The released baseline changes the default Chat Web trace contract:
+
+```text
+normal Chat Web session view
+  -> /api/chat/trace/summary
+  -> /api/chat/trace/timeline
+  -> compact rows with previews, inline-small payloads, payload refs, cursors
+  -> /api/chat/trace/payload/:ref only when a payload is explicitly read
+  -> /api/chat/trace/raw-events only for raw debug inspection
+```
+
+The old `/api/chat/trace` endpoint remains compatibility/debug-only. It is no longer the default Chat Web hot path and rejects over-budget V1 responses with guidance to use timeline/payload refs.
 
 ## Scope
 
@@ -91,13 +107,13 @@ A read-optimized representation of trace structure and payload refs derived from
 
 The default timeline API MUST NOT return unbounded `input`, `output`, `reasoning`, `raw`, or arbitrary `unknown` payload fields.
 
-#### Current
+#### Pre-v1.7.0
 
 `PiboTraceNode` can carry `input?: unknown` and `output?: unknown`. Large tool results or transcript payloads can enter normal trace responses.
 
-#### Target
+#### v1.7.0 Target
 
-Timeline rows include compact structure, status, ordering, preview text, and payload refs. Payload bodies are retrieved separately.
+Timeline rows include compact structure, status, ordering, preview text, bounded inline-small payloads, and payload refs. Large payload bodies are retrieved separately.
 
 #### Acceptance
 
@@ -116,7 +132,7 @@ Timeline rows include compact structure, status, ordering, preview text, and pay
 
 The system MUST expose cold payloads through explicit payload endpoints with size/range limits.
 
-#### Target
+#### v1.7.0 Target
 
 Payload endpoint shape:
 
@@ -230,6 +246,10 @@ The default Chat Web terminal/trace session surface MUST use Trace V2 summary/ti
 
 Live updates MUST arrive as small patches and MUST NOT force full historical timeline reloads.
 
+#### v1.7.0 Status
+
+The released baseline keeps live overlay/tail behavior bounded and avoids returning to the old full-trace hot path for normal rendering. The formal Trace V2 SSE patch frame protocol remains pending.
+
 #### Target
 
 Live patch frames may include:
@@ -250,6 +270,10 @@ Live patch frames may include:
 ### Requirement: Projection work is bounded and observable
 
 Trace projection rebuild, transcript backfill, raw event scans, and payload extraction MUST either complete within a strict inline budget or run as jobs.
+
+#### v1.7.0 Status
+
+The released baseline uses a bounded adapter over existing trace/raw sources and bounded tail transcript reads. Persistent projection tables and worker-backed rebuild/backfill jobs are not implemented yet.
 
 #### Acceptance
 
@@ -297,16 +321,23 @@ The old `/api/chat/trace` endpoint MAY remain temporarily, but it MUST not be us
 
 ## Success Criteria
 
-- [ ] SC-001: Default Chat Web session load uses Trace V2 timeline, not old full trace.
-- [ ] SC-002: Timeline responses contain no unbounded payload bodies.
-- [ ] SC-003: Timeline response is normally below 100 KB and hard-capped at 256 KB.
-- [ ] SC-004: A 10 MB tool output only loads on expansion through payload API.
-- [ ] SC-005: Raw events are fetched separately and bounded.
-- [ ] SC-006: Live updates do not trigger full historical trace reloads.
-- [ ] SC-007: No trace route uses synchronous `gzipSync` on large JSON.
-- [ ] SC-008: Browser session switching does not retain unexpanded large payloads.
-- [ ] SC-009: Gateway diagnostics show trace response bytes, cache bytes, serialization time, and event-loop delay.
-- [ ] SC-010: Large-session browser validation shows fast perceived load and stable memory.
+- [x] SC-001: Default Chat Web session load uses Trace V2 timeline, not old full trace.
+- [x] SC-002: Timeline responses contain no unbounded payload bodies; large values become payload refs/previews.
+- [x] SC-003: Timeline response is hard-capped at 256 KB and intended to remain normally below 100 KB.
+- [x] SC-004: A 10 MB tool output does not enlarge the timeline response and is available through the payload API.
+- [x] SC-005: Raw events are fetched separately and bounded.
+- [x] SC-006: Normal live/tail behavior avoids full historical V1 trace reloads; formal Trace V2 SSE patch frames remain follow-up work.
+- [x] SC-007: Large JSON responses skip synchronous `gzipSync`; sync gzip remains allowed only below the configured small-response threshold.
+- [x] SC-008: Browser session switching uses bounded timeline pages and clears local trace state on session changes.
+- [x] SC-009: Gateway diagnostics show memory, event-loop delay, trace cache bytes, replay buffer bytes, reliability payload buckets, and response byte/serialization headers.
+- [x] SC-010: Large-session browser/dev validation for v1.7.0 showed fast perceived load, matching old/new rendering content, automatic older-history loading, and restored jump-to-latest behavior.
+
+### Remaining Success Criteria for Later Phases
+
+- [ ] SC-011: Formal Trace V2 live patch frames are emitted and applied without timeline refetch for normal streaming deltas.
+- [ ] SC-012: Persistent `trace_nodes`, `trace_payloads`, and `trace_session_state` projection exists and is used for projected sessions.
+- [ ] SC-013: Full rebuild/backfill/raw export runs as cancellable worker jobs rather than gateway request work.
+- [ ] SC-014: Payload expansion UI supports explicit further chunks/download where allowed.
 
 ## Assumptions and Open Questions
 
@@ -327,9 +358,9 @@ The old `/api/chat/trace` endpoint MAY remain temporarily, but it MUST not be us
 
 | Requirement | Scenario / Story | Plan / Task | Status |
 |---|---|---|---|
-| Bounded timeline nodes | Large tool output row | Phase 1 | Pending |
-| Lazy payload access | Expand large tool result | Phase 2 | Pending |
-| Raw events separate | Open raw events panel | Phase 2 | Pending |
-| Live patches | Streaming assistant update | Phase 4 | Pending |
+| Bounded timeline nodes | Large tool output row | Phase 1 | Implemented in v1.7.0 |
+| Lazy payload access | Expand large tool result | Phase 2 | Implemented API in v1.7.0; richer chunk/download UX pending |
+| Raw events separate | Open raw events panel | Phase 2 | Implemented in v1.7.0 |
+| Live patches | Streaming assistant update | Phase 4 | Partial: bounded live overlay exists; formal patch protocol pending |
 | Projection jobs | Old session rebuild | Phase 5 | Pending |
-| Safe serialization | Large response handling | Phase 0 | Pending |
+| Safe serialization | Large response handling | Phase 0 | Implemented guardrail in v1.7.0 |
