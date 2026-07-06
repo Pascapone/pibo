@@ -107,6 +107,15 @@ export async function loadPiSessionMetadata(
 	return metadataFromPiSession(piSession);
 }
 
+export async function loadPiSessionFastMetadata(
+	session: PiboSession,
+	cwd = process.cwd(),
+): Promise<SessionMetadata> {
+	const piSession = findPiSessionDirectFast(session.piSessionId, cwd)
+		?? findPiSessionDirect(session.piSessionId, cwd, { fast: true });
+	return metadataFromPiSession(piSession);
+}
+
 function metadataFromPiSession(piSession: PiboSessionListItem | undefined): SessionMetadata {
 	if (!piSession) return {};
 	let sessionSize: number | undefined;
@@ -316,7 +325,16 @@ export function createTraceViewVersion(input: {
 }
 
 const PI_SESSION_LIST_CACHE_TTL_MS = 5_000;
+const PI_SESSION_DIRECT_CACHE_TTL_MS = 5_000;
+const PI_SESSION_FAST_HEAD_BYTES = 64 * 1024;
 const piSessionListCache = new Map<string, { expiresAt: number; promise: Promise<PiboSessionListItem[]> }>();
+const piSessionDirectCache = new Map<string, {
+	expiresAt: number;
+	path: string;
+	size: number;
+	mtimeMs: number;
+	item: PiboSessionListItem;
+}>();
 
 export async function listPiSessions(cwd = process.cwd()): Promise<PiboSessionListItem[]> {
 	const now = Date.now();
@@ -358,7 +376,30 @@ async function findPiSession(piboSession: PiboSession, cwd: string): Promise<Pib
 	);
 }
 
-function findPiSessionDirect(piSessionId: string, cwd: string): PiboSessionListItem | undefined {
+function findPiSessionDirectFast(piSessionId: string, cwd: string): PiboSessionListItem | undefined {
+	const cacheKey = `${cwd}\0${piSessionId}`;
+	const cached = piSessionDirectCache.get(cacheKey);
+	if (!cached || cached.expiresAt <= Date.now()) return undefined;
+	try {
+		const stats = statSync(cached.path);
+		if (stats.size === cached.size && stats.mtimeMs === cached.mtimeMs) return cached.item;
+	} catch {
+		piSessionDirectCache.delete(cacheKey);
+	}
+	return undefined;
+}
+
+function setPiSessionDirectFastCache(piSessionId: string, cwd: string, item: PiboSessionListItem, stats: { size: number; mtimeMs: number }): void {
+	piSessionDirectCache.set(`${cwd}\0${piSessionId}`, {
+		expiresAt: Date.now() + PI_SESSION_DIRECT_CACHE_TTL_MS,
+		path: item.path,
+		size: stats.size,
+		mtimeMs: stats.mtimeMs,
+		item,
+	});
+}
+
+function findPiSessionDirect(piSessionId: string, cwd: string, options: { fast?: boolean } = {}): PiboSessionListItem | undefined {
 	const sessionDir = defaultPiSessionDir(cwd);
 	if (!existsSync(sessionDir)) return undefined;
 	try {
@@ -366,7 +407,9 @@ function findPiSessionDirect(piSessionId: string, cwd: string): PiboSessionListI
 		if (!file) return undefined;
 		const sessionPath = join(sessionDir, file);
 		const stats = statSync(sessionPath);
-		const entries = parseSessionEntries(readFileSync(sessionPath, "utf8"));
+		const entries = options.fast
+			? readHeadEntries(sessionPath, stats.size, PI_SESSION_FAST_HEAD_BYTES)
+			: parseSessionEntries(readFileSync(sessionPath, "utf8"));
 		const header = entries.find((entry) => entry.type === "session") as
 			| { id?: unknown; timestamp?: unknown; cwd?: unknown; parentSession?: unknown }
 			| undefined;
@@ -383,21 +426,25 @@ function findPiSessionDirect(piSessionId: string, cwd: string): PiboSessionListI
 			firstMessage = extractMessageText(messageContent(entry));
 		}
 
-		return {
+		const item = {
 			path: sessionPath,
 			id: piSessionId,
 			cwd: stringValue(header.cwd) ?? cwd,
 			name,
 			parentSessionPath: stringValue(header.parentSession),
 			created: stringValue(header.timestamp) ?? stats.birthtime.toISOString(),
-			modified: sessionModifiedIso(
-				entries.filter((entry): entry is SessionEntry => entry.type !== "session"),
-				stringValue(header.timestamp),
-				stats.mtime,
-			),
+			modified: options.fast
+				? stats.mtime.toISOString()
+				: sessionModifiedIso(
+					entries.filter((entry): entry is SessionEntry => entry.type !== "session"),
+					stringValue(header.timestamp),
+					stats.mtime,
+				),
 			messageCount,
 			firstMessage: firstMessage || "(no messages)",
 		};
+		if (options.fast) setPiSessionDirectFastCache(piSessionId, cwd, item, stats);
+		return item;
 	} catch {
 		return undefined;
 	}
@@ -430,6 +477,24 @@ function readEntries(path: string): SessionEntry[] {
 	if (!existsSync(path)) return [];
 	const content = readFileSync(path, "utf8");
 	return parseSessionEntries(content).filter((entry): entry is SessionEntry => entry.type !== "session");
+}
+
+function readHeadEntries(path: string, fileSize: number, maxBytes: number): ReturnType<typeof parseSessionEntries> {
+	const length = Math.max(1, Math.min(maxBytes, fileSize));
+	const buffer = Buffer.alloc(length);
+	const fd = openSync(path, "r");
+	try {
+		const bytesRead = readSync(fd, buffer, 0, length, 0);
+		let content = buffer.subarray(0, bytesRead).toString("utf8");
+		if (bytesRead < fileSize && !content.endsWith("\n")) {
+			const lastNewline = content.lastIndexOf("\n");
+			if (lastNewline >= 0) content = content.slice(0, lastNewline + 1);
+		}
+		if (!content.trim()) return [];
+		return parseSessionEntries(content.endsWith("\n") ? content : `${content}\n`);
+	} finally {
+		closeSync(fd);
+	}
 }
 
 export function readTailEntries(path: string, maxBytes = TRACE_TRANSCRIPT_TAIL_MAX_BYTES): SessionEntry[] {

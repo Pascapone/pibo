@@ -3,7 +3,7 @@ import { gzipSync } from "node:zlib";
 
 export const MAX_WEB_REQUEST_BODY_BYTES = 4 * 1024 * 1024;
 const MIN_COMPRESS_RESPONSE_BYTES = 1024;
-const MAX_SYNC_GZIP_RESPONSE_BYTES = 512 * 1024;
+const MAX_SYNC_GZIP_RESPONSE_BYTES = 64 * 1024;
 const INTERNAL_SOCKET_PEER_HEADER = "x-pibo-socket-peer";
 
 export class PiboWebHttpError extends Error {
@@ -90,7 +90,9 @@ export async function sendWebResponse(response: ServerResponse, webResponse: Res
 	if (compressEncoding && webResponse.body) {
 		const body = await readResponseBody(webResponse);
 		if (body.length >= MIN_COMPRESS_RESPONSE_BYTES && body.length <= MAX_SYNC_GZIP_RESPONSE_BYTES) {
+			const compressionStartedAt = performance.now();
 			const compressed = gzipSync(body, { level: 1 });
+			appendServerTimingHeader(headers, `response_compress;dur=${(performance.now() - compressionStartedAt).toFixed(1)}`);
 			headers["content-encoding"] = compressEncoding;
 			headers["content-length"] = String(compressed.length);
 			headers.vary = appendVary(headers.vary, "accept-encoding");
@@ -127,6 +129,14 @@ export async function sendWebResponse(response: ServerResponse, webResponse: Res
 	} finally {
 		response.off("close", cancel);
 	}
+}
+
+function appendServerTimingHeader(headers: Record<string, string | string[]>, value: string): void {
+	const existing = headers["server-timing"];
+	headers["server-timing"] = appendServerTiming(
+		Array.isArray(existing) ? existing.join(", ") : existing ?? null,
+		value,
+	);
 }
 
 function responseHeaders(webResponse: Response): Record<string, string | string[]> {

@@ -22,6 +22,24 @@ export function mergeNavigationIntoBootstrap(
 	};
 }
 
+export function markSessionSubtreeReadInBootstrap(
+	current: BootstrapData,
+	piboSessionId: string,
+	selectedRoomId = current.selectedRoomId,
+): BootstrapData {
+	const readSessionIds = collectSessionSubtreeIds(current.sessions, piboSessionId);
+	const previousUnreadBySessionId = new Map<string, number>();
+	collectSessionUnreadCounts(current.sessions, previousUnreadBySessionId);
+	const clearedUnreadCount = [...readSessionIds].reduce((sum, sessionId) => sum + (previousUnreadBySessionId.get(sessionId) ?? 0), 0);
+	return {
+		...current,
+		selectedRoomId,
+		selectedPiboSessionId: piboSessionId,
+		rooms: mergeNavigationRooms(current.rooms, current.rooms, selectedRoomId, clearedUnreadCount),
+		sessions: mergeNavigationSessions(current.sessions, readSessionIds, previousUnreadBySessionId),
+	};
+}
+
 function collectSessionUnreadCounts(sessions: readonly PiboWebSessionNode[], output: Map<string, number>): void {
 	for (const session of sessions) {
 		output.set(session.piboSessionId, session.unreadCount ?? 0);

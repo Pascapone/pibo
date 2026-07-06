@@ -174,9 +174,10 @@ export function TraceTimeline({
 		olderTraceIntentRef.current = false;
 		const readyTimer = window.setTimeout(() => {
 			rangePrefetchReadyRef.current = true;
+			if (stickyView.isAtTop || stickyView.isScrolledToTop()) loadOlderAtTop();
 		}, 600);
 		return () => window.clearTimeout(readyTimer);
-	}, [expandThinking, trace?.id]);
+	}, [expandThinking, loadOlderAtTop, stickyView.isAtTop, stickyView.isScrolledToTop, trace?.id]);
 
 	useEffect(() => {
 		if (isFetchingOlderTracePage) return;

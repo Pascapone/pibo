@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
+import { buildTraceViewFromEvents } from "../dist/shared/trace-engine.js";
 import {
 	TRACE_V2_INLINE_TRANSCRIPT_PAYLOAD_MAX_BYTES,
 	TRACE_V2_PAYLOAD_DEFAULT_LIMIT_BYTES,
@@ -68,6 +69,22 @@ function traceWithNode(node) {
 				...node,
 			},
 		],
+	};
+}
+
+function storedEvent(sequence, payload) {
+	return {
+		id: `event-${sequence}`,
+		piboSessionId: payload.piboSessionId ?? "ps_transcript",
+		eventSequence: sequence,
+		streamId: 100 + sequence,
+		streamFrameIndex: 0,
+		type: payload.type,
+		createdAt: new Date(Date.UTC(2026, 6, 5, 12, 0, sequence)).toISOString(),
+		payload: {
+			piboSessionId: "ps_transcript",
+			...payload,
+		},
 	};
 }
 
@@ -236,6 +253,59 @@ test("trace v2 origin tail pages can continue through transcript history", () =>
 		assert.equal(page.cursor.hasOlder, true);
 		assert.equal(page.cursor.before, "transcript:12345:MjAyNi0wNi0yMlQxNTo0MjowMC4wMDBa");
 		assert.equal(page.nextBeforeCursor, "transcript:12345:MjAyNi0wNi0yMlQxNTo0MjowMC4wMDBa");
+		assert.equal(page.nextBeforeSequence, undefined);
+	} finally {
+		store.close();
+	}
+});
+
+test("trace v2 tail pages keep transcript nodes when event-log nodes exist", () => {
+	const store = tempStore();
+	try {
+		const trace = buildTraceViewFromEvents({
+			session: { id: "ps_transcript", piSessionId: "pi_transcript", title: "Transcript" },
+			status: "idle",
+			transcriptEntries: [
+				{
+					id: "entry-user-1",
+					type: "message",
+					timestamp: "2026-07-05T12:00:00.000Z",
+					message: { role: "user", content: [{ type: "text", text: "original user request" }] },
+				},
+				{
+					id: "entry-assistant-1",
+					type: "message",
+					timestamp: "2026-07-05T12:00:01.000Z",
+					message: { role: "assistant", content: [{ type: "text", text: "persisted transcript answer" }] },
+				},
+			],
+			events: [
+				storedEvent(42, {
+					type: "execution_result",
+					eventId: "cmd-status",
+					action: "status",
+					result: { ok: true },
+				}),
+			],
+		});
+		const page = traceTimelinePageFromView({
+			trace: {
+				...trace,
+				eventCount: 42,
+				pageSize: 50,
+				lastEventSequence: 42,
+				nextBeforeSequence: 40,
+				hasOlderEvents: true,
+			},
+			payloadStore: store.payloads,
+			limit: 50,
+			fromTail: true,
+			transcriptTailCursor: "transcript:12345:MjAyNi0wNy0wNVQxMjowMDowMC4wMDBa",
+		});
+
+		assert.ok(page.nodes.some((node) => node.source === "transcript" && node.inlinePayloads?.output === "persisted transcript answer"));
+		assert.ok(page.nodes.some((node) => node.source === "event-log" && node.title === "status"));
+		assert.equal(page.nextBeforeCursor, "transcript:12345:MjAyNi0wNy0wNVQxMjowMDowMC4wMDBa");
 		assert.equal(page.nextBeforeSequence, undefined);
 	} finally {
 		store.close();
