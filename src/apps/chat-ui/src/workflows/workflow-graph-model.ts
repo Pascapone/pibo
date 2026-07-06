@@ -7,7 +7,14 @@ const GRAPH_ROW_GAP = 150;
 
 export type WorkflowJsonObject = Record<string, unknown>;
 export type GraphPosition = { x: number; y: number };
-export type WorkflowEdgeRoute = { centerX?: number; centerY?: number };
+export type WorkflowEdgeRoute = {
+	centerX?: number;
+	centerY?: number;
+	sourceControlX?: number;
+	sourceControlY?: number;
+	targetControlX?: number;
+	targetControlY?: number;
+};
 export type WorkflowGraphNodeData = Record<string, unknown> & {
 	nodeId: string;
 	label: string;
@@ -163,8 +170,9 @@ function readPosition(value: unknown): GraphPosition | undefined {
 function readEdgeRoute(value: unknown): WorkflowEdgeRoute | undefined {
 	if (!isWorkflowJsonObject(value)) return undefined;
 	const route: WorkflowEdgeRoute = {};
-	if (typeof value.centerX === "number" && Number.isFinite(value.centerX)) route.centerX = value.centerX;
-	if (typeof value.centerY === "number" && Number.isFinite(value.centerY)) route.centerY = value.centerY;
+	for (const key of ["centerX", "centerY", "sourceControlX", "sourceControlY", "targetControlX", "targetControlY"] as const) {
+		if (typeof value[key] === "number" && Number.isFinite(value[key])) route[key] = value[key];
+	}
 	return Object.keys(route).length ? route : undefined;
 }
 

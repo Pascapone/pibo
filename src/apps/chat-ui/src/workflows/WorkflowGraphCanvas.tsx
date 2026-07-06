@@ -11,7 +11,6 @@ import {
 	addEdge as addReactFlowEdge,
 	applyEdgeChanges,
 	applyNodeChanges,
-	getSmoothStepPath,
 	useReactFlow,
 	type Connection,
 	type EdgeChange,
@@ -811,47 +810,43 @@ function WorkflowGraphRoutableEdge({
 	labelBgBorderRadius,
 }: EdgeProps<WorkflowGraphFlowEdge>) {
 	const { screenToFlowPosition } = useReactFlow();
-	const defaultCenterX = sourceX + (targetX - sourceX) / 2;
-	const routeCenterX = data?.route?.centerX;
-	const persistedCenterX = typeof routeCenterX === "number" && Number.isFinite(routeCenterX) ? routeCenterX : undefined;
-	const [dragCenterX, setDragCenterX] = useState<number | undefined>(undefined);
-	const dragCenterXRef = useRef<number | undefined>(undefined);
+	const [dragRoute, setDragRoute] = useState<WorkflowEdgeRoute | undefined>(undefined);
+	const dragRouteRef = useRef<WorkflowEdgeRoute | undefined>(undefined);
 	useEffect(() => {
-		setDragCenterX(undefined);
-		dragCenterXRef.current = undefined;
-	}, [persistedCenterX, sourceX, targetX]);
-	const centerX = dragCenterX ?? persistedCenterX ?? defaultCenterX;
-	const [path, labelX, labelY] = getSmoothStepPath({
+		setDragRoute(undefined);
+		dragRouteRef.current = undefined;
+	}, [data?.route, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition]);
+	const routedEdge = createWorkflowRoutedEdge({
 		sourceX,
 		sourceY,
 		targetX,
 		targetY,
 		sourcePosition,
 		targetPosition,
-		centerX,
+		route: { ...(data?.route ?? {}), ...(dragRoute ?? {}) },
 	});
-	const dragSegmentPath = `M ${centerX},${Math.min(sourceY, targetY)} L ${centerX},${Math.max(sourceY, targetY)}`;
-	const handlePointerDown = (event: ReactPointerEvent<SVGPathElement>) => {
+	const handlePointerDown = (segment: WorkflowRoutedEdgeSegment, event: ReactPointerEvent<SVGPathElement>) => {
 		if (data?.readOnly || event.button !== 0) return;
 		event.preventDefault();
 		event.stopPropagation();
 		data?.onSelect?.(id);
-		dragCenterXRef.current = centerX;
+		dragRouteRef.current = { ...(data?.route ?? {}), ...(dragRouteRef.current ?? dragRoute ?? {}) };
 		const moveRoute = (moveEvent: PointerEvent) => {
 			const position = screenToFlowPosition({ x: moveEvent.clientX, y: moveEvent.clientY });
-			const nextCenterX = Math.round(position.x);
-			dragCenterXRef.current = nextCenterX;
-			setDragCenterX(nextCenterX);
+			const nextValue = Math.round(segment.axis === "x" ? position.x : position.y);
+			const nextRoute: WorkflowEdgeRoute = { ...(dragRouteRef.current ?? {}) };
+			nextRoute[segment.routeKey] = nextValue;
+			dragRouteRef.current = nextRoute;
+			setDragRoute(nextRoute);
 		};
 		const stopRoute = () => {
 			document.removeEventListener("pointermove", moveRoute);
 			document.removeEventListener("pointerup", stopRoute);
 			document.body.style.cursor = "";
 			document.body.style.userSelect = "";
-			const nextCenterX = dragCenterXRef.current;
-			if (typeof nextCenterX === "number" && Number.isFinite(nextCenterX)) data?.onRouteChange?.(id, { centerX: nextCenterX });
+			if (dragRouteRef.current) data?.onRouteChange?.(id, dragRouteRef.current);
 		};
-		document.body.style.cursor = "ew-resize";
+		document.body.style.cursor = segment.cursor;
 		document.body.style.userSelect = "none";
 		document.addEventListener("pointermove", moveRoute);
 		document.addEventListener("pointerup", stopRoute);
@@ -861,35 +856,239 @@ function WorkflowGraphRoutableEdge({
 		<>
 			<BaseEdge
 				id={id}
-				path={path}
+				path={routedEdge.path}
 				markerStart={markerStart}
 				markerEnd={markerEnd}
 				style={{ ...style, stroke: selected ? "#facc15" : "#38bdf8", strokeWidth: selected ? 2.2 : 1.5 }}
 				interactionWidth={22}
 				label={label}
-				labelX={labelX}
-				labelY={labelY}
+				labelX={routedEdge.labelX}
+				labelY={routedEdge.labelY}
 				labelStyle={labelStyle}
 				labelShowBg={labelShowBg}
 				labelBgStyle={labelBgStyle}
 				labelBgPadding={labelBgPadding}
 				labelBgBorderRadius={labelBgBorderRadius}
 			/>
-			<path
-				d={dragSegmentPath}
-				fill="none"
-				stroke="transparent"
-				strokeWidth={22}
-				className="nopan cursor-ew-resize"
-				onClick={(event) => { event.stopPropagation(); data?.onSelect?.(id); }}
-				onPointerDown={handlePointerDown}
-				onContextMenu={(event) => data?.onContextMenu?.(id, event)}
-				aria-label={`Move edge route ${id}`}
-			>
-				<title>Drag vertical edge segment left or right</title>
-			</path>
+			{routedEdge.draggableSegments.map((segment) => (
+				<path
+					key={segment.id}
+					d={segment.path}
+					fill="none"
+					stroke="transparent"
+					strokeWidth={22}
+					className={`nopan ${segment.cursorClass}`}
+					onClick={(event) => { event.stopPropagation(); data?.onSelect?.(id); }}
+					onPointerDown={(event) => handlePointerDown(segment, event)}
+					onContextMenu={(event) => data?.onContextMenu?.(id, event)}
+					aria-label={`Move edge route ${id}`}
+				>
+					<title>{segment.title}</title>
+				</path>
+			))}
 		</>
 	);
+}
+
+type WorkflowEdgeRouteKey = keyof WorkflowEdgeRoute;
+
+type WorkflowGraphPoint = { x: number; y: number };
+
+type WorkflowRoutedEdgeSegment = {
+	id: string;
+	start: WorkflowGraphPoint;
+	end: WorkflowGraphPoint;
+	path: string;
+	axis: "x" | "y";
+	routeKey: WorkflowEdgeRouteKey;
+	cursor: "ew-resize" | "ns-resize";
+	cursorClass: "cursor-ew-resize" | "cursor-ns-resize";
+	title: string;
+};
+
+type WorkflowRoutedEdge = {
+	path: string;
+	labelX: number;
+	labelY: number;
+	draggableSegments: WorkflowRoutedEdgeSegment[];
+};
+
+type WorkflowRoutedEdgeInput = {
+	sourceX: number;
+	sourceY: number;
+	targetX: number;
+	targetY: number;
+	sourcePosition: Position;
+	targetPosition: Position;
+	route: WorkflowEdgeRoute;
+};
+
+const WORKFLOW_EDGE_OFFSET = 20;
+const WORKFLOW_EDGE_BEND_RADIUS = 5;
+const WORKFLOW_EDGE_MIN_DRAG_SEGMENT_LENGTH = 8;
+
+function createWorkflowRoutedEdge(input: WorkflowRoutedEdgeInput): WorkflowRoutedEdge {
+	const source = { x: input.sourceX, y: input.sourceY };
+	const target = { x: input.targetX, y: input.targetY };
+	const sourceDirection = workflowHandleDirection(input.sourcePosition);
+	const targetDirection = workflowHandleDirection(input.targetPosition);
+	const sourceGap = { x: source.x + sourceDirection.x * WORKFLOW_EDGE_OFFSET, y: source.y + sourceDirection.y * WORKFLOW_EDGE_OFFSET };
+	const targetGap = { x: target.x + targetDirection.x * WORKFLOW_EDGE_OFFSET, y: target.y + targetDirection.y * WORKFLOW_EDGE_OFFSET };
+	let points: WorkflowGraphPoint[];
+	let draggableSegments: WorkflowRoutedEdgeSegment[];
+
+	if (sourceDirection.x !== 0 && targetDirection.x !== 0 && sourceDirection.x * targetDirection.x === -1) {
+		const sourceToTargetDirection = targetGap.x >= sourceGap.x ? 1 : -1;
+		if (sourceDirection.x === sourceToTargetDirection) {
+			const centerX = finiteRouteValue(input.route.centerX, (sourceGap.x + targetGap.x) / 2);
+			points = [source, { x: centerX, y: source.y }, { x: centerX, y: target.y }, target];
+			draggableSegments = [createRouteSegment("centerX", points[1], points[2])];
+		} else {
+			const sourceControlX = finiteRouteValue(input.route.sourceControlX, sourceGap.x);
+			const targetControlX = finiteRouteValue(input.route.targetControlX, targetGap.x);
+			const centerY = finiteRouteValue(input.route.centerY, (source.y + target.y) / 2);
+			points = [
+				source,
+				{ x: sourceControlX, y: source.y },
+				{ x: sourceControlX, y: centerY },
+				{ x: targetControlX, y: centerY },
+				{ x: targetControlX, y: target.y },
+				target,
+			];
+			draggableSegments = [
+				createRouteSegment("sourceControlX", points[1], points[2]),
+				createRouteSegment("centerY", points[2], points[3]),
+				createRouteSegment("targetControlX", points[3], points[4]),
+			];
+		}
+	} else if (sourceDirection.y !== 0 && targetDirection.y !== 0 && sourceDirection.y * targetDirection.y === -1) {
+		const sourceToTargetDirection = targetGap.y >= sourceGap.y ? 1 : -1;
+		if (sourceDirection.y === sourceToTargetDirection) {
+			const centerY = finiteRouteValue(input.route.centerY, (sourceGap.y + targetGap.y) / 2);
+			points = [source, { x: source.x, y: centerY }, { x: target.x, y: centerY }, target];
+			draggableSegments = [createRouteSegment("centerY", points[1], points[2])];
+		} else {
+			const sourceControlY = finiteRouteValue(input.route.sourceControlY, sourceGap.y);
+			const targetControlY = finiteRouteValue(input.route.targetControlY, targetGap.y);
+			const centerX = finiteRouteValue(input.route.centerX, (source.x + target.x) / 2);
+			points = [
+				source,
+				{ x: source.x, y: sourceControlY },
+				{ x: centerX, y: sourceControlY },
+				{ x: centerX, y: targetControlY },
+				{ x: target.x, y: targetControlY },
+				target,
+			];
+			draggableSegments = [
+				createRouteSegment("sourceControlY", points[1], points[2]),
+				createRouteSegment("centerX", points[2], points[3]),
+				createRouteSegment("targetControlY", points[3], points[4]),
+			];
+		}
+	} else {
+		const centerX = finiteRouteValue(input.route.centerX, (sourceGap.x + targetGap.x) / 2);
+		const centerY = finiteRouteValue(input.route.centerY, (sourceGap.y + targetGap.y) / 2);
+		points = [source, sourceGap, { x: centerX, y: sourceGap.y }, { x: centerX, y: centerY }, { x: targetGap.x, y: centerY }, targetGap, target];
+		draggableSegments = createInteriorRouteSegments(points).map((segment, index) => ({
+			...segment,
+			id: `fallback-${index}`,
+			routeKey: segment.axis === "x" ? "centerX" : "centerY",
+		}));
+	}
+
+	const visibleDraggableSegments = draggableSegments.filter((segment) => routeSegmentLength(segment) >= WORKFLOW_EDGE_MIN_DRAG_SEGMENT_LENGTH);
+	const labelSegment = longestWorkflowSegment(visibleDraggableSegments) ?? longestWorkflowPathSegment(points);
+	return {
+		path: workflowPathFromPoints(points),
+		labelX: labelSegment ? (labelSegment.start.x + labelSegment.end.x) / 2 : (source.x + target.x) / 2,
+		labelY: labelSegment ? (labelSegment.start.y + labelSegment.end.y) / 2 : (source.y + target.y) / 2,
+		draggableSegments: visibleDraggableSegments,
+	};
+}
+
+function workflowHandleDirection(position: Position): { x: -1 | 0 | 1; y: -1 | 0 | 1 } {
+	if (position === Position.Left) return { x: -1, y: 0 };
+	if (position === Position.Right) return { x: 1, y: 0 };
+	if (position === Position.Top) return { x: 0, y: -1 };
+	return { x: 0, y: 1 };
+}
+
+function finiteRouteValue(value: number | undefined, fallback: number): number {
+	return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function createRouteSegment(routeKey: WorkflowEdgeRouteKey, start: WorkflowGraphPoint, end: WorkflowGraphPoint): WorkflowRoutedEdgeSegment {
+	const isVertical = start.x === end.x;
+	return {
+		id: `${routeKey}-${start.x}-${start.y}-${end.x}-${end.y}`,
+		start,
+		end,
+		path: `M ${start.x},${start.y} L ${end.x},${end.y}`,
+		axis: isVertical ? "x" : "y",
+		routeKey,
+		cursor: isVertical ? "ew-resize" : "ns-resize",
+		cursorClass: isVertical ? "cursor-ew-resize" : "cursor-ns-resize",
+		title: isVertical ? "Drag vertical edge segment left or right" : "Drag horizontal edge segment up or down",
+	};
+}
+
+function createInteriorRouteSegments(points: WorkflowGraphPoint[]): WorkflowRoutedEdgeSegment[] {
+	return points.slice(1, -2).flatMap((start, index) => {
+		const end = points[index + 2];
+		if (!end || (start.x !== end.x && start.y !== end.y) || (start.x === end.x && start.y === end.y)) return [];
+		return [createRouteSegment(start.x === end.x ? "centerX" : "centerY", start, end)];
+	});
+}
+
+function workflowPathFromPoints(points: WorkflowGraphPoint[]): string {
+	if (!points.length) return "";
+	let path = `M ${points[0].x},${points[0].y}`;
+	for (let index = 1; index < points.length - 1; index += 1) {
+		path += workflowBendPath(points[index - 1], points[index], points[index + 1]);
+	}
+	path += ` L ${points[points.length - 1].x},${points[points.length - 1].y}`;
+	return path;
+}
+
+function workflowBendPath(previous: WorkflowGraphPoint, current: WorkflowGraphPoint, next: WorkflowGraphPoint): string {
+	const bendSize = Math.min(workflowDistance(previous, current) / 2, workflowDistance(current, next) / 2, WORKFLOW_EDGE_BEND_RADIUS);
+	if ((previous.x === current.x && current.x === next.x) || (previous.y === current.y && current.y === next.y)) return ` L ${current.x},${current.y}`;
+	if (previous.y === current.y) {
+		const xDirection = previous.x < next.x ? -1 : 1;
+		const yDirection = previous.y < next.y ? 1 : -1;
+		return ` L ${current.x + bendSize * xDirection},${current.y} Q ${current.x},${current.y} ${current.x},${current.y + bendSize * yDirection}`;
+	}
+	const xDirection = previous.x < next.x ? 1 : -1;
+	const yDirection = previous.y < next.y ? -1 : 1;
+	return ` L ${current.x},${current.y + bendSize * yDirection} Q ${current.x},${current.y} ${current.x + bendSize * xDirection},${current.y}`;
+}
+
+function workflowDistance(start: WorkflowGraphPoint, end: WorkflowGraphPoint): number {
+	return Math.hypot(end.x - start.x, end.y - start.y);
+}
+
+function routeSegmentLength(segment: WorkflowRoutedEdgeSegment): number {
+	return workflowDistance(segment.start, segment.end);
+}
+
+function longestWorkflowSegment(segments: WorkflowRoutedEdgeSegment[]): { start: WorkflowGraphPoint; end: WorkflowGraphPoint } | undefined {
+	let longest: { start: WorkflowGraphPoint; end: WorkflowGraphPoint; length: number } | undefined;
+	for (const segment of segments) {
+		const length = routeSegmentLength(segment);
+		if (!longest || length > longest.length) longest = { start: segment.start, end: segment.end, length };
+	}
+	return longest;
+}
+
+function longestWorkflowPathSegment(points: WorkflowGraphPoint[]): { start: WorkflowGraphPoint; end: WorkflowGraphPoint } | undefined {
+	let longest: { start: WorkflowGraphPoint; end: WorkflowGraphPoint; length: number } | undefined;
+	for (let index = 0; index < points.length - 1; index += 1) {
+		const start = points[index];
+		const end = points[index + 1];
+		const length = workflowDistance(start, end);
+		if (!longest || length > longest.length) longest = { start, end, length };
+	}
+	return longest;
 }
 
 const WORKFLOW_GRAPH_NODE_TYPES = {
