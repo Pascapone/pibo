@@ -120,6 +120,7 @@ import {
 	workflowArchiveResourceId,
 	workflowCatalogResourceId,
 	workflowDraftActionResource,
+	workflowDraftManualTriggerRunResource,
 	workflowDraftResourceId,
 	workflowDuplicateResourceId,
 	workflowNextDraftResourceId,
@@ -251,6 +252,10 @@ import {
 	validateWorkflowEdgeAdapterOutputCompatibilityLike,
 	validateWorkflowEdgeDirectCompatibilityLike,
 } from "./workflow-edge-compatibility.js";
+import {
+	runWorkflowManualTextTrigger,
+	type WorkflowManualTriggerRunResult,
+} from "./workflow-manual-trigger-runtime.js";
 import { validateJsonSchemaObjectLike } from "./workflow-json-schema-validation.js";
 import {
 	WORKFLOW_ADAPTER_REF_OPTIONS,
@@ -509,6 +514,11 @@ type WorkflowDraftValidateBody = {
 
 type WorkflowDraftPublishBody = {
 	versionIntent?: unknown;
+};
+
+type WorkflowDraftManualTriggerRunBody = {
+	triggerNodeId?: unknown;
+	input?: unknown;
 };
 
 type WorkflowPromptAssetSaveBody = {
@@ -2289,6 +2299,32 @@ function runWorkflowDraftValidation(
 	return { validation, diagnostics };
 }
 
+function normalizeWorkflowDraftManualTriggerRunBody(body: WorkflowDraftManualTriggerRunBody): { triggerNodeId: string; input: string } {
+	const triggerNodeId = typeof body.triggerNodeId === "string" ? body.triggerNodeId.trim() : "";
+	if (!triggerNodeId) throw new PiboWebHttpError("Manual trigger node id is required", 400);
+	if (typeof body.input !== "string") throw new PiboWebHttpError("Manual trigger input must be text", 400);
+	return { triggerNodeId, input: body.input };
+}
+
+function resolveWorkflowRuntimeProfile(input: { context: PiboWebAppContext; requestedId: string }): string | undefined {
+	const profile = input.context.channelContext.getProfiles?.().find((candidate) => candidate.name === input.requestedId || candidate.aliases.includes(input.requestedId));
+	return profile?.name;
+}
+
+function workflowManualTriggerRunResponse(result: WorkflowManualTriggerRunResult, validation: WorkflowValidationResponse, draft: WorkflowDraftRecord) {
+	return {
+		ok: result.ok,
+		draft: serializeWorkflowDraft(draft),
+		validation: validation.validation,
+		diagnostics: sanitizeWorkflowDiagnostics([...validation.diagnostics, ...result.diagnostics]),
+		...(result.run ? { run: result.run } : {}),
+		nodeAttempts: result.nodeAttempts,
+		edgeTransfers: result.edgeTransfers,
+		...(result.output !== undefined ? { output: result.output } : {}),
+		...(result.error ? { error: result.error } : {}),
+	};
+}
+
 function validatePublishedWorkflowBoundary(input: {
 	state: ChatWebAppState;
 	context: PiboWebAppContext;
@@ -2430,14 +2466,62 @@ function validateWorkflowNodeLike(
 		validateWorkflowHumanNodeLike(nodeId, value, diagnostics);
 		return;
 	}
+	if (kind === "trigger") {
+		validateWorkflowTriggerNodeLike(nodeId, value, diagnostics);
+		return;
+	}
 	diagnostics.push({
 		code: "WorkflowValidationError.unknownNodeKind",
-		message: `Workflow node '${nodeId}' must use kind agent, code, workflow, adapter, or human.`,
+		message: `Workflow node '${nodeId}' must use kind trigger, agent, code, workflow, adapter, or human.`,
 		severity: "error",
 		path: `${path}.kind`,
 		nodeId,
 		hint: "Use one of the registered V2 editable node kinds.",
 	});
+}
+
+function validateWorkflowTriggerNodeLike(nodeId: string, node: PiboJsonObject, diagnostics: WorkflowDraftDiagnostic[]): void {
+	const path = `$.nodes.${nodeId}`;
+	const trigger = isJsonObject(node.trigger) ? node.trigger : undefined;
+	if (!trigger) {
+		diagnostics.push({
+			code: "WorkflowValidationError.missingTriggerConfig",
+			message: `Trigger node '${nodeId}' must include a trigger configuration object.`,
+			severity: "error",
+			path: `${path}.trigger`,
+			nodeId,
+		});
+		return;
+	}
+	if (trigger.kind !== "manual") {
+		diagnostics.push({
+			code: "WorkflowValidationError.unsupportedTriggerKind",
+			message: `Trigger node '${nodeId}' must use manual trigger kind in this Workflow V1 slice.`,
+			severity: "error",
+			path: `${path}.trigger.kind`,
+			nodeId,
+			hint: "Webhook, cron, and other trigger providers are planned but not implemented yet.",
+		});
+	}
+	if (trigger.mode !== undefined && trigger.mode !== "editor" && trigger.mode !== "api") {
+		diagnostics.push({
+			code: "WorkflowValidationError.unsupportedTriggerMode",
+			message: `Trigger node '${nodeId}' has unsupported manual trigger mode.`,
+			severity: "error",
+			path: `${path}.trigger.mode`,
+			nodeId,
+		});
+	}
+	if (!node.output) {
+		diagnostics.push({
+			code: "WorkflowValidationError.missingTriggerOutput",
+			message: `Trigger node '${nodeId}' must declare an output port.`,
+			severity: "error",
+			path: `${path}.output`,
+			nodeId,
+			hint: "Use a text output port for the first manual trigger implementation.",
+		});
+	}
 }
 
 function validateWorkflowAgentNodeLike(
@@ -4498,6 +4582,57 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const webSession = await requireSession(request, context);
 				const body = await readJsonBody<WorkflowPromptAssetSaveBody>(request);
 				return responseJson({ asset: saveWorkflowPromptAssetRevision(state, webSession, body) }, { status: 201 });
+			}
+
+			const workflowDraftManualTriggerRun = workflowDraftManualTriggerRunResource(url.pathname);
+			if (workflowDraftManualTriggerRun && request.method === "POST") {
+				requireSameOriginJsonRequest(request);
+				const webSession = await requireSession(request, context);
+				const body = normalizeWorkflowDraftManualTriggerRunBody(await readJsonBody<WorkflowDraftManualTriggerRunBody>(request));
+				const record = requireMutableWorkflowDraft(state, webSession, workflowDraftManualTriggerRun.draftId);
+				const validation = runWorkflowDraftValidation(state, context, webSession, record, "before_workflow_start");
+				if (!validation.validation.ok) {
+					recordWorkflowLifecycleEvent(state, webSession, {
+						type: "workflow.editor_test_run.blocked",
+						workflowId: record.workflowId,
+						workflowVersion: typeof record.definition.version === "string" ? record.definition.version : undefined,
+						draftId: record.draftId,
+						status: "blocked",
+						validation: validation.validation,
+						diagnostics: validation.diagnostics,
+						payload: { triggerNodeId: body.triggerNodeId },
+					});
+					return workflowValidationBlockedResponse("Workflow draft has validation errors and cannot be test-run", validation, { draft: serializeWorkflowDraft(record) });
+				}
+				const result = await runWorkflowManualTextTrigger({
+					definition: record.definition,
+					triggerNodeId: body.triggerNodeId,
+					input: body.input,
+					actorId: auditActorIdFor(webSession),
+					draftId: record.draftId,
+					channelContext: context.channelContext,
+					channel: CHAT_WEB_CHANNEL,
+					defaultWorkspace: getDefaultPiboWorkspace(),
+					onSessionCreated: (session) => state.sessionQuery.upsertSession(session),
+					resolveProfile: (profileId) => resolveWorkflowRuntimeProfile({ context, requestedId: profileId }),
+				});
+				const diagnostics = result.ok ? validation.diagnostics : sanitizeWorkflowDiagnostics([...validation.diagnostics, ...result.diagnostics]);
+				recordWorkflowLifecycleEvent(state, webSession, {
+					type: result.ok ? "workflow.editor_test_run.completed" : "workflow.editor_test_run.failed",
+					workflowId: record.workflowId,
+					workflowVersion: typeof record.definition.version === "string" ? record.definition.version : undefined,
+					draftId: record.draftId,
+					workflowRunId: result.run?.id,
+					status: result.ok ? "accepted" : "blocked",
+					validation: validation.validation,
+					diagnostics,
+					payload: {
+						triggerNodeId: body.triggerNodeId,
+						...(result.run?.status ? { status: result.run.status } : {}),
+						...(result.ok && result.output !== undefined ? { output: result.output } : {}),
+					},
+				});
+				return responseJson(workflowManualTriggerRunResponse(result, { validation: validation.validation, diagnostics }, record), { status: result.ok ? 202 : 400 });
 			}
 
 			const workflowDraftAction = workflowDraftActionResource(url.pathname);

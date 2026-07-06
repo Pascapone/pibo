@@ -481,6 +481,42 @@ export async function postWorkflowDraftPublish(draftId: string, input: { version
 	});
 }
 
+export type WorkflowManualTriggerRunResponse = WorkflowValidationResponse & {
+	ok: boolean;
+	draft: WorkflowDraftRecord;
+	run?: {
+		id: string;
+		status: "completed" | "failed";
+		output?: string;
+	};
+	nodeAttempts: Array<{
+		id: string;
+		nodeId: string;
+		kind: "trigger" | "agent";
+		status: "completed" | "failed";
+		input: string;
+		output?: string;
+		piboSessionId?: string;
+	}>;
+	edgeTransfers: Array<{
+		id: string;
+		edgeId: string;
+		targetNodeId: string;
+		status: "transferred";
+		payload: string;
+	}>;
+	output?: string;
+	error?: { code: string; message: string };
+};
+
+export async function postWorkflowDraftManualTriggerRun(draftId: string, input: { triggerNodeId: string; input: string }): Promise<WorkflowManualTriggerRunResponse> {
+	return requestJson<WorkflowManualTriggerRunResponse>(`/api/chat/workflows/drafts/${encodeURIComponent(draftId)}/manual-trigger-runs`, {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify(input),
+	});
+}
+
 export type WorkflowDuplicateDraftResponse = WorkflowDraftResponse & {
 	builderPath: string;
 };

@@ -48,6 +48,18 @@ export type {
 } from "./agent-node.js";
 
 export {
+  runManualTextTriggerWorkflow,
+  validateManualTextTriggerRun,
+} from "./manual-trigger.js";
+export type {
+  WorkflowManualTriggerRunFailure,
+  WorkflowManualTriggerRunOptions,
+  WorkflowManualTriggerRunResult,
+  WorkflowManualTriggerRunSource,
+  WorkflowManualTriggerRunSuccess,
+} from "./manual-trigger.js";
+
+export {
   recordWorkflowEdgeTransfer,
   transferWorkflowEdgeAdapterData,
   transferWorkflowEdgeData,

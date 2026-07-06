@@ -67,6 +67,7 @@ export const WORKFLOW_XSTATE_ACTOR_SOURCES: Record<WorkflowNodeDefinition["kind"
   agent: "pibo.workflow.actor.agent",
   code: "pibo.workflow.actor.code",
   human: "pibo.workflow.actor.human",
+  trigger: "pibo.workflow.actor.trigger",
   workflow: "pibo.workflow.actor.workflow",
 };
 

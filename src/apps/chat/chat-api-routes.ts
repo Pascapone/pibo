@@ -4,6 +4,7 @@ export const CHAT_WEB_API_PREFIX = "/api/chat";
 
 export type RoomResourcePath = { roomId: string; child?: "events" | "messages" | "read" };
 export type WorkflowDraftActionResource = { draftId: string; action: "validate" | "publish" };
+export type WorkflowDraftManualTriggerRunResource = { draftId: string };
 export type WorkflowVersionResource = { workflowId: string; version?: string };
 export type ProjectResourcePath = { projectId: string; child?: string };
 export type ProjectWorkflowSessionResource = { projectId: string; piboSessionId: string };
@@ -87,6 +88,18 @@ export function workflowDraftActionResource(pathname: string): WorkflowDraftActi
 		return { draftId: decodeURIComponent(parts[0]), action };
 	} catch {
 		throw new PiboWebHttpError("Invalid workflow draft action", 400);
+	}
+}
+
+export function workflowDraftManualTriggerRunResource(pathname: string): WorkflowDraftManualTriggerRunResource | undefined {
+	const prefix = `${CHAT_WEB_API_PREFIX}/workflows/drafts/`;
+	if (!pathname.startsWith(prefix)) return undefined;
+	const parts = pathname.slice(prefix.length).split("/");
+	if (parts.length !== 2 || !parts[0] || parts[1] !== "manual-trigger-runs") return undefined;
+	try {
+		return { draftId: decodeURIComponent(parts[0]) };
+	} catch {
+		throw new PiboWebHttpError("Invalid workflow draft manual trigger route", 400);
 	}
 }
 

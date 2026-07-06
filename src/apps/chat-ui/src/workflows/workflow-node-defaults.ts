@@ -12,6 +12,10 @@ import {
 
 export const DEFAULT_AGENT_PROMPT_TEMPLATE = "Use the workflow input to produce a concise answer.\n\n{{input}}";
 
+export function addWorkflowGraphManualTriggerNode(definition: WorkflowDraftDefinition, nodeId: string, position: GraphPosition): WorkflowDraftDefinition {
+	return addWorkflowGraphNodeDefinition(definition, nodeId, position, createDefaultManualTriggerNodeDefinition(nodeId));
+}
+
 export function addWorkflowGraphAgentNode(definition: WorkflowDraftDefinition, nodeId: string, position: GraphPosition, profileId: string): WorkflowDraftDefinition {
 	return addWorkflowGraphNodeDefinition(definition, nodeId, position, createDefaultAgentNodeDefinition(nodeId, profileId));
 }
@@ -26,6 +30,16 @@ export function addWorkflowGraphAdapterNode(definition: WorkflowDraftDefinition,
 
 export function addWorkflowGraphHumanNode(definition: WorkflowDraftDefinition, nodeId: string, position: GraphPosition, action: WorkflowHumanActionFormChoice): WorkflowDraftDefinition {
 	return addWorkflowGraphNodeDefinition(definition, nodeId, position, createDefaultHumanNodeDefinition(nodeId, action));
+}
+
+export function createDefaultManualTriggerNodeDefinition(nodeId: string): WorkflowJsonObject {
+	return {
+		kind: "trigger",
+		trigger: { kind: "manual", mode: "editor" },
+		label: `Manual Trigger ${nodeId}`,
+		output: createWorkflowPort("text", "Manual text prompt from the workflow editor.", undefined),
+		ui: { variant: "start" },
+	};
 }
 
 export function createDefaultAgentNodeDefinition(nodeId: string, profileId: string): WorkflowJsonObject {

@@ -14,6 +14,8 @@ export type WorkflowGraphNodeData = Record<string, unknown> & {
 	kind: string;
 	validationCount: number;
 	isInitial: boolean;
+	onManualTriggerRun?: (nodeId: string) => void;
+	readOnly?: boolean;
 };
 export type WorkflowGraphFlowNode = Node<WorkflowGraphNodeData, "workflowNode">;
 export type WorkflowGraphEdgeData = Record<string, unknown> & {

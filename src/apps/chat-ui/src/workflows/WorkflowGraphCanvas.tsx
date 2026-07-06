@@ -20,13 +20,14 @@ import {
 	type NodeProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Activity, CheckCircle2, Crosshair, Layers, Link2, Loader2, MousePointer2, MoveRight, Plus, RotateCcw, Save, ScanSearch, SlidersHorizontal, Trash2, Wrench, X } from "lucide-react";
+import { Activity, CheckCircle2, Crosshair, Layers, Link2, Loader2, MousePointer2, MoveRight, Play, Plus, RotateCcw, Save, ScanSearch, SlidersHorizontal, Trash2, Wrench, X } from "lucide-react";
 import {
 	getWorkflowAdapterPicker,
 	getWorkflowHumanActionPicker,
 	getWorkflowProfilePicker,
 	getWorkflowVersionPicker,
 	patchWorkflowDraft,
+	postWorkflowDraftManualTriggerRun,
 	type WorkflowDraftDefinition,
 	type WorkflowDraftRecord,
 	type WorkflowRegisteredRefOption,
@@ -60,6 +61,7 @@ import {
 	addWorkflowGraphAdapterNode,
 	addWorkflowGraphAgentNode,
 	addWorkflowGraphHumanNode,
+	addWorkflowGraphManualTriggerNode,
 	addWorkflowGraphWorkflowNode,
 } from "./workflow-node-defaults";
 import { humanActionOptionLabel, registeredRefOptionLabel, workflowVersionOptionKey, workflowVersionOptionLabel } from "./workflow-picker-labels";
@@ -82,6 +84,17 @@ type WorkflowGraphContextMenuState = {
 	x: number;
 	y: number;
 	target: SelectedGraphElement | { type: "pane" };
+};
+
+type ManualTriggerDialogState = {
+	triggerNodeId: string;
+	input: string;
+	status: "idle" | "running" | "completed" | "error";
+	message?: string;
+	output?: string;
+	runId?: string;
+	nodeCount?: number;
+	edgeTransferCount?: number;
 };
 
 type WorkflowGraphContextMenuEvent = {
@@ -129,6 +142,7 @@ export function WorkflowGraphCanvas({
 	const [inspectorWidth, setInspectorWidth] = useState(440);
 	const [inspectorTab, setInspectorTab] = useState<"build" | "inspect" | "status">("inspect");
 	const [contextMenu, setContextMenu] = useState<WorkflowGraphContextMenuState | undefined>();
+	const [manualTriggerDialog, setManualTriggerDialog] = useState<ManualTriggerDialogState | undefined>();
 	const graphCanvasRef = useRef<HTMLDivElement | null>(null);
 
 	useEffect(() => {
@@ -320,6 +334,22 @@ export function WorkflowGraphCanvas({
 		setContextMenu(undefined);
 	}, []);
 
+	const openManualTriggerDialog = useCallback((triggerNodeId: string) => {
+		setSelectedElement({ type: "node", id: triggerNodeId });
+		setInspectorTab("status");
+		setContextMenu(undefined);
+		setManualTriggerDialog({ triggerNodeId, input: "", status: "idle" });
+	}, []);
+
+	const renderedNodes = useMemo<WorkflowGraphFlowNode[]>(() => nodes.map((node) => ({
+		...node,
+		data: {
+			...node.data,
+			onManualTriggerRun: openManualTriggerDialog,
+			readOnly,
+		},
+	})), [nodes, openManualTriggerDialog, readOnly]);
+
 	const renderedEdges = useMemo<WorkflowGraphFlowEdge[]>(() => edges.map((edge) => ({
 		...edge,
 		data: {
@@ -332,6 +362,14 @@ export function WorkflowGraphCanvas({
 			readOnly,
 		},
 	})), [edges, handleEdgeContextMenu, handleEdgeRouteChange, handleEdgeSelect, readOnly]);
+
+	const addManualTriggerNode = () => {
+		const nodeId = nextWorkflowNodeId(draft.definition, "trigger");
+		const position = nextGraphNodePosition(nodes);
+		const definition = addWorkflowGraphManualTriggerNode(draft.definition, nodeId, position);
+		setSelectedElement({ type: "node", id: nodeId });
+		void saveDefinition(definition, `Added manual trigger ${nodeId}.`);
+	};
 
 	const addAgentNode = () => {
 		const nodeId = nextWorkflowNodeId(draft.definition, "agent");
@@ -472,6 +510,31 @@ export function WorkflowGraphCanvas({
 		connectSelectedNodes(connection.source, connection.target);
 	}, [connectSelectedNodes, readOnly]);
 
+	const runManualTrigger = useCallback(async () => {
+		if (!manualTriggerDialog || manualTriggerDialog.status === "running") return;
+		const input = manualTriggerDialog.input;
+		setManualTriggerDialog((current) => current ? { ...current, status: "running", message: "Running manual trigger…", output: undefined } : current);
+		publishStatus(`Running manual trigger ${manualTriggerDialog.triggerNodeId}…`);
+		try {
+			const response = await postWorkflowDraftManualTriggerRun(draft.draftId, { triggerNodeId: manualTriggerDialog.triggerNodeId, input });
+			onDraftChange(response.draft);
+			setManualTriggerDialog((current) => current ? {
+				...current,
+				status: response.ok ? "completed" : "error",
+				message: response.ok ? "Manual trigger run completed." : response.error?.message ?? "Manual trigger run failed.",
+				output: response.output,
+				runId: response.run?.id,
+				nodeCount: response.nodeAttempts.length,
+				edgeTransferCount: response.edgeTransfers.length,
+			} : current);
+			publishStatus(response.ok ? `Manual trigger ${manualTriggerDialog.triggerNodeId} completed.` : response.error?.message ?? "Manual trigger run failed.", response.ok ? "status" : "error");
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Manual trigger run failed.";
+			setManualTriggerDialog((current) => current ? { ...current, status: "error", message } : current);
+			publishStatus(message, "error");
+		}
+	}, [draft.draftId, manualTriggerDialog, onDraftChange, publishStatus]);
+
 	const startInspectorResize = useCallback((event: ReactMouseEvent<HTMLButtonElement>) => {
 		event.preventDefault();
 		const handleMove = (moveEvent: MouseEvent) => {
@@ -538,7 +601,7 @@ export function WorkflowGraphCanvas({
 			>
 				<div ref={graphCanvasRef} className={`${fullHeight ? "h-full min-h-[360px]" : "h-[420px]"} relative min-w-0 overflow-hidden rounded-sm border border-slate-800 bg-[#0c171c]`} aria-label="Workflow graph canvas">
 					<ReactFlow<WorkflowGraphFlowNode, WorkflowGraphFlowEdge>
-						nodes={nodes}
+						nodes={renderedNodes}
 						edges={renderedEdges}
 						nodeTypes={WORKFLOW_GRAPH_NODE_TYPES}
 						edgeTypes={WORKFLOW_GRAPH_EDGE_TYPES}
@@ -565,6 +628,30 @@ export function WorkflowGraphCanvas({
 						<MiniMap pannable zoomable nodeColor={(node) => node.selected ? "#38bdf8" : "#1e293b"} />
 						<Controls showInteractive={false} />
 					</ReactFlow>
+					{manualTriggerDialog ? (
+						<div className="absolute bottom-3 left-3 z-40 w-[360px] max-w-[calc(100%-1.5rem)] rounded-sm border border-emerald-700/70 bg-[#101d22] p-3 text-xs shadow-xl shadow-black/40" role="dialog" aria-label="Manual trigger test run">
+							<div className="flex items-start justify-between gap-3">
+								<div>
+									<div className="text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-300">Manual trigger</div>
+									<div className="mt-1 font-mono text-[11px] text-slate-400">{manualTriggerDialog.triggerNodeId}</div>
+								</div>
+								<button type="button" className="rounded-sm border border-slate-700 px-2 py-1 text-slate-400 transition hover:border-slate-500 hover:text-slate-100" onClick={() => setManualTriggerDialog(undefined)} disabled={manualTriggerDialog.status === "running"} aria-label="Close manual trigger dialog"><X size={13} /></button>
+							</div>
+							<label className="mt-3 grid gap-1 font-semibold text-slate-300">
+								<span>Prompt input</span>
+								<textarea className="min-h-24 resize-y rounded-sm border border-slate-700 bg-[#151f24] px-2 py-2 font-mono text-[11px] text-slate-100 outline-none transition focus:border-emerald-500" value={manualTriggerDialog.input} onChange={(event) => setManualTriggerDialog((current) => current ? { ...current, input: event.target.value } : current)} disabled={manualTriggerDialog.status === "running"} placeholder="Write the text prompt for the first agent…" />
+							</label>
+							<div className="mt-3 flex gap-2">
+								<button type="button" className="inline-flex flex-1 items-center justify-center gap-2 rounded-sm border border-emerald-600/70 bg-emerald-500/10 px-3 py-2 text-xs font-bold text-emerald-100 transition hover:border-emerald-300 hover:text-white disabled:cursor-not-allowed disabled:opacity-50" onClick={runManualTrigger} disabled={manualTriggerDialog.status === "running"}>
+									{manualTriggerDialog.status === "running" ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
+									Run trigger
+								</button>
+							</div>
+							{manualTriggerDialog.message ? <div className={`mt-3 rounded-sm border p-2 text-[11px] leading-5 ${manualTriggerDialog.status === "error" ? "border-red-800 bg-red-950/30 text-red-200" : "border-emerald-800 bg-emerald-950/20 text-emerald-100"}`}>{manualTriggerDialog.message}</div> : null}
+							{manualTriggerDialog.output ? <pre className="mt-2 max-h-32 overflow-auto rounded-sm border border-slate-800 bg-[#0c171c] p-2 text-[11px] leading-5 text-slate-200">{manualTriggerDialog.output}</pre> : null}
+							{manualTriggerDialog.runId ? <div className="mt-2 text-[10px] text-slate-500">Run {manualTriggerDialog.runId} · {manualTriggerDialog.nodeCount ?? 0} node attempts · {manualTriggerDialog.edgeTransferCount ?? 0} edge transfers</div> : null}
+						</div>
+					) : null}
 					{contextMenu ? (
 						<div
 							className="absolute z-50 w-56 overflow-hidden rounded-sm border border-slate-700 bg-[#1a262b] py-1 text-xs shadow-xl shadow-black/40"
@@ -599,6 +686,7 @@ export function WorkflowGraphCanvas({
 							) : null}
 							{contextMenuTarget?.type === "pane" ? (
 								<>
+									<WorkflowGraphContextMenuItem icon={<Play size={14} />} label="Add Manual trigger" onSelect={() => { setContextMenu(undefined); addManualTriggerNode(); }} disabled={editDisabled} />
 									<WorkflowGraphContextMenuItem icon={<Plus size={14} />} label="Add Agent node" onSelect={() => { setContextMenu(undefined); addAgentNode(); }} disabled={editDisabled} />
 									<WorkflowGraphContextMenuItem icon={<Save size={14} />} label="Save layout" onSelect={() => { setContextMenu(undefined); saveLayout(); }} disabled={editDisabled || !nodes.length || !layoutDirty} />
 									<WorkflowGraphContextMenuItem icon={<X size={14} />} label="Clear selection" onSelect={() => { setSelectedElement(undefined); setContextMenu(undefined); }} disabled={!selectedElement} />
@@ -647,6 +735,10 @@ export function WorkflowGraphCanvas({
 									This published workflow is read-only. Duplicate it from the top bar to edit your own copy.
 								</div>
 							) : <div className="grid min-w-0 gap-2" aria-label="Graph edit controls">
+								<button type="button" className="inline-flex items-center justify-center gap-2 rounded-sm border border-emerald-700/70 px-3 py-2 text-xs font-semibold text-emerald-200 transition hover:border-emerald-400 hover:text-emerald-100 disabled:cursor-not-allowed disabled:opacity-50" onClick={addManualTriggerNode} disabled={editDisabled} title="Add Manual trigger node">
+									<Play size={13} />
+									Add Manual trigger
+								</button>
 								<button type="button" className="inline-flex items-center justify-center gap-2 rounded-sm border border-[#11a4d4]/50 px-3 py-2 text-xs font-semibold text-[#8bdcf4] transition hover:border-[#11a4d4] hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-50" onClick={addAgentNode} disabled={editDisabled} title="Add Agent node">
 									<Plus size={13} />
 									Add Agent node
@@ -773,19 +865,32 @@ function WorkflowGraphContextMenuItem({ icon, label, onSelect, disabled = false,
 }
 
 function WorkflowGraphNodeCard({ data, selected }: NodeProps<WorkflowGraphFlowNode>) {
+	const isTrigger = data.kind === "trigger";
 	return (
-		<div className={`min-w-44 rounded-sm border bg-[#15242b] px-3 py-2 shadow-lg shadow-black/20 ${selected ? "border-[#38bdf8]" : "border-slate-700"}`}>
-			<Handle type="target" position={Position.Left} className="!h-2.5 !w-2.5 !border-[#0f172a] !bg-[#38bdf8]" />
+		<div className={`min-w-44 rounded-sm border px-3 py-2 shadow-lg shadow-black/20 ${isTrigger ? "bg-emerald-950/30" : "bg-[#15242b]"} ${selected ? "border-[#38bdf8]" : isTrigger ? "border-emerald-700/70" : "border-slate-700"}`}>
+			{isTrigger ? null : <Handle type="target" position={Position.Left} className="!h-2.5 !w-2.5 !border-[#0f172a] !bg-[#38bdf8]" />}
 			<div className="flex items-center justify-between gap-2">
 				<div className="truncate text-xs font-bold text-slate-100">{data.label}</div>
-				<span className="rounded-full border border-slate-700 px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-slate-400">{data.kind}</span>
+				<span className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] ${isTrigger ? "border-emerald-500/50 text-emerald-200" : "border-slate-700 text-slate-400"}`}>{data.kind}</span>
 			</div>
 			<div className="mt-1 font-mono text-[10px] text-slate-500">{data.nodeId}</div>
 			<div className="mt-2 flex flex-wrap gap-1 text-[10px]">
 				{data.isInitial ? <span className="rounded-full border border-[#11a4d4]/40 bg-[#11a4d4]/10 px-2 py-0.5 text-[#8bdcf4]">initial</span> : null}
 				{data.validationCount ? <span className="rounded-full border border-amber-600/60 bg-amber-950/30 px-2 py-0.5 text-amber-200">{data.validationCount} diagnostics</span> : null}
 			</div>
-			<Handle type="source" position={Position.Right} className="!h-2.5 !w-2.5 !border-[#0f172a] !bg-[#38bdf8]" />
+			{isTrigger ? (
+				<button
+					type="button"
+					className="nodrag nopan mt-2 inline-flex w-full items-center justify-center gap-2 rounded-sm border border-emerald-600/70 bg-emerald-500/10 px-2 py-1.5 text-[11px] font-bold text-emerald-100 transition hover:border-emerald-300 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+					onClick={(event) => { event.preventDefault(); event.stopPropagation(); data.onManualTriggerRun?.(data.nodeId); }}
+					disabled={data.readOnly}
+					title="Run this manual trigger"
+				>
+					<Play size={12} />
+					Play test
+				</button>
+			) : null}
+			<Handle type="source" position={Position.Right} className={`!h-2.5 !w-2.5 !border-[#0f172a] ${isTrigger ? "!bg-emerald-400" : "!bg-[#38bdf8]"}`} />
 		</div>
 	);
 }

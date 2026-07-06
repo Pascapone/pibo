@@ -238,7 +238,18 @@ export type AdapterNodeDefinition = BaseNodeDefinition & {
   mode: "deterministic";
 };
 
+export type ManualTriggerDefinition = {
+  kind: "manual";
+  mode?: "editor" | "api";
+};
+
+export type TriggerNodeDefinition = BaseNodeDefinition & {
+  kind: "trigger";
+  trigger: ManualTriggerDefinition;
+};
+
 export type WorkflowNodeDefinition =
+  | TriggerNodeDefinition
   | AgentNodeDefinition
   | TypeScriptCodeNodeDefinition
   | NestedWorkflowNodeDefinition
