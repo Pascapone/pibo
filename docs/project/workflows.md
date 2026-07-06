@@ -1,112 +1,133 @@
 # Pibo Workflows
 
-Pibo Workflow System V1 is the canonical workflow capability for repeatable, inspectable Pibo work. Workflows are TypeScript-authored definitions that compose normal Pibo Runtime agent sessions, trusted TypeScript handlers, adapters, nested workflows, and durable human waits through typed ports and explicit edges.
+Pibo Workflows are the product path for repeatable, inspectable multi-step agent work. A workflow is a versioned graph with explicit inputs, outputs, nodes, edges, adapters, guards, state, and runtime facts.
 
-This document describes the current implementation contract. Detailed historical requirements and design discussion remain under `docs/specs/changes/pibo-workflow-system-v1/`.
+This document describes the current baseline and the next planned execution step. Historical V1/V2 specs remain under `docs/legacy/specs/changes/`; the current manual-trigger/runtime-foundation plan lives at `docs/specs/changes/workflow-runtime-foundation-manual-trigger/`.
 
-## Current scope
+## Current baseline
 
-V1 provides:
+Pibo currently has two workflow layers:
 
-- a dedicated workflow package at `packages/workflows`
-- text and JSON workflow/node/adapter ports
-- validation for the supported OpenAI Structured Outputs / tool-calling JSON Schema subset
-- registry-backed workflow definitions, Agent Designer profiles, code handlers, adapters, guards, prompt builders, and human actions
-- runtime dispatch for `agent`, `code`, nested `workflow`, visible `adapter`, and `human` nodes
-- persisted workflow runs, node attempts, events, edge transfers, checkpoints, wakeups, wait tokens, and human actions in `pibo-workflows.sqlite`
-- inspection helpers and Chat Web Workflow/XState UI projections
-- deterministic XState projection for visualization and diagnostics
+1. **Workflow framework package** — `packages/workflows` defines TypeScript IR types, ports, registry refs, validation helpers, runtime dispatch helpers, edge transfer helpers, persistence contracts, inspection helpers, fixtures, and XState projection helpers.
+2. **Chat Web workflow product UI** — the Workflows tab provides workflow catalog/draft/publish UI, graph editing, node/edge inspectors, registered pickers, layout persistence, and Project workflow session configuration/start records.
 
-V1 intentionally does not provide a full visual workflow editor, raw XState editing, workflow YAML/JSON import/export as a product surface, arbitrary inline code nodes, or hidden/agent-inferred data adapters.
+The important current product gap is execution integration: the Workflows editor does not yet run a draft graph, and Project workflow start currently creates/returns workflow run metadata without driving every graph node through the workflow runtime executor.
+
+## Near-term direction
+
+The next workflow phase starts with a small manual trigger and a reusable runtime foundation:
+
+- a manual/test trigger node in the Workflows editor;
+- a Play action that accepts text first, then JSON when a schema is declared;
+- draft test runs without publishing;
+- explicit trigger → edge payload → node execution;
+- direct compatible edge transfer for simple graphs;
+- agent-node execution through normal Pibo Session routing;
+- runtime facts for node attempts, edge transfers, output, and diagnostics;
+- interfaces that later support webhooks, cron, deterministic adapters, guards, judge agents, human waits, and Project workflow execution.
+
+Do not rebuild the previous overfull UI. Add only the controls needed to test a workflow from the editor: trigger node, Play, input dialog, status, and output/error.
 
 ## Authoring model
 
-Workflow definitions are TypeScript-managed canonical IR. Authors use the public `@pasko70/pibo-workflows` package surface and keep executable behavior outside the definition object behind registry refs.
+Workflow definitions are serializable Pibo Workflow IR. Executable behavior stays behind registered refs.
 
-Primary authoring helpers:
+Current and intended node kinds include:
 
-- `text(description?)` for plain string ports
-- `json(schema, description?)` for JSON ports backed by the V1 schema subset
-- `fixedProfile(profileId)` for required fixed Agent Designer profile selection on agent nodes
-- `adapterRef(id)` and `edgeAdapter(ref, outputPort)` for explicit registered edge adapters
-- `promptBuilderRef(id)` for registered prompt construction
-
-Definitions should stay serializable. TypeScript closures belong in the Workflow Registry, not in persisted workflow IR.
-
-For starter TypeScript examples, see `docs/project/workflow-definition-examples.md`. For explicit interface adapter examples, see `docs/project/workflow-interface-adapters.md`. For registry/plugin registration, prompt assets, routing hints, human actions, and debug serialization, see `docs/project/workflow-registry-and-debug-serialization.md`. For projection semantics, see `docs/project/workflow-xstate-projection.md`.
-
-## Runtime nodes
-
-Workflow nodes currently execute through these capability boundaries:
-
-| Node kind | Capability boundary |
+| Node kind | Role |
 |---|---|
-| `agent` | Routes through normal Pibo session routing with a fixed Agent Designer profile. Runtime metadata records the selected profile plus effective tools, skills, context files, and linked Pibo session ids. |
-| `code` | Calls a trusted registered TypeScript handler. Handlers receive scoped input, declared state readers/writers, edge payload readers, and command/event emitters. |
-| `workflow` | Runs a registered child workflow through an injected nested workflow executor. Parent and child state stay isolated except for declared input/output values. |
-| `adapter` | Calls a trusted registered TypeScript adapter as a visible workflow node. |
-| `human` | Creates a durable wait token with registry-backed actions such as approve, reject, resume, and cancel. Actions are validated before the wait is resolved. |
+| `trigger` | Starts a run from a manual, webhook, cron, message, or future external event source. First implementation: manual editor trigger. |
+| `agent` | Runs a normal Pibo Runtime through Pibo Session routing with a fixed Agent Designer profile. |
+| `code` | Calls a trusted registered TypeScript handler. UI-authored workflows may reference registered handlers but must not contain inline code. |
+| `workflow` | Calls a published nested workflow. |
+| `adapter` | Runs a deterministic registered adapter as a visible graph node. |
+| `human` | Creates a durable wait token with registered human actions. |
 
-All runtime boundaries validate inputs before execution and validate outputs before downstream use or workflow completion.
+Current UI authoring already supports several of these graph elements. Trigger-node authoring and product execution are planned in `docs/specs/changes/workflow-runtime-foundation-manual-trigger/`.
 
-## Data flow and state
+## Trigger model
 
-Workflows move data only through declared ports and edges:
+A trigger is a workflow node that produces the first payload for a run. The first trigger is manual/test:
 
-- Direct edges are allowed only when source and target ports are compatible.
-- Incompatible edges require an explicit registered adapter, either as an edge adapter or as a visible `adapter` node.
-- Edge payloads are immutable once transferred.
-- Workflow global state is persisted and must be declared before node reads/writes.
-- Node local state is scoped to the current node by default.
-- Concurrent writes to the same global state path require an explicit merge policy.
-- Back-edges and review/fix loops must be bounded with retry/loop policy.
+- the trigger is visually distinct from normal nodes;
+- the user clicks Play on the trigger in the Workflows editor;
+- the user enters text or JSON input;
+- validation runs before execution;
+- the trigger output moves over outgoing edges like any other node output.
 
-This keeps workflow execution replayable and prevents hidden copy/paste or implicit schema coercion.
+Future trigger kinds should reuse the same runtime start contract:
 
-## Registry and plugin boundary
+- webhook;
+- cron/schedule;
+- API event;
+- message/event bus;
+- Project workflow session start.
 
-The Workflow Registry is the trusted lookup boundary for executable capabilities. It stores:
+## Data flow and handoff defaults
 
-- workflow definitions by id/version
-- fixed Agent Designer profile definitions
-- TypeScript code handlers
-- TypeScript adapters
-- guards
-- prompt builders
-- human action definitions
+Workflows move explicit payloads through ports and edges. The default handoff between two agents is **not** full chat history.
 
-Use `createWorkflowRegistry()` plus `registerWorkflowDefinition`, `registerWorkflowHandler`, `registerWorkflowAdapter`, `registerWorkflowGuard`, `registerWorkflowPromptBuilder`, `registerWorkflowAgentProfile`, and `registerWorkflowHumanAction` to assemble a registry. Plugin-provided capabilities should register stable ids and metadata instead of embedding implementation functions in definitions.
+Default direct handoff:
 
-## Persistence and inspection
+1. Agent A receives its input and produces a declared output.
+2. A compatible edge transfers that output as an edge payload.
+3. Agent B receives that payload as its input.
+4. Workflow facts store the edge transfer and linked Pibo Session ids.
 
-Workflow-specific facts are stored separately from normal Pibo/Pi session data. The workflow store records workflow runs, events, attempts, transfers, checkpoints, wakeups, wait tokens, human actions, state, current cursor, final output, validation errors, and lightweight links to Pibo/project sessions.
+The upstream Pibo Session transcript remains normal session data. It may be linked for inspection, but it is not injected into downstream prompts unless an explicit node, prompt builder, adapter, or policy-controlled reader asks for it.
 
-Normal session traces, tool calls, spans, transcripts, and Pibo Session records remain in the existing session stores. Workflow-backed Chat Web sessions link to workflow runs through persisted metadata, but simple chat sessions remain unbadged unless they have workflow metadata.
+## Adapters, transformations, and judge agents
 
-Use the inspection helpers in `packages/workflows/src/inspection` to reconstruct a run from store facts. Chat Web Workflow/XState panels and debug surfaces should consume the same persisted facts instead of inventing separate UI state.
+Transformations must be visible and testable:
 
-## XState projection
+- Use direct edges only when ports are compatible.
+- Use an edge adapter for small deterministic transformations tied to one edge.
+- Use a visible `adapter` node when the transformation should be inspected as its own node attempt.
+- Use an `agent` node when transformation requires model reasoning, summarization, judging, or semantic rewriting.
 
-XState is a deterministic projection and visualization layer, not durable execution truth. The kernel snapshot and workflow store remain authoritative.
+A judge is not a hidden edge feature. Model a judge as an explicit agent node that emits a structured decision such as:
 
-The projection maps workflow nodes, edges, guards, waits, retry/failure states, final states, actors, actions, delays, and node statuses into a compact UI model. Consumers should use `projectWorkflowToXStateProjection(...)` and `createWorkflowXStateUiModel(...)` rather than reading private runtime internals.
+```json
+{ "decision": "approved", "summary": "The answer is ready." }
+```
 
-See `docs/project/workflow-xstate-projection.md` for the detailed projection semantics, stable id scheme, snapshot-kind rules, UI model behavior, and consumer restrictions.
+Downstream guards or router logic then decide which edge fires.
+
+## Routing and gates
+
+An edge without a guard is eligible after its source node completes and its payload is compatible with the target input. Guarded edges use registered guard refs and parameters. Future routing policies should define how multiple eligible outgoing edges behave.
+
+Abort, cancel, revise, and retry paths should be explicit graph behavior: guarded edges, terminal nodes, error/control edges, retry policies, or human actions. They should not be hidden in prompt text.
+
+## Runtime facts and projection
+
+Workflow execution should record facts that can drive both editor runs and Project workflow views:
+
+- workflow run id and source;
+- trigger input summary;
+- node attempts;
+- edge transfers;
+- linked Pibo Session ids for agent nodes;
+- wait tokens and human actions;
+- output and diagnostics;
+- status changes and lifecycle events.
+
+XState remains a deterministic projection for visualization and inspection. It is not the durable execution source of truth.
 
 ## Security and privacy rules
 
-Workflow execution must not bypass existing Pibo auth, app context project/session routing, tool, skill, context, profile, or compute-worker policies.
+- UI-authored workflows must not contain inline executable code.
+- Hidden LLM coercion on edges is forbidden.
+- Agentic transforms must be explicit agent nodes.
+- Full upstream chat history is not passed downstream by default.
+- Inputs, outputs, state, prompts, edge payloads, and human action payloads are sensitive and should follow existing trace/privacy rules.
+- Workflow execution must use normal Pibo auth, app context, Project/session routing, profile, tool, skill, context, and compute-worker policies.
 
-Additional V1 rules:
+## Related documentation
 
-- Agent nodes must use fixed profile selection.
-- Code and adapter nodes must use trusted registered TypeScript handlers.
-- Human actions must validate token status, availability, payload schema, expiry, and run stewardship before resolving waits.
-- Inputs, outputs, state, prompts, edge payloads, wait payloads, and human action payloads are sensitive workflow data and should follow existing trace/privacy rules.
-- Diagnostics should identify code, severity, path/node/edge context, and actionable hints without leaking hidden payloads into normal UI surfaces.
-
-## Where to add more documentation
-
-Keep current operator/developer docs under `docs/project/`. Keep implementation plans, validation reports, and historical specs under `docs/plans/`, `docs/reports/`, and `docs/specs/` respectively.
-
-Registry/plugin registration patterns are documented in `docs/project/workflow-registry-and-debug-serialization.md`; add future current workflow docs under `docs/project/` and keep historical specs under `docs/specs/`.
+- Current runtime-foundation plan: `docs/specs/changes/workflow-runtime-foundation-manual-trigger/`
+- Package capability: `docs/specs/capabilities/pibo-workflow-framework-package.md`
+- Adapter guidance: `docs/project/workflow-interface-adapters.md`
+- Registry/debug guidance: `docs/project/workflow-registry-and-debug-serialization.md`
+- XState projection: `docs/project/workflow-xstate-projection.md`
+- Workflow definition examples: `docs/project/workflow-definition-examples.md`

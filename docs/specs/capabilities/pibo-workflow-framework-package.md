@@ -4,7 +4,7 @@
 **Created:** 2026-05-11
 **Updated:** 2026-05-17
 **Controller / Source:** Scheduled Pibo Source Specs Coverage; current workspace code
-**Related docs:** [Pibo Workflow System V1](../changes/pibo-workflow-system-v1/spec.md), [Workflow Runtime Kernel Design](../changes/pibo-workflow-system-v1/design-runtime-kernel.md), [Workflow Structured Outputs JSON Schema Subset](../changes/pibo-workflow-system-v1/structured-outputs-json-schema-subset.md), [Chat Web Workflow Session View](./chat-web-workflow-session-view.md)
+**Related docs:** [Current workflow docs](../../project/workflows.md), [Workflow runtime foundation and manual trigger](../changes/workflow-runtime-foundation-manual-trigger/spec.md), [Legacy Pibo Workflow System V1](../../legacy/specs/changes/pibo-workflow-system-v1/spec.md), [Legacy Workflow Runtime Kernel Design](../../legacy/specs/changes/pibo-workflow-system-v1/design-runtime-kernel.md), [Legacy Workflow Structured Outputs JSON Schema Subset](../../legacy/specs/changes/pibo-workflow-system-v1/structured-outputs-json-schema-subset.md), [Chat Web Workflow Session View](./chat-web-workflow-session-view.md)
 
 ## Why
 
@@ -37,7 +37,7 @@ The current runtime code supports dispatch helpers for Pibo agent nodes, TypeScr
 
 ### Out of Scope
 
-- A full Chat Web workflow editor — V1 authoring controls remain deferred to change specs.
+- Chat Web product executor integration, manual editor triggers, webhook/cron triggers, and editor run UI — covered by the workflow runtime foundation and manual trigger change spec.
 - The embedded Pi Coding Agent runtime internals — workflow agent nodes call Pibo session routing through an adapter.
 - Pibo Session Store, Chat Event Log, or Chat Web Read Model stewardship — workflow stores may link to sessions but do not own them.
 - Distributed workflow workers or cross-machine scheduling — current package helpers are local library contracts.
@@ -367,7 +367,7 @@ The following package-local test files are part of this spec's direct verificati
 ### Assumptions
 
 - `packages/workflows` is the durable package boundary for Workflow System V1 behavior that has landed in the current workspace.
-- The change specs under `docs/specs/changes/pibo-workflow-system-v1/` remain the design source for planned workflow expansion, while this spec records the current package capability contract.
+- The legacy change specs under `docs/legacy/specs/changes/pibo-workflow-system-v1/` remain historical design references. The current product execution expansion is tracked in `docs/specs/changes/workflow-runtime-foundation-manual-trigger/`. This spec records the current package capability contract.
 - Product-level controller access checks will be applied by the APIs or UIs that call the workflow package.
 
 ### Open Questions

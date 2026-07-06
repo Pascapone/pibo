@@ -4,7 +4,7 @@
 **Created:** 2026-05-11
 **Updated:** 2026-05-17
 **Controller / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code
-**Related docs:** [Chat Web Projects Area](./chat-web-projects-area.md), [Chat Web Trace and Terminal View](./chat-web-trace-and-terminal-view.md), [Pibo Workflow System V1](../changes/pibo-workflow-system-v1/spec.md)
+**Related docs:** [Chat Web Projects Area](./chat-web-projects-area.md), [Chat Web Trace and Terminal View](./chat-web-trace-and-terminal-view.md), [Current workflow docs](../../project/workflows.md), [Workflow runtime foundation and manual trigger](../changes/workflow-runtime-foundation-manual-trigger/spec.md), [Legacy Pibo Workflow System V1](../../legacy/specs/changes/pibo-workflow-system-v1/spec.md)
 
 ## Why
 

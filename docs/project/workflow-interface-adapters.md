@@ -13,18 +13,18 @@ Use an adapter when any of these are true:
 - two JSON ports use different schema contracts
 - a downstream node should receive only a selected or normalized subset of upstream output
 
-Do not use an adapter for agentic rewriting. If a model should interpret, rewrite, or infer data, model that work as an explicit `agent` node with a fixed profile.
+Do not use an adapter for agentic rewriting. If a model should interpret, rewrite, summarize, judge, route, or infer data, model that work as an explicit `agent` node with a fixed profile. That agent can then emit text or structured JSON that downstream guards or adapters consume.
 
 ## Adapter placements
 
-V1 supports two adapter placements.
+V1 supports two deterministic adapter placements.
 
 | Placement | Use when | Workflow visibility |
 |---|---|---|
 | Edge adapter | The transform is a small deterministic mapping tied to one edge. | The edge stores `adapter: edgeAdapter(adapterRef(...), outputPort)`. |
 | Visible `adapter` node | The transform should appear as a node, have its own input/output contract, be reused by multiple edges, or be inspected as a node attempt. | The graph contains a node with `kind: "adapter"`. |
 
-Both placements use the same registry-backed `AdapterHandler` shape:
+Both deterministic placements use the same registry-backed `AdapterHandler` shape:
 
 ```ts
 import type { AdapterHandler } from "@pasko70/pibo-workflows";
@@ -194,6 +194,19 @@ export const visibleAdapterWorkflow: WorkflowDefinition = {
 ```
 
 The adapter node input and output ports are normal node contracts. Runtime dispatch validates the input before executing the adapter handler and validates the output before it can move downstream.
+
+## Agentic transformation and judge pattern
+
+Use an explicit `agent` node when the transformation requires judgment, summarization, semantic routing, or model reasoning. This keeps the graph honest: the model decision is visible as a node attempt, and downstream guards can route based on the agent's declared output.
+
+Example pattern:
+
+1. Agent A produces a long answer or draft.
+2. A Judge/Summarizer Agent receives Agent A's output as input.
+3. The Judge emits structured JSON such as `{ "decision": "revise", "summary": "Missing tests." }`.
+4. Guarded edges route `decision=revise` back to a revision node or `decision=approved` to a final node.
+
+Do not hide this behavior inside an edge adapter. Edge adapters should be deterministic data shape transformations. Judge agents are normal agent nodes with explicit prompts, profiles, input/output ports, attempts, and linked Pibo Sessions.
 
 ## Registry and validation checklist
 

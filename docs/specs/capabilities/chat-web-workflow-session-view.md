@@ -4,7 +4,7 @@
 **Created:** 2026-05-11
 **Updated:** 2026-05-17
 **Controller / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code
-**Related docs:** [Chat Web Projects Area](./chat-web-projects-area.md), [Chat Web Trace and Terminal View](./chat-web-trace-and-terminal-view.md), [Chat Web Browser Shell State](./chat-web-browser-shell-state.md), [Pibo Workflow System V1](../changes/pibo-workflow-system-v1/spec.md)
+**Related docs:** [Chat Web Projects Area](./chat-web-projects-area.md), [Chat Web Trace and Terminal View](./chat-web-trace-and-terminal-view.md), [Chat Web Browser Shell State](./chat-web-browser-shell-state.md), [Current workflow docs](../../project/workflows.md), [Workflow runtime foundation and manual trigger](../changes/workflow-runtime-foundation-manual-trigger/spec.md), [Legacy Pibo Workflow System V1](../../legacy/specs/changes/pibo-workflow-system-v1/spec.md)
 
 ## Why
 
@@ -268,7 +268,7 @@ Every Workflow view state includes a read-only boundary notice. The snapshot con
 | Status mapping is explicit and inspectable | Failed workflow state | `src/apps/chat-ui/src/session-views/WorkflowXStateSessionView.tsx` | Draft |
 | Final output is trace-derived | Completed assistant output | `src/apps/chat-ui/src/session-views/WorkflowXStateSessionView.tsx`, `src/shared/trace-types.ts` | Draft |
 | Validation diagnostics are extracted conservatively | Raw validation diagnostic | `src/apps/chat-ui/src/session-views/WorkflowXStateSessionView.tsx` | Draft |
-| Workflow authoring controls stay out of the Project session view | User opens Workflow view | `src/apps/chat-ui/src/session-views/WorkflowXStateSessionView.tsx`, `src/apps/chat-ui/src/WorkflowsArea.tsx`, `docs/specs/changes/pibo-workflow-ui-authoring-v2/spec.md` | Draft |
+| Workflow authoring controls stay out of the Project session view | User opens Workflow view | `src/apps/chat-ui/src/session-views/WorkflowXStateSessionView.tsx`, `src/apps/chat-ui/src/WorkflowsArea.tsx`, `docs/legacy/specs/changes/pibo-workflow-ui-authoring-v2/spec.md` | Draft |
 
 ## Verification Basis
 
@@ -281,4 +281,4 @@ This spec was written from the current workspace code, especially:
 - `src/apps/chat-ui/src/main.tsx`
 - `src/apps/chat-ui/src/types.ts`
 - `src/apps/chat/data/project-service.ts`
-- `docs/specs/changes/pibo-workflow-system-v1/spec.md`
+- `docs/legacy/specs/changes/pibo-workflow-system-v1/spec.md`

@@ -4,7 +4,7 @@
 **Created:** 2026-05-05
 **Updated:** 2026-05-17
 **Controller / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code
-**Related docs:** `GLOSSARY.md`, [Chat Web Rooms and Event Streams](./chat-web-rooms-and-event-streams.md), [Chat Web Trace and Terminal View](./chat-web-trace-and-terminal-view.md), [Pibo Session Routing](./pibo-session-routing.md), [Pibo Workflow System V1](../changes/pibo-workflow-system-v1/spec.md)
+**Related docs:** `GLOSSARY.md`, [Chat Web Rooms and Event Streams](./chat-web-rooms-and-event-streams.md), [Chat Web Trace and Terminal View](./chat-web-trace-and-terminal-view.md), [Pibo Session Routing](./pibo-session-routing.md), [Current workflow docs](../../project/workflows.md), [Workflow runtime foundation and manual trigger](../changes/workflow-runtime-foundation-manual-trigger/spec.md), [Legacy Pibo Workflow System V1](../../legacy/specs/changes/pibo-workflow-system-v1/spec.md)
 
 ## Why
 
