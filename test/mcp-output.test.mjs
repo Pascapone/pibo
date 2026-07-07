@@ -245,6 +245,65 @@ test("formatServerDetails shows truncated tool descriptions by default", () => {
 	}
 });
 
+test("formatServerDetails omits generated error-response noise by default", () => {
+	const previous = process.env.NO_COLOR;
+	process.env.NO_COLOR = "1";
+	try {
+		const output = formatServerDetails(
+			"notion",
+			{ command: "node" },
+			[
+				{
+					name: "API-get-self",
+					description:
+						"Notion | Retrieve your token's bot user Error Responses: 400: Bad request",
+					inputSchema: { type: "object", properties: {} },
+				},
+			],
+			false,
+			undefined,
+		);
+
+		assert.match(output, /Notion \| Retrieve your token's bot user/);
+		assert.doesNotMatch(output, /Error Responses/);
+		assert.match(output, /Parameters:\n\s+No parameters/);
+	} finally {
+		if (previous === undefined) delete process.env.NO_COLOR;
+		else process.env.NO_COLOR = previous;
+	}
+});
+
+test("formatServerDetails shows an explicit placeholder for tools without parameters", () => {
+	const previous = process.env.NO_COLOR;
+	process.env.NO_COLOR = "1";
+	try {
+		const output = formatServerDetails(
+			"demo",
+			{ command: "node" },
+			[
+				{
+					name: "empty-properties",
+					description: "No input needed.",
+					inputSchema: { type: "object", properties: {} },
+				},
+				{
+					name: "missing-properties",
+					description: "No schema properties.",
+					inputSchema: { type: "object" },
+				},
+			],
+			false,
+			undefined,
+		);
+
+		assert.equal(output.match(/No parameters/g)?.length, 2);
+		assert.doesNotMatch(output, /Parameters:\n\s*\n/);
+	} finally {
+		if (previous === undefined) delete process.env.NO_COLOR;
+		else process.env.NO_COLOR = previous;
+	}
+});
+
 test("formatServerDetails shows full tool descriptions with -d", () => {
 	const previous = process.env.NO_COLOR;
 	process.env.NO_COLOR = "1";
