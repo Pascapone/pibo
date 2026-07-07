@@ -16,6 +16,7 @@ export type WorkflowGraphNodeData = Record<string, unknown> & {
 	isInitial: boolean;
 	onManualTriggerRun?: (nodeId: string) => void;
 	readOnly?: boolean;
+	runVisualState?: "running" | "recent";
 };
 export type WorkflowGraphFlowNode = Node<WorkflowGraphNodeData, "workflowNode">;
 export type WorkflowGraphEdgeData = Record<string, unknown> & {
@@ -26,6 +27,7 @@ export type WorkflowGraphEdgeData = Record<string, unknown> & {
 	onSelect?: (edgeId: string) => void;
 	onContextMenu?: (edgeId: string, event: { clientX: number; clientY: number; preventDefault: () => void; stopPropagation: () => void }) => void;
 	readOnly?: boolean;
+	recentTransition?: boolean;
 };
 export type WorkflowGraphFlowEdge = Edge<WorkflowGraphEdgeData, "workflowEdge">;
 export type SelectedGraphElement = { type: "node" | "edge"; id: string } | undefined;

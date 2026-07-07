@@ -497,6 +497,9 @@ export type WorkflowManualTriggerRunResponse = WorkflowValidationResponse & {
 		input: string;
 		output?: string;
 		piboSessionId?: string;
+		startedAt?: string;
+		completedAt?: string;
+		failedAt?: string;
 	}>;
 	edgeTransfers: Array<{
 		id: string;
@@ -504,6 +507,7 @@ export type WorkflowManualTriggerRunResponse = WorkflowValidationResponse & {
 		targetNodeId: string;
 		status: "transferred";
 		payload: string;
+		createdAt?: string;
 	}>;
 	output?: string;
 	error?: { code: string; message: string };
