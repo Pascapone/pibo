@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import { resolveFallbackWebGatewayServerOptions } from "../dist/gateway/fallback.js";
 import { isLoopbackHost, resolveWebGatewayAuthMode, resolveWebGatewayServerOptions } from "../dist/gateway/web.js";
@@ -26,6 +29,43 @@ test("web gateway respects explicit web host", () => {
 	});
 
 	assert.equal(options.web.host, "192.168.1.10");
+});
+
+test("web gateway rebases loopback auth base URL when explicit web port is supplied", () => {
+	const previousPiboHome = process.env.PIBO_HOME;
+	const piboHome = mkdtempSync(join(tmpdir(), "pibo-web-gateway-config-"));
+	try {
+		process.env.PIBO_HOME = piboHome;
+		writeFileSync(join(piboHome, "config.json"), JSON.stringify({ auth: { baseURL: "http://127.0.0.1:4788" } }));
+
+		const options = resolveWebGatewayServerOptions({ web: { port: 3000 } });
+
+		assert.equal(options.auth.baseURL, "http://127.0.0.1:3000");
+		assert.equal(options.web.port, 3000);
+	} finally {
+		if (previousPiboHome === undefined) delete process.env.PIBO_HOME;
+		else process.env.PIBO_HOME = previousPiboHome;
+		rmSync(piboHome, { recursive: true, force: true });
+	}
+});
+
+test("web gateway keeps public auth base URL when explicit bind port is supplied", () => {
+	const previousPiboHome = process.env.PIBO_HOME;
+	const piboHome = mkdtempSync(join(tmpdir(), "pibo-web-gateway-config-"));
+	try {
+		process.env.PIBO_HOME = piboHome;
+		writeFileSync(join(piboHome, "config.json"), JSON.stringify({ auth: { baseURL: "https://pibo.example.com" } }));
+
+		const options = resolveWebGatewayServerOptions({ web: { host: "127.0.0.1", port: 3000 } });
+
+		assert.equal(options.auth.baseURL, "https://pibo.example.com");
+		assert.equal(options.web.host, "127.0.0.1");
+		assert.equal(options.web.port, 3000);
+	} finally {
+		if (previousPiboHome === undefined) delete process.env.PIBO_HOME;
+		else process.env.PIBO_HOME = previousPiboHome;
+		rmSync(piboHome, { recursive: true, force: true });
+	}
 });
 
 test("fallback gateway uses dedicated public ports", () => {

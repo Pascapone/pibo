@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -42,6 +42,16 @@ function canConnect(port) {
 	});
 }
 
+async function waitForLog(pattern, child, logs) {
+	const deadline = Date.now() + 20_000;
+	while (Date.now() < deadline) {
+		assert.equal(child.exitCode, null, `gateway process exited early\n${logs.join("")}`);
+		if (pattern.test(logs.join(""))) return;
+		await new Promise((resolve) => setTimeout(resolve, 250));
+	}
+	assert.fail(`timed out waiting for log ${pattern}\n${logs.join("")}`);
+}
+
 async function waitForPorts(ports, children, logs) {
 	const deadline = Date.now() + 20_000;
 	while (Date.now() < deadline) {
@@ -64,6 +74,40 @@ async function stopChild(child) {
 	]);
 	if (child.exitCode === null) child.kill("SIGKILL");
 }
+
+test("gateway:web CLI announces explicit web port with loopback Better Auth base URL", { timeout: 30_000 }, async () => {
+	const [webPort, gatewayPort] = await reserveLoopbackPorts(2);
+	const tmp = await mkdtemp(path.join(os.tmpdir(), "pibo-gateway-web-cli-"));
+	const piboHome = path.join(tmp, "pibo");
+	const logs = [];
+	await mkdir(piboHome, { recursive: true });
+	await writeFile(
+		path.join(piboHome, "config.json"),
+		JSON.stringify({
+			auth: {
+				baseURL: "http://127.0.0.1:4788",
+				secret: "12345678901234567890123456789012",
+				googleClientId: "test-client-id",
+				googleClientSecret: "test-client-secret",
+				allowedEmails: ["test@example.com"],
+			},
+		}),
+	);
+
+	const child = spawn(process.execPath, ["dist/bin/pibo.js", "gateway:web", "--web-host", "127.0.0.1", "--web-port", String(webPort), "--gateway-port", String(gatewayPort)], {
+		cwd: repoRoot,
+		env: { ...process.env, HOME: path.join(tmp, "home"), PIBO_HOME: piboHome },
+	});
+	child.stdout.setEncoding("utf8").on("data", (chunk) => logs.push(chunk));
+	child.stderr.setEncoding("utf8").on("data", (chunk) => logs.push(chunk));
+
+	try {
+		await waitForLog(new RegExp(`pibo chat app available at http://127\\.0\\.0\\.1:${webPort}/apps/chat`), child, logs);
+	} finally {
+		await stopChild(child);
+		await rm(tmp, { recursive: true, force: true });
+	}
+});
 
 test("gateway:web CLI accepts distinct gateway ports for parallel instances", { timeout: 30_000 }, async () => {
 	const [webPortOne, gatewayPortOne, webPortTwo, gatewayPortTwo] = await reserveLoopbackPorts(4);
