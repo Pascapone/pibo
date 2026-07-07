@@ -1,6 +1,7 @@
 import { createDefaultPiboPlugins } from "../plugins/builtin.js";
 import type { BetterAuthServiceOptions } from "../auth/better-auth.js";
 import { createPiboBetterAuthPlugin } from "../plugins/better-auth.js";
+import { createPiboChatCustomAgentProfilesPlugin } from "../plugins/chat-custom-agents.js";
 import { createPiboChatWebPlugin, type ChatWebAppOptions } from "../plugins/chat-web.js";
 import { createPiboChatVscodeWebPlugin } from "../plugins/chat-vscode-web.js";
 import { createPiboContextFilesPlugin, type ContextFilesPluginOptions } from "../plugins/context-files.js";
@@ -178,6 +179,7 @@ export function createWebPiboPluginRegistry(options: WebGatewayServerOptions = {
 			useDevAuth ? createPiboDevAuthPlugin() : createPiboBetterAuthPlugin(resolvedOptions.auth),
 			createPiboWebHostPlugin({ announce: false, canonicalBaseURL: useDevAuth ? undefined : authBaseURL(resolvedOptions), gatewayMode: webGatewayMode(resolvedOptions, useDevAuth), ...resolvedOptions.web }),
 			createPiboCronPlugin({ cronStorePath: resolvedOptions.chat?.cronStorePath, dataStorePath: resolvedOptions.chat?.dataStorePath, dataPayloadRootDir: resolvedOptions.chat?.dataPayloadRootDir }),
+			createPiboChatCustomAgentProfilesPlugin({ agentStorePath: resolvedOptions.chat?.agentStorePath }),
 			createPiboRalphPlugin({ ralphStorePath: resolvedOptions.chat?.ralphStorePath, dataStorePath: resolvedOptions.chat?.dataStorePath, dataPayloadRootDir: resolvedOptions.chat?.dataPayloadRootDir }),
 			createPiboContextFilesPlugin(resolvedOptions.contextFiles),
 			createPiboChatWebPlugin(resolvedOptions.chat),

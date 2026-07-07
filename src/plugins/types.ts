@@ -217,6 +217,7 @@ export type PiboPluginApi = {
 	upsertContextFile(contextFile: ContextFileProfile): void;
 	removeContextFile(key: string): void;
 	registerProfile(profile: PiboProfileDefinition): void;
+	upsertProfile(profile: PiboProfileDefinition): void;
 	registerGatewayAction(action: PiboGatewayAction): void;
 	registerChannel(channel: PiboChannel): void;
 	registerAuthService(service: PiboAuthService): void;

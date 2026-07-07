@@ -116,6 +116,34 @@ test("Ralph service preserves promise-complete and max-iteration stop behavior t
 	} finally { service.stop(); await rm(dir, { recursive: true, force: true }); }
 });
 
+test("Ralph disables jobs after an unknown profile failure instead of looping", async () => {
+	const dir = await mkdtemp(join(tmpdir(), "pibo-ralph-profile-fail-"));
+	const store = new PiboRalphStore({ path: ":memory:" });
+	const listeners = new Set();
+	const context = {
+		async emit(event) { return { type: "execution_result", piboSessionId: event.piboSessionId, eventId: event.id ?? "evt", action: "test", result: {} }; },
+		subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+		createSession() { throw new Error('Unknown profile "unity-agent". Available profiles: base'); },
+		getSession() { return undefined; }, findSessions() { return []; }, getGatewayActions() { return []; }, getWebApps() { return []; },
+		getRalphStopConditionDefinitions() { return createBuiltInRalphStopConditions(); },
+	};
+	const service = new PiboRalphService({ store, context, dataStorePath: join(dir, "data.sqlite"), dataPayloadRootDir: join(dir, "payloads"), runTimeoutMs: 1_000 });
+	try {
+		const job = store.createJob({ target: { kind: "default-chat" }, profile: "unity-agent", prompt: "work", maxIterations: 200 });
+		const run = await service.startJob(job.id);
+		assert.ok(run);
+		await waitFor(() => store.getJob(job.id).state.completedIterations === 1);
+		const saved = store.getJob(job.id);
+		assert.equal(saved.enabled, false);
+		assert.equal(saved.state.consecutiveErrors, 1);
+		assert.equal(saved.state.lastError, 'Unknown profile "unity-agent". Available profiles: base');
+		const runs = store.listRuns({ jobId: job.id });
+		assert.equal(runs.length, 1);
+		assert.equal(runs[0].status, "error");
+		assert.equal(runs[0].reason, "unknown-profile");
+	} finally { service.stop(); await rm(dir, { recursive: true, force: true }); }
+});
+
 async function waitFor(predicate, timeoutMs = 1_000) {
 	const started = Date.now();
 	while (!predicate()) {

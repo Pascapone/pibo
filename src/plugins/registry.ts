@@ -425,6 +425,7 @@ export class PiboPluginRegistry {
 			upsertContextFile: (contextFile) => this.upsertContextFile(withPluginContext(contextFile)),
 			removeContextFile: (key) => this.removeContextFile(key),
 			registerProfile: (profile) => this.registerProfile(profile),
+			upsertProfile: (profile) => this.upsertProfile(profile),
 			registerGatewayAction: (action) => this.registerGatewayAction(action),
 			registerChannel: (channel) => this.registerChannel(channel),
 			registerAuthService: (service) => this.registerAuthService(service),
