@@ -205,6 +205,7 @@ function createChatAppURL(options: WebGatewayServerOptions, host: string, port: 
 export async function runWebGatewayServer(options: WebGatewayServerOptions = {}): Promise<void> {
 	const resolvedOptions = resolveWebGatewayServerOptions(options);
 	const pluginRegistry = resolvedOptions.pluginRegistry ?? createWebPiboPluginRegistry(resolvedOptions);
+	const pidFilePort = resolvedOptions.port;
 	const server = new PiboGatewayServer({
 		...resolvedOptions,
 		pluginRegistry,
@@ -214,7 +215,7 @@ export async function runWebGatewayServer(options: WebGatewayServerOptions = {})
 		if (process.env.PIBO_FALLBACK_MODE === "1") {
 			writeFallbackGatewayPid();
 		} else {
-			writeGatewayPid();
+			writeGatewayPid(pidFilePort);
 		}
 	} catch (err) {
 		console.error(err instanceof Error ? err.message : String(err));
@@ -231,7 +232,7 @@ export async function runWebGatewayServer(options: WebGatewayServerOptions = {})
 		if (process.env.PIBO_FALLBACK_MODE === "1") {
 			clearFallbackPidFile();
 		} else {
-			clearPidFile();
+			clearPidFile(pidFilePort);
 		}
 	};
 	process.once("SIGINT", () => {

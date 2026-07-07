@@ -164,11 +164,11 @@ test("gateway:web CLI accepts distinct gateway ports for parallel instances", { 
 	const children = [
 		spawn(process.execPath, ["dist/bin/pibo.js", "gateway:web", "--auth=local", "--web-host", "127.0.0.1", "--web-port", String(webPortOne), "--gateway-port", String(gatewayPortOne)], {
 			cwd: repoRoot,
-			env: { ...process.env, HOME: path.join(tmp, "home-one"), PIBO_HOME: path.join(tmp, "pibo-one") },
+			env: { ...process.env, HOME: path.join(tmp, "home-one"), PIBO_HOME: path.join(tmp, "pibo") },
 		}),
 		spawn(process.execPath, ["dist/bin/pibo.js", "gateway:web", "--auth=local", "--web-host", "127.0.0.1", "--web-port", String(webPortTwo), "--gateway-port", String(gatewayPortTwo)], {
 			cwd: repoRoot,
-			env: { ...process.env, HOME: path.join(tmp, "home-two"), PIBO_HOME: path.join(tmp, "pibo-two") },
+			env: { ...process.env, HOME: path.join(tmp, "home-two"), PIBO_HOME: path.join(tmp, "pibo") },
 		}),
 	];
 	for (const child of children) {
