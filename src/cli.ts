@@ -68,6 +68,15 @@ function parsePositiveInteger(value: string): number {
 	return parsed;
 }
 
+function defaultGatewayPortForWebPort(webPort: number | undefined): number | undefined {
+	if (webPort === undefined) return undefined;
+	const gatewayPort = webPort + 1;
+	if (gatewayPort > 65535) {
+		throw new Error("--web-port 65535 requires an explicit --gateway-port because the derived gateway port would exceed 65535");
+	}
+	return gatewayPort;
+}
+
 function isLoopbackBindForCli(host: string): boolean {
 	const normalized = host.startsWith("[") && host.endsWith("]") ? host.slice(1, -1) : host;
 	return normalized === "127.0.0.1" || normalized === "::1" || normalized === "localhost";
@@ -436,7 +445,7 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 			}
 			await runWebGatewayServer({
 				authMode: authMode as "better-auth" | "local" | undefined,
-				port: options.gatewayPort,
+				port: options.gatewayPort ?? defaultGatewayPortForWebPort(options.webPort),
 				web: {
 					host: options.webHost,
 					port: options.webPort,

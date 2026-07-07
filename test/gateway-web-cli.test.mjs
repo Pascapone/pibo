@@ -26,6 +26,34 @@ async function reserveLoopbackPorts(count) {
 	}
 }
 
+async function closeServerIfListening(server) {
+	if (!server.listening) return;
+	await new Promise((resolve) => server.close(resolve));
+}
+
+async function reserveAdjacentLoopbackPorts() {
+	for (let port = 30000; port < 65000; port += 10) {
+		const webServer = net.createServer();
+		const gatewayServer = net.createServer();
+		try {
+			await new Promise((resolve, reject) => {
+				webServer.once("error", reject);
+				webServer.listen(port, "127.0.0.1", resolve);
+			});
+			await new Promise((resolve, reject) => {
+				gatewayServer.once("error", reject);
+				gatewayServer.listen(port + 1, "127.0.0.1", resolve);
+			});
+			return [port, port + 1];
+		} catch {
+			// Try the next pair.
+		} finally {
+			await Promise.all([closeServerIfListening(webServer), closeServerIfListening(gatewayServer)]);
+		}
+	}
+	throw new Error("Unable to reserve adjacent loopback ports");
+}
+
 function canConnect(port) {
 	return new Promise((resolve) => {
 		const socket = net.createConnection({ host: "127.0.0.1", port });
@@ -102,6 +130,26 @@ test("gateway:web CLI announces explicit web port with loopback Better Auth base
 	child.stderr.setEncoding("utf8").on("data", (chunk) => logs.push(chunk));
 
 	try {
+		await waitForLog(new RegExp(`pibo chat app available at http://127\\.0\\.0\\.1:${webPort}/apps/chat`), child, logs);
+	} finally {
+		await stopChild(child);
+		await rm(tmp, { recursive: true, force: true });
+	}
+});
+
+test("gateway:web CLI derives gateway port from explicit web port", { timeout: 30_000 }, async () => {
+	const [webPort, derivedGatewayPort] = await reserveAdjacentLoopbackPorts();
+	const tmp = await mkdtemp(path.join(os.tmpdir(), "pibo-gateway-web-cli-"));
+	const logs = [];
+	const child = spawn(process.execPath, ["dist/bin/pibo.js", "gateway:web", "--auth=local", "--web-host", "127.0.0.1", "--web-port", String(webPort)], {
+		cwd: repoRoot,
+		env: { ...process.env, HOME: path.join(tmp, "home"), PIBO_HOME: path.join(tmp, "pibo") },
+	});
+	child.stdout.setEncoding("utf8").on("data", (chunk) => logs.push(chunk));
+	child.stderr.setEncoding("utf8").on("data", (chunk) => logs.push(chunk));
+
+	try {
+		await waitForPorts([webPort, derivedGatewayPort], [child], logs);
 		await waitForLog(new RegExp(`pibo chat app available at http://127\\.0\\.0\\.1:${webPort}/apps/chat`), child, logs);
 	} finally {
 		await stopChild(child);
