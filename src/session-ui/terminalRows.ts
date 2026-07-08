@@ -240,6 +240,9 @@ function createToolRowCandidate(node: PiboTraceNode, turnId?: string): RowCandid
 		const row = createCommandToolRow(node, command);
 		return { row, turnId, exploring: undefined };
 	}
+	if (isWebSearchToolName(node.title)) {
+		return { row: createWebSearchToolRow(node), turnId };
+	}
 	const image = classifyImageTool(node);
 	if (image) {
 		const row = createImageToolRow(node, image);
@@ -271,6 +274,39 @@ function createToolRowCandidate(node: PiboTraceNode, turnId?: string): RowCandid
 	};
 	const exploring = classifyExploringTool(node);
 	return { row, turnId, exploring };
+}
+
+function createWebSearchToolRow(node: PiboTraceNode): CompactTerminalRow {
+	const status = mapStatus(node.status);
+	const query = webSearchQuery(node);
+	const sourceCount = webSearchSourceCount(node.output);
+	const lines: CompactTerminalLine[] = [
+		{
+			prefix: "bullet",
+			tokens: [token(webSearchVerb(node.status), toneForStatus(node.status), node.status === "error" ? "bold" : "semibold")],
+		},
+	];
+	if (query) {
+		lines.push({ prefix: "detail", tokens: [token(`query: ${JSON.stringify(query)}`, "cyan")] });
+	}
+	if (node.status === "done" && sourceCount !== undefined) {
+		lines.push({ prefix: "detail", tokens: [token(`sources: ${sourceCount}`, "dim")] });
+	}
+	if (node.status === "error" && node.error) {
+		lines.push({ prefix: "detail", tokens: [token(node.error, "red")] });
+	}
+	return {
+		id: node.id,
+		kind: "tool.call",
+		status,
+		errorKind: node.status === "error" ? "tool" : undefined,
+		lines,
+		sourceNodeIds: [node.id],
+		input: node.input,
+		output: node.output,
+		error: node.error,
+		expandable: node.input !== undefined || node.output !== undefined || Boolean(node.error),
+	};
 }
 
 function createImageToolRow(node: PiboTraceNode, image: ImageToolClassification): CompactTerminalRow {
@@ -1126,6 +1162,30 @@ function isShellToolName(name: string | undefined): boolean {
 		normalized === "bash" ||
 		normalized === "terminal"
 	);
+}
+
+function isWebSearchToolName(name: string | undefined): boolean {
+	return (name ?? "").trim().toLowerCase() === "web_search";
+}
+
+function webSearchVerb(status: PiboTraceNode["status"]): string {
+	if (status === "running") return "Searching web";
+	if (status === "error") return "Web search failed";
+	return "Searched web";
+}
+
+function webSearchQuery(node: PiboTraceNode): string | undefined {
+	const input = isRecord(node.input) ? node.input : undefined;
+	const output = isRecord(node.output) ? node.output : undefined;
+	return stringValue(input?.query) ?? stringValue(output?.query) ?? stringValue(node.summary);
+}
+
+function webSearchSourceCount(output: unknown): number | undefined {
+	if (!isRecord(output)) return undefined;
+	const explicit = output.sourceCount ?? output.sourcesCount;
+	if (typeof explicit === "number" && Number.isFinite(explicit)) return explicit;
+	const sources = output.sources ?? output.citations ?? output.results;
+	return Array.isArray(sources) ? sources.length : undefined;
 }
 
 function shellCommandValue(value: unknown): string | undefined {

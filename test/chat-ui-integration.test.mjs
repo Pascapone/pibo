@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { withLiveSnapshots } from "../dist/apps/chat/chat-trace-helpers.js";
+import { normalizePiEvent } from "../dist/core/routed-session.js";
 import { buildTraceViewFromEvents, patchTraceViewWithEvent, patchTraceViewWithEvents } from "../dist/shared/trace-engine.js";
+import { buildCompactTerminalRows } from "../dist/session-ui/index.js";
 
 function createEvent(overrides) {
 	return {
@@ -39,6 +41,85 @@ function flatNodes(view) {
 function nodeLabels(nodes) {
 	return nodes.flatMap((node) => [node.title, ...nodeLabels(node.children ?? [])]);
 }
+
+function rowText(row) {
+	return row.lines.map((line) => line.tokens.map((token) => token.text).join("")).join("\n");
+}
+
+test("provider-backed web search events materialize as Terminal tool rows", () => {
+	const start = normalizePiEvent("chat:test", {
+		type: "response.web_search_call.searching",
+		item: { id: "ws_1", action: { query: "latest OpenAI pricing July 2026" } },
+	});
+	const done = normalizePiEvent("chat:test", {
+		type: "response.web_search_call.completed",
+		item: {
+			id: "ws_1",
+			action: { query: "latest OpenAI pricing July 2026" },
+			sources: [{ url: "https://example.test/a" }, { url: "https://example.test/b" }],
+		},
+	});
+	assert.equal(start?.type, "tool_execution_started");
+	assert.equal(done?.type, "tool_execution_finished");
+
+	const view = createBaseView([
+		createEvent({ seq: 1, type: "message_started", payload: { type: "message_started", eventId: "turn-1", text: "Search", source: "user" } }),
+		createEvent({ seq: 2, type: start.type, payload: { ...start, eventId: "turn-1" } }),
+		createEvent({ seq: 3, type: done.type, payload: { ...done, eventId: "turn-1" } }),
+	], "idle");
+	const rows = buildCompactTerminalRows(view, { showThinking: true });
+	const webSearchRows = rows.filter((row) => row.input?.providerTool === "web_search");
+	assert.equal(webSearchRows.length, 1, "expected exactly one visible web_search Terminal row");
+	const [webSearchRow] = webSearchRows;
+	assert.ok(webSearchRow, "expected a visible web_search Terminal row");
+	assert.equal(webSearchRow.status, "done");
+	assert.match(rowText(webSearchRow), /Searched web/);
+	assert.match(rowText(webSearchRow), /query: "latest OpenAI pricing July 2026"/);
+	assert.match(rowText(webSearchRow), /sources: 2/);
+});
+
+test("provider-backed web search output items materialize generic Terminal rows without query metadata", () => {
+	const start = normalizePiEvent("chat:test", {
+		type: "response.output_item.added",
+		item: { id: "ws_generic", type: "web_search_call", status: "in_progress" },
+	});
+	const done = normalizePiEvent("chat:test", {
+		type: "response.output_item.done",
+		item: { id: "ws_generic", type: "web_search_call", status: "completed" },
+	});
+	assert.equal(start?.type, "tool_execution_started");
+	assert.equal(done?.type, "tool_execution_finished");
+
+	const view = createBaseView([
+		createEvent({ seq: 1, type: "message_started", payload: { type: "message_started", eventId: "turn-generic", text: "Search", source: "user" } }),
+		createEvent({ seq: 2, type: start.type, payload: { ...start, eventId: "turn-generic" } }),
+		createEvent({ seq: 3, type: done.type, payload: { ...done, eventId: "turn-generic" } }),
+	], "idle");
+	const rows = buildCompactTerminalRows(view, { showThinking: true }).filter((row) => row.input?.providerTool === "web_search");
+	assert.equal(rows.length, 1, "expected generic provider item lifecycle to produce exactly one web_search row");
+	assert.equal(rows[0].status, "done");
+	assert.match(rowText(rows[0]), /Searched web/);
+	assert.doesNotMatch(rowText(rows[0]), /query:/);
+});
+
+test("provider-backed web search failures render as failed Terminal tool rows", () => {
+	const failed = normalizePiEvent("chat:test", {
+		type: "response.web_search_call.failed",
+		item: { id: "ws_2", action: { query: "bad query" }, error: { message: "quota exhausted" } },
+	});
+	assert.equal(failed?.type, "tool_execution_finished");
+	assert.equal(failed.isError, true);
+
+	const view = createBaseView([
+		createEvent({ seq: 1, type: "message_started", payload: { type: "message_started", eventId: "turn-2", text: "Search", source: "user" } }),
+		createEvent({ seq: 2, type: failed.type, payload: { ...failed, eventId: "turn-2" } }),
+	], "idle");
+	const row = buildCompactTerminalRows(view, { showThinking: true }).find((candidate) => candidate.input?.providerTool === "web_search" || candidate.error?.includes("quota"));
+	assert.ok(row, "expected failed web_search Terminal row");
+	assert.equal(row.status, "error");
+	assert.match(rowText(row), /Web search failed/);
+	assert.match(rowText(row), /quota exhausted/);
+});
 
 test("live event patching preserves transcript history", () => {
 	const baseView = buildTraceViewFromEvents({

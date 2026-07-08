@@ -74,6 +74,19 @@ async function createSessionHarness() {
 	};
 }
 
+test("provider-backed web search availability without use does not emit a tool event", async () => {
+	const harness = await createSessionHarness();
+	try {
+		const onPayload = harness.routed.runtime.session.agent.onPayload;
+		assert.equal(typeof onPayload, "function");
+		await onPayload({ input: [], tools: [{ type: "web_search" }] }, { api: "openai-responses", provider: "openai" });
+		const event = harness.events.find((candidate) => candidate.type === "tool_execution_started" && candidate.toolName === "web_search");
+		assert.equal(event, undefined, "request configuration alone must not claim that web_search was used");
+	} finally {
+		await harness.dispose();
+	}
+});
+
 test("thinking action without level reports current level without cycling", async () => {
 	const harness = await createSessionHarness();
 	try {
