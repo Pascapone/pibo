@@ -155,7 +155,7 @@ export function ProjectsArea({
   );
 
   useEffect(() => {
-    void load();
+    void load().catch(() => undefined);
   }, [load]);
 
   useEffect(() => {
@@ -385,7 +385,7 @@ export function ProjectsArea({
         onClick={onCloseMobileSidebar}
       />
       <ProjectsSidebar
-        data={data!}
+        data={data}
         selectedProject={selectedProject}
         selectedPiboSessionId={selectedPiboSessionId}
         activeProjects={activeProjects}
