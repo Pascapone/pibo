@@ -38,6 +38,7 @@ import { loadPiboUserSettings } from "./user-settings.js";
 import { resolvePiboSessionActiveModel } from "./session-model.js";
 import { isPiboThinkingLevel, type PiboThinkingLevel } from "./thinking.js";
 import { RuntimeSessionRegistry } from "../tools/runtime/registry.js";
+import { assertGatewayResourceAvailableForWork } from "./gateway-resource-guard.js";
 import { withWorkflowSessionKind } from "../sessions/workflow-session-kind.js";
 import { PiboRuntimeTelemetryRecorder, type ProviderEventTelemetryMode } from "./runtime-telemetry.js";
 import { createPiboProviderTelemetryExtension } from "./provider-telemetry.js";
@@ -614,6 +615,7 @@ export class PiboSessionRouter {
 	private createRunToolController(parentPiboSessionId: string): PiboRunToolController {
 		return {
 			startToolRun: ({ toolName, params, completionPolicy, retryable, maxAttempts, execute }) => {
+				assertGatewayResourceAvailableForWork(`yielded run ${toolName}`);
 				const run = this.runRegistry.startToolRun({
 					controllerPiboSessionId: parentPiboSessionId,
 					toolName,

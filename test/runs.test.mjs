@@ -491,6 +491,27 @@ test("router coalesces generic run completion into a compact parent notification
 	assert.match(messages[0].text, /"runId":"run_/);
 });
 
+test("router rejects yielded runs when gateway resource block threshold is crossed", async () => {
+	const previousMode = process.env.PIBO_GATEWAY_RESOURCE_GUARD;
+	const previousFree = process.env.PIBO_GATEWAY_MIN_FREE_MEMORY_BYTES;
+	process.env.PIBO_GATEWAY_RESOURCE_GUARD = "block";
+	process.env.PIBO_GATEWAY_MIN_FREE_MEMORY_BYTES = "999999999999999";
+	try {
+		const router = new PiboSessionRouter({ persistSession: false });
+		const controller = router.createRunToolController("parent");
+		assert.throws(
+			() => controller.startToolRun({ toolName: "helper", async execute() { return { text: "should not start" }; } }),
+			/Gateway resource guard blocked yielded run helper before starting/,
+		);
+		assert.deepEqual(router.runRegistry.list("parent", { includeConsumed: true, includeDetached: true }), []);
+	} finally {
+		if (previousMode === undefined) delete process.env.PIBO_GATEWAY_RESOURCE_GUARD;
+		else process.env.PIBO_GATEWAY_RESOURCE_GUARD = previousMode;
+		if (previousFree === undefined) delete process.env.PIBO_GATEWAY_MIN_FREE_MEMORY_BYTES;
+		else process.env.PIBO_GATEWAY_MIN_FREE_MEMORY_BYTES = previousFree;
+	}
+});
+
 test("router converts yielded tool errors into failed run notifications", async () => {
 	const router = new PiboSessionRouter({ persistSession: false });
 	const messages = [];
