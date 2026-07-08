@@ -41,6 +41,7 @@ import { getMcpAgentContextFile } from "../mcp/agent-context.js";
 import { createPiboSystemPromptTemplateExtension } from "./system-prompt-template.js";
 import { getActivePiboBasePromptPath } from "./base-prompt.js";
 import { createPiboCompactionPromptExtension } from "./compaction-prompt.js";
+import { createPiboAssistantContextGuardExtension } from "./context-guard.js";
 import { getPiPackageRuntimeOptions } from "../pi-packages/runtime.js";
 import { getDefaultPiboWorkspace } from "./workspace.js";
 import { DEFAULT_USER_TIMEZONE } from "./user-settings.js";
@@ -244,6 +245,7 @@ function getProfileExtensionFactories(
 ): ExtensionFactory[] | undefined {
 	const piboPromptTemplateExtension = createPiboSystemPromptTemplateExtension();
 	const piboCompactionPromptExtension = createPiboCompactionPromptExtension();
+	const piboContextGuardExtension = createPiboAssistantContextGuardExtension();
 	const providerToolExtensions = profile.tools
 		.filter((tool) => tool.enabled !== false)
 		.filter(isWebSearchProviderTool)
@@ -252,6 +254,7 @@ function getProfileExtensionFactories(
 		return [
 			piboPromptTemplateExtension,
 			piboCompactionPromptExtension,
+			piboContextGuardExtension,
 			...providerToolExtensions,
 			...(extensionFactories ?? []),
 		];
@@ -259,6 +262,7 @@ function getProfileExtensionFactories(
 	return [
 		piboPromptTemplateExtension,
 		piboCompactionPromptExtension,
+		piboContextGuardExtension,
 		createCodexCompatExtension({
 			isChildSession: profile.parentSessionId !== undefined,
 		}),
