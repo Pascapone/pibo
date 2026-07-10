@@ -42,7 +42,7 @@ export class PiboRalphService {
 	private readonly roomService: ChatRoomService;
 	private readonly intervalMs: number;
 	private readonly maxConcurrentRuns: number;
-	private readonly runTimeoutMs: number;
+	private readonly runTimeoutMs: number | undefined;
 	private timer: NodeJS.Timeout | undefined;
 	private activeRuns = 0;
 	private stopped = true;
@@ -54,7 +54,7 @@ export class PiboRalphService {
 		this.roomService = new ChatRoomService(this.dataStore);
 		this.intervalMs = options.intervalMs ?? 5_000;
 		this.maxConcurrentRuns = Math.max(1, options.maxConcurrentRuns ?? 2);
-		this.runTimeoutMs = options.runTimeoutMs ?? 30 * 60_000;
+		this.runTimeoutMs = options.runTimeoutMs;
 	}
 	start(): void { if (!this.stopped) return; this.stopped = false; this.store.recoverInterruptedRuns(); this.unsubscribeProductEvents = this.options.context.subscribeProductEvents?.((event) => this.handleProductEvent(event)); this.arm(250); }
 	stop(): void { this.stopped = true; if (this.timer) clearTimeout(this.timer); this.timer = undefined; this.unsubscribeProductEvents?.(); this.unsubscribeProductEvents = undefined; this.dataStore.close(); this.store.close(); }
@@ -186,6 +186,6 @@ export class PiboRalphService {
 	private resolveTarget(job: PiboRalphJob): { roomId: string; workspace?: string; metadata?: Record<string, unknown> } { if (job.target.kind === 'room') { const room = this.roomService.getRoom(job.target.roomId); if (!room) throw new Error('Target room no longer exists'); if (isPiboRoomArchived(room)) throw new Error('Target room is archived'); return { roomId: room.id, workspace: room.workspace ?? getDefaultPiboWorkspace() }; } const room = this.roomService.ensureDefaultRoom({ name: 'Shared Chat' }); return { roomId: room.id, workspace: room.workspace ?? getDefaultPiboWorkspace() }; }
 	private async emitMessageAndWait(piboSessionId: string, text: string, options: { isCancelled?: () => boolean } = {}): Promise<string> {
 		const eventId = `ralph_msg_${randomUUID()}`;
-		return await new Promise<string>((resolve, reject) => { let settled = false; let deltaAnswer = ''; let finalAnswer = ''; let lastSessionError: string | undefined; let unsubscribe: (() => void) | undefined; const timeout = setTimeout(() => finish(new Error(lastSessionError ? `Ralph run timed out after session error: ${lastSessionError}` : 'Ralph run timed out')), this.runTimeoutMs); const finish = (error?: Error) => { if (settled) return; settled = true; clearTimeout(timeout); unsubscribe?.(); if (error) reject(error); else resolve(finalAnswer || deltaAnswer); }; unsubscribe = this.options.context.subscribe((event: PiboOutputEvent) => { if (event.piboSessionId !== piboSessionId) return; if ('eventId' in event && event.eventId !== eventId) return; if (event.type === 'assistant_delta') deltaAnswer += event.text; if (event.type === 'assistant_message') finalAnswer = event.text; if (event.type === 'message_finished') finish(); if (event.type === 'session_error') { lastSessionError = event.error; if (options.isCancelled?.()) finish(new Error(event.error)); } }); this.options.context.emit({ type: 'message', piboSessionId, id: eventId, source: 'service', text }).catch((error) => finish(error instanceof Error ? error : new Error(String(error)))); });
+		return await new Promise<string>((resolve, reject) => { let settled = false; let deltaAnswer = ''; let finalAnswer = ''; let lastSessionError: string | undefined; let unsubscribe: (() => void) | undefined; let timeout: NodeJS.Timeout | undefined; const finish = (error?: Error) => { if (settled) return; settled = true; if (timeout) clearTimeout(timeout); unsubscribe?.(); if (error) reject(error); else resolve(finalAnswer || deltaAnswer); }; if (this.runTimeoutMs !== undefined) timeout = setTimeout(() => finish(new Error(lastSessionError ? `Ralph run timed out after session error: ${lastSessionError}` : 'Ralph run timed out')), this.runTimeoutMs); unsubscribe = this.options.context.subscribe((event: PiboOutputEvent) => { if (event.piboSessionId !== piboSessionId) return; if ('eventId' in event && event.eventId !== eventId) return; if (event.type === 'assistant_delta') deltaAnswer += event.text; if (event.type === 'assistant_message') { finalAnswer = event.text; lastSessionError = undefined; } if (event.type === 'message_finished') finish(lastSessionError ? new Error(lastSessionError) : undefined); if (event.type === 'session_error') { lastSessionError = event.error; const providerAttempt = event.errorDetails?.origin === 'provider' && Boolean(event.errorDetails.api || event.errorDetails.provider || event.errorDetails.model); if (!providerAttempt || options.isCancelled?.()) finish(new Error(event.error)); } }); this.options.context.emit({ type: 'message', piboSessionId, id: eventId, source: 'service', text }).catch((error) => finish(error instanceof Error ? error : new Error(String(error)))); });
 	}
 }
