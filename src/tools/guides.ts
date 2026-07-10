@@ -69,6 +69,23 @@ pibo ralph add \\
 
 Explicit options override template fields.
 
+Runtime overrides are optional and apply to sessions created by the job:
+
+\`\`\`bash
+pibo ralph add \\
+  --room "<room-id>" \\
+  --prompt "Use a specific runtime." \\
+  --model openai/gpt-5 \\
+  --thinking high \\
+  --fast \\
+  --json
+
+pibo ralph edit <job-id> --model openai/gpt-5 --thinking medium --no-fast --json
+pibo ralph edit <job-id> --clear-model --clear-thinking --clear-fast --json
+\`\`\`
+
+Use \`--model <provider/model>\`, \`--thinking off|minimal|low|medium|high|xhigh\`, and \`--fast\`/\`--no-fast\` to set runtime options. Use the \`--clear-*\` flags on \`edit\` to return to profile/default runtime behavior.
+
 ## Inspect and Debug
 
 \`\`\`bash

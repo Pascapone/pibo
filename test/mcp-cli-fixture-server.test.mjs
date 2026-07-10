@@ -24,7 +24,7 @@ const tools = [
   },
   {
     name: "nested/read",
-    description: "Nested tool name for grep slash-boundary checks.",
+    description: "Nested tool name for grep slash-boundary checks. Error Responses: 400: Bad request",
     inputSchema: { type: "object", properties: {} },
   },
 ];
@@ -156,7 +156,10 @@ test("pibo mcp shows truncated tool descriptions by default without -d", async (
     assert.match(info.stdout, /Server: fixture/);
     // Tool summary appears by default; parameter descriptions stay hidden until -d.
     assert.match(info.stdout, /\becho\n\s+Echo text content back to the caller\./);
+    assert.match(info.stdout, /nested\/read\n\s+Nested tool name for grep slash-boundary checks\./);
+    assert.match(info.stdout, /nested\/read[\s\S]*?Parameters:\n\s+No parameters/);
     assert.doesNotMatch(info.stdout, /Text to echo\./);
+    assert.doesNotMatch(info.stdout, /Error Responses/);
 
     const full = await execFileAsync("node", [cliPath, "mcp", "info", "fixture", "-d"], { cwd, env });
     assert.match(full.stdout, /Text to echo\./);

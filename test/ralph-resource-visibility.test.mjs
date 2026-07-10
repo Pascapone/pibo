@@ -91,7 +91,7 @@ test("Ralph CLI text and JSON expose concise retained and dirty resource state",
 		const help = await execFileAsync("node", [cliPath, "ralph", "add", "--help"], { env });
 		const removedHelpPattern = new RegExp([`--${retiredWord}-scope`, "--personal", "--principal-id", `PIBO_${retiredWord.toUpperCase()}_SCOPE`, "principal" + "Id", `${retiredWord}Scope`].join("|"));
 		assert.doesNotMatch(help.stdout, removedHelpPattern);
-		assert.match(help.stdout, /pibo ralph add --help/);
+		assert.match(help.stdout, /Create a Ralph job/);
 
 		const json = await execFileAsync("node", [cliPath, "ralph", "--store", dbPath, "list", "--all", "--json"], { env });
 		const jobs = JSON.parse(json.stdout);

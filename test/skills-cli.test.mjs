@@ -11,9 +11,9 @@ function tempHome() {
 	return mkdtempSync(join(tmpdir(), "pibo-skills-cli-"));
 }
 
-function runSkills(args, home = tempHome()) {
+function runSkills(args, home = tempHome(), cwd = home) {
 	return spawnSync(process.execPath, [piboBin.pathname, "skills", ...args], {
-		cwd: home,
+		cwd,
 		env: { ...process.env, HOME: home },
 		encoding: "utf-8",
 	});
@@ -47,6 +47,38 @@ test("skills list supports JSON output", () => {
 	const result = runSkills(["list", "--json"]);
 	assert.equal(result.status, 0);
 	assert.deepEqual(JSON.parse(result.stdout), []);
+});
+
+test("skills CLI supports workspace-local skill scope", () => {
+	const home = tempHome();
+	const workspace = tempHome();
+	const globalFile = join(home, "global.md");
+	const workspaceFile = join(workspace, "workspace.md");
+	writeFileSync(globalFile, "---\nname: global-helper\ndescription: Global helper.\n---\n\nUse global guidance.\n", "utf-8");
+	writeFileSync(workspaceFile, "---\nname: workspace-helper\ndescription: Workspace helper.\n---\n\nUse workspace guidance.\n", "utf-8");
+
+	const globalAdd = runSkills(["add", "global-helper", "--file", globalFile], home, workspace);
+	assert.equal(globalAdd.status, 0, globalAdd.stderr);
+	assert.equal(JSON.parse(globalAdd.stdout).scope, "global");
+
+	const workspaceAdd = runSkills(["add", "workspace-helper", "--file", workspaceFile, "--scope", "workspace"], home, workspace);
+	assert.equal(workspaceAdd.status, 0, workspaceAdd.stderr);
+	assert.equal(JSON.parse(workspaceAdd.stdout).scope, "workspace");
+
+	const listed = runSkills(["list", "--json"], home, workspace);
+	assert.equal(listed.status, 0, listed.stderr);
+	assert.deepEqual(JSON.parse(listed.stdout).map((skill) => [skill.name, skill.scope]), [
+		["global-helper", "global"],
+		["workspace-helper", "workspace"],
+	]);
+
+	const workspaceOnly = runSkills(["list", "--scope", "workspace", "--json"], home, workspace);
+	assert.equal(workspaceOnly.status, 0, workspaceOnly.stderr);
+	assert.deepEqual(JSON.parse(workspaceOnly.stdout).map((skill) => skill.name), ["workspace-helper"]);
+
+	const shown = runSkills(["show", "workspace-helper", "--scope", "workspace"], home, workspace);
+	assert.equal(shown.status, 0, shown.stderr);
+	assert.match(shown.stdout, /Use workspace guidance/);
 });
 
 test("skills list removes YAML scalar quotes from descriptions", () => {

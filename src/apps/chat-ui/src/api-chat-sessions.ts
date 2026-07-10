@@ -31,7 +31,7 @@ export async function getProjectsBootstrap(input: { projectId?: string; piboSess
 	if (input.piboSessionId) params.set("piboSessionId", input.piboSessionId);
 	if (input.includeArchived) params.set("includeArchived", "true");
 	const suffix = params.size ? `?${params.toString()}` : "";
-	return requestJson<ProjectsBootstrapData>(`/api/chat/projects/bootstrap${suffix}`);
+	return requestJson<Partial<ProjectsBootstrapData> | null>(`/api/chat/projects/bootstrap${suffix}`).then(normalizeProjectsBootstrap);
 }
 
 export async function postProject(input: { name: string; projectFolder: string; description?: string; createFolder?: boolean }): Promise<{ project: PiboProject }> {
@@ -222,6 +222,50 @@ function normalizeNavigation(payload: Partial<NavigationData>): NavigationData {
 		rooms: payload.rooms ?? [],
 		sessions,
 	};
+}
+
+function normalizeProjectsBootstrap(payload: Partial<ProjectsBootstrapData> | null | undefined): ProjectsBootstrapData {
+	if (!payload || typeof payload !== "object") {
+		throw new Error("Invalid Projects bootstrap response: missing bootstrap data.");
+	}
+	if (!isProjectLike(payload.sharedDefaultProject)) {
+		throw new Error("Invalid Projects bootstrap response: missing shared default project.");
+	}
+	const sharedDefaultProject = payload.sharedDefaultProject;
+	const selectedProjectId =
+		typeof payload.selectedProjectId === "string" && payload.selectedProjectId
+			? payload.selectedProjectId
+			: isProjectLike(payload.project)
+				? payload.project.id
+				: sharedDefaultProject.id;
+	return {
+		identity: isIdentityLike(payload.identity) ? payload.identity : { userId: "" },
+		sharedDefaultProject,
+		project: isProjectLike(payload.project) ? payload.project : sharedDefaultProject,
+		projects: Array.isArray(payload.projects) ? payload.projects : [],
+		projectSessions: Array.isArray(payload.projectSessions) ? payload.projectSessions : [],
+		workflowLifecycleEvents: Array.isArray(payload.workflowLifecycleEvents) ? payload.workflowLifecycleEvents : [],
+		session: payload.session,
+		selectedProjectId,
+		selectedPiboSessionId: typeof payload.selectedPiboSessionId === "string" ? payload.selectedPiboSessionId : undefined,
+		sessions: Array.isArray(payload.sessions) ? payload.sessions : [],
+		agents: Array.isArray(payload.agents) ? payload.agents : [],
+		customAgents: Array.isArray(payload.customAgents) ? payload.customAgents : [],
+		modelDefaults: payload.modelDefaults,
+		modelCatalog: payload.modelCatalog,
+		agentCatalog: payload.agentCatalog,
+		capabilities: {
+			actions: Array.isArray(payload.capabilities?.actions) ? payload.capabilities.actions : [],
+		},
+	};
+}
+
+function isIdentityLike(value: unknown): value is ProjectsBootstrapData["identity"] {
+	return Boolean(value && typeof value === "object" && typeof (value as { userId?: unknown }).userId === "string");
+}
+
+function isProjectLike(value: unknown): value is PiboProject {
+	return Boolean(value && typeof value === "object" && typeof (value as { id?: unknown }).id === "string");
 }
 
 function normalizeBootstrap(payload: Partial<BootstrapData>): BootstrapData {

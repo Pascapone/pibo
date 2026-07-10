@@ -75,7 +75,21 @@ type PiEventCandidate = {
 		delta?: unknown;
 		content?: unknown;
 		toolCall?: { id?: unknown; name?: unknown; arguments?: unknown };
+		item?: unknown;
+		status?: unknown;
+		action?: unknown;
+		query?: unknown;
+		result?: unknown;
+		error?: unknown;
+		sources?: unknown;
 	};
+	item?: unknown;
+	item_id?: unknown;
+	status?: unknown;
+	action?: unknown;
+	query?: unknown;
+	sources?: unknown;
+	error?: unknown;
 	toolCallId?: unknown;
 	toolName?: unknown;
 	args?: unknown;
@@ -281,10 +295,91 @@ function normalizeToolExecutionEvent(piboSessionId: string, candidate: PiEventCa
 	return undefined;
 }
 
-function normalizePiEvent(piboSessionId: string, event: unknown, context?: ErrorContext): PiboOutputEvent | undefined {
+type ProviderWebSearchStatus = "running" | "done" | "error";
+
+function normalizeProviderWebSearchEvent(piboSessionId: string, candidate: PiEventCandidate): PiboOutputEvent | undefined {
+	const item = recordValue(candidate.item) ?? recordValue(candidate.assistantMessageEvent?.item);
+	const itemType = stringValue(item?.type);
+	const rawEventType = stringValue(candidate.type) ?? stringValue(candidate.assistantMessageEvent?.type);
+	const rawType = rawEventType?.toLowerCase().includes("web_search") ? rawEventType : itemType;
+	if (!rawType || !rawType.toLowerCase().includes("web_search")) return undefined;
+
+	const action = recordValue(candidate.action) ?? recordValue(candidate.assistantMessageEvent?.action) ?? recordValue(item?.action);
+	const status = providerWebSearchStatus(rawEventType ?? rawType, candidate.status ?? candidate.assistantMessageEvent?.status ?? item?.status);
+	if (!status) return undefined;
+
+	const rawId =
+		stringValue(candidate.toolCallId) ??
+		stringValue(candidate.item_id) ??
+		stringValue(item?.id) ??
+		stringValue((candidate.assistantMessageEvent?.toolCall as { id?: unknown } | undefined)?.id) ??
+		(typeof candidate.assistantMessageEvent?.contentIndex === "number"
+			? `content-${candidate.assistantMessageEvent.contentIndex}`
+			: undefined) ??
+		"active";
+	const toolCallId = rawId.startsWith("provider:web_search:") ? rawId : `provider:web_search:${rawId}`;
+	const query =
+		stringValue(candidate.query) ??
+		stringValue(candidate.assistantMessageEvent?.query) ??
+		stringValue(action?.query) ??
+		stringValue(item?.query) ??
+		stringValue(item?.search_query);
+	const sources = firstArray(candidate.sources, candidate.assistantMessageEvent?.sources, item?.sources, item?.results, item?.citations);
+	const args = { providerTool: "web_search", ...(query ? { query } : {}) };
+
+	if (status === "running") {
+		return {
+			type: "tool_execution_started",
+			piboSessionId,
+			toolCallId,
+			toolName: "web_search",
+			args,
+		};
+	}
+
+	const error = candidate.error ?? candidate.assistantMessageEvent?.error ?? item?.error;
+	return {
+		type: "tool_execution_finished",
+		piboSessionId,
+		toolCallId,
+		toolName: "web_search",
+		result: status === "error"
+			? (error ?? "Web search failed")
+			: {
+					...(query ? { query } : {}),
+					...(sources ? { sources, sourceCount: sources.length } : {}),
+				},
+		isError: status === "error",
+	};
+}
+
+function providerWebSearchStatus(rawType: string, rawStatus: unknown): ProviderWebSearchStatus | undefined {
+	const type = rawType.toLowerCase();
+	const status = stringValue(rawStatus)?.toLowerCase();
+	if (type.includes("failed") || type.includes("error") || status === "failed" || status === "error") return "error";
+	if (type.includes("completed") || type.includes("done") || type.includes("end") || status === "completed" || status === "done") return "done";
+	if (type.includes("started") || type.includes("added") || type.includes("in_progress") || type.includes("searching") || status === "in_progress" || status === "running" || status === "searching") return "running";
+	return undefined;
+}
+
+function recordValue(value: unknown): Record<string, unknown> | undefined {
+	return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+}
+
+function firstArray(...values: unknown[]): unknown[] | undefined {
+	for (const value of values) {
+		if (Array.isArray(value)) return value;
+	}
+	return undefined;
+}
+
+export function normalizePiEvent(piboSessionId: string, event: unknown, context?: ErrorContext): PiboOutputEvent | undefined {
 	if (!event || typeof event !== "object") return undefined;
 
 	const candidate = event as PiEventCandidate;
+
+	const providerToolEvent = normalizeProviderWebSearchEvent(piboSessionId, candidate);
+	if (providerToolEvent) return providerToolEvent;
 
 	if (
 		candidate.type === "message_update" &&

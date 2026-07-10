@@ -5,7 +5,7 @@ import { flushSync } from "react-dom";
 import { RefreshCw, X } from "lucide-react";
 import { getBootstrap, getNavigation, getSessionPage, markRoomRead, markSessionRead, patchRoom, patchSession, postAction, postMessage, postRoom, postSession } from "./api-chat-sessions";
 import { navigateToChatRoute, type ChatAppRoute, type NavigationOptions } from "./app-routes";
-import { downloadChatFile } from "./api-chat-files";
+import { downloadChatFile, type ChatDownloadProgress } from "./api-chat-files";
 import { fetchSignalTree, subscribeSignalTree } from "./api-trace-signals";
 import { listUserSkills } from "./api-agent-designer";
 import type { AgentCatalog, BootstrapData, NavigationData, PiboSignalSnapshot, UserSkill } from "./types";
@@ -126,6 +126,7 @@ import {
 	upsertAgentCatalogUserSkill,
 } from "./app-agent-catalog-mutations";
 import { useAppDeleteActions } from "./app-delete-actions";
+import { roomSummaryStreamUrl } from "./room-summary-stream";
 
 export type { ChatAppRoute } from "./app-routes";
 
@@ -146,6 +147,41 @@ const NAVIGATION_FALLBACK_REFRESH_MS = 30_000;
 const SESSION_PAGE_SIZE = 120;
 const ARCHIVED_SESSION_PAGE_SIZE = 60;
 const EMPTY_SESSION_PATH_IDS = new Set<string>();
+
+type ChatDownloadStatus = ChatDownloadProgress & {
+	key: string;
+	status: "starting" | "running" | "completed" | "failed";
+	duplicateAttempted?: boolean;
+	error?: string;
+};
+
+function fallbackDownloadFilename(path: string): string {
+	const normalized = path.trim().replace(/\\/g, "/");
+	return normalized.split("/").filter(Boolean).pop() ?? "download";
+}
+
+function formatDownloadBytes(bytes: number): string {
+	if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+	const units = ["B", "KB", "MB", "GB", "TB"];
+	let value = bytes;
+	let unitIndex = 0;
+	while (value >= 1024 && unitIndex < units.length - 1) {
+		value /= 1024;
+		unitIndex += 1;
+	}
+	const precision = value >= 10 || unitIndex === 0 ? 0 : 1;
+	return `${value.toFixed(precision)} ${units[unitIndex]}`;
+}
+
+function downloadProgressLabel(status: ChatDownloadStatus): string {
+	if (status.status === "starting") return "Preparing download…";
+	if (status.status === "failed") return status.error ?? "Download failed";
+	if (status.totalBytes && status.totalBytes > 0) {
+		const percent = Math.min(100, Math.floor((status.receivedBytes / status.totalBytes) * 100));
+		return `${percent}% · ${formatDownloadBytes(status.receivedBytes)} of ${formatDownloadBytes(status.totalBytes)}`;
+	}
+	return status.receivedBytes > 0 ? `${formatDownloadBytes(status.receivedBytes)} received` : "Waiting for bytes…";
+}
 
 function isAbortError(value: unknown): boolean {
 	return value instanceof DOMException && value.name === "AbortError";
@@ -209,6 +245,8 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const [selectedPiboSessionId, setSelectedPiboSessionId] = useState<string | null>(null);
 	const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
+	const [downloadStatus, setDownloadStatus] = useState<ChatDownloadStatus | null>(null);
+	const activeDownloadKeysRef = useRef<Set<string>>(new Set());
 	const [showThinking, setShowThinking] = useState(readStoredShowThinking);
 	const [expandThinking, setExpandThinking] = useState(readStoredExpandThinking);
 	const [showRawEvents, setShowRawEvents] = useState(readStoredShowRawEvents);
@@ -676,12 +714,14 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const latestRoomStreamId = bootstrap?.latestRoomStreamId;
 
 	useEffect(() => {
-		if (area !== "sessions" || !activeRoomId) return;
-		if (bootstrap?.selectedRoomId !== activeRoomId || typeof latestRoomStreamId !== "number") return;
-		const params = new URLSearchParams({ roomId: activeRoomId });
-		params.set("mode", "summary");
-		params.set("since", `${latestRoomStreamId}:999999`);
-		const events = new EventSource(`/api/chat/events?${params.toString()}`);
+		const roomSummaryUrl = roomSummaryStreamUrl({
+			area,
+			activeRoomId,
+			bootstrapSelectedRoomId: bootstrap?.selectedRoomId,
+			latestRoomStreamId,
+		});
+		if (!roomSummaryUrl || !activeRoomId || typeof latestRoomStreamId !== "number") return;
+		const events = new EventSource(roomSummaryUrl);
 		let navigationTimer: ReturnType<typeof setTimeout> | undefined;
 		const scheduleNavigationRefresh = () => {
 			if (navigationTimer) clearTimeout(navigationTimer);
@@ -1054,14 +1094,58 @@ export function App({ route }: { route: ChatAppRoute }) {
 				setError("Usage: /download <path>");
 				return true;
 			}
+			const key = `${selectedPiboSessionId}:${path}`;
+			if (activeDownloadKeysRef.current.has(key)) {
+				setDownloadStatus((current) => current?.key === key ? { ...current, duplicateAttempted: true } : {
+					key,
+					path,
+					filename: fallbackDownloadFilename(path),
+					receivedBytes: 0,
+					status: "running",
+					duplicateAttempted: true,
+				});
+				return true;
+			}
+			activeDownloadKeysRef.current.add(key);
+			setDownloadStatus({ key, path, filename: fallbackDownloadFilename(path), receivedBytes: 0, status: "starting" });
 			try {
-				await downloadChatFile(path, {
+				const result = await downloadChatFile(path, {
 					piboSessionId: selectedPiboSessionId,
 					roomId: selectedRoomId ?? undefined,
+					onStart: (progress) => setDownloadStatus((current) => ({
+						...progress,
+						key,
+						status: "running",
+						duplicateAttempted: current?.key === key ? current.duplicateAttempted : false,
+					})),
+					onProgress: (progress) => setDownloadStatus((current) => ({
+						...progress,
+						key,
+						status: "running",
+						duplicateAttempted: current?.key === key ? current.duplicateAttempted : false,
+					})),
 				});
+				setDownloadStatus((current) => ({
+					...result,
+					key,
+					status: "completed",
+					duplicateAttempted: current?.key === key ? current.duplicateAttempted : false,
+				}));
 				setError(null);
 			} catch (caught) {
-				setError(caught instanceof Error ? caught.message : String(caught));
+				const message = caught instanceof Error ? caught.message : String(caught);
+				setDownloadStatus((current) => ({
+					key,
+					path,
+					filename: current?.key === key ? current.filename : fallbackDownloadFilename(path),
+					receivedBytes: current?.key === key ? current.receivedBytes : 0,
+					totalBytes: current?.key === key ? current.totalBytes : undefined,
+					status: "failed",
+					error: message,
+				}));
+				setError(message);
+			} finally {
+				activeDownloadKeysRef.current.delete(key);
 			}
 			return true;
 		}
@@ -1215,7 +1299,10 @@ export function App({ route }: { route: ChatAppRoute }) {
 					onToggleMobileAreaMenu={() => setMobileAreaMenuOpen((open) => !open)}
 				/>
 
-			<div>{error ? <AppErrorBanner message={error} onDismiss={() => setError(null)} /> : null}</div>
+			<div>
+				{error ? <AppErrorBanner message={error} onDismiss={() => setError(null)} /> : null}
+				{downloadStatus ? <DownloadStatusBanner status={downloadStatus} onDismiss={() => setDownloadStatus(null)} /> : null}
+			</div>
 
 			<div
 				data-pibo-debug="route-shell"
@@ -1536,6 +1623,48 @@ export function App({ route }: { route: ChatAppRoute }) {
 
 		</div>
 	</>
+	);
+}
+
+function DownloadStatusBanner({ status, onDismiss }: { status: ChatDownloadStatus; onDismiss: () => void }) {
+	const running = status.status === "starting" || status.status === "running";
+	const progressPercent = status.totalBytes && status.totalBytes > 0
+		? Math.min(100, Math.max(0, (status.receivedBytes / status.totalBytes) * 100))
+		: undefined;
+	const tone = status.status === "failed"
+		? "border-red-500/40 bg-red-500/10 text-red-100"
+		: status.status === "completed"
+			? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
+			: "border-[#11a4d4]/40 bg-[#11a4d4]/10 text-slate-100";
+	const stateLabel = status.status === "completed" ? "Download ready" : status.status === "failed" ? "Download failed" : "Download in progress";
+	return (
+		<div className={`border-b px-4 py-2 text-sm ${tone}`} role="status" aria-live="polite">
+			<div className="flex items-start justify-between gap-3">
+				<div className="min-w-0 flex-1">
+					<div className="text-[11px] font-bold uppercase tracking-wider opacity-80">{stateLabel}</div>
+					<div className="min-w-0 truncate font-medium" title={status.path}>{status.filename}</div>
+					<div className="mt-1 text-xs text-slate-300">
+						{downloadProgressLabel(status)}
+						{status.duplicateAttempted && running ? <span className="ml-2 text-amber-200">Already downloading this file. Please wait.</span> : null}
+					</div>
+					{progressPercent !== undefined && running ? (
+						<div className="mt-2 h-1.5 overflow-hidden rounded-sm bg-[#0e1116]" aria-label={`Download progress ${Math.floor(progressPercent)}%`}>
+							<div className="h-full bg-[#11a4d4] transition-[width]" style={{ width: `${progressPercent}%` }} />
+						</div>
+					) : null}
+					{progressPercent === undefined && running ? <div className="mt-2 h-1.5 overflow-hidden rounded-sm bg-[#0e1116]"><div className="h-full w-1/3 animate-pulse bg-[#11a4d4]" /></div> : null}
+				</div>
+				{running ? null : (
+					<button
+						type="button"
+						onClick={onDismiss}
+						className="shrink-0 rounded-sm border border-slate-600 px-2 py-1 text-[11px] uppercase tracking-wider text-slate-200 hover:border-[#11a4d4] hover:text-[#11a4d4]"
+					>
+						Dismiss
+					</button>
+				)}
+			</div>
+		</div>
 	);
 }
 

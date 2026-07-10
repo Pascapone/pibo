@@ -486,6 +486,7 @@ export type UserSkill = {
 	path: string;
 	enabled: boolean;
 	source: "user-created" | "skills.sh" | "github";
+	scope?: "global" | "workspace";
 	sourceUrl?: string;
 	createdAt: string;
 	updatedAt: string;

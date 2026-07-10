@@ -1,5 +1,7 @@
 import type { PiboChannelContext } from "../../channels/types.js";
-import type { UserSkillManager } from "../../user-skills/manager.js";
+import type { ScopedUserSkillManager, UserSkillListScope } from "../../user-skills/manager.js";
+import { normalizeUserSkillScope, normalizeWritableUserSkillScope } from "../../user-skills/manager.js";
+import type { UserSkillScope } from "../../user-skills/types.js";
 import { PiboWebHttpError, readJsonBody, responseJson } from "../../web/http.js";
 import { CHAT_WEB_API_PREFIX, userSkillResourceId } from "./chat-api-routes.js";
 import {
@@ -36,7 +38,7 @@ export function chatUserSkillRouteRequiresSameOrigin(route: ChatUserSkillRoute):
 }
 
 export function syncChatUserSkills(options: {
-	userSkillManager: UserSkillManager;
+	userSkillManager: ScopedUserSkillManager;
 	channelContext: PiboChannelContext;
 	previouslySyncedNames?: Set<string>;
 	setSyncedUserSkillNames: (names: Set<string>) => void;
@@ -46,13 +48,17 @@ export function syncChatUserSkills(options: {
 	const unregisterSkill = channelContext.unregisterSkill;
 	if (!registerSkill || !unregisterSkill) return;
 
-	const userSkills = userSkillManager.list();
+	const userSkills = userSkillManager.list("all");
 	const catalogSkills = channelContext.getCapabilityCatalog?.().skills ?? [];
 	const catalogSkillByName = new Map(catalogSkills.map((skill) => [skill.name, skill]));
 	const reservedSkillNames = new Set(catalogSkills.filter((skill) => skill.kind !== "user").map((skill) => skill.name));
-	const enabledNames = new Set(userSkills
-		.filter((skill) => skill.enabled && !reservedSkillNames.has(skill.name))
-		.map((skill) => skill.name));
+	const enabledSkillByName = new Map<string, (typeof userSkills)[number]>();
+	for (const skill of userSkills) {
+		if (!skill.enabled || reservedSkillNames.has(skill.name)) continue;
+		const existing = enabledSkillByName.get(skill.name);
+		if (!existing || skill.scope === "workspace") enabledSkillByName.set(skill.name, skill);
+	}
+	const enabledNames = new Set(enabledSkillByName.keys());
 	const syncedNames = previouslySyncedNames ?? new Set<string>();
 
 	// Unregister disabled, removed, or now built-in user skills. Avoid removing a
@@ -64,10 +70,15 @@ export function syncChatUserSkills(options: {
 		}
 	}
 
-	// Register only newly enabled user skills. Re-registering an already synced
-	// skill would trip the registry duplicate-skill guard and break the web UI.
-	for (const skill of userSkills) {
-		if (skill.enabled && !reservedSkillNames.has(skill.name) && !syncedNames.has(skill.name)) {
+	// Register the winning enabled skill per name. Workspace-local skills take
+	// precedence over global user skills with the same name; if the winning path
+	// changes, re-register the user skill so runtime context loads the right body.
+	for (const skill of enabledSkillByName.values()) {
+		const catalogSkill = catalogSkillByName.get(skill.name);
+		if (catalogSkill?.kind === "user" && catalogSkill.path !== skill.path) {
+			unregisterSkill(skill.name);
+			registerSkill({ name: skill.name, path: skill.path, enabled: true, kind: "user" });
+		} else if (!syncedNames.has(skill.name)) {
 			registerSkill({ name: skill.name, path: skill.path, enabled: true, kind: "user" });
 		}
 	}
@@ -76,7 +87,7 @@ export function syncChatUserSkills(options: {
 }
 
 function assertUserSkillNameIsAvailable(options: {
-	userSkillManager: UserSkillManager;
+	userSkillManager: ScopedUserSkillManager;
 	channelContext: PiboChannelContext;
 	name: string;
 	currentSkillId?: string;
@@ -84,7 +95,7 @@ function assertUserSkillNameIsAvailable(options: {
 	const { userSkillManager, channelContext, name, currentSkillId } = options;
 	const currentSkill = currentSkillId ? userSkillManager.get(currentSkillId) : undefined;
 	const conflict = (channelContext.getCapabilityCatalog?.().skills ?? []).find((skill) => (
-		skill.name === name && (!currentSkill || currentSkill.name !== name)
+		skill.name === name && skill.kind !== "user" && (!currentSkill || currentSkill.name !== name)
 	));
 	if (conflict) {
 		throw new PiboWebHttpError(`Skill name "${name}" conflicts with an existing registered skill`, 409);
@@ -104,50 +115,69 @@ function syncAndInvalidate(options: ChatUserSkillRouteHandlerOptions): void {
 type ChatUserSkillRouteHandlerOptions = {
 	route: ChatUserSkillRoute;
 	request: Request;
-	userSkillManager: UserSkillManager;
+	userSkillManager: ScopedUserSkillManager;
 	channelContext: PiboChannelContext;
 	previouslySyncedNames?: Set<string>;
 	setSyncedUserSkillNames: (names: Set<string>) => void;
 	invalidateBootstrapCatalogCache: () => void;
 };
 
+function requestScope(request: Request, fallback: UserSkillListScope = "all"): UserSkillListScope {
+	return normalizeUserSkillScope(new URL(request.url).searchParams.get("scope") ?? undefined, fallback);
+}
+
+function bodyScope(body: { scope?: unknown }, fallback: UserSkillScope = "global"): UserSkillScope {
+	if (body.scope !== undefined && typeof body.scope !== "string") {
+		throw new PiboWebHttpError("Skill scope must be a string", 400);
+	}
+	try {
+		return normalizeWritableUserSkillScope(body.scope as string | undefined, fallback);
+	} catch (error) {
+		throw new PiboWebHttpError(error instanceof Error ? error.message : String(error), 400);
+	}
+}
+
 export async function handleChatUserSkillRoute(options: ChatUserSkillRouteHandlerOptions): Promise<Response> {
 	const { route, request, userSkillManager, channelContext } = options;
 	switch (route.kind) {
 		case "user-skills-list":
-			return responseJson({ skills: userSkillManager.list() });
+			return responseJson({ skills: userSkillManager.list(requestScope(request)) });
 		case "user-skills-create": {
-			const body = await readJsonBody<{ name?: unknown; description?: unknown; markdown?: unknown }>(request);
+			const body = await readJsonBody<{ name?: unknown; description?: unknown; markdown?: unknown; scope?: unknown }>(request);
+			const scope = bodyScope(body);
 			const name = normalizeUserSkillName(body.name);
 			assertUserSkillNameIsAvailable({ userSkillManager, channelContext, name });
 			const skill = userSkillManager.create({
 				name,
 				description: normalizeUserSkillDescription(body.description ?? ""),
 				markdown: normalizeUserSkillMarkdown(body.markdown ?? ""),
-			});
+			}, scope);
 			syncAndInvalidate(options);
 			return responseJson({ skill }, { status: 201 });
 		}
 		case "user-skills-install": {
-			const body = await readJsonBody<{ url?: unknown }>(request);
-			const skill = await userSkillManager.installFromUrl(normalizeUserSkillUrl(body.url));
+			const body = await readJsonBody<{ url?: unknown; scope?: unknown }>(request);
+			const scope = bodyScope(body);
+			const skill = await userSkillManager.installFromUrl(normalizeUserSkillUrl(body.url), scope);
 			try {
 				assertUserSkillNameIsAvailable({ userSkillManager, channelContext, name: skill.name, currentSkillId: skill.id });
 			} catch (error) {
-				userSkillManager.remove(skill.id);
+				userSkillManager.remove(skill.id, scope);
 				throw error;
 			}
 			syncAndInvalidate(options);
 			return responseJson({ skill }, { status: 201 });
 		}
 		case "user-skill-read": {
-			const skill = userSkillManager.get(route.skillId);
+			const scope = requestScope(request);
+			const skill = userSkillManager.get(route.skillId, scope);
 			if (!skill) throw new PiboWebHttpError("Skill not found", 404);
-			const markdown = userSkillManager.getSkillMarkdown(skill.id);
+			const markdown = userSkillManager.getSkillMarkdown(skill.id, scope);
 			return responseJson({ skill, markdown });
 		}
 		case "user-skill-update": {
-			const existing = userSkillManager.get(route.skillId);
+			const scope = requestScope(request);
+			const existing = userSkillManager.get(route.skillId, scope);
 			if (!existing) throw new PiboWebHttpError("Skill not found", 404);
 			const body = await readJsonBody<{
 				name?: unknown;
@@ -178,14 +208,15 @@ export async function handleChatUserSkillRoute(options: ChatUserSkillRouteHandle
 					currentSkillId: existing.id,
 				});
 			}
-			const skill = userSkillManager.update(existing.id, input);
+			const skill = userSkillManager.update(existing.id, input, scope);
 			syncAndInvalidate(options);
 			return responseJson({ skill });
 		}
 		case "user-skill-delete": {
-			const existing = userSkillManager.get(route.skillId);
+			const scope = requestScope(request);
+			const existing = userSkillManager.get(route.skillId, scope);
 			if (!existing) throw new PiboWebHttpError("Skill not found", 404);
-			userSkillManager.remove(existing.id);
+			userSkillManager.remove(existing.id, scope);
 			syncAndInvalidate(options);
 			return responseJson({ removedSkillId: existing.id });
 		}

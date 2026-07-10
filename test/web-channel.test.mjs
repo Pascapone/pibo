@@ -78,6 +78,7 @@ async function startWebHostChannel(options = {}) {
 	const sessions = new InMemoryPiboSessionStore();
 	const registeredSkills = [];
 	const unregisteredSkills = [];
+	const registeredUserSkillCatalog = new Map();
 	let profiles = [...(options.profiles ?? [])];
 	const storageDir = mkdtempSync(join(tmpdir(), "pibo-web-channel-"));
 	const agentStorePath = join(storageDir, "agents.sqlite");
@@ -139,7 +140,10 @@ async function startWebHostChannel(options = {}) {
 		getCapabilityCatalog() {
 			return options.capabilityCatalog ?? {
 				nativeTools: [],
-				skills: [{ name: "pi-agent-harness", path: "skills/builtin/pi-agent-harness/SKILL.md", kind: "builtin" }],
+				skills: [
+					{ name: "pi-agent-harness", path: "skills/builtin/pi-agent-harness/SKILL.md", kind: "builtin" },
+					...registeredUserSkillCatalog.values(),
+				],
 				subagents: [],
 				contextFiles: [],
 				packages: [{ name: "pibo-run-control", description: "Run control", toolNames: ["pibo_run_start"] }],
@@ -161,9 +165,11 @@ async function startWebHostChannel(options = {}) {
 		...(options.trackUserSkillRegistry ? {
 			registerSkill(skill) {
 				registeredSkills.push(skill);
+				registeredUserSkillCatalog.set(skill.name, skill);
 			},
 			unregisterSkill(name) {
 				unregisteredSkills.push(name);
+				registeredUserSkillCatalog.delete(name);
 			},
 		} : {}),
 		getWebApps() {
@@ -6067,6 +6073,81 @@ test("chat web app manages user skill routes and syncs the capability catalog", 
 		} finally {
 			await channel.stop?.();
 		}
+	});
+});
+
+test("chat web app syncs workspace-local user skills into the capability catalog", async () => {
+	const home = mkdtempSync(join(tmpdir(), "pibo-web-skill-home-"));
+	const workspace = mkdtempSync(join(tmpdir(), "pibo-web-skill-workspace-"));
+	await withHome(home, async () => {
+		await withCwd(workspace, async () => {
+			const { channel, baseURL, registeredSkills, unregisteredSkills } = await startWebHostChannel({
+				auth: createFakeAuthService(),
+				profiles: [{ name: "codex-compat-openai-web", aliases: ["codex"] }],
+				trackUserSkillRegistry: true,
+			});
+
+			try {
+				const globalCreated = await fetch(`${baseURL}/api/chat/user-skills`, {
+					method: "POST",
+					headers: {
+						"content-type": "application/json",
+						origin: baseURL,
+						"x-test-user": "user-1",
+					},
+					body: JSON.stringify({
+						name: "shared-helper",
+						description: "Global helper.",
+						markdown: "# Shared Helper\n\nUse global guidance.",
+						scope: "global",
+					}),
+				});
+				assert.equal(globalCreated.status, 201);
+				assert.equal((await globalCreated.json()).skill.scope, "global");
+
+				const workspaceCreated = await fetch(`${baseURL}/api/chat/user-skills`, {
+					method: "POST",
+					headers: {
+						"content-type": "application/json",
+						origin: baseURL,
+						"x-test-user": "user-1",
+					},
+					body: JSON.stringify({
+						name: "shared-helper",
+						description: "Workspace helper.",
+						markdown: "# Shared Helper\n\nUse workspace guidance.",
+						scope: "workspace",
+					}),
+				});
+				const workspaceCreatedText = await workspaceCreated.clone().text();
+				assert.equal(workspaceCreated.status, 201, workspaceCreatedText);
+				const workspacePayload = await workspaceCreated.json();
+				assert.equal(workspacePayload.skill.scope, "workspace");
+				assert.match(workspacePayload.skill.path, new RegExp(`${workspace.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+				assert.ok(
+					registeredSkills.some((skill) => skill.name === "shared-helper" && skill.path.includes(workspace)),
+					`workspace skill should be registered for runtime loading: ${JSON.stringify(registeredSkills)}`,
+				);
+				if (unregisteredSkills.length > 0) assert.deepEqual(unregisteredSkills, ["shared-helper"]);
+
+				const listed = await fetch(`${baseURL}/api/chat/user-skills?scope=all`, {
+					headers: { "x-test-user": "user-1" },
+				});
+				assert.equal(listed.status, 200);
+				assert.deepEqual((await listed.json()).skills.map((skill) => [skill.name, skill.scope]), [
+					["shared-helper", "workspace"],
+					["shared-helper", "global"],
+				]);
+
+				const readWorkspace = await fetch(`${baseURL}/api/chat/user-skills/${encodeURIComponent(workspacePayload.skill.id)}?scope=workspace`, {
+					headers: { "x-test-user": "user-1" },
+				});
+				assert.equal(readWorkspace.status, 200);
+				assert.match((await readWorkspace.json()).markdown, /Use workspace guidance/);
+			} finally {
+				await channel.stop?.();
+			}
+		});
 	});
 });
 

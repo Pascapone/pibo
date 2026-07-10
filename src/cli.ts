@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { Command } from "commander";
 import {
 	PIBO_CONFIG_KEYS,
@@ -12,13 +12,21 @@ import {
 } from "./config/config.js";
 import type { PiboRuntimeOptions } from "./core/runtime.js";
 import { parsePiboThinkingLevel } from "./core/thinking.js";
+import { piboHomePath } from "./core/pibo-home.js";
 
 async function createCliProfile(profileName?: string) {
 	const { createDefaultPiboPluginRegistry, createGatewayProducerPiboProfile, createPiboProfileFromRegistryOrDefault } = await import("./plugins/builtin.js");
 	if (profileName === "gateway-producer" || profileName === "pibo-gateway-producer") {
 		return createGatewayProducerPiboProfile();
 	}
-	return createPiboProfileFromRegistryOrDefault(createDefaultPiboPluginRegistry(), profileName);
+
+	const registry = createDefaultPiboPluginRegistry();
+	const chatAgentStorePath = piboHomePath("chat-agents.sqlite");
+	if (existsSync(chatAgentStorePath)) {
+		const { createPiboChatCustomAgentProfilesPlugin } = await import("./plugins/chat-custom-agents.js");
+		registry.registerPlugin(createPiboChatCustomAgentProfilesPlugin({ agentStorePath: chatAgentStorePath }));
+	}
+	return createPiboProfileFromRegistryOrDefault(registry, profileName);
 }
 
 function printJson(value: unknown): void {
@@ -360,8 +368,10 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 
 	program
 		.command("profile")
+		.helpOption("-h, --help", "Display help for command")
 		.argument("[profile]")
 		.description("Inspect a pibo profile")
+		.addHelpText("after", "\nProfiles include built-in plugin profiles plus active saved Chat custom agents from $PIBO_HOME/chat-agents.sqlite. Archived custom agents are not exposed.\n")
 		.action(async (profile?: string) => {
 			const { inspectPiboProfile } = await import("./core/runtime.js");
 			printJson(await inspectPiboProfile({ profile: await createCliProfile(profile) }));
@@ -492,7 +502,7 @@ Commands:
   cron         Manage scheduled Pibo jobs
   ralph        Manage continuous Ralph jobs
   vscode       Manage the Pibo VS Code extension
-  profile      Inspect a pibo profile
+  profile      Inspect a pibo profile, including active saved Chat custom agents
   tui          Start the direct Pi TUI
   tui:routed   Start the local routed Pibo TUI
   tui:sessions  Start the reduced Web Chat-derived session UI

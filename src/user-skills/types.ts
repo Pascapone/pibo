@@ -1,4 +1,5 @@
 export type UserSkillSource = "user-created" | "skills.sh" | "github";
+export type UserSkillScope = "global" | "workspace";
 
 export type UserSkill = {
   id: string;
@@ -7,6 +8,7 @@ export type UserSkill = {
   path: string;
   enabled: boolean;
   source: UserSkillSource;
+  scope?: UserSkillScope;
   sourceUrl?: string;
   createdAt: string;
   updatedAt: string;

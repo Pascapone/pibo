@@ -92,6 +92,10 @@ export async function runDebugCli(argv = process.argv): Promise<void> {
 			await runDebugRuns(args.slice(1));
 			return;
 		}
+		if (args[0] === "resources") {
+			await runDebugResources(args.slice(1));
+			return;
+		}
 		if (args[0] === "signals") {
 			await runDebugSignals(args.slice(1));
 			return;
@@ -115,6 +119,18 @@ export async function runDebugCli(argv = process.argv): Promise<void> {
 		console.error(error instanceof Error ? error.message : String(error));
 		process.exitCode = 1;
 	}
+}
+
+async function runDebugResources(args: string[]): Promise<void> {
+	if (args[0] === "--help" || args[0] === "-h") {
+		printDebugResourcesDiscovery();
+		return;
+	}
+	const options = parseOptions(args);
+	const { collectGatewayResourceSnapshot, renderGatewayResourceSnapshotText } = await import("../core/gateway-resource-guard.js");
+	const snapshot = await collectGatewayResourceSnapshot();
+	if (options.json) console.log(JSON.stringify(snapshot, null, 2));
+	else console.log(renderGatewayResourceSnapshotText(snapshot));
 }
 
 async function runDebugDb(args: string[]): Promise<void> {
@@ -963,6 +979,7 @@ Commands:
   failures List failed tool calls and trace/session errors
   jobs     Inspect durable Pibo jobs and DLQ
   runs     Inspect durable yielded runs
+  resources Show gateway memory reserve, related child processes, and heavy daemons
   signals  Inspect live session signal snapshots through Chat Web APIs
   telemetry Inspect runtime observability telemetry
   web      Inspect browser render state via CDP
@@ -975,10 +992,33 @@ Next:
   pibo debug messages <pibo-session-id> list
   pibo debug trace <pibo-session-id> --running-only
   pibo debug events stream --topic pibo.output
+  pibo debug resources --json
   pibo debug signals tree ps_...
   pibo debug telemetry sessions --active
   pibo debug web targets
   pibo debug pty run -- pibo tui:sessions --demo
+`);
+}
+
+function printDebugResourcesDiscovery(): void {
+	console.log(`pibo debug resources - inspect gateway resource guard state
+
+Usage:
+  pibo debug resources [--json]
+
+Reports:
+  Gateway RSS/heap headroom, host free-memory reserve, direct child processes, and known heavy local daemons such as ComfyUI or Unity when process listing is available.
+
+Environment:
+  PIBO_GATEWAY_RESOURCE_GUARD=warn|block|off
+  PIBO_GATEWAY_MIN_FREE_MEMORY_BYTES=<bytes>
+  PIBO_GATEWAY_MIN_HEAP_AVAILABLE_BYTES=<bytes>
+  PIBO_GATEWAY_MAX_RSS_BYTES=<bytes>
+  PIBO_GATEWAY_KNOWN_DAEMON_WARNING_RSS_BYTES=<bytes>
+
+Next:
+  pibo debug resources --json
+  pibo compute health --json
 `);
 }
 

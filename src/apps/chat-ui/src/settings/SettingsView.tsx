@@ -824,6 +824,7 @@ function UserSkillsSettings({
 											<div className="flex min-w-0 flex-wrap items-center gap-2">
 												<span className="min-w-0 truncate text-sm text-slate-200">{skill.name}</span>
 												<span className={`shrink-0 border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider ${skill.enabled ? "border-[#11a4d4]/60 text-[#7dd3fc]" : "border-slate-700 text-slate-500"}`}>{skill.enabled ? "enabled" : "disabled"}</span>
+												<span className="shrink-0 border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider border-slate-700 text-slate-500">{skill.scope ?? "global"}</span>
 												<span className="shrink-0 border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider border-slate-700 text-slate-500">{skill.source}</span>
 											</div>
 											<div className="truncate text-xs text-slate-500">{skill.description || skill.path}</div>

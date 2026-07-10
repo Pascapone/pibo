@@ -61,6 +61,21 @@ export function truncateToolDescription(
 }
 
 /**
+ * Return an info-view summary without generated OpenAPI error-response noise.
+ */
+export function summarizeToolDescriptionForInfo(
+  description: string | undefined,
+): string | undefined {
+  if (!description) return undefined;
+
+  const withoutErrorResponses = description
+    .replace(/\s*Error Responses:\s*[\s\S]*$/i, '')
+    .trim();
+
+  return truncateToolDescription(withoutErrorResponses);
+}
+
+/**
  * Format server list for display
  */
 export function formatServerList(
@@ -181,7 +196,7 @@ export function formatServerDetails(
     lines.push(`  ${color(tool.name, colors.green)}`);
     const toolSummary = withDescriptions
       ? tool.description
-      : truncateToolDescription(tool.description);
+      : summarizeToolDescriptionForInfo(tool.description);
     if (toolSummary) {
       lines.push(`    ${color(toolSummary, colors.dim)}`);
     }
@@ -191,9 +206,12 @@ export function formatServerDetails(
       properties?: Record<string, { type?: string; description?: string }>;
       required?: string[];
     };
-    if (schema.properties) {
-      lines.push(`    ${color('Parameters:', colors.yellow)}`);
-      for (const [name, prop] of Object.entries(schema.properties)) {
+    const parameters = Object.entries(schema.properties ?? {});
+    lines.push(`    ${color('Parameters:', colors.yellow)}`);
+    if (parameters.length === 0) {
+      lines.push(`      ${color('No parameters', colors.dim)}`);
+    } else {
+      for (const [name, prop] of parameters) {
         const required = schema.required?.includes(name)
           ? 'required'
           : 'optional';

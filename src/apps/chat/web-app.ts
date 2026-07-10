@@ -71,7 +71,7 @@ import { createDefaultPiboReliabilityStore, PiboReliabilityStore } from "../../r
 import { listMcpServerInfos } from "../../mcp/agent-context.js";
 import { getDefaultPiboWorkspace } from "../../core/workspace.js";
 import { findPiPackage, listPiPackages } from "../../pi-packages/store.js";
-import { UserSkillManager } from "../../user-skills/manager.js";
+import { ScopedUserSkillManager } from "../../user-skills/manager.js";
 import { ChatDataIngestService } from "../../data/ingest-service.js";
 import { ChatEventCommandService } from "./data/event-command-service.js";
 import { ChatReadStateService } from "./data/read-state-service.js";
@@ -382,7 +382,7 @@ type ChatWebAppState = {
 	persistenceMetrics: ChatPersistenceMetrics;
 	resourceMetrics: ChatGatewayResourceMetrics;
 	eventLoopDelay: IntervalHistogram;
-	userSkillManager: UserSkillManager;
+	userSkillManager: ScopedUserSkillManager;
 	syncedUserSkillNames?: Set<string>;
 	workflowDraftStore: ChatWorkflowDraftStore;
 	workflowPublishedVersionStore: ChatWorkflowPublishedVersionStore;
@@ -3970,7 +3970,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 		persistenceMetrics: createPersistenceMetrics(),
 		resourceMetrics: createResourceMetrics(),
 		eventLoopDelay,
-		userSkillManager: new UserSkillManager(os.homedir()),
+		userSkillManager: new ScopedUserSkillManager({ globalRoot: os.homedir(), workspaceRoot: process.cwd() }),
 		workflowDraftStore: new ChatWorkflowDraftStore(dataStore),
 		workflowPublishedVersionStore: new ChatWorkflowPublishedVersionStore(dataStore),
 		workflowArchiveStore: new ChatWorkflowArchiveStore(dataStore),

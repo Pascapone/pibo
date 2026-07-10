@@ -1,16 +1,19 @@
 import { Command } from "commander";
 import { createDefaultPiboPluginRegistry } from "../plugins/builtin.js";
-import { UserSkillManager } from "../user-skills/manager.js";
+import {
+	ScopedUserSkillManager,
+	normalizeUserSkillScope,
+	normalizeWritableUserSkillScope,
+} from "../user-skills/manager.js";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import os from "node:os";
 
 function printJson(value: unknown): void {
 	console.log(JSON.stringify(value, null, 2));
 }
 
 export async function runSkillsCli(argv: string[]): Promise<void> {
-	const manager = new UserSkillManager(os.homedir());
+	const manager = new ScopedUserSkillManager();
 
 	const program = new Command();
 	program
@@ -42,9 +45,10 @@ export async function runSkillsCli(argv: string[]): Promise<void> {
 	program
 		.command("list")
 		.description("List user skills managed by this CLI")
+		.option("--scope <scope>", "Skill scope: global, workspace, or all", "all")
 		.option("--json", "Print JSON")
-		.action((options: { json?: boolean }) => {
-			const skills = manager.list();
+		.action((options: { scope?: string; json?: boolean }) => {
+			const skills = manager.list(normalizeUserSkillScope(options.scope));
 			if (options.json) {
 				printJson(skills);
 				return;
@@ -53,10 +57,10 @@ export async function runSkillsCli(argv: string[]): Promise<void> {
 				console.log("No user skills registered.");
 				return;
 			}
-			console.log("NAME\t\tENABLED\tSOURCE\t\tDESCRIPTION");
+			console.log("NAME\t\tSCOPE\t\tENABLED\tSOURCE\t\tDESCRIPTION");
 			for (const s of skills) {
 				const enabled = s.enabled ? "yes" : "no";
-				console.log(`${s.name}\t${enabled}\t\t${s.source}\t${s.description}`);
+				console.log(`${s.name}\t${s.scope ?? "global"}\t${enabled}\t\t${s.source}\t${s.description}`);
 			}
 		});
 
@@ -64,14 +68,16 @@ export async function runSkillsCli(argv: string[]): Promise<void> {
 		.command("show")
 		.description("Show a skill's markdown content")
 		.argument("<name>", "Skill name")
-		.action((name: string) => {
-			const skill = manager.get(name);
+		.option("--scope <scope>", "Skill scope: global, workspace, or all", "all")
+		.action((name: string, options: { scope?: string }) => {
+			const scope = normalizeUserSkillScope(options.scope);
+			const skill = manager.get(name, scope);
 			if (!skill) {
 				console.error(`Skill "${name}" not found.`);
 				process.exitCode = 1;
 				return;
 			}
-			console.log(manager.getSkillMarkdown(skill.id));
+			console.log(manager.getSkillMarkdown(skill.id, scope));
 		});
 
 	program
@@ -80,29 +86,32 @@ export async function runSkillsCli(argv: string[]): Promise<void> {
 		.argument("<name>", "Skill name (kebab-case)")
 		.requiredOption("--file <path>", "Path to markdown file")
 		.option("--description <text>", "Short description")
-		.action((name: string, options: { file: string; description?: string }) => {
+		.option("--scope <scope>", "Skill scope: global or workspace", "global")
+		.action((name: string, options: { file: string; description?: string; scope?: string }) => {
 			const filePath = resolve(options.file);
 			const markdown = readFileSync(filePath, "utf-8");
 			const skill = manager.create({
 				name,
 				description: options.description ?? "",
 				markdown,
-			});
-			printJson({ id: skill.id, name: skill.name, enabled: skill.enabled });
+			}, normalizeWritableUserSkillScope(options.scope));
+			printJson({ id: skill.id, name: skill.name, scope: skill.scope, enabled: skill.enabled });
 		});
 
 	program
 		.command("remove")
 		.description("Remove a user skill")
 		.argument("<name>", "Skill name")
-		.action((name: string) => {
-			const skill = manager.get(name);
+		.option("--scope <scope>", "Skill scope: global, workspace, or all", "all")
+		.action((name: string, options: { scope?: string }) => {
+			const scope = normalizeUserSkillScope(options.scope);
+			const skill = manager.get(name, scope);
 			if (!skill) {
 				console.error(`Skill "${name}" not found.`);
 				process.exitCode = 1;
 				return;
 			}
-			manager.remove(skill.id);
+			manager.remove(skill.id, scope);
 			console.log(`Removed skill "${skill.name}".`);
 		});
 
@@ -110,14 +119,16 @@ export async function runSkillsCli(argv: string[]): Promise<void> {
 		.command("enable")
 		.description("Enable a user skill")
 		.argument("<name>", "Skill name")
-		.action((name: string) => {
-			const skill = manager.get(name);
+		.option("--scope <scope>", "Skill scope: global, workspace, or all", "all")
+		.action((name: string, options: { scope?: string }) => {
+			const scope = normalizeUserSkillScope(options.scope);
+			const skill = manager.get(name, scope);
 			if (!skill) {
 				console.error(`Skill "${name}" not found.`);
 				process.exitCode = 1;
 				return;
 			}
-			manager.setEnabled(skill.id, true);
+			manager.setEnabled(skill.id, true, scope);
 			console.log(`Enabled skill "${skill.name}".`);
 		});
 
@@ -125,14 +136,16 @@ export async function runSkillsCli(argv: string[]): Promise<void> {
 		.command("disable")
 		.description("Disable a user skill")
 		.argument("<name>", "Skill name")
-		.action((name: string) => {
-			const skill = manager.get(name);
+		.option("--scope <scope>", "Skill scope: global, workspace, or all", "all")
+		.action((name: string, options: { scope?: string }) => {
+			const scope = normalizeUserSkillScope(options.scope);
+			const skill = manager.get(name, scope);
 			if (!skill) {
 				console.error(`Skill "${name}" not found.`);
 				process.exitCode = 1;
 				return;
 			}
-			manager.setEnabled(skill.id, false);
+			manager.setEnabled(skill.id, false, scope);
 			console.log(`Disabled skill "${skill.name}".`);
 		});
 
@@ -140,9 +153,10 @@ export async function runSkillsCli(argv: string[]): Promise<void> {
 		.command("install")
 		.description("Install a skill from a URL (GitHub or skills.sh)")
 		.argument("<url>", "Skill URL")
-		.action(async (url: string) => {
-			const skill = await manager.installFromUrl(url);
-			printJson({ id: skill.id, name: skill.name, source: skill.source });
+		.option("--scope <scope>", "Skill scope: global or workspace", "global")
+		.action(async (url: string, options: { scope?: string }) => {
+			const skill = await manager.installFromUrl(url, normalizeWritableUserSkillScope(options.scope));
+			printJson({ id: skill.id, name: skill.name, scope: skill.scope, source: skill.source });
 		});
 
 	if (argv.length <= 2) {

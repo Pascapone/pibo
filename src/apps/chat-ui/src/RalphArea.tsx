@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { AlertTriangle, Bot, Loader2, Play, Plus, RefreshCw, Save, Square, Trash2, X, XCircle } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { AlertTriangle, Bot, Copy, Loader2, Play, Plus, RefreshCw, Save, Square, Trash2, X, XCircle } from "lucide-react";
 import { cancelRalphJob, deleteRalphJob, getRalphConditions, getRalphJobs, getRalphRuns, getRalphStatus, getRalphTemplates, patchRalphJob, postRalphJob, startRalphJob, stopRalphJob, type RalphJobInput } from "./api-ralph";
+import { copyTextToClipboard } from "./clipboard";
 import { THINKING_LEVELS } from "./types";
 import type { AgentProfile, BootstrapData, CustomAgent, ModelCatalog, ModelProfile, PiboRalphJob, PiboRalphJobTemplate, PiboRalphRun, PiboRalphStatus, PiboRalphStopConditionInfo, PiboRalphStopPolicy, ThinkingLevel } from "./types";
 
@@ -144,6 +145,7 @@ export function RalphArea({ bootstrap, mobileSidebarOpen = false, onCloseMobileS
 						<div>
 							<div className="text-xs uppercase tracking-[0.16em] text-[#11a4d4] font-bold">Continuous Pibo Sessions</div>
 							<h1 className="text-2xl font-bold text-slate-100">{selectedJob ? selectedJob.name : "New Ralph job"}</h1>
+							{selectedJob ? <RalphLoopIdButton jobId={selectedJob.id} /> : null}
 							<p className="text-sm text-slate-400">Ralph starts fresh agent sessions with the same task until a stop condition is satisfied.</p>
 						</div>
 						<div className="flex items-center gap-2 flex-wrap">
@@ -204,6 +206,43 @@ export function RalphArea({ bootstrap, mobileSidebarOpen = false, onCloseMobileS
 					</Panel>
 				</div>
 			</main>
+		</div>
+	);
+}
+
+export function RalphLoopIdButton({ jobId }: { jobId: string }) {
+	const [copiedJobId, setCopiedJobId] = useState<string | null>(null);
+	const copyJobIdTimeout = useRef<number | undefined>(undefined);
+	const copied = copiedJobId === jobId;
+
+	useEffect(() => {
+		return () => {
+			if (copyJobIdTimeout.current) window.clearTimeout(copyJobIdTimeout.current);
+		};
+	}, []);
+
+	const copyJobId = () => {
+		void copyTextToClipboard(jobId).catch(() => undefined);
+		setCopiedJobId(jobId);
+		if (copyJobIdTimeout.current) window.clearTimeout(copyJobIdTimeout.current);
+		copyJobIdTimeout.current = window.setTimeout(() => setCopiedJobId(null), 900);
+	};
+
+	return (
+		<div className="mt-1 flex flex-wrap items-center gap-1.5 font-mono text-[11px] text-slate-500">
+			<span>Loop ID</span>
+			<span className="text-slate-600">·</span>
+			<button
+				type="button"
+				onMouseDown={(event) => event.preventDefault()}
+				onClick={() => void copyJobId()}
+				title={copied ? "Copied Ralph loop ID" : "Copy Ralph loop ID"}
+				aria-label={copied ? "Copied Ralph loop ID" : "Copy Ralph loop ID"}
+				className={`min-w-0 max-w-80 truncate rounded-sm px-1 font-mono underline-offset-2 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[#11a4d4] ${copied ? "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-400/50" : "text-slate-400 hover:text-[#11a4d4] hover:underline"}`}
+			>
+				<Copy size={10} className="mr-1 inline-block align-[-1px]" aria-hidden="true" />
+				{jobId}
+			</button>
 		</div>
 	);
 }
