@@ -23,11 +23,18 @@ function createContext() {
 				listener({ type: "message_finished", piboSessionId: message.piboSessionId, eventId: message.id });
 			}
 		},
-		fail(error = "session failed") {
+		fail(error = "session failed", errorDetails) {
 			const message = emitted.find((event) => event.type === "message");
 			assert.ok(message);
 			for (const listener of listeners) {
-				listener({ type: "session_error", piboSessionId: message.piboSessionId, eventId: message.id, error });
+				listener({ type: "session_error", piboSessionId: message.piboSessionId, eventId: message.id, error, errorDetails });
+			}
+		},
+		finishAfterError() {
+			const message = emitted.find((event) => event.type === "message");
+			assert.ok(message);
+			for (const listener of listeners) {
+				listener({ type: "message_finished", piboSessionId: message.piboSessionId, eventId: message.id });
 			}
 		},
 	};
@@ -79,12 +86,47 @@ test("Ralph keeps waiting after a session error so Pi can retry", async () => {
 	try {
 		let settled = false;
 		const waiting = fixture.service.emitMessageAndWait("ps_retry", "work").finally(() => { settled = true; });
-		fixture.controlled.fail("provider unavailable");
+		fixture.controlled.fail("provider unavailable", {
+			origin: "provider",
+			provider: "test-provider",
+			model: "test-model",
+		});
 		await Promise.resolve();
 		assert.equal(settled, false);
 
 		fixture.controlled.finish("recovered");
 		assert.equal(await waiting, "recovered");
+	} finally {
+		await fixture.cleanup();
+	}
+});
+
+test("Ralph fails when provider retries are exhausted", async () => {
+	const fixture = await createService();
+	try {
+		const waiting = fixture.service.emitMessageAndWait("ps_exhausted", "work");
+		fixture.controlled.fail("provider unavailable", {
+			origin: "provider",
+			provider: "test-provider",
+			model: "test-model",
+		});
+		fixture.controlled.finishAfterError();
+		await assert.rejects(waiting, /provider unavailable/);
+	} finally {
+		await fixture.cleanup();
+	}
+});
+
+test("Ralph terminates immediately on a runtime session error", async () => {
+	const fixture = await createService();
+	try {
+		const waiting = fixture.service.emitMessageAndWait("ps_runtime_error", "work");
+		fixture.controlled.fail("No API key configured", {
+			origin: "provider",
+			errorClass: "provider_auth",
+			retryable: false,
+		});
+		await assert.rejects(waiting, /No API key configured/);
 	} finally {
 		await fixture.cleanup();
 	}
