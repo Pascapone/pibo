@@ -1,6 +1,6 @@
 {
   "name": "@pasko70/pibo",
-  "version": "1.7.2",
+  "version": "1.7.8",
   "type": "module",
   "imports": {
     "vscode": "./src/apps/chat-vscode/extension/src/vscode-shim.js"
