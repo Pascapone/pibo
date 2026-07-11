@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -60,6 +60,32 @@ test("web gateway registers user skills before custom agent profiles are used", 
 		assert.equal(catalogSkillByName.has("disabled-helper"), false);
 		assert.equal(catalogSkillByName.get("skill-creator")?.kind, "builtin");
 		assert.deepEqual(warnings, []);
+	} finally {
+		console.warn = originalWarn;
+		await rm(dir, { recursive: true, force: true }).catch((error) => {
+			if (error?.code !== "EBUSY") throw error;
+		});
+	}
+});
+
+test("web gateway startup survives a malformed user skill store", async () => {
+	const dir = await mkdtemp(join(tmpdir(), "pibo-malformed-user-skills-"));
+	const globalRoot = join(dir, "global");
+	const workspaceRoot = join(dir, "workspace");
+	const agentStorePath = join(dir, "chat-agents.sqlite");
+	await mkdir(join(globalRoot, ".pibo"), { recursive: true });
+	await writeFile(join(globalRoot, ".pibo", "user-skills.json"), JSON.stringify({ version: 99, skills: [] }));
+	const warnings = [];
+	const originalWarn = console.warn;
+	try {
+		console.warn = (...args) => warnings.push(args.join(" "));
+		const registry = createWebPiboPluginRegistry({
+			chat: { agentStorePath, userSkillGlobalRoot: globalRoot, userSkillWorkspaceRoot: workspaceRoot },
+		});
+		assert.ok(registry.getProfileNames().includes("base"));
+		assert.equal(warnings.length, 1);
+		assert.match(warnings[0], /Skipping startup user-skill registration/);
+		assert.match(warnings[0], /Unsupported user skills store/);
 	} finally {
 		console.warn = originalWarn;
 		await rm(dir, { recursive: true, force: true }).catch((error) => {

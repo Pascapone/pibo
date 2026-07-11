@@ -180,6 +180,7 @@ The Web Gateway registers enabled global and workspace user skills through `pibo
 - Disabled or removed user skills no longer appear as selectable user skills after synchronization.
 - Repeated synchronization is idempotent and does not trip duplicate registry guards.
 - Enabled user skills are registered before background channels can construct Custom Agent profiles on a cold gateway start.
+- A malformed or unreadable user-skill store emits a startup diagnostic but does not prevent the Web Gateway from starting.
 - Enabling, creating, installing, or renaming a user skill to a name that conflicts with an existing catalog skill is rejected or rolled back.
 
 #### Scenario: Cold-start background session
