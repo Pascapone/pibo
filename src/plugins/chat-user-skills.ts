@@ -17,12 +17,13 @@ export function createPiboChatUserSkillsPlugin(options: PiboChatUserSkillsPlugin
 				globalRoot: options.globalRoot ?? os.homedir(),
 				workspaceRoot: options.workspaceRoot ?? process.cwd(),
 			});
-			let userSkills: UserSkill[];
-			try {
-				userSkills = manager.list("all");
-			} catch (error) {
-				console.warn(`[pibo] Skipping startup user-skill registration: ${error instanceof Error ? error.message : String(error)}`);
-				return;
+			const userSkills: UserSkill[] = [];
+			for (const [scope, scopedManager] of [["global", manager.global], ["workspace", manager.workspace]] as const) {
+				try {
+					userSkills.push(...scopedManager.list());
+				} catch (error) {
+					console.warn(`[pibo] Skipping ${scope} startup user-skill registration: ${error instanceof Error ? error.message : String(error)}`);
+				}
 			}
 			const enabledSkillByName = new Map<string, UserSkill>();
 			for (const skill of userSkills) {

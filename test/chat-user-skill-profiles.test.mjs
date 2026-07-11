@@ -75,6 +75,7 @@ test("web gateway startup survives a malformed user skill store", async () => {
 	const agentStorePath = join(dir, "chat-agents.sqlite");
 	await mkdir(join(globalRoot, ".pibo"), { recursive: true });
 	await writeFile(join(globalRoot, ".pibo", "user-skills.json"), JSON.stringify({ version: 99, skills: [] }));
+	createSkill(new UserSkillManager(workspaceRoot, "workspace"), "workspace-helper");
 	const warnings = [];
 	const originalWarn = console.warn;
 	try {
@@ -83,8 +84,9 @@ test("web gateway startup survives a malformed user skill store", async () => {
 			chat: { agentStorePath, userSkillGlobalRoot: globalRoot, userSkillWorkspaceRoot: workspaceRoot },
 		});
 		assert.ok(registry.getProfileNames().includes("base"));
+		assert.ok(registry.getCapabilityCatalog().skills.some((skill) => skill.name === "workspace-helper"));
 		assert.equal(warnings.length, 1);
-		assert.match(warnings[0], /Skipping startup user-skill registration/);
+		assert.match(warnings[0], /Skipping global startup user-skill registration/);
 		assert.match(warnings[0], /Unsupported user skills store/);
 	} finally {
 		console.warn = originalWarn;
