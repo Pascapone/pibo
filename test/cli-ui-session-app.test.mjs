@@ -671,6 +671,7 @@ test("Slash /thinking supports direct levels and picker flow", async () => {
 	assert.equal(harness.state.picker.action, "thinking-level");
 	assert.match(harness.state.picker.title, /Select thinking level/);
 	assert.ok(harness.state.picker.items.some((item) => item.label === "xhigh"));
+	assert.ok(harness.state.picker.items.some((item) => item.label === "max"));
 
 	const escaped = reduceInkSessionInputState({ ...harness.state, picker: { ...harness.state.picker, parent: { kind: "room", title: "Back Room", items: [], selectedIndex: 0, emptyMessage: "none" } } }, { type: "escape" });
 	assert.equal(escaped.picker.title, "Back Room");

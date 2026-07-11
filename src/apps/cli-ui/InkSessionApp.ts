@@ -863,8 +863,8 @@ async function executeSharedSlashCommand(
 	return true;
 }
 
-const THINKING_LEVELS = ["current/default", "off", "minimal", "low", "medium", "high", "xhigh"] as const;
-const APPLY_THINKING_LEVELS = new Set(["off", "minimal", "low", "medium", "high", "xhigh"]);
+const THINKING_LEVELS = ["current/default", "off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+const APPLY_THINKING_LEVELS = new Set(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
 
 type ModelProviderOption = CommandResultMenuItem & { models?: readonly CommandResultMenuItem[] };
 type LoginProviderOption = CommandResultMenuItem & { authMethods?: readonly CommandResultMenuItem[] };
@@ -963,7 +963,7 @@ function thinkingPickerState(): InkSessionPickerState {
 
 function validateThinkingLevel(value: string): void {
 	const level = value.trim().toLowerCase();
-	if (!APPLY_THINKING_LEVELS.has(level)) throw new Error(`Unsupported thinking level "${value}". Use off, minimal, low, medium, high, or xhigh.`);
+	if (!APPLY_THINKING_LEVELS.has(level)) throw new Error(`Unsupported thinking level "${value}". Use off, minimal, low, medium, high, xhigh, or max.`);
 }
 
 function modelProviderPickerState(providers: readonly ModelProviderOption[]): InkSessionPickerState {

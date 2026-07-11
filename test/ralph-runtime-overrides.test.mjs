@@ -20,13 +20,13 @@ test("Ralph store persists and clears runtime overrides", () => {
 			prompt: "Keep checking the inbox.",
 			maxIterations: 3,
 			modelOverride: { provider: "openai", id: "gpt-5" },
-			thinkingLevel: "high",
+			thinkingLevel: "max",
 			fastMode: true,
 		});
 
 		const reloaded = store.getJob(job.id);
 		assert.deepEqual(reloaded?.modelOverride, { provider: "openai", id: "gpt-5" });
-		assert.equal(reloaded?.thinkingLevel, "high");
+		assert.equal(reloaded?.thinkingLevel, "max");
 		assert.equal(reloaded?.fastMode, true);
 		assert.equal(reloaded?.maxIterations, 3);
 
@@ -51,11 +51,11 @@ test("Ralph CLI adds, edits, and clears runtime overrides", async () => {
 	try {
 		const addResult = await execFileAsync("node", [
 			"dist/bin/pibo.js", "ralph", "--store", storePath, "add",
-			"--default-chat", "--prompt", "test", "--model", "openai/gpt-5", "--thinking", "high", "--fast", "--json",
+			"--default-chat", "--prompt", "test", "--model", "openai/gpt-5", "--thinking", "max", "--fast", "--json",
 		], { cwd: process.cwd() });
 		const added = JSON.parse(addResult.stdout);
 		assert.deepEqual(added.modelOverride, { provider: "openai", id: "gpt-5" });
-		assert.equal(added.thinkingLevel, "high");
+		assert.equal(added.thinkingLevel, "max");
 		assert.equal(added.fastMode, true);
 
 		const editResult = await execFileAsync("node", [

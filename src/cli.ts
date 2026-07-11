@@ -388,7 +388,7 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 		.command("tui:routed")
 		.helpOption("-h, --help", "Display help for command")
 		.option("--show-thinking", "Show routed thinking deltas in the local TUI")
-		.option("--thinking <level>", "Set routed thinking level: off, minimal, low, medium, high, xhigh", parsePiboThinkingLevel)
+		.option("--thinking <level>", "Set routed thinking level: off, minimal, low, medium, high, xhigh, max", parsePiboThinkingLevel)
 		.argument("[profile]")
 		.description("Start the local routed Pibo TUI")
 		.action(

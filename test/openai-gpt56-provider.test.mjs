@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
 import {
 	OPENAI_API_KEY_ENV,
 	OPENAI_BASE_URL,
@@ -104,7 +105,8 @@ test("GPT-5.6 OpenAI API models preserve built-ins and add Sol Terra Luna", () =
 		assert.equal(model.api, OPENAI_RESPONSES_API);
 		assert.equal(model.baseUrl, OPENAI_BASE_URL);
 		assert.equal(model.reasoning, true);
-		assert.deepEqual(model.thinkingLevelMap, { off: null, xhigh: "xhigh" });
+		assert.deepEqual(model.thinkingLevelMap, { off: null, xhigh: "xhigh", max: "max" });
+		assert.ok(getSupportedThinkingLevels(model).includes("max"));
 		assert.deepEqual(model.input, ["text", "image"]);
 		assert.equal(model.contextWindow, 1050000);
 		assert.equal(model.maxTokens, 128000);
@@ -124,7 +126,8 @@ test("GPT-5.6 ChatGPT Subscription models preserve built-ins and add Sol Terra L
 		assert.equal(model.api, OPENAI_CODEX_RESPONSES_API);
 		assert.equal(model.baseUrl, OPENAI_CODEX_BASE_URL);
 		assert.equal(model.reasoning, true);
-		assert.deepEqual(model.thinkingLevelMap, { xhigh: "xhigh", minimal: "low" });
+		assert.deepEqual(model.thinkingLevelMap, { xhigh: "xhigh", max: "max", minimal: "low" });
+		assert.ok(getSupportedThinkingLevels(model).includes("max"));
 		assert.deepEqual(model.input, ["text", "image"]);
 		assert.equal(model.cost.cacheWrite, 0);
 		assert.equal(model.contextWindow, 272000);

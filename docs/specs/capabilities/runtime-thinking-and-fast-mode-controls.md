@@ -17,7 +17,7 @@ Pibo MUST validate, apply, expose, and render runtime thinking and fast-mode sta
 
 ## Background / Current State
 
-The current code defines the allowed thinking levels in `src/core/thinking.ts` as `off`, `minimal`, `low`, `medium`, `high`, and `xhigh`. Model defaults can store global, main-session, and subagent thinking defaults. Runtime creation passes the selected thinking level to Pi Coding Agent.
+The current code defines the allowed thinking levels in `src/core/thinking.ts` as `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Model defaults can store global, main-session, and subagent thinking defaults. Runtime creation passes the selected thinking level to Pi Coding Agent.
 
 The core plugin registers gateway actions `thinking` and `fast_mode` with slash commands `/thinking` and `/fast`. `RoutedPiboSession` can report the current thinking level, set a requested level, report available thinking levels, and toggle fast mode only when the active runtime reports thinking support. Chat Web maps slash commands and terminal thinking cards to those actions. The local routed TUI exposes `/thinking <level>` and `/thinking-show` behavior.
 
@@ -25,7 +25,7 @@ The core plugin registers gateway actions `thinking` and `fast_mode` with slash 
 
 ### In Scope
 
-- Valid thinking level vocabulary and validation.
+- Valid thinking level vocabulary, validation, and provider-specific availability.
 - Thinking-level precedence from profile and model defaults during runtime creation.
 - Runtime `/thinking` inspection and mutation action behavior.
 - Fast-mode action behavior and status projection.
@@ -44,7 +44,7 @@ The core plugin registers gateway actions `thinking` and `fast_mode` with slash 
 
 ### Requirement: Thinking levels use one bounded vocabulary
 
-The system MUST accept only the Pibo thinking levels `off`, `minimal`, `low`, `medium`, `high`, and `xhigh` wherever a product-level thinking level is parsed or persisted.
+The system MUST accept only the Pibo thinking levels `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max` wherever a product-level thinking level is parsed or persisted.
 
 #### Current
 
@@ -52,12 +52,13 @@ The system MUST accept only the Pibo thinking levels `off`, `minimal`, `low`, `m
 
 #### Target
 
-All user-facing and configuration-facing thinking inputs share the same vocabulary and fail or sanitize predictably.
+All user-facing and configuration-facing thinking inputs share the same vocabulary and fail or sanitize predictably. Runtime availability remains model-driven, so `max` is reported as available only when the active model advertises it.
 
 #### Acceptance
 
-- Saving model defaults preserves valid thinking values and omits invalid ones.
-- `/thinking high` sends a valid execution request.
+- Saving model defaults preserves valid thinking values, including `max`, and omits invalid ones.
+- `/thinking high` and `/thinking max` send valid execution requests.
+- OpenAI GPT-5.6 models advertise `max` as an available thinking level.
 - A `thinking` execution event with `params.level: "none"` fails validation.
 - A `thinking` execution event with a non-string level fails validation.
 - Error messages list the valid thinking levels when parsing rejects a string value.
@@ -257,6 +258,7 @@ Terminal users have parity with Chat Web for changing thinking levels and can ch
 
 - A provider can expose no thinking support even when Pibo has a selected thinking level; UI controls must report unsupported rather than assume mutation works.
 - A session may have a stored or selected thinking level that is no longer available from the active provider. Reporting should include the runtime's available levels so clients can disable impossible choices.
+- Models without an explicit `max` capability must not advertise `max` as available.
 - Fast mode is effective only when the active runtime supports thinking.
 - Invalid model-default JSON loads as empty defaults, so thinking selection falls through to profile or undefined values.
 - Thinking deltas can arrive without final text; output compaction and trace specs define how final text is recovered for Chat Web views.
@@ -266,7 +268,7 @@ Terminal users have parity with Chat Web for changing thinking levels and can ch
 - **Compatibility:** The allowed thinking level strings are public product values and should not change without migration and UI updates.
 - **Security / Privacy:** Thinking text is reasoning content. It follows the same room/session access controls as other Pibo output events and must not be exposed outside authorized streams or trace reads.
 - **Performance:** Thinking deltas can be frequent. Durable storage and live compaction must stay bounded by the output-compaction contract.
-- **Dependencies:** Actual reasoning support and available levels come from Pi Coding Agent runtime model capabilities.
+- **Dependencies:** Actual reasoning support and available levels come from Pi Coding Agent runtime model capabilities. Pi Coding Agent 0.80.6 supports `max`; provider model metadata determines whether it is available.
 
 ## Success Criteria
 
