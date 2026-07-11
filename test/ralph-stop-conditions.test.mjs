@@ -32,6 +32,22 @@ test("Ralph store persists stop policies, state, and run facts", () => {
 	} finally { store.close(); }
 });
 
+test("Ralph stop evaluation cannot clear an existing run reservation", () => {
+	const store = new PiboRalphStore({ path: ":memory:" });
+	try {
+		const job = store.createJob({ target: { kind: "default-chat" }, profile: "codex", prompt: "work", enabled: true });
+		const reserved = store.reserveRun(job.id);
+		assert.ok(reserved);
+		store.applyStopEvaluation({
+			jobId: job.id,
+			evaluation: { id: "eval-1", phase: "before-run", at: new Date().toISOString(), mode: "any", finalAction: "continue", decisions: [] },
+		});
+		const saved = store.getJob(job.id);
+		assert.equal(saved.state.runningAt, reserved.job.state.runningAt);
+		assert.equal(saved.state.lastRunId, reserved.run.id);
+	} finally { store.close(); }
+});
+
 test("Ralph stop evaluator composes any, all, and stateful custom conditions", async () => {
 	const definitions = [{ type: "test.counter", name: "Counter", phases: ["after-run"], evaluate(context) { const count = Number(context.state.count ?? 0) + 1; return { action: count >= 2 ? "stop-after-run" : "continue", reason: count >= 2 ? "counter" : undefined, nextState: { count } }; } }];
 	const job = { id: "ralph_1", name: "job", enabled: true, target: { kind: "default-chat" }, profile: "codex", prompt: "work", stopPolicy: { mode: "any", conditions: [{ id: "counter", type: "test.counter" }] }, state: { completedIterations: 0 }, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };

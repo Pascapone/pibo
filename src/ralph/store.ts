@@ -251,7 +251,7 @@ export class PiboRalphStore {
 	applyStopEvaluation(input: { jobId: string; evaluation: PiboRalphStopEvaluationSummary; conditionStates?: Record<string, PiboJsonObject>; disable?: boolean }, now = new Date()): void {
 		const job = this.getJob(input.jobId); if (!job) return;
 		const timestamp = nowIso(now);
-		const state: PiboRalphJobState = { ...job.state, runningAt: undefined, conditionStates: input.conditionStates ?? job.state.conditionStates, lastStopEvaluation: input.evaluation };
+		const state: PiboRalphJobState = { ...job.state, conditionStates: input.conditionStates ?? job.state.conditionStates, lastStopEvaluation: input.evaluation };
 		this.db.prepare('UPDATE pibo_ralph_jobs SET enabled = ?, state_json = ?, updated_at = ? WHERE id = ?').run(input.disable ? 0 : job.enabled ? 1 : 0, JSON.stringify(state), timestamp, job.id);
 	}
 	completeRun(input: { jobId: string; runId: string; status: PiboRalphRunStatus; piboSessionId?: string; error?: string; reason?: string; stopAfterRun?: boolean; stopEvaluation?: PiboRalphStopEvaluationSummary; conditionStates?: Record<string, PiboJsonObject> }, now = new Date()): void {
