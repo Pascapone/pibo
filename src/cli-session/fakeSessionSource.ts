@@ -448,11 +448,11 @@ export class FakeCliSessionSource implements CliSessionSource {
       if (!level)
         return {
           action: "show_thinking_menu",
-          items: ["off", "minimal", "low", "medium", "high", "xhigh"].map(
+          items: ["off", "minimal", "low", "medium", "high", "xhigh", "max"].map(
             (value) => ({ id: value, label: value }),
           ),
         };
-      if (!["off", "minimal", "low", "medium", "high", "xhigh"].includes(level))
+      if (!["off", "minimal", "low", "medium", "high", "xhigh", "max"].includes(level))
         return {
           supported: false,
           unsupportedReason: `Unsupported thinking level ${level}.`,

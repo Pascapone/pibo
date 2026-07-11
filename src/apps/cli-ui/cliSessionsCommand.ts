@@ -165,7 +165,7 @@ class DebugMockCliSessionRouter implements LocalCliSessionRouter {
 		if (event.action === "thinking") {
 			const level = typeof params.level === "string" ? params.level : undefined;
 			if (level) return { message: `Thinking level set to ${level}`, level, supported: true, changed: true };
-			return { action: "show_thinking_menu", items: ["off", "minimal", "low", "medium", "high", "xhigh"].map((value) => ({ id: value, label: value })) };
+			return { action: "show_thinking_menu", items: ["off", "minimal", "low", "medium", "high", "xhigh", "max"].map((value) => ({ id: value, label: value })) };
 		}
 		if (event.action === "model") {
 			const model = typeof params.model === "string" ? params.model : undefined;

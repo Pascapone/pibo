@@ -215,7 +215,7 @@ function normalizeOptionalBoolean(value: unknown, fieldName: string): boolean | 
 function normalizeThinkingLevel(value: unknown, fieldName: string): PiboThinkingLevel | undefined {
 	if (value === undefined || value === null) return undefined;
 	if (typeof value !== "string" || !isPiboThinkingLevel(value)) {
-		throw new PiboWebHttpError(`${fieldName} must be one of off, minimal, low, medium, high, xhigh`, 400);
+		throw new PiboWebHttpError(`${fieldName} must be one of off, minimal, low, medium, high, xhigh, max`, 400);
 	}
 	return value;
 }

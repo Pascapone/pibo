@@ -101,7 +101,7 @@ function normalizeModelOverride(value: ModelProfile | null | undefined): ModelPr
 }
 function normalizeThinkingLevel(value: PiboThinkingLevel | string | null | undefined): PiboThinkingLevel | undefined {
 	if (value === undefined || value === null) return undefined;
-	if (!isPiboThinkingLevel(value)) throw new Error('thinkingLevel must be one of off, minimal, low, medium, high, xhigh');
+	if (!isPiboThinkingLevel(value)) throw new Error('thinkingLevel must be one of off, minimal, low, medium, high, xhigh, max');
 	return value;
 }
 function normalizeFastMode(value: boolean | null | undefined): boolean | undefined {

@@ -83,7 +83,7 @@ export function buildOpenAiGpt56Models(
 		api: OPENAI_RESPONSES_API,
 		baseUrl: OPENAI_BASE_URL,
 		contextWindow: OPENAI_GPT_56_CONTEXT_WINDOW,
-		thinkingLevelMap: { off: null, xhigh: "xhigh" },
+		thinkingLevelMap: { off: null, xhigh: "xhigh", max: "max" },
 		baseModels,
 		modelCost: (model) => model.cost,
 	});
@@ -97,7 +97,7 @@ export function buildOpenAiCodexGpt56Models(
 		api: OPENAI_CODEX_RESPONSES_API,
 		baseUrl: OPENAI_CODEX_BASE_URL,
 		contextWindow: OPENAI_CODEX_GPT_56_CONTEXT_WINDOW,
-		thinkingLevelMap: { xhigh: "xhigh", minimal: "low" },
+		thinkingLevelMap: { xhigh: "xhigh", max: "max", minimal: "low" },
 		baseModels,
 		modelCost: (model) => ({ ...model.cost, cacheWrite: 0 }),
 	});

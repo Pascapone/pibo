@@ -11,13 +11,13 @@ test("model defaults persist and roundtrip", () => {
 	const saved = savePiboModelDefaults({
 		main: { provider: "openai", id: "gpt-5.4" },
 		subagent: { provider: "kimi-coding", id: "kimi-for-coding" },
-		thinking: "high",
+		thinking: "max",
 	}, cwd, "model-defaults.json");
 
 	assert.deepEqual(saved, {
 		main: { provider: "openai", id: "gpt-5.4" },
 		subagent: { provider: "kimi-coding", id: "kimi-for-coding" },
-		thinking: "high",
+		thinking: "max",
 	});
 	assert.deepEqual(loadPiboModelDefaults(cwd, "model-defaults.json"), saved);
 });
