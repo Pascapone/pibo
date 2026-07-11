@@ -287,6 +287,8 @@ export { CHAT_WEB_API_PREFIX } from "./chat-api-routes.js";
 export type ChatWebAppOptions = {
 	defaultProfile?: string;
 	agentStorePath?: string;
+	userSkillGlobalRoot?: string;
+	userSkillWorkspaceRoot?: string;
 	reliabilityStorePath?: string;
 	dataStorePath?: string;
 	dataPayloadRootDir?: string;
@@ -3970,7 +3972,10 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 		persistenceMetrics: createPersistenceMetrics(),
 		resourceMetrics: createResourceMetrics(),
 		eventLoopDelay,
-		userSkillManager: new ScopedUserSkillManager({ globalRoot: os.homedir(), workspaceRoot: process.cwd() }),
+		userSkillManager: new ScopedUserSkillManager({
+			globalRoot: options.userSkillGlobalRoot ?? os.homedir(),
+			workspaceRoot: options.userSkillWorkspaceRoot ?? process.cwd(),
+		}),
 		workflowDraftStore: new ChatWorkflowDraftStore(dataStore),
 		workflowPublishedVersionStore: new ChatWorkflowPublishedVersionStore(dataStore),
 		workflowArchiveStore: new ChatWorkflowArchiveStore(dataStore),

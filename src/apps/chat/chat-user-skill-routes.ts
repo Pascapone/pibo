@@ -59,7 +59,10 @@ export function syncChatUserSkills(options: {
 		if (!existing || skill.scope === "workspace") enabledSkillByName.set(skill.name, skill);
 	}
 	const enabledNames = new Set(enabledSkillByName.keys());
-	const syncedNames = previouslySyncedNames ?? new Set<string>();
+	const syncedNames = new Set([
+		...catalogSkills.filter((skill) => skill.kind === "user").map((skill) => skill.name),
+		...(previouslySyncedNames ?? []),
+	]);
 
 	// Unregister disabled, removed, or now built-in user skills. Avoid removing a
 	// built-in/plugin skill if a promoted user skill has the same name.
@@ -78,7 +81,7 @@ export function syncChatUserSkills(options: {
 		if (catalogSkill?.kind === "user" && catalogSkill.path !== skill.path) {
 			unregisterSkill(skill.name);
 			registerSkill({ name: skill.name, path: skill.path, enabled: true, kind: "user" });
-		} else if (!syncedNames.has(skill.name)) {
+		} else if (!catalogSkill) {
 			registerSkill({ name: skill.name, path: skill.path, enabled: true, kind: "user" });
 		}
 	}
@@ -87,15 +90,12 @@ export function syncChatUserSkills(options: {
 }
 
 function assertUserSkillNameIsAvailable(options: {
-	userSkillManager: ScopedUserSkillManager;
 	channelContext: PiboChannelContext;
 	name: string;
-	currentSkillId?: string;
 }): void {
-	const { userSkillManager, channelContext, name, currentSkillId } = options;
-	const currentSkill = currentSkillId ? userSkillManager.get(currentSkillId) : undefined;
+	const { channelContext, name } = options;
 	const conflict = (channelContext.getCapabilityCatalog?.().skills ?? []).find((skill) => (
-		skill.name === name && skill.kind !== "user" && (!currentSkill || currentSkill.name !== name)
+		skill.name === name && skill.kind !== "user"
 	));
 	if (conflict) {
 		throw new PiboWebHttpError(`Skill name "${name}" conflicts with an existing registered skill`, 409);
@@ -146,7 +146,7 @@ export async function handleChatUserSkillRoute(options: ChatUserSkillRouteHandle
 			const body = await readJsonBody<{ name?: unknown; description?: unknown; markdown?: unknown; scope?: unknown }>(request);
 			const scope = bodyScope(body);
 			const name = normalizeUserSkillName(body.name);
-			assertUserSkillNameIsAvailable({ userSkillManager, channelContext, name });
+			assertUserSkillNameIsAvailable({ channelContext, name });
 			const skill = userSkillManager.create({
 				name,
 				description: normalizeUserSkillDescription(body.description ?? ""),
@@ -160,7 +160,7 @@ export async function handleChatUserSkillRoute(options: ChatUserSkillRouteHandle
 			const scope = bodyScope(body);
 			const skill = await userSkillManager.installFromUrl(normalizeUserSkillUrl(body.url), scope);
 			try {
-				assertUserSkillNameIsAvailable({ userSkillManager, channelContext, name: skill.name, currentSkillId: skill.id });
+				assertUserSkillNameIsAvailable({ channelContext, name: skill.name });
 			} catch (error) {
 				userSkillManager.remove(skill.id, scope);
 				throw error;
@@ -201,12 +201,7 @@ export async function handleChatUserSkillRoute(options: ChatUserSkillRouteHandle
 			const nextName = input.name ?? existing.name;
 			const nextEnabled = input.enabled ?? existing.enabled;
 			if (nextEnabled) {
-				assertUserSkillNameIsAvailable({
-					userSkillManager,
-					channelContext,
-					name: nextName,
-					currentSkillId: existing.id,
-				});
+				assertUserSkillNameIsAvailable({ channelContext, name: nextName });
 			}
 			const skill = userSkillManager.update(existing.id, input, scope);
 			syncAndInvalidate(options);

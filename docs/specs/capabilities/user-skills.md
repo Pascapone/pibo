@@ -172,14 +172,23 @@ The system MUST register enabled user skills as user-managed skill capabilities 
 
 #### Current
 
-`syncUserSkills` reads the user skill list, registers enabled skills through `channelContext.registerSkill({ kind: "user" })`, unregisters previously synced names that are no longer enabled, and avoids duplicate registration for already synced names.
+The Web Gateway registers enabled global and workspace user skills through `pibo.chat-user-skills` while constructing the plugin registry, before Cron or Ralph channels can create sessions. Workspace skills take precedence over global skills with the same name, while built-in and plugin skill names remain reserved. `syncChatUserSkills` adopts those startup registrations and keeps the live registry synchronized after Chat Web create, install, enable, disable, rename, and delete operations.
 
 #### Acceptance
 
 - Enabled user skills appear in the capability catalog as `kind: "user"` without plugin attribution.
 - Disabled or removed user skills no longer appear as selectable user skills after synchronization.
 - Repeated synchronization is idempotent and does not trip duplicate registry guards.
+- Enabled user skills are registered before background channels can construct Custom Agent profiles on a cold gateway start.
 - Enabling, creating, installing, or renaming a user skill to a name that conflicts with an existing catalog skill is rejected or rolled back.
+
+#### Scenario: Cold-start background session
+
+- GIVEN an enabled user skill `review-helper` is selected by a Custom Agent
+- AND an enabled Ralph or Cron job uses that agent
+- WHEN the Web Gateway starts without a prior Chat Web request
+- THEN `review-helper` is already registered before the background session profile is constructed
+- AND the runtime includes the skill without an unknown-skill warning
 
 #### Scenario: Disable selected skill
 
