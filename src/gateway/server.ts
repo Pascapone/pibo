@@ -17,7 +17,7 @@ import {
 	type GatewayResponseFrame,
 	type GatewaySubscription,
 } from "./protocol.js";
-import { clearFallbackPidFile, clearPidFile, writeFallbackGatewayPid, writeGatewayPid } from "./pidfile.js";
+import { releaseFallbackGatewayPid, releaseGatewayPid, writeFallbackGatewayPid, writeGatewayPid } from "./pidfile.js";
 
 export type GatewayServerOptions = {
 	host?: string;
@@ -436,18 +436,24 @@ export class PiboGatewayServer {
 }
 
 export async function runGatewayServer(options: GatewayServerOptions = {}): Promise<void> {
-	const server = new PiboGatewayServer(options);
-	await server.start();
+	const fallbackMode = process.env.PIBO_FALLBACK_MODE === "1";
 	try {
-		if (process.env.PIBO_FALLBACK_MODE === "1") {
-			writeFallbackGatewayPid();
-		} else {
-			writeGatewayPid();
-		}
-	} catch (err) {
-		console.error(err instanceof Error ? err.message : String(err));
-		await server.stop();
-		process.exit(1);
+		if (fallbackMode) writeFallbackGatewayPid();
+		else writeGatewayPid();
+	} catch (error) {
+		console.error(error instanceof Error ? error.message : String(error));
+		process.exitCode = 1;
+		return;
+	}
+
+	const releasePid = fallbackMode ? releaseFallbackGatewayPid : releaseGatewayPid;
+	let server: PiboGatewayServer;
+	try {
+		server = new PiboGatewayServer(options);
+		await server.start();
+	} catch (error) {
+		releasePid();
+		throw error;
 	}
 
 	const host = options.host ?? DEFAULT_GATEWAY_HOST;
@@ -455,11 +461,10 @@ export async function runGatewayServer(options: GatewayServerOptions = {}): Prom
 	console.error(`pibo gateway listening on ${host}:${port}`);
 
 	const stop = async () => {
-		await server.stop();
-		if (process.env.PIBO_FALLBACK_MODE === "1") {
-			clearFallbackPidFile();
-		} else {
-			clearPidFile();
+		try {
+			await server.stop();
+		} finally {
+			releasePid();
 		}
 	};
 	process.once("SIGINT", () => {

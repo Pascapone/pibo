@@ -1,5 +1,5 @@
 import { spawn, execFile } from "node:child_process";
-import { existsSync, mkdirSync, openSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, openSync, readFileSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -138,25 +138,35 @@ function resolveGatewayWebCommand(argv: string[], target: GatewayTarget): { comm
 	return { command: process.execPath, args };
 }
 
-function managedGatewayPidPath(target: GatewayTarget): string {
-	return join(managedGatewayHome(target), "gateway.pid");
+function managedGatewayPidPaths(target: GatewayTarget): string[] {
+	const home = managedGatewayHome(target);
+	try {
+		const legacy = readdirSync(home)
+			.filter((name) => /^gateway-\d+\.pid$/.test(name))
+			.map((name) => join(home, name));
+		return [join(home, "gateway.pid"), ...legacy];
+	} catch {
+		return [join(home, "gateway.pid")];
+	}
 }
 
 function readManagedGatewayPid(target: GatewayTarget): number | undefined {
-	try {
-		const path = managedGatewayPidPath(target);
-		if (!existsSync(path)) return undefined;
-		const pid = Number(readFileSync(path, "utf-8").trim());
-		if (!Number.isInteger(pid) || pid <= 0) return undefined;
+	for (const path of managedGatewayPidPaths(target)) {
 		try {
-			process.kill(pid, 0);
-			return pid;
+			if (!existsSync(path)) continue;
+			const pid = Number(readFileSync(path, "utf-8").trim());
+			if (!Number.isInteger(pid) || pid <= 0) continue;
+			try {
+				process.kill(pid, 0);
+				return pid;
+			} catch (error) {
+				if ((error as NodeJS.ErrnoException).code === "EPERM") return pid;
+			}
 		} catch {
-			return undefined;
+			// Try the next current or legacy PID file.
 		}
-	} catch {
-		return undefined;
 	}
+	return undefined;
 }
 
 async function waitForTargetGatewayDown(target: GatewayTarget, maxRetries = 40, intervalMs = 250): Promise<boolean> {
@@ -357,6 +367,13 @@ async function runManagedGatewayCommand(target: GatewayTarget, command: string |
 		if (current.reachable) {
 			console.error("Start blocked: gateway state is ambiguous.");
 			printSafetyStatus(target, current);
+			process.exitCode = 1;
+			return true;
+		}
+		const existingPid = readManagedGatewayPid(target);
+		if (existingPid !== undefined) {
+			console.error(`Start blocked: ${managedGatewayHome(target)} is already owned by gateway PID ${existingPid}.`);
+			console.error(`The configured status port ${targetPort(target)} is not reachable; check the gateway port configuration instead of starting a second gateway with the same PIBO_HOME.`);
 			process.exitCode = 1;
 			return true;
 		}

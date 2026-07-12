@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { checkActiveWork, RESTART_CONFIRMATION_TOKEN } from '../dist/gateway/cli.js';
-import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -178,6 +178,28 @@ child.unref();
       assert.equal((await waitUntilReachable(port)).mode, 'dev');
     } finally {
       try { process.kill(Number(readFileSync(pidPath, 'utf8')), 'SIGTERM'); } catch {}
+    }
+  });
+
+  it('blocks start when a legacy port-specific PID file has a live gateway owner', async () => {
+    const port = await freePort();
+    const dir = mkdtempSync(join(tmpdir(), 'pibo-gateway-owner-'));
+    writeFileSync(join(dir, 'gateway-3701.pid'), String(process.pid), 'utf8');
+    try {
+      const result = spawnSync(process.execPath, ['dist/bin/pibo.js', 'gateway', 'dev', 'start'], {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          PIBO_GATEWAY_DEV_HOME: dir,
+          PIBO_GATEWAY_DEV_PORT: String(port),
+          PIBO_GATEWAY_MANAGER_COMMAND: join(dir, 'manager-must-not-run'),
+        },
+      });
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /already owned by gateway PID/);
+      assert.match(result.stderr, /instead of starting a second gateway with the same PIBO_HOME/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 

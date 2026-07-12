@@ -14,7 +14,7 @@ import { createPiboWebHostPlugin } from "../plugins/web.js";
 import { DEFAULT_WEB_CHANNEL_HOST, DEFAULT_WEB_CHANNEL_PORT, type WebHostChannelOptions } from "../web/channel.js";
 import { loadPiboConfig } from "../config/config.js";
 import { PiboGatewayServer, type GatewayServerOptions } from "./server.js";
-import { clearFallbackPidFile, clearPidFile, writeFallbackGatewayPid, writeGatewayPid } from "./pidfile.js";
+import { releaseFallbackGatewayPid, releaseGatewayPid, writeFallbackGatewayPid, writeGatewayPid } from "./pidfile.js";
 
 export type WebGatewayAuthMode = "better-auth" | "local";
 
@@ -210,24 +210,30 @@ function createChatAppURL(options: WebGatewayServerOptions, host: string, port: 
 }
 
 export async function runWebGatewayServer(options: WebGatewayServerOptions = {}): Promise<void> {
-	const resolvedOptions = resolveWebGatewayServerOptions(options);
-	const pluginRegistry = resolvedOptions.pluginRegistry ?? createWebPiboPluginRegistry(resolvedOptions);
-	const pidFilePort = resolvedOptions.port;
-	const server = new PiboGatewayServer({
-		...resolvedOptions,
-		pluginRegistry,
-	});
-	await server.start();
+	const fallbackMode = process.env.PIBO_FALLBACK_MODE === "1";
 	try {
-		if (process.env.PIBO_FALLBACK_MODE === "1") {
-			writeFallbackGatewayPid();
-		} else {
-			writeGatewayPid(pidFilePort);
-		}
-	} catch (err) {
-		console.error(err instanceof Error ? err.message : String(err));
-		await server.stop();
-		process.exit(1);
+		if (fallbackMode) writeFallbackGatewayPid();
+		else writeGatewayPid();
+	} catch (error) {
+		console.error(error instanceof Error ? error.message : String(error));
+		process.exitCode = 1;
+		return;
+	}
+
+	const releasePid = fallbackMode ? releaseFallbackGatewayPid : releaseGatewayPid;
+	let resolvedOptions: WebGatewayServerOptions;
+	let server: PiboGatewayServer;
+	try {
+		resolvedOptions = resolveWebGatewayServerOptions(options);
+		const pluginRegistry = resolvedOptions.pluginRegistry ?? createWebPiboPluginRegistry(resolvedOptions);
+		server = new PiboGatewayServer({
+			...resolvedOptions,
+			pluginRegistry,
+		});
+		await server.start();
+	} catch (error) {
+		releasePid();
+		throw error;
 	}
 
 	const host = resolvedOptions.web?.host ?? DEFAULT_WEB_CHANNEL_HOST;
@@ -235,11 +241,10 @@ export async function runWebGatewayServer(options: WebGatewayServerOptions = {})
 	console.error(`pibo chat app available at ${createChatAppURL(resolvedOptions, host, port)}`);
 
 	const stop = async () => {
-		await server.stop();
-		if (process.env.PIBO_FALLBACK_MODE === "1") {
-			clearFallbackPidFile();
-		} else {
-			clearPidFile(pidFilePort);
+		try {
+			await server.stop();
+		} finally {
+			releasePid();
 		}
 	};
 	process.once("SIGINT", () => {

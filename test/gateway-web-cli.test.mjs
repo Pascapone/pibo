@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -103,6 +103,14 @@ async function stopChild(child) {
 	if (child.exitCode === null) child.kill("SIGKILL");
 }
 
+async function waitForExit(child, timeoutMs = 10_000) {
+	if (child.exitCode !== null) return child.exitCode;
+	return await Promise.race([
+		new Promise((resolve) => child.once("exit", resolve)),
+		new Promise((_, reject) => setTimeout(() => reject(new Error("gateway process did not exit in time")), timeoutMs)),
+	]);
+}
+
 test("gateway:web CLI announces explicit web port with loopback Better Auth base URL", { timeout: 30_000 }, async () => {
 	const [webPort, gatewayPort] = await reserveLoopbackPorts(2);
 	const tmp = await mkdtemp(path.join(os.tmpdir(), "pibo-gateway-web-cli-"));
@@ -157,18 +165,73 @@ test("gateway:web CLI derives gateway port from explicit web port", { timeout: 3
 	}
 });
 
-test("gateway:web CLI accepts distinct gateway ports for parallel instances", { timeout: 30_000 }, async () => {
+test("gateway:web CLI replaces a stale home-scoped PID file", { timeout: 30_000 }, async () => {
+	const [webPort, gatewayPort] = await reserveLoopbackPorts(2);
+	const tmp = await mkdtemp(path.join(os.tmpdir(), "pibo-gateway-web-cli-"));
+	const piboHome = path.join(tmp, "pibo");
+	const logs = [];
+	await mkdir(piboHome, { recursive: true });
+	await writeFile(path.join(piboHome, "gateway.pid"), "999999999", "utf8");
+	const child = spawn(process.execPath, ["dist/bin/pibo.js", "gateway:web", "--auth=local", "--web-host", "127.0.0.1", "--web-port", String(webPort), "--gateway-port", String(gatewayPort)], {
+		cwd: repoRoot,
+		env: { ...process.env, HOME: path.join(tmp, "home"), PIBO_HOME: piboHome },
+	});
+	child.stdout.setEncoding("utf8").on("data", (chunk) => logs.push(chunk));
+	child.stderr.setEncoding("utf8").on("data", (chunk) => logs.push(chunk));
+
+	try {
+		await waitForPorts([webPort, gatewayPort], [child], logs);
+		assert.equal((await readFile(path.join(piboHome, "gateway.pid"), "utf8")).trim(), String(child.pid));
+	} finally {
+		await stopChild(child);
+		await rm(tmp, { recursive: true, force: true });
+	}
+});
+
+test("gateway:web CLI rejects parallel instances that share PIBO_HOME", { timeout: 30_000 }, async () => {
+	const [webPortOne, gatewayPortOne, webPortTwo, gatewayPortTwo] = await reserveLoopbackPorts(4);
+	const tmp = await mkdtemp(path.join(os.tmpdir(), "pibo-gateway-web-cli-"));
+	const piboHome = path.join(tmp, "pibo");
+	const firstLogs = [];
+	const secondLogs = [];
+	const first = spawn(process.execPath, ["dist/bin/pibo.js", "gateway:web", "--auth=local", "--web-host", "127.0.0.1", "--web-port", String(webPortOne), "--gateway-port", String(gatewayPortOne)], {
+		cwd: repoRoot,
+		env: { ...process.env, HOME: path.join(tmp, "home-one"), PIBO_HOME: piboHome },
+	});
+	first.stdout.setEncoding("utf8").on("data", (chunk) => firstLogs.push(chunk));
+	first.stderr.setEncoding("utf8").on("data", (chunk) => firstLogs.push(chunk));
+	let second;
+
+	try {
+		await waitForPorts([webPortOne, gatewayPortOne], [first], firstLogs);
+		second = spawn(process.execPath, ["dist/bin/pibo.js", "gateway:web", "--auth=local", "--web-host", "127.0.0.1", "--web-port", String(webPortTwo), "--gateway-port", String(gatewayPortTwo)], {
+			cwd: repoRoot,
+			env: { ...process.env, HOME: path.join(tmp, "home-two"), PIBO_HOME: piboHome },
+		});
+		second.stdout.setEncoding("utf8").on("data", (chunk) => secondLogs.push(chunk));
+		second.stderr.setEncoding("utf8").on("data", (chunk) => secondLogs.push(chunk));
+		assert.equal(await waitForExit(second), 1);
+		assert.match(secondLogs.join(""), /Gateway already running \(PID \d+\)/);
+		assert.equal(await canConnect(webPortTwo), false);
+		assert.equal(await canConnect(gatewayPortTwo), false);
+	} finally {
+		await Promise.all([stopChild(first), second ? stopChild(second) : undefined]);
+		await rm(tmp, { recursive: true, force: true });
+	}
+});
+
+test("gateway:web CLI accepts parallel instances with distinct PIBO_HOME directories", { timeout: 30_000 }, async () => {
 	const [webPortOne, gatewayPortOne, webPortTwo, gatewayPortTwo] = await reserveLoopbackPorts(4);
 	const tmp = await mkdtemp(path.join(os.tmpdir(), "pibo-gateway-web-cli-"));
 	const logs = [];
 	const children = [
 		spawn(process.execPath, ["dist/bin/pibo.js", "gateway:web", "--auth=local", "--web-host", "127.0.0.1", "--web-port", String(webPortOne), "--gateway-port", String(gatewayPortOne)], {
 			cwd: repoRoot,
-			env: { ...process.env, HOME: path.join(tmp, "home-one"), PIBO_HOME: path.join(tmp, "pibo") },
+			env: { ...process.env, HOME: path.join(tmp, "home-one"), PIBO_HOME: path.join(tmp, "pibo-one") },
 		}),
 		spawn(process.execPath, ["dist/bin/pibo.js", "gateway:web", "--auth=local", "--web-host", "127.0.0.1", "--web-port", String(webPortTwo), "--gateway-port", String(gatewayPortTwo)], {
 			cwd: repoRoot,
-			env: { ...process.env, HOME: path.join(tmp, "home-two"), PIBO_HOME: path.join(tmp, "pibo") },
+			env: { ...process.env, HOME: path.join(tmp, "home-two"), PIBO_HOME: path.join(tmp, "pibo-two") },
 		}),
 	];
 	for (const child of children) {

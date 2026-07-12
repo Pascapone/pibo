@@ -267,21 +267,29 @@ Production restarts avoid interrupting active user or agent work by default.
 - WHEN an operator runs `pibo gateway web restart`
 - THEN the CLI refuses to restart and lists the run as a reason.
 
-### Requirement: Local gateway lifecycle uses PID files and graceful shutdown
+### Requirement: Local gateway lifecycle uses one owner per Pibo home
 
-The local gateway CLI MUST start, stop, restart, and report the default local gateway through the Pibo CLI only.
+The local gateway CLI MUST start, stop, restart, and report the default local gateway through the Pibo CLI only. A normal gateway process MUST claim one home-scoped `gateway.pid` before it starts the Session Router or plugin channels. Different web or agent-runtime ports do not permit a second normal gateway to share the same `PIBO_HOME`.
 
 #### Current
 
-`pibo gateway status` checks `127.0.0.1:4789` and the gateway PID file. `stop` sends `SIGTERM`, waits for the port to close, and uses `SIGKILL` only with `--force`. `restart` stops the current process when reachable, clears the PID file, spawns a detached gateway process, and waits for the port to become reachable.
+`pibo gateway status` checks `127.0.0.1:4789` and the gateway PID file. `stop` sends `SIGTERM`, waits for the port to close, and uses `SIGKILL` only with `--force`. `restart` stops the current process when reachable, clears the PID file, spawns a detached gateway process, and waits for the port to become reachable. Production, development, and Docker worker gateways run in parallel by using separate Pibo homes.
 
 #### Target
 
-Local gateway management is discoverable and does not rely on ad hoc process control.
+Local gateway management is discoverable and does not rely on ad hoc process control. Gateway ownership follows the data boundary: one normal Gateway owns one `PIBO_HOME`, while isolated homes may use independent ports and processes.
 
 #### Acceptance
 
-Stopping a reachable gateway without a PID waits for the port to close and fails with guidance to use `--force` if graceful shutdown does not complete.
+Stopping a reachable gateway without a PID waits for the port to close and fails with guidance to use `--force` if graceful shutdown does not complete. Starting a second normal gateway with the same `PIBO_HOME` fails before either of its ports starts listening. Gateways with distinct Pibo homes may run in parallel.
+
+#### Scenario: Shared-home gateway start is rejected
+
+- GIVEN one normal gateway already owns a `PIBO_HOME`
+- AND another normal gateway is configured with different web and agent-runtime ports
+- WHEN the second gateway starts with the same `PIBO_HOME`
+- THEN it exits before starting the Session Router or plugin channels
+- AND the first gateway remains the sole owner.
 
 #### Scenario: Restart with stale PID file
 
