@@ -45,6 +45,18 @@ function createStoredSession(store, overrides = {}) {
 	});
 }
 
+function delay(ms) {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitFor(predicate, timeoutMs = 1_000) {
+	const deadline = Date.now() + timeoutMs;
+	while (!predicate()) {
+		if (Date.now() >= deadline) throw new Error("Timed out waiting for condition");
+		await delay(10);
+	}
+}
+
 test("session router uses the Pibo session profile when creating a runtime", async () => {
 	const store = new InMemoryPiboSessionStore();
 	store.create({
@@ -385,6 +397,117 @@ test("runtime reopens an existing persisted session by profile session id", asyn
 	}
 });
 
+test("session router evicts only idle routed runtimes and preserves yielded runs", async () => {
+	let actionDelayMs = 0;
+	const registry = createTestRegistry("wait", async () => {
+		await delay(actionDelayMs);
+		return { waited: actionDelayMs };
+	});
+	const store = new InMemoryPiboSessionStore();
+	createStoredSession(store, { id: "ps_idle" });
+	const router = new PiboSessionRouter({
+		persistSession: false,
+		sessionStore: store,
+		pluginRegistry: registry,
+		profile: registry.createProfile("test-profile"),
+		routedSessionIdleTimeoutMs: 100,
+	});
+
+	try {
+		await router.emit({ type: "execution", piboSessionId: "ps_idle", action: "wait" });
+		const run = router.runRegistry.startToolRun({ controllerPiboSessionId: "ps_idle", toolName: "bash" });
+		actionDelayMs = 180;
+		await delay(20);
+		const activeAction = router.emit({ type: "execution", piboSessionId: "ps_idle", action: "wait" });
+		await delay(120);
+		assert.deepEqual(router.getPiboSessionIds(), ["ps_idle"]);
+		await activeAction;
+
+		await waitFor(() => router.getPiboSessionIds().length === 0);
+		assert.ok(store.get("ps_idle"));
+		assert.equal(router.runRegistry.status("ps_idle", run.runId).status, "running");
+		router.runRegistry.cancel("ps_idle", run.runId);
+	} finally {
+		await router.disposeAll();
+	}
+});
+
+test("dispose removes cached parent and child routed runtimes", async () => {
+	const store = new InMemoryPiboSessionStore();
+	store.create({
+		id: "ps_parent",
+		piSessionId: "11111111-1111-4111-8111-111111111111",
+		channel: "pibo.test",
+		kind: "chat",
+		profile: "base",
+	});
+	store.create({
+		id: "ps_child",
+		piSessionId: "22222222-2222-4222-8222-222222222222",
+		channel: "pibo.subagents",
+		kind: "subagent",
+		profile: "base",
+		parentId: "ps_parent",
+	});
+	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store });
+
+	try {
+		await router.emit({ type: "execution", piboSessionId: "ps_parent", action: "status" });
+		await router.emit({ type: "execution", piboSessionId: "ps_child", action: "status" });
+		assert.equal(router.getPiboSessionIds().length, 2);
+		await router.emit({ type: "execution", piboSessionId: "ps_parent", action: "dispose" });
+		assert.deepEqual(router.getPiboSessionIds(), []);
+	} finally {
+		await router.disposeAll();
+	}
+});
+
+test("kill action disposes cached runtimes without cancelling yielded runs", async () => {
+	const store = new InMemoryPiboSessionStore();
+	store.create({
+		id: "ps_kill_action",
+		piSessionId: "33333333-3333-4333-8333-333333333333",
+		channel: "pibo.test",
+		kind: "chat",
+		profile: "base",
+	});
+	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store });
+
+	try {
+		await router.emit({ type: "execution", piboSessionId: "ps_kill_action", action: "status" });
+		const run = router.runRegistry.startToolRun({ controllerPiboSessionId: "ps_kill_action", toolName: "bash" });
+		const output = await router.emit({ type: "execution", piboSessionId: "ps_kill_action", action: "kill" });
+		assert.deepEqual(output.result.killed, ["ps_kill_action"]);
+		assert.deepEqual(router.getPiboSessionIds(), []);
+		assert.equal(router.runRegistry.status("ps_kill_action", run.runId).status, "running");
+		router.runRegistry.cancel("ps_kill_action", run.runId);
+	} finally {
+		await router.disposeAll();
+	}
+});
+
+test("kill_all action disposes the runtime and cancels its yielded runs", async () => {
+	const store = new InMemoryPiboSessionStore();
+	store.create({
+		id: "ps_kill_all_action",
+		piSessionId: "44444444-4444-4444-8444-444444444444",
+		channel: "pibo.test",
+		kind: "chat",
+		profile: "base",
+	});
+	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store });
+
+	try {
+		await router.emit({ type: "execution", piboSessionId: "ps_kill_all_action", action: "status" });
+		const run = router.runRegistry.startToolRun({ controllerPiboSessionId: "ps_kill_all_action", toolName: "bash" });
+		await router.emit({ type: "execution", piboSessionId: "ps_kill_all_action", action: "kill_all" });
+		assert.deepEqual(router.getPiboSessionIds(), []);
+		assert.equal(router.runRegistry.status("ps_kill_all_action", run.runId).status, "cancelled");
+	} finally {
+		await router.disposeAll();
+	}
+});
+
 test("kill cancels child sessions but not yielded runs", async () => {
 	const store = new InMemoryPiboSessionStore();
 	store.create({
@@ -428,6 +551,7 @@ test("kill cancels child sessions but not yielded runs", async () => {
 		const result = await router.killSession("ps_parent");
 		assert.deepEqual(result.killed.sort(), ["ps_child", "ps_parent"]);
 		assert.deepEqual(result.cancelledRuns, []);
+		assert.deepEqual(router.getPiboSessionIds(), []);
 
 		assert.equal(router.runRegistry.status("ps_child", run.runId).status, "running");
 		router.runRegistry.cancel("ps_child", run.runId);
@@ -484,6 +608,7 @@ test("kill_all cancels child sessions and yielded runs recursively", async () =>
 		assert.equal(result.cancelledRuns.length, 2);
 		assert.ok(result.cancelledRuns.includes(childRun.runId));
 		assert.ok(result.cancelledRuns.includes(parentRun.runId));
+		assert.deepEqual(router.getPiboSessionIds(), []);
 
 		assert.equal(router.runRegistry.status("ps_child", childRun.runId).status, "cancelled");
 		assert.equal(router.runRegistry.status("ps_parent", parentRun.runId).status, "cancelled");

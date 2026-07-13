@@ -1,4 +1,4 @@
-import type { PiboOutputEvent, PiboEventSource, PiboJsonObject, PiboSessionStatus } from "./events.js";
+import type { PiboOutputEvent, PiboEventSource, PiboJsonObject, PiboMessageEvent, PiboSessionStatus } from "./events.js";
 import type { PiboSession } from "../sessions/store.js";
 import {
 	BestEffortTelemetryService,
@@ -29,10 +29,13 @@ export type PiboRuntimeTelemetryRecorderOptions = {
 	 * persist per-event rows only for short, explicit debugging sessions.
 	 */
 	providerEventMode?: ProviderEventTelemetryMode;
+	/** Minimum interval between persisted progress snapshots for one active turn. */
+	progressFlushIntervalMs?: number;
 };
 
 type PiProviderEventSummary = {
 	eventType: string;
+	messageEnded: boolean;
 	assistantEventType?: string;
 	parseStatus: TelemetryProviderEventParseStatus;
 	normalizedType?: string;
@@ -56,11 +59,29 @@ type TurnContext = {
 	queueDepth?: number;
 };
 
+type PendingProviderProgress = {
+	lastRawEventAt?: string;
+	lastNormalizedEventAt?: string;
+	upstreamResponseId?: string;
+	rawEventCount: number;
+	normalizedEventCount: number;
+	parseErrorCount: number;
+	unknownEventCount: number;
+	bytesReceived: number;
+	eventTypeCounts: Record<string, number>;
+};
+
 const TERMINAL_TURN_STATUSES = new Set<TelemetryTurnStatus>(["ok", "error", "aborted", "timeout"]);
+const DEFAULT_PROGRESS_FLUSH_INTERVAL_MS = 1_000;
 
 export class PiboRuntimeTelemetryRecorder {
 	private readonly telemetry: BestEffortTelemetryService;
 	private readonly providerEventMode: ProviderEventTelemetryMode;
+	private readonly progressFlushIntervalMs: number;
+	private readonly pendingProviderProgress = new Map<string, PendingProviderProgress>();
+	private readonly providerRequestCache = new Map<string, StoredTelemetryProviderRequest>();
+	private readonly lastProviderFlushAtMs = new Map<string, number>();
+	private readonly lastProgressWriteAtMs = new Map<string, number>();
 
 	constructor(
 		private readonly store?: TelemetryStore,
@@ -69,6 +90,10 @@ export class PiboRuntimeTelemetryRecorder {
 	) {
 		this.telemetry = new BestEffortTelemetryService(store, onError);
 		this.providerEventMode = options.providerEventMode ?? "aggregate";
+		const progressFlushIntervalMs = options.progressFlushIntervalMs;
+		this.progressFlushIntervalMs = typeof progressFlushIntervalMs === "number" && Number.isFinite(progressFlushIntervalMs) && progressFlushIntervalMs >= 0
+			? progressFlushIntervalMs
+			: DEFAULT_PROGRESS_FLUSH_INTERVAL_MS;
 	}
 
 	recordOutput(event: PiboOutputEvent, context: RuntimeTelemetryContext = {}): void {
@@ -89,6 +114,21 @@ export class PiboRuntimeTelemetryRecorder {
 		}
 	}
 
+	recordMessagesInterrupted(messages: readonly PiboMessageEvent[], context: RuntimeTelemetryContext = {}, reason = "message interrupted"): void {
+		if (!this.store) return;
+		for (const message of messages) {
+			if (!message.id) continue;
+			this.recordTurnTerminal(
+				{ piboSessionId: message.piboSessionId, eventId: message.id },
+				context,
+				"aborted",
+				"abort",
+				reason,
+				"runtime_abort",
+			);
+		}
+	}
+
 	private recordOutputUnsafe(event: PiboOutputEvent, context: RuntimeTelemetryContext): void {
 		switch (event.type) {
 			case "message_queued":
@@ -101,15 +141,19 @@ export class PiboRuntimeTelemetryRecorder {
 				this.recordMessageFinished(event, context);
 				return;
 			case "assistant_delta":
-			case "assistant_message":
 				this.recordProviderStreamProgress(event, context, "assistant_text", "assistant text progress");
 				return;
+			case "assistant_message":
+				this.recordProviderStreamProgress(event, context, "assistant_text", "assistant text progress", true);
+				return;
 			case "thinking_started":
+				this.recordProviderStreamProgress(event, context, "reasoning", "reasoning progress", true);
+				return;
 			case "thinking_delta":
 				this.recordProviderStreamProgress(event, context, "reasoning", "reasoning progress");
 				return;
 			case "thinking_finished": {
-				this.recordProviderStreamProgress(event, context, "reasoning", "reasoning finished");
+				this.recordProviderStreamProgress(event, context, "reasoning", "reasoning finished", true);
 				const turn = this.turnContextForEvent(event.piboSessionId, event.eventId, undefined, context) ?? this.activeTurnContext(event.piboSessionId, context);
 				this.finishOpenPhasesByName(turn?.turnId, "reasoning", "ok");
 				return;
@@ -118,15 +162,19 @@ export class PiboRuntimeTelemetryRecorder {
 				this.recordToolArgsPhase(event, context);
 				return;
 			case "tool_execution_started":
+				this.recordToolExecutionPhase(event, context, true);
+				return;
 			case "tool_execution_updated":
-				this.recordToolExecutionPhase(event, context);
+				this.recordToolExecutionPhase(event, context, false);
 				return;
 			case "tool_execution_finished":
 				this.recordToolExecutionFinished(event, context);
 				return;
-			case "session_error":
-				this.recordTurnTerminal(event, context, "error", "error", event.error, event.errorDetails?.category ?? event.errorDetails?.errorClass);
+			case "session_error": {
+				const status = terminalTurnStatusForSessionError(event);
+				this.recordTurnTerminal(event, context, status, status === "aborted" ? "abort" : status === "timeout" ? "timeout" : "error", event.error, event.errorDetails?.category ?? event.errorDetails?.errorClass);
 				return;
+			}
 			case "execution_result":
 				this.recordExecutionResult(event, context);
 				return;
@@ -139,40 +187,49 @@ export class PiboRuntimeTelemetryRecorder {
 		const summary = providerEventSummaryForPiEvent(event);
 		if (!summary) return;
 		const turn = context.activeEventId
-			? this.turnContextForEvent(piboSessionId, context.activeEventId, undefined, context)
+			? this.progressTurnContextForEvent(piboSessionId, context.activeEventId, context)
 			: this.activeTurnContext(piboSessionId, context);
 		if (!turn) return;
-		const providerRequest = this.activeProviderRequestForTurn(turn.turnId);
-		if (!providerRequest) return;
 		const now = new Date().toISOString();
-		if (summary.upstreamResponseId && summary.upstreamResponseId !== providerRequest.upstreamResponseId) {
-			this.upsertProviderRequestFromExisting(providerRequest, { upstreamResponseId: summary.upstreamResponseId });
+		if (summary.assistantEventType === "start") {
+			this.flushProviderProgress(turn.turnId, now, { force: true, includeLatest: true });
+			this.clearProviderProgress(turn.turnId);
 		}
-		const providerEventInput = {
-			providerRequestId: providerRequest.providerRequestId,
-			piboSessionId: turn.piboSessionId,
-			turnId: turn.turnId,
-			phaseId: providerRequest.phaseId,
-			receivedAt: now,
-			eventType: summary.eventType,
-			byteSize: summary.byteSize,
-			parseStatus: summary.parseStatus,
-			normalizedType: summary.normalizedType,
-			normalizedEventDelta: 0,
-			eventId: turn.eventId,
-			itemId: summary.itemId,
-			toolCallId: summary.toolCallId,
-			safeFields: summary.safeFields,
-		};
+		const providerRequest = this.providerEventMode === "detailed"
+			? this.providerRequestForTurn(turn.turnId, { includeLatest: summary.messageEnded, refresh: summary.messageEnded })
+			: this.accumulateProviderEvent(turn, summary, now);
+		if (!providerRequest) {
+			if (summary.messageEnded) this.clearProviderProgress(turn.turnId);
+			return;
+		}
 		if (this.providerEventMode === "detailed") {
-			this.telemetry.appendProviderEventSummary(providerEventInput);
-		} else {
-			this.telemetry.recordProviderEventSummary(providerEventInput);
+			this.telemetry.appendProviderEventSummary({
+				providerRequestId: providerRequest.providerRequestId,
+				piboSessionId: turn.piboSessionId,
+				turnId: turn.turnId,
+				phaseId: providerRequest.phaseId,
+				receivedAt: now,
+				eventType: summary.eventType,
+				byteSize: summary.byteSize,
+				parseStatus: summary.parseStatus,
+				normalizedType: summary.normalizedType,
+				normalizedEventDelta: 0,
+				eventId: turn.eventId,
+				itemId: summary.itemId,
+				toolCallId: summary.toolCallId,
+				safeFields: summary.safeFields,
+			});
 		}
 		if (summary.toolCallId && summary.assistantEventType?.startsWith("toolcall_")) {
-			this.recordPiToolCallProgress(turn, providerRequest.providerRequestId, summary, now);
+			const forceToolProgress = summary.assistantEventType !== "toolcall_delta";
+			if (this.shouldPersistProgress(`${turn.turnId}:tool_args:${summary.toolCallId}`, forceToolProgress)) {
+				this.recordPiToolCallProgress(turn, providerRequest.providerRequestId, summary, now);
+			}
 		}
-		this.startOrProgressPhase(turn, "provider_stream", now, "provider event metadata", { providerRequestId: providerRequest.providerRequestId });
+		if (!summary.messageEnded && !isTerminalProviderStatus(providerRequest.status) && !summary.normalizedType && this.shouldPersistProgress(`${turn.turnId}:provider_stream:${providerRequest.providerRequestId}`)) {
+			this.startOrProgressPhase(turn, "provider_stream", now, "provider event metadata", { providerRequestId: providerRequest.providerRequestId });
+		}
+		if (summary.messageEnded) this.clearProviderProgress(turn.turnId);
 	}
 
 	private recordMessageQueued(
@@ -265,12 +322,9 @@ export class PiboRuntimeTelemetryRecorder {
 		event: Extract<PiboOutputEvent, { type: "execution_result" }>,
 		context: RuntimeTelemetryContext,
 	): void {
-		if (event.action === "abort" || event.action === "dispose" || event.action === "kill_all") {
+		if (event.action === "abort" || event.action === "dispose" || event.action === "kill" || event.action === "kill_all") {
 			this.recordTurnTerminal(event, context, "aborted", "abort", `${event.action} requested`);
 			return;
-		}
-		if (event.action === "clear_queue") {
-			this.recordTurnProgress(event, context, "queued", "clear_queue requested");
 		}
 	}
 
@@ -279,14 +333,26 @@ export class PiboRuntimeTelemetryRecorder {
 		context: RuntimeTelemetryContext,
 		phaseName: TelemetryPhaseName,
 		summary: string,
+		force = false,
 	): void {
-		const turn = this.turnContextForEvent(event.piboSessionId, event.eventId, undefined, context) ?? this.activeTurnContext(event.piboSessionId, context);
+		const turn = event.eventId
+			? this.progressTurnContextForEvent(event.piboSessionId, event.eventId, context)
+			: this.activeTurnContext(event.piboSessionId, context);
 		if (!turn) return;
 		const now = new Date().toISOString();
-		const providerRequest = this.activeProviderRequestForTurn(turn.turnId);
+		const providerRequest = this.accumulateNormalizedProviderProgress(turn, now, force);
+		const progressKey = `${turn.turnId}:${phaseName}:${providerRequest?.providerRequestId ?? "none"}`;
+		if (!this.shouldPersistProgress(progressKey, force)) return;
+		const storedTurn = this.store?.getTurn(turn.turnId);
+		if (storedTurn && TERMINAL_TURN_STATUSES.has(storedTurn.status)) {
+			this.clearTurnProgress(turn.turnId);
+			return;
+		}
 		this.closeOpenPhasesByName(turn.turnId, "message_started", "ok", now);
-		this.progressProviderRequest(providerRequest, now);
-		this.startOrProgressPhase(turn, "provider_stream", now, "normalized provider stream progress", { providerRequestId: providerRequest?.providerRequestId });
+		const providerStreamKey = `${turn.turnId}:provider_stream:${providerRequest?.providerRequestId ?? "none"}`;
+		if ((!providerRequest || !isTerminalProviderStatus(providerRequest.status)) && this.shouldPersistProgress(providerStreamKey, force)) {
+			this.startOrProgressPhase(turn, "provider_stream", now, "normalized provider stream progress", { providerRequestId: providerRequest?.providerRequestId });
+		}
 		this.startOrProgressPhase(turn, phaseName, now, summary, { updateTurn: true, providerRequestId: providerRequest?.providerRequestId });
 	}
 
@@ -300,8 +366,8 @@ export class PiboRuntimeTelemetryRecorder {
 		this.closeOpenPhasesByName(turn.turnId, "message_started", "ok", now);
 		this.closeOpenPhasesByName(turn.turnId, "assistant_text", "ok", now);
 		this.closeOpenPhasesByName(turn.turnId, "reasoning", "ok", now);
-		const providerRequest = this.activeProviderRequestForTurn(turn.turnId) ?? this.latestProviderRequestForTurn(turn.turnId);
-		this.progressProviderRequest(providerRequest && !isTerminalProviderStatus(providerRequest.status) ? providerRequest : undefined, now);
+		const providerRequest = this.accumulateNormalizedProviderProgress(turn, now, true)
+			?? this.providerRequestForTurn(turn.turnId, { includeLatest: true });
 		this.upsertToolCallArgs(turn, {
 			toolCallId: event.toolCallId,
 			toolName: event.toolName,
@@ -324,9 +390,18 @@ export class PiboRuntimeTelemetryRecorder {
 	private recordToolExecutionPhase(
 		event: Extract<PiboOutputEvent, { type: "tool_execution_started" | "tool_execution_updated" }>,
 		context: RuntimeTelemetryContext,
+		force: boolean,
 	): void {
-		const turn = this.turnContextForEvent(event.piboSessionId, event.eventId, undefined, context) ?? this.activeTurnContext(event.piboSessionId, context);
+		const turn = event.eventId
+			? this.progressTurnContextForEvent(event.piboSessionId, event.eventId, context)
+			: this.activeTurnContext(event.piboSessionId, context);
 		if (!turn) return;
+		if (!this.shouldPersistProgress(`${turn.turnId}:tool_execution:${event.toolCallId}`, force)) return;
+		const storedTurn = this.store?.getTurn(turn.turnId);
+		if (storedTurn && TERMINAL_TURN_STATUSES.has(storedTurn.status)) {
+			this.clearTurnProgress(turn.turnId);
+			return;
+		}
 		const now = new Date().toISOString();
 		const existing = this.store?.getToolCall(event.toolCallId);
 		const args = toolArgsMetadata(event.args, true);
@@ -449,17 +524,6 @@ export class PiboRuntimeTelemetryRecorder {
 		});
 	}
 
-	private recordTurnProgress(
-		event: Pick<PiboOutputEvent, "piboSessionId"> & { eventId?: string },
-		context: RuntimeTelemetryContext,
-		phaseName: TelemetryPhaseName,
-		summary: string,
-	): void {
-		const turn = this.turnContextForEvent(event.piboSessionId, event.eventId, undefined, context) ?? this.activeTurnContext(event.piboSessionId, context);
-		if (!turn) return;
-		this.startOrProgressPhase(turn, phaseName, new Date().toISOString(), summary, { updateTurn: true });
-	}
-
 	private recordTurnTerminal(
 		event: Pick<PiboOutputEvent, "piboSessionId"> & { eventId?: string },
 		context: RuntimeTelemetryContext,
@@ -468,9 +532,15 @@ export class PiboRuntimeTelemetryRecorder {
 		summary: string,
 		errorCategory?: string,
 	): void {
-		const turn = this.turnContextForEvent(event.piboSessionId, event.eventId, undefined, context) ?? this.activeTurnContext(event.piboSessionId, context);
+		const turn = this.turnContextForEvent(event.piboSessionId, event.eventId, undefined, context, { includeTerminal: true }) ?? this.activeTurnContext(event.piboSessionId, context);
 		if (!turn) return;
+		const existingTurn = this.store?.getTurn(turn.turnId);
+		if (existingTurn && TERMINAL_TURN_STATUSES.has(existingTurn.status)) {
+			this.clearTurnProgress(turn.turnId);
+			return;
+		}
 		const now = new Date().toISOString();
+		this.flushProviderProgress(turn.turnId, now, { force: true, includeLatest: true });
 		this.finishOpenPhases(turn.turnId, terminalPhaseStatus(status), now);
 		this.finishActiveProviderRequests(turn.turnId, providerStatusForTurnStatus(status), now, summary, errorCategory);
 		this.finishActiveToolCalls(turn.turnId, status, now, summary);
@@ -501,6 +571,7 @@ export class PiboRuntimeTelemetryRecorder {
 			queueDepth: turn.queueDepth,
 			summary: safeSummary(summary),
 		});
+		this.clearTurnProgress(turn.turnId);
 	}
 
 	private startOrProgressPhase(
@@ -510,6 +581,8 @@ export class PiboRuntimeTelemetryRecorder {
 		summary: string,
 		options: { providerRequestId?: string; toolCallId?: string; updateTurn?: boolean } = {},
 	) {
+		const storedTurn = this.store?.getTurn(turn.turnId);
+		if (storedTurn && TERMINAL_TURN_STATUSES.has(storedTurn.status)) return undefined;
 		const existing = this.openPhaseByName(turn.turnId, phaseName);
 		const phase = this.telemetry.upsertPhase({
 			phaseId: existing?.phaseId ?? this.nextPhaseId(turn.turnId, phaseName),
@@ -544,22 +617,20 @@ export class PiboRuntimeTelemetryRecorder {
 	}
 
 	private openPhaseByName(turnId: string, phaseName: TelemetryPhaseName) {
-		const timeline = this.store?.getTurnTimeline(turnId, { limit: 100 });
-		return timeline?.phases.find((phase) => phase.name === phaseName && phase.status === "open");
+		return this.store?.getOpenPhaseForTurn(turnId, phaseName);
 	}
 
 	private nextPhaseId(turnId: string, phaseName: TelemetryPhaseName): string {
 		const base = phaseId(turnId, phaseName);
-		const phases = this.store?.getTurnTimeline(turnId, { limit: 100 })?.phases.filter((phase) => phase.name === phaseName) ?? [];
-		if (phases.length === 0) return base;
-		return `${base}:${phases.length + 1}`;
+		const count = this.store?.countPhasesForTurn(turnId, phaseName) ?? 0;
+		if (count === 0) return base;
+		return `${base}:${count + 1}`;
 	}
 
 	private finishOpenPhasesByName(turnId: string | undefined, phaseName: TelemetryPhaseName, status: TelemetryPhaseStatus, now = new Date().toISOString(), summary?: string): void {
 		if (!turnId) return;
-		const timeline = this.store?.getTurnTimeline(turnId, { limit: 100 });
-		for (const phase of timeline?.phases ?? []) {
-			if (phase.name !== phaseName || phase.status !== "open") continue;
+		for (const phase of this.store?.listOpenPhasesForTurn(turnId) ?? []) {
+			if (phase.name !== phaseName) continue;
 			this.telemetry.finishPhase(phase.phaseId, { status, endedAt: now, lastProgressAt: now, summary });
 		}
 	}
@@ -569,30 +640,116 @@ export class PiboRuntimeTelemetryRecorder {
 	}
 
 	private finishOpenPhases(turnId: string, status: TelemetryPhaseStatus, now: string): void {
-		const timeline = this.store?.getTurnTimeline(turnId, { limit: 100 });
-		for (const phase of timeline?.phases ?? []) {
-			if (phase.status !== "open") continue;
+		for (const phase of this.store?.listOpenPhasesForTurn(turnId) ?? []) {
 			this.telemetry.finishPhase(phase.phaseId, { status, endedAt: now, lastProgressAt: now });
 		}
 	}
 
 	private activeProviderRequestForTurn(turnId: string): StoredTelemetryProviderRequest | undefined {
-		const timeline = this.store?.getTurnTimeline(turnId, { limit: 100 });
-		return [...(timeline?.providerRequests ?? [])].reverse().find((request) => !isTerminalProviderStatus(request.status));
+		return this.store?.getActiveProviderRequestForTurn(turnId);
 	}
 
 	private latestProviderRequestForTurn(turnId: string): StoredTelemetryProviderRequest | undefined {
-		const timeline = this.store?.getTurnTimeline(turnId, { limit: 100 });
-		return timeline?.providerRequests.at(-1);
+		return this.store?.getLatestProviderRequestForTurn(turnId);
 	}
 
-	private progressProviderRequest(request: StoredTelemetryProviderRequest | undefined, now: string): void {
-		if (!request) return;
-		this.upsertProviderRequestFromExisting(request, {
-			status: "streaming",
-			lastNormalizedEventAt: now,
-			normalizedEventCount: request.normalizedEventCount + 1,
+	private providerRequestForTurn(
+		turnId: string,
+		options: { includeLatest?: boolean; refresh?: boolean } = {},
+	): StoredTelemetryProviderRequest | undefined {
+		const cached = this.providerRequestCache.get(turnId);
+		if (!options.refresh && cached && (options.includeLatest || !isTerminalProviderStatus(cached.status))) return cached;
+		const request = this.activeProviderRequestForTurn(turnId)
+			?? (options.includeLatest ? this.latestProviderRequestForTurn(turnId) : undefined);
+		if (request) this.providerRequestCache.set(turnId, request);
+		else this.providerRequestCache.delete(turnId);
+		return request;
+	}
+
+	private accumulateProviderEvent(turn: TurnContext, summary: PiProviderEventSummary, now: string): StoredTelemetryProviderRequest | undefined {
+		const pending = this.pendingProviderProgress.get(turn.turnId) ?? emptyPendingProviderProgress();
+		pending.lastRawEventAt = now;
+		pending.upstreamResponseId = summary.upstreamResponseId ?? pending.upstreamResponseId;
+		pending.rawEventCount += 1;
+		pending.parseErrorCount += summary.parseStatus === "invalid_json" ? 1 : 0;
+		pending.unknownEventCount += summary.parseStatus === "unknown_type" ? 1 : 0;
+		pending.bytesReceived += summary.byteSize;
+		pending.eventTypeCounts[summary.eventType] = (pending.eventTypeCounts[summary.eventType] ?? 0) + 1;
+		this.pendingProviderProgress.set(turn.turnId, pending);
+		return this.flushProviderProgress(turn.turnId, now, {
+			force: summary.messageEnded,
+			includeLatest: summary.messageEnded,
+			refresh: summary.messageEnded,
 		});
+	}
+
+	private accumulateNormalizedProviderProgress(turn: TurnContext, now: string, force = false): StoredTelemetryProviderRequest | undefined {
+		const request = this.providerRequestForTurn(turn.turnId, { includeLatest: force });
+		if (!request) return undefined;
+		const pending = this.pendingProviderProgress.get(turn.turnId) ?? emptyPendingProviderProgress();
+		pending.lastNormalizedEventAt = now;
+		pending.normalizedEventCount += 1;
+		this.pendingProviderProgress.set(turn.turnId, pending);
+		const flushNow = force || request.status === "started" || request.status === "headers";
+		return this.flushProviderProgress(turn.turnId, now, { force: flushNow, includeLatest: force }) ?? request;
+	}
+
+	private flushProviderProgress(
+		turnId: string,
+		now: string,
+		options: { force?: boolean; includeLatest?: boolean; refresh?: boolean } = {},
+	): StoredTelemetryProviderRequest | undefined {
+		const pending = this.pendingProviderProgress.get(turnId);
+		const request = this.providerRequestForTurn(turnId, options);
+		if (!pending) return request;
+		const nowMs = Date.now();
+		const lastFlushAtMs = this.lastProviderFlushAtMs.get(turnId);
+		if (!options.force && lastFlushAtMs !== undefined && nowMs - lastFlushAtMs < this.progressFlushIntervalMs) return request;
+		if (!request) {
+			const turn = this.store?.getTurn(turnId);
+			if (turn && TERMINAL_TURN_STATUSES.has(turn.status)) this.clearTurnProgress(turnId);
+			return undefined;
+		}
+		const updated = this.telemetry.recordProviderProgress({
+			providerRequestId: request.providerRequestId,
+			status: pending.normalizedEventCount > 0 ? "streaming" : undefined,
+			lastRawEventAt: pending.lastRawEventAt,
+			lastNormalizedEventAt: pending.lastNormalizedEventAt,
+			upstreamResponseId: pending.upstreamResponseId,
+			rawEventCount: pending.rawEventCount,
+			normalizedEventCount: pending.normalizedEventCount,
+			parseErrorCount: pending.parseErrorCount,
+			unknownEventCount: pending.unknownEventCount,
+			bytesReceived: pending.bytesReceived,
+			eventTypeCounts: pending.eventTypeCounts,
+			updatedAt: now,
+		});
+		this.pendingProviderProgress.delete(turnId);
+		this.lastProviderFlushAtMs.set(turnId, nowMs);
+		if (updated) this.providerRequestCache.set(turnId, updated);
+		return updated ?? request;
+	}
+
+	private shouldPersistProgress(key: string, force = false): boolean {
+		const nowMs = Date.now();
+		const lastWriteAtMs = this.lastProgressWriteAtMs.get(key);
+		if (!force && lastWriteAtMs !== undefined && nowMs - lastWriteAtMs < this.progressFlushIntervalMs) return false;
+		this.lastProgressWriteAtMs.set(key, nowMs);
+		return true;
+	}
+
+	private clearProviderProgress(turnId: string): void {
+		this.pendingProviderProgress.delete(turnId);
+		this.providerRequestCache.delete(turnId);
+		this.lastProviderFlushAtMs.delete(turnId);
+	}
+
+	private clearTurnProgress(turnId: string): void {
+		this.clearProviderProgress(turnId);
+		const prefix = `${turnId}:`;
+		for (const key of this.lastProgressWriteAtMs.keys()) {
+			if (key.startsWith(prefix)) this.lastProgressWriteAtMs.delete(key);
+		}
 	}
 
 	private finishActiveProviderRequests(
@@ -602,9 +759,7 @@ export class PiboRuntimeTelemetryRecorder {
 		summary: string,
 		errorCategory?: string,
 	): void {
-		const timeline = this.store?.getTurnTimeline(turnId, { limit: 100 });
-		for (const request of timeline?.providerRequests ?? []) {
-			if (isTerminalProviderStatus(request.status)) continue;
+		for (const request of this.store?.listActiveProviderRequestsForTurn(turnId) ?? []) {
 			this.upsertProviderRequestFromExisting(request, {
 				status,
 				completedAt: now,
@@ -616,9 +771,7 @@ export class PiboRuntimeTelemetryRecorder {
 
 	private finishActiveToolCalls(turnId: string, status: TelemetryTurnStatus, now: string, summary: string): void {
 		if (status === "ok") return;
-		const timeline = this.store?.getTurnTimeline(turnId, { limit: 100 });
-		for (const toolCall of timeline?.toolCalls ?? []) {
-			if (isTerminalToolCallStatus(toolCall.status)) continue;
+		for (const toolCall of this.store?.listActiveToolCallsForTurn(turnId) ?? []) {
 			const terminalStatus = terminalToolCallStatus(status);
 			this.telemetry.upsertToolCall({
 				toolCallId: toolCall.toolCallId,
@@ -684,22 +837,41 @@ export class PiboRuntimeTelemetryRecorder {
 		});
 	}
 
+	private progressTurnContextForEvent(
+		piboSessionId: string,
+		eventId: string,
+		context: RuntimeTelemetryContext,
+	): TurnContext {
+		return {
+			turnId: turnIdForEvent(eventId),
+			eventId,
+			piboSessionId,
+			rootSessionId: rootSessionIdFor(context.session, piboSessionId),
+			roomId: roomIdFor(context.session),
+			source: "system",
+			queueDepth: context.status?.queuedMessages,
+		};
+	}
+
 	private turnContextForEvent(
 		piboSessionId: string,
 		eventId: string | undefined,
 		source: PiboEventSource | undefined,
 		context: RuntimeTelemetryContext,
+		options: { includeTerminal?: boolean } = {},
 	): TurnContext | undefined {
 		if (!eventId) return undefined;
-		const rootSessionId = rootSessionIdFor(context.session, piboSessionId);
+		const turnId = turnIdForEvent(eventId);
+		const existing = this.store?.getTurn(turnId);
+		if (!options.includeTerminal && existing && TERMINAL_TURN_STATUSES.has(existing.status)) return undefined;
 		return {
-			turnId: turnIdForEvent(eventId),
+			turnId,
 			eventId,
 			piboSessionId,
-			rootSessionId,
-			roomId: roomIdFor(context.session),
-			source: telemetrySource(source),
-			queueDepth: context.status?.queuedMessages,
+			rootSessionId: existing?.rootSessionId ?? rootSessionIdFor(context.session, piboSessionId),
+			roomId: existing?.roomId ?? roomIdFor(context.session),
+			source: existing?.source ?? telemetrySource(source),
+			queueDepth: context.status?.queuedMessages ?? existing?.queueDepth,
 		};
 	}
 
@@ -717,6 +889,17 @@ export class PiboRuntimeTelemetryRecorder {
 			queueDepth: context.status?.queuedMessages ?? active.queueDepth,
 		};
 	}
+}
+
+function emptyPendingProviderProgress(): PendingProviderProgress {
+	return {
+		rawEventCount: 0,
+		normalizedEventCount: 0,
+		parseErrorCount: 0,
+		unknownEventCount: 0,
+		bytesReceived: 0,
+		eventTypeCounts: {},
+	};
 }
 
 function providerEventSummaryForPiEvent(event: unknown): PiProviderEventSummary | undefined {
@@ -761,6 +944,7 @@ function providerEventSummaryForPiEvent(event: unknown): PiProviderEventSummary 
 	const byteSize = safeJsonByteSize(safeFields);
 	return {
 		eventType,
+		messageEnded: candidate.type === "message_end",
 		assistantEventType: assistantType,
 		parseStatus,
 		normalizedType: normalizedTypeForPiAssistantEvent(assistantType),
@@ -835,8 +1019,10 @@ function toolStatusForPiAssistantEvent(type: string | undefined, argsBytes: numb
 	return existingStatus ?? "args_started";
 }
 
-function isTerminalToolCallStatus(status: TelemetryToolCallStatus): boolean {
-	return status === "ok" || status === "error" || status === "aborted" || status === "timeout";
+function terminalTurnStatusForSessionError(event: Extract<PiboOutputEvent, { type: "session_error" }>): Extract<TelemetryTurnStatus, "error" | "aborted" | "timeout"> {
+	if (event.errorDetails?.category === "runtime_abort" || event.errorDetails?.errorClass === "runtime_abort") return "aborted";
+	if (event.errorDetails?.code === "timeout") return "timeout";
+	return "error";
 }
 
 function terminalToolCallStatus(status: TelemetryTurnStatus): Extract<TelemetryToolCallStatus, "error" | "aborted" | "timeout"> {

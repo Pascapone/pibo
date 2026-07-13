@@ -9,6 +9,7 @@ import {
 	type TelemetryStore,
 } from "../data/telemetry.js";
 import type { ModelProfile } from "./profiles.js";
+import { normalizeSessionErrorDetails } from "./session-errors.js";
 
 type ProviderTelemetryModel = ModelProfile & { api?: string };
 
@@ -30,6 +31,19 @@ type ProviderRequestStartOptions = {
 	model?: ProviderTelemetryModel;
 };
 
+type ProviderMessageEndOptions = {
+	at?: string;
+};
+
+type ProviderAssistantMessage = {
+	role?: unknown;
+	stopReason?: unknown;
+	errorMessage?: unknown;
+	api?: unknown;
+	provider?: unknown;
+	model?: unknown;
+};
+
 export class PiboProviderTelemetryRecorder {
 	private readonly telemetry: BestEffortTelemetryService;
 	private activeProviderRequestId?: string;
@@ -44,6 +58,9 @@ export class PiboProviderTelemetryRecorder {
 			const turn = this.activeTurn();
 			if (!turn) return undefined;
 			const now = options.at ?? new Date().toISOString();
+			if (this.activeProviderRequest()) {
+				this.finishActiveProviderRequest("aborted", now, "provider request superseded", undefined, "provider_superseded");
+			}
 			const model = modelInfo(options.model, this.options.model, payload);
 			const providerRequestId = `pr_${randomUUID()}`;
 			const phaseId = this.nextPhaseId(turn.turnId, "provider_request");
@@ -109,7 +126,7 @@ export class PiboProviderTelemetryRecorder {
 				lastProgressAt: now,
 				summary: "provider response received",
 			});
-			const streamPhaseId = `${request.turnId}:provider_stream:${request.providerRequestId}`;
+			const streamPhaseId = providerStreamPhaseId(request);
 			this.telemetry.upsertPhase({
 				phaseId: streamPhaseId,
 				turnId: request.turnId,
@@ -148,6 +165,61 @@ export class PiboProviderTelemetryRecorder {
 		}
 	}
 
+	// The assistant message boundary ends the provider stream even when the wider
+	// Pibo turn continues with a long-running tool or another provider request.
+	recordMessageEnd(message: unknown, options: ProviderMessageEndOptions = {}): StoredTelemetryProviderRequest | undefined {
+		if (!this.options.store || !isAssistantMessage(message)) return undefined;
+		const status = providerStatusForMessage(message);
+		const summary = providerSummaryForStatus(status);
+		const errorMessage = safeMessageError(message);
+		const errorDetails = status === "error"
+			? normalizeSessionErrorDetails(errorMessage ?? "Provider request failed.", {
+				api: optionalString(message.api),
+				provider: optionalString(message.provider),
+				model: optionalString(message.model),
+			})
+			: undefined;
+		return this.finishActiveProviderRequest(status, options.at ?? new Date().toISOString(), summary, errorMessage, errorDetails?.category ?? errorDetails?.errorClass);
+	}
+
+	recordShutdown(reason: string, at = new Date().toISOString()): StoredTelemetryProviderRequest | undefined {
+		return this.finishActiveProviderRequest("aborted", at, reason, undefined, "runtime_abort");
+	}
+
+	private finishActiveProviderRequest(
+		status: Extract<TelemetryProviderRequestStatus, "completed" | "error" | "aborted">,
+		now: string,
+		summary: string,
+		errorMessage?: string,
+		errorCategory?: string,
+	): StoredTelemetryProviderRequest | undefined {
+		if (!this.options.store) return undefined;
+		try {
+			const request = this.activeProviderRequest();
+			if (!request) return undefined;
+			const phaseStatus = status === "completed" ? "ok" : status;
+			const requestPhaseId = request.phaseId ?? `${request.turnId}:provider_request`;
+			if (this.options.store.getPhase(requestPhaseId)?.status === "open") {
+				this.telemetry.finishPhase(requestPhaseId, { status: phaseStatus, endedAt: now, lastProgressAt: now, summary });
+			}
+			const streamPhaseId = providerStreamPhaseId(request);
+			if (this.options.store.getPhase(streamPhaseId)?.status === "open") {
+				this.telemetry.finishPhase(streamPhaseId, { status: phaseStatus, endedAt: now, lastProgressAt: now, summary });
+			}
+			const updated = this.updateProviderRequest(request, {
+				status,
+				completedAt: now,
+				errorCategory: status === "error" ? errorCategory ?? "provider_error" : status === "aborted" ? errorCategory ?? "runtime_abort" : undefined,
+				errorMessage,
+			});
+			this.activeProviderRequestId = undefined;
+			return updated;
+		} catch (error) {
+			this.options.onError?.(error);
+			return undefined;
+		}
+	}
+
 	private activeTurn(): StoredTelemetryTurn | undefined {
 		const detail = this.options.store?.getSessionTelemetry(this.options.session.id, { limit: 10 });
 		const active = detail?.activeTurn;
@@ -162,18 +234,17 @@ export class PiboProviderTelemetryRecorder {
 		}
 		const turn = this.activeTurn();
 		if (!turn) return undefined;
-		const timeline = this.options.store?.getTurnTimeline(turn.turnId, { limit: 100 });
-		return [...(timeline?.providerRequests ?? [])].reverse().find((request) => !isTerminalProviderStatus(request.status));
+		return this.options.store?.getActiveProviderRequestForTurn(turn.turnId);
 	}
 
 	private nextPhaseId(turnId: string, phaseName: "provider_request"): string {
-		const count = this.options.store?.getTurnTimeline(turnId, { limit: 100 })?.phases.filter((phase) => phase.name === phaseName).length ?? 0;
+		const count = this.options.store?.countPhasesForTurn(turnId, phaseName) ?? 0;
 		return count === 0 ? `${turnId}:${phaseName}` : `${turnId}:${phaseName}:${count + 1}`;
 	}
 
 	private updateProviderRequest(
 		existing: StoredTelemetryProviderRequest,
-		input: Partial<Pick<StoredTelemetryProviderRequest, "status" | "responseHeadersAt" | "firstByteAt" | "httpStatus" | "phaseId">>,
+		input: Partial<Pick<StoredTelemetryProviderRequest, "status" | "responseHeadersAt" | "firstByteAt" | "httpStatus" | "phaseId" | "completedAt" | "errorCategory" | "errorMessage">>,
 	): StoredTelemetryProviderRequest | undefined {
 		return this.telemetry.upsertProviderRequest({
 			providerRequestId: existing.providerRequestId,
@@ -191,12 +262,18 @@ export class PiboProviderTelemetryRecorder {
 			responseHeadersAt: input.responseHeadersAt,
 			firstByteAt: input.firstByteAt,
 			httpStatus: input.httpStatus,
+			completedAt: input.completedAt,
 			rawEventCount: existing.rawEventCount,
 			normalizedEventCount: existing.normalizedEventCount,
 			parseErrorCount: existing.parseErrorCount,
 			unknownEventCount: existing.unknownEventCount,
 			bytesReceived: existing.bytesReceived,
 			eventTypeCounts: existing.eventTypeCounts,
+			eventStreamId: existing.eventStreamId,
+			eventId: existing.eventId,
+			payloadRef: existing.payloadRef,
+			errorCategory: input.errorCategory,
+			errorMessage: input.errorMessage,
 			captureMode: existing.captureMode,
 			retentionClass: existing.retentionClass,
 		});
@@ -212,11 +289,47 @@ export function createPiboProviderTelemetryExtension(options: ProviderTelemetryO
 		pi.on("after_provider_response", (event) => {
 			recorder.recordResponse({ status: event.status, headers: event.headers });
 		});
+		pi.on("message_end", (event) => {
+			recorder.recordMessageEnd(event.message);
+		});
+		pi.on("session_shutdown", (event) => {
+			recorder.recordShutdown(`provider session shutdown: ${event.reason}`);
+		});
 	};
 }
 
 export function isTerminalProviderStatus(status: TelemetryProviderRequestStatus): boolean {
 	return status === "completed" || status === "error" || status === "aborted" || status === "timeout";
+}
+
+function isAssistantMessage(message: unknown): message is ProviderAssistantMessage {
+	return Boolean(message && typeof message === "object" && (message as ProviderAssistantMessage).role === "assistant");
+}
+
+function providerStatusForMessage(message: ProviderAssistantMessage): Extract<TelemetryProviderRequestStatus, "completed" | "error" | "aborted"> {
+	if (message.stopReason === "error") return "error";
+	if (message.stopReason === "aborted") return "aborted";
+	return "completed";
+}
+
+function providerSummaryForStatus(status: Extract<TelemetryProviderRequestStatus, "completed" | "error" | "aborted">): string {
+	if (status === "error") return "provider stream failed";
+	if (status === "aborted") return "provider stream aborted";
+	return "provider stream completed";
+}
+
+function providerStreamPhaseId(request: Pick<StoredTelemetryProviderRequest, "turnId" | "providerRequestId">): string {
+	return `${request.turnId}:provider_stream:${request.providerRequestId}`;
+}
+
+function safeMessageError(message: ProviderAssistantMessage): string | undefined {
+	return typeof message.errorMessage === "string" && message.errorMessage.trim().length > 0
+		? message.errorMessage.replace(/\s+/g, " ").trim().slice(0, 512)
+		: undefined;
+}
+
+function optionalString(value: unknown): string | undefined {
+	return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
 function modelInfo(primary: ProviderTelemetryModel | undefined, fallback: ProviderTelemetryModel | undefined, payload: unknown): Required<ProviderTelemetryModel> {

@@ -69,9 +69,12 @@ export type PiboSessionRouterOptions = Omit<
 	modelDefaults?: PiboModelDefaults | (() => PiboModelDefaults);
 	/** Optional pibo.sqlite telemetry store for best-effort runtime queue/turn lifecycle capture. */
 	telemetryStore?: TelemetryStore;
+	/** Dispose inactive routed runtimes after this interval while preserving persisted Pibo/Pi Sessions. */
+	routedSessionIdleTimeoutMs?: number | false;
 };
 
 const DEFAULT_SUBAGENT_REPLY_TIMEOUT_MS = 10 * 60 * 1000;
+const DEFAULT_ROUTED_SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 
 export const RALPH_RUNTIME_RETRY_DEFAULTS = {
 	enabled: true,
@@ -208,6 +211,8 @@ export class PiboSessionRouter {
 	private readonly signalRegistry: PiboSignalRegistry;
 	private readonly runtimeRegistry: RuntimeSessionRegistry;
 	private readonly scheduledRunReminders = new Map<string, boolean>();
+	private readonly idleSessionTimers = new Map<string, ReturnType<typeof setTimeout>>();
+	private readonly routedSessionIdleTimeoutMs: number | false;
 	private readonly baseProfile: InitialSessionContext;
 	private readonly pluginRegistry: PiboPluginRegistry;
 	private readonly sessionStore: PiboSessionStore;
@@ -222,6 +227,12 @@ export class PiboSessionRouter {
 		this.telemetryRecorder = this.telemetryStore
 			? new PiboRuntimeTelemetryRecorder(this.telemetryStore, undefined, { providerEventMode: providerEventTelemetryModeFromEnv() })
 			: undefined;
+		const idleTimeoutMs = options.routedSessionIdleTimeoutMs;
+		this.routedSessionIdleTimeoutMs = idleTimeoutMs === false
+			? false
+			: typeof idleTimeoutMs === "number" && Number.isFinite(idleTimeoutMs) && idleTimeoutMs > 0
+				? idleTimeoutMs
+				: DEFAULT_ROUTED_SESSION_IDLE_TIMEOUT_MS;
 		const defaultProfileName = selectDefaultPiboProfileName(this.pluginRegistry);
 		this.baseProfile = options.profile ?? createPiboProfileFromRegistryOrDefault(this.pluginRegistry, defaultProfileName);
 		this.reliabilityStore = options.reliabilityStore ?? (options.persistSession === false ? undefined : createDefaultPiboReliabilityStore());
@@ -243,21 +254,27 @@ export class PiboSessionRouter {
 
 	async emit(event: PiboInputEvent): Promise<PiboOutputEvent> {
 		const session = await this.getOrCreateSession(event.piboSessionId);
+		this.clearIdleSessionTimer(event.piboSessionId);
+		try {
+			if (event.type === "message") {
+				return session.enqueueMessage(event);
+			}
 
-		if (event.type === "message") {
-			return session.enqueueMessage(event);
+			const output = await session.executeAction(event);
+			if (event.action === "abort") {
+				this.signalRegistry.project({ type: "session_interrupted", piboSessionId: event.piboSessionId, reason: "abort action" });
+			}
+			if (event.action === "dispose") {
+				await this.disposeSessionSubtree(event.piboSessionId, "dispose action", { cancelRuns: true });
+			} else if (event.action === "kill" || event.action === "kill_all") {
+				await this.disposeSessionSubtree(event.piboSessionId, `${event.action} action`, { cancelRuns: event.action === "kill_all" });
+			} else if (shouldResetSessionAfterAction(event.action)) {
+				await this.resetCachedSession(event.piboSessionId, "provider auth changed");
+			}
+			return output;
+		} finally {
+			this.scheduleIdleSessionEvictionIfIdle(event.piboSessionId);
 		}
-
-		const output = await session.executeAction(event);
-		if (event.action === "abort") {
-			this.signalRegistry.project({ type: "session_interrupted", piboSessionId: event.piboSessionId, reason: "abort action" });
-		}
-		if (event.action === "dispose") {
-			this.disposeSignalSubtree(event.piboSessionId, "dispose action");
-		} else if (shouldResetSessionAfterAction(event.action)) {
-			await this.resetCachedSession(event.piboSessionId, "provider auth changed");
-		}
-		return output;
 	}
 
 	async killSession(piboSessionId: string, options?: { includeRuns?: boolean }): Promise<{ killed: string[]; cancelledRuns: string[] }> {
@@ -270,23 +287,30 @@ export class PiboSessionRouter {
 				const runs = this.runRegistry.cancelControllerRuns(piboSessionId);
 				cancelledRuns.push(...runs.map((r) => r.runId));
 			}
-			await this.runtimeRegistry.closeControllerSessions(piboSessionId, { force: true });
 			this.signalRegistry.project({ type: "session_interrupted", piboSessionId, reason: "kill" });
 			const children = await this.killChildSessions(piboSessionId, options);
 			killed.push(...children.killed);
 			cancelledRuns.push(...children.cancelledRuns);
+			await this.disposeSessionSubtree(piboSessionId, "kill", { cancelRuns: false });
 		}
 		return { killed, cancelledRuns };
 	}
 
-	private disposeSignalSubtree(piboSessionId: string, reason: string): void {
-		const descendants = this.descendantSessionIds(piboSessionId);
-		for (const id of [piboSessionId, ...descendants]) {
-			this.runRegistry.cancelControllerRuns(id);
-			void this.runtimeRegistry.closeControllerSessions(id, { force: true });
-			this.signalRegistry.project({ type: "session_disposed", piboSessionId: id, reason });
+	private async disposeSessionSubtree(piboSessionId: string, reason: string, options: { cancelRuns: boolean }): Promise<void> {
+		const ids = [piboSessionId, ...this.descendantSessionIds(piboSessionId)];
+		const sessions: RoutedSession[] = [];
+		for (const id of ids) {
+			if (options.cancelRuns) this.runRegistry.cancelControllerRuns(id);
+			this.clearIdleSessionTimer(id);
 			this.scheduledRunReminders.delete(id);
+			const cached = this.sessions.get(id);
+			if (cached) sessions.push(cached);
 			this.sessions.delete(id);
+		}
+		await Promise.all(ids.map((id) => this.runtimeRegistry.closeControllerSessions(id, { force: true })));
+		await Promise.all(sessions.map((session) => session.dispose()));
+		for (const id of ids) {
+			this.signalRegistry.project({ type: "session_disposed", piboSessionId: id, reason });
 		}
 	}
 
@@ -425,6 +449,8 @@ export class PiboSessionRouter {
 	async disposeAll(): Promise<void> {
 		const sessions = [...this.sessions.values()];
 		this.sessions.clear();
+		for (const timer of this.idleSessionTimers.values()) clearTimeout(timer);
+		this.idleSessionTimers.clear();
 		this.runRegistry.cancelAll("Pibo session router was disposed.");
 		for (const session of sessions) this.signalRegistry.project({ type: "session_disposed", piboSessionId: session.getStatus().piboSessionId, reason: "router disposed" });
 		this.scheduledRunReminders.clear();
@@ -432,9 +458,52 @@ export class PiboSessionRouter {
 		await Promise.all(sessions.map((session) => session.dispose()));
 	}
 
+	private clearIdleSessionTimer(piboSessionId: string): void {
+		const timer = this.idleSessionTimers.get(piboSessionId);
+		if (timer) clearTimeout(timer);
+		this.idleSessionTimers.delete(piboSessionId);
+	}
+
+	private scheduleIdleSessionEvictionIfIdle(piboSessionId: string): void {
+		if (this.routedSessionIdleTimeoutMs === false) return;
+		const session = this.sessions.get(piboSessionId);
+		if (!session) return;
+		const status = session.getStatus();
+		if (status.disposed || status.processing || status.streaming || status.queuedMessages > 0) {
+			this.clearIdleSessionTimer(piboSessionId);
+			return;
+		}
+		this.clearIdleSessionTimer(piboSessionId);
+		const timer = setTimeout(() => {
+			this.idleSessionTimers.delete(piboSessionId);
+			void this.evictIdleSession(piboSessionId, session).catch((error) => {
+				const message = error instanceof Error ? error.message : String(error);
+				this.emitOutput({
+					type: "session_error",
+					piboSessionId,
+					error: `Failed to dispose idle routed runtime: ${message}`,
+					errorDetails: runtimeSessionErrorDetails(message),
+				});
+			});
+		}, this.routedSessionIdleTimeoutMs);
+		timer.unref();
+		this.idleSessionTimers.set(piboSessionId, timer);
+	}
+
+	private async evictIdleSession(piboSessionId: string, expected: RoutedSession): Promise<void> {
+		const current = this.sessions.get(piboSessionId);
+		if (current !== expected) return;
+		const status = current.getStatus();
+		if (status.disposed || status.processing || status.streaming || status.queuedMessages > 0) return;
+		await this.resetCachedSession(piboSessionId, "routed runtime idle timeout");
+	}
+
 	private async getOrCreateSession(piboSessionId: string): Promise<RoutedSession> {
 		const existing = this.sessions.get(piboSessionId);
-		if (existing) return existing;
+		if (existing) {
+			this.clearIdleSessionTimer(piboSessionId);
+			return existing;
+		}
 
 		const pending = this.pendingSessions.get(piboSessionId);
 		if (pending) return pending;
@@ -496,7 +565,15 @@ export class PiboSessionRouter {
 			initialFastMode,
 			(result, event) => this.handleSessionOperation(result, event),
 			(id, opts) => this.killChildSessions(id, opts),
-			(state) => this.signalRegistry.project({ type: "session_processing_changed", piboSessionId: piboSession.id, processing: state.processing, queuedMessages: state.queuedMessages }),
+			(state) => {
+				this.signalRegistry.project({ type: "session_processing_changed", piboSessionId: piboSession.id, processing: state.processing, queuedMessages: state.queuedMessages });
+				if (state.disposed || state.processing || state.queuedMessages > 0) this.clearIdleSessionTimer(piboSession.id);
+				else this.scheduleIdleSessionEvictionIfIdle(piboSession.id);
+			},
+			(messages, reason) => this.telemetryRecorder?.recordMessagesInterrupted(messages, {
+				session: this.sessionStore.get(piboSession.id),
+				status: this.sessions.get(piboSession.id)?.getStatus(),
+			}, reason),
 		);
 		this.sessions.set(piboSession.id, session);
 		return session;
@@ -571,6 +648,7 @@ export class PiboSessionRouter {
 
 	private async resetCachedSession(piboSessionId: string, reason?: string): Promise<void> {
 		const cached = this.sessions.get(piboSessionId);
+		this.clearIdleSessionTimer(piboSessionId);
 		this.sessions.delete(piboSessionId);
 		await this.runtimeRegistry.closeControllerSessions(piboSessionId, { force: true });
 		await cached?.dispose();
