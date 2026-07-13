@@ -12,6 +12,11 @@ const PROVIDER_NETWORK_ERROR_MARKERS = [
 	"reset before headers",
 	"socket hang up",
 	"socket connection was closed",
+	"eai_again",
+	"enotfound",
+	"econnreset",
+	"econnrefused",
+	"etimedout",
 ];
 
 export function classifySessionErrorMessage(
@@ -26,7 +31,17 @@ export function classifySessionErrorMessage(
 		return { category: "provider_transport", errorClass: "provider_transport", code: "websocket_error", origin: "provider", retryable: true, userMessage: "The provider WebSocket connection failed." };
 	}
 	if (normalized.includes("request was aborted") || normalized.includes("aborted")) {
-		return { category: "runtime_abort", errorClass: "runtime_abort", code: "request_aborted", origin: "runtime", retryable: true, userMessage: "The active model request was aborted." };
+		return { category: "runtime_abort", errorClass: "runtime_abort", code: "request_aborted", origin: "runtime", retryable: false, userMessage: "The active model request was aborted." };
+	}
+	if (
+		normalized.includes("insufficient_quota")
+		|| normalized.includes("quota exceeded")
+		|| normalized.includes("out of budget")
+		|| normalized.includes("billing")
+		|| normalized.includes("usage limit")
+		|| normalized.includes("available balance")
+	) {
+		return { category: "quota_exhausted", errorClass: "provider_rate_limit", code: "quota_exhausted", origin: "provider", retryable: false, userMessage: "The provider quota or billing limit was reached." };
 	}
 	if (normalized.includes("rate limit") || normalized.includes("429")) {
 		return { category: "rate_limit", errorClass: "provider_rate_limit", code: "rate_limited", origin: "provider", retryable: true, userMessage: "The provider rate limit was reached." };

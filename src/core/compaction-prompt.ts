@@ -1,9 +1,10 @@
+import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core";
-import type { Model } from "@earendil-works/pi-ai";
+import type { AssistantMessage, Model, Transport } from "@earendil-works/pi-ai";
 import { completeSimple } from "@earendil-works/pi-ai/compat";
 import {
 	buildSessionContext,
@@ -12,7 +13,15 @@ import {
 	type CompactionResult,
 	type ExtensionFactory,
 	type SessionBeforeCompactEvent,
+	type SettingsManager,
 } from "@earendil-works/pi-coding-agent";
+import {
+	isRetryablePiboAssistantError,
+	isRetryablePiboProviderError,
+	resolvePiboProviderRecoverySettings,
+	waitForPiboProviderRecovery,
+	type PiboProviderRecoverySettings,
+} from "./provider-recovery.js";
 
 export type PiboCompactionPromptMode = "library" | "custom";
 
@@ -192,7 +201,9 @@ function buildTurnPrefixPrompt(spec: PiboCompactionPromptSpec, messages: AgentMe
 	return `<conversation>\n${conversationText}\n</conversation>\n\n${spec.turnPrefixSummaryPrompt}`;
 }
 
-async function completeSummary(input: {
+type PiboCompactionCompletion = typeof completeSimple;
+
+export async function completePiboCompactionSummary(input: {
 	model: Model<any>;
 	systemPrompt: string;
 	promptText: string;
@@ -201,45 +212,74 @@ async function completeSummary(input: {
 	headers?: Record<string, string>;
 	signal?: AbortSignal;
 	thinkingLevel?: ThinkingLevel;
+	transport?: Transport;
+	sessionId?: string;
+	timeoutMs?: number;
+	websocketConnectTimeoutMs?: number;
+	maxRetries?: number;
+	maxRetryDelayMs?: number;
+	recovery: PiboProviderRecoverySettings;
+	complete?: PiboCompactionCompletion;
 }): Promise<string> {
-	const completionOptions =
-		input.model.reasoning && input.thinkingLevel && input.thinkingLevel !== "off"
-			? {
-					maxTokens: input.maxTokens,
-					signal: input.signal,
-					apiKey: input.apiKey,
-					headers: input.headers,
-					reasoning: input.thinkingLevel,
-				}
-			: {
-					maxTokens: input.maxTokens,
-					signal: input.signal,
-					apiKey: input.apiKey,
-					headers: input.headers,
-				};
-	const response = await completeSimple(
-		input.model,
-		{
-			systemPrompt: input.systemPrompt,
-			messages: [
+	const recoverySessionId = input.sessionId ? `compaction-${randomUUID()}` : undefined;
+	const completionOptions = {
+		maxTokens: input.maxTokens,
+		signal: input.signal,
+		apiKey: input.apiKey,
+		headers: input.headers,
+		transport: input.transport,
+		sessionId: recoverySessionId,
+		timeoutMs: input.timeoutMs,
+		websocketConnectTimeoutMs: input.websocketConnectTimeoutMs,
+		maxRetries: input.maxRetries,
+		maxRetryDelayMs: input.maxRetryDelayMs,
+		...(input.model.reasoning && input.thinkingLevel && input.thinkingLevel !== "off"
+			? { reasoning: input.thinkingLevel }
+			: {}),
+	};
+	const complete = input.complete ?? completeSimple;
+	let recoveryAttempt = 0;
+
+	while (true) {
+		let response: AssistantMessage;
+		try {
+			response = await complete(
+				input.model,
 				{
-					role: "user",
-					content: [{ type: "text", text: input.promptText }],
-					timestamp: Date.now(),
+					systemPrompt: input.systemPrompt,
+					messages: [
+						{
+							role: "user",
+							content: [{ type: "text", text: input.promptText }],
+							timestamp: Date.now(),
+						},
+					],
 				},
-			],
-		},
-		completionOptions,
-	);
+				completionOptions,
+			);
+		} catch (error) {
+			if (input.signal?.aborted || !input.recovery.enabled || !isRetryablePiboProviderError(error)) throw error;
+			recoveryAttempt += 1;
+			await waitForPiboProviderRecovery(recoveryAttempt, input.recovery, input.signal);
+			continue;
+		}
 
-	if (response.stopReason === "error") {
-		throw new Error(`Summarization failed: ${response.errorMessage || "Unknown error"}`);
+		if (response.stopReason === "aborted") {
+			throw new Error("Summarization was aborted");
+		}
+		if (response.stopReason === "error") {
+			const error = new Error(`Summarization failed: ${response.errorMessage || "Unknown error"}`);
+			if (!input.recovery.enabled || !isRetryablePiboAssistantError(response)) throw error;
+			recoveryAttempt += 1;
+			await waitForPiboProviderRecovery(recoveryAttempt, input.recovery, input.signal);
+			continue;
+		}
+
+		return response.content
+			.filter((content): content is { type: "text"; text: string } => content.type === "text")
+			.map((content) => content.text)
+			.join("\n");
 	}
-
-	return response.content
-		.filter((content): content is { type: "text"; text: string } => content.type === "text")
-		.map((content) => content.text)
-		.join("\n");
 }
 
 function computeFileLists(fileOps: PiboCompactionPreparation["fileOps"]): { readFiles: string[]; modifiedFiles: string[] } {
@@ -265,16 +305,37 @@ async function generatePiboCompaction(input: {
 	customInstructions?: string;
 	signal?: AbortSignal;
 	thinkingLevel?: ThinkingLevel;
+	transport?: Transport;
+	sessionId?: string;
+	timeoutMs?: number;
+	websocketConnectTimeoutMs?: number;
+	maxRetries?: number;
+	maxRetryDelayMs?: number;
+	recovery: PiboProviderRecoverySettings;
 }): Promise<CompactionResult> {
 	const { preparation, spec } = input;
+	const completionDefaults = {
+		model: input.model,
+		systemPrompt: spec.systemPrompt,
+		apiKey: input.apiKey,
+		headers: input.headers,
+		signal: input.signal,
+		thinkingLevel: input.thinkingLevel,
+		transport: input.transport,
+		sessionId: input.sessionId,
+		timeoutMs: input.timeoutMs,
+		websocketConnectTimeoutMs: input.websocketConnectTimeoutMs,
+		maxRetries: input.maxRetries,
+		maxRetryDelayMs: input.maxRetryDelayMs,
+		recovery: input.recovery,
+	};
 	let summary: string;
 
 	if (preparation.isSplitTurn && preparation.turnPrefixMessages.length > 0) {
 		const [historySummary, turnPrefixSummary] = await Promise.all([
 			preparation.messagesToSummarize.length > 0
-				? completeSummary({
-						model: input.model,
-						systemPrompt: spec.systemPrompt,
+				? completePiboCompactionSummary({
+						...completionDefaults,
 						promptText: buildSummaryPrompt(
 							spec,
 							preparation.messagesToSummarize,
@@ -282,28 +343,18 @@ async function generatePiboCompaction(input: {
 							preparation.previousSummary,
 						),
 						maxTokens: Math.floor(0.8 * preparation.settings.reserveTokens),
-						apiKey: input.apiKey,
-						headers: input.headers,
-						signal: input.signal,
-						thinkingLevel: input.thinkingLevel,
 					})
 				: Promise.resolve("No prior history."),
-			completeSummary({
-				model: input.model,
-				systemPrompt: spec.systemPrompt,
+			completePiboCompactionSummary({
+				...completionDefaults,
 				promptText: buildTurnPrefixPrompt(spec, preparation.turnPrefixMessages),
 				maxTokens: Math.floor(0.5 * preparation.settings.reserveTokens),
-				apiKey: input.apiKey,
-				headers: input.headers,
-				signal: input.signal,
-				thinkingLevel: input.thinkingLevel,
 			}),
 		]);
 		summary = `${historySummary}\n\n---\n\n**Turn Context (split turn):**\n\n${turnPrefixSummary}`;
 	} else {
-		summary = await completeSummary({
-			model: input.model,
-			systemPrompt: spec.systemPrompt,
+		summary = await completePiboCompactionSummary({
+			...completionDefaults,
 			promptText: buildSummaryPrompt(
 				spec,
 				preparation.messagesToSummarize,
@@ -311,10 +362,6 @@ async function generatePiboCompaction(input: {
 				preparation.previousSummary,
 			),
 			maxTokens: Math.floor(0.8 * preparation.settings.reserveTokens),
-			apiKey: input.apiKey,
-			headers: input.headers,
-			signal: input.signal,
-			thinkingLevel: input.thinkingLevel,
 		});
 	}
 
@@ -329,13 +376,17 @@ async function generatePiboCompaction(input: {
 	};
 }
 
-export function createPiboCompactionPromptExtension(): ExtensionFactory {
+export function createPiboCompactionPromptExtension(
+	options: { getSettingsManager?: () => SettingsManager | undefined } = {},
+): ExtensionFactory {
 	return (pi) => {
 		pi.on("session_before_compact", async (event, ctx) => {
 			if (!ctx.model) return undefined;
 			const auth = await ctx.modelRegistry.getApiKeyAndHeaders(ctx.model);
 			if (!auth.ok || !auth.apiKey) return undefined;
 			const sessionContext = buildSessionContext(ctx.sessionManager.getEntries(), ctx.sessionManager.getLeafId());
+			const settingsManager = options.getSettingsManager?.();
+			const providerRetry = settingsManager?.getProviderRetrySettings();
 			return {
 				compaction: await generatePiboCompaction({
 					preparation: event.preparation,
@@ -346,6 +397,13 @@ export function createPiboCompactionPromptExtension(): ExtensionFactory {
 					customInstructions: event.customInstructions,
 					signal: event.signal,
 					thinkingLevel: sessionContext.thinkingLevel as ThinkingLevel,
+					transport: settingsManager?.getTransport(),
+					sessionId: ctx.sessionManager.getSessionId(),
+					timeoutMs: settingsManager?.getHttpIdleTimeoutMs(),
+					websocketConnectTimeoutMs: settingsManager?.getWebSocketConnectTimeoutMs(),
+					maxRetries: providerRetry?.maxRetries,
+					maxRetryDelayMs: providerRetry?.maxRetryDelayMs,
+					recovery: resolvePiboProviderRecoverySettings(settingsManager),
 				}),
 			};
 		});

@@ -412,6 +412,8 @@ export class PiboSessionRouter {
 
 		return await new Promise<PiboAssistantMessageEvent>((resolve, reject) => {
 			let settled = false;
+			let lastAssistantMessage: PiboAssistantMessageEvent | undefined;
+			let timeout: NodeJS.Timeout | undefined;
 			const unsubscribe = this.subscribe((output) => {
 				if (
 					output.piboSessionId !== eventWithId.piboSessionId ||
@@ -421,19 +423,18 @@ export class PiboSessionRouter {
 					return;
 				}
 				if (output.type === "assistant_message") {
-					finish(output);
+					lastAssistantMessage = output;
+				} else if (output.type === "message_finished") {
+					finish(lastAssistantMessage ?? new Error(`Pibo session "${eventWithId.piboSessionId}" finished without an assistant reply`));
 				} else if (output.type === "session_error") {
 					finish(new Error(output.error));
 				}
 			});
-			const timeout = setTimeout(() => {
-				finish(new Error(`Timed out waiting for assistant reply from Pibo session "${eventWithId.piboSessionId}"`));
-			}, timeoutMs);
 
 			const finish = (result: PiboAssistantMessageEvent | Error) => {
 				if (settled) return;
 				settled = true;
-				clearTimeout(timeout);
+				if (timeout) clearTimeout(timeout);
 				unsubscribe();
 				if (result instanceof Error) {
 					reject(result);
@@ -441,6 +442,20 @@ export class PiboSessionRouter {
 					resolve(result);
 				}
 			};
+
+			timeout = setTimeout(() => {
+				if (settled) return;
+				settled = true;
+				unsubscribe();
+				const timeoutError = new Error(`Timed out waiting for assistant reply from Pibo session "${eventWithId.piboSessionId}"`);
+				reject(timeoutError);
+				void this.emit({
+					type: "execution",
+					piboSessionId: eventWithId.piboSessionId,
+					action: "abort",
+					id: randomUUID(),
+				}).catch(() => {});
+			}, timeoutMs);
 
 			this.emit(eventWithId).catch(finish);
 		});

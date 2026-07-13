@@ -244,6 +244,10 @@ test("sendGatewayMessageAndWaitForReply preserves an existing event id for reply
 					eventId: callerEventId,
 					text: "correlated by caller id",
 				},
+			})}\n${JSON.stringify({
+				type: "event",
+				event: "router",
+				payload: { type: "message_finished", piboSessionId: frame.event.piboSessionId, eventId: callerEventId },
 			})}\n`,
 		);
 	});
@@ -301,6 +305,10 @@ test("sendGatewayMessageAndWaitForReply resolves only the correlated assistant r
 					eventId: frame.event.id,
 					text: "right reply",
 				},
+			})}\n${JSON.stringify({
+				type: "event",
+				event: "router",
+				payload: { type: "message_finished", piboSessionId: frame.event.piboSessionId, eventId: frame.event.id },
 			})}\n`,
 		);
 	});
@@ -314,6 +322,28 @@ test("sendGatewayMessageAndWaitForReply resolves only the correlated assistant r
 		assert.equal(result.response.ok, true);
 		assert.equal(result.reply.text, "right reply");
 		assert.equal(result.reply.eventId, gateway.receivedFrames[0].event.id);
+	} finally {
+		await gateway.close();
+	}
+});
+
+test("sendGatewayMessageAndWaitForReply waits through intermediate assistant messages", async () => {
+	const gateway = await withMockGateway((frame, socket) => {
+		const base = { type: "event", event: "router" };
+		socket.write(`${JSON.stringify({
+			type: "res",
+			id: frame.id,
+			ok: true,
+			payload: { type: "message_queued", piboSessionId: frame.event.piboSessionId, eventId: frame.event.id, queuedMessages: 1, text: frame.event.text, source: frame.event.source },
+		})}\n${JSON.stringify({ ...base, payload: { type: "assistant_message", piboSessionId: frame.event.piboSessionId, eventId: frame.event.id, text: "planning" } })}\n${JSON.stringify({ ...base, payload: { type: "assistant_message", piboSessionId: frame.event.piboSessionId, eventId: frame.event.id, text: "final reply" } })}\n${JSON.stringify({ ...base, payload: { type: "message_finished", piboSessionId: frame.event.piboSessionId, eventId: frame.event.id } })}\n`);
+	});
+
+	try {
+		const result = await sendGatewayMessageAndWaitForReply(
+			{ type: "message", piboSessionId: "receiver", text: "hello", source: "actor" },
+			{ port: gateway.port },
+		);
+		assert.equal(result.reply.text, "final reply");
 	} finally {
 		await gateway.close();
 	}
@@ -343,6 +373,10 @@ test("sendGatewayMessageAndWaitForReply handles response and reply in one TCP ch
 					eventId: frame.event.id,
 					text: "same chunk reply",
 				},
+			})}\n${JSON.stringify({
+				type: "event",
+				event: "router",
+				payload: { type: "message_finished", piboSessionId: frame.event.piboSessionId, eventId: frame.event.id },
 			})}\n`,
 		);
 	});
@@ -373,6 +407,10 @@ test("sendGatewayMessageAndWaitForReply tolerates reply before response", async 
 					eventId: frame.event.id,
 					text: "early reply",
 				},
+			})}\n${JSON.stringify({
+				type: "event",
+				event: "router",
+				payload: { type: "message_finished", piboSessionId: frame.event.piboSessionId, eventId: frame.event.id },
 			})}\n`,
 		);
 		socket.write(

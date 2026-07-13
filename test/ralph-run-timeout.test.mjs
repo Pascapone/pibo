@@ -88,21 +88,16 @@ test("Ralph runs do not schedule a timeout by default", async () => {
 	}
 });
 
-test("Ralph keeps waiting after a session error so Pi can retry", async () => {
+test("Ralph treats a published provider session error as terminal", async () => {
 	const fixture = await createService();
 	try {
-		let settled = false;
-		const waiting = fixture.service.emitMessageAndWait("ps_retry", "work").finally(() => { settled = true; });
+		const waiting = fixture.service.emitMessageAndWait("ps_retry", "work");
 		fixture.controlled.fail("provider unavailable", {
 			origin: "provider",
 			provider: "test-provider",
 			model: "test-model",
 		});
-		await Promise.resolve();
-		assert.equal(settled, false);
-
-		fixture.controlled.finish("recovered");
-		assert.equal(await waiting, "recovered");
+		await assert.rejects(waiting, /provider unavailable/);
 	} finally {
 		await fixture.cleanup();
 	}

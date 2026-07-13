@@ -251,6 +251,7 @@ function emitMessageAndWaitForAssistant(channelContext: PiboChannelContext, pibo
 	return new Promise((resolve, reject) => {
 		const eventId = `wfm_${randomUUID()}`;
 		let settled = false;
+		let lastAssistantMessage: string | undefined;
 		let timeout: ReturnType<typeof setTimeout>;
 		let unsubscribe = () => {};
 		const finish = (value: string | Error) => {
@@ -261,14 +262,22 @@ function emitMessageAndWaitForAssistant(channelContext: PiboChannelContext, pibo
 			if (value instanceof Error) reject(value);
 			else resolve(value);
 		};
-		timeout = setTimeout(() => finish(new Error(`Timed out waiting for assistant reply from workflow agent session '${piboSessionId}'.`)), timeoutMs);
+		timeout = setTimeout(() => {
+			finish(new Error(`Timed out waiting for assistant reply from workflow agent session '${piboSessionId}'.`));
+			void channelContext.emit({ type: "execution", piboSessionId, action: "abort", id: `wfm_abort_${randomUUID()}` }).catch(() => {});
+		}, timeoutMs);
 		unsubscribe = channelContext.subscribe((event: PiboOutputEvent) => {
 			if (event.piboSessionId !== piboSessionId) return;
+			if (!("eventId" in event) || event.eventId !== eventId) return;
 			if (event.type === "assistant_message") {
-				if (event.eventId === eventId) finish(event.text);
+				lastAssistantMessage = event.text;
 				return;
 			}
-			if (event.type === "session_error" && event.eventId === eventId) finish(new Error(event.error));
+			if (event.type === "message_finished") {
+				finish(lastAssistantMessage ?? new Error(`Workflow agent session '${piboSessionId}' finished without an assistant reply.`));
+				return;
+			}
+			if (event.type === "session_error") finish(new Error(event.error));
 		});
 		channelContext.emit({ type: "message", piboSessionId, id: eventId, text, source: "actor" }).catch(finish);
 	});

@@ -108,6 +108,7 @@ export async function sendGatewayMessageAndWaitForReply(
 		let settled = false;
 		let response: GatewayResponseFrame | undefined;
 		let reply: PiboAssistantMessageEvent | undefined;
+		let messageFinished = false;
 
 		const timeout = setTimeout(() => {
 			finish(new Error(`Timed out waiting for assistant reply from session "${event.piboSessionId}"`));
@@ -126,13 +127,20 @@ export async function sendGatewayMessageAndWaitForReply(
 			}
 		};
 
+		const finishCompletedReply = (): void => {
+			if (!response?.ok || !messageFinished) return;
+			finish(reply
+				? { response, reply }
+				: new Error(`Session "${eventWithId.piboSessionId}" finished without an assistant reply`));
+		};
+
 		const handleFrame = (frame: GatewayFrame): void => {
 			if (frame.type === "res" && frame.id === id) {
 				response = frame;
 				if (!frame.ok) {
 					finish(new Error(frame.error?.message ?? "Gateway rejected the message"));
-				} else if (reply) {
-					finish({ response, reply });
+				} else {
+					finishCompletedReply();
 				}
 				return;
 			}
@@ -149,15 +157,12 @@ export async function sendGatewayMessageAndWaitForReply(
 				return;
 			}
 
-			if (
-				output.type === "assistant_message" &&
-				output.piboSessionId === eventWithId.piboSessionId &&
-				output.eventId === eventWithId.id
-			) {
+			if (output.piboSessionId !== eventWithId.piboSessionId || !("eventId" in output) || output.eventId !== eventWithId.id) return;
+			if (output.type === "assistant_message") {
 				reply = output;
-				if (response?.ok) {
-					finish({ response, reply });
-				}
+			} else if (output.type === "message_finished") {
+				messageFinished = true;
+				finishCompletedReply();
 			}
 		};
 

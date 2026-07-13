@@ -34,6 +34,15 @@ import {
 	waitForPiboAssistantContextGuardRecovery,
 } from "./context-guard.js";
 import type { ModelProfile } from "./profiles.js";
+import {
+	PIBO_PROVIDER_RECOVERY_MESSAGE_TYPE,
+	PIBO_PROVIDER_RECOVERY_PROMPT,
+	PiboProviderRecoveryCancelledError,
+	isRetryablePiboAssistantError,
+	isRetryablePiboProviderError,
+	resolvePiboProviderRecoverySettings,
+	waitForPiboProviderRecovery,
+} from "./provider-recovery.js";
 
 type PiSessionTreeNode = ReturnType<SessionManager["getTree"]>[number];
 
@@ -533,7 +542,10 @@ export class RoutedSession {
 	private activeThinkingIndex?: number;
 	private nextThinkingIndex = 0;
 	private pendingAssistantError?: Extract<PiboOutputEvent, { type: "session_error" }>;
+	private pendingAssistantErrorRetryable = false;
 	private activeMessageFailed = false;
+	private providerRecoveryCancelled = false;
+	private providerRecoveryAbortController?: AbortController;
 	private unsubscribe?: () => void;
 	private recoverySession?: AgentSessionRuntime["session"];
 	private isContinuePatched = false;
@@ -631,6 +643,7 @@ export class RoutedSession {
 		this.unsubscribe?.();
 		const session = this.runtime.session;
 		if (this.recoverySession && this.recoverySession !== session) {
+			this.cancelProviderRecovery();
 			cancelPiboAssistantContextGuardRecovery(
 				this.recoverySession,
 				new Error("Context guard recovery cancelled because the Pi session changed"),
@@ -644,15 +657,18 @@ export class RoutedSession {
 			const normalized = normalizePiEvent(this.piboSessionId, event, { contextWindow: numberValue(model?.contextWindow) });
 			const candidate = event && typeof event === "object" ? event as PiEventCandidate : undefined;
 			const assistantMessageEnded = candidate?.type === "message_end" && isAssistantMessage(candidate.message);
-			// Pi may recover an assistant error through retry or compaction. Publish it only
-			// after agent_settled confirms that no automatic continuation remains.
+			// Pi gets the first chance to recover through its short retry/compaction loop.
+			// Keep the final error pending so the routed turn can continue durable recovery.
 			if (assistantMessageEnded && normalized?.type === "session_error") {
 				this.pendingAssistantError = this.withActiveMessage(normalized) as Extract<PiboOutputEvent, { type: "session_error" }>;
+				this.pendingAssistantErrorRetryable = isRetryablePiboAssistantError(candidate.message);
 			} else {
-				if (assistantMessageEnded) this.pendingAssistantError = undefined;
+				if (assistantMessageEnded) {
+					this.pendingAssistantError = undefined;
+					this.pendingAssistantErrorRetryable = false;
+				}
 				if (normalized) this.emit(this.withActiveMessage(normalized));
 			}
-			if (candidate?.type === "agent_settled") this.flushPendingAssistantError();
 			if (this.forwardPiEvents) {
 				this.emit({ type: "pi_event", piboSessionId: this.piboSessionId, event });
 			}
@@ -665,6 +681,78 @@ export class RoutedSession {
 		this.activeMessageFailed = true;
 		this.emit(this.pendingAssistantError);
 		this.pendingAssistantError = undefined;
+		this.pendingAssistantErrorRetryable = false;
+	}
+
+	private cancelProviderRecovery(): void {
+		this.providerRecoveryCancelled = true;
+		this.providerRecoveryAbortController?.abort();
+		this.providerRecoveryAbortController = undefined;
+	}
+
+	private async resumeContextGuardRecovery(session: AgentSessionRuntime["session"]): Promise<void> {
+		while (await waitForPiboAssistantContextGuardRecovery(session)) {
+			try {
+				await session.sendCustomMessage({
+					customType: PIBO_CONTEXT_GUARD_RESUME_MESSAGE_TYPE,
+					content: [{ type: "text", text: PIBO_CONTEXT_GUARD_RESUME_PROMPT }],
+					display: false,
+				}, { triggerTurn: true });
+			} catch (error) {
+				const resumeError = error instanceof Error ? error : new Error(String(error));
+				cancelPiboAssistantContextGuardRecovery(session, resumeError);
+				throw resumeError;
+			}
+		}
+	}
+
+	private async recoverTransientProviderErrors(session: AgentSessionRuntime["session"]): Promise<void> {
+		let attempt = 0;
+		while (this.pendingAssistantError && this.pendingAssistantErrorRetryable) {
+			if (this.providerRecoveryCancelled) throw new PiboProviderRecoveryCancelledError();
+			const settings = resolvePiboProviderRecoverySettings(session.settingsManager);
+			if (!settings.enabled) return;
+
+			attempt += 1;
+			this.pendingAssistantError = undefined;
+			this.pendingAssistantErrorRetryable = false;
+			const controller = new AbortController();
+			this.providerRecoveryAbortController = controller;
+			try {
+				await waitForPiboProviderRecovery(attempt, settings, controller.signal);
+			} finally {
+				if (this.providerRecoveryAbortController === controller) {
+					this.providerRecoveryAbortController = undefined;
+				}
+			}
+
+			if (this.providerRecoveryCancelled || this.disposed || this.runtime.session !== session || !this.activeMessage) {
+				throw new PiboProviderRecoveryCancelledError();
+			}
+
+			try {
+				await session.sendCustomMessage({
+					customType: PIBO_PROVIDER_RECOVERY_MESSAGE_TYPE,
+					content: [{ type: "text", text: PIBO_PROVIDER_RECOVERY_PROMPT }],
+					display: false,
+					details: { attempt },
+				}, { triggerTurn: true });
+				await this.resumeContextGuardRecovery(session);
+				if (this.providerRecoveryCancelled) throw new PiboProviderRecoveryCancelledError();
+			} catch (error) {
+				if (error instanceof PiboProviderRecoveryCancelledError) throw error;
+				if (!isRetryablePiboProviderError(error)) throw error;
+				const message = errorMessage(error);
+				this.pendingAssistantError = {
+					type: "session_error",
+					piboSessionId: this.piboSessionId,
+					eventId: this.activeMessage.id,
+					error: message,
+					errorDetails: runtimeSessionErrorDetails(message),
+				};
+				this.pendingAssistantErrorRetryable = true;
+			}
+		}
 	}
 
 	private handleCompactionEvent(event: unknown): void {
@@ -925,6 +1013,7 @@ export class RoutedSession {
 		if (this.disposed) return;
 
 		this.notifyMessagesInterrupted(this.activeAndQueuedMessages(), "session disposed");
+		this.cancelProviderRecovery();
 		this.queue.length = 0;
 		this.onStateChange?.({ processing: this.processing, queuedMessages: this.queue.length, disposed: true });
 		this.unsubscribe?.();
@@ -939,6 +1028,7 @@ export class RoutedSession {
 
 	async kill(): Promise<string> {
 		this.notifyMessagesInterrupted(this.activeAndQueuedMessages(), "session killed");
+		this.cancelProviderRecovery();
 		this.queue.length = 0;
 		this.onStateChange?.({ processing: this.processing, queuedMessages: this.queue.length, disposed: this.disposed });
 		this.cancelContextGuardRecovery("Context guard recovery cancelled because the routed session was killed");
@@ -959,6 +1049,7 @@ export class RoutedSession {
 
 		if (this.activeMessage?.id === eventId) {
 			this.notifyMessagesInterrupted([this.activeMessage], "message cancelled");
+			this.cancelProviderRecovery();
 			this.cancelContextGuardRecovery("Context guard recovery cancelled with the active message");
 			await this.runtime.session.abort();
 			return true;
@@ -999,7 +1090,9 @@ export class RoutedSession {
 
 		try {
 			this.activeMessage = event;
+			this.providerRecoveryCancelled = false;
 			this.pendingAssistantError = undefined;
+			this.pendingAssistantErrorRetryable = false;
 			this.activeMessageFailed = false;
 			this.activeAssistantIndex = undefined;
 			this.nextAssistantIndex = 0;
@@ -1011,19 +1104,9 @@ export class RoutedSession {
 				session.resourceLoader.getSkills().skills,
 			);
 			await session.prompt(expandedText, { source: promptSource(event.source) });
-			while (await waitForPiboAssistantContextGuardRecovery(session)) {
-				try {
-					await session.sendCustomMessage({
-						customType: PIBO_CONTEXT_GUARD_RESUME_MESSAGE_TYPE,
-						content: [{ type: "text", text: PIBO_CONTEXT_GUARD_RESUME_PROMPT }],
-						display: false,
-					}, { triggerTurn: true });
-				} catch (error) {
-					const resumeError = error instanceof Error ? error : new Error(String(error));
-					cancelPiboAssistantContextGuardRecovery(session, resumeError);
-					throw resumeError;
-				}
-			}
+			await this.resumeContextGuardRecovery(session);
+			await this.recoverTransientProviderErrors(session);
+			this.flushPendingAssistantError();
 			if (!this.activeMessageFailed) {
 				this.emit({
 					type: "message_finished",
@@ -1033,6 +1116,7 @@ export class RoutedSession {
 				});
 			}
 		} catch (error) {
+			if (error instanceof PiboProviderRecoveryCancelledError) return;
 			const message = errorMessage(error);
 			this.emit({
 				type: "session_error",
@@ -1043,7 +1127,9 @@ export class RoutedSession {
 			});
 		} finally {
 			this.activeMessage = undefined;
+			this.providerRecoveryCancelled = false;
 			this.pendingAssistantError = undefined;
+			this.pendingAssistantErrorRetryable = false;
 			this.activeMessageFailed = false;
 			this.activeAssistantIndex = undefined;
 			this.nextAssistantIndex = 0;
