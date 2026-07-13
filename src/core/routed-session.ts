@@ -73,6 +73,8 @@ type PiboSessionOperationListener = (
 	event: PiboExecutionEvent,
 ) => void | Promise<void>;
 
+type PiboMessageInterruptionListener = (messages: readonly PiboMessageEvent[], reason: string) => void;
+
 type PiEventCandidate = {
 	type?: unknown;
 	message?: unknown;
@@ -121,6 +123,10 @@ type ErrorContext = { contextWindow?: number };
 
 function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
+}
+
+function isAssistantMessage(message: unknown): message is AssistantErrorMessage {
+	return Boolean(message && typeof message === "object" && (message as AssistantErrorMessage).role === "assistant");
 }
 
 function numberValue(value: unknown): number | undefined {
@@ -526,6 +532,8 @@ export class RoutedSession {
 	private nextAssistantIndex = 0;
 	private activeThinkingIndex?: number;
 	private nextThinkingIndex = 0;
+	private pendingAssistantError?: Extract<PiboOutputEvent, { type: "session_error" }>;
+	private activeMessageFailed = false;
 	private unsubscribe?: () => void;
 	private recoverySession?: AgentSessionRuntime["session"];
 	private isContinuePatched = false;
@@ -541,6 +549,7 @@ export class RoutedSession {
 		private readonly onSessionOperation?: PiboSessionOperationListener,
 		private readonly onKillChildren?: (piboSessionId: string, options?: { includeRuns?: boolean }) => Promise<{ killed: string[]; cancelledRuns: string[] }>,
 		private readonly onStateChange?: (state: { processing: boolean; queuedMessages: number; disposed: boolean }) => void,
+		private readonly onMessagesInterrupted?: PiboMessageInterruptionListener,
 	) {
 		this.fastMode = initialFastMode && this.fastModeSupported();
 		this.bindRuntimeSession();
@@ -633,14 +642,29 @@ export class RoutedSession {
 			this.onPiEventTelemetry?.(this.piboSessionId, event, { status: this.getStatus(), activeEventId: this.activeMessage?.id });
 			const model = this.runtime.session.model as { contextWindow?: unknown } | undefined;
 			const normalized = normalizePiEvent(this.piboSessionId, event, { contextWindow: numberValue(model?.contextWindow) });
-			if (normalized) {
-				this.emit(this.withActiveMessage(normalized));
+			const candidate = event && typeof event === "object" ? event as PiEventCandidate : undefined;
+			const assistantMessageEnded = candidate?.type === "message_end" && isAssistantMessage(candidate.message);
+			// Pi may recover an assistant error through retry or compaction. Publish it only
+			// after agent_settled confirms that no automatic continuation remains.
+			if (assistantMessageEnded && normalized?.type === "session_error") {
+				this.pendingAssistantError = this.withActiveMessage(normalized) as Extract<PiboOutputEvent, { type: "session_error" }>;
+			} else {
+				if (assistantMessageEnded) this.pendingAssistantError = undefined;
+				if (normalized) this.emit(this.withActiveMessage(normalized));
 			}
+			if (candidate?.type === "agent_settled") this.flushPendingAssistantError();
 			if (this.forwardPiEvents) {
 				this.emit({ type: "pi_event", piboSessionId: this.piboSessionId, event });
 			}
 			this.handleCompactionEvent(event);
 		});
+	}
+
+	private flushPendingAssistantError(): void {
+		if (!this.pendingAssistantError) return;
+		this.activeMessageFailed = true;
+		this.emit(this.pendingAssistantError);
+		this.pendingAssistantError = undefined;
 	}
 
 	private handleCompactionEvent(event: unknown): void {
@@ -755,14 +779,16 @@ export class RoutedSession {
 	removeQueuedMessages(predicate: (event: PiboMessageEvent) => boolean): number {
 		this.assertActive();
 
-		let removed = 0;
+		const removedMessages: PiboMessageEvent[] = [];
 		for (let index = this.queue.length - 1; index >= 0; index -= 1) {
 			const item = this.queue[index];
 			if (item.kind !== "message" || !predicate(item.event)) continue;
 			this.queue.splice(index, 1);
-			removed += 1;
+			removedMessages.push(item.event);
 		}
-		return removed;
+		removedMessages.reverse();
+		this.notifyMessagesInterrupted(removedMessages, "queued message removed");
+		return removedMessages.length;
 	}
 
 	getCurrentSession(): PiboPiSessionSnapshot {
@@ -898,6 +924,7 @@ export class RoutedSession {
 	async dispose(): Promise<void> {
 		if (this.disposed) return;
 
+		this.notifyMessagesInterrupted(this.activeAndQueuedMessages(), "session disposed");
 		this.queue.length = 0;
 		this.onStateChange?.({ processing: this.processing, queuedMessages: this.queue.length, disposed: true });
 		this.unsubscribe?.();
@@ -911,6 +938,7 @@ export class RoutedSession {
 	}
 
 	async kill(): Promise<string> {
+		this.notifyMessagesInterrupted(this.activeAndQueuedMessages(), "session killed");
 		this.queue.length = 0;
 		this.onStateChange?.({ processing: this.processing, queuedMessages: this.queue.length, disposed: this.disposed });
 		this.cancelContextGuardRecovery("Context guard recovery cancelled because the routed session was killed");
@@ -923,12 +951,14 @@ export class RoutedSession {
 
 		const queuedIndex = this.queue.findIndex((item) => item.event.id === eventId);
 		if (queuedIndex >= 0) {
-			this.queue.splice(queuedIndex, 1);
+			const [removed] = this.queue.splice(queuedIndex, 1);
+			if (removed?.kind === "message") this.notifyMessagesInterrupted([removed.event], "message cancelled");
 			this.onStateChange?.({ processing: this.processing, queuedMessages: this.queue.length, disposed: this.disposed });
 			return true;
 		}
 
 		if (this.activeMessage?.id === eventId) {
+			this.notifyMessagesInterrupted([this.activeMessage], "message cancelled");
 			this.cancelContextGuardRecovery("Context guard recovery cancelled with the active message");
 			await this.runtime.session.abort();
 			return true;
@@ -969,6 +999,8 @@ export class RoutedSession {
 
 		try {
 			this.activeMessage = event;
+			this.pendingAssistantError = undefined;
+			this.activeMessageFailed = false;
 			this.activeAssistantIndex = undefined;
 			this.nextAssistantIndex = 0;
 			this.activeThinkingIndex = undefined;
@@ -992,12 +1024,14 @@ export class RoutedSession {
 					throw resumeError;
 				}
 			}
-			this.emit({
-				type: "message_finished",
-				piboSessionId: this.piboSessionId,
-				eventId: event.id,
-				source: event.source,
-			});
+			if (!this.activeMessageFailed) {
+				this.emit({
+					type: "message_finished",
+					piboSessionId: this.piboSessionId,
+					eventId: event.id,
+					source: event.source,
+				});
+			}
 		} catch (error) {
 			const message = errorMessage(error);
 			this.emit({
@@ -1009,6 +1043,8 @@ export class RoutedSession {
 			});
 		} finally {
 			this.activeMessage = undefined;
+			this.pendingAssistantError = undefined;
+			this.activeMessageFailed = false;
 			this.activeAssistantIndex = undefined;
 			this.nextAssistantIndex = 0;
 			this.activeThinkingIndex = undefined;
@@ -1069,6 +1105,7 @@ export class RoutedSession {
 				getProviderUsage: () => this.getProviderUsage(),
 				clearQueue: () => this.clearQueue(),
 				abort: async () => {
+					if (this.activeMessage) this.notifyMessagesInterrupted([this.activeMessage], "abort requested");
 					this.cancelContextGuardRecovery("Context guard recovery cancelled by abort");
 					await this.runtime.session.abort();
 				},
@@ -1144,9 +1181,21 @@ export class RoutedSession {
 
 	private clearQueue(): number {
 		const cleared = this.queue.length;
+		const removedMessages = this.queue.flatMap((item) => item.kind === "message" ? [item.event] : []);
 		this.queue.length = 0;
+		this.notifyMessagesInterrupted(removedMessages, "queue cleared");
 		this.onStateChange?.({ processing: this.processing, queuedMessages: this.queue.length, disposed: this.disposed });
 		return cleared;
+	}
+
+	private activeAndQueuedMessages(): PiboMessageEvent[] {
+		const messages = this.queue.flatMap((item) => item.kind === "message" ? [item.event] : []);
+		return this.activeMessage ? [this.activeMessage, ...messages] : messages;
+	}
+
+	private notifyMessagesInterrupted(messages: readonly PiboMessageEvent[], reason: string): void {
+		if (messages.length === 0) return;
+		this.onMessagesInterrupted?.(messages, reason);
 	}
 
 	private createSessionSnapshot(): PiboPiSessionSnapshot {

@@ -497,6 +497,10 @@ export class PiboSessionRouter {
 			(result, event) => this.handleSessionOperation(result, event),
 			(id, opts) => this.killChildSessions(id, opts),
 			(state) => this.signalRegistry.project({ type: "session_processing_changed", piboSessionId: piboSession.id, processing: state.processing, queuedMessages: state.queuedMessages }),
+			(messages, reason) => this.telemetryRecorder?.recordMessagesInterrupted(messages, {
+				session: this.sessionStore.get(piboSession.id),
+				status: this.sessions.get(piboSession.id)?.getStatus(),
+			}, reason),
 		);
 		this.sessions.set(piboSession.id, session);
 		return session;

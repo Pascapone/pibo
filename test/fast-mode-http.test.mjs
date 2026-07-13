@@ -96,6 +96,7 @@ async function startFakeCodexHttpApi() {
 				},
 			})}`,
 			"",
+			"",
 		].join("\n"));
 	});
 	await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));

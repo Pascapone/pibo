@@ -440,6 +440,68 @@ export class TelemetryStore {
 		return getTelemetryTurnTimeline(this.db, turnIdOrEventId, input);
 	}
 
+	getOpenPhaseForTurn(turnId: string, name: TelemetryPhaseName): StoredTelemetryPhase | undefined {
+		const row = this.db.prepare(`
+			SELECT * FROM telemetry_phases
+			WHERE turn_id = ? AND name = ? AND status = 'open'
+			ORDER BY COALESCE(last_progress_at, started_at) DESC, created_at DESC
+			LIMIT 1
+		`).get(turnId, name) as TelemetryPhaseRow | undefined;
+		return row ? phaseFromRow(row) : undefined;
+	}
+
+	countPhasesForTurn(turnId: string, name: TelemetryPhaseName): number {
+		const row = this.db.prepare("SELECT COUNT(*) AS count FROM telemetry_phases WHERE turn_id = ? AND name = ?").get(turnId, name) as { count: number };
+		return Number(row.count);
+	}
+
+	listOpenPhasesForTurn(turnId: string): StoredTelemetryPhase[] {
+		const rows = this.db.prepare(`
+			SELECT * FROM telemetry_phases
+			WHERE turn_id = ? AND status = 'open'
+			ORDER BY started_at ASC, created_at ASC
+		`).all(turnId) as TelemetryPhaseRow[];
+		return rows.map(phaseFromRow);
+	}
+
+	getLatestProviderRequestForTurn(turnId: string): StoredTelemetryProviderRequest | undefined {
+		const row = this.db.prepare(`
+			SELECT * FROM telemetry_provider_requests
+			WHERE turn_id = ?
+			ORDER BY started_at DESC, created_at DESC
+			LIMIT 1
+		`).get(turnId) as TelemetryProviderRequestRow | undefined;
+		return row ? providerRequestFromRow(row) : undefined;
+	}
+
+	getActiveProviderRequestForTurn(turnId: string): StoredTelemetryProviderRequest | undefined {
+		const row = this.db.prepare(`
+			SELECT * FROM telemetry_provider_requests
+			WHERE turn_id = ? AND status NOT IN ('completed', 'error', 'aborted', 'timeout')
+			ORDER BY started_at DESC, created_at DESC
+			LIMIT 1
+		`).get(turnId) as TelemetryProviderRequestRow | undefined;
+		return row ? providerRequestFromRow(row) : undefined;
+	}
+
+	listActiveProviderRequestsForTurn(turnId: string): StoredTelemetryProviderRequest[] {
+		const rows = this.db.prepare(`
+			SELECT * FROM telemetry_provider_requests
+			WHERE turn_id = ? AND status NOT IN ('completed', 'error', 'aborted', 'timeout')
+			ORDER BY started_at ASC, created_at ASC
+		`).all(turnId) as TelemetryProviderRequestRow[];
+		return rows.map(providerRequestFromRow);
+	}
+
+	listActiveToolCallsForTurn(turnId: string): StoredTelemetryToolCall[] {
+		const rows = this.db.prepare(`
+			SELECT * FROM telemetry_tool_calls
+			WHERE turn_id = ? AND status NOT IN ('ok', 'error', 'aborted', 'timeout')
+			ORDER BY created_at ASC
+		`).all(turnId) as TelemetryToolCallRow[];
+		return rows.map(toolCallFromRow);
+	}
+
 	listProviderEventsPage(providerRequestId: string, input: TelemetryProviderEventListOptions = {}): TelemetryProviderEventsPage {
 		return listTelemetryProviderEventsPage(this.db, providerRequestId, input);
 	}
