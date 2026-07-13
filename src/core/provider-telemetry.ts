@@ -58,6 +58,9 @@ export class PiboProviderTelemetryRecorder {
 			const turn = this.activeTurn();
 			if (!turn) return undefined;
 			const now = options.at ?? new Date().toISOString();
+			if (this.activeProviderRequest()) {
+				this.finishActiveProviderRequest("aborted", now, "provider request superseded", undefined, "provider_superseded");
+			}
 			const model = modelInfo(options.model, this.options.model, payload);
 			const providerRequestId = `pr_${randomUUID()}`;
 			const phaseId = this.nextPhaseId(turn.turnId, "provider_request");
@@ -206,7 +209,7 @@ export class PiboProviderTelemetryRecorder {
 			const updated = this.updateProviderRequest(request, {
 				status,
 				completedAt: now,
-				errorCategory: status === "error" ? errorCategory ?? "provider_error" : status === "aborted" ? "runtime_abort" : undefined,
+				errorCategory: status === "error" ? errorCategory ?? "provider_error" : status === "aborted" ? errorCategory ?? "runtime_abort" : undefined,
 				errorMessage,
 			});
 			this.activeProviderRequestId = undefined;

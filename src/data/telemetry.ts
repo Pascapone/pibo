@@ -361,6 +361,21 @@ export type TelemetryProviderEventInput = {
 	updatedAt?: string;
 };
 
+export type TelemetryProviderProgressInput = {
+	providerRequestId: string;
+	status?: TelemetryProviderRequestStatus;
+	lastRawEventAt?: string;
+	lastNormalizedEventAt?: string;
+	upstreamResponseId?: string;
+	rawEventCount?: number;
+	normalizedEventCount?: number;
+	parseErrorCount?: number;
+	unknownEventCount?: number;
+	bytesReceived?: number;
+	eventTypeCounts?: Record<string, number>;
+	updatedAt?: string;
+};
+
 export type StoredTelemetryToolCall = {
 	toolCallId: string;
 	piboSessionId: string;
@@ -752,6 +767,66 @@ export class TelemetryStore {
 		this.incrementProviderCounters(input.providerRequestId, input.eventType, receivedAt, byteSize, parseStatus, normalizedDelta);
 	}
 
+	recordProviderProgress(input: TelemetryProviderProgressInput): StoredTelemetryProviderRequest | undefined {
+		const existing = this.getProviderRequest(input.providerRequestId);
+		if (!existing) return undefined;
+		const eventTypeCounts = { ...existing.eventTypeCounts };
+		for (const [eventType, delta] of Object.entries(input.eventTypeCounts ?? {})) {
+			if (!Number.isFinite(delta) || delta <= 0) continue;
+			const current = typeof eventTypeCounts[eventType] === "number" ? eventTypeCounts[eventType] : 0;
+			eventTypeCounts[eventType] = current + delta;
+		}
+		const rawEventCount = Math.max(0, input.rawEventCount ?? 0);
+		const normalizedEventCount = Math.max(0, input.normalizedEventCount ?? 0);
+		const parseErrorCount = Math.max(0, input.parseErrorCount ?? 0);
+		const unknownEventCount = Math.max(0, input.unknownEventCount ?? 0);
+		const bytesReceived = Math.max(0, input.bytesReceived ?? 0);
+		const updatedAt = input.updatedAt ?? input.lastNormalizedEventAt ?? input.lastRawEventAt ?? new Date().toISOString();
+		this.db.prepare(`
+			UPDATE telemetry_provider_requests SET
+				status = CASE WHEN status IN ('completed', 'error', 'aborted', 'timeout') THEN status ELSE COALESCE(?, status) END,
+				last_raw_event_at = COALESCE(?, last_raw_event_at),
+				last_normalized_event_at = COALESCE(?, last_normalized_event_at),
+				upstream_response_id = COALESCE(?, upstream_response_id),
+				raw_event_count = raw_event_count + ?,
+				normalized_event_count = normalized_event_count + ?,
+				parse_error_count = parse_error_count + ?,
+				unknown_event_count = unknown_event_count + ?,
+				bytes_received = CASE WHEN ? = 0 THEN bytes_received ELSE COALESCE(bytes_received, 0) + ? END,
+				event_type_counts_json = ?,
+				updated_at = ?
+			WHERE provider_request_id = ?
+		`).run(
+			input.status ?? null,
+			input.lastRawEventAt ?? null,
+			input.lastNormalizedEventAt ?? null,
+			input.upstreamResponseId ?? null,
+			rawEventCount,
+			normalizedEventCount,
+			parseErrorCount,
+			unknownEventCount,
+			bytesReceived,
+			bytesReceived,
+			JSON.stringify(eventTypeCounts),
+			updatedAt,
+			input.providerRequestId,
+		);
+		return {
+			...existing,
+			status: isTerminalProviderRequestStatus(existing.status) ? existing.status : input.status ?? existing.status,
+			lastRawEventAt: input.lastRawEventAt ?? existing.lastRawEventAt,
+			lastNormalizedEventAt: input.lastNormalizedEventAt ?? existing.lastNormalizedEventAt,
+			upstreamResponseId: input.upstreamResponseId ?? existing.upstreamResponseId,
+			rawEventCount: existing.rawEventCount + rawEventCount,
+			normalizedEventCount: existing.normalizedEventCount + normalizedEventCount,
+			parseErrorCount: existing.parseErrorCount + parseErrorCount,
+			unknownEventCount: existing.unknownEventCount + unknownEventCount,
+			bytesReceived: bytesReceived > 0 ? (existing.bytesReceived ?? 0) + bytesReceived : existing.bytesReceived,
+			eventTypeCounts,
+			updatedAt,
+		};
+	}
+
 	appendProviderEventSummary(input: TelemetryProviderEventInput): StoredTelemetryProviderEvent {
 		const now = input.updatedAt ?? new Date().toISOString();
 		const receivedAt = input.receivedAt ?? now;
@@ -930,33 +1005,15 @@ export class TelemetryStore {
 	}
 
 	private incrementProviderCounters(providerRequestId: string, eventType: string, receivedAt: string, byteSize: number, parseStatus: TelemetryProviderEventParseStatus, normalizedDelta: number): void {
-		const existing = this.getProviderRequest(providerRequestId);
-		if (!existing) return;
-		const eventTypeCounts = { ...existing.eventTypeCounts };
-		const currentCount = typeof eventTypeCounts[eventType] === "number" ? eventTypeCounts[eventType] : 0;
-		eventTypeCounts[eventType] = currentCount + 1;
-		this.upsertProviderRequest({
+		this.recordProviderProgress({
 			providerRequestId,
-			piboSessionId: existing.piboSessionId,
-			rootSessionId: existing.rootSessionId,
-			roomId: existing.roomId,
-			turnId: existing.turnId,
-			phaseId: existing.phaseId,
-			provider: existing.provider,
-			api: existing.api,
-			model: existing.model,
-			transport: existing.transport,
-			serviceTier: existing.serviceTier,
-			status: existing.status,
 			lastRawEventAt: receivedAt,
-			rawEventCount: existing.rawEventCount + 1,
-			normalizedEventCount: existing.normalizedEventCount + normalizedDelta,
-			parseErrorCount: existing.parseErrorCount + (parseStatus === "invalid_json" ? 1 : 0),
-			unknownEventCount: existing.unknownEventCount + (parseStatus === "unknown_type" ? 1 : 0),
-			bytesReceived: (existing.bytesReceived ?? 0) + byteSize,
-			eventTypeCounts,
-			captureMode: existing.captureMode,
-			retentionClass: existing.retentionClass,
+			rawEventCount: 1,
+			normalizedEventCount: normalizedDelta,
+			parseErrorCount: parseStatus === "invalid_json" ? 1 : 0,
+			unknownEventCount: parseStatus === "unknown_type" ? 1 : 0,
+			bytesReceived: byteSize,
+			eventTypeCounts: { [eventType]: 1 },
 			updatedAt: receivedAt,
 		});
 	}
@@ -985,6 +1042,10 @@ export class BestEffortTelemetryService {
 		this.safe(() => this.store?.recordProviderEventSummary(input));
 	}
 
+	recordProviderProgress(input: TelemetryProviderProgressInput): StoredTelemetryProviderRequest | undefined {
+		return this.safe(() => this.store?.recordProviderProgress(input));
+	}
+
 	appendProviderEventSummary(input: TelemetryProviderEventInput): StoredTelemetryProviderEvent | undefined {
 		return this.safe(() => this.store?.appendProviderEventSummary(input));
 	}
@@ -1001,6 +1062,10 @@ export class BestEffortTelemetryService {
 			return undefined;
 		}
 	}
+}
+
+function isTerminalProviderRequestStatus(status: TelemetryProviderRequestStatus): boolean {
+	return status === "completed" || status === "error" || status === "aborted" || status === "timeout";
 }
 
 function fail(message: string): never {

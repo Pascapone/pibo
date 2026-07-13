@@ -47,6 +47,21 @@ function providerRecorder(store) {
 	});
 }
 
+function observeTelemetryWrites(store) {
+	const originalPrepare = store.db.prepare.bind(store.db);
+	let count = 0;
+	store.db.prepare = (sql) => {
+		if (/^\s*(?:INSERT|UPDATE|DELETE)\b/i.test(sql) && /telemetry_/i.test(sql)) count += 1;
+		return originalPrepare(sql);
+	};
+	return {
+		count: () => count,
+		restore: () => {
+			store.db.prepare = originalPrepare;
+		},
+	};
+}
+
 test("runtime telemetry records queued, started, and completed turn lifecycle", () => {
 	const store = createStore();
 	try {
@@ -275,6 +290,31 @@ test("runtime telemetry captures tool execution lifecycle rows", () => {
 	}
 });
 
+test("runtime telemetry coalesces repeated tool execution progress updates", () => {
+	const store = createStore();
+	const writes = observeTelemetryWrites(store);
+	try {
+		const recorder = new PiboRuntimeTelemetryRecorder(store.telemetry, undefined, { progressFlushIntervalMs: 60_000 });
+		const eventId = "evt_tool_execution_coalescing";
+		recorder.recordOutput({ type: "message_queued", piboSessionId: session.id, eventId, queuedMessages: 1, text: "exec", source: "user" }, { session, status: status(1) });
+		recorder.recordOutput({ type: "message_started", piboSessionId: session.id, eventId, text: "exec", source: "user" }, { session, status: status(0) });
+		recorder.recordOutput({ type: "tool_call", piboSessionId: session.id, eventId, toolCallId: "call_exec_coalesced", toolName: "bash", args: { command: "sleep 1" }, argsComplete: true }, { session, status: status(0) });
+		recorder.recordOutput({ type: "tool_execution_started", piboSessionId: session.id, eventId, toolCallId: "call_exec_coalesced", toolName: "bash", args: { command: "sleep 1" } }, { session, status: status(0) });
+		const writesBeforeProgress = writes.count();
+
+		for (let index = 0; index < 100; index += 1) {
+			recorder.recordOutput({ type: "tool_execution_updated", piboSessionId: session.id, eventId, toolCallId: "call_exec_coalesced", toolName: "bash", args: { command: "sleep 1" }, partialResult: `tick ${index}` }, { session, status: status(0) });
+		}
+
+		assert.equal(writes.count() - writesBeforeProgress, 0);
+		recorder.recordOutput({ type: "tool_execution_finished", piboSessionId: session.id, eventId, toolCallId: "call_exec_coalesced", toolName: "bash", result: "done", isError: false }, { session, status: status(0) });
+		assert.equal(store.telemetry.getToolCall("call_exec_coalesced").status, "ok");
+	} finally {
+		writes.restore();
+		store.close();
+	}
+});
+
 test("runtime telemetry marks started tool execution aborted when the turn aborts", () => {
 	const store = createStore();
 	try {
@@ -411,6 +451,33 @@ test("provider telemetry records a failed attempt without terminalizing a retryi
 	}
 });
 
+test("provider telemetry aborts a prior request when a new request starts", () => {
+	const store = createStore();
+	try {
+		const runtime = new PiboRuntimeTelemetryRecorder(store.telemetry);
+		const provider = providerRecorder(store);
+		const eventId = "evt_provider_superseded";
+		runtime.recordOutput({ type: "message_queued", piboSessionId: session.id, eventId, queuedMessages: 1, text: "retry", source: "user" }, { session, status: status(1) });
+		runtime.recordOutput({ type: "message_started", piboSessionId: session.id, eventId, text: "retry", source: "user" }, { session, status: status(0) });
+		const first = provider.recordRequestStart({ model: "gpt-test" }, { at: "2026-05-16T00:00:01.000Z" });
+		provider.recordResponse({ status: 200, headers: {}, at: "2026-05-16T00:00:02.000Z" });
+		const second = provider.recordRequestStart({ model: "gpt-test" }, { at: "2026-05-16T00:00:03.000Z" });
+		provider.recordResponse({ status: 200, headers: {}, at: "2026-05-16T00:00:04.000Z" });
+		runtime.recordPiEvent(session.id, { type: "message_update", assistantMessageEvent: { type: "start" } }, { session, status: status(0), activeEventId: eventId });
+
+		const timeline = store.telemetry.getTurnTimeline(turnIdForEvent(eventId));
+		assert.equal(timeline.providerRequests.length, 2);
+		assert.equal(timeline.providerRequests.find((request) => request.providerRequestId === first.providerRequestId).status, "aborted");
+		assert.equal(timeline.providerRequests.find((request) => request.providerRequestId === first.providerRequestId).errorCategory, "provider_superseded");
+		assert.equal(timeline.providerRequests.find((request) => request.providerRequestId === first.providerRequestId).rawEventCount, 0);
+		assert.equal(timeline.providerRequests.find((request) => request.providerRequestId === second.providerRequestId).status, "headers");
+		assert.equal(timeline.providerRequests.find((request) => request.providerRequestId === second.providerRequestId).rawEventCount, 1);
+		assert.equal(timeline.turn.status, "running");
+	} finally {
+		store.close();
+	}
+});
+
 test("runtime telemetry aggregates Pi provider events by default without storing per-event rows", () => {
 	const store = createStore();
 	try {
@@ -443,6 +510,75 @@ test("runtime telemetry aggregates Pi provider events by default without storing
 		assert.equal(events.length, 0);
 		assert.equal(JSON.stringify(request).includes("secret value"), false);
 	} finally {
+		store.close();
+	}
+});
+
+test("runtime telemetry coalesces aggregate provider-event writes and flushes exact totals at message end", () => {
+	const store = createStore();
+	const writes = observeTelemetryWrites(store);
+	try {
+		const runtime = new PiboRuntimeTelemetryRecorder(store.telemetry, undefined, { progressFlushIntervalMs: 60_000 });
+		const provider = providerRecorder(store);
+		const eventId = "evt_provider_event_coalescing";
+		runtime.recordOutput({ type: "message_queued", piboSessionId: session.id, eventId, queuedMessages: 1, text: "stream", source: "user" }, { session, status: status(1) });
+		runtime.recordOutput({ type: "message_started", piboSessionId: session.id, eventId, text: "stream", source: "user" }, { session, status: status(0) });
+		provider.recordRequestStart({ model: "gpt-test" }, { at: "2026-05-16T00:00:01.000Z" });
+		provider.recordResponse({ status: 200, headers: {}, at: "2026-05-16T00:00:02.000Z" });
+		const writesBeforeProgress = writes.count();
+
+		for (let index = 0; index < 100; index += 1) {
+			runtime.recordPiEvent(session.id, {
+				type: "message_update",
+				assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "x" },
+			}, { session, status: status(0), activeEventId: eventId });
+		}
+
+		let request = store.telemetry.getTurnTimeline(turnIdForEvent(eventId)).providerRequests[0];
+		assert.equal(request.rawEventCount, 1);
+		assert.ok(writes.count() - writesBeforeProgress <= 1);
+
+		const finalMessage = { role: "assistant", stopReason: "stop", responseId: "resp_coalesced", content: [{ type: "text", text: "done" }] };
+		runtime.recordPiEvent(session.id, { type: "message_end", message: finalMessage }, { session, status: status(0), activeEventId: eventId });
+		request = store.telemetry.getTurnTimeline(turnIdForEvent(eventId)).providerRequests[0];
+		assert.equal(request.rawEventCount, 101);
+		assert.equal(request.upstreamResponseId, "resp_coalesced");
+		assert.deepEqual(request.eventTypeCounts, { "pi.text_delta": 100, "pi.message_end": 1 });
+		assert.ok(writes.count() - writesBeforeProgress <= 2);
+	} finally {
+		writes.restore();
+		store.close();
+	}
+});
+
+test("runtime telemetry throttles normalized progress writes and flushes exact totals at turn end", () => {
+	const store = createStore();
+	const writes = observeTelemetryWrites(store);
+	try {
+		const runtime = new PiboRuntimeTelemetryRecorder(store.telemetry, undefined, { progressFlushIntervalMs: 60_000 });
+		const provider = providerRecorder(store);
+		const eventId = "evt_normalized_progress_coalescing";
+		runtime.recordOutput({ type: "message_queued", piboSessionId: session.id, eventId, queuedMessages: 1, text: "stream", source: "user" }, { session, status: status(1) });
+		runtime.recordOutput({ type: "message_started", piboSessionId: session.id, eventId, text: "stream", source: "user" }, { session, status: status(0) });
+		provider.recordRequestStart({ model: "gpt-test" }, { at: "2026-05-16T00:00:01.000Z" });
+		provider.recordResponse({ status: 200, headers: {}, at: "2026-05-16T00:00:02.000Z" });
+		const writesBeforeProgress = writes.count();
+
+		for (let index = 0; index < 100; index += 1) {
+			runtime.recordOutput({ type: "assistant_delta", piboSessionId: session.id, eventId, assistantIndex: 0, contentIndex: 0, text: "x" }, { session, status: status(0) });
+		}
+
+		let request = store.telemetry.getTurnTimeline(turnIdForEvent(eventId)).providerRequests[0];
+		assert.equal(request.status, "streaming");
+		assert.equal(request.normalizedEventCount, 1);
+		assert.ok(writes.count() - writesBeforeProgress <= 5);
+
+		runtime.recordOutput({ type: "message_finished", piboSessionId: session.id, eventId, source: "user" }, { session, status: status(0) });
+		request = store.telemetry.getTurnTimeline(turnIdForEvent(eventId)).providerRequests[0];
+		assert.equal(request.status, "completed");
+		assert.equal(request.normalizedEventCount, 100);
+	} finally {
+		writes.restore();
 		store.close();
 	}
 });
