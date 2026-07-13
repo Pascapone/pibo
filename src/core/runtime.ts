@@ -298,9 +298,10 @@ function getProfileExtensionFactories(
 	profile: InitialSessionContext,
 	extensionFactories: readonly ExtensionFactory[] | undefined,
 	contextGuardRecovery: PiboAssistantContextGuardRecovery,
+	getSettingsManager: () => SettingsManager | undefined,
 ): ExtensionFactory[] | undefined {
 	const piboPromptTemplateExtension = createPiboSystemPromptTemplateExtension();
-	const piboCompactionPromptExtension = createPiboCompactionPromptExtension();
+	const piboCompactionPromptExtension = createPiboCompactionPromptExtension({ getSettingsManager });
 	const piboContextGuardExtension = createPiboAssistantContextGuardExtension({}, contextGuardRecovery);
 	const providerToolExtensions = profile.tools
 		.filter((tool) => tool.enabled !== false)
@@ -389,6 +390,7 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 		const mcpAgentContextFile = await getMcpAgentContextFile(profile.mcpServers);
 		const skillPaths = getEnabledSkillPaths(runtimeCwd, profile);
 		const piPackageOptions = getPiPackageRuntimeOptions(runtimeCwd, profile);
+		let runtimeSettingsManager: SettingsManager | undefined;
 		const services = await createAgentSessionServices({
 			cwd: runtimeCwd,
 			agentDir: runtimeAgentDir,
@@ -396,7 +398,12 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 			resourceLoaderOptions: {
 				...piPackageOptions.resourceLoaderOptions,
 				additionalSkillPaths: skillPaths,
-				extensionFactories: getProfileExtensionFactories(profile, options.extensionFactories, contextGuardRecovery),
+				extensionFactories: getProfileExtensionFactories(
+					profile,
+					options.extensionFactories,
+					contextGuardRecovery,
+					() => runtimeSettingsManager,
+				),
 				noExtensions: true,
 				noSkills: true,
 				noPromptTemplates: true,
@@ -416,6 +423,7 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 				}),
 			},
 		});
+		runtimeSettingsManager = services.settingsManager;
 		applyPiboRuntimeRetryDefaults(services.settingsManager, options.retryDefaults);
 		registerOpenAiGpt56Models(services.modelRegistry as OpenAiGpt56ModelRegistryLike);
 		registerMiniMaxProvider(services.modelRegistry as MiniMaxModelRegistryLike);

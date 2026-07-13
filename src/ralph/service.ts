@@ -184,10 +184,10 @@ export class PiboRalphService {
 			},
 		});
 		this.store.attachRunSession(job.id, run.id, session.id);
-		const finalAnswer = await this.emitMessageAndWait(session.id, buildRalphPrompt(job), { isCancelled: () => this.cancelledRuns.has(run.id) }); return { piboSessionId: session.id, finalAnswer };
+		const finalAnswer = await this.emitMessageAndWait(session.id, buildRalphPrompt(job)); return { piboSessionId: session.id, finalAnswer };
 	}
 	private resolveTarget(job: PiboRalphJob): { roomId: string; workspace?: string; metadata?: Record<string, unknown> } { if (job.target.kind === 'room') { const room = this.roomService.getRoom(job.target.roomId); if (!room) throw new Error('Target room no longer exists'); if (isPiboRoomArchived(room)) throw new Error('Target room is archived'); return { roomId: room.id, workspace: room.workspace ?? getDefaultPiboWorkspace() }; } const room = this.roomService.ensureDefaultRoom({ name: 'Shared Chat' }); return { roomId: room.id, workspace: room.workspace ?? getDefaultPiboWorkspace() }; }
-	private async emitMessageAndWait(piboSessionId: string, text: string, options: { isCancelled?: () => boolean } = {}): Promise<string> {
+	private async emitMessageAndWait(piboSessionId: string, text: string): Promise<string> {
 		const eventId = `ralph_msg_${randomUUID()}`;
 		return await new Promise<string>((resolve, reject) => {
 			let settled = false;
@@ -221,8 +221,7 @@ export class PiboRalphService {
 				if (event.type === 'message_finished') finish(lastSessionError ? new Error(lastSessionError) : undefined);
 				if (event.type === 'session_error') {
 					lastSessionError = event.error;
-					const providerAttempt = event.errorDetails?.origin === 'provider' && Boolean(event.errorDetails.api || event.errorDetails.provider || event.errorDetails.model);
-					if (!providerAttempt || options.isCancelled?.()) finish(new Error(event.error));
+					finish(new Error(event.error));
 				}
 			});
 			this.options.context.emit({ type: 'message', piboSessionId, id: eventId, source: 'service', text }).catch((error) => finish(error instanceof Error ? error : new Error(String(error))));
