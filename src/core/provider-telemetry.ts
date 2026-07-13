@@ -8,6 +8,7 @@ import {
 	type TelemetryProviderRequestStatus,
 	type TelemetryStore,
 } from "../data/telemetry.js";
+import type { AsyncTelemetryWriter } from "../data/telemetry-writer.js";
 import type { ModelProfile } from "./profiles.js";
 import { normalizeSessionErrorDetails } from "./session-errors.js";
 
@@ -17,6 +18,7 @@ type ProviderTelemetryOptions = {
 	store?: TelemetryStore;
 	session: PiboSession;
 	model?: ProviderTelemetryModel;
+	writer?: AsyncTelemetryWriter;
 	onError?: (error: unknown) => void;
 };
 
@@ -53,6 +55,11 @@ export class PiboProviderTelemetryRecorder {
 	}
 
 	recordRequestStart(payload: unknown, options: ProviderRequestStartOptions = {}): StoredTelemetryProviderRequest | undefined {
+		const capturedOptions = { ...options, at: options.at ?? new Date().toISOString() };
+		return this.schedule(() => this.recordRequestStartNow(providerPayloadSnapshot(payload), capturedOptions));
+	}
+
+	private recordRequestStartNow(payload: unknown, options: ProviderRequestStartOptions): StoredTelemetryProviderRequest | undefined {
 		if (!this.options.store) return undefined;
 		try {
 			const turn = this.activeTurn();
@@ -115,6 +122,11 @@ export class PiboProviderTelemetryRecorder {
 	}
 
 	recordResponse(input: ProviderResponseSummary): StoredTelemetryProviderRequest | undefined {
+		const captured = { status: input.status, at: input.at ?? new Date().toISOString() };
+		return this.schedule(() => this.recordResponseNow(captured));
+	}
+
+	private recordResponseNow(input: ProviderResponseSummary): StoredTelemetryProviderRequest | undefined {
 		if (!this.options.store) return undefined;
 		try {
 			const request = this.activeProviderRequest();
@@ -168,7 +180,14 @@ export class PiboProviderTelemetryRecorder {
 	// The assistant message boundary ends the provider stream even when the wider
 	// Pibo turn continues with a long-running tool or another provider request.
 	recordMessageEnd(message: unknown, options: ProviderMessageEndOptions = {}): StoredTelemetryProviderRequest | undefined {
-		if (!this.options.store || !isAssistantMessage(message)) return undefined;
+		if (!isAssistantMessage(message)) return undefined;
+		const captured = providerAssistantMessageSnapshot(message);
+		const capturedOptions = { ...options, at: options.at ?? new Date().toISOString() };
+		return this.schedule(() => this.recordMessageEndNow(captured, capturedOptions));
+	}
+
+	private recordMessageEndNow(message: ProviderAssistantMessage, options: ProviderMessageEndOptions): StoredTelemetryProviderRequest | undefined {
+		if (!this.options.store) return undefined;
 		const status = providerStatusForMessage(message);
 		const summary = providerSummaryForStatus(status);
 		const errorMessage = safeMessageError(message);
@@ -183,7 +202,15 @@ export class PiboProviderTelemetryRecorder {
 	}
 
 	recordShutdown(reason: string, at = new Date().toISOString()): StoredTelemetryProviderRequest | undefined {
-		return this.finishActiveProviderRequest("aborted", at, reason, undefined, "runtime_abort");
+		return this.schedule(() => this.finishActiveProviderRequest("aborted", at, reason, undefined, "runtime_abort"));
+	}
+
+	private schedule<T>(write: () => T): T | undefined {
+		if (this.options.writer) {
+			this.options.writer.enqueue(write, this.options.onError);
+			return undefined;
+		}
+		return write();
 	}
 
 	private finishActiveProviderRequest(
@@ -351,6 +378,24 @@ function modelFromContext(ctx: unknown): ProviderTelemetryModel | undefined {
 	const id = typeof candidate.id === "string" && candidate.id.length > 0 ? candidate.id : undefined;
 	const api = typeof candidate.api === "string" && candidate.api.length > 0 ? candidate.api : undefined;
 	return provider && id ? { provider, id, api } : undefined;
+}
+
+function providerAssistantMessageSnapshot(message: ProviderAssistantMessage): ProviderAssistantMessage {
+	return {
+		role: message.role,
+		stopReason: message.stopReason,
+		errorMessage: message.errorMessage,
+		api: message.api,
+		provider: message.provider,
+		model: message.model,
+	};
+}
+
+function providerPayloadSnapshot(payload: unknown): unknown {
+	return {
+		model: modelIdFromPayload(payload),
+		service_tier: serviceTierFromPayload(payload),
+	};
 }
 
 function modelIdFromPayload(payload: unknown): string | undefined {

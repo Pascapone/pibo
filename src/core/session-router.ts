@@ -43,6 +43,7 @@ import { withWorkflowSessionKind } from "../sessions/workflow-session-kind.js";
 import { PiboRuntimeTelemetryRecorder, type ProviderEventTelemetryMode } from "./runtime-telemetry.js";
 import { createPiboProviderTelemetryExtension } from "./provider-telemetry.js";
 import type { TelemetryStore } from "../data/telemetry.js";
+import { AsyncTelemetryWriter } from "../data/telemetry-writer.js";
 
 export type {
 	PiboEventListener,
@@ -218,14 +219,21 @@ export class PiboSessionRouter {
 	private readonly sessionStore: PiboSessionStore;
 	private readonly reliabilityStore?: PiboReliabilityStore;
 	private readonly telemetryStore?: TelemetryStore;
+	private readonly telemetryWriter?: AsyncTelemetryWriter;
 	private readonly telemetryRecorder?: PiboRuntimeTelemetryRecorder;
+	private disposePromise?: Promise<void>;
+	private closing = false;
 
 	constructor(private readonly options: PiboSessionRouterOptions = {}) {
 		this.pluginRegistry = options.pluginRegistry ?? createDefaultPiboPluginRegistry();
 		this.sessionStore = options.sessionStore ?? new InMemoryPiboSessionStore();
 		this.telemetryStore = options.telemetryStore ?? telemetryStoreFromSessionStore(this.sessionStore);
+		this.telemetryWriter = this.telemetryStore ? new AsyncTelemetryWriter(this.telemetryStore) : undefined;
 		this.telemetryRecorder = this.telemetryStore
-			? new PiboRuntimeTelemetryRecorder(this.telemetryStore, undefined, { providerEventMode: providerEventTelemetryModeFromEnv() })
+			? new PiboRuntimeTelemetryRecorder(this.telemetryStore, undefined, {
+				providerEventMode: providerEventTelemetryModeFromEnv(),
+				writer: this.telemetryWriter,
+			})
 			: undefined;
 		const idleTimeoutMs = options.routedSessionIdleTimeoutMs;
 		this.routedSessionIdleTimeoutMs = idleTimeoutMs === false
@@ -253,6 +261,7 @@ export class PiboSessionRouter {
 	}
 
 	async emit(event: PiboInputEvent): Promise<PiboOutputEvent> {
+		if (this.closing) throw new Error("Pibo session router is disposed.");
 		const session = await this.getOrCreateSession(event.piboSessionId);
 		this.clearIdleSessionTimer(event.piboSessionId);
 		try {
@@ -307,8 +316,12 @@ export class PiboSessionRouter {
 			if (cached) sessions.push(cached);
 			this.sessions.delete(id);
 		}
-		await Promise.all(ids.map((id) => this.runtimeRegistry.closeControllerSessions(id, { force: true })));
-		await Promise.all(sessions.map((session) => session.dispose()));
+		try {
+			await Promise.all(ids.map((id) => this.runtimeRegistry.closeControllerSessions(id, { force: true })));
+			await Promise.all(sessions.map((session) => session.dispose()));
+		} finally {
+			await this.telemetryWriter?.flush();
+		}
 		for (const id of ids) {
 			this.signalRegistry.project({ type: "session_disposed", piboSessionId: id, reason });
 		}
@@ -462,15 +475,27 @@ export class PiboSessionRouter {
 	}
 
 	async disposeAll(): Promise<void> {
-		const sessions = [...this.sessions.values()];
-		this.sessions.clear();
-		for (const timer of this.idleSessionTimers.values()) clearTimeout(timer);
-		this.idleSessionTimers.clear();
-		this.runRegistry.cancelAll("Pibo session router was disposed.");
-		for (const session of sessions) this.signalRegistry.project({ type: "session_disposed", piboSessionId: session.getStatus().piboSessionId, reason: "router disposed" });
-		this.scheduledRunReminders.clear();
-		await this.runtimeRegistry.closeAll({ force: true });
-		await Promise.all(sessions.map((session) => session.dispose()));
+		if (this.disposePromise) return this.disposePromise;
+		this.closing = true;
+		this.disposePromise = this.disposeAllUnsafe();
+		return this.disposePromise;
+	}
+
+	private async disposeAllUnsafe(): Promise<void> {
+		try {
+			await Promise.allSettled([...this.pendingSessions.values()]);
+			const sessions = [...this.sessions.values()];
+			this.sessions.clear();
+			for (const timer of this.idleSessionTimers.values()) clearTimeout(timer);
+			this.idleSessionTimers.clear();
+			this.runRegistry.cancelAll("Pibo session router was disposed.");
+			for (const session of sessions) this.signalRegistry.project({ type: "session_disposed", piboSessionId: session.getStatus().piboSessionId, reason: "router disposed" });
+			this.scheduledRunReminders.clear();
+			await this.runtimeRegistry.closeAll({ force: true });
+			await Promise.all(sessions.map((session) => session.dispose()));
+		} finally {
+			await this.telemetryWriter?.dispose();
+		}
 	}
 
 	private clearIdleSessionTimer(piboSessionId: string): void {
@@ -514,6 +539,7 @@ export class PiboSessionRouter {
 	}
 
 	private async getOrCreateSession(piboSessionId: string): Promise<RoutedSession> {
+		if (this.closing) throw new Error("Pibo session router is disposed.");
 		const existing = this.sessions.get(piboSessionId);
 		if (existing) {
 			this.clearIdleSessionTimer(piboSessionId);
@@ -544,7 +570,7 @@ export class PiboSessionRouter {
 		const initialThinkingLevel = resolvePiboSessionInitialThinkingLevel(piboSession);
 		const userSettings = loadPiboUserSettings();
 		const telemetryExtension = this.telemetryStore
-			? createPiboProviderTelemetryExtension({ store: this.telemetryStore, session: piboSession, model: activeModel })
+			? createPiboProviderTelemetryExtension({ store: this.telemetryStore, writer: this.telemetryWriter, session: piboSession, model: activeModel })
 			: undefined;
 		const runtime = await createPiboRuntime({
 			cwd: piboSession.workspace ?? this.options.cwd,
@@ -665,8 +691,12 @@ export class PiboSessionRouter {
 		const cached = this.sessions.get(piboSessionId);
 		this.clearIdleSessionTimer(piboSessionId);
 		this.sessions.delete(piboSessionId);
-		await this.runtimeRegistry.closeControllerSessions(piboSessionId, { force: true });
-		await cached?.dispose();
+		try {
+			await this.runtimeRegistry.closeControllerSessions(piboSessionId, { force: true });
+			await cached?.dispose();
+		} finally {
+			await this.telemetryWriter?.flush();
+		}
 		if (reason) this.signalRegistry.project({ type: "session_disposed", piboSessionId, reason });
 	}
 

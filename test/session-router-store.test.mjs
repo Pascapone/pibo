@@ -6,6 +6,7 @@ import test from "node:test";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { createPiboRuntime } from "../dist/core/runtime.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
+import { PiboDataStore } from "../dist/data/pibo-store.js";
 import { upsertPiPackage } from "../dist/pi-packages/store.js";
 import { piboCorePlugin } from "../dist/plugins/builtin.js";
 import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.js";
@@ -557,6 +558,54 @@ test("kill cancels child sessions but not yielded runs", async () => {
 		router.runRegistry.cancel("ps_child", run.runId);
 	} finally {
 		await router.disposeAll();
+	}
+});
+
+test("session router flushes queued telemetry and rejects new work during disposal", async () => {
+	const payloadRootDir = await mkdtemp(join(tmpdir(), "pibo-router-telemetry-payloads-"));
+	const dataStore = new PiboDataStore(":memory:", { payloadRootDir });
+	const sessionStore = new InMemoryPiboSessionStore();
+	const stored = sessionStore.create({
+		id: "ps_router_telemetry_flush",
+		piSessionId: "33333333-3333-4333-8333-333333333333",
+		channel: "pibo.test",
+		kind: "chat",
+		profile: "base",
+		metadata: { chatRoomId: "room_router_telemetry_flush" },
+	});
+	const router = new PiboSessionRouter({
+		persistSession: false,
+		sessionStore,
+		telemetryStore: dataStore.telemetry,
+	});
+	const eventId = "evt_router_dispose_flush";
+	const runtimeStatus = {
+		piboSessionId: stored.id,
+		queuedMessages: 0,
+		processing: false,
+		streaming: false,
+		activeTools: [],
+		enabledTools: [],
+		cwd: process.cwd(),
+		disposed: false,
+	};
+
+	try {
+		router.telemetryRecorder.recordOutput({ type: "message_queued", piboSessionId: stored.id, eventId, queuedMessages: 1, text: "flush", source: "user" }, { session: stored, status: { ...runtimeStatus, queuedMessages: 1 } });
+		router.telemetryRecorder.recordOutput({ type: "message_started", piboSessionId: stored.id, eventId, text: "flush", source: "user" }, { session: stored, status: runtimeStatus });
+		router.telemetryRecorder.recordOutput({ type: "message_finished", piboSessionId: stored.id, eventId, source: "user" }, { session: stored, status: runtimeStatus });
+		assert.equal(dataStore.telemetry.getTurnTimeline(eventId), undefined);
+
+		await router.disposeAll();
+		assert.equal(dataStore.telemetry.getTurnTimeline(eventId).turn.status, "ok");
+		await assert.rejects(
+			router.emit({ type: "execution", piboSessionId: stored.id, action: "status" }),
+			/Pibo session router is disposed/,
+		);
+	} finally {
+		await router.disposeAll();
+		dataStore.close();
+		await rm(payloadRootDir, { recursive: true, force: true });
 	}
 });
 

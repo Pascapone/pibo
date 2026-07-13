@@ -443,6 +443,19 @@ export type TelemetryToolCallUpsertInput = {
 export class TelemetryStore {
 	constructor(private readonly db: DatabaseSync) {}
 
+	transaction<T>(action: () => T): T {
+		if (this.db.isTransaction) return action();
+		this.db.exec("BEGIN IMMEDIATE");
+		try {
+			const result = action();
+			this.db.exec("COMMIT");
+			return result;
+		} catch (error) {
+			this.db.exec("ROLLBACK");
+			throw error;
+		}
+	}
+
 	listSessions(input: TelemetryStaleOptions = {}): TelemetrySessionSummary[] {
 		return listTelemetrySessions(this.db, input);
 	}
