@@ -67,6 +67,19 @@ export function normalizeShortcutLabel(value: string): string {
 	return value.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 80);
 }
 
+export function shortcutFromKeyboardEvent(event: { key: string; code?: string; altKey: boolean; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean }): string | null {
+	if (["Alt", "Control", "Meta", "Shift"].includes(event.key)) return null;
+	if (!event.altKey && !event.ctrlKey && !event.metaKey) return null;
+	const key = event.code?.match(/^Key[A-Z]$/) ? event.code.slice(3) : event.key === " " ? "Space" : event.key.length === 1 ? event.key.toUpperCase() : event.key;
+	const parts = [];
+	if (event.ctrlKey) parts.push("Ctrl");
+	if (event.altKey) parts.push("Alt");
+	if (event.shiftKey) parts.push("Shift");
+	if (event.metaKey) parts.push("Meta");
+	parts.push(key);
+	return parts.join("+");
+}
+
 export function readStoredWebAnnotationOverlayState(piboSessionId: string): WebAnnotationOverlayPanelState | null {
 	try {
 		return parseStoredWebAnnotationOverlayState(localStorage.getItem(storedWebAnnotationOverlayStateKey(piboSessionId)));

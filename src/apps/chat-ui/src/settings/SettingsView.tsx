@@ -27,6 +27,7 @@ import {
 	normalizeShortcutLabel,
 	notifyWebAnnotationShortcutChanged,
 	readStoredWebAnnotationToggleShortcut,
+	shortcutFromKeyboardEvent,
 	writeStoredWebAnnotationToggleShortcut,
 } from "../web-annotation-storage";
 import { ProviderSettingsView } from "./ProviderSettingsView";
@@ -435,11 +436,28 @@ function ShortcutsSettings() {
 						type="button"
 						disabled={isLoading || saving}
 						aria-pressed={recording}
-						onClick={() => setRecording((current) => !current)}
+						onClick={() => {
+							setError(null);
+							setRecording((current) => !current);
+						}}
 						onKeyDown={(event) => {
 							if (!recording) return;
+							if (event.key === "Escape") {
+								event.preventDefault();
+								event.stopPropagation();
+								setRecording(false);
+								setError(null);
+								return;
+							}
 							const shortcut = shortcutFromKeyboardEvent(event);
-							if (!shortcut) return;
+							if (!shortcut) {
+								if (!["Alt", "Control", "Meta", "Shift"].includes(event.key)) {
+									event.preventDefault();
+									event.stopPropagation();
+									setError("Use Ctrl, Alt, or Meta with another key.");
+								}
+								return;
+							}
 							event.preventDefault();
 							event.stopPropagation();
 							setRecording(false);
@@ -459,18 +477,6 @@ function ShortcutsSettings() {
 			</div>
 		</DesignerPanel>
 	);
-}
-
-function shortcutFromKeyboardEvent(event: { key: string; code?: string; altKey: boolean; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean }): string | null {
-	if (["Alt", "Control", "Meta", "Shift"].includes(event.key)) return null;
-	const key = event.code?.match(/^Key[A-Z]$/) ? event.code.slice(3) : event.key === " " ? "Space" : event.key.length === 1 ? event.key.toUpperCase() : event.key;
-	const parts = [];
-	if (event.ctrlKey) parts.push("Ctrl");
-	if (event.altKey) parts.push("Alt");
-	if (event.shiftKey) parts.push("Shift");
-	if (event.metaKey) parts.push("Meta");
-	parts.push(key);
-	return parts.join("+");
 }
 
 function buildTimezoneOptions(currentTimezone: string | undefined): Array<{ value: string; label: string }> {
