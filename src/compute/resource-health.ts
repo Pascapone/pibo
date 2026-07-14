@@ -4,6 +4,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
+import { readResourceReaperTimerStatus, type ResourceReaperTimerStatus } from "../resources/reaper-state.js";
 import { createEmptyBrowserPoolState, normalizeBrowserPoolState, type BrowserPoolState } from "../tools/browser-pool.js";
 import { getComputeDiskDiagnostics, listWorkers, type ComputeDiskDiagnostics, type WorkerInfo } from "./docker.js";
 
@@ -23,6 +24,7 @@ export interface ResourceHealthProcessInfo {
 	pid: number;
 	ppid: number;
 	pgid: number;
+	elapsedSeconds?: number;
 	commandName: string;
 	args: string;
 	isChromium: boolean;
@@ -37,6 +39,7 @@ export interface ResourceHealthUnassignedBrowserProcessInfo {
 	workerName?: string;
 	userDataDir?: string;
 	cdpPort?: number;
+	elapsedSeconds?: number;
 	argsPreview: string;
 	nextCommands: string[];
 }
@@ -65,11 +68,7 @@ export interface ResourceHealthStaleCdpFiles {
 	details: string[];
 }
 
-export interface ResourceHealthTimerStatus {
-	status: "configured" | "missing" | "unknown";
-	details?: string;
-	nextCommands: string[];
-}
+export type ResourceHealthTimerStatus = ResourceReaperTimerStatus;
 
 export interface ComputeResourceHealth {
 	generatedAt: string;
@@ -134,16 +133,19 @@ export function parseProcessList(output: string): ResourceHealthProcessInfo[] {
 	const processes: ResourceHealthProcessInfo[] = [];
 	for (const line of output.split("\n")) {
 		if (!line.trim()) continue;
-		const match = line.match(/^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s*(.*)$/);
+		const withElapsed = line.match(/^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s*(.*)$/);
+		const legacy = withElapsed ? undefined : line.match(/^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s*(.*)$/);
+		const match = withElapsed ?? legacy;
 		if (!match) continue;
 		const pid = Number(match[1]);
 		const ppid = Number(match[2]);
 		const pgid = Number(match[3]);
 		if (!Number.isInteger(pid) || !Number.isInteger(ppid) || !Number.isInteger(pgid)) continue;
-		const commandName = match[4] ?? "";
-		const args = match[5] ?? "";
+		const elapsedSeconds = withElapsed ? Number(match[4]) : undefined;
+		const commandName = withElapsed ? match[5] ?? "" : match[4] ?? "";
+		const args = withElapsed ? match[6] ?? "" : match[5] ?? "";
 		const isChromium = isChromiumCommand(commandName, args);
-		processes.push({ pid, ppid, pgid, commandName, args, isChromium, isMainProcess: isChromium && !/\s--type=/.test(` ${args}`) });
+		processes.push({ pid, ppid, pgid, elapsedSeconds, commandName, args, isChromium, isMainProcess: isChromium && !/\s--type=/.test(` ${args}`) });
 	}
 	return processes;
 }
@@ -272,6 +274,7 @@ function describeUnassignedBrowserProcess(process: ResourceHealthProcessInfo, wo
 		workerName: worker?.name,
 		userDataDir,
 		cdpPort,
+		elapsedSeconds: process.elapsedSeconds,
 		argsPreview: sanitizeArgsPreview(process.args),
 		nextCommands,
 	};
@@ -359,7 +362,7 @@ async function collectWorkers(): Promise<{ workers: WorkerInfo[]; error?: string
 
 async function collectProcesses(): Promise<{ processes: ResourceHealthProcessInfo[]; error?: string }> {
 	try {
-		const { stdout } = await execFileAsync("ps", ["-eo", "pid=,ppid=,pgid=,comm=,args="], { maxBuffer: 10 * 1024 * 1024 });
+		const { stdout } = await execFileAsync("ps", ["-eo", "pid=,ppid=,pgid=,etimes=,comm=,args="], { maxBuffer: 10 * 1024 * 1024 });
 		return { processes: parseProcessList(stdout) };
 	} catch (error) {
 		return { processes: [], error: error instanceof Error ? error.message : String(error) };
@@ -405,13 +408,9 @@ async function findStateJsonFiles(rootDir: string): Promise<string[]> {
 
 function detectReaperTimerStatus(): ResourceHealthTimerStatus {
 	if (process.env.PIBO_RESOURCE_REAPER_TIMER_STATUS === "configured") {
-		return { status: "configured", details: "Resource reaper timer is marked configured by PIBO_RESOURCE_REAPER_TIMER_STATUS.", nextCommands: ["pibo compute health --json"] };
+		return { status: "configured", details: "Resource reaper timer is marked configured by PIBO_RESOURCE_REAPER_TIMER_STATUS.", nextCommands: ["pibo resources status --json"] };
 	}
-	return {
-		status: "missing",
-		details: "No automatic resource reaper timer status was found; keep using read-only diagnostics and dry-run cleanup until timers are explicitly enabled.",
-		nextCommands: ["pibo compute health --json", "pibo tools browser-use pool reap --json", "pibo compute reap --dry-run --json"],
-	};
+	return readResourceReaperTimerStatus();
 }
 
 function browserProcessMatchesPool(process: ResourceHealthProcessInfo, state: BrowserPoolState): boolean {

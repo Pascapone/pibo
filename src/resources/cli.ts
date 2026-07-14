@@ -20,6 +20,12 @@ function parseNonNegativeNumber(value: string): number {
 	return parsed;
 }
 
+function parsePidList(value: string): number[] {
+	const pids = value.split(",").map((item) => Number.parseInt(item.trim(), 10));
+	if (pids.some((pid) => !Number.isInteger(pid) || pid <= 0)) throw new Error("PIDs must be positive integers separated by commas");
+	return [...new Set(pids)];
+}
+
 export function renderResourceLeasesText(leases: ResourceLease[]): string {
 	if (leases.length === 0) return "No active managed browser-pool leases.\nNext: pibo resources status";
 	const lines = ["LEASE_ID\tHOLDER\tWORKER/POOL\tEXPIRY\tSTATE"];
@@ -34,12 +40,14 @@ export function renderResourceReapText(value: ResourceReapPlan | ResourceReapApp
 	const applied = "applied" in value;
 	const plan = applied ? value.plan : value;
 	const lines = [
-		`Resource reap ${applied ? "apply" : "dry-run"}: ${plan.browserPools.selected} browser pool(s), ${plan.staleFiles.selected} stale pid/port file(s), ${plan.compute.summary.selected} compute worker(s) selected`,
-		"BROWSER_ACTION\tWORKER/POOL\tREASON",
+		`Resource reap ${applied ? "apply" : "dry-run"}: ${plan.browserPools.selected} browser pool(s), ${plan.unmanagedBrowsers.selected} unmanaged browser process group(s), ${plan.staleFiles.selected} stale pid/port file(s), ${plan.compute.summary.selected} compute worker(s) selected`,
+		"BROWSER_ACTION\tWORKER/POOL OR PID/PGID\tREASON",
 	];
 	for (const item of plan.browserPools.items) lines.push(`${item.action}\t${item.workerId}/${item.poolId}\t${item.reason}`);
+	for (const item of plan.unmanagedBrowsers.items) lines.push(`${item.action}\t${item.pid}/${item.processGroupId}\t${item.reason}`);
 	if (applied) {
 		lines.push(`Reaped browser pools: ${value.browserResults.filter((result) => result.reaped).length}`);
+		lines.push(`Terminated unmanaged browser process groups: ${value.terminatedUnmanagedBrowsers.join(", ") || "none"}`);
 		lines.push(`Removed stale pid/port files: ${value.removedStaleFiles.length}`);
 		lines.push(`Removed compute workers: ${value.removedComputeWorkers.join(", ") || "none"}`);
 	} else {
@@ -47,6 +55,7 @@ export function renderResourceReapText(value: ResourceReapPlan | ResourceReapApp
 			"pibo resources reap --apply",
 			`--max-age-minutes ${plan.options.maxAgeMinutes}`,
 			`--idle-timeout-minutes ${plan.options.idleTimeoutMinutes}`,
+			`--unmanaged-browser-grace-minutes ${plan.options.unmanagedBrowserGraceMinutes}`,
 		];
 		if (plan.options.includeDev) args.push("--include-dev");
 		if (plan.options.browserPoolRoot) args.push(`--browser-pool-root ${plan.options.browserPoolRoot}`);
@@ -111,6 +120,8 @@ export async function runResourcesCli(argv: string[]): Promise<void> {
 		.option("--include-dev", "Also select eligible dev compute workers")
 		.option("--max-age-minutes <n>", "Select compute workers older than this many minutes", parseNonNegativeNumber, 60)
 		.option("--idle-timeout-minutes <n>", "Select browser pools idle for this many minutes", parseNonNegativeNumber, 10)
+		.option("--unmanaged-browser-grace-minutes <n>", "Select unmanaged Chromium older than this many minutes", parseNonNegativeNumber, 10)
+		.option("--exempt-browser-pids <list>", "Comma-separated browser PIDs or process groups to preserve", parsePidList)
 		.option("--browser-pool-root <path>", "Browser pool root directory to scan")
 		.option("--browser-use-home <path>", "Browser-use home directory to scan for stale CDP files")
 		.option("--json", "Print machine-readable cleanup plan or result")
@@ -120,6 +131,8 @@ export async function runResourcesCli(argv: string[]): Promise<void> {
 			includeDev?: boolean;
 			maxAgeMinutes: number;
 			idleTimeoutMinutes: number;
+			unmanagedBrowserGraceMinutes: number;
+			exemptBrowserPids?: number[];
 			browserPoolRoot?: string;
 			browserUseHome?: string;
 			json?: boolean;

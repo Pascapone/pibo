@@ -1,12 +1,21 @@
+import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readdir, readFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { promisify } from "node:util";
 import {
 	applyComputeWorkerReapPlan,
+	buildComputeWorkerReapPlan,
 	planReapWorkers,
 	type ComputeWorkerReapPlan,
 } from "../compute/docker.js";
-import { defaultBrowserPoolRoot, defaultBrowserUseHome } from "../compute/resource-health.js";
+import {
+	defaultBrowserPoolRoot,
+	defaultBrowserUseHome,
+	getComputeResourceHealth,
+	parseProcessList,
+	type ResourceHealthUnassignedBrowserProcessInfo,
+} from "../compute/resource-health.js";
 import {
 	loadBrowserPoolState,
 	reapIdleBrowserPool,
@@ -14,6 +23,8 @@ import {
 	type BrowserPoolReapResult,
 	type BrowserPoolState,
 } from "../tools/browser-pool.js";
+
+const execFileAsync = promisify(execFile);
 
 export interface ManagedBrowserPoolRecord {
 	statePath: string;
@@ -47,6 +58,18 @@ export interface ResourceStaleFilePlanItem {
 	reason: string;
 }
 
+export interface ResourceUnmanagedBrowserPlanItem {
+	pid: number;
+	ppid: number;
+	processGroupId: number;
+	commandName: string;
+	userDataDir?: string;
+	elapsedSeconds?: number;
+	action: "terminate" | "skip";
+	reason: string;
+	processGroup: true;
+}
+
 export interface ResourceReapPlan {
 	createdAt: string;
 	dryRun: true;
@@ -54,8 +77,10 @@ export interface ResourceReapPlan {
 		includeDev: boolean;
 		maxAgeMinutes: number;
 		idleTimeoutMinutes: number;
+		unmanagedBrowserGraceMinutes: number;
 		browserPoolRoot: string;
 		browserUseHome: string;
+		exemptBrowserPids: number[];
 	};
 	browserPools: {
 		items: ResourceBrowserReapPlanItem[];
@@ -66,6 +91,11 @@ export interface ResourceReapPlan {
 		items: ResourceStaleFilePlanItem[];
 		selected: number;
 	};
+	unmanagedBrowsers: {
+		items: ResourceUnmanagedBrowserPlanItem[];
+		selected: number;
+		skipped: number;
+	};
 	compute: ComputeWorkerReapPlan;
 	worktreesPreserved: true;
 }
@@ -74,6 +104,7 @@ export interface ResourceReapApplyResult {
 	applied: true;
 	plan: ResourceReapPlan;
 	browserResults: BrowserPoolReapResult[];
+	terminatedUnmanagedBrowsers: number[];
 	removedStaleFiles: string[];
 	removedComputeWorkers: string[];
 	worktreesPreserved: true;
@@ -83,8 +114,10 @@ export interface PlanResourceReapOptions {
 	includeDev?: boolean;
 	maxAgeMinutes?: number;
 	idleTimeoutMinutes?: number;
+	unmanagedBrowserGraceMinutes?: number;
 	browserPoolRoot?: string;
 	browserUseHome?: string;
+	exemptBrowserPids?: number[];
 	now?: Date;
 }
 
@@ -92,6 +125,7 @@ interface ApplyResourceReapDependencies {
 	plan?: (options: PlanResourceReapOptions) => Promise<ResourceReapPlan>;
 	reapBrowserPool?: typeof reapIdleBrowserPool;
 	applyCompute?: typeof applyComputeWorkerReapPlan;
+	terminateUnmanagedBrowser?: (item: ResourceUnmanagedBrowserPlanItem) => Promise<boolean>;
 	isPidAlive?: (pid: number) => boolean;
 }
 
@@ -142,12 +176,18 @@ export async function getActiveResourceLeases(browserPoolRoot = defaultBrowserPo
 export async function planResourceReap(options: PlanResourceReapOptions = {}): Promise<ResourceReapPlan> {
 	const now = options.now ?? new Date();
 	const resolved = resolveReapOptions(options);
-	const [records, staleFiles, compute] = await Promise.all([
+	const [records, staleFiles, compute, health] = await Promise.all([
 		collectManagedBrowserPools(resolved.browserPoolRoot),
 		planStaleCdpFiles(resolved.browserUseHome),
-		planReapWorkers({ includeDev: resolved.includeDev, maxAgeMinutes: resolved.maxAgeMinutes, now }),
+		planComputeReapSafely({ includeDev: resolved.includeDev, maxAgeMinutes: resolved.maxAgeMinutes, now }),
+		getComputeResourceHealth({ now, browserPoolRoot: resolved.browserPoolRoot, browserUseHome: resolved.browserUseHome }),
 	]);
-	return buildResourceReapPlan({ now, options: resolved, records, staleFiles, compute });
+	const unmanagedBrowsers = buildUnmanagedBrowserPlanItems(
+		health.browserProcesses.unassignedMainProcessDetails,
+		resolved.unmanagedBrowserGraceMinutes,
+		new Set(resolved.exemptBrowserPids),
+	);
+	return buildResourceReapPlan({ now, options: resolved, records, staleFiles, unmanagedBrowsers, compute });
 }
 
 export function buildResourceReapPlan(input: {
@@ -155,9 +195,11 @@ export function buildResourceReapPlan(input: {
 	options: ResourceReapPlan["options"];
 	records: ManagedBrowserPoolRecord[];
 	staleFiles: ResourceStaleFilePlanItem[];
+	unmanagedBrowsers?: ResourceUnmanagedBrowserPlanItem[];
 	compute: ComputeWorkerReapPlan;
 }): ResourceReapPlan {
 	const browserItems = input.records.map((record) => buildBrowserReapPlanItem(record, input.now, input.options.idleTimeoutMinutes));
+	const unmanagedBrowsers = input.unmanagedBrowsers ?? [];
 	return {
 		createdAt: input.now.toISOString(),
 		dryRun: true,
@@ -168,6 +210,11 @@ export function buildResourceReapPlan(input: {
 			skipped: browserItems.filter((item) => item.action === "skip").length,
 		},
 		staleFiles: { items: input.staleFiles, selected: input.staleFiles.length },
+		unmanagedBrowsers: {
+			items: unmanagedBrowsers,
+			selected: unmanagedBrowsers.filter((item) => item.action === "terminate").length,
+			skipped: unmanagedBrowsers.filter((item) => item.action === "skip").length,
+		},
 		compute: input.compute,
 		worktreesPreserved: true,
 	};
@@ -186,12 +233,19 @@ export async function applyResourceReapPlan(plan: ResourceReapPlan, dependencies
 			{ idleTimeoutMs: confirmed.options.idleTimeoutMinutes * 60_000 },
 		));
 	}
+	const terminateUnmanagedBrowser = dependencies.terminateUnmanagedBrowser ?? terminateUnmanagedBrowserProcessGroup;
+	const terminatedUnmanagedBrowsers: number[] = [];
+	for (const item of confirmed.unmanagedBrowsers.items) {
+		if (item.action !== "terminate") continue;
+		if (await terminateUnmanagedBrowser(item)) terminatedUnmanagedBrowsers.push(item.pid);
+	}
 	const removedStaleFiles = await applyStaleCdpFilePlan(confirmed.staleFiles.items, dependencies.isPidAlive);
 	const removedComputeWorkers = await (dependencies.applyCompute ?? applyComputeWorkerReapPlan)(confirmed.compute);
 	return {
 		applied: true,
 		plan: confirmed,
 		browserResults,
+		terminatedUnmanagedBrowsers,
 		removedStaleFiles,
 		removedComputeWorkers,
 		worktreesPreserved: true,
@@ -203,9 +257,92 @@ function resolveReapOptions(options: PlanResourceReapOptions): ResourceReapPlan[
 		includeDev: options.includeDev === true,
 		maxAgeMinutes: options.maxAgeMinutes ?? 60,
 		idleTimeoutMinutes: options.idleTimeoutMinutes ?? 10,
+		unmanagedBrowserGraceMinutes: options.unmanagedBrowserGraceMinutes ?? 10,
 		browserPoolRoot: options.browserPoolRoot ?? defaultBrowserPoolRoot(),
 		browserUseHome: options.browserUseHome ?? defaultBrowserUseHome(),
+		exemptBrowserPids: options.exemptBrowserPids ?? readExemptBrowserPids(),
 	};
+}
+
+export function buildUnmanagedBrowserPlanItems(
+	processes: ResourceHealthUnassignedBrowserProcessInfo[],
+	graceMinutes: number,
+	exemptPids = new Set<number>(),
+): ResourceUnmanagedBrowserPlanItem[] {
+	const graceSeconds = graceMinutes * 60;
+	return processes.map((process) => {
+		let action: ResourceUnmanagedBrowserPlanItem["action"] = "terminate";
+		let reason = "unmanaged Chromium main process has no managed browser-pool lease";
+		if (process.pid <= 1 || process.pgid <= 1) {
+			action = "skip";
+			reason = "unsafe pid or process group";
+		} else if (exemptPids.has(process.pid) || exemptPids.has(process.pgid)) {
+			action = "skip";
+			reason = "explicitly exempted pid or process group";
+		} else if (process.elapsedSeconds !== undefined && process.elapsedSeconds < graceSeconds) {
+			action = "skip";
+			reason = `process age ${process.elapsedSeconds}s is within ${graceSeconds}s grace period`;
+		}
+		return {
+			pid: process.pid,
+			ppid: process.ppid,
+			processGroupId: process.pgid,
+			commandName: process.commandName,
+			userDataDir: process.userDataDir,
+			elapsedSeconds: process.elapsedSeconds,
+			action,
+			reason,
+			processGroup: true,
+		};
+	});
+}
+
+async function terminateUnmanagedBrowserProcessGroup(item: ResourceUnmanagedBrowserPlanItem): Promise<boolean> {
+	if (!defaultIsPidAlive(item.pid)) return false;
+	const [processInfo, ownProcessGroupId] = await Promise.all([inspectProcess(item.pid), readProcessGroupId(process.pid)]);
+	if (!processInfo || !processInfo.isChromium || !processInfo.isMainProcess || processInfo.pgid !== item.processGroupId) return false;
+	if (ownProcessGroupId !== undefined && ownProcessGroupId === item.processGroupId) return false;
+	try {
+		process.kill(-item.processGroupId, "SIGTERM");
+	} catch (error) {
+		if (!(error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ESRCH")) throw error;
+		return false;
+	}
+	await new Promise((resolve) => setTimeout(resolve, 500));
+	if (defaultIsPidAlive(item.pid)) {
+		try {
+			process.kill(-item.processGroupId, "SIGKILL");
+		} catch (error) {
+			if (!(error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ESRCH")) throw error;
+		}
+	}
+	return !defaultIsPidAlive(item.pid);
+}
+
+async function inspectProcess(pid: number) {
+	try {
+		const { stdout } = await execFileAsync("ps", ["-o", "pid=,ppid=,pgid=,comm=,args=", "-p", String(pid)]);
+		return parseProcessList(stdout).find((item) => item.pid === pid);
+	} catch {
+		return undefined;
+	}
+}
+
+async function readProcessGroupId(pid: number): Promise<number | undefined> {
+	try {
+		const { stdout } = await execFileAsync("ps", ["-o", "pgid=", "-p", String(pid)]);
+		const value = Number.parseInt(stdout.trim(), 10);
+		return Number.isInteger(value) && value > 0 ? value : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+function readExemptBrowserPids(): number[] {
+	return (process.env.PIBO_RESOURCE_REAPER_EXEMPT_BROWSER_PIDS ?? "")
+		.split(",")
+		.map((value) => Number.parseInt(value.trim(), 10))
+		.filter((value) => Number.isInteger(value) && value > 0);
 }
 
 function buildBrowserReapPlanItem(record: ManagedBrowserPoolRecord, now: Date, idleTimeoutMinutes: number): ResourceBrowserReapPlanItem {
@@ -235,6 +372,17 @@ function buildBrowserReapPlanItem(record: ManagedBrowserPoolRecord, now: Date, i
 		reason,
 		preservesWorktree: true,
 	};
+}
+
+async function planComputeReapSafely(options: { includeDev: boolean; maxAgeMinutes: number; now: Date }): Promise<ComputeWorkerReapPlan> {
+	try {
+		return await planReapWorkers(options);
+	} catch (error) {
+		if (!(error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT")) throw error;
+		const plan = buildComputeWorkerReapPlan([], options);
+		plan.nextCommands = ["Docker CLI is unavailable in this runtime; browser and stale-file cleanup remain active."];
+		return plan;
+	}
 }
 
 async function planStaleCdpFiles(browserUseHome: string, isPidAlive = defaultIsPidAlive): Promise<ResourceStaleFilePlanItem[]> {

@@ -12,8 +12,11 @@ import { renderResourceLeasesText, serializeResourceStatus } from '../dist/resou
 import {
 	applyResourceReapPlan,
 	buildResourceReapPlan,
+	buildUnmanagedBrowserPlanItems,
 	listActiveResourceLeases,
 } from '../dist/resources/lifecycle.js';
+import { ResourceReaperService } from '../dist/resources/reaper.js';
+import { readResourceReaperTimerStatus } from '../dist/resources/reaper-state.js';
 
 const execFileAsync = promisify(execFile);
 const cliPath = new URL('../dist/bin/pibo.js', import.meta.url).pathname;
@@ -140,8 +143,10 @@ test('resource reap dry-run aggregates browser, stale-file, and compute plans wh
 			includeDev: false,
 			maxAgeMinutes: 60,
 			idleTimeoutMinutes: 10,
+			unmanagedBrowserGraceMinutes: 10,
 			browserPoolRoot: '/fixture/pools',
 			browserUseHome: '/fixture/browser-use',
+			exemptBrowserPids: [],
 		},
 		records: [
 			poolRecord('/fixture/stale/state.json', { state: 'stale' }),
@@ -154,6 +159,7 @@ test('resource reap dry-run aggregates browser, stale-file, and compute plans wh
 	assert.equal(plan.browserPools.selected, 1);
 	assert.equal(plan.browserPools.skipped, 1);
 	assert.equal(plan.staleFiles.selected, 1);
+	assert.equal(plan.unmanagedBrowsers.selected, 0);
 	assert.equal(plan.compute.summary.selected, 1);
 	assert.equal(plan.worktreesPreserved, true);
 	assert.match(plan.browserPools.items[1].reason, /active lease lease-active/);
@@ -180,8 +186,10 @@ test('resource reap apply rechecks fixtures, removes only confirmed stale pid/po
 				includeDev: true,
 				maxAgeMinutes: 60,
 				idleTimeoutMinutes: 0,
+				unmanagedBrowserGraceMinutes: 10,
 				browserPoolRoot: join(cwd, 'pools'),
 				browserUseHome: join(cwd, 'browser-use'),
+				exemptBrowserPids: [],
 			},
 			records: [poolRecord(join(cwd, 'pools', 'browser-pools', 'worker-a', 'default', 'state.json'), { state: 'stale' })],
 			staleFiles: [
@@ -216,11 +224,112 @@ test('resource reap apply rechecks fixtures, removes only confirmed stale pid/po
 
 		assert.equal(browserCalls, 1);
 		assert.equal(computeCalls, 1);
+		assert.deepEqual(result.terminatedUnmanagedBrowsers, []);
 		assert.equal(result.worktreesPreserved, true);
 		await assert.rejects(readFile(deadPid, 'utf8'), /ENOENT/);
 		await assert.rejects(readFile(deadPort, 'utf8'), /ENOENT/);
 		assert.equal(await readFile(livePid, 'utf8'), `${process.pid}\n`);
 		assert.equal(await readFile(livePort, 'utf8'), '5000\n');
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test('unmanaged Chromium planning honors grace and explicit exemptions and apply terminates selected process groups', async () => {
+	const details = [
+		{ pid: 101, ppid: 1, pgid: 101, commandName: 'chromium', elapsedSeconds: 1200, argsPreview: 'chromium', nextCommands: [] },
+		{ pid: 102, ppid: 1, pgid: 102, commandName: 'chromium', elapsedSeconds: 30, argsPreview: 'chromium', nextCommands: [] },
+		{ pid: 103, ppid: 1, pgid: 103, commandName: 'chromium', elapsedSeconds: 1200, argsPreview: 'chromium', nextCommands: [] },
+	];
+	const unmanagedBrowsers = buildUnmanagedBrowserPlanItems(details, 10, new Set([103]));
+	assert.deepEqual(unmanagedBrowsers.map((item) => item.action), ['terminate', 'skip', 'skip']);
+	assert.match(unmanagedBrowsers[1].reason, /grace period/);
+	assert.match(unmanagedBrowsers[2].reason, /explicitly exempted/);
+
+	const now = new Date('2026-07-14T00:00:00.000Z');
+	const plan = buildResourceReapPlan({
+		now,
+		options: {
+			includeDev: false,
+			maxAgeMinutes: 60,
+			idleTimeoutMinutes: 10,
+			unmanagedBrowserGraceMinutes: 10,
+			browserPoolRoot: '/fixture/pools',
+			browserUseHome: '/fixture/browser-use',
+			exemptBrowserPids: [103],
+		},
+		records: [],
+		staleFiles: [],
+		unmanagedBrowsers,
+		compute: emptyComputePlan(now),
+	});
+	const terminated = [];
+	const result = await applyResourceReapPlan(plan, {
+		plan: async () => plan,
+		terminateUnmanagedBrowser: async (item) => { terminated.push(item.processGroupId); return true; },
+		applyCompute: async () => [],
+	});
+	assert.deepEqual(terminated, [101]);
+	assert.deepEqual(result.terminatedUnmanagedBrowsers, [101]);
+	assert.equal(result.plan.unmanagedBrowsers.selected, 1);
+});
+
+test('automatic resource reaper persists live last and next run health state', async () => {
+	const cwd = await mkdtemp(join(tmpdir(), 'pibo-resource-reaper-'));
+	try {
+		const statePath = join(cwd, 'reaper.json');
+		const now = new Date('2026-07-14T00:00:00.000Z');
+		const plan = buildResourceReapPlan({
+			now,
+			options: {
+				includeDev: false,
+				maxAgeMinutes: 60,
+				idleTimeoutMinutes: 10,
+				unmanagedBrowserGraceMinutes: 10,
+				browserPoolRoot: '/fixture/pools',
+				browserUseHome: '/fixture/browser-use',
+				exemptBrowserPids: [],
+			},
+			records: [],
+			staleFiles: [],
+			compute: emptyComputePlan(now),
+		});
+		const result = {
+			applied: true,
+			plan,
+			browserResults: [],
+			terminatedUnmanagedBrowsers: [],
+			removedStaleFiles: [],
+			removedComputeWorkers: [],
+			worktreesPreserved: true,
+		};
+		const service = new ResourceReaperService({
+			statePath,
+			initialDelayMs: 60_000,
+			intervalMs: 120_000,
+			clock: () => now,
+			plan: async () => plan,
+			apply: async () => result,
+		});
+		let competingPlans = 0;
+		const competingService = new ResourceReaperService({
+			statePath,
+			initialDelayMs: 60_000,
+			plan: async () => { competingPlans += 1; return plan; },
+			apply: async () => result,
+		});
+		await service.start();
+		await competingService.start();
+		assert.equal(await competingService.runNow(), undefined);
+		assert.equal(competingPlans, 0);
+		await service.runNow();
+		const status = readResourceReaperTimerStatus(statePath, () => true);
+		assert.equal(status.status, 'configured');
+		assert.equal(status.lastRunAt, now.toISOString());
+		assert.equal(status.nextRunAt, '2026-07-14T00:02:00.000Z');
+		assert.deepEqual(status.lastResult, { browserPools: 0, unmanagedBrowsers: 0, staleFiles: 0, computeWorkers: 0 });
+		await competingService.stop();
+		await service.stop();
 	} finally {
 		await rm(cwd, { recursive: true, force: true });
 	}

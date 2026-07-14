@@ -13,7 +13,7 @@ import { PiboPluginRegistry } from "../plugins/registry.js";
 import { createPiboWebHostPlugin } from "../plugins/web.js";
 import { DEFAULT_WEB_CHANNEL_HOST, DEFAULT_WEB_CHANNEL_PORT, type WebHostChannelOptions } from "../web/channel.js";
 import { loadPiboConfig } from "../config/config.js";
-import { PiboGatewayServer, type GatewayServerOptions } from "./server.js";
+import { PiboGatewayServer, resolveGatewayResourceReaperOptions, type GatewayServerOptions } from "./server.js";
 import { releaseFallbackGatewayPid, releaseGatewayPid, writeFallbackGatewayPid, writeGatewayPid } from "./pidfile.js";
 
 export type WebGatewayAuthMode = "better-auth" | "local";
@@ -229,6 +229,7 @@ export async function runWebGatewayServer(options: WebGatewayServerOptions = {})
 		server = new PiboGatewayServer({
 			...resolvedOptions,
 			pluginRegistry,
+			resourceReaper: resolveGatewayResourceReaperOptions(resolvedOptions),
 		});
 		await server.start();
 	} catch (error) {

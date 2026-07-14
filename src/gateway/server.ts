@@ -5,6 +5,7 @@ import { createDefaultPiboPluginRegistry, createPiboProfileFromRegistryOrDefault
 import type { PiboPluginRegistry } from "../plugins/registry.js";
 import { PiboSessionRouter } from "../core/session-router.js";
 import { loadPiboModelDefaults, selectRequestedModelProfile } from "../core/model-defaults.js";
+import { ResourceReaperService, type ResourceReaperServiceOptions } from "../resources/reaper.js";
 import type { PiboSessionStore } from "../sessions/store.js";
 import {
 	DEFAULT_GATEWAY_HOST,
@@ -29,6 +30,7 @@ export type GatewayServerOptions = {
 	startChannels?: boolean;
 	maxBackpressureFrames?: number;
 	maxBackpressureBytes?: number;
+	resourceReaper?: ResourceReaperServiceOptions | false;
 };
 
 type GatewayQueuedFrame = {
@@ -204,6 +206,7 @@ export class PiboGatewayServer {
 	private closedSlowClients = 0;
 	private server?: Server;
 	private unsubscribe?: () => void;
+	private resourceReaper?: ResourceReaperService;
 
 	constructor(private readonly options: GatewayServerOptions = {}) {
 		this.pluginRegistry = options.pluginRegistry ?? createDefaultPiboPluginRegistry();
@@ -235,9 +238,15 @@ export class PiboGatewayServer {
 		if (this.options.startChannels !== false) {
 			await this.startChannels();
 		}
+		if (this.options.resourceReaper) {
+			this.resourceReaper = new ResourceReaperService(this.options.resourceReaper);
+			await this.resourceReaper.start();
+		}
 	}
 
 	async stop(): Promise<void> {
+		await this.resourceReaper?.stop();
+		this.resourceReaper = undefined;
 		await this.stopChannels();
 		await this.pluginRegistry.getAuthService()?.stop?.();
 
@@ -435,6 +444,11 @@ export class PiboGatewayServer {
 	}
 }
 
+export function resolveGatewayResourceReaperOptions(options: GatewayServerOptions): ResourceReaperServiceOptions | false {
+	if (options.resourceReaper === false || process.env.PIBO_RESOURCE_REAPER_DISABLED === "1") return false;
+	return options.resourceReaper ?? {};
+}
+
 export async function runGatewayServer(options: GatewayServerOptions = {}): Promise<void> {
 	const fallbackMode = process.env.PIBO_FALLBACK_MODE === "1";
 	try {
@@ -449,7 +463,7 @@ export async function runGatewayServer(options: GatewayServerOptions = {}): Prom
 	const releasePid = fallbackMode ? releaseFallbackGatewayPid : releaseGatewayPid;
 	let server: PiboGatewayServer;
 	try {
-		server = new PiboGatewayServer(options);
+		server = new PiboGatewayServer({ ...options, resourceReaper: resolveGatewayResourceReaperOptions(options) });
 		await server.start();
 	} catch (error) {
 		releasePid();
