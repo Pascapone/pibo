@@ -16,6 +16,49 @@ export type AgentDraft = SaveCustomAgentInput & {
 	source: "custom" | "profile";
 };
 
+export function agentDraftToSaveInput(draft: AgentDraft): SaveCustomAgentInput {
+	const uniqueNames = (names: string[]) => [...new Set(names.map((name) => name.trim()).filter(Boolean))];
+	const normalizeModel = (model: ModelProfile | undefined): ModelProfile | undefined => {
+		if (!model) return undefined;
+		const provider = model.provider.trim();
+		const id = model.id.trim();
+		return provider && id ? { provider, id } : undefined;
+	};
+	return {
+		displayName: draft.displayName.trim(),
+		description: (draft.description ?? "").trim() || undefined,
+		nativeTools: uniqueNames(draft.nativeTools),
+		skills: uniqueNames(draft.skills),
+		contextFiles: uniqueNames(draft.contextFiles),
+		subagents: draft.subagents.flatMap((item) => {
+			const name = item.name.trim();
+			const targetProfile = item.targetProfile.trim();
+			if (!name || !targetProfile) return [];
+			return [{
+				name,
+				targetProfile,
+				...((item.description ?? "").trim() ? { description: item.description!.trim() } : {}),
+				...(typeof item.timeoutMs === "number" ? { timeoutMs: Math.round(item.timeoutMs) } : {}),
+				...(typeof item.maxDepth === "number" ? { maxDepth: Math.round(item.maxDepth) } : {}),
+			}];
+		}),
+		mcpServers: uniqueNames(draft.mcpServers),
+		piPackages: uniqueNames(draft.piPackages),
+		mainModel: normalizeModel(draft.mainModel),
+		subagentModel: normalizeModel(draft.subagentModel),
+		thinkingLevel: draft.thinkingLevel ?? null,
+		mainThinkingLevel: draft.mainThinkingLevel ?? null,
+		subagentThinkingLevel: draft.subagentThinkingLevel ?? null,
+		fast: draft.fast,
+		mainFast: draft.mainFast,
+		subagentFast: draft.subagentFast,
+		builtinTools: draft.builtinTools,
+		builtinToolNames: normalizeBuiltinToolNames(draft.builtinToolNames, draft.builtinTools),
+		autoContextFiles: draft.autoContextFiles,
+		runControl: draft.runControl,
+	};
+}
+
 export function createBlankAgentDraft(catalog?: AgentCatalog, displayName = "new-agent"): AgentDraft {
 	return {
 		displayName,

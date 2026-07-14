@@ -10,18 +10,19 @@ import {
 	MessageSquarePlus,
 	Plus,
 	RefreshCw,
-	Save,
 	Server,
 	Trash2,
 	X,
 } from "lucide-react";
-import { deleteCustomAgent, patchCustomAgent, postCustomAgent, type SaveCustomAgentInput } from "../api-agent-designer";
+import { deleteCustomAgent, getCustomAgents, patchCustomAgent, postCustomAgent } from "../api-agent-designer";
+import type { SaveState } from "../api";
 import { listContextFiles, postContextFile } from "../api-context-files";
 import type { AgentCatalog, BootstrapData, CustomAgent, CustomAgentSubagent, ModelCatalog, ModelProfile } from "../types";
 import {
 	BUILTIN_TOOL_DESCRIPTIONS,
 	DEFAULT_BUILTIN_TOOL_NAMES,
 	agentDesignerUnavailableMessage,
+	agentDraftToSaveInput,
 	agentToDraft,
 	buildContextFileGroups,
 	buildNativeToolGroups,
@@ -56,6 +57,53 @@ import {
 	SelectionCheckbox,
 } from "./designer-ui";
 
+const AGENT_AUTOSAVE_DELAY_MS = 900;
+const PENDING_AGENT_DRAFT_STORAGE_KEY = "pibo.chat.agentDesigner.pendingDraft.v1";
+
+type PendingAgentDraft = {
+	draft: AgentDraft;
+	savedSignature: string | null;
+};
+
+function agentDraftSignature(draft: AgentDraft): string {
+	return JSON.stringify(agentDraftToSaveInput(draft));
+}
+
+function readPendingAgentDraft(): PendingAgentDraft | null {
+	try {
+		const raw = sessionStorage.getItem(PENDING_AGENT_DRAFT_STORAGE_KEY);
+		if (!raw) return null;
+		const parsed = JSON.parse(raw) as Partial<PendingAgentDraft>;
+		if (!parsed.draft || parsed.draft.source !== "custom") return null;
+		return { draft: parsed.draft, savedSignature: typeof parsed.savedSignature === "string" ? parsed.savedSignature : null };
+	} catch {
+		return null;
+	}
+}
+
+function writePendingAgentDraft(draft: AgentDraft, savedSignature: string | null): void {
+	try {
+		sessionStorage.setItem(PENDING_AGENT_DRAFT_STORAGE_KEY, JSON.stringify({ draft, savedSignature } satisfies PendingAgentDraft));
+	} catch {
+		// Autosave still persists to the server when browser storage is unavailable.
+	}
+}
+
+function clearPendingAgentDraft(): void {
+	try {
+		sessionStorage.removeItem(PENDING_AGENT_DRAFT_STORAGE_KEY);
+	} catch {
+		// Browser storage is only the recovery fallback.
+	}
+}
+
+function autosaveStateLabel(state: SaveState): string {
+	if (state === "saving") return "Saving…";
+	if (state === "saved") return "Saved";
+	if (state === "error") return "Save failed";
+	return "Unsaved";
+}
+
 export function AgentsView({
 	agents,
 	initialCustomAgents,
@@ -66,6 +114,7 @@ export function AgentsView({
 	onEditContextFile,
 	onEditMcpServer,
 	onAgentsChanged,
+	onAutosaveHandlerChange,
 	creatingSession,
 }: {
 	agents: BootstrapData["agents"];
@@ -77,12 +126,24 @@ export function AgentsView({
 	onEditContextFile: (key: string) => void;
 	onEditMcpServer: (name: string) => void;
 	onAgentsChanged: () => void;
+	onAutosaveHandlerChange: (handler: (() => Promise<void>) | null) => void;
 	creatingSession: boolean;
 }) {
+	const [initialDraftState] = useState(() => {
+		const pending = readPendingAgentDraft();
+		const initialDraft = pending?.draft ?? createBlankAgentDraft(initialCatalog);
+		return {
+			draft: initialDraft,
+			savedSignature: pending ? pending.savedSignature : agentDraftSignature(initialDraft),
+			restored: Boolean(pending),
+		};
+	});
 	const [catalog, setCatalog] = useState<AgentCatalog | null>(initialCatalog ?? null);
 	const [customAgents, setCustomAgents] = useState(initialCustomAgents);
-	const [draft, setDraft] = useState<AgentDraft>(() => createBlankAgentDraft(initialCatalog));
-	const [showUnsavedAgentDraft, setShowUnsavedAgentDraft] = useState(false);
+	const [draft, setDraft] = useState<AgentDraft>(initialDraftState.draft);
+	const [showUnsavedAgentDraft, setShowUnsavedAgentDraft] = useState(initialDraftState.restored && !initialDraftState.draft.id);
+	const [saveState, setSaveState] = useState<SaveState>(initialDraftState.restored ? "idle" : "saved");
+	const [editingName, setEditingName] = useState(false);
 	const [saving, setSaving] = useState(false);
 	const [refreshingContextFiles, setRefreshingContextFiles] = useState(false);
 	const autoRefreshedBrokenContextFilesRef = useRef(new Set<string>());
@@ -91,7 +152,194 @@ export function AgentsView({
 	const [localError, setLocalError] = useState<string | null>(null);
 	const [newContextFileName, setNewContextFileName] = useState("");
 	const [newContextFileScope, setNewContextFileScope] = useState<"global" | "agent">("agent");
+	const currentDraftRef = useRef(draft);
+	const customAgentsRef = useRef(customAgents);
+	const savedSignatureRef = useRef<string | null>(initialDraftState.savedSignature);
+	const savePromiseRef = useRef<Promise<void> | null>(null);
+	const autosaveTimerRef = useRef<number | null>(null);
+	const mountedRef = useRef(true);
+	const catalogRef = useRef<AgentCatalog | null>(catalog);
+	const onSelectRef = useRef(onSelect);
+	const onAgentsChangedRef = useRef(onAgentsChanged);
 	const designerAvailable = Boolean(catalog);
+
+	useEffect(() => {
+		catalogRef.current = catalog;
+		customAgentsRef.current = customAgents;
+		onSelectRef.current = onSelect;
+		onAgentsChangedRef.current = onAgentsChanged;
+	}, [catalog, customAgents, onAgentsChanged, onSelect]);
+
+	const clearAutosaveTimer = useCallback(() => {
+		if (autosaveTimerRef.current !== null) {
+			window.clearTimeout(autosaveTimerRef.current);
+			autosaveTimerRef.current = null;
+		}
+	}, []);
+
+	const activateDraft = useCallback((nextDraft: AgentDraft, savedSignature: string | null) => {
+		clearAutosaveTimer();
+		currentDraftRef.current = nextDraft;
+		savedSignatureRef.current = savedSignature;
+		setDraft(nextDraft);
+		setShowUnsavedAgentDraft(nextDraft.source === "custom" && !nextDraft.id);
+		setEditingName(false);
+		setSaveState(savedSignature === agentDraftSignature(nextDraft) ? "saved" : "idle");
+		setLocalError(null);
+		if (savedSignature === agentDraftSignature(nextDraft)) clearPendingAgentDraft();
+		else writePendingAgentDraft(nextDraft, savedSignature);
+	}, [clearAutosaveTimer]);
+
+	const persistIfNeeded = useCallback(async function persistIfNeeded(): Promise<void> {
+		clearAutosaveTimer();
+		if (savePromiseRef.current) {
+			await savePromiseRef.current;
+			return persistIfNeeded();
+		}
+
+		const snapshot = currentDraftRef.current;
+		if (snapshot.source === "profile" || snapshot.archivedAt) return;
+		const input = agentDraftToSaveInput(snapshot);
+		const submittedSignature = JSON.stringify(input);
+		if (submittedSignature === savedSignatureRef.current) {
+			clearPendingAgentDraft();
+			if (mountedRef.current) setSaveState("saved");
+			return;
+		}
+		const nameError = validateAgentName(snapshot.displayName);
+		if (nameError) {
+			if (mountedRef.current) {
+				setSaveState("idle");
+				setLocalError(nameError);
+			}
+			throw new Error(nameError);
+		}
+		if (!catalogRef.current) {
+			const message = agentDesignerUnavailableMessage();
+			if (mountedRef.current) {
+				setSaveState("error");
+				setLocalError(message);
+			}
+			throw new Error(message);
+		}
+
+		writePendingAgentDraft(snapshot, savedSignatureRef.current);
+		if (mountedRef.current) {
+			setSaveState("saving");
+			setSaving(true);
+		}
+
+		let shouldSaveAgain = false;
+		const acceptSavedAgent = (savedAgent: CustomAgent) => {
+			const current = currentDraftRef.current;
+			const sameDraft = snapshot.id ? current.id === snapshot.id : !current.id;
+			if (sameDraft) {
+				const nextDraft: AgentDraft = {
+					...current,
+					id: savedAgent.id,
+					profileName: savedAgent.profileName,
+					archivedAt: savedAgent.archivedAt,
+					source: "custom",
+				};
+				currentDraftRef.current = nextDraft;
+				savedSignatureRef.current = submittedSignature;
+				shouldSaveAgain = agentDraftSignature(nextDraft) !== submittedSignature;
+				if (shouldSaveAgain) writePendingAgentDraft(nextDraft, submittedSignature);
+				else clearPendingAgentDraft();
+				if (mountedRef.current) {
+					setDraft(nextDraft);
+					setShowUnsavedAgentDraft(false);
+				}
+			}
+			const withoutSaved = customAgentsRef.current.filter((agent) => agent.id !== savedAgent.id);
+			const nextAgents = [savedAgent, ...withoutSaved];
+			customAgentsRef.current = nextAgents;
+			if (mountedRef.current) {
+				setCustomAgents(nextAgents);
+				setLocalError(null);
+			}
+			onSelectRef.current(savedAgent.profileName);
+			onAgentsChangedRef.current();
+		};
+		const savePromise = (async () => {
+			try {
+				const response = snapshot.id ? await patchCustomAgent(snapshot.id, input) : await postCustomAgent(input);
+				acceptSavedAgent(response.agent);
+			} catch (caught) {
+				if (!snapshot.id) {
+					try {
+						const existing = (await getCustomAgents()).agents.find((agent) =>
+							agent.profileName === input.displayName && agentDraftSignature(agentToDraft(agent)) === submittedSignature,
+						);
+						if (existing) {
+							acceptSavedAgent(existing);
+							return;
+						}
+					} catch {
+						// Preserve the original save error when reconciliation is unavailable.
+					}
+				}
+				throw caught;
+			}
+		})();
+		savePromiseRef.current = savePromise;
+
+		try {
+			await savePromise;
+		} catch (caught) {
+			const message = caught instanceof Error ? caught.message : String(caught);
+			if (mountedRef.current) {
+				setSaveState("error");
+				setLocalError(isNotFoundError(message) ? agentDesignerUnavailableMessage() : message);
+			}
+			throw caught;
+		} finally {
+			if (savePromiseRef.current === savePromise) savePromiseRef.current = null;
+			if (mountedRef.current) setSaving(false);
+		}
+
+		if (shouldSaveAgain) return persistIfNeeded();
+		if (mountedRef.current) setSaveState("saved");
+	}, [clearAutosaveTimer]);
+
+	useEffect(() => {
+		currentDraftRef.current = draft;
+		if (draft.source === "profile" || draft.archivedAt) {
+			clearAutosaveTimer();
+			setSaveState("saved");
+			clearPendingAgentDraft();
+			return;
+		}
+		const signature = agentDraftSignature(draft);
+		if (signature === savedSignatureRef.current) {
+			clearAutosaveTimer();
+			setSaveState("saved");
+			clearPendingAgentDraft();
+			return;
+		}
+		writePendingAgentDraft(draft, savedSignatureRef.current);
+		setSaveState((current) => current === "saving" ? current : "idle");
+		if (editingName || validateAgentName(draft.displayName) || !catalogRef.current) return;
+		clearAutosaveTimer();
+		autosaveTimerRef.current = window.setTimeout(() => {
+			autosaveTimerRef.current = null;
+			void persistIfNeeded().catch(() => undefined);
+		}, AGENT_AUTOSAVE_DELAY_MS);
+	}, [clearAutosaveTimer, designerAvailable, draft, editingName, persistIfNeeded]);
+
+	useEffect(() => {
+		onAutosaveHandlerChange(persistIfNeeded);
+		return () => onAutosaveHandlerChange(null);
+	}, [onAutosaveHandlerChange, persistIfNeeded]);
+
+	useEffect(() => {
+		mountedRef.current = true;
+		return () => {
+			mountedRef.current = false;
+			clearAutosaveTimer();
+			void persistIfNeeded().catch(() => undefined);
+		};
+	}, [clearAutosaveTimer, persistIfNeeded]);
 
 	const refreshContextFileRegistry = useCallback(async () => {
 		setRefreshingContextFiles(true);
@@ -107,14 +355,14 @@ export function AgentsView({
 				...current,
 				brokenContextFiles: (current.brokenContextFiles ?? []).filter((key) => !knownKeys.has(key)),
 			}));
-			onAgentsChanged();
+			onAgentsChangedRef.current();
 			setLocalError(null);
 		} catch (caught) {
 			setLocalError(caught instanceof Error ? caught.message : String(caught));
 		} finally {
 			setRefreshingContextFiles(false);
 		}
-	}, [onAgentsChanged]);
+	}, []);
 
 	useEffect(() => setCustomAgents(initialCustomAgents), [initialCustomAgents]);
 	useEffect(() => {
@@ -164,67 +412,25 @@ export function AgentsView({
 		[visibleContextFiles, draft.contextFiles],
 	);
 
-	const createNewAgentDraft = () => {
-		const usedNames = [
-			...agents.map((agent) => agent.name),
-			...customAgents.flatMap((agent) => [agent.profileName, agent.displayName]),
-			...(unsavedAgentDraftVisible ? [draft.displayName] : []),
-		];
-		setDraft(createBlankAgentDraft(catalog ?? undefined, uniqueDraftAgentName(usedNames)));
-		setShowUnsavedAgentDraft(true);
-		setLocalError(null);
+	const runAfterAutosave = async (action: () => void | Promise<void>) => {
+		try {
+			await persistIfNeeded();
+			await action();
+		} catch {
+			// Keep the current draft visible so the user can retry the failed autosave.
+		}
 	};
 
-	const saveDraft = async () => {
-		if (readOnly) return;
-		if (agentNameError) {
-			setLocalError(agentNameError);
-			return;
-		}
-		if (!designerAvailable) {
-			setLocalError(agentDesignerUnavailableMessage());
-			return;
-		}
-		setSaving(true);
-		try {
-			const input: SaveCustomAgentInput = {
-				displayName: draft.displayName.trim(),
-				description: (draft.description ?? "").trim() || undefined,
-				nativeTools: draft.nativeTools,
-				skills: draft.skills,
-				contextFiles: draft.contextFiles,
-				subagents: draft.subagents.filter((item) => item.name.trim() && item.targetProfile.trim()),
-				mcpServers: draft.mcpServers,
-				piPackages: draft.piPackages,
-				mainModel: draft.mainModel,
-				subagentModel: draft.subagentModel,
-				thinkingLevel: draft.thinkingLevel ?? null,
-				mainThinkingLevel: draft.mainThinkingLevel ?? null,
-				subagentThinkingLevel: draft.subagentThinkingLevel ?? null,
-				fast: draft.fast,
-				mainFast: draft.mainFast,
-				subagentFast: draft.subagentFast,
-				builtinTools: draft.builtinTools,
-				builtinToolNames: draft.builtinToolNames,
-				autoContextFiles: draft.autoContextFiles,
-				runControl: draft.runControl,
-			};
-			const response = draft.id ? await patchCustomAgent(draft.id, input) : await postCustomAgent(input);
-			setCustomAgents((current) => {
-				const withoutSaved = current.filter((agent) => agent.id !== response.agent.id);
-				return [response.agent, ...withoutSaved];
-			});
-			setDraft(agentToDraft(response.agent));
-			setShowUnsavedAgentDraft(false);
-			onSelect(response.agent.profileName);
-			onAgentsChanged();
-			setLocalError(null);
-		} catch (caught) {
-			const message = caught instanceof Error ? caught.message : String(caught);
-			setLocalError(isNotFoundError(message) ? agentDesignerUnavailableMessage() : message);
-		} finally {
-			setSaving(false);
-		}
+	const createNewAgentDraft = () => {
+		void runAfterAutosave(() => {
+			const usedNames = [
+				...agents.flatMap((agent) => [agent.name, ...agent.aliases]),
+				...customAgents.flatMap((agent) => [agent.profileName, agent.displayName]),
+				...(unsavedAgentDraftVisible ? [draft.displayName] : []),
+			];
+			const nextDraft = createBlankAgentDraft(catalog ?? undefined, uniqueDraftAgentName(usedNames));
+			activateDraft(nextDraft, null);
+		});
 	};
 
 	const setDraftArchived = async (archived: boolean) => {
@@ -237,9 +443,10 @@ export function AgentsView({
 				localStorage.setItem("pibo.chat.showArchivedAgents", "true");
 			}
 			setCustomAgents((current) => current.map((agent) => (agent.id === response.agent.id ? response.agent : agent)));
-			setDraft(agentToDraft(response.agent));
+			const nextDraft = agentToDraft(response.agent);
+			activateDraft(nextDraft, agentDraftSignature(nextDraft));
 			setDeleteConfirmName("");
-			onAgentsChanged();
+			onAgentsChangedRef.current();
 			setLocalError(null);
 		} catch (caught) {
 			setLocalError(caught instanceof Error ? caught.message : String(caught));
@@ -283,10 +490,11 @@ export function AgentsView({
 		try {
 			await deleteCustomAgent(draft.id, deleteConfirmName);
 			setCustomAgents((current) => current.filter((agent) => agent.id !== draft.id));
-			setDraft(createBlankAgentDraft(catalog ?? undefined));
+			const nextDraft = createBlankAgentDraft(catalog ?? undefined);
+			activateDraft(nextDraft, agentDraftSignature(nextDraft));
 			setShowUnsavedAgentDraft(false);
 			setDeleteConfirmName("");
-			onAgentsChanged();
+			onAgentsChangedRef.current();
 			setLocalError(null);
 		} catch (caught) {
 			setLocalError(caught instanceof Error ? caught.message : String(caught));
@@ -317,7 +525,7 @@ export function AgentsView({
 						>
 							{showArchivedAgents ? <ArchiveRestore size={13} /> : <Archive size={13} />}
 						</button>
-						<button type="button" onClick={onAgentsChanged} title="Refresh" aria-label="Refresh" className="p-1 border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]">
+						<button type="button" onClick={() => void runAfterAutosave(onAgentsChanged)} title="Refresh" aria-label="Refresh" className="p-1 border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]">
 							<RefreshCw size={13} />
 						</button>
 					</div>
@@ -342,18 +550,22 @@ export function AgentsView({
 								subtitle={agent.profileName}
 								selected={draft.source === "custom" && draft.id === agent.id}
 								onSelect={() => {
-									setShowUnsavedAgentDraft(false);
-									setDraft(agentToDraft(agent));
-									onSelect(agent.profileName);
+									if (draft.source === "custom" && draft.id === agent.id) return;
+									void runAfterAutosave(() => {
+										const latestAgent = customAgentsRef.current.find((item) => item.id === agent.id) ?? agent;
+										const nextDraft = agentToDraft(latestAgent);
+										activateDraft(nextDraft, agentDraftSignature(nextDraft));
+										onSelect(latestAgent.profileName);
+									});
 								}}
-								onCopy={() => {
-									setDraft(copyCustomAgentToDraft(agent));
-									setShowUnsavedAgentDraft(true);
-								}}
-								onCreateSession={() => {
+								onCopy={() => void runAfterAutosave(() => {
+									const latestAgent = customAgentsRef.current.find((item) => item.id === agent.id) ?? agent;
+									activateDraft(copyCustomAgentToDraft(latestAgent), null);
+								})}
+								onCreateSession={() => void runAfterAutosave(() => {
 									onSelect(agent.profileName);
 									onCreateSession(agent.profileName);
-								}}
+								})}
 								createSessionDisabled={creatingSession}
 							/>
 						))}
@@ -368,13 +580,17 @@ export function AgentsView({
 									subtitle={agent.profileName}
 									selected={draft.source === "custom" && draft.id === agent.id}
 									onSelect={() => {
-										setShowUnsavedAgentDraft(false);
-										setDraft(agentToDraft(agent));
+										if (draft.source === "custom" && draft.id === agent.id) return;
+										void runAfterAutosave(() => {
+											const latestAgent = customAgentsRef.current.find((item) => item.id === agent.id) ?? agent;
+											const nextDraft = agentToDraft(latestAgent);
+											activateDraft(nextDraft, agentDraftSignature(nextDraft));
+										});
 									}}
-									onCopy={() => {
-										setDraft(copyCustomAgentToDraft(agent));
-										setShowUnsavedAgentDraft(true);
-									}}
+									onCopy={() => void runAfterAutosave(() => {
+										const latestAgent = customAgentsRef.current.find((item) => item.id === agent.id) ?? agent;
+										activateDraft(copyCustomAgentToDraft(latestAgent), null);
+									})}
 									onCreateSession={() => {}}
 									createSessionDisabled
 								/>
@@ -389,19 +605,18 @@ export function AgentsView({
 								title={agent.name}
 								subtitle={agent.aliases.join(", ") || "plugin"}
 								selected={draft.source === "profile" && draft.profileName === agent.name}
-								onSelect={() => {
-									setShowUnsavedAgentDraft(false);
-									setDraft(profileToDraft(agent, catalog ?? undefined));
+								onSelect={() => void runAfterAutosave(() => {
+									const nextDraft = profileToDraft(agent, catalog ?? undefined);
+									activateDraft(nextDraft, agentDraftSignature(nextDraft));
 									onSelect(agent.name);
-								}}
-								onCopy={() => {
-									setDraft(copyProfileToDraft(agent, catalog ?? undefined));
-									setShowUnsavedAgentDraft(true);
-								}}
-								onCreateSession={() => {
+								})}
+								onCopy={() => void runAfterAutosave(() => {
+									activateDraft(copyProfileToDraft(agent, catalog ?? undefined), null);
+								})}
+								onCreateSession={() => void runAfterAutosave(() => {
 									onSelect(agent.name);
 									onCreateSession(agent.name);
-								}}
+								})}
 								createSessionDisabled={creatingSession}
 							/>
 						))}
@@ -416,17 +631,24 @@ export function AgentsView({
 						<div className="text-[11px] uppercase tracking-wider text-slate-500">{draft.source === "profile" ? "read-only plugin profile" : archivedDraft ? "archived custom agent" : "custom agent"}</div>
 					</div>
 					<div className="flex items-center gap-2">
-						<button type="button" onClick={() => { if (draft.profileName) { onSelect(draft.profileName); onCreateSession(draft.profileName); } }} disabled={!draft.profileName || creatingSession || archivedDraft} title="New Session With Agent" aria-label="New Session With Agent" className="h-8 w-8 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50">
+						{draft.source === "custom" && !archivedDraft ? (
+							<div className={`text-xs ${saveState === "error" ? "text-red-300" : saveState === "saved" ? "text-emerald-300" : "text-slate-400"}`} aria-live="polite" data-agent-autosave-state={saveState}>
+								{autosaveStateLabel(saveState)}
+							</div>
+						) : null}
+						{saveState === "error" && !readOnly ? (
+							<button type="button" onClick={() => void persistIfNeeded().catch(() => undefined)} disabled={saving || Boolean(agentNameError)} className="h-8 px-2 border border-red-500/60 rounded-sm text-xs text-red-200 hover:border-red-300 disabled:opacity-50">
+								Retry
+							</button>
+						) : null}
+						<button type="button" onClick={() => void runAfterAutosave(() => { if (draft.profileName) { onSelect(draft.profileName); onCreateSession(draft.profileName); } })} disabled={!draft.profileName || creatingSession || archivedDraft} title="New Session With Agent" aria-label="New Session With Agent" className="h-8 w-8 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50">
 							<MessageSquarePlus size={14} />
 						</button>
 						{draft.source === "custom" && draft.id ? (
-							<button type="button" onClick={() => void setDraftArchived(!archivedDraft)} disabled={saving} title={archivedDraft ? "Restore Agent" : "Archive Agent"} aria-label={archivedDraft ? "Restore Agent" : "Archive Agent"} className="h-8 w-8 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50">
+							<button type="button" onClick={() => void runAfterAutosave(() => setDraftArchived(!archivedDraft))} disabled={saving} title={archivedDraft ? "Restore Agent" : "Archive Agent"} aria-label={archivedDraft ? "Restore Agent" : "Archive Agent"} className="h-8 w-8 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50">
 								{archivedDraft ? <ArchiveRestore size={14} /> : <Archive size={14} />}
 							</button>
 						) : null}
-						<button type="button" onClick={() => void saveDraft()} disabled={readOnly || !designerAvailable || saving || Boolean(agentNameError)} title="Save Agent" aria-label="Save Agent" className="h-8 w-8 inline-flex items-center justify-center border border-[#11a4d4] rounded-sm text-[#11a4d4] bg-[#11a4d4]/10 disabled:opacity-50">
-							<Save size={14} />
-						</button>
 					</div>
 				</div>
 				{designerAvailable ? null : <div className="mb-3 border border-[#f59e0b]/60 bg-[#f59e0b]/10 text-amber-100 px-3 py-2 text-sm rounded-sm">{agentDesignerUnavailableMessage()}</div>}
@@ -435,7 +657,7 @@ export function AgentsView({
 				{localError ? <div className="mb-3 border border-red-500/60 bg-red-500/10 text-red-200 px-3 py-2 text-sm rounded-sm">{localError}</div> : null}
 				<div className="grid gap-4">
 					<DesignerPanel title="Basics">
-						<input value={draft.displayName} disabled={readOnly} onChange={(event) => setDraft((current) => ({ ...current, displayName: event.target.value }))} className={`min-w-0 bg-[#0e1116] border rounded-sm px-3 py-2 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60 ${agentNameError ? "border-[#f59e0b]" : "border-slate-700"}`} placeholder="agent-name" />
+						<input value={draft.displayName} disabled={readOnly} onFocus={() => setEditingName(true)} onBlur={() => setEditingName(false)} onChange={(event) => setDraft((current) => ({ ...current, displayName: event.target.value }))} className={`min-w-0 bg-[#0e1116] border rounded-sm px-3 py-2 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60 ${agentNameError ? "border-[#f59e0b]" : "border-slate-700"}`} placeholder="agent-name" />
 						{agentNameError ? <div className="text-xs text-amber-100">{agentNameError}</div> : null}
 						<textarea value={draft.description} disabled={readOnly} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} className="min-h-[72px] bg-[#0e1116] border border-slate-700 rounded-sm px-3 py-2 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60" placeholder="Description" />
 						{draft.source === "profile" && draft.hardPinnedModel ? (
@@ -584,7 +806,7 @@ export function AgentsView({
 									metaClass="text-[#11a4d4]"
 									actionLabel="Edit"
 									actionIcon={<Edit3 size={12} />}
-									onAction={() => onEditContextFile(contextFile.key)}
+									onAction={() => void runAfterAutosave(() => onEditContextFile(contextFile.key))}
 									onToggle={() => setDraft((current) => ({ ...current, contextFiles: toggleName(current.contextFiles, contextFile.key) }))}
 								/>
 							)}
@@ -596,7 +818,7 @@ export function AgentsView({
 						draft={draft}
 						setDraft={setDraft}
 						readOnly={readOnly}
-						onEditServer={onEditMcpServer}
+						onEditServer={(name) => void runAfterAutosave(() => onEditMcpServer(name))}
 					/>
 					{archivedDraft && draft.profileName ? (
 						<DesignerPanel title="Delete Agent">
