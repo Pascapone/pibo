@@ -147,6 +147,12 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 		return;
 	}
 
+	if (argv[2] === "resources") {
+		const { runResourcesCli } = await import("./resources/cli.js");
+		await runResourcesCli([argv[0] ?? "node", "pibo resources", ...argv.slice(3)]);
+		return;
+	}
+
 	if (argv[2] === "setup") {
 		const { runSetupCli } = await import("./setup/cli.js");
 		await runSetupCli([argv[0] ?? "node", "pibo setup", ...argv.slice(3)]);
@@ -261,6 +267,18 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 		.action(async (args: string[]) => {
 			const { runComputeCli } = await import("./compute/cli.js");
 			await runComputeCli([argv[0] ?? "node", "pibo compute", ...args]);
+		});
+
+	program
+		.command("resources")
+		.description("Inspect and safely reap managed compute and browser resources")
+		.helpOption(false)
+		.allowUnknownOption(true)
+		.allowExcessArguments(true)
+		.argument("[args...]")
+		.action(async (args: string[]) => {
+			const { runResourcesCli } = await import("./resources/cli.js");
+			await runResourcesCli([argv[0] ?? "node", "pibo resources", ...args]);
 		});
 
 	program
@@ -497,6 +515,7 @@ Commands:
   debug        Inspect local Pibo data
   data         Inspect and maintain Pibo data stores
   compute      Manage Pibo Docker compute workers
+  resources    Inspect and safely reap managed compute and browser resources
   setup        Plan user-host installs and developer-host upgrades
   skills       Manage Pibo user skills
   cron         Manage scheduled Pibo jobs
