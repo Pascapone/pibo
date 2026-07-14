@@ -4,6 +4,7 @@ import { attachAsyncAgentRunNode, reconcileAsyncAgentRunStatuses } from "./trace
 import { sortTraceNodes } from "./trace-nodes.js";
 import { createRunNotificationNode, parseRunNotificationText } from "./trace-run-notifications.js";
 import { isSubagentToolName } from "./trace-subagent-links.js";
+import type { TraceMessageTurnTiming } from "./trace-event-projection.js";
 import type { PiboTraceNode, PiboTraceNodeStatus, PiboWebSessionStatus } from "./trace-types.js";
 
 type MessageSessionEntry = Extract<SessionEntry, { type: "message" }>;
@@ -43,8 +44,14 @@ export function projectTranscriptEntries(
 	return lastUserMessageIndex === -1 ? entries : entries.slice(0, lastUserMessageIndex);
 }
 
-export function traceNodesFromEntries(piboSessionId: string, entries: SessionEntry[]): PiboTraceNode[] {
+export function traceNodesFromEntries(
+	piboSessionId: string,
+	entries: SessionEntry[],
+	turnTimings: readonly TraceMessageTurnTiming[] = [],
+): PiboTraceNode[] {
 	const nodes: PiboTraceNode[] = [];
+	const turnTimingAssignments = assignTranscriptTurnTimings(entries, turnTimings);
+	let assistantTurnIndex = 0;
 	for (let index = 0; index < entries.length; index += 1) {
 		const entry = entries[index];
 		if (entry.type === "message") {
@@ -53,7 +60,10 @@ export function traceNodesFromEntries(piboSessionId: string, entries: SessionEnt
 				nodes.push(createUserMessageNode(piboSessionId, entry, messageContent(entry), index));
 			} else if (role === "assistant" || role === "toolResult") {
 				const turn = collectAssistantTurn(entries, index);
-				nodes.push(...createAssistantTurnNodes(piboSessionId, turn.entries));
+				const hasAssistant = turn.entries.some(({ entry: turnEntry }) => messageRole(turnEntry) === "assistant");
+				const timing = hasAssistant ? turnTimingAssignments[assistantTurnIndex] : undefined;
+				nodes.push(...createAssistantTurnNodes(piboSessionId, turn.entries, timing));
+				if (hasAssistant) assistantTurnIndex += 1;
 				index = turn.nextIndex - 1;
 			}
 		} else if (entry.type === "session_info" && entry.name) {
@@ -90,6 +100,66 @@ function messageParts(entry: MessageSessionEntry): unknown[] {
 	const content = messageContent(entry);
 	if (typeof content === "string") return [{ type: "text", text: content }];
 	return Array.isArray(content) ? content : [];
+}
+
+function assignTranscriptTurnTimings(
+	entries: SessionEntry[],
+	turnTimings: readonly TraceMessageTurnTiming[],
+): Array<TraceMessageTurnTiming | undefined> {
+	const transcriptTurns: Array<{ prompt?: string; assistantAt?: number }> = [];
+	let latestUserText: string | undefined;
+	for (let index = 0; index < entries.length; index += 1) {
+		const entry = entries[index];
+		if (entry.type !== "message") continue;
+		const role = messageRole(entry);
+		if (role === "user") {
+			latestUserText = normalizedPrompt(extractText(messageContent(entry)));
+			continue;
+		}
+		if (role !== "assistant" && role !== "toolResult") continue;
+		const turn = collectAssistantTurn(entries, index);
+		const lastAssistant = [...turn.entries].reverse().find(({ entry: turnEntry }) => messageRole(turnEntry) === "assistant");
+		if (lastAssistant) {
+			transcriptTurns.push({ prompt: latestUserText, assistantAt: parsedTimestamp(lastAssistant.entry.timestamp) });
+		}
+		index = turn.nextIndex - 1;
+	}
+
+	const assignments: Array<TraceMessageTurnTiming | undefined> = Array(transcriptTurns.length).fill(undefined);
+	let timingCursor = turnTimings.length - 1;
+	for (let turnIndex = transcriptTurns.length - 1; turnIndex >= 0; turnIndex -= 1) {
+		const transcriptTurn = transcriptTurns[turnIndex];
+		if (!transcriptTurn?.prompt) continue;
+		let matchedIndex: number | undefined;
+		let matchedDistance = Number.POSITIVE_INFINITY;
+		for (let timingIndex = timingCursor; timingIndex >= 0; timingIndex -= 1) {
+			const timing = turnTimings[timingIndex];
+			if (normalizedPrompt(timing?.userText) !== transcriptTurn.prompt) continue;
+			const completedAt = parsedTimestamp(timing?.completedAt);
+			const distance = completedAt === undefined || transcriptTurn.assistantAt === undefined
+				? Number.POSITIVE_INFINITY
+				: Math.abs(completedAt - transcriptTurn.assistantAt);
+			if (matchedIndex === undefined || distance < matchedDistance) {
+				matchedIndex = timingIndex;
+				matchedDistance = distance;
+			}
+		}
+		if (matchedIndex === undefined) continue;
+		assignments[turnIndex] = turnTimings[matchedIndex];
+		timingCursor = matchedIndex - 1;
+	}
+	return assignments;
+}
+
+function normalizedPrompt(value: string | undefined): string | undefined {
+	const normalized = value?.replace(/\s+/g, " ").trim();
+	return normalized || undefined;
+}
+
+function parsedTimestamp(value: string | undefined): number | undefined {
+	if (!value) return undefined;
+	const timestamp = new Date(value).getTime();
+	return Number.isFinite(timestamp) ? timestamp : undefined;
 }
 
 function collectAssistantTurn(
@@ -146,7 +216,11 @@ function createUserMessageNode(
 	};
 }
 
-function createAssistantTurnNodes(piboSessionId: string, entries: IndexedMessageSessionEntry[]): PiboTraceNode[] {
+function createAssistantTurnNodes(
+	piboSessionId: string,
+	entries: IndexedMessageSessionEntry[],
+	timing?: TraceMessageTurnTiming,
+): PiboTraceNode[] {
 	const firstAssistant = entries.find(({ entry }) => messageRole(entry) === "assistant");
 	if (!firstAssistant) return [];
 
@@ -180,13 +254,11 @@ function createAssistantTurnNodes(piboSessionId: string, entries: IndexedMessage
 						error: responseError,
 						children: [],
 						startedAt: entry.timestamp,
-						completedAt: entry.timestamp,
 					});
 					orderedNodes.push(responseNode);
 				} else {
 					responseNode.summary = `${typeof responseNode.summary === "string" ? responseNode.summary : ""}${typed.text}`;
 					responseNode.output = `${typeof responseNode.output === "string" ? responseNode.output : ""}${typed.text}`;
-					responseNode.completedAt = entry.timestamp;
 				}
 			} else if (typed.type === "toolCall" && typeof typed.id === "string" && typeof typed.name === "string") {
 				const toolNode = createToolCallNode(piboSessionId, entry, entryIndex, index, typed);
@@ -199,6 +271,11 @@ function createAssistantTurnNodes(piboSessionId: string, entries: IndexedMessage
 			responseNode.status = responseStatus;
 			responseNode.error = responseError;
 		}
+	}
+	const finalNode = orderedNodes.at(-1);
+	if (finalNode?.type === "assistant.message" && finalNode.status === "done") {
+		finalNode.completedAt = timing?.completedAt ?? finalNode.startedAt;
+		finalNode.durationMs = timing?.durationMs;
 	}
 	return orderedNodes;
 }

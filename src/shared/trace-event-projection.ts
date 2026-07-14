@@ -70,10 +70,8 @@ export function applySingleEventToNodes(
 		const existing = byId.get(node.id);
 		if (existing) {
 			mergeAssistantMessageEvent(existing, node);
-			closeParentTurnForFinalAssistant(byId, existing);
 			return;
 		}
-		closeParentTurnForFinalAssistant(byId, node);
 		nodes.push(node);
 		byId.set(node.id, node);
 		return;
@@ -104,10 +102,8 @@ export function applySingleEventToNodes(
 		const existing = byId.get(node.id);
 		if (existing) {
 			mergeAssistantMessageEvent(existing, node);
-			closeParentTurnForFinalAssistant(byId, existing);
 			return;
 		}
-		closeParentTurnForFinalAssistant(byId, node);
 	}
 	if (node.type === "execution.compaction") {
 		const existing = findLatestCompactionNode(nodes);
@@ -166,6 +162,7 @@ function assistantMessageNodeFromEvent(
 		title: "Agent Message",
 		status: "done",
 		startedAt: createdAt,
+		completedAt: createdAt,
 		summary: event.text,
 		output: event.text,
 		source: "event-log",
@@ -343,6 +340,7 @@ function traceNodeFromEvent(
 				...base,
 				id: eventId ? messageTurnNodeId(eventId) : id,
 				type: "agent.turn",
+				startedAt: event.type === "message_started" ? createdAt : undefined,
 				title: "Agent Turn",
 				status:
 					event.type === "message_finished" || sessionStatus !== "running" ? "done" : "running",
@@ -373,6 +371,7 @@ function traceNodeFromEvent(
 				type: "assistant.message",
 				title: "Agent Message",
 				status: "done",
+				completedAt: createdAt,
 				summary: event.text,
 				output: event.text,
 				stableKey: assistantId ? `assistant:${assistantId}` : base.stableKey,
@@ -588,14 +587,6 @@ function mergeReasoningEvent(target: PiboTraceNode, update: PiboTraceNode): void
 	target.completedAt = update.completedAt ?? target.completedAt;
 }
 
-function closeParentTurnForFinalAssistant(byId: Map<string, PiboTraceNode>, assistant: PiboTraceNode): void {
-	if (!assistant.parentId || assistant.status !== "done") return;
-	const parent = byId.get(assistant.parentId);
-	if (!parent || parent.type !== "agent.turn") return;
-	parent.status = "done";
-	parent.completedAt = assistant.completedAt ?? assistant.startedAt ?? parent.completedAt;
-}
-
 function isInternalSessionOperation(action: string): boolean {
 	return action === "session.fork" || action === "session.clone" || action === "session.switch";
 }
@@ -623,6 +614,59 @@ function shouldKeepTranscriptEchoEvent(
 
 function isStaleToolCallEchoEvent(event: PiboOutputEvent, sessionStatus: PiboWebSessionStatus): boolean {
 	return sessionStatus !== "running" && event.type === "tool_call";
+}
+
+export type TraceMessageTurnTiming = {
+	eventId: string;
+	userText?: string;
+	startedAt?: string;
+	completedAt: string;
+	durationMs?: number;
+};
+
+export function messageTurnTimingsFromEvents(events: readonly ChatWebStoredEvent[]): TraceMessageTurnTiming[] {
+	const timings = new Map<string, { userText?: string; startedAt?: string; completedAt?: string }>();
+	const completedEventIds: string[] = [];
+	const completedEventIdSet = new Set<string>();
+	const ignoredEventIds = new Set<string>();
+	for (const storedEvent of events) {
+		const event = storedEvent.payload as PiboOutputEvent;
+		if (event.type !== "message_started" && event.type !== "message_finished") continue;
+		const eventId = typeof event.eventId === "string" ? event.eventId : undefined;
+		if (!eventId) continue;
+		if (event.type === "message_started" && event.source === "service") {
+			ignoredEventIds.add(eventId);
+			continue;
+		}
+		if (ignoredEventIds.has(eventId)) continue;
+		const timing = timings.get(eventId) ?? {};
+		if (event.type === "message_started") {
+			timing.userText ??= event.text;
+			timing.startedAt ??= storedEvent.createdAt;
+		} else {
+			timing.completedAt = storedEvent.createdAt;
+			if (!completedEventIdSet.has(eventId)) {
+				completedEventIds.push(eventId);
+				completedEventIdSet.add(eventId);
+			}
+		}
+		timings.set(eventId, timing);
+	}
+	return completedEventIds.flatMap((eventId) => {
+		const timing = timings.get(eventId);
+		if (!timing?.completedAt) return [];
+		const startedAtMs = parseTimestamp(timing.startedAt);
+		const completedAtMs = parseTimestamp(timing.completedAt);
+		return [{
+			eventId,
+			userText: timing.userText,
+			startedAt: timing.startedAt,
+			completedAt: timing.completedAt,
+			durationMs: startedAtMs === undefined || completedAtMs === undefined
+				? undefined
+				: Math.max(0, completedAtMs - startedAtMs),
+		}];
+	});
 }
 
 export function findOpenTranscriptEventIds(
@@ -791,6 +835,12 @@ function stringifyPreview(value: unknown): string {
 	} catch {
 		return String(value);
 	}
+}
+
+function parseTimestamp(value: string | undefined): number | undefined {
+	if (!value) return undefined;
+	const timestamp = new Date(value).getTime();
+	return Number.isFinite(timestamp) ? timestamp : undefined;
 }
 
 function cryptoSafeId(value: unknown): string {

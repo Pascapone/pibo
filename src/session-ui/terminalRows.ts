@@ -73,6 +73,9 @@ export type CompactTerminalRow = {
 	orderStreamFrameIndex?: number;
 	linkedPiboSessionId?: string;
 	forkEntryId?: string;
+	startedAt?: string;
+	completedAt?: string;
+	durationMs?: number;
 	input?: unknown;
 	output?: unknown;
 	error?: string;
@@ -107,11 +110,44 @@ export function buildCompactTerminalRows(
 	options: BuildTerminalRowsOptions,
 ): CompactTerminalRow[] {
 	if (!traceView) return [];
+	const turnById = mapTurnNodes(traceView.nodes);
 	const flatNodes = flattenTraceNodes(traceView.nodes)
 		.sort((left, right) => compareTraceNodes(left.node, right.node))
 		.filter((item) => item.node.type !== "agent.turn" && (options.showThinking || item.node.type !== "model.reasoning"));
 	const candidates = syncThinkingToolRows(flatNodes.map((item) => createRowCandidate(item.node, item.turnId)));
+	applyCompletedTurnTiming(candidates, turnById);
 	return groupRelatedToolCandidates(candidates).map((candidate) => candidate.row);
+}
+
+export function findActiveTurnStartedAt(traceView: PiboSessionTraceView | null): string | undefined {
+	if (!traceView) return undefined;
+	const terminalErrorEventIds = new Set(
+		flattenTraceNodes(traceView.nodes)
+			.map(({ node }) => node)
+			.filter((node) => node.type === "error" && node.eventId)
+			.map((node) => node.eventId!),
+	);
+	return [...mapTurnNodes(traceView.nodes).values()]
+		.filter((turn) => turn.startedAt && !turn.completedAt && (!turn.eventId || !terminalErrorEventIds.has(turn.eventId)))
+		.sort(compareTraceNodes)
+		.at(-1)?.startedAt;
+}
+
+export function formatTerminalDuration(durationMs: number): string {
+	const totalSeconds = Math.max(0, Math.floor(durationMs / 1000));
+	const hours = Math.floor(totalSeconds / 3600);
+	const minutes = Math.floor((totalSeconds % 3600) / 60);
+	const seconds = totalSeconds % 60;
+	return [hours, minutes, seconds].map((value) => String(value).padStart(2, "0")).join(":");
+}
+
+function mapTurnNodes(nodes: readonly PiboTraceNode[]): Map<string, PiboTraceNode> {
+	const turns = new Map<string, PiboTraceNode>();
+	for (const node of nodes) {
+		if (node.type === "agent.turn") turns.set(node.id, node);
+		for (const [id, turn] of mapTurnNodes(node.children)) turns.set(id, turn);
+	}
+	return turns;
 }
 
 function flattenTraceNodes(nodes: readonly PiboTraceNode[], turnId?: string): FlatTraceNode[] {
@@ -175,6 +211,28 @@ function createRowCandidate(node: PiboTraceNode, turnId?: string): RowCandidate 
 	return { ...candidate, row: { ...candidate.row, ...debugFields(node) } };
 }
 
+function applyCompletedTurnTiming(
+	candidates: readonly RowCandidate[],
+	turnById: ReadonlyMap<string, PiboTraceNode>,
+): void {
+	for (const turn of turnById.values()) {
+		if (!turn.completedAt) continue;
+		const turnCandidates = candidates.filter((candidate) => candidate.turnId === turn.id);
+		const finalCandidate = turnCandidates.at(-1);
+		if (finalCandidate?.row.kind !== "message.assistant" || finalCandidate.row.status === "running") continue;
+		finalCandidate.row.startedAt = turn.startedAt;
+		finalCandidate.row.completedAt = turn.completedAt;
+		finalCandidate.row.durationMs = turn.durationMs ?? durationBetween(turn.startedAt, turn.completedAt);
+	}
+}
+
+function durationBetween(startedAt: string | undefined, completedAt: string | undefined): number | undefined {
+	if (!startedAt || !completedAt) return undefined;
+	const start = new Date(startedAt).getTime();
+	const end = new Date(completedAt).getTime();
+	return Number.isFinite(start) && Number.isFinite(end) ? Math.max(0, end - start) : undefined;
+}
+
 function debugFields(node: PiboTraceNode): Pick<
 	CompactTerminalRow,
 	"eventId" | "runId" | "orderSource" | "orderStreamId" | "orderStreamFrameIndex" | "payloadRefs"
@@ -198,6 +256,7 @@ function createUserMessageRow(node: PiboTraceNode): CompactTerminalRow {
 		lines: [{ prefix: "prompt", tokens: [token(text)] }],
 		sourceNodeIds: [node.id],
 		forkEntryId: node.entryId,
+		startedAt: node.startedAt,
 		output: text,
 		payloadRefs: node.payloadRefs,
 	};
@@ -210,6 +269,9 @@ function createAssistantMessageRow(node: PiboTraceNode): CompactTerminalRow {
 		status: mapStatus(node.status),
 		lines: [],
 		sourceNodeIds: [node.id],
+		startedAt: node.startedAt,
+		completedAt: node.source === "transcript" ? node.completedAt : undefined,
+		durationMs: node.source === "transcript" ? node.durationMs : undefined,
 		output: stringValue(node.output) || stringValue(node.summary) || "",
 		error: node.error,
 		payloadRefs: node.payloadRefs,

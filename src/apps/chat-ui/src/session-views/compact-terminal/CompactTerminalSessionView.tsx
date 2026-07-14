@@ -11,7 +11,7 @@ import { TerminalLoginCard } from "./TerminalLoginCard";
 import { TerminalModelCard } from "./TerminalModelCard";
 import { TerminalStatusCard } from "./TerminalStatusCard";
 import { TerminalThinkingCard } from "./TerminalThinkingCard";
-import { buildCompactTerminalRows, type CompactTerminalLine, type CompactTerminalRow } from "../../../../../session-ui/terminalRows.js";
+import { buildCompactTerminalRows, findActiveTurnStartedAt, formatTerminalDuration, type CompactTerminalLine, type CompactTerminalRow } from "../../../../../session-ui/terminalRows.js";
 
 const SHOW_LATEST_THRESHOLD_PX = 180;
 const OLDER_TRACE_PREFETCH_TOP_THRESHOLD_PX = 4_800;
@@ -59,9 +59,9 @@ export function CompactTerminalSessionView({
 	const userMessageCount = rows.filter((row) => isNavigableTerminalRow(row, "user")).length;
 	const toolErrorCount = rows.filter((row) => isNavigableTerminalRow(row, "tool")).length;
 	const errorCount = rows.filter((row) => isNavigableTerminalRow(row, "system")).length;
-	const isStreaming = selectedSessionSignal
-		? selectedSessionSignal.isTreeActive
-		: selectedSessionStatus === "running" || runningCount > 0 || selectedTrace?.status === "UNSET";
+	const activeTurnStartedAt = useMemo(() => findActiveTurnStartedAt(traceView), [traceView]);
+	const isStreaming = selectedSessionSignal?.isTreeActive === true || activeTurnStartedAt !== undefined ||
+		selectedSessionStatus === "running" || runningCount > 0 || selectedTrace?.status === "UNSET";
 	const loadOlderTracePage = useCallback(() => {
 		if (!hasOlderTraceEvents || isFetchingOlderTracePage) return;
 		olderTraceIntentRef.current = false;
@@ -163,8 +163,8 @@ export function CompactTerminalSessionView({
 	), [expandedRows, focusedNavigationRowId, onFork, onModelChanged, onOpenSession, onThinkingLevelChange, traceView?.piboSessionId]);
 
 	const virtuosoComponents = useMemo(() => ({
-		Footer: isStreaming ? TerminalStreamingFooter : undefined,
-	}), [isStreaming]);
+		Footer: isStreaming ? () => <TerminalStreamingFooter startedAt={activeTurnStartedAt} /> : undefined,
+	}), [activeTurnStartedAt, isStreaming]);
 
 	return (
 		<section
@@ -420,7 +420,16 @@ function TerminalRowContent({
 				<div className="compact-terminal-markdown" data-pibo-component="MarkdownRendererHost" data-pibo-markdown-kind="assistant-message">
 					<MarkdownRenderer streaming={row.status === "running"}>{typeof row.output === "string" ? row.output : ""}</MarkdownRenderer>
 				</div>
+				{row.status === "running" ? null : <TerminalMessageMetadata timestamp={row.completedAt} durationMs={row.durationMs} />}
 			</div>
+		);
+	}
+	if (row.kind === "message.user") {
+		return (
+			<>
+				<TerminalLines lines={visibleLines} status={row.status} clampPreview={collapseToolCallPreview} />
+				<TerminalMessageMetadata timestamp={row.startedAt} />
+			</>
 		);
 	}
 	if (row.kind === "tool.status") return <TerminalStatusCard row={row} />;
@@ -455,6 +464,27 @@ function TerminalLines({
 	return lines.map((line, index) => (
 		<TerminalLine key={index} line={line} status={status} clampLines={clampPreview && index === 0 ? 5 : undefined} />
 	));
+}
+
+function TerminalMessageMetadata({ timestamp, durationMs }: { timestamp?: string; durationMs?: number }) {
+	const time = formatLocalMessageTime(timestamp);
+	if (!time) return null;
+	return (
+		<div className="mt-1 text-right font-mono text-[10px] tabular-nums text-[#737373]" data-pibo-component="TerminalMessageMetadata">
+			{time}{durationMs === undefined ? null : ` · ${formatTerminalDuration(durationMs)}`}
+		</div>
+	);
+}
+
+function formatLocalMessageTime(value: string | undefined): string | undefined {
+	if (!value) return undefined;
+	const timestamp = new Date(value);
+	if (!Number.isFinite(timestamp.getTime())) return undefined;
+	return new Intl.DateTimeFormat(undefined, {
+		hour: "2-digit",
+		minute: "2-digit",
+		hourCycle: "h23",
+	}).format(timestamp);
 }
 
 function TerminalRowActions({
@@ -574,26 +604,42 @@ const WORKING_SCRAMBLE_TARGET = "Working...";
 const WORKING_SCRAMBLE_ASCII_START = 33;
 const WORKING_SCRAMBLE_ASCII_END = 126;
 
-function TerminalStreamingFooter() {
+function TerminalStreamingFooter({ startedAt }: { startedAt?: string }) {
 	const { chars, activeIndex } = useWorkingScramble(WORKING_SCRAMBLE_TARGET);
+	const elapsed = useActiveTurnElapsed(startedAt);
 
 	return (
 		<div className="border-t border-[#141414] px-4 py-2" role="status" aria-live="polite" aria-label="Working">
-			<div className="grid grid-cols-[1.9rem_minmax(0,1fr)] gap-2 whitespace-pre-wrap break-words">
+			<div className="grid grid-cols-[1.9rem_minmax(0,1fr)] gap-2 whitespace-pre-wrap break-words" aria-hidden="true">
 				<span className="whitespace-pre text-[#737373]">•</span>
-				<span className="compact-terminal-working-scramble" aria-hidden="true">
-					{chars.map((char, index) => (
-						<span
-							key={index}
-							className={index === activeIndex ? "compact-terminal-working-scramble-active" : undefined}
-						>
-							{char}
-						</span>
-					))}
+				<span className="inline-flex min-w-0 items-baseline gap-2">
+					{elapsed ? <span className="shrink-0 tabular-nums text-[#737373]">{elapsed}</span> : null}
+					<span className="compact-terminal-working-scramble">
+						{chars.map((char, index) => (
+							<span
+								key={index}
+								className={index === activeIndex ? "compact-terminal-working-scramble-active" : undefined}
+							>
+								{char}
+							</span>
+						))}
+					</span>
 				</span>
 			</div>
 		</div>
 	);
+}
+
+function useActiveTurnElapsed(startedAt: string | undefined): string | undefined {
+	const startedAtMs = startedAt ? new Date(startedAt).getTime() : Number.NaN;
+	const [now, setNow] = useState(() => Date.now());
+	useEffect(() => {
+		setNow(Date.now());
+		if (!Number.isFinite(startedAtMs)) return;
+		const interval = window.setInterval(() => setNow(Date.now()), 1_000);
+		return () => window.clearInterval(interval);
+	}, [startedAtMs]);
+	return Number.isFinite(startedAtMs) ? formatTerminalDuration(Math.max(0, now - startedAtMs)) : undefined;
 }
 
 function useWorkingScramble(target: string) {

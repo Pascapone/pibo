@@ -9,6 +9,7 @@ import {
 	findOpenTranscriptEventIds,
 	isConfirmedUserMessageEcho,
 	latestTraceStreamId,
+	messageTurnTimingsFromEvents,
 	traceEventDedupeKey,
 } from "./trace-event-projection.js";
 import { flattenTraceNodes, mapTraceNodesById, nestTraceNodes } from "./trace-nodes.js";
@@ -69,7 +70,7 @@ export function buildTraceViewFromEvents(input: TraceBuildInput): PiboSessionTra
 	const allEntries = input.transcriptEntries ?? [];
 	const openTranscriptEventIds = findOpenTranscriptEventIds(events, sessionStatus);
 	const entries = projectTranscriptEntries(allEntries, sessionStatus, openTranscriptEventIds);
-	const nodes = traceNodesFromEntries(input.session.id, entries);
+	const nodes = traceNodesFromEntries(input.session.id, entries, messageTurnTimingsFromEvents(events));
 	const byId = mapTraceNodesById(nodes);
 	const childByParent = mapTraceChildSessionsByParent(input.sessions ?? []);
 	const linkedChildByToolCallId = mapTraceSubagentSessionLinks(events);
