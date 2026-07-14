@@ -2,8 +2,9 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AlertTriangle, Bot, Copy, Loader2, Play, Plus, RefreshCw, Save, Square, Trash2, X, XCircle } from "lucide-react";
 import { cancelRalphJob, deleteRalphJob, getRalphConditions, getRalphJobs, getRalphRuns, getRalphStatus, getRalphTemplates, patchRalphJob, postRalphJob, startRalphJob, stopRalphJob, type RalphJobInput } from "./api-ralph";
 import { copyTextToClipboard } from "./clipboard";
+import { isArchivedRoom } from "./session-sidebar-helpers";
 import { THINKING_LEVELS } from "./types";
-import type { AgentProfile, BootstrapData, CustomAgent, ModelCatalog, ModelProfile, PiboRalphJob, PiboRalphJobTemplate, PiboRalphRun, PiboRalphStatus, PiboRalphStopConditionInfo, PiboRalphStopPolicy, ThinkingLevel } from "./types";
+import type { AgentProfile, BootstrapData, CustomAgent, ModelCatalog, ModelProfile, PiboRalphJob, PiboRalphJobTemplate, PiboRalphRun, PiboRalphStatus, PiboRalphStopConditionInfo, PiboRalphStopPolicy, PiboRoom, ThinkingLevel } from "./types";
 
 type Draft = {
 	name: string;
@@ -24,8 +25,14 @@ type AgentOption = { name: string; label: string; description?: string };
 const inputClass = "w-full rounded-sm border border-slate-700 bg-[#101d22] px-3 py-2 text-sm text-slate-200 outline-none focus:border-[#11a4d4] disabled:opacity-50";
 const radioClass = "sr-only peer";
 
+export function writableRalphRooms(rooms: PiboRoom[]): PiboRoom[] {
+	return rooms.filter((room) => !isArchivedRoom(room));
+}
+
 export function RalphArea({ bootstrap, mobileSidebarOpen = false, onCloseMobileSidebar }: { bootstrap: BootstrapData; mobileSidebarOpen?: boolean; onCloseMobileSidebar?: () => void }) {
 	const rooms = bootstrap.rooms ?? [];
+	const writableRooms = useMemo(() => writableRalphRooms(rooms), [rooms]);
+	const defaultRoomId = writableRooms[0]?.id;
 	const agentOptions = useMemo(() => profileOptions(bootstrap.agents, bootstrap.customAgents), [bootstrap.agents, bootstrap.customAgents]);
 	const defaultProfile = agentOptions[0]?.name ?? "default";
 	const [jobs, setJobs] = useState<PiboRalphJob[]>([]);
@@ -35,12 +42,13 @@ export function RalphArea({ bootstrap, mobileSidebarOpen = false, onCloseMobileS
 	const [templates, setTemplates] = useState<PiboRalphJobTemplate[]>([]);
 	const [selectedTemplateId, setSelectedTemplateId] = useState("");
 	const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
-	const [draft, setDraft] = useState<Draft>(() => emptyDraft(defaultProfile, rooms[0]?.id));
+	const [draft, setDraft] = useState<Draft>(() => emptyDraft(defaultProfile, defaultRoomId));
 	const [loading, setLoading] = useState(false);
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const selectedJob = jobs.find((job) => job.id === selectedJobId) ?? null;
-	const selectedRoomName = useMemo(() => rooms.find((room) => room.id === draft.roomId)?.name ?? draft.roomId, [rooms, draft.roomId]);
+	const selectedRoom = useMemo(() => rooms.find((room) => room.id === draft.roomId), [rooms, draft.roomId]);
+	const selectedRoomName = selectedRoom ? `${selectedRoom.name}${isArchivedRoom(selectedRoom) ? " (archived)" : ""}` : draft.roomId;
 
 	const refresh = async (jobId = selectedJobId) => {
 		setLoading(true);
@@ -74,22 +82,22 @@ export function RalphArea({ bootstrap, mobileSidebarOpen = false, onCloseMobileS
 	const selectJob = async (job: PiboRalphJob) => {
 		setSelectedJobId(job.id);
 		setSelectedTemplateId("");
-		setDraft(draftFromJob(job, defaultProfile, rooms[0]?.id));
+		setDraft(draftFromJob(job, defaultProfile, defaultRoomId));
 		onCloseMobileSidebar?.();
 		const response = await getRalphRuns(job.id, 100);
 		setRuns(response.runs);
 	};
-	const newJob = () => { setSelectedJobId(null); setSelectedTemplateId(""); setDraft(emptyDraft(defaultProfile, rooms[0]?.id)); setRuns([]); onCloseMobileSidebar?.(); };
+	const newJob = () => { setSelectedJobId(null); setSelectedTemplateId(""); setDraft(emptyDraft(defaultProfile, defaultRoomId)); setRuns([]); onCloseMobileSidebar?.(); };
 	const applyTemplate = (templateId: string) => {
 		setSelectedTemplateId(templateId);
-		if (!templateId) { setDraft(emptyDraft(defaultProfile, rooms[0]?.id)); return; }
+		if (!templateId) { setDraft(emptyDraft(defaultProfile, defaultRoomId)); return; }
 		const template = templates.find((item) => item.id === templateId);
 		if (!template) return;
 		setSelectedJobId(null);
 		setRuns([]);
-		setDraft(draftFromTemplate(template, defaultProfile, rooms[0]?.id));
+		setDraft(draftFromTemplate(template, defaultProfile, defaultRoomId));
 	};
-	const save = async () => { setSaving(true); setError(null); try { const input = inputFromDraft(draft); const response = selectedJob ? await patchRalphJob(selectedJob.id, input) : await postRalphJob(input); setSelectedJobId(response.job.id); setDraft(draftFromJob(response.job, defaultProfile, rooms[0]?.id)); await refresh(response.job.id); } catch (err) { setError(err instanceof Error ? err.message : String(err)); } finally { setSaving(false); } };
+	const save = async () => { setSaving(true); setError(null); try { const input = inputFromDraft(draft); const response = selectedJob ? await patchRalphJob(selectedJob.id, input) : await postRalphJob(input); setSelectedJobId(response.job.id); setDraft(draftFromJob(response.job, defaultProfile, defaultRoomId)); await refresh(response.job.id); } catch (err) { setError(err instanceof Error ? err.message : String(err)); } finally { setSaving(false); } };
 	const remove = async () => { if (!selectedJob || !window.confirm(`Delete Ralph job "${selectedJob.name}"?`)) return; setSaving(true); try { await deleteRalphJob(selectedJob.id); newJob(); await refresh(null); } catch (err) { setError(err instanceof Error ? err.message : String(err)); } finally { setSaving(false); } };
 	const action = async (kind: "start" | "stop" | "cancel") => { if (!selectedJob) return; setSaving(true); try { if (kind === "start") await startRalphJob(selectedJob.id); if (kind === "stop") await stopRalphJob(selectedJob.id); if (kind === "cancel") await cancelRalphJob(selectedJob.id); await refresh(selectedJob.id); } catch (err) { setError(err instanceof Error ? err.message : String(err)); } finally { setSaving(false); } };
 
@@ -173,7 +181,7 @@ export function RalphArea({ bootstrap, mobileSidebarOpen = false, onCloseMobileS
 									<RadioCard name="ralph-target-kind" checked={draft.targetKind === "room"} title="Room" description="Uses a room workspace" onChange={() => setDraft({ ...draft, targetKind: "room" })} />
 								</div>
 							</div>
-							{draft.targetKind === "room" ? <Field label="Room"><select className={inputClass} value={draft.roomId} onChange={(event) => setDraft({ ...draft, roomId: event.target.value })}>{rooms.map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}</select></Field> : null}
+							{draft.targetKind === "room" ? <Field label="Room"><select className={inputClass} value={draft.roomId} onChange={(event) => setDraft({ ...draft, roomId: event.target.value })}>{writableRooms.map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}{selectedRoom && isArchivedRoom(selectedRoom) ? <option value={selectedRoom.id} disabled>{selectedRoom.name} (archived)</option> : null}</select></Field> : null}
 							<Field label="Max Iterations"><input className={inputClass} type="number" min="1" value={draft.maxIterations} onChange={(event) => setDraft({ ...draft, maxIterations: event.target.value })} placeholder="Unlimited" /></Field>
 							<div className="rounded-sm border border-slate-800 bg-[#101d22] px-3 py-2 text-xs text-slate-500">Target: <span className="text-slate-300">{draft.targetKind === "room" ? selectedRoomName : "Shared Chat"}</span></div>
 						</Panel>
