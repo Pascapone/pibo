@@ -13,7 +13,7 @@ type ProviderDef = {
 const PROVIDERS: ProviderDef[] = [
 	{ id: "openai-codex", name: "OpenAI (ChatGPT Plus/Pro)", authMethod: "oauth" },
 	{ id: "openai", name: "OpenAI (API Key)", authMethod: "api_key" },
-	{ id: "anthropic", name: "Anthropic (Claude)", authMethod: "oauth" },
+	{ id: "anthropic", name: "Anthropic (Claude)", authMethod: "api_key" },
 	{ id: "github-copilot", name: "GitHub Copilot", authMethod: "oauth" },
 	{ id: "kimi-coding", name: "Kimi for Coding", authMethod: "api_key" },
 	{ id: "google", name: "Google (Gemini)", authMethod: "api_key" },
