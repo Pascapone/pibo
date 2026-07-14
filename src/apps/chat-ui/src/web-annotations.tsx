@@ -50,7 +50,7 @@ export function WebAnnotationsSessionPanel({
 						<span className="rounded-sm border border-slate-700 px-1.5 py-0.5 text-[10px] text-slate-400">{annotations.length}</span>
 						{selectedIds.length ? <span className="rounded-sm border border-[#11a4d4]/50 px-1.5 py-0.5 text-[10px] text-[#11a4d4]">{selectedIds.length} attached</span> : null}
 					</div>
-					{collapsed ? null : <div className="text-[11px] text-slate-500">Global annotation list. Selected attachments are remembered per session.</div>}
+					{collapsed ? null : <div className="text-[11px] text-slate-500">Global annotation list. Selected attachments follow you when switching sessions.</div>}
 				</div>
 				<div className="ml-auto flex shrink-0 items-center gap-1">
 					<button type="button" onClick={onRefresh} disabled={loading} title="Refresh annotations" aria-label="Refresh annotations" className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-slate-700 text-slate-300 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50 sm:h-7 sm:w-7" data-pibo-debug="web-annotations-refresh">
@@ -88,6 +88,7 @@ export function WebAnnotationsSessionPanel({
 								<div className="truncate text-slate-200" title={annotation.primaryTarget || annotation.label || annotation.selector || annotation.id}>{boundedUiText(annotation.primaryTarget || annotation.label || annotation.selector || annotation.id, 120)}</div>
 								{annotation.piboContext ? <div className="truncate font-mono text-[11px] text-[#11a4d4]" title={annotation.piboContext}>{boundedUiText(annotation.piboContext, 140)}</div> : null}
 								<div className="truncate font-mono text-[11px] text-slate-500" title={annotation.url}>{webAnnotationUrlLabel(annotation.url)}</div>
+								<div className="truncate font-mono text-[11px] text-slate-500" title={webAnnotationSourceTitle(annotation)}>Source {webAnnotationSourceLabel(annotation)}</div>
 								<div className="mt-1 line-clamp-2 text-slate-400" title={annotation.note}>{boundedUiText(annotation.note, 180)}</div>
 								<div className="mt-1 text-[11px] text-slate-600">{shortWorkflowTimestamp(annotation.createdAt)}</div>
 							</div>
@@ -408,6 +409,18 @@ function webAnnotationUrlLabel(value: string): string {
 	} catch {
 		return boundedUiText(value, 80);
 	}
+}
+
+function webAnnotationSourceLabel(annotation: WebAnnotationMessageAttachment): string {
+	return annotation.piboRoomId
+		? `${boundedUiText(annotation.piboSessionId, 24)} · room ${boundedUiText(annotation.piboRoomId, 18)}`
+		: boundedUiText(annotation.piboSessionId, 44);
+}
+
+function webAnnotationSourceTitle(annotation: WebAnnotationMessageAttachment): string {
+	return annotation.piboRoomId
+		? `Session ${annotation.piboSessionId} in room ${annotation.piboRoomId}`
+		: `Session ${annotation.piboSessionId}`;
 }
 
 function boundedUiText(value: string, max: number): string {
