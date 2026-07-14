@@ -161,6 +161,7 @@ test("Ralph disables the job when a timed-out session cannot be aborted", async 
 		assert.equal(updated?.enabled, false);
 		assert.match(updated?.state.lastError ?? "", /session abort failed: abort unavailable/);
 		const completed = fixture.store.listRuns({ jobId: job.id }).find((candidate) => candidate.id === run.id);
+		assert.equal(completed?.piboSessionId, "ps_timeout_1");
 		assert.equal(completed?.reason, "timeout-abort-failed");
 	} finally {
 		await fixture.cleanup();
