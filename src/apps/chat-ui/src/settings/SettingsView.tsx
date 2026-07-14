@@ -834,6 +834,8 @@ function UserSkillsSettings({
 												type="button"
 												disabled={busy?.startsWith(`${skill.id}:`) ?? false}
 												onClick={() => void toggleEnabled(skill)}
+												title={`${skill.enabled ? "Disable" : "Enable"} ${skill.name}`}
+												aria-label={`${skill.enabled ? "Disable" : "Enable"} ${skill.name}`}
 												className="h-7 w-7 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50"
 											>
 												{skill.enabled ? <PowerOff size={13} /> : <Power size={13} />}
@@ -851,6 +853,8 @@ function UserSkillsSettings({
 															setEditMarkdown("");
 														}
 													}}
+												title={`Edit ${skill.name}`}
+												aria-label={`Edit ${skill.name}`}
 												className="h-7 w-7 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50"
 											>
 												<Edit3 size={13} />
@@ -859,6 +863,8 @@ function UserSkillsSettings({
 												type="button"
 												disabled={busy?.startsWith(`${skill.id}:`) ?? false}
 												onClick={() => void removeSkill(skill)}
+												title={`Delete ${skill.name}`}
+												aria-label={`Delete ${skill.name}`}
 												className="h-7 w-7 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-red-500 hover:text-red-400 disabled:opacity-50"
 											>
 												<Trash2 size={13} />
