@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { promisify } from "node:util";
 import test from "node:test";
 
@@ -190,4 +191,10 @@ async function runAppSignalStatusScenario() {
 
 test("app signal status helpers preserve snapshot and patch semantics", async () => {
 	await assert.doesNotReject(runAppSignalStatusScenario());
+});
+
+test("optimistic session status updates are not overwritten by the previous signal snapshot", () => {
+	const source = readFileSync("src/apps/chat-ui/src/App.tsx", "utf8");
+	assert.match(source, /setBootstrap\(\(current\) => current \? updater\(current\) : current\)/);
+	assert.doesNotMatch(source, /setBootstrap\(\(current\) => current \? overlayCurrentSignals\(updater\(current\)\) : current\)/);
 });

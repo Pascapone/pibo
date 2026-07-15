@@ -759,9 +759,9 @@ export function App({ route }: { route: ChatAppRoute }) {
 	}, [loadBootstrap, refreshTrace, selectedPiboSessionId, selectedRoomId]);
 
 	const updateBootstrapCache = useCallback((updater: (data: BootstrapData) => BootstrapData) => {
-		setBootstrap((current) => current ? overlayCurrentSignals(updater(current)) : current);
-		queryClient.setQueriesData<BootstrapData>({ queryKey: ["chat", "bootstrap"] }, (current) => current ? overlayCurrentSignals(updater(current)) : current);
-	}, [overlayCurrentSignals, queryClient]);
+		setBootstrap((current) => current ? updater(current) : current);
+		queryClient.setQueriesData<BootstrapData>({ queryKey: ["chat", "bootstrap"] }, (current) => current ? updater(current) : current);
+	}, [queryClient]);
 
 	const latestRoomStreamId = bootstrap?.latestRoomStreamId;
 

@@ -114,9 +114,20 @@ The system MUST expose the newest local turn as `latestTurn` with its id, start 
 
 A running turn MUST remain running across assistant, reasoning, tool, subagent, and compaction phase changes. It MUST become terminal only when the message finishes, the session fails, the operation is interrupted or disposed, or runtime processing stops without an explicit terminal event. A processing-stop fallback MAY be refined by a later explicit terminal event. After an explicit terminal event, the turn MUST NOT change state or return to running; only a different turn id may start new work.
 
+For message inputs with a stable event id, the router MUST start the first local turn signal when it accepts the message, before cold runtime creation or model initialization completes. An initial idle processing snapshot emitted while constructing the runtime MUST NOT interrupt that accepted turn. The later `message_started` event MUST reuse the turn and preserve its accepted timestamp. Additional accepted messages MUST remain queued while another local turn is active instead of replacing the active turn.
+
 #### Acceptance
 
-Chat Web can decide whether to show Working and its elapsed timer from the signal snapshot without reading trace pages or raw events. Runtime processing shutdown leaves no unresolved running turn.
+Chat Web can decide whether to show Working and its elapsed timer from the signal snapshot without reading trace pages or raw events. Working and the sidebar running state become visible after message acceptance without waiting for runtime initialization. Runtime processing shutdown leaves no unresolved running turn.
+
+#### Scenario: Cold runtime initialization
+
+- GIVEN a stored session has no cached runtime and no active turn
+- WHEN the router accepts a message with event id `m1`
+- THEN `latestTurn` is immediately `running` with event id `m1`
+- AND Chat Web can show Working while runtime creation is still pending
+- WHEN `message_started` later arrives for `m1`
+- THEN the same turn remains running with its original start timestamp.
 
 #### Scenario: Tool phases do not end a turn
 

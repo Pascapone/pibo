@@ -463,6 +463,54 @@ test("dispose removes cached parent and child routed runtimes", async () => {
 	}
 });
 
+test("message acceptance starts a signal turn before cold runtime creation resolves", async () => {
+	const store = new InMemoryPiboSessionStore();
+	store.create({
+		id: "ps_cold_message",
+		piSessionId: "22222222-2222-4222-8222-222222222224",
+		channel: "pibo.test",
+		kind: "chat",
+		profile: "base",
+	});
+	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store });
+
+	try {
+		const pending = router.emit({ type: "message", piboSessionId: "ps_cold_message", id: "m-cold", text: "hi", source: "user" });
+		const immediate = router.snapshotSignalSession("ps_cold_message").sessions.ps_cold_message;
+		assert.equal(immediate.latestTurn.state, "running");
+		assert.equal(immediate.latestTurn.eventId, "m-cold");
+		assert.equal(immediate.localStatus, "running");
+		await pending;
+	} finally {
+		await router.disposeAll();
+	}
+});
+
+test("cold runtime creation failure terminalizes the accepted signal turn", async () => {
+	const store = new InMemoryPiboSessionStore();
+	store.create({
+		id: "ps_cold_failure",
+		piSessionId: "22222222-2222-4222-8222-222222222225",
+		channel: "pibo.test",
+		kind: "chat",
+		profile: "base",
+	});
+	const router = new PiboSessionRouter({
+		persistSession: false,
+		sessionStore: store,
+		modelDefaults: () => ({ main: { provider: "missing-provider", id: "missing-model" } }),
+	});
+
+	try {
+		await assert.rejects(router.emit({ type: "message", piboSessionId: "ps_cold_failure", id: "m-failed", text: "hi", source: "user" }));
+		const failed = router.snapshotSignalSession("ps_cold_failure").sessions.ps_cold_failure;
+		assert.equal(failed.latestTurn.state, "failed");
+		assert.equal(failed.isTreeActive, false);
+	} finally {
+		await router.disposeAll();
+	}
+});
+
 test("abort action terminalizes the active turn before runtime abort work", async () => {
 	const store = new InMemoryPiboSessionStore();
 	store.create({
