@@ -319,7 +319,11 @@ export function CronArea({ bootstrap, mobileSidebarOpen = false, onCloseMobileSi
 								<div className="mt-1 font-mono text-sm text-slate-100">{schedulePreview.value}</div>
 								<div className="mt-1 text-xs text-slate-500">{schedulePreview.description}</div>
 							</div>
-							<div className="text-xs text-slate-500">Agents use the CLI for the same result, e.g. <code className="text-slate-300">pibo cron add --cron "{schedulePreview.kind === "cron" ? schedulePreview.value : "0 8 * * *"}" --prompt "..." --default-chat</code>.</div>
+							{schedulePreview.kind === "cron" ? (
+								<div className="text-xs text-slate-500">Agents use the CLI for the same result, e.g. <code className="text-slate-300">pibo cron add --cron "{schedulePreview.value}" --prompt "..." --default-chat</code>.</div>
+							) : schedulePreview.kind === "error" ? (
+								<div className="text-xs text-amber-300">Fix the invalid schedule to generate the matching CLI command.</div>
+							) : null}
 						</Panel>
 					</section>
 
