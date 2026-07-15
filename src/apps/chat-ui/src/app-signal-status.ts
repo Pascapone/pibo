@@ -7,6 +7,31 @@ export function applySignalSnapshotToBootstrap(bootstrap: BootstrapData, snapsho
 	return updateBootstrapSessionStatuses(bootstrap, (piboSessionId) => signalSessionUpdate(snapshot.sessions[piboSessionId]));
 }
 
+export function signalSnapshotIncludesSession(snapshot: PiboSignalSnapshot | null | undefined, piboSessionId: string): snapshot is PiboSignalSnapshot {
+	return Boolean(snapshot?.sessions[piboSessionId]);
+}
+
+export function shouldCommitSelectedSignalSnapshot(
+	current: PiboSignalSnapshot | null,
+	snapshot: PiboSignalSnapshot,
+	selectedPiboSessionId: string,
+): boolean {
+	if (!signalSnapshotIncludesSession(snapshot, selectedPiboSessionId)) return false;
+	return current?.rootPiboSessionId !== snapshot.rootPiboSessionId || current.version <= snapshot.version;
+}
+
+export function applySelectedSignalPatch(
+	current: PiboSignalSnapshot | null,
+	patch: PiboSignalPatch,
+	selectedPiboSessionId: string,
+): { snapshot: PiboSignalSnapshot | null; needsRefresh: boolean } {
+	if (!signalSnapshotIncludesSession(current, selectedPiboSessionId)) {
+		return { snapshot: current, needsRefresh: true };
+	}
+	const snapshot = applySignalPatch(current, patch);
+	return { snapshot, needsRefresh: snapshot === current };
+}
+
 export function applySignalPatchToBootstrap(bootstrap: BootstrapData, patch: PiboSignalPatch): BootstrapData {
 	const updates = new Map(patch.sessionSnapshots.map((snapshot) => [snapshot.piboSessionId, signalSessionUpdate(snapshot)]));
 	return updateBootstrapSessionStatuses(bootstrap, (piboSessionId) => updates.get(piboSessionId));

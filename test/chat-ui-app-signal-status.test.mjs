@@ -9,10 +9,13 @@ async function runAppSignalStatusScenario() {
 	const script = `
 		import assert from "node:assert/strict";
 		const {
+			applySelectedSignalPatch,
 			applySignalPatch,
 			applySignalPatchToBootstrap,
 			applySignalSnapshotToBootstrap,
+			shouldCommitSelectedSignalSnapshot,
 			signalLegacyStatus,
+			signalSnapshotIncludesSession,
 		} = await import("./src/apps/chat-ui/src/app-signal-status.ts");
 
 		function sessionNode(overrides = {}) {
@@ -162,6 +165,25 @@ async function runAppSignalStatusScenario() {
 		assert.equal(patchedSignal.sessions["ps-child"].piboSessionId, "ps-child");
 		assert.equal(applySignalPatch(currentSignal, { ...patch, fromVersion: 99 }), currentSignal);
 		assert.equal(applySignalPatch(null, patch), null);
+
+		assert.equal(signalSnapshotIncludesSession(currentSignal, "ps-root"), true);
+		assert.equal(signalSnapshotIncludesSession(currentSignal, "ps-other"), false);
+		assert.equal(shouldCommitSelectedSignalSnapshot(null, currentSignal, "ps-root"), true);
+		assert.equal(shouldCommitSelectedSignalSnapshot(currentSignal, { ...currentSignal, version: 0 }, "ps-root"), false, "a delayed REST snapshot cannot roll back a newer SSE version");
+		assert.equal(shouldCommitSelectedSignalSnapshot(currentSignal, currentSignal, "ps-other"), false, "a previous session tree cannot replace the selected session tree");
+		assert.deepEqual(
+			applySelectedSignalPatch(currentSignal, patch, "ps-other"),
+			{ snapshot: currentSignal, needsRefresh: true },
+			"a stale tree from the previous selection cannot consume the new session's patch",
+		);
+		assert.deepEqual(
+			applySelectedSignalPatch(null, patch, "ps-root"),
+			{ snapshot: null, needsRefresh: true },
+			"a patch received before the selected session snapshot triggers a full refresh",
+		);
+		const selectedPatch = applySelectedSignalPatch(currentSignal, patch, "ps-root");
+		assert.equal(selectedPatch.needsRefresh, false);
+		assert.equal(selectedPatch.snapshot.version, 2);
 	`;
 	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
 }
