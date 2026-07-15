@@ -64,6 +64,8 @@ export type CompactTerminalRow = {
 	kind: CompactTerminalRowKind;
 	status: CompactTerminalRowStatus;
 	errorKind?: "tool" | "system";
+	title?: string;
+	summary?: string;
 	lines: CompactTerminalLine[];
 	sourceNodeIds: string[];
 	eventId?: string;
@@ -73,6 +75,9 @@ export type CompactTerminalRow = {
 	orderStreamFrameIndex?: number;
 	linkedPiboSessionId?: string;
 	forkEntryId?: string;
+	startedAt?: string;
+	completedAt?: string;
+	durationMs?: number;
 	input?: unknown;
 	output?: unknown;
 	error?: string;
@@ -377,6 +382,9 @@ function createDelegationRow(node: PiboTraceNode): CompactTerminalRow {
 		id: node.id,
 		kind: "agent.delegation",
 		status: mapStatus(node.status),
+		errorKind: node.status === "error" ? "tool" : undefined,
+		title: node.title,
+		summary: node.summary,
 		lines: [
 			{
 				prefix: "bullet",
@@ -386,6 +394,9 @@ function createDelegationRow(node: PiboTraceNode): CompactTerminalRow {
 		],
 		sourceNodeIds: [node.id],
 		linkedPiboSessionId: node.linkedPiboSessionId,
+		startedAt: node.startedAt,
+		completedAt: node.completedAt,
+		durationMs: node.durationMs,
 		input: node.input,
 		output: node.output,
 		error: node.error,

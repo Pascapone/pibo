@@ -1544,6 +1544,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 						selectedSessionActiveModel={selectedSessionActiveModel}
 						selectedSessionStatus={signalLegacyStatus(selectedSessionSignal ?? selectedRootSignal) ?? selectedSessionNode?.status}
 						selectedSessionSignal={selectedSessionSignal}
+						signals={sessionSignals ?? undefined}
 						sessionViewId={sessionViewId}
 						sessionViews={sessionViews}
 						currentSessionView={currentSessionView}

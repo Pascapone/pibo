@@ -1,7 +1,8 @@
-import { THINKING_LEVELS, type BootstrapData, type PiboProjectSession, type PiboSessionSignalSnapshot, type PiboSessionTraceView, type PiboTraceNode, type PiboWebSessionNode, type PiboWebSessionStatus, type ThinkingLevel, type WorkflowLifecycleEventRecord } from "./types";
+import { THINKING_LEVELS, type BootstrapData, type PiboProjectSession, type PiboSessionSignalSnapshot, type PiboSessionTraceView, type PiboSignalSnapshot, type PiboTraceNode, type PiboWebSessionNode, type PiboWebSessionStatus, type ThinkingLevel, type WorkflowLifecycleEventRecord } from "./types";
 import { findSessionNode, findSessionPath } from "./app-session-model";
 import type { ChatSessionViewProps } from "./session-views/types";
 import type { SessionBreadcrumbItem, SessionDerivationLink, SessionOriginLink } from "./tracing/TraceTimeline";
+import { adaptTrace } from "./tracing/adapt";
 
 export type SessionTraceViewLinks = Pick<ChatSessionViewProps, "sessionBreadcrumbs" | "originSession" | "derivedSessions">;
 
@@ -67,6 +68,7 @@ export function createSessionTraceViewProps(input: {
 	sessionActiveModelBadge?: string;
 	selectedSessionStatus?: PiboWebSessionStatus;
 	selectedSessionSignal?: PiboSessionSignalSnapshot;
+	signals?: PiboSignalSnapshot;
 	workflowProjectSession?: PiboProjectSession;
 	workflowLifecycleEvents?: readonly WorkflowLifecycleEventRecord[];
 	sessionNodes: readonly PiboWebSessionNode[];
@@ -86,7 +88,9 @@ export function createSessionTraceViewProps(input: {
 }): ChatSessionViewProps {
 	return {
 		traceView: input.currentTraceView,
-		selectedTrace: null,
+		selectedTrace: input.currentTraceView
+			? adaptTrace(input.currentTraceView.piboSessionId, input.currentTraceView.title, input.currentTraceView.nodes)
+			: null,
 		isLoading: input.isLoading,
 		showThinking: input.showThinking,
 		expandThinking: input.expandThinking,
@@ -94,6 +98,7 @@ export function createSessionTraceViewProps(input: {
 		sessionActiveModel: input.sessionActiveModelBadge,
 		selectedSessionStatus: input.selectedSessionStatus,
 		selectedSessionSignal: input.selectedSessionSignal,
+		signals: input.signals,
 		workflowProjectSession: input.workflowProjectSession,
 		workflowLifecycleEvents: input.workflowLifecycleEvents,
 		sessionNodes: input.sessionNodes,

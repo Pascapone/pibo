@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { Check, ChevronDown, ChevronRight, ChevronsDown, ChevronsUp, GitBranch, GitFork, ListTree, MessageSquarePlus, RefreshCw, RotateCcw } from "lucide-react";
 import { Virtuoso } from "react-virtuoso";
 import { useStickyVirtuoso } from "../components/useStickyVirtuoso";
-import type { Span, Trace } from "../types";
+import type { PiboSignalSnapshot, Span, Trace } from "../types";
 import { countRender } from "../renderMetrics";
 import { TraceSpanCard, type SpanExpansionDepth } from "./SpanNode";
 import { processSpanTree } from "./traceTree";
@@ -15,6 +15,7 @@ type TraceTimelineProps = {
 	expandThinking: boolean;
 	sessionAgentProfile?: string;
 	sessionActiveModel?: string;
+	signals?: PiboSignalSnapshot;
 	sessionBreadcrumbs?: readonly SessionBreadcrumbItem[];
 	originSession?: SessionOriginLink;
 	derivedSessions?: readonly SessionDerivationLink[];
@@ -82,6 +83,7 @@ export function TraceTimeline({
 	expandThinking,
 	sessionAgentProfile,
 	sessionActiveModel,
+	signals,
 	sessionBreadcrumbs = [],
 	originSession,
 	derivedSessions = [],
@@ -330,6 +332,7 @@ export function TraceTimeline({
 									}
 									onFork={onFork}
 									onOpenSession={onOpenSession}
+									signals={signals}
 								/>
 							</div>
 						)}

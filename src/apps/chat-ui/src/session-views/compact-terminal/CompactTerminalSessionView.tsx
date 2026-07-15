@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
 import { ChevronDown, ChevronRight, CircleX, GitBranch, Hammer, MessageSquare } from "lucide-react";
 import { Virtuoso } from "react-virtuoso";
+import { AgentDelegationCard } from "../../components/AgentDelegationCard";
 import { useStickyVirtuoso } from "../../components/useStickyVirtuoso";
 import { MarkdownRenderer } from "../../tracing/MarkdownRenderer";
 import type { ChatSessionViewProps } from "../types";
@@ -32,6 +33,7 @@ export function CompactTerminalSessionView({
 	sessionActiveModel,
 	selectedSessionStatus,
 	selectedSessionSignal,
+	signals,
 	sessionBreadcrumbs,
 	originSession,
 	derivedSessions,
@@ -158,9 +160,10 @@ export function CompactTerminalSessionView({
 				onOpenSession={onOpenSession}
 				onThinkingLevelChange={onThinkingLevelChange}
 				onModelChanged={onModelChanged}
+				signals={signals}
 			/>
 		</div>
-	), [expandedRows, focusedNavigationRowId, onFork, onModelChanged, onOpenSession, onThinkingLevelChange, traceView?.piboSessionId]);
+	), [expandedRows, focusedNavigationRowId, onFork, onModelChanged, onOpenSession, onThinkingLevelChange, signals, traceView?.piboSessionId]);
 
 	const virtuosoComponents = useMemo(() => ({
 		Footer: isStreaming ? TerminalStreamingFooter : undefined,
@@ -334,6 +337,7 @@ function TerminalRow({
 	onOpenSession,
 	onThinkingLevelChange,
 	onModelChanged,
+	signals,
 }: {
 	row: CompactTerminalRow;
 	expanded: boolean;
@@ -344,6 +348,7 @@ function TerminalRow({
 	onOpenSession: ChatSessionViewProps["onOpenSession"];
 	onThinkingLevelChange: ChatSessionViewProps["onThinkingLevelChange"];
 	onModelChanged: ChatSessionViewProps["onModelChanged"];
+	signals: ChatSessionViewProps["signals"];
 }) {
 	const collapseToolCallPreview = !expanded && isToolCallLikeRow(row);
 	const visibleLines = collapseToolCallPreview ? collapsedToolCallPreviewLines(row) : row.lines;
@@ -358,6 +363,43 @@ function TerminalRow({
 			onToggle();
 		}
 	};
+
+	if (row.kind === "agent.delegation") {
+		return (
+			<div
+				className={terminalRowClassName(row, focused)}
+				data-pibo-component="TerminalRow"
+				data-pibo-debug="terminal-row"
+				data-pibo-terminal-row="true"
+				data-row-id={row.id}
+				data-row-kind={row.kind}
+				data-row-status={row.status}
+				data-trace-node-id={row.sourceNodeIds.join(" ")}
+				data-event-id={row.eventId}
+				data-run-id={row.runId}
+				data-order-source={row.orderSource}
+				data-order-stream-id={row.orderStreamId}
+				data-order-frame-index={row.orderStreamFrameIndex}
+				tabIndex={focused ? 0 : undefined}
+				aria-current={focused ? "true" : undefined}
+			>
+				<AgentDelegationCard
+					title={row.title}
+					summary={row.summary}
+					input={row.input}
+					output={row.output}
+					error={row.error}
+					traceStatus={row.status === "neutral" ? "done" : row.status}
+					linkedPiboSessionId={row.linkedPiboSessionId}
+					startedAt={row.startedAt}
+					completedAt={row.completedAt}
+					durationMs={row.durationMs}
+					signals={signals}
+					onOpenSession={onOpenSession}
+				/>
+			</div>
+		);
+	}
 
 	return (
 		<div
@@ -487,7 +529,9 @@ function terminalRowClassName(row: CompactTerminalRow, focused = false): string 
 	const base =
 		row.kind === "message.user"
 			? "group border-b border-[#141414] bg-[#11a4d4]/10 py-2 last:border-b-0 hover:bg-[#11a4d4]/15"
-			: row.kind === "execution.command"
+			: row.kind === "agent.delegation"
+				? "group border-b border-[#141414] bg-[#f97316]/5 py-2 last:border-b-0"
+				: row.kind === "execution.command"
 				? "group border-b border-[#141414] bg-[#f59e0b]/5 py-2 last:border-b-0 hover:bg-[#f59e0b]/10"
 				: "group border-b border-[#141414] py-2 last:border-b-0 hover:bg-[#161616]";
 	const focusClass = row.expandable || focused ? " focus:outline-none focus:ring-1 focus:ring-[#38bdf8]/50" : "";

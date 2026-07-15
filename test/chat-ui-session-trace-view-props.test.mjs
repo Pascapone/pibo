@@ -189,7 +189,8 @@ async function runSessionTraceViewPropsScenario() {
 			onError: (message) => calls.push(\`error:\${message}\`),
 		});
 		assert.equal(props.traceView, traceView);
-		assert.equal(props.selectedTrace, null);
+		assert.equal(props.selectedTrace.id, "ps-root");
+		assert.deepEqual(props.selectedTrace.spans.map((span) => span.name), ["thinking", "fast_mode"]);
 		assert.equal(props.sessionActiveModel, "gpt-test xhigh fast");
 		assert.equal(props.sessionBreadcrumbs, links.sessionBreadcrumbs);
 		assert.equal(props.originSession, links.originSession);

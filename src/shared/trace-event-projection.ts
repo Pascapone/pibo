@@ -123,6 +123,13 @@ export function applySingleEventToNodes(
 			return;
 		}
 	}
+	if (node.type === "agent.delegation" && !node.toolCallId && node.linkedPiboSessionId) {
+		const existing = findLegacySubagentLinkTarget([...byId.values()], node);
+		if (existing) {
+			mergeSubagentSessionLink(existing, node);
+			return;
+		}
+	}
 	if (node.toolCallId) {
 		const existing = [...byId.values()].find(
 			(candidate) =>
@@ -760,11 +767,55 @@ function thinkingEventNodeId(
 function mergeToolEvent(target: PiboTraceNode, update: PiboTraceNode): void {
 	target.status = update.status;
 	target.summary = update.summary ?? target.summary;
-	target.input = update.input ?? target.input;
+	target.input = mergeDelegationInput(target, update);
 	target.output = update.output ?? target.output;
 	target.error = update.error ?? target.error;
 	target.completedAt = update.completedAt ?? target.completedAt;
 	target.linkedPiboSessionId = update.linkedPiboSessionId ?? target.linkedPiboSessionId;
+}
+
+function mergeSubagentSessionLink(target: PiboTraceNode, update: PiboTraceNode): void {
+	target.summary = update.summary ?? target.summary;
+	target.input = mergeDelegationInput(target, update);
+	target.linkedPiboSessionId = update.linkedPiboSessionId ?? target.linkedPiboSessionId;
+}
+
+function findLegacySubagentLinkTarget(nodes: readonly PiboTraceNode[], update: PiboTraceNode): PiboTraceNode | undefined {
+	const delegations = [...nodes].reverse().filter((candidate) => candidate.type === "agent.delegation");
+	const agentName = delegationAgentName(update);
+	const candidates = delegations.filter(
+		(candidate) => !candidate.linkedPiboSessionId && delegationAgentName(candidate) === agentName,
+	);
+	const threadKey = delegationThreadKey(update.input);
+	const matchingCandidate = threadKey
+		? candidates.find((candidate) => delegationThreadKey(candidate.input) === threadKey)
+		: candidates.length === 1 ? candidates[0] : undefined;
+	if (matchingCandidate) return matchingCandidate;
+	return delegations.find((candidate) => candidate.linkedPiboSessionId === update.linkedPiboSessionId);
+}
+
+function delegationAgentName(node: PiboTraceNode): string | undefined {
+	const input = isObjectRecord(node.input) ? node.input : undefined;
+	const value = typeof input?.subagentName === "string" ? input.subagentName : node.summary ?? node.title;
+	return typeof value === "string" ? value.replace(/^pibo_subagent_/, "").trim().toLowerCase() || undefined : undefined;
+}
+
+function delegationThreadKey(value: unknown): string | undefined {
+	if (!isObjectRecord(value) || typeof value.threadKey !== "string") return undefined;
+	return value.threadKey.trim() || undefined;
+}
+
+function mergeDelegationInput(target: PiboTraceNode, update: PiboTraceNode): unknown {
+	if (target.type !== "agent.delegation" || !isObjectRecord(target.input) || !isObjectRecord(update.input)) {
+		return update.input ?? target.input;
+	}
+	return Object.fromEntries(
+		Object.entries({ ...target.input, ...update.input }).filter(([, value]) => value !== undefined),
+	);
+}
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function findLatestCompactionNode(nodes: readonly PiboTraceNode[]): PiboTraceNode | undefined {

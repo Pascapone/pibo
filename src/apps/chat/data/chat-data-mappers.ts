@@ -76,6 +76,13 @@ function outputPayloadFromV2Row(row: EventLogRow, attributes: PiboJsonObject): P
 	if (row.type === "tool_execution_started") return { ...base, type: "tool_execution_started", toolCallId: stringAttribute(attributes, "toolCallId") ?? row.event_id ?? `tool_${row.stream_id}`, toolName: row.preview_text ?? stringAttribute(attributes, "toolName") ?? "tool", args: inlinePayload ?? null };
 	if (row.type === "tool_execution_updated") return { ...base, type: "tool_execution_updated", toolCallId: stringAttribute(attributes, "toolCallId") ?? row.event_id ?? `tool_${row.stream_id}`, toolName: row.preview_text ?? stringAttribute(attributes, "toolName") ?? "tool", args: null, partialResult: inlinePayload ?? null };
 	if (row.type === "tool_execution_finished") return { ...base, type: "tool_execution_finished", toolCallId: stringAttribute(attributes, "toolCallId") ?? row.event_id ?? `tool_${row.stream_id}`, toolName: row.preview_text ?? stringAttribute(attributes, "toolName") ?? "tool", result: inlinePayload ?? null, isError: booleanAttribute(attributes, "isError") ?? false };
+	if (row.type === "subagent_session") {
+		const toolName = stringAttribute(attributes, "toolName");
+		const subagentName = stringAttribute(attributes, "subagentName");
+		const childPiboSessionId = stringAttribute(attributes, "childPiboSessionId");
+		if (!toolName || !subagentName || !childPiboSessionId) return undefined;
+		return { ...base, type: "subagent_session", toolCallId: stringAttribute(attributes, "toolCallId"), toolName, subagentName, childPiboSessionId, threadKey: stringAttribute(attributes, "threadKey") };
+	}
 	if (row.type === "execution_result") return { ...base, type: "execution_result", action: row.preview_text ?? stringAttribute(attributes, "action") ?? "execution", result: inlinePayload ?? null };
 	if (row.type === "session_error") {
 		const error = stringAttribute(attributes, "error") ?? row.preview_text ?? "Error";

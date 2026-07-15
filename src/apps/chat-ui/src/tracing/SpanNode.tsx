@@ -16,7 +16,8 @@ import {
 	MessageSquare,
 	User,
 } from "lucide-react";
-import type { Span, SpanStatus, SpanType } from "../types";
+import type { PiboSignalSnapshot, Span, SpanStatus, SpanType } from "../types";
+import { AgentDelegationCard } from "../components/AgentDelegationCard";
 import { countRender } from "../renderMetrics";
 import { JsonRenderer } from "./JsonRenderer";
 import { MarkdownRenderer } from "./MarkdownRenderer";
@@ -43,6 +44,7 @@ type TraceSpanCardProps = {
 	onToggle: () => void;
 	onFork?: (entryId: string) => void;
 	onOpenSession?: (piboSessionId: string) => void;
+	signals?: PiboSignalSnapshot;
 	childrenContent?: ReactNode;
 };
 
@@ -218,6 +220,7 @@ export const TraceSpanCard = memo(function TraceSpanCard({
 	onToggle,
 	onFork,
 	onOpenSession,
+	signals,
 	childrenContent,
 }: TraceSpanCardProps) {
 	countRender("TraceSpanCard");
@@ -244,6 +247,34 @@ export const TraceSpanCard = memo(function TraceSpanCard({
 			onToggle();
 		}
 	};
+
+	if (span.spanType === "agent.delegation") {
+		return (
+			<div
+				className="relative mb-4"
+				style={{
+					marginLeft: depth > 0 ? NESTING_INDENT_PX : 0,
+					width: depth > 0 ? `calc(100% - ${NESTING_INDENT_PX}px)` : "var(--trace-readable-width)",
+					maxWidth: "100%",
+				}}
+			>
+				<AgentDelegationCard
+					title={span.name}
+					summary={typeof span.attributes.content === "string" ? span.attributes.content : undefined}
+					input={span.attributes.input ?? span.attributes.arguments}
+					output={span.attributes.output ?? span.attributes.result}
+					error={span.statusMessage}
+					traceStatus={span.status === "UNSET" ? "running" : span.status === "ERROR" ? "error" : "done"}
+					linkedPiboSessionId={span.pibo?.linkedPiboSessionId}
+					startedAt={new Date(span.startTime / 1000).toISOString()}
+					completedAt={span.endTime ? new Date(span.endTime / 1000).toISOString() : undefined}
+					durationMs={span.durationUs === undefined ? undefined : span.durationUs / 1000}
+					signals={signals}
+					onOpenSession={onOpenSession}
+				/>
+			</div>
+		);
+	}
 
 	return (
 		<div

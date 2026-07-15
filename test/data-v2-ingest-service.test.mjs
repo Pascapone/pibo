@@ -3,8 +3,10 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { storedPiboEventFromV2Row } from "../dist/apps/chat/data/chat-data-mappers.js";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
 import { ChatDataIngestService } from "../dist/data/ingest-service.js";
+import { buildTraceViewFromEvents } from "../dist/shared/trace-engine.js";
 
 function makeSession(overrides = {}) {
 	const now = "2026-05-08T12:00:00.000Z";
@@ -239,6 +241,64 @@ test("chat data ingest shadows tool output into observations", () => {
 		assert.equal(observations[0].name, "read");
 		assert.equal(observations[0].status, "completed");
 		assert.deepEqual(observations[0].attributes.toolCallId, "tool-1");
+	} finally {
+		store.close();
+	}
+});
+
+test("persisted subagent session fields survive V2 ingest and trace reload", () => {
+	const store = new PiboDataStore(":memory:", { payloadRootDir: mkdtempSync(join(tmpdir(), "pibo-ingest-payloads-")) });
+	try {
+		const ingest = new ChatDataIngestService(store);
+		const session = makeSession({ id: "ps_subagent_parent", piSessionId: "pi_subagent_parent" });
+		const common = { session, roomId: "room_subagent", createdAt: "2026-05-08T12:02:00.000Z" };
+		ingest.ingestOutputEvent({
+			...common,
+			event: {
+				type: "tool_call",
+				piboSessionId: session.id,
+				eventId: "run-subagent-1",
+				toolCallId: "tool-subagent-1",
+				toolName: "pibo_subagent_explorer",
+				args: { message: "Inspect the persisted path", threadKey: "persisted" },
+				argsComplete: true,
+			},
+		});
+		ingest.ingestOutputEvent({
+			...common,
+			createdAt: "2026-05-08T12:02:01.000Z",
+			event: {
+				type: "subagent_session",
+				piboSessionId: session.id,
+				toolCallId: "tool-subagent-1",
+				toolName: "pibo_subagent_explorer",
+				subagentName: "explorer",
+				childPiboSessionId: "ps_subagent_child",
+				threadKey: "persisted",
+			},
+		});
+
+		const rows = store.db.prepare("SELECT * FROM event_log WHERE session_id = ? ORDER BY stream_id").all(session.id);
+		const events = rows.map(storedPiboEventFromV2Row).filter(Boolean);
+		assert.equal(events[1].payload.type, "subagent_session");
+		assert.equal(events[1].payload.piboSessionId, session.id);
+		assert.equal(events[1].payload.toolCallId, "tool-subagent-1");
+		assert.equal(events[1].payload.toolName, "pibo_subagent_explorer");
+		assert.equal(events[1].payload.subagentName, "explorer");
+		assert.equal(events[1].payload.childPiboSessionId, "ps_subagent_child");
+		assert.equal(events[1].payload.threadKey, "persisted");
+
+		const view = buildTraceViewFromEvents({
+			session: { id: session.id, piSessionId: session.piSessionId, title: "Parent" },
+			events,
+			status: "running",
+		});
+		assert.equal(view.nodes.length, 1);
+		assert.equal(view.nodes[0].type, "agent.delegation");
+		assert.equal(view.nodes[0].linkedPiboSessionId, "ps_subagent_child");
+		assert.equal(view.nodes[0].input.message, "Inspect the persisted path");
+		assert.equal(view.nodes[0].input.threadKey, "persisted");
+		assert.equal(view.nodes[0].input.subagentName, "explorer");
 	} finally {
 		store.close();
 	}
