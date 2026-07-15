@@ -12,6 +12,16 @@ import { TerminalLoginCard } from "./TerminalLoginCard";
 import { TerminalModelCard } from "./TerminalModelCard";
 import { TerminalStatusCard } from "./TerminalStatusCard";
 import { TerminalThinkingCard } from "./TerminalThinkingCard";
+import {
+	EMPTY_STABLE_ACTIVE_TURN,
+	findLatestActiveTurnTerminal,
+	findSignalActiveTurnStartedAt,
+	findSignalActiveTurnTerminal,
+	latestActiveTurnTerminal,
+	resolveStableActiveTurn,
+	type ActiveTurnObservation,
+	type StableActiveTurnState,
+} from "../../../../../session-ui/activeTurn.js";
 import { buildCompactTerminalRows, findActiveTurnStartedAt, formatTerminalDuration, type CompactTerminalLine, type CompactTerminalRow } from "../../../../../session-ui/terminalRows.js";
 
 const SHOW_LATEST_THRESHOLD_PX = 180;
@@ -61,9 +71,24 @@ export function CompactTerminalSessionView({
 	const userMessageCount = rows.filter((row) => isNavigableTerminalRow(row, "user")).length;
 	const toolErrorCount = rows.filter((row) => isNavigableTerminalRow(row, "tool")).length;
 	const errorCount = rows.filter((row) => isNavigableTerminalRow(row, "system")).length;
-	const activeTurnStartedAt = useMemo(() => findActiveTurnStartedAt(traceView), [traceView]);
-	const isStreaming = selectedSessionSignal?.isTreeActive === true || activeTurnStartedAt !== undefined ||
-		selectedSessionStatus === "running" || runningCount > 0 || selectedTrace?.status === "UNSET";
+	const traceTurnStartedAt = useMemo(() => findActiveTurnStartedAt(traceView), [traceView]);
+	const signalTurnStartedAt = useMemo(
+		() => findSignalActiveTurnStartedAt(selectedSessionSignal, signals),
+		[selectedSessionSignal, signals],
+	);
+	const terminalObservation = useMemo(
+		() => latestActiveTurnTerminal(findLatestActiveTurnTerminal(traceView), findSignalActiveTurnTerminal(selectedSessionSignal)),
+		[selectedSessionSignal, traceView],
+	);
+	const activeTurn = useStableActiveTurn({
+		sessionId: selectedSessionSignal?.piboSessionId ?? traceView?.piboSessionId,
+		startedAt: traceTurnStartedAt ?? signalTurnStartedAt,
+		activeEvidence: selectedSessionSignal?.isTreeActive === true || traceTurnStartedAt !== undefined || signalTurnStartedAt !== undefined ||
+			selectedSessionStatus === "running" || runningCount > 0 || selectedTrace?.status === "UNSET",
+		terminal: terminalObservation,
+	});
+	const activeTurnStartedAt = activeTurn.startedAt;
+	const isStreaming = activeTurn.active;
 	const loadOlderTracePage = useCallback(() => {
 		if (!hasOlderTraceEvents || isFetchingOlderTracePage) return;
 		olderTraceIntentRef.current = false;
@@ -648,12 +673,28 @@ const WORKING_SCRAMBLE_TARGET = "Working...";
 const WORKING_SCRAMBLE_ASCII_START = 33;
 const WORKING_SCRAMBLE_ASCII_END = 126;
 
+function useStableActiveTurn(observation: ActiveTurnObservation): StableActiveTurnState {
+	const [state, setState] = useState<StableActiveTurnState>(EMPTY_STABLE_ACTIVE_TURN);
+	const resolved = resolveStableActiveTurn(state, observation);
+	useEffect(() => {
+		if (resolved !== state) setState(resolved);
+	}, [resolved, state]);
+	return resolved;
+}
+
 function TerminalStreamingFooter({ startedAt }: { startedAt?: string }) {
 	const { chars, activeIndex } = useWorkingScramble(WORKING_SCRAMBLE_TARGET);
 	const elapsed = useActiveTurnElapsed(startedAt);
 
 	return (
-		<div className="border-t border-[#141414] px-4 py-2" role="status" aria-live="polite" aria-label="Working">
+		<div
+			className="border-t border-[#141414] px-4 py-2"
+			role="status"
+			aria-live="polite"
+			aria-label="Working"
+			data-pibo-component="TerminalStreamingFooter"
+			data-pibo-active-turn-started-at={startedAt}
+		>
 			<div className="grid grid-cols-[1.9rem_minmax(0,1fr)] gap-2 whitespace-pre-wrap break-words" aria-hidden="true">
 				<span className="whitespace-pre text-[#737373]">•</span>
 				<span className="inline-flex min-w-0 items-baseline gap-2">

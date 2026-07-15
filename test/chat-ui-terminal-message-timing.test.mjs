@@ -156,6 +156,9 @@ test("duration formatting does not wrap after 24 hours", () => {
 test("Compact Terminal renders timing only on message rows and keeps live updates silent", () => {
 	const source = fs.readFileSync(path.resolve("src/apps/chat-ui/src/session-views/compact-terminal/CompactTerminalSessionView.tsx"), "utf8");
 	assert.match(source, /TerminalStreamingFooter startedAt=\{activeTurnStartedAt\}/);
+	assert.match(source, /findSignalActiveTurnStartedAt\(selectedSessionSignal, signals\)/);
+	assert.match(source, /useStableActiveTurn\(\{/);
+	assert.match(source, /data-pibo-component="TerminalStreamingFooter"/);
 	assert.match(source, /aria-label="Working"[\s\S]*aria-hidden="true"/);
 	assert.match(source, /row\.kind === "message\.assistant"[\s\S]*TerminalMessageMetadata/);
 	assert.match(source, /row\.kind === "message\.user"[\s\S]*TerminalMessageMetadata/);

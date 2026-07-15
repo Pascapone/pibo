@@ -220,6 +220,28 @@ test("patch versions are monotonic per root", () => {
 	assert.equal(second?.toVersion, 2);
 });
 
+test("turn signal remains active between model, tool, and reasoning phases until a terminal event", () => {
+	const registry = createPiboSignalRegistry();
+	registry.project({ type: "session_created", session: session("root") });
+	registry.project({ type: "pibo_output", event: { type: "message_started", piboSessionId: "root", eventId: "m1", text: "hi" } });
+	const startedAt = registry.snapshotTree("root").nodes["turn:root:m1"].startedAt;
+
+	registry.project({ type: "pibo_output", event: { type: "assistant_delta", piboSessionId: "root", eventId: "m1", assistantIndex: 0, text: "working" } });
+	registry.project({ type: "pibo_output", event: { type: "assistant_message", piboSessionId: "root", eventId: "m1", assistantIndex: 0, text: "working" } });
+	registry.project({ type: "pibo_output", event: { type: "tool_execution_started", piboSessionId: "root", eventId: "m1", toolCallId: "tc1", toolName: "bash" } });
+	registry.project({ type: "pibo_output", event: { type: "tool_execution_finished", piboSessionId: "root", eventId: "m1", toolCallId: "tc1", toolName: "bash", isError: false } });
+	registry.project({ type: "pibo_output", event: { type: "thinking_started", piboSessionId: "root", eventId: "m1", thinkingIndex: 1 } });
+	registry.project({ type: "pibo_output", event: { type: "thinking_finished", piboSessionId: "root", eventId: "m1", thinkingIndex: 1, text: "done" } });
+
+	const active = registry.snapshotTree("root");
+	assert.equal(active.sessions.root.isTreeActive, true);
+	assert.equal(active.sessions.root.currentTurnId, "turn:root:m1");
+	assert.equal(active.nodes["turn:root:m1"].startedAt, startedAt);
+
+	registry.project({ type: "pibo_output", event: { type: "message_finished", piboSessionId: "root", eventId: "m1" } });
+	assert.equal(registry.snapshotTree("root").sessions.root.isTreeActive, false);
+});
+
 test("message finish settles active tool signals without matching tool finish", () => {
 	const registry = createPiboSignalRegistry();
 	registry.project({ type: "session_created", session: session("root") });
