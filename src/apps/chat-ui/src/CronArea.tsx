@@ -51,23 +51,23 @@ type SchedulePreset = {
 };
 
 const schedulePresets: SchedulePreset[] = [
-	{ kind: "in", title: "Einmal später", description: "z.B. in 20 Minuten" },
-	{ kind: "at", title: "Einmal am Datum", description: "Datepicker + Uhrzeit" },
-	{ kind: "daily", title: "Täglich", description: "Cron aus Uhrzeit" },
-	{ kind: "weekly", title: "Wöchentlich", description: "Wochentage wählen" },
-	{ kind: "monthly", title: "Monatlich", description: "Tag im Monat" },
-	{ kind: "every", title: "Intervall", description: "*/n Cron-Rhythmus" },
-	{ kind: "cron", title: "Cron direkt", description: "5 Felder manuell" },
+	{ kind: "in", title: "Once after a delay", description: "e.g. in 20 minutes" },
+	{ kind: "at", title: "Once at a date and time", description: "Choose a date and time" },
+	{ kind: "daily", title: "Daily", description: "Run at a set time each day" },
+	{ kind: "weekly", title: "Weekly", description: "Choose weekdays" },
+	{ kind: "monthly", title: "Monthly", description: "Choose a day of the month" },
+	{ kind: "every", title: "Interval", description: "Repeat every n time units" },
+	{ kind: "cron", title: "Cron expression", description: "Enter a 5-field cron expression" },
 ];
 
 const weekdayOptions = [
-	{ value: 1, short: "Mo", label: "Montag" },
-	{ value: 2, short: "Di", label: "Dienstag" },
-	{ value: 3, short: "Mi", label: "Mittwoch" },
-	{ value: 4, short: "Do", label: "Donnerstag" },
-	{ value: 5, short: "Fr", label: "Freitag" },
-	{ value: 6, short: "Sa", label: "Samstag" },
-	{ value: 0, short: "So", label: "Sonntag" },
+	{ value: 1, short: "Mon", label: "Monday" },
+	{ value: 2, short: "Tue", label: "Tuesday" },
+	{ value: 3, short: "Wed", label: "Wednesday" },
+	{ value: 4, short: "Thu", label: "Thursday" },
+	{ value: 5, short: "Fri", label: "Friday" },
+	{ value: 6, short: "Sat", label: "Saturday" },
+	{ value: 0, short: "Sun", label: "Sunday" },
 ];
 
 export function CronArea({ bootstrap, mobileSidebarOpen = false, onCloseMobileSidebar }: { bootstrap: BootstrapData; mobileSidebarOpen?: boolean; onCloseMobileSidebar?: () => void }) {
