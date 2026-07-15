@@ -13,6 +13,7 @@ import {
 } from "./api-workflows";
 import { WorkflowGraphCanvas, type WorkflowGraphInspectorSlotProps, type WorkflowGraphStatusTone } from "./workflows/WorkflowGraphCanvas";
 import { WorkflowInspectorsPanel } from "./workflows/WorkflowInspectorsPanel";
+import { CreateWorkflowDialog } from "./workflows/CreateWorkflowDialog";
 import { readWorkflowEdgeDefinitions, readWorkflowNodeDefinitions } from "./workflows/workflow-graph-model";
 
 export function MinimalWorkflowsArea({
@@ -27,6 +28,7 @@ export function MinimalWorkflowsArea({
   const [readOnlyView, setReadOnlyView] = useState<ReadOnlyWorkflowView | undefined>();
   const [query, setQuery] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [createWorkflowDialogOpen, setCreateWorkflowDialogOpen] = useState(false);
   const [loadState, setLoadState] = useState<"loading" | "loaded" | "error">("loading");
   const [draftLoadState, setDraftLoadState] = useState<"idle" | "loading" | "loaded" | "error">("idle");
   const [busy, setBusy] = useState<"new" | "select" | "duplicate" | "save" | undefined>();
@@ -145,20 +147,16 @@ export function MinimalWorkflowsArea({
     }
   };
 
-  const createWorkflow = async () => {
-    const title = window.prompt("Workflow name");
-    if (!title?.trim()) return;
+  const createWorkflow = async (title: string) => {
     setBusy("new");
     setMessage(undefined);
     setErrorMessage(undefined);
     try {
-      const response = await postWorkflowCreateDraft({ title: title.trim() });
+      const response = await postWorkflowCreateDraft({ title });
       setReadOnlyView(undefined);
       setMessage(`Created workflow ${response.draft.workflowId}.`);
       await loadWorkflows();
       onNavigateDraft(response.draft.draftId);
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Failed to create workflow");
     } finally {
       setBusy(undefined);
     }
@@ -223,11 +221,16 @@ export function MinimalWorkflowsArea({
 
   return (
     <main className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-[#101d22] text-slate-200" aria-label="Workflows">
+      <CreateWorkflowDialog
+        open={createWorkflowDialogOpen}
+        onClose={() => setCreateWorkflowDialogOpen(false)}
+        onCreate={createWorkflow}
+      />
       <div className="flex min-w-0 shrink-0 flex-wrap items-center gap-2 border-b border-slate-800 bg-[#151f24] px-3 py-2">
         <button
           type="button"
           className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-sm border border-[#11a4d4]/60 text-[#8bdcf4] transition hover:border-[#11a4d4] hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-          onClick={() => void createWorkflow()}
+          onClick={() => setCreateWorkflowDialogOpen(true)}
           disabled={Boolean(busy)}
           title="Create workflow"
           aria-label="Create workflow"

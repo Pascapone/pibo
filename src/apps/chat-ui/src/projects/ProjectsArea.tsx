@@ -33,6 +33,7 @@ import { SessionTracePane } from "../session-trace-pane";
 import type { SlashCommand } from "../chat-commands";
 import { errorMessage } from "../error-message";
 import { ProjectsSidebar } from "./ProjectsSidebar";
+import { CreateProjectDialog } from "./CreateProjectDialog";
 import {
   createProjectsTraceBootstrap,
   splitProjectsByArchive,
@@ -105,6 +106,7 @@ export function ProjectsArea({
       "true",
   );
   const [creatingSession, setCreatingSession] = useState(false);
+  const [createProjectDialogOpen, setCreateProjectDialogOpen] = useState(false);
   const [activeProjectViewTab, setActiveProjectViewTab] =
     useState<ProjectViewTabId | null>(null);
   const [autoRenameSessionId, setAutoRenameSessionId] = useState<string | null>(
@@ -226,26 +228,18 @@ export function ProjectsArea({
     onSelectSessionView(viewId);
   };
 
-  const createProject = async () => {
-    const name = window.prompt("Project name");
-    if (!name) return;
-    const projectFolder = window.prompt(
-      "Project folder path (absolute path, e.g. ~/code/my-project or /home/me/code/my-project)",
-    );
-    if (!projectFolder) return;
-    const description = window.prompt("Description (optional)") ?? undefined;
-    try {
-      const { project } = await postProject({
-        name,
-        projectFolder,
-        createFolder: true,
-        ...(description ? { description } : {}),
-      });
-      await load({ projectId: project.id });
-      onNavigate(project.id, undefined);
-    } catch (caught) {
-      onError(errorMessage(caught));
-    }
+  const createProject = async (input: {
+    name: string;
+    projectFolder: string;
+    description?: string;
+  }) => {
+    const { project } = await postProject({ ...input, createFolder: true });
+    return project.id;
+  };
+
+  const openCreatedProject = async (projectId: string) => {
+    await load({ projectId });
+    onNavigate(projectId, undefined);
   };
 
   const createProjectSession = async () => {
@@ -376,6 +370,14 @@ export function ProjectsArea({
 
   return (
     <>
+      <CreateProjectDialog
+        open={createProjectDialogOpen}
+        onClose={() => setCreateProjectDialogOpen(false)}
+        onCreate={createProject}
+        onCreated={(projectId) =>
+          void openCreatedProject(projectId).catch(() => undefined)
+        }
+      />
       <div
         className={`fixed inset-0 z-30 bg-black/60 min-[981px]:hidden transition-opacity duration-200 ${
           mobileSidebarOpen
@@ -399,7 +401,7 @@ export function ProjectsArea({
         mobileSidebarOpen={mobileSidebarOpen}
         onRefresh={() => void load()}
         onCloseMobileSidebar={onCloseMobileSidebar}
-        onCreateProject={() => void createProject()}
+        onCreateProject={() => setCreateProjectDialogOpen(true)}
         onToggleArchivedProjects={() => {
           const next = !showArchivedProjects;
           setShowArchivedProjects(next);
