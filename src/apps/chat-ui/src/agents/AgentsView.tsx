@@ -164,6 +164,28 @@ export function AgentsView({
 		[visibleContextFiles, draft.contextFiles],
 	);
 
+	const toggleArchivedAgents = () => {
+		const next = !showArchivedAgents;
+		setShowArchivedAgents(next);
+		localStorage.setItem("pibo.chat.showArchivedAgents", String(next));
+		if (next || !archivedDraft) return;
+
+		setShowUnsavedAgentDraft(false);
+		const fallbackCustomAgent = activeCustomAgents[0];
+		if (fallbackCustomAgent) {
+			setDraft(agentToDraft(fallbackCustomAgent));
+			onSelect(fallbackCustomAgent.profileName);
+			return;
+		}
+		const fallbackProfile = pluginProfiles[0];
+		if (fallbackProfile) {
+			setDraft(profileToDraft(fallbackProfile, catalog ?? undefined));
+			onSelect(fallbackProfile.name);
+			return;
+		}
+		setDraft(createBlankAgentDraft(catalog ?? undefined));
+	};
+
 	const createNewAgentDraft = () => {
 		const usedNames = [
 			...agents.map((agent) => agent.name),
@@ -306,11 +328,7 @@ export function AgentsView({
 						</button>
 						<button
 							type="button"
-							onClick={() => {
-								const next = !showArchivedAgents;
-								setShowArchivedAgents(next);
-								localStorage.setItem("pibo.chat.showArchivedAgents", String(next));
-							}}
+							onClick={toggleArchivedAgents}
 							title={showArchivedAgents ? "Hide Archived Agents" : "Show Archived Agents"}
 							aria-label={showArchivedAgents ? "Hide Archived Agents" : "Show Archived Agents"}
 							className={`p-1 border rounded-sm hover:border-[#11a4d4] hover:text-[#11a4d4] ${showArchivedAgents ? "border-[#11a4d4] text-[#11a4d4]" : "border-slate-700 text-slate-400"}`}
