@@ -104,6 +104,15 @@ export function findRoomById(rooms: PiboRoom[], roomId: string): PiboRoom | unde
 	return undefined;
 }
 
+export function fallbackRoomIdWhenHidingArchived(rooms: PiboRoom[], selectedRoomId: string | null): string | undefined {
+	if (!selectedRoomId) return undefined;
+	const sharedDefaultRoom = findSharedDefaultRoom(rooms);
+	if (sharedDefaultRoom?.id === selectedRoomId) return undefined;
+	if (findRoomById(splitRoomNodes(rooms).active, selectedRoomId)) return undefined;
+	if (!findRoomById(rooms, selectedRoomId)) return undefined;
+	return sharedDefaultRoom?.id;
+}
+
 export function countUnreadRooms(rooms: readonly PiboRoom[]): number {
 	return rooms.reduce((sum, room) => sum + (room.unreadCount ?? 0), 0);
 }

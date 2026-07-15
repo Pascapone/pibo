@@ -81,6 +81,7 @@ import {
 } from "./streamingDebug";
 import {
 	countUnreadRooms,
+	fallbackRoomIdWhenHidingArchived,
 	findRoomById,
 	isArchivedRoom,
 	limitSessionNodesForSidebar,
@@ -927,6 +928,19 @@ export function App({ route }: { route: ChatAppRoute }) {
 		}
 	}, [loadNavigation, navigateToSelectedSession]);
 
+	const toggleArchivedRooms = useCallback(() => {
+		const next = !showArchivedRooms;
+		setShowArchivedRooms(next);
+		writeStoredShowArchivedRooms(next);
+		if (next || !bootstrap) return;
+
+		const fallbackRoomId = fallbackRoomIdWhenHidingArchived(bootstrap.rooms, activeRoomId);
+		if (!fallbackRoomId) return;
+		void selectRoom(fallbackRoomId, { closeMobileSidebar: false }).catch((caught) => {
+			setError(caught instanceof Error ? caught.message : String(caught));
+		});
+	}, [activeRoomId, bootstrap, selectRoom, showArchivedRooms]);
+
 	const createSession = async (profile = newSessionProfile) => {
 		if (creatingSession || selectedRoomArchived) return;
 		creatingSessionRef.current = true;
@@ -1428,11 +1442,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 							selectedRoomId={selectedRoomId}
 							selectedPiboSessionId={selectedPiboSessionId}
 							showArchivedRooms={showArchivedRooms}
-							onToggleArchivedRooms={() => {
-								const next = !showArchivedRooms;
-								setShowArchivedRooms(next);
-								writeStoredShowArchivedRooms(next);
-							}}
+							onToggleArchivedRooms={toggleArchivedRooms}
 							creatingRoom={creatingRoom}
 							onCreateRoom={() => createRoom()}
 							onSelectRoom={selectRoom}
