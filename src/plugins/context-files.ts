@@ -489,13 +489,14 @@ class ContextFileService {
 		const markdown = normalizeMarkdown(body.markdown ?? "");
 		const scope = normalizeScope(body.scope);
 		const agentProfileName = normalizeAgentProfileName(body.agentProfileName, scope === "agent");
+		const key = uniqueKey(`ctx:${slugSegment(label)}`, new Set(this.list(context).map((file) => file.key)));
 		const targetDir = this.resolveManagedDir(scope, agentProfileName);
 		const absolutePath = uniquePath(targetDir, managedFileName(label));
 		await mkdir(dirname(absolutePath), { recursive: true });
 		await writeFile(absolutePath, markdown, "utf8");
 
 		const record = this.store.createFile({
-			key: uniqueKey(`ctx:${slugSegment(label)}`, new Set(this.list(context).map((file) => file.key))),
+			key,
 			label,
 			managedPath: absolutePath,
 			scope,
@@ -527,13 +528,14 @@ class ContextFileService {
 		const label = normalizeOptionalLabel(body.label) ?? sourceFile.label ?? sourceKey;
 		const scope = normalizeScope(body.scope, "global");
 		const agentProfileName = normalizeAgentProfileName(body.agentProfileName, scope === "agent");
+		const key = uniqueKey(`ctx:${slugSegment(label)}`, new Set(this.list(context).map((file) => file.key)));
 		const targetDir = this.resolveManagedDir(scope, agentProfileName);
 		const absolutePath = uniquePath(targetDir, managedFileName(label));
 		await mkdir(dirname(absolutePath), { recursive: true });
 		await writeFile(absolutePath, sourceDescriptor.content ?? "", "utf8");
 
 		const record = this.store.createFile({
-			key: uniqueKey(`ctx:${slugSegment(label)}`, new Set(this.list(context).map((file) => file.key))),
+			key,
 			label,
 			managedPath: absolutePath,
 			scope,

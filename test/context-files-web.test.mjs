@@ -221,6 +221,52 @@ test("context files web app links plugin files into managed revisions and restor
 	}
 });
 
+test("context files web app creates one catalog entry per global managed file", async () => {
+	const dir = mkdtempSync(join(tmpdir(), "pibo-context-files-create-"));
+	const managedRoot = join(dir, "managed");
+	const globalDir = join(managedRoot, "global");
+	const agentWorkspaceRoot = join(dir, "agent-workspaces");
+	const pluginFilePath = join(dir, "plugin-doc.md");
+	writeFileSync(pluginFilePath, "# Plugin Source\n", "utf8");
+
+	const { channel, baseURL } = await startContextFilesHost({
+		pluginFilePath,
+		managedRoot,
+		globalDir,
+		agentWorkspaceRoot,
+		metadataPath: join(managedRoot, "context-files.sqlite"),
+	});
+
+	try {
+		const created = await getJson(`${baseURL}/api/context-files`, {
+			method: "POST",
+			headers: authHeaders(baseURL),
+			body: JSON.stringify({ label: "Ralph test context", scope: "global", markdown: "# Test\n" }),
+		});
+		assert.equal(created.response.status, 201);
+		assert.equal(created.data.file.key, "ctx:ralph-test-context");
+		assert.equal(created.data.file.label, "Ralph test context");
+
+		const linked = await getJson(`${baseURL}/api/context-files/plugin-doc/link-from-plugin`, {
+			method: "POST",
+			headers: authHeaders(baseURL),
+			body: JSON.stringify({ scope: "global" }),
+		});
+		assert.equal(linked.response.status, 201);
+		assert.equal(linked.data.file.key, "ctx:plugin-doc");
+
+		const listed = await getJson(`${baseURL}/api/context-files`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(listed.response.status, 200);
+		assert.equal(listed.data.files.filter((file) => file.path === created.data.file.path).length, 1);
+		assert.equal(listed.data.files.filter((file) => file.path === linked.data.file.path).length, 1);
+	} finally {
+		await channel.stop?.();
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
 test("context files web app auto-registers markdown files dropped into the global context directory", async () => {
 	const dir = mkdtempSync(join(tmpdir(), "pibo-context-files-discovery-"));
 	const managedRoot = join(dir, "managed");
