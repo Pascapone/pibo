@@ -118,7 +118,7 @@ For message inputs with a stable event id, the router MUST start the first local
 
 #### Acceptance
 
-Chat Web can decide whether to show Working and its elapsed timer from the signal snapshot without reading trace pages or raw events. Working and the sidebar running state become visible after message acceptance without waiting for runtime initialization. Runtime processing shutdown leaves no unresolved running turn.
+Chat Web can decide whether to show Working and its elapsed timer from the signal snapshot without reading trace pages or raw events. Working and the sidebar running state become visible after message acceptance without waiting for runtime initialization. The Working indicator remains pinned outside the virtualized transcript so scroll position cannot hide active work. Restored or newly visible pages reconnect and refresh the selected signal tree immediately instead of waiting for trace-cache expiry. Runtime processing shutdown leaves no unresolved running turn.
 
 #### Scenario: Cold runtime initialization
 
@@ -128,6 +128,14 @@ Chat Web can decide whether to show Working and its elapsed timer from the signa
 - AND Chat Web can show Working while runtime creation is still pending
 - WHEN `message_started` later arrives for `m1`
 - THEN the same turn remains running with its original start timestamp.
+
+#### Scenario: Browser restore after turn completion
+
+- GIVEN a browser page was suspended while a turn appeared to be running
+- AND the turn completed while the page was suspended
+- WHEN the page is restored or becomes visible
+- THEN Chat Web reconnects the signal stream and refreshes the selected signal snapshot immediately
+- AND stale Working UI does not wait for the trace refresh interval before settling.
 
 #### Scenario: Tool phases do not end a turn
 

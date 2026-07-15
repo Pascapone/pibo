@@ -169,10 +169,6 @@ export function CompactTerminalSessionView({
 		</div>
 	), [expandedRows, focusedNavigationRowId, onFork, onModelChanged, onOpenSession, onThinkingLevelChange, signals, traceView?.piboSessionId]);
 
-	const virtuosoComponents = useMemo(() => ({
-		Footer: isStreaming ? () => <TerminalStreamingFooter startedAt={activeTurnStartedAt} /> : undefined,
-	}), [activeTurnStartedAt, isStreaming]);
-
 	return (
 		<section
 			className="relative min-w-0 flex-1 flex flex-col overflow-hidden bg-[#0b0b0b] text-[#d4d4d4]"
@@ -224,7 +220,6 @@ export function CompactTerminalSessionView({
 						followOutput={stickyView.followOutput}
 						totalListHeightChanged={stickyView.totalListHeightChanged}
 						alignToBottom
-						components={virtuosoComponents}
 						itemContent={renderRow}
 					/>
 				) : (
@@ -238,13 +233,15 @@ export function CompactTerminalSessionView({
 				)}
 			</div>
 
+			{isStreaming ? <TerminalStreamingFooter startedAt={activeTurnStartedAt} /> : null}
+
 			{!stickyView.isSticky ? (
 				<button
 					type="button"
 					onClick={() => stickyView.stickToBottom("auto")}
 					title="Scroll to latest"
 					aria-label="Scroll to latest"
-					className="absolute right-4 bottom-4 z-30 inline-flex h-9 w-9 items-center justify-center rounded-sm border border-[#38bdf8] bg-[#111111]/95 text-[#38bdf8] shadow-lg shadow-black/30 hover:bg-[#161616]"
+					className={`absolute right-4 ${isStreaming ? "bottom-14" : "bottom-4"} z-30 inline-flex h-9 w-9 items-center justify-center rounded-sm border border-[#38bdf8] bg-[#111111]/95 text-[#38bdf8] shadow-lg shadow-black/30 hover:bg-[#161616]`}
 				>
 					<ChevronDown size={18} />
 				</button>
