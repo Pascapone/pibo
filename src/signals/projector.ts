@@ -34,6 +34,7 @@ function settleActiveSessionNodes(
 ): PiboSignalMutation[] {
 	return context.getSessionNodes(piboSessionId)
 		.filter((node) => node.kind !== "session" && node.kind !== "yielded_run" && isActiveSignalStatus(node.status))
+		.filter((node) => terminalSource !== "processing_stopped" || node.kind !== "turn" || node.metadata?.accepted !== true)
 		.map((node) => ({
 			type: "patch_node",
 			nodeId: node.id,
@@ -43,7 +44,7 @@ function settleActiveSessionNodes(
 
 export const sessionLifecycleSignalProducer: PiboSignalProducer = {
 	name: "session-lifecycle",
-	accepts: (input) => ["session_created", "session_disposed", "session_processing_changed", "queue_changed", "recovery", "session_interrupted", "signal_node_pruned"].includes(input.type),
+	accepts: (input) => ["session_created", "session_disposed", "session_processing_changed", "message_accepted", "queue_changed", "recovery", "session_interrupted", "signal_node_pruned"].includes(input.type),
 	project(input, context) {
 		const data = input as any;
 		if (data.type === "session_created") {
@@ -57,6 +58,37 @@ export const sessionLifecycleSignalProducer: PiboSignalProducer = {
 				parentPiboSessionId: session.parentId,
 				metadata: { kind: session.kind, channel: session.channel, profile: session.profile },
 			}, context) }];
+		}
+		if (data.type === "message_accepted") {
+			const activeTurn = context.getSessionNodes(data.piboSessionId)
+				.find((candidate) => candidate.kind === "turn" && isActiveSignalStatus(candidate.status));
+			const mutations: PiboSignalMutation[] = [
+				{ type: "patch_node", nodeId: `session:${data.piboSessionId}`, patch: { status: "running" } },
+				{
+					type: "upsert_node",
+					node: node({
+						id: `message:${data.piboSessionId}:${data.eventId}`,
+						kind: "message",
+						status: "queued",
+						piboSessionId: data.piboSessionId,
+						metadata: { source: data.source },
+					}, context),
+				},
+			];
+			if (!activeTurn) {
+				mutations.push({
+					type: "upsert_node",
+					node: node({
+						id: `turn:${data.piboSessionId}:${data.eventId}`,
+						kind: "turn",
+						status: "starting",
+						piboSessionId: data.piboSessionId,
+						startedAt: context.now(),
+						metadata: { eventId: data.eventId, source: data.source, accepted: true },
+					}, context),
+				});
+			}
+			return mutations;
 		}
 		if (data.type === "session_disposed") {
 			return [

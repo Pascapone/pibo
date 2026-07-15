@@ -223,6 +223,37 @@ test("patch versions are monotonic per root", () => {
 	assert.equal(second?.toVersion, 2);
 });
 
+test("accepted messages start the first local turn before runtime initialization finishes", () => {
+	const registry = createPiboSignalRegistry();
+	registry.project({ type: "session_created", session: session("root") });
+	registry.project({ type: "message_accepted", piboSessionId: "root", eventId: "m1", source: "user" });
+
+	const accepted = registry.snapshotTree("root");
+	const startedAt = accepted.nodes["turn:root:m1"].startedAt;
+	assert.equal(accepted.sessions.root.localStatus, "running");
+	assert.equal(accepted.sessions.root.latestTurn.state, "running");
+	assert.equal(accepted.sessions.root.latestTurn.eventId, "m1");
+	assert.equal(accepted.nodes["message:root:m1"].status, "queued");
+
+	registry.project({ type: "session_processing_changed", piboSessionId: "root", processing: false, queuedMessages: 0 });
+	assert.equal(registry.snapshotTree("root").sessions.root.latestTurn.state, "running", "initial idle runtime state does not interrupt an accepted turn");
+
+	registry.project({ type: "pibo_output", event: { type: "message_started", piboSessionId: "root", eventId: "m1", text: "hi" } });
+	assert.equal(registry.snapshotTree("root").nodes["turn:root:m1"].startedAt, startedAt, "runtime start preserves the accepted timestamp");
+});
+
+test("accepted queued messages do not replace the active local turn", () => {
+	const registry = createPiboSignalRegistry();
+	registry.project({ type: "session_created", session: session("root") });
+	registry.project({ type: "message_accepted", piboSessionId: "root", eventId: "m1", source: "user" });
+	registry.project({ type: "message_accepted", piboSessionId: "root", eventId: "m2", source: "user" });
+
+	const snapshot = registry.snapshotTree("root");
+	assert.equal(snapshot.sessions.root.latestTurn.eventId, "m1");
+	assert.equal(snapshot.nodes["turn:root:m2"], undefined);
+	assert.equal(snapshot.nodes["message:root:m2"].status, "queued");
+});
+
 test("turn signal remains active between model, tool, and reasoning phases until a terminal event", () => {
 	const registry = createPiboSignalRegistry();
 	registry.project({ type: "session_created", session: session("root") });

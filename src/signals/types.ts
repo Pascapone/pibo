@@ -1,4 +1,4 @@
-import type { PiboOutputEvent } from "../core/events.js";
+import type { PiboEventSource, PiboOutputEvent } from "../core/events.js";
 import type { PiboRunSnapshot, PiboRunStatus } from "../runs/registry.js";
 import type { PiboSession } from "../sessions/store.js";
 
@@ -167,6 +167,7 @@ export type PiboSignalInput =
 	| { type: "session_disposed"; piboSessionId: string; reason?: string }
 	| { type: "session_interrupted"; piboSessionId: string; reason?: string }
 	| { type: "session_processing_changed"; piboSessionId: string; processing: boolean; queuedMessages: number }
+	| { type: "message_accepted"; piboSessionId: string; eventId: string; source?: PiboEventSource }
 	| { type: "run_changed"; run: PiboRunSnapshot; previousStatus?: PiboRunStatus; reason?: string }
 	| { type: "run_removed"; runId: string; controllerPiboSessionId: string }
 	| { type: "queue_changed"; piboSessionId: string; queuedMessages: number }

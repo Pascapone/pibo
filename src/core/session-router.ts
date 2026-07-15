@@ -262,7 +262,28 @@ export class PiboSessionRouter {
 
 	async emit(event: PiboInputEvent): Promise<PiboOutputEvent> {
 		if (this.closing) throw new Error("Pibo session router is disposed.");
-		const session = await this.getOrCreateSession(event.piboSessionId);
+		if (event.type === "message" && event.id) {
+			const stored = this.sessionStore.get(event.piboSessionId);
+			if (stored) this.signalRegistry.project({ type: "session_created", session: stored });
+			this.signalRegistry.project({ type: "message_accepted", piboSessionId: event.piboSessionId, eventId: event.id, source: event.source });
+		}
+		let session: RoutedSession;
+		try {
+			session = await this.getOrCreateSession(event.piboSessionId);
+		} catch (error) {
+			if (event.type === "message" && event.id) {
+				this.signalRegistry.project({
+					type: "pibo_output",
+					event: {
+						type: "session_error",
+						piboSessionId: event.piboSessionId,
+						eventId: event.id,
+						error: error instanceof Error ? error.message : String(error),
+					},
+				});
+			}
+			throw error;
+		}
 		this.clearIdleSessionTimer(event.piboSessionId);
 		try {
 			if (event.type === "message") {
