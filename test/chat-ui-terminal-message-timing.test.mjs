@@ -155,7 +155,8 @@ test("duration formatting does not wrap after 24 hours", () => {
 
 test("Compact Terminal renders timing only on message rows and keeps live updates silent", () => {
 	const source = fs.readFileSync(path.resolve("src/apps/chat-ui/src/session-views/compact-terminal/CompactTerminalSessionView.tsx"), "utf8");
-	assert.match(source, /TerminalStreamingFooter startedAt=\{activeTurnStartedAt\}/);
+	assert.match(source, /\{isStreaming \? <TerminalStreamingFooter startedAt=\{activeTurnStartedAt\} \/> : null\}/);
+	assert.doesNotMatch(source, /Footer: isStreaming|components=\{virtuosoComponents\}/);
 	assert.match(source, /useSessionActivity\(\{/);
 	assert.match(source, /signal: selectedSessionSignal/);
 	assert.match(source, /const isStreaming = sessionActivity\.isTurnActive/);

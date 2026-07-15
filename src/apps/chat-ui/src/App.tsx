@@ -8,7 +8,7 @@ import { navigateToChatRoute, type ChatAppRoute, type NavigationOptions } from "
 import { downloadChatFile, type ChatDownloadProgress } from "./api-chat-files";
 import { fetchSignalTree, subscribeSignalTree } from "./api-trace-signals";
 import { listUserSkills } from "./api-agent-designer";
-import type { AgentCatalog, BootstrapData, NavigationData, PiboSignalSnapshot, UserSkill } from "./types";
+import type { AgentCatalog, BootstrapData, NavigationData, PiboSignalPatch, PiboSignalSnapshot, UserSkill } from "./types";
 import { countRender } from "./renderMetrics";
 import {
 	chatStreamEvent,
@@ -364,8 +364,8 @@ export function App({ route }: { route: ChatAppRoute }) {
 					.catch(() => undefined);
 			}, delayMs);
 		};
-		const unsubscribe = subscribeSignalTree(selectedPiboSessionId, {
-			onSnapshot: (snapshot) => {
+		const signalTreeHandlers = {
+			onSnapshot: (snapshot: PiboSignalSnapshot) => {
 				if (!active || !shouldCommitSelectedSignalSnapshot(sessionSignalsRef.current, snapshot, selectedPiboSessionId)) return;
 				if (signalRecoveryTimer) {
 					clearTimeout(signalRecoveryTimer);
@@ -373,7 +373,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 				}
 				commitSignalSnapshot(snapshot);
 			},
-			onPatch: (patch) => {
+			onPatch: (patch: PiboSignalPatch) => {
 				if (!active) return;
 				const result = applySelectedSignalPatch(sessionSignalsRef.current, patch, selectedPiboSessionId);
 				if (result.needsRefresh) {
@@ -385,13 +385,28 @@ export function App({ route }: { route: ChatAppRoute }) {
 				setBootstrap((bootstrapData) => bootstrapData ? applySignalPatchToBootstrap(bootstrapData, patch) : bootstrapData);
 			},
 			onError: () => refreshSignalSnapshot(SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS),
-		});
+		};
+		let unsubscribeSignalTree: () => void = () => undefined;
+		const reconnectSignalTree = () => {
+			if (!active) return;
+			unsubscribeSignalTree();
+			unsubscribeSignalTree = subscribeSignalTree(selectedPiboSessionId, signalTreeHandlers);
+			refreshSignalSnapshot(0);
+		};
+		const refreshVisibleSignalTree = () => {
+			if (document.visibilityState === "visible") reconnectSignalTree();
+		};
+		unsubscribeSignalTree = subscribeSignalTree(selectedPiboSessionId, signalTreeHandlers);
+		window.addEventListener("pageshow", reconnectSignalTree);
+		document.addEventListener("visibilitychange", refreshVisibleSignalTree);
 		refreshSignalSnapshot(0);
 		return () => {
 			active = false;
 			controller.abort();
 			if (signalRecoveryTimer) clearTimeout(signalRecoveryTimer);
-			unsubscribe();
+			window.removeEventListener("pageshow", reconnectSignalTree);
+			document.removeEventListener("visibilitychange", refreshVisibleSignalTree);
+			unsubscribeSignalTree();
 		};
 	}, [area, selectedPiboSessionId]);
 

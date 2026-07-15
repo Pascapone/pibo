@@ -198,3 +198,10 @@ test("optimistic session status updates are not overwritten by the previous sign
 	assert.match(source, /setBootstrap\(\(current\) => current \? updater\(current\) : current\)/);
 	assert.doesNotMatch(source, /setBootstrap\(\(current\) => current \? overlayCurrentSignals\(updater\(current\)\) : current\)/);
 });
+
+test("restored or newly visible pages reconnect and refresh the selected signal tree", () => {
+	const source = readFileSync("src/apps/chat-ui/src/App.tsx", "utf8");
+	assert.match(source, /window\.addEventListener\("pageshow", reconnectSignalTree\)/);
+	assert.match(source, /document\.addEventListener\("visibilitychange", refreshVisibleSignalTree\)/);
+	assert.match(source, /unsubscribeSignalTree\(\)[\s\S]*subscribeSignalTree[\s\S]*refreshSignalSnapshot\(0\)/);
+});
