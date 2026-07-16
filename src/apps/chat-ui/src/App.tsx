@@ -152,6 +152,7 @@ type LoadNavigationOptions = {
 };
 
 const SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS = 750;
+const SIGNAL_TREE_RECONCILE_INTERVAL_MS = 5_000;
 const NAVIGATION_FALLBACK_REFRESH_MS = 30_000;
 const SESSION_PAGE_SIZE = 120;
 const ARCHIVED_SESSION_PAGE_SIZE = 60;
@@ -396,9 +397,18 @@ export function App({ route }: { route: ChatAppRoute }) {
 		const refreshVisibleSignalTree = () => {
 			if (document.visibilityState === "visible") reconnectSignalTree();
 		};
+		const shouldReconcileSignalTree = () => {
+			const selectedSignal = sessionSignalsRef.current?.sessions[selectedPiboSessionId];
+			if (selectedSignal?.isTreeActive || selectedSignal?.latestTurn?.state === "running") return true;
+			const selectedSession = bootstrapRef.current ? findSessionNode(bootstrapRef.current.sessions, selectedPiboSessionId) : undefined;
+			return selectedSession?.status === "running";
+		};
 		unsubscribeSignalTree = subscribeSignalTree(selectedPiboSessionId, signalTreeHandlers);
 		window.addEventListener("pageshow", reconnectSignalTree);
 		document.addEventListener("visibilitychange", refreshVisibleSignalTree);
+		const signalReconcileTimer = window.setInterval(() => {
+			if (document.visibilityState === "visible" && shouldReconcileSignalTree()) refreshSignalSnapshot(0);
+		}, SIGNAL_TREE_RECONCILE_INTERVAL_MS);
 		refreshSignalSnapshot(0);
 		return () => {
 			active = false;
@@ -406,6 +416,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 			if (signalRecoveryTimer) clearTimeout(signalRecoveryTimer);
 			window.removeEventListener("pageshow", reconnectSignalTree);
 			document.removeEventListener("visibilitychange", refreshVisibleSignalTree);
+			window.clearInterval(signalReconcileTimer);
 			unsubscribeSignalTree();
 		};
 	}, [area, selectedPiboSessionId]);

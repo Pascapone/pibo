@@ -4516,19 +4516,28 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					throw new PiboWebHttpError("Signal registry is not available", 503);
 				}
 				let unsubscribe: (() => void) | undefined;
+				let heartbeat: ReturnType<typeof setInterval> | undefined;
 				const stream = new ReadableStream<Uint8Array>({
 					start: (controller) => {
 						writeJsonSse(controller, "signal_snapshot", context.channelContext.snapshotSignalTree!(rootPiboSessionId));
 						unsubscribe = context.channelContext.subscribeSignalTree!(rootPiboSessionId, (patch) => {
 							writeJsonSse(controller, "signal_patch", patch, String(patch.toVersion));
 						});
+						heartbeat = setInterval(() => writeSseComment(controller, "heartbeat"), 25_000);
 					},
-					cancel: () => unsubscribe?.(),
+					cancel: () => {
+						unsubscribe?.();
+						unsubscribe = undefined;
+						if (heartbeat) clearInterval(heartbeat);
+						heartbeat = undefined;
+					},
 				});
 				return new Response(stream, {
 					headers: {
 						"content-type": "text/event-stream; charset=utf-8",
-						"cache-control": "no-store",
+						"cache-control": "no-cache, no-transform",
+						"content-encoding": "identity",
+						"x-accel-buffering": "no",
 						connection: "keep-alive",
 					},
 				});

@@ -160,6 +160,9 @@ test("chat signal SSE sends snapshot then monotonic patches", async () => {
 		signals.project({ type: "session_created", session });
 		const response = await fetch(`${baseURL}/api/chat/signals/events?rootPiboSessionId=${session.id}`, { headers: { "x-test-user": "user-1" } });
 		assert.equal(response.status, 200);
+		assert.equal(response.headers.get("cache-control"), "no-cache, no-transform");
+		assert.equal(response.headers.get("content-encoding"), "identity");
+		assert.equal(response.headers.get("x-accel-buffering"), "no");
 		setTimeout(() => signals.project({
 			type: "pibo_output",
 			event: { type: "message_started", piboSessionId: session.id, eventId: "event-sse", text: "hello" },

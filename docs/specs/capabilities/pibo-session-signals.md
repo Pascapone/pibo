@@ -118,7 +118,7 @@ For message inputs with a stable event id, the router MUST start the first local
 
 #### Acceptance
 
-Chat Web can decide whether to show Working and its elapsed timer from the signal snapshot without reading trace pages or raw events. Working and the sidebar running state become visible after message acceptance without waiting for runtime initialization. The Working indicator remains pinned outside the virtualized transcript so scroll position cannot hide active work. Restored or newly visible pages reconnect and refresh the selected signal tree immediately instead of waiting for trace-cache expiry. Runtime processing shutdown leaves no unresolved running turn.
+Chat Web can decide whether to show Working and its elapsed timer from the signal snapshot without reading trace pages or raw events. Working and the sidebar running state become visible after message acceptance without waiting for runtime initialization. Signal patches remain unbuffered across production compression and reverse-proxy layers. Restored or newly visible pages reconnect and refresh the selected signal tree immediately, and an active selected session periodically reconciles a full snapshot so a missed terminal patch cannot leave stale Running UI indefinitely. Runtime processing shutdown leaves no unresolved running turn.
 
 #### Scenario: Cold runtime initialization
 
@@ -256,7 +256,7 @@ An unauthenticated request cannot fetch or subscribe to session signals; allowed
 
 ### Requirement: Signal SSE streams send snapshot before patches
 
-The system MUST start every signal SSE stream with a complete tree snapshot and then send versioned patches for the same root.
+The system MUST start every signal SSE stream with a complete tree snapshot and then send versioned patches for the same root. Signal streams MUST disable response transformation and proxy buffering and MUST emit periodic heartbeat comments so small patches are flushed promptly and idle connections remain alive.
 
 #### Current
 
@@ -264,16 +264,18 @@ The system MUST start every signal SSE stream with a complete tree snapshot and 
 
 #### Acceptance
 
-A browser can initialize local signal state from the first SSE event and apply later patches when `current.version === patch.fromVersion`.
+A browser can initialize local signal state from the first SSE event and apply later patches when `current.version === patch.fromVersion`. Production proxies do not gzip or buffer the stream, and an active selected session is reconciled from a full snapshot at least every five seconds as a bounded fallback.
 
 #### Scenario: Subscribe to root tree
 
 - GIVEN root `ps_root` exists
 - WHEN the browser opens the signal event stream for `ps_root`
 - THEN the first event is `signal_snapshot`
+- AND the response uses `Cache-Control: no-cache, no-transform` and `X-Accel-Buffering: no`
 - WHEN root signal state changes
 - THEN the next event is `signal_patch`
-- AND `patch.fromVersion + 1 === patch.toVersion` for a single change.
+- AND `patch.fromVersion + 1 === patch.toVersion` for a single change
+- AND response compression or proxy buffering does not delay the patch.
 
 ### Requirement: Navigation overlays derive coarse UI status from signals
 

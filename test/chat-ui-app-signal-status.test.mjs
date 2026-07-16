@@ -205,3 +205,10 @@ test("restored or newly visible pages reconnect and refresh the selected signal 
 	assert.match(source, /document\.addEventListener\("visibilitychange", refreshVisibleSignalTree\)/);
 	assert.match(source, /unsubscribeSignalTree\(\)[\s\S]*subscribeSignalTree[\s\S]*refreshSignalSnapshot\(0\)/);
 });
+
+test("active selected sessions periodically reconcile their signal snapshot", () => {
+	const source = readFileSync("src/apps/chat-ui/src/App.tsx", "utf8");
+	assert.match(source, /SIGNAL_TREE_RECONCILE_INTERVAL_MS = 5_000/);
+	assert.match(source, /window\.setInterval\([\s\S]*shouldReconcileSignalTree\(\)[\s\S]*refreshSignalSnapshot\(0\)[\s\S]*SIGNAL_TREE_RECONCILE_INTERVAL_MS/);
+	assert.match(source, /window\.clearInterval\(signalReconcileTimer\)/);
+});
