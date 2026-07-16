@@ -118,7 +118,7 @@ For message inputs with a stable event id, the router MUST start the first local
 
 #### Acceptance
 
-Chat Web can decide whether to show Working and its elapsed timer from the signal snapshot without reading trace pages or raw events. Working and the sidebar running state become visible after message acceptance without waiting for runtime initialization. Signal patches remain unbuffered across production compression and reverse-proxy layers. Restored or newly visible pages reconnect and refresh the selected signal tree immediately, and an active selected session periodically reconciles a full snapshot so a missed terminal patch cannot leave stale Running UI indefinitely. Runtime processing shutdown leaves no unresolved running turn.
+Chat Web can decide whether to show Working and its elapsed timer from the signal snapshot without reading trace pages or raw events. Working and the sidebar running state become visible after message acceptance without waiting for runtime initialization. Signal patches remain unbuffered across production compression and reverse-proxy layers. Restored or newly visible pages reconnect and refresh the selected signal tree immediately. A session switch retains an already valid same-tree snapshot, retries a failed initial snapshot even when stored navigation state appears idle, and periodically reconciles active state so a missed terminal patch cannot leave stale Running UI indefinitely. Runtime processing shutdown leaves no unresolved running turn.
 
 #### Scenario: Cold runtime initialization
 
@@ -136,6 +136,16 @@ Chat Web can decide whether to show Working and its elapsed timer from the signa
 - WHEN the page is restored or becomes visible
 - THEN Chat Web reconnects the signal stream and refreshes the selected signal snapshot immediately
 - AND stale Working UI does not wait for the trace refresh interval before settling.
+
+#### Scenario: Switch to a running child session
+
+- GIVEN the selected root signal tree already contains a running child session
+- WHEN the user selects that child session
+- THEN Chat Web retains the valid tree while reconnecting the selected signal subscription
+- AND the status does not reset to unknown solely because selection changed
+- WHEN the initial full-snapshot request fails
+- THEN Chat Web retries it without waiting for stored navigation status to become `running`
+- AND a later terminal snapshot or patch settles the status.
 
 #### Scenario: Tool phases do not end a turn
 
@@ -226,7 +236,14 @@ The registry keeps `versionByRootId`, emits `fromVersion` and `toVersion`, and c
 
 #### Acceptance
 
-For one root, each emitted patch starts at the previous `toVersion`. Repeated identical input returns no patch.
+For one root, each emitted patch starts at the previous `toVersion`. Repeated identical input returns no patch. The first creation patch for a child session uses the established ancestor root so existing root subscribers receive the new child immediately.
+
+#### Scenario: Child session joins an existing root
+
+- GIVEN root session `root` is registered and has an active signal subscriber
+- WHEN child session `child` is created with `parentId = root`
+- THEN the creation patch has `rootPiboSessionId = root`
+- AND the patch contains the child session snapshot.
 
 #### Scenario: Repeated queue event
 
@@ -264,7 +281,7 @@ The system MUST start every signal SSE stream with a complete tree snapshot and 
 
 #### Acceptance
 
-A browser can initialize local signal state from the first SSE event and apply later patches when `current.version === patch.fromVersion`. Production proxies do not gzip or buffer the stream, and an active selected session is reconciled from a full snapshot at least every five seconds as a bounded fallback.
+A browser can initialize local signal state from the first SSE event and apply later patches when `current.version === patch.fromVersion`. Production proxies do not gzip or buffer the stream. A selected session without a valid snapshot retries the full-snapshot request after a bounded recovery delay; once initialized, active selected sessions reconcile from a full snapshot at least every five seconds as a fallback.
 
 #### Scenario: Subscribe to root tree
 

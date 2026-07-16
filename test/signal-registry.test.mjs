@@ -30,6 +30,16 @@ function run(id, status, extra = {}) {
 	};
 }
 
+test("child session creation is published on the parent signal root", () => {
+	const registry = createPiboSignalRegistry();
+	registry.project({ type: "session_created", session: session("root") });
+	const childPatch = registry.project({ type: "session_created", session: session("child", "root") });
+
+	assert.equal(childPatch.rootPiboSessionId, "root");
+	assert.equal(childPatch.upserts[0].rootPiboSessionId, "root");
+	assert.equal(registry.snapshotTree("child").rootPiboSessionId, "root");
+});
+
 test("signal registry aggregates a three-level active descendant", () => {
 	const registry = createPiboSignalRegistry();
 	registry.project({ type: "session_created", session: session("root") });

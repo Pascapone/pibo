@@ -49,11 +49,14 @@ export const sessionLifecycleSignalProducer: PiboSignalProducer = {
 		const data = input as any;
 		if (data.type === "session_created") {
 			const session = data.session;
-			if (context.getNode(`session:${session.id}`)) return [];
+			const existing = context.getNode(`session:${session.id}`);
+			const rootPiboSessionId = session.parentId ? context.getSessionRoot(session.parentId) : session.id;
+			if (existing && existing.parentPiboSessionId === session.parentId && existing.rootPiboSessionId === rootPiboSessionId) return [];
 			return [{ type: "upsert_node", node: node({
 				id: `session:${session.id}`,
 				kind: "session",
-				status: "idle",
+				status: existing?.status ?? "idle",
+				rootPiboSessionId,
 				piboSessionId: session.id,
 				parentPiboSessionId: session.parentId,
 				metadata: { kind: session.kind, channel: session.channel, profile: session.profile },

@@ -122,7 +122,9 @@ import {
 	applySelectedSignalPatch,
 	applySignalPatchToBootstrap,
 	applySignalSnapshotToBootstrap,
+	retainSelectedSignalSnapshot,
 	shouldCommitSelectedSignalSnapshot,
+	shouldReconcileSelectedSignalTree,
 	signalLegacyStatus,
 	signalSnapshotIncludesSession,
 } from "./app-signal-status";
@@ -342,9 +344,14 @@ export function App({ route }: { route: ChatAppRoute }) {
 	}, [bootstrap]);
 
 	useEffect(() => {
-		sessionSignalsRef.current = null;
-		setSessionSignals(null);
-		if (area !== "sessions" || !selectedPiboSessionId) return;
+		if (area !== "sessions" || !selectedPiboSessionId) {
+			sessionSignalsRef.current = null;
+			setSessionSignals(null);
+			return;
+		}
+		const retainedSnapshot = retainSelectedSignalSnapshot(sessionSignalsRef.current, selectedPiboSessionId);
+		sessionSignalsRef.current = retainedSnapshot;
+		setSessionSignals(retainedSnapshot);
 
 		let active = true;
 		let signalRecoveryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -362,7 +369,9 @@ export function App({ route }: { route: ChatAppRoute }) {
 				signalRecoveryTimer = undefined;
 				fetchSignalTree(selectedPiboSessionId, { signal: controller.signal })
 					.then(commitSignalSnapshot)
-					.catch(() => undefined);
+					.catch(() => {
+						if (!controller.signal.aborted) refreshSignalSnapshot(SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS);
+					});
 			}, delayMs);
 		};
 		const signalTreeHandlers = {
@@ -398,10 +407,8 @@ export function App({ route }: { route: ChatAppRoute }) {
 			if (document.visibilityState === "visible") reconnectSignalTree();
 		};
 		const shouldReconcileSignalTree = () => {
-			const selectedSignal = sessionSignalsRef.current?.sessions[selectedPiboSessionId];
-			if (selectedSignal?.isTreeActive || selectedSignal?.latestTurn?.state === "running") return true;
 			const selectedSession = bootstrapRef.current ? findSessionNode(bootstrapRef.current.sessions, selectedPiboSessionId) : undefined;
-			return selectedSession?.status === "running";
+			return shouldReconcileSelectedSignalTree(sessionSignalsRef.current, selectedPiboSessionId, selectedSession?.status);
 		};
 		unsubscribeSignalTree = subscribeSignalTree(selectedPiboSessionId, signalTreeHandlers);
 		window.addEventListener("pageshow", reconnectSignalTree);

@@ -11,6 +11,23 @@ export function signalSnapshotIncludesSession(snapshot: PiboSignalSnapshot | nul
 	return Boolean(snapshot?.sessions[piboSessionId]);
 }
 
+export function retainSelectedSignalSnapshot(
+	snapshot: PiboSignalSnapshot | null,
+	selectedPiboSessionId: string,
+): PiboSignalSnapshot | null {
+	return signalSnapshotIncludesSession(snapshot, selectedPiboSessionId) ? snapshot : null;
+}
+
+export function shouldReconcileSelectedSignalTree(
+	snapshot: PiboSignalSnapshot | null,
+	selectedPiboSessionId: string,
+	fallbackStatus?: PiboWebSessionNode["status"],
+): boolean {
+	if (!signalSnapshotIncludesSession(snapshot, selectedPiboSessionId)) return true;
+	const selectedSignal = snapshot.sessions[selectedPiboSessionId];
+	return selectedSignal.isTreeActive || selectedSignal.latestTurn?.state === "running" || fallbackStatus === "running";
+}
+
 export function shouldCommitSelectedSignalSnapshot(
 	current: PiboSignalSnapshot | null,
 	snapshot: PiboSignalSnapshot,

@@ -14,7 +14,9 @@ async function runAppSignalStatusScenario() {
 			applySignalPatch,
 			applySignalPatchToBootstrap,
 			applySignalSnapshotToBootstrap,
+			retainSelectedSignalSnapshot,
 			shouldCommitSelectedSignalSnapshot,
+			shouldReconcileSelectedSignalTree,
 			signalLegacyStatus,
 			signalSnapshotIncludesSession,
 		} = await import("./src/apps/chat-ui/src/app-signal-status.ts");
@@ -169,6 +171,12 @@ async function runAppSignalStatusScenario() {
 
 		assert.equal(signalSnapshotIncludesSession(currentSignal, "ps-root"), true);
 		assert.equal(signalSnapshotIncludesSession(currentSignal, "ps-other"), false);
+		assert.equal(retainSelectedSignalSnapshot(currentSignal, "ps-root"), currentSignal, "same-tree selection changes keep an already valid snapshot");
+		assert.equal(retainSelectedSignalSnapshot(currentSignal, "ps-other"), null, "an unrelated previous tree is discarded");
+		assert.equal(shouldReconcileSelectedSignalTree(null, "ps-root", "idle"), true, "a missing initial snapshot is retried even when bootstrap looks idle");
+		assert.equal(shouldReconcileSelectedSignalTree(currentSignal, "ps-root", "running"), true, "a running bootstrap fallback remains reconciled");
+		assert.equal(shouldReconcileSelectedSignalTree(currentSignal, "ps-root", "idle"), false, "a settled selected snapshot does not poll indefinitely");
+		assert.equal(shouldReconcileSelectedSignalTree({ ...currentSignal, sessions: { "ps-root": signalSession({ isTreeActive: true }) } }, "ps-root", "idle"), true, "an active selected snapshot remains reconciled");
 		assert.equal(shouldCommitSelectedSignalSnapshot(null, currentSignal, "ps-root"), true);
 		assert.equal(shouldCommitSelectedSignalSnapshot(currentSignal, { ...currentSignal, version: 0 }, "ps-root"), false, "a delayed REST snapshot cannot roll back a newer SSE version");
 		assert.equal(shouldCommitSelectedSignalSnapshot(currentSignal, currentSignal, "ps-other"), false, "a previous session tree cannot replace the selected session tree");
@@ -206,9 +214,12 @@ test("restored or newly visible pages reconnect and refresh the selected signal 
 	assert.match(source, /unsubscribeSignalTree\(\)[\s\S]*subscribeSignalTree[\s\S]*refreshSignalSnapshot\(0\)/);
 });
 
-test("active selected sessions periodically reconcile their signal snapshot", () => {
+test("selected sessions recover missing snapshots and reconcile active turns", () => {
 	const source = readFileSync("src/apps/chat-ui/src/App.tsx", "utf8");
 	assert.match(source, /SIGNAL_TREE_RECONCILE_INTERVAL_MS = 5_000/);
+	assert.match(source, /retainSelectedSignalSnapshot\(sessionSignalsRef\.current, selectedPiboSessionId\)/);
+	assert.match(source, /\.catch\(\(\) => \{[\s\S]*refreshSignalSnapshot\(SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS\)/, "failed initial REST snapshots retry instead of being swallowed");
+	assert.match(source, /shouldReconcileSelectedSignalTree\(sessionSignalsRef\.current, selectedPiboSessionId, selectedSession\?\.status\)/);
 	assert.match(source, /window\.setInterval\([\s\S]*shouldReconcileSignalTree\(\)[\s\S]*refreshSignalSnapshot\(0\)[\s\S]*SIGNAL_TREE_RECONCILE_INTERVAL_MS/);
 	assert.match(source, /window\.clearInterval\(signalReconcileTimer\)/);
 });
