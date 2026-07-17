@@ -24,7 +24,7 @@ import type {
 import { createSubagentToolName, type PiboSubagentRunner } from "../subagents/tool.js";
 import { PiboRunRegistry, type PiboRunNotification, type PiboRunRegistryEvent, type PiboRunSnapshot } from "../runs/registry.js";
 import { createPiboSignalRegistry } from "../signals/registry.js";
-import type { PiboSignalPatch, PiboSignalRegistry, PiboSignalSnapshot } from "../signals/types.js";
+import type { PiboSignalPatch, PiboSignalRegistry, PiboSignalSnapshot, PiboSignalStatusSnapshot } from "../signals/types.js";
 import type { PiboRunToolController } from "../runs/tools.js";
 import { createDefaultPiboReliabilityStore, type PiboReliabilityStore } from "../reliability/store.js";
 import {
@@ -436,8 +436,17 @@ export class PiboSessionRouter {
 		return this.signalRegistry.snapshotTree(rootPiboSessionId);
 	}
 
+	snapshotSignalStatuses(): PiboSignalStatusSnapshot {
+		this.projectKnownSessionSignals();
+		return this.signalRegistry.snapshotStatuses();
+	}
+
 	subscribeSignalTree(rootPiboSessionId: string, listener: (patch: PiboSignalPatch) => void): () => void {
 		return this.signalRegistry.subscribe(rootPiboSessionId, listener);
+	}
+
+	subscribeSignalStatuses(listener: (patch: PiboSignalPatch) => void): () => void {
+		return this.signalRegistry.subscribeAll(listener);
 	}
 
 	async emitMessageAndWaitForReply(

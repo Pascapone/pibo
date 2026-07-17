@@ -30,6 +30,29 @@ function run(id, status, extra = {}) {
 	};
 }
 
+test("global status snapshots and subscribers cover independent roots", async () => {
+	const registry = createPiboSignalRegistry();
+	registry.project({ type: "session_created", session: session("first") });
+	registry.project({ type: "session_created", session: session("second") });
+	const patches = [];
+	registry.project({ type: "pibo_output", event: { type: "session_error", piboSessionId: "second", eventId: "previous-error", error: "boom" } });
+	const unsubscribe = registry.subscribeAll((patch) => patches.push(patch));
+	try {
+		registry.project({ type: "message_accepted", piboSessionId: "second", eventId: "global-event", source: "user" });
+		await new Promise((resolve) => setImmediate(resolve));
+		const snapshot = registry.snapshotStatuses();
+		assert.equal(snapshot.sessions.first.isTreeActive, false);
+		assert.equal(snapshot.sessions.first.status, "idle");
+		assert.equal(snapshot.sessions.second.isTreeActive, true);
+		assert.equal(snapshot.sessions.second.status, "running", "active work outranks a historical error in the command-center status");
+		assert.equal("activeToolCalls" in snapshot.sessions.second, false, "global snapshots contain compact sidebar summaries");
+		assert.equal(snapshot.rootVersions.second, patches.at(-1).toVersion);
+		assert.equal(patches.at(-1).rootPiboSessionId, "second");
+	} finally {
+		unsubscribe();
+	}
+});
+
 test("child session creation is published on the parent signal root", () => {
 	const registry = createPiboSignalRegistry();
 	registry.project({ type: "session_created", session: session("root") });

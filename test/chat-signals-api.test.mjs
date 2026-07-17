@@ -57,7 +57,9 @@ async function startSignalWebHost(options = {}) {
 		...(exposeSignalRegistry ? {
 			snapshotSignalSession: (id) => signals.snapshotSession(id),
 			snapshotSignalTree: (id) => signals.snapshotTree(id),
+			snapshotSignalStatuses: () => signals.snapshotStatuses(),
 			subscribeSignalTree: (id, listener) => signals.subscribe(id, listener),
+			subscribeSignalStatuses: (listener) => signals.subscribeAll(listener),
 		} : {}),
 		getWebApps() {
 			return [createChatWebApp({ dataStorePath, agentStorePath })];
@@ -153,6 +155,67 @@ test("chat signal tree snapshot includes descendants", async () => {
 	}
 });
 
+test("chat global signal status routes require authentication", async () => {
+	const { channel, baseURL } = await startSignalWebHost();
+	try {
+		const snapshot = await fetch(`${baseURL}/api/chat/signals/statuses`);
+		assert.equal(snapshot.status, 401);
+		const events = await fetch(`${baseURL}/api/chat/signals/status-events`);
+		assert.equal(events.status, 401);
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("chat signal status snapshot covers active sessions across roots", async () => {
+	const { channel, baseURL, sessions, signals } = await startSignalWebHost();
+	try {
+		const first = createSession(sessions, "ps_status_first");
+		const second = createSession(sessions, "ps_status_second");
+		for (const session of [first, second]) signals.project({ type: "session_created", session });
+		signals.project({ type: "message_accepted", piboSessionId: second.id, eventId: "status-active", source: "user" });
+
+		const response = await fetch(`${baseURL}/api/chat/signals/statuses`, { headers: { "x-test-user": "user-1" } });
+		assert.equal(response.status, 200);
+		const snapshot = await response.json();
+		assert.equal(snapshot.sessions[first.id].isTreeActive, false);
+		assert.equal(snapshot.sessions[first.id].status, "idle");
+		assert.equal(snapshot.sessions[second.id].isTreeActive, true);
+		assert.equal(snapshot.sessions[second.id].status, "running");
+		assert.equal("activeToolCalls" in snapshot.sessions[second.id], false, "the global snapshot contains compact status summaries");
+		assert.equal(snapshot.rootVersions[first.id] >= 1, true);
+		assert.equal(snapshot.rootVersions[second.id] >= 2, true);
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("chat global signal SSE sends all-session snapshot then cross-root patches", async () => {
+	const { channel, baseURL, sessions, signals } = await startSignalWebHost();
+	try {
+		const first = createSession(sessions, "ps_global_first");
+		const second = createSession(sessions, "ps_global_second");
+		for (const session of [first, second]) signals.project({ type: "session_created", session });
+		const response = await fetch(`${baseURL}/api/chat/signals/status-events`, { headers: { "x-test-user": "user-1" } });
+		assert.equal(response.status, 200);
+		assert.equal(response.headers.get("cache-control"), "no-cache, no-transform");
+		assert.equal(response.headers.get("content-encoding"), "identity");
+		assert.equal(response.headers.get("x-accel-buffering"), "no");
+		setTimeout(() => signals.project({ type: "message_accepted", piboSessionId: second.id, eventId: "global-active", source: "user" }), 10);
+		const events = await readSseEvents(response, 2);
+		assert.equal(events[0].event, "signal_status_snapshot");
+		assert.ok(events[0].data.sessions[first.id]);
+		assert.ok(events[0].data.sessions[second.id]);
+		assert.equal(events[1].event, "signal_status_patch");
+		assert.equal(events[1].data.rootPiboSessionId, second.id);
+		assert.equal(events[1].data.sessionStatuses.some((status) => status.piboSessionId === second.id && status.isTreeActive), true);
+		assert.equal("upserts" in events[1].data, false, "the global sidebar stream omits signal nodes");
+		assert.equal("activeToolCalls" in events[1].data.sessionStatuses[0], false, "the global sidebar stream emits compact status summaries");
+	} finally {
+		await channel.stop?.();
+	}
+});
+
 test("chat signal SSE publishes child session creation on the parent root", async () => {
 	const { channel, baseURL, sessions, signals } = await startSignalWebHost();
 	try {
@@ -236,8 +299,14 @@ test("chat signal routes return 503 when registry functions are unavailable", as
 		const snapshot = await fetch(`${baseURL}/api/chat/signals/tree/${session.id}`, { headers: { "x-test-user": "user-1" } });
 		assert.equal(snapshot.status, 503);
 
+		const statuses = await fetch(`${baseURL}/api/chat/signals/statuses`, { headers: { "x-test-user": "user-1" } });
+		assert.equal(statuses.status, 503);
+
 		const sse = await fetch(`${baseURL}/api/chat/signals/events?rootPiboSessionId=${session.id}`, { headers: { "x-test-user": "user-1" } });
 		assert.equal(sse.status, 503);
+
+		const statusSse = await fetch(`${baseURL}/api/chat/signals/status-events`, { headers: { "x-test-user": "user-1" } });
+		assert.equal(statusSse.status, 503);
 	} finally {
 		await channel.stop?.();
 	}

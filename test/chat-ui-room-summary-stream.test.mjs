@@ -29,8 +29,8 @@ test("room summary stream waits for the selected room's latest stream id", async
 	await assert.doesNotReject(runRoomSummaryStreamScenario());
 });
 
-test("room summary status cannot override an available signal snapshot", () => {
+test("room summary status cannot override an available global or selected signal snapshot", () => {
 	const source = fs.readFileSync(path.resolve("src/apps/chat-ui/src/App.tsx"), "utf8");
-	assert.match(source, /const signalStatus = signalLegacyStatus\(sessionSignalsRef\.current\?\.sessions\[targetPiboSessionId\]\)/);
+	assert.match(source, /sessionStatusSignalsRef\.current\?\.sessions\[targetPiboSessionId\][\s\S]*sessionSignalsRef\.current\?\.sessions\[targetPiboSessionId\]/);
 	assert.match(source, /const status = signalStatus \?\? streamStatus/);
 });

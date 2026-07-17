@@ -2,6 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import os from "node:os";
 import { monitorEventLoopDelay, type IntervalHistogram } from "node:perf_hooks";
 import type { PiboJsonObject, PiboJsonValue, PiboOutputEvent } from "../../core/events.js";
+import { summarizeSessionSignalStatus } from "../../signals/status.js";
+import type { PiboSignalPatch, PiboSignalStatusPatch } from "../../signals/types.js";
 import { PiboWebHttpError, readJsonBody, responseJson } from "../../web/http.js";
 import type { PiboWebApp, PiboWebAppContext, PiboWebSession } from "../../web/types.js";
 import type { PiboSession } from "../../sessions/store.js";
@@ -613,6 +615,27 @@ function writeJsonSse(controller: ReadableStreamDefaultController<Uint8Array>, e
 	if (id) controller.enqueue(encoder.encode(`id: ${id}\n`));
 	controller.enqueue(encoder.encode(`event: ${event}\n`));
 	controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+}
+
+function compactSignalStatusPatch(patch: PiboSignalPatch): PiboSignalStatusPatch {
+	return {
+		type: "signal_status_patch",
+		rootPiboSessionId: patch.rootPiboSessionId,
+		fromVersion: patch.fromVersion,
+		toVersion: patch.toVersion,
+		generatedAt: patch.generatedAt,
+		sessionStatuses: patch.sessionSnapshots.map(summarizeSessionSignalStatus),
+	};
+}
+
+function signalSseHeaders(): Record<string, string> {
+	return {
+		"content-type": "text/event-stream; charset=utf-8",
+		"cache-control": "no-cache, no-transform",
+		"content-encoding": "identity",
+		"x-accel-buffering": "no",
+		connection: "keep-alive",
+	};
 }
 
 function requireSameOriginJsonRequest(request: Request): void {
@@ -4496,6 +4519,47 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				return responseJson({ session: updated, projectSession });
 			}
 
+			if (url.pathname === `${CHAT_WEB_API_PREFIX}/signals/statuses` && request.method === "GET") {
+				await requireSession(request, context);
+				if (!context.channelContext.snapshotSignalStatuses) {
+					throw new PiboWebHttpError("Signal registry is not available", 503);
+				}
+				return responseJson(context.channelContext.snapshotSignalStatuses());
+			}
+
+			if (url.pathname === `${CHAT_WEB_API_PREFIX}/signals/status-events` && request.method === "GET") {
+				await requireSession(request, context);
+				if (!context.channelContext.snapshotSignalStatuses || !context.channelContext.subscribeSignalStatuses) {
+					throw new PiboWebHttpError("Signal registry is not available", 503);
+				}
+				let unsubscribe: (() => void) | undefined;
+				let heartbeat: ReturnType<typeof setInterval> | undefined;
+				let closed = false;
+				const stream = new ReadableStream<Uint8Array>({
+					start: (controller) => {
+						writeJsonSse(controller, "signal_status_snapshot", context.channelContext.snapshotSignalStatuses!());
+						unsubscribe = context.channelContext.subscribeSignalStatuses!((patch) => {
+							if (closed) return;
+							const statusPatch = compactSignalStatusPatch(patch);
+							writeJsonSse(controller, "signal_status_patch", statusPatch, `${patch.rootPiboSessionId}:${patch.toVersion}`);
+						});
+						heartbeat = setInterval(() => {
+							if (!closed) writeSseComment(controller, "heartbeat");
+						}, 25_000);
+					},
+					cancel: () => {
+						closed = true;
+						unsubscribe?.();
+						unsubscribe = undefined;
+						if (heartbeat) clearInterval(heartbeat);
+						heartbeat = undefined;
+					},
+				});
+				return new Response(stream, {
+					headers: signalSseHeaders(),
+				});
+			}
+
 			const requestedSignal = signalResource(url.pathname);
 			if (requestedSignal && request.method === "GET") {
 				const webSession = await requireSession(request, context);
@@ -4533,13 +4597,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					},
 				});
 				return new Response(stream, {
-					headers: {
-						"content-type": "text/event-stream; charset=utf-8",
-						"cache-control": "no-cache, no-transform",
-						"content-encoding": "identity",
-						"x-accel-buffering": "no",
-						connection: "keep-alive",
-					},
+					headers: signalSseHeaders(),
 				});
 			}
 

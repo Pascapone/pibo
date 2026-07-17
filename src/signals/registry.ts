@@ -1,9 +1,11 @@
 import { DEFAULT_TELEMETRY_STALE_THRESHOLD_MS } from "../core/telemetry-staleness.js";
 import { errorFromNode, isActiveSignalStatus, isTerminalSignalStatus, phaseForStatus, strongestStatus } from "./aggregate.js";
 import { createDefaultSignalProducers } from "./projector.js";
+import { summarizeSessionSignalStatus } from "./status.js";
 import type {
 	ChildSessionSignalSummary,
 	PiboSessionSignalSnapshot,
+	PiboSessionSignalStatus,
 	PiboSignalError,
 	PiboSignalInput,
 	PiboSignalListener,
@@ -16,6 +18,7 @@ import type {
 	PiboSignalRegistryDiagnostics,
 	PiboSignalRegistryPruneOptions,
 	PiboSignalSnapshot,
+	PiboSignalStatusSnapshot,
 	PiboTurnSignalState,
 	PiboTurnSignalSummary,
 	RunSignalSummary,
@@ -242,6 +245,7 @@ export class InMemoryPiboSignalRegistry implements PiboSignalRegistry {
 	private readonly sessionSnapshotById = new Map<string, PiboSessionSignalSnapshot>();
 	private readonly queuedMessagesBySessionId = new Map<string, number>();
 	private readonly subscribersByRootId = new Map<string, Set<PiboSignalListener>>();
+	private readonly globalSubscribers = new Set<PiboSignalListener>();
 	private readonly producers: PiboSignalProducer[] = createDefaultSignalProducers();
 
 	constructor(private readonly options: InMemoryPiboSignalRegistryOptions = {}) {}
@@ -274,7 +278,7 @@ export class InMemoryPiboSignalRegistry implements PiboSignalRegistry {
 			nodeCount: this.nodesById.size,
 			sessionCount: this.rootSessionIdBySessionId.size,
 			rootCount: this.versionByRootId.size,
-			subscriberCount: [...this.subscribersByRootId.values()].reduce((sum, listeners) => sum + listeners.size, 0),
+			subscriberCount: this.globalSubscribers.size + [...this.subscribersByRootId.values()].reduce((sum, listeners) => sum + listeners.size, 0),
 			subscribersByRootId,
 			stuckActiveNodes: [...this.nodesById.values()].filter((node) => isActiveSignalStatus(node.status) && nowMs - Date.parse(node.startedAt ?? node.createdAt) >= thresholdMs),
 		};
@@ -336,6 +340,22 @@ export class InMemoryPiboSignalRegistry implements PiboSignalRegistry {
 		return { rootPiboSessionId: rootId, version, generatedAt: now(), sessions, nodes };
 	}
 
+	snapshotStatuses(): PiboSignalStatusSnapshot {
+		const sessions: Record<string, PiboSessionSignalStatus> = {};
+		for (const piboSessionId of this.rootSessionIdBySessionId.keys()) {
+			const rootId = this.getSessionRoot(piboSessionId);
+			const version = this.versionByRootId.get(rootId) ?? 0;
+			const snapshot = this.sessionSnapshotById.get(piboSessionId) ?? this.computeSessionSnapshot(piboSessionId, version);
+			sessions[piboSessionId] = summarizeSessionSignalStatus(snapshot);
+		}
+		return {
+			type: "signal_status_snapshot",
+			generatedAt: now(),
+			rootVersions: Object.fromEntries(this.versionByRootId),
+			sessions,
+		};
+	}
+
 	subscribe(rootPiboSessionId: string, listener: PiboSignalListener): () => void {
 		const rootId = this.getSessionRoot(rootPiboSessionId);
 		const listeners = this.subscribersByRootId.get(rootId) ?? new Set<PiboSignalListener>();
@@ -345,6 +365,11 @@ export class InMemoryPiboSignalRegistry implements PiboSignalRegistry {
 			listeners.delete(listener);
 			if (listeners.size === 0) this.subscribersByRootId.delete(rootId);
 		};
+	}
+
+	subscribeAll(listener: PiboSignalListener): () => void {
+		this.globalSubscribers.add(listener);
+		return () => this.globalSubscribers.delete(listener);
 	}
 
 	private context(): PiboSignalProjectorContext {
@@ -552,6 +577,7 @@ export class InMemoryPiboSignalRegistry implements PiboSignalRegistry {
 
 	private notify(rootId: string, patch: PiboSignalPatch): void {
 		for (const listener of this.subscribersByRootId.get(rootId) ?? []) queueMicrotask(() => listener(patch));
+		for (const listener of this.globalSubscribers) queueMicrotask(() => listener(patch));
 	}
 }
 

@@ -14,8 +14,12 @@ async function runAppSignalStatusScenario() {
 			applySignalPatch,
 			applySignalPatchToBootstrap,
 			applySignalSnapshotToBootstrap,
+			applySignalStatusPatch,
+			applySignalStatusPatchToBootstrap,
+			applySignalStatusSnapshotToBootstrap,
 			retainSelectedSignalSnapshot,
 			shouldCommitSelectedSignalSnapshot,
+			shouldCommitSignalStatusSnapshot,
 			shouldReconcileSelectedSignalTree,
 			signalLegacyStatus,
 			signalSnapshotIncludesSession,
@@ -88,6 +92,16 @@ async function runAppSignalStatusScenario() {
 				activeChildren: [],
 				errors: [],
 				...overrides,
+			};
+		}
+
+		function signalStatus(overrides = {}) {
+			return {
+				piboSessionId: overrides.piboSessionId ?? "ps-root",
+				rootPiboSessionId: overrides.rootPiboSessionId ?? overrides.piboSessionId ?? "ps-root",
+				updatedAt: overrides.updatedAt ?? "2026-05-27T00:05:00.000Z",
+				status: overrides.status ?? "idle",
+				isTreeActive: overrides.isTreeActive ?? overrides.status === "running",
 			};
 		}
 
@@ -193,6 +207,38 @@ async function runAppSignalStatusScenario() {
 		const selectedPatch = applySelectedSignalPatch(currentSignal, patch, "ps-root");
 		assert.equal(selectedPatch.needsRefresh, false);
 		assert.equal(selectedPatch.snapshot.version, 2);
+
+		const globalBase = bootstrap({
+			sessions: [sessionNode({ piboSessionId: "ps-root" }), sessionNode({ piboSessionId: "ps-other", piSessionId: "pi-other" })],
+		});
+		const statusSnapshot = {
+			type: "signal_status_snapshot",
+			generatedAt: "2026-05-27T00:20:00.000Z",
+			rootVersions: { "ps-root": 1, "ps-other": 3 },
+			sessions: {
+				"ps-root": signalStatus(),
+				"ps-other": signalStatus({ piboSessionId: "ps-other", status: "running", isTreeActive: true }),
+			},
+		};
+		const withGlobalStatuses = applySignalStatusSnapshotToBootstrap(globalBase, statusSnapshot);
+		assert.equal(withGlobalStatuses.sessions[0].status, "idle");
+		assert.equal(withGlobalStatuses.sessions[1].status, "running", "an unselected root receives canonical running status");
+		const statusPatch = {
+			type: "signal_status_patch",
+			rootPiboSessionId: "ps-other",
+			fromVersion: 3,
+			toVersion: 4,
+			generatedAt: "2026-05-27T00:21:00.000Z",
+			sessionStatuses: [signalStatus({ piboSessionId: "ps-other", status: "idle" })],
+		};
+		const patchedStatuses = applySignalStatusPatch(statusSnapshot, statusPatch);
+		assert.equal(patchedStatuses.needsRefresh, false);
+		assert.equal(applySignalStatusPatchToBootstrap(withGlobalStatuses, statusPatch).sessions[1].status, "idle");
+		assert.equal(patchedStatuses.snapshot.rootVersions["ps-other"], 4);
+		assert.equal(patchedStatuses.snapshot.sessions["ps-other"].isTreeActive, false);
+		assert.equal(applySignalStatusPatch(statusSnapshot, { ...statusPatch, fromVersion: 99 }).needsRefresh, true, "a missed global patch requests reconciliation");
+		assert.equal(shouldCommitSignalStatusSnapshot(statusSnapshot, { ...statusSnapshot, generatedAt: "2026-05-27T00:19:00.000Z" }), false, "a delayed global snapshot cannot roll state back");
+		assert.equal(shouldCommitSignalStatusSnapshot(statusSnapshot, { ...statusSnapshot, generatedAt: "2026-05-27T00:22:00.000Z", rootVersions: { "ps-root": 0, "ps-other": 0 } }), true, "a newer gateway snapshot can reset root versions after restart");
 	`;
 	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
 }
@@ -205,6 +251,17 @@ test("optimistic session status updates are not overwritten by the previous sign
 	const source = readFileSync("src/apps/chat-ui/src/App.tsx", "utf8");
 	assert.match(source, /setBootstrap\(\(current\) => current \? updater\(current\) : current\)/);
 	assert.doesNotMatch(source, /setBootstrap\(\(current\) => current \? overlayCurrentSignals\(updater\(current\)\) : current\)/);
+});
+
+test("the sidebar consumes one global signal feed independent of selection", () => {
+	const source = readFileSync("src/apps/chat-ui/src/App.tsx", "utf8");
+	assert.match(source, /subscribeSignalStatuses\(signalStatusHandlers\)/);
+	assert.match(source, /fetchSignalStatuses\(\{ signal: controller\.signal \}\)/);
+	assert.match(source, /applySignalStatusSnapshotToBootstrap\(current, snapshot\)/);
+	assert.match(source, /applySignalStatusPatchToBootstrap\(current, patch\)/);
+	assert.match(source, /SIGNAL_STATUS_RECONCILE_INTERVAL_MS = 5_000/);
+	assert.match(source, /sessionStatusSignalsRef\.current\?\.sessions\[targetPiboSessionId\]/, "room events defer to app-global canonical signals");
+	assert.match(source, /overlayCurrentSignals\(\{ \.\.\.current, sessions: appendSessionRoots\(current\.sessions, page\.sessions\) \}\)/, "newly paged sessions receive cached global statuses immediately");
 });
 
 test("restored or newly visible pages reconnect and refresh the selected signal tree", () => {

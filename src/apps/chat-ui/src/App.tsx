@@ -6,9 +6,9 @@ import { RefreshCw, X } from "lucide-react";
 import { getBootstrap, getNavigation, getSessionPage, markRoomRead, markSessionRead, patchRoom, patchSession, postAction, postMessage, postRoom, postSession } from "./api-chat-sessions";
 import { navigateToChatRoute, type ChatAppRoute, type NavigationOptions } from "./app-routes";
 import { downloadChatFile, type ChatDownloadProgress } from "./api-chat-files";
-import { fetchSignalTree, subscribeSignalTree } from "./api-trace-signals";
+import { fetchSignalStatuses, fetchSignalTree, subscribeSignalStatuses, subscribeSignalTree } from "./api-trace-signals";
 import { listUserSkills } from "./api-agent-designer";
-import type { AgentCatalog, BootstrapData, NavigationData, PiboSignalPatch, PiboSignalSnapshot, UserSkill } from "./types";
+import type { AgentCatalog, BootstrapData, NavigationData, PiboSignalPatch, PiboSignalSnapshot, PiboSignalStatusPatch, PiboSignalStatusSnapshot, UserSkill } from "./types";
 import { countRender } from "./renderMetrics";
 import {
 	chatStreamEvent,
@@ -122,8 +122,12 @@ import {
 	applySelectedSignalPatch,
 	applySignalPatchToBootstrap,
 	applySignalSnapshotToBootstrap,
+	applySignalStatusPatch,
+	applySignalStatusPatchToBootstrap,
+	applySignalStatusSnapshotToBootstrap,
 	retainSelectedSignalSnapshot,
 	shouldCommitSelectedSignalSnapshot,
+	shouldCommitSignalStatusSnapshot,
 	shouldReconcileSelectedSignalTree,
 	signalLegacyStatus,
 	signalSnapshotIncludesSession,
@@ -155,6 +159,7 @@ type LoadNavigationOptions = {
 
 const SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS = 750;
 const SIGNAL_TREE_RECONCILE_INTERVAL_MS = 5_000;
+const SIGNAL_STATUS_RECONCILE_INTERVAL_MS = 5_000;
 const NAVIGATION_FALLBACK_REFRESH_MS = 30_000;
 const SESSION_PAGE_SIZE = 120;
 const ARCHIVED_SESSION_PAGE_SIZE = 60;
@@ -289,6 +294,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const [gatewayMode, setGatewayMode] = useState<"main" | "fallback" | null>(null);
 	const [sessionSignals, setSessionSignals] = useState<PiboSignalSnapshot | null>(null);
 	const sessionSignalsRef = useRef<PiboSignalSnapshot | null>(null);
+	const sessionStatusSignalsRef = useRef<PiboSignalStatusSnapshot | null>(null);
 	const [signalNow, setSignalNow] = useState(() => Date.now());
 	const showArchivedRef = useRef(showArchived);
 	const sessionListScrollRef = useRef<HTMLDivElement>(null);
@@ -302,10 +308,12 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const selectedRoomArchived = selectedRoom ? isArchivedRoom(selectedRoom) : false;
 	const loadingSelectedRoom = Boolean(loadingRoomId && loadingRoomId === selectedRoomId);
 	const overlayCurrentSignals = useCallback((data: BootstrapData): BootstrapData => {
-		const snapshot = sessionSignalsRef.current;
-		return data.selectedPiboSessionId && signalSnapshotIncludesSession(snapshot, data.selectedPiboSessionId)
-			? applySignalSnapshotToBootstrap(data, snapshot)
-			: data;
+		const statusSnapshot = sessionStatusSignalsRef.current;
+		const withGlobalStatuses = statusSnapshot ? applySignalStatusSnapshotToBootstrap(data, statusSnapshot) : data;
+		const selectedSnapshot = sessionSignalsRef.current;
+		return data.selectedPiboSessionId && signalSnapshotIncludesSession(selectedSnapshot, data.selectedPiboSessionId)
+			? applySignalSnapshotToBootstrap(withGlobalStatuses, selectedSnapshot)
+			: withGlobalStatuses;
 	}, []);
 
 	useEffect(() => {
@@ -342,6 +350,76 @@ export function App({ route }: { route: ChatAppRoute }) {
 	useEffect(() => {
 		setSignalNow(Date.now());
 	}, [bootstrap]);
+
+	useEffect(() => {
+		let active = true;
+		let signalRecoveryTimer: ReturnType<typeof setTimeout> | undefined;
+		const controller = new AbortController();
+		const commitSignalStatusSnapshot = (snapshot: PiboSignalStatusSnapshot) => {
+			if (!active || controller.signal.aborted || !shouldCommitSignalStatusSnapshot(sessionStatusSignalsRef.current, snapshot)) return;
+			sessionStatusSignalsRef.current = snapshot;
+			setBootstrap((current) => current ? applySignalStatusSnapshotToBootstrap(current, snapshot) : current);
+		};
+		const refreshSignalStatuses = (delayMs: number) => {
+			if (!active) return;
+			if (signalRecoveryTimer) clearTimeout(signalRecoveryTimer);
+			signalRecoveryTimer = setTimeout(() => {
+				signalRecoveryTimer = undefined;
+				fetchSignalStatuses({ signal: controller.signal })
+					.then(commitSignalStatusSnapshot)
+					.catch(() => {
+						if (!controller.signal.aborted) refreshSignalStatuses(SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS);
+					});
+			}, delayMs);
+		};
+		const signalStatusHandlers = {
+			onSnapshot: (snapshot: PiboSignalStatusSnapshot) => {
+				if (!active || !shouldCommitSignalStatusSnapshot(sessionStatusSignalsRef.current, snapshot)) return;
+				if (signalRecoveryTimer) {
+					clearTimeout(signalRecoveryTimer);
+					signalRecoveryTimer = undefined;
+				}
+				commitSignalStatusSnapshot(snapshot);
+			},
+			onPatch: (patch: PiboSignalStatusPatch) => {
+				if (!active) return;
+				const result = applySignalStatusPatch(sessionStatusSignalsRef.current, patch);
+				if (result.needsRefresh) {
+					refreshSignalStatuses(0);
+					return;
+				}
+				sessionStatusSignalsRef.current = result.snapshot;
+				setBootstrap((current) => current ? applySignalStatusPatchToBootstrap(current, patch) : current);
+			},
+			onError: () => refreshSignalStatuses(SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS),
+		};
+		let unsubscribeSignalStatuses: () => void = () => undefined;
+		const reconnectSignalStatuses = () => {
+			if (!active) return;
+			unsubscribeSignalStatuses();
+			unsubscribeSignalStatuses = subscribeSignalStatuses(signalStatusHandlers);
+			refreshSignalStatuses(0);
+		};
+		const refreshVisibleSignalStatuses = () => {
+			if (document.visibilityState === "visible") reconnectSignalStatuses();
+		};
+		unsubscribeSignalStatuses = subscribeSignalStatuses(signalStatusHandlers);
+		window.addEventListener("pageshow", reconnectSignalStatuses);
+		document.addEventListener("visibilitychange", refreshVisibleSignalStatuses);
+		const signalStatusReconcileTimer = window.setInterval(() => {
+			if (document.visibilityState === "visible") refreshSignalStatuses(0);
+		}, SIGNAL_STATUS_RECONCILE_INTERVAL_MS);
+		refreshSignalStatuses(0);
+		return () => {
+			active = false;
+			controller.abort();
+			if (signalRecoveryTimer) clearTimeout(signalRecoveryTimer);
+			window.removeEventListener("pageshow", reconnectSignalStatuses);
+			document.removeEventListener("visibilitychange", refreshVisibleSignalStatuses);
+			window.clearInterval(signalStatusReconcileTimer);
+			unsubscribeSignalStatuses();
+		};
+	}, []);
 
 	useEffect(() => {
 		if (area !== "sessions" || !selectedPiboSessionId) {
@@ -826,7 +904,8 @@ export function App({ route }: { route: ChatAppRoute }) {
 			const targetPiboSessionId = event.piboSessionId;
 			const streamStatus = liveSessionStatusFromEvent(event);
 			if (targetPiboSessionId && streamStatus) {
-				const signalStatus = signalLegacyStatus(sessionSignalsRef.current?.sessions[targetPiboSessionId]);
+				const signalStatus = sessionStatusSignalsRef.current?.sessions[targetPiboSessionId]?.status
+					?? signalLegacyStatus(sessionSignalsRef.current?.sessions[targetPiboSessionId]);
 				const status = signalStatus ?? streamStatus;
 				const lastActivityAt = new Date().toISOString();
 				updateBootstrapCache((data) => updateSessionNodeInBootstrap(data, targetPiboSessionId, (node) => ({ ...node, status, lastActivityAt })));
@@ -1347,14 +1426,16 @@ export function App({ route }: { route: ChatAppRoute }) {
 				staleTime: 30_000,
 				gcTime: 30 * 60_000,
 			});
-			setBootstrap((current) => current ? { ...current, sessions: appendSessionRoots(current.sessions, page.sessions) } : current);
+			setBootstrap((current) => current
+				? overlayCurrentSignals({ ...current, sessions: appendSessionRoots(current.sessions, page.sessions) })
+				: current);
 			if (archived) setVisibleArchivedSessionCount((current) => current + limit);
 			else setVisibleActiveSessionCount((current) => current + limit);
 		} finally {
 			if (archived) setLoadingArchivedSessions(false);
 			else setLoadingActiveSessions(false);
 		}
-	}, [activeRoomId, queryClient, selectedPiboSessionId, visibleActiveSessions, visibleArchivedSessions]);
+	}, [activeRoomId, overlayCurrentSignals, queryClient, selectedPiboSessionId, visibleActiveSessions, visibleArchivedSessions]);
 
 	if (error && !bootstrap) {
 		return <SignedOut message={error} />;

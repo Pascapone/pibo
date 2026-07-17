@@ -4,6 +4,8 @@ import type {
 	PiboSessionTraceView,
 	PiboSignalPatch,
 	PiboSignalSnapshot,
+	PiboSignalStatusPatch,
+	PiboSignalStatusSnapshot,
 	TracePayloadChunk,
 	TraceRawEventsPage,
 	TraceTimelinePage,
@@ -122,6 +124,24 @@ export async function fetchSessionSignals(piboSessionId: string, init?: RequestI
 
 export async function fetchSignalTree(piboSessionId: string, init?: RequestInit): Promise<PiboSignalSnapshot> {
 	return requestJson<PiboSignalSnapshot>(`/api/chat/signals/tree/${encodeURIComponent(piboSessionId)}`, init);
+}
+
+export async function fetchSignalStatuses(init?: RequestInit): Promise<PiboSignalStatusSnapshot> {
+	return requestJson<PiboSignalStatusSnapshot>("/api/chat/signals/statuses", init);
+}
+
+export function subscribeSignalStatuses(
+	handlers: {
+		onSnapshot?: (snapshot: PiboSignalStatusSnapshot) => void;
+		onPatch?: (patch: PiboSignalStatusPatch) => void;
+		onError?: (event: Event) => void;
+	},
+): () => void {
+	const events = new EventSource("/api/chat/signals/status-events");
+	events.addEventListener("signal_status_snapshot", (message) => handlers.onSnapshot?.(JSON.parse((message as MessageEvent).data) as PiboSignalStatusSnapshot));
+	events.addEventListener("signal_status_patch", (message) => handlers.onPatch?.(JSON.parse((message as MessageEvent).data) as PiboSignalStatusPatch));
+	events.onerror = (event) => handlers.onError?.(event);
+	return () => events.close();
 }
 
 export function subscribeSignalTree(

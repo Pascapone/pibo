@@ -271,6 +271,40 @@ An unauthenticated request cannot fetch or subscribe to session signals; allowed
 - THEN the request is rejected
 - AND no signal snapshot for `ps_other` is returned.
 
+### Requirement: Sidebar activity is app-global and selection-independent
+
+The sidebar MUST receive canonical live status for every known Pibo Session independently of which room or session is currently selected. Starting work through another browser, a hook, loop, Cron job, Ralph job, workflow, subagent, or other Product Boundary input MUST update the same sidebar signal feed.
+
+#### Current
+
+Chat Web consumes `/api/chat/signals/status-events` as one app-global SSE stream. The first event contains compact session status summaries and root versions for every known session. Later events contain compact root-scoped status patches without signal nodes, tool details, or telemetry payloads. `/api/chat/signals/statuses` provides the same complete status-summary snapshot for startup and reconciliation. The selected tree stream remains separate and drives Working, timer, and detailed tree state only.
+
+#### Acceptance
+
+A newly opened browser can identify all currently running sessions from its first global status snapshot. Session selection does not start or stop sidebar authority. The browser reconciles the full global status snapshot at least every five seconds while visible, rejects out-of-order snapshots, and reloads after a root-version gap. Stored unread counts continue to determine blue attention state after a terminal signal changes the canonical runtime status to idle.
+
+#### Scenario: Observe work started on another device
+
+- GIVEN session `ps_worker` is running after work was started from another browser or automation source
+- WHEN a new Chat Web client opens
+- THEN its initial global status snapshot marks `ps_worker` as tree-active
+- AND the sidebar shows `ps_worker` as running without selecting it.
+
+#### Scenario: Background session completes
+
+- GIVEN session `ps_worker` is running and another session is selected
+- WHEN `ps_worker` completes
+- THEN the global status patch changes `ps_worker` from running to terminal idle or error
+- AND the sidebar no longer shows it as running
+- AND an unread completion remains blue until read-state handling acknowledges it.
+
+#### Scenario: New work outranks a historical failure
+
+- GIVEN session `ps_worker` retains an error from an earlier turn
+- WHEN new work makes its tree active
+- THEN the global command-center status is running
+- AND the sidebar shows green until the new work becomes terminal.
+
 ### Requirement: Signal SSE streams send snapshot before patches
 
 The system MUST start every signal SSE stream with a complete tree snapshot and then send versioned patches for the same root. Signal streams MUST disable response transformation and proxy buffering and MUST emit periodic heartbeat comments so small patches are flushed promptly and idle connections remain alive.
@@ -398,12 +432,13 @@ The project SHOULD provide an operator-run benchmark that measures signal regist
 
 - [ ] SC-001: `test/signal-registry.test.mjs` verifies tree aggregation, queue changes, run signals, patch versions, pruning, and error semantics.
 - [ ] SC-002: `test/chat-signals-api.test.mjs` verifies app-context snapshots, tree snapshots, SSE snapshot-before-patch behavior, and navigation/bootstrap status overlays.
-- [ ] SC-003: Chat Web can show running, idle, and error state for a selected session tree without reading the full trace.
+- [ ] SC-003: Chat Web can show running, idle, and error state for every visible session independently of selection and without reading the full trace.
 - [ ] SC-004: A failed tool call or yielded run remains visible as a node error without incorrectly marking the whole session failed.
 - [ ] SC-005: `scripts/bench-signal-registry.mjs` runs after build and prints timing for deep-tree propagation, no-op queue updates, and metadata-changing tool updates.
 - [ ] SC-006: Active snapshots expose compact `activeTelemetry` hints for active or queued sessions and omit the hint for idle sessions.
 - [ ] SC-007: `latestTurn` remains running through intermediate phases and becomes terminal on completion, failure, interruption, disposal, or unresolved processing shutdown.
-- [ ] SC-008: Chat Web derives selected-session status, Working visibility, and the live timer from the shared signal activity model rather than trace lifecycle inference.
+- [ ] SC-008: Chat Web derives selected-session Working visibility and the live timer from the selected signal tree while deriving sidebar status from the app-global signal feed.
+- [ ] SC-009: A fresh browser and an already-open browser both show work started by another client or automation source, and background completion clears running state without selecting the session.
 
 ## Assumptions and Open Questions
 
@@ -436,6 +471,7 @@ The project SHOULD provide an operator-run benchmark that measures signal regist
 | REQ-011 Active telemetry hints stay compact | Active tool exposes a compact hint | `src/signals/types.ts`, `src/signals/registry.ts`, `test/signal-registry.test.mjs` | Draft |
 | REQ-012 Terminal pruning | Prune finished turn | `src/signals/registry.ts`, `test/signal-registry.test.mjs` | Draft |
 | REQ-013 Signal performance benchmark | Benchmark a deeper tree | `scripts/bench-signal-registry.mjs`, `src/signals/registry.ts` | Draft |
+| REQ-014 App-global sidebar activity | Observe work started on another device; Background session completes | `src/signals/registry.ts`, `src/apps/chat/web-app.ts`, `src/apps/chat-ui/src/App.tsx`, `test/chat-signals-api.test.mjs`, `test/chat-ui-app-signal-status.test.mjs` | Draft |
 
 ## Verification Basis
 

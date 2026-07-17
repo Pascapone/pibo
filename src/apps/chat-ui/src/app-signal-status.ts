@@ -1,10 +1,21 @@
 import { resolveSessionActivity } from "../../../session-ui/sessionActivity.js";
-import type { BootstrapData, PiboSignalPatch, PiboSignalSnapshot, PiboWebSessionNode } from "./types";
+import type {
+	BootstrapData,
+	PiboSignalPatch,
+	PiboSignalSnapshot,
+	PiboSignalStatusPatch,
+	PiboSignalStatusSnapshot,
+	PiboWebSessionNode,
+} from "./types";
 
 type SignalSessionUpdate = { status?: PiboWebSessionNode["status"]; updatedAt?: string; isTreeActive?: boolean };
 
 export function applySignalSnapshotToBootstrap(bootstrap: BootstrapData, snapshot: PiboSignalSnapshot): BootstrapData {
 	return updateBootstrapSessionStatuses(bootstrap, (piboSessionId) => signalSessionUpdate(snapshot.sessions[piboSessionId]));
+}
+
+export function applySignalStatusSnapshotToBootstrap(bootstrap: BootstrapData, snapshot: PiboSignalStatusSnapshot): BootstrapData {
+	return updateBootstrapSessionStatuses(bootstrap, (piboSessionId) => signalStatusUpdate(snapshot.sessions[piboSessionId]));
 }
 
 export function signalSnapshotIncludesSession(snapshot: PiboSignalSnapshot | null | undefined, piboSessionId: string): snapshot is PiboSignalSnapshot {
@@ -49,9 +60,45 @@ export function applySelectedSignalPatch(
 	return { snapshot, needsRefresh: snapshot === current };
 }
 
-export function applySignalPatchToBootstrap(bootstrap: BootstrapData, patch: PiboSignalPatch): BootstrapData {
+export function applySignalPatchToBootstrap(bootstrap: BootstrapData, patch: Pick<PiboSignalPatch, "sessionSnapshots">): BootstrapData {
 	const updates = new Map(patch.sessionSnapshots.map((snapshot) => [snapshot.piboSessionId, signalSessionUpdate(snapshot)]));
 	return updateBootstrapSessionStatuses(bootstrap, (piboSessionId) => updates.get(piboSessionId));
+}
+
+export function applySignalStatusPatchToBootstrap(bootstrap: BootstrapData, patch: Pick<PiboSignalStatusPatch, "sessionStatuses">): BootstrapData {
+	const updates = new Map(patch.sessionStatuses.map((status) => [status.piboSessionId, signalStatusUpdate(status)]));
+	return updateBootstrapSessionStatuses(bootstrap, (piboSessionId) => updates.get(piboSessionId));
+}
+
+export function shouldCommitSignalStatusSnapshot(
+	current: PiboSignalStatusSnapshot | null,
+	snapshot: PiboSignalStatusSnapshot,
+): boolean {
+	if (!current) return true;
+	const currentMs = Date.parse(current.generatedAt);
+	const snapshotMs = Date.parse(snapshot.generatedAt);
+	if (Number.isFinite(currentMs) && Number.isFinite(snapshotMs)) return currentMs <= snapshotMs;
+	return Object.entries(current.rootVersions).every(([rootId, version]) => (snapshot.rootVersions[rootId] ?? -1) >= version);
+}
+
+export function applySignalStatusPatch(
+	current: PiboSignalStatusSnapshot | null,
+	patch: PiboSignalStatusPatch,
+): { snapshot: PiboSignalStatusSnapshot | null; needsRefresh: boolean } {
+	if (!current || (current.rootVersions[patch.rootPiboSessionId] ?? 0) !== patch.fromVersion) {
+		return { snapshot: current, needsRefresh: true };
+	}
+	const sessions = { ...current.sessions };
+	for (const status of patch.sessionStatuses) sessions[status.piboSessionId] = status;
+	return {
+		snapshot: {
+			...current,
+			generatedAt: patch.generatedAt,
+			rootVersions: { ...current.rootVersions, [patch.rootPiboSessionId]: patch.toVersion },
+			sessions,
+		},
+		needsRefresh: false,
+	};
 }
 
 function updateBootstrapSessionStatuses(
@@ -107,6 +154,10 @@ function signalSessionUpdate(snapshot: PiboSignalSnapshot["sessions"][string] | 
 	const status = signalLegacyStatus(snapshot);
 	if (!snapshot && !status) return undefined;
 	return { status, updatedAt: snapshot?.updatedAt, isTreeActive: snapshot?.isTreeActive };
+}
+
+function signalStatusUpdate(status: PiboSignalStatusSnapshot["sessions"][string] | undefined): SignalSessionUpdate | undefined {
+	return status ? { status: status.status, updatedAt: status.updatedAt, isTreeActive: status.isTreeActive } : undefined;
 }
 
 export function signalLegacyStatus(snapshot: PiboSignalSnapshot["sessions"][string] | undefined): PiboWebSessionNode["status"] | undefined {

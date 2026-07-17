@@ -309,6 +309,30 @@ export type PiboSignalPatch = {
 	sessionSnapshots: PiboSessionSignalSnapshot[];
 };
 
+export type PiboSessionSignalStatus = {
+	piboSessionId: string;
+	rootPiboSessionId: string;
+	updatedAt: string;
+	status: "idle" | "running" | "error";
+	isTreeActive: boolean;
+};
+
+export type PiboSignalStatusSnapshot = {
+	type?: "signal_status_snapshot";
+	generatedAt: string;
+	rootVersions: Record<string, number>;
+	sessions: Record<string, PiboSessionSignalStatus>;
+};
+
+export type PiboSignalStatusPatch = {
+	type?: "signal_status_patch";
+	rootPiboSessionId: string;
+	fromVersion: number;
+	toVersion: number;
+	generatedAt: string;
+	sessionStatuses: PiboSessionSignalStatus[];
+};
+
 export type ChatSessionPage = {
 	roomId: string;
 	archived: boolean;
