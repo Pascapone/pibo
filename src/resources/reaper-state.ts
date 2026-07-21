@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
@@ -33,11 +34,47 @@ export function defaultResourceReaperStatePath(): string {
 	return process.env.PIBO_RESOURCE_REAPER_STATE_PATH || piboHomePath("resource-reaper-state.json");
 }
 
-export async function writeResourceReaperState(path: string, state: ResourceReaperState): Promise<void> {
+export interface WriteResourceReaperStateOptions {
+	rename?: typeof rename;
+	wait?: (delayMs: number) => Promise<void>;
+	retryDelaysMs?: number[];
+}
+
+const DEFAULT_RENAME_RETRY_DELAYS_MS = [10, 25, 50, 100, 200];
+const TRANSIENT_RENAME_ERROR_CODES = new Set(["EACCES", "EBUSY", "ENOTEMPTY", "EPERM"]);
+
+export async function writeResourceReaperState(
+	path: string,
+	state: ResourceReaperState,
+	options: WriteResourceReaperStateOptions = {},
+): Promise<void> {
 	await mkdir(dirname(path), { recursive: true });
-	const temporaryPath = `${path}.${process.pid}.tmp`;
+	const temporaryPath = `${path}.${process.pid}.${randomUUID()}.tmp`;
+	const renameFile = options.rename ?? rename;
+	const wait = options.wait ?? defaultWait;
+	const retryDelaysMs = options.retryDelaysMs ?? DEFAULT_RENAME_RETRY_DELAYS_MS;
 	await writeFile(temporaryPath, `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 });
-	await rename(temporaryPath, path);
+	try {
+		for (let attempt = 0; ; attempt += 1) {
+			try {
+				await renameFile(temporaryPath, path);
+				return;
+			} catch (error) {
+				if (!isTransientRenameError(error) || attempt >= retryDelaysMs.length) throw error;
+				await wait(retryDelaysMs[attempt]);
+			}
+		}
+	} finally {
+		await rm(temporaryPath, { force: true }).catch(() => undefined);
+	}
+}
+
+function isTransientRenameError(error: unknown): boolean {
+	return error instanceof Error && "code" in error && TRANSIENT_RENAME_ERROR_CODES.has(String((error as NodeJS.ErrnoException).code));
+}
+
+async function defaultWait(delayMs: number): Promise<void> {
+	await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
 }
 
 export async function claimResourceReaperOwnership(

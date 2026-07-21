@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -14,9 +14,10 @@ import {
 	buildResourceReapPlan,
 	buildUnmanagedBrowserPlanItems,
 	listActiveResourceLeases,
+	planComputeReapSafely,
 } from '../dist/resources/lifecycle.js';
 import { ResourceReaperService } from '../dist/resources/reaper.js';
-import { readResourceReaperTimerStatus } from '../dist/resources/reaper-state.js';
+import { readResourceReaperTimerStatus, writeResourceReaperState } from '../dist/resources/reaper-state.js';
 
 const execFileAsync = promisify(execFile);
 const cliPath = new URL('../dist/bin/pibo.js', import.meta.url).pathname;
@@ -274,6 +275,65 @@ test('unmanaged Chromium planning honors grace and explicit exemptions and apply
 	assert.equal(result.plan.unmanagedBrowsers.selected, 1);
 });
 
+test('resource reaper keeps browser cleanup active when Docker compute planning fails', async () => {
+	const now = new Date('2026-07-21T00:00:00.000Z');
+	const plan = await planComputeReapSafely(
+		{ includeDev: false, maxAgeMinutes: 60, now },
+		async () => { throw new Error('Docker daemon is not reachable'); },
+	);
+	assert.equal(plan.summary.selected, 0);
+	assert.deepEqual(plan.items, []);
+	assert.match(plan.nextCommands[0], /browser and stale-file cleanup remain active/);
+});
+
+test('resource reaper state writes retry transient rename failures and clean temporary files', async () => {
+	const cwd = await mkdtemp(join(tmpdir(), 'pibo-resource-reaper-write-'));
+	try {
+		const statePath = join(cwd, 'reaper.json');
+		const state = {
+			status: 'running',
+			pid: process.pid,
+			startedAt: '2026-07-21T00:00:00.000Z',
+			intervalMs: 300_000,
+		};
+		let attempts = 0;
+		await writeResourceReaperState(statePath, state, {
+			rename: async (source, destination) => {
+				attempts += 1;
+				if (attempts < 3) throw Object.assign(new Error('temporarily locked'), { code: 'EPERM' });
+				await rename(source, destination);
+			},
+			wait: async () => undefined,
+			retryDelaysMs: [0, 0],
+		});
+		assert.equal(attempts, 3);
+		assert.deepEqual(JSON.parse(await readFile(statePath, 'utf8')), state);
+		assert.deepEqual(await readdir(cwd), ['reaper.json']);
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test('resource reaper state writes clean temporary files after terminal rename failures', async () => {
+	const cwd = await mkdtemp(join(tmpdir(), 'pibo-resource-reaper-write-failed-'));
+	try {
+		const statePath = join(cwd, 'reaper.json');
+		await assert.rejects(writeResourceReaperState(statePath, {
+			status: 'running',
+			pid: process.pid,
+			startedAt: '2026-07-21T00:00:00.000Z',
+			intervalMs: 300_000,
+		}, {
+			rename: async () => { throw Object.assign(new Error('still locked'), { code: 'EPERM' }); },
+			wait: async () => undefined,
+			retryDelaysMs: [],
+		}), /still locked/);
+		assert.deepEqual(await readdir(cwd), []);
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
 test('automatic resource reaper persists live last and next run health state', async () => {
 	const cwd = await mkdtemp(join(tmpdir(), 'pibo-resource-reaper-'));
 	try {
@@ -330,6 +390,33 @@ test('automatic resource reaper persists live last and next run health state', a
 		assert.deepEqual(status.lastResult, { browserPools: 0, unmanagedBrowsers: 0, staleFiles: 0, computeWorkers: 0 });
 		await competingService.stop();
 		await service.stop();
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test('automatic resource reaper treats state persistence failures as best effort', async () => {
+	const cwd = await mkdtemp(join(tmpdir(), 'pibo-resource-reaper-persist-failed-'));
+	try {
+		const statePath = join(cwd, 'reaper.json');
+		let plans = 0;
+		const service = new ResourceReaperService({
+			statePath,
+			initialDelayMs: 60_000,
+			plan: async () => {
+				plans += 1;
+				throw new Error('cleanup planning failed');
+			},
+			writeState: async () => {
+				throw Object.assign(new Error('state file is locked'), { code: 'EPERM' });
+			},
+		});
+		await service.start();
+		assert.equal(await service.runNow(), undefined);
+		assert.equal(await service.runNow(), undefined);
+		assert.equal(plans, 2);
+		await service.stop();
+		await assert.rejects(readFile(`${statePath}.lock`, 'utf8'), /ENOENT/);
 	} finally {
 		await rm(cwd, { recursive: true, force: true });
 	}

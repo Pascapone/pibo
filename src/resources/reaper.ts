@@ -14,6 +14,7 @@ export interface ResourceReaperServiceOptions extends PlanResourceReapOptions {
 	plan?: typeof planResourceReap;
 	apply?: typeof applyResourceReapPlan;
 	clock?: () => Date;
+	writeState?: typeof writeResourceReaperState;
 }
 
 export class ResourceReaperService {
@@ -24,6 +25,7 @@ export class ResourceReaperService {
 	private readonly plan: typeof planResourceReap;
 	private readonly apply: typeof applyResourceReapPlan;
 	private readonly now: () => Date;
+	private readonly writeState: typeof writeResourceReaperState;
 	private timer: NodeJS.Timeout | undefined;
 	private running = false;
 	private stopped = true;
@@ -38,6 +40,7 @@ export class ResourceReaperService {
 		this.plan = options.plan ?? planResourceReap;
 		this.apply = options.apply ?? applyResourceReapPlan;
 		this.now = options.clock ?? (() => new Date());
+		this.writeState = options.writeState ?? writeResourceReaperState;
 	}
 
 	async start(): Promise<void> {
@@ -61,18 +64,22 @@ export class ResourceReaperService {
 		this.stopped = true;
 		if (this.timer) clearTimeout(this.timer);
 		this.timer = undefined;
-		if (this.state && this.ownsTimer) {
-			this.state = { ...this.state, status: "stopped", nextRunAt: undefined };
-			await this.persist();
+		try {
+			if (this.state && this.ownsTimer) {
+				this.state = { ...this.state, status: "stopped", nextRunAt: undefined };
+				await this.persist();
+			}
+		} finally {
+			if (this.ownsTimer) await releaseResourceReaperOwnership(this.lockPath);
+			this.ownsTimer = false;
 		}
-		if (this.ownsTimer) await releaseResourceReaperOwnership(this.lockPath);
-		this.ownsTimer = false;
 	}
 
 	async runNow(): Promise<ResourceReapApplyResult | undefined> {
 		if (!this.ownsTimer || this.running) return undefined;
 		this.running = true;
 		const runAt = this.now();
+		let result: ResourceReapApplyResult | undefined;
 		try {
 			const plan = await this.plan({
 				includeDev: this.options.includeDev,
@@ -84,7 +91,7 @@ export class ResourceReaperService {
 				exemptBrowserPids: this.options.exemptBrowserPids,
 				now: runAt,
 			});
-			const result = await this.apply(plan);
+			result = await this.apply(plan);
 			this.state = {
 				...(this.state ?? {
 					status: "running" as const,
@@ -104,8 +111,6 @@ export class ResourceReaperService {
 				lastError: undefined,
 			};
 			console.error(JSON.stringify({ event: "resource_reaper_finished", at: runAt.toISOString(), ...this.state.lastResult }));
-			await this.persist();
-			return result;
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			this.state = {
@@ -121,24 +126,45 @@ export class ResourceReaperService {
 				lastError: message,
 			};
 			console.error(JSON.stringify({ event: "resource_reaper_failed", at: runAt.toISOString(), error: message }));
-			await this.persist();
-			return undefined;
 		} finally {
-			this.running = false;
+			try {
+				await this.persist();
+			} finally {
+				this.running = false;
+			}
 		}
+		return result;
 	}
 
 	private arm(delayMs: number): void {
 		if (this.stopped) return;
 		if (this.timer) clearTimeout(this.timer);
 		this.timer = setTimeout(() => {
-			void this.runNow().finally(() => this.arm(this.intervalMs));
+			void this.runNow()
+				.catch((error) => {
+					console.error(JSON.stringify({
+						event: "resource_reaper_timer_failed",
+						at: new Date().toISOString(),
+						error: error instanceof Error ? error.message : String(error),
+					}));
+				})
+				.finally(() => this.arm(this.intervalMs));
 		}, delayMs);
 		this.timer.unref?.();
 	}
 
 	private async persist(): Promise<void> {
-		if (this.state) await writeResourceReaperState(this.statePath, this.state);
+		if (!this.state) return;
+		try {
+			await this.writeState(this.statePath, this.state);
+		} catch (error) {
+			console.error(JSON.stringify({
+				event: "resource_reaper_state_persist_failed",
+				at: new Date().toISOString(),
+				path: this.statePath,
+				error: error instanceof Error ? error.message : String(error),
+			}));
+		}
 	}
 }
 
