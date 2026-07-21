@@ -7,6 +7,7 @@ import type { PiboSessionListItem } from "../../core/events.js";
 import type { ModelProfile } from "../../core/profiles.js";
 import type { PiboSession } from "../../sessions/store.js";
 import { buildTraceViewFromEvents } from "../../shared/trace-engine.js";
+import type { TraceMessageTurnTiming } from "../../shared/trace-event-projection.js";
 import type { PiboSessionTraceView, PiboTraceNode } from "../../shared/trace-types.js";
 import type { ChatWebSessionIndexItem, ChatWebStoredPiboEvent } from "./read-model.js";
 import { isChatWebSessionArchived } from "./session-metadata.js";
@@ -85,6 +86,7 @@ type TraceBuildInput = {
 	metadata?: SessionMetadata;
 	transcriptEntries?: SessionEntry[];
 	transcriptOrderOffset?: number;
+	turnTimings?: TraceMessageTurnTiming[];
 	includeRawEvents?: boolean;
 	rawEventsLimit?: number;
 	latestStreamId?: number;
@@ -234,6 +236,7 @@ export async function buildTraceView(input: TraceBuildInput): Promise<PiboSessio
 			title: createSessionTitle(input.session, metadata),
 		},
 		events: input.events as unknown as import("../../shared/trace-types.js").ChatWebStoredEvent[],
+		turnTimings: input.turnTimings,
 		transcriptEntries: allEntries,
 		sessions: input.sessions.map((s) => ({
 			id: s.id,
@@ -297,6 +300,7 @@ export function createTraceViewVersion(input: {
 	return createHash("sha1")
 		.update(
 			JSON.stringify({
+				traceProjection: "turn-timing-v2",
 				session: {
 					id: input.session.id,
 					piSessionId: input.session.piSessionId,

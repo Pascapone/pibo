@@ -25,6 +25,7 @@ import {
 } from "./types/rooms.js";
 import { chatStreamFramesFromOutputEvent, createChatStreamState, nextTransientChatStreamFrameId, type ChatStreamEvent } from "./stream.js";
 import { buildSessionNodes, buildTraceView, createTraceViewVersion, loadPiSessionFastMetadata, loadPiSessionMetadata, readTailEntries, readTranscriptHistoryPage, type PiboSessionTraceView, type PiboWebSessionNode, type PiboWebSessionStatus } from "./trace.js";
+import type { TraceMessageTurnTiming } from "../../shared/trace-event-projection.js";
 import type { ChatWebStoredEvent, PiboSessionTraceSummary, PiboTraceNode, TraceTimelinePage } from "../../shared/trace-types.js";
 import {
 	DEFAULT_TRACE_EVENTS_PAGE_SIZE,
@@ -324,6 +325,7 @@ type ChatTimelineQuery = {
 	listEvents(input: ChatEventListInput): StoredChatEvent[];
 	listSessionEvents(piboSessionId: string, limit?: number): ChatWebStoredPiboEvent[];
 	listAllSessionEvents(piboSessionId: string): ChatWebStoredPiboEvent[];
+	listMessageTurnTimings(piboSessionId: string): TraceMessageTurnTiming[];
 	listTraceEvents(input: { piboSessionId: string; limit?: number; beforeOrAtSequence?: number; beforeSequence?: number; includeLive?: boolean } | string): ChatWebStoredPiboEvent[];
 	countEventsByType(input?: { piboSessionId?: string; eventTypes?: string[] }): Array<{ eventType: string; count: number }>;
 	getLatestEventSequence(piboSessionId: string): number;
@@ -880,6 +882,7 @@ function createFastTraceV2Version(input: {
 		.sort((left, right) => left.id.localeCompare(right.id));
 	return createHash("sha1")
 		.update(JSON.stringify({
+			traceProjection: "turn-timing-v2",
 			session: {
 				id: input.session.id,
 				piSessionId: input.session.piSessionId,
@@ -5343,6 +5346,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				let metadataMs = 0;
 				const lastEventSequence = state.timelineQuery.getLatestEventSequence(selectedSession.id);
 				const latestStreamId = state.timelineQuery.getLatestStreamId({ piboSessionId: selectedSession.id });
+				const turnTimings = state.timelineQuery.listMessageTurnTimings(selectedSession.id);
 				const liveSnapshots = timelineCursor.kind === "tail" ? state.outputCompactor.snapshotsForSession(selectedSession.id) : [];
 				const metadataStartedAt = performance.now();
 				const transcriptMetadata = timelineCursor.kind === "tail" || timelineCursor.kind === "transcript"
@@ -5405,6 +5409,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 							metadata: transcriptMetadata ?? {},
 							transcriptEntries: history.entries,
 							transcriptOrderOffset: history.startByte,
+							turnTimings,
 							includeRawEvents: false,
 							latestStreamId,
 						});
@@ -5436,6 +5441,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 							status: indexedSession?.status,
 							metadata: transcriptMetadata ?? {},
 							transcriptEntries,
+							turnTimings,
 							includeRawEvents: false,
 							latestStreamId,
 						});
@@ -5562,6 +5568,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const metadataMs = performance.now() - metadataStartedAt;
 				const lastEventSequence = state.timelineQuery.getLatestEventSequence(selectedSession.id);
 				const latestStreamId = state.timelineQuery.getLatestStreamId({ piboSessionId: selectedSession.id });
+				const turnTimings = state.timelineQuery.listMessageTurnTimings(selectedSession.id);
 				const liveSnapshots = beforeSequence === undefined ? state.outputCompactor.snapshotsForSession(selectedSession.id) : [];
 				const baseVersion = createTraceViewVersion({
 					session: selectedSession,
@@ -5605,6 +5612,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 						events,
 						status: indexedSession?.status,
 						metadata,
+						turnTimings,
 						includeRawEvents: false,
 						latestStreamId,
 					});
@@ -5668,6 +5676,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					sessions: ownedSessions,
 					events: state.timelineQuery.listTraceEvents({ piboSessionId, beforeOrAtSequence: eventSequence, limit: DEFAULT_TRACE_EVENTS_PAGE_SIZE }),
 					status: indexedSession?.status,
+					turnTimings: state.timelineQuery.listMessageTurnTimings(piboSessionId),
 				});
 				return responseJson(trace);
 			}

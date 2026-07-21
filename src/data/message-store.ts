@@ -23,6 +23,13 @@ export type ChatMessageInsertInput = {
 
 export type StoredChatMessage = ChatMessageInsertInput & { attributes: PiboJsonObject };
 
+export type ChatMessageCompletionInput = {
+	sessionId: string;
+	turnId: string;
+	completedAt: string;
+	status?: string;
+};
+
 type ChatMessageRow = {
 	id: string;
 	session_id: string;
@@ -103,6 +110,18 @@ export class MessageStore {
 	listMessages(sessionId: string): StoredChatMessage[] {
 		const rows = this.db.prepare("SELECT * FROM chat_messages WHERE session_id = ? ORDER BY sequence ASC").all(sessionId) as ChatMessageRow[];
 		return rows.map(messageFromRow);
+	}
+
+	completeAssistantMessagesForTurn(input: ChatMessageCompletionInput): number {
+		const result = this.db.prepare(`
+			UPDATE chat_messages
+			SET completed_at = ?,
+				status = ?
+			WHERE session_id = ?
+				AND turn_id = ?
+				AND role = 'assistant'
+		`).run(input.completedAt, input.status ?? "complete", input.sessionId, input.turnId);
+		return Number(result.changes ?? 0);
 	}
 }
 
