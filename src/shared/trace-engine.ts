@@ -9,8 +9,10 @@ import {
 	findOpenTranscriptEventIds,
 	isConfirmedUserMessageEcho,
 	latestTraceStreamId,
+	mergeMessageTurnTimings,
 	messageTurnTimingsFromEvents,
 	reconcileTranscriptUserMessageTimestamps,
+	type TraceMessageTurnTiming,
 	traceEventDedupeKey,
 } from "./trace-event-projection.js";
 import { flattenTraceNodes, mapTraceNodesById, nestTraceNodes } from "./trace-nodes.js";
@@ -50,6 +52,7 @@ import type {
 type TraceBuildInput = {
 	session: { id: string; piSessionId: string; title?: string | null };
 	events: ChatWebStoredEvent[];
+	turnTimings?: TraceMessageTurnTiming[];
 	transcriptEntries?: SessionEntry[];
 	sessions?: Array<{
 		id: string;
@@ -71,7 +74,8 @@ export function buildTraceViewFromEvents(input: TraceBuildInput): PiboSessionTra
 	const allEntries = input.transcriptEntries ?? [];
 	const openTranscriptEventIds = findOpenTranscriptEventIds(events, sessionStatus);
 	const entries = projectTranscriptEntries(allEntries, sessionStatus, openTranscriptEventIds);
-	const nodes = traceNodesFromEntries(input.session.id, entries, messageTurnTimingsFromEvents(events));
+	const turnTimings = mergeMessageTurnTimings(input.turnTimings ?? [], messageTurnTimingsFromEvents(events));
+	const nodes = traceNodesFromEntries(input.session.id, entries, turnTimings);
 	reconcileTranscriptUserMessageTimestamps(nodes, events);
 	const byId = mapTraceNodesById(nodes);
 	const childByParent = mapTraceChildSessionsByParent(input.sessions ?? []);

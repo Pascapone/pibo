@@ -166,6 +166,13 @@ export class ChatDataIngestService {
 			});
 
 			let messageId: string | undefined;
+			if (event.type === "message_finished" && event.eventId) {
+				this.store.messages.completeAssistantMessagesForTurn({
+					sessionId: input.session.id,
+					turnId: event.eventId,
+					completedAt: now,
+				});
+			}
 			if (event.type === "assistant_message") {
 				messageId = messageIdForOutputEvent(event);
 				if (messageId && !this.store.messages.getMessage(messageId)) {

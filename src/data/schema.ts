@@ -359,6 +359,8 @@ export function applyPiboDataSchema(db: DatabaseSync): void {
 			ON event_log(session_id, stream_id);
 		CREATE INDEX IF NOT EXISTS idx_event_log_session_sequence_stream
 			ON event_log(session_id, session_sequence DESC, stream_id DESC);
+		CREATE INDEX IF NOT EXISTS idx_event_log_session_type_sequence_stream
+			ON event_log(session_id, type, session_sequence ASC, stream_id ASC);
 		CREATE INDEX IF NOT EXISTS idx_event_log_room_stream
 			ON event_log(room_id, stream_id);
 		CREATE INDEX IF NOT EXISTS idx_event_log_topic_stream

@@ -162,8 +162,9 @@ test("message and observation stores support simple insert and list", () => {
 		sessionId: "ps_1",
 		roomId: "room_1",
 		sequence: 2,
+		turnId: "turn_1",
 		role: "assistant",
-		status: "complete",
+		status: "streaming",
 		createdAt: "2026-05-08T00:00:01.000Z",
 		contentPreview: "world",
 	});
@@ -186,7 +187,11 @@ test("message and observation stores support simple insert and list", () => {
 		previewText: "world",
 	});
 
+	assert.equal(store.messages.completeAssistantMessagesForTurn({ sessionId: "ps_1", turnId: "turn_1", completedAt: "2026-05-08T00:00:07.000Z" }), 1);
 	assert.deepEqual(store.messages.listMessages("ps_1").map((row) => row.id), ["msg_1", "msg_2"]);
+	const completedMessage = store.messages.getMessage("msg_2");
+	assert.equal(completedMessage?.status, "complete");
+	assert.equal(completedMessage?.completedAt, "2026-05-08T00:00:07.000Z");
 	assert.deepEqual(store.observations.listSession("ps_1").map((row) => row.id), ["obs_1", "obs_2"]);
 
 	store.close();
