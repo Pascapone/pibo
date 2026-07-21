@@ -374,13 +374,15 @@ function buildBrowserReapPlanItem(record: ManagedBrowserPoolRecord, now: Date, i
 	};
 }
 
-async function planComputeReapSafely(options: { includeDev: boolean; maxAgeMinutes: number; now: Date }): Promise<ComputeWorkerReapPlan> {
+export async function planComputeReapSafely(
+	options: { includeDev: boolean; maxAgeMinutes: number; now: Date },
+	planCompute: typeof planReapWorkers = planReapWorkers,
+): Promise<ComputeWorkerReapPlan> {
 	try {
-		return await planReapWorkers(options);
-	} catch (error) {
-		if (!(error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT")) throw error;
+		return await planCompute(options);
+	} catch {
 		const plan = buildComputeWorkerReapPlan([], options);
-		plan.nextCommands = ["Docker CLI is unavailable in this runtime; browser and stale-file cleanup remain active."];
+		plan.nextCommands = ["Docker compute cleanup is unavailable; browser and stale-file cleanup remain active."];
 		return plan;
 	}
 }
