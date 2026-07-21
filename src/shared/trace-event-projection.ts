@@ -653,6 +653,33 @@ export type TraceMessageTurnTiming = {
 	durationMs?: number;
 };
 
+export function mergeMessageTurnTimings(...groups: readonly TraceMessageTurnTiming[][]): TraceMessageTurnTiming[] {
+	const byEventId = new Map<string, TraceMessageTurnTiming>();
+	for (const timing of groups.flat()) {
+		const existing = byEventId.get(timing.eventId);
+		if (!existing) {
+			byEventId.set(timing.eventId, timing);
+			continue;
+		}
+		const merged: TraceMessageTurnTiming = {
+			eventId: timing.eventId,
+			userText: timing.userText ?? existing.userText,
+			startedAt: timing.startedAt ?? existing.startedAt,
+			completedAt: timing.completedAt ?? existing.completedAt,
+			durationMs: timing.durationMs ?? existing.durationMs,
+		};
+		if (merged.durationMs === undefined) {
+			const startedAtMs = parseTimestamp(merged.startedAt);
+			const completedAtMs = parseTimestamp(merged.completedAt);
+			if (startedAtMs !== undefined && completedAtMs !== undefined) {
+				merged.durationMs = Math.max(0, completedAtMs - startedAtMs);
+			}
+		}
+		byEventId.set(timing.eventId, merged);
+	}
+	return [...byEventId.values()];
+}
+
 export function messageTurnTimingsFromEvents(events: readonly ChatWebStoredEvent[]): TraceMessageTurnTiming[] {
 	const timings = new Map<string, { userText?: string; startedAt?: string; completedAt?: string }>();
 	const completedEventIds: string[] = [];

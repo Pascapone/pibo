@@ -67,6 +67,45 @@ test("raw event tail is opt-in and bounded", () => {
 	assert.deepEqual(view.nodes.map((node) => node.summary), ["one", "two", "three"]);
 });
 
+test("transcript assistant duration uses persisted turn timing when tail events omit message_started", () => {
+	const startedAt = "2026-01-01T00:00:02.000Z";
+	const completedAt = "2026-01-01T00:00:10.000Z";
+	const view = buildTraceViewFromEvents({
+		session: { id: "ps_root", piSessionId: "pi_root", title: "Root" },
+		transcriptEntries: [
+			{
+				id: "entry-user",
+				type: "message",
+				timestamp: "2026-01-01T00:00:01.000Z",
+				message: { role: "user", content: [{ type: "text", text: "hello" }] },
+			},
+			{
+				id: "entry-assistant",
+				type: "message",
+				timestamp: "2026-01-01T00:00:09.000Z",
+				message: { role: "assistant", status: "completed", content: [{ type: "text", text: "world" }] },
+			},
+		],
+		// This models a reload where the bounded trace tail still has the finish
+		// event but no longer has the matching message_started event.
+		events: [
+			{
+				id: "event-finished",
+				piboSessionId: "ps_root",
+				eventSequence: 200,
+				type: "message_finished",
+				createdAt: completedAt,
+				payload: { type: "message_finished", piboSessionId: "ps_root", eventId: "turn-duration" },
+			},
+		],
+		turnTimings: [{ eventId: "turn-duration", userText: "hello", startedAt, completedAt, durationMs: 8000 }],
+	});
+
+	const assistant = view.nodes.find((node) => node.type === "assistant.message");
+	assert.equal(assistant?.completedAt, completedAt);
+	assert.equal(assistant?.durationMs, 8000);
+});
+
 test("legacy transcript run notifications render yielded-run nodes", () => {
 	const view = buildTraceViewFromEvents({
 		session: { id: "ps_root", piSessionId: "pi_root", title: "Root" },
@@ -213,6 +252,11 @@ test("event-log projection nests turn, reasoning, and assistant content with fin
 				assistantIndex: 0,
 				text: "hello",
 			}),
+			outputEvent(9, {
+				type: "message_finished",
+				piboSessionId: "ps_root",
+				eventId: "turn-projection",
+			}),
 		],
 		status: "running",
 	});
@@ -221,9 +265,7 @@ test("event-log projection nests turn, reasoning, and assistant content with fin
 	const turn = view.nodes[1];
 	assert.equal(turn.id, "event:message:turn-projection");
 	assert.equal(turn.status, "done");
-	// The final assistant message merges into the live delta node, so the turn closes at
-	// the first assistant-token timestamp rather than the final message timestamp.
-	assert.equal(turn.completedAt, "2026-01-01T00:00:06.000Z");
+	assert.equal(turn.completedAt, "2026-01-01T00:00:09.000Z");
 	assert.deepEqual(turn.children.map((node) => node.type), ["model.reasoning", "assistant.message"]);
 	assert.equal(turn.children[0].id, "event:thinking:turn-projection:thinking:0");
 	assert.equal(turn.children[0].status, "done");

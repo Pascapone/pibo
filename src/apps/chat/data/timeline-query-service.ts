@@ -1,6 +1,7 @@
 import type { ChatEventListInput, StoredChatEvent } from "../types/event-store.js";
 import type { ChatWebStoredPiboEvent } from "../types/read-model.js";
 import type { PiboDataStore } from "../../../data/pibo-store.js";
+import { messageTurnTimingsFromEvents, type TraceMessageTurnTiming } from "../../../shared/trace-event-projection.js";
 import { storedChatEventFromV2Row, storedPiboEventFromV2Row, type EventLogRow } from "./chat-data-mappers.js";
 
 export class ChatTimelineQueryService {
@@ -24,6 +25,17 @@ export class ChatTimelineQueryService {
 
 	listAllSessionEvents(piboSessionId: string): ChatWebStoredPiboEvent[] {
 		return this.listTraceEvents({ piboSessionId, limit: 10000, includeLive: true });
+	}
+
+	listMessageTurnTimings(piboSessionId: string): TraceMessageTurnTiming[] {
+		const rows = this.store.db.prepare(`
+			SELECT * FROM event_log
+			WHERE session_id = ?
+				AND type IN ('message_started', 'message_finished')
+			ORDER BY session_sequence ASC, stream_id ASC
+		`).all(piboSessionId) as EventLogRow[];
+		const events = rows.map(storedPiboEventFromV2Row).filter((event): event is ChatWebStoredPiboEvent => event !== undefined);
+		return messageTurnTimingsFromEvents(events);
 	}
 
 	listTraceEvents(input: { piboSessionId: string; limit?: number; beforeOrAtSequence?: number; beforeSequence?: number; includeLive?: boolean } | string): ChatWebStoredPiboEvent[] {
