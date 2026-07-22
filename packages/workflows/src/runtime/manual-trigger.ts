@@ -1,3 +1,4 @@
+import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
 import type {
   NodeAttempt,
   NodeAttemptId,
@@ -79,6 +80,27 @@ type PendingNodeInput = {
   viaEdgeId: string;
 };
 
+type WorkflowManualTriggerGraphFailure = {
+  diagnostics: WorkflowDiagnostic[];
+  error: WorkflowErrorSummary;
+};
+
+type WorkflowManualTriggerGraphState = {
+  run: WorkflowRun;
+  nodeAttempts: NodeAttempt[];
+  edgeTransfers: Awaited<ReturnType<typeof recordWorkflowEdgeTransfer>>[];
+  events: WorkflowRuntimeEvent[];
+  pending: PendingNodeInput[];
+  current?: PendingNodeInput;
+  executedNodeIds: NodeId[];
+  lastOutput: WorkflowValue;
+  failure?: WorkflowManualTriggerGraphFailure;
+};
+
+const WorkflowManualTriggerState = Annotation.Root({
+  execution: Annotation<WorkflowManualTriggerGraphState>(),
+});
+
 export async function runManualTextTriggerWorkflow(
   definition: WorkflowDefinition,
   input: string,
@@ -140,142 +162,226 @@ export async function runManualTextTriggerWorkflow(
   });
   nodeAttempts.push(triggerAttempt);
 
-  const queue: PendingNodeInput[] = [];
-  const enqueueResult = await enqueueDirectOutgoingAgentEdges({
-    definition,
+  const initialGraphState: WorkflowManualTriggerGraphState = {
     run,
-    sourceAttempt: triggerAttempt,
-    queue,
+    nodeAttempts,
     edgeTransfers,
     events,
-    store: options.store,
-    emitEvent: options.emitEvent,
-    timestamp,
-  });
-  if (!enqueueResult.ok) {
+    pending: [],
+    executedNodeIds: [],
+    lastOutput: input,
+  };
+
+  let execution: WorkflowManualTriggerGraphState;
+  try {
+    const graph = compileManualTextTriggerWorkflowGraph(definition, options, timestamp);
+    const graphResult = await graph.invoke(
+      { execution: initialGraphState },
+      { recursionLimit: workflowGraphRecursionLimit(definition) },
+    );
+    execution = graphResult.execution;
+  } catch (error) {
     return failRun({
       run,
       triggerAttempt,
       nodeAttempts,
       edgeTransfers,
       events,
-      diagnostics: enqueueResult.diagnostics,
+      diagnostics: [{
+        code: "WorkflowRuntimeError.langGraphExecutionFailed",
+        message: error instanceof Error ? error.message : "LangGraph execution failed with a non-Error value.",
+        severity: "error",
+        path: "$",
+      }],
       timestamp,
       store: options.store,
       emitEvent: options.emitEvent,
-      error: enqueueResult.error,
+      error: {
+        code: "WorkflowRuntimeError.langGraphExecutionFailed",
+        message: "Manual trigger workflow run failed during LangGraph execution.",
+      },
     });
   }
 
-  let lastOutput: WorkflowValue = input;
-  const executedNodes = new Set<NodeId>();
-  while (queue.length) {
-    const item = queue.shift()!;
-    if (executedNodes.has(item.nodeId)) {
-      return failRun({
-        run,
-        triggerAttempt,
-        nodeAttempts,
-        edgeTransfers,
-        events,
-        diagnostics: [{
-          code: "WorkflowRuntimeError.joinUnsupported",
-          message: `Workflow node '${item.nodeId}' received more than one input, but manual trigger V1 does not support joins yet.`,
-          severity: "error",
-          nodeId: item.nodeId,
-          edgeId: item.viaEdgeId,
-          path: `$.edges.${item.viaEdgeId}`,
-          hint: "Use a simple fan-out or linear agent chain until join policies are implemented.",
-        }],
-        timestamp,
-        store: options.store,
-        emitEvent: options.emitEvent,
-        error: {
-          code: "WorkflowRuntimeError.joinUnsupported",
-          message: "Manual trigger workflow run failed because a join node was reached.",
-        },
-      });
-    }
-    executedNodes.add(item.nodeId);
-
-    const dispatchResult = await dispatchWorkflowAgentNode(definition, run, item.nodeId, item.input, {
-      registry: options.registry,
-      now: options.now,
-      createNodeAttemptId: options.createNodeAttemptId,
-      store: options.store,
-      emitEvent: options.emitEvent,
-      profileResolver: options.profileResolver,
-      agentExecutor: options.agentExecutor,
-    });
-    events.push(...dispatchResult.events);
-
-    if (!dispatchResult.ok) {
-      return failRun({
-        run: dispatchResult.run,
-        triggerAttempt,
-        nodeAttempts,
-        edgeTransfers,
-        events,
-        diagnostics: dispatchResult.diagnostics,
-        timestamp,
-        store: options.store,
-        emitEvent: options.emitEvent,
-        error: dispatchResult.error,
-      });
-    }
-
-    nodeAttempts.push(dispatchResult.nodeAttempt);
-    lastOutput = dispatchResult.output;
-
-    const nextResult = await enqueueDirectOutgoingAgentEdges({
-      definition,
-      run: dispatchResult.run,
-      sourceAttempt: dispatchResult.nodeAttempt,
-      queue,
-      edgeTransfers,
-      events,
-      store: options.store,
-      emitEvent: options.emitEvent,
+  if (execution.failure) {
+    return failRun({
+      run: execution.run,
+      triggerAttempt,
+      nodeAttempts: execution.nodeAttempts,
+      edgeTransfers: execution.edgeTransfers,
+      events: execution.events,
+      diagnostics: execution.failure.diagnostics,
       timestamp,
+      store: options.store,
+      emitEvent: options.emitEvent,
+      error: execution.failure.error,
     });
-    if (!nextResult.ok) {
-      return failRun({
-        run: dispatchResult.run,
-        triggerAttempt,
-        nodeAttempts,
-        edgeTransfers,
-        events,
-        diagnostics: nextResult.diagnostics,
-        timestamp,
-        store: options.store,
-        emitEvent: options.emitEvent,
-        error: nextResult.error,
-      });
-    }
   }
 
   const completedAt = timestamp();
-  run.status = "completed";
-  run.current = { status: "completed" };
-  run.output = lastOutput;
-  run.completedAt = completedAt;
-  run.updatedAt = completedAt;
-  await emitWorkflowRuntimeEvent(events, options.store, options.emitEvent, {
+  execution.run.status = "completed";
+  execution.run.current = { status: "completed" };
+  execution.run.output = execution.lastOutput;
+  execution.run.completedAt = completedAt;
+  execution.run.updatedAt = completedAt;
+  await emitWorkflowRuntimeEvent(execution.events, options.store, options.emitEvent, {
     type: "workflow.completed",
-    runId: run.id,
-    output: lastOutput,
+    runId: execution.run.id,
+    output: execution.lastOutput,
   });
-  await persistWorkflowRun(options.store, run);
+  await persistWorkflowRun(options.store, execution.run);
 
   return {
     ok: true,
-    run,
+    run: execution.run,
     triggerAttempt,
-    nodeAttempts,
-    edgeTransfers,
-    events,
-    output: lastOutput,
+    nodeAttempts: execution.nodeAttempts,
+    edgeTransfers: execution.edgeTransfers,
+    events: execution.events,
+    output: execution.lastOutput,
   };
+}
+
+function compileManualTextTriggerWorkflowGraph(
+  definition: WorkflowDefinition,
+  options: WorkflowManualTriggerRunOptions,
+  timestamp: () => string,
+) {
+  const graphNodeNames = new Map<NodeId, string>();
+  for (const nodeId of Object.keys(definition.nodes)) graphNodeNames.set(nodeId, workflowGraphNodeName(nodeId));
+  const triggerGraphNode = graphNodeNames.get(options.source.triggerNodeId) ?? workflowGraphNodeName(options.source.triggerNodeId);
+  const graph = new StateGraph<
+    typeof WorkflowManualTriggerState,
+    typeof WorkflowManualTriggerState.State,
+    typeof WorkflowManualTriggerState.Update,
+    string
+  >(WorkflowManualTriggerState);
+
+  graph.addNode(triggerGraphNode, async (state) => {
+    const execution = state.execution;
+    const triggerAttempt = execution.nodeAttempts[0];
+    const enqueueResult = await enqueueDirectOutgoingAgentEdges({
+      definition,
+      run: execution.run,
+      sourceAttempt: triggerAttempt,
+      queue: execution.pending,
+      edgeTransfers: execution.edgeTransfers,
+      events: execution.events,
+      store: options.store,
+      emitEvent: options.emitEvent,
+      timestamp,
+    });
+    if (!enqueueResult.ok) {
+      execution.failure = { diagnostics: enqueueResult.diagnostics, error: enqueueResult.error };
+      return { execution };
+    }
+    execution.current = execution.pending.shift();
+    return { execution };
+  });
+
+  for (const [nodeId, node] of Object.entries(definition.nodes)) {
+    if (nodeId === options.source.triggerNodeId || node.kind !== "agent") continue;
+    const graphNodeName = graphNodeNames.get(nodeId)!;
+    graph.addNode(graphNodeName, async (state) => {
+      const execution = state.execution;
+      const pending = execution.current;
+      if (!pending || pending.nodeId !== nodeId) {
+        execution.failure = {
+          diagnostics: [{
+            code: "WorkflowRuntimeError.langGraphStateMismatch",
+            message: `LangGraph scheduled workflow node '${nodeId}' without its pending input.`,
+            severity: "error",
+            nodeId,
+            path: `$.nodes.${nodeId}`,
+          }],
+          error: {
+            code: "WorkflowRuntimeError.langGraphStateMismatch",
+            message: "Manual trigger workflow run reached an invalid LangGraph state.",
+          },
+        };
+        execution.current = undefined;
+        return { execution };
+      }
+      if (execution.executedNodeIds.includes(nodeId)) {
+        execution.failure = {
+          diagnostics: [{
+            code: "WorkflowRuntimeError.joinUnsupported",
+            message: `Workflow node '${nodeId}' received more than one input, but manual trigger V1 does not support joins yet.`,
+            severity: "error",
+            nodeId,
+            edgeId: pending.viaEdgeId,
+            path: `$.edges.${pending.viaEdgeId}`,
+            hint: "Use a simple fan-out or linear agent chain until join policies are implemented.",
+          }],
+          error: {
+            code: "WorkflowRuntimeError.joinUnsupported",
+            message: "Manual trigger workflow run failed because a join node was reached.",
+          },
+        };
+        execution.current = undefined;
+        return { execution };
+      }
+      execution.executedNodeIds.push(nodeId);
+
+      const dispatchResult = await dispatchWorkflowAgentNode(definition, execution.run, nodeId, pending.input, {
+        registry: options.registry,
+        now: options.now,
+        createNodeAttemptId: options.createNodeAttemptId,
+        store: options.store,
+        emitEvent: options.emitEvent,
+        profileResolver: options.profileResolver,
+        agentExecutor: options.agentExecutor,
+      });
+      execution.events.push(...dispatchResult.events);
+      execution.run = dispatchResult.run;
+      if (!dispatchResult.ok) {
+        execution.failure = { diagnostics: dispatchResult.diagnostics, error: dispatchResult.error };
+        execution.current = undefined;
+        return { execution };
+      }
+
+      execution.nodeAttempts.push(dispatchResult.nodeAttempt);
+      execution.lastOutput = dispatchResult.output;
+      const enqueueResult = await enqueueDirectOutgoingAgentEdges({
+        definition,
+        run: execution.run,
+        sourceAttempt: dispatchResult.nodeAttempt,
+        queue: execution.pending,
+        edgeTransfers: execution.edgeTransfers,
+        events: execution.events,
+        store: options.store,
+        emitEvent: options.emitEvent,
+        timestamp,
+      });
+      if (!enqueueResult.ok) {
+        execution.failure = { diagnostics: enqueueResult.diagnostics, error: enqueueResult.error };
+        execution.current = undefined;
+        return { execution };
+      }
+      execution.current = execution.pending.shift();
+      return { execution };
+    });
+  }
+
+  const route = (state: typeof WorkflowManualTriggerState.State) => {
+    if (state.execution.failure || !state.execution.current) return END;
+    return graphNodeNames.get(state.execution.current.nodeId) ?? END;
+  };
+  graph.addEdge(START, triggerGraphNode);
+  graph.addConditionalEdges(triggerGraphNode, route);
+  for (const [nodeId, node] of Object.entries(definition.nodes)) {
+    if (nodeId === options.source.triggerNodeId || node.kind !== "agent") continue;
+    graph.addConditionalEdges(graphNodeNames.get(nodeId)!, route);
+  }
+  return graph.compile();
+}
+
+function workflowGraphNodeName(nodeId: NodeId): string {
+  return `pibo_${Buffer.from(nodeId).toString("base64url")}`;
+}
+
+function workflowGraphRecursionLimit(definition: WorkflowDefinition): number {
+  return Math.max(25, Object.keys(definition.nodes).length * 2 + 2);
 }
 
 export function validateManualTextTriggerRun(

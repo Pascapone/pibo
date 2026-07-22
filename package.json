@@ -56,6 +56,8 @@
     "@earendil-works/pi-ai": "0.80.6",
     "@earendil-works/pi-coding-agent": "0.80.6",
     "@earendil-works/pi-tui": "0.80.6",
+    "@langchain/core": "^1.2.3",
+    "@langchain/langgraph": "^1.4.8",
     "@mdxeditor/editor": "^3.55.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@tailwindcss/vite": "^4.2.4",
@@ -76,7 +78,8 @@
     "react-markdown": "^10.1.0",
     "react-virtuoso": "^4.18.6",
     "remark-gfm": "^4.0.1",
-    "tailwindcss": "^4.2.4"
+    "tailwindcss": "^4.2.4",
+    "zod": "4.4.1"
   },
   "devDependencies": {
     "@tanstack/router-plugin": "^1.167.28",

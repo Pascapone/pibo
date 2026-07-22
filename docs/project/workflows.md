@@ -101,6 +101,8 @@ Abort, cancel, revise, and retry paths should be explicit graph behavior: guarde
 
 ## Runtime facts and projection
 
+The runtime compiles validated Pibo Workflow IR into an internal LangGraph `StateGraph`. Pibo definitions, APIs, persistence records, events, session routing, and UI projections remain the product contract; LangGraph stays behind that boundary as the execution engine.
+
 Workflow execution should record facts that can drive both editor runs and Project workflow views:
 
 - workflow run id and source;
