@@ -76,7 +76,11 @@ const cronRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "cron",
 });
-const ralphRoute = createRoute({
+const loopsRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "loops",
+});
+const legacyRalphRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "ralph",
 });
@@ -109,7 +113,7 @@ const settingsProvidersRoute = createRoute({
 	path: "settings/providers",
 });
 const router = createRouter({
-	routeTree: rootRoute.addChildren([indexRoute, sessionRoute, roomRoute, roomSessionRoute, projectsRoute, projectRoute, projectSessionRoute, workflowsRoute, workflowDraftRoute, workflowViewRoute, agentsRoute, cronRoute, ralphRoute, contextRoute, settingsRoute, settingsShortcutsRoute, settingsMaintenanceRoute, settingsPiPackagesRoute, settingsSkillsRoute, settingsProvidersRoute]),
+	routeTree: rootRoute.addChildren([indexRoute, sessionRoute, roomRoute, roomSessionRoute, projectsRoute, projectRoute, projectSessionRoute, workflowsRoute, workflowDraftRoute, workflowViewRoute, agentsRoute, cronRoute, loopsRoute, legacyRalphRoute, contextRoute, settingsRoute, settingsShortcutsRoute, settingsMaintenanceRoute, settingsPiPackagesRoute, settingsSkillsRoute, settingsProvidersRoute]),
 	basepath: "/apps/chat",
 });
 

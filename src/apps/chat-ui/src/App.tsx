@@ -24,7 +24,7 @@ import { ContextBuildView } from "./context/ContextBuildView";
 import { ContextSidebar } from "./context/ContextSidebar";
 import type { ContextPanel } from "./context/types";
 import { CronArea } from "./CronArea";
-import { RalphArea } from "./RalphArea";
+import { LoopArea } from "./LoopArea";
 import type { PiPackageCatalogItem } from "./agents/agent-designer-model";
 import { AgentsView } from "./agents/AgentsView";
 import { SessionTracePane } from "./session-trace-pane";
@@ -1499,7 +1499,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 				data-pibo-room-id={selectedRoomId ?? bootstrap.selectedRoomId ?? undefined}
 				data-pibo-selected-session-id={selectedPiboSessionId ?? undefined}
 				className={`min-h-0 ${
-					(area === "agents" || area === "workflows" || area === "cron" || area === "ralph") ? "h-full overflow-hidden" : `grid ${
+					(area === "agents" || area === "workflows" || area === "cron" || area === "loops") ? "h-full overflow-hidden" : `grid ${
 						(area === "sessions" || area === "projects") && showRawEvents
 						? "grid-cols-[300px_minmax(0,1fr)_320px] max-[980px]:grid-cols-1"
 						: "grid-cols-[300px_minmax(0,1fr)] max-[980px]:grid-cols-1"
@@ -1508,8 +1508,8 @@ export function App({ route }: { route: ChatAppRoute }) {
 			>
 				{area === "cron" ? (
 					<CronArea bootstrap={bootstrap} mobileSidebarOpen={mobileSidebarOpen} onCloseMobileSidebar={() => setMobileSidebarOpen(false)} />
-				) : area === "ralph" ? (
-					<RalphArea bootstrap={bootstrap} mobileSidebarOpen={mobileSidebarOpen} onCloseMobileSidebar={() => setMobileSidebarOpen(false)} />
+				) : area === "loops" ? (
+					<LoopArea bootstrap={bootstrap} mobileSidebarOpen={mobileSidebarOpen} onCloseMobileSidebar={() => setMobileSidebarOpen(false)} />
 				) : area === "agents" ? (
 					<AgentsView
 						agents={bootstrap.agents}

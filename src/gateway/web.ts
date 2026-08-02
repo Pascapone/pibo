@@ -7,7 +7,7 @@ import { createPiboChatWebPlugin, type ChatWebAppOptions } from "../plugins/chat
 import { createPiboChatVscodeWebPlugin } from "../plugins/chat-vscode-web.js";
 import { createPiboContextFilesPlugin, type ContextFilesPluginOptions } from "../plugins/context-files.js";
 import { createPiboCronPlugin } from "../cron/plugin.js";
-import { createPiboRalphPlugin } from "../ralph/plugin.js";
+import { createPiboLoopPlugin } from "../loops/plugin.js";
 import { createPiboDevAuthPlugin } from "../plugins/dev-auth.js";
 import { PiboPluginRegistry } from "../plugins/registry.js";
 import { createPiboWebHostPlugin } from "../plugins/web.js";
@@ -185,7 +185,7 @@ export function createWebPiboPluginRegistry(options: WebGatewayServerOptions = {
 				workspaceRoot: resolvedOptions.chat?.userSkillWorkspaceRoot,
 			}),
 			createPiboChatCustomAgentProfilesPlugin({ agentStorePath: resolvedOptions.chat?.agentStorePath }),
-			createPiboRalphPlugin({ ralphStorePath: resolvedOptions.chat?.ralphStorePath, dataStorePath: resolvedOptions.chat?.dataStorePath, dataPayloadRootDir: resolvedOptions.chat?.dataPayloadRootDir }),
+			createPiboLoopPlugin({ loopStorePath: resolvedOptions.chat?.ralphStorePath, dataStorePath: resolvedOptions.chat?.dataStorePath, dataPayloadRootDir: resolvedOptions.chat?.dataPayloadRootDir }),
 			createPiboContextFilesPlugin(resolvedOptions.contextFiles),
 			createPiboChatWebPlugin(resolvedOptions.chat),
 			createPiboChatVscodeWebPlugin(),

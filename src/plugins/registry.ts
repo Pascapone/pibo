@@ -24,7 +24,7 @@ import type {
 	PiboProfileInfo,
 	PiboProfileBuildContext,
 	PiboProfileDefinition,
-	PiboRalphStopConditionDefinition,
+	PiboLoopStopConditionDefinition,
 } from "./types.js";
 import { listInstalledCliToolAgentContexts } from "../tools/registry.js";
 import { listPiPackages } from "../pi-packages/store.js";
@@ -73,7 +73,7 @@ export class PiboPluginRegistry {
 	private readonly capabilityPackages = new Map<string, PiboCapabilityPackageInfo>();
 	private readonly eventListeners = new Set<PiboPluginEventListener>();
 	private readonly productEventListeners = new Set<PiboProductEventListener>();
-	private readonly ralphStopConditions = new Map<string, { definition: PiboRalphStopConditionDefinition; pluginId?: string }>();
+	private readonly loopStopConditions = new Map<string, { definition: PiboLoopStopConditionDefinition; pluginId?: string }>();
 	private readonly pluginIds = new Set<string>();
 	private readonly pluginNames = new Map<string, string>();
 	private readonly eventErrors: string[] = [];
@@ -192,19 +192,23 @@ export class PiboPluginRegistry {
 		this.addUnique(this.capabilityPackages, pkg.name, { ...pkg, toolNames: [...pkg.toolNames] }, "capability package");
 	}
 
-	registerRalphStopCondition(condition: PiboRalphStopConditionDefinition, pluginId?: string): void {
-		if (!condition.type.trim()) throw new Error('Ralph stop condition type is required');
-		if (!condition.name.trim()) throw new Error(`Ralph stop condition "${condition.type}" name is required`);
-		if (condition.phases.length === 0) throw new Error(`Ralph stop condition "${condition.type}" must support at least one phase`);
-		this.addUnique(this.ralphStopConditions, condition.type, { definition: { ...condition, phases: [...condition.phases] }, pluginId }, 'Ralph stop condition');
+	registerLoopStopCondition(condition: PiboLoopStopConditionDefinition, pluginId?: string): void {
+		if (!condition.type.trim()) throw new Error('Loop stop condition type is required');
+		if (!condition.name.trim()) throw new Error(`Loop stop condition "${condition.type}" name is required`);
+		if (condition.phases.length === 0) throw new Error(`Loop stop condition "${condition.type}" must support at least one phase`);
+		this.addUnique(this.loopStopConditions, condition.type, { definition: { ...condition, phases: [...condition.phases] }, pluginId }, 'Loop stop condition');
 	}
 
-	getRalphStopConditionDefinitions(): PiboRalphStopConditionDefinition[] {
-		return [...this.ralphStopConditions.values()].map((entry) => entry.definition);
+	registerRalphStopCondition(condition: PiboLoopStopConditionDefinition, pluginId?: string): void { this.registerLoopStopCondition(condition, pluginId); }
+
+	getLoopStopConditionDefinitions(): PiboLoopStopConditionDefinition[] {
+		return [...this.loopStopConditions.values()].map((entry) => entry.definition);
 	}
 
-	getRalphStopConditionInfos() {
-		return [...this.ralphStopConditions.values()].map((entry) => ({
+	getRalphStopConditionDefinitions(): PiboLoopStopConditionDefinition[] { return this.getLoopStopConditionDefinitions(); }
+
+	getLoopStopConditionInfos() {
+		return [...this.loopStopConditions.values()].map((entry) => ({
 			type: entry.definition.type,
 			name: entry.definition.name,
 			description: entry.definition.description,
@@ -215,6 +219,8 @@ export class PiboPluginRegistry {
 			pluginName: entry.pluginId ? this.pluginNames.get(entry.pluginId) : undefined,
 		}));
 	}
+
+	getRalphStopConditionInfos() { return this.getLoopStopConditionInfos(); }
 
 	onEvent(listener: PiboPluginEventListener): void {
 		this.eventListeners.add(listener);
@@ -328,7 +334,8 @@ export class PiboPluginRegistry {
 			piboTools: listInstalledCliToolAgentContexts(),
 			mcpServers: [],
 			piPackages: listPiPackages(),
-			ralphStopConditions: this.getRalphStopConditionInfos(),
+			loopStopConditions: this.getLoopStopConditionInfos(),
+			ralphStopConditions: this.getLoopStopConditionInfos(),
 		};
 	}
 
@@ -431,7 +438,8 @@ export class PiboPluginRegistry {
 			registerAuthService: (service) => this.registerAuthService(service),
 			registerWebApp: (app) => this.registerWebApp(app),
 			registerCapabilityPackage: (pkg) => this.registerCapabilityPackage(withPluginPackageContext(pkg)),
-			registerRalphStopCondition: (condition) => this.registerRalphStopCondition(condition, pluginId),
+			registerLoopStopCondition: (condition) => this.registerLoopStopCondition(condition, pluginId),
+			registerRalphStopCondition: (condition) => this.registerLoopStopCondition(condition, pluginId),
 			onEvent: (listener) => this.onEvent(listener),
 			emitProductEvent: (event) => this.emitProductEvent(event),
 			onProductEvent: (listener) => this.onProductEvent(listener),

@@ -30,8 +30,12 @@ import type {
 } from "../core/profiles.js";
 import type { PiboPiPackageInfo } from "../pi-packages/types.js";
 import type { PiboProviderUsageStatus } from "../auth/openai-codex-usage.js";
-import type { PiboRalphStopConditionDefinition, PiboRalphStopConditionInfo } from "../ralph/types.js";
-export type { PiboRalphStopConditionDefinition, PiboRalphStopConditionInfo } from "../ralph/types.js";
+import type { PiboLoopStopConditionDefinition, PiboLoopStopConditionInfo } from "../loops/types.js";
+export type { PiboLoopStopConditionDefinition, PiboLoopStopConditionInfo } from "../loops/types.js";
+/** @deprecated Use PiboLoopStopConditionDefinition. */
+export type PiboRalphStopConditionDefinition = PiboLoopStopConditionDefinition;
+/** @deprecated Use PiboLoopStopConditionInfo. */
+export type PiboRalphStopConditionInfo = PiboLoopStopConditionInfo;
 
 export type PiboProfileBuildContext = {
 	getTool(name: string): ToolProfile;
@@ -143,7 +147,9 @@ export type PiboCapabilityCatalog = {
 	piboTools: PiboCliToolContextInfo[];
 	mcpServers: PiboMcpServerInfo[];
 	piPackages: PiboPiPackageInfo[];
-	ralphStopConditions: PiboRalphStopConditionInfo[];
+	loopStopConditions: PiboLoopStopConditionInfo[];
+	/** @deprecated Use loopStopConditions. */
+	ralphStopConditions: PiboLoopStopConditionInfo[];
 };
 
 export type PiboProductEventSource = "core" | "plugin" | "web" | "filesystem" | "agent";
@@ -223,7 +229,9 @@ export type PiboPluginApi = {
 	registerAuthService(service: PiboAuthService): void;
 	registerWebApp(app: PiboWebApp): void;
 	registerCapabilityPackage(pkg: PiboCapabilityPackageInfo): void;
-	registerRalphStopCondition(condition: PiboRalphStopConditionDefinition): void;
+	registerLoopStopCondition(condition: PiboLoopStopConditionDefinition): void;
+	/** @deprecated Use registerLoopStopCondition. */
+	registerRalphStopCondition(condition: PiboLoopStopConditionDefinition): void;
 	onEvent(listener: PiboPluginEventListener): void;
 	emitProductEvent(event: PiboProductEventInput): PiboProductEvent;
 	onProductEvent(listener: PiboProductEventListener): () => void;
