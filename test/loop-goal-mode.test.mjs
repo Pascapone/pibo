@@ -32,6 +32,50 @@ test("new loops default to goal while legacy rows load as ralph", async () => {
 	}
 });
 
+test("Goal accounting includes usage reported after update_goal completes the active run", async () => {
+	const dir = await mkdtemp(join(tmpdir(), "pibo-loop-completion-usage-"));
+	const store = new PiboLoopStore({ path: ":memory:" });
+	const listeners = new Set();
+	const sessions = new Map();
+	let jobId;
+	const context = {
+		async emit(event) {
+			if (event.type === "message") {
+				queueMicrotask(() => {
+					store.updateGoalStatus(jobId, "complete");
+					for (const listener of listeners) {
+						listener({ type: "assistant_usage", piboSessionId: event.piboSessionId, eventId: event.id, totalTokens: 7 });
+						listener({ type: "assistant_message", piboSessionId: event.piboSessionId, eventId: event.id, text: "done" });
+						listener({ type: "message_finished", piboSessionId: event.piboSessionId, eventId: event.id });
+					}
+				});
+			}
+			return { type: "execution_result", piboSessionId: event.piboSessionId, eventId: event.id ?? "evt", action: "test", result: {} };
+		},
+		subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+		createSession(input) { const session = createPiboSession({ ...input, id: "ps_completion_usage" }); sessions.set(session.id, session); return session; },
+		getSession(id) { return sessions.get(id); },
+		findSessions() { return []; },
+		getGatewayActions() { return []; },
+		getWebApps() { return []; },
+		getLoopStopConditionDefinitions() { return createBuiltInLoopStopConditions(); },
+	};
+	const service = new PiboLoopService({ store, context, dataStorePath: join(dir, "data.sqlite"), dataPayloadRootDir: join(dir, "payloads"), intervalMs: 10, runTimeoutMs: 5_000 });
+	try {
+		service.start();
+		const job = store.createJob({ mode: "goal", target: { kind: "default-chat" }, profile: "base", prompt: "Complete this goal." });
+		jobId = job.id;
+		assert.ok(await service.startJob(job.id));
+		await waitFor(() => store.getJob(job.id)?.state.completedIterations === 1);
+		const saved = store.getJob(job.id);
+		assert.equal(saved?.state.goalStatus, "complete");
+		assert.equal(saved?.state.tokensUsed, 7);
+	} finally {
+		service.stop();
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
 test("goal mode reuses one Pibo Session while Ralph mode creates fresh sessions", async () => {
 	const goal = await runTwoIterations("goal");
 	assert.equal(goal.createdSessionIds.length, 1);
@@ -39,6 +83,7 @@ test("goal mode reuses one Pibo Session while Ralph mode creates fresh sessions"
 	assert.match(goal.prompts[0], /Start working toward the active Pibo loop goal/);
 	assert.match(goal.prompts[1], /Continue working toward the active Pibo loop goal/);
 	assert.match(goal.prompts[1], /Completion audit:/);
+	assert.equal(goal.tokensUsed, 20);
 
 	const ralph = await runTwoIterations("ralph");
 	assert.equal(ralph.createdSessionIds.length, 2);
@@ -59,6 +104,7 @@ async function runTwoIterations(mode) {
 				prompts.push(event.text);
 				queueMicrotask(() => {
 					for (const listener of listeners) {
+						listener({ type: "assistant_usage", piboSessionId: event.piboSessionId, eventId: event.id, totalTokens: 10 });
 						listener({ type: "assistant_message", piboSessionId: event.piboSessionId, eventId: event.id, text: `progress ${prompts.length}` });
 						listener({ type: "message_finished", piboSessionId: event.piboSessionId, eventId: event.id });
 					}
@@ -91,7 +137,7 @@ async function runTwoIterations(mode) {
 		const saved = store.getJob(job.id);
 		assert.equal(saved?.enabled, false);
 		const runSessionIds = store.listRuns({ jobId: job.id }).map((run) => run.piboSessionId);
-		return { createdSessionIds, prompts, runSessionIds };
+		return { createdSessionIds, prompts, runSessionIds, tokensUsed: saved?.state.tokensUsed ?? 0 };
 	} finally {
 		service.stop();
 		await rm(dir, { recursive: true, force: true });

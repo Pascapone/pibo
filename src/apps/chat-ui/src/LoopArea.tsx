@@ -13,6 +13,7 @@ type Draft = {
 	profile: string;
 	prompt: string;
 	maxIterations: string;
+	tokenBudget: string;
 	stopPolicyText: string;
 	targetKind: "room" | "default-chat";
 	roomId: string;
@@ -137,7 +138,7 @@ export function LoopArea({ bootstrap, mobileSidebarOpen = false, onCloseMobileSi
 								<div className="flex items-start justify-between gap-2">
 									<div className="min-w-0">
 										<div className="truncate text-sm font-medium text-slate-100">{job.name}</div>
-										<div className="truncate text-[11px] text-slate-500">{job.state.completedIterations ?? 0}{job.maxIterations ? `/${job.maxIterations}` : ""} iterations · {job.state.lastStatus ?? "new"}</div>
+										<div className="truncate text-[11px] text-slate-500">{job.state.completedIterations ?? 0}{job.maxIterations ? `/${job.maxIterations}` : ""} iterations · {job.mode === "goal" ? job.state.goalStatus ?? (job.enabled ? "active" : "paused") : job.state.lastStatus ?? "new"}{job.tokenBudget ? ` · ${job.state.tokensUsed ?? 0}/${job.tokenBudget} tokens` : ""}</div>
 									</div>
 									<JobStatusBadge job={job} />
 								</div>
@@ -185,15 +186,15 @@ export function LoopArea({ bootstrap, mobileSidebarOpen = false, onCloseMobileSi
 							</div>
 							{draft.targetKind === "room" ? <Field label="Room"><select className={inputClass} value={draft.roomId} onChange={(event) => setDraft({ ...draft, roomId: event.target.value })}>{writableRooms.map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}{selectedRoom && isArchivedRoom(selectedRoom) ? <option value={selectedRoom.id} disabled>{selectedRoom.name} (archived)</option> : null}</select></Field> : null}
 							<Field label="Max Iterations"><input className={inputClass} type="number" min="1" value={draft.maxIterations} onChange={(event) => setDraft({ ...draft, maxIterations: event.target.value })} placeholder="Unlimited" /></Field>
+							{draft.mode === "goal" ? <Field label="Token Budget"><input className={inputClass} type="number" min="1" value={draft.tokenBudget} onChange={(event) => setDraft({ ...draft, tokenBudget: event.target.value })} placeholder="Unbounded" /></Field> : null}
 							<div className="rounded-sm border border-slate-800 bg-[#101d22] px-3 py-2 text-xs text-slate-500">Target: <span className="text-slate-300">{draft.targetKind === "room" ? selectedRoomName : "Shared Chat"}</span></div>
 						</Panel>
 
 						<Panel title="Runtime">
 							<RuntimeOverridesEditor modelCatalog={bootstrap.modelCatalog} model={draft.modelOverride} thinking={draft.thinkingLevel} fastMode={draft.fastMode} disabled={saving} onModelChange={(modelOverride) => setDraft({ ...draft, modelOverride })} onThinkingChange={(thinkingLevel) => setDraft({ ...draft, thinkingLevel })} onFastModeChange={(fastMode) => setDraft({ ...draft, fastMode })} />
 							<div className="rounded-sm border border-[#11a4d4]/30 bg-[#11a4d4]/10 px-3 py-2">
-								<div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Default stop marker</div>
-								<div className="mt-1 font-mono text-xs text-slate-200">&lt;promise&gt;COMPLETE&lt;/promise&gt;</div>
-								<div className="mt-1 text-xs text-slate-500">When a final answer contains this marker, Loop stops after that run.</div>
+								<div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{draft.mode === "goal" ? "Native goal lifecycle" : "Legacy stop marker"}</div>
+								{draft.mode === "goal" ? <div className="mt-1 text-xs text-slate-300">Enabled agents use <span className="font-mono">get_goal</span>, <span className="font-mono">create_goal</span>, and <span className="font-mono">update_goal</span> to persist complete or blocked status.</div> : <><div className="mt-1 font-mono text-xs text-slate-200">&lt;promise&gt;COMPLETE&lt;/promise&gt;</div><div className="mt-1 text-xs text-slate-500">Ralph stops when the final answer contains this marker on its own line.</div></>}
 							</div>
 						</Panel>
 					</section>
@@ -289,7 +290,7 @@ function StopConditionsEditor({ conditions, value, onChange }: { conditions: Pib
 	const sample = conditions[0] ? { mode: "any", conditions: [{ id: conditions[0].type.split(".").pop() ?? "condition", type: conditions[0].type, options: conditions[0].defaultOptions ?? {} }] } : { mode: "any", conditions: [] };
 	return (
 		<Panel title="Stop Conditions">
-			<div className="text-xs text-slate-500">Optional JSON policy. Empty uses the default max-iterations and promise-complete behavior.</div>
+			<div className="text-xs text-slate-500">Optional JSON policy. Empty uses Goal status plus max-iterations in Goal mode, and promise-complete plus max-iterations in Ralph mode.</div>
 			<div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
 				{conditions.map((condition) => (
 					<div key={condition.type} className="rounded-sm border border-slate-800 bg-[#101d22] p-3 text-xs">
@@ -334,8 +335,9 @@ function FastModeOverrideSelector({ value, disabled, onChange }: { value?: boole
 function JobStatusBadge({ job }: { job: PiboLoopJob }) {
 	const running = Boolean(job.state.runningAt);
 	const stopping = job.enabled && !running;
-	const styles = running ? "border-[#11a4d4]/50 text-[#11a4d4]" : stopping ? "border-emerald-500/40 text-emerald-300" : "border-slate-600 text-slate-400";
-	const label = running ? "active" : job.enabled ? "on" : "off";
+	const goalStatus = job.mode === "goal" ? job.state.goalStatus ?? (job.enabled ? "active" : "paused") : undefined;
+	const styles = running ? "border-[#11a4d4]/50 text-[#11a4d4]" : goalStatus === "complete" ? "border-emerald-500/40 text-emerald-300" : goalStatus === "blocked" || goalStatus === "budget_limited" ? "border-amber-500/40 text-amber-300" : stopping ? "border-emerald-500/40 text-emerald-300" : "border-slate-600 text-slate-400";
+	const label = running ? "active" : goalStatus ?? (job.enabled ? "on" : "off");
 	return <span className={`shrink-0 inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 text-[10px] ${styles}`}>{running ? <Loader2 size={10} className="animate-spin" /> : null}{label}</span>;
 }
 
@@ -344,11 +346,11 @@ function RunStatusBadge({ status }: { status: PiboLoopRun["status"] }) {
 	return <span className={`inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 text-[11px] ${styles}`}>{status === "running" ? <Loader2 size={11} className="animate-spin" /> : null}{status}</span>;
 }
 
-function emptyDraft(defaultProfile: string, roomId?: string): Draft { return { mode: "goal", name: "", description: "", profile: defaultProfile, prompt: "", maxIterations: "", stopPolicyText: "", targetKind: roomId ? "room" : "default-chat", roomId: roomId ?? "" }; }
+function emptyDraft(defaultProfile: string, roomId?: string): Draft { return { mode: "goal", name: "", description: "", profile: defaultProfile, prompt: "", maxIterations: "", tokenBudget: "", stopPolicyText: "", targetKind: roomId ? "room" : "default-chat", roomId: roomId ?? "" }; }
 function draftFromTemplate(template: PiboLoopJobTemplate, defaultProfile: string, roomId?: string): Draft { return { ...emptyDraft(defaultProfile, roomId), mode: template.job.mode ?? "goal", name: template.job.name, description: template.job.description ?? "", prompt: template.job.prompt, maxIterations: template.job.maxIterations ? String(template.job.maxIterations) : "", stopPolicyText: template.job.stopPolicy ? JSON.stringify(template.job.stopPolicy, null, 2) : "" }; }
-function draftFromJob(job: PiboLoopJob, defaultProfile: string, roomId?: string): Draft { return { mode: job.mode, name: job.name, description: job.description ?? "", profile: job.profile || defaultProfile, prompt: job.prompt, maxIterations: job.maxIterations ? String(job.maxIterations) : "", targetKind: job.target.kind, roomId: job.target.kind === "room" ? job.target.roomId : roomId ?? "", modelOverride: job.modelOverride, thinkingLevel: job.thinkingLevel, fastMode: job.fastMode, stopPolicyText: job.stopPolicy ? JSON.stringify(job.stopPolicy, null, 2) : "" }; }
-function inputFromDraft(draft: Draft): LoopJobInput { return { mode: draft.mode, name: draft.name.trim() || undefined, description: draft.description.trim() || undefined, profile: draft.profile, prompt: draft.prompt, maxIterations: draft.maxIterations.trim() ? Number(draft.maxIterations) : null, stopPolicy: parseStopPolicyText(draft.stopPolicyText), modelOverride: draft.modelOverride ?? null, thinkingLevel: draft.thinkingLevel ?? null, fastMode: draft.fastMode ?? null, target: draft.targetKind === "room" ? { kind: "room", roomId: draft.roomId } : { kind: "default-chat" } }; }
+function draftFromJob(job: PiboLoopJob, defaultProfile: string, roomId?: string): Draft { return { mode: job.mode, name: job.name, description: job.description ?? "", profile: job.profile || defaultProfile, prompt: job.prompt, maxIterations: job.maxIterations ? String(job.maxIterations) : "", tokenBudget: job.tokenBudget ? String(job.tokenBudget) : "", targetKind: job.target.kind, roomId: job.target.kind === "room" ? job.target.roomId : roomId ?? "", modelOverride: job.modelOverride, thinkingLevel: job.thinkingLevel, fastMode: job.fastMode, stopPolicyText: job.stopPolicy ? JSON.stringify(job.stopPolicy, null, 2) : "" }; }
+function inputFromDraft(draft: Draft): LoopJobInput { return { mode: draft.mode, name: draft.name.trim() || undefined, description: draft.description.trim() || undefined, profile: draft.profile, prompt: draft.prompt, maxIterations: draft.maxIterations.trim() ? Number(draft.maxIterations) : null, tokenBudget: draft.mode === "goal" && draft.tokenBudget.trim() ? Number(draft.tokenBudget) : null, stopPolicy: parseStopPolicyText(draft.stopPolicyText), modelOverride: draft.modelOverride ?? null, thinkingLevel: draft.thinkingLevel ?? null, fastMode: draft.fastMode ?? null, target: draft.targetKind === "room" ? { kind: "room", roomId: draft.roomId } : { kind: "default-chat" } }; }
 function parseStopPolicyText(value: string): PiboLoopStopPolicy | null { const trimmed = value.trim(); if (!trimmed) return null; return JSON.parse(trimmed) as PiboLoopStopPolicy; }
 function profileOptions(agents: AgentProfile[], customAgents: CustomAgent[]): AgentOption[] { const options = new Map<string, AgentOption>(); for (const agent of agents) options.set(agent.name, { name: agent.name, label: agent.name, description: agent.description }); for (const agent of customAgents) if (!agent.archivedAt) options.set(agent.profileName, { name: agent.profileName, label: agent.displayName === agent.profileName ? agent.profileName : `${agent.displayName} (${agent.profileName})`, description: agent.description }); return [...options.values()]; }
-function runtimeSummary(job: PiboLoopJob): string { const parts = [job.mode, job.modelOverride ? `${job.modelOverride.provider}/${job.modelOverride.id}` : undefined, job.thinkingLevel ? `thinking ${job.thinkingLevel}` : undefined, job.fastMode !== undefined ? job.fastMode ? "fast on" : "fast off" : undefined].filter(Boolean); return parts.length ? parts.join(" · ") : "default runtime"; }
+function runtimeSummary(job: PiboLoopJob): string { const parts = [job.mode, job.mode === "goal" ? job.state.goalStatus ?? (job.enabled ? "active" : "paused") : undefined, job.tokenBudget ? `${job.state.tokensUsed ?? 0}/${job.tokenBudget} tokens` : undefined, job.modelOverride ? `${job.modelOverride.provider}/${job.modelOverride.id}` : undefined, job.thinkingLevel ? `thinking ${job.thinkingLevel}` : undefined, job.fastMode !== undefined ? job.fastMode ? "fast on" : "fast off" : undefined].filter(Boolean); return parts.length ? parts.join(" · ") : "default runtime"; }
 function shortDate(value: string): string { return new Date(value).toLocaleString(undefined, { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" }); }

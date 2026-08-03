@@ -9,11 +9,14 @@ test("Loop API defaults to goal and the Ralph alias defaults to legacy mode", as
 		const goalResponse = await handleChatLoopApiRequest(options(store, jsonRequest("http://localhost/api/chat/loops/jobs", {
 			profile: "base",
 			prompt: "complete the objective",
+			tokenBudget: 1234,
 			target: { kind: "default-chat" },
 		})));
 		assert.equal(goalResponse?.status, 201);
 		const goal = (await goalResponse.json()).job;
 		assert.equal(goal.mode, "goal");
+		assert.equal(goal.tokenBudget, 1234);
+		assert.equal(goal.state.goalStatus, "paused");
 
 		const ralphResponse = await handleChatLoopApiRequest(options(store, jsonRequest("http://localhost/api/chat/ralph/jobs", {
 			profile: "base",
@@ -23,6 +26,13 @@ test("Loop API defaults to goal and the Ralph alias defaults to legacy mode", as
 		assert.equal(ralphResponse?.status, 201);
 		const ralph = (await ralphResponse.json()).job;
 		assert.equal(ralph.mode, "ralph");
+
+		await assert.rejects(() => handleChatLoopApiRequest(options(store, jsonRequest("http://localhost/api/chat/ralph/jobs", {
+			profile: "base",
+			prompt: "invalid legacy budget",
+			tokenBudget: 100,
+			target: { kind: "default-chat" },
+		}))), /tokenBudget is only available for goal mode/);
 
 		const listResponse = await handleChatLoopApiRequest(options(store, new Request("http://localhost/api/chat/loops/jobs?includeDisabled=true")));
 		const jobs = (await listResponse.json()).jobs;

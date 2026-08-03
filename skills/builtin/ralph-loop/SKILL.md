@@ -1,11 +1,13 @@
 ---
 name: ralph-loop
-description: Plan, create, run, monitor, and review Ralph implementation loops with reusable Docker workers, git worktrees, PRD batches, stop policies, maxIterations, progress files, commits, and safe agent instructions. Use whenever the user wants to start a Ralph job, run an implementation loop, prepare autonomous PRD execution, monitor Ralph, debug Ralph job behavior, or capture the standard Ralph loop workflow.
+description: Plan, create, run, monitor, and review legacy Ralph fresh-session implementation loops. Use when the user explicitly asks for Ralph compatibility, Ralph PRD batches, or a new Pibo Session per run; use the loop skill for standard persistent Goal Loops.
 ---
 
 # Ralph Loop Workflow
 
-Use this skill to create and operate a Ralph implementation loop safely. Ralph runs repeated Pibo agent sessions against an objective, usually from PRD stories. The core pattern is:
+Use this skill to create and operate a legacy Ralph implementation loop safely. Ralph starts a fresh Pibo Session for each run. For new same-session persistent goals, use the `loop` skill and `pibo loop` instead.
+
+Ralph runs repeated Pibo agent sessions against an objective, usually from PRD stories. The core pattern is:
 
 1. Prepare a clean git worktree.
 2. Reuse a dedicated Docker dev worker for runtime, builds, tests, gateway, and browser checks.

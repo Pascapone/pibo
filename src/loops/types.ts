@@ -3,6 +3,7 @@ import type { ModelProfile } from '../core/profiles.js';
 import type { PiboThinkingLevel } from '../core/thinking.js';
 
 export type PiboLoopMode = 'goal' | 'ralph';
+export type PiboGoalStatus = 'active' | 'paused' | 'blocked' | 'budget_limited' | 'complete';
 
 export type PiboLoopTarget =
 	| { kind: 'room'; roomId: string }
@@ -66,6 +67,9 @@ export type PiboLoopResourceMetadata = {
 };
 
 export type PiboLoopJobState = {
+	goalStatus?: PiboGoalStatus;
+	tokensUsed?: number;
+	timeUsedSeconds?: number;
 	runningAt?: string;
 	lastRunAt?: string;
 	lastStatus?: 'ok' | 'error' | 'cancelled';
@@ -90,6 +94,7 @@ export type PiboLoopJob = {
 	profile: string;
 	prompt: string;
 	maxIterations?: number;
+	tokenBudget?: number;
 	stopPolicy?: PiboLoopStopPolicy;
 	modelOverride?: ModelProfile;
 	thinkingLevel?: PiboThinkingLevel;
@@ -184,8 +189,10 @@ export type PiboLoopJobCreateInput = {
 	profile: string;
 	prompt: string;
 	maxIterations?: number;
+	tokenBudget?: number;
 	stopPolicy?: PiboLoopStopPolicy;
 	resources?: PiboLoopResourceMetadata;
+	initialPiboSessionId?: string;
 	modelOverride?: ModelProfile;
 	thinkingLevel?: PiboThinkingLevel;
 	fastMode?: boolean;
@@ -200,6 +207,7 @@ export type PiboLoopJobPatchInput = {
 	profile?: string;
 	prompt?: string;
 	maxIterations?: number | null;
+	tokenBudget?: number | null;
 	stopPolicy?: PiboLoopStopPolicy | null;
 	modelOverride?: ModelProfile | null;
 	thinkingLevel?: PiboThinkingLevel | null;

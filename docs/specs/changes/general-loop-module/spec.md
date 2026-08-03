@@ -1,6 +1,6 @@
 # Spec: General Loop Module
 
-**Status:** Done
+**Status:** Implemented in PR #324
 **Created:** 2026-08-02
 **Requester / Source:** User request in Pibo session `ps_924120d4-f1fb-40e2-926c-56b8fdadbd57`
 **Related source:** OpenAI Codex commit `5157493c23713ac12034cf250ffb0a8ce0670277`
@@ -27,11 +27,13 @@ Replace Ralph as the public capability with a general Loop module whose default 
 - Existing rooms, profiles, runtime overrides, stop policies, max iterations, run facts, resources, cleanup, run history, stop, and cancel behavior.
 - Compatibility for existing Ralph jobs, IDs, persisted data, CLI commands, API paths, and stop-condition type names.
 - Goal prompting adapted from Codex's continuation and completion-audit behavior.
+- Codex-compatible native goal tools that can be disabled per Agent Designer profile.
+- Persistent goal status, token budget, consumed-token accounting, and elapsed-time accounting.
 
 ### Out of Scope
 
-- Reimplementing Codex's token-accounting subsystem inside Pi Coding Agent.
-- Adding a new model-visible `update_goal` native tool.
+- Exact provider-internal token accounting before a model response reports usage.
+- MCP transport for goal lifecycle tools; the tools are native Pibo tools.
 - Removing legacy Ralph storage names in the same migration.
 - Production deployment.
 
@@ -51,7 +53,23 @@ A `ralph` loop MUST retain the existing behavior of creating a fresh Pibo Sessio
 
 ### REQ-004: Prompt fidelity
 
-Goal continuation prompts MUST preserve the full objective, direct the agent to inspect current authoritative state, prevent scope shrinking, require requirement-by-requirement completion evidence, and reserve the completion marker for proven completion.
+Goal continuation prompts MUST preserve the full objective, direct the agent to inspect current authoritative state, prevent scope shrinking, and require requirement-by-requirement completion evidence. Goal prompts MUST direct capable agents to use the native goal-status tool instead of a textual completion marker. Legacy Ralph prompts MUST retain the completion marker contract.
+
+### REQ-004A: Native goal tools
+
+Pibo MUST expose native `get_goal`, `create_goal`, and `update_goal` tools with Codex-compatible lifecycle semantics. `update_goal` MUST allow the agent to mark the current goal `complete` or `blocked`. These tools MUST execute inside Pibo without an MCP server.
+
+### REQ-004B: Agent Designer control
+
+Custom agents MUST expose one Agent Designer capability switch for goal tools. The switch MUST default to enabled for new and migrated custom agents and MUST allow all goal tools to be disabled for that profile.
+
+### REQ-004C: Goal state and token budget
+
+A goal MUST persist status, optional positive token budget, consumed model tokens, elapsed active time, and remaining tokens. Goal creation through CLI, API, UI, or native tooling MUST accept an optional token budget. Pibo MUST account usage reported by completed assistant model messages and MUST stop automatic continuation after the budget is exhausted.
+
+### REQ-004D: Completion and blocked lifecycle
+
+A successful `update_goal(status=complete)` call MUST persist completion and stop automatic continuation after the current turn. A successful `update_goal(status=blocked)` call MUST persist the blocked state and stop automatic continuation. The prompt MUST use Codex's strict three-consecutive-turn blocked audit. Resuming a blocked goal MUST make it active and begin a fresh blocked audit.
 
 ### REQ-005: Operational parity
 
@@ -69,6 +87,10 @@ Rooms, default chat, profiles, model/thinking/fast overrides, stop conditions, m
 
 New discovery output, the primary API, navigation, and Chat Web UI MUST use `Loop`, not `Ralph`. Legacy surfaces MAY identify themselves as compatibility aliases.
 
+### REQ-008: Agent discovery
+
+Pibo MUST provide a built-in `loop` skill and `pibo tools guide loop loop` discovery path for Goal-first workflows. The `ralph-loop` skill and Ralph guide MUST remain available but identify Ralph as the legacy fresh-session mode.
+
 ## Acceptance Criteria
 
 - [x] `pibo loop add ...` without a mode creates a `goal` loop.
@@ -79,6 +101,13 @@ New discovery output, the primary API, navigation, and Chat Web UI MUST use `Loo
 - [x] `pibo ralph` and `/api/chat/ralph/*` still work.
 - [x] Chat Web shows Loops, allows mode selection, and preserves all existing controls.
 - [x] Focused tests, typecheck, build, CLI smoke, API smoke, and browser validation pass.
+- [x] Goal tools are visible to enabled profiles and absent when disabled in Agent Designer.
+- [x] `create_goal`, `get_goal`, and `update_goal` persist and return Codex-compatible goal lifecycle data.
+- [x] Goal completion and blocked status stop continuation without requiring the XML marker.
+- [x] Token budgets are configurable through CLI, API, Web UI, and native tool creation.
+- [x] Reported model usage accumulates across goal turns and budget exhaustion stops the goal.
+- [x] Ralph marker compatibility remains unchanged.
+- [x] `pibo tools guide loop loop` and the built-in `loop` skill teach Goal-first operation while Ralph discovery remains available.
 
 ## Constraints
 

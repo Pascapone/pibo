@@ -311,6 +311,27 @@ test("custom agent store migrates duplicate profile names before enforcing globa
 	migratedDb.close();
 });
 
+test("custom agent store defaults goal lifecycle tools on and persists disabling them", () => {
+	const path = join(mkdtempSync(join(tmpdir(), "pibo-agent-goal-control-")), "agents.sqlite");
+	const store = new CustomAgentStore(path);
+	try {
+		const created = store.create({ displayName: "goal-control-agent" });
+		assert.equal(created.goalControl, true);
+		const disabled = store.update(created.id, { goalControl: false });
+		assert.equal(disabled.goalControl, false);
+		const registry = createDefaultPiboPluginRegistry();
+		const profile = createCustomAgentProfileDefinition(disabled).create({
+			getTool: (name) => registry.getTool(name),
+			getTools: (names) => registry.getTools(names),
+			getSkill: (name) => registry.getSkill(name),
+			getContextFile: (key) => registry.getContextFile(key),
+		});
+		assert.equal(profile.toolPackages.goalControl, false);
+	} finally {
+		store.close();
+	}
+});
+
 test("custom agent store persists automatic context file setting", () => {
 	const path = join(mkdtempSync(join(tmpdir(), "pibo-agent-store-")), "agents.sqlite");
 	const store = new CustomAgentStore(path);

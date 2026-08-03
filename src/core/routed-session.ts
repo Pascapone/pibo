@@ -142,6 +142,30 @@ function numberValue(value: unknown): number | undefined {
 	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
+export function normalizeAssistantUsageEvent(piboSessionId: string, message: unknown): Extract<PiboOutputEvent, { type: "assistant_usage" }> | undefined {
+	const assistant = message as AssistantErrorMessage | undefined;
+	if (!assistant?.usage || typeof assistant.usage !== "object") return undefined;
+	const usage = assistant.usage as { input?: unknown; output?: unknown; inputTokens?: unknown; outputTokens?: unknown; cacheRead?: unknown; cacheWrite?: unknown; totalTokens?: unknown };
+	const inputTokens = numberValue(usage.inputTokens) ?? numberValue(usage.input);
+	const outputTokens = numberValue(usage.outputTokens) ?? numberValue(usage.output);
+	const cacheReadTokens = numberValue(usage.cacheRead);
+	const cacheWriteTokens = numberValue(usage.cacheWrite);
+	const reportedTotal = numberValue(usage.totalTokens);
+	const normalizedTotal = reportedTotal ?? [inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens]
+		.filter((value): value is number => value !== undefined)
+		.reduce((sum, value) => sum + value, 0);
+	if (normalizedTotal <= 0 && inputTokens === undefined && outputTokens === undefined && cacheReadTokens === undefined && cacheWriteTokens === undefined) return undefined;
+	return {
+		type: "assistant_usage",
+		piboSessionId,
+		...(inputTokens !== undefined ? { inputTokens } : {}),
+		...(outputTokens !== undefined ? { outputTokens } : {}),
+		...(cacheReadTokens !== undefined ? { cacheReadTokens } : {}),
+		...(cacheWriteTokens !== undefined ? { cacheWriteTokens } : {}),
+		totalTokens: Math.max(0, normalizedTotal),
+	};
+}
+
 function stringValue(value: unknown): string | undefined {
 	return typeof value === "string" && value.length > 0 ? value : undefined;
 }
@@ -657,6 +681,8 @@ export class RoutedSession {
 			const normalized = normalizePiEvent(this.piboSessionId, event, { contextWindow: numberValue(model?.contextWindow) });
 			const candidate = event && typeof event === "object" ? event as PiEventCandidate : undefined;
 			const assistantMessageEnded = candidate?.type === "message_end" && isAssistantMessage(candidate.message);
+			const usageEvent = assistantMessageEnded ? normalizeAssistantUsageEvent(this.piboSessionId, candidate?.message as AssistantErrorMessage) : undefined;
+			if (usageEvent) this.emit(this.withActiveMessage(usageEvent));
 			// Pi gets the first chance to recover through its short retry/compaction loop.
 			// Keep the final error pending so the routed turn can continue durable recovery.
 			if (assistantMessageEnded && normalized?.type === "session_error") {
@@ -1336,7 +1362,8 @@ export class RoutedSession {
 
 		if (
 			this.activeMessage?.id &&
-			(event.type === "tool_call" ||
+			(event.type === "assistant_usage" ||
+				event.type === "tool_call" ||
 				event.type === "tool_execution_started" ||
 				event.type === "tool_execution_updated" ||
 				event.type === "tool_execution_finished" ||

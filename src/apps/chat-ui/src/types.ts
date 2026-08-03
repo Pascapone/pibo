@@ -513,6 +513,7 @@ export type AgentProfile = {
 	builtinToolNames?: string[];
 	autoContextFiles?: boolean;
 	runControl?: boolean;
+	goalControl?: boolean;
 };
 
 export type UserSkill = {
@@ -614,6 +615,7 @@ export type CustomAgent = {
 	builtinToolNames: string[];
 	autoContextFiles: boolean;
 	runControl: boolean;
+	goalControl: boolean;
 	brokenContextFiles?: string[];
 	createdAt: string;
 	updatedAt: string;
@@ -681,7 +683,8 @@ export type PiboLoopStopConditionInstance = { id: string; type: string; enabled?
 export type PiboLoopStopPolicy = { mode: "any" | "all"; conditions: PiboLoopStopConditionInstance[] };
 export type PiboLoopStopConditionInfo = { type: string; name: string; description?: string; phases: Array<"before-run" | "after-run">; optionsSchema?: Record<string, unknown>; defaultOptions?: Record<string, unknown>; pluginId?: string; pluginName?: string };
 export type PiboLoopStopEvaluationSummary = { id: string; phase: "before-run" | "after-run"; at: string; mode: "any" | "all"; finalAction: "continue" | "stop-after-run" | "cancel-current-run"; reason?: string; decisions: Array<{ id: string; type: string; phase: "before-run" | "after-run"; action: "continue" | "stop-after-run" | "cancel-current-run"; reason?: string; details?: Record<string, unknown>; skipped?: boolean; error?: string }> };
-export type PiboLoopJob = { id: string; mode: PiboLoopMode; name: string; description?: string; enabled: boolean; target: PiboLoopTarget; profile: string; prompt: string; maxIterations?: number; stopPolicy?: PiboLoopStopPolicy; modelOverride?: ModelProfile; thinkingLevel?: ThinkingLevel; fastMode?: boolean; state: { runningAt?: string; lastRunAt?: string; lastStatus?: "ok" | "error" | "cancelled"; lastError?: string; lastRunId?: string; lastPiboSessionId?: string; consecutiveErrors?: number; stopRequestedAt?: string; cancelRequestedAt?: string; completedIterations?: number; conditionStates?: Record<string, Record<string, unknown>>; lastStopEvaluation?: PiboLoopStopEvaluationSummary }; createdAt: string; updatedAt: string };
+export type PiboGoalStatus = "active" | "paused" | "blocked" | "budget_limited" | "complete";
+export type PiboLoopJob = { id: string; mode: PiboLoopMode; name: string; description?: string; enabled: boolean; target: PiboLoopTarget; profile: string; prompt: string; maxIterations?: number; tokenBudget?: number; stopPolicy?: PiboLoopStopPolicy; modelOverride?: ModelProfile; thinkingLevel?: ThinkingLevel; fastMode?: boolean; state: { goalStatus?: PiboGoalStatus; tokensUsed?: number; timeUsedSeconds?: number; runningAt?: string; lastRunAt?: string; lastStatus?: "ok" | "error" | "cancelled"; lastError?: string; lastRunId?: string; lastPiboSessionId?: string; consecutiveErrors?: number; stopRequestedAt?: string; cancelRequestedAt?: string; completedIterations?: number; conditionStates?: Record<string, Record<string, unknown>>; lastStopEvaluation?: PiboLoopStopEvaluationSummary }; createdAt: string; updatedAt: string };
 export type PiboLoopRun = { id: string; jobId: string; piboSessionId?: string; status: "running" | "ok" | "error" | "cancelled"; reason?: string; error?: string; startedAt?: string; completedAt?: string; createdAt: string; updatedAt: string };
 export type PiboLoopStatus = { enabled: boolean; jobs: number; running: number };
 export type PiboLoopJobTemplate = { id: string; name: string; description: string; category: "prd" | "general"; job: { mode?: PiboLoopMode; name: string; description?: string; prompt: string; maxIterations?: number; stopPolicy?: PiboLoopStopPolicy } };

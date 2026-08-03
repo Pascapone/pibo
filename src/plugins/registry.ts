@@ -272,6 +272,7 @@ export class PiboPluginRegistry {
 				builtinToolNames: [...sessionContext.builtinToolNames],
 				autoContextFiles: sessionContext.autoContextFiles,
 				runControl: sessionContext.toolPackages.runControl === true,
+				goalControl: sessionContext.toolPackages.goalControl !== false,
 			};
 		});
 	}
@@ -324,6 +325,11 @@ export class PiboPluginRegistry {
 						"pibo_run_cancel",
 						"pibo_run_ack",
 					],
+				},
+				{
+					name: "pibo-goal-control",
+					description: "Expose get_goal, create_goal, and update_goal as one native goal lifecycle package.",
+					toolNames: ["get_goal", "create_goal", "update_goal"],
 				},
 				...[...this.capabilityPackages.values()].map((pkg) => ({
 					...pkg,

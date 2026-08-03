@@ -20,6 +20,11 @@ const promiseCompletePolicy: PiboLoopStopPolicy = {
 	conditions: [{ id: 'promise-complete', type: 'pibo.loop.promise-complete' }],
 };
 
+const goalStatusPolicy: PiboLoopStopPolicy = {
+	mode: 'any',
+	conditions: [{ id: 'goal-status', type: 'pibo.loop.goal-status' }],
+};
+
 const singleRunPolicy: PiboLoopStopPolicy = {
 	mode: 'any',
 	conditions: [{ id: 'max-iterations', type: 'pibo.loop.max-iterations' }],
@@ -52,7 +57,7 @@ export const BUILT_IN_LOOP_JOB_TEMPLATES: readonly PiboLoopJobTemplate[] = [
 # Constraints
 
 - <Scope, safety, or approval boundary>`,
-			stopPolicy: promiseCompletePolicy,
+			stopPolicy: goalStatusPolicy,
 		},
 	},
 	{

@@ -6,6 +6,7 @@ export const PROMISE_COMPLETE_STOP_TOKEN = '<promise>COMPLETE</promise>';
 export const MAX_ITERATIONS_STOP_CONDITION = 'pibo.loop.max-iterations';
 export const PROMISE_COMPLETE_STOP_CONDITION = 'pibo.loop.promise-complete';
 export const FACT_COUNT_STOP_CONDITION = 'pibo.loop.fact-count';
+export const GOAL_STATUS_STOP_CONDITION = 'pibo.loop.goal-status';
 
 function hasPromiseCompleteMarker(finalAnswer: string): boolean { return finalAnswer.split(/\r?\n/).some((line) => line.trim() === PROMISE_COMPLETE_STOP_TOKEN); }
 function isObject(value: unknown): value is PiboJsonObject { return !!value && typeof value === 'object' && !Array.isArray(value); }
@@ -13,10 +14,11 @@ function stringOption(options: PiboJsonObject | undefined, key: string): string 
 function numberOption(options: PiboJsonObject | undefined, key: string): number | undefined { const value = options?.[key]; return typeof value === 'number' && Number.isFinite(value) ? value : undefined; }
 function boolOption(options: PiboJsonObject | undefined, key: string): boolean | undefined { const value = options?.[key]; return typeof value === 'boolean' ? value : undefined; }
 
-export function getDefaultLoopStopPolicy(job: Pick<PiboLoopJob, 'maxIterations'>): PiboLoopStopPolicy {
+export function getDefaultLoopStopPolicy(job: Pick<PiboLoopJob, 'mode' | 'maxIterations'>): PiboLoopStopPolicy {
 	const conditions: PiboLoopStopConditionInstance[] = [];
 	if (job.maxIterations !== undefined) conditions.push({ id: 'max-iterations', type: MAX_ITERATIONS_STOP_CONDITION });
-	conditions.push({ id: 'promise-complete', type: PROMISE_COMPLETE_STOP_CONDITION });
+	if (job.mode === 'goal') conditions.push({ id: 'goal-status', type: GOAL_STATUS_STOP_CONDITION });
+	else conditions.push({ id: 'promise-complete', type: PROMISE_COMPLETE_STOP_CONDITION });
 	return { mode: 'any', conditions };
 }
 
@@ -49,6 +51,18 @@ export function createBuiltInLoopStopConditions(): PiboLoopStopConditionDefiniti
 				const finalAnswer = context.outcome?.finalAnswer ?? '';
 				if (context.outcome?.status === 'ok' && hasPromiseCompleteMarker(finalAnswer)) return { action: 'stop-after-run', reason: 'promise-complete', details: { token: PROMISE_COMPLETE_STOP_TOKEN } };
 				return { action: 'continue' };
+			},
+		},
+		{
+			type: GOAL_STATUS_STOP_CONDITION,
+			name: 'Goal status',
+			description: 'Stops a Goal loop after native tooling or accounting marks it complete, blocked, or budget limited.',
+			phases: ['before-run', 'after-run'],
+			evaluate(context) {
+				if (context.job.mode !== 'goal') return { action: 'continue' };
+				const status = context.job.state.goalStatus ?? (context.job.enabled ? 'active' : 'paused');
+				if (status === 'complete' || status === 'blocked' || status === 'budget_limited') return { action: 'stop-after-run', reason: `goal-${status}`, details: { status } };
+				return { action: 'continue', details: { status } };
 			},
 		},
 		{

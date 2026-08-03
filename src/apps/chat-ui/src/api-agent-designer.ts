@@ -72,6 +72,7 @@ export type SaveCustomAgentInput = {
 	builtinToolNames: string[];
 	autoContextFiles: boolean;
 	runControl: boolean;
+	goalControl: boolean;
 };
 
 export async function getAgentCatalog(): Promise<{

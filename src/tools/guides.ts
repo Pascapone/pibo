@@ -4,6 +4,58 @@ export interface ToolGuide {
   content: string;
 }
 
+export const LOOP_GUIDE: ToolGuide = {
+  name: 'loop',
+  description: 'Create, inspect, and control Pibo Goal and legacy Ralph loops from the CLI.',
+  content: `---
+name: loop
+description: Creates and controls persistent Goal Loops and legacy fresh-session Ralph loops.
+allowed-tools: Bash(pibo:*), Bash(npm:*)
+---
+
+# Loop CLI Tool
+
+Use \`pibo loop\` as the standard continuous-work CLI. Goal mode is the default and continues one Pibo Session across turns. Use \`--mode ralph\` or \`pibo ralph\` only for legacy fresh-session runs.
+
+## Discover
+
+\`\`\`bash
+pibo loop --help
+pibo loop add --help
+pibo loop templates --json
+pibo loop conditions
+\`\`\`
+
+## Create a Goal Loop
+
+\`\`\`bash
+pibo loop add \\
+  --room <room-id> \\
+  --profile <profile> \\
+  --prompt "<complete objective>" \\
+  --token-budget <optional-positive-token-count> \\
+  --max-iterations <optional-run-fallback> \\
+  --start
+\`\`\`
+
+Goal-capable agents use native \`get_goal\`, \`create_goal\`, and \`update_goal\` tools. Agent Designer can disable the default-enabled \`pibo-goal-control\` package.
+
+Use \`update_goal\` with \`complete\` only after current evidence proves every requirement. Use \`blocked\` only after the same impasse repeats for at least three consecutive Goal turns and progress requires user input or external change.
+
+## Inspect and Control
+
+\`\`\`bash
+pibo loop list --all --json
+pibo loop runs --job <job-id> --json
+pibo loop start <job-id>
+pibo loop stop <job-id>
+pibo loop cancel <job-id>
+\`\`\`
+
+Token budgets count usage reported by completed assistant model messages. One request can overshoot because usage is known after the response returns.
+`,
+};
+
 export const RALPH_GUIDE: ToolGuide = {
   name: 'ralph',
   description: 'Create, inspect, and control Pibo Ralph jobs from the CLI.',

@@ -76,6 +76,7 @@ export type PiboProfileInfo = {
 	builtinToolNames: string[];
 	autoContextFiles: boolean;
 	runControl: boolean;
+	goalControl: boolean;
 };
 
 export type PiboNativeToolInfo = {
