@@ -174,4 +174,57 @@ describe("manual text trigger workflow runtime", () => {
     assert.equal(result.ok, true);
     assert.deepEqual(secondInputs, ["short final only"]);
   });
+
+  it("keeps the existing unsupported-join failure under LangGraph execution", async () => {
+    const result = await runManualTextTriggerWorkflow(
+      createWorkflow({
+        edge_start_to_left: { id: "edge_start_to_left", from: { nodeId: "start" }, to: { nodeId: "left" }, kind: "data" },
+        edge_start_to_right: { id: "edge_start_to_right", from: { nodeId: "start" }, to: { nodeId: "right" }, kind: "data" },
+        edge_left_to_join: { id: "edge_left_to_join", from: { nodeId: "left" }, to: { nodeId: "join" }, kind: "data" },
+        edge_right_to_join: { id: "edge_right_to_join", from: { nodeId: "right" }, to: { nodeId: "join" }, kind: "data" },
+      }, {
+        left: agentNode("Left"),
+        right: agentNode("Right"),
+        join: agentNode("Join"),
+      }),
+      "join this text",
+      {
+        source: { kind: "manual.editor", triggerNodeId: "start" },
+        agentExecutor: (context) => ({ output: `${context.nodeId} done` }),
+        now: () => "2026-07-06T00:00:00.000Z",
+      },
+    );
+
+    assert.equal(result.ok, false);
+    if (result.ok) assert.fail("Expected unsupported join failure.");
+    assert.equal(result.error.code, "WorkflowRuntimeError.joinUnsupported");
+    assert.deepEqual(result.nodeAttempts.map((attempt) => attempt.nodeId), ["start", "left", "right", "join"]);
+  });
+
+  it("runs LangGraph workflows longer than the default recursion limit", async () => {
+    const agentCount = 30;
+    const nodes: WorkflowDefinition["nodes"] = {};
+    const edges: WorkflowDefinition["edges"] = {};
+    for (let index = 0; index < agentCount; index += 1) {
+      const nodeId = `agent_${index}`;
+      nodes[nodeId] = agentNode(`Agent ${index}`);
+      const sourceNodeId = index === 0 ? "start" : `agent_${index - 1}`;
+      const edgeId = `edge_${sourceNodeId}_to_${nodeId}`;
+      edges[edgeId] = { id: edgeId, from: { nodeId: sourceNodeId }, to: { nodeId }, kind: "data" };
+    }
+
+    const result = await runManualTextTriggerWorkflow(
+      createWorkflow(edges, nodes),
+      "long graph",
+      {
+        source: { kind: "manual.editor", triggerNodeId: "start" },
+        agentExecutor: (context) => ({ output: `${context.nodeId}:${context.input}` }),
+        now: () => "2026-07-06T00:00:00.000Z",
+      },
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(result.nodeAttempts.length, agentCount + 1);
+    assert.equal(result.nodeAttempts.at(-1)?.nodeId, `agent_${agentCount - 1}`);
+  });
 });

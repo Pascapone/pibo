@@ -8,7 +8,7 @@ export type ChatAppRoute =
 	| { area: "workflows"; draftId?: string; viewWorkflowId?: string; viewWorkflowVersion?: string }
 	| { area: "agents" }
 	| { area: "cron" }
-	| { area: "ralph" }
+	| { area: "loops" }
 	| { area: "context"; piboSessionId?: string }
 	| { area: "settings"; panel?: SettingsPanel };
 
@@ -29,7 +29,7 @@ type ChatRouteNavigationRequest =
 	| { to: "/workflows"; replace: boolean }
 	| { to: "/agents"; replace: boolean }
 	| { to: "/cron"; replace: boolean }
-	| { to: "/ralph"; replace: boolean }
+	| { to: "/loops"; replace: boolean }
 	| { to: "/context"; search: ContextSearch; replace: boolean }
 	| { to: "/settings/shortcuts"; replace: boolean }
 	| { to: "/settings/maintenance"; replace: boolean }
@@ -56,7 +56,7 @@ export function chatRouteFromLocation(pathname: string, search: Record<string, u
 	if (parts[0] === "workflows") return { area: "workflows" };
 	if (parts[0] === "agents") return { area: "agents" };
 	if (parts[0] === "cron") return { area: "cron" };
-	if (parts[0] === "ralph") return { area: "ralph" };
+	if (parts[0] === "loops" || parts[0] === "ralph") return { area: "loops" };
 	if (parts[0] === "settings") return { area: "settings", panel: settingsPanelFromPathPart(parts[1]) };
 	if (parts[0] === "projects" && parts[1] && parts[2] === "sessions" && parts[3]) {
 		return { area: "projects", projectId: parts[1], piboSessionId: parts[3], sessionViewId };
@@ -91,7 +91,7 @@ export function chatNavigationRequest(target: ChatAppRoute, replace: boolean, ne
 	}
 	if (target.area === "agents") return { to: "/agents", replace };
 	if (target.area === "cron") return { to: "/cron", replace };
-	if (target.area === "ralph") return { to: "/ralph", replace };
+	if (target.area === "loops") return { to: "/loops", replace };
 	if (target.area === "context") {
 		return {
 			to: "/context",

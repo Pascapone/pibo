@@ -124,7 +124,8 @@ test("pibo tools lists curated CLI tools", async () => {
 		assert.match(result.stdout, /browser-use/);
 		assert.match(result.stdout, /graphify\tavailable\tCodebase visualization CLI/);
 		assert.match(result.stdout, /available/);
-		assert.match(result.stdout, /ralph\tinstalled\tPibo-native continuous agent job runner/);
+		assert.match(result.stdout, /loop\tinstalled\tPibo-native goal-first continuous agent loop runner/);
+		assert.match(result.stdout, /ralph\tinstalled\tLegacy Pibo Ralph alias/);
 	} finally {
 		await rm(cwd, { recursive: true, force: true });
 	}
@@ -156,6 +157,31 @@ test("pibo tools exposes Graphify as a curated CLI tool", async () => {
 		const envOutput = await execFileAsync("node", [cliPath, "tools", "env", "graphify"], { cwd, env });
 		assert.match(envOutput.stdout, /tools\/graphify\/.venv\/bin/);
 		assert.doesNotMatch(envOutput.stdout, /browser-use/);
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test("pibo tools exposes Loop guides and helper discovery", async () => {
+	const cwd = await mkdtemp(join(tmpdir(), "pibo-tools-loop-guide-"));
+	try {
+		const env = { ...process.env, PIBO_HOME: join(cwd, "pibo-home") };
+
+		const show = await execFileAsync("node", [cliPath, "tools", "show", "loop"], { cwd, env });
+		assert.match(show.stdout, /kind: built-in/);
+		assert.match(show.stdout, /pibo loop templates/);
+		assert.match(show.stdout, /pibo tools guide loop loop/);
+
+		const helper = await execFileAsync("node", [cliPath, "tools", "loop"], { cwd, env });
+		assert.match(helper.stdout, /pibo tools loop - Goal-first Loop helpers/);
+		assert.match(helper.stdout, /pibo loop add --template goal-objective/);
+		assert.match(helper.stdout, /pibo loop runs --job <job-id> --json/);
+
+		const guide = await execFileAsync("node", [cliPath, "tools", "guide", "loop", "loop"], { cwd, env });
+		assert.match(guide.stdout, /# Loop CLI Tool/);
+		assert.match(guide.stdout, /pibo loop templates --json/);
+		assert.match(guide.stdout, /--token-budget/);
+		assert.match(guide.stdout, /update_goal/);
 	} finally {
 		await rm(cwd, { recursive: true, force: true });
 	}

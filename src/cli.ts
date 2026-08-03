@@ -171,9 +171,15 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 		return;
 	}
 
+	if (argv[2] === "loop") {
+		const { runLoopCli } = await import("./loops/cli.js");
+		await runLoopCli([argv[0] ?? "node", "pibo loop", ...argv.slice(3)]);
+		return;
+	}
+
 	if (argv[2] === "ralph") {
-		const { runRalphCli } = await import("./ralph/cli.js");
-		await runRalphCli([argv[0] ?? "node", "pibo ralph", ...argv.slice(3)]);
+		const { runLoopCli } = await import("./loops/cli.js");
+		await runLoopCli([argv[0] ?? "node", "pibo ralph", ...argv.slice(3)], { mode: "ralph", commandName: "pibo ralph" });
 		return;
 	}
 
@@ -318,15 +324,27 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 		});
 
 	program
-		.command("ralph")
-		.description("Manage continuous Ralph jobs")
+		.command("loop")
+		.description("Manage continuous agent loops")
 		.helpOption(false)
 		.allowUnknownOption(true)
 		.allowExcessArguments(true)
 		.argument("[args...]")
 		.action(async (args: string[]) => {
-			const { runRalphCli } = await import("./ralph/cli.js");
-			await runRalphCli([argv[0] ?? "node", "pibo ralph", ...args]);
+			const { runLoopCli } = await import("./loops/cli.js");
+			await runLoopCli([argv[0] ?? "node", "pibo loop", ...args]);
+		});
+
+	program
+		.command("ralph")
+		.description("Legacy alias for Ralph-mode loops")
+		.helpOption(false)
+		.allowUnknownOption(true)
+		.allowExcessArguments(true)
+		.argument("[args...]")
+		.action(async (args: string[]) => {
+			const { runLoopCli } = await import("./loops/cli.js");
+			await runLoopCli([argv[0] ?? "node", "pibo ralph", ...args], { mode: "ralph", commandName: "pibo ralph" });
 		});
 
 	program
@@ -519,7 +537,8 @@ Commands:
   setup        Plan user-host installs and developer-host upgrades
   skills       Manage Pibo user skills
   cron         Manage scheduled Pibo jobs
-  ralph        Manage continuous Ralph jobs
+  loop         Manage continuous agent loops (goal mode by default)
+  ralph        Legacy alias for Ralph-mode loops
   vscode       Manage the Pibo VS Code extension
   profile      Inspect a pibo profile, including active saved Chat custom agents
   tui          Start the direct Pi TUI

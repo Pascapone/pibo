@@ -87,6 +87,7 @@ export type ChatAgentBody = {
 	builtinToolNames?: unknown;
 	autoContextFiles?: unknown;
 	runControl?: unknown;
+	goalControl?: unknown;
 	archived?: unknown;
 	confirmName?: unknown;
 };
@@ -315,6 +316,12 @@ export function normalizeAutoContextFiles(value: unknown): boolean {
 export function normalizeRunControl(value: unknown): boolean {
 	if (value === undefined) return false;
 	if (typeof value !== "boolean") throw new PiboWebHttpError("runControl must be a boolean", 400);
+	return value;
+}
+
+export function normalizeGoalControl(value: unknown): boolean {
+	if (value === undefined) return true;
+	if (typeof value !== "boolean") throw new PiboWebHttpError("goalControl must be a boolean", 400);
 	return value;
 }
 
@@ -720,6 +727,7 @@ export function createAgentInput(body: ChatAgentBody) {
 		builtinToolNames: normalizeBuiltinToolNames(body.builtinToolNames),
 		autoContextFiles: normalizeAutoContextFiles(body.autoContextFiles),
 		runControl: normalizeRunControl(body.runControl),
+		goalControl: normalizeGoalControl(body.goalControl),
 	};
 }
 
@@ -745,6 +753,7 @@ export function createAgentUpdate(body: ChatAgentBody): UpdateCustomAgentInput {
 	if (body.builtinToolNames !== undefined) update.builtinToolNames = normalizeBuiltinToolNames(body.builtinToolNames);
 	if (body.autoContextFiles !== undefined) update.autoContextFiles = normalizeAutoContextFiles(body.autoContextFiles);
 	if (body.runControl !== undefined) update.runControl = normalizeRunControl(body.runControl);
+	if (body.goalControl !== undefined) update.goalControl = normalizeGoalControl(body.goalControl);
 	if (Object.keys(update).length === 0 && body.archived === undefined) {
 		throw new PiboWebHttpError("No agent update fields provided", 400);
 	}

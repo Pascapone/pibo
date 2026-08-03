@@ -4,6 +4,7 @@ import type { PiboThinkingLevel } from "./thinking.js";
 export type ToolDefinitionContext = {
 	piboSessionId?: string;
 	piboRoomId?: string;
+	profileName?: string;
 };
 
 export type ToolProfile = {
@@ -71,6 +72,7 @@ export type BuiltinToolName = (typeof DEFAULT_BUILTIN_TOOL_NAMES)[number];
 export type ToolPackageProfile = {
 	runControl?: boolean;
 	codexCompat?: boolean;
+	goalControl?: boolean;
 };
 
 export type ModelProfile = {

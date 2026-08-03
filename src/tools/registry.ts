@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { ensureAgentBrowserWrapper } from './agent-browser-wrapper.js';
 import { detectDesktopEnv, hasDesktopDisplay, printDesktopEnvStatus, printLinuxVirtualDisplayHint } from './desktop-env.js';
-import { type ToolGuide, AGENT_BROWSER_GUIDE, BROWSER_USE_GUIDE, GRAPHIFY_GUIDE, RALPH_GUIDE, REMOTE_BROWSER_GUIDE } from './guides.js';
+import { type ToolGuide, AGENT_BROWSER_GUIDE, BROWSER_USE_GUIDE, GRAPHIFY_GUIDE, LOOP_GUIDE, RALPH_GUIDE, REMOTE_BROWSER_GUIDE } from './guides.js';
 import { ensureLinuxVirtualDisplay } from './linux-virtual-display.js';
 import {
   type ToolNpmRuntimeSpec,
@@ -125,12 +125,30 @@ const REGISTRY: CliToolEntry[] = [
     ].join('\n'),
   },
   {
+    name: 'loop',
+    description: 'Pibo-native goal-first continuous agent loop runner.',
+    kind: 'internal',
+    guides: [LOOP_GUIDE],
+    notes: [
+      'Loop is built into the pibo CLI; no external runtime installation is required.',
+      'Goal mode reuses one Pibo Session and is the default; Ralph mode remains available for fresh-session compatibility.',
+      'Goal lifecycle tools and token budgets are available when the selected agent enables pibo-goal-control.',
+    ],
+    agentContextSnippet: [
+      'Goal-first continuous Pibo agent loop runner.',
+      'Use `pibo loop templates`, then create with `pibo loop add --template goal-objective --room <room-id> --start`.',
+      'Optional budgets: `--token-budget <n>` and `--max-iterations <n>`.',
+      'Inspect/control with `pibo loop list --json`, `runs --job <id> --json`, `stop <id>`, `cancel <id>`.',
+      'Guide: `pibo tools guide loop loop`.',
+    ].join('\n'),
+  },
+  {
     name: 'ralph',
-    description: 'Pibo-native continuous agent job runner for implementation and debugging loops.',
+    description: 'Legacy Pibo Ralph alias for fresh-session continuous agent jobs.',
     kind: 'internal',
     guides: [RALPH_GUIDE],
     notes: [
-      'Ralph is built into the pibo CLI; no external runtime installation is required.',
+      'Ralph is the legacy fresh-session alias; prefer pibo loop for new Goal work.',
       'Ralph jobs are app-global; use room targets or the shared default target when creating jobs.',
       'Prefer templates for repeatable jobs, and use --json for automation-safe inspection.',
     ],

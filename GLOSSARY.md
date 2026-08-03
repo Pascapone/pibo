@@ -48,7 +48,7 @@ Shared vocabulary for Pibo architecture, implementation, and specifications. Kee
 
 **Yielded Run** — A long-running tool invocation started through run-control tools so the agent can continue working and inspect the result later.
 
-**Ralph Job / Ralph Run** — A Ralph Job is a durable continuous-work definition. A Ralph Run is one execution attempt of that job.
+**Loop Job / Loop Run** — A Loop Job is a durable continuous-work definition. A Loop Run is one execution attempt. Goal mode continues turns in one Pibo Session; legacy Ralph mode creates a fresh Pibo Session for each run.
 
 **Workflow Definition / Workflow Run** — A Workflow Definition is a versioned graph of nodes, edges, inputs, outputs, and policies. A Workflow Run is one execution of a definition or immutable snapshot.
 

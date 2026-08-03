@@ -29,6 +29,14 @@ test("Agent Designer keeps pending edits recoverable and exposes save state inst
 	assert.doesNotMatch(agentsViewSource, /title="Save Agent"/);
 });
 
+test("Agent Designer exposes goal lifecycle tooling as a default-enabled package switch", () => {
+	assert.match(agentsViewSource, /title="pibo-goal-control"/);
+	assert.match(agentsViewSource, /checked=\{draft\.goalControl\}/);
+	assert.match(agentsViewSource, /goalControl: !current\.goalControl/);
+	assert.match(modelSource, /goalControl: true/);
+	assert.match(modelSource, /goalControl: draft\.goalControl/);
+});
+
 test("navigation away from Agent Designer waits for a successful autosave", () => {
 	assert.match(appSource, /useBlocker\(\{/);
 	assert.match(appSource, /disabled: area !== "agents"/);

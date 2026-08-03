@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
 import type { PiboChannelContext } from "../../channels/types.js";
 import type { PiboJsonObject, PiboJsonValue, PiboOutputEvent } from "../../core/events.js";
 import type { PiboSession } from "../../sessions/store.js";
@@ -69,6 +70,26 @@ export type WorkflowManualTriggerRuntimeOptions = {
 
 type PendingAgentInput = { nodeId: string; input: string; viaEdgeId: string; sourceAttemptId: string };
 
+type WorkflowManualTriggerGraphFailure = {
+	diagnostics: WorkflowDraftDiagnostic[];
+	error: { code: string; message: string };
+};
+
+type WorkflowManualTriggerGraphState = {
+	run: WorkflowManualTriggerRun;
+	nodeAttempts: WorkflowManualTriggerNodeAttempt[];
+	edgeTransfers: WorkflowManualTriggerEdgeTransfer[];
+	pending: PendingAgentInput[];
+	current?: PendingAgentInput;
+	executedNodeIds: string[];
+	lastOutput: string;
+	failure?: WorkflowManualTriggerGraphFailure;
+};
+
+const WorkflowManualTriggerState = Annotation.Root({
+	execution: Annotation<WorkflowManualTriggerGraphState>(),
+});
+
 export async function runWorkflowManualTextTrigger(options: WorkflowManualTriggerRuntimeOptions): Promise<WorkflowManualTriggerRunResult> {
 	const diagnostics = validateWorkflowManualTextTrigger(options.definition, options.triggerNodeId, options.input, options.resolveProfile);
 	if (diagnostics.some((diagnostic) => diagnostic.severity === "error")) {
@@ -88,8 +109,6 @@ export async function runWorkflowManualTextTrigger(options: WorkflowManualTrigge
 		createdAt: now,
 		updatedAt: now,
 	};
-	const nodeAttempts: WorkflowManualTriggerNodeAttempt[] = [];
-	const edgeTransfers: WorkflowManualTriggerEdgeTransfer[] = [];
 	const triggerAttempt: WorkflowManualTriggerNodeAttempt = {
 		id: `wna_${randomUUID()}`,
 		workflowRunId: run.id,
@@ -101,56 +120,167 @@ export async function runWorkflowManualTextTrigger(options: WorkflowManualTrigge
 		startedAt: now,
 		completedAt: now,
 	};
-	nodeAttempts.push(triggerAttempt);
+	const initialState: WorkflowManualTriggerGraphState = {
+		run,
+		nodeAttempts: [triggerAttempt],
+		edgeTransfers: [],
+		pending: [],
+		executedNodeIds: [],
+		lastOutput: options.input,
+	};
 
-	const queue: PendingAgentInput[] = [];
-	enqueueOutgoingEdges(options.definition, run.id, triggerAttempt, queue, edgeTransfers);
-	const executedNodes = new Set<string>();
-	let lastOutput = options.input;
+	let execution: WorkflowManualTriggerGraphState;
+	try {
+		const graph = compileWorkflowManualTriggerGraph(options);
+		const result = await graph.invoke(
+			{ execution: initialState },
+			{ recursionLimit: workflowGraphRecursionLimit(options.definition) },
+		);
+		execution = result.execution;
+	} catch (error) {
+		const failedAt = new Date().toISOString();
+		run.status = "failed";
+		run.failedAt = failedAt;
+		run.updatedAt = failedAt;
+		return {
+			ok: false,
+			run,
+			nodeAttempts: initialState.nodeAttempts,
+			edgeTransfers: initialState.edgeTransfers,
+			diagnostics: [{
+				code: "WorkflowRuntimeError.langGraphExecutionFailed",
+				message: error instanceof Error ? error.message : "LangGraph execution failed with a non-Error value.",
+				severity: "error",
+				path: "$",
+			}],
+			error: {
+				code: "WorkflowRuntimeError.langGraphExecutionFailed",
+				message: "Manual trigger run failed during LangGraph execution.",
+			},
+		};
+	}
 
-	while (queue.length) {
-		const pending = queue.shift()!;
-		if (executedNodes.has(pending.nodeId)) {
-			const failedAt = new Date().toISOString();
-			run.status = "failed";
-			run.failedAt = failedAt;
-			run.updatedAt = failedAt;
-			return {
-				ok: false,
-				run,
-				nodeAttempts,
-				edgeTransfers,
-				diagnostics: [{
-					code: "WorkflowRuntimeError.joinUnsupported",
-					message: `Workflow node '${pending.nodeId}' received more than one input, but manual trigger V1 does not support joins yet.`,
-					severity: "error",
-					nodeId: pending.nodeId,
-					edgeId: pending.viaEdgeId,
-					path: `$.edges.${pending.viaEdgeId}`,
-				}],
-				error: { code: "WorkflowRuntimeError.joinUnsupported", message: "Manual trigger run failed because a join node was reached." },
-			};
-		}
-		executedNodes.add(pending.nodeId);
-
-		const result = await runAgentNode({ ...options, runId: run.id, nodeId: pending.nodeId, input: pending.input });
-		nodeAttempts.push(result.attempt);
-		if (!result.ok) {
-			const failedAt = new Date().toISOString();
-			run.status = "failed";
-			run.failedAt = failedAt;
-			run.updatedAt = failedAt;
-			return { ok: false, run, nodeAttempts, edgeTransfers, diagnostics: result.diagnostics, error: result.attempt.error };
-		}
-		lastOutput = result.output;
-		enqueueOutgoingEdges(options.definition, run.id, result.attempt, queue, edgeTransfers);
+	if (execution.failure) {
+		return {
+			ok: false,
+			run: execution.run,
+			nodeAttempts: execution.nodeAttempts,
+			edgeTransfers: execution.edgeTransfers,
+			diagnostics: execution.failure.diagnostics,
+			error: execution.failure.error,
+		};
 	}
 
 	const completedAt = new Date().toISOString();
-	run.output = lastOutput;
-	run.completedAt = completedAt;
-	run.updatedAt = completedAt;
-	return { ok: true, run, nodeAttempts, edgeTransfers, diagnostics, output: lastOutput };
+	execution.run.output = execution.lastOutput;
+	execution.run.completedAt = completedAt;
+	execution.run.updatedAt = completedAt;
+	return {
+		ok: true,
+		run: execution.run,
+		nodeAttempts: execution.nodeAttempts,
+		edgeTransfers: execution.edgeTransfers,
+		diagnostics,
+		output: execution.lastOutput,
+	};
+}
+
+function compileWorkflowManualTriggerGraph(options: WorkflowManualTriggerRuntimeOptions) {
+	const nodes = objectValue(options.definition.nodes) ?? {};
+	const graphNodeNames = new Map<string, string>();
+	for (const nodeId of Object.keys(nodes)) graphNodeNames.set(nodeId, workflowGraphNodeName(nodeId));
+	const triggerGraphNode = graphNodeNames.get(options.triggerNodeId) ?? workflowGraphNodeName(options.triggerNodeId);
+
+	const graph = new StateGraph<
+		typeof WorkflowManualTriggerState,
+		typeof WorkflowManualTriggerState.State,
+		typeof WorkflowManualTriggerState.Update,
+		string
+	>(WorkflowManualTriggerState);
+	graph.addNode(triggerGraphNode, async (state: typeof WorkflowManualTriggerState.State) => {
+		const execution = state.execution;
+		const triggerAttempt = execution.nodeAttempts[0];
+		enqueueOutgoingEdges(options.definition, execution.run.id, triggerAttempt, execution.pending, execution.edgeTransfers);
+		execution.current = execution.pending.shift();
+		return { execution };
+	});
+
+	for (const [nodeId, rawNode] of Object.entries(nodes)) {
+		if (nodeId === options.triggerNodeId || objectValue(rawNode)?.kind !== "agent") continue;
+		const graphNodeName = graphNodeNames.get(nodeId)!;
+		graph.addNode(graphNodeName, async (state: typeof WorkflowManualTriggerState.State) => {
+			const execution = state.execution;
+			const pending = execution.current;
+			if (!pending || pending.nodeId !== nodeId) {
+				markWorkflowGraphFailure(execution, {
+					diagnostics: [{
+						code: "WorkflowRuntimeError.langGraphStateMismatch",
+						message: `LangGraph scheduled workflow node '${nodeId}' without its pending input.`,
+						severity: "error",
+						nodeId,
+						path: `$.nodes.${nodeId}`,
+					}],
+					error: { code: "WorkflowRuntimeError.langGraphStateMismatch", message: "Manual trigger run reached an invalid LangGraph state." },
+				});
+				return { execution };
+			}
+			if (execution.executedNodeIds.includes(nodeId)) {
+				markWorkflowGraphFailure(execution, {
+					diagnostics: [{
+						code: "WorkflowRuntimeError.joinUnsupported",
+						message: `Workflow node '${nodeId}' received more than one input, but manual trigger V1 does not support joins yet.`,
+						severity: "error",
+						nodeId,
+						edgeId: pending.viaEdgeId,
+						path: `$.edges.${pending.viaEdgeId}`,
+					}],
+					error: { code: "WorkflowRuntimeError.joinUnsupported", message: "Manual trigger run failed because a join node was reached." },
+				});
+				return { execution };
+			}
+			execution.executedNodeIds.push(nodeId);
+
+			const result = await runAgentNode({ ...options, runId: execution.run.id, nodeId, input: pending.input });
+			execution.nodeAttempts.push(result.attempt);
+			if (!result.ok) {
+				markWorkflowGraphFailure(execution, { diagnostics: result.diagnostics, error: result.attempt.error! });
+				return { execution };
+			}
+			execution.lastOutput = result.output;
+			enqueueOutgoingEdges(options.definition, execution.run.id, result.attempt, execution.pending, execution.edgeTransfers);
+			execution.current = execution.pending.shift();
+			return { execution };
+		});
+	}
+
+	const route = (state: typeof WorkflowManualTriggerState.State) => {
+		if (state.execution.failure || !state.execution.current) return END;
+		return graphNodeNames.get(state.execution.current.nodeId) ?? END;
+	};
+	graph.addEdge(START, triggerGraphNode);
+	graph.addConditionalEdges(triggerGraphNode, route);
+	for (const [nodeId, rawNode] of Object.entries(nodes)) {
+		if (nodeId === options.triggerNodeId || objectValue(rawNode)?.kind !== "agent") continue;
+		graph.addConditionalEdges(graphNodeNames.get(nodeId)!, route);
+	}
+	return graph.compile();
+}
+
+function workflowGraphNodeName(nodeId: string): string {
+	return `pibo_${Buffer.from(nodeId).toString("base64url")}`;
+}
+
+function workflowGraphRecursionLimit(definition: PiboJsonObject): number {
+	return Math.max(25, Object.keys(objectValue(definition.nodes) ?? {}).length * 2 + 2);
+}
+
+function markWorkflowGraphFailure(execution: WorkflowManualTriggerGraphState, failure: WorkflowManualTriggerGraphFailure): void {
+	const failedAt = new Date().toISOString();
+	execution.run.status = "failed";
+	execution.run.failedAt = failedAt;
+	execution.run.updatedAt = failedAt;
+	execution.failure = failure;
+	execution.current = undefined;
 }
 
 export function validateWorkflowManualTextTrigger(definition: PiboJsonObject, triggerNodeId: string, input: string, resolveProfile: (profileId: string) => string | undefined): WorkflowDraftDiagnostic[] {

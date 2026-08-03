@@ -133,6 +133,7 @@ function createBaseProfileBuilder(
 ): InitialSessionContextBuilder {
 	return addPiboNativeToolingContext(
 		new InitialSessionContextBuilder(profileName)
+			.withToolPackages({ goalControl: true })
 			.addSkill(context.getSkill("pi-agent-harness")),
 		context,
 	);
@@ -173,6 +174,11 @@ export const piboCorePlugin = definePiboPlugin({
 			kind: "builtin",
 		});
 		api.registerSkill({
+			name: "loop",
+			path: builtinSkillPath("loop"),
+			kind: "builtin",
+		});
+		api.registerSkill({
 			name: "ralph-loop",
 			path: builtinSkillPath("ralph-loop"),
 			kind: "builtin",
@@ -191,6 +197,7 @@ export const piboCorePlugin = definePiboPlugin({
 			create() {
 				return new InitialSessionContextBuilder(DEFAULT_PIBO_PROFILE_NAME)
 					.withBuiltinToolNames(["read", "bash", "edit", "write"])
+					.withToolPackages({ goalControl: true })
 					.createSession();
 			},
 		});
@@ -479,6 +486,7 @@ export function selectDefaultPiboProfileName(registry: PiboPluginRegistry): stri
 export function createDefaultPiboProfile(): InitialSessionContext {
 	return new InitialSessionContextBuilder(DEFAULT_PIBO_PROFILE_NAME)
 		.withBuiltinToolNames(["read", "bash", "edit", "write"])
+		.withToolPackages({ goalControl: true })
 		.createSession();
 }
 
