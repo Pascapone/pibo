@@ -136,6 +136,10 @@ function printShow(name: string): void {
   if (entry.name === 'agent-browser') {
     console.log('  pibo tools agent-browser');
   }
+  if (entry.name === 'loop') {
+    console.log('  pibo tools loop');
+    console.log('  pibo loop templates');
+  }
   if (entry.name === 'ralph') {
     console.log('  pibo tools ralph');
     console.log('  pibo ralph templates');
@@ -678,6 +682,22 @@ Next:
   pibo tools agent-browser lease acquire`);
 }
 
+function printLoopDiscovery(): void {
+  console.log(`pibo tools loop - Goal-first Loop helpers
+
+Commands:
+  pibo loop templates --json
+  pibo loop add --template goal-objective --room <room-id> --start --json
+  pibo loop list --all --json
+  pibo loop runs --job <job-id> --json
+  pibo loop stop <job-id>
+  pibo loop cancel <job-id>
+
+Next:
+  pibo tools guide loop loop
+  pibo loop templates`);
+}
+
 function printRalphDiscovery(): void {
   console.log(`pibo tools ralph - Ralph job helpers
 
@@ -793,6 +813,11 @@ export async function runToolsCli(argv = process.argv): Promise<void> {
     .argument('<name>')
     .description('Print shell exports for using the tool directly')
     .action(printEnv);
+
+  program
+    .command('loop')
+    .description('Goal-first Loop helper commands')
+    .action(printLoopDiscovery);
 
   program
     .command('ralph')

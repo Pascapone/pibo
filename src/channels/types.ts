@@ -12,7 +12,7 @@ import type {
 } from "../plugins/types.js";
 import type { PiboAuthService } from "../auth/types.js";
 import type { PiboWebApp } from "../web/types.js";
-import type { PiboRalphStopConditionDefinition, PiboRalphStopConditionInfo } from "../ralph/types.js";
+import type { PiboLoopStopConditionDefinition, PiboLoopStopConditionInfo } from "../loops/types.js";
 import type { ContextFileProfile, InitialSessionContext, ModelProfile, SkillProfile } from "../core/profiles.js";
 import type {
 	CreatePiboSessionInput,
@@ -52,8 +52,12 @@ export type PiboChannelContext = {
 	getProfiles?(): PiboProfileInfo[];
 	createProfile?(name: string): InitialSessionContext;
 	getCapabilityCatalog?(): PiboCapabilityCatalog;
-	getRalphStopConditionDefinitions?(): PiboRalphStopConditionDefinition[];
-	getRalphStopConditionInfos?(): PiboRalphStopConditionInfo[];
+	getLoopStopConditionDefinitions?(): PiboLoopStopConditionDefinition[];
+	getLoopStopConditionInfos?(): PiboLoopStopConditionInfo[];
+	/** @deprecated Use getLoopStopConditionDefinitions. */
+	getRalphStopConditionDefinitions?(): PiboLoopStopConditionDefinition[];
+	/** @deprecated Use getLoopStopConditionInfos. */
+	getRalphStopConditionInfos?(): PiboLoopStopConditionInfo[];
 	upsertProfile?(profile: PiboProfileDefinition): void;
 	removeProfile?(name: string): void;
 	upsertContextFile?(contextFile: ContextFileProfile): void;

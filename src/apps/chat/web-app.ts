@@ -84,9 +84,9 @@ import { ChatTimelineQueryService } from "./data/timeline-query-service.js";
 import { ChatProjectService, type PiboProject, type PiboProjectSession, type PiboProjectWorkflowSessionConfiguration, type PiboProjectWorkflowSessionSnapshot } from "./data/project-service.js";
 import { PiboDataStore } from "../../data/pibo-store.js";
 import { createDefaultPiboCronStore, type PiboCronStore } from "../../cron/store.js";
-import { createDefaultPiboRalphStore, type PiboRalphStore } from "../../ralph/store.js";
+import { createDefaultPiboLoopStore, type PiboLoopStore } from "../../loops/store.js";
 import { handleChatCronApiRequest } from "./cron-api.js";
-import { handleChatRalphApiRequest } from "./ralph-api.js";
+import { handleChatLoopApiRequest } from "./loop-api.js";
 import { prepareWebAnnotationMessageAttachments, type PreparedWebAnnotationAttachments } from "../../web-annotations/attachments.js";
 import { createDefaultWebAnnotationStore, type WebAnnotationStore } from "../../web-annotations/store.js";
 import { CHAT_WEB_MOUNT_PATH, isChatAppPath, responseBuiltChatAsset, responseBuiltChatPublicFile, responseChatAppShell, CHAT_VSCODE_MOUNT_PATH, isVscodeAppPath, responseBuiltVscodeAsset, responseVscodeAppShell } from "./static-assets.js";
@@ -369,7 +369,7 @@ type ChatWebAppState = {
 	agentStore: CustomAgentStore;
 	reliabilityStore: PiboReliabilityStore;
 	cronStore: PiboCronStore;
-	ralphStore: PiboRalphStore;
+	loopStore: PiboLoopStore;
 	dataStore: PiboDataStore;
 	ingestService: ChatDataIngestService;
 	traceCache: Map<string, PiboSessionTraceView>;
@@ -3982,7 +3982,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 		agentStore: createAgentStore(options.agentStorePath),
 		reliabilityStore: createReliabilityStore(options.reliabilityStorePath),
 		cronStore: createDefaultPiboCronStore({ path: options.cronStorePath }),
-		ralphStore: createDefaultPiboRalphStore({ path: options.ralphStorePath }),
+		loopStore: createDefaultPiboLoopStore({ path: options.ralphStorePath }),
 		dataStore,
 		ingestService: new ChatDataIngestService(dataStore),
 		traceCache: new Map(),
@@ -4210,14 +4210,14 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				if (response) return response;
 			}
 
-			if (url.pathname.startsWith(`${CHAT_WEB_API_PREFIX}/ralph`)) {
+			if (url.pathname.startsWith(`${CHAT_WEB_API_PREFIX}/loops`) || url.pathname.startsWith(`${CHAT_WEB_API_PREFIX}/loop`) || url.pathname.startsWith(`${CHAT_WEB_API_PREFIX}/ralph`)) {
 				const webSession = await requireSession(request, context);
-				const response = await handleChatRalphApiRequest({
+				const response = await handleChatLoopApiRequest({
 					request,
 					context,
 					webSession,
 					roomService: state.roomService,
-					ralphStore: state.ralphStore,
+					loopStore: state.loopStore,
 					defaultProfile,
 				});
 				if (response) return response;

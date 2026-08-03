@@ -53,6 +53,7 @@ import {
 } from "./context-guard.js";
 import { getPiPackageRuntimeOptions } from "../pi-packages/runtime.js";
 import { getDefaultPiboWorkspace } from "./workspace.js";
+import { createPiboGoalToolDefinitions, PIBO_GOAL_TOOL_NAMES } from "../loops/tools.js";
 import { DEFAULT_USER_TIMEZONE } from "./user-settings.js";
 import { registerMiniMaxProvider, type MiniMaxModelRegistryLike } from "../providers/minimax.js";
 import { registerGlmProvider, type GlmModelRegistryLike } from "../providers/glm.js";
@@ -229,6 +230,8 @@ function getEnabledToolDefinitions(
 	const profileToolDefinitions = profileTools.map((tool) => getToolDefinition(tool, options.toolContext));
 	const codexCompatEnabled = profile.toolPackages.codexCompat === true;
 	const runControlEnabled = profile.toolPackages.runControl === true;
+	const goalControlEnabled = profile.toolPackages.goalControl !== false;
+	const goalTools = goalControlEnabled ? createPiboGoalToolDefinitions(options.toolContext ?? {}) : [];
 	const runControlBashTool: ToolDefinition | undefined = runControlEnabled && runToolController
 		? createBashToolDefinition(options.runtimeCwd, {
 				commandPrefix: options.shellCommandPrefix,
@@ -258,6 +261,7 @@ function getEnabledToolDefinitions(
 		...(runtimeTool ? [runtimeTool] : []),
 		...subagentTools,
 		...codexCompatTools,
+		...goalTools,
 		...runTools,
 	];
 }
@@ -283,7 +287,7 @@ function isEnabledRuntimeTool(tool: ToolProfile): boolean {
 }
 
 function isGeneratedPiboTool(name: string): boolean {
-	return name === "runtime" || name.startsWith("pibo_subagent_") || name.startsWith("pibo_run_");
+	return name === "runtime" || name.startsWith("pibo_subagent_") || name.startsWith("pibo_run_") || PIBO_GOAL_TOOL_NAMES.includes(name as (typeof PIBO_GOAL_TOOL_NAMES)[number]);
 }
 
 function getBuiltinToolAllowlist(profile: InitialSessionContext, customTools: readonly ToolDefinition[]): string[] | undefined {
@@ -441,6 +445,7 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 				toolContext: {
 					piboSessionId: options.sessionContext?.piboSessionId ?? profile.sessionId,
 					piboRoomId: options.sessionContext?.piboRoomId,
+					profileName: profile.profileName,
 				},
 			},
 			options.subagentRunner,

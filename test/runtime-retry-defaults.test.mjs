@@ -94,6 +94,7 @@ test("Ralph runtime retry defaults fill only missing sibling fields", async () =
 });
 
 test("session routing selects durable retry defaults only for Ralph sessions", () => {
+	assert.strictEqual(resolvePiboSessionRetryDefaults("loop"), RALPH_RUNTIME_RETRY_DEFAULTS);
 	assert.strictEqual(resolvePiboSessionRetryDefaults("ralph"), RALPH_RUNTIME_RETRY_DEFAULTS);
 	assert.equal(resolvePiboSessionRetryDefaults("chat"), undefined);
 	assert.equal(resolvePiboSessionRetryDefaults("subagent"), undefined);

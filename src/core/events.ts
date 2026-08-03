@@ -220,6 +220,17 @@ export type PiboAssistantMessageEvent = {
 	text: string;
 };
 
+export type PiboAssistantUsageEvent = {
+	type: "assistant_usage";
+	piboSessionId: string;
+	eventId?: string;
+	inputTokens?: number;
+	outputTokens?: number;
+	cacheReadTokens?: number;
+	cacheWriteTokens?: number;
+	totalTokens: number;
+};
+
 export type PiboSubagentSessionEvent = {
 	type: "subagent_session";
 	piboSessionId: string;
@@ -354,6 +365,7 @@ export type PiboOutputEvent =
 	| PiboToolExecutionFinishedEvent
 	| PiboSubagentSessionEvent
 	| PiboAssistantMessageEvent
+	| PiboAssistantUsageEvent
 	| PiboCompactionStartEvent
 	| PiboCompactionEndEvent
 	| { type: "execution_result"; piboSessionId: string; eventId?: string; action: PiboExecutionAction; result: unknown }
