@@ -77,17 +77,19 @@ export type PiboSessionRouterOptions = Omit<
 const DEFAULT_SUBAGENT_REPLY_TIMEOUT_MS = 10 * 60 * 1000;
 const DEFAULT_ROUTED_SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 
-export const RALPH_RUNTIME_RETRY_DEFAULTS = {
+export const LOOP_RUNTIME_RETRY_DEFAULTS = {
 	enabled: true,
 	maxRetries: 7,
 	baseDelayMs: 2_000,
 } as const satisfies PiboRuntimeRetryDefaults;
+/** @deprecated Use LOOP_RUNTIME_RETRY_DEFAULTS. */
+export const RALPH_RUNTIME_RETRY_DEFAULTS = LOOP_RUNTIME_RETRY_DEFAULTS;
 
 export function resolvePiboSessionRetryDefaults(
 	kind: string,
 	configured?: PiboRuntimeRetryDefaults,
 ): PiboRuntimeRetryDefaults | undefined {
-	return configured ?? (kind === "ralph" ? RALPH_RUNTIME_RETRY_DEFAULTS : undefined);
+	return configured ?? (kind === "loop" || kind === "ralph" ? LOOP_RUNTIME_RETRY_DEFAULTS : undefined);
 }
 
 export function resolvePiboSessionInitialThinkingLevel(session: Pick<PiboSession, "metadata">): PiboThinkingLevel | undefined {

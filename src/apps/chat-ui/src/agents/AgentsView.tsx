@@ -757,7 +757,10 @@ export function AgentsView({
 							)}
 						/>
 					</DesignerPanel>
-					<CatalogSection title="Packages"><CatalogToggle disabled={readOnly} checked={draft.runControl} title="pibo-run-control" description="Expose pibo_run_* as one package for yielded native tools and subagents." meta="package" onToggle={() => setDraft((current) => ({ ...current, runControl: !current.runControl }))} /></CatalogSection>
+					<CatalogSection title="Packages">
+						<CatalogToggle disabled={readOnly} checked={draft.goalControl} title="pibo-goal-control" description="Expose get_goal, create_goal, and update_goal for persisted Goal Loop lifecycle and accounting." meta="native package" onToggle={() => setDraft((current) => ({ ...current, goalControl: !current.goalControl }))} />
+						<CatalogToggle disabled={readOnly} checked={draft.runControl} title="pibo-run-control" description="Expose pibo_run_* as one package for yielded native tools and subagents." meta="package" onToggle={() => setDraft((current) => ({ ...current, runControl: !current.runControl }))} />
+					</CatalogSection>
 					<PiPackagesDesigner
 						packages={catalog?.piPackages}
 						draft={draft}

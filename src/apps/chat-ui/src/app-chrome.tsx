@@ -3,9 +3,9 @@ import { AlertTriangle, LogOut, List, Menu, UserRound } from "lucide-react";
 import { signInWithGoogle, signOut } from "./api-auth";
 import type { BootstrapData } from "./types";
 
-export type AppArea = "sessions" | "projects" | "workflows" | "cron" | "ralph" | "agents" | "context" | "settings";
+export type AppArea = "sessions" | "projects" | "workflows" | "cron" | "loops" | "agents" | "context" | "settings";
 
-const MAIN_NAV_AREAS: readonly AppArea[] = ["sessions", "projects", "workflows", "cron", "ralph", "agents", "context", "settings"];
+const MAIN_NAV_AREAS: readonly AppArea[] = ["sessions", "projects", "workflows", "cron", "loops", "agents", "context", "settings"];
 
 type AppHeaderProps = {
 	area: AppArea;

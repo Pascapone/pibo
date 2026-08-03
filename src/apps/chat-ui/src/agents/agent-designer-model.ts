@@ -56,6 +56,7 @@ export function agentDraftToSaveInput(draft: AgentDraft): SaveCustomAgentInput {
 		builtinToolNames: normalizeBuiltinToolNames(draft.builtinToolNames, draft.builtinTools),
 		autoContextFiles: draft.autoContextFiles,
 		runControl: draft.runControl,
+		goalControl: draft.goalControl,
 	};
 }
 
@@ -81,6 +82,7 @@ export function createBlankAgentDraft(catalog?: AgentCatalog, displayName = "new
 		builtinToolNames: [...DEFAULT_BUILTIN_TOOL_NAMES],
 		autoContextFiles: true,
 		runControl: false,
+		goalControl: true,
 		brokenContextFiles: [],
 		hardPinnedModel: undefined,
 		source: "custom",
@@ -121,6 +123,7 @@ export function agentToDraft(agent: CustomAgent): AgentDraft {
 		builtinToolNames: normalizeBuiltinToolNames(agent.builtinToolNames, agent.builtinTools),
 		autoContextFiles: agent.autoContextFiles ?? true,
 		runControl: agent.runControl,
+		goalControl: agent.goalControl ?? true,
 		brokenContextFiles: agent.brokenContextFiles ?? [],
 		archivedAt: agent.archivedAt,
 		hardPinnedModel: undefined,
@@ -150,6 +153,7 @@ export function profileToDraft(profile: BootstrapData["agents"][number], catalog
 		builtinToolNames: normalizeBuiltinToolNames(profile.builtinToolNames, profile.builtinTools),
 		autoContextFiles: profile.autoContextFiles ?? true,
 		runControl: profile.runControl ?? false,
+		goalControl: profile.goalControl ?? true,
 		brokenContextFiles: [],
 		hardPinnedModel: profile.model,
 		profileName: profile.name,

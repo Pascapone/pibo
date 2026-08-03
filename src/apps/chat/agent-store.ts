@@ -39,6 +39,7 @@ export type CustomAgentDefinition = {
 	builtinToolNames: string[];
 	autoContextFiles: boolean;
 	runControl: boolean;
+	goalControl: boolean;
 	createdAt: string;
 	updatedAt: string;
 	archivedAt?: string;
@@ -67,6 +68,7 @@ export type CreateCustomAgentInput = {
 	builtinToolNames?: string[];
 	autoContextFiles?: boolean;
 	runControl?: boolean;
+	goalControl?: boolean;
 };
 
 export type UpdateCustomAgentInput = Partial<CreateCustomAgentInput>;
@@ -94,6 +96,7 @@ type AgentRow = {
 	builtin_tool_names_json: string;
 	auto_context_files: 0 | 1;
 	run_control: 0 | 1;
+	goal_control: 0 | 1;
 	created_at: string;
 	updated_at: string;
 	archived_at: string | null;
@@ -133,6 +136,7 @@ export class CustomAgentStore {
 				builtin_tool_names_json TEXT NOT NULL DEFAULT '["read","bash","edit","write"]',
 				auto_context_files INTEGER NOT NULL DEFAULT 1,
 				run_control INTEGER NOT NULL,
+				goal_control INTEGER NOT NULL DEFAULT 1,
 				created_at TEXT NOT NULL,
 				updated_at TEXT NOT NULL,
 				archived_at TEXT
@@ -148,6 +152,7 @@ export class CustomAgentStore {
 		this.migrateThinkingLevelColumn();
 		this.migrateThinkingOptionColumns();
 		this.migrateBuiltinToolNamesColumn();
+		this.migrateGoalControlColumn();
 		this.migrateAgentHistory();
 		this.migrateLegacyProfileNames();
 		this.migrateDuplicateProfileNames();
@@ -198,6 +203,7 @@ export class CustomAgentStore {
 			builtinToolNames: sanitizeBuiltinToolNames(input.builtinToolNames),
 			autoContextFiles: input.autoContextFiles ?? true,
 			runControl: input.runControl ?? false,
+			goalControl: input.goalControl ?? true,
 			createdAt: now,
 			updatedAt: now,
 		};
@@ -236,6 +242,7 @@ export class CustomAgentStore {
 			builtinToolNames: input.builtinToolNames ? sanitizeBuiltinToolNames(input.builtinToolNames) : existing.builtinToolNames,
 			autoContextFiles: input.autoContextFiles ?? existing.autoContextFiles,
 			runControl: input.runControl ?? existing.runControl,
+			goalControl: input.goalControl ?? existing.goalControl,
 			updatedAt: new Date().toISOString(),
 		};
 		this.db
@@ -262,6 +269,7 @@ export class CustomAgentStore {
 					builtin_tool_names_json = ?,
 					auto_context_files = ?,
 					run_control = ?,
+					goal_control = ?,
 					updated_at = ?
 				WHERE id = ?
 			`)
@@ -287,6 +295,7 @@ export class CustomAgentStore {
 				JSON.stringify(updated.builtinToolNames),
 				updated.autoContextFiles ? 1 : 0,
 				updated.runControl ? 1 : 0,
+				updated.goalControl ? 1 : 0,
 				updated.updatedAt,
 				id,
 			);
@@ -340,10 +349,11 @@ export class CustomAgentStore {
 					builtin_tool_names_json,
 					auto_context_files,
 					run_control,
+					goal_control,
 					created_at,
 					updated_at,
 					archived_at
-				) VALUES (${Array.from({ length: 25 }, () => "?").join(", ")})
+				) VALUES (${Array.from({ length: 26 }, () => "?").join(", ")})
 			`)
 			.run(
 				agent.id,
@@ -368,6 +378,7 @@ export class CustomAgentStore {
 				JSON.stringify(agent.builtinToolNames),
 				agent.autoContextFiles ? 1 : 0,
 				agent.runControl ? 1 : 0,
+				agent.goalControl ? 1 : 0,
 				agent.createdAt,
 				agent.updatedAt,
 				agent.archivedAt ?? null,
@@ -565,6 +576,15 @@ export class CustomAgentStore {
 		}
 	}
 
+	private migrateGoalControlColumn(): void {
+		const columns = new Set(
+			(this.db.prepare("PRAGMA table_info(chat_agents)").all() as Array<{ name: string }>).map((column) => column.name),
+		);
+		if (!columns.has("goal_control")) {
+			this.db.prepare("ALTER TABLE chat_agents ADD COLUMN goal_control INTEGER NOT NULL DEFAULT 1").run();
+		}
+	}
+
 	private migrateAgentHistory(): void {
 		this.db.exec(`
 			CREATE TABLE IF NOT EXISTS chat_agent_events (
@@ -729,6 +749,7 @@ function agentFromRow(row: AgentRow, profileAliases: readonly string[]): CustomA
 		builtinToolNames: sanitizeBuiltinToolNames(parseStringArray(row.builtin_tool_names_json)),
 		autoContextFiles: row.auto_context_files !== 0,
 		runControl: row.run_control === 1,
+		goalControl: row.goal_control !== 0,
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 		archivedAt: row.archived_at ?? undefined,

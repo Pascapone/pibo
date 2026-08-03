@@ -8,9 +8,9 @@ The package is organized around the PRD-required internal submodules:
 - `src/registry` — workflow registry and implementation lookup
 - `src/types` — workflow IR, runtime, store, diagnostics, events, and utility types
 - `src/validation` — definition, schema, graph, registry, capability, state, and loop validation
-- `src/graph` — graph store, traversal, indices, cycle/toposort validation, and serialization
+- `src/graph` — graph indices, validation helpers, and serialization
 - `src/compiler` — validated definitions to execution plans and projection metadata
-- `src/runtime` — durable kernel, scheduling, attempts, retries, waits, leases, commands, and cancellation
+- `src/runtime` — LangGraph-backed execution plus Pibo attempts, retries, waits, events, and persistence
 - `src/store` — `pibo-workflows.sqlite` schema/store and persistence API
 - `src/xstate` — XState projection, snapshots, and inspection helpers
 - `src/fixtures` — workflow fixtures for tests and manual validation

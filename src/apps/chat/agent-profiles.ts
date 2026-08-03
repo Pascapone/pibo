@@ -10,7 +10,7 @@ export function createCustomAgentProfileDefinition(agent: CustomAgentDefinition,
 	const shouldWarnMissingReferences = options.missingReferenceMode !== "silent";
 	return {
 		name: agent.profileName,
-		aliases: uniqueAliases([agent.id, `custom-agent:${agent.id}`, ...agent.profileAliases], agent.profileName),
+		aliases: uniqueAliases([agent.id, `custom-agent:${agent.id}`, ...(agent.profileAliases ?? [])], agent.profileName),
 		description: agent.description || agent.displayName,
 		create(context) {
 			const builder = new InitialSessionContextBuilder(agent.profileName)
@@ -19,7 +19,7 @@ export function createCustomAgentProfileDefinition(agent: CustomAgentDefinition,
 				.withAutoContextFiles(agent.autoContextFiles)
 				.withMcpServers(agent.mcpServers)
 				.withPiPackages(agent.piPackages.map((id) => ({ id })))
-				.withToolPackages({ runControl: agent.runControl });
+				.withToolPackages({ runControl: agent.runControl, goalControl: agent.goalControl ?? true });
 			if (agent.mainModel) builder.withMainModel(agent.mainModel);
 			if (agent.subagentModel) builder.withSubagentModel(agent.subagentModel);
 			if (agent.thinkingLevel) builder.withThinkingLevel(agent.thinkingLevel);
