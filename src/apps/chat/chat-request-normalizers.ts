@@ -132,10 +132,13 @@ export type ChatTelemetryRetentionPruneBody = {
 	dryRun?: unknown;
 };
 
+export type ChatMessageDelivery = "queue" | "steer";
+
 export type ChatMessageBody = {
 	piboSessionId?: unknown;
 	roomId?: unknown;
 	text?: unknown;
+	delivery?: unknown;
 	clientTxnId?: unknown;
 	webAnnotationIds?: unknown;
 	fileAttachmentPaths?: unknown;
@@ -484,6 +487,12 @@ export function normalizeMessageText(value: unknown): string {
 		throw new PiboWebHttpError("Message text is required", 400);
 	}
 	return value;
+}
+
+export function normalizeMessageDelivery(value: unknown): ChatMessageDelivery {
+	if (value === undefined) return "queue";
+	if (value === "queue" || value === "steer") return value;
+	throw new PiboWebHttpError('Message delivery must be "queue" or "steer"', 400);
 }
 
 export function defaultStreamingFixtureDeltas(mix: ChatStreamingFixtureMix): string[] {

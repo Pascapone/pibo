@@ -147,6 +147,10 @@ export const outputSignalProducer: PiboSignalProducer = {
 			mutations.push({ type: "set_session_queue", piboSessionId, queuedMessages: event.queuedMessages });
 			mutations.push({ type: "upsert_node", node: node({ id: `message:${piboSessionId}:${event.eventId ?? context.now()}`, kind: "message", status: "queued", piboSessionId, metadata: { source: event.source } }, context) });
 		}
+		if (event.type === "message_steered") {
+			mutations.push({ type: "patch_node", nodeId: `session:${piboSessionId}`, patch: { status: "running" } });
+			mutations.push({ type: "upsert_node", node: node({ id: `message:${piboSessionId}:${event.eventId ?? context.now()}`, kind: "message", status: "done", piboSessionId, parentNodeId: event.activeEventId ? `turn:${piboSessionId}:${event.activeEventId}` : undefined, completedAt: context.now(), metadata: { source: event.source, delivery: "steer" } }, context) });
+		}
 		if (event.type === "message_started") {
 			mutations.push({ type: "patch_node", nodeId: `session:${piboSessionId}`, patch: { status: "running" } });
 			if (event.eventId) {

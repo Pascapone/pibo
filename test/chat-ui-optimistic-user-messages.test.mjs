@@ -61,6 +61,7 @@ async function runOptimisticUserMessageScenario() {
 		assert.deepEqual(reconciled.nodes.map((item) => item.id), ["persisted", "optimistic:user-message:2", "optimistic:user-message:3"]);
 
 		assert.equal(overlayIncludesOptimisticUserMessage([{ payload: { type: "message_queued", source: "user", text: "hello" } }]), true);
+		assert.equal(overlayIncludesOptimisticUserMessage([{ payload: { type: "message_steered", source: "user", text: "hello" } }]), true);
 		assert.equal(overlayIncludesOptimisticUserMessage([{ payload: { type: "message_queued", source: "assistant", text: "hello" } }]), false);
 	`;
 	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });

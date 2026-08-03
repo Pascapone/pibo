@@ -17,11 +17,13 @@ import type {
 } from "./types";
 import type { SlashCommand } from "./chat-commands";
 import type { ChatSessionViewId } from "./session-views/types";
+import type { ChatMessageDelivery } from "./api-chat-sessions";
 import {
   getChatSessionView,
   listChatSessionViews,
 } from "./session-views/registry";
 import { SessionTraceLayout } from "./session-trace-layout";
+import { DialogShell } from "./components/DialogShell";
 import type { SessionTraceHeaderExtraViewTab } from "./session-trace-header";
 import type { LiveTraceOverlay } from "./tracing/live-overlay";
 import { useCurrentSessionTrace } from "./tracing/use-current-session-trace";
@@ -39,6 +41,8 @@ import {
 import {
   appendComposerOptimisticEvent,
   createComposerSendPlan,
+  withComposerSendDelivery,
+  type ComposerSendPlan,
 } from "./composer-send";
 import { createClientTxnId } from "./app-session-model";
 import {
@@ -140,12 +144,17 @@ export function SessionTracePane({
     webAnnotationIds?: readonly string[],
     fileAttachmentPaths?: readonly string[],
     clientTxnId?: string,
+    delivery?: ChatMessageDelivery,
   ) => Promise<void>;
   onError: (message: string | null) => void;
 }) {
   const liveEventSeqRef = useRef(0);
   const [liveTraceOverlay, setLiveTraceOverlay] =
     useState<LiveTraceOverlay | null>(null);
+  const [pendingSendPlan, setPendingSendPlan] =
+    useState<ComposerSendPlan | null>(null);
+  const [deliverySending, setDeliverySending] = useState(false);
+  const queueButtonRef = useRef<HTMLButtonElement>(null);
   const {
     baseTraceView,
     rawEventLimit,
@@ -259,6 +268,44 @@ export function SessionTracePane({
     }
   };
 
+  const deliverComposerSend = async (
+    initialPlan: ComposerSendPlan,
+    delivery: ChatMessageDelivery,
+  ) => {
+    const sendPlan = withComposerSendDelivery(initialPlan, delivery);
+    setLiveTraceOverlay((current) =>
+      appendComposerOptimisticEvent(
+        current,
+        sendPlan.piboSessionId,
+        sendPlan.optimisticEvent,
+      ),
+    );
+    await onSend(
+      sendPlan.text,
+      sendPlan.webAnnotationIds,
+      sendPlan.fileAttachmentPaths,
+      sendPlan.clientTxnId,
+      delivery,
+    );
+    clearSelectedWebAnnotationAttachments();
+    clearSelectedUploadAttachments();
+    await Promise.all([
+      tracePageQuery.refetch(),
+      webAnnotationsQuery.refetch(),
+    ]);
+    schedulePostSendTraceRefresh(sendPlan.piboSessionId);
+  };
+
+  const rollbackComposerSend = (sendPlan: ComposerSendPlan, caught: unknown) => {
+    setLiveTraceOverlay((current) => {
+      if (!current || current.piboSessionId !== sendPlan.piboSessionId) return current;
+      const events = current.events.filter((event) => event.id !== sendPlan.clientTxnId);
+      return events.length ? { ...current, events } : null;
+    });
+    onComposerTextChange((current) => current || sendPlan.text);
+    onError(errorMessage(caught));
+  };
+
   const handleComposerSend = async (text: string) => {
     if (!selectedPiboSessionId) return;
     const sendPlan = createComposerSendPlan({
@@ -270,26 +317,36 @@ export function SessionTracePane({
       now: new Date().toISOString(),
       clientTxnId: createClientTxnId(),
     });
-    setLiveTraceOverlay((current) =>
-      appendComposerOptimisticEvent(
-        current,
-        selectedPiboSessionId,
-        sendPlan.optimisticEvent,
-      ),
-    );
-    await onSend(
-      sendPlan.text,
-      sendPlan.webAnnotationIds,
-      sendPlan.fileAttachmentPaths,
-      sendPlan.clientTxnId,
-    );
-    clearSelectedWebAnnotationAttachments();
-    clearSelectedUploadAttachments();
-    await Promise.all([
-      tracePageQuery.refetch(),
-      webAnnotationsQuery.refetch(),
-    ]);
-    schedulePostSendTraceRefresh(selectedPiboSessionId);
+    if (selectedSessionStatus === "running") {
+      setPendingSendPlan(sendPlan);
+      return;
+    }
+    try {
+      await deliverComposerSend(sendPlan, "queue");
+    } catch (caught) {
+      rollbackComposerSend(sendPlan, caught);
+    }
+  };
+
+  const closeDeliveryDialog = () => {
+    if (!pendingSendPlan || deliverySending) return;
+    onComposerTextChange((current) => current || pendingSendPlan.text);
+    setPendingSendPlan(null);
+  };
+
+  const chooseDelivery = async (delivery: ChatMessageDelivery) => {
+    if (!pendingSendPlan || deliverySending) return;
+    setDeliverySending(true);
+    try {
+      await deliverComposerSend(pendingSendPlan, delivery);
+      setPendingSendPlan(null);
+      onError(null);
+    } catch (caught) {
+      rollbackComposerSend(pendingSendPlan, caught);
+      setPendingSendPlan(null);
+    } finally {
+      setDeliverySending(false);
+    }
   };
 
   const sessionViewProps = createSessionTraceViewProps({
@@ -325,7 +382,41 @@ export function SessionTracePane({
   });
 
   return (
-    <SessionTraceLayout
+    <>
+      {pendingSendPlan ? (
+        <DialogShell
+          title="Session is running"
+          description="Choose how this message should be delivered."
+          onClose={closeDeliveryDialog}
+          initialFocusRef={queueButtonRef}
+          closeDisabled={deliverySending}
+        >
+          <div className="grid gap-2 p-4 sm:grid-cols-2" data-pibo-debug="message-delivery-dialog">
+            <button
+              ref={queueButtonRef}
+              type="button"
+              disabled={deliverySending}
+              onClick={() => void chooseDelivery("queue")}
+              className="rounded-sm border border-slate-700 bg-[#151f24] p-3 text-left transition hover:border-[#11a4d4] hover:bg-[#11a4d4]/10 disabled:opacity-50"
+              data-pibo-debug="message-delivery-queue"
+            >
+              <span className="block text-xs font-bold uppercase tracking-wider text-[#11a4d4]">Queue</span>
+              <span className="mt-1 block text-xs leading-5 text-slate-400">Run it as the next turn after the active turn finishes.</span>
+            </button>
+            <button
+              type="button"
+              disabled={deliverySending}
+              onClick={() => void chooseDelivery("steer")}
+              className="rounded-sm border border-amber-500/50 bg-amber-500/5 p-3 text-left transition hover:border-amber-400 hover:bg-amber-500/10 disabled:opacity-50"
+              data-pibo-debug="message-delivery-steer"
+            >
+              <span className="block text-xs font-bold uppercase tracking-wider text-amber-400">Steer</span>
+              <span className="mt-1 block text-xs leading-5 text-slate-400">Add it to the active turn after the current tool finishes, before the next model step.</span>
+            </button>
+          </div>
+        </DialogShell>
+      ) : null}
+      <SessionTraceLayout
       selectedPiboSessionId={selectedPiboSessionId}
       selectedRoomId={selectedRoomId}
       fallbackRoomId={bootstrap.selectedRoomId ?? undefined}
@@ -412,6 +503,7 @@ export function SessionTracePane({
         onClearUploadAttachments: clearSelectedUploadAttachments,
         onSend: handleComposerSend,
       }}
-    />
+      />
+    </>
   );
 }

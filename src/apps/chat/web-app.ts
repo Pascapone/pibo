@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import os from "node:os";
 import { monitorEventLoopDelay, type IntervalHistogram } from "node:perf_hooks";
-import type { PiboJsonObject, PiboJsonValue, PiboOutputEvent } from "../../core/events.js";
+import { PiboSteeringUnavailableError, type PiboJsonObject, type PiboJsonValue, type PiboOutputEvent } from "../../core/events.js";
 import { summarizeSessionSignalStatus } from "../../signals/status.js";
 import type { PiboSignalPatch, PiboSignalStatusPatch } from "../../signals/types.js";
 import { PiboWebHttpError, readJsonBody, responseJson } from "../../web/http.js";
@@ -140,6 +140,7 @@ import {
 	createSessionUpdate,
 	normalizeAgentArchived,
 	normalizeClientTxnId,
+	normalizeMessageDelivery,
 	normalizeMessageText,
 	normalizeParentRoomId,
 	normalizeProjectArchived,
@@ -3712,6 +3713,7 @@ async function sendProjectMessage(input: {
 	body: ChatMessageBody;
 }): Promise<Response> {
 	const text = normalizeMessageText(input.body.text);
+	const delivery = normalizeMessageDelivery(input.body.delivery);
 	const clientTxnId = normalizeClientTxnId(input.body.clientTxnId);
 	if (typeof input.body.piboSessionId !== "string") throw new PiboWebHttpError("Project session is required", 400);
 	const selectedSession = requireSharedSession(input.context, input.body.piboSessionId);
@@ -3732,19 +3734,28 @@ async function sendProjectMessage(input: {
 			piboSessionId: selectedSession.id,
 			projectId: projectSession.projectId,
 			text,
+			delivery,
 			...(clientTxnId ? { clientTxnId } : {}),
 		},
 	});
 	for (const listener of input.state.liveListeners) listener(accepted);
 	const messageId = clientTxnId ?? randomUUID();
-	const output = await input.context.channelContext.emit({
-		type: "message",
-		piboSessionId: selectedSession.id,
-		id: messageId,
-		text,
-		source: "user",
-	});
-	return responseJson({ accepted, output });
+	try {
+		const output = await input.context.channelContext.emit({
+			type: "message",
+			piboSessionId: selectedSession.id,
+			id: messageId,
+			text,
+			delivery,
+			source: "user",
+		});
+		return responseJson({ accepted, output });
+	} catch (error) {
+		if (error instanceof PiboSteeringUnavailableError) {
+			throw new PiboWebHttpError(error.message, 409);
+		}
+		throw error;
+	}
 }
 
 function startChatStreamingFixture(input: {
@@ -3862,6 +3873,7 @@ async function sendChatMessage(input: {
 	forcedRoomId?: string;
 }): Promise<Response> {
 	const text = normalizeMessageText(input.body.text);
+	const delivery = normalizeMessageDelivery(input.body.delivery);
 	const clientTxnId = normalizeClientTxnId(input.body.clientTxnId);
 	const requestedRoomId = input.forcedRoomId ?? (typeof input.body.roomId === "string" ? input.body.roomId : undefined);
 	const selectedSession = resolveRequestedSession(
@@ -3905,6 +3917,7 @@ async function sendChatMessage(input: {
 			piboSessionId: selectedSession.id,
 			roomId: room.id,
 			text: fileAttachmentContext.messageText,
+			delivery,
 			...(webAnnotationContext.attachments.length ? {
 				webAnnotationIds: webAnnotationContext.ids,
 				webAnnotationAttachments: webAnnotationContext.attachments,
@@ -3939,11 +3952,14 @@ async function sendChatMessage(input: {
 			piboSessionId: selectedSession.id,
 			id: messageId,
 			text: fileAttachmentContext.messageText,
+			delivery,
 			source: "user",
 		});
 	} catch (error) {
 		const errorMessage = error instanceof Error ? error.message : String(error);
-		input.context.channelContext.reportSessionError?.(selectedSession.id, errorMessage, { eventId: messageId, source: "pibo" });
+		if (!(error instanceof PiboSteeringUnavailableError)) {
+			input.context.channelContext.reportSessionError?.(selectedSession.id, errorMessage, { eventId: messageId, source: "pibo" });
+		}
 		const failed = input.state.eventCommands.appendEvent({
 			roomId: room.id,
 			piboSessionId: selectedSession.id,
@@ -3960,6 +3976,9 @@ async function sendChatMessage(input: {
 			},
 		});
 		for (const listener of input.state.liveListeners) listener(failed);
+		if (error instanceof PiboSteeringUnavailableError) {
+			throw new PiboWebHttpError(error.message, 409);
+		}
 		throw error;
 	}
 	markWebAnnotationsAttached(webAnnotationContext);

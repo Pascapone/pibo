@@ -22,6 +22,13 @@ export function applySingleEventToNodes(
 	sessionStatus: PiboWebSessionStatus,
 ): void {
 	const payload = storedEvent.payload as PiboOutputEvent;
+	const confirmedUserMessage = hasPersistedTranscript ? confirmedUserMessageEchoNode(nodes, storedEvent) : undefined;
+	if (confirmedUserMessage) {
+		if (payload.type === "message_steered" && payload.activeEventId) {
+			confirmedUserMessage.parentId = messageTurnNodeId(payload.activeEventId);
+		}
+		return;
+	}
 	if (
 		hasPersistedTranscript &&
 		isTranscriptEchoEvent(payload) &&
@@ -142,7 +149,13 @@ export function applySingleEventToNodes(
 			return;
 		}
 	}
-	if (node.eventId && byId.has(node.id)) return;
+	if (node.eventId) {
+		const existing = byId.get(node.id);
+		if (existing) {
+			if (node.type === "user.message" && node.parentId) existing.parentId = node.parentId;
+			return;
+		}
+	}
 	attachExecutionCommandToOpenTurn(node, byId);
 	attachAsyncAgentRunNode(node, piboSessionId, storedEvent.createdAt);
 	nodes.push(node);
@@ -243,7 +256,7 @@ export function reconcileTranscriptUserMessageTimestamps(
 	let userCursor = 0;
 	for (const storedEvent of events) {
 		const event = storedEvent.payload as PiboOutputEvent;
-		if (event.type !== "message_queued" || event.source !== "user") continue;
+		if ((event.type !== "message_queued" && event.type !== "message_steered") || event.source !== "user") continue;
 		const eventId = typeof event.eventId === "string" ? event.eventId : storedEvent.eventId;
 		const text = typeof event.text === "string" ? event.text : undefined;
 		const matchIndex = transcriptUsers.findIndex((node, index) => {
@@ -258,11 +271,15 @@ export function reconcileTranscriptUserMessageTimestamps(
 }
 
 export function isConfirmedUserMessageEcho(nodes: readonly PiboTraceNode[], event: ChatWebStoredEvent): boolean {
+	return Boolean(confirmedUserMessageEchoNode(nodes, event));
+}
+
+function confirmedUserMessageEchoNode(nodes: readonly PiboTraceNode[], event: ChatWebStoredEvent): PiboTraceNode | undefined {
 	const payload = event.payload as PiboOutputEvent;
-	if (payload.type !== "message_queued" || payload.source !== "user") return false;
+	if ((payload.type !== "message_queued" && payload.type !== "message_steered") || payload.source !== "user") return undefined;
 	const eventId = typeof payload.eventId === "string" ? payload.eventId : event.eventId;
 	const text = typeof payload.text === "string" ? payload.text : undefined;
-	return nodes.some((node) => {
+	return flattenTraceNodes([...nodes]).find((node) => {
 		if (node.type !== "user.message" || node.source !== "transcript") return false;
 		if (eventId && (node.entryId === eventId || node.stableKey === `entry:${eventId}`)) return true;
 		return Boolean(text && traceNodeText(node) === text);
@@ -339,7 +356,8 @@ function traceNodeFromEvent(
 	};
 
 	switch (event.type) {
-		case "message_queued": {
+		case "message_queued":
+		case "message_steered": {
 			const notification = parseRunNotificationText(event.text);
 			if (event.source === "service" && notification) {
 				return createRunNotificationNode({
@@ -355,6 +373,7 @@ function traceNodeFromEvent(
 			}
 			return {
 				...base,
+				...(event.type === "message_steered" && event.activeEventId ? { parentId: messageTurnNodeId(event.activeEventId) } : {}),
 				type: "user.message",
 				title: "User Message",
 				status: "done",
@@ -772,6 +791,7 @@ function eventTraceNodeOrder(
 function eventNodeKind(type: PiboOutputEvent["type"]): PiboTraceNode["type"] {
 	switch (type) {
 		case "message_queued":
+		case "message_steered":
 			return "user.message";
 		case "message_started":
 		case "message_finished":

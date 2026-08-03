@@ -1,5 +1,6 @@
 import { SessionManager, type AgentSessionRuntime, shouldCompact } from "@earendil-works/pi-coding-agent";
 import type { PiboPluginRegistry } from "../plugins/registry.js";
+import { PiboSteeringUnavailableError } from "./events.js";
 import type {
 	PiboForkCandidate,
 	PiboJsonObject,
@@ -826,6 +827,39 @@ export class RoutedSession {
 		this.emit(output);
 		this.onStateChange?.({ processing: this.processing, queuedMessages: this.queue.length, disposed: this.disposed });
 		void this.drain();
+		return output;
+	}
+
+	async steerMessage(event: PiboMessageEvent): Promise<PiboOutputEvent> {
+		this.assertActive();
+		const activeMessage = this.activeMessage;
+		if (!activeMessage || !this.processing || !this.runtime.session.isStreaming) {
+			throw new PiboSteeringUnavailableError();
+		}
+
+		const session = this.runtime.session;
+		const expandedText = expandInlineSkills(
+			event.text,
+			session.resourceLoader.getSkills().skills,
+		);
+		try {
+			await session.steer(expandedText);
+		} catch (error) {
+			throw new PiboSteeringUnavailableError(
+				`The active session could not accept steering: ${errorMessage(error)}`,
+				{ cause: error },
+			);
+		}
+
+		const output: PiboOutputEvent = {
+			type: "message_steered",
+			piboSessionId: this.piboSessionId,
+			eventId: event.id,
+			activeEventId: activeMessage.id,
+			text: event.text,
+			source: event.source,
+		};
+		this.emit(output);
 		return output;
 	}
 
