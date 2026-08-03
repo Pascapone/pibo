@@ -1121,6 +1121,7 @@ Commands:
     .option('--max-slots <count>', 'Maximum active slots for the app', parsePositiveInteger)
     .option('--template-dir <path>', 'Authenticated Chrome user-data-dir template to clone')
     .option('--profile-name <name>', 'Chrome profile name inside each slot')
+    .option('--headed', 'Warm up the leased Chrome browser in headed mode')
     .option('--json', 'Print machine-readable lease data')
     .action(async (options: {
       app?: string;
@@ -1129,6 +1130,7 @@ Commands:
       maxSlots?: number;
       templateDir?: string;
       profileName?: string;
+      headed?: boolean;
       json?: boolean;
     }) => {
       await acquireBrowserUseLease({ status: getCliToolStatus(requireEntry('browser-use')) }, options);
