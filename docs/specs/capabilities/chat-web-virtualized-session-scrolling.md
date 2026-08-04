@@ -181,6 +181,30 @@ After navigating from one Pibo Session to another, the selected view is sticky b
 - THEN the new session view starts in sticky mode
 - AND old scroll intent timers do not affect the new view.
 
+### Requirement: Reload restores a detached Terminal reading position
+
+Reloading the Chat Web App while the viewer is reading older Compact Terminal output MUST restore the same conceptual row and viewport offset instead of silently returning to the latest tail.
+
+#### Current
+
+The Compact Terminal stores the first visible conceptual row and its pixel offset in tab-scoped session storage whenever the viewer is detached. On reload it requests older Trace V2 pages until that row is present, then restores the row and offset through the shared Virtuoso anchor contract. Returning to latest clears the saved position.
+
+#### Target
+
+A browser reload preserves reading context without carrying that context into another tab or another Pibo Session. A viewer who was following the latest output continues to open at the latest output.
+
+#### Acceptance
+
+A long-session headed-browser reload resolves the persisted conceptual row after as many older-page requests as necessary and restores its viewport offset within one pixel. An unavailable or malformed anchor is discarded safely and falls back to the latest content.
+
+#### Scenario: Reload while reading history
+
+- GIVEN the viewer is detached from the latest output and an older conceptual row is first visible
+- WHEN the browser reloads the same Pibo Session
+- THEN older pages load until that conceptual row is available
+- AND the same row returns at its saved viewport offset within one pixel
+- AND the view remains detached with `Scroll to latest` available.
+
 ### Requirement: Content growth inside existing rows preserves latest visibility
 
 When sticky mode is active, row-height changes inside the last visible rows MUST keep the viewport aligned to the latest content.
@@ -273,6 +297,7 @@ In a production build, no render counter global is created by the counter helper
 - [ ] SC-005: A CDP performance check writes a long-task report and fails when the configured threshold is exceeded.
 - [ ] SC-006: Render counters mutate diagnostics state only in development builds.
 - [x] SC-007: Older Trace V2 history loads automatically near the top without a manual load button.
+- [x] SC-008: Reloading a detached Compact Terminal restores its conceptual row and pixel offset after resolving older pages.
 
 ## Assumptions and Open Questions
 
@@ -299,6 +324,7 @@ In a production build, no render counter global is created by the counter helper
 | REQ-006 Content growth inside existing rows preserves latest visibility | Streaming row grows | Source-backed; add streaming row-height test | Draft |
 | REQ-007 Performance checks are explicit and artifact-producing | Developer validates a large-session change | Source-backed; manual/script validation | Draft |
 | REQ-008 Development render counters are non-production diagnostics | Production user opens Chat Web | Source-backed; build-mode unit test | Draft |
+| REQ-009 Reload restores a detached Terminal reading position | Reload while reading history | `CompactTerminalSessionView.tsx`, `useStickyVirtuoso.ts`, headed browser regression | Implemented |
 
 ## Verification Basis
 

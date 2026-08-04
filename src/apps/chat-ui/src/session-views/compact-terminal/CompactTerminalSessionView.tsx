@@ -13,6 +13,7 @@ import { TerminalLoginCard } from "./TerminalLoginCard";
 import { TerminalModelCard } from "./TerminalModelCard";
 import { TerminalStatusCard } from "./TerminalStatusCard";
 import { TerminalThinkingCard } from "./TerminalThinkingCard";
+import { readTerminalReadingPosition, writeTerminalReadingPosition, type TerminalReadingPosition } from "./terminal-reading-position";
 import { buildCompactTerminalRows, findActiveTurnStartedAt, formatTerminalDuration, type CompactTerminalLine, type CompactTerminalRow } from "../../../../../session-ui/terminalRows.js";
 
 const SHOW_LATEST_THRESHOLD_PX = 180;
@@ -53,6 +54,9 @@ export function CompactTerminalSessionView({
 		[showThinking, traceView],
 	);
 	const rowKeys = useMemo(() => rows.map((row) => row.id), [rows]);
+	const piboSessionId = traceView?.piboSessionId ?? "";
+	const [reloadReadingPosition, setReloadReadingPosition] = useState<TerminalReadingPosition | undefined>();
+	const requestedRestorePageRef = useRef<string | undefined>(undefined);
 	const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 	const renderedContentKey = useMemo(() => [rows, expandedRows] as const, [expandedRows, rows]);
 	const [focusedNavigationRowId, setFocusedNavigationRowId] = useState<string | null>(null);
@@ -92,6 +96,10 @@ export function CompactTerminalSessionView({
 		if (range.startIndex <= 0) loadOlderAtTop();
 		else if (range.startIndex <= OLDER_TRACE_PREFETCH_ROW_THRESHOLD) loadOlderNearTop();
 	}, [loadOlderAtTop, loadOlderNearTop]);
+	const persistVisibleAnchor = useCallback((anchor: { key: string; offset: number } | undefined) => {
+		if (!piboSessionId) return;
+		writeTerminalReadingPosition(piboSessionId, anchor ? { rowId: anchor.key, offsetPx: anchor.offset } : undefined);
+	}, [piboSessionId]);
 
 	const stickyView = useStickyVirtuoso({
 		itemCount: rows.length,
@@ -103,7 +111,45 @@ export function CompactTerminalSessionView({
 		onAtTop: loadOlderAtTop,
 		onNearTop: loadOlderNearTop,
 		onUserScrollIntent: markOlderTraceIntent,
+		onVisibleAnchorChange: persistVisibleAnchor,
 	});
+
+	useEffect(() => {
+		requestedRestorePageRef.current = undefined;
+		setReloadReadingPosition(piboSessionId ? readTerminalReadingPosition(piboSessionId) : undefined);
+	}, [piboSessionId]);
+
+	useEffect(() => {
+		if (!piboSessionId || !reloadReadingPosition) return undefined;
+		const rowIndex = rowKeys.indexOf(reloadReadingPosition.rowId);
+		if (rowIndex >= 0) {
+			const frame = requestAnimationFrame(() => {
+				if (stickyView.restoreAnchor({ key: reloadReadingPosition.rowId, dataIndex: rowIndex, offset: reloadReadingPosition.offsetPx })) {
+					setReloadReadingPosition(undefined);
+				}
+			});
+			return () => cancelAnimationFrame(frame);
+		}
+		if (!hasOlderTraceEvents) {
+			writeTerminalReadingPosition(piboSessionId, undefined);
+			setReloadReadingPosition(undefined);
+			return undefined;
+		}
+		if (isFetchingOlderTracePage) return undefined;
+		const cursor = String(traceView?.nextBeforeCursor ?? traceView?.nextBeforeSequence ?? rows.length);
+		const requestKey = `${piboSessionId}:${cursor}`;
+		if (requestedRestorePageRef.current === requestKey) return undefined;
+		requestedRestorePageRef.current = requestKey;
+		onLoadOlderTracePage?.();
+		return undefined;
+	}, [hasOlderTraceEvents, isFetchingOlderTracePage, onLoadOlderTracePage, piboSessionId, reloadReadingPosition, rowKeys, rows.length, stickyView.restoreAnchor, traceView?.nextBeforeCursor, traceView?.nextBeforeSequence]);
+
+	useEffect(() => {
+		if (!piboSessionId) return undefined;
+		const persistBeforePageExit = () => { stickyView.captureVisibleAnchor(); };
+		window.addEventListener("pagehide", persistBeforePageExit);
+		return () => window.removeEventListener("pagehide", persistBeforePageExit);
+	}, [piboSessionId, stickyView.captureVisibleAnchor]);
 
 	useEffect(() => {
 		setExpandedRows((current) => retainExistingExpandedRows(current, rows, expandThinking));
@@ -246,7 +292,10 @@ export function CompactTerminalSessionView({
 			{!stickyView.isSticky ? (
 				<button
 					type="button"
-					onClick={() => stickyView.stickToBottom("auto")}
+					onClick={() => {
+						writeTerminalReadingPosition(piboSessionId, undefined);
+						stickyView.stickToBottom("auto");
+					}}
 					title="Scroll to latest"
 					aria-label="Scroll to latest"
 					className="absolute right-4 bottom-4 z-30 inline-flex h-9 w-9 items-center justify-center rounded-sm border border-[#38bdf8] bg-[#111111]/95 text-[#38bdf8] shadow-lg shadow-black/30 hover:bg-[#161616]"

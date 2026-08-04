@@ -43,6 +43,7 @@ type StickyVirtuosoOptions = {
 	atTopThreshold?: number;
 	nearTopThreshold?: number;
 	onUserScrollIntent?: (event?: Event) => void;
+	onVisibleAnchorChange?: (anchor: StickyVisibleAnchor | undefined) => void;
 };
 
 export function useStickyVirtuoso({
@@ -56,6 +57,7 @@ export function useStickyVirtuoso({
 	atTopThreshold = 0,
 	nearTopThreshold = 0,
 	onUserScrollIntent,
+	onVisibleAnchorChange,
 }: StickyVirtuosoOptions) {
 	const virtuosoRef = useRef<VirtuosoHandle>(null);
 	const itemCountRef = useRef(itemCount);
@@ -101,15 +103,17 @@ export function useStickyVirtuoso({
 		itemCountRef.current = itemCount;
 	}, [itemCount]);
 
-	const setSticky = useCallback((next: boolean) => {
+	const setSticky = useCallback((next: boolean, notifyAnchorChange = true) => {
+		const wasSticky = stickyRef.current;
 		stickyRef.current = next;
 		if (next) {
+			if (!wasSticky && notifyAnchorChange) onVisibleAnchorChange?.(undefined);
 			bottomReattachArmedRef.current = false;
 			if (anchorFrameRef.current !== undefined) cancelAnimationFrame(anchorFrameRef.current);
 			anchorFrameRef.current = undefined;
 		}
 		setIsStickyState(next);
-	}, []);
+	}, [onVisibleAnchorChange]);
 
 	const setAtTop = useCallback((next: boolean) => {
 		if (atTopRef.current === next) return;
@@ -124,7 +128,7 @@ export function useStickyVirtuoso({
 	}, [atTopThreshold, setAtTop]);
 
 	const captureVisibleAnchors = useCallback(() => {
-		if (!scroller || stickyRef.current) return;
+		if (!scroller || stickyRef.current) return undefined;
 		const domAnchors = captureDomVisibleAnchors(scroller, committedItemKeysRef.current);
 		visibleAnchorsRef.current = domAnchors.length ? domAnchors : captureStickyVisibleAnchors({
 			items: renderedItemsRef.current,
@@ -133,7 +137,10 @@ export function useStickyVirtuoso({
 			scrollTop: getScrollTop(scroller),
 			viewportHeight: getClientHeight(scroller),
 		});
-	}, [scroller]);
+		const anchor = visibleAnchorsRef.current[0];
+		onVisibleAnchorChange?.(anchor);
+		return anchor;
+	}, [onVisibleAnchorChange, scroller]);
 
 	const itemsRendered = useCallback((items: ListItem<unknown>[]) => {
 		renderedItemsRef.current = items;
@@ -172,6 +179,33 @@ export function useStickyVirtuoso({
 			scrollFrameRef.current = undefined;
 		}
 	}, []);
+
+	const restoreAnchor = useCallback((anchor: StickyVisibleAnchor): boolean => {
+		const itemKeys = committedItemKeysRef.current;
+		const index = itemKeys.indexOf(anchor.key);
+		if (index < 0) return false;
+		setSticky(false);
+		userAnchorCaptureArmedRef.current = false;
+		visibleAnchorsRef.current = [{ ...anchor, dataIndex: index }];
+		pendingAnchorsRef.current = visibleAnchorsRef.current;
+		clearScheduledScroll();
+		const location: StickyAnchorLocation = { index, align: "start", behavior: "auto", offset: -anchor.offset };
+		const restore = () => {
+			if (stickyRef.current) return;
+			const restoredInDom = Boolean(scroller && restoreDomVisibleAnchor(scroller, location, visibleAnchorsRef.current, itemKeys));
+			if (!restoredInDom) virtuosoRef.current?.scrollToIndex(location);
+		};
+		virtuosoRef.current?.scrollToIndex(location);
+		if (anchorFrameRef.current !== undefined) cancelAnimationFrame(anchorFrameRef.current);
+		anchorFrameRef.current = requestAnimationFrame(() => {
+			restore();
+			anchorFrameRef.current = requestAnimationFrame(() => {
+				anchorFrameRef.current = undefined;
+				restore();
+			});
+		});
+		return true;
+	}, [clearScheduledScroll, scroller, setSticky]);
 
 	const requestNearTop = useCallback(() => {
 		if (!onNearTop || !scroller) return;
@@ -371,7 +405,7 @@ export function useStickyVirtuoso({
 		visibleAnchorsRef.current = [];
 		pendingAnchorsRef.current = undefined;
 		setAtTop(false);
-		setSticky(true);
+		setSticky(true, false);
 		scheduleScrollToBottom("auto");
 	}, [resetKey, scheduleScrollToBottom, setAtTop, setSticky]);
 
@@ -423,6 +457,8 @@ export function useStickyVirtuoso({
 		isSticky,
 		isAtTop,
 		isScrolledToTop,
+		captureVisibleAnchor: captureVisibleAnchors,
+		restoreAnchor,
 		stickToBottom,
 		scrollToIndex,
 		scrollerRef: setScroller,
