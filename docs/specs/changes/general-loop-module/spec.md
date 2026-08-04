@@ -75,6 +75,8 @@ A successful `update_goal(status=complete)` call MUST persist completion and sto
 
 Rooms, default chat, profiles, model/thinking/fast overrides, stop conditions, max iterations, run facts, resource metadata and cleanup, run timeout, graceful stop, cancel, status, run history, and Web management MUST continue to work for both modes.
 
+Goal-owned browser leases MUST be renewed before and during active turns, retained between non-terminal turns, and released when the Goal stops or becomes terminal. A recoverable expired or dead browser process MUST be reacquired from its persisted managed profile, including after gateway restart. An unrecoverable authenticated-browser failure MUST mark the Goal blocked and persist an operator-facing dirty resource reason.
+
 ### REQ-006: Compatibility
 
 - `pibo ralph` MUST remain available and create or manage legacy `ralph` mode loops.

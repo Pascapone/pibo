@@ -54,6 +54,10 @@ Pibo accumulates model usage reported by completed assistant model messages. A G
 
 Increase or clear the token budget before resuming a budget-limited Goal.
 
+## Managed browser leases
+
+When a Goal owns `resources.browserLeaseIds`, Pibo renews those leases before each turn and while the turn is active. The same lease is retained across non-terminal Goal turns, including gateway service restart, and is released only when the Goal stops or reaches a terminal state. If the browser process disappeared, Pibo attempts to restart Chromium from the persisted managed profile. Failure to restore authenticated access marks the Goal blocked with an operator-facing resource reason.
+
 ## Operations
 
 ```bash
