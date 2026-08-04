@@ -12,6 +12,7 @@ type RunNotificationRun = {
 export type RunNotificationPayload = {
 	completed?: unknown;
 	failed?: unknown;
+	timedOut?: unknown;
 	cancelled?: unknown;
 	running?: unknown;
 	instruction?: unknown;
@@ -47,7 +48,7 @@ export function createRunNotificationNode(input: {
 }): PiboTraceNode {
 	const runs = runNotificationRuns(input.notification);
 	const singleRun = runs.length === 1 ? runs[0] : undefined;
-	const failedCount = countRunGroup(input.notification.failed);
+	const failedCount = countRunGroup(input.notification.failed) + countRunGroup(input.notification.timedOut);
 	const runningCount = countRunGroup(input.notification.running);
 	return {
 		id: input.id,
@@ -72,6 +73,7 @@ function runNotificationRuns(notification: RunNotificationPayload): RunNotificat
 	return [
 		...runGroup(notification.completed),
 		...runGroup(notification.failed),
+		...runGroup(notification.timedOut),
 		...runGroup(notification.cancelled),
 		...runGroup(notification.running),
 	];
@@ -89,6 +91,7 @@ function runNotificationSummary(notification: RunNotificationPayload): string {
 	const parts = [
 		[countRunGroup(notification.completed), "completed"],
 		[countRunGroup(notification.failed), "failed"],
+		[countRunGroup(notification.timedOut), "timed out"],
 		[countRunGroup(notification.cancelled), "cancelled"],
 		[countRunGroup(notification.running), "running"],
 	]

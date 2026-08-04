@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PiboRunRegistry } from "../dist/runs/registry.js";
+import { PiboRunExecutionTimeoutError } from "../dist/runs/lifecycle.js";
 import { createRunToolDefinitions } from "../dist/runs/tools.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
 import { PiboReliabilityStore } from "../dist/reliability/store.js";
@@ -84,6 +85,43 @@ test("wait returns timeout as normal state and resolves on completion", async ()
 	assert.equal(completed.timedOut, false);
 });
 
+test("configured run timeout is persisted and classified separately from failure", () => {
+	const store = new PiboReliabilityStore(":memory:");
+	try {
+		const registry = new PiboRunRegistry({ store });
+		const run = registry.startToolRun({
+			controllerPiboSessionId: "parent",
+			toolName: "bash",
+			completionPolicy: "tracked",
+			timeoutMs: 21600000,
+			serviceWarning: "foreground service warning",
+		});
+		assert.equal(run.timeoutMs, 21600000);
+		assert.equal(typeof run.timeoutAt, "string");
+		assert.equal(run.serviceWarning, "foreground service warning");
+
+		const timedOut = registry.timeOut(run.runId, "Command timed out after 21600 seconds", "lifetime");
+		assert.equal(timedOut.status, "timed_out");
+		assert.equal(timedOut.timeoutPhase, "lifetime");
+		assert.match(timedOut.summary, /started successfully/);
+		assert.match(timedOut.summary, /21600s timeout/);
+		const notification = registry.createNotification("parent");
+		assert.equal(notification.timedOut[0].runId, run.runId);
+		assert.equal(notification.failed.length, 0);
+
+		const restored = new PiboRunRegistry({ store });
+		const snapshot = restored.status("parent", run.runId);
+		assert.equal(snapshot.status, "timed_out");
+		assert.equal(snapshot.timeoutMs, 21600000);
+		assert.equal(snapshot.timeoutPhase, "lifetime");
+		assert.equal(snapshot.serviceWarning, "foreground service warning");
+		const read = restored.read("parent", run.runId);
+		assert.match(read.error, /timed out/);
+	} finally {
+		store.close();
+	}
+});
+
 test("disposing a controller cancels running runs and resolves waiters", async () => {
 	const registry = new PiboRunRegistry();
 	const run = startRun(registry);
@@ -151,16 +189,19 @@ test("registry prunes detached terminal and consumed tracked runs only", () => {
 	const tracked = startRun(registry);
 	const detached = startRun(registry, { completionPolicy: "detached" });
 	const consumed = startRun(registry);
+	const timedOut = startRun(registry, { completionPolicy: "detached" });
 
 	registry.complete(tracked.runId, { text: "tracked result" });
 	registry.complete(detached.runId, { text: "detached result" });
 	registry.complete(consumed.runId, { text: "consumed result" });
+	registry.timeOut(timedOut.runId, "Command timed out", "startup");
 	registry.read("parent", consumed.runId);
 
-	assert.equal(registry.prune(), 2);
+	assert.equal(registry.prune(), 3);
 	assert.equal(registry.status("parent", tracked.runId).status, "completed");
 	assert.throws(() => registry.status("parent", detached.runId), /Unknown run/);
 	assert.throws(() => registry.status("parent", consumed.runId), /Unknown run/);
+	assert.throws(() => registry.status("parent", timedOut.runId), /Unknown run/);
 });
 
 test("ack suppresses current-state reminders and terminal ack consumes", () => {
@@ -278,6 +319,61 @@ test("run tools start yieldable tools with explicit completion policy", async ()
 	assert.deepEqual(observed.params, { message: "do background work" });
 	assert.equal(observed.completionPolicy, "detached");
 	assert.equal(result.details.runId, "run_1");
+});
+
+test("run start records inferred Bash timeout, warns for foreground services, and classifies lifetime expiry", async () => {
+	let started;
+	const [startTool] = createRunToolDefinitions(
+		[
+			{
+				name: "bash",
+				async execute(_toolCallId, _params, _signal, onUpdate) {
+					onUpdate({ content: [{ type: "text", text: "gateway listening on 4788" }] });
+					throw new Error("Command timed out after 2 seconds");
+				},
+			},
+		],
+		{
+			startToolRun(input) {
+				started = input;
+				return runSnapshot({ timeoutMs: input.timeoutMs, serviceWarning: input.serviceWarning }, { toolName: input.toolName });
+			},
+			listRuns() { return []; },
+			getRunStatus() { throw new Error("not used"); },
+			waitForRun() { throw new Error("not used"); },
+			readRun() { throw new Error("not used"); },
+			cancelRun() { throw new Error("not used"); },
+			ackRun() { throw new Error("not used"); },
+		},
+	);
+
+	const result = await startTool.execute("tool-call-service", {
+		toolName: "bash",
+		arguments: { command: "pibo gateway:web", timeout: 2 },
+		completionPolicy: "tracked",
+	});
+	assert.equal(started.timeoutMs, 2000);
+	assert.match(started.serviceWarning, /Known long-lived service command/);
+	assert.match(result.content[0].text, /Warning:/);
+	await assert.rejects(started.execute(), (error) => error instanceof PiboRunExecutionTimeoutError && error.timeoutPhase === "lifetime");
+});
+
+test("run timeout without output is classified as startup expiry", async () => {
+	let started;
+	const [startTool] = createRunToolDefinitions(
+		[{ name: "bash", async execute() { throw new Error("Command timed out"); } }],
+		{
+			startToolRun(input) { started = input; return runSnapshot({ timeoutMs: input.timeoutMs }, { toolName: input.toolName }); },
+			listRuns() { return []; },
+			getRunStatus() { throw new Error("not used"); },
+			waitForRun() { throw new Error("not used"); },
+			readRun() { throw new Error("not used"); },
+			cancelRun() { throw new Error("not used"); },
+			ackRun() { throw new Error("not used"); },
+		},
+	);
+	await startTool.execute("tool-call-startup", { toolName: "bash", arguments: { command: "pibo gateway:web", timeout: 1 } });
+	await assert.rejects(started.execute(), (error) => error instanceof PiboRunExecutionTimeoutError && error.timeoutPhase === "startup");
 });
 
 test("run start tool rejects unknown yieldable tool names", async () => {
@@ -543,6 +639,31 @@ test("router converts yielded tool errors into failed run notifications", async 
 	assert.equal(messages[0].piboSessionId, "parent");
 	assert.match(messages[0].text, /"failed"/);
 	assert.match(messages[0].text, /"runId":"run_/);
+});
+
+test("router emits a distinct timed_out run notification", async () => {
+	const router = new PiboSessionRouter({ persistSession: false });
+	const messages = [];
+	router.getOrCreateSession = async () => ({
+		enqueueMessage(event) {
+			messages.push(event);
+			return { type: "message_queued", piboSessionId: event.piboSessionId, eventId: event.id, queuedMessages: 1, text: event.text, source: event.source };
+		},
+	});
+	const controller = router.createRunToolController("parent");
+	const run = controller.startToolRun({
+		toolName: "bash",
+		timeoutMs: 1000,
+		async execute() { throw new PiboRunExecutionTimeoutError("Command timed out after startup", "lifetime"); },
+	});
+	await new Promise((resolve) => setImmediate(resolve));
+
+	const status = router.runRegistry.status("parent", run.runId);
+	assert.equal(status.status, "timed_out");
+	assert.equal(status.timeoutPhase, "lifetime");
+	assert.match(messages[0].text, /"timedOut"/);
+	assert.match(messages[0].text, /"status":"timed_out"/);
+	assert.match(messages[0].text, /"timeoutPhase":"lifetime"/);
 });
 
 test("router invalidates stale queued run notifications after read", async () => {

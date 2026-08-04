@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import test from "node:test";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { createPiboRuntime, inspectPiboProfile } from "../dist/core/runtime.js";
+import { PiboRunExecutionTimeoutError } from "../dist/runs/lifecycle.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
 import { createSubagentToolDefinitions, createSubagentToolName } from "../dist/subagents/tool.js";
 import { piboCorePlugin } from "../dist/plugins/builtin.js";
@@ -341,6 +342,41 @@ test("run-control package exposes Pi bash as a yieldable tool", async () => {
 		const toolNameSchema = startTool.parameters.properties.toolName;
 		assert.equal(toolNameSchema.enum.includes("bash"), true);
 		assert.equal(toolNameSchema.enum.includes("pibo_exec"), false);
+	} finally {
+		await runtime.dispose();
+	}
+});
+
+test("real yielded Pi bash timeout preserves startup output classification", async () => {
+	let started;
+	const controller = {
+		...noopRunToolController,
+		startToolRun(input) {
+			started = input;
+			return {
+				runId: "run_real_bash_timeout",
+				kind: "tool",
+				controllerPiboSessionId: "ps_parent",
+				status: "running",
+				completionPolicy: input.completionPolicy ?? "tracked",
+				consumed: false,
+				toolName: input.toolName,
+				timeoutMs: input.timeoutMs,
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+			};
+		},
+	};
+	const profile = new InitialSessionContextBuilder("run-control-agent")
+		.withBuiltinToolNames(["bash"])
+		.withToolPackages({ runControl: true })
+		.createSession();
+	const runtime = await createPiboRuntime({ profile, persistSession: false, subagentRunner: noopSubagentRunner, runToolController: controller });
+	try {
+		const startTool = runtime.session.getToolDefinition("pibo_run_start");
+		await startTool.execute("tool-call-real-timeout", { toolName: "bash", arguments: { command: "printf 'service ready\\n'; sleep 2", timeout: 1 } }, new AbortController().signal, () => {}, {});
+		assert.equal(started.timeoutMs, 1000);
+		await assert.rejects(started.execute(), (error) => error instanceof PiboRunExecutionTimeoutError && error.timeoutPhase === "lifetime");
 	} finally {
 		await runtime.dispose();
 	}

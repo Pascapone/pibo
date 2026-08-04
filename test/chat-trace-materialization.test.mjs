@@ -122,6 +122,7 @@ test("legacy transcript run notifications render yielded-run nodes", () => {
 							text: runNotificationText({
 								completed: [{ runId: "run_done" }],
 								failed: [{ runId: "run_failed" }],
+								timedOut: [{ runId: "run_timed_out", status: "timed_out" }],
 							}),
 						},
 					],
@@ -135,7 +136,7 @@ test("legacy transcript run notifications render yielded-run nodes", () => {
 	assert.equal(view.nodes[0].type, "yielded.run");
 	assert.equal(view.nodes[0].title, "Run Notification");
 	assert.equal(view.nodes[0].status, "error");
-	assert.equal(view.nodes[0].summary, "1 completed, 1 failed");
+	assert.equal(view.nodes[0].summary, "1 completed, 1 failed, 1 timed out");
 	assert.equal(view.nodes[0].source, "transcript");
 	assert.equal(view.nodes[0].runId, undefined);
 });

@@ -38,11 +38,11 @@ export function reconcileAsyncAgentRunStatuses(nodes: PiboTraceNode[]): void {
 		const latest = runSnapshots.get(node.runId);
 		if (!latest) continue;
 		const status = stringValue(latest.snapshot.status);
-		if (status !== "completed" && status !== "cancelled" && status !== "failed") continue;
-		node.status = status === "failed" ? "error" : "done";
+		if (status !== "completed" && status !== "cancelled" && status !== "failed" && status !== "timed_out") continue;
+		node.status = status === "failed" || status === "timed_out" ? "error" : "done";
 		node.completedAt = latest.completedAt ?? node.completedAt;
 		node.output = latest.snapshot;
-		if (status === "failed") node.error = stringValue(latest.snapshot.summary) ?? node.error;
+		if (status === "failed" || status === "timed_out") node.error = stringValue(latest.snapshot.summary) ?? node.error;
 	}
 }
 
@@ -76,7 +76,7 @@ function createAsyncAgentRunNode(
 		title: subagentName,
 		status: asyncAgentStatus(parent, runStatus),
 		startedAt: delegation?.startedAt ?? startedAt ?? parent.startedAt,
-		completedAt: runStatus === "completed" || runStatus === "cancelled" ? parent.completedAt : undefined,
+		completedAt: runStatus === "completed" || runStatus === "cancelled" || runStatus === "failed" || runStatus === "timed_out" ? parent.completedAt : undefined,
 		summary: `Started by ${parent.title}`,
 		input: {
 			startedBy: parent.title,
