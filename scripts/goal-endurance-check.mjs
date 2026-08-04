@@ -32,21 +32,24 @@ const report = {
 };
 
 try {
-	const browser = await runBrowserLifecycle(join(root, "browser"), durationHours, turns, realTime);
-	const unbounded = await runGoalVariant({
-		root: join(root, "unbounded"),
-		durationHours,
-		turns,
-		realTime,
-		browserLeaseId: browser.leaseId,
-		budget: undefined,
-	});
+	const browserLeaseId = "lease-endurance";
+	const [browser, unbounded] = await Promise.all([
+		runBrowserLifecycle(join(root, "browser"), durationHours, turns, realTime),
+		runGoalVariant({
+			root: join(root, "unbounded"),
+			durationHours,
+			turns,
+			realTime,
+			browserLeaseId,
+			budget: undefined,
+		}),
+	]);
 	const budgetLimited = await runGoalVariant({
 		root: join(root, "budget"),
 		durationHours: 24,
 		turns: Math.max(8, Math.min(turns, 48)),
 		realTime: false,
-		browserLeaseId: browser.leaseId,
+		browserLeaseId,
 		budget: 500,
 	});
 
@@ -226,6 +229,7 @@ async function runBrowserLifecycle(rootDir, durationHoursValue, turnCount, waitI
 		});
 		assert(result.acquired, `Browser lease renewal failed at turn ${turn}: ${result.staleReason}`);
 		renewals += 1;
+		if (waitInRealTime && intervalMs > 0) await sleep(intervalMs);
 	}
 	const release = await releaseBrowserPoolLease(paths, identity, {
 		leaseId,
