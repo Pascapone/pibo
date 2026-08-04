@@ -420,6 +420,20 @@ test("compact terminal row identity survives transcript, event-log, and live too
 	assert.equal(reconciledRows[0].output, "done");
 });
 
+test("compact terminal row identity survives assistant and reasoning projection handoffs", () => {
+	for (const fixture of [
+		{ type: "assistant.message", stableKey: "assistant:response-1", expectedId: "terminal:assistant:response-1", showThinking: false },
+		{ type: "model.reasoning", stableKey: "reasoning:thinking-1", expectedId: "terminal:reasoning:thinking-1", showThinking: true },
+	]) {
+		const sourceRows = [
+			buildCompactTerminalRows(traceView([traceNode(fixture.type, `entry:turn-1:${fixture.type}`, { stableKey: fixture.stableKey, source: "transcript", output: "text" })]), { showThinking: fixture.showThinking }),
+			buildCompactTerminalRows(traceView([traceNode(fixture.type, `event:${fixture.type}`, { stableKey: fixture.stableKey, source: "event-log", output: "text" })]), { showThinking: fixture.showThinking }),
+			buildCompactTerminalRows(traceView([traceNode(fixture.type, `live:${fixture.type}`, { stableKey: fixture.stableKey, source: "live", output: "text" })]), { showThinking: fixture.showThinking }),
+		];
+		assert.deepEqual(sourceRows.map((rows) => rows[0]?.id), [fixture.expectedId, fixture.expectedId, fixture.expectedId]);
+	}
+});
+
 test("compact terminal identity does not collapse repeated compactions or unresolved subagents", () => {
 	const rows = buildCompactTerminalRows(traceView([
 		traceNode("execution.compaction", "compaction-1", { order: 1, stableKey: "compaction:active" }),
