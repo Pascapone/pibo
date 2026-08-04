@@ -1,6 +1,7 @@
 import { StringEnum, Type } from '@earendil-works/pi-ai';
 import { defineTool, type ToolDefinition } from '@earendil-works/pi-coding-agent';
 import type { ToolDefinitionContext } from '../core/profiles.js';
+import { goalActiveTimeSeconds, goalCanStartNextTurn, goalElapsedWallClockSeconds, goalRemainingTokens } from './accounting.js';
 import { createDefaultPiboLoopStore, type PiboLoopStore } from './store.js';
 import type { PiboGoalStatus, PiboLoopJob } from './types.js';
 
@@ -16,7 +17,7 @@ export function configurePiboGoalToolStorePath(path: string | undefined): void {
 	configuredStorePath = path;
 }
 
-type CreateGoalParams = { objective?: string; token_budget?: number };
+type CreateGoalParams = { objective?: string; token_budget?: number; token_reserve?: number };
 type UpdateGoalParams = { status?: string };
 
 function toolResult(value: unknown, isError = false) {
@@ -46,18 +47,29 @@ function positiveInteger(value: number | undefined, field: string): number | und
 	if (!Number.isInteger(value) || value < 1) throw new Error(`${field} must be a positive integer`);
 	return value;
 }
+function nonNegativeInteger(value: number | undefined, field: string): number | undefined {
+	if (value === undefined) return undefined;
+	if (!Number.isInteger(value) || value < 0) throw new Error(`${field} must be a non-negative integer`);
+	return value;
+}
 
 function goalPayload(job: PiboLoopJob) {
-	const tokensUsed = job.state.tokensUsed ?? 0;
 	const tokenBudget = job.tokenBudget;
 	return {
 		goalId: job.id,
 		objective: job.prompt,
 		status: effectiveGoalStatus(job),
+		budgetType: tokenBudget === undefined ? 'unbounded' : 'soft',
 		tokenBudget: tokenBudget ?? null,
-		tokensUsed,
-		remainingTokens: tokenBudget === undefined ? null : Math.max(0, tokenBudget - tokensUsed),
-		timeUsedSeconds: job.state.timeUsedSeconds ?? 0,
+		tokenReserve: job.tokenReserve ?? 0,
+		tokensUsed: job.state.tokensUsed ?? 0,
+		remainingTokens: goalRemainingTokens(job) ?? null,
+		canStartNextTurn: goalCanStartNextTurn(job),
+		activeAgentTimeSeconds: goalActiveTimeSeconds(job),
+		elapsedWallClockSeconds: goalElapsedWallClockSeconds(job),
+		goalStartedAt: job.state.goalStartedAt ?? null,
+		goalEndedAt: job.state.goalEndedAt ?? null,
+		wallClockIncludesPausedTime: true,
 	};
 }
 
@@ -79,7 +91,7 @@ function createGetGoalTool(context: ToolDefinitionContext, options: PiboGoalTool
 	return defineTool({
 		name: 'get_goal',
 		label: 'Get Goal',
-		description: 'Get the current goal for this Pibo Session, including status, token budget, consumed tokens, remaining tokens, and elapsed active time.',
+		description: 'Get the current goal for this Pibo Session, including soft-budget risk, per-turn reserve, active agent time, and wall-clock elapsed time.',
 		promptSnippet: 'Use get_goal when you need the authoritative persisted status or accounting for the current Pibo Session goal.',
 		parameters: Type.Object({}),
 		async execute() {
@@ -104,7 +116,8 @@ function createCreateGoalTool(context: ToolDefinitionContext, options: PiboGoalT
 		promptSnippet: 'Call create_goal only when the user or system explicitly requests a persistent goal. Do not infer a goal from an ordinary task.',
 		parameters: Type.Object({
 			objective: Type.String({ description: 'Concrete objective to pursue across automatic continuations.' }),
-			token_budget: Type.Optional(Type.Number({ description: 'Optional positive token budget. Omit unless explicitly requested.' })),
+			token_budget: Type.Optional(Type.Number({ description: 'Optional soft token budget. Usage arrives after each model response, so the final turn can overshoot.' })),
+			token_reserve: Type.Optional(Type.Number({ description: 'Optional non-negative minimum remaining tokens required before Pibo starts another turn.' })),
 		}),
 		async execute(_toolCallId, params: CreateGoalParams) {
 			try {
@@ -112,6 +125,7 @@ function createCreateGoalTool(context: ToolDefinitionContext, options: PiboGoalT
 				const objective = params.objective?.trim();
 				if (!objective) throw new Error('objective is required');
 				const tokenBudget = positiveInteger(params.token_budget, 'token_budget');
+				const tokenReserve = nonNegativeInteger(params.token_reserve, 'token_reserve');
 				return await withStore(options, (store) => {
 					const existing = store.getLatestGoalForSession(session.piboSessionId);
 					if (existing && effectiveGoalStatus(existing) !== 'complete') {
@@ -124,6 +138,7 @@ function createCreateGoalTool(context: ToolDefinitionContext, options: PiboGoalT
 						profile: session.profileName,
 						prompt: objective,
 						tokenBudget,
+						tokenReserve,
 						initialPiboSessionId: session.piboSessionId,
 					});
 					return toolResult({ ok: true, goal: goalPayload(job) });
@@ -158,7 +173,7 @@ function createUpdateGoalTool(context: ToolDefinitionContext, options: PiboGoalT
 						ok: true,
 						goal: goalPayload(job),
 						...(status === 'complete' && job.tokenBudget !== undefined
-							? { completionBudgetReport: `${job.state.tokensUsed ?? 0}/${job.tokenBudget} reported tokens consumed before the current model turn finishes` }
+							? { completionBudgetReport: `${job.state.tokensUsed ?? 0}/${job.tokenBudget} reported tokens consumed against a soft budget before the current model turn finishes` }
 							: {}),
 					});
 				});

@@ -76,6 +76,59 @@ test("Goal accounting includes usage reported after update_goal completes the ac
 	}
 });
 
+test("Goal records a final turn that exceeds remaining soft budget", async () => {
+	const dir = await mkdtemp(join(tmpdir(), "pibo-loop-budget-overshoot-"));
+	const store = new PiboLoopStore({ path: ":memory:" });
+	const listeners = new Set();
+	const sessions = new Map();
+	let prompt = "";
+	const context = {
+		async emit(event) {
+			if (event.type === "message") {
+				prompt = event.text;
+				queueMicrotask(() => {
+					for (const listener of listeners) {
+						listener({ type: "assistant_usage", piboSessionId: event.piboSessionId, eventId: event.id, totalTokens: 50 });
+						listener({ type: "assistant_message", piboSessionId: event.piboSessionId, eventId: event.id, text: "final progress" });
+						listener({ type: "message_finished", piboSessionId: event.piboSessionId, eventId: event.id });
+					}
+				});
+			}
+			return { type: "execution_result", piboSessionId: event.piboSessionId, eventId: event.id ?? "evt", action: "test", result: {} };
+		},
+		subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+		createSession(input) { const session = createPiboSession({ ...input, id: "ps_budget_overshoot" }); sessions.set(session.id, session); return session; },
+		getSession(id) { return sessions.get(id); },
+		findSessions() { return []; },
+		getGatewayActions() { return []; },
+		getWebApps() { return []; },
+		getLoopStopConditionDefinitions() { return createBuiltInLoopStopConditions(); },
+	};
+	const service = new PiboLoopService({ store, context, dataStorePath: join(dir, "data.sqlite"), dataPayloadRootDir: join(dir, "payloads"), intervalMs: 10, runTimeoutMs: 5_000 });
+	try {
+		service.start();
+		const job = store.createJob({ mode: "goal", target: { kind: "default-chat" }, profile: "base", prompt: "Use the final allowed turn.", tokenBudget: 100, tokenReserve: 10 });
+		store.recordGoalProgress(job.id, { tokens: 80 });
+		const run = await service.startJob(job.id);
+		assert.ok(run);
+		await waitFor(() => store.getJob(job.id)?.state.completedIterations === 1);
+		const saved = store.getJob(job.id);
+		const completedRun = store.listRuns({ jobId: job.id })[0];
+		assert.equal(saved.state.goalStatus, "budget_limited");
+		assert.equal(saved.state.tokensUsed, 130);
+		assert.equal(saved.enabled, false);
+		assert.match(prompt, /Reported tokens remaining before this turn: 20/);
+		assert.equal(completedRun.accounting.tokensUsedBefore, 80);
+		assert.equal(completedRun.accounting.remainingTokensBefore, 20);
+		assert.equal(completedRun.accounting.tokensUsed, 50);
+		assert.equal(completedRun.accounting.overshootTokens, 30);
+		assert.equal(typeof completedRun.accounting.activeTimeSeconds, "number");
+	} finally {
+		service.stop();
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
 test("goal mode reuses one Pibo Session while Ralph mode creates fresh sessions", async () => {
 	const goal = await runTwoIterations("goal");
 	assert.equal(goal.createdSessionIds.length, 1);
