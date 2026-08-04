@@ -105,10 +105,11 @@ export async function inspectDebugTrace(
 
 		const session = sessionFromRow(sessionRow);
 		const sessions = (sessionsDb.prepare("SELECT * FROM sessions").all() as SessionRow[]).map(sessionFromRow);
+		const adapterIssues: DebugTraceIssue[] = [];
 		const events = tableExists(chatDb, "event_log")
 			? (chatDb
 					.prepare("SELECT stream_id, session_id, session_sequence, event_id, type, created_at, preview_text, attributes_json FROM event_log WHERE session_id = ? ORDER BY stream_id ASC")
-					.all(piboSessionId) as EventRow[]).map(eventFromRow).filter((event): event is ChatWebStoredPiboEvent => event !== undefined)
+					.all(piboSessionId) as EventRow[]).map((row) => eventFromRow(row, adapterIssues)).filter((event): event is ChatWebStoredPiboEvent => event !== undefined)
 			: [];
 		const view = await buildTraceView({
 			session,
@@ -125,7 +126,7 @@ export async function inspectDebugTrace(
 			status: traceStatus(view),
 			nodes: filtered,
 			rawNodeCount: rows.length,
-			...(options.check ? { checks: checkTraceView(view) } : {}),
+			...(options.check ? { checks: checkTraceView(view, adapterIssues) } : {}),
 			nextCommands: buildTraceNextCommands(view.piboSessionId, filtered),
 		};
 	} catch (error) {
@@ -251,10 +252,11 @@ function traceStatus(view: PiboSessionTraceView): string {
 	return "done";
 }
 
-function checkTraceView(view: PiboSessionTraceView): DebugTraceCheckResult {
-	const issues: DebugTraceIssue[] = [];
+export function checkTraceView(view: PiboSessionTraceView, adapterIssues: readonly DebugTraceIssue[] = []): DebugTraceCheckResult {
+	const issues: DebugTraceIssue[] = [...adapterIssues];
 	const all = flattenPiboTraceNodes(view.nodes);
 	const ids = new Set<string>();
+	const stableKeyOwners = new Map<string, string>();
 	for (const node of all) {
 		if (ids.has(node.id)) {
 			issues.push({
@@ -288,6 +290,18 @@ function checkTraceView(view: PiboSessionTraceView): DebugTraceCheckResult {
 				nodeId: node.id,
 				message: "Trace node has no conceptual stable key.",
 			});
+		} else {
+			const existingOwner = stableKeyOwners.get(node.stableKey);
+			if (existingOwner && existingOwner !== node.id) {
+				issues.push({
+					severity: "warning",
+					code: "duplicate_stable_key",
+					nodeId: node.id,
+					message: `Stable key "${node.stableKey}" is already used by node "${existingOwner}".`,
+				});
+			} else {
+				stableKeyOwners.set(node.stableKey, node.id);
+			}
 		}
 	}
 	for (const node of all) {
@@ -377,9 +391,17 @@ function sessionFromRow(row: SessionRow): PiboSession {
 	};
 }
 
-function eventFromRow(row: EventRow): ChatWebStoredPiboEvent | undefined {
+function eventFromRow(row: EventRow, issues: DebugTraceIssue[]): ChatWebStoredPiboEvent | undefined {
 	const payload = outputPayloadFromV2Row(row);
 	if (!payload) return undefined;
+	if ((row.type === "assistant_delta" || row.type === "thinking_delta") && !nonEmptyEventText(payload)) {
+		issues.push({
+			severity: "warning",
+			code: "missing_delta_text",
+			nodeId: row.event_id ?? String(row.stream_id),
+			message: `Persisted ${row.type} event has no readable text payload.`,
+		});
+	}
 	return {
 		id: String(row.stream_id),
 		piboSessionId: row.session_id ?? undefined,
@@ -421,6 +443,11 @@ function outputPayloadFromV2Row(row: EventRow): PiboOutputEvent | undefined {
 
 function inlineTextPayload(value: unknown): string | undefined {
 	return typeof value === "string" ? value : undefined;
+}
+
+function nonEmptyEventText(event: PiboOutputEvent): boolean {
+	const text = (event as { text?: unknown }).text;
+	return typeof text === "string" && text.length > 0;
 }
 
 function stringAttribute(attributes: PiboJsonObject, key: string): string | undefined {
