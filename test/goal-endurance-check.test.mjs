@@ -26,10 +26,17 @@ test("accelerated Goal endurance check covers restart, timeout, lease, pause, bu
 		assert.equal(report.configuredDurationHours, 24);
 		assert.equal(Object.values(report.checks).every(Boolean), true);
 		assert.equal(report.variants.unbounded.sessionIds.length, 1);
+		assert.equal(report.variants.unbounded.persistedSessionCount, 1);
 		assert.equal(report.variants.unbounded.runs.interrupted, 1);
 		assert.equal(report.variants.unbounded.runs.toolTimeout, 1);
+		assert.equal(report.variants.unbounded.restart.mode, "store-reopen");
+		assert.equal(report.variants.unbounded.restart.starts, 0);
+		assert.equal(report.variants.unbounded.metrics.simulatedWallTimeSeconds, 24 * 60 * 60);
+		assert.equal(Number.isFinite(report.variants.unbounded.metrics.elapsedWallClockSeconds), true);
 		assert.equal(report.variants.budgetLimited.goalStatus, "budget_limited");
 		assert.equal(report.browser.activeLeaseIdAfterRelease, undefined);
+		assert.equal(report.browser.reaped, true);
+		assert.equal(report.browser.finalState, "empty");
 	} finally {
 		await rm(dir, { recursive: true, force: true });
 	}
