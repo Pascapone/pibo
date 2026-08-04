@@ -558,6 +558,8 @@ export class RoutedSession {
 	private readonly queue: RoutedQueueItem[] = [];
 	private processing = false;
 	private disposed = false;
+	private disposePromise?: Promise<void>;
+	private drainPromise?: Promise<void>;
 	private fastMode = false;
 	private readonly fastModePatchedAgents = new WeakSet<object>();
 	private activeMessage?: PiboMessageEvent;
@@ -825,7 +827,7 @@ export class RoutedSession {
 		};
 		this.emit(output);
 		this.onStateChange?.({ processing: this.processing, queuedMessages: this.queue.length, disposed: this.disposed });
-		void this.drain();
+		this.startDrain();
 		return output;
 	}
 
@@ -1036,9 +1038,26 @@ export class RoutedSession {
 	}
 
 	async dispose(): Promise<void> {
+		if (this.disposePromise) return this.disposePromise;
+		this.disposePromise = this.disposeUnsafe();
+		return this.disposePromise;
+	}
+
+	private async disposeUnsafe(): Promise<void> {
 		if (this.disposed) return;
 
+		const activeMessage = this.activeMessage;
 		this.notifyMessagesInterrupted(this.activeAndQueuedMessages(), "session disposed");
+		if (activeMessage) {
+			const error = "Session disposed while a message was active.";
+			this.emit({
+				type: "session_error",
+				piboSessionId: this.piboSessionId,
+				eventId: activeMessage.id,
+				error,
+				errorDetails: runtimeSessionErrorDetails(error),
+			});
+		}
 		this.cancelProviderRecovery();
 		this.queue.length = 0;
 		this.onStateChange?.({ processing: this.processing, queuedMessages: this.queue.length, disposed: true });
@@ -1049,7 +1068,13 @@ export class RoutedSession {
 			this.recoverySession = undefined;
 		}
 		this.disposed = true;
-		await this.runtime.dispose();
+		const abort = (this.runtime.session as { abort?: () => Promise<void> | void }).abort;
+		if (abort) await Promise.allSettled([abort.call(this.runtime.session)]);
+		try {
+			await this.drainPromise;
+		} finally {
+			await this.runtime.dispose();
+		}
 	}
 
 	async kill(): Promise<string> {
@@ -1082,6 +1107,15 @@ export class RoutedSession {
 		}
 
 		return false;
+	}
+
+	private startDrain(): void {
+		if (this.drainPromise) return;
+		const drain = this.drain();
+		this.drainPromise = drain;
+		void drain.finally(() => {
+			if (this.drainPromise === drain) this.drainPromise = undefined;
+		});
 	}
 
 	private async drain(): Promise<void> {
@@ -1142,7 +1176,7 @@ export class RoutedSession {
 				});
 			}
 		} catch (error) {
-			if (error instanceof PiboProviderRecoveryCancelledError) return;
+			if (error instanceof PiboProviderRecoveryCancelledError || this.disposed) return;
 			const message = errorMessage(error);
 			this.emit({
 				type: "session_error",
@@ -1197,7 +1231,7 @@ export class RoutedSession {
 		};
 		this.emit(output);
 		this.onStateChange?.({ processing: this.processing, queuedMessages: this.queue.length, disposed: this.disposed });
-		void this.drain();
+		this.startDrain();
 		return output;
 	}
 
