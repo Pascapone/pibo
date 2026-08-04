@@ -87,28 +87,6 @@ export class PiboLoopService {
 		if (reserved) this.startGoalBrowserLeaseHeartbeat(reserved.job, reserved.run);
 		return reserved;
 	}
-	private async abortCancelRequestedJobs(): Promise<void> { for (const job of this.store.listJobs({ includeDisabled: true })) { if (job.state.cancelRequestedAt) await this.abortJobIfRunning(job); } }
-	private async abortJobIfRunning(job: PiboLoopJob): Promise<void> {
-		if (!job.state.runningAt || !job.state.lastRunId) return;
-		const sessionId = job.state.lastPiboSessionId;
-		if (!sessionId) {
-			this.markRunResourcesDirty(job, 'Cancel requested but active session is unavailable; browser lease may still exist');
-			return;
-		}
-		this.cancelledRuns.add(job.state.lastRunId);
-		try {
-			await this.options.context.emit({ type: 'execution', piboSessionId: sessionId, action: 'abort', id: `loop_cancel_${randomUUID()}` });
-		} catch (error) {
-			this.cancelledRuns.delete(job.state.lastRunId);
-			this.markRunResourcesDirty(job, `Cancel requested but abort failed: ${errorMessage(error)}`);
-		}
-	}
-	private async executeReserved(job: PiboLoopJob, run: PiboLoopRun): Promise<void> {
-		this.activeRuns += 1;
-		try { const result = await this.executeJob(job, run); const cancelled = this.cancelledRuns.delete(run.id); if (job.mode === 'goal') this.store.recordGoalProgress(job.id, { timeUsedSeconds: result.timeUsedSeconds }); const outcome: PiboLoopRunOutcome = { status: cancelled ? 'cancelled' : 'ok', piboSessionId: result.piboSessionId, finalAnswer: result.finalAnswer }; const { evaluation, conditionStates } = await this.evaluateStopPolicy(this.store.getJob(job.id) ?? job, 'after-run', run, outcome); this.store.completeRun({ jobId: job.id, runId: run.id, status: outcome.status, piboSessionId: result.piboSessionId, reason: cancelled ? 'cancelled' : evaluation.reason, stopAfterRun: evaluation.finalAction !== 'continue', stopEvaluation: evaluation, conditionStates }); await this.cleanupRunResources(job, run); }
-		catch (error) { const cancelled = this.cancelledRuns.delete(run.id); const message = errorMessage(error); const fatalProfileError = !cancelled && isUnknownProfileErrorMessage(message); const timeoutAbortFailed = error instanceof LoopRunTimeoutError && error.abortFailed; const outcome: PiboLoopRunOutcome = { status: cancelled ? 'cancelled' : 'error', error: cancelled ? undefined : message }; const { evaluation, conditionStates } = await this.evaluateStopPolicy(this.store.getJob(job.id) ?? job, 'after-run', run, outcome); this.store.completeRun({ jobId: job.id, runId: run.id, status: outcome.status, error: outcome.error, reason: cancelled ? 'cancelled' : fatalProfileError ? 'unknown-profile' : timeoutAbortFailed ? 'timeout-abort-failed' : evaluation.reason, stopAfterRun: fatalProfileError || timeoutAbortFailed || evaluation.finalAction !== 'continue', stopEvaluation: evaluation, conditionStates }); await this.cleanupRunResources(job, run); if (!cancelled) console.error(`[loop] job ${job.id} failed`, error); }
-		finally { this.activeRuns -= 1; }
-	}
 	private startGoalBrowserLeaseHeartbeat(job: PiboLoopJob, run: PiboLoopRun): void {
 		if (job.mode !== 'goal' || (job.resources?.browserLeaseIds?.length ?? 0) === 0) return;
 		const renew = () => {
@@ -160,7 +138,28 @@ export class PiboLoopService {
 		if (run) this.store.updateRunResources({ jobId: job.id, runId: run.id, resources: next });
 		return true;
 	}
-
+	private async abortCancelRequestedJobs(): Promise<void> { for (const job of this.store.listJobs({ includeDisabled: true })) { if (job.state.cancelRequestedAt) await this.abortJobIfRunning(job); } }
+	private async abortJobIfRunning(job: PiboLoopJob): Promise<void> {
+		if (!job.state.runningAt || !job.state.lastRunId) return;
+		const sessionId = job.state.lastPiboSessionId;
+		if (!sessionId) {
+			this.markRunResourcesDirty(job, 'Cancel requested but active session is unavailable; browser lease may still exist');
+			return;
+		}
+		this.cancelledRuns.add(job.state.lastRunId);
+		try {
+			await this.options.context.emit({ type: 'execution', piboSessionId: sessionId, action: 'abort', id: `loop_cancel_${randomUUID()}` });
+		} catch (error) {
+			this.cancelledRuns.delete(job.state.lastRunId);
+			this.markRunResourcesDirty(job, `Cancel requested but abort failed: ${errorMessage(error)}`);
+		}
+	}
+	private async executeReserved(job: PiboLoopJob, run: PiboLoopRun): Promise<void> {
+		this.activeRuns += 1;
+		try { const result = await this.executeJob(job, run); const cancelled = this.cancelledRuns.delete(run.id); if (job.mode === 'goal') this.store.recordGoalProgress(job.id, { timeUsedSeconds: result.timeUsedSeconds }); const outcome: PiboLoopRunOutcome = { status: cancelled ? 'cancelled' : 'ok', piboSessionId: result.piboSessionId, finalAnswer: result.finalAnswer }; const { evaluation, conditionStates } = await this.evaluateStopPolicy(this.store.getJob(job.id) ?? job, 'after-run', run, outcome); this.store.completeRun({ jobId: job.id, runId: run.id, status: outcome.status, piboSessionId: result.piboSessionId, reason: cancelled ? 'cancelled' : evaluation.reason, stopAfterRun: evaluation.finalAction !== 'continue', stopEvaluation: evaluation, conditionStates }); await this.cleanupRunResources(job, run); }
+		catch (error) { const cancelled = this.cancelledRuns.delete(run.id); const message = errorMessage(error); const fatalProfileError = !cancelled && isUnknownProfileErrorMessage(message); const timeoutAbortFailed = error instanceof LoopRunTimeoutError && error.abortFailed; const outcome: PiboLoopRunOutcome = { status: cancelled ? 'cancelled' : 'error', error: cancelled ? undefined : message }; const { evaluation, conditionStates } = await this.evaluateStopPolicy(this.store.getJob(job.id) ?? job, 'after-run', run, outcome); this.store.completeRun({ jobId: job.id, runId: run.id, status: outcome.status, error: outcome.error, reason: cancelled ? 'cancelled' : fatalProfileError ? 'unknown-profile' : timeoutAbortFailed ? 'timeout-abort-failed' : evaluation.reason, stopAfterRun: fatalProfileError || timeoutAbortFailed || evaluation.finalAction !== 'continue', stopEvaluation: evaluation, conditionStates }); await this.cleanupRunResources(job, run); if (!cancelled) console.error(`[loop] job ${job.id} failed`, error); }
+		finally { this.activeRuns -= 1; }
+	}
 	private markRunResourcesDirty(job: PiboLoopJob, dirtyReason: string): void {
 		const latestJob = this.store.getJob(job.id) ?? job;
 		const runId = latestJob.state.lastRunId ?? job.state.lastRunId;
