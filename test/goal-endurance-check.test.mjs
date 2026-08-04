@@ -35,6 +35,9 @@ test("accelerated Goal endurance check covers restart, timeout, lease, pause, bu
 		assert.equal(Number.isFinite(report.variants.unbounded.metrics.elapsedWallClockSeconds), true);
 		assert.equal(report.variants.budgetLimited.goalStatus, "budget_limited");
 		assert.equal(report.browser.activeLeaseIdAfterRelease, undefined);
+		assert.equal(report.browser.plannedReplacements, 1);
+		assert.equal(report.browser.recoveryReacquisitions, 1);
+		assert.equal(report.browser.replacements, 2);
 		assert.equal(report.browser.reaped, true);
 		assert.equal(report.browser.finalState, "empty");
 	} finally {

@@ -54,7 +54,7 @@ The report MUST distinguish a tool timeout, an interrupted run, successful runs,
 
 ### Requirement: Browser resources recover and clean up
 
-The same browser lease MUST renew across turns, replace one unavailable browser process, release the lease, reap the final browser process, and finish with an empty pool. Full scheduled validation MUST use real Chromium and CDP; the fast CI form MAY use deterministic process and CDP adapters.
+The same browser lease MUST renew across turns, perform one planned unavailable-browser replacement, tolerate and count additional health-triggered reacquisitions, release the lease, reap the final browser process, and finish with an empty pool. Full scheduled validation MUST use real Chromium and CDP; the fast CI form MAY use deterministic process and CDP adapters.
 
 ### Requirement: Reports are automation-friendly
 

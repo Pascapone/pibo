@@ -22,6 +22,7 @@ const options = parseArgs(process.argv.slice(2));
 const durationHours = positiveNumber(options.durationHours ?? "24", "duration-hours");
 if (durationHours < 24 || durationHours > 48) throw new Error("--duration-hours must be between 24 and 48");
 const turns = positiveInteger(options.turns ?? "144", "turns");
+if (turns < 12) throw new Error("--turns must be at least 12 to exercise distinct timeout, recovery, restart, pause, and compaction checkpoints");
 const realTime = options.realTime === true;
 const realBrowser = options.realBrowser === true;
 const realGateway = options.realGateway === true;
@@ -76,7 +77,7 @@ try {
 		toolTimeoutRecorded: unbounded.runs.toolTimeout === 1,
 		pauseResumePreserved: unbounded.pauseResume.passed,
 		compactionAndTraceGrowth: unbounded.traceFacts >= turns - 2 && unbounded.compactionFacts >= 1,
-		browserRenewedOrReacquired: browser.renewals >= turns && browser.replacements === 1,
+		browserRenewedOrReacquired: browser.renewals >= turns && browser.plannedReplacements === 1 && browser.recoveryReacquisitions >= 1 && browser.replacements >= 2,
 		browserFinallyReleased: browser.activeLeaseIdAfterRelease === undefined && browser.reaped === true && browser.finalState === "empty",
 		budgetVariantStopped: budgetLimited.goalStatus === "budget_limited" && budgetLimited.enabled === false,
 		metricsSeparated: [unbounded.metrics.simulatedWallTimeSeconds, unbounded.metrics.elapsedWallClockSeconds, unbounded.metrics.activeTimeSeconds, unbounded.metrics.tokensUsed].every((value) => Number.isFinite(value)),
@@ -259,31 +260,46 @@ async function runBrowserLifecycle(rootDir, durationHoursValue, turnCount, waitI
 	}
 	let renewals = 0;
 	let replacements = 0;
+	let plannedReplacements = 0;
+	let recoveryReacquisitions = 0;
 	let starts = 0;
 	const intervalMs = (durationHoursValue * 60 * 60 * 1000) / turnCount;
 	const baseMs = waitInRealTime ? Date.now() : Date.parse("2026-08-04T00:00:00.000Z");
+	const plannedReplacementTurn = Math.floor(turnCount / 3);
+	let recoveryTurn = Math.floor(turnCount / 5);
+	if (recoveryTurn === plannedReplacementTurn) recoveryTurn = Math.max(0, plannedReplacementTurn - 1);
 	try {
 		for (let turn = 0; turn < turnCount; turn += 1) {
-			const shouldReplace = turn === Math.floor(turnCount / 3);
-			if (useRealBrowser && shouldReplace && currentPid) await terminateProcessGroup(currentPid);
+			const shouldReplace = turn === plannedReplacementTurn;
+			const shouldRecover = turn === recoveryTurn;
+			if (useRealBrowser && (shouldReplace || shouldRecover) && currentPid) await terminateProcessGroup(currentPid);
 			const result = await acquireBrowserPoolLease(paths, identity, {
 				leaseId,
 				holder: "loop:endurance",
 				idleTimeoutMs: Math.max(1, Math.round(intervalMs * 2)),
 				now: () => new Date(baseMs + turn * intervalMs),
 				...(useRealBrowser ? {} : {
-					isPidAlive: (pid) => !shouldReplace && pid === currentPid,
+					isPidAlive: (pid) => !shouldReplace && !shouldRecover && pid === currentPid,
 					checkCdpHealth: async () => ({ ok: true, browser: browserVersion }),
 				}),
 				startBrowser: async () => {
+					const replacingExisting = currentPid !== undefined;
 					if (!useRealBrowser) {
 						currentPid = (currentPid ?? 4100) + 1;
 						starts += 1;
-						if (shouldReplace) replacements += 1;
+						if (replacingExisting) {
+							replacements += 1;
+							if (shouldReplace) plannedReplacements += 1;
+							else recoveryReacquisitions += 1;
+						}
 						return { pid: currentPid, processGroupId: currentPid, cdpPort, cdpUrl, userDataDir };
 					}
 					const started = await startChromium({ cdpPort, cdpUrl, userDataDir });
-					if (currentPid !== undefined) replacements += 1;
+					if (replacingExisting) {
+						replacements += 1;
+						if (shouldReplace) plannedReplacements += 1;
+						else recoveryReacquisitions += 1;
+					}
 					currentPid = started.pid;
 					starts += 1;
 					const health = await checkBrowserPoolCdpHealth(cdpUrl, { timeoutMs: 5_000 });
@@ -319,6 +335,8 @@ async function runBrowserLifecycle(rootDir, durationHoursValue, turnCount, waitI
 			leaseId,
 			renewals,
 			replacements,
+			plannedReplacements,
+			recoveryReacquisitions,
 			starts,
 			browserVersion,
 			releaseStatus: release.cleanupStatus,
@@ -392,6 +410,10 @@ async function startChromium({ cdpPort, cdpUrl, userDataDir }) {
 		"--no-sandbox",
 		"--disable-dev-shm-usage",
 		"--disable-gpu",
+		"--disable-background-networking",
+		"--disable-component-update",
+		"--disable-default-apps",
+		"--disable-sync",
 		"--no-first-run",
 		"--no-default-browser-check",
 		"--remote-debugging-address=127.0.0.1",
