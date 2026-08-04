@@ -24,6 +24,21 @@ export function mergeOlderTracePage(current: PiboSessionTraceView, older: PiboSe
 	};
 }
 
+export function mergeRefreshedTracePage(current: PiboSessionTraceView, refreshed: PiboSessionTraceView): PiboSessionTraceView {
+	if (current.piboSessionId !== refreshed.piboSessionId) return refreshed;
+	return {
+		...refreshed,
+		nodes: mergeTraceNodes(current.nodes, refreshed.nodes),
+		rawEvents: current.rawEvents.length ? current.rawEvents : refreshed.rawEvents,
+		beforeCursor: current.beforeCursor,
+		firstEventSequence: current.firstEventSequence ?? refreshed.firstEventSequence,
+		nextBeforeSequence: current.nextBeforeSequence,
+		nextBeforeCursor: current.nextBeforeCursor,
+		hasOlderEvents: current.hasOlderEvents,
+		eventLimit: current.eventLimit ?? refreshed.eventLimit,
+	};
+}
+
 function mergeTraceNodes(olderNodes: PiboSessionTraceView["nodes"], currentNodes: PiboSessionTraceView["nodes"]) {
 	const byId = new Map<string, PiboSessionTraceView["nodes"][number]>();
 	for (const node of flattenTraceNodes([...olderNodes])) {

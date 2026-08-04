@@ -33,7 +33,9 @@ test("trace views preload older pages near the top without a manual trace-histor
 		assert.match(source, /onNearTop: loadOlderNearTop/);
 		assert.match(source, /if \(!stickyView\.isAtTop && !stickyView\.isScrolledToTop\(\)\) return/);
 		assert.match(source, /range\.startIndex <= 0\) loadOlderAtTop/);
-		assert.match(source, /rangeChanged=\{handleVisibleRangeChanged\}/);
+		assert.match(source, /firstItemIndex=\{stickyView\.firstItemIndex\}/);
+		assert.match(source, /itemsRendered=\{stickyView\.itemsRendered\}/);
+		assert.match(source, /rangeChanged=\{\(range\) => handleVisibleRangeChanged\(stickyView\.normalizeRange\(range\)\)\}/);
 		assert.match(source, /startReached=\{loadOlderAtTop\}/);
 		assert.doesNotMatch(source, /Load older trace history/);
 	}

@@ -1,1 +1,1 @@
-export { mergeOlderTracePage } from "../../../../shared/trace-page-merge.js";
+export { mergeOlderTracePage, mergeRefreshedTracePage } from "../../../../shared/trace-page-merge.js";

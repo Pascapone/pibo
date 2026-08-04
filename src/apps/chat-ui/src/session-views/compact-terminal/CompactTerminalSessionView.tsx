@@ -52,7 +52,9 @@ export function CompactTerminalSessionView({
 		() => buildCompactTerminalRows(traceView, { showThinking }),
 		[showThinking, traceView],
 	);
+	const rowKeys = useMemo(() => rows.map((row) => row.id), [rows]);
 	const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+	const renderedContentKey = useMemo(() => [rows, expandedRows] as const, [expandedRows, rows]);
 	const [focusedNavigationRowId, setFocusedNavigationRowId] = useState<string | null>(null);
 	const navigationCursorRef = useRef<Partial<Record<TerminalNavigationKind, string>>>({});
 	const rangePrefetchReadyRef = useRef(false);
@@ -93,8 +95,9 @@ export function CompactTerminalSessionView({
 
 	const stickyView = useStickyVirtuoso({
 		itemCount: rows.length,
+		itemKeys: rowKeys,
 		resetKey: traceView?.piboSessionId,
-		contentKey: rows,
+		contentKey: renderedContentKey,
 		atBottomThreshold: SHOW_LATEST_THRESHOLD_PX,
 		nearTopThreshold: OLDER_TRACE_PREFETCH_TOP_THRESHOLD_PX,
 		onAtTop: loadOlderAtTop,
@@ -208,6 +211,7 @@ export function CompactTerminalSessionView({
 						key={traceView.piboSessionId}
 						ref={stickyView.virtuosoRef}
 						data={rows}
+						firstItemIndex={stickyView.firstItemIndex}
 						initialTopMostItemIndex={INITIAL_BOTTOM_ITEM}
 						increaseViewportBy={VIRTUOSO_VIEWPORT}
 						defaultItemHeight={DEFAULT_ROW_HEIGHT_PX}
@@ -219,7 +223,8 @@ export function CompactTerminalSessionView({
 						atTopStateChange={(atTop) => {
 							if (atTop) loadOlderAtTop();
 						}}
-						rangeChanged={handleVisibleRangeChanged}
+						itemsRendered={stickyView.itemsRendered}
+						rangeChanged={(range) => handleVisibleRangeChanged(stickyView.normalizeRange(range))}
 						startReached={loadOlderAtTop}
 						followOutput={stickyView.followOutput}
 						totalListHeightChanged={stickyView.totalListHeightChanged}

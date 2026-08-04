@@ -137,6 +137,7 @@ export function TraceTimeline({
 		}
 		return rows;
 	}, [expandThinking, expansionDepth, expansionOverrides, spanTree, trace?.id, trace?.status]);
+	const visibleRowKeys = useMemo(() => visibleRows.map((row) => row.id), [visibleRows]);
 	const loadOlderTracePage = useCallback(() => {
 		if (!hasOlderTraceEvents || isFetchingOlderTracePage) return;
 		olderTraceIntentRef.current = false;
@@ -162,6 +163,7 @@ export function TraceTimeline({
 
 	const stickyView = useStickyVirtuoso({
 		itemCount: visibleRows.length,
+		itemKeys: visibleRowKeys,
 		resetKey: trace?.id,
 		contentKey: visibleRows,
 		nearTopThreshold: OLDER_TRACE_PREFETCH_TOP_THRESHOLD_PX,
@@ -294,6 +296,7 @@ export function TraceTimeline({
 						key={trace.id}
 						ref={stickyView.virtuosoRef}
 						data={visibleRows}
+						firstItemIndex={stickyView.firstItemIndex}
 						initialTopMostItemIndex={INITIAL_BOTTOM_ITEM}
 						increaseViewportBy={{ top: 800, bottom: 800 }}
 						className="min-h-0 h-full min-w-0 overflow-x-hidden"
@@ -305,7 +308,8 @@ export function TraceTimeline({
 						atTopStateChange={(atTop) => {
 							if (atTop) loadOlderAtTop();
 						}}
-						rangeChanged={handleVisibleRangeChanged}
+						itemsRendered={stickyView.itemsRendered}
+						rangeChanged={(range) => handleVisibleRangeChanged(stickyView.normalizeRange(range))}
 						startReached={loadOlderAtTop}
 						followOutput={stickyView.followOutput}
 						totalListHeightChanged={stickyView.totalListHeightChanged}
