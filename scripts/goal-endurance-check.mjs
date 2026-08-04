@@ -101,7 +101,7 @@ async function runGoalVariant({ root: variantRoot, durationHours: hours, turns: 
 	const dataStorePath = join(variantRoot, "pibo.sqlite");
 	const payloadRootDir = join(variantRoot, "payloads");
 	const sessionId = `ps_endurance_${budget === undefined ? "unbounded" : "budget"}`;
-	const baseMs = Date.parse("2026-08-04T00:00:00.000Z");
+	const baseMs = waitInRealTime ? Date.now() : Date.parse("2026-08-04T00:00:00.000Z");
 	const intervalMs = (hours * 60 * 60 * 1000) / turnCount;
 	const sleepMs = waitInRealTime ? intervalMs : 0;
 	const compactionInterval = Math.max(2, Math.floor(turnCount / 4));
@@ -130,11 +130,12 @@ async function runGoalVariant({ root: variantRoot, durationHours: hours, turns: 
 	let interrupted = 0;
 	let toolTimeout = 0;
 	let pausePassed = false;
+	let pauseDurationSeconds = 0;
 	let restart = { mode: useRealGateway ? "process-restart" : "store-reopen", starts: 0 };
 
 	for (let turn = 0; turn < turnCount; turn += 1) {
 		if (sleepMs > 0) await sleep(sleepMs);
-		nowMs = baseMs + Math.round(turn * intervalMs);
+		nowMs = waitInRealTime ? Date.now() : baseMs + Math.round(turn * intervalMs);
 		const now = new Date(nowMs);
 		if (budget !== undefined && store.getJob(goalId)?.state.goalStatus === "budget_limited") break;
 
@@ -142,19 +143,23 @@ async function runGoalVariant({ root: variantRoot, durationHours: hours, turns: 
 			store.updateJob(goalId, { enabled: false }, now);
 			const pausedReservation = store.reserveDueRuns(1, now);
 			assert(pausedReservation.length === 0, "Paused goal reserved a run");
-			nowMs += Math.round(intervalMs * 2);
+			const pauseStartedMs = Date.now();
+			if (waitInRealTime) await sleep(Math.min(intervalMs, 60_000));
+			nowMs = waitInRealTime ? Date.now() : nowMs + Math.round(intervalMs * 2);
+			pauseDurationSeconds = waitInRealTime ? Math.max(1, Math.round((Date.now() - pauseStartedMs) / 1000)) : Math.round((intervalMs * 2) / 1000);
 			const resumed = store.updateJob(goalId, { enabled: true }, new Date(nowMs));
 			pausePassed = resumed?.state.goalStatus === "active" && resumed.enabled === true;
 		}
 
 		if (budget === undefined && turn === Math.floor(turnCount / 3)) {
-			const reserved = store.reserveRun(goalId, now);
+			const interruptedAt = useRealGateway ? new Date(Date.now() - 10 * 60_000) : now;
+			const reserved = store.reserveRun(goalId, interruptedAt);
 			assert(reserved, "Could not reserve interrupted run");
-			store.attachRunSession(goalId, reserved.run.id, sessionId, now);
-			store.updateRunResources({ jobId: goalId, runId: reserved.run.id, resources: { workerId: "endurance-worker", browserLeaseIds: [browserLeaseId], cleanupState: "active" } }, now);
-			if (useRealGateway) store.updateJob(goalId, { enabled: false }, now);
+			store.attachRunSession(goalId, reserved.run.id, sessionId, interruptedAt);
+			store.updateRunResources({ jobId: goalId, runId: reserved.run.id, resources: { workerId: "endurance-worker", browserLeaseIds: [browserLeaseId], cleanupState: "active" } }, interruptedAt);
+			if (useRealGateway) store.updateJob(goalId, { enabled: false }, interruptedAt);
 			store.close();
-			nowMs += 10 * 60 * 1000;
+			nowMs = useRealGateway && waitInRealTime ? Date.now() : nowMs + 10 * 60 * 1000;
 			if (useRealGateway) {
 				restart = await runGatewayRestart({ root: join(variantRoot, "gateway"), loopStorePath: dbPath, dataStorePath, payloadRootDir });
 				store = new PiboLoopStore({ path: dbPath });
@@ -220,7 +225,7 @@ async function runGoalVariant({ root: variantRoot, durationHours: hours, turns: 
 			toolTimeout,
 			failures: runFailures,
 		},
-		pauseResume: { passed: budget === undefined ? pausePassed : true },
+		pauseResume: { passed: budget === undefined ? pausePassed : true, durationSeconds: budget === undefined ? pauseDurationSeconds : 0 },
 		restart,
 		metrics: {
 			simulatedWallTimeSeconds: Math.round(hours * 60 * 60),
