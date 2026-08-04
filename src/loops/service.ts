@@ -51,6 +51,8 @@ export class PiboLoopService {
 	private activeRuns = 0;
 	private stopped = true;
 	private cancelledRuns = new Set<string>();
+	private browserLeaseHeartbeatTimers = new Map<string, NodeJS.Timeout>();
+	private browserLeaseHeartbeatWork = new Map<string, Promise<boolean>>();
 	private unsubscribeProductEvents: (() => void) | undefined;
 	private unsubscribeOutputEvents: (() => void) | undefined;
 	constructor(private readonly options: PiboLoopServiceOptions) {
@@ -62,7 +64,7 @@ export class PiboLoopService {
 		this.runTimeoutMs = options.runTimeoutMs;
 	}
 	start(): void { if (!this.stopped) return; this.stopped = false; this.store.recoverInterruptedRuns(); this.unsubscribeProductEvents = this.options.context.subscribeProductEvents?.((event) => this.handleProductEvent(event)); this.unsubscribeOutputEvents = this.options.context.subscribe((event) => this.handleOutputEvent(event)); this.arm(250); }
-	stop(): void { this.stopped = true; if (this.timer) clearTimeout(this.timer); this.timer = undefined; this.unsubscribeProductEvents?.(); this.unsubscribeProductEvents = undefined; this.unsubscribeOutputEvents?.(); this.unsubscribeOutputEvents = undefined; this.dataStore.close(); this.store.close(); }
+	stop(): void { this.stopped = true; if (this.timer) clearTimeout(this.timer); this.timer = undefined; for (const timer of this.browserLeaseHeartbeatTimers.values()) clearInterval(timer); this.browserLeaseHeartbeatTimers.clear(); this.unsubscribeProductEvents?.(); this.unsubscribeProductEvents = undefined; this.unsubscribeOutputEvents?.(); this.unsubscribeOutputEvents = undefined; this.dataStore.close(); this.store.close(); }
 	status(): PiboLoopStatus { return { enabled: !this.stopped, ...this.store.status() }; }
 	async startJob(id: string): Promise<PiboLoopRun | undefined> { const job = this.store.updateJob(id, { enabled: true }); if (!job) return undefined; const reserved = await this.reserveAfterBeforeRunEvaluation(job); if (!reserved) return undefined; void this.executeReserved(reserved.job, reserved.run).finally(() => this.armSoon()); return reserved.run; }
 	stopJob(id: string): PiboLoopJob | undefined { const job = this.store.requestStop(id); this.armSoon(); return job; }
@@ -81,7 +83,9 @@ export class PiboLoopService {
 		if (evaluation.finalAction !== 'continue') { this.store.applyStopEvaluation({ jobId: fresh.id, evaluation, conditionStates, disable: true }); return undefined; }
 		this.store.applyStopEvaluation({ jobId: fresh.id, evaluation, conditionStates, disable: false });
 		if (fresh.mode === 'goal' && !await this.renewGoalBrowserLeases(fresh)) return undefined;
-		return this.store.reserveRun(fresh.id);
+		const reserved = this.store.reserveRun(fresh.id);
+		if (reserved) this.startGoalBrowserLeaseHeartbeat(reserved.job, reserved.run);
+		return reserved;
 	}
 	private async abortCancelRequestedJobs(): Promise<void> { for (const job of this.store.listJobs({ includeDisabled: true })) { if (job.state.cancelRequestedAt) await this.abortJobIfRunning(job); } }
 	private async abortJobIfRunning(job: PiboLoopJob): Promise<void> {
@@ -101,16 +105,25 @@ export class PiboLoopService {
 	}
 	private async executeReserved(job: PiboLoopJob, run: PiboLoopRun): Promise<void> {
 		this.activeRuns += 1;
-		let heartbeat: NodeJS.Timeout | undefined;
-		let heartbeatWork: Promise<boolean> | undefined;
-		if (job.mode === 'goal' && (job.resources?.browserLeaseIds?.length ?? 0) > 0) {
-			const renew = () => { heartbeatWork ??= this.renewGoalBrowserLeases(this.store.getJob(job.id) ?? job, run).finally(() => { heartbeatWork = undefined; }); };
-			heartbeat = setInterval(renew, Math.max(10, this.options.resourceCleanup?.browserLeaseRenewIntervalMs ?? 5 * 60_000));
-		}
-		const stopHeartbeat = async () => { if (heartbeat) clearInterval(heartbeat); heartbeat = undefined; await heartbeatWork; };
-		try { const result = await this.executeJob(job, run); await stopHeartbeat(); const cancelled = this.cancelledRuns.delete(run.id); if (job.mode === 'goal') this.store.recordGoalProgress(job.id, { timeUsedSeconds: result.timeUsedSeconds }); const outcome: PiboLoopRunOutcome = { status: cancelled ? 'cancelled' : 'ok', piboSessionId: result.piboSessionId, finalAnswer: result.finalAnswer }; const { evaluation, conditionStates } = await this.evaluateStopPolicy(this.store.getJob(job.id) ?? job, 'after-run', run, outcome); this.store.completeRun({ jobId: job.id, runId: run.id, status: outcome.status, piboSessionId: result.piboSessionId, reason: cancelled ? 'cancelled' : evaluation.reason, stopAfterRun: evaluation.finalAction !== 'continue', stopEvaluation: evaluation, conditionStates }); await this.cleanupRunResources(job, run); }
-		catch (error) { await stopHeartbeat(); const cancelled = this.cancelledRuns.delete(run.id); const message = errorMessage(error); const fatalProfileError = !cancelled && isUnknownProfileErrorMessage(message); const timeoutAbortFailed = error instanceof LoopRunTimeoutError && error.abortFailed; const outcome: PiboLoopRunOutcome = { status: cancelled ? 'cancelled' : 'error', error: cancelled ? undefined : message }; const { evaluation, conditionStates } = await this.evaluateStopPolicy(this.store.getJob(job.id) ?? job, 'after-run', run, outcome); this.store.completeRun({ jobId: job.id, runId: run.id, status: outcome.status, error: outcome.error, reason: cancelled ? 'cancelled' : fatalProfileError ? 'unknown-profile' : timeoutAbortFailed ? 'timeout-abort-failed' : evaluation.reason, stopAfterRun: fatalProfileError || timeoutAbortFailed || evaluation.finalAction !== 'continue', stopEvaluation: evaluation, conditionStates }); await this.cleanupRunResources(job, run); if (!cancelled) console.error(`[loop] job ${job.id} failed`, error); }
-		finally { await stopHeartbeat(); this.activeRuns -= 1; }
+		try { const result = await this.executeJob(job, run); const cancelled = this.cancelledRuns.delete(run.id); if (job.mode === 'goal') this.store.recordGoalProgress(job.id, { timeUsedSeconds: result.timeUsedSeconds }); const outcome: PiboLoopRunOutcome = { status: cancelled ? 'cancelled' : 'ok', piboSessionId: result.piboSessionId, finalAnswer: result.finalAnswer }; const { evaluation, conditionStates } = await this.evaluateStopPolicy(this.store.getJob(job.id) ?? job, 'after-run', run, outcome); this.store.completeRun({ jobId: job.id, runId: run.id, status: outcome.status, piboSessionId: result.piboSessionId, reason: cancelled ? 'cancelled' : evaluation.reason, stopAfterRun: evaluation.finalAction !== 'continue', stopEvaluation: evaluation, conditionStates }); await this.cleanupRunResources(job, run); }
+		catch (error) { const cancelled = this.cancelledRuns.delete(run.id); const message = errorMessage(error); const fatalProfileError = !cancelled && isUnknownProfileErrorMessage(message); const timeoutAbortFailed = error instanceof LoopRunTimeoutError && error.abortFailed; const outcome: PiboLoopRunOutcome = { status: cancelled ? 'cancelled' : 'error', error: cancelled ? undefined : message }; const { evaluation, conditionStates } = await this.evaluateStopPolicy(this.store.getJob(job.id) ?? job, 'after-run', run, outcome); this.store.completeRun({ jobId: job.id, runId: run.id, status: outcome.status, error: outcome.error, reason: cancelled ? 'cancelled' : fatalProfileError ? 'unknown-profile' : timeoutAbortFailed ? 'timeout-abort-failed' : evaluation.reason, stopAfterRun: fatalProfileError || timeoutAbortFailed || evaluation.finalAction !== 'continue', stopEvaluation: evaluation, conditionStates }); await this.cleanupRunResources(job, run); if (!cancelled) console.error(`[loop] job ${job.id} failed`, error); }
+		finally { this.activeRuns -= 1; }
+	}
+	private startGoalBrowserLeaseHeartbeat(job: PiboLoopJob, run: PiboLoopRun): void {
+		if (job.mode !== 'goal' || (job.resources?.browserLeaseIds?.length ?? 0) === 0) return;
+		const renew = () => {
+			if (this.browserLeaseHeartbeatWork.has(run.id)) return;
+			const work = this.renewGoalBrowserLeases(this.store.getJob(job.id) ?? job, run).finally(() => { this.browserLeaseHeartbeatWork.delete(run.id); });
+			this.browserLeaseHeartbeatWork.set(run.id, work);
+		};
+		const timer = setInterval(renew, Math.max(10, this.options.resourceCleanup?.browserLeaseRenewIntervalMs ?? 5 * 60_000));
+		this.browserLeaseHeartbeatTimers.set(run.id, timer);
+	}
+	private async stopGoalBrowserLeaseHeartbeat(runId: string): Promise<void> {
+		const timer = this.browserLeaseHeartbeatTimers.get(runId);
+		if (timer) clearInterval(timer);
+		this.browserLeaseHeartbeatTimers.delete(runId);
+		await this.browserLeaseHeartbeatWork.get(runId);
 	}
 	private async renewGoalBrowserLeases(job: PiboLoopJob, run?: PiboLoopRun): Promise<boolean> {
 		const resources = mergeRunResources(job.resources, run?.resources);
@@ -163,6 +176,7 @@ export class PiboLoopService {
 		}
 	}
 	private async cleanupRunResources(job: PiboLoopJob, run: PiboLoopRun): Promise<void> {
+		await this.stopGoalBrowserLeaseHeartbeat(run.id);
 		const latestJob = this.store.getJob(job.id) ?? job;
 		const latestRun = this.store.listRuns({ jobId: job.id, limit: 100 }).find((candidate) => candidate.id === run.id) ?? run;
 		const resources = mergeRunResources(latestJob.resources, latestRun.resources);
