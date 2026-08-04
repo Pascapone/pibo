@@ -31,6 +31,8 @@ const INITIAL_FIRST_ITEM_INDEX = 1_000_000;
 type StickyVirtuosoOptions = {
 	itemCount: number;
 	itemKeys: readonly string[];
+	/** True while an older-page prepend request is in flight. */
+	isPrepending?: boolean;
 	/** Resets stickiness when the backing conversation/trace changes. */
 	resetKey?: unknown;
 	/** Schedules a sticky scroll when rendered content changes without changing itemCount. */
@@ -49,6 +51,7 @@ type StickyVirtuosoOptions = {
 export function useStickyVirtuoso({
 	itemCount,
 	itemKeys,
+	isPrepending = false,
 	resetKey,
 	contentKey,
 	atBottomThreshold = DEFAULT_BOTTOM_THRESHOLD,
@@ -61,6 +64,8 @@ export function useStickyVirtuoso({
 }: StickyVirtuosoOptions) {
 	const virtuosoRef = useRef<VirtuosoHandle>(null);
 	const itemCountRef = useRef(itemCount);
+	const isPrependingRef = useRef(isPrepending);
+	isPrependingRef.current = isPrepending;
 	const stickyRef = useRef(true);
 	const scrollFrameRef = useRef<number | undefined>(undefined);
 	const anchorFrameRef = useRef<number | undefined>(undefined);
@@ -168,6 +173,13 @@ export function useStickyVirtuoso({
 		});
 	}, [scroller]);
 
+	const prepareForPrepend = useCallback(() => {
+		if (stickyRef.current) return;
+		captureVisibleAnchors();
+		pendingAnchorsRef.current = visibleAnchorsRef.current;
+		userAnchorCaptureArmedRef.current = false;
+	}, [captureVisibleAnchors]);
+
 	const normalizeRange = useCallback((range: ListRange): ListRange => ({
 		startIndex: Math.max(0, range.startIndex - firstItemIndexRef.current),
 		endIndex: Math.max(0, range.endIndex - firstItemIndexRef.current),
@@ -213,9 +225,13 @@ export function useStickyVirtuoso({
 		nearTopFrameRef.current = requestAnimationFrame(() => {
 			nearTopFrameRef.current = undefined;
 			if (!onNearTop || !scroller) return;
-			if (getScrollTop(scroller) <= nearTopThreshold) onNearTop();
+			if (getScrollTop(scroller) <= nearTopThreshold) {
+				captureVisibleAnchors();
+				pendingAnchorsRef.current = visibleAnchorsRef.current;
+				onNearTop();
+			}
 		});
-	}, [nearTopThreshold, onNearTop, scroller]);
+	}, [captureVisibleAnchors, nearTopThreshold, onNearTop, scroller]);
 
 	const scheduleScrollToBottom = useCallback((behavior: NativeScrollBehavior = "auto") => {
 		clearScheduledScroll();
@@ -250,9 +266,13 @@ export function useStickyVirtuoso({
 		atTopFrameRef.current = requestAnimationFrame(() => {
 			atTopFrameRef.current = undefined;
 			if (!onAtTop || !scroller) return;
-			if (updateAtTopFromScrollTop(getScrollTop(scroller))) onAtTop();
+			if (updateAtTopFromScrollTop(getScrollTop(scroller))) {
+				captureVisibleAnchors();
+				pendingAnchorsRef.current = visibleAnchorsRef.current;
+				onAtTop();
+			}
 		});
-	}, [onAtTop, scroller, updateAtTopFromScrollTop]);
+	}, [captureVisibleAnchors, onAtTop, scroller, updateAtTopFromScrollTop]);
 
 	const isScrolledToTop = useCallback(() => {
 		if (!scroller) return false;
@@ -340,10 +360,15 @@ export function useStickyVirtuoso({
 		if (scrollingAwayFromBottom) bottomReattachArmedRef.current = false;
 		else if (scrollingTowardBottom && userScrollDirectionRef.current === "toward") bottomReattachArmedRef.current = true;
 		const readingAwayFromBottom = userScrollIntentRef.current || scrollingAwayFromBottom || !stickyRef.current;
+		if (userAnchorCaptureArmedRef.current && isPrependingRef.current && pendingAnchorsRef.current !== undefined) {
+			captureVisibleAnchors();
+			pendingAnchorsRef.current = visibleAnchorsRef.current;
+		}
 		if (userAnchorCaptureArmedRef.current) {
 			if (userAnchorCaptureTimerRef.current !== undefined) window.clearTimeout(userAnchorCaptureTimerRef.current);
 			userAnchorCaptureTimerRef.current = window.setTimeout(() => {
 				captureVisibleAnchors();
+				if (isPrependingRef.current && pendingAnchorsRef.current !== undefined) pendingAnchorsRef.current = visibleAnchorsRef.current;
 				userAnchorCaptureArmedRef.current = false;
 				userAnchorCaptureTimerRef.current = undefined;
 			}, USER_ANCHOR_SETTLE_MS);
@@ -410,18 +435,18 @@ export function useStickyVirtuoso({
 	}, [resetKey, scheduleScrollToBottom, setAtTop, setSticky]);
 
 	useLayoutEffect(() => {
-		const wasPrependTransaction = prependTransactionRef.current;
 		prependTransactionRef.current = false;
 		committedItemKeysRef.current = itemKeys;
 		committedFirstItemIndexRef.current = firstItemIndexRef.current;
+		if (!stickyRef.current && pendingAnchorsRef.current !== undefined) userAnchorCaptureArmedRef.current = false;
 		if (stickyRef.current) {
 			scheduleScrollToBottom("auto");
-		} else if (!wasPrependTransaction) {
+		} else {
 			restoreVisibleAnchor();
 		}
 		pendingAnchorsRef.current = undefined;
 		return () => {
-			if (!stickyRef.current) pendingAnchorsRef.current = visibleAnchorsRef.current;
+			if (!stickyRef.current && pendingAnchorsRef.current === undefined) pendingAnchorsRef.current = visibleAnchorsRef.current;
 		};
 	}, [contentKey, itemCount, itemKeys, restoreVisibleAnchor, scheduleScrollToBottom]);
 
@@ -458,6 +483,7 @@ export function useStickyVirtuoso({
 		isAtTop,
 		isScrolledToTop,
 		captureVisibleAnchor: captureVisibleAnchors,
+		prepareForPrepend,
 		restoreAnchor,
 		stickToBottom,
 		scrollToIndex,

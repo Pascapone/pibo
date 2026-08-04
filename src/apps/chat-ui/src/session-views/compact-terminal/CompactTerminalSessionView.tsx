@@ -22,6 +22,7 @@ const OLDER_TRACE_PREFETCH_ROW_THRESHOLD = 20;
 const INITIAL_BOTTOM_ITEM = { index: "LAST", align: "end" } as const;
 const VIRTUOSO_VIEWPORT = { top: 2_400, bottom: 2_400 } as const;
 const DEFAULT_ROW_HEIGHT_PX = 84;
+const OLDER_TRACE_INTENT_SETTLE_MS = 700;
 const COLLAPSED_EXPLORING_PREVIEW_LINES = 6;
 type TerminalNavigationKind = "system" | "tool" | "user";
 
@@ -63,6 +64,9 @@ export function CompactTerminalSessionView({
 	const navigationCursorRef = useRef<Partial<Record<TerminalNavigationKind, string>>>({});
 	const rangePrefetchReadyRef = useRef(false);
 	const olderTraceIntentRef = useRef(false);
+	const olderTraceLoadTimerRef = useRef<number | undefined>(undefined);
+	const olderTraceRequestPendingRef = useRef(false);
+	const prepareOlderTracePrependRef = useRef<() => void>(() => undefined);
 	const userMessageCount = rows.filter((row) => isNavigableTerminalRow(row, "user")).length;
 	const toolErrorCount = rows.filter((row) => isNavigableTerminalRow(row, "tool")).length;
 	const errorCount = rows.filter((row) => isNavigableTerminalRow(row, "system")).length;
@@ -75,9 +79,21 @@ export function CompactTerminalSessionView({
 	const activeTurnStartedAt = sessionActivity.activeTurnStartedAt;
 	const isStreaming = sessionActivity.isTurnActive;
 	const loadOlderTracePage = useCallback(() => {
-		if (!hasOlderTraceEvents || isFetchingOlderTracePage) return;
-		olderTraceIntentRef.current = false;
-		onLoadOlderTracePage?.();
+		if (!hasOlderTraceEvents || isFetchingOlderTracePage || olderTraceRequestPendingRef.current) return;
+		const load = () => {
+			olderTraceLoadTimerRef.current = undefined;
+			if (olderTraceRequestPendingRef.current) return;
+			olderTraceRequestPendingRef.current = true;
+			olderTraceIntentRef.current = false;
+			prepareOlderTracePrependRef.current();
+			onLoadOlderTracePage?.();
+		};
+		if (!olderTraceIntentRef.current) {
+			load();
+			return;
+		}
+		if (olderTraceLoadTimerRef.current !== undefined) return;
+		olderTraceLoadTimerRef.current = window.setTimeout(load, OLDER_TRACE_INTENT_SETTLE_MS);
 	}, [hasOlderTraceEvents, isFetchingOlderTracePage, onLoadOlderTracePage]);
 	const loadOlderNearTop = useCallback(() => {
 		if (!rangePrefetchReadyRef.current) return;
@@ -104,6 +120,7 @@ export function CompactTerminalSessionView({
 	const stickyView = useStickyVirtuoso({
 		itemCount: rows.length,
 		itemKeys: rowKeys,
+		isPrepending: isFetchingOlderTracePage,
 		resetKey: traceView?.piboSessionId,
 		contentKey: renderedContentKey,
 		atBottomThreshold: SHOW_LATEST_THRESHOLD_PX,
@@ -113,11 +130,21 @@ export function CompactTerminalSessionView({
 		onUserScrollIntent: markOlderTraceIntent,
 		onVisibleAnchorChange: persistVisibleAnchor,
 	});
+	prepareOlderTracePrependRef.current = stickyView.prepareForPrepend;
 
 	useEffect(() => {
 		requestedRestorePageRef.current = undefined;
+		olderTraceRequestPendingRef.current = false;
 		setReloadReadingPosition(piboSessionId ? readTerminalReadingPosition(piboSessionId) : undefined);
 	}, [piboSessionId]);
+
+	useEffect(() => {
+		olderTraceRequestPendingRef.current = false;
+	}, [traceView?.nextBeforeCursor, traceView?.nextBeforeSequence]);
+
+	useEffect(() => () => {
+		if (olderTraceLoadTimerRef.current !== undefined) window.clearTimeout(olderTraceLoadTimerRef.current);
+	}, []);
 
 	useEffect(() => {
 		if (!piboSessionId || !reloadReadingPosition) return undefined;
@@ -157,19 +184,19 @@ export function CompactTerminalSessionView({
 
 	useEffect(() => {
 		if (isFetchingOlderTracePage) return;
-		if (!stickyView.isAtTop && !stickyView.isScrolledToTop()) return;
+		if (!stickyView.isScrolledToTop()) return;
 		loadOlderAtTop();
-	}, [hasOlderTraceEvents, isFetchingOlderTracePage, loadOlderAtTop, rows.length, stickyView.isAtTop, stickyView.isScrolledToTop, traceView?.nextBeforeCursor, traceView?.nextBeforeSequence]);
+	}, [hasOlderTraceEvents, isFetchingOlderTracePage, loadOlderAtTop, rows.length, stickyView.isScrolledToTop, traceView?.nextBeforeCursor, traceView?.nextBeforeSequence]);
 
 	useEffect(() => {
 		rangePrefetchReadyRef.current = false;
 		olderTraceIntentRef.current = false;
 		const readyTimer = window.setTimeout(() => {
 			rangePrefetchReadyRef.current = true;
-			if (stickyView.isAtTop || stickyView.isScrolledToTop()) loadOlderAtTop();
+			if (stickyView.isScrolledToTop()) loadOlderAtTop();
 		}, 250);
 		return () => window.clearTimeout(readyTimer);
-	}, [loadOlderAtTop, stickyView.isAtTop, stickyView.isScrolledToTop, traceView?.piboSessionId]);
+	}, [loadOlderAtTop, stickyView.isScrolledToTop, traceView?.piboSessionId]);
 
 	useEffect(() => {
 		const rowIds = new Set(rows.map((row) => row.id));

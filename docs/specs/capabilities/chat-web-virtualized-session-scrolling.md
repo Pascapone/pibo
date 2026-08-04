@@ -205,6 +205,12 @@ A long-session headed-browser reload resolves the persisted conceptual row after
 - AND the same row returns at its saved viewport offset within one pixel
 - AND the view remains detached with `Scroll to latest` available.
 
+### Requirement: Headed Terminal regressions preserve browser evidence
+
+Terminal scroll changes MUST be checked against the real Compact Terminal and Virtuoso viewport in an authenticated headed browser. The checked-in `scripts/validate-terminal-browser-regressions.mjs` suite covers sticky and detached streaming, projection reconciliation, expanded-row streaming, slow and rapid history prepends, transient replay reconnect, manual return direction, and long-session reload.
+
+Each run writes JSON metrics plus per-scenario screenshots. Assertions use conceptual `data-row-id` values and an explicit pixel tolerance; failures retain the partial report and a failure screenshot.
+
 ### Requirement: Content growth inside existing rows preserves latest visibility
 
 When sticky mode is active, row-height changes inside the last visible rows MUST keep the viewport aligned to the latest content.
@@ -298,6 +304,7 @@ In a production build, no render counter global is created by the counter helper
 - [ ] SC-006: Render counters mutate diagnostics state only in development builds.
 - [x] SC-007: Older Trace V2 history loads automatically near the top without a manual load button.
 - [x] SC-008: Reloading a detached Compact Terminal restores its conceptual row and pixel offset after resolving older pages.
+- [x] SC-009: The headed Terminal regression matrix records JSON metrics and screenshots while enforcing conceptual-row and pixel-offset invariants.
 
 ## Assumptions and Open Questions
 
@@ -325,6 +332,7 @@ In a production build, no render counter global is created by the counter helper
 | REQ-007 Performance checks are explicit and artifact-producing | Developer validates a large-session change | Source-backed; manual/script validation | Draft |
 | REQ-008 Development render counters are non-production diagnostics | Production user opens Chat Web | Source-backed; build-mode unit test | Draft |
 | REQ-009 Reload restores a detached Terminal reading position | Reload while reading history | `CompactTerminalSessionView.tsx`, `useStickyVirtuoso.ts`, headed browser regression | Implemented |
+| REQ-010 Headed Terminal regressions preserve browser evidence | Full scroll/stream/reconnect/reload matrix | `scripts/validate-terminal-browser-regressions.mjs` | Implemented |
 
 ## Verification Basis
 
@@ -334,5 +342,6 @@ This spec is based on the current workspace code in:
 - `src/apps/chat-ui/src/tracing/TraceTimeline.tsx`
 - `src/apps/chat-ui/src/session-views/compact-terminal/CompactTerminalSessionView.tsx`
 - `src/apps/chat-ui/src/renderMetrics.ts`
+- `scripts/validate-terminal-browser-regressions.mjs`
 - `scripts/chat-web-performance-check.mjs`
 - `package.json`
