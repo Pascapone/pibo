@@ -4,7 +4,7 @@ import type { PiboJsonObject, PiboOutputEvent } from "../core/events.js";
 import { normalizeSessionErrorDetails } from "../core/session-errors.js";
 import type { PiboSession } from "../sessions/store.js";
 import type { ChatWebStoredPiboEvent } from "../apps/chat/read-model.js";
-import { compareTraceOrder } from "../shared/trace-order.js";
+import { compareTraceNodes } from "../shared/trace-nodes.js";
 import type { ResolvedPiboDebugStore } from "./stores.js";
 import { openReadOnlyDebugDatabase, withStorePath } from "./sql.js";
 import { formatNextCommands } from "./next-commands.js";
@@ -319,7 +319,7 @@ function checkSiblingOrder(nodes: PiboTraceNode[], issues: DebugTraceIssue[]): v
 }
 
 function compareOrder(left: PiboTraceNode, right: PiboTraceNode): number {
-	return compareTraceOrder(left.orderKey, right.orderKey) || left.id.localeCompare(right.id);
+	return compareTraceNodes(left, right);
 }
 
 function flattenPiboTraceNodes(nodes: PiboTraceNode[]): PiboTraceNode[] {
@@ -402,9 +402,11 @@ function outputPayloadFromV2Row(row: EventRow): PiboOutputEvent | undefined {
 	if (!piboSessionId) return undefined;
 	const base = { piboSessionId, eventId: row.event_id ?? undefined };
 	if (row.type === "assistant_message") return compactObject({ ...base, type: "assistant_message", text: row.preview_text ?? "" }) as PiboOutputEvent;
+	if (row.type === "assistant_delta") return compactObject({ ...base, type: "assistant_delta", text: inlineTextPayload(inlinePayload) ?? row.preview_text ?? "" }) as PiboOutputEvent;
 	if (row.type === "message_started") return compactObject({ ...base, type: "message_started", text: row.preview_text ?? "" }) as PiboOutputEvent;
 	if (row.type === "message_finished") return compactObject({ ...base, type: "message_finished" }) as PiboOutputEvent;
 	if (row.type === "thinking_started") return compactObject({ ...base, type: "thinking_started" }) as PiboOutputEvent;
+	if (row.type === "thinking_delta") return compactObject({ ...base, type: "thinking_delta", text: inlineTextPayload(inlinePayload) ?? row.preview_text ?? "" }) as PiboOutputEvent;
 	if (row.type === "thinking_finished") return compactObject({ ...base, type: "thinking_finished", text: row.preview_text ?? "" }) as PiboOutputEvent;
 	if (row.type === "tool_call") return compactObject({ ...base, type: "tool_call", toolCallId: stringAttribute(attributes, "toolCallId") ?? row.event_id ?? `tool_${row.stream_id}`, toolName: row.preview_text ?? stringAttribute(attributes, "toolName") ?? "tool", args: inlinePayload ?? null, argsComplete: booleanAttribute(attributes, "argsComplete") ?? true }) as PiboOutputEvent;
 	if (row.type === "tool_execution_started") return compactObject({ ...base, type: "tool_execution_started", toolCallId: stringAttribute(attributes, "toolCallId") ?? row.event_id ?? `tool_${row.stream_id}`, toolName: row.preview_text ?? stringAttribute(attributes, "toolName") ?? "tool", args: inlinePayload ?? null }) as PiboOutputEvent;
@@ -415,6 +417,10 @@ function outputPayloadFromV2Row(row: EventRow): PiboOutputEvent | undefined {
 		return compactObject({ ...base, type: "session_error", error, errorDetails: normalizeSessionErrorDetails(error, isRecord(attributes.errorDetails) ? attributes.errorDetails : undefined) }) as PiboOutputEvent;
 	}
 	return compactObject({ ...base, type: row.type }) as PiboOutputEvent;
+}
+
+function inlineTextPayload(value: unknown): string | undefined {
+	return typeof value === "string" ? value : undefined;
 }
 
 function stringAttribute(attributes: PiboJsonObject, key: string): string | undefined {

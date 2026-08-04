@@ -449,10 +449,12 @@ function traceNodeFromEvent(
 				children: [],
 			};
 		}
-		case "subagent_session":
+		case "subagent_session": {
+			const childPiboSessionId = nonEmptyString(event.childPiboSessionId);
+			const eventInstanceKey = traceEventInstanceKey(eventSequence, streamId, event);
 			return {
 				...base,
-				id: event.toolCallId ? `tool:${event.toolCallId}` : id,
+				id: event.toolCallId ? `tool:${event.toolCallId}` : `event:subagent_session:${eventInstanceKey}`,
 				eventId,
 				toolCallId: event.toolCallId,
 				type: "agent.delegation",
@@ -460,10 +462,13 @@ function traceNodeFromEvent(
 				status: sessionStatus === "running" ? "running" : "done",
 				summary: event.subagentName,
 				input: { subagentName: event.subagentName, threadKey: event.threadKey },
-				linkedPiboSessionId: event.childPiboSessionId,
-				stableKey: event.toolCallId ? `tool:${event.toolCallId}` : `subagent:${event.childPiboSessionId}`,
+				linkedPiboSessionId: childPiboSessionId,
+				stableKey: event.toolCallId
+					? `tool:${event.toolCallId}`
+					: childPiboSessionId ? `subagent:${childPiboSessionId}` : `subagent:event:${eventInstanceKey}`,
 				children: [],
 			};
+		}
 		case "execution_result":
 			if (isInternalSessionOperation(event.action)) return undefined;
 			return {
@@ -474,21 +479,24 @@ function traceNodeFromEvent(
 				input: { action: event.action },
 				output: event.result,
 			};
-		case "compaction_start":
+		case "compaction_start": {
+			const eventInstanceKey = traceEventInstanceKey(eventSequence, streamId, event);
 			return {
 				...base,
-				id: `event:compaction:${eventSequence ?? streamId ?? cryptoSafeId(event)}`,
+				id: `event:compaction:${eventInstanceKey}`,
 				type: "execution.compaction",
 				title: "compact",
 				status: "running",
 				summary: "Compacting",
 				input: { reason: event.reason },
-				stableKey: "compaction:active",
+				stableKey: `compaction:${eventInstanceKey}`,
 			};
-		case "compaction_end":
+		}
+		case "compaction_end": {
+			const eventInstanceKey = traceEventInstanceKey(eventSequence, streamId, event);
 			return {
 				...base,
-				id: `event:compaction:end:${eventSequence ?? streamId ?? cryptoSafeId(event)}`,
+				id: `event:compaction:end:${eventInstanceKey}`,
 				type: "execution.compaction",
 				title: "compact",
 				status: event.errorMessage ? "error" : "done",
@@ -497,8 +505,9 @@ function traceNodeFromEvent(
 				input: { reason: event.reason },
 				output: event.result,
 				error: event.errorMessage,
-				stableKey: "compaction:active",
+				stableKey: `compaction:${eventInstanceKey}`,
 			};
+		}
 		case "session_error":
 			return {
 				...base,
@@ -525,7 +534,7 @@ function mergeAssistantDeltaEvent(
 	streamId?: number,
 	streamFrameIndex?: number,
 ): void {
-	if (event.text.length === 0) return;
+	if (typeof event.text !== "string" || event.text.length === 0) return;
 
 	const assistantId = assistantEventNodeId(event);
 	const id = assistantId ? assistantMessageNodeId(assistantId) : `event:assistant_delta:${cryptoSafeId(event)}`;
@@ -576,7 +585,7 @@ function mergeThinkingDeltaEvent(
 	streamId?: number,
 	streamFrameIndex?: number,
 ): void {
-	if (event.text.length === 0) return;
+	if (typeof event.text !== "string" || event.text.length === 0) return;
 
 	const thinkingId = thinkingEventNodeId(event);
 	const id = thinkingId ? thinkingNodeId(thinkingId) : `event:thinking_delta:${cryptoSafeId(event)}`;
@@ -941,6 +950,17 @@ function parseTimestamp(value: string | undefined): number | undefined {
 	if (!value) return undefined;
 	const timestamp = new Date(value).getTime();
 	return Number.isFinite(timestamp) ? timestamp : undefined;
+}
+
+function traceEventInstanceKey(eventSequence: number | undefined, streamId: number | undefined, event: PiboOutputEvent): string {
+	if (eventSequence !== undefined) return `sequence:${eventSequence}`;
+	if (streamId !== undefined) return `stream:${streamId}`;
+	return cryptoSafeId(event);
+}
+
+function nonEmptyString(value: unknown): string | undefined {
+	if (typeof value !== "string") return undefined;
+	return value.trim() || undefined;
 }
 
 function cryptoSafeId(value: unknown): string {

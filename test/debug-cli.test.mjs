@@ -1505,6 +1505,19 @@ test("pibo debug trace prints rebuilt Chat Web trace nodes", async () => {
 	}
 });
 
+test("pibo debug trace rebuilds persisted string thinking deltas", async () => {
+	const cwd = await makeDebugFixture();
+	try {
+		const result = await execFileAsync("node", [cliPath, "debug", "trace", "ps_thinking", "--json"], { cwd });
+		const parsed = JSON.parse(result.stdout);
+		const reasoning = parsed.nodes.find((node) => node.type === "model.reasoning");
+		assert.equal(reasoning?.status, "running");
+		assert.equal(reasoning?.id, "event:thinking:evt_thinking");
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
 test("pibo debug events extracts selected payload fields", async () => {
 	const cwd = await makeDebugFixture();
 	try {
@@ -1906,6 +1919,21 @@ async function makeDebugFixture() {
 			updatedAt: "2026-05-01T10:04:03.000Z",
 			lastActivityAt: "2026-05-01T10:04:03.000Z",
 		});
+		insertSession(data.db, {
+			id: "ps_thinking",
+			piSessionId: "55555555-5555-4555-8555-555555555555",
+			channel: "pibo.chat-web",
+			kind: "chat",
+			profile: "base",
+			legacyPartition: "user:one",
+			rootSessionId: "ps_thinking",
+			title: "Thinking delta fixture",
+			status: "running",
+			metadata: {},
+			createdAt: "2026-05-01T10:05:00.000Z",
+			updatedAt: "2026-05-01T10:05:01.000Z",
+			lastActivityAt: "2026-05-01T10:05:01.000Z",
+		});
 		insertEvent(data.db, {
 			streamId: 1,
 			sessionId: "ps_parent",
@@ -1966,6 +1994,15 @@ async function makeDebugFixture() {
 			type: "tool_execution_started",
 			createdAt: "2026-05-01T10:04:02.000Z",
 			payload: { type: "tool_execution_started", piboSessionId: "ps_running", eventId: "evt_running", toolCallId: "tool_1", toolName: "bash", args: { cmd: "sleep 10" } },
+		});
+		insertEvent(data.db, {
+			streamId: 6,
+			sessionId: "ps_thinking",
+			sequence: 1,
+			eventId: "evt_thinking",
+			type: "thinking_delta",
+			createdAt: "2026-05-01T10:05:01.000Z",
+			payload: "Persisted reasoning delta",
 		});
 		data.telemetry.upsertTurn({
 			turnId: "turn_parent_done",
