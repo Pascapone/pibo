@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mergeOlderTracePage } from "../dist/shared/trace-page-merge.js";
+import { mergeOlderTracePage, mergeRefreshedTracePage } from "../dist/shared/trace-page-merge.js";
 
 test("mergeOlderTracePage dedupes overlapping nested timeline nodes", () => {
 	const current = traceView({
@@ -58,6 +58,39 @@ test("mergeOlderTracePage dedupes overlapping nested timeline nodes", () => {
 	assert.equal(flat.find((entry) => entry.id === "assistant-1")?.output, "current assistant text");
 	assert.equal(merged.nextBeforeSequence, 50);
 	assert.equal(merged.hasOlderEvents, true);
+});
+
+test("mergeRefreshedTracePage preserves the loaded history window while refreshing the tail", () => {
+	const current = traceView({
+		version: "old-version",
+		nodes: [
+			node("older-only", { startedAt: "2026-07-05T00:00:00.000Z" }),
+			node("shared", { title: "old shared", startedAt: "2026-07-05T00:01:00.000Z" }),
+		],
+		firstEventSequence: 10,
+		nextBeforeSequence: 9,
+		hasOlderEvents: true,
+		eventLimit: 100,
+	});
+	const refreshed = traceView({
+		version: "new-version",
+		nodes: [
+			node("shared", { title: "new shared", startedAt: "2026-07-05T00:01:00.000Z" }),
+			node("new-tail", { startedAt: "2026-07-05T00:02:00.000Z" }),
+		],
+		firstEventSequence: 50,
+		nextBeforeSequence: 49,
+		hasOlderEvents: true,
+		eventLimit: 50,
+	});
+
+	const merged = mergeRefreshedTracePage(current, refreshed);
+	assert.equal(merged.version, "new-version");
+	assert.deepEqual(merged.nodes.map((entry) => entry.id), ["older-only", "shared", "new-tail"]);
+	assert.equal(merged.nodes.find((entry) => entry.id === "shared")?.title, "new shared");
+	assert.equal(merged.firstEventSequence, 10);
+	assert.equal(merged.nextBeforeSequence, 9);
+	assert.equal(merged.eventLimit, 100);
 });
 
 test("mergeOlderTracePage carries string cursors across transcript continuation pages", () => {

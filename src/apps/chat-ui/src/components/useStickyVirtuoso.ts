@@ -1,8 +1,19 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { FollowOutputScalarType, VirtuosoHandle } from "react-virtuoso";
+import type { FollowOutputScalarType, ListItem, ListRange, VirtuosoHandle } from "react-virtuoso";
+import {
+	captureStickyVisibleAnchors,
+	prependedItemCount,
+	shouldReattachStickyAtBottom,
+	stickyAnchorLocation,
+	stickyScrollIntentDirection,
+	type StickyAnchorLocation,
+	type StickyScrollIntentDirection,
+	type StickyVisibleAnchor,
+} from "./stickyVirtuosoState";
 
 const DEFAULT_BOTTOM_THRESHOLD = 24;
 const USER_SCROLL_INTENT_MS = 700;
+const USER_ANCHOR_SETTLE_MS = 120;
 
 type StickyScrollBehavior = "auto" | "smooth" | "fast-smooth";
 type NativeScrollBehavior = "auto" | "smooth";
@@ -15,9 +26,13 @@ type StickyScrollToIndexOptions = {
 };
 
 const DEFAULT_FAST_SMOOTH_STAGING_DISTANCE = 3;
+const INITIAL_FIRST_ITEM_INDEX = 1_000_000;
 
 type StickyVirtuosoOptions = {
 	itemCount: number;
+	itemKeys: readonly string[];
+	/** True while an older-page prepend request is in flight. */
+	isPrepending?: boolean;
 	/** Resets stickiness when the backing conversation/trace changes. */
 	resetKey?: unknown;
 	/** Schedules a sticky scroll when rendered content changes without changing itemCount. */
@@ -30,10 +45,13 @@ type StickyVirtuosoOptions = {
 	atTopThreshold?: number;
 	nearTopThreshold?: number;
 	onUserScrollIntent?: (event?: Event) => void;
+	onVisibleAnchorChange?: (anchor: StickyVisibleAnchor | undefined) => void;
 };
 
 export function useStickyVirtuoso({
 	itemCount,
+	itemKeys,
+	isPrepending = false,
 	resetKey,
 	contentKey,
 	atBottomThreshold = DEFAULT_BOTTOM_THRESHOLD,
@@ -42,30 +60,65 @@ export function useStickyVirtuoso({
 	atTopThreshold = 0,
 	nearTopThreshold = 0,
 	onUserScrollIntent,
+	onVisibleAnchorChange,
 }: StickyVirtuosoOptions) {
 	const virtuosoRef = useRef<VirtuosoHandle>(null);
 	const itemCountRef = useRef(itemCount);
+	const isPrependingRef = useRef(isPrepending);
+	isPrependingRef.current = isPrepending;
 	const stickyRef = useRef(true);
 	const scrollFrameRef = useRef<number | undefined>(undefined);
+	const anchorFrameRef = useRef<number | undefined>(undefined);
 	const atTopFrameRef = useRef<number | undefined>(undefined);
 	const nearTopFrameRef = useRef<number | undefined>(undefined);
 	const userScrollIntentRef = useRef(false);
+	const userScrollDirectionRef = useRef<StickyScrollIntentDirection | undefined>(undefined);
+	const userAnchorCaptureArmedRef = useRef(false);
+	const bottomReattachArmedRef = useRef(false);
 	const userScrollIntentTimerRef = useRef<number | undefined>(undefined);
+	const userAnchorCaptureTimerRef = useRef<number | undefined>(undefined);
+	const lastTouchYRef = useRef<number | undefined>(undefined);
 	const lastScrollTopRef = useRef<number | undefined>(undefined);
-	const lastScrollHeightRef = useRef<number | undefined>(undefined);
+	const renderedItemsRef = useRef<readonly ListItem<unknown>[]>([]);
+	const visibleAnchorsRef = useRef<readonly StickyVisibleAnchor[]>([]);
+	const pendingAnchorsRef = useRef<readonly StickyVisibleAnchor[] | undefined>(undefined);
+	const committedItemKeysRef = useRef(itemKeys);
+	const firstItemIndexRef = useRef(INITIAL_FIRST_ITEM_INDEX);
+	const committedFirstItemIndexRef = useRef(INITIAL_FIRST_ITEM_INDEX);
+	const previousItemsRef = useRef({ resetKey, itemKeys });
+	const prependTransactionRef = useRef(false);
 	const atTopRef = useRef(false);
 	const [isSticky, setIsStickyState] = useState(true);
 	const [isAtTop, setIsAtTopState] = useState(false);
 	const [scroller, setScroller] = useState<HTMLElement | Window | null>(null);
 
+	const previousItems = previousItemsRef.current;
+	if (!Object.is(previousItems.resetKey, resetKey)) {
+		firstItemIndexRef.current = INITIAL_FIRST_ITEM_INDEX;
+		prependTransactionRef.current = false;
+	} else {
+		const prependedCount = prependedItemCount(previousItems.itemKeys, itemKeys);
+		prependTransactionRef.current = prependedCount > 0;
+		if (prependedCount > 0) firstItemIndexRef.current -= prependedCount;
+	}
+	previousItemsRef.current = { resetKey, itemKeys };
+	const firstItemIndex = firstItemIndexRef.current;
+
 	useLayoutEffect(() => {
 		itemCountRef.current = itemCount;
 	}, [itemCount]);
 
-	const setSticky = useCallback((next: boolean) => {
+	const setSticky = useCallback((next: boolean, notifyAnchorChange = true) => {
+		const wasSticky = stickyRef.current;
 		stickyRef.current = next;
+		if (next) {
+			if (!wasSticky && notifyAnchorChange) onVisibleAnchorChange?.(undefined);
+			bottomReattachArmedRef.current = false;
+			if (anchorFrameRef.current !== undefined) cancelAnimationFrame(anchorFrameRef.current);
+			anchorFrameRef.current = undefined;
+		}
 		setIsStickyState(next);
-	}, []);
+	}, [onVisibleAnchorChange]);
 
 	const setAtTop = useCallback((next: boolean) => {
 		if (atTopRef.current === next) return;
@@ -79,6 +132,59 @@ export function useStickyVirtuoso({
 		return next;
 	}, [atTopThreshold, setAtTop]);
 
+	const captureVisibleAnchors = useCallback(() => {
+		if (!scroller || stickyRef.current) return undefined;
+		const domAnchors = captureDomVisibleAnchors(scroller, committedItemKeysRef.current);
+		visibleAnchorsRef.current = domAnchors.length ? domAnchors : captureStickyVisibleAnchors({
+			items: renderedItemsRef.current,
+			itemKeys: committedItemKeysRef.current,
+			firstItemIndex: committedFirstItemIndexRef.current,
+			scrollTop: getScrollTop(scroller),
+			viewportHeight: getClientHeight(scroller),
+		});
+		const anchor = visibleAnchorsRef.current[0];
+		onVisibleAnchorChange?.(anchor);
+		return anchor;
+	}, [onVisibleAnchorChange, scroller]);
+
+	const itemsRendered = useCallback((items: ListItem<unknown>[]) => {
+		renderedItemsRef.current = items;
+	}, []);
+
+	const restoreVisibleAnchor = useCallback(() => {
+		if (stickyRef.current || userAnchorCaptureArmedRef.current) return;
+		const anchors = pendingAnchorsRef.current ?? visibleAnchorsRef.current;
+		const itemKeys = committedItemKeysRef.current;
+		const location = stickyAnchorLocation({ anchors, nextKeys: itemKeys });
+		if (!location) return;
+		const restore = () => {
+			if (stickyRef.current || userAnchorCaptureArmedRef.current) return;
+			const restoredInDom = Boolean(scroller && restoreDomVisibleAnchor(scroller, location, anchors, itemKeys));
+			if (!restoredInDom) virtuosoRef.current?.scrollToIndex(location);
+		};
+		restore();
+		if (anchorFrameRef.current !== undefined) cancelAnimationFrame(anchorFrameRef.current);
+		anchorFrameRef.current = requestAnimationFrame(() => {
+			restore();
+			anchorFrameRef.current = requestAnimationFrame(() => {
+				anchorFrameRef.current = undefined;
+				restore();
+			});
+		});
+	}, [scroller]);
+
+	const prepareForPrepend = useCallback(() => {
+		if (stickyRef.current) return;
+		captureVisibleAnchors();
+		pendingAnchorsRef.current = visibleAnchorsRef.current;
+		userAnchorCaptureArmedRef.current = false;
+	}, [captureVisibleAnchors]);
+
+	const normalizeRange = useCallback((range: ListRange): ListRange => ({
+		startIndex: Math.max(0, range.startIndex - firstItemIndexRef.current),
+		endIndex: Math.max(0, range.endIndex - firstItemIndexRef.current),
+	}), []);
+
 	const clearScheduledScroll = useCallback(() => {
 		if (scrollFrameRef.current !== undefined) {
 			cancelAnimationFrame(scrollFrameRef.current);
@@ -86,15 +192,46 @@ export function useStickyVirtuoso({
 		}
 	}, []);
 
+	const restoreAnchor = useCallback((anchor: StickyVisibleAnchor): boolean => {
+		const itemKeys = committedItemKeysRef.current;
+		const index = itemKeys.indexOf(anchor.key);
+		if (index < 0) return false;
+		setSticky(false);
+		userAnchorCaptureArmedRef.current = false;
+		visibleAnchorsRef.current = [{ ...anchor, dataIndex: index }];
+		pendingAnchorsRef.current = visibleAnchorsRef.current;
+		clearScheduledScroll();
+		const location: StickyAnchorLocation = { index, align: "start", behavior: "auto", offset: -anchor.offset };
+		const restore = () => {
+			if (stickyRef.current) return;
+			const restoredInDom = Boolean(scroller && restoreDomVisibleAnchor(scroller, location, visibleAnchorsRef.current, itemKeys));
+			if (!restoredInDom) virtuosoRef.current?.scrollToIndex(location);
+		};
+		virtuosoRef.current?.scrollToIndex(location);
+		if (anchorFrameRef.current !== undefined) cancelAnimationFrame(anchorFrameRef.current);
+		anchorFrameRef.current = requestAnimationFrame(() => {
+			restore();
+			anchorFrameRef.current = requestAnimationFrame(() => {
+				anchorFrameRef.current = undefined;
+				restore();
+			});
+		});
+		return true;
+	}, [clearScheduledScroll, scroller, setSticky]);
+
 	const requestNearTop = useCallback(() => {
 		if (!onNearTop || !scroller) return;
 		if (nearTopFrameRef.current !== undefined) return;
 		nearTopFrameRef.current = requestAnimationFrame(() => {
 			nearTopFrameRef.current = undefined;
 			if (!onNearTop || !scroller) return;
-			if (getScrollTop(scroller) <= nearTopThreshold) onNearTop();
+			if (getScrollTop(scroller) <= nearTopThreshold) {
+				captureVisibleAnchors();
+				pendingAnchorsRef.current = visibleAnchorsRef.current;
+				onNearTop();
+			}
 		});
-	}, [nearTopThreshold, onNearTop, scroller]);
+	}, [captureVisibleAnchors, nearTopThreshold, onNearTop, scroller]);
 
 	const scheduleScrollToBottom = useCallback((behavior: NativeScrollBehavior = "auto") => {
 		clearScheduledScroll();
@@ -129,9 +266,13 @@ export function useStickyVirtuoso({
 		atTopFrameRef.current = requestAnimationFrame(() => {
 			atTopFrameRef.current = undefined;
 			if (!onAtTop || !scroller) return;
-			if (updateAtTopFromScrollTop(getScrollTop(scroller))) onAtTop();
+			if (updateAtTopFromScrollTop(getScrollTop(scroller))) {
+				captureVisibleAnchors();
+				pendingAnchorsRef.current = visibleAnchorsRef.current;
+				onAtTop();
+			}
 		});
-	}, [onAtTop, scroller, updateAtTopFromScrollTop]);
+	}, [captureVisibleAnchors, onAtTop, scroller, updateAtTopFromScrollTop]);
 
 	const isScrolledToTop = useCallback(() => {
 		if (!scroller) return false;
@@ -145,6 +286,7 @@ export function useStickyVirtuoso({
 
 	const scrollToIndex = useCallback((index: number, align: StickyScrollAlign = "center", behavior: StickyScrollBehavior = "auto", options: StickyScrollToIndexOptions = {}) => {
 		setSticky(false);
+		userAnchorCaptureArmedRef.current = true;
 		clearScheduledScroll();
 		requestAnimationFrame(() => {
 			if (behavior !== "fast-smooth") {
@@ -178,21 +320,35 @@ export function useStickyVirtuoso({
 		});
 	}, [clearScheduledScroll, setSticky]);
 
-	const markUserScrollIntent = useCallback((event?: Event) => {
+	const markUserScrollIntent = useCallback((event?: Event, directionOverride?: StickyScrollIntentDirection) => {
 		userScrollIntentRef.current = true;
 		onUserScrollIntent?.(event);
-		const scrollingAwayFromBottom = event instanceof WheelEvent && event.deltaY < 0;
-		if (scrollingAwayFromBottom) clearScheduledScroll();
-		if (scrollingAwayFromBottom || (scroller && !isAtBottom(scroller, atBottomThreshold))) setSticky(false);
+		const direction = directionOverride ?? stickyScrollIntentDirection(scrollIntentInput(event));
+		userScrollDirectionRef.current = direction;
+		userAnchorCaptureArmedRef.current = true;
+		if (direction === "away") {
+			bottomReattachArmedRef.current = false;
+			clearScheduledScroll();
+			setSticky(false);
+			captureVisibleAnchors();
+		} else if (direction === "toward") {
+			bottomReattachArmedRef.current = true;
+			if (scroller && isAtBottom(scroller, 1)) setSticky(true);
+		}
+		if (direction !== "away" && scroller && !isAtBottom(scroller, atBottomThreshold)) {
+			setSticky(false);
+			captureVisibleAnchors();
+		}
 		const scrollTop = scroller ? getScrollTop(scroller) : undefined;
 		if (scrollTop !== undefined && updateAtTopFromScrollTop(scrollTop)) requestAtTop();
 		else if (isNearTopHistoryIntent(event) && scrollTop !== undefined && scrollTop <= nearTopThreshold) requestNearTop();
 		if (userScrollIntentTimerRef.current !== undefined) window.clearTimeout(userScrollIntentTimerRef.current);
 		userScrollIntentTimerRef.current = window.setTimeout(() => {
 			userScrollIntentRef.current = false;
+			userScrollDirectionRef.current = undefined;
 			userScrollIntentTimerRef.current = undefined;
 		}, USER_SCROLL_INTENT_MS);
-	}, [atBottomThreshold, clearScheduledScroll, nearTopThreshold, onUserScrollIntent, requestAtTop, requestNearTop, scroller, setSticky, updateAtTopFromScrollTop]);
+	}, [atBottomThreshold, captureVisibleAnchors, clearScheduledScroll, nearTopThreshold, onUserScrollIntent, requestAtTop, requestNearTop, scroller, setSticky, updateAtTopFromScrollTop]);
 
 	const updateFromScrollPosition = useCallback(() => {
 		if (!scroller) return;
@@ -200,15 +356,31 @@ export function useStickyVirtuoso({
 		const previousScrollTop = lastScrollTopRef.current;
 		lastScrollTopRef.current = scrollTop;
 		const scrollingAwayFromBottom = previousScrollTop !== undefined && scrollTop < previousScrollTop - 1;
+		const scrollingTowardBottom = previousScrollTop !== undefined && scrollTop > previousScrollTop + 1;
+		if (scrollingAwayFromBottom) bottomReattachArmedRef.current = false;
+		else if (scrollingTowardBottom && userScrollDirectionRef.current === "toward") bottomReattachArmedRef.current = true;
 		const readingAwayFromBottom = userScrollIntentRef.current || scrollingAwayFromBottom || !stickyRef.current;
+		if (userAnchorCaptureArmedRef.current && isPrependingRef.current && pendingAnchorsRef.current !== undefined) {
+			captureVisibleAnchors();
+			pendingAnchorsRef.current = visibleAnchorsRef.current;
+		}
+		if (userAnchorCaptureArmedRef.current) {
+			if (userAnchorCaptureTimerRef.current !== undefined) window.clearTimeout(userAnchorCaptureTimerRef.current);
+			userAnchorCaptureTimerRef.current = window.setTimeout(() => {
+				captureVisibleAnchors();
+				if (isPrependingRef.current && pendingAnchorsRef.current !== undefined) pendingAnchorsRef.current = visibleAnchorsRef.current;
+				userAnchorCaptureArmedRef.current = false;
+				userAnchorCaptureTimerRef.current = undefined;
+			}, USER_ANCHOR_SETTLE_MS);
+		}
 		if (updateAtTopFromScrollTop(scrollTop)) requestAtTop();
 		else if (readingAwayFromBottom && scrollTop <= nearTopThreshold) requestNearTop();
 		if (isAtBottom(scroller, atBottomThreshold)) {
-			if (!userScrollIntentRef.current) setSticky(true);
+			if (shouldReattachStickyAtBottom(bottomReattachArmedRef.current, scrollingAwayFromBottom)) setSticky(true);
 			return;
 		}
 		if (userScrollIntentRef.current || scrollingAwayFromBottom) setSticky(false);
-	}, [atBottomThreshold, nearTopThreshold, requestAtTop, requestNearTop, scroller, setSticky, updateAtTopFromScrollTop]);
+	}, [atBottomThreshold, captureVisibleAnchors, nearTopThreshold, requestAtTop, requestNearTop, scroller, setSticky, updateAtTopFromScrollTop]);
 
 	useEffect(() => {
 		if (!scroller) return undefined;
@@ -222,14 +394,28 @@ export function useStickyVirtuoso({
 		const markIntentFromPointer = (event: Event) => {
 			if (event.target === target) markUserScrollIntent();
 		};
+		const rememberTouch = (event: Event) => {
+			lastTouchYRef.current = firstTouchClientY(event);
+		};
+		const markIntentFromTouch = (event: Event) => {
+			const currentY = firstTouchClientY(event);
+			const previousY = lastTouchYRef.current;
+			lastTouchYRef.current = currentY;
+			const direction = currentY === undefined || previousY === undefined || currentY === previousY
+				? undefined
+				: currentY > previousY ? "away" : "toward";
+			markUserScrollIntent(event, direction);
+		};
 		target.addEventListener("wheel", markUserScrollIntent, { passive: true });
-		target.addEventListener("touchmove", markUserScrollIntent, { passive: true });
+		target.addEventListener("touchstart", rememberTouch, { passive: true });
+		target.addEventListener("touchmove", markIntentFromTouch, { passive: true });
 		target.addEventListener("pointerdown", markIntentFromPointer, { passive: true });
 		target.addEventListener("keydown", markIntentFromKey);
 		target.addEventListener("scroll", updateFromScrollPosition, { passive: true });
 		return () => {
 			target.removeEventListener("wheel", markUserScrollIntent);
-			target.removeEventListener("touchmove", markUserScrollIntent);
+			target.removeEventListener("touchstart", rememberTouch);
+			target.removeEventListener("touchmove", markIntentFromTouch);
 			target.removeEventListener("pointerdown", markIntentFromPointer);
 			target.removeEventListener("keydown", markIntentFromKey);
 			target.removeEventListener("scroll", updateFromScrollPosition);
@@ -238,52 +424,44 @@ export function useStickyVirtuoso({
 
 	useLayoutEffect(() => {
 		lastScrollTopRef.current = undefined;
-		lastScrollHeightRef.current = undefined;
+		if (userAnchorCaptureTimerRef.current !== undefined) window.clearTimeout(userAnchorCaptureTimerRef.current);
+		userAnchorCaptureTimerRef.current = undefined;
+		userAnchorCaptureArmedRef.current = false;
+		visibleAnchorsRef.current = [];
+		pendingAnchorsRef.current = undefined;
 		setAtTop(false);
-		setSticky(true);
+		setSticky(true, false);
 		scheduleScrollToBottom("auto");
 	}, [resetKey, scheduleScrollToBottom, setAtTop, setSticky]);
 
 	useLayoutEffect(() => {
-		if (stickyRef.current) scheduleScrollToBottom("auto");
-	}, [contentKey, itemCount, scheduleScrollToBottom]);
-
-	useLayoutEffect(() => {
-		if (!scroller) return;
-		const scrollHeight = getScrollHeight(scroller);
-		const previousScrollHeight = lastScrollHeightRef.current;
-		lastScrollHeightRef.current = scrollHeight;
-		if (stickyRef.current || previousScrollHeight === undefined) return;
-		const scrollTop = getScrollTop(scroller);
-		const addedHeight = scrollHeight - previousScrollHeight;
-		if (addedHeight > 0 && updateAtTopFromScrollTop(scrollTop)) {
-			requestAtTop();
-			return;
+		prependTransactionRef.current = false;
+		committedItemKeysRef.current = itemKeys;
+		committedFirstItemIndexRef.current = firstItemIndexRef.current;
+		if (!stickyRef.current && pendingAnchorsRef.current !== undefined) userAnchorCaptureArmedRef.current = false;
+		if (stickyRef.current) {
+			scheduleScrollToBottom("auto");
+		} else {
+			restoreVisibleAnchor();
 		}
-		if (addedHeight > 0 && scrollTop <= nearTopThreshold) {
-			setScrollTop(scroller, scrollTop + addedHeight);
-			return;
-		}
-		requestAnimationFrame(() => {
-			if (!scroller || stickyRef.current) return;
-			if (updateAtTopFromScrollTop(getScrollTop(scroller))) {
-				requestAtTop();
-				return;
-			}
-			if (getScrollTop(scroller) <= nearTopThreshold) requestNearTop();
-		});
-	}, [contentKey, itemCount, nearTopThreshold, requestAtTop, requestNearTop, scroller, updateAtTopFromScrollTop]);
+		pendingAnchorsRef.current = undefined;
+		return () => {
+			if (!stickyRef.current && pendingAnchorsRef.current === undefined) pendingAnchorsRef.current = visibleAnchorsRef.current;
+		};
+	}, [contentKey, itemCount, itemKeys, restoreVisibleAnchor, scheduleScrollToBottom]);
 
 	useEffect(() => () => {
 		clearScheduledScroll();
+		if (anchorFrameRef.current !== undefined) cancelAnimationFrame(anchorFrameRef.current);
 		if (atTopFrameRef.current !== undefined) cancelAnimationFrame(atTopFrameRef.current);
 		if (nearTopFrameRef.current !== undefined) cancelAnimationFrame(nearTopFrameRef.current);
 		if (userScrollIntentTimerRef.current !== undefined) window.clearTimeout(userScrollIntentTimerRef.current);
+		if (userAnchorCaptureTimerRef.current !== undefined) window.clearTimeout(userAnchorCaptureTimerRef.current);
 	}, [clearScheduledScroll]);
 
 	const atBottomStateChange = useCallback((atBottom: boolean) => {
 		if (atBottom) {
-			if (!userScrollIntentRef.current) setSticky(true);
+			if (shouldReattachStickyAtBottom(bottomReattachArmedRef.current, false)) setSticky(true);
 			return;
 		}
 		if (userScrollIntentRef.current) setSticky(false);
@@ -293,13 +471,20 @@ export function useStickyVirtuoso({
 
 	const totalListHeightChanged = useCallback(() => {
 		if (stickyRef.current) scheduleScrollToBottom("auto");
-	}, [scheduleScrollToBottom]);
+		else restoreVisibleAnchor();
+	}, [restoreVisibleAnchor, scheduleScrollToBottom]);
 
 	return {
 		virtuosoRef,
+		firstItemIndex,
+		itemsRendered,
+		normalizeRange,
 		isSticky,
 		isAtTop,
 		isScrolledToTop,
+		captureVisibleAnchor: captureVisibleAnchors,
+		prepareForPrepend,
+		restoreAnchor,
 		stickToBottom,
 		scrollToIndex,
 		scrollerRef: setScroller,
@@ -321,14 +506,51 @@ function getScrollTop(scroller: HTMLElement | Window) {
 	return element?.scrollTop ?? 0;
 }
 
+function getClientHeight(scroller: HTMLElement | Window) {
+	const element = scroller instanceof Window ? document.scrollingElement : scroller;
+	return element?.clientHeight ?? 0;
+}
+
+function captureDomVisibleAnchors(scroller: HTMLElement | Window, itemKeys: readonly string[]): StickyVisibleAnchor[] {
+	const root = scroller instanceof Window ? document : scroller;
+	const viewportTop = scroller instanceof Window ? 0 : scroller.getBoundingClientRect().top;
+	const viewportBottom = viewportTop + getClientHeight(scroller);
+	return [...root.querySelectorAll<HTMLElement>("[data-index][data-item-index]")]
+		.flatMap((element) => {
+			const dataIndex = Number(element.dataset.index);
+			const key = Number.isInteger(dataIndex) ? itemKeys[dataIndex] : undefined;
+			if (key === undefined) return [];
+			const rect = element.getBoundingClientRect();
+			if (rect.bottom <= viewportTop || rect.top >= viewportBottom) return [];
+			return [{ key, dataIndex, offset: rect.top - viewportTop }];
+		})
+		.sort((left, right) => left.offset - right.offset);
+}
+
+function restoreDomVisibleAnchor(
+	scroller: HTMLElement | Window,
+	location: StickyAnchorLocation,
+	anchors: readonly StickyVisibleAnchor[],
+	itemKeys: readonly string[],
+): boolean {
+	const anchor = anchors.find((candidate) => itemKeys.indexOf(candidate.key) === location.index);
+	if (!anchor) return false;
+	const root = scroller instanceof Window ? document : scroller;
+	const row = [...root.querySelectorAll<HTMLElement>("[data-row-id]")]
+		.find((element) => element.dataset.rowId === anchor.key);
+	const item = row?.closest<HTMLElement>("[data-index][data-item-index]")
+		?? root.querySelector<HTMLElement>(`[data-index="${location.index}"][data-item-index]`);
+	if (!item) return false;
+	const viewportTop = scroller instanceof Window ? 0 : scroller.getBoundingClientRect().top;
+	const currentOffset = item.getBoundingClientRect().top - viewportTop;
+	const delta = currentOffset - anchor.offset;
+	if (Math.abs(delta) > 0.5) setScrollTop(scroller, getScrollTop(scroller) + delta);
+	return true;
+}
+
 function setScrollTop(scroller: HTMLElement | Window, scrollTop: number) {
 	const element = scroller instanceof Window ? document.scrollingElement : scroller;
 	if (element) element.scrollTop = scrollTop;
-}
-
-function getScrollHeight(scroller: HTMLElement | Window) {
-	const element = scroller instanceof Window ? document.scrollingElement : scroller;
-	return element?.scrollHeight ?? 0;
 }
 
 function scrollToBottom(scroller: HTMLElement | Window) {
@@ -338,6 +560,17 @@ function scrollToBottom(scroller: HTMLElement | Window) {
 
 function isNearTopHistoryIntent(event?: Event) {
 	if (event instanceof WheelEvent) return event.deltaY < 0;
-	if (event instanceof KeyboardEvent) return ["ArrowUp", "PageUp", "Home"].includes(event.key);
+	if (event instanceof KeyboardEvent) return ["ArrowUp", "PageUp", "Home"].includes(event.key) || (event.key === " " && event.shiftKey);
 	return event?.type === "touchmove";
+}
+
+function scrollIntentInput(event?: Event) {
+	if (event instanceof WheelEvent) return { type: "wheel", deltaY: event.deltaY };
+	if (event instanceof KeyboardEvent) return { type: "keydown", key: event.key, shiftKey: event.shiftKey };
+	return { type: event?.type };
+}
+
+function firstTouchClientY(event: Event): number | undefined {
+	if (!(event instanceof TouchEvent)) return undefined;
+	return event.touches[0]?.clientY;
 }

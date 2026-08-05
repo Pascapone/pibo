@@ -6,27 +6,29 @@ import { test } from "node:test";
 const sourcePath = path.resolve("src/apps/chat-ui/src/components/useStickyVirtuoso.ts");
 const source = fs.readFileSync(sourcePath, "utf8");
 
-test("useStickyVirtuoso cancels pending bottom scroll on upward wheel intent", () => {
-	assert.match(
-		source,
-		/const scrollingAwayFromBottom = event instanceof WheelEvent && event\.deltaY < 0;\n\t\tif \(scrollingAwayFromBottom\) clearScheduledScroll\(\);\n\t\tif \(scrollingAwayFromBottom \|\|/,
-		"upward wheel input should synchronously cancel scheduled sticky scroll work before detaching",
-	);
+test("useStickyVirtuoso detaches synchronously for upward intent and permits explicit bottom reattachment", () => {
+	assert.match(source, /if \(direction === "away"\) \{\n\t\t\tbottomReattachArmedRef\.current = false;\n\t\t\tclearScheduledScroll\(\);\n\t\t\tsetSticky\(false\);/);
+	assert.match(source, /bottomReattachArmedRef\.current = direction === "toward"|bottomReattachArmedRef\.current = true/);
+	assert.match(source, /shouldReattachStickyAtBottom\(bottomReattachArmedRef\.current, scrollingAwayFromBottom\)/);
+	assert.match(source, /if \(scroller && isAtBottom\(scroller, 1\)\) setSticky\(true\);/);
+	assert.match(source, /shouldReattachStickyAtBottom\(bottomReattachArmedRef\.current, false\)/);
 });
 
-test("useStickyVirtuoso ignores stale scheduled scrolls after sticky mode is cleared", () => {
-	assert.match(
-		source,
-		/requestAnimationFrame\(\(\) => \{\n\t\t\tscrollFrameRef\.current = undefined;\n\t\t\tif \(!stickyRef\.current\) return;\n\t\t\tconst lastIndex/,
-		"scheduled bottom-scroll frame should re-check sticky state before scrolling",
-	);
+test("useStickyVirtuoso uses explicit anchor and Virtuoso prepend contracts", () => {
+	assert.match(source, /firstItemIndexRef\.current -= prependedCount/);
+	assert.match(source, /captureDomVisibleAnchors\(scroller, committedItemKeysRef\.current\)/);
+	assert.match(source, /stickyAnchorLocation\(\{/);
+	assert.match(source, /virtuosoRef\.current\?\.scrollToIndex\(location\)/);
+	assert.match(source, /else restoreVisibleAnchor\(\);/);
+	assert.match(source, /anchorFrameRef\.current = requestAnimationFrame/);
+	assert.doesNotMatch(source, /firstItemIndexRef\.current \+ index/);
+	assert.match(source, /firstItemIndex,/);
+	assert.match(source, /itemsRendered,/);
+	assert.match(source, /normalizeRange,/);
 });
 
-test("useStickyVirtuoso does not re-enable stickiness during user scroll intent", () => {
-	const guardedBottomSetStickyCount = (source.match(/if \(!userScrollIntentRef\.current\) setSticky\(true\);/g) ?? []).length;
-	assert.equal(
-		guardedBottomSetStickyCount,
-		2,
-		"scroll-position and at-bottom callbacks should not restore sticky mode during explicit user scroll intent",
-	);
+test("useStickyVirtuoso no longer applies blind scrollHeight growth compensation", () => {
+	assert.doesNotMatch(source, /lastScrollHeightRef/);
+	assert.doesNotMatch(source, /addedHeight/);
+	assert.doesNotMatch(source, /scrollTop \+ addedHeight/);
 });

@@ -377,3 +377,71 @@ test("shared terminal view-model source stays renderer-neutral", () => {
 		assert.doesNotMatch(source, /window\.|document\.|HTMLElement|Tailwind/i, `${file} must not use browser or styling APIs`);
 	}
 });
+
+test("compact terminal row identity survives transcript, event-log, and live tool projection handoffs", () => {
+	const transcriptRows = buildCompactTerminalRows(traceView([
+		traceNode("tool.call", "entry:assistant-1:tool:call-1", {
+			toolCallId: "call-1",
+			stableKey: "tool:call-1",
+			source: "transcript",
+			title: "read",
+		}),
+	]), { showThinking: false });
+	const eventRows = buildCompactTerminalRows(traceView([
+		traceNode("tool.call", "tool:call-1", {
+			toolCallId: "call-1",
+			stableKey: "tool:call-1",
+			source: "event-log",
+			title: "read",
+		}),
+	]), { showThinking: false });
+	const liveRows = buildCompactTerminalRows(traceView([
+		traceNode("tool.call", "event:tool:call-1", {
+			toolCallId: "call-1",
+			stableKey: "tool:call-1",
+			source: "live",
+			title: "read",
+		}),
+	]), { showThinking: false });
+
+	assert.equal(transcriptRows[0].id, "terminal:tool:call-1");
+	assert.equal(eventRows[0].id, transcriptRows[0].id);
+	assert.equal(liveRows[0].id, transcriptRows[0].id);
+	assert.deepEqual(transcriptRows[0].sourceNodeIds, ["entry:assistant-1:tool:call-1"]);
+	assert.deepEqual(eventRows[0].sourceNodeIds, ["tool:call-1"]);
+
+	const reconciledRows = buildCompactTerminalRows(traceView([
+		traceNode("tool.call", "entry:assistant-1:tool:call-1", { order: 1, toolCallId: "call-1", stableKey: "tool:call-1", source: "transcript", title: "read", input: { path: "a.ts" } }),
+		traceNode("tool.call", "tool:call-1", { order: 2, toolCallId: "call-1", stableKey: "tool:call-1", source: "event-log", title: "read", output: "done" }),
+	]), { showThinking: false });
+	assert.equal(reconciledRows.length, 1);
+	assert.deepEqual(reconciledRows[0].sourceNodeIds, ["entry:assistant-1:tool:call-1", "tool:call-1"]);
+	assert.deepEqual(reconciledRows[0].input, { path: "a.ts" });
+	assert.equal(reconciledRows[0].output, "done");
+});
+
+test("compact terminal row identity survives assistant and reasoning projection handoffs", () => {
+	for (const fixture of [
+		{ type: "assistant.message", stableKey: "assistant:response-1", expectedId: "terminal:assistant:response-1", showThinking: false },
+		{ type: "model.reasoning", stableKey: "reasoning:thinking-1", expectedId: "terminal:reasoning:thinking-1", showThinking: true },
+	]) {
+		const sourceRows = [
+			buildCompactTerminalRows(traceView([traceNode(fixture.type, `entry:turn-1:${fixture.type}`, { stableKey: fixture.stableKey, source: "transcript", output: "text" })]), { showThinking: fixture.showThinking }),
+			buildCompactTerminalRows(traceView([traceNode(fixture.type, `event:${fixture.type}`, { stableKey: fixture.stableKey, source: "event-log", output: "text" })]), { showThinking: fixture.showThinking }),
+			buildCompactTerminalRows(traceView([traceNode(fixture.type, `live:${fixture.type}`, { stableKey: fixture.stableKey, source: "live", output: "text" })]), { showThinking: fixture.showThinking }),
+		];
+		assert.deepEqual(sourceRows.map((rows) => rows[0]?.id), [fixture.expectedId, fixture.expectedId, fixture.expectedId]);
+	}
+});
+
+test("compact terminal identity does not collapse repeated compactions or unresolved subagents", () => {
+	const rows = buildCompactTerminalRows(traceView([
+		traceNode("execution.compaction", "compaction-1", { order: 1, stableKey: "compaction:active" }),
+		traceNode("execution.compaction", "compaction-2", { order: 2, stableKey: "compaction:active" }),
+		traceNode("agent.delegation", "subagent-1", { order: 3, stableKey: "subagent:undefined" }),
+		traceNode("agent.delegation", "subagent-2", { order: 4, stableKey: "subagent:undefined" }),
+	]), { showThinking: false });
+
+	assert.deepEqual(rows.map((row) => row.id), ["compaction-1", "compaction-2", "subagent-1", "subagent-2"]);
+	assert.equal(new Set(rows.map((row) => row.id)).size, rows.length);
+});
