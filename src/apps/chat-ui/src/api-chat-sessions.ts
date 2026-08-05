@@ -1,6 +1,8 @@
 import { requestJson } from "./api-http";
 import type { BootstrapData, ChatSessionPage, CreateSessionData, ModelProfile, NavigationData, PiboProject, ProjectsBootstrapData, PiboRoom, PiboSession } from "./types";
 
+export type ChatMessageDelivery = "queue" | "steer";
+
 export async function getBootstrap(
 	piboSessionId?: string,
 	includeArchived = false,
@@ -74,11 +76,11 @@ export async function patchProjectSession(piboSessionId: string, input: { title?
 	});
 }
 
-export async function postProjectMessage(piboSessionId: string, text: string, clientTxnId?: string): Promise<unknown> {
+export async function postProjectMessage(piboSessionId: string, text: string, clientTxnId?: string, delivery: ChatMessageDelivery = "queue"): Promise<unknown> {
 	return requestJson<unknown>("/api/chat/projects/message", {
 		method: "POST",
 		headers: { "content-type": "application/json" },
-		body: JSON.stringify({ piboSessionId, text, ...(clientTxnId ? { clientTxnId } : {}) }),
+		body: JSON.stringify({ piboSessionId, text, delivery, ...(clientTxnId ? { clientTxnId } : {}) }),
 	});
 }
 
@@ -176,6 +178,7 @@ export async function postMessage(
 	roomId?: string,
 	webAnnotationIds: readonly string[] = [],
 	fileAttachmentPaths: readonly string[] = [],
+	delivery: ChatMessageDelivery = "queue",
 ): Promise<unknown> {
 	return requestJson("/api/chat/message", {
 		method: "POST",
@@ -184,6 +187,7 @@ export async function postMessage(
 			piboSessionId,
 			text,
 			clientTxnId,
+			delivery,
 			...(roomId ? { roomId } : {}),
 			...(webAnnotationIds.length ? { webAnnotationIds } : {}),
 			...(fileAttachmentPaths.length ? { fileAttachmentPaths } : {}),

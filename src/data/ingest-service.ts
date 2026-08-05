@@ -349,7 +349,7 @@ function payloadForOutputEvent(event: PiboOutputEvent): { value: PiboJsonValue |
 
 function previewTextForOutputEvent(event: PiboOutputEvent): string | undefined {
 	if (event.type === "assistant_message" || event.type === "assistant_delta" || event.type === "thinking_delta" || event.type === "thinking_finished") return previewText(event.text ?? "");
-	if (event.type === "message_queued" || event.type === "message_started") return previewText(event.text);
+	if (event.type === "message_queued" || event.type === "message_steered" || event.type === "message_started") return previewText(event.text);
 	if (event.type === "tool_call" || event.type === "tool_execution_started" || event.type === "tool_execution_updated" || event.type === "tool_execution_finished") return event.toolName;
 	if (event.type === "subagent_session") return `${event.subagentName} via ${event.toolName}`;
 	if (event.type === "execution_result") return event.action;
@@ -360,6 +360,7 @@ function previewTextForOutputEvent(event: PiboOutputEvent): string | undefined {
 
 function attributesForOutputEvent(event: PiboOutputEvent): Record<string, unknown> {
 	if (event.type === "message_queued") return { inlineText: event.text, source: event.source, queuedMessages: event.queuedMessages };
+	if (event.type === "message_steered") return { inlineText: event.text, source: event.source, activeEventId: event.activeEventId };
 	if (event.type === "assistant_message" || event.type === "assistant_delta") return { assistantIndex: event.assistantIndex, contentIndex: event.contentIndex };
 	if (event.type === "thinking_started" || event.type === "thinking_delta" || event.type === "thinking_finished") return { thinkingIndex: event.thinkingIndex, contentIndex: event.contentIndex };
 	if (event.type === "tool_call") return { toolCallId: event.toolCallId, toolName: event.toolName, argsComplete: event.argsComplete };

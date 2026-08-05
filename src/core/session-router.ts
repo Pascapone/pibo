@@ -289,7 +289,9 @@ export class PiboSessionRouter {
 		this.clearIdleSessionTimer(event.piboSessionId);
 		try {
 			if (event.type === "message") {
-				return session.enqueueMessage(event);
+				return event.delivery === "steer"
+					? await session.steerMessage(event)
+					: session.enqueueMessage(event);
 			}
 
 			if (event.action === "abort") {
