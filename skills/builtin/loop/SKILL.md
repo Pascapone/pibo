@@ -59,6 +59,10 @@ Set `--token-reserve <n>` to require more than `n` tokens to remain before Pibo 
 
 `activeAgentTimeSeconds` accumulates time spent executing Goal runs. `elapsedWallClockSeconds` starts when the Goal is first activated, includes waiting and paused periods, and freezes when the Goal enters a terminal state. A Goal created paused reports zero wall-clock elapsed time until first activation.
 
+## Managed browser leases
+
+When a Goal owns `resources.browserLeaseIds`, Pibo renews those leases before each turn and while the turn is active. The same lease is retained across non-terminal Goal turns, including gateway service restart, and is released only when the Goal stops or reaches a terminal state. If the browser process disappeared, Pibo attempts to restart Chromium from the persisted managed profile. Failure to restore authenticated access marks the Goal blocked with an operator-facing resource reason.
+
 ## Operations
 
 ```bash

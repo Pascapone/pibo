@@ -36,7 +36,7 @@ import {
 	resolveComputeWorkerLifecycle,
 } from '../dist/compute/docker.js';
 import { renderComputeDiskDiagnosticsText, renderComputeReapPlanText, renderComputeResourceHealthText, renderComputeWorkerListText } from '../dist/compute/cli.js';
-import { buildComputeResourceHealth, parseProcessList } from '../dist/compute/resource-health.js';
+import { buildComputeResourceHealth, parseDockerContainerIdFromCgroup, parseProcessList } from '../dist/compute/resource-health.js';
 
 const customPolicy = Object.freeze({
 	memory: '3g',
@@ -546,6 +546,38 @@ test('compute resource health warns on browser main-process leaks and active lea
 	const text = renderComputeResourceHealthText(health);
 	assert.match(text, /Unmanaged browser main processes: 1/);
 	assert.match(text, /104\t-\t\/tmp\/unmanaged-profile\tchromium/);
+});
+
+test('compute resource health does not classify Chromium inside an active worker as unmanaged', () => {
+	const worker = workerFixture('pibo-dev-browser-owner', {
+		Labels: { 'pibo.compute.role': 'dev', 'pibo.compute.worktreePath': '/repo/.worktrees/browser-owner' },
+		State: { Status: 'running', Running: true, OOMKilled: false, Dead: false, ExitCode: 0, Pid: 1000 },
+	});
+	const processes = parseProcessList([
+		'1200 2100 1200 chromium /usr/bin/chromium --user-data-dir=/tmp/worker-profile --remote-debugging-port=9222',
+		'1201 1200 1200 chromium /usr/bin/chromium --type=renderer --user-data-dir=/tmp/worker-profile',
+	].join('\n'));
+	processes.find((process) => process.pid === 1200).containerId = worker.id;
+	const health = buildComputeResourceHealth({
+		workers: [worker],
+		disk: buildComputeDiskDiagnostics([], {}),
+		processes,
+		browserPools: [],
+		staleCdpFiles: { pidFiles: 0, portFiles: 0, details: [] },
+		reaperTimers: configuredTimer(),
+	});
+
+	assert.equal(health.browserProcesses.totalChromiumMainProcesses, 1);
+	assert.equal(health.browserProcesses.unassignedChromiumMainProcesses, 0);
+	assert.equal(health.browserProcesses.unassignedMainProcessDetails.length, 0);
+	assert.equal(health.checks.some((check) => check.id === 'browser-leak'), false);
+});
+
+test('Docker cgroup parsing recognizes systemd scope and cgroupfs container ids', () => {
+	const id = '0cf567ce6268c501389fc37c30829eab2734f45c93e0d0c996a0f94073be7f8c';
+	assert.equal(parseDockerContainerIdFromCgroup(`0::/system.slice/docker-${id}.scope`), id);
+	assert.equal(parseDockerContainerIdFromCgroup(`12:memory:/docker/${id}`), id);
+	assert.equal(parseDockerContainerIdFromCgroup('0::/user.slice/user-1000.slice'), undefined);
 });
 
 test('compute resource health reports dirty workers and OOM containers with cleanup commands', () => {
