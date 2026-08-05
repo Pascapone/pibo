@@ -1,5 +1,6 @@
 import { StringEnum, Type } from "@earendil-works/pi-ai";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { foregroundServiceWarning, hasMeaningfulTimeoutOutput, isConfiguredTimeoutError, PiboRunExecutionTimeoutError, resolveRunTimeoutMs } from "./lifecycle.js";
 import type {
 	PiboRunCompletionPolicy,
 	PiboRunReadResult,
@@ -14,6 +15,8 @@ export type PiboRunStartToolInput = {
 	completionPolicy?: PiboRunCompletionPolicy;
 	retryable?: boolean;
 	maxAttempts?: number;
+	timeoutMs?: number;
+	serviceWarning?: string;
 	execute(): Promise<PiboToolRunResult>;
 };
 
@@ -63,7 +66,7 @@ export function createRunToolDefinitions(
 			name: "pibo_run_start",
 			label: "Pibo Run Start",
 			description:
-				"Start a yieldable tool as a yielded run. Use tracked when the result may matter later; use detached only for intentional fire-and-forget work.",
+				"Start a yieldable tool as a yielded run. The run records its configured timeout and classifies lifetime expiry separately from command failure. Use detached only for intentional fire-and-forget work.",
 			promptSnippet:
 				"Use pibo_run_start to run a yieldable tool in the background. It returns a runId. Use pibo_run_read for completed results and pibo_run_wait/status/list/cancel/ack to manage runs.",
 			executionMode: "parallel",
@@ -80,25 +83,38 @@ export function createRunToolDefinitions(
 			}),
 			async execute(toolCallId, params, signal, onUpdate, ctx) {
 				const tool = requireTool(yieldableTools, params.toolName);
+				const timeoutMs = resolveRunTimeoutMs(tool.name, params.arguments);
+				const serviceWarning = foregroundServiceWarning(tool.name, params.arguments, timeoutMs);
+				let observedOutput = false;
 				const run = controller.startToolRun({
 					toolName: tool.name,
 					params: params.arguments,
 					completionPolicy: params.completionPolicy as PiboRunCompletionPolicy | undefined,
+					timeoutMs,
+					serviceWarning,
 					async execute() {
-						const result = await tool.execute(toolCallId, params.arguments, signal, onUpdate, ctx);
-						const resultObject = result as { content?: unknown; details?: unknown; isError?: unknown };
-						const text = textFromToolResult(resultObject);
-						if (resultObject.isError === true) {
-							throw new Error(text ?? `${tool.name} returned an error result.`);
+						try {
+							const result = await tool.execute(toolCallId, params.arguments, signal, (update) => {
+								observedOutput ||= hasMeaningfulTimeoutOutput(update);
+								onUpdate?.(update);
+							}, ctx);
+							const resultObject = result as { content?: unknown; details?: unknown; isError?: unknown };
+							const text = textFromToolResult(resultObject);
+							if (resultObject.isError === true) {
+								if (timeoutMs !== undefined && isConfiguredTimeoutError(text ?? "")) throw new PiboRunExecutionTimeoutError(text ?? `${tool.name} timed out.`, observedOutput || hasMeaningfulTimeoutOutput(text) ? "lifetime" : "startup");
+								throw new Error(text ?? `${tool.name} returned an error result.`);
+							}
+							return { text, details: resultObject.details ?? result };
+						} catch (error) {
+							if (error instanceof PiboRunExecutionTimeoutError) throw error;
+							if (timeoutMs !== undefined && isConfiguredTimeoutError(error)) throw new PiboRunExecutionTimeoutError(error instanceof Error ? error.message : String(error), observedOutput ? "lifetime" : "startup");
+							throw error;
 						}
-						return {
-							text,
-							details: resultObject.details ?? result,
-						};
 					},
 				});
+				const prefix = serviceWarning ? `Started yielded run ${run.runId}.\nWarning: ${serviceWarning}` : `Started yielded run ${run.runId}.`;
 				return {
-					content: [{ type: "text", text: resultText(`Started yielded run ${run.runId}.`, run) }],
+					content: [{ type: "text", text: resultText(prefix, run) }],
 					details: run,
 				};
 			},
@@ -172,8 +188,8 @@ export function createRunToolDefinitions(
 		defineTool({
 			name: "pibo_run_read",
 			label: "Pibo Run Read",
-			description: "Read the terminal result or error for a yielded run.",
-			promptSnippet: "Use pibo_run_read to retrieve a completed or failed run result. Reading terminal tracked runs consumes reminders.",
+			description: "Read the terminal result, timeout reason, or error for a yielded run.",
+			promptSnippet: "Use pibo_run_read to retrieve a completed, failed, or timed_out run result. Reading terminal tracked runs consumes reminders.",
 			executionMode: "parallel",
 			parameters: Type.Object({
 				runId: Type.String({ description: "Run id returned by pibo_run_start" }),

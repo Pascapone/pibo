@@ -767,6 +767,13 @@ test("pibo tools browser-use manages isolated authenticated leases", async () =>
 		const templateEnv = await execFileAsync("node", [cliPath, "tools", "browser-use", "auth-template", "env"], { cwd, env });
 		assert.match(templateEnv.stdout, /PIBO_BROWSER_USE_SESSION='pibo-auth-template'/);
 		assert.match(templateEnv.stdout, /PIBO_BROWSER_USE_CHROME_USER_DATA_DIR=/);
+		const browserUseHomeMatch = templateEnv.stdout.match(/BROWSER_USE_HOME='([^']+)'/);
+		assert.ok(browserUseHomeMatch);
+		const wrapperPath = join(browserUseHomeMatch[1], "bin", "browser-use");
+		const warmupArgsPath = join(cwd, "warmup-args.txt");
+		await mkdir(dirname(wrapperPath), { recursive: true });
+		await writeFile(wrapperPath, "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$PIBO_BROWSER_USE_TEST_ARGS\"\nprintf 'simulated warm-up failure\\n' >&2\nexit 1\n");
+		await chmod(wrapperPath, 0o755);
 
 		const acquired = await execFileAsync("node", [
 			cliPath,
@@ -782,10 +789,16 @@ test("pibo tools browser-use manages isolated authenticated leases", async () =>
 			templateDir,
 			"--ttl-minutes",
 			"30",
-		], { cwd, env });
+			"--headed",
+		], { cwd, env: { ...env, PIBO_BROWSER_USE_TEST_ARGS: warmupArgsPath } });
 		assert.match(acquired.stdout, /PIBO_BROWSER_USE_LEASE_ID='pibo-chat-slot-001'/);
 		assert.match(acquired.stdout, /PIBO_BROWSER_USE_SESSION='pibo-auth-pibo-chat-slot-001'/);
 		assert.match(acquired.stdout, /PIBO_BROWSER_USE_CHROME_USER_DATA_DIR=/);
+		assert.doesNotMatch(acquired.stdout, /Warning:|Reaped /);
+		assert.match(acquired.stderr, /Warning: Browser warm-up failed: simulated warm-up failure/);
+		assert.match(await readFile(warmupArgsPath, "utf8"), /^--headed\n--session\npibo-auth-pibo-chat-slot-001\n--pibo-ensure-chrome\n$/);
+		const evaluated = await execFileAsync("bash", ["-euc", `${acquired.stdout}\nprintf '%s' "$PIBO_BROWSER_USE_LEASE_ID"`], { cwd, env });
+		assert.equal(evaluated.stdout, "pibo-chat-slot-001");
 
 		const slotDirMatch = acquired.stdout.match(/PIBO_BROWSER_USE_CHROME_USER_DATA_DIR='([^']+)'/);
 		assert.ok(slotDirMatch);

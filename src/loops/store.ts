@@ -7,12 +7,12 @@ import { isPiboThinkingLevel } from '../core/thinking.js';
 import type { PiboJsonObject } from '../core/events.js';
 import type { ModelProfile } from '../core/profiles.js';
 import type { PiboThinkingLevel } from '../core/thinking.js';
-import type { PiboGoalStatus, PiboLoopFactReader, PiboLoopJob, PiboLoopJobCreateInput, PiboLoopJobPatchInput, PiboLoopJobState, PiboLoopMode, PiboLoopResourceCleanupState, PiboLoopResourceMetadata, PiboLoopRun, PiboLoopRunFact, PiboLoopRunStatus, PiboLoopStopEvaluationSummary, PiboLoopStopPolicy, PiboLoopTarget } from './types.js';
+import type { PiboGoalStatus, PiboLoopFactReader, PiboLoopJob, PiboLoopJobCreateInput, PiboLoopJobPatchInput, PiboLoopJobState, PiboLoopMode, PiboLoopResourceCleanupState, PiboLoopResourceMetadata, PiboLoopRun, PiboLoopRunAccounting, PiboLoopRunFact, PiboLoopRunStatus, PiboLoopStopEvaluationSummary, PiboLoopStopPolicy, PiboLoopTarget } from './types.js';
 
 export type PiboLoopStoreOptions = { path?: string };
 
-type LoopJobRow = { id: string; loop_mode: string; name: string; description: string | null; enabled: number; target_json: string; profile: string; prompt: string; max_iterations: number | null; token_budget: number | null; runtime_options_json: string | null; stop_policy_json: string | null; resource_json?: string | null; state_json: string; created_at: string; updated_at: string };
-type LoopRunRow = { id: string; job_id: string; pibo_session_id: string | null; status: PiboLoopRunStatus; reason: string | null; error: string | null; resource_json?: string | null; started_at: string | null; completed_at: string | null; created_at: string; updated_at: string };
+type LoopJobRow = { id: string; loop_mode: string; name: string; description: string | null; enabled: number; target_json: string; profile: string; prompt: string; max_iterations: number | null; token_budget: number | null; token_reserve: number | null; runtime_options_json: string | null; stop_policy_json: string | null; resource_json?: string | null; state_json: string; created_at: string; updated_at: string };
+type LoopRunRow = { id: string; job_id: string; pibo_session_id: string | null; status: PiboLoopRunStatus; reason: string | null; error: string | null; accounting_json?: string | null; resource_json?: string | null; started_at: string | null; completed_at: string | null; created_at: string; updated_at: string };
 type LoopRunFactRow = { id: string; job_id: string; run_id: string | null; pibo_session_id: string | null; type: string; source: PiboLoopRunFact['source']; payload_json: string; created_at: string };
 
 function nowIso(now = new Date()): string { return now.toISOString(); }
@@ -71,14 +71,33 @@ function resourceMetadataJson(resources: PiboLoopResourceMetadata | null | undef
 	const normalized = normalizeLoopResourceMetadata(resources);
 	return normalized ? JSON.stringify(normalized) : null;
 }
+function parseRunAccounting(json: string | null | undefined): PiboLoopRunAccounting | undefined {
+	if (!json) return undefined;
+	try {
+		const value = JSON.parse(json) as PiboLoopRunAccounting;
+		return value && typeof value === 'object' && !Array.isArray(value) ? value : undefined;
+	} catch { return undefined; }
+}
+function runAccountingJson(accounting: PiboLoopRunAccounting | undefined): string | null { return accounting ? JSON.stringify(accounting) : null; }
+function normalizeJobState(state: PiboLoopJobState, mode: PiboLoopMode, enabled: boolean, createdAt: string): PiboLoopJobState {
+	if (mode !== 'goal') return state;
+	const activeTimeSeconds = Math.max(0, Math.floor(state.activeTimeSeconds ?? state.timeUsedSeconds ?? 0));
+	const goalStartedAt = state.goalStartedAt ?? (enabled || (state.completedIterations ?? 0) > 0 || (state.tokensUsed ?? 0) > 0 || (state.goalStatus !== undefined && state.goalStatus !== 'paused') ? createdAt : undefined);
+	const normalized = { ...state, activeTimeSeconds, ...(goalStartedAt ? { goalStartedAt } : {}) };
+	delete normalized.timeUsedSeconds;
+	return normalized;
+}
 
 function jobFromRow(row: LoopJobRow): PiboLoopJob {
 	const resources = parseResourceMetadata(row.resource_json);
-	return { id: row.id, mode: normalizeLoopMode(row.loop_mode, 'ralph'), name: row.name, description: row.description ?? undefined, enabled: row.enabled === 1, target: parseLoopTarget(row.target_json), profile: row.profile, prompt: row.prompt, maxIterations: row.max_iterations ?? undefined, tokenBudget: row.token_budget ?? undefined, stopPolicy: parseStopPolicy(row.stop_policy_json), ...parseRuntimeOptions(row.runtime_options_json), ...(resources ? { resources } : {}), state: parseJson(row.state_json), createdAt: row.created_at, updatedAt: row.updated_at };
+	const mode = normalizeLoopMode(row.loop_mode, 'ralph');
+	const enabled = row.enabled === 1;
+	return { id: row.id, mode, name: row.name, description: row.description ?? undefined, enabled, target: parseLoopTarget(row.target_json), profile: row.profile, prompt: row.prompt, maxIterations: row.max_iterations ?? undefined, tokenBudget: row.token_budget ?? undefined, tokenReserve: row.token_reserve ?? undefined, stopPolicy: parseStopPolicy(row.stop_policy_json), ...parseRuntimeOptions(row.runtime_options_json), ...(resources ? { resources } : {}), state: normalizeJobState(parseJson(row.state_json), mode, enabled, row.created_at), createdAt: row.created_at, updatedAt: row.updated_at };
 }
 function runFromRow(row: LoopRunRow): PiboLoopRun {
 	const resources = parseResourceMetadata(row.resource_json);
-	return { id: row.id, jobId: row.job_id, piboSessionId: row.pibo_session_id ?? undefined, status: row.status, reason: row.reason ?? undefined, error: row.error ?? undefined, startedAt: row.started_at ?? undefined, completedAt: row.completed_at ?? undefined, ...(resources ? { resources } : {}), createdAt: row.created_at, updatedAt: row.updated_at };
+	const accounting = parseRunAccounting(row.accounting_json);
+	return { id: row.id, jobId: row.job_id, piboSessionId: row.pibo_session_id ?? undefined, status: row.status, reason: row.reason ?? undefined, error: row.error ?? undefined, startedAt: row.started_at ?? undefined, completedAt: row.completed_at ?? undefined, ...(accounting ? { accounting } : {}), ...(resources ? { resources } : {}), createdAt: row.created_at, updatedAt: row.updated_at };
 }
 function mergeResourceMetadata(jobResources: PiboLoopResourceMetadata | undefined, runResources: PiboLoopResourceMetadata | undefined): PiboLoopResourceMetadata | undefined {
 	if (!jobResources && !runResources) return undefined;
@@ -96,6 +115,11 @@ function normalizeMaxIterations(value: number | undefined): number | undefined {
 function normalizeTokenBudget(value: number | undefined): number | undefined {
 	if (value === undefined) return undefined;
 	if (!Number.isInteger(value) || value < 1) throw new Error('tokenBudget must be a positive integer');
+	return value;
+}
+function normalizeTokenReserve(value: number | undefined): number | undefined {
+	if (value === undefined) return undefined;
+	if (!Number.isInteger(value) || value < 0) throw new Error('tokenReserve must be a non-negative integer');
 	return value;
 }
 function goalStatus(job: Pick<PiboLoopJob, 'mode' | 'enabled' | 'state'>): PiboGoalStatus | undefined {
@@ -161,14 +185,17 @@ function parseStopPolicy(json: string | null): PiboLoopStopPolicy | undefined {
 	try { return normalizeLoopStopPolicy(JSON.parse(json) as PiboLoopStopPolicy); } catch { return undefined; }
 }
 function stopPolicyJson(policy: PiboLoopStopPolicy | undefined): string | null { return policy ? JSON.stringify(normalizeLoopStopPolicy(policy)) : null; }
-function validateJobInput(input: Pick<PiboLoopJobCreateInput, 'mode' | 'target' | 'profile' | 'prompt' | 'maxIterations' | 'tokenBudget' | 'modelOverride' | 'thinkingLevel' | 'fastMode' | 'stopPolicy' | 'resources'>): void {
+function validateJobInput(input: Pick<PiboLoopJobCreateInput, 'mode' | 'target' | 'profile' | 'prompt' | 'maxIterations' | 'tokenBudget' | 'tokenReserve' | 'modelOverride' | 'thinkingLevel' | 'fastMode' | 'stopPolicy' | 'resources'>): void {
 	if (input.mode !== undefined && input.mode !== 'goal' && input.mode !== 'ralph') throw new Error('mode must be goal or ralph');
 	if (!input.profile.trim()) throw new Error('profile is required');
 	if (!input.prompt.trim()) throw new Error('prompt is required');
 	if (input.target.kind === 'room' && !input.target.roomId.trim()) throw new Error('target.roomId is required');
-	if (input.mode === 'ralph' && input.tokenBudget !== undefined) throw new Error('tokenBudget is only available for goal mode');
+	if (input.mode === 'ralph' && (input.tokenBudget !== undefined || input.tokenReserve !== undefined)) throw new Error('tokenBudget and tokenReserve are only available for goal mode');
 	normalizeMaxIterations(input.maxIterations);
 	normalizeTokenBudget(input.tokenBudget);
+	normalizeTokenReserve(input.tokenReserve);
+	if (input.tokenReserve !== undefined && input.tokenBudget === undefined) throw new Error('tokenReserve requires tokenBudget');
+	if (input.tokenReserve !== undefined && input.tokenBudget !== undefined && input.tokenReserve >= input.tokenBudget) throw new Error('tokenReserve must be smaller than tokenBudget');
 	normalizeRuntimeOptions(input);
 	normalizeLoopStopPolicy(input.stopPolicy);
 	normalizeLoopResourceMetadata(input.resources);
@@ -197,10 +224,10 @@ export class PiboLoopStore {
 		const enabled = input.enabled === true;
 		const state: PiboLoopJobState = {
 			completedIterations: 0,
-			...(mode === 'goal' ? { goalStatus: enabled ? 'active' : 'paused', tokensUsed: 0, timeUsedSeconds: 0 } : {}),
+			...(mode === 'goal' ? { goalStatus: enabled ? 'active' : 'paused', tokensUsed: 0, activeTimeSeconds: 0, ...(enabled ? { goalStartedAt: timestamp } : {}) } : {}),
 			...(input.initialPiboSessionId?.trim() ? { lastPiboSessionId: input.initialPiboSessionId.trim() } : {}),
 		};
-		const job: PiboLoopJob = { id: mode === 'ralph' ? `ralph_${randomUUID()}` : `loop_${randomUUID()}`, mode, name: (input.name ?? defaultName(input.prompt)).trim(), description: input.description?.trim() || undefined, enabled, target, profile: input.profile, prompt: input.prompt, maxIterations: normalizeMaxIterations(input.maxIterations), tokenBudget: normalizeTokenBudget(input.tokenBudget), stopPolicy: normalizeLoopStopPolicy(input.stopPolicy), ...runtimeOptions, ...(resources ? { resources } : {}), state, createdAt: timestamp, updatedAt: timestamp };
+		const job: PiboLoopJob = { id: mode === 'ralph' ? `ralph_${randomUUID()}` : `loop_${randomUUID()}`, mode, name: (input.name ?? defaultName(input.prompt)).trim(), description: input.description?.trim() || undefined, enabled, target, profile: input.profile, prompt: input.prompt, maxIterations: normalizeMaxIterations(input.maxIterations), tokenBudget: normalizeTokenBudget(input.tokenBudget), tokenReserve: normalizeTokenReserve(input.tokenReserve), stopPolicy: normalizeLoopStopPolicy(input.stopPolicy), ...runtimeOptions, ...(resources ? { resources } : {}), state, createdAt: timestamp, updatedAt: timestamp };
 		this.insertJob(job);
 		return this.getJob(job.id)!;
 	}
@@ -214,26 +241,64 @@ export class PiboLoopStore {
 		if (!job || job.mode !== 'goal') return undefined;
 		const timestamp = nowIso(now);
 		const state: PiboLoopJobState = { ...job.state, goalStatus: status, runningAt: job.state.runningAt };
+		if (job.state.runningAt) delete state.goalEndedAt;
+		else state.goalEndedAt = timestamp;
 		this.db.prepare('UPDATE pibo_ralph_jobs SET enabled = 0, state_json = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(state), timestamp, id);
 		return this.getJob(id);
 	}
-	recordGoalProgress(id: string, input: { tokens?: number; timeUsedSeconds?: number }, now = new Date()): PiboLoopJob | undefined {
+	recordGoalProgress(id: string, input: { tokens?: number; activeTimeSeconds?: number }, now = new Date()): PiboLoopJob | undefined {
 		const job = this.getJob(id);
 		if (!job || job.mode !== 'goal') return job;
 		const tokens = Math.max(0, Math.floor(input.tokens ?? 0));
-		const timeUsedSeconds = Math.max(0, Math.floor(input.timeUsedSeconds ?? 0));
+		const activeTimeSeconds = Math.max(0, Math.floor(input.activeTimeSeconds ?? 0));
 		const nextTokens = (job.state.tokensUsed ?? 0) + tokens;
 		const currentStatus = goalStatus(job) ?? 'active';
 		const budgetLimited = currentStatus === 'active' && job.tokenBudget !== undefined && nextTokens >= job.tokenBudget;
 		const state: PiboLoopJobState = {
 			...job.state,
 			tokensUsed: nextTokens,
-			timeUsedSeconds: (job.state.timeUsedSeconds ?? 0) + timeUsedSeconds,
+			activeTimeSeconds: (job.state.activeTimeSeconds ?? 0) + activeTimeSeconds,
 			goalStatus: budgetLimited ? 'budget_limited' : currentStatus,
 		};
 		const timestamp = nowIso(now);
+		if (budgetLimited && !job.state.runningAt) state.goalEndedAt = timestamp;
 		this.db.prepare('UPDATE pibo_ralph_jobs SET enabled = ?, state_json = ?, updated_at = ? WHERE id = ?').run(budgetLimited ? 0 : job.enabled ? 1 : 0, JSON.stringify(state), timestamp, id);
 		return this.getJob(id);
+	}
+	recordGoalTurnUsage(id: string, runId: string, tokens: number, now = new Date()): PiboLoopJob | undefined {
+		this.db.exec('BEGIN IMMEDIATE');
+		try {
+			const job = this.recordGoalProgress(id, { tokens }, now);
+			if (job?.mode === 'goal') {
+				const row = this.db.prepare('SELECT * FROM pibo_ralph_runs WHERE id = ? AND job_id = ?').get(runId, id) as LoopRunRow | undefined;
+				if (row) {
+					const accounting = parseRunAccounting(row.accounting_json) ?? {};
+					const turnTokens = (accounting.tokensUsed ?? 0) + Math.max(0, Math.floor(tokens));
+					const budget = accounting.tokenBudget;
+					const before = accounting.tokensUsedBefore ?? 0;
+					const nextAccounting: PiboLoopRunAccounting = { ...accounting, tokensUsed: turnTokens, ...(budget !== undefined ? { overshootTokens: Math.max(0, before + turnTokens - budget) } : {}) };
+					this.db.prepare('UPDATE pibo_ralph_runs SET accounting_json = ?, updated_at = ? WHERE id = ?').run(runAccountingJson(nextAccounting), nowIso(now), runId);
+				}
+			}
+			this.db.exec('COMMIT');
+			return job;
+		} catch (error) { this.db.exec('ROLLBACK'); throw error; }
+	}
+	recordGoalRunTime(id: string, runId: string, activeTimeSeconds: number, now = new Date()): PiboLoopJob | undefined {
+		const seconds = Math.max(0, Math.floor(activeTimeSeconds));
+		this.db.exec('BEGIN IMMEDIATE');
+		try {
+			const job = this.recordGoalProgress(id, { activeTimeSeconds: seconds }, now);
+			if (job?.mode === 'goal') {
+				const row = this.db.prepare('SELECT * FROM pibo_ralph_runs WHERE id = ? AND job_id = ?').get(runId, id) as LoopRunRow | undefined;
+				if (row) {
+					const accounting = { ...(parseRunAccounting(row.accounting_json) ?? {}), activeTimeSeconds: seconds };
+					this.db.prepare('UPDATE pibo_ralph_runs SET accounting_json = ?, updated_at = ? WHERE id = ?').run(runAccountingJson(accounting), nowIso(now), runId);
+				}
+			}
+			this.db.exec('COMMIT');
+			return job;
+		} catch (error) { this.db.exec('ROLLBACK'); throw error; }
 	}
 	listJobs(input: { includeDisabled?: boolean } = {}): PiboLoopJob[] {
 		const clauses: string[] = []; const values: Array<string | number> = [];
@@ -254,21 +319,24 @@ export class PiboLoopStore {
 		const enabled = patch.enabled ?? existing.enabled;
 		let state: PiboLoopJobState = mode === existing.mode
 			? { ...existing.state }
-			: { completedIterations: existing.state.completedIterations ?? 0, ...(mode === 'goal' ? { goalStatus: enabled ? 'active' : 'paused', tokensUsed: 0, timeUsedSeconds: 0 } : {}) };
+			: { completedIterations: existing.state.completedIterations ?? 0, ...(mode === 'goal' ? { goalStatus: enabled ? 'active' : 'paused', tokensUsed: 0, activeTimeSeconds: 0, ...(enabled ? { goalStartedAt: nowIso(now) } : {}) } : {}) };
 		if (mode === 'goal' && patch.enabled !== undefined) {
 			const currentGoalStatus = goalStatus({ mode, enabled: existing.enabled, state: existing.state }) ?? 'paused';
 			if (patch.enabled) {
 				if (currentGoalStatus === 'complete') throw new Error('Completed goals cannot be restarted; create a new goal');
 				const nextBudget = hasOwn(patch, 'tokenBudget') ? normalizeTokenBudget(patch.tokenBudget ?? undefined) : existing.tokenBudget;
-				if (currentGoalStatus === 'budget_limited' && nextBudget !== undefined && (existing.state.tokensUsed ?? 0) >= nextBudget) throw new Error('Increase or clear the token budget before resuming this goal');
+				const nextReserve = hasOwn(patch, 'tokenReserve') ? normalizeTokenReserve(patch.tokenReserve ?? undefined) : existing.tokenReserve;
+				if (currentGoalStatus === 'budget_limited' && nextBudget !== undefined && (existing.state.tokensUsed ?? 0) + (nextReserve ?? 0) >= nextBudget) throw new Error('Increase or clear the token budget, or lower the token reserve, before resuming this goal');
 				state.goalStatus = 'active';
+				state.goalStartedAt ??= nowIso(now);
+				delete state.goalEndedAt;
 				state.stopRequestedAt = undefined;
 				state.cancelRequestedAt = undefined;
 			} else {
 				state.goalStatus = currentGoalStatus === 'active' ? 'paused' : currentGoalStatus;
 			}
 		}
-		const next: PiboLoopJob = { ...existing, mode, state, name: patch.name !== undefined ? patch.name.trim() : existing.name, description: patch.description !== undefined ? patch.description?.trim() || undefined : existing.description, enabled, target, profile: patch.profile ?? existing.profile, prompt: patch.prompt ?? existing.prompt, maxIterations: hasOwn(patch, 'maxIterations') ? normalizeMaxIterations(patch.maxIterations ?? undefined) : existing.maxIterations, tokenBudget: mode === 'ralph' ? undefined : hasOwn(patch, 'tokenBudget') ? normalizeTokenBudget(patch.tokenBudget ?? undefined) : existing.tokenBudget, stopPolicy, modelOverride: runtimeOptions.modelOverride, thinkingLevel: runtimeOptions.thinkingLevel, fastMode: runtimeOptions.fastMode, updatedAt: nowIso(now) };
+		const next: PiboLoopJob = { ...existing, mode, state, name: patch.name !== undefined ? patch.name.trim() : existing.name, description: patch.description !== undefined ? patch.description?.trim() || undefined : existing.description, enabled, target, profile: patch.profile ?? existing.profile, prompt: patch.prompt ?? existing.prompt, maxIterations: hasOwn(patch, 'maxIterations') ? normalizeMaxIterations(patch.maxIterations ?? undefined) : existing.maxIterations, tokenBudget: mode === 'ralph' ? undefined : hasOwn(patch, 'tokenBudget') ? normalizeTokenBudget(patch.tokenBudget ?? undefined) : existing.tokenBudget, tokenReserve: mode === 'ralph' || (hasOwn(patch, 'tokenBudget') && patch.tokenBudget === null && !hasOwn(patch, 'tokenReserve')) ? undefined : hasOwn(patch, 'tokenReserve') ? normalizeTokenReserve(patch.tokenReserve ?? undefined) : existing.tokenReserve, stopPolicy, modelOverride: runtimeOptions.modelOverride, thinkingLevel: runtimeOptions.thinkingLevel, fastMode: runtimeOptions.fastMode, updatedAt: nowIso(now) };
 		validateJobInput(next); this.writeJob(next); return this.getJob(id);
 	}
 	updateJobResources(id: string, resources: PiboLoopResourceMetadata | null | undefined, now = new Date()): PiboLoopJob | undefined {
@@ -328,7 +396,7 @@ export class PiboLoopStore {
 		const reachedMaxIterations = job.maxIterations !== undefined && completedIterations >= job.maxIterations;
 		const terminalGoalStatus = job.mode === 'goal' && ['complete', 'blocked', 'budget_limited'].includes(goalStatus(job) ?? '');
 		const shouldDisable = terminalGoalStatus || reachedMaxIterations || input.stopAfterRun === true || input.stopEvaluation?.finalAction === 'stop-after-run' || input.stopEvaluation?.finalAction === 'cancel-current-run';
-		const state: PiboLoopJobState = { ...job.state, runningAt: undefined, completedIterations, lastRunAt: timestamp, lastRunId: input.runId, lastStatus: input.status === 'error' ? 'error' : input.status === 'cancelled' ? 'cancelled' : 'ok', lastError: input.error, lastPiboSessionId: input.piboSessionId ?? job.state.lastPiboSessionId, consecutiveErrors: input.status === 'error' ? (job.state.consecutiveErrors ?? 0) + 1 : 0, conditionStates: input.conditionStates ?? job.state.conditionStates, lastStopEvaluation: input.stopEvaluation ?? job.state.lastStopEvaluation };
+		const state: PiboLoopJobState = { ...job.state, runningAt: undefined, completedIterations, lastRunAt: timestamp, lastRunId: input.runId, lastStatus: input.status === 'error' ? 'error' : input.status === 'cancelled' ? 'cancelled' : 'ok', lastError: input.error, lastPiboSessionId: input.piboSessionId ?? job.state.lastPiboSessionId, consecutiveErrors: input.status === 'error' ? (job.state.consecutiveErrors ?? 0) + 1 : 0, conditionStates: input.conditionStates ?? job.state.conditionStates, lastStopEvaluation: input.stopEvaluation ?? job.state.lastStopEvaluation, ...(terminalGoalStatus ? { goalEndedAt: job.state.goalEndedAt ?? timestamp } : {}) };
 		this.db.prepare('UPDATE pibo_ralph_runs SET status = ?, pibo_session_id = COALESCE(?, pibo_session_id), reason = ?, error = ?, completed_at = ?, updated_at = ? WHERE id = ?').run(input.status, input.piboSessionId ?? null, input.reason ?? input.stopEvaluation?.reason ?? null, input.error ?? null, timestamp, timestamp, input.runId);
 		this.db.prepare('UPDATE pibo_ralph_jobs SET enabled = ?, state_json = ?, updated_at = ? WHERE id = ?').run(shouldDisable ? 0 : job.enabled ? 1 : 0, JSON.stringify(state), timestamp, job.id);
 	}
@@ -365,20 +433,39 @@ export class PiboLoopStore {
 	}
 	private reserveJob(id: string, now = new Date()): { job: PiboLoopJob; run: PiboLoopRun } | undefined {
 		const timestamp = nowIso(now); this.db.exec('BEGIN IMMEDIATE');
-		try { const job = this.getJob(id); if (!job || !job.enabled || job.state.runningAt) { this.db.exec('COMMIT'); return undefined; } const run = this.createRunLocked(job, timestamp); const state = { ...job.state, runningAt: timestamp, lastRunAt: timestamp, lastRunId: run.id }; this.updateJobStateLocked(job.id, state, timestamp); this.db.exec('COMMIT'); return { job: { ...job, state, updatedAt: timestamp }, run }; } catch (error) { this.db.exec('ROLLBACK'); throw error; }
+		try {
+			const job = this.getJob(id);
+			if (!job || !job.enabled || job.state.runningAt) { this.db.exec('COMMIT'); return undefined; }
+			if (job.mode === 'goal' && job.tokenBudget !== undefined) {
+				const remaining = Math.max(0, job.tokenBudget - (job.state.tokensUsed ?? 0));
+				if (remaining <= (job.tokenReserve ?? 0)) {
+					const state = { ...job.state, goalStatus: 'budget_limited' as const, goalEndedAt: timestamp };
+					this.db.prepare('UPDATE pibo_ralph_jobs SET enabled = 0, state_json = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(state), timestamp, job.id);
+					this.db.exec('COMMIT');
+					return undefined;
+				}
+			}
+			const run = this.createRunLocked(job, timestamp);
+			const state = { ...job.state, runningAt: timestamp, lastRunAt: timestamp, lastRunId: run.id };
+			this.updateJobStateLocked(job.id, state, timestamp);
+			this.db.exec('COMMIT');
+			return { job: { ...job, state, updatedAt: timestamp }, run };
+		} catch (error) { this.db.exec('ROLLBACK'); throw error; }
 	}
 	private applySchema(): void {
 		this.createFreshSchema();
 		this.ensureJobColumn('loop_mode', "TEXT NOT NULL DEFAULT 'ralph'");
 		this.ensureJobColumn('max_iterations', 'INTEGER');
 		this.ensureJobColumn('token_budget', 'INTEGER');
+		this.ensureJobColumn('token_reserve', 'INTEGER');
 		this.ensureJobColumn('runtime_options_json', 'TEXT');
 		this.ensureJobColumn('stop_policy_json', 'TEXT');
 		this.ensureJobColumn('resource_json', 'TEXT');
 		this.ensureRunColumn('resource_json', 'TEXT');
+		this.ensureRunColumn('accounting_json', 'TEXT');
 	}
 	private createFreshSchema(): void {
-		this.db.exec(`CREATE TABLE IF NOT EXISTS pibo_ralph_jobs (id TEXT PRIMARY KEY, loop_mode TEXT NOT NULL DEFAULT 'goal', name TEXT NOT NULL, description TEXT, enabled INTEGER NOT NULL, target_json TEXT NOT NULL, profile TEXT NOT NULL, prompt TEXT NOT NULL, max_iterations INTEGER, token_budget INTEGER, runtime_options_json TEXT, stop_policy_json TEXT, resource_json TEXT, state_json TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL); CREATE INDEX IF NOT EXISTS idx_pibo_ralph_jobs_enabled ON pibo_ralph_jobs(enabled, updated_at DESC); CREATE TABLE IF NOT EXISTS pibo_ralph_runs (id TEXT PRIMARY KEY, job_id TEXT NOT NULL, pibo_session_id TEXT, status TEXT NOT NULL, reason TEXT, error TEXT, resource_json TEXT, started_at TEXT, completed_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL); CREATE INDEX IF NOT EXISTS idx_pibo_ralph_runs_job_created ON pibo_ralph_runs(job_id, created_at DESC); CREATE TABLE IF NOT EXISTS pibo_ralph_run_facts (id TEXT PRIMARY KEY, job_id TEXT NOT NULL, run_id TEXT, pibo_session_id TEXT, type TEXT NOT NULL, source TEXT NOT NULL, payload_json TEXT NOT NULL, created_at TEXT NOT NULL); CREATE INDEX IF NOT EXISTS idx_pibo_ralph_facts_job_created ON pibo_ralph_run_facts(job_id, created_at DESC); CREATE INDEX IF NOT EXISTS idx_pibo_ralph_facts_run_type ON pibo_ralph_run_facts(run_id, type, created_at DESC);`);
+		this.db.exec(`CREATE TABLE IF NOT EXISTS pibo_ralph_jobs (id TEXT PRIMARY KEY, loop_mode TEXT NOT NULL DEFAULT 'goal', name TEXT NOT NULL, description TEXT, enabled INTEGER NOT NULL, target_json TEXT NOT NULL, profile TEXT NOT NULL, prompt TEXT NOT NULL, max_iterations INTEGER, token_budget INTEGER, token_reserve INTEGER, runtime_options_json TEXT, stop_policy_json TEXT, resource_json TEXT, state_json TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL); CREATE INDEX IF NOT EXISTS idx_pibo_ralph_jobs_enabled ON pibo_ralph_jobs(enabled, updated_at DESC); CREATE TABLE IF NOT EXISTS pibo_ralph_runs (id TEXT PRIMARY KEY, job_id TEXT NOT NULL, pibo_session_id TEXT, status TEXT NOT NULL, reason TEXT, error TEXT, accounting_json TEXT, resource_json TEXT, started_at TEXT, completed_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL); CREATE INDEX IF NOT EXISTS idx_pibo_ralph_runs_job_created ON pibo_ralph_runs(job_id, created_at DESC); CREATE TABLE IF NOT EXISTS pibo_ralph_run_facts (id TEXT PRIMARY KEY, job_id TEXT NOT NULL, run_id TEXT, pibo_session_id TEXT, type TEXT NOT NULL, source TEXT NOT NULL, payload_json TEXT NOT NULL, created_at TEXT NOT NULL); CREATE INDEX IF NOT EXISTS idx_pibo_ralph_facts_job_created ON pibo_ralph_run_facts(job_id, created_at DESC); CREATE INDEX IF NOT EXISTS idx_pibo_ralph_facts_run_type ON pibo_ralph_run_facts(run_id, type, created_at DESC);`);
 	}
 	private ensureJobColumn(name: string, definition: string): void {
 		const columns = this.tableColumns('pibo_ralph_jobs');
@@ -391,9 +478,21 @@ export class PiboLoopStore {
 	private tableColumns(tableName: string): Set<string> {
 		return new Set((this.db.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>).map((column) => column.name));
 	}
-	private insertJob(job: PiboLoopJob): void { this.db.prepare('INSERT INTO pibo_ralph_jobs (id, loop_mode, name, description, enabled, target_json, profile, prompt, max_iterations, token_budget, runtime_options_json, stop_policy_json, resource_json, state_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(job.id, job.mode, job.name, job.description ?? null, job.enabled ? 1 : 0, targetJson(job.target), job.profile, job.prompt, job.maxIterations ?? null, job.tokenBudget ?? null, runtimeOptionsJson(job), stopPolicyJson(job.stopPolicy), resourceMetadataJson(job.resources), JSON.stringify(job.state), job.createdAt, job.updatedAt); }
-	private writeJob(job: PiboLoopJob): void { this.db.prepare('UPDATE pibo_ralph_jobs SET loop_mode = ?, name = ?, description = ?, enabled = ?, target_json = ?, profile = ?, prompt = ?, max_iterations = ?, token_budget = ?, runtime_options_json = ?, stop_policy_json = ?, resource_json = ?, state_json = ?, updated_at = ? WHERE id = ?').run(job.mode, job.name, job.description ?? null, job.enabled ? 1 : 0, targetJson(job.target), job.profile, job.prompt, job.maxIterations ?? null, job.tokenBudget ?? null, runtimeOptionsJson(job), stopPolicyJson(job.stopPolicy), resourceMetadataJson(job.resources), JSON.stringify(job.state), job.updatedAt, job.id); }
+	private insertJob(job: PiboLoopJob): void { this.db.prepare('INSERT INTO pibo_ralph_jobs (id, loop_mode, name, description, enabled, target_json, profile, prompt, max_iterations, token_budget, token_reserve, runtime_options_json, stop_policy_json, resource_json, state_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(job.id, job.mode, job.name, job.description ?? null, job.enabled ? 1 : 0, targetJson(job.target), job.profile, job.prompt, job.maxIterations ?? null, job.tokenBudget ?? null, job.tokenReserve ?? null, runtimeOptionsJson(job), stopPolicyJson(job.stopPolicy), resourceMetadataJson(job.resources), JSON.stringify(job.state), job.createdAt, job.updatedAt); }
+	private writeJob(job: PiboLoopJob): void { this.db.prepare('UPDATE pibo_ralph_jobs SET loop_mode = ?, name = ?, description = ?, enabled = ?, target_json = ?, profile = ?, prompt = ?, max_iterations = ?, token_budget = ?, token_reserve = ?, runtime_options_json = ?, stop_policy_json = ?, resource_json = ?, state_json = ?, updated_at = ? WHERE id = ?').run(job.mode, job.name, job.description ?? null, job.enabled ? 1 : 0, targetJson(job.target), job.profile, job.prompt, job.maxIterations ?? null, job.tokenBudget ?? null, job.tokenReserve ?? null, runtimeOptionsJson(job), stopPolicyJson(job.stopPolicy), resourceMetadataJson(job.resources), JSON.stringify(job.state), job.updatedAt, job.id); }
 	private updateJobStateLocked(id: string, state: PiboLoopJobState, updatedAt: string): void { this.db.prepare('UPDATE pibo_ralph_jobs SET state_json = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(state), updatedAt, id); }
-	private createRunLocked(job: PiboLoopJob, timestamp: string): PiboLoopRun { const run: PiboLoopRun = { id: job.mode === 'ralph' ? `rrun_${randomUUID()}` : `lrun_${randomUUID()}`, jobId: job.id, status: 'running', startedAt: timestamp, ...(job.resources ? { resources: job.resources } : {}), createdAt: timestamp, updatedAt: timestamp }; this.db.prepare('INSERT INTO pibo_ralph_runs (id, job_id, pibo_session_id, status, reason, error, resource_json, started_at, completed_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(run.id, run.jobId, null, run.status, null, null, resourceMetadataJson(run.resources), run.startedAt ?? null, null, run.createdAt, run.updatedAt); return run; }
+	private createRunLocked(job: PiboLoopJob, timestamp: string): PiboLoopRun {
+		const tokensUsedBefore = job.state.tokensUsed ?? 0;
+		const accounting: PiboLoopRunAccounting | undefined = job.mode === 'goal' ? {
+			...(job.tokenBudget !== undefined ? { tokenBudget: job.tokenBudget, remainingTokensBefore: Math.max(0, job.tokenBudget - tokensUsedBefore) } : {}),
+			...(job.tokenReserve !== undefined ? { tokenReserve: job.tokenReserve } : {}),
+			tokensUsedBefore,
+			tokensUsed: 0,
+			overshootTokens: 0,
+		} : undefined;
+		const run: PiboLoopRun = { id: job.mode === 'ralph' ? `rrun_${randomUUID()}` : `lrun_${randomUUID()}`, jobId: job.id, status: 'running', startedAt: timestamp, ...(accounting ? { accounting } : {}), ...(job.resources ? { resources: job.resources } : {}), createdAt: timestamp, updatedAt: timestamp };
+		this.db.prepare('INSERT INTO pibo_ralph_runs (id, job_id, pibo_session_id, status, reason, error, accounting_json, resource_json, started_at, completed_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(run.id, run.jobId, null, run.status, null, null, runAccountingJson(run.accounting), resourceMetadataJson(run.resources), run.startedAt ?? null, null, run.createdAt, run.updatedAt);
+		return run;
+	}
 }
 export function createDefaultPiboLoopStore(options: PiboLoopStoreOptions = {}): PiboLoopStore { return new PiboLoopStore(options); }

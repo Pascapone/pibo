@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type { PiboReliabilityStore, PiboRunStoreRecord } from "../reliability/store.js";
+import type { PiboRunTimeoutPhase } from "./lifecycle.js";
 
-export type PiboRunStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
+export type PiboRunStatus = "queued" | "running" | "completed" | "failed" | "timed_out" | "cancelled";
 export type PiboRunKind = "tool";
 export type PiboRunCompletionPolicy = "tracked" | "detached";
 
@@ -19,6 +20,10 @@ export type PiboRunSnapshot = {
 	consumed: boolean;
 	toolName: string;
 	summary?: string;
+	timeoutMs?: number;
+	timeoutAt?: string;
+	timeoutPhase?: PiboRunTimeoutPhase;
+	serviceWarning?: string;
 	createdAt: string;
 	updatedAt: string;
 	completedAt?: string;
@@ -36,6 +41,7 @@ export type PiboRunWaitResult = PiboRunSnapshot & {
 export type PiboRunNotification = {
 	completed: PiboRunSnapshot[];
 	failed: PiboRunSnapshot[];
+	timedOut: PiboRunSnapshot[];
 	cancelled: PiboRunSnapshot[];
 	running: PiboRunSnapshot[];
 };
@@ -81,6 +87,8 @@ type StartToolRunInput = {
 	completionPolicy?: PiboRunCompletionPolicy;
 	retryable?: boolean;
 	maxAttempts?: number;
+	timeoutMs?: number;
+	serviceWarning?: string;
 };
 
 type Waiter = {
@@ -89,6 +97,15 @@ type Waiter = {
 
 function now(): string {
 	return new Date().toISOString();
+}
+
+function runTimeoutAt(createdAt: string, timeoutMs: number | undefined): string | undefined {
+	return timeoutMs === undefined ? undefined : new Date(Date.parse(createdAt) + timeoutMs).toISOString();
+}
+
+function formatTimeout(timeoutMs: number | undefined): string {
+	if (timeoutMs === undefined) return "its configured timeout";
+	return timeoutMs % 1000 === 0 ? `${timeoutMs / 1000}s timeout` : `${timeoutMs}ms timeout`;
 }
 
 function snapshot(record: PiboRunRecord): PiboRunSnapshot {
@@ -104,12 +121,16 @@ function snapshot(record: PiboRunRecord): PiboRunSnapshot {
 		updatedAt: record.updatedAt,
 	};
 	if (record.summary) output.summary = record.summary;
+	if (record.timeoutMs !== undefined) output.timeoutMs = record.timeoutMs;
+	if (record.timeoutAt) output.timeoutAt = record.timeoutAt;
+	if (record.timeoutPhase) output.timeoutPhase = record.timeoutPhase;
+	if (record.serviceWarning) output.serviceWarning = record.serviceWarning;
 	if (record.completedAt) output.completedAt = record.completedAt;
 	return output;
 }
 
 function terminal(status: PiboRunStatus): boolean {
-	return status === "completed" || status === "failed" || status === "cancelled";
+	return status === "completed" || status === "failed" || status === "timed_out" || status === "cancelled";
 }
 
 export class PiboRunRegistry {
@@ -141,6 +162,8 @@ export class PiboRunRegistry {
 				params: input.params,
 				retryable: input.retryable ?? false,
 				maxAttempts: input.maxAttempts ?? 1,
+				timeoutMs: input.timeoutMs,
+				serviceWarning: input.serviceWarning,
 			});
 			const record = recordFromStored(stored);
 			this.runs.set(record.runId, record);
@@ -163,6 +186,8 @@ export class PiboRunRegistry {
 			summary: `${input.toolName} run is running.`,
 			retryable: input.retryable ?? false,
 			maxAttempts: Math.max(1, input.maxAttempts ?? 1),
+			...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs, timeoutAt: runTimeoutAt(timestamp, input.timeoutMs) } : {}),
+			...(input.serviceWarning ? { serviceWarning: input.serviceWarning } : {}),
 		};
 		this.runs.set(runId, record);
 		const output = snapshot(record);
@@ -194,6 +219,25 @@ export class PiboRunRegistry {
 		record.status = "failed";
 		record.error = error;
 		record.summary = `${record.toolName} run failed.`;
+		this.finish(record);
+		this.options.store?.updateRun(runId, record);
+		if (record.jobId) this.options.store?.fail(record.jobId, `run-registry:${process.pid}`, error);
+		const output = snapshot(record);
+		this.notify({ type: "run_changed", run: output, previousStatus, reason: error });
+		return output;
+	}
+
+	timeOut(runId: string, error: string, timeoutPhase: PiboRunTimeoutPhase): PiboRunSnapshot | undefined {
+		const record = this.runs.get(runId);
+		if (!record || terminal(record.status)) return undefined;
+
+		const previousStatus = record.status;
+		record.status = "timed_out";
+		record.error = error;
+		record.timeoutPhase = timeoutPhase;
+		record.summary = timeoutPhase === "lifetime"
+			? `${record.toolName} run started successfully, then reached ${formatTimeout(record.timeoutMs)}.`
+			: `${record.toolName} run reached ${formatTimeout(record.timeoutMs)} before startup was confirmed.`;
 		this.finish(record);
 		this.options.store?.updateRun(runId, record);
 		if (record.jobId) this.options.store?.fail(record.jobId, `run-registry:${process.pid}`, error);
@@ -314,6 +358,7 @@ export class PiboRunRegistry {
 		const notification: PiboRunNotification = {
 			completed: [],
 			failed: [],
+			timedOut: [],
 			cancelled: [],
 			running: [],
 		};
@@ -321,6 +366,7 @@ export class PiboRunRegistry {
 			const item = snapshot(record);
 			if (record.status === "completed") notification.completed.push(item);
 			else if (record.status === "failed") notification.failed.push(item);
+			else if (record.status === "timed_out") notification.timedOut.push(item);
 			else if (record.status === "cancelled") notification.cancelled.push(item);
 			else notification.running.push(item);
 		}
@@ -466,5 +512,9 @@ function recordFromStored(record: PiboRunStoreRecord): PiboRunRecord {
 		jobId: record.jobId,
 		retryable: record.retryable,
 		maxAttempts: record.maxAttempts,
+		timeoutMs: record.timeoutMs,
+		timeoutAt: record.timeoutAt,
+		timeoutPhase: record.timeoutPhase,
+		serviceWarning: record.serviceWarning,
 	};
 }

@@ -41,13 +41,13 @@ export function annotateLiveTraceForkEntryIds(liveNodes: PiboTraceNode[], persis
 	});
 }
 
-export function isUserMessageQueuedEvent(event: ChatWebStoredEvent): event is ChatWebStoredEvent & { payload: { type: "message_queued"; source: "user"; text: string } } {
+export function isUserMessageQueuedEvent(event: ChatWebStoredEvent): event is ChatWebStoredEvent & { payload: { type: "message_queued" | "message_steered"; source: "user"; text: string } } {
 	const payload = event.payload;
 	return Boolean(
 		payload &&
 		typeof payload === "object" &&
 		!Array.isArray(payload) &&
-		"type" in payload && payload.type === "message_queued" &&
+		"type" in payload && (payload.type === "message_queued" || payload.type === "message_steered") &&
 		"source" in payload && payload.source === "user" &&
 		"text" in payload && typeof payload.text === "string"
 	);
@@ -88,7 +88,7 @@ function dropReplacedOptimisticUserMessages(
 
 function isOptimisticUserMessageNode(node: PiboTraceNode): boolean {
 	if (node.type !== "user.message") return false;
-	if (node.source === "event-log" && node.id.startsWith("event:message_queued:")) return true;
+	if (node.source === "event-log" && (node.id.startsWith("event:message_queued:") || node.id.startsWith("event:message_steered:"))) return true;
 	return [node.id, node.stableKey, node.eventId]
 		.filter((value): value is string => typeof value === "string")
 		.some((value) => value.startsWith("optimistic:user-message:") || value.includes(":optimistic:user-message:"));

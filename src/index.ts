@@ -128,6 +128,7 @@ export type {
 	PiboSubagentRunner,
 	PiboSubagentRunResult,
 } from "./subagents/tool.js";
+export { PiboSteeringUnavailableError } from "./core/events.js";
 export type {
 	BuiltinPiboExecutionAction,
 	PiboForkCandidate,
@@ -138,6 +139,7 @@ export type {
 	PiboInputEvent,
 	PiboJsonObject,
 	PiboJsonValue,
+	PiboMessageDelivery,
 	PiboMessageEvent,
 	PiboOutputEvent,
 	PiboPiSessionSnapshot,

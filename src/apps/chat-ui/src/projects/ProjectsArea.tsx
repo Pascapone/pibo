@@ -505,9 +505,10 @@ export function ProjectsArea({
           _webAnnotationIds,
           _fileAttachmentPaths,
           clientTxnId,
+          delivery,
         ) => {
           if (!selectedPiboSessionId) return;
-          await postProjectMessage(selectedPiboSessionId, text, clientTxnId);
+          await postProjectMessage(selectedPiboSessionId, text, clientTxnId, delivery);
         }}
         onError={onError}
       />

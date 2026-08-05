@@ -243,6 +243,39 @@ test("local CLI session source reports clear errors and current-session agent li
 	await assert.rejects(() => source.listSessions(), (error) => error instanceof CliSourceError && error.code === "source_closed");
 });
 
+test("local CLI close drains the owned router before unsubscribing and closing stores", async () => {
+	const order = [];
+	const sessionStore = new InMemoryPiboSessionStore();
+	sessionStore.create({
+		id: "ps_close",
+		piSessionId: "pi_close",
+		channel: "pibo.test",
+		kind: "chat",
+		profile: "base",
+		status: "running",
+	});
+	sessionStore.close = () => order.push("store-close");
+	let routerListener;
+	const router = {
+		async emit() { throw new Error("not used"); },
+		subscribe(listener) {
+			routerListener = listener;
+			return () => order.push("unsubscribe");
+		},
+		async disposeAll() {
+			order.push("dispose-start");
+			routerListener({ type: "message_finished", piboSessionId: "ps_close", eventId: "evt_close", source: "user" });
+			order.push("dispose-end");
+		},
+	};
+	const source = new LocalCliSessionSource({ sessionStore, ownsSessionStore: true, router, ownsRouter: true, now: () => fixedNow });
+
+	await Promise.all([source.close(), source.close()]);
+
+	assert.deepEqual(order, ["dispose-start", "dispose-end", "unsubscribe", "store-close"]);
+	await assert.rejects(() => source.listSessions(), (error) => error instanceof CliSourceError && error.code === "source_closed");
+});
+
 test("legacy CLI repair API is neutral and returns no retired partition fields", async () => {
 	const dataStore = new PiboDataStore(":memory:");
 	const sessionStore = new PiboDataSessionStore(dataStore);

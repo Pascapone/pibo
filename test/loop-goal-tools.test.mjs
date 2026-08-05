@@ -6,6 +6,7 @@ import test from "node:test";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { inspectPiboProfile } from "../dist/core/runtime.js";
 import { normalizeAssistantUsageEvent } from "../dist/core/routed-session.js";
+import { goalActiveTimeSeconds, goalElapsedWallClockSeconds } from "../dist/loops/accounting.js";
 import { buildLoopTurnPrompt } from "../dist/loops/prompts.js";
 import { getEffectiveLoopStopPolicy } from "../dist/loops/stopping.js";
 import { PiboLoopStore } from "../dist/loops/store.js";
@@ -54,10 +55,14 @@ test("native goal tools create, inspect, complete, and replace a session goal", 
 	const store = new PiboLoopStore({ path: ":memory:" });
 	try {
 		const tools = toolsByName(store);
-		const created = details(await tools.create_goal.execute("call_create", { objective: "Ship the complete feature", token_budget: 1000 }));
+		const created = details(await tools.create_goal.execute("call_create", { objective: "Ship the complete feature", token_budget: 1000, token_reserve: 100 }));
 		assert.equal(created.goal.status, "active");
+		assert.equal(created.goal.budgetType, "soft");
 		assert.equal(created.goal.tokenBudget, 1000);
+		assert.equal(created.goal.tokenReserve, 100);
 		assert.equal(created.goal.tokensUsed, 0);
+		assert.equal(created.goal.canStartNextTurn, true);
+		assert.equal(created.goal.wallClockIncludesPausedTime, true);
 
 		const job = store.getJob(created.goal.goalId);
 		assert.equal(job.mode, "goal");
@@ -69,11 +74,12 @@ test("native goal tools create, inspect, complete, and replace a session goal", 
 		assert.equal(duplicate.isError, true);
 		assert.match(duplicate.content[0].text, /unfinished goal/);
 
-		store.recordGoalProgress(job.id, { tokens: 240, timeUsedSeconds: 12 });
+		store.recordGoalProgress(job.id, { tokens: 240, activeTimeSeconds: 12 });
 		const inspected = details(await tools.get_goal.execute("call_get", {}));
 		assert.equal(inspected.goal.tokensUsed, 240);
 		assert.equal(inspected.goal.remainingTokens, 760);
-		assert.equal(inspected.goal.timeUsedSeconds, 12);
+		assert.equal(inspected.goal.activeAgentTimeSeconds, 12);
+		assert.equal(typeof inspected.goal.elapsedWallClockSeconds, "number");
 
 		const completed = details(await tools.update_goal.execute("call_complete", { status: "complete" }));
 		assert.equal(completed.goal.status, "complete");
@@ -92,6 +98,7 @@ test("token budgets are limited to Goal mode", () => {
 	const store = new PiboLoopStore({ path: ":memory:" });
 	try {
 		assert.throws(() => store.createJob({ mode: "ralph", target: { kind: "default-chat" }, profile: "base", prompt: "legacy", tokenBudget: 100 }), /only available for goal mode/);
+		assert.throws(() => store.createJob({ mode: "goal", target: { kind: "default-chat" }, profile: "base", prompt: "invalid reserve", tokenReserve: 10 }), /requires tokenBudget/);
 	} finally {
 		store.close();
 	}
@@ -101,18 +108,55 @@ test("goal token accounting marks the goal budget limited", () => {
 	const store = new PiboLoopStore({ path: ":memory:" });
 	try {
 		const job = store.createJob({ mode: "goal", enabled: true, target: { kind: "default-chat" }, profile: "base", prompt: "bounded objective", tokenBudget: 100 });
-		store.recordGoalProgress(job.id, { tokens: 40, timeUsedSeconds: 2 });
+		store.recordGoalProgress(job.id, { tokens: 40, activeTimeSeconds: 2 });
 		assert.equal(store.getJob(job.id).state.goalStatus, "active");
-		store.recordGoalProgress(job.id, { tokens: 70, timeUsedSeconds: 3 });
+		store.recordGoalProgress(job.id, { tokens: 70, activeTimeSeconds: 3 });
 		const limited = store.getJob(job.id);
 		assert.equal(limited.state.goalStatus, "budget_limited");
 		assert.equal(limited.state.tokensUsed, 110);
-		assert.equal(limited.state.timeUsedSeconds, 5);
+		assert.equal(limited.state.activeTimeSeconds, 5);
 		assert.equal(limited.enabled, false);
 		assert.throws(() => store.updateJob(job.id, { enabled: true }), /Increase or clear the token budget/);
 		const resumed = store.updateJob(job.id, { tokenBudget: 200, enabled: true });
 		assert.equal(resumed.state.goalStatus, "active");
 		assert.equal(resumed.enabled, true);
+	} finally {
+		store.close();
+	}
+});
+
+test("Goal reserve gates the next turn before the soft budget is exhausted", () => {
+	const store = new PiboLoopStore({ path: ":memory:" });
+	try {
+		const job = store.createJob({ mode: "goal", enabled: true, target: { kind: "default-chat" }, profile: "base", prompt: "bounded objective", tokenBudget: 100, tokenReserve: 20 });
+		store.recordGoalProgress(job.id, { tokens: 80 });
+		assert.equal(store.reserveRun(job.id), undefined);
+		const limited = store.getJob(job.id);
+		assert.equal(limited.state.goalStatus, "budget_limited");
+		assert.equal(limited.enabled, false);
+	} finally {
+		store.close();
+	}
+});
+
+test("Goal wall-clock elapsed time starts on first activation and includes paused time", () => {
+	const store = new PiboLoopStore({ path: ":memory:" });
+	try {
+		const createdAt = new Date("2026-08-04T10:00:00.000Z");
+		const startedAt = new Date("2026-08-04T11:00:00.000Z");
+		const pausedAt = new Date("2026-08-04T11:30:00.000Z");
+		const inspectedAt = new Date("2026-08-04T13:00:00.000Z");
+		const afterCompletion = new Date("2026-08-04T15:00:00.000Z");
+		const job = store.createJob({ mode: "goal", target: { kind: "default-chat" }, profile: "base", prompt: "timed objective" }, createdAt);
+		assert.equal(goalElapsedWallClockSeconds(job, inspectedAt), 0);
+		const started = store.updateJob(job.id, { enabled: true }, startedAt);
+		store.recordGoalProgress(job.id, { activeTimeSeconds: 90 }, pausedAt);
+		const paused = store.requestStop(job.id, pausedAt);
+		assert.equal(started.state.goalStartedAt, startedAt.toISOString());
+		assert.equal(goalActiveTimeSeconds(paused), 90);
+		assert.equal(goalElapsedWallClockSeconds(paused, inspectedAt), 7200);
+		const completed = store.updateGoalStatus(job.id, "complete", inspectedAt);
+		assert.equal(goalElapsedWallClockSeconds(completed, afterCompletion), 7200);
 	} finally {
 		store.close();
 	}
@@ -128,13 +172,16 @@ test("Goal prompting uses native status tooling while Ralph retains the completi
 		profile: "base",
 		prompt: "Finish everything",
 		tokenBudget: 500,
-		state: { goalStatus: "active", tokensUsed: 125, timeUsedSeconds: 4 },
+		tokenReserve: 50,
+		state: { goalStatus: "active", tokensUsed: 125, activeTimeSeconds: 4 },
 		createdAt: new Date().toISOString(),
 		updatedAt: new Date().toISOString(),
 	};
 	const prompt = buildLoopTurnPrompt(goal, true, true);
 	assert.match(prompt, /call update_goal with status "complete"/);
 	assert.match(prompt, /three consecutive goal turns/);
+	assert.match(prompt, /Budget enforcement: soft/);
+	assert.match(prompt, /Pre-turn token reserve: 50/);
 	assert.match(prompt, /Reported tokens remaining before this turn: 375/);
 	assert.doesNotMatch(prompt, /opening tag <promise>/);
 	assert.equal(getEffectiveLoopStopPolicy(goal).conditions.some((condition) => condition.type === "pibo.loop.goal-status"), true);

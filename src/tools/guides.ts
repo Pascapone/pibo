@@ -385,11 +385,18 @@ browser-use close --all
 For the Pibo Chat Web App, prefer an isolated authenticated lease when multiple agents may use the browser at the same time:
 
 \`\`\`bash
+# Default headless browser
 eval "$(pibo tools browser-use lease acquire --app pibo-chat --holder "$USER")"
+
+# For headed mode, use this instead:
+# eval "$(pibo tools browser-use lease acquire --app pibo-chat --holder "$USER" --headed)"
+
 browser-use state
 \`\`\`
 
-The lease exports \`BROWSER_USE_HOME\`, \`PIBO_BROWSER_USE_SESSION\`, \`PIBO_BROWSER_USE_CHROME_USER_DATA_DIR\`, and \`PIBO_BROWSER_USE_DEFAULT_PROFILE\`. The Pibo browser-use wrapper uses \`PIBO_BROWSER_USE_SESSION\` as the default session, so later commands can omit \`--session\` in that shell.
+Acquire only one lease for the task. The warm-up fixes the mode of the managed Chrome process, so choose \`--headed\` during acquisition rather than adding it only to a later Browser Use command.
+
+The lease exports \`BROWSER_USE_HOME\`, \`PIBO_BROWSER_USE_SESSION\`, \`PIBO_BROWSER_USE_CHROME_USER_DATA_DIR\`, and \`PIBO_BROWSER_USE_DEFAULT_PROFILE\`. Stdout contains only shell-safe exports and comments so it can be evaluated; warm-up diagnostics are written to stderr. The Pibo browser-use wrapper uses \`PIBO_BROWSER_USE_SESSION\` as the default session, so later commands can omit \`--session\` in that shell.
 
 Before acquiring leases, prepare one authenticated template profile:
 

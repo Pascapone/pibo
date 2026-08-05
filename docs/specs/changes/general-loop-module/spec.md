@@ -28,7 +28,7 @@ Replace Ralph as the public capability with a general Loop module whose default 
 - Compatibility for existing Ralph jobs, IDs, persisted data, CLI commands, API paths, and stop-condition type names.
 - Goal prompting adapted from Codex's continuation and completion-audit behavior.
 - Codex-compatible native goal tools that can be disabled per Agent Designer profile.
-- Persistent goal status, token budget, consumed-token accounting, and elapsed-time accounting.
+- Persistent goal status, soft token budget with a pre-turn reserve, per-turn usage/overshoot accounting, and distinct active versus wall-clock time accounting.
 
 ### Out of Scope
 
@@ -65,7 +65,9 @@ Custom agents MUST expose one Agent Designer capability switch for goal tools. T
 
 ### REQ-004C: Goal state and token budget
 
-A goal MUST persist status, optional positive token budget, consumed model tokens, elapsed active time, and remaining tokens. Goal creation through CLI, API, UI, or native tooling MUST accept an optional token budget. Pibo MUST account usage reported by completed assistant model messages and MUST stop automatic continuation after the budget is exhausted.
+A goal MUST persist status, an optional positive soft token budget, an optional non-negative pre-turn token reserve, consumed model tokens, active agent time, wall-clock elapsed time, and remaining tokens. Goal creation through CLI, API, UI, or native tooling MUST accept the budget and reserve. Before each turn Pibo MUST expose and persist remaining budget, MUST refuse to start when remaining tokens do not exceed the reserve, and MUST record per-turn usage and overshoot. CLI and Web surfaces MUST identify the budget as soft because provider usage is available only after a response.
+
+Active agent time MUST accumulate Goal-run execution time. Wall-clock elapsed time MUST begin at first activation and include waiting and paused periods; a Goal created paused MUST report zero wall-clock elapsed time until first activation. CLI, Web UI, and `get_goal` MUST label both metrics unambiguously.
 
 ### REQ-004D: Completion and blocked lifecycle
 
@@ -74,6 +76,8 @@ A successful `update_goal(status=complete)` call MUST persist completion and sto
 ### REQ-005: Operational parity
 
 Rooms, default chat, profiles, model/thinking/fast overrides, stop conditions, max iterations, run facts, resource metadata and cleanup, run timeout, graceful stop, cancel, status, run history, and Web management MUST continue to work for both modes.
+
+Goal-owned browser leases MUST be renewed before and during active turns, retained between non-terminal turns, and released when the Goal stops or becomes terminal. A recoverable expired or dead browser process MUST be reacquired from its persisted managed profile, including after gateway restart. An unrecoverable authenticated-browser failure MUST mark the Goal blocked and persist an operator-facing dirty resource reason.
 
 ### REQ-006: Compatibility
 

@@ -68,6 +68,7 @@ function outputPayloadFromV2Row(row: EventLogRow, attributes: PiboJsonObject): P
 	const base = compactObject({ piboSessionId, eventId: row.event_id ?? undefined }) as { piboSessionId: string; eventId?: string };
 	if (row.type === "assistant_message") return { ...base, type: "assistant_message", text: row.preview_text ?? "" };
 	if (row.type === "message_queued") return { ...base, type: "message_queued", text: stringAttribute(attributes, "inlineText") ?? row.preview_text ?? "", source: stringAttribute(attributes, "source") ?? "user", queuedMessages: numberAttribute(attributes, "queuedMessages") ?? 1 } as PiboOutputEvent;
+	if (row.type === "message_steered") return { ...base, type: "message_steered", text: stringAttribute(attributes, "inlineText") ?? row.preview_text ?? "", source: stringAttribute(attributes, "source") ?? "user", activeEventId: stringAttribute(attributes, "activeEventId") } as PiboOutputEvent;
 	if (row.type === "message_started") return { ...base, type: "message_started", text: row.preview_text ?? "" };
 	if (row.type === "message_finished") return { ...base, type: "message_finished" };
 	if (row.type === "thinking_started") return { ...base, type: "thinking_started" };

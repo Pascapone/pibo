@@ -1,6 +1,7 @@
 import { access, mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
+import { spawn } from "node:child_process";
 
 export type BrowserPoolLifecycleState = "empty" | "ready" | "leased" | "stale" | "dirty";
 
@@ -409,6 +410,43 @@ export async function acquireBrowserPoolLease(
 			return { state: dirtyState, result: { acquired: false, state: dirtyState, staleReason: dirtyState.lastError! } };
 		}
 	}, options.lockOptions);
+}
+
+export async function restartRecordedBrowserPoolChrome(state: BrowserPoolState): Promise<BrowserPoolStartedBrowser> {
+	if (!state.userDataDir) throw new Error("Browser pool has no persisted user-data directory for reacquisition");
+	if (!state.cdpPort) throw new Error("Browser pool has no persisted CDP port for reacquisition");
+	const candidates = [process.env.PIBO_CHROME_BIN, "/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser", "/opt/google/chrome/chrome"].filter((value): value is string => !!value);
+	let executable: string | undefined;
+	for (const candidate of candidates) {
+		try { await access(candidate); executable = candidate; break; } catch { /* try next */ }
+	}
+	if (!executable) throw new Error("No supported Chrome/Chromium executable is available to reacquire the persisted browser profile");
+	await removeDefaultStaleBrowserFiles(state);
+	const cdpUrl = `http://127.0.0.1:${state.cdpPort}`;
+	const child = spawn(executable, [
+		`--remote-debugging-port=${state.cdpPort}`,
+		"--remote-debugging-address=127.0.0.1",
+		`--user-data-dir=${state.userDataDir}`,
+		`--profile-directory=${process.env.PIBO_BROWSER_USE_DEFAULT_PROFILE || "PIBo"}`,
+		"--headless=new",
+		"--no-sandbox",
+		"--disable-gpu",
+		"--disable-dev-shm-usage",
+		"about:blank",
+	], { detached: true, stdio: "ignore" });
+	await new Promise<void>((resolve, reject) => {
+		child.once("spawn", resolve);
+		child.once("error", reject);
+	});
+	child.unref();
+	if (!child.pid) throw new Error("Chrome reacquisition did not return a process id");
+	for (let attempt = 0; attempt < 100; attempt += 1) {
+		const health = await checkBrowserPoolCdpHealth(cdpUrl, { timeoutMs: 250 });
+		if (health.ok) return { pid: child.pid, processGroupId: child.pid, cdpPort: state.cdpPort, cdpUrl, userDataDir: state.userDataDir };
+		await delay(100);
+	}
+	try { process.kill(-child.pid, "SIGKILL"); } catch { /* already exited */ }
+	throw new Error(`Reacquired Chrome did not expose CDP at ${cdpUrl}`);
 }
 
 export async function releaseBrowserPoolLease(

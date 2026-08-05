@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { createChatWebApp } from "../dist/apps/chat/web-app.js";
+import { PiboSteeringUnavailableError } from "../dist/core/events.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
 import { PIBO_APP_CONTEXT } from "../dist/app-context.js";
 
@@ -16,7 +17,7 @@ const principalStorageColumn = ["principal", "id"].join("_");
 const legacyRoomLinksTable = ["room", "members"].join("_");
 const PRE_CUTOVER_LEGACY_PARTITION_SCOPE = ["shared", "app"].join(":");
 
-function createHarness() {
+function createHarness(options = {}) {
 	const storageDir = mkdtempSync(join(tmpdir(), "pibo-chat-app-sessions-"));
 	const dataStorePath = join(storageDir, "chat.sqlite");
 	const app = createChatWebApp({
@@ -41,6 +42,7 @@ function createHarness() {
 		channelContext: {
 			emit(event) {
 				emitted.push(event);
+				if (options.emitError) return Promise.reject(options.emitError);
 				return Promise.resolve({
 					type: event.type === "message" ? "message_queued" : "execution_result",
 					piboSessionId: event.piboSessionId,
@@ -183,6 +185,70 @@ test("Chat Web lists, opens, and sends to mixed historical sessions without part
 		assert.equal(messageResponse.status, 200);
 		assert.equal(harness.emitted.at(-1).piboSessionId, userSession.id);
 		assert.equal(harness.emitted.at(-1).text, "continue historical session");
+	} finally {
+		harness.cleanup();
+	}
+});
+
+test("Chat Web forwards queue and steering delivery choices", async () => {
+	const harness = createHarness();
+	try {
+		const roomResponse = await harness.request("/api/chat/rooms", {
+			method: "POST",
+			body: JSON.stringify({ name: "Delivery choices" }),
+		});
+		const { room } = await json(roomResponse);
+		const session = harness.sessions.create({
+			channel: "pibo.chat-web",
+			kind: "chat",
+			profile: "base",
+			metadata: { chatRoomId: room.id },
+		});
+
+		for (const delivery of ["queue", "steer"]) {
+			const response = await harness.request("/api/chat/message", {
+				method: "POST",
+				body: JSON.stringify({ piboSessionId: session.id, roomId: room.id, text: `${delivery} this`, delivery }),
+			});
+			assert.equal(response.status, 200);
+			assert.equal(harness.emitted.at(-1).delivery, delivery);
+		}
+
+		await assert.rejects(
+			() => harness.request("/api/chat/message", {
+				method: "POST",
+				body: JSON.stringify({ piboSessionId: session.id, roomId: room.id, text: "invalid", delivery: "later" }),
+			}),
+			(error) => error?.statusCode === 400,
+		);
+	} finally {
+		harness.cleanup();
+	}
+});
+
+test("Chat Web returns a conflict when the active turn cannot accept steering", async () => {
+	const harness = createHarness({ emitError: new PiboSteeringUnavailableError() });
+	try {
+		const roomResponse = await harness.request("/api/chat/rooms", {
+			method: "POST",
+			body: JSON.stringify({ name: "Steering conflict" }),
+		});
+		const { room } = await json(roomResponse);
+		const session = harness.sessions.create({
+			channel: "pibo.chat-web",
+			kind: "chat",
+			profile: "base",
+			metadata: { chatRoomId: room.id },
+		});
+
+		await assert.rejects(
+			() => harness.request("/api/chat/message", {
+				method: "POST",
+				body: JSON.stringify({ piboSessionId: session.id, roomId: room.id, text: "steer", delivery: "steer" }),
+			}),
+			(error) => error?.statusCode === 409,
+		);
+		assert.equal(harness.emitted.at(-1).delivery, "steer");
 	} finally {
 		harness.cleanup();
 	}

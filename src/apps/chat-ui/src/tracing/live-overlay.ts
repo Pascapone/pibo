@@ -46,9 +46,12 @@ function confirmedTraceEventKeys(trace: PiboSessionTraceView): Set<string> {
 function collectConfirmedTraceNodeKeys(nodes: readonly PiboTraceNode[], keys: Set<string>): void {
 	for (const node of nodes) {
 		if (node.type === "user.message") {
-			const eventId = node.id.startsWith("event:message_queued:") ? node.id.slice("event:message_queued:".length) : undefined;
-			if (eventId) keys.add(`${node.piboSessionId}:message_queued:${eventId}`);
-			if (node.source === "transcript" && node.entryId) keys.add(`${node.piboSessionId}:message_queued:${node.entryId}`);
+			for (const type of ["message_queued", "message_steered"] as const) {
+				const prefix = `event:${type}:`;
+				const eventId = node.id.startsWith(prefix) ? node.id.slice(prefix.length) : undefined;
+				if (eventId) keys.add(`${node.piboSessionId}:${type}:${eventId}`);
+				if (node.source === "transcript" && node.entryId) keys.add(`${node.piboSessionId}:${type}:${node.entryId}`);
+			}
 		}
 		if (node.eventId && node.type === "assistant.message") {
 			keys.add(`${node.piboSessionId}:assistant_delta:${node.eventId}`);

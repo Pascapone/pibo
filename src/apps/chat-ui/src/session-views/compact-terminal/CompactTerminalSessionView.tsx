@@ -13,6 +13,7 @@ import { TerminalLoginCard } from "./TerminalLoginCard";
 import { TerminalModelCard } from "./TerminalModelCard";
 import { TerminalStatusCard } from "./TerminalStatusCard";
 import { TerminalThinkingCard } from "./TerminalThinkingCard";
+import { readTerminalReadingPosition, writeTerminalReadingPosition, type TerminalReadingPosition } from "./terminal-reading-position";
 import { buildCompactTerminalRows, findActiveTurnStartedAt, formatTerminalDuration, type CompactTerminalLine, type CompactTerminalRow } from "../../../../../session-ui/terminalRows.js";
 
 const SHOW_LATEST_THRESHOLD_PX = 180;
@@ -21,6 +22,7 @@ const OLDER_TRACE_PREFETCH_ROW_THRESHOLD = 20;
 const INITIAL_BOTTOM_ITEM = { index: "LAST", align: "end" } as const;
 const VIRTUOSO_VIEWPORT = { top: 2_400, bottom: 2_400 } as const;
 const DEFAULT_ROW_HEIGHT_PX = 84;
+const OLDER_TRACE_INTENT_SETTLE_MS = 700;
 const COLLAPSED_EXPLORING_PREVIEW_LINES = 6;
 type TerminalNavigationKind = "system" | "tool" | "user";
 
@@ -52,11 +54,19 @@ export function CompactTerminalSessionView({
 		() => buildCompactTerminalRows(traceView, { showThinking }),
 		[showThinking, traceView],
 	);
+	const rowKeys = useMemo(() => rows.map((row) => row.id), [rows]);
+	const piboSessionId = traceView?.piboSessionId ?? "";
+	const [reloadReadingPosition, setReloadReadingPosition] = useState<TerminalReadingPosition | undefined>();
+	const requestedRestorePageRef = useRef<string | undefined>(undefined);
 	const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+	const renderedContentKey = useMemo(() => [rows, expandedRows] as const, [expandedRows, rows]);
 	const [focusedNavigationRowId, setFocusedNavigationRowId] = useState<string | null>(null);
 	const navigationCursorRef = useRef<Partial<Record<TerminalNavigationKind, string>>>({});
 	const rangePrefetchReadyRef = useRef(false);
 	const olderTraceIntentRef = useRef(false);
+	const olderTraceLoadTimerRef = useRef<number | undefined>(undefined);
+	const olderTraceRequestPendingRef = useRef(false);
+	const prepareOlderTracePrependRef = useRef<() => void>(() => undefined);
 	const userMessageCount = rows.filter((row) => isNavigableTerminalRow(row, "user")).length;
 	const toolErrorCount = rows.filter((row) => isNavigableTerminalRow(row, "tool")).length;
 	const errorCount = rows.filter((row) => isNavigableTerminalRow(row, "system")).length;
@@ -69,9 +79,21 @@ export function CompactTerminalSessionView({
 	const activeTurnStartedAt = sessionActivity.activeTurnStartedAt;
 	const isStreaming = sessionActivity.isTurnActive;
 	const loadOlderTracePage = useCallback(() => {
-		if (!hasOlderTraceEvents || isFetchingOlderTracePage) return;
-		olderTraceIntentRef.current = false;
-		onLoadOlderTracePage?.();
+		if (!hasOlderTraceEvents || isFetchingOlderTracePage || olderTraceRequestPendingRef.current) return;
+		const load = () => {
+			olderTraceLoadTimerRef.current = undefined;
+			if (olderTraceRequestPendingRef.current) return;
+			olderTraceRequestPendingRef.current = true;
+			olderTraceIntentRef.current = false;
+			prepareOlderTracePrependRef.current();
+			onLoadOlderTracePage?.();
+		};
+		if (!olderTraceIntentRef.current) {
+			load();
+			return;
+		}
+		if (olderTraceLoadTimerRef.current !== undefined) return;
+		olderTraceLoadTimerRef.current = window.setTimeout(load, OLDER_TRACE_INTENT_SETTLE_MS);
 	}, [hasOlderTraceEvents, isFetchingOlderTracePage, onLoadOlderTracePage]);
 	const loadOlderNearTop = useCallback(() => {
 		if (!rangePrefetchReadyRef.current) return;
@@ -90,17 +112,71 @@ export function CompactTerminalSessionView({
 		if (range.startIndex <= 0) loadOlderAtTop();
 		else if (range.startIndex <= OLDER_TRACE_PREFETCH_ROW_THRESHOLD) loadOlderNearTop();
 	}, [loadOlderAtTop, loadOlderNearTop]);
+	const persistVisibleAnchor = useCallback((anchor: { key: string; offset: number } | undefined) => {
+		if (!piboSessionId) return;
+		writeTerminalReadingPosition(piboSessionId, anchor ? { rowId: anchor.key, offsetPx: anchor.offset } : undefined);
+	}, [piboSessionId]);
 
 	const stickyView = useStickyVirtuoso({
 		itemCount: rows.length,
+		itemKeys: rowKeys,
+		isPrepending: isFetchingOlderTracePage,
 		resetKey: traceView?.piboSessionId,
-		contentKey: rows,
+		contentKey: renderedContentKey,
 		atBottomThreshold: SHOW_LATEST_THRESHOLD_PX,
 		nearTopThreshold: OLDER_TRACE_PREFETCH_TOP_THRESHOLD_PX,
 		onAtTop: loadOlderAtTop,
 		onNearTop: loadOlderNearTop,
 		onUserScrollIntent: markOlderTraceIntent,
+		onVisibleAnchorChange: persistVisibleAnchor,
 	});
+	prepareOlderTracePrependRef.current = stickyView.prepareForPrepend;
+
+	useEffect(() => {
+		requestedRestorePageRef.current = undefined;
+		olderTraceRequestPendingRef.current = false;
+		setReloadReadingPosition(piboSessionId ? readTerminalReadingPosition(piboSessionId) : undefined);
+	}, [piboSessionId]);
+
+	useEffect(() => {
+		olderTraceRequestPendingRef.current = false;
+	}, [traceView?.nextBeforeCursor, traceView?.nextBeforeSequence]);
+
+	useEffect(() => () => {
+		if (olderTraceLoadTimerRef.current !== undefined) window.clearTimeout(olderTraceLoadTimerRef.current);
+	}, []);
+
+	useEffect(() => {
+		if (!piboSessionId || !reloadReadingPosition) return undefined;
+		const rowIndex = rowKeys.indexOf(reloadReadingPosition.rowId);
+		if (rowIndex >= 0) {
+			const frame = requestAnimationFrame(() => {
+				if (stickyView.restoreAnchor({ key: reloadReadingPosition.rowId, dataIndex: rowIndex, offset: reloadReadingPosition.offsetPx })) {
+					setReloadReadingPosition(undefined);
+				}
+			});
+			return () => cancelAnimationFrame(frame);
+		}
+		if (!hasOlderTraceEvents) {
+			writeTerminalReadingPosition(piboSessionId, undefined);
+			setReloadReadingPosition(undefined);
+			return undefined;
+		}
+		if (isFetchingOlderTracePage) return undefined;
+		const cursor = String(traceView?.nextBeforeCursor ?? traceView?.nextBeforeSequence ?? rows.length);
+		const requestKey = `${piboSessionId}:${cursor}`;
+		if (requestedRestorePageRef.current === requestKey) return undefined;
+		requestedRestorePageRef.current = requestKey;
+		onLoadOlderTracePage?.();
+		return undefined;
+	}, [hasOlderTraceEvents, isFetchingOlderTracePage, onLoadOlderTracePage, piboSessionId, reloadReadingPosition, rowKeys, rows.length, stickyView.restoreAnchor, traceView?.nextBeforeCursor, traceView?.nextBeforeSequence]);
+
+	useEffect(() => {
+		if (!piboSessionId) return undefined;
+		const persistBeforePageExit = () => { stickyView.captureVisibleAnchor(); };
+		window.addEventListener("pagehide", persistBeforePageExit);
+		return () => window.removeEventListener("pagehide", persistBeforePageExit);
+	}, [piboSessionId, stickyView.captureVisibleAnchor]);
 
 	useEffect(() => {
 		setExpandedRows((current) => retainExistingExpandedRows(current, rows, expandThinking));
@@ -108,19 +184,19 @@ export function CompactTerminalSessionView({
 
 	useEffect(() => {
 		if (isFetchingOlderTracePage) return;
-		if (!stickyView.isAtTop && !stickyView.isScrolledToTop()) return;
+		if (!stickyView.isScrolledToTop()) return;
 		loadOlderAtTop();
-	}, [hasOlderTraceEvents, isFetchingOlderTracePage, loadOlderAtTop, rows.length, stickyView.isAtTop, stickyView.isScrolledToTop, traceView?.nextBeforeCursor, traceView?.nextBeforeSequence]);
+	}, [hasOlderTraceEvents, isFetchingOlderTracePage, loadOlderAtTop, rows.length, stickyView.isScrolledToTop, traceView?.nextBeforeCursor, traceView?.nextBeforeSequence]);
 
 	useEffect(() => {
 		rangePrefetchReadyRef.current = false;
 		olderTraceIntentRef.current = false;
 		const readyTimer = window.setTimeout(() => {
 			rangePrefetchReadyRef.current = true;
-			if (stickyView.isAtTop || stickyView.isScrolledToTop()) loadOlderAtTop();
+			if (stickyView.isScrolledToTop()) loadOlderAtTop();
 		}, 250);
 		return () => window.clearTimeout(readyTimer);
-	}, [loadOlderAtTop, stickyView.isAtTop, stickyView.isScrolledToTop, traceView?.piboSessionId]);
+	}, [loadOlderAtTop, stickyView.isScrolledToTop, traceView?.piboSessionId]);
 
 	useEffect(() => {
 		const rowIds = new Set(rows.map((row) => row.id));
@@ -208,6 +284,7 @@ export function CompactTerminalSessionView({
 						key={traceView.piboSessionId}
 						ref={stickyView.virtuosoRef}
 						data={rows}
+						firstItemIndex={stickyView.firstItemIndex}
 						initialTopMostItemIndex={INITIAL_BOTTOM_ITEM}
 						increaseViewportBy={VIRTUOSO_VIEWPORT}
 						defaultItemHeight={DEFAULT_ROW_HEIGHT_PX}
@@ -219,7 +296,8 @@ export function CompactTerminalSessionView({
 						atTopStateChange={(atTop) => {
 							if (atTop) loadOlderAtTop();
 						}}
-						rangeChanged={handleVisibleRangeChanged}
+						itemsRendered={stickyView.itemsRendered}
+						rangeChanged={(range) => handleVisibleRangeChanged(stickyView.normalizeRange(range))}
 						startReached={loadOlderAtTop}
 						followOutput={stickyView.followOutput}
 						totalListHeightChanged={stickyView.totalListHeightChanged}
@@ -241,7 +319,10 @@ export function CompactTerminalSessionView({
 			{!stickyView.isSticky ? (
 				<button
 					type="button"
-					onClick={() => stickyView.stickToBottom("auto")}
+					onClick={() => {
+						writeTerminalReadingPosition(piboSessionId, undefined);
+						stickyView.stickToBottom("auto");
+					}}
 					title="Scroll to latest"
 					aria-label="Scroll to latest"
 					className="absolute right-4 bottom-4 z-30 inline-flex h-9 w-9 items-center justify-center rounded-sm border border-[#38bdf8] bg-[#111111]/95 text-[#38bdf8] shadow-lg shadow-black/30 hover:bg-[#161616]"
