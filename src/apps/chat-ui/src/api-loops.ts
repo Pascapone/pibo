@@ -11,6 +11,7 @@ export type LoopJobInput = {
 	prompt: string;
 	maxIterations?: number | null;
 	tokenBudget?: number | null;
+	tokenReserve?: number | null;
 	stopPolicy?: PiboLoopStopPolicy | null;
 	modelOverride?: ModelProfile | null;
 	thinkingLevel?: ThinkingLevel | null;

@@ -25,6 +25,7 @@ function buildGoalTurnPrompt(job: PiboLoopJob, continuation: boolean, goalToolsA
 	const tokensUsed = job.state.tokensUsed ?? 0;
 	const tokenBudget = job.tokenBudget;
 	const remainingTokens = tokenBudget === undefined ? 'unbounded' : String(Math.max(0, tokenBudget - tokensUsed));
+	const tokenReserve = job.tokenReserve ?? 0;
 	return [
 		continuation ? 'Continue working toward the active Pibo loop goal.' : 'Start working toward the active Pibo loop goal.',
 		'',
@@ -40,8 +41,10 @@ function buildGoalTurnPrompt(job: PiboLoopJob, continuation: boolean, goalToolsA
 		'- Temporary rough edges are acceptable while work moves toward the requested end state. Completion still requires the requested end state to be true and verified.',
 		'',
 		'Budget:',
+		'- Budget enforcement: soft; model usage is reported after a response and the current turn can overshoot the limit.',
 		`- Reported tokens used before this turn: ${tokensUsed}`,
-		`- Token budget: ${tokenBudget ?? 'none'}`,
+		`- Soft token budget: ${tokenBudget ?? 'none'}`,
+		`- Pre-turn token reserve: ${tokenReserve}`,
 		`- Reported tokens remaining before this turn: ${remainingTokens}`,
 		'',
 		'Work from evidence:',
