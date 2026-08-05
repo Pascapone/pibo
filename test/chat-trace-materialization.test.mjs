@@ -446,3 +446,37 @@ test("trace version changes when child or origin sessions change", () => {
 	assert.notEqual(first, second);
 	assert.notEqual(first, third);
 });
+
+test("event projection gives repeated compactions distinct stable keys", () => {
+	const view = buildTraceViewFromEvents({
+		session: { id: "ps_root", piSessionId: "pi_root", title: "Root" },
+		events: [
+			outputEvent(1, { type: "compaction_start", piboSessionId: "ps_root", reason: "auto" }),
+			outputEvent(2, { type: "compaction_end", piboSessionId: "ps_root", reason: "auto", aborted: false }),
+			outputEvent(3, { type: "compaction_start", piboSessionId: "ps_root", reason: "auto" }),
+			outputEvent(4, { type: "compaction_end", piboSessionId: "ps_root", reason: "auto", aborted: false }),
+		],
+		status: "idle",
+	});
+
+	const compactions = view.nodes.filter((node) => node.type === "execution.compaction");
+	assert.equal(compactions.length, 2);
+	assert.deepEqual(compactions.map((node) => node.stableKey), ["compaction:sequence:1", "compaction:sequence:3"]);
+	assert.equal(new Set(compactions.map((node) => node.stableKey)).size, 2);
+});
+
+test("event projection does not emit subagent:undefined identities for incomplete legacy events", () => {
+	const view = buildTraceViewFromEvents({
+		session: { id: "ps_root", piSessionId: "pi_root", title: "Root" },
+		events: [
+			outputEvent(1, { type: "subagent_session", piboSessionId: "ps_root", toolName: "pibo_subagent_researcher", subagentName: "researcher" }),
+			outputEvent(2, { type: "subagent_session", piboSessionId: "ps_root", toolName: "pibo_subagent_researcher", subagentName: "researcher" }),
+		],
+		status: "idle",
+	});
+
+	const delegations = view.nodes.filter((node) => node.type === "agent.delegation");
+	assert.equal(delegations.length, 2);
+	assert.deepEqual(delegations.map((node) => node.stableKey), ["subagent:event:sequence:1", "subagent:event:sequence:2"]);
+	assert.equal(delegations.some((node) => node.stableKey === "subagent:undefined"), false);
+});

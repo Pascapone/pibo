@@ -22,6 +22,10 @@ function areTraceNodesSorted(nodes: readonly PiboTraceNode[]): boolean {
 export function compareTraceNodes(left: PiboTraceNode, right: PiboTraceNode): number {
 	const bySameTurnPhase = compareSameTurnPhase(left, right);
 	if (bySameTurnPhase !== 0) return bySameTurnPhase;
+	if (left.orderKey?.sourceRank === right.orderKey?.sourceRank) {
+		const bySameSourceOrder = compareTraceOrder(left.orderKey, right.orderKey);
+		if (bySameSourceOrder !== 0) return bySameSourceOrder;
+	}
 	const byStartTime = compareOptionalIsoTime(left.startedAt, right.startedAt);
 	if (byStartTime !== 0) return byStartTime;
 	const byOrder = compareTraceOrder(left.orderKey, right.orderKey);

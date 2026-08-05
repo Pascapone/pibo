@@ -1505,6 +1505,31 @@ test("pibo debug trace prints rebuilt Chat Web trace nodes", async () => {
 	}
 });
 
+test("pibo debug trace rebuilds persisted string thinking deltas", async () => {
+	const cwd = await makeDebugFixture();
+	try {
+		const result = await execFileAsync("node", [cliPath, "debug", "trace", "ps_thinking", "--json"], { cwd });
+		const parsed = JSON.parse(result.stdout);
+		const reasoning = parsed.nodes.find((node) => node.type === "model.reasoning");
+		assert.equal(reasoning?.status, "running");
+		assert.equal(reasoning?.id, "event:thinking:evt_thinking");
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test("pibo debug trace warns when a persisted delta has no readable text", async () => {
+	const cwd = await makeDebugFixture();
+	try {
+		const result = await execFileAsync("node", [cliPath, "debug", "trace", "ps_malformed_thinking", "--check", "--json"], { cwd });
+		const parsed = JSON.parse(result.stdout);
+		assert.equal(parsed.checks.status, "warning");
+		assert.equal(parsed.checks.issues.some((issue) => issue.code === "missing_delta_text" && issue.nodeId === "evt_malformed_thinking"), true);
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
 test("pibo debug events extracts selected payload fields", async () => {
 	const cwd = await makeDebugFixture();
 	try {
@@ -1906,6 +1931,36 @@ async function makeDebugFixture() {
 			updatedAt: "2026-05-01T10:04:03.000Z",
 			lastActivityAt: "2026-05-01T10:04:03.000Z",
 		});
+		insertSession(data.db, {
+			id: "ps_thinking",
+			piSessionId: "55555555-5555-4555-8555-555555555555",
+			channel: "pibo.chat-web",
+			kind: "chat",
+			profile: "base",
+			legacyPartition: "user:one",
+			rootSessionId: "ps_thinking",
+			title: "Thinking delta fixture",
+			status: "running",
+			metadata: {},
+			createdAt: "2026-05-01T10:05:00.000Z",
+			updatedAt: "2026-05-01T10:05:01.000Z",
+			lastActivityAt: "2026-05-01T10:05:01.000Z",
+		});
+		insertSession(data.db, {
+			id: "ps_malformed_thinking",
+			piSessionId: "66666666-6666-4666-8666-666666666666",
+			channel: "pibo.chat-web",
+			kind: "chat",
+			profile: "base",
+			legacyPartition: "user:one",
+			rootSessionId: "ps_malformed_thinking",
+			title: "Malformed thinking delta fixture",
+			status: "running",
+			metadata: {},
+			createdAt: "2026-05-01T10:06:00.000Z",
+			updatedAt: "2026-05-01T10:06:01.000Z",
+			lastActivityAt: "2026-05-01T10:06:01.000Z",
+		});
 		insertEvent(data.db, {
 			streamId: 1,
 			sessionId: "ps_parent",
@@ -1966,6 +2021,24 @@ async function makeDebugFixture() {
 			type: "tool_execution_started",
 			createdAt: "2026-05-01T10:04:02.000Z",
 			payload: { type: "tool_execution_started", piboSessionId: "ps_running", eventId: "evt_running", toolCallId: "tool_1", toolName: "bash", args: { cmd: "sleep 10" } },
+		});
+		insertEvent(data.db, {
+			streamId: 6,
+			sessionId: "ps_thinking",
+			sequence: 1,
+			eventId: "evt_thinking",
+			type: "thinking_delta",
+			createdAt: "2026-05-01T10:05:01.000Z",
+			payload: "Persisted reasoning delta",
+		});
+		insertEvent(data.db, {
+			streamId: 7,
+			sessionId: "ps_malformed_thinking",
+			sequence: 1,
+			eventId: "evt_malformed_thinking",
+			type: "thinking_delta",
+			createdAt: "2026-05-01T10:06:01.000Z",
+			payload: { legacyValue: 42 },
 		});
 		data.telemetry.upsertTurn({
 			turnId: "turn_parent_done",

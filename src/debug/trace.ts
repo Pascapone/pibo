@@ -4,7 +4,7 @@ import type { PiboJsonObject, PiboOutputEvent } from "../core/events.js";
 import { normalizeSessionErrorDetails } from "../core/session-errors.js";
 import type { PiboSession } from "../sessions/store.js";
 import type { ChatWebStoredPiboEvent } from "../apps/chat/read-model.js";
-import { compareTraceOrder } from "../shared/trace-order.js";
+import { compareTraceNodes } from "../shared/trace-nodes.js";
 import type { ResolvedPiboDebugStore } from "./stores.js";
 import { openReadOnlyDebugDatabase, withStorePath } from "./sql.js";
 import { formatNextCommands } from "./next-commands.js";
@@ -105,10 +105,11 @@ export async function inspectDebugTrace(
 
 		const session = sessionFromRow(sessionRow);
 		const sessions = (sessionsDb.prepare("SELECT * FROM sessions").all() as SessionRow[]).map(sessionFromRow);
+		const adapterIssues: DebugTraceIssue[] = [];
 		const events = tableExists(chatDb, "event_log")
 			? (chatDb
 					.prepare("SELECT stream_id, session_id, session_sequence, event_id, type, created_at, preview_text, attributes_json FROM event_log WHERE session_id = ? ORDER BY stream_id ASC")
-					.all(piboSessionId) as EventRow[]).map(eventFromRow).filter((event): event is ChatWebStoredPiboEvent => event !== undefined)
+					.all(piboSessionId) as EventRow[]).map((row) => eventFromRow(row, adapterIssues)).filter((event): event is ChatWebStoredPiboEvent => event !== undefined)
 			: [];
 		const view = await buildTraceView({
 			session,
@@ -125,7 +126,7 @@ export async function inspectDebugTrace(
 			status: traceStatus(view),
 			nodes: filtered,
 			rawNodeCount: rows.length,
-			...(options.check ? { checks: checkTraceView(view) } : {}),
+			...(options.check ? { checks: checkTraceView(view, adapterIssues) } : {}),
 			nextCommands: buildTraceNextCommands(view.piboSessionId, filtered),
 		};
 	} catch (error) {
@@ -251,10 +252,11 @@ function traceStatus(view: PiboSessionTraceView): string {
 	return "done";
 }
 
-function checkTraceView(view: PiboSessionTraceView): DebugTraceCheckResult {
-	const issues: DebugTraceIssue[] = [];
+export function checkTraceView(view: PiboSessionTraceView, adapterIssues: readonly DebugTraceIssue[] = []): DebugTraceCheckResult {
+	const issues: DebugTraceIssue[] = [...adapterIssues];
 	const all = flattenPiboTraceNodes(view.nodes);
 	const ids = new Set<string>();
+	const stableKeyOwners = new Map<string, string>();
 	for (const node of all) {
 		if (ids.has(node.id)) {
 			issues.push({
@@ -288,6 +290,18 @@ function checkTraceView(view: PiboSessionTraceView): DebugTraceCheckResult {
 				nodeId: node.id,
 				message: "Trace node has no conceptual stable key.",
 			});
+		} else {
+			const existingOwner = stableKeyOwners.get(node.stableKey);
+			if (existingOwner && existingOwner !== node.id) {
+				issues.push({
+					severity: "warning",
+					code: "duplicate_stable_key",
+					nodeId: node.id,
+					message: `Stable key "${node.stableKey}" is already used by node "${existingOwner}".`,
+				});
+			} else {
+				stableKeyOwners.set(node.stableKey, node.id);
+			}
 		}
 	}
 	for (const node of all) {
@@ -319,7 +333,7 @@ function checkSiblingOrder(nodes: PiboTraceNode[], issues: DebugTraceIssue[]): v
 }
 
 function compareOrder(left: PiboTraceNode, right: PiboTraceNode): number {
-	return compareTraceOrder(left.orderKey, right.orderKey) || left.id.localeCompare(right.id);
+	return compareTraceNodes(left, right);
 }
 
 function flattenPiboTraceNodes(nodes: PiboTraceNode[]): PiboTraceNode[] {
@@ -377,9 +391,17 @@ function sessionFromRow(row: SessionRow): PiboSession {
 	};
 }
 
-function eventFromRow(row: EventRow): ChatWebStoredPiboEvent | undefined {
+function eventFromRow(row: EventRow, issues: DebugTraceIssue[]): ChatWebStoredPiboEvent | undefined {
 	const payload = outputPayloadFromV2Row(row);
 	if (!payload) return undefined;
+	if ((row.type === "assistant_delta" || row.type === "thinking_delta") && !nonEmptyEventText(payload)) {
+		issues.push({
+			severity: "warning",
+			code: "missing_delta_text",
+			nodeId: row.event_id ?? String(row.stream_id),
+			message: `Persisted ${row.type} event has no readable text payload.`,
+		});
+	}
 	return {
 		id: String(row.stream_id),
 		piboSessionId: row.session_id ?? undefined,
@@ -402,9 +424,11 @@ function outputPayloadFromV2Row(row: EventRow): PiboOutputEvent | undefined {
 	if (!piboSessionId) return undefined;
 	const base = { piboSessionId, eventId: row.event_id ?? undefined };
 	if (row.type === "assistant_message") return compactObject({ ...base, type: "assistant_message", text: row.preview_text ?? "" }) as PiboOutputEvent;
+	if (row.type === "assistant_delta") return compactObject({ ...base, type: "assistant_delta", text: inlineTextPayload(inlinePayload) ?? row.preview_text ?? "" }) as PiboOutputEvent;
 	if (row.type === "message_started") return compactObject({ ...base, type: "message_started", text: row.preview_text ?? "" }) as PiboOutputEvent;
 	if (row.type === "message_finished") return compactObject({ ...base, type: "message_finished" }) as PiboOutputEvent;
 	if (row.type === "thinking_started") return compactObject({ ...base, type: "thinking_started" }) as PiboOutputEvent;
+	if (row.type === "thinking_delta") return compactObject({ ...base, type: "thinking_delta", text: inlineTextPayload(inlinePayload) ?? row.preview_text ?? "" }) as PiboOutputEvent;
 	if (row.type === "thinking_finished") return compactObject({ ...base, type: "thinking_finished", text: row.preview_text ?? "" }) as PiboOutputEvent;
 	if (row.type === "tool_call") return compactObject({ ...base, type: "tool_call", toolCallId: stringAttribute(attributes, "toolCallId") ?? row.event_id ?? `tool_${row.stream_id}`, toolName: row.preview_text ?? stringAttribute(attributes, "toolName") ?? "tool", args: inlinePayload ?? null, argsComplete: booleanAttribute(attributes, "argsComplete") ?? true }) as PiboOutputEvent;
 	if (row.type === "tool_execution_started") return compactObject({ ...base, type: "tool_execution_started", toolCallId: stringAttribute(attributes, "toolCallId") ?? row.event_id ?? `tool_${row.stream_id}`, toolName: row.preview_text ?? stringAttribute(attributes, "toolName") ?? "tool", args: inlinePayload ?? null }) as PiboOutputEvent;
@@ -415,6 +439,15 @@ function outputPayloadFromV2Row(row: EventRow): PiboOutputEvent | undefined {
 		return compactObject({ ...base, type: "session_error", error, errorDetails: normalizeSessionErrorDetails(error, isRecord(attributes.errorDetails) ? attributes.errorDetails : undefined) }) as PiboOutputEvent;
 	}
 	return compactObject({ ...base, type: row.type }) as PiboOutputEvent;
+}
+
+function inlineTextPayload(value: unknown): string | undefined {
+	return typeof value === "string" ? value : undefined;
+}
+
+function nonEmptyEventText(event: PiboOutputEvent): boolean {
+	const text = (event as { text?: unknown }).text;
+	return typeof text === "string" && text.length > 0;
 }
 
 function stringAttribute(attributes: PiboJsonObject, key: string): string | undefined {
