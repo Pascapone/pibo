@@ -929,7 +929,7 @@ function compactDeadJobRow(job: { jobId: string; queue: string; attempts: number
 	};
 }
 
-function compactRunRow(run: { runId: string; controllerPiboSessionId: string; status: string; toolName: string; completionPolicy: string; consumed: boolean; updatedAt: string; summary?: string }): Record<string, unknown> {
+function compactRunRow(run: { runId: string; controllerPiboSessionId: string; status: string; toolName: string; completionPolicy: string; consumed: boolean; updatedAt: string; summary?: string; timeoutMs?: number; timeoutAt?: string; timeoutPhase?: string; serviceWarning?: string }): Record<string, unknown> {
 	return {
 		runId: run.runId,
 		piboSessionId: run.controllerPiboSessionId,
@@ -938,6 +938,10 @@ function compactRunRow(run: { runId: string; controllerPiboSessionId: string; st
 		policy: run.completionPolicy,
 		consumed: run.consumed,
 		updatedAt: run.updatedAt,
+		timeoutMs: run.timeoutMs,
+		timeoutAt: run.timeoutAt,
+		timeoutPhase: run.timeoutPhase,
+		serviceWarning: run.serviceWarning,
 		summary: run.summary,
 	};
 }

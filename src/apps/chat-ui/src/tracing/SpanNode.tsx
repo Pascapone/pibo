@@ -722,6 +722,7 @@ function RunNotificationSummary({ notification }: { notification: Record<string,
 	const groups = [
 		["completed", "text-green-500", notification.completed],
 		["failed", "text-red-400", notification.failed],
+		["timed out", "text-amber-400", notification.timedOut],
 		["cancelled", "text-slate-400", notification.cancelled],
 		["running", "text-[#11a4d4]", notification.running],
 	] as const;

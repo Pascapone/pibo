@@ -210,6 +210,10 @@ type PiboRunRow = {
 	job_id: string | null;
 	retryable: number;
 	max_attempts: number;
+	timeout_ms: number | null;
+	timeout_at: string | null;
+	timeout_phase: PiboRunReadResult["timeoutPhase"] | null;
+	service_warning: string | null;
 };
 
 function now(): string {
@@ -240,6 +244,11 @@ function migratePiboRunControllerColumn(db: DatabaseSync): void {
 	if (!columns.has(legacyColumn) || columns.has("controller_pibo_session_id")) return;
 	db.exec("DROP INDEX IF EXISTS idx_pibo_runs_" + ["o", "wner_updated"].join(""));
 	db.exec(`ALTER TABLE pibo_runs RENAME COLUMN ${legacyColumn} TO controller_pibo_session_id`);
+}
+
+function ensurePiboRunColumn(db: DatabaseSync, name: string, definition: string): void {
+	const columns = sqliteTableColumns(db, "pibo_runs");
+	if (!columns.has(name)) db.exec(`ALTER TABLE pibo_runs ADD COLUMN ${name} ${definition}`);
 }
 
 export class PiboReliabilityStore {
@@ -347,13 +356,21 @@ export class PiboReliabilityStore {
 				completed_at TEXT,
 				job_id TEXT,
 				retryable INTEGER NOT NULL DEFAULT 0,
-				max_attempts INTEGER NOT NULL DEFAULT 1
+				max_attempts INTEGER NOT NULL DEFAULT 1,
+				timeout_ms INTEGER,
+				timeout_at TEXT,
+				timeout_phase TEXT,
+				service_warning TEXT
 			);
 			CREATE INDEX IF NOT EXISTS idx_pibo_runs_controller_updated
 				ON pibo_runs(controller_pibo_session_id, updated_at);
 			CREATE INDEX IF NOT EXISTS idx_pibo_runs_status
 				ON pibo_runs(status);
 		`);
+		ensurePiboRunColumn(this.db, "timeout_ms", "INTEGER");
+		ensurePiboRunColumn(this.db, "timeout_at", "TEXT");
+		ensurePiboRunColumn(this.db, "timeout_phase", "TEXT");
+		ensurePiboRunColumn(this.db, "service_warning", "TEXT");
 
 		this.appendEventStatement = this.db.prepare(`
 			INSERT INTO pibo_event_stream (topic, key, event_id, idempotency_key, created_at, retention_class, payload_json)
@@ -718,10 +735,13 @@ export class PiboReliabilityStore {
 		params?: unknown;
 		retryable?: boolean;
 		maxAttempts?: number;
+		timeoutMs?: number;
+		serviceWarning?: string;
 	}): PiboRunStoreRecord {
 		const timestamp = now();
 		const runId = input.runId ?? `run_${randomUUID()}`;
 		const maxAttempts = Math.max(1, input.maxAttempts ?? 1);
+		const timeoutAt = input.timeoutMs === undefined ? undefined : new Date(Date.parse(timestamp) + input.timeoutMs).toISOString();
 		const job = this.enqueue({
 			queue: "runs",
 			payload: {
@@ -729,6 +749,7 @@ export class PiboReliabilityStore {
 				controllerPiboSessionId: input.controllerPiboSessionId,
 				toolName: input.toolName,
 				params: input.params,
+				timeoutMs: input.timeoutMs,
 			} as PiboJsonValue,
 			maxAttempts,
 		});
@@ -737,8 +758,8 @@ export class PiboReliabilityStore {
 				INSERT INTO pibo_runs (
 					run_id, kind, controller_pibo_session_id, status, completion_policy, consumed, tool_name,
 					summary, result_json, error, notified_status, acknowledged_status, created_at, updated_at,
-					completed_at, job_id, retryable, max_attempts
-				) VALUES (?, 'tool', ?, 'running', ?, 0, ?, ?, NULL, NULL, NULL, NULL, ?, ?, NULL, ?, ?, ?)
+					completed_at, job_id, retryable, max_attempts, timeout_ms, timeout_at, timeout_phase, service_warning
+				) VALUES (?, 'tool', ?, 'running', ?, 0, ?, ?, NULL, NULL, NULL, NULL, ?, ?, NULL, ?, ?, ?, ?, ?, NULL, ?)
 			`)
 			.run(
 				runId,
@@ -751,6 +772,9 @@ export class PiboReliabilityStore {
 				job.jobId,
 				input.retryable ? 1 : 0,
 				maxAttempts,
+				input.timeoutMs ?? null,
+				timeoutAt ?? null,
+				input.serviceWarning ?? null,
 			);
 		this.claimJob(job.jobId, `run-registry:${process.pid}`, 24 * 60 * 60 * 1000);
 		return this.requireRun(runId);
@@ -775,7 +799,11 @@ export class PiboReliabilityStore {
 					completed_at = ?,
 					job_id = ?,
 					retryable = ?,
-					max_attempts = ?
+					max_attempts = ?,
+					timeout_ms = ?,
+					timeout_at = ?,
+					timeout_phase = ?,
+					service_warning = ?
 				WHERE run_id = ?
 			`)
 			.run(
@@ -792,6 +820,10 @@ export class PiboReliabilityStore {
 				next.jobId ?? null,
 				next.retryable ? 1 : 0,
 				next.maxAttempts,
+				next.timeoutMs ?? null,
+				next.timeoutAt ?? null,
+				next.timeoutPhase ?? null,
+				next.serviceWarning ?? null,
 				runId,
 			);
 		return this.requireRun(runId);
@@ -818,7 +850,7 @@ export class PiboReliabilityStore {
 
 	pruneRuns(input: { consumedTerminalTtlMs: number; detachedTerminalTtlMs: number; nowMs: number }): number {
 		const rows = this.db
-			.prepare("SELECT * FROM pibo_runs WHERE status IN ('completed', 'failed', 'cancelled') AND completed_at IS NOT NULL")
+			.prepare("SELECT * FROM pibo_runs WHERE status IN ('completed', 'failed', 'timed_out', 'cancelled') AND completed_at IS NOT NULL")
 			.all() as PiboRunRow[];
 		const ids = rows
 			.map(runFromRow)
@@ -1065,6 +1097,10 @@ function runFromRow(row: PiboRunRow): PiboRunStoreRecord {
 	if (row.acknowledged_status) output.acknowledgedStatus = row.acknowledged_status;
 	if (row.completed_at) output.completedAt = row.completed_at;
 	if (row.job_id) output.jobId = row.job_id;
+	if (row.timeout_ms !== null) output.timeoutMs = row.timeout_ms;
+	if (row.timeout_at) output.timeoutAt = row.timeout_at;
+	if (row.timeout_phase === "startup" || row.timeout_phase === "lifetime") output.timeoutPhase = row.timeout_phase;
+	if (row.service_warning) output.serviceWarning = row.service_warning;
 	return output;
 }
 
