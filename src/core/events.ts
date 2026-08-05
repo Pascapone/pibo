@@ -1,6 +1,14 @@
 import type { PiboThinkingLevel } from "./thinking.js";
 
 export type PiboEventSource = "user" | "ui" | "service" | "actor";
+export type PiboMessageDelivery = "queue" | "steer";
+
+export class PiboSteeringUnavailableError extends Error {
+	constructor(message = "The active session cannot accept steering right now.", options?: ErrorOptions) {
+		super(message, options);
+		this.name = "PiboSteeringUnavailableError";
+	}
+}
 
 export type PiboJsonValue =
 	| null
@@ -16,6 +24,7 @@ export type PiboMessageEvent = {
 	type: "message";
 	piboSessionId: string;
 	text: string;
+	delivery?: PiboMessageDelivery;
 	source?: PiboEventSource;
 	id?: string;
 };
@@ -203,6 +212,15 @@ export type PiboMessageQueuedEvent = {
 	source?: PiboEventSource;
 };
 
+export type PiboMessageSteeredEvent = {
+	type: "message_steered";
+	piboSessionId: string;
+	eventId?: string;
+	activeEventId?: string;
+	text: string;
+	source?: PiboEventSource;
+};
+
 export type PiboMessageStartedEvent = {
 	type: "message_started";
 	piboSessionId: string;
@@ -353,6 +371,7 @@ export type PiboSessionErrorDetails = {
 
 export type PiboOutputEvent =
 	| PiboMessageQueuedEvent
+	| PiboMessageSteeredEvent
 	| PiboMessageStartedEvent
 	| { type: "message_finished"; piboSessionId: string; eventId?: string; source?: PiboEventSource }
 	| { type: "assistant_delta"; piboSessionId: string; eventId?: string; assistantIndex?: number; contentIndex?: number; text: string }

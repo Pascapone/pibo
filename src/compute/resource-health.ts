@@ -27,6 +27,7 @@ export interface ResourceHealthProcessInfo {
 	elapsedSeconds?: number;
 	commandName: string;
 	args: string;
+	containerId?: string;
 	isChromium: boolean;
 	isMainProcess: boolean;
 }
@@ -191,8 +192,11 @@ export function buildComputeResourceHealth(options: BuildComputeResourceHealthOp
 	for (const pool of browserPools) {
 		for (const process of mainProcesses) if (browserProcessMatchesPool(process, pool.state)) assignedMainPids.add(process.pid);
 	}
+	const activeWorkerOwnedMainPids = new Set(mainProcesses
+		.filter((process) => Boolean(findOwningActiveWorker(process, processes, workers)))
+		.map((process) => process.pid));
 	const unassignedMainProcessDetails = mainProcesses
-		.filter((process) => !assignedMainPids.has(process.pid))
+		.filter((process) => !assignedMainPids.has(process.pid) && !activeWorkerOwnedMainPids.has(process.pid))
 		.map((process) => describeUnassignedBrowserProcess(process, workers));
 	const unassignedChromiumMainProcesses = unassignedMainProcessDetails.length;
 	const activePoolIds = perWorker.filter((pool) => pool.activeLeaseCount > 0).map((pool) => `${pool.workerId}/${pool.poolId}`);
@@ -256,6 +260,27 @@ export function buildComputeResourceHealth(options: BuildComputeResourceHealthOp
 function browserLeakMessage(unassignedCount: number): string {
 	if (unassignedCount > 0) return `${unassignedCount} unmanaged Chromium main process(es) are not associated with a managed browser pool.`;
 	return "Chromium main-process count exceeds managed pool expectations.";
+}
+
+function findOwningActiveWorker(process: ResourceHealthProcessInfo, processes: ResourceHealthProcessInfo[], workers: WorkerInfo[]): WorkerInfo | undefined {
+	const containerId = process.containerId;
+	if (containerId && containerId.length >= 12) {
+		const byContainer = workers.find((worker) => worker.state === "running" && (worker.id === containerId || worker.id.startsWith(containerId) || containerId.startsWith(worker.id)));
+		if (byContainer) return byContainer;
+	}
+	const activeWorkersByPid = new Map(workers
+		.filter((worker) => worker.state === "running" && worker.hostPid !== undefined && worker.hostPid > 1)
+		.map((worker) => [worker.hostPid!, worker]));
+	const processByPid = new Map(processes.map((candidate) => [candidate.pid, candidate]));
+	const visited = new Set<number>();
+	let current: ResourceHealthProcessInfo | undefined = process;
+	while (current && current.pid > 1 && !visited.has(current.pid)) {
+		visited.add(current.pid);
+		const direct = activeWorkersByPid.get(current.pid) ?? activeWorkersByPid.get(current.ppid);
+		if (direct) return direct;
+		current = processByPid.get(current.ppid);
+	}
+	return undefined;
 }
 
 function describeUnassignedBrowserProcess(process: ResourceHealthProcessInfo, workers: WorkerInfo[]): ResourceHealthUnassignedBrowserProcessInfo {
@@ -363,7 +388,12 @@ async function collectWorkers(): Promise<{ workers: WorkerInfo[]; error?: string
 async function collectProcesses(): Promise<{ processes: ResourceHealthProcessInfo[]; error?: string }> {
 	try {
 		const { stdout } = await execFileAsync("ps", ["-eo", "pid=,ppid=,pgid=,etimes=,comm=,args="], { maxBuffer: 10 * 1024 * 1024 });
-		return { processes: parseProcessList(stdout) };
+		const processes = parseProcessList(stdout);
+		await Promise.all(processes.filter((process) => process.isChromium && process.isMainProcess).map(async (process) => {
+			const cgroup = await readFile(`/proc/${process.pid}/cgroup`, "utf8").catch(() => "");
+			process.containerId = parseDockerContainerIdFromCgroup(cgroup);
+		}));
+		return { processes };
 	} catch (error) {
 		return { processes: [], error: error instanceof Error ? error.message : String(error) };
 	}
@@ -411,6 +441,10 @@ function detectReaperTimerStatus(): ResourceHealthTimerStatus {
 		return { status: "configured", details: "Resource reaper timer is marked configured by PIBO_RESOURCE_REAPER_TIMER_STATUS.", nextCommands: ["pibo resources status --json"] };
 	}
 	return readResourceReaperTimerStatus();
+}
+
+export function parseDockerContainerIdFromCgroup(value: string): string | undefined {
+	return value.match(/(?:^|\/)docker[-/]([a-f0-9]{12,64})(?:\.scope|\/|$)/im)?.[1];
 }
 
 function browserProcessMatchesPool(process: ResourceHealthProcessInfo, state: BrowserPoolState): boolean {

@@ -12,7 +12,7 @@ import {
 import type { PiboSessionTraceSummary, PiboSessionTraceView } from "../types";
 import { isStreamingDebugEnabled, recordStreamingDebugTraceState } from "../streamingDebug";
 import { trimLiveOverlayForBaseTrace, type LiveTraceOverlay } from "./live-overlay";
-import { mergeOlderTracePage } from "./trace-page-merge";
+import { mergeOlderTracePage, mergeRefreshedTracePage } from "./trace-page-merge";
 import { traceAssistantOutputLength } from "./trace-output";
 import { traceViewFromTimelinePage } from "./trace-v2-adapter";
 
@@ -124,10 +124,9 @@ export function useSessionTracePage({
 			});
 		}
 		startTransition(() => {
-			setBaseTraceView((current) => ({
-				...trace,
-				rawEvents: current?.piboSessionId === trace.piboSessionId ? current.rawEvents : trace.rawEvents,
-			}));
+			setBaseTraceView((current) => current?.piboSessionId === trace.piboSessionId
+				? mergeRefreshedTracePage(current, trace)
+				: trace);
 			setLiveTraceOverlay((current) => trimLiveOverlayForBaseTrace(current, trace));
 		});
 	}, [selectedPiboSessionId, setLiveTraceOverlay, tracePageQuery.data]);

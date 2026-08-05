@@ -22,6 +22,13 @@ export function applySingleEventToNodes(
 	sessionStatus: PiboWebSessionStatus,
 ): void {
 	const payload = storedEvent.payload as PiboOutputEvent;
+	const confirmedUserMessage = hasPersistedTranscript ? confirmedUserMessageEchoNode(nodes, storedEvent) : undefined;
+	if (confirmedUserMessage) {
+		if (payload.type === "message_steered" && payload.activeEventId) {
+			confirmedUserMessage.parentId = messageTurnNodeId(payload.activeEventId);
+		}
+		return;
+	}
 	if (
 		hasPersistedTranscript &&
 		isTranscriptEchoEvent(payload) &&
@@ -142,7 +149,13 @@ export function applySingleEventToNodes(
 			return;
 		}
 	}
-	if (node.eventId && byId.has(node.id)) return;
+	if (node.eventId) {
+		const existing = byId.get(node.id);
+		if (existing) {
+			if (node.type === "user.message" && node.parentId) existing.parentId = node.parentId;
+			return;
+		}
+	}
 	attachExecutionCommandToOpenTurn(node, byId);
 	attachAsyncAgentRunNode(node, piboSessionId, storedEvent.createdAt);
 	nodes.push(node);
@@ -243,7 +256,7 @@ export function reconcileTranscriptUserMessageTimestamps(
 	let userCursor = 0;
 	for (const storedEvent of events) {
 		const event = storedEvent.payload as PiboOutputEvent;
-		if (event.type !== "message_queued" || event.source !== "user") continue;
+		if ((event.type !== "message_queued" && event.type !== "message_steered") || event.source !== "user") continue;
 		const eventId = typeof event.eventId === "string" ? event.eventId : storedEvent.eventId;
 		const text = typeof event.text === "string" ? event.text : undefined;
 		const matchIndex = transcriptUsers.findIndex((node, index) => {
@@ -258,11 +271,15 @@ export function reconcileTranscriptUserMessageTimestamps(
 }
 
 export function isConfirmedUserMessageEcho(nodes: readonly PiboTraceNode[], event: ChatWebStoredEvent): boolean {
+	return Boolean(confirmedUserMessageEchoNode(nodes, event));
+}
+
+function confirmedUserMessageEchoNode(nodes: readonly PiboTraceNode[], event: ChatWebStoredEvent): PiboTraceNode | undefined {
 	const payload = event.payload as PiboOutputEvent;
-	if (payload.type !== "message_queued" || payload.source !== "user") return false;
+	if ((payload.type !== "message_queued" && payload.type !== "message_steered") || payload.source !== "user") return undefined;
 	const eventId = typeof payload.eventId === "string" ? payload.eventId : event.eventId;
 	const text = typeof payload.text === "string" ? payload.text : undefined;
-	return nodes.some((node) => {
+	return flattenTraceNodes([...nodes]).find((node) => {
 		if (node.type !== "user.message" || node.source !== "transcript") return false;
 		if (eventId && (node.entryId === eventId || node.stableKey === `entry:${eventId}`)) return true;
 		return Boolean(text && traceNodeText(node) === text);
@@ -339,7 +356,8 @@ function traceNodeFromEvent(
 	};
 
 	switch (event.type) {
-		case "message_queued": {
+		case "message_queued":
+		case "message_steered": {
 			const notification = parseRunNotificationText(event.text);
 			if (event.source === "service" && notification) {
 				return createRunNotificationNode({
@@ -355,6 +373,7 @@ function traceNodeFromEvent(
 			}
 			return {
 				...base,
+				...(event.type === "message_steered" && event.activeEventId ? { parentId: messageTurnNodeId(event.activeEventId) } : {}),
 				type: "user.message",
 				title: "User Message",
 				status: "done",
@@ -449,10 +468,12 @@ function traceNodeFromEvent(
 				children: [],
 			};
 		}
-		case "subagent_session":
+		case "subagent_session": {
+			const childPiboSessionId = nonEmptyString(event.childPiboSessionId);
+			const eventInstanceKey = traceEventInstanceKey(eventSequence, streamId, event);
 			return {
 				...base,
-				id: event.toolCallId ? `tool:${event.toolCallId}` : id,
+				id: event.toolCallId ? `tool:${event.toolCallId}` : `event:subagent_session:${eventInstanceKey}`,
 				eventId,
 				toolCallId: event.toolCallId,
 				type: "agent.delegation",
@@ -460,10 +481,13 @@ function traceNodeFromEvent(
 				status: sessionStatus === "running" ? "running" : "done",
 				summary: event.subagentName,
 				input: { subagentName: event.subagentName, threadKey: event.threadKey },
-				linkedPiboSessionId: event.childPiboSessionId,
-				stableKey: event.toolCallId ? `tool:${event.toolCallId}` : `subagent:${event.childPiboSessionId}`,
+				linkedPiboSessionId: childPiboSessionId,
+				stableKey: event.toolCallId
+					? `tool:${event.toolCallId}`
+					: childPiboSessionId ? `subagent:${childPiboSessionId}` : `subagent:event:${eventInstanceKey}`,
 				children: [],
 			};
+		}
 		case "execution_result":
 			if (isInternalSessionOperation(event.action)) return undefined;
 			return {
@@ -474,21 +498,24 @@ function traceNodeFromEvent(
 				input: { action: event.action },
 				output: event.result,
 			};
-		case "compaction_start":
+		case "compaction_start": {
+			const eventInstanceKey = traceEventInstanceKey(eventSequence, streamId, event);
 			return {
 				...base,
-				id: `event:compaction:${eventSequence ?? streamId ?? cryptoSafeId(event)}`,
+				id: `event:compaction:${eventInstanceKey}`,
 				type: "execution.compaction",
 				title: "compact",
 				status: "running",
 				summary: "Compacting",
 				input: { reason: event.reason },
-				stableKey: "compaction:active",
+				stableKey: `compaction:${eventInstanceKey}`,
 			};
-		case "compaction_end":
+		}
+		case "compaction_end": {
+			const eventInstanceKey = traceEventInstanceKey(eventSequence, streamId, event);
 			return {
 				...base,
-				id: `event:compaction:end:${eventSequence ?? streamId ?? cryptoSafeId(event)}`,
+				id: `event:compaction:end:${eventInstanceKey}`,
 				type: "execution.compaction",
 				title: "compact",
 				status: event.errorMessage ? "error" : "done",
@@ -497,8 +524,9 @@ function traceNodeFromEvent(
 				input: { reason: event.reason },
 				output: event.result,
 				error: event.errorMessage,
-				stableKey: "compaction:active",
+				stableKey: `compaction:${eventInstanceKey}`,
 			};
+		}
 		case "session_error":
 			return {
 				...base,
@@ -525,7 +553,7 @@ function mergeAssistantDeltaEvent(
 	streamId?: number,
 	streamFrameIndex?: number,
 ): void {
-	if (event.text.length === 0) return;
+	if (typeof event.text !== "string" || event.text.length === 0) return;
 
 	const assistantId = assistantEventNodeId(event);
 	const id = assistantId ? assistantMessageNodeId(assistantId) : `event:assistant_delta:${cryptoSafeId(event)}`;
@@ -576,7 +604,7 @@ function mergeThinkingDeltaEvent(
 	streamId?: number,
 	streamFrameIndex?: number,
 ): void {
-	if (event.text.length === 0) return;
+	if (typeof event.text !== "string" || event.text.length === 0) return;
 
 	const thinkingId = thinkingEventNodeId(event);
 	const id = thinkingId ? thinkingNodeId(thinkingId) : `event:thinking_delta:${cryptoSafeId(event)}`;
@@ -772,6 +800,7 @@ function eventTraceNodeOrder(
 function eventNodeKind(type: PiboOutputEvent["type"]): PiboTraceNode["type"] {
 	switch (type) {
 		case "message_queued":
+		case "message_steered":
 			return "user.message";
 		case "message_started":
 		case "message_finished":
@@ -941,6 +970,17 @@ function parseTimestamp(value: string | undefined): number | undefined {
 	if (!value) return undefined;
 	const timestamp = new Date(value).getTime();
 	return Number.isFinite(timestamp) ? timestamp : undefined;
+}
+
+function traceEventInstanceKey(eventSequence: number | undefined, streamId: number | undefined, event: PiboOutputEvent): string {
+	if (eventSequence !== undefined) return `sequence:${eventSequence}`;
+	if (streamId !== undefined) return `stream:${streamId}`;
+	return cryptoSafeId(event);
+}
+
+function nonEmptyString(value: unknown): string | undefined {
+	if (typeof value !== "string") return undefined;
+	return value.trim() || undefined;
 }
 
 function cryptoSafeId(value: unknown): string {

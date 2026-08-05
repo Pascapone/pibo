@@ -53,7 +53,7 @@ export type BrowserUseLeaseAcquireOptions = {
   templateDir?: string;
   profileName?: string;
   json?: boolean;
-  noWarmup?: boolean;
+  headed?: boolean;
 };
 
 export type BrowserUseLeaseReleaseOptions = {
@@ -465,16 +465,14 @@ export async function acquireBrowserUseLease(
     }
     await writeRegistry(context.status, registry);
     if (reapedCount > 0 && !options.json) {
-      console.log(`Reaped ${reapedCount} stale lease${reapedCount === 1 ? '' : 's'}`);
+      console.error(`Reaped ${reapedCount} stale lease${reapedCount === 1 ? '' : 's'}`);
     }
     if (options.json) printLeaseJson(context.status, lease);
     else printLeaseEnv(context.status, lease);
 
-    if (!options.noWarmup) {
-      const warmup = await warmupBrowserUseLease(context, lease);
-      if (!warmup.success && !options.json) {
-        console.log(`Warning: Browser warm-up failed: ${warmup.error}`);
-      }
+    const warmup = await warmupBrowserUseLease(context, lease, 15000, options.headed);
+    if (!warmup.success && !options.json) {
+      console.error(`Warning: Browser warm-up failed: ${warmup.error?.trim() || 'unknown error'}`);
     }
   });
 }
@@ -483,6 +481,7 @@ async function warmupBrowserUseLease(
   context: LeaseCommandContext,
   lease: BrowserUseLease,
   timeoutMs = 15000,
+  headed = false,
 ): Promise<{ success: boolean; cdpUrl?: string; error?: string }> {
   const wrapperPath = join(context.status.homeDir, 'bin', 'browser-use');
   if (!existsSync(wrapperPath)) {
@@ -499,7 +498,13 @@ async function warmupBrowserUseLease(
   };
 
   return new Promise((resolve) => {
-    const child = spawn(wrapperPath, ['--session', lease.sessionName, '--pibo-ensure-chrome'], {
+    const args = [
+      ...(headed ? ['--headed'] : []),
+      '--session',
+      lease.sessionName,
+      '--pibo-ensure-chrome',
+    ];
+    const child = spawn(wrapperPath, args, {
       env,
       stdio: ['ignore', 'pipe', 'pipe'],
     });

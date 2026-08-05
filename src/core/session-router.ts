@@ -23,6 +23,7 @@ import type {
 } from "./events.js";
 import { createSubagentToolName, type PiboSubagentRunner } from "../subagents/tool.js";
 import { PiboRunRegistry, type PiboRunNotification, type PiboRunRegistryEvent, type PiboRunSnapshot } from "../runs/registry.js";
+import { PiboRunExecutionTimeoutError } from "../runs/lifecycle.js";
 import { createPiboSignalRegistry } from "../signals/registry.js";
 import type { PiboSignalPatch, PiboSignalRegistry, PiboSignalSnapshot, PiboSignalStatusSnapshot } from "../signals/types.js";
 import type { PiboRunToolController } from "../runs/tools.js";
@@ -153,6 +154,15 @@ function formatRunReminderMessage(notification: PiboRunNotification): string {
 				toolName: run.toolName,
 				summary: run.summary,
 			})),
+			timedOut: notification.timedOut.map((run) => ({
+				runId: run.runId,
+				kind: run.kind,
+				status: run.status,
+				toolName: run.toolName,
+				summary: run.summary,
+				timeoutMs: run.timeoutMs,
+				timeoutPhase: run.timeoutPhase,
+			})),
 			cancelled: notification.cancelled.map((run) => ({
 				runId: run.runId,
 				kind: run.kind,
@@ -168,7 +178,7 @@ function formatRunReminderMessage(notification: PiboRunNotification): string {
 				summary: run.summary,
 			})),
 			instruction:
-				"Use pibo_run_read for completed or failed runs. Use pibo_run_wait, pibo_run_status, pibo_run_cancel, or pibo_run_ack for runs you still need to manage.",
+				"Use pibo_run_read for completed, failed, or timed_out runs. Use pibo_run_wait, pibo_run_status, pibo_run_cancel, or pibo_run_ack for runs you still need to manage.",
 		}),
 		"</pibo_run_notification>",
 	].join("\n");
@@ -179,7 +189,7 @@ function isRunReminderServiceMessage(event: PiboMessageEvent): boolean {
 }
 
 function isTerminalRunStatus(status: string): boolean {
-	return status === "completed" || status === "failed" || status === "cancelled";
+	return status === "completed" || status === "failed" || status === "timed_out" || status === "cancelled";
 }
 
 function asJsonObject(value: PiboJsonObject | undefined): PiboJsonObject {
@@ -289,7 +299,9 @@ export class PiboSessionRouter {
 		this.clearIdleSessionTimer(event.piboSessionId);
 		try {
 			if (event.type === "message") {
-				return session.enqueueMessage(event);
+				return event.delivery === "steer"
+					? await session.steerMessage(event)
+					: session.enqueueMessage(event);
 			}
 
 			if (event.action === "abort") {
@@ -785,7 +797,7 @@ export class PiboSessionRouter {
 
 	private createRunToolController(parentPiboSessionId: string): PiboRunToolController {
 		return {
-			startToolRun: ({ toolName, params, completionPolicy, retryable, maxAttempts, execute }) => {
+			startToolRun: ({ toolName, params, completionPolicy, retryable, maxAttempts, timeoutMs, serviceWarning, execute }) => {
 				assertGatewayResourceAvailableForWork(`yielded run ${toolName}`);
 				const run = this.runRegistry.startToolRun({
 					controllerPiboSessionId: parentPiboSessionId,
@@ -794,6 +806,8 @@ export class PiboSessionRouter {
 					completionPolicy,
 					retryable,
 					maxAttempts,
+					timeoutMs,
+					serviceWarning,
 				});
 
 				void (async () => {
@@ -802,11 +816,11 @@ export class PiboSessionRouter {
 						const completed = this.runRegistry.complete(run.runId, result);
 						if (completed) this.scheduleRunReminder(parentPiboSessionId, false);
 					} catch (error) {
-						const failed = this.runRegistry.fail(
-							run.runId,
-							error instanceof Error ? error.message : String(error),
-						);
-						if (failed) this.scheduleRunReminder(parentPiboSessionId, false);
+						const message = error instanceof Error ? error.message : String(error);
+						const terminalRun = error instanceof PiboRunExecutionTimeoutError
+							? this.runRegistry.timeOut(run.runId, message, error.timeoutPhase)
+							: this.runRegistry.fail(run.runId, message);
+						if (terminalRun) this.scheduleRunReminder(parentPiboSessionId, false);
 					}
 				})();
 

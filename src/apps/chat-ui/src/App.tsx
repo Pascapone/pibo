@@ -1005,8 +1005,8 @@ export function App({ route }: { route: ChatAppRoute }) {
 	});
 
 	const sendMessageMutation = useMutation({
-		mutationFn: ({ piboSessionId, text, clientTxnId, roomId, webAnnotationIds, fileAttachmentPaths }: { piboSessionId: string; text: string; clientTxnId: string; roomId?: string; webAnnotationIds?: readonly string[]; fileAttachmentPaths?: readonly string[] }) =>
-			postMessage(piboSessionId, text, clientTxnId, roomId, webAnnotationIds, fileAttachmentPaths),
+		mutationFn: ({ piboSessionId, text, clientTxnId, roomId, webAnnotationIds, fileAttachmentPaths, delivery }: { piboSessionId: string; text: string; clientTxnId: string; roomId?: string; webAnnotationIds?: readonly string[]; fileAttachmentPaths?: readonly string[]; delivery?: "queue" | "steer" }) =>
+			postMessage(piboSessionId, text, clientTxnId, roomId, webAnnotationIds, fileAttachmentPaths, delivery),
 		onMutate: async ({ piboSessionId }) => {
 			await queryClient.cancelQueries({ queryKey: tracePageQueriesForSession(piboSessionId) });
 			updateBootstrapCache((data) => updateSessionNodeInBootstrap(data, piboSessionId, (node) => ({ ...node, status: "running", lastActivityAt: new Date().toISOString() })));
@@ -1722,7 +1722,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 						onThinkingLevelChange={(level) => void runCommand(`/thinking ${level}`)}
 						onRefreshTrace={refreshSelectedTrace}
 						onRefreshBootstrap={refreshSelectedBootstrap}
-						onSend={async (text, webAnnotationIds, fileAttachmentPaths, clientTxnId) => {
+						onSend={async (text, webAnnotationIds, fileAttachmentPaths, clientTxnId, delivery) => {
 							if (!selectedPiboSessionId || selectedRoomArchived) return;
 							try {
 								await sendMessageMutation.mutateAsync({
@@ -1732,11 +1732,13 @@ export function App({ route }: { route: ChatAppRoute }) {
 									roomId: selectedRoomId ?? undefined,
 									webAnnotationIds,
 									fileAttachmentPaths,
+									delivery,
 								});
 								await loadBootstrap(selectedPiboSessionId, showArchivedRef.current, selectedRoomId ?? undefined, { force: true });
 								setError(null);
 							} catch (caught) {
 								setError(caught instanceof Error ? caught.message : String(caught));
+								throw caught;
 							}
 						}}
 						onError={setError}

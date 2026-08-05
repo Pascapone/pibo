@@ -275,6 +275,59 @@ test("persisted user message with optimistic event id keeps one trace node", () 
 	assert.equal(after[0].id, `event:message_queued:${clientTxnId}`);
 });
 
+test("steering messages attach to the active turn without creating a queued turn", () => {
+	const view = createBaseView([
+		createEvent({ seq: 1, type: "message_started", payload: { type: "message_started", eventId: "turn-1", text: "Start", source: "user" } }),
+		createEvent({ seq: 2, type: "message_steered", payload: { type: "message_steered", eventId: "steer-1", activeEventId: "turn-1", text: "Adjust course", source: "user" } }),
+	], "running");
+
+	const nodes = flatNodes(view);
+	const steered = nodes.find((node) => node.id === "event:message_steered:steer-1");
+	assert.ok(steered, "expected steering user message");
+	assert.equal(steered.parentId, "event:message:turn-1");
+	assert.equal(nodes.filter((node) => node.type === "agent.turn").length, 1);
+});
+
+test("confirmed steering events attach optimistic messages to the active turn", () => {
+	const baseView = createBaseView([
+		createEvent({ seq: 1, type: "message_started", payload: { type: "message_started", eventId: "turn-1", text: "Start", source: "user" } }),
+		createEvent({ seq: 2, type: "message_steered", payload: { type: "message_steered", eventId: "steer-1", text: "Adjust course", source: "user" } }),
+	], "running");
+
+	const patched = patchTraceViewWithEvent(baseView, createEvent({
+		seq: 3,
+		streamId: 30,
+		type: "message_steered",
+		payload: { type: "message_steered", eventId: "steer-1", activeEventId: "turn-1", text: "Adjust course", source: "user" },
+	}), "running");
+	const steered = flatNodes(patched).filter((node) => node.id === "event:message_steered:steer-1");
+	assert.equal(steered.length, 1);
+	assert.equal(steered[0].parentId, "event:message:turn-1");
+});
+
+test("persisted steering messages remain attached to the active turn after reload", () => {
+	const view = buildTraceViewFromEvents({
+		session: { id: "chat:test", piSessionId: "pi-test" },
+		status: "idle",
+		transcriptEntries: [
+			{
+				id: "steer-1",
+				type: "message",
+				timestamp: "2026-04-29T08:00:01.000Z",
+				message: { role: "user", content: [{ type: "text", text: "Adjust course" }] },
+			},
+		],
+		events: [
+			createEvent({ seq: 1, type: "message_started", payload: { type: "message_started", eventId: "turn-1", text: "Start", source: "user" } }),
+			createEvent({ seq: 2, type: "message_steered", payload: { type: "message_steered", eventId: "steer-1", activeEventId: "turn-1", text: "Adjust course", source: "user" } }),
+		],
+	});
+
+	const steered = flatNodes(view).find((node) => node.id === "entry:steer-1");
+	assert.ok(steered);
+	assert.equal(steered.parentId, "event:message:turn-1");
+});
+
 test("optimistic user echo is ignored once the transcript entry exists", () => {
 	const clientTxnId = "web-client-txn-transcript-1";
 	const baseView = buildTraceViewFromEvents({

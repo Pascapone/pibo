@@ -20,7 +20,7 @@ pibo loop conditions
 
 Goal-capable profiles expose native tools:
 
-- `get_goal`: inspect authoritative status, objective, token budget, tokens used, remaining tokens, and elapsed active time.
+- `get_goal`: inspect authoritative status, soft-budget risk, tokens used, remaining tokens, active agent time, and elapsed wall-clock time.
 - `create_goal`: create a persistent Goal only when the user or system explicitly requests one.
 - `update_goal`: mark the current Goal `complete` after a strict completion audit, or `blocked` after the same impasse repeats for at least three consecutive Goal turns.
 
@@ -34,6 +34,7 @@ pibo loop add \
   --profile <profile> \
   --prompt "<complete objective>" \
   --token-budget <optional-positive-token-count> \
+  --token-reserve <optional-pre-turn-minimum> \
   --max-iterations <optional-run-fallback> \
   --start
 ```
@@ -50,9 +51,17 @@ Prefer creating the job stopped when its prompt, target, profile, or safety boun
 
 ## Token budgets
 
-Pibo accumulates model usage reported by completed assistant model messages. A Goal becomes `budget_limited` when reported usage reaches or exceeds its budget. One provider request can overshoot because usage is known only after the response reports it.
+Goal token budgets are soft: Pibo accumulates usage reported after model responses, so the final turn can overshoot. Each Goal run records tokens used before the turn, remaining tokens before the turn, turn usage, and overshoot.
 
-Increase or clear the token budget before resuming a budget-limited Goal.
+Set `--token-reserve <n>` to require more than `n` tokens to remain before Pibo starts another turn. Increase or clear the budget, or lower the reserve, before resuming a budget-limited Goal.
+
+## Time accounting
+
+`activeAgentTimeSeconds` accumulates time spent executing Goal runs. `elapsedWallClockSeconds` starts when the Goal is first activated, includes waiting and paused periods, and freezes when the Goal enters a terminal state. A Goal created paused reports zero wall-clock elapsed time until first activation.
+
+## Managed browser leases
+
+When a Goal owns `resources.browserLeaseIds`, Pibo renews those leases before each turn and while the turn is active. The same lease is retained across non-terminal Goal turns, including gateway service restart, and is released only when the Goal stops or reaches a terminal state. If the browser process disappeared, Pibo attempts to restart Chromium from the persisted managed profile. Failure to restore authenticated access marks the Goal blocked with an operator-facing resource reason.
 
 ## Operations
 

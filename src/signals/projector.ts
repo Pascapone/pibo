@@ -22,7 +22,7 @@ function node(input: Omit<PiboSignalNode, "createdAt" | "updatedAt" | "rootPiboS
 
 function runStatus(status: PiboRunStatus): PiboSignalStatus {
 	if (status === "completed") return "done";
-	if (status === "failed") return "error";
+	if (status === "failed" || status === "timed_out") return "error";
 	return status;
 }
 
@@ -147,6 +147,10 @@ export const outputSignalProducer: PiboSignalProducer = {
 			mutations.push({ type: "set_session_queue", piboSessionId, queuedMessages: event.queuedMessages });
 			mutations.push({ type: "upsert_node", node: node({ id: `message:${piboSessionId}:${event.eventId ?? context.now()}`, kind: "message", status: "queued", piboSessionId, metadata: { source: event.source } }, context) });
 		}
+		if (event.type === "message_steered") {
+			mutations.push({ type: "patch_node", nodeId: `session:${piboSessionId}`, patch: { status: "running" } });
+			mutations.push({ type: "upsert_node", node: node({ id: `message:${piboSessionId}:${event.eventId ?? context.now()}`, kind: "message", status: "done", piboSessionId, parentNodeId: event.activeEventId ? `turn:${piboSessionId}:${event.activeEventId}` : undefined, completedAt: context.now(), metadata: { source: event.source, delivery: "steer" } }, context) });
+		}
 		if (event.type === "message_started") {
 			mutations.push({ type: "patch_node", nodeId: `session:${piboSessionId}`, patch: { status: "running" } });
 			if (event.eventId) {
@@ -213,7 +217,7 @@ export const runSignalProducer: PiboSignalProducer = {
 		if (data.type === "run_removed") return [{ type: "remove_node", nodeId: `run:${data.runId}` }];
 		if (data.type !== "run_changed") return [];
 		const run = data.run;
-		return [{ type: "upsert_node", node: node({ id: `run:${run.runId}`, kind: "yielded_run", status: runStatus(run.status), piboSessionId: run.controllerPiboSessionId, startedAt: run.createdAt, completedAt: run.completedAt, error: run.status === "failed" ? { message: run.summary ?? "Run failed.", source: "run" } : undefined, metadata: { runId: run.runId, toolName: run.toolName, completionPolicy: run.completionPolicy, consumed: run.consumed, summary: run.summary, previousStatus: data.previousStatus, reason: data.reason } }, context) }];
+		return [{ type: "upsert_node", node: node({ id: `run:${run.runId}`, kind: "yielded_run", status: runStatus(run.status), piboSessionId: run.controllerPiboSessionId, startedAt: run.createdAt, completedAt: run.completedAt, error: run.status === "failed" || run.status === "timed_out" ? { message: run.summary ?? "Run failed.", source: "run" } : undefined, metadata: { runId: run.runId, toolName: run.toolName, completionPolicy: run.completionPolicy, consumed: run.consumed, summary: run.summary, timeoutMs: run.timeoutMs, timeoutAt: run.timeoutAt, timeoutPhase: run.timeoutPhase, serviceWarning: run.serviceWarning, previousStatus: data.previousStatus, reason: data.reason } }, context) }];
 	},
 };
 

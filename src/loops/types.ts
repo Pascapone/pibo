@@ -69,7 +69,11 @@ export type PiboLoopResourceMetadata = {
 export type PiboLoopJobState = {
 	goalStatus?: PiboGoalStatus;
 	tokensUsed?: number;
+	activeTimeSeconds?: number;
+	/** Legacy persisted field migrated to activeTimeSeconds when read. */
 	timeUsedSeconds?: number;
+	goalStartedAt?: string;
+	goalEndedAt?: string;
 	runningAt?: string;
 	lastRunAt?: string;
 	lastStatus?: 'ok' | 'error' | 'cancelled';
@@ -95,6 +99,7 @@ export type PiboLoopJob = {
 	prompt: string;
 	maxIterations?: number;
 	tokenBudget?: number;
+	tokenReserve?: number;
 	stopPolicy?: PiboLoopStopPolicy;
 	modelOverride?: ModelProfile;
 	thinkingLevel?: PiboThinkingLevel;
@@ -107,6 +112,16 @@ export type PiboLoopJob = {
 
 export type PiboLoopRunStatus = 'running' | 'ok' | 'error' | 'cancelled';
 
+export type PiboLoopRunAccounting = {
+	tokenBudget?: number;
+	tokenReserve?: number;
+	tokensUsedBefore?: number;
+	remainingTokensBefore?: number;
+	tokensUsed?: number;
+	overshootTokens?: number;
+	activeTimeSeconds?: number;
+};
+
 export type PiboLoopRun = {
 	id: string;
 	jobId: string;
@@ -116,6 +131,7 @@ export type PiboLoopRun = {
 	error?: string;
 	startedAt?: string;
 	completedAt?: string;
+	accounting?: PiboLoopRunAccounting;
 	resources?: PiboLoopResourceMetadata;
 	createdAt: string;
 	updatedAt: string;
@@ -190,6 +206,7 @@ export type PiboLoopJobCreateInput = {
 	prompt: string;
 	maxIterations?: number;
 	tokenBudget?: number;
+	tokenReserve?: number;
 	stopPolicy?: PiboLoopStopPolicy;
 	resources?: PiboLoopResourceMetadata;
 	initialPiboSessionId?: string;
@@ -208,6 +225,7 @@ export type PiboLoopJobPatchInput = {
 	prompt?: string;
 	maxIterations?: number | null;
 	tokenBudget?: number | null;
+	tokenReserve?: number | null;
 	stopPolicy?: PiboLoopStopPolicy | null;
 	modelOverride?: ModelProfile | null;
 	thinkingLevel?: PiboThinkingLevel | null;

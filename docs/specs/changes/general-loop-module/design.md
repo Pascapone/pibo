@@ -43,7 +43,9 @@ Legacy Goal rows without an explicit status derive `active` when enabled and `pa
 
 Pibo emits a normalized assistant-usage event for every completed assistant model message, including tool-use model steps without final text. Goal runs accumulate reported `totalTokens`, or a normalized sum when total tokens are unavailable.
 
-Accounting is exact for usage reported by Pi/provider messages. It cannot stop a provider request before that request returns usage. When a message crosses the budget, Pibo marks the goal `budget_limited`, allows the current routed turn to finish, and prevents another automatic continuation.
+Accounting is exact for usage reported by Pi/provider messages. The budget is therefore explicitly soft: it cannot stop a provider request before that request returns usage. Each run snapshots remaining tokens before the turn and persists turn usage plus overshoot. An optional pre-turn reserve prevents another run when remaining tokens do not exceed the configured minimum.
+
+Active agent time accumulates run execution. Wall-clock elapsed time begins on first activation and includes waits and paused periods; a never-started paused Goal reports zero elapsed wall-clock time.
 
 ### Decision: Goal mode uses structured status; Ralph keeps the marker
 
@@ -60,7 +62,7 @@ A built-in `loop` skill and `pibo tools guide loop loop` teach same-session Goal
 ## Risks and Trade-offs
 
 - A model can call `blocked` before satisfying the prompt contract; Codex has the same trust boundary.
-- Usage is accounted after provider messages, so a single request can overshoot the budget.
+- Usage is accounted after provider messages, so a single request can still overshoot the soft budget; the reserve reduces pre-turn risk but is not a hard provider limit.
 - Existing custom agents need a migration default of enabled to avoid Goal loops that cannot complete structurally.
 - `create_goal` from an ordinary session depends on the Web Loop service being active for automatic continuation.
 

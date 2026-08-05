@@ -11,6 +11,7 @@ async function runComposerSendScenario() {
 		const {
 			appendComposerOptimisticEvent,
 			createComposerSendPlan,
+			withComposerSendDelivery,
 		} = await import("./src/apps/chat-ui/src/composer-send.ts");
 
 		const plan = createComposerSendPlan({
@@ -27,6 +28,7 @@ async function runComposerSendScenario() {
 		assert.deepEqual(plan.webAnnotationIds, ["ann-1", "ann-2"]);
 		assert.deepEqual(plan.fileAttachmentPaths, ["/tmp/a.png", "/tmp/b.txt"]);
 		assert.equal(plan.clientTxnId, "web-test-txn");
+		assert.equal(plan.delivery, "queue");
 		assert.deepEqual(plan.optimisticEvent, {
 			id: "web-test-txn",
 			piboSessionId: "ps-1",
@@ -39,6 +41,7 @@ async function runComposerSendScenario() {
 				piboSessionId: "ps-1",
 				eventId: "web-test-txn",
 				clientTxnId: "web-test-txn",
+				delivery: "queue",
 				queuedMessages: 1,
 				text: "Ship it",
 				fileAttachmentPaths: ["/tmp/a.png", "/tmp/b.txt"],
@@ -58,6 +61,13 @@ async function runComposerSendScenario() {
 		assert.deepEqual(textOnlyPlan.webAnnotationIds, []);
 		assert.deepEqual(textOnlyPlan.fileAttachmentPaths, []);
 		assert.equal(Object.hasOwn(textOnlyPlan.optimisticEvent.payload, "fileAttachmentPaths"), false);
+
+		const steerPlan = withComposerSendDelivery(plan, "steer");
+		assert.equal(steerPlan.delivery, "steer");
+		assert.equal(steerPlan.optimisticEvent.type, "message_steered");
+		assert.equal(steerPlan.optimisticEvent.payload.type, "message_steered");
+		assert.equal(steerPlan.optimisticEvent.payload.delivery, "steer");
+		assert.equal(Object.hasOwn(steerPlan.optimisticEvent.payload, "queuedMessages"), false);
 
 		const existingEvent = { id: "existing", type: "message_queued", createdAt: "2026-05-27T09:59:00.000Z", payload: {} };
 		const appendedSameSession = appendComposerOptimisticEvent({ piboSessionId: "ps-1", events: [existingEvent] }, "ps-1", plan.optimisticEvent);

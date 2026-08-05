@@ -118,7 +118,7 @@ export function buildCompactTerminalRows(
 		.filter((item) => item.node.type !== "agent.turn" && (options.showThinking || item.node.type !== "model.reasoning"));
 	const candidates = syncThinkingToolRows(flatNodes.map((item) => createRowCandidate(item.node, item.turnId)));
 	applyCompletedTurnTiming(candidates, turnById);
-	return groupRelatedToolCandidates(candidates).map((candidate) => candidate.row);
+	return groupRelatedToolCandidates(reconcileConceptualRowCandidates(candidates)).map((candidate) => candidate.row);
 }
 
 export function findActiveTurnStartedAt(traceView: PiboSessionTraceView | null): string | undefined {
@@ -210,7 +210,70 @@ function createRowCandidate(node: PiboTraceNode, turnId?: string): RowCandidate 
 			};
 			break;
 	}
-	return { ...candidate, row: { ...candidate.row, ...debugFields(node) } };
+	return {
+		...candidate,
+		row: {
+			...candidate.row,
+			id: compactTerminalRowIdentity(node),
+			...debugFields(node),
+		},
+	};
+}
+
+export function compactTerminalRowIdentity(node: PiboTraceNode): string {
+	if (node.type === "tool.call" || node.type === "tool.result" || node.type === "agent.delegation") {
+		const toolCallId = node.toolCallId ?? stableKeySuffix(node.stableKey, "tool:");
+		if (toolCallId) return `terminal:tool:${toolCallId}`;
+		if (node.type === "agent.delegation" && node.linkedPiboSessionId) {
+			return `terminal:delegation:${node.linkedPiboSessionId}`;
+		}
+	}
+	if ((node.type === "agent.async" || node.type === "yielded.run") && node.runId) {
+		return `terminal:run:${node.runId}`;
+	}
+	if (node.type === "assistant.message") {
+		const assistantId = stableKeySuffix(node.stableKey, "assistant:");
+		if (assistantId) return `terminal:assistant:${assistantId}`;
+	}
+	if (node.type === "model.reasoning") {
+		const reasoningId = stableKeySuffix(node.stableKey, "reasoning:");
+		if (reasoningId) return `terminal:reasoning:${reasoningId}`;
+	}
+	return node.id;
+}
+
+function stableKeySuffix(stableKey: string | undefined, prefix: string): string | undefined {
+	if (!stableKey?.startsWith(prefix)) return undefined;
+	const suffix = stableKey.slice(prefix.length);
+	return suffix && suffix !== "undefined" ? suffix : undefined;
+}
+
+function reconcileConceptualRowCandidates(candidates: readonly RowCandidate[]): RowCandidate[] {
+	const reconciled: RowCandidate[] = [];
+	const indexById = new Map<string, number>();
+	for (const candidate of candidates) {
+		const existingIndex = indexById.get(candidate.row.id);
+		if (existingIndex === undefined) {
+			indexById.set(candidate.row.id, reconciled.length);
+			reconciled.push(candidate);
+			continue;
+		}
+		const existing = reconciled[existingIndex];
+		reconciled[existingIndex] = {
+			...candidate,
+			turnId: candidate.turnId ?? existing.turnId,
+			row: {
+				...existing.row,
+				...candidate.row,
+				sourceNodeIds: [...new Set([...existing.row.sourceNodeIds, ...candidate.row.sourceNodeIds])],
+				input: candidate.row.input ?? existing.row.input,
+				output: candidate.row.output ?? existing.row.output,
+				error: candidate.row.error ?? existing.row.error,
+				payloadRefs: { ...existing.row.payloadRefs, ...candidate.row.payloadRefs },
+			},
+		};
+	}
+	return reconciled;
 }
 
 function applyCompletedTurnTiming(

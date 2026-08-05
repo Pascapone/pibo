@@ -202,6 +202,22 @@ Agents can block briefly when dependent on a run, then continue other work if th
 - THEN the tool returns the run snapshot with `timedOut: true`
 - AND the agent can call wait again later or continue other work.
 
+### Requirement: Execution timeouts are durable and distinct
+
+A yielded run with a configured execution timeout MUST persist that timeout at start and MUST use terminal status `timed_out` when the wrapped tool reaches it. Timeout classification MUST remain distinct from a bounded `pibo_run_wait` timeout, which leaves the run active.
+
+#### Acceptance
+
+- `pibo_run_start` persists and returns `timeoutMs` and `timeoutAt` when the selected tool has a recognized configured timeout argument.
+- A configured execution timeout ends with status `timed_out`, not `failed`.
+- Timeout metadata records whether startup was unconfirmed (`startup`) or output proved successful startup before lifetime expiry (`lifetime`).
+- Notifications, status, list, read, debug output, signals, and trace projections preserve the timeout status and metadata.
+- A known long-lived foreground service command started with a finite timeout produces an immediate warning.
+
+#### Managed service lifecycle
+
+Do not use a finite foreground yielded Bash run as the owner of a gateway or similar daemon. On the host, manage gateways through `pibo gateway web|dev start/status/restart`. In a disposable Docker worker, launch the service as a detached/background process and validate it with a separate bounded health check; the short startup check may be tracked, while the daemon itself must not depend on the lifetime of a bounded foreground tool call.
+
 ### Requirement: Terminal results are read explicitly
 
 `pibo_run_read` MUST return the result or error details for a terminal run and mark terminal tracked runs consumed.
@@ -334,6 +350,7 @@ Run state stays small without losing unread tracked results.
 - [ ] SC-006: `pibo_run_wait` treats timeout as normal state and clamps excessive timeouts.
 - [ ] SC-007: Store-backed interrupted non-retryable runs recover as failed rather than staying running forever.
 - [ ] SC-008: Pruning removes only detached terminal runs or consumed tracked terminal runs after their TTLs.
+- [ ] SC-009: Configured execution timeouts persist at start, terminate as `timed_out`, preserve startup-versus-lifetime classification, and warn for finite foreground service runs.
 
 ## Assumptions and Open Questions
 
