@@ -105,6 +105,8 @@ export class LocalCliSessionSource implements CliSessionSource {
     close: () => void;
   }>();
   private closed = false;
+  private closing = false;
+  private closePromise?: Promise<void>;
 
   constructor(options: LocalCliSessionSourceOptions = {}) {
     this.sessionStore =
@@ -475,14 +477,31 @@ export class LocalCliSessionSource implements CliSessionSource {
   }
 
   async close(): Promise<void> {
+    if (this.closePromise) return this.closePromise;
+    this.closePromise = this.closeUnsafe();
+    return this.closePromise;
+  }
+
+  private async closeUnsafe(): Promise<void> {
     if (this.closed) return;
-    this.closed = true;
-    for (const handle of [...this.openHandles]) handle.close();
-    this.listeners.clear();
-    this.unsubscribeRouter?.();
-    if (this.ownsRouter) await this.router?.disposeAll?.();
-    if (this.ownsSessionStore) this.sessionStore.close?.();
-    if (this.ownsDataStore) this.dataStore?.close();
+    this.closing = true;
+    let routerError: unknown;
+    try {
+      if (this.ownsRouter) await this.router?.disposeAll?.();
+    } catch (error) {
+      routerError = error;
+    }
+    try {
+      this.closed = true;
+      for (const handle of [...this.openHandles]) handle.close();
+      this.listeners.clear();
+      this.unsubscribeRouter?.();
+      if (this.ownsSessionStore) this.sessionStore.close?.();
+      if (this.ownsDataStore) this.dataStore?.close();
+    } finally {
+      this.closing = false;
+    }
+    if (routerError) throw routerError;
   }
 
   listenerCount(sessionId?: string): number {
@@ -1094,7 +1113,7 @@ export class LocalCliSessionSource implements CliSessionSource {
   }
 
   private assertOpen(): void {
-    if (this.closed)
+    if (this.closed || this.closing)
       throw new CliSourceError(
         "source_closed",
         "Local CLI session source is closed",

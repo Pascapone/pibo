@@ -770,13 +770,22 @@ function deferred() {
 }
 
 function createQueuedCompactRuntime(order, promptBlocks, compactBlock) {
+	let activePromptBlock;
 	return {
 		cwd: process.cwd(),
 		session: {
 			async prompt(text) {
 				order.push(`prompt:${text}`);
 				const block = promptBlocks.shift();
-				if (block) await block.promise;
+				activePromptBlock = block;
+				try {
+					if (block) await block.promise;
+				} finally {
+					if (activePromptBlock === block) activePromptBlock = undefined;
+				}
+			},
+			async abort() {
+				activePromptBlock?.resolve();
 			},
 			async compact(customInstructions) {
 				order.push(customInstructions ? `compact:${customInstructions}` : "compact");
@@ -986,7 +995,41 @@ test("clear_queue leaves the active long-running message alone and reports only 
 	await routed.dispose();
 });
 
+test("dispose aborts and awaits active queue processing before disposing the runtime", async () => {
+	const promptBlock = deferred();
+	let promptSettled = false;
+	let abortCalls = 0;
+	let runtimeDisposed = false;
+	const runtime = createQueuedCompactRuntime([], [], deferred());
+	runtime.session.prompt = async () => {
+		try {
+			await promptBlock.promise;
+		} finally {
+			promptSettled = true;
+		}
+	};
+	runtime.session.abort = async () => {
+		abortCalls += 1;
+		promptBlock.resolve();
+	};
+	runtime.dispose = async () => {
+		assert.equal(promptSettled, true, "runtime disposal must wait for active prompt processing to settle");
+		runtimeDisposed = true;
+	};
+	const routed = new RoutedSession("route:test", runtime, () => {}, PiboPluginRegistry.create({ plugins: [piboCorePlugin] }), false);
+
+	routed.enqueueMessage({ type: "message", piboSessionId: "route:test", id: "message-active", text: "active", source: "user" });
+	await new Promise((resolve) => setImmediate(resolve));
+	await Promise.all([routed.dispose(), routed.dispose()]);
+
+	assert.equal(abortCalls, 1);
+	assert.equal(promptSettled, true);
+	assert.equal(runtimeDisposed, true);
+	assert.equal(routed.getStatus().disposed, true);
+});
+
 test("dispose reports active and queued messages as interrupted", async () => {
+	const events = [];
 	const interruptions = [];
 	const firstPrompt = deferred();
 	const runtime = createQueuedCompactRuntime([], [firstPrompt], deferred());
@@ -994,7 +1037,7 @@ test("dispose reports active and queued messages as interrupted", async () => {
 	const routed = new RoutedSession(
 		"route:test",
 		runtime,
-		() => {},
+		(event) => events.push(event),
 		registry,
 		false,
 		undefined,
@@ -1010,6 +1053,8 @@ test("dispose reports active and queued messages as interrupted", async () => {
 	routed.enqueueMessage({ type: "message", piboSessionId: "route:test", id: "message-queued", text: "queued", source: "user" });
 	await routed.dispose();
 	assert.deepEqual(interruptions, [{ ids: ["message-active", "message-queued"], reason: "session disposed" }]);
+	assert.equal(events.some((event) => event.type === "session_error" && event.eventId === "message-active" && /disposed/.test(event.error)), true);
+	assert.equal(routed.getStatus().processing, false);
 	firstPrompt.resolve();
 });
 
