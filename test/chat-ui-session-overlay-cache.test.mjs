@@ -86,6 +86,9 @@ test("delivery selection closes before awaiting and navigation restores before p
 	assert.match(paneSource, /const sendPlan = pendingSendPlan;\s+setPendingSendPlan\(null\);\s+setDeliverySending\(true\);\s+try \{\s+await deliverComposerSend\(sendPlan, delivery\)/);
 	assert.match(paneSource, /rollbackComposerSend\(sendPlan, caught\)/);
 	assert.doesNotMatch(paneSource, /await deliverComposerSend\(pendingSendPlan, delivery\)/);
+	assert.match(paneSource, /if \(next\) liveTraceOverlayCacheRef\.current\.set\(next\.piboSessionId, next\)/);
+	assert.match(paneSource, /liveTraceOverlayCacheRef\.current\.get\(sendPlan\.piboSessionId\)/);
+	assert.match(paneSource, /liveTraceOverlayCacheRef\.current\.delete\(sendPlan\.piboSessionId\)/);
 
 	const pageSource = fs.readFileSync("src/apps/chat-ui/src/tracing/use-session-trace-page.ts", "utf8");
 	assert.match(pageSource, /useLayoutEffect\(\(\) => \{\s+const cachedTrace/);

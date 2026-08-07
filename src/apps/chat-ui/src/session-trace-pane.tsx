@@ -149,8 +149,18 @@ export function SessionTracePane({
   onError: (message: string | null) => void;
 }) {
   const liveEventSeqRef = useRef(0);
-  const [liveTraceOverlay, setLiveTraceOverlay] =
+  const liveTraceOverlayCacheRef = useRef<Map<string, LiveTraceOverlay>>(new Map());
+  const [liveTraceOverlay, setLiveTraceOverlayState] =
     useState<LiveTraceOverlay | null>(null);
+  const setLiveTraceOverlay = useCallback<Dispatch<SetStateAction<LiveTraceOverlay | null>>>((update) => {
+    setLiveTraceOverlayState((current) => {
+      const next = typeof update === "function"
+        ? update(current)
+        : update;
+      if (next) liveTraceOverlayCacheRef.current.set(next.piboSessionId, next);
+      return next;
+    });
+  }, []);
   const [pendingSendPlan, setPendingSendPlan] =
     useState<ComposerSendPlan | null>(null);
   const [deliverySending, setDeliverySending] = useState(false);
@@ -170,6 +180,7 @@ export function SessionTracePane({
     selectedPiboSessionId,
     showRawEvents,
     liveTraceOverlay,
+    liveTraceOverlayCacheRef,
     setLiveTraceOverlay,
   });
   const {
@@ -300,9 +311,15 @@ export function SessionTracePane({
 
   const rollbackComposerSend = (sendPlan: ComposerSendPlan, caught: unknown) => {
     setLiveTraceOverlay((current) => {
-      if (!current || current.piboSessionId !== sendPlan.piboSessionId) return current;
-      const events = current.events.filter((event) => event.id !== sendPlan.clientTxnId);
-      return events.length ? { ...current, events } : null;
+      const target = current?.piboSessionId === sendPlan.piboSessionId
+        ? current
+        : liveTraceOverlayCacheRef.current.get(sendPlan.piboSessionId) ?? null;
+      if (!target) return current;
+      const events = target.events.filter((event) => event.id !== sendPlan.clientTxnId);
+      const next = events.length ? { ...target, events } : null;
+      if (next) liveTraceOverlayCacheRef.current.set(sendPlan.piboSessionId, next);
+      else liveTraceOverlayCacheRef.current.delete(sendPlan.piboSessionId);
+      return current?.piboSessionId === sendPlan.piboSessionId ? next : current;
     });
     onComposerTextChange((current) => current || sendPlan.text);
     onError(errorMessage(caught));

@@ -1,4 +1,4 @@
-import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getTraceRawEvents, getTraceSummary, getTraceTimeline } from "../api-trace-signals";
 import {
@@ -24,6 +24,7 @@ type UseSessionTracePageOptions = {
 	selectedPiboSessionId: string | null;
 	showRawEvents: boolean;
 	liveTraceOverlay: LiveTraceOverlay | null;
+	liveTraceOverlayCacheRef: MutableRefObject<Map<string, LiveTraceOverlay>>;
 	setLiveTraceOverlay: Dispatch<SetStateAction<LiveTraceOverlay | null>>;
 };
 
@@ -33,6 +34,7 @@ export function useSessionTracePage({
 	selectedPiboSessionId,
 	showRawEvents,
 	liveTraceOverlay,
+	liveTraceOverlayCacheRef,
 	setLiveTraceOverlay,
 }: UseSessionTracePageOptions) {
 	const queryClient = useQueryClient();
@@ -44,7 +46,6 @@ export function useSessionTracePage({
 	const [loadingOlderTracePage, setLoadingOlderTracePage] = useState(false);
 	const loadingOlderTraceBeforeRef = useRef<string | null>(null);
 	const loadedOlderTraceBeforeRef = useRef<Set<string>>(new Set());
-	const liveTraceOverlayCacheRef = useRef<Map<string, LiveTraceOverlay>>(new Map());
 	const traceSummaryQueryKey = useMemo(
 		() => selectedPiboSessionId ? chatTraceSummaryQueryKey(selectedPiboSessionId) : null,
 		[selectedPiboSessionId],
@@ -112,7 +113,7 @@ export function useSessionTracePage({
 		));
 		loadingOlderTraceBeforeRef.current = null;
 		loadedOlderTraceBeforeRef.current = new Set();
-	}, [queryClient, selectedPiboSessionId, setLiveTraceOverlay, tracePageQueryKey]);
+	}, [liveTraceOverlayCacheRef, queryClient, selectedPiboSessionId, setLiveTraceOverlay, tracePageQueryKey]);
 
 	const rawEventsQuery = useQuery({
 		queryKey: selectedPiboSessionId ? ["chat", "trace-raw-events", selectedPiboSessionId, rawEventLimit, rawEventsBeforeSequence ?? "tail"] : ["chat", "trace-raw-events", "idle"],
@@ -154,7 +155,7 @@ export function useSessionTracePage({
 				trace,
 			));
 		});
-	}, [selectedPiboSessionId, setLiveTraceOverlay, tracePageQuery.data]);
+	}, [liveTraceOverlayCacheRef, selectedPiboSessionId, setLiveTraceOverlay, tracePageQuery.data]);
 
 	useEffect(() => {
 		const rawPage = rawEventsQuery.data;
