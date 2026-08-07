@@ -78,7 +78,7 @@ export function CompactTerminalSessionView({
 	});
 	const activeTurnStartedAt = sessionActivity.activeTurnStartedAt;
 	const isStreaming = sessionActivity.isTurnActive;
-	const loadOlderTracePage = useCallback(() => {
+	const loadOlderTracePage = useCallback((settleScrollIntent: boolean) => {
 		if (!hasOlderTraceEvents || isFetchingOlderTracePage || olderTraceRequestPendingRef.current) return;
 		const load = () => {
 			olderTraceLoadTimerRef.current = undefined;
@@ -88,7 +88,8 @@ export function CompactTerminalSessionView({
 			prepareOlderTracePrependRef.current();
 			onLoadOlderTracePage?.();
 		};
-		if (!olderTraceIntentRef.current) {
+		if (!settleScrollIntent || !olderTraceIntentRef.current) {
+			if (olderTraceLoadTimerRef.current !== undefined) window.clearTimeout(olderTraceLoadTimerRef.current);
 			load();
 			return;
 		}
@@ -98,11 +99,11 @@ export function CompactTerminalSessionView({
 	const loadOlderNearTop = useCallback(() => {
 		if (!rangePrefetchReadyRef.current) return;
 		if (!olderTraceIntentRef.current) return;
-		loadOlderTracePage();
+		loadOlderTracePage(true);
 	}, [loadOlderTracePage]);
 	const loadOlderAtTop = useCallback(() => {
 		if (!rangePrefetchReadyRef.current) return;
-		loadOlderTracePage();
+		loadOlderTracePage(false);
 	}, [loadOlderTracePage]);
 	const markOlderTraceIntent = useCallback((event?: Event) => {
 		if (isOlderTraceScrollIntent(event)) olderTraceIntentRef.current = true;
