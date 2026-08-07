@@ -35,6 +35,9 @@ test("trace views preload older pages near the top without a manual trace-histor
 			assert.match(source, /if \(!stickyView\.isScrolledToTop\(\)\) return/);
 			assert.match(source, /olderTraceRequestPendingRef\.current = true/);
 			assert.match(source, /OLDER_TRACE_INTENT_SETTLE_MS = 700/);
+			assert.match(source, /loadOlderTracePage\(true\)/, "near-top prefetch still settles active scroll intent");
+			assert.match(source, /loadOlderTracePage\(false\)/, "the exact history edge loads immediately");
+			assert.match(source, /clearTimeout\(olderTraceLoadTimerRef\.current\)/, "reaching the edge cancels a pending settle timer");
 		} else {
 			assert.match(source, /if \(!stickyView\.isAtTop && !stickyView\.isScrolledToTop\(\)\) return/);
 		}

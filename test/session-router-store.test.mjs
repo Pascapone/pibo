@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import test from "node:test";
+import { PiboSteeringUnavailableError } from "../dist/core/events.js";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { createPiboRuntime } from "../dist/core/runtime.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
@@ -89,6 +90,45 @@ test("session router uses the Pibo session profile when creating a runtime", asy
 		});
 		assert.equal(current.type, "execution_result");
 		assert.equal(current.result.piSessionId, "11111111-1111-4111-8111-111111111111");
+	} finally {
+		await router.disposeAll();
+	}
+});
+
+test("session router clears accepted signal activity when idle steering is rejected", async () => {
+	const store = new InMemoryPiboSessionStore();
+	store.create({
+		id: "ps_idle_steer",
+		piSessionId: "41111111-1111-4111-8111-111111111111",
+		channel: "pibo.test",
+		kind: "chat",
+		profile: "base",
+	});
+	const router = new PiboSessionRouter({
+		persistSession: false,
+		sessionStore: store,
+	});
+
+	try {
+		await assert.rejects(
+			router.emit({
+				type: "message",
+				piboSessionId: "ps_idle_steer",
+				id: "rejected-steer",
+				text: "too late",
+				source: "user",
+				delivery: "steer",
+			}),
+			(error) => error instanceof PiboSteeringUnavailableError,
+		);
+
+		const snapshot = router.getSignalRegistry().snapshotTree("ps_idle_steer");
+		assert.equal(snapshot.sessions.ps_idle_steer.localStatus, "idle");
+		assert.equal(snapshot.sessions.ps_idle_steer.isTreeActive, false);
+		assert.equal(snapshot.sessions.ps_idle_steer.latestTurn, undefined);
+		assert.equal(snapshot.sessions.ps_idle_steer.activeTelemetry, undefined);
+		assert.equal(snapshot.nodes["message:ps_idle_steer:rejected-steer"], undefined);
+		assert.equal(snapshot.nodes["turn:ps_idle_steer:rejected-steer"], undefined);
 	} finally {
 		await router.disposeAll();
 	}

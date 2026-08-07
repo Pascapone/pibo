@@ -275,6 +275,39 @@ test("accepted messages start the first local turn before runtime initialization
 	assert.equal(registry.snapshotTree("root").nodes["turn:root:m1"].startedAt, startedAt, "runtime start preserves the accepted timestamp");
 });
 
+test("rejected accepted messages clear synthetic activity when the runtime is idle", () => {
+	const registry = createPiboSignalRegistry();
+	registry.project({ type: "session_created", session: session("root") });
+	registry.project({ type: "message_accepted", piboSessionId: "root", eventId: "rejected", source: "user" });
+	registry.project({ type: "message_rejected", piboSessionId: "root", eventId: "rejected" });
+	registry.project({ type: "session_processing_changed", piboSessionId: "root", processing: false, queuedMessages: 0 });
+
+	const snapshot = registry.snapshotTree("root");
+	assert.equal(snapshot.nodes["message:root:rejected"], undefined);
+	assert.equal(snapshot.nodes["turn:root:rejected"], undefined);
+	assert.equal(snapshot.sessions.root.localStatus, "idle");
+	assert.equal(snapshot.sessions.root.isTreeActive, false);
+	assert.equal(snapshot.sessions.root.latestTurn, undefined);
+	assert.equal(snapshot.sessions.root.activeTelemetry, undefined);
+});
+
+test("rejected steering removes only its accepted message while another turn remains active", () => {
+	const registry = createPiboSignalRegistry();
+	registry.project({ type: "session_created", session: session("root") });
+	registry.project({ type: "pibo_output", event: { type: "message_started", piboSessionId: "root", eventId: "active", text: "hi" } });
+	registry.project({ type: "message_accepted", piboSessionId: "root", eventId: "rejected", source: "user" });
+	registry.project({ type: "message_rejected", piboSessionId: "root", eventId: "rejected" });
+	registry.project({ type: "session_processing_changed", piboSessionId: "root", processing: true, queuedMessages: 0 });
+
+	const snapshot = registry.snapshotTree("root");
+	assert.equal(snapshot.nodes["message:root:rejected"], undefined);
+	assert.equal(snapshot.nodes["turn:root:rejected"], undefined);
+	assert.equal(snapshot.nodes["turn:root:active"].status, "running");
+	assert.equal(snapshot.sessions.root.localStatus, "running");
+	assert.equal(snapshot.sessions.root.latestTurn.eventId, "active");
+	assert.equal(snapshot.sessions.root.isTreeActive, true);
+});
+
 test("accepted queued messages do not replace the active local turn", () => {
 	const registry = createPiboSignalRegistry();
 	registry.project({ type: "session_created", session: session("root") });

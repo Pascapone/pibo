@@ -89,6 +89,7 @@ export class ResourceReaperService {
 				browserPoolRoot: this.options.browserPoolRoot,
 				browserUseHome: this.options.browserUseHome,
 				exemptBrowserPids: this.options.exemptBrowserPids,
+				exemptBrowserUserDataDirs: this.options.exemptBrowserUserDataDirs,
 				now: runAt,
 			});
 			result = await this.apply(plan);

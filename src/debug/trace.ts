@@ -8,6 +8,7 @@ import { compareTraceNodes } from "../shared/trace-nodes.js";
 import type { ResolvedPiboDebugStore } from "./stores.js";
 import { openReadOnlyDebugDatabase, withStorePath } from "./sql.js";
 import { formatNextCommands } from "./next-commands.js";
+import { resolveDebugTraceSessionStatus, summarizeDebugTraceStatus, type DebugTraceStatusSource } from "./trace-status.js";
 
 type SessionRow = {
 	id: string;
@@ -42,6 +43,8 @@ export type DebugTraceResult = {
 	piSessionId: string;
 	title: string;
 	status: string;
+	statusSource: DebugTraceStatusSource;
+	errorNodeCount: number;
 	nodes: DebugTraceNodeRow[];
 	rawNodeCount: number;
 	checks?: DebugTraceCheckResult;
@@ -111,19 +114,23 @@ export async function inspectDebugTrace(
 					.prepare("SELECT stream_id, session_id, session_sequence, event_id, type, created_at, preview_text, attributes_json FROM event_log WHERE session_id = ? ORDER BY stream_id ASC")
 					.all(piboSessionId) as EventRow[]).map((row) => eventFromRow(row, adapterIssues)).filter((event): event is ChatWebStoredPiboEvent => event !== undefined)
 			: [];
+		const sessionStatus = resolveDebugTraceSessionStatus(sessionRow.status, events.map((event) => event.type));
 		const view = await buildTraceView({
 			session,
 			sessions,
 			events,
-			status: sessionRow.status === "running" || sessionRow.status === "error" ? sessionRow.status : "idle",
+			status: sessionStatus.status,
 		});
 		const rows = flattenTraceNodes(view.nodes);
+		const statusSummary = summarizeDebugTraceStatus(sessionStatus.status, rows.map((node) => node.status));
 		const filtered = options.runningOnly ? rows.filter((node) => node.status === "running") : rows;
 		return {
 			piboSessionId: view.piboSessionId,
 			piSessionId: view.piSessionId,
 			title: view.title,
-			status: traceStatus(view),
+			status: statusSummary.status,
+			statusSource: sessionStatus.source,
+			errorNodeCount: statusSummary.errorNodeCount,
 			nodes: filtered,
 			rawNodeCount: rows.length,
 			...(options.check ? { checks: checkTraceView(view, adapterIssues) } : {}),
@@ -161,6 +168,8 @@ export function formatDebugTrace(result: DebugTraceResult, options: { medium?: b
 		`piSessionId: ${result.piSessionId}`,
 		`title: ${result.title}`,
 		`status: ${result.status}`,
+		`statusSource: ${result.statusSource}`,
+		`nodeErrors: ${result.errorNodeCount}`,
 		"",
 	];
 	if (result.nodes.length === 0) {
@@ -243,13 +252,6 @@ function flattenTraceNodes(nodes: PiboTraceNode[], depth = 0): DebugTraceNodeRow
 		},
 		...flattenTraceNodes(node.children, depth + 1),
 	]);
-}
-
-function traceStatus(view: PiboSessionTraceView): string {
-	const rows = flattenTraceNodes(view.nodes);
-	if (rows.some((node) => node.status === "error")) return "error";
-	if (rows.some((node) => node.status === "running")) return "running";
-	return "done";
 }
 
 export function checkTraceView(view: PiboSessionTraceView, adapterIssues: readonly DebugTraceIssue[] = []): DebugTraceCheckResult {

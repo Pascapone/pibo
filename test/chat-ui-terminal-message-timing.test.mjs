@@ -164,6 +164,12 @@ test("Compact Terminal renders timing only on message rows and keeps live update
 	assert.doesNotMatch(source, /useStableActiveTurn|findLatestActiveTurnTerminal|selectedTrace\?\.status/);
 	assert.match(source, /data-pibo-component="TerminalStreamingFooter"/);
 	assert.match(source, /aria-label="Working"[\s\S]*aria-hidden="true"/);
+	assert.match(source, /const WORKING_LABEL = "Working\.\.\."/);
+	assert.match(source, /<span className="compact-terminal-working-label">\{WORKING_LABEL\}<\/span>/);
+	assert.doesNotMatch(source, /useWorkingScramble|WORKING_SCRAMBLE|randomAsciiChar/);
+	const styles = fs.readFileSync(path.resolve("src/apps/chat-ui/src/styles.css"), "utf8");
+	assert.match(styles, /\.compact-terminal-working-label/);
+	assert.doesNotMatch(styles, /compact-terminal-working-scramble/);
 	assert.match(source, /row\.kind === "message\.assistant"[\s\S]*TerminalMessageMetadata/);
 	assert.match(source, /row\.kind === "message\.user"[\s\S]*TerminalMessageMetadata/);
 	assert.equal((source.match(/<TerminalMessageMetadata/g) ?? []).length, 2);
