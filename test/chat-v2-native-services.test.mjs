@@ -40,9 +40,14 @@ test("V2-native chat services cover rooms, sessions, timeline, commands, and rea
 	const room = rooms.ensureDefaultRoom();
 	const piboSession = session("ps_test", room.id);
 	sessions.upsertSession(piboSession);
+	const eventLogIndexes = store.db.prepare("PRAGMA index_list(event_log)").all();
 	assert.ok(
-		store.db.prepare("PRAGMA index_list(event_log)").all().some((row) => row.name === "idx_event_log_session_sequence_stream"),
+		eventLogIndexes.some((row) => row.name === "idx_event_log_session_sequence_stream"),
 		"event_log has a session-sequence index for trace tail pages",
+	);
+	assert.ok(
+		eventLogIndexes.some((row) => row.name === "idx_event_log_unread_session_stream" && row.partial === 1),
+		"event_log has a partial unread-message index",
 	);
 	assert.deepEqual(
 		sessions.upsertSessionsIfChanged([piboSession]),
