@@ -259,7 +259,10 @@ test("the sidebar consumes one global signal feed independent of selection", () 
 	assert.match(source, /fetchSignalStatuses\(\{ signal: controller\.signal \}\)/);
 	assert.match(source, /applySignalStatusSnapshotToBootstrap\(current, snapshot\)/);
 	assert.match(source, /applySignalStatusPatchToBootstrap\(current, patch\)/);
-	assert.match(source, /SIGNAL_STATUS_RECONCILE_INTERVAL_MS = 5_000/);
+	assert.match(source, /if \(result\.needsRefresh\) \{[\s\S]*refreshSignalStatuses\(0\)/, "a missed global patch fetches a recovery snapshot");
+	assert.match(source, /onError: \(\) => refreshSignalStatuses\(SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS\)/, "an SSE error fetches a recovery snapshot");
+	assert.doesNotMatch(source, /SIGNAL_STATUS_RECONCILE_INTERVAL_MS|signalStatusReconcileTimer/, "healthy global status SSE must not trigger periodic full snapshots");
+	assert.doesNotMatch(source, /subscribeSignalStatuses\(signalStatusHandlers\);[\s\S]{0,80}refreshSignalStatuses\(0\)/, "SSE snapshots are not duplicated by an immediate REST fetch");
 	assert.match(source, /sessionStatusSignalsRef\.current\?\.sessions\[targetPiboSessionId\]/, "room events defer to app-global canonical signals");
 	assert.match(source, /overlayCurrentSignals\(\{ \.\.\.current, sessions: appendSessionRoots\(current\.sessions, page\.sessions\) \}\)/, "newly paged sessions receive cached global statuses immediately");
 });

@@ -159,7 +159,6 @@ type LoadNavigationOptions = {
 
 const SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS = 750;
 const SIGNAL_TREE_RECONCILE_INTERVAL_MS = 5_000;
-const SIGNAL_STATUS_RECONCILE_INTERVAL_MS = 5_000;
 const NAVIGATION_FALLBACK_REFRESH_MS = 30_000;
 const SESSION_PAGE_SIZE = 120;
 const ARCHIVED_SESSION_PAGE_SIZE = 60;
@@ -398,7 +397,6 @@ export function App({ route }: { route: ChatAppRoute }) {
 			if (!active) return;
 			unsubscribeSignalStatuses();
 			unsubscribeSignalStatuses = subscribeSignalStatuses(signalStatusHandlers);
-			refreshSignalStatuses(0);
 		};
 		const refreshVisibleSignalStatuses = () => {
 			if (document.visibilityState === "visible") reconnectSignalStatuses();
@@ -406,17 +404,12 @@ export function App({ route }: { route: ChatAppRoute }) {
 		unsubscribeSignalStatuses = subscribeSignalStatuses(signalStatusHandlers);
 		window.addEventListener("pageshow", reconnectSignalStatuses);
 		document.addEventListener("visibilitychange", refreshVisibleSignalStatuses);
-		const signalStatusReconcileTimer = window.setInterval(() => {
-			if (document.visibilityState === "visible") refreshSignalStatuses(0);
-		}, SIGNAL_STATUS_RECONCILE_INTERVAL_MS);
-		refreshSignalStatuses(0);
 		return () => {
 			active = false;
 			controller.abort();
 			if (signalRecoveryTimer) clearTimeout(signalRecoveryTimer);
 			window.removeEventListener("pageshow", reconnectSignalStatuses);
 			document.removeEventListener("visibilitychange", refreshVisibleSignalStatuses);
-			window.clearInterval(signalStatusReconcileTimer);
 			unsubscribeSignalStatuses();
 		};
 	}, []);
