@@ -137,6 +137,28 @@ SHA-256 b787bc8d97746216bbcda3007c9425b0e6eaa017cb5baf629ca278048ab0fc2c
 279762 bytes
 ```
 
+## Live stream versus reload tail equivalence
+
+A later real Stream Lab run exercised a long tool-heavy turn through the same overlay candidate lineage. One authenticated page consumed the complete live stream while retaining historical pages loaded earlier. A second authenticated page was reloaded after `message_finished` and loaded the bounded latest trace page.
+
+The final nine visible Compact Terminal rows were compared in order by exact text hash:
+
+- live visible row indices: `372` through `380`;
+- reload visible row indices: `113` through `121`;
+- exact row text/order matches: `9 / 9`;
+- reload DOM elements: `986`.
+
+The index offset is expected: the live page retained older historical trace pages, while the reload page began from the bounded latest page. The stable tail content and order were identical, including tool output, reasoning rows, the pre-final assistant note, final verification tool output, and the final `Amended commit` response.
+
+Evidence:
+
+```text
+/tmp/pibo2-live-reload-tail-equivalence-2026-08-07.json
+SHA-256 7e4943ea1d5218b15e427d5740611d4020ce93260900c6372f30ff6dd925d6b1
+```
+
+This proves final-tail equivalence for the observed run. It does not yet prove equivalence across every historical page or every transient in-progress frame.
+
 ## Browser harness hardening used by this validation
 
 The server-development skill was updated independently of the product branch:
