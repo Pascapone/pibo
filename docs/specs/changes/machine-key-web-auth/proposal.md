@@ -18,6 +18,7 @@ Add an opt-in, revocable machine identity that can authenticate normal Pibo Web 
 - high-entropy machine-key generation;
 - hash-only server records tied to an existing Pibo user identity;
 - header authentication in the Better Auth service boundary;
+- a short-lived signed HttpOnly/Secure browser-session exchange backed by the same revocable key;
 - expiration, revocation, listing, and identity lookup tooling;
 - root-only local secret and server store files;
 - tests for positive, invalid, expired, and revoked keys.

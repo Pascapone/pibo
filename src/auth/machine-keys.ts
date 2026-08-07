@@ -45,8 +45,15 @@ export type MachineKeyListItem = Omit<MachineKeyRecord, "hash"> & {
 	status: "active" | "expired" | "revoked";
 };
 
+export type MachineKeyAuthentication = {
+	id: string;
+	session: PiboAuthSession;
+};
+
 export type MachineKeyAuthenticator = {
+	authenticate(headers: Headers): MachineKeyAuthentication | undefined;
 	getSession(headers: Headers): PiboAuthSession | undefined;
+	getSessionById(id: string): PiboAuthSession | undefined;
 };
 
 export function getDefaultMachineKeyStorePath(): string {
@@ -280,23 +287,36 @@ export function createMachineKeyAuthenticator(
 		cachedSignature = signature;
 	};
 
+	const sessionForRecord = (record: MachineKeyRecord): PiboAuthSession => ({
+		identity: { ...record.identity },
+		sessionId: `machine-key:${record.id}`,
+		...(record.expiresAt ? { expiresAt: new Date(record.expiresAt) } : {}),
+	});
+	const getSessionById = (id: string): PiboAuthSession | undefined => {
+		refresh();
+		const record = keysById.get(id);
+		if (!record || machineKeyStatus(record, new Date()) !== "active") return undefined;
+		return sessionForRecord(record);
+	};
+	const authenticate = (headers: Headers): MachineKeyAuthentication | undefined => {
+		const token = headers.get(PIBO_MACHINE_KEY_HEADER)?.trim();
+		if (!token) return undefined;
+		const match = MACHINE_KEY_TOKEN_PATTERN.exec(token);
+		if (!match) return undefined;
+		refresh();
+		const record = keysById.get(match[1]!);
+		if (!record || machineKeyStatus(record, new Date()) !== "active") return undefined;
+		const expected = Buffer.from(record.hash, "hex");
+		const actual = hashMachineKeyToken(token);
+		if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) return undefined;
+		return { id: record.id, session: sessionForRecord(record) };
+	};
+
 	return {
+		authenticate,
 		getSession(headers) {
-			const token = headers.get(PIBO_MACHINE_KEY_HEADER)?.trim();
-			if (!token) return undefined;
-			const match = MACHINE_KEY_TOKEN_PATTERN.exec(token);
-			if (!match) return undefined;
-			refresh();
-			const record = keysById.get(match[1]!);
-			if (!record || machineKeyStatus(record, new Date()) !== "active") return undefined;
-			const expected = Buffer.from(record.hash, "hex");
-			const actual = hashMachineKeyToken(token);
-			if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) return undefined;
-			return {
-				identity: { ...record.identity },
-				sessionId: `machine-key:${record.id}`,
-				...(record.expiresAt ? { expiresAt: new Date(record.expiresAt) } : {}),
-			};
+			return authenticate(headers)?.session;
 		},
+		getSessionById,
 	};
 }

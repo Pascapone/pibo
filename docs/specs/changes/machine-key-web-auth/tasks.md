@@ -10,6 +10,7 @@
 - [x] Compose machine verification with Better Auth while preserving Google behavior.
 - [x] Add config support for an alternate store path.
 - [x] Add unit tests for valid, invalid, expired, revoked, and reloaded records.
+- [x] Add a signed short-lived browser-session exchange whose cookies remain key-revocable.
 
 ## Phase 2 — Operator CLI
 
@@ -25,7 +26,7 @@
 - [ ] Back up target auth/config and install candidate without releasing it.
 - [ ] Provision a Pibo2 key without leaving the raw secret on the server.
 - [ ] Verify Chat bootstrap, SSE, invalid key, and revocation through the public URL.
-- [ ] Establish authenticated headful Chrome/CDP access.
+- [ ] Establish authenticated headful Chrome/CDP access through the machine-session exchange.
 - [ ] Capture evidence and update the server-development skill.
 
 ## Phase 4 — Delivery

@@ -43,13 +43,23 @@ An expired record or a record with `revokedAt` MUST NOT authenticate. Store chan
 
 Tests change an active record to expired or revoked and the same authenticator rejects it after the store file update.
 
-## Requirement: Credentials use a request header
+## Requirement: Raw credentials use a request header
 
-The raw key MUST be accepted only from `X-Pibo-Machine-Key`. Pibo MUST NOT accept it from query strings, cookies, or request bodies.
+The raw key MUST be accepted only from `X-Pibo-Machine-Key`. Pibo MUST NOT accept the raw key from query strings, cookies, or request bodies.
 
 ### Acceptance
 
 A query parameter containing a valid token does not authenticate.
+
+## Requirement: Browser sessions are short-lived and key-backed
+
+`POST /api/auth/machine-session` MUST exchange a valid machine-key header for a signed host-only cookie. The cookie MUST be `HttpOnly`, `Secure`, `SameSite=Strict`, limited to eight hours or the earlier key expiration, and contain no raw API key. Public non-HTTPS exchange requests MUST be rejected.
+
+Every cookie-authenticated request MUST re-check that the referenced key still exists, is active, and remains linked to an allowed email. Revoking a key MUST therefore invalidate its existing browser cookies without restarting the gateway.
+
+### Acceptance
+
+A valid exchange returns a no-store response and cookie, that cookie authenticates without the raw key, tampering fails, expiration fails, and key revocation makes the same cookie fail.
 
 ## Requirement: Operator tooling is progressively discoverable
 
