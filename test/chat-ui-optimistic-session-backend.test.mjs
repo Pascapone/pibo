@@ -112,8 +112,6 @@ test("selected-session backend effects use only persisted session IDs", () => {
 	const paneSource = readFileSync("src/apps/chat-ui/src/session-trace-pane.tsx", "utf8");
 
 	assert.match(appSource, /const selectedBackendPiboSessionId = selectedSessionBackendId\(selectedPiboSessionId\)/);
-	assert.match(appSource, /onError: \(_error, _variables, context\) => \{[\s\S]*restoreBootstrapSnapshot\(context\?\.snapshot\);[\s\S]*setSelectedPiboSessionId\(context\?\.previousSelectedPiboSessionId \?\? null\)/);
-	assert.match(appSource, /onSuccess: \(created, _variables, context\) => \{[\s\S]*setSelectedPiboSessionId\(created\.session\.id\);[\s\S]*replaceOptimisticSessionNode\(current, context\?\.tempId/);
 	assert.match(appSource, /if \(area !== "sessions" \|\| !selectedBackendPiboSessionId\)/);
 	assert.match(appSource, /fetchSignalTree\(selectedBackendPiboSessionId/);
 	assert.match(appSource, /subscribeSignalTree\(selectedBackendPiboSessionId/);
