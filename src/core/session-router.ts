@@ -318,6 +318,22 @@ export class PiboSessionRouter {
 				await this.resetCachedSession(event.piboSessionId, "provider auth changed");
 			}
 			return output;
+		} catch (error) {
+			if (event.type === "message" && event.id) {
+				this.signalRegistry.project({
+					type: "message_rejected",
+					piboSessionId: event.piboSessionId,
+					eventId: event.id,
+				});
+				const status = session.getStatus();
+				this.signalRegistry.project({
+					type: "session_processing_changed",
+					piboSessionId: event.piboSessionId,
+					processing: status.processing,
+					queuedMessages: status.queuedMessages,
+				});
+			}
+			throw error;
 		} finally {
 			this.scheduleIdleSessionEvictionIfIdle(event.piboSessionId);
 		}

@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, isAbsolute, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { readResourceReaperTimerStatus, type ResourceReaperTimerStatus } from "../resources/reaper-state.js";
 import { createEmptyBrowserPoolState, normalizeBrowserPoolState, type BrowserPoolState } from "../tools/browser-pool.js";
@@ -83,6 +83,8 @@ export interface ComputeResourceHealth {
 		totalChromiumMainProcesses: number;
 		unassignedChromiumMainProcesses: number;
 		unassignedMainProcessDetails: ResourceHealthUnassignedBrowserProcessInfo[];
+		exemptChromiumMainProcesses: number;
+		exemptMainProcessDetails: ResourceHealthUnassignedBrowserProcessInfo[];
 		perWorker: ResourceHealthBrowserPoolInfo[];
 	};
 	browserLeases: {
@@ -122,12 +124,14 @@ export interface BuildComputeResourceHealthOptions {
 	browserPools?: Array<{ state: BrowserPoolState; statePath?: string }>;
 	staleCdpFiles?: ResourceHealthStaleCdpFiles;
 	reaperTimers?: ResourceHealthTimerStatus;
+	exemptBrowserUserDataDirs?: string[];
 }
 
 export interface GetComputeResourceHealthOptions {
 	now?: Date;
 	browserPoolRoot?: string;
 	browserUseHome?: string;
+	exemptBrowserUserDataDirs?: string[];
 }
 
 export function parseProcessList(output: string): ResourceHealthProcessInfo[] {
@@ -162,6 +166,9 @@ export function buildComputeResourceHealth(options: BuildComputeResourceHealthOp
 	const disk = options.disk;
 	const checks: ResourceHealthCheck[] = [];
 	const mainProcesses = processes.filter((process) => process.isChromium && process.isMainProcess);
+	const exemptBrowserUserDataDirs = new Set(normalizeBrowserUserDataDirs(
+		options.exemptBrowserUserDataDirs ?? readExemptBrowserUserDataDirs(),
+	));
 
 	const perWorker = browserPools.map(({ state, statePath }): ResourceHealthBrowserPoolInfo => {
 		const activeLeaseCount = state.activeLeaseId ? Math.max(1, state.activeLeaseCount ?? 1) : state.activeLeaseCount ?? 0;
@@ -195,8 +202,13 @@ export function buildComputeResourceHealth(options: BuildComputeResourceHealthOp
 	const activeWorkerOwnedMainPids = new Set(mainProcesses
 		.filter((process) => Boolean(findOwningActiveWorker(process, processes, workers)))
 		.map((process) => process.pid));
-	const unassignedMainProcessDetails = mainProcesses
-		.filter((process) => !assignedMainPids.has(process.pid) && !activeWorkerOwnedMainPids.has(process.pid))
+	const unmatchedMainProcesses = mainProcesses
+		.filter((process) => !assignedMainPids.has(process.pid) && !activeWorkerOwnedMainPids.has(process.pid));
+	const exemptMainProcessDetails = unmatchedMainProcesses
+		.filter((process) => browserProcessMatchesExemptUserDataDir(process, exemptBrowserUserDataDirs))
+		.map((process) => describeUnassignedBrowserProcess(process, workers));
+	const unassignedMainProcessDetails = unmatchedMainProcesses
+		.filter((process) => !browserProcessMatchesExemptUserDataDir(process, exemptBrowserUserDataDirs))
 		.map((process) => describeUnassignedBrowserProcess(process, workers));
 	const unassignedChromiumMainProcesses = unassignedMainProcessDetails.length;
 	const activePoolIds = perWorker.filter((pool) => pool.activeLeaseCount > 0).map((pool) => `${pool.workerId}/${pool.poolId}`);
@@ -231,6 +243,8 @@ export function buildComputeResourceHealth(options: BuildComputeResourceHealthOp
 			totalChromiumMainProcesses: mainProcesses.length,
 			unassignedChromiumMainProcesses,
 			unassignedMainProcessDetails,
+			exemptChromiumMainProcesses: exemptMainProcessDetails.length,
+			exemptMainProcessDetails,
 			perWorker,
 		},
 		browserLeases: { active: activePoolIds.length, activePoolIds, staleCdpFiles },
@@ -310,6 +324,23 @@ function readChromeArg(args: string, name: string): string | undefined {
 	return args.match(pattern)?.[1];
 }
 
+function readExemptBrowserUserDataDirs(): string[] {
+	return (process.env.PIBO_RESOURCE_REAPER_EXEMPT_BROWSER_USER_DATA_DIRS ?? "").split(",");
+}
+
+function normalizeBrowserUserDataDirs(values: Iterable<string>): string[] {
+	return [...new Set([...values]
+		.map((value) => value.trim())
+		.filter((value) => value.length > 0 && isAbsolute(value))
+		.map((value) => resolve(value)))];
+}
+
+function browserProcessMatchesExemptUserDataDir(process: ResourceHealthProcessInfo, exemptions: Set<string>): boolean {
+	const userDataDir = readChromeArg(process.args, "user-data-dir");
+	if (!userDataDir || !isAbsolute(userDataDir)) return false;
+	return exemptions.has(resolve(userDataDir));
+}
+
 function sanitizeArgsPreview(args: string): string {
 	const redacted = args
 		.replace(/(token|access_token|refresh_token|password|passwd|cookie|secret)=([^\s]+)/gi, "$1=<redacted>")
@@ -337,6 +368,7 @@ export async function getComputeResourceHealth(options: GetComputeResourceHealth
 		browserPools,
 		staleCdpFiles,
 		reaperTimers: detectReaperTimerStatus(),
+		exemptBrowserUserDataDirs: options.exemptBrowserUserDataDirs,
 	});
 }
 

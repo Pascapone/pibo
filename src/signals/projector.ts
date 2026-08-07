@@ -44,7 +44,7 @@ function settleActiveSessionNodes(
 
 export const sessionLifecycleSignalProducer: PiboSignalProducer = {
 	name: "session-lifecycle",
-	accepts: (input) => ["session_created", "session_disposed", "session_processing_changed", "message_accepted", "queue_changed", "recovery", "session_interrupted", "signal_node_pruned"].includes(input.type),
+	accepts: (input) => ["session_created", "session_disposed", "session_processing_changed", "message_accepted", "message_rejected", "queue_changed", "recovery", "session_interrupted", "signal_node_pruned"].includes(input.type),
 	project(input, context) {
 		const data = input as any;
 		if (data.type === "session_created") {
@@ -92,6 +92,15 @@ export const sessionLifecycleSignalProducer: PiboSignalProducer = {
 				});
 			}
 			return mutations;
+		}
+		if (data.type === "message_rejected") {
+			const acceptedTurn = context.getNode(`turn:${data.piboSessionId}:${data.eventId}`);
+			return [
+				{ type: "remove_node", nodeId: `message:${data.piboSessionId}:${data.eventId}` },
+				...(acceptedTurn?.metadata?.accepted === true
+					? [{ type: "remove_node" as const, nodeId: acceptedTurn.id }]
+					: []),
+			];
 		}
 		if (data.type === "session_disposed") {
 			return [

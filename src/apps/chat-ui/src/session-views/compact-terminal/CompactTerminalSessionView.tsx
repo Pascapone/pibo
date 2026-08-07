@@ -78,7 +78,7 @@ export function CompactTerminalSessionView({
 	});
 	const activeTurnStartedAt = sessionActivity.activeTurnStartedAt;
 	const isStreaming = sessionActivity.isTurnActive;
-	const loadOlderTracePage = useCallback(() => {
+	const loadOlderTracePage = useCallback((settleScrollIntent: boolean) => {
 		if (!hasOlderTraceEvents || isFetchingOlderTracePage || olderTraceRequestPendingRef.current) return;
 		const load = () => {
 			olderTraceLoadTimerRef.current = undefined;
@@ -88,7 +88,8 @@ export function CompactTerminalSessionView({
 			prepareOlderTracePrependRef.current();
 			onLoadOlderTracePage?.();
 		};
-		if (!olderTraceIntentRef.current) {
+		if (!settleScrollIntent || !olderTraceIntentRef.current) {
+			if (olderTraceLoadTimerRef.current !== undefined) window.clearTimeout(olderTraceLoadTimerRef.current);
 			load();
 			return;
 		}
@@ -98,11 +99,11 @@ export function CompactTerminalSessionView({
 	const loadOlderNearTop = useCallback(() => {
 		if (!rangePrefetchReadyRef.current) return;
 		if (!olderTraceIntentRef.current) return;
-		loadOlderTracePage();
+		loadOlderTracePage(true);
 	}, [loadOlderTracePage]);
 	const loadOlderAtTop = useCallback(() => {
 		if (!rangePrefetchReadyRef.current) return;
-		loadOlderTracePage();
+		loadOlderTracePage(false);
 	}, [loadOlderTracePage]);
 	const markOlderTraceIntent = useCallback((event?: Event) => {
 		if (isOlderTraceScrollIntent(event)) olderTraceIntentRef.current = true;
@@ -281,7 +282,6 @@ export function CompactTerminalSessionView({
 					/>
 				) : rows.length ? (
 					<Virtuoso
-						key={traceView.piboSessionId}
 						ref={stickyView.virtuosoRef}
 						data={rows}
 						firstItemIndex={stickyView.firstItemIndex}
@@ -729,12 +729,9 @@ function isInteractiveEventTarget(event: MouseEvent<HTMLElement> | KeyboardEvent
 	return Boolean(interactiveTarget && interactiveTarget !== event.currentTarget);
 }
 
-const WORKING_SCRAMBLE_TARGET = "Working...";
-const WORKING_SCRAMBLE_ASCII_START = 33;
-const WORKING_SCRAMBLE_ASCII_END = 126;
+const WORKING_LABEL = "Working...";
 
 function TerminalStreamingFooter({ startedAt }: { startedAt?: string }) {
-	const { chars, activeIndex } = useWorkingScramble(WORKING_SCRAMBLE_TARGET);
 	const elapsed = useActiveTurnElapsed(startedAt);
 
 	return (
@@ -750,16 +747,7 @@ function TerminalStreamingFooter({ startedAt }: { startedAt?: string }) {
 				<span className="whitespace-pre text-[#737373]">•</span>
 				<span className="inline-flex min-w-0 items-baseline gap-2">
 					{elapsed ? <span className="shrink-0 tabular-nums text-[#737373]">{elapsed}</span> : null}
-					<span className="compact-terminal-working-scramble">
-						{chars.map((char, index) => (
-							<span
-								key={index}
-								className={index === activeIndex ? "compact-terminal-working-scramble-active" : undefined}
-							>
-								{char}
-							</span>
-						))}
-					</span>
+					<span className="compact-terminal-working-label">{WORKING_LABEL}</span>
 				</span>
 			</div>
 		</div>
@@ -776,82 +764,6 @@ function useActiveTurnElapsed(startedAt: string | undefined): string | undefined
 		return () => window.clearInterval(interval);
 	}, [startedAtMs]);
 	return Number.isFinite(startedAtMs) ? formatTerminalDuration(Math.max(0, now - startedAtMs)) : undefined;
-}
-
-function useWorkingScramble(target: string) {
-	const targetChars = useMemo(() => Array.from(target), [target]);
-	const [chars, setChars] = useState(() => randomAsciiChars(targetChars));
-	const [activeIndex, setActiveIndex] = useState(0);
-
-	useEffect(() => {
-		let index = 0;
-		let rotationFrame = 0;
-		let rotationsForChar = randomRotationCount();
-		let pauseTicks = 0;
-		setChars(randomAsciiChars(targetChars));
-
-		const interval = window.setInterval(() => {
-			if (pauseTicks > 0) {
-				pauseTicks--;
-				return;
-			}
-
-			if (index >= targetChars.length) {
-				index = 0;
-				rotationFrame = 0;
-				rotationsForChar = randomRotationCount();
-				setChars(randomAsciiChars(targetChars));
-				setActiveIndex(0);
-				return;
-			}
-
-			const currentIndex = index;
-			const targetChar = targetChars[currentIndex] ?? " ";
-			setActiveIndex(currentIndex);
-			rotationFrame++;
-			if (rotationFrame < rotationsForChar) {
-				setChars((current) => replaceChar(current, currentIndex, randomAsciiChar(targetChar)));
-				return;
-			}
-
-			setChars((current) => replaceChar(current, currentIndex, targetChar));
-			index++;
-			rotationFrame = 0;
-			rotationsForChar = randomRotationCount();
-			if (index >= targetChars.length) {
-				setChars(targetChars);
-				setActiveIndex(-1);
-				pauseTicks = 18;
-			}
-		}, 55);
-
-		return () => window.clearInterval(interval);
-	}, [targetChars]);
-
-	return { chars, activeIndex };
-}
-
-function replaceChar(chars: string[], index: number, char: string): string[] {
-	const next = [...chars];
-	next[index] = char;
-	return next;
-}
-
-function randomAsciiChars(targetChars: string[]): string[] {
-	return targetChars.map((targetChar) => randomAsciiChar(targetChar));
-}
-
-function randomAsciiChar(exclude?: string): string {
-	let char = "";
-	do {
-		const code = WORKING_SCRAMBLE_ASCII_START + Math.floor(Math.random() * (WORKING_SCRAMBLE_ASCII_END - WORKING_SCRAMBLE_ASCII_START + 1));
-		char = String.fromCharCode(code);
-	} while (char === exclude);
-	return char;
-}
-
-function randomRotationCount(): number {
-	return 2 + Math.floor(Math.random() * 11);
 }
 
 function TerminalCompactionLine() {

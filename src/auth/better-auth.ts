@@ -6,6 +6,8 @@ import { getMigrations } from "better-auth/db/migration";
 import { bearer } from "better-auth/plugins";
 import { loadPiboConfig } from "../config/config.js";
 import { piboHomePath } from "../core/pibo-home.js";
+import { createMachineKeyAuthenticator } from "./machine-keys.js";
+import { createMachineSessionManager } from "./machine-session.js";
 import type { PiboAuthService, PiboAuthSession } from "./types.js";
 import { createForbiddenAuthError, createUnauthenticatedError } from "./types.js";
 
@@ -17,6 +19,7 @@ export type BetterAuthServiceOptions = {
 	googleClientSecret?: string;
 	trustedOrigins?: string[];
 	allowedEmails?: string[];
+	machineKeyStorePath?: string;
 };
 
 const SESSION_EXPIRES_IN_SECONDS = 60 * 60 * 24 * 90;
@@ -90,6 +93,8 @@ export function createBetterAuthService(options: BetterAuthServiceOptions = {}):
 	);
 	const secret = requiredSecret(options.secret ?? authConfig?.secret);
 	const allowedEmails = requiredAllowedEmails(options, authConfig?.allowedEmails);
+	const machineKeys = createMachineKeyAuthenticator(options.machineKeyStorePath ?? authConfig?.machineKeyStorePath);
+	const machineSessions = createMachineSessionManager({ secret, machineKeys });
 	const database = createDatabase(options.databasePath ?? authConfig?.databasePath ?? piboHomePath("auth.sqlite"));
 	const trustedOrigins = options.trustedOrigins ?? authConfig?.trustedOrigins;
 	const authOptions: BetterAuthOptions = {
@@ -112,6 +117,11 @@ export function createBetterAuthService(options: BetterAuthServiceOptions = {}):
 		plugins: [bearer()],
 	};
 	const auth = betterAuth(authOptions);
+	const requireAllowedMachineSession = (session: PiboAuthSession): PiboAuthSession => {
+		const email = session.identity.email?.toLowerCase();
+		if (!email || !allowedEmails.has(email)) throw createForbiddenAuthError();
+		return session;
+	};
 
 	return {
 		name: "better-auth",
@@ -123,6 +133,9 @@ export function createBetterAuthService(options: BetterAuthServiceOptions = {}):
 			database.close();
 		},
 		async getSession(headers) {
+			const machineSession = machineKeys.getSession(headers) ?? machineSessions.getSession(headers);
+			if (machineSession) return requireAllowedMachineSession(machineSession);
+
 			const session = await auth.api.getSession({ headers });
 			if (!session) return undefined;
 
@@ -150,7 +163,44 @@ export function createBetterAuthService(options: BetterAuthServiceOptions = {}):
 			if (!session) throw createUnauthenticatedError();
 			return session;
 		},
-		handleRequest(request) {
+		async handleRequest(request) {
+			const url = new URL(request.url);
+			if (url.pathname === "/api/auth/machine-session") {
+				if (request.method === "DELETE") {
+					return new Response(null, {
+						status: 204,
+						headers: { "set-cookie": machineSessions.clearHeader(), "cache-control": "no-store" },
+					});
+				}
+				if (request.method !== "POST") {
+					return new Response(JSON.stringify({ error: "Method not allowed" }), {
+						status: 405,
+						headers: { "content-type": "application/json", allow: "POST, DELETE", "cache-control": "no-store" },
+					});
+				}
+				const loopbackHosts = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+				if (url.protocol !== "https:" && !loopbackHosts.has(url.hostname)) {
+					return new Response(JSON.stringify({ error: "Machine session exchange requires HTTPS outside loopback" }), {
+						status: 400,
+						headers: { "content-type": "application/json", "cache-control": "no-store" },
+					});
+				}
+				const authentication = machineKeys.authenticate(request.headers);
+				if (!authentication) throw createUnauthenticatedError();
+				const session = requireAllowedMachineSession(authentication.session);
+				const created = machineSessions.create({ ...authentication, session });
+				return new Response(
+					JSON.stringify({ identity: created.session.identity, expiresAt: created.expiresAt.toISOString() }),
+					{
+						status: 200,
+						headers: {
+							"content-type": "application/json",
+							"cache-control": "no-store",
+							"set-cookie": created.header,
+						},
+					},
+				);
+			}
 			return auth.handler(request);
 		},
 	};

@@ -357,6 +357,10 @@ export function applyPiboDataSchema(db: DatabaseSync): void {
 			ON sessions(channel, kind, updated_at DESC);
 		CREATE INDEX IF NOT EXISTS idx_event_log_session_stream
 			ON event_log(session_id, stream_id);
+		CREATE INDEX IF NOT EXISTS idx_event_log_unread_session_stream
+			ON event_log(session_id, stream_id)
+			WHERE (retention_class = 'chat_message' AND type IN ('user.message.accepted', 'assistant_message'))
+				OR type = 'session_error';
 		CREATE INDEX IF NOT EXISTS idx_event_log_session_sequence_stream
 			ON event_log(session_id, session_sequence DESC, stream_id DESC);
 		CREATE INDEX IF NOT EXISTS idx_event_log_session_type_sequence_stream

@@ -57,7 +57,7 @@ export function SessionTraceLayout({
   webAnnotationsPanelProps,
   composerProps,
 }: SessionTraceLayoutProps) {
-  const terminalLoading = roomNavigationPending || sessionNavigationPending || loadingTrace;
+  const terminalLoading = roomNavigationPending || (sessionNavigationPending && !currentTraceView) || loadingTrace;
   return (
     <>
       <main
