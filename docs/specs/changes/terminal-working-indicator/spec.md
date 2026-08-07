@@ -1,6 +1,6 @@
 # Spec: Stable Terminal working indicator
 
-**Status:** Implementing
+**Status:** Done
 **Created:** 2026-08-07
 **Source:** Pibo2 real-agent Terminal View validation
 
