@@ -61,17 +61,18 @@ async function runLiveOverlayScenario() {
 		};
 
 		const trimmed = trimLiveOverlayForBaseTrace(overlay, baseTrace);
-		assert.deepEqual(trimmed?.events.map((item) => item.id), ["keep"]);
+		assert.deepEqual(trimmed?.events.map((item) => item.id), ["keep", "old-stream"]);
 		assert.notEqual(trimmed, overlay);
 		assert.equal(trimmed.events[0], keep);
+		assert.equal(trimmed.events[1], overlay.events[1]);
 
 		const mismatched = { piboSessionId: "other-session", events: overlay.events };
 		assert.equal(trimLiveOverlayForBaseTrace(mismatched, baseTrace), mismatched);
-		assert.equal(trimLiveOverlayForBaseTrace({ piboSessionId: "ps-test", events: overlay.events.slice(1) }, baseTrace), null);
+		assert.equal(trimLiveOverlayForBaseTrace({ piboSessionId: "ps-test", events: overlay.events.slice(2) }, baseTrace), null);
 	`;
 	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
 }
 
-test("live overlay trimming removes events already confirmed by the base trace", async () => {
+test("live overlay trimming preserves bounded-page omissions until exact confirmation", async () => {
 	await assert.doesNotReject(runLiveOverlayScenario());
 });
