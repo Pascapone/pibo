@@ -8,7 +8,20 @@ const execFileAsync = promisify(execFile);
 async function runScenario() {
 	const script = `
 		import assert from "node:assert/strict";
-		const { summarizeDebugTraceStatus } = await import("./src/debug/trace-status.ts");
+		const { resolveDebugTraceSessionStatus, summarizeDebugTraceStatus } = await import("./src/debug/trace-status.ts");
+
+		assert.deepEqual(resolveDebugTraceSessionStatus("idle", ["message_finished", "message_started"]), {
+			status: "running",
+			source: "event-log",
+		});
+		assert.deepEqual(resolveDebugTraceSessionStatus("running", ["message_started", "message_finished"]), {
+			status: "idle",
+			source: "event-log",
+		});
+		assert.deepEqual(resolveDebugTraceSessionStatus("error", []), {
+			status: "error",
+			source: "session-store",
+		});
 
 		assert.deepEqual(summarizeDebugTraceStatus("idle", ["done", "error", "done"]), {
 			status: "done",

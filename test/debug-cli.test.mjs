@@ -1494,6 +1494,7 @@ test("pibo debug trace prints rebuilt Chat Web trace nodes", async () => {
 		const json = await execFileAsync("node", [cliPath, "debug", "trace", "ps_running", "--json"], { cwd });
 		const parsed = JSON.parse(json.stdout);
 		assert.equal(parsed.status, "running");
+		assert.equal(parsed.statusSource, "event-log");
 		assert.equal(parsed.nodes.some((node) => node.status === "running" && node.title === "bash"), true);
 
 		const checked = await execFileAsync("node", [cliPath, "debug", "trace", "ps_running", "--check", "--json"], { cwd });
@@ -1535,6 +1536,7 @@ test("pibo debug trace separates completed lifecycle from historical node errors
 	try {
 		const text = await execFileAsync("node", [cliPath, "debug", "trace", "ps_recovered"], { cwd });
 		assert.match(text.stdout, /status: done/);
+		assert.match(text.stdout, /statusSource: session-store/);
 		assert.match(text.stdout, /nodeErrors: 1/);
 		assert.match(text.stdout, /error\ttool\.call\tbash/);
 		assert.match(text.stdout, /pibo debug failures ps_recovered/);
@@ -1542,6 +1544,7 @@ test("pibo debug trace separates completed lifecycle from historical node errors
 		const json = await execFileAsync("node", [cliPath, "debug", "trace", "ps_recovered", "--json"], { cwd });
 		const parsed = JSON.parse(json.stdout);
 		assert.equal(parsed.status, "done");
+		assert.equal(parsed.statusSource, "session-store");
 		assert.equal(parsed.errorNodeCount, 1);
 		assert.equal(parsed.nodes.some((node) => node.status === "error"), true);
 	} finally {

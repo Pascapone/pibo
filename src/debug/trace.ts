@@ -8,7 +8,7 @@ import { compareTraceNodes } from "../shared/trace-nodes.js";
 import type { ResolvedPiboDebugStore } from "./stores.js";
 import { openReadOnlyDebugDatabase, withStorePath } from "./sql.js";
 import { formatNextCommands } from "./next-commands.js";
-import { summarizeDebugTraceStatus } from "./trace-status.js";
+import { resolveDebugTraceSessionStatus, summarizeDebugTraceStatus, type DebugTraceStatusSource } from "./trace-status.js";
 
 type SessionRow = {
 	id: string;
@@ -43,6 +43,7 @@ export type DebugTraceResult = {
 	piSessionId: string;
 	title: string;
 	status: string;
+	statusSource: DebugTraceStatusSource;
 	errorNodeCount: number;
 	nodes: DebugTraceNodeRow[];
 	rawNodeCount: number;
@@ -113,21 +114,22 @@ export async function inspectDebugTrace(
 					.prepare("SELECT stream_id, session_id, session_sequence, event_id, type, created_at, preview_text, attributes_json FROM event_log WHERE session_id = ? ORDER BY stream_id ASC")
 					.all(piboSessionId) as EventRow[]).map((row) => eventFromRow(row, adapterIssues)).filter((event): event is ChatWebStoredPiboEvent => event !== undefined)
 			: [];
-		const sessionStatus = sessionRow.status === "running" || sessionRow.status === "error" ? sessionRow.status : "idle";
+		const sessionStatus = resolveDebugTraceSessionStatus(sessionRow.status, events.map((event) => event.type));
 		const view = await buildTraceView({
 			session,
 			sessions,
 			events,
-			status: sessionStatus,
+			status: sessionStatus.status,
 		});
 		const rows = flattenTraceNodes(view.nodes);
-		const statusSummary = summarizeDebugTraceStatus(sessionStatus, rows.map((node) => node.status));
+		const statusSummary = summarizeDebugTraceStatus(sessionStatus.status, rows.map((node) => node.status));
 		const filtered = options.runningOnly ? rows.filter((node) => node.status === "running") : rows;
 		return {
 			piboSessionId: view.piboSessionId,
 			piSessionId: view.piSessionId,
 			title: view.title,
 			status: statusSummary.status,
+			statusSource: sessionStatus.source,
 			errorNodeCount: statusSummary.errorNodeCount,
 			nodes: filtered,
 			rawNodeCount: rows.length,
@@ -166,6 +168,7 @@ export function formatDebugTrace(result: DebugTraceResult, options: { medium?: b
 		`piSessionId: ${result.piSessionId}`,
 		`title: ${result.title}`,
 		`status: ${result.status}`,
+		`statusSource: ${result.statusSource}`,
 		`nodeErrors: ${result.errorNodeCount}`,
 		"",
 	];
