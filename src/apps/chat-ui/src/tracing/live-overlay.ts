@@ -7,6 +7,32 @@ export type LiveTraceOverlay = {
 	events: ChatWebStoredEvent[];
 };
 
+export function restoreLiveTraceOverlayForSession(
+	cache: Map<string, LiveTraceOverlay>,
+	current: LiveTraceOverlay | null,
+	selectedPiboSessionId: string | null,
+): LiveTraceOverlay | null {
+	if (current) cache.set(current.piboSessionId, current);
+	return selectedPiboSessionId ? cache.get(selectedPiboSessionId) ?? null : null;
+}
+
+export function reconcileLiveTraceOverlayCache(
+	cache: Map<string, LiveTraceOverlay>,
+	current: LiveTraceOverlay | null,
+	baseTrace: PiboSessionTraceView,
+): LiveTraceOverlay | null {
+	if (current && current.piboSessionId !== baseTrace.piboSessionId) {
+		cache.set(current.piboSessionId, current);
+	}
+	const selectedOverlay = current?.piboSessionId === baseTrace.piboSessionId
+		? current
+		: cache.get(baseTrace.piboSessionId) ?? null;
+	const next = trimLiveOverlayForBaseTrace(selectedOverlay, baseTrace);
+	if (next) cache.set(baseTrace.piboSessionId, next);
+	else cache.delete(baseTrace.piboSessionId);
+	return next;
+}
+
 export function trimLiveOverlayForBaseTrace(overlay: LiveTraceOverlay | null, baseTrace: PiboSessionTraceView): LiveTraceOverlay | null {
 	if (!overlay || overlay.piboSessionId !== baseTrace.piboSessionId) return overlay;
 	const latestStreamId = baseTrace.latestStreamId;

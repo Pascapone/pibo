@@ -336,14 +336,14 @@ export function SessionTracePane({
 
   const chooseDelivery = async (delivery: ChatMessageDelivery) => {
     if (!pendingSendPlan || deliverySending) return;
+    const sendPlan = pendingSendPlan;
+    setPendingSendPlan(null);
     setDeliverySending(true);
     try {
-      await deliverComposerSend(pendingSendPlan, delivery);
-      setPendingSendPlan(null);
+      await deliverComposerSend(sendPlan, delivery);
       onError(null);
     } catch (caught) {
-      rollbackComposerSend(pendingSendPlan, caught);
-      setPendingSendPlan(null);
+      rollbackComposerSend(sendPlan, caught);
     } finally {
       setDeliverySending(false);
     }

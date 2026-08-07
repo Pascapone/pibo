@@ -11,7 +11,11 @@ import {
 } from "../cache";
 import type { PiboSessionTraceSummary, PiboSessionTraceView } from "../types";
 import { isStreamingDebugEnabled, recordStreamingDebugTraceState } from "../streamingDebug";
-import { trimLiveOverlayForBaseTrace, type LiveTraceOverlay } from "./live-overlay";
+import {
+	reconcileLiveTraceOverlayCache,
+	restoreLiveTraceOverlayForSession,
+	type LiveTraceOverlay,
+} from "./live-overlay";
 import { mergeOlderTracePage, mergeRefreshedTracePage } from "./trace-page-merge";
 import { traceAssistantOutputLength } from "./trace-output";
 import { traceViewFromTimelinePage } from "./trace-v2-adapter";
@@ -37,6 +41,7 @@ export function useSessionTracePage({
 	const [loadingOlderTracePage, setLoadingOlderTracePage] = useState(false);
 	const loadingOlderTraceBeforeRef = useRef<string | null>(null);
 	const loadedOlderTraceBeforeRef = useRef<Set<string>>(new Set());
+	const liveTraceOverlayCacheRef = useRef<Map<string, LiveTraceOverlay>>(new Map());
 	const traceSummaryQueryKey = useMemo(
 		() => selectedPiboSessionId ? chatTraceSummaryQueryKey(selectedPiboSessionId) : null,
 		[selectedPiboSessionId],
@@ -92,7 +97,11 @@ export function useSessionTracePage({
 		setRawEventsBeforeSequence(undefined);
 		setLoadingOlderTracePage(false);
 		setBaseTraceView(cachedTrace?.piboSessionId === selectedPiboSessionId ? cachedTrace : null);
-		setLiveTraceOverlay(null);
+		setLiveTraceOverlay((current) => restoreLiveTraceOverlayForSession(
+			liveTraceOverlayCacheRef.current,
+			current,
+			selectedPiboSessionId,
+		));
 		loadingOlderTraceBeforeRef.current = null;
 		loadedOlderTraceBeforeRef.current = new Set();
 	}, [queryClient, selectedPiboSessionId, setLiveTraceOverlay, tracePageQueryKey]);
@@ -127,7 +136,11 @@ export function useSessionTracePage({
 			setBaseTraceView((current) => current?.piboSessionId === trace.piboSessionId
 				? mergeRefreshedTracePage(current, trace)
 				: trace);
-			setLiveTraceOverlay((current) => trimLiveOverlayForBaseTrace(current, trace));
+			setLiveTraceOverlay((current) => reconcileLiveTraceOverlayCache(
+				liveTraceOverlayCacheRef.current,
+				current,
+				trace,
+			));
 		});
 	}, [selectedPiboSessionId, setLiveTraceOverlay, tracePageQuery.data]);
 
