@@ -1530,6 +1530,25 @@ test("pibo debug trace warns when a persisted delta has no readable text", async
 	}
 });
 
+test("pibo debug trace separates completed lifecycle from historical node errors", async () => {
+	const cwd = await makeDebugFixture();
+	try {
+		const text = await execFileAsync("node", [cliPath, "debug", "trace", "ps_recovered"], { cwd });
+		assert.match(text.stdout, /status: done/);
+		assert.match(text.stdout, /nodeErrors: 1/);
+		assert.match(text.stdout, /error\ttool\.call\tbash/);
+		assert.match(text.stdout, /pibo debug failures ps_recovered/);
+
+		const json = await execFileAsync("node", [cliPath, "debug", "trace", "ps_recovered", "--json"], { cwd });
+		const parsed = JSON.parse(json.stdout);
+		assert.equal(parsed.status, "done");
+		assert.equal(parsed.errorNodeCount, 1);
+		assert.equal(parsed.nodes.some((node) => node.status === "error"), true);
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
 test("pibo debug events extracts selected payload fields", async () => {
 	const cwd = await makeDebugFixture();
 	try {
@@ -1932,6 +1951,21 @@ async function makeDebugFixture() {
 			lastActivityAt: "2026-05-01T10:04:03.000Z",
 		});
 		insertSession(data.db, {
+			id: "ps_recovered",
+			piSessionId: "77777777-7777-4777-8777-777777777777",
+			channel: "pibo.chat-web",
+			kind: "chat",
+			profile: "base",
+			legacyPartition: "user:one",
+			rootSessionId: "ps_recovered",
+			title: "Recovered tool failure",
+			status: "idle",
+			metadata: {},
+			createdAt: "2026-05-01T10:04:00.000Z",
+			updatedAt: "2026-05-01T10:04:04.000Z",
+			lastActivityAt: "2026-05-01T10:04:04.000Z",
+		});
+		insertSession(data.db, {
 			id: "ps_thinking",
 			piSessionId: "55555555-5555-4555-8555-555555555555",
 			channel: "pibo.chat-web",
@@ -2021,6 +2055,23 @@ async function makeDebugFixture() {
 			type: "tool_execution_started",
 			createdAt: "2026-05-01T10:04:02.000Z",
 			payload: { type: "tool_execution_started", piboSessionId: "ps_running", eventId: "evt_running", toolCallId: "tool_1", toolName: "bash", args: { cmd: "sleep 10" } },
+		});
+		insertEvent(data.db, {
+			streamId: 8,
+			sessionId: "ps_recovered",
+			sequence: 1,
+			eventId: "evt_recovered",
+			type: "tool_execution_finished",
+			createdAt: "2026-05-01T10:04:03.000Z",
+			payload: {
+				type: "tool_execution_finished",
+				piboSessionId: "ps_recovered",
+				eventId: "evt_recovered",
+				toolCallId: "tool_recovered",
+				toolName: "bash",
+				result: { error: "first attempt failed" },
+				isError: true,
+			},
 		});
 		insertEvent(data.db, {
 			streamId: 6,
