@@ -226,6 +226,7 @@ function createAssistantTurnNodes(
 
 	const orderedNodes: PiboTraceNode[] = [];
 	const toolsByCallId = new Map<string, PiboTraceNode>();
+	let assistantIndex = 0;
 
 	for (const { entry, index: entryIndex } of entries) {
 		if (messageRole(entry) === "toolResult") {
@@ -270,6 +271,8 @@ function createAssistantTurnNodes(
 		if (responseNode) {
 			responseNode.status = responseStatus;
 			responseNode.error = responseError;
+			if (timing?.eventId) responseNode.stableKey = `assistant:${timing.eventId}:assistant:${assistantIndex}`;
+			assistantIndex += 1;
 		}
 	}
 	const finalNode = orderedNodes.at(-1);
