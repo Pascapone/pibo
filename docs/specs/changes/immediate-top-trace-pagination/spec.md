@@ -1,6 +1,6 @@
 # Spec: Immediate history loading at the Terminal edge
 
-**Status:** Implementing
+**Status:** Done
 **Created:** 2026-08-07
 **Requester / Source:** Pibo2 historical trace pagination investigation
 
