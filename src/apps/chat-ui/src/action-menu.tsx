@@ -209,17 +209,16 @@ export function ActionMenu({ label, children, estimatedHeight = ACTION_MENU_WIDT
 			>
 				<MoreVertical size={24} className="w-3.5 h-3.5 max-[980px]:w-5 max-[980px]:h-5" />
 			</button>
-			{typeof document !== "undefined" ? createPortal(
+			{open && position && typeof document !== "undefined" ? createPortal(
 				<ActionMenuCloseContext.Provider value={closeMenu}>
 					<div
 						ref={menuRef}
 						id={menuId}
 						role="menu"
 						aria-labelledby={triggerId}
-						hidden={!open}
 						onKeyDown={handleMenuKeyDown}
 						className="fixed z-[1000] w-48 bg-[#1a262b] border border-slate-700 rounded-sm shadow-lg py-1"
-						style={position ?? undefined}
+						style={position}
 					>
 						{children}
 					</div>
