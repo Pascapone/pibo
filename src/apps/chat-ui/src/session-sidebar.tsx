@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
-import { createPortal } from "react-dom";
+import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import {
 	Archive,
 	ArchiveRestore,
@@ -10,12 +9,12 @@ import {
 	FolderPlus,
 	Loader2,
 	Lock,
-	MoreVertical,
 	Plus,
 	Trash2,
 	X,
 } from "lucide-react";
 import type { BootstrapData, PiboRoom, PiboWebSessionNode } from "./types";
+import { ActionMenu, ActionMenuItem } from "./action-menu";
 import { copyTextToClipboard } from "./clipboard";
 import { SessionNode } from "./session-node";
 import {
@@ -28,9 +27,6 @@ import {
 } from "./session-sidebar-helpers";
 
 const SESSION_INFINITE_SCROLL_ROOT_MARGIN = "240px 0px";
-const ROOM_ACTION_MENU_WIDTH = 192;
-const ROOM_ACTION_MENU_GAP = 4;
-const ROOM_ACTION_MENU_VIEWPORT_MARGIN = 8;
 
 function unreadBadgeLabel(count: number): string {
 	return count > 99 ? "99+" : String(count);
@@ -576,61 +572,11 @@ function RoomNode({
 	const personal = isSharedDefaultRoom(room);
 	const archived = isArchivedRoom(room);
 	const loading = room.id === loadingRoomId;
-	const [menuOpen, setMenuOpen] = useState(false);
-	const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
-	const menuButtonRef = useRef<HTMLButtonElement>(null);
-	const menuPanelRef = useRef<HTMLDivElement>(null);
 	const roomTooltip = roomNodeTooltip(room);
 
 	const copyRoomId = () => {
 		void copyTextToClipboard(room.id).catch(() => undefined);
 	};
-
-	const updateMenuPosition = useCallback(() => {
-		const button = menuButtonRef.current;
-		if (!button) return;
-		const rect = button.getBoundingClientRect();
-		const menuWidth = menuPanelRef.current?.offsetWidth ?? ROOM_ACTION_MENU_WIDTH;
-		const fallbackMenuHeight = archived ? 144 : 192;
-		const menuHeight = menuPanelRef.current?.offsetHeight ?? fallbackMenuHeight;
-		const maxLeft = Math.max(ROOM_ACTION_MENU_VIEWPORT_MARGIN, window.innerWidth - menuWidth - ROOM_ACTION_MENU_VIEWPORT_MARGIN);
-		const left = Math.min(Math.max(ROOM_ACTION_MENU_VIEWPORT_MARGIN, rect.right - menuWidth), maxLeft);
-		const belowTop = rect.bottom + ROOM_ACTION_MENU_GAP;
-		const top = belowTop + menuHeight <= window.innerHeight - ROOM_ACTION_MENU_VIEWPORT_MARGIN
-			? belowTop
-			: Math.max(ROOM_ACTION_MENU_VIEWPORT_MARGIN, rect.top - ROOM_ACTION_MENU_GAP - menuHeight);
-		setMenuPosition((current) => current?.top === top && current.left === left ? current : { top, left });
-	}, [archived]);
-
-	useEffect(() => {
-		if (!menuOpen) {
-			setMenuPosition(null);
-			return;
-		}
-		updateMenuPosition();
-		const handleViewportChange = () => updateMenuPosition();
-		window.addEventListener("resize", handleViewportChange);
-		window.addEventListener("scroll", handleViewportChange, true);
-		return () => {
-			window.removeEventListener("resize", handleViewportChange);
-			window.removeEventListener("scroll", handleViewportChange, true);
-		};
-	}, [menuOpen, updateMenuPosition]);
-
-	useLayoutEffect(() => {
-		if (menuOpen && menuPosition) updateMenuPosition();
-	}, [menuOpen, menuPosition, updateMenuPosition]);
-
-	useEffect(() => {
-		if (!menuOpen) return;
-		const handle = (e: MouseEvent) => {
-			const target = e.target as Node;
-			if (menuButtonRef.current?.contains(target) || menuPanelRef.current?.contains(target)) return;
-			setMenuOpen(false);
-		};
-		document.addEventListener("mousedown", handle);
-		return () => document.removeEventListener("mousedown", handle);
-	}, [menuOpen]);
 
 	useEffect(() => {
 		if (!editing) {
@@ -731,83 +677,36 @@ function RoomNode({
 									<Lock size={24} className="w-3.5 h-3.5 max-[980px]:w-5 max-[980px]:h-5" />
 								</span>
 							) : (
-								<div className="relative">
-									<button
-										ref={menuButtonRef}
-										type="button"
-										onClick={() => setMenuOpen((v) => !v)}
-										title="Room actions"
-										aria-label="Room actions"
-										className="h-7 w-7 max-[980px]:h-9 max-[980px]:w-9 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"
-									>
-										<MoreVertical size={24} className="w-3.5 h-3.5 max-[980px]:w-5 max-[980px]:h-5" />
-									</button>
-									{menuOpen && menuPosition ? createPortal(
-										<div
-											ref={menuPanelRef}
-											className="fixed z-[1000] bg-[#1a262b] border border-slate-700 rounded-sm shadow-lg py-1"
-											style={{ top: menuPosition.top, left: menuPosition.left, width: ROOM_ACTION_MENU_WIDTH }}
-										>
-											{archived ? (
-												<>
-													<button
-														type="button"
-														onClick={() => { copyRoomId(); setMenuOpen(false); }}
-														className="w-full text-left px-3 py-2.5 text-sm text-slate-300 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4] flex items-center gap-2"
-													>
-														<Copy size={16} /> Copy Room ID
-													</button>
-													<button
-														type="button"
-														onClick={() => { setMenuOpen(false); onArchive(room.id, false); }}
-														className="w-full text-left px-3 py-2.5 text-sm text-slate-300 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4] flex items-center gap-2"
-													>
-														<ArchiveRestore size={16} /> Restore Room
-													</button>
-													<button
-														type="button"
-														onClick={() => { setMenuOpen(false); onDelete(room); }}
-														className="w-full text-left px-3 py-2.5 text-sm text-red-300 hover:bg-red-500/10 flex items-center gap-2"
-													>
-														<Trash2 size={16} /> Delete Room
-													</button>
-												</>
-											) : (
-												<>
-													<button
-														type="button"
-														onClick={() => { copyRoomId(); setMenuOpen(false); }}
-														className="w-full text-left px-3 py-2.5 text-sm text-slate-300 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4] flex items-center gap-2"
-													>
-														<Copy size={16} /> Copy Room ID
-													</button>
-													<button
-														type="button"
-														onClick={() => { setMenuOpen(false); setEditing(true); }}
-														className="w-full text-left px-3 py-2.5 text-sm text-slate-300 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4] flex items-center gap-2"
-													>
-														<Edit3 size={16} /> Edit Room
-													</button>
-													<button
-														type="button"
-														onClick={() => { setMenuOpen(false); onReadAll(room.id); }}
-														className="w-full text-left px-3 py-2.5 text-sm text-slate-300 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4] flex items-center gap-2"
-													>
-														<CheckCheck size={16} /> Read All
-													</button>
-													<button
-														type="button"
-														onClick={() => { setMenuOpen(false); onArchive(room.id, true); }}
-														className="w-full text-left px-3 py-2.5 text-sm text-slate-300 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4] flex items-center gap-2"
-													>
-														<Archive size={16} /> Archive Room
-													</button>
-												</>
-											)}
-										</div>,
-										document.body,
-									) : null}
-								</div>
+								<ActionMenu label="Room actions" estimatedHeight={archived ? 144 : 192}>
+									{archived ? (
+										<>
+											<ActionMenuItem onSelect={copyRoomId}>
+												<Copy size={16} /> Copy Room ID
+											</ActionMenuItem>
+											<ActionMenuItem onSelect={() => onArchive(room.id, false)}>
+												<ArchiveRestore size={16} /> Restore Room
+											</ActionMenuItem>
+											<ActionMenuItem onSelect={() => onDelete(room)} className="text-red-300 hover:bg-red-500/10">
+												<Trash2 size={16} /> Delete Room
+											</ActionMenuItem>
+										</>
+									) : (
+										<>
+											<ActionMenuItem onSelect={copyRoomId}>
+												<Copy size={16} /> Copy Room ID
+											</ActionMenuItem>
+											<ActionMenuItem onSelect={() => setEditing(true)}>
+												<Edit3 size={16} /> Edit Room
+											</ActionMenuItem>
+											<ActionMenuItem onSelect={() => onReadAll(room.id)}>
+												<CheckCheck size={16} /> Read All
+											</ActionMenuItem>
+											<ActionMenuItem onSelect={() => onArchive(room.id, true)}>
+												<Archive size={16} /> Archive Room
+											</ActionMenuItem>
+										</>
+									)}
+								</ActionMenu>
 							)}
 						</div>
 					</div>
