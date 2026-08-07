@@ -175,18 +175,20 @@ The candidate gateway started at 06:51:43 UTC. Automatic reaper apply cycles rep
 06:52:13 UTC  unmanagedBrowsers=0
 06:57:16 UTC  unmanagedBrowsers=0
 07:02:18 UTC  unmanagedBrowsers=0
+07:07:21 UTC  unmanagedBrowsers=0
 ```
 
-The second and third cycles occurred after Chrome had exceeded the original 600-second kill threshold.
+The final three cycles occurred after Chrome had exceeded the original 600-second kill threshold.
 
-Across the endurance window:
+A 13-minute watcher sampled the unit every 30 seconds:
 
 ```text
+samples: 26
 Chrome MainPID before: 837315
 Chrome MainPID after:  837315
 NRestarts before: 17
 NRestarts after:  17
-CDP health: continuously true
+CDP health: true in every sample
 ```
 
 ## Authenticated UI proof
@@ -202,6 +204,18 @@ Working footer: absent
 ```
 
 The final Stream Lab response remained visible and the signed machine session remained valid.
+
+A subsequent real `pibo-agent-v2` / `openai-codex/gpt-5.6-sol` turn ran through the same browser after the fourth reaper cycle. It executed exactly two read-only tools in `/root/projects/pibo-stream-lab`:
+
+```text
+pwd
+/root/projects/pibo-stream-lab
+
+git status --short --branch
+## main
+```
+
+The persisted final response reported a seven-second duration at stream `954799`. `pibo debug trace --check` rebuilt 63 nodes with zero issues; the browser returned to idle, removed `Working...`, emptied the composer, and rendered the same clean-worktree result.
 
 ## Workflow hardening
 
@@ -221,6 +235,10 @@ SHA-256 417f3232db9f29c643179d82be6bb5de65637724f86c0aac9a94231f55963be8
 
 /tmp/pibo2-resource-profile-exemption-dryrun.json
 SHA-256 19a8280de763be959d05dd5e660305dde6f4a9b14e18c283add671979d38af1d
+
+/tmp/pibo2-resource-reaper-browser-post-2026-08-07.json
+SHA-256 d66fc291a4f2195f6999c9b00a53326d0174f99cab4f313138ac9018ef216ce4
+2159 bytes
 
 /tmp/pibo2-status-after-reaper-exemption.txt
 ```
