@@ -25,7 +25,7 @@ function createFakeAuthService() {
 }
 
 async function startSignalWebHost(options = {}) {
-	const { exposeSignalRegistry = true, emit, setLiveSessionActiveModel } = options;
+	const { exposeSignalRegistry = true, emit, setLiveSessionActiveModel, signalSnapshotCalls } = options;
 	const sessions = new InMemoryPiboSessionStore();
 	const signals = createPiboSignalRegistry();
 	const storageDir = mkdtempSync(join(tmpdir(), "pibo-chat-signals-"));
@@ -55,9 +55,15 @@ async function startSignalWebHost(options = {}) {
 		getProfiles: () => [{ name: "test-profile", description: "Test", aliases: [] }],
 		getCapabilityCatalog: () => ({ nativeTools: [], skills: [], subagents: [], contextFiles: [], packages: [], piboTools: [], mcpServers: [] }),
 		...(exposeSignalRegistry ? {
-			snapshotSignalSession: (id) => signals.snapshotSession(id),
+			snapshotSignalSession: (id) => {
+				if (signalSnapshotCalls) signalSnapshotCalls.perSession += 1;
+				return signals.snapshotSession(id);
+			},
 			snapshotSignalTree: (id) => signals.snapshotTree(id),
-			snapshotSignalStatuses: () => signals.snapshotStatuses(),
+			snapshotSignalStatuses: () => {
+				if (signalSnapshotCalls) signalSnapshotCalls.bulk += 1;
+				return signals.snapshotStatuses();
+			},
 			subscribeSignalTree: (id, listener) => signals.subscribe(id, listener),
 			subscribeSignalStatuses: (listener) => signals.subscribeAll(listener),
 		} : {}),
@@ -312,6 +318,58 @@ test("chat signal routes return 503 when registry functions are unavailable", as
 	}
 });
 
+
+test("chat navigation and bootstrap use one bulk signal snapshot for large session projections", async () => {
+	const signalSnapshotCalls = { bulk: 0, perSession: 0 };
+	const { channel, baseURL, sessions, signals, emitOutput } = await startSignalWebHost({ signalSnapshotCalls });
+	try {
+		const selected = createSession(sessions, "ps_bulk_selected");
+		const activeRoot = createSession(sessions, "ps_bulk_active_root");
+		const activeChild = createSession(sessions, "ps_bulk_active_child", activeRoot.id);
+		const failed = createSession(sessions, "ps_bulk_failed");
+		const fillers = Array.from({ length: 48 }, (_, index) => createSession(sessions, `ps_bulk_filler_${index}`));
+		for (const session of [selected, activeRoot, activeChild, failed, ...fillers]) {
+			signals.project({ type: "session_created", session });
+		}
+		signals.project({ type: "session_processing_changed", piboSessionId: activeChild.id, processing: true, queuedMessages: 0 });
+
+		const initial = await fetch(`${baseURL}/api/chat/bootstrap?piboSessionId=${selected.id}&markRead=true`, { headers: { "x-test-user": "user-1" } });
+		assert.equal(initial.status, 200);
+		const initialBody = await initial.json();
+		assert.equal(findSessionNode(initialBody.sessions, activeRoot.id)?.status, "running", "an active descendant keeps its root running");
+		assert.deepEqual(signalSnapshotCalls, { bulk: 1, perSession: 0 });
+
+		emitOutput({ type: "session_error", piboSessionId: failed.id, eventId: "bulk-error", error: "boom" });
+		signalSnapshotCalls.bulk = 0;
+		signalSnapshotCalls.perSession = 0;
+		const navigation = await fetch(`${baseURL}/api/chat/navigation?piboSessionId=${selected.id}`, { headers: { "x-test-user": "user-1" } });
+		assert.equal(navigation.status, 200);
+		const navigationBody = await navigation.json();
+		assert.equal(findSessionNode(navigationBody.sessions, activeRoot.id)?.status, "running");
+		assert.equal(findSessionNode(navigationBody.sessions, failed.id)?.status, "error");
+		assert.equal(findSessionNode(navigationBody.sessions, failed.id)?.unreadCount, 1);
+		assert.deepEqual(signalSnapshotCalls, { bulk: 1, perSession: 0 });
+
+		const readResponse = await fetch(`${baseURL}/api/chat/sessions/${encodeURIComponent(failed.id)}/read`, {
+			method: "POST",
+			headers: { "x-test-user": "user-1", "content-type": "application/json", origin: baseURL },
+			body: "{}",
+		});
+		assert.equal(readResponse.status, 200);
+
+		signalSnapshotCalls.bulk = 0;
+		signalSnapshotCalls.perSession = 0;
+		const acknowledged = await fetch(`${baseURL}/api/chat/bootstrap?piboSessionId=${selected.id}`, { headers: { "x-test-user": "user-1" } });
+		assert.equal(acknowledged.status, 200);
+		const acknowledgedBody = await acknowledged.json();
+		assert.equal(findSessionNode(acknowledgedBody.sessions, activeRoot.id)?.status, "running");
+		assert.equal(findSessionNode(acknowledgedBody.sessions, failed.id)?.status, "idle", "a read error no longer keeps the session in error state");
+		assert.equal(findSessionNode(acknowledgedBody.sessions, failed.id)?.unreadCount, undefined);
+		assert.deepEqual(signalSnapshotCalls, { bulk: 1, perSession: 0 });
+	} finally {
+		await channel.stop?.();
+	}
+});
 
 test("chat bootstrap overlays live signal running status", async () => {
 	const { channel, baseURL, sessions, signals } = await startSignalWebHost();
