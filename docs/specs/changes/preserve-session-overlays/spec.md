@@ -1,8 +1,9 @@
 # Spec: Preserve optimistic sends across session switches
 
-**Status:** Implementing
+**Status:** Done
 **Created:** 2026-08-07
 **Source:** Pibo2 authenticated steering/session-switch reproduction
+**Related:** `docs/reports/preserve-session-overlays-validation-2026-08-07.md`
 
 ## Why
 
@@ -25,4 +26,4 @@ Keep each session's live overlay across navigation and close delivery choice UI 
 
 - Unit tests prove overlay cache restore, bounded-page preservation, and exact-confirmation reconciliation.
 - Source tests prove delivery uses a captured plan and closes before awaiting.
-- A real Pibo2 steer-switch-return watch keeps the optimistic message visible and dialog closed on return.
+- A real Pibo2 steer-switch-return watch keeps the optimistic message and Terminal footer visible from the first return sample and keeps the dialog closed.
