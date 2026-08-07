@@ -23,11 +23,11 @@
 ## Phase 3 — Pibo2 validation
 
 - [x] Build and test the focused branch.
-- [ ] Back up target auth/config and install candidate without releasing it.
-- [ ] Provision a Pibo2 key without leaving the raw secret on the server.
-- [ ] Verify Chat bootstrap, SSE, invalid key, and revocation through the public URL.
-- [ ] Establish authenticated headful Chrome/CDP access through the machine-session exchange.
-- [ ] Capture evidence and update the server-development skill.
+- [x] Back up target auth/config and install candidate without releasing it.
+- [x] Provision a Pibo2 key without leaving the raw secret on the server.
+- [x] Verify Chat bootstrap, SSE, invalid key, and revocation through the public URL.
+- [x] Establish authenticated headful Chrome/CDP access through the machine-session exchange.
+- [x] Capture evidence and update the server-development skill.
 
 ## Phase 4 — Delivery
 

@@ -4,9 +4,9 @@
 **Branch:** `feature/machine-key-web-auth`  
 **Base:** `upstream/dev` at `8e6df91f4f8afaac78debf8ef474850a9ffef978`
 
-## Outcome so far
+## Outcome
 
-The focused implementation is ready for isolated Pibo2 candidate deployment.
+The focused implementation passed isolated and production-path Pibo2 candidate validation. It has not been released.
 
 Confirmed locally:
 
@@ -83,7 +83,7 @@ Existing baseline failures include:
 
 These failures are not treated as passed and should be addressed in focused work, especially the Terminal View fixture mismatches required by the wider Pibo2 goal.
 
-## Pibo2 pre-deployment baseline
+## Pibo2 validation
 
 Production before candidate deployment:
 
@@ -92,17 +92,61 @@ Production before candidate deployment:
 - app-shell public TTFB: approximately 31-49 ms across ten samples;
 - authenticated bootstrap body: 219,692 bytes;
 - authenticated bootstrap TTFB: first two samples 3.50-3.67 s, then approximately 1.84-1.97 s;
-- `openai-codex`: reported configured by the live provider-auth action;
-- installed Chrome: Google Chrome 148;
-- no active display or CDP target was available.
+- installed browser: Google Chrome 148.
 
-The configured provider status is not yet proof that the OpenAI token can complete a model turn. That requires the planned real-agent validation.
+Backup and rollback evidence:
 
-## Remaining gates
+- archive: `/root/.pibo/server-backups/31.70.66.85-pibo-20260807T004600Z.tar.zst`;
+- SHA-256: `69881f86953b93630e96293df5c0d0afbf9cb5116a6d5f51a32d40e02f0c4ba1`;
+- size: 3,482,330,859 bytes;
+- archive extraction succeeded;
+- all 15 restored SQLite databases passed `PRAGMA quick_check`.
 
-1. Complete and restore-test the current Pibo2 backup.
-2. Package and install the branch as an isolated server candidate.
-3. Provision a hash-only Pibo2 machine record while retaining the raw key only on the controller.
-4. Verify public bootstrap, SSE, invalid-key rejection, and revocation.
-5. Establish a non-headless Chrome display and CDP connection.
-6. Complete a real OpenAI-backed streaming turn through the Web UI.
+The candidate was installed separately below `/opt/pibo-candidates` and activated through a rollbackable systemd override. The globally installed Pibo `1.10.1` package was not replaced. The active candidate commit was `a9974a2e`.
+
+Public production-path checks passed for:
+
+| Scenario | Result |
+| --- | --- |
+| Existing Google session | authenticated |
+| Valid `X-Pibo-Machine-Key` | authenticated as the linked existing identity |
+| Missing or malformed key | HTTP 401 without a human session |
+| Machine-session exchange | secure signed cookie issued |
+| Cookie-only Chat bootstrap | authenticated as provider `machine-key` |
+| Event stream with machine cookie | connected successfully |
+| Key revocation | header and existing cookie rejected without gateway restart |
+| Key restoration | authentication resumed without gateway restart |
+
+The raw key remained in a mode-`0600` controller credential file. The server received only the hash-only record. Browser profiles lived in `/dev/shm` and contained only the short-lived signed cookie.
+
+## Browser and real-agent proof
+
+A non-headless Chrome 148 process ran as the unprivileged `pibo-browser` account on Xvfb/Openbox. CDP remained bound to server loopback and was forwarded to controller loopback. Chrome DevTools MCP `0.14.0` attached to the authenticated browser.
+
+Verified through the public URL:
+
+- Chat bootstrap identified provider `machine-key`;
+- the authenticated Chat UI rendered the linked user and composer;
+- screenshots, accessibility snapshots, console data, network requests, DOM state, and performance traces were captured;
+- `openai-codex` completed a real `pibo-agent-v2` turn;
+- the turn streamed model reasoning and server tool execution through the Web UI.
+
+Local evidence is retained under `docs/reports/artifacts/pibo2-machine-auth-2026-08-07/` but large binary traces are intentionally excluded from the review branch.
+
+## Performance observations outside auth scope
+
+The authenticated workflow exposed separate Chat UI performance issues:
+
+- authenticated bootstrap commonly required approximately 1.8-2.0 seconds after warm-up;
+- one reload trace measured LCP at 3.09 seconds, with approximately 99.5% attributed to render delay;
+- the rendered page contained 2,831 DOM elements;
+- the Terminal View working indicator mutates individual random characters roughly every 50-100 ms;
+- one optimistic steering send cleared the composer but did not enter the durable message/event stream.
+
+These observations do not block the machine-auth contract. They require focused UI/runtime changes and separate validation.
+
+## Remaining delivery gates
+
+1. Publish the focused branch and open the upstream PR against `dev`.
+2. Keep the rollbackable candidate available while review continues.
+3. Do not release until the wider Chat UI/runtime defects are handled or explicitly accepted.
