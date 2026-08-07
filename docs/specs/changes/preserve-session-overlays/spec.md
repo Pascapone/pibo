@@ -15,13 +15,13 @@ Keep each session's live overlay across navigation and close delivery choice UI 
 ## Requirements
 
 1. Switching away MUST retain the current session overlay in a session-keyed cache.
-2. Switching back MUST restore that overlay before network refetch completion.
-3. Confirmed events MUST still be trimmed from cached overlays when the base trace advances.
+2. Switching back MUST select the cached base trace and overlay synchronously during render, before network refetch completion or effect-driven state restoration.
+3. Confirmed events MUST still be trimmed from cached overlays when the bounded base trace contains exact confirmation evidence; a newer tail cursor alone MUST NOT discard an event omitted from the current page.
 4. Queue or Steer selection MUST close the delivery dialog before awaiting network/refetch work.
 5. Send failure MUST still remove the optimistic event, restore composer text, and show the error.
 
 ## Acceptance Criteria
 
-- Unit tests prove overlay cache restore and reconciliation.
+- Unit tests prove overlay cache restore, bounded-page preservation, and exact-confirmation reconciliation.
 - Source tests prove delivery uses a captured plan and closes before awaiting.
 - A real Pibo2 steer-switch-return watch keeps the optimistic message visible and dialog closed on return.

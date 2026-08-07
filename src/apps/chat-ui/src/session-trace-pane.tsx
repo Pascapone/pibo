@@ -157,6 +157,7 @@ export function SessionTracePane({
   const queueButtonRef = useRef<HTMLButtonElement>(null);
   const {
     baseTraceView,
+    liveTraceOverlay: selectedLiveTraceOverlay,
     rawEventLimit,
     traceSummaryQuery,
     tracePageQuery,
@@ -168,6 +169,7 @@ export function SessionTracePane({
   } = useSessionTracePage({
     selectedPiboSessionId,
     showRawEvents,
+    liveTraceOverlay,
     setLiveTraceOverlay,
   });
   const {
@@ -207,7 +209,7 @@ export function SessionTracePane({
   const currentTraceView = useCurrentSessionTrace({
     selectedPiboSessionId,
     baseTraceView,
-    liveTraceOverlay,
+    liveTraceOverlay: selectedLiveTraceOverlay,
     selectedSessionStatus,
   });
 

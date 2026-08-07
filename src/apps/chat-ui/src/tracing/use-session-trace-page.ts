@@ -23,6 +23,7 @@ import { traceViewFromTimelinePage } from "./trace-v2-adapter";
 type UseSessionTracePageOptions = {
 	selectedPiboSessionId: string | null;
 	showRawEvents: boolean;
+	liveTraceOverlay: LiveTraceOverlay | null;
 	setLiveTraceOverlay: Dispatch<SetStateAction<LiveTraceOverlay | null>>;
 };
 
@@ -31,6 +32,7 @@ const MAX_REMEMBERED_OLDER_TRACE_LOADS = 128;
 export function useSessionTracePage({
 	selectedPiboSessionId,
 	showRawEvents,
+	liveTraceOverlay,
 	setLiveTraceOverlay,
 }: UseSessionTracePageOptions) {
 	const queryClient = useQueryClient();
@@ -209,14 +211,27 @@ export function useSessionTracePage({
 		}
 	}, [queryClient, rawEventLimit, selectedPiboSessionId, showRawEvents]);
 
+	const selectedBaseTraceView = selectedPiboSessionId
+		? baseTraceView?.piboSessionId === selectedPiboSessionId
+			? baseTraceView
+			: baseTraceViewCacheRef.current.get(selectedPiboSessionId)
+				?? (tracePageQuery.data?.piboSessionId === selectedPiboSessionId ? tracePageQuery.data : null)
+		: null;
+	const selectedLiveTraceOverlay = selectedPiboSessionId
+		? liveTraceOverlay?.piboSessionId === selectedPiboSessionId
+			? liveTraceOverlay
+			: liveTraceOverlayCacheRef.current.get(selectedPiboSessionId) ?? null
+		: null;
+
 	const loadMoreRawEvents = useCallback(() => {
-		const nextBefore = baseTraceView?.rawEvents[0]?.eventSequence;
+		const nextBefore = selectedBaseTraceView?.rawEvents[0]?.eventSequence;
 		setRawEventsBeforeSequence(nextBefore);
 		setRawEventLimit((current) => current + DEFAULT_RAW_EVENTS_LIMIT);
-	}, [baseTraceView?.rawEvents]);
+	}, [selectedBaseTraceView?.rawEvents]);
 
 	return {
-		baseTraceView,
+		baseTraceView: selectedBaseTraceView,
+		liveTraceOverlay: selectedLiveTraceOverlay,
 		traceEventLimit,
 		rawEventLimit,
 		traceSummaryQuery,

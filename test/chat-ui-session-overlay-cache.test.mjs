@@ -22,7 +22,7 @@ async function runOverlayCacheScenario() {
 				piboSessionId: "ps-active",
 				type: "message_steered",
 				createdAt: "2026-08-07T02:17:00.000Z",
-				payload: { type: "message_steered", piboSessionId: "ps-active", source: "user", text: "Keep it" },
+				payload: { type: "message_steered", eventId: "steer-1", piboSessionId: "ps-active", source: "user", text: "Keep it" },
 			}],
 		};
 		const cache = new Map();
@@ -45,19 +45,33 @@ async function runOverlayCacheScenario() {
 		}), active);
 		assert.equal(cache.get("ps-idle"), idle);
 
-		const baseTrace = {
+		const boundedBaseTrace = {
 			piboSessionId: "ps-active",
 			piSessionId: "pi-active",
 			title: "Active",
 			version: 1,
-			latestStreamId: 8,
-			eventCount: 0,
-			eventLimit: 100,
-			hasOlderEvents: false,
+			latestStreamId: 100,
+			eventCount: 100,
+			eventLimit: 50,
+			hasOlderEvents: true,
 			rawEvents: [],
 			nodes: [],
 		};
-		assert.equal(reconcileLiveTraceOverlayCache(cache, active, baseTrace), null);
+		assert.deepEqual(reconcileLiveTraceOverlayCache(cache, active, boundedBaseTrace), active);
+		assert.deepEqual(cache.get("ps-active"), active);
+
+		const confirmedBaseTrace = {
+			...boundedBaseTrace,
+			rawEvents: [{
+				id: "persisted-steer",
+				streamId: 8,
+				piboSessionId: "ps-active",
+				type: "message_steered",
+				createdAt: "2026-08-07T02:17:01.000Z",
+				payload: { type: "message_steered", eventId: "steer-1", piboSessionId: "ps-active", source: "user", text: "Keep it" },
+			}],
+		};
+		assert.equal(reconcileLiveTraceOverlayCache(cache, active, confirmedBaseTrace), null);
 		assert.equal(cache.has("ps-active"), false);
 	`;
 	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
@@ -77,6 +91,9 @@ test("delivery selection closes before awaiting and navigation restores before p
 	assert.match(pageSource, /useLayoutEffect\(\(\) => \{\s+const cachedTrace/);
 	assert.match(pageSource, /baseTraceViewCacheRef\.current\.set\(current\.piboSessionId, current\)/);
 	assert.match(pageSource, /baseTraceViewCacheRef\.current\.get\(selectedPiboSessionId\)/);
+	assert.match(pageSource, /liveTraceOverlayCacheRef\.current\.get\(selectedPiboSessionId\)/);
+	assert.match(pageSource, /baseTraceView: selectedBaseTraceView/);
+	assert.match(pageSource, /liveTraceOverlay: selectedLiveTraceOverlay/);
 	assert.match(pageSource, /restoreLiveTraceOverlayForSession/);
 
 	const layoutSource = fs.readFileSync("src/apps/chat-ui/src/session-trace-layout.tsx", "utf8");

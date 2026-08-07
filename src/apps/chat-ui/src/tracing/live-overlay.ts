@@ -35,11 +35,9 @@ export function reconcileLiveTraceOverlayCache(
 
 export function trimLiveOverlayForBaseTrace(overlay: LiveTraceOverlay | null, baseTrace: PiboSessionTraceView): LiveTraceOverlay | null {
 	if (!overlay || overlay.piboSessionId !== baseTrace.piboSessionId) return overlay;
-	const latestStreamId = baseTrace.latestStreamId;
 	const confirmedEventKeys = confirmedTraceEventKeys(baseTrace);
 	const confirmedUserMessageTexts = confirmedTranscriptUserMessageTexts(baseTrace.nodes);
 	const events = overlay.events.filter((event) => {
-		if (latestStreamId !== undefined && event.streamId !== undefined && event.streamId <= latestStreamId) return false;
 		if (isUserMessageQueuedEvent(event) && confirmedUserMessageTexts.has(event.payload.text)) return false;
 		const key = traceEventConfirmationKey(event);
 		return !key || !confirmedEventKeys.has(key);
