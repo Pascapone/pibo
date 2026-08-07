@@ -192,6 +192,7 @@ export type PiboSignalInput =
 	| { type: "session_interrupted"; piboSessionId: string; reason?: string }
 	| { type: "session_processing_changed"; piboSessionId: string; processing: boolean; queuedMessages: number }
 	| { type: "message_accepted"; piboSessionId: string; eventId: string; source?: PiboEventSource }
+	| { type: "message_rejected"; piboSessionId: string; eventId: string }
 	| { type: "run_changed"; run: PiboRunSnapshot; previousStatus?: PiboRunStatus; reason?: string }
 	| { type: "run_removed"; runId: string; controllerPiboSessionId: string }
 	| { type: "queue_changed"; piboSessionId: string; queuedMessages: number }
