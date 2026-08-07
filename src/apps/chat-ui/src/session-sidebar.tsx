@@ -236,6 +236,7 @@ export function SessionSidebar({
 					<div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Sessions</div>
 					<div className="flex items-center gap-1">
 						<select
+							id="new-session-agent-select"
 							value={newSessionProfile}
 							onChange={(event) => onNewSessionProfileChange(event.target.value)}
 							disabled={!newSessionProfileReady || !newSessionProfileOptions.length || creatingRoom || selectedRoomArchived || roomSessionsLoading}
