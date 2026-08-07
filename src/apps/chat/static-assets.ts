@@ -1,12 +1,14 @@
 import { existsSync, readFileSync } from "node:fs";
 import { extname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { brotliCompressSync, gzipSync } from "node:zlib";
+import { brotliCompressSync, constants as zlibConstants, gzipSync } from "node:zlib";
 import { responseHtml } from "../../web/http.js";
 
 export const CHAT_WEB_MOUNT_PATH = "/apps/chat";
 
 export const CHAT_VSCODE_MOUNT_PATH = "/apps/chat-vscode";
+
+export const STATIC_ASSET_BROTLI_QUALITY = 5;
 
 const CHAT_UI_DIST_DIR = resolve(fileURLToPath(new URL("../../../dist/apps/chat-ui", import.meta.url)));
 const CHAT_VSCODE_DIST_DIR = resolve(fileURLToPath(new URL("../../../dist/apps/chat-vscode-web", import.meta.url)));
@@ -134,7 +136,9 @@ function compressedAssetBody(path: string, body: Uint8Array, encoding: "br" | "g
 	const cacheKey = `${encoding}:${path}`;
 	const cached = compressedAssetCache.get(cacheKey);
 	if (cached) return cached;
-	const compressed = encoding === "br" ? brotliCompressSync(body) : gzipSync(body);
+	const compressed = encoding === "br"
+		? brotliCompressSync(body, { params: { [zlibConstants.BROTLI_PARAM_QUALITY]: STATIC_ASSET_BROTLI_QUALITY } })
+		: gzipSync(body);
 	compressedAssetCache.set(cacheKey, compressed);
 	return compressed;
 }
