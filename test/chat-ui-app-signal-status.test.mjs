@@ -277,9 +277,9 @@ test("restored or newly visible pages reconnect and refresh the selected signal 
 test("selected sessions recover missing snapshots and reconcile active turns", () => {
 	const source = readFileSync("src/apps/chat-ui/src/App.tsx", "utf8");
 	assert.match(source, /SIGNAL_TREE_RECONCILE_INTERVAL_MS = 5_000/);
-	assert.match(source, /retainSelectedSignalSnapshot\(sessionSignalsRef\.current, selectedPiboSessionId\)/);
+	assert.match(source, /retainSelectedSignalSnapshot\(sessionSignalsRef\.current, selectedBackendPiboSessionId\)/);
 	assert.match(source, /\.catch\(\(\) => \{[\s\S]*refreshSignalSnapshot\(SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS\)/, "failed initial REST snapshots retry instead of being swallowed");
-	assert.match(source, /shouldReconcileSelectedSignalTree\(sessionSignalsRef\.current, selectedPiboSessionId, selectedSession\?\.status\)/);
+	assert.match(source, /shouldReconcileSelectedSignalTree\(sessionSignalsRef\.current, selectedBackendPiboSessionId, selectedSession\?\.status\)/);
 	assert.match(source, /window\.setInterval\([\s\S]*shouldReconcileSignalTree\(\)[\s\S]*refreshSignalSnapshot\(0\)[\s\S]*SIGNAL_TREE_RECONCILE_INTERVAL_MS/);
 	assert.match(source, /window\.clearInterval\(signalReconcileTimer\)/);
 });

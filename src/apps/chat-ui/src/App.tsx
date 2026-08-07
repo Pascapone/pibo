@@ -142,6 +142,7 @@ import {
 } from "./app-agent-catalog-mutations";
 import { useAppDeleteActions } from "./app-delete-actions";
 import { roomSummaryStreamUrl } from "./room-summary-stream";
+import { selectedSessionBackendId } from "./selected-session-backend";
 
 export type { ChatAppRoute } from "./app-routes";
 
@@ -306,6 +307,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const selectedRoom = activeRoomId && bootstrap ? findRoomById(bootstrap.rooms, activeRoomId) ?? bootstrap.room : undefined;
 	const selectedRoomArchived = selectedRoom ? isArchivedRoom(selectedRoom) : false;
 	const loadingSelectedRoom = Boolean(loadingRoomId && loadingRoomId === selectedRoomId);
+	const selectedBackendPiboSessionId = selectedSessionBackendId(selectedPiboSessionId);
 	const overlayCurrentSignals = useCallback((data: BootstrapData): BootstrapData => {
 		const statusSnapshot = sessionStatusSignalsRef.current;
 		const withGlobalStatuses = statusSnapshot ? applySignalStatusSnapshotToBootstrap(data, statusSnapshot) : data;
@@ -415,12 +417,12 @@ export function App({ route }: { route: ChatAppRoute }) {
 	}, []);
 
 	useEffect(() => {
-		if (area !== "sessions" || !selectedPiboSessionId) {
+		if (area !== "sessions" || !selectedBackendPiboSessionId) {
 			sessionSignalsRef.current = null;
 			setSessionSignals(null);
 			return;
 		}
-		const retainedSnapshot = retainSelectedSignalSnapshot(sessionSignalsRef.current, selectedPiboSessionId);
+		const retainedSnapshot = retainSelectedSignalSnapshot(sessionSignalsRef.current, selectedBackendPiboSessionId);
 		sessionSignalsRef.current = retainedSnapshot;
 		setSessionSignals(retainedSnapshot);
 
@@ -428,7 +430,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 		let signalRecoveryTimer: ReturnType<typeof setTimeout> | undefined;
 		const controller = new AbortController();
 		const commitSignalSnapshot = (snapshot: PiboSignalSnapshot) => {
-			if (!active || controller.signal.aborted || !shouldCommitSelectedSignalSnapshot(sessionSignalsRef.current, snapshot, selectedPiboSessionId)) return;
+			if (!active || controller.signal.aborted || !shouldCommitSelectedSignalSnapshot(sessionSignalsRef.current, snapshot, selectedBackendPiboSessionId)) return;
 			sessionSignalsRef.current = snapshot;
 			setSessionSignals(snapshot);
 			setBootstrap((current) => current ? applySignalSnapshotToBootstrap(current, snapshot) : current);
@@ -438,7 +440,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 			if (signalRecoveryTimer) clearTimeout(signalRecoveryTimer);
 			signalRecoveryTimer = setTimeout(() => {
 				signalRecoveryTimer = undefined;
-				fetchSignalTree(selectedPiboSessionId, { signal: controller.signal })
+				fetchSignalTree(selectedBackendPiboSessionId, { signal: controller.signal })
 					.then(commitSignalSnapshot)
 					.catch(() => {
 						if (!controller.signal.aborted) refreshSignalSnapshot(SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS);
@@ -447,7 +449,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 		};
 		const signalTreeHandlers = {
 			onSnapshot: (snapshot: PiboSignalSnapshot) => {
-				if (!active || !shouldCommitSelectedSignalSnapshot(sessionSignalsRef.current, snapshot, selectedPiboSessionId)) return;
+				if (!active || !shouldCommitSelectedSignalSnapshot(sessionSignalsRef.current, snapshot, selectedBackendPiboSessionId)) return;
 				if (signalRecoveryTimer) {
 					clearTimeout(signalRecoveryTimer);
 					signalRecoveryTimer = undefined;
@@ -456,7 +458,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 			},
 			onPatch: (patch: PiboSignalPatch) => {
 				if (!active) return;
-				const result = applySelectedSignalPatch(sessionSignalsRef.current, patch, selectedPiboSessionId);
+				const result = applySelectedSignalPatch(sessionSignalsRef.current, patch, selectedBackendPiboSessionId);
 				if (result.needsRefresh) {
 					refreshSignalSnapshot(0);
 					return;
@@ -471,17 +473,17 @@ export function App({ route }: { route: ChatAppRoute }) {
 		const reconnectSignalTree = () => {
 			if (!active) return;
 			unsubscribeSignalTree();
-			unsubscribeSignalTree = subscribeSignalTree(selectedPiboSessionId, signalTreeHandlers);
+			unsubscribeSignalTree = subscribeSignalTree(selectedBackendPiboSessionId, signalTreeHandlers);
 			refreshSignalSnapshot(0);
 		};
 		const refreshVisibleSignalTree = () => {
 			if (document.visibilityState === "visible") reconnectSignalTree();
 		};
 		const shouldReconcileSignalTree = () => {
-			const selectedSession = bootstrapRef.current ? findSessionNode(bootstrapRef.current.sessions, selectedPiboSessionId) : undefined;
-			return shouldReconcileSelectedSignalTree(sessionSignalsRef.current, selectedPiboSessionId, selectedSession?.status);
+			const selectedSession = bootstrapRef.current ? findSessionNode(bootstrapRef.current.sessions, selectedBackendPiboSessionId) : undefined;
+			return shouldReconcileSelectedSignalTree(sessionSignalsRef.current, selectedBackendPiboSessionId, selectedSession?.status);
 		};
-		unsubscribeSignalTree = subscribeSignalTree(selectedPiboSessionId, signalTreeHandlers);
+		unsubscribeSignalTree = subscribeSignalTree(selectedBackendPiboSessionId, signalTreeHandlers);
 		window.addEventListener("pageshow", reconnectSignalTree);
 		document.addEventListener("visibilitychange", refreshVisibleSignalTree);
 		const signalReconcileTimer = window.setInterval(() => {
@@ -497,7 +499,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 			window.clearInterval(signalReconcileTimer);
 			unsubscribeSignalTree();
 		};
-	}, [area, selectedPiboSessionId]);
+	}, [area, selectedBackendPiboSessionId]);
 
 	useEffect(() => {
 		const nextExpiryMs = bootstrap ? nextRecentSessionSignalExpiryMs(bootstrap.sessions, signalNow) : undefined;
@@ -712,8 +714,9 @@ export function App({ route }: { route: ChatAppRoute }) {
 		let inFlight = false;
 		const refreshVisibleNavigation = () => {
 			if (stopped || inFlight || document.hidden || !bootstrapRef.current) return;
+			if (selectedPiboSessionId && !selectedBackendPiboSessionId) return;
 			inFlight = true;
-			loadNavigation(selectedPiboSessionId ?? undefined, showArchivedRef.current, activeRoomId ?? undefined, { force: true })
+			loadNavigation(selectedBackendPiboSessionId ?? undefined, showArchivedRef.current, activeRoomId ?? undefined, { force: true })
 				.catch(() => undefined)
 				.finally(() => {
 					inFlight = false;
@@ -731,7 +734,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 			window.removeEventListener("focus", refreshVisibleNavigation);
 			document.removeEventListener("visibilitychange", refreshWhenVisible);
 		};
-	}, [activeRoomId, area, loadNavigation, selectedPiboSessionId]);
+	}, [activeRoomId, area, loadNavigation, selectedBackendPiboSessionId, selectedPiboSessionId]);
 
 	useEffect(() => {
 		const stored = readStoredSelection();
@@ -880,10 +883,11 @@ export function App({ route }: { route: ChatAppRoute }) {
 		const events = new EventSource(roomSummaryUrl);
 		let navigationTimer: ReturnType<typeof setTimeout> | undefined;
 		const scheduleNavigationRefresh = () => {
+			if (selectedPiboSessionId && !selectedBackendPiboSessionId) return;
 			if (navigationTimer) clearTimeout(navigationTimer);
 			navigationTimer = setTimeout(() => {
 				navigationTimer = undefined;
-				loadNavigation(selectedPiboSessionId ?? undefined, showArchivedRef.current, activeRoomId, { force: true })
+				loadNavigation(selectedBackendPiboSessionId ?? undefined, showArchivedRef.current, activeRoomId, { force: true })
 					.catch((caught) => {
 						if (!isAbortError(caught)) setError(errorMessage(caught));
 					});
@@ -909,7 +913,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 			if (navigationTimer) clearTimeout(navigationTimer);
 			events.close();
 		};
-	}, [activeRoomId, area, bootstrap?.selectedRoomId, latestRoomStreamId, loadNavigation, selectedPiboSessionId, updateBootstrapCache]);
+	}, [activeRoomId, area, bootstrap?.selectedRoomId, latestRoomStreamId, loadNavigation, selectedBackendPiboSessionId, selectedPiboSessionId, updateBootstrapCache]);
 
 	const restoreBootstrapSnapshot = useCallback((snapshot: BootstrapMutationSnapshot | undefined) => {
 		if (!snapshot) return;

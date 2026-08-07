@@ -45,6 +45,7 @@ import {
   type ComposerSendPlan,
 } from "./composer-send";
 import { createClientTxnId } from "./app-session-model";
+import { selectedSessionBackendId } from "./selected-session-backend";
 import {
   createWorkflowHeaderSummary,
   isWorkflowBackedProjectSession,
@@ -165,6 +166,7 @@ export function SessionTracePane({
     useState<ComposerSendPlan | null>(null);
   const [deliverySending, setDeliverySending] = useState(false);
   const queueButtonRef = useRef<HTMLButtonElement>(null);
+  const selectedBackendPiboSessionId = selectedSessionBackendId(selectedPiboSessionId);
   const {
     baseTraceView,
     liveTraceOverlay: selectedLiveTraceOverlay,
@@ -177,7 +179,7 @@ export function SessionTracePane({
     loadOlderTracePage,
     loadMoreRawEvents,
   } = useSessionTracePage({
-    selectedPiboSessionId,
+    selectedPiboSessionId: selectedBackendPiboSessionId,
     showRawEvents,
     liveTraceOverlay,
     liveTraceOverlayCacheRef,
@@ -199,7 +201,7 @@ export function SessionTracePane({
     toggleWebAnnotationsPanelCollapsed,
     clearVisibleWebAnnotations,
   } = useSessionWebAnnotations({
-    selectedPiboSessionId,
+    selectedPiboSessionId: selectedBackendPiboSessionId,
     onError,
     formatError: compactWebAnnotationError,
   });
@@ -218,14 +220,14 @@ export function SessionTracePane({
   );
 
   const currentTraceView = useCurrentSessionTrace({
-    selectedPiboSessionId,
+    selectedPiboSessionId: selectedBackendPiboSessionId,
     baseTraceView,
     liveTraceOverlay: selectedLiveTraceOverlay,
     selectedSessionStatus,
   });
 
   useSessionTraceLiveStream({
-    selectedPiboSessionId,
+    selectedPiboSessionId: selectedBackendPiboSessionId,
     tracePageData: tracePageQuery.data,
     currentTraceView,
     liveEventSeqRef,
