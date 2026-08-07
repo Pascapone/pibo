@@ -6,6 +6,7 @@ import { getMigrations } from "better-auth/db/migration";
 import { bearer } from "better-auth/plugins";
 import { loadPiboConfig } from "../config/config.js";
 import { piboHomePath } from "../core/pibo-home.js";
+import { createMachineKeyAuthenticator } from "./machine-keys.js";
 import type { PiboAuthService, PiboAuthSession } from "./types.js";
 import { createForbiddenAuthError, createUnauthenticatedError } from "./types.js";
 
@@ -17,6 +18,7 @@ export type BetterAuthServiceOptions = {
 	googleClientSecret?: string;
 	trustedOrigins?: string[];
 	allowedEmails?: string[];
+	machineKeyStorePath?: string;
 };
 
 const SESSION_EXPIRES_IN_SECONDS = 60 * 60 * 24 * 90;
@@ -90,6 +92,7 @@ export function createBetterAuthService(options: BetterAuthServiceOptions = {}):
 	);
 	const secret = requiredSecret(options.secret ?? authConfig?.secret);
 	const allowedEmails = requiredAllowedEmails(options, authConfig?.allowedEmails);
+	const machineKeys = createMachineKeyAuthenticator(options.machineKeyStorePath ?? authConfig?.machineKeyStorePath);
 	const database = createDatabase(options.databasePath ?? authConfig?.databasePath ?? piboHomePath("auth.sqlite"));
 	const trustedOrigins = options.trustedOrigins ?? authConfig?.trustedOrigins;
 	const authOptions: BetterAuthOptions = {
@@ -123,6 +126,13 @@ export function createBetterAuthService(options: BetterAuthServiceOptions = {}):
 			database.close();
 		},
 		async getSession(headers) {
+			const machineSession = machineKeys.getSession(headers);
+			if (machineSession) {
+				const email = machineSession.identity.email?.toLowerCase();
+				if (!email || !allowedEmails.has(email)) throw createForbiddenAuthError();
+				return machineSession;
+			}
+
 			const session = await auth.api.getSession({ headers });
 			if (!session) return undefined;
 

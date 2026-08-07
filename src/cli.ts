@@ -105,6 +105,12 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 		return;
 	}
 
+	if (argv[2] === "auth") {
+		const { runAuthCli } = await import("./auth/cli.js");
+		await runAuthCli([argv[0] ?? "node", "pibo auth", ...argv.slice(3)]);
+		return;
+	}
+
 	if (argv[2] === "mcp") {
 		const { runMcpCli } = await import("./mcp/index.js");
 		await runMcpCli([argv[0] ?? "node", "pibo mcp", ...argv.slice(3)]);
@@ -527,6 +533,7 @@ function printRootDiscoveryText(): string {
 
 Commands:
   config       Manage local pibo config
+  auth         Manage Web authentication and machine identities
   mcp          Discover and call configured MCP servers
   tools        Install and inspect curated external CLI tools
   pi-packages  Register Pi Coding Agent packages

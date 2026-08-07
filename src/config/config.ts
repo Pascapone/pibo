@@ -17,6 +17,7 @@ export type PiboConfig = {
 		allowedEmails?: string[];
 		trustedOrigins?: string[];
 		databasePath?: string;
+		machineKeyStorePath?: string;
 		mode?: "better-auth" | "local";
 	};
 };
@@ -66,6 +67,11 @@ export const PIBO_CONFIG_KEYS: PiboConfigKeyDefinition[] = [
 		key: "auth.databasePath",
 		type: "string",
 		description: "SQLite path for Better Auth data.",
+	},
+	{
+		key: "auth.machineKeyStorePath",
+		type: "string",
+		description: "Optional path for revocable machine-key records. Default $PIBO_HOME/machine-keys.json.",
 	},
 	{
 		key: "auth.mode",
