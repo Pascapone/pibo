@@ -37,6 +37,7 @@ export function useSessionTracePage({
 	const [traceEventLimit, setTraceEventLimit] = useState(DEFAULT_TRACE_EVENTS_PAGE_SIZE);
 	const [rawEventLimit, setRawEventLimit] = useState(DEFAULT_RAW_EVENTS_LIMIT);
 	const [baseTraceView, setBaseTraceView] = useState<PiboSessionTraceView | null>(null);
+	const baseTraceViewCacheRef = useRef<Map<string, PiboSessionTraceView>>(new Map());
 	const [rawEventsBeforeSequence, setRawEventsBeforeSequence] = useState<number | undefined>(undefined);
 	const [loadingOlderTracePage, setLoadingOlderTracePage] = useState(false);
 	const loadingOlderTraceBeforeRef = useRef<string | null>(null);
@@ -96,7 +97,12 @@ export function useSessionTracePage({
 		setRawEventLimit(DEFAULT_RAW_EVENTS_LIMIT);
 		setRawEventsBeforeSequence(undefined);
 		setLoadingOlderTracePage(false);
-		setBaseTraceView(cachedTrace?.piboSessionId === selectedPiboSessionId ? cachedTrace : null);
+		setBaseTraceView((current) => {
+			if (current) baseTraceViewCacheRef.current.set(current.piboSessionId, current);
+			if (!selectedPiboSessionId) return null;
+			return baseTraceViewCacheRef.current.get(selectedPiboSessionId)
+				?? (cachedTrace?.piboSessionId === selectedPiboSessionId ? cachedTrace : null);
+		});
 		setLiveTraceOverlay((current) => restoreLiveTraceOverlayForSession(
 			liveTraceOverlayCacheRef.current,
 			current,
@@ -133,9 +139,13 @@ export function useSessionTracePage({
 			});
 		}
 		startTransition(() => {
-			setBaseTraceView((current) => current?.piboSessionId === trace.piboSessionId
-				? mergeRefreshedTracePage(current, trace)
-				: trace);
+			setBaseTraceView((current) => {
+				const next = current?.piboSessionId === trace.piboSessionId
+					? mergeRefreshedTracePage(current, trace)
+					: trace;
+				baseTraceViewCacheRef.current.set(trace.piboSessionId, next);
+				return next;
+			});
 			setLiveTraceOverlay((current) => reconcileLiveTraceOverlayCache(
 				liveTraceOverlayCacheRef.current,
 				current,
