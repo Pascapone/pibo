@@ -66,6 +66,13 @@ test('root discovery includes resources and resources help exposes only immediat
 	assert.match(help.stdout, /reap/);
 	assert.doesNotMatch(help.stdout, /--max-age-minutes/);
 	assert.doesNotMatch(help.stdout, /--browser-pool-root/);
+
+	const reapHelp = await execFileAsync('node', [cliPath, 'resources', 'reap', '--help']);
+	assert.match(reapHelp.stdout, /--exempt-browser-user-data-dirs <list>/);
+	await assert.rejects(
+		execFileAsync('node', [cliPath, 'resources', 'reap', '--exempt-browser-user-data-dirs', 'relative/profile']),
+		/Browser user-data directories must be absolute paths/,
+	);
 });
 
 test('resource status and active browser-pool leases keep stable text and JSON fields', () => {
@@ -148,6 +155,7 @@ test('resource reap dry-run aggregates browser, stale-file, and compute plans wh
 			browserPoolRoot: '/fixture/pools',
 			browserUseHome: '/fixture/browser-use',
 			exemptBrowserPids: [],
+			exemptBrowserUserDataDirs: [],
 		},
 		records: [
 			poolRecord('/fixture/stale/state.json', { state: 'stale' }),
@@ -191,6 +199,7 @@ test('resource reap apply rechecks fixtures, removes only confirmed stale pid/po
 				browserPoolRoot: join(cwd, 'pools'),
 				browserUseHome: join(cwd, 'browser-use'),
 				exemptBrowserPids: [],
+				exemptBrowserUserDataDirs: [],
 			},
 			records: [poolRecord(join(cwd, 'pools', 'browser-pools', 'worker-a', 'default', 'state.json'), { state: 'stale' })],
 			staleFiles: [
@@ -241,11 +250,19 @@ test('unmanaged Chromium planning honors grace and explicit exemptions and apply
 		{ pid: 101, ppid: 1, pgid: 101, commandName: 'chromium', elapsedSeconds: 1200, argsPreview: 'chromium', nextCommands: [] },
 		{ pid: 102, ppid: 1, pgid: 102, commandName: 'chromium', elapsedSeconds: 30, argsPreview: 'chromium', nextCommands: [] },
 		{ pid: 103, ppid: 1, pgid: 103, commandName: 'chromium', elapsedSeconds: 1200, argsPreview: 'chromium', nextCommands: [] },
+		{ pid: 104, ppid: 1, pgid: 104, commandName: 'chromium', userDataDir: '/tmp/pibo-persistent-profile', elapsedSeconds: 1200, argsPreview: 'chromium', nextCommands: [] },
+		{ pid: 105, ppid: 1, pgid: 105, commandName: 'chromium', userDataDir: '/tmp/pibo-persistent-profile/child', elapsedSeconds: 1200, argsPreview: 'chromium', nextCommands: [] },
 	];
-	const unmanagedBrowsers = buildUnmanagedBrowserPlanItems(details, 10, new Set([103]));
-	assert.deepEqual(unmanagedBrowsers.map((item) => item.action), ['terminate', 'skip', 'skip']);
+	const unmanagedBrowsers = buildUnmanagedBrowserPlanItems(
+		details,
+		10,
+		new Set([103]),
+		new Set(['/tmp/pibo-persistent-profile']),
+	);
+	assert.deepEqual(unmanagedBrowsers.map((item) => item.action), ['terminate', 'skip', 'skip', 'skip', 'terminate']);
 	assert.match(unmanagedBrowsers[1].reason, /grace period/);
-	assert.match(unmanagedBrowsers[2].reason, /explicitly exempted/);
+	assert.match(unmanagedBrowsers[2].reason, /pid or process group/);
+	assert.match(unmanagedBrowsers[3].reason, /user-data-dir/);
 
 	const now = new Date('2026-07-14T00:00:00.000Z');
 	const plan = buildResourceReapPlan({
@@ -258,6 +275,7 @@ test('unmanaged Chromium planning honors grace and explicit exemptions and apply
 			browserPoolRoot: '/fixture/pools',
 			browserUseHome: '/fixture/browser-use',
 			exemptBrowserPids: [103],
+			exemptBrowserUserDataDirs: ['/tmp/pibo-persistent-profile'],
 		},
 		records: [],
 		staleFiles: [],
@@ -270,9 +288,9 @@ test('unmanaged Chromium planning honors grace and explicit exemptions and apply
 		terminateUnmanagedBrowser: async (item) => { terminated.push(item.processGroupId); return true; },
 		applyCompute: async () => [],
 	});
-	assert.deepEqual(terminated, [101]);
-	assert.deepEqual(result.terminatedUnmanagedBrowsers, [101]);
-	assert.equal(result.plan.unmanagedBrowsers.selected, 1);
+	assert.deepEqual(terminated, [101, 105]);
+	assert.deepEqual(result.terminatedUnmanagedBrowsers, [101, 105]);
+	assert.equal(result.plan.unmanagedBrowsers.selected, 2);
 });
 
 test('resource reaper keeps browser cleanup active when Docker compute planning fails', async () => {
@@ -349,6 +367,7 @@ test('automatic resource reaper persists live last and next run health state', a
 				browserPoolRoot: '/fixture/pools',
 				browserUseHome: '/fixture/browser-use',
 				exemptBrowserPids: [],
+				exemptBrowserUserDataDirs: [],
 			},
 			records: [],
 			staleFiles: [],
