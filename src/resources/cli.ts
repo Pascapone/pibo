@@ -1,3 +1,4 @@
+import { isAbsolute, resolve } from "node:path";
 import { Command } from "commander";
 import { getComputeResourceHealth, type ComputeResourceHealth } from "../compute/resource-health.js";
 import { renderComputeResourceHealthText } from "../compute/cli.js";
@@ -24,6 +25,16 @@ function parsePidList(value: string): number[] {
 	const pids = value.split(",").map((item) => Number.parseInt(item.trim(), 10));
 	if (pids.some((pid) => !Number.isInteger(pid) || pid <= 0)) throw new Error("PIDs must be positive integers separated by commas");
 	return [...new Set(pids)];
+}
+
+function parseAbsolutePathList(value: string): string[] {
+	const paths = value.split(",").map((item) => item.trim());
+	if (paths.some((path) => !path || !isAbsolute(path))) throw new Error("Browser user-data directories must be absolute paths separated by commas");
+	return [...new Set(paths.map((path) => resolve(path)))];
+}
+
+function shellQuote(value: string): string {
+	return `'${value.replaceAll("'", `'"'"'`)}'`;
 }
 
 export function renderResourceLeasesText(leases: ResourceLease[]): string {
@@ -58,6 +69,8 @@ export function renderResourceReapText(value: ResourceReapPlan | ResourceReapApp
 			`--unmanaged-browser-grace-minutes ${plan.options.unmanagedBrowserGraceMinutes}`,
 		];
 		if (plan.options.includeDev) args.push("--include-dev");
+		if (plan.options.exemptBrowserPids.length > 0) args.push(`--exempt-browser-pids ${plan.options.exemptBrowserPids.join(",")}`);
+		if (plan.options.exemptBrowserUserDataDirs.length > 0) args.push(`--exempt-browser-user-data-dirs ${shellQuote(plan.options.exemptBrowserUserDataDirs.join(","))}`);
 		if (plan.options.browserPoolRoot) args.push(`--browser-pool-root ${plan.options.browserPoolRoot}`);
 		if (plan.options.browserUseHome) args.push(`--browser-use-home ${plan.options.browserUseHome}`);
 		lines.push(`Dry-run only. Apply after review with: ${args.join(" ")}`);
@@ -122,6 +135,7 @@ export async function runResourcesCli(argv: string[]): Promise<void> {
 		.option("--idle-timeout-minutes <n>", "Select browser pools idle for this many minutes", parseNonNegativeNumber, 10)
 		.option("--unmanaged-browser-grace-minutes <n>", "Select unmanaged Chromium older than this many minutes", parseNonNegativeNumber, 10)
 		.option("--exempt-browser-pids <list>", "Comma-separated browser PIDs or process groups to preserve", parsePidList)
+		.option("--exempt-browser-user-data-dirs <list>", "Comma-separated absolute browser profile directories to preserve", parseAbsolutePathList)
 		.option("--browser-pool-root <path>", "Browser pool root directory to scan")
 		.option("--browser-use-home <path>", "Browser-use home directory to scan for stale CDP files")
 		.option("--json", "Print machine-readable cleanup plan or result")
@@ -133,6 +147,7 @@ export async function runResourcesCli(argv: string[]): Promise<void> {
 			idleTimeoutMinutes: number;
 			unmanagedBrowserGraceMinutes: number;
 			exemptBrowserPids?: number[];
+			exemptBrowserUserDataDirs?: string[];
 			browserPoolRoot?: string;
 			browserUseHome?: string;
 			json?: boolean;

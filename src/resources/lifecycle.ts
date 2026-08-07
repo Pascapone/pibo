@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readdir, readFile, rm } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import {
 	applyComputeWorkerReapPlan,
@@ -81,6 +81,7 @@ export interface ResourceReapPlan {
 		browserPoolRoot: string;
 		browserUseHome: string;
 		exemptBrowserPids: number[];
+		exemptBrowserUserDataDirs: string[];
 	};
 	browserPools: {
 		items: ResourceBrowserReapPlanItem[];
@@ -118,6 +119,7 @@ export interface PlanResourceReapOptions {
 	browserPoolRoot?: string;
 	browserUseHome?: string;
 	exemptBrowserPids?: number[];
+	exemptBrowserUserDataDirs?: string[];
 	now?: Date;
 }
 
@@ -180,12 +182,18 @@ export async function planResourceReap(options: PlanResourceReapOptions = {}): P
 		collectManagedBrowserPools(resolved.browserPoolRoot),
 		planStaleCdpFiles(resolved.browserUseHome),
 		planComputeReapSafely({ includeDev: resolved.includeDev, maxAgeMinutes: resolved.maxAgeMinutes, now }),
-		getComputeResourceHealth({ now, browserPoolRoot: resolved.browserPoolRoot, browserUseHome: resolved.browserUseHome }),
+		getComputeResourceHealth({
+			now,
+			browserPoolRoot: resolved.browserPoolRoot,
+			browserUseHome: resolved.browserUseHome,
+			exemptBrowserUserDataDirs: [],
+		}),
 	]);
 	const unmanagedBrowsers = buildUnmanagedBrowserPlanItems(
 		health.browserProcesses.unassignedMainProcessDetails,
 		resolved.unmanagedBrowserGraceMinutes,
 		new Set(resolved.exemptBrowserPids),
+		new Set(resolved.exemptBrowserUserDataDirs),
 	);
 	return buildResourceReapPlan({ now, options: resolved, records, staleFiles, unmanagedBrowsers, compute });
 }
@@ -261,6 +269,9 @@ function resolveReapOptions(options: PlanResourceReapOptions): ResourceReapPlan[
 		browserPoolRoot: options.browserPoolRoot ?? defaultBrowserPoolRoot(),
 		browserUseHome: options.browserUseHome ?? defaultBrowserUseHome(),
 		exemptBrowserPids: options.exemptBrowserPids ?? readExemptBrowserPids(),
+		exemptBrowserUserDataDirs: normalizeBrowserUserDataDirs(
+			options.exemptBrowserUserDataDirs ?? readExemptBrowserUserDataDirs(),
+		),
 	};
 }
 
@@ -268,6 +279,7 @@ export function buildUnmanagedBrowserPlanItems(
 	processes: ResourceHealthUnassignedBrowserProcessInfo[],
 	graceMinutes: number,
 	exemptPids = new Set<number>(),
+	exemptUserDataDirs = new Set<string>(),
 ): ResourceUnmanagedBrowserPlanItem[] {
 	const graceSeconds = graceMinutes * 60;
 	return processes.map((process) => {
@@ -279,6 +291,9 @@ export function buildUnmanagedBrowserPlanItems(
 		} else if (exemptPids.has(process.pid) || exemptPids.has(process.pgid)) {
 			action = "skip";
 			reason = "explicitly exempted pid or process group";
+		} else if (browserUserDataDirIsExempt(process.userDataDir, exemptUserDataDirs)) {
+			action = "skip";
+			reason = "explicitly exempted browser user-data-dir";
 		} else if (process.elapsedSeconds !== undefined && process.elapsedSeconds < graceSeconds) {
 			action = "skip";
 			reason = `process age ${process.elapsedSeconds}s is within ${graceSeconds}s grace period`;
@@ -343,6 +358,22 @@ function readExemptBrowserPids(): number[] {
 		.split(",")
 		.map((value) => Number.parseInt(value.trim(), 10))
 		.filter((value) => Number.isInteger(value) && value > 0);
+}
+
+function readExemptBrowserUserDataDirs(): string[] {
+	return (process.env.PIBO_RESOURCE_REAPER_EXEMPT_BROWSER_USER_DATA_DIRS ?? "").split(",");
+}
+
+function normalizeBrowserUserDataDirs(values: Iterable<string>): string[] {
+	return [...new Set([...values]
+		.map((value) => value.trim())
+		.filter((value) => value.length > 0 && isAbsolute(value))
+		.map((value) => resolve(value)))];
+}
+
+function browserUserDataDirIsExempt(userDataDir: string | undefined, exemptions: Set<string>): boolean {
+	if (!userDataDir || !isAbsolute(userDataDir)) return false;
+	return exemptions.has(resolve(userDataDir));
 }
 
 function buildBrowserReapPlanItem(record: ManagedBrowserPoolRecord, now: Date, idleTimeoutMinutes: number): ResourceBrowserReapPlanItem {
