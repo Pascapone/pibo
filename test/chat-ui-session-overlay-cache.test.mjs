@@ -78,4 +78,7 @@ test("delivery selection closes before awaiting and navigation restores before p
 	assert.match(pageSource, /baseTraceViewCacheRef\.current\.set\(current\.piboSessionId, current\)/);
 	assert.match(pageSource, /baseTraceViewCacheRef\.current\.get\(selectedPiboSessionId\)/);
 	assert.match(pageSource, /restoreLiveTraceOverlayForSession/);
+
+	const layoutSource = fs.readFileSync("src/apps/chat-ui/src/session-trace-layout.tsx", "utf8");
+	assert.match(layoutSource, /sessionNavigationPending && !currentTraceView/);
 });
