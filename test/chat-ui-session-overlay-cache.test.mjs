@@ -67,9 +67,13 @@ test("session overlay cache restores on navigation and trims confirmed events", 
 	await assert.doesNotReject(runOverlayCacheScenario());
 });
 
-test("delivery selection closes before awaiting and uses a captured plan", () => {
-	const source = fs.readFileSync("src/apps/chat-ui/src/session-trace-pane.tsx", "utf8");
-	assert.match(source, /const sendPlan = pendingSendPlan;\s+setPendingSendPlan\(null\);\s+setDeliverySending\(true\);\s+try \{\s+await deliverComposerSend\(sendPlan, delivery\)/);
-	assert.match(source, /rollbackComposerSend\(sendPlan, caught\)/);
-	assert.doesNotMatch(source, /await deliverComposerSend\(pendingSendPlan, delivery\)/);
+test("delivery selection closes before awaiting and navigation restores before paint", () => {
+	const paneSource = fs.readFileSync("src/apps/chat-ui/src/session-trace-pane.tsx", "utf8");
+	assert.match(paneSource, /const sendPlan = pendingSendPlan;\s+setPendingSendPlan\(null\);\s+setDeliverySending\(true\);\s+try \{\s+await deliverComposerSend\(sendPlan, delivery\)/);
+	assert.match(paneSource, /rollbackComposerSend\(sendPlan, caught\)/);
+	assert.doesNotMatch(paneSource, /await deliverComposerSend\(pendingSendPlan, delivery\)/);
+
+	const pageSource = fs.readFileSync("src/apps/chat-ui/src/tracing/use-session-trace-page.ts", "utf8");
+	assert.match(pageSource, /useLayoutEffect\(\(\) => \{\s+const cachedTrace/);
+	assert.match(pageSource, /restoreLiveTraceOverlayForSession/);
 });

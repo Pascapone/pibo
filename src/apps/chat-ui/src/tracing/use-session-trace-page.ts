@@ -1,4 +1,4 @@
-import { startTransition, useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getTraceRawEvents, getTraceSummary, getTraceTimeline } from "../api-trace-signals";
 import {
@@ -90,7 +90,7 @@ export function useSessionTracePage({
 		retry: 1,
 	});
 
-	useEffect(() => {
+	useLayoutEffect(() => {
 		const cachedTrace = tracePageQueryKey ? queryClient.getQueryData<PiboSessionTraceView>(tracePageQueryKey) : undefined;
 		setTraceEventLimit(DEFAULT_TRACE_EVENTS_PAGE_SIZE);
 		setRawEventLimit(DEFAULT_RAW_EVENTS_LIMIT);
