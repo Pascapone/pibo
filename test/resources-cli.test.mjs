@@ -86,6 +86,8 @@ test('resource status and active browser-pool leases keep stable text and JSON f
 		reaperTimers: { status: 'configured', details: 'fixture', nextCommands: [] },
 	}));
 	assert.equal(health.readOnly, true);
+	assert.equal(health.browserProcesses.exemptChromiumMainProcesses, 0);
+	assert.deepEqual(health.browserProcesses.exemptMainProcessDetails, []);
 	assert.equal(health.browserLeases.active, 0);
 	assert.equal(health.computeWorkers.total, 0);
 	assert.deepEqual(health.nextCommands.slice(0, 3), [

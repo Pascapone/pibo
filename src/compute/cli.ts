@@ -141,6 +141,13 @@ export function renderComputeResourceHealthText(health: ComputeResourceHealth): 
 	const lines = [`Compute resource health: ${health.severity} (read-only)`];
 	lines.push(`Generated at: ${health.generatedAt}`);
 	lines.push(`Browser processes: ${health.browserProcesses.totalChromiumMainProcesses} main / ${health.browserProcesses.totalChromiumProcesses} total Chromium processes`);
+	if (health.browserProcesses.exemptMainProcessDetails.length > 0) {
+		lines.push(`Explicitly exempt browser main processes: ${health.browserProcesses.exemptMainProcessDetails.length}`);
+		lines.push("PID\tUSER_DATA_DIR\tCOMMAND");
+		for (const process of health.browserProcesses.exemptMainProcessDetails.slice(0, 5)) {
+			lines.push(`${process.pid}\t${process.userDataDir ?? "-"}\t${process.commandName}`);
+		}
+	}
 	if (health.browserProcesses.unassignedMainProcessDetails.length > 0) {
 		lines.push(`Unmanaged browser main processes: ${health.browserProcesses.unassignedMainProcessDetails.length}`);
 		lines.push("PID\tWORKER\tUSER_DATA_DIR\tCOMMAND");

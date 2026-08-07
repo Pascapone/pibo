@@ -505,6 +505,8 @@ test('compute resource health reports healthy read-only state with stable JSON f
 	assert.equal(health.readOnly, true);
 	assert.equal(health.severity, 'ok');
 	assert.equal(health.browserProcesses.totalChromiumProcesses, 0);
+	assert.equal(health.browserProcesses.exemptChromiumMainProcesses, 0);
+	assert.deepEqual(health.browserProcesses.exemptMainProcessDetails, []);
 	assert.equal(health.browserLeases.active, 0);
 	assert.equal(health.computeWorkers.dirty, 0);
 	assert.equal(health.computeWorkers.oomKilled, 0);
@@ -546,6 +548,49 @@ test('compute resource health warns on browser main-process leaks and active lea
 	const text = renderComputeResourceHealthText(health);
 	assert.match(text, /Unmanaged browser main processes: 1/);
 	assert.match(text, /104\t-\t\/tmp\/unmanaged-profile\tchromium/);
+});
+
+test('compute resource health reports exact browser profile exemptions without a leak warning', () => {
+	const processes = parseProcessList('201 1 201 chrome /opt/google/chrome/chrome --user-data-dir=/tmp/pibo-supervised/profile --remote-debugging-port=9222');
+	const health = buildComputeResourceHealth({
+		workers: [],
+		disk: buildComputeDiskDiagnostics([], {}),
+		processes,
+		browserPools: [],
+		staleCdpFiles: { pidFiles: 0, portFiles: 0, details: [] },
+		reaperTimers: configuredTimer(),
+		exemptBrowserUserDataDirs: ['/tmp/pibo-supervised/../pibo-supervised/profile'],
+	});
+
+	assert.equal(health.severity, 'ok');
+	assert.equal(health.browserProcesses.totalChromiumMainProcesses, 1);
+	assert.equal(health.browserProcesses.unassignedChromiumMainProcesses, 0);
+	assert.equal(health.browserProcesses.exemptChromiumMainProcesses, 1);
+	assert.equal(health.browserProcesses.exemptMainProcessDetails[0].pid, 201);
+	assert.equal(health.browserProcesses.exemptMainProcessDetails[0].userDataDir, '/tmp/pibo-supervised/profile');
+	assert.equal(health.checks.some((check) => check.id === 'browser-leak'), false);
+	const text = renderComputeResourceHealthText(health);
+	assert.match(text, /Explicitly exempt browser main processes: 1/);
+	assert.match(text, /201\t\/tmp\/pibo-supervised\/profile\tchrome/);
+});
+
+test('compute resource health keeps child profiles unmanaged when only the parent is exempt', () => {
+	const processes = parseProcessList('202 1 202 chrome /opt/google/chrome/chrome --user-data-dir=/tmp/pibo-supervised/profile/child --remote-debugging-port=9223');
+	const health = buildComputeResourceHealth({
+		workers: [],
+		disk: buildComputeDiskDiagnostics([], {}),
+		processes,
+		browserPools: [],
+		staleCdpFiles: { pidFiles: 0, portFiles: 0, details: [] },
+		reaperTimers: configuredTimer(),
+		exemptBrowserUserDataDirs: ['/tmp/pibo-supervised/profile'],
+	});
+
+	assert.equal(health.severity, 'warning');
+	assert.equal(health.browserProcesses.exemptChromiumMainProcesses, 0);
+	assert.equal(health.browserProcesses.unassignedChromiumMainProcesses, 1);
+	assert.equal(health.browserProcesses.unassignedMainProcessDetails[0].pid, 202);
+	assert.ok(health.checks.some((check) => check.id === 'browser-leak'));
 });
 
 test('compute resource health does not classify Chromium inside an active worker as unmanaged', () => {

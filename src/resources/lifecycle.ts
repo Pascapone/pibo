@@ -182,7 +182,12 @@ export async function planResourceReap(options: PlanResourceReapOptions = {}): P
 		collectManagedBrowserPools(resolved.browserPoolRoot),
 		planStaleCdpFiles(resolved.browserUseHome),
 		planComputeReapSafely({ includeDev: resolved.includeDev, maxAgeMinutes: resolved.maxAgeMinutes, now }),
-		getComputeResourceHealth({ now, browserPoolRoot: resolved.browserPoolRoot, browserUseHome: resolved.browserUseHome }),
+		getComputeResourceHealth({
+			now,
+			browserPoolRoot: resolved.browserPoolRoot,
+			browserUseHome: resolved.browserUseHome,
+			exemptBrowserUserDataDirs: [],
+		}),
 	]);
 	const unmanagedBrowsers = buildUnmanagedBrowserPlanItems(
 		health.browserProcesses.unassignedMainProcessDetails,

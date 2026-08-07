@@ -1,6 +1,6 @@
 # Resource reaper browser profile exemptions
 
-**Status:** Done
+**Status:** Implementing
 
 ## Problem
 
@@ -16,7 +16,9 @@ On Pibo2, the authenticated non-headless validation browser was terminated every
 4. Relative or empty CLI profile paths are rejected.
 5. The automatic gateway reaper reads the stable exemption from `PIBO_RESOURCE_REAPER_EXEMPT_BROWSER_USER_DATA_DIRS`.
 6. Dry-run plans expose the resolved exemptions and preserve them in the generated apply command.
-7. Only Chromium main processes remain eligible for this behavior; the exemption does not broaden process discovery.
+7. Resource-health status reports exact exempt profiles separately instead of calling them unmanaged leaks.
+8. Reap planning still includes exempt processes as explicit `skip` items so operators can audit the reason.
+9. Only Chromium main processes remain eligible for this behavior; the exemption does not broaden process discovery.
 
 ## Behavior
 
@@ -48,6 +50,7 @@ Sibling and descendant profile paths remain unmanaged unless listed separately.
 - Production build and full typecheck pass.
 - Resource CLI and compute resource-policy tests pass.
 - CLI help exposes the new option and rejects unsafe relative paths.
+- Resource status reports the supervised profile as exempt with zero unassigned browser processes.
 - A Pibo2 candidate dry-run with zero grace skips the supervised profile.
 - At least three automatic reaper cycles pass without changing the Chrome MainPID or systemd restart count.
 - Authenticated CDP and Chat UI access remain healthy after the endurance window.
