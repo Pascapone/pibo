@@ -241,13 +241,23 @@ test("chat web app serves the React shell for deep app links", async () => {
 	}
 });
 
-test("chat web app serves built assets with immutable cache and compression headers", async () => {
+test("chat web app serves shell metadata, favicon, and built assets", async () => {
 	const { channel, baseURL } = await startWebHostChannel();
 
 	try {
 		const shell = await fetch(`${baseURL}/apps/chat`);
 		assert.equal(shell.status, 200);
 		const html = await shell.text();
+		assert.ok(html.includes('<meta name="mobile-web-app-capable" content="yes"'));
+		assert.ok(html.includes('<meta name="apple-mobile-web-app-capable" content="yes"'));
+		assert.ok(html.includes('<link rel="icon" type="image/svg+xml" href="/apps/chat/favicon.svg"'));
+
+		const favicon = await fetch(`${baseURL}/apps/chat/favicon.svg`);
+		assert.equal(favicon.status, 200);
+		assert.equal(favicon.headers.get("content-type"), "image/svg+xml");
+		assert.equal(favicon.headers.get("cache-control"), "public, max-age=31536000, immutable");
+		assert.ok((await favicon.text()).startsWith('<svg xmlns="http://www.w3.org/2000/svg"'));
+
 		const assetPath = html.match(/\/apps\/chat\/assets\/[^"]+\.js/)?.[0];
 		assert.ok(assetPath);
 

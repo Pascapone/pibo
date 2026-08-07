@@ -15,6 +15,9 @@ async function runFallbackShellScenario() {
 		assert.equal(inlineScripts.length, 1);
 		assert.doesNotThrow(() => new Function(inlineScripts[0]));
 		assert.ok(inlineScripts[0].includes(' + "\\\\n" + '));
+		assert.ok(html.includes('<meta name="mobile-web-app-capable" content="yes">'));
+		assert.ok(html.includes('<meta name="apple-mobile-web-app-capable" content="yes">'));
+		assert.ok(html.includes('<link rel="icon" type="image/svg+xml" href="/apps/chat/favicon.svg">'));
 		assert.match(html, /Fallback UI/);
 		assert.match(html, /Built React Chat assets are unavailable/);
 	`;
