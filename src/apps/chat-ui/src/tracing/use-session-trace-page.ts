@@ -1,4 +1,4 @@
-import { startTransition, useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getTraceRawEvents, getTraceSummary, getTraceTimeline } from "../api-trace-signals";
 import {
@@ -11,7 +11,11 @@ import {
 } from "../cache";
 import type { PiboSessionTraceSummary, PiboSessionTraceView } from "../types";
 import { isStreamingDebugEnabled, recordStreamingDebugTraceState } from "../streamingDebug";
-import { trimLiveOverlayForBaseTrace, type LiveTraceOverlay } from "./live-overlay";
+import {
+	reconcileLiveTraceOverlayCache,
+	restoreLiveTraceOverlayForSession,
+	type LiveTraceOverlay,
+} from "./live-overlay";
 import { mergeOlderTracePage, mergeRefreshedTracePage } from "./trace-page-merge";
 import { traceAssistantOutputLength } from "./trace-output";
 import { traceViewFromTimelinePage } from "./trace-v2-adapter";
@@ -19,6 +23,8 @@ import { traceViewFromTimelinePage } from "./trace-v2-adapter";
 type UseSessionTracePageOptions = {
 	selectedPiboSessionId: string | null;
 	showRawEvents: boolean;
+	liveTraceOverlay: LiveTraceOverlay | null;
+	liveTraceOverlayCacheRef: MutableRefObject<Map<string, LiveTraceOverlay>>;
 	setLiveTraceOverlay: Dispatch<SetStateAction<LiveTraceOverlay | null>>;
 };
 
@@ -27,12 +33,15 @@ const MAX_REMEMBERED_OLDER_TRACE_LOADS = 128;
 export function useSessionTracePage({
 	selectedPiboSessionId,
 	showRawEvents,
+	liveTraceOverlay,
+	liveTraceOverlayCacheRef,
 	setLiveTraceOverlay,
 }: UseSessionTracePageOptions) {
 	const queryClient = useQueryClient();
 	const [traceEventLimit, setTraceEventLimit] = useState(DEFAULT_TRACE_EVENTS_PAGE_SIZE);
 	const [rawEventLimit, setRawEventLimit] = useState(DEFAULT_RAW_EVENTS_LIMIT);
 	const [baseTraceView, setBaseTraceView] = useState<PiboSessionTraceView | null>(null);
+	const baseTraceViewCacheRef = useRef<Map<string, PiboSessionTraceView>>(new Map());
 	const [rawEventsBeforeSequence, setRawEventsBeforeSequence] = useState<number | undefined>(undefined);
 	const [loadingOlderTracePage, setLoadingOlderTracePage] = useState(false);
 	const loadingOlderTraceBeforeRef = useRef<string | null>(null);
@@ -85,17 +94,26 @@ export function useSessionTracePage({
 		retry: 1,
 	});
 
-	useEffect(() => {
+	useLayoutEffect(() => {
 		const cachedTrace = tracePageQueryKey ? queryClient.getQueryData<PiboSessionTraceView>(tracePageQueryKey) : undefined;
 		setTraceEventLimit(DEFAULT_TRACE_EVENTS_PAGE_SIZE);
 		setRawEventLimit(DEFAULT_RAW_EVENTS_LIMIT);
 		setRawEventsBeforeSequence(undefined);
 		setLoadingOlderTracePage(false);
-		setBaseTraceView(cachedTrace?.piboSessionId === selectedPiboSessionId ? cachedTrace : null);
-		setLiveTraceOverlay(null);
+		setBaseTraceView((current) => {
+			if (current) baseTraceViewCacheRef.current.set(current.piboSessionId, current);
+			if (!selectedPiboSessionId) return null;
+			return baseTraceViewCacheRef.current.get(selectedPiboSessionId)
+				?? (cachedTrace?.piboSessionId === selectedPiboSessionId ? cachedTrace : null);
+		});
+		setLiveTraceOverlay((current) => restoreLiveTraceOverlayForSession(
+			liveTraceOverlayCacheRef.current,
+			current,
+			selectedPiboSessionId,
+		));
 		loadingOlderTraceBeforeRef.current = null;
 		loadedOlderTraceBeforeRef.current = new Set();
-	}, [queryClient, selectedPiboSessionId, setLiveTraceOverlay, tracePageQueryKey]);
+	}, [liveTraceOverlayCacheRef, queryClient, selectedPiboSessionId, setLiveTraceOverlay, tracePageQueryKey]);
 
 	const rawEventsQuery = useQuery({
 		queryKey: selectedPiboSessionId ? ["chat", "trace-raw-events", selectedPiboSessionId, rawEventLimit, rawEventsBeforeSequence ?? "tail"] : ["chat", "trace-raw-events", "idle"],
@@ -124,12 +142,20 @@ export function useSessionTracePage({
 			});
 		}
 		startTransition(() => {
-			setBaseTraceView((current) => current?.piboSessionId === trace.piboSessionId
-				? mergeRefreshedTracePage(current, trace)
-				: trace);
-			setLiveTraceOverlay((current) => trimLiveOverlayForBaseTrace(current, trace));
+			setBaseTraceView((current) => {
+				const next = current?.piboSessionId === trace.piboSessionId
+					? mergeRefreshedTracePage(current, trace)
+					: trace;
+				baseTraceViewCacheRef.current.set(trace.piboSessionId, next);
+				return next;
+			});
+			setLiveTraceOverlay((current) => reconcileLiveTraceOverlayCache(
+				liveTraceOverlayCacheRef.current,
+				current,
+				trace,
+			));
 		});
-	}, [selectedPiboSessionId, setLiveTraceOverlay, tracePageQuery.data]);
+	}, [liveTraceOverlayCacheRef, selectedPiboSessionId, setLiveTraceOverlay, tracePageQuery.data]);
 
 	useEffect(() => {
 		const rawPage = rawEventsQuery.data;
@@ -186,14 +212,27 @@ export function useSessionTracePage({
 		}
 	}, [queryClient, rawEventLimit, selectedPiboSessionId, showRawEvents]);
 
+	const selectedBaseTraceView = selectedPiboSessionId
+		? baseTraceView?.piboSessionId === selectedPiboSessionId
+			? baseTraceView
+			: baseTraceViewCacheRef.current.get(selectedPiboSessionId)
+				?? (tracePageQuery.data?.piboSessionId === selectedPiboSessionId ? tracePageQuery.data : null)
+		: null;
+	const selectedLiveTraceOverlay = selectedPiboSessionId
+		? liveTraceOverlay?.piboSessionId === selectedPiboSessionId
+			? liveTraceOverlay
+			: liveTraceOverlayCacheRef.current.get(selectedPiboSessionId) ?? null
+		: null;
+
 	const loadMoreRawEvents = useCallback(() => {
-		const nextBefore = baseTraceView?.rawEvents[0]?.eventSequence;
+		const nextBefore = selectedBaseTraceView?.rawEvents[0]?.eventSequence;
 		setRawEventsBeforeSequence(nextBefore);
 		setRawEventLimit((current) => current + DEFAULT_RAW_EVENTS_LIMIT);
-	}, [baseTraceView?.rawEvents]);
+	}, [selectedBaseTraceView?.rawEvents]);
 
 	return {
-		baseTraceView,
+		baseTraceView: selectedBaseTraceView,
+		liveTraceOverlay: selectedLiveTraceOverlay,
 		traceEventLimit,
 		rawEventLimit,
 		traceSummaryQuery,
