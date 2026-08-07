@@ -110,6 +110,7 @@ import {
 	sessionsRouteCanonicalSelection,
 	shouldSkipRouteSelectionLoad,
 } from "./app-route-selection";
+import { classifyBootstrapError, type BootstrapErrorState } from "./app-bootstrap-error";
 import { errorMessage } from "./error-message";
 import { SettingsSidebar } from "./settings/SettingsSidebar";
 import { SettingsView } from "./settings/SettingsView";
@@ -117,7 +118,7 @@ import type { SettingsPanel } from "./settings/types";
 import { ProjectsArea } from "./projects/ProjectsArea";
 import { MinimalWorkflowsArea } from "./MinimalWorkflowsArea";
 import { DeleteRoomModal, DeleteSessionModal } from "./delete-confirmation-modals";
-import { AppErrorBanner, AppHeader, FallbackGatewayBanner, SignedOut, type AppArea as Area } from "./app-chrome";
+import { AppErrorBanner, AppHeader, BootstrapLoadError, FallbackGatewayBanner, SignedOut, type AppArea as Area } from "./app-chrome";
 import {
 	applySelectedSignalPatch,
 	applySignalPatchToBootstrap,
@@ -261,6 +262,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const [selectedPiboSessionId, setSelectedPiboSessionId] = useState<string | null>(null);
 	const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
+	const [bootstrapError, setBootstrapError] = useState<BootstrapErrorState | null>(null);
 	const [downloadStatus, setDownloadStatus] = useState<ChatDownloadStatus | null>(null);
 	const activeDownloadKeysRef = useRef<Set<string>>(new Set());
 	const [showThinking, setShowThinking] = useState(readStoredShowThinking);
@@ -746,10 +748,19 @@ export function App({ route }: { route: ChatAppRoute }) {
 		if (shouldSkipRouteSelectionLoad({ bootstrap, creatingSession: creatingSessionRef.current, route })) return;
 
 		const loadRouteData = bootstrap ? loadNavigation : loadBootstrap;
+		const clearBootstrapError = () => {
+			setBootstrapError(null);
+			setError(null);
+		};
+		const reportBootstrapError = (caught: unknown) => {
+			if (!bootstrapRef.current) setBootstrapError(classifyBootstrapError(caught));
+			setError(errorMessage(caught));
+		};
+
 		loadRouteData(requestedPiboSessionId, showArchivedRef.current, requestedRoomId)
 			.then((data) => {
 				canonicalizeSessionsRoute(data);
-				setError(null);
+				clearBootstrapError();
 			})
 			.catch((caught) => {
 				if (route.area === "sessions" && routeRoomId && !routePiboSessionId && requestedPiboSessionId) {
@@ -757,27 +768,23 @@ export function App({ route }: { route: ChatAppRoute }) {
 					loadRouteData(undefined, showArchivedRef.current, routeRoomId)
 						.then((data) => {
 							canonicalizeSessionsRoute(data);
-							setError(null);
+							clearBootstrapError();
 						})
-						.catch((fallbackCaught) =>
-							setError(fallbackCaught instanceof Error ? fallbackCaught.message : String(fallbackCaught)),
-						);
+						.catch(reportBootstrapError);
 					return;
 				}
 				const explicitRouteSelection = hasExplicitSessionsRouteSelection(route);
 				if (explicitRouteSelection || (!requestedPiboSessionId && !requestedRoomId)) {
-					setError(caught instanceof Error ? caught.message : String(caught));
+					reportBootstrapError(caught);
 					return;
 				}
 				clearStoredSelection();
 				loadRouteData()
 					.then((data) => {
 						canonicalizeSessionsRoute(data);
-						setError(null);
+						clearBootstrapError();
 					})
-					.catch((fallbackCaught) =>
-						setError(fallbackCaught instanceof Error ? fallbackCaught.message : String(fallbackCaught)),
-					);
+					.catch(reportBootstrapError);
 			});
 	}, [bootstrap, loadBootstrap, loadNavigation, navigateToSelectedSession, route.area, routePiboSessionId, routeRoomId]);
 
@@ -1430,8 +1437,10 @@ export function App({ route }: { route: ChatAppRoute }) {
 		}
 	}, [activeRoomId, overlayCurrentSignals, queryClient, selectedPiboSessionId, visibleActiveSessions, visibleArchivedSessions]);
 
-	if (error && !bootstrap) {
-		return <SignedOut message={error} />;
+	if (bootstrapError && !bootstrap) {
+		return bootstrapError.kind === "authentication-required"
+			? <SignedOut message={bootstrapError.message} />
+			: <BootstrapLoadError message={bootstrapError.message} onRetry={() => window.location.reload()} />;
 	}
 
 	if (!bootstrap) {
