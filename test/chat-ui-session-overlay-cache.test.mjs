@@ -101,4 +101,7 @@ test("delivery selection closes before awaiting and navigation restores before p
 
 	const layoutSource = fs.readFileSync("src/apps/chat-ui/src/session-trace-layout.tsx", "utf8");
 	assert.match(layoutSource, /sessionNavigationPending && !currentTraceView/);
+
+	const terminalSource = fs.readFileSync("src/apps/chat-ui/src/session-views/compact-terminal/CompactTerminalSessionView.tsx", "utf8");
+	assert.doesNotMatch(terminalSource, /<Virtuoso\s+key=\{traceView\.piboSessionId\}/);
 });

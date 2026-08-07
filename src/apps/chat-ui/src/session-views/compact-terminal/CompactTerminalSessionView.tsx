@@ -281,7 +281,6 @@ export function CompactTerminalSessionView({
 					/>
 				) : rows.length ? (
 					<Virtuoso
-						key={traceView.piboSessionId}
 						ref={stickyView.virtuosoRef}
 						data={rows}
 						firstItemIndex={stickyView.firstItemIndex}
