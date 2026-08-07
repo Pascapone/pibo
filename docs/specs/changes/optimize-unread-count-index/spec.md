@@ -1,6 +1,6 @@
 # Spec: Optimize unread message counts
 
-**Status:** Implementing
+**Status:** Done
 **Created:** 2026-08-07
 **Requester / Source:** Pibo2 authenticated bootstrap performance investigation
 
