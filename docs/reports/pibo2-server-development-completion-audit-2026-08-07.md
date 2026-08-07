@@ -6,6 +6,10 @@
 
 The focused product changes remain in reviewable pull requests. No pull request was merged and no release was performed. Promotion to `main` remains an explicit maintainer decision after review; this preserves the requirement that release must follow, never precede, Production validation.
 
+## Post-audit integration note
+
+After this pre-merge audit passed, PRs #353–#361 were merged individually into `upstream/dev` on August 7, 2026. Their integrated development head is `6185cf97`. Statements below describing those topic PRs as still open or unmerged record the audit boundary before integration. A new immutable package from the integrated commit, real Pibo2 revalidation, and an explicit `dev` → `main` release PR remain required before release.
+
 ## Audit boundary
 
 - Dedicated server: `31.70.66.85`
