@@ -1,6 +1,6 @@
 # Resource reaper browser profile exemptions
 
-**Status:** Implementing
+**Status:** Done
 
 ## Problem
 

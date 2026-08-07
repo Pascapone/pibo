@@ -217,6 +217,62 @@ git status --short --branch
 
 The persisted final response reported a seven-second duration at stream `954799`. `pibo debug trace --check` rebuilt 63 nodes with zero issues; the browser returned to idle, removed `Working...`, emptied the composer, and rendered the same clean-worktree result.
 
+## Resource-health follow-up
+
+The first candidate correctly protected the browser but `pibo resources status` still described the intentional profile as an unmanaged leak. The same focused PR now projects exact profile exemptions separately while keeping reap planning auditable.
+
+Follow-up implementation:
+
+```text
+f88a12e9 fix(resources): report exempt browser profiles
+```
+
+Combined candidate:
+
+```text
+validation commit: faaa86a0
+package: /root/.pibo/candidate-packages/pibo-faaa86a0.tgz
+SHA-256 a4a6e2bf5479bd6d08d9bdcfcef55baedd5f519e0797ab85b433e225cabc5117
+installation: /opt/pibo-candidates/resource-health-browser-profile-exemptions/faaa86a0
+rollback: /root/.pibo-deploy-rollbacks/20260807T072010Z-resource-health-browser-profile-exemptions
+```
+
+Validation results:
+
+```text
+focused resource tests: 35 passed
+combined regression tests: 177 passed
+full typecheck: passed
+production build: passed
+```
+
+Candidate resource status now reports:
+
+```text
+browser main processes: 1
+unassigned browser main processes: 0
+explicitly exempt browser main processes: 1
+browser-processes check: ok
+```
+
+The overall severity remains `critical` only because two old stopped Docker workers retain OOM-killed history and Docker reports about 28.0 GB reclaimable data. The browser no longer contributes a false leak warning.
+
+A zero-grace reap plan still includes PID `837315` as an explicit `skip` item with reason `explicitly exempted browser user-data-dir`. This separation is intentional: health status distinguishes expected operation, while cleanup review still shows why the process is preserved.
+
+The first automatic candidate cycle at 07:21:12 UTC reported `unmanagedBrowsers=0`; Chrome remained at MainPID `837315`, `NRestarts=17`, and CDP stayed healthy. Authenticated bootstrap remained HTTP 200 and the final read-only agent response stayed visible.
+
+Evidence:
+
+```text
+/tmp/pibo2-resource-health-profile-exemption-status.json
+SHA-256 4648ca2388408617d69f831a17734a9532c53ab9ab2ad81f7ee789edc730bb0e
+
+/tmp/pibo2-resource-health-profile-exemption-reap.json
+SHA-256 994c5506b8c00d294995e5002c8727883de54b0ae6c9a6ad44586751b624843e
+
+/tmp/pibo2-status-resource-health-exemption.txt
+```
+
 ## Workflow hardening
 
 The server-development workflow now:
@@ -246,5 +302,5 @@ SHA-256 d66fc291a4f2195f6999c9b00a53326d0174f99cab4f313138ac9018ef216ce4
 ## Remaining limits
 
 - Explicitly exempt profiles remain outside the managed browser-pool lease inventory; operators must keep the exemption narrow and documented.
-- `pibo resources status` still describes that main process as unassigned because resource-health reporting is pool-oriented. The dry-run and browser status make the intentional exemption explicit.
+- Resource health recognizes only exact configured profile paths; changing the supervised profile requires updating the gateway exemption.
 - Legacy stopped Docker workers and build cache remain present pending a separately reviewed destructive cleanup decision.
