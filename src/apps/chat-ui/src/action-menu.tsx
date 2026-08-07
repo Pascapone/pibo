@@ -58,6 +58,23 @@ export function nextActionMenuItemIndex(key: string, currentIndex: number, itemC
 	}
 }
 
+type ActionMenuEscapeEvent = {
+	key: string;
+	preventDefault(): void;
+	stopPropagation(): void;
+	stopImmediatePropagation(): void;
+};
+
+export function consumeActionMenuEscape(event: ActionMenuEscapeEvent, closeMenu: () => void, restoreFocus: () => void): boolean {
+	if (event.key !== "Escape") return false;
+	event.preventDefault();
+	event.stopPropagation();
+	event.stopImmediatePropagation();
+	closeMenu();
+	restoreFocus();
+	return true;
+}
+
 export function ActionMenu({ label, children, estimatedHeight = ACTION_MENU_WIDTH }: ActionMenuProps) {
 	const reactId = useId();
 	const triggerId = `${reactId}-trigger`;
@@ -141,18 +158,13 @@ export function ActionMenu({ label, children, estimatedHeight = ACTION_MENU_WIDT
 			closeMenu();
 		};
 		const handleEscape = (event: globalThis.KeyboardEvent) => {
-			if (event.key !== "Escape") return;
-			event.preventDefault();
-			event.stopPropagation();
-			event.stopImmediatePropagation();
-			closeMenu();
-			triggerRef.current?.focus();
+			consumeActionMenuEscape(event, closeMenu, () => triggerRef.current?.focus());
 		};
 		document.addEventListener("pointerdown", handlePointerDown);
-		document.addEventListener("keydown", handleEscape, true);
+		window.addEventListener("keydown", handleEscape, true);
 		return () => {
 			document.removeEventListener("pointerdown", handlePointerDown);
-			document.removeEventListener("keydown", handleEscape, true);
+			window.removeEventListener("keydown", handleEscape, true);
 		};
 	}, [closeMenu, open]);
 

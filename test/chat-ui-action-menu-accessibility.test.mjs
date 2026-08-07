@@ -30,6 +30,73 @@ test("shared action menu keyboard navigation wraps and supports Home and End", a
 	await assert.doesNotReject(runKeyboardNavigationScenarios());
 });
 
+async function runNestedEscapeOrderingScenario() {
+	const script = `
+		import assert from "node:assert/strict";
+		const { consumeActionMenuEscape } = await import("./src/apps/chat-ui/src/action-menu.tsx");
+
+		let menuOpen = true;
+		let drawerOpen = true;
+		let focus = "Rename Session";
+		const windowCapture = [];
+		const documentCapture = [];
+
+		// The outer modal controller registers first, matching the integrated candidate.
+		documentCapture.push((event) => {
+			if (event.key !== "Escape") return;
+			event.preventDefault();
+			drawerOpen = false;
+			focus = "Open sidebar";
+		});
+		// The nested action menu registers later, but window capture runs first in the event path.
+		windowCapture.push((event) => consumeActionMenuEscape(
+			event,
+			() => { menuOpen = false; },
+			() => { focus = "Session actions"; },
+		));
+
+		const dispatchEscape = () => {
+			const event = {
+				key: "Escape",
+				defaultPrevented: false,
+				propagationStopped: false,
+				immediatePropagationStopped: false,
+				preventDefault() { this.defaultPrevented = true; },
+				stopPropagation() { this.propagationStopped = true; },
+				stopImmediatePropagation() {
+					this.immediatePropagationStopped = true;
+					this.propagationStopped = true;
+				},
+			};
+			for (const listener of windowCapture) {
+				listener(event);
+				if (event.immediatePropagationStopped) break;
+			}
+			if (!event.propagationStopped) {
+				for (const listener of documentCapture) listener(event);
+			}
+			return event;
+		};
+
+		const firstEscape = dispatchEscape();
+		assert.equal(menuOpen, false);
+		assert.equal(drawerOpen, true);
+		assert.equal(focus, "Session actions");
+		assert.equal(firstEscape.defaultPrevented, true);
+
+		windowCapture.length = 0;
+		const secondEscape = dispatchEscape();
+		assert.equal(drawerOpen, false);
+		assert.equal(focus, "Open sidebar");
+		assert.equal(secondEscape.defaultPrevented, true);
+	`;
+	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: resolve(here, "..") });
+}
+
+test("nested action-menu Escape wins before an earlier document-capture drawer listener", async () => {
+	await assert.doesNotReject(runNestedEscapeOrderingScenario());
+});
+
 async function runClosedMenuScaleScenario() {
 	const script = `
 		import assert from "node:assert/strict";
@@ -77,7 +144,8 @@ test("shared action menu owns menu-button semantics and dismissal behavior", () 
 	assert.match(source, /event\.key === "Escape"[\s\S]*event\.stopPropagation\(\)[\s\S]*event\.nativeEvent\.stopImmediatePropagation\(\)[\s\S]*triggerRef\.current\?\.focus\(\)/);
 	assert.match(source, /event\.key === "Tab"[\s\S]*focusRelativeToTrigger/);
 	assert.match(source, /document\.addEventListener\("pointerdown"/);
-	assert.match(source, /document\.addEventListener\("keydown", handleEscape, true\)/);
+	assert.match(source, /window\.addEventListener\("keydown", handleEscape, true\)/);
+	assert.doesNotMatch(source, /document\.addEventListener\("keydown", handleEscape, true\)/);
 });
 
 test("Room and Session actions use the same action menu implementation", () => {
