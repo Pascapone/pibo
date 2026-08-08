@@ -67,6 +67,14 @@ export async function startLoopJob(id: string): Promise<{ run: PiboLoopRun }> {
 	});
 }
 
+export async function reopenLoopJob(id: string): Promise<{ job: PiboLoopJob }> {
+	return requestJson<{ job: PiboLoopJob }>(`/api/chat/loops/jobs/${encodeURIComponent(id)}/reopen`, {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify({ confirmTerminalReopen: true }),
+	});
+}
+
 export async function stopLoopJob(id: string): Promise<{ job: PiboLoopJob }> {
 	return requestJson<{ job: PiboLoopJob }>(`/api/chat/loops/jobs/${encodeURIComponent(id)}/stop`, {
 		method: "POST",

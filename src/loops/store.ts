@@ -268,6 +268,40 @@ export class PiboLoopStore {
 			throw error;
 		}
 	}
+	reopenGoal(id: string, input: { actorId: string }, now = new Date()): PiboLoopJob {
+		const actorId = input.actorId.trim();
+		if (!actorId) throw new Error('reopen actorId is required');
+		this.db.exec('BEGIN IMMEDIATE');
+		try {
+			const job = this.getJob(id);
+			if (!job || job.mode !== 'goal') throw new Error('Goal not found');
+			const previousStatus = goalStatus(job) ?? (job.enabled ? 'active' : 'paused');
+			if (job.enabled || !['complete', 'blocked', 'budget_limited'].includes(previousStatus)) throw new Error('Only a disabled terminal Goal can be reopened');
+			const piboSessionId = job.state.lastPiboSessionId;
+			if (!piboSessionId) throw new Error('Goal cannot be reopened because it has no originating Pibo Session');
+			if (this.db.prepare("SELECT 1 FROM pibo_ralph_runs WHERE job_id = ? AND status = 'running' LIMIT 1").get(job.id)) throw new Error('Goal cannot be reopened while a Loop run is active or queued');
+			const competitor = this.listGoalsForSession(piboSessionId).find((candidate) => candidate.id !== job.id && (candidate.enabled || candidate.state.runningAt));
+			if (competitor) throw new Error(`Goal cannot be reopened because ${competitor.id} owns the Pibo Session`);
+			const timestamp = nowIso(now);
+			const fact: PiboLoopRunFact = {
+				id: `rfact_${randomUUID()}`,
+				jobId: job.id,
+				piboSessionId,
+				type: 'pibo.loop.goal-reopened',
+				source: 'pibo',
+				payload: { actorId, previousStatus, previousGoalEndedAt: job.state.goalEndedAt ?? null, confirmation: 'confirm-terminal-reopen' },
+				createdAt: timestamp,
+			};
+			this.db.prepare('INSERT INTO pibo_ralph_run_facts (id, job_id, run_id, pibo_session_id, type, source, payload_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(fact.id, fact.jobId, null, piboSessionId, fact.type, fact.source, JSON.stringify(fact.payload), fact.createdAt);
+			const state: PiboLoopJobState = { ...job.state, goalStatus: 'active', goalEndedAt: undefined, stopRequestedAt: undefined, cancelRequestedAt: undefined, runningAt: undefined };
+			this.db.prepare('UPDATE pibo_ralph_jobs SET enabled = 1, state_json = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(state), timestamp, job.id);
+			this.db.exec('COMMIT');
+			return this.getJob(id)!;
+		} catch (error) {
+			this.db.exec('ROLLBACK');
+			throw error;
+		}
+	}
 	updateGoalStatus(id: string, status: Extract<PiboGoalStatus, 'complete' | 'blocked'>, now = new Date()): PiboLoopJob | undefined {
 		const job = this.getJob(id);
 		if (!job || job.mode !== 'goal') return undefined;

@@ -106,6 +106,20 @@ export class PiboLoopService {
 		if (removed && job?.mode === 'goal' && job.state.lastPiboSessionId) this.clearGoalSessionMetadata(job.state.lastPiboSessionId);
 		return removed;
 	}
+	reopenGoal(id: string, input: { confirmed: boolean; actorId: string }): PiboLoopJob {
+		if (!input.confirmed) throw new Error('Explicit terminal reopen confirmation is required');
+		const job = this.store.getJob(id);
+		if (!job || job.mode !== 'goal') throw new Error('Goal not found');
+		const piboSessionId = job.state.lastPiboSessionId;
+		if (!piboSessionId) throw new Error('Goal cannot be reopened because it has no originating Pibo Session');
+		const runtime = this.options.context.getSessionRuntimeStatus?.(piboSessionId);
+		if (runtime && (runtime.processing || runtime.queuedMessages > 0)) throw new Error('Goal cannot be reopened while its Pibo Session is active, queued, or draining');
+		const controllerRun = this.options.context.listRuns?.({ includeConsumed: true, includeDetached: true }).find((run) => run.controllerPiboSessionId === piboSessionId && (!['completed', 'failed', 'timed_out', 'cancelled'].includes(run.status) || !run.consumed));
+		if (controllerRun) throw new Error(`Goal cannot be reopened while controller run ${controllerRun.runId} is active or unconsumed`);
+		const reopened = this.store.reopenGoal(id, { actorId: input.actorId });
+		this.armSoon();
+		return reopened;
+	}
 	async cancelJob(id: string): Promise<PiboLoopJob | undefined> {
 		const job = this.store.requestCancel(id); if (!job) return undefined;
 		await this.abortJobIfRunning(job);
