@@ -18,7 +18,12 @@ export function mergeNavigationIntoBootstrap(
 		selectedPiboSessionId: navigation.selectedPiboSessionId,
 		latestRoomStreamId: navigation.latestRoomStreamId,
 		rooms: mergeNavigationRooms(current.rooms, navigation.rooms, navigation.selectedRoomId, clearedUnreadCount),
-		sessions: mergeNavigationSessions(navigation.sessions, readSessionIds, previousUnreadBySessionId),
+		sessions: current.selectedRoomId === navigation.selectedRoomId
+			? preservePendingSessionRoots(
+				current.sessions,
+				mergeNavigationSessions(navigation.sessions, readSessionIds, previousUnreadBySessionId),
+			)
+			: mergeNavigationSessions(navigation.sessions, readSessionIds, previousUnreadBySessionId),
 	};
 }
 
@@ -63,6 +68,17 @@ function collectSessionSubtreeIds(sessions: readonly PiboWebSessionNode[], rootS
 function collectAllSessionIds(session: PiboWebSessionNode, output: Set<string>): void {
 	output.add(session.piboSessionId);
 	for (const child of session.children) collectAllSessionIds(child, output);
+}
+
+function preservePendingSessionRoots(
+	current: readonly PiboWebSessionNode[],
+	next: PiboWebSessionNode[],
+): PiboWebSessionNode[] {
+	const pending = current.filter((session) => session.piSessionId === "pending");
+	if (!pending.length) return next;
+	const nextIds = new Set(next.map((session) => session.piboSessionId));
+	const missing = pending.filter((session) => !nextIds.has(session.piboSessionId));
+	return missing.length ? [...missing, ...next] : next;
 }
 
 function mergeNavigationSessions(

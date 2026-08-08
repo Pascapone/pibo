@@ -57,12 +57,14 @@ import {
 import {
 	addRoomToBootstrap,
 	addSessionNodeToBootstrap,
+	applyBootstrapUpdateForRoom,
 	createBootstrapMutationSnapshot,
 	createOptimisticRoom,
 	createOptimisticSessionNode,
 	replaceOptimisticSessionNode,
 	replaceRoomInBootstrap,
 	resolveOptimisticSessionCreateOutcome,
+	rollbackOptimisticSessionNode,
 	restoreBootstrapSelection,
 	roomWithArchivedState,
 	sessionNodeFromSession,
@@ -893,6 +895,12 @@ export function App({ route }: { route: ChatAppRoute }) {
 		setBootstrap((current) => current ? updater(current) : current);
 		queryClient.setQueriesData<BootstrapData>({ queryKey: ["chat", "bootstrap"] }, (current) => current ? updater(current) : current);
 	}, [queryClient]);
+	const updateBootstrapCacheForRoom = useCallback((roomId: string, updater: (data: BootstrapData) => BootstrapData) => {
+		setBootstrap((current) => current ? applyBootstrapUpdateForRoom(current, roomId, updater) : current);
+		queryClient.setQueriesData<BootstrapData>({ queryKey: ["chat", "bootstrap"] }, (current) =>
+			current ? applyBootstrapUpdateForRoom(current, roomId, updater) : current,
+		);
+	}, [queryClient]);
 
 	const latestRoomStreamId = bootstrap?.latestRoomStreamId;
 
@@ -983,19 +991,19 @@ export function App({ route }: { route: ChatAppRoute }) {
 
 	const createSessionMutation = useMutation({
 		mutationFn: ({ profile, roomId }: { profile: string; roomId?: string }) => postSession(profile || undefined, roomId),
-		onMutate: async ({ profile }) => {
+		onMutate: async ({ profile, roomId }) => {
 			optimisticSessionCreateOutcomeRef.current = null;
 			await queryClient.cancelQueries({ queryKey: ["chat", "bootstrap"] });
-			const snapshot = createBootstrapMutationSnapshot(queryClient, bootstrap);
-			const previousSelectedPiboSessionId = selectedPiboSessionId;
+			const originRoomId = roomId ?? bootstrap?.selectedRoomId ?? "";
+			const previousSelectedPiboSessionId = selectedPiboSessionIdRef.current;
 			const tempId = `optimistic-session-${createClientTxnId()}`;
-			setSelectedPiboSessionId(tempId);
-			updateBootstrapCache((current) => {
+			if (bootstrapRef.current?.selectedRoomId === originRoomId) setSelectedPiboSessionId(tempId);
+			updateBootstrapCacheForRoom(originRoomId, (current) => {
 				const optimisticNode = createOptimisticSessionNode(tempId, profile || defaultProfileFromBootstrap(current));
 				const next = addSessionNodeToBootstrap(current, optimisticNode);
 				return { ...next, selectedPiboSessionId: tempId };
 			});
-			return { snapshot, tempId, previousSelectedPiboSessionId };
+			return { tempId, previousSelectedPiboSessionId, originRoomId };
 		},
 		onError: (_error, _variables, context) => {
 			const outcome = resolveOptimisticSessionCreateOutcome({
@@ -1005,7 +1013,11 @@ export function App({ route }: { route: ChatAppRoute }) {
 				previousSelectedPiboSessionId: context?.previousSelectedPiboSessionId,
 			});
 			optimisticSessionCreateOutcomeRef.current = outcome;
-			restoreBootstrapSnapshot(context?.snapshot, outcome.selectedPiboSessionId);
+			if (context?.originRoomId && context.tempId) {
+				updateBootstrapCacheForRoom(context.originRoomId, (current) =>
+					rollbackOptimisticSessionNode(current, context.tempId, context.previousSelectedPiboSessionId ?? null),
+				);
+			}
 			setSelectedPiboSessionId(outcome.selectedPiboSessionId);
 		},
 		onSuccess: (created, _variables, context) => {
@@ -1017,7 +1029,11 @@ export function App({ route }: { route: ChatAppRoute }) {
 				createdPiboSessionId: created.session.id,
 			});
 			optimisticSessionCreateOutcomeRef.current = outcome;
-			updateBootstrapCache((current) => replaceOptimisticSessionNode(current, context?.tempId, sessionNodeFromSession(created.session)));
+			if (context?.originRoomId) {
+				updateBootstrapCacheForRoom(context.originRoomId, (current) =>
+					replaceOptimisticSessionNode(current, context.tempId, sessionNodeFromSession(created.session)),
+				);
+			}
 			setSelectedPiboSessionId(outcome.selectedPiboSessionId);
 		},
 	});
@@ -1151,15 +1167,16 @@ export function App({ route }: { route: ChatAppRoute }) {
 
 	const createSession = async (profile = newSessionProfile) => {
 		if (creatingSession || selectedRoomArchived) return;
+		const originRoomId = selectedRoomId ?? bootstrap?.selectedRoomId ?? "";
 		creatingSessionRef.current = true;
 		setCreatingSession(true);
 		try {
-			const created = await createSessionMutation.mutateAsync({ profile, roomId: selectedRoomId ?? undefined });
+			const created = await createSessionMutation.mutateAsync({ profile, roomId: originRoomId || undefined });
 			const outcome = optimisticSessionCreateOutcomeRef.current;
 			if (outcome?.autoRenameCreatedSession) setAutoRenameSessionId(created.session.id);
 			if (outcome?.navigateToCreatedSession) {
-				navigateToSelectedSession(selectedRoomId ?? bootstrap?.selectedRoomId ?? undefined, created.session.id, false, { closeMobileSidebar: false });
-				const data = await loadBootstrap(created.session.id, showArchivedRef.current, selectedRoomId ?? undefined, { force: true });
+				navigateToSelectedSession(originRoomId || undefined, created.session.id, false, { closeMobileSidebar: false });
+				const data = await loadBootstrap(created.session.id, showArchivedRef.current, originRoomId || undefined, { force: true });
 				navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId, false, { closeMobileSidebar: false });
 			}
 			setError(null);
