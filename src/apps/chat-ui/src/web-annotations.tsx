@@ -75,9 +75,10 @@ export function WebAnnotationsSessionPanel({
 				<div className="rounded-sm border border-slate-800 bg-[#0e1116] px-3 py-2 text-xs text-slate-500" data-pibo-debug="web-annotations-empty">No open annotations for this session.</div>
 			) : (
 				<div className="mt-2 grid max-h-[min(40svh,18rem)] grid-cols-1 gap-2 overflow-y-auto pr-1 sm:max-h-56 sm:grid-cols-[repeat(auto-fill,minmax(16rem,1fr))]" data-pibo-debug="web-annotations-list">
-					{annotations.map((annotation) => {
+					{annotations.map((annotation, annotationIndex) => {
 						const selected = selectedIds.includes(annotation.id);
-						const attachmentIdentity = `${boundedUiText(annotation.primaryTarget || annotation.label || annotation.selector || annotation.id, 120)} (${annotation.id})`;
+						const attachmentTarget = boundedUiText(annotation.primaryTarget || annotation.label || annotation.selector || annotation.targetKind || "target", 64);
+						const attachmentIdentity = `${annotationIndex + 1}: ${attachmentTarget}`;
 						return (
 							<div key={annotation.id} data-pibo-debug="web-annotation-chip" data-web-annotation-id={annotation.id} data-web-annotation-session-id={annotation.piboSessionId} data-web-annotation-selected={selected ? "true" : "false"} className={`min-w-0 rounded-sm border px-3 py-2 text-xs ${selected ? "border-[#11a4d4] bg-[#11a4d4]/10" : "border-slate-800 bg-[#0e1116]"}`}>
 								<div className="mb-1 flex items-center justify-between gap-2">

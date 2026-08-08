@@ -14,24 +14,34 @@ async function renderPanelStates() {
 
 		const annotations = [
 			{
-				id: "ann_save",
+				id: "ann_39bc2730-872b-4708-9bb7-675ec0be46b3",
 				status: "open",
 				targetKind: "element",
 				piboSessionId: "ps_source",
 				url: "https://example.test/settings",
-				primaryTarget: "Save changes button",
+				primaryTarget: "chat-shell",
 				note: "Make this clearer",
 				createdAt: "2026-08-08T00:00:00.000Z",
 			},
 			{
-				id: "ann_cancel",
+				id: "ann_71846a12-f77c-43ef-bf7f-1791f145b399",
 				status: "open",
 				targetKind: "element",
 				piboSessionId: "ps_source",
 				url: "https://example.test/settings",
-				label: "Cancel button",
+				label: "chat-shell",
 				note: "Move this action",
 				createdAt: "2026-08-08T00:01:00.000Z",
+			},
+			{
+				id: "ann_aaef1237-1855-4aa8-bdb5-fca1ae321c69",
+				status: "open",
+				targetKind: "element",
+				piboSessionId: "ps_source",
+				url: "https://example.test/settings",
+				primaryTarget: "x".repeat(100),
+				note: "Bound the announced target",
+				createdAt: "2026-08-08T00:02:00.000Z",
 			},
 		];
 		const props = {
@@ -51,8 +61,8 @@ async function renderPanelStates() {
 		);
 		console.log(JSON.stringify({
 			unselected: render([]),
-			selected: render(["ann_save"]),
-			multiple: render(["ann_cancel"]),
+			selected: render(["ann_39bc2730-872b-4708-9bb7-675ec0be46b3"]),
+			multiple: render(["ann_71846a12-f77c-43ef-bf7f-1791f145b399"]),
 			collapsed: render([], { collapsed: true }),
 		}));
 	`;
@@ -68,31 +78,38 @@ const panelStatesPromise = renderPanelStates();
 
 test("web annotation attachment selectors expose stable names and pressed states", async () => {
 	const { unselected, selected } = await panelStatesPromise;
-	const [unselectedSave] = toggleButtons(unselected);
-	const [selectedSave] = toggleButtons(selected);
+	const [unselectedFirst] = toggleButtons(unselected);
+	const [selectedFirst] = toggleButtons(selected);
 
-	assert.match(unselectedSave, /aria-pressed="false"/);
-	assert.match(selectedSave, /aria-pressed="true"/);
-	assert.match(unselectedSave, /aria-label="Include web annotation Save changes button \(ann_save\)"/);
-	assert.match(selectedSave, /aria-label="Include web annotation Save changes button \(ann_save\)"/);
-	assert.match(unselectedSave, /title="Attach web annotation Save changes button \(ann_save\)"/);
-	assert.match(selectedSave, /title="Detach web annotation Save changes button \(ann_save\)"/);
-	assert.match(unselectedSave, /> Attach<\/button>$/);
-	assert.match(selectedSave, /> Detach<\/button>$/);
+	assert.match(unselectedFirst, /aria-pressed="false"/);
+	assert.match(selectedFirst, /aria-pressed="true"/);
+	assert.match(unselectedFirst, /aria-label="Include web annotation 1: chat-shell"/);
+	assert.match(selectedFirst, /aria-label="Include web annotation 1: chat-shell"/);
+	assert.match(unselectedFirst, /title="Attach web annotation 1: chat-shell"/);
+	assert.match(selectedFirst, /title="Detach web annotation 1: chat-shell"/);
+	assert.doesNotMatch(unselectedFirst, /ann_[a-z0-9-]+/);
+	assert.doesNotMatch(selectedFirst, /ann_[a-z0-9-]+/);
+	assert.match(unselectedFirst, /> Attach<\/button>$/);
+	assert.match(selectedFirst, /> Detach<\/button>$/);
 	assert.match(unselected, /data-web-annotation-selected="false"/);
 	assert.match(selected, /data-web-annotation-selected="true"/);
 	assert.match(selected, />1 attached</);
 });
 
-test("web annotation attachment selector names distinguish multiple annotations", async () => {
+test("web annotation attachment selector ordinals distinguish duplicate targets without exposing ids", async () => {
 	const { multiple } = await panelStatesPromise;
 	const buttons = toggleButtons(multiple);
 
-	assert.equal(buttons.length, 2);
-	assert.match(buttons[0], /aria-label="Include web annotation Save changes button \(ann_save\)"/);
+	assert.equal(buttons.length, 3);
+	assert.match(buttons[0], /aria-label="Include web annotation 1: chat-shell"/);
+	assert.match(buttons[0], /title="Attach web annotation 1: chat-shell"/);
 	assert.match(buttons[0], /aria-pressed="false"/);
-	assert.match(buttons[1], /aria-label="Include web annotation Cancel button \(ann_cancel\)"/);
+	assert.match(buttons[1], /aria-label="Include web annotation 2: chat-shell"/);
+	assert.match(buttons[1], /title="Detach web annotation 2: chat-shell"/);
 	assert.match(buttons[1], /aria-pressed="true"/);
+	assert.ok(buttons[2].includes(`aria-label="Include web annotation 3: ${"x".repeat(63)}…"`));
+	assert.doesNotMatch(buttons[2], /x{64}/);
+	for (const button of buttons) assert.doesNotMatch(button, /ann_[a-z0-9-]+/);
 });
 
 test("web annotation attachment selectors preserve responsive classes and collapsed behavior", async () => {
