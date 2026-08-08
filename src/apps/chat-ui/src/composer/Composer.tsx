@@ -462,6 +462,7 @@ export function Composer({
 			) : null}
 			<div className="grid grid-cols-[1fr_auto] items-end gap-2">
 				<textarea
+					id="message-composer-input"
 					ref={inputRef}
 					data-pibo-debug="composer-input"
 					data-pibo-session-id={sessionId ?? undefined}
