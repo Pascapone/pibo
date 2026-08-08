@@ -125,6 +125,7 @@ import { ProjectsArea } from "./projects/ProjectsArea";
 import { MinimalWorkflowsArea } from "./MinimalWorkflowsArea";
 import { DeleteRoomModal, DeleteSessionModal } from "./delete-confirmation-modals";
 import { AppErrorBanner, AppHeader, BootstrapLoadError, FallbackGatewayBanner, SignedOut, type AppArea as Area } from "./app-chrome";
+import { mobileSidebarA11yProps, useMobileSidebarModal, useMobileSidebarViewport } from "./mobile-sidebar-accessibility";
 import {
 	applySelectedSignalPatch,
 	applySignalPatchToBootstrap,
@@ -311,7 +312,15 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const [selectedMcpServerName, setSelectedMcpServerName] = useState<string | null>(null);
 	const [creatingRoom, setCreatingRoom] = useState(false);
 	const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+	const isMobileSidebarViewport = useMobileSidebarViewport();
 	const mobileSidebarTriggerRef = useRef<HTMLButtonElement>(null);
+	const hideMobileSidebar = useCallback(() => setMobileSidebarOpen(false), []);
+	const closeMobileSidebar = useMobileSidebarModal({
+		isMobileViewport: isMobileSidebarViewport,
+		isOpen: mobileSidebarOpen,
+		onClose: hideMobileSidebar,
+		triggerRef: mobileSidebarTriggerRef,
+	});
 	const [mobileAreaMenuOpen, setMobileAreaMenuOpen] = useState(false);
 	const [gatewayMode, setGatewayMode] = useState<"main" | "fallback" | null>(null);
 	const [sessionSignals, setSessionSignals] = useState<PiboSignalSnapshot | null>(null);
@@ -542,10 +551,10 @@ export function App({ route }: { route: ChatAppRoute }) {
 	}, [sessionViewId]);
 	const navigateToRoute = useCallback(
 		(target: ChatAppRoute, replace = false, nextSessionViewId = sessionViewId, options: NavigationOptions = {}) => {
-			if (options.closeMobileSidebar !== false) setMobileSidebarOpen(false);
+			if (options.closeMobileSidebar !== false) closeMobileSidebar();
 			navigateToChatRoute(navigate, target, replace, nextSessionViewId);
 		},
-		[navigate, sessionViewId],
+		[closeMobileSidebar, navigate, sessionViewId],
 	);
 
 	const updateAgentAutosaveHandler = useCallback((handler: (() => Promise<void>) | null) => {
@@ -1079,7 +1088,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 		flushSync(() => {
 			setSelectedPiboSessionId(piboSessionId);
 			setLoadingPiboSessionId(piboSessionId);
-			setMobileSidebarOpen(false);
+			closeMobileSidebar();
 		});
 		updateBootstrapCache((current) => markSessionSubtreeReadInBootstrap(current, piboSessionId, targetRoomId ?? current.selectedRoomId));
 		navigateToSelectedSession(targetRoomId, piboSessionId, false, { closeMobileSidebar: false });
@@ -1098,7 +1107,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 					if (!isAbortError(caught) && bootstrapRef.current?.selectedPiboSessionId === piboSessionId) setError(errorMessage(caught));
 				});
 		}, 750);
-	}, [bootstrap?.selectedRoomId, loadNavigation, navigateToSelectedSession, selectedRoomId, updateBootstrapCache]);
+	}, [bootstrap?.selectedRoomId, closeMobileSidebar, loadNavigation, navigateToSelectedSession, selectedRoomId, updateBootstrapCache]);
 
 	const selectRoom = useCallback(async (roomId: string, options: NavigationOptions = {}) => {
 		const navigationOptions = { ...options, closeMobileSidebar: false };
@@ -1113,7 +1122,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 			setSelectedPiboSessionId(storedPiboSessionId ?? null);
 			setNewSessionProfileRoomId(null);
 			setLoadingRoomId(roomId);
-			setMobileSidebarOpen(false);
+			closeMobileSidebar();
 		});
 		try {
 			const data = await loadNavigation(storedPiboSessionId, showArchivedRef.current, roomId, { signal: controller.signal });
@@ -1133,7 +1142,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 				setLoadingRoomId((current) => current === roomId ? null : current);
 			}
 		}
-	}, [loadNavigation, navigateToSelectedSession]);
+	}, [closeMobileSidebar, loadNavigation, navigateToSelectedSession]);
 
 	const toggleArchivedRooms = useCallback(() => {
 		const next = !showArchivedRooms;
@@ -1555,9 +1564,9 @@ export function App({ route }: { route: ChatAppRoute }) {
 				}`}
 			>
 				{area === "cron" ? (
-					<CronArea bootstrap={bootstrap} mobileSidebarOpen={mobileSidebarOpen} onCloseMobileSidebar={() => setMobileSidebarOpen(false)} />
+					<CronArea bootstrap={bootstrap} mobileSidebarOpen={mobileSidebarOpen} onCloseMobileSidebar={closeMobileSidebar} />
 				) : area === "loops" ? (
-					<LoopArea bootstrap={bootstrap} mobileSidebarOpen={mobileSidebarOpen} onCloseMobileSidebar={() => setMobileSidebarOpen(false)} />
+					<LoopArea bootstrap={bootstrap} mobileSidebarOpen={mobileSidebarOpen} onCloseMobileSidebar={closeMobileSidebar} />
 				) : area === "agents" ? (
 					<AgentsView
 						agents={bootstrap.agents}
@@ -1589,7 +1598,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 						commands={slashCommands}
 						skills={skills}
 						mobileSidebarOpen={mobileSidebarOpen}
-						onCloseMobileSidebar={() => setMobileSidebarOpen(false)}
+						onCloseMobileSidebar={closeMobileSidebar}
 						onNavigate={navigateToSelectedProjectSession}
 						onViewContext={viewSessionContext}
 						onSelectSessionView={selectSessionView}
@@ -1615,12 +1624,16 @@ export function App({ route }: { route: ChatAppRoute }) {
 				<>
 				{/* Mobile sidebar backdrop */}
 				<div
+					data-pibo-mobile-sidebar-backdrop
+					aria-hidden="true"
 					className={`fixed inset-0 z-30 bg-black/60 min-[981px]:hidden transition-opacity duration-200 ${
 						mobileSidebarOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
 					}`}
-					onClick={() => setMobileSidebarOpen(false)}
+					onClick={closeMobileSidebar}
 				/>
 				<aside
+					data-pibo-mobile-sidebar
+					{...mobileSidebarA11yProps(isMobileSidebarViewport, mobileSidebarOpen, "Chat sidebar")}
 					data-pibo-debug="sidebar-shell"
 					data-pibo-area={area}
 					data-pibo-room-id={selectedRoomId ?? bootstrap.selectedRoomId ?? undefined}
@@ -1651,7 +1664,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 							) : null}
 							<button
 								type="button"
-								onClick={() => setMobileSidebarOpen(false)}
+								onClick={closeMobileSidebar}
 								className="min-[981px]:hidden p-1 border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"
 								title="Close sidebar"
 								aria-label="Close sidebar"

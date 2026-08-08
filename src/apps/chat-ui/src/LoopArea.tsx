@@ -3,6 +3,7 @@ import { AlertTriangle, Bot, Copy, Loader2, Play, Plus, RefreshCw, Save, Square,
 import { cancelLoopJob, deleteLoopJob, getLoopConditions, getLoopJobs, getLoopRuns, getLoopStatus, getLoopTemplates, patchLoopJob, postLoopJob, startLoopJob, stopLoopJob, type LoopJobInput } from "./api-loops";
 import { copyTextToClipboard } from "./clipboard";
 import { isArchivedRoom } from "./session-sidebar-helpers";
+import { mobileSidebarA11yProps, useMobileSidebarViewport } from "./mobile-sidebar-accessibility";
 import { THINKING_LEVELS } from "./types";
 import type { AgentProfile, BootstrapData, CustomAgent, ModelCatalog, ModelProfile, PiboLoopJob, PiboLoopJobTemplate, PiboLoopMode, PiboLoopRun, PiboLoopStatus, PiboLoopStopConditionInfo, PiboLoopStopPolicy, PiboRoom, ThinkingLevel } from "./types";
 
@@ -33,6 +34,7 @@ export function writableLoopRooms(rooms: PiboRoom[]): PiboRoom[] {
 }
 
 export function LoopArea({ bootstrap, mobileSidebarOpen = false, onCloseMobileSidebar }: { bootstrap: BootstrapData; mobileSidebarOpen?: boolean; onCloseMobileSidebar?: () => void }) {
+	const isMobileSidebarViewport = useMobileSidebarViewport();
 	const rooms = bootstrap.rooms ?? [];
 	const writableRooms = useMemo(() => writableLoopRooms(rooms), [rooms]);
 	const defaultRoomId = writableRooms[0]?.id;
@@ -107,12 +109,16 @@ export function LoopArea({ bootstrap, mobileSidebarOpen = false, onCloseMobileSi
 	return (
 		<div className="min-h-0 grid grid-cols-[340px_minmax(0,1fr)] max-[980px]:grid-cols-1 h-full overflow-hidden">
 			<div
+				data-pibo-mobile-sidebar-backdrop
+				aria-hidden="true"
 				className={`fixed inset-0 z-30 bg-black/60 min-[981px]:hidden transition-opacity duration-200 ${
 					mobileSidebarOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
 				}`}
 				onClick={onCloseMobileSidebar}
 			/>
 			<aside
+				data-pibo-mobile-sidebar
+				{...mobileSidebarA11yProps(isMobileSidebarViewport, mobileSidebarOpen, "Loop jobs sidebar")}
 				className={`min-h-0 overflow-auto bg-[#1a262b] border-r border-slate-800 max-[980px]:fixed max-[980px]:left-0 max-[980px]:top-0 max-[980px]:bottom-0 max-[980px]:z-40 max-[980px]:w-[280px] max-[980px]:transition-transform max-[980px]:duration-200 ${
 					mobileSidebarOpen ? "max-[980px]:translate-x-0" : "max-[980px]:-translate-x-full"
 				}`}
