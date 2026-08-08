@@ -118,6 +118,10 @@ test("web annotation attachment selectors preserve responsive classes and collap
 
 	assert.match(button, /class="inline-flex h-8 shrink-0 items-center gap-1 rounded-sm border px-2 text-\[11px\] sm:h-6 sm:px-1\.5 /);
 	assert.match(unselected, /grid-cols-1[^\"]*sm:max-h-56 sm:grid-cols-\[repeat\(auto-fill,minmax\(16rem,1fr\)\)\]/);
-	assert.equal(toggleButtons(collapsed).length, 0);
-	assert.doesNotMatch(collapsed, /data-pibo-debug="web-annotations-list"/);
+	assert.equal(toggleButtons(collapsed).length, 3);
+	const detailsTag = collapsed.match(/<div[^>]*id="web-annotations-session-panel-details"[^>]*>/)?.[0];
+	assert.ok(detailsTag, "collapsed details region remains mounted");
+	assert.match(detailsTag, /hidden=""/);
+	assert.match(collapsed, /data-pibo-debug="web-annotations-list"/);
+	assert.ok(collapsed.indexOf('aria-pressed="false"') > collapsed.indexOf('id="web-annotations-session-panel-details"'));
 });
