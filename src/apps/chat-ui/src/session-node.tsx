@@ -8,13 +8,13 @@ import {
 	Edit3,
 	Layers,
 	Loader2,
-	MoreVertical,
 	Trash2,
 	User,
 	UserRound,
 	X,
 } from "lucide-react";
 import type { PiboWebSessionNode } from "./types";
+import { ActionMenu, ActionMenuItem } from "./action-menu";
 import { sessionNodeSignal, sessionNodeTitle, sessionNodeTooltip } from "./session-sidebar-helpers";
 
 export function SessionNode({
@@ -56,17 +56,6 @@ export function SessionNode({
 	const hasChildren = node.children.length > 0;
 	const hasSelectedDescendant = selectedPiboSessionId !== null && node.piboSessionId !== selectedPiboSessionId && selectedSessionPathIds.has(node.piboSessionId);
 	const [expanded, setExpanded] = useState(hasSelectedDescendant);
-	const [menuOpen, setMenuOpen] = useState(false);
-	const menuRef = useRef<HTMLDivElement>(null);
-
-	useEffect(() => {
-		if (!menuOpen) return;
-		const handle = (e: MouseEvent) => {
-			if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
-		};
-		document.addEventListener("mousedown", handle);
-		return () => document.removeEventListener("mousedown", handle);
-	}, [menuOpen]);
 
 	useEffect(() => {
 		if (!editing) setDraftTitle(safeTitle);
@@ -215,70 +204,33 @@ export function SessionNode({
 				)}
 				{editing ? null : (
 					<div className="flex items-center gap-1 pr-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity max-[980px]:opacity-100">
-						<div className="relative" ref={menuRef}>
-							<button
-								type="button"
-								onClick={() => setMenuOpen((v) => !v)}
-								title="Session actions"
-								aria-label="Session actions"
-								className="h-7 w-7 max-[980px]:h-9 max-[980px]:w-9 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"
-							>
-								<MoreVertical size={24} className="w-3.5 h-3.5 max-[980px]:w-5 max-[980px]:h-5" />
-							</button>
-							{menuOpen && (
-								<div className="absolute right-0 top-full z-50 mt-1 w-48 bg-[#1a262b] border border-slate-700 rounded-sm shadow-lg py-1">
-									{node.archived ? (
-										<>
-											<button
-												type="button"
-												onClick={() => { setMenuOpen(false); onArchive(node.piboSessionId, false); }}
-												className="w-full text-left px-3 py-2.5 text-sm text-slate-300 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4] flex items-center gap-2"
-											>
-												<ArchiveRestore size={16} /> Restore Session
-											</button>
-											<button
-												type="button"
-												onClick={() => { setMenuOpen(false); onViewContext(node.piboSessionId); }}
-												className="w-full text-left px-3 py-2.5 text-sm text-slate-300 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4] flex items-center gap-2"
-											>
-												<Bug size={16} /> View Context
-											</button>
-											<button
-												type="button"
-												onClick={() => { setMenuOpen(false); onDelete(node); }}
-												className="w-full text-left px-3 py-2.5 text-sm text-red-300 hover:bg-red-500/10 flex items-center gap-2"
-											>
-												<Trash2 size={16} /> Delete Session
-											</button>
-										</>
-									) : (
-										<>
-											<button
-												type="button"
-												onClick={() => { setMenuOpen(false); setEditing(true); }}
-												className="w-full text-left px-3 py-2.5 text-sm text-slate-300 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4] flex items-center gap-2"
-											>
-												<Edit3 size={16} /> Rename Session
-											</button>
-											<button
-												type="button"
-												onClick={() => { setMenuOpen(false); onArchive(node.piboSessionId, true); }}
-												className="w-full text-left px-3 py-2.5 text-sm text-slate-300 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4] flex items-center gap-2"
-											>
-												<Archive size={16} /> Archive Session
-											</button>
-											<button
-												type="button"
-												onClick={() => { setMenuOpen(false); onViewContext(node.piboSessionId); }}
-												className="w-full text-left px-3 py-2.5 text-sm text-slate-300 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4] flex items-center gap-2"
-											>
-												<Bug size={16} /> View Context
-											</button>
-										</>
-									)}
-								</div>
+						<ActionMenu label="Session actions" estimatedHeight={144}>
+							{node.archived ? (
+								<>
+									<ActionMenuItem onSelect={() => onArchive(node.piboSessionId, false)}>
+										<ArchiveRestore size={16} /> Restore Session
+									</ActionMenuItem>
+									<ActionMenuItem onSelect={() => onViewContext(node.piboSessionId)}>
+										<Bug size={16} /> View Context
+									</ActionMenuItem>
+									<ActionMenuItem onSelect={() => onDelete(node)} className="text-red-300 hover:bg-red-500/10">
+										<Trash2 size={16} /> Delete Session
+									</ActionMenuItem>
+								</>
+							) : (
+								<>
+									<ActionMenuItem onSelect={() => setEditing(true)}>
+										<Edit3 size={16} /> Rename Session
+									</ActionMenuItem>
+									<ActionMenuItem onSelect={() => onArchive(node.piboSessionId, true)}>
+										<Archive size={16} /> Archive Session
+									</ActionMenuItem>
+									<ActionMenuItem onSelect={() => onViewContext(node.piboSessionId)}>
+										<Bug size={16} /> View Context
+									</ActionMenuItem>
+								</>
 							)}
-						</div>
+						</ActionMenu>
 					</div>
 				)}
 			</div>
