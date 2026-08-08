@@ -327,12 +327,14 @@ export type PiboToolExecutionFinishedEvent = {
 export type PiboCompactionStartEvent = {
 	type: "compaction_start";
 	piboSessionId: string;
+	eventId?: string;
 	reason: string;
 };
 
 export type PiboCompactionEndEvent = {
 	type: "compaction_end";
 	piboSessionId: string;
+	eventId?: string;
 	reason: string;
 	result?: unknown;
 	aborted: boolean;
