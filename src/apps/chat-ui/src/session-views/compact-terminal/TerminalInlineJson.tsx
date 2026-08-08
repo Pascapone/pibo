@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 
 type TerminalFunctionCallProps = {
 	name: string;
@@ -146,26 +146,13 @@ function InlineCollection({
 	onTogglePath,
 	onToggleString,
 }: InlineCollectionProps) {
-	const entries = Array.isArray(value) ? value.map((entry, index) => [String(index), entry] as const) : Object.entries(value);
 	const expanded = expandedPaths.has(path);
-	if (!expanded) {
-		return (
-			<button
-				type="button"
-				onClick={(event) => {
-					event.stopPropagation();
-					onTogglePath(path);
-				}}
-				className="compact-terminal-json-toggle align-baseline text-[#737373]"
-				title="Expand JSON"
-				aria-label={`Expand JSON at ${path}`}
-				data-inline-json-path={path}
-			>
-				<span className="compact-terminal-json-caret">▸</span>
-				{open}...{close}
-			</button>
-		);
-	}
+	const contentId = `inline-json-${useId()}`;
+	const entries = expanded
+		? Array.isArray(value)
+			? value.map((entry, index) => [String(index), entry] as const)
+			: Object.entries(value)
+		: [];
 
 	return (
 		<span>
@@ -176,36 +163,41 @@ function InlineCollection({
 					onTogglePath(path);
 				}}
 				className="compact-terminal-json-toggle align-baseline text-[#737373]"
-				title="Collapse JSON"
-				aria-label={`Collapse JSON at ${path}`}
+				title={expanded ? "Collapse JSON" : "Expand JSON"}
+				aria-label={`JSON at ${path}`}
+				aria-expanded={expanded}
+				aria-controls={contentId}
 				data-inline-json-path={path}
 			>
-				<span className="compact-terminal-json-caret">▾</span>
+				<span className="compact-terminal-json-caret">{expanded ? "▾" : "▸"}</span>
 				{open}
+				{expanded ? null : `...${close}`}
 			</button>
-			{entries.map(([key, entry], index) => {
-				const childPath = `${path}.${escapePathKey(key)}`;
-				return (
-					<span key={childPath}>
-						{index > 0 ? <span className="text-[#737373]">, </span> : null}
-						{Array.isArray(value) ? null : (
-							<>
-								<span className="text-[#d4d4d4]">{JSON.stringify(key)}</span>
-								<span className="text-[#737373]">:</span>
-							</>
-						)}
-						<InlineJsonValue
-							value={entry}
-							path={childPath}
-							expandedPaths={expandedPaths}
-							expandedStrings={expandedStrings}
-							onTogglePath={onTogglePath}
-							onToggleString={onToggleString}
-						/>
-					</span>
-				);
-			})}
-			<span className="text-[#737373]">{close}</span>
+			<span id={contentId}>
+				{entries.map(([key, entry], index) => {
+					const childPath = `${path}.${escapePathKey(key)}`;
+					return (
+						<span key={childPath}>
+							{index > 0 ? <span className="text-[#737373]">, </span> : null}
+							{Array.isArray(value) ? null : (
+								<>
+									<span className="text-[#d4d4d4]">{JSON.stringify(key)}</span>
+									<span className="text-[#737373]">:</span>
+								</>
+							)}
+							<InlineJsonValue
+								value={entry}
+								path={childPath}
+								expandedPaths={expandedPaths}
+								expandedStrings={expandedStrings}
+								onTogglePath={onTogglePath}
+								onToggleString={onToggleString}
+							/>
+						</span>
+					);
+				})}
+				{expanded ? <span className="text-[#737373]">{close}</span> : null}
+			</span>
 		</span>
 	);
 }
