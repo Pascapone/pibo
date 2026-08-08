@@ -70,6 +70,6 @@ export async function handleChatLoopApiRequest(options: ChatLoopApiOptions): Pro
 		if (!job) throw new PiboWebHttpError('Loop job not found', 404);
 		return responseJson({ job: serializeJob(job) });
 	}
-	if (request.method === 'DELETE') { requireSameOriginJsonRequest(request); return responseJson({ removed: loopStore.removeJob(resource.id) }); }
+	if (request.method === 'DELETE') { requireSameOriginJsonRequest(request); try { return responseJson({ removed: loopStore.removeJob(resource.id) }); } catch (error) { throw new PiboWebHttpError(error instanceof Error ? error.message : 'Loop removal failed', 409); } }
 	return undefined;
 }
