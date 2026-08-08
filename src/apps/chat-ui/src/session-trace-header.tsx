@@ -216,7 +216,7 @@ export function SessionTraceHeader({
         <HeaderIconButton
           onClick={onToggleRawEvents}
           title={showRawEvents ? "Hide Raw Events" : "Show Raw Events"}
-          ariaLabel={showRawEvents ? "Hide Raw Events" : "Show Raw Events"}
+          ariaLabel="Raw Events"
           active={showRawEvents}
         >
           <Bug size={14} />
@@ -224,7 +224,7 @@ export function SessionTraceHeader({
         <HeaderIconButton
           onClick={onToggleThinking}
           title={showThinking ? "Hide Thinking" : "Show Thinking"}
-          ariaLabel={showThinking ? "Hide Thinking" : "Show Thinking"}
+          ariaLabel="Thinking"
           active={showThinking}
         >
           {showThinking ? <Brain size={14} /> : <EyeOff size={14} />}
@@ -233,7 +233,7 @@ export function SessionTraceHeader({
           <HeaderIconButton
             onClick={onToggleExpandThinking}
             title={expandThinking ? "Collapse Thinking" : "Expand Thinking"}
-            ariaLabel={expandThinking ? "Collapse Thinking" : "Expand Thinking"}
+            ariaLabel="Thinking expansion"
             active={expandThinking}
           >
             {expandThinking ? (
@@ -267,6 +267,7 @@ function HeaderIconButton({
       onClick={onClick}
       title={title}
       aria-label={ariaLabel}
+      aria-pressed={active}
       className={`h-8 w-8 inline-flex items-center justify-center border rounded-sm transition-colors ${
         active
           ? "border-[#11a4d4] bg-[#11a4d4]/10 text-[#11a4d4]"
