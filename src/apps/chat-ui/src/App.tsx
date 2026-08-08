@@ -62,12 +62,15 @@ import {
 	createOptimisticSessionNode,
 	replaceOptimisticSessionNode,
 	replaceRoomInBootstrap,
+	resolveOptimisticSessionCreateOutcome,
+	restoreBootstrapSelection,
 	roomWithArchivedState,
 	sessionNodeFromSession,
 	updateRoomInBootstrap,
 	updateSessionFromPiboSession,
 	updateSessionNodeInBootstrap,
 	type BootstrapMutationSnapshot,
+	type OptimisticSessionCreateOutcome,
 } from "./app-bootstrap-mutations";
 import {
 	chatBootstrapQueryKey,
@@ -259,7 +262,21 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const routeWorkflowDraftId = route.area === "workflows" ? route.draftId : undefined;
 	const settingsPanel: SettingsPanel = route.area === "settings" ? route.panel ?? "general" : "general";
 	const [bootstrap, setBootstrap] = useState<BootstrapData | null>(null);
-	const [selectedPiboSessionId, setSelectedPiboSessionId] = useState<string | null>(null);
+	const selectedPiboSessionIdRef = useRef<string | null>(null);
+	const optimisticSessionCreateOutcomeRef = useRef<OptimisticSessionCreateOutcome | null>(null);
+	const [selectedPiboSessionId, setSelectedPiboSessionIdState] = useState<string | null>(null);
+	const setSelectedPiboSessionId = useCallback<Dispatch<SetStateAction<string | null>>>((next) => {
+		if (typeof next === "function") {
+			setSelectedPiboSessionIdState((current) => {
+				const resolved = next(current);
+				selectedPiboSessionIdRef.current = resolved;
+				return resolved;
+			});
+			return;
+		}
+		selectedPiboSessionIdRef.current = next;
+		setSelectedPiboSessionIdState(next);
+	}, []);
 	const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [downloadStatus, setDownloadStatus] = useState<ChatDownloadStatus | null>(null);
@@ -915,10 +932,15 @@ export function App({ route }: { route: ChatAppRoute }) {
 		};
 	}, [activeRoomId, area, bootstrap?.selectedRoomId, latestRoomStreamId, loadNavigation, selectedBackendPiboSessionId, selectedPiboSessionId, updateBootstrapCache]);
 
-	const restoreBootstrapSnapshot = useCallback((snapshot: BootstrapMutationSnapshot | undefined) => {
+	const restoreBootstrapSnapshot = useCallback((
+		snapshot: BootstrapMutationSnapshot | undefined,
+		selectedPiboSessionIdOverride?: string | null,
+	) => {
 		if (!snapshot) return;
-		setBootstrap(snapshot.localBootstrap);
-		for (const [queryKey, data] of snapshot.queryData) queryClient.setQueryData(queryKey, data);
+		setBootstrap(restoreBootstrapSelection(snapshot.localBootstrap, selectedPiboSessionIdOverride) ?? null);
+		for (const [queryKey, data] of snapshot.queryData) {
+			queryClient.setQueryData(queryKey, restoreBootstrapSelection(data, selectedPiboSessionIdOverride) ?? undefined);
+		}
 	}, [queryClient]);
 
 	const {
@@ -955,6 +977,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const createSessionMutation = useMutation({
 		mutationFn: ({ profile, roomId }: { profile: string; roomId?: string }) => postSession(profile || undefined, roomId),
 		onMutate: async ({ profile }) => {
+			optimisticSessionCreateOutcomeRef.current = null;
 			await queryClient.cancelQueries({ queryKey: ["chat", "bootstrap"] });
 			const snapshot = createBootstrapMutationSnapshot(queryClient, bootstrap);
 			const previousSelectedPiboSessionId = selectedPiboSessionId;
@@ -968,12 +991,27 @@ export function App({ route }: { route: ChatAppRoute }) {
 			return { snapshot, tempId, previousSelectedPiboSessionId };
 		},
 		onError: (_error, _variables, context) => {
-			restoreBootstrapSnapshot(context?.snapshot);
-			setSelectedPiboSessionId(context?.previousSelectedPiboSessionId ?? null);
+			const outcome = resolveOptimisticSessionCreateOutcome({
+				status: "failure",
+				currentSelectedPiboSessionId: selectedPiboSessionIdRef.current,
+				tempId: context?.tempId,
+				previousSelectedPiboSessionId: context?.previousSelectedPiboSessionId,
+			});
+			optimisticSessionCreateOutcomeRef.current = outcome;
+			restoreBootstrapSnapshot(context?.snapshot, outcome.selectedPiboSessionId);
+			setSelectedPiboSessionId(outcome.selectedPiboSessionId);
 		},
 		onSuccess: (created, _variables, context) => {
-			setSelectedPiboSessionId(created.session.id);
+			const outcome = resolveOptimisticSessionCreateOutcome({
+				status: "success",
+				currentSelectedPiboSessionId: selectedPiboSessionIdRef.current,
+				tempId: context?.tempId,
+				previousSelectedPiboSessionId: context?.previousSelectedPiboSessionId,
+				createdPiboSessionId: created.session.id,
+			});
+			optimisticSessionCreateOutcomeRef.current = outcome;
 			updateBootstrapCache((current) => replaceOptimisticSessionNode(current, context?.tempId, sessionNodeFromSession(created.session)));
+			setSelectedPiboSessionId(outcome.selectedPiboSessionId);
 		},
 	});
 
@@ -1110,15 +1148,18 @@ export function App({ route }: { route: ChatAppRoute }) {
 		setCreatingSession(true);
 		try {
 			const created = await createSessionMutation.mutateAsync({ profile, roomId: selectedRoomId ?? undefined });
-			setSelectedPiboSessionId(created.session.id);
-			setAutoRenameSessionId(created.session.id);
-			navigateToSelectedSession(selectedRoomId ?? bootstrap?.selectedRoomId ?? undefined, created.session.id, false, { closeMobileSidebar: false });
-			const data = await loadBootstrap(created.session.id, showArchivedRef.current, selectedRoomId ?? undefined, { force: true });
-			navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId, false, { closeMobileSidebar: false });
+			const outcome = optimisticSessionCreateOutcomeRef.current;
+			if (outcome?.autoRenameCreatedSession) setAutoRenameSessionId(created.session.id);
+			if (outcome?.navigateToCreatedSession) {
+				navigateToSelectedSession(selectedRoomId ?? bootstrap?.selectedRoomId ?? undefined, created.session.id, false, { closeMobileSidebar: false });
+				const data = await loadBootstrap(created.session.id, showArchivedRef.current, selectedRoomId ?? undefined, { force: true });
+				navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId, false, { closeMobileSidebar: false });
+			}
 			setError(null);
 		} catch (caught) {
 			setError(caught instanceof Error ? caught.message : String(caught));
 		} finally {
+			optimisticSessionCreateOutcomeRef.current = null;
 			creatingSessionRef.current = false;
 			setCreatingSession(false);
 		}
