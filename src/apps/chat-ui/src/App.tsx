@@ -311,8 +311,8 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const [selectedMcpServerName, setSelectedMcpServerName] = useState<string | null>(null);
 	const [creatingRoom, setCreatingRoom] = useState(false);
 	const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+	const mobileSidebarTriggerRef = useRef<HTMLButtonElement>(null);
 	const [mobileAreaMenuOpen, setMobileAreaMenuOpen] = useState(false);
-	const mobileAreaMenuRef = useRef<HTMLDivElement>(null);
 	const [gatewayMode, setGatewayMode] = useState<"main" | "fallback" | null>(null);
 	const [sessionSignals, setSessionSignals] = useState<PiboSignalSnapshot | null>(null);
 	const sessionSignalsRef = useRef<PiboSignalSnapshot | null>(null);
@@ -342,24 +342,6 @@ export function App({ route }: { route: ChatAppRoute }) {
 	useEffect(() => {
 		showArchivedRef.current = showArchived;
 	}, [showArchived]);
-
-	useEffect(() => {
-		if (!mobileAreaMenuOpen) return;
-		const handlePointerDown = (event: MouseEvent | TouchEvent) => {
-			if (mobileAreaMenuRef.current && !mobileAreaMenuRef.current.contains(event.target as Node)) setMobileAreaMenuOpen(false);
-		};
-		const handleKeyDown = (event: KeyboardEvent) => {
-			if (event.key === "Escape") setMobileAreaMenuOpen(false);
-		};
-		document.addEventListener("mousedown", handlePointerDown);
-		document.addEventListener("touchstart", handlePointerDown);
-		document.addEventListener("keydown", handleKeyDown);
-		return () => {
-			document.removeEventListener("mousedown", handlePointerDown);
-			document.removeEventListener("touchstart", handlePointerDown);
-			document.removeEventListener("keydown", handleKeyDown);
-		};
-	}, [mobileAreaMenuOpen]);
 
 	useEffect(() => {
 		bootstrapRef.current = bootstrap;
@@ -1546,11 +1528,12 @@ export function App({ route }: { route: ChatAppRoute }) {
 					area={area}
 					identity={identity}
 					mobileAreaMenuOpen={mobileAreaMenuOpen}
-					mobileAreaMenuRef={mobileAreaMenuRef}
+					mobileSidebarTriggerRef={mobileSidebarTriggerRef}
 					totalRoomUnreadCount={totalRoomUnreadCount}
 					onOpenMobileSidebar={() => setMobileSidebarOpen(true)}
 					onSelectMainNavArea={selectMainNavArea}
 					onToggleMobileAreaMenu={() => setMobileAreaMenuOpen((open) => !open)}
+					onCloseMobileAreaMenu={() => setMobileAreaMenuOpen(false)}
 				/>
 
 			<div>
