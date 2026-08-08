@@ -164,7 +164,7 @@ export function SessionTracePane({
   }, []);
   const [pendingSendPlan, setPendingSendPlan] =
     useState<ComposerSendPlan | null>(null);
-  const [deliverySending, setDeliverySending] = useState(false);
+  const deliverySendIdsRef = useRef(new Set<string>());
   const queueButtonRef = useRef<HTMLButtonElement>(null);
   const selectedBackendPiboSessionId = selectedSessionBackendId(selectedPiboSessionId);
   const {
@@ -350,23 +350,25 @@ export function SessionTracePane({
   };
 
   const closeDeliveryDialog = () => {
-    if (!pendingSendPlan || deliverySending) return;
+    if (!pendingSendPlan) return;
     onComposerTextChange((current) => current || pendingSendPlan.text);
     setPendingSendPlan(null);
   };
 
   const chooseDelivery = async (delivery: ChatMessageDelivery) => {
-    if (!pendingSendPlan || deliverySending) return;
     const sendPlan = pendingSendPlan;
-    setPendingSendPlan(null);
-    setDeliverySending(true);
+    if (!sendPlan || deliverySendIdsRef.current.has(sendPlan.clientTxnId)) return;
+    deliverySendIdsRef.current.add(sendPlan.clientTxnId);
+    setPendingSendPlan((current) =>
+      current?.clientTxnId === sendPlan.clientTxnId ? null : current,
+    );
+    onError(null);
     try {
       await deliverComposerSend(sendPlan, delivery);
-      onError(null);
     } catch (caught) {
       rollbackComposerSend(sendPlan, caught);
     } finally {
-      setDeliverySending(false);
+      deliverySendIdsRef.current.delete(sendPlan.clientTxnId);
     }
   };
 
@@ -410,13 +412,11 @@ export function SessionTracePane({
           description="Choose how this message should be delivered."
           onClose={closeDeliveryDialog}
           initialFocusRef={queueButtonRef}
-          closeDisabled={deliverySending}
         >
           <div className="grid gap-2 p-4 sm:grid-cols-2" data-pibo-debug="message-delivery-dialog">
             <button
               ref={queueButtonRef}
               type="button"
-              disabled={deliverySending}
               onClick={() => void chooseDelivery("queue")}
               className="rounded-sm border border-slate-700 bg-[#151f24] p-3 text-left transition hover:border-[#11a4d4] hover:bg-[#11a4d4]/10 disabled:opacity-50"
               data-pibo-debug="message-delivery-queue"
@@ -426,7 +426,6 @@ export function SessionTracePane({
             </button>
             <button
               type="button"
-              disabled={deliverySending}
               onClick={() => void chooseDelivery("steer")}
               className="rounded-sm border border-amber-500/50 bg-amber-500/5 p-3 text-left transition hover:border-amber-400 hover:bg-amber-500/10 disabled:opacity-50"
               data-pibo-debug="message-delivery-steer"

@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import type { PiboSignalSnapshot, Span, SpanStatus, SpanType } from "../types";
 import { AgentDelegationCard } from "../components/AgentDelegationCard";
+import { PendingUserMessageDelivery } from "../components/PendingUserMessageDelivery";
 import { countRender } from "../renderMetrics";
 import { JsonRenderer } from "./JsonRenderer";
 import { MarkdownRenderer } from "./MarkdownRenderer";
@@ -420,6 +421,7 @@ const SpanContent = memo(function SpanContent({ span }: { span: Span }) {
 	const toolName = typeof rawToolName === "string" ? rawToolName : null;
 	const toolOutput = attributes.output || attributes.result || attributes["tool.result"];
 	const toolArgs = attributes.arguments || attributes.args || attributes["tool.arguments"];
+	const pendingDelivery = stringField(attributes["message.pending_delivery"]);
 
 	const errorBanner =
 		span.status === "ERROR" ? (
@@ -436,6 +438,9 @@ const SpanContent = memo(function SpanContent({ span }: { span: Span }) {
 				<div className="min-w-0 break-words p-4 font-mono text-sm text-slate-300 whitespace-pre-wrap">
 					{typeof content === "string" ? content : JSON.stringify(content)}
 				</div>
+				{pendingDelivery === "queue" || pendingDelivery === "steer" ? (
+					<PendingUserMessageDelivery delivery={pendingDelivery} className="mx-4 mb-4" />
+				) : null}
 			</div>
 		);
 	}

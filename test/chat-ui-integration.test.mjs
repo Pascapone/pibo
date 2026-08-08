@@ -263,6 +263,8 @@ test("persisted user message with optimistic event id keeps one trace node", () 
 	const before = flatNodes(baseView).filter((node) => node.type === "user.message");
 	assert.equal(before.length, 1);
 	assert.equal(before[0].id, `event:message_queued:${clientTxnId}`);
+	assert.equal(before[0].status, "running");
+	assert.equal(buildCompactTerminalRows(baseView, { showThinking: true }).find((row) => row.id === before[0].id)?.pendingMessageDelivery, "queue");
 
 	const patched = patchTraceViewWithEvent(baseView, createEvent({
 		seq: 2,
@@ -273,6 +275,8 @@ test("persisted user message with optimistic event id keeps one trace node", () 
 	const after = flatNodes(patched).filter((node) => node.type === "user.message");
 	assert.equal(after.length, 1);
 	assert.equal(after[0].id, `event:message_queued:${clientTxnId}`);
+	assert.equal(after[0].status, "done");
+	assert.equal(buildCompactTerminalRows(patched, { showThinking: true }).find((row) => row.id === after[0].id)?.pendingMessageDelivery, undefined);
 });
 
 test("steering messages attach to the active turn without creating a queued turn", () => {
@@ -288,11 +292,16 @@ test("steering messages attach to the active turn without creating a queued turn
 	assert.equal(nodes.filter((node) => node.type === "agent.turn").length, 1);
 });
 
-test("confirmed steering events attach optimistic messages to the active turn", () => {
+test("confirmed steering events settle optimistic messages already attached to the active turn", () => {
 	const baseView = createBaseView([
 		createEvent({ seq: 1, type: "message_started", payload: { type: "message_started", eventId: "turn-1", text: "Start", source: "user" } }),
-		createEvent({ seq: 2, type: "message_steered", payload: { type: "message_steered", eventId: "steer-1", text: "Adjust course", source: "user" } }),
+		createEvent({ seq: 2, type: "message_steered", payload: { type: "message_steered", eventId: "steer-1", clientTxnId: "steer-1", delivery: "steer", text: "Adjust course", source: "user" } }),
 	], "running");
+	const optimistic = flatNodes(baseView).find((node) => node.id === "event:message_steered:steer-1");
+	assert.ok(optimistic);
+	assert.equal(optimistic.status, "running");
+	assert.equal(optimistic.parentId, "event:message:turn-1");
+	assert.equal(buildCompactTerminalRows(baseView, { showThinking: true }).find((row) => row.id === optimistic.id)?.pendingMessageDelivery, "steer");
 
 	const patched = patchTraceViewWithEvent(baseView, createEvent({
 		seq: 3,
@@ -302,7 +311,9 @@ test("confirmed steering events attach optimistic messages to the active turn", 
 	}), "running");
 	const steered = flatNodes(patched).filter((node) => node.id === "event:message_steered:steer-1");
 	assert.equal(steered.length, 1);
+	assert.equal(steered[0].status, "done");
 	assert.equal(steered[0].parentId, "event:message:turn-1");
+	assert.equal(buildCompactTerminalRows(patched, { showThinking: true }).find((row) => row.id === steered[0].id)?.pendingMessageDelivery, undefined);
 });
 
 test("persisted steering messages remain attached to the active turn after reload", () => {

@@ -13,6 +13,7 @@ async function runComposerSendScenario() {
 			createComposerSendPlan,
 			withComposerSendDelivery,
 		} = await import("./src/apps/chat-ui/src/composer-send.ts");
+		const { adaptTrace } = await import("./src/apps/chat-ui/src/tracing/adapt.ts");
 
 		const plan = createComposerSendPlan({
 			piboSessionId: "ps-1",
@@ -68,6 +69,31 @@ async function runComposerSendScenario() {
 		assert.equal(steerPlan.optimisticEvent.payload.type, "message_steered");
 		assert.equal(steerPlan.optimisticEvent.payload.delivery, "steer");
 		assert.equal(Object.hasOwn(steerPlan.optimisticEvent.payload, "queuedMessages"), false);
+
+		const pendingQueueSpan = adaptTrace("ps-1", "Test", [{
+			id: "event:message_queued:web-test-txn",
+			piboSessionId: "ps-1",
+			eventId: "web-test-txn",
+			type: "user.message",
+			title: "User Message",
+			status: "running",
+			startedAt: "2026-05-27T10:00:00.000Z",
+			output: "Ship it",
+			children: [],
+		}]).spans[0];
+		assert.equal(pendingQueueSpan.attributes["message.pending_delivery"], "queue");
+		const pendingSteerSpan = adaptTrace("ps-1", "Test", [{
+			id: "event:message_steered:web-test-txn",
+			piboSessionId: "ps-1",
+			eventId: "web-test-txn",
+			type: "user.message",
+			title: "User Message",
+			status: "running",
+			startedAt: "2026-05-27T10:00:00.000Z",
+			output: "Ship it",
+			children: [],
+		}]).spans[0];
+		assert.equal(pendingSteerSpan.attributes["message.pending_delivery"], "steer");
 
 		const existingEvent = { id: "existing", type: "message_queued", createdAt: "2026-05-27T09:59:00.000Z", payload: {} };
 		const appendedSameSession = appendComposerOptimisticEvent({ piboSessionId: "ps-1", events: [existingEvent] }, "ps-1", plan.optimisticEvent);

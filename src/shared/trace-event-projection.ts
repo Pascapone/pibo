@@ -95,6 +95,17 @@ export function applySingleEventToNodes(
 		storedEvent.streamFrameIndex,
 	);
 	if (!node) return;
+	if (
+		node.type === "user.message" &&
+		node.status === "running" &&
+		!node.parentId &&
+		payload.type === "message_steered"
+	) {
+		const activeTurn = [...byId.values()].reverse().find(
+			(candidate) => candidate.type === "agent.turn" && candidate.status === "running",
+		);
+		if (activeTurn) node.parentId = activeTurn.id;
+	}
 	if (node.type === "agent.turn" && node.eventId) {
 		const existingTurn = [...byId.values()].find(
 			(candidate) => candidate.type === "agent.turn" && candidate.eventId === node.eventId,
@@ -152,7 +163,12 @@ export function applySingleEventToNodes(
 	if (node.eventId) {
 		const existing = byId.get(node.id);
 		if (existing) {
-			if (node.type === "user.message" && node.parentId) existing.parentId = node.parentId;
+			if (node.type === "user.message") {
+				existing.status = node.status;
+				existing.parentId = node.parentId ?? existing.parentId;
+				existing.summary = node.summary ?? existing.summary;
+				existing.output = node.output ?? existing.output;
+			}
 			return;
 		}
 	}
@@ -376,7 +392,7 @@ function traceNodeFromEvent(
 				...(event.type === "message_steered" && event.activeEventId ? { parentId: messageTurnNodeId(event.activeEventId) } : {}),
 				type: "user.message",
 				title: "User Message",
-				status: "done",
+				status: isOptimisticUserMessageEvent(event) ? "running" : "done",
 				summary: event.text,
 				output: event.text,
 			};
@@ -642,6 +658,14 @@ function mergeReasoningEvent(target: PiboTraceNode, update: PiboTraceNode): void
 	target.summary = update.summary ?? target.summary;
 	target.output = update.output ?? target.output;
 	target.completedAt = update.completedAt ?? target.completedAt;
+}
+
+function isOptimisticUserMessageEvent(event: PiboOutputEvent): boolean {
+	return (
+		(event.type === "message_queued" || event.type === "message_steered") &&
+		"clientTxnId" in event &&
+		typeof event.clientTxnId === "string"
+	);
 }
 
 function isInternalSessionOperation(action: string): boolean {

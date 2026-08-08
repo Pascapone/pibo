@@ -75,6 +75,7 @@ export type CompactTerminalRow = {
 	orderStreamFrameIndex?: number;
 	linkedPiboSessionId?: string;
 	forkEntryId?: string;
+	pendingMessageDelivery?: "queue" | "steer";
 	startedAt?: string;
 	completedAt?: string;
 	durationMs?: number;
@@ -321,6 +322,7 @@ function createUserMessageRow(node: PiboTraceNode): CompactTerminalRow {
 		lines: [{ prefix: "prompt", tokens: [token(text)] }],
 		sourceNodeIds: [node.id],
 		forkEntryId: node.entryId,
+		pendingMessageDelivery: pendingUserMessageDelivery(node),
 		startedAt: node.startedAt,
 		output: text,
 		payloadRefs: node.payloadRefs,
@@ -1359,6 +1361,13 @@ function delegationVerb(status: PiboTraceNode["status"]): string {
 	if (status === "running") return "Spawning";
 	if (status === "error") return "Spawn failed";
 	return "Spawned";
+}
+
+function pendingUserMessageDelivery(node: PiboTraceNode): "queue" | "steer" | undefined {
+	if (node.status !== "running") return undefined;
+	if (node.id.startsWith("event:message_steered:")) return "steer";
+	if (node.id.startsWith("event:message_queued:")) return "queue";
+	return undefined;
 }
 
 function asyncVerb(status: PiboTraceNode["status"]): string {
