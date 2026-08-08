@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import {
 	Archive,
 	ArchiveRestore,
@@ -56,6 +56,7 @@ export function SessionNode({
 	const hasChildren = node.children.length > 0;
 	const hasSelectedDescendant = selectedPiboSessionId !== null && node.piboSessionId !== selectedPiboSessionId && selectedSessionPathIds.has(node.piboSessionId);
 	const [expanded, setExpanded] = useState(hasSelectedDescendant);
+	const subsessionsRegionId = useId();
 
 	useEffect(() => {
 		if (!editing) setDraftTitle(safeTitle);
@@ -189,8 +190,9 @@ export function SessionNode({
 									type="button"
 									onClick={() => setExpanded((current) => !current)}
 									aria-expanded={expanded}
+									aria-controls={subsessionsRegionId}
 									title={expanded ? "Collapse Subsessions" : "Expand Subsessions"}
-									aria-label={expanded ? "Collapse Subsessions" : "Expand Subsessions"}
+									aria-label={`Subsessions for ${safeTitle}`}
 									className={`h-4 w-4 inline-flex items-center justify-center rounded-sm transition-colors ${
 										expanded ? "text-[#0bda57]" : "text-slate-600 hover:text-[#11a4d4]"
 									}`}
@@ -235,23 +237,27 @@ export function SessionNode({
 					</div>
 				)}
 			</div>
-			{expanded ? node.children.map((child) => (
-				<SessionNode
-					key={child.piboSessionId}
-					node={child}
-					signalNow={signalNow}
-					selectedPiboSessionId={selectedPiboSessionId}
-					selectedSessionPathIds={selectedSessionPathIds}
-					onSelect={onSelect}
-					onRename={onRename}
-					onArchive={onArchive}
-					onDelete={onDelete}
-					onViewContext={onViewContext}
-					depth={depth + 1}
-					loadingPiboSessionId={loadingPiboSessionId}
-					showWorkflowSessionKindMarkers={showWorkflowSessionKindMarkers}
-				/>
-			)) : null}
+			{hasChildren ? (
+				<div id={subsessionsRegionId} hidden={!expanded}>
+					{expanded ? node.children.map((child) => (
+						<SessionNode
+							key={child.piboSessionId}
+							node={child}
+							signalNow={signalNow}
+							selectedPiboSessionId={selectedPiboSessionId}
+							selectedSessionPathIds={selectedSessionPathIds}
+							onSelect={onSelect}
+							onRename={onRename}
+							onArchive={onArchive}
+							onDelete={onDelete}
+							onViewContext={onViewContext}
+							depth={depth + 1}
+							loadingPiboSessionId={loadingPiboSessionId}
+							showWorkflowSessionKindMarkers={showWorkflowSessionKindMarkers}
+						/>
+					)) : null}
+				</div>
+			) : null}
 		</div>
 	);
 }
