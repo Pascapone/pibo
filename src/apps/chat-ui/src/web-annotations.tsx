@@ -16,6 +16,7 @@ import {
 } from "./web-annotation-storage";
 
 const WEB_ANNOTATIONS_DIALOG_ID = "web-annotations-dialog";
+const WEB_ANNOTATIONS_DETAILS_ID = "web-annotations-session-panel-details";
 
 export function WebAnnotationsSessionPanel({
 	piboSessionId,
@@ -52,7 +53,6 @@ export function WebAnnotationsSessionPanel({
 						<span className="rounded-sm border border-slate-700 px-1.5 py-0.5 text-[10px] text-slate-400">{annotations.length}</span>
 						{selectedIds.length ? <span className="rounded-sm border border-[#11a4d4]/50 px-1.5 py-0.5 text-[10px] text-[#11a4d4]">{selectedIds.length} attached</span> : null}
 					</div>
-					{collapsed ? null : <div className="text-[11px] text-slate-500">Global annotation list. Selected attachments follow you when switching sessions.</div>}
 				</div>
 				<div className="ml-auto flex shrink-0 items-center gap-1">
 					<button type="button" onClick={onRefresh} disabled={loading} title="Refresh annotations" aria-label="Refresh annotations" className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-slate-700 text-slate-300 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50 sm:h-7 sm:w-7" data-pibo-debug="web-annotations-refresh">
@@ -61,7 +61,7 @@ export function WebAnnotationsSessionPanel({
 					<button type="button" onClick={onClear} disabled={loading || !annotations.length} title="Clear visible annotations" aria-label="Clear visible annotations" className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-slate-700 text-slate-300 hover:border-red-500 hover:text-red-300 disabled:opacity-50 sm:h-7 sm:w-7">
 						<Trash2 size={12} />
 					</button>
-					<button type="button" onClick={onCollapse} title={collapsed ? "Expand annotations panel" : "Collapse annotations panel"} aria-label={collapsed ? "Expand annotations panel" : "Collapse annotations panel"} className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-slate-700 text-slate-300 hover:border-[#11a4d4] hover:text-[#11a4d4] sm:h-7 sm:w-7">
+					<button type="button" onClick={onCollapse} title={collapsed ? "Expand annotations panel" : "Collapse annotations panel"} aria-label="Web annotations details" aria-expanded={!collapsed} aria-controls={WEB_ANNOTATIONS_DETAILS_ID} className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-slate-700 text-slate-300 hover:border-[#11a4d4] hover:text-[#11a4d4] sm:h-7 sm:w-7">
 						{collapsed ? <ChevronsUp size={12} /> : <ChevronsDown size={12} />}
 					</button>
 					<button type="button" onClick={onClose} title="Hide annotations panel" aria-label="Hide annotations panel" className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-slate-700 text-slate-300 hover:border-[#11a4d4] hover:text-[#11a4d4] sm:h-7 sm:w-7">
@@ -69,7 +69,9 @@ export function WebAnnotationsSessionPanel({
 					</button>
 				</div>
 			</div>
-			{collapsed ? null : error ? (
+			<div id={WEB_ANNOTATIONS_DETAILS_ID} hidden={collapsed}>
+				<div className="text-[11px] text-slate-500">Global annotation list. Selected attachments follow you when switching sessions.</div>
+				{error ? (
 				<div className="rounded-sm border border-red-900 bg-red-950/40 px-3 py-2 text-xs text-red-200" data-pibo-debug="web-annotations-error">{boundedUiText(error, 220)}</div>
 			) : loading && !annotations.length ? (
 				<div className="rounded-sm border border-slate-800 bg-[#0e1116] px-3 py-2 text-xs text-slate-400" data-pibo-debug="web-annotations-loading">Loading annotations…</div>
@@ -99,7 +101,8 @@ export function WebAnnotationsSessionPanel({
 						);
 					})}
 				</div>
-			)}
+				)}
+			</div>
 		</section>
 	);
 }
