@@ -7,6 +7,12 @@ export type StickyScrollIntentInput = {
 	shiftKey?: boolean;
 };
 
+export type StickyScrollPositionInput = {
+	hasUserScrollIntent: boolean;
+	previousScrollTop?: number;
+	scrollTop: number;
+};
+
 export type StickyRenderedItem = {
 	index: number;
 	offset: number;
@@ -38,6 +44,18 @@ export function stickyScrollIntentDirection(input: StickyScrollIntentInput): Sti
 		if (["ArrowDown", "PageDown", "End", " "].includes(input.key ?? "")) return "toward";
 	}
 	return undefined;
+}
+
+export function stickyScrollPositionDirection(input: StickyScrollPositionInput): StickyScrollIntentDirection | undefined {
+	if (!input.hasUserScrollIntent || input.previousScrollTop === undefined) return undefined;
+	if (input.scrollTop < input.previousScrollTop - 1) return "away";
+	if (input.scrollTop > input.previousScrollTop + 1) return "toward";
+	return undefined;
+}
+
+export function stickyTouchScrollIntentDirection(previousY: number | undefined, currentY: number | undefined): StickyScrollIntentDirection | undefined {
+	if (currentY === undefined || previousY === undefined || currentY === previousY) return undefined;
+	return currentY > previousY ? "away" : "toward";
 }
 
 export function shouldReattachStickyAtBottom(armed: boolean, scrollingAwayFromBottom: boolean): boolean {
