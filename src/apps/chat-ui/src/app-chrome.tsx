@@ -53,12 +53,13 @@ export function AppHeader({
 				<img src="/apps/chat/assets/pwa-images/android/launchericon-512x512.png" alt="Logo" className="h-5 w-auto shrink-0" />
 				<div className="truncate font-extrabold tracking-[0.08em] uppercase text-lg max-[420px]:text-base">Pibo Chat</div>
 			</div>
-			<nav className="flex gap-1 max-[1200px]:hidden min-[1201px]:absolute min-[1201px]:left-1/2 min-[1201px]:-translate-x-1/2">
+			<nav aria-label="Main navigation" className="flex gap-1 max-[1200px]:hidden min-[1201px]:absolute min-[1201px]:left-1/2 min-[1201px]:-translate-x-1/2">
 				{MAIN_NAV_AREAS.map((item) => (
 					<button
 						key={item}
 						type="button"
 						onClick={() => onSelectMainNavArea(item)}
+						aria-current={area === item ? "page" : undefined}
 						className={`h-8 px-3 border rounded-sm text-xs uppercase tracking-wider ${
 							area === item ? "border-[#11a4d4] text-[#11a4d4] bg-[#11a4d4]/10" : "border-slate-700 text-slate-400"
 						}`}
@@ -94,6 +95,7 @@ export function AppHeader({
 									key={item}
 									type="button"
 									onClick={() => onSelectMainNavArea(item)}
+									aria-current={area === item ? "page" : undefined}
 									className={`flex w-full items-center justify-between gap-2 rounded-sm px-3 py-2 text-left text-xs uppercase tracking-wider ${
 										area === item ? "bg-[#11a4d4]/10 text-[#11a4d4]" : "text-slate-300 hover:bg-slate-800/80 hover:text-[#11a4d4]"
 									}`}
