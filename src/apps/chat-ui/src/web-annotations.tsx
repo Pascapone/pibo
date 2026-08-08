@@ -77,11 +77,12 @@ export function WebAnnotationsSessionPanel({
 				<div className="mt-2 grid max-h-[min(40svh,18rem)] grid-cols-1 gap-2 overflow-y-auto pr-1 sm:max-h-56 sm:grid-cols-[repeat(auto-fill,minmax(16rem,1fr))]" data-pibo-debug="web-annotations-list">
 					{annotations.map((annotation) => {
 						const selected = selectedIds.includes(annotation.id);
+						const attachmentIdentity = `${boundedUiText(annotation.primaryTarget || annotation.label || annotation.selector || annotation.id, 120)} (${annotation.id})`;
 						return (
 							<div key={annotation.id} data-pibo-debug="web-annotation-chip" data-web-annotation-id={annotation.id} data-web-annotation-session-id={annotation.piboSessionId} data-web-annotation-selected={selected ? "true" : "false"} className={`min-w-0 rounded-sm border px-3 py-2 text-xs ${selected ? "border-[#11a4d4] bg-[#11a4d4]/10" : "border-slate-800 bg-[#0e1116]"}`}>
 								<div className="mb-1 flex items-center justify-between gap-2">
 									<span className="min-w-0 truncate font-mono text-[11px] text-slate-500">{annotation.status} · {annotation.targetKind}</span>
-									<button type="button" onClick={() => onToggle(annotation.id)} className={`inline-flex h-8 shrink-0 items-center gap-1 rounded-sm border px-2 text-[11px] sm:h-6 sm:px-1.5 ${selected ? "border-[#11a4d4] text-[#11a4d4]" : "border-slate-700 text-slate-300 hover:border-[#11a4d4] hover:text-[#11a4d4]"}`}>
+									<button type="button" onClick={() => onToggle(annotation.id)} aria-pressed={selected} aria-label={`Include web annotation ${attachmentIdentity}`} title={`${selected ? "Detach" : "Attach"} web annotation ${attachmentIdentity}`} className={`inline-flex h-8 shrink-0 items-center gap-1 rounded-sm border px-2 text-[11px] sm:h-6 sm:px-1.5 ${selected ? "border-[#11a4d4] text-[#11a4d4]" : "border-slate-700 text-slate-300 hover:border-[#11a4d4] hover:text-[#11a4d4]"}`}>
 										{selected ? <X size={11} /> : <Plus size={11} />} {selected ? "Detach" : "Attach"}
 									</button>
 								</div>
