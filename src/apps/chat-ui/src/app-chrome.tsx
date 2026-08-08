@@ -1,5 +1,5 @@
 import type { RefObject } from "react";
-import { AlertTriangle, LogOut, List, Menu, UserRound } from "lucide-react";
+import { AlertTriangle, LogOut, List, Menu, RefreshCw, UserRound } from "lucide-react";
 import { signInWithGoogle, signOut } from "./api-auth";
 import type { BootstrapData } from "./types";
 
@@ -139,6 +139,26 @@ export function SignedOut({ message }: { message: string }) {
 				<div className="mb-4 text-sm text-slate-400">{message}</div>
 				<button type="button" onClick={() => void signInWithGoogle()} className="px-3 py-2 bg-[#11a4d4] rounded-sm">
 					Sign in with Google
+				</button>
+			</div>
+		</div>
+	);
+}
+
+export function BootstrapLoadError({ message, onRetry }: { message: string; onRetry: () => void }) {
+	return (
+		<div className="min-h-screen bg-[#101d22] text-slate-300 grid place-items-center px-4">
+			<div className="w-full max-w-md border border-slate-700 bg-[#1a262b] p-5 rounded-sm" role="alert">
+				<div className="flex items-start gap-3">
+					<AlertTriangle size={18} className="mt-0.5 shrink-0 text-orange-400" />
+					<div>
+						<div className="text-sm font-bold uppercase tracking-wider text-slate-100">Could not load Pibo Chat</div>
+						<div className="mt-2 text-sm text-slate-400">{message}</div>
+					</div>
+				</div>
+				<button type="button" onClick={onRetry} className="mt-4 inline-flex items-center gap-2 px-3 py-2 bg-[#11a4d4] text-white rounded-sm">
+					<RefreshCw size={14} />
+					Retry
 				</button>
 			</div>
 		</div>
