@@ -76,3 +76,98 @@ async function runLiveOverlayScenario() {
 test("live overlay trimming preserves bounded-page omissions until exact confirmation", async () => {
 	await assert.doesNotReject(runLiveOverlayScenario());
 });
+
+async function runPersistedAssistantReconciliationScenario() {
+	const script = `
+		import assert from "node:assert/strict";
+		const { patchTraceViewWithEvents, traceNodesFromEntries } = await import("./src/shared/trace-engine.ts");
+		const { buildCompactTerminalRows } = await import("./src/session-ui/terminalRows.ts");
+
+		const piboSessionId = "ps-test";
+		const eventId = "queued-turn";
+		const transcriptEntries = [
+			{
+				id: "entry-user",
+				type: "message",
+				timestamp: "2026-08-07T10:00:00.000Z",
+				message: { role: "user", content: [{ type: "text", text: "Queued request" }] },
+			},
+			{
+				id: "entry-assistant-first",
+				type: "message",
+				timestamp: "2026-08-07T10:00:01.000Z",
+				message: { role: "assistant", content: [{ type: "text", text: "Same text" }], stopReason: "toolUse" },
+			},
+			{
+				id: "entry-tool",
+				type: "message",
+				timestamp: "2026-08-07T10:00:02.000Z",
+				message: { role: "toolResult", toolCallId: "tool-1", toolName: "read", content: "ok", isError: false },
+			},
+			{
+				id: "entry-assistant-final",
+				type: "message",
+				timestamp: "2026-08-07T10:00:03.000Z",
+				message: { role: "assistant", content: [{ type: "text", text: "Same text" }], stopReason: "stop" },
+			},
+		];
+		const nodes = traceNodesFromEntries(piboSessionId, transcriptEntries, [{
+			eventId,
+			userText: "Queued request",
+			startedAt: "2026-08-07T10:00:00.000Z",
+			completedAt: "2026-08-07T10:00:04.000Z",
+		}]);
+		const baseTrace = {
+			piboSessionId,
+			title: "Test session",
+			version: 1,
+			latestStreamId: 10,
+			eventCount: 0,
+			eventLimit: 100,
+			hasOlderEvents: false,
+			nextBeforeSequence: undefined,
+			rawEvents: [],
+			nodes,
+		};
+		const event = (id, eventSequence, type, payload) => ({
+			id,
+			piboSessionId,
+			createdAt: \`2026-08-07T10:00:0\${eventSequence}.000Z\`,
+			eventSequence,
+			streamId: 10 + eventSequence,
+			type,
+			payload: { type, piboSessionId, eventId, ...payload },
+		});
+		const patched = patchTraceViewWithEvents(baseTrace, [
+			event("assistant-0", 1, "assistant_message", { assistantIndex: 0, contentIndex: 4, text: "Same text" }),
+			event("assistant-1", 2, "assistant_message", { assistantIndex: 1, contentIndex: 9, text: "Same text" }),
+			event("assistant-live", 3, "assistant_delta", { assistantIndex: 2, contentIndex: 12, text: "Still streaming" }),
+		], "running");
+
+		const projectedAssistants = patched.nodes.filter((node) => node.type === "assistant.message");
+		assert.equal(projectedAssistants.length, 5, "the refreshed transcript and live event projection intentionally coexist");
+		const rows = buildCompactTerminalRows(patched, { showThinking: true });
+		const assistants = rows.filter((row) => row.kind === "message.assistant");
+		assert.equal(rows.filter((row) => row.kind === "tool.call").length, 1, "non-assistant rows must remain unchanged");
+		assert.equal(assistants.length, 3, "only matching completed assistant projections should reconcile");
+		assert.deepEqual(assistants.map((row) => row.id), [
+			"terminal:assistant:queued-turn:assistant:0",
+			"terminal:assistant:queued-turn:assistant:1",
+			"terminal:assistant:queued-turn:assistant:2",
+		]);
+		assert.deepEqual([...assistants[0].sourceNodeIds].sort(), [
+			"entry:entry-assistant-first:response",
+			"event:assistant:queued-turn:assistant:0",
+		]);
+		assert.deepEqual([...assistants[1].sourceNodeIds].sort(), [
+			"entry:entry-assistant-final:response",
+			"event:assistant:queued-turn:assistant:1",
+		]);
+		assert.equal(assistants[2].status, "running", "event-only streaming output must remain visible");
+	`;
+	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
+}
+
+test("Compact Terminal reconciles persisted assistants with completed event projections by assistant index", async () => {
+	await assert.doesNotReject(runPersistedAssistantReconciliationScenario());
+});
