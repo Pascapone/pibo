@@ -596,9 +596,9 @@ function formatBytes(bytes: number): string {
 	return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
 }
 
-function resizeComposerInput(input: HTMLTextAreaElement | null) {
+export function resizeComposerInput(input: HTMLTextAreaElement | null) {
 	if (!input) return;
-	if (!input.value.includes("\n") && input.value.length < 80) {
+	if (input.value && !input.value.includes("\n") && input.value.length < 80) {
 		input.style.height = "";
 		input.style.overflowY = "hidden";
 		return;
