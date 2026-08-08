@@ -14,6 +14,12 @@ export interface GatewayResourceGuardPolicy {
 	minHeapAvailableBytes: number;
 	maxRssBytes: number;
 	knownDaemonWarningRssBytes: number;
+	maxConcurrentYieldedRuns: number;
+	yieldedRunMemoryReservationBytes: number;
+}
+
+export interface GatewayWorkReservation {
+	release(): void;
 }
 
 export interface GatewayProcessMemorySnapshot {
@@ -76,11 +82,13 @@ export interface CollectGatewayResourceSnapshotOptions {
 }
 
 const DEFAULT_POLICY: GatewayResourceGuardPolicy = Object.freeze({
-	mode: "warn",
+	mode: "block",
 	minFreeMemoryBytes: 256 * 1024 * 1024,
 	minHeapAvailableBytes: 64 * 1024 * 1024,
 	maxRssBytes: 1536 * 1024 * 1024,
 	knownDaemonWarningRssBytes: 2 * 1024 * 1024 * 1024,
+	maxConcurrentYieldedRuns: 1,
+	yieldedRunMemoryReservationBytes: 2 * 1024 * 1024 * 1024,
 });
 
 export function resolveGatewayResourceGuardPolicy(env: NodeJS.ProcessEnv = process.env): GatewayResourceGuardPolicy {
@@ -90,6 +98,8 @@ export function resolveGatewayResourceGuardPolicy(env: NodeJS.ProcessEnv = proce
 		minHeapAvailableBytes: parseByteThreshold(env.PIBO_GATEWAY_MIN_HEAP_AVAILABLE_BYTES, DEFAULT_POLICY.minHeapAvailableBytes),
 		maxRssBytes: parseByteThreshold(env.PIBO_GATEWAY_MAX_RSS_BYTES, DEFAULT_POLICY.maxRssBytes),
 		knownDaemonWarningRssBytes: parseByteThreshold(env.PIBO_GATEWAY_KNOWN_DAEMON_WARNING_RSS_BYTES, DEFAULT_POLICY.knownDaemonWarningRssBytes),
+		maxConcurrentYieldedRuns: parsePositiveInteger(env.PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS, DEFAULT_POLICY.maxConcurrentYieldedRuns),
+		yieldedRunMemoryReservationBytes: parseByteThreshold(env.PIBO_GATEWAY_YIELDED_RUN_MEMORY_RESERVATION_BYTES, DEFAULT_POLICY.yieldedRunMemoryReservationBytes),
 	};
 }
 
@@ -149,8 +159,43 @@ export async function collectGatewayResourceSnapshot(options: CollectGatewayReso
 export function assertGatewayResourceAvailableForWork(workLabel: string, env: NodeJS.ProcessEnv = process.env): void {
 	const snapshot = buildGatewayResourceSnapshot({ env, includeProcesses: false });
 	if (snapshot.guardAction !== "block") return;
-	const reasons = snapshot.checks.filter((check) => check.severity === "critical").map((check) => check.message).join("; ");
-	throw new Error(`Gateway resource guard blocked ${workLabel} before starting: ${reasons}`);
+	throwGatewayResourceBlock(workLabel, snapshot.checks.filter((check) => check.severity === "critical").map((check) => check.message));
+}
+
+export class GatewayWorkAdmissionController {
+	private readonly activeReservations = new Set<symbol>();
+
+	reserve(workLabel: string, env: NodeJS.ProcessEnv = process.env): GatewayWorkReservation {
+		const snapshot = buildGatewayResourceSnapshot({ env, includeProcesses: false });
+		const policy = snapshot.policy;
+		if (snapshot.guardAction === "block") {
+			throwGatewayResourceBlock(workLabel, snapshot.checks.filter((check) => check.severity === "critical").map((check) => check.message));
+		}
+		if (policy.mode === "block" && this.activeReservations.size >= policy.maxConcurrentYieldedRuns) {
+			throwGatewayResourceBlock(workLabel, [
+				`Active yielded runs ${this.activeReservations.size} reached the configured limit ${policy.maxConcurrentYieldedRuns}. Wait for an active run to settle or raise PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS explicitly.`,
+			]);
+		}
+		if (
+			policy.mode === "block" &&
+			snapshot.host.freeBytes < policy.minFreeMemoryBytes + policy.yieldedRunMemoryReservationBytes
+		) {
+			throwGatewayResourceBlock(workLabel, [
+				`Host free memory ${snapshot.host.freeBytes} cannot preserve reserve ${policy.minFreeMemoryBytes} after the yielded-run reservation ${policy.yieldedRunMemoryReservationBytes}.`,
+			]);
+		}
+
+		const reservation = Symbol(workLabel);
+		this.activeReservations.add(reservation);
+		let released = false;
+		return {
+			release: () => {
+				if (released) return;
+				released = true;
+				this.activeReservations.delete(reservation);
+			},
+		};
+	}
 }
 
 export function parseHostProcessResourceList(output: string, gatewayPid: number, policy: GatewayResourceGuardPolicy = DEFAULT_POLICY): HostProcessResourceInfo[] {
@@ -180,7 +225,7 @@ export function renderGatewayResourceSnapshotText(snapshot: GatewayResourceSnaps
 	lines.push(`Gateway PID: ${snapshot.gateway.pid}`);
 	lines.push(`Gateway memory: rss=${snapshot.gateway.rssBytes} heapUsed=${snapshot.gateway.heapUsedBytes} heapAvailable=${snapshot.gateway.heapAvailableBytes} heapLimit=${snapshot.gateway.heapLimitBytes}`);
 	lines.push(`Host memory: free=${snapshot.host.freeBytes} total=${snapshot.host.totalBytes}`);
-	lines.push(`Thresholds: minFree=${snapshot.policy.minFreeMemoryBytes} minHeapAvailable=${snapshot.policy.minHeapAvailableBytes} maxRss=${snapshot.policy.maxRssBytes} daemonWarnRss=${snapshot.policy.knownDaemonWarningRssBytes}`);
+	lines.push(`Thresholds: minFree=${snapshot.policy.minFreeMemoryBytes} minHeapAvailable=${snapshot.policy.minHeapAvailableBytes} maxRss=${snapshot.policy.maxRssBytes} daemonWarnRss=${snapshot.policy.knownDaemonWarningRssBytes} maxYieldedRuns=${snapshot.policy.maxConcurrentYieldedRuns} yieldedRunReservation=${snapshot.policy.yieldedRunMemoryReservationBytes}`);
 	lines.push(`Related processes: children=${snapshot.processes.children.length} knownDaemons=${snapshot.processes.knownDaemons.length} processList=${snapshot.processes.available ? "available" : "unavailable"}`);
 	if (snapshot.processes.error) lines.push(`Process list error: ${snapshot.processes.error}`);
 	const visibleProcesses = [...snapshot.processes.children, ...snapshot.processes.knownDaemons].slice(0, 10);
@@ -231,9 +276,10 @@ function processResultFromOptions(gatewayPid: number, options: CollectGatewayRes
 
 function parseMode(value: string | undefined, fallback: GatewayResourceGuardMode): GatewayResourceGuardMode {
 	const normalized = value?.trim().toLowerCase();
+	if (normalized === undefined || normalized === "") return fallback;
 	if (normalized === "off" || normalized === "0" || normalized === "false") return "off";
 	if (normalized === "block" || normalized === "strict") return "block";
-	if (normalized === "warn" || normalized === "1" || normalized === "true" || normalized === undefined || normalized === "") return "warn";
+	if (normalized === "warn" || normalized === "1" || normalized === "true") return "warn";
 	return fallback;
 }
 
@@ -241,6 +287,16 @@ function parseByteThreshold(value: string | undefined, fallback: number): number
 	if (value === undefined || value.trim() === "") return fallback;
 	const parsed = Number(value);
 	return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : fallback;
+}
+
+function parsePositiveInteger(value: string | undefined, fallback: number): number {
+	if (value === undefined || value.trim() === "") return fallback;
+	const parsed = Number(value);
+	return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function throwGatewayResourceBlock(workLabel: string, reasons: string[]): never {
+	throw new Error(`Gateway resource guard blocked ${workLabel} before starting: ${reasons.join("; ")}`);
 }
 
 function knownDaemonLabel(commandName: string, args: string): string | undefined {
