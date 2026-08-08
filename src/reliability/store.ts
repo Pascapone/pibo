@@ -737,6 +737,7 @@ export class PiboReliabilityStore {
 		maxAttempts?: number;
 		timeoutMs?: number;
 		serviceWarning?: string;
+		workerId?: string;
 	}): PiboRunStoreRecord {
 		const timestamp = now();
 		const runId = input.runId ?? `run_${randomUUID()}`;
@@ -776,7 +777,7 @@ export class PiboReliabilityStore {
 				timeoutAt ?? null,
 				input.serviceWarning ?? null,
 			);
-		this.claimJob(job.jobId, `run-registry:${process.pid}`, 24 * 60 * 60 * 1000);
+		this.claimJob(job.jobId, input.workerId ?? `run-registry:${process.pid}`, 24 * 60 * 60 * 1000);
 		return this.requireRun(runId);
 	}
 
@@ -869,13 +870,27 @@ export class PiboReliabilityStore {
 		return Number(result.changes ?? 0);
 	}
 
-	recoverInterruptedRuns(): PiboRunStoreRecord[] {
+	recoverInterruptedRuns(workerId = `run-registry:${process.pid}`): PiboRunStoreRecord[] {
 		const rows = this.db.prepare("SELECT * FROM pibo_runs WHERE status = 'running'").all() as PiboRunRow[];
 		const recovered: PiboRunStoreRecord[] = [];
 		const timestamp = now();
 		for (const row of rows) {
-			if (row.job_id && this.hasUnexpiredJobClaim(row.job_id, timestamp)) continue;
+			if (row.job_id && this.hasUnexpiredJobClaim(row.job_id, timestamp, workerId)) continue;
 			const run = runFromRow(row);
+			if (run.timeoutAt && run.timeoutAt <= timestamp) {
+				const error = `Run deadline ${run.timeoutAt} elapsed before the interrupted runtime recovered.`;
+				if (run.jobId) this.moveLiveJobToDead(run.jobId, error, "timeout", timestamp);
+				recovered.push(
+					this.updateRun(run.runId, {
+						status: "timed_out",
+						error,
+						timeoutPhase: "lifetime",
+						summary: `${run.toolName} run started successfully, then reached its configured timeout.`,
+						completedAt: timestamp,
+					}) ?? run,
+				);
+				continue;
+			}
 			if (run.retryable && run.maxAttempts > 1) {
 				if (run.jobId) this.releaseJobForRetry(run.jobId, timestamp);
 				recovered.push(
@@ -958,16 +973,17 @@ export class PiboReliabilityStore {
 		for (const row of expired) this.moveJobToDead(row, row.last_error ?? "Job expired.", "expired", timestamp);
 	}
 
-	private hasUnexpiredJobClaim(jobId: string, timestamp: string): boolean {
+	private hasUnexpiredJobClaim(jobId: string, timestamp: string, workerId: string): boolean {
 		const row = this.db
 			.prepare(`
 				SELECT job_id FROM pibo_jobs
 				WHERE job_id = ?
 					AND state = 'running'
+					AND worker_id = ?
 					AND claim_expires_at IS NOT NULL
 					AND claim_expires_at > ?
 			`)
-			.get(jobId, timestamp);
+			.get(jobId, workerId, timestamp);
 		return row !== undefined;
 	}
 

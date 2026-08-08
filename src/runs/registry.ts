@@ -59,6 +59,7 @@ export type PiboRunRegistryOptions = {
 	consumedTerminalTtlMs?: number;
 	detachedTerminalTtlMs?: number;
 	store?: PiboReliabilityStore;
+	workerId?: string;
 };
 
 export type PiboRunPruneOptions = {
@@ -137,6 +138,7 @@ export class PiboRunRegistry {
 	private readonly runs = new Map<string, PiboRunRecord>();
 	private readonly waiters = new Map<string, Waiter[]>();
 	private readonly listeners = new Set<PiboRunRegistryListener>();
+	private readonly workerId: string;
 
 	subscribe(listener: PiboRunRegistryListener): () => void {
 		this.listeners.add(listener);
@@ -144,8 +146,9 @@ export class PiboRunRegistry {
 	}
 
 	constructor(private readonly options: PiboRunRegistryOptions = {}) {
+		this.workerId = options.workerId ?? `run-registry:${process.pid}:${randomUUID()}`;
 		if (this.options.store) {
-			this.options.store.recoverInterruptedRuns();
+			this.options.store.recoverInterruptedRuns(this.workerId);
 			for (const record of this.options.store.listRuns({ includeConsumed: true, includeDetached: true })) {
 				this.runs.set(record.runId, recordFromStored(record));
 			}
@@ -164,6 +167,7 @@ export class PiboRunRegistry {
 				maxAttempts: input.maxAttempts ?? 1,
 				timeoutMs: input.timeoutMs,
 				serviceWarning: input.serviceWarning,
+				workerId: this.workerId,
 			});
 			const record = recordFromStored(stored);
 			this.runs.set(record.runId, record);
@@ -205,7 +209,7 @@ export class PiboRunRegistry {
 		record.summary = `${record.toolName} run completed.`;
 		this.finish(record);
 		this.options.store?.updateRun(runId, record);
-		if (record.jobId) this.options.store?.ack(record.jobId, `run-registry:${process.pid}`);
+		if (record.jobId) this.options.store?.ack(record.jobId, this.workerId);
 		const output = snapshot(record);
 		this.notify({ type: "run_changed", run: output, previousStatus });
 		return output;
@@ -221,7 +225,7 @@ export class PiboRunRegistry {
 		record.summary = `${record.toolName} run failed.`;
 		this.finish(record);
 		this.options.store?.updateRun(runId, record);
-		if (record.jobId) this.options.store?.fail(record.jobId, `run-registry:${process.pid}`, error);
+		if (record.jobId) this.options.store?.fail(record.jobId, this.workerId, error);
 		const output = snapshot(record);
 		this.notify({ type: "run_changed", run: output, previousStatus, reason: error });
 		return output;
@@ -240,7 +244,7 @@ export class PiboRunRegistry {
 			: `${record.toolName} run reached ${formatTimeout(record.timeoutMs)} before startup was confirmed.`;
 		this.finish(record);
 		this.options.store?.updateRun(runId, record);
-		if (record.jobId) this.options.store?.fail(record.jobId, `run-registry:${process.pid}`, error);
+		if (record.jobId) this.options.store?.fail(record.jobId, this.workerId, error);
 		const output = snapshot(record);
 		this.notify({ type: "run_changed", run: output, previousStatus, reason: error });
 		return output;
@@ -320,7 +324,7 @@ export class PiboRunRegistry {
 			record.status = "cancelled";
 			record.summary = `${record.toolName} run cancelled.`;
 			this.finish(record);
-			if (record.jobId) this.options.store?.fail(record.jobId, `run-registry:${process.pid}`, "Run was cancelled.");
+			if (record.jobId) this.options.store?.fail(record.jobId, this.workerId, "Run was cancelled.");
 		}
 		record.consumed = true;
 		record.updatedAt = now();
@@ -392,7 +396,7 @@ export class PiboRunRegistry {
 			record.summary = `${record.toolName} run cancelled.`;
 			this.finish(record);
 			this.options.store?.updateRun(record.runId, record);
-			if (record.jobId) this.options.store?.fail(record.jobId, `run-registry:${process.pid}`, reason);
+			if (record.jobId) this.options.store?.fail(record.jobId, this.workerId, reason);
 			const output = snapshot(record);
 			this.notify({ type: "run_changed", run: output, previousStatus: "running", reason });
 			cancelled.push(output);
@@ -410,7 +414,7 @@ export class PiboRunRegistry {
 			record.summary = `${record.toolName} run cancelled.`;
 			this.finish(record);
 			this.options.store?.updateRun(record.runId, record);
-			if (record.jobId) this.options.store?.fail(record.jobId, `run-registry:${process.pid}`, reason);
+			if (record.jobId) this.options.store?.fail(record.jobId, this.workerId, reason);
 			const output = snapshot(record);
 			this.notify({ type: "run_changed", run: output, previousStatus: "running", reason });
 			cancelled.push(output);
