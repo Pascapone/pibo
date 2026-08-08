@@ -2,6 +2,7 @@ import type { PiboThinkingLevel } from "./thinking.js";
 
 export type PiboEventSource = "user" | "ui" | "service" | "actor";
 export type PiboMessageDelivery = "queue" | "steer";
+export type PiboMessageCapabilityScope = "run-reminder";
 
 export class PiboSteeringUnavailableError extends Error {
 	constructor(message = "The active session cannot accept steering right now.", options?: ErrorOptions) {
@@ -34,6 +35,7 @@ export type PiboMessageEvent = {
 	text: string;
 	delivery?: PiboMessageDelivery;
 	source?: PiboEventSource;
+	capabilityScope?: PiboMessageCapabilityScope;
 	id?: string;
 	provenance?: PiboMessageProvenance;
 };

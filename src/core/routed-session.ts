@@ -62,6 +62,13 @@ type FastModePatchableAgent = {
 };
 
 const FAST_SERVICE_TIER = "priority";
+const RUN_REMINDER_CAPABILITY_TOOLS = new Set([
+	"pibo_run_status",
+	"pibo_run_wait",
+	"pibo_run_read",
+	"pibo_run_cancel",
+	"pibo_run_ack",
+]);
 
 function modelSupportsFastServiceTier(model: ProviderRequestModel | undefined): boolean {
 	if (!model) return false;
@@ -575,6 +582,10 @@ export class RoutedSession {
 	private activeMessageFailed = false;
 	private providerRecoveryCancelled = false;
 	private providerRecoveryAbortController?: AbortController;
+	private activeCapabilityScope?: {
+		session: AgentSessionRuntime["session"];
+		restoreToolNames: string[];
+	};
 	private unsubscribe?: () => void;
 	private recoverySession?: AgentSessionRuntime["session"];
 	private isContinuePatched = false;
@@ -959,6 +970,13 @@ export class RoutedSession {
 		return removedMessages.length;
 	}
 
+	releaseRunReminderCapabilityScope(): void {
+		const active = this.activeCapabilityScope;
+		if (!active) return;
+		this.activeCapabilityScope = undefined;
+		active.session.setActiveToolsByName(active.restoreToolNames);
+	}
+
 	getCurrentSession(): PiboPiSessionSnapshot {
 		return this.createSessionSnapshot();
 	}
@@ -1230,6 +1248,7 @@ export class RoutedSession {
 			this.activeThinkingIndex = undefined;
 			this.nextThinkingIndex = 0;
 			const session = this.runtime.session;
+			this.applyMessageCapabilityScope(event, session);
 			const expandedText = expandInlineSkills(
 				event.text,
 				session.resourceLoader.getSkills().skills,
@@ -1260,6 +1279,7 @@ export class RoutedSession {
 				provenance: event.provenance,
 			});
 		} finally {
+			this.releaseRunReminderCapabilityScope();
 			this.activeMessage = undefined;
 			this.providerRecoveryCancelled = false;
 			this.pendingAssistantError = undefined;
@@ -1270,6 +1290,14 @@ export class RoutedSession {
 			this.activeThinkingIndex = undefined;
 			this.nextThinkingIndex = 0;
 		}
+	}
+
+	private applyMessageCapabilityScope(event: PiboMessageEvent, session: AgentSessionRuntime["session"]): void {
+		if (event.capabilityScope !== "run-reminder") return;
+		const restoreToolNames = session.getActiveToolNames();
+		const scopedToolNames = restoreToolNames.filter((name) => RUN_REMINDER_CAPABILITY_TOOLS.has(name));
+		this.activeCapabilityScope = { session, restoreToolNames };
+		session.setActiveToolsByName(scopedToolNames);
 	}
 
 	private async processQueuedCompact(event: PiboExecutionEvent): Promise<void> {

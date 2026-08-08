@@ -345,6 +345,26 @@ export class PiboRunRegistry {
 		return output;
 	}
 
+	suppressNotification(controllerPiboSessionId: string, runId: string): PiboRunSnapshot {
+		const record = this.requireRunForController(controllerPiboSessionId, runId);
+		record.acknowledgedStatus = record.status;
+		record.updatedAt = now();
+		this.options.store?.updateRun(runId, record);
+		return snapshot(record);
+	}
+
+	suppressControllerNotifications(controllerPiboSessionId: string): PiboRunSnapshot[] {
+		const suppressed: PiboRunSnapshot[] = [];
+		for (const record of this.runs.values()) {
+			if (record.controllerPiboSessionId !== controllerPiboSessionId || record.completionPolicy !== "tracked") continue;
+			record.acknowledgedStatus = record.status;
+			record.updatedAt = now();
+			this.options.store?.updateRun(record.runId, record);
+			suppressed.push(snapshot(record));
+		}
+		return suppressed;
+	}
+
 	createNotification(
 		controllerPiboSessionId: string,
 		options: { includeAlreadyNotified?: boolean } = {},
