@@ -175,7 +175,7 @@ describe("manual text trigger workflow runtime", () => {
     assert.deepEqual(secondInputs, ["short final only"]);
   });
 
-  it("keeps the existing unsupported-join failure under LangGraph execution", async () => {
+  it("keeps the explicit unsupported-join failure under Pibo-owned traversal", async () => {
     const result = await runManualTextTriggerWorkflow(
       createWorkflow({
         edge_start_to_left: { id: "edge_start_to_left", from: { nodeId: "start" }, to: { nodeId: "left" }, kind: "data" },
@@ -201,7 +201,7 @@ describe("manual text trigger workflow runtime", () => {
     assert.deepEqual(result.nodeAttempts.map((attempt) => attempt.nodeId), ["start", "left", "right", "join"]);
   });
 
-  it("runs LangGraph workflows longer than the default recursion limit", async () => {
+  it("runs long workflows without an external graph recursion limit", async () => {
     const agentCount = 30;
     const nodes: WorkflowDefinition["nodes"] = {};
     const edges: WorkflowDefinition["edges"] = {};

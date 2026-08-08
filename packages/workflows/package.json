@@ -18,9 +18,6 @@
     "test": "tsx --test src/**/*.test.ts"
   },
   "dependencies": {
-    "@langchain/core": "^1.2.3",
-    "@langchain/langgraph": "^1.4.8",
-    "xstate": "^5.31.1",
-    "zod": "4.4.1"
+    "xstate": "^5.31.1"
   }
 }
