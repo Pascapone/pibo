@@ -170,6 +170,12 @@ export class PiboRuntimeTelemetryRecorder {
 				this.finishOpenPhasesByName(turn?.turnId, "reasoning", "ok", telemetryTimestamp(context));
 				return;
 			}
+			case "compaction_start":
+				this.recordCompactionStart(event, context);
+				return;
+			case "compaction_end":
+				this.recordCompactionEnd(event, context);
+				return;
 			case "tool_call":
 				this.recordToolArgsPhase(event, context);
 				return;
@@ -336,6 +342,103 @@ export class PiboRuntimeTelemetryRecorder {
 		if (event.action === "abort" || event.action === "dispose" || event.action === "kill" || event.action === "kill_all") {
 			this.recordTurnTerminal(event, context, "aborted", "abort", `${event.action} requested`);
 			return;
+		}
+		if (event.action === "compact") {
+			this.recordCompactExecutionResult(event, context);
+		}
+	}
+
+	private recordCompactExecutionResult(
+		event: Extract<PiboOutputEvent, { type: "execution_result" }>,
+		context: RuntimeTelemetryContext,
+	): void {
+		if (!event.eventId) return;
+		const existing = this.store?.getTurn(turnIdForEvent(event.eventId));
+		if (existing && !TERMINAL_TURN_STATUSES.has(existing.status)) {
+			this.recordTurnTerminal(event, context, "ok", "finish", "manual compaction finished");
+		}
+	}
+
+	private recordCompactionStart(
+		event: Extract<PiboOutputEvent, { type: "compaction_start" }>,
+		context: RuntimeTelemetryContext,
+	): void {
+		const turn = this.turnContextForEvent(event.piboSessionId, event.eventId, undefined, context)
+			?? this.activeTurnContext(event.piboSessionId, context);
+		if (!turn) return;
+		let storedTurn = this.store?.getTurn(turn.turnId);
+		if (storedTurn && TERMINAL_TURN_STATUSES.has(storedTurn.status)) return;
+		const now = telemetryTimestamp(context);
+		if (!storedTurn && event.eventId) {
+			turn.source = "system";
+			storedTurn = this.telemetry.upsertTurn({
+				turnId: turn.turnId,
+				piboSessionId: turn.piboSessionId,
+				rootSessionId: turn.rootSessionId,
+				roomId: turn.roomId,
+				inputEventId: turn.eventId,
+				eventId: turn.eventId,
+				source: turn.source,
+				status: "running",
+				currentPhase: "compaction",
+				queuedAt: now,
+				startedAt: now,
+				lastProgressAt: now,
+				queueDepth: turn.queueDepth,
+				summary: `${event.reason} compaction started`,
+				metadata: sessionMetadata(context.session),
+			});
+		}
+		for (const phase of this.store?.listOpenPhasesForTurn(turn.turnId) ?? []) {
+			if (phase.name === "compaction") continue;
+			this.telemetry.finishPhase(phase.phaseId, { status: "ok", endedAt: now, lastProgressAt: now });
+		}
+		this.startOrProgressPhase(turn, "compaction", now, `${event.reason} compaction started`, {
+			updateTurn: true,
+			counters: { reason: event.reason },
+		});
+	}
+
+	private recordCompactionEnd(
+		event: Extract<PiboOutputEvent, { type: "compaction_end" }>,
+		context: RuntimeTelemetryContext,
+	): void {
+		const turn = this.turnContextForEvent(event.piboSessionId, event.eventId, undefined, context)
+			?? this.activeTurnContext(event.piboSessionId, context);
+		if (!turn) return;
+		const now = telemetryTimestamp(context);
+		const status: TelemetryPhaseStatus = event.aborted ? "aborted" : event.errorMessage ? "error" : "ok";
+		const summary = event.errorMessage
+			? `${event.reason} compaction failed: ${event.errorMessage}`
+			: event.aborted
+				? `${event.reason} compaction aborted`
+				: `${event.reason} compaction finished`;
+		this.finishOpenPhasesByName(turn.turnId, "compaction", status, now, safeSummary(summary));
+		const storedTurn = this.store?.getTurn(turn.turnId);
+		if (storedTurn?.source === "system" && (status === "error" || status === "aborted")) {
+			this.recordTurnTerminal(
+				event,
+				context,
+				status === "aborted" ? "aborted" : "error",
+				status === "aborted" ? "abort" : "error",
+				summary,
+				"compaction",
+			);
+			return;
+		}
+		if (storedTurn && !TERMINAL_TURN_STATUSES.has(storedTurn.status)) {
+			this.telemetry.upsertTurn({
+				turnId: turn.turnId,
+				piboSessionId: turn.piboSessionId,
+				rootSessionId: turn.rootSessionId,
+				roomId: turn.roomId,
+				eventId: turn.eventId,
+				status: "running",
+				currentPhase: "compaction",
+				lastProgressAt: now,
+				queueDepth: turn.queueDepth,
+				summary: safeSummary(summary),
+			});
 		}
 	}
 
@@ -590,7 +693,7 @@ export class PiboRuntimeTelemetryRecorder {
 		phaseName: TelemetryPhaseName,
 		now: string,
 		summary: string,
-		options: { providerRequestId?: string; toolCallId?: string; updateTurn?: boolean } = {},
+		options: { providerRequestId?: string; toolCallId?: string; updateTurn?: boolean; counters?: PiboJsonObject } = {},
 	) {
 		const storedTurn = this.store?.getTurn(turn.turnId);
 		if (storedTurn && TERMINAL_TURN_STATUSES.has(storedTurn.status)) return undefined;
@@ -608,6 +711,7 @@ export class PiboRuntimeTelemetryRecorder {
 			providerRequestId: options.providerRequestId,
 			toolCallId: options.toolCallId,
 			eventId: turn.eventId,
+			counters: options.counters,
 			summary,
 		});
 		if (options.updateTurn) {

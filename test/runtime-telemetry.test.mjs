@@ -161,6 +161,107 @@ test("runtime telemetry marks active turns aborted from abort execution results"
 	}
 });
 
+test("runtime telemetry exposes threshold compaction as the active phase and resumes provider progress", () => {
+	const store = createStore();
+	try {
+		const recorder = new PiboRuntimeTelemetryRecorder(store.telemetry);
+		const eventId = "evt_threshold_compaction";
+		recorder.recordOutput(
+			{ type: "message_queued", piboSessionId: session.id, eventId, queuedMessages: 1, text: "compact", source: "user" },
+			{ session, status: status(1), at: "2026-08-08T05:17:08.000Z" },
+		);
+		recorder.recordOutput(
+			{ type: "message_started", piboSessionId: session.id, eventId, text: "compact", source: "user" },
+			{ session, status: status(0), at: "2026-08-08T05:17:09.000Z" },
+		);
+		recorder.recordOutput(
+			{ type: "compaction_start", piboSessionId: session.id, eventId, reason: "threshold" },
+			{ session, status: status(0), at: "2026-08-08T05:17:09.050Z" },
+		);
+
+		let timeline = store.telemetry.getTurnTimeline(turnIdForEvent(eventId));
+		let summary = store.telemetry.listSessions({ now: "2026-08-08T05:20:26.450Z" })[0];
+		assert.equal(timeline.turn.currentPhase, "compaction");
+		assert.equal(timeline.turn.lastProgressAt, "2026-08-08T05:17:09.050Z");
+		assert.equal(phaseByName(timeline, "message_started").status, "ok");
+		assert.equal(phaseByName(timeline, "compaction").status, "open");
+		assert.deepEqual(phaseByName(timeline, "compaction").counters, { reason: "threshold" });
+		assert.equal(summary.activePhase.name, "compaction");
+		assert.equal(summary.lastProgressAt, "2026-08-08T05:17:09.050Z");
+		assert.equal(summary.isStale, false);
+
+		recorder.recordOutput(
+			{ type: "compaction_end", piboSessionId: session.id, eventId, reason: "threshold", result: { summary: "done" }, aborted: false },
+			{ session, status: status(0), at: "2026-08-08T05:20:26.450Z" },
+		);
+		timeline = store.telemetry.getTurnTimeline(turnIdForEvent(eventId));
+		assert.equal(phaseByName(timeline, "compaction").status, "ok");
+		assert.equal(phaseByName(timeline, "compaction").durationMs, 197_400);
+		assert.equal(timeline.turn.lastProgressAt, "2026-08-08T05:20:26.450Z");
+
+		recorder.recordOutput(
+			{ type: "thinking_started", piboSessionId: session.id, eventId, contentIndex: 0, thinkingIndex: 0 },
+			{ session, status: status(0), at: "2026-08-08T05:20:27.000Z" },
+		);
+		timeline = store.telemetry.getTurnTimeline(turnIdForEvent(eventId));
+		assert.equal(timeline.turn.currentPhase, "reasoning");
+		assert.equal(phaseByName(timeline, "reasoning").status, "open");
+	} finally {
+		store.close();
+	}
+});
+
+test("runtime telemetry records manual compaction error and abort outcomes", () => {
+	const store = createStore();
+	try {
+		const recorder = new PiboRuntimeTelemetryRecorder(store.telemetry);
+		const errorEventId = "evt_manual_compaction_error";
+		recorder.recordOutput(
+			{ type: "execution_result", piboSessionId: session.id, eventId: errorEventId, action: "compact", result: { queued: true } },
+			{ session, status: status(1), at: "2026-08-08T06:00:00.000Z" },
+		);
+		recorder.recordOutput(
+			{ type: "compaction_start", piboSessionId: session.id, eventId: errorEventId, reason: "manual" },
+			{ session, status: status(0), at: "2026-08-08T06:00:01.000Z" },
+		);
+		let summary = store.telemetry.listSessions({ now: "2026-08-08T06:00:02.000Z" })[0];
+		assert.equal(summary.activePhase.name, "compaction");
+		assert.equal(summary.activePhase.eventId, errorEventId);
+		recorder.recordOutput(
+			{ type: "compaction_end", piboSessionId: session.id, eventId: errorEventId, reason: "manual", aborted: false, errorMessage: "summarization failed" },
+			{ session, status: status(0), at: "2026-08-08T06:00:06.000Z" },
+		);
+		let timeline = store.telemetry.getTurnTimeline(turnIdForEvent(errorEventId));
+		assert.equal(timeline.turn.status, "error");
+		assert.equal(timeline.turn.currentPhase, "error");
+		assert.equal(phaseByName(timeline, "compaction").status, "error");
+		assert.equal(phaseByName(timeline, "compaction").durationMs, 5_000);
+		assert.deepEqual(phaseByName(timeline, "compaction").counters, { reason: "manual" });
+		assert.match(phaseByName(timeline, "compaction").summary, /summarization failed/);
+
+		const abortEventId = "evt_manual_compaction_abort";
+		recorder.recordOutput(
+			{ type: "execution_result", piboSessionId: session.id, eventId: abortEventId, action: "compact", result: { queued: true } },
+			{ session, status: status(1), at: "2026-08-08T06:01:00.000Z" },
+		);
+		recorder.recordOutput(
+			{ type: "compaction_start", piboSessionId: session.id, eventId: abortEventId, reason: "manual" },
+			{ session, status: status(0), at: "2026-08-08T06:01:01.000Z" },
+		);
+		recorder.recordOutput(
+			{ type: "compaction_end", piboSessionId: session.id, eventId: abortEventId, reason: "manual", aborted: true },
+			{ session, status: status(0), at: "2026-08-08T06:01:03.500Z" },
+		);
+		timeline = store.telemetry.getTurnTimeline(turnIdForEvent(abortEventId));
+		assert.equal(timeline.turn.status, "aborted");
+		assert.equal(timeline.turn.currentPhase, "abort");
+		assert.equal(phaseByName(timeline, "compaction").status, "aborted");
+		assert.equal(phaseByName(timeline, "compaction").durationMs, 2_500);
+	} finally {
+		store.close();
+	}
+});
+
 test("runtime telemetry captures assistant and reasoning phase transitions from normalized events", () => {
 	const store = createStore();
 	try {

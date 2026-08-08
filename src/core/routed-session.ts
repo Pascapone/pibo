@@ -564,6 +564,7 @@ export class RoutedSession {
 	private fastMode = false;
 	private readonly fastModePatchedAgents = new WeakSet<object>();
 	private activeMessage?: PiboMessageEvent;
+	private activeExecutionEvent?: PiboExecutionEvent;
 	private activeAssistantIndex?: number;
 	private nextAssistantIndex = 0;
 	private activeThinkingIndex?: number;
@@ -679,7 +680,7 @@ export class RoutedSession {
 		this.recoverySession = session;
 		claimPiboAssistantContextGuardRecovery(session);
 		this.unsubscribe = session.subscribe((event) => {
-			this.onPiEventTelemetry?.(this.piboSessionId, event, { status: this.getStatus(), activeEventId: this.activeMessage?.id });
+			this.onPiEventTelemetry?.(this.piboSessionId, event, { status: this.getStatus(), activeEventId: this.activeMessage?.id ?? this.activeExecutionEvent?.id });
 			const model = this.runtime.session.model as { contextWindow?: unknown } | undefined;
 			const normalized = normalizePiEvent(this.piboSessionId, event, { contextWindow: numberValue(model?.contextWindow) });
 			const candidate = event && typeof event === "object" ? event as PiEventCandidate : undefined;
@@ -793,10 +794,12 @@ export class RoutedSession {
 	private handleCompactionEvent(event: unknown): void {
 		if (!event || typeof event !== "object") return;
 		const candidate = event as { type?: unknown; reason?: unknown; result?: unknown; aborted?: unknown; errorMessage?: unknown };
+		const eventId = this.activeMessage?.id ?? this.activeExecutionEvent?.id;
 		if (candidate.type === "compaction_start") {
 			this.emit(this.withActiveMessage({
 				type: "compaction_start",
 				piboSessionId: this.piboSessionId,
+				eventId,
 				reason: typeof candidate.reason === "string" ? candidate.reason : "unknown",
 			}));
 		}
@@ -812,6 +815,7 @@ export class RoutedSession {
 			this.emit(this.withActiveMessage({
 				type: "compaction_end",
 				piboSessionId: this.piboSessionId,
+				eventId,
 				reason: typeof candidate.reason === "string" ? candidate.reason : "unknown",
 				result: candidate.result,
 				aborted: candidate.aborted === true,
@@ -1240,6 +1244,7 @@ export class RoutedSession {
 	}
 
 	private async processQueuedCompact(event: PiboExecutionEvent): Promise<void> {
+		this.activeExecutionEvent = event;
 		try {
 			const result = await this.runAction(event);
 			this.emit({
@@ -1258,6 +1263,8 @@ export class RoutedSession {
 				error: message,
 				errorDetails: runtimeSessionErrorDetails(message),
 			});
+		} finally {
+			this.activeExecutionEvent = undefined;
 		}
 	}
 
