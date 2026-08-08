@@ -160,6 +160,7 @@ export function SessionNode({
 								onSelect(node.piboSessionId);
 							}}
 							aria-label={workflowKind ? `${workflowKind.ariaLabel}: ${safeTitle}` : `Open session ${safeTitle}`}
+							aria-current={node.piboSessionId === selectedPiboSessionId ? "page" : undefined}
 							className="min-w-0 text-left px-1 py-1 grid grid-cols-[minmax(0,1fr)_auto] gap-2 items-center"
 						>
 							<span className="min-w-0">

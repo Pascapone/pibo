@@ -658,6 +658,7 @@ function RoomNode({
 						<button
 							type="button"
 							onClick={() => onSelect(room.id)}
+							aria-current={room.id === selectedRoomId ? "page" : undefined}
 							className="min-w-0 text-left px-2 py-1 grid grid-cols-[auto_minmax(0,1fr)_auto] gap-2 items-center"
 						>
 							<span className={`h-6 w-6 inline-flex items-center justify-center rounded-sm ${personal ? "bg-[#0bda57]/15 text-[#0bda57]" : archived ? "bg-[#f59e0b]/15 text-[#f59e0b]" : "bg-[#151f24] text-slate-500"}`}>
