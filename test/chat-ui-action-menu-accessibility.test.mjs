@@ -151,8 +151,8 @@ test("shared action menu owns menu-button semantics and dismissal behavior", () 
 test("Room and Session actions use the same action menu implementation", () => {
 	const roomSource = readFileSync(resolve(here, "../src/apps/chat-ui/src/session-sidebar.tsx"), "utf8");
 	const sessionSource = readFileSync(resolve(here, "../src/apps/chat-ui/src/session-node.tsx"), "utf8");
-	assert.match(roomSource, /<ActionMenu[\s\S]*label="Room actions"/);
-	assert.match(sessionSource, /<ActionMenu[\s\S]*label="Session actions"/);
+	assert.match(roomSource, /<ActionMenu[\s\S]*label=\{`Actions for room \$\{room\.name\}`\}/);
+	assert.match(sessionSource, /<ActionMenu[\s\S]*label=\{`Actions for session \$\{safeTitle\}`\}/);
 	assert.match(roomSource, /<ActionMenuItem/g);
 	assert.match(sessionSource, /<ActionMenuItem/g);
 });

@@ -207,7 +207,7 @@ export function SessionNode({
 				)}
 				{editing ? null : (
 					<div className="flex items-center gap-1 pr-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity max-[980px]:opacity-100">
-						<ActionMenu label="Session actions" estimatedHeight={144}>
+						<ActionMenu label={`Actions for session ${safeTitle}`} estimatedHeight={144}>
 							{node.archived ? (
 								<>
 									<ActionMenuItem onSelect={() => onArchive(node.piboSessionId, false)}>

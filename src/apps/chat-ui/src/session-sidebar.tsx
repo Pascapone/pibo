@@ -693,7 +693,7 @@ function RoomNode({
 									<Lock size={24} className="w-3.5 h-3.5 max-[980px]:w-5 max-[980px]:h-5" />
 								</span>
 							) : (
-								<ActionMenu label="Room actions" estimatedHeight={archived ? 144 : 192}>
+								<ActionMenu label={`Actions for room ${room.name}`} estimatedHeight={archived ? 144 : 192}>
 									{archived ? (
 										<>
 											<ActionMenuItem onSelect={copyRoomId}>
