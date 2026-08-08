@@ -31,6 +31,7 @@ export function responseBuiltChatAsset(request: Request, pathname: string): Resp
 
 export function responseBuiltChatPublicFile(request: Request, pathname: string): Response | undefined {
 	const publicFilePaths = new Set([
+		`${CHAT_WEB_MOUNT_PATH}/favicon.svg`,
 		`${CHAT_WEB_MOUNT_PATH}/manifest.webmanifest`,
 		`${CHAT_WEB_MOUNT_PATH}/sw.js`,
 	]);
@@ -59,6 +60,7 @@ function responseBuiltChatStaticFile(request: Request, pathname: string, cacheCo
 
 export function isChatAppPath(pathname: string): boolean {
 	if (pathname.startsWith(`${CHAT_WEB_MOUNT_PATH}/assets/`)) return false;
+	if (pathname === `${CHAT_WEB_MOUNT_PATH}/favicon.svg`) return false;
 	if (pathname === `${CHAT_WEB_MOUNT_PATH}/manifest.webmanifest`) return false;
 	if (pathname === `${CHAT_WEB_MOUNT_PATH}/sw.js`) return false;
 	if (pathname.startsWith(`${CHAT_WEB_MOUNT_PATH}/icons/`)) return false;
@@ -150,8 +152,10 @@ export function createFallbackChatHtml(): string {
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 	<meta name="theme-color" content="#101d22">
+	<meta name="mobile-web-app-capable" content="yes">
 	<meta name="apple-mobile-web-app-capable" content="yes">
 	<meta name="apple-mobile-web-app-title" content="Pibo Chat">
+	<link rel="icon" type="image/svg+xml" href="/apps/chat/favicon.svg">
 	<link rel="manifest" href="/apps/chat/manifest.webmanifest">
 	<link rel="apple-touch-icon" href="/apps/chat/assets/pwa-images/ios/180.png">
 	<title>Pibo Web Chat</title>
