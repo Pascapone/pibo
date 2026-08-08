@@ -99,9 +99,9 @@ An edge without a guard is eligible after its source node completes and its payl
 
 Abort, cancel, revise, and retry paths should be explicit graph behavior: guarded edges, terminal nodes, error/control edges, retry policies, or human actions. They should not be hidden in prompt text.
 
-## Runtime facts and projection
+## Runtime ownership, facts, and projection
 
-The runtime compiles validated Pibo Workflow IR into an internal LangGraph `StateGraph`. Pibo definitions, APIs, persistence records, events, session routing, and UI projections remain the product contract; LangGraph stays behind that boundary as the execution engine.
+Pibo owns workflow graph execution. The runtime validates Pibo Workflow IR, schedules ready nodes deterministically, transfers explicit edge payloads, and records each transition in Pibo-managed facts. External graph frameworks such as LangGraph may inform graph composition and orchestration design, but they are reference material rather than runtime dependencies or sources of truth.
 
 Workflow execution should record facts that can drive both editor runs and Project workflow views:
 

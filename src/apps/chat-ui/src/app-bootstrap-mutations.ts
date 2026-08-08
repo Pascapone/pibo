@@ -14,6 +14,55 @@ export function createBootstrapMutationSnapshot(queryClient: QueryClient, localB
 	};
 }
 
+export function applyBootstrapUpdateForRoom(
+	data: BootstrapData,
+	roomId: string,
+	updater: (data: BootstrapData) => BootstrapData,
+): BootstrapData {
+	return data.selectedRoomId === roomId ? updater(data) : data;
+}
+
+type OptimisticSessionCreateOutcomeInput = {
+	currentSelectedPiboSessionId: string | null;
+	tempId?: string;
+	previousSelectedPiboSessionId?: string | null;
+} & (
+	| { status: "success"; createdPiboSessionId: string }
+	| { status: "failure" }
+);
+
+export type OptimisticSessionCreateOutcome = {
+	selectedPiboSessionId: string | null;
+	navigateToCreatedSession: boolean;
+	autoRenameCreatedSession: boolean;
+};
+
+export function resolveOptimisticSessionCreateOutcome(input: OptimisticSessionCreateOutcomeInput): OptimisticSessionCreateOutcome {
+	const optimisticSessionStillSelected = Boolean(input.tempId && input.currentSelectedPiboSessionId === input.tempId);
+	if (input.status === "success") {
+		return {
+			selectedPiboSessionId: optimisticSessionStillSelected ? input.createdPiboSessionId : input.currentSelectedPiboSessionId,
+			navigateToCreatedSession: optimisticSessionStillSelected,
+			autoRenameCreatedSession: optimisticSessionStillSelected,
+		};
+	}
+	return {
+		selectedPiboSessionId: optimisticSessionStillSelected
+			? input.previousSelectedPiboSessionId ?? null
+			: input.currentSelectedPiboSessionId,
+		navigateToCreatedSession: false,
+		autoRenameCreatedSession: false,
+	};
+}
+
+export function restoreBootstrapSelection(
+	data: BootstrapData | null | undefined,
+	selectedPiboSessionIdOverride?: string | null,
+): BootstrapData | null | undefined {
+	if (!data || selectedPiboSessionIdOverride === undefined) return data;
+	return { ...data, selectedPiboSessionId: selectedPiboSessionIdOverride ?? "" };
+}
+
 export function addSessionNodeToBootstrap(data: BootstrapData, node: PiboWebSessionNode): BootstrapData {
 	if (findSessionNode(data.sessions, node.piboSessionId)) return data;
 	return { ...data, sessions: [node, ...data.sessions] };
@@ -72,6 +121,21 @@ export function replaceOptimisticSessionNode(
 		selectedPiboSessionId: data.selectedPiboSessionId === tempId ? node.piboSessionId : data.selectedPiboSessionId,
 		session: data.session.id === tempId ? piboSessionFromSessionNode(node, data.session) : data.session,
 		sessions: replaced ? sessions : [node, ...sessions],
+	};
+}
+
+export function rollbackOptimisticSessionNode(
+	data: BootstrapData,
+	tempId: string,
+	previousSelectedPiboSessionId: string | null,
+): BootstrapData {
+	const sessions = removeSessionNodes(data.sessions, new Set([tempId]));
+	const selectionUntouched = data.selectedPiboSessionId === tempId;
+	if (sessions === data.sessions && !selectionUntouched) return data;
+	return {
+		...data,
+		selectedPiboSessionId: selectionUntouched ? (previousSelectedPiboSessionId ?? "") : data.selectedPiboSessionId,
+		sessions,
 	};
 }
 

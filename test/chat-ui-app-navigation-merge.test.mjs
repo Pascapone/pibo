@@ -13,6 +13,11 @@ async function runNavigationMergeScenario() {
 			markSessionSubtreeReadInBootstrap,
 			mergeNavigationIntoBootstrap,
 		} = await import("./src/apps/chat-ui/src/app-navigation-merge.ts");
+		const {
+			createOptimisticSessionNode,
+			replaceOptimisticSessionNode,
+			sessionNodeFromSession,
+		} = await import("./src/apps/chat-ui/src/app-bootstrap-mutations.ts");
 
 		function piboSession(overrides = {}) {
 			return {
@@ -120,6 +125,59 @@ async function runNavigationMergeScenario() {
 		const mergedWithoutRead = mergeNavigationIntoBootstrap(current, navigationWithFreshUnread);
 		assert.equal(mergedWithoutRead.sessions[0].unreadCount, 9, "navigation unread counts win over preserved counts when supplied");
 		assert.equal(mergedWithoutRead.sessions[0].children[0].unreadCount, 2, "omitted nested unread count falls back to previous bootstrap state");
+
+		const persisted = sessionNode({ piboSessionId: "ps-persisted", piSessionId: "pi-persisted", title: "Persisted" });
+		const stalePersisted = sessionNode({ piboSessionId: "ps-stale", piSessionId: "pi-stale", title: "Stale" });
+		const pending = createOptimisticSessionNode("optimistic-session-pending", "worker");
+		const creating = bootstrap({
+			sessionRoot: persisted,
+			sessions: [pending, persisted, stalePersisted],
+			selectedPiboSessionId: pending.piboSessionId,
+		});
+		const selectedPersisted = markSessionSubtreeReadInBootstrap(creating, persisted.piboSessionId);
+		const navigationBeforeCreateCompletes = {
+			identity: creating.identity,
+			session: piboSession({ id: persisted.piboSessionId, piSessionId: persisted.piSessionId, title: persisted.title }),
+			selectedRoomId: creating.selectedRoomId,
+			selectedPiboSessionId: persisted.piboSessionId,
+			latestRoomStreamId: 43,
+			room: creating.room,
+			rooms: creating.rooms,
+			sessions: [persisted],
+		};
+		const refreshedWhileCreating = mergeNavigationIntoBootstrap(selectedPersisted, navigationBeforeCreateCompletes, { readSessionId: persisted.piboSessionId });
+		assert.deepEqual(
+			refreshedWhileCreating.sessions.map((session) => session.piboSessionId),
+			[pending.piboSessionId, persisted.piboSessionId],
+			"same-room navigation refresh keeps only the pending created session continuously visible",
+		);
+		const created = sessionNodeFromSession(piboSession({ id: "ps-created", piSessionId: "pi-created", profile: "worker", title: "Created" }));
+		const completedInBackground = replaceOptimisticSessionNode(refreshedWhileCreating, pending.piboSessionId, created);
+		assert.deepEqual(
+			completedInBackground.sessions.map((session) => session.piboSessionId),
+			[created.piboSessionId, persisted.piboSessionId],
+			"successful creation replaces the continuously visible pending node",
+		);
+		assert.equal(completedInBackground.selectedPiboSessionId, persisted.piboSessionId, "late success preserves the newer same-room selection");
+
+		const otherRoomSession = sessionNode({ piboSessionId: "ps-other-room", piSessionId: "pi-other-room", title: "Other Room" });
+		const otherRoom = room({ id: "room-other", name: "Other Room" });
+		const navigationToOtherRoom = {
+			identity: creating.identity,
+			session: piboSession({ id: otherRoomSession.piboSessionId, piSessionId: otherRoomSession.piSessionId, title: otherRoomSession.title }),
+			selectedRoomId: otherRoom.id,
+			selectedPiboSessionId: otherRoomSession.piboSessionId,
+			latestRoomStreamId: 44,
+			room: otherRoom,
+			rooms: [otherRoom],
+			sessions: [otherRoomSession],
+		};
+		const switchedRoomsWhileCreating = mergeNavigationIntoBootstrap(creating, navigationToOtherRoom);
+		assert.deepEqual(
+			switchedRoomsWhileCreating.sessions.map((session) => session.piboSessionId),
+			[otherRoomSession.piboSessionId],
+			"navigation to another room does not carry the origin room's pending session",
+		);
 
 		const existingRoot = sessionNode({ piboSessionId: "ps-existing" });
 		const newRoot = sessionNode({ piboSessionId: "ps-new" });

@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
-import { createPortal } from "react-dom";
+import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import {
 	Archive,
 	ArchiveRestore,
@@ -10,12 +9,12 @@ import {
 	FolderPlus,
 	Loader2,
 	Lock,
-	MoreVertical,
 	Plus,
 	Trash2,
 	X,
 } from "lucide-react";
 import type { BootstrapData, PiboRoom, PiboWebSessionNode } from "./types";
+import { ActionMenu, ActionMenuItem } from "./action-menu";
 import { copyTextToClipboard } from "./clipboard";
 import { SessionNode } from "./session-node";
 import {
@@ -28,9 +27,6 @@ import {
 } from "./session-sidebar-helpers";
 
 const SESSION_INFINITE_SCROLL_ROOT_MARGIN = "240px 0px";
-const ROOM_ACTION_MENU_WIDTH = 192;
-const ROOM_ACTION_MENU_GAP = 4;
-const ROOM_ACTION_MENU_VIEWPORT_MARGIN = 8;
 
 function unreadBadgeLabel(count: number): string {
 	return count > 99 ? "99+" : String(count);
@@ -144,6 +140,17 @@ export function SessionSidebar({
 	const newSessionProfileOptions = bootstrap.agents;
 	const sharedDefaultRoom = findSharedDefaultRoom(bootstrap.rooms);
 	const roomGroups = splitRoomNodes(bootstrap.rooms);
+	const archivedSessionsToggleRef = useRef<HTMLButtonElement>(null);
+	const handleToggleArchivedSessions = async () => {
+		const restoreFocus = archivedSessionsToggleRef.current === document.activeElement;
+		try {
+			await onToggleArchivedSessions();
+		} finally {
+			requestAnimationFrame(() => {
+				if (restoreFocus && document.activeElement === document.body) archivedSessionsToggleRef.current?.focus();
+			});
+		}
+	};
 
 	return (
 		<div
@@ -188,7 +195,8 @@ export function SessionSidebar({
 									type="button"
 									onClick={onToggleArchivedRooms}
 									title={showArchivedRooms ? "Hide Archived Rooms" : "Show Archived Rooms"}
-									aria-label={showArchivedRooms ? "Hide Archived Rooms" : "Show Archived Rooms"}
+									aria-label="Archived Rooms"
+									aria-pressed={showArchivedRooms}
 									className={`h-6 w-6 max-[980px]:h-8 max-[980px]:w-8 inline-flex items-center justify-center border rounded-sm hover:border-[#11a4d4] hover:text-[#11a4d4] ${showArchivedRooms ? "border-[#11a4d4] text-[#11a4d4]" : "border-slate-700 text-slate-400"}`}
 								>
 									{showArchivedRooms ? <ArchiveRestore size={14} /> : <Archive size={14} />}
@@ -236,6 +244,7 @@ export function SessionSidebar({
 					<div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Sessions</div>
 					<div className="flex items-center gap-1">
 						<select
+							id="new-session-agent-select"
 							value={newSessionProfile}
 							onChange={(event) => onNewSessionProfileChange(event.target.value)}
 							disabled={!newSessionProfileReady || !newSessionProfileOptions.length || creatingRoom || selectedRoomArchived || roomSessionsLoading}
@@ -264,10 +273,12 @@ export function SessionSidebar({
 						</button>
 						<button
 							type="button"
-							onClick={() => void onToggleArchivedSessions()}
+							ref={archivedSessionsToggleRef}
+							onClick={() => void handleToggleArchivedSessions()}
 							disabled={loadingArchivedSessions}
 							title={showArchived ? "Hide Archived Sessions" : "Show Archived Sessions"}
-							aria-label={showArchived ? "Hide Archived Sessions" : "Show Archived Sessions"}
+							aria-label="Archived Sessions"
+							aria-pressed={showArchived}
 							className={`h-6 w-6 max-[980px]:h-8 max-[980px]:w-8 inline-flex items-center justify-center border rounded-sm hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-70 ${
 								showArchived ? "border-[#11a4d4] text-[#11a4d4]" : "border-slate-700 text-slate-400"
 							}`}
@@ -576,61 +587,11 @@ function RoomNode({
 	const personal = isSharedDefaultRoom(room);
 	const archived = isArchivedRoom(room);
 	const loading = room.id === loadingRoomId;
-	const [menuOpen, setMenuOpen] = useState(false);
-	const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
-	const menuButtonRef = useRef<HTMLButtonElement>(null);
-	const menuPanelRef = useRef<HTMLDivElement>(null);
 	const roomTooltip = roomNodeTooltip(room);
 
 	const copyRoomId = () => {
 		void copyTextToClipboard(room.id).catch(() => undefined);
 	};
-
-	const updateMenuPosition = useCallback(() => {
-		const button = menuButtonRef.current;
-		if (!button) return;
-		const rect = button.getBoundingClientRect();
-		const menuWidth = menuPanelRef.current?.offsetWidth ?? ROOM_ACTION_MENU_WIDTH;
-		const fallbackMenuHeight = archived ? 144 : 192;
-		const menuHeight = menuPanelRef.current?.offsetHeight ?? fallbackMenuHeight;
-		const maxLeft = Math.max(ROOM_ACTION_MENU_VIEWPORT_MARGIN, window.innerWidth - menuWidth - ROOM_ACTION_MENU_VIEWPORT_MARGIN);
-		const left = Math.min(Math.max(ROOM_ACTION_MENU_VIEWPORT_MARGIN, rect.right - menuWidth), maxLeft);
-		const belowTop = rect.bottom + ROOM_ACTION_MENU_GAP;
-		const top = belowTop + menuHeight <= window.innerHeight - ROOM_ACTION_MENU_VIEWPORT_MARGIN
-			? belowTop
-			: Math.max(ROOM_ACTION_MENU_VIEWPORT_MARGIN, rect.top - ROOM_ACTION_MENU_GAP - menuHeight);
-		setMenuPosition((current) => current?.top === top && current.left === left ? current : { top, left });
-	}, [archived]);
-
-	useEffect(() => {
-		if (!menuOpen) {
-			setMenuPosition(null);
-			return;
-		}
-		updateMenuPosition();
-		const handleViewportChange = () => updateMenuPosition();
-		window.addEventListener("resize", handleViewportChange);
-		window.addEventListener("scroll", handleViewportChange, true);
-		return () => {
-			window.removeEventListener("resize", handleViewportChange);
-			window.removeEventListener("scroll", handleViewportChange, true);
-		};
-	}, [menuOpen, updateMenuPosition]);
-
-	useLayoutEffect(() => {
-		if (menuOpen && menuPosition) updateMenuPosition();
-	}, [menuOpen, menuPosition, updateMenuPosition]);
-
-	useEffect(() => {
-		if (!menuOpen) return;
-		const handle = (e: MouseEvent) => {
-			const target = e.target as Node;
-			if (menuButtonRef.current?.contains(target) || menuPanelRef.current?.contains(target)) return;
-			setMenuOpen(false);
-		};
-		document.addEventListener("mousedown", handle);
-		return () => document.removeEventListener("mousedown", handle);
-	}, [menuOpen]);
 
 	useEffect(() => {
 		if (!editing) {
@@ -711,6 +672,7 @@ function RoomNode({
 						<button
 							type="button"
 							onClick={() => onSelect(room.id)}
+							aria-current={room.id === selectedRoomId ? "page" : undefined}
 							className="min-w-0 text-left px-2 py-1 grid grid-cols-[auto_minmax(0,1fr)_auto] gap-2 items-center"
 						>
 							<span className={`h-6 w-6 inline-flex items-center justify-center rounded-sm ${personal ? "bg-[#0bda57]/15 text-[#0bda57]" : archived ? "bg-[#f59e0b]/15 text-[#f59e0b]" : "bg-[#151f24] text-slate-500"}`}>
@@ -731,83 +693,36 @@ function RoomNode({
 									<Lock size={24} className="w-3.5 h-3.5 max-[980px]:w-5 max-[980px]:h-5" />
 								</span>
 							) : (
-								<div className="relative">
-									<button
-										ref={menuButtonRef}
-										type="button"
-										onClick={() => setMenuOpen((v) => !v)}
-										title="Room actions"
-										aria-label="Room actions"
-										className="h-7 w-7 max-[980px]:h-9 max-[980px]:w-9 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"
-									>
-										<MoreVertical size={24} className="w-3.5 h-3.5 max-[980px]:w-5 max-[980px]:h-5" />
-									</button>
-									{menuOpen && menuPosition ? createPortal(
-										<div
-											ref={menuPanelRef}
-											className="fixed z-[1000] bg-[#1a262b] border border-slate-700 rounded-sm shadow-lg py-1"
-											style={{ top: menuPosition.top, left: menuPosition.left, width: ROOM_ACTION_MENU_WIDTH }}
-										>
-											{archived ? (
-												<>
-													<button
-														type="button"
-														onClick={() => { copyRoomId(); setMenuOpen(false); }}
-														className="w-full text-left px-3 py-2.5 text-sm text-slate-300 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4] flex items-center gap-2"
-													>
-														<Copy size={16} /> Copy Room ID
-													</button>
-													<button
-														type="button"
-														onClick={() => { setMenuOpen(false); onArchive(room.id, false); }}
-														className="w-full text-left px-3 py-2.5 text-sm text-slate-300 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4] flex items-center gap-2"
-													>
-														<ArchiveRestore size={16} /> Restore Room
-													</button>
-													<button
-														type="button"
-														onClick={() => { setMenuOpen(false); onDelete(room); }}
-														className="w-full text-left px-3 py-2.5 text-sm text-red-300 hover:bg-red-500/10 flex items-center gap-2"
-													>
-														<Trash2 size={16} /> Delete Room
-													</button>
-												</>
-											) : (
-												<>
-													<button
-														type="button"
-														onClick={() => { copyRoomId(); setMenuOpen(false); }}
-														className="w-full text-left px-3 py-2.5 text-sm text-slate-300 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4] flex items-center gap-2"
-													>
-														<Copy size={16} /> Copy Room ID
-													</button>
-													<button
-														type="button"
-														onClick={() => { setMenuOpen(false); setEditing(true); }}
-														className="w-full text-left px-3 py-2.5 text-sm text-slate-300 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4] flex items-center gap-2"
-													>
-														<Edit3 size={16} /> Edit Room
-													</button>
-													<button
-														type="button"
-														onClick={() => { setMenuOpen(false); onReadAll(room.id); }}
-														className="w-full text-left px-3 py-2.5 text-sm text-slate-300 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4] flex items-center gap-2"
-													>
-														<CheckCheck size={16} /> Read All
-													</button>
-													<button
-														type="button"
-														onClick={() => { setMenuOpen(false); onArchive(room.id, true); }}
-														className="w-full text-left px-3 py-2.5 text-sm text-slate-300 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4] flex items-center gap-2"
-													>
-														<Archive size={16} /> Archive Room
-													</button>
-												</>
-											)}
-										</div>,
-										document.body,
-									) : null}
-								</div>
+								<ActionMenu label={`Actions for room ${room.name}`} estimatedHeight={archived ? 144 : 192}>
+									{archived ? (
+										<>
+											<ActionMenuItem onSelect={copyRoomId}>
+												<Copy size={16} /> Copy Room ID
+											</ActionMenuItem>
+											<ActionMenuItem onSelect={() => onArchive(room.id, false)}>
+												<ArchiveRestore size={16} /> Restore Room
+											</ActionMenuItem>
+											<ActionMenuItem onSelect={() => onDelete(room)} className="text-red-300 hover:bg-red-500/10">
+												<Trash2 size={16} /> Delete Room
+											</ActionMenuItem>
+										</>
+									) : (
+										<>
+											<ActionMenuItem onSelect={copyRoomId}>
+												<Copy size={16} /> Copy Room ID
+											</ActionMenuItem>
+											<ActionMenuItem onSelect={() => setEditing(true)}>
+												<Edit3 size={16} /> Edit Room
+											</ActionMenuItem>
+											<ActionMenuItem onSelect={() => onReadAll(room.id)}>
+												<CheckCheck size={16} /> Read All
+											</ActionMenuItem>
+											<ActionMenuItem onSelect={() => onArchive(room.id, true)}>
+												<Archive size={16} /> Archive Room
+											</ActionMenuItem>
+										</>
+									)}
+								</ActionMenu>
 							)}
 						</div>
 					</div>

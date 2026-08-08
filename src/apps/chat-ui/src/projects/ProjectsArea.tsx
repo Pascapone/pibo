@@ -379,6 +379,8 @@ export function ProjectsArea({
         }
       />
       <div
+        data-pibo-mobile-sidebar-backdrop
+        aria-hidden="true"
         className={`fixed inset-0 z-30 bg-black/60 min-[981px]:hidden transition-opacity duration-200 ${
           mobileSidebarOpen
             ? "opacity-100 pointer-events-auto"
