@@ -84,6 +84,7 @@ type PiboSessionOperationListener = (
 ) => void | Promise<void>;
 
 type PiboMessageInterruptionListener = (messages: readonly PiboMessageEvent[], reason: string) => void;
+export type PiboMessagePreflight = (event: PiboMessageEvent) => Promise<{ allowed: boolean; reason?: string; code?: string }> | { allowed: boolean; reason?: string; code?: string };
 
 type PiEventCandidate = {
 	type?: unknown;
@@ -590,6 +591,7 @@ export class RoutedSession {
 		private readonly onKillChildren?: (piboSessionId: string, options?: { includeRuns?: boolean }) => Promise<{ killed: string[]; cancelledRuns: string[] }>,
 		private readonly onStateChange?: (state: { processing: boolean; queuedMessages: number; disposed: boolean }) => void,
 		private readonly onMessagesInterrupted?: PiboMessageInterruptionListener,
+		private readonly messagePreflight?: PiboMessagePreflight,
 	) {
 		this.fastMode = initialFastMode && this.fastModeSupported();
 		this.bindRuntimeSession();
@@ -835,6 +837,7 @@ export class RoutedSession {
 			queuedMessages: this.queue.length,
 			text: event.text,
 			source: event.source,
+			provenance: event.provenance,
 		};
 		this.emit(output);
 		this.onStateChange?.({ processing: this.processing, queuedMessages: this.queue.length, disposed: this.disposed });
@@ -893,6 +896,11 @@ export class RoutedSession {
 		};
 		this.emit(output);
 		return output;
+	}
+
+	getActiveMessage(): Pick<PiboMessageEvent, "id" | "source" | "provenance"> | undefined {
+		if (!this.activeMessage) return undefined;
+		return { id: this.activeMessage.id, source: this.activeMessage.source, provenance: this.activeMessage.provenance };
 	}
 
 	getStatus(): PiboSessionStatus {
@@ -1184,12 +1192,31 @@ export class RoutedSession {
 	}
 
 	private async processQueuedMessage(event: PiboMessageEvent): Promise<void> {
+		const preflight = await this.messagePreflight?.(event);
+		if (preflight && !preflight.allowed) {
+			this.emit({
+				type: "session_error",
+				piboSessionId: this.piboSessionId,
+				eventId: event.id,
+				error: preflight.reason ?? "Queued message is no longer authorized",
+				errorDetails: {
+					category: "loop_lifecycle",
+					errorClass: "runtime_abort",
+					code: preflight.code ?? "message_preflight_rejected",
+					origin: "runtime",
+					retryable: false,
+				},
+				provenance: event.provenance,
+			});
+			return;
+		}
 		this.emit({
 			type: "message_started",
 			piboSessionId: this.piboSessionId,
 			eventId: event.id,
 			text: event.text,
 			source: event.source,
+			provenance: event.provenance,
 		});
 
 		try {
@@ -1218,6 +1245,7 @@ export class RoutedSession {
 					piboSessionId: this.piboSessionId,
 					eventId: event.id,
 					source: event.source,
+					provenance: event.provenance,
 				});
 			}
 		} catch (error) {
@@ -1229,6 +1257,7 @@ export class RoutedSession {
 				eventId: event.id,
 				error: message,
 				errorDetails: runtimeSessionErrorDetails(message),
+				provenance: event.provenance,
 			});
 		} finally {
 			this.activeMessage = undefined;

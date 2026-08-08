@@ -1,10 +1,12 @@
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { PiboMessageEvent } from "./events.js";
 import type { PiboThinkingLevel } from "./thinking.js";
 
 export type ToolDefinitionContext = {
 	piboSessionId?: string;
 	piboRoomId?: string;
 	profileName?: string;
+	getActiveMessage?: () => Pick<PiboMessageEvent, "id" | "source" | "provenance"> | undefined;
 };
 
 export type ToolProfile = {

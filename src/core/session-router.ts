@@ -8,7 +8,7 @@ import {
 import { createDefaultPiboPluginRegistry, createPiboProfileFromRegistryOrDefault, resolvePiboProfileNameFromRegistryOrDefault, selectDefaultPiboProfileName } from "../plugins/builtin.js";
 import type { PiboPluginRegistry } from "../plugins/registry.js";
 import { createPiboRuntime, type PiboRuntimeOptions, type PiboRuntimeRetryDefaults } from "./runtime.js";
-import { RoutedSession } from "./routed-session.js";
+import { RoutedSession, type PiboMessagePreflight } from "./routed-session.js";
 import { runtimeSessionErrorDetails } from "./session-errors.js";
 import type {
 	PiboAssistantMessageEvent,
@@ -73,6 +73,8 @@ export type PiboSessionRouterOptions = Omit<
 	telemetryStore?: TelemetryStore;
 	/** Dispose inactive routed runtimes after this interval while preserving persisted Pibo/Pi Sessions. */
 	routedSessionIdleTimeoutMs?: number | false;
+	/** Revalidate persisted authority immediately before a queued message starts. */
+	messagePreflight?: PiboMessagePreflight;
 };
 
 const DEFAULT_SUBAGENT_REPLY_TIMEOUT_MS = 10 * 60 * 1000;
@@ -623,6 +625,7 @@ export class PiboSessionRouter {
 
 	private async createRoutedSession(piboSessionId: string): Promise<RoutedSession> {
 		const piboSession = this.resolvePiboSession(piboSessionId);
+		let session: RoutedSession | undefined;
 		this.signalRegistry.project({ type: "session_created", session: piboSession });
 		const profile = createPiboProfileFromRegistryOrDefault(this.pluginRegistry, piboSession.profile);
 		const parentPiSessionId = piboSession.parentId
@@ -654,10 +657,11 @@ export class PiboSessionRouter {
 				piboSessionId: piboSession.id,
 				piboRoomId: piboRoomIdFromMetadata(piboSession.metadata),
 				timezone: userSettings.timezone,
+				getActiveMessage: () => session?.getActiveMessage(),
 			},
 		});
 		const initialFastMode = resolvePiboSessionInitialFastMode(piboSession) ?? selectRequestedFastMode(profileForSession(profile, piboSession.piSessionId, parentPiSessionId), modelDefaults) ?? false;
-		const session = new RoutedSession(
+		session = new RoutedSession(
 			piboSession.id,
 			runtime,
 			this.emitOutput,
@@ -678,6 +682,7 @@ export class PiboSessionRouter {
 				session: this.sessionStore.get(piboSession.id),
 				status: this.sessions.get(piboSession.id)?.getStatus(),
 			}, reason),
+			this.options.messagePreflight,
 		);
 		this.sessions.set(piboSession.id, session);
 		return session;

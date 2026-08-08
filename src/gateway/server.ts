@@ -4,6 +4,7 @@ import type { PiboOutputEvent } from "../core/events.js";
 import { createDefaultPiboPluginRegistry, createPiboProfileFromRegistryOrDefault, resolvePiboProfileNameFromRegistryOrDefault } from "../plugins/builtin.js";
 import type { PiboPluginRegistry } from "../plugins/registry.js";
 import { PiboSessionRouter } from "../core/session-router.js";
+import { createLoopMessagePreflight } from "../loops/store.js";
 import { loadPiboModelDefaults, selectRequestedModelProfile } from "../core/model-defaults.js";
 import { ResourceReaperService, type ResourceReaperServiceOptions } from "../resources/reaper.js";
 import type { PiboSessionStore } from "../sessions/store.js";
@@ -222,6 +223,7 @@ export class PiboGatewayServer {
 			persistSession: this.options.persistSession,
 			pluginRegistry: this.pluginRegistry,
 			sessionStore: this.sessionStore,
+			messagePreflight: createLoopMessagePreflight(),
 		});
 		this.unsubscribe = this.router.subscribe((event) => this.broadcastRouterEvent(event));
 		this.server = createServer((socket) => this.handleSocket(socket));
