@@ -16,11 +16,12 @@ async function renderHeader(area) {
 			area: ${JSON.stringify(area)},
 			identity: { userId: "test-user", name: "Test User", email: "test@example.com" },
 			mobileAreaMenuOpen: true,
-			mobileAreaMenuRef: { current: null },
+			mobileSidebarTriggerRef: { current: null },
 			totalRoomUnreadCount: 0,
 			onOpenMobileSidebar() {},
 			onSelectMainNavArea() {},
 			onToggleMobileAreaMenu() {},
+			onCloseMobileAreaMenu() {},
 		}));
 		console.log(markup);
 	`;

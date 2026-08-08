@@ -1,4 +1,4 @@
-import type { RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
 import { AlertTriangle, LogOut, List, Menu, RefreshCw, UserRound } from "lucide-react";
 import { signInWithGoogle, signOut } from "./api-auth";
 import type { BootstrapData } from "./types";
@@ -6,16 +6,18 @@ import type { BootstrapData } from "./types";
 export type AppArea = "sessions" | "projects" | "workflows" | "cron" | "loops" | "agents" | "context" | "settings";
 
 const MAIN_NAV_AREAS: readonly AppArea[] = ["sessions", "projects", "workflows", "cron", "loops", "agents", "context", "settings"];
+const MAIN_NAV_MENU_ID = "main-navigation-menu";
 
 type AppHeaderProps = {
 	area: AppArea;
 	identity: BootstrapData["identity"];
 	mobileAreaMenuOpen: boolean;
-	mobileAreaMenuRef: RefObject<HTMLDivElement | null>;
+	mobileSidebarTriggerRef: RefObject<HTMLButtonElement | null>;
 	totalRoomUnreadCount: number;
 	onOpenMobileSidebar: () => void;
 	onSelectMainNavArea: (area: AppArea) => void;
 	onToggleMobileAreaMenu: () => void;
+	onCloseMobileAreaMenu: () => void;
 };
 
 export function FallbackGatewayBanner() {
@@ -31,17 +33,97 @@ export function AppHeader({
 	area,
 	identity,
 	mobileAreaMenuOpen,
-	mobileAreaMenuRef,
+	mobileSidebarTriggerRef,
 	totalRoomUnreadCount,
 	onOpenMobileSidebar,
 	onSelectMainNavArea,
 	onToggleMobileAreaMenu,
+	onCloseMobileAreaMenu,
 }: AppHeaderProps) {
 	const identityLabel = identity.email || identity.name || identity.userId;
+	const mobileAreaMenuRef = useRef<HTMLDivElement>(null);
+	const mobileAreaMenuButtonRef = useRef<HTMLButtonElement>(null);
+	const mobileAreaMenuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+	const pendingMenuFocusIndexRef = useRef<number | null>(null);
+
+	const focusMenuItem = (index: number) => {
+		const normalizedIndex = (index + MAIN_NAV_AREAS.length) % MAIN_NAV_AREAS.length;
+		mobileAreaMenuItemRefs.current[normalizedIndex]?.focus();
+	};
+
+	const openMenuWithFocus = (index: number) => {
+		if (mobileAreaMenuOpen) {
+			focusMenuItem(index);
+			return;
+		}
+		pendingMenuFocusIndexRef.current = index;
+		onToggleMobileAreaMenu();
+	};
+
+	const handleMenuButtonKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+		if (event.key === "Enter" || event.key === " " || event.key === "ArrowDown") {
+			event.preventDefault();
+			openMenuWithFocus(0);
+		} else if (event.key === "ArrowUp") {
+			event.preventDefault();
+			openMenuWithFocus(MAIN_NAV_AREAS.length - 1);
+		}
+	};
+
+	const handleMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+		if (event.key === "Tab") {
+			onCloseMobileAreaMenu();
+			return;
+		}
+		const currentIndex = mobileAreaMenuItemRefs.current.findIndex((item) => item === document.activeElement);
+		let nextIndex: number | null = null;
+		if (event.key === "ArrowDown") nextIndex = currentIndex < 0 ? 0 : currentIndex + 1;
+		else if (event.key === "ArrowUp") nextIndex = currentIndex < 0 ? MAIN_NAV_AREAS.length - 1 : currentIndex - 1;
+		else if (event.key === "Home") nextIndex = 0;
+		else if (event.key === "End") nextIndex = MAIN_NAV_AREAS.length - 1;
+		if (nextIndex === null) return;
+		event.preventDefault();
+		event.stopPropagation();
+		focusMenuItem(nextIndex);
+	};
+
+	useLayoutEffect(() => {
+		if (!mobileAreaMenuOpen) {
+			pendingMenuFocusIndexRef.current = null;
+			return;
+		}
+		const pendingIndex = pendingMenuFocusIndexRef.current;
+		if (pendingIndex === null) return;
+		pendingMenuFocusIndexRef.current = null;
+		focusMenuItem(pendingIndex);
+	}, [mobileAreaMenuOpen]);
+
+	useEffect(() => {
+		if (!mobileAreaMenuOpen) return;
+		const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+			if (mobileAreaMenuRef.current && !mobileAreaMenuRef.current.contains(event.target as Node)) onCloseMobileAreaMenu();
+		};
+		const handleKeyDown = (event: KeyboardEvent) => {
+			if (event.key !== "Escape") return;
+			event.preventDefault();
+			onCloseMobileAreaMenu();
+			mobileAreaMenuButtonRef.current?.focus();
+		};
+		document.addEventListener("mousedown", handlePointerDown);
+		document.addEventListener("touchstart", handlePointerDown);
+		document.addEventListener("keydown", handleKeyDown);
+		return () => {
+			document.removeEventListener("mousedown", handlePointerDown);
+			document.removeEventListener("touchstart", handlePointerDown);
+			document.removeEventListener("keydown", handleKeyDown);
+		};
+	}, [mobileAreaMenuOpen, onCloseMobileAreaMenu]);
+
 	return (
 		<header className="relative flex items-center gap-3 px-4 bg-[#1a262b] border-b border-slate-800 min-h-14 max-[980px]:px-3">
 			<div className="flex min-w-0 items-center gap-2">
 				<button
+					ref={mobileSidebarTriggerRef}
 					type="button"
 					onClick={onOpenMobileSidebar}
 					className="min-[981px]:hidden shrink-0 p-1.5 border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"
@@ -79,27 +161,47 @@ export function AppHeader({
 				</button>
 				<div className="relative min-[1201px]:hidden" ref={mobileAreaMenuRef}>
 					<button
+						ref={mobileAreaMenuButtonRef}
 						type="button"
-						onClick={onToggleMobileAreaMenu}
+						onClick={() => {
+							pendingMenuFocusIndexRef.current = null;
+							onToggleMobileAreaMenu();
+						}}
+						onKeyDown={handleMenuButtonKeyDown}
 						className={`p-1 border rounded-sm hover:border-[#11a4d4] hover:text-[#11a4d4] ${mobileAreaMenuOpen ? "border-[#11a4d4] text-[#11a4d4] bg-[#11a4d4]/10" : "border-slate-700 text-slate-400"}`}
 						title="Open navigation menu"
 						aria-label="Open navigation menu"
+						aria-haspopup="menu"
+						aria-controls={MAIN_NAV_MENU_ID}
 						aria-expanded={mobileAreaMenuOpen}
 					>
 						<List size={14} />
 					</button>
 					{mobileAreaMenuOpen ? (
-						<div className="absolute right-0 top-full z-50 mt-2 w-52 rounded-sm border border-slate-700 bg-[#1a262b] p-1 shadow-xl" role="menu" aria-label="Main navigation">
-							{MAIN_NAV_AREAS.map((item) => (
+						<div
+							id={MAIN_NAV_MENU_ID}
+							className="absolute right-0 top-full z-50 mt-2 w-52 rounded-sm border border-slate-700 bg-[#1a262b] p-1 shadow-xl"
+							role="menu"
+							aria-label="Main navigation"
+							onKeyDown={handleMenuKeyDown}
+						>
+							{MAIN_NAV_AREAS.map((item, index) => (
 								<button
+									ref={(node) => {
+										mobileAreaMenuItemRefs.current[index] = node;
+									}}
 									key={item}
 									type="button"
-									onClick={() => onSelectMainNavArea(item)}
+									onClick={() => {
+										onCloseMobileAreaMenu();
+										onSelectMainNavArea(item);
+									}}
 									aria-current={area === item ? "page" : undefined}
 									className={`flex w-full items-center justify-between gap-2 rounded-sm px-3 py-2 text-left text-xs uppercase tracking-wider ${
 										area === item ? "bg-[#11a4d4]/10 text-[#11a4d4]" : "text-slate-300 hover:bg-slate-800/80 hover:text-[#11a4d4]"
 									}`}
 									role="menuitem"
+									tabIndex={-1}
 								>
 									<span>{item}</span>
 									{item === "sessions" ? <MobileUnreadBadge count={totalRoomUnreadCount} /> : null}
