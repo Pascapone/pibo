@@ -355,7 +355,21 @@ export class PiboLoopStore {
 		const row = this.db.prepare('SELECT * FROM pibo_ralph_runs WHERE id = ?').get(input.runId) as LoopRunRow | undefined;
 		return row ? runFromRow(row) : undefined;
 	}
-	removeJob(id: string): boolean { const result = this.db.prepare('DELETE FROM pibo_ralph_jobs WHERE id = ?').run(id); return Number(result.changes ?? 0) > 0; }
+	removeJob(id: string): boolean {
+		this.db.exec('BEGIN IMMEDIATE');
+		try {
+			if (!this.getJob(id)) { this.db.exec('COMMIT'); return false; }
+			if (this.db.prepare("SELECT 1 FROM pibo_ralph_runs WHERE job_id = ? AND status = 'running' LIMIT 1").get(id)) throw new Error('Loop job has an active run; cancel it before removal');
+			this.db.prepare('DELETE FROM pibo_ralph_run_facts WHERE job_id = ?').run(id);
+			this.db.prepare('DELETE FROM pibo_ralph_runs WHERE job_id = ?').run(id);
+			const result = this.db.prepare('DELETE FROM pibo_ralph_jobs WHERE id = ?').run(id);
+			this.db.exec('COMMIT');
+			return Number(result.changes ?? 0) > 0;
+		} catch (error) {
+			this.db.exec('ROLLBACK');
+			throw error;
+		}
+	}
 	listRuns(input: { jobId?: string; limit?: number } = {}): PiboLoopRun[] {
 		const clauses: string[] = []; const values: Array<string | number> = [];
 		if (input.jobId) { clauses.push('job_id = ?'); values.push(input.jobId); }
@@ -463,9 +477,21 @@ export class PiboLoopStore {
 		this.ensureJobColumn('resource_json', 'TEXT');
 		this.ensureRunColumn('resource_json', 'TEXT');
 		this.ensureRunColumn('accounting_json', 'TEXT');
+		this.repairOrphanedChildren();
 	}
 	private createFreshSchema(): void {
-		this.db.exec(`CREATE TABLE IF NOT EXISTS pibo_ralph_jobs (id TEXT PRIMARY KEY, loop_mode TEXT NOT NULL DEFAULT 'goal', name TEXT NOT NULL, description TEXT, enabled INTEGER NOT NULL, target_json TEXT NOT NULL, profile TEXT NOT NULL, prompt TEXT NOT NULL, max_iterations INTEGER, token_budget INTEGER, token_reserve INTEGER, runtime_options_json TEXT, stop_policy_json TEXT, resource_json TEXT, state_json TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL); CREATE INDEX IF NOT EXISTS idx_pibo_ralph_jobs_enabled ON pibo_ralph_jobs(enabled, updated_at DESC); CREATE TABLE IF NOT EXISTS pibo_ralph_runs (id TEXT PRIMARY KEY, job_id TEXT NOT NULL, pibo_session_id TEXT, status TEXT NOT NULL, reason TEXT, error TEXT, accounting_json TEXT, resource_json TEXT, started_at TEXT, completed_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL); CREATE INDEX IF NOT EXISTS idx_pibo_ralph_runs_job_created ON pibo_ralph_runs(job_id, created_at DESC); CREATE TABLE IF NOT EXISTS pibo_ralph_run_facts (id TEXT PRIMARY KEY, job_id TEXT NOT NULL, run_id TEXT, pibo_session_id TEXT, type TEXT NOT NULL, source TEXT NOT NULL, payload_json TEXT NOT NULL, created_at TEXT NOT NULL); CREATE INDEX IF NOT EXISTS idx_pibo_ralph_facts_job_created ON pibo_ralph_run_facts(job_id, created_at DESC); CREATE INDEX IF NOT EXISTS idx_pibo_ralph_facts_run_type ON pibo_ralph_run_facts(run_id, type, created_at DESC);`);
+		this.db.exec(`CREATE TABLE IF NOT EXISTS pibo_ralph_jobs (id TEXT PRIMARY KEY, loop_mode TEXT NOT NULL DEFAULT 'goal', name TEXT NOT NULL, description TEXT, enabled INTEGER NOT NULL, target_json TEXT NOT NULL, profile TEXT NOT NULL, prompt TEXT NOT NULL, max_iterations INTEGER, token_budget INTEGER, token_reserve INTEGER, runtime_options_json TEXT, stop_policy_json TEXT, resource_json TEXT, state_json TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL); CREATE INDEX IF NOT EXISTS idx_pibo_ralph_jobs_enabled ON pibo_ralph_jobs(enabled, updated_at DESC); CREATE TABLE IF NOT EXISTS pibo_ralph_runs (id TEXT PRIMARY KEY, job_id TEXT NOT NULL REFERENCES pibo_ralph_jobs(id) ON DELETE CASCADE, pibo_session_id TEXT, status TEXT NOT NULL, reason TEXT, error TEXT, accounting_json TEXT, resource_json TEXT, started_at TEXT, completed_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL); CREATE INDEX IF NOT EXISTS idx_pibo_ralph_runs_job_created ON pibo_ralph_runs(job_id, created_at DESC); CREATE TABLE IF NOT EXISTS pibo_ralph_run_facts (id TEXT PRIMARY KEY, job_id TEXT NOT NULL REFERENCES pibo_ralph_jobs(id) ON DELETE CASCADE, run_id TEXT, pibo_session_id TEXT, type TEXT NOT NULL, source TEXT NOT NULL, payload_json TEXT NOT NULL, created_at TEXT NOT NULL); CREATE INDEX IF NOT EXISTS idx_pibo_ralph_facts_job_created ON pibo_ralph_run_facts(job_id, created_at DESC); CREATE INDEX IF NOT EXISTS idx_pibo_ralph_facts_run_type ON pibo_ralph_run_facts(run_id, type, created_at DESC);`);
+	}
+	private repairOrphanedChildren(): void {
+		this.db.exec('BEGIN IMMEDIATE');
+		try {
+			this.db.exec('DELETE FROM pibo_ralph_run_facts WHERE NOT EXISTS (SELECT 1 FROM pibo_ralph_jobs WHERE pibo_ralph_jobs.id = pibo_ralph_run_facts.job_id)');
+			this.db.exec('DELETE FROM pibo_ralph_runs WHERE NOT EXISTS (SELECT 1 FROM pibo_ralph_jobs WHERE pibo_ralph_jobs.id = pibo_ralph_runs.job_id)');
+			this.db.exec('COMMIT');
+		} catch (error) {
+			this.db.exec('ROLLBACK');
+			throw error;
+		}
 	}
 	private ensureJobColumn(name: string, definition: string): void {
 		const columns = this.tableColumns('pibo_ralph_jobs');
