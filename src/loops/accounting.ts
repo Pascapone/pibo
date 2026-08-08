@@ -16,7 +16,11 @@ export function goalRemainingTokens(job: PiboLoopJob): number | undefined {
 	return job.tokenBudget === undefined ? undefined : Math.max(0, job.tokenBudget - (job.state.tokensUsed ?? 0));
 }
 
-export function goalCanStartNextTurn(job: PiboLoopJob): boolean {
+export function goalCanStartNextTurn(job: PiboLoopJob, now = new Date()): boolean {
+	if (job.mode !== 'goal' || !job.enabled) return false;
+	const status = job.state.goalStatus ?? 'paused';
+	if (status !== 'active') return false;
+	if (job.state.nextAttemptAt && Date.parse(job.state.nextAttemptAt) > now.getTime()) return false;
 	const remaining = goalRemainingTokens(job);
 	return remaining === undefined || remaining > (job.tokenReserve ?? 0);
 }

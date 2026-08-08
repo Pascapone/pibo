@@ -175,6 +175,13 @@ export function LoopArea({ bootstrap, mobileSidebarOpen = false, onCloseMobileSi
 					</div>
 
 					{error ? <ErrorBox message={error} /> : null}
+					{selectedJob?.state.lastFailure ? <div data-pibo-loop-failure role="status" className="rounded-sm border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+						<div className="font-semibold">{selectedJob.state.nextAttemptAt ? "Loop retry scheduled" : "Loop requires attention"}</div>
+						<div className="mt-1">{selectedJob.state.lastFailure.message}</div>
+						{selectedJob.state.lastFailure.details?.code || selectedJob.state.lastFailure.details?.category ? <div className="mt-1 font-mono text-[11px] text-amber-200/70">Failure: {selectedJob.state.lastFailure.details.code ?? selectedJob.state.lastFailure.details.category}</div> : null}
+						<div className="mt-1 text-xs text-amber-200/80">{selectedJob.state.lastFailure.recovery}</div>
+						{selectedJob.state.nextAttemptAt ? <div className="mt-1 font-mono text-[11px] text-amber-200/70">Next attempt: {selectedJob.state.nextAttemptAt} · backoff {selectedJob.state.retryBackoffMs ?? 0} ms</div> : null}
+					</div> : null}
 
 					{selectedJob?.mode === "goal" ? <div className="grid grid-cols-3 gap-3 max-[720px]:grid-cols-1"><Stat label="Active agent time" value={formatDurationSeconds(goalActiveTimeSeconds(selectedJob))} /><Stat label="Wall-clock elapsed" value={formatDurationSeconds(goalElapsedWallClockSeconds(selectedJob))} /><Stat label="Paused time" value="Included in wall clock" /></div> : null}
 
