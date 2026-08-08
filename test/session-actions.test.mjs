@@ -821,6 +821,59 @@ function createQueuedCompactRuntime(order, promptBlocks, compactBlock) {
 	};
 }
 
+function createDelayedContextGuardRuntime(order, agentSettlement, secondPrompt) {
+	let listener;
+	let promptCount = 0;
+	let settlementWaits = 0;
+	return {
+		cwd: process.cwd(),
+		emitPiEvent(event) {
+			listener?.(event);
+		},
+		session: {
+			async prompt(text) {
+				order.push(`prompt:${text}`);
+				promptCount += 1;
+				if (promptCount > 1) await secondPrompt.promise;
+			},
+			async waitForIdle() {
+				settlementWaits += 1;
+				if (settlementWaits === 1) await agentSettlement.promise;
+			},
+			async abort() {
+				agentSettlement.resolve();
+				secondPrompt.resolve();
+			},
+			async sendCustomMessage(message, options) {
+				order.push(`resume:${message.customType}:${options?.triggerTurn === true}`);
+			},
+			subscribe(callback) {
+				listener = callback;
+				return () => { listener = undefined; };
+			},
+			isStreaming: false,
+			getActiveToolNames() { return []; },
+			getContextUsage() { return undefined; },
+			getAllTools() { return []; },
+			getAvailableThinkingLevels() { return []; },
+			supportsThinking() { return false; },
+			thinkingLevel: "off",
+			resourceLoader: { getSkills() { return { skills: [] }; } },
+			sessionManager: {
+				getPiSessionId() { return "session-id"; },
+				getSessionFile() { return undefined; },
+				getLeafId() { return null; },
+				getHeader() { return undefined; },
+			},
+			sessionId: "pi:test",
+			sessionFile: undefined,
+			sessionName: undefined,
+		},
+		setRebindSession() {},
+		async dispose() {},
+	};
+}
+
 test("compact action is serialized between queued messages", async () => {
 	const events = [];
 	const order = [];
@@ -880,44 +933,85 @@ test("compact action is serialized between queued messages", async () => {
 	await routed.dispose();
 });
 
-test("context guard recovery holds the routed queue until continuation finishes", async () => {
+test("context guard recovery publishes after prompt return before routed completion", async () => {
 	const events = [];
 	const order = [];
-	const firstPrompt = deferred();
+	const agentSettlement = deferred();
 	const secondPrompt = deferred();
-	const compactBlock = deferred();
-	const runtime = createQueuedCompactRuntime(order, [firstPrompt, secondPrompt], compactBlock);
+	const runtime = createDelayedContextGuardRuntime(order, agentSettlement, secondPrompt);
 	const recovery = createPiboAssistantContextGuardRecovery();
 	registerPiboAssistantContextGuardRecovery(runtime.session, recovery);
 	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
 	const routed = new RoutedSession("route:test", runtime, (event) => events.push(event), registry, false);
 
-	routed.enqueueMessage({
-		type: "message",
-		piboSessionId: "route:test",
-		id: "message-a",
-		text: "A",
-		source: "user",
-	});
+	routed.enqueueMessage({ type: "message", piboSessionId: "route:test", id: "message-a", text: "A", source: "user" });
 	await new Promise((resolve) => setImmediate(resolve));
-	recovery.begin();
-	firstPrompt.resolve();
+	routed.enqueueMessage({ type: "message", piboSessionId: "route:test", id: "message-b", text: "B", source: "user" });
+	await new Promise((resolve) => setImmediate(resolve));
+	assert.deepEqual(order, ["prompt:A"], "the prompt returned, but agent settlement must still hold the routed turn");
 
-	routed.enqueueMessage({
-		type: "message",
-		piboSessionId: "route:test",
-		id: "message-b",
-		text: "B",
-		source: "user",
-	});
+	await Promise.resolve();
+	recovery.begin();
+	runtime.emitPiEvent({ type: "compaction_start", reason: "manual" });
+	agentSettlement.resolve();
 	await new Promise((resolve) => setImmediate(resolve));
-	assert.deepEqual(order, ["prompt:A"], "queued input must wait through compaction and continuation");
+	assert.deepEqual(order, ["prompt:A"], "queued input must wait through asynchronous recovery publication");
 	assert.equal(events.some((event) => event.type === "message_finished" && event.eventId === "message-a"), false);
 
+	runtime.emitPiEvent({ type: "compaction_end", reason: "manual", result: { summary: "ok" }, aborted: false });
 	recovery.complete();
 	await new Promise((resolve) => setImmediate(resolve));
 	assert.deepEqual(order, ["prompt:A", "resume:pibo-context-guard-resume:true", "prompt:B"]);
-	assert.equal(events.some((event) => event.type === "message_finished" && event.eventId === "message-a"), true);
+	const compactionStart = events.find((event) => event.type === "compaction_start");
+	const compactionEndIndex = events.findIndex((event) => event.type === "compaction_end");
+	const messageFinishedIndex = events.findIndex((event) => event.type === "message_finished" && event.eventId === "message-a");
+	const secondStartedIndex = events.findIndex((event) => event.type === "message_started" && event.eventId === "message-b");
+	assert.equal(compactionStart.eventId, "message-a");
+	assert.equal(events[compactionEndIndex].eventId, "message-a");
+	assert.ok(compactionEndIndex < messageFinishedIndex);
+	assert.ok(messageFinishedIndex < secondStartedIndex);
+
+	secondPrompt.resolve();
+	await new Promise((resolve) => setImmediate(resolve));
+	await routed.dispose();
+});
+
+test("context guard compaction failure precedes one original-event error and the next queued turn", async () => {
+	const events = [];
+	const order = [];
+	const agentSettlement = deferred();
+	const secondPrompt = deferred();
+	const runtime = createDelayedContextGuardRuntime(order, agentSettlement, secondPrompt);
+	const recovery = createPiboAssistantContextGuardRecovery();
+	registerPiboAssistantContextGuardRecovery(runtime.session, recovery);
+	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+	const routed = new RoutedSession("route:test", runtime, (event) => events.push(event), registry, false);
+
+	routed.enqueueMessage({ type: "message", piboSessionId: "route:test", id: "message-a", text: "A", source: "user" });
+	await new Promise((resolve) => setImmediate(resolve));
+	routed.enqueueMessage({ type: "message", piboSessionId: "route:test", id: "message-b", text: "B", source: "user" });
+	await Promise.resolve();
+	recovery.begin();
+	runtime.emitPiEvent({ type: "compaction_start", reason: "manual" });
+	agentSettlement.resolve();
+	await new Promise((resolve) => setImmediate(resolve));
+
+	const failure = new Error("context guard compaction failed");
+	runtime.emitPiEvent({ type: "compaction_end", reason: "manual", aborted: false, errorMessage: failure.message });
+	recovery.fail(failure);
+	await new Promise((resolve) => setImmediate(resolve));
+
+	assert.deepEqual(order, ["prompt:A", "prompt:B"]);
+	const compactionEndIndex = events.findIndex((event) => event.type === "compaction_end");
+	const errors = events.filter((event) => event.type === "session_error" && event.eventId === "message-a");
+	const errorIndex = events.indexOf(errors[0]);
+	const secondStartedIndex = events.findIndex((event) => event.type === "message_started" && event.eventId === "message-b");
+	assert.equal(errors.length, 1);
+	assert.equal(errors[0].error, failure.message);
+	assert.equal(events.some((event) => event.type === "message_finished" && event.eventId === "message-a"), false);
+	assert.equal(events[compactionEndIndex].eventId, "message-a");
+	assert.ok(compactionEndIndex < errorIndex);
+	assert.ok(errorIndex < secondStartedIndex);
 
 	secondPrompt.resolve();
 	await new Promise((resolve) => setImmediate(resolve));

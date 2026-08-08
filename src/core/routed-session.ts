@@ -719,6 +719,11 @@ export class RoutedSession {
 		this.providerRecoveryAbortController = undefined;
 	}
 
+	private async waitForPiAgentSettlement(session: AgentSessionRuntime["session"]): Promise<void> {
+		const waitForIdle = (session as AgentSessionRuntime["session"] & { waitForIdle?: () => Promise<void> }).waitForIdle;
+		if (waitForIdle) await waitForIdle.call(session);
+	}
+
 	private async resumeContextGuardRecovery(session: AgentSessionRuntime["session"]): Promise<void> {
 		while (await waitForPiboAssistantContextGuardRecovery(session)) {
 			try {
@@ -727,6 +732,7 @@ export class RoutedSession {
 					content: [{ type: "text", text: PIBO_CONTEXT_GUARD_RESUME_PROMPT }],
 					display: false,
 				}, { triggerTurn: true });
+				await this.waitForPiAgentSettlement(session);
 			} catch (error) {
 				const resumeError = error instanceof Error ? error : new Error(String(error));
 				cancelPiboAssistantContextGuardRecovery(session, resumeError);
@@ -788,11 +794,11 @@ export class RoutedSession {
 		if (!event || typeof event !== "object") return;
 		const candidate = event as { type?: unknown; reason?: unknown; result?: unknown; aborted?: unknown; errorMessage?: unknown };
 		if (candidate.type === "compaction_start") {
-			this.emit({
+			this.emit(this.withActiveMessage({
 				type: "compaction_start",
 				piboSessionId: this.piboSessionId,
 				reason: typeof candidate.reason === "string" ? candidate.reason : "unknown",
-			});
+			}));
 		}
 		if (candidate.type === "compaction_end") {
 			if (candidate.result && candidate.aborted !== true) {
@@ -803,14 +809,14 @@ export class RoutedSession {
 				this.activeThinkingIndex = undefined;
 				this.nextThinkingIndex = 0;
 			}
-			this.emit({
+			this.emit(this.withActiveMessage({
 				type: "compaction_end",
 				piboSessionId: this.piboSessionId,
 				reason: typeof candidate.reason === "string" ? candidate.reason : "unknown",
 				result: candidate.result,
 				aborted: candidate.aborted === true,
 				errorMessage: typeof candidate.errorMessage === "string" ? candidate.errorMessage : undefined,
-			});
+			}));
 		}
 	}
 
@@ -1198,6 +1204,7 @@ export class RoutedSession {
 				session.resourceLoader.getSkills().skills,
 			);
 			await session.prompt(expandedText, { source: promptSource(event.source) });
+			await this.waitForPiAgentSettlement(session);
 			await this.resumeContextGuardRecovery(session);
 			await this.recoverTransientProviderErrors(session);
 			this.flushPendingAssistantError();
@@ -1431,6 +1438,8 @@ export class RoutedSession {
 		if (
 			this.activeMessage?.id &&
 			(event.type === "assistant_usage" ||
+				event.type === "compaction_start" ||
+				event.type === "compaction_end" ||
 				event.type === "tool_call" ||
 				event.type === "tool_execution_started" ||
 				event.type === "tool_execution_updated" ||
