@@ -59,7 +59,7 @@ type InlineJsonValueProps = {
 	onToggleString: (path: string) => void;
 };
 
-function InlineJsonValue({
+export function InlineJsonValue({
 	value,
 	path,
 	expandedPaths,
@@ -112,6 +112,8 @@ function InlineJsonValue({
 				}}
 				className="compact-terminal-json-toggle text-left align-baseline"
 				title={expanded ? "Collapse string" : "Expand string"}
+				aria-label={`String at ${boundedAccessiblePath(path)}`}
+				aria-expanded={expanded}
 			>
 				{rendered}
 			</button>
@@ -208,6 +210,14 @@ function InlineCollection({
 			<span className="text-[#737373]">{close}</span>
 		</span>
 	);
+}
+
+function boundedAccessiblePath(path: string): string {
+	const sanitizedPath = path.replace(/[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}/gi, "[id]");
+	const maximumLength = 80;
+	if (sanitizedPath.length <= maximumLength) return sanitizedPath;
+	const edgeLength = Math.floor((maximumLength - 1) / 2);
+	return `${sanitizedPath.slice(0, edgeLength)}…${sanitizedPath.slice(-edgeLength)}`;
 }
 
 function escapePathKey(value: string): string {
