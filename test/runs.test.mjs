@@ -608,6 +608,58 @@ test("router rejects yielded runs when gateway resource block threshold is cross
 	}
 });
 
+test("router rejects concurrent yielded runs until the active execution settles", async () => {
+	const previousMode = process.env.PIBO_GATEWAY_RESOURCE_GUARD;
+	const previousFree = process.env.PIBO_GATEWAY_MIN_FREE_MEMORY_BYTES;
+	const previousReservation = process.env.PIBO_GATEWAY_YIELDED_RUN_MEMORY_RESERVATION_BYTES;
+	const previousMax = process.env.PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS;
+	process.env.PIBO_GATEWAY_RESOURCE_GUARD = "block";
+	process.env.PIBO_GATEWAY_MIN_FREE_MEMORY_BYTES = "0";
+	process.env.PIBO_GATEWAY_YIELDED_RUN_MEMORY_RESERVATION_BYTES = "0";
+	process.env.PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS = "1";
+	try {
+		const router = new PiboSessionRouter({ persistSession: false });
+		let finishFirst;
+		const firstFinished = new Promise((resolve) => {
+			finishFirst = resolve;
+		});
+		const controller = router.createRunToolController("parent");
+		controller.startToolRun({
+			toolName: "bash",
+			completionPolicy: "detached",
+			async execute() {
+				await firstFinished;
+				return { text: "first done" };
+			},
+		});
+		assert.throws(
+			() => controller.startToolRun({ toolName: "bash", async execute() { return { text: "must not start" }; } }),
+			/Active yielded runs 1 reached the configured limit 1/,
+		);
+
+		finishFirst();
+		await new Promise((resolve) => setImmediate(resolve));
+		const next = controller.startToolRun({
+			toolName: "bash",
+			completionPolicy: "detached",
+			async execute() {
+				return { text: "next done" };
+			},
+		});
+		await new Promise((resolve) => setImmediate(resolve));
+		assert.equal(router.runRegistry.status("parent", next.runId).status, "completed");
+	} finally {
+		if (previousMode === undefined) delete process.env.PIBO_GATEWAY_RESOURCE_GUARD;
+		else process.env.PIBO_GATEWAY_RESOURCE_GUARD = previousMode;
+		if (previousFree === undefined) delete process.env.PIBO_GATEWAY_MIN_FREE_MEMORY_BYTES;
+		else process.env.PIBO_GATEWAY_MIN_FREE_MEMORY_BYTES = previousFree;
+		if (previousReservation === undefined) delete process.env.PIBO_GATEWAY_YIELDED_RUN_MEMORY_RESERVATION_BYTES;
+		else process.env.PIBO_GATEWAY_YIELDED_RUN_MEMORY_RESERVATION_BYTES = previousReservation;
+		if (previousMax === undefined) delete process.env.PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS;
+		else process.env.PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS = previousMax;
+	}
+});
+
 test("router converts yielded tool errors into failed run notifications", async () => {
 	const router = new PiboSessionRouter({ persistSession: false });
 	const messages = [];
@@ -667,59 +719,74 @@ test("router emits a distinct timed_out run notification", async () => {
 });
 
 test("router invalidates stale queued run notifications after read", async () => {
-	const router = new PiboSessionRouter({ persistSession: false });
-	const messages = [];
-	const session = {
-		enqueueMessage(event) {
-			messages.push(event);
-			return {
-				type: "message_queued",
-				piboSessionId: event.piboSessionId,
-				eventId: event.id,
-				queuedMessages: messages.length,
-				text: event.text,
-				source: event.source,
-			};
-		},
-		removeQueuedMessages(predicate) {
-			let removed = 0;
-			for (let index = messages.length - 1; index >= 0; index -= 1) {
-				if (!predicate(messages[index])) continue;
-				messages.splice(index, 1);
-				removed += 1;
-			}
-			return removed;
-		},
-	};
-	router.getOrCreateSession = async () => session;
-	router.sessions.set("parent", session);
+	const previousMode = process.env.PIBO_GATEWAY_RESOURCE_GUARD;
+	const previousReservation = process.env.PIBO_GATEWAY_YIELDED_RUN_MEMORY_RESERVATION_BYTES;
+	const previousMax = process.env.PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS;
+	process.env.PIBO_GATEWAY_RESOURCE_GUARD = "block";
+	process.env.PIBO_GATEWAY_YIELDED_RUN_MEMORY_RESERVATION_BYTES = "0";
+	process.env.PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS = "2";
+	try {
+		const router = new PiboSessionRouter({ persistSession: false });
+		const messages = [];
+		const session = {
+			enqueueMessage(event) {
+				messages.push(event);
+				return {
+					type: "message_queued",
+					piboSessionId: event.piboSessionId,
+					eventId: event.id,
+					queuedMessages: messages.length,
+					text: event.text,
+					source: event.source,
+				};
+			},
+			removeQueuedMessages(predicate) {
+				let removed = 0;
+				for (let index = messages.length - 1; index >= 0; index -= 1) {
+					if (!predicate(messages[index])) continue;
+					messages.splice(index, 1);
+					removed += 1;
+				}
+				return removed;
+			},
+		};
+		router.getOrCreateSession = async () => session;
+		router.sessions.set("parent", session);
 
-	const controller = router.createRunToolController("parent");
-	const consumedRun = controller.startToolRun({
-		toolName: "first",
-		async execute() {
-			return { text: "first done" };
-		},
-	});
-	const pendingRun = controller.startToolRun({
-		toolName: "second",
-		async execute() {
-			return { text: "second done" };
-		},
-	});
-	await new Promise((resolve) => setImmediate(resolve));
+		const controller = router.createRunToolController("parent");
+		const consumedRun = controller.startToolRun({
+			toolName: "first",
+			async execute() {
+				return { text: "first done" };
+			},
+		});
+		const pendingRun = controller.startToolRun({
+			toolName: "second",
+			async execute() {
+				return { text: "second done" };
+			},
+		});
+		await new Promise((resolve) => setImmediate(resolve));
 
-	assert.equal(messages.length, 1);
-	assert.match(messages[0].text, new RegExp(consumedRun.runId));
-	assert.match(messages[0].text, new RegExp(pendingRun.runId));
+		assert.equal(messages.length, 1);
+		assert.match(messages[0].text, new RegExp(consumedRun.runId));
+		assert.match(messages[0].text, new RegExp(pendingRun.runId));
 
-	const read = controller.readRun(consumedRun.runId);
-	assert.equal(read.status, "completed");
-	assert.equal(read.consumed, true);
-	assert.equal(messages.length, 0);
+		const read = controller.readRun(consumedRun.runId);
+		assert.equal(read.status, "completed");
+		assert.equal(read.consumed, true);
+		assert.equal(messages.length, 0);
 
-	await new Promise((resolve) => setImmediate(resolve));
-	assert.equal(messages.length, 1);
-	assert.doesNotMatch(messages[0].text, new RegExp(consumedRun.runId));
-	assert.match(messages[0].text, new RegExp(pendingRun.runId));
+		await new Promise((resolve) => setImmediate(resolve));
+		assert.equal(messages.length, 1);
+		assert.doesNotMatch(messages[0].text, new RegExp(consumedRun.runId));
+		assert.match(messages[0].text, new RegExp(pendingRun.runId));
+	} finally {
+		if (previousMode === undefined) delete process.env.PIBO_GATEWAY_RESOURCE_GUARD;
+		else process.env.PIBO_GATEWAY_RESOURCE_GUARD = previousMode;
+		if (previousReservation === undefined) delete process.env.PIBO_GATEWAY_YIELDED_RUN_MEMORY_RESERVATION_BYTES;
+		else process.env.PIBO_GATEWAY_YIELDED_RUN_MEMORY_RESERVATION_BYTES = previousReservation;
+		if (previousMax === undefined) delete process.env.PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS;
+		else process.env.PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS = previousMax;
+	}
 });
