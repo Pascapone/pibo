@@ -144,6 +144,17 @@ export function SessionSidebar({
 	const newSessionProfileOptions = bootstrap.agents;
 	const sharedDefaultRoom = findSharedDefaultRoom(bootstrap.rooms);
 	const roomGroups = splitRoomNodes(bootstrap.rooms);
+	const archivedSessionsToggleRef = useRef<HTMLButtonElement>(null);
+	const handleToggleArchivedSessions = async () => {
+		const restoreFocus = archivedSessionsToggleRef.current === document.activeElement;
+		try {
+			await onToggleArchivedSessions();
+		} finally {
+			requestAnimationFrame(() => {
+				if (restoreFocus && document.activeElement === document.body) archivedSessionsToggleRef.current?.focus();
+			});
+		}
+	};
 
 	return (
 		<div
@@ -188,7 +199,8 @@ export function SessionSidebar({
 									type="button"
 									onClick={onToggleArchivedRooms}
 									title={showArchivedRooms ? "Hide Archived Rooms" : "Show Archived Rooms"}
-									aria-label={showArchivedRooms ? "Hide Archived Rooms" : "Show Archived Rooms"}
+									aria-label="Archived Rooms"
+									aria-pressed={showArchivedRooms}
 									className={`h-6 w-6 max-[980px]:h-8 max-[980px]:w-8 inline-flex items-center justify-center border rounded-sm hover:border-[#11a4d4] hover:text-[#11a4d4] ${showArchivedRooms ? "border-[#11a4d4] text-[#11a4d4]" : "border-slate-700 text-slate-400"}`}
 								>
 									{showArchivedRooms ? <ArchiveRestore size={14} /> : <Archive size={14} />}
@@ -264,10 +276,12 @@ export function SessionSidebar({
 						</button>
 						<button
 							type="button"
-							onClick={() => void onToggleArchivedSessions()}
+							ref={archivedSessionsToggleRef}
+							onClick={() => void handleToggleArchivedSessions()}
 							disabled={loadingArchivedSessions}
 							title={showArchived ? "Hide Archived Sessions" : "Show Archived Sessions"}
-							aria-label={showArchived ? "Hide Archived Sessions" : "Show Archived Sessions"}
+							aria-label="Archived Sessions"
+							aria-pressed={showArchived}
 							className={`h-6 w-6 max-[980px]:h-8 max-[980px]:w-8 inline-flex items-center justify-center border rounded-sm hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-70 ${
 								showArchived ? "border-[#11a4d4] text-[#11a4d4]" : "border-slate-700 text-slate-400"
 							}`}
