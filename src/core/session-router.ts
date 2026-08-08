@@ -39,7 +39,7 @@ import { loadPiboUserSettings } from "./user-settings.js";
 import { resolvePiboSessionActiveModel } from "./session-model.js";
 import { isPiboThinkingLevel, type PiboThinkingLevel } from "./thinking.js";
 import { RuntimeSessionRegistry } from "../tools/runtime/registry.js";
-import { assertGatewayResourceAvailableForWork } from "./gateway-resource-guard.js";
+import { GatewayWorkAdmissionController } from "./gateway-resource-guard.js";
 import { withWorkflowSessionKind } from "../sessions/workflow-session-kind.js";
 import { PiboRuntimeTelemetryRecorder, type ProviderEventTelemetryMode } from "./runtime-telemetry.js";
 import { createPiboProviderTelemetryExtension } from "./provider-telemetry.js";
@@ -221,6 +221,7 @@ export class PiboSessionRouter {
 	private readonly pendingSessions = new Map<string, Promise<RoutedSession>>();
 	private readonly listeners = new Set<PiboEventListener>();
 	private readonly runRegistry: PiboRunRegistry;
+	private readonly gatewayWorkAdmission = new GatewayWorkAdmissionController();
 	private readonly signalRegistry: PiboSignalRegistry;
 	private readonly runtimeRegistry: RuntimeSessionRegistry;
 	private readonly scheduledRunReminders = new Map<string, boolean>();
@@ -814,17 +815,23 @@ export class PiboSessionRouter {
 	private createRunToolController(parentPiboSessionId: string): PiboRunToolController {
 		return {
 			startToolRun: ({ toolName, params, completionPolicy, retryable, maxAttempts, timeoutMs, serviceWarning, execute }) => {
-				assertGatewayResourceAvailableForWork(`yielded run ${toolName}`);
-				const run = this.runRegistry.startToolRun({
-					controllerPiboSessionId: parentPiboSessionId,
-					toolName,
-					params,
-					completionPolicy,
-					retryable,
-					maxAttempts,
-					timeoutMs,
-					serviceWarning,
-				});
+				const admission = this.gatewayWorkAdmission.reserve(`yielded run ${toolName}`);
+				let run: PiboRunSnapshot;
+				try {
+					run = this.runRegistry.startToolRun({
+						controllerPiboSessionId: parentPiboSessionId,
+						toolName,
+						params,
+						completionPolicy,
+						retryable,
+						maxAttempts,
+						timeoutMs,
+						serviceWarning,
+					});
+				} catch (error) {
+					admission.release();
+					throw error;
+				}
 
 				void (async () => {
 					try {
@@ -837,6 +844,8 @@ export class PiboSessionRouter {
 							? this.runRegistry.timeOut(run.runId, message, error.timeoutPhase)
 							: this.runRegistry.fail(run.runId, message);
 						if (terminalRun) this.scheduleRunReminder(parentPiboSessionId, false);
+					} finally {
+						admission.release();
 					}
 				})();
 

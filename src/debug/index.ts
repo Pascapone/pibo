@@ -1014,11 +1014,13 @@ Reports:
   Gateway RSS/heap headroom, host free-memory reserve, direct child processes, and known heavy local daemons such as ComfyUI or Unity when process listing is available.
 
 Environment:
-  PIBO_GATEWAY_RESOURCE_GUARD=warn|block|off
+  PIBO_GATEWAY_RESOURCE_GUARD=block|warn|off (default: block)
   PIBO_GATEWAY_MIN_FREE_MEMORY_BYTES=<bytes>
   PIBO_GATEWAY_MIN_HEAP_AVAILABLE_BYTES=<bytes>
   PIBO_GATEWAY_MAX_RSS_BYTES=<bytes>
   PIBO_GATEWAY_KNOWN_DAEMON_WARNING_RSS_BYTES=<bytes>
+  PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS=<count> (default: 1)
+  PIBO_GATEWAY_YIELDED_RUN_MEMORY_RESERVATION_BYTES=<bytes> (default: 2147483648)
 
 Next:
   pibo debug resources --json

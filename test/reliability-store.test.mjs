@@ -132,6 +132,59 @@ test("job claims are exclusive, retry backs off, and exhausted retry moves to DL
 	}
 });
 
+test("recoverInterruptedRuns reconciles an unexpired claim owned by a previous runtime", () => {
+	const store = new PiboReliabilityStore(":memory:");
+	try {
+		const run = store.createRun({
+			controllerPiboSessionId: "ps_parent",
+			toolName: "bash",
+			completionPolicy: "tracked",
+			retryable: false,
+			workerId: "run-registry:previous-runtime",
+		});
+
+		assert.deepEqual(store.recoverInterruptedRuns("run-registry:previous-runtime"), []);
+		const recovered = store.recoverInterruptedRuns("run-registry:new-runtime");
+
+		assert.equal(recovered.length, 1);
+		assert.equal(recovered[0].runId, run.runId);
+		assert.equal(recovered[0].status, "failed");
+		assert.match(recovered[0].error, /interrupted before completion/);
+		assert.deepEqual(store.listJobs({ queue: "runs" }), []);
+		assert.equal(store.listDead({ queue: "runs" })[0].deadReason, "interrupted");
+	} finally {
+		store.close();
+	}
+});
+
+test("recoverInterruptedRuns classifies an elapsed run deadline after restart", () => {
+	const store = new PiboReliabilityStore(":memory:");
+	try {
+		const run = store.createRun({
+			controllerPiboSessionId: "ps_parent",
+			toolName: "bash",
+			completionPolicy: "tracked",
+			retryable: false,
+			timeoutMs: 30 * 60 * 1000,
+			workerId: "run-registry:previous-runtime",
+		});
+		store.db.prepare("UPDATE pibo_runs SET timeout_at = ? WHERE run_id = ?").run(
+			new Date(Date.now() - 1000).toISOString(),
+			run.runId,
+		);
+
+		const recovered = store.recoverInterruptedRuns("run-registry:new-runtime");
+
+		assert.equal(recovered.length, 1);
+		assert.equal(recovered[0].status, "timed_out");
+		assert.equal(recovered[0].timeoutPhase, "lifetime");
+		assert.match(recovered[0].error, /deadline .* elapsed/);
+		assert.equal(store.listDead({ queue: "runs" })[0].deadReason, "timeout");
+	} finally {
+		store.close();
+	}
+});
+
 test("recoverInterruptedRuns fails non-retryable expired runs and moves their jobs to DLQ", () => {
 	const store = new PiboReliabilityStore(":memory:");
 	try {
