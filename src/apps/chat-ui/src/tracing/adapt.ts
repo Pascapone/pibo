@@ -117,6 +117,8 @@ function spanAttributes(node: PiboTraceNode): Record<string, unknown> {
 	}
 	if (node.type === "user.message") {
 		attributes.content = node.output ?? node.summary ?? "";
+		const pendingDelivery = pendingUserMessageDelivery(node);
+		if (pendingDelivery) attributes["message.pending_delivery"] = pendingDelivery;
 	}
 	if (node.type === "model.reasoning") {
 		attributes.reasoning = node.output ?? node.summary ?? "";
@@ -139,6 +141,13 @@ function spanAttributes(node: PiboTraceNode): Record<string, unknown> {
 		attributes["run.status"] = node.status;
 	}
 	return attributes;
+}
+
+function pendingUserMessageDelivery(node: PiboTraceNode): "queue" | "steer" | undefined {
+	if (node.type !== "user.message" || node.status !== "running") return undefined;
+	if (node.id.startsWith("event:message_steered:")) return "steer";
+	if (node.id.startsWith("event:message_queued:")) return "queue";
+	return undefined;
 }
 
 function adaptStatus(status: PiboTraceNode["status"]): SpanStatus {

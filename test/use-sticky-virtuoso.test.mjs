@@ -14,6 +14,14 @@ test("useStickyVirtuoso detaches synchronously for upward intent and permits exp
 	assert.match(source, /shouldReattachStickyAtBottom\(bottomReattachArmedRef\.current, false\)/);
 });
 
+test("useStickyVirtuoso treats scroll position changes as directional only during user intent", () => {
+	assert.match(source, /stickyScrollPositionDirection\(\{\n\t\t\thasUserScrollIntent: userScrollIntentRef\.current,/);
+	assert.doesNotMatch(source, /previousScrollTop !== undefined && scrollTop < previousScrollTop - 1/);
+	assert.match(source, /if \(userScrollIntentRef\.current\) setSticky\(false\);/);
+	assert.doesNotMatch(source, /if \(userScrollIntentRef\.current \|\| scrollingAwayFromBottom\) setSticky\(false\);/);
+	assert.match(source, /stickyTouchScrollIntentDirection\(previousY, currentY\)/);
+});
+
 test("useStickyVirtuoso uses explicit anchor and Virtuoso prepend contracts", () => {
 	assert.match(source, /firstItemIndexRef\.current -= prependedCount/);
 	assert.match(source, /captureDomVisibleAnchors\(scroller, committedItemKeysRef\.current\)/);

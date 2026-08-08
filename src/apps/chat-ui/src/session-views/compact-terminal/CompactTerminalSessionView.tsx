@@ -3,6 +3,7 @@ import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
 import { ChevronDown, ChevronRight, CircleX, GitBranch, Hammer, MessageSquare } from "lucide-react";
 import { Virtuoso } from "react-virtuoso";
 import { AgentDelegationCard } from "../../components/AgentDelegationCard";
+import { PendingUserMessageDelivery } from "../../components/PendingUserMessageDelivery";
 import { useStickyVirtuoso } from "../../components/useStickyVirtuoso";
 import { useSessionActivity } from "../../hooks/useSessionActivity";
 import { MarkdownRenderer } from "../../tracing/MarkdownRenderer";
@@ -555,6 +556,9 @@ function TerminalRowContent({
 		return (
 			<>
 				<TerminalLines lines={visibleLines} status={row.status} clampPreview={collapseToolCallPreview} />
+				{row.pendingMessageDelivery ? (
+					<PendingUserMessageDelivery delivery={row.pendingMessageDelivery} className="ml-[1.9rem] mt-2" />
+				) : null}
 				<TerminalMessageMetadata timestamp={row.startedAt} />
 			</>
 		);

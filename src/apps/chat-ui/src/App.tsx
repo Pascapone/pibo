@@ -57,17 +57,22 @@ import {
 import {
 	addRoomToBootstrap,
 	addSessionNodeToBootstrap,
+	applyBootstrapUpdateForRoom,
 	createBootstrapMutationSnapshot,
 	createOptimisticRoom,
 	createOptimisticSessionNode,
 	replaceOptimisticSessionNode,
 	replaceRoomInBootstrap,
+	resolveOptimisticSessionCreateOutcome,
+	rollbackOptimisticSessionNode,
+	restoreBootstrapSelection,
 	roomWithArchivedState,
 	sessionNodeFromSession,
 	updateRoomInBootstrap,
 	updateSessionFromPiboSession,
 	updateSessionNodeInBootstrap,
 	type BootstrapMutationSnapshot,
+	type OptimisticSessionCreateOutcome,
 } from "./app-bootstrap-mutations";
 import {
 	chatBootstrapQueryKey,
@@ -95,6 +100,7 @@ import {
 	findSessionNode,
 	findSessionPath,
 	identityFromBootstrap,
+	isSessionComposerDisabled,
 	resolveSessionActiveModelLabel,
 } from "./app-session-model";
 import {
@@ -110,6 +116,7 @@ import {
 	sessionsRouteCanonicalSelection,
 	shouldSkipRouteSelectionLoad,
 } from "./app-route-selection";
+import { classifyBootstrapError, type BootstrapErrorState } from "./app-bootstrap-error";
 import { errorMessage } from "./error-message";
 import { SettingsSidebar } from "./settings/SettingsSidebar";
 import { SettingsView } from "./settings/SettingsView";
@@ -117,7 +124,8 @@ import type { SettingsPanel } from "./settings/types";
 import { ProjectsArea } from "./projects/ProjectsArea";
 import { MinimalWorkflowsArea } from "./MinimalWorkflowsArea";
 import { DeleteRoomModal, DeleteSessionModal } from "./delete-confirmation-modals";
-import { AppErrorBanner, AppHeader, FallbackGatewayBanner, SignedOut, type AppArea as Area } from "./app-chrome";
+import { AppErrorBanner, AppHeader, BootstrapLoadError, FallbackGatewayBanner, SignedOut, type AppArea as Area } from "./app-chrome";
+import { mobileSidebarA11yProps, useMobileSidebarModal, useMobileSidebarViewport } from "./mobile-sidebar-accessibility";
 import {
 	applySelectedSignalPatch,
 	applySignalPatchToBootstrap,
@@ -142,6 +150,7 @@ import {
 } from "./app-agent-catalog-mutations";
 import { useAppDeleteActions } from "./app-delete-actions";
 import { roomSummaryStreamUrl } from "./room-summary-stream";
+import { selectedSessionBackendId } from "./selected-session-backend";
 
 export type { ChatAppRoute } from "./app-routes";
 
@@ -258,9 +267,24 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const routeWorkflowDraftId = route.area === "workflows" ? route.draftId : undefined;
 	const settingsPanel: SettingsPanel = route.area === "settings" ? route.panel ?? "general" : "general";
 	const [bootstrap, setBootstrap] = useState<BootstrapData | null>(null);
-	const [selectedPiboSessionId, setSelectedPiboSessionId] = useState<string | null>(null);
+	const selectedPiboSessionIdRef = useRef<string | null>(null);
+	const optimisticSessionCreateOutcomeRef = useRef<OptimisticSessionCreateOutcome | null>(null);
+	const [selectedPiboSessionId, setSelectedPiboSessionIdState] = useState<string | null>(null);
+	const setSelectedPiboSessionId = useCallback<Dispatch<SetStateAction<string | null>>>((next) => {
+		if (typeof next === "function") {
+			setSelectedPiboSessionIdState((current) => {
+				const resolved = next(current);
+				selectedPiboSessionIdRef.current = resolved;
+				return resolved;
+			});
+			return;
+		}
+		selectedPiboSessionIdRef.current = next;
+		setSelectedPiboSessionIdState(next);
+	}, []);
 	const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
+	const [bootstrapError, setBootstrapError] = useState<BootstrapErrorState | null>(null);
 	const [downloadStatus, setDownloadStatus] = useState<ChatDownloadStatus | null>(null);
 	const activeDownloadKeysRef = useRef<Set<string>>(new Set());
 	const [showThinking, setShowThinking] = useState(readStoredShowThinking);
@@ -288,8 +312,16 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const [selectedMcpServerName, setSelectedMcpServerName] = useState<string | null>(null);
 	const [creatingRoom, setCreatingRoom] = useState(false);
 	const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+	const isMobileSidebarViewport = useMobileSidebarViewport();
+	const mobileSidebarTriggerRef = useRef<HTMLButtonElement>(null);
+	const hideMobileSidebar = useCallback(() => setMobileSidebarOpen(false), []);
+	const closeMobileSidebar = useMobileSidebarModal({
+		isMobileViewport: isMobileSidebarViewport,
+		isOpen: mobileSidebarOpen,
+		onClose: hideMobileSidebar,
+		triggerRef: mobileSidebarTriggerRef,
+	});
 	const [mobileAreaMenuOpen, setMobileAreaMenuOpen] = useState(false);
-	const mobileAreaMenuRef = useRef<HTMLDivElement>(null);
 	const [gatewayMode, setGatewayMode] = useState<"main" | "fallback" | null>(null);
 	const [sessionSignals, setSessionSignals] = useState<PiboSignalSnapshot | null>(null);
 	const sessionSignalsRef = useRef<PiboSignalSnapshot | null>(null);
@@ -306,6 +338,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const selectedRoom = activeRoomId && bootstrap ? findRoomById(bootstrap.rooms, activeRoomId) ?? bootstrap.room : undefined;
 	const selectedRoomArchived = selectedRoom ? isArchivedRoom(selectedRoom) : false;
 	const loadingSelectedRoom = Boolean(loadingRoomId && loadingRoomId === selectedRoomId);
+	const selectedBackendPiboSessionId = selectedSessionBackendId(selectedPiboSessionId);
 	const overlayCurrentSignals = useCallback((data: BootstrapData): BootstrapData => {
 		const statusSnapshot = sessionStatusSignalsRef.current;
 		const withGlobalStatuses = statusSnapshot ? applySignalStatusSnapshotToBootstrap(data, statusSnapshot) : data;
@@ -318,24 +351,6 @@ export function App({ route }: { route: ChatAppRoute }) {
 	useEffect(() => {
 		showArchivedRef.current = showArchived;
 	}, [showArchived]);
-
-	useEffect(() => {
-		if (!mobileAreaMenuOpen) return;
-		const handlePointerDown = (event: MouseEvent | TouchEvent) => {
-			if (mobileAreaMenuRef.current && !mobileAreaMenuRef.current.contains(event.target as Node)) setMobileAreaMenuOpen(false);
-		};
-		const handleKeyDown = (event: KeyboardEvent) => {
-			if (event.key === "Escape") setMobileAreaMenuOpen(false);
-		};
-		document.addEventListener("mousedown", handlePointerDown);
-		document.addEventListener("touchstart", handlePointerDown);
-		document.addEventListener("keydown", handleKeyDown);
-		return () => {
-			document.removeEventListener("mousedown", handlePointerDown);
-			document.removeEventListener("touchstart", handlePointerDown);
-			document.removeEventListener("keydown", handleKeyDown);
-		};
-	}, [mobileAreaMenuOpen]);
 
 	useEffect(() => {
 		bootstrapRef.current = bootstrap;
@@ -415,12 +430,12 @@ export function App({ route }: { route: ChatAppRoute }) {
 	}, []);
 
 	useEffect(() => {
-		if (area !== "sessions" || !selectedPiboSessionId) {
+		if (area !== "sessions" || !selectedBackendPiboSessionId) {
 			sessionSignalsRef.current = null;
 			setSessionSignals(null);
 			return;
 		}
-		const retainedSnapshot = retainSelectedSignalSnapshot(sessionSignalsRef.current, selectedPiboSessionId);
+		const retainedSnapshot = retainSelectedSignalSnapshot(sessionSignalsRef.current, selectedBackendPiboSessionId);
 		sessionSignalsRef.current = retainedSnapshot;
 		setSessionSignals(retainedSnapshot);
 
@@ -428,7 +443,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 		let signalRecoveryTimer: ReturnType<typeof setTimeout> | undefined;
 		const controller = new AbortController();
 		const commitSignalSnapshot = (snapshot: PiboSignalSnapshot) => {
-			if (!active || controller.signal.aborted || !shouldCommitSelectedSignalSnapshot(sessionSignalsRef.current, snapshot, selectedPiboSessionId)) return;
+			if (!active || controller.signal.aborted || !shouldCommitSelectedSignalSnapshot(sessionSignalsRef.current, snapshot, selectedBackendPiboSessionId)) return;
 			sessionSignalsRef.current = snapshot;
 			setSessionSignals(snapshot);
 			setBootstrap((current) => current ? applySignalSnapshotToBootstrap(current, snapshot) : current);
@@ -438,7 +453,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 			if (signalRecoveryTimer) clearTimeout(signalRecoveryTimer);
 			signalRecoveryTimer = setTimeout(() => {
 				signalRecoveryTimer = undefined;
-				fetchSignalTree(selectedPiboSessionId, { signal: controller.signal })
+				fetchSignalTree(selectedBackendPiboSessionId, { signal: controller.signal })
 					.then(commitSignalSnapshot)
 					.catch(() => {
 						if (!controller.signal.aborted) refreshSignalSnapshot(SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS);
@@ -447,7 +462,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 		};
 		const signalTreeHandlers = {
 			onSnapshot: (snapshot: PiboSignalSnapshot) => {
-				if (!active || !shouldCommitSelectedSignalSnapshot(sessionSignalsRef.current, snapshot, selectedPiboSessionId)) return;
+				if (!active || !shouldCommitSelectedSignalSnapshot(sessionSignalsRef.current, snapshot, selectedBackendPiboSessionId)) return;
 				if (signalRecoveryTimer) {
 					clearTimeout(signalRecoveryTimer);
 					signalRecoveryTimer = undefined;
@@ -456,7 +471,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 			},
 			onPatch: (patch: PiboSignalPatch) => {
 				if (!active) return;
-				const result = applySelectedSignalPatch(sessionSignalsRef.current, patch, selectedPiboSessionId);
+				const result = applySelectedSignalPatch(sessionSignalsRef.current, patch, selectedBackendPiboSessionId);
 				if (result.needsRefresh) {
 					refreshSignalSnapshot(0);
 					return;
@@ -471,17 +486,17 @@ export function App({ route }: { route: ChatAppRoute }) {
 		const reconnectSignalTree = () => {
 			if (!active) return;
 			unsubscribeSignalTree();
-			unsubscribeSignalTree = subscribeSignalTree(selectedPiboSessionId, signalTreeHandlers);
+			unsubscribeSignalTree = subscribeSignalTree(selectedBackendPiboSessionId, signalTreeHandlers);
 			refreshSignalSnapshot(0);
 		};
 		const refreshVisibleSignalTree = () => {
 			if (document.visibilityState === "visible") reconnectSignalTree();
 		};
 		const shouldReconcileSignalTree = () => {
-			const selectedSession = bootstrapRef.current ? findSessionNode(bootstrapRef.current.sessions, selectedPiboSessionId) : undefined;
-			return shouldReconcileSelectedSignalTree(sessionSignalsRef.current, selectedPiboSessionId, selectedSession?.status);
+			const selectedSession = bootstrapRef.current ? findSessionNode(bootstrapRef.current.sessions, selectedBackendPiboSessionId) : undefined;
+			return shouldReconcileSelectedSignalTree(sessionSignalsRef.current, selectedBackendPiboSessionId, selectedSession?.status);
 		};
-		unsubscribeSignalTree = subscribeSignalTree(selectedPiboSessionId, signalTreeHandlers);
+		unsubscribeSignalTree = subscribeSignalTree(selectedBackendPiboSessionId, signalTreeHandlers);
 		window.addEventListener("pageshow", reconnectSignalTree);
 		document.addEventListener("visibilitychange", refreshVisibleSignalTree);
 		const signalReconcileTimer = window.setInterval(() => {
@@ -497,7 +512,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 			window.clearInterval(signalReconcileTimer);
 			unsubscribeSignalTree();
 		};
-	}, [area, selectedPiboSessionId]);
+	}, [area, selectedBackendPiboSessionId]);
 
 	useEffect(() => {
 		const nextExpiryMs = bootstrap ? nextRecentSessionSignalExpiryMs(bootstrap.sessions, signalNow) : undefined;
@@ -536,10 +551,10 @@ export function App({ route }: { route: ChatAppRoute }) {
 	}, [sessionViewId]);
 	const navigateToRoute = useCallback(
 		(target: ChatAppRoute, replace = false, nextSessionViewId = sessionViewId, options: NavigationOptions = {}) => {
-			if (options.closeMobileSidebar !== false) setMobileSidebarOpen(false);
+			if (options.closeMobileSidebar !== false) closeMobileSidebar();
 			navigateToChatRoute(navigate, target, replace, nextSessionViewId);
 		},
-		[navigate, sessionViewId],
+		[closeMobileSidebar, navigate, sessionViewId],
 	);
 
 	const updateAgentAutosaveHandler = useCallback((handler: (() => Promise<void>) | null) => {
@@ -712,8 +727,9 @@ export function App({ route }: { route: ChatAppRoute }) {
 		let inFlight = false;
 		const refreshVisibleNavigation = () => {
 			if (stopped || inFlight || document.hidden || !bootstrapRef.current) return;
+			if (selectedPiboSessionId && !selectedBackendPiboSessionId) return;
 			inFlight = true;
-			loadNavigation(selectedPiboSessionId ?? undefined, showArchivedRef.current, activeRoomId ?? undefined, { force: true })
+			loadNavigation(selectedBackendPiboSessionId ?? undefined, showArchivedRef.current, activeRoomId ?? undefined, { force: true })
 				.catch(() => undefined)
 				.finally(() => {
 					inFlight = false;
@@ -731,7 +747,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 			window.removeEventListener("focus", refreshVisibleNavigation);
 			document.removeEventListener("visibilitychange", refreshWhenVisible);
 		};
-	}, [activeRoomId, area, loadNavigation, selectedPiboSessionId]);
+	}, [activeRoomId, area, loadNavigation, selectedBackendPiboSessionId, selectedPiboSessionId]);
 
 	useEffect(() => {
 		const stored = readStoredSelection();
@@ -746,10 +762,19 @@ export function App({ route }: { route: ChatAppRoute }) {
 		if (shouldSkipRouteSelectionLoad({ bootstrap, creatingSession: creatingSessionRef.current, route })) return;
 
 		const loadRouteData = bootstrap ? loadNavigation : loadBootstrap;
+		const clearBootstrapError = () => {
+			setBootstrapError(null);
+			setError(null);
+		};
+		const reportBootstrapError = (caught: unknown) => {
+			if (!bootstrapRef.current) setBootstrapError(classifyBootstrapError(caught));
+			setError(errorMessage(caught));
+		};
+
 		loadRouteData(requestedPiboSessionId, showArchivedRef.current, requestedRoomId)
 			.then((data) => {
 				canonicalizeSessionsRoute(data);
-				setError(null);
+				clearBootstrapError();
 			})
 			.catch((caught) => {
 				if (route.area === "sessions" && routeRoomId && !routePiboSessionId && requestedPiboSessionId) {
@@ -757,27 +782,23 @@ export function App({ route }: { route: ChatAppRoute }) {
 					loadRouteData(undefined, showArchivedRef.current, routeRoomId)
 						.then((data) => {
 							canonicalizeSessionsRoute(data);
-							setError(null);
+							clearBootstrapError();
 						})
-						.catch((fallbackCaught) =>
-							setError(fallbackCaught instanceof Error ? fallbackCaught.message : String(fallbackCaught)),
-						);
+						.catch(reportBootstrapError);
 					return;
 				}
 				const explicitRouteSelection = hasExplicitSessionsRouteSelection(route);
 				if (explicitRouteSelection || (!requestedPiboSessionId && !requestedRoomId)) {
-					setError(caught instanceof Error ? caught.message : String(caught));
+					reportBootstrapError(caught);
 					return;
 				}
 				clearStoredSelection();
 				loadRouteData()
 					.then((data) => {
 						canonicalizeSessionsRoute(data);
-						setError(null);
+						clearBootstrapError();
 					})
-					.catch((fallbackCaught) =>
-						setError(fallbackCaught instanceof Error ? fallbackCaught.message : String(fallbackCaught)),
-					);
+					.catch(reportBootstrapError);
 			});
 	}, [bootstrap, loadBootstrap, loadNavigation, navigateToSelectedSession, route.area, routePiboSessionId, routeRoomId]);
 
@@ -866,6 +887,12 @@ export function App({ route }: { route: ChatAppRoute }) {
 		setBootstrap((current) => current ? updater(current) : current);
 		queryClient.setQueriesData<BootstrapData>({ queryKey: ["chat", "bootstrap"] }, (current) => current ? updater(current) : current);
 	}, [queryClient]);
+	const updateBootstrapCacheForRoom = useCallback((roomId: string, updater: (data: BootstrapData) => BootstrapData) => {
+		setBootstrap((current) => current ? applyBootstrapUpdateForRoom(current, roomId, updater) : current);
+		queryClient.setQueriesData<BootstrapData>({ queryKey: ["chat", "bootstrap"] }, (current) =>
+			current ? applyBootstrapUpdateForRoom(current, roomId, updater) : current,
+		);
+	}, [queryClient]);
 
 	const latestRoomStreamId = bootstrap?.latestRoomStreamId;
 
@@ -880,10 +907,11 @@ export function App({ route }: { route: ChatAppRoute }) {
 		const events = new EventSource(roomSummaryUrl);
 		let navigationTimer: ReturnType<typeof setTimeout> | undefined;
 		const scheduleNavigationRefresh = () => {
+			if (selectedPiboSessionId && !selectedBackendPiboSessionId) return;
 			if (navigationTimer) clearTimeout(navigationTimer);
 			navigationTimer = setTimeout(() => {
 				navigationTimer = undefined;
-				loadNavigation(selectedPiboSessionId ?? undefined, showArchivedRef.current, activeRoomId, { force: true })
+				loadNavigation(selectedBackendPiboSessionId ?? undefined, showArchivedRef.current, activeRoomId, { force: true })
 					.catch((caught) => {
 						if (!isAbortError(caught)) setError(errorMessage(caught));
 					});
@@ -909,12 +937,17 @@ export function App({ route }: { route: ChatAppRoute }) {
 			if (navigationTimer) clearTimeout(navigationTimer);
 			events.close();
 		};
-	}, [activeRoomId, area, bootstrap?.selectedRoomId, latestRoomStreamId, loadNavigation, selectedPiboSessionId, updateBootstrapCache]);
+	}, [activeRoomId, area, bootstrap?.selectedRoomId, latestRoomStreamId, loadNavigation, selectedBackendPiboSessionId, selectedPiboSessionId, updateBootstrapCache]);
 
-	const restoreBootstrapSnapshot = useCallback((snapshot: BootstrapMutationSnapshot | undefined) => {
+	const restoreBootstrapSnapshot = useCallback((
+		snapshot: BootstrapMutationSnapshot | undefined,
+		selectedPiboSessionIdOverride?: string | null,
+	) => {
 		if (!snapshot) return;
-		setBootstrap(snapshot.localBootstrap);
-		for (const [queryKey, data] of snapshot.queryData) queryClient.setQueryData(queryKey, data);
+		setBootstrap(restoreBootstrapSelection(snapshot.localBootstrap, selectedPiboSessionIdOverride) ?? null);
+		for (const [queryKey, data] of snapshot.queryData) {
+			queryClient.setQueryData(queryKey, restoreBootstrapSelection(data, selectedPiboSessionIdOverride) ?? undefined);
+		}
 	}, [queryClient]);
 
 	const {
@@ -950,26 +983,50 @@ export function App({ route }: { route: ChatAppRoute }) {
 
 	const createSessionMutation = useMutation({
 		mutationFn: ({ profile, roomId }: { profile: string; roomId?: string }) => postSession(profile || undefined, roomId),
-		onMutate: async ({ profile }) => {
+		onMutate: async ({ profile, roomId }) => {
+			optimisticSessionCreateOutcomeRef.current = null;
 			await queryClient.cancelQueries({ queryKey: ["chat", "bootstrap"] });
-			const snapshot = createBootstrapMutationSnapshot(queryClient, bootstrap);
-			const previousSelectedPiboSessionId = selectedPiboSessionId;
+			const originRoomId = roomId ?? bootstrap?.selectedRoomId ?? "";
+			const previousSelectedPiboSessionId = selectedPiboSessionIdRef.current;
 			const tempId = `optimistic-session-${createClientTxnId()}`;
-			setSelectedPiboSessionId(tempId);
-			updateBootstrapCache((current) => {
+			if (bootstrapRef.current?.selectedRoomId === originRoomId) setSelectedPiboSessionId(tempId);
+			updateBootstrapCacheForRoom(originRoomId, (current) => {
 				const optimisticNode = createOptimisticSessionNode(tempId, profile || defaultProfileFromBootstrap(current));
 				const next = addSessionNodeToBootstrap(current, optimisticNode);
 				return { ...next, selectedPiboSessionId: tempId };
 			});
-			return { snapshot, tempId, previousSelectedPiboSessionId };
+			return { tempId, previousSelectedPiboSessionId, originRoomId };
 		},
 		onError: (_error, _variables, context) => {
-			restoreBootstrapSnapshot(context?.snapshot);
-			setSelectedPiboSessionId(context?.previousSelectedPiboSessionId ?? null);
+			const outcome = resolveOptimisticSessionCreateOutcome({
+				status: "failure",
+				currentSelectedPiboSessionId: selectedPiboSessionIdRef.current,
+				tempId: context?.tempId,
+				previousSelectedPiboSessionId: context?.previousSelectedPiboSessionId,
+			});
+			optimisticSessionCreateOutcomeRef.current = outcome;
+			if (context?.originRoomId && context.tempId) {
+				updateBootstrapCacheForRoom(context.originRoomId, (current) =>
+					rollbackOptimisticSessionNode(current, context.tempId, context.previousSelectedPiboSessionId ?? null),
+				);
+			}
+			setSelectedPiboSessionId(outcome.selectedPiboSessionId);
 		},
 		onSuccess: (created, _variables, context) => {
-			setSelectedPiboSessionId(created.session.id);
-			updateBootstrapCache((current) => replaceOptimisticSessionNode(current, context?.tempId, sessionNodeFromSession(created.session)));
+			const outcome = resolveOptimisticSessionCreateOutcome({
+				status: "success",
+				currentSelectedPiboSessionId: selectedPiboSessionIdRef.current,
+				tempId: context?.tempId,
+				previousSelectedPiboSessionId: context?.previousSelectedPiboSessionId,
+				createdPiboSessionId: created.session.id,
+			});
+			optimisticSessionCreateOutcomeRef.current = outcome;
+			if (context?.originRoomId) {
+				updateBootstrapCacheForRoom(context.originRoomId, (current) =>
+					replaceOptimisticSessionNode(current, context.tempId, sessionNodeFromSession(created.session)),
+				);
+			}
+			setSelectedPiboSessionId(outcome.selectedPiboSessionId);
 		},
 	});
 
@@ -1031,7 +1088,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 		flushSync(() => {
 			setSelectedPiboSessionId(piboSessionId);
 			setLoadingPiboSessionId(piboSessionId);
-			setMobileSidebarOpen(false);
+			closeMobileSidebar();
 		});
 		updateBootstrapCache((current) => markSessionSubtreeReadInBootstrap(current, piboSessionId, targetRoomId ?? current.selectedRoomId));
 		navigateToSelectedSession(targetRoomId, piboSessionId, false, { closeMobileSidebar: false });
@@ -1050,7 +1107,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 					if (!isAbortError(caught) && bootstrapRef.current?.selectedPiboSessionId === piboSessionId) setError(errorMessage(caught));
 				});
 		}, 750);
-	}, [bootstrap?.selectedRoomId, loadNavigation, navigateToSelectedSession, selectedRoomId, updateBootstrapCache]);
+	}, [bootstrap?.selectedRoomId, closeMobileSidebar, loadNavigation, navigateToSelectedSession, selectedRoomId, updateBootstrapCache]);
 
 	const selectRoom = useCallback(async (roomId: string, options: NavigationOptions = {}) => {
 		const navigationOptions = { ...options, closeMobileSidebar: false };
@@ -1065,7 +1122,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 			setSelectedPiboSessionId(storedPiboSessionId ?? null);
 			setNewSessionProfileRoomId(null);
 			setLoadingRoomId(roomId);
-			setMobileSidebarOpen(false);
+			closeMobileSidebar();
 		});
 		try {
 			const data = await loadNavigation(storedPiboSessionId, showArchivedRef.current, roomId, { signal: controller.signal });
@@ -1085,7 +1142,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 				setLoadingRoomId((current) => current === roomId ? null : current);
 			}
 		}
-	}, [loadNavigation, navigateToSelectedSession]);
+	}, [closeMobileSidebar, loadNavigation, navigateToSelectedSession]);
 
 	const toggleArchivedRooms = useCallback(() => {
 		const next = !showArchivedRooms;
@@ -1102,19 +1159,23 @@ export function App({ route }: { route: ChatAppRoute }) {
 
 	const createSession = async (profile = newSessionProfile) => {
 		if (creatingSession || selectedRoomArchived) return;
+		const originRoomId = selectedRoomId ?? bootstrap?.selectedRoomId ?? "";
 		creatingSessionRef.current = true;
 		setCreatingSession(true);
 		try {
-			const created = await createSessionMutation.mutateAsync({ profile, roomId: selectedRoomId ?? undefined });
-			setSelectedPiboSessionId(created.session.id);
-			setAutoRenameSessionId(created.session.id);
-			navigateToSelectedSession(selectedRoomId ?? bootstrap?.selectedRoomId ?? undefined, created.session.id, false, { closeMobileSidebar: false });
-			const data = await loadBootstrap(created.session.id, showArchivedRef.current, selectedRoomId ?? undefined, { force: true });
-			navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId, false, { closeMobileSidebar: false });
+			const created = await createSessionMutation.mutateAsync({ profile, roomId: originRoomId || undefined });
+			const outcome = optimisticSessionCreateOutcomeRef.current;
+			if (outcome?.autoRenameCreatedSession) setAutoRenameSessionId(created.session.id);
+			if (outcome?.navigateToCreatedSession) {
+				navigateToSelectedSession(originRoomId || undefined, created.session.id, false, { closeMobileSidebar: false });
+				const data = await loadBootstrap(created.session.id, showArchivedRef.current, originRoomId || undefined, { force: true });
+				navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId, false, { closeMobileSidebar: false });
+			}
 			setError(null);
 		} catch (caught) {
 			setError(caught instanceof Error ? caught.message : String(caught));
 		} finally {
+			optimisticSessionCreateOutcomeRef.current = null;
 			creatingSessionRef.current = false;
 			setCreatingSession(false);
 		}
@@ -1430,8 +1491,10 @@ export function App({ route }: { route: ChatAppRoute }) {
 		}
 	}, [activeRoomId, overlayCurrentSignals, queryClient, selectedPiboSessionId, visibleActiveSessions, visibleArchivedSessions]);
 
-	if (error && !bootstrap) {
-		return <SignedOut message={error} />;
+	if (bootstrapError && !bootstrap) {
+		return bootstrapError.kind === "authentication-required"
+			? <SignedOut message={bootstrapError.message} />
+			: <BootstrapLoadError message={bootstrapError.message} onRetry={() => window.location.reload()} />;
 	}
 
 	if (!bootstrap) {
@@ -1474,11 +1537,12 @@ export function App({ route }: { route: ChatAppRoute }) {
 					area={area}
 					identity={identity}
 					mobileAreaMenuOpen={mobileAreaMenuOpen}
-					mobileAreaMenuRef={mobileAreaMenuRef}
+					mobileSidebarTriggerRef={mobileSidebarTriggerRef}
 					totalRoomUnreadCount={totalRoomUnreadCount}
 					onOpenMobileSidebar={() => setMobileSidebarOpen(true)}
 					onSelectMainNavArea={selectMainNavArea}
 					onToggleMobileAreaMenu={() => setMobileAreaMenuOpen((open) => !open)}
+					onCloseMobileAreaMenu={() => setMobileAreaMenuOpen(false)}
 				/>
 
 			<div>
@@ -1500,9 +1564,9 @@ export function App({ route }: { route: ChatAppRoute }) {
 				}`}
 			>
 				{area === "cron" ? (
-					<CronArea bootstrap={bootstrap} mobileSidebarOpen={mobileSidebarOpen} onCloseMobileSidebar={() => setMobileSidebarOpen(false)} />
+					<CronArea bootstrap={bootstrap} mobileSidebarOpen={mobileSidebarOpen} onCloseMobileSidebar={closeMobileSidebar} />
 				) : area === "loops" ? (
-					<LoopArea bootstrap={bootstrap} mobileSidebarOpen={mobileSidebarOpen} onCloseMobileSidebar={() => setMobileSidebarOpen(false)} />
+					<LoopArea bootstrap={bootstrap} mobileSidebarOpen={mobileSidebarOpen} onCloseMobileSidebar={closeMobileSidebar} />
 				) : area === "agents" ? (
 					<AgentsView
 						agents={bootstrap.agents}
@@ -1534,7 +1598,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 						commands={slashCommands}
 						skills={skills}
 						mobileSidebarOpen={mobileSidebarOpen}
-						onCloseMobileSidebar={() => setMobileSidebarOpen(false)}
+						onCloseMobileSidebar={closeMobileSidebar}
 						onNavigate={navigateToSelectedProjectSession}
 						onViewContext={viewSessionContext}
 						onSelectSessionView={selectSessionView}
@@ -1560,12 +1624,16 @@ export function App({ route }: { route: ChatAppRoute }) {
 				<>
 				{/* Mobile sidebar backdrop */}
 				<div
+					data-pibo-mobile-sidebar-backdrop
+					aria-hidden="true"
 					className={`fixed inset-0 z-30 bg-black/60 min-[981px]:hidden transition-opacity duration-200 ${
 						mobileSidebarOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
 					}`}
-					onClick={() => setMobileSidebarOpen(false)}
+					onClick={closeMobileSidebar}
 				/>
 				<aside
+					data-pibo-mobile-sidebar
+					{...mobileSidebarA11yProps(isMobileSidebarViewport, mobileSidebarOpen, "Chat sidebar")}
 					data-pibo-debug="sidebar-shell"
 					data-pibo-area={area}
 					data-pibo-room-id={selectedRoomId ?? bootstrap.selectedRoomId ?? undefined}
@@ -1596,7 +1664,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 							) : null}
 							<button
 								type="button"
-								onClick={() => setMobileSidebarOpen(false)}
+								onClick={closeMobileSidebar}
 								className="min-[981px]:hidden p-1 border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"
 								title="Close sidebar"
 								aria-label="Close sidebar"
@@ -1716,7 +1784,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 						onRefreshTrace={refreshSelectedTrace}
 						onRefreshBootstrap={refreshSelectedBootstrap}
 						onSend={async (text, webAnnotationIds, fileAttachmentPaths, clientTxnId, delivery) => {
-							if (!selectedPiboSessionId || selectedRoomArchived) return;
+							if (isSessionComposerDisabled(selectedPiboSessionId, selectedRoomArchived) || !selectedPiboSessionId) return;
 							try {
 								await sendMessageMutation.mutateAsync({
 									piboSessionId: selectedPiboSessionId,

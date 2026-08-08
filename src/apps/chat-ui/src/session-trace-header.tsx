@@ -147,7 +147,11 @@ export function SessionTraceHeader({
           onHidePanel={onHideWebAnnotationsPanel}
           onError={onError}
         />
-        <div className="flex items-center rounded-sm border border-slate-700 bg-[#0e1116] p-0.5">
+        <div
+          role="group"
+          aria-label="Session views"
+          className="flex items-center rounded-sm border border-slate-700 bg-[#0e1116] p-0.5"
+        >
           {sessionViews.map((view) => {
             const disabledByRouting = Boolean(
               allowedSessionViewIdSet && !allowedSessionViewIdSet.has(view.id),
@@ -170,6 +174,7 @@ export function SessionTraceHeader({
                     ? `${view.label} view unavailable for this Project session kind`
                     : `Switch to ${view.label} view`
                 }
+                aria-pressed={selectedViewId === view.id}
                 className={`min-w-20 px-2.5 py-1 text-[11px] font-bold tracking-wide max-[980px]:min-w-0 max-[980px]:px-1.5 disabled:cursor-not-allowed disabled:text-slate-600 ${
                   selectedViewId === view.id
                     ? "bg-[#11a4d4]/10 text-[#11a4d4]"
@@ -180,34 +185,38 @@ export function SessionTraceHeader({
               </button>
             );
           })}
-          {extraViewTabs?.map((view) => (
-            <button
-              key={view.id}
-              type="button"
-              onClick={() => {
-                if (!view.disabled) view.onSelect();
-              }}
-              disabled={view.disabled}
-              title={view.description ?? view.label}
-              aria-label={
-                view.disabled
-                  ? `${view.label} view unavailable`
-                  : `Switch to ${view.label} view`
-              }
-              className={`min-w-20 px-2.5 py-1 text-[11px] font-bold tracking-wide max-[980px]:min-w-0 max-[980px]:px-1.5 disabled:cursor-not-allowed disabled:text-slate-600 ${
-                (view.active ?? selectedViewId === view.id)
-                  ? "bg-[#11a4d4]/10 text-[#11a4d4]"
-                  : "text-slate-400 hover:text-[#11a4d4] disabled:hover:text-slate-600"
-              }`}
-            >
-              {view.label}
-            </button>
-          ))}
+          {extraViewTabs?.map((view) => {
+            const active = view.active ?? selectedViewId === view.id;
+            return (
+              <button
+                key={view.id}
+                type="button"
+                onClick={() => {
+                  if (!view.disabled) view.onSelect();
+                }}
+                disabled={view.disabled}
+                title={view.description ?? view.label}
+                aria-label={
+                  view.disabled
+                    ? `${view.label} view unavailable`
+                    : `Switch to ${view.label} view`
+                }
+                aria-pressed={active}
+                className={`min-w-20 px-2.5 py-1 text-[11px] font-bold tracking-wide max-[980px]:min-w-0 max-[980px]:px-1.5 disabled:cursor-not-allowed disabled:text-slate-600 ${
+                  active
+                    ? "bg-[#11a4d4]/10 text-[#11a4d4]"
+                    : "text-slate-400 hover:text-[#11a4d4] disabled:hover:text-slate-600"
+                }`}
+              >
+                {view.label}
+              </button>
+            );
+          })}
         </div>
         <HeaderIconButton
           onClick={onToggleRawEvents}
           title={showRawEvents ? "Hide Raw Events" : "Show Raw Events"}
-          ariaLabel={showRawEvents ? "Hide Raw Events" : "Show Raw Events"}
+          ariaLabel="Raw Events"
           active={showRawEvents}
         >
           <Bug size={14} />
@@ -215,7 +224,7 @@ export function SessionTraceHeader({
         <HeaderIconButton
           onClick={onToggleThinking}
           title={showThinking ? "Hide Thinking" : "Show Thinking"}
-          ariaLabel={showThinking ? "Hide Thinking" : "Show Thinking"}
+          ariaLabel="Thinking"
           active={showThinking}
         >
           {showThinking ? <Brain size={14} /> : <EyeOff size={14} />}
@@ -224,7 +233,7 @@ export function SessionTraceHeader({
           <HeaderIconButton
             onClick={onToggleExpandThinking}
             title={expandThinking ? "Collapse Thinking" : "Expand Thinking"}
-            ariaLabel={expandThinking ? "Collapse Thinking" : "Expand Thinking"}
+            ariaLabel="Thinking expansion"
             active={expandThinking}
           >
             {expandThinking ? (
@@ -258,6 +267,7 @@ function HeaderIconButton({
       onClick={onClick}
       title={title}
       aria-label={ariaLabel}
+      aria-pressed={active}
       className={`h-8 w-8 inline-flex items-center justify-center border rounded-sm transition-colors ${
         active
           ? "border-[#11a4d4] bg-[#11a4d4]/10 text-[#11a4d4]"

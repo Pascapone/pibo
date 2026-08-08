@@ -31,7 +31,18 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin || !url.pathname.startsWith("/apps/chat/")) return;
 
   if (request.mode === "navigate") {
-    event.respondWith(fetch(request).catch(() => caches.match(APP_SHELL_URL)));
+    const networkResult = fetch(request).then((response) => ({
+      response,
+      shellCopy: response.ok ? response.clone() : undefined,
+    }));
+    event.respondWith(networkResult.then(({ response }) => response).catch(() => caches.match(APP_SHELL_URL)));
+    event.waitUntil(
+      networkResult
+        .then(({ shellCopy }) => shellCopy
+          ? caches.open(CACHE_NAME).then((cache) => cache.put(APP_SHELL_URL, shellCopy))
+          : undefined)
+        .catch(() => undefined),
+    );
     return;
   }
 

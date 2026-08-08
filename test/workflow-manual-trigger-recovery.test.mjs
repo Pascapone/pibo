@@ -66,7 +66,7 @@ test("manual workflow agent nodes wait for message_finished and use the final as
 	assert.equal(result.nodeAttempts.at(-1).output, "final workflow output");
 });
 
-test("manual workflow LangGraph preserves deterministic fan-out execution and results", async () => {
+test("manual workflow preserves deterministic Pibo-owned fan-out execution", async () => {
 	const fanOutDefinition = {
 		...definition,
 		nodes: {
@@ -95,7 +95,7 @@ test("manual workflow LangGraph preserves deterministic fan-out execution and re
 	assert.deepEqual(result.edgeTransfers.map((transfer) => transfer.edgeId), ["left", "right"]);
 });
 
-test("manual workflow LangGraph keeps the existing unsupported-join failure", async () => {
+test("manual workflow keeps the explicit unsupported-join failure", async () => {
 	const joinDefinition = {
 		...definition,
 		nodes: {

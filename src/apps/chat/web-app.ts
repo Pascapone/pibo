@@ -3,7 +3,7 @@ import os from "node:os";
 import { monitorEventLoopDelay, type IntervalHistogram } from "node:perf_hooks";
 import { PiboSteeringUnavailableError, type PiboJsonObject, type PiboJsonValue, type PiboOutputEvent } from "../../core/events.js";
 import { summarizeSessionSignalStatus } from "../../signals/status.js";
-import type { PiboSignalPatch, PiboSignalStatusPatch } from "../../signals/types.js";
+import type { PiboSessionSignalStatus, PiboSignalPatch, PiboSignalStatusPatch } from "../../signals/types.js";
 import { PiboWebHttpError, readJsonBody, responseJson } from "../../web/http.js";
 import type { PiboWebApp, PiboWebAppContext, PiboWebSession } from "../../web/types.js";
 import type { PiboSession } from "../../sessions/store.js";
@@ -3096,18 +3096,36 @@ function signalStatusFromSnapshot(
 	return { status: "idle", updatedAt: session.updatedAt };
 }
 
+function signalStatusFromSummary(
+	summary: PiboSessionSignalStatus | undefined,
+	piboSessionId: string,
+	options: { sessions?: readonly PiboSession[]; sessionUnreadCounts?: ReadonlyMap<string, number> } = {},
+): { status?: PiboWebSessionStatus; updatedAt?: string } | undefined {
+	if (!summary) return undefined;
+	const hasUnreadError = options.sessions && options.sessionUnreadCounts
+		? hasUnreadInSessionSubtree(options.sessions, options.sessionUnreadCounts, piboSessionId)
+		: true;
+	if (summary.status === "error" && hasUnreadError) return { status: "error", updatedAt: summary.updatedAt };
+	if (summary.isTreeActive || summary.status === "running") return { status: "running", updatedAt: summary.updatedAt };
+	return { status: "idle", updatedAt: summary.updatedAt };
+}
+
 function sessionIndexItemsWithSignalState(
 	context: PiboWebAppContext,
 	sessions: readonly PiboSession[],
 	indexItems: readonly ChatWebSessionIndexItem[],
 	sessionUnreadCounts: ReadonlyMap<string, number> = new Map(),
 ): ChatWebSessionIndexItem[] {
+	const snapshotSignalStatuses = context.channelContext.snapshotSignalStatuses;
+	const signalStatuses = snapshotSignalStatuses?.().sessions;
 	const snapshotSignalSession = context.channelContext.snapshotSignalSession;
-	if (!snapshotSignalSession) return [...indexItems];
+	if (!signalStatuses && !snapshotSignalSession) return [...indexItems];
 	const bySessionId = new Map(indexItems.map((item) => [item.piboSessionId, item]));
 	for (const session of sessions) {
 		const existing = bySessionId.get(session.id);
-		const signal = signalStatusFromSnapshot(snapshotSignalSession(session.id), session.id, { sessions, sessionUnreadCounts });
+		const signal = signalStatuses
+			? signalStatusFromSummary(signalStatuses[session.id], session.id, { sessions, sessionUnreadCounts })
+			: signalStatusFromSnapshot(snapshotSignalSession?.(session.id), session.id, { sessions, sessionUnreadCounts });
 		if (!signal?.status) continue;
 		if (signal.status === "idle" && existing?.status !== "running" && existing?.status !== "error") continue;
 		bySessionId.set(session.id, {

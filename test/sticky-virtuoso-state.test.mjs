@@ -14,6 +14,8 @@ test("sticky Virtuoso state handles intent, prepend, and anchor transactions", a
 			shouldReattachStickyAtBottom,
 			stickyAnchorLocation,
 			stickyScrollIntentDirection,
+			stickyScrollPositionDirection,
+			stickyTouchScrollIntentDirection,
 		} from "./src/apps/chat-ui/src/components/stickyVirtuosoState.ts";
 
 		assert.equal(stickyScrollIntentDirection({ type: "wheel", deltaY: -1 }), "away");
@@ -21,6 +23,36 @@ test("sticky Virtuoso state handles intent, prepend, and anchor transactions", a
 		assert.equal(stickyScrollIntentDirection({ type: "keydown", key: " ", shiftKey: true }), "away");
 		assert.equal(stickyScrollIntentDirection({ type: "wheel", deltaY: 1 }), "toward");
 		assert.equal(stickyScrollIntentDirection({ type: "keydown", key: "End" }), "toward");
+		assert.equal(stickyTouchScrollIntentDirection(100, 120), "away");
+		assert.equal(stickyTouchScrollIntentDirection(120, 100), "toward");
+		assert.equal(stickyTouchScrollIntentDirection(undefined, 100), undefined);
+
+		assert.equal(stickyScrollPositionDirection({
+			hasUserScrollIntent: false,
+			previousScrollTop: 29_690,
+			scrollTop: 749,
+		}), undefined, "a large programmatic negative jump must remain non-user movement");
+		assert.equal(stickyScrollPositionDirection({
+			hasUserScrollIntent: true,
+			previousScrollTop: 29_690,
+			scrollTop: 749,
+		}), "away", "an armed user intent must classify the same negative movement as away");
+		assert.equal(stickyScrollPositionDirection({
+			hasUserScrollIntent: false,
+			previousScrollTop: 29_777,
+			scrollTop: 29_690,
+		}), undefined, "a no-input near-bottom layout correction must remain non-user movement");
+		assert.equal(stickyScrollPositionDirection({
+			hasUserScrollIntent: true,
+			previousScrollTop: 749,
+			scrollTop: 29_690,
+		}), "toward");
+		assert.equal(stickyScrollPositionDirection({
+			hasUserScrollIntent: true,
+			previousScrollTop: 100,
+			scrollTop: 99,
+		}), undefined, "one-pixel measurement jitter must remain ignored");
+
 		assert.equal(shouldReattachStickyAtBottom(true, false), true);
 		assert.equal(shouldReattachStickyAtBottom(true, true), false);
 		assert.equal(shouldReattachStickyAtBottom(false, false), false);

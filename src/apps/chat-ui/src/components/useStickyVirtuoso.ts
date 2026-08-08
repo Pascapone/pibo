@@ -6,6 +6,8 @@ import {
 	shouldReattachStickyAtBottom,
 	stickyAnchorLocation,
 	stickyScrollIntentDirection,
+	stickyScrollPositionDirection,
+	stickyTouchScrollIntentDirection,
 	type StickyAnchorLocation,
 	type StickyScrollIntentDirection,
 	type StickyVisibleAnchor,
@@ -355,8 +357,13 @@ export function useStickyVirtuoso({
 		const scrollTop = getScrollTop(scroller);
 		const previousScrollTop = lastScrollTopRef.current;
 		lastScrollTopRef.current = scrollTop;
-		const scrollingAwayFromBottom = previousScrollTop !== undefined && scrollTop < previousScrollTop - 1;
-		const scrollingTowardBottom = previousScrollTop !== undefined && scrollTop > previousScrollTop + 1;
+		const scrollPositionDirection = stickyScrollPositionDirection({
+			hasUserScrollIntent: userScrollIntentRef.current,
+			previousScrollTop,
+			scrollTop,
+		});
+		const scrollingAwayFromBottom = scrollPositionDirection === "away";
+		const scrollingTowardBottom = scrollPositionDirection === "toward";
 		if (scrollingAwayFromBottom) bottomReattachArmedRef.current = false;
 		else if (scrollingTowardBottom && userScrollDirectionRef.current === "toward") bottomReattachArmedRef.current = true;
 		const readingAwayFromBottom = userScrollIntentRef.current || scrollingAwayFromBottom || !stickyRef.current;
@@ -379,7 +386,7 @@ export function useStickyVirtuoso({
 			if (shouldReattachStickyAtBottom(bottomReattachArmedRef.current, scrollingAwayFromBottom)) setSticky(true);
 			return;
 		}
-		if (userScrollIntentRef.current || scrollingAwayFromBottom) setSticky(false);
+		if (userScrollIntentRef.current) setSticky(false);
 	}, [atBottomThreshold, captureVisibleAnchors, nearTopThreshold, requestAtTop, requestNearTop, scroller, setSticky, updateAtTopFromScrollTop]);
 
 	useEffect(() => {
@@ -401,10 +408,7 @@ export function useStickyVirtuoso({
 			const currentY = firstTouchClientY(event);
 			const previousY = lastTouchYRef.current;
 			lastTouchYRef.current = currentY;
-			const direction = currentY === undefined || previousY === undefined || currentY === previousY
-				? undefined
-				: currentY > previousY ? "away" : "toward";
-			markUserScrollIntent(event, direction);
+			markUserScrollIntent(event, stickyTouchScrollIntentDirection(previousY, currentY));
 		};
 		target.addEventListener("wheel", markUserScrollIntent, { passive: true });
 		target.addEventListener("touchstart", rememberTouch, { passive: true });

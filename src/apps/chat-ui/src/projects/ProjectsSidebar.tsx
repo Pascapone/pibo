@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { SessionNode } from "../session-node";
+import { mobileSidebarA11yProps, useMobileSidebarViewport } from "../mobile-sidebar-accessibility";
 import type { PiboProject, PiboWebSessionNode } from "../types";
 
 export function ProjectsSidebar({
@@ -80,12 +81,15 @@ export function ProjectsSidebar({
   onViewContext: (piboSessionId: string) => void;
   onAutoRenameConsumed: () => void;
 }) {
+  const isMobileSidebarViewport = useMobileSidebarViewport();
   const signalNow = Date.now();
   const listedActiveProjects = activeProjects.filter(
     (project) => project.id !== data.sharedDefaultProject.id,
   );
   return (
     <aside
+      data-pibo-mobile-sidebar
+      {...mobileSidebarA11yProps(isMobileSidebarViewport, mobileSidebarOpen, "Projects sidebar")}
       className={`min-h-0 overflow-auto bg-[#1a262b] border-r border-slate-800 max-[980px]:fixed max-[980px]:left-0 max-[980px]:top-0 max-[980px]:bottom-0 max-[980px]:z-40 max-[980px]:w-[280px] max-[980px]:transition-transform max-[980px]:duration-200 ${
         mobileSidebarOpen
           ? "max-[980px]:translate-x-0"
