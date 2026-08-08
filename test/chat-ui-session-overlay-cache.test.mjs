@@ -81,11 +81,15 @@ test("session overlay cache restores on navigation and trims confirmed events", 
 	await assert.doesNotReject(runOverlayCacheScenario());
 });
 
-test("delivery selection closes before awaiting and navigation restores before paint", () => {
+test("delivery selection closes before awaiting, rejects duplicates, and navigation restores before paint", () => {
 	const paneSource = fs.readFileSync("src/apps/chat-ui/src/session-trace-pane.tsx", "utf8");
-	assert.match(paneSource, /const sendPlan = pendingSendPlan;\s+setPendingSendPlan\(null\);\s+setDeliverySending\(true\);\s+try \{\s+await deliverComposerSend\(sendPlan, delivery\)/);
+	assert.match(paneSource, /const deliverySendIdsRef = useRef\(new Set<string>\(\)\)/);
+	assert.match(paneSource, /if \(!sendPlan \|\| deliverySendIdsRef\.current\.has\(sendPlan\.clientTxnId\)\) return;/);
+	assert.match(paneSource, /deliverySendIdsRef\.current\.add\(sendPlan\.clientTxnId\);\s+setPendingSendPlan\(\(current\) =>[\s\S]*?await deliverComposerSend\(sendPlan, delivery\)/);
+	assert.match(paneSource, /deliverySendIdsRef\.current\.delete\(sendPlan\.clientTxnId\)/);
 	assert.match(paneSource, /rollbackComposerSend\(sendPlan, caught\)/);
 	assert.doesNotMatch(paneSource, /await deliverComposerSend\(pendingSendPlan, delivery\)/);
+	assert.doesNotMatch(paneSource, /setDeliverySending/);
 	assert.match(paneSource, /if \(next\) liveTraceOverlayCacheRef\.current\.set\(next\.piboSessionId, next\)/);
 	assert.match(paneSource, /liveTraceOverlayCacheRef\.current\.get\(sendPlan\.piboSessionId\)/);
 	assert.match(paneSource, /liveTraceOverlayCacheRef\.current\.delete\(sendPlan\.piboSessionId\)/);
