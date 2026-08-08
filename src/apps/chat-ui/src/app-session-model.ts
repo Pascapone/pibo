@@ -44,6 +44,13 @@ export function createClientTxnId(): string {
 	return `web-${Date.now().toString(36)}-${randomId}`;
 }
 
+export function isSessionComposerDisabled(
+	piboSessionId: string | null,
+	selectedRoomArchived: boolean,
+): boolean {
+	return !piboSessionId || piboSessionId.startsWith("optimistic-session-") || selectedRoomArchived;
+}
+
 function formatModelProfile(model: ModelProfile): string {
 	return `${model.provider}/${model.id}`;
 }

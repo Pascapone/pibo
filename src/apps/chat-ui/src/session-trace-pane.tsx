@@ -44,7 +44,10 @@ import {
   withComposerSendDelivery,
   type ComposerSendPlan,
 } from "./composer-send";
-import { createClientTxnId } from "./app-session-model";
+import {
+  createClientTxnId,
+  isSessionComposerDisabled,
+} from "./app-session-model";
 import { selectedSessionBackendId } from "./selected-session-backend";
 import {
   createWorkflowHeaderSummary,
@@ -260,6 +263,10 @@ export function SessionTracePane({
     : traceSummaryQuery.error
       ? errorMessage(traceSummaryQuery.error)
       : null;
+  const composerDisabled = isSessionComposerDisabled(
+    selectedPiboSessionId,
+    selectedRoomArchived,
+  );
 
   const headerPiboSessionId =
     currentTraceView?.piboSessionId ?? selectedPiboSessionId ?? "";
@@ -328,7 +335,7 @@ export function SessionTracePane({
   };
 
   const handleComposerSend = async (text: string) => {
-    if (!selectedPiboSessionId) return;
+    if (composerDisabled || !selectedPiboSessionId) return;
     const sendPlan = createComposerSendPlan({
       piboSessionId: selectedPiboSessionId,
       text,
@@ -508,7 +515,7 @@ export function SessionTracePane({
       }}
       composerProps={{
         sessionId: selectedPiboSessionId,
-        disabled: !selectedPiboSessionId || selectedRoomArchived,
+        disabled: composerDisabled,
         commands,
         skills,
         value: composerText,

@@ -98,6 +98,7 @@ import {
 	findSessionNode,
 	findSessionPath,
 	identityFromBootstrap,
+	isSessionComposerDisabled,
 	resolveSessionActiveModelLabel,
 } from "./app-session-model";
 import {
@@ -1770,7 +1771,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 						onRefreshTrace={refreshSelectedTrace}
 						onRefreshBootstrap={refreshSelectedBootstrap}
 						onSend={async (text, webAnnotationIds, fileAttachmentPaths, clientTxnId, delivery) => {
-							if (!selectedPiboSessionId || selectedRoomArchived) return;
+							if (isSessionComposerDisabled(selectedPiboSessionId, selectedRoomArchived) || !selectedPiboSessionId) return;
 							try {
 								await sendMessageMutation.mutateAsync({
 									piboSessionId: selectedPiboSessionId,
