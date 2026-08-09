@@ -25,9 +25,10 @@ test("trace render-order tooling records base, overlay, current, and terminal st
 	assert.match(timeline, /collectVisibleRows\(/);
 });
 
-test("diagnosis report omits content-derived fingerprints", async () => {
+test("diagnosis report omits content fingerprints and operator-specific identifiers", async () => {
 	const report = await source("docs/reports/chat-web-live-render-order-diagnosis-2026-08-09.md");
 	assert.doesNotMatch(report, /content digest|contentDigest|dw4mqd/);
+	assert.doesNotMatch(report, /https?:\/\/|\/root\/|\/tmp\/|ps_[0-9a-f-]{8}|room_[0-9a-f-]{8}|run_[0-9a-f-]{8}|\b\d{1,3}(?:\.\d{1,3}){3}\b|\b[a-f0-9]{64}\b/);
 });
 
 test("trace cards expose stable ids and order metadata to CDP", async () => {

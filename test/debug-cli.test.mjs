@@ -58,6 +58,29 @@ test("streaming render-order analysis accepts append-only stable states", () => 
 	assert.equal(analyzed.analysis.stateDomMismatchCount, 0);
 });
 
+test("streaming render-order analysis isolates navigation sessions", () => {
+	const analyzed = analyzeStreamingRenderOrderCapture({
+		requested: true,
+		available: true,
+		piboSessionId: "ps_a",
+		omittedDomStates: 0,
+		domStates: [
+			{ t: 0, timestamp: 1000, reason: "start", piboSessionId: "ps_a", view: "compact-terminal", atBottom: true, rows: [{ id: "a" }], rowIds: ["a"], visualRowIds: ["a"] },
+			{ t: 10, timestamp: 1010, reason: "navigation", piboSessionId: "ps_b", view: "compact-terminal", atBottom: true, rows: [{ id: "b" }], rowIds: ["b"], visualRowIds: ["b"] },
+			{ t: 20, timestamp: 1020, reason: "navigation", piboSessionId: "ps_a", view: "compact-terminal", atBottom: true, rows: [{ id: "a" }], rowIds: ["a"], visualRowIds: ["a"] },
+		],
+		traceSnapshots: [
+			{ sequence: 1, timestamp: 1000, piboSessionId: "ps_a", trigger: "compact-terminal:render", layers: [{ kind: "terminalRows", ids: ["a"], digest: "a1", meta: [{ id: "a" }] }] },
+			{ sequence: 1, timestamp: 1010, piboSessionId: "ps_b", trigger: "compact-terminal:render", layers: [{ kind: "terminalRows", ids: ["b"], digest: "b1", meta: [{ id: "b" }] }] },
+			{ sequence: 2, timestamp: 1020, piboSessionId: "ps_a", trigger: "compact-terminal:render", layers: [{ kind: "terminalRows", ids: ["a"], digest: "a2", meta: [{ id: "a" }] }] },
+		],
+	});
+	assert.equal(analyzed.analysis.disappearReappearCount, 0);
+	assert.equal(analyzed.analysis.reorderCount, 0);
+	assert.equal(analyzed.analysis.stateDomMismatchCount, 0);
+	assert.deepEqual(analyzed.analysis.regressions, []);
+});
+
 test("streaming render-order analysis identifies reorders, reappearing rows, identity replacement, and DOM divergence", () => {
 	const analyzed = analyzeStreamingRenderOrderCapture({
 		requested: true,

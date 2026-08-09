@@ -9,7 +9,7 @@ function deferred() {
 	return { promise, resolve };
 }
 
-function createHarness({ delayedSseRead } = {}) {
+function createHarness({ delayedSseRead, delayedSseCancel } = {}) {
 	let nextId = 1;
 	let sessionId = "ps-a";
 	const activeTimeouts = new Map();
@@ -91,7 +91,7 @@ function createHarness({ delayedSseRead } = {}) {
 			if (sseReadCount === 1 && delayedSseRead) return delayedSseRead.promise;
 			return Promise.resolve({ done: true });
 		},
-		cancel: async () => undefined,
+		cancel: () => delayedSseCancel?.promise ?? Promise.resolve(),
 	};
 	const window = {
 		__piboStreamingDebug: {},
@@ -191,11 +191,16 @@ function assertInstrumentationClean(state) {
 	assert.equal(state.storage.get("pibo.chat.debugStreaming"), "before");
 }
 
-test("SSE stop returns a detached result when the reader ignores abort", async () => {
+test("SSE stop returns a detached result when read and cancel ignore abort", async () => {
 	const delayedRead = deferred();
-	const harness = createHarness({ delayedSseRead: delayedRead });
+	const delayedCancel = deferred();
+	const harness = createHarness({ delayedSseRead: delayedRead, delayedSseCancel: delayedCancel });
+	let deadline;
 	try {
-		const benchmark = await runBenchmark({ durationMs: 0, startBackendFixture: true }, harness);
+		const benchmark = await Promise.race([
+			runBenchmark({ durationMs: 0, startBackendFixture: true }, harness),
+			new Promise((_, reject) => { deadline = setTimeout(() => reject(new Error("benchmark stop did not reach its fallback")), 3500); }),
+		]);
 		const returned = JSON.stringify(benchmark.sse);
 		delayedRead.resolve({
 			done: false,
@@ -205,6 +210,7 @@ test("SSE stop returns a detached result when the reader ignores abort", async (
 		assert.equal(JSON.stringify(benchmark.sse), returned);
 		assertInstrumentationClean(harness.state);
 	} finally {
+		if (deadline !== undefined) clearTimeout(deadline);
 		await harness.cleanupNative();
 	}
 });

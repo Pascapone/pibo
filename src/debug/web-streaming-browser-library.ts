@@ -219,7 +219,7 @@ function createSseProbe(piboSessionId, startedAt) {
       if (stoppedResult) return stoppedResult;
       stopped = true;
       if (controller) controller.abort();
-      try { if (reader && typeof reader.cancel === 'function') await Promise.resolve(reader.cancel()).catch(() => {}); } catch {}
+      try { if (reader && typeof reader.cancel === 'function') void Promise.resolve(reader.cancel()).catch(() => {}); } catch {}
       let stopTimeout;
       try {
         await Promise.race([

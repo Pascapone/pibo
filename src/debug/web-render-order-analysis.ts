@@ -9,6 +9,7 @@ import type {
 
 type OrderedState = {
 	source: StreamingRenderOrderFinding["source"];
+	piboSessionId?: string;
 	timestamp: number;
 	sequence?: number;
 	ids: string[];
@@ -27,11 +28,11 @@ export function analyzeStreamingRenderOrderCapture(capture: StreamingRenderOrder
 
 	const internalStates = orderedInternalStates(capture.traceSnapshots);
 	for (const source of ["baseNodes", "currentNodes", "terminalRows", "visibleRows"] as const) {
-		analyzeStateSequence(internalStates.filter((state) => state.source === source), pushFinding);
+		analyzePartitionedStateSequences(internalStates.filter((state) => state.source === source), pushFinding);
 	}
 
 	const stableDomStates = capture.domStates.filter((state) => state.atBottom !== false);
-	analyzeStateSequence(stableDomStates.map(domState), pushFinding);
+	analyzePartitionedStateSequences(stableDomStates.map(domState), pushFinding);
 	analyzeVisualOrder(stableDomStates, pushFinding);
 	analyzeStateDomAgreement(stableDomStates, internalStates, pushFinding);
 
@@ -55,6 +56,7 @@ function orderedInternalStates(snapshots: readonly StreamingRenderOrderTraceSnap
 			if (!isOrderedLayer(layer)) continue;
 			states.push({
 				source: layer.kind,
+				piboSessionId: snapshot.piboSessionId,
 				timestamp: snapshot.timestamp,
 				sequence: snapshot.sequence,
 				ids: uniqueStrings(layer.ids),
@@ -72,11 +74,22 @@ function isOrderedLayer(layer: StreamingRenderOrderTraceLayer): layer is Streami
 function domState(state: StreamingRenderOrderDomState): OrderedState {
 	return {
 		source: "dom",
+		piboSessionId: state.piboSessionId,
 		timestamp: state.timestamp,
 		sequence: state.traceSequence,
 		ids: uniqueStrings(state.rowIds),
 		meta: state.rows as unknown as Array<Record<string, unknown>>,
 	};
+}
+
+function analyzePartitionedStateSequences(states: readonly OrderedState[], pushFinding: (finding: StreamingRenderOrderFinding) => void): void {
+	const bySession = new Map<string | undefined, OrderedState[]>();
+	for (const state of states) {
+		const sessionStates = bySession.get(state.piboSessionId) ?? [];
+		sessionStates.push(state);
+		bySession.set(state.piboSessionId, sessionStates);
+	}
+	for (const sessionStates of bySession.values()) analyzeStateSequence(sessionStates, pushFinding);
 }
 
 function analyzeStateSequence(states: readonly OrderedState[], pushFinding: (finding: StreamingRenderOrderFinding) => void): void {
@@ -133,7 +146,8 @@ function analyzeStateDomAgreement(domStates: readonly StreamingRenderOrderDomSta
 	const terminalStates = internalStates.filter((state) => state.source === "terminalRows");
 	const visibleStates = internalStates.filter((state) => state.source === "visibleRows");
 	for (const dom of domStates) {
-		const candidates = dom.view === "compact-terminal" ? terminalStates : dom.view === "trace-timeline" ? visibleStates : [];
+		const sourceCandidates = dom.view === "compact-terminal" ? terminalStates : dom.view === "trace-timeline" ? visibleStates : [];
+		const candidates = sourceCandidates.filter((state) => state.piboSessionId === dom.piboSessionId);
 		const internal = nearestState(candidates, dom.timestamp, 500, dom.traceSequence);
 		if (!internal || dom.rowIds.length === 0) continue;
 		if (isSubsequence(dom.rowIds, internal.ids)) continue;

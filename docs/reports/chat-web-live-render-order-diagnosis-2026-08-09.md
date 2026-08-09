@@ -18,15 +18,12 @@ No behavioral fix was present in the diagnostic candidate.
 ## Environment
 
 ```text
-public UI: https://pibo2.neuralnexus.me/apps/chat
+public UI: operator-configured authenticated Chat Web deployment
 candidate: stream-render-order-prod-instrumented
 candidate commit: ac99756ea49a3acced66ee41e760fbceb9760c2e
 production base: b0e63e473e623f6cbe3476c6b4e88c815ebc34e8 (release-1-11-2)
 tooling source commit: 419aba0b77561c8c6fe585a7764276bb2e8dee18
-reproduction session: ps_dfac9936-c347-4fb2-918b-53c5ae562ebb
-reproduction room: room_cddb8f73-eb59-4532-bf09-4a409fd6bd2d
-turn event id: web-msl7zln5-7dffe27b-ac27-48a7-ab23-373c6cb35b65
-turn events: stream 977957 through 978019
+reproduction identifiers: omitted
 turn completion: 2026-08-09T03:06:09.601Z
 ```
 
@@ -34,24 +31,14 @@ The scenario started three tracked yielded runs, waited for them sequentially, r
 
 ## Safety and rollback
 
-A verified pre-activation backup was retained:
-
-```text
-/root/.pibo/server-backups/31.70.66.85-pibo-20260809T025602Z.tar.zst
-```
-
-Diagnostic activation rollback:
-
-```text
-/root/.pibo-deploy-rollbacks/20260809T030329Z-stream-render-order-prod-instrumented
-```
+A verified pre-activation backup and named diagnostic rollback were retained in operator-managed deployment storage.
 
 After evidence capture, Production was restored to:
 
 ```text
 candidate: release-1-11-2
 commit: b0e63e473e623f6cbe3476c6b4e88c815ebc34e8
-restoration rollback: /root/.pibo-deploy-rollbacks/20260809T031134Z-release-1-11-2
+restoration rollback: verified; operator path omitted
 ```
 
 The post-restore gateway was idle, reachable, and had zero active yielded runs.
@@ -126,9 +113,9 @@ Rows present live but absent after reload:
 
 ```text
 terminal:reasoning:<turn>
-terminal:run:run_76eb2d99-82f5-406c-953c-623218dec322
-terminal:run:run_525ed964-735d-4c83-a4cc-0ca01943af0b
-terminal:run:run_bca8c755-dd33-45bf-bd03-088a9e0fe5c4
+terminal:run:<yielded-run-1>
+terminal:run:<yielded-run-2>
+terminal:run:<yielded-run-3>
 terminal:reasoning:<turn>:thinking:5
 terminal:reasoning:<turn>:thinking:6
 terminal:assistant:<turn>:assistant:0
@@ -143,7 +130,7 @@ current nodes: 24
 visible Terminal rows: 22
 ```
 
-The canonical post-reload trace contained 15 transcript nodes and `pibo debug trace --check` reported zero structural issues. The canonical final assistant message at stream `978018` was intact.
+The canonical post-reload trace contained 15 transcript nodes and `pibo debug trace --check` reported zero structural issues. The canonical final assistant message was intact.
 
 ## Reconciliation root cause
 
@@ -184,21 +171,11 @@ The reproduced behavior overlaps three existing issue contracts:
 - `#328` — source-independent conceptual Terminal row identities across projections;
 - `#331` — monotonic rendered ordering across transcript and event-log sources.
 
-The new evidence confirms the browser symptom and identifies two concrete reconciliation defects that remained present in Production `1.11.2`. It should be added to the existing issue records rather than filed as a duplicate. An authenticated issue-comment/reopen helper was not available on this host, so the complete update draft is preserved separately in `/tmp/pibo-render-order-existing-issue-update.md`.
+The new evidence confirms the browser symptom and identifies two concrete reconciliation defects that remained present in Production `1.11.2`. It should be added to the existing issue records rather than filed as a duplicate. An authenticated issue-comment/reopen helper was not available on the operator host, so publication remains pending.
 
 ## Durable artifacts
 
-```text
-43dbb318364bf79db8f4bf867de0a5c42bdf36b892bb3f2f19e3da23335a42bc  /root/.pibo/debug/web-render/2026-08-09T03-05-48-945Z/scenario-streaming-benchmark.json
-6db450fafc85dfa55f13ca3956febacee3e9ac6b37d245c3952eae87728cdb3d  /root/.pibo/debug/web-render/2026-08-09T03-06-35-491Z/scenario-streaming-benchmark.json
-19d6ba0c61ffbcbb78d15167531e7b2691f8889a8c5fe8bfde6227f2bc0d159f  /tmp/public-final-before-reload.json
-32475fa029248c8376f18b717f05f1a1082d3eb612ebe79af72e2ce80efab8ff  /tmp/public-final-after-reload.json
-2da5603bb19a22f68ce0c5fb9ac9fd64d591d49f900a27195fa8f7467171c4bf  /tmp/public-render-order-correlated-transitions.txt
-5e0a9308f6036b578a6289083e487a5704675bb3fd5557e24e25cc850cf81235  /tmp/public-probe-trace-check.json
-c3b856b612acd046e33b95eb9972a17cd95d3bcb7a371558c331554e25318f65  /tmp/public-probe-events.json
-```
-
-The `/tmp` artifacts are controller-local evidence; the two benchmark JSON files are retained under Pibo's durable debug artifact directory. This report preserves the non-sensitive findings needed for review and issue triage.
+Two benchmark captures plus before/after reload snapshots, correlated-transition output, trace-check output, and compact event metadata are retained in operator-managed debug storage. Host paths, session identifiers, event identifiers, and file hashes are intentionally omitted from this committed report.
 
 ## Fix boundaries
 
