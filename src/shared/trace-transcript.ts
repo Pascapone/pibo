@@ -106,6 +106,7 @@ function assignTranscriptTurnTimings(
 	entries: SessionEntry[],
 	turnTimings: readonly TraceMessageTurnTiming[],
 ): Array<TraceMessageTurnTiming | undefined> {
+	const messageTurnTimings = turnTimings.filter((timing) => timing.userMessageType !== "message_steered");
 	const transcriptTurns: Array<{ prompt?: string; assistantAt?: number }> = [];
 	let latestUserText: string | undefined;
 	for (let index = 0; index < entries.length; index += 1) {
@@ -126,14 +127,14 @@ function assignTranscriptTurnTimings(
 	}
 
 	const assignments: Array<TraceMessageTurnTiming | undefined> = Array(transcriptTurns.length).fill(undefined);
-	let timingCursor = turnTimings.length - 1;
+	let timingCursor = messageTurnTimings.length - 1;
 	for (let turnIndex = transcriptTurns.length - 1; turnIndex >= 0; turnIndex -= 1) {
 		const transcriptTurn = transcriptTurns[turnIndex];
 		if (!transcriptTurn?.prompt) continue;
 		let matchedIndex: number | undefined;
 		let matchedDistance = Number.POSITIVE_INFINITY;
 		for (let timingIndex = timingCursor; timingIndex >= 0; timingIndex -= 1) {
-			const timing = turnTimings[timingIndex];
+			const timing = messageTurnTimings[timingIndex];
 			if (normalizedPrompt(timing?.userText) !== transcriptTurn.prompt) continue;
 			const completedAt = parsedTimestamp(timing?.completedAt);
 			const distance = completedAt === undefined || transcriptTurn.assistantAt === undefined
@@ -145,7 +146,7 @@ function assignTranscriptTurnTimings(
 			}
 		}
 		if (matchedIndex === undefined) continue;
-		assignments[turnIndex] = turnTimings[matchedIndex];
+		assignments[turnIndex] = messageTurnTimings[matchedIndex];
 		timingCursor = matchedIndex - 1;
 	}
 	return assignments;

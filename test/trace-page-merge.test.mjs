@@ -93,6 +93,29 @@ test("mergeRefreshedTracePage preserves the loaded history window while refreshi
 	assert.equal(merged.eventLimit, 100);
 });
 
+test("mergeRefreshedTracePage retains a same-entry transcript part split from the refreshed tail", () => {
+	const startedAt = "2026-07-05T00:01:00.000Z";
+	const currentNodes = Array.from({ length: 51 }, (_, contentPartIndex) => node(`part-${contentPartIndex}`, {
+		type: "model.reasoning",
+		source: "transcript",
+		startedAt,
+		orderKey: {
+			sourceRank: 0,
+			turnSeq: 7,
+			transcriptIndex: 7,
+			contentPartIndex,
+			phaseRank: 3,
+		},
+	}));
+	const current = traceView({ nodes: currentNodes });
+	const refreshed = traceView({ nodes: currentNodes.slice(1) });
+
+	const merged = mergeRefreshedTracePage(current, refreshed);
+
+	assert.equal(flattenNodes(merged.nodes).length, 51);
+	assert.equal(flattenNodes(merged.nodes)[0]?.id, "part-0");
+});
+
 test("mergeRefreshedTracePage replaces stale tail nodes without dropping loaded history", () => {
 	const current = traceView({
 		nodes: [

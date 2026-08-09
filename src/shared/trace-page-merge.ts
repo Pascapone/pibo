@@ -1,4 +1,5 @@
 import { flattenTraceNodes, nestTraceNodes } from "./trace-nodes.js";
+import { compareTraceOrder, type TraceOrderKey } from "./trace-order.js";
 import type { PiboSessionTraceView } from "./trace-types.js";
 
 export function mergeOlderTracePage(current: PiboSessionTraceView, older: PiboSessionTraceView): PiboSessionTraceView {
@@ -45,6 +46,7 @@ function mergeRefreshedTraceNodes(
 ): PiboSessionTraceView["nodes"] {
 	const refreshedNodes = flattenTraceNodes([...refreshed.nodes]);
 	const refreshedIds = new Set(refreshedNodes.map((node) => node.id));
+	const refreshedOrderBoundaries = earliestTraceNodeOrdersBySource(refreshedNodes);
 	const refreshedStartedAt = earliestTraceNodeTimestamp(refreshedNodes);
 	const retainedOlderNodes = flattenTraceNodes([...currentNodes]).filter((node) => {
 		if (refreshedIds.has(node.id)) return true;
@@ -52,6 +54,12 @@ function mergeRefreshedTraceNodes(
 		const eventSequence = node.orderKey?.eventSequence;
 		if (eventSequence !== undefined && refreshed.firstEventSequence !== undefined) {
 			return eventSequence < refreshed.firstEventSequence;
+		}
+		const refreshedOrderBoundary = node.orderKey
+			? refreshedOrderBoundaries.get(node.orderKey.sourceRank)
+			: undefined;
+		if (node.orderKey && refreshedOrderBoundary) {
+			return compareTraceOrder(node.orderKey, refreshedOrderBoundary) < 0;
 		}
 		if (node.source === "live" || node.orderKey?.streamId !== undefined) return false;
 		const startedAt = parseTimestamp(node.startedAt);
@@ -65,6 +73,18 @@ function isTransientTailNode(node: PiboSessionTraceView["nodes"][number]): boole
 		|| node.orderKey?.streamId !== undefined
 		|| node.type === "yielded.run"
 		|| node.stableKey?.startsWith("run-notification:") === true;
+}
+
+function earliestTraceNodeOrdersBySource(nodes: PiboSessionTraceView["nodes"]): Map<number, TraceOrderKey> {
+	const earliestBySource = new Map<number, TraceOrderKey>();
+	for (const node of nodes) {
+		if (!node.orderKey) continue;
+		const earliest = earliestBySource.get(node.orderKey.sourceRank);
+		if (!earliest || compareTraceOrder(node.orderKey, earliest) < 0) {
+			earliestBySource.set(node.orderKey.sourceRank, node.orderKey);
+		}
+	}
+	return earliestBySource;
 }
 
 function earliestTraceNodeTimestamp(nodes: PiboSessionTraceView["nodes"]): number | undefined {

@@ -278,8 +278,9 @@ export function reconcileTranscriptUserMessages(
 		);
 		if (matchIndex === -1) continue;
 		const matchedNode = transcriptUsers[matchIndex]!;
-		matchedNode.id = `event:message_queued:${timing.eventId}`;
-		matchedNode.stableKey = `event:message_queued:${timing.eventId}`;
+		const userMessageType = timing.userMessageType ?? "message_queued";
+		matchedNode.id = `event:${userMessageType}:${timing.eventId}`;
+		matchedNode.stableKey = `event:${userMessageType}:${timing.eventId}`;
 		timingCursor = matchIndex + 1;
 	}
 
@@ -735,6 +736,7 @@ function isStaleToolCallEchoEvent(event: PiboOutputEvent, sessionStatus: PiboWeb
 export type TraceMessageTurnTiming = {
 	eventId: string;
 	userText?: string;
+	userMessageType?: "message_steered";
 	startedAt?: string;
 	completedAt?: string;
 	durationMs?: number;
@@ -755,6 +757,7 @@ export function mergeMessageTurnTimings(...groups: readonly TraceMessageTurnTimi
 		const merged: TraceMessageTurnTiming = {
 			eventId: timing.eventId,
 			userText: timing.userText ?? existing.userText,
+			userMessageType: timing.userMessageType ?? existing.userMessageType,
 			startedAt: timing.startedAt ?? existing.startedAt,
 			completedAt: timing.completedAt ?? existing.completedAt,
 			durationMs: timing.durationMs ?? existing.durationMs,
@@ -786,6 +789,7 @@ function appendUniqueIndex(indices: number[] | undefined, partIndex: number): nu
 export function messageTurnTimingsFromEvents(events: readonly ChatWebStoredEvent[]): TraceMessageTurnTiming[] {
 	const timings = new Map<string, {
 		userText?: string;
+		userMessageType?: "message_steered";
 		startedAt?: string;
 		completedAt?: string;
 		reasoningIndices?: number[];
@@ -798,6 +802,7 @@ export function messageTurnTimingsFromEvents(events: readonly ChatWebStoredEvent
 		const event = storedEvent.payload as PiboOutputEvent;
 		if (
 			event.type !== "message_queued" &&
+			event.type !== "message_steered" &&
 			event.type !== "message_started" &&
 			event.type !== "message_finished" &&
 			event.type !== "session_error" &&
@@ -818,6 +823,9 @@ export function messageTurnTimingsFromEvents(events: readonly ChatWebStoredEvent
 		const timing = timings.get(eventId) ?? {};
 		if (event.type === "message_queued") {
 			timing.userText ??= event.text;
+		} else if (event.type === "message_steered") {
+			timing.userText ??= event.text;
+			timing.userMessageType = "message_steered";
 		} else if (event.type === "message_started") {
 			timing.userText ??= event.text;
 			timing.startedAt ??= storedEvent.createdAt;
@@ -841,6 +849,7 @@ export function messageTurnTimingsFromEvents(events: readonly ChatWebStoredEvent
 			eventId,
 			userText: timing.userText,
 			startedAt: timing.startedAt,
+			...(timing.userMessageType ? { userMessageType: timing.userMessageType } : {}),
 			completedAt: timing.completedAt,
 			durationMs: startedAtMs === undefined || completedAtMs === undefined
 				? undefined

@@ -36,7 +36,9 @@ export function traceProjectionStatus(
 	status?: PiboWebSessionStatus,
 	turnTimings: readonly TraceMessageTurnTiming[] = [],
 ): PiboWebSessionStatus {
-	return snapshots.length || turnTimings.some((timing) => timing.completedAt === undefined)
+	return snapshots.length || turnTimings.some(
+		(timing) => timing.userMessageType !== "message_steered" && timing.completedAt === undefined,
+	)
 		? "running"
 		: status ?? "idle";
 }

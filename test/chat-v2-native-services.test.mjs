@@ -29,6 +29,48 @@ function session(id, roomId = "room_1") {
 	};
 }
 
+test("timeline query retains full-history steering message identity metadata", () => {
+	const store = tempStore("pibo-chat-v2-steering-identity-");
+	try {
+		const rooms = new ChatRoomService(store);
+		const sessions = new ChatSessionQueryService(store);
+		const timeline = new ChatTimelineQueryService(store);
+		const commands = new ChatEventCommandService(store);
+		const room = rooms.ensureDefaultRoom();
+		const piboSession = session("ps_steering", room.id);
+		sessions.upsertSession(piboSession);
+		commands.appendEvent({
+			roomId: room.id,
+			piboSessionId: piboSession.id,
+			eventId: "steer-1",
+			eventType: "message_steered",
+			actorType: "user",
+			actorId: "user:test",
+			retentionClass: "chat_message",
+			payload: {
+				type: "message_steered",
+				piboSessionId: piboSession.id,
+				eventId: "steer-1",
+				activeEventId: "turn-1",
+				text: "Adjust course",
+				source: "user",
+			},
+			createdAt: "2026-05-09T00:00:02.000Z",
+		});
+
+		assert.deepEqual(timeline.listMessageTurnTimings(piboSession.id), [{
+			eventId: "steer-1",
+			userText: "Adjust course",
+			startedAt: undefined,
+			completedAt: undefined,
+			durationMs: undefined,
+			userMessageType: "message_steered",
+		}]);
+	} finally {
+		store.close();
+	}
+});
+
 test("V2-native chat services cover rooms, sessions, timeline, commands, and read state", () => {
 	const store = tempStore("pibo-chat-v2-services-");
 	const rooms = new ChatRoomService(store);

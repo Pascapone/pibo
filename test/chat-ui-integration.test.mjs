@@ -409,6 +409,34 @@ test("persisted steering messages remain attached to the active turn after reloa
 	assert.equal(steered.parentId, "event:message:turn-1");
 });
 
+test("persisted steering messages retain event-backed identity after the event ages out of the tail", () => {
+	const view = buildTraceViewFromEvents({
+		session: { id: "chat:test", piSessionId: "pi-test" },
+		status: "idle",
+		transcriptEntries: [
+			{
+				id: "steer-1",
+				type: "message",
+				timestamp: "2026-04-29T08:00:01.000Z",
+				message: { role: "user", content: [{ type: "text", text: "Adjust course" }] },
+			},
+			{
+				id: "assistant-after-steer",
+				type: "message",
+				timestamp: "2026-04-29T08:00:02.000Z",
+				message: { role: "assistant", content: [{ type: "text", text: "Adjusted" }] },
+			},
+		],
+		events: [],
+		turnTimings: [{ eventId: "steer-1", userText: "Adjust course", userMessageType: "message_steered" }],
+	});
+
+	const steered = flatNodes(view).find((node) => node.type === "user.message");
+	assert.equal(steered?.id, "event:message_steered:steer-1");
+	assert.equal(steered?.entryId, "steer-1");
+	assert.equal(flatNodes(view).find((node) => node.type === "assistant.message")?.id, "entry:assistant-after-steer:response");
+});
+
 test("persisted user messages retain their event-backed identity after a turn settles", () => {
 	const event = createEvent({
 		seq: 1,

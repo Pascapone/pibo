@@ -49,6 +49,7 @@ async function runChatTraceHelpersScenario() {
 		assert.equal(traceProjectionStatus([snapshot], "idle"), "running");
 		assert.equal(traceProjectionStatus([], "idle", [{ eventId: "turn-open" }]), "running");
 		assert.equal(traceProjectionStatus([], "idle", [{ eventId: "turn-done", completedAt: "2026-05-27T00:00:00.000Z" }]), "idle");
+		assert.equal(traceProjectionStatus([], "idle", [{ eventId: "steer-1", userMessageType: "message_steered" }]), "idle");
 		assert.equal(liveSnapshotVersion([]), "");
 		assert.equal(liveSnapshotVersion([snapshot]), liveSnapshotVersion([snapshot]));
 		const stored = storedLiveSnapshotEvents({ piboSessionId: "ps_1", snapshots: [snapshot], lastEventSequence: 7, now: "2026-05-27T00:00:00.000Z" });
