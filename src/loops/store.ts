@@ -280,7 +280,11 @@ export class PiboLoopStore {
 			const piboSessionId = job.state.lastPiboSessionId;
 			if (!piboSessionId) throw new Error('Goal cannot be reopened because it has no originating Pibo Session');
 			if (this.db.prepare("SELECT 1 FROM pibo_ralph_runs WHERE job_id = ? AND status = 'running' LIMIT 1").get(job.id)) throw new Error('Goal cannot be reopened while a Loop run is active or queued');
-			const competitor = this.listGoalsForSession(piboSessionId).find((candidate) => candidate.id !== job.id && (candidate.enabled || candidate.state.runningAt));
+			const competitor = this.listGoalsForSession(piboSessionId).find((candidate) => {
+				if (candidate.id === job.id) return false;
+				if ((goalStatus(candidate) ?? 'paused') !== 'complete') return true;
+				return Boolean(this.db.prepare("SELECT 1 FROM pibo_ralph_runs WHERE job_id = ? AND status = 'running' LIMIT 1").get(candidate.id));
+			});
 			if (competitor) throw new Error(`Goal cannot be reopened because ${competitor.id} owns the Pibo Session`);
 			const timestamp = nowIso(now);
 			const fact: PiboLoopRunFact = {

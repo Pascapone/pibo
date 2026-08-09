@@ -79,21 +79,25 @@ test("operator reopen rejects active or queued Loop runs and competing Goal owne
 			assert.throws(() => harness.service.reopenGoal(goal.id, { confirmed: true, actorId: "operator:test" }), /Loop run is active or queued/);
 		} finally { await harness.close(); }
 	});
-	await t.test("competing Goal", async () => {
-		const harness = await createHarness();
-		try {
-			const goal = createGoal(harness.store, "Terminal");
-			harness.store.updateGoalStatus(goal.id, "complete");
-			harness.store.createJob({ mode: "goal", enabled: true, target: { kind: "default-chat" }, profile: "base", prompt: "Competitor", initialPiboSessionId: "ps_reopen" });
-			assert.throws(() => harness.service.reopenGoal(goal.id, { confirmed: true, actorId: "operator:test" }), /owns the Pibo Session/);
-		} finally { await harness.close(); }
-	});
+	for (const [name, enabled] of [["active competing Goal", true], ["paused competing Goal", false]]) {
+		await t.test(name, async () => {
+			const harness = await createHarness();
+			try {
+				const goal = createGoal(harness.store, "Terminal");
+				harness.store.updateGoalStatus(goal.id, "complete");
+				harness.store.createJob({ mode: "goal", enabled, target: { kind: "default-chat" }, profile: "base", prompt: "Competitor", initialPiboSessionId: "ps_reopen" });
+				assert.throws(() => harness.service.reopenGoal(goal.id, { confirmed: true, actorId: "operator:test" }), /owns the Pibo Session/);
+			} finally { await harness.close(); }
+		});
+	}
 });
 
 test("operator reopen rejects active, queued, draining, orphaned, or unconsumed controller work", async (t) => {
 	for (const [name, runtimeStatus, controllerRuns, pattern] of [
-		["processing", { processing: true, queuedMessages: 0 }, [], /active, queued, or draining/],
-		["queued", { processing: false, queuedMessages: 2 }, [], /active, queued, or draining/],
+		["processing", { processing: true, streaming: false, queuedMessages: 0, disposed: false }, [], /active, queued, draining, or disposing/],
+		["streaming", { processing: false, streaming: true, queuedMessages: 0, disposed: false }, [], /active, queued, draining, or disposing/],
+		["queued", { processing: false, streaming: false, queuedMessages: 2, disposed: false }, [], /active, queued, draining, or disposing/],
+		["disposing", { processing: false, streaming: false, queuedMessages: 0, disposed: true }, [], /active, queued, draining, or disposing/],
 		["controller running", undefined, [{ runId: "run_live", controllerPiboSessionId: "ps_reopen", status: "running", consumed: false }], /active or unconsumed/],
 		["controller terminal unconsumed", undefined, [{ runId: "run_unread", controllerPiboSessionId: "ps_reopen", status: "completed", consumed: false }], /active or unconsumed/],
 	]) {

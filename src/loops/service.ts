@@ -113,7 +113,7 @@ export class PiboLoopService {
 		const piboSessionId = job.state.lastPiboSessionId;
 		if (!piboSessionId) throw new Error('Goal cannot be reopened because it has no originating Pibo Session');
 		const runtime = this.options.context.getSessionRuntimeStatus?.(piboSessionId);
-		if (runtime && (runtime.processing || runtime.queuedMessages > 0)) throw new Error('Goal cannot be reopened while its Pibo Session is active, queued, or draining');
+		if (runtime && (runtime.disposed || runtime.processing || runtime.streaming || runtime.queuedMessages > 0)) throw new Error('Goal cannot be reopened while its Pibo Session is active, queued, draining, or disposing');
 		const controllerRun = this.options.context.listRuns?.({ includeConsumed: true, includeDetached: true }).find((run) => run.controllerPiboSessionId === piboSessionId && (!['completed', 'failed', 'timed_out', 'cancelled'].includes(run.status) || !run.consumed));
 		if (controllerRun) throw new Error(`Goal cannot be reopened while controller run ${controllerRun.runId} is active or unconsumed`);
 		const reopened = this.store.reopenGoal(id, { actorId: input.actorId });
