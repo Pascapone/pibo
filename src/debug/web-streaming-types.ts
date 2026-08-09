@@ -304,6 +304,7 @@ export type StreamingRenderOrderRow = {
 export type StreamingRenderOrderDomState = {
 	t: number;
 	timestamp: number;
+	traceSequence?: number;
 	reason: string;
 	piboSessionId?: string;
 	view: "compact-terminal" | "trace-timeline" | "unknown";

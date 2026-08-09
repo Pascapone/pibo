@@ -700,9 +700,14 @@ function startRenderOrderCapture(startedAt) {
     const rows = elements.map(rowFromElement).filter((row) => row.id);
     const view = terminalRows.length ? 'compact-terminal' : traceRows.length ? 'trace-timeline' : 'unknown';
     const visualRows = rows.slice().sort((left, right) => (left.top || 0) - (right.top || 0) || (left.left || 0) - (right.left || 0));
+    let traceSequence;
+    if (piboSessionId && traceSnapshotsApi && typeof traceSnapshotsApi.getLatestSequence === 'function') {
+      try { traceSequence = traceSnapshotsApi.getLatestSequence(piboSessionId); } catch {}
+    }
     const state = {
       t: Math.round((performance.now() - startedAt) * 1000) / 1000,
       timestamp: Date.now(),
+      traceSequence,
       reason,
       piboSessionId: shell?.getAttribute('data-pibo-session-id') || piboSessionId,
       view,
@@ -712,7 +717,7 @@ function startRenderOrderCapture(startedAt) {
       rowIds: rows.map((row) => row.id),
       visualRowIds: visualRows.map((row) => row.id),
     };
-    const signature = JSON.stringify({ view: state.view, shellState: state.shellState, atBottom: state.atBottom, rows: rows.map((row) => [row.id, row.kind, row.status, row.sourceNodeIds, row.eventId, row.runId, row.orderSource, row.orderStreamId, row.orderStreamFrameIndex]), visual: state.visualRowIds });
+    const signature = JSON.stringify({ traceSequence: state.traceSequence, view: state.view, shellState: state.shellState, atBottom: state.atBottom, rows: rows.map((row) => [row.id, row.kind, row.status, row.sourceNodeIds, row.eventId, row.runId, row.orderSource, row.orderStreamId, row.orderStreamFrameIndex]), visual: state.visualRowIds });
     if (signature === previousSignature) return;
     previousSignature = signature;
     if (domStates.length >= 1000) omittedDomStates += 1;
@@ -730,6 +735,9 @@ function startRenderOrderCapture(startedAt) {
       let traceSnapshots = [];
       if (piboSessionId && traceSnapshotsApi && typeof traceSnapshotsApi.getSnapshots === 'function') {
         try { traceSnapshots = cloneDebugSnapshot(traceSnapshotsApi.getSnapshots(piboSessionId)) || []; } catch {}
+      }
+      if (piboSessionId && traceSnapshotsApi && typeof traceSnapshotsApi.clearSnapshots === 'function') {
+        try { traceSnapshotsApi.clearSnapshots(piboSessionId); } catch {}
       }
       return {
         requested: true,
@@ -751,8 +759,29 @@ async function runStreamingBenchmark(options) {
   let reset = false;
   let backendPreludeError;
   let backendPreludeConfig;
-  try { localStorage.setItem('pibo.chat.debugStreaming', '1'); } catch (error) { warnings.push('failed to set debugStreaming localStorage: ' + String(error)); }
-  try { localStorage.setItem('pibo.chat.traceDebug', 'true'); } catch (error) { warnings.push('failed to set traceDebug localStorage: ' + String(error)); }
+  let debugStreamingBefore;
+  const traceCollectionBefore = window.__piboTraceSnapshotCollectionEnabled;
+  try {
+    debugStreamingBefore = localStorage.getItem('pibo.chat.debugStreaming');
+    localStorage.setItem('pibo.chat.debugStreaming', '1');
+  } catch (error) {
+    warnings.push('failed to set debugStreaming localStorage: ' + String(error));
+  }
+  window.__piboTraceSnapshotCollectionEnabled = true;
+  const restoreDebugCollection = () => {
+    try {
+      if (debugStreamingBefore === null || debugStreamingBefore === undefined) localStorage.removeItem('pibo.chat.debugStreaming');
+      else localStorage.setItem('pibo.chat.debugStreaming', debugStreamingBefore);
+    } catch {}
+    if (traceCollectionBefore === undefined) delete window.__piboTraceSnapshotCollectionEnabled;
+    else window.__piboTraceSnapshotCollectionEnabled = traceCollectionBefore;
+    const piboSessionId = selectedSessionId();
+    const snapshots = window.__piboTraceSnapshots;
+    if (piboSessionId && snapshots && typeof snapshots.clearSnapshots === 'function') {
+      try { snapshots.clearSnapshots(piboSessionId); } catch {}
+    }
+  };
+  try {
   if (options.startBackendFixture && options.fixturePreludeMessages > 0) {
     const piboSessionId = selectedSessionId();
     if (!piboSessionId) {
@@ -1021,6 +1050,9 @@ async function runStreamingBenchmark(options) {
     regressions,
     warnings,
   };
+  } finally {
+    restoreDebugCollection();
+  }
 }
 `;
 }

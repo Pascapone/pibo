@@ -83,9 +83,46 @@ test("streaming render-order analysis identifies reorders, reappearing rows, ide
 	assert.ok(analyzed.analysis.regressions.some((regression) => regression.startsWith("render order rows disappeared and reappeared")));
 });
 
-test("streaming benchmark expression installs state and DOM render-order capture", () => {
+test("streaming render-order analysis correlates same-millisecond states by snapshot sequence", () => {
+	const analyzed = analyzeStreamingRenderOrderCapture({
+		requested: true,
+		available: true,
+		piboSessionId: "ps_test",
+		omittedDomStates: 0,
+		domStates: [
+			{ t: 0, timestamp: 1000, traceSequence: 2, reason: "mutation", piboSessionId: "ps_test", view: "compact-terminal", atBottom: true, rows: [{ id: "a" }, { id: "b" }], rowIds: ["a", "b"], visualRowIds: ["a", "b"] },
+		],
+		traceSnapshots: [
+			{ sequence: 1, timestamp: 1000, piboSessionId: "ps_test", trigger: "compact-terminal:render", layers: [{ kind: "terminalRows", ids: ["a"], digest: "a", meta: [{ id: "a", kind: "message.user", stableKey: "user:a" }] }] },
+			{ sequence: 2, timestamp: 1000, piboSessionId: "ps_test", trigger: "compact-terminal:render", layers: [{ kind: "terminalRows", ids: ["a", "b"], digest: "b", meta: [{ id: "a", kind: "message.user", stableKey: "user:a" }, { id: "b", kind: "message.assistant", stableKey: "assistant:b" }] }] },
+		],
+	});
+	assert.equal(analyzed.analysis.stateDomMismatchCount, 0);
+});
+
+test("streaming render-order analysis matches every unique identity alias", () => {
+	const analyzed = analyzeStreamingRenderOrderCapture({
+		requested: true,
+		available: true,
+		piboSessionId: "ps_test",
+		omittedDomStates: 0,
+		domStates: [],
+		traceSnapshots: [
+			{ sequence: 1, timestamp: 1000, piboSessionId: "ps_test", trigger: "compact-terminal:render", layers: [{ kind: "terminalRows", ids: ["assistant:old"], digest: "a", meta: [{ id: "assistant:old", kind: "message.assistant", eventId: "turn-1", stableKey: "assistant:turn-1:assistant:0" }] }] },
+			{ sequence: 2, timestamp: 1001, piboSessionId: "ps_test", trigger: "compact-terminal:render", layers: [{ kind: "terminalRows", ids: ["assistant:new"], digest: "b", meta: [{ id: "assistant:new", kind: "assistant.message", stableKey: "assistant:turn-1:assistant:0" }] }] },
+		],
+	});
+	assert.equal(analyzed.analysis.identityReplacementCount, 1);
+	assert.deepEqual(analyzed.analysis.findings.find((finding) => finding.kind === "identity-replacement")?.ids, ["assistant:old", "assistant:new"]);
+});
+
+test("streaming benchmark expression installs temporary state and DOM render-order capture", () => {
 	const expression = buildStreamingBenchmarkExpression(1000, { startBackendFixture: true });
-	assert.match(expression, /pibo\.chat\.traceDebug/);
+	assert.doesNotMatch(expression, /localStorage\.setItem\('pibo\.chat\.traceDebug'/);
+	assert.match(expression, /__piboTraceSnapshotCollectionEnabled = true/);
+	assert.match(expression, /restoreDebugCollection/);
+	assert.match(expression, /clearSnapshots/);
+	assert.match(expression, /getLatestSequence/);
 	assert.match(expression, /startRenderOrderCapture/);
 	assert.match(expression, /data-pibo-terminal-row/);
 	assert.match(expression, /__piboTraceSnapshots/);

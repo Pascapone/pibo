@@ -10,6 +10,7 @@ import type {
 type OrderedState = {
 	source: StreamingRenderOrderFinding["source"];
 	timestamp: number;
+	sequence?: number;
 	ids: string[];
 	meta: Array<Record<string, unknown>>;
 };
@@ -54,12 +55,13 @@ function orderedInternalStates(snapshots: readonly StreamingRenderOrderTraceSnap
 			states.push({
 				source: layer.kind,
 				timestamp: snapshot.timestamp,
+				sequence: snapshot.sequence,
 				ids: uniqueStrings(layer.ids),
 				meta: Array.isArray(layer.meta) ? layer.meta : [],
 			});
 		}
 	}
-	return states.sort((left, right) => left.timestamp - right.timestamp);
+	return states.sort((left, right) => left.timestamp - right.timestamp || (left.sequence ?? 0) - (right.sequence ?? 0));
 }
 
 function isOrderedLayer(layer: StreamingRenderOrderTraceLayer): layer is StreamingRenderOrderTraceLayer & { kind: "baseNodes" | "currentNodes" | "terminalRows" | "visibleRows" } {
@@ -70,6 +72,7 @@ function domState(state: StreamingRenderOrderDomState): OrderedState {
 	return {
 		source: "dom",
 		timestamp: state.timestamp,
+		sequence: state.traceSequence,
 		ids: uniqueStrings(state.rowIds),
 		meta: state.rows as unknown as Array<Record<string, unknown>>,
 	};
@@ -130,7 +133,7 @@ function analyzeStateDomAgreement(domStates: readonly StreamingRenderOrderDomSta
 	const visibleStates = internalStates.filter((state) => state.source === "visibleRows");
 	for (const dom of domStates) {
 		const candidates = dom.view === "compact-terminal" ? terminalStates : dom.view === "trace-timeline" ? visibleStates : [];
-		const internal = nearestState(candidates, dom.timestamp, 500);
+		const internal = nearestState(candidates, dom.timestamp, 500, dom.traceSequence);
 		if (!internal || dom.rowIds.length === 0) continue;
 		if (isSubsequence(dom.rowIds, internal.ids)) continue;
 		pushFinding({
@@ -157,29 +160,52 @@ function identityReplacements(before: OrderedState, after: OrderedState): Array<
 	const beforeByLogicalKey = logicalIdentityMap(before);
 	const afterByLogicalKey = logicalIdentityMap(after);
 	const replacements: Array<{ logicalKey: string; beforeId: string; afterId: string }> = [];
+	const seenPairs = new Set<string>();
 	for (const [logicalKey, beforeId] of beforeByLogicalKey) {
 		const afterId = afterByLogicalKey.get(logicalKey);
-		if (afterId && afterId !== beforeId) replacements.push({ logicalKey, beforeId, afterId });
+		if (!afterId || afterId === beforeId) continue;
+		const pair = `${beforeId}\u0000${afterId}`;
+		if (seenPairs.has(pair)) continue;
+		seenPairs.add(pair);
+		replacements.push({ logicalKey, beforeId, afterId });
 	}
 	return replacements;
 }
 
 function logicalIdentityMap(state: OrderedState): Map<string, string> {
-	const result = new Map<string, string>();
+	const idsByLogicalKey = new Map<string, Set<string>>();
 	for (const raw of state.meta) {
 		const id = stringField(raw, "id");
 		if (!id) continue;
 		const kind = stringField(raw, "kind") ?? stringField(raw, "type") ?? "node";
-		const direct = stringField(raw, "eventId")
-			?? stringField(raw, "runId")
-			?? stringField(raw, "toolCallId")
-			?? stringField(raw, "entryId")
-			?? stringField(raw, "stableKey");
-		const sourceNodeIds = stringArrayField(raw, "sourceNodeIds");
-		const logicalKey = direct ? `${kind}:${direct}` : sourceNodeIds.length ? `${kind}:${sourceNodeIds.join("|")}` : undefined;
-		if (logicalKey && !result.has(logicalKey)) result.set(logicalKey, id);
+		const aliases = [
+			...identityFieldAliases(raw, kind, "stableKey"),
+			...identityFieldAliases(raw, kind, "toolCallId"),
+			...identityFieldAliases(raw, kind, "runId"),
+			...identityFieldAliases(raw, kind, "entryId"),
+			...identityFieldAliases(raw, kind, "eventId"),
+			...stringArrayField(raw, "sourceNodeIds").flatMap((value) => identityAliases(kind, "sourceNodeId", value)),
+		];
+		for (const logicalKey of aliases) {
+			const ids = idsByLogicalKey.get(logicalKey) ?? new Set<string>();
+			ids.add(id);
+			idsByLogicalKey.set(logicalKey, ids);
+		}
+	}
+	const result = new Map<string, string>();
+	for (const [logicalKey, ids] of idsByLogicalKey) {
+		if (ids.size === 1) result.set(logicalKey, [...ids][0]!);
 	}
 	return result;
+}
+
+function identityFieldAliases(raw: Record<string, unknown>, kind: string, field: string): string[] {
+	const value = stringField(raw, field);
+	return value ? identityAliases(kind, field, value) : [];
+}
+
+function identityAliases(kind: string, field: string, value: string): string[] {
+	return [`${kind}:${field}:${value}`, `${field}:${value}`];
 }
 
 function disappearReappearances(states: readonly OrderedState[]): Array<{ source: OrderedState["source"]; id: string; timestamp: number }> {
@@ -205,12 +231,24 @@ function disappearReappearances(states: readonly OrderedState[]): Array<{ source
 	return results;
 }
 
-function nearestState(states: readonly OrderedState[], timestamp: number, maxDistanceMs: number): OrderedState | undefined {
+function nearestState(
+	states: readonly OrderedState[],
+	timestamp: number,
+	maxDistanceMs: number,
+	traceSequence?: number,
+): OrderedState | undefined {
+	let candidates = states;
+	if (traceSequence !== undefined) {
+		const causal = states.filter((state) => state.sequence !== undefined && state.sequence <= traceSequence);
+		const latestSequence = causal.reduce((latest, state) => Math.max(latest, state.sequence ?? -1), -1);
+		if (latestSequence >= 0) candidates = causal.filter((state) => state.sequence === latestSequence);
+	}
 	let best: OrderedState | undefined;
 	let bestDistance = Number.POSITIVE_INFINITY;
-	for (const state of states) {
+	for (const state of candidates) {
 		const distance = Math.abs(state.timestamp - timestamp);
-		if (distance < bestDistance) {
+		const betterSequence = distance === bestDistance && (state.sequence ?? -1) > (best?.sequence ?? -1);
+		if (distance < bestDistance || betterSequence) {
 			best = state;
 			bestDistance = distance;
 		}

@@ -14,6 +14,9 @@ test("trace render-order tooling records base, overlay, current, and terminal st
 		assert.match(collector, new RegExp(`\\"${layer}\\"`));
 	}
 	assert.match(collector, /contentKind: traceNodeContentKind\(content\)/);
+	assert.match(collector, /simpleDigest\(\[contentDigestSalt, content\]\)/);
+	assert.match(collector, /getLatestSequence: getLatestSnapshotSequence/);
+	assert.match(collector, /clearTimeout\(buffer\.pendingTimer\)/);
 	assert.match(currentTrace, /collectTraceState\(\{/);
 	assert.match(terminal, /collectTerminalRows\(piboSessionId, "compact-terminal:render", rows/);
 });

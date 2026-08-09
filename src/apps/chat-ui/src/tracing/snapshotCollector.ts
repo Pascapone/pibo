@@ -84,6 +84,9 @@ type TerminalRowLike = {
 const MAX_SNAPSHOTS_PER_SESSION = 5_000;
 const PENDING_MERGE_MS = 0;
 const buffers = new Map<string, SessionSnapshotBuffer>();
+const contentDigestSalt = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+	? crypto.randomUUID()
+	: `${Date.now()}:${Math.random()}`;
 let snapshotSequence = 0;
 
 function getBuffer(piboSessionId: string): SessionSnapshotBuffer {
@@ -96,6 +99,10 @@ function getBuffer(piboSessionId: string): SessionSnapshotBuffer {
 }
 
 export function isTraceSnapshotCollectionEnabled(): boolean {
+	if (typeof window !== "undefined") {
+		const debugWindow = window as typeof window & { __piboTraceSnapshotCollectionEnabled?: boolean };
+		if (debugWindow.__piboTraceSnapshotCollectionEnabled === true) return true;
+	}
 	try {
 		return localStorage.getItem("pibo.chat.traceDebug") === "true";
 	} catch {
@@ -338,6 +345,11 @@ export function getSnapshots(piboSessionId: string): readonly TraceSnapshot[] {
 	return buffer.snapshots;
 }
 
+export function getLatestSnapshotSequence(piboSessionId: string): number | undefined {
+	const buffer = buffers.get(piboSessionId);
+	return buffer?.pending?.sequence ?? buffer?.snapshots.at(-1)?.sequence;
+}
+
 export function exportSnapshots(piboSessionId?: string): string {
 	if (piboSessionId) return JSON.stringify({ piboSessionId, snapshots: getSnapshots(piboSessionId) }, null, 2);
 	const result: Record<string, TraceSnapshot[]> = {};
@@ -349,8 +361,19 @@ export function exportSnapshots(piboSessionId?: string): string {
 }
 
 export function clearSnapshots(piboSessionId?: string): void {
-	if (piboSessionId) buffers.delete(piboSessionId);
-	else buffers.clear();
+	if (piboSessionId) {
+		clearSnapshotBuffer(buffers.get(piboSessionId));
+		buffers.delete(piboSessionId);
+		return;
+	}
+	for (const buffer of buffers.values()) clearSnapshotBuffer(buffer);
+	buffers.clear();
+}
+
+function clearSnapshotBuffer(buffer: SessionSnapshotBuffer | undefined): void {
+	if (!buffer?.pendingTimer) return;
+	clearTimeout(buffer.pendingTimer);
+	buffer.pendingTimer = null;
 }
 
 function compatibleValue(left: unknown, right: unknown): boolean {
@@ -377,7 +400,7 @@ function traceNodeMeta(node: PiboTraceNode): TraceSnapshotNodeMeta {
 		source: node.source,
 		orderKey: node.orderKey,
 		contentLength: content.length,
-		contentDigest: content ? simpleDigest([content]) : undefined,
+		contentDigest: content ? simpleDigest([contentDigestSalt, content]) : undefined,
 		contentKind: traceNodeContentKind(content),
 	};
 }
@@ -410,6 +433,7 @@ if (typeof window !== "undefined") {
 			URL.revokeObjectURL(url);
 		},
 		getSnapshots,
+		getLatestSequence: getLatestSnapshotSequence,
 		clearSnapshots,
 		exportSnapshots,
 	};
