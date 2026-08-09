@@ -56,6 +56,8 @@ async function runLiveOverlayScenario() {
 				event("old-stream", "assistant_delta", { streamId: 10, payload: { eventId: "old-live", piboSessionId: "ps-test" } }),
 				event("raw-confirmed", "assistant_delta", { streamId: 11, payload: { eventId: "raw-confirmed", piboSessionId: "ps-test" } }),
 				event("assistant-confirmed", "assistant_message", { streamId: 11, payload: { eventId: "assistant-confirmed", piboSessionId: "ps-test" } }),
+				event("assistant-turn-started", "message_started", { streamId: 11, payload: { eventId: "assistant-confirmed", piboSessionId: "ps-test" } }),
+				event("assistant-turn-finished", "message_finished", { streamId: 11, payload: { eventId: "assistant-confirmed", piboSessionId: "ps-test" } }),
 				event("reasoning-confirmed", "thinking_finished", { streamId: 11, payload: { eventId: "reasoning-confirmed", piboSessionId: "ps-test" } }),
 				event("queued-by-id", "message_queued", { streamId: 11, payload: { type: "message_queued", source: "user", text: "different", eventId: "entry-confirmed", piboSessionId: "ps-test" } }),
 				event("queued-by-node-id", "message_queued", { streamId: 11, payload: { type: "message_queued", source: "user", text: "other", eventId: "node-confirmed", piboSessionId: "ps-test" } }),

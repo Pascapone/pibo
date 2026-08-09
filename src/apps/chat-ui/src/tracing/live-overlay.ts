@@ -106,6 +106,10 @@ function collectConfirmedTraceNodeKeys(nodes: readonly PiboTraceNode[], keys: Se
 					keys.add(`${node.piboSessionId}:assistant_message:${identity}`);
 				}
 			}
+			if (node.source === "transcript" && node.eventId) {
+				keys.add(`${node.piboSessionId}:message_started:${node.eventId}`);
+				keys.add(`${node.piboSessionId}:message_finished:${node.eventId}`);
+			}
 		}
 		if (node.type === "model.reasoning") {
 			const identity = traceNodeContentIdentity(node, "reasoning:");
