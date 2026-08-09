@@ -28,10 +28,11 @@ export type CdpTargetListOptions = {
 
 export const DEFAULT_CDP_URL = "http://127.0.0.1:56663";
 export const DEFAULT_CDP_TIMEOUT_MS = 2_500;
+const CDP_JSON_CHUNK_SIZE = 256 * 1024;
 
 export class CdpClient {
 	private nextId = 0;
-	private readonly pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
+	private readonly pending = new Map<number, { method: string; resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
 	private socket?: WebSocket;
 
 	constructor(private readonly webSocketUrl: string) {}
@@ -59,10 +60,11 @@ export class CdpClient {
 			socket.addEventListener("open", succeed);
 			socket.addEventListener("message", (event) => this.handleMessage(String(event.data)));
 			socket.addEventListener("error", () => fail(new Error(`CDP WebSocket error connecting to ${this.webSocketUrl}`)));
-			socket.addEventListener("close", () => {
+			socket.addEventListener("close", (event) => {
+				const detail = `code ${event.code}${event.reason ? `: ${event.reason}` : ""}`;
 				for (const [id, pending] of this.pending) {
 					clearTimeout(pending.timer);
-					pending.reject(new Error("CDP target closed"));
+					pending.reject(new Error(`CDP target closed during ${pending.method} (${detail})`));
 					this.pending.delete(id);
 				}
 			});
@@ -78,7 +80,7 @@ export class CdpClient {
 				this.pending.delete(id);
 				reject(new Error(`Timed out waiting for CDP method ${method}`));
 			}, timeoutMs);
-			this.pending.set(id, { resolve, reject, timer });
+			this.pending.set(id, { method, resolve, reject, timer });
 		});
 		this.socket.send(JSON.stringify(payload));
 		return promise;
@@ -93,6 +95,31 @@ export class CdpClient {
 		}, timeoutMs) as CdpRuntimeResult;
 		if (response.exceptionDetails) throw new Error(`Browser evaluation failed: ${JSON.stringify(response.exceptionDetails)}`);
 		return response.result?.value as T;
+	}
+
+	async evaluateJson<T>(expression: string, timeoutMs = 10_000): Promise<T> {
+		const storageKey = `__piboCdpJsonResult_${Date.now()}_${++this.nextId}`;
+		const keyLiteral = JSON.stringify(storageKey);
+		let stored = false;
+		try {
+			const descriptor = await this.evaluate<{ length: number }>(`(async () => {
+				const value = await (${expression});
+				const json = JSON.stringify(value);
+				if (typeof json !== "string") throw new Error("CDP evaluation result is not JSON serializable");
+				Object.defineProperty(globalThis, ${keyLiteral}, { value: json, configurable: true });
+				return { length: json.length };
+			})()`, timeoutMs);
+			stored = true;
+			if (!Number.isInteger(descriptor?.length) || descriptor.length < 0) throw new Error("CDP evaluation returned an invalid JSON result length");
+			const chunks: string[] = [];
+			for (let offset = 0; offset < descriptor.length; offset += CDP_JSON_CHUNK_SIZE) {
+				const end = Math.min(descriptor.length, offset + CDP_JSON_CHUNK_SIZE);
+				chunks.push(await this.evaluate<string>(`globalThis[${keyLiteral}].slice(${offset}, ${end})`));
+			}
+			return JSON.parse(chunks.join("")) as T;
+		} finally {
+			if (stored) await this.evaluate(`delete globalThis[${keyLiteral}]`).catch(() => undefined);
+		}
 	}
 
 	close(): void {
