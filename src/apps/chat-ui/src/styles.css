@@ -516,211 +516,68 @@ pre {
 	text-decoration: none;
 }
 
-.context-files-view .mdxeditor {
-	--baseBg: #151f24;
-	--baseBorderColor: #334155;
-	--baseTextColor: #dbe7e8;
-	--accentBg: rgb(17 164 212 / 0.18);
-	--accentTextColor: #f8fafc;
-	--accentBaseColor: #11a4d4;
-	--basePageBg: transparent;
-	display: flex;
-	min-height: 100%;
-	flex-direction: column;
-	color: #dbe7e8;
-}
-
-.context-files-view .mdxeditor-toolbar {
-	position: sticky;
-	top: 0;
-	z-index: 2;
-	border-bottom: 1px solid #1e293b;
-	background: #151f24;
-	overflow-x: auto;
-}
-
-.context-files-view .mdxeditor-toolbar [role="toolbar"] {
-	gap: 0.3rem;
-	padding: 0.45rem 0.55rem;
-}
-
-.context-files-view .mdxeditor-root-contenteditable,
-.context-files-mdx-content {
-	min-height: calc(100vh - 14rem);
-	width: 100%;
-	min-width: 0;
-	padding: 1.15rem 1.25rem 5rem;
-	color: #dbe7e8;
-	overflow-wrap: anywhere;
-	word-break: break-word;
-}
-
-.context-files-mdx-content h1,
-.context-files-mdx-content h2,
-.context-files-mdx-content h3,
-.context-files-mdx-content h4,
-.context-files-mdx-content h5,
-.context-files-mdx-content h6 {
-	margin: 1.2rem 0 0.55rem;
-	color: #f8fafc;
-	line-height: 1.2;
-}
-
-.context-files-mdx-content h1 {
-	margin-top: 0;
-	font-size: 1.6rem;
-}
-
-.context-files-mdx-content h2 {
-	font-size: 1.25rem;
-}
-
-.context-files-mdx-content h3 {
-	font-size: 1.05rem;
-}
-
-.context-files-mdx-content ul,
-.context-files-mdx-content ol {
-	margin: 0 0 1rem;
-	padding-left: 1.4rem;
-}
-
-.context-files-mdx-content blockquote {
-	margin-left: 0;
-	border-left: 4px solid rgb(17 164 212 / 0.45);
-	padding-left: 0.9rem;
-	color: #cbd5e1;
-}
-
-.context-files-mdx-content table {
-	display: block;
-	width: 100%;
-	border-collapse: collapse;
-	overflow-x: auto;
-}
-
-.context-files-mdx-content th,
-.context-files-mdx-content td {
-	border: 1px solid #334155;
-	padding: 0.5rem 0.6rem;
-}
-
-.context-files-view .cm-editor,
-.context-files-view .cm-gutters {
-	background: #0e1116;
-	color: #dbe7e8;
-}
-
-.context-files-view .cm-scroller,
-.context-files-view pre {
-	max-width: 100%;
-	overflow-x: auto;
-}
-
-.context-files-view .cm-cursor,
-.context-files-view .cm-dropCursor {
-	border-left-color: #11a4d4;
-}
-
-.context-files-view [class*="_iconButton_"],
-.context-files-view [class*="_toolbarButton_"],
-.context-files-view [class*="_toolbarToggleItem_"],
-.context-files-view [class*="_selectTrigger_"],
-.context-files-view [class*="_toolbarNodeKindSelectTrigger_"],
-.context-files-view [class*="_toolbarButtonSelectTrigger_"] {
-	border-color: #2a3943 !important;
-	background: transparent !important;
-	color: #94a3b8 !important;
-	box-shadow: none !important;
-	font-weight: 400 !important;
-}
-
-.context-files-view [class*="_iconButton_"] svg,
-.context-files-view [class*="_toolbarButton_"] svg,
-.context-files-view [class*="_toolbarToggleItem_"] svg,
-.context-files-view [class*="_selectTrigger_"] svg,
-.context-files-view [class*="_toolbarNodeKindSelectTrigger_"] svg,
-.context-files-view [class*="_toolbarButtonSelectTrigger_"] svg {
-	color: #94a3b8 !important;
-	stroke: currentColor !important;
-	width: 18px !important;
-	height: 18px !important;
-	opacity: 0.88;
-}
-
-.context-files-view [class*="_iconButton_"]:hover,
-.context-files-view [class*="_toolbarButton_"]:hover,
-.context-files-view [class*="_toolbarToggleItem_"]:hover,
-.context-files-view [class*="_selectTrigger_"]:hover,
-.context-files-view [class*="_toolbarNodeKindSelectTrigger_"]:hover,
-.context-files-view [class*="_toolbarButtonSelectTrigger_"]:hover {
-	border-color: #334155 !important;
-	background: rgb(255 255 255 / 0.03) !important;
-	color: #cbd5e1 !important;
-}
-
-.context-files-view [class*="_iconButton_"]:hover svg,
-.context-files-view [class*="_toolbarButton_"]:hover svg,
-.context-files-view [class*="_toolbarToggleItem_"]:hover svg,
-.context-files-view [class*="_selectTrigger_"]:hover svg,
-.context-files-view [class*="_toolbarNodeKindSelectTrigger_"]:hover svg,
-.context-files-view [class*="_toolbarButtonSelectTrigger_"]:hover svg {
-	color: #cbd5e1 !important;
-	opacity: 0.94;
-}
-
-.context-files-view [data-state="on"],
-.context-files-view [aria-checked="true"] {
-	border-color: rgb(17 164 212 / 0.45) !important;
-	background: rgb(17 164 212 / 0.12) !important;
-	color: #dbe7e8 !important;
-}
-
-.context-files-view [data-state="on"] svg,
-.context-files-view [aria-checked="true"] svg {
-	color: #cbd5e1 !important;
-	opacity: 0.94;
-}
-
-.context-files-view [class*="_selectContent_"],
-.context-files-view [class*="_dropdownMenuContent_"],
-.context-files-view [class*="_dialogContent_"] {
-	border: 1px solid #334155 !important;
-	background: #111a1f !important;
-	color: #dbe7e8 !important;
-}
-
-.context-files-view [class*="_toolbarToggleSingleGroup_"] {
-	gap: 0.3rem;
-}
-
-.context-files-plain-fallback {
-	display: flex;
+.context-files-view {
+	position: relative;
+	display: grid;
 	height: 100%;
 	min-height: 0;
-	flex-direction: column;
+	grid-template-columns: minmax(0, 1fr);
+	overflow: hidden;
 }
 
-.context-files-plain-fallback__notice {
-	margin: 0;
-	border-bottom: 1px solid #1e293b;
-	background: rgb(245 158 11 / 0.1);
-	padding: 0.75rem 1rem;
-	color: #fde68a;
-	font-size: 0.84rem;
+.context-files-view--panel-open {
+	grid-template-columns: minmax(0, 1fr) 300px;
 }
 
-.context-files-plain-fallback__textarea {
+.context-files-workspace,
+.context-files-panel {
 	min-height: 0;
-	flex: 1;
+}
+
+.context-files-editor-frame .markdown-editor-shell {
+	height: 100%;
+	min-height: 0;
+	width: 100%;
 	border: 0;
-	background: #151f24;
-	padding: 1rem 1.15rem 4rem;
-	color: #dbe7e8;
-	font: inherit;
-	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-	line-height: 1.55;
-	outline: none;
-	overflow: auto;
-	resize: none;
+}
+
+.workflow-prompt-editor-frame .markdown-editor-shell {
+	min-height: 28rem;
+	width: 100%;
+}
+
+.context-files-panel-backdrop {
+	display: none;
+}
+
+@media (max-width: 1180px) {
+	.context-files-view--panel-open {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.context-files-panel {
+		position: absolute;
+		inset: 0 0 0 auto;
+		z-index: 12;
+		width: min(340px, calc(100% - 1rem));
+		border-left-color: #334155;
+		box-shadow: -18px 0 48px rgb(0 0 0 / 0.5);
+	}
+
+	.context-files-panel-backdrop {
+		position: absolute;
+		inset: 0;
+		z-index: 11;
+		display: block;
+		border: 0;
+		background: rgb(3 10 13 / 0.64);
+		backdrop-filter: blur(2px);
+		cursor: default;
+	}
+}
+
+@media (max-width: 640px) {
+	.context-files-panel {
+		width: 100%;
+	}
 }

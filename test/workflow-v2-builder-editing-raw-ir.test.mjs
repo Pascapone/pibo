@@ -101,7 +101,7 @@ test("Workflow V2 builder tests cover raw IR safe sync and last-valid preservati
 test("Workflow V2 builder tests cover raw/schema/prompt panel completeness", async () => {
 	const webChannelTests = await readSource("test/web-channel.test.mjs");
 	const workflowsAreaSource = await readWorkflowUiSourceBundle();
-	const markdownEditorSource = await readSource("src/apps/chat-ui/src/context/MarkdownEditor.tsx");
+	const markdownEditorSource = await readSource("src/apps/shared/MarkdownEditor.tsx");
 
 	assertAllMatch(workflowsAreaSource, [
 		["builder renders the raw Pibo Workflow IR panel", /aria-label="Raw Pibo Workflow IR editor panel"[\s\S]*Raw Pibo Workflow IR editor/],
@@ -111,13 +111,13 @@ test("Workflow V2 builder tests cover raw/schema/prompt panel completeness", asy
 		["human node renders resume payload schema JSON editor", /<WorkflowSchemaTextEditor label="Human node resume payload schema JSON"/],
 		["schema editor advertises the existing subset boundary", /Raw JSON Schema subset only\. Unsupported keywords return workflow diagnostics; no Zod, AJV, or form-builder schema layer is introduced\./],
 		["agent node direct prompt template editor writes promptTemplate IR", /<span>Prompt template<\/span>[\s\S]*Saving direct prompt text writes[\s\S]*promptTemplate/],
-		["prompt assets use the shared Markdown editor component", /import \{ MarkdownEditor \} from "\.\.\/context\/MarkdownEditor";[\s\S]*aria-label="Prompt asset Markdown editor"[\s\S]*<MarkdownEditor/],
+		["prompt assets use the shared Markdown editor component", /import \{ MarkdownEditor, type MarkdownEditorHandle \} from "\.\.\/context\/MarkdownEditor";[\s\S]*aria-label="Prompt asset Markdown editor"[\s\S]*<MarkdownEditor/],
 		["prompt asset editor documents revision and hash pinning", /Saving creates a managed UI asset revision[\s\S]*pins the revision id plus content hash in the Pibo Workflow IR/],
 	]);
 
 	assertAllMatch(markdownEditorSource, [
 		["shared Markdown editor exposes markdown persistence", /type MarkdownEditorProps = \{[\s\S]*initialMarkdown: string;[\s\S]*onPersist\(markdown: string\): Promise<void>/],
-		["shared Markdown editor uses MDXEditor with raw markdown fallback", /context-files-plain-fallback__textarea[\s\S]*<MDXEditor[\s\S]*markdown=\{initialMarkdown\}[\s\S]*onChange=\{handleEditorChange\}/],
+		["shared Markdown editor uses MDXEditor with raw Markdown fallback", /markdown-editor__plain-textarea[\s\S]*<MDXEditor[\s\S]*markdown=\{initialMarkdown\}[\s\S]*onChange=\{handleEditorChange\}/],
 	]);
 
 	assertAllMatch(webChannelTests, [

@@ -30,6 +30,7 @@ import {
 } from "./api";
 import { MarkdownEditor, type MarkdownEditorHandle } from "./components/MarkdownEditor";
 import "./styles.css";
+import "../../shared/markdown-editor.css";
 
 type ContextFileScope = "global" | "agent";
 
@@ -406,11 +407,12 @@ function App() {
 					<div className="editor-frame">
 						<MarkdownEditor
 							ref={editorRef}
-							documentKey={`${document.key}:${document.version ?? document.updatedAt ?? ""}`}
+							documentKey={document.key}
 							initialMarkdown={document.markdown}
 							onPersist={handlePersist}
 							onSaveStateChange={setSaveState}
 							readOnly={!document.editable}
+							ariaLabel={document.label ? `${document.label} Markdown editor` : "Context file Markdown editor"}
 						/>
 					</div>
 				) : (
