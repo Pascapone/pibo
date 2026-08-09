@@ -101,9 +101,44 @@ test("transcript assistant duration uses persisted turn timing when tail events 
 		turnTimings: [{ eventId: "turn-duration", userText: "hello", startedAt, completedAt, durationMs: 8000 }],
 	});
 
+	const user = view.nodes.find((node) => node.type === "user.message");
 	const assistant = view.nodes.find((node) => node.type === "assistant.message");
+	assert.equal(user?.id, "event:message_queued:turn-duration");
+	assert.equal(user?.entryId, "entry-user");
 	assert.equal(assistant?.completedAt, completedAt);
 	assert.equal(assistant?.durationMs, 8000);
+});
+
+test("persisted turn timings keep repeated user identities stable beyond the bounded event tail", () => {
+	const view = buildTraceViewFromEvents({
+		session: { id: "ps_root", piSessionId: "pi_root", title: "Root" },
+		transcriptEntries: [
+			{
+				id: "entry-user-one",
+				type: "message",
+				timestamp: "2026-01-01T00:00:01.000Z",
+				message: { role: "user", content: [{ type: "text", text: "same prompt" }] },
+			},
+			{
+				id: "entry-user-two",
+				type: "message",
+				timestamp: "2026-01-01T00:00:02.000Z",
+				message: { role: "user", content: [{ type: "text", text: "same prompt" }] },
+			},
+		],
+		events: [],
+		turnTimings: [
+			{ eventId: "turn-one", userText: "same prompt", completedAt: "2026-01-01T00:00:03.000Z" },
+			{ eventId: "turn-two", userText: "same prompt", completedAt: "2026-01-01T00:00:04.000Z" },
+		],
+	});
+
+	const users = view.nodes.filter((node) => node.type === "user.message");
+	assert.deepEqual(users.map((node) => node.id), [
+		"event:message_queued:turn-one",
+		"event:message_queued:turn-two",
+	]);
+	assert.deepEqual(users.map((node) => node.entryId), ["entry-user-one", "entry-user-two"]);
 });
 
 test("legacy transcript run notifications render yielded-run nodes", () => {

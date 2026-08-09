@@ -76,7 +76,7 @@ export function buildTraceViewFromEvents(input: TraceBuildInput): PiboSessionTra
 	const entries = projectTranscriptEntries(allEntries, sessionStatus, openTranscriptEventIds);
 	const turnTimings = mergeMessageTurnTimings(input.turnTimings ?? [], messageTurnTimingsFromEvents(events));
 	const nodes = traceNodesFromEntries(input.session.id, entries, turnTimings);
-	reconcileTranscriptUserMessages(nodes, events);
+	reconcileTranscriptUserMessages(nodes, events, turnTimings);
 	const byId = mapTraceNodesById(nodes);
 	const childByParent = mapTraceChildSessionsByParent(input.sessions ?? []);
 	const linkedChildByToolCallId = mapTraceSubagentSessionLinks(events);

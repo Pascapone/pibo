@@ -267,8 +267,22 @@ export function contentDeltaPatchNodeId(event: PiboOutputEvent): string | undefi
 export function reconcileTranscriptUserMessages(
 	nodes: readonly PiboTraceNode[],
 	events: readonly ChatWebStoredEvent[],
+	turnTimings: readonly TraceMessageTurnTiming[] = [],
 ): void {
 	const transcriptUsers = nodes.filter((node) => node.type === "user.message" && node.source === "transcript");
+	let timingCursor = 0;
+	for (const timing of turnTimings) {
+		if (!timing.userText) continue;
+		const matchIndex = transcriptUsers.findIndex(
+			(node, index) => index >= timingCursor && traceNodeText(node) === timing.userText,
+		);
+		if (matchIndex === -1) continue;
+		const matchedNode = transcriptUsers[matchIndex]!;
+		matchedNode.id = `event:message_queued:${timing.eventId}`;
+		matchedNode.stableKey = `event:message_queued:${timing.eventId}`;
+		timingCursor = matchIndex + 1;
+	}
+
 	let userCursor = 0;
 	for (const storedEvent of events) {
 		const event = storedEvent.payload as PiboOutputEvent;

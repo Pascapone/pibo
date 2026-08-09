@@ -19,6 +19,7 @@ async function runChatTraceHelpersScenario() {
 			traceProjectionStatus,
 			withRawTraceTail,
 		} = await import("./src/apps/chat/chat-trace-helpers.ts");
+		const { nextLiveTraceEventSequence } = await import("./src/apps/chat-ui/src/tracing/use-session-trace-live-stream.ts");
 
 		const trace = { piboSessionId: "ps_1", piSessionId: "pi_1", title: "Trace", version: "v1", nodes: [], rawEvents: [] };
 		const events = [
@@ -68,6 +69,8 @@ async function runChatTraceHelpersScenario() {
 		});
 		assert.deepEqual(orderedSnapshots.map((event) => event.type), ["thinking_delta", "tool_execution_updated", "assistant_delta"]);
 		assert.deepEqual(orderedSnapshots.map((event) => event.eventSequence), [11, 12, 13]);
+		assert.equal(nextLiveTraceEventSequence({ eventCount: 80, lastEventSequence: 75, rawEvents: [] }), 81);
+		assert.equal(nextLiveTraceEventSequence({ eventCount: 10, lastEventSequence: 9, rawEvents: [{ eventSequence: 12 }] }), 13);
 
 		const cache = new Map();
 		setTraceCache(cache, "a", trace, 2);
