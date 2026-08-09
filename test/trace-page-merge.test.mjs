@@ -142,6 +142,48 @@ test("mergeRefreshedTracePage replaces stale tail nodes without dropping loaded 
 	assert.equal(merged.nodes.find((entry) => entry.id === "shared")?.title, "fresh shared");
 });
 
+test("mergeRefreshedTracePage drops event turn scaffolds superseded by transcript content", () => {
+	const current = traceView({
+		nodes: [
+			node("transcript-assistant", {
+				type: "assistant.message",
+				source: "transcript",
+				eventId: "settled-turn",
+				startedAt: "2026-07-05T00:00:00.000Z",
+				orderKey: transcriptOrder(1),
+			}),
+			node("stale-turn", {
+				type: "agent.turn",
+				source: "event-log",
+				eventId: "settled-turn",
+				orderKey: eventOrder(10),
+			}),
+			node("event-only-turn", {
+				type: "agent.turn",
+				source: "event-log",
+				eventId: "event-only-turn",
+				orderKey: eventOrder(20),
+			}),
+		],
+		firstEventSequence: 10,
+	});
+	const refreshed = traceView({
+		nodes: [node("new-tail", {
+			source: "event-log",
+			startedAt: "2026-07-05T00:02:00.000Z",
+			orderKey: eventOrder(50),
+		})],
+		firstEventSequence: 50,
+	});
+
+	const merged = mergeRefreshedTracePage(current, refreshed);
+	assert.deepEqual(flattenNodes(merged.nodes).map((entry) => entry.id), [
+		"transcript-assistant",
+		"event-only-turn",
+		"new-tail",
+	]);
+});
+
 test("mergeRefreshedTracePage refreshes the raw-event tail without dropping loaded history", () => {
 	const current = traceView({
 		rawEvents: [

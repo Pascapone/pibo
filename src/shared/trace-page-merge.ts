@@ -46,10 +46,17 @@ function mergeRefreshedTraceNodes(
 ): PiboSessionTraceView["nodes"] {
 	const refreshedNodes = flattenTraceNodes([...refreshed.nodes]);
 	const refreshedIds = new Set(refreshedNodes.map((node) => node.id));
+	const canonicalTranscriptEventIds = transcriptEventIds([...flattenTraceNodes([...currentNodes]), ...refreshedNodes]);
 	const refreshedOrderBoundaries = earliestTraceNodeOrdersBySource(refreshedNodes);
 	const refreshedStartedAt = earliestTraceNodeTimestamp(refreshedNodes);
 	const retainedOlderNodes = flattenTraceNodes([...currentNodes]).filter((node) => {
 		if (refreshedIds.has(node.id)) return true;
+		if (
+			node.type === "agent.turn" &&
+			node.source === "event-log" &&
+			node.eventId &&
+			canonicalTranscriptEventIds.has(node.eventId)
+		) return false;
 		if (isTransientTailNode(node)) return false;
 		const eventSequence = node.orderKey?.eventSequence;
 		if (eventSequence !== undefined && refreshed.firstEventSequence !== undefined) {
@@ -66,6 +73,14 @@ function mergeRefreshedTraceNodes(
 		return startedAt !== undefined && refreshedStartedAt !== undefined && startedAt < refreshedStartedAt;
 	});
 	return mergeTraceNodes(retainedOlderNodes, refreshed.nodes);
+}
+
+function transcriptEventIds(nodes: PiboSessionTraceView["nodes"]): Set<string> {
+	const eventIds = new Set<string>();
+	for (const node of nodes) {
+		if (node.source === "transcript" && node.eventId) eventIds.add(node.eventId);
+	}
+	return eventIds;
 }
 
 function isTransientTailNode(node: PiboSessionTraceView["nodes"][number]): boolean {
