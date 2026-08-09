@@ -226,8 +226,8 @@ function createAssistantTurnNodes(
 
 	const orderedNodes: PiboTraceNode[] = [];
 	const toolsByCallId = new Map<string, PiboTraceNode>();
-	let assistantIndex = 0;
-	let reasoningIndex = 0;
+	let assistantPartOrdinal = 0;
+	let reasoningPartOrdinal = 0;
 
 	for (const { entry, index: entryIndex } of entries) {
 		if (messageRole(entry) === "toolResult") {
@@ -242,18 +242,20 @@ function createAssistantTurnNodes(
 		for (const [index, part] of messageParts(entry).entries()) {
 			const typed = part as MessagePart;
 			if (typed.type === "thinking" && typeof typed.thinking === "string" && hasVisibleText(typed.thinking)) {
+				const thinkingIndex = timing?.reasoningIndices?.[reasoningPartOrdinal] ?? reasoningPartOrdinal;
 				orderedNodes.push(createReasoningNode({
 					piboSessionId,
 					entry,
 					entryIndex,
 					contentPartIndex: index,
-					thinkingIndex: reasoningIndex,
+					thinkingIndex,
 					eventId: timing?.eventId,
 					thinking: typed.thinking,
 				}));
-				reasoningIndex += 1;
+				reasoningPartOrdinal += 1;
 			} else if (typed.type === "text" && typeof typed.text === "string" && typed.text !== "") {
 				if (!responseNode) {
+					const assistantIndex = timing?.assistantIndices?.[assistantPartOrdinal] ?? assistantPartOrdinal;
 					responseNode = createAssistantMessageNode({
 						piboSessionId,
 						entry,
@@ -282,7 +284,7 @@ function createAssistantTurnNodes(
 		if (responseNode) {
 			responseNode.status = responseStatus;
 			responseNode.error = responseError;
-			assistantIndex += 1;
+			assistantPartOrdinal += 1;
 		}
 	}
 	const finalNode = orderedNodes.at(-1);

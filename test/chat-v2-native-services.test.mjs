@@ -103,6 +103,28 @@ test("V2-native chat services cover rooms, sessions, timeline, commands, and rea
 	commands.appendEvent({
 		roomId: room.id,
 		piboSessionId: piboSession.id,
+		eventId: "turn_timing_reasoning",
+		eventType: "thinking_finished",
+		actorType: "assistant",
+		actorId: "assistant:test",
+		retentionClass: "trace_event",
+		payload: { type: "thinking_finished", piboSessionId: piboSession.id, eventId: "turn_timing", thinkingIndex: 1, contentIndex: 0, text: "Reasoned" },
+		createdAt: "2026-05-09T00:00:04.000Z",
+	});
+	commands.appendEvent({
+		roomId: room.id,
+		piboSessionId: piboSession.id,
+		eventId: "turn_timing_assistant",
+		eventType: "assistant_message",
+		actorType: "assistant",
+		actorId: "assistant:test",
+		retentionClass: "chat_message",
+		payload: { type: "assistant_message", piboSessionId: piboSession.id, eventId: "turn_timing", assistantIndex: 2, contentIndex: 1, text: "Answered" },
+		createdAt: "2026-05-09T00:00:06.000Z",
+	});
+	commands.appendEvent({
+		roomId: room.id,
+		piboSessionId: piboSession.id,
 		eventId: "turn_timing_done",
 		eventType: "message_finished",
 		actorType: "assistant",
@@ -136,15 +158,17 @@ test("V2-native chat services cover rooms, sessions, timeline, commands, and rea
 
 	assert.equal(duplicate.streamId, accepted.streamId);
 	assert.equal(sessions.getSession(piboSession.id).piboSessionId, piboSession.id);
-	assert.equal(timeline.listEvents({ roomId: room.id }).length, 6);
-	assert.deepEqual(timeline.listTraceEvents({ piboSessionId: piboSession.id }).map((event) => event.type), ["user.message.accepted", "assistant_message", "message_started", "message_finished", "message_started", "message_queued"]);
-	assert.equal(timeline.getLatestEventSequence(piboSession.id), 6);
+	assert.equal(timeline.listEvents({ roomId: room.id }).length, 8);
+	assert.deepEqual(timeline.listTraceEvents({ piboSessionId: piboSession.id }).map((event) => event.type), ["user.message.accepted", "assistant_message", "message_started", "thinking_finished", "assistant_message", "message_finished", "message_started", "message_queued"]);
+	assert.equal(timeline.getLatestEventSequence(piboSession.id), 8);
 	assert.deepEqual(timeline.listMessageTurnTimings(piboSession.id), [{
 		eventId: "turn_timing",
 		userText: "timed prompt",
 		startedAt: "2026-05-09T00:00:02.000Z",
 		completedAt: "2026-05-09T00:00:07.000Z",
 		durationMs: 5000,
+		reasoningIndices: [1],
+		assistantIndices: [2],
 	}, {
 		eventId: "turn_open",
 		userText: "open prompt",
@@ -158,7 +182,7 @@ test("V2-native chat services cover rooms, sessions, timeline, commands, and rea
 		completedAt: undefined,
 		durationMs: undefined,
 	}]);
-	assert.equal(readState.countUnreadMessagesBySession({ piboSessionIds: [piboSession.id] }).get(piboSession.id), 2);
+	assert.equal(readState.countUnreadMessagesBySession({ piboSessionIds: [piboSession.id] }).get(piboSession.id), 3);
 	readState.markSessionRead(piboSession.id, timeline.getLatestStreamId({ piboSessionId: piboSession.id }));
 	assert.equal(readState.countUnreadMessagesBySession({ piboSessionIds: [piboSession.id] }).has(piboSession.id), false);
 

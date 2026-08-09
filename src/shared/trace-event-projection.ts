@@ -738,6 +738,8 @@ export type TraceMessageTurnTiming = {
 	startedAt?: string;
 	completedAt?: string;
 	durationMs?: number;
+	reasoningIndices?: number[];
+	assistantIndices?: number[];
 };
 
 export function mergeMessageTurnTimings(...groups: readonly TraceMessageTurnTiming[][]): TraceMessageTurnTiming[] {
@@ -748,12 +750,16 @@ export function mergeMessageTurnTimings(...groups: readonly TraceMessageTurnTimi
 			byEventId.set(timing.eventId, timing);
 			continue;
 		}
+		const reasoningIndices = mergeUniqueIndices(existing.reasoningIndices, timing.reasoningIndices);
+		const assistantIndices = mergeUniqueIndices(existing.assistantIndices, timing.assistantIndices);
 		const merged: TraceMessageTurnTiming = {
 			eventId: timing.eventId,
 			userText: timing.userText ?? existing.userText,
 			startedAt: timing.startedAt ?? existing.startedAt,
 			completedAt: timing.completedAt ?? existing.completedAt,
 			durationMs: timing.durationMs ?? existing.durationMs,
+			...(reasoningIndices ? { reasoningIndices } : {}),
+			...(assistantIndices ? { assistantIndices } : {}),
 		};
 		if (merged.durationMs === undefined) {
 			const startedAtMs = parseTimestamp(merged.startedAt);
@@ -767,8 +773,24 @@ export function mergeMessageTurnTimings(...groups: readonly TraceMessageTurnTimi
 	return [...byEventId.values()];
 }
 
+function mergeUniqueIndices(first?: readonly number[], second?: readonly number[]): number[] | undefined {
+	if (!first?.length && !second?.length) return undefined;
+	return [...new Set([...(first ?? []), ...(second ?? [])])];
+}
+
+function appendUniqueIndex(indices: number[] | undefined, partIndex: number): number[] {
+	if (indices?.includes(partIndex)) return indices;
+	return [...(indices ?? []), partIndex];
+}
+
 export function messageTurnTimingsFromEvents(events: readonly ChatWebStoredEvent[]): TraceMessageTurnTiming[] {
-	const timings = new Map<string, { userText?: string; startedAt?: string; completedAt?: string }>();
+	const timings = new Map<string, {
+		userText?: string;
+		startedAt?: string;
+		completedAt?: string;
+		reasoningIndices?: number[];
+		assistantIndices?: number[];
+	}>();
 	const eventIds: string[] = [];
 	const seenEventIds = new Set<string>();
 	const ignoredEventIds = new Set<string>();
@@ -778,7 +800,9 @@ export function messageTurnTimingsFromEvents(events: readonly ChatWebStoredEvent
 			event.type !== "message_queued" &&
 			event.type !== "message_started" &&
 			event.type !== "message_finished" &&
-			event.type !== "session_error"
+			event.type !== "session_error" &&
+			event.type !== "thinking_finished" &&
+			event.type !== "assistant_message"
 		) continue;
 		const eventId = typeof event.eventId === "string" ? event.eventId : undefined;
 		if (!eventId) continue;
@@ -797,8 +821,14 @@ export function messageTurnTimingsFromEvents(events: readonly ChatWebStoredEvent
 		} else if (event.type === "message_started") {
 			timing.userText ??= event.text;
 			timing.startedAt ??= storedEvent.createdAt;
-		} else {
+		} else if (event.type === "message_finished" || event.type === "session_error") {
 			timing.completedAt = storedEvent.createdAt;
+		} else if (event.type === "thinking_finished" && hasVisibleText(event.text)) {
+			const partIndex = typeof event.thinkingIndex === "number" ? event.thinkingIndex : event.contentIndex;
+			if (typeof partIndex === "number") timing.reasoningIndices = appendUniqueIndex(timing.reasoningIndices, partIndex);
+		} else if (event.type === "assistant_message" && hasVisibleText(event.text)) {
+			const partIndex = typeof event.assistantIndex === "number" ? event.assistantIndex : event.contentIndex;
+			if (typeof partIndex === "number") timing.assistantIndices = appendUniqueIndex(timing.assistantIndices, partIndex);
 		}
 		timings.set(eventId, timing);
 	}
@@ -815,6 +845,8 @@ export function messageTurnTimingsFromEvents(events: readonly ChatWebStoredEvent
 			durationMs: startedAtMs === undefined || completedAtMs === undefined
 				? undefined
 				: Math.max(0, completedAtMs - startedAtMs),
+			...(timing.reasoningIndices ? { reasoningIndices: timing.reasoningIndices } : {}),
+			...(timing.assistantIndices ? { assistantIndices: timing.assistantIndices } : {}),
 		}];
 	});
 }

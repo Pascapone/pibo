@@ -81,6 +81,60 @@ test("queued turn timing closes on session_error without inventing a start time"
 	}]);
 });
 
+test("turn projection metadata preserves visible reasoning and assistant part indices", () => {
+	assert.deepEqual(messageTurnTimingsFromEvents([
+		event(1, "message_queued", "2026-07-14T10:00:00.000Z", { eventId: "turn-parts", text: "Inspect", source: "user", queuedMessages: 1 }),
+		event(2, "thinking_finished", "2026-07-14T10:00:01.000Z", { eventId: "turn-parts", thinkingIndex: 0, contentIndex: 0, text: "" }),
+		event(3, "thinking_finished", "2026-07-14T10:00:02.000Z", { eventId: "turn-parts", thinkingIndex: 1, contentIndex: 0, text: "Visible reasoning" }),
+		event(4, "assistant_message", "2026-07-14T10:00:03.000Z", { eventId: "turn-parts", assistantIndex: 2, contentIndex: 1, text: "Visible answer" }),
+	]), [{
+		eventId: "turn-parts",
+		userText: "Inspect",
+		startedAt: undefined,
+		completedAt: undefined,
+		durationMs: undefined,
+		reasoningIndices: [1],
+		assistantIndices: [2],
+	}]);
+});
+
+test("transcript projection keeps a nonzero reasoning identity when an empty earlier phase is omitted", () => {
+	const transcriptEntries = [
+		{
+			id: "entry-user-parts",
+			type: "message",
+			timestamp: "2026-07-14T10:00:00.000Z",
+			message: { role: "user", content: [{ type: "text", text: "Inspect" }] },
+		},
+		{
+			id: "entry-assistant-parts",
+			type: "message",
+			timestamp: "2026-07-14T10:00:03.000Z",
+			message: {
+				role: "assistant",
+				content: [
+					{ type: "thinking", thinking: "Visible reasoning" },
+					{ type: "text", text: "Visible answer" },
+				],
+				stopReason: "stop",
+			},
+		},
+	];
+	const projected = view([
+		event(1, "message_queued", "2026-07-14T10:00:00.000Z", { eventId: "turn-parts", text: "Inspect", source: "user", queuedMessages: 1 }),
+		event(2, "thinking_finished", "2026-07-14T10:00:01.000Z", { eventId: "turn-parts", thinkingIndex: 0, contentIndex: 0, text: "" }),
+		event(3, "thinking_finished", "2026-07-14T10:00:02.000Z", { eventId: "turn-parts", thinkingIndex: 1, contentIndex: 0, text: "Visible reasoning" }),
+		event(4, "assistant_message", "2026-07-14T10:00:03.000Z", { eventId: "turn-parts", assistantIndex: 2, contentIndex: 1, text: "Visible answer" }),
+	], "idle", transcriptEntries);
+	const reasoning = projected.nodes.find((node) => node.type === "model.reasoning");
+	const assistant = projected.nodes.find((node) => node.type === "assistant.message");
+
+	assert.equal(reasoning?.id, "event:thinking:turn-parts:thinking:1");
+	assert.equal(reasoning?.stableKey, "reasoning:turn-parts:thinking:1");
+	assert.equal(assistant?.id, "event:assistant:turn-parts:assistant:2");
+	assert.equal(assistant?.stableKey, "assistant:turn-parts:assistant:2");
+});
+
 test("open persisted turn keeps reasoning and assistant identities when message_finished arrives", () => {
 	const transcriptEntries = [
 		{
