@@ -83,22 +83,32 @@ function collectConfirmedTraceNodeKeys(nodes: readonly PiboTraceNode[], keys: Se
 			const identity = traceNodeContentIdentity(node, "assistant:");
 			if (identity) {
 				keys.add(`${node.piboSessionId}:assistant_delta:${identity}`);
-				keys.add(`${node.piboSessionId}:assistant_message:${identity}`);
+				if (node.source === "transcript" || node.completedAt !== undefined) {
+					keys.add(`${node.piboSessionId}:assistant_message:${identity}`);
+				}
 			}
 		}
 		if (node.type === "model.reasoning") {
 			const identity = traceNodeContentIdentity(node, "reasoning:");
 			if (identity) {
-				keys.add(`${node.piboSessionId}:thinking_started:${identity}`);
 				keys.add(`${node.piboSessionId}:thinking_delta:${identity}`);
-				keys.add(`${node.piboSessionId}:thinking_finished:${identity}`);
+				if (node.source === "transcript") {
+					keys.add(`${node.piboSessionId}:thinking_started:${identity}`);
+					keys.add(`${node.piboSessionId}:thinking_finished:${identity}`);
+				}
 			}
 		}
 		if (node.toolCallId && (node.type === "tool.call" || node.type === "tool.result" || node.type === "agent.delegation")) {
 			const identity = `tool:${node.toolCallId}`;
-			for (const type of ["tool_call", "tool_execution_started", "tool_execution_updated", "tool_execution_finished"] as const) {
-				keys.add(`${node.piboSessionId}:${type}:${identity}`);
+			keys.add(`${node.piboSessionId}:tool_call:${identity}`);
+			const completed = node.completedAt !== undefined || node.type === "tool.result" || node.status === "error";
+			if (node.status === "running" || node.output !== undefined || completed) {
+				keys.add(`${node.piboSessionId}:tool_execution_started:${identity}`);
 			}
+			if ((node.output !== undefined && !completed) || completed) {
+				keys.add(`${node.piboSessionId}:tool_execution_updated:${identity}`);
+			}
+			if (completed) keys.add(`${node.piboSessionId}:tool_execution_finished:${identity}`);
 		}
 		collectConfirmedTraceNodeKeys(node.children, keys);
 	}

@@ -39,11 +39,11 @@ async function runLiveOverlayScenario() {
 			nodes: [
 				traceNode("transcript-user", "user.message", { source: "transcript", entryId: "entry-confirmed", output: "already sent" }),
 				traceNode("event:message_queued:node-confirmed", "user.message"),
-				traceNode("assistant", "assistant.message", { eventId: "assistant-confirmed" }),
-				traceNode("reasoning", "model.reasoning", { eventId: "reasoning-confirmed" }),
-				traceNode("assistant-indexed", "assistant.message", { eventId: "indexed-turn", stableKey: "assistant:indexed-turn:assistant:0" }),
-				traceNode("reasoning-indexed", "model.reasoning", { eventId: "indexed-turn", stableKey: "reasoning:indexed-turn:thinking:0" }),
-				traceNode("tool-indexed", "tool.call", { eventId: "indexed-turn", toolCallId: "tool-confirmed", stableKey: "tool:tool-confirmed" }),
+				traceNode("assistant", "assistant.message", { eventId: "assistant-confirmed", source: "transcript" }),
+				traceNode("reasoning", "model.reasoning", { eventId: "reasoning-confirmed", source: "transcript" }),
+				traceNode("assistant-indexed", "assistant.message", { eventId: "indexed-turn", stableKey: "assistant:indexed-turn:assistant:0", source: "transcript" }),
+				traceNode("reasoning-indexed", "model.reasoning", { eventId: "indexed-turn", stableKey: "reasoning:indexed-turn:thinking:0", source: "transcript" }),
+				traceNode("tool-indexed", "tool.call", { eventId: "indexed-turn", toolCallId: "tool-confirmed", stableKey: "tool:tool-confirmed", completedAt: "2026-05-27T10:00:01.000Z" }),
 				traceNode("parent", "section", { children: [traceNode("nested-user", "user.message", { source: "transcript", output: { text: "nested sent" } })] }),
 			],
 		};
@@ -95,6 +95,61 @@ async function runLiveOverlayScenario() {
 		assert.deepEqual(trimLiveOverlayForBaseTrace(indexedOverlay, baseTrace)?.events.map((item) => item.id), [
 			"thinking-sibling-index",
 			"assistant-sibling-index",
+		]);
+
+		const inFlightToolTrace = {
+			...baseTrace,
+			rawEvents: [],
+			nodes: [traceNode("tool-in-flight", "tool.call", {
+				source: "transcript",
+				toolCallId: "tool-in-flight",
+				stableKey: "tool:tool-in-flight",
+				output: undefined,
+			})],
+		};
+		const inFlightToolOverlay = {
+			piboSessionId: "ps-test",
+			events: [
+				event("tool-call", "tool_call", { payload: { piboSessionId: "ps-test", toolCallId: "tool-in-flight" } }),
+				event("tool-started", "tool_execution_started", { payload: { piboSessionId: "ps-test", toolCallId: "tool-in-flight" } }),
+				event("tool-updated", "tool_execution_updated", { payload: { piboSessionId: "ps-test", toolCallId: "tool-in-flight" } }),
+				event("tool-finished", "tool_execution_finished", { payload: { piboSessionId: "ps-test", toolCallId: "tool-in-flight" } }),
+			],
+		};
+		assert.deepEqual(trimLiveOverlayForBaseTrace(inFlightToolOverlay, inFlightToolTrace)?.events.map((item) => item.id), [
+			"tool-started",
+			"tool-updated",
+			"tool-finished",
+		]);
+
+		const partialContentTrace = {
+			...baseTrace,
+			rawEvents: [],
+			nodes: [
+				traceNode("assistant-partial", "assistant.message", {
+					eventId: "partial-turn",
+					stableKey: "assistant:partial-turn:assistant:0",
+					source: "event-log",
+					status: "running",
+				}),
+				traceNode("reasoning-partial", "model.reasoning", {
+					eventId: "partial-turn",
+					stableKey: "reasoning:partial-turn:thinking:0",
+					source: "event-log",
+					status: "running",
+				}),
+			],
+		};
+		const finalContentOverlay = {
+			piboSessionId: "ps-test",
+			events: [
+				event("assistant-final", "assistant_message", { payload: { eventId: "partial-turn", piboSessionId: "ps-test", assistantIndex: 0 } }),
+				event("reasoning-final", "thinking_finished", { payload: { eventId: "partial-turn", piboSessionId: "ps-test", thinkingIndex: 0 } }),
+			],
+		};
+		assert.deepEqual(trimLiveOverlayForBaseTrace(finalContentOverlay, partialContentTrace)?.events.map((item) => item.id), [
+			"assistant-final",
+			"reasoning-final",
 		]);
 
 		const coveredTail = {
