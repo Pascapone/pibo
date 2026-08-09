@@ -7,6 +7,7 @@ import { PendingUserMessageDelivery } from "../../components/PendingUserMessageD
 import { useStickyVirtuoso } from "../../components/useStickyVirtuoso";
 import { useSessionActivity } from "../../hooks/useSessionActivity";
 import { MarkdownRenderer } from "../../tracing/MarkdownRenderer";
+import { collectTerminalRows, isTraceSnapshotCollectionEnabled } from "../../tracing/snapshotCollector";
 import type { ChatSessionViewProps } from "../types";
 import { TerminalDetails } from "./TerminalDetails";
 import { TerminalLine } from "./TerminalLine";
@@ -79,6 +80,17 @@ export function CompactTerminalSessionView({
 	});
 	const activeTurnStartedAt = sessionActivity.activeTurnStartedAt;
 	const isStreaming = sessionActivity.isTurnActive;
+
+	useEffect(() => {
+		if (!piboSessionId || !traceView || !isTraceSnapshotCollectionEnabled()) return;
+		collectTerminalRows(piboSessionId, "compact-terminal:render", rows, {
+			traceVersion: traceView.version,
+			latestStreamId: traceView.latestStreamId,
+			lastRawEventId: traceView.rawEvents.at(-1)?.id,
+			selectedSessionStatus,
+		});
+	}, [piboSessionId, rows, selectedSessionStatus, traceView]);
+
 	const loadOlderTracePage = useCallback((settleScrollIntent: boolean) => {
 		if (!hasOlderTraceEvents || isFetchingOlderTracePage || olderTraceRequestPendingRef.current) return;
 		const load = () => {

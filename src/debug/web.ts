@@ -21,6 +21,10 @@ export type {
 	StreamingBenchmarkLivePipeline,
 	StreamingBenchmarkProviderPreservation,
 	StreamingBenchmarkProviderTelemetry,
+	StreamingRenderOrderAnalysis,
+	StreamingRenderOrderCapture,
+	StreamingRenderOrderDomState,
+	StreamingRenderOrderFinding,
 	StreamingBenchmarkSseProbe,
 	StreamingBenchmarkSummary,
 	StreamingBenchmarkTraceProbe,
@@ -58,6 +62,7 @@ import {
 } from "./web-streaming-provider-telemetry.js";
 import { buildStreamingBenchmarkExpression, streamingBenchmarkEventSourceProbeScript, streamingBenchmarkFixtureHtml, type StreamingFixtureMix, type StreamingFixtureProfile } from "./web-streaming-browser-scripts.js";
 import { buildSnapshotExpression, buildWatchExpression } from "./web-snapshot-browser-scripts.js";
+import { analyzeStreamingRenderOrderCapture } from "./web-render-order-analysis.js";
 import { compactTarget, limitStdout, readBaselineSnapshot, writeArtifact, writeLastSnapshot, writeReportOutput, writeTextArtifact } from "./web-artifacts.js";
 import { applyNegativeStreamingProfile, DEFAULT_DEPTH_LIMIT, DEFAULT_EVENT_LIMIT, DEFAULT_NODE_LIMIT, DEFAULT_TEXT_LIMIT, parseDuration, parseFixtureMix, parseFixturePreludeMessages, parseFixtureProfile, parseNegativeProfile, parseOptions, parseRuns, presetScope, resolveScope, resolveStreamingBenchmarkCompareUrl, resolveStreamingBenchmarkHostedCompareUrl, type WebOptions } from "./web-options.js";
 export { formatStreamingBenchmarkAssertionSummary, formatStreamingBenchmarkUrlComparison, summarizeStreamingSelectedLiveEventSource } from "./web-streaming-report.js";
@@ -65,6 +70,7 @@ export { resolveStreamingBenchmarkHostedCompareUrlFromValues } from "./web-optio
 export { attachStreamingProviderTelemetryToBenchmark, evaluateStreamingBenchmarkAssertion, evaluateStreamingBenchmarkUrlComparisonRegressions, evaluateStreamingLivePipelineRegressions, evaluateStreamingProviderRegressions, summarizeStreamingBenchmarkUrlComparison, summarizeStreamingBenchmarks, summarizeStreamingLivePipeline, summarizeStreamingProviderPreservation } from "./web-streaming-benchmark-analysis.js";
 export { collectStreamingProviderTelemetryFromSelectedBrowserSession, collectStreamingProviderTelemetryFromSession, collectStreamingProviderTelemetryFromTurn, summarizeStreamingProviderTelemetry } from "./web-streaming-provider-telemetry.js";
 export { formatWatch, inferWatchFlickers } from "./web-render-analysis.js";
+export { analyzeStreamingRenderOrderCapture } from "./web-render-order-analysis.js";
 
 export async function runDebugWeb(args: string[]): Promise<void> {
 	if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
@@ -167,7 +173,7 @@ Usage:
 Defaults:
   new-session --manual waits while you click New Session yourself.
   new-session --act clicks the discovered New Session button after the watcher starts.
-  streaming-benchmark enables debugStreaming for future events, observes assistant DOM increments, and snapshots window.__piboStreamingDebug.
+  streaming-benchmark enables debugStreaming and traceDebug, observes assistant DOM increments, and records correlated base/overlay/current trace state plus terminal/span DOM and visual order transitions.
   streaming-benchmark --fixture navigates the target to a deterministic in-browser stream fixture before measuring.
   streaming-benchmark --backend-fixture posts to /api/chat/debug/streaming-fixture and records EventSource metrics while the real app consumes deterministic /api/chat/events frames.
   streaming-benchmark --fixture-profile selects steady cadence, deterministic jitter, bursty timing, or intentional batch stress.
@@ -510,11 +516,20 @@ async function runStreamingBenchmark(client: CdpClient, durationMs: number, opti
 	await client.send("Page.bringToFront").catch(() => undefined);
 	const benchmarkTimeoutMs = durationMs + (options.startBackendFixture ? 20_000 : 10_000);
 	const benchmark = await client.evaluate<Omit<StreamingBenchmark, "score">>(buildStreamingBenchmarkExpression(durationMs, options), benchmarkTimeoutMs);
-	const withProvider = { ...benchmark, provider: options.providerTelemetry };
+	const withRenderOrder = { ...benchmark, renderOrder: analyzeStreamingRenderOrderCapture(benchmark.renderOrder) };
+	const withProvider = { ...withRenderOrder, provider: options.providerTelemetry };
 	const scored = { ...withProvider, score: scoreStreamingBenchmark(withProvider), providerPreservation: summarizeStreamingProviderPreservation(withProvider) };
 	const withLivePipeline = { ...scored, livePipeline: summarizeStreamingLivePipeline(scored) };
 	const withCadence = { ...withLivePipeline, cadence: summarizeStreamingCadence(withLivePipeline), negativeProfile: options.negativeProfile };
-	return { ...withCadence, regressions: [...withCadence.regressions, ...evaluateStreamingLivePipelineRegressions(withCadence), ...evaluateStreamingProviderRegressions(withCadence)] };
+	return {
+		...withCadence,
+		regressions: [
+			...withCadence.regressions,
+			...(withCadence.renderOrder?.analysis?.regressions ?? []),
+			...evaluateStreamingLivePipelineRegressions(withCadence),
+			...evaluateStreamingProviderRegressions(withCadence),
+		],
+	};
 }
 
 

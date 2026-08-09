@@ -649,6 +649,100 @@ async function waitForAssistantDomSettle(timeoutMs) {
     }
   }
 }
+function startRenderOrderCapture(startedAt) {
+  const piboSessionId = document.querySelector('[data-pibo-debug="chat-shell"]')?.getAttribute('data-pibo-session-id')
+    || document.querySelector('[data-pibo-selected-session-id]')?.getAttribute('data-pibo-selected-session-id')
+    || undefined;
+  const traceSnapshotsApi = window.__piboTraceSnapshots;
+  if (piboSessionId && traceSnapshotsApi && typeof traceSnapshotsApi.clearSnapshots === 'function') {
+    try { traceSnapshotsApi.clearSnapshots(piboSessionId); } catch {}
+  }
+  const domStates = [];
+  let omittedDomStates = 0;
+  let previousSignature;
+  const root = document.querySelector('[data-pibo-debug="chat-shell"]') || document.body;
+  const atBottomFor = (element) => {
+    let current = element && element.parentElement;
+    while (current && current !== document.body) {
+      if (current.scrollHeight > current.clientHeight + 2) return current.scrollHeight - current.scrollTop - current.clientHeight <= 180;
+      current = current.parentElement;
+    }
+    return undefined;
+  };
+  const rowFromElement = (element) => {
+    const rect = element.getBoundingClientRect();
+    const sourceNodeIds = String(element.getAttribute('data-trace-node-id') || '').split(/\s+/).filter(Boolean);
+    const numberAttr = (name) => {
+      const raw = element.getAttribute(name);
+      if (raw === null || raw === '') return undefined;
+      const value = Number(raw);
+      return Number.isFinite(value) ? value : undefined;
+    };
+    return {
+      id: element.getAttribute('data-row-id') || element.getAttribute('data-trace-node-id') || '',
+      kind: element.getAttribute('data-row-kind') || element.getAttribute('data-span-type') || undefined,
+      status: element.getAttribute('data-row-status') || element.getAttribute('data-span-status') || undefined,
+      sourceNodeIds,
+      eventId: element.getAttribute('data-event-id') || undefined,
+      runId: element.getAttribute('data-run-id') || undefined,
+      orderSource: element.getAttribute('data-order-source') || undefined,
+      orderStreamId: numberAttr('data-order-stream-id'),
+      orderStreamFrameIndex: numberAttr('data-order-frame-index'),
+      top: Math.round(rect.top * 1000) / 1000,
+      left: Math.round(rect.left * 1000) / 1000,
+    };
+  };
+  const capture = (reason) => {
+    const shell = document.querySelector('[data-pibo-debug="chat-shell"]');
+    const terminalRows = shell ? Array.from(shell.querySelectorAll('[data-pibo-terminal-row="true"][data-row-id]')) : [];
+    const traceRows = shell ? Array.from(shell.querySelectorAll('[data-pibo-debug="trace-span"][data-trace-node-id]')) : [];
+    const elements = terminalRows.length ? terminalRows : traceRows;
+    const rows = elements.map(rowFromElement).filter((row) => row.id);
+    const view = terminalRows.length ? 'compact-terminal' : traceRows.length ? 'trace-timeline' : 'unknown';
+    const visualRows = rows.slice().sort((left, right) => (left.top || 0) - (right.top || 0) || (left.left || 0) - (right.left || 0));
+    const state = {
+      t: Math.round((performance.now() - startedAt) * 1000) / 1000,
+      timestamp: Date.now(),
+      reason,
+      piboSessionId: shell?.getAttribute('data-pibo-session-id') || piboSessionId,
+      view,
+      shellState: shell?.getAttribute('data-pibo-state') || undefined,
+      atBottom: rows.length ? atBottomFor(elements[0]) : undefined,
+      rows,
+      rowIds: rows.map((row) => row.id),
+      visualRowIds: visualRows.map((row) => row.id),
+    };
+    const signature = JSON.stringify({ view: state.view, shellState: state.shellState, atBottom: state.atBottom, rows: rows.map((row) => [row.id, row.kind, row.status, row.sourceNodeIds, row.eventId, row.runId, row.orderSource, row.orderStreamId, row.orderStreamFrameIndex]), visual: state.visualRowIds });
+    if (signature === previousSignature) return;
+    previousSignature = signature;
+    if (domStates.length >= 1000) omittedDomStates += 1;
+    else domStates.push(state);
+  };
+  capture('start');
+  const observer = new MutationObserver(() => capture('mutation'));
+  if (root) observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class', 'data-row-id', 'data-row-kind', 'data-row-status', 'data-trace-node-id', 'data-event-id', 'data-run-id', 'data-order-source', 'data-order-stream-id', 'data-order-frame-index', 'data-span-type', 'data-span-status'] });
+  const interval = setInterval(() => capture('interval'), 50);
+  return {
+    stop: () => {
+      capture('stop');
+      observer.disconnect();
+      clearInterval(interval);
+      let traceSnapshots = [];
+      if (piboSessionId && traceSnapshotsApi && typeof traceSnapshotsApi.getSnapshots === 'function') {
+        try { traceSnapshots = cloneDebugSnapshot(traceSnapshotsApi.getSnapshots(piboSessionId)) || []; } catch {}
+      }
+      return {
+        requested: true,
+        available: Boolean(root),
+        piboSessionId,
+        domStates,
+        traceSnapshots,
+        omittedDomStates,
+        warning: traceSnapshotsApi ? undefined : 'window.__piboTraceSnapshots unavailable',
+      };
+    },
+  };
+}
 async function runStreamingBenchmark(options) {
   const warnings = [];
   const selectedSessionId = () => document.querySelector('[data-pibo-debug="chat-shell"]')?.getAttribute('data-pibo-session-id')
@@ -658,6 +752,7 @@ async function runStreamingBenchmark(options) {
   let backendPreludeError;
   let backendPreludeConfig;
   try { localStorage.setItem('pibo.chat.debugStreaming', '1'); } catch (error) { warnings.push('failed to set debugStreaming localStorage: ' + String(error)); }
+  try { localStorage.setItem('pibo.chat.traceDebug', 'true'); } catch (error) { warnings.push('failed to set traceDebug localStorage: ' + String(error)); }
   if (options.startBackendFixture && options.fixturePreludeMessages > 0) {
     const piboSessionId = selectedSessionId();
     if (!piboSessionId) {
@@ -689,6 +784,7 @@ async function runStreamingBenchmark(options) {
     try { window.__piboStreamingDebugReset(); reset = true; } catch (error) { warnings.push('failed to reset __piboStreamingDebug: ' + String(error)); }
   }
   const overlayDrop = installOverlayDropSimulation(Boolean(options.simulateOverlayDrop));
+  const renderOrderCapture = startRenderOrderCapture(startedAt);
 
   const debugBefore = cloneDebugSnapshot(window.__piboStreamingDebug);
   const initialText = selectedAssistantText(fixtureDomInitialTargets, ignorePreludeDomTargets);
@@ -804,6 +900,7 @@ async function runStreamingBenchmark(options) {
   }
   const sseSummary = sseProbe ? await sseProbe.stop() : undefined;
   observer.disconnect();
+  const renderOrder = renderOrderCapture.stop();
   if (rafHandle !== undefined) cancelAnimationFrame(rafHandle);
   try { perfObserver && perfObserver.disconnect(); } catch {}
 
@@ -920,6 +1017,7 @@ async function runStreamingBenchmark(options) {
     sse: sseSummary,
     trace: traceSummary,
     overlayDrop: overlayDropSummary,
+    renderOrder,
     regressions,
     warnings,
   };

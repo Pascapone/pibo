@@ -57,7 +57,7 @@ function classSummary(element) {
 }
 function attrMap(element) {
   const attrs = {};
-  const allow = /^(id|role|aria-|data-pibo-|data-testid$|disabled$|checked$|selected$|hidden$|tabindex$|title$)/;
+  const allow = /^(id|role|aria-|data-pibo-|data-testid$|data-row-id$|data-row-kind$|data-row-status$|data-trace-node-id$|data-event-id$|data-run-id$|data-order-source$|data-order-stream-id$|data-order-frame-index$|data-span-type$|data-span-status$|data-stable-key$|disabled$|checked$|selected$|hidden$|tabindex$|title$)/;
   for (const attr of Array.from(element.attributes || [])) {
     if (!allow.test(attr.name)) continue;
     if (/token|cookie|authorization|secret|password/i.test(attr.name)) {
@@ -118,8 +118,17 @@ function identityOf(element) {
   const session = element.getAttribute('data-pibo-session-id');
   const room = element.getAttribute('data-pibo-room-id');
   const view = element.getAttribute('data-pibo-view-id');
+  const row = element.getAttribute('data-row-id');
+  const traceNode = element.getAttribute('data-trace-node-id');
+  const eventId = element.getAttribute('data-event-id');
+  const runId = element.getAttribute('data-run-id');
   const testId = element.getAttribute('data-testid');
   const id = element.id;
+  if (debug === 'terminal-row' && row) return { identity: 'terminal-row:' + row, kind: 'pibo-row' };
+  if (debug === 'trace-span' && traceNode) return { identity: 'trace-span:' + traceNode, kind: 'pibo-trace-node' };
+  if (debug && traceNode) return { identity: debug + ':' + traceNode, kind: 'pibo-trace-node' };
+  if (debug && eventId) return { identity: debug + ':event:' + eventId, kind: 'pibo-event' };
+  if (debug && runId) return { identity: debug + ':run:' + runId, kind: 'pibo-run' };
   if (debug && session) return { identity: debug + ':' + session, kind: 'pibo-session' };
   if (debug && room) return { identity: debug + ':' + room, kind: 'pibo-room' };
   if (debug && view) return { identity: debug + ':' + view, kind: 'pibo-view' };

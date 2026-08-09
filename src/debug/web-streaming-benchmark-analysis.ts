@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { summarizeStreamingSelectedLiveEventSource } from "./web-streaming-report.js";
+import { analyzeStreamingRenderOrderCapture } from "./web-render-order-analysis.js";
 import type {
 	NumberStats,
 	StreamingBenchmark,
@@ -345,6 +346,12 @@ export function summarizeStreamingBenchmarks(runs: StreamingBenchmark[]): Stream
 		firstVisibleMs: numericStats(runs.map((run) => run.dom.firstPositiveUpdateMs)),
 		longTaskMaxMs: numericStats(runs.map((run) => run.longTasks.maxMs)),
 		regressionCount: numericStats(runs.map((run) => run.regressions.length)),
+		renderOrderDomStateCount: numericStats(runs.map((run) => run.renderOrder?.analysis?.domStateCount)),
+		renderOrderTraceSnapshotCount: numericStats(runs.map((run) => run.renderOrder?.analysis?.traceSnapshotCount)),
+		renderOrderReorderCount: numericStats(runs.map((run) => run.renderOrder?.analysis?.reorderCount)),
+		renderOrderDisappearReappearCount: numericStats(runs.map((run) => run.renderOrder?.analysis?.disappearReappearCount)),
+		renderOrderIdentityReplacementCount: numericStats(runs.map((run) => run.renderOrder?.analysis?.identityReplacementCount)),
+		renderOrderStateDomMismatchCount: numericStats(runs.map((run) => run.renderOrder?.analysis?.stateDomMismatchCount)),
 		debugEnqueueCount: numericStats(runs.map((run) => streamingDebugDeltaNumber(run, "enqueueCount"))),
 		debugFlushCount: numericStats(runs.map((run) => streamingDebugDeltaNumber(run, "flushCount"))),
 		debugFlushedEventCount: numericStats(runs.map((run) => streamingDebugDeltaNumber(run, "flushedEventCount"))),
@@ -556,7 +563,11 @@ function normalizeStreamingBenchmarkGroupArtifact(value: Partial<StreamingBenchm
 }
 
 function normalizeStreamingBenchmarkRun(run: StreamingBenchmark): StreamingBenchmark {
-	const scored = { ...run, regressions: Array.isArray(run.regressions) ? run.regressions : [], warnings: Array.isArray(run.warnings) ? run.warnings : [], score: run.score ?? scoreStreamingBenchmark(run) };
+	const renderOrder = analyzeStreamingRenderOrderCapture(run.renderOrder);
+	const baseRegressions = Array.isArray(run.regressions) ? run.regressions.filter((regression) => !regression.startsWith("render order ")) : [];
+	const regressions = [...new Set([...baseRegressions, ...(renderOrder?.analysis?.regressions ?? [])])];
+	const withRenderOrder = { ...run, renderOrder, regressions, warnings: Array.isArray(run.warnings) ? run.warnings : [] };
+	const scored = { ...withRenderOrder, score: run.score ?? scoreStreamingBenchmark(withRenderOrder) };
 	const withProviderPreservation = { ...scored, providerPreservation: run.providerPreservation ?? summarizeStreamingProviderPreservation(scored) };
 	const withLivePipeline = { ...withProviderPreservation, livePipeline: run.livePipeline ?? summarizeStreamingLivePipeline(withProviderPreservation) };
 	return { ...withLivePipeline, cadence: run.cadence ?? summarizeStreamingCadence(withLivePipeline) };
