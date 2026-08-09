@@ -116,6 +116,8 @@ function createSseProbe(piboSessionId, startedAt) {
   let buffer = '';
   let stopped = false;
   let finished = false;
+  let reader;
+  let stoppedResult;
   const controller = typeof AbortController === 'undefined' ? undefined : new AbortController();
   const decoder = typeof TextDecoder === 'undefined' ? undefined : new TextDecoder();
   const encoder = typeof TextEncoder === 'undefined' ? undefined : new TextEncoder();
@@ -178,7 +180,7 @@ function createSseProbe(piboSessionId, startedAt) {
       response.headers.forEach((value, key) => { result.headers[key] = value; });
       if (!response.body || typeof response.body.getReader !== 'function') throw new Error('ReadableStream unavailable');
       result.installed = true;
-      const reader = response.body.getReader();
+      reader = response.body.getReader();
       while (true) {
         const next = await reader.read();
         if (next.done) break;
@@ -206,15 +208,18 @@ function createSseProbe(piboSessionId, startedAt) {
       if (stopped || (error && error.name === 'AbortError')) result.aborted = true;
       else result.errors.push(String(error && error.message ? error.message : error));
     } finally {
+      reader = undefined;
       finished = true;
       finalize();
     }
   })();
   return {
-    result,
+    get result() { return stoppedResult || result; },
     stop: async () => {
+      if (stoppedResult) return stoppedResult;
       stopped = true;
       if (controller) controller.abort();
+      try { if (reader && typeof reader.cancel === 'function') await Promise.resolve(reader.cancel()).catch(() => {}); } catch {}
       let stopTimeout;
       try {
         await Promise.race([
@@ -228,7 +233,8 @@ function createSseProbe(piboSessionId, startedAt) {
         result.aborted = true;
         result.errors.push('stop timeout after abort');
       }
-      return finalize();
+      stoppedResult = cloneDebugSnapshot(finalize()) || { ...finalize() };
+      return stoppedResult;
     },
   };
 }
@@ -689,6 +695,7 @@ function startRenderOrderCapture(startedAt) {
   const piboSessionId = document.querySelector('[data-pibo-debug="chat-shell"]')?.getAttribute('data-pibo-session-id')
     || document.querySelector('[data-pibo-selected-session-id]')?.getAttribute('data-pibo-selected-session-id')
     || undefined;
+  const capturedSessionIds = new Set(piboSessionId ? [piboSessionId] : []);
   const traceSnapshotsApi = window.__piboTraceSnapshots;
   if (piboSessionId && traceSnapshotsApi && typeof traceSnapshotsApi.clearSnapshots === 'function') {
     try { traceSnapshotsApi.clearSnapshots(piboSessionId); } catch {}
@@ -731,6 +738,10 @@ function startRenderOrderCapture(startedAt) {
   };
   const capture = (reason) => {
     const shell = document.querySelector('[data-pibo-debug="chat-shell"]');
+    const activePiboSessionId = shell?.getAttribute('data-pibo-session-id')
+      || document.querySelector('[data-pibo-selected-session-id]')?.getAttribute('data-pibo-selected-session-id')
+      || piboSessionId;
+    if (activePiboSessionId) capturedSessionIds.add(activePiboSessionId);
     const terminalRows = shell ? Array.from(shell.querySelectorAll('[data-pibo-terminal-row="true"][data-row-id]')) : [];
     const traceRows = shell ? Array.from(shell.querySelectorAll('[data-pibo-debug="trace-span"][data-trace-node-id]')) : [];
     const elements = terminalRows.length ? terminalRows : traceRows;
@@ -738,15 +749,15 @@ function startRenderOrderCapture(startedAt) {
     const view = terminalRows.length ? 'compact-terminal' : traceRows.length ? 'trace-timeline' : 'unknown';
     const visualRows = rows.slice().sort((left, right) => (left.top || 0) - (right.top || 0) || (left.left || 0) - (right.left || 0));
     let traceSequence;
-    if (piboSessionId && traceSnapshotsApi && typeof traceSnapshotsApi.getLatestSequence === 'function') {
-      try { traceSequence = traceSnapshotsApi.getLatestSequence(piboSessionId); } catch {}
+    if (activePiboSessionId && traceSnapshotsApi && typeof traceSnapshotsApi.getLatestSequence === 'function') {
+      try { traceSequence = traceSnapshotsApi.getLatestSequence(activePiboSessionId); } catch {}
     }
     const state = {
       t: Math.round((performance.now() - startedAt) * 1000) / 1000,
       timestamp: Date.now(),
       traceSequence,
       reason,
-      piboSessionId: shell?.getAttribute('data-pibo-session-id') || piboSessionId,
+      piboSessionId: activePiboSessionId,
       view,
       shellState: shell?.getAttribute('data-pibo-state') || undefined,
       atBottom: rows.length ? atBottomFor(elements[0]) : undefined,
@@ -769,8 +780,13 @@ function startRenderOrderCapture(startedAt) {
       let traceSnapshots = [];
       try {
         try { capture('stop'); } catch {}
-        if (piboSessionId && traceSnapshotsApi && typeof traceSnapshotsApi.getSnapshots === 'function') {
-          try { traceSnapshots = cloneDebugSnapshot(traceSnapshotsApi.getSnapshots(piboSessionId)) || []; } catch {}
+        if (traceSnapshotsApi && typeof traceSnapshotsApi.getSnapshots === 'function') {
+          for (const sessionId of capturedSessionIds) {
+            try {
+              const sessionSnapshots = cloneDebugSnapshot(traceSnapshotsApi.getSnapshots(sessionId)) || [];
+              traceSnapshots.push(...sessionSnapshots);
+            } catch {}
+          }
         }
         return {
           requested: true,
@@ -784,8 +800,10 @@ function startRenderOrderCapture(startedAt) {
       } finally {
         observer.disconnect();
         clearInterval(interval);
-        if (piboSessionId && traceSnapshotsApi && typeof traceSnapshotsApi.clearSnapshots === 'function') {
-          try { traceSnapshotsApi.clearSnapshots(piboSessionId); } catch {}
+        if (traceSnapshotsApi && typeof traceSnapshotsApi.clearSnapshots === 'function') {
+          for (const sessionId of capturedSessionIds) {
+            try { traceSnapshotsApi.clearSnapshots(sessionId); } catch {}
+          }
         }
       }
     },

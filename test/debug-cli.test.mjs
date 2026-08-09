@@ -148,6 +148,8 @@ test("streaming benchmark expression installs temporary state and DOM render-ord
 	assert.match(expression, /if \(activeSample\) return activeSample/);
 	assert.match(expression, /if \(activeSample\) await activeSample\.catch/);
 	assert.match(expression, /clearTimeout\(stopTimeout\)/);
+	assert.match(expression, /stoppedResult = cloneDebugSnapshot\(finalize\(\)\)/);
+	assert.match(expression, /capturedSessionIds\.add\(activePiboSessionId\)/);
 	assert.match(expression, /if \(sseProbe\) await sseProbe\.stop\(\)/);
 	assert.match(expression, /startRenderOrderCapture/);
 	assert.match(expression, /data-pibo-terminal-row/);
