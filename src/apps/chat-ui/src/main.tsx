@@ -5,6 +5,7 @@ import { createRootRoute, createRoute, createRouter, RouterProvider, useRouterSt
 import { App } from "./App";
 import { chatRouteFromLocation } from "./app-routes";
 import "./styles.css";
+import "../../shared/markdown-editor.css";
 
 const queryClient = new QueryClient({
 	defaultOptions: {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { AlertTriangle, ChevronDown, FilePlus2, Files, RefreshCw, Save, Trash2 } from "lucide-react";
+import { AlertTriangle, ChevronDown, FilePlus2, Files, PanelRightClose, PanelRightOpen, RefreshCw, Save, Trash2 } from "lucide-react";
 import {
 	adoptContextFileSource,
 	createContextFile,
@@ -41,10 +41,20 @@ export function ContextFilesView({ agentProfiles, selectedFileKey }: { agentProf
 	const [formScope, setFormScope] = useState<ContextFileScope>("global");
 	const [formAgent, setFormAgent] = useState("");
 	const [metadataAgent, setMetadataAgent] = useState("");
+	const [filePanelOpen, setFilePanelOpen] = useState(() =>
+		typeof window === "undefined" || !window.matchMedia("(max-width: 1180px)").matches,
+	);
 
 	useEffect(() => {
 		saveStateRef.current = saveState;
 	}, [saveState]);
+
+	useEffect(() => {
+		const mediaQuery = window.matchMedia("(max-width: 1180px)");
+		const handleBreakpointChange = (event: MediaQueryListEvent) => setFilePanelOpen(!event.matches);
+		mediaQuery.addEventListener("change", handleBreakpointChange);
+		return () => mediaQuery.removeEventListener("change", handleBreakpointChange);
+	}, []);
 
 	const hydrateDocument = useCallback(async (nextDocument: ContextFileDocument) => {
 		setDocument(nextDocument);
@@ -128,6 +138,7 @@ export function ContextFilesView({ agentProfiles, selectedFileKey }: { agentProf
 		try {
 			await editorRef.current?.flushSave();
 			await loadDocument(key);
+			if (window.matchMedia("(max-width: 1180px)").matches) setFilePanelOpen(false);
 		} catch (caught) {
 			setError(caught instanceof Error ? caught.message : String(caught));
 		}
@@ -301,8 +312,8 @@ export function ContextFilesView({ agentProfiles, selectedFileKey }: { agentProf
 	}, [document, hydrateDocument, refreshFiles]);
 
 	return (
-		<div className="context-files-view grid h-full min-h-0 grid-cols-[minmax(0,1fr)_300px] max-[1120px]:grid-cols-[minmax(0,1fr)_260px] max-[900px]:flex max-[900px]:flex-col max-[900px]:overflow-auto">
-			<main className="flex min-h-0 flex-col bg-[#101d22] max-[900px]:min-h-[70vh] max-[900px]:shrink-0">
+		<div className={`context-files-view${filePanelOpen ? " context-files-view--panel-open" : ""}`}>
+			<main className="context-files-workspace flex min-h-0 min-w-0 flex-col bg-[#101d22]">
 				<div className="flex h-14 items-center justify-between gap-3 border-b border-slate-800 bg-[#151f24] px-4 max-[640px]:h-auto max-[640px]:flex-wrap max-[640px]:py-3">
 					<div className="min-w-0">
 						<div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#11a4d4]">
@@ -314,6 +325,17 @@ export function ContextFilesView({ agentProfiles, selectedFileKey }: { agentProf
 						{document ? <div className="truncate font-mono text-[11px] text-slate-500">{document.path}</div> : null}
 					</div>
 					<div className="flex shrink-0 items-center gap-2">
+						<button
+							className="inline-flex h-8 items-center gap-1.5 border border-slate-700 px-2.5 text-xs text-slate-400 hover:border-[#11a4d4] hover:text-[#7dd3fc]"
+							type="button"
+							aria-controls="context-files-panel"
+							aria-expanded={filePanelOpen}
+							title={filePanelOpen ? "Hide context file panel" : "Show context file panel"}
+							onClick={() => setFilePanelOpen((current) => !current)}
+						>
+							{filePanelOpen ? <PanelRightClose size={15} aria-hidden="true" /> : <PanelRightOpen size={15} aria-hidden="true" />}
+							<span className="max-[720px]:hidden">Files</span>
+						</button>
 						<span className={`inline-flex h-8 items-center gap-1.5 border px-2.5 text-xs ${savePillClass(saveState)}`}>
 							<Save size={14} />
 							{saveStateLabel(saveState)}
@@ -421,14 +443,15 @@ export function ContextFilesView({ agentProfiles, selectedFileKey }: { agentProf
 					) : null}
 
 					{document?.exists ? (
-						<div className="min-h-0 flex-1 overflow-auto border border-slate-800 bg-[#151f24]">
+						<div className="context-files-editor-frame flex min-h-0 flex-1 overflow-hidden bg-[#151f24]">
 							<MarkdownEditor
 								ref={editorRef}
-								documentKey={`${document.key}:${document.version ?? document.updatedAt ?? ""}`}
+								documentKey={document.key}
 								initialMarkdown={document.markdown}
 								onPersist={handlePersist}
 								onSaveStateChange={setSaveState}
 								readOnly={!document.editable}
+								ariaLabel={document.label ? `${document.label} Markdown editor` : "Context file Markdown editor"}
 							/>
 						</div>
 					) : (
@@ -440,7 +463,16 @@ export function ContextFilesView({ agentProfiles, selectedFileKey }: { agentProf
 				</div>
 			</main>
 
-			<aside className="min-h-0 overflow-auto border-l border-slate-800 bg-[#1a262b] max-[900px]:order-first max-[900px]:shrink-0 max-[900px]:border-l-0 max-[900px]:border-b max-[900px]:overflow-visible">
+			{filePanelOpen ? (
+				<button
+					type="button"
+					className="context-files-panel-backdrop"
+					aria-label="Close context file panel"
+					onClick={() => setFilePanelOpen(false)}
+				/>
+			) : null}
+
+			<aside id="context-files-panel" hidden={!filePanelOpen} className="context-files-panel min-h-0 overflow-auto border-l border-slate-800 bg-[#1a262b]">
 				<div className="border-b border-slate-800 px-4 py-3">
 					<div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#11a4d4]">Context</div>
 					<h1 className="mt-1 text-sm font-semibold text-slate-100">Context Files</h1>

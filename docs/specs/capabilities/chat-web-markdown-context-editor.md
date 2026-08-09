@@ -1,9 +1,10 @@
 # Spec: Chat Web Markdown Context Editor
 
-**Status:** Draft
+**Status:** Implementing
 **Created:** 2026-05-11
-**Controller / Source:** Scheduled Pibo Source Specs Coverage, based on current workspace code
-**Related docs:** [Chat Web Context Area](./chat-web-context-area.md), [Context Files](./context-files.md), [Chat Web Safe Content Rendering](./chat-web-safe-content-rendering.md)
+**Updated:** 2026-08-09
+**Controller / Source:** Scheduled Pibo Source Specs Coverage plus the 2026-08-09 Markdown editor quality goal
+**Related docs:** [Chat Web Context Area](./chat-web-context-area.md), [Context Files](./context-files.md), [Chat Web Safe Content Rendering](./chat-web-safe-content-rendering.md), [Markdown Editor Quality Validation](../../reports/markdown-editor-quality-validation-2026-08-09.md)
 
 ## Why
 
@@ -11,11 +12,11 @@ Chat Web lets users edit managed context files that are later injected into Pibo
 
 ## Goal
 
-Chat Web MUST provide a Markdown editor for context files that preserves user edits, autosaves managed files, flushes pending saves before document switches, and degrades to raw Markdown when rich editing is unavailable or unsafe.
+Chat Web MUST provide a high-quality Markdown editor that preserves user edits, supports standard Markdown structures, remains usable in narrow host panels, autosaves managed files without resetting editor state, flushes pending saves before document switches, and degrades to raw Markdown when rich editing is unavailable or unsafe.
 
 ## Background / Current State
 
-`ContextFilesView` renders `MarkdownEditor` for existing context-file documents. The editor uses MDXEditor for rich Markdown editing, CodeMirror for code blocks, a shared Prism client singleton, and a raw-text fallback. Managed editable documents are autosaved through `saveContextFile` with the current document version as `expectedVersion`. Plugin context files and other non-editable documents are rendered read-only and instruct the user to create a managed copy before editing.
+`ContextFilesView` renders the shared `MarkdownEditor` used by Chat Context Files, the standalone Context Files app, and Workflow prompt assets. The editor uses MDXEditor for rich Markdown editing, CodeMirror for code blocks and source mode, a shared Prism client singleton, and a raw-text fallback. Managed editable documents are autosaved through `saveContextFile` with the current document version as `expectedVersion`. Plugin context files and other non-editable documents are rendered read-only and instruct the user to create a managed copy before editing.
 
 The parent view calls `flushSave()` before selecting a different file or following a selected-file link from another area. Live context-file events can reload clean documents or show a conflict warning when external changes arrive while the local editor is idle with unsaved edits or saving.
 
@@ -28,6 +29,9 @@ The parent view calls `flushSave()` before selecting a different file or followi
 - Imperative flush behavior before document changes.
 - Raw Markdown fallback for read-only documents and rich-editor load errors.
 - Code-block language support and Prism singleton initialization.
+- Standard Markdown formatting and insertion controls, including headings, lists, task lists, blockquotes, links, images, tables, thematic breaks, inline code, fenced code blocks, strikethrough, and frontmatter.
+- Rich/source switching and full-viewport focused editing.
+- Responsive Context Files panel behavior and narrow-host toolbar wrapping.
 - Conflict and save-error behavior visible in the Context Files view.
 
 ### Out of Scope
@@ -35,7 +39,7 @@ The parent view calls `flushSave()` before selecting a different file or followi
 - Context-file storage schema, revisions, source linking, and plugin adoption — covered by Context Files.
 - General Chat Web navigation and Context panel composition — covered by Chat Web Context Area.
 - Rendering chat transcript Markdown or terminal output — covered by trace and safe-content specs.
-- Adding new editor plugins beyond the current Markdown editing surface.
+- Databases, templates, comments, collaboration, slash-command block menus, or a non-Markdown persisted document model.
 
 ## Requirements
 
@@ -174,7 +178,7 @@ The editor MUST reset saved/current Markdown, autosave timers, plain fallback co
 
 #### Current
 
-The editor receives `documentKey` built from context-file key and version or update timestamp. When `documentKey` changes, or when `initialMarkdown` differs from the saved reference, it clears the timer, drops the current save promise, resets refs to `initialMarkdown`, sets `ignoreNextChangeRef`, updates `plainMarkdown`, returns to rich mode, and reports `saved`.
+The editor receives a stable `documentKey` for the logical file or Workflow node. Own save responses are matched against `savingMarkdownRef` and do not remount the editor. A real document change or external content change clears pending state, resets tracked Markdown, returns to rich mode, and remounts only the MDXEditor instance when needed.
 
 #### Target
 
@@ -182,15 +186,16 @@ Loading a new document never reuses stale autosave state from the previous file.
 
 #### Acceptance
 
-- A changed `documentKey` resets editor state to the new `initialMarkdown`.
+- A changed logical `documentKey` resets editor state to the new `initialMarkdown`.
 - External content changes for the same document reset editor state when the loaded content differs from the saved reference.
-- The next rich-editor hydration change after a reset is ignored as an initial change, not treated as a user edit.
+- An own save echo matching the in-flight Markdown snapshot does not reset Source mode, cursor context, scroll state, or undo history.
+- Initial Markdown normalization is distinguished from the first real user edit.
 - Switching to a new document returns to rich mode unless the new document is read-only or the rich editor errors again.
 
 #### Scenario: Reload latest version
 
-- GIVEN the current context file is reloaded with a new version
-- WHEN the editor receives a new document key
+- GIVEN the current context file is reloaded with externally changed content
+- WHEN the editor receives the new `initialMarkdown` for the same logical key
 - THEN the editor resets to the reloaded Markdown
 - AND the save state is `saved`.
 
@@ -219,6 +224,43 @@ Code-block editing remains stable across SSR-like test contexts, browser context
 - THEN they share one Prism object on `window.Prism`
 - AND code-block editing still offers the supported language list.
 
+### Requirement: Standard Markdown structures are editable
+
+The editor MUST parse, display, edit, and serialize headings, paragraphs, bold, italic, strikethrough, inline code, fenced code blocks, links, images, blockquotes, thematic breaks, ordered lists, unordered lists, nested lists, task lists, tables, and frontmatter.
+
+#### Acceptance
+
+- Every listed structure is represented in the rich editor and Source mode.
+- The toolbar exposes the corresponding format or insertion control when one is required.
+- Code blocks expose a language selector.
+- Unsupported or unsafe input still has a raw Markdown fallback.
+
+#### Scenario: Comprehensive Markdown file
+
+- GIVEN a managed file contains the supported structures
+- WHEN the file opens in the rich editor
+- THEN every structure remains visible and editable
+- AND Source mode exposes the complete Markdown document.
+
+### Requirement: Narrow hosts provide a usable editing workspace
+
+The editor MUST remain usable in Context Files, the standalone app, and Workflow prompt inspectors without clipping commands or reducing the writing area to an impractical size.
+
+#### Acceptance
+
+- Narrow toolbars wrap instead of horizontally hiding actions.
+- The integrated Context file panel defaults closed at viewports up to 1180 px and can be reopened as an overlay.
+- Every editor host exposes Focus mode.
+- Focus mode fills the viewport with bounded insets, locks background scrolling, keeps the utility and formatting toolbars visible, and exits with `Escape`.
+- Rich and Source content scroll internally without moving the toolbars.
+
+#### Scenario: Workflow inspector is narrow
+
+- GIVEN a prompt asset editor is rendered in the Workflow inspector
+- WHEN the user selects Focus
+- THEN the same editor expands to the viewport
+- AND all Markdown controls and document content remain usable.
+
 ## Edge Cases
 
 - Autosave failures set save state to `error` and surface the parent error through the Context Files view.
@@ -236,13 +278,16 @@ Code-block editing remains stable across SSR-like test contexts, browser context
 
 ## Success Criteria
 
-- [ ] SC-001: Editable managed files autosave changed Markdown and avoid redundant saves for unchanged content.
-- [ ] SC-002: In-flight saves are serialized and a later edit is persisted before the editor reports `saved`.
-- [ ] SC-003: File selection and cross-area selected-file changes call `flushSave()` before loading the next document.
-- [ ] SC-004: Non-editable context files render read-only raw Markdown and never call the persist API.
-- [ ] SC-005: Rich-editor errors switch to raw Markdown fallback while preserving current content and autosave behavior.
-- [ ] SC-006: Document-key changes reset editor state, clear timers, and return editable documents to rich mode.
-- [ ] SC-007: Prism client imports share one global Prism instance and expose it on `window.Prism` in browser contexts.
+- [x] SC-001: Editable managed files autosave changed Markdown and avoid redundant saves for unchanged content.
+- [x] SC-002: In-flight saves are serialized and a later edit is persisted before the editor reports `saved`.
+- [x] SC-003: File and prompt-asset selection call `flushSave()` before loading the next document.
+- [x] SC-004: Non-editable context files render read-only raw Markdown and never call the persist API.
+- [x] SC-005: Rich-editor errors switch to raw Markdown fallback while preserving current content and autosave behavior.
+- [x] SC-006: Logical document changes reset editor state while own save echoes preserve mode and cursor state.
+- [x] SC-007: Prism client imports share one global Prism instance and expose it on `window.Prism` in browser contexts.
+- [x] SC-008: Standard Markdown structures are editable in rich and source modes.
+- [x] SC-009: Context, standalone, and Workflow hosts provide a practical default area plus Focus mode.
+- [x] SC-010: Rich and Source content scroll internally while editor toolbars remain visible.
 
 ## Assumptions and Open Questions
 
@@ -254,7 +299,7 @@ Code-block editing remains stable across SSR-like test contexts, browser context
 
 ### Open Questions
 
-- Should users have an explicit toggle between rich and raw Markdown modes even when the rich editor is healthy?
+- Should future versions expose Markdown serializer style preferences for bullet markers, thematic breaks, and table alignment?
 - Should autosave conflicts preserve a local draft for manual merge instead of reloading the server document immediately?
 - Should the shared Prism client live in a common package to avoid duplicated source between Chat Web and the legacy context-files UI?
 
@@ -262,14 +307,16 @@ Code-block editing remains stable across SSR-like test contexts, browser context
 
 | Requirement | Scenario / Story | Code Basis | Status |
 |---|---|---|---|
-| REQ-001 | Autosave after editing | `src/apps/chat-ui/src/context/MarkdownEditor.tsx`, `src/apps/chat-ui/src/context/ContextFilesView.tsx` | Source-inspected |
-| REQ-002 | Edit during save | `src/apps/chat-ui/src/context/MarkdownEditor.tsx` | Source-inspected |
-| REQ-003 | Switch with unsaved edits | `src/apps/chat-ui/src/context/ContextFilesView.tsx`, `src/apps/chat-ui/src/context/MarkdownEditor.tsx` | Source-inspected |
-| REQ-004 | Plugin context file | `src/apps/chat-ui/src/context/ContextFilesView.tsx`, `src/apps/chat-ui/src/context/MarkdownEditor.tsx` | Source-inspected |
-| REQ-005 | Rich editor cannot load document | `src/apps/chat-ui/src/context/MarkdownEditor.tsx` | Source-inspected |
-| REQ-006 | Reload latest version | `src/apps/chat-ui/src/context/MarkdownEditor.tsx` | Source-inspected |
+| REQ-001 | Autosave after editing | `src/apps/shared/MarkdownEditor.tsx`, `src/apps/chat-ui/src/context/ContextFilesView.tsx` | Browser-validated |
+| REQ-002 | Edit during save | `src/apps/shared/MarkdownEditor.tsx`, `test/markdown-editor-quality.test.mjs` | Regression-covered |
+| REQ-003 | Switch with unsaved edits | `src/apps/chat-ui/src/context/ContextFilesView.tsx`, `src/apps/chat-ui/src/workflows/WorkflowPromptAssetEditor.tsx` | Regression-covered |
+| REQ-004 | Plugin context file | `src/apps/chat-ui/src/context/ContextFilesView.tsx`, `src/apps/shared/MarkdownEditor.tsx` | Browser-validated |
+| REQ-005 | Rich editor cannot load document | `src/apps/shared/MarkdownEditor.tsx` | Regression-covered |
+| REQ-006 | Reload latest version | `src/apps/shared/MarkdownEditor.tsx` | Browser-validated |
 | REQ-007 | Browser loads editor twice | `src/apps/chat-ui/src/context/prism-client.ts`, `src/apps/context-files-ui/src/prism-client.ts` | Source-inspected |
+| REQ-008 | Comprehensive Markdown file | `src/apps/shared/MarkdownEditor.tsx`, `src/apps/shared/markdown-editor.css` | Browser-validated |
+| REQ-009 | Workflow inspector is narrow | `src/apps/shared/MarkdownEditor.tsx`, `src/apps/chat-ui/src/workflows/WorkflowPromptAssetEditor.tsx` | Browser-validated |
 
 ## Verification Basis
 
-This spec is based on current workspace code in `src/apps/chat-ui/src/context/MarkdownEditor.tsx`, `src/apps/chat-ui/src/context/ContextFilesView.tsx`, `src/apps/chat-ui/src/context/prism-client.ts`, `src/apps/context-files-ui/src/prism-client.ts`, and the context-file API helpers imported from `src/apps/chat-ui/src/api.ts`. No source code was changed.
+This spec is based on the shared editor in `src/apps/shared/MarkdownEditor.tsx`, shared styling in `src/apps/shared/markdown-editor.css`, the Chat and standalone Context hosts, the Workflow prompt-asset host, focused regression tests, and the headful browser evidence recorded in `docs/reports/markdown-editor-quality-validation-2026-08-09.md`.
