@@ -1192,34 +1192,34 @@ export class RoutedSession {
 	}
 
 	private async processQueuedMessage(event: PiboMessageEvent): Promise<void> {
-		const preflight = await this.messagePreflight?.(event);
-		if (preflight && !preflight.allowed) {
+		try {
+			const preflight = await this.messagePreflight?.(event);
+			if (preflight && !preflight.allowed) {
+				this.emit({
+					type: "session_error",
+					piboSessionId: this.piboSessionId,
+					eventId: event.id,
+					error: preflight.reason ?? "Queued message is no longer authorized",
+					errorDetails: {
+						category: "loop_lifecycle",
+						errorClass: "runtime_abort",
+						code: preflight.code ?? "message_preflight_rejected",
+						origin: "runtime",
+						retryable: false,
+					},
+					provenance: event.provenance,
+				});
+				return;
+			}
 			this.emit({
-				type: "session_error",
+				type: "message_started",
 				piboSessionId: this.piboSessionId,
 				eventId: event.id,
-				error: preflight.reason ?? "Queued message is no longer authorized",
-				errorDetails: {
-					category: "loop_lifecycle",
-					errorClass: "runtime_abort",
-					code: preflight.code ?? "message_preflight_rejected",
-					origin: "runtime",
-					retryable: false,
-				},
+				text: event.text,
+				source: event.source,
 				provenance: event.provenance,
 			});
-			return;
-		}
-		this.emit({
-			type: "message_started",
-			piboSessionId: this.piboSessionId,
-			eventId: event.id,
-			text: event.text,
-			source: event.source,
-			provenance: event.provenance,
-		});
 
-		try {
 			this.activeMessage = event;
 			this.providerRecoveryCancelled = false;
 			this.pendingAssistantError = undefined;

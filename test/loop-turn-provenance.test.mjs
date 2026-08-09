@@ -6,6 +6,7 @@ import test from "node:test";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { RoutedSession } from "../dist/core/routed-session.js";
 import { createPiboRuntime } from "../dist/core/runtime.js";
+import { PiboGatewayServer } from "../dist/gateway/server.js";
 import { PiboLoopService } from "../dist/loops/service.js";
 import { createLoopMessagePreflight, PiboLoopStore } from "../dist/loops/store.js";
 import { createPiboGoalToolDefinitions } from "../dist/loops/tools.js";
@@ -38,6 +39,55 @@ test("RoutedSession revalidates queued Loop authority before message_started", a
 	} finally {
 		await routed.dispose();
 		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test("RoutedSession contains preflight exceptions and continues draining queued messages", async () => {
+	const cwd = await mkdtemp(join(tmpdir(), "pibo-loop-preflight-error-"));
+	const profile = new InitialSessionContextBuilder("loop-preflight-error-test").createSession();
+	const runtime = await createPiboRuntime({ cwd, persistSession: false, profile });
+	const events = [];
+	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+	let preflightCalls = 0;
+	const routed = new RoutedSession("ps_goal", runtime, (event) => events.push(event), registry, false, undefined, false, undefined, undefined, undefined, undefined, () => {
+		preflightCalls += 1;
+		if (preflightCalls === 1) throw new Error("custom Loop store unavailable");
+		return { allowed: false, code: "loop_continuation_invalidated", reason: "Goal is complete" };
+	});
+	try {
+		routed.enqueueMessage({ type: "message", piboSessionId: "ps_goal", id: "loop_msg_store_error", source: "service", text: "Continue", provenance: { kind: "loop-run", jobId: "loop_one", runId: "lrun_one" } });
+		routed.enqueueMessage({ type: "message", piboSessionId: "ps_goal", id: "loop_msg_after_error", source: "service", text: "Continue", provenance: { kind: "loop-run", jobId: "loop_two", runId: "lrun_two" } });
+		await waitFor(() => events.filter((event) => event.type === "session_error").length === 2);
+		assert.equal(events.some((event) => event.type === "message_started"), false);
+		const errors = events.filter((event) => event.type === "session_error");
+		assert.deepEqual(errors.map((event) => event.eventId), ["loop_msg_store_error", "loop_msg_after_error"]);
+		assert.match(errors[0].error, /custom Loop store unavailable/);
+		assert.equal(errors[1].errorDetails.code, "loop_continuation_invalidated");
+	} finally {
+		await routed.dispose();
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test("gateway preflight reads the configured custom Loop store", async () => {
+	const dir = await mkdtemp(join(tmpdir(), "pibo-loop-gateway-store-"));
+	const path = join(dir, "custom-loops.sqlite");
+	const store = new PiboLoopStore({ path });
+	const server = new PiboGatewayServer({ host: "127.0.0.1", port: 0, startChannels: false, persistSession: false, sessionDbPath: join(dir, "sessions.sqlite"), loopStorePath: path });
+	try {
+		const job = store.createJob({ mode: "goal", enabled: true, target: { kind: "default-chat" }, profile: "base", prompt: "Objective", initialPiboSessionId: "ps_custom_store" });
+		const reserved = store.reserveRun(job.id);
+		store.attachRunSession(job.id, reserved.run.id, "ps_custom_store");
+		store.attachRunMessage(job.id, reserved.run.id, "loop_msg_custom_store");
+		const event = { type: "message", piboSessionId: "ps_custom_store", id: "loop_msg_custom_store", source: "service", text: "Continue", provenance: { kind: "loop-run", jobId: job.id, runId: reserved.run.id } };
+
+		await server.start();
+		const preflight = server.router.options.messagePreflight;
+		assert.equal((await preflight(event)).allowed, true);
+	} finally {
+		await server.stop();
+		store.close();
+		await rm(dir, { recursive: true, force: true });
 	}
 });
 
@@ -129,12 +179,13 @@ test("stale provenance cannot retarget an older Goal after its originating Goal 
 		const run = store.reserveRun(newer.goalId).run;
 		store.attachRunSession(newer.goalId, run.id, "ps_goal");
 		store.attachRunMessage(newer.goalId, run.id, "loop_msg_newer");
+		store.completeRun({ jobId: newer.goalId, runId: run.id, status: "cancelled", reason: "test cleanup" });
 		store.removeJob(newer.goalId);
 
 		const staleTools = toolsByName(store, () => ({ id: "loop_msg_newer", source: "service", provenance: { kind: "loop-run", jobId: newer.goalId, runId: run.id } }));
 		const staleUpdate = await staleTools.update_goal.execute("stale_update", { status: "blocked" });
 		assert.equal(staleUpdate.isError, true);
-		assert.match(staleUpdate.content[0].text, /originating Goal no longer exists/);
+		assert.match(staleUpdate.content[0].text, /stale or invalid Loop provenance|originating Goal no longer exists/);
 		const olderAfter = store.getJob(older.goalId);
 		assert.equal(olderAfter.state.goalStatus, "complete");
 		assert.equal(olderAfter.state.goalEndedAt, olderBefore.state.goalEndedAt);

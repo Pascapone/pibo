@@ -32,6 +32,7 @@ export type GatewayServerOptions = {
 	maxBackpressureFrames?: number;
 	maxBackpressureBytes?: number;
 	resourceReaper?: ResourceReaperServiceOptions | false;
+	loopStorePath?: string;
 };
 
 type GatewayQueuedFrame = {
@@ -223,7 +224,7 @@ export class PiboGatewayServer {
 			persistSession: this.options.persistSession,
 			pluginRegistry: this.pluginRegistry,
 			sessionStore: this.sessionStore,
-			messagePreflight: createLoopMessagePreflight(),
+			messagePreflight: createLoopMessagePreflight({ path: this.options.loopStorePath }),
 		});
 		this.unsubscribe = this.router.subscribe((event) => this.broadcastRouterEvent(event));
 		this.server = createServer((socket) => this.handleSocket(socket));
