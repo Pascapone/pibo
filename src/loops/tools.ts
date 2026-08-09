@@ -91,6 +91,8 @@ function goalPayload(job: PiboLoopJob) {
 		elapsedWallClockSeconds: goalElapsedWallClockSeconds(job),
 		goalStartedAt: job.state.goalStartedAt ?? null,
 		goalEndedAt: job.state.goalEndedAt ?? null,
+		nextAttemptAt: job.state.nextAttemptAt ?? null,
+		failure: job.state.lastFailure ?? null,
 		wallClockIncludesPausedTime: true,
 	};
 }
