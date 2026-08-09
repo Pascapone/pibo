@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { checkTraceView } from "../dist/debug/trace.js";
 import { mergeOlderTracePage, mergeRefreshedTracePage } from "../dist/shared/trace-page-merge.js";
 
 test("mergeOlderTracePage dedupes overlapping nested timeline nodes", () => {
@@ -93,6 +94,136 @@ test("mergeRefreshedTracePage preserves the loaded history window while refreshi
 	assert.equal(merged.eventLimit, 100);
 });
 
+test("mergeRefreshedTracePage retains a same-entry transcript part split from the refreshed tail", () => {
+	const startedAt = "2026-07-05T00:01:00.000Z";
+	const currentNodes = Array.from({ length: 51 }, (_, contentPartIndex) => node(`part-${contentPartIndex}`, {
+		type: "model.reasoning",
+		source: "transcript",
+		startedAt,
+		orderKey: {
+			sourceRank: 0,
+			turnSeq: 7,
+			transcriptIndex: 7,
+			contentPartIndex,
+			phaseRank: 3,
+		},
+	}));
+	const current = traceView({ nodes: currentNodes });
+	const refreshed = traceView({ nodes: currentNodes.slice(1) });
+
+	const merged = mergeRefreshedTracePage(current, refreshed);
+
+	assert.equal(flattenNodes(merged.nodes).length, 51);
+	assert.equal(flattenNodes(merged.nodes)[0]?.id, "part-0");
+});
+
+test("mergeRefreshedTracePage replaces stale tail nodes without dropping loaded history", () => {
+	const current = traceView({
+		nodes: [
+			node("older-event", { source: "event-log", orderKey: eventOrder(10), startedAt: "2026-07-05T00:00:00.000Z" }),
+			node("older-run-notification", { type: "execution.command", source: "event-log", stableKey: "run-notification:old", orderKey: eventOrder(15), startedAt: "2026-07-05T00:00:10.000Z" }),
+			node("older-yielded-run", { type: "yielded.run", source: "event-log", orderKey: eventOrder(20), startedAt: "2026-07-05T00:00:20.000Z" }),
+			node("entry:legacy-run-notification", { type: "yielded.run", source: "transcript", stableKey: "entry:legacy-run-notification", orderKey: transcriptOrder(-1), startedAt: "2026-07-05T00:00:25.000Z" }),
+			node("older-transcript", { source: "transcript", orderKey: transcriptOrder(0), startedAt: "2026-07-05T00:00:30.000Z" }),
+			node("shared", { source: "event-log", orderKey: eventOrder(50), startedAt: "2026-07-05T00:01:00.000Z" }),
+			node("stale-notification", { type: "execution.command", source: "event-log", orderKey: eventOrder(55), startedAt: "2026-07-05T00:01:30.000Z" }),
+			node("stale-yielded-run", { type: "yielded.run", source: "live", orderKey: liveOrder(100), startedAt: "2026-07-05T00:01:40.000Z" }),
+		],
+		firstEventSequence: 10,
+	});
+	const refreshed = traceView({
+		nodes: [
+			node("shared", { source: "event-log", orderKey: eventOrder(50), startedAt: "2026-07-05T00:01:00.000Z", title: "fresh shared" }),
+			node("new-tail", { source: "event-log", orderKey: eventOrder(60), startedAt: "2026-07-05T00:02:00.000Z" }),
+		],
+		firstEventSequence: 50,
+	});
+
+	const merged = mergeRefreshedTracePage(current, refreshed);
+	assert.deepEqual(merged.nodes.map((entry) => entry.id), [
+		"older-event",
+		"older-run-notification",
+		"older-yielded-run",
+		"entry:legacy-run-notification",
+		"older-transcript",
+		"shared",
+		"new-tail",
+	]);
+	assert.equal(merged.nodes.find((entry) => entry.id === "shared")?.title, "fresh shared");
+});
+
+test("mergeRefreshedTracePage drops event turn scaffolds superseded by transcript content", () => {
+	const current = traceView({
+		nodes: [
+			node("transcript-assistant", {
+				type: "assistant.message",
+				source: "transcript",
+				eventId: "settled-turn",
+				startedAt: "2026-07-05T00:00:00.000Z",
+				orderKey: transcriptOrder(1),
+			}),
+			node("stale-turn", {
+				type: "agent.turn",
+				source: "event-log",
+				eventId: "settled-turn",
+				orderKey: eventOrder(10),
+				children: [node("retained-child", {
+					type: "execution.result",
+					source: "event-log",
+					parentId: "stale-turn",
+					orderKey: eventOrder(11),
+				})],
+			}),
+			node("event-only-turn", {
+				type: "agent.turn",
+				source: "event-log",
+				eventId: "event-only-turn",
+				orderKey: eventOrder(20),
+			}),
+		],
+		firstEventSequence: 10,
+	});
+	const refreshed = traceView({
+		nodes: [node("new-tail", {
+			source: "event-log",
+			startedAt: "2026-07-05T00:02:00.000Z",
+			orderKey: eventOrder(50),
+		})],
+		firstEventSequence: 50,
+	});
+
+	const merged = mergeRefreshedTracePage(current, refreshed);
+	assert.deepEqual(flattenNodes(merged.nodes).map((entry) => entry.id), [
+		"transcript-assistant",
+		"retained-child",
+		"event-only-turn",
+		"new-tail",
+	]);
+	assert.equal(merged.nodes.find((entry) => entry.id === "retained-child")?.parentId, undefined);
+	assert.equal(checkTraceView(merged).issues.some((issue) => issue.code === "missing_parent"), false);
+});
+
+test("mergeRefreshedTracePage refreshes the raw-event tail without dropping loaded history", () => {
+	const current = traceView({
+		rawEvents: [
+			rawEvent("older", 10, "tool_call", { phase: "older" }),
+			rawEvent("shared", 20, "tool_execution_started", { phase: "stale" }),
+			rawEvent("stale-tail", 25, "message_queued", { phase: "stale-only" }),
+		],
+	});
+	const refreshed = traceView({
+		rawEvents: [
+			rawEvent("shared", 20, "tool_execution_started", { phase: "fresh" }),
+			rawEvent("new-tail", 30, "tool_execution_finished", { phase: "new" }),
+		],
+	});
+
+	const merged = mergeRefreshedTracePage(current, refreshed);
+	assert.deepEqual(merged.rawEvents.map((event) => event.id), ["older", "shared", "new-tail"]);
+	assert.equal(merged.rawEvents[1].payload.phase, "fresh");
+	assert.equal(merged.rawEvents.some((event) => event.id === "stale-tail"), false);
+});
+
 test("mergeOlderTracePage carries string cursors across transcript continuation pages", () => {
 	const current = traceView({
 		nodes: [node("compact", { type: "execution.compaction" })],
@@ -132,6 +263,29 @@ function traceView(overrides = {}) {
 		nodes: [],
 		rawEvents: [],
 		...overrides,
+	};
+}
+
+function eventOrder(eventSequence) {
+	return { sourceRank: 1, turnSeq: eventSequence, eventSequence, phaseRank: 4 };
+}
+
+function transcriptOrder(transcriptIndex) {
+	return { sourceRank: 0, turnSeq: transcriptIndex, transcriptIndex, contentPartIndex: 0, phaseRank: 4 };
+}
+
+function liveOrder(streamId) {
+	return { sourceRank: 2, turnSeq: streamId, streamId, streamFrameIndex: 0, phaseRank: 7 };
+}
+
+function rawEvent(id, eventSequence, type, payload = {}) {
+	return {
+		id,
+		piboSessionId: "ps_test",
+		createdAt: `2026-07-05T00:00:${String(eventSequence).padStart(2, "0")}.000Z`,
+		eventSequence,
+		type,
+		payload,
 	};
 }
 

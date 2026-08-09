@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
+import { messageTurnTimingsFromEvents } from "../dist/shared/trace-event-projection.js";
 import { buildTraceViewFromEvents } from "../dist/shared/trace-engine.js";
 import {
 	buildCompactTerminalRows,
@@ -65,6 +66,121 @@ test("active turn timing starts at message_started and freezes at message_finish
 		event(2, "session_error", "2026-07-14T10:02:01.000Z", { eventId: "turn-error", error: "provider failed" }),
 	]);
 	assert.equal(findActiveTurnStartedAt(failed), undefined, "terminal errors must not leave the Working footer active");
+});
+
+test("queued turn timing closes on session_error without inventing a start time", () => {
+	assert.deepEqual(messageTurnTimingsFromEvents([
+		event(1, "message_queued", "2026-07-14T10:00:00.000Z", { eventId: "turn-failed", text: "Fail later", source: "user", queuedMessages: 1 }),
+		event(2, "session_error", "2026-07-14T10:00:02.000Z", { eventId: "turn-failed", error: "provider failed" }),
+	]), [{
+		eventId: "turn-failed",
+		userText: "Fail later",
+		startedAt: undefined,
+		completedAt: "2026-07-14T10:00:02.000Z",
+		durationMs: undefined,
+	}]);
+});
+
+test("turn projection metadata preserves visible reasoning and assistant part indices", () => {
+	assert.deepEqual(messageTurnTimingsFromEvents([
+		event(1, "message_queued", "2026-07-14T10:00:00.000Z", { eventId: "turn-parts", text: "Inspect", source: "user", queuedMessages: 1 }),
+		event(2, "thinking_finished", "2026-07-14T10:00:01.000Z", { eventId: "turn-parts", thinkingIndex: 0, contentIndex: 0, text: "" }),
+		event(3, "thinking_finished", "2026-07-14T10:00:02.000Z", { eventId: "turn-parts", thinkingIndex: 1, contentIndex: 0, text: "Visible reasoning" }),
+		event(4, "assistant_message", "2026-07-14T10:00:03.000Z", { eventId: "turn-parts", assistantIndex: 2, contentIndex: 1, text: "Visible answer" }),
+	]), [{
+		eventId: "turn-parts",
+		userText: "Inspect",
+		startedAt: undefined,
+		completedAt: undefined,
+		durationMs: undefined,
+		reasoningIndices: [1],
+		assistantIndices: [2],
+	}]);
+});
+
+test("transcript projection keeps a nonzero reasoning identity when an empty earlier phase is omitted", () => {
+	const transcriptEntries = [
+		{
+			id: "entry-user-parts",
+			type: "message",
+			timestamp: "2026-07-14T10:00:00.000Z",
+			message: { role: "user", content: [{ type: "text", text: "Inspect" }] },
+		},
+		{
+			id: "entry-assistant-parts",
+			type: "message",
+			timestamp: "2026-07-14T10:00:03.000Z",
+			message: {
+				role: "assistant",
+				content: [
+					{ type: "thinking", thinking: "Visible reasoning" },
+					{ type: "text", text: "Visible answer" },
+				],
+				stopReason: "stop",
+			},
+		},
+	];
+	const projected = view([
+		event(1, "message_queued", "2026-07-14T10:00:00.000Z", { eventId: "turn-parts", text: "Inspect", source: "user", queuedMessages: 1 }),
+		event(2, "thinking_finished", "2026-07-14T10:00:01.000Z", { eventId: "turn-parts", thinkingIndex: 0, contentIndex: 0, text: "" }),
+		event(3, "thinking_finished", "2026-07-14T10:00:02.000Z", { eventId: "turn-parts", thinkingIndex: 1, contentIndex: 0, text: "Visible reasoning" }),
+		event(4, "assistant_message", "2026-07-14T10:00:03.000Z", { eventId: "turn-parts", assistantIndex: 2, contentIndex: 1, text: "Visible answer" }),
+	], "idle", transcriptEntries);
+	const reasoning = projected.nodes.find((node) => node.type === "model.reasoning");
+	const assistant = projected.nodes.find((node) => node.type === "assistant.message");
+
+	assert.equal(reasoning?.id, "event:thinking:turn-parts:thinking:1");
+	assert.equal(reasoning?.stableKey, "reasoning:turn-parts:thinking:1");
+	assert.equal(assistant?.id, "event:assistant:turn-parts:assistant:2");
+	assert.equal(assistant?.stableKey, "assistant:turn-parts:assistant:2");
+});
+
+test("open persisted turn keeps reasoning and assistant identities when message_finished arrives", () => {
+	const transcriptEntries = [
+		{
+			id: "entry-user-open",
+			type: "message",
+			timestamp: "2026-07-14T10:00:00.000Z",
+			message: { role: "user", content: [{ type: "text", text: "Keep identity" }] },
+		},
+		{
+			id: "entry-assistant-open",
+			type: "message",
+			timestamp: "2026-07-14T10:00:02.000Z",
+			message: {
+				role: "assistant",
+				content: [
+					{ type: "thinking", thinking: "Plan first" },
+					{ type: "text", text: "Still working" },
+				],
+				stopReason: "stop",
+			},
+		},
+	];
+	const activeEvents = [
+		event(1, "message_started", "2026-07-14T10:00:01.000Z", { eventId: "turn-open", text: "Keep identity", source: "user" }),
+		event(2, "thinking_finished", "2026-07-14T10:00:02.000Z", { eventId: "turn-open", thinkingIndex: 0, contentIndex: 0, text: "Plan first" }),
+		event(3, "assistant_message", "2026-07-14T10:00:03.000Z", { eventId: "turn-open", assistantIndex: 0, contentIndex: 1, text: "Still working" }),
+	];
+	const open = view(activeEvents, "idle", transcriptEntries);
+	const completed = view([
+		...activeEvents,
+		event(4, "message_finished", "2026-07-14T10:00:04.000Z", { eventId: "turn-open", source: "user" }),
+	], "idle", transcriptEntries);
+	const openReasoning = open.nodes.find((node) => node.type === "model.reasoning");
+	const openAssistant = open.nodes.find((node) => node.type === "assistant.message");
+	const completedReasoning = completed.nodes.find((node) => node.type === "model.reasoning");
+	const completedAssistant = completed.nodes.find((node) => node.type === "assistant.message");
+
+	assert.equal(openReasoning?.id, "event:thinking:turn-open:thinking:0");
+	assert.equal(openReasoning?.stableKey, "reasoning:turn-open:thinking:0");
+	assert.equal(openAssistant?.id, "event:assistant:turn-open:assistant:0");
+	assert.equal(openAssistant?.stableKey, "assistant:turn-open:assistant:0");
+	assert.equal(openAssistant?.source, "transcript");
+	assert.equal(completedReasoning?.id, openReasoning?.id);
+	assert.equal(completedReasoning?.stableKey, openReasoning?.stableKey);
+	assert.equal(completedAssistant?.id, openAssistant?.id);
+	assert.equal(completedAssistant?.stableKey, openAssistant?.stableKey);
 });
 
 test("persisted transcript keeps queued user time and final turn timing after reload", () => {

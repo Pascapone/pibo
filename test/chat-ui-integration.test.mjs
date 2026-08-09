@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { withLiveSnapshots } from "../dist/apps/chat/chat-trace-helpers.js";
+import { traceProjectionStatus, withLiveSnapshots } from "../dist/apps/chat/chat-trace-helpers.js";
 import { normalizePiEvent } from "../dist/core/routed-session.js";
+import { messageTurnTimingsFromEvents } from "../dist/shared/trace-event-projection.js";
 import { buildTraceViewFromEvents, patchTraceViewWithEvent, patchTraceViewWithEvents } from "../dist/shared/trace-engine.js";
 import { buildCompactTerminalRows } from "../dist/session-ui/index.js";
 
@@ -204,6 +205,60 @@ test("execution commands issued during streaming attach to the active turn", () 
 	assert.deepEqual(turn.children.map((node) => node.title), ["Thinking", "status", "Agent Message"]);
 });
 
+test("open turn timing keeps running projection between live snapshots", () => {
+	const snapshots = [
+		{ type: "assistant_delta", piboSessionId: "chat:test", eventId: "turn-live", assistantIndex: 0, contentIndex: 2, text: "Answer in progress" },
+	];
+	const baseView = buildTraceViewFromEvents({
+		session: { id: "chat:test", piSessionId: "pi-test" },
+		status: traceProjectionStatus(
+			[],
+			"idle",
+			[{ eventId: "turn-live", userText: "active prompt" }],
+			{ processing: true, streaming: false, queuedMessages: 0 },
+		),
+		transcriptEntries: [
+			{
+				id: "entry-live-user",
+				type: "message",
+				timestamp: "2026-04-29T08:00:00.000Z",
+				message: { role: "user", content: [{ type: "text", text: "active prompt" }] },
+			},
+			{
+				id: "entry-live-assistant",
+				type: "message",
+				timestamp: "2026-04-29T08:00:02.000Z",
+				message: {
+					role: "assistant",
+					content: [
+						{ type: "thinking", thinking: "Plan" },
+						{ type: "toolCall", id: "tool-live", name: "read", arguments: { path: "package.json" } },
+					],
+					stopReason: "toolUse",
+				},
+			},
+		],
+		events: [
+			createEvent({ seq: 1, type: "message_queued", payload: { type: "message_queued", eventId: "turn-live", text: "active prompt", source: "user", queuedMessages: 1 } }),
+			createEvent({ seq: 2, type: "message_started", payload: { type: "message_started", eventId: "turn-live", text: "active prompt", source: "user" } }),
+			createEvent({ seq: 3, type: "thinking_finished", payload: { type: "thinking_finished", eventId: "turn-live", thinkingIndex: 0, contentIndex: 0, text: "Plan" } }),
+			createEvent({ seq: 4, type: "tool_call", payload: { type: "tool_call", eventId: "turn-live", toolCallId: "tool-live", toolName: "read", args: { path: "package.json" } } }),
+			createEvent({ seq: 5, type: "tool_execution_started", payload: { type: "tool_execution_started", eventId: "turn-live", toolCallId: "tool-live", toolName: "read" } }),
+		],
+	});
+	const liveView = withLiveSnapshots(baseView, snapshots, {
+		piboSessionId: "chat:test",
+		lastEventSequence: 5,
+		status: "running",
+	});
+	const nodes = flatNodes(liveView);
+	const liveTurn = liveView.nodes.find((node) => node.type === "agent.turn");
+
+	assert.ok(nodes.every((node) => node.source !== "transcript"), "active transcript entries must not coexist with event-backed live nodes");
+	assert.ok(liveTurn, "expected active turn");
+	assert.deepEqual(liveTurn.children.map((node) => node.type), ["model.reasoning", "tool.call", "assistant.message"]);
+});
+
 test("live snapshots keep thinking before the assistant for the same turn", () => {
 	const baseView = createBaseView([
 		createEvent({ seq: 1, type: "message_started", createdAt: "2026-04-29T08:00:00.000Z", payload: { type: "message_started", eventId: "turn-1", text: "Hello", source: "user" } }),
@@ -229,6 +284,26 @@ test("live snapshots keep thinking before the assistant for the same turn", () =
 	assert.deepEqual(finalTurn.children.map((node) => node.type), ["model.reasoning", "assistant.message"]);
 });
 
+test("event-log projection preserves repeated reasoning and tool phases chronologically", () => {
+	const view = createBaseView([
+		createEvent({ seq: 1, streamFrameIndex: 1, type: "message_started", payload: { type: "message_started", eventId: "turn-cycles", text: "Inspect", source: "user" } }),
+		createEvent({ seq: 2, streamFrameIndex: 2, type: "thinking_finished", payload: { type: "thinking_finished", eventId: "turn-cycles", thinkingIndex: 0, text: "First plan" } }),
+		createEvent({ seq: 3, streamFrameIndex: 3, type: "tool_call", payload: { type: "tool_call", eventId: "turn-cycles", toolCallId: "tool-cycle", toolName: "read", args: { path: "package.json" } } }),
+		createEvent({ seq: 4, streamFrameIndex: 4, type: "tool_execution_finished", payload: { type: "tool_execution_finished", eventId: "turn-cycles", toolCallId: "tool-cycle", toolName: "read", result: "ok" } }),
+		createEvent({ seq: 5, streamFrameIndex: 5, type: "thinking_finished", payload: { type: "thinking_finished", eventId: "turn-cycles", thinkingIndex: 1, text: "Final plan" } }),
+		createEvent({ seq: 6, streamFrameIndex: 6, type: "assistant_message", payload: { type: "assistant_message", eventId: "turn-cycles", assistantIndex: 0, text: "Done" } }),
+	], "running");
+
+	const turn = view.nodes.find((node) => node.type === "agent.turn");
+	assert.ok(turn, "expected active turn");
+	assert.deepEqual(turn.children.map((node) => node.id), [
+		"event:thinking:turn-cycles:thinking:0",
+		"tool:tool-cycle",
+		"event:thinking:turn-cycles:thinking:1",
+		"event:assistant:turn-cycles:assistant:0",
+	]);
+});
+
 test("execution commands after an errored turn remain chronological root nodes", () => {
 	const view = createBaseView([
 		createEvent({ seq: 1, type: "message_started", createdAt: "2026-04-29T08:00:00.000Z", payload: { type: "message_started", eventId: "turn-1", text: "Hello", source: "user" } }),
@@ -238,6 +313,62 @@ test("execution commands after an errored turn remain chronological root nodes",
 
 	assert.deepEqual(view.nodes.map((node) => node.title), ["Agent Turn", "Session Error", "thinking"]);
 	assert.equal(view.nodes.find((node) => node.title === "thinking")?.parentId, undefined);
+});
+
+test("live repeated prompt does not confirm against settled canonical transcript text", () => {
+	const baseView = buildTraceViewFromEvents({
+		session: { id: "chat:test", piSessionId: "pi-test" },
+		status: "idle",
+		transcriptEntries: [
+			{
+				id: "entry-user-one",
+				type: "message",
+				timestamp: "2026-04-29T08:00:00.000Z",
+				message: { role: "user", content: [{ type: "text", text: "same prompt" }] },
+			},
+			{
+				id: "entry-assistant-one",
+				type: "message",
+				timestamp: "2026-04-29T08:00:01.000Z",
+				message: { role: "assistant", content: [{ type: "text", text: "first answer" }] },
+			},
+			{
+				id: "entry-user-two",
+				type: "message",
+				timestamp: "2026-04-29T08:00:02.000Z",
+				message: { role: "user", content: [{ type: "text", text: "same prompt" }] },
+			},
+			{
+				id: "entry-assistant-two",
+				type: "message",
+				timestamp: "2026-04-29T08:00:03.000Z",
+				message: { role: "assistant", content: [{ type: "text", text: "second answer" }] },
+			},
+		],
+		events: [],
+		turnTimings: [
+			{ eventId: "turn-one", userText: "same prompt", completedAt: "2026-04-29T08:00:01.000Z" },
+			{ eventId: "turn-two", userText: "same prompt", completedAt: "2026-04-29T08:00:03.000Z" },
+		],
+	});
+	const patched = patchTraceViewWithEvent(baseView, createEvent({
+		seq: 4,
+		type: "message_queued",
+		payload: {
+			type: "message_queued",
+			eventId: "turn-three",
+			text: "same prompt",
+			source: "user",
+			queuedMessages: 1,
+		},
+	}), "running");
+
+	assert.notEqual(patched, baseView);
+	assert.deepEqual(flatNodes(patched).filter((node) => node.type === "user.message").map((node) => node.id), [
+		"event:message_queued:turn-one",
+		"event:message_queued:turn-two",
+		"event:message_queued:turn-three",
+	]);
 });
 
 test("persisted user message with optimistic event id keeps one trace node", () => {
@@ -316,6 +447,76 @@ test("confirmed steering events settle optimistic messages already attached to t
 	assert.equal(buildCompactTerminalRows(patched, { showThinking: true }).find((row) => row.id === steered[0].id)?.pendingMessageDelivery, undefined);
 });
 
+test("historical orphan content timing does not hide a later settled transcript turn", () => {
+	const fullHistoryEvents = [
+		createEvent({
+			seq: 1,
+			type: "thinking_finished",
+			createdAt: "2026-04-29T08:00:01.000Z",
+			payload: { type: "thinking_finished", eventId: "orphan-reasoning", thinkingIndex: 0, text: "orphan thought" },
+		}),
+		createEvent({
+			seq: 2,
+			type: "message_started",
+			createdAt: "2026-04-29T08:00:02.000Z",
+			payload: { type: "message_started", eventId: "turn-later", text: "latest prompt", source: "user" },
+		}),
+		createEvent({
+			seq: 3,
+			type: "assistant_message",
+			createdAt: "2026-04-29T08:00:03.000Z",
+			payload: { type: "assistant_message", eventId: "turn-later", assistantIndex: 0, text: "latest answer" },
+		}),
+		createEvent({
+			seq: 4,
+			type: "message_finished",
+			createdAt: "2026-04-29T08:00:04.000Z",
+			payload: { type: "message_finished", eventId: "turn-later" },
+		}),
+	];
+	const turnTimings = messageTurnTimingsFromEvents(fullHistoryEvents);
+	const status = traceProjectionStatus([], "idle", turnTimings);
+	const view = buildTraceViewFromEvents({
+		session: { id: "chat:test", piSessionId: "pi-test" },
+		status,
+		transcriptEntries: [
+			{
+				id: "old-user",
+				type: "message",
+				timestamp: "2026-04-29T07:59:58.000Z",
+				message: { role: "user", content: [{ type: "text", text: "old prompt" }] },
+			},
+			{
+				id: "old-assistant",
+				type: "message",
+				timestamp: "2026-04-29T07:59:59.000Z",
+				message: { role: "assistant", content: [{ type: "text", text: "old answer" }] },
+			},
+			{
+				id: "latest-user",
+				type: "message",
+				timestamp: "2026-04-29T08:00:02.000Z",
+				message: { role: "user", content: [{ type: "text", text: "latest prompt" }] },
+			},
+			{
+				id: "latest-assistant",
+				type: "message",
+				timestamp: "2026-04-29T08:00:03.000Z",
+				message: { role: "assistant", content: [{ type: "text", text: "latest answer" }] },
+			},
+		],
+		events: fullHistoryEvents,
+		turnTimings,
+	});
+
+	assert.equal(status, "idle");
+	const transcriptOutput = flatNodes(view)
+		.filter((node) => node.source === "transcript")
+		.map((node) => node.output);
+	assert.ok(transcriptOutput.includes("latest prompt"));
+	assert.ok(transcriptOutput.includes("latest answer"));
+});
+
 test("persisted steering messages remain attached to the active turn after reload", () => {
 	const view = buildTraceViewFromEvents({
 		session: { id: "chat:test", piSessionId: "pi-test" },
@@ -334,9 +535,66 @@ test("persisted steering messages remain attached to the active turn after reloa
 		],
 	});
 
-	const steered = flatNodes(view).find((node) => node.id === "entry:steer-1");
+	const steered = flatNodes(view).find((node) => node.id === "event:message_steered:steer-1");
 	assert.ok(steered);
+	assert.equal(steered.entryId, "steer-1");
 	assert.equal(steered.parentId, "event:message:turn-1");
+});
+
+test("persisted steering messages retain event-backed identity after the event ages out of the tail", () => {
+	const view = buildTraceViewFromEvents({
+		session: { id: "chat:test", piSessionId: "pi-test" },
+		status: "idle",
+		transcriptEntries: [
+			{
+				id: "steer-1",
+				type: "message",
+				timestamp: "2026-04-29T08:00:01.000Z",
+				message: { role: "user", content: [{ type: "text", text: "Adjust course" }] },
+			},
+			{
+				id: "assistant-after-steer",
+				type: "message",
+				timestamp: "2026-04-29T08:00:02.000Z",
+				message: { role: "assistant", content: [{ type: "text", text: "Adjusted" }] },
+			},
+		],
+		events: [],
+		turnTimings: [{ eventId: "steer-1", userText: "Adjust course", userMessageType: "message_steered" }],
+	});
+
+	const steered = flatNodes(view).find((node) => node.type === "user.message");
+	assert.equal(steered?.id, "event:message_steered:steer-1");
+	assert.equal(steered?.entryId, "steer-1");
+	assert.equal(flatNodes(view).find((node) => node.type === "assistant.message")?.id, "entry:assistant-after-steer:response");
+});
+
+test("persisted user messages retain their event-backed identity after a turn settles", () => {
+	const event = createEvent({
+		seq: 1,
+		type: "message_queued",
+		payload: { type: "message_queued", eventId: "turn-stable-user", text: "Stable prompt", source: "user" },
+	});
+	const active = createBaseView([event], "running");
+	const settled = buildTraceViewFromEvents({
+		session: { id: "chat:test", piSessionId: "pi-test" },
+		status: "idle",
+		transcriptEntries: [
+			{
+				id: "entry-stable-user",
+				type: "message",
+				timestamp: "2026-04-29T08:00:00.000Z",
+				message: { role: "user", content: [{ type: "text", text: "Stable prompt" }] },
+			},
+		],
+		events: [event],
+	});
+
+	const activeUser = flatNodes(active).find((node) => node.type === "user.message");
+	const settledUser = flatNodes(settled).find((node) => node.type === "user.message");
+	assert.equal(activeUser?.id, "event:message_queued:turn-stable-user");
+	assert.equal(settledUser?.id, activeUser?.id);
+	assert.equal(settledUser?.entryId, "entry-stable-user");
 });
 
 test("optimistic user echo is ignored once the transcript entry exists", () => {

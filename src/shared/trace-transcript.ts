@@ -4,7 +4,7 @@ import { attachAsyncAgentRunNode, reconcileAsyncAgentRunStatuses } from "./trace
 import { sortTraceNodes } from "./trace-nodes.js";
 import { createRunNotificationNode, parseRunNotificationText } from "./trace-run-notifications.js";
 import { isSubagentToolName } from "./trace-subagent-links.js";
-import type { TraceMessageTurnTiming } from "./trace-event-projection.js";
+import { assistantMessageNodeId, thinkingNodeId, type TraceMessageTurnTiming } from "./trace-event-projection.js";
 import type { PiboTraceNode, PiboTraceNodeStatus, PiboWebSessionStatus } from "./trace-types.js";
 
 type MessageSessionEntry = Extract<SessionEntry, { type: "message" }>;
@@ -31,17 +31,23 @@ export function projectTranscriptEntries(
 	entries: SessionEntry[],
 	sessionStatus: PiboWebSessionStatus,
 	openTranscriptEventIds: ReadonlySet<string>,
+	turnTimings: readonly TraceMessageTurnTiming[] = [],
 ): SessionEntry[] {
 	if (sessionStatus !== "running" || openTranscriptEventIds.size === 0) return entries;
+	const userTimingAssignments = assignTranscriptUserTimings(entries, turnTimings);
 	let lastUserMessageIndex = -1;
-	for (let index = entries.length - 1; index >= 0; index -= 1) {
+	let lastUserEventId: string | undefined;
+	for (let index = 0; index < entries.length; index += 1) {
 		const entry = entries[index];
-		if (entry.type === "message" && messageRole(entry) === "user") {
-			lastUserMessageIndex = index;
-			break;
-		}
+		if (entry.type !== "message" || messageRole(entry) !== "user") continue;
+		lastUserMessageIndex = index;
+		lastUserEventId = openTranscriptEventIds.has(entry.id)
+			? entry.id
+			: userTimingAssignments.get(index)?.eventId;
 	}
-	return lastUserMessageIndex === -1 ? entries : entries.slice(0, lastUserMessageIndex);
+	return lastUserMessageIndex !== -1 && lastUserEventId && openTranscriptEventIds.has(lastUserEventId)
+		? entries.slice(0, lastUserMessageIndex)
+		: entries;
 }
 
 export function traceNodesFromEntries(
@@ -51,13 +57,14 @@ export function traceNodesFromEntries(
 ): PiboTraceNode[] {
 	const nodes: PiboTraceNode[] = [];
 	const turnTimingAssignments = assignTranscriptTurnTimings(entries, turnTimings);
+	const userTimingAssignments = assignTranscriptUserTimings(entries, turnTimings);
 	let assistantTurnIndex = 0;
 	for (let index = 0; index < entries.length; index += 1) {
 		const entry = entries[index];
 		if (entry.type === "message") {
 			const role = messageRole(entry);
 			if (role === "user") {
-				nodes.push(createUserMessageNode(piboSessionId, entry, messageContent(entry), index));
+				nodes.push(createUserMessageNode(piboSessionId, entry, messageContent(entry), index, userTimingAssignments.get(index)));
 			} else if (role === "assistant" || role === "toolResult") {
 				const turn = collectAssistantTurn(entries, index);
 				const hasAssistant = turn.entries.some(({ entry: turnEntry }) => messageRole(turnEntry) === "assistant");
@@ -102,38 +109,57 @@ function messageParts(entry: MessageSessionEntry): unknown[] {
 	return Array.isArray(content) ? content : [];
 }
 
-function assignTranscriptTurnTimings(
-	entries: SessionEntry[],
-	turnTimings: readonly TraceMessageTurnTiming[],
-): Array<TraceMessageTurnTiming | undefined> {
-	const transcriptTurns: Array<{ prompt?: string; assistantAt?: number }> = [];
+type TranscriptTurnTimingTarget = {
+	prompt?: string;
+	userEntryIndex?: number;
+	assistantAt?: number;
+	settled: boolean;
+};
+
+function collectTranscriptTurnTimingTargets(entries: SessionEntry[]): TranscriptTurnTimingTarget[] {
+	const targets: TranscriptTurnTimingTarget[] = [];
 	let latestUserText: string | undefined;
+	let latestUserEntryIndex: number | undefined;
 	for (let index = 0; index < entries.length; index += 1) {
 		const entry = entries[index];
 		if (entry.type !== "message") continue;
 		const role = messageRole(entry);
 		if (role === "user") {
 			latestUserText = normalizedPrompt(extractText(messageContent(entry)));
+			latestUserEntryIndex = index;
 			continue;
 		}
 		if (role !== "assistant" && role !== "toolResult") continue;
 		const turn = collectAssistantTurn(entries, index);
 		const lastAssistant = [...turn.entries].reverse().find(({ entry: turnEntry }) => messageRole(turnEntry) === "assistant");
 		if (lastAssistant) {
-			transcriptTurns.push({ prompt: latestUserText, assistantAt: parsedTimestamp(lastAssistant.entry.timestamp) });
+			targets.push({
+				prompt: latestUserText,
+				userEntryIndex: latestUserEntryIndex,
+				assistantAt: parsedTimestamp(lastAssistant.entry.timestamp),
+				settled: isSettledAssistantEntry(lastAssistant.entry),
+			});
 		}
 		index = turn.nextIndex - 1;
 	}
+	return targets;
+}
 
+function assignTranscriptTurnTimings(
+	entries: SessionEntry[],
+	turnTimings: readonly TraceMessageTurnTiming[],
+): Array<TraceMessageTurnTiming | undefined> {
+	const messageTurnTimings = turnTimings.filter((timing) => timing.userMessageType !== "message_steered");
+	const transcriptTurns = collectTranscriptTurnTimingTargets(entries);
 	const assignments: Array<TraceMessageTurnTiming | undefined> = Array(transcriptTurns.length).fill(undefined);
-	let timingCursor = turnTimings.length - 1;
+	let timingCursor = messageTurnTimings.length - 1;
 	for (let turnIndex = transcriptTurns.length - 1; turnIndex >= 0; turnIndex -= 1) {
 		const transcriptTurn = transcriptTurns[turnIndex];
 		if (!transcriptTurn?.prompt) continue;
 		let matchedIndex: number | undefined;
 		let matchedDistance = Number.POSITIVE_INFINITY;
 		for (let timingIndex = timingCursor; timingIndex >= 0; timingIndex -= 1) {
-			const timing = turnTimings[timingIndex];
+			const timing = messageTurnTimings[timingIndex];
 			if (normalizedPrompt(timing?.userText) !== transcriptTurn.prompt) continue;
 			const completedAt = parsedTimestamp(timing?.completedAt);
 			const distance = completedAt === undefined || transcriptTurn.assistantAt === undefined
@@ -145,10 +171,129 @@ function assignTranscriptTurnTimings(
 			}
 		}
 		if (matchedIndex === undefined) continue;
-		assignments[turnIndex] = turnTimings[matchedIndex];
+		assignments[turnIndex] = messageTurnTimings[matchedIndex];
 		timingCursor = matchedIndex - 1;
 	}
 	return assignments;
+}
+
+function assignTranscriptUserTimings(
+	entries: SessionEntry[],
+	turnTimings: readonly TraceMessageTurnTiming[],
+): Map<number, TraceMessageTurnTiming> {
+	const users: Array<{ entryIndex: number; entryId: string; prompt?: string }> = [];
+	const userPositionByEntryIndex = new Map<number, number>();
+	for (let entryIndex = 0; entryIndex < entries.length; entryIndex += 1) {
+		const entry = entries[entryIndex];
+		if (entry.type !== "message" || messageRole(entry) !== "user") continue;
+		userPositionByEntryIndex.set(entryIndex, users.length);
+		users.push({
+			entryIndex,
+			entryId: entry.id,
+			prompt: normalizedPrompt(extractText(messageContent(entry))),
+		});
+	}
+	if (!users.length || !turnTimings.length) return new Map();
+
+	const timingIndexByEventId = new Map(turnTimings.map((timing, timingIndex) => [timing.eventId, timingIndex]));
+	const anchorByUserPosition = new Map<number, number>();
+	const assignedTimingIndexes = new Set<number>();
+	for (let userPosition = 0; userPosition < users.length; userPosition += 1) {
+		const timingIndex = timingIndexByEventId.get(users[userPosition]!.entryId);
+		if (timingIndex === undefined || assignedTimingIndexes.has(timingIndex)) continue;
+		anchorByUserPosition.set(userPosition, timingIndex);
+		assignedTimingIndexes.add(timingIndex);
+	}
+
+	const transcriptTurns = collectTranscriptTurnTimingTargets(entries);
+	let timingUpperBound = turnTimings.length - 1;
+	for (let turnIndex = transcriptTurns.length - 1; turnIndex >= 0; turnIndex -= 1) {
+		const transcriptTurn = transcriptTurns[turnIndex];
+		const userPosition = transcriptTurn?.userEntryIndex === undefined
+			? undefined
+			: userPositionByEntryIndex.get(transcriptTurn.userEntryIndex);
+		if (!transcriptTurn?.prompt || userPosition === undefined) continue;
+		const exactAnchor = anchorByUserPosition.get(userPosition);
+		if (exactAnchor !== undefined) {
+			timingUpperBound = Math.min(timingUpperBound, exactAnchor - 1);
+			continue;
+		}
+
+		let steeringTimingIndex: number | undefined;
+		for (let timingIndex = timingUpperBound; timingIndex >= 0; timingIndex -= 1) {
+			const timing = turnTimings[timingIndex]!;
+			if (assignedTimingIndexes.has(timingIndex) || timing.userMessageType !== "message_steered") continue;
+			if (normalizedPrompt(timing.userText) !== transcriptTurn.prompt) continue;
+			steeringTimingIndex = timingIndex;
+			break;
+		}
+		if (steeringTimingIndex !== undefined) {
+			anchorByUserPosition.set(userPosition, steeringTimingIndex);
+			assignedTimingIndexes.add(steeringTimingIndex);
+			timingUpperBound = steeringTimingIndex - 1;
+			continue;
+		}
+		if (!transcriptTurn.settled) continue;
+
+		let matchedTimingIndex: number | undefined;
+		let matchedDistance = Number.POSITIVE_INFINITY;
+		for (let timingIndex = timingUpperBound; timingIndex >= 0; timingIndex -= 1) {
+			const timing = turnTimings[timingIndex]!;
+			if (assignedTimingIndexes.has(timingIndex) || timing.userMessageType === "message_steered" || !timing.completedAt) continue;
+			if (normalizedPrompt(timing.userText) !== transcriptTurn.prompt) continue;
+			const completedAt = parsedTimestamp(timing.completedAt);
+			const distance = completedAt === undefined || transcriptTurn.assistantAt === undefined
+				? Number.POSITIVE_INFINITY
+				: Math.abs(completedAt - transcriptTurn.assistantAt);
+			if (matchedTimingIndex === undefined || distance < matchedDistance) {
+				matchedTimingIndex = timingIndex;
+				matchedDistance = distance;
+			}
+		}
+		if (matchedTimingIndex === undefined) continue;
+		anchorByUserPosition.set(userPosition, matchedTimingIndex);
+		assignedTimingIndexes.add(matchedTimingIndex);
+		timingUpperBound = matchedTimingIndex - 1;
+	}
+
+	const assignments = new Map<number, TraceMessageTurnTiming>();
+	const anchors = [...anchorByUserPosition.entries()]
+		.map(([userPosition, timingIndex]) => ({ userPosition, timingIndex }))
+		.sort((left, right) => left.userPosition - right.userPosition);
+	for (const anchor of anchors) {
+		assignments.set(users[anchor.userPosition]!.entryIndex, turnTimings[anchor.timingIndex]!);
+	}
+
+	const boundaries = [
+		{ userPosition: -1, timingIndex: -1 },
+		...anchors,
+		{ userPosition: users.length, timingIndex: turnTimings.length },
+	];
+	for (let boundaryIndex = 0; boundaryIndex < boundaries.length - 1; boundaryIndex += 1) {
+		const previous = boundaries[boundaryIndex]!;
+		const next = boundaries[boundaryIndex + 1]!;
+		let timingCursor = next.timingIndex - 1;
+		for (let userPosition = next.userPosition - 1; userPosition > previous.userPosition; userPosition -= 1) {
+			const user = users[userPosition]!;
+			if (assignments.has(user.entryIndex) || !user.prompt) continue;
+			for (let timingIndex = timingCursor; timingIndex > previous.timingIndex; timingIndex -= 1) {
+				if (assignedTimingIndexes.has(timingIndex)) continue;
+				const timing = turnTimings[timingIndex]!;
+				if (normalizedPrompt(timing.userText) !== user.prompt) continue;
+				assignments.set(user.entryIndex, timing);
+				assignedTimingIndexes.add(timingIndex);
+				timingCursor = timingIndex - 1;
+				break;
+			}
+		}
+	}
+	return assignments;
+}
+
+function isSettledAssistantEntry(entry: MessageSessionEntry): boolean {
+	const message = entry.message as { stopReason?: unknown; status?: unknown };
+	if (message.stopReason === "toolUse" || message.stopReason === "tool_use") return false;
+	return message.status !== "streaming" && message.status !== "in_progress";
 }
 
 function normalizedPrompt(value: string | undefined): string | undefined {
@@ -184,6 +329,7 @@ function createUserMessageNode(
 	entry: MessageSessionEntry,
 	content: unknown,
 	entryIndex: number,
+	timing?: TraceMessageTurnTiming,
 ): PiboTraceNode {
 	const text = extractText(content);
 	const notification = parseRunNotificationText(text);
@@ -199,8 +345,10 @@ function createUserMessageNode(
 			notification,
 		});
 	}
+	const userMessageType = timing?.userMessageType ?? "message_queued";
+	const eventIdentity = timing ? `event:${userMessageType}:${timing.eventId}` : undefined;
 	return {
-		id: `entry:${entry.id}`,
+		id: eventIdentity ?? `entry:${entry.id}`,
 		entryId: entry.id,
 		piboSessionId,
 		type: "user.message",
@@ -210,7 +358,7 @@ function createUserMessageNode(
 		summary: text,
 		output: text,
 		source: "transcript",
-		stableKey: `entry:${entry.id}`,
+		stableKey: eventIdentity ?? `entry:${entry.id}`,
 		orderKey: transcriptTraceOrder(entryIndex, 0, "user.message"),
 		children: [],
 	};
@@ -226,7 +374,8 @@ function createAssistantTurnNodes(
 
 	const orderedNodes: PiboTraceNode[] = [];
 	const toolsByCallId = new Map<string, PiboTraceNode>();
-	let assistantIndex = 0;
+	let assistantPartOrdinal = 0;
+	let reasoningPartOrdinal = 0;
 
 	for (const { entry, index: entryIndex } of entries) {
 		if (messageRole(entry) === "toolResult") {
@@ -241,15 +390,27 @@ function createAssistantTurnNodes(
 		for (const [index, part] of messageParts(entry).entries()) {
 			const typed = part as MessagePart;
 			if (typed.type === "thinking" && typeof typed.thinking === "string" && hasVisibleText(typed.thinking)) {
-				orderedNodes.push(createReasoningNode(piboSessionId, entry, entryIndex, index, typed.thinking));
+				const thinkingIndex = timing?.reasoningIndices?.[reasoningPartOrdinal] ?? reasoningPartOrdinal;
+				orderedNodes.push(createReasoningNode({
+					piboSessionId,
+					entry,
+					entryIndex,
+					contentPartIndex: index,
+					thinkingIndex,
+					eventId: timing?.eventId,
+					thinking: typed.thinking,
+				}));
+				reasoningPartOrdinal += 1;
 			} else if (typed.type === "text" && typeof typed.text === "string" && typed.text !== "") {
 				if (!responseNode) {
+					const assistantIndex = timing?.assistantIndices?.[assistantPartOrdinal] ?? assistantPartOrdinal;
 					responseNode = createAssistantMessageNode({
-						id: `entry:${entry.id}:response`,
 						piboSessionId,
 						entry,
 						entryIndex,
 						contentPartIndex: index,
+						assistantIndex,
+						eventId: timing?.eventId,
 						status: responseStatus,
 						text: typed.text,
 						error: responseError,
@@ -271,8 +432,7 @@ function createAssistantTurnNodes(
 		if (responseNode) {
 			responseNode.status = responseStatus;
 			responseNode.error = responseError;
-			if (timing?.eventId) responseNode.stableKey = `assistant:${timing.eventId}:assistant:${assistantIndex}`;
-			assistantIndex += 1;
+			assistantPartOrdinal += 1;
 		}
 	}
 	const finalNode = orderedNodes.at(-1);
@@ -283,26 +443,29 @@ function createAssistantTurnNodes(
 	return orderedNodes;
 }
 
-function createReasoningNode(
-	piboSessionId: string,
-	entry: MessageSessionEntry,
-	entryIndex: number,
-	index: number,
-	thinking: string,
-): PiboTraceNode {
+function createReasoningNode(input: {
+	piboSessionId: string;
+	entry: MessageSessionEntry;
+	entryIndex: number;
+	contentPartIndex: number;
+	thinkingIndex: number;
+	eventId?: string;
+	thinking: string;
+}): PiboTraceNode {
+	const eventIdentity = input.eventId ? `${input.eventId}:thinking:${input.thinkingIndex}` : undefined;
 	return {
-		id: `entry:${entry.id}:thinking:${index}`,
-		entryId: entry.id,
-		piboSessionId,
+		id: eventIdentity ? thinkingNodeId(eventIdentity) : `entry:${input.entry.id}:thinking:${input.contentPartIndex}`,
+		entryId: input.entry.id,
+		piboSessionId: input.piboSessionId,
 		type: "model.reasoning",
 		title: "Thinking",
 		status: "done",
-		startedAt: entry.timestamp,
-		summary: thinking,
-		output: thinking,
+		startedAt: input.entry.timestamp,
+		summary: input.thinking,
+		output: input.thinking,
 		source: "transcript",
-		stableKey: `entry:${entry.id}:thinking:${index}`,
-		orderKey: transcriptTraceOrder(entryIndex, index, "model.reasoning"),
+		stableKey: eventIdentity ? `reasoning:${eventIdentity}` : `entry:${input.entry.id}:thinking:${input.contentPartIndex}`,
+		orderKey: transcriptTraceOrder(input.entryIndex, input.contentPartIndex, "model.reasoning"),
 		children: [],
 	};
 }
@@ -317,7 +480,7 @@ function createToolCallNode(
 	const name = typeof part.name === "string" ? part.name : "Tool Call";
 	const toolCallId = typeof part.id === "string" ? part.id : undefined;
 	return {
-		id: `entry:${entry.id}:tool:${String(part.id)}`,
+		id: toolCallId ? `tool:${toolCallId}` : `entry:${entry.id}:tool:${contentPartIndex}`,
 		entryId: entry.id,
 		piboSessionId,
 		toolCallId,
@@ -375,7 +538,7 @@ function createMissingToolResultNode(
 ): PiboTraceNode {
 	const message = entry.message as { toolName?: unknown };
 	return {
-		id: `entry:${entry.id}:tool-result:${toolCallId}`,
+		id: `tool:${toolCallId}`,
 		entryId: entry.id,
 		piboSessionId,
 		toolCallId,
@@ -396,11 +559,12 @@ function toolResultOutput(message: { content?: unknown; details?: unknown }): un
 }
 
 function createAssistantMessageNode(input: {
-	id: string;
 	piboSessionId: string;
 	entry: MessageSessionEntry;
 	entryIndex: number;
 	contentPartIndex: number;
+	assistantIndex: number;
+	eventId?: string;
 	status: PiboTraceNodeStatus;
 	text: string;
 	error?: string;
@@ -408,10 +572,12 @@ function createAssistantMessageNode(input: {
 	startedAt?: string;
 	completedAt?: string;
 }): PiboTraceNode {
+	const eventIdentity = input.eventId ? `${input.eventId}:assistant:${input.assistantIndex}` : undefined;
 	return {
-		id: input.id,
+		id: eventIdentity ? assistantMessageNodeId(eventIdentity) : `entry:${input.entry.id}:response`,
 		entryId: input.entry.id,
 		piboSessionId: input.piboSessionId,
+		eventId: input.eventId,
 		type: "assistant.message",
 		title: "Agent Message",
 		status: input.status,
@@ -421,7 +587,7 @@ function createAssistantMessageNode(input: {
 		output: input.text,
 		error: input.error,
 		source: "transcript",
-		stableKey: `entry:${input.entry.id}:response:${input.contentPartIndex}`,
+		stableKey: eventIdentity ? `assistant:${eventIdentity}` : `entry:${input.entry.id}:response:${input.contentPartIndex}`,
 		orderKey: transcriptTraceOrder(input.entryIndex, input.contentPartIndex, "assistant.message"),
 		children: input.children ?? [],
 	};

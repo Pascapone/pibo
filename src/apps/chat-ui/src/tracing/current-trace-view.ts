@@ -1,6 +1,6 @@
 import { patchTraceViewWithEvents } from "../../../../shared/trace-engine.js";
 import type { PiboSessionTraceView, PiboWebSessionStatus } from "../types";
-import { type LiveTraceOverlay } from "./live-overlay";
+import { trimLiveOverlayForBaseTrace, type LiveTraceOverlay } from "./live-overlay";
 import {
 	annotateLiveTraceForkEntryIds,
 	overlayIncludesOptimisticUserMessage,
@@ -29,9 +29,10 @@ export function computeCurrentTraceView({
 }): CurrentTraceViewComputation {
 	if (!selectedPiboSessionId) return { traceView: null };
 	if (reconciledBaseTraceView?.piboSessionId !== selectedPiboSessionId) return { traceView: null };
-	const overlayEvents = liveTraceOverlay?.piboSessionId === selectedPiboSessionId
-		? liveTraceOverlay.events
-		: [];
+	const reconciledOverlay = liveTraceOverlay?.piboSessionId === selectedPiboSessionId
+		? trimLiveOverlayForBaseTrace(liveTraceOverlay, reconciledBaseTraceView)
+		: null;
+	const overlayEvents = reconciledOverlay?.events ?? [];
 	if (!overlayEvents.length) return { traceView: reconciledBaseTraceView };
 	const startedAt = now?.();
 	const liveTrace = patchTraceViewWithEvents(reconciledBaseTraceView, overlayEvents, selectedSessionStatus ?? "idle");

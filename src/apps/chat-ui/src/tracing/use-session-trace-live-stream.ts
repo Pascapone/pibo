@@ -31,6 +31,14 @@ const LIVE_STREAM_STALE_MS = 45_000;
 const RUNNING_TRACE_RECOVERY_POLL_MS = 15_000;
 const HIDDEN_STREAM_FLUSH_DELAY_MS = 100;
 
+export function nextLiveTraceEventSequence(
+	trace: Pick<PiboSessionTraceView, "eventCount" | "lastEventSequence" | "rawEvents">,
+): number {
+	let maxSequence = Math.max(trace.eventCount ?? 0, trace.lastEventSequence ?? 0);
+	for (const event of trace.rawEvents) maxSequence = Math.max(maxSequence, event.eventSequence ?? 0);
+	return maxSequence + 1;
+}
+
 type SelectedLiveEventStream = {
 	piboSessionId: string;
 	events: EventSource;
@@ -77,10 +85,7 @@ export function useSessionTraceLiveStream({
 	useEffect(() => {
 		const trace = tracePageData;
 		if (!trace || trace.piboSessionId !== selectedPiboSessionId) return;
-		const maxSeq = trace.rawEvents
-			.map((e) => e.eventSequence ?? 0)
-			.reduce((a, b) => Math.max(a, b), 0);
-		liveEventSeqRef.current = Math.max(liveEventSeqRef.current, maxSeq + 1);
+		liveEventSeqRef.current = Math.max(liveEventSeqRef.current, nextLiveTraceEventSequence(trace));
 		if (trace.latestStreamId !== undefined) {
 			recordTraceLiveCursor(latestLiveCursorBySession.current, trace.piboSessionId, trace.latestStreamId);
 		}

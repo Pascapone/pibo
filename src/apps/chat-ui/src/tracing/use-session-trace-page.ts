@@ -158,6 +158,18 @@ export function useSessionTracePage({
 	}, [liveTraceOverlayCacheRef, selectedPiboSessionId, setLiveTraceOverlay, tracePageQuery.data]);
 
 	useEffect(() => {
+		const trace = baseTraceView;
+		if (!trace || trace.piboSessionId !== selectedPiboSessionId) return;
+		startTransition(() => {
+			setLiveTraceOverlay((current) => reconcileLiveTraceOverlayCache(
+				liveTraceOverlayCacheRef.current,
+				current,
+				trace,
+			));
+		});
+	}, [baseTraceView, liveTraceOverlayCacheRef, selectedPiboSessionId, setLiveTraceOverlay]);
+
+	useEffect(() => {
 		const rawPage = rawEventsQuery.data;
 		if (!rawPage || rawPage.piboSessionId !== selectedPiboSessionId) return;
 		startTransition(() => {
