@@ -74,7 +74,7 @@ export function applySingleEventToNodes(
 			storedEvent.streamId,
 			storedEvent.streamFrameIndex,
 		);
-		const existing = byId.get(node.id);
+		const existing = byId.get(node.id) ?? findMatchingContentNode(byId, node);
 		if (existing) {
 			mergeAssistantMessageEvent(existing, node);
 			return;
@@ -117,7 +117,7 @@ export function applySingleEventToNodes(
 		}
 	}
 	if (node.type === "assistant.message") {
-		const existing = byId.get(node.id);
+		const existing = byId.get(node.id) ?? findMatchingContentNode(byId, node);
 		if (existing) {
 			mergeAssistantMessageEvent(existing, node);
 			return;
@@ -131,7 +131,7 @@ export function applySingleEventToNodes(
 		}
 	}
 	if (node.type === "model.reasoning") {
-		const existing = byId.get(node.id);
+		const existing = byId.get(node.id) ?? findMatchingContentNode(byId, node);
 		if (existing) {
 			mergeReasoningEvent(existing, node);
 			return;
@@ -602,6 +602,16 @@ function mergeAssistantDeltaEvent(
 	byId.set(node.id, node);
 }
 
+function findMatchingContentNode(
+	byId: ReadonlyMap<string, PiboTraceNode>,
+	update: PiboTraceNode,
+): PiboTraceNode | undefined {
+	if (!update.stableKey) return undefined;
+	return [...byId.values()].find(
+		(candidate) => candidate.type === update.type && candidate.stableKey === update.stableKey,
+	);
+}
+
 function mergeAssistantMessageEvent(target: PiboTraceNode, update: PiboTraceNode): void {
 	target.status = update.status;
 	target.summary = update.summary ?? target.summary;
@@ -624,7 +634,10 @@ function mergeThinkingDeltaEvent(
 
 	const thinkingId = thinkingEventNodeId(event);
 	const id = thinkingId ? thinkingNodeId(thinkingId) : `event:thinking_delta:${cryptoSafeId(event)}`;
-	const existing = byId.get(id);
+	const stableKey = thinkingId ? `reasoning:${thinkingId}` : id;
+	const existing = byId.get(id) ?? [...byId.values()].find(
+		(candidate) => candidate.type === "model.reasoning" && candidate.stableKey === stableKey,
+	);
 	if (existing) {
 		const text = `${typeof existing.output === "string" ? existing.output : ""}${event.text}`;
 		existing.status = sessionStatus === "running" ? "running" : "done";
@@ -645,7 +658,7 @@ function mergeThinkingDeltaEvent(
 		summary: event.text,
 		output: event.text,
 		source: "event-log",
-		stableKey: thinkingId ? `reasoning:${thinkingId}` : id,
+		stableKey,
 		orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex),
 		children: [],
 	};

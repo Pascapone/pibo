@@ -4,7 +4,7 @@ import { attachAsyncAgentRunNode, reconcileAsyncAgentRunStatuses } from "./trace
 import { sortTraceNodes } from "./trace-nodes.js";
 import { createRunNotificationNode, parseRunNotificationText } from "./trace-run-notifications.js";
 import { isSubagentToolName } from "./trace-subagent-links.js";
-import type { TraceMessageTurnTiming } from "./trace-event-projection.js";
+import { assistantMessageNodeId, thinkingNodeId, type TraceMessageTurnTiming } from "./trace-event-projection.js";
 import type { PiboTraceNode, PiboTraceNodeStatus, PiboWebSessionStatus } from "./trace-types.js";
 
 type MessageSessionEntry = Extract<SessionEntry, { type: "message" }>;
@@ -227,6 +227,7 @@ function createAssistantTurnNodes(
 	const orderedNodes: PiboTraceNode[] = [];
 	const toolsByCallId = new Map<string, PiboTraceNode>();
 	let assistantIndex = 0;
+	let reasoningIndex = 0;
 
 	for (const { entry, index: entryIndex } of entries) {
 		if (messageRole(entry) === "toolResult") {
@@ -241,15 +242,25 @@ function createAssistantTurnNodes(
 		for (const [index, part] of messageParts(entry).entries()) {
 			const typed = part as MessagePart;
 			if (typed.type === "thinking" && typeof typed.thinking === "string" && hasVisibleText(typed.thinking)) {
-				orderedNodes.push(createReasoningNode(piboSessionId, entry, entryIndex, index, typed.thinking));
+				orderedNodes.push(createReasoningNode({
+					piboSessionId,
+					entry,
+					entryIndex,
+					contentPartIndex: index,
+					thinkingIndex: reasoningIndex,
+					eventId: timing?.eventId,
+					thinking: typed.thinking,
+				}));
+				reasoningIndex += 1;
 			} else if (typed.type === "text" && typeof typed.text === "string" && typed.text !== "") {
 				if (!responseNode) {
 					responseNode = createAssistantMessageNode({
-						id: `entry:${entry.id}:response`,
 						piboSessionId,
 						entry,
 						entryIndex,
 						contentPartIndex: index,
+						assistantIndex,
+						eventId: timing?.eventId,
 						status: responseStatus,
 						text: typed.text,
 						error: responseError,
@@ -271,7 +282,6 @@ function createAssistantTurnNodes(
 		if (responseNode) {
 			responseNode.status = responseStatus;
 			responseNode.error = responseError;
-			if (timing?.eventId) responseNode.stableKey = `assistant:${timing.eventId}:assistant:${assistantIndex}`;
 			assistantIndex += 1;
 		}
 	}
@@ -283,26 +293,29 @@ function createAssistantTurnNodes(
 	return orderedNodes;
 }
 
-function createReasoningNode(
-	piboSessionId: string,
-	entry: MessageSessionEntry,
-	entryIndex: number,
-	index: number,
-	thinking: string,
-): PiboTraceNode {
+function createReasoningNode(input: {
+	piboSessionId: string;
+	entry: MessageSessionEntry;
+	entryIndex: number;
+	contentPartIndex: number;
+	thinkingIndex: number;
+	eventId?: string;
+	thinking: string;
+}): PiboTraceNode {
+	const eventIdentity = input.eventId ? `${input.eventId}:thinking:${input.thinkingIndex}` : undefined;
 	return {
-		id: `entry:${entry.id}:thinking:${index}`,
-		entryId: entry.id,
-		piboSessionId,
+		id: eventIdentity ? thinkingNodeId(eventIdentity) : `entry:${input.entry.id}:thinking:${input.contentPartIndex}`,
+		entryId: input.entry.id,
+		piboSessionId: input.piboSessionId,
 		type: "model.reasoning",
 		title: "Thinking",
 		status: "done",
-		startedAt: entry.timestamp,
-		summary: thinking,
-		output: thinking,
+		startedAt: input.entry.timestamp,
+		summary: input.thinking,
+		output: input.thinking,
 		source: "transcript",
-		stableKey: `entry:${entry.id}:thinking:${index}`,
-		orderKey: transcriptTraceOrder(entryIndex, index, "model.reasoning"),
+		stableKey: eventIdentity ? `reasoning:${eventIdentity}` : `entry:${input.entry.id}:thinking:${input.contentPartIndex}`,
+		orderKey: transcriptTraceOrder(input.entryIndex, input.contentPartIndex, "model.reasoning"),
 		children: [],
 	};
 }
@@ -317,7 +330,7 @@ function createToolCallNode(
 	const name = typeof part.name === "string" ? part.name : "Tool Call";
 	const toolCallId = typeof part.id === "string" ? part.id : undefined;
 	return {
-		id: `entry:${entry.id}:tool:${String(part.id)}`,
+		id: toolCallId ? `tool:${toolCallId}` : `entry:${entry.id}:tool:${contentPartIndex}`,
 		entryId: entry.id,
 		piboSessionId,
 		toolCallId,
@@ -375,7 +388,7 @@ function createMissingToolResultNode(
 ): PiboTraceNode {
 	const message = entry.message as { toolName?: unknown };
 	return {
-		id: `entry:${entry.id}:tool-result:${toolCallId}`,
+		id: `tool:${toolCallId}`,
 		entryId: entry.id,
 		piboSessionId,
 		toolCallId,
@@ -396,11 +409,12 @@ function toolResultOutput(message: { content?: unknown; details?: unknown }): un
 }
 
 function createAssistantMessageNode(input: {
-	id: string;
 	piboSessionId: string;
 	entry: MessageSessionEntry;
 	entryIndex: number;
 	contentPartIndex: number;
+	assistantIndex: number;
+	eventId?: string;
 	status: PiboTraceNodeStatus;
 	text: string;
 	error?: string;
@@ -408,8 +422,9 @@ function createAssistantMessageNode(input: {
 	startedAt?: string;
 	completedAt?: string;
 }): PiboTraceNode {
+	const eventIdentity = input.eventId ? `${input.eventId}:assistant:${input.assistantIndex}` : undefined;
 	return {
-		id: input.id,
+		id: eventIdentity ? assistantMessageNodeId(eventIdentity) : `entry:${input.entry.id}:response`,
 		entryId: input.entry.id,
 		piboSessionId: input.piboSessionId,
 		type: "assistant.message",
@@ -421,7 +436,7 @@ function createAssistantMessageNode(input: {
 		output: input.text,
 		error: input.error,
 		source: "transcript",
-		stableKey: `entry:${input.entry.id}:response:${input.contentPartIndex}`,
+		stableKey: eventIdentity ? `assistant:${eventIdentity}` : `entry:${input.entry.id}:response:${input.contentPartIndex}`,
 		orderKey: transcriptTraceOrder(input.entryIndex, input.contentPartIndex, "assistant.message"),
 		children: input.children ?? [],
 	};

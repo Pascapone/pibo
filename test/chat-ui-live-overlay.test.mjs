@@ -9,6 +9,7 @@ async function runLiveOverlayScenario() {
 	const script = `
 		import assert from "node:assert/strict";
 		const { trimLiveOverlayForBaseTrace } = await import("./src/apps/chat-ui/src/tracing/live-overlay.ts");
+		const { computeCurrentTraceView } = await import("./src/apps/chat-ui/src/tracing/current-trace-view.ts");
 
 		const traceNode = (id, type, extra = {}) => ({
 			id,
@@ -40,6 +41,9 @@ async function runLiveOverlayScenario() {
 				traceNode("event:message_queued:node-confirmed", "user.message"),
 				traceNode("assistant", "assistant.message", { eventId: "assistant-confirmed" }),
 				traceNode("reasoning", "model.reasoning", { eventId: "reasoning-confirmed" }),
+				traceNode("assistant-indexed", "assistant.message", { eventId: "indexed-turn", stableKey: "assistant:indexed-turn:assistant:0" }),
+				traceNode("reasoning-indexed", "model.reasoning", { eventId: "indexed-turn", stableKey: "reasoning:indexed-turn:thinking:0" }),
+				traceNode("tool-indexed", "tool.call", { eventId: "indexed-turn", toolCallId: "tool-confirmed", stableKey: "tool:tool-confirmed" }),
 				traceNode("parent", "section", { children: [traceNode("nested-user", "user.message", { source: "transcript", output: { text: "nested sent" } })] }),
 			],
 		};
@@ -68,7 +72,47 @@ async function runLiveOverlayScenario() {
 
 		const mismatched = { piboSessionId: "other-session", events: overlay.events };
 		assert.equal(trimLiveOverlayForBaseTrace(mismatched, baseTrace), mismatched);
-		assert.equal(trimLiveOverlayForBaseTrace({ piboSessionId: "ps-test", events: overlay.events.slice(2) }, baseTrace), null);
+		const confirmedOnlyOverlay = { piboSessionId: "ps-test", events: overlay.events.slice(2) };
+		assert.equal(trimLiveOverlayForBaseTrace(confirmedOnlyOverlay, baseTrace), null);
+		assert.equal(computeCurrentTraceView({
+			selectedPiboSessionId: "ps-test",
+			reconciledBaseTraceView: baseTrace,
+			liveTraceOverlay: confirmedOnlyOverlay,
+			selectedSessionStatus: "idle",
+			persistedUserMessageIndexForBaseTrace: new Map(),
+		}).traceView, baseTrace);
+
+		const indexedOverlay = {
+			piboSessionId: "ps-test",
+			events: [
+				event("thinking-confirmed-index", "thinking_finished", { payload: { eventId: "indexed-turn", piboSessionId: "ps-test", thinkingIndex: 0 } }),
+				event("thinking-sibling-index", "thinking_finished", { payload: { eventId: "indexed-turn", piboSessionId: "ps-test", thinkingIndex: 1 } }),
+				event("assistant-confirmed-index", "assistant_message", { payload: { eventId: "indexed-turn", piboSessionId: "ps-test", assistantIndex: 0 } }),
+				event("assistant-sibling-index", "assistant_message", { payload: { eventId: "indexed-turn", piboSessionId: "ps-test", assistantIndex: 1 } }),
+				event("tool-confirmed-index", "tool_execution_finished", { payload: { eventId: "indexed-turn", piboSessionId: "ps-test", toolCallId: "tool-confirmed" } }),
+			],
+		};
+		assert.deepEqual(trimLiveOverlayForBaseTrace(indexedOverlay, baseTrace)?.events.map((item) => item.id), [
+			"thinking-sibling-index",
+			"assistant-sibling-index",
+		]);
+
+		const coveredTail = {
+			...baseTrace,
+			firstEventSequence: 70,
+			lastEventSequence: 80,
+			eventCount: 80,
+			rawEvents: [],
+			nodes: [],
+		};
+		const coveredOverlay = {
+			piboSessionId: "ps-test",
+			events: [
+				event("service-run", "message_queued", { eventSequence: 75, payload: { eventId: "service-run", piboSessionId: "ps-test", source: "service", text: '<pibo_run_notification>{"completed":[{"runId":"run-1"}]}</pibo_run_notification>' } }),
+				event("older-omission", "assistant_message", { eventSequence: 69, payload: { eventId: "older-omission", piboSessionId: "ps-test", assistantIndex: 0, text: "older" } }),
+			],
+		};
+		assert.deepEqual(trimLiveOverlayForBaseTrace(coveredOverlay, coveredTail)?.events.map((item) => item.id), ["older-omission"]);
 	`;
 	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
 }
@@ -145,7 +189,12 @@ async function runPersistedAssistantReconciliationScenario() {
 		], "running");
 
 		const projectedAssistants = patched.nodes.filter((node) => node.type === "assistant.message");
-		assert.equal(projectedAssistants.length, 5, "the refreshed transcript and live event projection intentionally coexist");
+		assert.equal(projectedAssistants.length, 3, "persisted and live assistant parts should share canonical identities");
+		assert.deepEqual(projectedAssistants.map((node) => node.id), [
+			"event:assistant:queued-turn:assistant:0",
+			"event:assistant:queued-turn:assistant:1",
+			"event:assistant:queued-turn:assistant:2",
+		]);
 		const rows = buildCompactTerminalRows(patched, { showThinking: true });
 		const assistants = rows.filter((row) => row.kind === "message.assistant");
 		assert.equal(rows.filter((row) => row.kind === "tool.call").length, 1, "non-assistant rows must remain unchanged");
@@ -155,14 +204,8 @@ async function runPersistedAssistantReconciliationScenario() {
 			"terminal:assistant:queued-turn:assistant:1",
 			"terminal:assistant:queued-turn:assistant:2",
 		]);
-		assert.deepEqual([...assistants[0].sourceNodeIds].sort(), [
-			"entry:entry-assistant-first:response",
-			"event:assistant:queued-turn:assistant:0",
-		]);
-		assert.deepEqual([...assistants[1].sourceNodeIds].sort(), [
-			"entry:entry-assistant-final:response",
-			"event:assistant:queued-turn:assistant:1",
-		]);
+		assert.deepEqual(assistants[0].sourceNodeIds, ["event:assistant:queued-turn:assistant:0"]);
+		assert.deepEqual(assistants[1].sourceNodeIds, ["event:assistant:queued-turn:assistant:1"]);
 		assert.equal(assistants[2].status, "running", "event-only streaming output must remain visible");
 	`;
 	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
@@ -170,4 +213,85 @@ async function runPersistedAssistantReconciliationScenario() {
 
 test("Compact Terminal reconciles persisted assistants with completed event projections by assistant index", async () => {
 	await assert.doesNotReject(runPersistedAssistantReconciliationScenario());
+});
+
+async function runPersistedContentIdentityScenario() {
+	const script = `
+		import assert from "node:assert/strict";
+		const { patchTraceViewWithEvents, traceNodesFromEntries } = await import("./src/shared/trace-engine.ts");
+
+		const piboSessionId = "ps-test";
+		const eventId = "turn-content-identity";
+		const entries = [
+			{ id: "user", type: "message", timestamp: "2026-08-09T04:00:00.000Z", message: { role: "user", content: [{ type: "text", text: "work" }] } },
+			{ id: "assistant-1", type: "message", timestamp: "2026-08-09T04:00:01.000Z", message: { role: "assistant", content: [
+				{ type: "thinking", thinking: "first thought" },
+				{ type: "toolCall", id: "tool-1", name: "bash", arguments: { command: "one" } },
+			], stopReason: "toolUse" } },
+			{ id: "result-1", type: "message", timestamp: "2026-08-09T04:00:02.000Z", message: { role: "toolResult", toolCallId: "tool-1", toolName: "bash", content: "one", isError: false } },
+			{ id: "assistant-2", type: "message", timestamp: "2026-08-09T04:00:03.000Z", message: { role: "assistant", content: [
+				{ type: "thinking", thinking: "second thought" },
+				{ type: "toolCall", id: "tool-2", name: "bash", arguments: { command: "two" } },
+			], stopReason: "toolUse" } },
+			{ id: "result-2", type: "message", timestamp: "2026-08-09T04:00:04.000Z", message: { role: "toolResult", toolCallId: "tool-2", toolName: "bash", content: "two", isError: false } },
+			{ id: "assistant-final", type: "message", timestamp: "2026-08-09T04:00:05.000Z", message: { role: "assistant", content: [{ type: "text", text: "done" }], stopReason: "stop" } },
+		];
+		const nodes = traceNodesFromEntries(piboSessionId, entries, [{
+			eventId,
+			userText: "work",
+			startedAt: "2026-08-09T04:00:00.000Z",
+			completedAt: "2026-08-09T04:00:06.000Z",
+		}]);
+		assert.deepEqual(nodes.filter((node) => node.type !== "user.message").map((node) => node.id), [
+			"event:thinking:turn-content-identity:thinking:0",
+			"tool:tool-1",
+			"event:thinking:turn-content-identity:thinking:1",
+			"tool:tool-2",
+			"event:assistant:turn-content-identity:assistant:0",
+		]);
+		assert.deepEqual(nodes.filter((node) => node.type === "model.reasoning").map((node) => node.stableKey), [
+			"reasoning:turn-content-identity:thinking:0",
+			"reasoning:turn-content-identity:thinking:1",
+		]);
+
+		const baseTrace = {
+			piboSessionId,
+			title: "Test",
+			version: "base",
+			latestStreamId: 1,
+			eventCount: 0,
+			eventLimit: 100,
+			hasOlderEvents: false,
+			rawEvents: [],
+			nodes,
+		};
+		const event = (id, eventSequence, type, payload) => ({
+			id,
+			piboSessionId,
+			createdAt: \`2026-08-09T04:00:0\${eventSequence}.500Z\`,
+			eventSequence,
+			streamId: eventSequence,
+			type,
+			payload: { type, piboSessionId, eventId, ...payload },
+		});
+		const patched = patchTraceViewWithEvents(baseTrace, [
+			event("thinking-0", 1, "thinking_finished", { thinkingIndex: 0, contentIndex: 0, text: "first thought" }),
+			event("tool-1", 2, "tool_execution_finished", { toolCallId: "tool-1", toolName: "bash", result: "one", isError: false }),
+			event("thinking-1", 3, "thinking_finished", { thinkingIndex: 1, contentIndex: 0, text: "second thought" }),
+			event("tool-2", 4, "tool_execution_finished", { toolCallId: "tool-2", toolName: "bash", result: "two", isError: false }),
+			event("assistant-0", 5, "assistant_message", { assistantIndex: 0, contentIndex: 0, text: "done" }),
+		], "running");
+		assert.deepEqual(patched.nodes.filter((node) => node.type !== "user.message").map((node) => node.id), [
+			"event:thinking:turn-content-identity:thinking:0",
+			"tool:tool-1",
+			"event:thinking:turn-content-identity:thinking:1",
+			"tool:tool-2",
+			"event:assistant:turn-content-identity:assistant:0",
+		]);
+	`;
+	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
+}
+
+test("persisted reasoning, tools, and assistants keep live content identities", async () => {
+	await assert.doesNotReject(runPersistedContentIdentityScenario());
 });
