@@ -42,6 +42,28 @@ function requireSessionContext(context: ToolDefinitionContext): { piboSessionId:
 	};
 }
 
+function resolveGoalForTurn(store: PiboLoopStore, context: ToolDefinitionContext, piboSessionId: string): PiboLoopJob | undefined {
+	const activeMessage = context.getActiveMessage?.();
+	const provenance = activeMessage?.provenance;
+	if (provenance?.kind !== 'loop-run') return store.getSessionGoalOwner(piboSessionId) ?? store.getLatestGoalForSession(piboSessionId);
+	const run = store.getRun(provenance.runId);
+	if (!run || run.jobId !== provenance.jobId || run.piboSessionId !== piboSessionId || run.messageEventId !== activeMessage?.id) {
+		throw new Error('cannot resolve goal because this turn has stale or invalid Loop provenance');
+	}
+	const job = store.getJob(provenance.jobId);
+	if (!job || job.mode !== 'goal') throw new Error('cannot resolve goal because the originating Goal no longer exists');
+	return job;
+}
+
+function requireExplicitGoalCreationAuthority(context: ToolDefinitionContext): void {
+	const activeMessage = context.getActiveMessage?.();
+	if (!activeMessage) return;
+	if (activeMessage.provenance?.kind === 'loop-run') throw new Error('automatic Loop continuations cannot create replacement goals');
+	if (activeMessage.source !== 'user' && activeMessage.source !== 'ui' && activeMessage.source !== 'actor') {
+		throw new Error('create_goal requires a fresh explicit user or actor turn');
+	}
+}
+
 function positiveInteger(value: number | undefined, field: string): number | undefined {
 	if (value === undefined) return undefined;
 	if (!Number.isInteger(value) || value < 1) throw new Error(`${field} must be a positive integer`);
@@ -69,6 +91,8 @@ function goalPayload(job: PiboLoopJob) {
 		elapsedWallClockSeconds: goalElapsedWallClockSeconds(job),
 		goalStartedAt: job.state.goalStartedAt ?? null,
 		goalEndedAt: job.state.goalEndedAt ?? null,
+		nextAttemptAt: job.state.nextAttemptAt ?? null,
+		failure: job.state.lastFailure ?? null,
 		wallClockIncludesPausedTime: true,
 	};
 }
@@ -98,7 +122,7 @@ function createGetGoalTool(context: ToolDefinitionContext, options: PiboGoalTool
 			try {
 				const { piboSessionId } = requireSessionContext(context);
 				return await withStore(options, (store) => {
-					const job = store.getLatestGoalForSession(piboSessionId);
+					const job = resolveGoalForTurn(store, context, piboSessionId);
 					return toolResult({ ok: true, goal: job ? goalPayload(job) : null });
 				});
 			} catch (error) {
@@ -122,18 +146,13 @@ function createCreateGoalTool(context: ToolDefinitionContext, options: PiboGoalT
 		async execute(_toolCallId, params: CreateGoalParams) {
 			try {
 				const session = requireSessionContext(context);
+				requireExplicitGoalCreationAuthority(context);
 				const objective = params.objective?.trim();
 				if (!objective) throw new Error('objective is required');
 				const tokenBudget = positiveInteger(params.token_budget, 'token_budget');
 				const tokenReserve = nonNegativeInteger(params.token_reserve, 'token_reserve');
 				return await withStore(options, (store) => {
-					const existing = store.getLatestGoalForSession(session.piboSessionId);
-					if (existing && effectiveGoalStatus(existing) !== 'complete') {
-						throw new Error('cannot create a new goal because this Pibo Session has an unfinished goal; complete the existing goal first');
-					}
-					const job = store.createJob({
-						mode: 'goal',
-						enabled: true,
+					const job = store.createSessionGoal({
 						target: session.piboRoomId ? { kind: 'room', roomId: session.piboRoomId } : { kind: 'default-chat' },
 						profile: session.profileName,
 						prompt: objective,
@@ -165,7 +184,7 @@ function createUpdateGoalTool(context: ToolDefinitionContext, options: PiboGoalT
 				if (params.status !== 'complete' && params.status !== 'blocked') throw new Error('status must be complete or blocked');
 				const status = params.status;
 				return await withStore(options, (store) => {
-					const existing = store.getLatestGoalForSession(piboSessionId);
+					const existing = resolveGoalForTurn(store, context, piboSessionId);
 					if (!existing) throw new Error('cannot update goal because this Pibo Session has no goal');
 					const job = store.updateGoalStatus(existing.id, status);
 					if (!job) throw new Error('goal no longer exists');

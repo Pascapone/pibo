@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { PiboChannelContext } from '../channels/types.js';
-import type { PiboJsonObject, PiboOutputEvent } from '../core/events.js';
+import type { PiboJsonObject, PiboOutputEvent, PiboSessionErrorDetails } from '../core/events.js';
 import { getDefaultPiboWorkspace } from '../core/workspace.js';
 import { PiboDataStore } from '../data/pibo-store.js';
 import { ChatRoomService } from '../apps/chat/data/room-service.js';
@@ -11,19 +11,41 @@ import { acquireBrowserPoolLease, browserPoolPaths, releaseBrowserPoolLease, res
 import { createDefaultPiboLoopStore, PiboLoopStore } from './store.js';
 import { createBuiltInLoopStopConditions, evaluateLoopStopPolicy } from './stopping.js';
 import { buildLoopTurnPrompt } from './prompts.js';
-import type { PiboLoopJob, PiboLoopResourceMetadata, PiboLoopRun, PiboLoopRunFact, PiboLoopRunOutcome, PiboLoopStatus, PiboLoopStopConditionDefinition, PiboLoopStopEvaluationSummary } from './types.js';
+import type { PiboLoopFailure, PiboLoopJob, PiboLoopResourceMetadata, PiboLoopRun, PiboLoopRunFact, PiboLoopRunOutcome, PiboLoopStatus, PiboLoopStopConditionDefinition, PiboLoopStopEvaluationSummary } from './types.js';
 
 const CHAT_WEB_CHANNEL = 'pibo.chat-web';
 
 export type PiboLoopBrowserPoolRelease = (paths: BrowserPoolPaths, identity: BrowserPoolIdentity, options?: BrowserPoolReleaseOptions) => Promise<BrowserPoolReleaseResult>;
 export type PiboLoopBrowserPoolAcquire = (paths: BrowserPoolPaths, identity: BrowserPoolIdentity, options?: BrowserPoolAcquireOptions) => Promise<BrowserPoolAcquireResult>;
 export type PiboLoopResourceCleanupOptions = { browserPoolRootDir?: string; browserPoolId?: string; browserLeaseIdleTimeoutMs?: number; browserLeaseRenewIntervalMs?: number; acquireBrowserPoolLease?: PiboLoopBrowserPoolAcquire; releaseBrowserPoolLease?: PiboLoopBrowserPoolRelease };
-export type PiboLoopServiceOptions = { store?: PiboLoopStore; context: PiboChannelContext; dataStorePath?: string; dataPayloadRootDir?: string; intervalMs?: number; maxConcurrentRuns?: number; runTimeoutMs?: number; resourceCleanup?: PiboLoopResourceCleanupOptions };
+export type PiboLoopServiceOptions = { store?: PiboLoopStore; context: PiboChannelContext; dataStorePath?: string; dataPayloadRootDir?: string; intervalMs?: number; maxConcurrentRuns?: number; runTimeoutMs?: number; retryBackoffBaseMs?: number; retryBackoffMaxMs?: number; retryBackoffJitterRatio?: number; now?: () => Date; random?: () => number; resourceCleanup?: PiboLoopResourceCleanupOptions };
 function errorMessage(error: unknown): string { return error instanceof Error ? error.message : String(error); }
 class LoopRunTimeoutError extends Error {
 	constructor(message: string, readonly abortFailed = false) { super(message); this.name = 'LoopRunTimeoutError'; }
 }
+class LoopContinuationInvalidatedError extends Error {
+	constructor(message: string) { super(message); this.name = 'LoopContinuationInvalidatedError'; }
+}
+class LoopSessionError extends Error {
+	constructor(message: string, readonly details?: PiboSessionErrorDetails) { super(message); this.name = 'LoopSessionError'; }
+}
 function isUnknownProfileErrorMessage(message: string): boolean { return /^Unknown profile "[^"]+"/.test(message); }
+function failureKey(details: PiboSessionErrorDetails | undefined): string {
+	return details?.code ?? details?.category ?? details?.errorClass ?? 'session-error';
+}
+function failureRecovery(details: PiboSessionErrorDetails | undefined): string {
+	if (details?.category === 'quota_exhausted' || details?.code === 'quota_exhausted') return 'Restore provider quota or billing, then explicitly restart the Goal.';
+	if (details?.category === 'auth' || details?.errorClass === 'provider_auth') return 'Repair provider authentication, then explicitly restart the Goal.';
+	if (details?.category === 'context_overflow' || details?.errorClass === 'provider_context') return 'Reduce or reset the session context, then explicitly restart the Goal.';
+	return details?.retryable === false ? 'Resolve the reported non-retryable failure, then explicitly restart the Goal.' : 'Pibo will retry automatically after the recorded backoff.';
+}
+function isTerminalGoalStatus(status: PiboLoopJob['state']['goalStatus']): boolean { return status === 'complete' || status === 'blocked' || status === 'budget_limited'; }
+function retryBackoffMs(consecutiveErrors: number, baseMs: number, maxMs: number, jitterRatio: number, random: () => number): number {
+	const exponent = Math.max(0, Math.min(30, consecutiveErrors - 1));
+	const bounded = Math.min(maxMs, baseMs * (2 ** exponent));
+	const jitter = bounded * jitterRatio * ((Math.max(0, Math.min(1, random())) * 2) - 1);
+	return Math.min(maxMs, Math.max(1, Math.round(bounded + jitter)));
+}
 function isJsonObject(value: unknown): value is PiboJsonObject { return !!value && typeof value === 'object' && !Array.isArray(value); }
 function mergeRunResources(jobResources: PiboLoopResourceMetadata | undefined, runResources: PiboLoopResourceMetadata | undefined): PiboLoopResourceMetadata | undefined {
 	if (!jobResources && !runResources) return undefined;
@@ -47,6 +69,11 @@ export class PiboLoopService {
 	private readonly intervalMs: number;
 	private readonly maxConcurrentRuns: number;
 	private readonly runTimeoutMs: number | undefined;
+	private readonly retryBackoffBaseMs: number;
+	private readonly retryBackoffMaxMs: number;
+	private readonly retryBackoffJitterRatio: number;
+	private readonly now: () => Date;
+	private readonly random: () => number;
 	private timer: NodeJS.Timeout | undefined;
 	private activeRuns = 0;
 	private stopped = true;
@@ -62,28 +89,65 @@ export class PiboLoopService {
 		this.intervalMs = options.intervalMs ?? 5_000;
 		this.maxConcurrentRuns = Math.max(1, options.maxConcurrentRuns ?? 2);
 		this.runTimeoutMs = options.runTimeoutMs;
+		this.retryBackoffBaseMs = Math.max(1, options.retryBackoffBaseMs ?? 5_000);
+		this.retryBackoffMaxMs = Math.max(this.retryBackoffBaseMs, options.retryBackoffMaxMs ?? 5 * 60_000);
+		this.retryBackoffJitterRatio = Math.max(0, Math.min(1, options.retryBackoffJitterRatio ?? 0.2));
+		this.now = options.now ?? (() => new Date());
+		this.random = options.random ?? Math.random;
 	}
-	start(): void { if (!this.stopped) return; this.stopped = false; this.store.recoverInterruptedRuns(); this.unsubscribeProductEvents = this.options.context.subscribeProductEvents?.((event) => this.handleProductEvent(event)); this.unsubscribeOutputEvents = this.options.context.subscribe((event) => this.handleOutputEvent(event)); this.arm(250); }
+	start(): void { if (!this.stopped) return; this.stopped = false; this.store.recoverInterruptedRuns(); this.repairGoalSessionMetadata(); this.unsubscribeProductEvents = this.options.context.subscribeProductEvents?.((event) => this.handleProductEvent(event)); this.unsubscribeOutputEvents = this.options.context.subscribe((event) => this.handleOutputEvent(event)); this.arm(250); }
 	stop(): void { this.stopped = true; if (this.timer) clearTimeout(this.timer); this.timer = undefined; for (const timer of this.browserLeaseHeartbeatTimers.values()) clearInterval(timer); this.browserLeaseHeartbeatTimers.clear(); this.unsubscribeProductEvents?.(); this.unsubscribeProductEvents = undefined; this.unsubscribeOutputEvents?.(); this.unsubscribeOutputEvents = undefined; this.dataStore.close(); this.store.close(); }
 	status(): PiboLoopStatus { return { enabled: !this.stopped, ...this.store.status() }; }
 	async startJob(id: string): Promise<PiboLoopRun | undefined> { const job = this.store.updateJob(id, { enabled: true }); if (!job) return undefined; const reserved = await this.reserveAfterBeforeRunEvaluation(job); if (!reserved) return undefined; void this.executeReserved(reserved.job, reserved.run).finally(() => this.armSoon()); return reserved.run; }
 	stopJob(id: string): PiboLoopJob | undefined { const job = this.store.requestStop(id); this.armSoon(); return job; }
+	removeJob(id: string): boolean {
+		const job = this.store.getJob(id);
+		const removed = this.store.removeJob(id);
+		if (removed && job?.mode === 'goal' && job.state.lastPiboSessionId) this.clearGoalSessionMetadata(job.state.lastPiboSessionId);
+		return removed;
+	}
+	reopenGoal(id: string, input: { confirmed: boolean; actorId: string }): PiboLoopJob {
+		if (!input.confirmed) throw new Error('Explicit terminal reopen confirmation is required');
+		const job = this.store.getJob(id);
+		if (!job || job.mode !== 'goal') throw new Error('Goal not found');
+		const piboSessionId = job.state.lastPiboSessionId;
+		if (!piboSessionId) throw new Error('Goal cannot be reopened because it has no originating Pibo Session');
+		const runtime = this.options.context.getSessionRuntimeStatus?.(piboSessionId);
+		if (runtime && (runtime.disposed || runtime.processing || runtime.streaming || runtime.queuedMessages > 0)) throw new Error('Goal cannot be reopened while its Pibo Session is active, queued, draining, or disposing');
+		const controllerRun = this.options.context.listRuns?.({ includeConsumed: true, includeDetached: true }).find((run) => run.controllerPiboSessionId === piboSessionId && (!['completed', 'failed', 'timed_out', 'cancelled'].includes(run.status) || !run.consumed));
+		if (controllerRun) throw new Error(`Goal cannot be reopened while controller run ${controllerRun.runId} is active or unconsumed`);
+		const reopened = this.store.reopenGoal(id, { actorId: input.actorId });
+		this.armSoon();
+		return reopened;
+	}
 	async cancelJob(id: string): Promise<PiboLoopJob | undefined> {
 		const job = this.store.requestCancel(id); if (!job) return undefined;
 		await this.abortJobIfRunning(job);
 		this.armSoon(); return this.store.getJob(id);
+	}
+	private repairGoalSessionMetadata(): void {
+		for (const session of this.options.context.listSessions?.() ?? []) {
+			if (session.metadata?.loopMode === 'goal' && (session.metadata.loopJobId !== undefined || session.metadata.loopRunId !== undefined)) this.clearGoalSessionMetadata(session.id);
+		}
+	}
+	private clearGoalSessionMetadata(piboSessionId: string): void {
+		const session = this.options.context.getSession(piboSessionId);
+		if (!session || !this.options.context.updateSession) return;
+		const { loopJobId: _loopJobId, loopRunId: _loopRunId, ...metadata } = session.metadata ?? {};
+		this.options.context.updateSession(piboSessionId, { metadata });
 	}
 	private arm(delayMs?: number): void { if (this.stopped) return; if (this.timer) clearTimeout(this.timer); this.timer = setTimeout(() => void this.tick(), delayMs ?? this.intervalMs); }
 	private armSoon(): void { this.arm(250); }
 	private async tick(): Promise<void> { if (this.stopped) return; try { await this.abortCancelRequestedJobs(); const capacity = this.maxConcurrentRuns - this.activeRuns; if (capacity > 0) { const jobs = this.store.listJobs({ includeDisabled: false }).filter((job) => !job.state.runningAt).slice(0, capacity); for (const job of jobs) { const reserved = await this.reserveAfterBeforeRunEvaluation(job); if (reserved) void this.executeReserved(reserved.job, reserved.run).finally(() => this.armSoon()); } } } catch (error) { console.error('[loop] scheduler tick failed', error); } finally { this.arm(); } }
 	private async reserveAfterBeforeRunEvaluation(job: PiboLoopJob): Promise<{ job: PiboLoopJob; run: PiboLoopRun } | undefined> {
 		const fresh = this.store.getJob(job.id) ?? job;
-		if (!fresh.enabled || fresh.state.runningAt) return undefined;
+		const now = this.now();
+		if (!fresh.enabled || fresh.state.runningAt || (fresh.state.nextAttemptAt !== undefined && fresh.state.nextAttemptAt > now.toISOString())) return undefined;
 		const { evaluation, conditionStates } = await this.evaluateStopPolicy(fresh, 'before-run');
 		if (evaluation.finalAction !== 'continue') { this.store.applyStopEvaluation({ jobId: fresh.id, evaluation, conditionStates, disable: true }); return undefined; }
 		this.store.applyStopEvaluation({ jobId: fresh.id, evaluation, conditionStates, disable: false });
 		if (fresh.mode === 'goal' && !await this.renewGoalBrowserLeases(fresh)) return undefined;
-		const reserved = this.store.reserveRun(fresh.id);
+		const reserved = this.store.reserveRun(fresh.id, now);
 		if (reserved) this.startGoalBrowserLeaseHeartbeat(reserved.job, reserved.run);
 		return reserved;
 	}
@@ -163,9 +227,73 @@ export class PiboLoopService {
 			activeTimeRecorded = true;
 			this.recordGoalRunTime(job, run, activeStartedAt);
 		};
-		try { const result = await this.executeJob(job, run); recordActiveTime(); const cancelled = this.cancelledRuns.delete(run.id); const outcome: PiboLoopRunOutcome = { status: cancelled ? 'cancelled' : 'ok', piboSessionId: result.piboSessionId, finalAnswer: result.finalAnswer }; const { evaluation, conditionStates } = await this.evaluateStopPolicy(this.store.getJob(job.id) ?? job, 'after-run', run, outcome); this.store.completeRun({ jobId: job.id, runId: run.id, status: outcome.status, piboSessionId: result.piboSessionId, reason: cancelled ? 'cancelled' : evaluation.reason, stopAfterRun: evaluation.finalAction !== 'continue', stopEvaluation: evaluation, conditionStates }); await this.cleanupRunResources(job, run); }
-		catch (error) { recordActiveTime(); const cancelled = this.cancelledRuns.delete(run.id); const message = errorMessage(error); const fatalProfileError = !cancelled && isUnknownProfileErrorMessage(message); const timeoutAbortFailed = error instanceof LoopRunTimeoutError && error.abortFailed; const outcome: PiboLoopRunOutcome = { status: cancelled ? 'cancelled' : 'error', error: cancelled ? undefined : message }; const { evaluation, conditionStates } = await this.evaluateStopPolicy(this.store.getJob(job.id) ?? job, 'after-run', run, outcome); this.store.completeRun({ jobId: job.id, runId: run.id, status: outcome.status, error: outcome.error, reason: cancelled ? 'cancelled' : fatalProfileError ? 'unknown-profile' : timeoutAbortFailed ? 'timeout-abort-failed' : evaluation.reason, stopAfterRun: fatalProfileError || timeoutAbortFailed || evaluation.finalAction !== 'continue', stopEvaluation: evaluation, conditionStates }); await this.cleanupRunResources(job, run); if (!cancelled) console.error(`[loop] job ${job.id} failed`, error); }
-		finally { this.activeRuns -= 1; }
+		try {
+			const result = await this.executeJob(job, run);
+			recordActiveTime();
+			const cancelled = this.cancelledRuns.delete(run.id);
+			const outcome: PiboLoopRunOutcome = { status: cancelled ? 'cancelled' : 'ok', piboSessionId: result.piboSessionId, finalAnswer: result.finalAnswer };
+			const { evaluation, conditionStates } = await this.evaluateStopPolicy(this.store.getJob(job.id) ?? job, 'after-run', run, outcome);
+			this.store.completeRun({ jobId: job.id, runId: run.id, status: outcome.status, piboSessionId: result.piboSessionId, reason: cancelled ? 'cancelled' : evaluation.reason, stopAfterRun: evaluation.finalAction !== 'continue', stopEvaluation: evaluation, conditionStates }, this.now());
+			await this.cleanupRunResources(job, run);
+		} catch (error) {
+			recordActiveTime();
+			const cancelled = this.cancelledRuns.delete(run.id);
+			const message = errorMessage(error);
+			const invalidated = error instanceof LoopContinuationInvalidatedError;
+			const errorDetails = error instanceof LoopSessionError ? error.details : undefined;
+			const fatalProfileError = !cancelled && !invalidated && isUnknownProfileErrorMessage(message);
+			const timeoutAbortFailed = error instanceof LoopRunTimeoutError && error.abortFailed;
+			const nonRetryable = !cancelled && !invalidated && errorDetails?.retryable === false;
+			const retryable = !cancelled && !invalidated && errorDetails?.retryable !== false;
+			const outcome: PiboLoopRunOutcome = { status: cancelled ? 'cancelled' : 'error', error: cancelled ? undefined : message, ...(errorDetails ? { errorDetails } : {}) };
+			const latestJob = this.store.getJob(job.id) ?? job;
+			const latestGoalStatus = latestJob.mode === 'goal' ? latestJob.state.goalStatus ?? (latestJob.enabled ? 'active' : 'paused') : undefined;
+			const shouldBlockGoal = nonRetryable && latestJob.mode === 'goal' && !isTerminalGoalStatus(latestGoalStatus);
+			const { evaluation, conditionStates } = await this.evaluateStopPolicy(latestJob, 'after-run', run, outcome);
+			const automaticRetry = retryable && !fatalProfileError && !timeoutAbortFailed && evaluation.finalAction === 'continue';
+			const now = this.now();
+			const backoffMs = automaticRetry
+				? retryBackoffMs((latestJob.state.consecutiveErrors ?? 0) + 1, this.retryBackoffBaseMs, this.retryBackoffMaxMs, this.retryBackoffJitterRatio, this.random)
+				: undefined;
+			const nextAttemptAt = backoffMs === undefined ? undefined : new Date(now.getTime() + backoffMs).toISOString();
+			const failure: PiboLoopFailure | undefined = cancelled || invalidated ? undefined : {
+				message,
+				...(errorDetails ? { details: errorDetails } : {}),
+				recovery: automaticRetry ? failureRecovery(errorDetails) : retryable ? 'The configured stop policy stopped automatic retries; restart the Loop explicitly.' : failureRecovery(errorDetails),
+				at: now.toISOString(),
+				...(nextAttemptAt ? { nextAttemptAt } : {}),
+				...(backoffMs !== undefined ? { retryBackoffMs: backoffMs } : {}),
+			};
+			this.store.completeRun({
+				jobId: job.id,
+				runId: run.id,
+				status: outcome.status,
+				error: outcome.error,
+				errorDetails,
+				failure,
+				...(shouldBlockGoal ? { goalStatus: 'blocked' as const } : {}),
+				reason: cancelled
+					? 'cancelled'
+					: invalidated
+						? 'continuation-invalidated'
+						: nonRetryable
+							? `non-retryable-${failureKey(errorDetails)}`
+							: automaticRetry
+								? `retry-backoff-${failureKey(errorDetails)}`
+								: fatalProfileError
+									? 'unknown-profile'
+									: timeoutAbortFailed
+										? 'timeout-abort-failed'
+										: evaluation.reason,
+				stopAfterRun: invalidated || nonRetryable || fatalProfileError || timeoutAbortFailed || (!automaticRetry && evaluation.finalAction !== 'continue'),
+				stopEvaluation: evaluation,
+				conditionStates,
+			}, now);
+			await this.cleanupRunResources(job, run);
+			if (!cancelled && !invalidated) console.error(`[loop] job ${job.id} failed`, error);
+		} finally {
+			this.activeRuns -= 1;
+		}
 	}
 	private recordGoalRunTime(job: PiboLoopJob, run: PiboLoopRun, startedAt: number): void {
 		if (job.mode !== 'goal') return;
@@ -234,13 +362,18 @@ export class PiboLoopService {
 	}
 	private getStopConditionDefinitions(): PiboLoopStopConditionDefinition[] { return this.options.context.getLoopStopConditionDefinitions?.() ?? this.options.context.getRalphStopConditionDefinitions?.() ?? createBuiltInLoopStopConditions(); }
 	private handleOutputEvent(event: PiboOutputEvent): void {
+		const eventId = 'eventId' in event ? event.eventId : undefined;
+		if (!eventId) return;
+		if (event.type === 'message_queued') this.store.updateRunMessageState(eventId, 'queued');
+		else if (event.type === 'message_started') this.store.updateRunMessageState(eventId, 'active');
+		else if (event.type === 'message_finished') this.store.updateRunMessageState(eventId, 'finished');
+		else if (event.type === 'session_error' && event.errorDetails?.code === 'loop_continuation_invalidated') this.store.updateRunMessageState(eventId, 'invalidated');
 		if (event.type !== 'assistant_usage') return;
-		const job = this.store.getLatestGoalForSession(event.piboSessionId);
-		if (!job) return;
-		const status = job.state.goalStatus ?? (job.enabled ? 'active' : 'paused');
-		if (!job.state.runningAt && status !== 'active') return;
-		if (job.state.runningAt && job.state.lastRunId) this.store.recordGoalTurnUsage(job.id, job.state.lastRunId, event.totalTokens);
-		else this.store.recordGoalProgress(job.id, { tokens: event.totalTokens });
+		const run = this.store.getRunByMessageEventId(eventId);
+		if (!run || run.piboSessionId !== event.piboSessionId) return;
+		const job = this.store.getJob(run.jobId);
+		if (!job || job.mode !== 'goal') return;
+		this.store.recordGoalTurnUsage(job.id, run.id, event.totalTokens);
 	}
 	private handleProductEvent(event: { type: string; payload: PiboJsonObject; source: string }): void {
 		if (event.type !== 'pibo.loop.fact' && event.type !== 'loop.fact' && event.type !== 'pibo.ralph.fact' && event.type !== 'ralph.fact') return;
@@ -256,14 +389,15 @@ export class PiboLoopService {
 		const continuation = reusableSession !== undefined;
 		const session = reusableSession ?? this.createLoopSession(job, run);
 		if (reusableSession) {
+			const { loopJobId: _loopJobId, loopRunId: _loopRunId, ...metadata } = session.metadata ?? {};
 			this.options.context.updateSession?.(session.id, {
 				title: job.name,
-				metadata: { ...(session.metadata ?? {}), loopRunId: run.id, loopMode: job.mode },
+				metadata: { ...metadata, loopMode: job.mode },
 				...(job.modelOverride ? { activeModel: { ...job.modelOverride } } : {}),
 			});
 		}
 		this.store.attachRunSession(job.id, run.id, session.id);
-		const result = await this.emitMessageAndWait(session.id, buildLoopTurnPrompt(job, continuation, this.goalToolsAvailable(job)));
+		const result = await this.emitMessageAndWait(job, run, session.id, buildLoopTurnPrompt(job, continuation, this.goalToolsAvailable(job)));
 		return { piboSessionId: session.id, ...result };
 	}
 	private createLoopSession(job: PiboLoopJob, run: PiboLoopRun) {
@@ -278,8 +412,7 @@ export class PiboLoopService {
 			metadata: {
 				...(target.metadata ?? {}),
 				chatRoomId: target.roomId,
-				loopJobId: job.id,
-				loopRunId: run.id,
+				...(job.mode === 'ralph' ? { loopJobId: job.id, loopRunId: run.id } : {}),
 				loopMode: job.mode,
 				loopTargetKind: job.target.kind,
 				...(job.mode === 'ralph' ? { ralphJobId: job.id, ralphRunId: run.id } : {}),
@@ -293,13 +426,14 @@ export class PiboLoopService {
 		try { return this.options.context.createProfile?.(job.profile).toolPackages.goalControl !== false; } catch { return true; }
 	}
 	private resolveTarget(job: PiboLoopJob): { roomId: string; workspace?: string; metadata?: Record<string, unknown> } { if (job.target.kind === 'room') { const room = this.roomService.getRoom(job.target.roomId); if (!room) throw new Error('Target room no longer exists'); if (isPiboRoomArchived(room)) throw new Error('Target room is archived'); return { roomId: room.id, workspace: room.workspace ?? getDefaultPiboWorkspace() }; } const room = this.roomService.ensureDefaultRoom({ name: 'Shared Chat' }); return { roomId: room.id, workspace: room.workspace ?? getDefaultPiboWorkspace() }; }
-	private async emitMessageAndWait(piboSessionId: string, text: string): Promise<{ finalAnswer: string }> {
+	private async emitMessageAndWait(job: PiboLoopJob, run: PiboLoopRun, piboSessionId: string, text: string): Promise<{ finalAnswer: string }> {
 		const eventId = `loop_msg_${randomUUID()}`;
+		if (!this.store.attachRunMessage(job.id, run.id, eventId)) throw new Error(`Loop run ${run.id} is no longer available for message binding`);
 		return await new Promise<{ finalAnswer: string }>((resolve, reject) => {
 			let settled = false;
 			let deltaAnswer = '';
 			let finalAnswer = '';
-			let lastSessionError: string | undefined;
+			let lastSessionError: { message: string; details?: PiboSessionErrorDetails } | undefined;
 			let timingOut = false;
 			let unsubscribe: (() => void) | undefined;
 			let timeout: NodeJS.Timeout | undefined;
@@ -314,7 +448,7 @@ export class PiboLoopService {
 			if (this.runTimeoutMs !== undefined) {
 				timeout = setTimeout(() => {
 					timingOut = true;
-					const message = lastSessionError ? `Loop run timed out after session error: ${lastSessionError}` : 'Loop run timed out';
+					const message = lastSessionError ? `Loop run timed out after session error: ${lastSessionError.message}` : 'Loop run timed out';
 					void this.options.context.emit({ type: 'execution', piboSessionId, action: 'abort', id: `loop_timeout_${randomUUID()}` })
 						.then(() => finish(new LoopRunTimeoutError(message)), (abortError) => finish(new LoopRunTimeoutError(`${message}; session abort failed: ${errorMessage(abortError)}`, true)));
 				}, this.runTimeoutMs);
@@ -324,13 +458,17 @@ export class PiboLoopService {
 				if ('eventId' in event && event.eventId !== eventId) return;
 				if (event.type === 'assistant_delta') deltaAnswer += event.text;
 				if (event.type === 'assistant_message') { finalAnswer = event.text; lastSessionError = undefined; }
-				if (event.type === 'message_finished') finish(lastSessionError ? new Error(lastSessionError) : undefined);
+				if (event.type === 'message_finished') finish(lastSessionError ? new LoopSessionError(lastSessionError.message, lastSessionError.details) : undefined);
 				if (event.type === 'session_error') {
-					lastSessionError = event.error;
-					finish(new Error(event.error));
+					if (event.errorDetails?.code === 'loop_continuation_invalidated') {
+						finish(new LoopContinuationInvalidatedError(event.error));
+					} else {
+						lastSessionError = { message: event.error, details: event.errorDetails };
+						finish(new LoopSessionError(event.error, event.errorDetails));
+					}
 				}
 			});
-			this.options.context.emit({ type: 'message', piboSessionId, id: eventId, source: 'service', text }).catch((error) => finish(error instanceof Error ? error : new Error(String(error))));
+			this.options.context.emit({ type: 'message', piboSessionId, id: eventId, source: 'service', text, provenance: { kind: 'loop-run', jobId: job.id, runId: run.id } }).catch((error) => finish(error instanceof Error ? error : new Error(String(error))));
 		});
 	}
 }

@@ -192,6 +192,7 @@ export type TelemetryPhaseName =
 	| "prompt_build"
 	| "provider_request"
 	| "provider_stream"
+	| "compaction"
 	| "reasoning"
 	| "assistant_text"
 	| "tool_args"
