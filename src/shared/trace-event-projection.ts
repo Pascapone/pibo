@@ -264,7 +264,7 @@ export function contentDeltaPatchNodeId(event: PiboOutputEvent): string | undefi
 	return undefined;
 }
 
-export function reconcileTranscriptUserMessageTimestamps(
+export function reconcileTranscriptUserMessages(
 	nodes: readonly PiboTraceNode[],
 	events: readonly ChatWebStoredEvent[],
 ): void {
@@ -273,7 +273,8 @@ export function reconcileTranscriptUserMessageTimestamps(
 	for (const storedEvent of events) {
 		const event = storedEvent.payload as PiboOutputEvent;
 		if ((event.type !== "message_queued" && event.type !== "message_steered") || event.source !== "user") continue;
-		const eventId = typeof event.eventId === "string" ? event.eventId : storedEvent.eventId;
+		const payloadEventId = typeof event.eventId === "string" ? event.eventId : undefined;
+		const eventId = payloadEventId ?? storedEvent.eventId;
 		const text = typeof event.text === "string" ? event.text : undefined;
 		const matchIndex = transcriptUsers.findIndex((node, index) => {
 			if (index < userCursor) return false;
@@ -281,7 +282,10 @@ export function reconcileTranscriptUserMessageTimestamps(
 			return Boolean(text && traceNodeText(node) === text);
 		});
 		if (matchIndex === -1) continue;
-		transcriptUsers[matchIndex]!.startedAt = storedEvent.createdAt;
+		const matchedNode = transcriptUsers[matchIndex]!;
+		matchedNode.id = `event:${event.type}:${payloadEventId ?? cryptoSafeId(event)}`;
+		matchedNode.stableKey = eventStableKey(event);
+		matchedNode.startedAt = storedEvent.createdAt;
 		userCursor = matchIndex + 1;
 	}
 }
@@ -293,10 +297,14 @@ export function isConfirmedUserMessageEcho(nodes: readonly PiboTraceNode[], even
 function confirmedUserMessageEchoNode(nodes: readonly PiboTraceNode[], event: ChatWebStoredEvent): PiboTraceNode | undefined {
 	const payload = event.payload as PiboOutputEvent;
 	if ((payload.type !== "message_queued" && payload.type !== "message_steered") || payload.source !== "user") return undefined;
-	const eventId = typeof payload.eventId === "string" ? payload.eventId : event.eventId;
+	const payloadEventId = typeof payload.eventId === "string" ? payload.eventId : undefined;
+	const eventId = payloadEventId ?? event.eventId;
+	const canonicalId = `event:${payload.type}:${payloadEventId ?? cryptoSafeId(payload)}`;
+	const stableKey = eventStableKey(payload);
 	const text = typeof payload.text === "string" ? payload.text : undefined;
 	return flattenTraceNodes([...nodes]).find((node) => {
 		if (node.type !== "user.message" || node.source !== "transcript") return false;
+		if (node.id === canonicalId || node.stableKey === stableKey) return true;
 		if (eventId && (node.entryId === eventId || node.stableKey === `entry:${eventId}`)) return true;
 		return Boolean(text && traceNodeText(node) === text);
 	});

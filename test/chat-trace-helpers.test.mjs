@@ -56,6 +56,19 @@ async function runChatTraceHelpersScenario() {
 		assert.equal(stored[0].type, "assistant_delta");
 		assert.equal(stored[0].createdAt, "2026-05-27T00:00:00.000Z");
 
+		const orderedSnapshots = storedLiveSnapshotEvents({
+			piboSessionId: "ps_1",
+			snapshots: [
+				{ type: "assistant_delta", eventId: "evt_1", text: "answer" },
+				{ type: "tool_execution_updated", eventId: "evt_1", toolCallId: "tool_1", toolName: "read", partialResult: "working" },
+				{ type: "thinking_delta", eventId: "evt_1", text: "plan" },
+			],
+			lastEventSequence: 10,
+			now: "2026-05-27T00:00:00.000Z",
+		});
+		assert.deepEqual(orderedSnapshots.map((event) => event.type), ["thinking_delta", "tool_execution_updated", "assistant_delta"]);
+		assert.deepEqual(orderedSnapshots.map((event) => event.eventSequence), [11, 12, 13]);
+
 		const cache = new Map();
 		setTraceCache(cache, "a", trace, 2);
 		setTraceCache(cache, "b", { ...trace, version: "v2" }, 2);

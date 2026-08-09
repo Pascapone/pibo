@@ -58,15 +58,62 @@ export function storedLiveSnapshotEvents(input: {
 	now?: string;
 }): ChatWebStoredEvent<PiboOutputEvent>[] {
 	const createdAt = input.now ?? new Date().toISOString();
-	return input.snapshots.map((snapshot, index) => ({
+	const groupIndexByEventId = new Map<string, number>();
+	const orderedSnapshots = input.snapshots
+		.map((snapshot, index) => {
+			const eventId = snapshotEventId(snapshot);
+			const groupKey = eventId ?? `snapshot:${index}`;
+			let groupIndex = groupIndexByEventId.get(groupKey);
+			if (groupIndex === undefined) {
+				groupIndex = index;
+				groupIndexByEventId.set(groupKey, groupIndex);
+			}
+			return { snapshot, index, groupIndex };
+		})
+		.sort((left, right) =>
+			left.groupIndex - right.groupIndex ||
+			liveSnapshotPhaseRank(left.snapshot) - liveSnapshotPhaseRank(right.snapshot) ||
+			left.index - right.index
+		);
+	return orderedSnapshots.map(({ snapshot }, index) => ({
 		id: `live-snapshot:${input.piboSessionId}:${index}:${liveSnapshotVersion([snapshot])}`,
 		piboSessionId: input.piboSessionId,
 		eventSequence: input.lastEventSequence + index + 1,
-		eventId: "eventId" in snapshot && typeof snapshot.eventId === "string" ? snapshot.eventId : undefined,
+		eventId: snapshotEventId(snapshot),
 		type: snapshot.type,
 		createdAt,
 		payload: snapshot,
 	}));
+}
+
+function snapshotEventId(snapshot: PiboOutputEvent): string | undefined {
+	return "eventId" in snapshot && typeof snapshot.eventId === "string" ? snapshot.eventId : undefined;
+}
+
+function liveSnapshotPhaseRank(snapshot: PiboOutputEvent): number {
+	switch (snapshot.type) {
+		case "message_queued":
+		case "message_steered":
+			return 0;
+		case "message_started":
+		case "message_finished":
+			return 2;
+		case "thinking_started":
+		case "thinking_delta":
+		case "thinking_finished":
+			return 3;
+		case "tool_call":
+		case "tool_execution_started":
+		case "tool_execution_updated":
+		case "tool_execution_finished":
+		case "subagent_session":
+			return 4;
+		case "assistant_delta":
+		case "assistant_message":
+			return 8;
+		default:
+			return 9;
+	}
 }
 
 export function withLiveSnapshots(
