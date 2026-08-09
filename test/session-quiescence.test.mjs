@@ -173,6 +173,99 @@ test("stuck routed disposal is bounded, forced terminal, and releases subtree ow
 	await router.disposeAll();
 });
 
+test("forced disposal terminates a real routed session after its normal drain stalls", async () => {
+	const router = createStoredRouter("ps_real_stuck", { routedSessionDisposeTimeoutMs: 25 });
+	const promptGate = deferred();
+	const promptStarted = deferred();
+	let abortCalls = 0;
+	let runtimeDisposeCalls = 0;
+	const session = {
+		model: undefined,
+		thinkingLevel: "off",
+		isStreaming: true,
+		settingsManager: {
+			getRetrySettings() { return { enabled: false, maxRetries: 0, baseDelayMs: 0 }; },
+			getProviderRetrySettings() { return { maxRetryDelayMs: 0 }; },
+		},
+		resourceLoader: { getSkills() { return { skills: [] }; } },
+		sessionManager: {
+			getLeafId() { return null; },
+			getHeader() { return undefined; },
+		},
+		subscribe() { return () => {}; },
+		supportsThinking() { return false; },
+		getActiveToolNames() { return []; },
+		setActiveToolsByName() {},
+		async prompt() {
+			promptStarted.resolve();
+			await promptGate.promise;
+		},
+		async abort() {
+			abortCalls += 1;
+		},
+	};
+	const runtime = {
+		cwd: process.cwd(),
+		session,
+		setRebindSession() {},
+		async dispose() {
+			runtimeDisposeCalls += 1;
+		},
+	};
+	const routed = new RoutedSession(
+		"ps_real_stuck",
+		runtime,
+		() => {},
+		PiboPluginRegistry.create({ plugins: [piboCorePlugin] }),
+		false,
+	);
+	router.sessions.set("ps_real_stuck", routed);
+	routed.enqueueMessage({
+		type: "message",
+		piboSessionId: "ps_real_stuck",
+		id: "stuck-message",
+		text: "stuck turn",
+		source: "service",
+	});
+	await promptStarted.promise;
+
+	const startedAt = Date.now();
+	await assert.rejects(
+		router.disposeSessionSubtree("ps_real_stuck", "real stuck disposal", { cancelRuns: false }),
+		(error) => error instanceof AggregateError && error.errors.some((cause) => /Timed out disposing Pibo session/.test(String(cause))),
+	);
+	assert.ok(Date.now() - startedAt < 500, "bounded disposal exceeded its deterministic deadline");
+	assert.deepEqual(routed.getStatus(), {
+		piboSessionId: "ps_real_stuck",
+		queuedMessages: 0,
+		processing: false,
+		streaming: false,
+		activeTools: [],
+		enabledTools: [],
+		cwd: process.cwd(),
+		disposed: true,
+		thinkingLevel: "off",
+		fastMode: false,
+		retry: {
+			enabled: false,
+			maxRetries: 0,
+			baseDelayMs: 0,
+			provider: { maxRetryDelayMs: 0 },
+		},
+	});
+	assert.equal(abortCalls, 2);
+	assert.equal(runtimeDisposeCalls, 1);
+	assert.equal(router.sessions.has("ps_real_stuck"), false);
+	assert.equal(router.disposingSessions.has("ps_real_stuck"), false);
+	assert.equal(router.quiescingSessions.has("ps_real_stuck"), false);
+
+	promptGate.resolve();
+	await nextTurn();
+	await nextTurn();
+	assert.equal(runtimeDisposeCalls, 1);
+	await router.disposeAll();
+});
+
 test("handling every notified run cannot release the reminder scope mid-turn", async () => {
 	const router = createStoredRouter();
 	const session = createRouterSessionFake();

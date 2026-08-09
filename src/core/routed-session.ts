@@ -568,6 +568,8 @@ export class RoutedSession {
 	private processing = false;
 	private disposed = false;
 	private disposePromise?: Promise<void>;
+	private runtimeDisposePromise?: Promise<void>;
+	private forceDisposalStarted = false;
 	private drainPromise?: Promise<void>;
 	private fastMode = false;
 	private readonly fastModePatchedAgents = new WeakSet<object>();
@@ -921,8 +923,8 @@ export class RoutedSession {
 		return {
 			piboSessionId: this.piboSessionId,
 			queuedMessages: this.queue.length,
-			processing: this.processing,
-			streaming: this.runtime.session.isStreaming,
+			processing: this.disposed ? false : this.processing,
+			streaming: this.disposed ? false : this.runtime.session.isStreaming,
 			activeTools: enabledTools,
 			enabledTools,
 			cwd: this.runtime.cwd,
@@ -1114,10 +1116,18 @@ export class RoutedSession {
 	}
 
 	forceDispose(reason = "session disposal timed out"): void {
-		if (!this.transitionToDisposed(reason)) return;
+		this.transitionToDisposed(reason);
+		if (this.forceDisposalStarted) return;
+		this.forceDisposalStarted = true;
 		const abort = (this.runtime.session as { abort?: () => Promise<void> | void }).abort;
-		if (abort) void Promise.resolve(abort.call(this.runtime.session)).catch(() => {});
-		void this.runtime.dispose().catch(() => {});
+		if (abort) {
+			try {
+				void Promise.resolve(abort.call(this.runtime.session)).catch(() => {});
+			} catch {
+				// Forced runtime disposal must still run when abort throws synchronously.
+			}
+		}
+		void this.disposeRuntime().catch(() => {});
 	}
 
 	private transitionToDisposed(reason: string): boolean {
@@ -1136,7 +1146,7 @@ export class RoutedSession {
 		}
 		this.cancelProviderRecovery();
 		this.queue.length = 0;
-		this.onStateChange?.({ processing: this.processing, queuedMessages: this.queue.length, disposed: true });
+		this.onStateChange?.({ processing: false, queuedMessages: this.queue.length, disposed: true });
 		this.unsubscribe?.();
 		this.unsubscribe = undefined;
 		if (this.recoverySession) {
@@ -1147,14 +1157,25 @@ export class RoutedSession {
 		return true;
 	}
 
+	private disposeRuntime(): Promise<void> {
+		if (!this.runtimeDisposePromise) {
+			try {
+				this.runtimeDisposePromise = Promise.resolve(this.runtime.dispose());
+			} catch (error) {
+				this.runtimeDisposePromise = Promise.reject(error);
+			}
+		}
+		return this.runtimeDisposePromise;
+	}
+
 	private async disposeUnsafe(): Promise<void> {
 		if (!this.transitionToDisposed("session disposed")) return;
 		const abort = (this.runtime.session as { abort?: () => Promise<void> | void }).abort;
-		if (abort) await Promise.allSettled([abort.call(this.runtime.session)]);
 		try {
+			if (abort) await Promise.allSettled([Promise.resolve().then(() => abort.call(this.runtime.session))]);
 			await this.drainPromise;
 		} finally {
-			await this.runtime.dispose();
+			await this.disposeRuntime();
 		}
 	}
 
