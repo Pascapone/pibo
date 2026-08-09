@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { PiboOutputEvent } from "../../core/events.js";
 import { patchTraceViewWithEvent } from "../../shared/trace-engine.js";
+import type { TraceMessageTurnTiming } from "../../shared/trace-event-projection.js";
 import type { ChatWebStoredEvent } from "../../shared/trace-types.js";
 import type { PiboSessionTraceView, PiboWebSessionStatus } from "./trace.js";
 
@@ -28,6 +29,16 @@ export function traceCacheKey(piboSessionId: string, version: string): string {
 export function withRawTraceTail(trace: PiboSessionTraceView, rawEvents: PiboSessionTraceView["rawEvents"]): PiboSessionTraceView {
 	if (rawEvents.length === 0) return trace;
 	return { ...trace, rawEvents };
+}
+
+export function traceProjectionStatus(
+	snapshots: readonly PiboOutputEvent[],
+	status?: PiboWebSessionStatus,
+	turnTimings: readonly TraceMessageTurnTiming[] = [],
+): PiboWebSessionStatus {
+	return snapshots.length || turnTimings.some((timing) => timing.completedAt === undefined)
+		? "running"
+		: status ?? "idle";
 }
 
 export function liveSnapshotVersion(snapshots: readonly PiboOutputEvent[]): string {

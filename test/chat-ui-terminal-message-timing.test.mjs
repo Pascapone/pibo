@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
+import { messageTurnTimingsFromEvents } from "../dist/shared/trace-event-projection.js";
 import { buildTraceViewFromEvents } from "../dist/shared/trace-engine.js";
 import {
 	buildCompactTerminalRows,
@@ -65,6 +66,19 @@ test("active turn timing starts at message_started and freezes at message_finish
 		event(2, "session_error", "2026-07-14T10:02:01.000Z", { eventId: "turn-error", error: "provider failed" }),
 	]);
 	assert.equal(findActiveTurnStartedAt(failed), undefined, "terminal errors must not leave the Working footer active");
+});
+
+test("queued turn timing closes on session_error without inventing a start time", () => {
+	assert.deepEqual(messageTurnTimingsFromEvents([
+		event(1, "message_queued", "2026-07-14T10:00:00.000Z", { eventId: "turn-failed", text: "Fail later", source: "user", queuedMessages: 1 }),
+		event(2, "session_error", "2026-07-14T10:00:02.000Z", { eventId: "turn-failed", error: "provider failed" }),
+	]), [{
+		eventId: "turn-failed",
+		userText: "Fail later",
+		startedAt: undefined,
+		completedAt: "2026-07-14T10:00:02.000Z",
+		durationMs: undefined,
+	}]);
 });
 
 test("open persisted turn keeps reasoning and assistant identities when message_finished arrives", () => {

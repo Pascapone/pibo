@@ -37,6 +37,7 @@ import {
 	liveSnapshotVersion,
 	requestMatchesVersion,
 	setTraceCache,
+	traceProjectionStatus,
 	traceCacheKey,
 	withLiveSnapshots,
 	withRawTraceTail,
@@ -5385,6 +5386,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const latestStreamId = state.timelineQuery.getLatestStreamId({ piboSessionId: selectedSession.id });
 				const turnTimings = state.timelineQuery.listMessageTurnTimings(selectedSession.id);
 				const liveSnapshots = timelineCursor.kind === "tail" ? state.outputCompactor.snapshotsForSession(selectedSession.id) : [];
+				const traceStatus = traceProjectionStatus(liveSnapshots, indexedSession?.status, turnTimings);
 				const metadataStartedAt = performance.now();
 				const transcriptMetadata = timelineCursor.kind === "tail" || timelineCursor.kind === "transcript"
 					? await loadPiSessionFastMetadata(selectedSession, selectedSession.workspace ?? process.cwd())
@@ -5395,7 +5397,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					sessions: ownedSessions,
 					lastEventSequence,
 					lastActivityAt: indexedSession?.lastActivityAt,
-					status: indexedSession?.status,
+					status: traceStatus,
 					latestStreamId,
 					transcript: transcriptMetadata,
 				});
@@ -5442,7 +5444,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 							session: selectedSession,
 							sessions: ownedSessions,
 							events: [],
-							status: indexedSession?.status,
+							status: traceStatus,
 							metadata: transcriptMetadata ?? {},
 							transcriptEntries: history.entries,
 							transcriptOrderOffset: history.startByte,
@@ -5475,7 +5477,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 							session: selectedSession,
 							sessions: ownedSessions,
 							events,
-							status: indexedSession?.status,
+							status: traceStatus,
 							metadata: transcriptMetadata ?? {},
 							transcriptEntries,
 							turnTimings,
@@ -5509,7 +5511,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				trace = withLiveSnapshots(trace, liveSnapshots, {
 					piboSessionId: selectedSession.id,
 					lastEventSequence,
-					status: liveSnapshots.length ? "running" : indexedSession?.status,
+					status: traceStatus,
 				});
 				trace = { ...trace, version };
 				const transcriptTailCursor = timelineCursor.kind === "tail"
@@ -5607,13 +5609,14 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const latestStreamId = state.timelineQuery.getLatestStreamId({ piboSessionId: selectedSession.id });
 				const turnTimings = state.timelineQuery.listMessageTurnTimings(selectedSession.id);
 				const liveSnapshots = beforeSequence === undefined ? state.outputCompactor.snapshotsForSession(selectedSession.id) : [];
+				const traceStatus = traceProjectionStatus(liveSnapshots, indexedSession?.status, turnTimings);
 				const baseVersion = createTraceViewVersion({
 					session: selectedSession,
 					sessions: ownedSessions,
 					events: lastEventSequence > 0
 						? [{ id: `seq:${lastEventSequence}`, eventSequence: lastEventSequence, createdAt: indexedSession?.lastActivityAt ?? "" }]
 						: [],
-					status: indexedSession?.status,
+					status: traceStatus,
 					metadata,
 					latestStreamId,
 				});
@@ -5647,7 +5650,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 						session: selectedSession,
 						sessions: ownedSessions,
 						events,
-						status: indexedSession?.status,
+						status: traceStatus,
 						metadata,
 						turnTimings,
 						includeRawEvents: false,
@@ -5659,7 +5662,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				trace = withLiveSnapshots(trace, liveSnapshots, {
 					piboSessionId: selectedSession.id,
 					lastEventSequence,
-					status: liveSnapshots.length ? "running" : indexedSession?.status,
+					status: traceStatus,
 				});
 				const estimatedTraceBytes = estimateTraceViewBytes(trace);
 				if (estimatedTraceBytes > TRACE_V2_TIMELINE_HARD_BYTES) {

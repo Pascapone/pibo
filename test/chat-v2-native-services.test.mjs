@@ -122,12 +122,23 @@ test("V2-native chat services cover rooms, sessions, timeline, commands, and rea
 		payload: { type: "message_started", piboSessionId: piboSession.id, eventId: "turn_open", text: "open prompt" },
 		createdAt: "2026-05-09T00:00:08.000Z",
 	});
+	commands.appendEvent({
+		roomId: room.id,
+		piboSessionId: piboSession.id,
+		eventId: "turn_queued",
+		eventType: "message_queued",
+		actorType: "user",
+		actorId: "user:test",
+		retentionClass: "chat_message",
+		payload: { type: "message_queued", piboSessionId: piboSession.id, eventId: "turn_queued", text: "queued prompt", source: "user", queuedMessages: 1 },
+		createdAt: "2026-05-09T00:00:09.000Z",
+	});
 
 	assert.equal(duplicate.streamId, accepted.streamId);
 	assert.equal(sessions.getSession(piboSession.id).piboSessionId, piboSession.id);
-	assert.equal(timeline.listEvents({ roomId: room.id }).length, 5);
-	assert.deepEqual(timeline.listTraceEvents({ piboSessionId: piboSession.id }).map((event) => event.type), ["user.message.accepted", "assistant_message", "message_started", "message_finished", "message_started"]);
-	assert.equal(timeline.getLatestEventSequence(piboSession.id), 5);
+	assert.equal(timeline.listEvents({ roomId: room.id }).length, 6);
+	assert.deepEqual(timeline.listTraceEvents({ piboSessionId: piboSession.id }).map((event) => event.type), ["user.message.accepted", "assistant_message", "message_started", "message_finished", "message_started", "message_queued"]);
+	assert.equal(timeline.getLatestEventSequence(piboSession.id), 6);
 	assert.deepEqual(timeline.listMessageTurnTimings(piboSession.id), [{
 		eventId: "turn_timing",
 		userText: "timed prompt",
@@ -138,6 +149,12 @@ test("V2-native chat services cover rooms, sessions, timeline, commands, and rea
 		eventId: "turn_open",
 		userText: "open prompt",
 		startedAt: "2026-05-09T00:00:08.000Z",
+		completedAt: undefined,
+		durationMs: undefined,
+	}, {
+		eventId: "turn_queued",
+		userText: "queued prompt",
+		startedAt: undefined,
 		completedAt: undefined,
 		durationMs: undefined,
 	}]);

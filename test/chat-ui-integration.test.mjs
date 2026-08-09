@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { withLiveSnapshots } from "../dist/apps/chat/chat-trace-helpers.js";
+import { traceProjectionStatus, withLiveSnapshots } from "../dist/apps/chat/chat-trace-helpers.js";
 import { normalizePiEvent } from "../dist/core/routed-session.js";
 import { buildTraceViewFromEvents, patchTraceViewWithEvent, patchTraceViewWithEvents } from "../dist/shared/trace-engine.js";
 import { buildCompactTerminalRows } from "../dist/session-ui/index.js";
@@ -202,6 +202,55 @@ test("execution commands issued during streaming attach to the active turn", () 
 	const turn = view.nodes.find((node) => node.type === "agent.turn");
 	assert.ok(turn, "expected active turn");
 	assert.deepEqual(turn.children.map((node) => node.title), ["Thinking", "status", "Agent Message"]);
+});
+
+test("open turn timing keeps running projection between live snapshots", () => {
+	const snapshots = [
+		{ type: "assistant_delta", piboSessionId: "chat:test", eventId: "turn-live", assistantIndex: 0, contentIndex: 2, text: "Answer in progress" },
+	];
+	const baseView = buildTraceViewFromEvents({
+		session: { id: "chat:test", piSessionId: "pi-test" },
+		status: traceProjectionStatus([], "idle", [{ eventId: "turn-live", userText: "active prompt" }]),
+		transcriptEntries: [
+			{
+				id: "entry-live-user",
+				type: "message",
+				timestamp: "2026-04-29T08:00:00.000Z",
+				message: { role: "user", content: [{ type: "text", text: "active prompt" }] },
+			},
+			{
+				id: "entry-live-assistant",
+				type: "message",
+				timestamp: "2026-04-29T08:00:02.000Z",
+				message: {
+					role: "assistant",
+					content: [
+						{ type: "thinking", thinking: "Plan" },
+						{ type: "toolCall", id: "tool-live", name: "read", arguments: { path: "package.json" } },
+					],
+					stopReason: "toolUse",
+				},
+			},
+		],
+		events: [
+			createEvent({ seq: 1, type: "message_queued", payload: { type: "message_queued", eventId: "turn-live", text: "active prompt", source: "user", queuedMessages: 1 } }),
+			createEvent({ seq: 2, type: "message_started", payload: { type: "message_started", eventId: "turn-live", text: "active prompt", source: "user" } }),
+			createEvent({ seq: 3, type: "thinking_finished", payload: { type: "thinking_finished", eventId: "turn-live", thinkingIndex: 0, contentIndex: 0, text: "Plan" } }),
+			createEvent({ seq: 4, type: "tool_call", payload: { type: "tool_call", eventId: "turn-live", toolCallId: "tool-live", toolName: "read", args: { path: "package.json" } } }),
+			createEvent({ seq: 5, type: "tool_execution_started", payload: { type: "tool_execution_started", eventId: "turn-live", toolCallId: "tool-live", toolName: "read" } }),
+		],
+	});
+	const liveView = withLiveSnapshots(baseView, snapshots, {
+		piboSessionId: "chat:test",
+		lastEventSequence: 5,
+		status: "running",
+	});
+	const nodes = flatNodes(liveView);
+	const liveTurn = liveView.nodes.find((node) => node.type === "agent.turn");
+
+	assert.ok(nodes.every((node) => node.source !== "transcript"), "active transcript entries must not coexist with event-backed live nodes");
+	assert.ok(liveTurn, "expected active turn");
+	assert.deepEqual(liveTurn.children.map((node) => node.type), ["model.reasoning", "tool.call", "assistant.message"]);
 });
 
 test("live snapshots keep thinking before the assistant for the same turn", () => {

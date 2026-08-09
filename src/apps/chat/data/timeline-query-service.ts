@@ -31,7 +31,7 @@ export class ChatTimelineQueryService {
 		const rows = this.store.db.prepare(`
 			SELECT * FROM event_log
 			WHERE session_id = ?
-				AND type IN ('message_started', 'message_finished')
+				AND type IN ('message_queued', 'message_started', 'message_finished', 'session_error')
 			ORDER BY session_sequence ASC, stream_id ASC
 		`).all(piboSessionId) as EventLogRow[];
 		const events = rows.map(storedPiboEventFromV2Row).filter((event): event is ChatWebStoredPiboEvent => event !== undefined);

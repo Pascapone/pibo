@@ -752,10 +752,15 @@ export function messageTurnTimingsFromEvents(events: readonly ChatWebStoredEvent
 	const ignoredEventIds = new Set<string>();
 	for (const storedEvent of events) {
 		const event = storedEvent.payload as PiboOutputEvent;
-		if (event.type !== "message_started" && event.type !== "message_finished") continue;
+		if (
+			event.type !== "message_queued" &&
+			event.type !== "message_started" &&
+			event.type !== "message_finished" &&
+			event.type !== "session_error"
+		) continue;
 		const eventId = typeof event.eventId === "string" ? event.eventId : undefined;
 		if (!eventId) continue;
-		if (event.type === "message_started" && event.source === "service") {
+		if ((event.type === "message_queued" || event.type === "message_started") && event.source === "service") {
 			ignoredEventIds.add(eventId);
 			continue;
 		}
@@ -765,7 +770,9 @@ export function messageTurnTimingsFromEvents(events: readonly ChatWebStoredEvent
 			seenEventIds.add(eventId);
 		}
 		const timing = timings.get(eventId) ?? {};
-		if (event.type === "message_started") {
+		if (event.type === "message_queued") {
+			timing.userText ??= event.text;
+		} else if (event.type === "message_started") {
 			timing.userText ??= event.text;
 			timing.startedAt ??= storedEvent.createdAt;
 		} else {

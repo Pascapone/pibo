@@ -16,6 +16,7 @@ async function runChatTraceHelpersScenario() {
 			setTraceCache,
 			storedLiveSnapshotEvents,
 			traceCacheKey,
+			traceProjectionStatus,
 			withRawTraceTail,
 		} = await import("./src/apps/chat/chat-trace-helpers.ts");
 
@@ -42,6 +43,11 @@ async function runChatTraceHelpersScenario() {
 		assert.deepEqual(withRawTraceTail(trace, events).rawEvents, events);
 
 		const snapshot = { type: "assistant_delta", eventId: "evt_1", text: "live" };
+		assert.equal(traceProjectionStatus([], undefined), "idle");
+		assert.equal(traceProjectionStatus([], "error"), "error");
+		assert.equal(traceProjectionStatus([snapshot], "idle"), "running");
+		assert.equal(traceProjectionStatus([], "idle", [{ eventId: "turn-open" }]), "running");
+		assert.equal(traceProjectionStatus([], "idle", [{ eventId: "turn-done", completedAt: "2026-05-27T00:00:00.000Z" }]), "idle");
 		assert.equal(liveSnapshotVersion([]), "");
 		assert.equal(liveSnapshotVersion([snapshot]), liveSnapshotVersion([snapshot]));
 		const stored = storedLiveSnapshotEvents({ piboSessionId: "ps_1", snapshots: [snapshot], lastEventSequence: 7, now: "2026-05-27T00:00:00.000Z" });
