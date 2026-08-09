@@ -24,6 +24,9 @@ export function classifySessionErrorMessage(
 	options: { hasProviderContext?: boolean } = {},
 ): Pick<PiboSessionErrorDetails, "category" | "errorClass" | "code" | "origin" | "retryable" | "userMessage"> {
 	const normalized = message.toLowerCase();
+	if (normalized.includes("transcript integrity") || normalized.includes("no tool call found for function call output")) {
+		return { category: "transcript_integrity", errorClass: "transcript_integrity", code: "invalid_tool_transcript", origin: "runtime", retryable: false, userMessage: "The persisted tool transcript was invalid and could not be repaired automatically." };
+	}
 	if (normalized.includes("context_length_exceeded") || normalized.includes("context window")) {
 		return { category: "context_overflow", errorClass: "provider_context", code: "context_length_exceeded", origin: "provider", retryable: false, userMessage: "The model context window was exceeded." };
 	}

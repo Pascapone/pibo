@@ -62,6 +62,7 @@ import { PIBO_APP_CONTEXT } from "../app-context.js";
 import { createRuntimeToolDefinition, type PiboRuntimeToolController } from "../tools/runtime/tool.js";
 import { RuntimeSessionRegistry } from "../tools/runtime/registry.js";
 import { compactValidationToolResultForContext } from "./test-output-compaction.js";
+import { installPiboTranscriptIntegrity } from "./transcript-integrity.js";
 
 export type PiboRuntimeRetryDefaults = Readonly<Pick<RetrySettings, "enabled" | "maxRetries" | "baseDelayMs">>;
 
@@ -467,6 +468,7 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 			tools: getBuiltinToolAllowlist(profile, customTools),
 		});
 
+		installPiboTranscriptIntegrity(created.session);
 		installValidationOutputCompaction(created.session.agent);
 		registerPiboAssistantContextGuardRecovery(created.session, contextGuardRecovery);
 		if (options.contextGuardTuiQueueOrdering === true) {

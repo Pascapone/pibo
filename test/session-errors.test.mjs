@@ -24,6 +24,17 @@ for (const message of [
 	});
 }
 
+test("classifies known-invalid function output history as non-retryable transcript integrity", () => {
+	assert.deepEqual(classifySessionErrorMessage("No tool call found for function call output with call_id call_1", { hasProviderContext: true }), {
+		category: "transcript_integrity",
+		errorClass: "transcript_integrity",
+		code: "invalid_tool_transcript",
+		origin: "runtime",
+		retryable: false,
+		userMessage: "The persisted tool transcript was invalid and could not be repaired automatically.",
+	});
+});
+
 test("normalizes fetch failures with provider context for downstream telemetry", () => {
 	const details = normalizeSessionErrorDetails("fetch failed", {
 		api: "openai-codex-responses",

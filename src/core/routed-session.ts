@@ -44,6 +44,13 @@ import {
 	resolvePiboProviderRecoverySettings,
 	waitForPiboProviderRecovery,
 } from "./provider-recovery.js";
+import {
+	PIBO_TRANSCRIPT_INTEGRITY_RESUME_MESSAGE_TYPE,
+	PIBO_TRANSCRIPT_INTEGRITY_RESUME_PROMPT,
+	PiboTranscriptIntegrityError,
+	claimPiboTranscriptIntegrityContinuation,
+	settlePiboTranscriptIntegrityContinuation,
+} from "./transcript-integrity.js";
 
 type PiSessionTreeNode = ReturnType<SessionManager["getTree"]>[number];
 
@@ -729,6 +736,13 @@ export class RoutedSession {
 		this.pendingAssistantErrorRetryable = false;
 	}
 
+	private takePendingAssistantError(): Extract<PiboOutputEvent, { type: "session_error" }> | undefined {
+		const pending = this.pendingAssistantError;
+		this.pendingAssistantError = undefined;
+		this.pendingAssistantErrorRetryable = false;
+		return pending;
+	}
+
 	private cancelProviderRecovery(): void {
 		this.providerRecoveryCancelled = true;
 		this.providerRecoveryAbortController?.abort();
@@ -738,6 +752,35 @@ export class RoutedSession {
 	private async waitForPiAgentSettlement(session: AgentSessionRuntime["session"]): Promise<void> {
 		const waitForIdle = (session as AgentSessionRuntime["session"] & { waitForIdle?: () => Promise<void> }).waitForIdle;
 		if (waitForIdle) await waitForIdle.call(session);
+	}
+
+	private async resumeTranscriptIntegrityRecovery(session: AgentSessionRuntime["session"]): Promise<void> {
+		const reports = claimPiboTranscriptIntegrityContinuation(session);
+		if (reports.length === 0) return;
+		try {
+			this.pendingAssistantError = undefined;
+			this.pendingAssistantErrorRetryable = false;
+			await session.sendCustomMessage({
+				customType: PIBO_TRANSCRIPT_INTEGRITY_RESUME_MESSAGE_TYPE,
+				content: [{ type: "text", text: PIBO_TRANSCRIPT_INTEGRITY_RESUME_PROMPT }],
+				display: false,
+				details: { repairIds: reports.map((report) => report.repairId) },
+			}, { triggerTurn: true });
+			await this.waitForPiAgentSettlement(session);
+			await this.resumeContextGuardRecovery(session);
+			const pendingError = this.takePendingAssistantError();
+			if (pendingError) {
+				throw new PiboTranscriptIntegrityError(
+					`Transcript integrity continuation failed: ${pendingError.error}`,
+				);
+			}
+			settlePiboTranscriptIntegrityContinuation(session, "completed");
+		} catch (error) {
+			settlePiboTranscriptIntegrityContinuation(session, "failed", error);
+			throw error instanceof PiboTranscriptIntegrityError
+				? error
+				: new PiboTranscriptIntegrityError(`Transcript integrity continuation failed: ${errorMessage(error)}`);
+		}
 	}
 
 	private async resumeContextGuardRecovery(session: AgentSessionRuntime["session"]): Promise<void> {
@@ -1262,6 +1305,9 @@ export class RoutedSession {
 				});
 				return;
 			}
+			const session = this.runtime.session;
+			await this.resumeTranscriptIntegrityRecovery(session);
+			if (this.disposed) return;
 			this.emit({
 				type: "message_started",
 				piboSessionId: this.piboSessionId,
@@ -1280,7 +1326,6 @@ export class RoutedSession {
 			this.nextAssistantIndex = 0;
 			this.activeThinkingIndex = undefined;
 			this.nextThinkingIndex = 0;
-			const session = this.runtime.session;
 			this.applyMessageCapabilityScope(event, session);
 			const expandedText = expandInlineSkills(
 				event.text,
@@ -1340,6 +1385,7 @@ export class RoutedSession {
 	private async processQueuedCompact(event: PiboExecutionEvent): Promise<void> {
 		this.activeExecutionEvent = event;
 		try {
+			await this.resumeTranscriptIntegrityRecovery(this.runtime.session);
 			const result = await this.runAction(event);
 			if (this.disposed) return;
 			this.emit({
