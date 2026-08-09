@@ -5,10 +5,11 @@ import test from "node:test";
 const source = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
 test("trace render-order tooling records base, overlay, current, and terminal state", async () => {
-	const [collector, currentTrace, terminal] = await Promise.all([
+	const [collector, currentTrace, terminal, timeline] = await Promise.all([
 		source("src/apps/chat-ui/src/tracing/snapshotCollector.ts"),
 		source("src/apps/chat-ui/src/tracing/use-current-session-trace.ts"),
 		source("src/apps/chat-ui/src/session-views/compact-terminal/CompactTerminalSessionView.tsx"),
+		source("src/apps/chat-ui/src/tracing/TraceTimeline.tsx"),
 	]);
 	for (const layer of ["baseNodes", "overlayEvents", "currentNodes", "terminalRows"]) {
 		assert.match(collector, new RegExp(`\\"${layer}\\"`));
@@ -20,6 +21,8 @@ test("trace render-order tooling records base, overlay, current, and terminal st
 	assert.match(currentTrace, /collectTraceState\(\{/);
 	assert.match(terminal, /useLayoutEffect\(\(\) => \{/);
 	assert.match(terminal, /collectTerminalRows\(piboSessionId, "compact-terminal:render", rows/);
+	assert.match(timeline, /useLayoutEffect\(\(\) => \{/);
+	assert.match(timeline, /collectVisibleRows\(/);
 });
 
 test("diagnosis report omits content-derived fingerprints", async () => {

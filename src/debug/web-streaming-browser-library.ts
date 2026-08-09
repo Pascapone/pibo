@@ -33,8 +33,17 @@ function stats(values) {
 function fetchWithTimeout(url, init, timeoutMs) {
   if (typeof AbortController === 'undefined') return fetch(url, init);
   const controller = new AbortController();
+  const externalSignal = init && init.signal;
+  const abortFromExternal = () => controller.abort();
+  if (externalSignal) {
+    if (externalSignal.aborted) controller.abort();
+    else externalSignal.addEventListener('abort', abortFromExternal, { once: true });
+  }
   const timer = setTimeout(() => controller.abort(), timeoutMs);
-  return fetch(url, { ...init, signal: controller.signal }).finally(() => clearTimeout(timer));
+  return fetch(url, { ...init, signal: controller.signal }).finally(() => {
+    clearTimeout(timer);
+    if (externalSignal) externalSignal.removeEventListener('abort', abortFromExternal);
+  });
 }
 function installOverlayDropSimulation(enabled) {
   if (!enabled) {
@@ -206,7 +215,15 @@ function createSseProbe(piboSessionId, startedAt) {
     stop: async () => {
       stopped = true;
       if (controller) controller.abort();
-      await Promise.race([done.catch(() => {}), new Promise((resolve) => setTimeout(resolve, 2500))]);
+      let stopTimeout;
+      try {
+        await Promise.race([
+          done.catch(() => {}),
+          new Promise((resolve) => { stopTimeout = setTimeout(resolve, 2500); }),
+        ]);
+      } finally {
+        if (stopTimeout !== undefined) clearTimeout(stopTimeout);
+      }
       if (!finished) {
         result.aborted = true;
         result.errors.push('stop timeout after abort');
@@ -235,50 +252,69 @@ function createTraceProbe(piboSessionId, startedAt, intervalMs) {
     maxAssistantOutputLength: 0,
     samples: [],
   };
-  let sampling = false;
-  const sample = async () => {
-    if (sampling) return;
-    sampling = true;
-    try {
-      const t = Math.round(performance.now() - startedAt);
-      const response = await fetchWithTimeout('/api/chat/trace?piboSessionId=' + encodeURIComponent(piboSessionId) + '&includeRawEvents=true&rawEventsLimit=80', {}, 2500);
-      if (!response.ok) throw new Error(response.status + ' ' + response.statusText);
-      const trace = await response.json();
-      result.fetchCount += 1;
-      const version = typeof trace.version === 'string' ? trace.version : undefined;
-      const rawEvents = Array.isArray(trace.rawEvents) ? trace.rawEvents : [];
-      const assistantOutputLength = maxTraceAssistantOutputLength(trace);
-      const liveVersion = Boolean(version && version.includes(':live:'));
-      const sampleResult = {
-        t,
-        version,
-        eventCount: typeof trace.eventCount === 'number' ? trace.eventCount : undefined,
-        rawEventCount: rawEvents.length,
-        assistantOutputLength,
-        liveVersion,
-        rawEventTypes: countRawTraceEventTypes(rawEvents),
-      };
-      result.samples.push(sampleResult);
-      if (result.samples.length > 80) result.samples.shift();
-      result.sampleCount = result.samples.length;
-      result.maxAssistantOutputLength = Math.max(result.maxAssistantOutputLength, assistantOutputLength);
-      result.finalAssistantOutputLength = assistantOutputLength;
-      if (typeof sampleResult.eventCount === 'number') {
-        result.durableEventCountStart ??= sampleResult.eventCount;
-        result.durableEventCountEnd = sampleResult.eventCount;
+  let stopped = false;
+  let activeController;
+  let activeSample;
+  const sample = () => {
+    if (stopped) return Promise.resolve();
+    if (activeSample) return activeSample;
+    const controller = typeof AbortController === 'undefined' ? undefined : new AbortController();
+    activeController = controller;
+    const currentSample = (async () => {
+      try {
+        const t = Math.round(performance.now() - startedAt);
+        const response = await fetchWithTimeout('/api/chat/trace?piboSessionId=' + encodeURIComponent(piboSessionId) + '&includeRawEvents=true&rawEventsLimit=80', { signal: controller && controller.signal }, 2500);
+        if (!response.ok) throw new Error(response.status + ' ' + response.statusText);
+        const trace = await response.json();
+        result.fetchCount += 1;
+        const version = typeof trace.version === 'string' ? trace.version : undefined;
+        const rawEvents = Array.isArray(trace.rawEvents) ? trace.rawEvents : [];
+        const assistantOutputLength = maxTraceAssistantOutputLength(trace);
+        const liveVersion = Boolean(version && version.includes(':live:'));
+        const sampleResult = {
+          t,
+          version,
+          eventCount: typeof trace.eventCount === 'number' ? trace.eventCount : undefined,
+          rawEventCount: rawEvents.length,
+          assistantOutputLength,
+          liveVersion,
+          rawEventTypes: countRawTraceEventTypes(rawEvents),
+        };
+        result.samples.push(sampleResult);
+        if (result.samples.length > 80) result.samples.shift();
+        result.sampleCount = result.samples.length;
+        result.maxAssistantOutputLength = Math.max(result.maxAssistantOutputLength, assistantOutputLength);
+        result.finalAssistantOutputLength = assistantOutputLength;
+        if (typeof sampleResult.eventCount === 'number') {
+          result.durableEventCountStart ??= sampleResult.eventCount;
+          result.durableEventCountEnd = sampleResult.eventCount;
+        }
+        if (liveVersion) {
+          result.liveVersionCount += 1;
+          result.firstLiveVersionMs ??= t;
+        }
+      } catch (error) {
+        if (!(stopped && error && error.name === 'AbortError')) result.failedFetchCount += 1;
       }
-      if (liveVersion) {
-        result.liveVersionCount += 1;
-        result.firstLiveVersionMs ??= t;
-      }
-    } catch {
-      result.failedFetchCount += 1;
-    } finally {
-      sampling = false;
-    }
+    })();
+    const trackedSample = currentSample.finally(() => {
+      if (activeSample === trackedSample) activeSample = undefined;
+      if (activeController === controller) activeController = undefined;
+    });
+    activeSample = trackedSample;
+    return trackedSample;
   };
   const timer = setInterval(() => { sample().catch(() => {}); }, intervalMs);
-  return { result, sample, stop: () => clearInterval(timer) };
+  return {
+    result,
+    sample,
+    stop: async () => {
+      stopped = true;
+      clearInterval(timer);
+      if (activeController) activeController.abort();
+      if (activeSample) await activeSample.catch(() => {});
+    },
+  };
 }
 function countRawTraceEventTypes(rawEvents) {
   const counts = {};
@@ -935,7 +971,7 @@ async function runStreamingBenchmark(options) {
   if (traceProbe) {
     await traceProbe.sample();
     traceSummary = traceProbe.result;
-    traceProbe.stop();
+    await traceProbe.stop();
     traceProbe = undefined;
   }
   const sseSummary = sseProbe ? await sseProbe.stop() : undefined;
@@ -1071,7 +1107,7 @@ async function runStreamingBenchmark(options) {
     if (rafHandle !== undefined) cancelAnimationFrame(rafHandle);
     if (reconnectTimer !== undefined) clearTimeout(reconnectTimer);
     try { perfObserver && perfObserver.disconnect(); } catch {}
-    try { traceProbe && traceProbe.stop(); } catch {}
+    try { if (traceProbe) await traceProbe.stop(); } catch {}
     try { if (sseProbe) await sseProbe.stop(); } catch {}
     try { installOverlayDropSimulation(false); } catch {}
     if (fixtureStarted && options.startFixture && typeof window.__piboStreamingDebugReset === 'function') {

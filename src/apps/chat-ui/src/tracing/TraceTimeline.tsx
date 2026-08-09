@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Check, ChevronDown, ChevronRight, ChevronsDown, ChevronsUp, GitBranch, GitFork, ListTree, MessageSquarePlus, RefreshCw, RotateCcw } from "lucide-react";
 import { Virtuoso } from "react-virtuoso";
 import { useStickyVirtuoso } from "../components/useStickyVirtuoso";
@@ -125,18 +125,19 @@ export function TraceTimeline({
 		return { completed, error, active };
 	}, [allSpans]);
 	const isStreaming = trace?.status === "UNSET";
-	const visibleRows = useMemo(() => {
-		const rows = flattenVisibleSpans(spanTree, expansionDepth, expandThinking, expansionOverrides);
-		if (trace?.id && isTraceSnapshotCollectionEnabled()) {
-			collectVisibleRows(
-				trace.id,
-				`render:${trace.status ?? "unknown"}`,
-				rows.map((r) => ({ id: r.id, depth: r.depth, span: r.span })),
-				expansionOverrides,
-			);
-		}
-		return rows;
-	}, [expandThinking, expansionDepth, expansionOverrides, spanTree, trace?.id, trace?.status]);
+	const visibleRows = useMemo(
+		() => flattenVisibleSpans(spanTree, expansionDepth, expandThinking, expansionOverrides),
+		[expandThinking, expansionDepth, expansionOverrides, spanTree],
+	);
+	useLayoutEffect(() => {
+		if (!trace?.id || !isTraceSnapshotCollectionEnabled()) return;
+		collectVisibleRows(
+			trace.id,
+			`render:${trace.status ?? "unknown"}`,
+			visibleRows.map((row) => ({ id: row.id, depth: row.depth, span: row.span })),
+			expansionOverrides,
+		);
+	}, [expansionOverrides, trace?.id, trace?.status, visibleRows]);
 	const visibleRowKeys = useMemo(() => visibleRows.map((row) => row.id), [visibleRows]);
 	const loadOlderTracePage = useCallback(() => {
 		if (!hasOlderTraceEvents || isFetchingOlderTracePage) return;
