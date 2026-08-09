@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 export type CdpRuntimeResult = {
 	result?: {
 		type?: string;
@@ -86,6 +88,12 @@ export class CdpClient {
 		return promise;
 	}
 
+	private sendDetached(method: string, params?: Record<string, unknown>): void {
+		if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return;
+		const id = ++this.nextId;
+		this.socket.send(JSON.stringify(params ? { id, method, params } : { id, method }));
+	}
+
 	async evaluate<T>(expression: string, timeoutMs = 10_000): Promise<T> {
 		const response = await this.send("Runtime.evaluate", {
 			expression,
@@ -98,27 +106,66 @@ export class CdpClient {
 	}
 
 	async evaluateJson<T>(expression: string, timeoutMs = 10_000): Promise<T> {
-		const storageKey = `__piboCdpJsonResult_${Date.now()}_${++this.nextId}`;
+		const deadlineMs = Date.now() + timeoutMs;
+		const cleanupReserveMs = Math.min(100, Math.max(1, Math.floor(timeoutMs / 10)));
+		const transferDeadlineMs = deadlineMs - cleanupReserveMs;
+		const storageKey = `__piboCdpJsonResult_${randomUUID()}`;
 		const keyLiteral = JSON.stringify(storageKey);
-		let stored = false;
 		try {
 			const descriptor = await this.evaluate<{ length: number }>(`(async () => {
-				const value = await (${expression});
-				const json = JSON.stringify(value);
-				if (typeof json !== "string") throw new Error("CDP evaluation result is not JSON serializable");
-				Object.defineProperty(globalThis, ${keyLiteral}, { value: json, configurable: true });
-				return { length: json.length };
-			})()`, timeoutMs);
-			stored = true;
+				const deadlineMs = ${deadlineMs};
+				if (Date.now() >= deadlineMs) throw new Error("CDP JSON evaluation exceeded its deadline");
+				const state = { cancelled: false, json: undefined, cleanupTimer: undefined };
+				Object.defineProperty(globalThis, ${keyLiteral}, { value: state, configurable: true });
+				state.cleanupTimer = setTimeout(() => {
+					state.cancelled = true;
+					if (globalThis[${keyLiteral}] === state) delete globalThis[${keyLiteral}];
+				}, Math.max(0, deadlineMs - Date.now()));
+				try {
+					const value = await (${expression});
+					const json = JSON.stringify(value);
+					if (typeof json !== "string") throw new Error("CDP evaluation result is not JSON serializable");
+					if (Date.now() >= deadlineMs || state.cancelled || globalThis[${keyLiteral}] !== state) throw new Error("CDP JSON evaluation exceeded its deadline");
+					state.json = json;
+					return { length: json.length };
+				} catch (error) {
+					state.cancelled = true;
+					clearTimeout(state.cleanupTimer);
+					if (globalThis[${keyLiteral}] === state) delete globalThis[${keyLiteral}];
+					throw error;
+				}
+			})()`, remainingTime(transferDeadlineMs, "evaluating JSON through CDP"));
 			if (!Number.isInteger(descriptor?.length) || descriptor.length < 0) throw new Error("CDP evaluation returned an invalid JSON result length");
 			const chunks: string[] = [];
 			for (let offset = 0; offset < descriptor.length; offset += CDP_JSON_CHUNK_SIZE) {
 				const end = Math.min(descriptor.length, offset + CDP_JSON_CHUNK_SIZE);
-				chunks.push(await this.evaluate<string>(`globalThis[${keyLiteral}].slice(${offset}, ${end})`));
+				chunks.push(await this.evaluate<string>(`(() => {
+					const state = globalThis[${keyLiteral}];
+					if (!state || typeof state.json !== "string") throw new Error("CDP JSON result storage is unavailable");
+					return state.json.slice(${offset}, ${end});
+				})()`, remainingTime(transferDeadlineMs, "retrieving JSON chunks through CDP")));
 			}
 			return JSON.parse(chunks.join("")) as T;
 		} finally {
-			if (stored) await this.evaluate(`delete globalThis[${keyLiteral}]`).catch(() => undefined);
+			const cleanupExpression = `(() => {
+				const state = globalThis[${keyLiteral}];
+				if (state && typeof state === "object") {
+					state.cancelled = true;
+					clearTimeout(state.cleanupTimer);
+				}
+				return delete globalThis[${keyLiteral}];
+			})()`;
+			const cleanupTimeoutMs = remainingTimeOrZero(deadlineMs);
+			if (cleanupTimeoutMs > 0) {
+				await this.evaluate(cleanupExpression, cleanupTimeoutMs).catch(() => undefined);
+			} else {
+				this.sendDetached("Runtime.evaluate", {
+					expression: cleanupExpression,
+					awaitPromise: true,
+					returnByValue: true,
+					userGesture: true,
+				});
+			}
 		}
 	}
 
@@ -239,4 +286,14 @@ function stringValue(value: unknown): string {
 function optionalStringValue(value: unknown): string | undefined {
 	const text = stringValue(value);
 	return text || undefined;
+}
+
+function remainingTime(deadlineMs: number, operation: string): number {
+	const remainingMs = remainingTimeOrZero(deadlineMs);
+	if (remainingMs <= 0) throw new Error(`Timed out ${operation}`);
+	return remainingMs;
+}
+
+function remainingTimeOrZero(deadlineMs: number): number {
+	return Math.max(0, Math.floor(deadlineMs - Date.now()));
 }
