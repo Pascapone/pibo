@@ -101,6 +101,40 @@ test("bounded transcript tails keep repeated user identities aligned with their 
 		"event:assistant:turn-two:assistant:0",
 		"event:assistant:turn-three:assistant:0",
 	]);
+
+	const runningView = buildTraceViewFromEvents({
+		session: { id: piboSessionId, piSessionId: "pi-tail" },
+		status: "running",
+		transcriptEntries: tailEntries.slice(0, 3),
+		turnTimings: [
+			{ eventId: "turn-one", userText: "same prompt", completedAt: "2026-08-09T10:00:01.000Z", assistantIndices: [0] },
+			{ eventId: "turn-two", userText: "same prompt", completedAt: "2026-08-09T10:00:03.000Z", assistantIndices: [0] },
+			{ eventId: "turn-three", userText: "same prompt" },
+		],
+		events: [{
+			id: "active-tail-turn-three",
+			piboSessionId,
+			eventSequence: 301,
+			type: "message_queued",
+			createdAt: "2026-08-09T10:00:04.000Z",
+			payload: {
+				type: "message_queued",
+				piboSessionId,
+				eventId: "turn-three",
+				source: "user",
+				text: "same prompt",
+				queuedMessages: 1,
+			},
+		}],
+	});
+	const runningFlat = flattenTraceNodes(runningView.nodes);
+	assert.deepEqual(runningFlat.filter((node) => node.type === "user.message").map((node) => node.id), [
+		"event:message_queued:turn-two",
+		"event:message_queued:turn-three",
+	]);
+	assert.deepEqual(runningFlat.filter((node) => node.type === "assistant.message").map((node) => node.id), [
+		"event:assistant:turn-two:assistant:0",
+	]);
 });
 
 test("loadPiSessionFastMetadata reads only the transcript header window", async () => {
