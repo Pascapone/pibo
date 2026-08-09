@@ -122,6 +122,54 @@ test("configured run timeout is persisted and classified separately from failure
 	}
 });
 
+test("resource-limited runs persist cgroup peaks and expose them through status and notifications", () => {
+	const store = new PiboReliabilityStore(":memory:");
+	try {
+		const registry = new PiboRunRegistry({ store });
+		const resources = {
+			isolationMode: "systemd",
+			unitName: "pibo-yielded-test.service",
+			policy: {
+				mode: "systemd",
+				memoryHighBytes: 100,
+				memoryMaxBytes: 200,
+				tasksMax: 8,
+				cpuQuotaPercent: 100,
+				ioWeight: 50,
+				monitorIntervalMs: 100,
+				minHostAvailableBytes: 50,
+				maxMemoryFullPsiAvg10: 5,
+				maxIoFullPsiAvg10: 10,
+			},
+			admission: {
+				capturedAt: "2026-08-09T00:00:00.000Z",
+				memoryFreeBytes: 1000,
+				memoryAvailableBytes: 2000,
+				memoryPressure: { fullAvg10: 0 },
+				ioPressure: { fullAvg10: 0 },
+			},
+			minimumHostAvailableBytes: 40,
+			peakMemoryFullPsiAvg10: 6,
+			peakIoFullPsiAvg10: 3,
+			limitReason: "host memory full PSI avg10 6 reached 5",
+			cgroup: { unitName: "pibo-yielded-test.service", memoryPeakBytes: 199, memoryMaxBytes: 200, tasksPeak: 7, ioWriteBytes: 1234 },
+		};
+		const run = registry.startToolRun({ controllerPiboSessionId: "parent", toolName: "bash", completionPolicy: "tracked", resources });
+		const limited = registry.resourceLimit(run.runId, `resource_limited: ${resources.limitReason}`, resources);
+		assert.equal(limited.status, "failed");
+		assert.match(limited.summary, /resource limits/);
+		assert.equal(limited.resources.cgroup.memoryPeakBytes, 199);
+		assert.equal(registry.createNotification("parent").failed[0].resources.limitReason, resources.limitReason);
+
+		const restored = new PiboRunRegistry({ store }).status("parent", run.runId);
+		assert.equal(restored.resources.unitName, "pibo-yielded-test.service");
+		assert.equal(restored.resources.minimumHostAvailableBytes, 40);
+		assert.equal(restored.resources.cgroup.ioWriteBytes, 1234);
+	} finally {
+		store.close();
+	}
+});
+
 test("disposing a controller cancels running runs and resolves waiters", async () => {
 	const registry = new PiboRunRegistry();
 	const run = startRun(registry);

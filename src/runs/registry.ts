@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { PiboReliabilityStore, PiboRunStoreRecord } from "../reliability/store.js";
 import type { PiboRunTimeoutPhase } from "./lifecycle.js";
+import type { PiboRunResourceUsage } from "./resource-isolation.js";
 
 export type PiboRunStatus = "queued" | "running" | "completed" | "failed" | "timed_out" | "cancelled";
 export type PiboRunKind = "tool";
@@ -24,6 +25,7 @@ export type PiboRunSnapshot = {
 	timeoutAt?: string;
 	timeoutPhase?: PiboRunTimeoutPhase;
 	serviceWarning?: string;
+	resources?: PiboRunResourceUsage;
 	createdAt: string;
 	updatedAt: string;
 	completedAt?: string;
@@ -90,6 +92,7 @@ type StartToolRunInput = {
 	maxAttempts?: number;
 	timeoutMs?: number;
 	serviceWarning?: string;
+	resources?: PiboRunResourceUsage;
 };
 
 type Waiter = {
@@ -126,6 +129,7 @@ function snapshot(record: PiboRunRecord): PiboRunSnapshot {
 	if (record.timeoutAt) output.timeoutAt = record.timeoutAt;
 	if (record.timeoutPhase) output.timeoutPhase = record.timeoutPhase;
 	if (record.serviceWarning) output.serviceWarning = record.serviceWarning;
+	if (record.resources) output.resources = structuredClone(record.resources);
 	if (record.completedAt) output.completedAt = record.completedAt;
 	return output;
 }
@@ -174,6 +178,7 @@ export class PiboRunRegistry {
 				maxAttempts: input.maxAttempts ?? 1,
 				timeoutMs: input.timeoutMs,
 				serviceWarning: input.serviceWarning,
+				resources: input.resources,
 				workerId: this.workerId,
 			});
 			const record = recordFromStored(stored);
@@ -199,11 +204,21 @@ export class PiboRunRegistry {
 			maxAttempts: Math.max(1, input.maxAttempts ?? 1),
 			...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs, timeoutAt: runTimeoutAt(timestamp, input.timeoutMs) } : {}),
 			...(input.serviceWarning ? { serviceWarning: input.serviceWarning } : {}),
+			...(input.resources ? { resources: structuredClone(input.resources) } : {}),
 		};
 		this.runs.set(runId, record);
 		const output = snapshot(record);
 		this.notify({ type: "run_started", run: output });
 		return output;
+	}
+
+	updateResources(runId: string, resources: PiboRunResourceUsage): PiboRunSnapshot | undefined {
+		const record = this.runs.get(runId);
+		if (!record) return undefined;
+		record.resources = structuredClone(resources);
+		record.updatedAt = now();
+		this.options.store?.updateRun(runId, record);
+		return snapshot(record);
 	}
 
 	complete(runId: string, result: PiboToolRunResult): PiboRunSnapshot | undefined {
@@ -219,6 +234,23 @@ export class PiboRunRegistry {
 		if (record.jobId) this.options.store?.ack(record.jobId, this.workerId);
 		const output = snapshot(record);
 		this.notify({ type: "run_changed", run: output, previousStatus });
+		return output;
+	}
+
+	resourceLimit(runId: string, error: string, resources: PiboRunResourceUsage): PiboRunSnapshot | undefined {
+		const record = this.runs.get(runId);
+		if (!record || terminal(record.status)) return undefined;
+
+		const previousStatus = record.status;
+		record.status = "failed";
+		record.error = error;
+		record.resources = structuredClone(resources);
+		record.summary = `${record.toolName} run was stopped by yielded-run resource limits.`;
+		this.finish(record);
+		this.options.store?.updateRun(runId, record);
+		if (record.jobId) this.options.store?.fail(record.jobId, this.workerId, error);
+		const output = snapshot(record);
+		this.notify({ type: "run_changed", run: output, previousStatus, reason: error });
 		return output;
 	}
 
@@ -547,5 +579,6 @@ function recordFromStored(record: PiboRunStoreRecord): PiboRunRecord {
 		timeoutAt: record.timeoutAt,
 		timeoutPhase: record.timeoutPhase,
 		serviceWarning: record.serviceWarning,
+		resources: record.resources,
 	};
 }

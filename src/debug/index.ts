@@ -929,7 +929,7 @@ function compactDeadJobRow(job: { jobId: string; queue: string; attempts: number
 	};
 }
 
-function compactRunRow(run: { runId: string; controllerPiboSessionId: string; status: string; toolName: string; completionPolicy: string; consumed: boolean; updatedAt: string; summary?: string; timeoutMs?: number; timeoutAt?: string; timeoutPhase?: string; serviceWarning?: string }): Record<string, unknown> {
+function compactRunRow(run: { runId: string; controllerPiboSessionId: string; status: string; toolName: string; completionPolicy: string; consumed: boolean; updatedAt: string; summary?: string; timeoutMs?: number; timeoutAt?: string; timeoutPhase?: string; serviceWarning?: string; resources?: { isolationMode?: string; unitName?: string; minimumHostAvailableBytes?: number; peakMemoryFullPsiAvg10?: number; peakIoFullPsiAvg10?: number; limitReason?: string; cgroup?: { memoryPeakBytes?: number; memoryMaxBytes?: number; tasksPeak?: number; ioReadBytes?: number; ioWriteBytes?: number } } }): Record<string, unknown> {
 	return {
 		runId: run.runId,
 		piboSessionId: run.controllerPiboSessionId,
@@ -942,6 +942,17 @@ function compactRunRow(run: { runId: string; controllerPiboSessionId: string; st
 		timeoutAt: run.timeoutAt,
 		timeoutPhase: run.timeoutPhase,
 		serviceWarning: run.serviceWarning,
+		isolation: run.resources?.isolationMode,
+		resourceUnit: run.resources?.unitName,
+		resourceLimitReason: run.resources?.limitReason,
+		minimumHostAvailableBytes: run.resources?.minimumHostAvailableBytes,
+		peakMemoryFullPsiAvg10: run.resources?.peakMemoryFullPsiAvg10,
+		peakIoFullPsiAvg10: run.resources?.peakIoFullPsiAvg10,
+		memoryPeakBytes: run.resources?.cgroup?.memoryPeakBytes,
+		memoryMaxBytes: run.resources?.cgroup?.memoryMaxBytes,
+		tasksPeak: run.resources?.cgroup?.tasksPeak,
+		ioReadBytes: run.resources?.cgroup?.ioReadBytes,
+		ioWriteBytes: run.resources?.cgroup?.ioWriteBytes,
 		summary: run.summary,
 	};
 }

@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { freemem, totalmem } from "node:os";
 import { promisify } from "node:util";
 import { getHeapStatistics } from "node:v8";
+import { collectYieldedRunHostResourceSnapshot, type YieldedRunHostResourceSnapshot } from "../runs/resource-isolation.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -19,6 +20,7 @@ export interface GatewayResourceGuardPolicy {
 }
 
 export interface GatewayWorkReservation {
+	admission: YieldedRunHostResourceSnapshot;
 	release(): void;
 }
 
@@ -35,6 +37,7 @@ export interface GatewayProcessMemorySnapshot {
 
 export interface HostMemorySnapshot {
 	freeBytes: number;
+	availableBytes: number;
 	totalBytes: number;
 }
 
@@ -54,6 +57,14 @@ export interface GatewayResourceCheck {
 	message: string;
 }
 
+export interface YieldedRunSystemdUnit {
+	unitName: string;
+	loadState: string;
+	activeState: string;
+	subState: string;
+	description: string;
+}
+
 export interface GatewayResourceSnapshot {
 	generatedAt: string;
 	readOnly: true;
@@ -68,6 +79,11 @@ export interface GatewayResourceSnapshot {
 		children: HostProcessResourceInfo[];
 		knownDaemons: HostProcessResourceInfo[];
 	};
+	yieldedRunUnits: {
+		available: boolean;
+		error?: string;
+		units: YieldedRunSystemdUnit[];
+	};
 	severity: GatewayResourceSeverity;
 	guardAction: "allow" | "warn" | "block";
 	nextCommands: string[];
@@ -79,6 +95,9 @@ export interface CollectGatewayResourceSnapshotOptions {
 	includeProcesses?: boolean;
 	processListOutput?: string;
 	processListError?: string;
+	yieldedUnitListOutput?: string;
+	yieldedUnitListError?: string;
+	hostResourceSnapshot?: YieldedRunHostResourceSnapshot;
 }
 
 const DEFAULT_POLICY: GatewayResourceGuardPolicy = Object.freeze({
@@ -121,7 +140,8 @@ export function collectGatewayProcessMemory(): GatewayProcessMemorySnapshot {
 export function buildGatewayResourceSnapshot(options: CollectGatewayResourceSnapshotOptions = {}): GatewayResourceSnapshot {
 	const policy = resolveGatewayResourceGuardPolicy(options.env);
 	const gateway = collectGatewayProcessMemory();
-	const host = { freeBytes: freemem(), totalBytes: totalmem() };
+	const hostResources = options.hostResourceSnapshot ?? collectYieldedRunHostResourceSnapshot({ now: options.now });
+	const host = { freeBytes: hostResources.memoryFreeBytes || freemem(), availableBytes: hostResources.memoryAvailableBytes || freemem(), totalBytes: totalmem() };
 	const processResult = processResultFromOptions(gateway.pid, options, policy);
 	const checks = evaluateGatewayResourceChecks({ gateway, host, policy, knownDaemons: processResult.knownDaemons });
 	const severity = maxSeverity(checks.map((check) => check.severity));
@@ -133,6 +153,7 @@ export function buildGatewayResourceSnapshot(options: CollectGatewayResourceSnap
 		host,
 		checks,
 		processes: processResult,
+		yieldedRunUnits: yieldedUnitResultFromOptions(options),
 		severity,
 		guardAction: guardAction(policy, severity),
 		nextCommands: [
@@ -145,15 +166,24 @@ export function buildGatewayResourceSnapshot(options: CollectGatewayResourceSnap
 }
 
 export async function collectGatewayResourceSnapshot(options: CollectGatewayResourceSnapshotOptions = {}): Promise<GatewayResourceSnapshot> {
-	if (options.includeProcesses === false || options.processListOutput !== undefined || options.processListError !== undefined) {
+	if (
+		options.includeProcesses === false
+		|| options.processListOutput !== undefined
+		|| options.processListError !== undefined
+		|| options.yieldedUnitListOutput !== undefined
+		|| options.yieldedUnitListError !== undefined
+	) {
 		return buildGatewayResourceSnapshot(options);
 	}
-	try {
-		const { stdout } = await execFileAsync("ps", ["-eo", "pid=,ppid=,rss=,comm=,args="], { maxBuffer: 10 * 1024 * 1024 });
-		return buildGatewayResourceSnapshot({ ...options, processListOutput: stdout });
-	} catch (error) {
-		return buildGatewayResourceSnapshot({ ...options, processListError: error instanceof Error ? error.message : String(error) });
-	}
+	const [processes, yieldedUnits] = await Promise.allSettled([
+		execFileAsync("ps", ["-eo", "pid=,ppid=,rss=,comm=,args="], { maxBuffer: 10 * 1024 * 1024 }),
+		execFileAsync("systemctl", ["list-units", "--all", "--plain", "--no-legend", "--no-pager", "pibo-yielded-*.service"], { maxBuffer: 1024 * 1024 }),
+	]);
+	return buildGatewayResourceSnapshot({
+		...options,
+		...(processes.status === "fulfilled" ? { processListOutput: processes.value.stdout } : { processListError: errorText(processes.reason) }),
+		...(yieldedUnits.status === "fulfilled" ? { yieldedUnitListOutput: yieldedUnits.value.stdout } : { yieldedUnitListError: errorText(yieldedUnits.reason) }),
+	});
 }
 
 export function assertGatewayResourceAvailableForWork(workLabel: string, env: NodeJS.ProcessEnv = process.env): void {
@@ -178,10 +208,10 @@ export class GatewayWorkAdmissionController {
 		}
 		if (
 			policy.mode === "block" &&
-			snapshot.host.freeBytes < policy.minFreeMemoryBytes + policy.yieldedRunMemoryReservationBytes
+			snapshot.host.availableBytes < policy.minFreeMemoryBytes + policy.yieldedRunMemoryReservationBytes
 		) {
 			throwGatewayResourceBlock(workLabel, [
-				`Host free memory ${snapshot.host.freeBytes} cannot preserve reserve ${policy.minFreeMemoryBytes} after the yielded-run reservation ${policy.yieldedRunMemoryReservationBytes}.`,
+				`Host available memory ${snapshot.host.availableBytes} cannot preserve reserve ${policy.minFreeMemoryBytes} after the yielded-run reservation ${policy.yieldedRunMemoryReservationBytes}.`,
 			]);
 		}
 
@@ -189,6 +219,7 @@ export class GatewayWorkAdmissionController {
 		this.activeReservations.add(reservation);
 		let released = false;
 		return {
+			admission: collectYieldedRunHostResourceSnapshot(),
 			release: () => {
 				if (released) return;
 				released = true;
@@ -219,15 +250,25 @@ export function parseHostProcessResourceList(output: string, gatewayPid: number,
 		.sort((a, b) => resourceProcessRank(a, policy) - resourceProcessRank(b, policy) || b.rssBytes - a.rssBytes);
 }
 
+export function parseYieldedRunSystemdUnits(output: string): YieldedRunSystemdUnit[] {
+	return output.split("\n").flatMap((line) => {
+		const match = line.trim().match(/^(pibo-yielded-[^\s]+\.service)\s+(\S+)\s+(\S+)\s+(\S+)\s*(.*)$/);
+		return match ? [{ unitName: match[1]!, loadState: match[2]!, activeState: match[3]!, subState: match[4]!, description: match[5] ?? "" }] : [];
+	});
+}
+
 export function renderGatewayResourceSnapshotText(snapshot: GatewayResourceSnapshot): string {
 	const lines = [`Gateway resource health: ${snapshot.severity} (guard=${snapshot.policy.mode}, action=${snapshot.guardAction})`];
 	lines.push(`Generated at: ${snapshot.generatedAt}`);
 	lines.push(`Gateway PID: ${snapshot.gateway.pid}`);
 	lines.push(`Gateway memory: rss=${snapshot.gateway.rssBytes} heapUsed=${snapshot.gateway.heapUsedBytes} heapAvailable=${snapshot.gateway.heapAvailableBytes} heapLimit=${snapshot.gateway.heapLimitBytes}`);
-	lines.push(`Host memory: free=${snapshot.host.freeBytes} total=${snapshot.host.totalBytes}`);
+	lines.push(`Host memory: free=${snapshot.host.freeBytes} available=${snapshot.host.availableBytes} total=${snapshot.host.totalBytes}`);
 	lines.push(`Thresholds: minFree=${snapshot.policy.minFreeMemoryBytes} minHeapAvailable=${snapshot.policy.minHeapAvailableBytes} maxRss=${snapshot.policy.maxRssBytes} daemonWarnRss=${snapshot.policy.knownDaemonWarningRssBytes} maxYieldedRuns=${snapshot.policy.maxConcurrentYieldedRuns} yieldedRunReservation=${snapshot.policy.yieldedRunMemoryReservationBytes}`);
 	lines.push(`Related processes: children=${snapshot.processes.children.length} knownDaemons=${snapshot.processes.knownDaemons.length} processList=${snapshot.processes.available ? "available" : "unavailable"}`);
+	lines.push(`Yielded-run cgroups: units=${snapshot.yieldedRunUnits.units.length} systemdList=${snapshot.yieldedRunUnits.available ? "available" : "unavailable"}`);
 	if (snapshot.processes.error) lines.push(`Process list error: ${snapshot.processes.error}`);
+	if (snapshot.yieldedRunUnits.error) lines.push(`Yielded-run unit list error: ${snapshot.yieldedRunUnits.error}`);
+	for (const unit of snapshot.yieldedRunUnits.units) lines.push(`- ${unit.unitName}: ${unit.activeState}/${unit.subState}`);
 	const visibleProcesses = [...snapshot.processes.children, ...snapshot.processes.knownDaemons].slice(0, 10);
 	if (visibleProcesses.length > 0) {
 		lines.push("PID\tPPID\tRSS_BYTES\tKIND\tLABEL\tCOMMAND");
@@ -248,9 +289,9 @@ function evaluateGatewayResourceChecks(input: { gateway: GatewayProcessMemorySna
 		checks.push({ id: "guard-disabled", severity: "ok", message: "Gateway resource guard is disabled." });
 		return checks;
 	}
-	checks.push(input.host.freeBytes < input.policy.minFreeMemoryBytes
-		? { id: "host-memory-reserve", severity: "critical", message: `Host free memory ${input.host.freeBytes} is below reserve ${input.policy.minFreeMemoryBytes}.` }
-		: { id: "host-memory-reserve", severity: "ok", message: `Host free memory ${input.host.freeBytes} satisfies reserve ${input.policy.minFreeMemoryBytes}.` });
+	checks.push(input.host.availableBytes < input.policy.minFreeMemoryBytes
+		? { id: "host-memory-reserve", severity: "critical", message: `Host available memory ${input.host.availableBytes} is below reserve ${input.policy.minFreeMemoryBytes}.` }
+		: { id: "host-memory-reserve", severity: "ok", message: `Host available memory ${input.host.availableBytes} satisfies reserve ${input.policy.minFreeMemoryBytes}.` });
 	checks.push(input.gateway.heapAvailableBytes < input.policy.minHeapAvailableBytes
 		? { id: "gateway-heap-reserve", severity: "critical", message: `Gateway heap availability ${input.gateway.heapAvailableBytes} is below reserve ${input.policy.minHeapAvailableBytes}.` }
 		: { id: "gateway-heap-reserve", severity: "ok", message: `Gateway heap availability ${input.gateway.heapAvailableBytes} satisfies reserve ${input.policy.minHeapAvailableBytes}.` });
@@ -272,6 +313,16 @@ function processResultFromOptions(gatewayPid: number, options: CollectGatewayRes
 		children: rows.filter((row) => row.kind === "child"),
 		knownDaemons: rows.filter((row) => row.kind === "known-daemon"),
 	};
+}
+
+function yieldedUnitResultFromOptions(options: CollectGatewayResourceSnapshotOptions): GatewayResourceSnapshot["yieldedRunUnits"] {
+	if (options.yieldedUnitListError) return { available: false, error: options.yieldedUnitListError, units: [] };
+	if (options.yieldedUnitListOutput === undefined) return { available: false, units: [] };
+	return { available: true, units: parseYieldedRunSystemdUnits(options.yieldedUnitListOutput) };
+}
+
+function errorText(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
 }
 
 function parseMode(value: string | undefined, fallback: GatewayResourceGuardMode): GatewayResourceGuardMode {

@@ -24,6 +24,7 @@ import type {
 import { createSubagentToolName, type PiboSubagentRunner } from "../subagents/tool.js";
 import { PiboRunRegistry, type PiboRunNotification, type PiboRunRegistryEvent, type PiboRunSnapshot } from "../runs/registry.js";
 import { PiboRunExecutionTimeoutError } from "../runs/lifecycle.js";
+import { PiboRunResourceLimitError } from "../runs/resource-isolation.js";
 import { createPiboSignalRegistry } from "../signals/registry.js";
 import type { PiboSignalPatch, PiboSignalRegistry, PiboSignalSnapshot, PiboSignalStatusSnapshot } from "../signals/types.js";
 import type { PiboRunToolController } from "../runs/tools.js";
@@ -160,6 +161,8 @@ function formatRunReminderMessage(notification: PiboRunNotification): string {
 				status: run.status,
 				toolName: run.toolName,
 				summary: run.summary,
+				resourceLimitReason: run.resources?.limitReason,
+				resourceUnit: run.resources?.unitName,
 			})),
 			timedOut: notification.timedOut.map((run) => ({
 				runId: run.runId,
@@ -989,8 +992,9 @@ export class PiboSessionRouter {
 
 	private createRunToolController(parentPiboSessionId: string): PiboRunToolController {
 		return {
-			startToolRun: ({ toolName, params, completionPolicy, retryable, maxAttempts, timeoutMs, serviceWarning, execute }) => {
+			startToolRun: ({ toolName, params, completionPolicy, retryable, maxAttempts, timeoutMs, serviceWarning, resources, execute }) => {
 				const admission = this.gatewayWorkAdmission.reserve(`yielded run ${toolName}`);
+				if (resources) resources.admission = admission.admission;
 				const reminderGeneration = this.runReminderGeneration(parentPiboSessionId);
 				let run: PiboRunSnapshot;
 				try {
@@ -1003,6 +1007,7 @@ export class PiboSessionRouter {
 						maxAttempts,
 						timeoutMs,
 						serviceWarning,
+						resources,
 					});
 				} catch (error) {
 					admission.release();
@@ -1012,13 +1017,17 @@ export class PiboSessionRouter {
 				void (async () => {
 					try {
 						const result = await execute();
+						if (resources) this.runRegistry.updateResources(run.runId, resources);
 						const completed = this.runRegistry.complete(run.runId, result);
 						if (completed) this.handleTerminalRunReminder(parentPiboSessionId, completed.runId, reminderGeneration);
 					} catch (error) {
 						const message = error instanceof Error ? error.message : String(error);
+						if (resources) this.runRegistry.updateResources(run.runId, resources);
 						const terminalRun = error instanceof PiboRunExecutionTimeoutError
 							? this.runRegistry.timeOut(run.runId, message, error.timeoutPhase)
-							: this.runRegistry.fail(run.runId, message);
+							: error instanceof PiboRunResourceLimitError
+								? this.runRegistry.resourceLimit(run.runId, message, error.resources)
+								: this.runRegistry.fail(run.runId, message);
 						if (terminalRun) this.handleTerminalRunReminder(parentPiboSessionId, terminalRun.runId, reminderGeneration);
 					} finally {
 						admission.release();
