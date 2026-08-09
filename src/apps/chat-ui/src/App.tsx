@@ -295,6 +295,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const [newSessionProfile, setNewSessionProfile] = useState("");
 	const [newSessionProfileRoomId, setNewSessionProfileRoomId] = useState<string | null>(null);
 	const [sessionViewId, setSessionViewId] = useState<ChatSessionViewId>(() => routeSessionViewId ?? readStoredSessionView());
+	const [terminalFullscreen, setTerminalFullscreen] = useState(false);
 	const [composerText, setComposerText] = useState("");
 	const [composerFocusSignal, setComposerFocusSignal] = useState(0);
 	const [creatingSession, setCreatingSession] = useState(false);
@@ -549,6 +550,20 @@ export function App({ route }: { route: ChatAppRoute }) {
 	useEffect(() => {
 		writeStoredSessionView(sessionViewId);
 	}, [sessionViewId]);
+
+	useEffect(() => {
+		setTerminalFullscreen(false);
+	}, [area]);
+
+	useEffect(() => {
+		if (area === "sessions" && sessionViewId !== "terminal") setTerminalFullscreen(false);
+	}, [area, sessionViewId]);
+
+	const enterTerminalFullscreen = useCallback(() => {
+		setMobileSidebarOpen(false);
+		setMobileAreaMenuOpen(false);
+		setTerminalFullscreen(true);
+	}, []);
 	const navigateToRoute = useCallback(
 		(target: ChatAppRoute, replace = false, nextSessionViewId = sessionViewId, options: NavigationOptions = {}) => {
 			if (options.closeMobileSidebar !== false) closeMobileSidebar();
@@ -1510,6 +1525,17 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const totalRoomUnreadCount = countUnreadRooms(bootstrap.rooms);
 	const contextAgentProfiles = [...new Set([...bootstrap.agents.map((agent) => agent.name), ...bootstrap.customAgents.map((agent) => agent.profileName)])];
 	const identity = identityFromBootstrap(bootstrap);
+	const isTerminalFullscreen = terminalFullscreen
+		&& (area === "sessions" || area === "projects")
+		&& (area === "projects" || sessionViewId === "terminal");
+	const routeShellClassName = isTerminalFullscreen
+		? "h-full overflow-hidden grid grid-cols-[minmax(0,1fr)]"
+		: (area === "agents" || area === "workflows" || area === "cron" || area === "loops")
+			? "h-full overflow-hidden"
+			: `grid ${(area === "sessions" || area === "projects") && showRawEvents
+				? "grid-cols-[300px_minmax(0,1fr)_320px] max-[980px]:grid-cols-1"
+				: "grid-cols-[300px_minmax(0,1fr)] max-[980px]:grid-cols-1"
+			}`;
 	const selectMainNavArea = (item: Area) => {
 		setMobileAreaMenuOpen(false);
 		if (item === "sessions") {
@@ -1525,43 +1551,42 @@ export function App({ route }: { route: ChatAppRoute }) {
 
 	return (
 		<>
-			{gatewayMode === "fallback" ? <FallbackGatewayBanner /> : null}
+			{gatewayMode === "fallback" && !isTerminalFullscreen ? <FallbackGatewayBanner /> : null}
 			<div
 				data-pibo-debug="chat-app"
 				data-pibo-area={area}
 				data-pibo-room-id={selectedRoomId ?? bootstrap.selectedRoomId ?? undefined}
 				data-pibo-selected-session-id={selectedPiboSessionId ?? bootstrap.selectedPiboSessionId ?? undefined}
-				className="h-dvh overflow-hidden bg-[#101d22] text-slate-200 grid grid-rows-[auto_auto_1fr]"
+				data-pibo-terminal-fullscreen={isTerminalFullscreen ? "true" : "false"}
+				className={`h-dvh overflow-hidden bg-[#101d22] text-slate-200 grid ${isTerminalFullscreen ? "grid-rows-[1fr]" : "grid-rows-[auto_auto_1fr]"}`}
 			>
-				<AppHeader
-					area={area}
-					identity={identity}
-					mobileAreaMenuOpen={mobileAreaMenuOpen}
-					mobileSidebarTriggerRef={mobileSidebarTriggerRef}
-					totalRoomUnreadCount={totalRoomUnreadCount}
-					onOpenMobileSidebar={() => setMobileSidebarOpen(true)}
-					onSelectMainNavArea={selectMainNavArea}
-					onToggleMobileAreaMenu={() => setMobileAreaMenuOpen((open) => !open)}
-					onCloseMobileAreaMenu={() => setMobileAreaMenuOpen(false)}
-				/>
+				{isTerminalFullscreen ? null : (
+					<AppHeader
+						area={area}
+						identity={identity}
+						mobileAreaMenuOpen={mobileAreaMenuOpen}
+						mobileSidebarTriggerRef={mobileSidebarTriggerRef}
+						totalRoomUnreadCount={totalRoomUnreadCount}
+						onOpenMobileSidebar={() => setMobileSidebarOpen(true)}
+						onSelectMainNavArea={selectMainNavArea}
+						onToggleMobileAreaMenu={() => setMobileAreaMenuOpen((open) => !open)}
+						onCloseMobileAreaMenu={() => setMobileAreaMenuOpen(false)}
+					/>
+				)}
 
-			<div>
-				{error ? <AppErrorBanner message={error} onDismiss={() => setError(null)} /> : null}
-				{downloadStatus ? <DownloadStatusBanner status={downloadStatus} onDismiss={() => setDownloadStatus(null)} /> : null}
-			</div>
+				{isTerminalFullscreen ? null : (
+					<div>
+						{error ? <AppErrorBanner message={error} onDismiss={() => setError(null)} /> : null}
+						{downloadStatus ? <DownloadStatusBanner status={downloadStatus} onDismiss={() => setDownloadStatus(null)} /> : null}
+					</div>
+				)}
 
 			<div
 				data-pibo-debug="route-shell"
 				data-pibo-area={area}
 				data-pibo-room-id={selectedRoomId ?? bootstrap.selectedRoomId ?? undefined}
 				data-pibo-selected-session-id={selectedPiboSessionId ?? undefined}
-				className={`min-h-0 ${
-					(area === "agents" || area === "workflows" || area === "cron" || area === "loops") ? "h-full overflow-hidden" : `grid ${
-						(area === "sessions" || area === "projects") && showRawEvents
-						? "grid-cols-[300px_minmax(0,1fr)_320px] max-[980px]:grid-cols-1"
-						: "grid-cols-[300px_minmax(0,1fr)] max-[980px]:grid-cols-1"
-					}`
-				}`}
+				className={`min-h-0 ${routeShellClassName}`}
 			>
 				{area === "cron" ? (
 					<CronArea bootstrap={bootstrap} mobileSidebarOpen={mobileSidebarOpen} onCloseMobileSidebar={closeMobileSidebar} />
@@ -1599,6 +1624,9 @@ export function App({ route }: { route: ChatAppRoute }) {
 						skills={skills}
 						mobileSidebarOpen={mobileSidebarOpen}
 						onCloseMobileSidebar={closeMobileSidebar}
+						terminalFullscreen={isTerminalFullscreen}
+						onEnterTerminalFullscreen={enterTerminalFullscreen}
+						onExitTerminalFullscreen={() => setTerminalFullscreen(false)}
 						onNavigate={navigateToSelectedProjectSession}
 						onViewContext={viewSessionContext}
 						onSelectSessionView={selectSessionView}
@@ -1627,7 +1655,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 					data-pibo-mobile-sidebar-backdrop
 					aria-hidden="true"
 					className={`fixed inset-0 z-30 bg-black/60 min-[981px]:hidden transition-opacity duration-200 ${
-						mobileSidebarOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+						isTerminalFullscreen ? "hidden" : mobileSidebarOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
 					}`}
 					onClick={closeMobileSidebar}
 				/>
@@ -1640,7 +1668,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 					data-pibo-selected-session-id={selectedPiboSessionId ?? undefined}
 					data-pibo-state={mobileSidebarOpen ? "open" : "closed"}
 					className={`min-h-0 overflow-hidden flex flex-col bg-[#1a262b] border-r border-slate-800 max-[980px]:fixed max-[980px]:left-0 max-[980px]:top-0 max-[980px]:bottom-0 max-[980px]:z-40 max-[980px]:w-[280px] max-[980px]:transition-transform max-[980px]:duration-200 ${
-						mobileSidebarOpen ? "max-[980px]:translate-x-0" : "max-[980px]:-translate-x-full"
+						isTerminalFullscreen ? "hidden" : mobileSidebarOpen ? "max-[980px]:translate-x-0" : "max-[980px]:-translate-x-full"
 					}`}
 				>
 					<div className="h-11 px-3 border-b border-slate-800 flex items-center justify-between text-xs font-bold uppercase tracking-wider max-[980px]:h-auto max-[980px]:py-2 max-[980px]:flex-wrap">
@@ -1752,6 +1780,9 @@ export function App({ route }: { route: ChatAppRoute }) {
 						sessionViews={sessionViews}
 						currentSessionView={currentSessionView}
 						creatingSession={creatingSession}
+						terminalFullscreen={isTerminalFullscreen}
+						onEnterTerminalFullscreen={enterTerminalFullscreen}
+						onExitTerminalFullscreen={() => setTerminalFullscreen(false)}
 						showRawEvents={showRawEvents}
 						showThinking={showThinking}
 						expandThinking={expandThinking}
