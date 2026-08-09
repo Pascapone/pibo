@@ -13,6 +13,7 @@ test("sticky Virtuoso state handles intent, prepend, and anchor transactions", a
 			prependedItemCount,
 			shouldReattachStickyAtBottom,
 			stickyAnchorLocation,
+			stickyPointerScrollMode,
 			stickyScrollIntentDirection,
 			stickyScrollPositionDirection,
 			stickyTouchScrollIntentDirection,
@@ -26,6 +27,10 @@ test("sticky Virtuoso state handles intent, prepend, and anchor transactions", a
 		assert.equal(stickyTouchScrollIntentDirection(100, 120), "away");
 		assert.equal(stickyTouchScrollIntentDirection(120, 100), "toward");
 		assert.equal(stickyTouchScrollIntentDirection(undefined, 100), undefined);
+		assert.equal(stickyPointerScrollMode({ button: 1, targetIsScroller: false }), "middle");
+		assert.equal(stickyPointerScrollMode({ button: 0, targetIsScroller: true, clientX: 995, scrollerRight: 1_000, verticalScrollbarWidth: 15 }), "scrollbar");
+		assert.equal(stickyPointerScrollMode({ button: 0, targetIsScroller: true, clientX: 950, scrollerRight: 1_000, verticalScrollbarWidth: 15 }), undefined);
+		assert.equal(stickyPointerScrollMode({ button: 0, targetIsScroller: false, clientX: 995, scrollerRight: 1_000, verticalScrollbarWidth: 15 }), undefined);
 
 		assert.equal(stickyScrollPositionDirection({
 			hasUserScrollIntent: false,

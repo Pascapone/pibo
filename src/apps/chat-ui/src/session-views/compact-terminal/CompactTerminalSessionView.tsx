@@ -69,6 +69,8 @@ export function CompactTerminalSessionView({
 	const olderTraceIntentRef = useRef(false);
 	const olderTraceLoadTimerRef = useRef<number | undefined>(undefined);
 	const olderTraceRequestPendingRef = useRef(false);
+	const scrollbarDragActiveRef = useRef(false);
+	const scrollbarDragDeferredLoadRef = useRef(false);
 	const prepareOlderTracePrependRef = useRef<() => void>(() => undefined);
 	const userMessageCount = rows.filter((row) => isNavigableTerminalRow(row, "user")).length;
 	const toolErrorCount = rows.filter((row) => isNavigableTerminalRow(row, "tool")).length;
@@ -94,6 +96,10 @@ export function CompactTerminalSessionView({
 
 	const loadOlderTracePage = useCallback((settleScrollIntent: boolean) => {
 		if (!hasOlderTraceEvents || isFetchingOlderTracePage || olderTraceRequestPendingRef.current) return;
+		if (scrollbarDragActiveRef.current) {
+			scrollbarDragDeferredLoadRef.current = true;
+			return;
+		}
 		const load = () => {
 			olderTraceLoadTimerRef.current = undefined;
 			if (olderTraceRequestPendingRef.current) return;
@@ -119,8 +125,22 @@ export function CompactTerminalSessionView({
 		if (!rangePrefetchReadyRef.current) return;
 		loadOlderTracePage(false);
 	}, [loadOlderTracePage]);
-	const markOlderTraceIntent = useCallback((event?: Event) => {
-		if (isOlderTraceScrollIntent(event)) olderTraceIntentRef.current = true;
+	const handleScrollbarDragChange = useCallback((active: boolean) => {
+		scrollbarDragActiveRef.current = active;
+		if (active) {
+			if (olderTraceLoadTimerRef.current !== undefined) {
+				window.clearTimeout(olderTraceLoadTimerRef.current);
+				olderTraceLoadTimerRef.current = undefined;
+				scrollbarDragDeferredLoadRef.current = true;
+			}
+			return;
+		}
+		if (!scrollbarDragDeferredLoadRef.current) return;
+		scrollbarDragDeferredLoadRef.current = false;
+		loadOlderTracePage(false);
+	}, [loadOlderTracePage]);
+	const markOlderTraceIntent = useCallback((event?: Event, direction?: "away" | "toward") => {
+		if (isOlderTraceScrollIntent(event, direction)) olderTraceIntentRef.current = true;
 	}, []);
 	const handleVisibleRangeChanged = useCallback((range: { startIndex: number; endIndex: number }) => {
 		if (!rangePrefetchReadyRef.current) return;
@@ -143,6 +163,7 @@ export function CompactTerminalSessionView({
 		onAtTop: loadOlderAtTop,
 		onNearTop: loadOlderNearTop,
 		onUserScrollIntent: markOlderTraceIntent,
+		onScrollbarDragChange: handleScrollbarDragChange,
 		onVisibleAnchorChange: persistVisibleAnchor,
 	});
 	prepareOlderTracePrependRef.current = stickyView.prepareForPrepend;
@@ -150,6 +171,8 @@ export function CompactTerminalSessionView({
 	useEffect(() => {
 		requestedRestorePageRef.current = undefined;
 		olderTraceRequestPendingRef.current = false;
+		scrollbarDragActiveRef.current = false;
+		scrollbarDragDeferredLoadRef.current = false;
 		setReloadReadingPosition(piboSessionId ? readTerminalReadingPosition(piboSessionId) : undefined);
 	}, [piboSessionId]);
 
@@ -905,7 +928,8 @@ function sameSet(left: Set<string>, right: Set<string>): boolean {
 	return true;
 }
 
-function isOlderTraceScrollIntent(event?: Event) {
+function isOlderTraceScrollIntent(event?: Event, direction?: "away" | "toward") {
+	if (direction) return direction === "away";
 	if (event instanceof WheelEvent) return event.deltaY < 0;
 	if (event instanceof KeyboardEvent) return ["ArrowUp", "PageUp", "Home"].includes(event.key);
 	return event?.type === "touchmove";
