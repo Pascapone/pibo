@@ -136,6 +136,7 @@ function streamingBenchmarkCompactRunRows(benchmark: StreamingBenchmark): Stream
 		{ section: "compact", metric: "Live trace compute", preservation: liveTraceComputeCount !== undefined ? `count ${jsonShort(liveTraceComputeCount)}, total ${jsonShort(liveTraceComputeTotalMs)}ms` : "n/a", cadenceLatency: liveTraceComputeMaxMs !== undefined ? `max ${jsonShort(liveTraceComputeMaxMs)}ms` : "n/a" },
 		{ section: "compact", metric: "Markdown render", preservation: markdownRenderCount !== undefined ? `count ${jsonShort(markdownRenderCount)}, plain ${jsonShort(markdownRenderPlainCount)}, commonmark ${jsonShort(markdownRenderCommonMarkCount)}, gfm ${jsonShort(markdownRenderGfmCount)}, gfmFast ${jsonShort(markdownRenderGfmFastCount)}, full ${jsonShort(markdownRenderFullCount)}` : "n/a", cadenceLatency: markdownRenderMaxMs !== undefined ? `total ${jsonShort(markdownRenderTotalMs)}ms, max ${jsonShort(markdownRenderMaxMs)}ms` : "n/a" },
 		{ section: "compact", metric: "DOM", preservation: `positive ${benchmark.dom.positiveUpdateCount}, max jump ${jsonShort(benchmark.dom.positiveCharJumps.max)} chars`, cadenceLatency: `p90 gap ${statP90(benchmark.dom.gapsMs, "ms")}, first visible ${jsonShort(benchmark.dom.firstPositiveUpdateMs)}ms` },
+		{ section: "compact", metric: "Render order", preservation: renderOrderPreservation(benchmark), cadenceLatency: renderOrderEvidence(benchmark) },
 		{ section: "compact", metric: "Score", preservation: `smoothness ${benchmark.score.smoothness}`, cadenceLatency: `regressions ${benchmark.regressions.length}, warnings ${benchmark.warnings.length}` },
 	];
 }
@@ -151,6 +152,7 @@ function streamingBenchmarkCompactGroupRows(group: StreamingBenchmarkGroup): Str
 		{ section: "compact", metric: "Live trace compute", preservation: `count ${statP50(group.summary.debugLiveTraceComputeCount)}, total ${statP50(group.summary.debugLiveTraceComputeDurationTotalMs, "ms")}`, cadenceLatency: `max ${statP50(group.summary.debugLiveTraceComputeDurationMaxMs, "ms")}` },
 		{ section: "compact", metric: "Markdown render", preservation: `count ${statP50(group.summary.debugMarkdownRenderCount)}, plain ${statP50(group.summary.debugMarkdownRenderPlainCount)}, commonmark ${statP50(group.summary.debugMarkdownRenderCommonMarkCount)}, gfm ${statP50(group.summary.debugMarkdownRenderGfmCount)}, gfmFast ${statP50(group.summary.debugMarkdownRenderGfmFastCount)}, full ${statP50(group.summary.debugMarkdownRenderFullCount)}`, cadenceLatency: `total ${statP50(group.summary.debugMarkdownRenderDurationTotalMs, "ms")}, max ${statP50(group.summary.debugMarkdownRenderDurationMaxMs, "ms")}` },
 		{ section: "compact", metric: "DOM", preservation: `positive ${statP50(group.summary.domPositiveUpdateCount)}, max jump ${statP50(group.summary.domJumpMaxChars, " chars")}`, cadenceLatency: `p90 gap ${statP50(group.summary.domGapP90Ms, "ms")}, first visible ${statP50(group.summary.firstVisibleMs, "ms")}` },
+		{ section: "compact", metric: "Render order", preservation: `reorder ${statP50(group.summary.renderOrderReorderCount)}, reappear ${statP50(group.summary.renderOrderDisappearReappearCount)}, identity ${statP50(group.summary.renderOrderIdentityReplacementCount)}, mismatch ${statP50(group.summary.renderOrderStateDomMismatchCount)}`, cadenceLatency: `DOM states ${statP50(group.summary.renderOrderDomStateCount)}, trace snapshots ${statP50(group.summary.renderOrderTraceSnapshotCount)}` },
 		{ section: "compact", metric: "Score", preservation: `smoothness ${statP50(group.summary.smoothness)}`, cadenceLatency: `regressions ${statP50(group.summary.regressionCount)}, warnings ${group.warnings.length}` },
 	];
 }
@@ -204,6 +206,7 @@ function formatStreamingBenchmarkCompactRun(benchmark: StreamingBenchmark, targe
 			["Live trace compute", liveTraceComputeCount !== undefined ? `count ${jsonShort(liveTraceComputeCount)}, total ${jsonShort(liveTraceComputeTotalMs)}ms` : "n/a", liveTraceComputeMaxMs !== undefined ? `max ${jsonShort(liveTraceComputeMaxMs)}ms` : "n/a"],
 			["Markdown render", markdownRenderCount !== undefined ? `count ${jsonShort(markdownRenderCount)}, plain ${jsonShort(markdownRenderPlainCount)}, commonmark ${jsonShort(markdownRenderCommonMarkCount)}, gfm ${jsonShort(markdownRenderGfmCount)}, gfmFast ${jsonShort(markdownRenderGfmFastCount)}, full ${jsonShort(markdownRenderFullCount)}` : "n/a", markdownRenderMaxMs !== undefined ? `total ${jsonShort(markdownRenderTotalMs)}ms, max ${jsonShort(markdownRenderMaxMs)}ms` : "n/a"],
 			["DOM", `positive ${benchmark.dom.positiveUpdateCount}, max jump ${jsonShort(benchmark.dom.positiveCharJumps.max)} chars`, `p90 gap ${statP90(benchmark.dom.gapsMs, "ms")}, first visible ${jsonShort(benchmark.dom.firstPositiveUpdateMs)}ms`],
+			["Render order", renderOrderPreservation(benchmark), renderOrderEvidence(benchmark)],
 			["Score", `smoothness ${benchmark.score.smoothness}`, `regressions ${benchmark.regressions.length}, warnings ${benchmark.warnings.length}`],
 		]),
 	];
@@ -226,6 +229,7 @@ function formatStreamingBenchmarkCompactGroup(group: StreamingBenchmarkGroup, ta
 			["Live trace compute", `count ${statP50(group.summary.debugLiveTraceComputeCount)}, total ${statP50(group.summary.debugLiveTraceComputeDurationTotalMs, "ms")}`, `max ${statP50(group.summary.debugLiveTraceComputeDurationMaxMs, "ms")}`],
 			["Markdown render", `count ${statP50(group.summary.debugMarkdownRenderCount)}, plain ${statP50(group.summary.debugMarkdownRenderPlainCount)}, commonmark ${statP50(group.summary.debugMarkdownRenderCommonMarkCount)}, gfm ${statP50(group.summary.debugMarkdownRenderGfmCount)}, gfmFast ${statP50(group.summary.debugMarkdownRenderGfmFastCount)}, full ${statP50(group.summary.debugMarkdownRenderFullCount)}`, `total ${statP50(group.summary.debugMarkdownRenderDurationTotalMs, "ms")}, max ${statP50(group.summary.debugMarkdownRenderDurationMaxMs, "ms")}`],
 			["DOM", `positive ${statP50(group.summary.domPositiveUpdateCount)}, max jump ${statP50(group.summary.domJumpMaxChars, " chars")}`, `p90 gap ${statP50(group.summary.domGapP90Ms, "ms")}, first visible ${statP50(group.summary.firstVisibleMs, "ms")}`],
+			["Render order", `reorder ${statP50(group.summary.renderOrderReorderCount)}, reappear ${statP50(group.summary.renderOrderDisappearReappearCount)}, identity ${statP50(group.summary.renderOrderIdentityReplacementCount)}, mismatch ${statP50(group.summary.renderOrderStateDomMismatchCount)}`, `DOM states ${statP50(group.summary.renderOrderDomStateCount)}, trace snapshots ${statP50(group.summary.renderOrderTraceSnapshotCount)}`],
 			["Score", `smoothness ${statP50(group.summary.smoothness)}`, `regressions ${statP50(group.summary.regressionCount)}, warnings ${group.warnings.length}`],
 		]),
 	];
@@ -263,6 +267,18 @@ function formatStreamingBenchmarkCompactUrlComparison(comparison: StreamingBench
 	];
 	appendCompactBenchmarkNotes(lines, comparison.negativeProfile, comparison.regressions, comparison.warnings);
 	return lines.join("\n");
+}
+
+function renderOrderPreservation(benchmark: StreamingBenchmark): string {
+	const analysis = benchmark.renderOrder?.analysis;
+	if (!analysis) return benchmark.renderOrder?.warning ?? "n/a";
+	return `reorder ${analysis.reorderCount}, reappear ${analysis.disappearReappearCount}, identity ${analysis.identityReplacementCount}, mismatch ${analysis.stateDomMismatchCount}`;
+}
+
+function renderOrderEvidence(benchmark: StreamingBenchmark): string {
+	const analysis = benchmark.renderOrder?.analysis;
+	if (!analysis) return "n/a";
+	return `DOM states ${analysis.domStateCount}, trace snapshots ${analysis.traceSnapshotCount}`;
 }
 
 function appendCompactBenchmarkNotes(lines: string[], negativeProfile: string | undefined, regressions: readonly string[], warnings: readonly string[]): void {
@@ -329,6 +345,7 @@ function formatStreamingBenchmark(benchmark: StreamingBenchmark, target: Streami
 		`dom jumps: ${formatStats(benchmark.dom.positiveCharJumps)} chars`,
 		`raf: count=${benchmark.raf.count}, gaps=${formatStats(benchmark.raf.gapsMs)}`,
 		`longTasks: count=${benchmark.longTasks.count}, max=${benchmark.longTasks.maxMs}ms, total=${benchmark.longTasks.totalMs}ms`,
+		`render order: ${renderOrderPreservation(benchmark)}, ${renderOrderEvidence(benchmark)}`,
 	];
 	if (benchmark.negativeProfile) lines.push(`negative profile: ${benchmark.negativeProfile}`);
 	if (benchmark.fixture) lines.push(`fixture: mode=${benchmark.fixture.mode} profile=${jsonShort(benchmark.fixture.profile)} mix=${jsonShort(benchmark.fixture.mix)} simulation=${jsonShort(benchmark.fixture.simulation)} available=${benchmark.fixture.available} started=${benchmark.fixture.started} deltas=${jsonShort(benchmark.fixture.deltaCount)} reasoningDeltas=${jsonShort(benchmark.fixture.reasoningDeltaCount)} cadence=${jsonShort(benchmark.fixture.cadenceMs)}ms prelude=${jsonShort(benchmark.fixture.preludeMessages)} scheduleGaps=${benchmark.fixture.scheduleGapsMs ? formatStats(benchmark.fixture.scheduleGapsMs) : "count=0"} session=${jsonShort(benchmark.fixture.piboSessionId)}${benchmark.fixture.error ? ` error=${benchmark.fixture.error}` : ""}`);
@@ -344,6 +361,12 @@ function formatStreamingBenchmark(benchmark: StreamingBenchmark, target: Streami
 	}
 	if (benchmark.sse) lines.push(`sse: requested=${benchmark.sse.requested} installed=${benchmark.sse.installed} status=${jsonShort(benchmark.sse.status)} firstChunk=${jsonShort(benchmark.sse.firstChunkMs)}ms firstText=${jsonShort(benchmark.sse.firstTextEventMs)}ms chunks=${benchmark.sse.chunkCount} chunkBytes=${formatStats(benchmark.sse.chunkBytes)} chunkGaps=${formatStats(benchmark.sse.chunkGapsMs)} textPerChunk=${formatStats(benchmark.sse.textEventsPerChunk)} text=${benchmark.sse.textEventCount} reasoning=${benchmark.sse.reasoningEventCount} textGaps=${formatStats(benchmark.sse.textEventGapsMs)} transient=${benchmark.sse.transientIdCount} durable=${benchmark.sse.durableIdCount} errors=${benchmark.sse.errors.length}`);
 	if (benchmark.trace) lines.push(`trace: requested=${benchmark.trace.requested} samples=${benchmark.trace.sampleCount} fetches=${benchmark.trace.fetchCount} failed=${benchmark.trace.failedFetchCount} liveVersions=${benchmark.trace.liveVersionCount} firstLive=${jsonShort(benchmark.trace.firstLiveVersionMs)}ms assistantMax=${benchmark.trace.maxAssistantOutputLength} assistantFinal=${jsonShort(benchmark.trace.finalAssistantOutputLength)} durableEvents=${jsonShort(benchmark.trace.durableEventCountStart)}->${jsonShort(benchmark.trace.durableEventCountEnd)} session=${jsonShort(benchmark.trace.piboSessionId)}`);
+	if (benchmark.renderOrder?.analysis?.findings.length) {
+		lines.push("", "Render order findings:");
+		for (const finding of benchmark.renderOrder.analysis.findings.slice(0, 20)) {
+			lines.push(`- ${finding.source}/${finding.kind} @ ${new Date(finding.timestamp).toISOString()}: ${finding.detail}`);
+		}
+	}
 	if (benchmark.regressions.length) {
 		lines.push("", "Regressions:");
 		for (const regression of benchmark.regressions) lines.push(`- ${regression}`);
@@ -368,6 +391,7 @@ function formatStreamingBenchmarkGroup(group: StreamingBenchmarkGroup, target: S
 		`dom gaps p50=${formatStats(group.summary.domGapP50Ms)}, p90=${formatStats(group.summary.domGapP90Ms)}, max=${formatStats(group.summary.domGapMaxMs)}`,
 		`dom jumps p90=${formatStats(group.summary.domJumpP90Chars)}, max=${formatStats(group.summary.domJumpMaxChars)} chars`,
 		`firstVisible=${formatStats(group.summary.firstVisibleMs)}, longTaskMax=${formatStats(group.summary.longTaskMaxMs)}`,
+		`render order: reorder=${formatStats(group.summary.renderOrderReorderCount)}, reappear=${formatStats(group.summary.renderOrderDisappearReappearCount)}, identity=${formatStats(group.summary.renderOrderIdentityReplacementCount)}, mismatch=${formatStats(group.summary.renderOrderStateDomMismatchCount)}, DOM states=${formatStats(group.summary.renderOrderDomStateCount)}, trace snapshots=${formatStats(group.summary.renderOrderTraceSnapshotCount)}`,
 	];
 	if (group.negativeProfile) lines.push(`negative profile: ${group.negativeProfile}`);
 	if (group.summary.fixtureScheduleGapP90Ms.count > 0) lines.push(`fixture: scheduleGapP90=${formatStats(group.summary.fixtureScheduleGapP90Ms)}`);

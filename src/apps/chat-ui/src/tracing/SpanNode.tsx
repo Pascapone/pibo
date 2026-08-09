@@ -253,6 +253,12 @@ export const TraceSpanCard = memo(function TraceSpanCard({
 		return (
 			<div
 				className="relative mb-4"
+				data-pibo-debug="trace-span"
+				data-trace-node-id={span.id}
+				data-span-type={span.spanType}
+				data-span-status={span.status}
+				data-order-source={span.pibo?.source}
+				data-stable-key={span.pibo?.stableKey}
 				style={{
 					marginLeft: depth > 0 ? NESTING_INDENT_PX : 0,
 					width: depth > 0 ? `calc(100% - ${NESTING_INDENT_PX}px)` : "var(--trace-readable-width)",
@@ -280,6 +286,12 @@ export const TraceSpanCard = memo(function TraceSpanCard({
 	return (
 		<div
 			className="relative mb-4 group"
+			data-pibo-debug="trace-span"
+			data-trace-node-id={span.id}
+			data-span-type={span.spanType}
+			data-span-status={span.status}
+			data-order-source={span.pibo?.source}
+			data-stable-key={span.pibo?.stableKey}
 			style={{
 				marginLeft: depth > 0 ? NESTING_INDENT_PX : 0,
 				width: depth > 0 ? `calc(100% - ${NESTING_INDENT_PX}px)` : "var(--trace-readable-width)",

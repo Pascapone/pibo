@@ -9,7 +9,9 @@ import test from "node:test";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
 import { PiboReliabilityStore } from "../dist/reliability/store.js";
 import { sliceTextByBytes } from "../dist/debug/detail-format.js";
-import { attachStreamingProviderTelemetryToBenchmark, collectStreamingProviderTelemetryFromSelectedBrowserSession, collectStreamingProviderTelemetryFromSession, collectStreamingProviderTelemetryFromTurn, evaluateStreamingBenchmarkAssertion, evaluateStreamingBenchmarkUrlComparisonRegressions, evaluateStreamingLivePipelineRegressions, evaluateStreamingProviderRegressions, formatStreamingBenchmarkAssertionSummary, formatStreamingBenchmarkUrlComparison, formatWatch, inferWatchFlickers, resolveStreamingBenchmarkHostedCompareUrlFromValues, summarizeStreamingBenchmarkUrlComparison, summarizeStreamingBenchmarks, summarizeStreamingLivePipeline, summarizeStreamingProviderPreservation, summarizeStreamingProviderTelemetry, summarizeStreamingSelectedLiveEventSource } from "../dist/debug/web.js";
+import { analyzeStreamingRenderOrderCapture, attachStreamingProviderTelemetryToBenchmark, collectStreamingProviderTelemetryFromSelectedBrowserSession, collectStreamingProviderTelemetryFromSession, collectStreamingProviderTelemetryFromTurn, evaluateStreamingBenchmarkAssertion, evaluateStreamingBenchmarkUrlComparisonRegressions, evaluateStreamingLivePipelineRegressions, evaluateStreamingProviderRegressions, formatStreamingBenchmarkAssertionSummary, formatStreamingBenchmarkUrlComparison, formatWatch, inferWatchFlickers, resolveStreamingBenchmarkHostedCompareUrlFromValues, summarizeStreamingBenchmarkUrlComparison, summarizeStreamingBenchmarks, summarizeStreamingLivePipeline, summarizeStreamingProviderPreservation, summarizeStreamingProviderTelemetry, summarizeStreamingSelectedLiveEventSource } from "../dist/debug/web.js";
+import { buildStreamingBenchmarkExpression } from "../dist/debug/web-streaming-browser-scripts.js";
+import { buildSnapshotExpression } from "../dist/debug/web-snapshot-browser-scripts.js";
 
 const execFileAsyncRaw = promisify(execFile);
 const cliPath = resolve("dist/bin/pibo.js");
@@ -34,6 +36,157 @@ test("debug byte slicing preserves UTF-8 characters", () => {
 	const second = sliceTextByBytes(text, { from: first.from + first.bytesShown, bytes: 5 });
 	assert.doesNotMatch(second.text, /�/);
 	assert.equal(`${first.text}${second.text}`, "Hamburg Grüße S");
+});
+
+test("streaming render-order analysis accepts append-only stable states", () => {
+	const analyzed = analyzeStreamingRenderOrderCapture({
+		requested: true,
+		available: true,
+		piboSessionId: "ps_test",
+		omittedDomStates: 0,
+		domStates: [
+			{ t: 0, timestamp: 1000, reason: "start", piboSessionId: "ps_test", view: "compact-terminal", atBottom: true, rows: [{ id: "user:1" }], rowIds: ["user:1"], visualRowIds: ["user:1"] },
+			{ t: 10, timestamp: 1010, reason: "mutation", piboSessionId: "ps_test", view: "compact-terminal", atBottom: true, rows: [{ id: "user:1" }, { id: "assistant:1" }], rowIds: ["user:1", "assistant:1"], visualRowIds: ["user:1", "assistant:1"] },
+		],
+		traceSnapshots: [
+			{ timestamp: 1000, piboSessionId: "ps_test", trigger: "compact-terminal:render", layers: [{ kind: "terminalRows", ids: ["user:1"], digest: "a", meta: [{ id: "user:1", kind: "message.user", eventId: "evt_user" }] }] },
+			{ timestamp: 1010, piboSessionId: "ps_test", trigger: "compact-terminal:render", layers: [{ kind: "terminalRows", ids: ["user:1", "assistant:1"], digest: "b", meta: [{ id: "user:1", kind: "message.user", eventId: "evt_user" }, { id: "assistant:1", kind: "message.assistant", eventId: "evt_assistant" }] }] },
+		],
+	});
+	assert.deepEqual(analyzed.analysis.regressions, []);
+	assert.equal(analyzed.analysis.reorderCount, 0);
+	assert.equal(analyzed.analysis.stateDomMismatchCount, 0);
+});
+
+test("streaming render-order analysis isolates navigation sessions", () => {
+	const analyzed = analyzeStreamingRenderOrderCapture({
+		requested: true,
+		available: true,
+		piboSessionId: "ps_a",
+		omittedDomStates: 0,
+		domStates: [
+			{ t: 0, timestamp: 1000, reason: "start", piboSessionId: "ps_a", view: "compact-terminal", atBottom: true, rows: [{ id: "a" }], rowIds: ["a"], visualRowIds: ["a"] },
+			{ t: 10, timestamp: 1010, reason: "navigation", piboSessionId: "ps_b", view: "compact-terminal", atBottom: true, rows: [{ id: "b" }], rowIds: ["b"], visualRowIds: ["b"] },
+			{ t: 20, timestamp: 1020, reason: "navigation", piboSessionId: "ps_a", view: "compact-terminal", atBottom: true, rows: [{ id: "a" }], rowIds: ["a"], visualRowIds: ["a"] },
+		],
+		traceSnapshots: [
+			{ sequence: 1, timestamp: 1000, piboSessionId: "ps_a", trigger: "compact-terminal:render", layers: [{ kind: "terminalRows", ids: ["a"], digest: "a1", meta: [{ id: "a" }] }] },
+			{ sequence: 1, timestamp: 1010, piboSessionId: "ps_b", trigger: "compact-terminal:render", layers: [{ kind: "terminalRows", ids: ["b"], digest: "b1", meta: [{ id: "b" }] }] },
+			{ sequence: 2, timestamp: 1020, piboSessionId: "ps_a", trigger: "compact-terminal:render", layers: [{ kind: "terminalRows", ids: ["a"], digest: "a2", meta: [{ id: "a" }] }] },
+		],
+	});
+	assert.equal(analyzed.analysis.disappearReappearCount, 0);
+	assert.equal(analyzed.analysis.reorderCount, 0);
+	assert.equal(analyzed.analysis.stateDomMismatchCount, 0);
+	assert.deepEqual(analyzed.analysis.regressions, []);
+});
+
+test("streaming render-order analysis identifies reorders, reappearing rows, identity replacement, and DOM divergence", () => {
+	const analyzed = analyzeStreamingRenderOrderCapture({
+		requested: true,
+		available: true,
+		piboSessionId: "ps_test",
+		omittedDomStates: 0,
+		domStates: [
+			{ t: 20, timestamp: 1020, reason: "mutation", piboSessionId: "ps_test", view: "compact-terminal", atBottom: true, rows: [{ id: "assistant:new" }, { id: "user:1" }], rowIds: ["assistant:new", "user:1"], visualRowIds: ["user:1", "assistant:new"] },
+		],
+		traceSnapshots: [
+			{ timestamp: 1000, piboSessionId: "ps_test", trigger: "compact-terminal:render", layers: [{ kind: "terminalRows", ids: ["user:1", "assistant:old"], digest: "a", meta: [{ id: "user:1", kind: "message.user", eventId: "evt_user" }, { id: "assistant:old", kind: "message.assistant", eventId: "evt_assistant" }] }] },
+			{ timestamp: 1005, piboSessionId: "ps_test", trigger: "compact-terminal:render", layers: [{ kind: "terminalRows", ids: ["assistant:old", "user:1"], digest: "b", meta: [{ id: "assistant:old", kind: "message.assistant", eventId: "evt_assistant" }, { id: "user:1", kind: "message.user", eventId: "evt_user" }] }] },
+			{ timestamp: 1010, piboSessionId: "ps_test", trigger: "compact-terminal:render", layers: [{ kind: "terminalRows", ids: ["assistant:old"], digest: "c", meta: [{ id: "assistant:old", kind: "message.assistant", eventId: "evt_assistant" }] }] },
+			{ timestamp: 1020, piboSessionId: "ps_test", trigger: "compact-terminal:render", layers: [{ kind: "terminalRows", ids: ["user:1", "assistant:new"], digest: "d", meta: [{ id: "user:1", kind: "message.user", eventId: "evt_user" }, { id: "assistant:new", kind: "message.assistant", eventId: "evt_assistant" }] }] },
+		],
+	});
+	assert.ok(analyzed.analysis.findings.some((finding) => finding.kind === "reorder" && finding.source === "terminalRows"));
+	assert.ok(analyzed.analysis.findings.some((finding) => finding.kind === "reorder" && finding.source === "visual"));
+	assert.ok(analyzed.analysis.findings.some((finding) => finding.kind === "disappear-reappear" && finding.ids.includes("user:1")));
+	assert.ok(analyzed.analysis.findings.some((finding) => finding.kind === "identity-replacement" && finding.ids.includes("assistant:old") && finding.ids.includes("assistant:new")));
+	assert.ok(analyzed.analysis.findings.some((finding) => finding.kind === "state-dom-mismatch"));
+	assert.ok(analyzed.analysis.regressions.some((regression) => regression.startsWith("render order internal state reordered")));
+	assert.ok(analyzed.analysis.regressions.some((regression) => regression.startsWith("render order rows disappeared and reappeared")));
+});
+
+test("streaming render-order analysis correlates same-millisecond states by snapshot sequence", () => {
+	const analyzed = analyzeStreamingRenderOrderCapture({
+		requested: true,
+		available: true,
+		piboSessionId: "ps_test",
+		omittedDomStates: 0,
+		domStates: [
+			{ t: 0, timestamp: 1000, traceSequence: 2, reason: "mutation", piboSessionId: "ps_test", view: "compact-terminal", atBottom: true, rows: [{ id: "a" }, { id: "b" }], rowIds: ["a", "b"], visualRowIds: ["a", "b"] },
+		],
+		traceSnapshots: [
+			{ sequence: 1, timestamp: 1000, piboSessionId: "ps_test", trigger: "compact-terminal:render", layers: [{ kind: "terminalRows", ids: ["a"], digest: "a", meta: [{ id: "a", kind: "message.user", stableKey: "user:a" }] }] },
+			{ sequence: 2, timestamp: 1000, piboSessionId: "ps_test", trigger: "compact-terminal:render", layers: [{ kind: "terminalRows", ids: ["a", "b"], digest: "b", meta: [{ id: "a", kind: "message.user", stableKey: "user:a" }, { id: "b", kind: "message.assistant", stableKey: "assistant:b" }] }] },
+		],
+	});
+	assert.equal(analyzed.analysis.stateDomMismatchCount, 0);
+});
+
+test("streaming render-order analysis settles a DOM mutation against the immediate post-commit snapshot", () => {
+	const analyzed = analyzeStreamingRenderOrderCapture({
+		requested: true,
+		available: true,
+		piboSessionId: "ps_test",
+		omittedDomStates: 0,
+		domStates: [
+			{ t: 0, timestamp: 1000, traceSequence: 1, reason: "mutation", piboSessionId: "ps_test", view: "compact-terminal", atBottom: true, rows: [{ id: "a" }, { id: "b" }], rowIds: ["a", "b"], visualRowIds: ["a", "b"] },
+		],
+		traceSnapshots: [
+			{ sequence: 1, timestamp: 1000, piboSessionId: "ps_test", trigger: "compact-terminal:render", layers: [{ kind: "terminalRows", ids: ["a"], digest: "a", meta: [{ id: "a", kind: "message.user", stableKey: "user:a" }] }] },
+			{ sequence: 2, timestamp: 1001, piboSessionId: "ps_test", trigger: "compact-terminal:render", layers: [{ kind: "terminalRows", ids: ["a", "b"], digest: "b", meta: [{ id: "a", kind: "message.user", stableKey: "user:a" }, { id: "b", kind: "message.assistant", stableKey: "assistant:b" }] }] },
+		],
+	});
+	assert.equal(analyzed.analysis.stateDomMismatchCount, 0);
+});
+
+test("streaming render-order analysis matches every unique identity alias", () => {
+	const analyzed = analyzeStreamingRenderOrderCapture({
+		requested: true,
+		available: true,
+		piboSessionId: "ps_test",
+		omittedDomStates: 0,
+		domStates: [],
+		traceSnapshots: [
+			{ sequence: 1, timestamp: 1000, piboSessionId: "ps_test", trigger: "compact-terminal:render", layers: [{ kind: "terminalRows", ids: ["assistant:old"], digest: "a", meta: [{ id: "assistant:old", kind: "message.assistant", eventId: "turn-1", stableKey: "assistant:turn-1:assistant:0" }] }] },
+			{ sequence: 2, timestamp: 1001, piboSessionId: "ps_test", trigger: "compact-terminal:render", layers: [{ kind: "terminalRows", ids: ["assistant:new"], digest: "b", meta: [{ id: "assistant:new", kind: "assistant.message", stableKey: "assistant:turn-1:assistant:0" }] }] },
+		],
+	});
+	assert.equal(analyzed.analysis.identityReplacementCount, 1);
+	assert.deepEqual(analyzed.analysis.findings.find((finding) => finding.kind === "identity-replacement")?.ids, ["assistant:old", "assistant:new"]);
+});
+
+test("streaming benchmark expression installs temporary state and DOM render-order capture", () => {
+	const expression = buildStreamingBenchmarkExpression(1000, { startBackendFixture: true });
+	assert.doesNotMatch(expression, /localStorage\.setItem\('pibo\.chat\.traceDebug'/);
+	assert.match(expression, /__piboTraceSnapshotCollectionEnabled = true/);
+	assert.match(expression, /restoreDebugCollection/);
+	assert.match(expression, /clearSnapshots/);
+	assert.match(expression, /getLatestSequence/);
+	assert.match(expression, /benchmarkObserver && benchmarkObserver\.disconnect\(\)/);
+	assert.match(expression, /renderOrderCapture && renderOrderCapture\.stop\(\)/);
+	assert.match(expression, /finally \{\s*observer\.disconnect\(\);\s*clearInterval\(interval\)/);
+	assert.match(expression, /traceSummary = traceProbe\.result/);
+	assert.match(expression, /await traceProbe\.stop\(\)/);
+	assert.match(expression, /if \(activeSample\) return activeSample/);
+	assert.match(expression, /if \(activeSample\) await activeSample\.catch/);
+	assert.match(expression, /clearTimeout\(stopTimeout\)/);
+	assert.match(expression, /stoppedResult = cloneDebugSnapshot\(finalize\(\)\)/);
+	assert.match(expression, /capturedSessionIds\.add\(activePiboSessionId\)/);
+	assert.match(expression, /if \(sseProbe\) await sseProbe\.stop\(\)/);
+	assert.match(expression, /startRenderOrderCapture/);
+	assert.match(expression, /data-pibo-terminal-row/);
+	assert.match(expression, /data-stable-key/);
+	assert.match(expression, /stableKey: element\.getAttribute\('data-stable-key'\)/);
+	assert.match(expression, /__piboTraceSnapshots/);
+});
+
+test("web snapshots identify terminal rows and trace spans by stable ids", () => {
+	const expression = buildSnapshotExpression({ scope: "body", maxNodes: 10, maxDepth: 4, textLimit: 20, includeText: false, includeLayout: false });
+	assert.match(expression, /terminal-row:/);
+	assert.match(expression, /trace-span:/);
+	assert.match(expression, /data-row-id/);
+	assert.match(expression, /data-trace-node-id/);
 });
 
 test("pibo debug web watch rejects action flags", async () => {
