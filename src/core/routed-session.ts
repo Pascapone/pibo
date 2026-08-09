@@ -62,6 +62,13 @@ type FastModePatchableAgent = {
 };
 
 const FAST_SERVICE_TIER = "priority";
+const RUN_REMINDER_CAPABILITY_TOOLS = new Set([
+	"pibo_run_status",
+	"pibo_run_wait",
+	"pibo_run_read",
+	"pibo_run_cancel",
+	"pibo_run_ack",
+]);
 
 function modelSupportsFastServiceTier(model: ProviderRequestModel | undefined): boolean {
 	if (!model) return false;
@@ -84,6 +91,7 @@ type PiboSessionOperationListener = (
 ) => void | Promise<void>;
 
 type PiboMessageInterruptionListener = (messages: readonly PiboMessageEvent[], reason: string) => void;
+export type PiboMessagePreflight = (event: PiboMessageEvent) => Promise<{ allowed: boolean; reason?: string; code?: string }> | { allowed: boolean; reason?: string; code?: string };
 
 type PiEventCandidate = {
 	type?: unknown;
@@ -560,10 +568,13 @@ export class RoutedSession {
 	private processing = false;
 	private disposed = false;
 	private disposePromise?: Promise<void>;
+	private runtimeDisposePromise?: Promise<void>;
+	private forceDisposalStarted = false;
 	private drainPromise?: Promise<void>;
 	private fastMode = false;
 	private readonly fastModePatchedAgents = new WeakSet<object>();
 	private activeMessage?: PiboMessageEvent;
+	private activeExecutionEvent?: PiboExecutionEvent;
 	private activeAssistantIndex?: number;
 	private nextAssistantIndex = 0;
 	private activeThinkingIndex?: number;
@@ -573,6 +584,10 @@ export class RoutedSession {
 	private activeMessageFailed = false;
 	private providerRecoveryCancelled = false;
 	private providerRecoveryAbortController?: AbortController;
+	private activeCapabilityScope?: {
+		session: AgentSessionRuntime["session"];
+		restoreToolNames: string[];
+	};
 	private unsubscribe?: () => void;
 	private recoverySession?: AgentSessionRuntime["session"];
 	private isContinuePatched = false;
@@ -589,6 +604,7 @@ export class RoutedSession {
 		private readonly onKillChildren?: (piboSessionId: string, options?: { includeRuns?: boolean }) => Promise<{ killed: string[]; cancelledRuns: string[] }>,
 		private readonly onStateChange?: (state: { processing: boolean; queuedMessages: number; disposed: boolean }) => void,
 		private readonly onMessagesInterrupted?: PiboMessageInterruptionListener,
+		private readonly messagePreflight?: PiboMessagePreflight,
 	) {
 		this.fastMode = initialFastMode && this.fastModeSupported();
 		this.bindRuntimeSession();
@@ -679,7 +695,7 @@ export class RoutedSession {
 		this.recoverySession = session;
 		claimPiboAssistantContextGuardRecovery(session);
 		this.unsubscribe = session.subscribe((event) => {
-			this.onPiEventTelemetry?.(this.piboSessionId, event, { status: this.getStatus(), activeEventId: this.activeMessage?.id });
+			this.onPiEventTelemetry?.(this.piboSessionId, event, { status: this.getStatus(), activeEventId: this.activeMessage?.id ?? this.activeExecutionEvent?.id });
 			const model = this.runtime.session.model as { contextWindow?: unknown } | undefined;
 			const normalized = normalizePiEvent(this.piboSessionId, event, { contextWindow: numberValue(model?.contextWindow) });
 			const candidate = event && typeof event === "object" ? event as PiEventCandidate : undefined;
@@ -719,6 +735,11 @@ export class RoutedSession {
 		this.providerRecoveryAbortController = undefined;
 	}
 
+	private async waitForPiAgentSettlement(session: AgentSessionRuntime["session"]): Promise<void> {
+		const waitForIdle = (session as AgentSessionRuntime["session"] & { waitForIdle?: () => Promise<void> }).waitForIdle;
+		if (waitForIdle) await waitForIdle.call(session);
+	}
+
 	private async resumeContextGuardRecovery(session: AgentSessionRuntime["session"]): Promise<void> {
 		while (await waitForPiboAssistantContextGuardRecovery(session)) {
 			try {
@@ -727,6 +748,7 @@ export class RoutedSession {
 					content: [{ type: "text", text: PIBO_CONTEXT_GUARD_RESUME_PROMPT }],
 					display: false,
 				}, { triggerTurn: true });
+				await this.waitForPiAgentSettlement(session);
 			} catch (error) {
 				const resumeError = error instanceof Error ? error : new Error(String(error));
 				cancelPiboAssistantContextGuardRecovery(session, resumeError);
@@ -787,12 +809,14 @@ export class RoutedSession {
 	private handleCompactionEvent(event: unknown): void {
 		if (!event || typeof event !== "object") return;
 		const candidate = event as { type?: unknown; reason?: unknown; result?: unknown; aborted?: unknown; errorMessage?: unknown };
+		const eventId = this.activeMessage?.id ?? this.activeExecutionEvent?.id;
 		if (candidate.type === "compaction_start") {
-			this.emit({
+			this.emit(this.withActiveMessage({
 				type: "compaction_start",
 				piboSessionId: this.piboSessionId,
+				eventId,
 				reason: typeof candidate.reason === "string" ? candidate.reason : "unknown",
-			});
+			}));
 		}
 		if (candidate.type === "compaction_end") {
 			if (candidate.result && candidate.aborted !== true) {
@@ -803,14 +827,15 @@ export class RoutedSession {
 				this.activeThinkingIndex = undefined;
 				this.nextThinkingIndex = 0;
 			}
-			this.emit({
+			this.emit(this.withActiveMessage({
 				type: "compaction_end",
 				piboSessionId: this.piboSessionId,
+				eventId,
 				reason: typeof candidate.reason === "string" ? candidate.reason : "unknown",
 				result: candidate.result,
 				aborted: candidate.aborted === true,
 				errorMessage: typeof candidate.errorMessage === "string" ? candidate.errorMessage : undefined,
-			});
+			}));
 		}
 	}
 
@@ -825,6 +850,7 @@ export class RoutedSession {
 			queuedMessages: this.queue.length,
 			text: event.text,
 			source: event.source,
+			provenance: event.provenance,
 		};
 		this.emit(output);
 		this.onStateChange?.({ processing: this.processing, queuedMessages: this.queue.length, disposed: this.disposed });
@@ -885,6 +911,11 @@ export class RoutedSession {
 		return output;
 	}
 
+	getActiveMessage(): Pick<PiboMessageEvent, "id" | "source" | "provenance"> | undefined {
+		if (!this.activeMessage) return undefined;
+		return { id: this.activeMessage.id, source: this.activeMessage.source, provenance: this.activeMessage.provenance };
+	}
+
 	getStatus(): PiboSessionStatus {
 		const enabledTools = this.runtime.session.getActiveToolNames();
 		const thinkingLevel = this.runtime.session.thinkingLevel as PiboThinkingLevel;
@@ -892,8 +923,8 @@ export class RoutedSession {
 		return {
 			piboSessionId: this.piboSessionId,
 			queuedMessages: this.queue.length,
-			processing: this.processing,
-			streaming: this.runtime.session.isStreaming,
+			processing: this.disposed ? false : this.processing,
+			streaming: this.disposed ? false : this.runtime.session.isStreaming,
 			activeTools: enabledTools,
 			enabledTools,
 			cwd: this.runtime.cwd,
@@ -939,6 +970,13 @@ export class RoutedSession {
 		removedMessages.reverse();
 		this.notifyMessagesInterrupted(removedMessages, "queued message removed");
 		return removedMessages.length;
+	}
+
+	private restoreMessageCapabilityScope(): void {
+		const active = this.activeCapabilityScope;
+		if (!active) return;
+		this.activeCapabilityScope = undefined;
+		active.session.setActiveToolsByName(active.restoreToolNames);
 	}
 
 	getCurrentSession(): PiboPiSessionSnapshot {
@@ -1077,13 +1115,27 @@ export class RoutedSession {
 		return this.disposePromise;
 	}
 
-	private async disposeUnsafe(): Promise<void> {
-		if (this.disposed) return;
+	forceDispose(reason = "session disposal timed out"): void {
+		this.transitionToDisposed(reason);
+		if (this.forceDisposalStarted) return;
+		this.forceDisposalStarted = true;
+		const abort = (this.runtime.session as { abort?: () => Promise<void> | void }).abort;
+		if (abort) {
+			try {
+				void Promise.resolve(abort.call(this.runtime.session)).catch(() => {});
+			} catch {
+				// Forced runtime disposal must still run when abort throws synchronously.
+			}
+		}
+		void this.disposeRuntime().catch(() => {});
+	}
 
+	private transitionToDisposed(reason: string): boolean {
+		if (this.disposed) return false;
 		const activeMessage = this.activeMessage;
-		this.notifyMessagesInterrupted(this.activeAndQueuedMessages(), "session disposed");
+		this.notifyMessagesInterrupted(this.activeAndQueuedMessages(), reason);
 		if (activeMessage) {
-			const error = "Session disposed while a message was active.";
+			const error = `Session disposed while a message was active: ${reason}`;
 			this.emit({
 				type: "session_error",
 				piboSessionId: this.piboSessionId,
@@ -1094,20 +1146,36 @@ export class RoutedSession {
 		}
 		this.cancelProviderRecovery();
 		this.queue.length = 0;
-		this.onStateChange?.({ processing: this.processing, queuedMessages: this.queue.length, disposed: true });
+		this.onStateChange?.({ processing: false, queuedMessages: this.queue.length, disposed: true });
 		this.unsubscribe?.();
 		this.unsubscribe = undefined;
 		if (this.recoverySession) {
-			this.cancelContextGuardRecovery("Context guard recovery cancelled because the routed session was disposed");
+			this.cancelContextGuardRecovery(`Context guard recovery cancelled because ${reason}`);
 			this.recoverySession = undefined;
 		}
 		this.disposed = true;
+		return true;
+	}
+
+	private disposeRuntime(): Promise<void> {
+		if (!this.runtimeDisposePromise) {
+			try {
+				this.runtimeDisposePromise = Promise.resolve(this.runtime.dispose());
+			} catch (error) {
+				this.runtimeDisposePromise = Promise.reject(error);
+			}
+		}
+		return this.runtimeDisposePromise;
+	}
+
+	private async disposeUnsafe(): Promise<void> {
+		if (!this.transitionToDisposed("session disposed")) return;
 		const abort = (this.runtime.session as { abort?: () => Promise<void> | void }).abort;
-		if (abort) await Promise.allSettled([abort.call(this.runtime.session)]);
 		try {
+			if (abort) await Promise.allSettled([Promise.resolve().then(() => abort.call(this.runtime.session))]);
 			await this.drainPromise;
 		} finally {
-			await this.runtime.dispose();
+			await this.disposeRuntime();
 		}
 	}
 
@@ -1174,15 +1242,35 @@ export class RoutedSession {
 	}
 
 	private async processQueuedMessage(event: PiboMessageEvent): Promise<void> {
-		this.emit({
-			type: "message_started",
-			piboSessionId: this.piboSessionId,
-			eventId: event.id,
-			text: event.text,
-			source: event.source,
-		});
-
 		try {
+			const preflight = await this.messagePreflight?.(event);
+			if (this.disposed) return;
+			if (preflight && !preflight.allowed) {
+				this.emit({
+					type: "session_error",
+					piboSessionId: this.piboSessionId,
+					eventId: event.id,
+					error: preflight.reason ?? "Queued message is no longer authorized",
+					errorDetails: {
+						category: "loop_lifecycle",
+						errorClass: "runtime_abort",
+						code: preflight.code ?? "message_preflight_rejected",
+						origin: "runtime",
+						retryable: false,
+					},
+					provenance: event.provenance,
+				});
+				return;
+			}
+			this.emit({
+				type: "message_started",
+				piboSessionId: this.piboSessionId,
+				eventId: event.id,
+				text: event.text,
+				source: event.source,
+				provenance: event.provenance,
+			});
+
 			this.activeMessage = event;
 			this.providerRecoveryCancelled = false;
 			this.pendingAssistantError = undefined;
@@ -1193,13 +1281,19 @@ export class RoutedSession {
 			this.activeThinkingIndex = undefined;
 			this.nextThinkingIndex = 0;
 			const session = this.runtime.session;
+			this.applyMessageCapabilityScope(event, session);
 			const expandedText = expandInlineSkills(
 				event.text,
 				session.resourceLoader.getSkills().skills,
 			);
 			await session.prompt(expandedText, { source: promptSource(event.source) });
+			if (this.disposed) return;
+			await this.waitForPiAgentSettlement(session);
+			if (this.disposed) return;
 			await this.resumeContextGuardRecovery(session);
+			if (this.disposed) return;
 			await this.recoverTransientProviderErrors(session);
+			if (this.disposed) return;
 			this.flushPendingAssistantError();
 			if (!this.activeMessageFailed) {
 				this.emit({
@@ -1207,6 +1301,7 @@ export class RoutedSession {
 					piboSessionId: this.piboSessionId,
 					eventId: event.id,
 					source: event.source,
+					provenance: event.provenance,
 				});
 			}
 		} catch (error) {
@@ -1218,8 +1313,10 @@ export class RoutedSession {
 				eventId: event.id,
 				error: message,
 				errorDetails: runtimeSessionErrorDetails(message),
+				provenance: event.provenance,
 			});
 		} finally {
+			this.restoreMessageCapabilityScope();
 			this.activeMessage = undefined;
 			this.providerRecoveryCancelled = false;
 			this.pendingAssistantError = undefined;
@@ -1232,9 +1329,19 @@ export class RoutedSession {
 		}
 	}
 
+	private applyMessageCapabilityScope(event: PiboMessageEvent, session: AgentSessionRuntime["session"]): void {
+		if (event.capabilityScope !== "run-reminder") return;
+		const restoreToolNames = session.getActiveToolNames();
+		const scopedToolNames = restoreToolNames.filter((name) => RUN_REMINDER_CAPABILITY_TOOLS.has(name));
+		this.activeCapabilityScope = { session, restoreToolNames };
+		session.setActiveToolsByName(scopedToolNames);
+	}
+
 	private async processQueuedCompact(event: PiboExecutionEvent): Promise<void> {
+		this.activeExecutionEvent = event;
 		try {
 			const result = await this.runAction(event);
+			if (this.disposed) return;
 			this.emit({
 				type: "execution_result",
 				piboSessionId: this.piboSessionId,
@@ -1243,6 +1350,7 @@ export class RoutedSession {
 				result,
 			});
 		} catch (error) {
+			if (this.disposed) return;
 			const message = errorMessage(error);
 			this.emit({
 				type: "session_error",
@@ -1251,6 +1359,8 @@ export class RoutedSession {
 				error: message,
 				errorDetails: runtimeSessionErrorDetails(message),
 			});
+		} finally {
+			this.activeExecutionEvent = undefined;
 		}
 	}
 
@@ -1431,6 +1541,8 @@ export class RoutedSession {
 		if (
 			this.activeMessage?.id &&
 			(event.type === "assistant_usage" ||
+				event.type === "compaction_start" ||
+				event.type === "compaction_end" ||
 				event.type === "tool_call" ||
 				event.type === "tool_execution_started" ||
 				event.type === "tool_execution_updated" ||

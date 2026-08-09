@@ -230,6 +230,7 @@ export async function runWebGatewayServer(options: WebGatewayServerOptions = {})
 			...resolvedOptions,
 			pluginRegistry,
 			resourceReaper: resolveGatewayResourceReaperOptions(resolvedOptions),
+			loopStorePath: resolvedOptions.chat?.ralphStorePath,
 		});
 		await server.start();
 	} catch (error) {

@@ -1,4 +1,4 @@
-import type { PiboJsonObject } from '../core/events.js';
+import type { PiboJsonObject, PiboSessionErrorDetails } from '../core/events.js';
 import type { ModelProfile } from '../core/profiles.js';
 import type { PiboThinkingLevel } from '../core/thinking.js';
 
@@ -66,6 +66,15 @@ export type PiboLoopResourceMetadata = {
 	updatedAt?: string;
 };
 
+export type PiboLoopFailure = {
+	message: string;
+	details?: PiboSessionErrorDetails;
+	recovery: string;
+	at: string;
+	nextAttemptAt?: string;
+	retryBackoffMs?: number;
+};
+
 export type PiboLoopJobState = {
 	goalStatus?: PiboGoalStatus;
 	tokensUsed?: number;
@@ -78,6 +87,9 @@ export type PiboLoopJobState = {
 	lastRunAt?: string;
 	lastStatus?: 'ok' | 'error' | 'cancelled';
 	lastError?: string;
+	lastFailure?: PiboLoopFailure;
+	nextAttemptAt?: string;
+	retryBackoffMs?: number;
 	lastRunId?: string;
 	lastPiboSessionId?: string;
 	consecutiveErrors?: number;
@@ -111,6 +123,7 @@ export type PiboLoopJob = {
 };
 
 export type PiboLoopRunStatus = 'running' | 'ok' | 'error' | 'cancelled';
+export type PiboLoopRunMessageState = 'reserved' | 'queued' | 'active' | 'invalidated' | 'finished';
 
 export type PiboLoopRunAccounting = {
 	tokenBudget?: number;
@@ -129,6 +142,9 @@ export type PiboLoopRun = {
 	status: PiboLoopRunStatus;
 	reason?: string;
 	error?: string;
+	errorDetails?: PiboSessionErrorDetails;
+	messageEventId?: string;
+	messageState?: PiboLoopRunMessageState;
 	startedAt?: string;
 	completedAt?: string;
 	accounting?: PiboLoopRunAccounting;
@@ -158,6 +174,7 @@ export type PiboLoopRunOutcome = {
 	piboSessionId?: string;
 	finalAnswer?: string;
 	error?: string;
+	errorDetails?: PiboSessionErrorDetails;
 };
 
 export type PiboLoopStopConditionContext = {

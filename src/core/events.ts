@@ -2,6 +2,7 @@ import type { PiboThinkingLevel } from "./thinking.js";
 
 export type PiboEventSource = "user" | "ui" | "service" | "actor";
 export type PiboMessageDelivery = "queue" | "steer";
+export type PiboMessageCapabilityScope = "run-reminder";
 
 export class PiboSteeringUnavailableError extends Error {
 	constructor(message = "The active session cannot accept steering right now.", options?: ErrorOptions) {
@@ -20,13 +21,23 @@ export type PiboJsonValue =
 
 export type PiboJsonObject = { [key: string]: PiboJsonValue };
 
+export type PiboLoopMessageProvenance = {
+	kind: "loop-run";
+	jobId: string;
+	runId: string;
+};
+
+export type PiboMessageProvenance = PiboLoopMessageProvenance;
+
 export type PiboMessageEvent = {
 	type: "message";
 	piboSessionId: string;
 	text: string;
 	delivery?: PiboMessageDelivery;
 	source?: PiboEventSource;
+	capabilityScope?: PiboMessageCapabilityScope;
 	id?: string;
+	provenance?: PiboMessageProvenance;
 };
 
 export type BuiltinPiboExecutionAction = "status" | "session_id" | "clear_queue" | "abort" | "dispose" | "kill_all";
@@ -210,6 +221,7 @@ export type PiboMessageQueuedEvent = {
 	queuedMessages: number;
 	text: string;
 	source?: PiboEventSource;
+	provenance?: PiboMessageProvenance;
 };
 
 export type PiboMessageSteeredEvent = {
@@ -219,6 +231,7 @@ export type PiboMessageSteeredEvent = {
 	activeEventId?: string;
 	text: string;
 	source?: PiboEventSource;
+	provenance?: PiboMessageProvenance;
 };
 
 export type PiboMessageStartedEvent = {
@@ -227,6 +240,7 @@ export type PiboMessageStartedEvent = {
 	eventId?: string;
 	text: string;
 	source?: PiboEventSource;
+	provenance?: PiboMessageProvenance;
 };
 
 export type PiboAssistantMessageEvent = {
@@ -236,6 +250,7 @@ export type PiboAssistantMessageEvent = {
 	assistantIndex?: number;
 	contentIndex?: number;
 	text: string;
+	provenance?: PiboMessageProvenance;
 };
 
 export type PiboAssistantUsageEvent = {
@@ -247,6 +262,7 @@ export type PiboAssistantUsageEvent = {
 	cacheReadTokens?: number;
 	cacheWriteTokens?: number;
 	totalTokens: number;
+	provenance?: PiboMessageProvenance;
 };
 
 export type PiboSubagentSessionEvent = {
@@ -327,12 +343,14 @@ export type PiboToolExecutionFinishedEvent = {
 export type PiboCompactionStartEvent = {
 	type: "compaction_start";
 	piboSessionId: string;
+	eventId?: string;
 	reason: string;
 };
 
 export type PiboCompactionEndEvent = {
 	type: "compaction_end";
 	piboSessionId: string;
+	eventId?: string;
 	reason: string;
 	result?: unknown;
 	aborted: boolean;
@@ -373,7 +391,7 @@ export type PiboOutputEvent =
 	| PiboMessageQueuedEvent
 	| PiboMessageSteeredEvent
 	| PiboMessageStartedEvent
-	| { type: "message_finished"; piboSessionId: string; eventId?: string; source?: PiboEventSource }
+	| { type: "message_finished"; piboSessionId: string; eventId?: string; source?: PiboEventSource; provenance?: PiboMessageProvenance }
 	| { type: "assistant_delta"; piboSessionId: string; eventId?: string; assistantIndex?: number; contentIndex?: number; text: string }
 	| PiboThinkingStartedEvent
 	| PiboThinkingDeltaEvent
@@ -388,7 +406,7 @@ export type PiboOutputEvent =
 	| PiboCompactionStartEvent
 	| PiboCompactionEndEvent
 	| { type: "execution_result"; piboSessionId: string; eventId?: string; action: PiboExecutionAction; result: unknown }
-	| { type: "session_error"; piboSessionId: string; eventId?: string; error: string; errorDetails?: PiboSessionErrorDetails }
+	| { type: "session_error"; piboSessionId: string; eventId?: string; error: string; errorDetails?: PiboSessionErrorDetails; provenance?: PiboMessageProvenance }
 	| { type: "pi_event"; piboSessionId: string; event: unknown };
 
 export type PiboEventListener = (event: PiboOutputEvent) => void;
