@@ -15,7 +15,7 @@ export type TraceSnapshotNodeMeta = {
 	source?: string;
 	orderKey?: PiboTraceNode["orderKey"];
 	contentLength: number;
-	contentDigest?: string;
+	contentToken?: string;
 	contentKind: "message" | "pibo-run-notification" | "pibo-goal-continuation" | "pibo-system";
 };
 
@@ -82,11 +82,10 @@ type TerminalRowLike = {
 };
 
 const MAX_SNAPSHOTS_PER_SESSION = 5_000;
+const MAX_CONTENT_TOKENS_PER_SESSION = 5_000;
 const PENDING_MERGE_MS = 0;
 const buffers = new Map<string, SessionSnapshotBuffer>();
-const contentDigestSalt = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-	? crypto.randomUUID()
-	: `${Date.now()}:${Math.random()}`;
+const contentTokensBySession = new Map<string, Map<string, string>>();
 let snapshotSequence = 0;
 
 function getBuffer(piboSessionId: string): SessionSnapshotBuffer {
@@ -364,10 +363,12 @@ export function clearSnapshots(piboSessionId?: string): void {
 	if (piboSessionId) {
 		clearSnapshotBuffer(buffers.get(piboSessionId));
 		buffers.delete(piboSessionId);
+		contentTokensBySession.delete(piboSessionId);
 		return;
 	}
 	for (const buffer of buffers.values()) clearSnapshotBuffer(buffer);
 	buffers.clear();
+	contentTokensBySession.clear();
 }
 
 function clearSnapshotBuffer(buffer: SessionSnapshotBuffer | undefined): void {
@@ -400,9 +401,25 @@ function traceNodeMeta(node: PiboTraceNode): TraceSnapshotNodeMeta {
 		source: node.source,
 		orderKey: node.orderKey,
 		contentLength: content.length,
-		contentDigest: content ? simpleDigest([contentDigestSalt, content]) : undefined,
+		contentToken: content ? contentEqualityToken(node.piboSessionId, content) : undefined,
 		contentKind: traceNodeContentKind(content),
 	};
+}
+
+function contentEqualityToken(piboSessionId: string, content: string): string | undefined {
+	let tokens = contentTokensBySession.get(piboSessionId);
+	if (!tokens) {
+		tokens = new Map<string, string>();
+		contentTokensBySession.set(piboSessionId, tokens);
+	}
+	const existing = tokens.get(content);
+	if (existing) return existing;
+	if (tokens.size >= MAX_CONTENT_TOKENS_PER_SESSION) return undefined;
+	const token = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+		? crypto.randomUUID()
+		: `content-${Date.now()}-${Math.random()}`;
+	tokens.set(content, token);
+	return token;
 }
 
 function traceNodeContentKind(content: string): TraceSnapshotNodeMeta["contentKind"] {

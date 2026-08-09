@@ -16,6 +16,7 @@ type OrderedState = {
 };
 
 const MAX_FINDINGS = 200;
+const DOM_STATE_SETTLE_MS = 32;
 
 export function analyzeStreamingRenderOrderCapture(capture: StreamingRenderOrderCapture | undefined): StreamingRenderOrderCapture | undefined {
 	if (!capture) return undefined;
@@ -136,6 +137,7 @@ function analyzeStateDomAgreement(domStates: readonly StreamingRenderOrderDomSta
 		const internal = nearestState(candidates, dom.timestamp, 500, dom.traceSequence);
 		if (!internal || dom.rowIds.length === 0) continue;
 		if (isSubsequence(dom.rowIds, internal.ids)) continue;
+		if (nextSettledMatchingState(candidates, dom)) continue;
 		pushFinding({
 			source: "state-dom",
 			kind: "state-dom-mismatch",
@@ -229,6 +231,19 @@ function disappearReappearances(states: readonly OrderedState[]): Array<{ source
 		previous = current;
 	}
 	return results;
+}
+
+function nextSettledMatchingState(
+	states: readonly OrderedState[],
+	dom: StreamingRenderOrderDomState,
+): OrderedState | undefined {
+	return states
+		.filter((state) => {
+			if (state.timestamp < dom.timestamp || state.timestamp - dom.timestamp > DOM_STATE_SETTLE_MS) return false;
+			if (dom.traceSequence !== undefined && state.sequence !== undefined && state.sequence <= dom.traceSequence) return false;
+			return isSubsequence(dom.rowIds, state.ids);
+		})
+		.sort((left, right) => left.timestamp - right.timestamp || (left.sequence ?? 0) - (right.sequence ?? 0))[0];
 }
 
 function nearestState(

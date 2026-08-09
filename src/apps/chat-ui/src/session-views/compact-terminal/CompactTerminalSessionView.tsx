@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
 import { ChevronDown, ChevronRight, CircleX, GitBranch, Hammer, MessageSquare } from "lucide-react";
 import { Virtuoso } from "react-virtuoso";
@@ -81,7 +81,7 @@ export function CompactTerminalSessionView({
 	const activeTurnStartedAt = sessionActivity.activeTurnStartedAt;
 	const isStreaming = sessionActivity.isTurnActive;
 
-	useEffect(() => {
+	useLayoutEffect(() => {
 		if (!piboSessionId || !traceView || !isTraceSnapshotCollectionEnabled()) return;
 		collectTerminalRows(piboSessionId, "compact-terminal:render", rows, {
 			traceVersion: traceView.version,

@@ -100,6 +100,23 @@ test("streaming render-order analysis correlates same-millisecond states by snap
 	assert.equal(analyzed.analysis.stateDomMismatchCount, 0);
 });
 
+test("streaming render-order analysis settles a DOM mutation against the immediate post-commit snapshot", () => {
+	const analyzed = analyzeStreamingRenderOrderCapture({
+		requested: true,
+		available: true,
+		piboSessionId: "ps_test",
+		omittedDomStates: 0,
+		domStates: [
+			{ t: 0, timestamp: 1000, traceSequence: 1, reason: "mutation", piboSessionId: "ps_test", view: "compact-terminal", atBottom: true, rows: [{ id: "a" }, { id: "b" }], rowIds: ["a", "b"], visualRowIds: ["a", "b"] },
+		],
+		traceSnapshots: [
+			{ sequence: 1, timestamp: 1000, piboSessionId: "ps_test", trigger: "compact-terminal:render", layers: [{ kind: "terminalRows", ids: ["a"], digest: "a", meta: [{ id: "a", kind: "message.user", stableKey: "user:a" }] }] },
+			{ sequence: 2, timestamp: 1001, piboSessionId: "ps_test", trigger: "compact-terminal:render", layers: [{ kind: "terminalRows", ids: ["a", "b"], digest: "b", meta: [{ id: "a", kind: "message.user", stableKey: "user:a" }, { id: "b", kind: "message.assistant", stableKey: "assistant:b" }] }] },
+		],
+	});
+	assert.equal(analyzed.analysis.stateDomMismatchCount, 0);
+});
+
 test("streaming render-order analysis matches every unique identity alias", () => {
 	const analyzed = analyzeStreamingRenderOrderCapture({
 		requested: true,
