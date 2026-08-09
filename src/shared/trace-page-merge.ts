@@ -103,10 +103,7 @@ function transcriptEventIds(nodes: PiboSessionTraceView["nodes"]): Set<string> {
 }
 
 function isTransientTailNode(node: PiboSessionTraceView["nodes"][number]): boolean {
-	return node.source === "live"
-		|| node.orderKey?.streamId !== undefined
-		|| node.type === "yielded.run"
-		|| node.stableKey?.startsWith("run-notification:") === true;
+	return node.source === "live" || node.orderKey?.streamId !== undefined;
 }
 
 function earliestTraceNodeOrdersBySource(nodes: PiboSessionTraceView["nodes"]): Map<number, TraceOrderKey> {

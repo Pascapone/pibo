@@ -123,6 +123,7 @@ test("mergeRefreshedTracePage replaces stale tail nodes without dropping loaded 
 			node("older-event", { source: "event-log", orderKey: eventOrder(10), startedAt: "2026-07-05T00:00:00.000Z" }),
 			node("older-run-notification", { type: "execution.command", source: "event-log", stableKey: "run-notification:old", orderKey: eventOrder(15), startedAt: "2026-07-05T00:00:10.000Z" }),
 			node("older-yielded-run", { type: "yielded.run", source: "event-log", orderKey: eventOrder(20), startedAt: "2026-07-05T00:00:20.000Z" }),
+			node("entry:legacy-run-notification", { type: "yielded.run", source: "transcript", stableKey: "entry:legacy-run-notification", orderKey: transcriptOrder(-1), startedAt: "2026-07-05T00:00:25.000Z" }),
 			node("older-transcript", { source: "transcript", orderKey: transcriptOrder(0), startedAt: "2026-07-05T00:00:30.000Z" }),
 			node("shared", { source: "event-log", orderKey: eventOrder(50), startedAt: "2026-07-05T00:01:00.000Z" }),
 			node("stale-notification", { type: "execution.command", source: "event-log", orderKey: eventOrder(55), startedAt: "2026-07-05T00:01:30.000Z" }),
@@ -139,7 +140,15 @@ test("mergeRefreshedTracePage replaces stale tail nodes without dropping loaded 
 	});
 
 	const merged = mergeRefreshedTracePage(current, refreshed);
-	assert.deepEqual(merged.nodes.map((entry) => entry.id), ["older-event", "older-transcript", "shared", "new-tail"]);
+	assert.deepEqual(merged.nodes.map((entry) => entry.id), [
+		"older-event",
+		"older-run-notification",
+		"older-yielded-run",
+		"entry:legacy-run-notification",
+		"older-transcript",
+		"shared",
+		"new-tail",
+	]);
 	assert.equal(merged.nodes.find((entry) => entry.id === "shared")?.title, "fresh shared");
 });
 
