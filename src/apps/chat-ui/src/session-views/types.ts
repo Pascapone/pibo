@@ -20,6 +20,7 @@ export type ChatSessionViewProps = {
 	traceView: PiboSessionTraceView | null;
 	selectedTrace: Trace | null;
 	isLoading: boolean;
+	terminalFullscreen?: boolean;
 	showThinking: boolean;
 	expandThinking: boolean;
 	sessionAgentProfile?: string;
