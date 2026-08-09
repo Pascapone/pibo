@@ -33,6 +33,7 @@ function createRouterSessionFake(overrides = {}) {
 		enqueued: [],
 		removed: 0,
 		releasedScopes: 0,
+		forcedDisposals: [],
 		disposed: false,
 		enqueueMessage(event) {
 			this.enqueued.push(event);
@@ -59,11 +60,15 @@ function createRouterSessionFake(overrides = {}) {
 		async dispose() {
 			this.disposed = true;
 		},
+		forceDispose(reason) {
+			this.forcedDisposals.push(reason);
+			this.disposed = true;
+		},
 		...overrides,
 	};
 }
 
-function createStoredRouter(sessionId = "ps_quiescence") {
+function createStoredRouter(sessionId = "ps_quiescence", options = {}) {
 	const store = new InMemoryPiboSessionStore();
 	store.create({
 		id: sessionId,
@@ -73,7 +78,7 @@ function createStoredRouter(sessionId = "ps_quiescence") {
 		profile: "base",
 		workspace: process.cwd(),
 	});
-	return new PiboSessionRouter({ persistSession: false, sessionStore: store, routedSessionIdleTimeoutMs: false });
+	return new PiboSessionRouter({ persistSession: false, sessionStore: store, routedSessionIdleTimeoutMs: false, ...options });
 }
 
 test("abort invalidates an already queued run-reminder microtask", async () => {
@@ -142,7 +147,33 @@ test("subtree disposal keeps the routed object owned until disposal settles and 
 	await router.disposeAll();
 });
 
-test("run-reminder scope is released only after every notified run is handled", async () => {
+test("stuck routed disposal is bounded, forced terminal, and releases subtree ownership", async () => {
+	const router = createStoredRouter("ps_quiescence", { routedSessionDisposeTimeoutMs: 25 });
+	const neverSettles = deferred();
+	let disposeStarted = false;
+	const session = createRouterSessionFake({
+		async dispose() {
+			disposeStarted = true;
+			await neverSettles.promise;
+		},
+	});
+	router.sessions.set("ps_quiescence", session);
+
+	const startedAt = Date.now();
+	const disposal = router.disposeSessionSubtree("ps_quiescence", "stuck disposal", { cancelRuns: false });
+	await waitFor(() => disposeStarted, "stuck routed disposal did not start");
+	await assert.rejects(disposal, (error) => error instanceof AggregateError && error.errors.some((cause) => /Timed out disposing Pibo session/.test(String(cause))));
+	assert.ok(Date.now() - startedAt < 500, "bounded disposal exceeded its deterministic deadline");
+	assert.equal(session.disposed, true);
+	assert.equal(session.forcedDisposals.length, 1);
+	assert.match(session.forcedDisposals[0], /bounded disposal timeout/);
+	assert.equal(router.sessions.has("ps_quiescence"), false);
+	assert.equal(router.disposingSessions.has("ps_quiescence"), false);
+	assert.equal(router.quiescingSessions.has("ps_quiescence"), false);
+	await router.disposeAll();
+});
+
+test("handling every notified run cannot release the reminder scope mid-turn", async () => {
 	const router = createStoredRouter();
 	const session = createRouterSessionFake();
 	router.sessions.set("ps_quiescence", session);
@@ -157,18 +188,25 @@ test("run-reminder scope is released only after every notified run is handled", 
 		controller.readRun(first.runId);
 		assert.equal(session.releasedScopes, 0);
 		controller.readRun(second.runId);
-		assert.equal(session.releasedScopes, 1);
+		assert.equal(session.releasedScopes, 0);
+		assert.equal(router.runRegistry.hasPendingNotification("ps_quiescence", { includeAlreadyNotified: true }), false);
 	} finally {
 		await router.disposeAll();
 	}
 });
 
-test("run-reminder turns start with only lifecycle tools and restore full capabilities after handling", async () => {
+test("run-reminder turns retain lifecycle-only tools after the final run is read", async () => {
+	const router = createStoredRouter("ps_capability");
+	const run = router.runRegistry.startToolRun({ controllerPiboSessionId: "ps_capability", toolName: "bash" });
+	router.runRegistry.complete(run.runId, { text: "done" });
+	assert.ok(router.runRegistry.createNotification("ps_capability"));
+	const controller = router.createRunToolController("ps_capability");
 	const promptGate = deferred();
 	const promptStarted = deferred();
 	const events = [];
 	const activeTools = ["bash", "read", "pibo_run_start", "pibo_run_status", "pibo_run_wait", "pibo_run_read", "pibo_run_cancel", "pibo_run_ack"];
 	let currentTools = [...activeTools];
+	let toolsAfterFinalRead = [];
 	const toolTransitions = [];
 	const session = {
 		model: undefined,
@@ -191,6 +229,8 @@ test("run-reminder turns start with only lifecycle tools and restore full capabi
 			toolTransitions.push([...names]);
 		},
 		async prompt() {
+			assert.equal(controller.readRun(run.runId).consumed, true);
+			toolsAfterFinalRead = [...currentTools];
 			promptStarted.resolve();
 			await promptGate.promise;
 		},
@@ -209,6 +249,7 @@ test("run-reminder turns start with only lifecycle tools and restore full capabi
 		PiboPluginRegistry.create({ plugins: [piboCorePlugin] }),
 		false,
 	);
+	router.sessions.set("ps_capability", routed);
 
 	routed.enqueueMessage({
 		type: "message",
@@ -219,17 +260,17 @@ test("run-reminder turns start with only lifecycle tools and restore full capabi
 		capabilityScope: "run-reminder",
 	});
 	await promptStarted.promise;
-	assert.deepEqual(currentTools, ["pibo_run_status", "pibo_run_wait", "pibo_run_read", "pibo_run_cancel", "pibo_run_ack"]);
-	assert.equal(currentTools.includes("bash"), false);
-	assert.equal(currentTools.includes("pibo_run_start"), false);
+	assert.deepEqual(toolsAfterFinalRead, ["pibo_run_status", "pibo_run_wait", "pibo_run_read", "pibo_run_cancel", "pibo_run_ack"]);
+	assert.equal(toolsAfterFinalRead.includes("bash"), false);
+	assert.equal(toolsAfterFinalRead.includes("pibo_run_start"), false);
+	assert.equal(router.runRegistry.hasPendingNotification("ps_capability", { includeAlreadyNotified: true }), false);
 
-	routed.releaseRunReminderCapabilityScope();
-	assert.deepEqual(currentTools, activeTools);
 	promptGate.resolve();
 	await waitFor(() => events.some((event) => event.type === "message_finished" && event.eventId === "reminder-1"), "run-reminder turn did not finish");
+	assert.deepEqual(currentTools, activeTools);
 	assert.deepEqual(toolTransitions, [
 		["pibo_run_status", "pibo_run_wait", "pibo_run_read", "pibo_run_cancel", "pibo_run_ack"],
 		activeTools,
 	]);
-	await routed.dispose();
+	await router.disposeAll();
 });

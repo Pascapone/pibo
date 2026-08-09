@@ -970,7 +970,7 @@ export class RoutedSession {
 		return removedMessages.length;
 	}
 
-	releaseRunReminderCapabilityScope(): void {
+	private restoreMessageCapabilityScope(): void {
 		const active = this.activeCapabilityScope;
 		if (!active) return;
 		this.activeCapabilityScope = undefined;
@@ -1113,13 +1113,19 @@ export class RoutedSession {
 		return this.disposePromise;
 	}
 
-	private async disposeUnsafe(): Promise<void> {
-		if (this.disposed) return;
+	forceDispose(reason = "session disposal timed out"): void {
+		if (!this.transitionToDisposed(reason)) return;
+		const abort = (this.runtime.session as { abort?: () => Promise<void> | void }).abort;
+		if (abort) void Promise.resolve(abort.call(this.runtime.session)).catch(() => {});
+		void this.runtime.dispose().catch(() => {});
+	}
 
+	private transitionToDisposed(reason: string): boolean {
+		if (this.disposed) return false;
 		const activeMessage = this.activeMessage;
-		this.notifyMessagesInterrupted(this.activeAndQueuedMessages(), "session disposed");
+		this.notifyMessagesInterrupted(this.activeAndQueuedMessages(), reason);
 		if (activeMessage) {
-			const error = "Session disposed while a message was active.";
+			const error = `Session disposed while a message was active: ${reason}`;
 			this.emit({
 				type: "session_error",
 				piboSessionId: this.piboSessionId,
@@ -1134,10 +1140,15 @@ export class RoutedSession {
 		this.unsubscribe?.();
 		this.unsubscribe = undefined;
 		if (this.recoverySession) {
-			this.cancelContextGuardRecovery("Context guard recovery cancelled because the routed session was disposed");
+			this.cancelContextGuardRecovery(`Context guard recovery cancelled because ${reason}`);
 			this.recoverySession = undefined;
 		}
 		this.disposed = true;
+		return true;
+	}
+
+	private async disposeUnsafe(): Promise<void> {
+		if (!this.transitionToDisposed("session disposed")) return;
 		const abort = (this.runtime.session as { abort?: () => Promise<void> | void }).abort;
 		if (abort) await Promise.allSettled([abort.call(this.runtime.session)]);
 		try {
@@ -1279,7 +1290,7 @@ export class RoutedSession {
 				provenance: event.provenance,
 			});
 		} finally {
-			this.releaseRunReminderCapabilityScope();
+			this.restoreMessageCapabilityScope();
 			this.activeMessage = undefined;
 			this.providerRecoveryCancelled = false;
 			this.pendingAssistantError = undefined;

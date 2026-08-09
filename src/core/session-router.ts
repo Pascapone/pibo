@@ -75,10 +75,13 @@ export type PiboSessionRouterOptions = Omit<
 	routedSessionIdleTimeoutMs?: number | false;
 	/** Revalidate persisted authority immediately before a queued message starts. */
 	messagePreflight?: PiboMessagePreflight;
+	/** Maximum time to await one routed runtime disposal before forcing terminal ownership release. */
+	routedSessionDisposeTimeoutMs?: number;
 };
 
 const DEFAULT_SUBAGENT_REPLY_TIMEOUT_MS = 10 * 60 * 1000;
 const DEFAULT_ROUTED_SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+const DEFAULT_ROUTED_SESSION_DISPOSE_TIMEOUT_MS = 30 * 1000;
 
 export const LOOP_RUNTIME_RETRY_DEFAULTS = {
 	enabled: true,
@@ -214,6 +217,13 @@ type ScheduledRunReminder = {
 	includeAlreadyNotified: boolean;
 };
 
+class PiboSessionDisposalTimeoutError extends Error {
+	constructor(readonly piboSessionId: string, readonly timeoutMs: number) {
+		super(`Timed out disposing Pibo session "${piboSessionId}" after ${timeoutMs}ms`);
+		this.name = "PiboSessionDisposalTimeoutError";
+	}
+}
+
 function telemetryStoreFromSessionStore(store: PiboSessionStore): TelemetryStore | undefined {
 	return (store as TelemetrySessionStore).getTelemetryStore?.();
 }
@@ -237,6 +247,7 @@ export class PiboSessionRouter {
 	private readonly disposingSessions = new Map<string, Promise<void>>();
 	private readonly idleSessionTimers = new Map<string, ReturnType<typeof setTimeout>>();
 	private readonly routedSessionIdleTimeoutMs: number | false;
+	private readonly routedSessionDisposeTimeoutMs: number;
 	private readonly baseProfile: InitialSessionContext;
 	private readonly pluginRegistry: PiboPluginRegistry;
 	private readonly sessionStore: PiboSessionStore;
@@ -264,6 +275,10 @@ export class PiboSessionRouter {
 			: typeof idleTimeoutMs === "number" && Number.isFinite(idleTimeoutMs) && idleTimeoutMs > 0
 				? idleTimeoutMs
 				: DEFAULT_ROUTED_SESSION_IDLE_TIMEOUT_MS;
+		const disposeTimeoutMs = options.routedSessionDisposeTimeoutMs;
+		this.routedSessionDisposeTimeoutMs = typeof disposeTimeoutMs === "number" && Number.isFinite(disposeTimeoutMs) && disposeTimeoutMs > 0
+			? disposeTimeoutMs
+			: DEFAULT_ROUTED_SESSION_DISPOSE_TIMEOUT_MS;
 		const defaultProfileName = selectDefaultPiboProfileName(this.pluginRegistry);
 		this.baseProfile = options.profile ?? createPiboProfileFromRegistryOrDefault(this.pluginRegistry, defaultProfileName);
 		this.reliabilityStore = options.reliabilityStore ?? (options.persistSession === false ? undefined : createDefaultPiboReliabilityStore());
@@ -399,6 +414,26 @@ export class PiboSessionRouter {
 		return { killed, cancelledRuns };
 	}
 
+	private async disposeRoutedSession(piboSessionId: string, session: RoutedSession, reason: string): Promise<void> {
+		const disposal = Promise.resolve().then(() => session.dispose());
+		let timeout: ReturnType<typeof setTimeout> | undefined;
+		const timedOut = new Promise<never>((_resolve, reject) => {
+			timeout = setTimeout(() => reject(new PiboSessionDisposalTimeoutError(piboSessionId, this.routedSessionDisposeTimeoutMs)), this.routedSessionDisposeTimeoutMs);
+			timeout.unref?.();
+		});
+		try {
+			await Promise.race([disposal, timedOut]);
+		} catch (error) {
+			if (error instanceof PiboSessionDisposalTimeoutError) {
+				session.forceDispose(`${reason}; bounded disposal timeout`);
+				void disposal.catch(() => {});
+			}
+			throw error;
+		} finally {
+			if (timeout) clearTimeout(timeout);
+		}
+	}
+
 	private async disposeSessionSubtree(piboSessionId: string, reason: string, options: { cancelRuns: boolean }): Promise<void> {
 		const ids = [piboSessionId, ...this.descendantSessionIds(piboSessionId)];
 		const existingDisposals = [...new Set(ids.map((id) => this.disposingSessions.get(id)).filter((value): value is Promise<void> => Boolean(value)))];
@@ -426,7 +461,7 @@ export class PiboSessionRouter {
 			for (const result of closeResults) {
 				if (result.status === "rejected") failures.push(result.reason);
 			}
-			const disposeResults = await Promise.allSettled(sessions.map(({ session }) => session.dispose()));
+			const disposeResults = await Promise.allSettled(sessions.map(({ id, session }) => this.disposeRoutedSession(id, session, reason)));
 			for (const result of disposeResults) {
 				if (result.status === "rejected") failures.push(result.reason);
 			}
@@ -624,7 +659,7 @@ export class PiboSessionRouter {
 			this.runRegistry.cancelAll("Pibo session router was disposed.");
 			this.scheduledRunReminders.clear();
 			const closeResult = await Promise.allSettled([this.runtimeRegistry.closeAll({ force: true })]);
-			const disposeResults = await Promise.allSettled(sessions.map(([, session]) => session.dispose()));
+			const disposeResults = await Promise.allSettled(sessions.map(([id, session]) => this.disposeRoutedSession(id, session, "router disposed")));
 			for (const [id, session] of sessions) {
 				if (this.sessions.get(id) === session) this.sessions.delete(id);
 				this.signalRegistry.project({ type: "session_disposed", piboSessionId: id, reason: "router disposed" });
@@ -857,7 +892,7 @@ export class PiboSessionRouter {
 			const closeResult = await Promise.allSettled([this.runtimeRegistry.closeControllerSessions(piboSessionId, { force: true })]);
 			if (closeResult[0]?.status === "rejected") failures.push(closeResult[0].reason);
 			if (cached) {
-				const disposeResult = await Promise.allSettled([cached.dispose()]);
+				const disposeResult = await Promise.allSettled([this.disposeRoutedSession(piboSessionId, cached, reason ?? "session reset")]);
 				if (disposeResult[0]?.status === "rejected") failures.push(disposeResult[0].reason);
 				if (this.sessions.get(piboSessionId) === cached) this.sessions.delete(piboSessionId);
 			}
@@ -968,22 +1003,17 @@ export class PiboSessionRouter {
 			waitForRun: (runId, timeoutMs) => this.runRegistry.wait(parentPiboSessionId, runId, timeoutMs),
 			readRun: (runId) => {
 				const run = this.runRegistry.read(parentPiboSessionId, runId);
-				if (run.consumed && isTerminalRunStatus(run.status)) {
-					this.refreshQueuedRunReminders(parentPiboSessionId);
-					this.releaseRunReminderCapabilityScopeIfHandled(parentPiboSessionId);
-				}
+				if (run.consumed && isTerminalRunStatus(run.status)) this.refreshQueuedRunReminders(parentPiboSessionId);
 				return run;
 			},
 			cancelRun: async (runId) => {
 				const cancelled = this.runRegistry.cancel(parentPiboSessionId, runId);
 				this.refreshQueuedRunReminders(parentPiboSessionId);
-				this.releaseRunReminderCapabilityScopeIfHandled(parentPiboSessionId);
 				return cancelled;
 			},
 			ackRun: (runId) => {
 				const run = this.runRegistry.ack(parentPiboSessionId, runId);
 				this.refreshQueuedRunReminders(parentPiboSessionId);
-				this.releaseRunReminderCapabilityScopeIfHandled(parentPiboSessionId);
 				return run;
 			},
 		};
@@ -1133,11 +1163,6 @@ export class PiboSessionRouter {
 			return;
 		}
 		this.scheduleRunReminder(piboSessionId, false, generation);
-	}
-
-	private releaseRunReminderCapabilityScopeIfHandled(piboSessionId: string): void {
-		if (this.runRegistry.hasPendingNotification(piboSessionId, { includeAlreadyNotified: true })) return;
-		this.sessions.get(piboSessionId)?.releaseRunReminderCapabilityScope();
 	}
 
 	private scheduleRunReminder(piboSessionId: string, includeAlreadyNotified: boolean, expectedGeneration = this.runReminderGeneration(piboSessionId)): void {
