@@ -30,6 +30,7 @@ const LIVE_STREAM_RECONNECT_MAX_DELAY_MS = 10_000;
 const LIVE_STREAM_STALE_MS = 45_000;
 const RUNNING_TRACE_RECOVERY_POLL_MS = 15_000;
 const HIDDEN_STREAM_FLUSH_DELAY_MS = 100;
+const EVENT_SOURCE_CLOSED = 2;
 
 export function nextLiveTraceEventSequence(
 	trace: Pick<PiboSessionTraceView, "eventCount" | "lastEventSequence" | "rawEvents">,
@@ -46,6 +47,20 @@ type SelectedLiveEventStream = {
 	lastActivityAt: number;
 	lastErrorAt?: number;
 };
+
+export function selectedLiveStreamNeedsReconnect(input: {
+	selectedPiboSessionId: string;
+	liveStream: Pick<SelectedLiveEventStream, "piboSessionId" | "lastActivityAt"> & { readyState: number } | null;
+	nowMs?: number;
+	forceReconnect?: boolean;
+}): boolean {
+	if (input.forceReconnect) return true;
+	const liveStream = input.liveStream;
+	return !liveStream
+		|| liveStream.piboSessionId !== input.selectedPiboSessionId
+		|| liveStream.readyState === EVENT_SOURCE_CLOSED
+		|| (input.nowMs ?? Date.now()) - liveStream.lastActivityAt > LIVE_STREAM_STALE_MS;
+}
 
 export type UseSessionTraceLiveStreamInput = {
 	selectedPiboSessionId: string | null;
@@ -80,6 +95,8 @@ export function useSessionTraceLiveStream({
 	const selectedLiveStreamRef = useRef<SelectedLiveEventStream | null>(null);
 	const selectedLiveStreamReconnectTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 	const selectedLiveStreamReconnectAttempts = useRef(0);
+	const selectedLiveLifecycleReconnectPending = useRef(false);
+	const selectedPageSuspended = useRef(false);
 	const [selectedLiveStreamReconnectGeneration, setSelectedLiveStreamReconnectGeneration] = useState(0);
 
 	useEffect(() => {
@@ -169,17 +186,25 @@ export function useSessionTraceLiveStream({
 		}, delayMs);
 	}, []);
 
-	const recoverSelectedLiveStream = useCallback(() => {
+	const recoverSelectedLiveStream = useCallback((forceReconnect = false) => {
 		if (!selectedPiboSessionId) return;
 		flushPendingStreamEvents(selectedPiboSessionId);
 		void onRefreshTrace().catch((caught) => onError(errorMessage(caught)));
 		void onRefreshBootstrap().catch((caught) => onError(errorMessage(caught)));
 		const liveStream = selectedLiveStreamRef.current;
-		const stale = !liveStream
-			|| liveStream.piboSessionId !== selectedPiboSessionId
-			|| liveStream.events.readyState === 2
-			|| Date.now() - liveStream.lastActivityAt > LIVE_STREAM_STALE_MS;
-		if (stale) requestSelectedLiveStreamReconnect();
+		const reconnect = selectedLiveStreamNeedsReconnect({
+			selectedPiboSessionId,
+			liveStream: liveStream
+				? { piboSessionId: liveStream.piboSessionId, lastActivityAt: liveStream.lastActivityAt, readyState: liveStream.events.readyState }
+				: null,
+			forceReconnect,
+		});
+		if (!reconnect) return;
+		if (forceReconnect) {
+			if (selectedLiveLifecycleReconnectPending.current) return;
+			selectedLiveLifecycleReconnectPending.current = true;
+		}
+		requestSelectedLiveStreamReconnect();
 	}, [flushPendingStreamEvents, onError, onRefreshBootstrap, onRefreshTrace, requestSelectedLiveStreamReconnect, selectedPiboSessionId]);
 
 	useEffect(() => {
@@ -245,6 +270,7 @@ export function useSessionTraceLiveStream({
 		};
 		events.onopen = () => {
 			selectedLiveStreamReconnectAttempts.current = 0;
+			selectedLiveLifecycleReconnectPending.current = false;
 			if (selectedLiveStreamReconnectTimer.current !== undefined) {
 				clearTimeout(selectedLiveStreamReconnectTimer.current);
 				selectedLiveStreamReconnectTimer.current = undefined;
@@ -313,17 +339,33 @@ export function useSessionTraceLiveStream({
 
 	useEffect(() => {
 		const recover = () => recoverSelectedLiveStream();
+		const recoverOnline = () => recoverSelectedLiveStream(true);
+		const markSuspended = () => {
+			selectedPageSuspended.current = true;
+		};
 		const recoverWhenVisible = () => {
-			if (!document.hidden) recoverSelectedLiveStream();
+			if (document.hidden) {
+				markSuspended();
+				return;
+			}
+			selectedPageSuspended.current = false;
+			recoverSelectedLiveStream(true);
+		};
+		const recoverPageShow = (event: PageTransitionEvent) => {
+			const forceReconnect = selectedPageSuspended.current || event.persisted;
+			selectedPageSuspended.current = false;
+			recoverSelectedLiveStream(forceReconnect);
 		};
 		window.addEventListener("focus", recover);
-		window.addEventListener("online", recover);
-		window.addEventListener("pageshow", recover);
+		window.addEventListener("online", recoverOnline);
+		window.addEventListener("pagehide", markSuspended);
+		window.addEventListener("pageshow", recoverPageShow);
 		document.addEventListener("visibilitychange", recoverWhenVisible);
 		return () => {
 			window.removeEventListener("focus", recover);
-			window.removeEventListener("online", recover);
-			window.removeEventListener("pageshow", recover);
+			window.removeEventListener("online", recoverOnline);
+			window.removeEventListener("pagehide", markSuspended);
+			window.removeEventListener("pageshow", recoverPageShow);
 			document.removeEventListener("visibilitychange", recoverWhenVisible);
 		};
 	}, [recoverSelectedLiveStream]);
@@ -333,10 +375,12 @@ export function useSessionTraceLiveStream({
 		const timer = window.setInterval(() => {
 			flushPendingStreamEvents(selectedPiboSessionId);
 			const liveStream = selectedLiveStreamRef.current;
-			const stale = !liveStream
-				|| liveStream.piboSessionId !== selectedPiboSessionId
-				|| liveStream.events.readyState === 2
-				|| Date.now() - liveStream.lastActivityAt > LIVE_STREAM_STALE_MS;
+			const stale = selectedLiveStreamNeedsReconnect({
+				selectedPiboSessionId,
+				liveStream: liveStream
+					? { piboSessionId: liveStream.piboSessionId, lastActivityAt: liveStream.lastActivityAt, readyState: liveStream.events.readyState }
+					: null,
+			});
 			if (!stale) return;
 			onRefreshTrace().catch((caught) => onError(errorMessage(caught)));
 			requestSelectedLiveStreamReconnect();
