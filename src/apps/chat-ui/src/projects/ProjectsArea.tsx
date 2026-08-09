@@ -66,6 +66,9 @@ export function ProjectsArea({
   onThinkingLevelChange,
   mobileSidebarOpen,
   onCloseMobileSidebar,
+  terminalFullscreen,
+  onEnterTerminalFullscreen,
+  onExitTerminalFullscreen,
   onError,
 }: {
   baseBootstrap: BootstrapData;
@@ -91,6 +94,9 @@ export function ProjectsArea({
   onThinkingLevelChange: (level: ThinkingLevel) => void;
   mobileSidebarOpen: boolean;
   onCloseMobileSidebar: () => void;
+  terminalFullscreen: boolean;
+  onEnterTerminalFullscreen: () => void;
+  onExitTerminalFullscreen: () => void;
   onError: (message: string | null) => void;
 }) {
   const [data, setData] = useState<ProjectsBootstrapData | null>(null);
@@ -378,17 +384,19 @@ export function ProjectsArea({
           void openCreatedProject(projectId).catch(() => undefined)
         }
       />
-      <div
-        data-pibo-mobile-sidebar-backdrop
-        aria-hidden="true"
-        className={`fixed inset-0 z-30 bg-black/60 min-[981px]:hidden transition-opacity duration-200 ${
-          mobileSidebarOpen
-            ? "opacity-100 pointer-events-auto"
-            : "opacity-0 pointer-events-none"
-        }`}
-        onClick={onCloseMobileSidebar}
-      />
-      <ProjectsSidebar
+      {terminalFullscreen ? null : (
+        <>
+          <div
+            data-pibo-mobile-sidebar-backdrop
+            aria-hidden="true"
+            className={`fixed inset-0 z-30 bg-black/60 min-[981px]:hidden transition-opacity duration-200 ${
+              mobileSidebarOpen
+                ? "opacity-100 pointer-events-auto"
+                : "opacity-0 pointer-events-none"
+            }`}
+            onClick={onCloseMobileSidebar}
+          />
+          <ProjectsSidebar
         data={data}
         selectedProject={selectedProject}
         selectedPiboSessionId={selectedPiboSessionId}
@@ -448,6 +456,8 @@ export function ProjectsArea({
         onViewContext={onViewContext}
         onAutoRenameConsumed={() => setAutoRenameSessionId(null)}
       />
+        </>
+      )}
       <SessionTracePane
         bootstrap={traceBootstrap}
         selectedPiboSessionId={selectedPiboSessionId}
@@ -469,6 +479,9 @@ export function ProjectsArea({
         }
         projectModulePanel={projectInfoPanel}
         creatingSession={creatingSession}
+        terminalFullscreen={terminalFullscreen}
+        onEnterTerminalFullscreen={onEnterTerminalFullscreen}
+        onExitTerminalFullscreen={onExitTerminalFullscreen}
         showRawEvents={showRawEvents}
         showThinking={showThinking}
         expandThinking={expandThinking}

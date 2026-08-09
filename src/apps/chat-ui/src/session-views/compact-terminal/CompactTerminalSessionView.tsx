@@ -31,6 +31,7 @@ type TerminalNavigationKind = "system" | "tool" | "user";
 export function CompactTerminalSessionView({
 	traceView,
 	isLoading,
+	terminalFullscreen,
 	showThinking,
 	expandThinking,
 	sessionAgentProfile,
@@ -269,21 +270,24 @@ export function CompactTerminalSessionView({
 			data-pibo-component="CompactTerminalSessionView"
 			data-pibo-debug="compact-terminal-session-view"
 			data-pibo-session-id={traceView?.piboSessionId ?? undefined}
+			data-pibo-terminal-fullscreen={terminalFullscreen ? "true" : "false"}
 			data-pibo-trace-has-older={traceView?.hasOlderEvents === true ? "true" : "false"}
 			data-pibo-trace-next-before={traceView?.nextBeforeCursor ?? traceView?.nextBeforeSequence ?? ""}
 		>
-			<TerminalHeader
-				errorCount={errorCount}
-				toolErrorCount={toolErrorCount}
-				userMessageCount={userMessageCount}
-				onNavigate={navigateToTerminalRow}
-				sessionAgentProfile={sessionAgentProfile}
-				sessionActiveModel={sessionActiveModel}
-				sessionBreadcrumbs={sessionBreadcrumbs}
-				originSession={originSession}
-				derivedSessions={derivedSessions}
-				onOpenSession={onOpenSession}
-			/>
+			{terminalFullscreen ? null : (
+				<TerminalHeader
+					errorCount={errorCount}
+					toolErrorCount={toolErrorCount}
+					userMessageCount={userMessageCount}
+					onNavigate={navigateToTerminalRow}
+					sessionAgentProfile={sessionAgentProfile}
+					sessionActiveModel={sessionActiveModel}
+					sessionBreadcrumbs={sessionBreadcrumbs}
+					originSession={originSession}
+					derivedSessions={derivedSessions}
+					onOpenSession={onOpenSession}
+				/>
+			)}
 
 			<div className="min-h-0 flex-1 overflow-hidden">
 				{!traceView ? (
@@ -371,7 +375,7 @@ function TerminalHeader({
 	onOpenSession: ChatSessionViewProps["onOpenSession"];
 }) {
 	return (
-		<div className="border-b border-[#2a2a2a] bg-[#111111] px-4 py-2 text-[11px]">
+		<div data-pibo-debug="compact-terminal-header" className="border-b border-[#2a2a2a] bg-[#111111] px-4 py-2 text-[11px]">
 			<div className="flex flex-wrap items-center gap-2">
 				{sessionAgentProfile ? <TerminalBadge tone="neutral">{sessionAgentProfile}</TerminalBadge> : null}
 				{sessionActiveModel ? <TerminalBadge tone="purple">{sessionActiveModel}</TerminalBadge> : null}
