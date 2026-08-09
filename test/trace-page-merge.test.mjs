@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { checkTraceView } from "../dist/debug/trace.js";
 import { mergeOlderTracePage, mergeRefreshedTracePage } from "../dist/shared/trace-page-merge.js";
 
 test("mergeOlderTracePage dedupes overlapping nested timeline nodes", () => {
@@ -157,6 +158,12 @@ test("mergeRefreshedTracePage drops event turn scaffolds superseded by transcrip
 				source: "event-log",
 				eventId: "settled-turn",
 				orderKey: eventOrder(10),
+				children: [node("retained-child", {
+					type: "execution.result",
+					source: "event-log",
+					parentId: "stale-turn",
+					orderKey: eventOrder(11),
+				})],
 			}),
 			node("event-only-turn", {
 				type: "agent.turn",
@@ -179,9 +186,12 @@ test("mergeRefreshedTracePage drops event turn scaffolds superseded by transcrip
 	const merged = mergeRefreshedTracePage(current, refreshed);
 	assert.deepEqual(flattenNodes(merged.nodes).map((entry) => entry.id), [
 		"transcript-assistant",
+		"retained-child",
 		"event-only-turn",
 		"new-tail",
 	]);
+	assert.equal(merged.nodes.find((entry) => entry.id === "retained-child")?.parentId, undefined);
+	assert.equal(checkTraceView(merged).issues.some((issue) => issue.code === "missing_parent"), false);
 });
 
 test("mergeRefreshedTracePage refreshes the raw-event tail without dropping loaded history", () => {

@@ -44,12 +44,13 @@ function mergeRefreshedTraceNodes(
 	currentNodes: PiboSessionTraceView["nodes"],
 	refreshed: PiboSessionTraceView,
 ): PiboSessionTraceView["nodes"] {
+	const flattenedCurrentNodes = flattenTraceNodes([...currentNodes]);
 	const refreshedNodes = flattenTraceNodes([...refreshed.nodes]);
 	const refreshedIds = new Set(refreshedNodes.map((node) => node.id));
-	const canonicalTranscriptEventIds = transcriptEventIds([...flattenTraceNodes([...currentNodes]), ...refreshedNodes]);
+	const canonicalTranscriptEventIds = transcriptEventIds([...flattenedCurrentNodes, ...refreshedNodes]);
 	const refreshedOrderBoundaries = earliestTraceNodeOrdersBySource(refreshedNodes);
 	const refreshedStartedAt = earliestTraceNodeTimestamp(refreshedNodes);
-	const retainedOlderNodes = flattenTraceNodes([...currentNodes]).filter((node) => {
+	const retainedOlderNodes = flattenedCurrentNodes.filter((node) => {
 		if (refreshedIds.has(node.id)) return true;
 		if (
 			node.type === "agent.turn" &&
@@ -72,7 +73,25 @@ function mergeRefreshedTraceNodes(
 		const startedAt = parseTimestamp(node.startedAt);
 		return startedAt !== undefined && refreshedStartedAt !== undefined && startedAt < refreshedStartedAt;
 	});
-	return mergeTraceNodes(retainedOlderNodes, refreshed.nodes);
+	const mergedIds = new Set([...retainedOlderNodes, ...refreshedNodes].map((node) => node.id));
+	const removedCurrentIds = new Set(
+		flattenedCurrentNodes
+			.filter((node) => !mergedIds.has(node.id))
+			.map((node) => node.id),
+	);
+	return mergeTraceNodes(
+		clearRemovedParentIds(retainedOlderNodes, removedCurrentIds),
+		clearRemovedParentIds(refreshedNodes, removedCurrentIds),
+	);
+}
+
+function clearRemovedParentIds(
+	nodes: PiboSessionTraceView["nodes"],
+	removedIds: ReadonlySet<string>,
+): PiboSessionTraceView["nodes"] {
+	return nodes.map((node) => node.parentId && removedIds.has(node.parentId)
+		? { ...node, parentId: undefined }
+		: node);
 }
 
 function transcriptEventIds(nodes: PiboSessionTraceView["nodes"]): Set<string> {
