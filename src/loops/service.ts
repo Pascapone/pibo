@@ -39,6 +39,7 @@ function failureRecovery(details: PiboSessionErrorDetails | undefined): string {
 	if (details?.category === 'context_overflow' || details?.errorClass === 'provider_context') return 'Reduce or reset the session context, then explicitly restart the Goal.';
 	return details?.retryable === false ? 'Resolve the reported non-retryable failure, then explicitly restart the Goal.' : 'Pibo will retry automatically after the recorded backoff.';
 }
+function isTerminalGoalStatus(status: PiboLoopJob['state']['goalStatus']): boolean { return status === 'complete' || status === 'blocked' || status === 'budget_limited'; }
 function retryBackoffMs(consecutiveErrors: number, baseMs: number, maxMs: number, jitterRatio: number, random: () => number): number {
 	const exponent = Math.max(0, Math.min(30, consecutiveErrors - 1));
 	const bounded = Math.min(maxMs, baseMs * (2 ** exponent));
@@ -232,6 +233,8 @@ export class PiboLoopService {
 			const retryable = !cancelled && !invalidated && errorDetails?.retryable !== false;
 			const outcome: PiboLoopRunOutcome = { status: cancelled ? 'cancelled' : 'error', error: cancelled ? undefined : message, ...(errorDetails ? { errorDetails } : {}) };
 			const latestJob = this.store.getJob(job.id) ?? job;
+			const latestGoalStatus = latestJob.mode === 'goal' ? latestJob.state.goalStatus ?? (latestJob.enabled ? 'active' : 'paused') : undefined;
+			const shouldBlockGoal = nonRetryable && latestJob.mode === 'goal' && !isTerminalGoalStatus(latestGoalStatus);
 			const { evaluation, conditionStates } = await this.evaluateStopPolicy(latestJob, 'after-run', run, outcome);
 			const automaticRetry = retryable && !fatalProfileError && !timeoutAbortFailed && evaluation.finalAction === 'continue';
 			const now = this.now();
@@ -254,7 +257,7 @@ export class PiboLoopService {
 				error: outcome.error,
 				errorDetails,
 				failure,
-				...(nonRetryable && job.mode === 'goal' ? { goalStatus: 'blocked' as const } : {}),
+				...(shouldBlockGoal ? { goalStatus: 'blocked' as const } : {}),
 				reason: cancelled
 					? 'cancelled'
 					: invalidated

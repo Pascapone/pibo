@@ -135,6 +135,7 @@ function goalStatus(job: Pick<PiboLoopJob, 'mode' | 'enabled' | 'state'>): PiboG
 	if (job.mode !== 'goal') return undefined;
 	return job.state.goalStatus ?? (job.enabled ? 'active' : 'paused');
 }
+function isTerminalGoalStatus(status: PiboGoalStatus | undefined): boolean { return status === 'complete' || status === 'blocked' || status === 'budget_limited'; }
 function normalizeModelOverride(value: ModelProfile | null | undefined): ModelProfile | undefined {
 	if (value === undefined || value === null) return undefined;
 	const provider = value.provider.trim();
@@ -270,9 +271,9 @@ export class PiboLoopStore {
 	updateGoalStatus(id: string, status: Extract<PiboGoalStatus, 'complete' | 'blocked'>, now = new Date()): PiboLoopJob | undefined {
 		const job = this.getJob(id);
 		if (!job || job.mode !== 'goal') return undefined;
-		const currentStatus = goalStatus(job) ?? 'paused';
+		const currentStatus = goalStatus(job);
 		if (currentStatus === status) return job;
-		if (['complete', 'blocked', 'budget_limited'].includes(currentStatus)) throw new Error(`Cannot change terminal goal status from ${currentStatus} to ${status}`);
+		if (isTerminalGoalStatus(currentStatus)) throw new Error(`Cannot change terminal goal status from ${currentStatus} to ${status}`);
 		const timestamp = nowIso(now);
 		const state: PiboLoopJobState = { ...job.state, goalStatus: status, goalEndedAt: job.state.goalEndedAt ?? timestamp, runningAt: job.state.runningAt };
 		this.db.prepare('UPDATE pibo_ralph_jobs SET enabled = 0, state_json = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(state), timestamp, id);
@@ -462,8 +463,9 @@ export class PiboLoopStore {
 		const timestamp = nowIso(now); const job = this.getJob(input.jobId); if (!job) return;
 		const completedIterations = (job.state.completedIterations ?? 0) + 1;
 		const reachedMaxIterations = job.maxIterations !== undefined && completedIterations >= job.maxIterations;
-		const nextGoalStatus = job.mode === 'goal' ? input.goalStatus ?? goalStatus(job) : undefined;
-		const terminalGoalStatus = job.mode === 'goal' && ['complete', 'blocked', 'budget_limited'].includes(nextGoalStatus ?? '');
+		const currentGoalStatus = goalStatus(job);
+		const nextGoalStatus = job.mode === 'goal' ? isTerminalGoalStatus(currentGoalStatus) ? currentGoalStatus : input.goalStatus ?? currentGoalStatus : undefined;
+		const terminalGoalStatus = job.mode === 'goal' && isTerminalGoalStatus(nextGoalStatus);
 		const shouldDisable = terminalGoalStatus || reachedMaxIterations || input.stopAfterRun === true || input.stopEvaluation?.finalAction === 'stop-after-run' || input.stopEvaluation?.finalAction === 'cancel-current-run';
 		const state: PiboLoopJobState = {
 			...job.state,

@@ -71,6 +71,37 @@ test("non-retryable provider failures block a Goal and preserve structured recov
 	}
 });
 
+test("a late non-retryable provider failure preserves an already-complete Goal", async () => {
+	const terminalAt = new Date("2026-08-08T12:00:00.000Z");
+	const failureAt = new Date("2026-08-08T12:00:05.000Z");
+	let harness;
+	let jobId;
+	harness = await createHarness(({ event, listeners }) => {
+		harness.store.updateGoalStatus(jobId, "complete", terminalAt);
+		queueMicrotask(() => {
+			for (const listener of listeners) listener({ type: "session_error", piboSessionId: event.piboSessionId, eventId: event.id, error: "Provider quota exhausted", errorDetails: QUOTA_FAILURE });
+		});
+	}, { now: () => new Date(failureAt) });
+	try {
+		harness.service.start();
+		const job = harness.store.createJob({ mode: "goal", target: { kind: "default-chat" }, profile: "base", prompt: "Complete the objective." });
+		jobId = job.id;
+		assert.ok(await harness.service.startJob(job.id));
+		await waitFor(() => harness.store.getJob(job.id)?.state.completedIterations === 1);
+
+		const saved = harness.store.getJob(job.id);
+		const run = harness.store.listRuns({ jobId: job.id })[0];
+		assert.equal(saved.enabled, false);
+		assert.equal(saved.state.goalStatus, "complete");
+		assert.equal(saved.state.goalEndedAt, terminalAt.toISOString());
+		assert.equal(saved.state.lastFailure.details.code, "quota_exhausted");
+		assert.equal(run.status, "error");
+		assert.equal(run.reason, "non-retryable-quota_exhausted");
+	} finally {
+		await harness.close();
+	}
+});
+
 test("retryable provider failures use bounded backoff and do not hot-loop", async () => {
 	let now = new Date("2026-08-08T12:00:00.000Z");
 	const harness = await createHarness(({ event, listeners, messageCount }) => {
