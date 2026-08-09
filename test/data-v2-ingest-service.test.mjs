@@ -24,6 +24,24 @@ function makeSession(overrides = {}) {
 	};
 }
 
+function eventRow(sequence, type, attributes = {}, previewText = null) {
+	return {
+		stream_id: sequence,
+		session_id: "ps_part_identity",
+		session_sequence: sequence,
+		room_id: "room_part_identity",
+		type,
+		actor_type: "assistant",
+		actor_id: "agent:test",
+		event_id: "turn-part-identity",
+		idempotency_key: `${type}:${sequence}`,
+		retention_class: type.endsWith("_delta") ? "live_delta" : "trace_event",
+		preview_text: previewText,
+		attributes_json: JSON.stringify(attributes),
+		created_at: `2026-05-08T12:00:${String(sequence).padStart(2, "0")}.000Z`,
+	};
+}
+
 test("chat data ingest writes user messages idempotently", () => {
 	const store = new PiboDataStore(":memory:", { payloadRootDir: mkdtempSync(join(tmpdir(), "pibo-ingest-payloads-")) });
 	try {
@@ -165,6 +183,41 @@ test("chat data ingest shadows assistant messages and observations idempotently"
 	} finally {
 		store.close();
 	}
+});
+
+test("v2 event mapper preserves assistant and reasoning part identities", () => {
+	const rows = [
+		eventRow(1, "message_started", {}, "start"),
+		eventRow(2, "thinking_started", { thinkingIndex: 0, contentIndex: 4 }),
+		eventRow(3, "thinking_delta", { thinkingIndex: 0, contentIndex: 4, inlinePayload: "plan" }, "plan"),
+		eventRow(4, "thinking_finished", { thinkingIndex: 0, contentIndex: 4 }, "plan"),
+		eventRow(5, "assistant_delta", { assistantIndex: 0, contentIndex: 5, inlinePayload: "answer" }, "answer"),
+		eventRow(6, "assistant_message", { assistantIndex: 0, contentIndex: 5 }, "answer"),
+		eventRow(7, "message_finished"),
+	];
+	const events = rows.map(storedPiboEventFromV2Row).filter(Boolean);
+
+	assert.equal(events[1].payload.thinkingIndex, 0);
+	assert.equal(events[1].payload.contentIndex, 4);
+	assert.equal(events[2].payload.thinkingIndex, 0);
+	assert.equal(events[2].payload.contentIndex, 4);
+	assert.equal(events[3].payload.thinkingIndex, 0);
+	assert.equal(events[3].payload.contentIndex, 4);
+	assert.equal(events[4].payload.assistantIndex, 0);
+	assert.equal(events[4].payload.contentIndex, 5);
+	assert.equal(events[5].payload.assistantIndex, 0);
+	assert.equal(events[5].payload.contentIndex, 5);
+
+	const view = buildTraceViewFromEvents({
+		session: { id: "ps_part_identity", piSessionId: "pi_part_identity", title: "Part identity" },
+		events,
+		status: "running",
+	});
+	const turn = view.nodes.find((node) => node.type === "agent.turn");
+	assert.deepEqual(turn.children.map((node) => node.id), [
+		"event:thinking:turn-part-identity:thinking:0",
+		"event:assistant:turn-part-identity:assistant:0",
+	]);
 });
 
 test("chat data ingest keeps progressive tool call argument snapshots", () => {
