@@ -294,6 +294,7 @@ export type StreamingRenderOrderRow = {
 	sourceNodeIds?: string[];
 	eventId?: string;
 	runId?: string;
+	stableKey?: string;
 	orderSource?: string;
 	orderStreamId?: number;
 	orderStreamFrameIndex?: number;

@@ -685,6 +685,7 @@ function startRenderOrderCapture(startedAt) {
       sourceNodeIds,
       eventId: element.getAttribute('data-event-id') || undefined,
       runId: element.getAttribute('data-run-id') || undefined,
+      stableKey: element.getAttribute('data-stable-key') || undefined,
       orderSource: element.getAttribute('data-order-source') || undefined,
       orderStreamId: numberAttr('data-order-stream-id'),
       orderStreamFrameIndex: numberAttr('data-order-frame-index'),
@@ -717,7 +718,7 @@ function startRenderOrderCapture(startedAt) {
       rowIds: rows.map((row) => row.id),
       visualRowIds: visualRows.map((row) => row.id),
     };
-    const signature = JSON.stringify({ traceSequence: state.traceSequence, view: state.view, shellState: state.shellState, atBottom: state.atBottom, rows: rows.map((row) => [row.id, row.kind, row.status, row.sourceNodeIds, row.eventId, row.runId, row.orderSource, row.orderStreamId, row.orderStreamFrameIndex]), visual: state.visualRowIds });
+    const signature = JSON.stringify({ traceSequence: state.traceSequence, view: state.view, shellState: state.shellState, atBottom: state.atBottom, rows: rows.map((row) => [row.id, row.kind, row.status, row.sourceNodeIds, row.eventId, row.runId, row.stableKey, row.orderSource, row.orderStreamId, row.orderStreamFrameIndex]), visual: state.visualRowIds });
     if (signature === previousSignature) return;
     previousSignature = signature;
     if (domStates.length >= 1000) omittedDomStates += 1;
@@ -725,7 +726,7 @@ function startRenderOrderCapture(startedAt) {
   };
   capture('start');
   const observer = new MutationObserver(() => capture('mutation'));
-  if (root) observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class', 'data-row-id', 'data-row-kind', 'data-row-status', 'data-trace-node-id', 'data-event-id', 'data-run-id', 'data-order-source', 'data-order-stream-id', 'data-order-frame-index', 'data-span-type', 'data-span-status'] });
+  if (root) observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class', 'data-row-id', 'data-row-kind', 'data-row-status', 'data-trace-node-id', 'data-event-id', 'data-run-id', 'data-stable-key', 'data-order-source', 'data-order-stream-id', 'data-order-frame-index', 'data-span-type', 'data-span-status'] });
   const interval = setInterval(() => capture('interval'), 50);
   return {
     stop: () => {
@@ -781,6 +782,14 @@ async function runStreamingBenchmark(options) {
       try { snapshots.clearSnapshots(piboSessionId); } catch {}
     }
   };
+  let benchmarkObserver;
+  let renderOrderCapture;
+  let rafHandle;
+  let perfObserver;
+  let traceProbe;
+  let sseProbe;
+  let reconnectTimer;
+  let fixtureStarted = false;
   try {
   if (options.startBackendFixture && options.fixturePreludeMessages > 0) {
     const piboSessionId = selectedSessionId();
@@ -813,7 +822,7 @@ async function runStreamingBenchmark(options) {
     try { window.__piboStreamingDebugReset(); reset = true; } catch (error) { warnings.push('failed to reset __piboStreamingDebug: ' + String(error)); }
   }
   const overlayDrop = installOverlayDropSimulation(Boolean(options.simulateOverlayDrop));
-  const renderOrderCapture = startRenderOrderCapture(startedAt);
+  renderOrderCapture = startRenderOrderCapture(startedAt);
 
   const debugBefore = cloneDebugSnapshot(window.__piboStreamingDebug);
   const initialText = selectedAssistantText(fixtureDomInitialTargets, ignorePreludeDomTargets);
@@ -839,13 +848,12 @@ async function runStreamingBenchmark(options) {
     }
     currentLength = length;
   };
-  const observer = new MutationObserver(sample);
-  observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+  benchmarkObserver = new MutationObserver(sample);
+  benchmarkObserver.observe(document.body, { childList: true, subtree: true, characterData: true });
 
   const rafGaps = [];
   let rafCount = 0;
   let lastRaf;
-  let rafHandle;
   const onRaf = (t) => {
     rafCount += 1;
     if (lastRaf !== undefined) rafGaps.push(t - lastRaf);
@@ -855,7 +863,6 @@ async function runStreamingBenchmark(options) {
   rafHandle = requestAnimationFrame(onRaf);
 
   const longTasks = [];
-  let perfObserver;
   if (typeof PerformanceObserver !== 'undefined') {
     try {
       perfObserver = new PerformanceObserver((list) => {
@@ -869,11 +876,8 @@ async function runStreamingBenchmark(options) {
     warnings.push('PerformanceObserver unavailable');
   }
 
-  let fixtureStarted = false;
   let fixtureConfig;
   let backendFixtureError;
-  let traceProbe;
-  let sseProbe;
   if (options.startFixture) {
     if (typeof window.__piboStreamingFixtureStart === 'function') {
       try { fixtureConfig = window.__piboStreamingFixtureStart(); fixtureStarted = true; } catch (error) { warnings.push('failed to start streaming fixture: ' + String(error)); }
@@ -882,7 +886,8 @@ async function runStreamingBenchmark(options) {
     }
   } else if (options.startBackendFixture) {
     if (options.simulateReconnect && typeof window.__piboStreamingBenchmarkForceReconnect === 'function') {
-      setTimeout(() => {
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = undefined;
         try { window.__piboStreamingBenchmarkForceReconnect(); } catch (error) { warnings.push('failed to force EventSource reconnect: ' + String(error)); }
       }, options.reconnectAtMs || 325);
     } else if (options.simulateReconnect) {
@@ -926,12 +931,18 @@ async function runStreamingBenchmark(options) {
   if (traceProbe) {
     await traceProbe.sample();
     traceProbe.stop();
+    traceProbe = undefined;
   }
   const sseSummary = sseProbe ? await sseProbe.stop() : undefined;
-  observer.disconnect();
+  sseProbe = undefined;
+  benchmarkObserver.disconnect();
+  benchmarkObserver = undefined;
   const renderOrder = renderOrderCapture.stop();
+  renderOrderCapture = undefined;
   if (rafHandle !== undefined) cancelAnimationFrame(rafHandle);
+  rafHandle = undefined;
   try { perfObserver && perfObserver.disconnect(); } catch {}
+  perfObserver = undefined;
 
   const debugAfter = cloneDebugSnapshot(window.__piboStreamingDebug);
   const overlayDropSummary = overlayDrop ? cloneDebugSnapshot(window.__piboStreamingBenchmarkOverlayDrop) : undefined;
@@ -1051,6 +1062,17 @@ async function runStreamingBenchmark(options) {
     warnings,
   };
   } finally {
+    try { benchmarkObserver && benchmarkObserver.disconnect(); } catch {}
+    try { renderOrderCapture && renderOrderCapture.stop(); } catch {}
+    if (rafHandle !== undefined) cancelAnimationFrame(rafHandle);
+    if (reconnectTimer !== undefined) clearTimeout(reconnectTimer);
+    try { perfObserver && perfObserver.disconnect(); } catch {}
+    try { traceProbe && traceProbe.stop(); } catch {}
+    try { if (sseProbe) await sseProbe.stop(); } catch {}
+    try { installOverlayDropSimulation(false); } catch {}
+    if (fixtureStarted && options.startFixture && typeof window.__piboStreamingDebugReset === 'function') {
+      try { window.__piboStreamingDebugReset(); } catch {}
+    }
     restoreDebugCollection();
   }
 }

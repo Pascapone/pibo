@@ -14,9 +14,7 @@ test("trace render-order tooling records base, overlay, current, and terminal st
 		assert.match(collector, new RegExp(`\\"${layer}\\"`));
 	}
 	assert.match(collector, /contentKind: traceNodeContentKind\(content\)/);
-	assert.match(collector, /contentToken: content \? contentEqualityToken\(node\.piboSessionId, content\)/);
-	assert.match(collector, /crypto\.randomUUID\(\)/);
-	assert.match(collector, /contentTokensBySession\.delete\(piboSessionId\)/);
+	assert.doesNotMatch(collector, /contentDigest|contentToken|contentTokensBySession/);
 	assert.match(collector, /getLatestSequence: getLatestSnapshotSequence/);
 	assert.match(collector, /clearTimeout\(buffer\.pendingTimer\)/);
 	assert.match(currentTrace, /collectTraceState\(\{/);

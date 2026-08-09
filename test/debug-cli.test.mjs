@@ -140,8 +140,13 @@ test("streaming benchmark expression installs temporary state and DOM render-ord
 	assert.match(expression, /restoreDebugCollection/);
 	assert.match(expression, /clearSnapshots/);
 	assert.match(expression, /getLatestSequence/);
+	assert.match(expression, /benchmarkObserver && benchmarkObserver\.disconnect\(\)/);
+	assert.match(expression, /renderOrderCapture && renderOrderCapture\.stop\(\)/);
+	assert.match(expression, /if \(sseProbe\) await sseProbe\.stop\(\)/);
 	assert.match(expression, /startRenderOrderCapture/);
 	assert.match(expression, /data-pibo-terminal-row/);
+	assert.match(expression, /data-stable-key/);
+	assert.match(expression, /stableKey: element\.getAttribute\('data-stable-key'\)/);
 	assert.match(expression, /__piboTraceSnapshots/);
 });
 
