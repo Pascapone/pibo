@@ -5386,7 +5386,10 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const latestStreamId = state.timelineQuery.getLatestStreamId({ piboSessionId: selectedSession.id });
 				const turnTimings = state.timelineQuery.listMessageTurnTimings(selectedSession.id);
 				const liveSnapshots = timelineCursor.kind === "tail" ? state.outputCompactor.snapshotsForSession(selectedSession.id) : [];
-				const traceStatus = traceProjectionStatus(liveSnapshots, indexedSession?.status, turnTimings);
+				const runtimeStatus = context.channelContext.getSessionRuntimeStatus
+					? context.channelContext.getSessionRuntimeStatus(selectedSession.id) ?? null
+					: undefined;
+				const traceStatus = traceProjectionStatus(liveSnapshots, indexedSession?.status, turnTimings, runtimeStatus);
 				const metadataStartedAt = performance.now();
 				const transcriptMetadata = timelineCursor.kind === "tail" || timelineCursor.kind === "transcript"
 					? await loadPiSessionFastMetadata(selectedSession, selectedSession.workspace ?? process.cwd())
@@ -5609,7 +5612,10 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const latestStreamId = state.timelineQuery.getLatestStreamId({ piboSessionId: selectedSession.id });
 				const turnTimings = state.timelineQuery.listMessageTurnTimings(selectedSession.id);
 				const liveSnapshots = beforeSequence === undefined ? state.outputCompactor.snapshotsForSession(selectedSession.id) : [];
-				const traceStatus = traceProjectionStatus(liveSnapshots, indexedSession?.status, turnTimings);
+				const runtimeStatus = context.channelContext.getSessionRuntimeStatus
+					? context.channelContext.getSessionRuntimeStatus(selectedSession.id) ?? null
+					: undefined;
+				const traceStatus = traceProjectionStatus(liveSnapshots, indexedSession?.status, turnTimings, runtimeStatus);
 				const baseVersion = createTraceViewVersion({
 					session: selectedSession,
 					sessions: ownedSessions,

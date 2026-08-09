@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { PiboOutputEvent } from "../../core/events.js";
+import type { PiboOutputEvent, PiboSessionStatus } from "../../core/events.js";
 import { patchTraceViewWithEvent } from "../../shared/trace-engine.js";
 import type { TraceMessageTurnTiming } from "../../shared/trace-event-projection.js";
 import type { ChatWebStoredEvent } from "../../shared/trace-types.js";
@@ -35,12 +35,20 @@ export function traceProjectionStatus(
 	snapshots: readonly PiboOutputEvent[],
 	status?: PiboWebSessionStatus,
 	turnTimings: readonly TraceMessageTurnTiming[] = [],
+	runtimeStatus?: PiboSessionStatus | null,
 ): PiboWebSessionStatus {
-	return snapshots.length || turnTimings.some(
-		(timing) => timing.userMessageType !== "message_steered" && timing.completedAt === undefined,
-	)
-		? "running"
-		: status ?? "idle";
+	if (snapshots.length) return "running";
+	if (runtimeStatus !== undefined) {
+		if (runtimeStatus && (runtimeStatus.processing || runtimeStatus.streaming || runtimeStatus.queuedMessages > 0)) {
+			return "running";
+		}
+		return status === "error" ? "error" : "idle";
+	}
+	if (status !== undefined) return status;
+	const currentTurn = [...turnTimings].reverse().find(
+		(timing) => timing.userMessageType !== "message_steered" && (timing.userText !== undefined || timing.startedAt !== undefined),
+	);
+	return currentTurn !== undefined && currentTurn.completedAt === undefined ? "running" : "idle";
 }
 
 export function liveSnapshotVersion(snapshots: readonly PiboOutputEvent[]): string {

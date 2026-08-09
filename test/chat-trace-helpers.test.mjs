@@ -47,9 +47,19 @@ async function runChatTraceHelpersScenario() {
 		assert.equal(traceProjectionStatus([], undefined), "idle");
 		assert.equal(traceProjectionStatus([], "error"), "error");
 		assert.equal(traceProjectionStatus([snapshot], "idle"), "running");
-		assert.equal(traceProjectionStatus([], "idle", [{ eventId: "turn-open" }]), "running");
-		assert.equal(traceProjectionStatus([], "idle", [{ eventId: "turn-done", completedAt: "2026-05-27T00:00:00.000Z" }]), "idle");
-		assert.equal(traceProjectionStatus([], "idle", [{ eventId: "steer-1", userMessageType: "message_steered" }]), "idle");
+		assert.equal(traceProjectionStatus([], "idle", [{ eventId: "turn-open", userText: "open prompt" }], { processing: true, streaming: false, queuedMessages: 0 }), "running");
+		assert.equal(traceProjectionStatus([], undefined, [{ eventId: "turn-open", userText: "open prompt" }]), "running");
+		assert.equal(traceProjectionStatus([], "idle", [{ eventId: "turn-stale", userText: "stale prompt" }], null), "idle");
+		assert.equal(traceProjectionStatus([], "idle", [{ eventId: "turn-done", userText: "done prompt", completedAt: "2026-05-27T00:00:00.000Z" }]), "idle");
+		assert.equal(traceProjectionStatus([], "idle", [{ eventId: "steer-1", userText: "steer", userMessageType: "message_steered" }]), "idle");
+		assert.equal(traceProjectionStatus([], "idle", [
+			{ eventId: "orphan-reasoning", reasoningIndices: [0] },
+			{ eventId: "turn-later", userText: "settled prompt", completedAt: "2026-05-27T00:00:02.000Z" },
+		]), "idle");
+		assert.equal(traceProjectionStatus([], "idle", [
+			{ eventId: "turn-old", userText: "orphaned prompt" },
+			{ eventId: "turn-later", userText: "settled prompt", completedAt: "2026-05-27T00:00:02.000Z" },
+		]), "idle");
 		assert.equal(liveSnapshotVersion([]), "");
 		assert.equal(liveSnapshotVersion([snapshot]), liveSnapshotVersion([snapshot]));
 		const stored = storedLiveSnapshotEvents({ piboSessionId: "ps_1", snapshots: [snapshot], lastEventSequence: 7, now: "2026-05-27T00:00:00.000Z" });

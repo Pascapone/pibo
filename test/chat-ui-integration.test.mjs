@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { traceProjectionStatus, withLiveSnapshots } from "../dist/apps/chat/chat-trace-helpers.js";
 import { normalizePiEvent } from "../dist/core/routed-session.js";
+import { messageTurnTimingsFromEvents } from "../dist/shared/trace-event-projection.js";
 import { buildTraceViewFromEvents, patchTraceViewWithEvent, patchTraceViewWithEvents } from "../dist/shared/trace-engine.js";
 import { buildCompactTerminalRows } from "../dist/session-ui/index.js";
 
@@ -210,7 +211,12 @@ test("open turn timing keeps running projection between live snapshots", () => {
 	];
 	const baseView = buildTraceViewFromEvents({
 		session: { id: "chat:test", piSessionId: "pi-test" },
-		status: traceProjectionStatus([], "idle", [{ eventId: "turn-live", userText: "active prompt" }]),
+		status: traceProjectionStatus(
+			[],
+			"idle",
+			[{ eventId: "turn-live", userText: "active prompt" }],
+			{ processing: true, streaming: false, queuedMessages: 0 },
+		),
 		transcriptEntries: [
 			{
 				id: "entry-live-user",
@@ -383,6 +389,76 @@ test("confirmed steering events settle optimistic messages already attached to t
 	assert.equal(steered[0].status, "done");
 	assert.equal(steered[0].parentId, "event:message:turn-1");
 	assert.equal(buildCompactTerminalRows(patched, { showThinking: true }).find((row) => row.id === steered[0].id)?.pendingMessageDelivery, undefined);
+});
+
+test("historical orphan content timing does not hide a later settled transcript turn", () => {
+	const fullHistoryEvents = [
+		createEvent({
+			seq: 1,
+			type: "thinking_finished",
+			createdAt: "2026-04-29T08:00:01.000Z",
+			payload: { type: "thinking_finished", eventId: "orphan-reasoning", thinkingIndex: 0, text: "orphan thought" },
+		}),
+		createEvent({
+			seq: 2,
+			type: "message_started",
+			createdAt: "2026-04-29T08:00:02.000Z",
+			payload: { type: "message_started", eventId: "turn-later", text: "latest prompt", source: "user" },
+		}),
+		createEvent({
+			seq: 3,
+			type: "assistant_message",
+			createdAt: "2026-04-29T08:00:03.000Z",
+			payload: { type: "assistant_message", eventId: "turn-later", assistantIndex: 0, text: "latest answer" },
+		}),
+		createEvent({
+			seq: 4,
+			type: "message_finished",
+			createdAt: "2026-04-29T08:00:04.000Z",
+			payload: { type: "message_finished", eventId: "turn-later" },
+		}),
+	];
+	const turnTimings = messageTurnTimingsFromEvents(fullHistoryEvents);
+	const status = traceProjectionStatus([], "idle", turnTimings);
+	const view = buildTraceViewFromEvents({
+		session: { id: "chat:test", piSessionId: "pi-test" },
+		status,
+		transcriptEntries: [
+			{
+				id: "old-user",
+				type: "message",
+				timestamp: "2026-04-29T07:59:58.000Z",
+				message: { role: "user", content: [{ type: "text", text: "old prompt" }] },
+			},
+			{
+				id: "old-assistant",
+				type: "message",
+				timestamp: "2026-04-29T07:59:59.000Z",
+				message: { role: "assistant", content: [{ type: "text", text: "old answer" }] },
+			},
+			{
+				id: "latest-user",
+				type: "message",
+				timestamp: "2026-04-29T08:00:02.000Z",
+				message: { role: "user", content: [{ type: "text", text: "latest prompt" }] },
+			},
+			{
+				id: "latest-assistant",
+				type: "message",
+				timestamp: "2026-04-29T08:00:03.000Z",
+				message: { role: "assistant", content: [{ type: "text", text: "latest answer" }] },
+			},
+		],
+		events: fullHistoryEvents,
+		turnTimings,
+	});
+
+	assert.equal(status, "idle");
+	const transcriptOutput = flatNodes(view)
+		.filter((node) => node.source === "transcript")
+		.map((node) => node.output);
+	assert.ok(transcriptOutput.includes("latest prompt"));
+	assert.ok(transcriptOutput.includes("latest answer"));
 });
 
 test("persisted steering messages remain attached to the active turn after reload", () => {
