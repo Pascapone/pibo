@@ -223,14 +223,20 @@ export function settlePiboTranscriptIntegrityContinuation(
 function patchProviderBoundary(state: InstalledState): void {
 	const agent = state.session.agent;
 	const previous = agent.transformContext?.bind(agent);
+	const repairedProviderMessages = async (signal: AbortSignal | undefined) => {
+		const repaired = state.session.sessionManager.buildSessionContext().messages;
+		if (!previous) return repaired;
+		const transformed = await previous(repaired, signal);
+		return validatePiboTranscriptIntegrityMessages(transformed).length === 0 ? transformed : repaired;
+	};
 	agent.transformContext = async (messages, signal) => {
 		const transformed = previous ? await previous(messages, signal) : messages;
 		const durableRepair = reconcilePiboTranscriptIntegrity(state.session, "before_provider");
-		if (durableRepair) return state.session.sessionManager.buildSessionContext().messages;
+		if (durableRepair) return repairedProviderMessages(signal);
 		const [runtimeIssue] = validatePiboTranscriptIntegrityMessages(transformed);
 		if (!runtimeIssue) return transformed;
 		quarantineRuntimeTranscript(state, "before_provider", runtimeIssue);
-		return state.session.sessionManager.buildSessionContext().messages;
+		return repairedProviderMessages(signal);
 	};
 }
 

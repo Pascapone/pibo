@@ -133,6 +133,20 @@ test("provider boundary replaces a runtime-only orphan with the valid durable tr
 	assert.equal(activeIntegrityEntries(manager).at(-1)?.data?.boundary, "before_provider");
 });
 
+test("provider repair preserves prior context transforms without resubmitting invalid output", async () => {
+	const manager = SessionManager.inMemory("/tmp");
+	manager.appendMessage(user("durable"));
+	const runtimeOrphan = result("call-runtime-transform");
+	const session = fakeSession(manager, [user("durable"), runtimeOrphan]);
+	session.agent.transformContext = async (messages) => [...messages, user("transformed")];
+	installPiboTranscriptIntegrity(session);
+
+	const providerMessages = await session.agent.transformContext([user("durable"), runtimeOrphan]);
+	assert.deepEqual(validatePiboTranscriptIntegrityMessages(providerMessages), []);
+	assert.equal(providerMessages.some((message) => message.role === "toolResult"), false);
+	assert.equal(providerMessages.some((message) => message.role === "user" && message.content?.[0]?.text === "transformed"), true);
+});
+
 test("compaction boundaries repair corruption produced by compaction before it becomes active", async () => {
 	const manager = SessionManager.inMemory("/tmp");
 	manager.appendMessage(user());
