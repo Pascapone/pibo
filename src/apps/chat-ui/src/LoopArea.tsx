@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AlertTriangle, Bot, Copy, Loader2, Play, Plus, RefreshCw, Save, Square, Trash2, X, XCircle } from "lucide-react";
-import { cancelLoopJob, deleteLoopJob, getLoopConditions, getLoopJobs, getLoopRuns, getLoopStatus, getLoopTemplates, patchLoopJob, postLoopJob, startLoopJob, stopLoopJob, type LoopJobInput } from "./api-loops";
+import { cancelLoopJob, deleteLoopJob, getLoopConditions, getLoopJobs, getLoopRuns, getLoopStatus, getLoopTemplates, patchLoopJob, postLoopJob, reopenLoopJob, startLoopJob, stopLoopJob, type LoopJobInput } from "./api-loops";
 import { copyTextToClipboard } from "./clipboard";
 import { isArchivedRoom } from "./session-sidebar-helpers";
 import { mobileSidebarA11yProps, useMobileSidebarViewport } from "./mobile-sidebar-accessibility";
@@ -52,6 +52,8 @@ export function LoopArea({ bootstrap, mobileSidebarOpen = false, onCloseMobileSi
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const selectedJob = jobs.find((job) => job.id === selectedJobId) ?? null;
+	const selectedGoalStatus = selectedJob?.mode === "goal" ? selectedJob.state.goalStatus ?? (selectedJob.enabled ? "active" : "paused") : undefined;
+	const canReopenGoal = Boolean(selectedJob && !selectedJob.enabled && selectedGoalStatus && ["complete", "blocked", "budget_limited"].includes(selectedGoalStatus));
 	const selectedRoom = useMemo(() => rooms.find((room) => room.id === draft.roomId), [rooms, draft.roomId]);
 	const selectedRoomName = selectedRoom ? `${selectedRoom.name}${isArchivedRoom(selectedRoom) ? " (archived)" : ""}` : draft.roomId;
 
@@ -105,6 +107,7 @@ export function LoopArea({ bootstrap, mobileSidebarOpen = false, onCloseMobileSi
 	const save = async () => { setSaving(true); setError(null); try { const input = inputFromDraft(draft); const response = selectedJob ? await patchLoopJob(selectedJob.id, input) : await postLoopJob(input); setSelectedJobId(response.job.id); setDraft(draftFromJob(response.job, defaultProfile, defaultRoomId)); await refresh(response.job.id); } catch (err) { setError(err instanceof Error ? err.message : String(err)); } finally { setSaving(false); } };
 	const remove = async () => { if (!selectedJob || !window.confirm(`Delete Loop job "${selectedJob.name}"?`)) return; setSaving(true); try { await deleteLoopJob(selectedJob.id); newJob(); await refresh(null); } catch (err) { setError(err instanceof Error ? err.message : String(err)); } finally { setSaving(false); } };
 	const action = async (kind: "start" | "stop" | "cancel") => { if (!selectedJob) return; setSaving(true); try { if (kind === "start") await startLoopJob(selectedJob.id); if (kind === "stop") await stopLoopJob(selectedJob.id); if (kind === "cancel") await cancelLoopJob(selectedJob.id); await refresh(selectedJob.id); } catch (err) { setError(err instanceof Error ? err.message : String(err)); } finally { setSaving(false); } };
+	const reopen = async () => { if (!selectedJob || !canReopenGoal || !window.confirm(`Reopen terminal Goal "${selectedJob.name}" with its existing history?`)) return; setSaving(true); setError(null); try { await reopenLoopJob(selectedJob.id); await refresh(selectedJob.id); } catch (err) { setError(err instanceof Error ? err.message : String(err)); } finally { setSaving(false); } };
 
 	return (
 		<div className="min-h-0 grid grid-cols-[340px_minmax(0,1fr)] max-[980px]:grid-cols-1 h-full overflow-hidden">
@@ -167,6 +170,7 @@ export function LoopArea({ bootstrap, mobileSidebarOpen = false, onCloseMobileSi
 						</div>
 						<div className="flex items-center gap-2 flex-wrap">
 							{selectedJob ? <button type="button" onClick={() => void action("start")} disabled={saving} className="h-9 px-3 inline-flex items-center gap-2 rounded-sm border border-emerald-500/50 text-emerald-300 hover:border-emerald-400 disabled:opacity-50"><Play size={14} /> Start</button> : null}
+							{canReopenGoal ? <button type="button" onClick={() => void reopen()} disabled={saving} className="h-9 px-3 inline-flex items-center gap-2 rounded-sm border border-[#11a4d4]/60 text-[#11a4d4] hover:border-[#11a4d4] disabled:opacity-50"><RefreshCw size={14} /> Reopen Goal</button> : null}
 							{selectedJob ? <button type="button" onClick={() => void action("stop")} disabled={saving} className="h-9 px-3 inline-flex items-center gap-2 rounded-sm border border-amber-500/50 text-amber-300 hover:border-amber-400 disabled:opacity-50"><Square size={14} /> Stop</button> : null}
 							{selectedJob ? <button type="button" onClick={() => void action("cancel")} disabled={saving} className="h-9 px-3 inline-flex items-center gap-2 rounded-sm border border-orange-500/50 text-orange-300 hover:border-orange-400 disabled:opacity-50"><XCircle size={14} /> Cancel</button> : null}
 							<button type="button" onClick={() => void save()} disabled={saving} className="h-9 px-3 inline-flex items-center gap-2 rounded-sm border border-[#11a4d4] bg-[#11a4d4]/10 text-[#11a4d4] disabled:opacity-50">{saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Save</button>
