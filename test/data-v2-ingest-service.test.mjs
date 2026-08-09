@@ -189,24 +189,44 @@ test("v2 event mapper preserves assistant and reasoning part identities", () => 
 	const rows = [
 		eventRow(1, "message_started", {}, "start"),
 		eventRow(2, "thinking_started", { thinkingIndex: 0, contentIndex: 4 }),
-		eventRow(3, "thinking_delta", { thinkingIndex: 0, contentIndex: 4, inlinePayload: "plan" }, "plan"),
-		eventRow(4, "thinking_finished", { thinkingIndex: 0, contentIndex: 4 }, "plan"),
-		eventRow(5, "assistant_delta", { assistantIndex: 0, contentIndex: 5, inlinePayload: "answer" }, "answer"),
-		eventRow(6, "assistant_message", { assistantIndex: 0, contentIndex: 5 }, "answer"),
-		eventRow(7, "message_finished"),
+		eventRow(3, "thinking_delta", { thinkingIndex: 0, contentIndex: 4, inlinePayload: "first" }, "first"),
+		eventRow(4, "thinking_finished", { thinkingIndex: 0, contentIndex: 4 }, "first"),
+		eventRow(5, "thinking_started", { thinkingIndex: 1, contentIndex: 8 }),
+		eventRow(6, "thinking_finished", { thinkingIndex: 1, contentIndex: 8 }, "second"),
+		eventRow(7, "thinking_started", { thinkingIndex: 2, contentIndex: 12 }),
+		eventRow(8, "thinking_finished", { thinkingIndex: 2, contentIndex: 12 }, "third"),
+		eventRow(9, "assistant_delta", { assistantIndex: 0, contentIndex: 5, inlinePayload: "answer" }, "answer"),
+		eventRow(10, "assistant_message", { assistantIndex: 0, contentIndex: 5 }, "answer"),
+		eventRow(11, "message_finished"),
 	];
 	const events = rows.map(storedPiboEventFromV2Row).filter(Boolean);
+	const byStreamId = new Map(events.map((event) => [event.streamId, event]));
 
-	assert.equal(events[1].payload.thinkingIndex, 0);
-	assert.equal(events[1].payload.contentIndex, 4);
-	assert.equal(events[2].payload.thinkingIndex, 0);
-	assert.equal(events[2].payload.contentIndex, 4);
-	assert.equal(events[3].payload.thinkingIndex, 0);
-	assert.equal(events[3].payload.contentIndex, 4);
-	assert.equal(events[4].payload.assistantIndex, 0);
-	assert.equal(events[4].payload.contentIndex, 5);
-	assert.equal(events[5].payload.assistantIndex, 0);
-	assert.equal(events[5].payload.contentIndex, 5);
+	for (const [streamId, thinkingIndex, contentIndex] of [
+		[2, 0, 4],
+		[3, 0, 4],
+		[4, 0, 4],
+		[5, 1, 8],
+		[6, 1, 8],
+		[7, 2, 12],
+		[8, 2, 12],
+	]) {
+		assert.equal(byStreamId.get(streamId).payload.thinkingIndex, thinkingIndex);
+		assert.equal(byStreamId.get(streamId).payload.contentIndex, contentIndex);
+	}
+	for (const streamId of [9, 10]) {
+		assert.equal(byStreamId.get(streamId).payload.assistantIndex, 0);
+		assert.equal(byStreamId.get(streamId).payload.contentIndex, 5);
+	}
+
+	for (const [sequence, type, optionalFields] of [
+		[20, "assistant_message", ["assistantIndex", "contentIndex"]],
+		[21, "thinking_started", ["thinkingIndex", "contentIndex"]],
+		[22, "thinking_finished", ["thinkingIndex", "contentIndex"]],
+	]) {
+		const legacy = storedPiboEventFromV2Row(eventRow(sequence, type, {}, "legacy"));
+		for (const field of optionalFields) assert.equal(Object.hasOwn(legacy.payload, field), false);
+	}
 
 	const view = buildTraceViewFromEvents({
 		session: { id: "ps_part_identity", piSessionId: "pi_part_identity", title: "Part identity" },
@@ -216,6 +236,8 @@ test("v2 event mapper preserves assistant and reasoning part identities", () => 
 	const turn = view.nodes.find((node) => node.type === "agent.turn");
 	assert.deepEqual(turn.children.map((node) => node.id), [
 		"event:thinking:turn-part-identity:thinking:0",
+		"event:thinking:turn-part-identity:thinking:1",
+		"event:thinking:turn-part-identity:thinking:2",
 		"event:assistant:turn-part-identity:assistant:0",
 	]);
 });

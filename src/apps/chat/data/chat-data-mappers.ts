@@ -67,26 +67,26 @@ function outputPayloadFromV2Row(row: EventLogRow, attributes: PiboJsonObject): P
 	if (!piboSessionId) return undefined;
 	const base = compactObject({ piboSessionId, eventId: row.event_id ?? undefined }) as { piboSessionId: string; eventId?: string };
 	if (row.type === "assistant_message" || row.type === "assistant_delta") {
-		return {
+		return compactObject({
 			...base,
 			type: row.type,
 			assistantIndex: numberAttribute(attributes, "assistantIndex"),
 			contentIndex: numberAttribute(attributes, "contentIndex"),
 			text: row.preview_text ?? "",
-		};
+		}) as PiboOutputEvent;
 	}
 	if (row.type === "message_queued") return { ...base, type: "message_queued", text: stringAttribute(attributes, "inlineText") ?? row.preview_text ?? "", source: stringAttribute(attributes, "source") ?? "user", queuedMessages: numberAttribute(attributes, "queuedMessages") ?? 1 } as PiboOutputEvent;
 	if (row.type === "message_steered") return { ...base, type: "message_steered", text: stringAttribute(attributes, "inlineText") ?? row.preview_text ?? "", source: stringAttribute(attributes, "source") ?? "user", activeEventId: stringAttribute(attributes, "activeEventId") } as PiboOutputEvent;
 	if (row.type === "message_started") return { ...base, type: "message_started", text: row.preview_text ?? "" };
 	if (row.type === "message_finished") return { ...base, type: "message_finished" };
 	if (row.type === "thinking_started" || row.type === "thinking_delta" || row.type === "thinking_finished") {
-		return {
+		return compactObject({
 			...base,
 			type: row.type,
 			thinkingIndex: numberAttribute(attributes, "thinkingIndex"),
 			contentIndex: numberAttribute(attributes, "contentIndex"),
 			...(row.type === "thinking_started" ? {} : { text: row.preview_text ?? "" }),
-		} as PiboOutputEvent;
+		}) as PiboOutputEvent;
 	}
 	if (row.type === "tool_call") return { ...base, type: "tool_call", toolCallId: stringAttribute(attributes, "toolCallId") ?? row.event_id ?? `tool_${row.stream_id}`, toolName: row.preview_text ?? stringAttribute(attributes, "toolName") ?? "tool", args: inlinePayload ?? null, argsComplete: booleanAttribute(attributes, "argsComplete") ?? true };
 	if (row.type === "tool_execution_started") return { ...base, type: "tool_execution_started", toolCallId: stringAttribute(attributes, "toolCallId") ?? row.event_id ?? `tool_${row.stream_id}`, toolName: row.preview_text ?? stringAttribute(attributes, "toolName") ?? "tool", args: inlinePayload ?? null };
