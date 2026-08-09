@@ -1244,6 +1244,7 @@ export class RoutedSession {
 	private async processQueuedMessage(event: PiboMessageEvent): Promise<void> {
 		try {
 			const preflight = await this.messagePreflight?.(event);
+			if (this.disposed) return;
 			if (preflight && !preflight.allowed) {
 				this.emit({
 					type: "session_error",
@@ -1340,6 +1341,7 @@ export class RoutedSession {
 		this.activeExecutionEvent = event;
 		try {
 			const result = await this.runAction(event);
+			if (this.disposed) return;
 			this.emit({
 				type: "execution_result",
 				piboSessionId: this.piboSessionId,
@@ -1348,6 +1350,7 @@ export class RoutedSession {
 				result,
 			});
 		} catch (error) {
+			if (this.disposed) return;
 			const message = errorMessage(error);
 			this.emit({
 				type: "session_error",

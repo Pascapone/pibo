@@ -354,6 +354,183 @@ test("public dispose suppresses late completion from a force-disposed routed tur
 	await router.disposeAll();
 });
 
+test("forced disposal suppresses deferred message preflight work", async () => {
+	const router = createStoredRouter("ps_deferred_preflight", { routedSessionDisposeTimeoutMs: 25 });
+	const preflightGate = deferred();
+	const preflightStarted = deferred();
+	const routerEvents = [];
+	router.subscribe((event) => routerEvents.push(event));
+	let abortCalls = 0;
+	let runtimeDisposeCalls = 0;
+	let promptCalls = 0;
+	const session = {
+		model: undefined,
+		thinkingLevel: "off",
+		isStreaming: true,
+		settingsManager: {
+			getRetrySettings() { return { enabled: false, maxRetries: 0, baseDelayMs: 0 }; },
+			getProviderRetrySettings() { return { maxRetryDelayMs: 0 }; },
+		},
+		resourceLoader: { getSkills() { return { skills: [] }; } },
+		sessionManager: {
+			getLeafId() { return null; },
+			getHeader() { return undefined; },
+		},
+		subscribe() { return () => {}; },
+		supportsThinking() { return false; },
+		getActiveToolNames() { return []; },
+		setActiveToolsByName() {},
+		async prompt() {
+			promptCalls += 1;
+		},
+		async abort() {
+			abortCalls += 1;
+		},
+	};
+	const runtime = {
+		cwd: process.cwd(),
+		session,
+		setRebindSession() {},
+		async dispose() {
+			runtimeDisposeCalls += 1;
+		},
+	};
+	const routed = new RoutedSession(
+		"ps_deferred_preflight",
+		runtime,
+		(event) => router.emitOutput(event),
+		PiboPluginRegistry.create({ plugins: [piboCorePlugin] }),
+		false,
+		undefined,
+		false,
+		undefined,
+		undefined,
+		undefined,
+		undefined,
+		async () => {
+			preflightStarted.resolve();
+			await preflightGate.promise;
+			return { allowed: true };
+		},
+	);
+	router.sessions.set("ps_deferred_preflight", routed);
+	routed.enqueueMessage({
+		type: "message",
+		piboSessionId: "ps_deferred_preflight",
+		id: "deferred-preflight-message",
+		text: "deferred preflight",
+		source: "actor",
+	});
+	await preflightStarted.promise;
+
+	await assert.rejects(
+		router.emit({ type: "execution", piboSessionId: "ps_deferred_preflight", action: "dispose", id: "dispose-preflight" }),
+		(error) => error instanceof AggregateError && error.errors.some((cause) => /Timed out disposing Pibo session/.test(String(cause))),
+	);
+	assert.equal(abortCalls, 2);
+	assert.equal(runtimeDisposeCalls, 1);
+	assert.equal(router.sessions.has("ps_deferred_preflight"), false);
+	assert.equal(router.disposingSessions.has("ps_deferred_preflight"), false);
+	assert.equal(router.quiescingSessions.has("ps_deferred_preflight"), false);
+	const settledEventCount = routerEvents.length;
+
+	preflightGate.resolve();
+	await nextTurn();
+	await nextTurn();
+	const lateEvents = routerEvents.slice(settledEventCount);
+	assert.equal(promptCalls, 0, "deferred preflight must not prompt after runtime disposal");
+	assert.equal(
+		lateEvents.some((event) => event.type === "message_started" && event.eventId === "deferred-preflight-message"),
+		false,
+		"deferred preflight must not emit message_started after forced disposal",
+	);
+	assert.equal(runtimeDisposeCalls, 1);
+	assert.equal(router.sessions.has("ps_deferred_preflight"), false);
+	assert.equal(router.disposingSessions.has("ps_deferred_preflight"), false);
+	assert.equal(router.quiescingSessions.has("ps_deferred_preflight"), false);
+	await router.disposeAll();
+});
+
+test("forced disposal suppresses deferred queued compaction output", async () => {
+	const router = createStoredRouter("ps_deferred_compact", { routedSessionDisposeTimeoutMs: 25 });
+	const compactGate = deferred();
+	const compactStarted = deferred();
+	const routerEvents = [];
+	router.subscribe((event) => routerEvents.push(event));
+	let abortCalls = 0;
+	let runtimeDisposeCalls = 0;
+	const session = {
+		model: undefined,
+		thinkingLevel: "off",
+		isStreaming: true,
+		settingsManager: {
+			getRetrySettings() { return { enabled: false, maxRetries: 0, baseDelayMs: 0 }; },
+			getProviderRetrySettings() { return { maxRetryDelayMs: 0 }; },
+		},
+		resourceLoader: { getSkills() { return { skills: [] }; } },
+		sessionManager: {
+			getLeafId() { return null; },
+			getHeader() { return undefined; },
+		},
+		subscribe() { return () => {}; },
+		supportsThinking() { return false; },
+		getActiveToolNames() { return []; },
+		setActiveToolsByName() {},
+		async compact() {
+			compactStarted.resolve();
+			await compactGate.promise;
+			return { compacted: true };
+		},
+		async abort() {
+			abortCalls += 1;
+		},
+	};
+	const runtime = {
+		cwd: process.cwd(),
+		session,
+		setRebindSession() {},
+		async dispose() {
+			runtimeDisposeCalls += 1;
+		},
+	};
+	const routed = new RoutedSession(
+		"ps_deferred_compact",
+		runtime,
+		(event) => router.emitOutput(event),
+		PiboPluginRegistry.create({ plugins: [piboCorePlugin] }),
+		false,
+	);
+	router.sessions.set("ps_deferred_compact", routed);
+	await router.emit({ type: "execution", piboSessionId: "ps_deferred_compact", action: "compact", id: "deferred-compact" });
+	await compactStarted.promise;
+
+	await assert.rejects(
+		router.emit({ type: "execution", piboSessionId: "ps_deferred_compact", action: "dispose", id: "dispose-compact" }),
+		(error) => error instanceof AggregateError && error.errors.some((cause) => /Timed out disposing Pibo session/.test(String(cause))),
+	);
+	assert.equal(abortCalls, 2);
+	assert.equal(runtimeDisposeCalls, 1);
+	assert.equal(router.sessions.has("ps_deferred_compact"), false);
+	assert.equal(router.disposingSessions.has("ps_deferred_compact"), false);
+	assert.equal(router.quiescingSessions.has("ps_deferred_compact"), false);
+	const settledEventCount = routerEvents.length;
+
+	compactGate.resolve();
+	await nextTurn();
+	await nextTurn();
+	const lateEvents = routerEvents.slice(settledEventCount);
+	assert.equal(
+		lateEvents.some((event) => event.type === "execution_result" && event.action === "compact" && event.eventId === "deferred-compact"),
+		false,
+		"deferred compaction must not emit execution_result after forced disposal",
+	);
+	assert.equal(runtimeDisposeCalls, 1);
+	assert.equal(router.sessions.has("ps_deferred_compact"), false);
+	assert.equal(router.disposingSessions.has("ps_deferred_compact"), false);
+	assert.equal(router.quiescingSessions.has("ps_deferred_compact"), false);
+	await router.disposeAll();
+});
+
 test("handling every notified run cannot release the reminder scope mid-turn", async () => {
 	const router = createStoredRouter();
 	const session = createRouterSessionFake();
