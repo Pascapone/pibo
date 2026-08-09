@@ -115,6 +115,7 @@ export type PiboRuntimeSessionContext = {
 	piboSessionId?: string;
 	piboRoomId?: string;
 	timezone?: string;
+	getActiveMessage?: ToolDefinitionContext["getActiveMessage"];
 };
 
 export type PiboProfileInspection = {
@@ -446,6 +447,7 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 					piboSessionId: options.sessionContext?.piboSessionId ?? profile.sessionId,
 					piboRoomId: options.sessionContext?.piboRoomId,
 					profileName: profile.profileName,
+					getActiveMessage: options.sessionContext?.getActiveMessage,
 				},
 			},
 			options.subagentRunner,

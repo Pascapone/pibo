@@ -111,6 +111,7 @@ export type PiboLoopJob = {
 };
 
 export type PiboLoopRunStatus = 'running' | 'ok' | 'error' | 'cancelled';
+export type PiboLoopRunMessageState = 'reserved' | 'queued' | 'active' | 'invalidated' | 'finished';
 
 export type PiboLoopRunAccounting = {
 	tokenBudget?: number;
@@ -129,6 +130,8 @@ export type PiboLoopRun = {
 	status: PiboLoopRunStatus;
 	reason?: string;
 	error?: string;
+	messageEventId?: string;
+	messageState?: PiboLoopRunMessageState;
 	startedAt?: string;
 	completedAt?: string;
 	accounting?: PiboLoopRunAccounting;
