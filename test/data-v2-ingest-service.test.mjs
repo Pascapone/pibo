@@ -24,6 +24,24 @@ function makeSession(overrides = {}) {
 	};
 }
 
+function eventRow(sequence, type, attributes = {}, previewText = null) {
+	return {
+		stream_id: sequence,
+		session_id: "ps_part_identity",
+		session_sequence: sequence,
+		room_id: "room_part_identity",
+		type,
+		actor_type: "assistant",
+		actor_id: "agent:test",
+		event_id: "turn-part-identity",
+		idempotency_key: `${type}:${sequence}`,
+		retention_class: type.endsWith("_delta") ? "live_delta" : "trace_event",
+		preview_text: previewText,
+		attributes_json: JSON.stringify(attributes),
+		created_at: `2026-05-08T12:00:${String(sequence).padStart(2, "0")}.000Z`,
+	};
+}
+
 test("chat data ingest writes user messages idempotently", () => {
 	const store = new PiboDataStore(":memory:", { payloadRootDir: mkdtempSync(join(tmpdir(), "pibo-ingest-payloads-")) });
 	try {
@@ -165,6 +183,63 @@ test("chat data ingest shadows assistant messages and observations idempotently"
 	} finally {
 		store.close();
 	}
+});
+
+test("v2 event mapper preserves assistant and reasoning part identities", () => {
+	const rows = [
+		eventRow(1, "message_started", {}, "start"),
+		eventRow(2, "thinking_started", { thinkingIndex: 0, contentIndex: 4 }),
+		eventRow(3, "thinking_delta", { thinkingIndex: 0, contentIndex: 4, inlinePayload: "first" }, "first"),
+		eventRow(4, "thinking_finished", { thinkingIndex: 0, contentIndex: 4 }, "first"),
+		eventRow(5, "thinking_started", { thinkingIndex: 1, contentIndex: 8 }),
+		eventRow(6, "thinking_finished", { thinkingIndex: 1, contentIndex: 8 }, "second"),
+		eventRow(7, "thinking_started", { thinkingIndex: 2, contentIndex: 12 }),
+		eventRow(8, "thinking_finished", { thinkingIndex: 2, contentIndex: 12 }, "third"),
+		eventRow(9, "assistant_delta", { assistantIndex: 0, contentIndex: 5, inlinePayload: "answer" }, "answer"),
+		eventRow(10, "assistant_message", { assistantIndex: 0, contentIndex: 5 }, "answer"),
+		eventRow(11, "message_finished"),
+	];
+	const events = rows.map(storedPiboEventFromV2Row).filter(Boolean);
+	const byStreamId = new Map(events.map((event) => [event.streamId, event]));
+
+	for (const [streamId, thinkingIndex, contentIndex] of [
+		[2, 0, 4],
+		[3, 0, 4],
+		[4, 0, 4],
+		[5, 1, 8],
+		[6, 1, 8],
+		[7, 2, 12],
+		[8, 2, 12],
+	]) {
+		assert.equal(byStreamId.get(streamId).payload.thinkingIndex, thinkingIndex);
+		assert.equal(byStreamId.get(streamId).payload.contentIndex, contentIndex);
+	}
+	for (const streamId of [9, 10]) {
+		assert.equal(byStreamId.get(streamId).payload.assistantIndex, 0);
+		assert.equal(byStreamId.get(streamId).payload.contentIndex, 5);
+	}
+
+	for (const [sequence, type, optionalFields] of [
+		[20, "assistant_message", ["assistantIndex", "contentIndex"]],
+		[21, "thinking_started", ["thinkingIndex", "contentIndex"]],
+		[22, "thinking_finished", ["thinkingIndex", "contentIndex"]],
+	]) {
+		const legacy = storedPiboEventFromV2Row(eventRow(sequence, type, {}, "legacy"));
+		for (const field of optionalFields) assert.equal(Object.hasOwn(legacy.payload, field), false);
+	}
+
+	const view = buildTraceViewFromEvents({
+		session: { id: "ps_part_identity", piSessionId: "pi_part_identity", title: "Part identity" },
+		events,
+		status: "running",
+	});
+	const turn = view.nodes.find((node) => node.type === "agent.turn");
+	assert.deepEqual(turn.children.map((node) => node.id), [
+		"event:thinking:turn-part-identity:thinking:0",
+		"event:thinking:turn-part-identity:thinking:1",
+		"event:thinking:turn-part-identity:thinking:2",
+		"event:assistant:turn-part-identity:assistant:0",
+	]);
 });
 
 test("chat data ingest keeps progressive tool call argument snapshots", () => {
