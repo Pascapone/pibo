@@ -1286,9 +1286,13 @@ export class RoutedSession {
 				session.resourceLoader.getSkills().skills,
 			);
 			await session.prompt(expandedText, { source: promptSource(event.source) });
+			if (this.disposed) return;
 			await this.waitForPiAgentSettlement(session);
+			if (this.disposed) return;
 			await this.resumeContextGuardRecovery(session);
+			if (this.disposed) return;
 			await this.recoverTransientProviderErrors(session);
+			if (this.disposed) return;
 			this.flushPendingAssistantError();
 			if (!this.activeMessageFailed) {
 				this.emit({

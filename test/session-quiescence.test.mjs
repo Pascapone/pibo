@@ -266,10 +266,12 @@ test("forced disposal terminates a real routed session after its normal drain st
 	await router.disposeAll();
 });
 
-test("public dispose action reaches bounded forced disposal for a stuck routed session", async () => {
+test("public dispose suppresses late completion from a force-disposed routed turn", async () => {
 	const router = createStoredRouter("ps_public_dispose", { routedSessionDisposeTimeoutMs: 25 });
 	const promptGate = deferred();
 	const promptStarted = deferred();
+	const routerEvents = [];
+	router.subscribe((event) => routerEvents.push(event));
 	let abortCalls = 0;
 	let runtimeDisposeCalls = 0;
 	const session = {
@@ -308,7 +310,7 @@ test("public dispose action reaches bounded forced disposal for a stuck routed s
 	const routed = new RoutedSession(
 		"ps_public_dispose",
 		runtime,
-		() => {},
+		(event) => router.emitOutput(event),
 		PiboPluginRegistry.create({ plugins: [piboCorePlugin] }),
 		false,
 	);
@@ -340,7 +342,15 @@ test("public dispose action reaches bounded forced disposal for a stuck routed s
 	promptGate.resolve();
 	await nextTurn();
 	await nextTurn();
+	assert.equal(
+		routerEvents.some((event) => event.type === "message_finished" && event.eventId === "stuck-public-message"),
+		false,
+		"late prompt settlement must not emit message_finished after forced disposal",
+	);
 	assert.equal(runtimeDisposeCalls, 1);
+	assert.equal(router.sessions.has("ps_public_dispose"), false);
+	assert.equal(router.disposingSessions.has("ps_public_dispose"), false);
+	assert.equal(router.quiescingSessions.has("ps_public_dispose"), false);
 	await router.disposeAll();
 });
 
