@@ -22,6 +22,11 @@ test("trace render-order tooling records base, overlay, current, and terminal st
 	assert.match(terminal, /collectTerminalRows\(piboSessionId, "compact-terminal:render", rows/);
 });
 
+test("diagnosis report omits content-derived fingerprints", async () => {
+	const report = await source("docs/reports/chat-web-live-render-order-diagnosis-2026-08-09.md");
+	assert.doesNotMatch(report, /content digest|contentDigest|dw4mqd/);
+});
+
 test("trace cards expose stable ids and order metadata to CDP", async () => {
 	const spans = await source("src/apps/chat-ui/src/tracing/SpanNode.tsx");
 	assert.match(spans, /data-pibo-debug="trace-span"/);

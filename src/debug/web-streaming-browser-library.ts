@@ -730,25 +730,28 @@ function startRenderOrderCapture(startedAt) {
   const interval = setInterval(() => capture('interval'), 50);
   return {
     stop: () => {
-      capture('stop');
-      observer.disconnect();
-      clearInterval(interval);
       let traceSnapshots = [];
-      if (piboSessionId && traceSnapshotsApi && typeof traceSnapshotsApi.getSnapshots === 'function') {
-        try { traceSnapshots = cloneDebugSnapshot(traceSnapshotsApi.getSnapshots(piboSessionId)) || []; } catch {}
+      try {
+        try { capture('stop'); } catch {}
+        if (piboSessionId && traceSnapshotsApi && typeof traceSnapshotsApi.getSnapshots === 'function') {
+          try { traceSnapshots = cloneDebugSnapshot(traceSnapshotsApi.getSnapshots(piboSessionId)) || []; } catch {}
+        }
+        return {
+          requested: true,
+          available: Boolean(root),
+          piboSessionId,
+          domStates,
+          traceSnapshots,
+          omittedDomStates,
+          warning: traceSnapshotsApi ? undefined : 'window.__piboTraceSnapshots unavailable',
+        };
+      } finally {
+        observer.disconnect();
+        clearInterval(interval);
+        if (piboSessionId && traceSnapshotsApi && typeof traceSnapshotsApi.clearSnapshots === 'function') {
+          try { traceSnapshotsApi.clearSnapshots(piboSessionId); } catch {}
+        }
       }
-      if (piboSessionId && traceSnapshotsApi && typeof traceSnapshotsApi.clearSnapshots === 'function') {
-        try { traceSnapshotsApi.clearSnapshots(piboSessionId); } catch {}
-      }
-      return {
-        requested: true,
-        available: Boolean(root),
-        piboSessionId,
-        domStates,
-        traceSnapshots,
-        omittedDomStates,
-        warning: traceSnapshotsApi ? undefined : 'window.__piboTraceSnapshots unavailable',
-      };
     },
   };
 }
@@ -787,6 +790,7 @@ async function runStreamingBenchmark(options) {
   let rafHandle;
   let perfObserver;
   let traceProbe;
+  let traceSummary;
   let sseProbe;
   let reconnectTimer;
   let fixtureStarted = false;
@@ -930,6 +934,7 @@ async function runStreamingBenchmark(options) {
   sample();
   if (traceProbe) {
     await traceProbe.sample();
+    traceSummary = traceProbe.result;
     traceProbe.stop();
     traceProbe = undefined;
   }
@@ -1006,7 +1011,6 @@ async function runStreamingBenchmark(options) {
     error: backendPreludeError || backendFixtureError,
   } : undefined;
   const eventSourceSummary = summarizeEventSourceProbe(startedAt, Boolean(options.startBackendFixture), options.reconnectAtMs, Boolean(options.simulateTraceCatchup), options.traceCatchupDropMs);
-  const traceSummary = traceProbe && traceProbe.result;
   const regressions = streamingBenchmarkRegressions({
     debugAfter,
     debugDelta,

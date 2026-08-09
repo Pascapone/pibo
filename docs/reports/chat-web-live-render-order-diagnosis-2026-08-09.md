@@ -90,7 +90,7 @@ event:thinking:<turn>:thinking:0
 event:thinking:<turn>
 ```
 
-The first replacement occurred at `2026-08-09T03:05:29.602Z`. The client base trace changed from the indexed event node to the unindexed event node even though the content digest remained `dw4mqd` and the event ID remained unchanged.
+The first replacement occurred at `2026-08-09T03:05:29.602Z`. The client base trace changed from the indexed event node to the unindexed event node even though the content length remained 42 characters and the event ID remained unchanged.
 
 The raw stored events retain `thinkingIndex: 0`, but `outputPayloadFromV2Row()` reconstructs persisted `thinking_started` and `thinking_finished` events without reading the stored `thinkingIndex` or `contentIndex`. It likewise reconstructs `assistant_message` without `assistantIndex` or `contentIndex`.
 
