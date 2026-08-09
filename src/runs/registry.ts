@@ -138,6 +138,7 @@ export class PiboRunRegistry {
 	private readonly runs = new Map<string, PiboRunRecord>();
 	private readonly waiters = new Map<string, Waiter[]>();
 	private readonly listeners = new Set<PiboRunRegistryListener>();
+	private readonly recoveredRuns: PiboRunSnapshot[] = [];
 	private readonly workerId: string;
 
 	subscribe(listener: PiboRunRegistryListener): () => void {
@@ -148,11 +149,17 @@ export class PiboRunRegistry {
 	constructor(private readonly options: PiboRunRegistryOptions = {}) {
 		this.workerId = options.workerId ?? `run-registry:${process.pid}:${randomUUID()}`;
 		if (this.options.store) {
-			this.options.store.recoverInterruptedRuns(this.workerId);
+			for (const recovered of this.options.store.recoverInterruptedRuns(this.workerId)) {
+				this.recoveredRuns.push(snapshot(recordFromStored(recovered)));
+			}
 			for (const record of this.options.store.listRuns({ includeConsumed: true, includeDetached: true })) {
 				this.runs.set(record.runId, recordFromStored(record));
 			}
 		}
+	}
+
+	listRecoveredRuns(): PiboRunSnapshot[] {
+		return this.recoveredRuns.map((run) => ({ ...run }));
 	}
 
 	startToolRun(input: StartToolRunInput): PiboRunSnapshot {

@@ -75,6 +75,8 @@ export type PiboSessionRouterOptions = Omit<
 	routedSessionIdleTimeoutMs?: number | false;
 	/** Revalidate persisted authority immediately before a queued message starts. */
 	messagePreflight?: PiboMessagePreflight;
+	/** Reconcile persisted turns left active by a previous authoritative gateway runtime. */
+	recoverInterruptedRuntimeState?: boolean;
 	/** Maximum time to await one routed runtime disposal before forcing terminal ownership release. */
 	routedSessionDisposeTimeoutMs?: number;
 };
@@ -212,6 +214,12 @@ function piboRoomIdFromMetadata(metadata: PiboJsonObject | undefined): string | 
 
 type TelemetrySessionStore = PiboSessionStore & { getTelemetryStore?: () => TelemetryStore | undefined };
 
+type RuntimeRecoverySessionStore = PiboSessionStore & {
+	recoverInterruptedRuntimeState?: (input: {
+		recoveredRuns: readonly PiboRunSnapshot[];
+	}) => Array<{ event: Extract<PiboOutputEvent, { type: "session_error" }> }>;
+};
+
 type ScheduledRunReminder = {
 	generation: number;
 	includeAlreadyNotified: boolean;
@@ -286,6 +294,16 @@ export class PiboSessionRouter {
 		this.runtimeRegistry = new RuntimeSessionRegistry({ cwd: options.cwd ?? getDefaultPiboWorkspace() });
 		this.runRegistry = new PiboRunRegistry({ store: this.reliabilityStore });
 		this.runRegistry.subscribe((event) => this.projectRunRegistryEvent(event));
+		const recoveredRuntimeState = options.recoverInterruptedRuntimeState
+			? (this.sessionStore as RuntimeRecoverySessionStore).recoverInterruptedRuntimeState?.({
+				recoveredRuns: this.runRegistry.listRecoveredRuns(),
+			}) ?? []
+			: [];
+		for (const recovery of recoveredRuntimeState) {
+			const session = this.sessionStore.get(recovery.event.piboSessionId);
+			if (session) this.signalRegistry.project({ type: "session_created", session });
+			this.signalRegistry.project({ type: "pibo_output", event: recovery.event });
+		}
 		for (const run of this.runRegistry.listAll({ includeConsumed: true, includeDetached: true })) {
 			this.signalRegistry.project({ type: "run_changed", run, reason: "recovered" });
 		}

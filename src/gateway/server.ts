@@ -225,6 +225,7 @@ export class PiboGatewayServer {
 			pluginRegistry: this.pluginRegistry,
 			sessionStore: this.sessionStore,
 			messagePreflight: createLoopMessagePreflight({ path: this.options.loopStorePath }),
+			recoverInterruptedRuntimeState: true,
 		});
 		this.unsubscribe = this.router.subscribe((event) => this.broadcastRouterEvent(event));
 		this.server = createServer((socket) => this.handleSocket(socket));

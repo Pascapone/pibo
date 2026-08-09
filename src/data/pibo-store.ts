@@ -44,6 +44,7 @@ export class PiboDataStore {
 	}
 
 	transaction<T>(action: () => T): T {
+		if (this.db.isTransaction) return action();
 		this.db.exec("BEGIN IMMEDIATE");
 		try {
 			const result = action();

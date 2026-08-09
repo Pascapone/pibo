@@ -1,6 +1,9 @@
 import type { DatabaseSync } from "node:sqlite";
-import type { PiboJsonObject } from "../core/events.js";
+import type { PiboJsonObject, PiboOutputEvent } from "../core/events.js";
+import { ChatDataIngestService } from "../data/ingest-service.js";
 import { PiboDataStore } from "../data/pibo-store.js";
+import type { StoredTelemetryTurn, TelemetryInterruptedTurnOutcome } from "../data/telemetry.js";
+import type { PiboRunSnapshot } from "../runs/registry.js";
 import {
 	createPiboSession,
 	matchesFindInput,
@@ -10,6 +13,13 @@ import {
 	type PiboSessionStore,
 	type UpdatePiboSessionInput,
 } from "./store.js";
+
+export type PiboRuntimeRecoveryResult = {
+	turnId: string;
+	piboSessionId: string;
+	event: Extract<PiboOutputEvent, { type: "session_error" }>;
+	outcome: TelemetryInterruptedTurnOutcome;
+};
 
 type SessionRow = {
 	id: string;
@@ -147,6 +157,72 @@ export class PiboDataSessionStore implements PiboSessionStore {
 		return this.dataStore.telemetry;
 	}
 
+	recoverInterruptedRuntimeState(input: {
+		recoveredRuns?: readonly PiboRunSnapshot[];
+		at?: string;
+	} = {}): PiboRuntimeRecoveryResult[] {
+		const at = input.at ?? new Date().toISOString();
+		const runsBySession = groupRunsByController(input.recoveredRuns ?? []);
+		return this.dataStore.transaction(() => {
+			const recoveredTurns = this.dataStore.telemetry.recoverInterruptedTurns({
+				at,
+				resolveOutcome: (turn) => recoveryOutcomeForTurn(turn, runsBySession.get(turn.piboSessionId) ?? []),
+			});
+			if (recoveredTurns.length === 0) return [];
+			const ingest = new ChatDataIngestService(this.dataStore);
+			const results: PiboRuntimeRecoveryResult[] = [];
+			for (const recovered of recoveredTurns) {
+				const session = this.get(recovered.turn.piboSessionId);
+				if (!session) continue;
+				const row = this.db.prepare("SELECT room_id FROM sessions WHERE id = ?").get(session.id) as { room_id: string | null } | undefined;
+				const event: Extract<PiboOutputEvent, { type: "session_error" }> = {
+					type: "session_error",
+					piboSessionId: session.id,
+					eventId: recoveryEventId(recovered.turn),
+					error: recovered.outcome.summary,
+					errorDetails: {
+						category: "runtime_restart",
+						errorClass: recovered.outcome.status === "aborted" ? "runtime_abort" : "runtime_error",
+						code: recovered.outcome.status === "timeout" ? "timeout" : "runtime_interrupted",
+						origin: "runtime",
+						severity: "error",
+						retryable: false,
+						userMessage: "The previous gateway runtime ended before this turn completed.",
+					},
+				};
+				this.db.prepare(`
+					UPDATE sessions SET
+						status = 'error',
+						updated_at = ?,
+						last_activity_at = MAX(last_activity_at, ?)
+					WHERE id = ? AND deleted_at IS NULL
+				`).run(at, at, session.id);
+				this.db.prepare(`
+					UPDATE session_navigation SET
+						status = 'error',
+						last_activity_at = MAX(last_activity_at, ?),
+						sort_key = MAX(sort_key, ?),
+						updated_at = ?
+					WHERE session_id = ?
+				`).run(at, at, at, session.id);
+				ingest.ingestOutputEvent({
+					session,
+					roomId: row?.room_id ?? undefined,
+					actorId: session.id,
+					event,
+					createdAt: at,
+				});
+				results.push({
+					turnId: recovered.turn.turnId,
+					piboSessionId: session.id,
+					event,
+					outcome: recovered.outcome,
+				});
+			}
+			return results;
+		});
+	}
+
 	close(): void {
 		if (this.ownsDataStore) this.dataStore.close();
 	}
@@ -184,6 +260,56 @@ export class PiboDataSessionStore implements PiboSessionStore {
 
 export function createDefaultPiboDataSessionStore(): PiboDataSessionStore {
 	return new PiboDataSessionStore(new PiboDataStore());
+}
+
+function groupRunsByController(runs: readonly PiboRunSnapshot[]): Map<string, PiboRunSnapshot[]> {
+	const grouped = new Map<string, PiboRunSnapshot[]>();
+	for (const run of runs) {
+		const items = grouped.get(run.controllerPiboSessionId) ?? [];
+		items.push(run);
+		grouped.set(run.controllerPiboSessionId, items);
+	}
+	return grouped;
+}
+
+function recoveryOutcomeForTurn(turn: StoredTelemetryTurn, runs: readonly PiboRunSnapshot[]): TelemetryInterruptedTurnOutcome {
+	if (turn.status === "queued") {
+		return {
+			status: "aborted",
+			summary: "Queued turn was interrupted by gateway restart before it could start.",
+		};
+	}
+	const timedOut = runs.find((run) => run.status === "timed_out");
+	if (timedOut) {
+		return {
+			status: "timeout",
+			summary: `Gateway restart recovery timed out yielded run ${timedOut.runId} before this turn completed.`,
+		};
+	}
+	const failed = runs.find((run) => run.status === "failed");
+	if (failed) {
+		return {
+			status: "error",
+			summary: `Gateway restart recovery failed yielded run ${failed.runId} before this turn completed.`,
+		};
+	}
+	const queued = runs.find((run) => run.status === "queued");
+	if (queued) {
+		return {
+			status: "aborted",
+			summary: `Gateway restart interrupted this turn; yielded run ${queued.runId} was queued for retry.`,
+		};
+	}
+	return {
+		status: "aborted",
+		summary: "Turn was interrupted by gateway restart.",
+	};
+}
+
+function recoveryEventId(turn: StoredTelemetryTurn): string {
+	if (turn.eventId) return turn.eventId;
+	if (turn.inputEventId) return turn.inputEventId;
+	return turn.turnId.startsWith("turn_") ? turn.turnId.slice("turn_".length) : turn.turnId;
 }
 
 function sessionFromRow(row: SessionRow): PiboSession {
