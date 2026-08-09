@@ -141,6 +141,59 @@ test("persisted turn timings keep repeated user identities stable beyond the bou
 	assert.deepEqual(users.map((node) => node.entryId), ["entry-user-one", "entry-user-two"]);
 });
 
+test("bounded-tail user events preserve repeated prompt identities assigned from full history", () => {
+	const view = buildTraceViewFromEvents({
+		session: { id: "ps_root", piSessionId: "pi_root", title: "Root" },
+		transcriptEntries: [
+			{
+				id: "entry-user-one",
+				type: "message",
+				timestamp: "2026-01-01T00:00:01.000Z",
+				message: { role: "user", content: [{ type: "text", text: "same prompt" }] },
+			},
+			{
+				id: "entry-assistant-one",
+				type: "message",
+				timestamp: "2026-01-01T00:00:02.000Z",
+				message: { role: "assistant", content: [{ type: "text", text: "first answer" }] },
+			},
+			{
+				id: "entry-user-two",
+				type: "message",
+				timestamp: "2026-01-01T00:00:03.000Z",
+				message: { role: "user", content: [{ type: "text", text: "same prompt" }] },
+			},
+			{
+				id: "entry-assistant-two",
+				type: "message",
+				timestamp: "2026-01-01T00:00:04.000Z",
+				message: { role: "assistant", content: [{ type: "text", text: "second answer" }] },
+			},
+		],
+		events: [outputEvent(200, {
+			type: "message_queued",
+			eventId: "turn-two",
+			piboSessionId: "ps_root",
+			source: "user",
+			text: "same prompt",
+			queuedMessages: 1,
+		})],
+		turnTimings: [
+			{ eventId: "turn-one", userText: "same prompt", completedAt: "2026-01-01T00:00:02.000Z" },
+			{ eventId: "turn-two", userText: "same prompt", completedAt: "2026-01-01T00:00:04.000Z" },
+		],
+	});
+
+	const users = view.nodes.filter((node) => node.type === "user.message");
+	const assistants = view.nodes.filter((node) => node.type === "assistant.message");
+	assert.deepEqual(users.map((node) => node.id), [
+		"event:message_queued:turn-one",
+		"event:message_queued:turn-two",
+	]);
+	assert.deepEqual(users.map((node) => node.entryId), ["entry-user-one", "entry-user-two"]);
+	assert.deepEqual(assistants.map((node) => node.output), ["first answer", "second answer"]);
+});
+
 test("legacy transcript run notifications render yielded-run nodes", () => {
 	const view = buildTraceViewFromEvents({
 		session: { id: "ps_root", piSessionId: "pi_root", title: "Root" },

@@ -290,18 +290,25 @@ export function reconcileTranscriptUserMessages(
 		if ((event.type !== "message_queued" && event.type !== "message_steered") || event.source !== "user") continue;
 		const payloadEventId = typeof event.eventId === "string" ? event.eventId : undefined;
 		const eventId = payloadEventId ?? storedEvent.eventId;
+		const canonicalId = `event:${event.type}:${payloadEventId ?? cryptoSafeId(event)}`;
+		const stableKey = eventStableKey(event);
 		const text = typeof event.text === "string" ? event.text : undefined;
-		const matchIndex = transcriptUsers.findIndex((node, index) => {
-			if (index < userCursor) return false;
-			if (eventId && (node.entryId === eventId || node.stableKey === `entry:${eventId}`)) return true;
-			return Boolean(text && traceNodeText(node) === text);
-		});
+		const identityMatchIndex = transcriptUsers.findIndex((node) =>
+			node.id === canonicalId ||
+			node.stableKey === stableKey ||
+			Boolean(eventId && (node.entryId === eventId || node.stableKey === `entry:${eventId}`)),
+		);
+		const matchIndex = identityMatchIndex !== -1
+			? identityMatchIndex
+			: transcriptUsers.findIndex(
+				(node, index) => index >= userCursor && Boolean(text && traceNodeText(node) === text),
+			);
 		if (matchIndex === -1) continue;
 		const matchedNode = transcriptUsers[matchIndex]!;
-		matchedNode.id = `event:${event.type}:${payloadEventId ?? cryptoSafeId(event)}`;
-		matchedNode.stableKey = eventStableKey(event);
+		matchedNode.id = canonicalId;
+		matchedNode.stableKey = stableKey;
 		matchedNode.startedAt = storedEvent.createdAt;
-		userCursor = matchIndex + 1;
+		userCursor = Math.max(userCursor, matchIndex + 1);
 	}
 }
 
