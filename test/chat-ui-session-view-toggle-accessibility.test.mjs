@@ -61,6 +61,10 @@ async function runSessionViewToggleAccessibilityScenario() {
 		assert.match(buttonOpeningTag(normal, "Switch to Terminal view"), /aria-pressed="true"/);
 		assert.match(buttonOpeningTag(normal, "Switch to Workflow view"), /aria-pressed="false"/);
 		assert.equal(normal.includes('aria-label="Enter Terminal fullscreen"'), false);
+		assert.equal(normal.includes('aria-label="Open selected session in new window"'), false);
+
+		const pwaWindowAvailable = render({ onOpenSessionWindow() {} });
+		assert.match(buttonOpeningTag(pwaWindowAvailable, "Open selected session in new window"), /data-pibo-debug="open-session-window"/);
 
 		const fullscreenAvailable = render({ terminalFullscreenAvailable: true, onEnterTerminalFullscreen() {} });
 		assert.match(buttonOpeningTag(fullscreenAvailable, "Enter Terminal fullscreen"), /title="Enter Terminal fullscreen"/);
