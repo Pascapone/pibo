@@ -714,7 +714,7 @@ export type TraceMessageTurnTiming = {
 	eventId: string;
 	userText?: string;
 	startedAt?: string;
-	completedAt: string;
+	completedAt?: string;
 	durationMs?: number;
 };
 
@@ -747,8 +747,8 @@ export function mergeMessageTurnTimings(...groups: readonly TraceMessageTurnTimi
 
 export function messageTurnTimingsFromEvents(events: readonly ChatWebStoredEvent[]): TraceMessageTurnTiming[] {
 	const timings = new Map<string, { userText?: string; startedAt?: string; completedAt?: string }>();
-	const completedEventIds: string[] = [];
-	const completedEventIdSet = new Set<string>();
+	const eventIds: string[] = [];
+	const seenEventIds = new Set<string>();
 	const ignoredEventIds = new Set<string>();
 	for (const storedEvent of events) {
 		const event = storedEvent.payload as PiboOutputEvent;
@@ -760,22 +760,22 @@ export function messageTurnTimingsFromEvents(events: readonly ChatWebStoredEvent
 			continue;
 		}
 		if (ignoredEventIds.has(eventId)) continue;
+		if (!seenEventIds.has(eventId)) {
+			eventIds.push(eventId);
+			seenEventIds.add(eventId);
+		}
 		const timing = timings.get(eventId) ?? {};
 		if (event.type === "message_started") {
 			timing.userText ??= event.text;
 			timing.startedAt ??= storedEvent.createdAt;
 		} else {
 			timing.completedAt = storedEvent.createdAt;
-			if (!completedEventIdSet.has(eventId)) {
-				completedEventIds.push(eventId);
-				completedEventIdSet.add(eventId);
-			}
 		}
 		timings.set(eventId, timing);
 	}
-	return completedEventIds.flatMap((eventId) => {
+	return eventIds.flatMap((eventId) => {
 		const timing = timings.get(eventId);
-		if (!timing?.completedAt) return [];
+		if (!timing) return [];
 		const startedAtMs = parseTimestamp(timing.startedAt);
 		const completedAtMs = parseTimestamp(timing.completedAt);
 		return [{
