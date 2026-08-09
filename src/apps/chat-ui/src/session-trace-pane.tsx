@@ -79,6 +79,9 @@ export function SessionTracePane({
   currentSessionView,
   allowedSessionViewIds,
   creatingSession,
+  terminalFullscreen = false,
+  onEnterTerminalFullscreen,
+  onExitTerminalFullscreen,
   showRawEvents,
   showThinking,
   expandThinking,
@@ -124,6 +127,9 @@ export function SessionTracePane({
   currentSessionView: ReturnType<typeof getChatSessionView>;
   allowedSessionViewIds?: readonly ChatSessionViewId[];
   creatingSession: boolean;
+  terminalFullscreen?: boolean;
+  onEnterTerminalFullscreen?: () => void;
+  onExitTerminalFullscreen?: () => void;
   showRawEvents: boolean;
   showThinking: boolean;
   expandThinking: boolean;
@@ -457,6 +463,8 @@ export function SessionTracePane({
       rawEventLimit={rawEventLimit}
       tracePageFetching={showRawEvents ? rawEventsQuery.isFetching : tracePageQuery.isFetching}
       onLoadMoreRawEvents={loadMoreRawEvents}
+      terminalFullscreen={terminalFullscreen}
+      onExitTerminalFullscreen={onExitTerminalFullscreen ?? (() => undefined)}
       headerProps={{
         title: resolveSessionTraceTitle({
           sessionNodes: bootstrap.sessions,
@@ -477,6 +485,8 @@ export function SessionTracePane({
         allowedSessionViewIds,
         extraViewTabs,
         activeViewId,
+        terminalFullscreenAvailable: currentSessionView.id === "terminal" && (activeViewId ?? sessionViewId) === "terminal",
+        onEnterTerminalFullscreen,
         showRawEvents,
         showThinking,
         expandThinking,

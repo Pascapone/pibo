@@ -60,6 +60,10 @@ async function runSessionViewToggleAccessibilityScenario() {
 		assert.match(normal, /role="group" aria-label="Session views"/);
 		assert.match(buttonOpeningTag(normal, "Switch to Terminal view"), /aria-pressed="true"/);
 		assert.match(buttonOpeningTag(normal, "Switch to Workflow view"), /aria-pressed="false"/);
+		assert.equal(normal.includes('aria-label="Enter Terminal fullscreen"'), false);
+
+		const fullscreenAvailable = render({ terminalFullscreenAvailable: true, onEnterTerminalFullscreen() {} });
+		assert.match(buttonOpeningTag(fullscreenAvailable, "Enter Terminal fullscreen"), /title="Enter Terminal fullscreen"/);
 
 		const routed = render({ allowedSessionViewIds: ["terminal"] });
 		const disabledWorkflow = buttonOpeningTag(routed, "Workflow view unavailable for this Project session kind");

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Brain, Bug, ChevronsDown, ChevronsUp, EyeOff } from "lucide-react";
+import { Brain, Bug, ChevronsDown, ChevronsUp, EyeOff, Maximize2 } from "lucide-react";
 import { copyTextToClipboard } from "./clipboard";
 import type {
   getChatSessionView,
@@ -36,6 +36,8 @@ export function SessionTraceHeader({
   allowedSessionViewIds,
   extraViewTabs,
   activeViewId,
+  terminalFullscreenAvailable,
+  onEnterTerminalFullscreen,
   showRawEvents,
   showThinking,
   expandThinking,
@@ -61,6 +63,8 @@ export function SessionTraceHeader({
   allowedSessionViewIds?: readonly ChatSessionViewId[];
   extraViewTabs?: readonly SessionTraceHeaderExtraViewTab[];
   activeViewId?: string;
+  terminalFullscreenAvailable?: boolean;
+  onEnterTerminalFullscreen?: () => void;
   showRawEvents: boolean;
   showThinking: boolean;
   expandThinking: boolean;
@@ -213,6 +217,18 @@ export function SessionTraceHeader({
             );
           })}
         </div>
+        {terminalFullscreenAvailable && onEnterTerminalFullscreen ? (
+          <button
+            type="button"
+            onClick={onEnterTerminalFullscreen}
+            title="Enter Terminal fullscreen"
+            aria-label="Enter Terminal fullscreen"
+            data-pibo-debug="enter-terminal-fullscreen"
+            className="h-8 w-8 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 transition-colors hover:border-[#11a4d4] hover:text-[#11a4d4]"
+          >
+            <Maximize2 size={14} />
+          </button>
+        ) : null}
         <HeaderIconButton
           onClick={onToggleRawEvents}
           title={showRawEvents ? "Hide Raw Events" : "Show Raw Events"}

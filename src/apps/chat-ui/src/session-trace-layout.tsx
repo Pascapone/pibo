@@ -7,6 +7,7 @@ import type { ChatSessionViewProps } from "./session-views/types";
 import type { PiboSessionTraceView } from "./types";
 import { WebAnnotationsSessionPanel } from "./web-annotations";
 import { RawEventsSidebar } from "./tracing/RawEventsSidebar";
+import { TerminalFullscreenTopBar } from "./terminal-fullscreen-top-bar";
 
 type SessionTraceLayoutProps = {
   selectedPiboSessionId: string | null;
@@ -22,6 +23,8 @@ type SessionTraceLayoutProps = {
   rawEventLimit: number;
   tracePageFetching: boolean;
   onLoadMoreRawEvents: () => void;
+  terminalFullscreen: boolean;
+  onExitTerminalFullscreen: () => void;
   headerProps: ComponentProps<typeof SessionTraceHeader>;
   projectSessionCreatePanel?: ReactNode;
   workflowStartPanel?: ReactNode;
@@ -47,6 +50,8 @@ export function SessionTraceLayout({
   rawEventLimit,
   tracePageFetching,
   onLoadMoreRawEvents,
+  terminalFullscreen,
+  onExitTerminalFullscreen,
   headerProps,
   projectSessionCreatePanel,
   workflowStartPanel,
@@ -78,20 +83,25 @@ export function SessionTraceLayout({
                 ? "ready"
                 : "empty"
         }
+        data-pibo-terminal-fullscreen={terminalFullscreen ? "true" : "false"}
         className="min-h-0 flex flex-col"
       >
-        <SessionTraceHeader {...headerProps} />
-        {projectSessionCreatePanel ? (
+        {terminalFullscreen ? (
+          <TerminalFullscreenTopBar title={headerProps.title} onExit={onExitTerminalFullscreen} />
+        ) : (
+          <SessionTraceHeader {...headerProps} />
+        )}
+        {!terminalFullscreen && projectSessionCreatePanel ? (
           <div className="border-b border-slate-800 bg-[#101d22] px-4 py-3">
             {projectSessionCreatePanel}
           </div>
         ) : null}
-        {workflowStartPanel ? (
+        {!terminalFullscreen && workflowStartPanel ? (
           <div className="border-b border-slate-800 bg-[#101d22] px-4 py-3">
             {workflowStartPanel}
           </div>
         ) : null}
-        {projectModulePanel ? (
+        {!terminalFullscreen && projectModulePanel ? (
           projectModulePanel
         ) : terminalLoading ? (
           <TerminalLoadingSkeleton label={roomNavigationPending ? "Loading room" : "Loading session"} />
@@ -100,9 +110,9 @@ export function SessionTraceLayout({
             {traceError}
           </div>
         ) : (
-          currentSessionView.render(sessionViewProps)
+          currentSessionView.render({ ...sessionViewProps, terminalFullscreen })
         )}
-        {webAnnotationsPanelRendered ? (
+        {!terminalFullscreen && webAnnotationsPanelRendered ? (
           <WebAnnotationsSessionPanel {...webAnnotationsPanelProps} />
         ) : null}
         <Composer {...composerProps} />
@@ -112,7 +122,7 @@ export function SessionTraceLayout({
         traceView={currentTraceView}
         eventLimit={rawEventLimit}
         isFetching={tracePageFetching}
-        visible={showRawEvents}
+        visible={showRawEvents && !terminalFullscreen}
         onLoadOlder={onLoadMoreRawEvents}
       />
     </>

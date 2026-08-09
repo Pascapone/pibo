@@ -515,7 +515,7 @@ async function runStreamingBenchmarkSeries(client: CdpClient, runs: number, dura
 async function runStreamingBenchmark(client: CdpClient, durationMs: number, options: RunStreamingBenchmarkOptions = {}): Promise<StreamingBenchmark> {
 	await client.send("Page.bringToFront").catch(() => undefined);
 	const benchmarkTimeoutMs = durationMs + (options.startBackendFixture ? 20_000 : 10_000);
-	const benchmark = await client.evaluate<Omit<StreamingBenchmark, "score">>(buildStreamingBenchmarkExpression(durationMs, options), benchmarkTimeoutMs);
+	const benchmark = await client.evaluateJson<Omit<StreamingBenchmark, "score">>(buildStreamingBenchmarkExpression(durationMs, options), benchmarkTimeoutMs);
 	const withRenderOrder = { ...benchmark, renderOrder: analyzeStreamingRenderOrderCapture(benchmark.renderOrder) };
 	const withProvider = { ...withRenderOrder, provider: options.providerTelemetry };
 	const scored = { ...withProvider, score: scoreStreamingBenchmark(withProvider), providerPreservation: summarizeStreamingProviderPreservation(withProvider) };
