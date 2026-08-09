@@ -182,6 +182,7 @@ export function prepareYieldedRunExecution(
 				if (resources.limitReason) throw new PiboRunResourceLimitError(`resource_limited: ${resources.limitReason}`, resources);
 				return value;
 			} catch (error) {
+				if (!(error instanceof PiboRunResourceLimitError)) await terminateSystemdUnit(unitName);
 				await monitor.finish();
 				if (error instanceof PiboRunResourceLimitError) throw error;
 				if (resources.limitReason || cgroupReachedResourceLimit(resources.cgroup)) {
@@ -407,6 +408,11 @@ async function stopSystemdUnit(unitName: string): Promise<boolean> {
 	} catch {
 		return false;
 	}
+}
+
+async function terminateSystemdUnit(unitName: string): Promise<void> {
+	await stopSystemdUnit(unitName);
+	await execFileAsync("systemctl", ["stop", unitName], { timeout: 5_000 }).catch(() => undefined);
 }
 
 async function resetSystemdUnit(unitName: string): Promise<void> {

@@ -96,6 +96,27 @@ test("real yielded Bash smoke runs in the bounded transient cgroup and records p
 	assert.equal(prepared.resources.limitReason, undefined);
 });
 
+test("outer execution failure terminates the isolated process tree", { skip: !hasSystemd }, async () => {
+	const unitName = `pibo-yielded-timeout-cleanup-${process.pid}.service`;
+	const prepared = prepareYieldedRunExecution("bash", { command: "sleep 30" }, {
+		env: safePolicyEnv(),
+		unitName,
+	});
+	try {
+		await assert.rejects(prepared.execute(async () => {
+			await execFileAsync("/bin/bash", ["-lc", prepared.params.command], { timeout: 500 });
+		}));
+		const activeState = await execFileAsync("systemctl", ["is-active", unitName], { timeout: 5_000 })
+			.then(({ stdout }) => stdout.trim())
+			.catch((error) => String(error.stdout ?? "").trim());
+		assert.notEqual(activeState, "active");
+		assert.ok(prepared.resources.completedAt);
+	} finally {
+		await execFileAsync("systemctl", ["stop", unitName], { timeout: 5_000 }).catch(() => undefined);
+		await execFileAsync("systemctl", ["reset-failed", unitName], { timeout: 5_000 }).catch(() => undefined);
+	}
+});
+
 test("lifetime pressure monitoring terminates the isolated workload as resource_limited", { skip: !hasSystemd }, async () => {
 	const prepared = prepareYieldedRunExecution("bash", {
 		command: "python3 -c 'x=bytearray(256*1024*1024); x[::4096]=b\"x\"*(len(x)//4096); print(len(x))'",
