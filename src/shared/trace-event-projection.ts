@@ -270,18 +270,53 @@ export function reconcileTranscriptUserMessages(
 	turnTimings: readonly TraceMessageTurnTiming[] = [],
 ): void {
 	const transcriptUsers = nodes.filter((node) => node.type === "user.message" && node.source === "transcript");
-	let timingCursor = 0;
-	for (const timing of turnTimings) {
-		if (!timing.userText) continue;
-		const matchIndex = transcriptUsers.findIndex(
-			(node, index) => index >= timingCursor && traceNodeText(node) === timing.userText,
+	const timingByEventId = new Map(turnTimings.map((timing) => [timing.eventId, timing]));
+	let latestTranscriptUser: PiboTraceNode | undefined;
+	for (const node of nodes) {
+		if (node.type === "user.message" && node.source === "transcript") {
+			latestTranscriptUser = node;
+			continue;
+		}
+		if (
+			node.type !== "assistant.message" ||
+			node.source !== "transcript" ||
+			!node.eventId ||
+			!latestTranscriptUser ||
+			transcriptUserMessageHasCanonicalIdentity(latestTranscriptUser)
+		) continue;
+		const timing = timingByEventId.get(node.eventId);
+		if (
+			timing?.userText &&
+			normalizedUserMessageText(traceNodeText(latestTranscriptUser)) !== normalizedUserMessageText(timing.userText)
+		) continue;
+		assignTranscriptUserMessageIdentity(latestTranscriptUser, timing);
+	}
+
+	let timingCursor = transcriptUsers.length - 1;
+	for (let timingIndex = turnTimings.length - 1; timingIndex >= 0; timingIndex -= 1) {
+		const timing = turnTimings[timingIndex]!;
+		const prompt = normalizedUserMessageText(timing.userText);
+		if (!prompt) continue;
+		const exactMatchIndex = transcriptUsers.findIndex(
+			(node, index) =>
+				index <= timingCursor &&
+				!transcriptUserMessageHasCanonicalIdentity(node) &&
+				node.entryId === timing.eventId,
 		);
+		let matchIndex = exactMatchIndex;
+		if (matchIndex === -1 && (timing.userMessageType === "message_steered" || timing.completedAt)) {
+			for (let userIndex = timingCursor; userIndex >= 0; userIndex -= 1) {
+				const node = transcriptUsers[userIndex]!;
+				if (transcriptUserMessageHasCanonicalIdentity(node)) continue;
+				if (normalizedUserMessageText(traceNodeText(node)) !== prompt) continue;
+				matchIndex = userIndex;
+				break;
+			}
+		}
 		if (matchIndex === -1) continue;
 		const matchedNode = transcriptUsers[matchIndex]!;
-		const userMessageType = timing.userMessageType ?? "message_queued";
-		matchedNode.id = `event:${userMessageType}:${timing.eventId}`;
-		matchedNode.stableKey = `event:${userMessageType}:${timing.eventId}`;
-		timingCursor = matchIndex + 1;
+		assignTranscriptUserMessageIdentity(matchedNode, timing);
+		timingCursor = matchIndex - 1;
 	}
 
 	let userCursor = 0;
@@ -358,6 +393,18 @@ function canonicalUserMessageEventId(value: string | undefined): string | undefi
 		if (value?.startsWith(prefix)) return value.slice(prefix.length);
 	}
 	return undefined;
+}
+
+function assignTranscriptUserMessageIdentity(node: PiboTraceNode, timing: TraceMessageTurnTiming | undefined): void {
+	if (!timing) return;
+	const userMessageType = timing.userMessageType ?? "message_queued";
+	node.id = `event:${userMessageType}:${timing.eventId}`;
+	node.stableKey = `event:${userMessageType}:${timing.eventId}`;
+}
+
+function normalizedUserMessageText(value: string | undefined): string | undefined {
+	const normalized = value?.replace(/\s+/g, " ").trim();
+	return normalized || undefined;
 }
 
 function traceNodeText(node: PiboTraceNode): string | undefined {

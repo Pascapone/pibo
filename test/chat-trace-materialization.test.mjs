@@ -275,7 +275,7 @@ test("canonical steering identity wins before repeated-text fallback", () => {
 			text: "same prompt",
 		})],
 		turnTimings: [
-			{ eventId: "turn-one", userText: "same prompt" },
+			{ eventId: "turn-one", userText: "same prompt", completedAt: "2026-01-01T00:00:01.500Z" },
 			{ eventId: "turn-two", userText: "same prompt", userMessageType: "message_steered" },
 		],
 	});

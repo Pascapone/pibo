@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { loadPiSessionFastMetadata, readTailEntries } from "../dist/apps/chat/trace.js";
+import { buildTraceViewFromEvents, flattenTraceNodes } from "../dist/shared/trace-engine.js";
 
 function messageEntry(id, role, content, timestamp) {
 	return {
@@ -40,6 +41,66 @@ test("readTailEntries keeps the final assistant transcript without parsing the f
 	const assistant = entries.find((entry) => entry.id === "tail-assistant");
 	assert.ok(assistant);
 	assert.equal(assistant.message.content[0].text, finalText);
+});
+
+test("bounded transcript tails keep repeated user identities aligned with their assistants", () => {
+	const dir = mkdtempSync(join(tmpdir(), "pibo-trace-tail-repeated-"));
+	const path = join(dir, "session.jsonl");
+	const entries = [
+		messageEntry("entry-user-one", "user", "same prompt", "2026-08-09T10:00:00.000Z"),
+		messageEntry("entry-assistant-one", "assistant", `first answer ${"x".repeat(8_000)}`, "2026-08-09T10:00:01.000Z"),
+		messageEntry("entry-user-two", "user", "same prompt", "2026-08-09T10:00:02.000Z"),
+		messageEntry("entry-assistant-two", "assistant", "second answer", "2026-08-09T10:00:03.000Z"),
+		messageEntry("entry-user-three", "user", "same prompt", "2026-08-09T10:00:04.000Z"),
+		messageEntry("entry-assistant-three", "assistant", "third answer", "2026-08-09T10:00:05.000Z"),
+	];
+	writeFileSync(path, [
+		JSON.stringify({ type: "session", id: "pi-tail", timestamp: "2026-08-09T10:00:00.000Z", cwd: process.cwd() }),
+		...entries.map((entry) => JSON.stringify(entry)),
+	].join("\n") + "\n", "utf8");
+
+	const tailEntries = readTailEntries(path, 1_800);
+	assert.deepEqual(tailEntries.map((entry) => entry.id), [
+		"entry-user-two",
+		"entry-assistant-two",
+		"entry-user-three",
+		"entry-assistant-three",
+	]);
+	const piboSessionId = "ps-tail-repeat";
+	const view = buildTraceViewFromEvents({
+		session: { id: piboSessionId, piSessionId: "pi-tail" },
+		status: "idle",
+		transcriptEntries: tailEntries,
+		turnTimings: [
+			{ eventId: "turn-one", userText: "same prompt", completedAt: "2026-08-09T10:00:01.000Z", assistantIndices: [0] },
+			{ eventId: "turn-two", userText: "same prompt", completedAt: "2026-08-09T10:00:03.000Z", assistantIndices: [0] },
+			{ eventId: "turn-three", userText: "same prompt", completedAt: "2026-08-09T10:00:05.000Z", assistantIndices: [0] },
+		],
+		events: [{
+			id: "tail-turn-three",
+			piboSessionId,
+			eventSequence: 300,
+			type: "message_queued",
+			createdAt: "2026-08-09T10:00:04.000Z",
+			payload: {
+				type: "message_queued",
+				piboSessionId,
+				eventId: "turn-three",
+				source: "user",
+				text: "same prompt",
+				queuedMessages: 1,
+			},
+		}],
+	});
+	const flat = flattenTraceNodes(view.nodes);
+	assert.deepEqual(flat.filter((node) => node.type === "user.message").map((node) => node.id), [
+		"event:message_queued:turn-two",
+		"event:message_queued:turn-three",
+	]);
+	assert.deepEqual(flat.filter((node) => node.type === "assistant.message").map((node) => node.id), [
+		"event:assistant:turn-two:assistant:0",
+		"event:assistant:turn-three:assistant:0",
+	]);
 });
 
 test("loadPiSessionFastMetadata reads only the transcript header window", async () => {
