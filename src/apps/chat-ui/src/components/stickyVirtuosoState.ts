@@ -13,6 +13,16 @@ export type StickyScrollPositionInput = {
 	scrollTop: number;
 };
 
+export type StickyPointerScrollMode = "scrollbar" | "middle";
+
+export type StickyPointerScrollInput = {
+	button?: number;
+	targetIsScroller: boolean;
+	clientX?: number;
+	scrollerRight?: number;
+	verticalScrollbarWidth?: number;
+};
+
 export type StickyRenderedItem = {
 	index: number;
 	offset: number;
@@ -56,6 +66,14 @@ export function stickyScrollPositionDirection(input: StickyScrollPositionInput):
 export function stickyTouchScrollIntentDirection(previousY: number | undefined, currentY: number | undefined): StickyScrollIntentDirection | undefined {
 	if (currentY === undefined || previousY === undefined || currentY === previousY) return undefined;
 	return currentY > previousY ? "away" : "toward";
+}
+
+export function stickyPointerScrollMode(input: StickyPointerScrollInput): StickyPointerScrollMode | undefined {
+	if (input.button === 1) return "middle";
+	if (input.button !== 0 || !input.targetIsScroller) return undefined;
+	if (input.clientX === undefined || input.scrollerRight === undefined) return undefined;
+	const scrollbarWidth = Math.max(12, input.verticalScrollbarWidth ?? 0);
+	return input.clientX >= input.scrollerRight - scrollbarWidth ? "scrollbar" : undefined;
 }
 
 export function shouldReattachStickyAtBottom(armed: boolean, scrollingAwayFromBottom: boolean): boolean {
