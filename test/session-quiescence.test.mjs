@@ -266,6 +266,84 @@ test("forced disposal terminates a real routed session after its normal drain st
 	await router.disposeAll();
 });
 
+test("public dispose action reaches bounded forced disposal for a stuck routed session", async () => {
+	const router = createStoredRouter("ps_public_dispose", { routedSessionDisposeTimeoutMs: 25 });
+	const promptGate = deferred();
+	const promptStarted = deferred();
+	let abortCalls = 0;
+	let runtimeDisposeCalls = 0;
+	const session = {
+		model: undefined,
+		thinkingLevel: "off",
+		isStreaming: true,
+		settingsManager: {
+			getRetrySettings() { return { enabled: false, maxRetries: 0, baseDelayMs: 0 }; },
+			getProviderRetrySettings() { return { maxRetryDelayMs: 0 }; },
+		},
+		resourceLoader: { getSkills() { return { skills: [] }; } },
+		sessionManager: {
+			getLeafId() { return null; },
+			getHeader() { return undefined; },
+		},
+		subscribe() { return () => {}; },
+		supportsThinking() { return false; },
+		getActiveToolNames() { return []; },
+		setActiveToolsByName() {},
+		async prompt() {
+			promptStarted.resolve();
+			await promptGate.promise;
+		},
+		async abort() {
+			abortCalls += 1;
+		},
+	};
+	const runtime = {
+		cwd: process.cwd(),
+		session,
+		setRebindSession() {},
+		async dispose() {
+			runtimeDisposeCalls += 1;
+		},
+	};
+	const routed = new RoutedSession(
+		"ps_public_dispose",
+		runtime,
+		() => {},
+		PiboPluginRegistry.create({ plugins: [piboCorePlugin] }),
+		false,
+	);
+	router.sessions.set("ps_public_dispose", routed);
+	routed.enqueueMessage({
+		type: "message",
+		piboSessionId: "ps_public_dispose",
+		id: "stuck-public-message",
+		text: "stuck turn",
+		source: "service",
+	});
+	await promptStarted.promise;
+
+	const startedAt = Date.now();
+	await assert.rejects(
+		router.emit({ type: "execution", piboSessionId: "ps_public_dispose", action: "dispose", id: "dispose-stuck" }),
+		(error) => error instanceof AggregateError && error.errors.some((cause) => /Timed out disposing Pibo session/.test(String(cause))),
+	);
+	assert.ok(Date.now() - startedAt < 500, "public dispose exceeded its deterministic deadline");
+	assert.equal(routed.getStatus().disposed, true);
+	assert.equal(routed.getStatus().processing, false);
+	assert.equal(routed.getStatus().streaming, false);
+	assert.equal(abortCalls, 2);
+	assert.equal(runtimeDisposeCalls, 1);
+	assert.equal(router.sessions.has("ps_public_dispose"), false);
+	assert.equal(router.disposingSessions.has("ps_public_dispose"), false);
+	assert.equal(router.quiescingSessions.has("ps_public_dispose"), false);
+
+	promptGate.resolve();
+	await nextTurn();
+	await nextTurn();
+	assert.equal(runtimeDisposeCalls, 1);
+	await router.disposeAll();
+});
+
 test("handling every notified run cannot release the reminder scope mid-turn", async () => {
 	const router = createStoredRouter();
 	const session = createRouterSessionFake();

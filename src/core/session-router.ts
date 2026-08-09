@@ -346,11 +346,22 @@ export class PiboSessionRouter {
 			} else if (event.action === "dispose" || event.action === "kill" || event.action === "kill_all") {
 				this.signalRegistry.project({ type: "session_disposed", piboSessionId: event.piboSessionId, reason: `${event.action} action` });
 			}
-			const output = await session.executeAction(event);
 			if (event.action === "dispose") {
+				const output: PiboOutputEvent = {
+					type: "execution_result",
+					piboSessionId: event.piboSessionId,
+					eventId: event.id,
+					action: event.action,
+					result: { disposed: true },
+				};
+				this.emitOutput(output);
 				await this.disposeSessionSubtree(event.piboSessionId, "dispose action", { cancelRuns: true });
 				teardownCompleted = true;
-			} else if (event.action === "kill" || event.action === "kill_all") {
+				return output;
+			}
+
+			const output = await session.executeAction(event);
+			if (event.action === "kill" || event.action === "kill_all") {
 				await this.disposeSessionSubtree(event.piboSessionId, `${event.action} action`, { cancelRuns: event.action === "kill_all" });
 				teardownCompleted = true;
 			} else if (shouldResetSessionAfterAction(event.action)) {
