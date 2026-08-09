@@ -82,6 +82,59 @@ async function runLiveOverlayScenario() {
 			persistedUserMessageIndexForBaseTrace: new Map(),
 		}).traceView, baseTrace);
 
+		const repeatedCanonicalTrace = {
+			...baseTrace,
+			rawEvents: [],
+			nodes: [
+				traceNode("event:message_queued:turn-one", "user.message", {
+					source: "transcript",
+					entryId: "entry-one",
+					stableKey: "event:message_queued:turn-one",
+					output: "same prompt",
+				}),
+				traceNode("event:message_queued:turn-two", "user.message", {
+					source: "transcript",
+					entryId: "entry-two",
+					stableKey: "event:message_queued:turn-two",
+					output: "same prompt",
+				}),
+			],
+		};
+		const repeatedThird = event("repeated-third", "message_queued", {
+			streamId: 11,
+			payload: {
+				type: "message_queued",
+				eventId: "turn-three",
+				piboSessionId: "ps-test",
+				source: "user",
+				text: "same prompt",
+				queuedMessages: 1,
+			},
+		});
+		const repeatedOverlay = { piboSessionId: "ps-test", events: [repeatedThird] };
+		assert.deepEqual(trimLiveOverlayForBaseTrace(repeatedOverlay, repeatedCanonicalTrace)?.events, [repeatedThird]);
+		const repeatedCurrent = computeCurrentTraceView({
+			selectedPiboSessionId: "ps-test",
+			reconciledBaseTraceView: repeatedCanonicalTrace,
+			liveTraceOverlay: repeatedOverlay,
+			selectedSessionStatus: "running",
+			persistedUserMessageIndexForBaseTrace: new Map([["same prompt", ["entry-one", "entry-two"]]]),
+		}).traceView;
+		const repeatedUsers = [];
+		const collectRepeatedUsers = (nodes) => {
+			for (const node of nodes) {
+				if (node.type === "user.message") repeatedUsers.push(node);
+				collectRepeatedUsers(node.children);
+			}
+		};
+		collectRepeatedUsers(repeatedCurrent.nodes);
+		assert.deepEqual(repeatedUsers.map((node) => node.id).sort(), [
+			"event:message_queued:turn-one",
+			"event:message_queued:turn-three",
+			"event:message_queued:turn-two",
+		]);
+		assert.equal(repeatedUsers.find((node) => node.id === "event:message_queued:turn-three")?.entryId, undefined);
+
 		const indexedOverlay = {
 			piboSessionId: "ps-test",
 			events: [

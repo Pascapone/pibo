@@ -31,17 +31,31 @@ export function projectTranscriptEntries(
 	entries: SessionEntry[],
 	sessionStatus: PiboWebSessionStatus,
 	openTranscriptEventIds: ReadonlySet<string>,
+	turnTimings: readonly TraceMessageTurnTiming[] = [],
 ): SessionEntry[] {
 	if (sessionStatus !== "running" || openTranscriptEventIds.size === 0) return entries;
+	let timingCursor = 0;
 	let lastUserMessageIndex = -1;
-	for (let index = entries.length - 1; index >= 0; index -= 1) {
+	let lastUserEventId: string | undefined;
+	for (let index = 0; index < entries.length; index += 1) {
 		const entry = entries[index];
-		if (entry.type === "message" && messageRole(entry) === "user") {
-			lastUserMessageIndex = index;
-			break;
+		if (entry.type !== "message" || messageRole(entry) !== "user") continue;
+		lastUserMessageIndex = index;
+		const entryEventId = openTranscriptEventIds.has(entry.id) ? entry.id : undefined;
+		const text = extractText(messageContent(entry));
+		const timingIndex = turnTimings.findIndex(
+			(timing, candidateIndex) => candidateIndex >= timingCursor && timing.userText === text,
+		);
+		if (timingIndex === -1) {
+			lastUserEventId = entryEventId;
+			continue;
 		}
+		lastUserEventId = entryEventId ?? turnTimings[timingIndex]!.eventId;
+		timingCursor = timingIndex + 1;
 	}
-	return lastUserMessageIndex === -1 ? entries : entries.slice(0, lastUserMessageIndex);
+	return lastUserMessageIndex !== -1 && lastUserEventId && openTranscriptEventIds.has(lastUserEventId)
+		? entries.slice(0, lastUserMessageIndex)
+		: entries;
 }
 
 export function traceNodesFromEntries(

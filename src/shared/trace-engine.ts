@@ -73,8 +73,8 @@ export function buildTraceViewFromEvents(input: TraceBuildInput): PiboSessionTra
 	const events = dedupeTraceEvents(input.events);
 	const allEntries = input.transcriptEntries ?? [];
 	const openTranscriptEventIds = findOpenTranscriptEventIds(events, sessionStatus);
-	const entries = projectTranscriptEntries(allEntries, sessionStatus, openTranscriptEventIds);
 	const turnTimings = mergeMessageTurnTimings(input.turnTimings ?? [], messageTurnTimingsFromEvents(events));
+	const entries = projectTranscriptEntries(allEntries, sessionStatus, openTranscriptEventIds, turnTimings);
 	const nodes = traceNodesFromEntries(input.session.id, entries, turnTimings);
 	reconcileTranscriptUserMessages(nodes, events, turnTimings);
 	const byId = mapTraceNodesById(nodes);

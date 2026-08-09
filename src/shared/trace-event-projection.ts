@@ -294,14 +294,15 @@ export function reconcileTranscriptUserMessages(
 		const stableKey = eventStableKey(event);
 		const text = typeof event.text === "string" ? event.text : undefined;
 		const identityMatchIndex = transcriptUsers.findIndex((node) =>
-			node.id === canonicalId ||
-			node.stableKey === stableKey ||
-			Boolean(eventId && (node.entryId === eventId || node.stableKey === `entry:${eventId}`)),
+			transcriptUserMessageMatchesIdentity(node, canonicalId, stableKey, eventId),
 		);
 		const matchIndex = identityMatchIndex !== -1
 			? identityMatchIndex
 			: transcriptUsers.findIndex(
-				(node, index) => index >= userCursor && Boolean(text && traceNodeText(node) === text),
+				(node, index) =>
+					index >= userCursor &&
+					!transcriptUserMessageHasCanonicalIdentity(node) &&
+					Boolean(text && traceNodeText(node) === text),
 			);
 		if (matchIndex === -1) continue;
 		const matchedNode = transcriptUsers[matchIndex]!;
@@ -324,12 +325,39 @@ function confirmedUserMessageEchoNode(nodes: readonly PiboTraceNode[], event: Ch
 	const canonicalId = `event:${payload.type}:${payloadEventId ?? cryptoSafeId(payload)}`;
 	const stableKey = eventStableKey(payload);
 	const text = typeof payload.text === "string" ? payload.text : undefined;
-	return flattenTraceNodes([...nodes]).find((node) => {
-		if (node.type !== "user.message" || node.source !== "transcript") return false;
-		if (node.id === canonicalId || node.stableKey === stableKey) return true;
-		if (eventId && (node.entryId === eventId || node.stableKey === `entry:${eventId}`)) return true;
-		return Boolean(text && traceNodeText(node) === text);
-	});
+	const transcriptUsers = flattenTraceNodes([...nodes]).filter(
+		(node) => node.type === "user.message" && node.source === "transcript",
+	);
+	const identityMatch = transcriptUsers.find((node) =>
+		transcriptUserMessageMatchesIdentity(node, canonicalId, stableKey, eventId),
+	);
+	if (identityMatch) return identityMatch;
+	return transcriptUsers.find((node) =>
+		!transcriptUserMessageHasCanonicalIdentity(node) && Boolean(text && traceNodeText(node) === text),
+	);
+}
+
+function transcriptUserMessageMatchesIdentity(
+	node: PiboTraceNode,
+	canonicalId: string,
+	stableKey: string,
+	eventId: string | undefined,
+): boolean {
+	if (node.id === canonicalId || node.stableKey === stableKey) return true;
+	if (!eventId) return false;
+	if (node.entryId === eventId || node.stableKey === `entry:${eventId}`) return true;
+	return [node.id, node.stableKey].some((value) => canonicalUserMessageEventId(value) === eventId);
+}
+
+function transcriptUserMessageHasCanonicalIdentity(node: PiboTraceNode): boolean {
+	return [node.id, node.stableKey].some((value) => canonicalUserMessageEventId(value) !== undefined);
+}
+
+function canonicalUserMessageEventId(value: string | undefined): string | undefined {
+	for (const prefix of ["event:message_queued:", "event:message_steered:"]) {
+		if (value?.startsWith(prefix)) return value.slice(prefix.length);
+	}
+	return undefined;
 }
 
 function traceNodeText(node: PiboTraceNode): string | undefined {

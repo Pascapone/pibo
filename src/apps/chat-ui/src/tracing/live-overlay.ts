@@ -37,26 +37,45 @@ export function reconcileLiveTraceOverlayCache(
 export function trimLiveOverlayForBaseTrace(overlay: LiveTraceOverlay | null, baseTrace: PiboSessionTraceView): LiveTraceOverlay | null {
 	if (!overlay || overlay.piboSessionId !== baseTrace.piboSessionId) return overlay;
 	const confirmedEventKeys = confirmedTraceEventKeys(baseTrace);
-	const confirmedUserMessageTexts = confirmedTranscriptUserMessageTexts(baseTrace.nodes);
+	const unassignedUserMessageTextCounts = unassignedTranscriptUserMessageTextCounts(baseTrace.nodes);
 	const events = overlay.events.filter((event) => {
-		if (isUserMessageQueuedEvent(event) && confirmedUserMessageTexts.has(event.payload.text)) return false;
 		const key = traceEventConfirmationKey(event);
 		if (key && confirmedEventKeys.has(key)) return false;
+		if (isUserMessageQueuedEvent(event)) {
+			const remaining = unassignedUserMessageTextCounts.get(event.payload.text) ?? 0;
+			if (remaining > 0) {
+				if (remaining === 1) unassignedUserMessageTextCounts.delete(event.payload.text);
+				else unassignedUserMessageTextCounts.set(event.payload.text, remaining - 1);
+				return false;
+			}
+		}
 		return !isCoveredRunNotification(baseTrace, event);
 	});
 	return events.length ? { ...overlay, events } : null;
 }
 
-function confirmedTranscriptUserMessageTexts(nodes: readonly PiboTraceNode[]): Set<string> {
-	const texts = new Set<string>();
+function unassignedTranscriptUserMessageTextCounts(nodes: readonly PiboTraceNode[]): Map<string, number> {
+	const counts = new Map<string, number>();
 	for (const node of nodes) {
-		if (node.type === "user.message" && node.source === "transcript") {
+		if (
+			node.type === "user.message" &&
+			node.source === "transcript" &&
+			!hasCanonicalUserMessageIdentity(node)
+		) {
 			const text = traceNodeText(node);
-			if (text) texts.add(text);
+			if (text) counts.set(text, (counts.get(text) ?? 0) + 1);
 		}
-		for (const text of confirmedTranscriptUserMessageTexts(node.children)) texts.add(text);
+		for (const [text, count] of unassignedTranscriptUserMessageTextCounts(node.children)) {
+			counts.set(text, (counts.get(text) ?? 0) + count);
+		}
 	}
-	return texts;
+	return counts;
+}
+
+function hasCanonicalUserMessageIdentity(node: PiboTraceNode): boolean {
+	return [node.id, node.stableKey].some((value) =>
+		value?.startsWith("event:message_queued:") || value?.startsWith("event:message_steered:"),
+	);
 }
 
 function confirmedTraceEventKeys(trace: PiboSessionTraceView): Set<string> {

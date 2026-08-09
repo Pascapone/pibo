@@ -315,6 +315,62 @@ test("execution commands after an errored turn remain chronological root nodes",
 	assert.equal(view.nodes.find((node) => node.title === "thinking")?.parentId, undefined);
 });
 
+test("live repeated prompt does not confirm against settled canonical transcript text", () => {
+	const baseView = buildTraceViewFromEvents({
+		session: { id: "chat:test", piSessionId: "pi-test" },
+		status: "idle",
+		transcriptEntries: [
+			{
+				id: "entry-user-one",
+				type: "message",
+				timestamp: "2026-04-29T08:00:00.000Z",
+				message: { role: "user", content: [{ type: "text", text: "same prompt" }] },
+			},
+			{
+				id: "entry-assistant-one",
+				type: "message",
+				timestamp: "2026-04-29T08:00:01.000Z",
+				message: { role: "assistant", content: [{ type: "text", text: "first answer" }] },
+			},
+			{
+				id: "entry-user-two",
+				type: "message",
+				timestamp: "2026-04-29T08:00:02.000Z",
+				message: { role: "user", content: [{ type: "text", text: "same prompt" }] },
+			},
+			{
+				id: "entry-assistant-two",
+				type: "message",
+				timestamp: "2026-04-29T08:00:03.000Z",
+				message: { role: "assistant", content: [{ type: "text", text: "second answer" }] },
+			},
+		],
+		events: [],
+		turnTimings: [
+			{ eventId: "turn-one", userText: "same prompt", completedAt: "2026-04-29T08:00:01.000Z" },
+			{ eventId: "turn-two", userText: "same prompt", completedAt: "2026-04-29T08:00:03.000Z" },
+		],
+	});
+	const patched = patchTraceViewWithEvent(baseView, createEvent({
+		seq: 4,
+		type: "message_queued",
+		payload: {
+			type: "message_queued",
+			eventId: "turn-three",
+			text: "same prompt",
+			source: "user",
+			queuedMessages: 1,
+		},
+	}), "running");
+
+	assert.notEqual(patched, baseView);
+	assert.deepEqual(flatNodes(patched).filter((node) => node.type === "user.message").map((node) => node.id), [
+		"event:message_queued:turn-one",
+		"event:message_queued:turn-two",
+		"event:message_queued:turn-three",
+	]);
+});
+
 test("persisted user message with optimistic event id keeps one trace node", () => {
 	const clientTxnId = "web-client-txn-1";
 	const baseView = createBaseView([
