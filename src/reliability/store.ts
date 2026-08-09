@@ -214,6 +214,7 @@ type PiboRunRow = {
 	timeout_at: string | null;
 	timeout_phase: PiboRunReadResult["timeoutPhase"] | null;
 	service_warning: string | null;
+	resource_json: string | null;
 };
 
 function now(): string {
@@ -360,7 +361,8 @@ export class PiboReliabilityStore {
 				timeout_ms INTEGER,
 				timeout_at TEXT,
 				timeout_phase TEXT,
-				service_warning TEXT
+				service_warning TEXT,
+				resource_json TEXT
 			);
 			CREATE INDEX IF NOT EXISTS idx_pibo_runs_controller_updated
 				ON pibo_runs(controller_pibo_session_id, updated_at);
@@ -371,6 +373,7 @@ export class PiboReliabilityStore {
 		ensurePiboRunColumn(this.db, "timeout_at", "TEXT");
 		ensurePiboRunColumn(this.db, "timeout_phase", "TEXT");
 		ensurePiboRunColumn(this.db, "service_warning", "TEXT");
+		ensurePiboRunColumn(this.db, "resource_json", "TEXT");
 
 		this.appendEventStatement = this.db.prepare(`
 			INSERT INTO pibo_event_stream (topic, key, event_id, idempotency_key, created_at, retention_class, payload_json)
@@ -737,6 +740,7 @@ export class PiboReliabilityStore {
 		maxAttempts?: number;
 		timeoutMs?: number;
 		serviceWarning?: string;
+		resources?: PiboRunSnapshot["resources"];
 		workerId?: string;
 	}): PiboRunStoreRecord {
 		const timestamp = now();
@@ -759,8 +763,8 @@ export class PiboReliabilityStore {
 				INSERT INTO pibo_runs (
 					run_id, kind, controller_pibo_session_id, status, completion_policy, consumed, tool_name,
 					summary, result_json, error, notified_status, acknowledged_status, created_at, updated_at,
-					completed_at, job_id, retryable, max_attempts, timeout_ms, timeout_at, timeout_phase, service_warning
-				) VALUES (?, 'tool', ?, 'running', ?, 0, ?, ?, NULL, NULL, NULL, NULL, ?, ?, NULL, ?, ?, ?, ?, ?, NULL, ?)
+					completed_at, job_id, retryable, max_attempts, timeout_ms, timeout_at, timeout_phase, service_warning, resource_json
+				) VALUES (?, 'tool', ?, 'running', ?, 0, ?, ?, NULL, NULL, NULL, NULL, ?, ?, NULL, ?, ?, ?, ?, ?, NULL, ?, ?)
 			`)
 			.run(
 				runId,
@@ -776,6 +780,7 @@ export class PiboReliabilityStore {
 				input.timeoutMs ?? null,
 				timeoutAt ?? null,
 				input.serviceWarning ?? null,
+				input.resources ? JSON.stringify(input.resources) : null,
 			);
 		this.claimJob(job.jobId, input.workerId ?? `run-registry:${process.pid}`, 24 * 60 * 60 * 1000);
 		return this.requireRun(runId);
@@ -804,7 +809,8 @@ export class PiboReliabilityStore {
 					timeout_ms = ?,
 					timeout_at = ?,
 					timeout_phase = ?,
-					service_warning = ?
+					service_warning = ?,
+					resource_json = ?
 				WHERE run_id = ?
 			`)
 			.run(
@@ -825,6 +831,7 @@ export class PiboReliabilityStore {
 				next.timeoutAt ?? null,
 				next.timeoutPhase ?? null,
 				next.serviceWarning ?? null,
+				next.resources ? JSON.stringify(next.resources) : null,
 				runId,
 			);
 		return this.requireRun(runId);
@@ -1117,6 +1124,7 @@ function runFromRow(row: PiboRunRow): PiboRunStoreRecord {
 	if (row.timeout_at) output.timeoutAt = row.timeout_at;
 	if (row.timeout_phase === "startup" || row.timeout_phase === "lifetime") output.timeoutPhase = row.timeout_phase;
 	if (row.service_warning) output.serviceWarning = row.service_warning;
+	if (row.resource_json) output.resources = JSON.parse(row.resource_json) as PiboRunSnapshot["resources"];
 	return output;
 }
 

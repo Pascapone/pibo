@@ -6,6 +6,7 @@ import {
 	buildGatewayResourceSnapshot,
 	GatewayWorkAdmissionController,
 	parseHostProcessResourceList,
+	parseYieldedRunSystemdUnits,
 	renderGatewayResourceSnapshotText,
 	resolveGatewayResourceGuardPolicy,
 } from '../dist/core/gateway-resource-guard.js';
@@ -75,6 +76,25 @@ test('gateway work admission rejects a run that would consume the host reserve',
 		}),
 		/cannot preserve reserve/,
 	);
+});
+
+test('gateway resources expose active yielded-run systemd cgroups', () => {
+	const units = parseYieldedRunSystemdUnits([
+		'pibo-yielded-a.service loaded active running Pibo yielded run',
+		'pibo-yielded-b.service loaded failed failed Pibo yielded run',
+		'pibo-web.service loaded active running Pibo Web',
+	].join('\n'));
+	assert.deepEqual(units.map((unit) => [unit.unitName, unit.activeState, unit.subState]), [
+		['pibo-yielded-a.service', 'active', 'running'],
+		['pibo-yielded-b.service', 'failed', 'failed'],
+	]);
+	const snapshot = buildGatewayResourceSnapshot({
+		includeProcesses: false,
+		yieldedUnitListOutput: 'pibo-yielded-a.service loaded active running Pibo yielded run',
+	});
+	assert.equal(snapshot.yieldedRunUnits.available, true);
+	assert.equal(snapshot.yieldedRunUnits.units.length, 1);
+	assert.match(renderGatewayResourceSnapshotText(snapshot), /Yielded-run cgroups: units=1/);
 });
 
 test('gateway resource process parsing exposes children and known heavy daemons', () => {

@@ -1,6 +1,7 @@
 import { StringEnum, Type } from "@earendil-works/pi-ai";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { foregroundServiceWarning, hasMeaningfulTimeoutOutput, isConfiguredTimeoutError, PiboRunExecutionTimeoutError, resolveRunTimeoutMs } from "./lifecycle.js";
+import { PiboRunResourceLimitError, prepareYieldedRunExecution, type PiboRunResourceUsage } from "./resource-isolation.js";
 import type {
 	PiboRunCompletionPolicy,
 	PiboRunReadResult,
@@ -17,6 +18,7 @@ export type PiboRunStartToolInput = {
 	maxAttempts?: number;
 	timeoutMs?: number;
 	serviceWarning?: string;
+	resources?: PiboRunResourceUsage;
 	execute(): Promise<PiboToolRunResult>;
 };
 
@@ -85,6 +87,7 @@ export function createRunToolDefinitions(
 				const tool = requireTool(yieldableTools, params.toolName);
 				const timeoutMs = resolveRunTimeoutMs(tool.name, params.arguments);
 				const serviceWarning = foregroundServiceWarning(tool.name, params.arguments, timeoutMs);
+				const prepared = prepareYieldedRunExecution(tool.name, params.arguments);
 				let observedOutput = false;
 				const run = controller.startToolRun({
 					toolName: tool.name,
@@ -92,12 +95,13 @@ export function createRunToolDefinitions(
 					completionPolicy: params.completionPolicy as PiboRunCompletionPolicy | undefined,
 					timeoutMs,
 					serviceWarning,
+					resources: prepared.resources,
 					async execute() {
 						try {
-							const result = await tool.execute(toolCallId, params.arguments, signal, (update) => {
+							const result = await prepared.execute(() => tool.execute(toolCallId, prepared.params, signal, (update) => {
 								observedOutput ||= hasMeaningfulTimeoutOutput(update);
 								onUpdate?.(update);
-							}, ctx);
+							}, ctx));
 							const resultObject = result as { content?: unknown; details?: unknown; isError?: unknown };
 							const text = textFromToolResult(resultObject);
 							if (resultObject.isError === true) {
@@ -106,7 +110,7 @@ export function createRunToolDefinitions(
 							}
 							return { text, details: resultObject.details ?? result };
 						} catch (error) {
-							if (error instanceof PiboRunExecutionTimeoutError) throw error;
+							if (error instanceof PiboRunExecutionTimeoutError || error instanceof PiboRunResourceLimitError) throw error;
 							if (timeoutMs !== undefined && isConfiguredTimeoutError(error)) throw new PiboRunExecutionTimeoutError(error instanceof Error ? error.message : String(error), observedOutput ? "lifetime" : "startup");
 							throw error;
 						}
