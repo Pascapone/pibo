@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from "react";
 import type { PiboSessionTraceView, PiboWebSessionStatus } from "../types";
-import { collectBackendNodes, isTraceSnapshotCollectionEnabled } from "./snapshotCollector";
+import { collectTraceState, isTraceSnapshotCollectionEnabled } from "./snapshotCollector";
 import { computeCurrentTraceView } from "./current-trace-view";
 import type { LiveTraceOverlay } from "./live-overlay";
 import {
@@ -58,17 +58,38 @@ export function useCurrentSessionTrace({
 	}, [baseTraceView, currentTraceComputation.liveTraceComputeDurationMs, currentTraceView, liveTraceOverlay, selectedPiboSessionId]);
 
 	useEffect(() => {
+		if (!currentTraceView?.piboSessionId || !isTraceSnapshotCollectionEnabled()) return;
+		const overlayEvents = liveTraceOverlay?.piboSessionId === currentTraceView.piboSessionId
+			? liveTraceOverlay.events
+			: [];
+		collectTraceState({
+			piboSessionId: currentTraceView.piboSessionId,
+			trigger: "trace-state:render",
+			baseTraceView,
+			currentTraceView,
+			overlayEvents,
+			selectedSessionStatus,
+		});
+	}, [baseTraceView, currentTraceView, liveTraceOverlay, selectedSessionStatus]);
+
+	useEffect(() => {
 		const handleVisibilityChange = () => {
 			if (!currentTraceView?.piboSessionId || !isTraceSnapshotCollectionEnabled()) return;
-			collectBackendNodes(currentTraceView.piboSessionId, `tab:${document.visibilityState}`, currentTraceView.nodes, {
-				traceVersion: currentTraceView.version,
-				latestStreamId: currentTraceView.latestStreamId,
-				lastRawEventId: currentTraceView.rawEvents.at(-1)?.id,
+			const overlayEvents = liveTraceOverlay?.piboSessionId === currentTraceView.piboSessionId
+				? liveTraceOverlay.events
+				: [];
+			collectTraceState({
+				piboSessionId: currentTraceView.piboSessionId,
+				trigger: `trace-state:tab:${document.visibilityState}`,
+				baseTraceView,
+				currentTraceView,
+				overlayEvents,
+				selectedSessionStatus,
 			});
 		};
 		document.addEventListener("visibilitychange", handleVisibilityChange);
 		return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-	}, [currentTraceView]);
+	}, [baseTraceView, currentTraceView, liveTraceOverlay, selectedSessionStatus]);
 
 	return currentTraceView;
 }

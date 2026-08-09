@@ -287,6 +287,86 @@ export type StreamingBenchmarkOverlayDrop = {
 	lastDroppedType?: string;
 };
 
+export type StreamingRenderOrderRow = {
+	id: string;
+	kind?: string;
+	status?: string;
+	sourceNodeIds?: string[];
+	eventId?: string;
+	runId?: string;
+	stableKey?: string;
+	orderSource?: string;
+	orderStreamId?: number;
+	orderStreamFrameIndex?: number;
+	top?: number;
+	left?: number;
+};
+
+export type StreamingRenderOrderDomState = {
+	t: number;
+	timestamp: number;
+	traceSequence?: number;
+	reason: string;
+	piboSessionId?: string;
+	view: "compact-terminal" | "trace-timeline" | "unknown";
+	shellState?: string;
+	atBottom?: boolean;
+	rows: StreamingRenderOrderRow[];
+	rowIds: string[];
+	visualRowIds: string[];
+};
+
+export type StreamingRenderOrderTraceLayer = {
+	kind: string;
+	ids: string[];
+	digest: string;
+	meta: Array<Record<string, unknown>>;
+};
+
+export type StreamingRenderOrderTraceSnapshot = {
+	sequence?: number;
+	timestamp: number;
+	piboSessionId: string;
+	trigger: string;
+	traceVersion?: string;
+	baseTraceVersion?: string;
+	latestStreamId?: number;
+	lastRawEventId?: string;
+	selectedSessionStatus?: string;
+	overlayEventCount?: number;
+	layers: StreamingRenderOrderTraceLayer[];
+};
+
+export type StreamingRenderOrderFinding = {
+	source: "dom" | "visual" | "baseNodes" | "currentNodes" | "terminalRows" | "visibleRows" | "state-dom";
+	kind: "reorder" | "disappear-reappear" | "identity-replacement" | "state-dom-mismatch";
+	timestamp: number;
+	ids: string[];
+	detail: string;
+};
+
+export type StreamingRenderOrderAnalysis = {
+	domStateCount: number;
+	traceSnapshotCount: number;
+	reorderCount: number;
+	disappearReappearCount: number;
+	identityReplacementCount: number;
+	stateDomMismatchCount: number;
+	findings: StreamingRenderOrderFinding[];
+	regressions: string[];
+};
+
+export type StreamingRenderOrderCapture = {
+	requested: boolean;
+	available: boolean;
+	piboSessionId?: string;
+	domStates: StreamingRenderOrderDomState[];
+	traceSnapshots: StreamingRenderOrderTraceSnapshot[];
+	omittedDomStates: number;
+	warning?: string;
+	analysis?: StreamingRenderOrderAnalysis;
+};
+
 export type StreamingBenchmark = {
 	kind: "streaming-benchmark";
 	createdAt: string;
@@ -323,6 +403,7 @@ export type StreamingBenchmark = {
 	sse?: StreamingBenchmarkSseProbe;
 	trace?: StreamingBenchmarkTraceProbe;
 	overlayDrop?: StreamingBenchmarkOverlayDrop;
+	renderOrder?: StreamingRenderOrderCapture;
 	provider?: StreamingBenchmarkProviderTelemetry;
 	cadence?: StreamingBenchmarkCadence;
 	livePipeline?: StreamingBenchmarkLivePipeline;
@@ -348,6 +429,12 @@ export type StreamingBenchmarkSummary = {
 	firstVisibleMs: NumberStats;
 	longTaskMaxMs: NumberStats;
 	regressionCount: NumberStats;
+	renderOrderDomStateCount: NumberStats;
+	renderOrderTraceSnapshotCount: NumberStats;
+	renderOrderReorderCount: NumberStats;
+	renderOrderDisappearReappearCount: NumberStats;
+	renderOrderIdentityReplacementCount: NumberStats;
+	renderOrderStateDomMismatchCount: NumberStats;
 	debugEnqueueCount: NumberStats;
 	debugFlushCount: NumberStats;
 	debugFlushedEventCount: NumberStats;

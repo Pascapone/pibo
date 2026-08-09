@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, extname, isAbsolute, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { ContextFileProfile, ContextFileScope, ContextFileSource } from "../core/profiles.js";
 import type { PiboJsonObject } from "../core/events.js";
 import { PiboWebHttpError, readJsonBody, responseHtml, responseJson } from "../web/http.js";
@@ -27,7 +28,8 @@ export const CONTEXT_FILES_APP_NAME = "pibo.context-files";
 export const CONTEXT_FILES_MOUNT_PATH = "/apps/context-files";
 export const CONTEXT_FILES_API_PREFIX = "/api/context-files";
 
-const CONTEXT_FILES_UI_DIST_DIR = resolve(process.cwd(), "dist/apps/context-files-ui");
+const PIBO_PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+const CONTEXT_FILES_UI_DIST_DIR = resolve(PIBO_PACKAGE_ROOT, "dist/apps/context-files-ui");
 const POLL_INTERVAL_MS = 1000;
 
 export type ContextFilesPluginOptions = {

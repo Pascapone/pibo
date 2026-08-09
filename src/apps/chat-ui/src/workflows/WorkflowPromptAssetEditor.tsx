@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Save } from "lucide-react";
 import type { SaveState } from "../api";
 import {
@@ -11,7 +11,7 @@ import {
 	type WorkflowRegisteredRefPickerResponse,
 	type WorkflowValidationTrigger,
 } from "../api-workflows";
-import { MarkdownEditor } from "../context/MarkdownEditor";
+import { MarkdownEditor, type MarkdownEditorHandle } from "../context/MarkdownEditor";
 import { DEFAULT_AGENT_PROMPT_TEMPLATE } from "./workflow-node-defaults";
 import type { WorkflowJsonObject } from "./workflow-graph-model";
 import { registeredRefOptionLabel } from "./workflow-picker-labels";
@@ -26,6 +26,7 @@ export function WorkflowPromptAssetEditor({ draft, nodeId, node, isSaving, onSav
 	isSaving: boolean;
 	onSaveDefinition: (definition: WorkflowDraftDefinition, successMessage: string, options?: { editTrigger?: WorkflowValidationTrigger }) => Promise<void>;
 }) {
+	const editorRef = useRef<MarkdownEditorHandle>(null);
 	const [selectedRef, setSelectedRef] = useState(readPromptAssetRefId(node.promptBuilder));
 	const [picker, setPicker] = useState<WorkflowRegisteredRefPickerResponse | undefined>();
 	const [asset, setAsset] = useState<WorkflowPromptAssetDocument | undefined>();
@@ -78,7 +79,7 @@ export function WorkflowPromptAssetEditor({ draft, nodeId, node, isSaving, onSav
 	const selectedOption = picker?.options.find((option) => option.id === selectedRef);
 	const directPromptTemplate = typeof node.promptTemplate === "string" ? node.promptTemplate : DEFAULT_AGENT_PROMPT_TEMPLATE;
 	const initialMarkdown = asset?.markdown ?? directPromptTemplate;
-	const editorDocumentKey = `${draft.draftId}:${nodeId}:${(asset?.id ?? selectedRef) || "direct-prompt"}:${asset?.revisionId ?? "draft"}`;
+	const editorDocumentKey = `${draft.draftId}:${nodeId}`;
 	const hasPromptBuilder = Boolean(readPromptAssetRefId(node.promptBuilder));
 	const selectedRefIsManaged = selectedRef.startsWith("ui.promptAssets.");
 	const promptAssetDisplayName = `${typeof node.label === "string" && node.label.trim() ? node.label.trim() : nodeId} prompt asset`;
@@ -103,6 +104,15 @@ export function WorkflowPromptAssetEditor({ draft, nodeId, node, isSaving, onSav
 		}
 	}, [draft.definition, draft.draftId, nodeId, onSaveDefinition, promptAssetDisplayName, selectedRef, selectedRefIsManaged]);
 
+	const handlePromptAssetSelection = async (nextRef: string) => {
+		try {
+			await editorRef.current?.flushSave();
+			setSelectedRef(nextRef);
+		} catch (error) {
+			setMessage(error instanceof Error ? error.message : "Failed to save the current prompt asset before switching");
+		}
+	};
+
 	const useSelectedPromptAsset = async () => {
 		if (!asset) return;
 		const definition = applyWorkflowPromptAssetDocumentToNode(draft.definition, nodeId, asset);
@@ -120,7 +130,7 @@ export function WorkflowPromptAssetEditor({ draft, nodeId, node, isSaving, onSav
 			</div>
 			<label className="grid gap-1 font-semibold text-slate-300">
 				<span>Prompt asset ref</span>
-				<select className="rounded-sm border border-slate-700 bg-[#101d22] px-2 py-1.5 text-slate-100" value={selectedRef} onChange={(event) => setSelectedRef(event.target.value)} disabled={isSaving}>
+				<select className="rounded-sm border border-slate-700 bg-[#101d22] px-2 py-1.5 text-slate-100" value={selectedRef} onChange={(event) => void handlePromptAssetSelection(event.target.value)} disabled={isSaving}>
 					<option value="">Create managed asset from direct prompt template</option>
 					{picker?.options.map((option) => <option key={option.id} value={option.id}>{registeredRefOptionLabel(option)}</option>)}
 				</select>
@@ -130,12 +140,14 @@ export function WorkflowPromptAssetEditor({ draft, nodeId, node, isSaving, onSav
 			{loadState === "error" ? (
 				<div className="rounded-sm border border-red-900/70 bg-red-950/40 p-2 text-[11px] leading-5 text-red-200" role="alert">{message ?? "Failed to load prompt asset."}</div>
 			) : null}
-			<div className="rounded-sm border border-slate-800 bg-[#101d22] p-2">
+			<div className="workflow-prompt-editor-frame min-w-0 rounded-sm bg-[#101d22]">
 				<MarkdownEditor
+					ref={editorRef}
 					documentKey={editorDocumentKey}
 					initialMarkdown={initialMarkdown}
 					onPersist={persistPromptAsset}
 					onSaveStateChange={setSaveState}
+					ariaLabel="Prompt asset Markdown editor"
 				/>
 			</div>
 			<div className="flex flex-wrap items-center gap-2 text-[11px]">

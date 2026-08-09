@@ -30,7 +30,7 @@ function createFakeAuthService() {
 	};
 }
 
-async function startContextFilesHost(setup) {
+async function startContextFilesHost(setup, createContextFilesPlugin = createPiboContextFilesPlugin) {
 	const sessions = new InMemoryPiboSessionStore();
 	const registry = PiboPluginRegistry.create({
 		plugins: [
@@ -44,7 +44,7 @@ async function startContextFilesHost(setup) {
 					});
 				},
 			},
-			createPiboContextFilesPlugin({
+			createContextFilesPlugin({
 				managedRoot: setup.managedRoot,
 				globalDir: setup.globalDir,
 				agentWorkspaceRoot: setup.agentWorkspaceRoot,
@@ -116,6 +116,37 @@ function authHeaders(baseURL) {
 		origin: baseURL,
 	};
 }
+
+test("context files web app serves its packaged UI independently of the process working directory", async () => {
+	const dir = mkdtempSync(join(tmpdir(), "pibo-context-files-ui-cwd-"));
+	const originalCwd = process.cwd();
+	let channel;
+	try {
+		process.chdir(dir);
+		const moduleUrl = new URL(`../dist/plugins/context-files.js?cwd-test=${Date.now()}`, import.meta.url);
+		const module = await import(moduleUrl.href);
+		const started = await startContextFilesHost({
+			pluginFilePath: join(dir, "plugin-doc.md"),
+			managedRoot: join(dir, "managed"),
+			agentWorkspaceRoot: join(dir, "agent-workspaces"),
+			metadataPath: join(dir, "managed", "context-files.sqlite"),
+		}, module.createPiboContextFilesPlugin);
+		channel = started.channel;
+
+		const response = await fetch(`${started.baseURL}/apps/context-files`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		const html = await response.text();
+		assert.equal(response.status, 200);
+		assert.match(html, /<div id="root"><\/div>/);
+		assert.match(html, /<script type="module"/);
+		assert.doesNotMatch(html, /Context Files UI has not been built/);
+	} finally {
+		await channel?.stop?.();
+		process.chdir(originalCwd);
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
 
 test("context files web app links plugin files into managed revisions and restores history", async () => {
 	const dir = mkdtempSync(join(tmpdir(), "pibo-context-files-web-"));
