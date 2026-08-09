@@ -205,37 +205,55 @@ function assignTranscriptUserTimings(
 		assignedTimingIndexes.add(timingIndex);
 	}
 
-	const settledTimings = turnTimings
-		.map((timing, timingIndex) => ({ timing, timingIndex }))
-		.filter(({ timing }) => timing.userMessageType !== "message_steered" && timing.completedAt !== undefined);
 	const transcriptTurns = collectTranscriptTurnTimingTargets(entries);
-	let settledTimingCursor = settledTimings.length - 1;
+	let timingUpperBound = turnTimings.length - 1;
 	for (let turnIndex = transcriptTurns.length - 1; turnIndex >= 0; turnIndex -= 1) {
 		const transcriptTurn = transcriptTurns[turnIndex];
 		const userPosition = transcriptTurn?.userEntryIndex === undefined
 			? undefined
 			: userPositionByEntryIndex.get(transcriptTurn.userEntryIndex);
-		if (!transcriptTurn?.settled || !transcriptTurn.prompt || userPosition === undefined || anchorByUserPosition.has(userPosition)) continue;
-		let matchedPosition: number | undefined;
+		if (!transcriptTurn?.prompt || userPosition === undefined) continue;
+		const exactAnchor = anchorByUserPosition.get(userPosition);
+		if (exactAnchor !== undefined) {
+			timingUpperBound = Math.min(timingUpperBound, exactAnchor - 1);
+			continue;
+		}
+
+		let steeringTimingIndex: number | undefined;
+		for (let timingIndex = timingUpperBound; timingIndex >= 0; timingIndex -= 1) {
+			const timing = turnTimings[timingIndex]!;
+			if (assignedTimingIndexes.has(timingIndex) || timing.userMessageType !== "message_steered") continue;
+			if (normalizedPrompt(timing.userText) !== transcriptTurn.prompt) continue;
+			steeringTimingIndex = timingIndex;
+			break;
+		}
+		if (steeringTimingIndex !== undefined) {
+			anchorByUserPosition.set(userPosition, steeringTimingIndex);
+			assignedTimingIndexes.add(steeringTimingIndex);
+			timingUpperBound = steeringTimingIndex - 1;
+			continue;
+		}
+		if (!transcriptTurn.settled) continue;
+
+		let matchedTimingIndex: number | undefined;
 		let matchedDistance = Number.POSITIVE_INFINITY;
-		for (let timingPosition = settledTimingCursor; timingPosition >= 0; timingPosition -= 1) {
-			const candidate = settledTimings[timingPosition]!;
-			if (assignedTimingIndexes.has(candidate.timingIndex)) continue;
-			if (normalizedPrompt(candidate.timing.userText) !== transcriptTurn.prompt) continue;
-			const completedAt = parsedTimestamp(candidate.timing.completedAt);
+		for (let timingIndex = timingUpperBound; timingIndex >= 0; timingIndex -= 1) {
+			const timing = turnTimings[timingIndex]!;
+			if (assignedTimingIndexes.has(timingIndex) || timing.userMessageType === "message_steered" || !timing.completedAt) continue;
+			if (normalizedPrompt(timing.userText) !== transcriptTurn.prompt) continue;
+			const completedAt = parsedTimestamp(timing.completedAt);
 			const distance = completedAt === undefined || transcriptTurn.assistantAt === undefined
 				? Number.POSITIVE_INFINITY
 				: Math.abs(completedAt - transcriptTurn.assistantAt);
-			if (matchedPosition === undefined || distance < matchedDistance) {
-				matchedPosition = timingPosition;
+			if (matchedTimingIndex === undefined || distance < matchedDistance) {
+				matchedTimingIndex = timingIndex;
 				matchedDistance = distance;
 			}
 		}
-		if (matchedPosition === undefined) continue;
-		const matched = settledTimings[matchedPosition]!;
-		anchorByUserPosition.set(userPosition, matched.timingIndex);
-		assignedTimingIndexes.add(matched.timingIndex);
-		settledTimingCursor = matchedPosition - 1;
+		if (matchedTimingIndex === undefined) continue;
+		anchorByUserPosition.set(userPosition, matchedTimingIndex);
+		assignedTimingIndexes.add(matchedTimingIndex);
+		timingUpperBound = matchedTimingIndex - 1;
 	}
 
 	const assignments = new Map<number, TraceMessageTurnTiming>();
