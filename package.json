@@ -46,7 +46,7 @@
     "release:github": "node scripts/create-github-release.mjs",
     "build": "npm run workflows:build && node --max-old-space-size=1200 node_modules/typescript/bin/tsc -p tsconfig.json && npm run web-ui:build && npm run vscode:webview:build && node scripts/ensure-bin-executable.mjs",
     "start": "node dist/bin/pibo.js",
-    "test": "npm run build && node --test test/*.test.mjs test/chat-vscode/*.test.mjs",
+    "test": "npm run build && node scripts/run-test-suite.mjs",
     "check:product-vocab": "node scripts/legacy-product-vocabulary-gate.mjs",
     "validate:ink-web-derived": "node scripts/ink-cli-web-derived-parity-validate.mjs",
     "compute:limited-worker-smoke": "node scripts/compute-limited-worker-smoke.mjs",
