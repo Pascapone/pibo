@@ -1,90 +1,195 @@
 # Markdown Editor Smart Typing Validation
 
-**Date:** 2026-08-10  
-**Branch:** `markdown-editor-smart-typing`  
-**Base:** `upstream/dev` at `b7dcc3a1fe618c8655f972c20c1e1ec014621c88`
+**Date:** 2026-08-10
 
-## Server baseline
+**PR:** #438
 
-Before changing the editor, the server and repository were checked against their current upstream sources:
+**Branch:** `feature/markdown-editor-smart-typing`
 
-- globally installed `@pasko70/pibo`: `1.12.1`;
-- npm `latest`: `1.12.1`;
-- `upstream/main` package version: `1.12.1`;
-- topic branch and `upstream/dev`: identical at `b7dcc3a1` before local changes;
-- the previous Markdown editor quality change, PR #421, is contained in both `upstream/main` and `upstream/dev`.
+**Observed base:** `upstream/dev` at `b7dcc3a1fe618c8655f972c20c1e1ec014621c88`
 
-Production was not restarted or redeployed. All implementation and browser validation ran in the isolated Docker dev worker `pibo-dev-markdown-editor-smart-typing`.
+**PR head before this iteration:** `5139d491043274c80f01b6bd0443f72ca34d300f`
 
-## Reproduced problems
+## Safety and environments
 
-The authenticated Chat Web Context editor converted `# ` into an H1 and `- ` into a semantic unordered list. The list still looked broken because the computed `list-style-type` was `none`, so no bullet markers appeared.
+- The topic worktree is isolated at `/root/code/pibo/.worktrees/markdown-editor-smart-typing`.
+- At the start of this iteration the PR branch was exactly two commits ahead of current `upstream/dev` and zero commits behind it.
+- Production Pibo2 was inspected read-only. It reported zero runtime sessions, zero active yielded runs, and restart safety `idle`.
+- Production remained on candidate `release-1-11-3` at commit `32980a084968880f7c93bcf1a375df94e48d340f`.
+- Production was not restarted, redeployed, or otherwise changed.
+- Build and browser validation ran in the isolated Docker dev worker `pibo-dev-pr438-dev-web` with loopback-only Web access at `http://127.0.0.1:4802` and local authenticated identity `dev@pibo.local`.
 
-Toolbar SVGs had native 24×24 view boxes but were forced to 17×17 CSS pixels at 95% opacity. This produced visibly soft icons. At a 1000×800 viewport, the responsive toolbar also placed the Rich/Source switch on a mostly empty third row.
+## Problems covered by PR #438
 
-## Changes
+The PR restores and validates the requested baseline behavior:
 
-- Restored visible unordered, ordered, and nested list markers.
-- Added distinct `disc`, `circle`, `square`, `decimal`, and `lower-alpha` marker styles.
-- Styled markers with the editor's cyan accent.
-- Restored task-list text padding so unchecked and checked boxes no longer overlap their labels.
-- Rendered toolbar SVGs at an even 20×20 pixels with full opacity and geometric SVG precision.
-- Added an empty-editor hint for `# + Space` and `- + Space` smart typing.
-- Kept the Rich/Source switch beside the wrapped formatting controls on narrow editors, reducing the 668 px toolbar from about 121 px to 85 px without horizontal overflow.
-- Extended focused regression tests for smart typing guidance, list markers, icon rendering, and narrow-toolbar layout.
+- visible unordered, ordered, and nested list markers;
+- 20×20 px, full-opacity toolbar SVGs instead of the previous 17×17 px rendering;
+- Notion-style line-start Markdown shortcuts supplied by the enabled `markdownShortcutPlugin()`;
+- explicit empty-editor guidance for `# + Space` and `- + Space`;
+- task-list label spacing;
+- responsive placement of Rich/Source controls.
 
-## Browser validation
+Current browser evidence confirmed:
 
-The editor was used through the authenticated Web UI with real keyboard events.
+- `#` followed by Space creates an H1;
+- `-` followed by Space creates an unordered list;
+- nested unordered lists render `disc` then `circle` markers;
+- ordered lists render decimal markers;
+- marker color is the editor cyan accent;
+- toolbar icons render at 20×20 px with full opacity.
 
-Validated flows:
+## Additional reproduced problems
 
-- `# ` converted the current line into Heading 1.
-- `- ` converted the next line into a bulleted list.
-- `Tab` and `Shift+Tab` created and exited a nested list.
-- `1. ` created an ordered list.
-- `> ` created a blockquote.
-- Autosave persisted the normalized Markdown through the Context Files API.
-- Reloading and reopening the file restored the heading, nested bullets, ordered item, and quote.
-- Source mode showed the persisted Markdown structure.
-- Focus mode expanded to 1392×952 px at a 1440×1000 viewport, focused the editor, locked body scrolling, and restored scrolling after `Escape`.
-- The standalone Context Files app loaded the same saved document with visible `disc`, `circle`, and `decimal` markers and 20 px toolbar icons.
-- At 640×900, task-list controls created unchecked boxes without text overlap; clicking the box produced a checked, struck-through item while preserving label spacing.
-- A Workflow Agent node prompt asset was edited in Focus mode with `# ` and `- ` shortcuts. Autosave created a managed prompt asset, updated the draft, and survived a full page reload.
-- Browser console and page-error checks were clean.
+### 1. Pending edits were lost when immediately creating another Context File
 
-Measured responsive layout:
+In the Chat Context Files editor, a user could type inside the 900 ms autosave window and immediately press **Create File**. `handleSubmit` switched documents without first flushing the current editor.
 
-| Host and viewport | Editor | Toolbar | Overflow |
-| --- | --- | --- | --- |
-| Chat Context at 1000×800 | 668×540 px | 668×85 px | none |
-| Chat Context at 1440×1000 | 808×740 px | 808×48 px | none |
-| Standalone Context at 1000×800 | 599×574 px | 599×85 px | none |
-| Workflow prompt inspector at 1000×800 | 367×448 px | 355×140 px | none; Focus mode available |
-| Workflow prompt Focus mode at 1000×800 | 960×760 px | wrapped | none |
+Reproduction on the original PR head:
 
-Local screenshots are under `docs/reports/artifacts/markdown-editor-smart-typing-2026-08-10/`, including:
+1. Open managed file `PR438 Baseline A`.
+2. Pre-fill the new-file name.
+3. Type ` UNSAVED-CREATE-LOSS` into the current editor.
+4. Click **Create File** in the same 584 ms browser batch.
+5. Read the previous file through the authenticated Context Files API.
 
-- `baseline-smart-typing-bullets.png`;
-- `fixed-smart-typing-complete.png`;
-- `final-responsive-1000x800.png`;
-- `final-editor-1440x1000.png`;
-- `final-focused-editor-1440x1000.png`;
-- `final-source-1000x800.png`;
-- `final-standalone-context-1000x800.png`;
-- `final-task-list-fixed-640x900.png`;
-- `workflow-prompt-focused-smart-typing.png`.
+Observed: the new file opened, but `UNSAVED-CREATE-LOSS` was absent from the previous file.
 
-## Automated validation
+Fix: both Context Files hosts now call `await editorRef.current?.flushSave()` before creating and selecting the new document:
+
+- `src/apps/chat-ui/src/context/ContextFilesView.tsx`;
+- `src/apps/context-files-ui/src/main.tsx`.
+
+Post-fix verification repeated the same flow in 698 ms. The previous file persisted `FIX-PRESERVED-BEFORE-CREATE` before the new file opened.
+
+### 2. The toolbar still overflowed at a reproducible intermediate width
+
+A real headful Browser Use session at an 800×457 viewport produced a 768 px editor shell. The original 46 rem container breakpoint did not activate:
+
+```text
+clientWidth=768
+scrollWidth=804
+clientHeight=47
+scrollHeight=47
+flexWrap=nowrap
+overflowX=auto
+```
+
+The visible result was a horizontal scrollbar below the toolbar.
+
+Fix: increase the container-query breakpoint from 46 rem to 48 rem.
+
+Post-fix headful measurement at the same viewport:
+
+```text
+clientWidth=768
+scrollWidth=768
+clientHeight=82
+scrollHeight=82
+flexWrap=wrap
+overflowX=hidden
+overflowY=auto
+```
+
+All toolbar controls remain available without horizontal overflow.
+
+## Automated regression coverage
+
+`test/markdown-editor-quality.test.mjs` now additionally verifies:
+
+- both Context Files hosts flush pending Markdown edits before `createContextFile`;
+- the toolbar wraps at the corrected 48 rem container breakpoint;
+- smart-typing guidance, list markers, nested marker styles, task spacing, and 20 px SVG rendering remain present.
+
+A clean worker exposed that the former report order was not reproducible: `test/context-files-web.test.mjs` imports built `dist/` modules. The repeatable order is therefore build before that test suite.
 
 Passed in the Docker dev worker:
 
 ```text
 npm run typecheck
-node --test test/markdown-editor-quality.test.mjs test/workflow-v2-builder-editing-raw-ir.test.mjs test/context-files-web.test.mjs
 npm run build
+node --test test/markdown-editor-quality.test.mjs test/workflow-v2-builder-editing-raw-ir.test.mjs test/context-files-web.test.mjs
 ```
+
+Result: 13 tests passed, 0 failed.
+
+## Agent Browser validation
+
+Agent Browser was used for fast DOM inspection and real keyboard-event editing at 1000×800.
+
+Validated:
+
+- `#` + Space → H1;
+- `-` + Space → unordered list;
+- Tab → nested list and Shift+Tab → outdent;
+- `1.` + Space → ordered list;
+- `>` + Space → blockquote;
+- autosave reached `Saved`;
+- the authenticated API persisted exactly:
+
+```md
+# Final Heading
+
+* First bullet
+  * Nested bullet
+
+1. First ordered
+
+> Quoted text
+```
+
+- switching to another file and reopening restored H1, nested unordered list, ordered list, and blockquote;
+- computed list styles after reopening were `disc`, `circle`, and `decimal`;
+- Source mode displayed the persisted Markdown structure;
+- the pre-fix quick-create loss and post-fix preservation flow were both reproduced with measured sub-900-ms action batches;
+- Agent Browser page errors and console output were empty during the checked flow.
+
+## Headful Browser Use validation
+
+A non-headless Google Chrome process was started on the local desktop and controlled with Browser Use through CDP. The Chrome command line had no headless flag.
+
+Validated in the Chat Context editor at 800×457:
+
+- the pre-fix horizontal toolbar overflow;
+- the post-fix wrapped toolbar with equal `clientWidth` and `scrollWidth`;
+- visible bullets and readable toolbar icons;
+- no missing toolbar action after wrapping.
+
+Validated in the standalone Context Files app:
+
+- reopened the same managed document saved in Chat;
+- typed `-` then Space with real key events to create `Headful standalone bullet`;
+- observed a semantic `<ul>` with computed `list-style-type: disc`;
+- observed save state `Saved` and matching authenticated API Markdown;
+- opened another file and then reopened the edited file with a visible mouse click;
+- confirmed the new bullet survived reopening.
+
+Validated Focus mode in the headful browser:
+
+```text
+expanded=true
+editor rect=768×425 at (16,16)
+body overflow=hidden
+active element=editable markdown
+toolbar clientWidth=768
+ toolbar scrollWidth=768
+flexWrap=wrap
+```
+
+Pressing Escape returned `expanded=false` and restored body overflow. A direct CDP attachment to the headful Browser Use Chrome reported no page errors and no console output.
+
+## Browser artifacts
+
+Local screenshots are under `docs/reports/artifacts/markdown-editor-smart-typing-2026-08-10/`. The repository-wide `*.png` ignore rule intentionally keeps them out of the PR; the durable measurements and observed results are recorded above:
+
+- `current-pr-shortcuts-and-toolbar-1000x800.png`;
+- `headful-current-pr-800x457.png`;
+- `headful-responsive-fixed-800x457.png`;
+- `agent-final-rich-reopened-1000x800.png`;
+- `agent-final-source-reopened-1000x800.png`;
+- `headful-standalone-reopened-800x457.png`;
+- `headful-focus-mode-800x457.png`.
 
 ## Result
 
-The requested smart typing works in the real editor, list markers now render correctly, toolbar icons are clearer, and the narrow toolbar uses its space more efficiently. Production remains unchanged pending explicit approval.
+The requested H1 and bullet smart typing works through real keyboard events. Bullet, nested-list, ordered-list, and task-list visual rules remain covered. Toolbar icons render at the intended 20 px size. Two additional reproducible defects were fixed: pending edits are no longer dropped by immediate Context File creation, and the toolbar no longer horizontally overflows at a 768 px editor width. Both Chat and standalone Context Files flows persisted and reopened Markdown successfully in authenticated browsers. Production remains unchanged pending explicit user approval.

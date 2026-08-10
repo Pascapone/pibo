@@ -70,6 +70,13 @@ test("Markdown editor keeps autosave stable without unhandled rejections or own-
 	]);
 	assert.match(contextView, /documentKey=\{document\.key\}/);
 	assert.match(standalone, /documentKey=\{document\.key\}/);
+	for (const host of [contextView, standalone]) {
+		assert.match(
+			host,
+			/const handleSubmit = useCallback\(async \(\) => \{[\s\S]*?await editorRef\.current\?\.flushSave\(\);[\s\S]*?createContextFile/,
+			"creating a context file flushes pending editor changes first",
+		);
+	}
 	assert.match(workflowPrompt, /const editorDocumentKey = `\$\{draft\.draftId\}:\$\{nodeId\}`/);
 	assert.match(workflowPrompt, /await editorRef\.current\?\.flushSave\(\)[\s\S]*setSelectedRef\(nextRef\)/);
 });
@@ -83,7 +90,7 @@ test("Markdown editor remains usable in narrow host panels and focused mode", as
 		["focus mode fills the viewport without inheriting host width", /\.markdown-editor-shell--expanded \{[\s\S]*position: fixed;[\s\S]*width: auto !important/],
 		["rich editor owns an internal scroll area", /\.mdxeditor-rich-text-editor \{[\s\S]*overflow: auto;[\s\S]*scrollbar-gutter: stable/],
 		["source mode owns an internal scroll area", /\.mdxeditor-diff-source-wrapper \{[\s\S]*overflow: auto;[\s\S]*scrollbar-gutter: stable/],
-		["narrow toolbars wrap instead of hiding commands", /@container \(max-width: 46rem\)[\s\S]*\.mdxeditor-toolbar\[role="toolbar"\] \{[\s\S]*flex-wrap: wrap/],
+		["narrow toolbars wrap before their controls overflow", /@container \(max-width: 48rem\)[\s\S]*\.mdxeditor-toolbar\[role="toolbar"\] \{[\s\S]*flex-wrap: wrap/],
 		["narrow toolbar keeps source controls beside formatting rows", /\.mdxeditor-toolbar > div:first-child \{[\s\S]*flex: 1 1 calc\(100% - 5rem\)[\s\S]*_diffSourceToggleWrapper_[\s\S]*margin-left: 0 !important/],
 		["content has a readable maximum width", /width: min\(100%, 56rem\)/],
 		["unordered lists render visible markers", /\.markdown-editor__content ul \{[\s\S]*list-style-type: disc/],

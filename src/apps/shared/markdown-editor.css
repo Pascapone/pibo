@@ -595,7 +595,7 @@
 	box-shadow: inset 0 0 0 2px rgb(17 164 212 / 0.55);
 }
 
-@container (max-width: 46rem) {
+@container (max-width: 48rem) {
 	.markdown-editor__utility-bar {
 		padding-left: 0.55rem;
 	}
