@@ -76,6 +76,18 @@ test("compact row generation covers core terminal row kinds deterministically", 
 	assert.match(rowText(rows[5]), /Error boom/);
 });
 
+test("compact row generation renders Codex-compatible labels for browser and REPL tools", () => {
+	const rows = buildCompactTerminalRows(traceView([
+		traceNode("tool.call", "node-browser-use", { order: 1, title: "browser_use_browser_use", input: { action: "state" } }),
+		traceNode("tool.call", "node-repl", { order: 2, title: "node_repl_js", input: { code: "1 + 1" } }),
+		traceNode("tool.result", "node-repl-reset", { order: 3, title: "node_repl_js_reset", output: { reset: true } }),
+	]), { showThinking: false });
+
+	assert.equal(rows[0].lines[0].functionCall?.name, "browser_use.browser_use");
+	assert.equal(rows[1].lines[0].functionCall?.name, "node_repl.js");
+	assert.match(rowText(rows[2]), /Returned node_repl\.js_reset/);
+});
+
 test("compact row generation renders session errors with class details", () => {
 	const rows = buildCompactTerminalRows(traceView([
 		traceNode("error", "node-session-error", {
