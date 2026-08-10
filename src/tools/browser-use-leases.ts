@@ -23,7 +23,7 @@ const AUTH_POOL_DIR = 'auth-pool';
 
 type LeaseStatus = 'active' | 'released';
 
-type BrowserUseLease = {
+export type BrowserUseLease = {
   id: string;
   app: string;
   holder: string;
@@ -140,6 +140,31 @@ function defaultTemplateDir(status: CliToolStatus): string {
   // Never fall back to the active default profile (it may be running).
   // Create an empty template directory so leases get clean profiles.
   return preferred;
+}
+
+export function findActiveBrowserUseLeaseForHolder(
+  status: CliToolStatus,
+  holder: string,
+  app?: string,
+  now = new Date(),
+): BrowserUseLease | undefined {
+  return readRegistry(status).leases.find((lease) =>
+    lease.holder === holder &&
+    lease.status === 'active' &&
+    !isExpired(lease, now) &&
+    (app === undefined || lease.app === app),
+  );
+}
+
+export function browserUseLeaseEnvironment(status: CliToolStatus, lease: BrowserUseLease): NodeJS.ProcessEnv {
+  return {
+    BROWSER_USE_HOME: browserUseHome(status),
+    PIBO_BROWSER_USE_LEASE_ID: lease.id,
+    PIBO_BROWSER_USE_SESSION: lease.sessionName,
+    PIBO_BROWSER_USE_CHROME_USER_DATA_DIR: lease.userDataDir,
+    PIBO_BROWSER_USE_DEFAULT_PROFILE: lease.profileName,
+    ...(lease.browserPoolLeaseId ? { PIBO_BROWSER_POOL_LEASE_ID: lease.browserPoolLeaseId } : {}),
+  };
 }
 
 export function readRegistry(status: CliToolStatus): LeaseRegistry {

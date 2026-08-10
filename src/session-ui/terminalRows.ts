@@ -108,6 +108,14 @@ type RowCandidate = {
 export const COMPACT_TERMINAL_OUTPUT_PREVIEW_LINES = 5;
 export const COMPACT_TERMINAL_EXPLORING_PREVIEW_LINES = 6;
 
+const CODEX_COMPATIBLE_TOOL_LABELS: Readonly<Record<string, string>> = {
+	browser_use_open_tabs: "browser_use.open_tabs",
+	browser_use_take_screenshot: "browser_use.take_screenshot",
+	browser_use_browser_use: "browser_use.browser_use",
+	node_repl_js: "node_repl.js",
+	node_repl_js_reset: "node_repl.js_reset",
+};
+
 export function buildCompactTerminalRows(
 	traceView: PiboSessionTraceView | null,
 	options: BuildTerminalRowsOptions,
@@ -390,7 +398,7 @@ function createToolRowCandidate(node: PiboTraceNode, turnId?: string): RowCandid
 					token(toolVerb(node.status), toneForStatus(node.status), "semibold"),
 					token(" "),
 				],
-				functionCall: { name: node.title, input: node.input },
+				functionCall: { name: displayToolName(node.title), input: node.input },
 			},
 			...preview.lines,
 		],
@@ -483,7 +491,7 @@ function createToolResultRow(node: PiboTraceNode): CompactTerminalRow {
 		lines: [
 			{
 				prefix: "bullet",
-				tokens: [token(node.status === "error" ? "Tool failed" : "Returned", toneForStatus(node.status), "semibold"), token(` ${node.title}`)],
+				tokens: [token(node.status === "error" ? "Tool failed" : "Returned", toneForStatus(node.status), "semibold"), token(` ${displayToolName(node.title)}`)],
 			},
 			...preview.lines,
 		],
@@ -1191,6 +1199,10 @@ function classifyExploringTool(node: PiboTraceNode): CompactTerminalDetailItem |
 		};
 	}
 	return undefined;
+}
+
+function displayToolName(name: string): string {
+	return CODEX_COMPATIBLE_TOOL_LABELS[name] ?? name;
 }
 
 function matchesTool(name: string, terms: readonly string[]): boolean {
