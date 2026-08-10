@@ -289,6 +289,11 @@
 	padding-left: 0.18rem;
 }
 
+.markdown-editor__content li[role="checkbox"] {
+	padding-left: 1.75rem;
+	list-style-type: none;
+}
+
 .markdown-editor__content li::marker {
 	color: #7dd3fc;
 	font-weight: 700;

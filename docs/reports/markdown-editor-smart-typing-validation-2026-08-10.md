@@ -27,6 +27,7 @@ Toolbar SVGs had native 24×24 view boxes but were forced to 17×17 CSS pixels a
 - Restored visible unordered, ordered, and nested list markers.
 - Added distinct `disc`, `circle`, `square`, `decimal`, and `lower-alpha` marker styles.
 - Styled markers with the editor's cyan accent.
+- Restored task-list text padding so unchecked and checked boxes no longer overlap their labels.
 - Rendered toolbar SVGs at an even 20×20 pixels with full opacity and geometric SVG precision.
 - Added an empty-editor hint for `# + Space` and `- + Space` smart typing.
 - Kept the Rich/Source switch beside the wrapped formatting controls on narrow editors, reducing the 668 px toolbar from about 121 px to 85 px without horizontal overflow.
@@ -48,6 +49,7 @@ Validated flows:
 - Source mode showed the persisted Markdown structure.
 - Focus mode expanded to 1392×952 px at a 1440×1000 viewport, focused the editor, locked body scrolling, and restored scrolling after `Escape`.
 - The standalone Context Files app loaded the same saved document with visible `disc`, `circle`, and `decimal` markers and 20 px toolbar icons.
+- At 640×900, task-list controls created unchecked boxes without text overlap; clicking the box produced a checked, struck-through item while preserving label spacing.
 - A Workflow Agent node prompt asset was edited in Focus mode with `# ` and `- ` shortcuts. Autosave created a managed prompt asset, updated the draft, and survived a full page reload.
 - Browser console and page-error checks were clean.
 
@@ -70,6 +72,7 @@ Local screenshots are under `docs/reports/artifacts/markdown-editor-smart-typing
 - `final-focused-editor-1440x1000.png`;
 - `final-source-1000x800.png`;
 - `final-standalone-context-1000x800.png`;
+- `final-task-list-fixed-640x900.png`;
 - `workflow-prompt-focused-smart-typing.png`.
 
 ## Automated validation

@@ -89,6 +89,7 @@ test("Markdown editor remains usable in narrow host panels and focused mode", as
 		["unordered lists render visible markers", /\.markdown-editor__content ul \{[\s\S]*list-style-type: disc/],
 		["ordered lists render visible markers", /\.markdown-editor__content ol \{[\s\S]*list-style-type: decimal/],
 		["nested list markers remain distinct", /ul ul \{[\s\S]*list-style-type: circle[\s\S]*ul ul ul \{[\s\S]*list-style-type: square/],
+		["task list checkboxes do not overlap text", /li\[role="checkbox"\] \{[\s\S]*padding-left: 1\.75rem;[\s\S]*list-style-type: none/],
 		["toolbar icons use crisp even-pixel sizing", /width: 20px !important;[\s\S]*height: 20px !important;[\s\S]*opacity: 1;[\s\S]*shape-rendering: geometricPrecision/],
 		["keyboard focus is visible", /:focus-visible[\s\S]*outline: 2px solid #11a4d4/],
 	]);
