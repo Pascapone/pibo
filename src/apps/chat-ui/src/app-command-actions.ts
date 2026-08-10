@@ -25,6 +25,9 @@ export function commandActionParams(action: string, commandArgs: string): unknow
 	if (action === "compact" && commandArgs) {
 		return { customInstructions: commandArgs };
 	}
+	if (action === "goal") {
+		return { command: commandArgs };
+	}
 	return undefined;
 }
 
