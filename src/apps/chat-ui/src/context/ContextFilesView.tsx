@@ -162,6 +162,7 @@ export function ContextFilesView({ agentProfiles, selectedFileKey }: { agentProf
 
 	const handleSubmit = useCallback(async () => {
 		try {
+			await editorRef.current?.flushSave();
 			const created = await createContextFile({
 				label: formLabel.trim() || undefined,
 				scope: formScope,

@@ -146,6 +146,7 @@ function App() {
 
 	const handleSubmit = useCallback(async () => {
 		try {
+			await editorRef.current?.flushSave();
 			const file = await createContextFile({
 				label: formLabel,
 				scope: formScope,
