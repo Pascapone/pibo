@@ -1,6 +1,6 @@
 # Spec: Session Goal Slash Command
 
-**Status:** Implementing
+**Status:** Done
 **Created:** 2026-08-10
 **Requester / Source:** User request in Pibo session `ps_5bbaf776-0335-4067-9a67-ef79b4bab6f6`
 **Related docs:** `docs/specs/changes/general-loop-module/spec.md`, `docs/specs/capabilities/chat-web-slash-command-surface.md`
@@ -42,9 +42,9 @@ Add `/goal` as a session command that creates or updates the session's Goal Loop
 
 ## Acceptance Criteria
 
-- [ ] `/goal Ship the feature` creates one active Goal Loop for the selected session.
-- [ ] A second `/goal Revised objective` updates the same Loop job ID and leaves one Goal owner for the session.
-- [ ] `/goal pause` marks the Goal paused without setting cancellation state or cancelling an in-flight run.
-- [ ] `/goal resume` returns that same Goal to active state.
-- [ ] Slash command argument forwarding works in supported session surfaces.
-- [ ] Focused tests, typecheck, build, and real Pibo2 validation pass.
+- [x] `/goal Ship the feature` creates one active Goal Loop for the selected session.
+- [x] A second `/goal Revised objective` updates the same Loop job ID and leaves one Goal owner for the session.
+- [x] `/goal pause` marks the Goal paused without setting cancellation state or cancelling an in-flight run.
+- [x] `/goal resume` returns that same Goal to active state.
+- [x] Slash command argument forwarding works in supported session surfaces.
+- [x] Focused tests, typecheck, build, and real Pibo2 validation pass.
