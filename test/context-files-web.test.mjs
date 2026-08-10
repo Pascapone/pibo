@@ -476,7 +476,6 @@ test("context files refuses to migrate storage owned by another live gateway", a
 	try {
 		process.env.PIBO_HOME = root;
 		mkdirSync(managedRoot, { recursive: true });
-		writeFileSync(join(root, "gateway.pid"), String(owner.pid), "utf8");
 		const database = new DatabaseSync(metadataPath);
 		database.exec(`
 			CREATE TABLE context_files (
@@ -507,10 +506,15 @@ test("context files refuses to migrate storage owned by another live gateway", a
 		`);
 		database.close();
 
-		assert.throws(
-			() => PiboPluginRegistry.create({ plugins: [createPiboContextFilesPlugin()] }),
-			/owned by the active gateway process.*isolated PIBO_HOME/,
-		);
+		for (const pidFile of ["gateway.pid", "gateway-fallback.pid"]) {
+			rmSync(join(root, "gateway.pid"), { force: true });
+			rmSync(join(root, "gateway-fallback.pid"), { force: true });
+			writeFileSync(join(root, pidFile), String(owner.pid), "utf8");
+			assert.throws(
+				() => PiboPluginRegistry.create({ plugins: [createPiboContextFilesPlugin()] }),
+				/owned by the active gateway process.*isolated PIBO_HOME/,
+			);
+		}
 
 		const verification = new DatabaseSync(metadataPath);
 		try {

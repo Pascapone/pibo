@@ -5,7 +5,7 @@ import { dirname, extname, isAbsolute, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ContextFileProfile, ContextFileScope, ContextFileSource } from "../core/profiles.js";
 import type { PiboJsonObject } from "../core/events.js";
-import { readPidFile } from "../gateway/pidfile.js";
+import { readFallbackPidFile, readPidFile } from "../gateway/pidfile.js";
 import { PiboWebHttpError, readJsonBody, responseHtml, responseJson } from "../web/http.js";
 import type { PiboWebAppContext, PiboWebSession } from "../web/types.js";
 import { definePiboPlugin } from "./registry.js";
@@ -150,8 +150,9 @@ function assertContextFilesStorageOwnership(paths: ResolvedContextFilesPaths): v
 	const piboHome = resolve(getPiboHome());
 	const metadataPath = resolve(paths.metadataPath);
 	if (metadataPath !== piboHome && !metadataPath.startsWith(`${piboHome}${sep}`)) return;
-	const ownerPid = readPidFile();
-	if (ownerPid === undefined || ownerPid === process.pid) return;
+	const ownerPid = [readPidFile(), readFallbackPidFile()]
+		.find((pid) => pid !== undefined && pid !== process.pid);
+	if (ownerPid === undefined) return;
 	throw new Error(
 		`Context Files storage is owned by the active gateway process ${ownerPid}. ` +
 		"Use an isolated PIBO_HOME for candidate validation, or stop and activate the gateway package before migrating this storage.",
