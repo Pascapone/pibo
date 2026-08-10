@@ -1,6 +1,6 @@
 # Full Test Suite Hermeticity Triage — 2026-08-10
 
-**Status:** Implementation, local validation, and Pibo2 validation complete; push and pull request pending
+**Status:** Complete; published in upstream pull request #445
 
 **Branch:** `fix/hermetic-full-test-suite`
 
@@ -116,6 +116,7 @@ These were not part of the historical 29 because the operator's Better Auth conf
 | 2026-08-10 | Pibo2 CLI with contaminated temporary home | Active candidate `pibo mcp config init` twice from an empty cwd | First call created cwd `mcp_servers.json`; second reported it ready; pre-existing home config remained untouched. | `/tmp/pibo-hermetic-pibo2-mcp-cli.log`. |
 | 2026-08-10 | Pibo2 public and authenticated Chat paths | Health/public request, authenticated debug snapshot, authenticated bootstrap fetch, console inspection | Health 200; Chat 200 (38.9 ms total); authenticated machine-key browser rendered `Pibo Web Chat` with debug root found and 35 nodes; bootstrap 200; no console errors. | `/tmp/pibo-hermetic-pibo2-health.json`, `/tmp/pibo-hermetic-pibo2-public-timing.log`, `/tmp/pibo-hermetic-pibo2-chat-snapshot.json`, `/tmp/pibo-hermetic-pibo2-auth-bootstrap.log`, `/tmp/pibo-hermetic-pibo2-console-errors.log`. |
 | 2026-08-10 | Pibo2 authenticated Project API | Create Project, create workflow session, request default Project bootstrap | 201/201/200; workflow session absent from both `projectSessions` and session tree; selected workflow session suppressed. | `/tmp/pibo-hermetic-pibo2-project-quarantine.log`. |
+| 2026-08-10 | GitHub publication | Push topic branch and open one upstream PR | Branch `fix/hermetic-full-test-suite` pushed to `origin`; PR #445 opened against `Pascapone/pibo:dev`. | `pibo-create-upstream-pr` output in `/tmp/pibo-hermetic-pr-create.log`. |
 
 ## Completion checklist
 
@@ -125,5 +126,5 @@ These were not part of the historical 29 because the operator's Better Auth conf
 - [x] Clean `npm run build` passes and produces declared prerequisites.
 - [x] Canonical full test command passes repeatedly in isolated and contaminated host environments.
 - [x] Relevant real Pibo2 paths are validated for the exact candidate.
-- [ ] Focused changes are committed and pushed to `origin/fix/hermetic-full-test-suite`.
-- [ ] One PR exists from the fork branch to `Pascapone/pibo:dev`.
+- [x] Focused changes are committed and pushed to `origin/fix/hermetic-full-test-suite`.
+- [x] One PR exists from the fork branch to `Pascapone/pibo:dev` (#445).
