@@ -24,6 +24,7 @@ type SessionTraceLayoutProps = {
   tracePageFetching: boolean;
   onLoadMoreRawEvents: () => void;
   terminalFullscreen: boolean;
+  onOpenSessionWindow?: () => void;
   onExitTerminalFullscreen: () => void;
   headerProps: ComponentProps<typeof SessionTraceHeader>;
   projectSessionCreatePanel?: ReactNode;
@@ -51,6 +52,7 @@ export function SessionTraceLayout({
   tracePageFetching,
   onLoadMoreRawEvents,
   terminalFullscreen,
+  onOpenSessionWindow,
   onExitTerminalFullscreen,
   headerProps,
   projectSessionCreatePanel,
@@ -87,7 +89,11 @@ export function SessionTraceLayout({
         className="min-h-0 flex flex-col"
       >
         {terminalFullscreen ? (
-          <TerminalFullscreenTopBar title={headerProps.title} onExit={onExitTerminalFullscreen} />
+          <TerminalFullscreenTopBar
+            title={headerProps.title}
+            onOpenSessionWindow={onOpenSessionWindow}
+            onExit={onExitTerminalFullscreen}
+          />
         ) : (
           <SessionTraceHeader {...headerProps} />
         )}

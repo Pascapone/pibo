@@ -46,6 +46,25 @@ async function runOptimisticUserMessageScenario() {
 		assert.equal(liveNodes[2].entryId, undefined);
 		assert.equal(liveNodes[3].entryId, "keep-existing");
 
+		const canonicalLiveNodes = [
+			node("event:message_queued:turn-one", "duplicate text", {
+				entryId: "entry-a",
+				source: "transcript",
+				stableKey: "event:message_queued:turn-one",
+			}),
+			node("event:message_queued:turn-two", "duplicate text", {
+				entryId: "entry-b",
+				source: "transcript",
+				stableKey: "event:message_queued:turn-two",
+			}),
+			node("event:message_queued:turn-three", "duplicate text", {
+				source: "event-log",
+				stableKey: "event:message_queued:turn-three",
+			}),
+		];
+		annotateLiveTraceForkEntryIds(canonicalLiveNodes, index);
+		assert.equal(canonicalLiveNodes[2].entryId, undefined);
+
 		const view = {
 			piboSessionId: "ps-test",
 			nodes: [
@@ -59,6 +78,23 @@ async function runOptimisticUserMessageScenario() {
 		const reconciled = reconcileOptimisticUserMessages(view);
 		assert.notEqual(reconciled, view);
 		assert.deepEqual(reconciled.nodes.map((item) => item.id), ["persisted", "optimistic:user-message:2", "optimistic:user-message:3"]);
+
+		const canonicalView = {
+			piboSessionId: "ps-test",
+			nodes: [
+				node("event:message_queued:settled", "same prompt", {
+					source: "transcript",
+					entryId: "entry-settled",
+					stableKey: "event:message_queued:settled",
+				}),
+				node("event:message_queued:active", "same prompt", {
+					source: "event-log",
+					stableKey: "event:message_queued:active",
+				}),
+			],
+			rawEvents: [],
+		};
+		assert.equal(reconcileOptimisticUserMessages(canonicalView), canonicalView);
 
 		assert.equal(overlayIncludesOptimisticUserMessage([{ payload: { type: "message_queued", source: "user", text: "hello" } }]), true);
 		assert.equal(overlayIncludesOptimisticUserMessage([{ payload: { type: "message_steered", source: "user", text: "hello" } }]), true);

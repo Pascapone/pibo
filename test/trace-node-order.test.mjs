@@ -57,3 +57,18 @@ test("same-turn phase remains stable across projection sources", () => {
 
 	assert.deepEqual([assistant, reasoning].toSorted(compareTraceNodes).map((entry) => entry.id), ["reasoning", "assistant"]);
 });
+
+test("same-source event chronology wins across repeated turn phases", () => {
+	const laterReasoning = node("reasoning-2", {
+		type: "model.reasoning",
+		eventId: "turn-1",
+		orderKey: eventTraceOrder(5, "model.reasoning"),
+	});
+	const earlierTool = node("tool-1", {
+		type: "tool.call",
+		eventId: "turn-1",
+		orderKey: eventTraceOrder(4, "tool.call"),
+	});
+
+	assert.deepEqual([laterReasoning, earlierTool].toSorted(compareTraceNodes).map((entry) => entry.id), ["tool-1", "reasoning-2"]);
+});

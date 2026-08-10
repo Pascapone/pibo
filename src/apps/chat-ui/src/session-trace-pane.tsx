@@ -54,6 +54,10 @@ import {
   isWorkflowBackedProjectSession,
 } from "./projects/project-session-workflow";
 import { errorMessage } from "./error-message";
+import {
+  canOpenDesktopPwaSessionWindow,
+  openCurrentPwaSessionWindow,
+} from "./pwa-session-window";
 
 export function SessionTracePane({
   bootstrap,
@@ -176,6 +180,12 @@ export function SessionTracePane({
   const deliverySendIdsRef = useRef(new Set<string>());
   const queueButtonRef = useRef<HTMLButtonElement>(null);
   const selectedBackendPiboSessionId = selectedSessionBackendId(selectedPiboSessionId);
+  const openSessionWindowAvailable = Boolean(selectedBackendPiboSessionId) && canOpenDesktopPwaSessionWindow();
+  const openSelectedSessionWindow = useCallback(() => {
+    if (openCurrentPwaSessionWindow()) return;
+    onError("The browser blocked the new Pibo window.");
+  }, [onError]);
+  const onOpenSessionWindow = openSessionWindowAvailable ? openSelectedSessionWindow : undefined;
   const {
     baseTraceView,
     liveTraceOverlay: selectedLiveTraceOverlay,
@@ -464,6 +474,7 @@ export function SessionTracePane({
       tracePageFetching={showRawEvents ? rawEventsQuery.isFetching : tracePageQuery.isFetching}
       onLoadMoreRawEvents={loadMoreRawEvents}
       terminalFullscreen={terminalFullscreen}
+      onOpenSessionWindow={onOpenSessionWindow}
       onExitTerminalFullscreen={onExitTerminalFullscreen ?? (() => undefined)}
       headerProps={{
         title: resolveSessionTraceTitle({
@@ -487,6 +498,7 @@ export function SessionTracePane({
         activeViewId,
         terminalFullscreenAvailable: currentSessionView.id === "terminal" && (activeViewId ?? sessionViewId) === "terminal",
         onEnterTerminalFullscreen,
+        onOpenSessionWindow,
         showRawEvents,
         showThinking,
         expandThinking,

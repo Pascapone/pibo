@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
-import type { PiboOutputEvent } from "../../core/events.js";
+import type { PiboOutputEvent, PiboSessionStatus } from "../../core/events.js";
 import { patchTraceViewWithEvent } from "../../shared/trace-engine.js";
+import type { TraceMessageTurnTiming } from "../../shared/trace-event-projection.js";
 import type { ChatWebStoredEvent } from "../../shared/trace-types.js";
 import type { PiboSessionTraceView, PiboWebSessionStatus } from "./trace.js";
 
@@ -30,6 +31,26 @@ export function withRawTraceTail(trace: PiboSessionTraceView, rawEvents: PiboSes
 	return { ...trace, rawEvents };
 }
 
+export function traceProjectionStatus(
+	snapshots: readonly PiboOutputEvent[],
+	status?: PiboWebSessionStatus,
+	turnTimings: readonly TraceMessageTurnTiming[] = [],
+	runtimeStatus?: PiboSessionStatus | null,
+): PiboWebSessionStatus {
+	if (snapshots.length) return "running";
+	if (runtimeStatus !== undefined) {
+		if (runtimeStatus && (runtimeStatus.processing || runtimeStatus.streaming || runtimeStatus.queuedMessages > 0)) {
+			return "running";
+		}
+		return status === "error" ? "error" : "idle";
+	}
+	if (status !== undefined) return status;
+	const currentTurn = [...turnTimings].reverse().find(
+		(timing) => timing.userMessageType !== "message_steered" && (timing.userText !== undefined || timing.startedAt !== undefined),
+	);
+	return currentTurn !== undefined && currentTurn.completedAt === undefined ? "running" : "idle";
+}
+
 export function liveSnapshotVersion(snapshots: readonly PiboOutputEvent[]): string {
 	if (snapshots.length === 0) return "";
 	const hash = createHash("sha1");
@@ -47,15 +68,62 @@ export function storedLiveSnapshotEvents(input: {
 	now?: string;
 }): ChatWebStoredEvent<PiboOutputEvent>[] {
 	const createdAt = input.now ?? new Date().toISOString();
-	return input.snapshots.map((snapshot, index) => ({
+	const groupIndexByEventId = new Map<string, number>();
+	const orderedSnapshots = input.snapshots
+		.map((snapshot, index) => {
+			const eventId = snapshotEventId(snapshot);
+			const groupKey = eventId ?? `snapshot:${index}`;
+			let groupIndex = groupIndexByEventId.get(groupKey);
+			if (groupIndex === undefined) {
+				groupIndex = index;
+				groupIndexByEventId.set(groupKey, groupIndex);
+			}
+			return { snapshot, index, groupIndex };
+		})
+		.sort((left, right) =>
+			left.groupIndex - right.groupIndex ||
+			liveSnapshotPhaseRank(left.snapshot) - liveSnapshotPhaseRank(right.snapshot) ||
+			left.index - right.index
+		);
+	return orderedSnapshots.map(({ snapshot }, index) => ({
 		id: `live-snapshot:${input.piboSessionId}:${index}:${liveSnapshotVersion([snapshot])}`,
 		piboSessionId: input.piboSessionId,
 		eventSequence: input.lastEventSequence + index + 1,
-		eventId: "eventId" in snapshot && typeof snapshot.eventId === "string" ? snapshot.eventId : undefined,
+		eventId: snapshotEventId(snapshot),
 		type: snapshot.type,
 		createdAt,
 		payload: snapshot,
 	}));
+}
+
+function snapshotEventId(snapshot: PiboOutputEvent): string | undefined {
+	return "eventId" in snapshot && typeof snapshot.eventId === "string" ? snapshot.eventId : undefined;
+}
+
+function liveSnapshotPhaseRank(snapshot: PiboOutputEvent): number {
+	switch (snapshot.type) {
+		case "message_queued":
+		case "message_steered":
+			return 0;
+		case "message_started":
+		case "message_finished":
+			return 2;
+		case "thinking_started":
+		case "thinking_delta":
+		case "thinking_finished":
+			return 3;
+		case "tool_call":
+		case "tool_execution_started":
+		case "tool_execution_updated":
+		case "tool_execution_finished":
+		case "subagent_session":
+			return 4;
+		case "assistant_delta":
+		case "assistant_message":
+			return 8;
+		default:
+			return 9;
+	}
 }
 
 export function withLiveSnapshots(

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Brain, Bug, ChevronsDown, ChevronsUp, EyeOff, Maximize2 } from "lucide-react";
+import { Brain, Bug, ChevronsDown, ChevronsUp, EyeOff, Maximize2, Plus } from "lucide-react";
 import { copyTextToClipboard } from "./clipboard";
 import type {
   getChatSessionView,
@@ -38,6 +38,7 @@ export function SessionTraceHeader({
   activeViewId,
   terminalFullscreenAvailable,
   onEnterTerminalFullscreen,
+  onOpenSessionWindow,
   showRawEvents,
   showThinking,
   expandThinking,
@@ -65,6 +66,7 @@ export function SessionTraceHeader({
   activeViewId?: string;
   terminalFullscreenAvailable?: boolean;
   onEnterTerminalFullscreen?: () => void;
+  onOpenSessionWindow?: () => void;
   showRawEvents: boolean;
   showThinking: boolean;
   expandThinking: boolean;
@@ -151,6 +153,18 @@ export function SessionTraceHeader({
           onHidePanel={onHideWebAnnotationsPanel}
           onError={onError}
         />
+        {onOpenSessionWindow ? (
+          <button
+            type="button"
+            onClick={onOpenSessionWindow}
+            title="Open selected session in new window"
+            aria-label="Open selected session in new window"
+            data-pibo-debug="open-session-window"
+            className="h-8 w-8 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 transition-colors hover:border-[#11a4d4] hover:text-[#11a4d4]"
+          >
+            <Plus size={15} />
+          </button>
+        ) : null}
         <div
           role="group"
           aria-label="Session views"

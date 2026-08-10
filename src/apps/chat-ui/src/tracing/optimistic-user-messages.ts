@@ -27,16 +27,28 @@ export function collectPersistedUserMessageIndex(nodes: readonly PiboTraceNode[]
 
 export function annotateLiveTraceForkEntryIds(liveNodes: PiboTraceNode[], persistedUserMessageIndex: ReadonlyMap<string, readonly string[]>): void {
 	if (!persistedUserMessageIndex.size) return;
+	const claimedEntryIdsByText = new Map<string, Set<string>>();
+	forEachPiboTraceNode(liveNodes, (node) => {
+		if (node.type !== "user.message" || !node.entryId) return;
+		const text = traceNodeText(node);
+		const claimed = claimedEntryIdsByText.get(text) ?? new Set<string>();
+		claimed.add(node.entryId);
+		claimedEntryIdsByText.set(text, claimed);
+	});
 	const nextIndexByText = new Map<string, number>();
 	forEachPiboTraceNode(liveNodes, (node) => {
 		if (node.type !== "user.message" || node.entryId) return;
 		const text = traceNodeText(node);
 		const entryIds = persistedUserMessageIndex.get(text);
 		if (!entryIds?.length) return;
-		const nextIndex = nextIndexByText.get(text) ?? 0;
+		const claimed = claimedEntryIdsByText.get(text) ?? new Set<string>();
+		let nextIndex = nextIndexByText.get(text) ?? 0;
+		while (nextIndex < entryIds.length && claimed.has(entryIds[nextIndex]!)) nextIndex += 1;
 		const entryId = entryIds[nextIndex];
 		if (!entryId) return;
 		node.entryId = entryId;
+		claimed.add(entryId);
+		claimedEntryIdsByText.set(text, claimed);
 		nextIndexByText.set(text, nextIndex + 1);
 	});
 }
@@ -55,7 +67,11 @@ export function isUserMessageQueuedEvent(event: ChatWebStoredEvent): event is Ch
 
 function collectPersistedUserMessageText(nodes: readonly PiboTraceNode[], byText: Map<string, number>): void {
 	for (const node of nodes) {
-		if (node.type === "user.message" && !isOptimisticUserMessageNode(node)) {
+		if (
+			node.type === "user.message" &&
+			!isOptimisticUserMessageNode(node) &&
+			!hasCanonicalUserMessageIdentity(node)
+		) {
 			const text = traceNodeText(node);
 			if (text) byText.set(text, (byText.get(text) ?? 0) + 1);
 		}
@@ -84,6 +100,12 @@ function dropReplacedOptimisticUserMessages(
 		next.push(childResult.changed ? { ...node, children: childResult.nodes } : node);
 	}
 	return { nodes: changed ? next : nodes as PiboTraceNode[], changed };
+}
+
+function hasCanonicalUserMessageIdentity(node: PiboTraceNode): boolean {
+	return [node.id, node.stableKey].some((value) =>
+		value?.startsWith("event:message_queued:") || value?.startsWith("event:message_steered:"),
+	);
 }
 
 function isOptimisticUserMessageNode(node: PiboTraceNode): boolean {

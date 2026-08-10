@@ -15,7 +15,8 @@ test("useStickyVirtuoso detaches synchronously for upward intent and permits exp
 });
 
 test("useStickyVirtuoso treats scroll position changes as directional only during user intent", () => {
-	assert.match(source, /stickyScrollPositionDirection\(\{\n\t\t\thasUserScrollIntent: userScrollIntentRef\.current,/);
+	assert.match(source, /const hasUserScrollIntent = userScrollIntentRef\.current \|\| pointerScrollMode !== undefined/);
+	assert.match(source, /stickyScrollPositionDirection\(\{\n\t\t\thasUserScrollIntent,/);
 	assert.doesNotMatch(source, /previousScrollTop !== undefined && scrollTop < previousScrollTop - 1/);
 	assert.match(source, /if \(userScrollIntentRef\.current\) setSticky\(false\);/);
 	assert.doesNotMatch(source, /if \(userScrollIntentRef\.current \|\| scrollingAwayFromBottom\) setSticky\(false\);/);
@@ -33,6 +34,16 @@ test("useStickyVirtuoso uses explicit anchor and Virtuoso prepend contracts", ()
 	assert.match(source, /firstItemIndex,/);
 	assert.match(source, /itemsRendered,/);
 	assert.match(source, /normalizeRange,/);
+});
+
+test("useStickyVirtuoso tracks descendant middle autoscroll and deferrable scrollbar drags", () => {
+	assert.match(source, /if \(input\.button === 1\) return "middle"|stickyPointerScrollMode/);
+	assert.match(source, /targetIsScroller: event\.target === target/);
+	assert.match(source, /window\.addEventListener\("pointerup", finishScrollbarDrag/);
+	assert.match(source, /onScrollbarDragChange\?\.\(true\)/);
+	assert.match(source, /onScrollbarDragChange\?\.\(false\)/);
+	assert.match(source, /onUserScrollIntent\?\.\(undefined, scrollPositionDirection\)/);
+	assert.match(source, /MIDDLE_AUTOSCROLL_INACTIVITY_MS/);
 });
 
 test("useStickyVirtuoso no longer applies blind scrollHeight growth compensation", () => {
