@@ -18,7 +18,7 @@ export type ToolProfile = {
 	definition?: ToolDefinition;
 	createDefinition?: (context: ToolDefinitionContext) => ToolDefinition;
 	providerTool?: ProviderToolProfile;
-	builtInPiboTool?: "runtime";
+	builtInPiboTool?: "runtime" | "codex_browser";
 };
 
 export type ProviderToolProfile = WebSearchProviderToolProfile;
