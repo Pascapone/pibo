@@ -147,6 +147,7 @@ export class PiboLoopService {
 		}
 		const status = currentGoalStatus(existing);
 		if (status === 'complete') throw new Error('The current Goal is completing; wait for its active run to finish before creating another Goal');
+		if (status === 'blocked') throw new Error('The current Goal is blocked; explicitly reopen it before updating or resuming it');
 		if (status === 'budget_limited') throw new Error('The current Goal is budget limited; increase or clear its token budget before updating and resuming it');
 		const goal = this.store.updateJob(existing.id, {
 			name: goalName(normalizedObjective),

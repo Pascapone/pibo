@@ -124,6 +124,25 @@ test("session Goal pause is graceful and resume continues the same Loop", () => 
 	}
 });
 
+test("session Goal objectives cannot bypass explicit terminal reopen", () => {
+	const harness = createHarness();
+	try {
+		const created = harness.service.setSessionGoal(harness.session.id, "Investigate the blocker").goal;
+		const blocked = harness.store.updateGoalStatus(created.id, "blocked");
+		assert.equal(blocked.state.goalStatus, "blocked");
+		assert.equal(blocked.enabled, false);
+
+		assert.throws(
+			() => harness.service.setSessionGoal(harness.session.id, "Try a different approach"),
+			/explicitly reopen it/,
+		);
+		assert.equal(harness.store.getJob(created.id).state.goalStatus, "blocked");
+		assert.equal(harness.store.getJob(created.id).enabled, false);
+	} finally {
+		harness.close();
+	}
+});
+
 test("session Goal pause and resume reject sessions without a Loop", () => {
 	const harness = createHarness();
 	try {

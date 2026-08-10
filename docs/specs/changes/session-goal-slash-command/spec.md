@@ -27,7 +27,7 @@ Add `/goal` as a session command that creates or updates the session's Goal Loop
 ### Out of Scope
 
 - Changing Goal token budgets, reserves, stop policies, model overrides, or resource configuration through `/goal`.
-- Reopening completed or budget-limited Goals through `/goal resume`.
+- Reopening completed, blocked, or budget-limited Goals through `/goal`.
 - Aborting the current Goal turn when pausing.
 
 ## Requirements
