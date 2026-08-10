@@ -19,6 +19,7 @@ import type {
 import type { SlashCommand } from "./chat-commands";
 import type { ChatSessionViewId } from "./session-views/types";
 import type { ChatMessageDelivery } from "./api-chat-sessions";
+import { uploadChatFiles } from "./api-chat-files";
 import { getLoopSessionGoal } from "./api-loops";
 import {
   getChatSessionView,
@@ -293,6 +294,18 @@ export function SessionTracePane({
     selectedPiboSessionId,
     selectedRoomArchived,
   );
+  const terminalFileDropEnabled =
+    !composerDisabled &&
+    currentSessionView.id === "terminal" &&
+    (activeViewId ?? sessionViewId) === "terminal";
+  const handleTerminalFilesDropped = useCallback(async (files: readonly File[]) => {
+    try {
+      const result = await uploadChatFiles(files);
+      attachUploadedFiles(result.files);
+    } catch (caught) {
+      onError(errorMessage(caught));
+    }
+  }, [attachUploadedFiles, onError]);
 
   const headerPiboSessionId =
     currentTraceView?.piboSessionId ?? selectedPiboSessionId ?? "";
@@ -485,6 +498,8 @@ export function SessionTracePane({
       tracePageFetching={showRawEvents ? rawEventsQuery.isFetching : tracePageQuery.isFetching}
       onLoadMoreRawEvents={loadMoreRawEvents}
       terminalFullscreen={terminalFullscreen}
+      terminalFileDropEnabled={terminalFileDropEnabled}
+      onTerminalFilesDropped={handleTerminalFilesDropped}
       onOpenSessionWindow={onOpenSessionWindow}
       onExitTerminalFullscreen={onExitTerminalFullscreen ?? (() => undefined)}
       headerProps={{
