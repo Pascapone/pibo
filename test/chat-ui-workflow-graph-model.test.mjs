@@ -8,10 +8,8 @@ import { pathToFileURL } from "node:url";
 import test from "node:test";
 
 const execFileAsync = promisify(execFile);
-const tsxCommand = process.platform === "win32" ? "cmd.exe" : "npx";
-const tsxArgsPrefix = process.platform === "win32" ? ["/c", "npx.cmd"] : [];
-const tsxCwd = process.env.PIBO_TEST_WORKSPACE ?? (process.platform === "win32" ? process.cwd() : "/workspace");
-const workflowGraphModelModule = pathToFileURL(resolve(tsxCwd, "src/apps/chat-ui/src/workflows/workflow-graph-model.ts")).href;
+const testWorkspace = process.env.PIBO_TEST_WORKSPACE ?? process.cwd();
+const workflowGraphModelModule = pathToFileURL(resolve(testWorkspace, "src/apps/chat-ui/src/workflows/workflow-graph-model.ts")).href;
 
 async function runWorkflowGraphModelScenario() {
 	const script = `
@@ -181,8 +179,8 @@ async function runWorkflowGraphModelScenario() {
 	const scenarioPath = join(tempDir, "scenario.mjs");
 	await writeFile(scenarioPath, script);
 	try {
-		return await execFileAsync(tsxCommand, [...tsxArgsPrefix, "tsx", scenarioPath], {
-			cwd: tsxCwd,
+		return await execFileAsync(process.execPath, ["--import", "tsx", scenarioPath], {
+			cwd: testWorkspace,
 			maxBuffer: 1024 * 1024,
 		});
 	} finally {

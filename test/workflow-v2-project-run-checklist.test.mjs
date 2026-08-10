@@ -98,11 +98,10 @@ test("Workflow V2 Project run-view checklist covers sidebar routing, inspection,
 	]);
 
 	assertAllMatch(webChannelTests, [
-		["Web-channel test covers real Project sidebar descendants", /chat web app project bootstrap includes real workflow session descendants only/],
-		["Web-channel test excludes unrelated workflow-node sessions", /assert\.ok\(!flattened\.some\(\(node\) => node\.piboSessionId === unrelated\.id\)\)/],
-		["Web-channel test returns all V2 workflow session kind markers", /rootNode\.workflowSessionKind, "main_workflow"[\s\S]*workflowSessionKind, "nested_workflow"[\s\S]*workflowSessionKind, "agent_node"[\s\S]*workflowSessionKind, "subagent"/],
-		["Web-channel test exposes live workflow definition links", /workflowDefinitionLink\.status, "live"[\s\S]*workflowDefinitionLink\.href, "\/apps\/chat\/workflows\/view\/standard-project\/1\.0\.0"/],
-		["Web-channel test exposes snapshot-only definition-deleted links", /workflowDefinitionLink\.status, "snapshot_only_definition_deleted"[\s\S]*workflowDefinitionLink\.href, undefined[\s\S]*tombstoneLabel, \/Definition deleted\//],
+		["Web-channel test covers workflow-tree quarantine from default Project bootstrap", /chat web app project bootstrap excludes quarantined workflow session trees/],
+		["Web-channel test excludes main workflow sessions", /bootstrapPayload\.sessions\.some\(\(node\) => node\.piboSessionId === root\.id\), false/],
+		["Web-channel test excludes nested workflow sessions", /bootstrapPayload\.sessions\.some\(\(node\) => node\.piboSessionId === nested\.id\), false/],
+		["Web-channel test excludes agent-node and subagent sessions", /bootstrapPayload\.sessions\.some\(\(node\) => node\.piboSessionId === agent\.id\), false[\s\S]*bootstrapPayload\.sessions\.some\(\(node\) => node\.piboSessionId === subagent\.id\), false/],
 		["Web-channel test proves deleted-definition historical inspection uses the snapshot", /historicalRunPayload\.snapshot\.effectiveDefinition, sessionPayload\.snapshot\.effectiveDefinition/],
 	]);
 });
@@ -128,8 +127,8 @@ test("Workflow V2 Project human-action checklist covers accepted actions and blo
 	]);
 
 	assertAllMatch(webChannelTests, [
-		["Web-channel test lists and resolves persisted Project workflow wait tokens", /chat web app lists and resolves Project workflow human wait tokens/],
-		["Web-channel test renders persisted pending wait tokens", /pendingHumanActions\.length, 6/],
+		["Web-channel test resolves persisted Project workflow wait tokens through preserved APIs", /chat web app resolves Project workflow human wait tokens through preserved workflow APIs/],
+		["Web-channel test keeps workflow wait tokens out of default Project bootstrap", /bootstrapPayload\.projectSessions\.some\(\(session\) => session\.piboSessionId === createdPayload\.session\.id\), false/],
 		["Web-channel test accepts approve actions", /approvePayload\.action\.kind, "approve"[\s\S]*approvePayload\.waitToken\.status, "resumed"/],
 		["Web-channel test accepts reject actions", /rejectPayload\.action\.kind, "reject"/],
 		["Web-channel test accepts resume actions with payload", /resumePayload\.action\.kind, "resume"[\s\S]*resumePayload\.action\.payload, \{ comment: "Looks good" \}/],

@@ -165,7 +165,7 @@ test("Workflow V2 completeness covers archive/delete lifecycle UI and deleted-de
 	assertAllMatch(webChannelTests, [
 		["archive API proves identity-scope archive and selection hiding", /workflow archive API applies at workflow identity scope and hides archived workflows from selection[\s\S]*archivePayload\.archiveState\.workflowId, "ui-review-workflow"[\s\S]*defaultCatalogPayload\.workflows\.some\(\(workflow\) => workflow\.id === "ui-review-workflow"\), false/],
 		["delete API proves tombstone and live-catalog removal", /workflow delete API tombstones UI workflows while preserving Project snapshots[\s\S]*deletePayload\.deleted, true[\s\S]*defaultCatalogPayload\.workflows\.some\(\(workflow\) => workflow\.id === "ui-review-workflow"\), false/],
-		["delete API proves Project run snapshot fallback", /projectSession\.workflowDefinitionLink\.status, "snapshot_only_definition_deleted"[\s\S]*historicalRunPayload\.snapshot\.id, sessionPayload\.snapshot\.id[\s\S]*historicalRunPayload\.snapshot\.effectiveDefinition, sessionPayload\.snapshot\.effectiveDefinition/],
+		["delete API proves Project run snapshot fallback through the preserved historical API", /historicalRunPayload\.snapshot\.id, sessionPayload\.snapshot\.id[\s\S]*historicalRunPayload\.snapshot\.effectiveDefinition, sessionPayload\.snapshot\.effectiveDefinition/],
 	]);
 });
 
@@ -188,7 +188,7 @@ test("Workflow V2 lifecycle tests cover archive filters, delete tombstones, and 
 		["delete requires authentication and exact workflow id confirmation", /unauthenticatedDelete\.status, 401[\s\S]*badConfirmation\.status, 400[\s\S]*Type "ui-review-workflow"/],
 		["delete tombstone captures last-known workflow metadata", /deletePayload\.tombstone\.lastKnownTitle, "UI Review Workflow"[\s\S]*deletePayload\.tombstone\.lastKnownVersion, "2\.0\.0"[\s\S]*lastDefinitionHash/],
 		["deleted workflows are absent from catalog, picker, version history, inspect, and duplicate surfaces", /defaultCatalogPayload\.workflows\.some\(\(workflow\) => workflow\.id === "ui-review-workflow"\), false[\s\S]*archivedCatalogPayload\.workflows\.some\(\(workflow\) => workflow\.id === "ui-review-workflow"\), false[\s\S]*pickerPayload\.options\.some\(\(option\) => option\.id === "ui-review-workflow"\), false[\s\S]*historyPayload\.options\.some\(\(option\) => option\.id === "ui-review-workflow"\), false[\s\S]*inspectDeletedResponse\.status, 404[\s\S]*duplicateDeletedResponse\.status, 404/],
-		["Project bootstrap renders deleted-definition snapshot-only links", /workflowDefinitionLink\.status, "snapshot_only_definition_deleted"[\s\S]*workflowDefinitionLink\.href, undefined/],
+		["default Project bootstrap excludes deleted workflow-backed sessions", /assert\.deepEqual\(bootstrapPayload\.projectSessions, \[\]\)/],
 		["historical restart returns the existing run and immutable saved snapshot", /historicalRunPayload\.alreadyStarted, true[\s\S]*historicalRunPayload\.snapshot\.id, sessionPayload\.snapshot\.id[\s\S]*historicalRunPayload\.snapshot\.effectiveDefinition, sessionPayload\.snapshot\.effectiveDefinition/],
 	]);
 

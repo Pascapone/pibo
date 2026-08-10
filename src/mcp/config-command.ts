@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import {
   type McpServersConfig,
@@ -208,9 +209,10 @@ export async function configCommand(
   }
 
   if (options.action === 'init') {
-    const existingPath = findConfigPath(options.configPath);
-    const path = await ensureConfigExists(options.configPath);
-    console.log(existingPath ? `MCP config ready: ${path}` : `Created MCP config: ${path}`);
+    const preferredPath = getPreferredConfigPath(options.configPath);
+    const alreadyExists = existsSync(preferredPath);
+    const path = await ensureConfigExists(preferredPath);
+    console.log(alreadyExists ? `MCP config ready: ${path}` : `Created MCP config: ${path}`);
     return;
   }
 
