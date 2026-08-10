@@ -48,6 +48,7 @@ test("Markdown editor exposes the standard rich Markdown surface and source esca
 		["frontmatter insertion", /<InsertFrontmatter \/>/],
 		["strikethrough", /StrikeThroughSupSubToggles options=\{\["Strikethrough"\]\}/],
 		["Markdown shortcuts", /markdownShortcutPlugin\(\)/],
+		["smart typing guidance", /Type # \+ Space for a heading or - \+ Space for a list/],
 		["source mode plugin", /diffSourcePlugin\(\{ viewMode: "rich-text" \}\)/],
 		["rich and source controls", /DiffSourceToggleWrapper options=\{\["rich-text", "source"\]\}/],
 		["raw fallback", /markdown-editor__plain-textarea/],
@@ -83,7 +84,12 @@ test("Markdown editor remains usable in narrow host panels and focused mode", as
 		["rich editor owns an internal scroll area", /\.mdxeditor-rich-text-editor \{[\s\S]*overflow: auto;[\s\S]*scrollbar-gutter: stable/],
 		["source mode owns an internal scroll area", /\.mdxeditor-diff-source-wrapper \{[\s\S]*overflow: auto;[\s\S]*scrollbar-gutter: stable/],
 		["narrow toolbars wrap instead of hiding commands", /@container \(max-width: 46rem\)[\s\S]*\.mdxeditor-toolbar\[role="toolbar"\] \{[\s\S]*flex-wrap: wrap/],
+		["narrow toolbar keeps source controls beside formatting rows", /\.mdxeditor-toolbar > div:first-child \{[\s\S]*flex: 1 1 calc\(100% - 5rem\)[\s\S]*_diffSourceToggleWrapper_[\s\S]*margin-left: 0 !important/],
 		["content has a readable maximum width", /width: min\(100%, 56rem\)/],
+		["unordered lists render visible markers", /\.markdown-editor__content ul \{[\s\S]*list-style-type: disc/],
+		["ordered lists render visible markers", /\.markdown-editor__content ol \{[\s\S]*list-style-type: decimal/],
+		["nested list markers remain distinct", /ul ul \{[\s\S]*list-style-type: circle[\s\S]*ul ul ul \{[\s\S]*list-style-type: square/],
+		["toolbar icons use crisp even-pixel sizing", /width: 20px !important;[\s\S]*height: 20px !important;[\s\S]*opacity: 1;[\s\S]*shape-rendering: geometricPrecision/],
 		["keyboard focus is visible", /:focus-visible[\s\S]*outline: 2px solid #11a4d4/],
 	]);
 	assert.match(contextStyles, /@media \(max-width: 1180px\)[\s\S]*\.context-files-panel \{[\s\S]*position: absolute/);
