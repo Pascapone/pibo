@@ -78,6 +78,8 @@ export type PiboSessionRouterOptions = Omit<
 	messagePreflight?: PiboMessagePreflight;
 	/** Reconcile persisted turns left active by a previous authoritative gateway runtime. */
 	recoverInterruptedRuntimeState?: boolean;
+	/** Runtime identifier included in authoritative recovery diagnostics. */
+	runtimeInstanceId?: string;
 	/** Maximum time to await one routed runtime disposal before forcing terminal ownership release. */
 	routedSessionDisposeTimeoutMs?: number;
 };
@@ -302,6 +304,9 @@ export class PiboSessionRouter {
 				recoveredRuns: this.runRegistry.listRecoveredRuns(),
 			}) ?? []
 			: [];
+		if (recoveredRuntimeState.length > 0 && options.runtimeInstanceId) {
+			console.error(`[pibo] authoritative runtime ${options.runtimeInstanceId} recovered ${recoveredRuntimeState.length} interrupted turn(s)`);
+		}
 		for (const recovery of recoveredRuntimeState) {
 			const session = this.sessionStore.get(recovery.event.piboSessionId);
 			if (session) this.signalRegistry.project({ type: "session_created", session });

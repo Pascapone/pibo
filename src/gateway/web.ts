@@ -228,6 +228,7 @@ export async function runWebGatewayServer(options: WebGatewayServerOptions = {})
 		const pluginRegistry = resolvedOptions.pluginRegistry ?? createWebPiboPluginRegistry(resolvedOptions);
 		server = new PiboGatewayServer({
 			...resolvedOptions,
+			authoritativeRuntime: resolvedOptions.authoritativeRuntime ?? true,
 			pluginRegistry,
 			resourceReaper: resolveGatewayResourceReaperOptions(resolvedOptions),
 			loopStorePath: resolvedOptions.chat?.ralphStorePath,
