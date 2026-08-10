@@ -431,7 +431,7 @@ export const MarkdownEditor = memo(
 					setEditorMode("plain");
 				}}
 				contentEditableClassName="markdown-editor__content"
-				placeholder={<span>Start writing Markdown…</span>}
+				placeholder={<span>Type # + Space for a heading or - + Space for a list…</span>}
 				overlayContainer={overlayContainer}
 				plugins={plugins}
 			/>

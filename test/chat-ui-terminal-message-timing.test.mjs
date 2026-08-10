@@ -271,7 +271,7 @@ test("duration formatting does not wrap after 24 hours", () => {
 
 test("Compact Terminal renders timing only on message rows and keeps live updates silent", () => {
 	const source = fs.readFileSync(path.resolve("src/apps/chat-ui/src/session-views/compact-terminal/CompactTerminalSessionView.tsx"), "utf8");
-	assert.match(source, /Footer: isStreaming \? \(\) => <TerminalStreamingFooter startedAt=\{activeTurnStartedAt\} \/> : undefined/);
+	assert.match(source, /Footer: isStreaming \|\| showGoalIndicator[\s\S]*TerminalStreamingFooter startedAt=\{activeTurnStartedAt\} isWorking=\{isStreaming\} goal=\{sessionGoal\}/);
 	assert.match(source, /components=\{virtuosoComponents\}/);
 	assert.doesNotMatch(source, /\{isStreaming \? <TerminalStreamingFooter startedAt=\{activeTurnStartedAt\} \/> : null\}/);
 	assert.match(source, /useSessionActivity\(\{/);
@@ -279,7 +279,8 @@ test("Compact Terminal renders timing only on message rows and keeps live update
 	assert.match(source, /const isStreaming = sessionActivity\.isTurnActive/);
 	assert.doesNotMatch(source, /useStableActiveTurn|findLatestActiveTurnTerminal|selectedTrace\?\.status/);
 	assert.match(source, /data-pibo-component="TerminalStreamingFooter"/);
-	assert.match(source, /aria-label="Working"[\s\S]*aria-hidden="true"/);
+	assert.match(source, /aria-label=\{footerAriaLabel\}[\s\S]*aria-hidden="true"/);
+	assert.match(source, /justify-between[\s\S]*compact-terminal-working-label[\s\S]*SessionGoalIndicator/, "Working and Goal status should share the same right-aligned footer div");
 	assert.match(source, /const WORKING_LABEL = "Working\.\.\."/);
 	assert.match(source, /<span className="compact-terminal-working-label">\{WORKING_LABEL\}<\/span>/);
 	assert.doesNotMatch(source, /useWorkingScramble|WORKING_SCRAMBLE|randomAsciiChar/);
