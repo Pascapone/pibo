@@ -44,6 +44,35 @@ test("Loop API defaults to goal and the Ralph alias defaults to legacy mode", as
 	}
 });
 
+test("Loop API resolves the Goal associated with a Pibo Session", async () => {
+	const store = new PiboLoopStore({ path: ":memory:" });
+	try {
+		const active = store.createSessionGoal({
+			target: { kind: "default-chat" },
+			profile: "base",
+			prompt: "keep pursuing the objective",
+			initialPiboSessionId: "ps_goal_indicator",
+		}, new Date("2026-08-10T10:00:00.000Z"));
+
+		const activeResponse = await handleChatLoopApiRequest(options(store, new Request("http://localhost/api/chat/loops/session-goal?piboSessionId=ps_goal_indicator")));
+		assert.equal(activeResponse?.status, 200);
+		const activePayload = await activeResponse.json();
+		assert.equal(activePayload.goal.id, active.id);
+		assert.equal(activePayload.goal.state.goalStatus, "active");
+
+		store.requestStop(active.id, new Date("2026-08-10T10:05:57.000Z"));
+		const pausedResponse = await handleChatLoopApiRequest(options(store, new Request("http://localhost/api/chat/loops/session-goal?piboSessionId=ps_goal_indicator")));
+		const pausedPayload = await pausedResponse.json();
+		assert.equal(pausedPayload.goal.id, active.id);
+		assert.equal(pausedPayload.goal.state.goalStatus, "paused");
+
+		const missingResponse = await handleChatLoopApiRequest(options(store, new Request("http://localhost/api/chat/loops/session-goal?piboSessionId=ps_without_goal")));
+		assert.deepEqual(await missingResponse.json(), { goal: null });
+	} finally {
+		store.close();
+	}
+});
+
 function jsonRequest(url, body) {
 	return new Request(url, {
 		method: "POST",

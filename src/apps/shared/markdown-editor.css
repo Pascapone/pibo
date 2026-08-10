@@ -264,9 +264,39 @@
 	padding-left: 1.7rem;
 }
 
+.markdown-editor__content ul {
+	list-style-type: disc;
+}
+
+.markdown-editor__content ol {
+	list-style-type: decimal;
+}
+
+.markdown-editor__content ul ul {
+	list-style-type: circle;
+}
+
+.markdown-editor__content ul ul ul {
+	list-style-type: square;
+}
+
+.markdown-editor__content ol ol {
+	list-style-type: lower-alpha;
+}
+
 .markdown-editor__content li {
 	margin: 0.28rem 0;
 	padding-left: 0.18rem;
+}
+
+.markdown-editor__content li[role="checkbox"] {
+	padding-left: 1.75rem;
+	list-style-type: none;
+}
+
+.markdown-editor__content li::marker {
+	color: #7dd3fc;
+	font-weight: 700;
 }
 
 .markdown-editor__content li > ul,
@@ -474,11 +504,13 @@
 .markdown-editor-shell [class*="_selectTrigger_"] svg,
 .markdown-editor-shell [class*="_toolbarNodeKindSelectTrigger_"] svg,
 .markdown-editor-shell [class*="_toolbarButtonSelectTrigger_"] svg {
-	width: 17px !important;
-	height: 17px !important;
+	width: 20px !important;
+	height: 20px !important;
+	flex: 0 0 auto;
 	color: currentColor !important;
 	stroke: currentColor !important;
-	opacity: 0.95;
+	opacity: 1;
+	shape-rendering: geometricPrecision;
 }
 
 .markdown-editor-shell [class*="_iconButton_"]:hover,
@@ -563,7 +595,7 @@
 	box-shadow: inset 0 0 0 2px rgb(17 164 212 / 0.55);
 }
 
-@container (max-width: 46rem) {
+@container (max-width: 48rem) {
 	.markdown-editor__utility-bar {
 		padding-left: 0.55rem;
 	}
@@ -590,10 +622,17 @@
 
 	.markdown-editor-shell .mdxeditor-toolbar > div:first-child {
 		display: flex;
-		width: 100%;
+		width: auto;
+		flex: 1 1 calc(100% - 5rem);
 		flex-wrap: wrap;
 		align-items: center;
 		gap: 0.35rem;
+	}
+
+	.markdown-editor-shell [class*="_diffSourceToggleWrapper_"] {
+		flex: 0 0 auto;
+		align-self: center;
+		margin-left: 0 !important;
 	}
 
 	.markdown-editor__content {

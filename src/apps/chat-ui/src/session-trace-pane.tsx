@@ -7,6 +7,7 @@ import {
   type ReactNode,
   type SetStateAction,
 } from "react";
+import { useQuery } from "@tanstack/react-query";
 import type {
   BootstrapData,
   PiboProjectSession,
@@ -18,6 +19,7 @@ import type {
 import type { SlashCommand } from "./chat-commands";
 import type { ChatSessionViewId } from "./session-views/types";
 import type { ChatMessageDelivery } from "./api-chat-sessions";
+import { getLoopSessionGoal } from "./api-loops";
 import {
   getChatSessionView,
   listChatSessionViews,
@@ -180,6 +182,14 @@ export function SessionTracePane({
   const deliverySendIdsRef = useRef(new Set<string>());
   const queueButtonRef = useRef<HTMLButtonElement>(null);
   const selectedBackendPiboSessionId = selectedSessionBackendId(selectedPiboSessionId);
+  const sessionGoalQuery = useQuery({
+    queryKey: selectedBackendPiboSessionId
+      ? ["chat", "session-goal", selectedBackendPiboSessionId]
+      : ["chat", "session-goal", "idle"],
+    queryFn: ({ signal }) => getLoopSessionGoal(selectedBackendPiboSessionId!, { signal }),
+    enabled: Boolean(selectedBackendPiboSessionId),
+    refetchInterval: selectedBackendPiboSessionId ? 5_000 : false,
+  });
   const openSessionWindowAvailable = Boolean(selectedBackendPiboSessionId) && canOpenDesktopPwaSessionWindow();
   const openSelectedSessionWindow = useCallback(() => {
     if (openCurrentPwaSessionWindow()) return;
@@ -405,6 +415,7 @@ export function SessionTracePane({
     selectedSessionStatus,
     selectedSessionSignal,
     signals,
+    sessionGoal: sessionGoalQuery.data?.goal,
     workflowProjectSession,
     workflowLifecycleEvents,
     sessionNodes: bootstrap.sessions,

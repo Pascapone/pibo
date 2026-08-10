@@ -35,6 +35,11 @@ export async function getLoopJobs(includeDisabled = true): Promise<{ jobs: PiboL
 	return requestJson<{ jobs: PiboLoopJob[] }>(`/api/chat/loops/jobs${suffix}`);
 }
 
+export async function getLoopSessionGoal(piboSessionId: string, init?: Pick<RequestInit, "signal">): Promise<{ goal: PiboLoopJob | null }> {
+	const params = new URLSearchParams({ piboSessionId });
+	return requestJson<{ goal: PiboLoopJob | null }>(`/api/chat/loops/session-goal?${params.toString()}`, init);
+}
+
 export async function postLoopJob(input: LoopJobInput): Promise<{ job: PiboLoopJob }> {
 	return requestJson<{ job: PiboLoopJob }>("/api/chat/loops/jobs", {
 		method: "POST",

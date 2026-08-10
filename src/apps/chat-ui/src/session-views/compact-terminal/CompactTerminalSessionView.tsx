@@ -6,6 +6,7 @@ import { AgentDelegationCard } from "../../components/AgentDelegationCard";
 import { PendingUserMessageDelivery } from "../../components/PendingUserMessageDelivery";
 import { useStickyVirtuoso } from "../../components/useStickyVirtuoso";
 import { useSessionActivity } from "../../hooks/useSessionActivity";
+import { SessionGoalIndicator, sessionGoalIndicatorStatus } from "../../session-goal-indicator";
 import { MarkdownRenderer } from "../../tracing/MarkdownRenderer";
 import { collectTerminalRows, isTraceSnapshotCollectionEnabled } from "../../tracing/snapshotCollector";
 import type { ChatSessionViewProps } from "../types";
@@ -39,6 +40,7 @@ export function CompactTerminalSessionView({
 	selectedSessionStatus,
 	selectedSessionSignal,
 	signals,
+	sessionGoal,
 	sessionBreadcrumbs,
 	originSession,
 	derivedSessions,
@@ -83,6 +85,7 @@ export function CompactTerminalSessionView({
 	});
 	const activeTurnStartedAt = sessionActivity.activeTurnStartedAt;
 	const isStreaming = sessionActivity.isTurnActive;
+	const showGoalIndicator = Boolean(sessionGoalIndicatorStatus(sessionGoal));
 
 	useLayoutEffect(() => {
 		if (!piboSessionId || !traceView || !isTraceSnapshotCollectionEnabled()) return;
@@ -284,8 +287,10 @@ export function CompactTerminalSessionView({
 	), [expandedRows, focusedNavigationRowId, onFork, onModelChanged, onOpenSession, onThinkingLevelChange, signals, traceView?.piboSessionId]);
 
 	const virtuosoComponents = useMemo(() => ({
-		Footer: isStreaming ? () => <TerminalStreamingFooter startedAt={activeTurnStartedAt} /> : undefined,
-	}), [activeTurnStartedAt, isStreaming]);
+		Footer: isStreaming || showGoalIndicator
+			? () => <TerminalStreamingFooter startedAt={activeTurnStartedAt} isWorking={isStreaming} goal={sessionGoal} />
+			: undefined,
+	}), [activeTurnStartedAt, isStreaming, sessionGoal, showGoalIndicator]);
 
 	return (
 		<section
@@ -355,6 +360,8 @@ export function CompactTerminalSessionView({
 					/>
 				)}
 			</div>
+
+			{rows.length === 0 && showGoalIndicator ? <TerminalStreamingFooter isWorking={false} goal={sessionGoal} /> : null}
 
 			{!stickyView.isSticky ? (
 				<button
@@ -774,24 +781,34 @@ function isInteractiveEventTarget(event: MouseEvent<HTMLElement> | KeyboardEvent
 
 const WORKING_LABEL = "Working...";
 
-function TerminalStreamingFooter({ startedAt }: { startedAt?: string }) {
-	const elapsed = useActiveTurnElapsed(startedAt);
+function TerminalStreamingFooter({ startedAt, isWorking, goal }: { startedAt?: string; isWorking: boolean; goal?: ChatSessionViewProps["sessionGoal"] }) {
+	const elapsed = useActiveTurnElapsed(isWorking ? startedAt : undefined);
+	const goalStatus = sessionGoalIndicatorStatus(goal);
+	const footerAriaLabel = [
+		isWorking ? "Working" : undefined,
+		goalStatus === "active" ? "Pursuing Goal" : goalStatus === "paused" ? "Goal Paused" : undefined,
+	].filter(Boolean).join(". ");
 
 	return (
 		<div
 			className="border-t border-[#141414] px-4 py-2"
 			role="status"
 			aria-live="polite"
-			aria-label="Working"
+			aria-label={footerAriaLabel}
 			data-pibo-component="TerminalStreamingFooter"
-			data-pibo-active-turn-started-at={startedAt}
+			data-pibo-active-turn-started-at={isWorking ? startedAt : undefined}
 		>
-			<div className="grid grid-cols-[1.9rem_minmax(0,1fr)] gap-2 whitespace-pre-wrap break-words" aria-hidden="true">
-				<span className="whitespace-pre text-[#737373]">•</span>
-				<span className="inline-flex min-w-0 items-baseline gap-2">
-					{elapsed ? <span className="shrink-0 tabular-nums text-[#737373]">{elapsed}</span> : null}
-					<span className="compact-terminal-working-label">{WORKING_LABEL}</span>
-				</span>
+			<div className="flex min-w-0 items-baseline justify-between gap-4" aria-hidden="true">
+				{isWorking ? (
+					<div className="grid min-w-0 flex-1 grid-cols-[1.9rem_minmax(0,1fr)] gap-2 whitespace-pre-wrap break-words">
+						<span className="whitespace-pre text-[#737373]">•</span>
+						<span className="inline-flex min-w-0 items-baseline gap-2">
+							{elapsed ? <span className="shrink-0 tabular-nums text-[#737373]">{elapsed}</span> : null}
+							<span className="compact-terminal-working-label">{WORKING_LABEL}</span>
+						</span>
+					</div>
+				) : <span className="min-w-0 flex-1" />}
+				<SessionGoalIndicator goal={goal} />
 			</div>
 		</div>
 	);
