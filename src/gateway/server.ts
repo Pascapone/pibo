@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { createServer, type Server, type Socket } from "node:net";
 import type { PiboChannel, PiboChannelContext } from "../channels/types.js";
 import type { PiboOutputEvent } from "../core/events.js";
@@ -7,7 +8,7 @@ import { PiboSessionRouter } from "../core/session-router.js";
 import { createLoopMessagePreflight } from "../loops/store.js";
 import { loadPiboModelDefaults, selectRequestedModelProfile } from "../core/model-defaults.js";
 import { ResourceReaperService, type ResourceReaperServiceOptions } from "../resources/reaper.js";
-import type { PiboSessionStore } from "../sessions/store.js";
+import { InMemoryPiboSessionStore, type PiboSessionStore } from "../sessions/store.js";
 import {
 	DEFAULT_GATEWAY_HOST,
 	DEFAULT_GATEWAY_PORT,
@@ -25,6 +26,10 @@ export type GatewayServerOptions = {
 	host?: string;
 	port?: number;
 	persistSession?: boolean;
+	/** Whether this process owns persistent gateway runtime state and may reconcile interrupted work. */
+	authoritativeRuntime?: boolean;
+	/** Stable identifier included in recovery diagnostics. */
+	runtimeInstanceId?: string;
 	pluginRegistry?: PiboPluginRegistry;
 	sessionStore?: PiboSessionStore;
 	sessionDbPath?: string;
@@ -51,6 +56,8 @@ export type GatewayConnectionDiagnostics = {
 };
 
 export type GatewayDiagnostics = {
+	runtimeInstanceId: string;
+	authoritativeRuntime: boolean;
 	connections: number;
 	slowConnections: number;
 	droppedEvents: number;
@@ -193,12 +200,14 @@ async function createGatewaySessionStore(options: GatewayServerOptions): Promise
 		const { SqlitePiboSessionStore } = await import("../sessions/sqlite-store.js");
 		return new SqlitePiboSessionStore(options.sessionDbPath);
 	}
+	if (options.persistSession === false) return new InMemoryPiboSessionStore();
 	const { createDefaultPiboDataSessionStore } = await import("../sessions/pibo-data-store.js");
 	return createDefaultPiboDataSessionStore();
 }
 
 export class PiboGatewayServer {
 	private readonly pluginRegistry: PiboPluginRegistry;
+	private readonly runtimeInstanceId: string;
 	private sessionStore?: PiboSessionStore;
 	private ownsSessionStore = false;
 	private router?: PiboSessionRouter;
@@ -212,6 +221,7 @@ export class PiboGatewayServer {
 
 	constructor(private readonly options: GatewayServerOptions = {}) {
 		this.pluginRegistry = options.pluginRegistry ?? createDefaultPiboPluginRegistry();
+		this.runtimeInstanceId = options.runtimeInstanceId ?? `gateway:${process.pid}:${randomUUID()}`;
 	}
 
 	async start(): Promise<void> {
@@ -220,12 +230,16 @@ export class PiboGatewayServer {
 		this.validateChannels();
 		this.sessionStore = this.options.sessionStore ?? (await createGatewaySessionStore(this.options));
 		this.ownsSessionStore = !this.options.sessionStore;
+		const hasExplicitPersistentStore = this.options.sessionStore !== undefined || this.options.sessionDbPath !== undefined;
+		const recoverInterruptedRuntimeState = this.options.authoritativeRuntime === true
+			&& (this.options.persistSession !== false || hasExplicitPersistentStore);
 		this.router = new PiboSessionRouter({
 			persistSession: this.options.persistSession,
 			pluginRegistry: this.pluginRegistry,
 			sessionStore: this.sessionStore,
 			messagePreflight: createLoopMessagePreflight({ path: this.options.loopStorePath }),
-			recoverInterruptedRuntimeState: true,
+			recoverInterruptedRuntimeState,
+			runtimeInstanceId: recoverInterruptedRuntimeState ? this.runtimeInstanceId : undefined,
 		});
 		this.unsubscribe = this.router.subscribe((event) => this.broadcastRouterEvent(event));
 		this.server = createServer((socket) => this.handleSocket(socket));
@@ -361,6 +375,8 @@ export class PiboGatewayServer {
 	getDiagnostics(): GatewayDiagnostics {
 		const connectionDetails = [...this.connections].map((connection) => ({ ...connection.diagnostics }));
 		return {
+			runtimeInstanceId: this.runtimeInstanceId,
+			authoritativeRuntime: this.options.authoritativeRuntime === true,
 			connections: connectionDetails.length,
 			slowConnections: connectionDetails.filter((connection) => connection.slow).length,
 			droppedEvents: this.droppedRouterEvents,
@@ -471,7 +487,11 @@ export async function runGatewayServer(options: GatewayServerOptions = {}): Prom
 	const releasePid = fallbackMode ? releaseFallbackGatewayPid : releaseGatewayPid;
 	let server: PiboGatewayServer;
 	try {
-		server = new PiboGatewayServer({ ...options, resourceReaper: resolveGatewayResourceReaperOptions(options) });
+		server = new PiboGatewayServer({
+			...options,
+			authoritativeRuntime: options.authoritativeRuntime ?? true,
+			resourceReaper: resolveGatewayResourceReaperOptions(options),
+		});
 		await server.start();
 	} catch (error) {
 		releasePid();
