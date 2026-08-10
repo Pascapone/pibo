@@ -35,12 +35,11 @@ test("Workflow V2 run-view tests cover Project sidebar kinds and view routing", 
 	]);
 
 	assertAllMatch(webChannelTests, [
-		["Project bootstrap integration covers real workflow session descendants", /chat web app project bootstrap includes real workflow session descendants only/],
-		["unrelated workflow node sessions are excluded from the Project tree", /assert\.ok\(!flattened\.some\(\(node\) => node\.piboSessionId === unrelated\.id\)\)/],
-		["main workflow marker is returned", /rootNode\.workflowSessionKind, "main_workflow"/],
-		["nested workflow marker is returned", /rootNode\.children\[0\]\.workflowSessionKind, "nested_workflow"/],
-		["agent node marker is returned", /rootNode\.children\[0\]\.children\[0\]\.workflowSessionKind, "agent_node"/],
-		["subagent marker is returned", /rootNode\.children\[0\]\.children\[0\]\.children\[0\]\.workflowSessionKind, "subagent"/],
+		["Project bootstrap integration covers workflow-session quarantine", /chat web app project bootstrap excludes quarantined workflow session trees/],
+		["main workflow sessions are excluded from the default Project tree", /bootstrapPayload\.sessions\.some\(\(node\) => node\.piboSessionId === root\.id\), false/],
+		["nested workflow sessions are excluded from the default Project tree", /bootstrapPayload\.sessions\.some\(\(node\) => node\.piboSessionId === nested\.id\), false/],
+		["agent node sessions are excluded from the default Project tree", /bootstrapPayload\.sessions\.some\(\(node\) => node\.piboSessionId === agent\.id\), false/],
+		["subagent sessions are excluded from the default Project tree", /bootstrapPayload\.sessions\.some\(\(node\) => node\.piboSessionId === subagent\.id\), false/],
 	]);
 
 	assertAllMatch(appSource, [
@@ -72,9 +71,8 @@ test("Workflow V2 run-view tests cover inspection sections, nested links, and de
 	]);
 
 	assertAllMatch(webChannelTests, [
-		["live workflow definition links are integration-tested", /workflowDefinitionLink\.status, "live"[\s\S]*workflowDefinitionLink\.href, "\/apps\/chat\/workflows\/view\/standard-project\/1\.0\.0"/],
-		["deleted definition display is integration-tested", /workflowDefinitionLink\.status, "snapshot_only_definition_deleted"[\s\S]*workflowDefinitionLink\.href, undefined[\s\S]*tombstoneLabel, \/Definition deleted\//],
-		["historical snapshot inspection after delete is integration-tested", /historicalRunPayload\.alreadyStarted, true[\s\S]*historicalRunPayload\.snapshot\.effectiveDefinition, sessionPayload\.snapshot\.effectiveDefinition/],
+		["default Project bootstrap excludes workflow-backed sessions", /assert\.deepEqual\(bootstrapPayload\.projectSessions, \[\]\)/],
+		["historical snapshot inspection after delete remains integration-tested", /historicalRunPayload\.alreadyStarted, true[\s\S]*historicalRunPayload\.snapshot\.effectiveDefinition, sessionPayload\.snapshot\.effectiveDefinition/],
 	]);
 });
 
@@ -83,7 +81,7 @@ test("Workflow V2 human action tests cover available actions and rejection diagn
 	const workflowViewSource = await readSource("src/apps/chat-ui/src/session-views/WorkflowXStateSessionView.tsx");
 
 	assertAllMatch(webChannelTests, [
-		["Project human wait-token integration test exists", /chat web app lists and resolves Project workflow human wait tokens/],
+		["Project human wait-token API integration test exists", /chat web app resolves Project workflow human wait tokens through preserved workflow APIs/],
 		["approve action is accepted", /approvePayload\.action\.kind, "approve"/],
 		["reject action is accepted", /rejectPayload\.action\.kind, "reject"/],
 		["resume action with payload is accepted", /resumePayload\.action\.kind, "resume"[\s\S]*resumePayload\.action\.payload, \{ comment: "Looks good" \}/],

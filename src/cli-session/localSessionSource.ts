@@ -1400,6 +1400,7 @@ function executionParamsForSlash(
 ): PiboJsonValue | undefined {
   const trimmed = args?.trim();
   if (command === "compact" && trimmed) return { customInstructions: trimmed };
+  if (command === "goal") return { command: trimmed ?? "" };
   if (command === "thinking" && trimmed) return { level: trimmed };
   if (command === "model" && trimmed) {
     const [provider, model] = trimmed.includes("/")

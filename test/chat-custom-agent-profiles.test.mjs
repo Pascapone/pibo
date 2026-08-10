@@ -29,7 +29,7 @@ test("web gateway registry loads custom agent profiles before channels start", a
 	}
 
 	try {
-		const registry = createWebPiboPluginRegistry({ chat: { agentStorePath } });
+		const registry = createWebPiboPluginRegistry({ authMode: "local", chat: { agentStorePath } });
 		const profileInfos = registry.getProfileInfos();
 
 		assert.ok(profileInfos.some((profile) => profile.name === "unity-agent"));

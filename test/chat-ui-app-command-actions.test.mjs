@@ -22,6 +22,8 @@ async function runCommandActionScenario() {
 
 		assert.deepEqual(commandActionParams("thinking", "full extra"), { level: "full" });
 		assert.deepEqual(commandActionParams("compact", "keep the summary concise"), { customInstructions: "keep the summary concise" });
+		assert.deepEqual(commandActionParams("goal", "Ship the feature"), { command: "Ship the feature" });
+		assert.deepEqual(commandActionParams("goal", "pause"), { command: "pause" });
 		assert.equal(commandActionParams("thinking", ""), undefined);
 		assert.equal(commandActionParams("session.fork", "ignored"), undefined);
 

@@ -882,7 +882,9 @@ export function createFallbackChatHtml(): string {
 				? { level: commandArgs.split(/\\s+/, 1)[0] }
 				: command.action === "compact" && commandArgs
 					? { customInstructions: commandArgs }
-					: undefined;
+					: command.action === "goal"
+						? { command: commandArgs }
+						: undefined;
 			const result = await postJson("/api/chat/action", { piboSessionId: selectedPiboSessionId, action: command.action, params: params });
 			appendRawEvent({ type: "command_result", payload: result });
 			if (command.action === "session.clone" && result && result.result && result.result.piboSessionId) {

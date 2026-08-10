@@ -48,6 +48,7 @@ test("web gateway registers user skills before custom agent profiles are used", 
 	try {
 		console.warn = (...args) => warnings.push(args.join(" "));
 		const registry = createWebPiboPluginRegistry({
+			authMode: "local",
 			chat: { agentStorePath, userSkillGlobalRoot: globalRoot, userSkillWorkspaceRoot: workspaceRoot },
 		});
 		const profile = createPiboProfileFromRegistryOrDefault(registry, "unity-agent");
@@ -81,6 +82,7 @@ test("web gateway startup survives a malformed user skill store", async () => {
 	try {
 		console.warn = (...args) => warnings.push(args.join(" "));
 		const registry = createWebPiboPluginRegistry({
+			authMode: "local",
 			chat: { agentStorePath, userSkillGlobalRoot: globalRoot, userSkillWorkspaceRoot: workspaceRoot },
 		});
 		assert.ok(registry.getProfileNames().includes("base"));

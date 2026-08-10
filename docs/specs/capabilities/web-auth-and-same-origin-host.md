@@ -2,7 +2,7 @@
 
 **Status:** Draft
 **Created:** 2026-05-10
-**Updated:** 2026-06-14
+**Updated:** 2026-08-10
 **Controller / Source:** Scheduled Pibo Source Specs Coverage
 **Related plan:** [Local Auth Gateway Implementation Plan](../../plans/local-auth-gateway-implementation-plan-2026-06-14.md)
 **Related docs:** [Chat Web Rooms and Event Streams](./chat-web-rooms-and-event-streams.md), [Custom Agents and Agent Designer](./custom-agents.md), [Scheduled Pibo Jobs](./scheduled-pibo-jobs.md), [Local Config CLI](./local-config-cli.md)
@@ -261,13 +261,15 @@ The plugin registry MUST reject duplicate or overlapping web app mount and API p
 - WHEN another app registers API prefix `/api/chat`
 - THEN registration fails before the channel starts
 
-### Requirement: HTTP request and response handling is bounded and explicit
+### Requirement: HTTP request, response, and shutdown handling is bounded and explicit
 
-The web host MUST bound incoming request bodies and preserve externally important response headers.
+The web host MUST bound incoming request bodies, preserve externally important response headers, and complete shutdown without waiting indefinitely for browser keep-alive or event-stream connections.
 
 #### Current
 
 Non-GET/HEAD request bodies are limited to 4 MiB. JSON responses may be gzip-compressed when the client accepts gzip and the response is large enough. `Set-Cookie` headers are preserved when sending Fetch responses through Node HTTP.
+
+On shutdown, the web host stops accepting new connections, cancels active `text/event-stream` responses, and closes their sockets so browser clients can reconnect after restart. Ordinary in-flight responses receive a five-second drain window. Connections that remain after that window are force-closed, and the timeout fallback is logged separately from a graceful event-stream shutdown.
 
 #### Acceptance
 
@@ -275,12 +277,29 @@ Non-GET/HEAD request bodies are limited to 4 MiB. JSON responses may be gzip-com
 - Invalid JSON bodies read through `readJsonBody` fail with `400`.
 - Auth responses may set or clear cookies through `Set-Cookie` headers.
 - Large JSON responses include `content-encoding: gzip` only when the client accepts gzip.
+- Active SSE responses are cancelled and disconnected as part of channel shutdown without client action.
+- Ordinary in-flight responses may finish during the bounded drain window.
+- A response that remains active beyond the drain window has its socket force-closed and cannot block gateway teardown.
+- Logs distinguish graceful event-stream closure from the forced timeout fallback.
 
 #### Scenario: Oversized API body
 
 - GIVEN a POST request body exceeds 4 MiB
 - WHEN the web host converts the Node request to a Fetch request
 - THEN the request fails with HTTP `413 Request body too large`
+
+#### Scenario: Gateway stops while Chat event streams are open
+
+- GIVEN an authenticated browser has one or more active SSE connections
+- WHEN the web host channel stops
+- THEN it stops accepting new requests, cancels the event streams, closes their connections, and completes before the ordinary-response drain timeout
+- AND the browser can establish replacement streams after the gateway starts again
+
+#### Scenario: Ordinary response exceeds the shutdown drain window
+
+- GIVEN a non-SSE response remains active during shutdown
+- WHEN the five-second drain window expires
+- THEN the web host logs the forced fallback, closes the remaining socket, and completes shutdown
 
 ## Edge Cases
 
@@ -290,6 +309,7 @@ Non-GET/HEAD request bodies are limited to 4 MiB. JSON responses may be gzip-com
 - If an auth service does not expose HTTP routes, `/api/auth/*` returns `500` because the selected web auth mode is misconfigured.
 - Gzip must not apply to `204`, `304`, or already encoded responses.
 - The local auth socket peer is communicated from the channel to the auth plugin through a request header that is stripped from any response before reaching the browser.
+- An SSE connection may be disconnected during gateway shutdown; EventSource clients are expected to reconnect after the service returns.
 
 ## Constraints
 
@@ -298,7 +318,7 @@ Non-GET/HEAD request bodies are limited to 4 MiB. JSON responses may be gzip-com
 ## Constraints (Better Auth specifics)
 
 - **Compatibility:** The web host uses Fetch `Request`/`Response` objects internally while serving through Node HTTP.
-- **Performance:** Request bodies are bounded at 4 MiB; large JSON responses can use gzip with low compression level.
+- **Performance:** Request bodies are bounded at 4 MiB; large JSON responses can use gzip with low compression level; ordinary shutdown drain is bounded to five seconds.
 - **Dependencies:** Normal auth depends on Better Auth, Google OAuth settings, and SQLite migrations from Better Auth.
 
 ## Requirement: Local auth enforces three independent request-time safety layers
@@ -358,6 +378,7 @@ This layer catches: a reverse proxy on the same host that rewrites both `Host` a
 - [ ] SC-006: Local auth rejects requests that pass header checks but have a non-loopback TCP socket peer, as covered by `test/local-auth.test.mjs` and `test/dev-auth.test.mjs`.
 - [ ] SC-007: `pibo gateway:web --auth=local --web-host=0.0.0.0` is refused before the gateway module is loaded, as covered by `test/local-auth.test.mjs`.
 - [ ] SC-008: `pibo config set auth.mode local` persists the value and round-trips, and `pibo config set auth.mode bogus` is rejected, as covered by `test/auth-mode-config.test.mjs`.
+- [x] SC-009: Web host shutdown cancels active SSE responses, drains ordinary responses within policy, and force-closes overdue sockets, as covered by `test/web-channel-shutdown.test.mjs` and integrated gateway restart validation.
 
 ## Verification Coverage
 
@@ -371,6 +392,7 @@ This section records which parts of the web-auth and same-origin host contract a
 - Authenticated Chat Web requests receive app context product context while preserving auth errors; forbidden auth errors surface as `403`, cross-origin mutations are rejected, local reverse-proxy same-origin mutations are accepted, and oversized bodies return `413`. Verified by `test/web-auth-app-context-context.test.mjs` and `test/web-channel.test.mjs`.
 - Duplicate auth service registration and overlapping web app routes fail during plugin registry creation. Verified by `test/plugin-registry.test.mjs`.
 - Dynamic JSON response compression honors gzip support, rejects `gzip;q=0`, does not use Brotli for dynamic JSON, and leaves small JSON uncompressed. Verified by `test/web-http.test.mjs`.
+- Web host shutdown cancels an active SSE response without client action, lets an ordinary response drain, and force-closes a response that exceeds the configured deadline with a distinct diagnostic. Verified by `test/web-channel-shutdown.test.mjs`.
 
 ### Source-Inspected Only
 
