@@ -16,6 +16,10 @@ export class PiboWebHttpError extends Error {
 	}
 }
 
+export type SendWebResponseOptions = {
+	signal?: AbortSignal;
+};
+
 export function responseJson(payload: unknown, init: ResponseInit = {}): Response {
 	const startedAt = performance.now();
 	const body = JSON.stringify(payload);
@@ -83,7 +87,11 @@ export async function nodeRequestToWebRequest(request: IncomingMessage, baseURL:
 	});
 }
 
-export async function sendWebResponse(response: ServerResponse, webResponse: Response): Promise<void> {
+export async function sendWebResponse(
+	response: ServerResponse,
+	webResponse: Response,
+	options: SendWebResponseOptions = {},
+): Promise<void> {
 	const headers = responseHeaders(webResponse);
 	const compressEncoding = preferredResponseEncoding(response.req?.headers["accept-encoding"], webResponse);
 
@@ -118,16 +126,25 @@ export async function sendWebResponse(response: ServerResponse, webResponse: Res
 	const cancel = () => {
 		void reader.cancel();
 	};
+	const abort = () => {
+		const socket = response.socket;
+		void reader.cancel();
+		if (!response.writableEnded) response.end();
+		socket?.end();
+	};
 	response.once("close", cancel);
+	options.signal?.addEventListener("abort", abort, { once: true });
+	if (options.signal?.aborted) abort();
 	try {
 		while (true) {
 			const { done, value } = await reader.read();
 			if (done) break;
 			response.write(Buffer.from(value));
 		}
-		response.end();
+		if (!response.writableEnded) response.end();
 	} finally {
 		response.off("close", cancel);
+		options.signal?.removeEventListener("abort", abort);
 	}
 }
 
