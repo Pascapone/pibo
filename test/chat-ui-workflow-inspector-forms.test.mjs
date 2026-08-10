@@ -150,8 +150,8 @@ async function runWorkflowInspectorFormScenario() {
 		assert.deepEqual(withEdge.edges.bridge.adapter.output, definition.edges.bridge.adapter.output);
 		assert.equal(applyWorkflowEdgeInspectorForm(definition, "missing", edgeForm), definition);
 	`;
-	return execFileAsync("npx", ["tsx", "--eval", script], {
-		cwd: "/workspace",
+	return execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], {
+		cwd: process.cwd(),
 		maxBuffer: 1024 * 1024,
 	});
 }

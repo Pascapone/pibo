@@ -10,13 +10,14 @@ async function runTracePageMergeScenario() {
 		import assert from "node:assert/strict";
 		const { mergeOlderTracePage } = await import("./src/apps/chat-ui/src/tracing/trace-page-merge.ts");
 
-		function node(id, title = id) {
+		function node(id, title = id, eventSequence = 0) {
 			return {
 				id,
 				piboSessionId: "ps-test",
 				type: "assistant.message",
 				title,
 				status: "done",
+				orderKey: { sourceRank: 1, turnSeq: eventSequence, eventSequence, phaseRank: 4 },
 				children: [],
 			};
 		}
@@ -51,7 +52,7 @@ async function runTracePageMergeScenario() {
 			firstEventSequence: 30,
 			nextBeforeSequence: 29,
 			hasOlderEvents: true,
-			nodes: [node("shared", "current shared"), node("current-only")],
+			nodes: [node("shared", "current shared", 30), node("current-only", "current-only", 31)],
 			rawEvents: [rawEvent("raw-shared", 30), rawEvent("raw-current", 31)],
 		});
 		const older = trace({
@@ -61,14 +62,14 @@ async function runTracePageMergeScenario() {
 			firstEventSequence: 10,
 			nextBeforeSequence: 9,
 			hasOlderEvents: false,
-			nodes: [node("older-only"), node("shared", "older shared")],
+			nodes: [node("older-only", "older-only", 10), node("shared", "older shared", 30)],
 			rawEvents: [rawEvent("raw-older", 10), rawEvent("raw-shared", 30)],
 		});
 
 		const merged = mergeOlderTracePage(current, older);
 		assert.equal(merged.version, "current-version");
 		assert.deepEqual(merged.nodes.map((entry) => entry.id), ["older-only", "shared", "current-only"]);
-		assert.equal(merged.nodes.find((entry) => entry.id === "shared")?.title, "older shared");
+		assert.equal(merged.nodes.find((entry) => entry.id === "shared")?.title, "current shared");
 		assert.deepEqual(merged.rawEvents.map((entry) => entry.id), ["raw-older", "raw-shared", "raw-current"]);
 		assert.equal(merged.firstEventSequence, 10);
 		assert.equal(merged.nextBeforeSequence, 9);

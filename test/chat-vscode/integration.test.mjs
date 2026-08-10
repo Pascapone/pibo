@@ -15,7 +15,8 @@ import { buildInlinedChatHtml } from "./src/apps/chat-vscode/extension/src/inlin
 import { generateNonce } from "./src/apps/chat-vscode/extension/src/webview-shell.ts";
 
 const out = buildInlinedChatHtml({
-	extensionPath: ${JSON.stringify(root + "/src/apps/chat-vscode")},
+	extensionPath: ${JSON.stringify(root)},
+	bundleRelativeDir: "dist/apps/chat-vscode-web",
 	portMappedOrigin: "https://abc-uuid.vscode-resource.vscode-cdn.net:4789",
 	cspSource: "vscode-webview://abc-uuid/",
 	nonce: generateNonce(),

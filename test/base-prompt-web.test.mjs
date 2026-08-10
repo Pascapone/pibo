@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -69,7 +69,13 @@ async function fetchJson(url, init = {}) {
 test("chat user-settings API validates same-origin mutations and persists sanitized values", async () => {
 	const originalPiboHome = process.env.PIBO_HOME;
 	const dir = mkdtempSync(join(tmpdir(), "pibo-user-settings-web-"));
-	process.env.PIBO_HOME = join(dir, "pibo-home");
+	const piboHome = join(dir, "pibo-home");
+	const lastPrunedAt = new Date().toISOString();
+	process.env.PIBO_HOME = piboHome;
+	mkdirSync(piboHome, { recursive: true });
+	writeFileSync(join(piboHome, "user-settings.json"), `${JSON.stringify({
+		settings: { telemetryRetention: { enabled: true, days: 30, lastPrunedAt } },
+	}, null, 2)}\n`);
 	const { channel, baseURL } = await startChatHost(dir);
 	try {
 		const current = await fetchJson(`${baseURL}/api/chat/user-settings`, {
@@ -77,7 +83,7 @@ test("chat user-settings API validates same-origin mutations and persists saniti
 		});
 		assert.equal(current.response.status, 200);
 		assert.equal(current.data.userSettings.timezone, "UTC");
-		assert.deepEqual(current.data.userSettings.telemetryRetention, { enabled: true, days: 30 });
+		assert.deepEqual(current.data.userSettings.telemetryRetention, { enabled: true, days: 30, lastPrunedAt });
 
 		const missingOrigin = await fetch(`${baseURL}/api/chat/user-settings`, {
 			method: "PATCH",
@@ -106,7 +112,7 @@ test("chat user-settings API validates same-origin mutations and persists saniti
 		assert.equal(saved.response.status, 200);
 		assert.equal(saved.data.userSettings.timezone, "Europe/Berlin");
 		assert.equal(saved.data.userSettings.shortcuts.webAnnotationsToggle, "Ctrl+Shift+P");
-		assert.deepEqual(saved.data.userSettings.telemetryRetention, { enabled: true, days: 10 });
+		assert.deepEqual(saved.data.userSettings.telemetryRetention, { enabled: true, days: 10, lastPrunedAt });
 
 		const reloaded = await fetchJson(`${baseURL}/api/chat/user-settings`, {
 			headers: { "x-test-user": "user-1" },
@@ -114,7 +120,7 @@ test("chat user-settings API validates same-origin mutations and persists saniti
 		assert.equal(reloaded.response.status, 200);
 		assert.equal(reloaded.data.userSettings.timezone, "Europe/Berlin");
 		assert.equal(reloaded.data.userSettings.shortcuts.webAnnotationsToggle, "Ctrl+Shift+P");
-		assert.deepEqual(reloaded.data.userSettings.telemetryRetention, { enabled: true, days: 10 });
+		assert.deepEqual(reloaded.data.userSettings.telemetryRetention, { enabled: true, days: 10, lastPrunedAt });
 
 		const reloadedOtherAccount = await fetchJson(`${baseURL}/api/chat/user-settings`, {
 			headers: { "x-test-user": "user-2" },
@@ -124,7 +130,7 @@ test("chat user-settings API validates same-origin mutations and persists saniti
 		const persisted = JSON.parse(readFileSync(join(process.env.PIBO_HOME, "user-settings.json"), "utf-8"));
 		assert.equal(persisted.settings.timezone, "Europe/Berlin");
 		assert.equal(persisted.settings.shortcuts.webAnnotationsToggle, "Ctrl+Shift+P");
-		assert.deepEqual(persisted.settings.telemetryRetention, { enabled: true, days: 10 });
+		assert.deepEqual(persisted.settings.telemetryRetention, { enabled: true, days: 10, lastPrunedAt });
 		assert.equal("users" in persisted, false);
 	} finally {
 		await channel.stop?.();

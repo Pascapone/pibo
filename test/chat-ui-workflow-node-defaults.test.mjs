@@ -89,8 +89,8 @@ async function runWorkflowNodeDefaultsScenario() {
 			human_1: { x: 70, y: 80 },
 		});
 	`;
-	return execFileAsync("npx", ["tsx", "--eval", script], {
-		cwd: "/workspace",
+	return execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], {
+		cwd: process.cwd(),
 		maxBuffer: 1024 * 1024,
 	});
 }
