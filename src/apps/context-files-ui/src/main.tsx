@@ -11,6 +11,7 @@ import {
 import {
 	adoptContextFileSource,
 	createContextFile,
+	createContextFileRevision,
 	diffContextFile,
 	linkContextFileFromPlugin,
 	listContextFileRevisions,
@@ -41,6 +42,7 @@ function App() {
 	const [selectedKey, setSelectedKey] = useState<string | null>(null);
 	const [document, setDocument] = useState<ContextFileDocument | null>(null);
 	const [revisions, setRevisions] = useState<ContextFileRevision[]>([]);
+	const [revisionName, setRevisionName] = useState("");
 	const [diff, setDiff] = useState<ContextFileDiff | null>(null);
 	const [saveState, setSaveState] = useState<SaveState>("saved");
 	const [conflict, setConflict] = useState<string | null>(null);
@@ -130,6 +132,7 @@ function App() {
 
 	useEffect(() => {
 		setMetadataAgent(document?.agentProfileName ?? "");
+		setRevisionName("");
 	}, [document?.agentProfileName, document?.key]);
 
 	const handleSelect = useCallback(
@@ -264,6 +267,23 @@ function App() {
 			setActionBusy(false);
 		}
 	}, [document, hydrateDocument, refreshFiles]);
+
+	const handleCreateRevision = useCallback(async () => {
+		if (!document?.managed || !revisionName.trim()) return;
+		setActionBusy(true);
+		try {
+			await editorRef.current?.flushSave();
+			await createContextFileRevision(document.key, revisionName.trim());
+			const revisionPayload = await listContextFileRevisions(document.key);
+			setRevisions(revisionPayload.revisions);
+			setRevisionName("");
+			setError(null);
+		} catch (caught) {
+			setError(caught instanceof Error ? caught.message : String(caught));
+		} finally {
+			setActionBusy(false);
+		}
+	}, [document, revisionName]);
 
 	const handleRestoreRevision = useCallback(async (revisionId: string) => {
 		if (!document?.managed) return;
@@ -422,22 +442,29 @@ function App() {
 						{document ? "The selected file is missing on disk." : "Select or create a context file."}
 					</div>
 				)}
-				{document?.managed && revisions.length > 0 ? (
+				{document?.managed ? (
 					<div className="scope-controls">
-						<h3>Revisions</h3>
+						<h3>Revision History</h3>
 						<div className="file-list">
-							{revisions.map((revision) => (
+							<div className="file-row">
+								<input
+									value={revisionName}
+									onChange={(event) => setRevisionName(event.currentTarget.value)}
+									placeholder="Version name"
+									aria-label="Version name"
+									maxLength={120}
+								/>
+								<button className="primary-action" type="button" disabled={actionBusy || !revisionName.trim()} onClick={() => void handleCreateRevision()}>
+									Save Version
+								</button>
+							</div>
+							{revisions.length === 0 ? <div className="empty">No manual versions saved yet.</div> : revisions.map((revision) => (
 								<div key={revision.id} className="file-row">
-									<div>
-										<strong>{revision.kind}</strong> {revision.active ? "(active)" : ""}
-									</div>
-									<div>{revision.note ?? revision.id}</div>
-									<div>{revision.createdAt}</div>
-									{revision.active ? null : (
-										<button className="primary-action" type="button" disabled={actionBusy} onClick={() => void handleRestoreRevision(revision.id)}>
-											Restore
-										</button>
-									)}
+									<div><strong>{revision.name}</strong></div>
+									<time dateTime={revision.createdAt}>{revision.createdAt}</time>
+									<button className="primary-action" type="button" disabled={actionBusy} onClick={() => void handleRestoreRevision(revision.id)}>
+										Restore
+									</button>
 								</div>
 							))}
 						</div>

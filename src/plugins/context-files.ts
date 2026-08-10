@@ -1,10 +1,11 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, extname, isAbsolute, join, resolve } from "node:path";
+import { dirname, extname, isAbsolute, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ContextFileProfile, ContextFileScope, ContextFileSource } from "../core/profiles.js";
 import type { PiboJsonObject } from "../core/events.js";
+import { readFallbackPidFile, readPidFile } from "../gateway/pidfile.js";
 import { PiboWebHttpError, readJsonBody, responseHtml, responseJson } from "../web/http.js";
 import type { PiboWebAppContext, PiboWebSession } from "../web/types.js";
 import { definePiboPlugin } from "./registry.js";
@@ -59,7 +60,6 @@ type ContextFileInfo = {
 	sourceRef?: string;
 	sourceHash?: string;
 	linkState: ContextFileLinkState;
-	activeRevisionId?: string;
 };
 
 type ContextFileDocument = ContextFileInfo & {
@@ -68,15 +68,11 @@ type ContextFileDocument = ContextFileInfo & {
 
 type ContextFileRevisionInfo = {
 	id: string;
-	kind: "source-snapshot" | "working";
+	name: string;
 	contentHash: string;
 	createdAt: string;
 	actorId?: string;
-	basedOnRevisionId?: string;
-	sourceHashAtCreation?: string;
-	note?: string;
 	content: string;
-	active: boolean;
 };
 
 type ContextFileDiffResponse = {
@@ -98,7 +94,6 @@ type WatchSnapshot = {
 	bytes?: number;
 	linkState?: ContextFileLinkState;
 	sourceHash?: string;
-	activeRevisionId?: string;
 };
 
 type ResolvedContextFilesPaths = {
@@ -149,6 +144,19 @@ function resolveContextFilesPaths(options: ContextFilesPluginOptions): ResolvedC
 		globalDir: resolve(options.globalDir ?? join(managedRoot, "global")),
 		agentWorkspaceRoot: resolve(options.agentWorkspaceRoot ?? join(getPiboHome(), "agent-workspaces")),
 	};
+}
+
+function assertContextFilesStorageOwnership(paths: ResolvedContextFilesPaths): void {
+	const piboHome = resolve(getPiboHome());
+	const metadataPath = resolve(paths.metadataPath);
+	if (metadataPath !== piboHome && !metadataPath.startsWith(`${piboHome}${sep}`)) return;
+	const ownerPid = [readPidFile(), readFallbackPidFile()]
+		.find((pid) => pid !== undefined && pid !== process.pid);
+	if (ownerPid === undefined) return;
+	throw new Error(
+		`Context Files storage is owned by the active gateway process ${ownerPid}. ` +
+		"Use an isolated PIBO_HOME for candidate validation, or stop and activate the gateway package before migrating this storage.",
+	);
 }
 
 function normalizeLabel(value: unknown): string {
@@ -205,6 +213,14 @@ function normalizeBoolean(value: unknown, fallback = false): boolean {
 function normalizeRevisionId(value: unknown): string {
 	if (typeof value !== "string" || !value.trim()) throw new PiboWebHttpError("revisionId is required", 400);
 	return value.trim();
+}
+
+function normalizeRevisionName(value: unknown): string {
+	if (typeof value !== "string") throw new PiboWebHttpError("name must be a string", 400);
+	const trimmed = value.trim();
+	if (!trimmed) throw new PiboWebHttpError("name is required", 400);
+	if (trimmed.length > 120) throw new PiboWebHttpError("name must be at most 120 characters", 400);
+	return trimmed;
 }
 
 function normalizeDiffSide(value: string | null, fallback: "source" | "working"): "source" | "working" {
@@ -307,8 +323,7 @@ function sameSnapshot(left: WatchSnapshot | undefined, right: WatchSnapshot): bo
 		&& left?.updatedAt === right.updatedAt
 		&& left?.bytes === right.bytes
 		&& left?.linkState === right.linkState
-		&& left?.sourceHash === right.sourceHash
-		&& left?.activeRevisionId === right.activeRevisionId;
+		&& left?.sourceHash === right.sourceHash;
 }
 
 function contentType(pathname: string): string {
@@ -395,7 +410,6 @@ function contextFilePayload(file: ContextFileInfo): PiboJsonObject {
 		...(file.agentProfileName ? { agentProfileName: file.agentProfileName } : {}),
 		...(file.sourceRef ? { sourceRef: file.sourceRef } : {}),
 		...(file.sourceHash ? { sourceHash: file.sourceHash } : {}),
-		...(file.activeRevisionId ? { activeRevisionId: file.activeRevisionId } : {}),
 		exists: file.exists,
 		...(file.bytes !== undefined ? { bytes: file.bytes } : {}),
 		...(file.updatedAt ? { updatedAt: file.updatedAt } : {}),
@@ -438,6 +452,7 @@ class ContextFileService {
 	private readonly managed = new Map<string, StoredContextFileRecord>();
 	private readonly snapshots = new Map<string, WatchSnapshot>();
 	private pollTimer: ReturnType<typeof setInterval> | undefined;
+	private pollFailureReported = false;
 
 	constructor(
 		private readonly paths: ResolvedContextFilesPaths,
@@ -460,17 +475,16 @@ class ContextFileService {
 		this.discoverGlobalManagedFiles(context, false);
 		const managed = this.managed.get(key);
 		if (managed) {
-			const file = this.resolveManagedInfo(context, managed);
-			const activeRevision = file.activeRevisionId ? this.store.getRevision(file.activeRevisionId) : undefined;
+			const record = this.ensureManagedRecordSynced(managed);
+			const file = this.resolveManagedInfo(context, record);
 			const snapshot = await fileSnapshot(file.absolutePath);
-			const markdown = snapshot.exists ? (snapshot.content ?? "") : (activeRevision?.content ?? "");
 			return {
 				...file,
 				bytes: snapshot.bytes ?? file.bytes,
 				updatedAt: snapshot.updatedAt ?? file.updatedAt,
 				version: snapshot.version ?? file.version,
 				exists: snapshot.exists,
-				markdown,
+				markdown: snapshot.exists ? (snapshot.content ?? "") : record.workingContent,
 			};
 		}
 
@@ -503,23 +517,11 @@ class ContextFileService {
 			managedPath: absolutePath,
 			scope,
 			agentProfileName,
+			workingContent: markdown,
 		});
-		const revision = this.store.appendRevision({
-			contextFileKey: record.key,
-			kind: "working",
-			contentHash: hashContextFileContent(markdown),
-			content: markdown,
-			actorId: webSession.authSession.identity.userId,
-			note: "Managed context file created",
-		});
-		const updated = this.store.updateFile({
-			...record,
-			activeRevisionId: revision.id,
-			updatedAt: new Date().toISOString(),
-		});
-		this.upsertManaged(updated);
-		const document = await this.read(context, updated.key);
-		this.snapshots.set(updated.key, this.snapshotFromInfo(document));
+		this.upsertManaged(record);
+		const document = await this.read(context, record.key);
+		this.snapshots.set(record.key, this.snapshotFromInfo(document));
 		this.emitChanged(context, "context-file.created", "web", webSession.authSession.identity.userId, document);
 		return document;
 	}
@@ -533,8 +535,9 @@ class ContextFileService {
 		const key = uniqueKey(`ctx:${slugSegment(label)}`, new Set(this.list(context).map((file) => file.key)));
 		const targetDir = this.resolveManagedDir(scope, agentProfileName);
 		const absolutePath = uniquePath(targetDir, managedFileName(label));
+		const sourceContent = sourceDescriptor.content ?? "";
 		await mkdir(dirname(absolutePath), { recursive: true });
-		await writeFile(absolutePath, sourceDescriptor.content ?? "", "utf8");
+		await writeFile(absolutePath, sourceContent, "utf8");
 
 		const record = this.store.createFile({
 			key,
@@ -542,37 +545,14 @@ class ContextFileService {
 			managedPath: absolutePath,
 			scope,
 			agentProfileName,
+			workingContent: sourceContent,
 			sourceRef: this.pluginSourceRef(sourceFile),
 			sourceHash: sourceDescriptor.contentHash,
+			sourceContent,
 		});
-		const sourceRevision = this.store.appendRevision({
-			contextFileKey: record.key,
-			kind: "source-snapshot",
-			contentHash: sourceDescriptor.contentHash!,
-			content: sourceDescriptor.content ?? "",
-			actorId: webSession.authSession.identity.userId,
-			sourceHashAtCreation: sourceDescriptor.contentHash,
-			note: "Plugin source linked",
-		});
-		const workingRevision = this.store.appendRevision({
-			contextFileKey: record.key,
-			kind: "working",
-			contentHash: sourceDescriptor.contentHash!,
-			content: sourceDescriptor.content ?? "",
-			actorId: webSession.authSession.identity.userId,
-			basedOnRevisionId: sourceRevision.id,
-			sourceHashAtCreation: sourceDescriptor.contentHash,
-			note: "Managed working copy created from plugin source",
-		});
-		const updated = this.store.updateFile({
-			...record,
-			activeRevisionId: workingRevision.id,
-			sourceHash: sourceDescriptor.contentHash,
-			updatedAt: new Date().toISOString(),
-		});
-		this.upsertManaged(updated);
-		const document = await this.read(context, updated.key);
-		this.snapshots.set(updated.key, this.snapshotFromInfo(document));
+		this.upsertManaged(record);
+		const document = await this.read(context, record.key);
+		this.snapshots.set(record.key, this.snapshotFromInfo(document));
 		this.emitChanged(context, "context-file.linked_from_plugin", "web", webSession.authSession.identity.userId, document);
 		return document;
 	}
@@ -587,10 +567,7 @@ class ContextFileService {
 		}
 		if (current.markdown === markdown) return current;
 
-		const updatedRecord = await this.writeWorkingContent(record, markdown, {
-			actorId: webSession.authSession.identity.userId,
-			note: "Managed context file updated",
-		});
+		const updatedRecord = await this.writeWorkingContent(record, markdown);
 		const updated = await this.read(context, updatedRecord.key);
 		this.snapshots.set(updated.key, this.snapshotFromInfo(updated));
 		this.emitChanged(context, "context-file.updated", "web", webSession.authSession.identity.userId, updated);
@@ -620,6 +597,7 @@ class ContextFileService {
 			managedPath: nextPath,
 			scope,
 			agentProfileName,
+			workingContent: this.currentWorkingContent(record),
 			updatedAt: new Date().toISOString(),
 		});
 		this.upsertManaged(updated);
@@ -633,11 +611,10 @@ class ContextFileService {
 		const record = this.requireManagedRecord(key);
 		if (!record.sourceRef) throw new PiboWebHttpError("Only linked managed files can be reset to source", 400);
 		const liveSource = this.requireLiveSourceForRecord(context, record);
-		this.ensureSourceSnapshot(record, liveSource, webSession.authSession.identity.userId, "Source snapshot refreshed during reset");
-		const updatedRecord = await this.writeWorkingContent(record, liveSource.content ?? "", {
-			actorId: webSession.authSession.identity.userId,
+		const sourceContent = liveSource.content ?? "";
+		const updatedRecord = await this.writeWorkingContent(record, sourceContent, {
 			sourceHash: liveSource.contentHash,
-			note: "Working copy reset to source",
+			sourceContent,
 		});
 		const document = await this.read(context, updatedRecord.key);
 		this.snapshots.set(updatedRecord.key, this.snapshotFromInfo(document));
@@ -649,11 +626,10 @@ class ContextFileService {
 		const record = this.requireManagedRecord(key);
 		if (!record.sourceRef) throw new PiboWebHttpError("Only linked managed files can adopt a source", 400);
 		const liveSource = this.requireLiveSourceForRecord(context, record);
-		this.ensureSourceSnapshot(record, liveSource, webSession.authSession.identity.userId, "Source snapshot adopted");
-		const updatedRecord = await this.writeWorkingContent(record, liveSource.content ?? "", {
-			actorId: webSession.authSession.identity.userId,
+		const sourceContent = liveSource.content ?? "";
+		const updatedRecord = await this.writeWorkingContent(record, sourceContent, {
 			sourceHash: liveSource.contentHash,
-			note: "Plugin source adopted",
+			sourceContent,
 		});
 		const document = await this.read(context, updatedRecord.key);
 		this.snapshots.set(updatedRecord.key, this.snapshotFromInfo(document));
@@ -661,28 +637,38 @@ class ContextFileService {
 		return document;
 	}
 
+	async createRevision(context: PiboWebAppContext, key: string, body: Record<string, unknown>, webSession: PiboWebSession): Promise<ContextFileRevisionInfo> {
+		const record = this.ensureManagedRecordSynced(this.requireManagedRecord(key));
+		const name = normalizeRevisionName(body.name);
+		const content = this.currentWorkingContent(record);
+		const revision = this.store.appendRevision({
+			contextFileKey: key,
+			name,
+			contentHash: hashContextFileContent(content),
+			content,
+			actorId: webSession.authSession.identity.userId,
+		});
+		const document = await this.read(context, key);
+		this.emitChanged(context, "context-file.revision_created", "web", webSession.authSession.identity.userId, document);
+		return this.revisionInfoFromRecord(revision);
+	}
+
 	async restoreRevision(context: PiboWebAppContext, key: string, body: Record<string, unknown>, webSession: PiboWebSession): Promise<ContextFileDocument> {
 		const record = this.requireManagedRecord(key);
 		const revisionId = normalizeRevisionId(body.revisionId);
 		const revision = this.store.getRevision(revisionId);
 		if (!revision || revision.contextFileKey !== key) throw new PiboWebHttpError(`Unknown revision "${revisionId}"`, 404);
-		const updatedRecord = await this.writeWorkingContent(record, revision.content, {
-			actorId: webSession.authSession.identity.userId,
-			basedOnRevisionId: revision.id,
-			note: `Revision restored from ${revision.id}`,
-		});
+		const updatedRecord = await this.writeWorkingContent(record, revision.content);
 		const document = await this.read(context, updatedRecord.key);
 		this.snapshots.set(updatedRecord.key, this.snapshotFromInfo(document));
 		this.emitChanged(context, "context-file.revision_restored", "web", webSession.authSession.identity.userId, document);
 		return document;
 	}
 
-	listRevisions(context: PiboWebAppContext, key: string): { revisions: ContextFileRevisionInfo[]; activeRevisionId?: string } {
-		const record = this.ensureManagedRecordSynced(this.requireManagedRecord(key));
-		const revisions = this.store.listRevisions(key).map((revision) => this.revisionInfoFromRecord(revision, record.activeRevisionId));
+	listRevisions(context: PiboWebAppContext, key: string): { revisions: ContextFileRevisionInfo[] } {
+		this.ensureManagedRecordSynced(this.requireManagedRecord(key));
 		return {
-			revisions,
-			...(record.activeRevisionId ? { activeRevisionId: record.activeRevisionId } : {}),
+			revisions: this.store.listRevisions(key).map((revision) => this.revisionInfoFromRecord(revision)),
 		};
 	}
 
@@ -721,7 +707,13 @@ class ContextFileService {
 		this.discoverGlobalManagedFiles(context, false);
 		for (const file of this.list(context)) this.snapshots.set(file.key, this.snapshotFromInfo(file));
 		this.pollTimer = setInterval(() => {
-			void this.poll(context);
+			void this.poll(context).then(() => {
+				this.pollFailureReported = false;
+			}).catch((error: unknown) => {
+				if (this.pollFailureReported) return;
+				this.pollFailureReported = true;
+				console.error(`[pibo] Context Files polling failed: ${error instanceof Error ? error.message : String(error)}`);
+			});
 		}, POLL_INTERVAL_MS);
 		this.pollTimer.unref?.();
 	}
@@ -778,31 +770,18 @@ class ContextFileService {
 				label,
 				managedPath: absolutePath,
 				scope: "global",
+				workingContent: snapshot.content ?? "",
 				createdAt: snapshot.updatedAt,
 				updatedAt: snapshot.updatedAt,
 			});
-			const revision = this.store.appendRevision({
-				contextFileKey: record.key,
-				kind: "working",
-				contentHash: snapshot.version,
-				content: snapshot.content ?? "",
-				createdAt: snapshot.updatedAt,
-				note: "Global context file discovered on disk",
-			});
-			const updated = this.store.updateFile({
-				...record,
-				activeRevisionId: revision.id,
-				updatedAt: snapshot.updatedAt ?? new Date().toISOString(),
-			});
 
-			this.upsertManaged(updated);
-			this.managed.set(updated.key, updated);
+			this.upsertManaged(record);
 			knownPaths.add(absolutePath);
-			usedKeys.add(updated.key);
-			const info = this.resolveManagedInfo(context, updated);
-			discovered.push(updated);
+			usedKeys.add(record.key);
+			const info = this.resolveManagedInfo(context, record);
+			discovered.push(record);
 			if (emitEvents) {
-				this.snapshots.set(updated.key, this.snapshotFromInfo(info));
+				this.snapshots.set(record.key, this.snapshotFromInfo(info));
 				this.emitChanged(context, "context-file.created", "filesystem", undefined, info);
 			}
 		}
@@ -844,10 +823,9 @@ class ContextFileService {
 	private resolveManagedInfo(context: PiboWebAppContext, file: StoredContextFileRecord): ContextFileInfo {
 		const record = this.ensureManagedRecordSynced(file);
 		const snapshot = snapshotFromSync(record.managedPath);
-		const activeRevision = record.activeRevisionId ? this.store.getRevision(record.activeRevisionId) : undefined;
 		const sourceDescriptor = record.sourceRef ? this.resolveLiveSource(context, record.sourceRef) : undefined;
 		const sourceHash = sourceDescriptor?.contentHash ?? record.sourceHash;
-		const workingHash = snapshot.version ?? activeRevision?.contentHash;
+		const workingHash = snapshot.version ?? hashContextFileContent(record.workingContent);
 		const linkState = this.computeLinkState(record, sourceDescriptor, workingHash);
 		return {
 			key: record.key,
@@ -862,13 +840,12 @@ class ContextFileService {
 			editable: true,
 			removable: true,
 			exists: snapshot.exists,
-			bytes: snapshot.bytes ?? (activeRevision ? Buffer.byteLength(activeRevision.content, "utf8") : undefined),
+			bytes: snapshot.bytes ?? Buffer.byteLength(record.workingContent, "utf8"),
 			updatedAt: snapshot.updatedAt ?? record.updatedAt,
-			version: snapshot.version ?? activeRevision?.contentHash,
+			version: snapshot.version ?? workingHash,
 			sourceRef: record.sourceRef,
 			sourceHash,
 			linkState,
-			activeRevisionId: record.activeRevisionId,
 		};
 	}
 
@@ -886,20 +863,11 @@ class ContextFileService {
 	private ensureManagedRecordSynced(record: StoredContextFileRecord): StoredContextFileRecord {
 		const snapshot = snapshotFromSync(record.managedPath);
 		if (!snapshot.exists || !snapshot.version) return record;
-		const activeRevision = record.activeRevisionId ? this.store.getRevision(record.activeRevisionId) : undefined;
-		if (activeRevision?.contentHash === snapshot.version) return record;
-		const revision = this.store.appendRevision({
-			contextFileKey: record.key,
-			kind: "working",
-			contentHash: snapshot.version,
-			content: snapshot.content ?? "",
-			basedOnRevisionId: record.activeRevisionId,
-			sourceHashAtCreation: record.sourceHash,
-			note: activeRevision ? "External file update detected" : "Recovered working content from disk",
-		});
+		const content = snapshot.content ?? "";
+		if (hashContextFileContent(record.workingContent) === snapshot.version) return record;
 		const updated = this.store.updateFile({
 			...record,
-			activeRevisionId: revision.id,
+			workingContent: content,
 			updatedAt: snapshot.updatedAt ?? new Date().toISOString(),
 		});
 		this.upsertManaged(updated);
@@ -908,74 +876,38 @@ class ContextFileService {
 
 	private currentWorkingContent(record: StoredContextFileRecord): string {
 		const snapshot = snapshotFromSync(record.managedPath);
-		if (snapshot.exists) return snapshot.content ?? "";
-		const revision = record.activeRevisionId ? this.store.getRevision(record.activeRevisionId) : undefined;
-		return revision?.content ?? "";
+		return snapshot.exists ? (snapshot.content ?? "") : record.workingContent;
 	}
 
 	private async writeWorkingContent(
 		record: StoredContextFileRecord,
 		content: string,
 		options: {
-			actorId?: string;
-			basedOnRevisionId?: string;
 			sourceHash?: string;
-			note: string;
-		},
+			sourceContent?: string;
+		} = {},
 	): Promise<StoredContextFileRecord> {
 		await mkdir(dirname(record.managedPath), { recursive: true });
 		await writeFile(record.managedPath, content, "utf8");
-		const revision = this.store.appendRevision({
-			contextFileKey: record.key,
-			kind: "working",
-			contentHash: hashContextFileContent(content),
-			content,
-			actorId: options.actorId,
-			basedOnRevisionId: options.basedOnRevisionId ?? record.activeRevisionId,
-			sourceHashAtCreation: options.sourceHash ?? record.sourceHash,
-			note: options.note,
-		});
 		const updated = this.store.updateFile({
 			...record,
-			activeRevisionId: revision.id,
+			workingContent: content,
 			sourceHash: options.sourceHash ?? record.sourceHash,
+			sourceContent: options.sourceContent ?? record.sourceContent,
 			updatedAt: new Date().toISOString(),
 		});
 		this.upsertManaged(updated);
 		return updated;
 	}
 
-	private ensureSourceSnapshot(
-		record: StoredContextFileRecord,
-		source: SourceDescriptor,
-		actorId: string,
-		note: string,
-	): StoredContextFileRevisionRecord {
-		const existing = source.contentHash ? this.store.findLatestSourceSnapshot(record.key, source.contentHash) : undefined;
-		if (existing) return existing;
-		return this.store.appendRevision({
-			contextFileKey: record.key,
-			kind: "source-snapshot",
-			contentHash: source.contentHash ?? hashContextFileContent(source.content ?? ""),
-			content: source.content ?? "",
-			actorId,
-			sourceHashAtCreation: source.contentHash,
-			note,
-		});
-	}
-
-	private revisionInfoFromRecord(revision: StoredContextFileRevisionRecord, activeRevisionId: string | undefined): ContextFileRevisionInfo {
+	private revisionInfoFromRecord(revision: StoredContextFileRevisionRecord): ContextFileRevisionInfo {
 		return {
 			id: revision.id,
-			kind: revision.kind,
+			name: revision.name,
 			contentHash: revision.contentHash,
 			createdAt: revision.createdAt,
 			actorId: revision.actorId,
-			basedOnRevisionId: revision.basedOnRevisionId,
-			sourceHashAtCreation: revision.sourceHashAtCreation,
-			note: revision.note,
 			content: revision.content,
-			active: revision.id === activeRevisionId,
 		};
 	}
 
@@ -995,13 +927,10 @@ class ContextFileService {
 				contentHash: liveSource.contentHash,
 			};
 		}
-		const snapshot = record.sourceHash
-			? this.store.findLatestSourceSnapshot(record.key, record.sourceHash)
-			: this.store.findLatestSourceSnapshot(record.key);
-		if (!snapshot) throw new PiboWebHttpError("No source snapshot available for diff", 404);
+		if (record.sourceContent === undefined) throw new PiboWebHttpError("No source snapshot available for diff", 404);
 		return {
-			content: snapshot.content,
-			contentHash: snapshot.contentHash,
+			content: record.sourceContent,
+			contentHash: record.sourceHash ?? hashContextFileContent(record.sourceContent),
 		};
 	}
 
@@ -1087,7 +1016,6 @@ class ContextFileService {
 			version: file.version,
 			linkState: file.linkState,
 			sourceHash: file.sourceHash,
-			activeRevisionId: file.activeRevisionId,
 		};
 	}
 
@@ -1232,6 +1160,13 @@ function createContextFilesWebApp(service: ContextFileService) {
 				return responseJson(service.listRevisions(context, path.key));
 			}
 
+			if (path.action === "revisions" && request.method === "POST") {
+				const webSession = await context.requireSession({ request });
+				service.startWatcher(context);
+				const body = await readJsonBody<Record<string, unknown>>(request);
+				return responseJson({ revision: await service.createRevision(context, path.key, body, webSession) }, { status: 201 });
+			}
+
 			if (path.action === "diff" && request.method === "GET") {
 				await context.requireSession({ request });
 				service.startWatcher(context);
@@ -1257,6 +1192,7 @@ export function createPiboContextFilesPlugin(options: ContextFilesPluginOptions 
 		id: "pibo.context-files",
 		name: "Pibo Context Files",
 		register(api) {
+			assertContextFilesStorageOwnership(paths);
 			const service = new ContextFileService(paths, api);
 			api.registerWebApp(createContextFilesWebApp(service));
 		},

@@ -11,7 +11,7 @@ export type ChatStreamReplayStatus = {
 	maxEvents: number;
 };
 
-export type ChatStreamEvent = { piboSessionId?: string } & (
+export type ChatStreamEvent = { piboSessionId?: string; createdAt?: string } & (
 	| { type: "ready"; piboSessionId: string; liveReplay?: ChatStreamReplayStatus }
 	| { type: "RUN_STARTED"; runId: string; input?: { text?: string; source?: string } }
 	| { type: "RUN_FINISHED"; runId: string }

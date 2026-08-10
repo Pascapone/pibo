@@ -15,6 +15,7 @@ type ChatStreamEventMeta = {
 	streamId?: number;
 	streamFrameIndex?: number;
 	liveReplayId?: number;
+	createdAt?: string;
 };
 
 export type ChatStreamReplayStatus = {

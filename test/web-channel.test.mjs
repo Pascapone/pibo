@@ -1460,6 +1460,7 @@ test("chat web app selected live event streams replay buffered transient deltas 
 		assert.equal(replayFrame.matched, true, replayFrame.text);
 		assert.doesNotMatch(replayFrame.text, /first before reconnect/);
 		assert.match(replayFrame.text, /id: live:\d+/);
+		assert.match(replayFrame.text, /"createdAt":"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z"/);
 	} finally {
 		firstController.abort();
 		replayController.abort();
@@ -2140,6 +2141,10 @@ test("chat web app replays durable SSE frames with stream cursors", async () => 
 		assert.match(text, /id: \d+:1/);
 		assert.match(text, /TEXT_MESSAGE_END/);
 		assert.match(text, /hello from history/);
+		const replayCreatedAt = [...text.matchAll(/"createdAt":"([^"]+)"/g)].map((match) => match[1]);
+		assert.ok(replayCreatedAt.length >= 2, text);
+		assert.equal(new Set(replayCreatedAt).size, 1, "all frames from one durable event should keep its stored timestamp");
+		assert.equal(Number.isFinite(Date.parse(replayCreatedAt[0])), true);
 	} finally {
 		await channel.stop?.();
 	}
@@ -3809,15 +3814,8 @@ test("workflow delete API tombstones UI workflows while preserving Project snaps
 		});
 		assert.equal(bootstrapResponse.status, 200);
 		const bootstrapPayload = await bootstrapResponse.json();
-		const projectSession = bootstrapPayload.projectSessions[0];
-		assert.equal(projectSession.workflowRunId, startPayload.run.id);
-		assert.equal(projectSession.workflowDefinitionLink.status, "snapshot_only_definition_deleted");
-		assert.equal(projectSession.workflowDefinitionLink.workflowId, "ui-review-workflow");
-		assert.equal(projectSession.workflowDefinitionLink.workflowVersion, "2.0.0");
-		assert.equal(projectSession.workflowDefinitionLink.title, "UI Review Workflow");
-		assert.equal(projectSession.workflowDefinitionLink.definitionHash, sessionPayload.snapshot.workflow.effectiveDefinitionHash);
-		assert.equal(projectSession.workflowDefinitionLink.href, undefined);
-		assert.match(projectSession.workflowDefinitionLink.tombstoneLabel, /Definition deleted/);
+		assert.deepEqual(bootstrapPayload.projectSessions, []);
+		assert.deepEqual(bootstrapPayload.sessions, []);
 
 		const historicalRunResponse = await fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(projectPayload.project.id)}/workflow-sessions/${encodeURIComponent(sessionPayload.session.id)}/start`, {
 			method: "POST",
@@ -5126,7 +5124,7 @@ test("chat web app creates configured Project workflow sessions and starts one w
 	}
 });
 
-test("chat web app lists and resolves Project workflow human wait tokens", async () => {
+test("chat web app resolves Project workflow human wait tokens through preserved workflow APIs", async () => {
 	const { channel, baseURL, storageDir, projectStorePath } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 		profiles: [{ name: "base", aliases: ["default"] }],
@@ -5263,18 +5261,8 @@ test("chat web app lists and resolves Project workflow human wait tokens", async
 		});
 		assert.equal(bootstrapResponse.status, 200);
 		const bootstrapPayload = await bootstrapResponse.json();
-		const bootProjectSession = bootstrapPayload.projectSessions.find((session) => session.piboSessionId === createdPayload.session.id);
-		assert.equal(bootProjectSession.pendingHumanActions.length, 6);
-		const resumeWait = bootProjectSession.pendingHumanActions.find((action) => action.waitTokenId === "wwt_resume");
-		assert.equal(resumeWait.prompt, "Review prompt for wwt_resume");
-		assert.equal(resumeWait.availableActions[0].id, "fixture.humanActions.resume");
-		assert.equal(resumeWait.availableActions[0].displayName, "Resume");
-		assert.equal(resumeWait.payloadRequirements.required, true);
-		assert.equal(resumeWait.payloadRequirements.schema.required[0], "comment");
-		const missingActionWait = bootProjectSession.pendingHumanActions.find((action) => action.waitTokenId === "wwt_missing_action_ref");
-		assert.equal(missingActionWait.availableActions[0].registered, false);
-		assert.equal(missingActionWait.diagnostics[0].code, "WorkflowGraphError.unknownHumanActionRef");
-		assert.equal(missingActionWait.diagnostics[0].registryRef, "missing.humanActions.inline");
+		assert.equal(bootstrapPayload.projectSessions.some((session) => session.piboSessionId === createdPayload.session.id), false);
+		assert.equal(bootstrapPayload.projectSessions.some((session) => session.piboSessionId === otherCreatedPayload.session.id), false);
 
 		const missingTokenResponse = await postHumanAction(createdPayload.session.id, { waitTokenId: "wwt_missing", actionId: "fixture.humanActions.approve" });
 		assert.equal(missingTokenResponse.status, 404);
@@ -5467,7 +5455,8 @@ test("workflow lifecycle observability records draft, publish, Project start, an
 		});
 		assert.equal(bootstrapResponse.status, 200);
 		const bootstrapPayload = await bootstrapResponse.json();
-		assert.ok(bootstrapPayload.workflowLifecycleEvents.some((event) => event.type === "project.workflow_start.blocked" && event.piboSessionId === blockedSessionPayload.session.id));
+		assert.deepEqual(bootstrapPayload.workflowLifecycleEvents, []);
+		assert.equal(bootstrapPayload.projectSessions.some((session) => session.piboSessionId === blockedSessionPayload.session.id), false);
 
 		const db = new DatabaseSync(dataStorePath, { readOnly: true });
 		try {
@@ -5668,8 +5657,8 @@ test("chat web app rejects unsupported Project workflow session creation inputs"
 	}
 });
 
-test("chat web app project bootstrap includes real workflow session descendants only", async () => {
-	const { channel, baseURL, sessions, storageDir, projectStorePath } = await startWebHostChannel({
+test("chat web app project bootstrap excludes quarantined workflow session trees", async () => {
+	const { channel, baseURL, sessions, storageDir } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 		profiles: [{ name: "base", aliases: ["default"] }, { name: "reviewer-agent" }],
 	});
@@ -5751,43 +5740,14 @@ test("chat web app project bootstrap includes real workflow session descendants 
 		});
 		assert.equal(bootstrapResponse.status, 200);
 		const bootstrapPayload = await bootstrapResponse.json();
-		assert.equal(bootstrapPayload.selectedPiboSessionId, subagent.id);
-
-		const flatten = (nodes) => nodes.flatMap((node) => [node, ...flatten(node.children ?? [])]);
-		const flattened = flatten(bootstrapPayload.sessions);
-		assert.deepEqual(new Set(flattened.map((node) => node.piboSessionId)), new Set([root.id, nested.id, agent.id, subagent.id]));
-		assert.ok(!flattened.some((node) => node.piboSessionId === unrelated.id));
-
-		const rootNode = bootstrapPayload.sessions.find((node) => node.piboSessionId === root.id);
-		assert.ok(rootNode);
-		assert.equal(rootNode.workflowSessionKind, "main_workflow");
-		assert.equal(rootNode.children[0].workflowSessionKind, "nested_workflow");
-		assert.equal(rootNode.children[0].children[0].workflowSessionKind, "agent_node");
-		assert.equal(rootNode.children[0].children[0].children[0].workflowSessionKind, "subagent");
-		assert.deepEqual(bootstrapPayload.projectSessions.map((session) => session.piboSessionId), [root.id]);
-		assert.equal(bootstrapPayload.projectSessions[0].workflowDefinitionLink.status, "live");
-		assert.equal(bootstrapPayload.projectSessions[0].workflowDefinitionLink.workflowId, "standard-project");
-		assert.equal(bootstrapPayload.projectSessions[0].workflowDefinitionLink.workflowVersion, "1.0.0");
-		assert.equal(bootstrapPayload.projectSessions[0].workflowDefinitionLink.href, "/apps/chat/workflows/view/standard-project/1.0.0");
-
-		const db = new DatabaseSync(projectStorePath);
-		try {
-			db.prepare("UPDATE project_sessions SET workflow_id = ?, workflow_version = ? WHERE pibo_session_id = ?").run("deleted-review-workflow", "9.9.9", root.id);
-		} finally {
-			db.close();
-		}
-
-		const deletedBootstrapResponse = await fetch(`${baseURL}/api/chat/projects/bootstrap?projectId=${encodeURIComponent(projectPayload.project.id)}&piboSessionId=${encodeURIComponent(root.id)}`, {
-			headers: { "x-test-user": "user-1" },
-		});
-		assert.equal(deletedBootstrapResponse.status, 200);
-		const deletedBootstrapPayload = await deletedBootstrapResponse.json();
-		const deletedProjectSession = deletedBootstrapPayload.projectSessions[0];
-		assert.equal(deletedProjectSession.workflowDefinitionLink.status, "snapshot_only_definition_deleted");
-		assert.equal(deletedProjectSession.workflowDefinitionLink.workflowId, "deleted-review-workflow");
-		assert.equal(deletedProjectSession.workflowDefinitionLink.workflowVersion, "9.9.9");
-		assert.equal(deletedProjectSession.workflowDefinitionLink.href, undefined);
-		assert.match(deletedProjectSession.workflowDefinitionLink.tombstoneLabel, /Definition deleted/);
+		assert.equal(bootstrapPayload.selectedPiboSessionId, undefined);
+		assert.deepEqual(bootstrapPayload.sessions, []);
+		assert.deepEqual(bootstrapPayload.projectSessions, []);
+		assert.equal(bootstrapPayload.sessions.some((node) => node.piboSessionId === root.id), false);
+		assert.equal(bootstrapPayload.sessions.some((node) => node.piboSessionId === nested.id), false);
+		assert.equal(bootstrapPayload.sessions.some((node) => node.piboSessionId === agent.id), false);
+		assert.equal(bootstrapPayload.sessions.some((node) => node.piboSessionId === subagent.id), false);
+		assert.equal(bootstrapPayload.sessions.some((node) => node.piboSessionId === unrelated.id), false);
 	} finally {
 		await channel.stop?.();
 	}
@@ -6173,7 +6133,9 @@ test("chat web app exposes and updates MCP server descriptions", async () => {
 		},
 	}, null, 2)}\n`);
 	const previousConfigPath = process.env.MCP_CONFIG_PATH;
+	const previousHome = process.env.HOME;
 	process.env.MCP_CONFIG_PATH = configPath;
+	process.env.HOME = cwd;
 
 	const { channel, baseURL } = await startWebHostChannel({
 		auth: createFakeAuthService(),
@@ -6239,6 +6201,11 @@ test("chat web app exposes and updates MCP server descriptions", async () => {
 			delete process.env.MCP_CONFIG_PATH;
 		} else {
 			process.env.MCP_CONFIG_PATH = previousConfigPath;
+		}
+		if (previousHome === undefined) {
+			delete process.env.HOME;
+		} else {
+			process.env.HOME = previousHome;
 		}
 	}
 });

@@ -164,6 +164,7 @@ child.unref();
       encoding: 'utf8',
       env: {
         ...process.env,
+        PIBO_GATEWAY_DEV_HOME: join(dir, 'pibo-home'),
         PIBO_GATEWAY_DEV_PORT: String(port),
         PIBO_GATEWAY_MANAGER_COMMAND: scriptPath,
         PIBO_GATEWAY_HEALTH_RETRIES: '30',
@@ -178,6 +179,7 @@ child.unref();
       assert.equal((await waitUntilReachable(port)).mode, 'dev');
     } finally {
       try { process.kill(Number(readFileSync(pidPath, 'utf8')), 'SIGTERM'); } catch {}
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 

@@ -61,8 +61,8 @@ async function runWorkflowVersionHistoryModelScenario() {
 		assert.match(workflowHistoryStatusDescription(historyRecord({ status: "deleted" })), /immutable snapshots/);
 		assert.match(workflowHistoryStatusDescription(historyRecord({ status: "draft" })), /not published/);
 	`;
-	return execFileAsync("npx", ["tsx", "--eval", script], {
-		cwd: "/workspace",
+	return execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], {
+		cwd: process.cwd(),
 		maxBuffer: 1024 * 1024,
 	});
 }

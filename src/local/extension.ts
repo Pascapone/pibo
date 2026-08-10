@@ -257,6 +257,7 @@ function createExecutionParams(slashCommand: string, args = ""): PiboJsonValue |
 		return level ? { level: parsePiboThinkingLevel(level) } : undefined;
 	}
 	if (slashCommand === "/compact") return trimmedArgs ? { customInstructions: trimmedArgs } : undefined;
+	if (slashCommand === "/goal") return { command: trimmedArgs };
 	return undefined;
 }
 

@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import type { Socket } from "node:net";
 import { PiboAuthError } from "../auth/types.js";
 import type { PiboChannel, PiboChannelContext } from "../channels/types.js";
 import { handleSimpleAgentApiRequest } from "../api/simple-agent-api.js";
@@ -9,6 +10,7 @@ import type { PiboWebAppContext } from "./types.js";
 export const DEFAULT_WEB_CHANNEL_HOST = "127.0.0.1";
 export const DEFAULT_WEB_CHANNEL_PORT = 4788;
 export const WEB_CHANNEL_NAME = "web-host";
+const DEFAULT_SHUTDOWN_DRAIN_TIMEOUT_MS = 5_000;
 
 /**
  * Internal header that carries the TCP socket peer address from the web host
@@ -26,6 +28,7 @@ export type WebHostChannelOptions = {
 	announce?: boolean;
 	canonicalBaseURL?: string;
 	gatewayMode?: "dev" | "prod" | "fallback" | "unknown";
+	shutdownDrainTimeoutMs?: number;
 };
 
 export type WebHostChannel = PiboChannel & {
@@ -190,11 +193,47 @@ function createCanonicalRedirect(request: Request, canonicalBaseURL: string | un
 	return redirect(new URL(`${url.pathname}${url.search}`, canonical.origin).toString());
 }
 
+function isEventStreamResponse(response: Response): boolean {
+	return response.headers.get("content-type")?.toLowerCase().startsWith("text/event-stream") === true;
+}
+
+async function waitForServerClose(closePromise: Promise<void>, timeoutMs: number): Promise<boolean> {
+	return await new Promise<boolean>((resolve, reject) => {
+		let settled = false;
+		const timeout = setTimeout(() => {
+			settled = true;
+			resolve(false);
+		}, timeoutMs);
+		closePromise.then(
+			() => {
+				if (settled) return;
+				settled = true;
+				clearTimeout(timeout);
+				resolve(true);
+			},
+			(error: unknown) => {
+				if (settled) return;
+				settled = true;
+				clearTimeout(timeout);
+				reject(error);
+			},
+		);
+	});
+}
+
 export function createWebHostChannel(options: WebHostChannelOptions = {}): WebHostChannel {
 	const host = options.host ?? DEFAULT_WEB_CHANNEL_HOST;
 	const port = options.port ?? DEFAULT_WEB_CHANNEL_PORT;
+	const shutdownDrainTimeoutMs = options.shutdownDrainTimeoutMs ?? DEFAULT_SHUTDOWN_DRAIN_TIMEOUT_MS;
+	if (!Number.isFinite(shutdownDrainTimeoutMs) || shutdownDrainTimeoutMs < 0) {
+		throw new Error("Web channel shutdown drain timeout must be a non-negative finite number");
+	}
 	let server: Server | undefined;
 	let context: PiboChannelContext | undefined;
+	let stopPromise: Promise<void> | undefined;
+	let shuttingDown = false;
+	const sockets = new Set<Socket>();
+	const eventStreamControllers = new Map<ServerResponse, AbortController>();
 
 	const requireContext = (): PiboChannelContext => {
 		if (!context) throw new Error("Web channel is not started");
@@ -207,6 +246,17 @@ export function createWebHostChannel(options: WebHostChannelOptions = {}): WebHo
 			return responseJson({ error: "Auth service does not expose HTTP routes" }, { status: 500 });
 		}
 		return auth.handleRequest(request);
+	};
+
+	const sendResponse = async (nodeResponse: ServerResponse, webResponse: Response): Promise<void> => {
+		const eventStreamController = isEventStreamResponse(webResponse) ? new AbortController() : undefined;
+		if (eventStreamController) eventStreamControllers.set(nodeResponse, eventStreamController);
+		try {
+			await sendWebResponse(nodeResponse, webResponse, { signal: eventStreamController?.signal });
+		} finally {
+			if (eventStreamController) eventStreamControllers.delete(nodeResponse);
+			if (shuttingDown) server?.closeIdleConnections();
+		}
 	};
 
 	const handleRequest = async (nodeRequest: IncomingMessage, nodeResponse: ServerResponse): Promise<void> => {
@@ -222,12 +272,12 @@ export function createWebHostChannel(options: WebHostChannelOptions = {}): WebHo
 			const url = new URL(request.url);
 			const canonicalRedirect = createCanonicalRedirect(request, options.canonicalBaseURL);
 			if (canonicalRedirect) {
-				await sendWebResponse(nodeResponse, canonicalRedirect);
+				await sendResponse(nodeResponse, canonicalRedirect);
 				return;
 			}
 
 			if (url.pathname === "/health") {
-				await sendWebResponse(
+				await sendResponse(
 					nodeResponse,
 					responseJson({
 						status: "ok",
@@ -238,20 +288,20 @@ export function createWebHostChannel(options: WebHostChannelOptions = {}): WebHo
 			}
 
 			if (url.pathname === "/gateway/status") {
-				await sendWebResponse(nodeResponse, createGatewayStatusResponse(requireContext(), options));
+				await sendResponse(nodeResponse, createGatewayStatusResponse(requireContext(), options));
 				return;
 			}
 
 			if (url.pathname.startsWith("/api/auth/")) {
 				const authResponse = stripSocketPeerHeaderFromResponse(await handleAuthRequest(request));
-				await sendWebResponse(nodeResponse, authResponse);
+				await sendResponse(nodeResponse, authResponse);
 				return;
 			}
 
 			const ctx = requireContext();
 			const simpleApiResponse = await handleSimpleAgentApiRequest(request, ctx);
 			if (simpleApiResponse) {
-				await sendWebResponse(nodeResponse, simpleApiResponse);
+				await sendResponse(nodeResponse, simpleApiResponse);
 				return;
 			}
 
@@ -262,24 +312,24 @@ export function createWebHostChannel(options: WebHostChannelOptions = {}): WebHo
 
 			if (app) {
 				const response = await app.handleRequest(request, createAppContext(ctx));
-				await sendWebResponse(nodeResponse, response ?? notFound());
+				await sendResponse(nodeResponse, response ?? notFound());
 				return;
 			}
 
 			if (url.pathname === "/" && apps[0]) {
-				await sendWebResponse(nodeResponse, redirect(apps[0].mountPath));
+				await sendResponse(nodeResponse, redirect(apps[0].mountPath));
 				return;
 			}
 
 			if (url.pathname === "/") {
-				await sendWebResponse(nodeResponse, responseHtml("<!doctype html><title>Pibo</title><p>No web apps registered.</p>"));
+				await sendResponse(nodeResponse, responseHtml("<!doctype html><title>Pibo</title><p>No web apps registered.</p>"));
 				return;
 			}
 
-			await sendWebResponse(nodeResponse, notFound());
+			await sendResponse(nodeResponse, notFound());
 		} catch (error) {
 			const status = error instanceof PiboAuthError || error instanceof PiboWebHttpError ? error.statusCode : 500;
-			await sendWebResponse(
+			await sendResponse(
 				nodeResponse,
 				responseJson({ error: error instanceof Error ? error.message : String(error) }, { status }),
 			);
@@ -292,10 +342,16 @@ export function createWebHostChannel(options: WebHostChannelOptions = {}): WebHo
 		description: "Same-origin HTTP host for pibo web apps and auth routes.",
 		auth: { mode: "required" },
 		async start(channelContext) {
+			if (stopPromise) await stopPromise;
 			if (server) return;
+			shuttingDown = false;
 			context = channelContext;
 			server = createServer((request, response) => {
 				void handleRequest(request, response);
+			});
+			server.on("connection", (socket) => {
+				sockets.add(socket);
+				socket.once("close", () => sockets.delete(socket));
 			});
 			await new Promise<void>((resolve, reject) => {
 				server!.once("error", reject);
@@ -310,12 +366,43 @@ export function createWebHostChannel(options: WebHostChannelOptions = {}): WebHo
 			}
 		},
 		async stop() {
-			context = undefined;
-			if (server) {
-				await new Promise<void>((resolve, reject) => {
-					server!.close((error) => (error ? reject(error) : resolve()));
-				});
-				server = undefined;
+			if (stopPromise) return await stopPromise;
+			if (!server) {
+				context = undefined;
+				return;
+			}
+			const closingServer = server;
+			shuttingDown = true;
+			stopPromise = (async () => {
+				try {
+					const closePromise = new Promise<void>((resolve, reject) => {
+						closingServer.close((error) => (error ? reject(error) : resolve()));
+					});
+					const eventStreamCount = eventStreamControllers.size;
+					for (const controller of eventStreamControllers.values()) controller.abort();
+					closingServer.closeIdleConnections();
+
+					const drained = await waitForServerClose(closePromise, shutdownDrainTimeoutMs);
+					if (!drained) {
+						const connectionCount = sockets.size;
+						console.warn(
+							`[web-host] graceful shutdown timed out after ${shutdownDrainTimeoutMs} ms; force-closing ${connectionCount} active connection(s)`,
+						);
+						for (const socket of sockets) socket.destroy();
+						await closePromise;
+					} else if (eventStreamCount > 0) {
+						console.error(`[web-host] graceful shutdown closed ${eventStreamCount} active event stream(s)`);
+					}
+				} finally {
+					server = undefined;
+					context = undefined;
+					shuttingDown = false;
+				}
+			})();
+			try {
+				await stopPromise;
+			} finally {
+				stopPromise = undefined;
 			}
 		},
 		getAddress() {

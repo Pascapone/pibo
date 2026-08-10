@@ -102,8 +102,8 @@ async function runWorkflowEdgeAdapterScenario() {
 		assert.deepEqual(collisionResult.ui.positions.adapter_3, { x: 340, y: 230 });
 		assert.equal(insertWorkflowAdapterNodeForEdge(definition, "missing", "noop"), definition);
 	`;
-	return execFileAsync("npx", ["tsx", "--eval", script], {
-		cwd: "/workspace",
+	return execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], {
+		cwd: process.cwd(),
 		maxBuffer: 1024 * 1024,
 	});
 }

@@ -8,6 +8,7 @@ import type { PiboSessionTraceView } from "./types";
 import { WebAnnotationsSessionPanel } from "./web-annotations";
 import { RawEventsSidebar } from "./tracing/RawEventsSidebar";
 import { TerminalFullscreenTopBar } from "./terminal-fullscreen-top-bar";
+import { TerminalFileDropTarget } from "./terminal-file-drop-target";
 
 type SessionTraceLayoutProps = {
   selectedPiboSessionId: string | null;
@@ -24,6 +25,8 @@ type SessionTraceLayoutProps = {
   tracePageFetching: boolean;
   onLoadMoreRawEvents: () => void;
   terminalFullscreen: boolean;
+  terminalFileDropEnabled: boolean;
+  onTerminalFilesDropped: (files: readonly File[]) => Promise<void>;
   onOpenSessionWindow?: () => void;
   onExitTerminalFullscreen: () => void;
   headerProps: ComponentProps<typeof SessionTraceHeader>;
@@ -52,6 +55,8 @@ export function SessionTraceLayout({
   tracePageFetching,
   onLoadMoreRawEvents,
   terminalFullscreen,
+  terminalFileDropEnabled,
+  onTerminalFilesDropped,
   onOpenSessionWindow,
   onExitTerminalFullscreen,
   headerProps,
@@ -67,7 +72,9 @@ export function SessionTraceLayout({
   const terminalLoading = roomNavigationPending || (sessionNavigationPending && !currentTraceView) || loadingTrace;
   return (
     <>
-      <main
+      <TerminalFileDropTarget
+        enabled={terminalFileDropEnabled}
+        onFilesDropped={onTerminalFilesDropped}
         data-pibo-debug="chat-shell"
         data-pibo-session-id={selectedPiboSessionId ?? undefined}
         data-pibo-room-id={selectedRoomId ?? fallbackRoomId ?? undefined}
@@ -122,7 +129,7 @@ export function SessionTraceLayout({
           <WebAnnotationsSessionPanel {...webAnnotationsPanelProps} />
         ) : null}
         <Composer {...composerProps} />
-      </main>
+      </TerminalFileDropTarget>
 
       <RawEventsSidebar
         traceView={currentTraceView}

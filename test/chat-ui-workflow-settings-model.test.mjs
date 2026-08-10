@@ -132,8 +132,8 @@ async function runWorkflowSettingsModelScenario() {
 		const unchanged = { nodes: {} };
 		assert.equal(applyWorkflowPromptAssetDocumentToNode(unchanged, "missing", asset), unchanged);
 	`;
-	return execFileAsync("npx", ["tsx", "--eval", script], {
-		cwd: "/workspace",
+	return execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], {
+		cwd: process.cwd(),
 		maxBuffer: 1024 * 1024,
 	});
 }

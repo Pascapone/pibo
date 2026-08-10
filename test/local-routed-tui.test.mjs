@@ -213,6 +213,29 @@ test("local routed TUI extension routes input through the local client", async (
 	assert.equal(client.closeCount, 1);
 });
 
+test("local routed TUI forwards Goal objectives and control commands", async () => {
+	const client = createFakeClient();
+	client.capabilities.actions.push({ name: "goal", slashCommands: ["goal"] });
+	const statuses = new Map();
+	const fake = createFakeExtensionApi();
+	const ctx = createFakeExtensionContext(statuses);
+
+	createLocalRoutedTuiExtension(client)(fake.api);
+	await fake.handlers.get("session_start")({ type: "session_start", reason: "startup" }, ctx);
+
+	await fake.commands.get("goal").handler("Ship the feature");
+	assert.deepEqual(client.sentExecutions.at(-1), {
+		action: "goal",
+		params: { command: "Ship the feature" },
+	});
+
+	await fake.commands.get("goal").handler("pause");
+	assert.deepEqual(client.sentExecutions.at(-1), {
+		action: "goal",
+		params: { command: "pause" },
+	});
+});
+
 test("local routed TUI forwards compact instructions additively", async () => {
 	const client = createFakeClient();
 	client.capabilities.actions.push({ name: "compact", slashCommands: ["compact"] });

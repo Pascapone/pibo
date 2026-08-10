@@ -565,6 +565,7 @@ type TransientChatEvent = {
 	eventType: string;
 	payload: PiboOutputEvent;
 	replaySequence?: number;
+	createdAtMs?: number;
 };
 
 type ChatLiveEvent = StoredChatEvent | TransientChatEvent;
@@ -3223,7 +3224,7 @@ function liveEventMatches(event: ChatLiveEvent, input: { roomId?: string; piboSe
 	return true;
 }
 
-function recordTransientReplayEvent(state: ChatWebAppState, event: Omit<TransientChatEvent, "replaySequence">): TransientChatEvent {
+function recordTransientReplayEvent(state: ChatWebAppState, event: Omit<TransientChatEvent, "replaySequence" | "createdAtMs">): TransientChatReplayRecord {
 	const replaySequence = ++state.transientReplaySequence;
 	const recorded: TransientChatReplayRecord = { ...event, replaySequence, createdAtMs: Date.now() };
 	state.transientReplayBuffer.push(recorded);
@@ -3380,6 +3381,7 @@ function writeChatEventFrames(
 	if (options.mode === "summary" && isLiveOnlyOutputEvent(event.payload)) return;
 	const piboSessionId = event.piboSessionId ?? event.payload.piboSessionId;
 	const streamId = "streamId" in event ? event.streamId : undefined;
+	const createdAt = chatLiveEventCreatedAt(event);
 	const frames = chatStreamFramesFromOutputEvent(event.payload, state, {
 		includeRawEvent: streamId !== undefined && isPersistableOutputEvent(event.payload),
 	});
@@ -3389,9 +3391,18 @@ function writeChatEventFrames(
 		writeSse(controller, "pibo", {
 			...frames[index],
 			piboSessionId,
+			...(createdAt ? { createdAt } : {}),
 			...(!("streamId" in event) && event.replaySequence !== undefined ? { liveReplayId: event.replaySequence } : {}),
 		}, frameId);
 	}
+}
+
+function chatLiveEventCreatedAt(event: ChatLiveEvent): string | undefined {
+	if ("createdAt" in event && typeof event.createdAt === "string") return event.createdAt;
+	if ("createdAtMs" in event && typeof event.createdAtMs === "number" && Number.isFinite(event.createdAtMs)) {
+		return new Date(event.createdAtMs).toISOString();
+	}
+	return undefined;
 }
 
 function createEventStream(input: {

@@ -15,32 +15,39 @@ test("MCP server catalog reads local config metadata without connecting to serve
 	const cwd = await mkdtemp(join(tmpdir(), "pibo-mcp-context-"));
 	const configPath = join(cwd, "mcp_servers.json");
 	await writeConfig(configPath);
+	const previousHome = process.env.HOME;
+	process.env.HOME = cwd;
 
-	const servers = await listMcpServerInfos(configPath);
-	assert.deepEqual(servers, [
-		{
-			name: "filesystem",
-			transport: "stdio",
-			description: "Access project files through MCP.",
-			descriptionSource: "user",
-			hasDescription: true,
-			editable: true,
-		},
-		{
-			name: "registry-demo",
-			transport: "http",
-			description: "Search registry-backed records.",
-			descriptionSource: "registry",
-			hasDescription: true,
-			editable: false,
-		},
-		{
-			name: "missing-description",
-			transport: "stdio",
-			hasDescription: false,
-			editable: true,
-		},
-	]);
+	try {
+		const servers = await listMcpServerInfos(configPath);
+		assert.deepEqual(servers, [
+			{
+				name: "filesystem",
+				transport: "stdio",
+				description: "Access project files through MCP.",
+				descriptionSource: "user",
+				hasDescription: true,
+				editable: true,
+			},
+			{
+				name: "registry-demo",
+				transport: "http",
+				description: "Search registry-backed records.",
+				descriptionSource: "registry",
+				hasDescription: true,
+				editable: false,
+			},
+			{
+				name: "missing-description",
+				transport: "stdio",
+				hasDescription: false,
+				editable: true,
+			},
+		]);
+	} finally {
+		if (previousHome === undefined) delete process.env.HOME;
+		else process.env.HOME = previousHome;
+	}
 });
 
 test("MCP agent context is generated only for selected described servers", async () => {

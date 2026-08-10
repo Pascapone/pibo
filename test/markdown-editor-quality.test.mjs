@@ -76,6 +76,12 @@ test("Markdown editor keeps autosave stable without unhandled rejections or own-
 			/const handleSubmit = useCallback\(async \(\) => \{[\s\S]*?await editorRef\.current\?\.flushSave\(\);[\s\S]*?createContextFile/,
 			"creating a context file flushes pending editor changes first",
 		);
+		assert.match(
+			host,
+			/const handleCreateRevision = useCallback\(async \(\) => \{[\s\S]*?await editorRef\.current\?\.flushSave\(\);[\s\S]*?createContextFileRevision/,
+			"saving a named version flushes the current autosave before creating the revision",
+		);
+		assert.match(host, /placeholder="Version name"[\s\S]*Save Version/);
 	}
 	assert.match(workflowPrompt, /const editorDocumentKey = `\$\{draft\.draftId\}:\$\{nodeId\}`/);
 	assert.match(workflowPrompt, /await editorRef\.current\?\.flushSave\(\)[\s\S]*setSelectedRef\(nextRef\)/);
