@@ -364,6 +364,7 @@ export type PiboSessionErrorClass =
 	| "provider_rate_limit"
 	| "provider_server"
 	| "provider_error"
+	| "transcript_integrity"
 	| "runtime_abort"
 	| "runtime_error"
 	| "unknown";

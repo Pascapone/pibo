@@ -1871,7 +1871,7 @@ test("pibo debug runs lists and inspects durable runs", async () => {
 	const cwd = await makeDebugFixture();
 	try {
 		const list = await execFileAsync("node", [cliPath, "debug", "runs", "list", "ps_parent"], { cwd });
-		assert.match(list.stdout, /runId\tpiboSessionId\tstatus\ttoolName\tpolicy\tconsumed\tupdatedAt\ttimeoutMs\ttimeoutAt\ttimeoutPhase\tserviceWarning\tsummary/);
+		assert.match(list.stdout, /runId\tpiboSessionId\tstatus\ttoolName\tpolicy\tconsumed\tupdatedAt\ttimeoutMs\ttimeoutAt\ttimeoutPhase\tserviceWarning\tisolation\tresourceUnit\tresourceLimitReason\tminimumHostAvailableBytes\tpeakMemoryFullPsiAvg10\tpeakIoFullPsiAvg10\tmemoryPeakBytes\tmemoryMaxBytes\ttasksPeak\tioReadBytes\tioWriteBytes\tsummary/);
 		assert.match(list.stdout, /run_debug\tps_parent\tcompleted\thelper\ttracked\tfalse/);
 
 		const inspect = await execFileAsync("node", [cliPath, "debug", "runs", "inspect", "run_debug", "--json"], { cwd });

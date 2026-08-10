@@ -29,6 +29,48 @@ function session(id, roomId = "room_1") {
 	};
 }
 
+test("timeline query retains full-history steering message identity metadata", () => {
+	const store = tempStore("pibo-chat-v2-steering-identity-");
+	try {
+		const rooms = new ChatRoomService(store);
+		const sessions = new ChatSessionQueryService(store);
+		const timeline = new ChatTimelineQueryService(store);
+		const commands = new ChatEventCommandService(store);
+		const room = rooms.ensureDefaultRoom();
+		const piboSession = session("ps_steering", room.id);
+		sessions.upsertSession(piboSession);
+		commands.appendEvent({
+			roomId: room.id,
+			piboSessionId: piboSession.id,
+			eventId: "steer-1",
+			eventType: "message_steered",
+			actorType: "user",
+			actorId: "user:test",
+			retentionClass: "chat_message",
+			payload: {
+				type: "message_steered",
+				piboSessionId: piboSession.id,
+				eventId: "steer-1",
+				activeEventId: "turn-1",
+				text: "Adjust course",
+				source: "user",
+			},
+			createdAt: "2026-05-09T00:00:02.000Z",
+		});
+
+		assert.deepEqual(timeline.listMessageTurnTimings(piboSession.id), [{
+			eventId: "steer-1",
+			userText: "Adjust course",
+			startedAt: undefined,
+			completedAt: undefined,
+			durationMs: undefined,
+			userMessageType: "message_steered",
+		}]);
+	} finally {
+		store.close();
+	}
+});
+
 test("V2-native chat services cover rooms, sessions, timeline, commands, and read state", () => {
 	const store = tempStore("pibo-chat-v2-services-");
 	const rooms = new ChatRoomService(store);
@@ -103,6 +145,28 @@ test("V2-native chat services cover rooms, sessions, timeline, commands, and rea
 	commands.appendEvent({
 		roomId: room.id,
 		piboSessionId: piboSession.id,
+		eventId: "turn_timing_reasoning",
+		eventType: "thinking_finished",
+		actorType: "assistant",
+		actorId: "assistant:test",
+		retentionClass: "trace_event",
+		payload: { type: "thinking_finished", piboSessionId: piboSession.id, eventId: "turn_timing", thinkingIndex: 1, contentIndex: 0, text: "Reasoned" },
+		createdAt: "2026-05-09T00:00:04.000Z",
+	});
+	commands.appendEvent({
+		roomId: room.id,
+		piboSessionId: piboSession.id,
+		eventId: "turn_timing_assistant",
+		eventType: "assistant_message",
+		actorType: "assistant",
+		actorId: "assistant:test",
+		retentionClass: "chat_message",
+		payload: { type: "assistant_message", piboSessionId: piboSession.id, eventId: "turn_timing", assistantIndex: 2, contentIndex: 1, text: "Answered" },
+		createdAt: "2026-05-09T00:00:06.000Z",
+	});
+	commands.appendEvent({
+		roomId: room.id,
+		piboSessionId: piboSession.id,
 		eventId: "turn_timing_done",
 		eventType: "message_finished",
 		actorType: "assistant",
@@ -111,20 +175,56 @@ test("V2-native chat services cover rooms, sessions, timeline, commands, and rea
 		payload: { type: "message_finished", piboSessionId: piboSession.id, eventId: "turn_timing" },
 		createdAt: "2026-05-09T00:00:07.000Z",
 	});
+	commands.appendEvent({
+		roomId: room.id,
+		piboSessionId: piboSession.id,
+		eventId: "turn_open",
+		eventType: "message_started",
+		actorType: "assistant",
+		actorId: "assistant:test",
+		retentionClass: "chat_message",
+		payload: { type: "message_started", piboSessionId: piboSession.id, eventId: "turn_open", text: "open prompt" },
+		createdAt: "2026-05-09T00:00:08.000Z",
+	});
+	commands.appendEvent({
+		roomId: room.id,
+		piboSessionId: piboSession.id,
+		eventId: "turn_queued",
+		eventType: "message_queued",
+		actorType: "user",
+		actorId: "user:test",
+		retentionClass: "chat_message",
+		payload: { type: "message_queued", piboSessionId: piboSession.id, eventId: "turn_queued", text: "queued prompt", source: "user", queuedMessages: 1 },
+		createdAt: "2026-05-09T00:00:09.000Z",
+	});
 
 	assert.equal(duplicate.streamId, accepted.streamId);
 	assert.equal(sessions.getSession(piboSession.id).piboSessionId, piboSession.id);
-	assert.equal(timeline.listEvents({ roomId: room.id }).length, 4);
-	assert.deepEqual(timeline.listTraceEvents({ piboSessionId: piboSession.id }).map((event) => event.type), ["user.message.accepted", "assistant_message", "message_started", "message_finished"]);
-	assert.equal(timeline.getLatestEventSequence(piboSession.id), 4);
+	assert.equal(timeline.listEvents({ roomId: room.id }).length, 8);
+	assert.deepEqual(timeline.listTraceEvents({ piboSessionId: piboSession.id }).map((event) => event.type), ["user.message.accepted", "assistant_message", "message_started", "thinking_finished", "assistant_message", "message_finished", "message_started", "message_queued"]);
+	assert.equal(timeline.getLatestEventSequence(piboSession.id), 8);
 	assert.deepEqual(timeline.listMessageTurnTimings(piboSession.id), [{
 		eventId: "turn_timing",
 		userText: "timed prompt",
 		startedAt: "2026-05-09T00:00:02.000Z",
 		completedAt: "2026-05-09T00:00:07.000Z",
 		durationMs: 5000,
+		reasoningIndices: [1],
+		assistantIndices: [2],
+	}, {
+		eventId: "turn_open",
+		userText: "open prompt",
+		startedAt: "2026-05-09T00:00:08.000Z",
+		completedAt: undefined,
+		durationMs: undefined,
+	}, {
+		eventId: "turn_queued",
+		userText: "queued prompt",
+		startedAt: undefined,
+		completedAt: undefined,
+		durationMs: undefined,
 	}]);
-	assert.equal(readState.countUnreadMessagesBySession({ piboSessionIds: [piboSession.id] }).get(piboSession.id), 2);
+	assert.equal(readState.countUnreadMessagesBySession({ piboSessionIds: [piboSession.id] }).get(piboSession.id), 3);
 	readState.markSessionRead(piboSession.id, timeline.getLatestStreamId({ piboSessionId: piboSession.id }));
 	assert.equal(readState.countUnreadMessagesBySession({ piboSessionIds: [piboSession.id] }).has(piboSession.id), false);
 

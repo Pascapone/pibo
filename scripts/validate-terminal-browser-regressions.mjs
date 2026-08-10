@@ -13,7 +13,7 @@ await mkdir(artifactDir, { recursive: true });
 const targets = await listCdpTargets({ cdpUrl, timeoutMs: 5_000 });
 let target;
 let client;
-for (const candidate of targets.filter((item) => item.type === "page" && item.url.includes("/apps/chat/"))) {
+for (const candidate of targets.filter((item) => item.type === "page" && item.url.includes("/apps/chat/") && (!options.targetUrl || item.url.startsWith(options.targetUrl)))) {
 	try {
 		const candidateClient = await connectCdpTarget(candidate, 5_000);
 		const usable = await candidateClient.evaluate(`Boolean(document.querySelector('textarea') && document.querySelector('[data-testid="virtuoso-scroller"]'))`, 5_000);
@@ -28,7 +28,7 @@ for (const candidate of targets.filter((item) => item.type === "page" && item.ur
 	}
 }
 if (!target || !client) throw new Error(`No authenticated responsive Chat Web page target found at ${cdpUrl}`);
-for (const duplicate of targets.filter((item) => item.type === "page" && item.id !== target.id && item.url.includes("/apps/chat/"))) {
+for (const duplicate of targets.filter((item) => item.type === "page" && item.id !== target.id && item.url.includes("/apps/chat/") && (!options.targetUrl || item.url.startsWith(options.targetUrl)))) {
 	await client.send("Target.closeTarget", { targetId: duplicate.id }).catch(() => undefined);
 }
 await client.send("Page.enable");
@@ -103,6 +103,48 @@ try {
 		}
 		await installOlderPageDelay(0);
 		return { loads };
+	});
+
+	await scenario("scrollbar-thumb-drag-defers-history-prepend", async () => {
+		await returnToLatest();
+		const before = await measure();
+		assert(before.hasOlder === "true", "scrollbar fixture has no older history");
+		const geometry = await scrollerGeometry();
+		await mouse("mouseMoved", geometry.right - 2, geometry.bottom - 12, "none");
+		await mouse("mousePressed", geometry.right - 2, geometry.bottom - 12, "left");
+		const held = [];
+		for (let step = 1; step <= 12; step += 1) {
+			await mouse("mouseMoved", geometry.right - 2, geometry.bottom - 12 - ((geometry.height - 24) * step / 12), "left");
+			await sleep(35);
+			held.push(await measure());
+		}
+		await evaluate(`document.querySelector('[data-testid="virtuoso-scroller"]').scrollTop=0`);
+		await sleep(900);
+		const atEdgeHeld = await measure();
+		assert(held.every((item) => item.cursor === before.cursor) && atEdgeHeld.cursor === before.cursor, "history prepended while the native scrollbar was held");
+		const reversals = held.slice(1).filter((item, index) => item.scrollTop > held[index].scrollTop + 2).length;
+		assert(reversals === 0, `scrollbar drag reversed ${reversals} times`);
+		await mouse("mouseReleased", geometry.right - 2, geometry.top + 12, "left");
+		await waitFor(cursorChangedExpression(before.cursor), 15_000, "deferred history load after scrollbar release");
+		await sleep(500);
+		return { before, held, atEdgeHeld, afterRelease: await measure(), reversals };
+	});
+
+	await scenario("middle-click-descendant-detaches-and-loads-history", async () => {
+		await returnToLatest();
+		const before = await measure();
+		assert(before.hasOlder === "true", "middle-click fixture has no older history");
+		const point = await terminalRowPoint();
+		assert(point, "no rendered Terminal row for middle-click validation");
+		await mouse("mousePressed", point.x, point.y, "middle");
+		await mouse("mouseReleased", point.x, point.y, "middle");
+		await evaluate(`(() => { const s=document.querySelector('[data-testid="virtuoso-scroller"]'); s.scrollTop=Math.max(0,s.scrollTop-400); })()`);
+		await waitFor(`Boolean(document.querySelector('button[aria-label="Scroll to latest"]'))`, 5_000, "middle-click detach");
+		await evaluate(`document.querySelector('[data-testid="virtuoso-scroller"]').scrollTop=0`);
+		await waitFor(cursorChangedExpression(before.cursor), 15_000, "middle-click history load");
+		const after = await measure();
+		assert(after.stickyButton, "middle-click history movement snapped back to latest");
+		return { before, after };
 	});
 
 	await scenario("transient-replay-reconnect", async () => {
@@ -190,6 +232,18 @@ async function rowMetric(rowId) {
 	return evaluate(`(() => {const s=document.querySelector('[data-testid="virtuoso-scroller"]');const row=[...document.querySelectorAll('[data-row-id]')].find((item)=>item.getAttribute('data-row-id')===${JSON.stringify(rowId)});if(!s||!row)return null;const viewport=s.getBoundingClientRect(),rect=row.getBoundingClientRect();return{id:${JSON.stringify(rowId)},top:rect.top-viewport.top,bottom:rect.bottom-viewport.top};})()`);
 }
 
+async function scrollerGeometry() {
+	return evaluate(`(() => { const rect=document.querySelector('[data-testid="virtuoso-scroller"]').getBoundingClientRect(); return {left:rect.left,right:rect.right,top:rect.top,bottom:rect.bottom,width:rect.width,height:rect.height}; })()`);
+}
+
+async function terminalRowPoint() {
+	return evaluate(`(() => { const scroller=document.querySelector('[data-testid="virtuoso-scroller"]'); if(!scroller)return null; const viewport=scroller.getBoundingClientRect(); const row=[...document.querySelectorAll('[data-pibo-terminal-row="true"]')].find((item)=>{const rect=item.getBoundingClientRect();return rect.bottom>viewport.top&&rect.top<viewport.bottom;}); if(!row)return null; const rect=row.getBoundingClientRect(); return {x:Math.max(rect.left+1,Math.min(rect.right-1,rect.left+40)),y:Math.max(viewport.top+1,Math.min(viewport.bottom-1,rect.top+Math.min(20,rect.height/2)))}; })()`);
+}
+
+async function mouse(type, x, y, button) {
+	await client.send("Input.dispatchMouseEvent", { type, x, y, button, buttons: type === "mouseReleased" || button === "none" ? 0 : button === "middle" ? 4 : 1, clickCount: type === "mousePressed" || type === "mouseReleased" ? 1 : 0 });
+}
+
 async function key(keyValue, code, keyCode) {
 	await evaluate(`(() => {const s=document.querySelector('[data-testid="virtuoso-scroller"]');if(!s)return false;s.tabIndex=0;s.focus();return true;})()`);
 	await client.send("Input.dispatchKeyEvent", { type: "keyDown", key: keyValue, code, windowsVirtualKeyCode: keyCode, nativeVirtualKeyCode: keyCode });
@@ -199,6 +253,7 @@ async function key(keyValue, code, keyCode) {
 async function returnToLatest() {
 	await evaluate(`document.querySelector('button[aria-label="Scroll to latest"]')?.click()`);
 	await key("End", "End", 35);
+	await sleep(500);
 	await waitFor(`(() => {const s=document.querySelector('[data-testid="virtuoso-scroller"]');return s && s.scrollHeight-s.scrollTop-s.clientHeight<=${tolerance} && !document.querySelector('button[aria-label="Scroll to latest"]');})()`, 8_000, "latest content");
 }
 
@@ -280,12 +335,13 @@ function parseArgs(argv) {
 	for (let index = 0; index < argv.length; index += 1) {
 		const argument = argv[index];
 		if (argument === "--help" || argument === "-h") {
-			console.log("Usage: node scripts/validate-terminal-browser-regressions.mjs --cdp-url <url> [--artifact-dir <dir>] [--tolerance <px>] [--history-pages <count>]");
+			console.log("Usage: node scripts/validate-terminal-browser-regressions.mjs --cdp-url <url> [--target-url <prefix>] [--artifact-dir <dir>] [--tolerance <px>] [--history-pages <count>]");
 			process.exit(0);
 		}
 		const value = argv[index + 1];
 		if (!value || value.startsWith("--")) throw new Error(`${argument} requires a value`);
 		if (argument === "--cdp-url") parsed.cdpUrl = value;
+		else if (argument === "--target-url") parsed.targetUrl = value;
 		else if (argument === "--artifact-dir") parsed.artifactDir = value;
 		else if (argument === "--tolerance") parsed.tolerance = value;
 		else if (argument === "--history-pages") parsed.historyPages = value;

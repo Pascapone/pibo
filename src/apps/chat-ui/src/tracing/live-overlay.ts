@@ -1,3 +1,4 @@
+import { parseRunNotificationText } from "../../../../shared/trace-run-notifications.js";
 import type { ChatWebStoredEvent } from "../../../../shared/trace-types.js";
 import type { PiboSessionTraceView, PiboTraceNode } from "../types";
 import { isUserMessageQueuedEvent } from "./optimistic-user-messages";
@@ -36,25 +37,45 @@ export function reconcileLiveTraceOverlayCache(
 export function trimLiveOverlayForBaseTrace(overlay: LiveTraceOverlay | null, baseTrace: PiboSessionTraceView): LiveTraceOverlay | null {
 	if (!overlay || overlay.piboSessionId !== baseTrace.piboSessionId) return overlay;
 	const confirmedEventKeys = confirmedTraceEventKeys(baseTrace);
-	const confirmedUserMessageTexts = confirmedTranscriptUserMessageTexts(baseTrace.nodes);
+	const unassignedUserMessageTextCounts = unassignedTranscriptUserMessageTextCounts(baseTrace.nodes);
 	const events = overlay.events.filter((event) => {
-		if (isUserMessageQueuedEvent(event) && confirmedUserMessageTexts.has(event.payload.text)) return false;
 		const key = traceEventConfirmationKey(event);
-		return !key || !confirmedEventKeys.has(key);
+		if (key && confirmedEventKeys.has(key)) return false;
+		if (isUserMessageQueuedEvent(event)) {
+			const remaining = unassignedUserMessageTextCounts.get(event.payload.text) ?? 0;
+			if (remaining > 0) {
+				if (remaining === 1) unassignedUserMessageTextCounts.delete(event.payload.text);
+				else unassignedUserMessageTextCounts.set(event.payload.text, remaining - 1);
+				return false;
+			}
+		}
+		return !isCoveredRunNotification(baseTrace, event);
 	});
 	return events.length ? { ...overlay, events } : null;
 }
 
-function confirmedTranscriptUserMessageTexts(nodes: readonly PiboTraceNode[]): Set<string> {
-	const texts = new Set<string>();
+function unassignedTranscriptUserMessageTextCounts(nodes: readonly PiboTraceNode[]): Map<string, number> {
+	const counts = new Map<string, number>();
 	for (const node of nodes) {
-		if (node.type === "user.message" && node.source === "transcript") {
+		if (
+			node.type === "user.message" &&
+			node.source === "transcript" &&
+			!hasCanonicalUserMessageIdentity(node)
+		) {
 			const text = traceNodeText(node);
-			if (text) texts.add(text);
+			if (text) counts.set(text, (counts.get(text) ?? 0) + 1);
 		}
-		for (const text of confirmedTranscriptUserMessageTexts(node.children)) texts.add(text);
+		for (const [text, count] of unassignedTranscriptUserMessageTextCounts(node.children)) {
+			counts.set(text, (counts.get(text) ?? 0) + count);
+		}
 	}
-	return texts;
+	return counts;
+}
+
+function hasCanonicalUserMessageIdentity(node: PiboTraceNode): boolean {
+	return [node.id, node.stableKey].some((value) =>
+		value?.startsWith("event:message_queued:") || value?.startsWith("event:message_steered:"),
+	);
 }
 
 function confirmedTraceEventKeys(trace: PiboSessionTraceView): Set<string> {
@@ -77,16 +98,59 @@ function collectConfirmedTraceNodeKeys(nodes: readonly PiboTraceNode[], keys: Se
 				if (node.source === "transcript" && node.entryId) keys.add(`${node.piboSessionId}:${type}:${node.entryId}`);
 			}
 		}
-		if (node.eventId && node.type === "assistant.message") {
-			keys.add(`${node.piboSessionId}:assistant_delta:${node.eventId}`);
-			keys.add(`${node.piboSessionId}:assistant_message:${node.eventId}`);
+		if (node.type === "assistant.message") {
+			const identity = traceNodeContentIdentity(node, "assistant:");
+			if (identity) {
+				keys.add(`${node.piboSessionId}:assistant_delta:${identity}`);
+				if (node.source === "transcript" || node.completedAt !== undefined) {
+					keys.add(`${node.piboSessionId}:assistant_message:${identity}`);
+				}
+			}
+			if (node.source === "transcript" && node.eventId) {
+				keys.add(`${node.piboSessionId}:message_started:${node.eventId}`);
+				keys.add(`${node.piboSessionId}:message_finished:${node.eventId}`);
+			}
 		}
-		if (node.eventId && node.type === "model.reasoning") {
-			keys.add(`${node.piboSessionId}:thinking_delta:${node.eventId}`);
-			keys.add(`${node.piboSessionId}:thinking_finished:${node.eventId}`);
+		if (node.type === "model.reasoning") {
+			const identity = traceNodeContentIdentity(node, "reasoning:");
+			if (identity) {
+				keys.add(`${node.piboSessionId}:thinking_delta:${identity}`);
+				if (node.source === "transcript") {
+					keys.add(`${node.piboSessionId}:thinking_started:${identity}`);
+					keys.add(`${node.piboSessionId}:thinking_finished:${identity}`);
+				}
+			}
+		}
+		if (node.toolCallId && (node.type === "tool.call" || node.type === "tool.result" || node.type === "agent.delegation")) {
+			const identity = `tool:${node.toolCallId}`;
+			keys.add(`${node.piboSessionId}:tool_call:${identity}`);
+			const completed = node.completedAt !== undefined || node.type === "tool.result" || node.status === "error";
+			if (node.status === "running" || node.output !== undefined || completed) {
+				keys.add(`${node.piboSessionId}:tool_execution_started:${identity}`);
+			}
+			if ((node.output !== undefined && !completed) || completed) {
+				keys.add(`${node.piboSessionId}:tool_execution_updated:${identity}`);
+			}
+			if (completed) keys.add(`${node.piboSessionId}:tool_execution_finished:${identity}`);
 		}
 		collectConfirmedTraceNodeKeys(node.children, keys);
 	}
+}
+
+function isCoveredRunNotification(baseTrace: PiboSessionTraceView, event: ChatWebStoredEvent): boolean {
+	const payload = event.payload;
+	if (!payload || typeof payload !== "object" || Array.isArray(payload)) return false;
+	const source = "source" in payload ? payload.source : undefined;
+	const text = "text" in payload ? payload.text : undefined;
+	if (source !== "service" || typeof text !== "string" || !parseRunNotificationText(text)) return false;
+	return baseTraceTailCoversEvent(baseTrace, event);
+}
+
+function baseTraceTailCoversEvent(baseTrace: PiboSessionTraceView, event: ChatWebStoredEvent): boolean {
+	const sequence = event.eventSequence;
+	if (sequence === undefined || baseTrace.firstEventSequence === undefined) return false;
+	const lastSequence = baseTrace.lastEventSequence ?? baseTrace.eventCount;
+	return lastSequence !== undefined && sequence >= baseTrace.firstEventSequence && sequence <= lastSequence;
 }
 
 function traceEventConfirmationKey(event: ChatWebStoredEvent): string | undefined {
@@ -94,8 +158,38 @@ function traceEventConfirmationKey(event: ChatWebStoredEvent): string | undefine
 	if (!payload || typeof payload !== "object" || Array.isArray(payload)) return undefined;
 	const eventId = "eventId" in payload && typeof payload.eventId === "string" ? payload.eventId : event.eventId;
 	const piboSessionId = "piboSessionId" in payload && typeof payload.piboSessionId === "string" ? payload.piboSessionId : event.piboSessionId;
-	if (!eventId || !piboSessionId) return undefined;
+	if (!piboSessionId) return undefined;
+	if (
+		event.type === "tool_call" ||
+		event.type === "tool_execution_started" ||
+		event.type === "tool_execution_updated" ||
+		event.type === "tool_execution_finished"
+	) {
+		const toolCallId = "toolCallId" in payload && typeof payload.toolCallId === "string" ? payload.toolCallId : undefined;
+		return toolCallId ? `${piboSessionId}:${event.type}:tool:${toolCallId}` : undefined;
+	}
+	if (!eventId) return undefined;
+	if (event.type === "assistant_delta" || event.type === "assistant_message") {
+		const partIndex = numericPayloadField(payload, "assistantIndex") ?? numericPayloadField(payload, "contentIndex");
+		const identity = partIndex === undefined ? eventId : `${eventId}:assistant:${partIndex}`;
+		return `${piboSessionId}:${event.type}:${identity}`;
+	}
+	if (event.type === "thinking_started" || event.type === "thinking_delta" || event.type === "thinking_finished") {
+		const partIndex = numericPayloadField(payload, "thinkingIndex") ?? numericPayloadField(payload, "contentIndex");
+		const identity = partIndex === undefined ? eventId : `${eventId}:thinking:${partIndex}`;
+		return `${piboSessionId}:${event.type}:${identity}`;
+	}
 	return `${piboSessionId}:${event.type}:${eventId}`;
+}
+
+function traceNodeContentIdentity(node: PiboTraceNode, stableKeyPrefix: string): string | undefined {
+	if (node.stableKey?.startsWith(stableKeyPrefix)) return node.stableKey.slice(stableKeyPrefix.length);
+	return node.eventId;
+}
+
+function numericPayloadField(payload: object, key: string): number | undefined {
+	const value = key in payload ? (payload as Record<string, unknown>)[key] : undefined;
+	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function traceNodeText(node: PiboTraceNode): string {

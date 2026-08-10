@@ -101,9 +101,192 @@ test("transcript assistant duration uses persisted turn timing when tail events 
 		turnTimings: [{ eventId: "turn-duration", userText: "hello", startedAt, completedAt, durationMs: 8000 }],
 	});
 
+	const user = view.nodes.find((node) => node.type === "user.message");
 	const assistant = view.nodes.find((node) => node.type === "assistant.message");
+	assert.equal(user?.id, "event:message_queued:turn-duration");
+	assert.equal(user?.entryId, "entry-user");
 	assert.equal(assistant?.completedAt, completedAt);
 	assert.equal(assistant?.durationMs, 8000);
+});
+
+test("persisted turn timings keep repeated user identities stable beyond the bounded event tail", () => {
+	const view = buildTraceViewFromEvents({
+		session: { id: "ps_root", piSessionId: "pi_root", title: "Root" },
+		transcriptEntries: [
+			{
+				id: "entry-user-one",
+				type: "message",
+				timestamp: "2026-01-01T00:00:01.000Z",
+				message: { role: "user", content: [{ type: "text", text: "same prompt" }] },
+			},
+			{
+				id: "entry-user-two",
+				type: "message",
+				timestamp: "2026-01-01T00:00:02.000Z",
+				message: { role: "user", content: [{ type: "text", text: "same prompt" }] },
+			},
+		],
+		events: [],
+		turnTimings: [
+			{ eventId: "turn-one", userText: "same prompt", completedAt: "2026-01-01T00:00:03.000Z" },
+			{ eventId: "turn-two", userText: "same prompt", completedAt: "2026-01-01T00:00:04.000Z" },
+		],
+	});
+
+	const users = view.nodes.filter((node) => node.type === "user.message");
+	assert.deepEqual(users.map((node) => node.id), [
+		"event:message_queued:turn-one",
+		"event:message_queued:turn-two",
+	]);
+	assert.deepEqual(users.map((node) => node.entryId), ["entry-user-one", "entry-user-two"]);
+});
+
+test("bounded-tail user events preserve repeated prompt identities assigned from full history", () => {
+	const view = buildTraceViewFromEvents({
+		session: { id: "ps_root", piSessionId: "pi_root", title: "Root" },
+		transcriptEntries: [
+			{
+				id: "entry-user-one",
+				type: "message",
+				timestamp: "2026-01-01T00:00:01.000Z",
+				message: { role: "user", content: [{ type: "text", text: "same prompt" }] },
+			},
+			{
+				id: "entry-assistant-one",
+				type: "message",
+				timestamp: "2026-01-01T00:00:02.000Z",
+				message: { role: "assistant", content: [{ type: "text", text: "first answer" }] },
+			},
+			{
+				id: "entry-user-two",
+				type: "message",
+				timestamp: "2026-01-01T00:00:03.000Z",
+				message: { role: "user", content: [{ type: "text", text: "same prompt" }] },
+			},
+			{
+				id: "entry-assistant-two",
+				type: "message",
+				timestamp: "2026-01-01T00:00:04.000Z",
+				message: { role: "assistant", content: [{ type: "text", text: "second answer" }] },
+			},
+		],
+		events: [outputEvent(200, {
+			type: "message_queued",
+			eventId: "turn-two",
+			piboSessionId: "ps_root",
+			source: "user",
+			text: "same prompt",
+			queuedMessages: 1,
+		})],
+		turnTimings: [
+			{ eventId: "turn-one", userText: "same prompt", completedAt: "2026-01-01T00:00:02.000Z" },
+			{ eventId: "turn-two", userText: "same prompt", completedAt: "2026-01-01T00:00:04.000Z" },
+		],
+	});
+
+	const users = view.nodes.filter((node) => node.type === "user.message");
+	const assistants = view.nodes.filter((node) => node.type === "assistant.message");
+	assert.deepEqual(users.map((node) => node.id), [
+		"event:message_queued:turn-one",
+		"event:message_queued:turn-two",
+	]);
+	assert.deepEqual(users.map((node) => node.entryId), ["entry-user-one", "entry-user-two"]);
+	assert.deepEqual(assistants.map((node) => node.output), ["first answer", "second answer"]);
+});
+
+test("active repeated prompts do not reuse settled canonical transcript identities", () => {
+	const view = buildTraceViewFromEvents({
+		session: { id: "ps_root", piSessionId: "pi_root", title: "Root" },
+		status: "running",
+		transcriptEntries: [
+			{
+				id: "entry-user-one",
+				type: "message",
+				timestamp: "2026-01-01T00:00:01.000Z",
+				message: { role: "user", content: [{ type: "text", text: "same prompt" }] },
+			},
+			{
+				id: "entry-assistant-one",
+				type: "message",
+				timestamp: "2026-01-01T00:00:02.000Z",
+				message: { role: "assistant", content: [{ type: "text", text: "first answer" }] },
+			},
+			{
+				id: "entry-user-two",
+				type: "message",
+				timestamp: "2026-01-01T00:00:03.000Z",
+				message: { role: "user", content: [{ type: "text", text: "same prompt" }] },
+			},
+			{
+				id: "entry-assistant-two",
+				type: "message",
+				timestamp: "2026-01-01T00:00:04.000Z",
+				message: { role: "assistant", content: [{ type: "text", text: "second answer" }] },
+			},
+		],
+		events: [outputEvent(5, {
+			type: "message_queued",
+			eventId: "turn-three",
+			piboSessionId: "ps_root",
+			source: "user",
+			text: "same prompt",
+			queuedMessages: 1,
+		})],
+		turnTimings: [
+			{ eventId: "turn-one", userText: "same prompt", completedAt: "2026-01-01T00:00:02.000Z" },
+			{ eventId: "turn-two", userText: "same prompt", completedAt: "2026-01-01T00:00:04.000Z" },
+		],
+	});
+
+	assert.deepEqual(view.nodes.filter((node) => node.type === "user.message").map((node) => node.id), [
+		"event:message_queued:turn-one",
+		"event:message_queued:turn-two",
+		"event:message_queued:turn-three",
+	]);
+	assert.deepEqual(view.nodes.filter((node) => node.type === "assistant.message").map((node) => node.output), [
+		"first answer",
+		"second answer",
+	]);
+});
+
+test("canonical steering identity wins before repeated-text fallback", () => {
+	const view = buildTraceViewFromEvents({
+		session: { id: "ps_root", piSessionId: "pi_root", title: "Root" },
+		transcriptEntries: [
+			{
+				id: "entry-user-one",
+				type: "message",
+				timestamp: "2026-01-01T00:00:01.000Z",
+				message: { role: "user", content: [{ type: "text", text: "same prompt" }] },
+			},
+			{
+				id: "entry-user-two",
+				type: "message",
+				timestamp: "2026-01-01T00:00:02.000Z",
+				message: { role: "user", content: [{ type: "text", text: "same prompt" }] },
+			},
+		],
+		events: [outputEvent(3, {
+			type: "message_steered",
+			eventId: "turn-two",
+			activeEventId: "active-turn",
+			piboSessionId: "ps_root",
+			source: "user",
+			text: "same prompt",
+		})],
+		turnTimings: [
+			{ eventId: "turn-one", userText: "same prompt", completedAt: "2026-01-01T00:00:01.500Z" },
+			{ eventId: "turn-two", userText: "same prompt", userMessageType: "message_steered" },
+		],
+	});
+
+	const users = view.nodes.filter((node) => node.type === "user.message");
+	assert.deepEqual(users.map((node) => node.id), [
+		"event:message_queued:turn-one",
+		"event:message_steered:turn-two",
+	]);
+	assert.equal(users[0]?.parentId, undefined);
+	assert.equal(users[1]?.parentId, "event:message:active-turn");
 });
 
 test("legacy transcript run notifications render yielded-run nodes", () => {

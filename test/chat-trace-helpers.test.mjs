@@ -16,8 +16,10 @@ async function runChatTraceHelpersScenario() {
 			setTraceCache,
 			storedLiveSnapshotEvents,
 			traceCacheKey,
+			traceProjectionStatus,
 			withRawTraceTail,
 		} = await import("./src/apps/chat/chat-trace-helpers.ts");
+		const { nextLiveTraceEventSequence, selectedLiveStreamNeedsReconnect } = await import("./src/apps/chat-ui/src/tracing/use-session-trace-live-stream.ts");
 
 		const trace = { piboSessionId: "ps_1", piSessionId: "pi_1", title: "Trace", version: "v1", nodes: [], rawEvents: [] };
 		const events = [
@@ -42,6 +44,22 @@ async function runChatTraceHelpersScenario() {
 		assert.deepEqual(withRawTraceTail(trace, events).rawEvents, events);
 
 		const snapshot = { type: "assistant_delta", eventId: "evt_1", text: "live" };
+		assert.equal(traceProjectionStatus([], undefined), "idle");
+		assert.equal(traceProjectionStatus([], "error"), "error");
+		assert.equal(traceProjectionStatus([snapshot], "idle"), "running");
+		assert.equal(traceProjectionStatus([], "idle", [{ eventId: "turn-open", userText: "open prompt" }], { processing: true, streaming: false, queuedMessages: 0 }), "running");
+		assert.equal(traceProjectionStatus([], undefined, [{ eventId: "turn-open", userText: "open prompt" }]), "running");
+		assert.equal(traceProjectionStatus([], "idle", [{ eventId: "turn-stale", userText: "stale prompt" }], null), "idle");
+		assert.equal(traceProjectionStatus([], "idle", [{ eventId: "turn-done", userText: "done prompt", completedAt: "2026-05-27T00:00:00.000Z" }]), "idle");
+		assert.equal(traceProjectionStatus([], "idle", [{ eventId: "steer-1", userText: "steer", userMessageType: "message_steered" }]), "idle");
+		assert.equal(traceProjectionStatus([], "idle", [
+			{ eventId: "orphan-reasoning", reasoningIndices: [0] },
+			{ eventId: "turn-later", userText: "settled prompt", completedAt: "2026-05-27T00:00:02.000Z" },
+		]), "idle");
+		assert.equal(traceProjectionStatus([], "idle", [
+			{ eventId: "turn-old", userText: "orphaned prompt" },
+			{ eventId: "turn-later", userText: "settled prompt", completedAt: "2026-05-27T00:00:02.000Z" },
+		]), "idle");
 		assert.equal(liveSnapshotVersion([]), "");
 		assert.equal(liveSnapshotVersion([snapshot]), liveSnapshotVersion([snapshot]));
 		const stored = storedLiveSnapshotEvents({ piboSessionId: "ps_1", snapshots: [snapshot], lastEventSequence: 7, now: "2026-05-27T00:00:00.000Z" });
@@ -49,6 +67,26 @@ async function runChatTraceHelpersScenario() {
 		assert.equal(stored[0].eventId, "evt_1");
 		assert.equal(stored[0].type, "assistant_delta");
 		assert.equal(stored[0].createdAt, "2026-05-27T00:00:00.000Z");
+
+		const orderedSnapshots = storedLiveSnapshotEvents({
+			piboSessionId: "ps_1",
+			snapshots: [
+				{ type: "assistant_delta", eventId: "evt_1", text: "answer" },
+				{ type: "tool_execution_updated", eventId: "evt_1", toolCallId: "tool_1", toolName: "read", partialResult: "working" },
+				{ type: "thinking_delta", eventId: "evt_1", text: "plan" },
+			],
+			lastEventSequence: 10,
+			now: "2026-05-27T00:00:00.000Z",
+		});
+		assert.deepEqual(orderedSnapshots.map((event) => event.type), ["thinking_delta", "tool_execution_updated", "assistant_delta"]);
+		assert.deepEqual(orderedSnapshots.map((event) => event.eventSequence), [11, 12, 13]);
+		assert.equal(nextLiveTraceEventSequence({ eventCount: 80, lastEventSequence: 75, rawEvents: [] }), 81);
+		assert.equal(nextLiveTraceEventSequence({ eventCount: 10, lastEventSequence: 9, rawEvents: [{ eventSequence: 12 }] }), 13);
+		const liveStream = { piboSessionId: "ps_1", readyState: 1, lastActivityAt: 1_000 };
+		assert.equal(selectedLiveStreamNeedsReconnect({ selectedPiboSessionId: "ps_1", liveStream, nowMs: 2_000 }), false);
+		assert.equal(selectedLiveStreamNeedsReconnect({ selectedPiboSessionId: "ps_1", liveStream, nowMs: 2_000, forceReconnect: true }), true);
+		assert.equal(selectedLiveStreamNeedsReconnect({ selectedPiboSessionId: "ps_1", liveStream: { ...liveStream, readyState: 2 }, nowMs: 2_000 }), true);
+		assert.equal(selectedLiveStreamNeedsReconnect({ selectedPiboSessionId: "ps_other", liveStream, nowMs: 2_000 }), true);
 
 		const cache = new Map();
 		setTraceCache(cache, "a", trace, 2);

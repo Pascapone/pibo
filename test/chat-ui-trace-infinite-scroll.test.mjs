@@ -31,6 +31,9 @@ test("trace views preload older pages near the top without a manual trace-histor
 		assert.match(source, /nearTopThreshold: OLDER_TRACE_PREFETCH_TOP_THRESHOLD_PX/);
 		assert.match(source, /onAtTop: loadOlderAtTop/);
 		assert.match(source, /onNearTop: loadOlderNearTop/);
+		assert.match(source, /scrollbarDragActiveRef\.current = active/);
+		assert.match(source, /scrollbarDragDeferredLoadRef\.current = true/);
+		assert.match(source, /onScrollbarDragChange: handleScrollbarDragChange/);
 		if (sourcePath.includes("CompactTerminalSessionView")) {
 			assert.match(source, /if \(!stickyView\.isScrolledToTop\(\)\) return/);
 			assert.match(source, /olderTraceRequestPendingRef\.current = true/);

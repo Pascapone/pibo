@@ -11,7 +11,7 @@ import {
 	latestTraceStreamId,
 	mergeMessageTurnTimings,
 	messageTurnTimingsFromEvents,
-	reconcileTranscriptUserMessageTimestamps,
+	reconcileTranscriptUserMessages,
 	type TraceMessageTurnTiming,
 	traceEventDedupeKey,
 } from "./trace-event-projection.js";
@@ -73,10 +73,10 @@ export function buildTraceViewFromEvents(input: TraceBuildInput): PiboSessionTra
 	const events = dedupeTraceEvents(input.events);
 	const allEntries = input.transcriptEntries ?? [];
 	const openTranscriptEventIds = findOpenTranscriptEventIds(events, sessionStatus);
-	const entries = projectTranscriptEntries(allEntries, sessionStatus, openTranscriptEventIds);
 	const turnTimings = mergeMessageTurnTimings(input.turnTimings ?? [], messageTurnTimingsFromEvents(events));
+	const entries = projectTranscriptEntries(allEntries, sessionStatus, openTranscriptEventIds, turnTimings);
 	const nodes = traceNodesFromEntries(input.session.id, entries, turnTimings);
-	reconcileTranscriptUserMessageTimestamps(nodes, events);
+	reconcileTranscriptUserMessages(nodes, events, turnTimings);
 	const byId = mapTraceNodesById(nodes);
 	const childByParent = mapTraceChildSessionsByParent(input.sessions ?? []);
 	const linkedChildByToolCallId = mapTraceSubagentSessionLinks(events);

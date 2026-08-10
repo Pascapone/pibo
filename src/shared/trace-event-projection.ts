@@ -74,7 +74,7 @@ export function applySingleEventToNodes(
 			storedEvent.streamId,
 			storedEvent.streamFrameIndex,
 		);
-		const existing = byId.get(node.id);
+		const existing = byId.get(node.id) ?? findMatchingContentNode(byId, node);
 		if (existing) {
 			mergeAssistantMessageEvent(existing, node);
 			return;
@@ -117,7 +117,7 @@ export function applySingleEventToNodes(
 		}
 	}
 	if (node.type === "assistant.message") {
-		const existing = byId.get(node.id);
+		const existing = byId.get(node.id) ?? findMatchingContentNode(byId, node);
 		if (existing) {
 			mergeAssistantMessageEvent(existing, node);
 			return;
@@ -131,7 +131,7 @@ export function applySingleEventToNodes(
 		}
 	}
 	if (node.type === "model.reasoning") {
-		const existing = byId.get(node.id);
+		const existing = byId.get(node.id) ?? findMatchingContentNode(byId, node);
 		if (existing) {
 			mergeReasoningEvent(existing, node);
 			return;
@@ -264,25 +264,87 @@ export function contentDeltaPatchNodeId(event: PiboOutputEvent): string | undefi
 	return undefined;
 }
 
-export function reconcileTranscriptUserMessageTimestamps(
+export function reconcileTranscriptUserMessages(
 	nodes: readonly PiboTraceNode[],
 	events: readonly ChatWebStoredEvent[],
+	turnTimings: readonly TraceMessageTurnTiming[] = [],
 ): void {
 	const transcriptUsers = nodes.filter((node) => node.type === "user.message" && node.source === "transcript");
+	const timingByEventId = new Map(turnTimings.map((timing) => [timing.eventId, timing]));
+	let latestTranscriptUser: PiboTraceNode | undefined;
+	for (const node of nodes) {
+		if (node.type === "user.message" && node.source === "transcript") {
+			latestTranscriptUser = node;
+			continue;
+		}
+		if (
+			node.type !== "assistant.message" ||
+			node.source !== "transcript" ||
+			!node.eventId ||
+			!latestTranscriptUser ||
+			transcriptUserMessageHasCanonicalIdentity(latestTranscriptUser)
+		) continue;
+		const timing = timingByEventId.get(node.eventId);
+		if (
+			timing?.userText &&
+			normalizedUserMessageText(traceNodeText(latestTranscriptUser)) !== normalizedUserMessageText(timing.userText)
+		) continue;
+		assignTranscriptUserMessageIdentity(latestTranscriptUser, timing);
+	}
+
+	let timingCursor = transcriptUsers.length - 1;
+	for (let timingIndex = turnTimings.length - 1; timingIndex >= 0; timingIndex -= 1) {
+		const timing = turnTimings[timingIndex]!;
+		const prompt = normalizedUserMessageText(timing.userText);
+		if (!prompt) continue;
+		const exactMatchIndex = transcriptUsers.findIndex(
+			(node, index) =>
+				index <= timingCursor &&
+				!transcriptUserMessageHasCanonicalIdentity(node) &&
+				node.entryId === timing.eventId,
+		);
+		let matchIndex = exactMatchIndex;
+		if (matchIndex === -1 && (timing.userMessageType === "message_steered" || timing.completedAt)) {
+			for (let userIndex = timingCursor; userIndex >= 0; userIndex -= 1) {
+				const node = transcriptUsers[userIndex]!;
+				if (transcriptUserMessageHasCanonicalIdentity(node)) continue;
+				if (normalizedUserMessageText(traceNodeText(node)) !== prompt) continue;
+				matchIndex = userIndex;
+				break;
+			}
+		}
+		if (matchIndex === -1) continue;
+		const matchedNode = transcriptUsers[matchIndex]!;
+		assignTranscriptUserMessageIdentity(matchedNode, timing);
+		timingCursor = matchIndex - 1;
+	}
+
 	let userCursor = 0;
 	for (const storedEvent of events) {
 		const event = storedEvent.payload as PiboOutputEvent;
 		if ((event.type !== "message_queued" && event.type !== "message_steered") || event.source !== "user") continue;
-		const eventId = typeof event.eventId === "string" ? event.eventId : storedEvent.eventId;
+		const payloadEventId = typeof event.eventId === "string" ? event.eventId : undefined;
+		const eventId = payloadEventId ?? storedEvent.eventId;
+		const canonicalId = `event:${event.type}:${payloadEventId ?? cryptoSafeId(event)}`;
+		const stableKey = eventStableKey(event);
 		const text = typeof event.text === "string" ? event.text : undefined;
-		const matchIndex = transcriptUsers.findIndex((node, index) => {
-			if (index < userCursor) return false;
-			if (eventId && (node.entryId === eventId || node.stableKey === `entry:${eventId}`)) return true;
-			return Boolean(text && traceNodeText(node) === text);
-		});
+		const identityMatchIndex = transcriptUsers.findIndex((node) =>
+			transcriptUserMessageMatchesIdentity(node, canonicalId, stableKey, eventId),
+		);
+		const matchIndex = identityMatchIndex !== -1
+			? identityMatchIndex
+			: transcriptUsers.findIndex(
+				(node, index) =>
+					index >= userCursor &&
+					!transcriptUserMessageHasCanonicalIdentity(node) &&
+					Boolean(text && traceNodeText(node) === text),
+			);
 		if (matchIndex === -1) continue;
-		transcriptUsers[matchIndex]!.startedAt = storedEvent.createdAt;
-		userCursor = matchIndex + 1;
+		const matchedNode = transcriptUsers[matchIndex]!;
+		matchedNode.id = canonicalId;
+		matchedNode.stableKey = stableKey;
+		matchedNode.startedAt = storedEvent.createdAt;
+		userCursor = Math.max(userCursor, matchIndex + 1);
 	}
 }
 
@@ -293,13 +355,56 @@ export function isConfirmedUserMessageEcho(nodes: readonly PiboTraceNode[], even
 function confirmedUserMessageEchoNode(nodes: readonly PiboTraceNode[], event: ChatWebStoredEvent): PiboTraceNode | undefined {
 	const payload = event.payload as PiboOutputEvent;
 	if ((payload.type !== "message_queued" && payload.type !== "message_steered") || payload.source !== "user") return undefined;
-	const eventId = typeof payload.eventId === "string" ? payload.eventId : event.eventId;
+	const payloadEventId = typeof payload.eventId === "string" ? payload.eventId : undefined;
+	const eventId = payloadEventId ?? event.eventId;
+	const canonicalId = `event:${payload.type}:${payloadEventId ?? cryptoSafeId(payload)}`;
+	const stableKey = eventStableKey(payload);
 	const text = typeof payload.text === "string" ? payload.text : undefined;
-	return flattenTraceNodes([...nodes]).find((node) => {
-		if (node.type !== "user.message" || node.source !== "transcript") return false;
-		if (eventId && (node.entryId === eventId || node.stableKey === `entry:${eventId}`)) return true;
-		return Boolean(text && traceNodeText(node) === text);
-	});
+	const transcriptUsers = flattenTraceNodes([...nodes]).filter(
+		(node) => node.type === "user.message" && node.source === "transcript",
+	);
+	const identityMatch = transcriptUsers.find((node) =>
+		transcriptUserMessageMatchesIdentity(node, canonicalId, stableKey, eventId),
+	);
+	if (identityMatch) return identityMatch;
+	return transcriptUsers.find((node) =>
+		!transcriptUserMessageHasCanonicalIdentity(node) && Boolean(text && traceNodeText(node) === text),
+	);
+}
+
+function transcriptUserMessageMatchesIdentity(
+	node: PiboTraceNode,
+	canonicalId: string,
+	stableKey: string,
+	eventId: string | undefined,
+): boolean {
+	if (node.id === canonicalId || node.stableKey === stableKey) return true;
+	if (!eventId) return false;
+	if (node.entryId === eventId || node.stableKey === `entry:${eventId}`) return true;
+	return [node.id, node.stableKey].some((value) => canonicalUserMessageEventId(value) === eventId);
+}
+
+function transcriptUserMessageHasCanonicalIdentity(node: PiboTraceNode): boolean {
+	return [node.id, node.stableKey].some((value) => canonicalUserMessageEventId(value) !== undefined);
+}
+
+function canonicalUserMessageEventId(value: string | undefined): string | undefined {
+	for (const prefix of ["event:message_queued:", "event:message_steered:"]) {
+		if (value?.startsWith(prefix)) return value.slice(prefix.length);
+	}
+	return undefined;
+}
+
+function assignTranscriptUserMessageIdentity(node: PiboTraceNode, timing: TraceMessageTurnTiming | undefined): void {
+	if (!timing) return;
+	const userMessageType = timing.userMessageType ?? "message_queued";
+	node.id = `event:${userMessageType}:${timing.eventId}`;
+	node.stableKey = `event:${userMessageType}:${timing.eventId}`;
+}
+
+function normalizedUserMessageText(value: string | undefined): string | undefined {
+	const normalized = value?.replace(/\s+/g, " ").trim();
+	return normalized || undefined;
 }
 
 function traceNodeText(node: PiboTraceNode): string | undefined {
@@ -602,6 +707,16 @@ function mergeAssistantDeltaEvent(
 	byId.set(node.id, node);
 }
 
+function findMatchingContentNode(
+	byId: ReadonlyMap<string, PiboTraceNode>,
+	update: PiboTraceNode,
+): PiboTraceNode | undefined {
+	if (!update.stableKey) return undefined;
+	return [...byId.values()].find(
+		(candidate) => candidate.type === update.type && candidate.stableKey === update.stableKey,
+	);
+}
+
 function mergeAssistantMessageEvent(target: PiboTraceNode, update: PiboTraceNode): void {
 	target.status = update.status;
 	target.summary = update.summary ?? target.summary;
@@ -624,7 +739,10 @@ function mergeThinkingDeltaEvent(
 
 	const thinkingId = thinkingEventNodeId(event);
 	const id = thinkingId ? thinkingNodeId(thinkingId) : `event:thinking_delta:${cryptoSafeId(event)}`;
-	const existing = byId.get(id);
+	const stableKey = thinkingId ? `reasoning:${thinkingId}` : id;
+	const existing = byId.get(id) ?? [...byId.values()].find(
+		(candidate) => candidate.type === "model.reasoning" && candidate.stableKey === stableKey,
+	);
 	if (existing) {
 		const text = `${typeof existing.output === "string" ? existing.output : ""}${event.text}`;
 		existing.status = sessionStatus === "running" ? "running" : "done";
@@ -645,7 +763,7 @@ function mergeThinkingDeltaEvent(
 		summary: event.text,
 		output: event.text,
 		source: "event-log",
-		stableKey: thinkingId ? `reasoning:${thinkingId}` : id,
+		stableKey,
 		orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex),
 		children: [],
 	};
@@ -700,9 +818,12 @@ function isStaleToolCallEchoEvent(event: PiboOutputEvent, sessionStatus: PiboWeb
 export type TraceMessageTurnTiming = {
 	eventId: string;
 	userText?: string;
+	userMessageType?: "message_steered";
 	startedAt?: string;
-	completedAt: string;
+	completedAt?: string;
 	durationMs?: number;
+	reasoningIndices?: number[];
+	assistantIndices?: number[];
 };
 
 export function mergeMessageTurnTimings(...groups: readonly TraceMessageTurnTiming[][]): TraceMessageTurnTiming[] {
@@ -713,12 +834,17 @@ export function mergeMessageTurnTimings(...groups: readonly TraceMessageTurnTimi
 			byEventId.set(timing.eventId, timing);
 			continue;
 		}
+		const reasoningIndices = mergeUniqueIndices(existing.reasoningIndices, timing.reasoningIndices);
+		const assistantIndices = mergeUniqueIndices(existing.assistantIndices, timing.assistantIndices);
 		const merged: TraceMessageTurnTiming = {
 			eventId: timing.eventId,
 			userText: timing.userText ?? existing.userText,
+			userMessageType: timing.userMessageType ?? existing.userMessageType,
 			startedAt: timing.startedAt ?? existing.startedAt,
 			completedAt: timing.completedAt ?? existing.completedAt,
 			durationMs: timing.durationMs ?? existing.durationMs,
+			...(reasoningIndices ? { reasoningIndices } : {}),
+			...(assistantIndices ? { assistantIndices } : {}),
 		};
 		if (merged.durationMs === undefined) {
 			const startedAtMs = parseTimestamp(merged.startedAt);
@@ -732,47 +858,86 @@ export function mergeMessageTurnTimings(...groups: readonly TraceMessageTurnTimi
 	return [...byEventId.values()];
 }
 
+function mergeUniqueIndices(first?: readonly number[], second?: readonly number[]): number[] | undefined {
+	if (!first?.length && !second?.length) return undefined;
+	return [...new Set([...(first ?? []), ...(second ?? [])])];
+}
+
+function appendUniqueIndex(indices: number[] | undefined, partIndex: number): number[] {
+	if (indices?.includes(partIndex)) return indices;
+	return [...(indices ?? []), partIndex];
+}
+
 export function messageTurnTimingsFromEvents(events: readonly ChatWebStoredEvent[]): TraceMessageTurnTiming[] {
-	const timings = new Map<string, { userText?: string; startedAt?: string; completedAt?: string }>();
-	const completedEventIds: string[] = [];
-	const completedEventIdSet = new Set<string>();
+	const timings = new Map<string, {
+		userText?: string;
+		userMessageType?: "message_steered";
+		startedAt?: string;
+		completedAt?: string;
+		reasoningIndices?: number[];
+		assistantIndices?: number[];
+	}>();
+	const eventIds: string[] = [];
+	const seenEventIds = new Set<string>();
 	const ignoredEventIds = new Set<string>();
 	for (const storedEvent of events) {
 		const event = storedEvent.payload as PiboOutputEvent;
-		if (event.type !== "message_started" && event.type !== "message_finished") continue;
+		if (
+			event.type !== "message_queued" &&
+			event.type !== "message_steered" &&
+			event.type !== "message_started" &&
+			event.type !== "message_finished" &&
+			event.type !== "session_error" &&
+			event.type !== "thinking_finished" &&
+			event.type !== "assistant_message"
+		) continue;
 		const eventId = typeof event.eventId === "string" ? event.eventId : undefined;
 		if (!eventId) continue;
-		if (event.type === "message_started" && event.source === "service") {
+		if ((event.type === "message_queued" || event.type === "message_started") && event.source === "service") {
 			ignoredEventIds.add(eventId);
 			continue;
 		}
 		if (ignoredEventIds.has(eventId)) continue;
+		if (!seenEventIds.has(eventId)) {
+			eventIds.push(eventId);
+			seenEventIds.add(eventId);
+		}
 		const timing = timings.get(eventId) ?? {};
-		if (event.type === "message_started") {
+		if (event.type === "message_queued") {
+			timing.userText ??= event.text;
+		} else if (event.type === "message_steered") {
+			timing.userText ??= event.text;
+			timing.userMessageType = "message_steered";
+		} else if (event.type === "message_started") {
 			timing.userText ??= event.text;
 			timing.startedAt ??= storedEvent.createdAt;
-		} else {
+		} else if (event.type === "message_finished" || event.type === "session_error") {
 			timing.completedAt = storedEvent.createdAt;
-			if (!completedEventIdSet.has(eventId)) {
-				completedEventIds.push(eventId);
-				completedEventIdSet.add(eventId);
-			}
+		} else if (event.type === "thinking_finished" && hasVisibleText(event.text)) {
+			const partIndex = typeof event.thinkingIndex === "number" ? event.thinkingIndex : event.contentIndex;
+			if (typeof partIndex === "number") timing.reasoningIndices = appendUniqueIndex(timing.reasoningIndices, partIndex);
+		} else if (event.type === "assistant_message" && hasVisibleText(event.text)) {
+			const partIndex = typeof event.assistantIndex === "number" ? event.assistantIndex : event.contentIndex;
+			if (typeof partIndex === "number") timing.assistantIndices = appendUniqueIndex(timing.assistantIndices, partIndex);
 		}
 		timings.set(eventId, timing);
 	}
-	return completedEventIds.flatMap((eventId) => {
+	return eventIds.flatMap((eventId) => {
 		const timing = timings.get(eventId);
-		if (!timing?.completedAt) return [];
+		if (!timing) return [];
 		const startedAtMs = parseTimestamp(timing.startedAt);
 		const completedAtMs = parseTimestamp(timing.completedAt);
 		return [{
 			eventId,
 			userText: timing.userText,
 			startedAt: timing.startedAt,
+			...(timing.userMessageType ? { userMessageType: timing.userMessageType } : {}),
 			completedAt: timing.completedAt,
 			durationMs: startedAtMs === undefined || completedAtMs === undefined
 				? undefined
 				: Math.max(0, completedAtMs - startedAtMs),
+			...(timing.reasoningIndices ? { reasoningIndices: timing.reasoningIndices } : {}),
+			...(timing.assistantIndices ? { assistantIndices: timing.assistantIndices } : {}),
 		}];
 	});
 }

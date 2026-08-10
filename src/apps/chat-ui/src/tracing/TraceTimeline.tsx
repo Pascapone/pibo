@@ -102,6 +102,8 @@ export function TraceTimeline({
 	const [expansionOverrides, setExpansionOverrides] = useState<Record<string, { contentExpanded: boolean; childrenExpanded: boolean }>>({});
 	const rangePrefetchReadyRef = useRef(false);
 	const olderTraceIntentRef = useRef(false);
+	const scrollbarDragActiveRef = useRef(false);
+	const scrollbarDragDeferredLoadRef = useRef(false);
 
 	const spanTree = useMemo(() => {
 		if (!trace?.spans) return [];
@@ -141,6 +143,10 @@ export function TraceTimeline({
 	const visibleRowKeys = useMemo(() => visibleRows.map((row) => row.id), [visibleRows]);
 	const loadOlderTracePage = useCallback(() => {
 		if (!hasOlderTraceEvents || isFetchingOlderTracePage) return;
+		if (scrollbarDragActiveRef.current) {
+			scrollbarDragDeferredLoadRef.current = true;
+			return;
+		}
 		olderTraceIntentRef.current = false;
 		onLoadOlderTracePage?.();
 	}, [hasOlderTraceEvents, isFetchingOlderTracePage, onLoadOlderTracePage]);
@@ -153,8 +159,14 @@ export function TraceTimeline({
 		if (!rangePrefetchReadyRef.current) return;
 		loadOlderTracePage();
 	}, [loadOlderTracePage]);
-	const markOlderTraceIntent = useCallback((event?: Event) => {
-		if (isOlderTraceScrollIntent(event)) olderTraceIntentRef.current = true;
+	const handleScrollbarDragChange = useCallback((active: boolean) => {
+		scrollbarDragActiveRef.current = active;
+		if (active || !scrollbarDragDeferredLoadRef.current) return;
+		scrollbarDragDeferredLoadRef.current = false;
+		loadOlderTracePage();
+	}, [loadOlderTracePage]);
+	const markOlderTraceIntent = useCallback((event?: Event, direction?: "away" | "toward") => {
+		if (isOlderTraceScrollIntent(event, direction)) olderTraceIntentRef.current = true;
 	}, []);
 	const handleVisibleRangeChanged = useCallback((range: { startIndex: number; endIndex: number }) => {
 		if (!rangePrefetchReadyRef.current) return;
@@ -171,12 +183,15 @@ export function TraceTimeline({
 		onAtTop: loadOlderAtTop,
 		onNearTop: loadOlderNearTop,
 		onUserScrollIntent: markOlderTraceIntent,
+		onScrollbarDragChange: handleScrollbarDragChange,
 	});
 
 	useEffect(() => {
 		setExpansionOverrides({});
 		rangePrefetchReadyRef.current = false;
 		olderTraceIntentRef.current = false;
+		scrollbarDragActiveRef.current = false;
+		scrollbarDragDeferredLoadRef.current = false;
 		const readyTimer = window.setTimeout(() => {
 			rangePrefetchReadyRef.current = true;
 			if (stickyView.isAtTop || stickyView.isScrolledToTop()) loadOlderAtTop();
@@ -702,7 +717,8 @@ export function flattenVisibleSpans(
 	return rows;
 }
 
-function isOlderTraceScrollIntent(event?: Event) {
+function isOlderTraceScrollIntent(event?: Event, direction?: "away" | "toward") {
+	if (direction) return direction === "away";
 	if (event instanceof WheelEvent) return event.deltaY < 0;
 	if (event instanceof KeyboardEvent) return ["ArrowUp", "PageUp", "Home"].includes(event.key);
 	return event?.type === "touchmove";

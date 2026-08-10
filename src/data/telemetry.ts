@@ -441,6 +441,16 @@ export type TelemetryToolCallUpsertInput = {
 	updatedAt?: string;
 };
 
+export type TelemetryInterruptedTurnOutcome = {
+	status: Extract<TelemetryTurnStatus, "error" | "aborted" | "timeout">;
+	summary: string;
+};
+
+export type RecoveredTelemetryTurn = {
+	turn: StoredTelemetryTurn;
+	outcome: TelemetryInterruptedTurnOutcome;
+};
+
 export class TelemetryStore {
 	constructor(private readonly db: DatabaseSync) {}
 
@@ -529,6 +539,160 @@ export class TelemetryStore {
 			ORDER BY created_at ASC
 		`).all(turnId) as TelemetryToolCallRow[];
 		return rows.map(toolCallFromRow);
+	}
+
+	listActiveTurns(): StoredTelemetryTurn[] {
+		const rows = this.db.prepare(`
+			SELECT * FROM telemetry_turns
+			WHERE status IN ('queued', 'running')
+			ORDER BY queued_at ASC, created_at ASC
+		`).all() as TelemetryTurnRow[];
+		return rows.map(turnFromRow);
+	}
+
+	recoverInterruptedTurns(input: {
+		at?: string;
+		resolveOutcome?: (turn: StoredTelemetryTurn) => TelemetryInterruptedTurnOutcome;
+	} = {}): RecoveredTelemetryTurn[] {
+		const at = input.at ?? new Date().toISOString();
+		return this.transaction(() => this.listActiveTurns().map((turn) => {
+			const outcome = input.resolveOutcome?.(turn) ?? {
+				status: "aborted",
+				summary: "Turn was interrupted by gateway restart.",
+			};
+			const phaseStatus: TelemetryPhaseStatus = outcome.status;
+			const providerStatus: TelemetryProviderRequestStatus = outcome.status;
+			const toolStatus: TelemetryToolCallStatus = outcome.status;
+			const phaseName: TelemetryPhaseName = outcome.status === "timeout"
+				? "timeout"
+				: outcome.status === "error"
+					? "error"
+					: "abort";
+
+			for (const phase of this.listOpenPhasesForTurn(turn.turnId)) {
+				this.finishPhase(phase.phaseId, {
+					status: phaseStatus,
+					endedAt: at,
+					lastProgressAt: at,
+					summary: outcome.summary,
+				});
+			}
+			for (const request of this.listActiveProviderRequestsForTurn(turn.turnId)) {
+				this.upsertProviderRequest({
+					providerRequestId: request.providerRequestId,
+					piboSessionId: request.piboSessionId,
+					rootSessionId: request.rootSessionId,
+					roomId: request.roomId,
+					turnId: request.turnId,
+					phaseId: request.phaseId,
+					provider: request.provider,
+					api: request.api,
+					model: request.model,
+					transport: request.transport,
+					serviceTier: request.serviceTier,
+					status: providerStatus,
+					responseHeadersAt: request.responseHeadersAt,
+					firstByteAt: request.firstByteAt,
+					lastRawEventAt: request.lastRawEventAt,
+					lastNormalizedEventAt: request.lastNormalizedEventAt,
+					completedAt: at,
+					httpStatus: request.httpStatus,
+					upstreamResponseId: request.upstreamResponseId,
+					rawEventCount: request.rawEventCount,
+					normalizedEventCount: request.normalizedEventCount,
+					parseErrorCount: request.parseErrorCount,
+					unknownEventCount: request.unknownEventCount,
+					bytesReceived: request.bytesReceived,
+					eventTypeCounts: request.eventTypeCounts,
+					eventStreamId: request.eventStreamId,
+					eventId: request.eventId,
+					payloadRef: request.payloadRef,
+					errorCategory: "runtime_restart",
+					errorMessage: outcome.summary,
+					captureMode: request.captureMode,
+					retentionClass: request.retentionClass,
+					updatedAt: at,
+				});
+			}
+			for (const toolCall of this.listActiveToolCallsForTurn(turn.turnId)) {
+				const executionEndedAt = toolCall.executionStartedAt ? at : toolCall.executionEndedAt;
+				this.upsertToolCall({
+					toolCallId: toolCall.toolCallId,
+					piboSessionId: toolCall.piboSessionId,
+					rootSessionId: toolCall.rootSessionId,
+					roomId: toolCall.roomId,
+					turnId: toolCall.turnId,
+					providerRequestId: toolCall.providerRequestId,
+					providerItemId: toolCall.providerItemId,
+					outputIndex: toolCall.outputIndex,
+					toolName: toolCall.toolName,
+					status: toolStatus,
+					argsStartedAt: toolCall.argsStartedAt,
+					firstDeltaAt: toolCall.firstDeltaAt,
+					lastDeltaAt: toolCall.lastDeltaAt,
+					argsCompletedAt: toolCall.argsCompletedAt,
+					executionStartedAt: toolCall.executionStartedAt,
+					executionEndedAt,
+					durationMs: toolCall.executionStartedAt && executionEndedAt
+						? Math.max(0, Date.parse(executionEndedAt) - Date.parse(toolCall.executionStartedAt))
+						: toolCall.durationMs,
+					argsBytes: toolCall.argsBytes,
+					parseStatus: toolCall.parseStatus,
+					safeArgKeys: toolCall.safeArgKeys,
+					eventStreamId: toolCall.eventStreamId,
+					eventId: toolCall.eventId,
+					payloadRef: toolCall.payloadRef,
+					runId: toolCall.runId,
+					errorCategory: "runtime_restart",
+					errorMessage: outcome.summary,
+					retentionClass: toolCall.retentionClass,
+					updatedAt: at,
+				});
+			}
+			this.upsertPhase({
+				phaseId: `${turn.turnId}:runtime_restart`,
+				turnId: turn.turnId,
+				piboSessionId: turn.piboSessionId,
+				rootSessionId: turn.rootSessionId,
+				roomId: turn.roomId,
+				name: phaseName,
+				status: phaseStatus,
+				startedAt: at,
+				endedAt: at,
+				lastProgressAt: at,
+				eventId: turn.eventId,
+				runId: turn.runId,
+				summary: outcome.summary,
+				retentionClass: turn.retentionClass,
+				updatedAt: at,
+			});
+			const recovered = this.upsertTurn({
+				turnId: turn.turnId,
+				piboSessionId: turn.piboSessionId,
+				rootSessionId: turn.rootSessionId,
+				roomId: turn.roomId,
+				inputEventId: turn.inputEventId,
+				eventId: turn.eventId,
+				eventStreamId: turn.eventStreamId,
+				payloadRef: turn.payloadRef,
+				runId: turn.runId,
+				source: turn.source,
+				status: outcome.status,
+				currentPhase: phaseName,
+				queuedAt: turn.queuedAt,
+				startedAt: turn.startedAt,
+				completedAt: at,
+				lastProgressAt: at,
+				queuedBehind: turn.queuedBehind,
+				queueDepth: 0,
+				summary: outcome.summary,
+				retentionClass: turn.retentionClass,
+				createdAt: turn.createdAt,
+				updatedAt: at,
+				metadata: turn.metadata,
+			});
+			return { turn: recovered, outcome };
+		}));
 	}
 
 	listProviderEventsPage(providerRequestId: string, input: TelemetryProviderEventListOptions = {}): TelemetryProviderEventsPage {

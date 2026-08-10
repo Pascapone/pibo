@@ -5,10 +5,12 @@ import {
 	prependedItemCount,
 	shouldReattachStickyAtBottom,
 	stickyAnchorLocation,
+	stickyPointerScrollMode,
 	stickyScrollIntentDirection,
 	stickyScrollPositionDirection,
 	stickyTouchScrollIntentDirection,
 	type StickyAnchorLocation,
+	type StickyPointerScrollMode,
 	type StickyScrollIntentDirection,
 	type StickyVisibleAnchor,
 } from "./stickyVirtuosoState";
@@ -16,6 +18,7 @@ import {
 const DEFAULT_BOTTOM_THRESHOLD = 24;
 const USER_SCROLL_INTENT_MS = 700;
 const USER_ANCHOR_SETTLE_MS = 120;
+const MIDDLE_AUTOSCROLL_INACTIVITY_MS = 1_500;
 
 type StickyScrollBehavior = "auto" | "smooth" | "fast-smooth";
 type NativeScrollBehavior = "auto" | "smooth";
@@ -46,7 +49,8 @@ type StickyVirtuosoOptions = {
 	onNearTop?: () => void;
 	atTopThreshold?: number;
 	nearTopThreshold?: number;
-	onUserScrollIntent?: (event?: Event) => void;
+	onUserScrollIntent?: (event?: Event, direction?: StickyScrollIntentDirection) => void;
+	onScrollbarDragChange?: (active: boolean) => void;
 	onVisibleAnchorChange?: (anchor: StickyVisibleAnchor | undefined) => void;
 };
 
@@ -62,6 +66,7 @@ export function useStickyVirtuoso({
 	atTopThreshold = 0,
 	nearTopThreshold = 0,
 	onUserScrollIntent,
+	onScrollbarDragChange,
 	onVisibleAnchorChange,
 }: StickyVirtuosoOptions) {
 	const virtuosoRef = useRef<VirtuosoHandle>(null);
@@ -79,6 +84,8 @@ export function useStickyVirtuoso({
 	const bottomReattachArmedRef = useRef(false);
 	const userScrollIntentTimerRef = useRef<number | undefined>(undefined);
 	const userAnchorCaptureTimerRef = useRef<number | undefined>(undefined);
+	const pointerScrollModeRef = useRef<StickyPointerScrollMode | undefined>(undefined);
+	const middleAutoscrollTimerRef = useRef<number | undefined>(undefined);
 	const lastTouchYRef = useRef<number | undefined>(undefined);
 	const lastScrollTopRef = useRef<number | undefined>(undefined);
 	const renderedItemsRef = useRef<readonly ListItem<unknown>[]>([]);
@@ -324,8 +331,8 @@ export function useStickyVirtuoso({
 
 	const markUserScrollIntent = useCallback((event?: Event, directionOverride?: StickyScrollIntentDirection) => {
 		userScrollIntentRef.current = true;
-		onUserScrollIntent?.(event);
 		const direction = directionOverride ?? stickyScrollIntentDirection(scrollIntentInput(event));
+		onUserScrollIntent?.(event, direction);
 		userScrollDirectionRef.current = direction;
 		userAnchorCaptureArmedRef.current = true;
 		if (direction === "away") {
@@ -352,21 +359,44 @@ export function useStickyVirtuoso({
 		}, USER_SCROLL_INTENT_MS);
 	}, [atBottomThreshold, captureVisibleAnchors, clearScheduledScroll, nearTopThreshold, onUserScrollIntent, requestAtTop, requestNearTop, scroller, setSticky, updateAtTopFromScrollTop]);
 
+	const clearPointerScrollMode = useCallback((expectedMode?: StickyPointerScrollMode) => {
+		const currentMode = pointerScrollModeRef.current;
+		if (!currentMode || (expectedMode && currentMode !== expectedMode)) return;
+		pointerScrollModeRef.current = undefined;
+		if (middleAutoscrollTimerRef.current !== undefined) window.clearTimeout(middleAutoscrollTimerRef.current);
+		middleAutoscrollTimerRef.current = undefined;
+		if (currentMode === "scrollbar") {
+			captureVisibleAnchors();
+			pendingAnchorsRef.current = visibleAnchorsRef.current;
+			onScrollbarDragChange?.(false);
+		}
+	}, [captureVisibleAnchors, onScrollbarDragChange]);
+
 	const updateFromScrollPosition = useCallback(() => {
 		if (!scroller) return;
 		const scrollTop = getScrollTop(scroller);
 		const previousScrollTop = lastScrollTopRef.current;
 		lastScrollTopRef.current = scrollTop;
+		const pointerScrollMode = pointerScrollModeRef.current;
+		const hasUserScrollIntent = userScrollIntentRef.current || pointerScrollMode !== undefined;
 		const scrollPositionDirection = stickyScrollPositionDirection({
-			hasUserScrollIntent: userScrollIntentRef.current,
+			hasUserScrollIntent,
 			previousScrollTop,
 			scrollTop,
 		});
+		if (scrollPositionDirection && pointerScrollMode) {
+			userScrollDirectionRef.current = scrollPositionDirection;
+			onUserScrollIntent?.(undefined, scrollPositionDirection);
+		}
+		if (pointerScrollMode === "middle") {
+			if (middleAutoscrollTimerRef.current !== undefined) window.clearTimeout(middleAutoscrollTimerRef.current);
+			middleAutoscrollTimerRef.current = window.setTimeout(() => clearPointerScrollMode("middle"), MIDDLE_AUTOSCROLL_INACTIVITY_MS);
+		}
 		const scrollingAwayFromBottom = scrollPositionDirection === "away";
 		const scrollingTowardBottom = scrollPositionDirection === "toward";
 		if (scrollingAwayFromBottom) bottomReattachArmedRef.current = false;
 		else if (scrollingTowardBottom && userScrollDirectionRef.current === "toward") bottomReattachArmedRef.current = true;
-		const readingAwayFromBottom = userScrollIntentRef.current || scrollingAwayFromBottom || !stickyRef.current;
+		const readingAwayFromBottom = hasUserScrollIntent || scrollingAwayFromBottom || !stickyRef.current;
 		if (userAnchorCaptureArmedRef.current && isPrependingRef.current && pendingAnchorsRef.current !== undefined) {
 			captureVisibleAnchors();
 			pendingAnchorsRef.current = visibleAnchorsRef.current;
@@ -386,45 +416,69 @@ export function useStickyVirtuoso({
 			if (shouldReattachStickyAtBottom(bottomReattachArmedRef.current, scrollingAwayFromBottom)) setSticky(true);
 			return;
 		}
-		if (userScrollIntentRef.current) setSticky(false);
-	}, [atBottomThreshold, captureVisibleAnchors, nearTopThreshold, requestAtTop, requestNearTop, scroller, setSticky, updateAtTopFromScrollTop]);
+		if (hasUserScrollIntent) setSticky(false);
+	}, [atBottomThreshold, captureVisibleAnchors, clearPointerScrollMode, nearTopThreshold, onUserScrollIntent, requestAtTop, requestNearTop, scroller, setSticky, updateAtTopFromScrollTop]);
 
 	useEffect(() => {
 		if (!scroller) return undefined;
 		const target: HTMLElement | Window = scroller;
 		const markIntentFromKey = (event: Event) => {
 			const key = event instanceof KeyboardEvent ? event.key : "";
+			if (key === "Escape") clearPointerScrollMode("middle");
 			if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(key)) {
+				clearPointerScrollMode("middle");
 				markUserScrollIntent(event);
 			}
 		};
 		const markIntentFromPointer = (event: Event) => {
-			if (event.target === target) markUserScrollIntent();
+			if (!(event instanceof PointerEvent)) return;
+			const mode = pointerScrollMode(event, target);
+			if (!mode) {
+				if (event.button === 0) clearPointerScrollMode("middle");
+				return;
+			}
+			if (mode === "middle" && pointerScrollModeRef.current === "middle") {
+				clearPointerScrollMode("middle");
+				return;
+			}
+			pointerScrollModeRef.current = mode;
+			if (mode === "scrollbar") onScrollbarDragChange?.(true);
+			markUserScrollIntent(event);
 		};
+		const finishScrollbarDrag = () => clearPointerScrollMode("scrollbar");
 		const rememberTouch = (event: Event) => {
 			lastTouchYRef.current = firstTouchClientY(event);
 		};
 		const markIntentFromTouch = (event: Event) => {
+			clearPointerScrollMode("middle");
 			const currentY = firstTouchClientY(event);
 			const previousY = lastTouchYRef.current;
 			lastTouchYRef.current = currentY;
 			markUserScrollIntent(event, stickyTouchScrollIntentDirection(previousY, currentY));
 		};
-		target.addEventListener("wheel", markUserScrollIntent, { passive: true });
+		const markIntentFromWheel = (event: Event) => {
+			clearPointerScrollMode("middle");
+			markUserScrollIntent(event);
+		};
+		target.addEventListener("wheel", markIntentFromWheel, { passive: true });
 		target.addEventListener("touchstart", rememberTouch, { passive: true });
 		target.addEventListener("touchmove", markIntentFromTouch, { passive: true });
 		target.addEventListener("pointerdown", markIntentFromPointer, { passive: true });
 		target.addEventListener("keydown", markIntentFromKey);
 		target.addEventListener("scroll", updateFromScrollPosition, { passive: true });
+		window.addEventListener("pointerup", finishScrollbarDrag, { passive: true });
+		window.addEventListener("pointercancel", finishScrollbarDrag, { passive: true });
 		return () => {
-			target.removeEventListener("wheel", markUserScrollIntent);
+			target.removeEventListener("wheel", markIntentFromWheel);
 			target.removeEventListener("touchstart", rememberTouch);
 			target.removeEventListener("touchmove", markIntentFromTouch);
 			target.removeEventListener("pointerdown", markIntentFromPointer);
 			target.removeEventListener("keydown", markIntentFromKey);
 			target.removeEventListener("scroll", updateFromScrollPosition);
+			window.removeEventListener("pointerup", finishScrollbarDrag);
+			window.removeEventListener("pointercancel", finishScrollbarDrag);
 		};
-	}, [markUserScrollIntent, scroller, updateFromScrollPosition]);
+	}, [clearPointerScrollMode, markUserScrollIntent, onScrollbarDragChange, scroller, updateFromScrollPosition]);
 
 	useLayoutEffect(() => {
 		lastScrollTopRef.current = undefined;
@@ -461,6 +515,7 @@ export function useStickyVirtuoso({
 		if (nearTopFrameRef.current !== undefined) cancelAnimationFrame(nearTopFrameRef.current);
 		if (userScrollIntentTimerRef.current !== undefined) window.clearTimeout(userScrollIntentTimerRef.current);
 		if (userAnchorCaptureTimerRef.current !== undefined) window.clearTimeout(userAnchorCaptureTimerRef.current);
+		if (middleAutoscrollTimerRef.current !== undefined) window.clearTimeout(middleAutoscrollTimerRef.current);
 	}, [clearScheduledScroll]);
 
 	const atBottomStateChange = useCallback((atBottom: boolean) => {
@@ -572,6 +627,18 @@ function scrollIntentInput(event?: Event) {
 	if (event instanceof WheelEvent) return { type: "wheel", deltaY: event.deltaY };
 	if (event instanceof KeyboardEvent) return { type: "keydown", key: event.key, shiftKey: event.shiftKey };
 	return { type: event?.type };
+}
+
+function pointerScrollMode(event: PointerEvent, target: HTMLElement | Window): StickyPointerScrollMode | undefined {
+	const element = (target instanceof Window ? document.scrollingElement : target) as HTMLElement | null;
+	const rect = element?.getBoundingClientRect();
+	return stickyPointerScrollMode({
+		button: event.button,
+		targetIsScroller: event.target === target,
+		clientX: event.clientX,
+		scrollerRight: rect?.right,
+		verticalScrollbarWidth: element ? element.offsetWidth - element.clientWidth : undefined,
+	});
 }
 
 function firstTouchClientY(event: Event): number | undefined {

@@ -18,6 +18,7 @@ async function renderTerminalFullscreenScenario() {
 
 		const topBar = renderToStaticMarkup(React.createElement(TerminalFullscreenTopBar, {
 			title: "Readable session name",
+			onOpenSessionWindow: noop,
 			onExit: noop,
 		}));
 		assert.match(topBar, /data-pibo-debug="terminal-fullscreen-top-bar"/);
@@ -25,8 +26,11 @@ async function renderTerminalFullscreenScenario() {
 		assert.match(topBar, /h-7 min-h-7/);
 		assert.match(topBar, /border-b border-slate-600/);
 		assert.match(topBar, /text-base font-semibold/);
+		assert.match(topBar, /aria-label="Open selected session in new window"/);
+		assert.match(topBar, /data-pibo-debug="open-session-window"/);
 		assert.match(topBar, /aria-label="Exit Terminal fullscreen"/);
 		assert.match(topBar, /title="Show normal top bar"/);
+		assert.ok(topBar.indexOf('aria-label="Open selected session in new window"') < topBar.indexOf('aria-label="Exit Terminal fullscreen"'));
 		assert.equal(topBar.includes("border-l"), false);
 		const topBarOpeningTag = topBar.slice(0, topBar.indexOf(">") + 1);
 		assert.equal(/(?:class="[^"]*\s|class=")(?:p|m)[trblxy]?-/.test(topBarOpeningTag), false);
