@@ -1,4 +1,4 @@
-import { THINKING_LEVELS, type BootstrapData, type PiboProjectSession, type PiboSessionSignalSnapshot, type PiboSessionTraceView, type PiboSignalSnapshot, type PiboTraceNode, type PiboWebSessionNode, type PiboWebSessionStatus, type ThinkingLevel, type WorkflowLifecycleEventRecord } from "./types";
+import { THINKING_LEVELS, type BootstrapData, type PiboLoopJob, type PiboProjectSession, type PiboSessionSignalSnapshot, type PiboSessionTraceView, type PiboSignalSnapshot, type PiboTraceNode, type PiboWebSessionNode, type PiboWebSessionStatus, type ThinkingLevel, type WorkflowLifecycleEventRecord } from "./types";
 import { findSessionNode, findSessionPath } from "./app-session-model";
 import type { ChatSessionViewProps } from "./session-views/types";
 import type { SessionBreadcrumbItem, SessionDerivationLink, SessionOriginLink } from "./tracing/TraceTimeline";
@@ -69,6 +69,7 @@ export function createSessionTraceViewProps(input: {
 	selectedSessionStatus?: PiboWebSessionStatus;
 	selectedSessionSignal?: PiboSessionSignalSnapshot;
 	signals?: PiboSignalSnapshot;
+	sessionGoal?: PiboLoopJob | null;
 	workflowProjectSession?: PiboProjectSession;
 	workflowLifecycleEvents?: readonly WorkflowLifecycleEventRecord[];
 	sessionNodes: readonly PiboWebSessionNode[];
@@ -99,6 +100,7 @@ export function createSessionTraceViewProps(input: {
 		selectedSessionStatus: input.selectedSessionStatus,
 		selectedSessionSignal: input.selectedSessionSignal,
 		signals: input.signals,
+		sessionGoal: input.sessionGoal,
 		workflowProjectSession: input.workflowProjectSession,
 		workflowLifecycleEvents: input.workflowLifecycleEvents,
 		sessionNodes: input.sessionNodes,
