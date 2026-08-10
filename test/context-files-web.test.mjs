@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -109,6 +110,10 @@ async function getJson(url, init = {}) {
 		response,
 		data: await response.json(),
 	};
+}
+
+function delay(ms) {
+	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function authHeaders(baseURL) {
@@ -350,6 +355,65 @@ test("context files web app creates one catalog entry per global managed file", 
 	}
 });
 
+test("context files polling reports persistent storage failures once without crashing the host", async () => {
+	const dir = mkdtempSync(join(tmpdir(), "pibo-context-files-poll-failure-"));
+	const managedRoot = join(dir, "managed");
+	const globalDir = join(managedRoot, "global");
+	const metadataPath = join(managedRoot, "context-files.sqlite");
+	const agentWorkspaceRoot = join(dir, "agent-workspaces");
+	const pluginFilePath = join(dir, "plugin-doc.md");
+	writeFileSync(pluginFilePath, "# Plugin Source\n", "utf8");
+	const messages = [];
+	const originalConsoleError = console.error;
+
+	const { channel, baseURL } = await startContextFilesHost({
+		pluginFilePath,
+		managedRoot,
+		globalDir,
+		agentWorkspaceRoot,
+		metadataPath,
+	});
+
+	try {
+		const created = await getJson(`${baseURL}/api/context-files`, {
+			method: "POST",
+			headers: authHeaders(baseURL),
+			body: JSON.stringify({ label: "Polling failure", scope: "global", markdown: "# Before\n" }),
+		});
+		assert.equal(created.response.status, 201);
+		console.error = (...args) => messages.push(args.map(String).join(" "));
+
+		const database = new DatabaseSync(metadataPath);
+		database.exec("DROP TABLE context_file_manual_revisions");
+		database.close();
+		writeFileSync(created.data.file.absolutePath, "# After\n", "utf8");
+
+		await delay(2_200);
+		assert.equal(messages.filter((message) => message.includes("Context Files polling failed")).length, 1);
+
+		const repair = new DatabaseSync(metadataPath);
+		repair.exec(`
+			CREATE TABLE context_file_manual_revisions (
+				id TEXT PRIMARY KEY,
+				context_file_key TEXT NOT NULL,
+				name TEXT NOT NULL,
+				content_hash TEXT NOT NULL,
+				content TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				actor_id TEXT
+			);
+			CREATE INDEX idx_context_file_manual_revisions_key
+				ON context_file_manual_revisions(context_file_key, created_at DESC);
+		`);
+		repair.close();
+		await delay(1_100);
+	} finally {
+		console.error = originalConsoleError;
+		await channel.stop?.();
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
 test("context files web app auto-registers markdown files dropped into the global context directory", async () => {
 	const dir = mkdtempSync(join(tmpdir(), "pibo-context-files-discovery-"));
 	const managedRoot = join(dir, "managed");
@@ -398,7 +462,74 @@ test("context files web app auto-registers markdown files dropped into the globa
 	}
 });
 
-test("context files revision migration preserves the current working version and drops automatic history", async () => {
+test("context files refuses to migrate storage owned by another live gateway", async () => {
+	const root = mkdtempSync(join(tmpdir(), "pibo-context-files-owned-storage-"));
+	const managedRoot = join(root, "context-files");
+	const metadataPath = join(managedRoot, "context-files.sqlite");
+	const previousPiboHome = process.env.PIBO_HOME;
+	const owner = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+	await new Promise((resolve, reject) => {
+		owner.once("spawn", resolve);
+		owner.once("error", reject);
+	});
+
+	try {
+		process.env.PIBO_HOME = root;
+		mkdirSync(managedRoot, { recursive: true });
+		writeFileSync(join(root, "gateway.pid"), String(owner.pid), "utf8");
+		const database = new DatabaseSync(metadataPath);
+		database.exec(`
+			CREATE TABLE context_files (
+				key TEXT PRIMARY KEY,
+				label TEXT NOT NULL,
+				managed_path TEXT NOT NULL,
+				scope TEXT NOT NULL,
+				source_type TEXT NOT NULL,
+				agent_profile_name TEXT,
+				active_revision_id TEXT,
+				source_ref TEXT,
+				source_hash TEXT,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL
+			);
+			CREATE TABLE context_file_revisions (
+				id TEXT PRIMARY KEY,
+				context_file_key TEXT NOT NULL,
+				kind TEXT NOT NULL,
+				content_hash TEXT NOT NULL,
+				content TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				actor_id TEXT,
+				based_on_revision_id TEXT,
+				source_hash_at_creation TEXT,
+				note TEXT
+			);
+		`);
+		database.close();
+
+		assert.throws(
+			() => PiboPluginRegistry.create({ plugins: [createPiboContextFilesPlugin()] }),
+			/owned by the active gateway process.*isolated PIBO_HOME/,
+		);
+
+		const verification = new DatabaseSync(metadataPath);
+		try {
+			const tables = verification.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all().map((row) => row.name);
+			assert.deepEqual(tables, ["context_file_revisions", "context_files"]);
+			assert.equal(verification.prepare("PRAGMA table_info(context_files)").all().some((column) => column.name === "working_content"), false);
+			assert.equal(verification.prepare("PRAGMA table_info(context_file_revisions)").all().some((column) => column.name === "kind"), true);
+		} finally {
+			verification.close();
+		}
+	} finally {
+		owner.kill("SIGTERM");
+		if (previousPiboHome === undefined) delete process.env.PIBO_HOME;
+		else process.env.PIBO_HOME = previousPiboHome;
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("context files revision migration preserves current content and old-writer compatibility", async () => {
 	const dir = mkdtempSync(join(tmpdir(), "pibo-context-files-revision-migration-"));
 	const managedRoot = join(dir, "managed");
 	const agentWorkspaceRoot = join(dir, "agent-workspaces");
@@ -501,8 +632,152 @@ test("context files revision migration preserves the current working version and
 		assert.equal(manualRevision.response.status, 201);
 		assert.equal(manualRevision.data.revision.name, "Migration checkpoint");
 		assert.equal(manualRevision.data.revision.content, "# Preserved Current Version\n");
+
+		const compatibility = new DatabaseSync(metadataPath);
+		try {
+			const automaticColumns = compatibility.prepare("PRAGMA table_info(context_file_revisions)").all().map((column) => column.name);
+			assert.ok(automaticColumns.includes("kind"));
+			assert.ok(automaticColumns.includes("note"));
+			assert.equal(automaticColumns.includes("name"), false);
+			assert.equal(compatibility.prepare("SELECT value FROM context_file_store_meta WHERE key = 'schema-version'").get().value, "2");
+			compatibility.prepare(`
+				INSERT INTO context_file_revisions (
+					id, context_file_key, kind, content_hash, content, created_at,
+					actor_id, based_on_revision_id, source_hash_at_creation, note
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			`).run(
+				"rev_legacy_writer",
+				"ctx:current",
+				"working",
+				"sha256:legacy-writer",
+				"# Legacy writer remains compatible\n",
+				"2026-08-10T17:00:00.000Z",
+				"legacy-runtime",
+				null,
+				null,
+				"Old gateway compatibility probe",
+			);
+			assert.equal(compatibility.prepare("SELECT COUNT(*) AS count FROM context_file_manual_revisions WHERE context_file_key = ?").get("ctx:current").count, 1);
+		} finally {
+			compatibility.close();
+		}
+
+		const revisionsAfterLegacyWrite = await getJson(`${baseURL}/api/context-files/ctx%3Acurrent/revisions`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.deepEqual(revisionsAfterLegacyWrite.data.revisions.map((revision) => revision.name), ["Migration checkpoint"]);
 	} finally {
 		await channel.stop?.();
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("manual-revisions v1 storage upgrades transactionally to the compatible schema", () => {
+	const dir = mkdtempSync(join(tmpdir(), "pibo-context-files-manual-v1-upgrade-"));
+	const metadataPath = join(dir, "context-files.sqlite");
+	const managedFilePath = join(dir, "managed.md");
+	writeFileSync(managedFilePath, "# Current content\n", "utf8");
+	const database = new DatabaseSync(metadataPath);
+	database.exec(`
+		CREATE TABLE context_files (
+			key TEXT PRIMARY KEY,
+			label TEXT NOT NULL,
+			managed_path TEXT NOT NULL,
+			scope TEXT NOT NULL,
+			source_type TEXT NOT NULL,
+			agent_profile_name TEXT,
+			active_revision_id TEXT,
+			working_content TEXT,
+			source_ref TEXT,
+			source_hash TEXT,
+			source_content TEXT,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		);
+		CREATE TABLE context_file_store_meta (
+			key TEXT PRIMARY KEY,
+			value TEXT NOT NULL
+		);
+		CREATE TABLE context_file_revisions (
+			id TEXT PRIMARY KEY,
+			context_file_key TEXT NOT NULL,
+			name TEXT NOT NULL,
+			content_hash TEXT NOT NULL,
+			content TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			actor_id TEXT
+		);
+		CREATE INDEX idx_context_file_revisions_key
+			ON context_file_revisions(context_file_key, created_at DESC);
+	`);
+	database.prepare(`
+		INSERT INTO context_files (
+			key, label, managed_path, scope, source_type, agent_profile_name,
+			active_revision_id, working_content, source_ref, source_hash, source_content,
+			created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`).run(
+		"ctx:v1",
+		"V1",
+		managedFilePath,
+		"global",
+		"managed",
+		null,
+		null,
+		"# Current content\n",
+		null,
+		null,
+		null,
+		"2026-08-10T14:18:05.023Z",
+		"2026-08-10T14:18:05.023Z",
+	);
+	database.prepare(`
+		INSERT INTO context_file_revisions (
+			id, context_file_key, name, content_hash, content, created_at, actor_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?)
+	`).run(
+		"rev_manual_v1",
+		"ctx:v1",
+		"Before upgrade",
+		"sha256:v1",
+		"# Current content\n",
+		"2026-08-10T14:18:05.023Z",
+		"user-1",
+	);
+	database.prepare("INSERT INTO context_file_store_meta (key, value) VALUES (?, ?)").run("manual-revisions-v1", "2026-08-10T14:18:05.023Z");
+	database.close();
+
+	try {
+		const store = new ContextFileMetadataStore(metadataPath);
+		assert.deepEqual(store.listRevisions("ctx:v1").map((revision) => revision.name), ["Before upgrade"]);
+		store.close();
+
+		const verification = new DatabaseSync(metadataPath);
+		try {
+			assert.equal(verification.prepare("SELECT value FROM context_file_store_meta WHERE key = 'schema-version'").get().value, "2");
+			assert.ok(verification.prepare("PRAGMA table_info(context_file_revisions)").all().some((column) => column.name === "kind"));
+			assert.ok(verification.prepare("PRAGMA table_info(context_file_manual_revisions)").all().some((column) => column.name === "name"));
+			verification.prepare(`
+				INSERT INTO context_file_revisions (
+					id, context_file_key, kind, content_hash, content, created_at,
+					actor_id, based_on_revision_id, source_hash_at_creation, note
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			`).run(
+				"rev_old_after_upgrade",
+				"ctx:v1",
+				"working",
+				"sha256:old-after-upgrade",
+				"# Old writer still works\n",
+				"2026-08-10T17:30:00.000Z",
+				"legacy-runtime",
+				null,
+				null,
+				"Compatibility probe",
+			);
+		} finally {
+			verification.close();
+		}
+	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}
 });

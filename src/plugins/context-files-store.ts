@@ -80,6 +80,49 @@ type RevisionStorageMigrationRow = Pick<
 	"key" | "managed_path" | "active_revision_id" | "working_content" | "source_content"
 >;
 
+const CONTEXT_FILE_SCHEMA_VERSION_KEY = "schema-version";
+const CONTEXT_FILE_SCHEMA_VERSION = "2";
+const MANUAL_REVISION_MIGRATION_KEY = "manual-revisions-v2";
+const CONTEXT_FILE_BASE_COLUMNS = [
+	"key",
+	"label",
+	"managed_path",
+	"scope",
+	"source_type",
+	"agent_profile_name",
+	"active_revision_id",
+	"source_ref",
+	"source_hash",
+	"created_at",
+	"updated_at",
+] as const;
+const CONTEXT_FILE_COLUMNS = [
+	...CONTEXT_FILE_BASE_COLUMNS,
+	"working_content",
+	"source_content",
+] as const;
+const AUTOMATIC_REVISION_COLUMNS = [
+	"id",
+	"context_file_key",
+	"kind",
+	"content_hash",
+	"content",
+	"created_at",
+	"actor_id",
+	"based_on_revision_id",
+	"source_hash_at_creation",
+	"note",
+] as const;
+const MANUAL_REVISION_COLUMNS = [
+	"id",
+	"context_file_key",
+	"name",
+	"content_hash",
+	"content",
+	"created_at",
+	"actor_id",
+] as const;
+
 export type CreateStoredContextFileInput = {
 	key: string;
 	label: string;
@@ -189,48 +232,25 @@ export class ContextFileMetadataStore {
 		this.db = new DatabaseSync(resolvedPath);
 		this.db.exec("PRAGMA busy_timeout = 5000");
 		this.db.exec("PRAGMA journal_mode = WAL");
-		this.db.exec(`
-			CREATE TABLE IF NOT EXISTS context_files (
-				key TEXT PRIMARY KEY,
-				label TEXT NOT NULL,
-				managed_path TEXT NOT NULL,
-				scope TEXT NOT NULL,
-				source_type TEXT NOT NULL,
-				agent_profile_name TEXT,
-				active_revision_id TEXT,
-				working_content TEXT,
-				source_ref TEXT,
-				source_hash TEXT,
-				source_content TEXT,
-				created_at TEXT NOT NULL,
-				updated_at TEXT NOT NULL
-			);
-
-			CREATE INDEX IF NOT EXISTS idx_context_files_scope
-				ON context_files(scope, updated_at);
-
-			CREATE TABLE IF NOT EXISTS context_file_store_meta (
-				key TEXT PRIMARY KEY,
-				value TEXT NOT NULL
-			);
-		`);
-		this.ensureColumn("context_files", "working_content", "TEXT");
-		this.ensureColumn("context_files", "source_content", "TEXT");
-		this.migrateManualRevisionStorage();
+		this.migrateStorage();
+		this.assertCompatibleSchema();
 		this.migrateLegacyStore();
 	}
 
 	listFiles(): StoredContextFileRecord[] {
+		this.assertCompatibleSchema();
 		const rows = this.db.prepare("SELECT * FROM context_files ORDER BY updated_at DESC").all() as ContextFileRow[];
 		return rows.map(fileRowToRecord);
 	}
 
 	getFile(key: string): StoredContextFileRecord | undefined {
+		this.assertCompatibleSchema();
 		const row = this.db.prepare("SELECT * FROM context_files WHERE key = ?").get(key) as ContextFileRow | undefined;
 		return row ? fileRowToRecord(row) : undefined;
 	}
 
 	createFile(input: CreateStoredContextFileInput): StoredContextFileRecord {
+		this.assertCompatibleSchema();
 		const createdAt = input.createdAt ?? new Date().toISOString();
 		const updatedAt = input.updatedAt ?? createdAt;
 		this.db
@@ -272,6 +292,7 @@ export class ContextFileMetadataStore {
 	}
 
 	updateFile(input: UpdateStoredContextFileInput): StoredContextFileRecord {
+		this.assertCompatibleSchema();
 		this.db
 			.prepare(`
 				UPDATE context_files SET
@@ -309,8 +330,10 @@ export class ContextFileMetadataStore {
 	}
 
 	deleteFile(key: string): void {
+		this.assertCompatibleSchema();
 		this.db.exec("BEGIN");
 		try {
+			this.db.prepare("DELETE FROM context_file_manual_revisions WHERE context_file_key = ?").run(key);
 			this.db.prepare("DELETE FROM context_file_revisions WHERE context_file_key = ?").run(key);
 			this.db.prepare("DELETE FROM context_files WHERE key = ?").run(key);
 			this.db.exec("COMMIT");
@@ -321,11 +344,12 @@ export class ContextFileMetadataStore {
 	}
 
 	appendRevision(input: AppendRevisionInput): StoredContextFileRevisionRecord {
+		this.assertCompatibleSchema();
 		const id = `rev_${randomUUID()}`;
 		const createdAt = input.createdAt ?? new Date().toISOString();
 		this.db
 			.prepare(`
-				INSERT INTO context_file_revisions (
+				INSERT INTO context_file_manual_revisions (
 					id,
 					context_file_key,
 					name,
@@ -350,13 +374,15 @@ export class ContextFileMetadataStore {
 	}
 
 	getRevision(id: string): StoredContextFileRevisionRecord | undefined {
-		const row = this.db.prepare("SELECT * FROM context_file_revisions WHERE id = ?").get(id) as ContextFileRevisionRow | undefined;
+		this.assertCompatibleSchema();
+		const row = this.db.prepare("SELECT * FROM context_file_manual_revisions WHERE id = ?").get(id) as ContextFileRevisionRow | undefined;
 		return row ? revisionRowToRecord(row) : undefined;
 	}
 
 	listRevisions(contextFileKey: string): StoredContextFileRevisionRecord[] {
+		this.assertCompatibleSchema();
 		const rows = this.db
-			.prepare("SELECT * FROM context_file_revisions WHERE context_file_key = ? ORDER BY created_at DESC")
+			.prepare("SELECT * FROM context_file_manual_revisions WHERE context_file_key = ? ORDER BY created_at DESC")
 			.all(contextFileKey) as ContextFileRevisionRow[];
 		return rows.map(revisionRowToRecord);
 	}
@@ -365,9 +391,18 @@ export class ContextFileMetadataStore {
 		this.db.close();
 	}
 
+	private columnsFor(table: string): Set<string> {
+		if (!this.tableExists(table)) return new Set();
+		return new Set((this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map((column) => column.name));
+	}
+
+	private hasColumns(table: string, required: readonly string[]): boolean {
+		const columns = this.columnsFor(table);
+		return required.every((column) => columns.has(column));
+	}
+
 	private ensureColumn(table: string, column: string, type: string): void {
-		const columns = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
-		if (columns.some((candidate) => candidate.name === column)) return;
+		if (this.columnsFor(table).has(column)) return;
 		this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
 	}
 
@@ -375,9 +410,29 @@ export class ContextFileMetadataStore {
 		return Boolean(this.db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table));
 	}
 
-	private ensureManualRevisionTable(): void {
+	private ensureAutomaticRevisionTable(): void {
 		this.db.exec(`
 			CREATE TABLE IF NOT EXISTS context_file_revisions (
+				id TEXT PRIMARY KEY,
+				context_file_key TEXT NOT NULL,
+				kind TEXT NOT NULL,
+				content_hash TEXT NOT NULL,
+				content TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				actor_id TEXT,
+				based_on_revision_id TEXT,
+				source_hash_at_creation TEXT,
+				note TEXT
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_context_file_revisions_key
+				ON context_file_revisions(context_file_key, created_at DESC);
+		`);
+	}
+
+	private ensureManualRevisionTable(): void {
+		this.db.exec(`
+			CREATE TABLE IF NOT EXISTS context_file_manual_revisions (
 				id TEXT PRIMARY KEY,
 				context_file_key TEXT NOT NULL,
 				name TEXT NOT NULL,
@@ -387,54 +442,150 @@ export class ContextFileMetadataStore {
 				actor_id TEXT
 			);
 
-			CREATE INDEX IF NOT EXISTS idx_context_file_revisions_key
-				ON context_file_revisions(context_file_key, created_at DESC);
+			CREATE INDEX IF NOT EXISTS idx_context_file_manual_revisions_key
+				ON context_file_manual_revisions(context_file_key, created_at DESC);
 		`);
 	}
 
-	private migrateManualRevisionStorage(): void {
-		const migrationKey = "manual-revisions-v1";
-		const migrated = this.db.prepare("SELECT 1 FROM context_file_store_meta WHERE key = ?").get(migrationKey);
-		if (migrated) {
-			this.ensureManualRevisionTable();
-			return;
-		}
+	private assertCompatibleSchema(): void {
+		const version = this.db.prepare("SELECT value FROM context_file_store_meta WHERE key = ?").get(CONTEXT_FILE_SCHEMA_VERSION_KEY) as { value?: string } | undefined;
+		const compatible = version?.value === CONTEXT_FILE_SCHEMA_VERSION
+			&& this.hasColumns("context_files", CONTEXT_FILE_COLUMNS)
+			&& this.hasColumns("context_file_revisions", AUTOMATIC_REVISION_COLUMNS)
+			&& this.hasColumns("context_file_manual_revisions", MANUAL_REVISION_COLUMNS);
+		if (compatible) return;
+		throw new Error(
+			`Context Files metadata schema is incompatible with this Pibo version (expected ${CONTEXT_FILE_SCHEMA_VERSION}, found ${version?.value ?? "unversioned"}). ` +
+			"Activate a matching package version or use an isolated PIBO_HOME before accessing Context Files storage.",
+		);
+	}
 
-		const revisionTableExists = this.tableExists("context_file_revisions");
-		const revisionColumns = revisionTableExists
-			? new Set((this.db.prepare("PRAGMA table_info(context_file_revisions)").all() as Array<{ name: string }>).map((column) => column.name))
-			: new Set<string>();
-		const hasAutomaticRevisionSchema = revisionColumns.has("kind");
-		const files = this.db.prepare(`
-			SELECT key, managed_path, active_revision_id, working_content, source_content
-			FROM context_files
-		`).all() as RevisionStorageMigrationRow[];
-		const recovered = files.map((file) => {
-			const fileExists = existsSync(file.managed_path);
-			const activeContent = !fileExists && hasAutomaticRevisionSchema && file.active_revision_id
-				? (this.db.prepare("SELECT content FROM context_file_revisions WHERE id = ?").get(file.active_revision_id) as { content?: string } | undefined)?.content
-				: undefined;
-			const workingContent = fileExists
-				? readFileSync(file.managed_path, "utf8")
-				: file.working_content ?? activeContent ?? "";
-			const sourceContent = file.source_content ?? (hasAutomaticRevisionSchema
-				? (this.db.prepare(`
-					SELECT content FROM context_file_revisions
-					WHERE context_file_key = ? AND kind = 'source-snapshot'
-					ORDER BY created_at DESC
-					LIMIT 1
-				`).get(file.key) as { content?: string } | undefined)?.content
-				: undefined);
-
-			if (!fileExists && (file.working_content !== null || activeContent !== undefined)) {
-				mkdirSync(dirname(file.managed_path), { recursive: true });
-				writeFileSync(file.managed_path, workingContent, "utf8");
-			}
-			return { key: file.key, workingContent, sourceContent };
-		});
-
-		this.db.exec("BEGIN");
+	private migrateStorage(): void {
+		let recovered: Array<{
+			key: string;
+			managedPath: string;
+			workingContent: string;
+			sourceContent?: string;
+			restoreManagedFile: boolean;
+		}> = [];
+		this.db.exec("BEGIN IMMEDIATE");
 		try {
+			this.db.exec(`
+				CREATE TABLE IF NOT EXISTS context_file_store_meta (
+					key TEXT PRIMARY KEY,
+					value TEXT NOT NULL
+				);
+			`);
+			const version = this.db.prepare("SELECT value FROM context_file_store_meta WHERE key = ?").get(CONTEXT_FILE_SCHEMA_VERSION_KEY) as { value?: string } | undefined;
+			if (version?.value === CONTEXT_FILE_SCHEMA_VERSION) {
+				this.db.exec("COMMIT");
+				return;
+			}
+			if (version?.value !== undefined && version.value !== "1") {
+				throw new Error(`Unsupported Context Files metadata schema version ${version.value}; expected ${CONTEXT_FILE_SCHEMA_VERSION}`);
+			}
+
+			this.db.exec(`
+				CREATE TABLE IF NOT EXISTS context_files (
+					key TEXT PRIMARY KEY,
+					label TEXT NOT NULL,
+					managed_path TEXT NOT NULL,
+					scope TEXT NOT NULL,
+					source_type TEXT NOT NULL,
+					agent_profile_name TEXT,
+					active_revision_id TEXT,
+					working_content TEXT,
+					source_ref TEXT,
+					source_hash TEXT,
+					source_content TEXT,
+					created_at TEXT NOT NULL,
+					updated_at TEXT NOT NULL
+				);
+
+				CREATE INDEX IF NOT EXISTS idx_context_files_scope
+					ON context_files(scope, updated_at);
+			`);
+			if (!this.hasColumns("context_files", CONTEXT_FILE_BASE_COLUMNS)) {
+				throw new Error("Context Files metadata has an unsupported context_files table shape");
+			}
+			this.ensureColumn("context_files", "working_content", "TEXT");
+			this.ensureColumn("context_files", "source_content", "TEXT");
+
+			const revisionTableExists = this.tableExists("context_file_revisions");
+			const revisionColumns = this.columnsFor("context_file_revisions");
+			const hasAutomaticRevisionSchema = revisionTableExists
+				&& AUTOMATIC_REVISION_COLUMNS.every((column) => revisionColumns.has(column));
+			const hasManualOnlyRevisionSchema = revisionTableExists
+				&& !hasAutomaticRevisionSchema
+				&& MANUAL_REVISION_COLUMNS.every((column) => revisionColumns.has(column));
+			if (revisionTableExists && !hasAutomaticRevisionSchema && !hasManualOnlyRevisionSchema) {
+				throw new Error("Context Files metadata has an unsupported context_file_revisions table shape");
+			}
+
+			const files = this.db.prepare(`
+				SELECT key, managed_path, active_revision_id, working_content, source_content
+				FROM context_files
+			`).all() as RevisionStorageMigrationRow[];
+			recovered = files.map((file) => {
+				const fileExists = existsSync(file.managed_path);
+				const activeContent = !fileExists && revisionTableExists && file.active_revision_id
+					? (this.db.prepare("SELECT content FROM context_file_revisions WHERE id = ?").get(file.active_revision_id) as { content?: string } | undefined)?.content
+					: undefined;
+				const workingContent = fileExists
+					? readFileSync(file.managed_path, "utf8")
+					: file.working_content ?? activeContent ?? "";
+				const sourceContent = file.source_content ?? (hasAutomaticRevisionSchema
+					? (this.db.prepare(`
+						SELECT content FROM context_file_revisions
+						WHERE context_file_key = ? AND kind = 'source-snapshot'
+						ORDER BY created_at DESC
+						LIMIT 1
+					`).get(file.key) as { content?: string } | undefined)?.content
+					: undefined);
+				return {
+					key: file.key,
+					managedPath: file.managed_path,
+					workingContent,
+					sourceContent,
+					restoreManagedFile: !fileExists && (file.working_content !== null || activeContent !== undefined),
+				};
+			});
+
+			if (hasManualOnlyRevisionSchema) {
+				this.db.exec("DROP INDEX IF EXISTS idx_context_file_revisions_key");
+				if (this.tableExists("context_file_manual_revisions")) {
+					if (!this.hasColumns("context_file_manual_revisions", MANUAL_REVISION_COLUMNS)) {
+						throw new Error("Context Files metadata has an unsupported context_file_manual_revisions table shape");
+					}
+					this.db.exec(`
+						INSERT OR IGNORE INTO context_file_manual_revisions (
+							id, context_file_key, name, content_hash, content, created_at, actor_id
+						)
+						SELECT id, context_file_key, name, content_hash, content, created_at, actor_id
+						FROM context_file_revisions;
+						DROP TABLE context_file_revisions;
+					`);
+				} else {
+					this.db.exec("ALTER TABLE context_file_revisions RENAME TO context_file_manual_revisions");
+				}
+				this.db.exec(`
+					CREATE INDEX IF NOT EXISTS idx_context_file_manual_revisions_key
+						ON context_file_manual_revisions(context_file_key, created_at DESC);
+				`);
+			}
+
+			this.ensureAutomaticRevisionTable();
+			this.ensureManualRevisionTable();
+			if (hasAutomaticRevisionSchema && revisionColumns.has("name")) {
+				this.db.exec(`
+					INSERT OR IGNORE INTO context_file_manual_revisions (
+						id, context_file_key, name, content_hash, content, created_at, actor_id
+					)
+					SELECT id, context_file_key, name, content_hash, content, created_at, actor_id
+					FROM context_file_revisions
+					WHERE name IS NOT NULL;
+				`);
+			}
 			for (const file of recovered) {
 				this.db.prepare(`
 					UPDATE context_files
@@ -442,15 +593,25 @@ export class ContextFileMetadataStore {
 					WHERE key = ?
 				`).run(file.workingContent, file.sourceContent ?? null, file.key);
 			}
-			if (hasAutomaticRevisionSchema) {
-				this.db.exec("DROP TABLE context_file_revisions");
-			}
-			this.ensureManualRevisionTable();
-			this.db.prepare("INSERT INTO context_file_store_meta (key, value) VALUES (?, ?)").run(migrationKey, new Date().toISOString());
+			const migratedAt = new Date().toISOString();
+			this.db.prepare(`
+				INSERT INTO context_file_store_meta (key, value) VALUES (?, ?)
+				ON CONFLICT(key) DO UPDATE SET value = excluded.value
+			`).run(CONTEXT_FILE_SCHEMA_VERSION_KEY, CONTEXT_FILE_SCHEMA_VERSION);
+			this.db.prepare(`
+				INSERT INTO context_file_store_meta (key, value) VALUES (?, ?)
+				ON CONFLICT(key) DO UPDATE SET value = excluded.value
+			`).run(MANUAL_REVISION_MIGRATION_KEY, migratedAt);
 			this.db.exec("COMMIT");
 		} catch (error) {
 			this.db.exec("ROLLBACK");
 			throw error;
+		}
+
+		for (const file of recovered) {
+			if (!file.restoreManagedFile) continue;
+			mkdirSync(dirname(file.managedPath), { recursive: true });
+			writeFileSync(file.managedPath, file.workingContent, "utf8");
 		}
 	}
 

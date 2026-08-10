@@ -1,10 +1,11 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, extname, isAbsolute, join, resolve } from "node:path";
+import { dirname, extname, isAbsolute, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ContextFileProfile, ContextFileScope, ContextFileSource } from "../core/profiles.js";
 import type { PiboJsonObject } from "../core/events.js";
+import { readPidFile } from "../gateway/pidfile.js";
 import { PiboWebHttpError, readJsonBody, responseHtml, responseJson } from "../web/http.js";
 import type { PiboWebAppContext, PiboWebSession } from "../web/types.js";
 import { definePiboPlugin } from "./registry.js";
@@ -143,6 +144,18 @@ function resolveContextFilesPaths(options: ContextFilesPluginOptions): ResolvedC
 		globalDir: resolve(options.globalDir ?? join(managedRoot, "global")),
 		agentWorkspaceRoot: resolve(options.agentWorkspaceRoot ?? join(getPiboHome(), "agent-workspaces")),
 	};
+}
+
+function assertContextFilesStorageOwnership(paths: ResolvedContextFilesPaths): void {
+	const piboHome = resolve(getPiboHome());
+	const metadataPath = resolve(paths.metadataPath);
+	if (metadataPath !== piboHome && !metadataPath.startsWith(`${piboHome}${sep}`)) return;
+	const ownerPid = readPidFile();
+	if (ownerPid === undefined || ownerPid === process.pid) return;
+	throw new Error(
+		`Context Files storage is owned by the active gateway process ${ownerPid}. ` +
+		"Use an isolated PIBO_HOME for candidate validation, or stop and activate the gateway package before migrating this storage.",
+	);
 }
 
 function normalizeLabel(value: unknown): string {
@@ -438,6 +451,7 @@ class ContextFileService {
 	private readonly managed = new Map<string, StoredContextFileRecord>();
 	private readonly snapshots = new Map<string, WatchSnapshot>();
 	private pollTimer: ReturnType<typeof setInterval> | undefined;
+	private pollFailureReported = false;
 
 	constructor(
 		private readonly paths: ResolvedContextFilesPaths,
@@ -692,7 +706,13 @@ class ContextFileService {
 		this.discoverGlobalManagedFiles(context, false);
 		for (const file of this.list(context)) this.snapshots.set(file.key, this.snapshotFromInfo(file));
 		this.pollTimer = setInterval(() => {
-			void this.poll(context);
+			void this.poll(context).then(() => {
+				this.pollFailureReported = false;
+			}).catch((error: unknown) => {
+				if (this.pollFailureReported) return;
+				this.pollFailureReported = true;
+				console.error(`[pibo] Context Files polling failed: ${error instanceof Error ? error.message : String(error)}`);
+			});
 		}, POLL_INTERVAL_MS);
 		this.pollTimer.unref?.();
 	}
@@ -1171,6 +1191,7 @@ export function createPiboContextFilesPlugin(options: ContextFilesPluginOptions 
 		id: "pibo.context-files",
 		name: "Pibo Context Files",
 		register(api) {
+			assertContextFilesStorageOwnership(paths);
 			const service = new ContextFileService(paths, api);
 			api.registerWebApp(createContextFilesWebApp(service));
 		},
