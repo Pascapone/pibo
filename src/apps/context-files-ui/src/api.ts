@@ -19,7 +19,6 @@ export type ContextFileInfo = {
 	sourceRef?: string;
 	sourceHash?: string;
 	linkState: "plugin-only" | "linked-clean" | "linked-dirty" | "linked-stale" | "orphaned" | "managed-unlinked";
-	activeRevisionId?: string;
 };
 
 export type ContextFileDocument = ContextFileInfo & {
@@ -28,15 +27,11 @@ export type ContextFileDocument = ContextFileInfo & {
 
 export type ContextFileRevision = {
 	id: string;
-	kind: "source-snapshot" | "working";
+	name: string;
 	contentHash: string;
 	createdAt: string;
 	actorId?: string;
-	basedOnRevisionId?: string;
-	sourceHashAtCreation?: string;
-	note?: string;
 	content: string;
-	active: boolean;
 };
 
 export type ContextFileDiff = {
@@ -122,8 +117,16 @@ export async function removeContextFile(key: string, deleteFile: boolean): Promi
 	});
 }
 
-export async function listContextFileRevisions(key: string): Promise<{ revisions: ContextFileRevision[]; activeRevisionId?: string }> {
+export async function listContextFileRevisions(key: string): Promise<{ revisions: ContextFileRevision[] }> {
 	return requestJson(`/api/context-files/${encodeURIComponent(key)}/revisions`);
+}
+
+export async function createContextFileRevision(key: string, name: string): Promise<ContextFileRevision> {
+	return (await requestJson<{ revision: ContextFileRevision }>(`/api/context-files/${encodeURIComponent(key)}/revisions`, {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify({ name }),
+	})).revision;
 }
 
 export async function diffContextFile(

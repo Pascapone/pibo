@@ -198,7 +198,7 @@ The Context Files watcher MUST emit filesystem-sourced product events only when 
 
 #### Current
 
-The watcher records snapshots from listed context files, polls every second, compares existence, version, update time, bytes, link state, source hash, and active revision id, and emits either `context-file.external_updated` or `context-file.source_orphaned`.
+The watcher records snapshots from listed context files, polls every second, compares existence, version, update time, bytes, link state, and source hash, and emits either `context-file.external_updated` or `context-file.source_orphaned`.
 
 #### Target
 

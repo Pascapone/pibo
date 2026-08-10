@@ -1,7 +1,8 @@
 # Spec: Context Files
 
-**Status:** Draft
+**Status:** Implementing
 **Created:** 2026-05-10
+**Updated:** 2026-08-10
 **Controller / Source:** Current Pibo codebase
 **Related docs:** `GLOSSARY.md`, `docs/specs/README.md`
 
@@ -9,15 +10,15 @@
 
 Pibo profiles need durable, inspectable instruction resources that can be loaded into runtimes without hard-coding all context in source code. Users also need to copy plugin-shipped context files, edit them safely, scope them to all profiles or one agent profile, and recover prior versions.
 
-Context Files keep that behavior in the Pibo product boundary. Plugin context files remain read-only sources. Managed context files are editable product records backed by files, metadata, revisions, live catalog registration, and a web UI.
+Context Files keep that behavior in the Pibo product boundary. Plugin context files remain read-only sources. Managed context files are editable product records backed by files, current-content metadata, manually named revision snapshots, live catalog registration, and a web UI.
 
 ## Goal
 
-Pibo MUST expose authenticated Context File management that lists plugin and managed files, lets users create and edit managed files, preserves revision history, links managed copies to plugin sources, and registers managed files for profile/runtime selection.
+Pibo MUST expose authenticated Context File management that lists plugin and managed files, autosaves the current managed content without creating revisions, creates named revision snapshots only on explicit user request, links managed copies to plugin sources, and registers managed files for profile/runtime selection.
 
 ## Background / Current State
 
-The current implementation is centered on `src/plugins/context-files.ts` and `src/plugins/context-files-store.ts`. It registers a same-origin web app at `/apps/context-files` and APIs under `/api/context-files`. Managed metadata and revisions live in SQLite, while working markdown is written to managed filesystem paths.
+The current implementation is centered on `src/plugins/context-files.ts` and `src/plugins/context-files-store.ts`. It registers a same-origin web app at `/apps/context-files` and APIs under `/api/context-files`. Managed metadata, the current working content fallback, source baselines, and manually created revisions live in versioned SQLite storage, while working markdown is written to managed filesystem paths. Manual revisions use a separate table so the former automatic-revision table remains readable and writable by the previous package during a rollback window.
 
 The standalone Context Files web app in `src/apps/context-files-ui` uses the same API. It keeps a file list, opens one selected document, autosaves managed markdown with expected-version checks, renders plugin files as read-only, and listens to `/api/context-files/events` for product events. The plugin registry exposes context files through the capability catalog. Custom agent profiles can select context files by key; unknown references are skipped with warnings so broken custom-agent state can be surfaced and cleaned up.
 
@@ -32,9 +33,10 @@ The standalone Context Files web app in `src/apps/context-files-ui` uses the sam
 - Browser autosave, save-state display, and safe selection changes in the Context Files web app.
 - Updating managed file metadata, scope, and agent profile association.
 - Removing managed records and, optionally, their backing files.
-- Revision history, restore, source reset, source adoption, and source/working diffs.
+- Manual named revision history, restore, source reset, source adoption, and source/working diffs.
 - Link-state reporting for plugin-only, clean, dirty, stale, orphaned, and unlinked managed files.
 - Legacy managed-store migration into the SQLite metadata store.
+- Versioned, transactional Context Files schema migration with gateway ownership checks and rollback compatibility.
 - Product events and SSE updates for context-file changes.
 - Read-only plugin-file handling and rich-editor fallback behavior in the Context Files web app.
 
@@ -71,11 +73,11 @@ The system MUST expose all registered plugin context files and active managed co
 
 ### Requirement: Managed context files are durable editable resources
 
-The system MUST create managed context files with a metadata record, a markdown file on disk, and an initial working revision.
+The system MUST create managed context files with a metadata record, a markdown file on disk, and a durable current-content fallback without creating a revision.
 
 #### Current
 
-`POST /api/context-files` writes markdown under the managed root or an agent workspace context-file directory, creates a `ctx:` key, writes a SQLite `context_files` row, and appends a `working` revision.
+`POST /api/context-files` writes markdown under the managed root or an agent workspace context-file directory, creates a `ctx:` key, and writes the current content into the SQLite `context_files` row. Revision history remains empty until a user explicitly saves a named version.
 
 #### Acceptance
 
@@ -83,12 +85,13 @@ The system MUST create managed context files with a metadata record, a markdown 
 - Global files are stored under the configured global managed directory.
 - Agent-scoped files require `agentProfileName` and are stored under that agent workspace's context-files directory.
 - Created managed files are immediately available to the plugin registry for profile selection.
+- Creating a managed file does not create a revision-history entry.
 
 #### Scenario: Create agent-scoped context file
 
 - GIVEN an authenticated user supplies a label, markdown, scope `agent`, and an agent profile name
 - WHEN the user creates the context file
-- THEN Pibo stores the file, records a working revision, returns the managed document, and registers it in the capability catalog with that agent scope.
+- THEN Pibo stores the file and current-content fallback, returns the managed document, registers it in the capability catalog with that agent scope, and leaves revision history empty.
 
 ### Requirement: Saves protect against stale editor state
 
@@ -103,7 +106,7 @@ The system MUST reject a managed file save when the supplied expected version do
 - Saves without markdown as a string are rejected.
 - Saves against plugin-only files are rejected because only managed files can change.
 - Saves with a stale `expectedVersion` return conflict data instead of overwriting newer content.
-- Successful saves write the markdown file, append a working revision, update `activeRevisionId`, and emit a change event.
+- Successful saves write the markdown file, update the current-content fallback, emit a change event, and do not create revision-history entries.
 
 #### Scenario: Concurrent edit conflict
 
@@ -112,9 +115,9 @@ The system MUST reject a managed file save when the supplied expected version do
 - WHEN the user saves with the old version hash
 - THEN the API returns conflict status with the latest document and does not overwrite the newer content.
 
-### Requirement: Browser editing autosaves safely and never drops pending changes
+### Requirement: Browser editing autosaves safely without automatic versioning
 
-The Context Files web app MUST save editable managed markdown automatically, MUST show the current save state, and MUST flush pending edits before switching documents.
+The Context Files web app MUST save editable managed markdown automatically, MUST show the current save state, MUST flush pending edits before switching documents, and MUST NOT create revision-history entries through autosave.
 
 #### Current
 
@@ -123,7 +126,7 @@ The Context Files web app MUST save editable managed markdown automatically, MUS
 #### Acceptance
 
 - Editing a managed file changes the save state to unsaved and schedules a save.
-- A successful autosave returns the save state to saved and hydrates the latest document version.
+- A successful autosave returns the save state to saved, hydrates the latest document version, and leaves manual revision history unchanged.
 - Selecting another context file waits for pending save work before changing selection.
 - A failed autosave reports an error save state and does not mark unsaved content as saved.
 - A stale save conflict reloads the latest server document, shows a conflict warning, and does not overwrite the newer server content.
@@ -137,11 +140,11 @@ The Context Files web app MUST save editable managed markdown automatically, MUS
 
 ### Requirement: Plugin sources can be linked into managed copies
 
-The system MUST allow a plugin context file to be copied into an editable managed file while retaining a source reference and source snapshot.
+The system MUST allow a plugin context file to be copied into an editable managed file while retaining a source reference and source-content baseline outside revision history.
 
 #### Current
 
-`POST /api/context-files/:key/link-from-plugin` requires a live plugin source, writes a managed copy, stores `sourceRef` as `plugin:<pluginId>:<key>`, records a source snapshot and working revision, and reports link state.
+`POST /api/context-files/:key/link-from-plugin` requires a live plugin source, writes a managed copy, stores `sourceRef` as `plugin:<pluginId>:<key>`, stores the source-content baseline on the managed record, and reports link state without creating a revision.
 
 #### Acceptance
 
@@ -157,28 +160,32 @@ The system MUST allow a plugin context file to be copied into an editable manage
 - WHEN the plugin source file changes
 - THEN Pibo reports the linked copy as stale and preserves the user's working markdown.
 
-### Requirement: Source reset, adoption, diff, and revision restore are explicit
+### Requirement: Named revision creation, source actions, diff, and restore are explicit
 
-The system MUST expose separate actions for comparing source and working content, adopting a live source, resetting to source content, and restoring an earlier revision.
+The system MUST create revisions only through an explicit named-version action and MUST expose separate actions for comparing source and working content, adopting a live source, resetting to source content, and restoring a manually saved revision.
 
 #### Current
 
-The API supports `GET /diff`, `POST /reset-to-source`, `POST /adopt-source`, `POST /restore-revision`, and `GET /revisions` for managed files.
+The API supports `POST /revisions`, `GET /revisions`, `POST /restore-revision`, `GET /diff`, `POST /reset-to-source`, and `POST /adopt-source` for managed files.
 
 #### Acceptance
 
+- Saving a revision requires a non-empty name of at most 120 characters.
+- The server stores the name, content snapshot, actor id when available, and server-generated timestamp.
+- The UI requires a version name, flushes pending autosave work, and creates the revision only after the current content is persisted.
+- Autosave, file creation, linking, source reset, source adoption, external file synchronization, and restore do not create revisions.
 - Diffs can compare `source` and `working` sides and return add/remove/equal chunks.
-- Resetting to source replaces working content with the current live source and records a working revision.
+- Resetting to source replaces working content with the current live source and refreshes the source baseline.
 - Adopting source refreshes source tracking and working content from the live source.
-- Restoring a revision writes that revision content as the new working content.
+- Restoring a revision writes that revision content as the current working content without appending another revision.
 - Actions that require a linked source fail for unlinked managed files.
 
 #### Scenario: Restore customized revision after reset
 
-- GIVEN a linked managed file has a customized working revision
+- GIVEN a linked managed file has a manually named customized revision
 - AND the user resets it to the current plugin source
 - WHEN the user restores the customized revision
-- THEN Pibo writes the customized markdown as the active working content and records a new restoration revision.
+- THEN Pibo writes the customized markdown as the current working content and leaves the revision count unchanged.
 
 ### Requirement: Missing sources and external file changes are visible
 
@@ -191,7 +198,7 @@ The system MUST detect link-state and filesystem changes and surface them throug
 #### Acceptance
 
 - A linked managed file whose plugin source disappears reports `linkState: "orphaned"`.
-- A managed file whose backing markdown changes outside the API gets a new working revision when read or listed.
+- A managed file whose backing markdown changes outside the API updates its current-content fallback when read or listed without creating a revision.
 - SSE clients receive context-file product events and heartbeat comments.
 - The UI refreshes lists and selected documents when relevant context-file events arrive.
 
@@ -207,7 +214,7 @@ The system MUST import legacy managed context-file metadata from JSON when the S
 
 #### Current
 
-`ContextFileMetadataStore` reads legacy `index.json`, creates metadata rows for valid entries, and recovers working content from disk into revisions when needed.
+`ContextFileMetadataStore` reads legacy `index.json`, creates metadata rows for valid entries, and records working content from disk as the current-content fallback without creating revisions.
 
 #### Acceptance
 
@@ -221,6 +228,48 @@ The system MUST import legacy managed context-file metadata from JSON when the S
 - GIVEN a legacy JSON store references a global markdown file
 - WHEN the context-file plugin starts
 - THEN the file is readable through `/api/context-files/:key` as a managed unlinked file.
+
+### Requirement: Automatic revision history is hidden without losing current content or rollback compatibility
+
+The system MUST stop exposing former automatic revisions as user-created versions while preserving current content and the previous package's revision-table contract during the rollback window.
+
+#### Acceptance
+
+- Existing automatic `working` and `source-snapshot` rows are not exposed through the manual revision API.
+- Automatic rows remain in the compatibility table instead of being rewritten into the manual-revision schema.
+- If the backing markdown file exists, its content remains canonical through migration.
+- If the backing file is missing and an old active working revision exists, that content is restored to the managed file and current-content fallback.
+- The previous package can still insert its automatic revision shape after migration without a missing-column failure.
+- Manual revision history is empty until the user explicitly saves a named version.
+
+#### Scenario: Old autosave history exists
+
+- GIVEN a managed file has automatic revisions and an active current revision
+- WHEN the manual-versioning schema migration runs
+- THEN the current content remains readable
+- AND the manual revision API returns no automatic revisions
+- AND an old writer can still use the compatibility table
+- AND future autosaves do not create manual revisions.
+
+### Requirement: Storage migration has one authoritative owner and polling failures are contained
+
+The system MUST version and validate Context Files metadata before access, MUST refuse migration when another live gateway owns the same Pibo home, and MUST contain watcher storage failures without terminating the gateway process.
+
+#### Acceptance
+
+- The metadata store records an explicit schema version and rejects unknown or incomplete schemas with an actionable error.
+- Schema changes commit transactionally, leaving either the prior complete schema or the new complete schema after a database failure.
+- A process using the default Context Files path refuses startup before database mutation when `gateway.pid` identifies another live process.
+- Candidate validation uses an isolated `PIBO_HOME` until that candidate becomes the activated gateway package.
+- The automatic-revision table retains the previous package's required columns; manual revisions use separate storage.
+- Repeated watcher failures emit one diagnostic until a successful poll and do not create an unhandled rejection.
+
+#### Scenario: Candidate points at an active gateway home
+
+- GIVEN an older gateway owns the Pibo home and its PID file identifies a live process
+- WHEN a newer candidate constructs the Context Files plugin against that same default home
+- THEN plugin registration fails before changing the database
+- AND the error instructs the operator to use an isolated `PIBO_HOME` or coordinated activation.
 
 ### Requirement: Context Files UI reacts to live changes without overwriting local edits
 
@@ -291,7 +340,7 @@ Profiles MUST be able to select both plugin and managed context files by key, an
 
 ### Requirement: API mutations require authenticated JSON requests
 
-The Context Files API MUST require an authenticated web session for reads and mutations, and mutation handlers MUST parse a JSON request body before creating, editing, deleting, linking, resetting, adopting, or restoring managed files.
+The Context Files API MUST require an authenticated web session for reads and mutations, and mutation handlers MUST parse a JSON request body before creating, editing, deleting, linking, saving a named revision, or restoring managed files.
 
 #### Current
 
@@ -300,7 +349,7 @@ The Context Files API MUST require an authenticated web session for reads and mu
 #### Acceptance
 
 - Requests without a valid web session fail before listing, reading, or mutating context files.
-- Create, save, metadata update, delete, link-from-plugin, and restore-revision mutations reject malformed JSON bodies before changing managed state.
+- Create, save, metadata update, delete, link-from-plugin, named-revision creation, and restore-revision mutations reject malformed JSON bodies before changing managed state.
 - Source reset and source adoption can run with an authenticated request and no body because their current source of truth is the linked file state.
 - The current source-backed contract does not claim same-origin `Origin` enforcement for Context Files mutations until the implementation adds it.
 
@@ -312,7 +361,7 @@ The Context Files API MUST require an authenticated web session for reads and mu
 
 ## Edge Cases
 
-- A managed markdown file may be deleted from disk; reads MUST fall back to the active revision when possible.
+- A managed markdown file may be deleted from disk; reads MUST fall back to the stored current working content.
 - Browser autosave may finish after additional edits; the editor MUST save the newer content in a follow-up pass before reporting saved.
 - A plugin catalog path may be relative; Pibo MUST resolve it relative to the current process working directory.
 - A managed label, scope, or agent profile change may require moving the backing file; Pibo MUST write the current content to the new path and remove the old file.
@@ -323,25 +372,27 @@ The Context Files API MUST require an authenticated web session for reads and mu
 
 - **Product Boundary:** Pibo owns managed context-file metadata, revisions, source links, and registry updates. Plugin context files remain plugin-managed sources.
 - **Security / Privacy:** Context File APIs MUST require an authenticated web session. Managed mutations record the web session app partition as revision actor metadata when available. Current Context Files mutation handlers require JSON bodies where a body is consumed, but they do not perform the Chat Web `Origin` header guard.
-- **Compatibility:** Legacy managed JSON metadata MUST be migrated forward without treating it as the post-migration source of truth.
-- **Reliability:** Revision history MUST preserve enough content to recover a managed file when its backing markdown file is missing.
+- **Compatibility:** Legacy managed JSON metadata MUST migrate forward without becoming the post-migration source of truth. Context Files schema changes MUST preserve the previous automatic-revision table contract during the rollback window.
+- **Reliability:** The current-content fallback MUST preserve the latest working content independently of revision history when the backing markdown file is missing. Candidate validation MUST use an isolated `PIBO_HOME` until coordinated gateway activation owns migration.
 - **UX Safety:** The browser editor MUST prefer visible warnings and raw-markdown fallback over silently dropping content.
 - **Context Economy:** Runtime profiles load only selected context files and automatic context files, not every managed resource.
 
 ## Success Criteria
 
 - [ ] SC-001: Authenticated users can list plugin and managed context files with accurate editability and link-state metadata.
-- [ ] SC-002: Creating or linking a managed context file writes a file, metadata row, initial revisions, and registry entry.
+- [ ] SC-002: Creating or linking a managed context file writes a file, current-content metadata, source baseline when applicable, and registry entry without creating a revision.
 - [ ] SC-003: Stale saves return a conflict document and do not overwrite newer content.
 - [ ] SC-004: Linked managed files report clean, dirty, stale, and orphaned states according to source and working hashes.
-- [ ] SC-005: Revision restore, source reset, source adoption, and diff endpoints behave as explicit user actions.
+- [ ] SC-005: Named revision creation, revision restore, source reset, source adoption, and diff endpoints behave as explicit user actions; only named revision creation increases history count.
 - [ ] SC-006: External file changes and source orphaning are observable through reads and context-file product events.
 - [ ] SC-007: Legacy managed context-file metadata is readable after startup migration.
 - [ ] SC-008: Custom agent profile creation skips unknown context-file keys while preserving valid selections.
-- [ ] SC-009: Context Files UI autosave covers delayed save, selection flush, failed save, and version-conflict behavior.
+- [ ] SC-009: Context Files UI autosave covers delayed save, selection flush, failed save, version-conflict behavior, and zero automatic revision creation.
 - [ ] SC-010: Context Files UI event handling covers same-browser echoes, external changes while saved, external changes while unsaved, and SSE disconnect errors.
 - [ ] SC-011: Context Files UI editor tests cover read-only plugin documents, rich-editor fallback, plain-text autosave, and inline-code exit navigation.
 - [ ] SC-012: Context Files API tests cover unauthenticated rejection and malformed JSON rejection for managed mutation routes, and document whether same-origin `Origin` checks are added or intentionally absent.
+- [ ] SC-013: Migrating from automatic revisions preserves current content, hides automatic history from the manual API, keeps the old writer compatible, and permits named manual revisions.
+- [ ] SC-014: A foreign live gateway blocks default-home migration before mutation, schema version validation rejects incompatible storage, and watcher storage failures remain process-safe and bounded.
 
 ## Assumptions and Open Questions
 
@@ -368,13 +419,15 @@ The Context Files API MUST require an authenticated web session for reads and mu
 | REQ-003 Saves protect against stale editor state | Concurrent edit conflict | `src/plugins/context-files.ts`, `src/apps/context-files-ui/src/api.ts` | Implemented |
 | REQ-004 Browser editing autosaves safely and never drops pending changes | Switch files with a pending autosave | `src/apps/context-files-ui/src/main.tsx`, `src/apps/context-files-ui/src/components/MarkdownEditor.tsx` | Implemented |
 | REQ-005 Plugin sources can be linked into managed copies | Plugin source changes after customization | `src/plugins/context-files.ts`, `test/context-files-web.test.mjs` | Implemented |
-| REQ-006 Source reset, adoption, diff, and revision restore are explicit | Restore customized revision after reset | `src/plugins/context-files.ts`, `src/plugins/context-files-store.ts` | Implemented |
+| REQ-006 Named revision creation, source actions, diff, and restore are explicit | Restore customized revision after reset | `src/plugins/context-files.ts`, `src/plugins/context-files-store.ts`, `test/context-files-web.test.mjs` | Implementing |
 | REQ-007 Missing sources and external file changes are visible | Plugin source is deleted | `src/plugins/context-files.ts`, `test/context-files-web.test.mjs` | Implemented |
 | REQ-008 Legacy managed metadata migrates forward | Legacy global file is migrated | `src/plugins/context-files-store.ts`, `test/context-files-web.test.mjs` | Implemented |
-| REQ-009 Context Files UI reacts to live changes without overwriting local edits | External edit while local draft exists | `src/apps/context-files-ui/src/main.tsx`, `src/plugins/context-files.ts` | Implemented |
-| REQ-010 Rich markdown editing has a plain-text safety fallback | Rich editor rejects a document | `src/apps/context-files-ui/src/components/MarkdownEditor.tsx` | Implemented |
-| REQ-011 Runtime profile selection uses managed and plugin context files by key | Custom agent has stale context-file key | `src/core/profiles.ts`, `src/apps/chat/agent-profiles.ts`, `test/agent-profiles.test.mjs` | Implemented |
-| REQ-012 API mutations require authenticated JSON requests | Unauthenticated save is rejected | `src/plugins/context-files.ts`, `src/web/channel.ts`, `src/web/http.ts`, `test/context-files-web.test.mjs` | Partly tested |
+| REQ-009 Automatic revision history is hidden without losing current content or rollback compatibility | Old autosave history exists | `src/plugins/context-files-store.ts`, `test/context-files-web.test.mjs` | Implementing |
+| REQ-010 Context Files UI reacts to live changes without overwriting local edits | External edit while local draft exists | `src/apps/context-files-ui/src/main.tsx`, `src/plugins/context-files.ts` | Implemented |
+| REQ-011 Rich markdown editing has a plain-text safety fallback | Rich editor rejects a document | `src/apps/context-files-ui/src/components/MarkdownEditor.tsx` | Implemented |
+| REQ-012 Runtime profile selection uses managed and plugin context files by key | Custom agent has stale context-file key | `src/core/profiles.ts`, `src/apps/chat/agent-profiles.ts`, `test/agent-profiles.test.mjs` | Implemented |
+| REQ-013 API mutations require authenticated JSON requests | Unauthenticated save is rejected | `src/plugins/context-files.ts`, `src/web/channel.ts`, `src/web/http.ts`, `test/context-files-web.test.mjs` | Partly tested |
+| REQ-014 Storage migration has one authoritative owner and polling failures are contained | Candidate points at an active gateway home | `src/plugins/context-files.ts`, `src/plugins/context-files-store.ts`, `src/gateway/pidfile.ts`, `test/context-files-web.test.mjs` | Implementing |
 
 ## Verification Basis
 
