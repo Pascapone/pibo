@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { applyTraceLiveEvents } from "../dist/shared/trace-live-reducer.js";
-import { buildTraceViewFromEvents } from "../dist/shared/trace-engine.js";
+import { buildTraceViewFromEvents, patchTraceViewWithEvents } from "../dist/shared/trace-engine.js";
 
 function apply(streamEvents) {
 	let seq = 1;
@@ -42,4 +42,57 @@ test("live reducer still dedupes replayed stream frames", () => {
 
 	assert.equal(events.length, 1);
 	assert.equal(events[0].payload.text, " streaming");
+});
+
+test("late replay keeps the server event timestamp and stable terminal order", () => {
+	let sequence = 1;
+	const originalCreatedAt = "2026-08-10T18:16:01.000Z";
+	const receivedAt = "2026-08-10T18:21:00.000Z";
+	const overlayEvents = applyTraceLiveEvents({
+		currentEvents: [],
+		streamEvents: [{
+			type: "TOOL_CALL_RESULT",
+			streamId: 100,
+			streamFrameIndex: 0,
+			createdAt: originalCreatedAt,
+			toolCallId: "late-replayed-tool",
+			toolName: "read",
+			result: "ok",
+			isError: false,
+			runId: "turn-replayed",
+		}],
+		piboSessionId: "ps-live",
+		nextSequence: () => sequence++,
+		now: () => receivedAt,
+	});
+
+	assert.equal(overlayEvents[0]?.createdAt, originalCreatedAt);
+
+	const baseTrace = {
+		piboSessionId: "ps-live",
+		piSessionId: "pi-live",
+		title: "Live replay ordering",
+		version: "base",
+		latestStreamId: 99,
+		nodes: [{
+			id: "entry:final:response",
+			piboSessionId: "ps-live",
+			type: "assistant.message",
+			title: "Agent Message",
+			status: "done",
+			startedAt: "2026-08-10T18:20:33.000Z",
+			completedAt: "2026-08-10T18:20:33.000Z",
+			output: "Final response",
+			source: "transcript",
+			stableKey: "entry:final:response:0",
+			children: [],
+		}],
+		rawEvents: [],
+	};
+	const liveTrace = patchTraceViewWithEvents(baseTrace, overlayEvents, "idle");
+
+	assert.deepEqual(liveTrace.nodes.map((node) => node.id), [
+		"tool:late-replayed-tool",
+		"entry:final:response",
+	]);
 });

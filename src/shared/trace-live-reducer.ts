@@ -7,6 +7,7 @@ type ChatStreamEvent = {
 	streamId?: number;
 	streamFrameIndex?: number;
 	liveReplayId?: number;
+	createdAt?: string;
 	[key: string]: unknown;
 };
 
@@ -184,9 +185,14 @@ function makeStored(
 		streamFrameIndex,
 		eventId: typeof payload.eventId === "string" ? payload.eventId : undefined,
 		type,
-		createdAt: now(),
+		createdAt: streamEventCreatedAt(streamEvent) ?? now(),
 		payload,
 	};
+}
+
+function streamEventCreatedAt(event: ChatStreamEvent): string | undefined {
+	if (typeof event.createdAt !== "string" || !Number.isFinite(Date.parse(event.createdAt))) return undefined;
+	return event.createdAt;
 }
 
 function dropMatching(events: ChatWebStoredEvent[], finalEvent: ChatWebStoredEvent, dropType: string): ChatWebStoredEvent[] {

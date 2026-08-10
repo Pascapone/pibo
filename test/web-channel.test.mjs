@@ -1460,6 +1460,7 @@ test("chat web app selected live event streams replay buffered transient deltas 
 		assert.equal(replayFrame.matched, true, replayFrame.text);
 		assert.doesNotMatch(replayFrame.text, /first before reconnect/);
 		assert.match(replayFrame.text, /id: live:\d+/);
+		assert.match(replayFrame.text, /"createdAt":"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z"/);
 	} finally {
 		firstController.abort();
 		replayController.abort();
@@ -2140,6 +2141,10 @@ test("chat web app replays durable SSE frames with stream cursors", async () => 
 		assert.match(text, /id: \d+:1/);
 		assert.match(text, /TEXT_MESSAGE_END/);
 		assert.match(text, /hello from history/);
+		const replayCreatedAt = [...text.matchAll(/"createdAt":"([^"]+)"/g)].map((match) => match[1]);
+		assert.ok(replayCreatedAt.length >= 2, text);
+		assert.equal(new Set(replayCreatedAt).size, 1, "all frames from one durable event should keep its stored timestamp");
+		assert.equal(Number.isFinite(Date.parse(replayCreatedAt[0])), true);
 	} finally {
 		await channel.stop?.();
 	}
