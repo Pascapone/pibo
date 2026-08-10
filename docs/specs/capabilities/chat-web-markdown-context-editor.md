@@ -12,11 +12,11 @@ Chat Web lets users edit managed context files that are later injected into Pibo
 
 ## Goal
 
-Chat Web MUST provide a high-quality Markdown editor that preserves user edits, supports standard Markdown structures, remains usable in narrow host panels, autosaves managed files without resetting editor state, flushes pending saves before document switches, and degrades to raw Markdown when rich editing is unavailable or unsafe.
+Chat Web MUST provide a high-quality Markdown editor that preserves user edits, supports standard Markdown structures, remains usable in narrow host panels, autosaves the current managed-file content without creating revision-history entries, flushes pending saves before document switches, and degrades to raw Markdown when rich editing is unavailable or unsafe.
 
 ## Background / Current State
 
-`ContextFilesView` renders the shared `MarkdownEditor` used by Chat Context Files, the standalone Context Files app, and Workflow prompt assets. The editor uses MDXEditor for rich Markdown editing, CodeMirror for code blocks and source mode, a shared Prism client singleton, and a raw-text fallback. Managed editable documents are autosaved through `saveContextFile` with the current document version as `expectedVersion`. Plugin context files and other non-editable documents are rendered read-only and instruct the user to create a managed copy before editing.
+`ContextFilesView` renders the shared `MarkdownEditor` used by Chat Context Files, the standalone Context Files app, and Workflow prompt assets. The editor uses MDXEditor for rich Markdown editing, CodeMirror for code blocks and source mode, a shared Prism client singleton, and a raw-text fallback. Managed editable documents are autosaved through `saveContextFile` with the current document version as `expectedVersion`; these saves update only the current working content. Named revision snapshots are created separately through the explicit Revision History action. Plugin context files and other non-editable documents are rendered read-only and instruct the user to create a managed copy before editing.
 
 The parent view calls `flushSave()` before selecting a different file or following a selected-file link from another area. Live context-file events can reload clean documents or show a conflict warning when external changes arrive while the local editor is idle with unsaved edits or saving.
 
@@ -43,9 +43,9 @@ The parent view calls `flushSave()` before selecting a different file or followi
 
 ## Requirements
 
-### Requirement: Editable managed files autosave only changed Markdown
+### Requirement: Editable managed files autosave only changed current Markdown
 
-The editor MUST persist editable managed context-file content after local changes and MUST avoid writes when the current Markdown equals the last saved Markdown.
+The editor MUST persist editable managed context-file content after local changes, MUST avoid writes when the current Markdown equals the last saved Markdown, and MUST keep autosave separate from manual revision creation.
 
 #### Current
 
@@ -53,7 +53,7 @@ The editor MUST persist editable managed context-file content after local change
 
 #### Target
 
-Users can edit a managed context file without pressing a manual save button, and redundant saves do not create extra revisions.
+Users can edit a managed context file without pressing a manual save button, and autosave never creates revision-history entries. Users create named versions only through the separate manual action owned by the Context Files host.
 
 #### Acceptance
 
@@ -61,6 +61,7 @@ Users can edit a managed context file without pressing a manual save button, and
 - A user edit marks the save state `idle` and schedules autosave.
 - Autosave changes state to `saving`, calls the parent persist function once for the changed Markdown, and returns to `saved` when the persisted text matches the current text.
 - If no content changed since the last save, autosave reports `saved` without calling the persist API.
+- Successful context-file autosaves update current working content without increasing the manual revision count.
 
 #### Scenario: Autosave after editing
 
@@ -273,12 +274,12 @@ The editor MUST remain usable in Context Files, the standalone app, and Workflow
 
 - **Compatibility:** The editor must preserve Markdown as Markdown; it must not invent a separate document model as the persisted source of truth.
 - **Security / Privacy:** Read-only context files must not be mutated through editor callbacks. Rich-editor errors may be logged, but context-file content should not be exposed outside the browser session or save API.
-- **Performance:** Autosave delay is short and bounded; repeated unchanged content must not create save traffic.
+- **Performance:** Autosave delay is short and bounded; repeated unchanged content must not create save traffic or revision-history entries.
 - **Dependencies:** Rich editing depends on `@mdxeditor/editor`, CodeMirror, and Prism availability in the browser bundle.
 
 ## Success Criteria
 
-- [x] SC-001: Editable managed files autosave changed Markdown and avoid redundant saves for unchanged content.
+- [ ] SC-001: Editable managed files autosave changed Markdown, avoid redundant saves for unchanged content, and do not create revision-history entries.
 - [x] SC-002: In-flight saves are serialized and a later edit is persisted before the editor reports `saved`.
 - [x] SC-003: File and prompt-asset selection call `flushSave()` before loading the next document.
 - [x] SC-004: Non-editable context files render read-only raw Markdown and never call the persist API.
@@ -307,7 +308,7 @@ The editor MUST remain usable in Context Files, the standalone app, and Workflow
 
 | Requirement | Scenario / Story | Code Basis | Status |
 |---|---|---|---|
-| REQ-001 | Autosave after editing | `src/apps/shared/MarkdownEditor.tsx`, `src/apps/chat-ui/src/context/ContextFilesView.tsx` | Browser-validated |
+| REQ-001 | Autosave after editing | `src/apps/shared/MarkdownEditor.tsx`, `src/apps/chat-ui/src/context/ContextFilesView.tsx`, `test/context-files-web.test.mjs` | Implementing |
 | REQ-002 | Edit during save | `src/apps/shared/MarkdownEditor.tsx`, `test/markdown-editor-quality.test.mjs` | Regression-covered |
 | REQ-003 | Switch with unsaved edits | `src/apps/chat-ui/src/context/ContextFilesView.tsx`, `src/apps/chat-ui/src/workflows/WorkflowPromptAssetEditor.tsx` | Regression-covered |
 | REQ-004 | Plugin context file | `src/apps/chat-ui/src/context/ContextFilesView.tsx`, `src/apps/shared/MarkdownEditor.tsx` | Browser-validated |

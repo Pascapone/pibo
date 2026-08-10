@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { createPiboContextFilesPlugin } from "../dist/plugins/context-files.js";
+import { ContextFileMetadataStore, hashContextFileContent } from "../dist/plugins/context-files-store.js";
 import { PiboPluginRegistry } from "../dist/plugins/registry.js";
 import { createWebHostChannel } from "../dist/web/channel.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
@@ -148,7 +150,7 @@ test("context files web app serves its packaged UI independently of the process 
 	}
 });
 
-test("context files web app links plugin files into managed revisions and restores history", async () => {
+test("context files autosave working content but create named revisions only on manual request", async () => {
 	const dir = mkdtempSync(join(tmpdir(), "pibo-context-files-web-"));
 	const managedRoot = join(dir, "managed");
 	const agentWorkspaceRoot = join(dir, "agent-workspaces");
@@ -182,6 +184,11 @@ test("context files web app links plugin files into managed revisions and restor
 		assert.equal(linked.data.file.sourceRef, "plugin:test.context:plugin-doc");
 		const managedKey = linked.data.file.key;
 
+		const revisionsAfterLink = await getJson(`${baseURL}/api/context-files/${encodeURIComponent(managedKey)}/revisions`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.deepEqual(revisionsAfterLink.data.revisions, []);
+
 		const updated = await getJson(`${baseURL}/api/context-files/${encodeURIComponent(managedKey)}`, {
 			method: "PUT",
 			headers: authHeaders(baseURL),
@@ -192,6 +199,11 @@ test("context files web app links plugin files into managed revisions and restor
 		});
 		assert.equal(updated.response.status, 200);
 		assert.equal(updated.data.file.linkState, "linked-dirty");
+
+		const revisionsAfterAutosave = await getJson(`${baseURL}/api/context-files/${encodeURIComponent(managedKey)}/revisions`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.deepEqual(revisionsAfterAutosave.data.revisions, []);
 
 		const conflict = await getJson(`${baseURL}/api/context-files/${encodeURIComponent(managedKey)}`, {
 			method: "PUT",
@@ -206,16 +218,46 @@ test("context files web app links plugin files into managed revisions and restor
 		assert.equal(conflict.data.file.version, updated.data.file.version);
 		assert.equal(conflict.data.file.markdown, "# Customized\n");
 
+		const unnamedRevision = await getJson(`${baseURL}/api/context-files/${encodeURIComponent(managedKey)}/revisions`, {
+			method: "POST",
+			headers: authHeaders(baseURL),
+			body: JSON.stringify({ name: "   " }),
+		});
+		assert.equal(unnamedRevision.response.status, 400);
+
+		const createdRevision = await getJson(`${baseURL}/api/context-files/${encodeURIComponent(managedKey)}/revisions`, {
+			method: "POST",
+			headers: authHeaders(baseURL),
+			body: JSON.stringify({ name: " Customized baseline " }),
+		});
+		assert.equal(createdRevision.response.status, 201);
+		assert.match(createdRevision.data.revision.id, /^rev_/);
+		assert.equal(createdRevision.data.revision.name, "Customized baseline");
+		assert.equal(createdRevision.data.revision.content, "# Customized\n");
+		assert.equal(createdRevision.data.revision.actorId, "user-1");
+		assert.ok(Number.isFinite(Date.parse(createdRevision.data.revision.createdAt)));
+
+		const updatedAgain = await getJson(`${baseURL}/api/context-files/${encodeURIComponent(managedKey)}`, {
+			method: "PUT",
+			headers: authHeaders(baseURL),
+			body: JSON.stringify({
+				markdown: "# Customized V2\n",
+				expectedVersion: updated.data.file.version,
+			}),
+		});
+		assert.equal(updatedAgain.response.status, 200);
+
+		const revisionsAfterMoreAutosave = await getJson(`${baseURL}/api/context-files/${encodeURIComponent(managedKey)}/revisions`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(revisionsAfterMoreAutosave.data.revisions.length, 1);
+		assert.equal(revisionsAfterMoreAutosave.data.revisions[0].id, createdRevision.data.revision.id);
+		assert.equal(revisionsAfterMoreAutosave.data.revisions[0].content, "# Customized\n");
+
 		const pluginRead = await getJson(`${baseURL}/api/context-files/plugin-doc`, {
 			headers: { "x-test-user": "user-1" },
 		});
 		assert.equal(pluginRead.data.file.markdown, "# Plugin V1\n");
-
-		const revisionsBeforeReset = await getJson(`${baseURL}/api/context-files/${encodeURIComponent(managedKey)}/revisions`, {
-			headers: { "x-test-user": "user-1" },
-		});
-		const customizedRevision = revisionsBeforeReset.data.revisions.find((revision) => revision.content === "# Customized\n");
-		assert.ok(customizedRevision);
 
 		writeFileSync(pluginFilePath, "# Plugin V2\n", "utf8");
 		const staleRead = await getJson(`${baseURL}/api/context-files/${encodeURIComponent(managedKey)}`, {
@@ -232,13 +274,23 @@ test("context files web app links plugin files into managed revisions and restor
 		assert.equal(reset.data.file.markdown, "# Plugin V2\n");
 		assert.equal(reset.data.file.linkState, "linked-clean");
 
+		const revisionsAfterReset = await getJson(`${baseURL}/api/context-files/${encodeURIComponent(managedKey)}/revisions`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(revisionsAfterReset.data.revisions.length, 1);
+
 		const restored = await getJson(`${baseURL}/api/context-files/${encodeURIComponent(managedKey)}/restore-revision`, {
 			method: "POST",
 			headers: authHeaders(baseURL),
-			body: JSON.stringify({ revisionId: customizedRevision.id }),
+			body: JSON.stringify({ revisionId: createdRevision.data.revision.id }),
 		});
 		assert.equal(restored.response.status, 200);
 		assert.equal(restored.data.file.markdown, "# Customized\n");
+
+		const revisionsAfterRestore = await getJson(`${baseURL}/api/context-files/${encodeURIComponent(managedKey)}/revisions`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(revisionsAfterRestore.data.revisions.length, 1);
 
 		const diff = await getJson(`${baseURL}/api/context-files/${encodeURIComponent(managedKey)}/diff?base=source&target=working`, {
 			headers: { "x-test-user": "user-1" },
@@ -342,6 +394,150 @@ test("context files web app auto-registers markdown files dropped into the globa
 		assert.ok(relisted.data.files.find((file) => file.key === "ctx:operator-notes"));
 	} finally {
 		await channel.stop?.();
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("context files revision migration preserves the current working version and drops automatic history", async () => {
+	const dir = mkdtempSync(join(tmpdir(), "pibo-context-files-revision-migration-"));
+	const managedRoot = join(dir, "managed");
+	const agentWorkspaceRoot = join(dir, "agent-workspaces");
+	const pluginFilePath = join(dir, "plugin-doc.md");
+	const managedFilePath = join(managedRoot, "global", "current.md");
+	const metadataPath = join(managedRoot, "context-files.sqlite");
+	mkdirSync(managedRoot, { recursive: true });
+	writeFileSync(pluginFilePath, "# Plugin Source\n", "utf8");
+
+	const database = new DatabaseSync(metadataPath);
+	database.exec(`
+		CREATE TABLE context_files (
+			key TEXT PRIMARY KEY,
+			label TEXT NOT NULL,
+			managed_path TEXT NOT NULL,
+			scope TEXT NOT NULL,
+			source_type TEXT NOT NULL,
+			agent_profile_name TEXT,
+			active_revision_id TEXT,
+			source_ref TEXT,
+			source_hash TEXT,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		);
+		CREATE TABLE context_file_revisions (
+			id TEXT PRIMARY KEY,
+			context_file_key TEXT NOT NULL,
+			kind TEXT NOT NULL,
+			content_hash TEXT NOT NULL,
+			content TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			actor_id TEXT,
+			based_on_revision_id TEXT,
+			source_hash_at_creation TEXT,
+			note TEXT
+		);
+	`);
+	database.prepare(`
+		INSERT INTO context_files (
+			key, label, managed_path, scope, source_type, agent_profile_name,
+			active_revision_id, source_ref, source_hash, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`).run(
+		"ctx:current",
+		"Current",
+		managedFilePath,
+		"global",
+		"managed",
+		null,
+		"rev_current",
+		null,
+		null,
+		"2026-08-09T10:00:00.000Z",
+		"2026-08-09T10:00:02.000Z",
+	);
+	database.prepare(`
+		INSERT INTO context_file_revisions (
+			id, context_file_key, kind, content_hash, content, created_at,
+			actor_id, based_on_revision_id, source_hash_at_creation, note
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`).run(
+		"rev_current",
+		"ctx:current",
+		"working",
+		"sha256:legacy-current",
+		"# Preserved Current Version\n",
+		"2026-08-09T10:00:02.000Z",
+		"user-1",
+		null,
+		null,
+		"Automatic autosave",
+	);
+	database.close();
+
+	const { channel, baseURL } = await startContextFilesHost({
+		pluginFilePath,
+		managedRoot,
+		agentWorkspaceRoot,
+		metadataPath,
+	});
+
+	try {
+		const current = await getJson(`${baseURL}/api/context-files/ctx%3Acurrent`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(current.response.status, 200);
+		assert.equal(current.data.file.markdown, "# Preserved Current Version\n");
+		assert.equal(current.data.file.exists, true);
+
+		const revisions = await getJson(`${baseURL}/api/context-files/ctx%3Acurrent/revisions`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.deepEqual(revisions.data.revisions, []);
+
+		const manualRevision = await getJson(`${baseURL}/api/context-files/ctx%3Acurrent/revisions`, {
+			method: "POST",
+			headers: authHeaders(baseURL),
+			body: JSON.stringify({ name: "Migration checkpoint" }),
+		});
+		assert.equal(manualRevision.response.status, 201);
+		assert.equal(manualRevision.data.revision.name, "Migration checkpoint");
+		assert.equal(manualRevision.data.revision.content, "# Preserved Current Version\n");
+	} finally {
+		await channel.stop?.();
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("manual context file revisions persist across store restarts", () => {
+	const dir = mkdtempSync(join(tmpdir(), "pibo-context-files-manual-revision-restart-"));
+	const managedFilePath = join(dir, "managed", "global", "restart.md");
+	const metadataPath = join(dir, "managed", "context-files.sqlite");
+	mkdirSync(join(dir, "managed", "global"), { recursive: true });
+	writeFileSync(managedFilePath, "# Restart-safe current content\n", "utf8");
+
+	try {
+		const store = new ContextFileMetadataStore(metadataPath);
+		store.createFile({
+			key: "ctx:restart",
+			label: "Restart",
+			managedPath: managedFilePath,
+			scope: "global",
+			workingContent: "# Restart-safe current content\n",
+		});
+		const revision = store.appendRevision({
+			contextFileKey: "ctx:restart",
+			name: "Before restart",
+			contentHash: hashContextFileContent("# Restart-safe current content\n"),
+			content: "# Restart-safe current content\n",
+			actorId: "user-1",
+		});
+		store.close();
+
+		const reopened = new ContextFileMetadataStore(metadataPath);
+		assert.equal(reopened.getFile("ctx:restart")?.workingContent, "# Restart-safe current content\n");
+		assert.deepEqual(reopened.listRevisions("ctx:restart").map((candidate) => candidate.id), [revision.id]);
+		assert.equal(reopened.listRevisions("ctx:restart")[0].name, "Before restart");
+		reopened.close();
+	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}
 });

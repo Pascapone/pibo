@@ -3,6 +3,7 @@ import { AlertTriangle, ChevronDown, FilePlus2, Files, PanelRightClose, PanelRig
 import {
 	adoptContextFileSource,
 	createContextFile,
+	createContextFileRevision,
 	diffContextFile,
 	linkContextFileFromPlugin,
 	listContextFileRevisions,
@@ -31,6 +32,7 @@ export function ContextFilesView({ agentProfiles, selectedFileKey }: { agentProf
 	const [selectedKey, setSelectedKey] = useState<string | null>(null);
 	const [document, setDocument] = useState<ContextFileDocument | null>(null);
 	const [revisions, setRevisions] = useState<ContextFileRevision[]>([]);
+	const [revisionName, setRevisionName] = useState("");
 	const [diff, setDiff] = useState<ContextFileDiff | null>(null);
 	const [saveState, setSaveState] = useState<SaveState>("saved");
 	const [conflict, setConflict] = useState<string | null>(null);
@@ -127,6 +129,7 @@ export function ContextFilesView({ agentProfiles, selectedFileKey }: { agentProf
 
 	useEffect(() => {
 		setMetadataAgent(document?.agentProfileName ?? "");
+		setRevisionName("");
 	}, [document?.agentProfileName, document?.key]);
 
 	useEffect(() => {
@@ -297,6 +300,23 @@ export function ContextFilesView({ agentProfiles, selectedFileKey }: { agentProf
 			setActionBusy(false);
 		}
 	}, [document, hydrateDocument, refreshFiles]);
+
+	const handleCreateRevision = useCallback(async () => {
+		if (!document?.managed || !revisionName.trim()) return;
+		setActionBusy(true);
+		try {
+			await editorRef.current?.flushSave();
+			await createContextFileRevision(document.key, revisionName.trim());
+			const revisionPayload = await listContextFileRevisions(document.key);
+			setRevisions(revisionPayload.revisions);
+			setRevisionName("");
+			setError(null);
+		} catch (caught) {
+			setError(caught instanceof Error ? caught.message : String(caught));
+		} finally {
+			setActionBusy(false);
+		}
+	}, [document, revisionName]);
 
 	const handleRestoreRevision = useCallback(async (revisionId: string) => {
 		if (!document?.managed) return;
@@ -575,8 +595,15 @@ export function ContextFilesView({ agentProfiles, selectedFileKey }: { agentProf
 					{document?.managed ? (
 						<section className="space-y-2" aria-label="Selected context file history">
 							<div className="px-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">File Details</div>
-							<DetailDisclosure title="Revision History" meta={`${revisions.length} revisions`}>
-								<ContextFileRevisionsPanel revisions={revisions} actionBusy={actionBusy} onRestore={handleRestoreRevision} />
+							<DetailDisclosure title="Revision History" meta={`${revisions.length} versions`}>
+								<ContextFileRevisionsPanel
+									revisions={revisions}
+									revisionName={revisionName}
+									actionBusy={actionBusy}
+									onRevisionNameChange={setRevisionName}
+									onCreate={() => void handleCreateRevision()}
+									onRestore={handleRestoreRevision}
+								/>
 							</DetailDisclosure>
 							{diff ? (
 								<DetailDisclosure title="Source Diff" meta={`${diff.chunks.length} chunks`}>
@@ -618,36 +645,55 @@ function DetailDisclosure({ title, meta, children }: { title: string; meta?: str
 
 function ContextFileRevisionsPanel({
 	revisions,
+	revisionName,
 	actionBusy,
+	onRevisionNameChange,
+	onCreate,
 	onRestore,
 }: {
 	revisions: ContextFileRevision[];
+	revisionName: string;
 	actionBusy: boolean;
+	onRevisionNameChange: (name: string) => void;
+	onCreate: () => void;
 	onRestore: (revisionId: string) => void;
 }) {
-	if (revisions.length === 0) {
-		return <div className="border border-dashed border-slate-700 px-3 py-4 text-xs text-slate-500">No revisions recorded yet.</div>;
-	}
-
 	return (
 		<div className="space-y-2">
-			{revisions.map((revision) => (
+			<div className="space-y-2 border border-slate-800 bg-[#101d22] p-2">
+				<input
+					className="h-9 w-full border border-slate-700 bg-[#0e1116] px-3 text-sm text-slate-200 outline-none placeholder:text-slate-500 focus:border-[#11a4d4]"
+					value={revisionName}
+					onChange={(event) => onRevisionNameChange(event.currentTarget.value)}
+					placeholder="Version name"
+					aria-label="Version name"
+					maxLength={120}
+				/>
+				<button
+					className="inline-flex h-9 w-full items-center justify-center border border-[#11a4d4] bg-[#11a4d4]/10 px-3 text-xs uppercase tracking-wider text-[#7dd3fc] disabled:cursor-not-allowed disabled:opacity-45"
+					type="button"
+					disabled={actionBusy || !revisionName.trim()}
+					onClick={onCreate}
+				>
+					Save Version
+				</button>
+			</div>
+			{revisions.length === 0 ? (
+				<div className="border border-dashed border-slate-700 px-3 py-4 text-xs text-slate-500">No manual versions saved yet.</div>
+			) : revisions.map((revision) => (
 				<div key={revision.id} className="space-y-2 border border-slate-800 bg-[#101d22] px-3 py-2 text-xs text-slate-400">
 					<div>
-						<div className="font-medium text-slate-100">{revision.kind} {revision.active ? "(active)" : ""}</div>
-						<div className="break-words">{revision.note ?? revision.id}</div>
-						<div className="break-all font-mono text-[11px] text-slate-500">{revision.createdAt}</div>
+						<div className="break-words font-medium text-slate-100">{revision.name}</div>
+						<time className="break-all font-mono text-[11px] text-slate-500" dateTime={revision.createdAt}>{revision.createdAt}</time>
 					</div>
-					{revision.active ? null : (
-						<button
-							className="inline-flex h-8 items-center justify-center border border-slate-700 px-3 text-[11px] uppercase tracking-wider text-slate-300 hover:border-[#11a4d4] hover:text-[#7dd3fc] disabled:opacity-45"
-							type="button"
-							disabled={actionBusy}
-							onClick={() => onRestore(revision.id)}
-						>
-							Restore
-						</button>
-					)}
+					<button
+						className="inline-flex h-8 items-center justify-center border border-slate-700 px-3 text-[11px] uppercase tracking-wider text-slate-300 hover:border-[#11a4d4] hover:text-[#7dd3fc] disabled:opacity-45"
+						type="button"
+						disabled={actionBusy}
+						onClick={() => onRestore(revision.id)}
+					>
+						Restore
+					</button>
 				</div>
 			))}
 		</div>

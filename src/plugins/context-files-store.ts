@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { ContextFileScope } from "../core/profiles.js";
@@ -12,8 +12,6 @@ export type ContextFileLinkState =
 	| "orphaned"
 	| "managed-unlinked";
 
-export type ContextFileRevisionKind = "source-snapshot" | "working";
-
 export type StoredContextFileRecord = {
 	key: string;
 	label: string;
@@ -21,9 +19,10 @@ export type StoredContextFileRecord = {
 	scope: ContextFileScope;
 	sourceType: "managed";
 	agentProfileName?: string;
-	activeRevisionId?: string;
+	workingContent: string;
 	sourceRef?: string;
 	sourceHash?: string;
+	sourceContent?: string;
 	createdAt: string;
 	updatedAt: string;
 };
@@ -31,14 +30,11 @@ export type StoredContextFileRecord = {
 export type StoredContextFileRevisionRecord = {
 	id: string;
 	contextFileKey: string;
-	kind: ContextFileRevisionKind;
+	name: string;
 	contentHash: string;
 	content: string;
 	createdAt: string;
 	actorId?: string;
-	basedOnRevisionId?: string;
-	sourceHashAtCreation?: string;
-	note?: string;
 };
 
 type LegacyManagedContextFile = {
@@ -61,8 +57,10 @@ type ContextFileRow = {
 	source_type: "managed";
 	agent_profile_name: string | null;
 	active_revision_id: string | null;
+	working_content: string | null;
 	source_ref: string | null;
 	source_hash: string | null;
+	source_content: string | null;
 	created_at: string;
 	updated_at: string;
 };
@@ -70,15 +68,17 @@ type ContextFileRow = {
 type ContextFileRevisionRow = {
 	id: string;
 	context_file_key: string;
-	kind: ContextFileRevisionKind;
+	name: string;
 	content_hash: string;
 	content: string;
 	created_at: string;
 	actor_id: string | null;
-	based_on_revision_id: string | null;
-	source_hash_at_creation: string | null;
-	note: string | null;
 };
+
+type RevisionStorageMigrationRow = Pick<
+	ContextFileRow,
+	"key" | "managed_path" | "active_revision_id" | "working_content" | "source_content"
+>;
 
 export type CreateStoredContextFileInput = {
 	key: string;
@@ -86,8 +86,10 @@ export type CreateStoredContextFileInput = {
 	managedPath: string;
 	scope: ContextFileScope;
 	agentProfileName?: string;
+	workingContent: string;
 	sourceRef?: string;
 	sourceHash?: string;
+	sourceContent?: string;
 	createdAt?: string;
 	updatedAt?: string;
 };
@@ -98,23 +100,21 @@ export type UpdateStoredContextFileInput = {
 	managedPath: string;
 	scope: ContextFileScope;
 	agentProfileName?: string;
-	activeRevisionId?: string;
+	workingContent: string;
 	sourceRef?: string;
 	sourceHash?: string;
+	sourceContent?: string;
 	createdAt: string;
 	updatedAt: string;
 };
 
 export type AppendRevisionInput = {
 	contextFileKey: string;
-	kind: ContextFileRevisionKind;
+	name: string;
 	contentHash: string;
 	content: string;
 	createdAt?: string;
 	actorId?: string;
-	basedOnRevisionId?: string;
-	sourceHashAtCreation?: string;
-	note?: string;
 };
 
 export type ContextFileDiffChunk = {
@@ -156,9 +156,10 @@ function fileRowToRecord(row: ContextFileRow): StoredContextFileRecord {
 		scope: row.scope,
 		sourceType: row.source_type,
 		...(row.agent_profile_name ? { agentProfileName: row.agent_profile_name } : {}),
-		...(row.active_revision_id ? { activeRevisionId: row.active_revision_id } : {}),
+		workingContent: row.working_content ?? "",
 		...(row.source_ref ? { sourceRef: row.source_ref } : {}),
 		...(row.source_hash ? { sourceHash: row.source_hash } : {}),
+		...(row.source_content !== null ? { sourceContent: row.source_content } : {}),
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 	};
@@ -168,14 +169,11 @@ function revisionRowToRecord(row: ContextFileRevisionRow): StoredContextFileRevi
 	return {
 		id: row.id,
 		contextFileKey: row.context_file_key,
-		kind: row.kind,
+		name: row.name,
 		contentHash: row.content_hash,
 		content: row.content,
 		createdAt: row.created_at,
 		...(row.actor_id ? { actorId: row.actor_id } : {}),
-		...(row.based_on_revision_id ? { basedOnRevisionId: row.based_on_revision_id } : {}),
-		...(row.source_hash_at_creation ? { sourceHashAtCreation: row.source_hash_at_creation } : {}),
-		...(row.note ? { note: row.note } : {}),
 	};
 }
 
@@ -200,8 +198,10 @@ export class ContextFileMetadataStore {
 				source_type TEXT NOT NULL,
 				agent_profile_name TEXT,
 				active_revision_id TEXT,
+				working_content TEXT,
 				source_ref TEXT,
 				source_hash TEXT,
+				source_content TEXT,
 				created_at TEXT NOT NULL,
 				updated_at TEXT NOT NULL
 			);
@@ -209,22 +209,14 @@ export class ContextFileMetadataStore {
 			CREATE INDEX IF NOT EXISTS idx_context_files_scope
 				ON context_files(scope, updated_at);
 
-			CREATE TABLE IF NOT EXISTS context_file_revisions (
-				id TEXT PRIMARY KEY,
-				context_file_key TEXT NOT NULL,
-				kind TEXT NOT NULL,
-				content_hash TEXT NOT NULL,
-				content TEXT NOT NULL,
-				created_at TEXT NOT NULL,
-				actor_id TEXT,
-				based_on_revision_id TEXT,
-				source_hash_at_creation TEXT,
-				note TEXT
+			CREATE TABLE IF NOT EXISTS context_file_store_meta (
+				key TEXT PRIMARY KEY,
+				value TEXT NOT NULL
 			);
-
-			CREATE INDEX IF NOT EXISTS idx_context_file_revisions_key
-				ON context_file_revisions(context_file_key, created_at DESC);
 		`);
+		this.ensureColumn("context_files", "working_content", "TEXT");
+		this.ensureColumn("context_files", "source_content", "TEXT");
+		this.migrateManualRevisionStorage();
 		this.migrateLegacyStore();
 	}
 
@@ -251,11 +243,13 @@ export class ContextFileMetadataStore {
 					source_type,
 					agent_profile_name,
 					active_revision_id,
+					working_content,
 					source_ref,
 					source_hash,
+					source_content,
 					created_at,
 					updated_at
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			`)
 			.run(
 				input.key,
@@ -265,8 +259,10 @@ export class ContextFileMetadataStore {
 				"managed",
 				input.agentProfileName ?? null,
 				null,
+				input.workingContent,
 				input.sourceRef ?? null,
 				input.sourceHash ?? null,
+				input.sourceContent ?? null,
 				createdAt,
 				updatedAt,
 			);
@@ -284,9 +280,11 @@ export class ContextFileMetadataStore {
 					scope = ?,
 					source_type = ?,
 					agent_profile_name = ?,
-					active_revision_id = ?,
+					active_revision_id = NULL,
+					working_content = ?,
 					source_ref = ?,
 					source_hash = ?,
+					source_content = ?,
 					created_at = ?,
 					updated_at = ?
 				WHERE key = ?
@@ -297,9 +295,10 @@ export class ContextFileMetadataStore {
 				input.scope,
 				"managed",
 				input.agentProfileName ?? null,
-				input.activeRevisionId ?? null,
+				input.workingContent,
 				input.sourceRef ?? null,
 				input.sourceHash ?? null,
+				input.sourceContent ?? null,
 				input.createdAt,
 				input.updatedAt,
 				input.key,
@@ -329,27 +328,21 @@ export class ContextFileMetadataStore {
 				INSERT INTO context_file_revisions (
 					id,
 					context_file_key,
-					kind,
+					name,
 					content_hash,
 					content,
 					created_at,
-					actor_id,
-					based_on_revision_id,
-					source_hash_at_creation,
-					note
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+					actor_id
+				) VALUES (?, ?, ?, ?, ?, ?, ?)
 			`)
 			.run(
 				id,
 				input.contextFileKey,
-				input.kind,
+				input.name,
 				input.contentHash,
 				input.content,
 				createdAt,
 				input.actorId ?? null,
-				input.basedOnRevisionId ?? null,
-				input.sourceHashAtCreation ?? null,
-				input.note ?? null,
 			);
 		const revision = this.getRevision(id);
 		if (!revision) throw new Error(`Failed to create context file revision "${id}"`);
@@ -368,29 +361,97 @@ export class ContextFileMetadataStore {
 		return rows.map(revisionRowToRecord);
 	}
 
-	findLatestSourceSnapshot(contextFileKey: string, sourceHash?: string): StoredContextFileRevisionRecord | undefined {
-		const row = sourceHash
-			? this.db
-				.prepare(`
-					SELECT * FROM context_file_revisions
-					WHERE context_file_key = ? AND kind = 'source-snapshot' AND content_hash = ?
-					ORDER BY created_at DESC
-					LIMIT 1
-				`)
-				.get(contextFileKey, sourceHash)
-			: this.db
-				.prepare(`
-					SELECT * FROM context_file_revisions
+	close(): void {
+		this.db.close();
+	}
+
+	private ensureColumn(table: string, column: string, type: string): void {
+		const columns = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+		if (columns.some((candidate) => candidate.name === column)) return;
+		this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+	}
+
+	private tableExists(table: string): boolean {
+		return Boolean(this.db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table));
+	}
+
+	private ensureManualRevisionTable(): void {
+		this.db.exec(`
+			CREATE TABLE IF NOT EXISTS context_file_revisions (
+				id TEXT PRIMARY KEY,
+				context_file_key TEXT NOT NULL,
+				name TEXT NOT NULL,
+				content_hash TEXT NOT NULL,
+				content TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				actor_id TEXT
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_context_file_revisions_key
+				ON context_file_revisions(context_file_key, created_at DESC);
+		`);
+	}
+
+	private migrateManualRevisionStorage(): void {
+		const migrationKey = "manual-revisions-v1";
+		const migrated = this.db.prepare("SELECT 1 FROM context_file_store_meta WHERE key = ?").get(migrationKey);
+		if (migrated) {
+			this.ensureManualRevisionTable();
+			return;
+		}
+
+		const revisionTableExists = this.tableExists("context_file_revisions");
+		const revisionColumns = revisionTableExists
+			? new Set((this.db.prepare("PRAGMA table_info(context_file_revisions)").all() as Array<{ name: string }>).map((column) => column.name))
+			: new Set<string>();
+		const hasAutomaticRevisionSchema = revisionColumns.has("kind");
+		const files = this.db.prepare(`
+			SELECT key, managed_path, active_revision_id, working_content, source_content
+			FROM context_files
+		`).all() as RevisionStorageMigrationRow[];
+		const recovered = files.map((file) => {
+			const fileExists = existsSync(file.managed_path);
+			const activeContent = !fileExists && hasAutomaticRevisionSchema && file.active_revision_id
+				? (this.db.prepare("SELECT content FROM context_file_revisions WHERE id = ?").get(file.active_revision_id) as { content?: string } | undefined)?.content
+				: undefined;
+			const workingContent = fileExists
+				? readFileSync(file.managed_path, "utf8")
+				: file.working_content ?? activeContent ?? "";
+			const sourceContent = file.source_content ?? (hasAutomaticRevisionSchema
+				? (this.db.prepare(`
+					SELECT content FROM context_file_revisions
 					WHERE context_file_key = ? AND kind = 'source-snapshot'
 					ORDER BY created_at DESC
 					LIMIT 1
-				`)
-				.get(contextFileKey);
-		return row ? revisionRowToRecord(row as ContextFileRevisionRow) : undefined;
-	}
+				`).get(file.key) as { content?: string } | undefined)?.content
+				: undefined);
 
-	close(): void {
-		this.db.close();
+			if (!fileExists && (file.working_content !== null || activeContent !== undefined)) {
+				mkdirSync(dirname(file.managed_path), { recursive: true });
+				writeFileSync(file.managed_path, workingContent, "utf8");
+			}
+			return { key: file.key, workingContent, sourceContent };
+		});
+
+		this.db.exec("BEGIN");
+		try {
+			for (const file of recovered) {
+				this.db.prepare(`
+					UPDATE context_files
+					SET active_revision_id = NULL, working_content = ?, source_content = ?
+					WHERE key = ?
+				`).run(file.workingContent, file.sourceContent ?? null, file.key);
+			}
+			if (hasAutomaticRevisionSchema) {
+				this.db.exec("DROP TABLE context_file_revisions");
+			}
+			this.ensureManualRevisionTable();
+			this.db.prepare("INSERT INTO context_file_store_meta (key, value) VALUES (?, ?)").run(migrationKey, new Date().toISOString());
+			this.db.exec("COMMIT");
+		} catch (error) {
+			this.db.exec("ROLLBACK");
+			throw error;
+		}
 	}
 
 	private migrateLegacyStore(): void {
@@ -405,9 +466,11 @@ export class ContextFileMetadataStore {
 		try {
 			for (const file of legacyStore.files) {
 				const resolvedPath = resolve(file.path);
-				const createdAt = existsSync(resolvedPath)
+				const fileExists = existsSync(resolvedPath);
+				const createdAt = fileExists
 					? statSync(resolvedPath).mtime.toISOString()
 					: new Date().toISOString();
+				const workingContent = fileExists ? readFileSync(resolvedPath, "utf8") : "";
 				this.db
 					.prepare(`
 						INSERT INTO context_files (
@@ -418,11 +481,13 @@ export class ContextFileMetadataStore {
 							source_type,
 							agent_profile_name,
 							active_revision_id,
+							working_content,
 							source_ref,
 							source_hash,
+							source_content,
 							created_at,
 							updated_at
-						) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+						) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 					`)
 					.run(
 						file.key,
@@ -432,46 +497,13 @@ export class ContextFileMetadataStore {
 						"managed",
 						file.agentProfileName ?? null,
 						null,
+						workingContent,
+						null,
 						null,
 						null,
 						createdAt,
 						createdAt,
 					);
-
-				if (!existsSync(resolvedPath)) continue;
-				const content = readFileSync(resolvedPath, "utf8");
-				const contentHash = hashContextFileContent(content);
-				const revisionId = `rev_${randomUUID()}`;
-				this.db
-					.prepare(`
-						INSERT INTO context_file_revisions (
-							id,
-							context_file_key,
-							kind,
-							content_hash,
-							content,
-							created_at,
-							actor_id,
-							based_on_revision_id,
-							source_hash_at_creation,
-							note
-						) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-					`)
-					.run(
-						revisionId,
-						file.key,
-						"working",
-						contentHash,
-						content,
-						createdAt,
-						null,
-						null,
-						null,
-						"Legacy managed file import",
-					);
-				this.db
-					.prepare("UPDATE context_files SET active_revision_id = ?, updated_at = ? WHERE key = ?")
-					.run(revisionId, createdAt, file.key);
 			}
 			this.db.exec("COMMIT");
 		} catch (error) {
