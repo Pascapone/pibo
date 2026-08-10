@@ -43,6 +43,11 @@ export async function handleChatLoopApiRequest(options: ChatLoopApiOptions): Pro
 	if (apiPath === `${CHAT_WEB_API_PREFIX}/loops/status` && request.method === 'GET') return responseJson({ status: getPiboLoopService()?.status() ?? { enabled: false, ...loopStore.status() } });
 	if (apiPath === `${CHAT_WEB_API_PREFIX}/loops/conditions` && request.method === 'GET') return responseJson({ conditions: options.context.channelContext.getLoopStopConditionInfos?.() ?? options.context.channelContext.getCapabilityCatalog?.().loopStopConditions ?? [] });
 	if (apiPath === `${CHAT_WEB_API_PREFIX}/loops/templates` && request.method === 'GET') return responseJson({ templates: listLoopJobTemplates() });
+	if (apiPath === `${CHAT_WEB_API_PREFIX}/loops/session-goal` && request.method === 'GET') {
+		const piboSessionId = normalizeString(url.searchParams.get('piboSessionId'), 'piboSessionId', { required: true, max: 200 })!;
+		const goal = loopStore.getSessionGoalOwner(piboSessionId) ?? loopStore.getLatestGoalForSession(piboSessionId);
+		return responseJson({ goal: goal ? serializeJob(goal) : null });
+	}
 	if (apiPath === `${CHAT_WEB_API_PREFIX}/loops/jobs` && request.method === 'GET') return responseJson({ jobs: loopStore.listJobs({ includeDisabled: url.searchParams.get('includeDisabled') === 'true' }).map(serializeJob) });
 	if (apiPath === `${CHAT_WEB_API_PREFIX}/loops/jobs` && request.method === 'POST') {
 		requireSameOriginJsonRequest(request);
