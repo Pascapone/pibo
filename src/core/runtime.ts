@@ -61,6 +61,13 @@ import { registerOpenAiGpt56Models, type OpenAiGpt56ModelRegistryLike } from "..
 import { PIBO_APP_CONTEXT } from "../app-context.js";
 import { createRuntimeToolDefinition, type PiboRuntimeToolController } from "../tools/runtime/tool.js";
 import { RuntimeSessionRegistry } from "../tools/runtime/registry.js";
+import {
+	CODEX_BROWSER_TOOL_NAMES,
+	CodexBrowserSessionController,
+	createCodexBrowserToolDefinitions,
+	type CodexBrowserToolController,
+	type CodexBrowserToolName,
+} from "../tools/codex-browser.js";
 import { compactValidationToolResultForContext } from "./test-output-compaction.js";
 import { installPiboTranscriptIntegrity } from "./transcript-integrity.js";
 
@@ -223,12 +230,19 @@ function getEnabledToolDefinitions(
 	subagentRunner?: PiboSubagentRunner,
 	runToolController?: PiboRunToolController,
 	runtimeToolController?: PiboRuntimeToolController,
+	codexBrowserController?: CodexBrowserToolController,
 ): ToolDefinition[] {
 	const runtimeProfileTool = profile.tools.find(isEnabledRuntimeTool);
 	const runtimeTool = runtimeProfileTool && runtimeToolController
 		? createRuntimeToolDefinition(runtimeToolController)
 		: undefined;
-	const profileTools = profile.tools.filter((tool) => !isRuntimeTool(tool)).filter(hasEnabledToolDefinition);
+	const selectedCodexBrowserToolNames = profile.tools
+		.filter(isEnabledCodexBrowserTool)
+		.map((tool) => tool.name as CodexBrowserToolName);
+	const codexBrowserTools = codexBrowserController
+		? createCodexBrowserToolDefinitions(codexBrowserController, selectedCodexBrowserToolNames)
+		: [];
+	const profileTools = profile.tools.filter((tool) => !isRuntimeTool(tool) && !isCodexBrowserTool(tool)).filter(hasEnabledToolDefinition);
 	const profileToolDefinitions = profileTools.map((tool) => getToolDefinition(tool, options.toolContext));
 	const codexCompatEnabled = profile.toolPackages.codexCompat === true;
 	const runControlEnabled = profile.toolPackages.runControl === true;
@@ -250,6 +264,7 @@ function getEnabledToolDefinitions(
 		...(runControlBashTool ? [runControlBashTool] : []),
 		...profileTools.filter((tool) => tool.yieldable !== false).map((tool) => getToolDefinition(tool, options.toolContext)),
 		...(runtimeTool && runtimeProfileTool?.yieldable !== false ? [runtimeTool] : []),
+		...codexBrowserTools.filter((definition) => profile.tools.find((tool) => tool.name === definition.name)?.yieldable !== false),
 		...subagentTools,
 		...codexCompatTools,
 	];
@@ -261,6 +276,7 @@ function getEnabledToolDefinitions(
 		...(runControlBashTool ? [runControlBashTool] : []),
 		...profileToolDefinitions,
 		...(runtimeTool ? [runtimeTool] : []),
+		...codexBrowserTools,
 		...subagentTools,
 		...codexCompatTools,
 		...goalTools,
@@ -286,6 +302,14 @@ function isRuntimeTool(tool: ToolProfile): boolean {
 
 function isEnabledRuntimeTool(tool: ToolProfile): boolean {
 	return tool.enabled !== false && isRuntimeTool(tool);
+}
+
+function isCodexBrowserTool(tool: ToolProfile): boolean {
+	return tool.builtInPiboTool === "codex_browser" || CODEX_BROWSER_TOOL_NAMES.includes(tool.name as CodexBrowserToolName);
+}
+
+function isEnabledCodexBrowserTool(tool: ToolProfile): boolean {
+	return tool.enabled !== false && isCodexBrowserTool(tool);
 }
 
 function isGeneratedPiboTool(name: string): boolean {
@@ -438,6 +462,12 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 		const localRuntimeRegistry = ownsLocalRuntimeRegistry ? new RuntimeSessionRegistry({ cwd: runtimeCwd }) : undefined;
 		const runtimeToolController = options.runtimeToolController
 			?? localRuntimeRegistry?.createController(profile.sessionId ?? "local");
+		const codexBrowserController = profile.tools.some(isEnabledCodexBrowserTool)
+			? new CodexBrowserSessionController({
+				cwd: runtimeCwd,
+				piboSessionId: options.sessionContext?.piboSessionId ?? profile.sessionId ?? runtimeSessionManager.getSessionId(),
+			})
+			: undefined;
 		const customTools = getEnabledToolDefinitions(
 			profile,
 			{
@@ -454,6 +484,7 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 			options.subagentRunner,
 			options.runToolController,
 			runtimeToolController,
+			codexBrowserController,
 		);
 		const modelDefaults = options.modelDefaults ?? loadPiboModelDefaults(runtimeCwd);
 
@@ -495,6 +526,7 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 			if (localRuntimeRegistry) {
 				void localRuntimeRegistry.closeControllerSessions(profile.sessionId ?? "local", { force: true });
 			}
+			void codexBrowserController?.dispose();
 			originalDispose();
 		};
 
@@ -642,8 +674,8 @@ export async function inspectPiboProfile(options: PiboRuntimeOptions = {}): Prom
 			})),
 			tools: profile.tools.map((tool) => ({
 				name: tool.name,
-				hasDefinition: Boolean(tool.definition) || Boolean(tool.createDefinition) || isRuntimeTool(tool),
-				registered: registeredToolNames.has(tool.name) || tool.providerTool !== undefined || isRuntimeTool(tool),
+				hasDefinition: Boolean(tool.definition) || Boolean(tool.createDefinition) || isRuntimeTool(tool) || isCodexBrowserTool(tool),
+				registered: registeredToolNames.has(tool.name) || tool.providerTool !== undefined || isRuntimeTool(tool) || isCodexBrowserTool(tool),
 				active: activeToolNames.has(tool.name) || tool.providerTool !== undefined,
 			})).concat(generatedTools),
 			subagents: profile.subagents.map((subagent) => {

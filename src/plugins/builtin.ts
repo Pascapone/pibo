@@ -12,6 +12,7 @@ import type {
 import { InitialSessionContextBuilder, type InitialSessionContext } from "../core/profiles.js";
 import { parsePiboThinkingLevel } from "../core/thinking.js";
 import { createWebSearchToolProfile } from "../tools/web-search.js";
+import { CODEX_BROWSER_TOOL_NAMES, createCodexBrowserToolProfiles } from "../tools/codex-browser.js";
 import { createRuntimeToolProfile } from "../tools/runtime/tool.js";
 import { completeLogin, getLoginStatus, removeLogin, setApiKey, startLogin } from "../auth/login-actions.js";
 import { loadModelCatalog } from "../apps/chat/model-catalog.js";
@@ -190,6 +191,12 @@ export const piboCorePlugin = definePiboPlugin({
 		});
 		api.registerTool(createWebSearchToolProfile());
 		api.registerTool(createRuntimeToolProfile());
+		api.registerTools(createCodexBrowserToolProfiles());
+		api.registerCapabilityPackage({
+			name: "codex-browser-interface",
+			description: "Expose Browser Use and its persistent browser-bound Node REPL through a Codex-familiar structured tool surface.",
+			toolNames: [...CODEX_BROWSER_TOOL_NAMES],
+		});
 		registerPiboNativeTooling(api);
 		api.registerProfile({
 			name: DEFAULT_PIBO_PROFILE_NAME,
