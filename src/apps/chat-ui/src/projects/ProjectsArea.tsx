@@ -31,6 +31,7 @@ import {
 import type { ChatSessionViewId } from "../session-views/types";
 import { SessionTracePane } from "../session-trace-pane";
 import type { SlashCommand } from "../chat-commands";
+import { commandActionParams } from "../app-command-actions";
 import { errorMessage } from "../error-message";
 import { ProjectsSidebar } from "./ProjectsSidebar";
 import { CreateProjectDialog } from "./CreateProjectDialog";
@@ -334,7 +335,11 @@ export function ProjectsArea({
       (candidate) => candidate.slash === commandText,
     );
     if (!command) return false;
-    await postAction(selectedPiboSessionId, command.action);
+    const params = commandActionParams(
+      command.action,
+      text.slice(commandText.length).trim(),
+    );
+    await postAction(selectedPiboSessionId, command.action, params);
     await load({
       projectId: selectedProject?.id,
       piboSessionId: selectedPiboSessionId,

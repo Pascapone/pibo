@@ -11,7 +11,7 @@ import { acquireBrowserPoolLease, browserPoolPaths, releaseBrowserPoolLease, res
 import { createDefaultPiboLoopStore, PiboLoopStore } from './store.js';
 import { createBuiltInLoopStopConditions, evaluateLoopStopPolicy } from './stopping.js';
 import { buildLoopTurnPrompt } from './prompts.js';
-import type { PiboLoopFailure, PiboLoopJob, PiboLoopResourceMetadata, PiboLoopRun, PiboLoopRunFact, PiboLoopRunOutcome, PiboLoopStatus, PiboLoopStopConditionDefinition, PiboLoopStopEvaluationSummary } from './types.js';
+import type { PiboGoalStatus, PiboLoopFailure, PiboLoopJob, PiboLoopResourceMetadata, PiboLoopRun, PiboLoopRunFact, PiboLoopRunOutcome, PiboLoopStatus, PiboLoopStopConditionDefinition, PiboLoopStopEvaluationSummary, PiboLoopTarget } from './types.js';
 
 const CHAT_WEB_CHANNEL = 'pibo.chat-web';
 
@@ -40,6 +40,8 @@ function failureRecovery(details: PiboSessionErrorDetails | undefined): string {
 	return details?.retryable === false ? 'Resolve the reported non-retryable failure, then explicitly restart the Goal.' : 'Pibo will retry automatically after the recorded backoff.';
 }
 function isTerminalGoalStatus(status: PiboLoopJob['state']['goalStatus']): boolean { return status === 'complete' || status === 'blocked' || status === 'budget_limited'; }
+function currentGoalStatus(job: PiboLoopJob): PiboGoalStatus { return job.state.goalStatus ?? (job.enabled ? 'active' : 'paused'); }
+function goalName(objective: string): string { return objective.replace(/\s+/g, ' ').trim().slice(0, 80); }
 function retryBackoffMs(consecutiveErrors: number, baseMs: number, maxMs: number, jitterRatio: number, random: () => number): number {
 	const exponent = Math.max(0, Math.min(30, consecutiveErrors - 1));
 	const bounded = Math.min(maxMs, baseMs * (2 ** exponent));
@@ -124,6 +126,70 @@ export class PiboLoopService {
 		const job = this.store.requestCancel(id); if (!job) return undefined;
 		await this.abortJobIfRunning(job);
 		this.armSoon(); return this.store.getJob(id);
+	}
+	setSessionGoal(piboSessionId: string, objective: string): { operation: 'created' | 'updated'; goal: PiboLoopJob } {
+		const normalizedObjective = objective.trim();
+		if (!normalizedObjective) throw new Error('Usage: /goal <objective> | /goal pause | /goal resume');
+		if (normalizedObjective.length > 20_000) throw new Error('Goal objective is too long');
+		const session = this.options.context.getSession(piboSessionId);
+		if (!session) throw new Error('Pibo Session not found');
+		const existing = this.store.getSessionGoalOwner(piboSessionId);
+		if (!existing) {
+			const goal = this.store.createSessionGoal({
+				name: goalName(normalizedObjective),
+				target: this.sessionGoalTarget(session.metadata?.chatRoomId),
+				profile: session.profile,
+				prompt: normalizedObjective,
+				initialPiboSessionId: piboSessionId,
+			}, this.now());
+			this.armSoon();
+			return { operation: 'created', goal };
+		}
+		const status = currentGoalStatus(existing);
+		if (status === 'complete') throw new Error('The current Goal is completing; wait for its active run to finish before creating another Goal');
+		if (status === 'budget_limited') throw new Error('The current Goal is budget limited; increase or clear its token budget before updating and resuming it');
+		const goal = this.store.updateJob(existing.id, {
+			name: goalName(normalizedObjective),
+			prompt: normalizedObjective,
+			enabled: true,
+		}, this.now());
+		if (!goal) throw new Error('Goal Loop not found');
+		this.armSoon();
+		return { operation: 'updated', goal };
+	}
+	pauseSessionGoal(piboSessionId: string): { operation: 'paused' | 'already-paused'; goal: PiboLoopJob } {
+		const existing = this.requireSessionGoal(piboSessionId);
+		const status = currentGoalStatus(existing);
+		if (status === 'paused') return { operation: 'already-paused', goal: existing };
+		if (status !== 'active') throw new Error(`Goal Loop cannot be paused while its status is ${status}`);
+		const goal = this.store.requestStop(existing.id, this.now());
+		if (!goal) throw new Error('Goal Loop not found');
+		this.armSoon();
+		return { operation: 'paused', goal };
+	}
+	resumeSessionGoal(piboSessionId: string): { operation: 'resumed' | 'already-active'; goal: PiboLoopJob } {
+		const existing = this.requireSessionGoal(piboSessionId);
+		const status = currentGoalStatus(existing);
+		if (status === 'active' && existing.enabled) return { operation: 'already-active', goal: existing };
+		if (status !== 'paused') throw new Error(`Goal Loop cannot be resumed while its status is ${status}`);
+		const goal = this.store.updateJob(existing.id, { enabled: true }, this.now());
+		if (!goal) throw new Error('Goal Loop not found');
+		this.armSoon();
+		return { operation: 'resumed', goal };
+	}
+	private requireSessionGoal(piboSessionId: string): PiboLoopJob {
+		if (!this.options.context.getSession(piboSessionId)) throw new Error('Pibo Session not found');
+		const goal = this.store.getSessionGoalOwner(piboSessionId);
+		if (!goal) throw new Error('This Pibo Session has no Goal Loop');
+		return goal;
+	}
+	private sessionGoalTarget(value: unknown): PiboLoopTarget {
+		if (typeof value !== 'string' || !value.trim()) return { kind: 'default-chat' };
+		const roomId = value.trim();
+		const room = this.roomService.getRoom(roomId);
+		if (!room) throw new Error('The Pibo Session room no longer exists');
+		if (isPiboRoomArchived(room)) throw new Error('Archived rooms are read-only');
+		return { kind: 'room', roomId };
 	}
 	private repairGoalSessionMetadata(): void {
 		for (const session of this.options.context.listSessions?.() ?? []) {

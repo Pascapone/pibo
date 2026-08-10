@@ -225,6 +225,15 @@ export async function runGatewayClient(options: GatewayClientOptions = {}): Prom
 				continue;
 			}
 
+			if (text === "/goal" || text.startsWith("/goal ")) {
+				writeFrame(socket, {
+					type: "req",
+					id: randomUUID(),
+					event: { type: "execution", piboSessionId, action: "goal", params: { command: text.slice("/goal".length).trim() } },
+				});
+				continue;
+			}
+
 			writeFrame(socket, {
 				type: "req",
 				id: randomUUID(),
