@@ -38,9 +38,13 @@ The hosted dev Chat URL is host-specific. Set `PIBO_DEV_PUBLIC_URL` or `PIBO_DEV
 Deploy production only after dev testing succeeds and the user approves it: `./scripts/deploy-web.sh`.
 
 ## Browser/App Debugging
+Use Agent Browser for fast web research and lightweight navigation or interaction. For web development and app debugging, prefer Browser Use together with Chrome DevTools/CDP: Browser Use drives the real user flow and captures visual evidence, while DevTools provides console, network, DOM, JavaScript, and performance evidence.
+
 For debugging an already-running Chat Web instance, start from the browser that already exists. First list CDP targets with `npm run dev -- tools browser-use targets`, then inspect Chat Web targets until you find one that is authenticated and has a composer textarea. Do not assume the first tab is the usable tab. If the helper is unavailable, fall back to `curl -s http://127.0.0.1:56663/json/list`.
 
 If no usable browser exists, create one through the Browser Use auth flow instead of starting ad hoc fake-auth infrastructure. First try to acquire an isolated authenticated slot with `eval "$(npm run --silent dev -- tools browser-use lease acquire --app pibo-chat --controller "$USER")"`, then open the current Chat Web URL in that shell. If lease acquisition says no authenticated template exists, prepare it with `eval "$(npm run --silent dev -- tools browser-use auth-template env)"`, open the Chat Web App there, sign in once, close it, then acquire the lease again.
+
+Use a headful Browser Use target when layout, responsive behavior, focus, keyboard or pointer input, fonts, screenshots, or other visual fidelity matters. Headless checks may supplement this evidence, but must not be the only acceptance evidence for design work.
 
 If MCP DevTools resources are unavailable, use direct CDP against the authenticated target as the fallback. Use the Pibo CLI restart commands only after confirming the existing tab is usable but its backend is down.
 
@@ -48,7 +52,7 @@ If MCP DevTools resources are unavailable, use direct CDP against the authentica
 Server access details are configured in the operator environment. Do not hard-code addresses in documentation or code.
 
 ## Frontend Design
-If you are doing any frontend design for the Web Chat App, be sure to read `DESIGN.md`.
+If you are doing any frontend design for the Web Chat App, be sure to read `DESIGN.md`. Validate visual changes in a headful browser through Browser Use at the relevant viewports, and use Chrome DevTools/CDP for technical inspection. Agent Browser or headless-only checks are not sufficient as final design validation.
 
 ## Documentation Structure
 All project documentation belongs under `docs/`.
