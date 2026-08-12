@@ -99,6 +99,19 @@ export function uniqueDraftAgentName(usedNames: Iterable<string>): string {
 	}
 }
 
+export function selectExistingAgentDraft(
+	agents: BootstrapData["agents"],
+	customAgents: CustomAgent[],
+	catalog?: AgentCatalog,
+): AgentDraft {
+	const activeCustomAgent = customAgents.find((agent) => !agent.archivedAt);
+	if (activeCustomAgent) return agentToDraft(activeCustomAgent);
+
+	const customProfileNames = new Set(customAgents.map((agent) => agent.profileName));
+	const profile = agents.find((agent) => !customProfileNames.has(agent.name));
+	return profile ? profileToDraft(profile, catalog) : createBlankAgentDraft(catalog);
+}
+
 export function agentToDraft(agent: CustomAgent): AgentDraft {
 	return {
 		id: agent.id,

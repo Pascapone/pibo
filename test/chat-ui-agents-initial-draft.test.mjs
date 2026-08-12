@@ -6,17 +6,40 @@ import test from "node:test";
 
 const execFileAsync = promisify(execFile);
 
-test("Agent Designer exposes a uniquely named unsaved draft on initial load", async () => {
+test("Agent Designer selects an existing agent initially and only creates drafts explicitly", async () => {
 	const source = readFileSync("src/apps/chat-ui/src/agents/AgentsView.tsx", "utf8");
-	assert.match(source, /createBlankAgentDraft\(\s*initialCatalog,\s*uniqueDraftAgentName\(agentNamesInUse\(agents, initialCustomAgents\)\),?\s*\)/);
-	assert.match(source, /agents\.flatMap\(\(agent\) => \[agent\.name, \.\.\.agent\.aliases\]\)/);
-	assert.match(source, /customAgents\.flatMap\(\(agent\) => \[agent\.profileName, \.\.\.\(agent\.profileAliases \?\? \[\]\), agent\.displayName\]\)/);
-	assert.match(source, /const \[showUnsavedAgentDraft, setShowUnsavedAgentDraft\] = useState\(!initialDraftState\.draft\.id\)/);
+	const modelSource = readFileSync("src/apps/chat-ui/src/agents/agent-designer-model.ts", "utf8");
+	assert.match(source, /pending\?\.draft \?\? selectExistingAgentDraft\(agents, initialCustomAgents, initialCatalog\)/);
+	assert.match(source, /const \[showUnsavedAgentDraft, setShowUnsavedAgentDraft\] = useState\(Boolean\(initialDraftState\.restored && !initialDraftState\.draft\.id\)\)/);
+	assert.match(source, /onClick=\{createNewAgentDraft\} title="New Agent"/);
+	assert.match(source, /activateDraft\(nextDraft, null\)/);
+	assert.match(modelSource, /const activeCustomAgent = customAgents\.find\(\(agent\) => !agent\.archivedAt\)/);
+	assert.match(modelSource, /return profile \? profileToDraft\(profile, catalog\) : createBlankAgentDraft\(catalog\)/);
 
 	const script = `
 		import assert from "node:assert/strict";
 		const { saveCustomAgentDraft } = await import("./src/apps/chat-ui/src/api-agent-designer.ts");
-		const { uniqueDraftAgentName } = await import("./src/apps/chat-ui/src/agents/agent-designer-model.ts");
+		const { selectExistingAgentDraft, uniqueDraftAgentName } = await import("./src/apps/chat-ui/src/agents/agent-designer-model.ts");
+		const savedAgent = {
+			id: "agent-1",
+			profileName: "saved-agent",
+			displayName: "Saved Agent",
+			nativeTools: [],
+			skills: [],
+			contextFiles: [],
+			subagents: [],
+			mcpServers: [],
+			piPackages: [],
+			builtinTools: "default",
+			builtinToolNames: [],
+			autoContextFiles: true,
+			runControl: false,
+			goalControl: true,
+		};
+		const pluginProfile = { name: "pibo-agent", aliases: [] };
+		assert.equal(selectExistingAgentDraft([pluginProfile], [savedAgent]).id, "agent-1");
+		assert.equal(selectExistingAgentDraft([pluginProfile], []).source, "profile");
+		assert.equal(selectExistingAgentDraft([], []).source, "custom");
 		assert.equal(uniqueDraftAgentName(["new-agent", "other-agent"]), "new-agent-1");
 		assert.equal(uniqueDraftAgentName(["renamed-agent", "new-agent"]), "new-agent-1");
 
