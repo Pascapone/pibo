@@ -390,7 +390,7 @@ export const piboCorePlugin = definePiboPlugin({
 		api.registerGatewayAction({
 			name: "model",
 			description: "Open the interactive model selector for authenticated providers.",
-			slashCommands: ["model", "models"],
+			slashCommands: ["model"],
 			async execute() {
 				const catalog = await loadModelCatalog(process.cwd());
 				return {
