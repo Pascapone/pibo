@@ -637,10 +637,10 @@ export function AgentsView({
 					<div className="min-w-0">
 						<h1 className="text-sm font-bold uppercase tracking-wider">Agent Designer</h1>
 						<div className="font-mono text-[11px] text-slate-500 truncate">{draftProfileName}</div>
-						<div className="text-[11px] uppercase tracking-wider text-slate-500">{draft.source === "profile" ? "read-only plugin profile" : archivedDraft ? "archived custom agent" : "custom agent"}</div>
+						<div className="text-[11px] uppercase tracking-wider text-slate-500">{noAgentSelected ? "no agent selected" : draft.source === "profile" ? "read-only plugin profile" : archivedDraft ? "archived custom agent" : "custom agent"}</div>
 					</div>
 					<div className="flex items-center gap-2">
-						{draft.source === "custom" && !archivedDraft ? (
+						{draft.source === "custom" && !archivedDraft && !noAgentSelected ? (
 							<div className={`text-xs ${saveState === "error" ? "text-red-300" : saveState === "saved" ? "text-emerald-300" : "text-slate-400"}`} aria-live="polite" data-agent-autosave-state={saveState}>
 								{autosaveStateLabel(saveState)}
 							</div>

@@ -13,6 +13,8 @@ test("Agent Designer selects an existing agent initially and only creates drafts
 	assert.match(source, /const \[showUnsavedAgentDraft, setShowUnsavedAgentDraft\] = useState\(Boolean\(initialDraftState\.restored && !initialDraftState\.draft\.id\)\)/);
 	assert.match(source, /onClick=\{createNewAgentDraft\} title="New Agent"/);
 	assert.match(source, /activateDraft\(nextDraft, null\)/);
+	assert.match(source, /noAgentSelected \? "no agent selected"/);
+	assert.match(source, /draft\.source === "custom" && !archivedDraft && !noAgentSelected/);
 	assert.match(modelSource, /const activeCustomAgent = customAgents\.find\(\(agent\) => !agent\.archivedAt\)/);
 	assert.match(modelSource, /return profile \? profileToDraft\(profile, catalog\) : createBlankAgentDraft\(catalog\)/);
 
@@ -38,8 +40,11 @@ test("Agent Designer selects an existing agent initially and only creates drafts
 		};
 		const pluginProfile = { name: "pibo-agent", aliases: [] };
 		assert.equal(selectExistingAgentDraft([pluginProfile], [savedAgent]).id, "agent-1");
+		assert.equal(selectExistingAgentDraft([pluginProfile], [{ ...savedAgent, archivedAt: "2026-08-13T00:00:00.000Z" }]).source, "profile");
 		assert.equal(selectExistingAgentDraft([pluginProfile], []).source, "profile");
-		assert.equal(selectExistingAgentDraft([], []).source, "custom");
+		const emptySelection = selectExistingAgentDraft([], []);
+		assert.equal(emptySelection.source, "custom");
+		assert.equal(emptySelection.profileName, undefined);
 		assert.equal(uniqueDraftAgentName(["new-agent", "other-agent"]), "new-agent-1");
 		assert.equal(uniqueDraftAgentName(["renamed-agent", "new-agent"]), "new-agent-1");
 
