@@ -36,6 +36,7 @@ import {
 	isSelectablePiPackage,
 	normalizeBuiltinToolNames,
 	profileToDraft,
+	selectExistingAgentDraft,
 	skillMeta,
 	toggleName,
 	togglePiPackageSelection,
@@ -131,10 +132,7 @@ export function AgentsView({
 }) {
 	const [initialDraftState] = useState(() => {
 		const pending = readPendingAgentDraft();
-		const initialDraft = pending?.draft ?? createBlankAgentDraft(
-			initialCatalog,
-			uniqueDraftAgentName(agentNamesInUse(agents, initialCustomAgents)),
-		);
+		const initialDraft = pending?.draft ?? selectExistingAgentDraft(agents, initialCustomAgents, initialCatalog);
 		return {
 			draft: initialDraft,
 			savedSignature: pending ? pending.savedSignature : agentDraftSignature(initialDraft),
@@ -144,7 +142,7 @@ export function AgentsView({
 	const [catalog, setCatalog] = useState<AgentCatalog | null>(initialCatalog ?? null);
 	const [customAgents, setCustomAgents] = useState(initialCustomAgents);
 	const [draft, setDraft] = useState<AgentDraft>(initialDraftState.draft);
-	const [showUnsavedAgentDraft, setShowUnsavedAgentDraft] = useState(!initialDraftState.draft.id);
+	const [showUnsavedAgentDraft, setShowUnsavedAgentDraft] = useState(Boolean(initialDraftState.restored && !initialDraftState.draft.id));
 	const [saveState, setSaveState] = useState<SaveState>(initialDraftState.restored ? "idle" : "saved");
 	const [editingName, setEditingName] = useState(false);
 	const [saving, setSaving] = useState(false);
@@ -180,12 +178,12 @@ export function AgentsView({
 		}
 	}, []);
 
-	const activateDraft = useCallback((nextDraft: AgentDraft, savedSignature: string | null) => {
+	const activateDraft = useCallback((nextDraft: AgentDraft, savedSignature: string | null, showUnsaved = nextDraft.source === "custom" && !nextDraft.id) => {
 		clearAutosaveTimer();
 		currentDraftRef.current = nextDraft;
 		savedSignatureRef.current = savedSignature;
 		setDraft(nextDraft);
-		setShowUnsavedAgentDraft(nextDraft.source === "custom" && !nextDraft.id);
+		setShowUnsavedAgentDraft(showUnsaved);
 		setEditingName(false);
 		setSaveState(savedSignature === agentDraftSignature(nextDraft) ? "saved" : "idle");
 		setLocalError(null);
@@ -392,9 +390,10 @@ export function AgentsView({
 	);
 	const archivedDraft = Boolean(draft.archivedAt);
 	const unsavedAgentDraftVisible = showUnsavedAgentDraft && draft.source === "custom" && !draft.id;
-	const readOnly = draft.source === "profile" || archivedDraft;
+	const noAgentSelected = draft.source === "custom" && !draft.id && !unsavedAgentDraftVisible;
+	const readOnly = draft.source === "profile" || archivedDraft || noAgentSelected;
 	const agentNameError = readOnly ? null : validateAgentName(draft.displayName);
-	const draftProfileName = draft.profileName ?? (agentNameError ? "new custom profile" : draft.displayName);
+	const draftProfileName = noAgentSelected ? "No agent selected" : draft.profileName ?? (agentNameError ? "new custom profile" : draft.displayName);
 	const visibleContextFiles = useMemo(
 		() => catalog?.contextFiles.filter((contextFile) => {
 			if ((contextFile.scope ?? "global") !== "agent") return true;
@@ -441,25 +440,9 @@ export function AgentsView({
 		localStorage.setItem("pibo.chat.showArchivedAgents", String(next));
 		if (next || !archivedDraft) return;
 
-		const fallbackCustomAgent = activeCustomAgents[0];
-		if (fallbackCustomAgent) {
-			const nextDraft = agentToDraft(fallbackCustomAgent);
-			activateDraft(nextDraft, agentDraftSignature(nextDraft));
-			onSelect(fallbackCustomAgent.profileName);
-			return;
-		}
-		const fallbackProfile = pluginProfiles[0];
-		if (fallbackProfile) {
-			const nextDraft = profileToDraft(fallbackProfile, catalog ?? undefined);
-			activateDraft(nextDraft, agentDraftSignature(nextDraft));
-			onSelect(fallbackProfile.name);
-			return;
-		}
-		const nextDraft = createBlankAgentDraft(
-			catalog ?? undefined,
-			uniqueDraftAgentName(agentNamesInUse(agents, customAgents)),
-		);
-		activateDraft(nextDraft, agentDraftSignature(nextDraft));
+		const nextDraft = selectExistingAgentDraft(agents, customAgents, catalog ?? undefined);
+		activateDraft(nextDraft, agentDraftSignature(nextDraft), false);
+		if (nextDraft.profileName) onSelect(nextDraft.profileName);
 	};
 
 	const setDraftArchived = async (archived: boolean) => {
@@ -520,11 +503,9 @@ export function AgentsView({
 			await deleteCustomAgent(draft.id, deleteConfirmName);
 			const remainingAgents = customAgents.filter((agent) => agent.id !== draft.id);
 			setCustomAgents(remainingAgents);
-			const nextDraft = createBlankAgentDraft(
-				catalog ?? undefined,
-				uniqueDraftAgentName(agentNamesInUse(agents, remainingAgents)),
-			);
-			activateDraft(nextDraft, agentDraftSignature(nextDraft));
+			const nextDraft = selectExistingAgentDraft(agents.filter((agent) => agent.name !== draft.profileName), remainingAgents, catalog ?? undefined);
+			activateDraft(nextDraft, agentDraftSignature(nextDraft), false);
+			if (nextDraft.profileName) onSelectRef.current(nextDraft.profileName);
 			setDeleteConfirmName("");
 			onAgentsChangedRef.current();
 			setLocalError(null);
@@ -656,10 +637,10 @@ export function AgentsView({
 					<div className="min-w-0">
 						<h1 className="text-sm font-bold uppercase tracking-wider">Agent Designer</h1>
 						<div className="font-mono text-[11px] text-slate-500 truncate">{draftProfileName}</div>
-						<div className="text-[11px] uppercase tracking-wider text-slate-500">{draft.source === "profile" ? "read-only plugin profile" : archivedDraft ? "archived custom agent" : "custom agent"}</div>
+						<div className="text-[11px] uppercase tracking-wider text-slate-500">{noAgentSelected ? "no agent selected" : draft.source === "profile" ? "read-only plugin profile" : archivedDraft ? "archived custom agent" : "custom agent"}</div>
 					</div>
 					<div className="flex items-center gap-2">
-						{draft.source === "custom" && !archivedDraft ? (
+						{draft.source === "custom" && !archivedDraft && !noAgentSelected ? (
 							<div className={`text-xs ${saveState === "error" ? "text-red-300" : saveState === "saved" ? "text-emerald-300" : "text-slate-400"}`} aria-live="polite" data-agent-autosave-state={saveState}>
 								{autosaveStateLabel(saveState)}
 							</div>
@@ -680,6 +661,7 @@ export function AgentsView({
 					</div>
 				</div>
 				{designerAvailable ? null : <div className="mb-3 border border-[#f59e0b]/60 bg-[#f59e0b]/10 text-amber-100 px-3 py-2 text-sm rounded-sm">{agentDesignerUnavailableMessage()}</div>}
+				{noAgentSelected ? <div className="mb-3 border border-slate-700 bg-[#151f24] text-slate-300 px-3 py-2 text-sm rounded-sm">Select an existing agent or use New Agent to create one.</div> : null}
 				{draft.source === "profile" ? <div className="mb-3 border border-slate-700 bg-[#151f24] text-slate-300 px-3 py-2 text-sm rounded-sm">This profile is registered by a plugin. Copy it to create an editable custom agent.</div> : null}
 				{archivedDraft ? <div className="mb-3 border border-[#f59e0b]/60 bg-[#f59e0b]/10 text-amber-100 px-3 py-2 text-sm rounded-sm">This agent is archived. Restore it before editing or starting new sessions.</div> : null}
 				{localError ? <div className="mb-3 border border-red-500/60 bg-red-500/10 text-red-200 px-3 py-2 text-sm rounded-sm">{localError}</div> : null}

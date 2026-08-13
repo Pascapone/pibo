@@ -19,12 +19,9 @@ function archivedAgentToggleHandler() {
 test("hiding archived agents switches the designer away from a hidden archived selection", () => {
 	const handler = archivedAgentToggleHandler();
 	assert.match(handler, /if \(next \|\| !archivedDraft\) return;/);
-	assert.match(handler, /const fallbackCustomAgent = activeCustomAgents\[0\];/);
-	assert.match(handler, /activateDraft\(nextDraft, agentDraftSignature\(nextDraft\)\);/);
-	assert.match(handler, /onSelect\(fallbackCustomAgent\.profileName\);/);
-	assert.match(handler, /const fallbackProfile = pluginProfiles\[0\];/);
-	assert.match(handler, /const nextDraft = profileToDraft\(fallbackProfile, catalog \?\? undefined\);/);
-	assert.match(handler, /onSelect\(fallbackProfile\.name\);/);
+	assert.match(handler, /const nextDraft = selectExistingAgentDraft\(agents, customAgents, catalog \?\? undefined\);/);
+	assert.match(handler, /activateDraft\(nextDraft, agentDraftSignature\(nextDraft\), false\);/);
+	assert.match(handler, /if \(nextDraft\.profileName\) onSelect\(nextDraft\.profileName\);/);
 });
 
 test("the archived-agent visibility button uses the reconciled toggle handler", () => {
