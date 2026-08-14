@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
   type Dispatch,
+  type KeyboardEvent,
   type ReactNode,
   type SetStateAction,
 } from "react";
@@ -19,6 +20,7 @@ import type {
 import type { SlashCommand } from "./chat-commands";
 import type { ChatSessionViewId } from "./session-views/types";
 import type { ChatMessageDelivery } from "./api-chat-sessions";
+import { adjacentMessageDeliveryChoice } from "./message-delivery-keyboard";
 import { uploadChatFiles } from "./api-chat-files";
 import { getLoopSessionGoal } from "./api-loops";
 import {
@@ -182,6 +184,7 @@ export function SessionTracePane({
     useState<ComposerSendPlan | null>(null);
   const deliverySendIdsRef = useRef(new Set<string>());
   const queueButtonRef = useRef<HTMLButtonElement>(null);
+  const steerButtonRef = useRef<HTMLButtonElement>(null);
   const selectedBackendPiboSessionId = selectedSessionBackendId(selectedPiboSessionId);
   const sessionGoalQuery = useQuery({
     queryKey: selectedBackendPiboSessionId
@@ -418,6 +421,17 @@ export function SessionTracePane({
     }
   };
 
+  const moveDeliveryChoiceFocus = (
+    currentDelivery: ChatMessageDelivery,
+    event: KeyboardEvent<HTMLButtonElement>,
+  ) => {
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+    const nextDelivery = adjacentMessageDeliveryChoice(currentDelivery, event.key);
+    if (!nextDelivery) return;
+    event.preventDefault();
+    (nextDelivery === "queue" ? queueButtonRef : steerButtonRef).current?.focus();
+  };
+
   const sessionViewProps = createSessionTraceViewProps({
     currentTraceView,
     isLoading: loadingTrace,
@@ -465,16 +479,19 @@ export function SessionTracePane({
               ref={queueButtonRef}
               type="button"
               onClick={() => void chooseDelivery("queue")}
-              className="rounded-sm border border-slate-700 bg-[#151f24] p-3 text-left transition hover:border-[#11a4d4] hover:bg-[#11a4d4]/10 disabled:opacity-50"
+              onKeyDown={(event) => moveDeliveryChoiceFocus("queue", event)}
+              className="rounded-sm border border-slate-700 bg-[#151f24] p-3 text-left transition hover:border-[#11a4d4] hover:bg-[#11a4d4]/10 focus-visible:border-[#11a4d4] focus-visible:bg-[#11a4d4]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#11a4d4]/50 disabled:opacity-50"
               data-pibo-debug="message-delivery-queue"
             >
               <span className="block text-xs font-bold uppercase tracking-wider text-[#11a4d4]">Queue</span>
               <span className="mt-1 block text-xs leading-5 text-slate-400">Run it as the next turn after the active turn finishes.</span>
             </button>
             <button
+              ref={steerButtonRef}
               type="button"
               onClick={() => void chooseDelivery("steer")}
-              className="rounded-sm border border-amber-500/50 bg-amber-500/5 p-3 text-left transition hover:border-amber-400 hover:bg-amber-500/10 disabled:opacity-50"
+              onKeyDown={(event) => moveDeliveryChoiceFocus("steer", event)}
+              className="rounded-sm border border-amber-500/50 bg-amber-500/5 p-3 text-left transition hover:border-amber-400 hover:bg-amber-500/10 focus-visible:border-amber-400 focus-visible:bg-amber-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/50 disabled:opacity-50"
               data-pibo-debug="message-delivery-steer"
             >
               <span className="block text-xs font-bold uppercase tracking-wider text-amber-400">Steer</span>
