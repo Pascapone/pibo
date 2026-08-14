@@ -44,6 +44,7 @@ import {
 	attachStreamingProviderTelemetryToBenchmarks,
 	evaluateStreamingLivePipelineRegressions,
 	evaluateStreamingProviderRegressions,
+	evaluateStreamingSseHeaderRegressions,
 	readStreamingBenchmarkArtifact,
 	readStreamingBenchmarkRuns,
 	scoreStreamingBenchmark,
@@ -67,7 +68,7 @@ import { compactTarget, limitStdout, readBaselineSnapshot, writeArtifact, writeL
 import { applyNegativeStreamingProfile, DEFAULT_DEPTH_LIMIT, DEFAULT_EVENT_LIMIT, DEFAULT_NODE_LIMIT, DEFAULT_TEXT_LIMIT, parseDuration, parseFixtureMix, parseFixturePreludeMessages, parseFixtureProfile, parseNegativeProfile, parseOptions, parseRuns, presetScope, resolveScope, resolveStreamingBenchmarkCompareUrl, resolveStreamingBenchmarkHostedCompareUrl, type WebOptions } from "./web-options.js";
 export { formatStreamingBenchmarkAssertionSummary, formatStreamingBenchmarkUrlComparison, summarizeStreamingSelectedLiveEventSource } from "./web-streaming-report.js";
 export { resolveStreamingBenchmarkHostedCompareUrlFromValues } from "./web-options.js";
-export { attachStreamingProviderTelemetryToBenchmark, evaluateStreamingBenchmarkAssertion, evaluateStreamingBenchmarkUrlComparisonRegressions, evaluateStreamingLivePipelineRegressions, evaluateStreamingProviderRegressions, summarizeStreamingBenchmarkUrlComparison, summarizeStreamingBenchmarks, summarizeStreamingLivePipeline, summarizeStreamingProviderPreservation } from "./web-streaming-benchmark-analysis.js";
+export { attachStreamingProviderTelemetryToBenchmark, evaluateStreamingBenchmarkAssertion, evaluateStreamingBenchmarkUrlComparisonRegressions, evaluateStreamingLivePipelineRegressions, evaluateStreamingProviderRegressions, evaluateStreamingSseHeaderRegressions, summarizeStreamingBenchmarkUrlComparison, summarizeStreamingBenchmarks, summarizeStreamingLivePipeline, summarizeStreamingProviderPreservation } from "./web-streaming-benchmark-analysis.js";
 export { collectStreamingProviderTelemetryFromSelectedBrowserSession, collectStreamingProviderTelemetryFromSession, collectStreamingProviderTelemetryFromTurn, summarizeStreamingProviderTelemetry } from "./web-streaming-provider-telemetry.js";
 export { formatWatch, inferWatchFlickers } from "./web-render-analysis.js";
 export { analyzeStreamingRenderOrderCapture } from "./web-render-order-analysis.js";
@@ -514,6 +515,7 @@ async function runStreamingBenchmarkSeries(client: CdpClient, runs: number, dura
 
 async function runStreamingBenchmark(client: CdpClient, durationMs: number, options: RunStreamingBenchmarkOptions = {}): Promise<StreamingBenchmark> {
 	await client.send("Page.bringToFront").catch(() => undefined);
+	const targetUrl = await currentBrowserUrl(client);
 	const benchmarkTimeoutMs = durationMs + (options.startBackendFixture ? 20_000 : 10_000);
 	const benchmark = await client.evaluateJson<Omit<StreamingBenchmark, "score">>(buildStreamingBenchmarkExpression(durationMs, options), benchmarkTimeoutMs);
 	const withRenderOrder = { ...benchmark, renderOrder: analyzeStreamingRenderOrderCapture(benchmark.renderOrder) };
@@ -525,6 +527,7 @@ async function runStreamingBenchmark(client: CdpClient, durationMs: number, opti
 		...withCadence,
 		regressions: [
 			...withCadence.regressions,
+			...evaluateStreamingSseHeaderRegressions(withCadence, targetUrl),
 			...(withCadence.renderOrder?.analysis?.regressions ?? []),
 			...evaluateStreamingLivePipelineRegressions(withCadence),
 			...evaluateStreamingProviderRegressions(withCadence),
