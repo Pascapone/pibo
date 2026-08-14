@@ -49,6 +49,7 @@ export function applySingleEventToNodes(
 			storedEvent.eventSequence,
 			storedEvent.streamId,
 			storedEvent.streamFrameIndex,
+			storedEvent.traceSource,
 		);
 		return;
 	}
@@ -62,6 +63,7 @@ export function applySingleEventToNodes(
 			storedEvent.eventSequence,
 			storedEvent.streamId,
 			storedEvent.streamFrameIndex,
+			storedEvent.traceSource,
 		);
 		return;
 	}
@@ -73,6 +75,7 @@ export function applySingleEventToNodes(
 			storedEvent.eventSequence,
 			storedEvent.streamId,
 			storedEvent.streamFrameIndex,
+			storedEvent.traceSource,
 		);
 		const existing = byId.get(node.id) ?? findMatchingContentNode(byId, node);
 		if (existing) {
@@ -93,6 +96,7 @@ export function applySingleEventToNodes(
 		storedEvent.eventSequence,
 		storedEvent.streamId,
 		storedEvent.streamFrameIndex,
+		storedEvent.traceSource,
 	);
 	if (!node) return;
 	if (
@@ -185,6 +189,7 @@ function assistantMessageNodeFromEvent(
 	eventSequence?: number,
 	streamId?: number,
 	streamFrameIndex?: number,
+	traceSource?: ChatWebStoredEvent["traceSource"],
 ): PiboTraceNode {
 	const eventId = typeof event.eventId === "string" ? event.eventId : undefined;
 	const assistantId = assistantEventNodeId(event);
@@ -203,7 +208,7 @@ function assistantMessageNodeFromEvent(
 		output: event.text,
 		source: "event-log",
 		stableKey: assistantId ? `assistant:${assistantId}` : eventStableKey(event),
-		orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex),
+		orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex, traceSource),
 		children: [],
 	};
 }
@@ -461,6 +466,7 @@ function traceNodeFromEvent(
 	eventSequence?: number,
 	streamId?: number,
 	streamFrameIndex?: number,
+	traceSource?: ChatWebStoredEvent["traceSource"],
 ): PiboTraceNode | undefined {
 	const eventId = "eventId" in event && typeof event.eventId === "string" ? event.eventId : undefined;
 	const id = `event:${event.type}:${eventId ?? cryptoSafeId(event)}`;
@@ -472,7 +478,7 @@ function traceNodeFromEvent(
 		startedAt: createdAt,
 		source: "event-log" as const,
 		stableKey: eventStableKey(event),
-		orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex),
+		orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex, traceSource),
 		children: [] as PiboTraceNode[],
 	};
 
@@ -488,7 +494,7 @@ function traceNodeFromEvent(
 					startedAt: createdAt,
 					source: "event-log",
 					stableKey: eventId ? `run-notification:${eventId}` : id,
-					orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex),
+					orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex, traceSource),
 					notification,
 				});
 			}
@@ -673,6 +679,7 @@ function mergeAssistantDeltaEvent(
 	eventSequence?: number,
 	streamId?: number,
 	streamFrameIndex?: number,
+	traceSource?: ChatWebStoredEvent["traceSource"],
 ): void {
 	if (typeof event.text !== "string" || event.text.length === 0) return;
 
@@ -700,7 +707,7 @@ function mergeAssistantDeltaEvent(
 		output: event.text,
 		source: "event-log",
 		stableKey: assistantId ? `assistant:${assistantId}` : id,
-		orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex),
+		orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex, traceSource),
 		children: [],
 	};
 	nodes.push(node);
@@ -734,6 +741,7 @@ function mergeThinkingDeltaEvent(
 	eventSequence?: number,
 	streamId?: number,
 	streamFrameIndex?: number,
+	traceSource?: ChatWebStoredEvent["traceSource"],
 ): void {
 	if (typeof event.text !== "string" || event.text.length === 0) return;
 
@@ -764,7 +772,7 @@ function mergeThinkingDeltaEvent(
 		output: event.text,
 		source: "event-log",
 		stableKey,
-		orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex),
+		orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex, traceSource),
 		children: [],
 	};
 	nodes.push(node);
@@ -979,8 +987,9 @@ function eventTraceNodeOrder(
 	type: PiboOutputEvent["type"],
 	streamId?: number,
 	streamFrameIndex?: number,
+	traceSource?: ChatWebStoredEvent["traceSource"],
 ): TraceOrderKey {
-	if (eventSequence === undefined && (streamId !== undefined || streamFrameIndex !== undefined)) {
+	if (traceSource === "live") {
 		return liveTraceOrder(streamId, streamFrameIndex, eventNodeKind(type));
 	}
 	return eventTraceOrder(eventSequence, eventNodeKind(type));
