@@ -10,6 +10,7 @@ import type {
 	PiboThinkingParams,
 } from "../core/events.js";
 import { InitialSessionContextBuilder, type InitialSessionContext } from "../core/profiles.js";
+import { createDefaultPiboProfile, DEFAULT_PIBO_PROFILE_NAME } from "../core/default-profile.js";
 import { parsePiboThinkingLevel } from "../core/thinking.js";
 import { createWebSearchToolProfile } from "../tools/web-search.js";
 import { CODEX_BROWSER_TOOL_NAMES, createCodexBrowserToolProfiles } from "../tools/codex-browser.js";
@@ -21,8 +22,9 @@ import { addPiboNativeToolingContext, registerPiboNativeTooling } from "./native
 import { piboWebAnnotationsPlugin } from "./web-annotations.js";
 import { definePiboPlugin, PiboPluginRegistry } from "./registry.js";
 import type { PiboPlugin, PiboProfileBuildContext } from "./types.js";
+import { PI_AGENT_RUNTIME_DRIVER } from "../agent-runtimes/pi/adapter.js";
 
-export const DEFAULT_PIBO_PROFILE_NAME = "base";
+export { createDefaultPiboProfile, DEFAULT_PIBO_PROFILE_NAME } from "../core/default-profile.js";
 
 const GATEWAY_PROFILE_TOOLS = ["pibo_gateway_send"] as const;
 const PIBO_PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -145,6 +147,8 @@ export const piboCorePlugin = definePiboPlugin({
 	id: "pibo.core",
 	name: "Pibo Core",
 	register(api) {
+		api.registerAgentRuntimeDriver(PI_AGENT_RUNTIME_DRIVER);
+		api.registerAgentRuntimeInstance({ id: "pi", adapterId: "pi", displayName: "Pi Coding Agent" });
 		api.registerSkill({
 			name: "pi-agent-harness",
 			path: builtinSkillPath("pi-agent-harness"),
@@ -483,13 +487,6 @@ export function createDefaultPiboPluginRegistry(): PiboPluginRegistry {
 export function selectDefaultPiboProfileName(registry: PiboPluginRegistry): string {
 	const names = registry.getProfileNames();
 	return names.includes(DEFAULT_PIBO_PROFILE_NAME) ? DEFAULT_PIBO_PROFILE_NAME : names[0] ?? DEFAULT_PIBO_PROFILE_NAME;
-}
-
-export function createDefaultPiboProfile(): InitialSessionContext {
-	return new InitialSessionContextBuilder(DEFAULT_PIBO_PROFILE_NAME)
-		.withBuiltinToolNames(["read", "bash", "edit", "write"])
-		.withToolPackages({ goalControl: true })
-		.createSession();
 }
 
 export function resolvePiboProfileNameFromRegistryOrDefault(registry: PiboPluginRegistry, profileName?: string): string {

@@ -28,6 +28,14 @@ import type {
 } from "./types.js";
 import { listInstalledCliToolAgentContexts } from "../tools/registry.js";
 import { listPiPackages } from "../pi-packages/store.js";
+import { AgentRuntimeAdapterRegistry } from "../agent-runtime/registry.js";
+import type {
+	AgentRuntimeAdapter,
+	AgentRuntimeDriver,
+	AgentRuntimeInstanceDefinition,
+	AgentRuntimeSession,
+	OpenAgentRuntimeSessionInput,
+} from "../agent-runtime/types.js";
 
 export type PiboPluginRegistryOptions = {
 	plugins?: readonly PiboPlugin[];
@@ -59,6 +67,7 @@ function webRoutesOverlap(left: string, right: string): boolean {
 }
 
 export class PiboPluginRegistry {
+	private readonly agentRuntimes = new AgentRuntimeAdapterRegistry();
 	private readonly tools = new Map<string, ToolProfile>();
 	private readonly subagents = new Map<string, SubagentProfile>();
 	private readonly skills = new Map<string, SkillProfile>();
@@ -94,6 +103,30 @@ export class PiboPluginRegistry {
 		this.pluginIds.add(plugin.id);
 		this.pluginNames.set(plugin.id, plugin.name ?? plugin.id);
 		plugin.register(this.createApi(plugin.id));
+	}
+
+	registerAgentRuntimeDriver<TConfig>(driver: AgentRuntimeDriver<TConfig>): void {
+		this.agentRuntimes.registerDriver(driver);
+	}
+
+	registerAgentRuntimeInstance(instance: AgentRuntimeInstanceDefinition): AgentRuntimeAdapter {
+		return this.agentRuntimes.registerInstance(instance);
+	}
+
+	getAgentRuntimeAdapter(instanceId: string): AgentRuntimeAdapter | undefined {
+		return this.agentRuntimes.getInstance(instanceId);
+	}
+
+	requireAgentRuntimeAdapter(instanceId: string): AgentRuntimeAdapter {
+		return this.agentRuntimes.requireInstance(instanceId);
+	}
+
+	openAgentRuntimeSession(instanceId: string, input: OpenAgentRuntimeSessionInput): Promise<AgentRuntimeSession> {
+		return this.agentRuntimes.openSession(instanceId, input);
+	}
+
+	getAgentRuntimeInstanceIds(): string[] {
+		return this.agentRuntimes.getInstanceIds();
 	}
 
 	registerTool(tool: ToolProfile): void {
@@ -253,6 +286,8 @@ export class PiboPluginRegistry {
 				name: profile.name,
 				description: profile.description,
 				aliases: [...(profile.aliases ?? [])],
+				runtimeInstanceId: sessionContext.runtimeInstanceId,
+				runtimeOptions: structuredClone(sessionContext.runtimeOptions),
 				nativeTools: sessionContext.tools.filter((tool) => tool.enabled !== false).map((tool) => tool.name),
 				skills: sessionContext.skills.filter((skill) => skill.enabled !== false).map((skill) => skill.name),
 				contextFiles: sessionContext.contextFiles.filter((contextFile) => contextFile.enabled !== false).map(contextFileKey),
@@ -279,6 +314,7 @@ export class PiboPluginRegistry {
 
 	getCapabilityCatalog(): PiboCapabilityCatalog {
 		return {
+			agentRuntimes: this.agentRuntimes.getInstanceInfos(),
 			nativeTools: [...this.tools.values()].map((tool) => ({
 				name: tool.name,
 				description: tool.description,
@@ -429,6 +465,8 @@ export class PiboPluginRegistry {
 			pluginId: pkg.pluginId ?? pluginId,
 		});
 		return {
+			registerAgentRuntimeDriver: (driver) => this.registerAgentRuntimeDriver(driver),
+			registerAgentRuntimeInstance: (instance) => this.registerAgentRuntimeInstance(instance),
 			registerTool: (tool) => this.registerTool(withPluginToolContext(tool)),
 			registerTools: (tools) => this.registerTools(tools.map(withPluginToolContext)),
 			registerSubagent: (subagent) => this.registerSubagent(subagent),

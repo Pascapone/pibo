@@ -31,6 +31,11 @@ import type {
 import type { PiboPiPackageInfo } from "../pi-packages/types.js";
 import type { PiboProviderUsageStatus } from "../auth/openai-codex-usage.js";
 import type { PiboLoopStopConditionDefinition, PiboLoopStopConditionInfo } from "../loops/types.js";
+import type {
+	AgentRuntimeDriver,
+	AgentRuntimeInstanceDefinition,
+	AgentRuntimeInstanceInfo,
+} from "../agent-runtime/types.js";
 export type { PiboLoopStopConditionDefinition, PiboLoopStopConditionInfo } from "../loops/types.js";
 /** @deprecated Use PiboLoopStopConditionDefinition. */
 export type PiboRalphStopConditionDefinition = PiboLoopStopConditionDefinition;
@@ -57,6 +62,8 @@ export type PiboProfileInfo = {
 	name: string;
 	description?: string;
 	aliases: string[];
+	runtimeInstanceId: string;
+	runtimeOptions: PiboJsonObject;
 	nativeTools: string[];
 	skills: string[];
 	contextFiles: string[];
@@ -140,6 +147,7 @@ export type PiboMcpServerInfo = {
 };
 
 export type PiboCapabilityCatalog = {
+	agentRuntimes: AgentRuntimeInstanceInfo[];
 	nativeTools: PiboNativeToolInfo[];
 	skills: PiboSkillInfo[];
 	subagents: PiboSubagentInfo[];
@@ -216,6 +224,8 @@ export type PiboPluginEventListener = (event: PiboOutputEvent) => void;
 export type PiboProductEventListener = (event: PiboProductEvent) => void;
 
 export type PiboPluginApi = {
+	registerAgentRuntimeDriver<TConfig>(driver: AgentRuntimeDriver<TConfig>): void;
+	registerAgentRuntimeInstance(instance: AgentRuntimeInstanceDefinition): void;
 	registerTool(tool: ToolProfile): void;
 	registerTools(tools: readonly ToolProfile[]): void;
 	registerSubagent(subagent: SubagentProfile): void;

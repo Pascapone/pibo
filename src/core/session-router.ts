@@ -7,7 +7,7 @@ import {
 } from "./profiles.js";
 import { createDefaultPiboPluginRegistry, createPiboProfileFromRegistryOrDefault, resolvePiboProfileNameFromRegistryOrDefault, selectDefaultPiboProfileName } from "../plugins/builtin.js";
 import type { PiboPluginRegistry } from "../plugins/registry.js";
-import { createPiboRuntime, type PiboRuntimeOptions, type PiboRuntimeRetryDefaults } from "./runtime.js";
+import type { PiboRuntimeOptions, PiboRuntimeRetryDefaults } from "./runtime.js";
 import { RoutedSession, type PiboMessagePreflight } from "./routed-session.js";
 import { runtimeSessionErrorDetails } from "./session-errors.js";
 import type {
@@ -126,6 +126,8 @@ function profileForSession(
 ): InitialSessionContext {
 	const options: InitialSessionContextOptions = {
 		profileName: baseProfile.profileName,
+		runtimeInstanceId: baseProfile.runtimeInstanceId,
+		runtimeOptions: baseProfile.runtimeOptions,
 		sessionId: piSessionId,
 		parentSessionId: parentPiSessionId,
 		model: baseProfile.model,
@@ -252,6 +254,14 @@ function providerEventTelemetryModeFromEnv(env: NodeJS.ProcessEnv = process.env)
 	return value === "1" || value === "true" || value === "detailed" ? "detailed" : "aggregate";
 }
 
+function isRoutedSessionCompatibilityRuntime(value: unknown): value is ConstructorParameters<typeof RoutedSession>[1] {
+	if (!value || typeof value !== "object") return false;
+	const candidate = value as { session?: unknown; dispose?: unknown; setRebindSession?: unknown };
+	return candidate.session !== undefined
+		&& typeof candidate.dispose === "function"
+		&& typeof candidate.setRebindSession === "function";
+}
+
 export class PiboSessionRouter {
 	private readonly sessions = new Map<string, RoutedSession>();
 	private readonly pendingSessions = new Map<string, Promise<RoutedSession>>();
@@ -269,6 +279,7 @@ export class PiboSessionRouter {
 	private readonly routedSessionDisposeTimeoutMs: number;
 	private readonly baseProfile: InitialSessionContext;
 	private readonly pluginRegistry: PiboPluginRegistry;
+	private readonly compatibilityRuntimeRegistry?: PiboPluginRegistry;
 	private readonly sessionStore: PiboSessionStore;
 	private readonly reliabilityStore?: PiboReliabilityStore;
 	private readonly telemetryStore?: TelemetryStore;
@@ -279,6 +290,9 @@ export class PiboSessionRouter {
 
 	constructor(private readonly options: PiboSessionRouterOptions = {}) {
 		this.pluginRegistry = options.pluginRegistry ?? createDefaultPiboPluginRegistry();
+		// Historical custom registries supplied only actions/profiles while runtime creation was implicit.
+		// Preserve that composition contract during the adapter migration without branching on adapter ids.
+		this.compatibilityRuntimeRegistry = options.pluginRegistry ? createDefaultPiboPluginRegistry() : undefined;
 		this.sessionStore = options.sessionStore ?? new InMemoryPiboSessionStore();
 		this.telemetryStore = options.telemetryStore ?? telemetryStoreFromSessionStore(this.sessionStore);
 		this.telemetryWriter = this.telemetryStore ? new AsyncTelemetryWriter(this.telemetryStore) : undefined;
@@ -815,28 +829,50 @@ export class PiboSessionRouter {
 		const telemetryExtension = this.telemetryStore
 			? createPiboProviderTelemetryExtension({ store: this.telemetryStore, writer: this.telemetryWriter, session: piboSession, model: activeModel })
 			: undefined;
-		const runtime = await createPiboRuntime({
-			cwd: piboSession.workspace ?? this.options.cwd,
-			persistSession: this.options.persistSession,
-			thinkingLevel: initialThinkingLevel ?? this.options.thinkingLevel,
-			retryDefaults: resolvePiboSessionRetryDefaults(piboSession.kind, this.options.retryDefaults),
+		const runtimeRegistry = this.resolveAgentRuntimeRegistry(sessionProfile.runtimeInstanceId);
+		const runtimeAdapter = runtimeRegistry.requireAgentRuntimeAdapter(sessionProfile.runtimeInstanceId);
+		const profileDiagnostics = runtimeAdapter.validateProfile({
 			profile: sessionProfile,
-			extensionFactories: [
-				...(telemetryExtension ? [telemetryExtension] : []),
-				...(this.options.extensionFactories ?? []),
-			],
-			subagentRunner: this.createSubagentRunner(piboSession.id),
-			runToolController: this.createRunToolController(piboSession.id),
-			runtimeToolController: this.runtimeRegistry.createController(piboSession.id),
-			modelDefaults,
+			workspace: piboSession.workspace ?? this.options.cwd ?? getDefaultPiboWorkspace(),
+		});
+		const invalidProfile = profileDiagnostics.find((diagnostic) => diagnostic.severity === "error");
+		if (invalidProfile) {
+			throw new Error(`Runtime profile validation failed: ${invalidProfile.message}`);
+		}
+		const runtimeSession = await runtimeRegistry.openAgentRuntimeSession(sessionProfile.runtimeInstanceId, {
+			piboSession,
+			profile: sessionProfile,
+			workspace: piboSession.workspace ?? this.options.cwd ?? getDefaultPiboWorkspace(),
 			activeModel,
-			sessionContext: {
+			productContext: {
 				piboSessionId: piboSession.id,
 				piboRoomId: piboRoomIdFromMetadata(piboSession.metadata),
 				timezone: userSettings.timezone,
 				getActiveMessage: () => session?.getActiveMessage(),
 			},
+			services: {
+				subagentRunner: this.createSubagentRunner(piboSession.id),
+				runToolController: this.createRunToolController(piboSession.id),
+				codeRuntimeToolController: this.runtimeRegistry.createController(piboSession.id),
+				compatibility: {
+					persistSession: this.options.persistSession,
+					thinkingLevel: initialThinkingLevel ?? this.options.thinkingLevel,
+					retryDefaults: resolvePiboSessionRetryDefaults(piboSession.kind, this.options.retryDefaults),
+					extensionFactories: [
+						...(telemetryExtension ? [telemetryExtension] : []),
+						...(this.options.extensionFactories ?? []),
+					],
+					modelDefaults,
+				},
+			},
 		});
+		const runtime = runtimeSession.getNativeCompatibilityHandle?.();
+		if (!isRoutedSessionCompatibilityRuntime(runtime)) {
+			await runtimeSession.dispose();
+			throw new Error(
+				`Runtime adapter "${runtimeAdapter.descriptor.id}" does not expose the transitional routed-session compatibility handle.`,
+			);
+		}
 		const initialFastMode = resolvePiboSessionInitialFastMode(piboSession) ?? selectRequestedFastMode(sessionProfile, modelDefaults) ?? false;
 		session = new RoutedSession(
 			piboSession.id,
@@ -863,6 +899,12 @@ export class PiboSessionRouter {
 		);
 		this.sessions.set(piboSession.id, session);
 		return session;
+	}
+
+	private resolveAgentRuntimeRegistry(instanceId: string): PiboPluginRegistry {
+		if (this.pluginRegistry.getAgentRuntimeAdapter(instanceId)) return this.pluginRegistry;
+		if (this.compatibilityRuntimeRegistry?.getAgentRuntimeAdapter(instanceId)) return this.compatibilityRuntimeRegistry;
+		throw new Error(`Unknown agent runtime instance "${instanceId}".`);
 	}
 
 	private ensureSessionActiveModel(

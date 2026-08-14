@@ -18,6 +18,7 @@ import {
 	type RetrySettings,
 	type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
+import type { PiboJsonObject } from "./events.js";
 import {
 	DEFAULT_BUILTIN_TOOL_NAMES,
 	InitialSessionContext,
@@ -27,7 +28,7 @@ import {
 	type ToolProfile,
 } from "./profiles.js";
 import { loadPiboModelDefaults, selectRequestedModelProfile, selectRequestedThinkingLevel, type PiboModelDefaults } from "./model-defaults.js";
-import { createDefaultPiboProfile } from "../plugins/builtin.js";
+import { createDefaultPiboProfile } from "./default-profile.js";
 import {
 	createSubagentToolDefinitions,
 	createSubagentToolName,
@@ -129,6 +130,8 @@ export type PiboRuntimeSessionContext = {
 
 export type PiboProfileInspection = {
 	profileName: string;
+	runtimeInstanceId: string;
+	runtimeOptions: PiboJsonObject;
 	model?: ModelProfile;
 	mainModel?: ModelProfile;
 	subagentModel?: ModelProfile;
@@ -610,6 +613,8 @@ export async function inspectPiboProfile(options: PiboRuntimeOptions = {}): Prom
 	const profile = options.profile ?? createDefaultPiboProfile();
 	const runtimeProfile = new InitialSessionContext({
 		profileName: profile.profileName,
+		runtimeInstanceId: profile.runtimeInstanceId,
+		runtimeOptions: profile.runtimeOptions,
 		sessionId: profile.sessionId,
 		parentSessionId: profile.parentSessionId,
 		skills: profile.skills,
@@ -657,6 +662,8 @@ export async function inspectPiboProfile(options: PiboRuntimeOptions = {}): Prom
 
 		return {
 			profileName: profile.profileName,
+			runtimeInstanceId: profile.runtimeInstanceId,
+			runtimeOptions: structuredClone(profile.runtimeOptions),
 			...(profile.model ? { model: { ...profile.model } } : {}),
 			...(profile.mainModel ? { mainModel: { ...profile.mainModel } } : {}),
 			...(profile.subagentModel ? { subagentModel: { ...profile.subagentModel } } : {}),
