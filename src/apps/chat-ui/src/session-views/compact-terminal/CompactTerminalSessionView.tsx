@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
-import { ChevronDown, ChevronRight, CircleX, GitBranch, Hammer, MessageSquare } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, CircleX, GitBranch, Hammer, Image as ImageIcon, MessageSquare } from "lucide-react";
 import { Virtuoso } from "react-virtuoso";
 import { AgentDelegationCard } from "../../components/AgentDelegationCard";
+import { DialogShell } from "../../components/DialogShell";
 import { PendingUserMessageDelivery } from "../../components/PendingUserMessageDelivery";
 import { useStickyVirtuoso } from "../../components/useStickyVirtuoso";
 import { useSessionActivity } from "../../hooks/useSessionActivity";
@@ -10,6 +11,7 @@ import { SessionGoalIndicator, sessionGoalIndicatorStatus } from "../../session-
 import { MarkdownRenderer } from "../../tracing/MarkdownRenderer";
 import { collectTerminalRows, isTraceSnapshotCollectionEnabled } from "../../tracing/snapshotCollector";
 import type { ChatSessionViewProps } from "../types";
+import { chatImagePreviewUrls } from "../../api-chat-files";
 import { TerminalDetails } from "./TerminalDetails";
 import { TerminalLine } from "./TerminalLine";
 import { TerminalLoginCard } from "./TerminalLoginCard";
@@ -17,7 +19,7 @@ import { TerminalModelCard } from "./TerminalModelCard";
 import { TerminalStatusCard } from "./TerminalStatusCard";
 import { TerminalThinkingCard } from "./TerminalThinkingCard";
 import { readTerminalReadingPosition, writeTerminalReadingPosition, type TerminalReadingPosition } from "./terminal-reading-position";
-import { buildCompactTerminalRows, findActiveTurnStartedAt, formatTerminalDuration, type CompactTerminalLine, type CompactTerminalRow } from "../../../../../session-ui/terminalRows.js";
+import { buildCompactTerminalRows, findActiveTurnStartedAt, formatTerminalDuration, type CompactTerminalImagePreview, type CompactTerminalLine, type CompactTerminalRow } from "../../../../../session-ui/terminalRows.js";
 
 const SHOW_LATEST_THRESHOLD_PX = 180;
 const OLDER_TRACE_PREFETCH_TOP_THRESHOLD_PX = 4_800;
@@ -64,6 +66,7 @@ export function CompactTerminalSessionView({
 	const [reloadReadingPosition, setReloadReadingPosition] = useState<TerminalReadingPosition | undefined>();
 	const requestedRestorePageRef = useRef<string | undefined>(undefined);
 	const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+	const [imageDialog, setImageDialog] = useState<{ images: readonly CompactTerminalImagePreview[]; index: number } | null>(null);
 	const renderedContentKey = useMemo(() => [rows, expandedRows] as const, [expandedRows, rows]);
 	const [focusedNavigationRowId, setFocusedNavigationRowId] = useState<string | null>(null);
 	const navigationCursorRef = useRef<Partial<Record<TerminalNavigationKind, string>>>({});
@@ -177,6 +180,7 @@ export function CompactTerminalSessionView({
 		scrollbarDragActiveRef.current = false;
 		scrollbarDragDeferredLoadRef.current = false;
 		setReloadReadingPosition(piboSessionId ? readTerminalReadingPosition(piboSessionId) : undefined);
+		setImageDialog(null);
 	}, [piboSessionId]);
 
 	useEffect(() => {
@@ -262,6 +266,9 @@ export function CompactTerminalSessionView({
 			return next;
 		});
 	};
+	const openImagePreview = useCallback((images: readonly CompactTerminalImagePreview[]) => {
+		setImageDialog({ images: [...images], index: 0 });
+	}, []);
 	const renderRow = useCallback((_: number, row: CompactTerminalRow) => (
 		<div className="px-4">
 			<TerminalRow
@@ -272,12 +279,13 @@ export function CompactTerminalSessionView({
 				onToggle={() => toggleRow(row)}
 				onFork={onFork}
 				onOpenSession={onOpenSession}
+				onViewImages={openImagePreview}
 				onThinkingLevelChange={onThinkingLevelChange}
 				onModelChanged={onModelChanged}
 				signals={signals}
 			/>
 		</div>
-	), [expandedRows, focusedNavigationRowId, onFork, onModelChanged, onOpenSession, onThinkingLevelChange, signals, traceView?.piboSessionId]);
+	), [expandedRows, focusedNavigationRowId, onFork, onModelChanged, onOpenSession, onThinkingLevelChange, openImagePreview, signals, traceView?.piboSessionId]);
 
 	const virtuosoComponents = useMemo(() => ({
 		Footer: isStreaming || showGoalIndicator
@@ -351,6 +359,16 @@ export function CompactTerminalSessionView({
 			</div>
 
 			{rows.length === 0 && showGoalIndicator ? <TerminalStreamingFooter isWorking={false} goal={sessionGoal} /> : null}
+
+			{imageDialog ? (
+				<TerminalImageDialog
+					images={imageDialog.images}
+					index={imageDialog.index}
+					piboSessionId={piboSessionId}
+					onIndexChange={(index) => setImageDialog((current) => current ? { ...current, index } : current)}
+					onClose={() => setImageDialog(null)}
+				/>
+			) : null}
 
 			{!stickyView.isSticky ? (
 				<button
@@ -456,6 +474,7 @@ function TerminalRow({
 	onToggle,
 	onFork,
 	onOpenSession,
+	onViewImages,
 	onThinkingLevelChange,
 	onModelChanged,
 	signals,
@@ -467,6 +486,7 @@ function TerminalRow({
 	onToggle: () => void;
 	onFork: ChatSessionViewProps["onFork"];
 	onOpenSession: ChatSessionViewProps["onOpenSession"];
+	onViewImages: (images: readonly CompactTerminalImagePreview[]) => void;
 	onThinkingLevelChange: ChatSessionViewProps["onThinkingLevelChange"];
 	onModelChanged: ChatSessionViewProps["onModelChanged"];
 	signals: ChatSessionViewProps["signals"];
@@ -555,7 +575,7 @@ function TerminalRow({
 						onModelChanged={onModelChanged}
 					/>
 				</div>
-				<TerminalRowActions row={row} onFork={onFork} onOpenSession={onOpenSession} />
+				<TerminalRowActions row={row} onFork={onFork} onOpenSession={onOpenSession} onViewImages={onViewImages} />
 			</div>
 			{expanded ? <TerminalDetails row={row} onOpenSession={onOpenSession} /> : null}
 		</div>
@@ -657,13 +677,22 @@ function TerminalRowActions({
 	row,
 	onFork,
 	onOpenSession,
+	onViewImages,
 }: {
 	row: CompactTerminalRow;
 	onFork: ChatSessionViewProps["onFork"];
 	onOpenSession: ChatSessionViewProps["onOpenSession"];
+	onViewImages: (images: readonly CompactTerminalImagePreview[]) => void;
 }) {
+	const images = previewableTerminalImages(row.imagePreviews);
 	return (
-		<div className={`flex shrink-0 items-start gap-1 transition-opacity ${row.forkEntryId ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"}`}>
+		<div className={`flex shrink-0 items-start gap-1 transition-opacity ${row.forkEntryId || images.length ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"}`}>
+			{images.length ? (
+				<RowAction label={images.length > 1 ? `View ${images.length} images` : "View image"} onClick={() => onViewImages(images)}>
+					<ImageIcon size={13} />
+					{images.length > 1 ? `View ${images.length}` : "View"}
+				</RowAction>
+			) : null}
 			{row.linkedPiboSessionId ? (
 				<RowAction label="Open linked session" onClick={() => onOpenSession(row.linkedPiboSessionId!)}>
 					Open
@@ -676,6 +705,93 @@ function TerminalRowActions({
 				</RowAction>
 			) : null}
 		</div>
+	);
+}
+
+function previewableTerminalImages(
+	images: readonly CompactTerminalImagePreview[] | undefined,
+): CompactTerminalImagePreview[] {
+	return (images ?? []).filter((image) => Boolean(image.payloadRef || image.path || image.generatedToolCallId));
+}
+
+function TerminalImageDialog({
+	images,
+	index,
+	piboSessionId,
+	onIndexChange,
+	onClose,
+}: {
+	images: readonly CompactTerminalImagePreview[];
+	index: number;
+	piboSessionId: string;
+	onIndexChange: (index: number) => void;
+	onClose: () => void;
+}) {
+	const image = images[index];
+	const urls = useMemo(() => image ? chatImagePreviewUrls(image, piboSessionId) : [], [image, piboSessionId]);
+	const [sourceIndex, setSourceIndex] = useState(0);
+	const [loadState, setLoadState] = useState<"loading" | "loaded" | "error">("loading");
+	const source = urls[sourceIndex];
+
+	useEffect(() => {
+		setSourceIndex(0);
+		setLoadState("loading");
+	}, [image?.id]);
+
+	if (!image) return null;
+	const showPrevious = index > 0;
+	const showNext = index + 1 < images.length;
+	return (
+		<DialogShell
+			title="Image preview"
+			description={images.length > 1 ? `Image ${index + 1} of ${images.length}` : "Tool image"}
+			onClose={onClose}
+			maxWidthClassName="max-w-6xl"
+		>
+			<div className="space-y-3 p-3" data-pibo-component="TerminalImageDialog" data-image-count={images.length}>
+				<div className="relative flex min-h-[18rem] items-center justify-center overflow-hidden border border-[#2a2a2a] bg-[#0b0b0b]">
+					{source && loadState !== "error" ? (
+						<img
+							key={source}
+							src={source}
+							alt={`Tool image: ${image.label}`}
+							className={`max-h-[calc(100vh-12rem)] max-w-full object-contain ${loadState === "loaded" ? "opacity-100" : "opacity-0"}`}
+							onLoad={() => setLoadState("loaded")}
+							onError={() => {
+								if (sourceIndex + 1 < urls.length) {
+									setSourceIndex((current) => current + 1);
+									setLoadState("loading");
+								} else {
+									setLoadState("error");
+								}
+							}}
+						/>
+					) : null}
+					{loadState === "loading" ? (
+						<div className="absolute inset-0 grid place-items-center text-[11px] text-[#737373]" role="status">Loading image…</div>
+					) : null}
+					{loadState === "error" || !source ? (
+						<div className="px-6 py-10 text-center text-[12px] text-[#ef4444]" role="alert">Image preview is no longer available.</div>
+					) : null}
+				</div>
+				<div className="flex min-w-0 items-center justify-between gap-3 text-[11px]">
+					<div className="min-w-0 truncate text-[#737373]" title={image.path ?? image.artifactId ?? image.label}>
+						{image.path ?? image.artifactId ?? image.label}
+					</div>
+					{images.length > 1 ? (
+						<div className="flex shrink-0 items-center gap-1">
+							<RowAction label="Previous image" onClick={() => onIndexChange(index - 1)} disabled={!showPrevious}>
+								<ChevronLeft size={14} />
+							</RowAction>
+							<span className="px-2 tabular-nums text-[#a3a3a3]">{index + 1}/{images.length}</span>
+							<RowAction label="Next image" onClick={() => onIndexChange(index + 1)} disabled={!showNext}>
+								<ChevronRight size={14} />
+							</RowAction>
+						</div>
+					) : null}
+				</div>
+			</div>
+		</DialogShell>
 	);
 }
 
@@ -873,10 +989,12 @@ function RowAction({
 	label,
 	onClick,
 	children,
+	disabled = false,
 }: {
 	label: string;
 	onClick: () => void;
 	children: ReactNode;
+	disabled?: boolean;
 }) {
 	return (
 		<button
@@ -884,7 +1002,8 @@ function RowAction({
 			onClick={onClick}
 			aria-label={label}
 			title={label}
-			className="inline-flex min-h-7 min-w-7 items-center gap-1 border border-[#3a3a3a] px-2 text-[11px] text-[#737373] hover:border-[#38bdf8] hover:text-[#38bdf8]"
+			disabled={disabled}
+			className="inline-flex min-h-7 min-w-7 items-center gap-1 border border-[#3a3a3a] px-2 text-[11px] text-[#737373] hover:border-[#38bdf8] hover:text-[#38bdf8] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:border-[#3a3a3a] disabled:hover:text-[#737373]"
 		>
 			{children}
 		</button>

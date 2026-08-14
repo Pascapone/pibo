@@ -207,6 +207,7 @@ test("compact image tool rows hide binary blobs and show the image path", () => 
 			title: "view_image",
 			input: { path: "/tmp/screenshot.png", detail: "original" },
 			output: { content: [{ type: "image", data: base64, mimeType: "image/png" }], details: { path: "/tmp/screenshot.png", detail: "original" } },
+			payloadRefs: { output: { ref: "trace_image_payload", contentType: "application/json", byteLength: 900, preview: "image", truncatedPreview: true } },
 		}),
 	]), { showThinking: false });
 
@@ -219,6 +220,35 @@ test("compact image tool rows hide binary blobs and show the image path", () => 
 	assert.equal(rows[0].output.path, "/tmp/screenshot.png");
 	assert.equal(rows[0].output.mimeType, "image/png");
 	assert.equal(rows[0].output.detail, "Image data hidden in terminal view.");
+	assert.deepEqual(rows[0].imagePreviews, [{
+		id: "node-image:image:0",
+		label: "/tmp/screenshot.png",
+		path: "/tmp/screenshot.png",
+		artifactId: undefined,
+		payloadRef: "trace_image_payload",
+		payloadImageIndex: 0,
+		generatedToolCallId: undefined,
+		mimeType: "image/png",
+	}]);
+});
+
+test("compact image rows recognize native read results from deferred trace payloads", () => {
+	const rows = buildCompactTerminalRows(traceView([
+		traceNode("tool.call", "node-image-read", {
+			order: 1,
+			title: "read",
+			input: { path: "/tmp/model-inspected.webp" },
+			output: "{\"content\":[{\"type\":\"image\"",
+			payloadRefs: { output: { ref: "trace_read_image", contentType: "application/json", byteLength: 12_000, preview: "image", truncatedPreview: true } },
+		}),
+	]), { showThinking: false });
+
+	assert.equal(rows.length, 1);
+	assert.equal(rows[0].kind, "tool.image");
+	assert.match(rowText(rows[0]), /Viewed image/);
+	assert.match(rowText(rows[0]), /Path: \/tmp\/model-inspected\.webp/);
+	assert.equal(rows[0].imagePreviews[0].payloadRef, "trace_read_image");
+	assert.equal(rows[0].imagePreviews[0].path, "/tmp/model-inspected.webp");
 });
 
 test("compact Codex image generation rows show generate/edit labels and hide binary blobs", () => {
@@ -228,6 +258,7 @@ test("compact Codex image generation rows show generate/edit labels and hide bin
 		traceNode("tool.call", "node-generated-image", {
 			order: 1,
 			title: "codex_image_generation",
+			toolCallId: "call_generate",
 			input: { prompt: "paint a blue whale" },
 			output: {
 				content: [{ type: "image", data: generatedBase64, mimeType: "image/png" }],
@@ -243,6 +274,7 @@ test("compact Codex image generation rows show generate/edit labels and hide bin
 		traceNode("tool.call", "node-edited-image", {
 			order: 2,
 			title: "codex_image_generation",
+			toolCallId: "call_edit",
 			input: { prompt: "make it cinematic", referenced_image_paths: ["/tmp/input.png"] },
 			output: {
 				content: [{ type: "image", data: editedBase64, mimeType: "image/png" }],
@@ -273,6 +305,8 @@ test("compact Codex image generation rows show generate/edit labels and hide bin
 	assert.equal(rows[0].output.referencedImageCount, 0);
 	assert.equal(rows[0].output.mimeType, "image/png");
 	assert.equal(rows[0].output.detail, "Image data hidden in terminal view.");
+	assert.equal(rows[0].imagePreviews[0].path, "/home/pibo/generated_images/ps_1/call_generate.png");
+	assert.equal(rows[0].imagePreviews[0].generatedToolCallId, "call_generate");
 
 	assert.equal(rows[1].kind, "tool.image");
 	assert.match(rowText(rows[1]), /Edited image/);
@@ -341,6 +375,7 @@ test("compact image tool rows group consecutive image reads", () => {
 	]);
 	assert.equal(group.detailItems.length, 3);
 	assert.deepEqual(group.detailItems.map((item) => item.output.path), ["/tmp/image-1.png", "/tmp/image-2.png", "/tmp/image-3.png"]);
+	assert.deepEqual(group.imagePreviews.map((image) => image.path), ["/tmp/image-1.png", "/tmp/image-2.png", "/tmp/image-3.png"]);
 	assert.doesNotMatch(JSON.stringify(group), /abcabc|iVBOR/);
 });
 

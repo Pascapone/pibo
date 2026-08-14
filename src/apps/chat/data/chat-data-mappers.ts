@@ -3,6 +3,7 @@ import { normalizeSessionErrorDetails } from "../../../core/session-errors.js";
 import type { StoredChatEvent } from "../types/event-store.js";
 import { roomWorkspaceFromMetadata, type PiboRoom } from "../types/rooms.js";
 import type { ChatWebSessionIndexItem, ChatWebStoredPiboEvent } from "../types/read-model.js";
+import type { TracePayloadRef } from "../../../shared/trace-types.js";
 import type { PiboDataStore } from "../../../data/pibo-store.js";
 
 export type EventLogRow = {
@@ -16,6 +17,7 @@ export type EventLogRow = {
 	event_id: string | null;
 	idempotency_key: string | null;
 	retention_class: string;
+	payload_ref?: string | null;
 	preview_text: string | null;
 	attributes_json: string;
 	created_at: string;
@@ -48,11 +50,14 @@ export type RoomRow = {
 	updated_at: string;
 };
 
-export function storedPiboEventFromV2Row(row: EventLogRow): ChatWebStoredPiboEvent | undefined {
+export function storedPiboEventFromV2Row(
+	row: EventLogRow,
+	storedPayloadRef?: TracePayloadRef,
+): ChatWebStoredPiboEvent | undefined {
 	const attributes = parseJsonObject(row.attributes_json);
 	const payload = outputPayloadFromV2Row(row, attributes);
 	if (!payload) return undefined;
-	return { id: String(row.stream_id), piboSessionId: row.session_id ?? undefined, eventSequence: row.session_sequence ?? undefined, eventId: row.event_id ?? undefined, streamId: row.stream_id, type: row.type, createdAt: row.created_at, payload };
+	return { id: String(row.stream_id), piboSessionId: row.session_id ?? undefined, eventSequence: row.session_sequence ?? undefined, eventId: row.event_id ?? undefined, streamId: row.stream_id, storedPayloadRef, type: row.type, createdAt: row.created_at, payload };
 }
 
 export function storedChatEventFromV2Row(row: EventLogRow): StoredChatEvent {

@@ -51,6 +51,7 @@ import {
 	TRACE_V2_RAW_EVENTS_MAX_LIMIT,
 	TRACE_V2_TIMELINE_HARD_BYTES,
 	parseTracePayloadRef,
+	readTraceImagePayload,
 	readTracePayloadChunk,
 	traceRawEventsPageFromEvents,
 	traceTimelinePageFromView,
@@ -92,7 +93,8 @@ import { prepareWebAnnotationMessageAttachments, type PreparedWebAnnotationAttac
 import { createDefaultWebAnnotationStore, type WebAnnotationStore } from "../../web-annotations/store.js";
 import { CHAT_WEB_MOUNT_PATH, isChatAppPath, responseBuiltChatAsset, responseBuiltChatPublicFile, responseChatAppShell, CHAT_VSCODE_MOUNT_PATH, isVscodeAppPath, responseBuiltVscodeAsset, responseVscodeAppShell } from "./static-assets.js";
 import { executeProviderAuthAction, isProviderAuthAction, providerAuthActionResponse } from "./provider-auth-actions.js";
-import { prepareChatFileAttachments, resolveDownloadPath, responseChatFileDownload, saveUploadedChatFiles } from "./chat-files.js";
+import { prepareChatFileAttachments, resolveDownloadPath, responseChatFileDownload, responseChatImagePreview, responseChatTraceImage, saveUploadedChatFiles } from "./chat-files.js";
+import { codexImageArtifactPath } from "../../tools/codex-image-artifacts.js";
 import {
 	chatSettingsRoute,
 	chatSettingsRouteInvalidatesBootstrapCatalog,
@@ -4110,6 +4112,38 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				requireSameOriginMultipartRequest(request);
 				await requireSession(request, context);
 				return responseJson(await saveUploadedChatFiles(request), { status: 201 });
+			}
+
+			if (url.pathname === `${CHAT_WEB_API_PREFIX}/image-preview` && request.method === "GET") {
+				const webSession = await requireSession(request, context);
+				const ref = url.searchParams.get("ref")?.trim();
+				if (ref) {
+					const parsed = parseTracePayloadRef(ref);
+					if (!parsed) throw new PiboWebHttpError("Invalid trace payload ref", 400);
+					resolveRequestedSession(state, context, webSession, defaultProfile, parsed.piboSessionId);
+					const index = parseNonNegativeIntSearchParam(url, "index", 0, 100);
+					const image = readTraceImagePayload({ payloadStore: state.dataStore.payloads, ref, index });
+					if (!image) throw new PiboWebHttpError("Trace image not found", 404);
+					return responseChatTraceImage(image);
+				}
+
+				const selectedSession = resolveRequestedSession(
+					state,
+					context,
+					webSession,
+					defaultProfile,
+					url.searchParams.get("piboSessionId") || undefined,
+					url.searchParams.get("roomId") || undefined,
+				);
+				const requestedPath = url.searchParams.get("path")?.trim();
+				const generatedToolCallId = url.searchParams.get("generatedToolCallId")?.trim();
+				if (!requestedPath && !generatedToolCallId) throw new PiboWebHttpError("Image preview source is required", 400);
+				const room = ensureSessionRoom(state, context, selectedSession, webSession);
+				const basePath = roomWorkspaceFromMetadata(room.metadata) ?? selectedSession.workspace ?? getDefaultPiboWorkspace();
+				const absolutePath = requestedPath
+					? resolveDownloadPath(requestedPath, basePath)
+					: codexImageArtifactPath(selectedSession.id, generatedToolCallId!).savedPath;
+				return responseChatImagePreview(absolutePath);
 			}
 
 			if (url.pathname === CHAT_WEB_API_PREFIX + "/download" && request.method === "GET") {

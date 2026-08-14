@@ -47,6 +47,17 @@ export type CompactTerminalPreviewOmission = {
 	maxVisibleLineCount: number;
 };
 
+export type CompactTerminalImagePreview = {
+	id: string;
+	label: string;
+	path?: string;
+	artifactId?: string;
+	payloadRef?: string;
+	payloadImageIndex?: number;
+	generatedToolCallId?: string;
+	mimeType?: string;
+};
+
 export type CompactTerminalDetailItem = {
 	id: string;
 	label: string;
@@ -57,6 +68,7 @@ export type CompactTerminalDetailItem = {
 	linkedPiboSessionId?: string;
 	payloadRefs?: Partial<Record<"input" | "output" | "reasoning" | "error" | "raw", TracePayloadRef>>;
 	previewOmission?: CompactTerminalPreviewOmission;
+	imagePreviews?: readonly CompactTerminalImagePreview[];
 };
 
 export type CompactTerminalRow = {
@@ -87,6 +99,7 @@ export type CompactTerminalRow = {
 	expandable?: boolean;
 	previewOmission?: CompactTerminalPreviewOmission;
 	detailItems?: readonly CompactTerminalDetailItem[];
+	imagePreviews?: readonly CompactTerminalImagePreview[];
 };
 
 export type BuildTerminalRowsOptions = {
@@ -279,10 +292,24 @@ function reconcileConceptualRowCandidates(candidates: readonly RowCandidate[]): 
 				output: candidate.row.output ?? existing.row.output,
 				error: candidate.row.error ?? existing.row.error,
 				payloadRefs: { ...existing.row.payloadRefs, ...candidate.row.payloadRefs },
+				imagePreviews: mergeImagePreviews(existing.row.imagePreviews, candidate.row.imagePreviews),
 			},
 		};
 	}
 	return reconciled;
+}
+
+function mergeImagePreviews(
+	existing: readonly CompactTerminalImagePreview[] | undefined,
+	candidate: readonly CompactTerminalImagePreview[] | undefined,
+): readonly CompactTerminalImagePreview[] | undefined {
+	if (!existing?.length) return candidate;
+	if (!candidate?.length) return existing;
+	const merged = new Map(existing.map((preview) => [preview.id, preview]));
+	for (const preview of candidate) {
+		merged.set(preview.id, { ...merged.get(preview.id), ...preview });
+	}
+	return [...merged.values()];
 }
 
 function applyCompletedTurnTiming(
@@ -469,6 +496,7 @@ function createImageToolRow(node: PiboTraceNode, image: ImageToolClassification)
 		output: image.summary,
 		error: node.error,
 		expandable: node.input !== undefined || image.summary !== undefined || Boolean(node.error),
+		imagePreviews: image.previews,
 	};
 }
 
@@ -984,6 +1012,7 @@ function createImageGroup(candidates: readonly RowCandidate[]): CompactTerminalR
 		orderStreamFrameIndex: firstRow?.orderStreamFrameIndex,
 		detailItems,
 		expandable: detailItems.some((item) => item.input !== undefined || item.output !== undefined || Boolean(item.error)),
+		imagePreviews: detailItems.flatMap((item) => item.imagePreviews ?? []),
 		previewOmission: omittedDetailCount > 0 ? {
 			source: "details",
 			visibleLineCount: visibleDetailItems.length,
@@ -1007,6 +1036,7 @@ function detailItemsForGroup(candidates: readonly RowCandidate[], kind: "explori
 			payloadRefs: candidate.row.payloadRefs,
 			linkedPiboSessionId: candidate.row.linkedPiboSessionId,
 			previewOmission: candidate.row.previewOmission,
+			imagePreviews: candidate.row.imagePreviews,
 		};
 	});
 }
@@ -1020,6 +1050,7 @@ type ImageToolClassification = {
 	verb: string;
 	groupable: boolean;
 	summary: unknown;
+	previews: readonly CompactTerminalImagePreview[];
 	detail: CompactTerminalDetailItem;
 };
 
@@ -1050,7 +1081,8 @@ function classifyImageTool(node: PiboTraceNode): ImageToolClassification | undef
 	const artifactId = codexOperation ? stringValue(details?.artifactId) : undefined;
 	const query = previewQuery(args);
 	const images = collectImagePayloads(node.output);
-	const isImageTool = matchesTool(normalized, ["view_image", "image", "screenshot"]);
+	const isImageTool = matchesTool(normalized, ["view_image", "image", "screenshot"])
+		|| (normalized === "read" && isPreviewableImagePath(path));
 	if (!images.length && !isImageTool && !codexOperation) return undefined;
 
 	const mimeType = images.map((image) => image.mimeType).find((value): value is string => Boolean(value));
@@ -1071,6 +1103,18 @@ function classifyImageTool(node: PiboTraceNode): ImageToolClassification | undef
 	};
 	const labelTarget = path ?? artifactId ?? query ?? mimeType ?? "image";
 	const verb = codexOperation ? codexImageVerb(node.status, codexOperation) : imageToolVerb(node.status, count);
+	const payloadRef = node.payloadRefs?.output?.ref;
+	const previewImages = images.length ? images : [{ mimeType }];
+	const previews = previewImages.map((image, index): CompactTerminalImagePreview => ({
+		id: `${node.id}:image:${index}`,
+		label: previewImages.length > 1 ? `${labelTarget} (${index + 1}/${previewImages.length})` : labelTarget,
+		path,
+		artifactId,
+		payloadRef,
+		payloadImageIndex: payloadRef ? index : undefined,
+		generatedToolCallId: codexOperation ? node.toolCallId : undefined,
+		mimeType: image.mimeType ?? mimeType,
+	}));
 	return {
 		count,
 		path,
@@ -1080,6 +1124,7 @@ function classifyImageTool(node: PiboTraceNode): ImageToolClassification | undef
 		verb,
 		groupable: !codexOperation,
 		summary,
+		previews,
 		detail: {
 			id: node.id,
 			label: `${verb} ${labelTarget}`,
@@ -1087,8 +1132,14 @@ function classifyImageTool(node: PiboTraceNode): ImageToolClassification | undef
 			input: sanitizeImagePayload(node.input),
 			output: summary,
 			error: node.error,
+			imagePreviews: previews,
 		},
 	};
+}
+
+function isPreviewableImagePath(path: string | undefined): boolean {
+	if (!path) return false;
+	return /\.(?:png|jpe?g|gif|webp|bmp|avif)$/i.test(path.split(/[?#]/, 1)[0] ?? "");
 }
 
 function collectImagePayloads(value: unknown, depth = 0, seen = new Set<unknown>()): Array<{ mimeType?: string }> {

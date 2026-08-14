@@ -363,6 +363,94 @@ test("chat web app downloads files relative to the selected session workspace", 
 	}
 });
 
+test("chat web app previews raster images inline from session paths", async () => {
+	const { channel, baseURL } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+	});
+	const workspace = mkdtempSync(join(tmpdir(), "pibo-chat-image-preview-"));
+	const imageBytes = Buffer.concat([
+		Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+		Buffer.alloc(32, 3),
+	]);
+	writeFileSync(join(workspace, "preview.png"), imageBytes);
+
+	try {
+		const roomResponse = await fetch(`${baseURL}/api/chat/rooms`, {
+			method: "POST",
+			headers: { "content-type": "application/json", origin: baseURL, "x-test-user": "user-1" },
+			body: JSON.stringify({ name: "Image Preview Room", workspace }),
+		});
+		const roomPayload = await roomResponse.json();
+		const sessionResponse = await fetch(`${baseURL}/api/chat/sessions`, {
+			method: "POST",
+			headers: { "content-type": "application/json", origin: baseURL, "x-test-user": "user-1" },
+			body: JSON.stringify({ roomId: roomPayload.room.id }),
+		});
+		const sessionPayload = await sessionResponse.json();
+
+		const response = await fetch(
+			`${baseURL}/api/chat/image-preview?path=${encodeURIComponent("preview.png")}&piboSessionId=${encodeURIComponent(sessionPayload.session.id)}`,
+			{ headers: { "x-test-user": "user-1" } },
+		);
+		assert.equal(response.status, 200);
+		assert.equal(response.headers.get("content-type"), "image/png");
+		assert.match(response.headers.get("content-disposition") ?? "", /^inline;/);
+		assert.equal(response.headers.get("cache-control"), "no-store");
+		assert.equal(response.headers.get("x-content-type-options"), "nosniff");
+		assert.deepEqual(Buffer.from(await response.arrayBuffer()), imageBytes);
+	} finally {
+		rmSync(workspace, { recursive: true, force: true });
+		await channel.stop?.();
+	}
+});
+
+test("chat web app previews exact persisted trace images without embedding them in the timeline", async () => {
+	const { channel, baseURL, emitOutput } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+	});
+	try {
+		const sessionResponse = await fetch(`${baseURL}/api/chat/session`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		const sessionPayload = await sessionResponse.json();
+		const piboSessionId = sessionPayload.session.id;
+		const imageBytes = Buffer.concat([
+			Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+			Buffer.alloc(9 * 1024, 5),
+		]);
+		emitOutput({
+			type: "tool_execution_finished",
+			piboSessionId,
+			eventId: "image-turn",
+			toolCallId: "image-call",
+			toolName: "view_image",
+			result: { content: [{ type: "image", data: imageBytes.toString("base64"), mimeType: "image/png" }] },
+			isError: false,
+		});
+
+		const timelineResponse = await fetch(
+			`${baseURL}/api/chat/trace/timeline?piboSessionId=${encodeURIComponent(piboSessionId)}&limit=50`,
+			{ headers: { "x-test-user": "user-1" } },
+		);
+		assert.equal(timelineResponse.status, 200);
+		const timeline = await timelineResponse.json();
+		const imageNode = timeline.nodes.find((node) => node.toolCallId === "image-call");
+		assert.ok(imageNode?.payloadRefs?.output?.ref);
+		assert.equal(JSON.stringify(timeline).includes(imageBytes.toString("base64").slice(0, 80)), false);
+
+		const response = await fetch(
+			`${baseURL}/api/chat/image-preview?ref=${encodeURIComponent(imageNode.payloadRefs.output.ref)}&index=0`,
+			{ headers: { "x-test-user": "user-1" } },
+		);
+		assert.equal(response.status, 200);
+		assert.equal(response.headers.get("content-type"), "image/png");
+		assert.equal(response.headers.get("cache-control"), "private, max-age=31536000, immutable");
+		assert.deepEqual(Buffer.from(await response.arrayBuffer()), imageBytes);
+	} finally {
+		await channel.stop?.();
+	}
+});
+
 test("web host redirects app links to the canonical auth origin", async () => {
 	const { channel, baseURL } = await startWebHostChannel({
 		web: { canonicalBaseURL: "http://pibo.example.test:4788" },

@@ -1,5 +1,35 @@
 const DOWNLOAD_FILENAME_RE = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i;
 
+export type ChatImagePreviewSource = {
+	path?: string;
+	payloadRef?: string;
+	payloadImageIndex?: number;
+	generatedToolCallId?: string;
+};
+
+export function chatImagePreviewUrls(
+	source: ChatImagePreviewSource,
+	piboSessionId: string,
+): string[] {
+	const urls: string[] = [];
+	if (source.payloadRef) {
+		const params = new URLSearchParams({
+			ref: source.payloadRef,
+			index: String(source.payloadImageIndex ?? 0),
+		});
+		urls.push(`/api/chat/image-preview?${params.toString()}`);
+	}
+	if (source.path) {
+		const params = new URLSearchParams({ path: source.path, piboSessionId });
+		urls.push(`/api/chat/image-preview?${params.toString()}`);
+	}
+	if (source.generatedToolCallId) {
+		const params = new URLSearchParams({ generatedToolCallId: source.generatedToolCallId, piboSessionId });
+		urls.push(`/api/chat/image-preview?${params.toString()}`);
+	}
+	return [...new Set(urls)];
+}
+
 export type ChatUploadedFile = {
 	name: string;
 	path: string;

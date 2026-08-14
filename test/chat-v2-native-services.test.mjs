@@ -71,6 +71,41 @@ test("timeline query retains full-history steering message identity metadata", (
 	}
 });
 
+test("timeline query exposes deferred event payload refs without hydrating large outputs", () => {
+	const store = tempStore("pibo-chat-v2-deferred-payload-");
+	try {
+		const timeline = new ChatTimelineQueryService(store);
+		const payload = store.payloads.writePayload({
+			value: { content: [{ type: "image", data: "a".repeat(20_000), mimeType: "image/png" }] },
+			contentType: "application/json",
+			retentionClass: "trace_event",
+		});
+		store.eventLog.appendEvent({
+			sessionId: "ps_deferred",
+			sessionSequence: 1,
+			roomId: "room_deferred",
+			topic: "pibo.output",
+			type: "tool_execution_finished",
+			source: "actor",
+			eventId: "turn-deferred",
+			toolCallId: "call-deferred",
+			retentionClass: "trace_event",
+			payloadRef: payload.id,
+			previewText: "read",
+			attributes: { toolCallId: "call-deferred", toolName: "read", isError: false },
+		});
+
+		const [event] = timeline.listTraceEvents({ piboSessionId: "ps_deferred", includeLive: true });
+		assert.equal(event.payload.type, "tool_execution_finished");
+		assert.equal(event.payload.result, null);
+		assert.ok(event.storedPayloadRef.ref.startsWith("trace_"));
+		assert.equal(event.storedPayloadRef.byteLength, payload.byteSize);
+		assert.equal(event.storedPayloadRef.hash, payload.sha256);
+	} finally {
+		store.close();
+	}
+});
+
 test("V2-native chat services cover rooms, sessions, timeline, commands, and read state", () => {
 	const store = tempStore("pibo-chat-v2-services-");
 	const rooms = new ChatRoomService(store);
