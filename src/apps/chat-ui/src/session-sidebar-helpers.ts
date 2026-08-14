@@ -148,10 +148,3 @@ export function isSharedDefaultRoom(room: PiboRoom): boolean {
 export function isArchivedRoom(room: PiboRoom): boolean {
 	return typeof room.metadata.chatRoomArchivedAt === "string";
 }
-
-export function formatRoomSummary(room: PiboRoom): string {
-	if (room.topic && room.workspace) return `${room.topic} | ${room.workspace}`;
-	if (room.topic) return room.topic;
-	if (room.workspace) return room.workspace;
-	return room.type;
-}
