@@ -19,7 +19,6 @@ import { copyTextToClipboard } from "./clipboard";
 import { SessionNode } from "./session-node";
 import {
 	findSharedDefaultRoom,
-	formatRoomSummary,
 	isArchivedRoom,
 	isSharedDefaultRoom,
 	roomNodeTooltip,
@@ -411,35 +410,24 @@ function RoomSessionsLoadingSkeleton() {
 	return (
 		<div
 			data-pibo-debug="room-sessions-loading"
-			className="space-y-1"
+			className="space-y-0.5"
 			aria-live="polite"
 			aria-label="Loading room sessions"
 		>
 			{rows.map((row) => (
 				<div
 					key={row}
-					className={`w-full grid grid-cols-[1fr_auto] gap-1 items-center mb-1 border rounded-sm animate-pulse ${
+					className={`h-7 max-[980px]:h-8 w-full grid grid-cols-[1fr_auto] gap-1 items-center border rounded-sm animate-pulse ${
 						row === 0 ? "border-[#11a4d4] bg-[#11a4d4]/10" : "border-transparent"
 					}`}
 					style={{ paddingLeft: 8 }}
 					aria-hidden="true"
 				>
-					<div className="min-w-0 grid grid-cols-[1fr_auto] gap-2 items-center py-1 pr-1">
-						<div className="min-w-0 text-left px-1 py-1 grid grid-cols-[minmax(0,1fr)_auto] gap-2 items-center">
-							<span className="min-w-0">
-								<span className="flex min-w-0 items-center gap-1.5">
-									<span className={`block h-[15px] min-w-0 rounded-sm ${row === 0 ? "w-44 bg-slate-300/75" : row % 2 === 0 ? "w-40 bg-slate-400/35" : "w-36 bg-slate-400/30"}`} />
-								</span>
-								<span className="mt-0.5 flex min-w-0 items-center gap-1.5">
-									<span className={`h-[10px] rounded-sm bg-slate-600/45 ${row % 2 === 0 ? "w-40" : "w-48"}`} />
-								</span>
-							</span>
-						</div>
-						<span className="grid grid-rows-[16px_16px] place-items-center gap-0.5">
-							<span className={`h-2 w-2 rounded-full ${row === 0 ? "bg-[#11a4d4]" : row % 2 === 0 ? "bg-slate-600" : "bg-[#11a4d4]/55"}`} />
-							<span className="h-4 w-4" />
-						</span>
+					<div className="min-w-0 h-full grid grid-cols-[1fr_auto] gap-2 items-center pr-0.5">
+						<span className={`block h-3 min-w-0 rounded-sm ${row === 0 ? "w-44 bg-slate-300/75" : row % 2 === 0 ? "w-40 bg-slate-400/35" : "w-36 bg-slate-400/30"}`} />
+						<span className={`h-2 w-2 rounded-full ${row === 0 ? "bg-[#11a4d4]" : row % 2 === 0 ? "bg-slate-600" : "bg-[#11a4d4]/55"}`} />
 					</div>
+					<span className="h-6 w-6 max-[980px]:h-8 max-[980px]:w-8" />
 				</div>
 			))}
 		</div>
@@ -614,7 +602,7 @@ function RoomNode({
 				data-pibo-debug="room-node"
 				data-pibo-room-id={room.id}
 				data-pibo-state={loading ? "loading" : room.id === selectedRoomId ? "selected" : archived ? "archived" : "idle"}
-				className={`group mb-1 border rounded-sm ${
+				className={`group mb-0.5 border rounded-sm ${
 					personal
 						? room.id === selectedRoomId
 							? "border-[#0bda57] bg-[#0bda57]/10"
@@ -668,29 +656,26 @@ function RoomNode({
 						</div>
 					</form>
 				) : (
-					<div className="grid grid-cols-[1fr_auto] items-center gap-1 py-1 pr-1">
+					<div className="grid grid-cols-[1fr_auto] items-center gap-0.5 pr-0.5">
 						<button
 							type="button"
 							onClick={() => onSelect(room.id)}
 							aria-current={room.id === selectedRoomId ? "page" : undefined}
-							className="min-w-0 text-left px-2 py-1 grid grid-cols-[auto_minmax(0,1fr)_auto] gap-2 items-center"
+							className="h-7 max-[980px]:h-8 min-w-0 text-left px-1.5 grid grid-cols-[auto_minmax(0,1fr)_auto] gap-1.5 items-center"
 						>
-							<span className={`h-6 w-6 inline-flex items-center justify-center rounded-sm ${personal ? "bg-[#0bda57]/15 text-[#0bda57]" : archived ? "bg-[#f59e0b]/15 text-[#f59e0b]" : "bg-[#151f24] text-slate-500"}`}>
-								{personal ? <Lock size={13} /> : archived ? <Archive size={13} /> : <FolderPlus size={13} />}
+							<span className={`h-5 w-5 inline-flex items-center justify-center rounded-sm ${personal ? "bg-[#0bda57]/15 text-[#0bda57]" : archived ? "bg-[#f59e0b]/15 text-[#f59e0b]" : "bg-[#151f24] text-slate-500"}`}>
+								{personal ? <Lock size={12} /> : archived ? <Archive size={12} /> : <FolderPlus size={12} />}
 							</span>
-							<span className="min-w-0">
-								<span className={`block text-sm truncate ${archived ? "text-slate-500" : "text-slate-200"}`}>{room.name}</span>
-								<span className="block text-[10px] font-mono truncate text-slate-500">{personal ? "shared default room" : archived ? "archived" : formatRoomSummary(room)}</span>
-							</span>
+							<span className={`min-w-0 truncate text-[13px] leading-none ${archived ? "text-slate-500" : "text-slate-200"}`}>{room.name}</span>
 							<span className="inline-flex items-center justify-end gap-1">
-								{loading ? <Loader2 size={13} className="animate-spin text-[#11a4d4]" aria-label="Loading room" /> : null}
+								{loading ? <Loader2 size={12} className="animate-spin text-[#11a4d4]" aria-label="Loading room" /> : null}
 								<UnreadBadge count={room.unreadCount} />
 							</span>
 						</button>
-						<div className="flex items-center gap-1 pr-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity max-[980px]:opacity-100">
+						<div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity max-[980px]:opacity-100">
 							{personal ? (
-								<span title="Shared Chat is locked" aria-label="Shared Chat is locked" className="h-7 w-7 max-[980px]:h-9 max-[980px]:w-9 inline-flex items-center justify-center border border-[#0bda57]/50 rounded-sm text-[#0bda57]">
-									<Lock size={24} className="w-3.5 h-3.5 max-[980px]:w-5 max-[980px]:h-5" />
+								<span title="Shared Chat is locked" aria-label="Shared Chat is locked" className="h-6 w-6 max-[980px]:h-8 max-[980px]:w-8 inline-flex items-center justify-center border border-[#0bda57]/50 rounded-sm text-[#0bda57]">
+									<Lock size={12} className="max-[980px]:h-4 max-[980px]:w-4" />
 								</span>
 							) : (
 								<ActionMenu label={`Actions for room ${room.name}`} estimatedHeight={archived ? 144 : 192}>
