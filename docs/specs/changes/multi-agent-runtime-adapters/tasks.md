@@ -31,7 +31,7 @@ Target branch: `feature/agent-runtime-foundation`
 - [x] 1.8 Keep `createPiboRuntime`, `inspectPiboProfile`, and direct TUI compatibility exports.
 - [x] 1.9 Add tests for duplicate registration, config validation, catalog output, default Pi selection, and fake/Pi contract basics.
 - [x] 1.10 Verify focused tests, typecheck, build, and full suite (1,605/1,605 passing).
-- [ ] 1.11 Commit, push, and open focused PR to `upstream/dev` with exact verification evidence.
+- [x] 1.11 Commit, push, and open focused PR #476 to `upstream/dev` with exact verification evidence.
 
 ## 2. Pi extraction PR: generic RoutedSession and full Pi parity
 
