@@ -56,8 +56,14 @@ test("provider-backed web search events materialize as Terminal tool rows", () =
 		type: "response.web_search_call.completed",
 		item: {
 			id: "ws_1",
-			action: { query: "latest OpenAI pricing July 2026" },
-			sources: [{ url: "https://example.test/a" }, { url: "https://example.test/b" }],
+			action: {
+				type: "search",
+				query: "latest OpenAI pricing July 2026",
+				sources: [
+					{ title: "Pricing", url: "https://example.test/a" },
+					{ url: "https://example.test/b" },
+				],
+			},
 		},
 	});
 	assert.equal(start?.type, "tool_execution_started");
@@ -77,6 +83,63 @@ test("provider-backed web search events materialize as Terminal tool rows", () =
 	assert.match(rowText(webSearchRow), /Searched web/);
 	assert.match(rowText(webSearchRow), /query: "latest OpenAI pricing July 2026"/);
 	assert.match(rowText(webSearchRow), /sources: 2/);
+	assert.match(rowText(webSearchRow), /https:\/\/example\.test\/a/);
+	assert.deepEqual(
+		webSearchRow.lines.flatMap((line) => line.tokens).filter((token) => token.href).map((token) => token.href),
+		["https://example.test/a", "https://example.test/b"],
+	);
+});
+
+test("provider-backed web search progress is visible while the provider is searching", () => {
+	const start = normalizePiEvent("chat:test", {
+		type: "response.web_search_call.searching",
+		item: { id: "ws_running", action: { type: "search", query: "current OpenAI docs" } },
+	});
+	assert.equal(start?.type, "tool_execution_started");
+
+	const view = createBaseView([
+		createEvent({ seq: 1, type: "message_started", payload: { type: "message_started", eventId: "turn-running", text: "Search", source: "user" } }),
+		createEvent({ seq: 2, type: start.type, payload: { ...start, eventId: "turn-running" } }),
+	], "running");
+	const row = buildCompactTerminalRows(view, { showThinking: true }).find((candidate) => candidate.input?.providerTool === "web_search");
+	assert.ok(row);
+	assert.equal(row.status, "running");
+	assert.match(rowText(row), /Searching web/);
+	assert.match(rowText(row), /query: "current OpenAI docs"/);
+});
+
+test("provider-backed web page actions render the inspected website", () => {
+	const start = normalizePiEvent("chat:test", {
+		type: "response.output_item.added",
+		item: {
+			id: "ws_open",
+			type: "web_search_call",
+			status: "in_progress",
+			action: { type: "open_page", url: "https://platform.openai.com/docs" },
+		},
+	});
+	const done = normalizePiEvent("chat:test", {
+		type: "response.output_item.done",
+		item: {
+			id: "ws_open",
+			type: "web_search_call",
+			status: "completed",
+			action: { type: "open_page", url: "https://platform.openai.com/docs" },
+		},
+	});
+	assert.equal(start?.type, "tool_execution_started");
+	assert.equal(done?.type, "tool_execution_finished");
+
+	const view = createBaseView([
+		createEvent({ seq: 1, type: "message_started", payload: { type: "message_started", eventId: "turn-open", text: "Open docs", source: "user" } }),
+		createEvent({ seq: 2, type: start.type, payload: { ...start, eventId: "turn-open" } }),
+		createEvent({ seq: 3, type: done.type, payload: { ...done, eventId: "turn-open" } }),
+	], "idle");
+	const row = buildCompactTerminalRows(view, { showThinking: true }).find((candidate) => candidate.input?.providerTool === "web_search");
+	assert.ok(row);
+	assert.match(rowText(row), /Opened web page/);
+	assert.match(rowText(row), /https:\/\/platform\.openai\.com\/docs/);
+	assert.equal(row.lines.flatMap((line) => line.tokens).find((token) => token.href)?.href, "https://platform.openai.com/docs");
 });
 
 test("provider-backed web search output items materialize generic Terminal rows without query metadata", () => {

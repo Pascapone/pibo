@@ -8,6 +8,7 @@ import { brotliDecompressSync, gunzipSync, inflateSync, zstdDecompressSync } fro
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { createPiboRuntime } from "../dist/core/runtime.js";
 import { RoutedSession } from "../dist/core/routed-session.js";
+import { createWebSearchProviderExtension } from "../dist/tools/web-search.js";
 import { piboCorePlugin } from "../dist/plugins/builtin.js";
 import { PiboPluginRegistry } from "../dist/plugins/registry.js";
 
@@ -41,7 +42,7 @@ function readRequestBody(req) {
 	});
 }
 
-async function startFakeCodexHttpApi() {
+async function startFakeCodexHttpApi({ includeWebSearch = false } = {}) {
 	const requests = [];
 	const server = createServer(async (req, res) => {
 		if (req.method !== "POST" || req.url !== "/codex/responses") {
@@ -58,6 +59,34 @@ async function startFakeCodexHttpApi() {
 			connection: "close",
 		});
 		res.end([
+			...(includeWebSearch ? [
+				`data: ${JSON.stringify({
+					type: "response.output_item.added",
+					item: { type: "web_search_call", id: "ws_http", status: "in_progress" },
+				})}`,
+				"",
+				`data: ${JSON.stringify({ type: "response.web_search_call.searching", item_id: "ws_http" })}`,
+				"",
+				`data: ${JSON.stringify({ type: "response.web_search_call.completed", item_id: "ws_http" })}`,
+				"",
+				`data: ${JSON.stringify({
+					type: "response.output_item.done",
+					item: {
+						type: "web_search_call",
+						id: "ws_http",
+						status: "completed",
+						action: {
+							type: "search",
+							query: "OpenAI API documentation",
+							sources: [
+								{ title: "API docs", url: "https://platform.openai.com/docs" },
+								{ title: "OpenAI developers", url: "https://developers.openai.com/" },
+							],
+						},
+					},
+				})}`,
+				"",
+			] : []),
 			`data: ${JSON.stringify({
 				type: "response.output_item.added",
 				item: { type: "message", id: "msg_http_fast", role: "assistant", content: [], status: "in_progress" },
@@ -209,6 +238,85 @@ test("fast mode sends priority service tier through the HTTP provider request", 
 		assert.equal(request.body.service_tier, "priority");
 		assert.equal(capturedProviderPayloads.length, 1);
 		assert.equal(capturedProviderPayloads[0].service_tier, "priority");
+	} finally {
+		if (routed) await routed.dispose();
+		else if (runtime) await runtime.dispose();
+		await rm(cwd, { recursive: true, force: true });
+		await closeServer(fakeApi.server);
+	}
+});
+
+test("provider web search SSE events surface through RoutedSession even when Pi drops them", async () => {
+	const fakeApi = await startFakeCodexHttpApi({ includeWebSearch: true });
+	const cwd = await mkdtemp(join(tmpdir(), "pibo-web-search-http-api-"));
+	const events = [];
+	let runtime;
+	let routed;
+
+	try {
+		const profile = new InitialSessionContextBuilder("web-search-http-api-test")
+			.withBuiltinTools("disabled")
+			.withAutoContextFiles(false)
+			.createSession();
+		runtime = await createPiboRuntime({
+			cwd,
+			persistSession: false,
+			profile,
+			modelDefaults: {},
+			extensionFactories: [createWebSearchProviderExtension({
+				kind: "web_search",
+				provider: "openai",
+				options: { includeSources: true },
+			})],
+		});
+
+		runtime.session._modelRegistry.hasConfiguredAuth = () => true;
+		runtime.session._modelRegistry.getApiKeyAndHeaders = async () => ({ ok: true, apiKey: fakeCodexToken() });
+		runtime.session.agent.transport = "sse";
+		runtime.session.state.model = {
+			api: "openai-codex-responses",
+			provider: "openai-codex",
+			id: "gpt-5.5",
+			name: "GPT-5.5 web search test",
+			baseUrl: fakeApi.baseUrl,
+			reasoning: true,
+			input: ["text"],
+			cost: { input: 5, output: 30, cacheRead: 0.5, cacheWrite: 0 },
+			contextWindow: 272000,
+			maxTokens: 128000,
+		};
+
+		const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+		routed = new RoutedSession("route:http-web-search", runtime, (event) => events.push(event), registry, false, undefined, false);
+
+		const messageId = "msg-http-web-search-test";
+		routed.enqueueMessage({
+			type: "message",
+			piboSessionId: "route:http-web-search",
+			id: messageId,
+			text: "Search the web",
+			source: "user",
+		});
+		await waitForEvent(events, (event) => event.type === "message_finished" && event.eventId === messageId);
+
+		const starts = events.filter((event) => event.type === "tool_execution_started" && event.toolName === "web_search");
+		const finishes = events.filter((event) => event.type === "tool_execution_finished" && event.toolName === "web_search");
+		assert.equal(starts.length, 1, "provider progress events should collapse to one visible start");
+		assert.equal(finishes.length, 1, "provider completion events should collapse to one visible finish");
+		assert.equal(starts[0].eventId, messageId);
+		assert.deepEqual(finishes[0].result, {
+			actionType: "search",
+			query: "OpenAI API documentation",
+			sources: [
+				{ title: "API docs", url: "https://platform.openai.com/docs" },
+				{ title: "OpenAI developers", url: "https://developers.openai.com/" },
+			],
+			sourceCount: 2,
+		});
+
+		assert.equal(fakeApi.requests.length, 1);
+		assert.ok(fakeApi.requests[0].body.tools.some((tool) => tool.type === "web_search"));
+		assert.ok(fakeApi.requests[0].body.include.includes("web_search_call.action.sources"));
 	} finally {
 		if (routed) await routed.dispose();
 		else if (runtime) await runtime.dispose();
