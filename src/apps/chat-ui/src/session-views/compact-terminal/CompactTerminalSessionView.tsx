@@ -598,7 +598,7 @@ function TerminalRowContent({
 			</>
 		);
 	}
-	if (row.kind === "tool.status") return <TerminalStatusCard row={row} />;
+	if (row.kind === "tool.status") return <TerminalStatusCard row={row} piboSessionId={piboSessionId} />;
 	if (row.kind === "tool.thinking") return <TerminalThinkingCard row={row} onLevelSelect={onThinkingLevelChange} />;
 	if (row.kind === "tool.login") return <TerminalLoginCard row={row} piboSessionId={piboSessionId} />;
 	if (row.kind === "tool.model") return <TerminalModelCard row={row} piboSessionId={piboSessionId} onModelChanged={onModelChanged} />;
