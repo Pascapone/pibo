@@ -19,7 +19,17 @@ export function TerminalLine({ line, status, clampLines }: TerminalLineProps) {
 			<span className={contentClassName} style={clampLines ? { maxHeight: `${clampLines * 1.45}em` } : undefined}>
 				{renderPlainText
 					? <span className="text-[#d4d4d4]">{tokens.map((token) => token.text).join("")}</span>
-					: tokens.map((token, index) => (
+					: tokens.map((token, index) => token.href ? (
+						<a
+							key={`${index}:${token.text}`}
+							href={token.href}
+							target="_blank"
+							rel="noreferrer noopener"
+							className={`${tokenClassName(token)} underline decoration-[#60a5fa]/40 underline-offset-2 hover:decoration-[#60a5fa]`}
+						>
+							{token.text}
+						</a>
+					) : (
 						<span key={`${index}:${token.text}`} className={tokenClassName(token)}>
 							{token.text}
 						</span>
@@ -91,6 +101,7 @@ function compactTerminalLineTokens(tokens: readonly TerminalInlineToken[]): Term
 			&& previous.tone === token.tone
 			&& previous.weight === token.weight
 			&& previous.italic === token.italic
+			&& previous.href === token.href
 		) {
 			previous.text += token.text;
 			continue;
