@@ -17,6 +17,7 @@ import {
   getDaemonRequestTimeoutMs,
   getSocketDir,
   getSocketPath,
+  usesFilesystemSocket,
 } from './config.js';
 import {
   type DaemonRequest,
@@ -24,6 +25,7 @@ import {
   isProcessRunning,
   killProcess,
   readPidFile,
+  readPidFilePath,
   removePidFile,
   removeSocketFile,
 } from './daemon.js';
@@ -59,6 +61,7 @@ function generateRequestId(): string {
 async function sendRequest(
   socketPath: string,
   request: DaemonRequest,
+  timeoutMs: number = getDaemonRequestTimeoutMs(),
 ): Promise<DaemonResponse> {
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -108,15 +111,44 @@ async function sendRequest(
     const timeoutId = setTimeout(() => {
       socket.destroy();
       settle(() => reject(new Error('Daemon request timeout')));
-    }, getDaemonRequestTimeoutMs());
+    }, timeoutMs);
   });
 }
 
-/**
- * Check if daemon is running and has matching config
- */
-function isDaemonValid(serverName: string, config: ServerConfig): boolean {
+async function stopDaemon(serverName: string, pid: number): Promise<void> {
   const socketPath = getSocketPath(serverName);
+
+  if (!usesFilesystemSocket() || existsSync(socketPath)) {
+    try {
+      await sendRequest(
+        socketPath,
+        { id: generateRequestId(), type: 'close' },
+        1000,
+      );
+    } catch {
+      // The daemon may not have opened its IPC endpoint yet.
+    }
+  }
+
+  const gracefulDeadline = Date.now() + 2000;
+  while (Date.now() < gracefulDeadline && isProcessRunning(pid)) {
+    await sleep(50);
+  }
+  if (isProcessRunning(pid)) {
+    killProcess(pid);
+  }
+
+  removePidFile(serverName);
+  removeSocketFile(serverName);
+}
+
+/**
+ * Check if daemon is running and has matching config.
+ */
+async function isDaemonValid(
+  serverName: string,
+  config: ServerConfig,
+): Promise<boolean> {
   const pidInfo = readPidFile(serverName);
 
   // No PID file = no daemon
@@ -137,27 +169,50 @@ function isDaemonValid(serverName: string, config: ServerConfig): boolean {
   const currentHash = getConfigHash(config);
   if (pidInfo.configHash !== currentHash) {
     debug(
-      `[daemon-client] Config hash mismatch for ${serverName}, killing old daemon`,
+      `[daemon-client] Config hash mismatch for ${serverName}, stopping old daemon`,
     );
-    killProcess(pidInfo.pid);
-    removePidFile(serverName);
-    removeSocketFile(serverName);
-    return false;
-  }
-
-  // Check if socket exists
-  if (!existsSync(socketPath)) {
-    debug(`[daemon-client] Socket missing for ${serverName}, cleaning up`);
-    killProcess(pidInfo.pid);
-    removePidFile(serverName);
+    await stopDaemon(serverName, pidInfo.pid);
     return false;
   }
 
   return true;
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForDaemonReady(
+  socketPath: string,
+  timeoutMs: number,
+  isAlive: () => boolean,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline && isAlive()) {
+    if (!usesFilesystemSocket() || existsSync(socketPath)) {
+      try {
+        const remainingMs = deadline - Date.now();
+        const response = await sendRequest(
+          socketPath,
+          { id: generateRequestId(), type: 'ping' },
+          Math.max(1, Math.min(500, remainingMs)),
+        );
+        if (response.success) {
+          return true;
+        }
+      } catch {
+        // The daemon may still be starting or waiting for user authorization.
+      }
+    }
+    await sleep(50);
+  }
+
+  return false;
+}
+
 /**
- * Spawn a new daemon process for a server
+ * Spawn a new daemon process for a server.
  */
 async function spawnDaemon(
   serverName: string,
@@ -168,56 +223,62 @@ async function spawnDaemon(
   // Find the daemon script next to this module. This is .ts under tsx and .js after build.
   const modulePath = fileURLToPath(import.meta.url);
   const daemonScript = join(dirname(modulePath), `daemon${extname(modulePath)}`);
-
+  const socketPath = getSocketPath(serverName);
   const configJson = JSON.stringify(config);
 
-  // Spawn detached process
-  const proc = spawn(process.execPath, [
-    ...process.execArgv,
-    daemonScript,
-    '--daemon',
-    serverName,
-    configJson,
-  ], {
-    detached: true,
-    stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env },
+  // Ignore stdio so the daemon remains independent after the invoking CLI exits.
+  // Readiness is detected through its actual IPC endpoint instead of a pipe that
+  // would be closed with the parent process.
+  const proc = spawn(
+    process.execPath,
+    [
+      ...process.execArgv,
+      daemonScript,
+      '--daemon',
+      serverName,
+      configJson,
+    ],
+    {
+      detached: true,
+      stdio: 'ignore',
+      env: { ...process.env },
+    },
+  );
+
+  let spawnError: Error | undefined;
+  let exited = false;
+  proc.once('error', (error) => {
+    spawnError = error;
   });
-
-  // Wait for daemon to signal readiness or fail
-  return new Promise((resolve) => {
-    let resolved = false;
-
-    proc.stdout?.on('data', (data) => {
-      const text = data.toString();
-      if (text.includes('DAEMON_READY') && !resolved) {
-        resolved = true;
-        // Don't await the process, let it run in the background.
-        (proc.stdout as { unref?: () => void } | null)?.unref?.();
-        (proc.stderr as { unref?: () => void } | null)?.unref?.();
-        proc.unref();
-        resolve(true);
-      }
-    });
-
-    // Timeout after 5 seconds (fast fallback to direct connection)
-    setTimeout(() => {
-      if (!resolved) {
-        resolved = true;
-        debug(`[daemon-client] Daemon spawn timeout for ${serverName}`);
-        resolve(false);
-      }
-    }, 5000);
-
-    // Check for early exit
-    proc.on('exit', (code) => {
-      if (!resolved && code !== 0) {
-        resolved = true;
-        debug(`[daemon-client] Daemon exited with code ${code}`);
-        resolve(false);
-      }
-    });
+  proc.once('exit', () => {
+    exited = true;
   });
+  proc.unref();
+
+  const ready = await waitForDaemonReady(
+    socketPath,
+    getDaemonRequestTimeoutMs(),
+    () => !spawnError && !exited,
+  );
+  if (ready) {
+    return true;
+  }
+
+  if (spawnError) {
+    debug(
+      `[daemon-client] Failed to spawn daemon for ${serverName}: ${spawnError.message}`,
+    );
+  } else if (exited) {
+    debug(`[daemon-client] Daemon exited before readiness for ${serverName}`);
+  } else {
+    debug(`[daemon-client] Daemon spawn timeout for ${serverName}`);
+    if (proc.pid !== undefined) {
+      await stopDaemon(serverName, proc.pid);
+    }
+  }
+  removePidFile(serverName);
+  removeSocketFile(serverName);
+  return false;
 }
 
 /**
@@ -230,40 +291,31 @@ export async function getDaemonConnection(
 ): Promise<DaemonConnection | null> {
   const socketPath = getSocketPath(serverName);
 
-  // Check if valid daemon exists
-  if (!isDaemonValid(serverName, config)) {
-    // Spawn new daemon
-    const spawned = await spawnDaemon(serverName, config);
-    if (!spawned) {
+  // Check if a matching daemon exists; otherwise start one.
+  let ready = false;
+  if (!(await isDaemonValid(serverName, config))) {
+    ready = await spawnDaemon(serverName, config);
+    if (!ready) {
       debug(`[daemon-client] Failed to spawn daemon for ${serverName}`);
       return null;
     }
-
-    // Wait a bit for socket to be ready
-    await new Promise((r) => setTimeout(r, 100));
-  }
-
-  // Verify socket exists
-  if (!existsSync(socketPath)) {
-    debug(`[daemon-client] Socket not found after spawn for ${serverName}`);
-    return null;
-  }
-
-  // Test connection with ping
-  try {
-    const pingResponse = await sendRequest(socketPath, {
-      id: generateRequestId(),
-      type: 'ping',
-    });
-
-    if (!pingResponse.success) {
-      debug(`[daemon-client] Ping failed for ${serverName}`);
-      return null;
-    }
-  } catch (error) {
-    debug(
-      `[daemon-client] Connection test failed for ${serverName}: ${(error as Error).message}`,
+  } else {
+    const pidInfo = readPidFile(serverName);
+    ready = await waitForDaemonReady(
+      socketPath,
+      getDaemonRequestTimeoutMs(),
+      () => Boolean(pidInfo && isProcessRunning(pidInfo.pid)),
     );
+  }
+
+  if (!ready) {
+    debug(`[daemon-client] Daemon did not become ready for ${serverName}`);
+    const pidInfo = readPidFile(serverName);
+    if (pidInfo) {
+      await stopDaemon(serverName, pidInfo.pid);
+    } else {
+      removeSocketFile(serverName);
+    }
     return null;
   }
 
@@ -341,8 +393,15 @@ export async function cleanupOrphanedDaemons(): Promise<void> {
     );
 
     for (const file of files) {
-      const serverName = file.replace('.pid', '');
-      const pidInfo = readPidFile(serverName);
+      const pidInfo = readPidFilePath(join(socketDir, file));
+      let serverName = pidInfo?.serverName;
+      if (!serverName) {
+        try {
+          serverName = decodeURIComponent(file.slice(0, -'.pid'.length));
+        } catch {
+          continue;
+        }
+      }
 
       if (pidInfo && !isProcessRunning(pidInfo.pid)) {
         debug(`[daemon-client] Cleaning up orphaned daemon: ${serverName}`);

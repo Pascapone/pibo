@@ -1,8 +1,9 @@
 /**
  * MCP-CLI Daemon - Background worker that maintains persistent MCP connections
  *
- * This is spawned as a detached process and manages a Unix socket for IPC.
- * It maintains the MCP server connection and forwards requests from CLI invocations.
+ * This is spawned as a detached process and manages a Unix socket on POSIX or
+ * a named pipe on Windows. It maintains the MCP server connection and forwards
+ * requests from CLI invocations.
  */
 
 import {
@@ -28,6 +29,7 @@ import {
   getPidPath,
   getSocketDir,
   getSocketPath,
+  usesFilesystemSocket,
 } from './config.js';
 
 // ============================================================================
@@ -48,10 +50,11 @@ export interface DaemonResponse {
   error?: { code: string; message: string };
 }
 
-interface PidFileContent {
+export interface PidFileContent {
   pid: number;
   configHash: string;
   startedAt: string;
+  serverName?: string;
 }
 
 // ============================================================================
@@ -73,6 +76,7 @@ export function writePidFile(serverName: string, configHash: string): void {
     pid: process.pid,
     configHash,
     startedAt: new Date().toISOString(),
+    serverName,
   };
 
   writeFileSync(pidPath, JSON.stringify(content), { mode: 0o600 });
@@ -81,9 +85,7 @@ export function writePidFile(serverName: string, configHash: string): void {
 /**
  * Read PID file content
  */
-export function readPidFile(serverName: string): PidFileContent | null {
-  const pidPath = getPidPath(serverName);
-
+export function readPidFilePath(pidPath: string): PidFileContent | null {
   if (!existsSync(pidPath)) {
     return null;
   }
@@ -94,6 +96,10 @@ export function readPidFile(serverName: string): PidFileContent | null {
   } catch {
     return null;
   }
+}
+
+export function readPidFile(serverName: string): PidFileContent | null {
+  return readPidFilePath(getPidPath(serverName));
 }
 
 /**
@@ -114,6 +120,10 @@ export function removePidFile(serverName: string): void {
  * Remove socket file
  */
 export function removeSocketFile(serverName: string): void {
+  if (!usesFilesystemSocket()) {
+    return;
+  }
+
   const socketPath = getSocketPath(serverName);
   try {
     if (existsSync(socketPath)) {
@@ -347,7 +357,7 @@ export async function runDaemon(
     }
   };
 
-  // Start Unix socket server
+  // Start the Unix domain socket or Windows named-pipe server
   try {
     server = createServer((socket) => {
       activeConnections.add(socket);
@@ -384,8 +394,7 @@ export async function runDaemon(
     // Start idle timer
     resetIdleTimer();
 
-    // Signal readiness by writing to stdout (parent will read this)
-    console.log('DAEMON_READY');
+    // The client detects readiness by pinging the IPC endpoint.
   } catch (error) {
     console.error(
       `[daemon:${serverName}] Failed to start socket server:`,

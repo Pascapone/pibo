@@ -5,7 +5,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import {
   ErrorCode,
@@ -298,37 +298,101 @@ export function getDaemonRequestTimeoutMs(): number {
   return DEFAULT_DAEMON_REQUEST_TIMEOUT_SECONDS * 1000;
 }
 
-/**
- * Get the socket directory for daemon connections
- * Uses platform-appropriate temp directory
- */
-export function getSocketDir(): string {
-  const uid = process.getuid?.() ?? 'unknown';
-  // macOS uses /var/folders which is auto-cleaned, Linux uses /tmp
-  const base = process.platform === 'darwin' ? '/tmp' : '/tmp';
-  return join(base, `mcp-cli-${uid}`);
+function getDaemonUserKey(platform: NodeJS.Platform): string {
+  const uid = process.getuid?.();
+  if (platform !== 'win32' && uid !== undefined) {
+    return String(uid);
+  }
+
+  const identity = `${homedir()}\0${process.env.USERNAME ?? process.env.USER ?? ''}`;
+  return createHash('sha256').update(identity).digest('hex').slice(0, 12);
+}
+
+function getDaemonServerKey(serverName: string): string {
+  return createHash('sha256').update(serverName).digest('hex').slice(0, 16);
+}
+
+function getDaemonFileName(
+  serverName: string,
+  platform: NodeJS.Platform,
+): string {
+  return platform === 'win32'
+    ? getDaemonServerKey(serverName)
+    : encodeURIComponent(serverName);
 }
 
 /**
- * Get socket path for a specific server
+ * Get the directory for daemon PID files and POSIX sockets.
  */
-export function getSocketPath(serverName: string): string {
-  return join(getSocketDir(), `${serverName}.sock`);
+export function getSocketDir(
+  platform: NodeJS.Platform = process.platform,
+): string {
+  return join(tmpdir(), `mcp-cli-${getDaemonUserKey(platform)}`);
 }
 
 /**
- * Get PID file path for a specific server daemon
+ * Whether the platform represents daemon IPC as a filesystem socket.
  */
-export function getPidPath(serverName: string): string {
-  return join(getSocketDir(), `${serverName}.pid`);
+export function usesFilesystemSocket(
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  return platform !== 'win32';
 }
 
 /**
- * Generate a hash of server config for stale detection
- * Returns consistent hash for identical configs
+ * Get the IPC endpoint for a specific server.
+ * POSIX uses Unix domain sockets; Windows uses named pipes.
+ */
+export function getSocketPath(
+  serverName: string,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  if (platform === 'win32') {
+    const userKey = getDaemonUserKey(platform);
+    return `\\\\.\\pipe\\pibo-mcp-${userKey}-${getDaemonServerKey(serverName)}`;
+  }
+
+  return join(
+    getSocketDir(platform),
+    `${getDaemonFileName(serverName, platform)}.sock`,
+  );
+}
+
+/**
+ * Get PID file path for a specific server daemon.
+ */
+export function getPidPath(
+  serverName: string,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  return join(
+    getSocketDir(platform),
+    `${getDaemonFileName(serverName, platform)}.pid`,
+  );
+}
+
+function normalizeForHash(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(normalizeForHash);
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value)
+        .sort(([left], [right]) =>
+          left < right ? -1 : left > right ? 1 : 0,
+        )
+        .map(([key, nestedValue]) => [key, normalizeForHash(nestedValue)]),
+    );
+  }
+  return value;
+}
+
+/**
+ * Generate a hash of server config for stale detection.
+ * Nested object key order does not affect the hash.
  */
 export function getConfigHash(config: ServerConfig): string {
-  const str = JSON.stringify(config, Object.keys(config).sort());
+  const str = JSON.stringify(normalizeForHash(config));
   return createHash('sha256').update(str).digest('hex').slice(0, 16);
 }
 
