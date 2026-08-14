@@ -205,7 +205,7 @@ Update this table after each meaningful milestone so continuations do not need t
 | Date | Milestone | Branch / commit / PR | Verification | Remaining dependency |
 |---|---|---|---|---|
 | 2026-08-14 | Discovery/spec complete | `feature/agent-runtime-foundation` based on `54176105` | Required project/T3/Codex references inspected; clean-base suite 1,598/1,598 passing | Foundation verification and PR |
-| 2026-08-14 | Runtime foundation validated | `feature/agent-runtime-foundation` (pending commit) | Full workspace typecheck passed; focused routed Pi 73/73; full suite 1,605/1,605 | Commit, push, foundation PR |
+| 2026-08-14 | Runtime foundation validated | `feature/agent-runtime-foundation` at `a69a0a27` | Full workspace typecheck passed; focused routed Pi 73/73; full suite 1,605/1,605 | Push and open foundation PR |
 
 ## Completion audit
 
