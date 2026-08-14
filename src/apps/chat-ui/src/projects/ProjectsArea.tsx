@@ -55,6 +55,7 @@ export function ProjectsArea({
   sessionViews,
   showRawEvents,
   showThinking,
+  hideTools,
   expandThinking,
   commands,
   skills,
@@ -63,6 +64,7 @@ export function ProjectsArea({
   onSelectSessionView,
   onToggleRawEvents,
   onToggleThinking,
+  onToggleHideTools,
   onToggleExpandThinking,
   onThinkingLevelChange,
   mobileSidebarOpen,
@@ -78,6 +80,7 @@ export function ProjectsArea({
   sessionViews: ReturnType<typeof listChatSessionViews>;
   showRawEvents: boolean;
   showThinking: boolean;
+  hideTools: boolean;
   expandThinking: boolean;
   commands: SlashCommand[];
   skills: Array<{ name: string; description?: string; path?: string }>;
@@ -91,6 +94,7 @@ export function ProjectsArea({
   onSelectSessionView: (viewId: ChatSessionViewId) => void;
   onToggleRawEvents: () => void;
   onToggleThinking: () => void;
+  onToggleHideTools: () => void;
   onToggleExpandThinking: () => void;
   onThinkingLevelChange: (level: ThinkingLevel) => void;
   mobileSidebarOpen: boolean;
@@ -489,6 +493,7 @@ export function ProjectsArea({
         onExitTerminalFullscreen={onExitTerminalFullscreen}
         showRawEvents={showRawEvents}
         showThinking={showThinking}
+        hideTools={hideTools}
         expandThinking={expandThinking}
         commands={commands}
         skills={skills}
@@ -501,6 +506,7 @@ export function ProjectsArea({
         }
         onToggleRawEvents={onToggleRawEvents}
         onToggleThinking={onToggleThinking}
+        onToggleHideTools={onToggleHideTools}
         onToggleExpandThinking={onToggleExpandThinking}
         onSessionAgentProfileChange={async (profile) => {
           if (selectedPiboSessionId)

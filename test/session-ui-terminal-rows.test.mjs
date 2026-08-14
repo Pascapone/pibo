@@ -76,6 +76,24 @@ test("compact row generation covers core terminal row kinds deterministically", 
 	assert.match(rowText(rows[5]), /Error boom/);
 });
 
+test("compact row generation hides non-conversation activity when hide tools is enabled", () => {
+	const view = traceView([
+		traceNode("user.message", "node-user", { order: 1, output: "Investigate issue" }),
+		traceNode("tool.call", "node-tool", { order: 2, title: "read", input: { path: "src/index.ts" } }),
+		traceNode("model.reasoning", "node-thinking", { order: 3, output: "Checking the implementation" }),
+		traceNode("agent.delegation", "node-delegation", { order: 4, output: "Delegated work" }),
+		traceNode("execution.command", "node-command", { order: 5, title: "status", output: { processing: false } }),
+		traceNode("error", "node-error", { order: 6, status: "error", error: "hidden failure" }),
+		traceNode("assistant.message", "node-assistant", { order: 7, output: "Done." }),
+	]);
+
+	const withThinking = buildCompactTerminalRows(view, { showThinking: true, hideTools: true });
+	assert.deepEqual(withThinking.map((row) => row.kind), ["message.user", "reasoning", "message.assistant"]);
+
+	const withoutThinking = buildCompactTerminalRows(view, { showThinking: false, hideTools: true });
+	assert.deepEqual(withoutThinking.map((row) => row.kind), ["message.user", "message.assistant"]);
+});
+
 test("compact row generation renders Codex-compatible labels for browser and REPL tools", () => {
 	const rows = buildCompactTerminalRows(traceView([
 		traceNode("tool.call", "node-browser-use", { order: 1, title: "browser_use_browser_use", input: { action: "state" } }),

@@ -63,6 +63,7 @@ export function createSessionTraceViewProps(input: {
 	currentTraceView: PiboSessionTraceView | null;
 	isLoading: boolean;
 	showThinking: boolean;
+	hideTools: boolean;
 	expandThinking: boolean;
 	selectedSessionProfile: string;
 	sessionActiveModelBadge?: string;
@@ -94,6 +95,7 @@ export function createSessionTraceViewProps(input: {
 			: null,
 		isLoading: input.isLoading,
 		showThinking: input.showThinking,
+		hideTools: input.hideTools,
 		expandThinking: input.expandThinking,
 		sessionAgentProfile: input.selectedSessionProfile,
 		sessionActiveModel: input.sessionActiveModelBadge,

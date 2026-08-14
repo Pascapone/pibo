@@ -20,7 +20,7 @@ import { createUserSkill, deletePiPackage, deleteUserSkill, getUserSkill, instal
 import { getUserSettings, patchModelDefaults, patchUserSettings, pruneTelemetryRetention } from "../api-settings";
 import { piPackageMeta, type PiPackageCatalogItem } from "../agents/agent-designer-model";
 import { AgentRuntimeOptions, DesignerPanel, EmptyCatalog, InlineCheckboxToggle, PiPackageDetails } from "../agents/designer-ui";
-import { writeStoredExpandThinking, writeStoredShowThinking } from "../app-storage";
+import { writeStoredExpandThinking, writeStoredHideTools, writeStoredShowThinking } from "../app-storage";
 import type { ModelCatalog, ModelDefaults, ModelProfile, UserSkill } from "../types";
 import {
 	DEFAULT_WEB_ANNOTATIONS_TOGGLE_SHORTCUT,
@@ -37,6 +37,8 @@ export function SettingsView({
 	activePanel,
 	showThinking,
 	setShowThinking,
+	hideTools,
+	setHideTools,
 	expandThinking,
 	setExpandThinking,
 	modelDefaults,
@@ -54,6 +56,8 @@ export function SettingsView({
 	activePanel: SettingsPanel;
 	showThinking: boolean;
 	setShowThinking: (value: boolean) => void;
+	hideTools: boolean;
+	setHideTools: (value: boolean) => void;
 	expandThinking: boolean;
 	setExpandThinking: (value: boolean) => void;
 	modelDefaults?: ModelDefaults;
@@ -143,6 +147,15 @@ export function SettingsView({
 						const next = !showThinking;
 						setShowThinking(next);
 						writeStoredShowThinking(next);
+					}}
+				/>
+				<InlineCheckboxToggle
+					checked={hideTools}
+					title="Hide tools"
+					onToggle={() => {
+						const next = !hideTools;
+						setHideTools(next);
+						writeStoredHideTools(next);
 					}}
 				/>
 				<InlineCheckboxToggle

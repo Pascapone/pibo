@@ -5,7 +5,7 @@ import test from "node:test";
 
 const execFileAsync = promisify(execFile);
 
-async function renderSessionTraceHeader({ showRawEvents, showThinking, expandThinking }) {
+async function renderSessionTraceHeader({ showRawEvents, showThinking, hideTools, expandThinking }) {
 	const script = `
 		import React from "react";
 		globalThis.React = React;
@@ -25,12 +25,14 @@ async function renderSessionTraceHeader({ showRawEvents, showThinking, expandThi
 			currentSessionView: { label: "Trace" },
 			showRawEvents: ${JSON.stringify(showRawEvents)},
 			showThinking: ${JSON.stringify(showThinking)},
+			hideTools: ${JSON.stringify(hideTools)},
 			expandThinking: ${JSON.stringify(expandThinking)},
 			onShowWebAnnotationsPanel: noop,
 			onHideWebAnnotationsPanel: noop,
 			onSelectSessionView: noop,
 			onToggleRawEvents: noop,
 			onToggleThinking: noop,
+			onToggleHideTools: noop,
 			onToggleExpandThinking: noop,
 			onError: noop,
 		}));
@@ -55,19 +57,23 @@ test("trace header toggle names stay stable across false and true states", async
 	const collapsed = await renderSessionTraceHeader({
 		showRawEvents: false,
 		showThinking: true,
+		hideTools: false,
 		expandThinking: false,
 	});
 	assert.match(collapsed, /max-\[980px\]:flex-wrap/);
 	assertToggle(collapsed, { name: "Raw Events", pressed: false, title: "Show Raw Events" });
+	assertToggle(collapsed, { name: "Hide Tools", pressed: false, title: "Hide Tools" });
 	assertToggle(collapsed, { name: "Thinking", pressed: true, title: "Hide Thinking" });
 	assertToggle(collapsed, { name: "Thinking expansion", pressed: false, title: "Expand Thinking" });
 
 	const expanded = await renderSessionTraceHeader({
 		showRawEvents: true,
 		showThinking: true,
+		hideTools: true,
 		expandThinking: true,
 	});
 	assertToggle(expanded, { name: "Raw Events", pressed: true, title: "Hide Raw Events" });
+	assertToggle(expanded, { name: "Hide Tools", pressed: true, title: "Show Tools" });
 	assertToggle(expanded, { name: "Thinking", pressed: true, title: "Hide Thinking" });
 	assertToggle(expanded, { name: "Thinking expansion", pressed: true, title: "Collapse Thinking" });
 });
@@ -76,6 +82,7 @@ test("thinking expansion visibility preserves the supplied expansion state", asy
 	const visibleExpanded = await renderSessionTraceHeader({
 		showRawEvents: false,
 		showThinking: true,
+		hideTools: false,
 		expandThinking: true,
 	});
 	assertToggle(visibleExpanded, { name: "Thinking expansion", pressed: true, title: "Collapse Thinking" });
@@ -83,6 +90,7 @@ test("thinking expansion visibility preserves the supplied expansion state", asy
 	const hidden = await renderSessionTraceHeader({
 		showRawEvents: false,
 		showThinking: false,
+		hideTools: false,
 		expandThinking: true,
 	});
 	assertToggle(hidden, { name: "Thinking", pressed: false, title: "Show Thinking" });
@@ -91,6 +99,7 @@ test("thinking expansion visibility preserves the supplied expansion state", asy
 	const restored = await renderSessionTraceHeader({
 		showRawEvents: false,
 		showThinking: true,
+		hideTools: false,
 		expandThinking: true,
 	});
 	assertToggle(restored, { name: "Thinking expansion", pressed: true, title: "Collapse Thinking" });

@@ -73,11 +73,11 @@ Users and agents can deep-link to a settings panel without relying on hidden bro
 
 ### Requirement: Browser display preferences remain browser-local
 
-Thinking display controls MUST be stored in browser local storage and MUST NOT mutate server-side user settings or runtime defaults.
+Terminal display controls MUST be stored in browser local storage and MUST NOT mutate server-side user settings or runtime defaults.
 
 #### Current
 
-General settings toggles `pibo.chat.showThinking` and `pibo.chat.expandThinking` directly in `localStorage`. These values affect terminal rendering, not runtime creation.
+General settings toggles `pibo.chat.showThinking`, `pibo.chat.hideTools`, and `pibo.chat.expandThinking` directly in `localStorage`. These values affect terminal rendering, not runtime creation.
 
 #### Target
 
@@ -86,6 +86,7 @@ A user can change how thinking blocks render in one browser without changing fut
 #### Acceptance
 
 - Toggling `Show thinking blocks` writes only `pibo.chat.showThinking` in browser storage.
+- Toggling `Hide tools` writes only `pibo.chat.hideTools` in browser storage and defaults to disabled when no valid value exists.
 - Toggling `Expand thinking blocks` writes only `pibo.chat.expandThinking` in browser storage.
 - The expand toggle is disabled when thinking blocks are hidden.
 - No `/api/chat/user-settings` or `/api/chat/model-defaults` request is required for these toggles.

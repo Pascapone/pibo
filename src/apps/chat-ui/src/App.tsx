@@ -35,6 +35,7 @@ import {
 	clearStoredSelection,
 	readStoredComposerDraft,
 	readStoredExpandThinking,
+	readStoredHideTools,
 	readStoredNewSessionProfile,
 	readStoredSelection,
 	readStoredSessionView,
@@ -46,6 +47,7 @@ import {
 	removeStoredRoomSelection,
 	writeStoredComposerDraft,
 	writeStoredExpandThinking,
+	writeStoredHideTools,
 	writeStoredNewSessionProfile,
 	writeStoredSelection,
 	writeStoredSessionView,
@@ -288,6 +290,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const [downloadStatus, setDownloadStatus] = useState<ChatDownloadStatus | null>(null);
 	const activeDownloadKeysRef = useRef<Set<string>>(new Set());
 	const [showThinking, setShowThinking] = useState(readStoredShowThinking);
+	const [hideTools, setHideTools] = useState(readStoredHideTools);
 	const [expandThinking, setExpandThinking] = useState(readStoredExpandThinking);
 	const [showRawEvents, setShowRawEvents] = useState(readStoredShowRawEvents);
 	const [showArchived, setShowArchived] = useState(readStoredShowArchivedSessions);
@@ -1619,6 +1622,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 						sessionViews={sessionViews}
 						showRawEvents={showRawEvents}
 						showThinking={showThinking}
+						hideTools={hideTools}
 						expandThinking={expandThinking}
 						commands={slashCommands}
 						skills={skills}
@@ -1639,6 +1643,11 @@ export function App({ route }: { route: ChatAppRoute }) {
 							const next = !showThinking;
 							setShowThinking(next);
 							writeStoredShowThinking(next);
+						}}
+						onToggleHideTools={() => {
+							const next = !hideTools;
+							setHideTools(next);
+							writeStoredHideTools(next);
 						}}
 						onToggleExpandThinking={() => {
 							const next = !expandThinking;
@@ -1785,6 +1794,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 						onExitTerminalFullscreen={() => setTerminalFullscreen(false)}
 						showRawEvents={showRawEvents}
 						showThinking={showThinking}
+						hideTools={hideTools}
 						expandThinking={expandThinking}
 						commands={slashCommands}
 						skills={skills}
@@ -1800,6 +1810,11 @@ export function App({ route }: { route: ChatAppRoute }) {
 							const next = !showThinking;
 							setShowThinking(next);
 							writeStoredShowThinking(next);
+						}}
+						onToggleHideTools={() => {
+							const next = !hideTools;
+							setHideTools(next);
+							writeStoredHideTools(next);
 						}}
 						onToggleExpandThinking={() => {
 							const next = !expandThinking;
@@ -1860,6 +1875,8 @@ export function App({ route }: { route: ChatAppRoute }) {
 									activePanel={settingsPanel}
 									showThinking={showThinking}
 									setShowThinking={setShowThinking}
+									hideTools={hideTools}
+									setHideTools={setHideTools}
 									expandThinking={expandThinking}
 									setExpandThinking={setExpandThinking}
 									modelDefaults={bootstrap.modelDefaults}

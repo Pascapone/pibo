@@ -91,6 +91,7 @@ export type CompactTerminalRow = {
 
 export type BuildTerminalRowsOptions = {
 	showThinking: boolean;
+	hideTools?: boolean;
 };
 
 type FlatTraceNode = {
@@ -127,7 +128,12 @@ export function buildCompactTerminalRows(
 		.filter((item) => item.node.type !== "agent.turn" && (options.showThinking || item.node.type !== "model.reasoning"));
 	const candidates = syncThinkingToolRows(flatNodes.map((item) => createRowCandidate(item.node, item.turnId)));
 	applyCompletedTurnTiming(candidates, turnById);
-	return groupRelatedToolCandidates(reconcileConceptualRowCandidates(candidates)).map((candidate) => candidate.row);
+	const rows = groupRelatedToolCandidates(reconcileConceptualRowCandidates(candidates)).map((candidate) => candidate.row);
+	return options.hideTools ? rows.filter(isConversationRow) : rows;
+}
+
+function isConversationRow(row: CompactTerminalRow): boolean {
+	return row.kind === "message.user" || row.kind === "message.assistant" || row.kind === "reasoning";
 }
 
 export function findActiveTurnStartedAt(traceView: PiboSessionTraceView | null): string | undefined {

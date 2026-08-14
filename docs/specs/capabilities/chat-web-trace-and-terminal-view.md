@@ -199,21 +199,31 @@ The system MUST project trace nodes into terminal rows that prioritize human-rea
 
 #### Current
 
-`buildCompactTerminalRows` flattens and sorts trace nodes, hides `agent.turn`, optionally hides `model.reasoning`, maps each visible node type to a row kind, previews bounded tool output, exposes expandable input/output/error details, groups routine exploration tools, and carries debug fields such as event id, run id, source, and stream order.
+`buildCompactTerminalRows` flattens and sorts trace nodes, hides `agent.turn`, optionally hides `model.reasoning`, maps each visible node type to a row kind, previews bounded tool output, exposes expandable input/output/error details, groups routine exploration tools, and carries debug fields such as event id, run id, source, and stream order. Chat Web also exposes a browser-local `Hide Tools` mode that reduces the rendered rows to user messages, assistant messages, and optionally visible reasoning.
 
 #### Acceptance
 
 - User and assistant messages render as message rows in trace order.
 - Thinking rows appear only when thinking display is enabled.
-- Tool rows show a concise verb, tool name, optional function-call input, bounded preview, error state, and expandable details.
-- Delegation and async-agent rows expose linked Pibo Session ids when present.
-- Yielded run, compaction, execution command, and system error rows remain visible as distinct row kinds.
+- `Hide Tools` is disabled by default and persists only in browser local storage.
+- When `Hide Tools` is enabled, only user messages, assistant messages, and thinking rows allowed by the independent thinking toggle remain visible.
+- Tool rows show a concise verb, tool name, optional function-call input, bounded preview, error state, and expandable details when `Hide Tools` is disabled.
+- When `Hide Tools` is disabled, delegation and async-agent rows expose linked Pibo Session ids when present.
+- When `Hide Tools` is disabled, yielded run, compaction, execution command, and system error rows remain visible as distinct row kinds.
 
 #### Scenario: Thinking hidden by default
 
 - GIVEN a trace contains user, reasoning, tool, and assistant nodes
 - WHEN the terminal builds rows with `showThinking=false`
 - THEN the reasoning node is omitted and the other rows keep their relative order.
+
+#### Scenario: Hide tool activity
+
+- GIVEN a trace contains user, reasoning, tool, delegation, command, error, and assistant nodes
+- WHEN the user enables `Hide Tools`
+- THEN tool and other execution rows are omitted
+- AND user and assistant messages remain in trace order
+- AND reasoning remains independently controlled by `Show Thinking`.
 
 ### Requirement: Terminal interaction stays stable during streaming
 

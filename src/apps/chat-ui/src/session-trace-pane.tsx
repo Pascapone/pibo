@@ -91,6 +91,7 @@ export function SessionTracePane({
   onExitTerminalFullscreen,
   showRawEvents,
   showThinking,
+  hideTools,
   expandThinking,
   commands,
   skills,
@@ -99,6 +100,7 @@ export function SessionTracePane({
   onComposerTextChange,
   onToggleRawEvents,
   onToggleThinking,
+  onToggleHideTools,
   onToggleExpandThinking,
   onSessionAgentProfileChange,
   onFork,
@@ -139,6 +141,7 @@ export function SessionTracePane({
   onExitTerminalFullscreen?: () => void;
   showRawEvents: boolean;
   showThinking: boolean;
+  hideTools: boolean;
   expandThinking: boolean;
   commands: SlashCommand[];
   skills: Array<{ name: string; description?: string; path?: string }>;
@@ -147,6 +150,7 @@ export function SessionTracePane({
   onComposerTextChange: Dispatch<SetStateAction<string>>;
   onToggleRawEvents: () => void;
   onToggleThinking: () => void;
+  onToggleHideTools: () => void;
   onToggleExpandThinking: () => void;
   onSessionAgentProfileChange: (profile: string) => void;
   onFork: (entryId: string) => void;
@@ -422,6 +426,7 @@ export function SessionTracePane({
     currentTraceView,
     isLoading: loadingTrace,
     showThinking,
+    hideTools,
     expandThinking,
     selectedSessionProfile,
     sessionActiveModelBadge,
@@ -527,12 +532,14 @@ export function SessionTracePane({
         onOpenSessionWindow,
         showRawEvents,
         showThinking,
+        hideTools,
         expandThinking,
         onShowWebAnnotationsPanel: () => setWebAnnotationsPanelVisible(true),
         onHideWebAnnotationsPanel: () => setWebAnnotationsPanelVisible(false),
         onSelectSessionView,
         onToggleRawEvents,
         onToggleThinking,
+        onToggleHideTools,
         onToggleExpandThinking,
         onError,
       }}
