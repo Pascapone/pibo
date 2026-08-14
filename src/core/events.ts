@@ -139,6 +139,7 @@ export type PiboInputEvent = PiboMessageEvent | PiboExecutionEvent;
 
 export type PiboSessionStatus = {
 	piboSessionId: string;
+	activeModel?: { provider: string; id: string };
 	queuedMessages: number;
 	processing: boolean;
 	streaming: boolean;

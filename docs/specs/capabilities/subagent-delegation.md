@@ -17,7 +17,7 @@ Define the observable contract for registering subagents, exposing them as tools
 
 ## Background / Current State
 
-Subagents are registered as `SubagentProfile` records with a `name`, `targetProfile`, optional `description`, optional timeout, and optional max depth. Profiles select subagents through `InitialSessionContextBuilder.addSubagent` or `addSubagents`. Runtime creation converts enabled selected subagents into generated tools named `pibo_subagent_<normalized-name>`.
+Subagents are registered as `SubagentProfile` records with a `name`, `targetProfile`, optional `description`, optional timeout, and optional max depth. Profiles select subagents through `InitialSessionContextBuilder.addSubagent` or `addSubagents`. Runtime creation converts enabled selected subagents that remain below their max depth into generated tools named `pibo_subagent_<normalized-name>`.
 
 When such a tool runs, the session router resolves or creates a child Pibo Session with channel `pibo.subagents`, kind `subagent`, the parent's workspace and app context compatibility context, and a parent-child relationship through `parentId`. The router emits a `subagent_session` output event on the parent before waiting for the child assistant reply.
 
@@ -166,28 +166,31 @@ Subagent sessions remain visible in the parent room after migrations and do not 
 
 ### Requirement: Subagent depth is bounded
 
-The router MUST reject subagent delegation when the current parent depth is greater than or equal to the subagent max depth.
+The router MUST omit a generated subagent tool when the current session depth is greater than or equal to that subagent's max depth. The execution boundary MUST retain the same depth check for stale or direct calls that bypass runtime tool selection.
 
 #### Current
 
-The max depth defaults to `3`. Custom agent API input accepts positive numeric `maxDepth` values and rounds them before storage.
+The max depth defaults to `3`. Custom agent API input accepts positive numeric `maxDepth` values and rounds them before storage. Runtime profile creation filters each configured subagent against the calling session's current parent depth.
 
 #### Target
 
-Recursive delegation fails before creating or reusing more child sessions once the configured depth limit is reached.
+Agents do not receive unusable subagent tools or spend tokens attempting delegation after a configured depth limit is reached. Calls that bypass the available tool set still fail before creating or reusing child sessions.
 
 #### Acceptance
 
 - A subagent with no `maxDepth` uses depth limit `3`.
-- A subagent with `maxDepth: 1` cannot be called from a session that already has one parent link.
+- A subagent with `maxDepth: 1` is available to a root session at depth `0` and absent from a child session at depth `1`.
+- Depth filtering is per subagent definition, so a child at depth `1` may still receive another subagent tool configured with `maxDepth: 2`.
+- A direct or stale call at the limit fails before creating or reusing a child session.
 - Depth checks walk `parentId` links and stop on cycles rather than looping forever.
 
 #### Scenario: Recursive delegation reaches limit
 
-- GIVEN a subagent is configured with `maxDepth: 2`
-- AND the current parent session is already at depth 2
-- WHEN the runtime calls that subagent
-- THEN the call fails with a max-depth error
+- GIVEN a subagent is configured with `maxDepth: 1`
+- AND the current session already has one parent link
+- WHEN the runtime is created for that session
+- THEN the generated tool for that subagent is not available
+- AND a direct call that bypasses tool selection fails with a max-depth error
 - AND no new child session is created for that call.
 
 ### Requirement: Child runtime selection respects subagent defaults
@@ -287,7 +290,7 @@ Subagent work is distinguishable from direct user input and cannot block the par
 - [ ] SC-001: Profile inspection for the default Codex-compatible profile lists `default`, `explorer`, and `worker` subagents and exposes their generated tools.
 - [ ] SC-002: Calling a generated subagent tool with a `threadKey` routes to a child Pibo Session and returns the child reply.
 - [ ] SC-003: A second call with the same parent, subagent, target profile, and `threadKey` reuses the existing child session.
-- [ ] SC-004: A subagent call at or beyond configured max depth fails before creating new child work.
+- [ ] SC-004: A subagent tool at configured max depth is absent from the active runtime, and bypass calls fail before creating new child work.
 - [ ] SC-005: Chat Web can render a delegation event from `subagent_session` without waiting for the child reply.
 
 ## Assumptions and Open Questions

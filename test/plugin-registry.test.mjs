@@ -146,7 +146,7 @@ test("default plugin registry builds capabilities without retired built-in codin
 		{
 			name: "model",
 			description: "Open the interactive model selector for authenticated providers.",
-			slashCommands: ["model", "models"],
+			slashCommands: ["model"],
 		},
 		{
 			name: "login.start",

@@ -131,6 +131,9 @@ async function startWebHostChannel(options = {}) {
 		listSessions() {
 			return sessions.list();
 		},
+		...(options.getSessionStatusSnapshot ? {
+			getSessionStatusSnapshot: options.getSessionStatusSnapshot,
+		} : {}),
 		getGatewayActions() {
 			return [];
 		},
@@ -6756,6 +6759,49 @@ test("chat web app rejects cross-origin mutation requests", async () => {
 		assert.equal(response.status, 403);
 		assert.deepEqual(await response.json(), { error: "Origin is not allowed" });
 		assert.equal(emitted.length, 0);
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("chat web status refresh returns a snapshot without emitting a new execution result", async () => {
+	const snapshotCalls = [];
+	const { channel, baseURL, emitted, sessions } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		async getSessionStatusSnapshot(piboSessionId) {
+			snapshotCalls.push(piboSessionId);
+			return {
+				piboSessionId,
+				activeModel: { provider: "openai", id: "gpt-test" },
+				queuedMessages: 0,
+				processing: false,
+				streaming: false,
+				activeTools: ["read"],
+				enabledTools: ["read"],
+				cwd: "/workspace",
+				disposed: false,
+				contextUsage: { tokens: 250, contextWindow: 1000, percent: 25 },
+			};
+		},
+	});
+	const session = sessions.create({
+		channel: "pibo.chat-web",
+		kind: "chat",
+		profile: "base",
+		title: "Status refresh fixture",
+	});
+
+	try {
+		const response = await fetch(`${baseURL}/api/chat/status?piboSessionId=${encodeURIComponent(session.id)}`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(response.status, 200);
+		assert.equal(response.headers.get("cache-control"), "no-store");
+		const payload = await response.json();
+		assert.equal(payload.piboSessionId, session.id);
+		assert.equal(payload.contextUsage.percent, 25);
+		assert.deepEqual(snapshotCalls, [session.id]);
+		assert.equal(emitted.length, 0, "refreshing status must not append a trace event");
 	} finally {
 		await channel.stop?.();
 	}

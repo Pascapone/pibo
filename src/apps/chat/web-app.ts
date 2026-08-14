@@ -5752,6 +5752,24 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				return sendChatMessage({ state, context, webSession, defaultProfile, body });
 			}
 
+			if (url.pathname === `${CHAT_WEB_API_PREFIX}/status` && request.method === "GET") {
+				const webSession = await requireSession(request, context);
+				const selectedSession = resolveRequestedSession(
+					state,
+					context,
+					webSession,
+					defaultProfile,
+					url.searchParams.get("piboSessionId") || undefined,
+				);
+				if (!context.channelContext.getSessionStatusSnapshot) {
+					throw new PiboWebHttpError("Session status snapshots are not available", 501);
+				}
+				state.sessionQuery.upsertSession(selectedSession);
+				return responseJson(await context.channelContext.getSessionStatusSnapshot(selectedSession.id), {
+					headers: { "cache-control": "no-store" },
+				});
+			}
+
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/action` && request.method === "POST") {
 				requireSameOriginJsonRequest(request);
 				const webSession = await requireSession(request, context);

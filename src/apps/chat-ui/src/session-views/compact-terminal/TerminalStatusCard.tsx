@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Activity, Cpu, Folder, Gauge, Hash, Layers } from "lucide-react";
+import { Activity, Cpu, Folder, Gauge, Hash, Layers, RefreshCw } from "lucide-react";
 import { buildTerminalCardDescriptor, type TerminalProgressDescriptor, type TerminalStatusField } from "../../../../../session-ui/index.js";
 import type { CompactTerminalRow } from "../../../../../session-ui/terminalRows.js";
+import { getSessionStatus } from "../../api";
 
 type StatusData = {
 	piboSessionId?: string;
@@ -184,16 +185,59 @@ function formatResetTime(value?: string): string | undefined {
 	});
 }
 
-export function TerminalStatusCard({ row }: { row: CompactTerminalRow }) {
-	const data = parseStatusData(row.output);
-	const sharedCard = buildTerminalCardDescriptor(row);
-	const statusView = sharedCard?.kind === "status" ? sharedCard.statusView : undefined;
+export function TerminalStatusCard({ row, piboSessionId }: { row: CompactTerminalRow; piboSessionId?: string }) {
+	const [refreshedOutput, setRefreshedOutput] = useState<{ rowId: string; sourceOutput: unknown; output: unknown } | null>(null);
+	const output = refreshedOutput?.rowId === row.id && Object.is(refreshedOutput.sourceOutput, row.output)
+		? refreshedOutput.output
+		: row.output;
 	const [toolsExpanded, setToolsExpanded] = useState(false);
+	const [refreshing, setRefreshing] = useState(false);
+	const [refreshError, setRefreshError] = useState<string | null>(null);
+	const data = parseStatusData(output);
+	const sharedCard = buildTerminalCardDescriptor(row);
+	const displayedCard = output === row.output ? sharedCard : buildTerminalCardDescriptor({ ...row, output });
+	const statusView = displayedCard?.kind === "status" ? displayedCard.statusView : undefined;
+
+	const refreshStatus = async () => {
+		if (!piboSessionId || refreshing) return;
+		setRefreshing(true);
+		setRefreshError(null);
+		try {
+			setRefreshedOutput({
+				rowId: row.id,
+				sourceOutput: row.output,
+				output: await getSessionStatus(piboSessionId),
+			});
+		} catch (caught) {
+			setRefreshError(caught instanceof Error ? caught.message : String(caught));
+		} finally {
+			setRefreshing(false);
+		}
+	};
+
+	const refreshButton = (
+		<button
+			type="button"
+			disabled={!piboSessionId || refreshing}
+			onClick={() => void refreshStatus()}
+			className="ml-auto inline-flex h-7 w-7 shrink-0 items-center justify-center border border-[#3a3a3a] bg-[#151f24] text-[#737373] transition hover:border-[#38bdf8] hover:text-[#38bdf8] disabled:cursor-not-allowed disabled:opacity-50"
+			aria-label="Refresh status"
+			aria-busy={refreshing}
+			title={refreshing ? "Refreshing status" : "Refresh status"}
+			data-pibo-debug="terminal-status-refresh"
+		>
+			<RefreshCw size={13} className={refreshing ? "animate-spin" : undefined} />
+		</button>
+	);
 
 	if (!data || !statusView) {
 		return (
 			<div className="mt-2 border border-[#2a2a2a] bg-[#111111] px-3 py-2 text-[12px] text-[#d4d4d4]" data-pibo-component="TerminalStatusCard" data-pibo-debug="terminal-status-card" data-shared-terminal-card="status">
-				<div className="text-[#737373]">Status (unparseable)</div>
+				<div className="flex items-center gap-2">
+					<div className="text-[#737373]">Status (unparseable)</div>
+					{refreshButton}
+				</div>
+				{refreshError ? <div className="mt-2 text-[11px] text-[#ef4444]" role="alert">{refreshError}</div> : null}
 			</div>
 		);
 	}
@@ -214,7 +258,9 @@ export function TerminalStatusCard({ row }: { row: CompactTerminalRow }) {
 			<div className="mb-2 flex items-center gap-2">
 				<Activity size={14} className="text-[#22c55e]" />
 				<span className="font-semibold text-[#d4d4d4]">{statusView.title}</span>
+				{refreshButton}
 			</div>
+			{refreshError ? <div className="mb-2 text-[11px] text-[#ef4444]" role="alert">{refreshError}</div> : null}
 
 			{/* Session Info */}
 			<div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
