@@ -145,6 +145,7 @@ export type ChatWebStoredEvent<T = unknown> = {
 	streamId?: number;
 	streamFrameIndex?: number;
 	traceSource?: Extract<TraceSource, "live">;
+	storedPayloadRef?: TracePayloadRef;
 	type: string;
 	createdAt: string;
 	payload: T;

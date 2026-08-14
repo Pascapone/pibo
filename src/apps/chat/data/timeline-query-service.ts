@@ -3,6 +3,7 @@ import type { ChatWebStoredPiboEvent } from "../types/read-model.js";
 import type { PiboDataStore } from "../../../data/pibo-store.js";
 import { messageTurnTimingsFromEvents, type TraceMessageTurnTiming } from "../../../shared/trace-event-projection.js";
 import { storedChatEventFromV2Row, storedPiboEventFromV2Row, type EventLogRow } from "./chat-data-mappers.js";
+import { tracePayloadRefForStoredPayload } from "../trace-v2.js";
 
 export class ChatTimelineQueryService {
 	constructor(private readonly store: PiboDataStore) {}
@@ -34,7 +35,7 @@ export class ChatTimelineQueryService {
 				AND type IN ('message_queued', 'message_steered', 'message_started', 'message_finished', 'session_error', 'thinking_finished', 'assistant_message')
 			ORDER BY session_sequence ASC, stream_id ASC
 		`).all(piboSessionId) as EventLogRow[];
-		const events = rows.map(storedPiboEventFromV2Row).filter((event): event is ChatWebStoredPiboEvent => event !== undefined);
+		const events = rows.map((row) => this.storedTraceEvent(row)).filter((event): event is ChatWebStoredPiboEvent => event !== undefined);
 		return messageTurnTimingsFromEvents(events);
 	}
 
@@ -63,7 +64,18 @@ export class ChatTimelineQueryService {
 			)
 			ORDER BY session_sequence ASC, stream_id ASC
 		`).all(...values, limit) as EventLogRow[];
-		return rows.map(storedPiboEventFromV2Row).filter((event): event is ChatWebStoredPiboEvent => event !== undefined);
+		return rows.map((row) => this.storedTraceEvent(row)).filter((event): event is ChatWebStoredPiboEvent => event !== undefined);
+	}
+
+	private storedTraceEvent(row: EventLogRow): ChatWebStoredPiboEvent | undefined {
+		const storedPayloadRef = row.payload_ref && row.session_id
+			? tracePayloadRefForStoredPayload({
+				payloadStore: this.store.payloads,
+				piboSessionId: row.session_id,
+				payloadId: row.payload_ref,
+			})
+			: undefined;
+		return storedPiboEventFromV2Row(row, storedPayloadRef);
 	}
 
 	countEventsByType(input: { piboSessionId?: string; eventTypes?: string[] } = {}): Array<{ eventType: string; count: number }> {

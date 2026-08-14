@@ -139,6 +139,30 @@ export function parseTracePayloadRef(ref: string): { piboSessionId: string; payl
 	}
 }
 
+export function tracePayloadRefForStoredPayload(input: {
+	payloadStore: PayloadStore;
+	piboSessionId: string;
+	payloadId: string;
+}): TracePayloadRef | undefined {
+	const payload = input.payloadStore.getPayload(input.payloadId);
+	if (!payload) return undefined;
+	const rawPreview = payload.previewText ?? "";
+	const preview = looksLikeImagePayloadPreview(rawPreview) ? "Image payload" : rawPreview;
+	return {
+		ref: encodeTracePayloadRef(input.piboSessionId, payload.id),
+		contentType: normalizeContentType(payload.contentType),
+		byteLength: payload.byteSize,
+		preview,
+		truncatedPreview: Buffer.byteLength(preview, "utf8") < payload.byteSize,
+		hash: payload.sha256,
+	};
+}
+
+function looksLikeImagePayloadPreview(value: string): boolean {
+	return /"type"\s*:\s*"(?:image|input_image|output_image|image_url)"/i.test(value)
+		|| /"mime(?:Type|_type)"\s*:\s*"image\//i.test(value);
+}
+
 export function readTracePayloadChunk(input: {
 	payloadStore: PayloadStore;
 	ref: string;
@@ -174,6 +198,33 @@ export function readTracePayloadChunk(input: {
 	};
 }
 
+export type TraceImagePayload = {
+	bytes: Uint8Array;
+	mimeType: string;
+};
+
+export function readTraceImagePayload(input: {
+	payloadStore: PayloadStore;
+	ref: string;
+	index: number;
+}): TraceImagePayload | undefined {
+	const parsed = parseTracePayloadRef(input.ref);
+	if (!parsed) return undefined;
+	const payload = input.payloadStore.getPayload(parsed.payloadId);
+	if (!payload?.contentType.includes("json")) return undefined;
+	let value: unknown;
+	try {
+		value = input.payloadStore.readPayloadJson(parsed.payloadId);
+	} catch {
+		return undefined;
+	}
+	const image = collectStoredImagePayloads(value)[input.index];
+	if (!image) return undefined;
+	const decoded = decodeStoredImagePayload(image);
+	if (!decoded) return undefined;
+	return decoded;
+}
+
 function compactTraceNodes(input: {
 	nodes: readonly PiboTraceNode[];
 	payloadStore: PayloadStore;
@@ -201,14 +252,15 @@ function compactTraceNode(node: PiboTraceNode, payloadStore: PayloadStore, piboS
 	});
 	const payloadRefs = compactObject({
 		input: inlinePayloads.input === undefined
-			? payloadRefForValue({ store: payloadStore, piboSessionId, nodeId: node.id, kind: "input", value: node.input })
+			? node.payloadRefs?.input ?? payloadRefForValue({ store: payloadStore, piboSessionId, nodeId: node.id, kind: "input", value: node.input })
 			: undefined,
 		[outputKind]: inlinePayloads[outputKind] === undefined
-			? payloadRefForValue({ store: payloadStore, piboSessionId, nodeId: node.id, kind: outputKind, value: node.output })
+			? node.payloadRefs?.[outputKind] ?? payloadRefForValue({ store: payloadStore, piboSessionId, nodeId: node.id, kind: outputKind, value: node.output })
 			: undefined,
 		error: inlinePayloads.error === undefined
-			? payloadRefForValue({ store: payloadStore, piboSessionId, nodeId: node.id, kind: "error", value: node.error })
+			? node.payloadRefs?.error ?? payloadRefForValue({ store: payloadStore, piboSessionId, nodeId: node.id, kind: "error", value: node.error })
 			: undefined,
+		raw: node.payloadRefs?.raw,
 	});
 	const preview = previewForNode(node, payloadRefs);
 	return compactObject({
@@ -321,6 +373,77 @@ function payloadBytes(value: unknown): { text: string; bytes: Buffer; contentTyp
 	}
 	const text = JSON.stringify(value);
 	return { text, bytes: Buffer.from(text, "utf8"), contentType: "application/json" };
+}
+
+type StoredImagePayload = {
+	data: string;
+	mimeType?: string;
+};
+
+function collectStoredImagePayloads(value: unknown, depth = 0, seen = new Set<unknown>()): StoredImagePayload[] {
+	if (depth > 6 || value === undefined || value === null || typeof value !== "object") return [];
+	if (seen.has(value)) return [];
+	seen.add(value);
+	if (Array.isArray(value)) return value.flatMap((item) => collectStoredImagePayloads(item, depth + 1, seen));
+	const record = value as Record<string, unknown>;
+	const type = typeof record.type === "string" ? record.type.toLowerCase() : undefined;
+	const declaredMimeType = typeof record.mimeType === "string"
+		? record.mimeType
+		: typeof record.mime_type === "string" ? record.mime_type : undefined;
+	const directData = typeof record.data === "string" ? record.data : undefined;
+	const imageUrl = storedImageUrl(record.image_url);
+	if (["image", "input_image", "output_image", "image_url"].includes(type ?? "")) {
+		if (directData) return [{ data: directData, mimeType: declaredMimeType }];
+		if (imageUrl) return [{ data: imageUrl, mimeType: declaredMimeType }];
+	}
+	if (declaredMimeType?.startsWith("image/") && directData) {
+		return [{ data: directData, mimeType: declaredMimeType }];
+	}
+	const nested: unknown[] = [];
+	if ("content" in record) nested.push(record.content);
+	if ("message" in record) nested.push(record.message);
+	if ("result" in record) nested.push(record.result);
+	if ("output" in record) nested.push(record.output);
+	return nested.flatMap((item) => collectStoredImagePayloads(item, depth + 1, seen));
+}
+
+function storedImageUrl(value: unknown): string | undefined {
+	if (typeof value === "string") return value;
+	if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+	const url = (value as Record<string, unknown>).url;
+	return typeof url === "string" ? url : undefined;
+}
+
+function decodeStoredImagePayload(image: StoredImagePayload): TraceImagePayload | undefined {
+	const dataUrl = /^data:([^;,]+);base64,(.*)$/is.exec(image.data);
+	const encoded = (dataUrl?.[2] ?? image.data).replace(/\s+/g, "");
+	if (!encoded || !/^[a-z0-9+/]*={0,2}$/i.test(encoded)) return undefined;
+	const bytes = Buffer.from(encoded, "base64");
+	if (!bytes.byteLength) return undefined;
+	const mimeType = imageMimeTypeFromBytes(bytes);
+	if (!mimeType) return undefined;
+	const declaredMimeType = image.mimeType ?? dataUrl?.[1];
+	if (declaredMimeType?.startsWith("image/") && normalizeImageMimeType(declaredMimeType) !== mimeType) return undefined;
+	return { bytes, mimeType };
+}
+
+function normalizeImageMimeType(value: string): string {
+	const normalized = value.toLowerCase().split(";", 1)[0]?.trim();
+	return normalized === "image/jpg" ? "image/jpeg" : normalized;
+}
+
+export function imageMimeTypeFromBytes(bytes: Uint8Array): string | undefined {
+	if (bytes.length >= 8 && Buffer.from(bytes.subarray(0, 8)).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "image/png";
+	if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
+	const header = Buffer.from(bytes.subarray(0, 12));
+	if (header.subarray(0, 6).toString("ascii") === "GIF87a" || header.subarray(0, 6).toString("ascii") === "GIF89a") return "image/gif";
+	if (header.subarray(0, 4).toString("ascii") === "RIFF" && header.subarray(8, 12).toString("ascii") === "WEBP") return "image/webp";
+	if (bytes.length >= 2 && bytes[0] === 0x42 && bytes[1] === 0x4d) return "image/bmp";
+	if (bytes.length >= 12 && header.subarray(4, 8).toString("ascii") === "ftyp") {
+		const brand = header.subarray(8, 12).toString("ascii");
+		if (brand === "avif" || brand === "avis") return "image/avif";
+	}
+	return undefined;
 }
 
 function textForPreview(value: unknown): string {

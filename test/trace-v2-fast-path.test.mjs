@@ -9,7 +9,9 @@ import {
 	TRACE_V2_INLINE_TRANSCRIPT_PAYLOAD_MAX_BYTES,
 	TRACE_V2_PAYLOAD_DEFAULT_LIMIT_BYTES,
 	TRACE_V2_TIMELINE_HARD_BYTES,
+	readTraceImagePayload,
 	readTracePayloadChunk,
+	tracePayloadRefForStoredPayload,
 	traceRawEventsPageFromEvents,
 	traceTimelinePageFromView,
 } from "../dist/apps/chat/trace-v2.js";
@@ -116,6 +118,83 @@ test("trace v2 timeline keeps large tool output behind payload refs", () => {
 		assert.ok(chunk);
 		assert.equal(chunk.data.length, TRACE_V2_PAYLOAD_DEFAULT_LIMIT_BYTES);
 		assert.equal(chunk.hasMore, true);
+	} finally {
+		store.close();
+	}
+});
+
+test("trace v2 serves exact image bytes from deferred tool payloads", () => {
+	const store = tempStore();
+	try {
+		const imageBytes = Buffer.concat([
+			Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+			Buffer.alloc(9 * 1024, 7),
+		]);
+		const page = traceTimelinePageFromView({
+			trace: largeTrace({
+				content: [{ type: "image", data: imageBytes.toString("base64"), mimeType: "image/png" }],
+				details: { path: "/tmp/exact.png" },
+			}),
+			payloadStore: store.payloads,
+			limit: 120,
+		});
+		const ref = page.nodes[0].payloadRefs.output.ref;
+		const image = readTraceImagePayload({ payloadStore: store.payloads, ref, index: 0 });
+		assert.ok(image);
+		assert.equal(image.mimeType, "image/png");
+		assert.deepEqual(Buffer.from(image.bytes), imageBytes);
+		assert.equal(readTraceImagePayload({ payloadStore: store.payloads, ref, index: 1 }), undefined);
+	} finally {
+		store.close();
+	}
+});
+
+test("trace v2 preserves deferred event payload refs without loading image blobs into the timeline", () => {
+	const store = tempStore();
+	try {
+		const imageBytes = Buffer.concat([
+			Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+			Buffer.alloc(20 * 1024, 9),
+		]);
+		const stored = store.payloads.writePayload({
+			value: { content: [{ type: "image", data: imageBytes.toString("base64"), mimeType: "image/png" }] },
+			contentType: "application/json",
+			retentionClass: "trace_event",
+		});
+		const storedPayloadRef = tracePayloadRefForStoredPayload({
+			payloadStore: store.payloads,
+			piboSessionId: "ps_deferred_image",
+			payloadId: stored.id,
+		});
+		const trace = buildTraceViewFromEvents({
+			session: { id: "ps_deferred_image", piSessionId: "pi_deferred_image", title: "Deferred image" },
+			events: [
+				{
+					id: "1",
+					piboSessionId: "ps_deferred_image",
+					eventSequence: 1,
+					type: "tool_call",
+					createdAt: "2026-07-05T12:00:00.000Z",
+					payload: { type: "tool_call", piboSessionId: "ps_deferred_image", eventId: "turn-image", toolCallId: "call-image", toolName: "read", args: { path: "/tmp/image.png" }, argsComplete: true },
+				},
+				{
+					id: "2",
+					piboSessionId: "ps_deferred_image",
+					eventSequence: 2,
+					storedPayloadRef,
+					type: "tool_execution_finished",
+					createdAt: "2026-07-05T12:00:01.000Z",
+					payload: { type: "tool_execution_finished", piboSessionId: "ps_deferred_image", eventId: "turn-image", toolCallId: "call-image", toolName: "read", result: null, isError: false },
+				},
+			],
+		});
+		const page = traceTimelinePageFromView({ trace, payloadStore: store.payloads, limit: 20 });
+		const tool = page.nodes.find((node) => node.toolCallId === "call-image");
+		assert.equal(tool.inlinePayloads.output, undefined);
+		assert.deepEqual(tool.payloadRefs.output, storedPayloadRef);
+		assert.equal(JSON.stringify(page).includes(imageBytes.toString("base64").slice(0, 80)), false);
+		const image = readTraceImagePayload({ payloadStore: store.payloads, ref: tool.payloadRefs.output.ref, index: 0 });
+		assert.deepEqual(Buffer.from(image.bytes), imageBytes);
 	} finally {
 		store.close();
 	}

@@ -1,8 +1,9 @@
-import { createReadStream, existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
+import { closeSync, createReadStream, existsSync, mkdirSync, openSync, readSync, statSync, writeFileSync, type Stats } from "node:fs";
 import { basename, extname, isAbsolute, relative, resolve } from "node:path";
 import os from "node:os";
 import { Readable } from "node:stream";
 import { PiboWebHttpError } from "../../web/http.js";
+import { imageMimeTypeFromBytes, type TraceImagePayload } from "./trace-v2.js";
 
 export const CHAT_UPLOAD_DIR = resolve(os.homedir(), ".pibo", "uploads");
 const CHAT_FILE_ATTACHMENT_LIMIT = 10;
@@ -60,13 +61,7 @@ export function resolveDownloadPath(path: string, basePath: string): string {
 }
 
 export function responseChatFileDownload(absolutePath: string): Response {
-	let stats;
-	try {
-		stats = statSync(absolutePath);
-	} catch {
-		throw new PiboWebHttpError("File not found: " + absolutePath, 404);
-	}
-	if (!stats.isFile()) throw new PiboWebHttpError("Path is not a file: " + absolutePath, 400);
+	const stats = requireChatFile(absolutePath);
 	return new Response(Readable.toWeb(createReadStream(absolutePath)) as any, {
 		headers: {
 			"content-type": contentTypeForDownload(absolutePath),
@@ -75,6 +70,63 @@ export function responseChatFileDownload(absolutePath: string): Response {
 			"cache-control": "no-store",
 		},
 	});
+}
+
+export function responseChatImagePreview(absolutePath: string): Response {
+	const stats = requireChatFile(absolutePath);
+	const header = Buffer.alloc(Math.min(32, stats.size));
+	const descriptor = openSync(absolutePath, "r");
+	try {
+		readSync(descriptor, header, 0, header.length, 0);
+	} finally {
+		closeSync(descriptor);
+	}
+	const mimeType = imageMimeTypeFromBytes(header);
+	if (!mimeType) throw new PiboWebHttpError("Unsupported image preview format", 415);
+	return new Response(Readable.toWeb(createReadStream(absolutePath)) as any, {
+		headers: imagePreviewHeaders({
+			mimeType,
+			contentLength: stats.size,
+			filename: basename(absolutePath),
+			cacheControl: "no-store",
+		}),
+	});
+}
+
+export function responseChatTraceImage(image: TraceImagePayload): Response {
+	return new Response(Buffer.from(image.bytes), {
+		headers: imagePreviewHeaders({
+			mimeType: image.mimeType,
+			contentLength: image.bytes.byteLength,
+			cacheControl: "private, max-age=31536000, immutable",
+		}),
+	});
+}
+
+function requireChatFile(absolutePath: string): Stats {
+	let stats: Stats;
+	try {
+		stats = statSync(absolutePath);
+	} catch {
+		throw new PiboWebHttpError("File not found: " + absolutePath, 404);
+	}
+	if (!stats.isFile()) throw new PiboWebHttpError("Path is not a file: " + absolutePath, 400);
+	return stats;
+}
+
+function imagePreviewHeaders(input: {
+	mimeType: string;
+	contentLength: number;
+	filename?: string;
+	cacheControl: string;
+}): Record<string, string> {
+	return {
+		"content-type": input.mimeType,
+		"content-length": String(input.contentLength),
+		...(input.filename ? { "content-disposition": "inline; filename*=UTF-8''" + encodeURIComponent(input.filename) } : {}),
+		"cache-control": input.cacheControl,
+		"x-content-type-options": "nosniff",
+	};
 }
 
 function normalizeChatFileAttachmentPaths(value: unknown): string[] {

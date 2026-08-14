@@ -25,6 +25,7 @@ export function DialogShell({
   children,
   closeLabel = "Close dialog",
   closeDisabled = false,
+  maxWidthClassName = "max-w-lg",
 }: {
   title: string;
   description: string;
@@ -33,6 +34,7 @@ export function DialogShell({
   children: ReactNode;
   closeLabel?: string;
   closeDisabled?: boolean;
+  maxWidthClassName?: string;
 }) {
   const titleId = useId();
   const descriptionId = useId();
@@ -104,7 +106,7 @@ export function DialogShell({
       <div
         ref={dialogRef}
         tabIndex={-1}
-        className="max-h-[calc(100vh-2rem)] w-full max-w-lg overflow-y-auto rounded-sm border border-slate-700 bg-[#1a262b] text-slate-200 shadow-2xl outline-none"
+        className={`max-h-[calc(100vh-2rem)] w-full ${maxWidthClassName} overflow-y-auto rounded-sm border border-slate-700 bg-[#1a262b] text-slate-200 shadow-2xl outline-none`}
       >
         <div className="flex items-start justify-between gap-3 border-b border-slate-800 px-4 py-3">
           <div>
