@@ -186,7 +186,10 @@ function formatResetTime(value?: string): string | undefined {
 }
 
 export function TerminalStatusCard({ row, piboSessionId }: { row: CompactTerminalRow; piboSessionId?: string }) {
-	const [output, setOutput] = useState(row.output);
+	const [refreshedOutput, setRefreshedOutput] = useState<{ rowId: string; sourceOutput: unknown; output: unknown } | null>(null);
+	const output = refreshedOutput?.rowId === row.id && Object.is(refreshedOutput.sourceOutput, row.output)
+		? refreshedOutput.output
+		: row.output;
 	const [toolsExpanded, setToolsExpanded] = useState(false);
 	const [refreshing, setRefreshing] = useState(false);
 	const [refreshError, setRefreshError] = useState<string | null>(null);
@@ -199,7 +202,11 @@ export function TerminalStatusCard({ row, piboSessionId }: { row: CompactTermina
 		setRefreshing(true);
 		setRefreshError(null);
 		try {
-			setOutput(await getSessionStatus(piboSessionId));
+			setRefreshedOutput({
+				rowId: row.id,
+				sourceOutput: row.output,
+				output: await getSessionStatus(piboSessionId),
+			});
 		} catch (caught) {
 			setRefreshError(caught instanceof Error ? caught.message : String(caught));
 		} finally {

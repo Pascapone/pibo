@@ -69,9 +69,17 @@ async function runStatusRefreshScenario() {
 		const afterText = textOf(renderer.toJSON());
 		const afterCardCount = renderer.root.findAllByProps({ "data-pibo-component": "TerminalStatusCard" }).length;
 		const updatedButton = renderer.root.findByProps({ "aria-label": "Refresh status" });
+
+		renderer.update(React.createElement(TerminalStatusCard, {
+			row: { ...row, output: { ...row.output, cwd: "/workspace/canonical" } },
+			piboSessionId: "ps_status_refresh",
+		}));
+		await new Promise((resolve) => setTimeout(resolve, 10));
+		const canonicalText = textOf(renderer.toJSON());
 		console.log(JSON.stringify({
 			beforeText,
 			afterText,
+			canonicalText,
 			beforeCardCount,
 			afterCardCount,
 			requests,
@@ -89,6 +97,8 @@ test("Terminal status refresh updates the existing card without posting a new ac
 	assert.match(result.beforeText, /\/workspace\/original/);
 	assert.doesNotMatch(result.beforeText, /\/workspace\/refreshed/);
 	assert.match(result.afterText, /\/workspace\/refreshed/);
+	assert.match(result.canonicalText, /\/workspace\/canonical/);
+	assert.doesNotMatch(result.canonicalText, /\/workspace\/refreshed/);
 	assert.equal(result.beforeCardCount, 1);
 	assert.equal(result.afterCardCount, 1);
 	assert.deepEqual(result.requests, [{
