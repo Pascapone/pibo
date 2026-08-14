@@ -194,8 +194,9 @@ export function TerminalStatusCard({ row, piboSessionId }: { row: CompactTermina
 	const [refreshing, setRefreshing] = useState(false);
 	const [refreshError, setRefreshError] = useState<string | null>(null);
 	const data = parseStatusData(output);
-	const sharedCard = buildTerminalCardDescriptor(output === row.output ? row : { ...row, output });
-	const statusView = sharedCard?.kind === "status" ? sharedCard.statusView : undefined;
+	const sharedCard = buildTerminalCardDescriptor(row);
+	const displayedCard = output === row.output ? sharedCard : buildTerminalCardDescriptor({ ...row, output });
+	const statusView = displayedCard?.kind === "status" ? displayedCard.statusView : undefined;
 
 	const refreshStatus = async () => {
 		if (!piboSessionId || refreshing) return;
