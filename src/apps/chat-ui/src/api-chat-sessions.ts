@@ -195,6 +195,11 @@ export async function postMessage(
 	});
 }
 
+export async function getSessionStatus(piboSessionId: string): Promise<unknown> {
+	const params = new URLSearchParams({ piboSessionId });
+	return requestJson(`/api/chat/status?${params.toString()}`, { cache: "no-store" });
+}
+
 export async function postAction(piboSessionId: string, action: string, params?: unknown): Promise<unknown> {
 	return requestJson("/api/chat/action", {
 		method: "POST",

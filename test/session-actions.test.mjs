@@ -1037,6 +1037,11 @@ test("non-compact actions still execute immediately while a message is active", 
 	await new Promise((resolve) => setImmediate(resolve));
 	assert.deepEqual(order, ["prompt:A"]);
 
+	const eventCountBeforeSnapshot = events.length;
+	const snapshot = await routed.getStatusSnapshot();
+	assert.equal(snapshot.processing, true);
+	assert.equal(events.length, eventCountBeforeSnapshot, "reading a status snapshot must not emit a trace event");
+
 	const status = await routed.executeAction({
 		type: "execution",
 		piboSessionId: "route:test",

@@ -21,6 +21,7 @@ test("useStickyVirtuoso treats scroll position changes as directional only durin
 	assert.match(source, /if \(userScrollIntentRef\.current\) setSticky\(false\);/);
 	assert.doesNotMatch(source, /if \(userScrollIntentRef\.current \|\| scrollingAwayFromBottom\) setSticky\(false\);/);
 	assert.match(source, /stickyTouchScrollIntentDirection\(previousY, currentY\)/);
+	assert.match(source, /if \(hasUserScrollIntent && userScrollDirectionRef\.current === "away"\) requestAtTop\(\);/);
 });
 
 test("useStickyVirtuoso uses explicit anchor and Virtuoso prepend contracts", () => {
@@ -29,11 +30,30 @@ test("useStickyVirtuoso uses explicit anchor and Virtuoso prepend contracts", ()
 	assert.match(source, /stickyAnchorLocation\(\{/);
 	assert.match(source, /virtuosoRef\.current\?\.scrollToIndex\(location\)/);
 	assert.match(source, /else restoreVisibleAnchor\(\);/);
+	assert.match(source, /const wasPrependTransaction = prependTransactionRef\.current/);
+	assert.match(source, /else if \(wasPrependTransaction\) \{\n\t\t\tschedulePrependSettle\(\);/);
+	assert.match(source, /else if \(virtuosoPrependPendingRef\.current\) schedulePrependSettle\(\);/);
+	assert.match(source, /virtuosoPrependPendingRef\.current = false;\n\t\t\t\trestoreVisibleAnchor\(\);/);
 	assert.match(source, /anchorFrameRef\.current = requestAnimationFrame/);
+	assert.match(source, /const mutationObserver = new MutationObserver/);
+	assert.match(source, /new ResizeObserver\(preserveReadingTarget\)/);
+	assert.match(source, /\[data-testid="virtuoso-item-list"\]/);
+	assert.match(source, /if \(stickyRef\.current\) \{\s*scrollToBottom\(scroller\)/);
+	assert.match(source, /characterData: true/);
+	assert.match(source, /virtuosoPrependPendingRef\.current && !allowDuringPrepend/);
+	assert.match(source, /restoreVisibleAnchor\(true\)/);
+	assert.match(source, /!restoredInDom && !virtuosoPrependPendingRef\.current/);
+	assert.match(source, /pointerScrollModeRef\.current !== undefined/);
 	assert.doesNotMatch(source, /firstItemIndexRef\.current \+ index/);
 	assert.match(source, /firstItemIndex,/);
 	assert.match(source, /itemsRendered,/);
 	assert.match(source, /normalizeRange,/);
+});
+
+test("useStickyVirtuoso uses one bottom target without a competing last-index scroll", () => {
+	assert.match(source, /virtuosoRef\.current\?\.autoscrollToBottom\(\);/);
+	assert.match(source, /if \(scroller\) scrollToBottom\(scroller\);/);
+	assert.doesNotMatch(source, /scrollToIndex\(\{ index: lastIndex, align: "end"/);
 });
 
 test("useStickyVirtuoso tracks descendant middle autoscroll and deferrable scrollbar drags", () => {

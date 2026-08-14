@@ -183,6 +183,7 @@ function makeStored(
 		eventSequence: sequence,
 		streamId: typeof streamEvent.streamId === "number" ? streamEvent.streamId : undefined,
 		streamFrameIndex,
+		traceSource: "live",
 		eventId: typeof payload.eventId === "string" ? payload.eventId : undefined,
 		type,
 		createdAt: streamEventCreatedAt(streamEvent) ?? now(),

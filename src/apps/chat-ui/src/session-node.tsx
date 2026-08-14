@@ -100,7 +100,7 @@ export function SessionNode({
 				data-pibo-state={loading ? "loading" : node.status ?? "idle"}
 				data-pibo-archived={node.archived ? "true" : "false"}
 				data-pibo-unread-count={node.unreadCount ?? 0}
-				className={`group w-full grid grid-cols-[1fr_auto] gap-1 items-center mb-1 border rounded-sm ${
+				className={`group w-full grid grid-cols-[1fr_auto] gap-0.5 items-center mb-0.5 border rounded-sm ${
 					node.piboSessionId === selectedPiboSessionId ? "border-[#11a4d4] bg-[#11a4d4]/10" : "border-transparent"
 				}`}
 				style={{ paddingLeft: 8 + depth * 14 }}
@@ -150,7 +150,7 @@ export function SessionNode({
 						</button>
 					</form>
 				) : (
-					<div className="min-w-0 grid grid-cols-[1fr_auto] gap-2 items-center py-1 pr-1">
+					<div className="min-w-0 h-7 max-[980px]:h-8 grid grid-cols-[1fr_auto] gap-1 items-center pr-0.5">
 						<button
 							type="button"
 							onClick={() => {
@@ -162,26 +162,18 @@ export function SessionNode({
 							}}
 							aria-label={workflowKind ? `${workflowKind.ariaLabel}: ${safeTitle}` : `Open session ${safeTitle}`}
 							aria-current={node.piboSessionId === selectedPiboSessionId ? "page" : undefined}
-							className="min-w-0 text-left px-1 py-1 grid grid-cols-[minmax(0,1fr)_auto] gap-2 items-center"
+							className="h-7 max-[980px]:h-8 min-w-0 text-left px-1 flex items-center gap-1.5"
 						>
-							<span className="min-w-0">
-								<span className="flex min-w-0 items-center gap-1.5">
-									{workflowKind && WorkflowKindIcon ? (
-										<span className={`h-4 w-4 shrink-0 inline-flex items-center justify-center rounded-sm border ${workflowKind.className}`} title={workflowKind.ariaLabel} aria-label={workflowKind.ariaLabel}>
-											<WorkflowKindIcon size={11} aria-hidden="true" />
-										</span>
-									) : null}
-									<span className={`block min-w-0 truncate text-sm ${node.archived ? "text-slate-500" : "text-slate-200"}`}>{safeTitle}</span>
+							{workflowKind && WorkflowKindIcon ? (
+								<span className={`h-4 w-4 shrink-0 inline-flex items-center justify-center rounded-sm border ${workflowKind.className}`} title={workflowKind.ariaLabel} aria-label={workflowKind.ariaLabel}>
+									<WorkflowKindIcon size={11} aria-hidden="true" />
 								</span>
-								<span className="mt-0.5 flex min-w-0 items-center gap-1.5">
-									{workflowKind ? <span className={`shrink-0 rounded-sm border px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide ${workflowKind.className}`} title={workflowKind.ariaLabel}>{workflowKind.label}</span> : null}
-									<span className="min-w-0 truncate font-mono text-[10px] text-slate-500">{node.piboSessionId}</span>
-								</span>
-							</span>
+							) : null}
+							<span className={`block min-w-0 truncate text-[13px] leading-none ${node.archived ? "text-slate-500" : "text-slate-200"}`}>{safeTitle}</span>
 						</button>
-						<span className="grid grid-rows-[16px_16px] place-items-center gap-0.5">
+						<span className="inline-flex items-center justify-end gap-1">
 							{loading ? (
-								<Loader2 size={13} className="text-[#11a4d4] animate-spin" aria-label="Loading session" />
+								<Loader2 size={12} className="text-[#11a4d4] animate-spin" aria-label="Loading session" />
 							) : (
 								<span className={signal.className} title={signal.title} aria-label={signal.title} />
 							)}
@@ -193,20 +185,18 @@ export function SessionNode({
 									aria-controls={subsessionsRegionId}
 									title={expanded ? "Collapse Subsessions" : "Expand Subsessions"}
 									aria-label={`Subsessions for ${safeTitle}`}
-									className={`h-4 w-4 inline-flex items-center justify-center rounded-sm transition-colors ${
+									className={`h-5 w-5 inline-flex items-center justify-center rounded-sm transition-colors ${
 										expanded ? "text-[#0bda57]" : "text-slate-600 hover:text-[#11a4d4]"
 									}`}
 								>
-									<Layers size={13} />
+									<Layers size={12} />
 								</button>
-							) : (
-								<span className="h-4 w-4" />
-							)}
+							) : null}
 						</span>
 					</div>
 				)}
 				{editing ? null : (
-					<div className="flex items-center gap-1 pr-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity max-[980px]:opacity-100">
+					<div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity max-[980px]:opacity-100">
 						<ActionMenu label={`Actions for session ${safeTitle}`} estimatedHeight={144}>
 							{node.archived ? (
 								<>
@@ -262,16 +252,16 @@ export function SessionNode({
 	);
 }
 
-function workflowSessionKindPresentation(kind: PiboWebSessionNode["workflowSessionKind"]): { label: string; ariaLabel: string; className: string; Icon: typeof Layers } | null {
+function workflowSessionKindPresentation(kind: PiboWebSessionNode["workflowSessionKind"]): { ariaLabel: string; className: string; Icon: typeof Layers } | null {
 	switch (kind) {
 		case "main_workflow":
-			return { label: "main workflow", ariaLabel: "Main workflow session", className: "border-[#11a4d4]/40 bg-[#11a4d4]/10 text-[#11a4d4]", Icon: Layers };
+			return { ariaLabel: "Main workflow session", className: "border-[#11a4d4]/40 bg-[#11a4d4]/10 text-[#11a4d4]", Icon: Layers };
 		case "nested_workflow":
-			return { label: "nested workflow", ariaLabel: "Nested workflow session", className: "border-violet-400/40 bg-violet-500/10 text-violet-300", Icon: Copy };
+			return { ariaLabel: "Nested workflow session", className: "border-violet-400/40 bg-violet-500/10 text-violet-300", Icon: Copy };
 		case "agent_node":
-			return { label: "agent node", ariaLabel: "Workflow agent node session", className: "border-emerald-400/40 bg-emerald-500/10 text-emerald-300", Icon: UserRound };
+			return { ariaLabel: "Workflow agent node session", className: "border-emerald-400/40 bg-emerald-500/10 text-emerald-300", Icon: UserRound };
 		case "subagent":
-			return { label: "subagent", ariaLabel: "Subagent session", className: "border-amber-400/40 bg-amber-500/10 text-amber-300", Icon: User };
+			return { ariaLabel: "Subagent session", className: "border-amber-400/40 bg-amber-500/10 text-amber-300", Icon: User };
 		default:
 			return null;
 	}

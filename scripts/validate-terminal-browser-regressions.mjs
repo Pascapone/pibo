@@ -52,6 +52,18 @@ try {
 		return { before, after };
 	});
 
+	await scenario("sticky-on-frame-stability", async () => {
+		await returnToLatest();
+		await startFrameRecorder();
+		await postStreamingFixture(20, 120, { traceSnapshots: false });
+		await sleep(3_000);
+		const recording = await stopFrameRecorder();
+		const frames = recording.frames.filter((frame) => frame.t >= 200);
+		const maxBottomGap = Math.max(0, ...frames.map((frame) => frame.bottomGap));
+		assert(maxBottomGap <= Math.max(2, tolerance), `sticky frame bottom gap ${maxBottomGap}px`);
+		return { frameCount: frames.length, maxBottomGap, frames };
+	});
+
 	await scenario("sticky-off-streaming-and-reconciliation", async () => {
 		await detachWithPageUp();
 		await waitForStableViewport();
@@ -81,6 +93,30 @@ try {
 		assert(Math.abs(after.top - before.top) <= tolerance, `expanded row drift ${after.top - before.top}px`);
 		await doubleClickRow(row.id);
 		return { rowId: row.id, before, after, offsetDeltaPx: after.top - before.top };
+	});
+
+	await scenario("wheel-edge-stops-after-one-prepend", async () => {
+		await returnToLatest();
+		await startFrameRecorder();
+		const geometry = await scrollerGeometry();
+		for (let index = 0; index < 60; index += 1) {
+			await client.send("Input.dispatchMouseEvent", { type: "mouseWheel", x: Math.round(geometry.left + geometry.width / 2), y: Math.round(geometry.top + geometry.height / 2), deltaX: 0, deltaY: -450 });
+			await sleep(60);
+			if ((await measure()).scrollTop <= 0) break;
+		}
+		const atInputEnd = await measure();
+		await markFrameRecorder("input-end");
+		if (atInputEnd.hasOlder === "true") await waitFor(cursorChangedExpression(atInputEnd.cursor), 15_000, "wheel-edge history page");
+		await sleep(1_500);
+		const recording = await stopFrameRecorder();
+		const frames = recording.frames.filter((frame) => frame.t >= recording.marks["input-end"]);
+		const cursors = [...new Set(frames.map((frame) => frame.cursor).filter(Boolean))];
+		assert(cursors.length <= 2, `wheel edge loaded ${cursors.length - 1} pages after input stopped`);
+		const anchorOffsets = frames.flatMap((frame) => frame.rows.find((row) => row.id === atInputEnd.firstVisible?.id)?.top ?? []);
+		assert(anchorOffsets.length > 0, `wheel-edge anchor ${atInputEnd.firstVisible?.id} disappeared`);
+		const anchorRangePx = Math.max(...anchorOffsets) - Math.min(...anchorOffsets);
+		assert(anchorRangePx <= Math.max(2, tolerance), `wheel-edge anchor range ${anchorRangePx}px`);
+		return { atInputEnd, cursors, anchorRangePx, frameCount: frames.length, frames };
 	});
 
 	await scenario("slow-and-rapid-history-prepends", async () => {
@@ -225,6 +261,27 @@ async function measure() {
 			.filter((row)=>row.bottom>0&&row.top<viewport.height).sort((a,b)=>a.top-b.top);
 		return {sessionId:root.getAttribute('data-pibo-session-id'),cursor:root.getAttribute('data-pibo-trace-next-before'),hasOlder:root.getAttribute('data-pibo-trace-has-older'),scrollTop:scroller.scrollTop,scrollHeight:scroller.scrollHeight,clientHeight:scroller.clientHeight,bottomGap:scroller.scrollHeight-scroller.scrollTop-scroller.clientHeight,firstVisible:visible[0]??null,stickyButton:Boolean(document.querySelector('button[aria-label="Scroll to latest"]')),renderedRows:document.querySelectorAll('[data-pibo-terminal-row="true"]').length};
 	})()`);
+}
+
+async function startFrameRecorder() {
+	return evaluate(`(() => {
+		const scroller=document.querySelector('[data-testid="virtuoso-scroller"]');
+		const root=document.querySelector('[data-pibo-component="CompactTerminalSessionView"]');
+		if(!scroller||!root)return false;
+		const started=performance.now(),frames=[],marks={};let stopped=false,lastSignature='';
+		const capture=(reason)=>{if(stopped)return;const viewport=scroller.getBoundingClientRect();const rows=[...document.querySelectorAll('[data-pibo-terminal-row="true"][data-row-id]')].map((row)=>{const rect=row.getBoundingClientRect();return{id:row.getAttribute('data-row-id'),top:Math.round((rect.top-viewport.top)*10)/10,bottom:Math.round((rect.bottom-viewport.top)*10)/10};}).filter((row)=>row.bottom>-200&&row.top<scroller.clientHeight+200).sort((a,b)=>a.top-b.top);const frame={t:Math.round((performance.now()-started)*10)/10,reason,scrollTop:Math.round(scroller.scrollTop*10)/10,scrollHeight:Math.round(scroller.scrollHeight*10)/10,bottomGap:Math.round((scroller.scrollHeight-scroller.scrollTop-scroller.clientHeight)*10)/10,cursor:root.getAttribute('data-pibo-trace-next-before'),firstVisible:rows.find((row)=>row.bottom>0)??null,rows};const signature=JSON.stringify([frame.scrollTop,frame.scrollHeight,frame.bottomGap,frame.cursor,frame.firstVisible?.id,rows.map((row)=>[row.id,row.top])]);if(signature!==lastSignature||reason==='mark'||reason==='stop'){lastSignature=signature;if(frames.length<1000)frames.push(frame);}};
+		const observer=new MutationObserver(()=>capture('mutation'));observer.observe(scroller,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['style','data-row-id']});
+		const raf=()=>{capture('raf');if(!stopped)requestAnimationFrame(raf);};requestAnimationFrame(raf);capture('start');
+		window.__piboTerminalFrameRecorder={mark(name){marks[name]=Math.round((performance.now()-started)*10)/10;capture('mark');return marks[name];},stop(){capture('stop');stopped=true;observer.disconnect();return{frames,marks};}};return true;
+	})()`);
+}
+
+async function markFrameRecorder(name) {
+	return evaluate(`window.__piboTerminalFrameRecorder?.mark(${JSON.stringify(name)})`);
+}
+
+async function stopFrameRecorder() {
+	return evaluate(`window.__piboTerminalFrameRecorder?.stop()`);
 }
 
 async function rowMetric(rowId) {

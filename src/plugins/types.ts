@@ -172,6 +172,7 @@ export type PiboProductEvent = PiboProductEventInput & {
 export type PiboGatewayActionContext = {
 	piboSessionId: string;
 	getStatus(): PiboSessionStatus;
+	getStatusSnapshot(): Promise<PiboSessionStatus>;
 	getContextUsage(): ContextUsage | undefined;
 	getActiveModel(): ModelProfile | undefined;
 	getProviderUsage(): Promise<PiboProviderUsageStatus | undefined>;

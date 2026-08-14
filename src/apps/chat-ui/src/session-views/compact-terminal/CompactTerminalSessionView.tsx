@@ -126,6 +126,7 @@ export function CompactTerminalSessionView({
 	}, [loadOlderTracePage]);
 	const loadOlderAtTop = useCallback(() => {
 		if (!rangePrefetchReadyRef.current) return;
+		if (!olderTraceIntentRef.current && !scrollbarDragActiveRef.current) return;
 		loadOlderTracePage(false);
 	}, [loadOlderTracePage]);
 	const handleScrollbarDragChange = useCallback((active: boolean) => {
@@ -147,9 +148,8 @@ export function CompactTerminalSessionView({
 	}, []);
 	const handleVisibleRangeChanged = useCallback((range: { startIndex: number; endIndex: number }) => {
 		if (!rangePrefetchReadyRef.current) return;
-		if (range.startIndex <= 0) loadOlderAtTop();
-		else if (range.startIndex <= OLDER_TRACE_PREFETCH_ROW_THRESHOLD) loadOlderNearTop();
-	}, [loadOlderAtTop, loadOlderNearTop]);
+		if (range.startIndex <= OLDER_TRACE_PREFETCH_ROW_THRESHOLD) loadOlderNearTop();
+	}, [loadOlderNearTop]);
 	const persistVisibleAnchor = useCallback((anchor: { key: string; offset: number } | undefined) => {
 		if (!piboSessionId) return;
 		writeTerminalReadingPosition(piboSessionId, anchor ? { rowId: anchor.key, offsetPx: anchor.offset } : undefined);
@@ -224,20 +224,13 @@ export function CompactTerminalSessionView({
 	}, [expandThinking, rows]);
 
 	useEffect(() => {
-		if (isFetchingOlderTracePage) return;
-		if (!stickyView.isScrolledToTop()) return;
-		loadOlderAtTop();
-	}, [hasOlderTraceEvents, isFetchingOlderTracePage, loadOlderAtTop, rows.length, stickyView.isScrolledToTop, traceView?.nextBeforeCursor, traceView?.nextBeforeSequence]);
-
-	useEffect(() => {
 		rangePrefetchReadyRef.current = false;
 		olderTraceIntentRef.current = false;
 		const readyTimer = window.setTimeout(() => {
 			rangePrefetchReadyRef.current = true;
-			if (stickyView.isScrolledToTop()) loadOlderAtTop();
 		}, 250);
 		return () => window.clearTimeout(readyTimer);
-	}, [loadOlderAtTop, stickyView.isScrolledToTop, traceView?.piboSessionId]);
+	}, [traceView?.piboSessionId]);
 
 	useEffect(() => {
 		const rowIds = new Set(rows.map((row) => row.id));
@@ -338,12 +331,8 @@ export function CompactTerminalSessionView({
 						scrollerRef={stickyView.scrollerRef}
 						atBottomStateChange={stickyView.atBottomStateChange}
 						atBottomThreshold={stickyView.atBottomThreshold}
-						atTopStateChange={(atTop) => {
-							if (atTop) loadOlderAtTop();
-						}}
 						itemsRendered={stickyView.itemsRendered}
 						rangeChanged={(range) => handleVisibleRangeChanged(stickyView.normalizeRange(range))}
-						startReached={loadOlderAtTop}
 						followOutput={stickyView.followOutput}
 						totalListHeightChanged={stickyView.totalListHeightChanged}
 						alignToBottom
@@ -609,7 +598,7 @@ function TerminalRowContent({
 			</>
 		);
 	}
-	if (row.kind === "tool.status") return <TerminalStatusCard row={row} />;
+	if (row.kind === "tool.status") return <TerminalStatusCard row={row} piboSessionId={piboSessionId} />;
 	if (row.kind === "tool.thinking") return <TerminalThinkingCard row={row} onLevelSelect={onThinkingLevelChange} />;
 	if (row.kind === "tool.login") return <TerminalLoginCard row={row} piboSessionId={piboSessionId} />;
 	if (row.kind === "tool.model") return <TerminalModelCard row={row} piboSessionId={piboSessionId} onModelChanged={onModelChanged} />;

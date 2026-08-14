@@ -33,6 +33,31 @@ const URL_COMPARISON_MAX_FIRST_LIVE_LATENCY_DELTA_MS = 250;
 const URL_COMPARISON_MAX_FIRST_VISIBLE_LATENCY_DELTA_MS = 300;
 const PROVIDER_MIN_TEXT_PRESERVATION_RATIO = 0.95;
 const PROVIDER_MIN_REASONING_PRESERVATION_RATIO = 0.95;
+const X_ACCEL_BUFFERING_REGRESSION = "SSE X-Accel-Buffering header is not no";
+
+export function evaluateStreamingSseHeaderRegressions(
+	benchmark: { sse?: Pick<StreamingBenchmarkSseProbe, "requested" | "headers"> },
+	url: string,
+): string[] {
+	if (!benchmark.sse?.requested) return [];
+	const visibleValue = benchmark.sse.headers?.["x-accel-buffering"]?.trim().toLowerCase();
+	if (visibleValue) return visibleValue === "no" ? [] : [X_ACCEL_BUFFERING_REGRESSION];
+	return isDirectStreamingBenchmarkUrl(url) ? [X_ACCEL_BUFFERING_REGRESSION] : [];
+}
+
+function isDirectStreamingBenchmarkUrl(value: string): boolean {
+	try {
+		const hostname = new URL(value).hostname.toLowerCase();
+		return hostname === "localhost"
+			|| hostname.endsWith(".localhost")
+			|| hostname === "0.0.0.0"
+			|| hostname === "::1"
+			|| hostname === "[::1]"
+			|| /^127(?:\.\d{1,3}){3}$/.test(hostname);
+	} catch {
+		return false;
+	}
+}
 
 export function scoreStreamingBenchmark(benchmark: Omit<StreamingBenchmark, "score">): StreamingSmoothnessScore {
 	const debugDelta = benchmark.debug.delta ?? {};
