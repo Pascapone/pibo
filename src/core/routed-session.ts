@@ -983,6 +983,23 @@ export class RoutedSession {
 		};
 	}
 
+	async getStatusSnapshot(): Promise<PiboSessionStatus> {
+		const contextUsage = this.getContextUsage();
+		const providerUsage = await this.getProviderUsage();
+		return {
+			...this.getStatus(),
+			activeModel: this.getActiveModel(),
+			contextUsage: contextUsage
+				? {
+						tokens: contextUsage.tokens ?? undefined,
+						contextWindow: contextUsage.contextWindow ?? undefined,
+						percent: contextUsage.percent ?? undefined,
+					}
+				: contextUsage,
+			...(providerUsage ? { providerUsage } : {}),
+		};
+	}
+
 	getContextUsage(): ContextUsage | undefined {
 		return this.runtime.session.getContextUsage();
 	}
@@ -1436,6 +1453,7 @@ export class RoutedSession {
 			{
 				piboSessionId: this.piboSessionId,
 				getStatus: () => this.getStatus(),
+				getStatusSnapshot: () => this.getStatusSnapshot(),
 				getContextUsage: () => this.getContextUsage(),
 				getActiveModel: () => this.getActiveModel(),
 				getProviderUsage: () => this.getProviderUsage(),

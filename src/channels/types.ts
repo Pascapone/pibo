@@ -41,6 +41,7 @@ export type PiboChannelContext = {
 	findSessions(input: FindPiboSessionsInput): PiboSession[];
 	listSessions?(): PiboSession[];
 	getSessionRuntimeStatus?(piboSessionId: string): PiboSessionStatus | undefined;
+	getSessionStatusSnapshot?(piboSessionId: string): Promise<PiboSessionStatus>;
 	listSessionRuntimeStatuses?(): PiboSessionStatus[];
 	listRuns?(options?: { includeConsumed?: boolean; includeDetached?: boolean }): PiboRunSnapshot[];
 	snapshotSignalSession?(piboSessionId: string): PiboSignalSnapshot;

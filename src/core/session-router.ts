@@ -561,6 +561,15 @@ export class PiboSessionRouter {
 		return this.sessions.get(piboSessionId)?.getStatus();
 	}
 
+	async getSessionStatusSnapshot(piboSessionId: string): Promise<PiboSessionStatus> {
+		const session = await this.getOrCreateSession(piboSessionId);
+		try {
+			return await session.getStatusSnapshot();
+		} finally {
+			this.scheduleIdleSessionEvictionIfIdle(piboSessionId);
+		}
+	}
+
 	async setLiveSessionActiveModel(piboSessionId: string, model: ModelProfile | undefined): Promise<ModelProfile | undefined> {
 		const session = this.sessions.get(piboSessionId);
 		if (!session) return model;

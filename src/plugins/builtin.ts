@@ -212,14 +212,8 @@ export const piboCorePlugin = definePiboPlugin({
 			name: "status",
 			description: "Return current session status with context usage quota.",
 			slashCommands: ["status"],
-			async execute(context) {
-				const providerUsage = await context.getProviderUsage();
-				return {
-					...context.getStatus(),
-					activeModel: context.getActiveModel(),
-					contextUsage: context.getContextUsage(),
-					...(providerUsage ? { providerUsage } : {}),
-				};
+			execute(context) {
+				return context.getStatusSnapshot();
 			},
 		});
 		api.registerGatewayAction({
