@@ -85,6 +85,7 @@ export type PiboSessionRouterOptions = Omit<
 };
 
 const DEFAULT_SUBAGENT_REPLY_TIMEOUT_MS = 10 * 60 * 1000;
+const DEFAULT_SUBAGENT_MAX_DEPTH = 3;
 const DEFAULT_ROUTED_SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 const DEFAULT_ROUTED_SESSION_DISPOSE_TIMEOUT_MS = 30 * 1000;
 
@@ -113,10 +114,15 @@ export function resolvePiboSessionInitialFastMode(session: Pick<PiboSession, "me
 	return typeof value === "boolean" ? value : undefined;
 }
 
+function hasReachedSubagentMaxDepth(subagent: SubagentProfile, depth: number): boolean {
+	return depth >= (subagent.maxDepth ?? DEFAULT_SUBAGENT_MAX_DEPTH);
+}
+
 function profileForSession(
 	baseProfile: InitialSessionContext,
 	piSessionId: string,
-	parentPiSessionId?: string,
+	parentPiSessionId: string | undefined,
+	subagentDepth: number,
 ): InitialSessionContext {
 	const options: InitialSessionContextOptions = {
 		profileName: baseProfile.profileName,
@@ -133,7 +139,7 @@ function profileForSession(
 		subagentFast: baseProfile.subagentFast,
 		skills: baseProfile.skills,
 		tools: baseProfile.tools,
-		subagents: baseProfile.subagents,
+		subagents: baseProfile.subagents.filter((subagent) => !hasReachedSubagentMaxDepth(subagent, subagentDepth)),
 		mcpServers: baseProfile.mcpServers,
 		contextFiles: baseProfile.contextFiles,
 		piPackages: baseProfile.piPackages,
@@ -790,6 +796,12 @@ export class PiboSessionRouter {
 		const modelDefaults = this.resolveModelDefaults();
 		const activeModel = this.ensureSessionActiveModel(piboSession, profile, parentPiSessionId, modelDefaults);
 		const initialThinkingLevel = resolvePiboSessionInitialThinkingLevel(piboSession);
+		const sessionProfile = profileForSession(
+			profile,
+			piboSession.piSessionId,
+			parentPiSessionId,
+			this.getSubagentDepth(piboSession.id),
+		);
 		const userSettings = loadPiboUserSettings();
 		const telemetryExtension = this.telemetryStore
 			? createPiboProviderTelemetryExtension({ store: this.telemetryStore, writer: this.telemetryWriter, session: piboSession, model: activeModel })
@@ -799,7 +811,7 @@ export class PiboSessionRouter {
 			persistSession: this.options.persistSession,
 			thinkingLevel: initialThinkingLevel ?? this.options.thinkingLevel,
 			retryDefaults: resolvePiboSessionRetryDefaults(piboSession.kind, this.options.retryDefaults),
-			profile: profileForSession(profile, piboSession.piSessionId, parentPiSessionId),
+			profile: sessionProfile,
 			extensionFactories: [
 				...(telemetryExtension ? [telemetryExtension] : []),
 				...(this.options.extensionFactories ?? []),
@@ -816,7 +828,7 @@ export class PiboSessionRouter {
 				getActiveMessage: () => session?.getActiveMessage(),
 			},
 		});
-		const initialFastMode = resolvePiboSessionInitialFastMode(piboSession) ?? selectRequestedFastMode(profileForSession(profile, piboSession.piSessionId, parentPiSessionId), modelDefaults) ?? false;
+		const initialFastMode = resolvePiboSessionInitialFastMode(piboSession) ?? selectRequestedFastMode(sessionProfile, modelDefaults) ?? false;
 		session = new RoutedSession(
 			piboSession.id,
 			runtime,
@@ -1063,8 +1075,8 @@ export class PiboSessionRouter {
 	}
 
 	private assertSubagentDepth(parentPiboSessionId: string, subagent: SubagentProfile): void {
-		const maxDepth = subagent.maxDepth ?? 3;
-		if (this.getSubagentDepth(parentPiboSessionId) >= maxDepth) {
+		const maxDepth = subagent.maxDepth ?? DEFAULT_SUBAGENT_MAX_DEPTH;
+		if (hasReachedSubagentMaxDepth(subagent, this.getSubagentDepth(parentPiboSessionId))) {
 			throw new Error(
 				`Subagent "${subagent.name}" exceeded max depth ${maxDepth} from Pibo session "${parentPiboSessionId}"`,
 			);

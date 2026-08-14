@@ -246,6 +246,89 @@ test("profiles can expose subagents as active router tools", async () => {
 	}
 });
 
+test("router omits subagent tools that have reached their max depth", async () => {
+	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+	registry.registerPlugin(
+		definePiboPlugin({
+			id: "test.subagent-depth-tools",
+			register(api) {
+				api.registerSubagents([
+					{ name: "limited", targetProfile: "recursive-profile", maxDepth: 1 },
+					{ name: "deeper", targetProfile: "recursive-profile", maxDepth: 2 },
+				]);
+				api.registerProfile({
+					name: "recursive-profile",
+					create(context) {
+						return new InitialSessionContextBuilder("recursive-profile")
+							.withToolPackages({ runControl: true })
+							.addSubagents([
+								context.getSubagent("limited"),
+								context.getSubagent("deeper"),
+							])
+							.createSession();
+					},
+				});
+			},
+		}),
+	);
+
+	const store = new InMemoryPiboSessionStore();
+	store.create({
+		id: "ps_root",
+		piSessionId: "root-session",
+		channel: "pibo.test",
+		kind: "chat",
+		profile: "recursive-profile",
+	});
+	store.create({
+		id: "ps_child",
+		piSessionId: "child-session",
+		channel: "pibo.subagents",
+		kind: "subagent",
+		profile: "recursive-profile",
+		parentId: "ps_root",
+	});
+	const router = new PiboSessionRouter({
+		persistSession: false,
+		pluginRegistry: registry,
+		sessionStore: store,
+	});
+
+	try {
+		const rootOutput = await router.emit({
+			type: "execution",
+			piboSessionId: "ps_root",
+			action: "status",
+		});
+		const childOutput = await router.emit({
+			type: "execution",
+			piboSessionId: "ps_child",
+			action: "status",
+		});
+
+		assert.equal(rootOutput.result.activeTools.includes("pibo_subagent_limited"), true);
+		assert.equal(rootOutput.result.activeTools.includes("pibo_subagent_deeper"), true);
+		assert.equal(childOutput.result.activeTools.includes("pibo_subagent_limited"), false);
+		assert.equal(childOutput.result.activeTools.includes("pibo_subagent_deeper"), true);
+
+		const childRunStart = router.sessions.get("ps_child").runtime.session.getToolDefinition("pibo_run_start");
+		const childYieldableToolNames = childRunStart.parameters.properties.toolName.enum;
+		assert.equal(childYieldableToolNames.includes("pibo_subagent_limited"), false);
+		assert.equal(childYieldableToolNames.includes("pibo_subagent_deeper"), true);
+
+		await assert.rejects(
+			router.createSubagentRunner("ps_child").runSubagent({
+				subagent: { name: "limited", targetProfile: "recursive-profile", maxDepth: 1 },
+				message: "must not create another child",
+			}),
+			/Subagent "limited" exceeded max depth 1/,
+		);
+		assert.equal(store.list().length, 2);
+	} finally {
+		await router.disposeAll();
+	}
+});
+
 test("subagent runner emits a parent link event before waiting for the child reply", async () => {
 	const store = new InMemoryPiboSessionStore();
 	store.create({
