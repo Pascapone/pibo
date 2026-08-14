@@ -22,6 +22,7 @@ export type ChatSessionViewProps = {
 	isLoading: boolean;
 	terminalFullscreen?: boolean;
 	showThinking: boolean;
+	hideTools: boolean;
 	expandThinking: boolean;
 	sessionAgentProfile?: string;
 	sessionActiveModel?: string;

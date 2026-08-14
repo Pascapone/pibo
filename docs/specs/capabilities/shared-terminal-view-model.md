@@ -61,11 +61,11 @@ The shared terminal view model MUST consume canonical Pibo trace/session structu
 
 #### Current
 
-`buildCompactTerminalRows(traceView, { showThinking })` accepts a `PiboSessionTraceView | null`, flattens and sorts trace nodes with `compareTraceNodes()`, maps known trace node types into `CompactTerminalRow` records, and optionally filters reasoning rows.
+`buildCompactTerminalRows(traceView, { showThinking, hideTools? })` accepts a `PiboSessionTraceView | null`, flattens and sorts trace nodes with `compareTraceNodes()`, maps known trace node types into `CompactTerminalRow` records, optionally filters reasoning rows, and can reduce the result to user, assistant, and allowed reasoning rows for conversation-only rendering.
 
 #### Acceptance
 
-A test can pass a `PiboSessionTraceView` fixture into `buildCompactTerminalRows()` and receive deterministic rows without rendering React.
+A test can pass a `PiboSessionTraceView` fixture into `buildCompactTerminalRows()` and receive deterministic rows without rendering React. Enabling `hideTools` returns only message rows plus reasoning when `showThinking` also permits it.
 
 ### Requirement: Web compact terminal behavior is preserved
 

@@ -34,6 +34,7 @@ export function CompactTerminalSessionView({
 	isLoading,
 	terminalFullscreen,
 	showThinking,
+	hideTools,
 	expandThinking,
 	sessionAgentProfile,
 	sessionActiveModel,
@@ -56,8 +57,8 @@ export function CompactTerminalSessionView({
 	onModelChanged,
 }: ChatSessionViewProps) {
 	const rows = useMemo(
-		() => buildCompactTerminalRows(traceView, { showThinking }),
-		[showThinking, traceView],
+		() => buildCompactTerminalRows(traceView, { showThinking, hideTools }),
+		[hideTools, showThinking, traceView],
 	);
 	const rowKeys = useMemo(() => rows.map((row) => row.id), [rows]);
 	const piboSessionId = traceView?.piboSessionId ?? "";

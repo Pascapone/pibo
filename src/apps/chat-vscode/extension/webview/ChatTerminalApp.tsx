@@ -57,6 +57,7 @@ export function ChatTerminalApp() {
 	const [composerFocusSignal, setComposerFocusSignal] = useState(0);
 	const [error, setError] = useState<string | null>(null);
 	const [showThinking, setShowThinking] = useState(false);
+	const [hideTools, setHideTools] = useState(false);
 
 	const sessionNodes = useMemo<readonly PiboWebSessionNode[]>(() => {
 		const nodes = (bootstrap as unknown as { sessionNodes?: readonly PiboWebSessionNode[] } | null)?.sessionNodes;
@@ -343,6 +344,7 @@ export function ChatTerminalApp() {
 					creatingSession={false}
 					showRawEvents={false}
 					showThinking={showThinking}
+					hideTools={hideTools}
 					expandThinking={false}
 					commands={slashCommands}
 					skills={skills}
@@ -351,6 +353,7 @@ export function ChatTerminalApp() {
 					onComposerTextChange={setComposerText}
 					onToggleRawEvents={() => undefined}
 					onToggleThinking={() => setShowThinking((v) => !v)}
+					onToggleHideTools={() => setHideTools((value) => !value)}
 					onToggleExpandThinking={() => undefined}
 					onSessionAgentProfileChange={() => undefined}
 					onFork={() => undefined}

@@ -22,6 +22,7 @@ async function runAppStorageScenario() {
 		};
 		const {
 			readStoredExpandThinking,
+			readStoredHideTools,
 			readStoredNewSessionProfile,
 			readStoredShowArchivedRooms,
 			readStoredShowArchivedSessions,
@@ -30,6 +31,7 @@ async function runAppStorageScenario() {
 			removeStoredNewSessionProfile,
 			removeStoredRoomSelection,
 			writeStoredExpandThinking,
+			writeStoredHideTools,
 			writeStoredNewSessionProfile,
 			writeStoredShowArchivedRooms,
 			writeStoredShowArchivedSessions,
@@ -38,6 +40,7 @@ async function runAppStorageScenario() {
 		} = await import("./src/apps/chat-ui/src/app-storage.ts");
 
 		assert.equal(readStoredShowThinking(), true);
+		assert.equal(readStoredHideTools(), false);
 		assert.equal(readStoredExpandThinking(), true);
 		assert.equal(readStoredShowRawEvents(), false);
 		assert.equal(readStoredShowArchivedSessions(), false);
@@ -46,6 +49,7 @@ async function runAppStorageScenario() {
 		assert.equal(readStoredNewSessionProfile("room-a"), "");
 
 		writeStoredShowThinking(false);
+		writeStoredHideTools(true);
 		writeStoredExpandThinking(false);
 		writeStoredShowRawEvents(true);
 		writeStoredShowArchivedSessions(true);
@@ -55,6 +59,7 @@ async function runAppStorageScenario() {
 		writeStoredNewSessionProfile("agent-b", "room-b");
 
 		assert.equal(readStoredShowThinking(), false);
+		assert.equal(readStoredHideTools(), true);
 		assert.equal(readStoredExpandThinking(), false);
 		assert.equal(readStoredShowRawEvents(), true);
 		assert.equal(readStoredShowArchivedSessions(), true);
@@ -69,8 +74,10 @@ async function runAppStorageScenario() {
 		assert.equal(readStoredNewSessionProfile("room-b"), "agent-b");
 
 		storage.set("pibo.chat.showThinking", "unexpected");
+		storage.set("pibo.chat.hideTools", "unexpected");
 		storage.set("pibo.chat.showRawEvents", "unexpected");
 		assert.equal(readStoredShowThinking(), true);
+		assert.equal(readStoredHideTools(), false);
 		assert.equal(readStoredShowRawEvents(), false);
 
 		globalThis.localStorage = {
@@ -79,10 +86,12 @@ async function runAppStorageScenario() {
 			removeItem() { throw new Error("blocked"); },
 		};
 		assert.equal(readStoredShowThinking(), true);
+		assert.equal(readStoredHideTools(), false);
 		assert.equal(readStoredShowRawEvents(), false);
 		assert.equal(readStoredNewSessionProfile(), "");
 		assert.equal(readStoredNewSessionProfile("room-a"), "");
 		assert.doesNotThrow(() => writeStoredShowThinking(false));
+		assert.doesNotThrow(() => writeStoredHideTools(true));
 		assert.doesNotThrow(() => writeStoredNewSessionProfile("other"));
 		assert.doesNotThrow(() => writeStoredNewSessionProfile("other", "room-a"));
 		assert.doesNotThrow(() => removeStoredNewSessionProfile("room-a"));

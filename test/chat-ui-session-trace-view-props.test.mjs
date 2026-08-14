@@ -172,6 +172,7 @@ async function runSessionTraceViewPropsScenario() {
 			currentTraceView: traceView,
 			isLoading: false,
 			showThinking: true,
+			hideTools: true,
 			expandThinking: false,
 			selectedSessionProfile: "worker-profile",
 			sessionActiveModelBadge: "gpt-test xhigh fast",
@@ -192,6 +193,7 @@ async function runSessionTraceViewPropsScenario() {
 		assert.equal(props.selectedTrace.id, "ps-root");
 		assert.deepEqual(props.selectedTrace.spans.map((span) => span.name), ["thinking", "fast_mode"]);
 		assert.equal(props.sessionActiveModel, "gpt-test xhigh fast");
+		assert.equal(props.hideTools, true);
 		assert.equal(props.sessionBreadcrumbs, links.sessionBreadcrumbs);
 		assert.equal(props.originSession, links.originSession);
 		assert.equal(props.derivedSessions, links.derivedSessions);

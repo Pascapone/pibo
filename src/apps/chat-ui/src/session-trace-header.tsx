@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Brain, Bug, ChevronsDown, ChevronsUp, EyeOff, Maximize2, Plus } from "lucide-react";
+import { Brain, Bug, ChevronsDown, ChevronsUp, EyeOff, Hammer, Maximize2, Plus } from "lucide-react";
 import { copyTextToClipboard } from "./clipboard";
 import type {
   getChatSessionView,
@@ -41,12 +41,14 @@ export function SessionTraceHeader({
   onOpenSessionWindow,
   showRawEvents,
   showThinking,
+  hideTools,
   expandThinking,
   onShowWebAnnotationsPanel,
   onHideWebAnnotationsPanel,
   onSelectSessionView,
   onToggleRawEvents,
   onToggleThinking,
+  onToggleHideTools,
   onToggleExpandThinking,
   onError,
 }: {
@@ -69,12 +71,14 @@ export function SessionTraceHeader({
   onOpenSessionWindow?: () => void;
   showRawEvents: boolean;
   showThinking: boolean;
+  hideTools: boolean;
   expandThinking: boolean;
   onShowWebAnnotationsPanel: () => void;
   onHideWebAnnotationsPanel: () => void;
   onSelectSessionView: (viewId: ChatSessionViewId) => void;
   onToggleRawEvents: () => void;
   onToggleThinking: () => void;
+  onToggleHideTools: () => void;
   onToggleExpandThinking: () => void;
   onError: (message: string | null) => void;
 }) {
@@ -250,6 +254,14 @@ export function SessionTraceHeader({
           active={showRawEvents}
         >
           <Bug size={14} />
+        </HeaderIconButton>
+        <HeaderIconButton
+          onClick={onToggleHideTools}
+          title={hideTools ? "Show Tools" : "Hide Tools"}
+          ariaLabel="Hide Tools"
+          active={hideTools}
+        >
+          <Hammer size={14} />
         </HeaderIconButton>
         <HeaderIconButton
           onClick={onToggleThinking}

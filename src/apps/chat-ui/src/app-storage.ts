@@ -5,6 +5,7 @@ const SESSION_VIEW_STORAGE_KEY = "pibo.chat.sessionView";
 const COMPOSER_DRAFT_STORAGE_PREFIX = "pibo.chat.composerDraft.";
 const COMPOSER_HISTORY_STORAGE_KEY = "pibo.chat.composerHistory";
 const SHOW_THINKING_STORAGE_KEY = "pibo.chat.showThinking";
+const HIDE_TOOLS_STORAGE_KEY = "pibo.chat.hideTools";
 const EXPAND_THINKING_STORAGE_KEY = "pibo.chat.expandThinking";
 const SHOW_RAW_EVENTS_STORAGE_KEY = "pibo.chat.showRawEvents";
 const SHOW_ARCHIVED_SESSIONS_STORAGE_KEY = "pibo.chat.showArchived";
@@ -149,6 +150,14 @@ export function readStoredShowThinking(): boolean {
 
 export function writeStoredShowThinking(value: boolean): void {
 	writeStoredBoolean(SHOW_THINKING_STORAGE_KEY, value);
+}
+
+export function readStoredHideTools(): boolean {
+	return readStoredBoolean(HIDE_TOOLS_STORAGE_KEY, false);
+}
+
+export function writeStoredHideTools(value: boolean): void {
+	writeStoredBoolean(HIDE_TOOLS_STORAGE_KEY, value);
 }
 
 export function readStoredExpandThinking(): boolean {
