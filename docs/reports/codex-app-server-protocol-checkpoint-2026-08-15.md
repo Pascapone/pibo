@@ -125,7 +125,7 @@ The official Codex binary and generated, credential-free schema checkpoint remai
 
 ## Pi parity gate
 
-Pi parity 2.11 remains explicitly open. Pibo2 currently has no approved OpenAI Codex authentication managed on the target, and no native Codex auth file is provisioned. Earlier baseline/candidate provider-auth failures therefore remain the admissible state: real-model Pi parity cannot be closed yet.
+Pi parity 2.11 remains explicitly open. Pibo2 currently has no approved OpenAI Codex authentication managed on the target, and no native Codex auth file is provisioned. A final target-side check found no OpenAI/Codex/API-key/OAuth environment keys in `pibo-web.service`, Pi auth contained only the pre-existing MiniMax provider, and the exact Codex CLI reported `Not logged in`. Earlier baseline/candidate provider-auth failures therefore remain the admissible state: real-model Pi parity cannot be closed yet.
 
 The gate may be closed only after an operator provisions approved Pibo2-managed authentication and exact-candidate evidence proves real routed Pi text, streaming, tools, persistence, and restart/resume against the baseline. Diagnostic runs using transferred local credentials are excluded by policy and by this report.
 
