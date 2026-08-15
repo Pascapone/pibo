@@ -439,7 +439,7 @@ Implementation MUST be split into focused or explicitly stacked branches/PRs to 
 | REQ-009 Agent Designer | Designer | API/UI save/disabled/inspection tests | Local + Pibo2 pass |
 | REQ-010 Native behavior | Pi/Codex | Prompt/tool/context inspection | Pending |
 | REQ-011 Portable tools | Tool bridge | Pi compiler/MCP/security tests | Local + exact-candidate Pibo2 pass; see `portable-pibo-tools-mcp-validation-2026-08-15.md` |
-| REQ-012 Skills/context/MCP | Materialization | Isolation, secret rebinding, connected inventory, failure, cleanup, Context Build, and Pi-scoped CLI tests | Local pass; exact-candidate Pibo2 pending |
+| REQ-012 Skills/context/MCP | Materialization | Isolation, secret rebinding, connected inventory, failure, cleanup, restart, Context Build, and Pi-scoped CLI tests | Local + exact-candidate Pibo2 pass; see `runtime-resource-materialization-validation-2026-08-15.md` |
 | REQ-013 History/debug | History | New-turn no-native-read, old Pi, Codex restart tests | Pending |
 | REQ-014 Authoring skill | Skill | Registration plus full/partial evals | Pending |
 | REQ-015 Native Codex | Codex | Fixtures, exact binary, Pibo2 integrated flows | Pending |
