@@ -531,15 +531,18 @@ For the Pi adapter, the generated selected-only MCP file and secret environment 
 
 ## Decision: History and trace
 
-Introduce `AgentRuntimeHistoryEntry`, a Pibo-owned normalized input to trace materialization. New routed turns persist enough terminal semantic data in Pibo's event/message stores to render normal Chat Web without native history.
+`AgentRuntimeHistoryEntry`, `AgentRuntimeHistoryInspection`, and `AgentRuntimeHistoryPage` are Pibo-owned normalized inputs to trace materialization. New routed turns persist durable user/assistant messages plus terminal reasoning, tool, lifecycle, error, compaction, and execution events in Pibo's message/event/payload stores. Normal Chat Web reconstruction reads those records and does not locate or open native transcript files.
 
-Adapters may provide:
+An adapter that declares `maintenance.history` must implement both:
 
-- `readHistory` for import/debug;
-- `resolveHistoryLocator` for diagnostics;
-- `importHistory` for old or externally created sessions.
+- `inspectHistory`, which reports availability, safe metadata, an adapter-scoped locator, version, and diagnostics;
+- `readHistory`, which returns normalized native entries and an opaque provider cursor.
 
-Pi JSONL parsing moves to `src/agent-runtimes/pi/history.ts`. Existing trace callers receive a compatibility provider for old Pi sessions. Codex uses `thread/read` or paginated official history methods. Native transcripts remain resume state, not co-equal mutable product history.
+Generic trace modules consume only normalized history entries and normalized Pibo events. They distinguish product history from native compatibility history so product messages suppress only duplicate assistant output while terminal reasoning and tool events remain visible. Runtime history cursors wrap opaque provider cursors with the Pibo Session, configured runtime instance, and adapter identity; Chat Web rejects a cursor replayed against a different binding.
+
+Pi JSONL discovery, bounded reads, pagination, parsing, and normalization live in `src/agent-runtimes/pi/history.ts`. Existing databases migrate to schema v5 and mark pre-existing runtime bindings for native-history compatibility without changing Pibo Session ids, Pi session ids, transcript paths, or binding revisions. Fresh sessions do not receive that marker. Old/forked Pi sessions may read native history through the selected adapter, while a missing native transcript falls back to surviving Pibo product history and remains a visible diagnostic rather than creating a replacement transcript.
+
+Large product messages and terminal event bodies are hydrated from `PayloadStore` before trace/debug projection. Debug trace defaults to product history and reads native history only for an empty legacy session or explicit `--native-history`. `pibo debug session <ps_...> runtime` exposes binding identity and bounded product-history counts; other session-scoped debug surfaces include runtime identity but omit binding locator/config/metadata values. Codex later maps the same provider contract to official thread history APIs. Native transcripts remain adapter-owned resume state, not co-equal mutable product history.
 
 ## Decision: Approvals and user input
 

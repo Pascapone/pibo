@@ -2,12 +2,13 @@
 
 **Status:** Draft
 **Created:** 2026-05-10
+**Updated:** 2026-08-15
 **Controller / Source:** Scheduled Pibo Source Specs Coverage
 **Related docs:** `GLOSSARY.md`, [Pibo Session Routing](./pibo-session-routing.md), [Chat Web Rooms and Event Streams](./chat-web-rooms-and-event-streams.md), [Yielded Run Control](./yielded-run-control.md), [Runtime Observability Telemetry](./runtime-observability-telemetry.md)
 
 ## Why
 
-Pibo stores operational truth across Pibo Session metadata, Chat Web projections, event streams, durable jobs, and yielded runs. Agents and operators need a compact, safe way to inspect those stores when a session, room, trace, job, or run behaves unexpectedly.
+Pibo stores operational truth across Pibo Session metadata, frozen runtime bindings, product-history projections, event streams, durable jobs, and yielded runs. Agents and operators need a compact, safe way to inspect those stores when a session, runtime, room, trace, job, or run behaves unexpectedly.
 
 The Debug CLI is that read-oriented diagnostic boundary. It must expose enough information to diagnose local state without requiring ad hoc SQLite commands, accidental writes, or direct knowledge of every table.
 
@@ -17,7 +18,7 @@ The Debug CLI is that read-oriented diagnostic boundary. It must expose enough i
 
 ## Background / Current State
 
-Current code routes `pibo debug` from `src/cli.ts` into `src/debug/index.ts`. The debug commands resolve known stores from the Pibo home directory, inspect SQLite databases with bounded output, rebuild Chat Web trace views from stored sessions and events, query reliability events, list and replay dead durable jobs, inspect yielded runs, fetch live signal snapshots through Chat Web APIs when `PIBO_GATEWAY_URL` or `PIBO_WEB_URL` is set, and inspect runtime observability telemetry from the unified `pibo.sqlite` store. The root debug surface also delegates browser render diagnostics to `src/debug/web.ts` and pseudo-terminal diagnostics to `src/debug/pty.ts`.
+Current code routes `pibo debug` from `src/cli.ts` into `src/debug/index.ts`. The debug commands resolve known stores from the Pibo home directory, inspect SQLite databases with bounded output, rebuild Chat Web trace views from Pibo product history and normalized events, optionally ask the selected adapter for native history, query reliability events, list and replay dead durable jobs, inspect yielded runs, fetch live signal snapshots through Chat Web APIs when `PIBO_GATEWAY_URL` or `PIBO_WEB_URL` is set, and inspect runtime observability telemetry from the unified `pibo.sqlite` store. The root debug surface also delegates browser render diagnostics to `src/debug/web.ts` and pseudo-terminal diagnostics to `src/debug/pty.ts`.
 
 Automated coverage lives in `test/debug-cli.test.mjs` and asserts progressive help, read-only SQL behavior, Chat URL session parsing, trace rebuilding, event field extraction, reliability stream inspection, job replay, run inspection, telemetry drill-down, stale telemetry detection, stats/prune behavior, browser-debug guardrails, and missing-store errors.
 
@@ -28,9 +29,9 @@ Automated coverage lives in `test/debug-cli.test.mjs` and asserts progressive he
 - `pibo debug` root discovery and subcommand discovery.
 - Local store discovery for Pibo-managed SQLite stores.
 - Read-only table, schema, and SQL query inspection.
-- Pibo Session inspection by id or Chat Web URL.
-- Chat Web trace reconstruction and consistency checks.
-- Compact event and reliability stream inspection.
+- Pibo Session inspection by id or Chat Web URL, including a namespaced runtime drill-down.
+- Runtime-neutral Chat Web trace reconstruction, explicit adapter-native history inspection, and consistency checks.
+- Compact event and reliability stream inspection with externalized payload hydration.
 - Durable job listing, dead-letter listing, and explicit replay.
 - Durable yielded-run listing and inspection.
 - Live signal snapshot inspection through configured web gateway URLs.
@@ -127,6 +128,7 @@ The Debug CLI MUST parse a raw Pibo Session ID or canonical Chat Web session URL
 - Child sessions are listed with subagent metadata when present.
 - `--events` returns compact event summaries, not full payload dumps.
 - `--json` emits the same information as structured JSON.
+- `pibo debug session <id> runtime` reports frozen runtime identity and bounded product-history counts without exposing locator, config, or metadata values.
 
 #### Scenario: URL room mismatch is visible
 
@@ -134,19 +136,43 @@ The Debug CLI MUST parse a raw Pibo Session ID or canonical Chat Web session URL
 - WHEN an operator inspects `/apps/chat/rooms/room_b/sessions/<id>`
 - THEN the result includes a room mismatch warning.
 
+### Requirement: Runtime identity is visible without secret values
+
+Session-scoped debug commands MUST identify the configured runtime instance, adapter, native session id when appropriate, and binding state while omitting credential-bearing binding values.
+
+#### Current
+
+Session, summary, messages, events, tools, failures, trace, and telemetry detail outputs read `session_runtime_bindings` and add runtime identity. `pibo debug session <id> runtime` reports a sanitized binding whose metadata is represented only by sorted key names. Signal snapshots carry the same runtime identity through the gateway API.
+
+#### Acceptance
+
+- Product routing always centers the Pibo Session id; native ids are labeled adapter metadata rather than accepted as product selectors.
+- Binding locator values, runtime configuration, metadata values, bearer credentials, cookies, and secret environment values are absent from normal text and JSON output.
+- Older stores without a binding row synthesize a clearly scoped Pi compatibility identity.
+- Runtime drill-down output remains bounded and points to trace/event next commands.
+
+#### Scenario: Secret-like binding metadata
+
+- GIVEN a binding metadata object contains an API-key-like value
+- WHEN an operator runs `pibo debug session <id> --json` or `pibo debug session <id> runtime --json`
+- THEN output may list the metadata key name
+- AND it does not contain the metadata value.
+
 ### Requirement: Trace inspection reuses Chat Web trace semantics
 
 The Debug CLI MUST rebuild a session trace using the same trace-view behavior as Chat Web and expose optional consistency diagnostics.
 
 #### Current
 
-`inspectDebugTrace` loads session rows and stored events, calls `buildTraceView`, flattens trace nodes, supports `--running-only`, and supports `--check` diagnostics for duplicate ids, missing parents, missing ordering/source/stable keys, and sibling order regressions.
+`inspectDebugTrace` loads session rows, Pibo product messages, hydrated normalized events, and the frozen runtime binding, then calls `buildTraceView`. It defaults to product history, uses adapter-native history only for an empty legacy session or explicit `--native-history`, flattens trace nodes, supports `--running-only`, and supports `--check` diagnostics for duplicate ids, missing parents, missing ordering/source/stable keys, sibling order regressions, and adapter-history failures.
 
 #### Acceptance
 
 - `pibo debug trace <pibo-session-id>` prints compact flattened nodes with status, type, title, id, run id, and linked Pibo Session id.
 - `--running-only` returns only running nodes while preserving total-node context in the count.
 - `--check` includes consistency status and issue rows.
+- `--native-history` calls only the frozen binding's registered adapter history provider.
+- Default reconstruction does not parse Pi JSONL or another harness-native format.
 - Missing session or chat stores fail before returning partial trace results.
 
 #### Scenario: Running tool node is isolated
@@ -161,7 +187,7 @@ The Debug CLI MUST expose event rows and selected payload fields without dumping
 
 #### Current
 
-`pibo debug events <pibo-session-id>` reads Chat Web `event_log`, filters by type, and extracts dot-path fields from inline payloads or compact attributes.
+`pibo debug events <pibo-session-id>` reads Chat Web `event_log`, hydrates an externalized `payload_ref` when present, filters by type, and extracts dot-path fields from payloads or compact attributes.
 
 #### Acceptance
 
@@ -169,6 +195,7 @@ The Debug CLI MUST expose event rows and selected payload fields without dumping
 - `--type` narrows rows by event type.
 - `--fields a,b.c` adds only those payload fields to output.
 - `--limit` bounds event rows.
+- `show --no-truncate` can return the full hydrated payload field while default output remains byte-bounded.
 
 #### Scenario: Inspect one tool result field
 
@@ -316,7 +343,7 @@ pibo debug telemetry tool <tool-call-id>
 - Quoted SQL strings and comments do not permit multi-statement or mutating execution.
 - Stores may be missing during first-run setup; commands must fail with paths, not stack traces.
 - Chat and sessions stores may point to the same database; commands must avoid closing a shared handle twice.
-- Some older event rows may lack inline payloads; debug output must fall back to compact attributes when possible.
+- Some older event rows may lack inline payloads or have missing/corrupt payload refs; debug output must fall back to compact attributes or previews when possible.
 - Live signal APIs may be unavailable even when local SQLite stores exist.
 - Telemetry tables may be missing for older stores; telemetry commands should fail with a clear migration/store message.
 - Telemetry may be disabled or unavailable while other debug branches still work.
@@ -341,6 +368,7 @@ pibo debug telemetry tool <tool-call-id>
 - [ ] SC-006: Reliability streams, consumers, jobs, and yielded runs are inspectable through named debug commands.
 - [ ] SC-007: Missing stores and missing gateway URLs fail with actionable errors.
 - [ ] SC-008: The `pibo debug telemetry` branch supports summary-first session, turn, provider, tool, stale, stats, and prune workflows with bounded text and JSON output.
+- [ ] SC-009: Session-scoped debug outputs expose runtime identity, default trace reconstruction uses Pibo product history, and binding secrets/locator values remain absent.
 
 ## Assumptions and Open Questions
 
@@ -371,6 +399,7 @@ pibo debug telemetry tool <tool-call-id>
 | REQ-009 Durable yielded runs are inspectable | Inspect completed yielded run | `src/debug/index.ts`, `src/reliability/store.ts` | Draft |
 | REQ-010 Live signals require explicit gateway URL | Missing gateway URL | `src/debug/index.ts` | Draft |
 | REQ-011 Telemetry diagnostics are summary-first and read-oriented | Agent drills down from a stuck session; prune is deliberate | `src/debug/index.ts`, `src/debug/telemetry.ts`, `src/data/telemetry.ts`, `src/core/telemetry-staleness.ts`, `test/debug-cli.test.mjs` | Draft |
+| REQ-012 Runtime identity is visible without secret values | Secret-like binding metadata | `src/debug/runtime-binding.ts`, `src/debug/session.ts`, `src/debug/trace.ts`, `src/debug/persisted-payloads.ts`, `test/debug-cli.test.mjs` | Implemented |
 
 ## Operational Examples
 

@@ -103,14 +103,14 @@ Target branch: `feature/agent-runtime-foundation`
 
 ## 7. Runtime-neutral history, trace, and debug PR
 
-- [ ] 7.1 Add Pibo-owned normalized history entry/page types.
-- [ ] 7.2 Persist terminal semantic data required for new-turn Chat Web history.
-- [ ] 7.3 Move Pi transcript parsing and locator discovery behind the Pi history provider.
-- [ ] 7.4 Change generic trace builders to consume normalized history/product events.
-- [ ] 7.5 Keep old Pi transcript rendering/import/repair behavior.
-- [ ] 7.6 Make debug session/events/failures/tools/signals/telemetry/trace binding-aware.
-- [ ] 7.7 Add namespaced runtime drill-down and redaction tests.
-- [ ] 7.8 Prove new Pi session trace rendering without native transcript reads in the normal path.
+- [x] 7.1 Add Pibo-owned normalized history entry/page types.
+- [x] 7.2 Persist terminal semantic data required for new-turn Chat Web history.
+- [x] 7.3 Move Pi transcript parsing and locator discovery behind the Pi history provider.
+- [x] 7.4 Change generic trace builders to consume normalized history/product events.
+- [x] 7.5 Keep old Pi transcript rendering/import/repair behavior.
+- [x] 7.6 Make debug session/events/failures/tools/signals/telemetry/trace binding-aware.
+- [x] 7.7 Add namespaced runtime drill-down and redaction tests.
+- [x] 7.8 Prove new Pi session trace rendering without native transcript reads in the normal path.
 - [ ] 7.9 Validate old/missing Pi transcripts and new history behavior on Pibo2.
 - [ ] 7.10 Commit, push, and open history/debug PR.
 

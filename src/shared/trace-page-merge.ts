@@ -97,7 +97,7 @@ function clearRemovedParentIds(
 function transcriptEventIds(nodes: PiboSessionTraceView["nodes"]): Set<string> {
 	const eventIds = new Set<string>();
 	for (const node of nodes) {
-		if (node.source === "transcript" && node.eventId) eventIds.add(node.eventId);
+		if ((node.source === "transcript" || node.source === "product-history") && node.eventId) eventIds.add(node.eventId);
 	}
 	return eventIds;
 }

@@ -1,4 +1,4 @@
-export type TraceSource = "transcript" | "event-log" | "live";
+export type TraceSource = "transcript" | "product-history" | "event-log" | "live";
 
 export type TraceNodeKind =
 	| "user.message"
@@ -27,6 +27,7 @@ export type TraceOrderKey = {
 
 export const TRACE_SOURCE_RANK: Record<TraceSource, number> = {
 	transcript: 0,
+	"product-history": 1,
 	"event-log": 1,
 	live: 2,
 };
@@ -46,18 +47,28 @@ export const TRACE_PHASE_RANK: Record<TraceNodeKind, number> = {
 	error: 9,
 };
 
+export function historyTraceOrder(
+	historyIndex: number,
+	contentPartIndex: number,
+	type: TraceNodeKind,
+	source: Extract<TraceSource, "transcript" | "product-history">,
+): TraceOrderKey {
+	return {
+		sourceRank: TRACE_SOURCE_RANK[source],
+		turnSeq: historyIndex,
+		transcriptIndex: historyIndex,
+		contentPartIndex,
+		phaseRank: TRACE_PHASE_RANK[type],
+	};
+}
+
+/** @deprecated Use historyTraceOrder. */
 export function transcriptTraceOrder(
 	transcriptIndex: number,
 	contentPartIndex: number,
 	type: TraceNodeKind,
 ): TraceOrderKey {
-	return {
-		sourceRank: TRACE_SOURCE_RANK.transcript,
-		turnSeq: transcriptIndex,
-		transcriptIndex,
-		contentPartIndex,
-		phaseRank: TRACE_PHASE_RANK[type],
-	};
+	return historyTraceOrder(transcriptIndex, contentPartIndex, type, "transcript");
 }
 
 export function eventTraceOrder(eventSequence: number | undefined, type: TraceNodeKind): TraceOrderKey {

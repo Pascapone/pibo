@@ -122,23 +122,27 @@ No native Codex code starts until all known Pi regressions are resolved and evid
 - Pi direct and MCP fixture produce equivalent Pibo tool results.
 - No user-global harness config changes.
 
-## Milestone 5: Runtime-neutral history/debug
+## Milestone 7: Runtime-neutral history/debug
 
 ### Build
 
-1. Persist terminal semantic history for every new routed turn.
-2. Build generic trace/history input model.
-3. Keep Pi JSONL only in Pi history provider/import/repair paths.
-4. Add binding and adapter diagnostics to debug surfaces.
+1. Persist and fully hydrate terminal semantic history for every new routed turn.
+2. Build generic normalized history/inspection/page contracts and trace projection.
+3. Keep Pi JSONL discovery, parsing, and pagination only in the Pi adapter provider.
+4. Mark pre-schema-v5 sessions for compatibility fallback without changing ids, transcript paths, or binding revisions.
+5. Bind opaque runtime-history cursors to the Pibo Session and frozen runtime binding.
+6. Add binding identity, product-history counts, payload hydration, explicit native-history drill-down, and redaction to debug surfaces.
 
 ### Verify
 
-- New Pi turn renders with native transcript reads disabled in normal path.
-- Old Pi sessions still render.
-- Missing native transcript keeps product history/session visible.
-- Debug output includes adapter/instance/binding without secrets.
+- New Pi and fake-runtime turns render with native history inspection/read functions disabled in the normal summary/timeline/compatibility paths.
+- Old Pi sessions and paginated native history still render through the adapter.
+- Missing native history keeps product history and the Pibo Session visible.
+- Large externalized user, assistant, reasoning, and tool payloads reconstruct at full fidelity.
+- Cross-session/runtime history cursors are rejected.
+- Debug output includes adapter/instance/binding state without locator, config, metadata values, or credentials.
 
-## Milestone 6: Adapter-authoring skill
+## Milestone 8: Adapter-authoring skill
 
 ### Build
 
@@ -150,7 +154,7 @@ Create and register `pibo-agent-runtime-adapter` with progressive references and
 - Partial harness eval declares unsupported features and Designer behavior instead of inventing support.
 - Package contents include the skill.
 
-## Milestone 7: Native Codex
+## Milestone 9: Native Codex
 
 ### Protocol preparation
 
@@ -179,7 +183,7 @@ Create and register `pibo-agent-runtime-adapter` with progressive references and
 - Approval/user input/abort/history/model/reasoning/tool events.
 - Full build/typecheck/test.
 
-## Milestone 8: Exact Pibo2 integrated validation
+## Milestone 10: Exact Pibo2 integrated validation
 
 Follow the `pibo-v2-server-development` skill and record:
 

@@ -2,7 +2,7 @@
 
 **Status:** Draft
 **Created:** 2026-05-10
-**Updated:** 2026-07-05
+**Updated:** 2026-08-15
 **Controller / Source:** Scheduled Pibo Source Specs Coverage
 **Related docs:** [Chat Web Rooms and Event Streams](./chat-web-rooms-and-event-streams.md), [Pibo Session Routing](./pibo-session-routing.md), [Debug CLI](./debug-cli.md)
 
@@ -18,9 +18,9 @@ Pibo SHALL maintain a SQLite-backed v2 data store that can serve as the default 
 
 ## Background / Current State
 
-The current implementation creates `.pibo/pibo.sqlite` through `PiboDataStore`, applies schema version 2, enables foreign keys, sets a busy timeout, and uses WAL for file-backed stores. The store owns sub-stores for payloads, event log rows, chat messages, observations, session navigation, sessions, and runtime telemetry. Chat Web also creates workflow authoring/catalog tables in this same database; those tables are covered by workflow specs and local store stewardship docs rather than by the `src/data` sub-store contract.
+The current implementation creates `.pibo/pibo.sqlite` through `PiboDataStore`, applies schema version 5, enables foreign keys, sets a busy timeout, and uses WAL for file-backed stores. The store owns sub-stores for payloads, event log rows, chat messages, observations, session navigation, sessions, runtime bindings, and runtime telemetry. Chat Web also creates workflow authoring/catalog tables in this same database; those tables are covered by workflow specs and local store stewardship docs rather than by the `src/data` sub-store contract.
 
-`PiboDataSessionStore` implements the default gateway `PiboSessionStore` on the shared `sessions` table. `ChatDataIngestService` writes accepted user messages and normalized `PiboOutputEvent` records. It records append-only event rows, creates message and observation projections, upserts session and navigation metadata, and externalizes large content into a compressed payload directory. Trace V2 and Chat Web reliability guardrails also use the payload store to keep large tool outputs and raw/debug payloads out of the default timeline and reliability hot paths.
+`PiboDataSessionStore` implements the default gateway `PiboSessionStore` on the shared `sessions` and `session_runtime_bindings` tables. `ChatDataIngestService` writes accepted user messages and normalized `PiboOutputEvent` records. It records append-only event rows, creates message and observation projections, upserts session and navigation metadata, and externalizes large content into a compressed payload directory. Those durable messages plus terminal events are the product-history source for normal trace reconstruction. Trace V2 and Chat Web reliability guardrails use the payload store to keep large tool outputs and raw/debug payloads out of the default timeline while hydrating them when full history or debug content is requested.
 
 ## Scope
 
@@ -67,7 +67,7 @@ Opening an existing or new v2 store yields the same table/index contract and set
 
 - GIVEN no v2 database file exists
 - WHEN Pibo opens `PiboDataStore`
-- THEN the database is created with schema version 2 and all v2 tables are present
+- THEN the database is created with schema version 5 and all current tables are present
 
 ### Requirement: Event log appends are ordered and idempotent
 

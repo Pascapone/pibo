@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { checkTraceView } from "../dist/debug/trace.js";
-import { buildTraceViewFromEvents, flattenTraceNodes, patchTraceViewWithEvents } from "../dist/shared/trace-engine.js";
+import { flattenTraceNodes, patchTraceViewWithEvents } from "../dist/shared/trace-engine.js";
+import { buildTraceViewFromEvents } from "./helpers/pi-history.mjs";
 
 const session = { id: "ps-mixed", piSessionId: "pi-mixed", title: "Long mixed trace" };
 

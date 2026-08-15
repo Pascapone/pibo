@@ -100,6 +100,10 @@ Shared vocabulary for Pibo architecture, implementation, and specifications. Kee
 
 **Pibo Reliability Store** — `pibo-events.sqlite`, the separate store for reliability streams, durable jobs, replay state, and persisted yielded runs.
 
-**Pi Transcript** — Pi Coding Agent's JSONL conversation history. It remains distinct from Pibo product records and UI projections.
+**Pibo Product History** — The runtime-neutral durable messages and terminal semantic events persisted by Pibo for Pibo-routed turns. It is the primary source for normal product-visible history and does not replace a harness-native transcript as resume state.
 
-**Chat Web Trace View / Chat Session View** — The Trace View is a bounded, read-time reconstruction of session execution from Pibo data, Pi transcripts, and live events. It is a projection, not a source of truth. A Chat Session View is a UI renderer for that projection.
+**Agent Runtime History Provider** — An adapter-owned compatibility and diagnostic interface that inspects and pages a harness's native history into Pibo-owned normalized history entries. Product code never parses a native transcript format directly.
+
+**Pi Transcript** — Pi Coding Agent's JSONL conversation history. It remains Pi-owned resume state and is read through the Pi history provider only for legacy compatibility, import, repair, or explicit debugging.
+
+**Chat Web Trace View / Chat Session View** — The Trace View is a bounded, read-time reconstruction of session execution from Pibo product history, normalized events, optional adapter-provided compatibility history, and live events. It is a projection, not a source of truth. A Chat Session View is a UI renderer for that projection.

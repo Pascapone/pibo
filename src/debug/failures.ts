@@ -4,6 +4,8 @@ import { formatNextCommands } from "./next-commands.js";
 import { compactOneLine, eventPayload, type DebugEventRow } from "./payloads.js";
 import { normalizeLimit, openReadOnlyDebugDatabase, withStorePath } from "./sql.js";
 import { inspectDebugTrace, type DebugTraceNodeRow } from "./trace.js";
+import { createDebugPayloadStore, hydrateDebugEventRow } from "./persisted-payloads.js";
+import { readDebugRuntimeIdentity, type DebugRuntimeIdentity } from "./runtime-binding.js";
 
 export type DebugFailureRow = {
 	kind: "tool" | "trace" | "session";
@@ -19,7 +21,7 @@ export type DebugFailureRow = {
 	inspect: string;
 };
 
-export type DebugFailuresResult = {
+export type DebugFailuresResult = DebugRuntimeIdentity & {
 	piboSessionId: string;
 	resultType: "debug.failures";
 	failures: DebugFailureRow[];
@@ -46,6 +48,7 @@ export async function inspectDebugFailures(
 	const visible = failures.slice(0, limit);
 	return {
 		piboSessionId,
+		...readRuntimeIdentityFromStore(piboSessionId, stores.chat),
 		resultType: "debug.failures",
 		failures: visible,
 		limited,
@@ -58,7 +61,12 @@ export async function inspectDebugFailures(
 }
 
 export function formatDebugFailures(result: DebugFailuresResult): string {
-	const lines: string[] = [`failures: ${result.failures.length}${result.limited ? " (limited)" : ""}`];
+	const lines: string[] = [
+		...(result.runtimeInstanceId ? [`runtimeInstanceId: ${result.runtimeInstanceId}`] : []),
+		...(result.runtimeAdapterId ? [`runtimeAdapterId: ${result.runtimeAdapterId}`] : []),
+		...(result.runtimeBindingState ? [`runtimeBindingState: ${result.runtimeBindingState}`] : []),
+		`failures: ${result.failures.length}${result.limited ? " (limited)" : ""}`,
+	];
 	result.failures.forEach((failure, index) => {
 		lines.push("");
 		if (failure.kind === "tool") {
@@ -82,18 +90,29 @@ export function formatDebugFailures(result: DebugFailuresResult): string {
 	return lines.join("\n");
 }
 
+function readRuntimeIdentityFromStore(piboSessionId: string, store: ResolvedPiboDebugStore): DebugRuntimeIdentity {
+	if (!store.exists) return {};
+	const db = openReadOnlyDebugDatabase(store);
+	try {
+		return readDebugRuntimeIdentity(db, piboSessionId);
+	} finally {
+		db.close();
+	}
+}
+
 function readToolFailures(piboSessionId: string, store: ResolvedPiboDebugStore, limit: number): DebugFailureRow[] {
 	if (!store.exists) return [];
 	const db = openReadOnlyDebugDatabase(store);
 	try {
 		if (!tableExists(db, "event_log")) return [];
-		const rows = db.prepare(`
-			SELECT stream_id, session_id, session_sequence, event_id, type, created_at, preview_text, attributes_json
+		const payloadStore = createDebugPayloadStore(db, store);
+		const rows = (db.prepare(`
+			SELECT stream_id, session_id, session_sequence, event_id, type, created_at, payload_ref, preview_text, attributes_json
 			FROM event_log
 			WHERE session_id = ? AND type = 'tool_execution_finished'
 			ORDER BY stream_id DESC
 			LIMIT ?
-		`).all(piboSessionId, limit + 1) as DebugEventRow[];
+		`).all(piboSessionId, limit + 1) as DebugEventRow[]).map((row) => hydrateDebugEventRow(row, payloadStore));
 		return rows.flatMap((row) => {
 			const payload = eventPayload(row);
 			const status = statusFromPayload(payload);

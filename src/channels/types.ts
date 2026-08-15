@@ -15,7 +15,12 @@ import type { PiboWebApp } from "../web/types.js";
 import type { PiboLoopStopConditionDefinition, PiboLoopStopConditionInfo } from "../loops/types.js";
 import type { ContextFileProfile, InitialSessionContext, ModelProfile, SkillProfile } from "../core/profiles.js";
 import type { RuntimeSessionBinding, RuntimeSessionBindingRebindInput } from "../sessions/runtime-binding.js";
-import type { AgentRuntimeDiagnostic, AgentRuntimeInstanceInspection } from "../agent-runtime/types.js";
+import type {
+	AgentRuntimeDiagnostic,
+	AgentRuntimeHistoryInspection,
+	AgentRuntimeHistoryPage,
+	AgentRuntimeInstanceInspection,
+} from "../agent-runtime/types.js";
 import type {
 	CreatePiboSessionInput,
 	FindPiboSessionsInput,
@@ -43,6 +48,8 @@ export type PiboChannelContext = {
 	findSessions(input: FindPiboSessionsInput): PiboSession[];
 	listSessions?(): PiboSession[];
 	getSessionRuntimeBinding?(piboSessionId: string): RuntimeSessionBinding | undefined;
+	inspectSessionRuntimeHistory?(piboSessionId: string): Promise<AgentRuntimeHistoryInspection>;
+	readSessionRuntimeHistory?(piboSessionId: string, input?: { cursor?: string; beforeTimestamp?: string; limit?: number }): Promise<AgentRuntimeHistoryPage>;
 	rebindSessionRuntime?(piboSessionId: string, input: RuntimeSessionBindingRebindInput): Promise<RuntimeSessionBinding>;
 	getSessionRuntimeStatus?(piboSessionId: string): PiboSessionStatus | undefined;
 	getSessionStatusSnapshot?(piboSessionId: string): Promise<PiboSessionStatus>;

@@ -170,6 +170,12 @@ async function startWebHostChannel(options = {}) {
 		getSessionRuntimeBinding(id) {
 			return sessions.getRuntimeBinding(id);
 		},
+		...(options.inspectSessionRuntimeHistory ? {
+			inspectSessionRuntimeHistory: options.inspectSessionRuntimeHistory,
+		} : {}),
+		...(options.readSessionRuntimeHistory ? {
+			readSessionRuntimeHistory: options.readSessionRuntimeHistory,
+		} : {}),
 		async rebindSessionRuntime(id, input) {
 			if (options.rebindSessionRuntime) return await options.rebindSessionRuntime(id, input, sessions);
 			const current = sessions.getRuntimeBinding(id);
@@ -705,6 +711,245 @@ test("chat web trace summary is small and cacheable", async () => {
 			},
 		);
 		assert.equal(cachedResponse.status, 304);
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("new Chat Web traces use Pibo product history without reading native runtime history", async () => {
+	let inspectHistoryCalls = 0;
+	let readHistoryCalls = 0;
+	const capabilities = fakeRuntimeCapabilities();
+	const { channel, baseURL, emitOutput } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		capabilityCatalog: {
+			agentRuntimes: [fakeRuntimeInspection("pi", { adapterId: "pi", capabilities })],
+			nativeTools: [], skills: [], subagents: [], contextFiles: [], packages: [], piboTools: [], mcpServers: [], piPackages: [],
+		},
+		async inspectSessionRuntimeHistory() {
+			inspectHistoryCalls += 1;
+			throw new Error("native history must not be inspected for a new Pibo-routed session");
+		},
+		async readSessionRuntimeHistory() {
+			readHistoryCalls += 1;
+			throw new Error("native history must not be read for a new Pibo-routed session");
+		},
+	});
+
+	try {
+		const sessionResponse = await fetch(`${baseURL}/api/chat/session`, { headers: { "x-test-user": "user-1" } });
+		assert.equal(sessionResponse.status, 200);
+		const sessionPayload = await sessionResponse.json();
+		const piboSessionId = sessionPayload.session.id;
+		const messageResponse = await fetch(`${baseURL}/api/chat/message`, {
+			method: "POST",
+			headers: { "x-test-user": "user-1", "content-type": "application/json", origin: baseURL },
+			body: JSON.stringify({ piboSessionId, text: "product-owned prompt", clientTxnId: "txn-product-history-web" }),
+		});
+		assert.equal(messageResponse.status, 200);
+		const messagePayload = await messageResponse.json();
+		const eventId = messagePayload.output.eventId;
+		emitOutput({ type: "message_started", piboSessionId, eventId, text: "product-owned prompt", source: "user" });
+		emitOutput({ type: "assistant_message", piboSessionId, eventId, assistantIndex: 0, contentIndex: 0, text: "product-owned answer" });
+		emitOutput({ type: "message_finished", piboSessionId, eventId });
+
+		const summaryResponse = await fetch(
+			`${baseURL}/api/chat/trace/summary?piboSessionId=${encodeURIComponent(piboSessionId)}`,
+			{ headers: { "x-test-user": "user-1" } },
+		);
+		assert.equal(summaryResponse.status, 200);
+		const response = await fetch(
+			`${baseURL}/api/chat/trace/timeline?piboSessionId=${encodeURIComponent(piboSessionId)}&limit=50`,
+			{ headers: { "x-test-user": "user-1" } },
+		);
+		assert.equal(response.status, 200);
+		const page = await response.json();
+		const compatibilityResponse = await fetch(
+			`${baseURL}/api/chat/trace?piboSessionId=${encodeURIComponent(piboSessionId)}`,
+			{ headers: { "x-test-user": "user-1" } },
+		);
+		assert.equal(compatibilityResponse.status, 200);
+		assert.equal(inspectHistoryCalls, 0);
+		assert.equal(readHistoryCalls, 0);
+		assert.equal(page.runtimeBinding.runtimeInstanceId, "pi");
+		assert.equal(page.runtimeBinding.adapterId, "pi");
+		assert.match(JSON.stringify(page.nodes), /product-owned prompt/);
+		assert.match(JSON.stringify(page.nodes), /product-owned answer/);
+		assert.ok(page.nodes.some((node) => node.source === "product-history") || page.nodes.some((node) => node.children?.some((child) => child.source === "product-history")));
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("legacy Pi traces use the adapter history provider without direct Chat Web JSONL access", async () => {
+	let inspectHistoryCalls = 0;
+	let readHistoryCalls = 0;
+	const capabilities = fakeRuntimeCapabilities();
+	const { channel, baseURL, sessions } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		capabilityCatalog: {
+			agentRuntimes: [fakeRuntimeInspection("pi", { adapterId: "pi", capabilities })],
+			nativeTools: [], skills: [], subagents: [], contextFiles: [], packages: [], piboTools: [], mcpServers: [], piPackages: [],
+		},
+		async inspectSessionRuntimeHistory(piboSessionId) {
+			inspectHistoryCalls += 1;
+			return {
+				runtimeInstanceId: "pi",
+				adapterId: "pi",
+				bindingState: "bound",
+				available: true,
+				title: "Legacy history",
+				version: "legacy-v1",
+				diagnostics: [],
+			};
+		},
+		async readSessionRuntimeHistory(piboSessionId, input = {}) {
+			readHistoryCalls += 1;
+			if (input.cursor === "provider-error") throw new Error("token=runtime-history-secret-must-not-leak");
+			const older = input.cursor === "provider-page-2";
+			return {
+				runtimeInstanceId: "pi",
+				adapterId: "pi",
+				source: "native",
+				entries: older ? [
+					{ id: "pi:older-user", type: "message", source: "native", createdAt: "2026-08-14T09:00:00.000Z", nativeEntryId: "legacy-older-user", nativeTurnId: "legacy-older-user", role: "user", content: "older legacy prompt" },
+				] : [
+					{ id: "pi:user", type: "message", source: "native", createdAt: "2026-08-14T10:00:00.000Z", nativeEntryId: "legacy-user", nativeTurnId: "legacy-user", role: "user", content: "legacy prompt" },
+					{ id: "pi:assistant", type: "message", source: "native", createdAt: "2026-08-14T10:00:01.000Z", nativeEntryId: "legacy-assistant", nativeTurnId: "legacy-user", role: "assistant", content: [{ type: "text", text: "legacy native answer" }], status: "complete" },
+				],
+				nextCursor: older ? undefined : "provider-page-2",
+				hasMore: !older,
+				inspection: {
+					runtimeInstanceId: "pi", adapterId: "pi", bindingState: "bound", available: true, title: "Legacy history", version: "legacy-v1", diagnostics: [],
+				},
+			};
+		},
+	});
+
+	try {
+		const sessionResponse = await fetch(`${baseURL}/api/chat/session`, { headers: { "x-test-user": "user-1" } });
+		assert.equal(sessionResponse.status, 200);
+		const sessionPayload = await sessionResponse.json();
+		const current = sessions.getRuntimeBinding(sessionPayload.session.id);
+		assert.ok(current);
+		sessions.updateRuntimeBinding(sessionPayload.session.id, {
+			...current,
+			metadata: { ...(current.metadata ?? {}), migrationSource: "schema-v4" },
+		}, { expectedRevision: current.revision, mode: "repair" });
+
+		const response = await fetch(
+			`${baseURL}/api/chat/trace/timeline?piboSessionId=${encodeURIComponent(sessionPayload.session.id)}&limit=50`,
+			{ headers: { "x-test-user": "user-1" } },
+		);
+		assert.equal(response.status, 200);
+		const page = await response.json();
+		assert.equal(inspectHistoryCalls, 1);
+		assert.equal(readHistoryCalls, 1);
+		assert.match(JSON.stringify(page.nodes), /legacy native answer/);
+		assert.ok(page.nodes.some((node) => node.source === "transcript"));
+		assert.match(page.cursor.before, /^runtime-history:/);
+		assert.doesNotMatch(JSON.stringify(page), /sessionPath|PI_CODING_AGENT_DIR/);
+		const cursorPayload = JSON.parse(Buffer.from(page.cursor.before.slice("runtime-history:".length), "base64url").toString("utf8"));
+		const crossSessionCursor = `runtime-history:${Buffer.from(JSON.stringify({ ...cursorPayload, piboSessionId: "ps_other" }), "utf8").toString("base64url")}`;
+		const crossSessionResponse = await fetch(
+			`${baseURL}/api/chat/trace/timeline?piboSessionId=${encodeURIComponent(sessionPayload.session.id)}&before=${encodeURIComponent(crossSessionCursor)}&limit=50`,
+			{ headers: { "x-test-user": "user-1" } },
+		);
+		assert.equal(crossSessionResponse.status, 409);
+		assert.equal(readHistoryCalls, 1);
+		const providerErrorCursor = `runtime-history:${Buffer.from(JSON.stringify({ ...cursorPayload, providerCursor: "provider-error" }), "utf8").toString("base64url")}`;
+		const providerErrorResponse = await fetch(
+			`${baseURL}/api/chat/trace/timeline?piboSessionId=${encodeURIComponent(sessionPayload.session.id)}&before=${encodeURIComponent(providerErrorCursor)}&limit=50`,
+			{ headers: { "x-test-user": "user-1" } },
+		);
+		assert.equal(providerErrorResponse.status, 502);
+		assert.doesNotMatch(await providerErrorResponse.text(), /runtime-history-secret-must-not-leak|token=/);
+		assert.equal(readHistoryCalls, 2);
+
+		const olderResponse = await fetch(
+			`${baseURL}/api/chat/trace/timeline?piboSessionId=${encodeURIComponent(sessionPayload.session.id)}&before=${encodeURIComponent(page.cursor.before)}&limit=50`,
+			{ headers: { "x-test-user": "user-1" } },
+		);
+		assert.equal(olderResponse.status, 200);
+		const olderPage = await olderResponse.json();
+		assert.equal(readHistoryCalls, 3);
+		assert.match(JSON.stringify(olderPage.nodes), /older legacy prompt/);
+		assert.equal(olderPage.cursor.hasOlder, false);
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("missing legacy native history preserves surviving Pibo product history", async () => {
+	let readHistoryCalls = 0;
+	const capabilities = fakeRuntimeCapabilities();
+	const { channel, baseURL, sessions, emitOutput } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		capabilityCatalog: {
+			agentRuntimes: [fakeRuntimeInspection("pi", { adapterId: "pi", capabilities })],
+			nativeTools: [], skills: [], subagents: [], contextFiles: [], packages: [], piboTools: [], mcpServers: [], piPackages: [],
+		},
+		async inspectSessionRuntimeHistory() {
+			return {
+				runtimeInstanceId: "pi",
+				adapterId: "pi",
+				bindingState: "missing",
+				available: false,
+				diagnostics: [{ severity: "error", code: "pi_history_not_found", message: "Native history is missing" }],
+			};
+		},
+		async readSessionRuntimeHistory() {
+			readHistoryCalls += 1;
+			return {
+				runtimeInstanceId: "pi",
+				adapterId: "pi",
+				source: "native",
+				entries: [],
+				hasMore: false,
+				inspection: {
+					runtimeInstanceId: "pi",
+					adapterId: "pi",
+					bindingState: "missing",
+					available: false,
+					diagnostics: [{ severity: "error", code: "pi_history_not_found", message: "Native history is missing" }],
+				},
+			};
+		},
+	});
+
+	try {
+		const sessionResponse = await fetch(`${baseURL}/api/chat/session`, { headers: { "x-test-user": "user-1" } });
+		const sessionPayload = await sessionResponse.json();
+		const piboSessionId = sessionPayload.session.id;
+		const current = sessions.getRuntimeBinding(piboSessionId);
+		assert.ok(current);
+		sessions.updateRuntimeBinding(piboSessionId, {
+			...current,
+			state: "missing",
+			metadata: { ...(current.metadata ?? {}), nativeHistoryFallback: true },
+		}, { expectedRevision: current.revision, mode: "repair" });
+		const messageResponse = await fetch(`${baseURL}/api/chat/message`, {
+			method: "POST",
+			headers: { "x-test-user": "user-1", "content-type": "application/json", origin: baseURL },
+			body: JSON.stringify({ piboSessionId, text: "surviving product prompt", clientTxnId: "txn-missing-native-history" }),
+		});
+		assert.equal(messageResponse.status, 200);
+		const messagePayload = await messageResponse.json();
+		const eventId = messagePayload.output.eventId;
+		emitOutput({ type: "message_started", piboSessionId, eventId, text: "surviving product prompt", source: "user" });
+		emitOutput({ type: "assistant_message", piboSessionId, eventId, assistantIndex: 0, contentIndex: 0, text: "surviving product answer" });
+		emitOutput({ type: "message_finished", piboSessionId, eventId });
+
+		const response = await fetch(
+			`${baseURL}/api/chat/trace/timeline?piboSessionId=${encodeURIComponent(piboSessionId)}&limit=50`,
+			{ headers: { "x-test-user": "user-1" } },
+		);
+		assert.equal(response.status, 200);
+		const page = await response.json();
+		assert.equal(readHistoryCalls, 1);
+		assert.match(JSON.stringify(page.nodes), /surviving product prompt/);
+		assert.match(JSON.stringify(page.nodes), /surviving product answer/);
+		assert.ok(page.nodes.some((node) => node.source === "product-history") || page.nodes.some((node) => node.children?.some((child) => child.source === "product-history")));
 	} finally {
 		await channel.stop?.();
 	}

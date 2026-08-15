@@ -1,4 +1,4 @@
-import type { PiboJsonObject, PiboJsonValue } from "../core/events.js";
+import type { PiboJsonObject } from "../core/events.js";
 import type { InitialSessionContext, ModelProfile } from "../core/profiles.js";
 import type { PiboPortableToolSession } from "../tools/session-service.js";
 import type {
@@ -28,6 +28,22 @@ import type {
 	AgentRuntimeSemanticEvent,
 	AgentRuntimeUserInputRequest,
 } from "./events.js";
+import type {
+	AgentRuntimeHistoryInspection,
+	AgentRuntimeHistoryPage,
+	InspectAgentRuntimeHistoryInput,
+	ReadAgentRuntimeHistoryInput,
+} from "./history.js";
+export type {
+	AgentRuntimeHistoryContentPart,
+	AgentRuntimeHistoryEntry,
+	AgentRuntimeHistoryInspection,
+	AgentRuntimeHistoryMessageEntry,
+	AgentRuntimeHistoryPage,
+	AgentRuntimeHistorySource,
+	InspectAgentRuntimeHistoryInput,
+	ReadAgentRuntimeHistoryInput,
+} from "./history.js";
 
 export type AgentRuntimeTransport = "embedded" | "stdio-rpc" | "socket-rpc" | "remote";
 
@@ -145,27 +161,6 @@ export type AgentRuntimeAuthStatus = {
 	details?: PiboJsonObject;
 };
 
-export type AgentRuntimeHistoryEntry = {
-	id: string;
-	type: string;
-	createdAt?: string;
-	turnId?: string;
-	role?: string;
-	content?: PiboJsonValue;
-	metadata?: PiboJsonObject;
-};
-
-export type AgentRuntimeHistoryPage = {
-	entries: readonly AgentRuntimeHistoryEntry[];
-	nextCursor?: string;
-};
-
-export type ReadAgentRuntimeHistoryInput = {
-	binding: RuntimeSessionBinding;
-	cursor?: string;
-	limit?: number;
-};
-
 export type ResolveAgentRuntimeBindingInput = {
 	binding: RuntimeSessionBinding;
 	workspace: string;
@@ -184,6 +179,7 @@ export interface AgentRuntimeAdapter {
 	inspectProfile?(input: InspectAgentRuntimeProfileInput): Promise<AgentRuntimeAssemblyInspection>;
 	listModels?(): Promise<AgentRuntimeModelCatalog>;
 	getAuthStatus?(): Promise<readonly AgentRuntimeAuthStatus[]>;
+	inspectHistory?(input: InspectAgentRuntimeHistoryInput): Promise<AgentRuntimeHistoryInspection>;
 	readHistory?(input: ReadAgentRuntimeHistoryInput): Promise<AgentRuntimeHistoryPage>;
 	resolveBinding?(input: ResolveAgentRuntimeBindingInput): Promise<RuntimeSessionBinding>;
 }

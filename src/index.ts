@@ -108,8 +108,12 @@ export type {
 	AgentRuntimeDiagnosticSeverity,
 	AgentRuntimeDriver,
 	AgentRuntimeDriverCreateInput,
+	AgentRuntimeHistoryContentPart,
 	AgentRuntimeHistoryEntry,
+	AgentRuntimeHistoryInspection,
+	AgentRuntimeHistoryMessageEntry,
 	AgentRuntimeHistoryPage,
+	AgentRuntimeHistorySource,
 	AgentRuntimeInstanceDefinition,
 	AgentRuntimeInstanceId,
 	AgentRuntimeInstanceInfo,
@@ -122,10 +126,17 @@ export type {
 	AgentRuntimePromptSource,
 	AgentRuntimeSession,
 	AgentRuntimeStatus,
+	InspectAgentRuntimeHistoryInput,
 	OpenAgentRuntimeSessionInput,
+	ReadAgentRuntimeHistoryInput,
 	RuntimeSessionBinding,
 } from "./agent-runtime/types.js";
 export { PI_AGENT_RUNTIME_DRIVER, PI_AGENT_RUNTIME_CAPABILITIES, getPiAgentRuntimeCompatibilityHandle } from "./agent-runtimes/pi/adapter.js";
+export {
+	inspectPiAgentRuntimeHistory,
+	piSessionEntriesToAgentRuntimeHistoryEntries,
+	readPiAgentRuntimeHistory,
+} from "./agent-runtimes/pi/history.js";
 export { compilePiboToolForPi, piboToolResultToPi } from "./agent-runtimes/pi/tool-compiler.js";
 export type { CompilePiboToolForPiOptions } from "./agent-runtimes/pi/tool-compiler.js";
 export {

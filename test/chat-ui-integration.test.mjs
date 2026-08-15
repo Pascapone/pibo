@@ -3,7 +3,8 @@ import test from "node:test";
 import { traceProjectionStatus, withLiveSnapshots } from "../dist/apps/chat/chat-trace-helpers.js";
 import { normalizePiEvent } from "../dist/core/routed-session.js";
 import { messageTurnTimingsFromEvents } from "../dist/shared/trace-event-projection.js";
-import { buildTraceViewFromEvents, patchTraceViewWithEvent, patchTraceViewWithEvents } from "../dist/shared/trace-engine.js";
+import { patchTraceViewWithEvent, patchTraceViewWithEvents } from "../dist/shared/trace-engine.js";
+import { buildTraceViewFromEvents } from "./helpers/pi-history.mjs";
 import { buildCompactTerminalRows } from "../dist/session-ui/index.js";
 
 function createEvent(overrides) {

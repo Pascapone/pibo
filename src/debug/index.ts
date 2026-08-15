@@ -7,6 +7,7 @@ type ParsedOptions = {
 	json: boolean;
 	events: boolean;
 	runningOnly: boolean;
+	nativeHistory: boolean;
 	check: boolean;
 	medium: boolean;
 	limit?: string;
@@ -189,11 +190,18 @@ async function runDebugSession(args: string[]): Promise<void> {
 	const input = options.positionals[0];
 	if (!input) throw new Error("pibo debug session requires <url-or-pibo-session-id>");
 	const { formatJson } = await import("./sql.js");
-	const { formatDebugSessionSummary, inspectDebugSession } = await import("./session.js");
-	const summary = inspectDebugSession(input, {
+	const stores = {
 		sessions: resolveDebugStore("sessions"),
 		chat: resolveDebugStore("chat"),
-	}, {
+	};
+	const { formatDebugSessionRuntime, formatDebugSessionSummary, inspectDebugSession, inspectDebugSessionRuntime } = await import("./session.js");
+	if (options.positionals[1] === "runtime") {
+		const result = inspectDebugSessionRuntime(input, stores);
+		if (options.json) console.log(formatJson(result));
+		else console.log(formatDebugSessionRuntime(result));
+		return;
+	}
+	const summary = inspectDebugSession(input, stores, {
 		events: options.events,
 		limit: options.limit,
 	});
@@ -449,6 +457,7 @@ async function runDebugTrace(args: string[]): Promise<void> {
 	const result = await inspectDebugTrace(piboSessionId, stores, {
 		runningOnly: options.runningOnly,
 		check: options.check,
+		nativeHistory: options.nativeHistory,
 	});
 	if (options.json) console.log(formatJson(result));
 	else console.log(formatDebugTrace(result, { medium: options.medium }));
@@ -682,7 +691,7 @@ function readCookieHeaderFile(path: string): string {
 }
 
 function parseOptions(args: string[]): ParsedOptions {
-	const parsed: ParsedOptions = { positionals: [], json: false, events: false, runningOnly: false, check: false, medium: false, destructive: false, apply: false, dryRun: false, full: false, noTruncate: false, plain: false, raw: false, payload: false, args: false, output: false, error: false, active: false, stale: false };
+	const parsed: ParsedOptions = { positionals: [], json: false, events: false, runningOnly: false, nativeHistory: false, check: false, medium: false, destructive: false, apply: false, dryRun: false, full: false, noTruncate: false, plain: false, raw: false, payload: false, args: false, output: false, error: false, active: false, stale: false };
 	for (let index = 0; index < args.length; index += 1) {
 		const arg = args[index];
 		if (arg === "--json") {
@@ -695,6 +704,10 @@ function parseOptions(args: string[]): ParsedOptions {
 		}
 		if (arg === "--running-only") {
 			parsed.runningOnly = true;
+			continue;
+		}
+		if (arg === "--native-history") {
+			parsed.nativeHistory = true;
 			continue;
 		}
 		if (arg === "--check") {
@@ -1121,6 +1134,7 @@ function printDebugSessionDiscovery(): void {
 
 Usage:
   pibo debug session <url-or-pibo-session-id> [--events] [--limit n] [--json]
+  pibo debug session <url-or-pibo-session-id> runtime [--json]
 
 Inputs:
   ps_...
@@ -1129,6 +1143,7 @@ Inputs:
 
 Next:
   pibo debug session ps_...
+  pibo debug session ps_... runtime
 `);
 }
 
@@ -1204,15 +1219,17 @@ function printDebugTraceDiscovery(): void {
 	console.log(`pibo debug trace - rebuild one Chat Web trace view
 
 Usage:
-  pibo debug trace <pibo-session-id> [--running-only] [--check] [--medium] [--json]
+  pibo debug trace <pibo-session-id> [--running-only] [--check] [--medium] [--native-history] [--json]
   pibo debug trace <pibo-session-id> show <node-id> [--json]
 
 Output:
-  Compact trace nodes from the same buildTraceView logic used by /api/chat/trace.
+  Compact trace nodes from Pibo product history and normalized events.
+  --native-history explicitly asks the selected adapter for harness-native history.
   --check adds consistency diagnostics for ids, parents, ordering, and links.
 
 Next:
   pibo debug trace ps_... --check
+  pibo debug trace ps_... --native-history --check
   pibo debug trace ps_... --medium
   pibo debug trace ps_... show <node-id>
 `);

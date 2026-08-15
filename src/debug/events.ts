@@ -4,15 +4,17 @@ import { formatPrimitive, formatTruncationFooter, sliceTextByBytes, type DebugDe
 import { formatNextCommands } from "./next-commands.js";
 import { compactOneLine, eventPayload, rawEventObject, resolveEventField, sourceRef, stringifyPayloadValue, type DebugEventRow, type DebugPayloadRef } from "./payloads.js";
 import { normalizeLimit, openReadOnlyDebugDatabase, withStorePath } from "./sql.js";
+import { createDebugPayloadStore, hydrateDebugEventRow } from "./persisted-payloads.js";
+import { readDebugRuntimeIdentity, type DebugRuntimeIdentity } from "./runtime-binding.js";
 
-export type DebugEventResult = {
+export type DebugEventResult = DebugRuntimeIdentity & {
 	piboSessionId: string;
 	events: Array<Record<string, unknown>>;
 	limited: boolean;
 	nextCommands?: string[];
 };
 
-export type DebugEventShowResult = {
+export type DebugEventShowResult = DebugRuntimeIdentity & {
 	piboSessionId: string;
 	resultType: "debug.events.show";
 	selector: string;
@@ -42,10 +44,11 @@ export function inspectDebugEvents(
 			clauses.push("type = ?");
 			values.push(options.type);
 		}
+		const payloadStore = createDebugPayloadStore(db, store);
 		const rows = db
 			.prepare(
 				`
-					SELECT stream_id, session_id, session_sequence, event_id, type, created_at, preview_text, attributes_json
+					SELECT stream_id, session_id, session_sequence, event_id, type, created_at, payload_ref, preview_text, attributes_json
 					FROM event_log
 					WHERE ${clauses.join(" AND ")}
 					ORDER BY stream_id DESC
@@ -53,13 +56,15 @@ export function inspectDebugEvents(
 				`,
 			)
 			.all(...values, limit + 1) as DebugEventRow[];
-		const limited = rows.length > limit;
-		const events = rows.slice(0, limit).map((row) => formatEventRow(row, options.fields ?? []));
+		const hydratedRows = rows.map((row) => hydrateDebugEventRow(row, payloadStore));
+		const limited = hydratedRows.length > limit;
+		const events = hydratedRows.slice(0, limit).map((row) => formatEventRow(row, options.fields ?? []));
 		return {
 			piboSessionId,
+			...readDebugRuntimeIdentity(db, piboSessionId),
 			events,
 			limited,
-			nextCommands: buildListNextCommands(piboSessionId, rows.slice(0, limit)),
+			nextCommands: buildListNextCommands(piboSessionId, hydratedRows.slice(0, limit)),
 		};
 	} catch (error) {
 		throw withStorePath(error, store);
@@ -78,14 +83,16 @@ export function inspectDebugEventShow(
 	const db = openReadOnlyDebugDatabase(store);
 	try {
 		if (!tableExists(db, "event_log")) return { piboSessionId, resultType: "debug.events.show", selector, nextCommands: [] };
-		const row = findEventRow(db, piboSessionId, selector);
-		if (!row) return { piboSessionId, resultType: "debug.events.show", selector, nextCommands: [`pibo debug events ${piboSessionId} list`] };
+		const found = findEventRow(db, piboSessionId, selector);
+		if (!found) return { piboSessionId, resultType: "debug.events.show", selector, nextCommands: [`pibo debug events ${piboSessionId} list`] };
+		const row = hydrateDebugEventRow(found, createDebugPayloadStore(db, store));
 		const payload = eventPayload(row);
 		const raw = rawEventObject(row);
 		const shown = options.raw ? raw : payload;
 		const source = sourceRef(row, options.field, options.raw ? "raw" : "event");
 		const result: DebugEventShowResult = {
 			piboSessionId,
+			...readDebugRuntimeIdentity(db, piboSessionId),
 			resultType: "debug.events.show",
 			selector,
 			event: formatEventRow(row, []),
@@ -122,9 +129,10 @@ export function inspectDebugEventShow(
 }
 
 export function formatDebugEvents(result: DebugEventResult): string {
-	if (result.events.length === 0) return ["events: 0", ...formatNextCommands(result.nextCommands ?? [])].join("\n");
+	const runtimeLines = formatRuntimeIdentity(result);
+	if (result.events.length === 0) return [...runtimeLines, "events: 0", ...formatNextCommands(result.nextCommands ?? [])].join("\n");
 	const columns = Object.keys(result.events[0] ?? {});
-	const lines = [columns.join("\t")];
+	const lines = [...runtimeLines, columns.join("\t")];
 	for (const event of result.events) {
 		lines.push(columns.map((column) => formatValue(event[column])).join("\t"));
 	}
@@ -191,13 +199,13 @@ function findEventRow(db: DatabaseSync, piboSessionId: string, selector: string)
 	const numeric = Number(selector);
 	if (Number.isInteger(numeric)) {
 		const row = db.prepare(`
-			SELECT stream_id, session_id, session_sequence, event_id, type, created_at, preview_text, attributes_json
+			SELECT stream_id, session_id, session_sequence, event_id, type, created_at, payload_ref, preview_text, attributes_json
 			FROM event_log WHERE session_id = ? AND stream_id = ?
 		`).get(piboSessionId, numeric) as DebugEventRow | undefined;
 		if (row) return row;
 	}
 	return db.prepare(`
-		SELECT stream_id, session_id, session_sequence, event_id, type, created_at, preview_text, attributes_json
+		SELECT stream_id, session_id, session_sequence, event_id, type, created_at, payload_ref, preview_text, attributes_json
 		FROM event_log WHERE session_id = ? AND event_id = ? ORDER BY stream_id DESC LIMIT 1
 	`).get(piboSessionId, selector) as DebugEventRow | undefined;
 }
@@ -228,6 +236,14 @@ function toolCallIdFromRow(row: DebugEventRow): string | undefined {
 function tableExists(db: DatabaseSync, table: string): boolean {
 	const row = db.prepare("SELECT name FROM sqlite_schema WHERE type = 'table' AND name = ?").get(table);
 	return row !== undefined;
+}
+
+function formatRuntimeIdentity(result: DebugRuntimeIdentity): string[] {
+	return [
+		result.runtimeInstanceId ? `runtimeInstanceId: ${result.runtimeInstanceId}` : undefined,
+		result.runtimeAdapterId ? `runtimeAdapterId: ${result.runtimeAdapterId}` : undefined,
+		result.runtimeBindingState ? `runtimeBindingState: ${result.runtimeBindingState}` : undefined,
+	].filter((value): value is string => Boolean(value));
 }
 
 function formatValue(value: unknown): string {

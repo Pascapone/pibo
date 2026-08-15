@@ -447,6 +447,59 @@ export class PiboGatewayServer {
 			findSessions: (input) => this.requireSessionStore().find(input),
 			listSessions: () => this.requireSessionStore().list?.() ?? [],
 			getSessionRuntimeBinding: (piboSessionId) => this.requireRouter().getSessionRuntimeBinding(piboSessionId),
+			inspectSessionRuntimeHistory: async (piboSessionId) => {
+				const session = this.requireSessionStore().get(piboSessionId);
+				if (!session) throw new Error(`Pibo session "${piboSessionId}" was not found.`);
+				const binding = this.requireRouter().getSessionRuntimeBinding(piboSessionId) ?? session.runtimeBinding;
+				if (!binding) throw new Error(`Pibo session "${piboSessionId}" has no runtime binding.`);
+				const adapter = this.pluginRegistry.getAgentRuntimeAdapter(binding.runtimeInstanceId)
+					?? this.compatibilityRuntimeRegistry?.getAgentRuntimeAdapter(binding.runtimeInstanceId);
+				if (!adapter) {
+					return {
+						runtimeInstanceId: binding.runtimeInstanceId,
+						adapterId: binding.adapterId,
+						bindingState: binding.state,
+						available: false,
+						diagnostics: [{
+							severity: "error",
+							code: "runtime_history_instance_unavailable",
+							message: `Agent runtime instance "${binding.runtimeInstanceId}" is not registered in this gateway.`,
+						}],
+					};
+				}
+				if (!adapter.descriptor.capabilities.maintenance.history || !adapter.inspectHistory) {
+					return {
+						runtimeInstanceId: binding.runtimeInstanceId,
+						adapterId: binding.adapterId,
+						bindingState: binding.state,
+						available: false,
+						diagnostics: [{
+							severity: "warning",
+							code: "runtime_history_unsupported",
+							message: `Agent runtime instance "${binding.runtimeInstanceId}" does not provide native history inspection.`,
+						}],
+					};
+				}
+				return await adapter.inspectHistory({ binding, workspace: session.workspace ?? process.cwd() });
+			},
+			readSessionRuntimeHistory: async (piboSessionId, input = {}) => {
+				const session = this.requireSessionStore().get(piboSessionId);
+				if (!session) throw new Error(`Pibo session "${piboSessionId}" was not found.`);
+				const binding = this.requireRouter().getSessionRuntimeBinding(piboSessionId) ?? session.runtimeBinding;
+				if (!binding) throw new Error(`Pibo session "${piboSessionId}" has no runtime binding.`);
+				const adapter = this.pluginRegistry.getAgentRuntimeAdapter(binding.runtimeInstanceId)
+					?? this.compatibilityRuntimeRegistry?.getAgentRuntimeAdapter(binding.runtimeInstanceId);
+				if (!adapter?.descriptor.capabilities.maintenance.history || !adapter.readHistory) {
+					throw new Error(`Agent runtime instance "${binding.runtimeInstanceId}" does not provide native history.`);
+				}
+				return await adapter.readHistory({
+					binding,
+					workspace: session.workspace ?? process.cwd(),
+					cursor: input.cursor,
+					beforeTimestamp: input.beforeTimestamp,
+					limit: input.limit,
+				});
+			},
 			rebindSessionRuntime: (piboSessionId, input) => this.requireRouter().rebindSessionRuntime(piboSessionId, input),
 			getSessionRuntimeStatus: (piboSessionId) => this.requireRouter().getSessionRuntimeStatus(piboSessionId),
 			getSessionStatusSnapshot: (piboSessionId) => this.requireRouter().getSessionStatusSnapshot(piboSessionId),

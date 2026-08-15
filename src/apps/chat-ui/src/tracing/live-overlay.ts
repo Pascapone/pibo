@@ -59,7 +59,7 @@ function unassignedTranscriptUserMessageTextCounts(nodes: readonly PiboTraceNode
 	for (const node of nodes) {
 		if (
 			node.type === "user.message" &&
-			node.source === "transcript" &&
+			isPersistedHistoryNode(node) &&
 			!hasCanonicalUserMessageIdentity(node)
 		) {
 			const text = traceNodeText(node);
@@ -95,18 +95,18 @@ function collectConfirmedTraceNodeKeys(nodes: readonly PiboTraceNode[], keys: Se
 				const prefix = `event:${type}:`;
 				const eventId = node.id.startsWith(prefix) ? node.id.slice(prefix.length) : undefined;
 				if (eventId) keys.add(`${node.piboSessionId}:${type}:${eventId}`);
-				if (node.source === "transcript" && node.entryId) keys.add(`${node.piboSessionId}:${type}:${node.entryId}`);
+				if (isPersistedHistoryNode(node) && node.entryId) keys.add(`${node.piboSessionId}:${type}:${node.entryId}`);
 			}
 		}
 		if (node.type === "assistant.message") {
 			const identity = traceNodeContentIdentity(node, "assistant:");
 			if (identity) {
 				keys.add(`${node.piboSessionId}:assistant_delta:${identity}`);
-				if (node.source === "transcript" || node.completedAt !== undefined) {
+				if (isPersistedHistoryNode(node) || node.completedAt !== undefined) {
 					keys.add(`${node.piboSessionId}:assistant_message:${identity}`);
 				}
 			}
-			if (node.source === "transcript" && node.eventId) {
+			if (isPersistedHistoryNode(node) && node.eventId) {
 				keys.add(`${node.piboSessionId}:message_started:${node.eventId}`);
 				keys.add(`${node.piboSessionId}:message_finished:${node.eventId}`);
 			}
@@ -115,7 +115,7 @@ function collectConfirmedTraceNodeKeys(nodes: readonly PiboTraceNode[], keys: Se
 			const identity = traceNodeContentIdentity(node, "reasoning:");
 			if (identity) {
 				keys.add(`${node.piboSessionId}:thinking_delta:${identity}`);
-				if (node.source === "transcript") {
+				if (isPersistedHistoryNode(node)) {
 					keys.add(`${node.piboSessionId}:thinking_started:${identity}`);
 					keys.add(`${node.piboSessionId}:thinking_finished:${identity}`);
 				}
@@ -135,6 +135,10 @@ function collectConfirmedTraceNodeKeys(nodes: readonly PiboTraceNode[], keys: Se
 		}
 		collectConfirmedTraceNodeKeys(node.children, keys);
 	}
+}
+
+function isPersistedHistoryNode(node: PiboTraceNode): boolean {
+	return node.source === "transcript" || node.source === "product-history";
 }
 
 function isCoveredRunNotification(baseTrace: PiboSessionTraceView, event: ChatWebStoredEvent): boolean {

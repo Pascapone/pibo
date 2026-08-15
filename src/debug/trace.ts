@@ -1,7 +1,12 @@
 import { DatabaseSync } from "node:sqlite";
+import { dirname, join } from "node:path";
 import { buildTraceView, type PiboTraceNode, type PiboSessionTraceView } from "../apps/chat/trace.js";
-import type { PiboJsonObject, PiboOutputEvent } from "../core/events.js";
-import { normalizeSessionErrorDetails } from "../core/session-errors.js";
+import type { AgentRuntimeHistoryEntry, AgentRuntimeHistoryInspection } from "../agent-runtime/history.js";
+import type { PiboJsonObject } from "../core/events.js";
+import { storedPiboEventFromV2Row, type EventLogRow } from "../apps/chat/data/chat-data-mappers.js";
+import { PayloadStore } from "../data/payload-store.js";
+import { createDefaultPiboPluginRegistry } from "../plugins/builtin.js";
+import type { RuntimeSessionBinding } from "../sessions/runtime-binding.js";
 import type { PiboSession } from "../sessions/store.js";
 import type { ChatWebStoredPiboEvent } from "../apps/chat/read-model.js";
 import { compareTraceNodes } from "../shared/trace-nodes.js";
@@ -12,7 +17,7 @@ import { resolveDebugTraceSessionStatus, summarizeDebugTraceStatus, type DebugTr
 
 type SessionRow = {
 	id: string;
-	pi_session_id: string;
+	pi_session_id: string | null;
 	channel: string;
 	kind: string;
 	profile: string;
@@ -27,20 +32,14 @@ type SessionRow = {
 	last_activity_at: string;
 };
 
-type EventRow = {
-	stream_id: number;
-	session_id: string | null;
-	session_sequence?: number | null;
-	event_id: string | null;
-	type: string;
-	created_at: string;
-	preview_text: string | null;
-	attributes_json: string;
-};
-
 export type DebugTraceResult = {
 	piboSessionId: string;
 	piSessionId: string;
+	runtimeInstanceId?: string;
+	runtimeAdapterId?: string;
+	nativeSessionId?: string;
+	runtimeBindingState?: string;
+	historySource: "product" | "native" | "events";
 	title: string;
 	status: string;
 	statusSource: DebugTraceStatusSource;
@@ -93,7 +92,7 @@ export type DebugTraceIssue = {
 export async function inspectDebugTrace(
 	piboSessionId: string,
 	stores: { sessions: ResolvedPiboDebugStore; chat: ResolvedPiboDebugStore },
-	options: { runningOnly?: boolean; check?: boolean } = {},
+	options: { runningOnly?: boolean; check?: boolean; nativeHistory?: boolean } = {},
 ): Promise<DebugTraceResult> {
 	if (!stores.sessions.exists) throw new Error(`Debug store "sessions" not found at ${stores.sessions.path}`);
 	if (!stores.chat.exists) throw new Error(`Debug store "chat" not found at ${stores.chat.path}`);
@@ -106,19 +105,50 @@ export async function inspectDebugTrace(
 			| undefined;
 		if (!sessionRow) throw new Error(`Pibo session "${piboSessionId}" not found`);
 
-		const session = sessionFromRow(sessionRow);
-		const sessions = (sessionsDb.prepare("SELECT * FROM sessions").all() as SessionRow[]).map(sessionFromRow);
+		const binding = readRuntimeBindingForTrace(sessionsDb, sessionRow);
+		const session = { ...sessionFromRow(sessionRow), runtimeBinding: binding };
+		const sessions = (sessionsDb.prepare("SELECT * FROM sessions").all() as SessionRow[]).map((row) => ({
+			...sessionFromRow(row),
+			runtimeBinding: readRuntimeBindingForTrace(sessionsDb, row),
+		}));
 		const adapterIssues: DebugTraceIssue[] = [];
-		const events = tableExists(chatDb, "event_log")
-			? (chatDb
-					.prepare("SELECT stream_id, session_id, session_sequence, event_id, type, created_at, preview_text, attributes_json FROM event_log WHERE session_id = ? ORDER BY stream_id ASC")
-					.all(piboSessionId) as EventRow[]).map((row) => eventFromRow(row, adapterIssues)).filter((event): event is ChatWebStoredPiboEvent => event !== undefined)
+		const payloadStore = tableExists(chatDb, "payloads")
+			? new PayloadStore(chatDb, join(dirname(stores.chat.path), "payloads"))
+			: undefined;
+		const eventRows = tableExists(chatDb, "event_log")
+			? chatDb.prepare("SELECT * FROM event_log WHERE session_id = ? ORDER BY stream_id ASC").all(piboSessionId) as EventLogRow[]
 			: [];
+		const events = eventRows.map((row) => {
+			const event = storedPiboEventFromV2Row(row, payloadStore);
+			if (event && (row.type === "assistant_delta" || row.type === "thinking_delta") && !nonEmptyEventText(event.payload)) {
+				adapterIssues.push({
+					severity: "warning",
+					code: "missing_delta_text",
+					nodeId: row.event_id ?? String(row.stream_id),
+					message: `Persisted ${row.type} event has no readable text payload.`,
+				});
+			}
+			return event;
+		}).filter((event): event is ChatWebStoredPiboEvent => event !== undefined);
+		const productHistory = readProductHistoryEntries(chatDb, payloadStore, piboSessionId);
+		let nativeHistoryEntries: readonly AgentRuntimeHistoryEntry[] = [];
+		let nativeHistoryInspection: AgentRuntimeHistoryInspection | undefined;
+		if (options.nativeHistory || (events.length === 0 && productHistory.length === 0)) {
+			const native = await readDebugNativeHistory(binding, session.workspace ?? process.cwd(), adapterIssues);
+			nativeHistoryEntries = native?.entries ?? [];
+			nativeHistoryInspection = native?.inspection;
+		}
+		const historyEntries = nativeHistoryEntries.length ? nativeHistoryEntries : productHistory;
+		const historySource: DebugTraceResult["historySource"] = nativeHistoryEntries.length
+			? "native"
+			: productHistory.length ? "product" : "events";
 		const sessionStatus = resolveDebugTraceSessionStatus(sessionRow.status, events.map((event) => event.type));
 		const view = await buildTraceView({
 			session,
 			sessions,
 			events,
+			historyEntries,
+			historyInspection: nativeHistoryInspection,
 			status: sessionStatus.status,
 		});
 		const rows = flattenTraceNodes(view.nodes);
@@ -127,6 +157,11 @@ export async function inspectDebugTrace(
 		return {
 			piboSessionId: view.piboSessionId,
 			piSessionId: view.piSessionId,
+			runtimeInstanceId: binding?.runtimeInstanceId,
+			runtimeAdapterId: binding?.adapterId,
+			nativeSessionId: binding?.nativeSessionId,
+			runtimeBindingState: binding?.state,
+			historySource,
 			title: view.title,
 			status: statusSummary.status,
 			statusSource: sessionStatus.source,
@@ -166,6 +201,11 @@ export function formatDebugTrace(result: DebugTraceResult, options: { medium?: b
 	const lines = [
 		`piboSessionId: ${result.piboSessionId}`,
 		`piSessionId: ${result.piSessionId}`,
+		...(result.runtimeInstanceId ? [`runtimeInstanceId: ${result.runtimeInstanceId}`] : []),
+		...(result.runtimeAdapterId ? [`runtimeAdapterId: ${result.runtimeAdapterId}`] : []),
+		...(result.nativeSessionId ? [`nativeSessionId: ${result.nativeSessionId}`] : []),
+		...(result.runtimeBindingState ? [`runtimeBindingState: ${result.runtimeBindingState}`] : []),
+		`historySource: ${result.historySource}`,
 		`title: ${result.title}`,
 		`status: ${result.status}`,
 		`statusSource: ${result.statusSource}`,
@@ -379,7 +419,7 @@ function formatOrderKey(node: PiboTraceNode): string | undefined {
 function sessionFromRow(row: SessionRow): PiboSession {
 	return {
 		id: row.id,
-		piSessionId: row.pi_session_id,
+		piSessionId: row.pi_session_id ?? "",
 		channel: row.channel,
 		kind: row.kind,
 		profile: row.profile,
@@ -393,81 +433,156 @@ function sessionFromRow(row: SessionRow): PiboSession {
 	};
 }
 
-function eventFromRow(row: EventRow, issues: DebugTraceIssue[]): ChatWebStoredPiboEvent | undefined {
-	const payload = outputPayloadFromV2Row(row);
-	if (!payload) return undefined;
-	if ((row.type === "assistant_delta" || row.type === "thinking_delta") && !nonEmptyEventText(payload)) {
+type DebugHistoryMessageRow = {
+	id: string;
+	sequence: number;
+	turn_id: string | null;
+	role: string;
+	status: string;
+	created_at: string;
+	content_preview: string | null;
+	content_payload_ref: string | null;
+	source_stream_id: number | null;
+	attributes_json: string;
+	event_sequence: number | null;
+};
+
+function readProductHistoryEntries(
+	db: DatabaseSync,
+	payloadStore: PayloadStore | undefined,
+	piboSessionId: string,
+): AgentRuntimeHistoryEntry[] {
+	if (!tableExists(db, "chat_messages")) return [];
+	const rows = db.prepare(`
+		SELECT m.*, e.session_sequence AS event_sequence
+		FROM chat_messages m
+		LEFT JOIN event_log e ON e.stream_id = m.source_stream_id
+		WHERE m.session_id = ? AND m.role IN ('user', 'assistant', 'system')
+		ORDER BY m.sequence ASC
+		LIMIT 2000
+	`).all(piboSessionId) as DebugHistoryMessageRow[];
+	return rows.flatMap((row) => {
+		const role = row.role === "user" || row.role === "assistant" || row.role === "system" ? row.role : undefined;
+		if (!role) return [];
+		const attributes = parseObject(row.attributes_json);
+		let content = typeof attributes.inlineText === "string" ? attributes.inlineText : row.content_preview ?? "";
+		if (row.content_payload_ref && payloadStore) {
+			try {
+				content = payloadStore.readPayloadText(row.content_payload_ref);
+			} catch {
+				// Keep the bounded preview and let trace checks report any missing event payload separately.
+			}
+		}
+		return [{
+			id: `product:${row.id}`,
+			type: "message" as const,
+			source: "product" as const,
+			createdAt: row.created_at,
+			sequence: row.event_sequence ?? row.sequence,
+			turnId: row.turn_id ?? undefined,
+			role,
+			content,
+			assistantIndex: numberAttribute(attributes, "assistantIndex"),
+			contentIndex: numberAttribute(attributes, "contentIndex"),
+			status: row.status === "running" || row.status === "streaming"
+				? "running" as const
+				: row.status === "error" || row.status === "failed" ? "error" as const : "complete" as const,
+		} satisfies AgentRuntimeHistoryEntry];
+	});
+}
+
+async function readDebugNativeHistory(
+	binding: RuntimeSessionBinding | undefined,
+	workspace: string,
+	issues: DebugTraceIssue[],
+) {
+	if (!binding) return undefined;
+	const registry = createDefaultPiboPluginRegistry();
+	const adapter = registry.getAgentRuntimeAdapter(binding.runtimeInstanceId);
+	if (!adapter?.descriptor.capabilities.maintenance.history || !adapter.readHistory) {
 		issues.push({
 			severity: "warning",
-			code: "missing_delta_text",
-			nodeId: row.event_id ?? String(row.stream_id),
-			message: `Persisted ${row.type} event has no readable text payload.`,
+			code: "runtime_history_provider_unavailable",
+			message: `Runtime instance "${binding.runtimeInstanceId}" has no locally registered history provider.`,
 		});
+		return undefined;
 	}
+	try {
+		return await adapter.readHistory({ binding, workspace, limit: 500 });
+	} catch (error) {
+		issues.push({
+			severity: "warning",
+			code: "runtime_history_read_failed",
+			message: redactRuntimeHistoryError(error),
+		});
+		return undefined;
+	}
+}
+
+function readRuntimeBindingForTrace(db: DatabaseSync, session: SessionRow): RuntimeSessionBinding | undefined {
+	if (!tableExists(db, "session_runtime_bindings")) {
+		return {
+			piboSessionId: session.id,
+			runtimeInstanceId: "pi",
+			adapterId: "pi",
+			nativeSessionId: session.pi_session_id ?? undefined,
+			state: session.pi_session_id ? "bound" : "unbound",
+			protocol: "pi-sdk",
+			metadata: { source: "legacy-synthesized" },
+			revision: 1,
+			createdAt: session.created_at,
+			updatedAt: session.updated_at,
+		};
+	}
+	const row = db.prepare("SELECT * FROM session_runtime_bindings WHERE pibo_session_id = ?").get(session.id) as {
+		pibo_session_id: string;
+		runtime_instance_id: string;
+		runtime_adapter_id: string;
+		native_session_id: string | null;
+		binding_state: RuntimeSessionBinding["state"];
+		protocol: string | null;
+		protocol_version: string | null;
+		adapter_version: string | null;
+		locator_json: string | null;
+		metadata_json: string;
+		revision: number;
+		created_at: string;
+		updated_at: string;
+	} | undefined;
+	if (!row) return undefined;
+	const locator = parseObject(row.locator_json);
 	return {
-		id: String(row.stream_id),
-		piboSessionId: row.session_id ?? undefined,
-		eventSequence: row.session_sequence ?? undefined,
-		eventId: row.event_id ?? undefined,
-		streamId: row.stream_id,
-		type: row.type,
+		piboSessionId: row.pibo_session_id,
+		runtimeInstanceId: row.runtime_instance_id,
+		adapterId: row.runtime_adapter_id,
+		nativeSessionId: row.native_session_id ?? undefined,
+		state: row.binding_state,
+		protocol: row.protocol ?? undefined,
+		protocolVersion: row.protocol_version ?? undefined,
+		adapterVersion: row.adapter_version ?? undefined,
+		locator: typeof locator.kind === "string" ? locator as RuntimeSessionBinding["locator"] : undefined,
+		metadata: parseObject(row.metadata_json),
+		revision: row.revision,
 		createdAt: row.created_at,
-		payload,
+		updatedAt: row.updated_at,
 	};
 }
 
-function outputPayloadFromV2Row(row: EventRow): PiboOutputEvent | undefined {
-	const attributes = parseObject(row.attributes_json);
-	const inlinePayload = attributes.inlinePayload;
-	if (inlinePayload && typeof inlinePayload === "object" && !Array.isArray(inlinePayload) && typeof (inlinePayload as { type?: unknown }).type === "string") {
-		return inlinePayload as PiboOutputEvent;
-	}
-	const piboSessionId = row.session_id;
-	if (!piboSessionId) return undefined;
-	const base = { piboSessionId, eventId: row.event_id ?? undefined };
-	if (row.type === "assistant_message") return compactObject({ ...base, type: "assistant_message", text: row.preview_text ?? "" }) as PiboOutputEvent;
-	if (row.type === "assistant_delta") return compactObject({ ...base, type: "assistant_delta", text: inlineTextPayload(inlinePayload) ?? row.preview_text ?? "" }) as PiboOutputEvent;
-	if (row.type === "message_started") return compactObject({ ...base, type: "message_started", text: row.preview_text ?? "" }) as PiboOutputEvent;
-	if (row.type === "message_finished") return compactObject({ ...base, type: "message_finished" }) as PiboOutputEvent;
-	if (row.type === "thinking_started") return compactObject({ ...base, type: "thinking_started" }) as PiboOutputEvent;
-	if (row.type === "thinking_delta") return compactObject({ ...base, type: "thinking_delta", text: inlineTextPayload(inlinePayload) ?? row.preview_text ?? "" }) as PiboOutputEvent;
-	if (row.type === "thinking_finished") return compactObject({ ...base, type: "thinking_finished", text: row.preview_text ?? "" }) as PiboOutputEvent;
-	if (row.type === "tool_call") return compactObject({ ...base, type: "tool_call", toolCallId: stringAttribute(attributes, "toolCallId") ?? row.event_id ?? `tool_${row.stream_id}`, toolName: row.preview_text ?? stringAttribute(attributes, "toolName") ?? "tool", args: inlinePayload ?? null, argsComplete: booleanAttribute(attributes, "argsComplete") ?? true }) as PiboOutputEvent;
-	if (row.type === "tool_execution_started") return compactObject({ ...base, type: "tool_execution_started", toolCallId: stringAttribute(attributes, "toolCallId") ?? row.event_id ?? `tool_${row.stream_id}`, toolName: row.preview_text ?? stringAttribute(attributes, "toolName") ?? "tool", args: inlinePayload ?? null }) as PiboOutputEvent;
-	if (row.type === "tool_execution_updated") return compactObject({ ...base, type: "tool_execution_updated", toolCallId: stringAttribute(attributes, "toolCallId") ?? row.event_id ?? `tool_${row.stream_id}`, toolName: row.preview_text ?? stringAttribute(attributes, "toolName") ?? "tool", args: null, partialResult: inlinePayload ?? null }) as PiboOutputEvent;
-	if (row.type === "tool_execution_finished") return compactObject({ ...base, type: "tool_execution_finished", toolCallId: stringAttribute(attributes, "toolCallId") ?? row.event_id ?? `tool_${row.stream_id}`, toolName: row.preview_text ?? stringAttribute(attributes, "toolName") ?? "tool", result: inlinePayload ?? null, isError: booleanAttribute(attributes, "isError") ?? false }) as PiboOutputEvent;
-	if (row.type === "session_error") {
-		const error = stringAttribute(attributes, "error") ?? row.preview_text ?? "Error";
-		return compactObject({ ...base, type: "session_error", error, errorDetails: normalizeSessionErrorDetails(error, isRecord(attributes.errorDetails) ? attributes.errorDetails : undefined) }) as PiboOutputEvent;
-	}
-	return compactObject({ ...base, type: row.type }) as PiboOutputEvent;
+function numberAttribute(attributes: PiboJsonObject, key: string): number | undefined {
+	const value = attributes[key];
+	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
-function inlineTextPayload(value: unknown): string | undefined {
-	return typeof value === "string" ? value : undefined;
-}
-
-function nonEmptyEventText(event: PiboOutputEvent): boolean {
-	const text = (event as { text?: unknown }).text;
+function nonEmptyEventText(event: unknown): boolean {
+	const text = event && typeof event === "object" ? (event as { text?: unknown }).text : undefined;
 	return typeof text === "string" && text.length > 0;
 }
 
-function stringAttribute(attributes: PiboJsonObject, key: string): string | undefined {
-	const value = attributes[key];
-	return typeof value === "string" ? value : undefined;
-}
-
-function booleanAttribute(attributes: PiboJsonObject, key: string): boolean | undefined {
-	const value = attributes[key];
-	return typeof value === "boolean" ? value : undefined;
-}
-
-function isRecord(value: unknown): value is PiboJsonObject {
-	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function compactObject(value: Record<string, unknown>): PiboJsonObject {
-	return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined)) as PiboJsonObject;
+function redactRuntimeHistoryError(error: unknown): string {
+	return (error instanceof Error ? error.message : String(error))
+		.replace(/(bearer|token|secret|password|api[_-]?key)\s*[:=]\s*[^\s,;]+/gi, "$1=[redacted]")
+		.replace(/\/\/[^\s/@:]+:[^\s/@]+@/g, "//[redacted]@")
+		.slice(0, 500);
 }
 
 function tableExists(db: DatabaseSync, table: string): boolean {

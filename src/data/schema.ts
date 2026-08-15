@@ -1,8 +1,12 @@
 import type { DatabaseSync } from "node:sqlite";
 
-export const PIBO_DATA_SCHEMA_VERSION = 4;
+export const PIBO_DATA_SCHEMA_VERSION = 5;
 
 export function applyPiboDataSchema(db: DatabaseSync): void {
+	const previousVersion = Number((db.prepare("PRAGMA user_version").get() as { user_version?: number } | undefined)?.user_version ?? 0);
+	const existingSessionCount = db.prepare("SELECT COUNT(*) AS count FROM sqlite_schema WHERE type = 'table' AND name = 'sessions'").get() as { count: number };
+	const hadSessionsBeforeMigration = existingSessionCount.count > 0
+		&& Number((db.prepare("SELECT COUNT(*) AS count FROM sessions").get() as { count: number }).count) > 0;
 	db.exec(`
 		CREATE TABLE IF NOT EXISTS sessions (
 			id TEXT PRIMARY KEY,
@@ -518,5 +522,27 @@ export function applyPiboDataSchema(db: DatabaseSync): void {
 			WHERE existing.pibo_session_id = sessions.id
 		);
 	`);
+	if (previousVersion < PIBO_DATA_SCHEMA_VERSION && hadSessionsBeforeMigration) {
+		const rows = db.prepare("SELECT pibo_session_id, metadata_json FROM session_runtime_bindings").all() as Array<{
+			pibo_session_id: string;
+			metadata_json: string;
+		}>;
+		const update = db.prepare("UPDATE session_runtime_bindings SET metadata_json = ? WHERE pibo_session_id = ?");
+		for (const row of rows) {
+			let metadata: Record<string, unknown> = {};
+			try {
+				const parsed = JSON.parse(row.metadata_json) as unknown;
+				if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) metadata = parsed as Record<string, unknown>;
+			} catch {
+				// Preserve a valid object even if legacy metadata was malformed.
+			}
+			if (metadata.nativeHistoryFallback === true) continue;
+			update.run(JSON.stringify({
+				...metadata,
+				nativeHistoryFallback: true,
+				historyMigrationSource: "schema-v5",
+			}), row.pibo_session_id);
+		}
+	}
 	db.exec(`PRAGMA user_version = ${PIBO_DATA_SCHEMA_VERSION}`);
 }
