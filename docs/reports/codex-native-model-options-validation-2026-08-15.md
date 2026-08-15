@@ -2,7 +2,7 @@
 
 ## Scope
 
-This report records native Codex checkpoint 9.7 for `@pasko70/pibo@1.7.2` at implementation commit `2d8417c3c15ad78c23a5ad82ef5b3ae8808d8a20`.
+This report records native Codex checkpoint 9.7 for `@pasko70/pibo@1.7.2` at implementation commit `2d8417c3c15ad78c23a5ad82ef5b3ae8808d8a20`, delivered in PR #495 stacked on request-lifecycle PR #494.
 
 The checkpoint adds official native Codex model and runtime-option behavior:
 
