@@ -38,7 +38,7 @@ Native compatibility history is requested only when:
 
 Runtime-history cursors wrap the opaque provider cursor with the Pibo Session id, configured runtime instance id, and adapter id. Chat Web rejects a cursor used against a different session or binding.
 
-If native history is missing, Pibo keeps the Pibo Session and renders any surviving product history/events. The adapter reports a missing-history diagnostic and never creates a replacement native conversation.
+If native history is partial, trace projection suppresses event echoes only for covered turn/tool identities; uncovered event turns keep their lifecycle parents. If native history is missing, Pibo keeps the Pibo Session and renders any surviving product history/events. The adapter reports a missing-history diagnostic and never creates a replacement native conversation.
 
 ## Schema-v5 migration and rollback
 

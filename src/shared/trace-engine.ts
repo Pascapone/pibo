@@ -83,6 +83,12 @@ export function buildTraceViewFromEvents(input: TraceBuildInput): PiboSessionTra
 	const historyMode = entries.some((entry) => entry.source === "native")
 		? "native" as const
 		: entries.some((entry) => entry.type === "message") ? "product" as const : "none" as const;
+	const historyNodes = flattenTraceNodes(nodes);
+	const historyCoverage = {
+		mode: historyMode,
+		eventIds: new Set(historyNodes.flatMap((node) => node.eventId ? [node.eventId] : [])),
+		toolCallIds: new Set(historyNodes.flatMap((node) => node.toolCallId ? [node.toolCallId] : [])),
+	};
 
 	for (const storedEvent of events) {
 		applySingleEventToNodes(
@@ -92,7 +98,7 @@ export function buildTraceViewFromEvents(input: TraceBuildInput): PiboSessionTra
 			storedEvent,
 			childByParent,
 			linkedChildByToolCallId,
-			historyMode,
+			historyCoverage,
 			openHistoryEventIds,
 			sessionStatus,
 		);
@@ -155,6 +161,7 @@ export function patchTraceViewWithEvents(
 	const childByParent = new Map<string, TraceChildSession[]>();
 	const linkedChildByToolCallId = new Map<string, string>();
 	const openTranscriptEventIds = new Set<string>();
+	const emptyHistoryCoverage = { mode: "none" as const, eventIds: new Set<string>(), toolCallIds: new Set<string>() };
 	const appliedEvents: ChatWebStoredEvent[] = [];
 	let contentDeltaChangedNodeIds: Set<string> | undefined = new Set();
 
@@ -172,7 +179,7 @@ export function patchTraceViewWithEvents(
 			event,
 			childByParent,
 			linkedChildByToolCallId,
-			"none",
+			emptyHistoryCoverage,
 			openTranscriptEventIds,
 			sessionStatus,
 		);

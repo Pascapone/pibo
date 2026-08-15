@@ -8,6 +8,7 @@ import {
 	readPiAgentRuntimeHistory,
 	readPiTranscriptHistoryPage,
 } from "../dist/agent-runtimes/pi/history.js";
+import { buildTraceViewFromEvents, flattenTraceNodes } from "../dist/shared/trace-engine.js";
 
 function binding(nativeSessionId, locator) {
 	return {
@@ -108,6 +109,45 @@ test("Pi history pagination preserves JSONL records that cross scan blocks", () 
 	assert.deepEqual(page.entries.map((entry) => entry.id), ["user-large", "assistant-final"]);
 	assert.equal(page.hasOlder, true);
 	assert.ok(page.scannedBytes > 1_024);
+});
+
+test("partial native history suppresses only covered event echoes and preserves uncovered tool parents", () => {
+	const piboSessionId = "ps_partial_native_history";
+	const historyEntries = [
+		{ id: "pi:user-covered", type: "message", source: "native", createdAt: "2026-08-15T00:01:00.000Z", nativeEntryId: "user-covered", nativeTurnId: "user-covered", role: "user", content: "covered prompt" },
+		{ id: "pi:assistant-covered", type: "message", source: "native", createdAt: "2026-08-15T00:01:01.000Z", nativeEntryId: "assistant-covered", nativeTurnId: "user-covered", role: "assistant", content: [
+			{ type: "tool_call", toolCallId: "covered-tool", toolName: "read", input: { path: "covered.txt" } },
+			{ type: "text", text: "covered answer" },
+		], status: "complete" },
+		{ id: "pi:tool-covered", type: "message", source: "native", createdAt: "2026-08-15T00:01:01.500Z", nativeEntryId: "tool-covered", nativeTurnId: "user-covered", role: "tool", content: "covered result", toolCallId: "covered-tool", toolName: "read", result: { content: "covered result" }, status: "complete" },
+	];
+	const stored = (eventSequence, createdAt, payload) => ({
+		id: String(eventSequence), piboSessionId, eventSequence, eventId: payload.eventId, type: payload.type, createdAt, payload,
+	});
+	const events = [
+		stored(1, "2026-08-15T00:00:00.000Z", { type: "message_started", piboSessionId, eventId: "old-turn", text: "old prompt", source: "user" }),
+		stored(2, "2026-08-15T00:00:00.100Z", { type: "tool_execution_started", piboSessionId, eventId: "old-turn", toolCallId: "old-tool", toolName: "bash", args: { command: "echo old" } }),
+		stored(3, "2026-08-15T00:00:00.200Z", { type: "tool_execution_finished", piboSessionId, eventId: "old-turn", toolCallId: "old-tool", toolName: "bash", result: { output: "old" }, isError: false }),
+		stored(4, "2026-08-15T00:00:00.300Z", { type: "message_finished", piboSessionId, eventId: "old-turn", source: "user" }),
+		stored(5, "2026-08-15T00:01:00.000Z", { type: "message_started", piboSessionId, eventId: "covered-turn", text: "covered prompt", source: "user" }),
+		stored(6, "2026-08-15T00:01:00.100Z", { type: "tool_execution_started", piboSessionId, eventId: "covered-turn", toolCallId: "covered-tool", toolName: "read", args: { path: "covered.txt" } }),
+		stored(7, "2026-08-15T00:01:00.200Z", { type: "tool_execution_finished", piboSessionId, eventId: "covered-turn", toolCallId: "covered-tool", toolName: "read", result: { content: "covered result" }, isError: false }),
+		stored(8, "2026-08-15T00:01:01.000Z", { type: "assistant_message", piboSessionId, eventId: "covered-turn", assistantIndex: 0, contentIndex: 0, text: "covered answer" }),
+		stored(9, "2026-08-15T00:01:01.100Z", { type: "message_finished", piboSessionId, eventId: "covered-turn", source: "user" }),
+	];
+	const view = buildTraceViewFromEvents({
+		session: { id: piboSessionId, piSessionId: "pi-partial-native" },
+		events,
+		historyEntries,
+		status: "idle",
+	});
+	const nodes = flattenTraceNodes(view.nodes);
+	const ids = new Set(nodes.map((node) => node.id));
+	assert.ok(nodes.some((node) => node.id === "event:message:old-turn" && node.type === "agent.turn"));
+	assert.ok(nodes.some((node) => node.toolCallId === "old-tool" && node.parentId === "event:message:old-turn"));
+	assert.equal(nodes.filter((node) => node.toolCallId === "covered-tool").length, 1);
+	assert.ok(nodes.some((node) => node.toolCallId === "covered-tool" && node.source === "transcript"));
+	assert.deepEqual(nodes.filter((node) => node.parentId && !ids.has(node.parentId)), []);
 });
 
 test("Pi history provider reports a missing native transcript without creating a replacement", async () => {

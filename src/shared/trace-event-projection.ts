@@ -12,6 +12,12 @@ import type { ChatWebStoredEvent, PiboTraceNode, PiboWebSessionStatus } from "./
 
 export type PersistedHistoryMode = "none" | "product" | "native";
 
+export type PersistedHistoryCoverage = {
+	mode: PersistedHistoryMode;
+	eventIds: ReadonlySet<string>;
+	toolCallIds: ReadonlySet<string>;
+};
+
 export function applySingleEventToNodes(
 	nodes: PiboTraceNode[],
 	byId: Map<string, PiboTraceNode>,
@@ -19,12 +25,12 @@ export function applySingleEventToNodes(
 	storedEvent: ChatWebStoredEvent,
 	childByParent: Map<string, TraceChildSession[]>,
 	linkedChildByToolCallId: Map<string, string>,
-	historyMode: PersistedHistoryMode,
+	historyCoverage: PersistedHistoryCoverage,
 	openTranscriptEventIds: ReadonlySet<string>,
 	sessionStatus: PiboWebSessionStatus,
 ): void {
 	const payload = storedEvent.payload as PiboOutputEvent;
-	const confirmedUserMessage = historyMode !== "none" ? confirmedUserMessageEchoNode(nodes, storedEvent) : undefined;
+	const confirmedUserMessage = historyCoverage.mode !== "none" ? confirmedUserMessageEchoNode(nodes, storedEvent) : undefined;
 	if (confirmedUserMessage) {
 		if (payload.type === "message_steered" && payload.activeEventId) {
 			confirmedUserMessage.parentId = messageTurnNodeId(payload.activeEventId);
@@ -32,13 +38,14 @@ export function applySingleEventToNodes(
 		return;
 	}
 	if (
-		((historyMode === "native" && isTranscriptEchoEvent(payload))
-			|| (historyMode === "product" && isProductHistoryEchoEvent(payload))) &&
+		((historyCoverage.mode === "native" && isTranscriptEchoEvent(payload))
+			|| (historyCoverage.mode === "product" && isProductHistoryEchoEvent(payload))) &&
+		historyCoversEvent(payload, historyCoverage) &&
 		!shouldKeepTranscriptEchoEvent(payload, openTranscriptEventIds)
 	) {
 		return;
 	}
-	if (historyMode === "native" && isStaleToolCallEchoEvent(payload, sessionStatus)) {
+	if (isNativeHistoryToolEchoEvent(payload, historyCoverage, sessionStatus)) {
 		return;
 	}
 	if (payload.type === "assistant_delta") {
@@ -834,8 +841,24 @@ function shouldKeepTranscriptEchoEvent(
 	return Boolean(eventId && openTranscriptEventIds.has(eventId));
 }
 
-function isStaleToolCallEchoEvent(event: PiboOutputEvent, sessionStatus: PiboWebSessionStatus): boolean {
-	return sessionStatus !== "running" && event.type === "tool_call";
+function historyCoversEvent(event: PiboOutputEvent, coverage: PersistedHistoryCoverage): boolean {
+	const eventId = "eventId" in event && typeof event.eventId === "string" ? event.eventId : undefined;
+	return eventId === undefined || coverage.eventIds.has(eventId);
+}
+
+function isNativeHistoryToolEchoEvent(
+	event: PiboOutputEvent,
+	coverage: PersistedHistoryCoverage,
+	sessionStatus: PiboWebSessionStatus,
+): boolean {
+	if (coverage.mode !== "native" || sessionStatus === "running") return false;
+	if (
+		event.type !== "tool_call" &&
+		event.type !== "tool_execution_started" &&
+		event.type !== "tool_execution_updated" &&
+		event.type !== "tool_execution_finished"
+	) return false;
+	return coverage.toolCallIds.has(event.toolCallId) || historyCoversEvent(event, coverage);
 }
 
 export type TraceMessageTurnTiming = {
