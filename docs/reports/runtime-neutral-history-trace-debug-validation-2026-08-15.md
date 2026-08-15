@@ -6,6 +6,8 @@
 
 **Stacked on:** runtime-resource materialization PR #486
 
+**Pull request:** #487
+
 **Primary implementation commit:** `50256373efc2c54b0af6302add8e569f2e54837b`
 
 **Final runtime-fix commit validated on Pibo2:** `9a8e6510b3d9b74fbdb407748ed83870aa888272`

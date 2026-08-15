@@ -112,7 +112,7 @@ Target branch: `feature/agent-runtime-foundation`
 - [x] 7.7 Add namespaced runtime drill-down and redaction tests.
 - [x] 7.8 Prove new Pi session trace rendering without native transcript reads in the normal path.
 - [x] 7.9 Validate old/missing Pi transcripts, schema-v5 migration, product payload fidelity, runtime-history pagination/cursor rejection, debug/telemetry, restart, browser rendering, and cleanup on Pibo2; evidence is in `docs/reports/runtime-neutral-history-trace-debug-validation-2026-08-15.md`.
-- [ ] 7.10 Commit, push, and open history/debug PR.
+- [x] 7.10 Commit, push, and open stacked history/debug PR #487.
 
 ## 8. Built-in adapter-authoring skill PR
 
