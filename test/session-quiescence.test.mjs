@@ -32,7 +32,6 @@ function createRouterSessionFake(overrides = {}) {
 	return {
 		enqueued: [],
 		removed: 0,
-		releasedScopes: 0,
 		forcedDisposals: [],
 		disposed: false,
 		enqueueMessage(event) {
@@ -44,9 +43,6 @@ function createRouterSessionFake(overrides = {}) {
 			this.enqueued = this.enqueued.filter((event) => !predicate(event));
 			this.removed += before - this.enqueued.length;
 			return before - this.enqueued.length;
-		},
-		releaseRunReminderCapabilityScope() {
-			this.releasedScopes += 1;
 		},
 		async executeAction(event) {
 			return { type: "execution_result", piboSessionId: event.piboSessionId, eventId: event.id, action: event.action, result: { aborted: true } };
@@ -531,7 +527,7 @@ test("forced disposal suppresses deferred queued compaction output", async () =>
 	await router.disposeAll();
 });
 
-test("handling every notified run cannot release the reminder scope mid-turn", async () => {
+test("handling every notified run clears future reminders", async () => {
 	const router = createStoredRouter();
 	const session = createRouterSessionFake();
 	router.sessions.set("ps_quiescence", session);
@@ -544,16 +540,14 @@ test("handling every notified run cannot release the reminder scope mid-turn", a
 		const controller = router.createRunToolController("ps_quiescence");
 
 		controller.readRun(first.runId);
-		assert.equal(session.releasedScopes, 0);
 		controller.readRun(second.runId);
-		assert.equal(session.releasedScopes, 0);
 		assert.equal(router.runRegistry.hasPendingNotification("ps_quiescence", { includeAlreadyNotified: true }), false);
 	} finally {
 		await router.disposeAll();
 	}
 });
 
-test("run-reminder turns retain lifecycle-only tools after the final run is read", async () => {
+test("run-reminder turns retain the normal agent toolset", async () => {
 	const router = createStoredRouter("ps_capability");
 	const run = router.runRegistry.startToolRun({ controllerPiboSessionId: "ps_capability", toolName: "bash" });
 	router.runRegistry.complete(run.runId, { text: "done" });
@@ -563,7 +557,6 @@ test("run-reminder turns retain lifecycle-only tools after the final run is read
 	const promptStarted = deferred();
 	const events = [];
 	const activeTools = ["bash", "read", "pibo_run_start", "pibo_run_status", "pibo_run_wait", "pibo_run_read", "pibo_run_cancel", "pibo_run_ack"];
-	let currentTools = [...activeTools];
 	let toolsAfterFinalRead = [];
 	const toolTransitions = [];
 	const session = {
@@ -581,14 +574,13 @@ test("run-reminder turns retain lifecycle-only tools after the final run is read
 		},
 		subscribe() { return () => {}; },
 		supportsThinking() { return false; },
-		getActiveToolNames() { return [...currentTools]; },
+		getActiveToolNames() { return [...activeTools]; },
 		setActiveToolsByName(names) {
-			currentTools = [...names];
 			toolTransitions.push([...names]);
 		},
 		async prompt() {
 			assert.equal(controller.readRun(run.runId).consumed, true);
-			toolsAfterFinalRead = [...currentTools];
+			toolsAfterFinalRead = this.getActiveToolNames();
 			promptStarted.resolve();
 			await promptGate.promise;
 		},
@@ -615,20 +607,68 @@ test("run-reminder turns retain lifecycle-only tools after the final run is read
 		id: "reminder-1",
 		text: "<pibo_run_notification>{}</pibo_run_notification>",
 		source: "service",
-		capabilityScope: "run-reminder",
 	});
 	await promptStarted.promise;
-	assert.deepEqual(toolsAfterFinalRead, ["pibo_run_status", "pibo_run_wait", "pibo_run_read", "pibo_run_cancel", "pibo_run_ack"]);
-	assert.equal(toolsAfterFinalRead.includes("bash"), false);
-	assert.equal(toolsAfterFinalRead.includes("pibo_run_start"), false);
+	assert.deepEqual(toolsAfterFinalRead, activeTools);
 	assert.equal(router.runRegistry.hasPendingNotification("ps_capability", { includeAlreadyNotified: true }), false);
 
 	promptGate.resolve();
 	await waitFor(() => events.some((event) => event.type === "message_finished" && event.eventId === "reminder-1"), "run-reminder turn did not finish");
-	assert.deepEqual(currentTools, activeTools);
-	assert.deepEqual(toolTransitions, [
-		["pibo_run_status", "pibo_run_wait", "pibo_run_read", "pibo_run_cancel", "pibo_run_ack"],
-		activeTools,
-	]);
+	assert.deepEqual(toolTransitions, []);
 	await router.disposeAll();
+});
+
+test("run-reminder turns stop repeated identical tool loops", async () => {
+	const events = [];
+	let listener;
+	let aborts = 0;
+	const session = {
+		model: undefined,
+		thinkingLevel: "off",
+		isStreaming: false,
+		settingsManager: {
+			getRetrySettings() { return { enabled: false, maxRetries: 0, baseDelayMs: 0 }; },
+			getProviderRetrySettings() { return { maxRetryDelayMs: 0 }; },
+		},
+		resourceLoader: { getSkills() { return { skills: [] }; } },
+		sessionManager: {
+			getLeafId() { return null; },
+			getHeader() { return undefined; },
+		},
+		subscribe(next) { listener = next; return () => {}; },
+		supportsThinking() { return false; },
+		getActiveToolNames() { return ["bash", "pibo_run_status", "pibo_run_ack"]; },
+		setActiveToolsByName() {},
+		async prompt() {
+			for (let index = 0; index < 13; index += 1) {
+				listener({
+					type: "tool_execution_start",
+					toolCallId: `tool-${index}`,
+					toolName: "pibo_run_status",
+					args: { runId: "run-1" },
+				});
+			}
+		},
+		async abort() { aborts += 1; },
+	};
+	const routed = new RoutedSession(
+		"ps_guard",
+		{ cwd: process.cwd(), session, setRebindSession() {}, async dispose() {} },
+		(event) => events.push(event),
+		PiboPluginRegistry.create({ plugins: [piboCorePlugin] }),
+		false,
+	);
+
+	routed.enqueueMessage({
+		type: "message",
+		piboSessionId: "ps_guard",
+		id: "reminder-guard",
+		text: "<pibo_run_notification>{}</pibo_run_notification>",
+		source: "service",
+	});
+
+	await waitFor(() => events.some((event) => event.type === "session_error" && event.errorDetails?.code === "run_reminder_limit_exceeded"), "run-reminder limit did not stop the turn");
+	assert.equal(aborts, 1);
+	assert.equal(events.some((event) => event.type === "message_finished" && event.eventId === "reminder-guard"), false);
+	await routed.dispose();
 });

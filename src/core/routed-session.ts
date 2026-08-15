@@ -69,13 +69,31 @@ type FastModePatchableAgent = {
 };
 
 const FAST_SERVICE_TIER = "priority";
-const RUN_REMINDER_CAPABILITY_TOOLS = new Set([
-	"pibo_run_status",
-	"pibo_run_wait",
-	"pibo_run_read",
-	"pibo_run_cancel",
-	"pibo_run_ack",
-]);
+// Run reminders are autonomous service wakeups, so their provider/tool loop needs a deterministic boundary.
+const RUN_REMINDER_MAX_TOOL_EXECUTIONS = 64;
+const RUN_REMINDER_MAX_PROVIDER_ROUNDS = 64;
+const RUN_REMINDER_MAX_TOTAL_TOKENS = 2_000_000;
+const RUN_REMINDER_MAX_DURATION_MS = 15 * 60 * 1000;
+const RUN_REMINDER_MAX_REPEATED_TOOL_CALLS = 12;
+
+type RunReminderTurnGuard = {
+	eventId?: string;
+	session: AgentSessionRuntime["session"];
+	toolExecutions: number;
+	providerRounds: number;
+	totalTokens: number;
+	toolSignatures: Map<string, number>;
+	tripped: boolean;
+	timer?: ReturnType<typeof setTimeout>;
+};
+
+function serializedToolArgs(value: unknown): string {
+	try {
+		return JSON.stringify(value) ?? String(value);
+	} catch {
+		return String(value);
+	}
+}
 
 function modelSupportsFastServiceTier(model: ProviderRequestModel | undefined): boolean {
 	if (!model) return false;
@@ -591,10 +609,7 @@ export class RoutedSession {
 	private activeMessageFailed = false;
 	private providerRecoveryCancelled = false;
 	private providerRecoveryAbortController?: AbortController;
-	private activeCapabilityScope?: {
-		session: AgentSessionRuntime["session"];
-		restoreToolNames: string[];
-	};
+	private runReminderTurnGuard?: RunReminderTurnGuard;
 	private unsubscribe?: () => void;
 	private recoverySession?: AgentSessionRuntime["session"];
 	private isContinuePatched = false;
@@ -721,11 +736,99 @@ export class RoutedSession {
 				}
 				if (normalized) this.emit(this.withActiveMessage(normalized));
 			}
+			this.trackRunReminderTurn(candidate, usageEvent);
 			if (this.forwardPiEvents) {
 				this.emit({ type: "pi_event", piboSessionId: this.piboSessionId, event });
 			}
 			this.handleCompactionEvent(event);
 		});
+	}
+
+	private beginRunReminderTurnGuard(event: PiboMessageEvent, session: AgentSessionRuntime["session"]): void {
+		this.clearRunReminderTurnGuard();
+		if (event.source !== "service" || !event.text.startsWith("<pibo_run_notification>")) return;
+		const guard: RunReminderTurnGuard = {
+			eventId: event.id,
+			session,
+			toolExecutions: 0,
+			providerRounds: 0,
+			totalTokens: 0,
+			toolSignatures: new Map<string, number>(),
+			tripped: false,
+		};
+		guard.timer = setTimeout(() => {
+			this.tripRunReminderTurnGuard(guard, `exceeded ${RUN_REMINDER_MAX_DURATION_MS / 60_000} minutes`);
+		}, RUN_REMINDER_MAX_DURATION_MS);
+		guard.timer.unref?.();
+		this.runReminderTurnGuard = guard;
+	}
+
+	private clearRunReminderTurnGuard(): void {
+		const guard = this.runReminderTurnGuard;
+		if (!guard) return;
+		if (guard.timer) clearTimeout(guard.timer);
+		this.runReminderTurnGuard = undefined;
+	}
+
+	private trackRunReminderTurn(candidate: PiEventCandidate | undefined, usageEvent: Extract<PiboOutputEvent, { type: "assistant_usage" }> | undefined): void {
+		const guard = this.runReminderTurnGuard;
+		if (!guard || guard.tripped || guard.eventId !== this.activeMessage?.id) return;
+		if (usageEvent) {
+			guard.totalTokens += usageEvent.totalTokens;
+			if (guard.totalTokens > RUN_REMINDER_MAX_TOTAL_TOKENS) {
+				this.tripRunReminderTurnGuard(guard, `exceeded ${RUN_REMINDER_MAX_TOTAL_TOKENS} total tokens`);
+				return;
+			}
+		}
+		if (candidate?.type === "message_end" && isAssistantMessage(candidate.message)) {
+			guard.providerRounds += 1;
+			if (guard.providerRounds > RUN_REMINDER_MAX_PROVIDER_ROUNDS) {
+				this.tripRunReminderTurnGuard(guard, `exceeded ${RUN_REMINDER_MAX_PROVIDER_ROUNDS} provider rounds`);
+				return;
+			}
+		}
+		if (candidate?.type !== "tool_execution_start") return;
+		guard.toolExecutions += 1;
+		if (guard.toolExecutions > RUN_REMINDER_MAX_TOOL_EXECUTIONS) {
+			this.tripRunReminderTurnGuard(guard, `exceeded ${RUN_REMINDER_MAX_TOOL_EXECUTIONS} tool executions`);
+			return;
+		}
+		const signature = `${String(candidate.toolName ?? "unknown")}:${serializedToolArgs(candidate.args)}`;
+		const repeated = (guard.toolSignatures.get(signature) ?? 0) + 1;
+		guard.toolSignatures.set(signature, repeated);
+		if (repeated > RUN_REMINDER_MAX_REPEATED_TOOL_CALLS) {
+			this.tripRunReminderTurnGuard(guard, `repeated the same tool call more than ${RUN_REMINDER_MAX_REPEATED_TOOL_CALLS} times`);
+		}
+	}
+
+	private tripRunReminderTurnGuard(guard: RunReminderTurnGuard, reason: string): void {
+		if (guard.tripped || this.runReminderTurnGuard !== guard) return;
+		guard.tripped = true;
+		this.activeMessageFailed = true;
+		this.pendingAssistantError = undefined;
+		this.pendingAssistantErrorRetryable = false;
+		this.cancelProviderRecovery();
+		const error = `Run-reminder turn stopped because it ${reason}.`;
+		this.emit({
+			type: "session_error",
+			piboSessionId: this.piboSessionId,
+			eventId: guard.eventId,
+			error,
+			errorDetails: {
+				category: "runtime_abort",
+				errorClass: "runtime_abort",
+				code: "run_reminder_limit_exceeded",
+				origin: "runtime",
+				retryable: false,
+				userMessage: error,
+			},
+			provenance: this.activeMessage?.provenance,
+		});
+		try {
+			void Promise.resolve(guard.session.abort()).catch(() => undefined);
+		} catch {
+			// The limit error above is authoritative even if the runtime abort hook fails synchronously.
+		}
 	}
 
 	private flushPendingAssistantError(): void {
@@ -1032,13 +1135,6 @@ export class RoutedSession {
 		return removedMessages.length;
 	}
 
-	private restoreMessageCapabilityScope(): void {
-		const active = this.activeCapabilityScope;
-		if (!active) return;
-		this.activeCapabilityScope = undefined;
-		active.session.setActiveToolsByName(active.restoreToolNames);
-	}
-
 	getCurrentSession(): PiboPiSessionSnapshot {
 		return this.createSessionSnapshot();
 	}
@@ -1205,6 +1301,7 @@ export class RoutedSession {
 			});
 		}
 		this.cancelProviderRecovery();
+		this.clearRunReminderTurnGuard();
 		this.queue.length = 0;
 		this.onStateChange?.({ processing: false, queuedMessages: this.queue.length, disposed: true });
 		this.unsubscribe?.();
@@ -1343,7 +1440,7 @@ export class RoutedSession {
 			this.nextAssistantIndex = 0;
 			this.activeThinkingIndex = undefined;
 			this.nextThinkingIndex = 0;
-			this.applyMessageCapabilityScope(event, session);
+			this.beginRunReminderTurnGuard(event, session);
 			const expandedText = expandInlineSkills(
 				event.text,
 				session.resourceLoader.getSkills().skills,
@@ -1351,7 +1448,7 @@ export class RoutedSession {
 			await session.prompt(expandedText, { source: promptSource(event.source) });
 			if (this.disposed) return;
 			await this.waitForPiAgentSettlement(session);
-			if (this.disposed) return;
+			if (this.disposed || this.runReminderTurnGuard?.tripped) return;
 			await this.resumeContextGuardRecovery(session);
 			if (this.disposed) return;
 			await this.recoverTransientProviderErrors(session);
@@ -1367,7 +1464,7 @@ export class RoutedSession {
 				});
 			}
 		} catch (error) {
-			if (error instanceof PiboProviderRecoveryCancelledError || this.disposed) return;
+			if (error instanceof PiboProviderRecoveryCancelledError || this.disposed || this.runReminderTurnGuard?.tripped) return;
 			const message = errorMessage(error);
 			this.emit({
 				type: "session_error",
@@ -1378,7 +1475,7 @@ export class RoutedSession {
 				provenance: event.provenance,
 			});
 		} finally {
-			this.restoreMessageCapabilityScope();
+			this.clearRunReminderTurnGuard();
 			this.activeMessage = undefined;
 			this.providerRecoveryCancelled = false;
 			this.pendingAssistantError = undefined;
@@ -1389,14 +1486,6 @@ export class RoutedSession {
 			this.activeThinkingIndex = undefined;
 			this.nextThinkingIndex = 0;
 		}
-	}
-
-	private applyMessageCapabilityScope(event: PiboMessageEvent, session: AgentSessionRuntime["session"]): void {
-		if (event.capabilityScope !== "run-reminder") return;
-		const restoreToolNames = session.getActiveToolNames();
-		const scopedToolNames = restoreToolNames.filter((name) => RUN_REMINDER_CAPABILITY_TOOLS.has(name));
-		this.activeCapabilityScope = { session, restoreToolNames };
-		session.setActiveToolsByName(scopedToolNames);
 	}
 
 	private async processQueuedCompact(event: PiboExecutionEvent): Promise<void> {

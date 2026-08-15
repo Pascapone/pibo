@@ -436,8 +436,13 @@ export class PiboLoopService {
 		else if (event.type === 'message_finished') this.store.updateRunMessageState(eventId, 'finished');
 		else if (event.type === 'session_error' && event.errorDetails?.code === 'loop_continuation_invalidated') this.store.updateRunMessageState(eventId, 'invalidated');
 		if (event.type !== 'assistant_usage') return;
-		const run = this.store.getRunByMessageEventId(eventId);
+		const provenance = event.provenance?.kind === 'loop-run' ? event.provenance : undefined;
+		const run = this.store.getRunByMessageEventId(eventId) ?? (provenance ? this.store.getRun(provenance.runId) : undefined);
 		if (!run || run.piboSessionId !== event.piboSessionId) return;
+		if (provenance && (
+			run.jobId !== provenance.jobId
+			|| (provenance.cause === 'run-reminder' && run.messageEventId !== provenance.rootEventId)
+		)) return;
 		const job = this.store.getJob(run.jobId);
 		if (!job || job.mode !== 'goal') return;
 		this.store.recordGoalTurnUsage(job.id, run.id, event.totalTokens);
