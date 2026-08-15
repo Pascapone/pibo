@@ -52,6 +52,44 @@ test("tracked runs create compact notifications until consumed", () => {
 	assert.equal(registry.hasPendingNotification("parent"), false);
 });
 
+test("tracked notifications preserve their causal origin and do not mix origins", () => {
+	const registry = new PiboRunRegistry();
+	const firstOrigin = {
+		eventId: "loop_msg_first",
+		provenance: { kind: "loop-run", jobId: "loop_first", runId: "lrun_first" },
+	};
+	const secondOrigin = {
+		eventId: "loop_msg_second",
+		provenance: { kind: "loop-run", jobId: "loop_second", runId: "lrun_second" },
+	};
+	const first = registry.startToolRun({ controllerPiboSessionId: "parent", toolName: "first", origin: firstOrigin });
+	const second = registry.startToolRun({ controllerPiboSessionId: "parent", toolName: "second", origin: secondOrigin });
+
+	const firstNotification = registry.createNotification("parent");
+	assert.deepEqual(firstNotification.origin, firstOrigin);
+	assert.deepEqual(firstNotification.running.map((run) => run.runId), [first.runId]);
+	assert.equal(registry.hasPendingNotification("parent"), true);
+
+	const secondNotification = registry.createNotification("parent");
+	assert.deepEqual(secondNotification.origin, secondOrigin);
+	assert.deepEqual(secondNotification.running.map((run) => run.runId), [second.runId]);
+	assert.equal(registry.hasPendingNotification("parent"), false);
+});
+
+test("repeated acknowledgement of the same run state is a no-op", () => {
+	const registry = new PiboRunRegistry();
+	const run = startRun(registry);
+	let acknowledged = 0;
+	registry.subscribe((event) => {
+		if (event.type === "run_acknowledged") acknowledged += 1;
+	});
+
+	assert.equal(registry.ack("parent", run.runId).changed, true);
+	assert.equal(registry.ack("parent", run.runId).changed, false);
+
+	assert.equal(acknowledged, 1);
+});
+
 test("detached runs are inspectable but do not notify", () => {
 	const registry = new PiboRunRegistry();
 	const run = startRun(registry, { completionPolicy: "detached" });
@@ -89,12 +127,17 @@ test("configured run timeout is persisted and classified separately from failure
 	const store = new PiboReliabilityStore(":memory:");
 	try {
 		const registry = new PiboRunRegistry({ store });
+		const origin = {
+			eventId: "loop_msg_origin",
+			provenance: { kind: "loop-run", jobId: "loop_origin", runId: "lrun_origin" },
+		};
 		const run = registry.startToolRun({
 			controllerPiboSessionId: "parent",
 			toolName: "bash",
 			completionPolicy: "tracked",
 			timeoutMs: 21600000,
 			serviceWarning: "foreground service warning",
+			origin,
 		});
 		assert.equal(run.timeoutMs, 21600000);
 		assert.equal(typeof run.timeoutAt, "string");
@@ -106,6 +149,7 @@ test("configured run timeout is persisted and classified separately from failure
 		assert.match(timedOut.summary, /started successfully/);
 		assert.match(timedOut.summary, /21600s timeout/);
 		const notification = registry.createNotification("parent");
+		assert.deepEqual(notification.origin, origin);
 		assert.equal(notification.timedOut[0].runId, run.runId);
 		assert.equal(notification.failed.length, 0);
 
@@ -263,6 +307,7 @@ test("ack suppresses current-state reminders and terminal ack consumes", () => {
 	assert.equal(registry.hasPendingNotification("parent"), true);
 
 	const acked = registry.ack("parent", run.runId);
+	assert.equal(acked.changed, true);
 	assert.equal(acked.status, "completed");
 	assert.equal(acked.consumed, true);
 	assert.equal(registry.hasPendingNotification("parent"), false);
@@ -551,19 +596,25 @@ test("run wait tool uses the documented default timeout", async () => {
 	assert.equal(result.details.timedOut, false);
 });
 
-test("run ack tool returns acknowledged snapshot details", async () => {
+test("run ack tool reports changed and unchanged acknowledgements", async () => {
+	let calls = 0;
 	const tools = createRunToolsWithController({
 		ackRun(runId) {
-			return runSnapshot({ status: "completed", consumed: true }, { runId });
+			calls += 1;
+			return runSnapshot({ status: "completed", consumed: true, changed: calls === 1 }, { runId });
 		},
 	});
 
-	const result = await tools.pibo_run_ack.execute("tool-call-1", { runId: "run_1" });
+	const changed = await tools.pibo_run_ack.execute("tool-call-1", { runId: "run_1" });
+	const unchanged = await tools.pibo_run_ack.execute("tool-call-2", { runId: "run_1" });
 
-	assert.match(result.content[0].text, /Acknowledged run run_1/);
-	assert.equal(result.details.runId, "run_1");
-	assert.equal(result.details.status, "completed");
-	assert.equal(result.details.consumed, true);
+	assert.match(changed.content[0].text, /Acknowledged run run_1/);
+	assert.equal(changed.details.changed, true);
+	assert.match(unchanged.content[0].text, /already acknowledged/);
+	assert.equal(unchanged.details.changed, false);
+	assert.equal(unchanged.details.runId, "run_1");
+	assert.equal(unchanged.details.status, "completed");
+	assert.equal(unchanged.details.consumed, true);
 });
 
 test("run list status and cancel tools expose snapshots", async () => {
@@ -603,7 +654,13 @@ test("run list status and cancel tools expose snapshots", async () => {
 test("router coalesces generic run completion into a compact parent notification", async () => {
 	const router = new PiboSessionRouter({ persistSession: false });
 	const messages = [];
-	router.getOrCreateSession = async () => ({
+	const origin = {
+		id: "loop_msg_origin",
+		source: "service",
+		provenance: { kind: "loop-run", jobId: "loop_origin", runId: "lrun_origin" },
+	};
+	const session = {
+		getActiveMessage() { return origin; },
 		enqueueMessage(event) {
 			messages.push(event);
 			return {
@@ -615,7 +672,9 @@ test("router coalesces generic run completion into a compact parent notification
 				source: event.source,
 			};
 		},
-	});
+	};
+	router.sessions.set("parent", session);
+	router.getOrCreateSession = async () => session;
 
 	const controller = router.createRunToolController("parent");
 	controller.startToolRun({
@@ -629,6 +688,14 @@ test("router coalesces generic run completion into a compact parent notification
 	assert.equal(messages.length, 1);
 	assert.equal(messages[0].piboSessionId, "parent");
 	assert.equal(messages[0].source, "service");
+	assert.equal(Object.hasOwn(messages[0], "capabilityScope"), false);
+	assert.deepEqual(messages[0].provenance, {
+		kind: "loop-run",
+		jobId: "loop_origin",
+		runId: "lrun_origin",
+		cause: "run-reminder",
+		rootEventId: "loop_msg_origin",
+	});
 	assert.match(messages[0].text, /<pibo_run_notification>/);
 	assert.match(messages[0].text, /"completed"/);
 	assert.match(messages[0].text, /"toolName":"helper"/);
