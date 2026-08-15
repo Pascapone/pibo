@@ -36,6 +36,7 @@ import type {
 	AgentRuntimeDriver,
 	AgentRuntimeInstanceDefinition,
 	AgentRuntimeInstanceInfo,
+	AgentRuntimeModelCatalog,
 } from "../agent-runtime/types.js";
 export type { PiboLoopStopConditionDefinition, PiboLoopStopConditionInfo } from "../loops/types.js";
 /** @deprecated Use PiboLoopStopConditionDefinition. */
@@ -185,6 +186,7 @@ export type PiboGatewayActionContext = {
 	getStatusSnapshot(): Promise<PiboSessionStatus>;
 	getContextUsage(): ContextUsage | undefined;
 	getActiveModel(): ModelProfile | undefined;
+	getModelCatalog(): Promise<AgentRuntimeModelCatalog | undefined>;
 	getProviderUsage(): Promise<PiboProviderUsageStatus | undefined>;
 	clearQueue(): number;
 	abort(): Promise<void>;

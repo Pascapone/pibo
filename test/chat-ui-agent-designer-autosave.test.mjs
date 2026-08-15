@@ -45,6 +45,10 @@ test("Agent Designer persists runtime selection, validates JSON options, and sho
 	assert.match(agentsViewSource, /unsupportedDeliveryReason/);
 	assert.match(agentsViewSource, /modelCatalogForRuntime\(selectedRuntime, modelCatalog\)/);
 	assert.match(modelSource, /runtime\.models\.models/);
+	assert.match(modelSource, /reasoningOptions = model\.reasoningOptions\?\.filter/);
+	assert.match(modelSource, /export function reasoningValuesForModel/);
+	assert.match(agentsViewSource, /reasoningValuesForModel\(selectedRuntime\?\.capabilities\.reasoning\.values, runtimeModelCatalog, draft\.mainModel\)/);
+	assert.match(agentsViewSource, /reasoningValuesForModel\(selectedRuntime\?\.capabilities\.reasoning\.values, runtimeModelCatalog, draft\.subagentModel\)/);
 });
 
 test("Agent Designer exposes goal lifecycle tooling as a default-enabled package switch", () => {

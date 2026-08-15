@@ -332,7 +332,7 @@ export const piboCorePlugin = definePiboPlugin({
 		});
 		api.registerGatewayAction({
 			name: "thinking",
-			description: "Show or set the routed Pi thinking level.",
+			description: "Show or set the active runtime reasoning level.",
 			slashCommands: ["thinking"],
 			execute(context, event) {
 				const params = getThinkingParams(event);
@@ -437,9 +437,40 @@ export const piboCorePlugin = definePiboPlugin({
 		});
 		api.registerGatewayAction({
 			name: "model",
-			description: "Open the interactive model selector for authenticated providers.",
+			description: "Open the interactive model selector for the active runtime.",
 			slashCommands: ["model"],
-			async execute() {
+			async execute(context) {
+				const runtimeCatalog = await context.getModelCatalog();
+				if (runtimeCatalog) {
+					const providers = new Map<string, {
+						id: string;
+						label: string;
+						authConfigured: boolean;
+						models: Array<{ provider: string; id: string; label: string; supportsReasoning?: boolean }>;
+					}>();
+					for (const model of runtimeCatalog.models) {
+						const providerId = model.provider ?? runtimeCatalog.runtimeInstanceId;
+						const providerLabel = typeof model.options?.providerDisplayName === "string"
+							? model.options.providerDisplayName
+							: providerId;
+						const authConfigured = typeof model.options?.authConfigured === "boolean"
+							? model.options.authConfigured
+							: true;
+						if (!authConfigured) continue;
+						let provider = providers.get(providerId);
+						if (!provider) {
+							provider = { id: providerId, label: providerLabel, authConfigured: true, models: [] };
+							providers.set(providerId, provider);
+						}
+						provider.models.push({
+							provider: providerId,
+							id: model.id,
+							label: model.displayName ?? model.id,
+							...(model.reasoningOptions ? { supportsReasoning: model.reasoningOptions.length > 0 } : {}),
+						});
+					}
+					return { action: "show_model_menu", providers: [...providers.values()] };
+				}
 				const catalog = await loadModelCatalog(process.cwd());
 				return {
 					action: "show_model_menu",

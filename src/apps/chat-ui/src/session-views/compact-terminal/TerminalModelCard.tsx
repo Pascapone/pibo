@@ -52,7 +52,7 @@ export function TerminalModelCard({
 			<div className="flex items-center justify-between gap-3 border-b border-[#2a2a2a] px-3 py-2">
 				<div>
 					<div className="text-[#d4d4d4]">Model</div>
-					<div className="text-[11px] text-[#737373]">Choose a model from authenticated providers. Use <span className="text-[#38bdf8]">/login</span> to add providers.</div>
+					<div className="text-[11px] text-[#737373]">Choose a model exposed by the active runtime.</div>
 				</div>
 			</div>
 			<div className="space-y-2 p-3">
@@ -87,7 +87,7 @@ export function TerminalModelCard({
 						</div>
 					</>
 				) : (
-					<div className="text-[#737373]">No authenticated model providers found. Run <span className="text-[#38bdf8]">/login</span> first.</div>
+					<div className="text-[#737373]">No models are available for the active runtime.</div>
 				)}
 				{message ? <div className="text-[11px] text-[#a3a3a3]">{message}</div> : null}
 			</div>

@@ -153,6 +153,67 @@ export type CodexAppServerTurnInterruptParams = {
 
 export type CodexAppServerTurnInterruptResponse = Record<string, never>;
 
+export type CodexAppServerReasoningEffortOption = {
+	reasoningEffort: string;
+	description: string;
+};
+
+export type CodexAppServerModelServiceTier = {
+	id: string;
+	name: string;
+	description: string;
+};
+
+export type CodexAppServerModel = {
+	id: string;
+	model: string;
+	displayName: string;
+	description: string;
+	hidden: boolean;
+	isDefault: boolean;
+	supportedReasoningEfforts: CodexAppServerReasoningEffortOption[];
+	defaultReasoningEffort: string;
+	serviceTiers: CodexAppServerModelServiceTier[];
+	defaultServiceTier?: string | null;
+	inputModalities?: string[];
+	supportsPersonality?: boolean;
+	modelSpecialty?: string | null;
+	upgrade?: string | null;
+};
+
+export type CodexAppServerModelListParams = {
+	cursor?: string | null;
+	limit?: number | null;
+	includeHidden?: boolean | null;
+};
+
+export type CodexAppServerModelListResponse = {
+	data: CodexAppServerModel[];
+	nextCursor?: string | null;
+};
+
+export type CodexAppServerThreadSettings = {
+	model: string;
+	modelProvider: string;
+	serviceTier?: string | null;
+	effort?: string | null;
+	summary?: string | null;
+	personality?: string | null;
+} & Record<string, unknown>;
+
+export type CodexAppServerThreadSettingsUpdatedNotification = {
+	threadId: string;
+	threadSettings: CodexAppServerThreadSettings;
+};
+
+export type CodexAppServerModelReroutedNotification = {
+	threadId: string;
+	turnId: string;
+	fromModel: string;
+	toModel: string;
+	reason: unknown;
+};
+
 export type CodexAppServerApprovalDecision = "accept" | "acceptForSession" | "decline" | "cancel";
 
 export type CodexAppServerCommandApprovalParams = {
@@ -230,6 +291,12 @@ export type CodexAppServerThreadTokenUsage = {
 	modelContextWindow?: number | null;
 };
 
+export type CodexAppServerThreadTokenUsageUpdatedNotification = {
+	threadId: string;
+	turnId: string;
+	tokenUsage: CodexAppServerThreadTokenUsage;
+};
+
 export type CodexAppServerThread = {
 	id: string;
 	preview: string;
@@ -257,6 +324,7 @@ export type CodexAppServerThreadStartParams = {
 	model?: string | null;
 	modelProvider?: string | null;
 	serviceTier?: string | null;
+	personality?: string | null;
 	approvalPolicy?: string | null;
 	sandbox?: string | null;
 	config?: Record<string, CodexAppServerJson> | null;

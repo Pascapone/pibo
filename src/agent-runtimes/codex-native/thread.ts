@@ -155,6 +155,39 @@ function threadFromResponse(value: unknown, operation: string): CodexAppServerTh
 	return validateCodexAppServerThread(value.thread);
 }
 
+export type CodexNativeThreadConfiguration = {
+	model: string;
+	modelProvider: string;
+	reasoningEffort?: string | null;
+	serviceTier?: string | null;
+};
+
+export type CodexNativeThreadSelection = {
+	model?: string;
+	serviceTier?: string | null;
+	personality?: string | null;
+};
+
+function threadSessionFromResponse(value: unknown, operation: string): {
+	thread: CodexAppServerThread;
+	configuration: CodexNativeThreadConfiguration;
+} {
+	const record = isRecord(value) ? value : undefined;
+	const thread = threadFromResponse(value, operation);
+	if (!record) throw new CodexNativeThreadProtocolError(`Codex ${operation} response is invalid.`);
+	const reasoningEffort = optionalString(record.reasoningEffort, `${operation} reasoning effort`);
+	const serviceTier = optionalString(record.serviceTier, `${operation} service tier`);
+	return {
+		thread,
+		configuration: {
+			model: requiredString(record.model, `${operation} model`),
+			modelProvider: requiredString(record.modelProvider, `${operation} model provider`),
+			...(reasoningEffort !== undefined ? { reasoningEffort } : {}),
+			...(serviceTier !== undefined ? { serviceTier } : {}),
+		},
+	};
+}
+
 export function isCodexNativeThreadMissingError(error: unknown): boolean {
 	return error instanceof CodexNativeThreadMissingError
 		|| (error instanceof CodexAppServerRpcResponseError
@@ -234,24 +267,45 @@ export class CodexNativeThreadController {
 	private constructor(
 		readonly client: CodexAppServerClient,
 		private currentThread: CodexAppServerThread,
+		private currentConfiguration: CodexNativeThreadConfiguration,
 	) {
 		this.knownThreads.set(currentThread.id, structuredClone(currentThread));
 	}
 
-	static async start(client: CodexAppServerClient, workspace: string): Promise<CodexNativeThreadController> {
+	static async start(
+		client: CodexAppServerClient,
+		workspace: string,
+		selection: CodexNativeThreadSelection = {},
+	): Promise<CodexNativeThreadController> {
 		const response = await client.request<CodexAppServerThreadResponse>("thread/start", {
 			cwd: workspace,
 			ephemeral: false,
+			...(selection.model ? { model: selection.model } : {}),
+			...(selection.serviceTier !== undefined ? { serviceTier: selection.serviceTier } : {}),
+			...(selection.personality !== undefined ? { personality: selection.personality } : {}),
 		});
-		return new CodexNativeThreadController(client, threadFromResponse(response, "thread/start"));
+		const selected = threadSessionFromResponse(response, "thread/start");
+		return new CodexNativeThreadController(client, selected.thread, selected.configuration);
 	}
 
-	static async resume(client: CodexAppServerClient, threadId: string, workspace: string): Promise<CodexNativeThreadController> {
+	static async resume(
+		client: CodexAppServerClient,
+		threadId: string,
+		workspace: string,
+		selection: CodexNativeThreadSelection = {},
+	): Promise<CodexNativeThreadController> {
 		try {
-			const response = await client.request<CodexAppServerThreadResponse>("thread/resume", { threadId, cwd: workspace });
-			const thread = threadFromResponse(response, "thread/resume");
+			const response = await client.request<CodexAppServerThreadResponse>("thread/resume", {
+				threadId,
+				cwd: workspace,
+				...(selection.model ? { model: selection.model } : {}),
+				...(selection.serviceTier !== undefined ? { serviceTier: selection.serviceTier } : {}),
+				...(selection.personality !== undefined ? { personality: selection.personality } : {}),
+			});
+			const selected = threadSessionFromResponse(response, "thread/resume");
+			const thread = selected.thread;
 			if (thread.id !== threadId) throw new CodexNativeThreadProtocolError("Codex resumed a different thread than requested.");
-			return new CodexNativeThreadController(client, thread);
+			return new CodexNativeThreadController(client, thread, selected.configuration);
 		} catch (error) {
 			return normalizeThreadError(error, threadId);
 		}
@@ -270,6 +324,10 @@ export class CodexNativeThreadController {
 
 	get thread(): CodexAppServerThread {
 		return structuredClone(this.currentThread);
+	}
+
+	get configuration(): CodexNativeThreadConfiguration {
+		return structuredClone(this.currentConfiguration);
 	}
 
 	getSnapshot(runtimeInstanceId: string): AgentRuntimeNativeSessionSnapshot {
@@ -358,7 +416,8 @@ export class CodexNativeThreadController {
 		};
 		try {
 			const response = await this.client.request<CodexAppServerThreadResponse>("thread/fork", params);
-			const forked = threadFromResponse(response, "thread/fork");
+			const selected = threadSessionFromResponse(response, "thread/fork");
+			const forked = selected.thread;
 			if (forked.id === previousThread.id) {
 				throw new CodexNativeThreadProtocolError("Codex thread/fork returned the source thread id.");
 			}
@@ -368,6 +427,7 @@ export class CodexNativeThreadController {
 			this.knownThreads.set(previousThread.id, structuredClone(previousThread));
 			this.knownThreads.set(forked.id, structuredClone(forked));
 			this.currentThread = forked;
+			this.currentConfiguration = selected.configuration;
 			return {
 				previous,
 				current: codexThreadSnapshot(runtimeInstanceId, forked),

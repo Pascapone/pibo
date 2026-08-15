@@ -14,6 +14,7 @@ import type {
 	AgentRuntimeDriver,
 	AgentRuntimeHistoryInspection,
 	AgentRuntimeHistoryPage,
+	AgentRuntimeModelCatalog,
 	AgentRuntimeProductContext,
 	AgentRuntimePromptInput,
 	AgentRuntimeSession,
@@ -25,6 +26,12 @@ import type {
 	ValidateAgentRuntimeProfileInput,
 } from "../../agent-runtime/types.js";
 import type { PiboJsonObject } from "../../core/events.js";
+import {
+	selectRequestedFastMode,
+	selectRequestedModelProfile,
+	selectRequestedThinkingLevel,
+	type PiboModelDefaults,
+} from "../../core/model-defaults.js";
 import {
 	CODEX_NATIVE_RUNTIME_CONFIG_SCHEMA,
 	defaultCodexNativeRuntimeConfig,
@@ -54,6 +61,16 @@ import {
 } from "./protocol-version.js";
 import { CodexNativeTurnController } from "./turn.js";
 import { CodexNativeRequestController } from "./requests.js";
+import {
+	CODEX_NATIVE_MODEL_OPTIONS_SCHEMA,
+	CODEX_NATIVE_MODEL_PROVIDER_ID,
+	CODEX_NATIVE_REASONING_VALUES,
+	CodexNativeSessionSettingsController,
+	parseCodexNativeProfileOptions,
+	readCodexNativeModelCatalog,
+	toAgentRuntimeModelCatalog,
+	type CodexNativeModelCatalog,
+} from "./models.js";
 
 export { CODEX_NATIVE_ADAPTER_ID } from "./thread.js";
 
@@ -104,11 +121,13 @@ function codexNativeCapabilities(structuredUserInput: boolean): AgentRuntimeCapa
 		skills: unavailableUntilResourceIntegration,
 		context: unavailableUntilResourceIntegration,
 		models: {
-			catalog: false,
-			switchInSession: false,
+			catalog: true,
+			switchInSession: true,
+			optionsSchema: CODEX_NATIVE_MODEL_OPTIONS_SCHEMA,
 		},
 		reasoning: {
-			supported: false,
+			supported: true,
+			values: CODEX_NATIVE_REASONING_VALUES,
 		},
 		approvals: {
 			supported: true,
@@ -116,7 +135,7 @@ function codexNativeCapabilities(structuredUserInput: boolean): AgentRuntimeCapa
 		},
 		maintenance: {
 			compaction: false,
-			contextUsage: false,
+			contextUsage: true,
 			history: true,
 			health: true,
 		},
@@ -215,6 +234,7 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 		readonly runtimeInstanceId: string,
 		private readonly process: CodexNativeAppServerProcess,
 		private readonly threads: CodexNativeThreadController,
+		private readonly settings: CodexNativeSessionSettingsController,
 		binding: RuntimeSessionBinding,
 		structuredUserInput: boolean,
 		private readonly productContext?: AgentRuntimeProductContext,
@@ -235,16 +255,36 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 			listSessions: () => this.threads.list(this.runtimeInstanceId, this.cwd),
 			getForkCandidates: () => this.threads.getForkCandidates(),
 			forkSession: async (entryId) => {
-				this.assertActive();
+				this.assertIdle();
 				const result = await this.threads.fork(this.runtimeInstanceId, this.cwd, entryId);
+				this.settings.attachThread(this.threads.thread.id, this.threads.configuration);
 				this.updateBindingFromCurrentThread();
 				return result;
 			},
 			cloneSession: async () => {
-				this.assertActive();
+				this.assertIdle();
 				const result = await this.threads.clone(this.runtimeInstanceId, this.cwd);
+				this.settings.attachThread(this.threads.thread.id, this.threads.configuration);
 				this.updateBindingFromCurrentThread();
 				return result;
+			},
+			getReasoning: () => this.settings.reasoning,
+			setReasoning: (value) => {
+				this.assertIdle();
+				return this.settings.setReasoning(value);
+			},
+			cycleReasoning: () => {
+				this.assertIdle();
+				return this.settings.cycleReasoning();
+			},
+			getFastMode: () => this.settings.fastMode,
+			setFastMode: (enabled) => {
+				this.assertIdle();
+				return this.settings.setFastMode(enabled);
+			},
+			setModel: async (model) => {
+				this.assertIdle();
+				return this.settings.setModel(model);
 			},
 			respondToApproval: (requestId, decision) => this.requests.respondToApproval(requestId, decision),
 			respondToUserInput: (requestId, answers) => this.requests.respondToUserInput(requestId, answers),
@@ -279,7 +319,11 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 
 	async prompt(input: AgentRuntimePromptInput): Promise<void> {
 		this.assertActive();
-		await this.turns.start(input.text, this.productContext?.getActiveMessage?.()?.id ?? randomUUID());
+		await this.turns.start(
+			input.text,
+			this.productContext?.getActiveMessage?.()?.id ?? randomUUID(),
+			this.settings.turnOptions,
+		);
 		this.updateBindingFromCurrentThread();
 	}
 
@@ -298,6 +342,7 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 		this.disposed = true;
 		this.requests.dispose();
 		this.turns.dispose();
+		this.settings.dispose();
 		this.listeners.clear();
 		await this.process.close();
 	}
@@ -308,6 +353,10 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 			streaming: this.turns.streaming,
 			enabledTools: [],
 			cwd: this.cwd,
+			activeModel: this.settings.activeModel,
+			reasoning: this.settings.reasoning,
+			fastMode: this.settings.fastMode,
+			contextUsage: this.settings.currentContextUsage,
 			warnings: diagnostics.filter((entry) => entry.level === "warning").map((entry) => entry.message),
 			errors: diagnostics.filter((entry) => entry.level === "error").map((entry) => entry.message),
 		};
@@ -340,13 +389,25 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 	private assertActive(): void {
 		if (this.disposed) throw new Error("Codex runtime session is disposed.");
 	}
+
+	private assertIdle(): void {
+		this.assertActive();
+		if (this.turns.streaming) throw new Error("Codex runtime controls can only change while the session is idle.");
+	}
 }
+
+type CodexNativeCompatibilityServices = {
+	thinkingLevel?: string;
+	modelDefaults?: PiboModelDefaults;
+	initialFastMode?: boolean;
+};
 
 export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 	readonly descriptor: AgentRuntimeDriver<CodexNativeRuntimeConfig>["descriptor"];
 	readonly config: CodexNativeRuntimeConfig;
 	readonly displayName: string;
 	readonly enabled: boolean;
+	private modelCatalogCache?: { expiresAt: number; value: Promise<CodexNativeModelCatalog> };
 
 	constructor(
 		readonly instanceId: string,
@@ -367,6 +428,10 @@ export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 		return diagnoseCodexNativeRuntime(this.config, this.instanceId);
 	}
 
+	async listModels(): Promise<AgentRuntimeModelCatalog> {
+		return toAgentRuntimeModelCatalog(this.instanceId, await this.loadModelCatalog());
+	}
+
 	validateProfile(input: ValidateAgentRuntimeProfileInput): readonly AgentRuntimeDiagnostic[] {
 		const diagnostics: AgentRuntimeDiagnostic[] = [];
 		if (input.profile.runtimeInstanceId !== this.instanceId) {
@@ -376,13 +441,29 @@ export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 				message: `Profile "${input.profile.profileName}" selects runtime instance "${input.profile.runtimeInstanceId}", not "${this.instanceId}".`,
 			});
 		}
-		if (Object.keys(input.profile.runtimeOptions).length > 0) {
+		try {
+			parseCodexNativeProfileOptions(input.profile.runtimeOptions);
+		} catch (error) {
 			diagnostics.push({
 				severity: "error",
-				code: "codex_native_runtime_options_pending",
-				message: "Codex adapter-native profile options are not enabled by the current checkpoint.",
+				code: "codex_native_runtime_options_invalid",
+				message: error instanceof Error ? error.message : "Native Codex runtime options are invalid.",
 				path: "runtimeOptions",
 			});
+		}
+		for (const [path, model] of [
+			["model", input.profile.model],
+			["mainModel", input.profile.mainModel],
+			["subagentModel", input.profile.subagentModel],
+		] as const) {
+			if (model && model.provider !== CODEX_NATIVE_MODEL_PROVIDER_ID) {
+				diagnostics.push({
+					severity: "error",
+					code: "codex_native_model_provider_invalid",
+					message: `Native Codex models use provider "${CODEX_NATIVE_MODEL_PROVIDER_ID}", not "${model.provider}".`,
+					path,
+				});
+			}
 		}
 		return diagnostics;
 	}
@@ -443,14 +524,32 @@ export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 			clientVersion: CODEX_NATIVE_ADAPTER_VERSION,
 			resourceEnvironment: input.services?.resources?.getAdapterEnvironment(),
 		});
+		let settings: CodexNativeSessionSettingsController | undefined;
 		try {
+			const compatibility = input.services?.compatibility as CodexNativeCompatibilityServices | undefined;
+			const catalog = await this.loadModelCatalog(process.client);
+			settings = new CodexNativeSessionSettingsController(process.client, catalog, {
+				activeModel: input.activeModel ?? selectRequestedModelProfile(input.profile, compatibility?.modelDefaults),
+				reasoningLevel: compatibility?.thinkingLevel
+					?? selectRequestedThinkingLevel(input.profile, compatibility?.modelDefaults),
+				initialFastMode: compatibility?.initialFastMode
+					?? selectRequestedFastMode(input.profile, compatibility?.modelDefaults),
+				profileOptions: parseCodexNativeProfileOptions(input.profile.runtimeOptions),
+			});
 			const threads = binding.state === "bound"
-				? await CodexNativeThreadController.resume(process.client, binding.nativeSessionId!, input.workspace)
-				: await CodexNativeThreadController.start(process.client, input.workspace);
+				? await CodexNativeThreadController.resume(
+					process.client,
+					binding.nativeSessionId!,
+					input.workspace,
+					settings.threadSelection,
+				)
+				: await CodexNativeThreadController.start(process.client, input.workspace, settings.threadSelection);
+			settings.attachThread(threads.thread.id, threads.configuration);
 			return new CodexNativeThreadSession(
 				this.instanceId,
 				process,
 				threads,
+				settings,
 				bindingForThread({
 					piboSessionId: input.piboSession.id,
 					runtimeInstanceId: this.instanceId,
@@ -461,6 +560,7 @@ export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 				input.productContext,
 			);
 		} catch (error) {
+			settings?.dispose();
 			await process.close().catch(() => {});
 			if (error instanceof CodexNativeThreadMissingError) {
 				throw new AgentRuntimeBindingMissingError(input.piboSession.id, this.instanceId, binding.nativeSessionId);
@@ -541,6 +641,20 @@ export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 				`Codex native history read failed for runtime instance "${this.instanceId}".`,
 			);
 		}
+	}
+
+	private loadModelCatalog(client?: CodexNativeAppServerProcess["client"]): Promise<CodexNativeModelCatalog> {
+		const now = Date.now();
+		if (this.modelCatalogCache && this.modelCatalogCache.expiresAt > now) return this.modelCatalogCache.value;
+		const value = client
+			? readCodexNativeModelCatalog(client)
+			: this.withProcess("model-catalog", process.cwd(), async (catalogProcess) =>
+				await readCodexNativeModelCatalog(catalogProcess.client));
+		this.modelCatalogCache = { expiresAt: now + 5_000, value };
+		value.catch(() => {
+			if (this.modelCatalogCache?.value === value) this.modelCatalogCache = undefined;
+		});
+		return value;
 	}
 
 	private async withProcess<T>(

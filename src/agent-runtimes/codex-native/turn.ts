@@ -6,6 +6,7 @@ import {
 	type CodexAppServerClient,
 	type CodexAppServerDiagnostic,
 } from "./client.js";
+import type { CodexNativeTurnModelOptions } from "./models.js";
 import type {
 	CodexAppServerThreadItem,
 	CodexAppServerThreadTokenUsage,
@@ -335,7 +336,7 @@ export class CodexNativeTurnController {
 		return this.pending?.turnId;
 	}
 
-	async start(text: string, clientUserMessageId?: string): Promise<void> {
+	async start(text: string, clientUserMessageId: string | undefined, modelOptions: CodexNativeTurnModelOptions): Promise<void> {
 		if (this.disposed) throw new Error("Codex native turn controller is disposed.");
 		if (this.pending) throw new Error("Codex native session already has an active turn.");
 		const pending = newPendingTurn();
@@ -344,6 +345,11 @@ export class CodexNativeTurnController {
 			threadId: this.threads.thread.id,
 			input: [{ type: "text", text }],
 			...(clientUserMessageId ? { clientUserMessageId } : {}),
+			model: modelOptions.model,
+			effort: modelOptions.effort,
+			serviceTier: modelOptions.serviceTier,
+			...(modelOptions.summary !== undefined ? { summary: modelOptions.summary } : {}),
+			...(modelOptions.personality !== undefined ? { personality: modelOptions.personality } : {}),
 		};
 		try {
 			const response = await this.client.request<CodexAppServerTurnStartResponse, CodexAppServerTurnStartParams>("turn/start", params);

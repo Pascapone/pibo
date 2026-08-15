@@ -1,5 +1,5 @@
 import type { SaveCustomAgentInput } from "../api-agent-designer";
-import type { AgentCatalog, AgentRuntimeCatalogEntry, BootstrapData, CustomAgent, ModelCatalog, ModelProfile, ThinkingLevel } from "../types";
+import { THINKING_LEVELS, type AgentCatalog, type AgentRuntimeCatalogEntry, type BootstrapData, type CustomAgent, type ModelCatalog, type ModelProfile, type ThinkingLevel } from "../types";
 
 export type AgentDraft = SaveCustomAgentInput & {
 	id?: string;
@@ -221,6 +221,9 @@ export function modelCatalogForRuntime(runtime: AgentRuntimeCatalogEntry | undef
 	for (const model of runtime.models.models) {
 		const providerId = model.provider ?? runtime.adapterId;
 		const auth = authByProvider.get(providerId);
+		const optionAuthConfigured = typeof model.options?.authConfigured === "boolean"
+			? model.options.authConfigured
+			: undefined;
 		const providerLabel = typeof model.options?.providerDisplayName === "string"
 			? model.options.providerDisplayName
 			: auth?.displayName ?? providerId;
@@ -229,17 +232,21 @@ export function modelCatalogForRuntime(runtime: AgentRuntimeCatalogEntry | undef
 			provider = {
 				id: providerId,
 				label: providerLabel,
-				authConfigured: auth?.configured ?? false,
+				authConfigured: auth?.configured ?? optionAuthConfigured ?? true,
 				models: [],
 			};
 			providers.set(providerId, provider);
 		}
+		const reasoningOptions = model.reasoningOptions?.filter(
+			(value): value is ThinkingLevel => THINKING_LEVELS.includes(value as ThinkingLevel),
+		);
 		provider.models.push({
 			provider: providerId,
 			id: model.id,
 			label: model.displayName ?? model.id,
 			authConfigured: provider.authConfigured,
 			supportsReasoning: model.reasoningOptions ? model.reasoningOptions.length > 0 : undefined,
+			...(reasoningOptions ? { reasoningOptions } : {}),
 		});
 	}
 	return {
@@ -250,6 +257,23 @@ export function modelCatalogForRuntime(runtime: AgentRuntimeCatalogEntry | undef
 				models: provider.models.sort((left, right) => left.label.localeCompare(right.label) || left.id.localeCompare(right.id)),
 			})),
 	};
+}
+
+export function reasoningValuesForModel(
+	values: readonly string[] | undefined,
+	catalog: ModelCatalog | undefined,
+	model: ModelProfile | undefined,
+): ThinkingLevel[] | undefined {
+	const runtimeValues = values?.filter(
+		(value): value is ThinkingLevel => THINKING_LEVELS.includes(value as ThinkingLevel),
+	);
+	if (!model) return runtimeValues;
+	const selected = catalog?.providers
+		.find((provider) => provider.id === model.provider)
+		?.models.find((entry) => entry.id === model.id);
+	if (!selected?.reasoningOptions) return runtimeValues;
+	if (!runtimeValues) return [...selected.reasoningOptions];
+	return runtimeValues.filter((value) => selected.reasoningOptions?.includes(value));
 }
 
 export function uniqueProfileOptions(
