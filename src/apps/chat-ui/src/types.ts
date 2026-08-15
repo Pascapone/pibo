@@ -370,10 +370,43 @@ export type ChatSessionPage = {
 	version?: string;
 };
 
+export type PiboRuntimeApprovalDecision = {
+	id: string;
+	label: string;
+	description?: string;
+};
+
+export type PiboRuntimeApprovalRequest = {
+	requestId: string;
+	requestType: string;
+	title?: string;
+	detail?: string;
+	arguments?: unknown;
+	decisions?: readonly PiboRuntimeApprovalDecision[];
+};
+
+export type PiboRuntimeUserInputQuestion = {
+	id: string;
+	header?: string;
+	question: string;
+	options?: readonly { label: string; description?: string }[];
+	multiSelect?: boolean;
+	allowFreeform?: boolean;
+	secret?: boolean;
+};
+
+export type PiboRuntimeUserInputRequest = {
+	requestId: string;
+	questions: readonly PiboRuntimeUserInputQuestion[];
+	blocking?: boolean;
+};
+
 export type PiboRuntimeStatus = {
 	piboSessionId: string;
 	thinkingLevel?: ThinkingLevel;
 	fastMode?: boolean;
+	pendingApprovals?: readonly PiboRuntimeApprovalRequest[];
+	pendingUserInputs?: readonly PiboRuntimeUserInputRequest[];
 };
 
 export type NavigationData = {

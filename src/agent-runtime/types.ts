@@ -331,6 +331,8 @@ export interface AgentRuntimeSession {
 	readonly controls?: AgentRuntimeControls;
 	readonly pendingApproval?: AgentRuntimeApprovalRequest;
 	readonly pendingUserInput?: AgentRuntimeUserInputRequest;
+	readonly pendingApprovals?: readonly AgentRuntimeApprovalRequest[];
+	readonly pendingUserInputs?: readonly AgentRuntimeUserInputRequest[];
 
 	getBinding(): RuntimeSessionBinding;
 	subscribe(listener: AgentRuntimeEventListener): () => void;

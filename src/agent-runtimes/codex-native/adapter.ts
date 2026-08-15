@@ -53,6 +53,7 @@ import {
 	CODEX_APP_SERVER_VERSION,
 } from "./protocol-version.js";
 import { CodexNativeTurnController } from "./turn.js";
+import { CodexNativeRequestController } from "./requests.js";
 
 export { CODEX_NATIVE_ADAPTER_ID } from "./thread.js";
 
@@ -62,63 +63,67 @@ const unavailableUntilResourceIntegration = unsupportedAgentRuntimeCapability(
 	"This capability has not yet been delivered through the native Codex runtime adapter.",
 );
 
-export const CODEX_NATIVE_THREAD_CAPABILITIES: AgentRuntimeCapabilities = {
-	lifecycle: {
-		persistent: true,
-		lazyBinding: false,
-		resume: true,
-		attach: true,
-		listNativeSessions: true,
-		fork: true,
-		clone: true,
-		tree: false,
-	},
-	input: {
-		text: true,
-		images: false,
-		audio: false,
-		steering: true,
-		structuredOutput: false,
-	},
-	output: {
-		assistantDeltas: true,
-		reasoning: true,
-		toolEvents: true,
-		usage: true,
-		plans: false,
-		diffs: false,
-		rawNativeEvents: false,
-	},
-	tools: {
-		piboManaged: unavailableUntilResourceIntegration,
-		nativeToolYielding: unsupportedAgentRuntimeCapability(
-			"Codex native tools remain harness-owned and are not wrapped as Pibo yielded tools.",
-		),
-	},
-	mcp: {
-		externalServers: unavailableUntilResourceIntegration,
-		statusInspection: false,
-	},
-	skills: unavailableUntilResourceIntegration,
-	context: unavailableUntilResourceIntegration,
-	models: {
-		catalog: false,
-		switchInSession: false,
-	},
-	reasoning: {
-		supported: false,
-	},
-	approvals: {
-		supported: false,
-		structuredUserInput: false,
-	},
-	maintenance: {
-		compaction: false,
-		contextUsage: false,
-		history: true,
-		health: true,
-	},
-};
+function codexNativeCapabilities(structuredUserInput: boolean): AgentRuntimeCapabilities {
+	return {
+		lifecycle: {
+			persistent: true,
+			lazyBinding: false,
+			resume: true,
+			attach: true,
+			listNativeSessions: true,
+			fork: true,
+			clone: true,
+			tree: false,
+		},
+		input: {
+			text: true,
+			images: false,
+			audio: false,
+			steering: true,
+			structuredOutput: false,
+		},
+		output: {
+			assistantDeltas: true,
+			reasoning: true,
+			toolEvents: true,
+			usage: true,
+			plans: false,
+			diffs: false,
+			rawNativeEvents: false,
+		},
+		tools: {
+			piboManaged: unavailableUntilResourceIntegration,
+			nativeToolYielding: unsupportedAgentRuntimeCapability(
+				"Codex native tools remain harness-owned and are not wrapped as Pibo yielded tools.",
+			),
+		},
+		mcp: {
+			externalServers: unavailableUntilResourceIntegration,
+			statusInspection: false,
+		},
+		skills: unavailableUntilResourceIntegration,
+		context: unavailableUntilResourceIntegration,
+		models: {
+			catalog: false,
+			switchInSession: false,
+		},
+		reasoning: {
+			supported: false,
+		},
+		approvals: {
+			supported: true,
+			structuredUserInput,
+		},
+		maintenance: {
+			compaction: false,
+			contextUsage: false,
+			history: true,
+			health: true,
+		},
+	};
+}
+
+export const CODEX_NATIVE_THREAD_CAPABILITIES = codexNativeCapabilities(false);
 
 function timestamp(seconds: number): string {
 	return new Date(seconds * 1_000).toISOString();
@@ -198,10 +203,11 @@ function validateOpenBinding(
 export class CodexNativeThreadSession implements AgentRuntimeSession {
 	readonly adapterId = CODEX_NATIVE_ADAPTER_ID;
 	readonly cwd: string;
-	readonly capabilities = CODEX_NATIVE_THREAD_CAPABILITIES;
+	readonly capabilities: AgentRuntimeCapabilities;
 	readonly controls: NonNullable<AgentRuntimeSession["controls"]>;
 	private readonly listeners = new Set<(event: AgentRuntimeSemanticEvent) => void>();
 	private readonly turns: CodexNativeTurnController;
+	private readonly requests: CodexNativeRequestController;
 	private binding: RuntimeSessionBinding;
 	private disposed = false;
 
@@ -210,11 +216,20 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 		private readonly process: CodexNativeAppServerProcess,
 		private readonly threads: CodexNativeThreadController,
 		binding: RuntimeSessionBinding,
+		structuredUserInput: boolean,
 		private readonly productContext?: AgentRuntimeProductContext,
 	) {
 		this.cwd = threads.thread.cwd;
 		this.binding = structuredClone(binding);
+		this.capabilities = codexNativeCapabilities(structuredUserInput);
 		this.turns = new CodexNativeTurnController(process.client, threads, (event) => this.emit(event));
+		this.requests = new CodexNativeRequestController(
+			process.client,
+			() => this.threads.thread.id,
+			() => this.turns.activeTurnId,
+			structuredUserInput,
+			(event) => this.emit(event),
+		);
 		this.controls = {
 			getCurrentSession: () => this.threads.getSnapshot(this.runtimeInstanceId),
 			listSessions: () => this.threads.list(this.runtimeInstanceId, this.cwd),
@@ -231,7 +246,25 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 				this.updateBindingFromCurrentThread();
 				return result;
 			},
+			respondToApproval: (requestId, decision) => this.requests.respondToApproval(requestId, decision),
+			respondToUserInput: (requestId, answers) => this.requests.respondToUserInput(requestId, answers),
 		};
+	}
+
+	get pendingApproval() {
+		return this.requests.pendingApproval;
+	}
+
+	get pendingUserInput() {
+		return this.requests.pendingUserInput;
+	}
+
+	get pendingApprovals() {
+		return this.requests.pendingApprovals;
+	}
+
+	get pendingUserInputs() {
+		return this.requests.pendingUserInputs;
 	}
 
 	getBinding(): RuntimeSessionBinding {
@@ -263,6 +296,7 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 	async dispose(): Promise<void> {
 		if (this.disposed) return;
 		this.disposed = true;
+		this.requests.dispose();
 		this.turns.dispose();
 		this.listeners.clear();
 		await this.process.close();
@@ -309,7 +343,7 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 }
 
 export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
-	readonly descriptor = CODEX_NATIVE_AGENT_RUNTIME_DRIVER.descriptor;
+	readonly descriptor: AgentRuntimeDriver<CodexNativeRuntimeConfig>["descriptor"];
 	readonly config: CodexNativeRuntimeConfig;
 	readonly displayName: string;
 	readonly enabled: boolean;
@@ -321,6 +355,10 @@ export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 		enabled: boolean,
 	) {
 		this.config = structuredClone(config);
+		this.descriptor = {
+			...CODEX_NATIVE_AGENT_RUNTIME_DRIVER.descriptor,
+			capabilities: codexNativeCapabilities(config.experimentalUserInput),
+		};
 		this.displayName = displayName ?? this.descriptor.displayName;
 		this.enabled = enabled;
 	}
@@ -419,6 +457,7 @@ export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 					previous: binding,
 					thread: threads.thread,
 				}),
+				this.config.experimentalUserInput,
 				input.productContext,
 			);
 		} catch (error) {

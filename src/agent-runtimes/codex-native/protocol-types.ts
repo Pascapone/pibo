@@ -153,6 +153,69 @@ export type CodexAppServerTurnInterruptParams = {
 
 export type CodexAppServerTurnInterruptResponse = Record<string, never>;
 
+export type CodexAppServerApprovalDecision = "accept" | "acceptForSession" | "decline" | "cancel";
+
+export type CodexAppServerCommandApprovalParams = {
+	threadId: string;
+	turnId: string;
+	itemId: string;
+	startedAtMs: number;
+	approvalId?: string | null;
+	environmentId?: string | null;
+	reason?: string | null;
+	command?: string | null;
+	cwd?: string | null;
+	commandActions?: unknown[] | null;
+	networkApprovalContext?: unknown;
+	proposedExecpolicyAmendment?: string[] | null;
+	proposedNetworkPolicyAmendments?: unknown[] | null;
+};
+
+export type CodexAppServerFileChangeApprovalParams = {
+	threadId: string;
+	turnId: string;
+	itemId: string;
+	startedAtMs: number;
+	reason?: string | null;
+	grantRoot?: string | null;
+};
+
+export type CodexAppServerApprovalResponse = {
+	decision: CodexAppServerApprovalDecision;
+};
+
+export type CodexAppServerUserInputOption = {
+	label: string;
+	description: string;
+};
+
+export type CodexAppServerUserInputQuestion = {
+	id: string;
+	header: string;
+	question: string;
+	isOther?: boolean;
+	isSecret?: boolean;
+	options?: CodexAppServerUserInputOption[] | null;
+};
+
+export type CodexAppServerUserInputRequestParams = {
+	threadId: string;
+	turnId: string;
+	itemId: string;
+	questions: CodexAppServerUserInputQuestion[];
+	isBlocking: boolean;
+	autoResolutionMs?: number | null;
+};
+
+export type CodexAppServerUserInputResponse = {
+	answers: Record<string, { answers: string[] }>;
+};
+
+export type CodexAppServerServerRequestResolvedNotification = {
+	threadId: string;
+	requestId: CodexAppServerRequestId;
+};
+
 export type CodexAppServerTokenUsageBreakdown = {
 	cachedInputTokens: number;
 	inputTokens: number;

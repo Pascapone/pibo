@@ -512,7 +512,15 @@ export async function startCodexNativeAppServer(
 		const capabilities: CodexAppServerInitializeCapabilities = { experimentalApi: false };
 		client = await CodexAppServerClient.start({
 			command: input.config.executable,
-			args: ["app-server", "--stdio", "--strict-config"],
+			args: [
+				"app-server",
+				"--stdio",
+				"--strict-config",
+				"-c",
+				`tools.experimental_request_user_input.enabled=${input.config.experimentalUserInput}`,
+				"-c",
+				`features.default_mode_request_user_input=${input.config.experimentalUserInput}`,
+			],
 			cwd: resolve(input.workspace),
 			env: buildCodexNativeProcessEnvironment({
 				config: input.config,

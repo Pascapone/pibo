@@ -87,8 +87,10 @@ export type {
 	AgentRuntimeSessionCapabilities,
 } from "./agent-runtime/capabilities.js";
 export type {
+	AgentRuntimeApprovalDecision,
 	AgentRuntimeApprovalRequest,
 	AgentRuntimeEventListener,
+	AgentRuntimeRequestResolution,
 	AgentRuntimeSemanticEvent,
 	AgentRuntimeUsage,
 	AgentRuntimeUserInputQuestion,
@@ -303,6 +305,11 @@ export type {
 export { PiboSteeringUnavailableError } from "./core/events.js";
 export type {
 	BuiltinPiboExecutionAction,
+	PiboApprovalDecision,
+	PiboApprovalRequest,
+	PiboApprovalRequestedEvent,
+	PiboApprovalResolvedEvent,
+	PiboApprovalResponseParams,
 	PiboForkCandidate,
 	PiboEventListener,
 	PiboEventSource,
@@ -315,6 +322,8 @@ export type {
 	PiboMessageEvent,
 	PiboOutputEvent,
 	PiboPiSessionSnapshot,
+	PiboRuntimeRequestExecutionAction,
+	PiboRuntimeRequestResolution,
 	PiboSessionForkParams,
 	PiboSessionListItem,
 	PiboSessionOperationResult,
@@ -323,6 +332,11 @@ export type {
 	PiboSessionTreeNavigateParams,
 	PiboSessionTreeNode,
 	PiboSessionTreeResult,
+	PiboUserInputQuestion,
+	PiboUserInputRequest,
+	PiboUserInputRequestedEvent,
+	PiboUserInputResolvedEvent,
+	PiboUserInputResponseParams,
 } from "./core/events.js";
 export type {
 	CreatePiboSessionInput,

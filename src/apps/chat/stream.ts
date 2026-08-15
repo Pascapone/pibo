@@ -27,6 +27,10 @@ export type ChatStreamEvent = { piboSessionId?: string; createdAt?: string } & (
 	| { type: "TOOL_CALL_RESULT"; toolCallId: string; toolName?: string; result: unknown; isError: boolean; runId?: string }
 	| { type: "AGENT_DELEGATION"; toolCallId?: string; toolName: string; subagentName: string; childPiboSessionId: string; threadKey?: string }
 	| { type: "EXECUTION_RESULT"; runId?: string; eventId?: string; action: string; result: unknown }
+	| { type: "RUNTIME_APPROVAL_REQUESTED"; runId?: string; request: Extract<PiboOutputEvent, { type: "approval_requested" }>["request"] }
+	| { type: "RUNTIME_APPROVAL_RESOLVED"; runId?: string; requestId: string; resolution: string }
+	| { type: "RUNTIME_USER_INPUT_REQUESTED"; runId?: string; request: Extract<PiboOutputEvent, { type: "user_input_requested" }>["request"] }
+	| { type: "RUNTIME_USER_INPUT_RESOLVED"; runId?: string; requestId: string; resolution: string }
 	| { type: "RAW_EVENT"; event: PiboOutputEvent }
 );
 
@@ -145,6 +149,18 @@ export function chatStreamFramesFromOutputEvent(
 			break;
 		case "execution_result":
 			frames.push({ type: "EXECUTION_RESULT", runId: eventId, eventId: event.eventId, action: event.action, result: event.result });
+			break;
+		case "approval_requested":
+			frames.push({ type: "RUNTIME_APPROVAL_REQUESTED", runId: eventId, request: event.request });
+			break;
+		case "approval_resolved":
+			frames.push({ type: "RUNTIME_APPROVAL_RESOLVED", runId: eventId, requestId: event.requestId, resolution: event.resolution });
+			break;
+		case "user_input_requested":
+			frames.push({ type: "RUNTIME_USER_INPUT_REQUESTED", runId: eventId, request: event.request });
+			break;
+		case "user_input_resolved":
+			frames.push({ type: "RUNTIME_USER_INPUT_RESOLVED", runId: eventId, requestId: event.requestId, resolution: event.resolution });
 			break;
 		case "session_error":
 			frames.push({ type: "RUN_ERROR", runId: eventId, message: event.error, errorDetails: event.errorDetails });

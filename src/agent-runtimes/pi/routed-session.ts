@@ -1479,6 +1479,8 @@ export class RoutedSession {
 				setFastMode: (enabled) => this.setFastMode(enabled),
 				setModel: (model) => this.setModel(model),
 				compact: (customInstructions) => this.compact(customInstructions),
+				respondToApproval: async () => { throw new Error("Pi does not expose runtime approval responses."); },
+				respondToUserInput: async () => { throw new Error("Pi does not expose structured runtime user input."); },
 				kill: async () => {
 					const killed = [await this.kill()];
 					let cancelledRuns: string[] = [];
