@@ -99,7 +99,7 @@ Target branch: `feature/agent-runtime-foundation`
 - [x] 6.6 Verify MCP connected status and exposed tool/resource/template inventory through the official SDK.
 - [x] 6.7 Extend capability/profile inspection and Context Build with mode/fidelity/status/target/inventory/diagnostics.
 - [x] 6.8 Test unselected-resource absence, missing secrets, escaping symlinks, required-delivery failure, Pi Bash/CLI environment isolation, shared router generation, no source/global mutation, and cleanup.
-- [ ] 6.9 Commit, push, and open materialization PR.
+- [x] 6.9 Commit, push, and open stacked materialization PR #486.
 
 ## 7. Runtime-neutral history, trace, and debug PR
 
