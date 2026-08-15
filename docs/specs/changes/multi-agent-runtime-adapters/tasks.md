@@ -73,7 +73,7 @@ Target branch: `feature/agent-runtime-foundation`
 - [x] 4.7 Scope model/reasoning/auth catalogs by runtime instance.
 - [x] 4.8 Keep plugin profiles read-only and preserve persisted/custom Pi-backed `codex` references without claiming the retired built-in alias.
 - [x] 4.9 Add API/store/profile/UI/accessibility/autosave tests; local typecheck and full suite pass 1,632/1,632.
-- [ ] 4.10 Validate fresh Pi custom agents and existing custom-agent defaults on Pibo2.
+- [x] 4.10 Validate fresh Pi custom-agent create/edit/copy, invalid options, frozen binding, Context Build, existing custom-agent defaults, browser rendering, and cleanup on Pibo2; evidence is in `docs/reports/runtime-aware-agent-designer-validation-2026-08-15.md`.
 - [ ] 4.11 Commit, push, and open Designer/profile PR.
 
 ## 5. Portable Pibo tools and MCP bridge PR
