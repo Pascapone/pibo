@@ -1,9 +1,10 @@
 # Pi Runtime Adapter Parity Validation
 
-**Status:** Local parity passed; authenticated Pibo2 validation pending
-**Date:** 2026-08-14
+**Status:** Local parity passed; authenticated Pibo2 structural/restart parity passed; real-model scenarios blocked by provider credentials/quota
+**Date:** 2026-08-15
 **Branch:** `feature/agent-runtime-pi-parity`
 **Validated implementation commit:** `af90539e`
+**Validated candidate commit:** `f369448a8e9055e0248d202eaddaa416e757b06f`
 **Dependency:** PR #476 (`feature/agent-runtime-foundation`)
 
 ## Implemented boundary
@@ -38,16 +39,43 @@ A registered fake adapter now routes through the production `PiboSessionRouter` 
 | Generic fake routing | Pass: 2/2 | `test/runtime-routed-session.test.mjs` |
 | Existing Pi reopen fixture | Pass | Same requested Pi id and transcript file reused by `createPiboRuntime` compatibility facade |
 
+## Authenticated Pibo2 evidence
+
+The exact candidate was installed under `/opt/pibo-candidates/agent-runtime-pi-parity/f369448a8e9055e0248d202eaddaa416e757b06f/runtime` and activated through the Pibo candidate workflow. The authenticated Chat Web browser used the real public Pibo2 application and persisted product/session data.
+
+| Check | Result | Evidence |
+|---|---|---|
+| Candidate identity | Pass | Gateway environment reported `PIBO_DEPLOY_CANDIDATE=agent-runtime-pi-parity` and exact commit `f369448a…`; package version `1.7.2` |
+| Fresh product session | Pass | Created Pibo Session `ps_3b183bfd-48c1-4a6f-84ee-36a93bfbe45f` in a dedicated room/workspace |
+| Native Pi identity | Pass | Pi id `57923c0e-b7d4-4964-910b-3c4d1b076657` and its original JSONL path remained stable across candidate/baseline swaps and gateway restarts |
+| Restart/reopen | Pass | After each gateway restart, status returned idle with the same workspace, active model, Pi id, session file, and leaf id |
+| Runtime catalog | Pass | Authenticated Agent Catalog exposed enabled embedded runtime instance `pi` with adapter id `pi` |
+| Context inspection | Pass | Context build returned six runtime-owned top-level nodes, 81 total nodes, approximately 7,047 tokens, zero warnings/errors, and the expected profile/workspace |
+| Session controls | Pass | `status`, `session.current`, `session.list`, `session.tree`, `thinking`, `fast_mode`, and `abort` returned through Chat Web APIs; thinking remained `high`, MiniMax correctly reported fast mode unsupported |
+| Trace reconstruction | Pass | `pibo debug trace ... --check --json` reported `checks.status=ok`; browser timeline reconstructed user, execution, and normalized error nodes |
+| Debug inspection | Pass | `pibo debug session ... --events --json` preserved product id, Pi id, room/workspace, and ordered reliability events |
+| Browser rendering | Pass | Authenticated Terminal view displayed the new room/session, selected profile/model, composer, trace rows, and idle/processing transitions |
+| Accepted-message latency | Observed | First candidate message POST returned in 42 ms; active processing was visible in 244 ms. Completion timing cannot be compared while providers are unavailable. |
+
+### Provider availability blocker
+
+Real assistant/tool/skill/MCP/subagent turns could not complete on either the pre-existing Pibo2 candidate or the parity candidate on August 15, 2026:
+
+- the stored `openai-codex` OAuth credential had expired and refresh returned `Failed to refresh OAuth token for openai-codex`; both binaries emitted the same normalized `provider_auth_failed` error;
+- the only other stored provider credential, MiniMax, returned HTTP 429 with provider code 2056 (`Token Plan usage limit reached`) for both `MiniMax-M2.7-highspeed` and `MiniMax-M3`;
+- the pre-existing candidate `feature-terminal-image-preview-v3@6b421066…` was reactivated and reproduced the same failures before the parity candidate was restored, so this is not an adapter-extraction regression;
+- an OpenAI device authorization flow reached the provider sign-in page, but the isolated machine browser had no authenticated OpenAI/Google account. No credentials or tokens were copied or exposed.
+
+The failed provider turns still verified normalized auth/rate-limit errors, retry/recovery transcript persistence, abort handling, restart cleanup, trace projection, and debug inspection. They do not constitute evidence for successful streaming or tool execution.
+
 ## Remaining parity gate
 
-Before native Codex implementation begins, the exact candidate must pass authenticated Pibo2 scenarios for:
+The following Pibo2 checks still require one usable model provider credential or restored quota:
 
-- existing and fresh Pi sessions;
-- real streamed turns and tool calls;
+- successful real streamed Pi turn and Pi built-in tool call;
 - selected skills/user skills, context files, MCP, subagents, and run reminders;
-- Loop/runtime restart continuity;
-- session status, thinking, fast mode, compact, fork/clone/tree/switch where safe;
-- Chat Web trace/rendering, debug/session inspection, telemetry, and signals;
-- startup, first-delta, completion, and trace-load timing compared with the currently installed baseline.
+- Loop execution and model-backed restart continuation;
+- model-backed compact/fork/clone/tree/switch scenarios where safe;
+- startup, first-delta, completion, and end-to-end timing comparison against the pre-existing candidate.
 
-No native Codex adapter work is claimed or started by this milestone.
+There is no known Pi adapter regression in local tests or the available authenticated Pibo2 paths. Native Codex work remains unstarted at this milestone; later work may proceed only while preserving this explicit external validation gap and must return to close it when provider access is restored.
