@@ -2,7 +2,7 @@
 
 ## Scope
 
-This report records native Codex checkpoint 9.5 for `@pasko70/pibo@1.7.2` at implementation commit `714ece6ace7239d0a04153e99fa1ecabeccd0374`.
+This report records native Codex checkpoint 9.5 for `@pasko70/pibo@1.7.2` at implementation commit `714ece6ace7239d0a04153e99fa1ecabeccd0374`, delivered in PR #493 stacked on PR #492.
 
 The checkpoint adds stable Codex App Server v2 turn execution behind the existing runtime-adapter contract:
 
