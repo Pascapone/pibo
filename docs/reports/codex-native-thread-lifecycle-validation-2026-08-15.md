@@ -8,7 +8,7 @@
 
 **Implementation commit:** `1155529a85bdbc9d80049d8d413ad0ed5abdc011`
 
-**Pull request:** Pending
+**Pull request:** #492
 
 **Stacked on:** Codex process/isolation PR #491 at `465a5cc7`
 
