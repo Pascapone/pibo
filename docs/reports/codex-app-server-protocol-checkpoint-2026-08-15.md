@@ -6,6 +6,8 @@
 
 **Stacked on:** adapter-authoring skill PR #488
 
+**Pull request:** #489
+
 **Pi parity 2.11:** **Blocked — not complete**
 
 ## Outcome
