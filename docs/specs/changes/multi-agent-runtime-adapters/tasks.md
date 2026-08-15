@@ -127,7 +127,7 @@ Target branch: `feature/agent-runtime-foundation`
 ## 9. Native Codex adapter PR(s), only after Pi parity
 
 - [x] 9.1 Pin official Pibo2 Codex App Server `0.147.0`, generate stable TypeScript/JSON Schema from that exact binary, store the full/v2 schemas and hashes, and record the `>=0.147.0 <0.148.0` checkpoint in `docs/reports/codex-app-server-protocol-checkpoint-2026-08-15.md`. Approved Pibo2-managed authentication subsequently closed Pi parity 2.11, so task 9.2 is unblocked.
-- [ ] 9.2 Implement typed stdio JSON-RPC client with initialize/initialized, request correlation, backpressure handling, stderr diagnostics, and bounded shutdown.
+- [x] 9.2 Implement the adapter-private typed stdio JSON-RPC client with initialize/initialized, omitted wire header, request correlation, server requests/notifications, bounded overload retry, actual write backpressure, message/pending/stderr limits, redaction, crash/timeout/abort handling, and bounded shutdown; deterministic tests, full-suite verification, and the exact `0.147.0` handshake are recorded in `docs/reports/codex-app-server-stdio-client-validation-2026-08-15.md`.
 - [ ] 9.3 Implement process/version/availability diagnostics and isolated per-instance/session home/config.
 - [ ] 9.4 Implement thread start, binding CAS, resume, missing-thread state, read/list, and supported fork/history controls.
 - [ ] 9.5 Implement turn start, steering if supported, streaming assistant/reasoning/item/tool/usage events, completion/failure, and interrupt.
