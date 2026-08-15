@@ -826,6 +826,56 @@ test("session router keeps the persisted runtime instance when the profile defau
 	}
 });
 
+test("session router persists live binding changes after a runtime turn settles", async () => {
+	const fakeDriver = createFakeAgentRuntimeDriver({
+		adapterId: "binding-sync-fake",
+		script: {
+			events: [{ type: "assistant_message", text: "done" }],
+			bindingPatchAfterPrompt: { metadata: { durable: true } },
+		},
+	});
+	const registry = PiboPluginRegistry.create({
+		plugins: [
+			piboCorePlugin,
+			definePiboPlugin({
+				id: "test.binding-sync-runtime",
+				register(api) {
+					api.registerAgentRuntimeDriver(fakeDriver);
+					api.registerAgentRuntimeInstance({ id: "binding-sync", adapterId: "binding-sync-fake" });
+					api.registerProfile({
+						name: "binding-sync-profile",
+						create() {
+							return new InitialSessionContextBuilder("binding-sync-profile")
+								.withAgentRuntime("binding-sync")
+								.withBuiltinTools("disabled")
+								.createSession();
+						},
+					});
+				},
+			}),
+		],
+	});
+	const store = new InMemoryPiboSessionStore();
+	store.create({
+		id: "ps_binding_sync",
+		channel: "test",
+		kind: "chat",
+		profile: "binding-sync-profile",
+		runtimeBinding: { runtimeInstanceId: "binding-sync", adapterId: "binding-sync-fake", state: "unbound" },
+	});
+	const router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore: store });
+	try {
+		await router.emit({ type: "message", piboSessionId: "ps_binding_sync", id: "binding-sync-turn", text: "go", source: "user" });
+		await waitFor(() => store.get("ps_binding_sync")?.runtimeBinding?.metadata?.durable === true);
+		const binding = store.get("ps_binding_sync").runtimeBinding;
+		assert.equal(binding.state, "bound");
+		assert.equal(binding.metadata.durable, true);
+		assert.equal(binding.revision, 3);
+	} finally {
+		await router.disposeAll();
+	}
+});
+
 test("session router lazily creates the reserved Pi transcript for an empty migrated session", async () => {
 	const cwd = await mkdtemp(join(tmpdir(), "pibo-empty-migrated-pi-binding-"));
 	const store = new InMemoryPiboSessionStore();
@@ -845,16 +895,28 @@ test("session router lazily creates the reserved Pi transcript for an empty migr
 			metadata: { migrationSource: "schema-v4", nativePresenceExpected: false },
 		},
 	});
-	const router = new PiboSessionRouter({ cwd, persistSession: true, sessionStore: store });
+	const firstRouter = new PiboSessionRouter({ cwd, persistSession: true, sessionStore: store });
+	let firstLocator;
 	try {
-		const status = await router.emit({ type: "execution", piboSessionId: "ps_empty_migrated_pi", action: "status" });
+		const status = await firstRouter.emit({ type: "execution", piboSessionId: "ps_empty_migrated_pi", action: "status" });
 		assert.equal(status.type, "execution_result");
 		const stored = store.get("ps_empty_migrated_pi");
 		assert.equal(stored.runtimeBinding.state, "bound");
-		assert.equal(stored.runtimeBinding.metadata.nativePresenceExpected, true);
+		assert.equal(stored.runtimeBinding.metadata.nativePresenceExpected, false);
 		assert.equal(stored.runtimeBinding.locator.kind, "local-file");
+		firstLocator = stored.runtimeBinding.locator.value;
 	} finally {
-		await router.disposeAll();
+		await firstRouter.disposeAll();
+	}
+
+	if (firstLocator) await rm(firstLocator, { force: true });
+	const reopenedRouter = new PiboSessionRouter({ cwd, persistSession: true, sessionStore: store });
+	try {
+		const status = await reopenedRouter.emit({ type: "execution", piboSessionId: "ps_empty_migrated_pi", action: "status" });
+		assert.equal(status.type, "execution_result");
+		assert.equal(store.get("ps_empty_migrated_pi").runtimeBinding.state, "bound");
+	} finally {
+		await reopenedRouter.disposeAll();
 		await rm(cwd, { recursive: true, force: true });
 	}
 });

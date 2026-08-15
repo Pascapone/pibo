@@ -1008,6 +1008,9 @@ export class PiboSessionRouter {
 						processing: state.processing,
 						queuedMessages: state.queuedMessages,
 					});
+					if (!state.processing && state.queuedMessages === 0 && !state.disposed) {
+						this.syncLiveSessionRuntimeBinding(piboSession.id, runtimeSession);
+					}
 					if (state.disposed || state.processing || state.queuedMessages > 0) this.clearIdleSessionTimer(piboSession.id);
 					else this.scheduleIdleSessionEvictionIfIdle(piboSession.id);
 				},
@@ -1079,6 +1082,22 @@ export class PiboSessionRouter {
 			createdAt: current.createdAt ?? session.createdAt,
 			updatedAt: now,
 		};
+	}
+
+	private syncLiveSessionRuntimeBinding(piboSessionId: string, runtimeSession: { getBinding(): RuntimeSessionBinding }): void {
+		const session = this.sessionStore.get(piboSessionId);
+		if (!session) return;
+		try {
+			this.persistSessionRuntimeBinding(session, runtimeSession.getBinding());
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			this.emitOutput({
+				type: "session_error",
+				piboSessionId,
+				error: `Failed to persist the live runtime binding: ${message}`,
+				errorDetails: runtimeSessionErrorDetails(message),
+			});
+		}
 	}
 
 	private assertOpenableRuntimeBinding(binding: RuntimeSessionBinding): void {

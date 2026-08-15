@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
 import { SessionManager, type AgentSessionRuntime, type ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import {
 	InitialSessionContext,
@@ -276,6 +275,8 @@ class PiAgentRuntimeSession implements AgentRuntimeSession {
 	private readonly compatibilityHandle: AgentSessionRuntime;
 	private pendingPrompt?: PendingPiPrompt;
 	private engineProcessing = false;
+	private bindingNativeSessionId: string;
+	private nativePresenceExpected: boolean;
 	private disposed = false;
 
 	constructor(
@@ -286,6 +287,8 @@ class PiAgentRuntimeSession implements AgentRuntimeSession {
 		initialFastMode: boolean,
 	) {
 		this.cwd = runtime.cwd;
+		this.bindingNativeSessionId = runtime.session.sessionId;
+		this.nativePresenceExpected = runtime.session.sessionManager.buildSessionContext().messages.length > 0;
 		this.routed = new PiRoutedSession(
 			piboSessionId,
 			runtime,
@@ -303,6 +306,11 @@ class PiAgentRuntimeSession implements AgentRuntimeSession {
 	}
 
 	getBinding(): RuntimeSessionBinding {
+		const persistent = this.binding.metadata?.persistent !== false;
+		if (this.bindingNativeSessionId !== this.runtime.session.sessionId) {
+			this.bindingNativeSessionId = this.runtime.session.sessionId;
+			this.nativePresenceExpected = this.runtime.session.sessionManager.buildSessionContext().messages.length > 0;
+		}
 		return {
 			...structuredClone(this.binding),
 			nativeSessionId: this.runtime.session.sessionId,
@@ -310,6 +318,10 @@ class PiAgentRuntimeSession implements AgentRuntimeSession {
 			locator: this.runtime.session.sessionFile
 				? { kind: "local-file", value: this.runtime.session.sessionFile }
 				: undefined,
+			metadata: {
+				...(this.binding.metadata ?? {}),
+				nativePresenceExpected: persistent && this.nativePresenceExpected,
+			},
 		};
 	}
 
@@ -408,6 +420,7 @@ class PiAgentRuntimeSession implements AgentRuntimeSession {
 	}
 
 	private handlePiboEvent(event: PiboOutputEvent): void {
+		if (event.type === "message_started") this.nativePresenceExpected = true;
 		const eventId = "eventId" in event ? event.eventId : undefined;
 		const pending = this.pendingPrompt;
 		if (pending && eventId === pending.id) {
@@ -556,18 +569,15 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 				},
 			};
 		}
-		if (binding.locator?.kind === "local-file" && binding.locator.value && existsSync(binding.locator.value)) {
-			return {
-				...binding,
-				metadata: { ...(binding.metadata ?? {}), nativePresenceExpected: true },
-			};
-		}
 		const existing = (await SessionManager.list(input.workspace)).find((session) => session.id === binding.nativeSessionId);
 		if (existing) {
 			return {
 				...binding,
 				locator: { kind: "local-file", value: existing.path },
-				metadata: { ...(binding.metadata ?? {}), nativePresenceExpected: true },
+				metadata: {
+					...(binding.metadata ?? {}),
+					nativePresenceExpected: existing.messageCount > 0,
+				},
 			};
 		}
 		if (binding.metadata?.nativePresenceExpected === false) return binding;
@@ -619,7 +629,9 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 			metadata: {
 				...(input.binding?.metadata ?? {}),
 				persistent: compatibility?.persistSession !== false,
-				nativePresenceExpected: compatibility?.persistSession !== false,
+				nativePresenceExpected:
+					compatibility?.persistSession !== false
+					&& runtime.session.sessionManager.buildSessionContext().messages.length > 0,
 			},
 		};
 		return new PiAgentRuntimeSession(
