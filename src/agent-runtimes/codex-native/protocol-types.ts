@@ -76,3 +76,121 @@ export type CodexAppServerServerNotification<TParams = CodexAppServerJson> = {
 	method: string;
 	params?: TParams;
 };
+
+export type CodexAppServerThreadStatus =
+	| { type: "notLoaded" }
+	| { type: "idle" }
+	| { type: "systemError" }
+	| { type: "active"; activeFlags: string[] };
+
+export type CodexAppServerTurnStatus = "completed" | "interrupted" | "failed" | "inProgress";
+
+export type CodexAppServerThreadItem = {
+	id: string;
+	type: string;
+} & Record<string, unknown>;
+
+export type CodexAppServerTurn = {
+	id: string;
+	status: CodexAppServerTurnStatus;
+	items: CodexAppServerThreadItem[];
+	itemsView?: "notLoaded" | "summary" | "full";
+	startedAt?: number | null;
+	completedAt?: number | null;
+	durationMs?: number | null;
+	error?: unknown;
+};
+
+export type CodexAppServerThread = {
+	id: string;
+	preview: string;
+	modelProvider: string;
+	createdAt: number;
+	updatedAt: number;
+	recencyAt?: number | null;
+	cwd: string;
+	cliVersion: string;
+	source: unknown;
+	threadSource?: unknown;
+	status: CodexAppServerThreadStatus;
+	ephemeral: boolean;
+	turns: CodexAppServerTurn[];
+	sessionId: string;
+	name?: string | null;
+	forkedFromId?: string | null;
+	parentThreadId?: string | null;
+	path?: string | null;
+};
+
+export type CodexAppServerThreadStartParams = {
+	cwd?: string | null;
+	ephemeral?: boolean | null;
+	model?: string | null;
+	modelProvider?: string | null;
+	serviceTier?: string | null;
+	approvalPolicy?: string | null;
+	sandbox?: string | null;
+	config?: Record<string, CodexAppServerJson> | null;
+	baseInstructions?: string | null;
+	developerInstructions?: string | null;
+};
+
+export type CodexAppServerThreadResumeParams = Omit<CodexAppServerThreadStartParams, "ephemeral"> & {
+	threadId: string;
+};
+
+export type CodexAppServerThreadForkParams = CodexAppServerThreadStartParams & {
+	threadId: string;
+	lastTurnId?: string | null;
+	ephemeral?: boolean;
+};
+
+export type CodexAppServerThreadResponse = {
+	thread: CodexAppServerThread;
+	model: string;
+	modelProvider: string;
+	cwd: string;
+	reasoningEffort?: string | null;
+	serviceTier?: string | null;
+	approvalPolicy: unknown;
+	approvalsReviewer: unknown;
+	sandbox: unknown;
+	instructionSources?: string[];
+};
+
+export type CodexAppServerThreadReadParams = {
+	threadId: string;
+	includeTurns?: boolean;
+};
+
+export type CodexAppServerThreadReadResponse = {
+	thread: CodexAppServerThread;
+};
+
+export type CodexAppServerThreadSourceKind =
+	| "cli"
+	| "vscode"
+	| "exec"
+	| "appServer"
+	| "subAgent"
+	| "subAgentReview"
+	| "subAgentCompact"
+	| "subAgentThreadSpawn"
+	| "subAgentOther"
+	| "unknown";
+
+export type CodexAppServerThreadListParams = {
+	cursor?: string | null;
+	limit?: number | null;
+	sortKey?: "created_at" | "updated_at" | "recency_at" | "section_position" | null;
+	sortDirection?: "asc" | "desc" | null;
+	cwd?: string | string[] | null;
+	archived?: boolean | null;
+	sourceKinds?: CodexAppServerThreadSourceKind[] | null;
+};
+
+export type CodexAppServerThreadListResponse = {
+	data: CodexAppServerThread[];
+	nextCursor?: string | null;
+	backwardsCursor?: string | null;
+};
