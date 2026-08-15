@@ -390,9 +390,9 @@ Implementation MUST be split into focused or explicitly stacked branches/PRs to 
 
 ## Success Criteria
 
-- [ ] SC-001: Runtime SPI and registry are independent of Pi and Codex and pass fake adapter contracts.
+- [x] SC-001: Runtime SPI and registry are independent of Pi and Codex and pass fake adapter contracts.
 - [ ] SC-002: Pi runs entirely through the adapter boundary with full local and Pibo2 parity.
-- [ ] SC-003: Runtime bindings migrate existing data without id or transcript rewrite.
+- [x] SC-003: Runtime bindings migrate existing data without id or transcript rewrite.
 - [ ] SC-004: Agent Designer and profile inspection are runtime-aware and reject unsupported selections.
 - [ ] SC-005: Pibo tools, MCP, skills, context, and Pibo subagents have proven cross-runtime delivery and isolation.
 - [ ] SC-006: New product history, trace, debug, telemetry, and binding inspection are runtime neutral.
@@ -406,7 +406,7 @@ Implementation MUST be split into focused or explicitly stacked branches/PRs to 
 ### Decisions / Assumptions
 
 - Profiles store a default configured runtime instance; a new session freezes it. Explicit session create APIs may override it only with a registered compatible instance.
-- Binding uniqueness is scoped to configured runtime instance plus native session id.
+- Binding uniqueness is scoped to adapter id plus native session id, including across configured instances of the same adapter.
 - Loopback Streamable HTTP MCP is the first external-harness bridge because official Codex supports URL plus bearer-token environment configuration. Stdio can be added later if another adapter requires it.
 - Required context does not fall back to a visible bootstrap message unless the saved profile explicitly permits that degradation.
 - Pibo-managed subagents are mandatory portable behavior. Harness-native subagents remain adapter-native and separately described.

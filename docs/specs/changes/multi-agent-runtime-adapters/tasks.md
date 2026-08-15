@@ -58,8 +58,8 @@ Target branch: `feature/agent-runtime-foundation`
 - [x] 3.6 Implement dual read/write and synthesized legacy Pi binding fallback.
 - [x] 3.7 Implement CAS `unbound -> bound`, missing/error transitions, and explicit repair/rebind path.
 - [x] 3.8 Update APIs/read models/session inspection/debug/Chat Web metadata with additive binding data.
-- [x] 3.9 Add migration, uniqueness, concurrent-bind, missing-session, rollback, and old-database tests; full suite passes 1,621/1,621.
-- [ ] 3.10 Validate migration against a Pibo2 copy of existing data and record row/id/path evidence.
+- [x] 3.9 Add migration, uniqueness, concurrent-bind, missing-session, rollback, and old-database tests; post-fix full suite passes 1,622/1,622.
+- [x] 3.10 Validate migration against existing Pibo2 data and record row/id/path, authenticated API/UI, restart, debug, signals, and rollback evidence in `docs/reports/runtime-binding-persistence-validation-2026-08-15.md`.
 - [ ] 3.11 Commit, push, and open persistence PR.
 
 ## 4. Portable profiles and Agent Designer PR
