@@ -1,4 +1,12 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import readline from "node:readline";
+
+const createPath = process.env.PIBO_CODEX_FAKE_CREATE_PATH;
+if (createPath) {
+	mkdirSync(createPath);
+	writeFileSync(join(createPath, "created.txt"), "created");
+}
 
 const scenario = process.env.PIBO_CODEX_FAKE_SCENARIO ?? "happy";
 const overloadFailures = Number.parseInt(process.env.PIBO_CODEX_FAKE_OVERLOAD_FAILURES ?? "2", 10);

@@ -96,6 +96,7 @@ export type CodexAppServerClientOptions = {
 	args?: readonly string[];
 	cwd?: string;
 	env?: NodeJS.ProcessEnv;
+	fileCreationMask?: number;
 	clientInfo: CodexAppServerClientInfo;
 	capabilities?: CodexAppServerInitializeCapabilities;
 	startupTimeoutMs?: number;
@@ -233,6 +234,10 @@ function validateClientOptions(options: CodexAppServerClientOptions): void {
 	nonNegativeInteger(options.overloadRetry?.baseDelayMs, DEFAULT_OVERLOAD_RETRY_BASE_MS, "overloadRetry.baseDelayMs");
 	nonNegativeInteger(options.overloadRetry?.maxDelayMs, DEFAULT_OVERLOAD_RETRY_MAX_MS, "overloadRetry.maxDelayMs");
 	boundedRatio(options.overloadRetry?.jitterRatio, DEFAULT_OVERLOAD_RETRY_JITTER, "overloadRetry.jitterRatio");
+	if (options.fileCreationMask !== undefined
+		&& (!Number.isSafeInteger(options.fileCreationMask) || options.fileCreationMask < 0 || options.fileCreationMask > 0o777)) {
+		throw new Error("fileCreationMask must be an integer between 0 and 0o777");
+	}
 }
 
 function serializeMessage(message: unknown, maxMessageBytes: number): string {
@@ -345,11 +350,20 @@ export class CodexAppServerClient {
 
 	static async start(options: CodexAppServerClientOptions): Promise<CodexAppServerClient> {
 		validateClientOptions(options);
-		const process = spawn(options.command, [...(options.args ?? [])], {
-			cwd: options.cwd,
-			env: options.env ?? globalThis.process.env,
-			stdio: ["pipe", "pipe", "pipe"],
-		});
+		let previousMask: number | undefined;
+		if (options.fileCreationMask !== undefined && globalThis.process.platform !== "win32") {
+			previousMask = globalThis.process.umask(options.fileCreationMask);
+		}
+		let process: ChildProcessWithoutNullStreams;
+		try {
+			process = spawn(options.command, [...(options.args ?? [])], {
+				cwd: options.cwd,
+				env: options.env ?? globalThis.process.env,
+				stdio: ["pipe", "pipe", "pipe"],
+			});
+		} finally {
+			if (previousMask !== undefined) globalThis.process.umask(previousMask);
+		}
 		const placeholder: CodexAppServerInitializeResponse = {
 			codexHome: "",
 			platformFamily: "",

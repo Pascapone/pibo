@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import {
@@ -33,6 +36,29 @@ async function startClient(t, scenario = "happy", overrides = {}) {
 function isClientError(code) {
 	return (error) => error instanceof CodexAppServerClientError && error.code === code;
 }
+
+test("Codex App Server client applies a private child file-creation mask without changing the parent mask", async (t) => {
+	const root = await mkdtemp(join(tmpdir(), "pibo-codex-client-umask-"));
+	t.after(() => rm(root, { recursive: true, force: true }));
+	const created = join(root, "created");
+	const parentMask = process.umask();
+	const client = await startClient(t, "happy", {
+		fileCreationMask: 0o077,
+		env: {
+			...process.env,
+			PIBO_CODEX_FAKE_SCENARIO: "happy",
+			PIBO_CODEX_FAKE_CREATE_PATH: created,
+		},
+	});
+	assert.equal(process.umask(), parentMask);
+	assert.equal((await stat(created)).mode & 0o777, 0o700);
+	assert.equal((await stat(join(created, "created.txt"))).mode & 0o777, 0o600);
+	await client.close();
+	await assert.rejects(
+		CodexAppServerClient.start(clientOptions("happy", { fileCreationMask: 0o1000 })),
+		/fileCreationMask/,
+	);
+});
 
 test("Codex App Server client performs initialize/initialized before other requests", async (t) => {
 	const client = await startClient(t);

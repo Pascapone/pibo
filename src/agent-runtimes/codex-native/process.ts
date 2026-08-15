@@ -512,6 +512,7 @@ export async function startCodexNativeAppServer(
 		const capabilities: CodexAppServerInitializeCapabilities = { experimentalApi: false };
 		client = await CodexAppServerClient.start({
 			command: input.config.executable,
+			fileCreationMask: 0o077,
 			args: [
 				"app-server",
 				"--stdio",
