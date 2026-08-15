@@ -4,6 +4,7 @@ import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { createDefaultPiboProfile } from "./default-profile.js";
 import { getMcpAgentContextFile } from "../mcp/agent-context.js";
 import { createRunToolDefinitions, type PiboRunToolController } from "../runs/tools.js";
+import { PIBO_GOAL_TOOL_NAMES } from "../loops/tools.js";
 import { createSubagentToolName, type PiboSubagentRunner } from "../subagents/tool.js";
 import { getInstalledCliToolContextFile } from "../tools/registry.js";
 import {
@@ -311,6 +312,7 @@ function generatedOriginForTool(name: string, profile: InitialSessionContext): s
 	if (name === "runtime") return "Generated Pibo runtime tool selected by the profile.";
 	if (name.startsWith("pibo_subagent_")) return "Generated subagent tool from the profile's subagent list.";
 	if (name.startsWith("pibo_run_")) return "Generated run-control tool from the pibo-run-control capability package.";
+	if (PIBO_GOAL_TOOL_NAMES.includes(name as (typeof PIBO_GOAL_TOOL_NAMES)[number])) return "Generated goal-control tool from the pibo-goal-control capability package.";
 	if (name === "apply_patch" || name === "view_image") return "Generated Codex-compatible tool from the codex-compat package.";
 	if (profile.builtinToolNames.includes(name) || (DEFAULT_BUILTIN_TOOL_NAMES as readonly string[]).includes(name)) return undefined;
 	return undefined;

@@ -25,9 +25,14 @@ function findNode(nodes, predicate) {
 test("default base context build does not select Pibo native tooling context", async () => {
 	const snapshot = await inspectPiboContextBuild({ profile: createDefaultPiboProfile() });
 	const nativeTooling = findNode(snapshot.nodes, (node) => node.path?.endsWith("context/pibo-native-tooling.md"));
+	const goalTool = findNode(snapshot.nodes, (node) => node.id === "tools/get_goal");
+	const goalSchema = findNode([goalTool], (node) => node.id === "tools/get_goal/definition");
 
 	assert.equal(snapshot.profileName, "base");
 	assert.equal(nativeTooling, undefined);
+	assert.equal(goalTool.source, "generated");
+	assert.ok(goalTool.badges.includes("PIBO"));
+	assert.ok(goalSchema.schemaJson.inputSchema);
 });
 
 test("context build snapshot exposes runtime context and provider-backed web search without final prompt duplicate", async () => {
