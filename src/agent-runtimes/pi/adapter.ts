@@ -1,10 +1,5 @@
-import { SessionManager, type AgentSessionRuntime, type ExtensionFactory } from "@earendil-works/pi-coding-agent";
-import { getOpenAiCodexProviderUsageForActiveModel } from "../../auth/openai-codex-usage.js";
-import { expandInlineSkills } from "../../core/skill-expansion.js";
-import {
-	normalizeAssistantUsageEvent,
-	normalizePiEvent,
-} from "../../core/routed-session.js";
+import { randomUUID } from "node:crypto";
+import type { AgentSessionRuntime, ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import {
 	InitialSessionContext,
 	type ModelProfile,
@@ -14,11 +9,19 @@ import {
 	type PiboRuntimeOptions,
 	type PiboRuntimeRetryDefaults,
 	type PiboRuntimeSessionContext,
-} from "../../core/runtime.js";
-import type { PiboJsonObject, PiboOutputEvent } from "../../core/events.js";
+} from "./runtime.js";
+import type {
+	PiboJsonObject,
+	PiboOutputEvent,
+	PiboPiSessionSnapshot,
+	PiboSessionListItem,
+	PiboSessionOperationResult,
+	PiboSessionTreeResult,
+} from "../../core/events.js";
 import type { PiboSubagentRunner } from "../../subagents/tool.js";
 import type { PiboRunToolController } from "../../runs/tools.js";
 import type { PiboRuntimeToolController } from "../../tools/runtime/tool.js";
+import { PiboPluginRegistry } from "../../plugins/registry.js";
 import {
 	unsupportedAgentRuntimeCapability,
 	type AgentRuntimeCapabilities,
@@ -28,15 +31,17 @@ import type {
 	AgentRuntimeAdapter,
 	AgentRuntimeDiagnostic,
 	AgentRuntimeDriver,
+	AgentRuntimeNativeSessionInfo,
 	AgentRuntimeNativeSessionSnapshot,
 	AgentRuntimePromptInput,
 	AgentRuntimeSession,
-	AgentRuntimeSessionTreeNode,
+	AgentRuntimeSessionOperationResult,
 	AgentRuntimeStatus,
 	OpenAgentRuntimeSessionInput,
 	RuntimeSessionBinding,
 	ValidateAgentRuntimeProfileInput,
 } from "../../agent-runtime/types.js";
+import { RoutedSession as PiRoutedSession } from "./routed-session.js";
 
 const PI_ADAPTER_ID = "pi";
 const PI_PROTOCOL_VERSION = "0.80.6";
@@ -105,6 +110,14 @@ export type PiAgentRuntimeCompatibilityServices = {
 	extensionFactories?: ExtensionFactory[];
 	modelDefaults?: PiboRuntimeOptions["modelDefaults"];
 	contextGuardTuiQueueOrdering?: boolean;
+	initialFastMode?: boolean;
+};
+
+type PendingPiPrompt = {
+	id: string;
+	terminal: boolean;
+	resolve: () => void;
+	reject: (error: unknown) => void;
 };
 
 function cloneProfileForPiSession(input: OpenAgentRuntimeSessionInput): InitialSessionContext {
@@ -138,18 +151,65 @@ function cloneProfileForPiSession(input: OpenAgentRuntimeSessionInput): InitialS
 	});
 }
 
-function numberValue(value: unknown): number | undefined {
-	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+function nativeSnapshotFromPi(
+	runtimeInstanceId: string,
+	snapshot: PiboPiSessionSnapshot,
+): AgentRuntimeNativeSessionSnapshot {
+	return {
+		adapterId: PI_ADAPTER_ID,
+		runtimeInstanceId,
+		nativeSessionId: snapshot.piSessionId,
+		locator: snapshot.sessionFile ? { kind: "local-file", value: snapshot.sessionFile } : undefined,
+		leafId: snapshot.leafId,
+		cwd: snapshot.cwd,
+		name: snapshot.sessionName,
+		parentLocator: snapshot.parentSessionFile
+			? { kind: "local-file", value: snapshot.parentSessionFile }
+			: undefined,
+	};
 }
 
-function isAssistantMessageEnd(event: unknown): event is { type: "message_end"; message: { role?: unknown; usage?: unknown } } {
-	if (!event || typeof event !== "object") return false;
-	const candidate = event as { type?: unknown; message?: { role?: unknown } };
-	return candidate.type === "message_end" && candidate.message?.role === "assistant";
+function nativeOperationFromPi(
+	runtimeInstanceId: string,
+	result: PiboSessionOperationResult,
+): AgentRuntimeSessionOperationResult {
+	return {
+		previous: nativeSnapshotFromPi(runtimeInstanceId, result.previous),
+		current: nativeSnapshotFromPi(runtimeInstanceId, result.current),
+		cancelled: result.cancelled,
+		selectedText: result.selectedText,
+		editorText: result.editorText,
+		summaryEntryId: result.summaryEntryId,
+	};
+}
+
+function nativeSessionInfoFromPi(
+	runtimeInstanceId: string,
+	info: PiboSessionListItem,
+): AgentRuntimeNativeSessionInfo {
+	return {
+		adapterId: PI_ADAPTER_ID,
+		runtimeInstanceId,
+		nativeSessionId: info.id,
+		locator: { kind: "local-file", value: info.path },
+		cwd: info.cwd,
+		name: info.name,
+		parentLocator: info.parentSessionPath
+			? { kind: "local-file", value: info.parentSessionPath }
+			: undefined,
+		createdAt: info.created,
+		updatedAt: info.modified,
+		messageCount: info.messageCount,
+		firstMessage: info.firstMessage,
+	};
 }
 
 function semanticEventFromPibo(event: PiboOutputEvent): AgentRuntimeSemanticEvent | undefined {
 	switch (event.type) {
+		case "message_started":
+			return { type: "turn_started", turnId: event.eventId };
+		case "message_finished":
+			return { type: "turn_completed", turnId: event.eventId, status: "completed" };
 		case "assistant_delta":
 			return { type: "assistant_delta", text: event.text, contentIndex: event.contentIndex };
 		case "assistant_message":
@@ -197,45 +257,59 @@ function semanticEventFromPibo(event: PiboOutputEvent): AgentRuntimeSemanticEven
 			};
 		case "session_error":
 			return { type: "error", message: event.error, details: event.errorDetails };
+		case "pi_event":
+			return { type: "native_event", event: event.event };
 		default:
 			return undefined;
 	}
-}
-
-function normalizePiTree(nodes: ReturnType<AgentSessionRuntime["session"]["sessionManager"]["getTree"]>): AgentRuntimeSessionTreeNode[] {
-	return nodes.map((node) => ({
-		entry: JSON.parse(JSON.stringify(node.entry)) as PiboJsonObject,
-		children: normalizePiTree(node.children),
-		label: node.label,
-		labelTimestamp: node.labelTimestamp,
-	}));
 }
 
 class PiAgentRuntimeSession implements AgentRuntimeSession {
 	readonly adapterId = PI_ADAPTER_ID;
 	readonly cwd: string;
 	readonly capabilities = PI_AGENT_RUNTIME_CAPABILITIES;
+	readonly compatibility = { productRawEventType: "pi_event" as const };
 	readonly controls: NonNullable<AgentRuntimeSession["controls"]>;
 	private readonly listeners = new Set<(event: AgentRuntimeSemanticEvent) => void>();
-	private unsubscribePi?: () => void;
-	private disposed = false;
+	private readonly routed: PiRoutedSession;
 	private readonly compatibilityHandle: AgentSessionRuntime;
+	private pendingPrompt?: PendingPiPrompt;
+	private engineProcessing = false;
+	private disposed = false;
 
 	constructor(
 		readonly runtimeInstanceId: string,
 		private readonly piboSessionId: string,
 		private readonly runtime: AgentSessionRuntime,
-		private binding: RuntimeSessionBinding,
+		private readonly binding: RuntimeSessionBinding,
+		initialFastMode: boolean,
 	) {
 		this.cwd = runtime.cwd;
+		this.routed = new PiRoutedSession(
+			piboSessionId,
+			runtime,
+			(event) => this.handlePiboEvent(event),
+			PiboPluginRegistry.create(),
+			true,
+			undefined,
+			initialFastMode,
+			undefined,
+			undefined,
+			(state) => this.handleEngineState(state),
+		);
 		this.controls = this.createControls();
-		this.bindPiSession();
-		runtime.setRebindSession(async () => this.bindPiSession());
 		this.compatibilityHandle = this.createCompatibilityHandle();
 	}
 
 	getBinding(): RuntimeSessionBinding {
-		return structuredClone(this.binding);
+		return {
+			...structuredClone(this.binding),
+			nativeSessionId: this.runtime.session.sessionId,
+			state: "bound",
+			locator: this.runtime.session.sessionFile
+				? { kind: "local-file", value: this.runtime.session.sessionFile }
+				: undefined,
+		};
 	}
 
 	subscribe(listener: (event: AgentRuntimeSemanticEvent) => void): () => void {
@@ -245,266 +319,183 @@ class PiAgentRuntimeSession implements AgentRuntimeSession {
 
 	async prompt(input: AgentRuntimePromptInput): Promise<void> {
 		this.assertActive();
-		const text = expandInlineSkills(input.text, this.runtime.session.resourceLoader.getSkills().skills);
-		await this.runtime.session.prompt(text, { source: input.source });
-		const waitForIdle = (this.runtime.session as AgentSessionRuntime["session"] & { waitForIdle?: () => Promise<void> }).waitForIdle;
-		if (waitForIdle) await waitForIdle.call(this.runtime.session);
+		if (this.pendingPrompt) throw new Error(`Pi runtime session "${this.piboSessionId}" already has an active prompt.`);
+		const id = randomUUID();
+		await new Promise<void>((resolve, reject) => {
+			this.pendingPrompt = { id, terminal: false, resolve, reject };
+			try {
+				this.routed.enqueueMessage({
+					type: "message",
+					piboSessionId: this.piboSessionId,
+					id,
+					text: input.text,
+					source: input.source === "interactive" ? "user" : "service",
+					capabilityScope: input.capabilityScope === "run-reminder" ? "run-reminder" : undefined,
+				});
+			} catch (error) {
+				this.pendingPrompt = undefined;
+				reject(error);
+			}
+		});
 	}
 
 	async steer(input: AgentRuntimePromptInput): Promise<void> {
 		this.assertActive();
-		const text = expandInlineSkills(input.text, this.runtime.session.resourceLoader.getSkills().skills);
-		await this.runtime.session.steer(text);
+		await this.routed.steerMessage({
+			type: "message",
+			piboSessionId: this.piboSessionId,
+			id: randomUUID(),
+			text: input.text,
+			delivery: "steer",
+			source: input.source === "interactive" ? "user" : "service",
+		});
 	}
 
 	async abort(): Promise<void> {
+		const pending = this.pendingPrompt;
+		if (pending) {
+			const cancelled = await this.routed.cancelMessage(pending.id);
+			if (!cancelled) await this.runtime.session.abort();
+			pending.terminal = true;
+			this.settlePromptIfReady();
+			return;
+		}
 		await this.runtime.session.abort();
 	}
 
 	async dispose(): Promise<void> {
 		if (this.disposed) return;
 		this.disposed = true;
-		this.unsubscribePi?.();
-		this.unsubscribePi = undefined;
+		await this.routed.dispose();
+		const pending = this.pendingPrompt;
+		this.pendingPrompt = undefined;
+		pending?.resolve();
 		this.listeners.clear();
-		await this.runtime.dispose();
 	}
 
 	getStatus(): AgentRuntimeStatus {
-		const session = this.runtime.session;
-		const model = session.model;
-		const contextUsage = session.getContextUsage();
+		const status = this.routed.getStatus();
 		return {
-			streaming: this.disposed ? false : session.isStreaming,
-			enabledTools: session.getActiveToolNames(),
-			cwd: this.cwd,
-			...(model ? { activeModel: { provider: model.provider, id: model.id } } : {}),
+			streaming: status.streaming,
+			enabledTools: status.enabledTools,
+			cwd: status.cwd,
+			activeModel: this.routed.getActiveModel(),
 			reasoning: {
-				value: session.thinkingLevel,
-				availableValues: session.getAvailableThinkingLevels(),
-				supported: session.supportsThinking(),
+				value: status.thinkingLevel,
+				availableValues: this.runtime.session.getAvailableThinkingLevels(),
+				supported: this.runtime.session.supportsThinking(),
 			},
-			contextUsage: contextUsage
-				? {
-					tokens: contextUsage.tokens ?? undefined,
-					contextWindow: contextUsage.contextWindow ?? undefined,
-					percent: contextUsage.percent ?? undefined,
-				}
-				: contextUsage,
+			fastMode: this.routed.getFastMode(),
+			retry: status.retry ? structuredClone(status.retry) as unknown as PiboJsonObject : undefined,
+			warnings: status.warnings,
+			errors: status.errors,
 		};
 	}
 
 	async getStatusSnapshot(): Promise<AgentRuntimeStatus> {
-		const status = this.getStatus();
-		let providerUsage: AgentRuntimeStatus["providerUsage"];
-		try {
-			providerUsage = await getOpenAiCodexProviderUsageForActiveModel(status.activeModel);
-		} catch {
-			providerUsage = undefined;
-		}
-		return { ...status, ...(providerUsage ? { providerUsage } : {}) };
+		const status = await this.routed.getStatusSnapshot();
+		return {
+			...this.getStatus(),
+			activeModel: status.activeModel,
+			contextUsage: status.contextUsage,
+			providerUsage: status.providerUsage,
+		};
 	}
 
 	getNativeCompatibilityHandle(): AgentSessionRuntime {
 		return this.compatibilityHandle;
 	}
 
-	private createCompatibilityHandle(): AgentSessionRuntime {
-		return new Proxy(this.runtime, {
-			get: (target, property, receiver) => {
-				if (property === "dispose") return () => this.dispose();
-				if (property === "setRebindSession") {
-					return (listener: Parameters<AgentSessionRuntime["setRebindSession"]>[0]) => {
-						target.setRebindSession(listener
-							? async (session) => {
-								this.bindPiSession();
-								await listener(session);
-							}
-							: async () => this.bindPiSession());
-					};
-				}
-				const value = Reflect.get(target, property, receiver) as unknown;
-				return typeof value === "function" ? value.bind(target) : value;
-			},
-		});
+	private handlePiboEvent(event: PiboOutputEvent): void {
+		const eventId = "eventId" in event ? event.eventId : undefined;
+		const pending = this.pendingPrompt;
+		if (pending && eventId === pending.id) {
+			if (event.type === "message_finished" || event.type === "session_error") pending.terminal = true;
+		}
+		const semantic = semanticEventFromPibo(event);
+		if (semantic) this.emit(semantic);
+		if (event.type === "session_error") {
+			this.emit({
+				type: "turn_failed",
+				turnId: event.eventId,
+				message: event.error,
+				details: event.errorDetails,
+			});
+		}
+		this.settlePromptIfReady();
 	}
 
-	private bindPiSession(): void {
-		this.unsubscribePi?.();
-		const session = this.runtime.session;
-		this.binding = {
-			...this.binding,
-			nativeSessionId: session.sessionId,
-			state: "bound",
-			locator: session.sessionFile ? { kind: "local-file", value: session.sessionFile } : undefined,
-		};
-		this.unsubscribePi = session.subscribe((event) => {
-			const nativeType = event && typeof event === "object"
-				? (event as { type?: unknown }).type
-				: undefined;
-			if (nativeType === "agent_start") this.emit({ type: "turn_started" });
-			if (nativeType === "agent_end") this.emit({ type: "turn_completed", status: "completed" });
-			const model = this.runtime.session.model as { contextWindow?: unknown } | undefined;
-			const normalized = normalizePiEvent(this.piboSessionId, event, {
-				contextWindow: numberValue(model?.contextWindow),
-			});
-			if (normalized) {
-				const semantic = semanticEventFromPibo(normalized);
-				if (semantic) this.emit(semantic);
-			}
-			if (isAssistantMessageEnd(event)) {
-				const usage = normalizeAssistantUsageEvent(this.piboSessionId, event.message);
-				if (usage) {
-					const semantic = semanticEventFromPibo(usage);
-					if (semantic) this.emit(semantic);
-				}
-			}
-			if (event && typeof event === "object") {
-				const candidate = event as { type?: unknown; reason?: unknown; result?: unknown; aborted?: unknown; errorMessage?: unknown };
-				if (candidate.type === "compaction_start") {
-					this.emit({
-						type: "compaction_start",
-						reason: typeof candidate.reason === "string" ? candidate.reason : "unknown",
-					});
-				} else if (candidate.type === "compaction_end") {
-					this.emit({
-						type: "compaction_end",
-						reason: typeof candidate.reason === "string" ? candidate.reason : "unknown",
-						result: candidate.result,
-						aborted: candidate.aborted === true,
-						errorMessage: typeof candidate.errorMessage === "string" ? candidate.errorMessage : undefined,
-					});
-				}
-			}
-			this.emit({ type: "native_event", event });
-		});
+	private handleEngineState(state: { processing: boolean; queuedMessages: number; disposed: boolean }): void {
+		this.engineProcessing = state.processing;
+		this.settlePromptIfReady();
+	}
+
+	private settlePromptIfReady(): void {
+		const pending = this.pendingPrompt;
+		if (!pending || !pending.terminal || this.engineProcessing) return;
+		this.pendingPrompt = undefined;
+		pending.resolve();
 	}
 
 	private createControls(): NonNullable<AgentRuntimeSession["controls"]> {
 		return {
-			getCurrentSession: () => this.createSessionSnapshot(),
-			listSessions: async () => {
-				const manager = this.runtime.session.sessionManager;
-				const sessions = await SessionManager.list(this.runtime.cwd, manager.getSessionDir());
-				return sessions.map((session) => ({
-					adapterId: this.adapterId,
-					runtimeInstanceId: this.runtimeInstanceId,
-					nativeSessionId: session.id,
-					locator: { kind: "local-file" as const, value: session.path },
-					cwd: session.cwd,
-					name: session.name,
-					parentLocator: session.parentSessionPath
-						? { kind: "local-file" as const, value: session.parentSessionPath }
-						: undefined,
-					createdAt: session.created.toISOString(),
-					updatedAt: session.modified.toISOString(),
-					messageCount: session.messageCount,
-					firstMessage: session.firstMessage,
-				}));
-			},
-			getForkCandidates: () => this.runtime.session.getUserMessagesForForking(),
-			forkSession: async (entryId) => {
-				const previous = this.createSessionSnapshot();
-				const result = await this.runtime.fork(entryId);
+			getCurrentSession: () => nativeSnapshotFromPi(this.runtimeInstanceId, this.routed.getCurrentSession()),
+			listSessions: async () => (await this.routed.listSessions()).map((info) => nativeSessionInfoFromPi(this.runtimeInstanceId, info)),
+			getForkCandidates: () => this.routed.getForkCandidates(),
+			forkSession: async (entryId) => nativeOperationFromPi(this.runtimeInstanceId, await this.routed.forkSession(entryId)),
+			cloneSession: async () => nativeOperationFromPi(this.runtimeInstanceId, await this.routed.cloneSession()),
+			getSessionTree: () => {
+				const result: PiboSessionTreeResult = this.routed.getSessionTree();
 				return {
-					previous,
-					current: this.createSessionSnapshot(),
-					cancelled: result.cancelled,
-					selectedText: result.selectedText,
+					current: nativeSnapshotFromPi(this.runtimeInstanceId, result.current),
+					tree: result.tree,
 				};
 			},
-			cloneSession: async () => {
-				const leafId = this.runtime.session.sessionManager.getLeafId();
-				if (!leafId) throw new Error("Cannot clone session: no current entry selected");
-				const previous = this.createSessionSnapshot();
-				const result = await this.runtime.fork(leafId, { position: "at" });
-				return {
-					previous,
-					current: this.createSessionSnapshot(),
-					cancelled: result.cancelled,
-				};
-			},
-			getSessionTree: () => ({
-				current: this.createSessionSnapshot(),
-				tree: normalizePiTree(this.runtime.session.sessionManager.getTree()),
-			}),
-			navigateSessionTree: async (params) => {
-				if (typeof params.entryId !== "string") throw new Error("session tree navigation requires entryId");
-				const previous = this.createSessionSnapshot();
-				const result = await this.runtime.session.navigateTree(params.entryId, {
+			navigateSessionTree: async (params) => nativeOperationFromPi(
+				this.runtimeInstanceId,
+				await this.routed.navigateSessionTree({
+					entryId: String(params.entryId ?? ""),
 					summarize: typeof params.summarize === "boolean" ? params.summarize : undefined,
 					customInstructions: typeof params.customInstructions === "string" ? params.customInstructions : undefined,
 					replaceInstructions: typeof params.replaceInstructions === "boolean" ? params.replaceInstructions : undefined,
 					label: typeof params.label === "string" ? params.label : undefined,
-				});
-				return {
-					previous,
-					current: this.createSessionSnapshot(),
-					cancelled: result.cancelled,
-					editorText: result.editorText,
-					summaryEntryId: result.summaryEntry?.id,
-				};
-			},
-			switchSession: async (params) => {
-				if (typeof params.sessionFile !== "string") throw new Error("session switch requires sessionFile");
-				const previous = this.createSessionSnapshot();
-				const result = await this.runtime.switchSession(params.sessionFile, {
+				}),
+			),
+			switchSession: async (params) => nativeOperationFromPi(
+				this.runtimeInstanceId,
+				await this.routed.switchSession({
+					sessionFile: String(params.sessionFile ?? ""),
 					cwdOverride: typeof params.cwdOverride === "string" ? params.cwdOverride : undefined,
-				});
-				return {
-					previous,
-					current: this.createSessionSnapshot(),
-					cancelled: result.cancelled,
-				};
-			},
+				}),
+			),
 			getReasoning: () => ({
 				value: this.runtime.session.thinkingLevel,
 				availableValues: this.runtime.session.getAvailableThinkingLevels(),
 				supported: this.runtime.session.supportsThinking(),
 			}),
 			setReasoning: (value) => {
-				this.runtime.session.setThinkingLevel(value as Parameters<AgentSessionRuntime["session"]["setThinkingLevel"]>[0]);
-				return {
-					value: this.runtime.session.thinkingLevel,
-					availableValues: this.runtime.session.getAvailableThinkingLevels(),
-					supported: this.runtime.session.supportsThinking(),
-				};
+				const result = this.routed.setThinkingLevel(value as Parameters<PiRoutedSession["setThinkingLevel"]>[0]);
+				return { value: result.level, availableValues: result.availableLevels, supported: result.supported };
 			},
 			cycleReasoning: () => {
-				this.runtime.session.cycleThinkingLevel();
-				return {
-					value: this.runtime.session.thinkingLevel,
-					availableValues: this.runtime.session.getAvailableThinkingLevels(),
-					supported: this.runtime.session.supportsThinking(),
-				};
+				const result = this.routed.cycleThinkingLevel();
+				return { value: result.level, availableValues: result.availableLevels, supported: result.supported };
 			},
-			getFastMode: () => ({ mode: "normal", supported: false }),
-			setFastMode: () => ({ mode: "normal", supported: false, changed: false }),
-			setModel: async (model: ModelProfile) => {
-				const resolved = this.runtime.session.modelRegistry.find(model.provider, model.id);
-				if (!resolved) throw new Error(`Unknown model ${model.provider}/${model.id}`);
-				await this.runtime.session.setModel(resolved);
-				return { provider: resolved.provider, id: resolved.id };
-			},
-			compact: (customInstructions) => this.runtime.session.compact(customInstructions),
+			getFastMode: () => this.routed.getFastMode(),
+			setFastMode: (enabled) => this.routed.setFastMode(enabled),
+			setModel: async (model: ModelProfile) => await this.routed.setModel(model),
+			compact: async (customInstructions) => await this.routed.compact(customInstructions),
 		};
 	}
 
-	private createSessionSnapshot(): AgentRuntimeNativeSessionSnapshot {
-		const session = this.runtime.session;
-		const manager = session.sessionManager;
-		return {
-			adapterId: this.adapterId,
-			runtimeInstanceId: this.runtimeInstanceId,
-			nativeSessionId: session.sessionId,
-			locator: session.sessionFile ? { kind: "local-file", value: session.sessionFile } : undefined,
-			leafId: manager.getLeafId(),
-			cwd: this.runtime.cwd,
-			name: session.sessionName,
-			parentLocator: manager.getHeader()?.parentSession
-				? { kind: "local-file", value: manager.getHeader()!.parentSession }
-				: undefined,
-		};
+	private createCompatibilityHandle(): AgentSessionRuntime {
+		return new Proxy(this.runtime, {
+			get: (target, property, receiver) => {
+				if (property === "dispose") return () => this.dispose();
+				const value = Reflect.get(target, property, receiver) as unknown;
+				return typeof value === "function" ? value.bind(target) : value;
+			},
+		});
 	}
 
 	private emit(event: AgentRuntimeSemanticEvent): void {
@@ -584,7 +575,13 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 				? { kind: "local-file", value: runtime.session.sessionFile }
 				: undefined,
 		};
-		return new PiAgentRuntimeSession(this.instanceId, input.piboSession.id, runtime, binding);
+		return new PiAgentRuntimeSession(
+			this.instanceId,
+			input.piboSession.id,
+			runtime,
+			binding,
+			compatibility?.initialFastMode ?? false,
+		);
 	}
 }
 

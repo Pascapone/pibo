@@ -327,11 +327,17 @@ export type AgentRuntimeControls = {
 	respondToUserInput?(requestId: string, answers: PiboJsonObject): Promise<void>;
 };
 
+export type AgentRuntimeCompatibilityMetadata = {
+	/** Deprecated product raw-event shape emitted while compatibility consumers migrate. */
+	productRawEventType?: "pi_event";
+};
+
 export interface AgentRuntimeSession {
 	readonly adapterId: AgentRuntimeAdapterId;
 	readonly runtimeInstanceId: AgentRuntimeInstanceId;
 	readonly cwd: string;
 	readonly capabilities: AgentRuntimeSessionCapabilities;
+	readonly compatibility?: AgentRuntimeCompatibilityMetadata;
 	readonly controls?: AgentRuntimeControls;
 	readonly pendingApproval?: AgentRuntimeApprovalRequest;
 	readonly pendingUserInput?: AgentRuntimeUserInputRequest;
