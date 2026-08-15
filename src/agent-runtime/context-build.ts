@@ -1,5 +1,6 @@
 import type { AgentRuntimeCapabilityDelivery } from "./capabilities.js";
 import type { AgentRuntimeDiagnostic } from "./types.js";
+import type { AgentRuntimeResourceInspection } from "./resources.js";
 import type {
 	PiboContextBuildNode,
 	PiboContextBuildRuntimeInfo,
@@ -54,6 +55,7 @@ export function buildPortableRuntimeContextSnapshot(input: {
 	piboSessionId: string;
 	piboRoomId?: string;
 	activeModel?: InitialSessionContext["model"];
+	resources?: AgentRuntimeResourceInspection;
 }): PiboContextBuildSnapshot {
 	const profile = input.profile;
 	const nodes: PiboContextBuildNode[] = [];
@@ -84,12 +86,45 @@ export function buildPortableRuntimeContextSnapshot(input: {
 	if (profile.toolPackages.runControl === true) {
 		addNativeToolYieldingNode(nodes, input.runtime.capabilities.tools.nativeToolYielding);
 	}
-	addRuntimeContributionGroup(nodes, "skills", "Skills", profile.skills.filter((skill) => skill.enabled !== false).map((skill) => skill.name), input.runtime.capabilities.skills);
-	addRuntimeContributionGroup(nodes, "context", "Context", [
-		...(profile.autoContextFiles ? ["automatic:AGENTS.md/CLAUDE.md"] : []),
-		...profile.contextFiles.filter((file) => file.enabled !== false).map((file) => file.key ?? file.path),
-	], input.runtime.capabilities.context);
-	addRuntimeContributionGroup(nodes, "mcp", "External MCP Servers", [...profile.mcpServers], input.runtime.capabilities.mcp.externalServers);
+	if (input.resources) {
+		addRuntimeResourceGroup(nodes, "skills", "Skills", "skill", input.resources.skills.map((skill) => ({
+			id: skill.contributionId,
+			title: skill.name,
+			source: skill.kind === "builtin" ? "library" : skill.kind === "user" ? "custom" : "plugin",
+			path: skill.materializedPath ?? skill.sourcePath,
+			metadata: { kind: skill.kind },
+		})), input.resources);
+		addRuntimeResourceGroup(nodes, "context", "Context", "context_file", input.resources.context.map((contribution) => ({
+			id: contribution.id,
+			title: contribution.label,
+			source: contribution.source === "pibo-product" ? "pibo"
+				: contribution.source === "generated" ? "generated"
+					: contribution.source,
+			path: contribution.materializedPath ?? contribution.path ?? contribution.sourcePath,
+			bytes: contribution.byteSize,
+			metadata: { kind: contribution.kind, intent: contribution.intent, required: contribution.required },
+		})), input.resources);
+		addRuntimeResourceGroup(nodes, "mcp", "External MCP Servers", "runtime_extension", input.resources.mcpServers.map((server) => ({
+			id: server.contributionId,
+			title: server.name,
+			source: "profile",
+			metadata: {
+				transport: server.transport,
+				connectionStatus: server.status,
+				toolNames: server.tools.map((tool) => tool.name),
+				resourceUris: server.resources.map((resource) => resource.uri),
+				resourceTemplates: server.resourceTemplates.map((resource) => resource.uriTemplate),
+				secretEnvironmentKeys: server.secretEnvironmentKeys,
+			},
+		})), input.resources);
+	} else {
+		addRuntimeContributionGroup(nodes, "skills", "Skills", profile.skills.filter((skill) => skill.enabled !== false).map((skill) => skill.name), input.runtime.capabilities.skills);
+		addRuntimeContributionGroup(nodes, "context", "Context", [
+			...(profile.autoContextFiles ? ["automatic:AGENTS.md/CLAUDE.md"] : []),
+			...profile.contextFiles.filter((file) => file.enabled !== false).map((file) => file.key ?? file.path),
+		], input.runtime.capabilities.context);
+		addRuntimeContributionGroup(nodes, "mcp", "External MCP Servers", [...profile.mcpServers], input.runtime.capabilities.mcp.externalServers);
+	}
 	if (profile.piPackages.some((pkg) => pkg.enabled !== false)) {
 		addNode({
 			id: "adapter-packages",
@@ -132,8 +167,23 @@ export function buildPortableRuntimeContextSnapshot(input: {
 			metadata: diagnostic.path ? { path: diagnostic.path } : undefined,
 		});
 	}
-	const warnings = input.runtime.diagnostics.filter((diagnostic) => diagnostic.severity === "warning").length;
-	const errors = input.runtime.diagnostics.filter((diagnostic) => diagnostic.severity === "error").length;
+	for (const [index, diagnostic] of (input.resources?.diagnostics ?? []).entries()) {
+		addNode({
+			id: `resource-diagnostic-${index}`,
+			kind: "diagnostic",
+			title: diagnostic.code,
+			source: "runtime",
+			state: diagnostic.severity === "error" ? "error" : diagnostic.severity === "warning" ? "warning" : "active",
+			badges: [diagnostic.severity.toUpperCase(), "RESOURCE"],
+			hydratedText: diagnostic.message,
+			metadata: diagnostic.contributionId ? { contributionId: diagnostic.contributionId } : undefined,
+		});
+	}
+	const resourceDiagnostics = input.resources?.diagnostics ?? [];
+	const warnings = input.runtime.diagnostics.filter((diagnostic) => diagnostic.severity === "warning").length
+		+ resourceDiagnostics.filter((diagnostic) => diagnostic.severity === "warning").length;
+	const errors = input.runtime.diagnostics.filter((diagnostic) => diagnostic.severity === "error").length
+		+ resourceDiagnostics.filter((diagnostic) => diagnostic.severity === "error").length;
 	return {
 		version: 1,
 		generatedAt: new Date().toISOString(),
@@ -151,7 +201,10 @@ export function buildPortableRuntimeContextSnapshot(input: {
 			errors,
 		},
 		nodes,
-		diagnostics: input.runtime.diagnostics.map((diagnostic) => ({ type: diagnostic.severity, message: diagnostic.message })),
+		diagnostics: [
+			...input.runtime.diagnostics.map((diagnostic) => ({ type: diagnostic.severity, message: diagnostic.message })),
+			...resourceDiagnostics.map((diagnostic) => ({ type: diagnostic.severity, message: diagnostic.message })),
+		],
 	};
 }
 
@@ -175,6 +228,66 @@ function addNativeToolYieldingNode(
 			"pibo_run_start can always wrap selected Pibo-managed tools when Pibo tool delivery is supported.",
 			...(reason ? [reason] : []),
 		],
+	});
+}
+
+function addRuntimeResourceGroup(
+	nodes: PiboContextBuildNode[],
+	id: string,
+	title: string,
+	kind: PiboContextBuildNode["kind"],
+	items: readonly {
+		id: string;
+		title: string;
+		source?: PiboContextBuildNode["source"];
+		path?: string;
+		bytes?: number;
+		metadata?: Record<string, unknown>;
+	}[],
+	resources: AgentRuntimeResourceInspection,
+): void {
+	const reports = new Map(resources.delivery.map((report) => [report.contributionId, report]));
+	const children = items.map((item, index): PiboContextBuildNode => {
+		const report = reports.get(item.id);
+		const status = report?.status ?? "failed";
+		return {
+			id: `${id}/${index}`,
+			parentId: id,
+			order: index,
+			kind,
+			title: item.title,
+			source: item.source ?? "profile",
+			state: status === "failed" || status === "unsupported"
+				? "error"
+				: status === "degraded"
+					? "warning"
+					: "active",
+			badges: [status.toUpperCase(), ...(report ? [report.mode.toUpperCase(), report.fidelity.toUpperCase()] : [])],
+			...(item.path ? { path: item.path } : {}),
+			...(item.bytes !== undefined ? { bytes: item.bytes } : {}),
+			metadata: {
+				...item.metadata,
+				contributionId: item.id,
+				deliveryStatus: status,
+				deliveryMode: report?.mode,
+				fidelity: report?.fidelity,
+				target: report?.target,
+			},
+			notes: report?.diagnostic ? [report.diagnostic] : undefined,
+		};
+	});
+	const hasError = children.some((child) => child.state === "error");
+	const hasWarning = children.some((child) => child.state === "warning");
+	nodes.push({
+		id,
+		order: nodes.length,
+		kind: id === "skills" ? "skills" : id === "context" ? "context_files" : "runtime_extension",
+		title,
+		source: "profile",
+		state: hasError ? "error" : hasWarning ? "warning" : children.length > 0 ? "active" : "disabled",
+		badges: [hasError ? "FAILED" : hasWarning ? "DEGRADED" : children.length > 0 ? "DELIVERED" : "EMPTY"],
+		metadata: { selectedCount: children.length, sessionGeneration: resources.sessionGeneration },
+		children,
 	});
 }
 

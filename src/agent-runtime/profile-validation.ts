@@ -79,7 +79,7 @@ export function validateAgentRuntimeProfileCapabilities(
 			`Profile "${profile.profileName}" selects skills`,
 		);
 	}
-	if (enabledContextFiles.length > 0) {
+	if (enabledContextFiles.length > 0 || profile.autoContextFiles) {
 		pushUnsupportedDeliveryDiagnostic(
 			diagnostics,
 			capabilities.context,
@@ -87,6 +87,18 @@ export function validateAgentRuntimeProfileCapabilities(
 			"contextFiles",
 			`Profile "${profile.profileName}" selects managed or automatic context`,
 		);
+	}
+	if (
+		profile.autoContextFiles
+		&& capabilities.context.support === "materialized"
+		&& !capabilities.context.modes.includes("native-project-discovery")
+	) {
+		diagnostics.push({
+			severity: "error",
+			code: "runtime_auto_context_discovery_unsupported",
+			message: `Runtime "${profile.runtimeInstanceId}" materializes explicit context but does not support automatic AGENTS.md / CLAUDE.md discovery. Disable automatic context or choose a runtime that declares native-project-discovery.`,
+			path: "autoContextFiles",
+		});
 	}
 
 	const reasoningValues = [

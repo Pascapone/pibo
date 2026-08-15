@@ -91,14 +91,14 @@ Target branch: `feature/agent-runtime-foundation`
 
 ## 6. Skills, context, and external MCP materialization PR
 
-- [ ] 6.1 Add ordered runtime context plan and delivery report types.
-- [ ] 6.2 Add isolated adapter generation directories under Pibo Home.
-- [ ] 6.3 Materialize only selected built-in/plugin/user skills.
-- [ ] 6.4 Compile selected context into adapter-supported channels without replacing native prompts.
-- [ ] 6.5 Compile selected external MCP servers with scoped secret indirection.
-- [ ] 6.6 Verify MCP connected status and exposed tool/resource inventory.
-- [ ] 6.7 Extend Context Build and profile inspection with mode/fidelity/status/diagnostics.
-- [ ] 6.8 Test unselected-resource absence, required-delivery failure, no global config mutation, and cleanup.
+- [x] 6.1 Add ordered runtime context plan and delivery report types.
+- [x] 6.2 Add private adapter/session/generation directories under Pibo Home, shared with the portable-tool generation lifecycle.
+- [x] 6.3 Materialize only selected built-in/plugin/user skills with symlink-boundary and size protections.
+- [x] 6.4 Compile selected context into native or materialized adapter channels without replacing native prompts.
+- [x] 6.5 Compile selected external MCP servers with selected-only configuration and scoped secret indirection.
+- [x] 6.6 Verify MCP connected status and exposed tool/resource/template inventory through the official SDK.
+- [x] 6.7 Extend capability/profile inspection and Context Build with mode/fidelity/status/target/inventory/diagnostics.
+- [x] 6.8 Test unselected-resource absence, missing secrets, escaping symlinks, required-delivery failure, Pi Bash/CLI environment isolation, shared router generation, no source/global mutation, and cleanup.
 - [ ] 6.9 Commit, push, and open materialization PR.
 
 ## 7. Runtime-neutral history, trace, and debug PR

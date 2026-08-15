@@ -9,6 +9,7 @@ import {
 	uniqueRuntimeDiagnostics,
 } from "../../agent-runtime/context-build.js";
 import type { AgentRuntimeDiagnostic, AgentRuntimeInstanceInspection } from "../../agent-runtime/types.js";
+import { PiboRuntimeResourceService } from "../../agent-runtime/resource-service.js";
 import { summarizeSessionSignalStatus } from "../../signals/status.js";
 import type { PiboSessionSignalStatus, PiboSignalPatch, PiboSignalStatusPatch } from "../../signals/types.js";
 import { PiboWebHttpError, readJsonBody, responseJson } from "../../web/http.js";
@@ -3142,43 +3143,62 @@ async function buildContextBuildSnapshotForRequest(input: {
 		diagnostics,
 	};
 
-	if (runtime.adapterId === "pi" && runtimeInfo.available) {
-		const userSettings = loadPiboUserSettings();
-		const snapshot = await inspectPiboContextBuild({
-			cwd,
-			profile,
-			activeModel: selectedSession.activeModel,
-			persistSession: false,
-			sessionContext: {
-				piboSessionId: selectedSession.id,
-				piboRoomId: chatRoomIdFromMetadata(selectedSession.metadata),
-				timezone: userSettings.timezone,
-			},
-		});
-		const runtimeIssues = diagnostics.filter((diagnostic) => diagnostic.severity !== "info");
-		return {
-			...snapshot,
-			runtime: runtimeInfo,
-			diagnostics: [
-				...snapshot.diagnostics,
-				...runtimeIssues.map((diagnostic) => ({ type: diagnostic.severity, message: diagnostic.message })),
-			],
-			summary: {
-				...snapshot.summary,
-				warnings: snapshot.summary.warnings + runtimeIssues.filter((diagnostic) => diagnostic.severity === "warning").length,
-				errors: snapshot.summary.errors + runtimeIssues.filter((diagnostic) => diagnostic.severity === "error").length,
-			},
-		};
-	}
-
-	return buildPortableRuntimeContextSnapshot({
-		profile,
-		runtime: runtimeInfo,
-		cwd,
+	const userSettings = loadPiboUserSettings();
+	const resourceService = new PiboRuntimeResourceService();
+	const resources = await resourceService.createSession({
 		piboSessionId: selectedSession.id,
 		piboRoomId: chatRoomIdFromMetadata(selectedSession.metadata),
-		activeModel: selectedSession.activeModel,
+		runtimeInstanceId: runtime.id,
+		adapterId: runtime.adapterId,
+		sessionGeneration: `inspection-${randomUUID()}`,
+		profile,
+		cwd,
+		timezone: userSettings.timezone,
+		capabilities: runtime.capabilities,
+		strict: false,
 	});
+	try {
+		if (runtime.adapterId === "pi" && runtimeInfo.available) {
+			const snapshot = await inspectPiboContextBuild({
+				cwd,
+				profile,
+				activeModel: selectedSession.activeModel,
+				persistSession: false,
+				resources,
+				sessionContext: {
+					piboSessionId: selectedSession.id,
+					piboRoomId: chatRoomIdFromMetadata(selectedSession.metadata),
+					timezone: userSettings.timezone,
+				},
+			});
+			const runtimeIssues = diagnostics.filter((diagnostic) => diagnostic.severity !== "info");
+			return {
+				...snapshot,
+				runtime: runtimeInfo,
+				diagnostics: [
+					...snapshot.diagnostics,
+					...runtimeIssues.map((diagnostic) => ({ type: diagnostic.severity, message: diagnostic.message })),
+				],
+				summary: {
+					...snapshot.summary,
+					warnings: snapshot.summary.warnings + runtimeIssues.filter((diagnostic) => diagnostic.severity === "warning").length,
+					errors: snapshot.summary.errors + runtimeIssues.filter((diagnostic) => diagnostic.severity === "error").length,
+				},
+			};
+		}
+
+		return buildPortableRuntimeContextSnapshot({
+			profile,
+			runtime: runtimeInfo,
+			cwd,
+			piboSessionId: selectedSession.id,
+			piboRoomId: chatRoomIdFromMetadata(selectedSession.metadata),
+			activeModel: selectedSession.activeModel,
+			resources: resources.getInspection(),
+		});
+	} finally {
+		await resourceService.dispose();
+	}
 }
 
 async function resolveContextBuildRuntime(context: PiboWebAppContext, runtimeInstanceId: string): Promise<AgentRuntimeInstanceInspection> {

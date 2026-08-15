@@ -3,7 +3,7 @@
  */
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { getDefaultEnvironment, StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import {
@@ -307,11 +307,14 @@ function createHttpTransport(
  * Uses stderr: 'pipe' to capture server output for debugging
  */
 function createStdioTransport(config: StdioServerConfig): StdioClientTransport {
-  // Merge process.env with config.env, filtering out undefined values
-  const mergedEnv: Record<string, string> = {};
-  for (const [key, value] of Object.entries(process.env)) {
-    if (value !== undefined) {
-      mergedEnv[key] = value;
+  // Runtime-generated MCP sessions inherit only the SDK's safe baseline plus
+  // explicit server env. Existing global CLI behavior remains compatible.
+  const mergedEnv: Record<string, string> = process.env.PIBO_MCP_ISOLATED_ENV === '1'
+    ? getDefaultEnvironment()
+    : {};
+  if (process.env.PIBO_MCP_ISOLATED_ENV !== '1') {
+    for (const [key, value] of Object.entries(process.env)) {
+      if (value !== undefined) mergedEnv[key] = value;
     }
   }
   if (config.env) {

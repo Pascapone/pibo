@@ -86,8 +86,8 @@ export const PI_AGENT_RUNTIME_CAPABILITIES: AgentRuntimeCapabilities = {
 		nativeToolYielding: { support: "native" },
 	},
 	mcp: {
-		externalServers: { support: "native" },
-		statusInspection: false,
+		externalServers: { support: "materialized", modes: ["isolated-pibo-mcp-config"] },
+		statusInspection: true,
 	},
 	skills: { support: "native" },
 	context: { support: "native" },
@@ -578,6 +578,16 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 				path: "runtimeOptions",
 			});
 		}
+		const profileProvidesBash = input.profile.toolPackages.runControl === true
+			|| (input.profile.builtinTools !== "disabled" && input.profile.builtinToolNames.includes("bash"));
+		if (input.profile.mcpServers.length > 0 && !profileProvidesBash) {
+			diagnostics.push({
+				severity: "error",
+				code: "pi_mcp_bash_required",
+				message: "Pi delivers selected external MCP servers through the session-scoped Pibo MCP CLI configuration, which requires the Bash tool.",
+				path: "mcpServers",
+			});
+		}
 		return diagnostics;
 	}
 
@@ -631,6 +641,7 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 			runToolController: input.services?.runToolController as PiboRunToolController | undefined,
 			runtimeToolController: input.services?.codeRuntimeToolController as PiboRuntimeToolController | undefined,
 			portableTools: input.services?.portableTools,
+			resources: input.services?.resources,
 			modelDefaults: compatibility?.modelDefaults,
 			activeModel: input.activeModel,
 			sessionContext: {

@@ -66,6 +66,10 @@ import {
 	PiboPortableToolService,
 	type PiboPortableToolSession,
 } from "../tools/session-service.js";
+import {
+	PiboRuntimeResourceService,
+} from "../agent-runtime/resource-service.js";
+import type { PiboRuntimeResourceSession } from "../agent-runtime/resources.js";
 
 export type {
 	PiboEventListener,
@@ -82,7 +86,7 @@ export type PiboRuntimeBindingRebindInput = RuntimeSessionBindingRebindInput;
 
 export type PiboSessionRouterOptions = Omit<
 	PiboRuntimeOptions,
-	"profile" | "subagentRunner" | "runToolController"
+	"profile" | "subagentRunner" | "runToolController" | "resources"
 > & {
 	profile?: InitialSessionContext;
 	pluginRegistry?: PiboPluginRegistry;
@@ -104,6 +108,8 @@ export type PiboSessionRouterOptions = Omit<
 	runtimeInstanceId?: string;
 	/** Maximum time to await one routed runtime disposal before forcing terminal ownership release. */
 	routedSessionDisposeTimeoutMs?: number;
+	/** Optional resource service override for isolated adapter generation state. */
+	runtimeResourceService?: PiboRuntimeResourceService;
 };
 
 const DEFAULT_SUBAGENT_REPLY_TIMEOUT_MS = 10 * 60 * 1000;
@@ -305,6 +311,8 @@ export class PiboSessionRouter {
 	private readonly runtimeRegistry: RuntimeSessionRegistry;
 	private readonly portableToolService: PiboPortableToolService;
 	private readonly portableToolSessions = new Map<string, PiboPortableToolSession>();
+	private readonly runtimeResourceService: PiboRuntimeResourceService;
+	private readonly runtimeResourceSessions = new Map<string, PiboRuntimeResourceSession>();
 	private readonly scheduledRunReminders = new Map<string, ScheduledRunReminder>();
 	private readonly runReminderGenerations = new Map<string, number>();
 	private readonly quiescingSessions = new Set<string>();
@@ -356,6 +364,7 @@ export class PiboSessionRouter {
 		this.portableToolService = new PiboPortableToolService({
 			...(payloadStore ? { payloadWriter: createPiboToolPayloadWriter(payloadStore) } : {}),
 		});
+		this.runtimeResourceService = options.runtimeResourceService ?? new PiboRuntimeResourceService();
 		this.runRegistry = new PiboRunRegistry({ store: this.reliabilityStore });
 		this.runRegistry.subscribe((event) => this.projectRunRegistryEvent(event));
 		const recoveredRuntimeState = options.recoverInterruptedRuntimeState
@@ -530,6 +539,9 @@ export class PiboSessionRouter {
 			const portableTools = this.portableToolSessions.get(piboSessionId);
 			portableTools?.dispose();
 			if (this.portableToolSessions.get(piboSessionId) === portableTools) this.portableToolSessions.delete(piboSessionId);
+			const resources = this.runtimeResourceSessions.get(piboSessionId);
+			if (resources) await resources.dispose();
+			if (this.runtimeResourceSessions.get(piboSessionId) === resources) this.runtimeResourceSessions.delete(piboSessionId);
 		}
 	}
 
@@ -835,6 +847,8 @@ export class PiboSessionRouter {
 			if (failures.length > 0) throw new AggregateError(failures, "Failed to dispose all Pibo sessions");
 		} finally {
 			await this.portableToolService.dispose();
+			await this.runtimeResourceService.dispose();
+			this.runtimeResourceSessions.clear();
 			await this.telemetryWriter?.dispose();
 		}
 	}
@@ -968,12 +982,16 @@ export class PiboSessionRouter {
 		const subagentRunner = this.createSubagentRunner(piboSession.id);
 		const runToolController = this.createRunToolController(piboSession.id);
 		const codeRuntimeToolController = this.runtimeRegistry.createController(piboSession.id);
+		const sessionGeneration = randomUUID();
+		const previousResources = this.runtimeResourceSessions.get(piboSession.id);
+		if (previousResources) await previousResources.dispose();
 		this.portableToolSessions.get(piboSession.id)?.dispose();
 		const portableTools = this.portableToolService.createSession({
 			piboSessionId: piboSession.id,
 			piboRoomId: piboRoomIdFromMetadata(piboSession.metadata),
 			runtimeInstanceId: binding.runtimeInstanceId,
 			adapterId: binding.adapterId,
+			sessionGeneration,
 			profile: sessionProfile,
 			cwd: workspace,
 			getActiveMessage: () => session?.getActiveMessage(),
@@ -982,6 +1000,25 @@ export class PiboSessionRouter {
 			runtimeToolController: codeRuntimeToolController,
 		});
 		this.portableToolSessions.set(piboSession.id, portableTools);
+		let resources: PiboRuntimeResourceSession;
+		try {
+			resources = await this.runtimeResourceService.createSession({
+				piboSessionId: piboSession.id,
+				piboRoomId: piboRoomIdFromMetadata(piboSession.metadata),
+				runtimeInstanceId: binding.runtimeInstanceId,
+				adapterId: binding.adapterId,
+				sessionGeneration,
+				profile: sessionProfile,
+				cwd: workspace,
+				timezone: userSettings.timezone,
+				capabilities: runtimeAdapter.descriptor.capabilities,
+			});
+			this.runtimeResourceSessions.set(piboSession.id, resources);
+		} catch (error) {
+			portableTools.dispose();
+			if (this.portableToolSessions.get(piboSession.id) === portableTools) this.portableToolSessions.delete(piboSession.id);
+			throw error;
+		}
 		let runtimeSession: AgentRuntimeSession;
 		try {
 			runtimeSession = await runtimeRegistry.openAgentRuntimeSession(binding.runtimeInstanceId, {
@@ -1001,6 +1038,7 @@ export class PiboSessionRouter {
 					runToolController,
 					codeRuntimeToolController,
 					portableTools,
+					resources,
 					compatibility: {
 						persistSession: this.options.persistSession,
 						thinkingLevel: initialThinkingLevel ?? this.options.thinkingLevel,
@@ -1017,6 +1055,8 @@ export class PiboSessionRouter {
 		} catch (error) {
 			portableTools.dispose();
 			if (this.portableToolSessions.get(piboSession.id) === portableTools) this.portableToolSessions.delete(piboSession.id);
+			await resources.dispose();
+			if (this.runtimeResourceSessions.get(piboSession.id) === resources) this.runtimeResourceSessions.delete(piboSession.id);
 			throw error;
 		}
 		try {
@@ -1036,6 +1076,8 @@ export class PiboSessionRouter {
 			await runtimeSession.dispose().catch(() => {});
 			portableTools.dispose();
 			if (this.portableToolSessions.get(piboSession.id) === portableTools) this.portableToolSessions.delete(piboSession.id);
+			await resources.dispose();
+			if (this.runtimeResourceSessions.get(piboSession.id) === resources) this.runtimeResourceSessions.delete(piboSession.id);
 			throw error;
 		}
 		session = new RoutedSession(

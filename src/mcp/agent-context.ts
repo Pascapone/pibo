@@ -6,7 +6,7 @@ import {
   type ServerConfig,
   ensureConfigExists,
   isHttpServer,
-  loadConfig,
+  loadConfigUnresolved,
 } from './config.js';
 import { ErrorCode, formatCliError } from './errors.js';
 
@@ -47,7 +47,7 @@ export function normalizeMcpServerDescription(value: string): string {
 
 export async function listMcpServerInfos(configPath?: string): Promise<PiboMcpServerInfo[]> {
   try {
-    const config = await loadConfig(configPath);
+    const config = await loadConfigUnresolved(configPath);
     return Object.entries(config.mcpServers).map(([name, server]) => mcpServerInfoFromConfig(name, server));
   } catch (error) {
     if ((error as Error).message.includes('CONFIG_NOT_FOUND')) return [];
@@ -89,9 +89,21 @@ export async function getMcpAgentContextFile(
   configPath?: string,
 ): Promise<{ path: string; content: string } | undefined> {
   if (selectedServerNames.length === 0) return undefined;
+  try {
+    return getMcpAgentContextFileFromConfig(selectedServerNames, await loadConfigUnresolved(configPath));
+  } catch (error) {
+    if ((error as Error).message.includes('CONFIG_NOT_FOUND')) return undefined;
+    throw error;
+  }
+}
 
-  const infos = await listMcpServerInfos(configPath);
-  const infosByName = new Map(infos.map((info) => [info.name, info]));
+export function getMcpAgentContextFileFromConfig(
+  selectedServerNames: readonly string[],
+  config: McpServersConfig,
+): { path: string; content: string } | undefined {
+  const infosByName = new Map(
+    Object.entries(config.mcpServers).map(([name, server]) => [name, mcpServerInfoFromConfig(name, server)]),
+  );
   const selected = selectedServerNames
     .map((name) => infosByName.get(name))
     .filter((info): info is PiboMcpServerInfo => Boolean(info?.description));

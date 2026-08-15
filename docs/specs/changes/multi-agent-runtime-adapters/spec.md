@@ -83,7 +83,7 @@ A live adapter session MUST support start/bind/resume, prompt, streaming subscri
 
 #### Acceptance
 
-- `openSession` receives the Pibo Session, frozen runtime selection, binding, workspace, profile, portable capability plan, active model, and product context.
+- `openSession` receives the Pibo Session, frozen runtime selection, binding, workspace, profile, active model, and router-owned portable-tool and runtime-resource sessions sharing one live generation id.
 - The returned session exposes its current binding and status.
 - Prompt completion means the adapter's native turn and required adapter recovery have settled.
 - Abort and disposal are idempotent and bounded by router cleanup policy.
@@ -260,12 +260,14 @@ Selected skills, context files, and external MCP servers MUST be delivered throu
 #### Acceptance
 
 - `SKILL.md` remains Pibo's canonical skill format.
-- Selected built-in, plugin, and user skills are materialized into an adapter/session-specific directory or official API.
-- Unselected skills are absent from the adapter-visible roots.
-- Context contributions are ordered and carry intent, requiredness, delivery mode, and fidelity.
-- Required contributions that cannot be delivered fail validation/start unless an explicit degradation is saved.
-- External MCP definitions are scoped to the session/adapter configuration and their connection/tool status is verified.
-- No adapter launch modifies user-global Codex/Pi configuration merely to start a Pibo Session.
+- Selected built-in, plugin, and user skills are materialized into an adapter/session-generation-specific directory or passed through an official native API.
+- Unselected skills are absent from adapter-visible roots; escaping symlinks, cycles, and configured file/byte limits fail safely.
+- Context contributions are ordered and carry source, kind, intent, requiredness, byte size, delivery mode, target, and fidelity.
+- Required contributions that cannot be delivered fail validation/start unless an explicit degradation is saved; non-strict inspection still exposes the failure.
+- External MCP definitions are selected-only and scoped to the session/adapter generation. Resolved secret values remain in adapter-scoped environment state and are absent from generated files and inspection.
+- External MCP delivery is verified by a bounded protocol connection and safe tool/resource/template inventory, not by config-file existence alone.
+- The source MCP configuration, process-global environment, user-global Codex/Pi configuration, bindings, and unrelated runtime generations are not modified merely to start a Pibo Session.
+- Disposing or replacing the runtime session removes generated state and invalidates its scoped environment/config view.
 
 #### Scenario: Skill isolation
 
@@ -374,6 +376,9 @@ Implementation MUST be split into focused or explicitly stacked branches/PRs to 
 - An adapter process exits while a tool or approval is active.
 - A capability is advertised but its method is missing, or a method exists without the capability.
 - A selected MCP server starts but exposes fewer tools than inspection expected.
+- A selected MCP definition references a missing secret, contains a sensitive literal argument, or cannot complete protocol initialization before the bounded timeout.
+- A selected skill contains an escaping symlink, symlink cycle, too many files, or too many bytes.
+- Context Build needs to explain a failed required contribution without making the unavailable runtime session start successfully.
 - A credential expires during a long turn; active-session liveness can renew it without broadening scope.
 - A Pi or Codex native transcript is malformed or missing while normalized Pibo history still exists.
 - A runtime emits duplicate, late, or out-of-order terminal events after abort/disposal.
@@ -393,7 +398,7 @@ Implementation MUST be split into focused or explicitly stacked branches/PRs to 
 - [x] SC-001: Runtime SPI and registry are independent of Pi and Codex and pass fake adapter contracts.
 - [ ] SC-002: Pi runs entirely through the adapter boundary with full local and Pibo2 parity.
 - [x] SC-003: Runtime bindings migrate existing data without id or transcript rewrite.
-- [ ] SC-004: Agent Designer and profile inspection are runtime-aware and reject unsupported selections.
+- [x] SC-004: Agent Designer and profile inspection are runtime-aware and reject unsupported selections.
 - [ ] SC-005: Pibo tools, MCP, skills, context, and Pibo subagents have proven cross-runtime delivery and isolation.
 - [ ] SC-006: New product history, trace, debug, telemetry, and binding inspection are runtime neutral.
 - [ ] SC-007: The built-in adapter-authoring skill is registered and passes full/partial-adapter evals.
@@ -434,7 +439,7 @@ Implementation MUST be split into focused or explicitly stacked branches/PRs to 
 | REQ-009 Agent Designer | Designer | API/UI save/disabled/inspection tests | Local + Pibo2 pass |
 | REQ-010 Native behavior | Pi/Codex | Prompt/tool/context inspection | Pending |
 | REQ-011 Portable tools | Tool bridge | Pi compiler/MCP/security tests | Local + exact-candidate Pibo2 pass; see `portable-pibo-tools-mcp-validation-2026-08-15.md` |
-| REQ-012 Skills/context/MCP | Materialization | Isolation and connected-tool tests | Pending |
+| REQ-012 Skills/context/MCP | Materialization | Isolation, secret rebinding, connected inventory, failure, cleanup, Context Build, and Pi-scoped CLI tests | Local pass; exact-candidate Pibo2 pending |
 | REQ-013 History/debug | History | New-turn no-native-read, old Pi, Codex restart tests | Pending |
 | REQ-014 Authoring skill | Skill | Registration plus full/partial evals | Pending |
 | REQ-015 Native Codex | Codex | Fixtures, exact binary, Pibo2 integrated flows | Pending |

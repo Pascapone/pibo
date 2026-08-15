@@ -471,22 +471,32 @@ Rules:
 
 The bridge does not reuse Better Auth cookies, machine keys, gateway bearer tokens, or Codex auth.
 
-## Decision: Skills and context materialization
+## Decision: Runtime resource sessions for skills, context, and external MCP
 
-Canonical plan:
+`PiboSessionRouter` creates one `PiboRuntimeResourceSession` before opening the adapter. It uses the same random `sessionGeneration` as the portable-tool session, so credentials, generated files, and adapter lifecycle have one revocation/cleanup boundary. The prepared session is passed through `AgentRuntimeOpenServices.resources`; generic orchestration does not branch on adapter identity.
+
+The resource session exposes two views:
+
+- hydrated selected skills, ordered context contributions, selected MCP server configs, and a session-only environment for the adapter;
+- safe inspection data containing source/target paths, byte counts, MCP names and inventory, delivery status/mode/fidelity, and redacted diagnostics without context bodies, resolved configs, or secret values.
+
+Canonical records include:
 
 ```ts
-type RuntimeContextContribution = {
+type AgentRuntimeContextContribution = {
   id: string;
-  source: "pibo-product" | "profile" | "plugin" | "managed";
-  intent: "developer" | "project" | "session" | "skill" | "user-visible";
-  content?: string;
-  sourcePath?: string;
+  kind: "automatic" | "product" | "context-file" | "generated";
+  source: "pibo-product" | "profile" | "plugin" | "managed" | "generated";
+  intent: "developer" | "project" | "session" | "user-visible";
   required: boolean;
   order: number;
+  content?: string;
+  byteSize?: number;
+  sourcePath?: string;
+  materializedPath?: string;
 };
 
-type RuntimeDeliveryReport = {
+type AgentRuntimeDeliveryReport = {
   contributionId: string;
   status: "delivered" | "degraded" | "unsupported" | "failed";
   mode: string;
@@ -496,10 +506,10 @@ type RuntimeDeliveryReport = {
 };
 ```
 
-State root:
+Materialized adapters receive a private generation tree:
 
 ```text
-$PIBO_HOME/agent-runtimes/<runtime-instance-id>/<pibo-session-id>/<generation>/
+$PIBO_HOME/agent-runtimes/<runtime-instance-id>-<hash>/<pibo-session-id>-<hash>/<generation>-<hash>/
   home/
   skills/
   context/
@@ -507,15 +517,17 @@ $PIBO_HOME/agent-runtimes/<runtime-instance-id>/<pibo-session-id>/<generation>/
   protocol/
 ```
 
-Materialization uses symlinks only when ownership/platform semantics are safe; otherwise copy-on-start. Generated state is adapter-owned and removed according to adapter retention policy. Selected resources are allowlisted; directory scanning never pulls in unselected Pibo skills.
+Directories are mode `0700`; generated MCP configuration is mode `0600`. Skill materialization copies the selected skill directory only, resolves symlinks, rejects paths escaping the selected source root or cycles, and enforces file-count and byte limits. It never scans the global skill catalog. Context files are read in profile order and written only when the adapter advertises materialized delivery. A materialized adapter may claim automatic AGENTS.md / CLAUDE.md only by declaring the `native-project-discovery` mode; otherwise save/start validation rejects automatic context instead of assuming discovery. Required failed/unsupported contributions reject live startup; inspection uses non-strict mode so Agent Designer and Context Build can explain the same failure.
 
-Pi uses its current resource loader and reports equivalent delivery. Codex uses process-scoped extra skill roots and developer/project instruction channels supported by the exact app-server version. Pibo's Pi base prompt is never part of the Codex plan.
+Pi continues using its native base prompt, skill loader, context loader, and built-in tools. The resource session supplies only the selected skill/context additions, so Pi delivery is reported as native/equivalent without converting them to a foreign prompt. Materialized external adapters receive generated skill/context paths; later Codex work maps those paths into the exact official App Server channels. Pibo's Pi base prompt is never part of an external adapter's resource plan.
 
 ## Decision: External MCP delivery
 
-Pibo compiles selected external MCP definitions plus the Pibo tool bridge into adapter launch/session configuration. Secrets are referenced through scoped environment variables or secure adapter config indirection, never serialized into binding metadata or inspection output.
+Pibo loads unresolved MCP definitions so `${ENV}` placeholders can be rebound without placing resolved credentials in generated files. Only selected server definitions are copied into the runtime generation. Environment/header values, command arguments, referenced variables, and sensitive URL fields are replaced with generated `PIBO_RUNTIME_MCP_*` references; resolved values exist only in the resource session's adapter-scoped environment. Neither `process.env`, the source MCP file, user-global harness configuration, bindings, nor inspection output is mutated.
 
-A server is considered delivered only after the adapter reports startup/connection status and, when available, tool/resource discovery. Context Build shows configured, connecting, connected, failed, and unsupported states.
+Before live startup completes, the resource service connects to each selected server through the official MCP SDK with a bounded timeout and records safe server identity/version, exposed tools after include/exclude filtering, resources, and resource templates. A definition is not reported delivered merely because a file was written. Missing configuration, missing secret variables, startup/protocol failure, unsupported adapter delivery, and inventory failure become contribution diagnostics and fail required live startup.
+
+For the Pi adapter, the generated selected-only MCP file and secret environment are injected into a Pi-owned Bash definition rather than the gateway process. Existing `pibo mcp` commands therefore see exactly the session selection while Pi's native prompt and standard tool semantics remain intact. The generated session sets `PIBO_MCP_ISOLATED_ENV=1`, causing stdio MCP children to inherit the SDK's safe baseline plus explicit server environment rather than unrelated gateway variables; non-session CLI behavior remains backward compatible. Profiles selecting external MCP must provide Bash either through the Pi built-in set or run control. Context Build reports connected/failed/unsupported state, delivery fidelity, tools/resources/templates, and the private target path while omitting secret values. Disposal removes the generation tree and clears in-memory scoped configuration.
 
 ## Decision: History and trace
 

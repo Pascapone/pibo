@@ -2708,8 +2708,13 @@ test("chat context build uses the frozen non-Pi runtime without rendering Pi sta
 		assert.equal(payload.snapshot.runtime.adapterId, "codex");
 		assert.equal(payload.snapshot.runtime.bindingState, "bound");
 		assert.equal(payload.snapshot.nodes[0].id, "runtime");
-		assert.ok(payload.snapshot.nodes.find((node) => node.id === "skills").children.some((node) => node.title === "review-skill"));
-		assert.ok(payload.snapshot.nodes.find((node) => node.id === "context").children.some((node) => node.title === "project-context"));
+		const skillNode = payload.snapshot.nodes.find((node) => node.id === "skills").children.find((node) => node.title === "review-skill");
+		const contextNode = payload.snapshot.nodes.find((node) => node.id === "context").children.find((node) => node.title === "project-context");
+		const mcpNode = payload.snapshot.nodes.find((node) => node.id === "mcp").children.find((node) => node.title === "filesystem");
+		assert.equal(skillNode.metadata.deliveryStatus, "failed");
+		assert.equal(contextNode.metadata.deliveryStatus, "failed");
+		assert.equal(mcpNode.metadata.deliveryStatus, "failed");
+		assert.ok(payload.snapshot.summary.errors >= 3);
 		assert.equal(payload.snapshot.nodes.some((node) => node.title === "Base System Prompt"), false);
 		assert.equal(JSON.stringify(payload.snapshot).includes("workspace-write"), false);
 	} finally {
