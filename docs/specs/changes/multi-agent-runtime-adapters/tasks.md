@@ -122,7 +122,7 @@ Target branch: `feature/agent-runtime-foundation`
 - [x] 8.4 Add concise implementation checklist and extension-point map.
 - [x] 8.5 Add realistic Orion full-adapter and Relay explicitly partial-adapter eval fixtures with objective expectations.
 - [x] 8.6 Add deterministic anti-invention tests and run full/partial GPT-5.6 Sol evals: with-skill outputs passed 20/20 assertions versus 9/20 without the skill; benchmark is `docs/reports/runtime-adapter-authoring-skill-eval-2026-08-15.json`.
-- [ ] 8.7 Commit, push, and open authoring-skill PR.
+- [x] 8.7 Commit, push, and open authoring-skill PR #488.
 
 ## 9. Native Codex adapter PR(s), only after Pi parity
 

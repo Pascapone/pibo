@@ -6,7 +6,7 @@
 
 **Stacked on:** runtime-neutral history/debug PR #487
 
-**Pull request:** Pending
+**Pull request:** #488
 
 **Implementation commit validated on Pibo2:** `c76d92bd1077d2defd0fa586bd907594d37c050e`
 
