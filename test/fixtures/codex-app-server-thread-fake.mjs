@@ -118,6 +118,7 @@ if (args[0] === "--version") {
 			upgrade: null,
 		},
 	];
+	const defaultEffortForModel = (modelId) => models.find((model) => model.id === modelId)?.defaultReasoningEffort ?? "high";
 	const missing = (id, threadId) => ({ id, error: { code: -32600, message: `no rollout found for thread id ${threadId}` } });
 	const send = (message) => process.stdout.write(`${JSON.stringify(message)}\n`);
 	const notify = (method, params) => send({ method, params });
@@ -619,6 +620,7 @@ if (args[0] === "--version") {
 			if (params.cwd) thread.cwd = params.cwd;
 			const settings = state.threadSettings[params.threadId] ?? defaultThreadSettings();
 			if (typeof params.model === "string") settings.model = params.model;
+			settings.effort = defaultEffortForModel(settings.model);
 			if (Object.hasOwn(params, "serviceTier")) settings.serviceTier = params.serviceTier;
 			if (Object.hasOwn(params, "personality")) settings.personality = params.personality;
 			state.threadSettings[params.threadId] = settings;

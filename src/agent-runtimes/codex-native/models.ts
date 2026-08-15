@@ -54,11 +54,22 @@ const MAX_DESCRIPTION_LENGTH = 4_096;
 const MAX_CURSOR_LENGTH = 1_024;
 const PERSONALITIES = new Set(["none", "friendly", "pragmatic"]);
 const REASONING_SUMMARIES = new Set(["auto", "concise", "detailed", "none"]);
+const BINDING_MODEL_KEY = "codexNativeModelId";
+const BINDING_REASONING_KEY = "codexNativeReasoningEffort";
+const BINDING_SERVICE_TIER_KEY = "codexNativeServiceTier";
+const BINDING_PERSONALITY_KEY = "codexNativePersonality";
+const BINDING_REASONING_SUMMARY_KEY = "codexNativeReasoningSummary";
 
 export type CodexNativeProfileOptions = {
-	serviceTier?: string;
-	personality?: "none" | "friendly" | "pragmatic";
-	reasoningSummary?: "auto" | "concise" | "detailed" | "none";
+	serviceTier?: string | null;
+	personality?: "none" | "friendly" | "pragmatic" | null;
+	reasoningSummary?: "auto" | "concise" | "detailed" | "none" | null;
+};
+
+export type CodexNativePersistedSettings = {
+	activeModel?: ModelProfile;
+	reasoningLevel?: string;
+	profileOptions: CodexNativeProfileOptions;
 };
 
 export type CodexNativeModelCatalog = {
@@ -76,8 +87,8 @@ export type CodexNativeTurnModelOptions = {
 	model: string;
 	effort: string;
 	serviceTier: string | null;
-	summary?: string;
-	personality?: string;
+	summary?: string | null;
+	personality?: string | null;
 };
 
 export class CodexNativeModelProtocolError extends Error {
@@ -277,6 +288,38 @@ export function toAgentRuntimeModelCatalog(
 	};
 }
 
+export function readCodexNativePersistedSettings(metadata: PiboJsonObject | undefined): CodexNativePersistedSettings {
+	const profileOptions: CodexNativeProfileOptions = {};
+	if (!metadata) return { profileOptions };
+	const modelId = typeof metadata[BINDING_MODEL_KEY] === "string"
+		&& metadata[BINDING_MODEL_KEY].length <= MAX_IDENTIFIER_LENGTH
+		&& metadata[BINDING_MODEL_KEY].trim()
+		? metadata[BINDING_MODEL_KEY]
+		: undefined;
+	const reasoningLevel = typeof metadata[BINDING_REASONING_KEY] === "string"
+		&& metadata[BINDING_REASONING_KEY].length <= MAX_IDENTIFIER_LENGTH
+		&& metadata[BINDING_REASONING_KEY].trim()
+		? metadata[BINDING_REASONING_KEY]
+		: undefined;
+	const serviceTier = metadata[BINDING_SERVICE_TIER_KEY];
+	if (serviceTier === null || (typeof serviceTier === "string" && serviceTier.length <= MAX_IDENTIFIER_LENGTH && serviceTier.trim())) {
+		profileOptions.serviceTier = serviceTier;
+	}
+	const personality = metadata[BINDING_PERSONALITY_KEY];
+	if (personality === null || (typeof personality === "string" && PERSONALITIES.has(personality))) {
+		profileOptions.personality = personality as CodexNativeProfileOptions["personality"];
+	}
+	const reasoningSummary = metadata[BINDING_REASONING_SUMMARY_KEY];
+	if (reasoningSummary === null || (typeof reasoningSummary === "string" && REASONING_SUMMARIES.has(reasoningSummary))) {
+		profileOptions.reasoningSummary = reasoningSummary as CodexNativeProfileOptions["reasoningSummary"];
+	}
+	return {
+		...(modelId ? { activeModel: { provider: CODEX_NATIVE_MODEL_PROVIDER_ID, id: modelId } } : {}),
+		...(reasoningLevel ? { reasoningLevel } : {}),
+		profileOptions,
+	};
+}
+
 export function parseCodexNativeProfileOptions(value: PiboJsonObject): CodexNativeProfileOptions {
 	const allowed = new Set(["serviceTier", "personality", "reasoningSummary"]);
 	const unknown = Object.keys(value).filter((key) => !allowed.has(key));
@@ -464,6 +507,16 @@ export class CodexNativeSessionSettingsController {
 
 	get currentContextUsage(): AgentRuntimeContextUsage | undefined {
 		return this.contextUsage ? structuredClone(this.contextUsage) : undefined;
+	}
+
+	get bindingMetadata(): PiboJsonObject {
+		return {
+			[BINDING_MODEL_KEY]: this.currentModel.id,
+			[BINDING_REASONING_KEY]: this.reasoningLevel,
+			[BINDING_SERVICE_TIER_KEY]: this.serviceTier,
+			[BINDING_PERSONALITY_KEY]: this.personality ?? null,
+			[BINDING_REASONING_SUMMARY_KEY]: this.reasoningSummary ?? null,
+		};
 	}
 
 	get threadSelection(): CodexNativeThreadSelection {

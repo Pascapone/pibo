@@ -203,6 +203,9 @@ test("Codex native applies profile options and exposes cumulative context usage"
 		contextWindow: 200_000,
 		percent: 0.01,
 	});
+	assert.equal(session.getBinding().metadata.codexNativeReasoningEffort, "max");
+	assert.equal(session.getBinding().metadata.codexNativeServiceTier, "priority");
+	assert.equal(session.getBinding().metadata.codexNativeReasoningSummary, "detailed");
 });
 
 test("Codex native model, reasoning, and Fast Mode controls are model-aware and survive native resume", async (t) => {
@@ -242,6 +245,9 @@ test("Codex native model, reasoning, and Fast Mode controls are model-aware and 
 		personality: null,
 	});
 	const resumedBinding = first.getBinding();
+	assert.equal(resumedBinding.metadata.codexNativeModelId, "gpt-5.2");
+	assert.equal(resumedBinding.metadata.codexNativeReasoningEffort, "low");
+	assert.equal(resumedBinding.metadata.codexNativeServiceTier, null);
 	await first.dispose();
 
 	const resumed = await registry.openSession(instanceId, openInput(
@@ -254,6 +260,7 @@ test("Codex native model, reasoning, and Fast Mode controls are model-aware and 
 	t.after(() => resumed.dispose());
 	await waitFor(() => resumed.getStatus().contextUsage?.tokens === 20);
 	assert.deepEqual(resumed.getStatus().activeModel, { provider: "openai-codex", id: "gpt-5.2" });
+	assert.equal(resumed.getStatus().reasoning.value, "low");
 	assert.deepEqual(resumed.getStatus().contextUsage, {
 		tokens: 20,
 		contextWindow: 200_000,

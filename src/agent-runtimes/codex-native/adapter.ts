@@ -68,6 +68,7 @@ import {
 	CodexNativeSessionSettingsController,
 	parseCodexNativeProfileOptions,
 	readCodexNativeModelCatalog,
+	readCodexNativePersistedSettings,
 	toAgentRuntimeModelCatalog,
 	type CodexNativeModelCatalog,
 } from "./models.js";
@@ -148,7 +149,11 @@ function timestamp(seconds: number): string {
 	return new Date(seconds * 1_000).toISOString();
 }
 
-function safeThreadMetadata(thread: CodexAppServerThread, previous: PiboJsonObject = {}): PiboJsonObject {
+function safeThreadMetadata(
+	thread: CodexAppServerThread,
+	previous: PiboJsonObject = {},
+	settings: PiboJsonObject = {},
+): PiboJsonObject {
 	const {
 		diagnosticCode: _diagnosticCode,
 		diagnosticMessage: _diagnosticMessage,
@@ -156,6 +161,7 @@ function safeThreadMetadata(thread: CodexAppServerThread, previous: PiboJsonObje
 	} = previous;
 	return {
 		...metadata,
+		...settings,
 		persistent: true,
 		nativePresenceExpected: true,
 		threadCreatedAt: timestamp(thread.createdAt),
@@ -170,6 +176,7 @@ function bindingForThread(input: {
 	runtimeInstanceId: string;
 	previous?: RuntimeSessionBinding;
 	thread: CodexAppServerThread;
+	settings?: PiboJsonObject;
 }): RuntimeSessionBinding {
 	return {
 		...(input.previous ? structuredClone(input.previous) : {}),
@@ -182,7 +189,7 @@ function bindingForThread(input: {
 		protocolVersion: CODEX_APP_SERVER_VERSION,
 		adapterVersion: CODEX_NATIVE_ADAPTER_VERSION,
 		locator: { kind: "adapter-resolved" },
-		metadata: safeThreadMetadata(input.thread, input.previous?.metadata),
+		metadata: safeThreadMetadata(input.thread, input.previous?.metadata, input.settings),
 	};
 }
 
@@ -308,6 +315,7 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 	}
 
 	getBinding(): RuntimeSessionBinding {
+		this.updateBindingFromCurrentThread();
 		return structuredClone(this.binding);
 	}
 
@@ -383,6 +391,7 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 			runtimeInstanceId: this.runtimeInstanceId,
 			previous: this.binding,
 			thread: this.threads.thread,
+			settings: this.settings.bindingMetadata,
 		});
 	}
 
@@ -528,13 +537,32 @@ export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 		try {
 			const compatibility = input.services?.compatibility as CodexNativeCompatibilityServices | undefined;
 			const catalog = await this.loadModelCatalog(process.client);
+			const profileOptions = parseCodexNativeProfileOptions(input.profile.runtimeOptions);
+			const persisted = binding.state === "bound"
+				? readCodexNativePersistedSettings(binding.metadata)
+				: { profileOptions: {} };
+			const persistedOptions = persisted.profileOptions;
+			const hasPersistedServiceTier = Object.hasOwn(persistedOptions, "serviceTier");
 			settings = new CodexNativeSessionSettingsController(process.client, catalog, {
-				activeModel: input.activeModel ?? selectRequestedModelProfile(input.profile, compatibility?.modelDefaults),
-				reasoningLevel: compatibility?.thinkingLevel
+				activeModel: input.activeModel
+					?? persisted.activeModel
+					?? selectRequestedModelProfile(input.profile, compatibility?.modelDefaults),
+				reasoningLevel: persisted.reasoningLevel
+					?? compatibility?.thinkingLevel
 					?? selectRequestedThinkingLevel(input.profile, compatibility?.modelDefaults),
-				initialFastMode: compatibility?.initialFastMode
-					?? selectRequestedFastMode(input.profile, compatibility?.modelDefaults),
-				profileOptions: parseCodexNativeProfileOptions(input.profile.runtimeOptions),
+				initialFastMode: hasPersistedServiceTier
+					? undefined
+					: compatibility?.initialFastMode
+						?? selectRequestedFastMode(input.profile, compatibility?.modelDefaults),
+				profileOptions: {
+					serviceTier: hasPersistedServiceTier ? persistedOptions.serviceTier : profileOptions.serviceTier,
+					personality: Object.hasOwn(persistedOptions, "personality")
+						? persistedOptions.personality
+						: profileOptions.personality,
+					reasoningSummary: Object.hasOwn(persistedOptions, "reasoningSummary")
+						? persistedOptions.reasoningSummary
+						: profileOptions.reasoningSummary,
+				},
 			});
 			const threads = binding.state === "bound"
 				? await CodexNativeThreadController.resume(
@@ -555,6 +583,7 @@ export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 					runtimeInstanceId: this.instanceId,
 					previous: binding,
 					thread: threads.thread,
+					settings: settings.bindingMetadata,
 				}),
 				this.config.experimentalUserInput,
 				input.productContext,
