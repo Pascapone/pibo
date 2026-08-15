@@ -10,6 +10,7 @@ import {
 	type GatewayResponseFrame,
 } from "./protocol.js";
 import type {
+	PiboMessageDelivery,
 	PiboMessageQueuedEvent,
 	PiboMessageStartedEvent,
 	PiboOutputEvent,
@@ -23,12 +24,31 @@ export type GatewayClientOptions = {
 	piboSessionId?: string;
 };
 
+export type GatewayClientMessageParseResult =
+	| { ok: true; text: string; delivery?: PiboMessageDelivery }
+	| { ok: false; error: string };
+
 type GatewayClientRenderState = {
 	visibleIncomingEventIds: Set<string>;
 	sawAssistantDelta: boolean;
 	showThinking: boolean;
 	sawThinkingDelta: boolean;
 };
+
+export function parseGatewayClientMessage(value: string): GatewayClientMessageParseResult {
+	const text = value.trim();
+	if (!text) return { ok: false, error: "Message text is required" };
+	for (const delivery of ["queue", "steer"] as const) {
+		const command = `/${delivery}`;
+		if (text === command) return { ok: false, error: `Usage: ${command} <message>` };
+		if (!text.startsWith(`${command} `)) continue;
+		const message = text.slice(command.length).trim();
+		return message
+			? { ok: true, text: message, delivery }
+			: { ok: false, error: `Usage: ${command} <message>` };
+	}
+	return { ok: true, text };
+}
 
 function parseJsonLine(line: string): GatewayFrame | undefined {
 	try {
@@ -43,8 +63,20 @@ function writeFrame(socket: Socket, frame: GatewayFrame): void {
 }
 
 function printResponse(frame: GatewayResponseFrame): void {
-	if (frame.ok) return;
-	console.error(`\nerror: ${frame.error?.message ?? "request failed"}`);
+	if (!frame.ok) {
+		console.error(`\nerror: ${frame.error?.message ?? "request failed"}`);
+		return;
+	}
+	if (!frame.payload || typeof frame.payload !== "object") return;
+	const payload = frame.payload as { type?: unknown; activeEventId?: unknown };
+	if (payload.type !== "message_steered") return;
+	const target = typeof payload.activeEventId === "string" ? ` active turn ${payload.activeEventId}` : " the active turn";
+	console.error(`steer: delivered to${target}`);
+}
+
+function printGatewayClientHelp(): void {
+	console.error("messages queue by default; /queue <message> queues explicitly; /steer <message> steers the active turn");
+	console.error("commands: /status, /clear, /abort, /thinking [level], /thinking-show, /goal [command], /help, /quit");
 }
 
 function isSessionStatus(value: unknown): value is PiboSessionStatus {
@@ -157,7 +189,7 @@ export async function runGatewayClient(options: GatewayClientOptions = {}): Prom
 
 	console.error(`connected to pibo gateway at ${host}:${port}`);
 	console.error(`session: ${piboSessionId}`);
-	console.error("type a message, /status, /clear, /abort, /thinking [level], /thinking-show, or /quit");
+	printGatewayClientHelp();
 
 	let buffer = "";
 	const renderState: GatewayClientRenderState = {
@@ -189,6 +221,10 @@ export async function runGatewayClient(options: GatewayClientOptions = {}): Prom
 			const text = (await rl.question("you> ")).trim();
 			if (!text) continue;
 			if (text === "/quit" || text === "/exit") break;
+			if (text === "/help") {
+				printGatewayClientHelp();
+				continue;
+			}
 			if (text === "/thinking-show") {
 				renderState.showThinking = !renderState.showThinking;
 				console.error(`thinking display: ${renderState.showThinking ? "on" : "off"}`);
@@ -234,10 +270,21 @@ export async function runGatewayClient(options: GatewayClientOptions = {}): Prom
 				continue;
 			}
 
+			const message = parseGatewayClientMessage(text);
+			if (!message.ok) {
+				console.error(message.error);
+				continue;
+			}
 			writeFrame(socket, {
 				type: "req",
 				id: randomUUID(),
-				event: { type: "message", piboSessionId, text, source: "user" },
+				event: {
+					type: "message",
+					piboSessionId,
+					text: message.text,
+					source: "user",
+					...(message.delivery ? { delivery: message.delivery } : {}),
+				},
 			});
 		}
 	} finally {

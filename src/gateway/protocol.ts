@@ -67,11 +67,15 @@ export function isGatewayRequestFrame(value: unknown): value is GatewayRequestFr
 		type?: unknown;
 		piboSessionId?: unknown;
 		text?: unknown;
+		delivery?: unknown;
 		action?: unknown;
 		params?: unknown;
 	};
 	if (typeof event.piboSessionId !== "string" || event.piboSessionId.length === 0) return false;
-	if (event.type === "message") return typeof event.text === "string";
+	if (event.type === "message") {
+		return typeof event.text === "string" &&
+			(event.delivery === undefined || event.delivery === "queue" || event.delivery === "steer");
+	}
 	if (event.type === "execution") {
 		return typeof event.action === "string" && (event.params === undefined || isJsonValue(event.params));
 	}

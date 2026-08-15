@@ -507,10 +507,14 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 	program
 		.command("client")
 		.argument("[piboSessionId]", "Pibo session id", "default")
-		.description("Start a console gateway client")
-		.action(async (piboSessionId: string) => {
+		.description("Start a console client for one Pibo Session")
+		.helpOption("-h, --help", "Display help for command")
+		.option("--host <host>", "Gateway host")
+		.option("--port <port>", "Gateway port", parsePort)
+		.addHelpText("after", "\nMessages queue by default. Use /steer <message> for the active turn or /queue <message> explicitly.\n")
+		.action(async (piboSessionId: string, options: { host?: string; port?: number }) => {
 			const { runGatewayClient } = await import("./gateway/client.js");
-			await runGatewayClient({ piboSessionId });
+			await runGatewayClient({ piboSessionId, host: options.host, port: options.port });
 		});
 
 	if (argv.length <= 2) {
@@ -551,6 +555,7 @@ Commands:
   tui          Start the direct Pi TUI
   tui:routed   Start the local routed Pibo TUI
   tui:sessions  Start the reduced Web Chat-derived session UI
+  client       Send queued or steering messages to one Pibo Session
   gateway      Inspect and restart host gateways through safe CLI commands
   gateway:web  Start a web gateway runtime (use --auth=local for loopback-only local auth)
 
