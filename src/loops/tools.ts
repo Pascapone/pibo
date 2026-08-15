@@ -140,8 +140,8 @@ function createCreateGoalTool(context: ToolDefinitionContext, options: PiboGoalT
 		promptSnippet: 'Call create_goal only when the user or system explicitly requests a persistent goal. Do not infer a goal from an ordinary task.',
 		parameters: Type.Object({
 			objective: Type.String({ description: 'Concrete objective to pursue across automatic continuations.' }),
-			token_budget: Type.Optional(Type.Number({ description: 'Optional soft token budget. Usage arrives after each model response, so the final turn can overshoot.' })),
-			token_reserve: Type.Optional(Type.Number({ description: 'Optional non-negative minimum remaining tokens required before Pibo starts another turn.' })),
+			token_budget: Type.Optional(Type.Number({ description: 'Optional soft uncached-token budget. Cache reads and writes are excluded. Usage arrives after each model response, so the final turn can overshoot.' })),
+			token_reserve: Type.Optional(Type.Number({ description: 'Optional non-negative minimum remaining uncached tokens required before Pibo starts another turn.' })),
 		}),
 		async execute(_toolCallId, params: CreateGoalParams) {
 			try {
@@ -192,7 +192,7 @@ function createUpdateGoalTool(context: ToolDefinitionContext, options: PiboGoalT
 						ok: true,
 						goal: goalPayload(job),
 						...(status === 'complete' && job.tokenBudget !== undefined
-							? { completionBudgetReport: `${job.state.tokensUsed ?? 0}/${job.tokenBudget} reported tokens consumed against a soft budget before the current model turn finishes` }
+							? { completionBudgetReport: `${job.state.tokensUsed ?? 0}/${job.tokenBudget} reported uncached tokens consumed against a soft budget before the current model turn finishes` }
 							: {}),
 					});
 				});

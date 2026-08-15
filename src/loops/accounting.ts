@@ -1,4 +1,11 @@
+import type { PiboAssistantUsageEvent } from '../core/events.js';
 import type { PiboLoopJob } from './types.js';
+
+export function goalBudgetTokens(usage: PiboAssistantUsageEvent): number {
+	const cacheReadTokens = Math.max(0, Math.floor(usage.cacheReadTokens ?? 0));
+	const cacheWriteTokens = Math.max(0, Math.floor(usage.cacheWriteTokens ?? 0));
+	return Math.max(0, Math.floor(usage.totalTokens) - cacheReadTokens - cacheWriteTokens);
+}
 
 export function goalActiveTimeSeconds(job: PiboLoopJob): number {
 	return Math.max(0, Math.floor(job.state.activeTimeSeconds ?? job.state.timeUsedSeconds ?? 0));

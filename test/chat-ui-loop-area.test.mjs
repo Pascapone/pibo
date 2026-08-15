@@ -22,5 +22,6 @@ test("new Loop UI defaults to same-session goal mode and exposes legacy Ralph mo
 	assert.match(stdout, /Goal loops continue in one Pibo Session/);
 	assert.match(stdout, /Soft Token Budget/);
 	assert.match(stdout, /Pre-turn Token Reserve/);
+	assert.match(stdout, /cache reads and writes are excluded/);
 	assert.match(stdout, /final turn can overshoot/);
 });

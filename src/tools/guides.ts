@@ -52,7 +52,7 @@ pibo loop stop <job-id>
 pibo loop cancel <job-id>
 \`\`\`
 
-Token budgets count usage reported by completed assistant model messages. One request can overshoot because usage is known after the response returns.
+Token budgets count uncached input and output usage reported by completed assistant model messages. Cache-read and cache-write tokens are excluded. One request can overshoot because usage is known after the response returns.
 `,
 };
 

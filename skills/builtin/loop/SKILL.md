@@ -51,7 +51,7 @@ Prefer creating the job stopped when its prompt, target, profile, or safety boun
 
 ## Token budgets
 
-Goal token budgets are soft: Pibo accumulates usage reported after model responses, so the final turn can overshoot. Each Goal run records tokens used before the turn, remaining tokens before the turn, turn usage, and overshoot.
+Goal token budgets are soft: Pibo accumulates uncached input and output usage reported after model responses, so the final turn can overshoot. Cache-read and cache-write tokens do not consume the budget. Each Goal run records uncached tokens used before the turn, remaining uncached tokens before the turn, turn usage, and overshoot.
 
 Set `--token-reserve <n>` to require more than `n` tokens to remain before Pibo starts another turn. Increase or clear the budget, or lower the reserve, before resuming a budget-limited Goal.
 
