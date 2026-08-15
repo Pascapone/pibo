@@ -412,7 +412,7 @@ Implementation MUST be split into focused or explicitly stacked branches/PRs to 
 - [x] SC-004: Agent Designer and profile inspection are runtime-aware and reject unsupported selections.
 - [ ] SC-005: Pibo tools, MCP, skills, context, and Pibo subagents have proven cross-runtime delivery and isolation.
 - [x] SC-006: New product history, trace, debug, telemetry, and binding inspection are runtime neutral.
-- [ ] SC-007: The built-in adapter-authoring skill is registered and passes full/partial-adapter evals.
+- [x] SC-007: The built-in adapter-authoring skill is registered and passes full/partial-adapter evals.
 - [ ] SC-008: Native Codex passes real Pibo2 restart/resume, tool, context, skill, MCP, subagent, approval/user-input, abort/failure, trace, and Designer scenarios.
 - [ ] SC-009: Existing `codex` compatibility semantics remain unchanged.
 - [ ] SC-010: Full tests, typechecks, builds, migrations, candidate validation, docs, PRs, and final requirement audit are complete with no known invalidating regression.
@@ -452,7 +452,7 @@ Implementation MUST be split into focused or explicitly stacked branches/PRs to 
 | REQ-011 Portable tools | Tool bridge | Pi compiler/MCP/security tests | Local + exact-candidate Pibo2 pass; see `portable-pibo-tools-mcp-validation-2026-08-15.md` |
 | REQ-012 Skills/context/MCP | Materialization | Isolation, secret rebinding, connected inventory, failure, cleanup, restart, Context Build, and Pi-scoped CLI tests | Local + exact-candidate Pibo2 pass; see `runtime-resource-materialization-validation-2026-08-15.md` |
 | REQ-013 History/debug | History | New-turn no-native-read, old Pi, Codex restart tests | Pibo-owned + Pi exact-candidate pass; native Codex provider pending |
-| REQ-014 Authoring skill | Skill | Registration plus full/partial evals | Local registration + 20/20 with-skill eval pass; package/Pibo2 pending |
+| REQ-014 Authoring skill | Skill | Registration plus full/partial evals | Local + exact-candidate Pibo2 pass; 20/20 with skill versus 9/20 baseline |
 | REQ-015 Native Codex | Codex | Fixtures, exact binary, Pibo2 integrated flows | Pending |
 | REQ-016 Compatibility alias | Profiles | Existing profile tests | Local pass; native profile pending |
 | REQ-017 Verification | All | Local and Pibo2 evidence reports | Pending |
