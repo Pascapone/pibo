@@ -140,6 +140,16 @@ export type PiboInputEvent = PiboMessageEvent | PiboExecutionEvent;
 export type PiboSessionStatus = {
 	piboSessionId: string;
 	activeModel?: { provider: string; id: string };
+	runtimeBinding?: {
+		runtimeInstanceId: string;
+		adapterId: string;
+		nativeSessionId?: string;
+		state: "unbound" | "bound" | "missing" | "error";
+		protocol?: string;
+		protocolVersion?: string;
+		adapterVersion?: string;
+		revision?: number;
+	};
 	queuedMessages: number;
 	processing: boolean;
 	streaming: boolean;

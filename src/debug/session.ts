@@ -14,6 +14,7 @@ export type DebugSessionSummary = {
 	warnings: string[];
 	session: Record<string, unknown>;
 	metadata: Record<string, unknown>;
+	runtimeBinding?: Record<string, unknown>;
 	room: {
 		urlRoomId?: string;
 		sessionRoomId?: string;
@@ -27,7 +28,7 @@ export type DebugSessionSummary = {
 
 type SessionRow = {
 	id: string;
-	pi_session_id: string;
+	pi_session_id: string | null;
 	channel: string;
 	kind: string;
 	profile: string;
@@ -85,6 +86,7 @@ export function inspectDebugSession(
 			warnings,
 			session: compactSessionRow(session),
 			metadata,
+			runtimeBinding: readRuntimeBinding(sessionsDb, session),
 			room: {
 				urlRoomId: parsed.roomId,
 				sessionRoomId,
@@ -129,6 +131,13 @@ export function formatDebugSessionSummary(summary: DebugSessionSummary): string 
 	lines.push("Session:");
 	for (const [key, value] of Object.entries(summary.session)) {
 		lines.push(`  ${key}: ${formatValue(value)}`);
+	}
+	if (summary.runtimeBinding) {
+		lines.push("");
+		lines.push("Runtime binding:");
+		for (const [key, value] of Object.entries(summary.runtimeBinding)) {
+			lines.push(`  ${key}: ${formatValue(value)}`);
+		}
 	}
 	if (Object.keys(summary.metadata).length) {
 		lines.push("");
@@ -191,6 +200,61 @@ function listChildSessions(db: DatabaseSync, piboSessionId: string, limit: numbe
 			updated_at: row.updated_at,
 		};
 	});
+}
+
+function readRuntimeBinding(db: DatabaseSync, session: SessionRow): Record<string, unknown> {
+	if (!tableExists(db, "session_runtime_bindings")) {
+		return {
+			pibo_session_id: session.id,
+			runtime_instance_id: "pi",
+			runtime_adapter_id: "pi",
+			native_session_id: session.pi_session_id,
+			binding_state: session.pi_session_id ? "bound" : "unbound",
+			source: "legacy-synthesized",
+		};
+	}
+	const row = db.prepare(`
+		SELECT
+			pibo_session_id, runtime_instance_id, runtime_adapter_id, native_session_id,
+			binding_state, protocol, protocol_version, adapter_version, locator_json,
+			metadata_json, revision, created_at, updated_at
+		FROM session_runtime_bindings
+		WHERE pibo_session_id = ?
+	`).get(session.id) as (Record<string, unknown> & { locator_json?: string | null; metadata_json?: string | null }) | undefined;
+	if (row) {
+		const { locator_json, metadata_json, ...safe } = row;
+		return {
+			...safe,
+			locator: sanitizeBindingLocator(parseObject(locator_json ?? null)),
+			metadata_keys: Object.keys(parseObject(metadata_json ?? null)).sort(),
+		};
+	}
+	return {
+		pibo_session_id: session.id,
+		runtime_instance_id: "pi",
+		runtime_adapter_id: "pi",
+		native_session_id: session.pi_session_id,
+		binding_state: session.pi_session_id ? "bound" : "unbound",
+		source: "legacy-synthesized",
+	};
+}
+
+function sanitizeBindingLocator(locator: Record<string, unknown>): Record<string, unknown> | undefined {
+	const kind = stringValue(locator.kind);
+	if (!kind) return undefined;
+	const value = stringValue(locator.value);
+	if (!value) return { kind };
+	if (kind === "local-file" || kind === "local-directory") return { kind, value };
+	try {
+		const url = new URL(value);
+		url.username = "";
+		url.password = "";
+		url.search = "";
+		url.hash = "";
+		return { kind, value: url.toString() };
+	} catch {
+		return { kind, value: "[redacted]" };
+	}
 }
 
 function readChatSession(db: DatabaseSync, piboSessionId: string): Record<string, unknown> | undefined {

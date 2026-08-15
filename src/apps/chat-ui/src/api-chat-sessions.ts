@@ -109,6 +109,27 @@ export async function postSession(profile?: string, roomId?: string): Promise<Cr
 	});
 }
 
+export async function getSessionRuntimeBinding(piboSessionId: string): Promise<{ binding: import("./types").RuntimeSessionBinding }> {
+	return requestJson(`/api/chat/sessions/${encodeURIComponent(piboSessionId)}/runtime-binding`, { cache: "no-store" });
+}
+
+export async function patchSessionRuntimeBinding(
+	piboSessionId: string,
+	input: {
+		runtimeInstanceId: string;
+		nativeSessionId?: string;
+		state?: "unbound" | "bound";
+		locator?: { kind: string; value?: string };
+		expectedRevision: number;
+	},
+): Promise<{ binding: import("./types").RuntimeSessionBinding }> {
+	return requestJson(`/api/chat/sessions/${encodeURIComponent(piboSessionId)}/runtime-binding`, {
+		method: "PATCH",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify(input),
+	});
+}
+
 export async function markSessionRead(piboSessionId: string): Promise<{ ok: true; piboSessionId: string }> {
 	return requestJson<{ ok: true; piboSessionId: string }>(`/api/chat/sessions/${encodeURIComponent(piboSessionId)}/read`, {
 		method: "POST",

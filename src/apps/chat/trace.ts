@@ -18,6 +18,9 @@ export type PiboWebSessionStatus = "idle" | "running" | "error";
 export type PiboWebDerivedSessionNode = {
 	piboSessionId: string;
 	profile: string;
+	runtimeInstanceId?: string;
+	runtimeAdapterId?: string;
+	runtimeBindingState?: "unbound" | "bound" | "missing" | "error";
 	activeModel?: ModelProfile;
 	subagentName?: string;
 	workflowSessionKind?: PiboWorkflowSessionKind;
@@ -29,6 +32,10 @@ export type PiboWebDerivedSessionNode = {
 export type PiboWebSessionNode = {
 	piboSessionId: string;
 	piSessionId: string;
+	runtimeInstanceId?: string;
+	runtimeAdapterId?: string;
+	runtimeBindingState?: "unbound" | "bound" | "missing" | "error";
+	nativeSessionId?: string;
 	parentId?: string;
 	originId?: string;
 	profile: string;
@@ -152,7 +159,7 @@ export async function buildSessionNodes(
 
 	for (const session of sessions) {
 		let metadata: SessionMetadata = {};
-		if (!session.title && !options.skipPiMetadataFallback) {
+		if (!session.title && (session.runtimeBinding?.adapterId ?? "pi") === "pi" && !options.skipPiMetadataFallback) {
 			const sessionCwd = session.workspace ?? cwd;
 			let piSessions = piSessionsByCwd.get(sessionCwd);
 			if (!piSessions) {
@@ -167,6 +174,10 @@ export async function buildSessionNodes(
 		nodes.set(session.id, {
 			piboSessionId: session.id,
 			piSessionId: session.piSessionId,
+			runtimeInstanceId: session.runtimeBinding?.runtimeInstanceId ?? indexed?.runtimeInstanceId,
+			runtimeAdapterId: session.runtimeBinding?.adapterId ?? indexed?.runtimeAdapterId,
+			runtimeBindingState: session.runtimeBinding?.state ?? indexed?.runtimeBindingState,
+			nativeSessionId: session.runtimeBinding?.nativeSessionId ?? indexed?.nativeSessionId,
 			parentId: session.parentId,
 			originId: session.originId,
 			profile: session.profile,
@@ -201,6 +212,9 @@ export async function buildSessionNodes(
 		origin.derivedSessions.push({
 			piboSessionId: node.piboSessionId,
 			profile: node.profile,
+			runtimeInstanceId: node.runtimeInstanceId,
+			runtimeAdapterId: node.runtimeAdapterId,
+			runtimeBindingState: node.runtimeBindingState,
 			subagentName: node.subagentName,
 			workflowSessionKind: node.workflowSessionKind,
 			title: node.title,

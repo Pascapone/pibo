@@ -162,7 +162,7 @@ Pibo MUST persist an opaque runtime session binding separately from product rout
 
 - A binding stores Pibo Session id, configured runtime instance id, adapter id, optional native session id, state, protocol/version metadata, optional locator, metadata, timestamps, and a revision or compare-and-set guard.
 - Binding states include at least `unbound`, `bound`, `missing`, and `error`.
-- Native session uniqueness is scoped to `(configured runtime instance, native session id)`.
+- Native session uniqueness is scoped to `(adapter id, native session id)` so one native conversation cannot be attached through two configured instances of the same harness.
 - Existing sessions are backfilled as bound `pi` sessions using their current `piSessionId`.
 - Deprecated `piSessionId` fields remain available and dual-read/dual-write for at least two minor releases; removal is out of scope for this goal.
 - New non-Pi sessions may have no Pi id and begin unbound.

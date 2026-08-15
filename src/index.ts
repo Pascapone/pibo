@@ -224,6 +224,20 @@ export type {
 	UpdatePiboSessionInput,
 } from "./sessions/store.js";
 export {
+	RuntimeSessionBindingConflictError,
+	RuntimeSessionBindingTransitionError,
+	assertRuntimeSessionBindingTransition,
+	createInitialRuntimeSessionBinding,
+	createLegacyPiRuntimeSessionBinding,
+	nextRuntimeSessionBinding,
+} from "./sessions/runtime-binding.js";
+export type {
+	CreateRuntimeSessionBindingInput,
+	PersistedRuntimeSessionBinding,
+	RuntimeSessionBindingRebindInput,
+	RuntimeSessionBindingUpdateOptions,
+} from "./sessions/runtime-binding.js";
+export {
 	InMemoryPiboSessionStore,
 	createPiSessionId,
 	createPiboSessionId,

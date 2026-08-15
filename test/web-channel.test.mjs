@@ -131,6 +131,23 @@ async function startWebHostChannel(options = {}) {
 		listSessions() {
 			return sessions.list();
 		},
+		getSessionRuntimeBinding(id) {
+			return sessions.getRuntimeBinding(id);
+		},
+		async rebindSessionRuntime(id, input) {
+			if (options.rebindSessionRuntime) return await options.rebindSessionRuntime(id, input, sessions);
+			const current = sessions.getRuntimeBinding(id);
+			if (!current) throw new Error("Runtime binding not found");
+			const adapterId = input.runtimeInstanceId === "pi" ? "pi" : input.runtimeInstanceId;
+			return sessions.updateRuntimeBinding(id, {
+				...current,
+				runtimeInstanceId: input.runtimeInstanceId,
+				adapterId,
+				nativeSessionId: input.nativeSessionId,
+				state: input.state ?? (input.nativeSessionId ? "bound" : "unbound"),
+				locator: input.locator,
+			}, { expectedRevision: input.expectedRevision, mode: "rebind" });
+		},
 		...(options.getSessionStatusSnapshot ? {
 			getSessionStatusSnapshot: options.getSessionStatusSnapshot,
 		} : {}),
@@ -856,6 +873,39 @@ test("chat web app creates app context sessions", async () => {
 		assert.equal(retiredPartitionField in payload.session, false);
 		assert.equal(payload.session.parentId, undefined);
 		assert.equal(payload.session.workspace, homedir());
+		assert.equal(payload.session.runtimeBinding.runtimeInstanceId, "pi");
+		assert.equal(payload.session.runtimeBinding.adapterId, "pi");
+		assert.equal(payload.session.runtimeBinding.state, "unbound");
+		assert.equal(payload.session.runtimeBinding.nativeSessionId, payload.session.piSessionId);
+
+		const bindingResponse = await fetch(`${baseURL}/api/chat/sessions/${encodeURIComponent(payload.session.id)}/runtime-binding`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(bindingResponse.status, 200);
+		const bindingPayload = await bindingResponse.json();
+		assert.equal(bindingPayload.binding.revision, 1);
+
+		const bindResponse = await fetch(`${baseURL}/api/chat/sessions/${encodeURIComponent(payload.session.id)}/runtime-binding`, {
+			method: "PATCH",
+			headers: { "content-type": "application/json", origin: baseURL, "x-test-user": "user-1" },
+			body: JSON.stringify({
+				runtimeInstanceId: "pi",
+				nativeSessionId: payload.session.piSessionId,
+				state: "bound",
+				expectedRevision: 1,
+			}),
+		});
+		assert.equal(bindResponse.status, 200);
+		const boundPayload = await bindResponse.json();
+		assert.equal(boundPayload.binding.state, "bound");
+		assert.equal(boundPayload.binding.revision, 2);
+
+		const staleBindResponse = await fetch(`${baseURL}/api/chat/sessions/${encodeURIComponent(payload.session.id)}/runtime-binding`, {
+			method: "PATCH",
+			headers: { "content-type": "application/json", origin: baseURL, "x-test-user": "user-1" },
+			body: JSON.stringify({ runtimeInstanceId: "pi", state: "unbound", expectedRevision: 1 }),
+		});
+		assert.equal(staleBindResponse.status, 409);
 
 		const bootstrap = await fetch(`${baseURL}/api/chat/bootstrap?piboSessionId=${encodeURIComponent(payload.session.id)}`, {
 			headers: { "x-test-user": "user-1" },

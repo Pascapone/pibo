@@ -1,7 +1,7 @@
 # Tasks: Multi-Agent Runtime Adapters
 
 **Status:** Implementing
-**Updated:** 2026-08-14
+**Updated:** 2026-08-15
 
 Each milestone must be committed only after its listed verification passes. Codex implementation may not begin while a known Pi parity regression remains.
 
@@ -46,19 +46,19 @@ Target branch: `feature/agent-runtime-foundation`
 - [x] 2.9 Run focused queue, steering, recovery, compaction, action, tool, subagent, trace, debug, and telemetry tests (99/99 focused parity set passing).
 - [x] 2.10 Run full build/typecheck/test suite (1,609/1,609 passing).
 - [ ] 2.11 Validate fresh/resumed old Pi sessions and main controls on Pibo2; record performance/streaming comparison.
-- [ ] 2.12 Commit, push, and open Pi parity PR; do not start Codex until regressions are cleared.
+- [x] 2.12 Commit, push, and open stacked Pi parity PR #477; model-dependent parity evidence remains gated by 2.11.
 
 ## 3. Runtime binding persistence PR
 
-- [ ] 3.1 Add `RuntimeSessionBinding` types and store interface.
-- [ ] 3.2 Add `session_runtime_bindings` to `pibo.sqlite` with indexes, revision, and state validation.
-- [ ] 3.3 Add equivalent compatibility support to the legacy session store if still writable.
-- [ ] 3.4 Backfill existing sessions as bound `pi` records without changing ids or transcript paths.
-- [ ] 3.5 Allow non-Pi `sessions.pi_session_id` to be null while preserving Pi uniqueness.
-- [ ] 3.6 Implement dual read/write and synthesized legacy Pi binding fallback.
-- [ ] 3.7 Implement CAS `unbound -> bound`, missing/error transitions, and explicit repair/rebind path.
-- [ ] 3.8 Update APIs/read models/session inspection/debug/Chat Web metadata with additive binding data.
-- [ ] 3.9 Add migration, uniqueness, concurrent-bind, missing-session, rollback, and old-database tests.
+- [x] 3.1 Add `RuntimeSessionBinding` types and store interface.
+- [x] 3.2 Add `session_runtime_bindings` to `pibo.sqlite` with indexes, revision, and state validation.
+- [x] 3.3 Add equivalent compatibility support to the legacy session store while it remains writable.
+- [x] 3.4 Backfill existing sessions as bound `pi` records without changing ids or transcript paths.
+- [x] 3.5 Allow non-Pi `sessions.pi_session_id` to be null while preserving Pi uniqueness.
+- [x] 3.6 Implement dual read/write and synthesized legacy Pi binding fallback.
+- [x] 3.7 Implement CAS `unbound -> bound`, missing/error transitions, and explicit repair/rebind path.
+- [x] 3.8 Update APIs/read models/session inspection/debug/Chat Web metadata with additive binding data.
+- [x] 3.9 Add migration, uniqueness, concurrent-bind, missing-session, rollback, and old-database tests; full suite passes 1,621/1,621.
 - [ ] 3.10 Validate migration against a Pibo2 copy of existing data and record row/id/path evidence.
 - [ ] 3.11 Commit, push, and open persistence PR.
 

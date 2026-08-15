@@ -33,6 +33,10 @@ export type PiboWorkflowSessionKind = "main_workflow" | "nested_workflow" | "age
 export type PiboWebSessionNode = {
 	piboSessionId: string;
 	piSessionId: string;
+	runtimeInstanceId?: string;
+	runtimeAdapterId?: string;
+	runtimeBindingState?: "unbound" | "bound" | "missing" | "error";
+	nativeSessionId?: string;
 	parentId?: string;
 	originId?: string;
 	profile: string;
@@ -52,6 +56,9 @@ export type PiboWebSessionNode = {
 export type PiboWebDerivedSessionNode = {
 	piboSessionId: string;
 	profile: string;
+	runtimeInstanceId?: string;
+	runtimeAdapterId?: string;
+	runtimeBindingState?: "unbound" | "bound" | "missing" | "error";
 	activeModel?: ModelProfile;
 	subagentName?: string;
 	workflowSessionKind?: PiboWorkflowSessionKind;
@@ -208,9 +215,26 @@ export type WorkflowLifecycleEventRecord = {
 	createdAt: string;
 };
 
+export type RuntimeSessionBinding = {
+	piboSessionId: string;
+	runtimeInstanceId: string;
+	adapterId: string;
+	nativeSessionId?: string;
+	state: "unbound" | "bound" | "missing" | "error";
+	protocol?: string;
+	protocolVersion?: string;
+	adapterVersion?: string;
+	locator?: { kind: string; value?: string };
+	metadata?: Record<string, unknown>;
+	revision?: number;
+	createdAt?: string;
+	updatedAt?: string;
+};
+
 export type PiboSession = {
 	id: string;
 	piSessionId: string;
+	runtimeBinding?: RuntimeSessionBinding;
 	channel: string;
 	kind: string;
 	profile: string;
@@ -266,6 +290,10 @@ export type PiboSignalNode = {
 export type PiboSessionSignalSnapshot = {
 	piboSessionId: string;
 	piSessionId?: string;
+	runtimeInstanceId?: string;
+	runtimeAdapterId?: string;
+	runtimeBindingState?: "unbound" | "bound" | "missing" | "error";
+	nativeSessionId?: string;
 	parentPiboSessionId?: string;
 	rootPiboSessionId: string;
 	version: number;

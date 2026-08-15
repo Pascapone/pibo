@@ -5264,6 +5264,65 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				return responseJson({ ok: true, piboSessionId: selectedSession.id });
 			}
 
+			if (sessionAction?.action === "runtime-binding" && request.method === "GET") {
+				const webSession = await requireSession(request, context);
+				const selectedSession = resolveRequestedSession(state, context, webSession, defaultProfile, sessionAction.piboSessionId);
+				const binding = context.channelContext.getSessionRuntimeBinding?.(selectedSession.id) ?? selectedSession.runtimeBinding;
+				if (!binding) throw new PiboWebHttpError("Runtime binding not found", 404);
+				return responseJson({ binding });
+			}
+
+			if (sessionAction?.action === "runtime-binding" && request.method === "PATCH") {
+				requireSameOriginJsonRequest(request);
+				const webSession = await requireSession(request, context);
+				const selectedSession = resolveRequestedSession(state, context, webSession, defaultProfile, sessionAction.piboSessionId);
+				if (!context.channelContext.rebindSessionRuntime) {
+					throw new PiboWebHttpError("Runtime binding repair is not available", 501);
+				}
+				const body = await readJsonBody<Record<string, unknown>>(request);
+				if (typeof body.runtimeInstanceId !== "string" || !body.runtimeInstanceId.trim()) {
+					throw new PiboWebHttpError("runtimeInstanceId is required", 400);
+				}
+				if (!Number.isInteger(body.expectedRevision) || Number(body.expectedRevision) < 1) {
+					throw new PiboWebHttpError("expectedRevision must be a positive integer", 400);
+				}
+				if (body.nativeSessionId !== undefined && typeof body.nativeSessionId !== "string") {
+					throw new PiboWebHttpError("nativeSessionId must be a string", 400);
+				}
+				if (body.state !== undefined && body.state !== "unbound" && body.state !== "bound") {
+					throw new PiboWebHttpError("state must be unbound or bound", 400);
+				}
+				const locator = body.locator;
+				const locatorKinds = new Set(["local-file", "local-directory", "uri", "remote", "adapter-resolved"]);
+				if (
+					locator !== undefined
+					&& (
+						!isJsonObject(locator)
+						|| typeof locator.kind !== "string"
+						|| !locatorKinds.has(locator.kind)
+						|| (locator.value !== undefined && typeof locator.value !== "string")
+					)
+				) {
+					throw new PiboWebHttpError("locator must contain a supported kind and optional string value", 400);
+				}
+				try {
+					const binding = await context.channelContext.rebindSessionRuntime(selectedSession.id, {
+						runtimeInstanceId: body.runtimeInstanceId.trim(),
+						nativeSessionId: typeof body.nativeSessionId === "string" && body.nativeSessionId.trim() ? body.nativeSessionId.trim() : undefined,
+						state: body.state as "unbound" | "bound" | undefined,
+						locator: locator as { kind: "local-file" | "local-directory" | "uri" | "remote" | "adapter-resolved"; value?: string } | undefined,
+						expectedRevision: Number(body.expectedRevision),
+					});
+					const updated = context.channelContext.getSession(selectedSession.id);
+					if (updated) state.sessionQuery.upsertSession(updated);
+					return responseJson({ binding });
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					const status = /concurrently|idle/i.test(message) ? 409 : 400;
+					throw new PiboWebHttpError(message, status);
+				}
+			}
+
 			const patchSessionId = sessionResourceId(url.pathname);
 			if (patchSessionId && request.method === "PATCH") {
 				requireSameOriginJsonRequest(request);

@@ -37,6 +37,15 @@ import {
 	type PiboSession,
 	type PiboSessionStore,
 } from "../sessions/store.js";
+import {
+	createLegacyPiRuntimeSessionBinding,
+	RuntimeSessionBindingConflictError,
+	type CreateRuntimeSessionBindingInput,
+	type RuntimeSessionBinding,
+	type RuntimeSessionBindingRebindInput,
+	type RuntimeSessionBindingUpdateOptions,
+} from "../sessions/runtime-binding.js";
+import { AgentRuntimeBindingMissingError, AgentRuntimeUnavailableError } from "../agent-runtime/errors.js";
 import { getDefaultPiboWorkspace } from "./workspace.js";
 import { loadPiboModelDefaults, selectRequestedFastMode, type PiboModelDefaults } from "./model-defaults.js";
 import { loadPiboUserSettings } from "./user-settings.js";
@@ -60,6 +69,8 @@ export type {
 	PiboOutputEvent,
 	PiboSessionStatus,
 } from "./events.js";
+
+export type PiboRuntimeBindingRebindInput = RuntimeSessionBindingRebindInput;
 
 export type PiboSessionRouterOptions = Omit<
 	PiboRuntimeOptions,
@@ -123,16 +134,17 @@ function hasReachedSubagentMaxDepth(subagent: SubagentProfile, depth: number): b
 
 function profileForSession(
 	baseProfile: InitialSessionContext,
-	piSessionId: string,
-	parentPiSessionId: string | undefined,
+	runtimeInstanceId: string,
+	nativeSessionId: string | undefined,
+	parentNativeSessionId: string | undefined,
 	subagentDepth: number,
 ): InitialSessionContext {
 	const options: InitialSessionContextOptions = {
 		profileName: baseProfile.profileName,
-		runtimeInstanceId: baseProfile.runtimeInstanceId,
+		runtimeInstanceId,
 		runtimeOptions: baseProfile.runtimeOptions,
-		sessionId: piSessionId,
-		parentSessionId: parentPiSessionId,
+		sessionId: nativeSessionId,
+		parentSessionId: parentNativeSessionId,
 		model: baseProfile.model,
 		mainModel: baseProfile.mainModel,
 		subagentModel: baseProfile.subagentModel,
@@ -226,6 +238,19 @@ function shouldResetSessionAfterAction(action: string): boolean {
 function piboRoomIdFromMetadata(metadata: PiboJsonObject | undefined): string | undefined {
 	const value = metadata?.chatRoomId;
 	return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function runtimeBindingsEqual(left: RuntimeSessionBinding, right: RuntimeSessionBinding): boolean {
+	return left.piboSessionId === right.piboSessionId
+		&& left.runtimeInstanceId === right.runtimeInstanceId
+		&& left.adapterId === right.adapterId
+		&& left.nativeSessionId === right.nativeSessionId
+		&& left.state === right.state
+		&& left.protocol === right.protocol
+		&& left.protocolVersion === right.protocolVersion
+		&& left.adapterVersion === right.adapterVersion
+		&& JSON.stringify(left.locator ?? null) === JSON.stringify(right.locator ?? null)
+		&& JSON.stringify(left.metadata ?? {}) === JSON.stringify(right.metadata ?? {});
 }
 
 type TelemetrySessionStore = PiboSessionStore & { getTelemetryStore?: () => TelemetryStore | undefined };
@@ -572,14 +597,70 @@ export class PiboSessionRouter {
 		return [...this.sessions.keys()];
 	}
 
+	getSessionRuntimeBinding(piboSessionId: string): RuntimeSessionBinding | undefined {
+		const session = this.sessionStore.get(piboSessionId);
+		return session ? structuredClone(this.resolveSessionRuntimeBinding(session)) : undefined;
+	}
+
+	async rebindSessionRuntime(
+		piboSessionId: string,
+		input: PiboRuntimeBindingRebindInput,
+	): Promise<RuntimeSessionBinding> {
+		const session = this.sessionStore.get(piboSessionId);
+		if (!session) throw new Error(`Unknown Pibo session "${piboSessionId}".`);
+		const current = this.resolveSessionRuntimeBinding(session);
+		const currentRevision = current.revision ?? 1;
+		if (currentRevision !== input.expectedRevision) {
+			throw new RuntimeSessionBindingConflictError(piboSessionId, input.expectedRevision, currentRevision);
+		}
+		const liveStatus = this.sessions.get(piboSessionId)?.getStatus();
+		if (liveStatus && (liveStatus.processing || liveStatus.streaming || liveStatus.queuedMessages > 0)) {
+			throw new Error("A runtime binding can only be repaired or rebound while the session is idle.");
+		}
+		if (this.sessions.has(piboSessionId) || this.pendingSessions.has(piboSessionId)) {
+			await this.resetCachedSession(piboSessionId, "runtime binding rebind");
+		}
+		const registry = this.resolveAgentRuntimeRegistry(input.runtimeInstanceId);
+		const adapter = registry.requireAgentRuntimeAdapter(input.runtimeInstanceId);
+		const requestedState = input.state ?? (input.nativeSessionId ? "bound" : "unbound");
+		let next: RuntimeSessionBinding = {
+			piboSessionId,
+			runtimeInstanceId: input.runtimeInstanceId,
+			adapterId: adapter.descriptor.id,
+			nativeSessionId: input.nativeSessionId,
+			state: requestedState,
+			protocol: adapter.descriptor.protocol?.name,
+			protocolVersion: current.runtimeInstanceId === input.runtimeInstanceId ? current.protocolVersion : undefined,
+			locator: input.locator,
+			metadata: {},
+		};
+		if (next.state === "bound" && adapter.resolveBinding) {
+			next = await adapter.resolveBinding({
+				binding: next,
+				workspace: session.workspace ?? this.options.cwd ?? getDefaultPiboWorkspace(),
+			});
+		}
+		const mode = (current.state === "missing" || current.state === "error")
+			&& current.runtimeInstanceId === next.runtimeInstanceId
+			&& current.adapterId === next.adapterId
+			? "repair"
+			: "rebind";
+		const persisted = this.persistSessionRuntimeBinding(session, next, {
+			expectedRevision: input.expectedRevision,
+			mode,
+		});
+		return structuredClone(persisted);
+	}
+
 	getSessionRuntimeStatus(piboSessionId: string): PiboSessionStatus | undefined {
-		return this.sessions.get(piboSessionId)?.getStatus();
+		const status = this.sessions.get(piboSessionId)?.getStatus();
+		return status ? this.withPersistedRuntimeBinding(status) : undefined;
 	}
 
 	async getSessionStatusSnapshot(piboSessionId: string): Promise<PiboSessionStatus> {
 		const session = await this.getOrCreateSession(piboSessionId);
 		try {
-			return await session.getStatusSnapshot();
+			return this.withPersistedRuntimeBinding(await session.getStatusSnapshot());
 		} finally {
 			this.scheduleIdleSessionEvictionIfIdle(piboSessionId);
 		}
@@ -611,7 +692,7 @@ export class PiboSessionRouter {
 	}
 
 	listSessionRuntimeStatuses(): PiboSessionStatus[] {
-		return [...this.sessions.values()].map((session) => session.getStatus());
+		return [...this.sessions.values()].map((session) => this.withPersistedRuntimeBinding(session.getStatus()));
 	}
 
 	listRuns(options: { includeConsumed?: boolean; includeDetached?: boolean } = {}): PiboRunSnapshot[] {
@@ -808,37 +889,61 @@ export class PiboSessionRouter {
 		let session: RoutedSession | undefined;
 		this.signalRegistry.project({ type: "session_created", session: piboSession });
 		const profile = createPiboProfileFromRegistryOrDefault(this.pluginRegistry, piboSession.profile);
-		const parentPiSessionId = piboSession.parentId
-			? this.resolvePiboSession(piboSession.parentId).piSessionId
+		let binding = this.resolveSessionRuntimeBinding(piboSession);
+		const parent = piboSession.parentId ? this.resolvePiboSession(piboSession.parentId) : undefined;
+		const parentBinding = parent ? this.resolveSessionRuntimeBinding(parent) : undefined;
+		const parentModelScopeId = parent ? parentBinding?.nativeSessionId ?? parent.id : undefined;
+		const runtimeParentNativeSessionId = parentBinding
+			&& parentBinding.runtimeInstanceId === binding.runtimeInstanceId
+			&& parentBinding.adapterId === binding.adapterId
+			? parentBinding.nativeSessionId
 			: undefined;
 		const modelDefaults = this.resolveModelDefaults();
-		const activeModel = this.ensureSessionActiveModel(piboSession, profile, parentPiSessionId, modelDefaults);
+		const activeModel = this.ensureSessionActiveModel(piboSession, profile, parentModelScopeId, modelDefaults);
 		const initialThinkingLevel = resolvePiboSessionInitialThinkingLevel(piboSession);
 		const sessionProfile = profileForSession(
 			profile,
-			piboSession.piSessionId,
-			parentPiSessionId,
+			binding.runtimeInstanceId,
+			binding.nativeSessionId,
+			runtimeParentNativeSessionId,
 			this.getSubagentDepth(piboSession.id),
 		);
 		const userSettings = loadPiboUserSettings();
 		const telemetryExtension = this.telemetryStore
 			? createPiboProviderTelemetryExtension({ store: this.telemetryStore, writer: this.telemetryWriter, session: piboSession, model: activeModel })
 			: undefined;
-		const runtimeRegistry = this.resolveAgentRuntimeRegistry(sessionProfile.runtimeInstanceId);
-		const runtimeAdapter = runtimeRegistry.requireAgentRuntimeAdapter(sessionProfile.runtimeInstanceId);
+		const runtimeRegistry = this.resolveAgentRuntimeRegistry(binding.runtimeInstanceId);
+		const runtimeAdapter = runtimeRegistry.requireAgentRuntimeAdapter(binding.runtimeInstanceId);
+		if (runtimeAdapter.descriptor.id !== binding.adapterId) {
+			throw new AgentRuntimeUnavailableError(
+				binding.runtimeInstanceId,
+				`Runtime binding for Pibo session "${piboSession.id}" expects adapter "${binding.adapterId}", but instance "${binding.runtimeInstanceId}" uses "${runtimeAdapter.descriptor.id}".`,
+			);
+		}
+		const workspace = piboSession.workspace ?? this.options.cwd ?? getDefaultPiboWorkspace();
+		if (binding.state === "bound" && runtimeAdapter.resolveBinding) {
+			const resolved = await runtimeAdapter.resolveBinding({ binding, workspace });
+			if (!runtimeBindingsEqual(binding, resolved)) {
+				binding = this.persistSessionRuntimeBinding(piboSession, resolved, {
+					expectedRevision: binding.revision,
+				});
+			}
+		}
+		this.assertOpenableRuntimeBinding(binding);
 		const profileDiagnostics = runtimeAdapter.validateProfile({
 			profile: sessionProfile,
-			workspace: piboSession.workspace ?? this.options.cwd ?? getDefaultPiboWorkspace(),
+			workspace,
 		});
 		const invalidProfile = profileDiagnostics.find((diagnostic) => diagnostic.severity === "error");
 		if (invalidProfile) {
 			throw new Error(`Runtime profile validation failed: ${invalidProfile.message}`);
 		}
 		const initialFastMode = resolvePiboSessionInitialFastMode(piboSession) ?? selectRequestedFastMode(sessionProfile, modelDefaults) ?? false;
-		const runtimeSession = await runtimeRegistry.openAgentRuntimeSession(sessionProfile.runtimeInstanceId, {
-			piboSession,
+		const runtimeSession = await runtimeRegistry.openAgentRuntimeSession(binding.runtimeInstanceId, {
+			piboSession: { ...piboSession, runtimeBinding: binding },
 			profile: sessionProfile,
-			workspace: piboSession.workspace ?? this.options.cwd ?? getDefaultPiboWorkspace(),
+			binding,
+			workspace,
 			activeModel,
 			productContext: {
 				piboSessionId: piboSession.id,
@@ -863,6 +968,23 @@ export class PiboSessionRouter {
 				},
 			},
 		});
+		try {
+			const openedBinding = runtimeSession.getBinding();
+			if (openedBinding.runtimeInstanceId !== binding.runtimeInstanceId || openedBinding.adapterId !== binding.adapterId) {
+				throw new AgentRuntimeUnavailableError(
+					binding.runtimeInstanceId,
+					`Runtime instance "${binding.runtimeInstanceId}" opened an inconsistent binding for Pibo session "${piboSession.id}".`,
+				);
+			}
+			if (!runtimeBindingsEqual(binding, openedBinding)) {
+				binding = this.persistSessionRuntimeBinding(piboSession, openedBinding, {
+					expectedRevision: binding.revision,
+				});
+			}
+		} catch (error) {
+			await runtimeSession.dispose().catch(() => {});
+			throw error;
+		}
 		session = new RoutedSession(
 			piboSession.id,
 			runtimeSession,
@@ -906,6 +1028,89 @@ export class PiboSessionRouter {
 		throw new Error(`Unknown agent runtime instance "${instanceId}".`);
 	}
 
+	private resolveSessionRuntimeBinding(session: PiboSession): RuntimeSessionBinding {
+		return this.sessionStore.getRuntimeBinding?.(session.id)
+			?? session.runtimeBinding
+			?? createLegacyPiRuntimeSessionBinding(session.id, session.piSessionId, session.createdAt);
+	}
+
+	private withPersistedRuntimeBinding(status: PiboSessionStatus): PiboSessionStatus {
+		const session = this.sessionStore.get(status.piboSessionId);
+		if (!session) return status;
+		const binding = this.resolveSessionRuntimeBinding(session);
+		return {
+			...status,
+			runtimeBinding: {
+				runtimeInstanceId: binding.runtimeInstanceId,
+				adapterId: binding.adapterId,
+				nativeSessionId: binding.nativeSessionId,
+				state: binding.state,
+				protocol: binding.protocol,
+				protocolVersion: binding.protocolVersion,
+				adapterVersion: binding.adapterVersion,
+				revision: binding.revision,
+			},
+		};
+	}
+
+	private persistSessionRuntimeBinding(
+		session: PiboSession,
+		binding: RuntimeSessionBinding,
+		options: RuntimeSessionBindingUpdateOptions = {},
+	): RuntimeSessionBinding {
+		const current = this.resolveSessionRuntimeBinding(session);
+		const normalized: RuntimeSessionBinding = { ...structuredClone(binding), piboSessionId: session.id };
+		if (runtimeBindingsEqual(current, normalized)) return current;
+		const persisted = this.sessionStore.updateRuntimeBinding?.(session.id, normalized, options);
+		if (persisted) {
+			const updatedSession = this.sessionStore.get(session.id);
+			if (updatedSession) this.signalRegistry.project({ type: "session_created", session: updatedSession });
+			return persisted;
+		}
+		const now = new Date().toISOString();
+		if (normalized.adapterId === "pi" && normalized.nativeSessionId !== session.piSessionId) {
+			this.sessionStore.update(session.id, { piSessionId: normalized.nativeSessionId ?? "" });
+		}
+		const updatedSession = this.sessionStore.get(session.id);
+		if (updatedSession) this.signalRegistry.project({ type: "session_created", session: updatedSession });
+		return {
+			...normalized,
+			revision: (current.revision ?? 1) + 1,
+			createdAt: current.createdAt ?? session.createdAt,
+			updatedAt: now,
+		};
+	}
+
+	private assertOpenableRuntimeBinding(binding: RuntimeSessionBinding): void {
+		if (binding.state === "missing") {
+			throw new AgentRuntimeBindingMissingError(
+				binding.piboSessionId,
+				binding.runtimeInstanceId,
+				binding.nativeSessionId,
+			);
+		}
+		if (binding.state === "error") {
+			const diagnostic = typeof binding.metadata?.diagnosticMessage === "string"
+				? binding.metadata.diagnosticMessage
+				: "The persisted runtime binding is in an error state.";
+			throw new AgentRuntimeUnavailableError(
+				binding.runtimeInstanceId,
+				`Runtime binding for Pibo session "${binding.piboSessionId}" cannot be opened: ${diagnostic}`,
+			);
+		}
+	}
+
+	private createRuntimeBindingInput(profile: InitialSessionContext): CreateRuntimeSessionBindingInput {
+		const registry = this.resolveAgentRuntimeRegistry(profile.runtimeInstanceId);
+		const adapter = registry.requireAgentRuntimeAdapter(profile.runtimeInstanceId);
+		return {
+			runtimeInstanceId: profile.runtimeInstanceId,
+			adapterId: adapter.descriptor.id,
+			state: "unbound",
+			protocol: adapter.descriptor.protocol?.name,
+		};
+	}
+
 	private ensureSessionActiveModel(
 		piboSession: PiboSession,
 		profile: InitialSessionContext,
@@ -935,24 +1140,39 @@ export class PiboSessionRouter {
 		event: PiboExecutionEvent,
 	): Promise<void> {
 		if (result.cancelled) return;
+		const source = this.resolvePiboSession(event.piboSessionId);
+		const previousBinding = this.resolveSessionRuntimeBinding(source);
+		const liveBinding = this.sessions.get(event.piboSessionId)?.getRuntimeBinding();
+		const currentBinding: RuntimeSessionBinding = {
+			...previousBinding,
+			...liveBinding,
+			piboSessionId: source.id,
+			nativeSessionId: result.current.piSessionId,
+			state: "bound",
+			locator: result.current.sessionFile
+				? { kind: "local-file", value: result.current.sessionFile }
+				: liveBinding?.locator ?? previousBinding.locator,
+		};
 
 		if (event.action === "session.fork" || event.action === "session.clone") {
 			const action = event.action as "session.fork" | "session.clone";
-			const created = this.createDerivedSession(result, action);
+			const created = this.createDerivedSession(result, action, currentBinding);
 			result.piboSessionId = created.id;
 			await this.resetCachedSession(event.piboSessionId);
 			return;
 		}
 
-		this.sessionStore.update(event.piboSessionId, {
-			piSessionId: result.current.piSessionId,
-			workspace: result.current.cwd,
+		this.persistSessionRuntimeBinding(source, currentBinding, {
+			expectedRevision: previousBinding.revision,
+			mode: "rebind",
 		});
+		this.sessionStore.update(event.piboSessionId, { workspace: result.current.cwd });
 	}
 
 	private createDerivedSession(
 		result: PiboSessionOperationResult,
 		action: "session.fork" | "session.clone",
+		currentBinding: RuntimeSessionBinding,
 	): PiboSession {
 		const source = this.resolvePiboSession(result.piboSessionId);
 		return this.sessionStore.create({
@@ -961,14 +1181,25 @@ export class PiboSessionRouter {
 			profile: source.profile,
 			parentId: source.kind === "subagent" ? source.parentId : undefined,
 			originId: source.id,
-			piSessionId: result.current.piSessionId,
+			runtimeBinding: {
+				runtimeInstanceId: currentBinding.runtimeInstanceId,
+				adapterId: currentBinding.adapterId,
+				nativeSessionId: currentBinding.nativeSessionId ?? result.current.piSessionId,
+				state: "bound",
+				protocol: currentBinding.protocol,
+				protocolVersion: currentBinding.protocolVersion,
+				adapterVersion: currentBinding.adapterVersion,
+				locator: currentBinding.locator,
+				metadata: currentBinding.metadata,
+			},
 			workspace: result.current.cwd,
 			title: source.title,
 			activeModel: source.activeModel,
 			metadata: {
 				...asJsonObject(source.metadata),
 				originAction: action,
-				originPiSessionId: result.previous.piSessionId,
+				originRuntimeNativeSessionId: result.previous.piSessionId,
+				...(currentBinding.adapterId === "pi" ? { originPiSessionId: result.previous.piSessionId } : {}),
 			},
 		});
 	}
@@ -1017,6 +1248,7 @@ export class PiboSessionRouter {
 			channel: "pibo.runtime",
 			kind: "runtime",
 			profile: this.baseProfile.profileName,
+			runtimeBinding: this.createRuntimeBindingInput(this.baseProfile),
 			workspace: this.options.cwd ?? getDefaultPiboWorkspace(),
 		});
 		this.signalRegistry.project({ type: "session_created", session: created });
@@ -1196,6 +1428,7 @@ export class PiboSessionRouter {
 			kind: "subagent",
 			profile: targetProfile,
 			parentId: parent.id,
+			runtimeBinding: this.createRuntimeBindingInput(childProfile),
 			workspace: parent.workspace,
 			metadata,
 		});
@@ -1203,7 +1436,7 @@ export class PiboSessionRouter {
 		const activeModel = resolvePiboSessionActiveModel({
 			profile: childProfile,
 			piboSession: childSession,
-			parentPiSessionId: parent.piSessionId,
+			parentPiSessionId: this.resolveSessionRuntimeBinding(parent).nativeSessionId ?? parent.id,
 			modelDefaults: this.resolveModelDefaults(),
 		});
 		return activeModel ? this.sessionStore.update(childSession.id, { activeModel }) ?? childSession : childSession;

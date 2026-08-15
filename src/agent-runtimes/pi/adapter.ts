@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import type { AgentSessionRuntime, ExtensionFactory } from "@earendil-works/pi-coding-agent";
+import { existsSync } from "node:fs";
+import { SessionManager, type AgentSessionRuntime, type ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import {
 	InitialSessionContext,
 	type ModelProfile,
@@ -541,6 +542,46 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 		return [];
 	}
 
+	async resolveBinding(input: { binding: RuntimeSessionBinding; workspace: string }): Promise<RuntimeSessionBinding> {
+		const binding = structuredClone(input.binding);
+		if (binding.state !== "bound" || binding.metadata?.persistent === false) return binding;
+		if (!binding.nativeSessionId) {
+			return {
+				...binding,
+				state: "error",
+				metadata: {
+					...(binding.metadata ?? {}),
+					diagnosticCode: "pi_binding_native_id_missing",
+					diagnosticMessage: "The persisted Pi binding is bound but has no native session id.",
+				},
+			};
+		}
+		if (binding.locator?.kind === "local-file" && binding.locator.value && existsSync(binding.locator.value)) {
+			return {
+				...binding,
+				metadata: { ...(binding.metadata ?? {}), nativePresenceExpected: true },
+			};
+		}
+		const existing = (await SessionManager.list(input.workspace)).find((session) => session.id === binding.nativeSessionId);
+		if (existing) {
+			return {
+				...binding,
+				locator: { kind: "local-file", value: existing.path },
+				metadata: { ...(binding.metadata ?? {}), nativePresenceExpected: true },
+			};
+		}
+		if (binding.metadata?.nativePresenceExpected === false) return binding;
+		return {
+			...binding,
+			state: "missing",
+			metadata: {
+				...(binding.metadata ?? {}),
+				diagnosticCode: "pi_session_missing",
+				diagnosticMessage: `Pi session "${binding.nativeSessionId}" was not found for workspace "${input.workspace}".`,
+			},
+		};
+	}
+
 	async openSession(input: OpenAgentRuntimeSessionInput): Promise<AgentRuntimeSession> {
 		const compatibility = input.services?.compatibility as PiAgentRuntimeCompatibilityServices | undefined;
 		const runtime = await createPiboRuntime({
@@ -564,6 +605,7 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 			contextGuardTuiQueueOrdering: compatibility?.contextGuardTuiQueueOrdering,
 		});
 		const binding: RuntimeSessionBinding = {
+			...(input.binding ? structuredClone(input.binding) : {}),
 			piboSessionId: input.piboSession.id,
 			runtimeInstanceId: this.instanceId,
 			adapterId: this.descriptor.id,
@@ -574,6 +616,11 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 			locator: runtime.session.sessionFile
 				? { kind: "local-file", value: runtime.session.sessionFile }
 				: undefined,
+			metadata: {
+				...(input.binding?.metadata ?? {}),
+				persistent: compatibility?.persistSession !== false,
+				nativePresenceExpected: compatibility?.persistSession !== false,
+			},
 		};
 		return new PiAgentRuntimeSession(
 			this.instanceId,

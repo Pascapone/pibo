@@ -1,4 +1,4 @@
-import { THINKING_LEVELS, type BootstrapData, type PiboLoopJob, type PiboProjectSession, type PiboSessionSignalSnapshot, type PiboSessionTraceView, type PiboSignalSnapshot, type PiboTraceNode, type PiboWebSessionNode, type PiboWebSessionStatus, type ThinkingLevel, type WorkflowLifecycleEventRecord } from "./types";
+import { THINKING_LEVELS, type BootstrapData, type PiboLoopJob, type PiboProjectSession, type PiboSessionSignalSnapshot, type PiboSessionTraceView, type PiboSignalSnapshot, type PiboTraceNode, type PiboWebSessionNode, type PiboWebSessionStatus, type RuntimeSessionBinding, type ThinkingLevel, type WorkflowLifecycleEventRecord } from "./types";
 import { findSessionNode, findSessionPath } from "./app-session-model";
 import type { ChatSessionViewProps } from "./session-views/types";
 import type { SessionBreadcrumbItem, SessionDerivationLink, SessionOriginLink } from "./tracing/TraceTimeline";
@@ -66,6 +66,7 @@ export function createSessionTraceViewProps(input: {
 	expandThinking: boolean;
 	selectedSessionProfile: string;
 	sessionActiveModelBadge?: string;
+	sessionRuntimeBinding?: RuntimeSessionBinding;
 	selectedSessionStatus?: PiboWebSessionStatus;
 	selectedSessionSignal?: PiboSessionSignalSnapshot;
 	signals?: PiboSignalSnapshot;
@@ -97,6 +98,7 @@ export function createSessionTraceViewProps(input: {
 		expandThinking: input.expandThinking,
 		sessionAgentProfile: input.selectedSessionProfile,
 		sessionActiveModel: input.sessionActiveModelBadge,
+		sessionRuntimeBinding: input.sessionRuntimeBinding,
 		selectedSessionStatus: input.selectedSessionStatus,
 		selectedSessionSignal: input.selectedSessionSignal,
 		signals: input.signals,

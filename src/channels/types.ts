@@ -14,6 +14,7 @@ import type { PiboAuthService } from "../auth/types.js";
 import type { PiboWebApp } from "../web/types.js";
 import type { PiboLoopStopConditionDefinition, PiboLoopStopConditionInfo } from "../loops/types.js";
 import type { ContextFileProfile, InitialSessionContext, ModelProfile, SkillProfile } from "../core/profiles.js";
+import type { RuntimeSessionBinding, RuntimeSessionBindingRebindInput } from "../sessions/runtime-binding.js";
 import type {
 	CreatePiboSessionInput,
 	FindPiboSessionsInput,
@@ -40,6 +41,8 @@ export type PiboChannelContext = {
 	deleteSession?(id: string): boolean;
 	findSessions(input: FindPiboSessionsInput): PiboSession[];
 	listSessions?(): PiboSession[];
+	getSessionRuntimeBinding?(piboSessionId: string): RuntimeSessionBinding | undefined;
+	rebindSessionRuntime?(piboSessionId: string, input: RuntimeSessionBindingRebindInput): Promise<RuntimeSessionBinding>;
 	getSessionRuntimeStatus?(piboSessionId: string): PiboSessionStatus | undefined;
 	getSessionStatusSnapshot?(piboSessionId: string): Promise<PiboSessionStatus>;
 	listSessionRuntimeStatuses?(): PiboSessionStatus[];
