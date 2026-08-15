@@ -74,3 +74,7 @@ pibo debug trace <ps_...> --native-history --check
 Session-scoped message, event, tool, failure, trace, summary, and telemetry detail outputs include runtime instance, adapter, native session id where useful, and binding state. `session runtime` reports bounded product-history counts and sanitized binding fields.
 
 Debug output must not expose runtime config, locator values, binding metadata values, bearer credentials, cookies, environment secrets, or raw provider bodies. Externalized payloads are hydrated for explicitly requested full message/event/tool inspection; default text remains byte-bounded.
+
+## Validation
+
+Local and exact-candidate Pibo2 evidence is recorded in `docs/reports/runtime-neutral-history-trace-debug-validation-2026-08-15.md`.

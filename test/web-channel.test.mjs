@@ -856,6 +856,21 @@ test("legacy Pi traces use the adapter history provider without direct Chat Web 
 			{ headers: { "x-test-user": "user-1" } },
 		);
 		assert.equal(crossSessionResponse.status, 409);
+		assert.equal(await crossSessionResponse.text(), '{"error":"Runtime history cursor belongs to a different Pibo session"}');
+		const crossRuntimeCursor = `runtime-history:${Buffer.from(JSON.stringify({ ...cursorPayload, runtimeInstanceId: "other-runtime" }), "utf8").toString("base64url")}`;
+		const crossRuntimeResponse = await fetch(
+			`${baseURL}/api/chat/trace/timeline?piboSessionId=${encodeURIComponent(sessionPayload.session.id)}&before=${encodeURIComponent(crossRuntimeCursor)}&limit=50`,
+			{ headers: { "x-test-user": "user-1" } },
+		);
+		assert.equal(crossRuntimeResponse.status, 409);
+		assert.equal(await crossRuntimeResponse.text(), '{"error":"Runtime history cursor belongs to a different runtime instance"}');
+		const crossAdapterCursor = `runtime-history:${Buffer.from(JSON.stringify({ ...cursorPayload, adapterId: "other-adapter" }), "utf8").toString("base64url")}`;
+		const crossAdapterResponse = await fetch(
+			`${baseURL}/api/chat/trace/timeline?piboSessionId=${encodeURIComponent(sessionPayload.session.id)}&before=${encodeURIComponent(crossAdapterCursor)}&limit=50`,
+			{ headers: { "x-test-user": "user-1" } },
+		);
+		assert.equal(crossAdapterResponse.status, 409);
+		assert.equal(await crossAdapterResponse.text(), '{"error":"Runtime history cursor belongs to a different runtime adapter"}');
 		assert.equal(readHistoryCalls, 1);
 		const providerErrorCursor = `runtime-history:${Buffer.from(JSON.stringify({ ...cursorPayload, providerCursor: "provider-error" }), "utf8").toString("base64url")}`;
 		const providerErrorResponse = await fetch(

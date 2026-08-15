@@ -142,6 +142,8 @@ No native Codex code starts until all known Pi regressions are resolved and evid
 - Cross-session/runtime history cursors are rejected.
 - Debug output includes adapter/instance/binding state without locator, config, metadata values, or credentials.
 
+Pibo2 validation: `docs/reports/runtime-neutral-history-trace-debug-validation-2026-08-15.md`.
+
 ## Milestone 8: Adapter-authoring skill
 
 ### Build
