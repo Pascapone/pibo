@@ -15,7 +15,7 @@ const renderScript = `
 	console.log(renderToStaticMarkup(React.createElement(SessionGoalIndicatorView, { goal, nowMs })));
 `;
 
-function goal(status) {
+function goal(status, { tokensUsed = 254_600, tokenBudget } = {}) {
 	return {
 		id: "loop_goal",
 		mode: "goal",
@@ -24,9 +24,11 @@ function goal(status) {
 		target: { kind: "default-chat" },
 		profile: "base",
 		prompt: "Implement and verify the requested feature",
+		...(tokenBudget === undefined ? {} : { tokenBudget }),
 		state: {
 			goalStatus: status,
 			goalStartedAt: "2026-08-10T10:00:00.000Z",
+			tokensUsed,
 		},
 		createdAt: "2026-08-10T10:00:00.000Z",
 		updatedAt: "2026-08-10T10:05:57.000Z",
@@ -51,6 +53,17 @@ test("session Goal indicator shows active Goals with screenshot-style elapsed ti
 	assert.match(markup, /data-goal-status="active"/);
 	assert.match(markup, /Pursuing Goal:/);
 	assert.match(markup, />5:57</);
+	assert.match(markup, />254\.6k</);
+});
+
+test("session Goal indicator shows compact token usage and budget with one decimal place", async () => {
+	const markup = await render(goal("active", { tokenBudget: 12_300_000 }));
+	assert.match(markup, />254\.6k \/ 12\.3M</);
+});
+
+test("session Goal indicator preserves a trailing decimal zero", async () => {
+	const markup = await render(goal("active", { tokensUsed: 1_000, tokenBudget: 1_000_000 }));
+	assert.match(markup, />1\.0k \/ 1\.0M</);
 });
 
 test("session Goal indicator remains visible while the Goal is paused", async () => {

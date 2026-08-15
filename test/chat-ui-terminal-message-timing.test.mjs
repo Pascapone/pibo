@@ -280,6 +280,7 @@ test("Compact Terminal renders timing only on message rows and keeps live update
 	assert.doesNotMatch(source, /useStableActiveTurn|findLatestActiveTurnTerminal|selectedTrace\?\.status/);
 	assert.match(source, /data-pibo-component="TerminalStreamingFooter"/);
 	assert.match(source, /aria-label=\{footerAriaLabel\}[\s\S]*aria-hidden="true"/);
+	assert.match(source, /goalTokenUsage \? `Tokens \$\{goalTokenUsage\}` : undefined/);
 	assert.match(source, /justify-between[\s\S]*compact-terminal-working-label[\s\S]*SessionGoalIndicator/, "Working and Goal status should share the same right-aligned footer div");
 	assert.match(source, /const WORKING_LABEL = "Working\.\.\."/);
 	assert.match(source, /<span className="compact-terminal-working-label">\{WORKING_LABEL\}<\/span>/);
