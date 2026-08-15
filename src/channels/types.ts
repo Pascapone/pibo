@@ -39,7 +39,7 @@ export type PiboChannelContext = {
 	updateSession?(id: string, input: UpdatePiboSessionInput): PiboSession | undefined;
 	setLiveSessionActiveModel?(id: string, model: ModelProfile | undefined): Promise<ModelProfile | undefined>;
 	reportSessionError?(id: string, error: string, options?: { eventId?: string; source?: "pi" | "pibo" }): void;
-	deleteSession?(id: string): boolean;
+	deleteSession?(id: string): boolean | Promise<boolean>;
 	findSessions(input: FindPiboSessionsInput): PiboSession[];
 	listSessions?(): PiboSession[];
 	getSessionRuntimeBinding?(piboSessionId: string): RuntimeSessionBinding | undefined;

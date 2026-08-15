@@ -381,7 +381,9 @@ test("router gives tools and resources one generation and disposes isolated stat
 	assert.equal(openInput.services.resources.sessionGeneration, openInput.services.portableTools.sessionGeneration);
 	const generatedRoot = openInput.services.resources.getInspection().paths.root;
 	assert.equal(existsSync(generatedRoot), true);
-	await router.disposeAll();
+	await router.disposeSession("ps_resource_router", "test deletion");
 	assert.equal(existsSync(generatedRoot), false);
 	assert.throws(() => openInput.services.resources.getInspection(), /disposed/);
+	assert.throws(() => openInput.services.portableTools.createDefinitions(), /disposed/);
+	await router.disposeAll();
 });

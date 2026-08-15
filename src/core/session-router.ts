@@ -486,6 +486,10 @@ export class PiboSessionRouter {
 		}
 	}
 
+	async disposeSession(piboSessionId: string, reason = "session deleted"): Promise<void> {
+		await this.disposeSessionSubtree(piboSessionId, reason, { cancelRuns: true });
+	}
+
 	async killSession(piboSessionId: string, options?: { includeRuns?: boolean }): Promise<{ killed: string[]; cancelledRuns: string[] }> {
 		const rootSession = this.sessions.get(piboSessionId);
 		if (!rootSession) return { killed: [], cancelledRuns: [] };

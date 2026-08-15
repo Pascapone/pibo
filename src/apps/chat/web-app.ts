@@ -2957,12 +2957,12 @@ function normalizeAgentDeleteConfirmation(value: unknown): string {
 	return value.trim();
 }
 
-function deleteSessionsForAgentProfile(
+async function deleteSessionsForAgentProfile(
 	state: ChatWebAppState,
 	context: PiboWebAppContext,
 	webSession: PiboWebSession,
 	profileNames: readonly string[],
-): string[] {
+): Promise<string[]> {
 	const deleteSession = context.channelContext.deleteSession;
 	if (!deleteSession) throw new PiboWebHttpError("Session deletion is not available", 501);
 	const ownedSessions = listSharedSessions(context);
@@ -2982,18 +2982,18 @@ function deleteSessionsForAgentProfile(
 	const orderedIds = [...ids].sort(
 		(left, right) => sessionDepth(sessionsById.get(right), sessionsById) - sessionDepth(sessionsById.get(left), sessionsById),
 	);
+	for (const id of orderedIds) await deleteSession(id);
 	state.sessionQuery.deleteSessions(orderedIds);
 	state.eventCommands.deleteSessions(orderedIds);
-	for (const id of orderedIds) deleteSession(id);
 	return orderedIds;
 }
 
-function deleteSessionSubtree(
+async function deleteSessionSubtree(
 	state: ChatWebAppState,
 	context: PiboWebAppContext,
 	webSession: PiboWebSession,
 	rootSession: PiboSession,
-): string[] {
+): Promise<string[]> {
 	const deleteSession = context.channelContext.deleteSession;
 	if (!deleteSession) throw new PiboWebHttpError("Session deletion is not available", 501);
 	const ownedSessions = listSharedSessions(context);
@@ -3012,19 +3012,19 @@ function deleteSessionSubtree(
 	const orderedIds = [...ids].sort(
 		(left, right) => sessionDepth(sessionsById.get(right), sessionsById) - sessionDepth(sessionsById.get(left), sessionsById),
 	);
+	for (const id of orderedIds) await deleteSession(id);
 	state.sessionQuery.deleteSessions(orderedIds);
 	state.eventCommands.deleteSessions(orderedIds);
-	for (const id of orderedIds) deleteSession(id);
 	return orderedIds;
 }
 
-function deleteRoomTree(
+async function deleteRoomTree(
 	state: ChatWebAppState,
 	context: PiboWebAppContext,
 	webSession: PiboWebSession,
 	room: PiboRoom,
 	confirmName: string,
-): { deletedRoomIds: string[]; deletedSessionIds: string[] } {
+): Promise<{ deletedRoomIds: string[]; deletedSessionIds: string[] }> {
 	if (isDefaultPiboRoom(room)) throw new PiboWebHttpError("Default chat cannot be deleted", 400);
 	if (!isPiboRoomArchived(room)) throw new PiboWebHttpError("Archive the room before permanently deleting it.", 400);
 	if (confirmName !== room.name) throw new PiboWebHttpError(`Type "${room.name}" to permanently delete this room.`, 400);
@@ -3056,10 +3056,10 @@ function deleteRoomTree(
 	const orderedSessionIds = [...ids].sort(
 		(left, right) => sessionDepth(sessionsById.get(right), sessionsById) - sessionDepth(sessionsById.get(left), sessionsById),
 	);
+	for (const id of orderedSessionIds) await deleteSession(id);
 	state.sessionQuery.deleteSessions(orderedSessionIds);
 	state.eventCommands.deleteSessions(orderedSessionIds);
 	state.eventCommands.deleteRooms(roomIds);
-	for (const id of orderedSessionIds) deleteSession(id);
 	const orderedRoomIds = [...roomIds].reverse();
 	state.roomService.deleteRooms(orderedRoomIds);
 	return { deletedRoomIds: orderedRoomIds, deletedSessionIds: orderedSessionIds };
@@ -5264,7 +5264,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				if (confirmName !== agent.profileName) {
 					throw new PiboWebHttpError(`Type "${agent.profileName}" to permanently delete this agent and its sessions.`, 400);
 				}
-				const deletedSessionIds = deleteSessionsForAgentProfile(state, context, webSession, [agent.profileName, ...agent.profileAliases]);
+				const deletedSessionIds = await deleteSessionsForAgentProfile(state, context, webSession, [agent.profileName, ...agent.profileAliases]);
 				state.agentStore.delete(agent.id);
 				context.channelContext.removeProfile?.(agent.profileName);
 				invalidateBootstrapCatalogCache(state);
@@ -5408,7 +5408,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const webSession = await requireSession(request, context);
 				const room = requireRoom(state, roomResource.roomId, webSession, "admin");
 				const body = await readJsonBody<ChatRoomDeleteBody>(request);
-				const deleted = deleteRoomTree(
+				const deleted = await deleteRoomTree(
 					state,
 					context,
 					webSession,
@@ -5567,7 +5567,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				if (confirmText !== "Delete this session") {
 					throw new PiboWebHttpError('Type "Delete this session" to permanently delete this session.', 400);
 				}
-				const deletedSessionIds = deleteSessionSubtree(state, context, webSession, selectedSession);
+				const deletedSessionIds = await deleteSessionSubtree(state, context, webSession, selectedSession);
 				return responseJson({ deletedSessionIds });
 			}
 

@@ -157,7 +157,8 @@ async function startWebHostChannel(options = {}) {
 		updateSession(id, input) {
 			return sessions.update(id, input);
 		},
-		deleteSession(id) {
+		async deleteSession(id) {
+			if (options.deleteSession) return await options.deleteSession(id, sessions);
 			return sessions.delete(id);
 		},
 		findSessions(input) {
@@ -6481,9 +6482,15 @@ test("chat web app exposes and updates MCP server descriptions", async () => {
 });
 
 test("chat web app archives and permanently deletes custom agents with their sessions", async () => {
+	const deletionOrder = [];
 	const { channel, baseURL, sessions } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 		profiles: [{ name: "codex-compat-openai-web", aliases: ["codex"] }],
+		async deleteSession(id, store) {
+			await new Promise((resolve) => setTimeout(resolve, 25));
+			deletionOrder.push(id);
+			return store.delete(id);
+		},
 	});
 
 	try {
@@ -6589,6 +6596,7 @@ test("chat web app archives and permanently deletes custom agents with their ses
 		assert.equal(deleted.status, 200);
 		const deletedPayload = await deleted.json();
 		assert.deepEqual(new Set(deletedPayload.deletedSessionIds), new Set([sessionPayload.session.id, childSession.id]));
+		assert.deepEqual(deletionOrder, [childSession.id, sessionPayload.session.id]);
 		assert.equal(sessions.get(sessionPayload.session.id), undefined);
 		assert.equal(sessions.get(childSession.id), undefined);
 	} finally {
