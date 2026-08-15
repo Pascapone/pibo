@@ -6,6 +6,8 @@
 
 **Implementation commit:** `30509335`
 
+**Pull request:** #490
+
 **Stacked on:** protocol checkpoint PR #489 at `51005210`
 
 **Protocol:** official Codex App Server `0.147.0`, stable stdio JSONL, supported range `>=0.147.0 <0.148.0`
