@@ -1,6 +1,6 @@
 # Codex App Server Protocol Checkpoint — 2026-08-15
 
-**Status:** Milestone 9.1 pass; Milestones 9.2+ blocked by the Pi-parity authentication gate
+**Status:** Milestone 9.1 pass; Pi-parity gate subsequently resolved with approved Pibo2-managed authentication; Milestone 9.2 unblocked
 
 **Branch:** `feature/agent-runtime-codex-native`
 
@@ -8,13 +8,13 @@
 
 **Pull request:** #489
 
-**Pi parity 2.11:** **Blocked — not complete**
+**Pi parity 2.11:** **Pass** — see `pi-agent-runtime-parity-approved-auth-validation-2026-08-15.md`
 
 ## Outcome
 
 The dedicated Pibo2 host now has an isolated, versioned installation of the official OpenAI Codex CLI/App Server. The exact binary generated stable TypeScript and JSON Schema outputs, and Pibo stores the complete stable protocol and stable v2 schema bundles with pinned hashes and a narrow supported version range.
 
-This checkpoint does **not** implement the native adapter and does **not** claim Pi parity. Work beyond task 9.1 remains gated until Pibo2 has approved, target-managed model authentication. Local OAuth/API credentials must not be copied or transferred to Pibo2.
+This checkpoint does **not** implement the native adapter. At the time of the protocol checkpoint, work beyond task 9.1 remained gated pending approved target-managed model authentication. An operator later completed Pibo2's supported Chat Web OAuth flow, and the separate approved-auth validation report closed Pi parity 2.11 without copying local OAuth/API credentials to Pibo2.
 
 ## Exact Pibo2 binary
 
@@ -112,8 +112,8 @@ Cleanup was verified immediately:
 - the temporary `openai-codex` entry was removed from Pibo2 Pi auth storage;
 - the only pre-cleanup exact credential match was the temporary auth entry itself;
 - post-cleanup exact credential matches were zero in checked files and live process environments;
-- Pibo2 Pi auth now contains only its pre-existing non-OpenAI provider entry;
-- `/root/.codex/auth.json` does not exist;
+- at that cleanup checkpoint, Pibo2 Pi auth contained only its pre-existing non-OpenAI provider entry;
+- no native Codex auth storage exists on Pibo2;
 - zero Codex App Server processes remained;
 - zero probe home directories and OAuth temporary files remained;
 - the temporary Pibo custom agent and Pibo Session were archived and permanently deleted;
@@ -123,12 +123,14 @@ Cleanup was verified immediately:
 
 The official Codex binary and generated, credential-free schema checkpoint remain installed/stored. They do not contain authentication material.
 
-## Pi parity gate
+## Pi parity gate resolution
 
-Pi parity 2.11 remains explicitly open. Pibo2 currently has no approved OpenAI Codex authentication managed on the target, and no native Codex auth file is provisioned. A final target-side check found no OpenAI/Codex/API-key/OAuth environment keys in `pibo-web.service`, Pi auth contained only the pre-existing MiniMax provider, and the exact Codex CLI reported `Not logged in`. Earlier baseline/candidate provider-auth failures therefore remain the admissible state: real-model Pi parity cannot be closed yet.
+An operator subsequently authenticated `openai-codex` through Pibo2 Chat Web Settings. Metadata-only checks confirmed target-managed OAuth with access, refresh, and expiry fields present in mode-`0600` Pi auth storage; no credential value was copied, printed into the report, or transferred from a local machine.
 
-The gate may be closed only after an operator provisions approved Pibo2-managed authentication and exact-candidate evidence proves real routed Pi text, streaming, tools, persistence, and restart/resume against the baseline. Diagnostic runs using transferred local credentials are excluded by policy and by this report.
+The exact committed candidate then passed real baseline/candidate text and Bash-tool parity, public-Web streaming and tool execution, unchanged Pi binding across `pibo-web.service` restart, prior-tool-history recovery, post-restart streaming, model/thinking/usage/Fast controls, product trace consistency, and sanitized browser evidence. Full evidence is in `docs/reports/pi-agent-runtime-parity-approved-auth-validation-2026-08-15.md`.
+
+Diagnostic runs using transferred local credentials remain excluded. They were not used to close the gate.
 
 ## Checkpoint boundary
 
-Task 9.1 is complete. Tasks 9.2 through 9.14 and integrated Codex validation remain blocked by the explicit Pi-parity gate. No protocol client, runtime driver, configured instance, profile, or session implementation is included in this checkpoint.
+Task 9.1 is complete, and task 9.2 is now unblocked by the approved-auth Pi parity result. No protocol client, runtime driver, configured instance, profile, or session implementation is included in the 9.1 checkpoint itself.

@@ -45,8 +45,8 @@ Target branch: `feature/agent-runtime-foundation`
 - [x] 2.8 Add import-boundary tests forbidding Pi/Codex dependencies in generic runtime/router/history modules.
 - [x] 2.9 Run focused queue, steering, recovery, compaction, action, tool, subagent, trace, debug, and telemetry tests (99/99 focused parity set passing).
 - [x] 2.10 Run full build/typecheck/test suite (1,609/1,609 passing).
-- [ ] 2.11 Validate fresh/resumed old Pi sessions and main controls on Pibo2; record performance/streaming comparison.
-- [x] 2.12 Commit, push, and open stacked Pi parity PR #477; model-dependent parity evidence remains gated by 2.11.
+- [x] 2.11 Validate fresh/resumed old Pi sessions and main controls on Pibo2; approved target-managed OAuth, real baseline/candidate text and Bash turns, public-Web streaming, restart/resume, controls, trace checks, and sanitized browser evidence are recorded in `docs/reports/pi-agent-runtime-parity-approved-auth-validation-2026-08-15.md`.
+- [x] 2.12 Commit, push, and open stacked Pi parity PR #477; the later approved-auth evidence closes its real-model parity gate.
 
 ## 3. Runtime binding persistence PR
 
@@ -126,7 +126,7 @@ Target branch: `feature/agent-runtime-foundation`
 
 ## 9. Native Codex adapter PR(s), only after Pi parity
 
-- [x] 9.1 Pin official Pibo2 Codex App Server `0.147.0`, generate stable TypeScript/JSON Schema from that exact binary, store the full/v2 schemas and hashes, and record the `>=0.147.0 <0.148.0` checkpoint in `docs/reports/codex-app-server-protocol-checkpoint-2026-08-15.md`. Pi parity 2.11 remains blocked pending approved Pibo2-managed authentication.
+- [x] 9.1 Pin official Pibo2 Codex App Server `0.147.0`, generate stable TypeScript/JSON Schema from that exact binary, store the full/v2 schemas and hashes, and record the `>=0.147.0 <0.148.0` checkpoint in `docs/reports/codex-app-server-protocol-checkpoint-2026-08-15.md`. Approved Pibo2-managed authentication subsequently closed Pi parity 2.11, so task 9.2 is unblocked.
 - [ ] 9.2 Implement typed stdio JSON-RPC client with initialize/initialized, request correlation, backpressure handling, stderr diagnostics, and bounded shutdown.
 - [ ] 9.3 Implement process/version/availability diagnostics and isolated per-instance/session home/config.
 - [ ] 9.4 Implement thread start, binding CAS, resume, missing-thread state, read/list, and supported fork/history controls.
