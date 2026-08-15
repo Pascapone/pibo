@@ -32,6 +32,12 @@ export type {
 	ToolPackageProfile,
 } from "./core/profiles.js";
 export { AgentRuntimeAdapterRegistry } from "./agent-runtime/registry.js";
+export { validateAgentRuntimeProfileCapabilities } from "./agent-runtime/profile-validation.js";
+export {
+	buildPortableRuntimeContextSnapshot,
+	profileWithRuntimeInstance,
+	uniqueRuntimeDiagnostics,
+} from "./agent-runtime/context-build.js";
 export { RuntimeRoutedSession } from "./agent-runtime/routed-session.js";
 export type { PiboMessagePreflight, RuntimeRoutedSessionOptions } from "./agent-runtime/routed-session.js";
 export {
@@ -82,6 +88,7 @@ export type {
 	AgentRuntimeInstanceDefinition,
 	AgentRuntimeInstanceId,
 	AgentRuntimeInstanceInfo,
+	AgentRuntimeInstanceInspection,
 	AgentRuntimeModelCatalog,
 	AgentRuntimeModelInfo,
 	AgentRuntimeOpenServices,

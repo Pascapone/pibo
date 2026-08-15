@@ -15,6 +15,7 @@ import type { PiboWebApp } from "../web/types.js";
 import type { PiboLoopStopConditionDefinition, PiboLoopStopConditionInfo } from "../loops/types.js";
 import type { ContextFileProfile, InitialSessionContext, ModelProfile, SkillProfile } from "../core/profiles.js";
 import type { RuntimeSessionBinding, RuntimeSessionBindingRebindInput } from "../sessions/runtime-binding.js";
+import type { AgentRuntimeDiagnostic, AgentRuntimeInstanceInspection } from "../agent-runtime/types.js";
 import type {
 	CreatePiboSessionInput,
 	FindPiboSessionsInput,
@@ -56,6 +57,8 @@ export type PiboChannelContext = {
 	getProfiles?(): PiboProfileInfo[];
 	createProfile?(name: string): InitialSessionContext;
 	getCapabilityCatalog?(): PiboCapabilityCatalog;
+	inspectAgentRuntimeInstances?(): Promise<AgentRuntimeInstanceInspection[]>;
+	validateAgentRuntimeProfile?(profile: InitialSessionContext, workspace?: string): Promise<readonly AgentRuntimeDiagnostic[]>;
 	getLoopStopConditionDefinitions?(): PiboLoopStopConditionDefinition[];
 	getLoopStopConditionInfos?(): PiboLoopStopConditionInfo[];
 	/** @deprecated Use getLoopStopConditionDefinitions. */

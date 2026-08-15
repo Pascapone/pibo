@@ -22,6 +22,10 @@ Shared vocabulary for Pibo architecture, implementation, and specifications. Kee
 
 **Runtime Capability** — A declared operation or delivery mechanism supported by an adapter or live runtime session. Generic orchestration dispatches by capability rather than hard-coded adapter name.
 
+**Runtime Instance Inspection** — The runtime catalog view combining configured-instance metadata, enabled/available state, diagnostics, declared capabilities, protocol, model catalog, and auth status. It is safe product metadata and must not expose credentials.
+
+**Runtime Profile Options** — Adapter-specific JSON saved on a profile alongside its configured runtime instance. Options are validated by the selected adapter and are distinct from the adapter instance's operator configuration.
+
 **Portable Pibo Capability** — A Pibo-owned tool, skill, context file, MCP server selection, subagent, or control package delivered through adapter-specific direct, MCP, or materialization mechanisms.
 
 **Profile** — A named runtime configuration selecting models, tools, skills, subagents, context files, MCP servers, and runtime options.

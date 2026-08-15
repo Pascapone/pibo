@@ -2,6 +2,13 @@ import { createHash, randomUUID } from "node:crypto";
 import os from "node:os";
 import { monitorEventLoopDelay, type IntervalHistogram } from "node:perf_hooks";
 import { PiboSteeringUnavailableError, type PiboJsonObject, type PiboJsonValue, type PiboOutputEvent } from "../../core/events.js";
+import { PI_AGENT_RUNTIME_CAPABILITIES } from "../../agent-runtimes/pi/adapter.js";
+import {
+	buildPortableRuntimeContextSnapshot,
+	profileWithRuntimeInstance,
+	uniqueRuntimeDiagnostics,
+} from "../../agent-runtime/context-build.js";
+import type { AgentRuntimeDiagnostic, AgentRuntimeInstanceInspection } from "../../agent-runtime/types.js";
 import { summarizeSessionSignalStatus } from "../../signals/status.js";
 import type { PiboSessionSignalStatus, PiboSignalPatch, PiboSignalStatusPatch } from "../../signals/types.js";
 import { PiboWebHttpError, readJsonBody, responseJson } from "../../web/http.js";
@@ -60,17 +67,19 @@ import { withWorkflowSessionKind } from "../../sessions/workflow-session-kind.js
 import {
 	CustomAgentStore,
 	createDefaultCustomAgentStore,
+	previewCustomAgentCreate,
+	previewCustomAgentUpdate,
 	type CustomAgentDefinition,
 } from "./agent-store.js";
 import {
 	loadPiboModelDefaults,
 	type PiboModelDefaults,
 } from "../../core/model-defaults.js";
-import { inspectPiboContextBuild } from "../../core/context-build.js";
+import { inspectPiboContextBuild, type PiboContextBuildRuntimeInfo, type PiboContextBuildSnapshot } from "../../core/context-build.js";
 import { loadPiboUserSettings, updateTelemetryRetentionLastPrunedAt } from "../../core/user-settings.js";
 import { isTelemetryRetentionMaintenanceDue, maybeRunTelemetryRetentionMaintenance, type TelemetryRetentionMaintenanceState } from "./telemetry-retention-service.js";
 import { loadModelCatalog } from "./model-catalog.js";
-import { createCustomAgentProfileDefinition } from "./agent-profiles.js";
+import { createCustomAgentProfileDefinition, createCustomAgentRuntimeValidationProfile } from "./agent-profiles.js";
 import { createDefaultPiboReliabilityStore, PiboReliabilityStore } from "../../reliability/store.js";
 import { listMcpServerInfos } from "../../mcp/agent-context.js";
 import { getDefaultPiboWorkspace } from "../../core/workspace.js";
@@ -1539,6 +1548,57 @@ function serializeCustomAgents(agents: readonly CustomAgentDefinition[], context
 	return agents.map((agent) => serializeCustomAgent(agent, context));
 }
 
+const RUNTIME_PROFILE_UPDATE_FIELDS = new Set([
+	"runtimeInstanceId",
+	"runtimeOptions",
+	"nativeTools",
+	"skills",
+	"contextFiles",
+	"subagents",
+	"mcpServers",
+	"piPackages",
+	"mainModel",
+	"subagentModel",
+	"thinkingLevel",
+	"mainThinkingLevel",
+	"subagentThinkingLevel",
+	"fast",
+	"mainFast",
+	"subagentFast",
+	"builtinTools",
+	"builtinToolNames",
+	"autoContextFiles",
+	"runControl",
+	"goalControl",
+]);
+
+function customAgentUpdateAffectsRuntime(update: object): boolean {
+	return Object.keys(update).some((field) => RUNTIME_PROFILE_UPDATE_FIELDS.has(field));
+}
+
+async function requireValidCustomAgentRuntime(agent: CustomAgentDefinition, context: PiboWebAppContext): Promise<void> {
+	const profile = createCustomAgentRuntimeValidationProfile(agent);
+	let diagnostics;
+	if (context.channelContext.validateAgentRuntimeProfile) {
+		diagnostics = await context.channelContext.validateAgentRuntimeProfile(profile, process.cwd());
+	} else {
+		const runtimes = context.channelContext.getCapabilityCatalog?.().agentRuntimes ?? [];
+		const selected = runtimes.find((runtime) => runtime.id === agent.runtimeInstanceId);
+		if (!selected && runtimes.length === 0 && agent.runtimeInstanceId === "pi") return;
+		diagnostics = selected
+			? selected.enabled
+				? []
+				: [{ severity: "error" as const, code: "runtime_instance_disabled", message: `Agent runtime instance "${selected.id}" is disabled.` }]
+			: [{ severity: "error" as const, code: "runtime_instance_unknown", message: `Unknown agent runtime instance "${agent.runtimeInstanceId}".` }];
+	}
+	const errors = diagnostics.filter((diagnostic) => diagnostic.severity === "error");
+	if (errors.length === 0) return;
+	throw new PiboWebHttpError(
+		`Agent runtime selection is invalid: ${errors.map((diagnostic) => diagnostic.message).join(" ")}`,
+		400,
+	);
+}
+
 function listBrokenContextFiles(keys: readonly string[], context: PiboWebAppContext): string[] {
 	const catalog = context.channelContext.getCapabilityCatalog?.();
 	if (!catalog) return [];
@@ -1573,17 +1633,47 @@ function requireSharedAgent(agent: CustomAgentDefinition | undefined): CustomAge
 }
 
 async function buildAgentCatalog(context: PiboWebAppContext, state: ChatWebAppState) {
+	const baseCatalog = context.channelContext.getCapabilityCatalog?.() ?? {
+		agentRuntimes: [],
+		nativeTools: [],
+		skills: [],
+		subagents: [],
+		contextFiles: [],
+		packages: [],
+		piboTools: [],
+		mcpServers: [],
+		piPackages: [],
+	};
+	let agentRuntimes: AgentRuntimeInstanceInspection[] = (baseCatalog.agentRuntimes ?? []).map((runtime) => {
+		const diagnostics: AgentRuntimeDiagnostic[] = runtime.enabled ? [] : [{
+			severity: "error",
+			code: "runtime_instance_disabled",
+			message: `Agent runtime instance "${runtime.id}" is disabled.`,
+		}];
+		return {
+			...runtime,
+			available: runtime.enabled,
+			diagnostics,
+		};
+	});
+	if (context.channelContext.inspectAgentRuntimeInstances) {
+		try {
+			agentRuntimes = await context.channelContext.inspectAgentRuntimeInstances();
+		} catch (error) {
+			agentRuntimes = agentRuntimes.map((runtime) => ({
+				...runtime,
+				available: false,
+				diagnostics: [{
+					severity: "error" as const,
+					code: "runtime_catalog_diagnostics_failed",
+					message: error instanceof Error ? error.message : String(error),
+				}],
+			}));
+		}
+	}
 	return {
-		...(context.channelContext.getCapabilityCatalog?.() ?? {
-			nativeTools: [],
-			skills: [],
-			subagents: [],
-			contextFiles: [],
-			packages: [],
-			piboTools: [],
-			mcpServers: [],
-			piPackages: [],
-		}),
+		...baseCatalog,
+		agentRuntimes,
 		mcpServers: await listMcpServerInfos(),
 		piPackages: listPiPackages(),
 		userSkills: state.userSkillManager.list(),
@@ -3015,26 +3105,112 @@ async function buildContextBuildSnapshotForRequest(input: {
 	context: PiboWebAppContext;
 	webSession: PiboWebSession;
 	piboSessionId?: string;
-}) {
+}): Promise<PiboContextBuildSnapshot> {
 	const createProfile = input.context.channelContext.createProfile;
 	if (!createProfile) throw new PiboWebHttpError("Profile inspection is not available", 503);
 	if (!input.piboSessionId) throw new PiboWebHttpError("piboSessionId is required", 400);
 
 	const selectedSession = requireSharedSession(input.context, input.piboSessionId);
-	const profile = createProfile(selectedSession.profile);
-	const userSettings = loadPiboUserSettings();
-	const cwd = selectedSession?.workspace ?? getDefaultPiboWorkspace();
-	return inspectPiboContextBuild({
-		cwd,
+	const configuredProfile = createProfile(selectedSession.profile);
+	const runtimeInstanceId = selectedSession.runtimeBinding?.runtimeInstanceId ?? configuredProfile.runtimeInstanceId;
+	const profile = profileWithRuntimeInstance(configuredProfile, runtimeInstanceId);
+	const cwd = selectedSession.workspace ?? getDefaultPiboWorkspace();
+	const runtime = await resolveContextBuildRuntime(input.context, runtimeInstanceId);
+	const validationDiagnostics = input.context.channelContext.validateAgentRuntimeProfile
+		? await input.context.channelContext.validateAgentRuntimeProfile(profile, cwd)
+		: [];
+	const bindingMismatchDiagnostic = selectedSession.runtimeBinding && selectedSession.runtimeBinding.adapterId !== runtime.adapterId
+		? [{
+			severity: "error" as const,
+			code: "runtime_binding_adapter_mismatch",
+			message: `Session binding expects adapter "${selectedSession.runtimeBinding.adapterId}", but runtime instance "${runtime.id}" uses "${runtime.adapterId}".`,
+		}]
+		: [];
+	const diagnostics = uniqueRuntimeDiagnostics([
+		...runtime.diagnostics,
+		...validationDiagnostics,
+		...bindingMismatchDiagnostic,
+	]);
+	const runtimeInfo: PiboContextBuildRuntimeInfo = {
+		runtimeInstanceId: runtime.id,
+		adapterId: runtime.adapterId,
+		available: runtime.available && !diagnostics.some((diagnostic) => diagnostic.severity === "error"),
+		transport: runtime.transport,
+		bindingState: selectedSession.runtimeBinding?.state,
+		protocol: runtime.protocol,
+		capabilities: runtime.capabilities,
+		diagnostics,
+	};
+
+	if (runtime.adapterId === "pi" && runtimeInfo.available) {
+		const userSettings = loadPiboUserSettings();
+		const snapshot = await inspectPiboContextBuild({
+			cwd,
+			profile,
+			activeModel: selectedSession.activeModel,
+			persistSession: false,
+			sessionContext: {
+				piboSessionId: selectedSession.id,
+				piboRoomId: chatRoomIdFromMetadata(selectedSession.metadata),
+				timezone: userSettings.timezone,
+			},
+		});
+		const runtimeIssues = diagnostics.filter((diagnostic) => diagnostic.severity !== "info");
+		return {
+			...snapshot,
+			runtime: runtimeInfo,
+			diagnostics: [
+				...snapshot.diagnostics,
+				...runtimeIssues.map((diagnostic) => ({ type: diagnostic.severity, message: diagnostic.message })),
+			],
+			summary: {
+				...snapshot.summary,
+				warnings: snapshot.summary.warnings + runtimeIssues.filter((diagnostic) => diagnostic.severity === "warning").length,
+				errors: snapshot.summary.errors + runtimeIssues.filter((diagnostic) => diagnostic.severity === "error").length,
+			},
+		};
+	}
+
+	return buildPortableRuntimeContextSnapshot({
 		profile,
-		activeModel: selectedSession?.activeModel,
-		persistSession: false,
-		sessionContext: {
-			piboSessionId: selectedSession?.id,
-			piboRoomId: selectedSession ? chatRoomIdFromMetadata(selectedSession.metadata) : undefined,
-			timezone: userSettings.timezone,
-		},
+		runtime: runtimeInfo,
+		cwd,
+		piboSessionId: selectedSession.id,
+		piboRoomId: chatRoomIdFromMetadata(selectedSession.metadata),
+		activeModel: selectedSession.activeModel,
 	});
+}
+
+async function resolveContextBuildRuntime(context: PiboWebAppContext, runtimeInstanceId: string): Promise<AgentRuntimeInstanceInspection> {
+	if (context.channelContext.inspectAgentRuntimeInstances) {
+		const runtime = (await context.channelContext.inspectAgentRuntimeInstances()).find((candidate) => candidate.id === runtimeInstanceId);
+		if (runtime) return runtime;
+	}
+	const runtime = context.channelContext.getCapabilityCatalog?.().agentRuntimes?.find((candidate) => candidate.id === runtimeInstanceId);
+	if (!runtime && runtimeInstanceId === "pi") {
+		return {
+			id: "pi",
+			adapterId: "pi",
+			displayName: "Pi Coding Agent",
+			enabled: true,
+			available: true,
+			transport: "embedded",
+			capabilities: structuredClone(PI_AGENT_RUNTIME_CAPABILITIES),
+			configSchema: { type: "object", additionalProperties: false },
+			protocol: { name: "pi-sdk", supportedRange: "0.80.6" },
+			diagnostics: [],
+		};
+	}
+	if (!runtime) throw new PiboWebHttpError(`Unknown agent runtime instance "${runtimeInstanceId}"`, 400);
+	return {
+		...runtime,
+		available: runtime.enabled,
+		diagnostics: runtime.enabled ? [] : [{
+			severity: "error",
+			code: "runtime_instance_disabled",
+			message: `Agent runtime instance "${runtime.id}" is disabled.`,
+		}],
+	};
 }
 
 function indexSharedSessions(sessionQuery: ChatSessionQuery, sessions: PiboSession[]): void {
@@ -5025,6 +5201,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const body = await readJsonBody<ChatAgentBody>(request);
 				const input = createAgentInput(body);
 				requireAgentProfileNameAvailable(state, context, input.displayName);
+				await requireValidCustomAgentRuntime(previewCustomAgentCreate(input), context);
 				const agent = state.agentStore.create(input);
 				context.channelContext.upsertProfile?.(createCustomAgentProfileDefinition(agent));
 				invalidateBootstrapCatalogCache(state);
@@ -5040,6 +5217,9 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const update = createAgentUpdate(body);
 				const archived = normalizeAgentArchived(body.archived);
 				if (update.displayName) requireAgentProfileNameAvailable(state, context, update.displayName, existing.id);
+				if (customAgentUpdateAffectsRuntime(update)) {
+					await requireValidCustomAgentRuntime(previewCustomAgentUpdate(existing, update), context);
+				}
 				const updated = Object.keys(update).length ? state.agentStore.update(patchAgentId, update) : existing;
 				const afterUpdate = requireSharedAgent(updated);
 				const agent = archived === undefined ? afterUpdate : state.agentStore.setArchived(patchAgentId, archived);

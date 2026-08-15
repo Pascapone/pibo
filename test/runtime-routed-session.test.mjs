@@ -112,6 +112,35 @@ test("generic routed orchestration queues and correlates a non-Pi fake adapter",
 	}
 });
 
+test("generic router rejects profile selections the runtime cannot deliver", async () => {
+	const fixture = createFakeRuntimeFixture();
+	fixture.registry.upsertProfile({
+		name: "unsupported-portable-profile",
+		create() {
+			return new InitialSessionContextBuilder("unsupported-portable-profile")
+				.withAgentRuntime("router-fake")
+				.addTool({ name: "pibo-tool" })
+				.createSession();
+		},
+	});
+	fixture.store.create({
+		id: "ps_router_unsupported",
+		runtimeBinding: { runtimeInstanceId: "router-fake", adapterId: "router-fake", state: "unbound" },
+		channel: "test",
+		kind: "chat",
+		profile: "unsupported-portable-profile",
+		workspace: process.cwd(),
+	});
+	try {
+		await assert.rejects(
+			() => fixture.router.emit({ type: "execution", piboSessionId: "ps_router_unsupported", action: "status" }),
+			/Runtime profile validation failed: .*Pibo-managed tools/,
+		);
+	} finally {
+		await fixture.router.disposeAll();
+	}
+});
+
 test("generic routed controls reject unadvertised adapter capabilities explicitly", async () => {
 	const fixture = createFakeRuntimeFixture();
 	try {

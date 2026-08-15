@@ -1,10 +1,10 @@
 import { existsSync, statSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
-import type { PiboJsonObject } from "../../core/events.js";
+import type { PiboJsonObject, PiboJsonValue } from "../../core/events.js";
 import type { PiboBasePromptMode } from "../../core/base-prompt.js";
 import type { PiboCompactionPromptMode } from "../../core/compaction-prompt.js";
 import { savePiboModelDefaults, type PiboModelDefaults } from "../../core/model-defaults.js";
-import type { ModelProfile } from "../../core/profiles.js";
+import { DEFAULT_AGENT_RUNTIME_INSTANCE_ID, type ModelProfile } from "../../core/profiles.js";
 import { isPiboThinkingLevel, type PiboThinkingLevel } from "../../core/thinking.js";
 import type { PiboSession, UpdatePiboSessionInput } from "../../sessions/store.js";
 import { PiboWebHttpError } from "../../web/http.js";
@@ -69,6 +69,8 @@ export type ChatRoomDeleteBody = {
 export type ChatAgentBody = {
 	displayName?: unknown;
 	description?: unknown;
+	runtimeInstanceId?: unknown;
+	runtimeOptions?: unknown;
 	nativeTools?: unknown;
 	skills?: unknown;
 	contextFiles?: unknown;
@@ -258,6 +260,43 @@ export function normalizeAgentDescription(value: unknown): string | undefined {
 	if (!description) return undefined;
 	if (description.length > 1000) throw new PiboWebHttpError("Agent description is too long", 400);
 	return description;
+}
+
+export function normalizeAgentRuntimeInstanceId(value: unknown): string {
+	if (value === undefined) return DEFAULT_AGENT_RUNTIME_INSTANCE_ID;
+	if (typeof value !== "string" || !value.trim()) {
+		throw new PiboWebHttpError("runtimeInstanceId must be a non-empty string", 400);
+	}
+	const instanceId = value.trim();
+	if (!/^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/.test(instanceId)) {
+		throw new PiboWebHttpError("runtimeInstanceId is invalid", 400);
+	}
+	return instanceId;
+}
+
+export function normalizeAgentRuntimeOptions(value: unknown): PiboJsonObject {
+	if (value === undefined || value === null) return {};
+	if (!value || typeof value !== "object" || Array.isArray(value)) {
+		throw new PiboWebHttpError("runtimeOptions must be a JSON object", 400);
+	}
+	return normalizeAgentRuntimeJsonObject(value as Record<string, unknown>, "runtimeOptions", 0);
+}
+
+function normalizeAgentRuntimeJsonObject(value: Record<string, unknown>, path: string, depth: number): PiboJsonObject {
+	if (depth > 20) throw new PiboWebHttpError(`${path} exceeds the maximum nesting depth`, 400);
+	const normalized: PiboJsonObject = {};
+	for (const [key, item] of Object.entries(value)) {
+		normalized[key] = normalizeAgentRuntimeJsonValue(item, `${path}.${key}`, depth + 1);
+	}
+	return normalized;
+}
+
+function normalizeAgentRuntimeJsonValue(value: unknown, path: string, depth: number): PiboJsonValue {
+	if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+	if (typeof value === "number" && Number.isFinite(value)) return value;
+	if (Array.isArray(value)) return value.map((item, index) => normalizeAgentRuntimeJsonValue(item, `${path}[${index}]`, depth + 1));
+	if (value && typeof value === "object") return normalizeAgentRuntimeJsonObject(value as Record<string, unknown>, path, depth + 1);
+	throw new PiboWebHttpError(`${path} must contain JSON values only`, 400);
 }
 
 export function normalizeNameArray(value: unknown, label: string): string[] {
@@ -718,6 +757,8 @@ export function createAgentInput(body: ChatAgentBody) {
 	return {
 		displayName: normalizeAgentDisplayName(body.displayName),
 		description: normalizeAgentDescription(body.description),
+		runtimeInstanceId: normalizeAgentRuntimeInstanceId(body.runtimeInstanceId),
+		runtimeOptions: normalizeAgentRuntimeOptions(body.runtimeOptions),
 		nativeTools: normalizeNameArray(body.nativeTools, "nativeTools"),
 		skills: normalizeNameArray(body.skills, "skills"),
 		contextFiles: normalizeNameArray(body.contextFiles, "contextFiles"),
@@ -744,6 +785,8 @@ export function createAgentUpdate(body: ChatAgentBody): UpdateCustomAgentInput {
 	const update: UpdateCustomAgentInput = {};
 	if (body.displayName !== undefined) update.displayName = normalizeAgentDisplayName(body.displayName);
 	if (body.description !== undefined) update.description = normalizeAgentDescription(body.description);
+	if (body.runtimeInstanceId !== undefined) update.runtimeInstanceId = normalizeAgentRuntimeInstanceId(body.runtimeInstanceId);
+	if (body.runtimeOptions !== undefined) update.runtimeOptions = normalizeAgentRuntimeOptions(body.runtimeOptions);
 	if (body.nativeTools !== undefined) update.nativeTools = normalizeNameArray(body.nativeTools, "nativeTools");
 	if (body.skills !== undefined) update.skills = normalizeNameArray(body.skills, "skills");
 	if (body.contextFiles !== undefined) update.contextFiles = normalizeNameArray(body.contextFiles, "contextFiles");

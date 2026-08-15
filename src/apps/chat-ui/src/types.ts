@@ -522,6 +522,8 @@ export type AgentProfile = {
 	name: string;
 	description?: string;
 	aliases: string[];
+	runtimeInstanceId?: string;
+	runtimeOptions?: Record<string, unknown>;
 	nativeTools?: string[];
 	skills?: string[];
 	contextFiles?: string[];
@@ -557,7 +559,63 @@ export type UserSkill = {
 	updatedAt: string;
 };
 
+export type AgentRuntimeDiagnostic = {
+	severity: "info" | "warning" | "error";
+	code: string;
+	message: string;
+	path?: string;
+	details?: Record<string, unknown>;
+};
+
+export type AgentRuntimeCapabilityDelivery =
+	| { support: "unsupported"; reason: string }
+	| { support: "native" }
+	| { support: "direct" }
+	| { support: "mcp"; transports: Array<"streamable-http" | "stdio"> }
+	| { support: "materialized"; modes: string[] }
+	| { support: "degraded"; mode: string; reason: string };
+
+export type AgentRuntimeCapabilities = {
+	lifecycle: { persistent: boolean; lazyBinding: boolean; resume: boolean; attach: boolean; listNativeSessions: boolean; fork: boolean; clone: boolean; tree: boolean };
+	input: { text: boolean; images: boolean; audio: boolean; steering: boolean; structuredOutput: boolean };
+	output: { assistantDeltas: boolean; reasoning: boolean; toolEvents: boolean; usage: boolean; plans: boolean; diffs: boolean; rawNativeEvents: boolean };
+	tools: { piboManaged: AgentRuntimeCapabilityDelivery; nativeToolYielding: AgentRuntimeCapabilityDelivery };
+	mcp: { externalServers: AgentRuntimeCapabilityDelivery; statusInspection: boolean };
+	skills: AgentRuntimeCapabilityDelivery;
+	context: AgentRuntimeCapabilityDelivery;
+	models: { catalog: boolean; switchInSession: boolean; optionsSchema?: Record<string, unknown> };
+	reasoning: { supported: boolean; values?: string[] };
+	approvals: { supported: boolean; structuredUserInput: boolean };
+	maintenance: { compaction: boolean; contextUsage: boolean; history: boolean; health: boolean };
+};
+
+export type AgentRuntimeCatalogEntry = {
+	id: string;
+	adapterId: string;
+	displayName: string;
+	enabled: boolean;
+	available: boolean;
+	transport: "embedded" | "stdio-rpc" | "socket-rpc" | "remote";
+	capabilities: AgentRuntimeCapabilities;
+	configSchema: Record<string, unknown>;
+	protocol?: { name: string; supportedRange?: string };
+	diagnostics: AgentRuntimeDiagnostic[];
+	models?: {
+		runtimeInstanceId: string;
+		models: Array<{
+			id: string;
+			provider?: string;
+			displayName?: string;
+			reasoningOptions?: string[];
+			options?: Record<string, unknown>;
+		}>;
+		diagnostics?: AgentRuntimeDiagnostic[];
+	};
+	auth?: Array<{ id: string; displayName?: string; configured: boolean; details?: Record<string, unknown> }>;
+};
+
 export type AgentCatalog = {
+	agentRuntimes: AgentRuntimeCatalogEntry[];
 	nativeTools: Array<{ name: string; description?: string; yieldable: boolean; hasDefinition: boolean; pluginId?: string; pluginName?: string }>;
 	skills: Array<{ name: string; path: string; kind: "builtin" | "plugin" | "user"; pluginId?: string; pluginName?: string }>;
 	subagents: Array<{
@@ -625,6 +683,8 @@ export type CustomAgent = {
 	profileAliases?: string[];
 	displayName: string;
 	description?: string;
+	runtimeInstanceId: string;
+	runtimeOptions: Record<string, unknown>;
 	nativeTools: string[];
 	skills: string[];
 	contextFiles: string[];

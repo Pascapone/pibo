@@ -143,6 +143,8 @@ test("custom agent store migrates old app-context tables with stable defaults", 
 	const agent = store.get("agent_legacy_defaults");
 	assert.ok(agent);
 
+	assert.equal(agent.runtimeInstanceId, "pi");
+	assert.deepEqual(agent.runtimeOptions, {});
 	assert.equal(agent.autoContextFiles, true);
 	assert.deepEqual(agent.mcpServers, []);
 	assert.deepEqual(agent.piPackages, []);
@@ -348,6 +350,36 @@ test("custom agent store persists automatic context file setting", () => {
 	assert.equal(updated.autoContextFiles, false);
 
 	store.close();
+});
+
+test("custom agent store persists runtime instance selection and adapter options", () => {
+	const path = join(mkdtempSync(join(tmpdir(), "pibo-agent-store-runtime-")), "agents.sqlite");
+	const store = new CustomAgentStore(path);
+	const agent = store.create({
+		displayName: "native-runtime-agent",
+		runtimeInstanceId: "codex-native",
+		runtimeOptions: { model: "gpt-5.6-codex", reasoningEffort: "high", nested: { enabled: true } },
+	});
+
+	assert.equal(agent.runtimeInstanceId, "codex-native");
+	assert.deepEqual(agent.runtimeOptions, { model: "gpt-5.6-codex", reasoningEffort: "high", nested: { enabled: true } });
+	const updated = store.update(agent.id, {
+		runtimeInstanceId: "pi",
+		runtimeOptions: {},
+	});
+	assert.equal(updated.runtimeInstanceId, "pi");
+	assert.deepEqual(updated.runtimeOptions, {});
+	store.close();
+
+	const reopened = new CustomAgentStore(path);
+	assert.equal(reopened.get(agent.id).runtimeInstanceId, "pi");
+	assert.deepEqual(reopened.get(agent.id).runtimeOptions, {});
+	reopened.close();
+
+	const db = new DatabaseSync(path);
+	assert.ok(tableColumns(db, "chat_agents").has("runtime_instance_id"));
+	assert.ok(tableColumns(db, "chat_agents").has("runtime_options_json"));
+	db.close();
 });
 
 test("custom agent store persists selected MCP servers", () => {

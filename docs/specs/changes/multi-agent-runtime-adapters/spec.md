@@ -424,20 +424,20 @@ Implementation MUST be split into focused or explicitly stacked branches/PRs to 
 | Requirement | Primary phase | Verification | Status |
 |---|---|---|---|
 | REQ-001 Product authority | All | Cross-runtime subagent/workflow/loop scenarios | Pending |
-| REQ-002 Registry | Foundation | Registry unit tests, catalog tests | Implementing |
-| REQ-003 Session lifecycle | Foundation/Pi/Codex | Shared adapter contract | Implementing |
-| REQ-004 Capabilities | Foundation/Designer | Capability consistency and save-validation tests | Implementing |
+| REQ-002 Registry | Foundation | Registry unit tests, catalog tests | Pi + Designer local pass |
+| REQ-003 Session lifecycle | Foundation/Pi/Codex | Shared adapter contract | Pi local pass; Codex pending |
+| REQ-004 Capabilities | Foundation/Designer | Capability consistency and save-validation tests | Designer local pass |
 | REQ-005 Events | Pi/Codex/History | Event fixtures and trace tests | Pending |
 | REQ-006 Pi parity | Pi extraction | Full suite, old-session fixtures, Pibo2 parity | Pending |
-| REQ-007 Bindings | Persistence | Migration/uniqueness/CAS/missing tests | Pending |
-| REQ-008 Frozen runtime selection | Profiles/Persistence | Profile edit and existing-session tests | Pending |
-| REQ-009 Agent Designer | Designer | API/UI save/disabled/inspection tests | Pending |
+| REQ-007 Bindings | Persistence | Migration/uniqueness/CAS/missing tests | Local + Pibo2 pass |
+| REQ-008 Frozen runtime selection | Profiles/Persistence | Profile edit and existing-session tests | Local pass; Designer Pibo2 pending |
+| REQ-009 Agent Designer | Designer | API/UI save/disabled/inspection tests | Local pass; Pibo2 pending |
 | REQ-010 Native behavior | Pi/Codex | Prompt/tool/context inspection | Pending |
 | REQ-011 Portable tools | Tool bridge | Pi compiler/MCP/security tests | Pending |
 | REQ-012 Skills/context/MCP | Materialization | Isolation and connected-tool tests | Pending |
 | REQ-013 History/debug | History | New-turn no-native-read, old Pi, Codex restart tests | Pending |
 | REQ-014 Authoring skill | Skill | Registration plus full/partial evals | Pending |
 | REQ-015 Native Codex | Codex | Fixtures, exact binary, Pibo2 integrated flows | Pending |
-| REQ-016 Compatibility alias | Profiles | Existing profile tests | Pending |
+| REQ-016 Compatibility alias | Profiles | Existing profile tests | Local pass; native profile pending |
 | REQ-017 Verification | All | Local and Pibo2 evidence reports | Pending |
 | REQ-018 Delivery | All | Branch/commit/PR/final audit | Implementing |

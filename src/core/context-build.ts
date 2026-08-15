@@ -20,6 +20,8 @@ import { buildCodexCompatSystemPrompt } from "./codex-compat.js";
 import { readPiboBasePrompt } from "./base-prompt.js";
 import { DEFAULT_BUILTIN_TOOL_NAMES, InitialSessionContext, type ModelProfile } from "./profiles.js";
 import type { PiboRuntimeOptions, PiboRuntimeSessionContext } from "./runtime.js";
+import type { AgentRuntimeCapabilities } from "../agent-runtime/capabilities.js";
+import type { AgentRuntimeDiagnostic, AgentRuntimeTransport } from "../agent-runtime/types.js";
 import { createPiboRuntime } from "./runtime.js";
 import { getDefaultPiboWorkspace } from "./workspace.js";
 
@@ -83,6 +85,17 @@ export type PiboContextBuildNode = {
 	approximate?: boolean;
 };
 
+export type PiboContextBuildRuntimeInfo = {
+	runtimeInstanceId: string;
+	adapterId: string;
+	available: boolean;
+	transport: AgentRuntimeTransport;
+	bindingState?: "unbound" | "bound" | "missing" | "error";
+	protocol?: { name: string; supportedRange?: string };
+	capabilities: AgentRuntimeCapabilities;
+	diagnostics: AgentRuntimeDiagnostic[];
+};
+
 export type PiboContextBuildSnapshot = {
 	version: 1;
 	generatedAt: string;
@@ -91,6 +104,7 @@ export type PiboContextBuildSnapshot = {
 	piboRoomId?: string;
 	cwd: string;
 	activeModel?: ModelProfile;
+	runtime?: PiboContextBuildRuntimeInfo;
 	summary: {
 		topLevelNodes: number;
 		totalNodes: number;
