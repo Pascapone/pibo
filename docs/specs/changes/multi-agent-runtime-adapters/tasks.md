@@ -126,7 +126,7 @@ Target branch: `feature/agent-runtime-foundation`
 
 ## 9. Native Codex adapter PR(s), only after Pi parity
 
-- [ ] 9.1 Inspect exact Pibo2 `codex --version`; generate TypeScript/JSON schema from that binary and record supported range.
+- [x] 9.1 Pin official Pibo2 Codex App Server `0.147.0`, generate stable TypeScript/JSON Schema from that exact binary, store the full/v2 schemas and hashes, and record the `>=0.147.0 <0.148.0` checkpoint in `docs/reports/codex-app-server-protocol-checkpoint-2026-08-15.md`. Pi parity 2.11 remains blocked pending approved Pibo2-managed authentication.
 - [ ] 9.2 Implement typed stdio JSON-RPC client with initialize/initialized, request correlation, backpressure handling, stderr diagnostics, and bounded shutdown.
 - [ ] 9.3 Implement process/version/availability diagnostics and isolated per-instance/session home/config.
 - [ ] 9.4 Implement thread start, binding CAS, resume, missing-thread state, read/list, and supported fork/history controls.
