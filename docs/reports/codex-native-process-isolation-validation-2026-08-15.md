@@ -6,6 +6,8 @@
 
 **Implementation commit:** `9a58ded0f6c17bc6a3ee48da9cfa4b63d835b882`
 
+**Pull request:** #491
+
 **Stacked on:** Codex stdio client PR #490 at `1a6633a6`
 
 **Candidate package SHA-256:** `0baa5f44ccd73863e80e5c49caf92e22ba36bddeae9583e1f976873ff38f7a0b`
