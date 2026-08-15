@@ -35,16 +35,16 @@ Target branch: `feature/agent-runtime-foundation`
 
 ## 2. Pi extraction PR: generic RoutedSession and full Pi parity
 
-- [ ] 2.1 Move Pi event normalization into `src/agent-runtimes/pi/event-normalizer.ts`.
-- [ ] 2.2 Move Pi prompt settlement, context-guard continuation, provider recovery, transcript-integrity continuation, and compaction continuation behavior into Pi session code.
-- [ ] 2.3 Move fast-mode provider patches and Pi context estimation/continuation into Pi session code.
-- [ ] 2.4 Move Pi model/thinking/status/context/provider-usage access into Pi controls/status implementation.
-- [ ] 2.5 Move Pi list/fork/clone/tree/navigate/switch operations into capability-gated Pi controls.
-- [ ] 2.6 Refactor generic `RoutedSession` to queue inputs, correlate events, dispatch capabilities, and distribute normalized events only.
-- [ ] 2.7 Preserve deprecated raw `pi_event`, Pi operation result types, and test compatibility handles.
-- [ ] 2.8 Add import-boundary tests forbidding Pi/Codex dependencies in generic runtime/router/history modules.
-- [ ] 2.9 Run all focused queue, steering, recovery, compaction, action, TUI, tool, subagent, loop, trace, debug, and telemetry tests.
-- [ ] 2.10 Run full build/typecheck/test suite.
+- [x] 2.1 Move Pi event normalization under `src/agent-runtimes/pi/` and leave only an explicit deprecated core facade.
+- [x] 2.2 Move Pi prompt settlement, context-guard continuation, provider recovery, transcript-integrity continuation, and compaction continuation behavior into Pi session code.
+- [x] 2.3 Move fast-mode provider patches and Pi context estimation/continuation into Pi session code.
+- [x] 2.4 Move Pi model/thinking/status/context/provider-usage access into Pi controls/status implementation.
+- [x] 2.5 Move Pi list/fork/clone/tree/navigate/switch operations into capability-gated Pi controls.
+- [x] 2.6 Refactor generic `RuntimeRoutedSession` to queue inputs, correlate events, dispatch capabilities, and distribute normalized events only.
+- [x] 2.7 Preserve deprecated raw `pi_event`, Pi operation result types, and test compatibility handles.
+- [x] 2.8 Add import-boundary tests forbidding Pi/Codex dependencies in generic runtime/router/history modules.
+- [x] 2.9 Run focused queue, steering, recovery, compaction, action, tool, subagent, trace, debug, and telemetry tests (99/99 focused parity set passing).
+- [x] 2.10 Run full build/typecheck/test suite (1,609/1,609 passing).
 - [ ] 2.11 Validate fresh/resumed old Pi sessions and main controls on Pibo2; record performance/streaming comparison.
 - [ ] 2.12 Commit, push, and open Pi parity PR; do not start Codex until regressions are cleared.
 

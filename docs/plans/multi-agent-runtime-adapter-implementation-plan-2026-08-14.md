@@ -206,6 +206,7 @@ Update this table after each meaningful milestone so continuations do not need t
 |---|---|---|---|---|
 | 2026-08-14 | Discovery/spec complete | `feature/agent-runtime-foundation` based on `54176105` | Required project/T3/Codex references inspected; clean-base suite 1,598/1,598 passing | Foundation verification and PR |
 | 2026-08-14 | Runtime foundation PR opened | `feature/agent-runtime-foundation`, implementation `a69a0a27`, PR #476 | Full workspace typecheck passed; focused routed Pi 73/73; full suite 1,605/1,605 | Stacked Pi extraction and authenticated Pibo2 parity |
+| 2026-08-14 | Pi extraction locally validated | `feature/agent-runtime-pi-parity` at `af90539e` | Generic fake routing and boundaries pass; focused parity 99/99; full suite 1,609/1,609 | Exact candidate install and authenticated Pibo2 Pi parity |
 
 ## Completion audit
 
