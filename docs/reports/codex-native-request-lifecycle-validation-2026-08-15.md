@@ -2,7 +2,7 @@
 
 ## Scope
 
-This report records native Codex checkpoint 9.6 for `@pasko70/pibo@1.7.2` at implementation commit `b2f90d14421801db0e7e8c947c5f630839d0a0d5`, stacked on turn-lifecycle PR #493.
+This report records native Codex checkpoint 9.6 for `@pasko70/pibo@1.7.2` at implementation commit `b2f90d14421801db0e7e8c947c5f630839d0a0d5`, delivered in PR #494 stacked on turn-lifecycle PR #493.
 
 The checkpoint adds normalized runtime requests over official Codex App Server JSON-RPC:
 
