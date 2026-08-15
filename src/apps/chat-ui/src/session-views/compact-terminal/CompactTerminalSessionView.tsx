@@ -6,7 +6,7 @@ import { AgentDelegationCard } from "../../components/AgentDelegationCard";
 import { PendingUserMessageDelivery } from "../../components/PendingUserMessageDelivery";
 import { useStickyVirtuoso } from "../../components/useStickyVirtuoso";
 import { useSessionActivity } from "../../hooks/useSessionActivity";
-import { SessionGoalIndicator, sessionGoalIndicatorStatus } from "../../session-goal-indicator";
+import { SessionGoalIndicator, formatSessionGoalTokenUsage, sessionGoalIndicatorStatus } from "../../session-goal-indicator";
 import { MarkdownRenderer } from "../../tracing/MarkdownRenderer";
 import { collectTerminalRows, isTraceSnapshotCollectionEnabled } from "../../tracing/snapshotCollector";
 import type { ChatSessionViewProps } from "../types";
@@ -773,9 +773,11 @@ const WORKING_LABEL = "Working...";
 function TerminalStreamingFooter({ startedAt, isWorking, goal }: { startedAt?: string; isWorking: boolean; goal?: ChatSessionViewProps["sessionGoal"] }) {
 	const elapsed = useActiveTurnElapsed(isWorking ? startedAt : undefined);
 	const goalStatus = sessionGoalIndicatorStatus(goal);
+	const goalTokenUsage = goal && goalStatus === "active" ? formatSessionGoalTokenUsage(goal) : undefined;
 	const footerAriaLabel = [
 		isWorking ? "Working" : undefined,
 		goalStatus === "active" ? "Pursuing Goal" : goalStatus === "paused" ? "Goal Paused" : undefined,
+		goalTokenUsage ? `Tokens ${goalTokenUsage}` : undefined,
 	].filter(Boolean).join(". ");
 
 	return (
