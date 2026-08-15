@@ -13,7 +13,8 @@ It does not claim native Codex execution, selected skill/context/external-MCP ma
 - Branch: `feature/agent-runtime-portable-tools`
 - Stacked base: `5f6277f1` (`feature/agent-runtime-designer`, PR #479)
 - Main implementation: `2fb920997b1a06d36bca7b2f4120363c31df432d`
-- Final validated commit: `20c3d82ddf596c4f4512a4d69087bf5cee0cf76c`
+- Final validated implementation commit: `20c3d82ddf596c4f4512a4d69087bf5cee0cf76c`
+- Pull request: [#483](https://github.com/Pascapone/pibo/pull/483)
 - Package: `@pasko70/pibo` `1.7.2`
 - Package SHA-256: `e62ec3232ee6c79e24c48f2ac9b1fa65e109c8f18804e23bd578bed237bacc9d`
 - Pibo2 candidate root: `/opt/pibo-candidates/agent-runtime-portable-tools/20c3d82ddf596c4f4512a4d69087bf5cee0cf76c`

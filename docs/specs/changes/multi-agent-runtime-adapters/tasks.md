@@ -87,7 +87,7 @@ Target branch: `feature/agent-runtime-foundation`
 - [x] 5.7 Add cross-session discovery/call denial, expiry, revocation, removed-tool, progress, image, cancellation, error, and large-result tests.
 - [x] 5.8 Prove behavior parity for representative tools through Pi direct and MCP paths (final local typecheck and full suite 1,639/1,639).
 - [x] 5.9 Validate the exact candidate on Pibo2 for scoped discovery/calls, cross-session denial, MCP-session hijack denial, progress, cancellation, durable payloads, revocation, shutdown, catalog inspection, Context Build, and browser rendering; record `docs/reports/portable-pibo-tools-mcp-validation-2026-08-15.md`.
-- [ ] 5.10 Commit, push, and open portable-tools PR.
+- [x] 5.10 Commit, push, and open portable-tools PR #483.
 
 ## 6. Skills, context, and external MCP materialization PR
 
