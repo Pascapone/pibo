@@ -347,6 +347,10 @@ function validateServiceTier(model: CodexAppServerModel, value: string | null): 
 	return value;
 }
 
+function normalizeNativeServiceTier(model: CodexAppServerModel, value: string | null): string | null {
+	return value === "default" ? null : validateServiceTier(model, value);
+}
+
 function validatePersonality(model: CodexAppServerModel, value: CodexNativeProfileOptions["personality"]): void {
 	if (value && value !== "none" && !model.supportsPersonality) {
 		throw new Error(`Native Codex model "${model.id}" does not support personality selection.`);
@@ -425,7 +429,7 @@ export class CodexNativeSessionSettingsController {
 			this.reasoningLevel = validateReasoning(this.currentModel, configuration.reasoningEffort);
 		}
 		if (configuration.serviceTier !== undefined) {
-			this.serviceTier = validateServiceTier(this.currentModel, configuration.serviceTier ?? null);
+			this.serviceTier = normalizeNativeServiceTier(this.currentModel, configuration.serviceTier ?? null);
 		}
 		const pendingSettings = this.pendingThreadSettings.get(threadId);
 		if (pendingSettings) this.applyThreadSettings(pendingSettings);
@@ -574,7 +578,7 @@ export class CodexNativeSessionSettingsController {
 				: validateReasoning(model, requiredString(settings.effort, "thread-settings reasoning effort"));
 		}
 		if (settings.serviceTier !== undefined) {
-			this.serviceTier = validateServiceTier(model, optionalStringOrNull(settings.serviceTier, "thread-settings service tier") ?? null);
+			this.serviceTier = normalizeNativeServiceTier(model, optionalStringOrNull(settings.serviceTier, "thread-settings service tier") ?? null);
 		}
 	}
 

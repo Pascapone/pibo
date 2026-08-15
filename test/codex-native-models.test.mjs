@@ -436,8 +436,9 @@ test("Codex native session settings keep model and context notifications thread-
 		model: "model-a",
 		modelProvider: "fixture",
 		reasoningEffort: "high",
-		serviceTier: null,
+		serviceTier: "default",
 	});
+	assert.deepEqual(settings.fastMode, { mode: "normal", supported: true });
 
 	listener({
 		method: "thread/tokenUsage/updated",

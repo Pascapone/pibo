@@ -65,7 +65,7 @@ if (args[0] === "--version") {
 		modelProvider: thread.modelProvider,
 		cwd: thread.cwd,
 		reasoningEffort: settings.effort,
-		serviceTier: settings.serviceTier,
+		serviceTier: settings.serviceTier ?? "default",
 		approvalPolicy: "on-request",
 		approvalsReviewer: "user",
 		sandbox: { type: "workspaceWrite" },
@@ -746,7 +746,7 @@ if (args[0] === "--version") {
 					threadSettings: {
 						model: settings.model,
 						modelProvider: thread.modelProvider,
-						serviceTier: settings.serviceTier,
+						serviceTier: settings.serviceTier ?? "default",
 						effort: settings.effort,
 						summary: settings.summary,
 						personality: settings.personality,
