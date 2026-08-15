@@ -43,6 +43,7 @@ function createFakeRuntimeFixture() {
 							return new InitialSessionContextBuilder("router-fake-profile")
 								.withAgentRuntime("router-fake")
 								.withBuiltinTools("disabled")
+								.withToolPackages({ goalControl: false })
 								.createSession();
 						},
 					});
@@ -73,6 +74,7 @@ function createFakeRuntimeFixture() {
 test("generic routed orchestration queues and correlates a non-Pi fake adapter", async () => {
 	const fixture = createFakeRuntimeFixture();
 	const events = [];
+	let portableTools;
 	fixture.router.subscribe((event) => events.push(event));
 	try {
 		const first = fixture.router.emit({
@@ -107,9 +109,16 @@ test("generic routed orchestration queues and correlates a non-Pi fake adapter",
 		});
 		assert.equal(status.result.streaming, false);
 		assert.equal(status.result.cwd, process.cwd());
+		const adapter = fixture.registry.requireAgentRuntimeAdapter("router-fake");
+		portableTools = adapter.openInputs[0].services.portableTools;
+		assert.equal(portableTools.piboSessionId, "ps_router_fake");
+		assert.equal(portableTools.runtimeInstanceId, "router-fake");
+		assert.equal(portableTools.adapterId, "router-fake");
+		assert.deepEqual(portableTools.createDefinitions(), []);
 	} finally {
 		await fixture.router.disposeAll();
 	}
+	assert.throws(() => portableTools.createDefinitions(), /disposed/);
 });
 
 test("generic router rejects profile selections the runtime cannot deliver", async () => {

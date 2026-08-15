@@ -1,8 +1,9 @@
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { extname, isAbsolute, resolve } from "node:path";
-import { StringEnum, Type } from "@earendil-works/pi-ai";
-import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
+import { piboStringEnum } from "./schema.js";
+import { definePiboTool, type PiboToolDefinition } from "./contract.js";
 
 function resolveCwd(baseCwd: string, workdir: string | undefined): string {
 	if (!workdir || workdir.trim().length === 0) return baseCwd;
@@ -23,14 +24,14 @@ function mimeTypeForPath(path: string): string {
 	}
 }
 
-export function createCodexCompatToolDefinitions(): ToolDefinition[] {
-	const applyPatch = defineTool({
+export function createCodexCompatToolDefinitions(): PiboToolDefinition[] {
+	const applyPatch = definePiboTool({
 		name: "apply_patch",
-		label: "Apply Patch",
+		title: "Apply Patch",
 		description: "Applies a Codex-style patch to files in the workspace.",
 		promptSnippet: "Use apply_patch for manual file edits by passing the complete patch text.",
 		executionMode: "sequential",
-		parameters: Type.Object({
+		inputSchema: Type.Object({
 			patch: Type.String({ description: "Patch text starting with *** Begin Patch and ending with *** End Patch." }),
 			workdir: Type.Optional(Type.String({ description: "Working directory. Defaults to the runtime cwd." })),
 		}),
@@ -63,15 +64,15 @@ export function createCodexCompatToolDefinitions(): ToolDefinition[] {
 		},
 	});
 
-	const viewImage = defineTool({
+	const viewImage = definePiboTool({
 		name: "view_image",
-		label: "View Image",
+		title: "View Image",
 		description: "Reads a local image file and returns it as an inline image result.",
 		promptSnippet: "Use view_image to inspect a local image path when visual details matter.",
 		executionMode: "parallel",
-		parameters: Type.Object({
+		inputSchema: Type.Object({
 			path: Type.String({ description: "Local filesystem path to an image file." }),
-			detail: Type.Optional(StringEnum(["original"], { description: "Use original resolution when set." })),
+			detail: Type.Optional(piboStringEnum(["original"], { description: "Use original resolution when set." })),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const path = resolveCwd(ctx.cwd, params.path);

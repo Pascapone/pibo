@@ -258,6 +258,10 @@ export class PiboDataSessionStore implements PiboSessionStore {
 		return this.dataStore.telemetry;
 	}
 
+	getPayloadStore() {
+		return this.dataStore.payloads;
+	}
+
 	recoverInterruptedRuntimeState(input: {
 		recoveredRuns?: readonly PiboRunSnapshot[];
 		at?: string;

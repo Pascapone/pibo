@@ -121,6 +121,54 @@ test("runtime registry rejects profile selections that declared capabilities can
 	);
 });
 
+test("MCP-delivered runtimes reject legacy private tools and explain native-tool yielding limits", async () => {
+	const capabilities = createFakeAgentRuntimeDriver({ adapterId: "mcp-template" }).descriptor.capabilities;
+	capabilities.tools.piboManaged = { support: "mcp", transports: ["streamable-http"] };
+	capabilities.tools.nativeToolYielding = { support: "unsupported", reason: "The harness does not expose private native tools to Pibo." };
+	const registry = PiboPluginRegistry.create({
+		plugins: [definePiboPlugin({
+			id: "test.mcp-runtime",
+			register(api) {
+				api.registerAgentRuntimeDriver(createFakeAgentRuntimeDriver({ adapterId: "mcp-runtime", capabilities }));
+				api.registerAgentRuntimeInstance({ id: "mcp-runtime", adapterId: "mcp-runtime" });
+			},
+		})],
+	});
+	const legacyTool = {
+		name: "legacy-private",
+		label: "Legacy Private",
+		description: "Legacy Pi-native fixture",
+		parameters: { type: "object", properties: {}, additionalProperties: false },
+		async execute() { return { content: [{ type: "text", text: "legacy" }], details: {} }; },
+	};
+	const legacyProfile = new InitialSessionContextBuilder("legacy-private-profile")
+		.withAgentRuntime("mcp-runtime")
+		.withAutoContextFiles(false)
+		.withToolPackages({ goalControl: false })
+		.addTool({ name: "legacy-private", definition: legacyTool })
+		.createSession();
+	const legacyDiagnostics = await registry.validateAgentRuntimeProfile(legacyProfile);
+	assert.ok(legacyDiagnostics.some((diagnostic) => diagnostic.code === "runtime_pibo_tool_not_portable"));
+
+	const portableTool = {
+		name: "portable",
+		title: "Portable",
+		description: "Portable fixture",
+		inputSchema: { type: "object", properties: {}, additionalProperties: false },
+		async execute() { return { content: [{ type: "text", text: "portable" }] }; },
+	};
+	const runControlProfile = new InitialSessionContextBuilder("portable-run-profile")
+		.withAgentRuntime("mcp-runtime")
+		.withAutoContextFiles(false)
+		.withToolPackages({ goalControl: false, runControl: true })
+		.addTool({ name: "portable", definition: portableTool })
+		.createSession();
+	const runDiagnostics = await registry.validateAgentRuntimeProfile(runControlProfile);
+	assert.equal(runDiagnostics.some((diagnostic) => diagnostic.severity === "error"), false);
+	assert.ok(runDiagnostics.some((diagnostic) => diagnostic.code === "runtime_native_tool_yielding_unsupported"));
+});
+
+
 test("plugins register typed runtime drivers and configured instances", () => {
 	const fakeDriver = createFakeAgentRuntimeDriver({ adapterId: "fixture-runtime" });
 	const registry = PiboPluginRegistry.create({

@@ -164,6 +164,7 @@ export class FakeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 	readonly displayName: string;
 	readonly enabled: boolean;
 	readonly sessions: FakeAgentRuntimeSession[] = [];
+	readonly openInputs: OpenAgentRuntimeSessionInput[] = [];
 	private nextNativeSession = 1;
 
 	constructor(
@@ -188,6 +189,7 @@ export class FakeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 	}
 
 	async openSession(input: OpenAgentRuntimeSessionInput): Promise<AgentRuntimeSession> {
+		this.openInputs.push(input);
 		const script = typeof this.options.script === "function"
 			? this.options.script({ text: "", source: "rpc" }, 0)
 			: this.options.script;

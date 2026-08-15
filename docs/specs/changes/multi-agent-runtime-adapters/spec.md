@@ -430,10 +430,10 @@ Implementation MUST be split into focused or explicitly stacked branches/PRs to 
 | REQ-005 Events | Pi/Codex/History | Event fixtures and trace tests | Pending |
 | REQ-006 Pi parity | Pi extraction | Full suite, old-session fixtures, Pibo2 parity | Pending |
 | REQ-007 Bindings | Persistence | Migration/uniqueness/CAS/missing tests | Local + Pibo2 pass |
-| REQ-008 Frozen runtime selection | Profiles/Persistence | Profile edit and existing-session tests | Local pass; Designer Pibo2 pending |
-| REQ-009 Agent Designer | Designer | API/UI save/disabled/inspection tests | Local pass; Pibo2 pending |
+| REQ-008 Frozen runtime selection | Profiles/Persistence | Profile edit and existing-session tests | Local + Pibo2 pass |
+| REQ-009 Agent Designer | Designer | API/UI save/disabled/inspection tests | Local + Pibo2 pass |
 | REQ-010 Native behavior | Pi/Codex | Prompt/tool/context inspection | Pending |
-| REQ-011 Portable tools | Tool bridge | Pi compiler/MCP/security tests | Pending |
+| REQ-011 Portable tools | Tool bridge | Pi compiler/MCP/security tests | Local pass (1,639/1,639); Pibo2 pending |
 | REQ-012 Skills/context/MCP | Materialization | Isolation and connected-tool tests | Pending |
 | REQ-013 History/debug | History | New-turn no-native-read, old Pi, Codex restart tests | Pending |
 | REQ-014 Authoring skill | Skill | Registration plus full/partial evals | Pending |

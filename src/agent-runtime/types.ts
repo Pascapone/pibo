@@ -1,5 +1,6 @@
 import type { PiboJsonObject, PiboJsonValue } from "../core/events.js";
 import type { InitialSessionContext, ModelProfile } from "../core/profiles.js";
+import type { PiboPortableToolSession } from "../tools/session-service.js";
 import type { PiboSession } from "../sessions/store.js";
 import type {
 	AgentRuntimeAdapterId,
@@ -85,6 +86,7 @@ export type AgentRuntimeOpenServices = {
 	subagentRunner?: unknown;
 	runToolController?: unknown;
 	codeRuntimeToolController?: unknown;
+	portableTools?: PiboPortableToolSession;
 	telemetry?: unknown;
 	compatibility?: unknown;
 };

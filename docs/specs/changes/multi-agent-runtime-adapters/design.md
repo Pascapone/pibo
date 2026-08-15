@@ -390,36 +390,48 @@ Rollback:
 ## Decision: Portable Pibo tool contract
 
 ```ts
-type PiboToolDefinition = {
+type PiboToolDefinition<TSchema extends PiboJsonSchema> = {
   name: string;
-  title?: string;
+  title: string;
   description: string;
   promptSnippet?: string;
   promptGuidelines?: string[];
-  inputSchema: PiboJsonSchema;
+  inputSchema: TSchema;
+  outputSchema?: PiboJsonSchema;
+  executionMode?: "sequential" | "parallel";
   annotations?: {
     readOnly?: boolean;
     destructive?: boolean;
     idempotent?: boolean;
     openWorld?: boolean;
   };
-  execute(context: PiboToolExecutionContext, input: unknown): Promise<PiboToolResult>;
+  portable?: boolean;
+  prepareInput?: (input: unknown) => Static<TSchema>;
+  execute(
+    toolCallId: string,
+    input: Static<TSchema>,
+    signal: AbortSignal | undefined,
+    onUpdate: PiboToolUpdateCallback | undefined,
+    context: PiboToolExecutionContext,
+  ): Promise<PiboToolResult>;
 };
 
 type PiboToolResult = {
   content: Array<
     | { type: "text"; text: string }
-    | { type: "image"; data?: string; mimeType: string; payloadRef?: string }
+    | { type: "image"; data?: string; mimeType: string; payloadRef?: string; alt?: string }
   >;
   structuredContent?: PiboJsonValue;
+  details?: unknown;
   isError?: boolean;
   payloadRefs?: string[];
+  metadata?: PiboJsonObject;
 };
 ```
 
-Execution context includes Pibo Session id, Room id, profile, active message correlation, abort signal, progress emitter, and selected capability scope. It does not expose adapter credentials.
+Execution receives Pibo Session id, Room id, profile, working directory, active-message correlation, runtime instance, adapter, and live session generation. Cancellation and progress are explicit arguments, and adapter credentials are never exposed to the tool. Deprecated `label`/`parameters` aliases preserve callers during migration without making Pi types part of the contract.
 
-The Pi compiler converts JSON Schema to Pi's accepted schema/tool shape and preserves direct in-process execution. Existing Pi-native tool factories receive compatibility wrappers until converted.
+The Pi compiler converts the JSON Schema and Pibo result model to Pi's accepted direct in-process tool shape. Pibo-owned tool factories use the portable contract. Structurally recognized legacy Pi definitions are wrapped as `portable: false`: they still work through Pi's direct compiler but are rejected for MCP-delivered runtimes.
 
 ## Decision: Session-scoped MCP bridge
 
@@ -429,7 +441,8 @@ Credential record:
 
 ```ts
 type RuntimeToolCredentialScope = {
-  tokenHash: string;
+  credentialId: string;
+  secretHash: Uint8Array;
   piboSessionId: string;
   runtimeInstanceId: string;
   adapterId: string;
@@ -437,21 +450,23 @@ type RuntimeToolCredentialScope = {
   allowedToolNames: ReadonlySet<string>;
   issuedAt: string;
   expiresAt: string;
-  lastAliveAt: string;
+  lastAliveAt?: string;
+  revokedAt?: string;
 };
 ```
 
 Rules:
 
-- Raw token is generated with at least 256 bits and returned once to the adapter launch materializer.
-- Only a hash is kept by the registry.
-- The bridge authenticates every list/call/resource request and constructs `PiboToolExecutionContext` from the bound scope.
+- Raw token secrets are generated with 256 bits of entropy and returned to adapter-owned process state; only the secret hash and a separate random credential id are retained.
+- Secret comparison is constant-time after credential-id lookup.
+- The bridge authenticates every Streamable HTTP request and constructs `PiboToolExecutionContext` from the bound scope.
 - Tool discovery returns only allowed Pibo-managed tools for that session.
 - Each call checks session generation and current selection again.
 - Abort/cancellation propagates through MCP to the Pibo tool signal.
-- Progress maps to MCP progress/logging and Pibo tool updates.
-- Large results use the existing payload store and bounded previews.
-- Credentials expire quickly when inactive, are renewed by live session heartbeat, and are revoked on dispose/rebind/router shutdown.
+- Progress maps to MCP progress notifications and Pibo tool updates.
+- Text, image, structured data, errors, and call/session correlation map into MCP results.
+- Large results use the existing payload store and bounded previews with payload references.
+- Credentials use short fixed leases with a bounded maximum lifetime, explicit live-session renewal, and revocation on dispose/rebind/router shutdown.
 - Tests attempt cross-session list/call, stale token, revoked token, wrong instance, and removed-tool access.
 
 The bridge does not reuse Better Auth cookies, machine keys, gateway bearer tokens, or Codex auth.

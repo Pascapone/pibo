@@ -326,6 +326,7 @@ test("plugins can register profiles, gateway actions, and event listeners", asyn
 			description: undefined,
 			yieldable: true,
 			hasDefinition: false,
+			portable: true,
 			pluginId: "test.plugin",
 			pluginName: "Test Plugin",
 		},

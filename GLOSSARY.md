@@ -56,6 +56,16 @@ Shared vocabulary for Pibo architecture, implementation, and specifications. Kee
 
 **Pibo Native Tool / Harness-Native Tool / Built-In Pi Tool / MCP Server / Curated CLI Tool** — A Pibo Native Tool is registered by a Pibo plugin, selected by profiles, and delivered directly or through an adapter bridge. A Harness-Native Tool belongs to the harness and remains under harness control. A Built-In Pi Tool is a Pi-native tool such as `read` or `bash`. An MCP Server is an external Model Context Protocol integration. A Curated CLI Tool is managed through `pibo tools` and is not a profile tool or MCP server.
 
+**Pibo Tool Definition** — The Pibo-owned JSON-Schema tool contract used at the plugin/runtime boundary. It carries title/description, input and optional output schemas, execution mode, annotations, cancellation, progress, text/image/structured results, errors, correlation metadata, and payload references without importing a harness SDK.
+
+**Portable Tool / Adapter-Private Tool** — A Portable Tool can run from Pibo's own execution context and may be compiled directly or exposed through the session-scoped MCP bridge. An Adapter-Private Tool depends on a harness-native execution context; compatibility wrappers may keep it working in that adapter, but it must not be advertised through portable MCP.
+
+**Session-Scoped Tool MCP Bridge** — Pibo's loopback Streamable HTTP MCP server for exposing only one live Pibo Session generation's selected portable tools to an external harness.
+
+**Tool Capability Credential** — A short-lived bearer capability for the tool MCP bridge. Pibo stores only its hash and binds it to one Pibo Session, runtime instance, adapter, live generation, and selected tool-name set; it is renewed or revoked without broadening scope.
+
+**Runtime Session Generation** — A random live-lifecycle identifier distinct from persisted session and binding ids. Tool credentials become invalid when their owning generation is disposed, replaced, or otherwise inactive.
+
 **Code Runtime Tool** — The existing persistent Python/Node tool named `runtime`. It is a Pibo tool and is distinct from an Agent Runtime Adapter or Runtime Session.
 
 **Skill / Context File** — A Skill is a selected `SKILL.md` instruction package. A Context File is selected Markdown loaded into runtime context; it may be plugin-provided or Pibo-managed.

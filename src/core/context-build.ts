@@ -47,6 +47,7 @@ export type PiboContextBuildNodeSource =
 	| "managed"
 	| "plugin"
 	| "generated"
+	| "pibo"
 	| "pi"
 	| "provider"
 	| "runtime"
@@ -334,6 +335,8 @@ function badgesForSource(source: PiboContextBuildNodeSource): string[] {
 			return ["MANAGED"];
 		case "plugin":
 			return ["PLUGIN"];
+		case "pibo":
+			return ["PIBO"];
 		case "pi":
 			return ["PI"];
 		case "provider":
@@ -528,6 +531,15 @@ export async function inspectPiboContextBuild(options: PiboRuntimeOptions = {}):
 
 		const toolChildren: NodeInput[] = toolNames.map((name) => {
 			const providerTool = providerTools.find((tool) => tool.name === name);
+			const profileTool = profile.tools.find((tool) => tool.name === name);
+			const generatedOrigin = generatedOriginForTool(name, profile);
+			const toolSource: PiboContextBuildNodeSource = providerTool
+				? "provider"
+				: generatedOrigin
+					? "generated"
+					: profileTool
+						? "pibo"
+						: "pi";
 			const definition = runtime.session.getToolDefinition(name);
 			const info = toolInfoByName.get(name);
 			const children: NodeInput[] = [];
@@ -536,7 +548,7 @@ export async function inspectPiboContextBuild(options: PiboRuntimeOptions = {}):
 					id: `tools/${name}/prompt-snippet`,
 					kind: "tool_prompt_snippet",
 					title: "Prompt Snippet",
-					source: providerTool ? "provider" : "pi",
+					source: toolSource,
 					state: "active",
 					hydratedText: definition.promptSnippet,
 				});
@@ -546,7 +558,7 @@ export async function inspectPiboContextBuild(options: PiboRuntimeOptions = {}):
 					id: `tools/${name}/prompt-guidelines`,
 					kind: "tool_prompt_guidelines",
 					title: "Prompt Guidelines",
-					source: providerTool ? "provider" : "pi",
+					source: toolSource,
 					state: "active",
 					hydratedText: definition.promptGuidelines.map((guideline) => `- ${guideline}`).join("\n"),
 					metadata: { guidelineCount: definition.promptGuidelines.length },
@@ -558,16 +570,16 @@ export async function inspectPiboContextBuild(options: PiboRuntimeOptions = {}):
 					id: `tools/${name}/definition`,
 					kind: "tool_definition",
 					title: "Tool Definition / Schema",
-					source: providerTool ? "provider" : "pi",
+					source: toolSource,
 					state: "active",
 					schemaJson: {
 						name,
 						description: definition?.description ?? info?.description,
+						inputSchema: schema,
 						parameters: schema,
 					},
 				});
 			}
-			const generatedOrigin = generatedOriginForTool(name, profile);
 			if (generatedOrigin) {
 				children.push({
 					id: `tools/${name}/generated-origin`,
@@ -575,7 +587,7 @@ export async function inspectPiboContextBuild(options: PiboRuntimeOptions = {}):
 					title: "Generated Origin",
 					source: "generated",
 					state: "active",
-					badges: ["GENERATED"],
+					badges: ["GENERATED", "PIBO"],
 					hydratedText: generatedOrigin,
 				});
 			}
@@ -608,23 +620,24 @@ export async function inspectPiboContextBuild(options: PiboRuntimeOptions = {}):
 					id: `tools/${name}/no-prompt-text`,
 					kind: "metadata",
 					title: "No Prompt Text",
-					source: providerTool ? "provider" : "pi",
+					source: toolSource,
 					state: "active",
-					hydratedText: "This tool has no separate prompt snippet or guideline exposed by Pi. Its callable schema is the model-visible contribution.",
+					hydratedText: "This tool has no separate prompt snippet or guideline. Its callable JSON Schema is the model-visible contribution.",
 					approximate: true,
 				});
 			}
 			const badges = [
 				"ACTIVE",
 				...(providerTool ? ["PROVIDER-BACKED"] : []),
-				...(generatedOrigin ? ["GENERATED"] : []),
+				...(generatedOrigin ? ["GENERATED", "PIBO"] : []),
+				...(toolSource === "pibo" ? ["PIBO"] : []),
 				...(profile.builtinToolNames.includes(name) || (DEFAULT_BUILTIN_TOOL_NAMES as readonly string[]).includes(name) ? ["PI"] : []),
 			];
 			return {
 				id: `tools/${name}`,
 				kind: "tool",
 				title: name,
-				source: providerTool ? "provider" : generatedOrigin ? "generated" : "pi",
+				source: toolSource,
 				state: "active",
 				provider: providerTool?.providerTool.provider,
 				badges,
@@ -632,6 +645,7 @@ export async function inspectPiboContextBuild(options: PiboRuntimeOptions = {}):
 					registered: Boolean(info || providerTool),
 					hasDefinition: Boolean(definition || info),
 					description: definition?.description ?? info?.description ?? providerTool?.description,
+					...(toolSource === "pibo" || toolSource === "generated" ? { owner: "pibo", deliveryMode: "direct" } : {}),
 				},
 				children,
 			};

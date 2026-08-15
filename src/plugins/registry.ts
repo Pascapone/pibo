@@ -5,7 +5,9 @@ import type {
 	SkillProfile,
 	SubagentProfile,
 	ToolProfile,
+	ToolProfileRegistration,
 } from "../core/profiles.js";
+import { normalizeToolProfile } from "../core/profiles.js";
 import type { PiboOutputEvent } from "../core/events.js";
 import type { PiboChannel } from "../channels/types.js";
 import type { PiboAuthService } from "../auth/types.js";
@@ -64,6 +66,16 @@ function validateWebRoute(appName: string, label: string, prefix: string): void 
 
 function webRoutesOverlap(left: string, right: string): boolean {
 	return left === right || left === "/" || right === "/" || left.startsWith(`${right}/`) || right.startsWith(`${left}/`);
+}
+
+function toolIsPortable(tool: ToolProfile): boolean {
+	if (tool.definition) return tool.definition.portable !== false;
+	if (!tool.createDefinition) return true;
+	try {
+		return tool.createDefinition({}).portable !== false;
+	} catch {
+		return false;
+	}
 }
 
 export class PiboPluginRegistry {
@@ -137,11 +149,12 @@ export class PiboPluginRegistry {
 		return this.agentRuntimes.validateProfile({ profile, workspace });
 	}
 
-	registerTool(tool: ToolProfile): void {
-		this.addUnique(this.tools, tool.name, tool, "tool");
+	registerTool(tool: ToolProfileRegistration): void {
+		const normalized = normalizeToolProfile(tool);
+		this.addUnique(this.tools, normalized.name, normalized, "tool");
 	}
 
-	registerTools(tools: readonly ToolProfile[]): void {
+	registerTools(tools: readonly ToolProfileRegistration[]): void {
 		for (const tool of tools) {
 			this.registerTool(tool);
 		}
@@ -328,6 +341,7 @@ export class PiboPluginRegistry {
 				description: tool.description,
 				yieldable: tool.yieldable !== false,
 				hasDefinition: tool.definition !== undefined || tool.createDefinition !== undefined,
+				portable: toolIsPortable(tool),
 				pluginId: tool.pluginId,
 				pluginName: tool.pluginId ? this.pluginNames.get(tool.pluginId) : undefined,
 				...(tool.providerTool ? { providerTool: tool.providerTool } : {}),
@@ -359,7 +373,7 @@ export class PiboPluginRegistry {
 			packages: [
 				{
 					name: "pibo-run-control",
-					description: "Expose pibo_run_* tools as one package for yielded native tools and subagents.",
+					description: "Expose pibo_run_* for Pibo-managed tools and subagents; private harness-native tools require explicit runtime capability.",
 					toolNames: [
 						"pibo_run_start",
 						"pibo_run_list",
@@ -454,7 +468,7 @@ export class PiboPluginRegistry {
 	}
 
 	private createApi(pluginId: string): PiboPluginApi {
-		const withPluginToolContext = (tool: ToolProfile): ToolProfile => ({ ...tool, pluginId: tool.pluginId ?? pluginId });
+		const withPluginToolContext = (tool: ToolProfileRegistration): ToolProfileRegistration => ({ ...tool, pluginId: tool.pluginId ?? pluginId });
 		const withPluginSkillContext = (skill: SkillProfile): SkillProfile => (
 			skill.kind === "user"
 				? skill

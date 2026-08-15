@@ -2,10 +2,12 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { platform, release, arch } from "node:os";
 import { dirname, extname, isAbsolute, join, resolve } from "node:path";
 import { AuthStorage } from "@earendil-works/pi-coding-agent";
-import { Type, type ImageContent } from "@earendil-works/pi-ai";
-import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
-import type { ToolDefinitionContext, ToolProfile } from "../core/profiles.js";
+import { Type } from "typebox";
+import { definePiboTool, type PiboToolDefinition, type PiboToolDefinitionContext } from "./contract.js";
+import type { ToolProfile } from "../core/profiles.js";
 import { getPiboHome } from "../core/pibo-home.js";
+
+type ImageContent = { type: "image"; data: string; mimeType: string };
 
 const OPENAI_CODEX_PROVIDER = "openai-codex";
 const DEFAULT_CODEX_BACKEND_BASE_URL = "https://chatgpt.com/backend-api";
@@ -285,10 +287,10 @@ export type CodexImageGenerationToolOptions = {
 	baseUrl?: string;
 };
 
-export function createCodexImageGenerationToolDefinition(context: ToolDefinitionContext = {}, options: CodexImageGenerationToolOptions = {}): ToolDefinition {
-	return defineTool({
+export function createCodexImageGenerationToolDefinition(context: PiboToolDefinitionContext = {}, options: CodexImageGenerationToolOptions = {}): PiboToolDefinition {
+	return definePiboTool({
 		name: "codex_image_generation",
-		label: "Codex Image Generation",
+		title: "Codex Image Generation",
 		description: "Generates or edits images through the ChatGPT/Codex backend API using openai-codex OAuth entitlement. Does not use the public OpenAI Images API.",
 		promptSnippet: "Use codex_image_generation to create an image from a prompt, or to edit referenced/recent images with the Codex/ChatGPT image backend.",
 		promptGuidelines: [
@@ -296,14 +298,16 @@ export function createCodexImageGenerationToolDefinition(context: ToolDefinition
 			"For edits, pass either referenced_image_paths for local image files or num_last_images_to_include for recent conversation images, but not both.",
 		],
 		executionMode: "sequential",
-		parameters: Type.Object({
+		inputSchema: Type.Object({
 			prompt: Type.String({ description: "Image generation/editing prompt. Be specific about the desired final image." }),
 			referenced_image_paths: Type.Optional(Type.Array(Type.String({ description: "Local filesystem image path to edit." }), { description: `Optional local image paths to edit. At most ${MAX_EDIT_IMAGES}.` })),
 			num_last_images_to_include: Type.Optional(Type.Number({ description: `Use the last N conversation images as edit references. Must be between 1 and ${MAX_EDIT_IMAGES}.` })),
 		}),
 		async execute(toolCallId, params, signal, _onUpdate, ctx) {
 			validateImageArgs(params);
-			const images = await collectEditImages(params, ctx.cwd, ctx.sessionManager.getBranch());
+			const legacySessionManager = (ctx as unknown as { sessionManager?: { getBranch?: () => readonly unknown[] } }).sessionManager;
+			const sessionEntries = [...(ctx.getConversationEntries?.() ?? context.getConversationEntries?.() ?? legacySessionManager?.getBranch?.() ?? [])];
+			const images = await collectEditImages(params, ctx.cwd, sessionEntries);
 			const operation: ImageOperation = images.length > 0 ? "edit" : "generate";
 			const endpoint = operation === "edit" ? "edits" : "generations";
 			const auth = await getCodexImageAuth();

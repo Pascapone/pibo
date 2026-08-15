@@ -27,6 +27,7 @@ import type {
 	SkillProfile,
 	SubagentProfile,
 	ToolProfile,
+	ToolProfileRegistration,
 } from "../core/profiles.js";
 import type { PiboPiPackageInfo } from "../pi-packages/types.js";
 import type { PiboProviderUsageStatus } from "../auth/openai-codex-usage.js";
@@ -91,6 +92,7 @@ export type PiboNativeToolInfo = {
 	description?: string;
 	yieldable: boolean;
 	hasDefinition: boolean;
+	portable: boolean;
 	pluginId?: string;
 	pluginName?: string;
 	providerTool?: ProviderToolProfile;
@@ -226,8 +228,8 @@ export type PiboProductEventListener = (event: PiboProductEvent) => void;
 export type PiboPluginApi = {
 	registerAgentRuntimeDriver<TConfig>(driver: AgentRuntimeDriver<TConfig>): void;
 	registerAgentRuntimeInstance(instance: AgentRuntimeInstanceDefinition): void;
-	registerTool(tool: ToolProfile): void;
-	registerTools(tools: readonly ToolProfile[]): void;
+	registerTool(tool: ToolProfileRegistration): void;
+	registerTools(tools: readonly ToolProfileRegistration[]): void;
 	registerSubagent(subagent: SubagentProfile): void;
 	registerSubagents(subagents: readonly SubagentProfile[]): void;
 	registerSkill(skill: SkillProfile): void;
