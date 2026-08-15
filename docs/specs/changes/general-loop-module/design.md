@@ -62,7 +62,7 @@ A built-in `loop` skill and `pibo tools guide loop loop` teach same-session Goal
 ## Risks and Trade-offs
 
 - A model can call `blocked` before satisfying the prompt contract; Codex has the same trust boundary.
-- Usage is accounted after provider messages, so a single request can still overshoot the soft budget; the reserve reduces pre-turn risk but is not a hard provider limit.
+- Uncached input and output usage is accounted after provider messages; cache-read and cache-write tokens remain available as telemetry but do not consume the Goal budget. A single request can still overshoot the soft budget; the reserve reduces pre-turn risk but is not a hard provider limit.
 - Existing custom agents need a migration default of enabled to avoid Goal loops that cannot complete structurally.
 - `create_goal` from an ordinary session depends on the Web Loop service being active for automatic continuation.
 

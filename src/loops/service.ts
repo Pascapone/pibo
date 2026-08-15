@@ -8,6 +8,7 @@ import { PiboDataStore } from '../data/pibo-store.js';
 import { ChatRoomService } from '../apps/chat/data/room-service.js';
 import { isPiboRoomArchived } from '../apps/chat/types/rooms.js';
 import { acquireBrowserPoolLease, browserPoolPaths, releaseBrowserPoolLease, restartRecordedBrowserPoolChrome, type BrowserPoolAcquireOptions, type BrowserPoolAcquireResult, type BrowserPoolIdentity, type BrowserPoolPaths, type BrowserPoolReleaseOptions, type BrowserPoolReleaseResult } from '../tools/browser-pool.js';
+import { goalBudgetTokens } from './accounting.js';
 import { createDefaultPiboLoopStore, PiboLoopStore } from './store.js';
 import { createBuiltInLoopStopConditions, evaluateLoopStopPolicy } from './stopping.js';
 import { buildLoopTurnPrompt } from './prompts.js';
@@ -440,7 +441,7 @@ export class PiboLoopService {
 		if (!run || run.piboSessionId !== event.piboSessionId) return;
 		const job = this.store.getJob(run.jobId);
 		if (!job || job.mode !== 'goal') return;
-		this.store.recordGoalTurnUsage(job.id, run.id, event.totalTokens);
+		this.store.recordGoalTurnUsage(job.id, run.id, goalBudgetTokens(event));
 	}
 	private handleProductEvent(event: { type: string; payload: PiboJsonObject; source: string }): void {
 		if (event.type !== 'pibo.loop.fact' && event.type !== 'loop.fact' && event.type !== 'pibo.ralph.fact' && event.type !== 'ralph.fact') return;

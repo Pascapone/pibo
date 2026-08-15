@@ -32,7 +32,7 @@ test("new loops default to goal while legacy rows load as ralph", async () => {
 	}
 });
 
-test("Goal accounting includes usage reported after update_goal completes the active run", async () => {
+test("Goal accounting excludes cached usage reported after update_goal completes the active run", async () => {
 	const dir = await mkdtemp(join(tmpdir(), "pibo-loop-completion-usage-"));
 	const store = new PiboLoopStore({ path: ":memory:" });
 	const listeners = new Set();
@@ -44,7 +44,7 @@ test("Goal accounting includes usage reported after update_goal completes the ac
 				queueMicrotask(() => {
 					store.updateGoalStatus(jobId, "complete");
 					for (const listener of listeners) {
-						listener({ type: "assistant_usage", piboSessionId: event.piboSessionId, eventId: event.id, totalTokens: 7 });
+						listener({ type: "assistant_usage", piboSessionId: event.piboSessionId, eventId: event.id, inputTokens: 4, outputTokens: 3, cacheReadTokens: 5, cacheWriteTokens: 2, totalTokens: 14 });
 						listener({ type: "assistant_message", piboSessionId: event.piboSessionId, eventId: event.id, text: "done" });
 						listener({ type: "message_finished", piboSessionId: event.piboSessionId, eventId: event.id });
 					}
@@ -70,6 +70,7 @@ test("Goal accounting includes usage reported after update_goal completes the ac
 		const saved = store.getJob(job.id);
 		assert.equal(saved?.state.goalStatus, "complete");
 		assert.equal(saved?.state.tokensUsed, 7);
+		assert.equal(store.listRuns({ jobId: job.id })[0]?.accounting?.tokensUsed, 7);
 	} finally {
 		service.stop();
 		await rm(dir, { recursive: true, force: true });
@@ -117,7 +118,7 @@ test("Goal records a final turn that exceeds remaining soft budget", async () =>
 		assert.equal(saved.state.goalStatus, "budget_limited");
 		assert.equal(saved.state.tokensUsed, 130);
 		assert.equal(saved.enabled, false);
-		assert.match(prompt, /Reported tokens remaining before this turn: 20/);
+		assert.match(prompt, /Reported uncached tokens remaining before this turn: 20/);
 		assert.equal(completedRun.accounting.tokensUsedBefore, 80);
 		assert.equal(completedRun.accounting.remainingTokensBefore, 20);
 		assert.equal(completedRun.accounting.tokensUsed, 50);

@@ -6,7 +6,7 @@ import test from "node:test";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { inspectPiboProfile } from "../dist/core/runtime.js";
 import { normalizeAssistantUsageEvent } from "../dist/core/routed-session.js";
-import { goalActiveTimeSeconds, goalElapsedWallClockSeconds } from "../dist/loops/accounting.js";
+import { goalActiveTimeSeconds, goalBudgetTokens, goalElapsedWallClockSeconds } from "../dist/loops/accounting.js";
 import { buildLoopTurnPrompt } from "../dist/loops/prompts.js";
 import { getEffectiveLoopStopPolicy } from "../dist/loops/stopping.js";
 import { PiboLoopStore } from "../dist/loops/store.js";
@@ -34,6 +34,12 @@ test("assistant model usage is normalized for Goal token accounting", () => {
 	});
 	assert.equal(normalizeAssistantUsageEvent("ps_usage", { usage: { input: 10, output: 5, cacheRead: 3, cacheWrite: 2 } })?.totalTokens, 20);
 	assert.equal(normalizeAssistantUsageEvent("ps_usage", { usage: {} }), undefined);
+});
+
+test("Goal budget token accounting excludes cache reads and writes", () => {
+	assert.equal(goalBudgetTokens({ type: "assistant_usage", piboSessionId: "ps_usage", totalTokens: 20, inputTokens: 10, outputTokens: 5, cacheReadTokens: 3, cacheWriteTokens: 2 }), 15);
+	assert.equal(goalBudgetTokens({ type: "assistant_usage", piboSessionId: "ps_usage", totalTokens: 10 }), 10);
+	assert.equal(goalBudgetTokens({ type: "assistant_usage", piboSessionId: "ps_usage", totalTokens: 4, cacheReadTokens: 5 }), 0);
 });
 
 test("goal tool package is enabled by default or disabled as one profile capability", async () => {
@@ -181,8 +187,8 @@ test("Goal prompting uses native status tooling while Ralph retains the completi
 	assert.match(prompt, /call update_goal with status "complete"/);
 	assert.match(prompt, /three consecutive goal turns/);
 	assert.match(prompt, /Budget enforcement: soft/);
-	assert.match(prompt, /Pre-turn token reserve: 50/);
-	assert.match(prompt, /Reported tokens remaining before this turn: 375/);
+	assert.match(prompt, /Pre-turn uncached token reserve: 50/);
+	assert.match(prompt, /Reported uncached tokens remaining before this turn: 375/);
 	assert.doesNotMatch(prompt, /opening tag <promise>/);
 	assert.equal(getEffectiveLoopStopPolicy(goal).conditions.some((condition) => condition.type === "pibo.loop.goal-status"), true);
 	assert.equal(listLoopJobTemplates().find((template) => template.id === "goal-objective").job.stopPolicy.conditions[0].type, "pibo.loop.goal-status");
