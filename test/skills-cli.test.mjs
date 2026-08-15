@@ -33,6 +33,7 @@ test("skills catalog lists built-in skills", () => {
 	assert.equal(result.status, 0);
 	const skills = JSON.parse(result.stdout);
 	assert.ok(skills.some((skill) => skill.name === "graphify" && skill.kind === "builtin"));
+	assert.ok(skills.some((skill) => skill.name === "pibo-agent-runtime-adapter" && skill.kind === "builtin"));
 });
 
 test("built-in Graphify skill documents the current artifact workflow", () => {

@@ -1,0 +1,342 @@
+{
+  "metadata": {
+    "skill_name": "pibo-agent-runtime-adapter",
+    "skill_path": "skills/builtin/pibo-agent-runtime-adapter",
+    "executor_model": "openai-codex/gpt-5.6-sol (low)",
+    "analyzer_model": "openai-codex/gpt-5.6-sol (manual rubric review)",
+    "timestamp": "2026-08-15T14:30:53Z",
+    "evals_run": [
+      1,
+      2
+    ],
+    "runs_per_configuration": 1
+  },
+  "runs": [
+    {
+      "eval_id": 1,
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1,
+        "passed": 10,
+        "failed": 0,
+        "total": 10,
+        "time_seconds": 131.69,
+        "tokens": 0,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Separates the driver, configured runtime instance, adapter, live session, and Pibo routed session responsibilities.",
+          "passed": true,
+          "evidence": "Module and boundary sections explicitly separate driver, configured adapter, live session, process manager, and Pibo routed/product responsibilities."
+        },
+        {
+          "text": "Builds a complete capability matrix and does not claim clone, native tree navigation, audio input, or structured output.",
+          "passed": true,
+          "evidence": "Exact capability object leaves clone, tree, audio, and structured output false and calls the adapter full only against the required product outcome."
+        },
+        {
+          "text": "Uses a frozen Pibo runtime binding with stable Orion thread id, CAS binding, exact resume, and visible missing-thread behavior.",
+          "passed": true,
+          "evidence": "Binding section uses frozen runtime identity, native thread id, expected-revision CAS, exact resume, missing/error states, and no replacement thread."
+        },
+        {
+          "text": "Maps documented Orion turn, assistant, reasoning, tool, usage, plan, diff, approval, user-input, compaction, and history surfaces to Pibo contracts.",
+          "passed": true,
+          "evidence": "Event/control map covers every documented turn, assistant, reasoning, tool, usage, plan, diff, approval, user-input, compaction, model, and history surface with Pibo semantic contracts."
+        },
+        {
+          "text": "Preserves Orion's base prompt and native tools, leaves preserveNativeTools enabled, and uses additive instruction fields only.",
+          "passed": true,
+          "evidence": "Native preservation section leaves preserveNativeTools true, retains all four Orion tools, and forbids Pi prompt/base-prompt replacement."
+        },
+        {
+          "text": "Uses Pibo's session-scoped MCP bridge for selected Pibo tools and the runtime resource session for external MCP, skills, context, scoped environment, and cleanup.",
+          "passed": true,
+          "evidence": "Portable delivery section uses services.portableTools issueMcpAccess and services.resources for external MCP, selected skills/context, scoped environment, and disposal."
+        },
+        {
+          "text": "Explains Agent Designer support, delivery modes, remaining disabled controls, model/auth/reasoning options, and save/start validation.",
+          "passed": true,
+          "evidence": "Designer section reports capability/delivery modes, exact unsupported reasons, model/auth/reasoning options, stale selection behavior, and save/start validation."
+        },
+        {
+          "text": "Defines adapter-owned process correlation, bounded messages/backpressure, graceful shutdown, crash handling, abort, and idempotent disposal.",
+          "passed": true,
+          "evidence": "Process sections define correlation, 4 MiB bounds, overload handling, graceful shutdown, shared-process ownership, abort, crash cleanup, and idempotent disposal."
+        },
+        {
+          "text": "Implements native history only through inspectHistory and readHistory while keeping Pibo product history primary.",
+          "passed": true,
+          "evidence": "History section implements inspectHistory/readHistory with opaque scoped cursors and keeps Pibo Product History primary."
+        },
+        {
+          "text": "Names shared contract, deterministic protocol, import-boundary, migration, product integration, full-suite, package, exact Pibo2 restart/resume, browser, failure, and cleanup evidence.",
+          "passed": true,
+          "evidence": "Tests, migration, package commands, and 22-step exact Pibo2 plan cover restart/resume, real turn/tool/resource/browser/failure/cleanup evidence."
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 2,
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1,
+        "passed": 10,
+        "failed": 0,
+        "total": 10,
+        "time_seconds": 78.673,
+        "tokens": 0,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Explicitly classifies Relay as partial rather than yielding to the request to call it full.",
+          "passed": true,
+          "evidence": "Verdict explicitly says partial one-shot text runtime and rejects relay-full."
+        },
+        {
+          "text": "Rejects debug-log history scraping, writes to user-global Relay config, Pibo credential persistence, and replacing Relay's native prompt with the Pi prompt.",
+          "passed": true,
+          "evidence": "Product-manager section rejects log scraping, global config credentials, and Pi prompt replacement."
+        },
+        {
+          "text": "Declares text input and one final assistant message only, with assistant deltas, reasoning, tools, usage, plans, diffs, images, audio, and structured output unsupported.",
+          "passed": true,
+          "evidence": "Evidence matrix marks only text/final output and sets deltas/reasoning/tools/usage/plans/diffs/images/audio/structured output unsupported."
+        },
+        {
+          "text": "Keeps lifecycle persistence, resume, attach, native session listing, fork, clone, tree, and native history unsupported and does not treat invocationId as a native session id.",
+          "passed": true,
+          "evidence": "Lifecycle matrix rejects persistence/resume/list/fork/clone/tree/history and treats invocationId as diagnostic only."
+        },
+        {
+          "text": "Uses an unbound Pibo binding and explains that independent Relay invocations do not provide native conversation continuity.",
+          "passed": true,
+          "evidence": "What-can-ship section keeps the binding unbound and states each prompt has no Relay-native continuity."
+        },
+        {
+          "text": "Does not claim a model catalog, model switching, reasoning controls, auth status, approvals, structured input, compaction, or context usage from the arbitrary --model flag.",
+          "passed": true,
+          "evidence": "Matrix and Designer sections reject model catalog/switching, reasoning, auth, approvals, input, compaction, and context usage."
+        },
+        {
+          "text": "Marks Pibo-managed tools, external MCP, skills, context, and Pibo subagents unsupported because no safe delivery surface exists.",
+          "passed": true,
+          "evidence": "Portable delivery matrix rejects Pibo tools, native yielding, external MCP, skills, context, and Designer rejects subagents/run-control."
+        },
+        {
+          "text": "Maps unsupported selections to visible Agent Designer disabled reasons and save/start validation errors instead of silently dropping them.",
+          "passed": true,
+          "evidence": "Designer table keeps unsupported controls visible/disabled and requires save/start rejection of stale selections."
+        },
+        {
+          "text": "Uses Pibo product history for visible turns and refuses to fabricate native history.",
+          "passed": true,
+          "evidence": "What-can-ship preserves Pibo Product History and the history section rejects fabricated native history."
+        },
+        {
+          "text": "Defines session-owned process termination for abort/disposal, negative capability tests, exact package/Pibo2 checks for the supported path, and specific official surfaces needed before capabilities can be enabled.",
+          "passed": true,
+          "evidence": "Scaffold defines SIGINT abort/idempotent disposal, negative capability tests, exact package/Pibo2 evidence, and required official surfaces."
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 1,
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.3,
+        "passed": 3,
+        "failed": 7,
+        "total": 10,
+        "time_seconds": 105.46,
+        "tokens": 0,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Separates the driver, configured runtime instance, adapter, live session, and Pibo routed session responsibilities.",
+          "passed": false,
+          "evidence": "Output distinguishes driver/adapter/session but omits configured-runtime-instance and Pibo routed-session boundaries, and puts code under the wrong singular src/agent-runtime path."
+        },
+        {
+          "text": "Builds a complete capability matrix and does not claim clone, native tree navigation, audio input, or structured output.",
+          "passed": true,
+          "evidence": "Matrix leaves clone, native tree navigation, audio, and structured output unavailable rather than inventing native methods."
+        },
+        {
+          "text": "Uses a frozen Pibo runtime binding with stable Orion thread id, CAS binding, exact resume, and visible missing-thread behavior.",
+          "passed": false,
+          "evidence": "Custom binding interface omits RuntimeSessionBinding states, revision/CAS, frozen instance checks, and no-replacement missing transition."
+        },
+        {
+          "text": "Maps documented Orion turn, assistant, reasoning, tool, usage, plan, diff, approval, user-input, compaction, and history surfaces to Pibo contracts.",
+          "passed": false,
+          "evidence": "Event table invents message.output/tool.requested names instead of the current AgentRuntimeSemanticEvent contract and does not map adapter controls precisely."
+        },
+        {
+          "text": "Preserves Orion's base prompt and native tools, leaves preserveNativeTools enabled, and uses additive instruction fields only.",
+          "passed": true,
+          "evidence": "Instructions and security sections preserve Orion base prompt and require preserveNativeTools true."
+        },
+        {
+          "text": "Uses Pibo's session-scoped MCP bridge for selected Pibo tools and the runtime resource session for external MCP, skills, context, scoped environment, and cleanup.",
+          "passed": false,
+          "evidence": "Portable delivery invents a custom bundle/installer rather than using Pibo portableTools/resources services and the scoped MCP bridge."
+        },
+        {
+          "text": "Explains Agent Designer support, delivery modes, remaining disabled controls, model/auth/reasoning options, and save/start validation.",
+          "passed": false,
+          "evidence": "Designer discussion lacks current delivery support objects/fidelity and misstates reasoning as native despite no live reasoning setter."
+        },
+        {
+          "text": "Defines adapter-owned process correlation, bounded messages/backpressure, graceful shutdown, crash handling, abort, and idempotent disposal.",
+          "passed": true,
+          "evidence": "Driver/security sections cover framing, correlation, limits, graceful shutdown, overload, retries, and process safety."
+        },
+        {
+          "text": "Implements native history only through inspectHistory and readHistory while keeping Pibo product history primary.",
+          "passed": false,
+          "evidence": "History section never uses inspectHistory/readHistory or Pibo Product History and does not describe binding-scoped runtime-history cursors."
+        },
+        {
+          "text": "Names shared contract, deterministic protocol, import-boundary, migration, product integration, full-suite, package, exact Pibo2 restart/resume, browser, failure, and cleanup evidence.",
+          "passed": false,
+          "evidence": "Tests are broad, but the Pibo2 section runs only against a fixture and omits exact package identity, gateway restart/resume, browser, real tool/resource delivery, and cleanup evidence."
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 2,
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.6,
+        "passed": 6,
+        "failed": 4,
+        "total": 10,
+        "time_seconds": 80.029,
+        "tokens": 0,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Explicitly classifies Relay as partial rather than yielding to the request to call it full.",
+          "passed": true,
+          "evidence": "Assessment classifies Relay as stateless/single-turn rather than full."
+        },
+        {
+          "text": "Rejects debug-log history scraping, writes to user-global Relay config, Pibo credential persistence, and replacing Relay's native prompt with the Pi prompt.",
+          "passed": true,
+          "evidence": "Shortcut section rejects debug logs, global config credentials, and Pi prompt replacement."
+        },
+        {
+          "text": "Declares text input and one final assistant message only, with assistant deltas, reasoning, tools, usage, plans, diffs, images, audio, and structured output unsupported.",
+          "passed": true,
+          "evidence": "Capability object marks final-only output and unsupported streaming/reasoning/tools/usage/plans/diffs/multimodal/structured output."
+        },
+        {
+          "text": "Keeps lifecycle persistence, resume, attach, native session listing, fork, clone, tree, and native history unsupported and does not treat invocationId as a native session id.",
+          "passed": true,
+          "evidence": "Capability object and Designer reject sessions/history/resume/fork and treat invocationId as diagnostic."
+        },
+        {
+          "text": "Uses an unbound Pibo binding and explains that independent Relay invocations do not provide native conversation continuity.",
+          "passed": false,
+          "evidence": "Output never maps Relay to Pibo RuntimeSessionBinding state unbound or explains binding persistence semantics."
+        },
+        {
+          "text": "Does not claim a model catalog, model switching, reasoning controls, auth status, approvals, structured input, compaction, or context usage from the arbitrary --model flag.",
+          "passed": true,
+          "evidence": "Output rejects model discovery/options/switching, reasoning, auth, approvals, user input, compaction, and context usage."
+        },
+        {
+          "text": "Marks Pibo-managed tools, external MCP, skills, context, and Pibo subagents unsupported because no safe delivery surface exists.",
+          "passed": false,
+          "evidence": "Output rejects tools/MCP/skills but does not assess Pibo-managed subagents/run-control or Pibo delivery contracts."
+        },
+        {
+          "text": "Maps unsupported selections to visible Agent Designer disabled reasons and save/start validation errors instead of silently dropping them.",
+          "passed": true,
+          "evidence": "Designer section disables controls and server-side validation rejects imported/stale unsupported selections."
+        },
+        {
+          "text": "Uses Pibo product history for visible turns and refuses to fabricate native history.",
+          "passed": false,
+          "evidence": "Output rejects native log history but does not identify Pibo Product History as the supported visible-history source."
+        },
+        {
+          "text": "Defines session-owned process termination for abort/disposal, negative capability tests, exact package/Pibo2 checks for the supported path, and specific official surfaces needed before capabilities can be enabled.",
+          "passed": false,
+          "evidence": "Output mentions generic conformance tests but omits exact package and Pibo2 supported-path validation/cleanup."
+        }
+      ],
+      "notes": []
+    }
+  ],
+  "run_summary": {
+    "with_skill": {
+      "pass_rate": {
+        "mean": 1,
+        "stddev": 0,
+        "min": 1,
+        "max": 1
+      },
+      "time_seconds": {
+        "mean": 105.1815,
+        "stddev": 37.4887,
+        "min": 78.673,
+        "max": 131.69
+      },
+      "tokens": {
+        "mean": 0,
+        "stddev": 0,
+        "min": 0,
+        "max": 0
+      }
+    },
+    "without_skill": {
+      "pass_rate": {
+        "mean": 0.45,
+        "stddev": 0.2121,
+        "min": 0.3,
+        "max": 0.6
+      },
+      "time_seconds": {
+        "mean": 92.7445,
+        "stddev": 17.9824,
+        "min": 80.029,
+        "max": 105.46
+      },
+      "tokens": {
+        "mean": 0,
+        "stddev": 0,
+        "min": 0,
+        "max": 0
+      }
+    },
+    "delta": {
+      "pass_rate": "+0.55",
+      "time_seconds": "+12.4",
+      "tokens": "+0"
+    }
+  },
+  "notes": [
+    "With-skill outputs passed all 20 assertions; baselines passed 9 of 20.",
+    "The largest gain was exact Pibo architecture: configured instances, binding CAS/missing state, current semantic events, existing tool/resource services, product-history ownership, and exact Pibo2 evidence.",
+    "Both baselines rejected the most obvious unsafe product pressure, so those assertions are useful safety gates but less discriminating than the Pibo-specific integration assertions.",
+    "Progressive reference reads added about 12.4 seconds on average and materially improved correctness; token counts were unavailable from the direct runtime evaluator.",
+    "One run per configuration is evidence of task coverage, not a variance estimate."
+  ]
+}

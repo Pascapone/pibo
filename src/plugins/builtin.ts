@@ -155,6 +155,11 @@ export const piboCorePlugin = definePiboPlugin({
 			kind: "builtin",
 		});
 		api.registerSkill({
+			name: "pibo-agent-runtime-adapter",
+			path: builtinSkillPath("pibo-agent-runtime-adapter"),
+			kind: "builtin",
+		});
+		api.registerSkill({
 			name: "pibo-spec-writing",
 			path: builtinSkillPath("pibo-spec-writing"),
 			kind: "builtin",

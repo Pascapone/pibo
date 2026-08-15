@@ -50,7 +50,7 @@ test("default plugin registry builds capabilities without retired built-in codin
 		registry.getCapabilityCatalog().skills
 			.filter((skill) => skill.kind === "builtin")
 			.map((skill) => skill.name),
-		["pi-agent-harness", "pibo-spec-writing", "pibo-docker-system", "graphify", "prd", "skill-creator", "loop", "ralph-loop", "ralph-prd-json", "web-annotations"],
+		["pi-agent-harness", "pibo-agent-runtime-adapter", "pibo-spec-writing", "pibo-docker-system", "graphify", "prd", "skill-creator", "loop", "ralph-loop", "ralph-prd-json", "web-annotations"],
 	);
 	assert.deepEqual(registry.getGatewayActionInfos(), [
 		{
