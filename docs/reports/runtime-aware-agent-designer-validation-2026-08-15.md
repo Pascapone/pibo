@@ -11,6 +11,7 @@ This report validates the runtime-aware profile and Agent Designer milestone sta
 - Commit: `d1e8e4d38fab16988c6117fdbf3ab7a6100577d2`
 - Package: `@pasko70/pibo` `1.7.2`
 - Active Pibo2 candidate: `agent-runtime-designer/d1e8e4d38fab16988c6117fdbf3ab7a6100577d2`
+- Pull request: [#479](https://github.com/Pascapone/pibo/pull/479)
 - Pi SDK protocol: `0.80.6`
 - Authenticated validation window: 2026-08-15 07:31–07:34 UTC
 
