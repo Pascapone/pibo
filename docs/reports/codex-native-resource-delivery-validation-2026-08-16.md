@@ -2,7 +2,7 @@
 
 ## Scope
 
-This report records native Codex checkpoint 9.8 for `@pasko70/pibo@1.7.2` at final implementation commit `7b2aba90d8c02e10075fc7a56783669f0357000f`, stacked on model/options PR #495.
+This report records native Codex checkpoint 9.8 for `@pasko70/pibo@1.7.2` at final implementation commit `7b2aba90d8c02e10075fc7a56783669f0357000f`, delivered in PR #497 stacked on model/options PR #495.
 
 The checkpoint delivers through official Codex App Server v2 behavior:
 
