@@ -101,6 +101,72 @@ export type CodexAppServerTurn = {
 	error?: unknown;
 };
 
+export type CodexAppServerTextUserInput = {
+	type: "text";
+	text: string;
+	text_elements?: unknown[];
+};
+
+export type CodexAppServerUserInput =
+	| CodexAppServerTextUserInput
+	| ({ type: "image"; url: string; detail?: string | null })
+	| ({ type: "localImage"; path: string; detail?: string | null })
+	| ({ type: "audio"; url: string })
+	| ({ type: "localAudio"; path: string })
+	| ({ type: "skill" | "mention"; name: string; path: string });
+
+export type CodexAppServerTurnStartParams = {
+	threadId: string;
+	input: CodexAppServerUserInput[];
+	clientUserMessageId?: string | null;
+	cwd?: string | null;
+	approvalPolicy?: unknown;
+	approvalsReviewer?: unknown;
+	sandboxPolicy?: unknown;
+	model?: string | null;
+	effort?: string | null;
+	summary?: string | null;
+	serviceTier?: string | null;
+	personality?: string | null;
+	outputSchema?: CodexAppServerJson;
+};
+
+export type CodexAppServerTurnStartResponse = {
+	turn: CodexAppServerTurn;
+};
+
+export type CodexAppServerTurnSteerParams = {
+	threadId: string;
+	expectedTurnId: string;
+	input: CodexAppServerUserInput[];
+	clientUserMessageId?: string | null;
+};
+
+export type CodexAppServerTurnSteerResponse = {
+	turnId: string;
+};
+
+export type CodexAppServerTurnInterruptParams = {
+	threadId: string;
+	turnId: string;
+};
+
+export type CodexAppServerTurnInterruptResponse = Record<string, never>;
+
+export type CodexAppServerTokenUsageBreakdown = {
+	cachedInputTokens: number;
+	inputTokens: number;
+	outputTokens: number;
+	reasoningOutputTokens: number;
+	totalTokens: number;
+};
+
+export type CodexAppServerThreadTokenUsage = {
+	last: CodexAppServerTokenUsageBreakdown;
+	total: CodexAppServerTokenUsageBreakdown;
+	modelContextWindow?: number | null;
+};
+
 export type CodexAppServerThread = {
 	id: string;
 	preview: string;

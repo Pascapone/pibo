@@ -7,7 +7,6 @@ import test from "node:test";
 import { AgentRuntimeAdapterRegistry } from "../dist/agent-runtime/registry.js";
 import {
 	AgentRuntimeBindingMissingError,
-	AgentRuntimeCapabilityUnavailableError,
 	AgentRuntimeUnavailableError,
 } from "../dist/agent-runtime/errors.js";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
@@ -176,7 +175,7 @@ test("Codex native missing-thread detection covers exact stable App Server error
 	);
 });
 
-test("Codex native thread driver declares only implemented lifecycle and history capabilities", async (t) => {
+test("Codex native driver declares implemented lifecycle, turn-output, and history capabilities", async (t) => {
 	const root = await testRoot(t);
 	const { registry, adapter, instanceId } = createAdapter(root);
 	assert.equal(CODEX_NATIVE_AGENT_RUNTIME_DRIVER.descriptor.id, "codex-native");
@@ -187,7 +186,12 @@ test("Codex native thread driver declares only implemented lifecycle and history
 	assert.equal(CODEX_NATIVE_THREAD_CAPABILITIES.lifecycle.listNativeSessions, true);
 	assert.equal(CODEX_NATIVE_THREAD_CAPABILITIES.lifecycle.fork, true);
 	assert.equal(CODEX_NATIVE_THREAD_CAPABILITIES.lifecycle.clone, true);
-	assert.equal(CODEX_NATIVE_THREAD_CAPABILITIES.input.text, false);
+	assert.equal(CODEX_NATIVE_THREAD_CAPABILITIES.input.text, true);
+	assert.equal(CODEX_NATIVE_THREAD_CAPABILITIES.input.steering, true);
+	assert.equal(CODEX_NATIVE_THREAD_CAPABILITIES.output.assistantDeltas, true);
+	assert.equal(CODEX_NATIVE_THREAD_CAPABILITIES.output.reasoning, true);
+	assert.equal(CODEX_NATIVE_THREAD_CAPABILITIES.output.toolEvents, true);
+	assert.equal(CODEX_NATIVE_THREAD_CAPABILITIES.output.usage, true);
 	assert.equal(CODEX_NATIVE_THREAD_CAPABILITIES.maintenance.history, true);
 	assert.equal(typeof adapter.inspectHistory, "function");
 	assert.equal(typeof adapter.readHistory, "function");
@@ -226,10 +230,6 @@ test("Codex native thread sessions bind and list a fresh thread, fail closed aft
 	const listed = await first.controls.listSessions();
 	assert.ok(listed.some((thread) => thread.nativeSessionId === firstBinding.nativeSessionId));
 	assert.ok(listed.every((thread) => thread.locator?.value === undefined));
-	await assert.rejects(
-		first.prompt({ text: "not enabled yet", source: "rpc" }),
-		(error) => error instanceof AgentRuntimeCapabilityUnavailableError,
-	);
 	assert.ok(getCodexNativeClient(first));
 	await first.dispose();
 	await first.dispose();

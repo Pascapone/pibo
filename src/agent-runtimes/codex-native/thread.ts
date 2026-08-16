@@ -80,7 +80,7 @@ function optionalString(value: unknown, label: string): string | null | undefine
 	return value;
 }
 
-function validateThreadStatus(value: unknown): CodexAppServerThreadStatus {
+export function validateCodexAppServerThreadStatus(value: unknown): CodexAppServerThreadStatus {
 	if (!isRecord(value) || typeof value.type !== "string" || !THREAD_STATUS_TYPES.has(value.type as CodexAppServerThreadStatus["type"])) {
 		throw new CodexNativeThreadProtocolError("Codex thread status is invalid.");
 	}
@@ -93,14 +93,14 @@ function validateThreadStatus(value: unknown): CodexAppServerThreadStatus {
 	return { type: value.type as "notLoaded" | "idle" | "systemError" };
 }
 
-function validateThreadItem(value: unknown): CodexAppServerThreadItem {
+export function validateCodexAppServerThreadItem(value: unknown): CodexAppServerThreadItem {
 	if (!isRecord(value)) throw new CodexNativeThreadProtocolError("Codex thread item is invalid.");
 	const id = requiredString(value.id, "thread item id");
 	const type = requiredString(value.type, "thread item type");
 	return structuredClone({ ...value, id, type }) as CodexAppServerThreadItem;
 }
 
-function validateTurn(value: unknown): CodexAppServerTurn {
+export function validateCodexAppServerTurn(value: unknown): CodexAppServerTurn {
 	if (!isRecord(value)) throw new CodexNativeThreadProtocolError("Codex turn is invalid.");
 	const id = requiredString(value.id, "turn id");
 	if (typeof value.status !== "string" || !TURN_STATUSES.has(value.status as CodexAppServerTurnStatus)) {
@@ -114,7 +114,7 @@ function validateTurn(value: unknown): CodexAppServerTurn {
 	return {
 		id,
 		status: value.status as CodexAppServerTurnStatus,
-		items: value.items.map(validateThreadItem),
+		items: value.items.map(validateCodexAppServerThreadItem),
 		...(itemsView ? { itemsView: itemsView as "notLoaded" | "summary" | "full" } : {}),
 		...((value.startedAt !== undefined) ? { startedAt: optionalInteger(value.startedAt, "turn start timestamp") } : {}),
 		...((value.completedAt !== undefined) ? { completedAt: optionalInteger(value.completedAt, "turn completion timestamp") } : {}),
@@ -137,9 +137,9 @@ export function validateCodexAppServerThread(value: unknown): CodexAppServerThre
 		cliVersion: requiredString(value.cliVersion, "thread CLI version"),
 		source: structuredClone(value.source),
 		...(value.threadSource !== undefined ? { threadSource: structuredClone(value.threadSource) } : {}),
-		status: validateThreadStatus(value.status),
+		status: validateCodexAppServerThreadStatus(value.status),
 		ephemeral: value.ephemeral === true,
-		turns: value.turns.map(validateTurn),
+		turns: value.turns.map(validateCodexAppServerTurn),
 		sessionId: requiredString(value.sessionId, "thread session id"),
 		...((value.name !== undefined) ? { name: optionalString(value.name, "thread name") } : {}),
 		...((value.forkedFromId !== undefined) ? { forkedFromId: optionalString(value.forkedFromId, "fork source id") } : {}),
@@ -278,6 +278,31 @@ export class CodexNativeThreadController {
 
 	getForkCandidates(): AgentRuntimeForkCandidate[] {
 		return codexThreadForkCandidates(this.currentThread);
+	}
+
+	setStatus(status: CodexAppServerThreadStatus): void {
+		this.currentThread = { ...this.currentThread, status: structuredClone(status) };
+		this.knownThreads.set(this.currentThread.id, structuredClone(this.currentThread));
+	}
+
+	recordTurn(turn: CodexAppServerTurn): void {
+		const turns = this.currentThread.turns.map((entry) => structuredClone(entry));
+		const existingIndex = turns.findIndex((entry) => entry.id === turn.id);
+		if (existingIndex >= 0) turns[existingIndex] = structuredClone(turn);
+		else turns.push(structuredClone(turn));
+		const terminal = turn.status !== "inProgress";
+		const updatedAt = Math.max(
+			this.currentThread.updatedAt,
+			turn.completedAt ?? turn.startedAt ?? Math.floor(Date.now() / 1_000),
+		);
+		this.currentThread = {
+			...this.currentThread,
+			turns,
+			updatedAt,
+			recencyAt: updatedAt,
+			status: terminal ? { type: "idle" } : { type: "active", activeFlags: [] },
+		};
+		this.knownThreads.set(this.currentThread.id, structuredClone(this.currentThread));
 	}
 
 	async list(runtimeInstanceId: string, workspace: string): Promise<AgentRuntimeNativeSessionInfo[]> {

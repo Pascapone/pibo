@@ -5,7 +5,6 @@ import {
 } from "../../agent-runtime/capabilities.js";
 import {
 	AgentRuntimeBindingMissingError,
-	AgentRuntimeCapabilityUnavailableError,
 	AgentRuntimeUnavailableError,
 } from "../../agent-runtime/errors.js";
 import type { AgentRuntimeSemanticEvent } from "../../agent-runtime/events.js";
@@ -15,6 +14,7 @@ import type {
 	AgentRuntimeDriver,
 	AgentRuntimeHistoryInspection,
 	AgentRuntimeHistoryPage,
+	AgentRuntimeProductContext,
 	AgentRuntimePromptInput,
 	AgentRuntimeSession,
 	AgentRuntimeStatus,
@@ -52,13 +52,14 @@ import {
 	CODEX_APP_SERVER_SUPPORTED_RANGE,
 	CODEX_APP_SERVER_VERSION,
 } from "./protocol-version.js";
+import { CodexNativeTurnController } from "./turn.js";
 
 export { CODEX_NATIVE_ADAPTER_ID } from "./thread.js";
 
 export const CODEX_NATIVE_ADAPTER_VERSION = "1.0.0";
 
-const unavailableUntilTurnIntegration = unsupportedAgentRuntimeCapability(
-	"This checkpoint exposes Codex thread lifecycle and history only; turn capability delivery is not registered yet.",
+const unavailableUntilResourceIntegration = unsupportedAgentRuntimeCapability(
+	"This capability has not yet been delivered through the native Codex runtime adapter.",
 );
 
 export const CODEX_NATIVE_THREAD_CAPABILITIES: AgentRuntimeCapabilities = {
@@ -73,33 +74,33 @@ export const CODEX_NATIVE_THREAD_CAPABILITIES: AgentRuntimeCapabilities = {
 		tree: false,
 	},
 	input: {
-		text: false,
+		text: true,
 		images: false,
 		audio: false,
-		steering: false,
+		steering: true,
 		structuredOutput: false,
 	},
 	output: {
-		assistantDeltas: false,
-		reasoning: false,
-		toolEvents: false,
-		usage: false,
+		assistantDeltas: true,
+		reasoning: true,
+		toolEvents: true,
+		usage: true,
 		plans: false,
 		diffs: false,
 		rawNativeEvents: false,
 	},
 	tools: {
-		piboManaged: unavailableUntilTurnIntegration,
+		piboManaged: unavailableUntilResourceIntegration,
 		nativeToolYielding: unsupportedAgentRuntimeCapability(
 			"Codex native tools remain harness-owned and are not wrapped as Pibo yielded tools.",
 		),
 	},
 	mcp: {
-		externalServers: unavailableUntilTurnIntegration,
+		externalServers: unavailableUntilResourceIntegration,
 		statusInspection: false,
 	},
-	skills: unavailableUntilTurnIntegration,
-	context: unavailableUntilTurnIntegration,
+	skills: unavailableUntilResourceIntegration,
+	context: unavailableUntilResourceIntegration,
 	models: {
 		catalog: false,
 		switchInSession: false,
@@ -200,6 +201,7 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 	readonly capabilities = CODEX_NATIVE_THREAD_CAPABILITIES;
 	readonly controls: NonNullable<AgentRuntimeSession["controls"]>;
 	private readonly listeners = new Set<(event: AgentRuntimeSemanticEvent) => void>();
+	private readonly turns: CodexNativeTurnController;
 	private binding: RuntimeSessionBinding;
 	private disposed = false;
 
@@ -208,9 +210,11 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 		private readonly process: CodexNativeAppServerProcess,
 		private readonly threads: CodexNativeThreadController,
 		binding: RuntimeSessionBinding,
+		private readonly productContext?: AgentRuntimeProductContext,
 	) {
 		this.cwd = threads.thread.cwd;
 		this.binding = structuredClone(binding);
+		this.turns = new CodexNativeTurnController(process.client, threads, (event) => this.emit(event));
 		this.controls = {
 			getCurrentSession: () => this.threads.getSnapshot(this.runtimeInstanceId),
 			listSessions: () => this.threads.list(this.runtimeInstanceId, this.cwd),
@@ -240,36 +244,54 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 		return () => this.listeners.delete(listener);
 	}
 
-	async prompt(_input: AgentRuntimePromptInput): Promise<void> {
+	async prompt(input: AgentRuntimePromptInput): Promise<void> {
 		this.assertActive();
-		throw new AgentRuntimeCapabilityUnavailableError(
-			"Codex text turns",
-			this.runtimeInstanceId,
-			"Codex text turns are not enabled by the thread-lifecycle checkpoint.",
-		);
+		await this.turns.start(input.text, this.productContext?.getActiveMessage?.()?.id ?? randomUUID());
+		this.updateBindingFromCurrentThread();
+	}
+
+	async steer(input: AgentRuntimePromptInput): Promise<void> {
+		this.assertActive();
+		await this.turns.steer(input.text, randomUUID());
 	}
 
 	async abort(): Promise<void> {
 		this.assertActive();
+		await this.turns.interrupt();
 	}
 
 	async dispose(): Promise<void> {
 		if (this.disposed) return;
 		this.disposed = true;
+		this.turns.dispose();
 		this.listeners.clear();
 		await this.process.close();
 	}
 
 	getStatus(): AgentRuntimeStatus {
+		const diagnostics = this.process.client.getDiagnostics();
 		return {
-			streaming: false,
+			streaming: this.turns.streaming,
 			enabledTools: [],
 			cwd: this.cwd,
+			warnings: diagnostics.filter((entry) => entry.level === "warning").map((entry) => entry.message),
+			errors: diagnostics.filter((entry) => entry.level === "error").map((entry) => entry.message),
 		};
 	}
 
 	getNativeCompatibilityHandle(): unknown {
 		return this.process.client;
+	}
+
+	private emit(event: AgentRuntimeSemanticEvent): void {
+		if (this.disposed) return;
+		for (const listener of [...this.listeners]) {
+			try {
+				listener(event);
+			} catch {
+				// Runtime listeners are isolated from the owned Codex process lifecycle.
+			}
+		}
 	}
 
 	private updateBindingFromCurrentThread(): void {
@@ -320,7 +342,7 @@ export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 			diagnostics.push({
 				severity: "error",
 				code: "codex_native_runtime_options_pending",
-				message: "Codex adapter-native profile options are not enabled by the thread-lifecycle checkpoint.",
+				message: "Codex adapter-native profile options are not enabled by the current checkpoint.",
 				path: "runtimeOptions",
 			});
 		}
@@ -397,6 +419,7 @@ export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 					previous: binding,
 					thread: threads.thread,
 				}),
+				input.productContext,
 			);
 		} catch (error) {
 			await process.close().catch(() => {});
