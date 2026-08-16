@@ -301,6 +301,16 @@ test("Codex native delivers selected Pibo tools, HTTP MCP, skills, and context w
 			resources,
 		}));
 		assert.equal(session.capabilities.tools.piboManaged.support, "mcp");
+		assert.deepEqual(session.capabilities.tools.nativeToolInspection, {
+			support: "degraded",
+			mode: "observed-runtime-items",
+			reason: "Stable Codex App Server 0.147.0 does not expose a complete pre-turn native-tool inventory; Pibo reports selected MCP tools immediately and harness-native tools after stable item notifications prove they are active.",
+		});
+		assert.deepEqual(session.getStatus().enabledTools, [
+			"external-stdio/stdio_lookup",
+			"external/external_lookup",
+			"pibo-session-tools/alpha",
+		]);
 		assert.equal(accesses.length, index + 1);
 		assert.equal(await callAlpha(accesses[index], `generation-${index + 1}`), `${piboSessionId}:generation-${index + 1}`);
 		await session.prompt({ text: `materialize resource generation ${index + 1}`, source: "rpc" });
@@ -309,6 +319,8 @@ test("Codex native delivers selected Pibo tools, HTTP MCP, skills, and context w
 		assert.deepEqual(state.skillRequests.at(-1), { rootCount: 1, skillNames: ["selected-codex-skill"] });
 		const delivered = state.resourceRequests.at(-1);
 		assert.equal(delivered.method, index === 0 ? "thread/start" : "thread/resume");
+		assert.equal(delivered.hasBaseInstructions, false);
+		assert.equal(delivered.hasNativeToolOverrides, false);
 		assert.equal(delivered.containsPiboSelectedContext, true);
 		assert.equal(delivered.containsPiboMcpCliInstructions, false);
 		assert.equal(delivered.containsPiBasePrompt, false);

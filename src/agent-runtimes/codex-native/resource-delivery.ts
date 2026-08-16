@@ -388,6 +388,12 @@ export class CodexNativeResourceDelivery {
 		return this.expectedMcpServers.length > 0;
 	}
 
+	get enabledToolNames(): readonly string[] {
+		return this.expectedMcpServers
+			.flatMap((server) => server.toolNames.map((toolName) => `${server.name}/${toolName}`))
+			.sort();
+	}
+
 	get nextCredentialMaintenanceAt(): number | undefined {
 		if (!this.mcpAccess || this.credentialIssuedAtMs === undefined || this.credentialExpiresAtMs === undefined) return undefined;
 		return Math.min(

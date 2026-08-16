@@ -91,6 +91,7 @@ export const PI_AGENT_RUNTIME_CAPABILITIES: AgentRuntimeCapabilities = {
 	},
 	tools: {
 		piboManaged: { support: "direct" },
+		nativeToolInspection: { support: "native" },
 		nativeToolYielding: { support: "native" },
 	},
 	mcp: {

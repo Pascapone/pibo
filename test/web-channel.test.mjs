@@ -19,7 +19,11 @@ function fakeRuntimeCapabilities() {
 		lifecycle: { persistent: true, lazyBinding: true, resume: true, attach: false, listNativeSessions: false, fork: false, clone: false, tree: false },
 		input: { text: true, images: false, audio: false, steering: false, structuredOutput: false },
 		output: { assistantDeltas: true, reasoning: true, toolEvents: true, usage: true, plans: false, diffs: false, rawNativeEvents: false },
-		tools: { piboManaged: { support: "mcp", transports: ["streamable-http"] }, nativeToolYielding: unsupported },
+		tools: {
+			piboManaged: { support: "mcp", transports: ["streamable-http"] },
+			nativeToolInspection: { support: "degraded", mode: "observed-runtime-items", reason: "Observed only." },
+			nativeToolYielding: unsupported,
+		},
 		mcp: { externalServers: { support: "native" }, statusInspection: true },
 		skills: { support: "materialized", modes: ["isolated-directory"] },
 		context: { support: "materialized", modes: ["developer-instructions"] },

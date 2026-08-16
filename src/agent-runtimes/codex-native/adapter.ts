@@ -108,6 +108,11 @@ function codexNativeCapabilities(structuredUserInput: boolean): AgentRuntimeCapa
 		},
 		tools: {
 			piboManaged: { support: "mcp", transports: ["streamable-http"] },
+			nativeToolInspection: {
+				support: "degraded",
+				mode: "observed-runtime-items",
+				reason: "Stable Codex App Server 0.147.0 does not expose a complete pre-turn native-tool inventory; Pibo reports selected MCP tools immediately and harness-native tools after stable item notifications prove they are active.",
+			},
 			nativeToolYielding: unsupportedAgentRuntimeCapability(
 				"Codex native tools remain harness-owned and are not wrapped as Pibo yielded tools.",
 			),
@@ -231,6 +236,8 @@ type CodexNativeProcessBundle = {
 type CodexNativeProcessReloader = () => Promise<CodexNativeProcessBundle>;
 
 const RESOURCE_MAINTENANCE_RETRY_MS = 5_000;
+const MAX_INSPECTED_SELECTED_TOOL_NAMES = 512;
+const MAX_INSPECTED_TOOL_NAMES = 256;
 
 export class CodexNativeThreadSession implements AgentRuntimeSession {
 	readonly adapterId = CODEX_NATIVE_ADAPTER_ID;
@@ -250,6 +257,9 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 	private resourceRefresh?: Promise<void>;
 	private resourceWarning?: string;
 	private resourceProcessUnavailable = false;
+	private selectedToolNames = new Set<string>();
+	private readonly observedToolNames = new Set<string>();
+	private toolInventoryWarning?: string;
 
 	constructor(
 		readonly runtimeInstanceId: string,
@@ -265,6 +275,7 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 		this.process = process;
 		this.threads = threads;
 		this.resourceDelivery = resourceDelivery;
+		this.updateSelectedToolNames(resourceDelivery);
 		this.cwd = threads.thread.cwd;
 		this.binding = structuredClone(binding);
 		this.capabilities = codexNativeCapabilities(structuredUserInput);
@@ -394,7 +405,7 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 		const diagnostics = this.process.client.getDiagnostics();
 		return {
 			streaming: this.turns.streaming,
-			enabledTools: [],
+			enabledTools: [...new Set([...this.selectedToolNames, ...this.observedToolNames])].sort(),
 			cwd: this.cwd,
 			activeModel: this.settings.activeModel,
 			reasoning: this.settings.reasoning,
@@ -403,6 +414,7 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 			warnings: [
 				...diagnostics.filter((entry) => entry.level === "warning").map((entry) => entry.message),
 				...(this.resourceWarning ? [this.resourceWarning] : []),
+				...(this.toolInventoryWarning ? [this.toolInventoryWarning] : []),
 			],
 			errors: [
 				...diagnostics.filter((entry) => entry.level === "error").map((entry) => entry.message),
@@ -564,6 +576,7 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 			this.process = next.process;
 			this.threads = nextThreads;
 			this.resourceDelivery = next.resourceDelivery;
+			this.updateSelectedToolNames(next.resourceDelivery);
 			this.turns = nextTurns;
 			this.requests = this.createRequestController(next.process);
 			previousRequests.dispose();
@@ -586,8 +599,24 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 		}
 	}
 
+	private updateSelectedToolNames(resourceDelivery: CodexNativeResourceDelivery): void {
+		const names = [...new Set(resourceDelivery.enabledToolNames)].sort();
+		this.selectedToolNames = new Set(names.slice(0, MAX_INSPECTED_SELECTED_TOOL_NAMES));
+		this.toolInventoryWarning = names.length > MAX_INSPECTED_SELECTED_TOOL_NAMES
+			? `Native Codex selected-tool status is limited to ${MAX_INSPECTED_SELECTED_TOOL_NAMES} names.`
+			: undefined;
+	}
+
 	private emit(event: AgentRuntimeSemanticEvent): void {
 		if (this.disposed) return;
+		if (
+			event.type === "tool_call"
+			&& event.toolName.trim()
+			&& event.toolName.length <= 512
+			&& (this.observedToolNames.has(event.toolName) || this.observedToolNames.size < MAX_INSPECTED_TOOL_NAMES)
+		) {
+			this.observedToolNames.add(event.toolName);
+		}
 		for (const listener of [...this.listeners]) {
 			try {
 				listener(event);

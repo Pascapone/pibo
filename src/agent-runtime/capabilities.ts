@@ -37,6 +37,7 @@ export type AgentRuntimeCapabilities = {
 	};
 	tools: {
 		piboManaged: AgentRuntimeCapabilityDelivery;
+		nativeToolInspection: AgentRuntimeCapabilityDelivery;
 		nativeToolYielding: AgentRuntimeCapabilityDelivery;
 	};
 	mcp: {
@@ -103,6 +104,7 @@ const BOOLEAN_CAPABILITY_PATHS = [
 
 const DELIVERY_CAPABILITY_PATHS = [
 	"tools.piboManaged",
+	"tools.nativeToolInspection",
 	"tools.nativeToolYielding",
 	"mcp.externalServers",
 	"skills",
@@ -214,6 +216,7 @@ export function createMinimalAgentRuntimeCapabilities(): AgentRuntimeCapabilitie
 		},
 		tools: {
 			piboManaged: unavailable,
+			nativeToolInspection: unavailable,
 			nativeToolYielding: unavailable,
 		},
 		mcp: {

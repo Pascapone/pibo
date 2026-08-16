@@ -3,6 +3,8 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { createMinimalAgentRuntimeCapabilities } from "../dist/agent-runtime/capabilities.js";
+import { buildPortableRuntimeContextSnapshot } from "../dist/agent-runtime/context-build.js";
 import { InitialSessionContext } from "../dist/core/profiles.js";
 import { inspectPiboContextBuild } from "../dist/core/context-build.js";
 import { createDefaultPiboProfile } from "../dist/plugins/builtin.js";
@@ -33,6 +35,32 @@ test("default base context build does not select Pibo native tooling context", a
 	assert.equal(goalTool.source, "generated");
 	assert.ok(goalTool.badges.includes("PIBO"));
 	assert.ok(goalSchema.schemaJson.inputSchema);
+});
+
+test("portable runtime context build explains degraded native-tool inspection", () => {
+	const capabilities = createMinimalAgentRuntimeCapabilities("Unavailable by default.");
+	capabilities.tools.nativeToolInspection = {
+		support: "degraded",
+		mode: "observed-runtime-items",
+		reason: "The stable runtime protocol exposes native tool names only after use.",
+	};
+	const snapshot = buildPortableRuntimeContextSnapshot({
+		profile: createDefaultPiboProfile(),
+		cwd: process.cwd(),
+		piboSessionId: "ps_native_tool_inspection",
+		runtime: {
+			runtimeInstanceId: "observed-runtime",
+			adapterId: "observed",
+			available: true,
+			transport: "stdio",
+			capabilities,
+			diagnostics: [],
+		},
+	});
+	const nativeInspection = findNode(snapshot.nodes, (node) => node.id === "tools/native-inspection");
+	assert.equal(nativeInspection.state, "warning");
+	assert.ok(nativeInspection.badges.includes("DEGRADED:OBSERVED-RUNTIME-ITEMS"));
+	assert.ok(nativeInspection.notes.includes("The stable runtime protocol exposes native tool names only after use."));
 });
 
 test("context build snapshot exposes runtime context and provider-backed web search without final prompt duplicate", async () => {

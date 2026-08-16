@@ -613,7 +613,11 @@ export type AgentRuntimeCapabilities = {
 	lifecycle: { persistent: boolean; lazyBinding: boolean; resume: boolean; attach: boolean; listNativeSessions: boolean; fork: boolean; clone: boolean; tree: boolean };
 	input: { text: boolean; images: boolean; audio: boolean; steering: boolean; structuredOutput: boolean };
 	output: { assistantDeltas: boolean; reasoning: boolean; toolEvents: boolean; usage: boolean; plans: boolean; diffs: boolean; rawNativeEvents: boolean };
-	tools: { piboManaged: AgentRuntimeCapabilityDelivery; nativeToolYielding: AgentRuntimeCapabilityDelivery };
+	tools: {
+		piboManaged: AgentRuntimeCapabilityDelivery;
+		nativeToolInspection: AgentRuntimeCapabilityDelivery;
+		nativeToolYielding: AgentRuntimeCapabilityDelivery;
+	};
 	mcp: { externalServers: AgentRuntimeCapabilityDelivery; statusInspection: boolean };
 	skills: AgentRuntimeCapabilityDelivery;
 	context: AgentRuntimeCapabilityDelivery;

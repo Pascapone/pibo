@@ -204,6 +204,7 @@ test("Codex native maps native command, file, and MCP item lifecycles with bound
 	assert.ok(updates.some((event) => event.toolName === "native-server/lookup" && event.partialResult.message === "working"));
 	assert.equal(finishes.length, 3);
 	assert.equal(finishes.every((event) => event.isError === false), true);
+	assert.deepEqual(session.getStatus().enabledTools, ["codex_command", "codex_file_change", "native-server/lookup"]);
 	assert.equal(Object.hasOwn(calls[0].args, "cwd"), false);
 	assert.equal(calls[2].args.arguments.apiKey, "[redacted]");
 	assert.equal(finishes[2].result.result.accessToken, "[redacted]");
