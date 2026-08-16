@@ -329,6 +329,9 @@ The `codex` adapter MUST use the official Codex App Server v2 protocol over a su
 - The adapter performs initialize/initialized handshake and reports process/version/availability diagnostics.
 - It owns process lifecycle and cleanup, creates or resumes persistent threads, starts turns, streams assistant/reasoning/tool/usage events, interrupts turns, and reads native history.
 - It integrates command/file approvals, structured user-input requests, native model/reasoning options, context usage, and failures where supported.
+- It uses stable `model/list` plus stable thread/turn model, reasoning, summary, service-tier, and personality fields; experimental settings mutation is not required for claimed controls.
+- Runtime model menus and Agent Designer use the selected runtime's catalog, and model-specific reasoning choices exclude values that the selected model or Pibo control vocabulary cannot select.
+- Safe model/reasoning/tier/summary/personality choices survive native child-process restart without exposing binding metadata through product diagnostics.
 - It preserves native Codex standard tools.
 - It passes selected Pibo tools through the session-scoped MCP bridge; selected external MCP, skills, and context are delivered and verified through supported mechanisms.
 - Fresh and resumed threads survive Pibo gateway restart.
@@ -355,6 +358,27 @@ The `codex` adapter MUST use the official Codex App Server v2 protocol over a su
 - WHEN Codex requests bounded questions and the user submits validated answers
 - THEN Pibo returns the answers to the exact pending request
 - AND does not copy secret answers into product events, execution results, diagnostics, or history.
+
+#### Scenario: Native model and reasoning selection
+
+- GIVEN `model/list` advertises a visible Codex model, its reasoning efforts, and service tiers
+- WHEN the user selects that model, a supported reasoning effort, and Fast Mode while the session is idle
+- THEN the next stable `turn/start` carries those exact native selections
+- AND Pibo status reports the resulting active model, reasoning value, and tier support.
+
+#### Scenario: Model-specific Designer choices
+
+- GIVEN two Codex models advertise different reasoning efforts or service tiers
+- WHEN Agent Designer switches between those models
+- THEN the reasoning choices are intersected with the selected model's advertised values
+- AND unsupported Fast Mode or adapter-native options fail explicitly instead of being silently emulated.
+
+#### Scenario: Context usage survives child-process restart
+
+- GIVEN a native Codex thread completed a turn and emitted cumulative token usage
+- WHEN the owned App Server process closes and the same binding resumes
+- THEN Pibo restores context usage from the stable resume notification
+- AND preserves the safe model/reasoning/tier selections stored with that binding.
 
 ### REQ-016: Existing Codex compatibility meaning is stable
 
@@ -467,7 +491,7 @@ Implementation MUST be split into focused or explicitly stacked branches/PRs to 
 | REQ-012 Skills/context/MCP | Materialization | Isolation, secret rebinding, connected inventory, failure, cleanup, restart, Context Build, and Pi-scoped CLI tests | Local + exact-candidate Pibo2 pass; see `runtime-resource-materialization-validation-2026-08-15.md` |
 | REQ-013 History/debug | History | New-turn no-native-read, old Pi, Codex restart tests | Pibo-owned + Pi exact-candidate pass; Codex 9.4 normalized/redacted native provider plus 9.5 exact completed-turn child-process restart/resume and fork-candidate reconciliation pass; public service/Chat Web trace pending |
 | REQ-014 Authoring skill | Skill | Registration plus full/partial evals | Local + exact-candidate Pibo2 pass; 20/20 with skill versus 9/20 baseline |
-| REQ-015 Native Codex | Codex | Fixtures, exact binary, Pibo2 integrated flows | 9.1 schema, 9.2 typed stdio client, 9.3 process/private-home isolation, 9.4 thread/binding/history, 9.5 stable turn lifecycle/output/failure, and 9.6 command/file approval plus explicitly enabled structured-input round trips pass on exact Pibo2 `0.147.0`; options, resources, profile, and public live-request flows pending |
+| REQ-015 Native Codex | Codex | Fixtures, exact binary, Pibo2 integrated flows | 9.1 schema, 9.2 typed stdio client, 9.3 process/private-home isolation, 9.4 thread/binding/history, 9.5 stable turn lifecycle/output/failure, 9.6 command/file approval plus explicitly enabled structured-input round trips, and 9.7 stable model/reasoning/tier/options plus context-usage replay pass on exact Pibo2 `0.147.0`; resources, profile registration, and public live-request flows pending |
 | REQ-016 Compatibility alias | Profiles | Existing profile tests | Local pass; native profile pending |
-| REQ-017 Verification | All | Local and Pibo2 evidence reports | Runtime foundation through Codex 9.6 has focused/full/exact evidence; remaining Codex integrations and final cross-runtime audit pending |
+| REQ-017 Verification | All | Local and Pibo2 evidence reports | Runtime foundation through Codex 9.7 has focused/full/exact evidence; remaining Codex integrations and final cross-runtime audit pending |
 | REQ-018 Delivery | All | Branch/commit/PR/final audit | Implementing |

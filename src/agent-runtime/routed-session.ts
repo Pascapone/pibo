@@ -806,6 +806,12 @@ export class RuntimeRoutedSession {
 				getStatusSnapshot: () => this.getStatusSnapshot(),
 				getContextUsage: () => this.getActionContextUsage(),
 				getActiveModel: () => this.getActiveModel(),
+				getModelCatalog: async () => {
+					const adapter = this.pluginRegistry.getAgentRuntimeAdapter(this.runtimeSession.runtimeInstanceId);
+					return adapter?.listModels
+						? await adapter.listModels()
+						: { runtimeInstanceId: this.runtimeSession.runtimeInstanceId, models: [] };
+				},
 				getProviderUsage: () => this.getActionProviderUsage(),
 				clearQueue: () => this.clearQueue(),
 				abort: async () => {

@@ -15,7 +15,15 @@ if (args[0] === "--version") {
 	let nextServerRequest = 1;
 	const load = () => existsSync(statePath)
 		? JSON.parse(readFileSync(statePath, "utf8"))
-		: { nextThread: 1, nextTurn: 1, clock: 1_780_000_000, threads: {} };
+		: {
+			nextThread: 1,
+			nextTurn: 1,
+			clock: 1_780_000_000,
+			threads: {},
+			threadSettings: {},
+			threadTokenUsage: {},
+			turnRequests: [],
+		};
 	const save = (state) => writeFileSync(statePath, `${JSON.stringify(state)}\n`, { mode: 0o600 });
 	const nextTimestamp = (state) => state.clock++;
 	const clone = (value) => structuredClone(value);
@@ -42,18 +50,75 @@ if (args[0] === "--version") {
 			path: Object.hasOwn(overrides, "path") ? overrides.path : `/private/fake-codex/${id}.jsonl`,
 		};
 	};
-	const responseFor = (thread) => ({
-		thread,
+	const defaultThreadSettings = () => ({
 		model: "gpt-5.6-sol",
+		effort: "high",
+		serviceTier: null,
+		personality: null,
+		summary: null,
+	});
+	const responseFor = (state, thread) => {
+		const settings = state.threadSettings?.[thread.id] ?? defaultThreadSettings();
+		return ({
+		thread,
+		model: settings.model,
 		modelProvider: thread.modelProvider,
 		cwd: thread.cwd,
-		reasoningEffort: "high",
-		serviceTier: null,
+		reasoningEffort: settings.effort,
+		serviceTier: settings.serviceTier ?? "default",
 		approvalPolicy: "on-request",
 		approvalsReviewer: "user",
 		sandbox: { type: "workspaceWrite" },
 		instructionSources: [],
 	});
+	};
+	const models = [
+		{
+			id: "gpt-5.6-sol",
+			model: "gpt-5.6-sol",
+			displayName: "GPT-5.6 Sol",
+			description: "Primary fixture model.",
+			hidden: false,
+			isDefault: true,
+			supportedReasoningEfforts: [
+				{ reasoningEffort: "low", description: "Low reasoning" },
+				{ reasoningEffort: "medium", description: "Medium reasoning" },
+				{ reasoningEffort: "high", description: "High reasoning" },
+				{ reasoningEffort: "xhigh", description: "Extra-high reasoning" },
+				{ reasoningEffort: "max", description: "Maximum reasoning" },
+				{ reasoningEffort: "ultra", description: "Native-only ultra reasoning" },
+			],
+			defaultReasoningEffort: "high",
+			serviceTiers: [{ id: "priority", name: "Priority", description: "Priority service" }],
+			defaultServiceTier: null,
+			inputModalities: ["text", "image"],
+			supportsPersonality: true,
+			modelSpecialty: null,
+			upgrade: null,
+		},
+		{
+			id: "gpt-5.2",
+			model: "gpt-5.2",
+			displayName: "GPT-5.2",
+			description: "Fixture model without priority service.",
+			hidden: false,
+			isDefault: false,
+			supportedReasoningEfforts: [
+				{ reasoningEffort: "low", description: "Low reasoning" },
+				{ reasoningEffort: "medium", description: "Medium reasoning" },
+				{ reasoningEffort: "high", description: "High reasoning" },
+				{ reasoningEffort: "xhigh", description: "Extra-high reasoning" },
+			],
+			defaultReasoningEffort: "medium",
+			serviceTiers: [],
+			defaultServiceTier: null,
+			inputModalities: ["text"],
+			supportsPersonality: false,
+			modelSpecialty: null,
+			upgrade: null,
+		},
+	];
+	const defaultEffortForModel = (modelId) => models.find((model) => model.id === modelId)?.defaultReasoningEffort ?? "high";
 	const missing = (id, threadId) => ({ id, error: { code: -32600, message: `no rollout found for thread id ${threadId}` } });
 	const send = (message) => process.stdout.write(`${JSON.stringify(message)}\n`);
 	const notify = (method, params) => send({ method, params });
@@ -229,15 +294,30 @@ if (args[0] === "--version") {
 		if (active.mode.includes("duplicate")) itemCompleted(active, item);
 		return item;
 	};
-	const emitUsage = (active) => notify("thread/tokenUsage/updated", {
-		threadId: active.threadId,
-		turnId: active.turnId,
-		tokenUsage: {
+	const emitUsage = (active) => {
+		const state = load();
+		state.threadTokenUsage ??= {};
+		const previous = state.threadTokenUsage[active.threadId]?.tokenUsage?.total?.totalTokens ?? 0;
+		const totalTokens = previous + 20;
+		const tokenUsage = {
 			last: { cachedInputTokens: 3, inputTokens: 11, outputTokens: 7, reasoningOutputTokens: 2, totalTokens: 20 },
-			total: { cachedInputTokens: 3, inputTokens: 11, outputTokens: 7, reasoningOutputTokens: 2, totalTokens: 20 },
+			total: {
+				cachedInputTokens: Math.round(totalTokens * 0.15),
+				inputTokens: Math.round(totalTokens * 0.55),
+				outputTokens: Math.round(totalTokens * 0.35),
+				reasoningOutputTokens: Math.round(totalTokens * 0.1),
+				totalTokens,
+			},
 			modelContextWindow: 200_000,
-		},
-	});
+		};
+		state.threadTokenUsage[active.threadId] = { turnId: active.turnId, tokenUsage };
+		save(state);
+		notify("thread/tokenUsage/updated", {
+			threadId: active.threadId,
+			turnId: active.turnId,
+			tokenUsage,
+		});
+	};
 	const requestClient = (active, method, params, onResponse) => {
 		const id = `server-request-${nextServerRequest++}`;
 		active.pendingServerRequestIds ??= [];
@@ -494,6 +574,18 @@ if (args[0] === "--version") {
 			return;
 		}
 		if (message.method === "initialized") return;
+		if (message.method === "model/list") {
+			const offset = typeof message.params?.cursor === "string" && message.params.cursor.startsWith("model-offset:")
+				? Number(message.params.cursor.slice("model-offset:".length))
+				: 0;
+			const pageSize = 1;
+			const page = models.slice(offset, offset + pageSize);
+			send({ id: message.id, result: {
+				data: clone(page),
+				nextCursor: offset + page.length < models.length ? `model-offset:${offset + page.length}` : null,
+			} });
+			return;
+		}
 		if (message.method === undefined && Object.hasOwn(message, "id") && (Object.hasOwn(message, "result") || Object.hasOwn(message, "error"))) {
 			resolveServerRequest(message);
 			return;
@@ -501,13 +593,22 @@ if (args[0] === "--version") {
 
 		const state = load();
 		state.nextTurn ??= 1;
+		state.threadSettings ??= {};
+		state.threadTokenUsage ??= {};
+		state.turnRequests ??= [];
 		const params = message.params ?? {};
 		if (message.method === "thread/start") {
 			const threadId = `thread-${state.nextThread++}`;
 			const thread = makeThread(state, threadId, params.cwd ?? process.cwd(), { path: null });
+			state.threadSettings[threadId] = {
+				...defaultThreadSettings(),
+				...(typeof params.model === "string" ? { model: params.model } : {}),
+				...(Object.hasOwn(params, "serviceTier") ? { serviceTier: params.serviceTier } : {}),
+				...(Object.hasOwn(params, "personality") ? { personality: params.personality } : {}),
+			};
 			loadedThreads[threadId] = thread;
 			save(state);
-			send({ id: message.id, result: responseFor(clone(thread)) });
+			send({ id: message.id, result: responseFor(state, clone(thread)) });
 			return;
 		}
 		if (message.method === "thread/resume") {
@@ -517,12 +618,24 @@ if (args[0] === "--version") {
 				return;
 			}
 			if (params.cwd) thread.cwd = params.cwd;
+			const settings = state.threadSettings[params.threadId] ?? defaultThreadSettings();
+			if (typeof params.model === "string") settings.model = params.model;
+			settings.effort = defaultEffortForModel(settings.model);
+			if (Object.hasOwn(params, "serviceTier")) settings.serviceTier = params.serviceTier;
+			if (Object.hasOwn(params, "personality")) settings.personality = params.personality;
+			state.threadSettings[params.threadId] = settings;
 			thread.updatedAt = nextTimestamp(state);
 			thread.recencyAt = thread.updatedAt;
 			loadedThreads[params.threadId] = thread;
 			if (state.threads[params.threadId]) state.threads[params.threadId] = thread;
 			save(state);
-			send({ id: message.id, result: responseFor(clone(thread)) });
+			send({ id: message.id, result: responseFor(state, clone(thread)) });
+			const restoredUsage = state.threadTokenUsage[params.threadId];
+			if (restoredUsage) setImmediate(() => notify("thread/tokenUsage/updated", {
+				threadId: params.threadId,
+				turnId: restoredUsage.turnId,
+				tokenUsage: clone(restoredUsage.tokenUsage),
+			}));
 			return;
 		}
 		if (message.method === "thread/read") {
@@ -580,9 +693,11 @@ if (args[0] === "--version") {
 				forkedFromId: source.id,
 			});
 			state.threads[threadId] = forked;
+			state.threadSettings[threadId] = clone(state.threadSettings[source.id] ?? defaultThreadSettings());
+			if (state.threadTokenUsage[source.id]) state.threadTokenUsage[threadId] = clone(state.threadTokenUsage[source.id]);
 			loadedThreads[threadId] = forked;
 			save(state);
-			send({ id: message.id, result: responseFor(clone(forked)) });
+			send({ id: message.id, result: responseFor(state, clone(forked)) });
 			return;
 		}
 		if (message.method === "turn/start") {
@@ -595,6 +710,21 @@ if (args[0] === "--version") {
 				send({ id: message.id, error: { code: -32600, message: "thread already has an active turn" } });
 				return;
 			}
+			const settings = state.threadSettings[params.threadId] ?? defaultThreadSettings();
+			if (typeof params.model === "string") settings.model = params.model;
+			if (typeof params.effort === "string") settings.effort = params.effort;
+			if (Object.hasOwn(params, "serviceTier")) settings.serviceTier = params.serviceTier;
+			if (Object.hasOwn(params, "summary")) settings.summary = params.summary;
+			if (Object.hasOwn(params, "personality")) settings.personality = params.personality;
+			state.threadSettings[params.threadId] = settings;
+			state.turnRequests.push({
+				threadId: params.threadId,
+				model: params.model ?? null,
+				effort: params.effort ?? null,
+				serviceTier: params.serviceTier ?? null,
+				summary: params.summary ?? null,
+				personality: params.personality ?? null,
+			});
 			const turnId = `turn-${state.nextTurn++}`;
 			const active = {
 				threadId: params.threadId,
@@ -612,7 +742,20 @@ if (args[0] === "--version") {
 			save(state);
 			if (active.mode.includes("early")) emitTurnStarted(active);
 			send({ id: message.id, result: { turn: turnSnapshot(active) } });
-			setImmediate(() => runActive(active));
+			setImmediate(() => {
+				notify("thread/settings/updated", {
+					threadId: params.threadId,
+					threadSettings: {
+						model: settings.model,
+						modelProvider: thread.modelProvider,
+						serviceTier: settings.serviceTier ?? "default",
+						effort: settings.effort,
+						summary: settings.summary,
+						personality: settings.personality,
+					},
+				});
+				runActive(active);
+			});
 			return;
 		}
 		if (message.method === "turn/steer") {
@@ -646,6 +789,8 @@ if (args[0] === "--version") {
 			delete loadedThreads[params.threadId];
 			delete activeTurns[params.threadId];
 			delete state.threads[params.threadId];
+			delete state.threadSettings[params.threadId];
+			delete state.threadTokenUsage[params.threadId];
 			save(state);
 			send({ id: message.id, result: {} });
 			return;
@@ -659,6 +804,7 @@ if (args[0] === "--version") {
 				updatedAt: params.updatedAt,
 			});
 			state.threads[params.threadId] = thread;
+			state.threadSettings[params.threadId] = defaultThreadSettings();
 			loadedThreads[params.threadId] = thread;
 			save(state);
 			send({ id: message.id, result: { thread: clone(thread) } });

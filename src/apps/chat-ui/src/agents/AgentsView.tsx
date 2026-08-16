@@ -17,7 +17,7 @@ import {
 import { deleteCustomAgent, getCustomAgents, patchCustomAgent, postCustomAgent } from "../api-agent-designer";
 import type { SaveState } from "../api";
 import { listContextFiles, postContextFile } from "../api-context-files";
-import { THINKING_LEVELS, type AgentCatalog, type AgentRuntimeCapabilityDelivery, type BootstrapData, type CustomAgent, type CustomAgentSubagent, type ModelCatalog, type ModelProfile, type ThinkingLevel } from "../types";
+import type { AgentCatalog, AgentRuntimeCapabilityDelivery, BootstrapData, CustomAgent, CustomAgentSubagent, ModelCatalog, ModelProfile } from "../types";
 import {
 	BUILTIN_TOOL_DESCRIPTIONS,
 	DEFAULT_BUILTIN_TOOL_NAMES,
@@ -36,6 +36,7 @@ import {
 	isSelectablePiPackage,
 	modelCatalogForRuntime,
 	normalizeBuiltinToolNames,
+	reasoningValuesForModel,
 	profileToDraft,
 	selectExistingAgentDraft,
 	skillMeta,
@@ -459,13 +460,16 @@ export function AgentsView({
 	const piBuiltinToolsUnavailableReason = runtimeUnavailableReason ?? (selectedRuntime?.adapterId !== "pi" ? "Pi built-in tool overrides do not apply to this runtime; its native tools remain unchanged." : null);
 	const modelUnavailableReason = runtimeUnavailableReason ?? (selectedRuntime && !selectedRuntime.capabilities.models.catalog ? "This runtime does not expose a model catalog to Agent Designer." : null);
 	const reasoningUnavailableReason = runtimeUnavailableReason ?? (selectedRuntime && !selectedRuntime.capabilities.reasoning.supported ? "This runtime does not support profile-level reasoning control." : null);
-	const reasoningValues = selectedRuntime?.capabilities.reasoning.values?.filter(
-		(value): value is ThinkingLevel => THINKING_LEVELS.includes(value as ThinkingLevel),
-	);
 	const runtimeModelCatalog = useMemo(
 		() => modelCatalogForRuntime(selectedRuntime, modelCatalog),
 		[selectedRuntime, modelCatalog],
 	);
+	const mainReasoningValues = reasoningValuesForModel(selectedRuntime?.capabilities.reasoning.values, runtimeModelCatalog, draft.mainModel);
+	const subagentReasoningValues = reasoningValuesForModel(selectedRuntime?.capabilities.reasoning.values, runtimeModelCatalog, draft.subagentModel);
+	const mainReasoningUnavailableReason = reasoningUnavailableReason
+		?? (draft.mainModel && mainReasoningValues?.length === 0 ? `Model "${draft.mainModel.id}" does not advertise a selectable reasoning effort.` : null);
+	const subagentReasoningUnavailableReason = reasoningUnavailableReason
+		?? (draft.subagentModel && subagentReasoningValues?.length === 0 ? `Model "${draft.subagentModel.id}" does not advertise a selectable reasoning effort.` : null);
 
 	const runAfterAutosave = async (action: () => void | Promise<void>) => {
 		try {
@@ -750,8 +754,8 @@ export function AgentsView({
 							readOnly={readOnly}
 							modelHint="Unset to use the settings default."
 							modelUnavailableReason={modelUnavailableReason}
-							thinkingUnavailableReason={reasoningUnavailableReason}
-							thinkingValues={reasoningValues}
+							thinkingUnavailableReason={mainReasoningUnavailableReason}
+							thinkingValues={mainReasoningValues}
 							onModelChange={(mainModel) => setDraft((current) => ({ ...current, mainModel }))}
 							onThinkingChange={(mainThinkingLevel) => setDraft((current) => ({ ...current, mainThinkingLevel }))}
 							onFastChange={(mainFast) => setDraft((current) => ({ ...current, mainFast }))}
@@ -766,8 +770,8 @@ export function AgentsView({
 							readOnly={readOnly}
 							modelHint="Unset to use the settings default."
 							modelUnavailableReason={modelUnavailableReason}
-							thinkingUnavailableReason={reasoningUnavailableReason}
-							thinkingValues={reasoningValues}
+							thinkingUnavailableReason={subagentReasoningUnavailableReason}
+							thinkingValues={subagentReasoningValues}
 							onModelChange={(subagentModel) => setDraft((current) => ({ ...current, subagentModel }))}
 							onThinkingChange={(subagentThinkingLevel) => setDraft((current) => ({ ...current, subagentThinkingLevel }))}
 							onFastChange={(subagentFast) => setDraft((current) => ({ ...current, subagentFast }))}

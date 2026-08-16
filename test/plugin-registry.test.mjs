@@ -90,7 +90,7 @@ test("default plugin registry builds capabilities without retired built-in codin
 		},
 		{
 			name: "thinking",
-			description: "Show or set the routed Pi thinking level.",
+			description: "Show or set the active runtime reasoning level.",
 			slashCommands: ["thinking"],
 		},
 		{
@@ -145,7 +145,7 @@ test("default plugin registry builds capabilities without retired built-in codin
 		},
 		{
 			name: "model",
-			description: "Open the interactive model selector for authenticated providers.",
+			description: "Open the interactive model selector for the active runtime.",
 			slashCommands: ["model"],
 		},
 		{

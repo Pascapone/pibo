@@ -549,6 +549,7 @@ export type ModelCatalogEntry = {
 	label: string;
 	authConfigured?: boolean;
 	supportsReasoning?: boolean;
+	reasoningOptions?: ThinkingLevel[];
 };
 
 export type AgentProfile = {

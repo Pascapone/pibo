@@ -1456,6 +1456,7 @@ export class RoutedSession {
 				getStatusSnapshot: () => this.getStatusSnapshot(),
 				getContextUsage: () => this.getContextUsage(),
 				getActiveModel: () => this.getActiveModel(),
+				getModelCatalog: async () => undefined,
 				getProviderUsage: () => this.getProviderUsage(),
 				clearQueue: () => this.clearQueue(),
 				abort: async () => {
