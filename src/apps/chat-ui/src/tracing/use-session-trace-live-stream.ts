@@ -22,6 +22,7 @@ import {
 	traceStreamCursorAfterStream,
 	type ChatStreamEvent,
 	type LiveStreamCursor,
+	type RuntimeRequestStreamEvent,
 } from "./chat-stream-events";
 import type { LiveTraceOverlay } from "./live-overlay";
 
@@ -72,6 +73,7 @@ export type UseSessionTraceLiveStreamInput = {
 	setLiveTraceOverlay: Dispatch<SetStateAction<LiveTraceOverlay | null>>;
 	onRefreshTrace: () => Promise<void>;
 	onRefreshBootstrap: () => Promise<unknown>;
+	onRuntimeRequestEvent?: (event: RuntimeRequestStreamEvent) => void;
 	onError: (message: string | null) => void;
 };
 
@@ -85,6 +87,7 @@ export function useSessionTraceLiveStream({
 	setLiveTraceOverlay,
 	onRefreshTrace,
 	onRefreshBootstrap,
+	onRuntimeRequestEvent,
 	onError,
 }: UseSessionTraceLiveStreamInput): void {
 	const pendingStreamEventsBySession = useRef(new Map<string, ChatStreamEvent[]>());
@@ -303,6 +306,14 @@ export function useSessionTraceLiveStream({
 				scheduleTraceRefresh(0, true);
 			}
 			if (shouldDropStreamingBenchmarkOverlayEvent(event)) return;
+			if (
+				event.type === "RUNTIME_APPROVAL_REQUESTED"
+				|| event.type === "RUNTIME_APPROVAL_RESOLVED"
+				|| event.type === "RUNTIME_USER_INPUT_REQUESTED"
+				|| event.type === "RUNTIME_USER_INPUT_RESOLVED"
+			) {
+				onRuntimeRequestEvent?.(event);
+			}
 			const flushImmediately = event.type !== "TEXT_MESSAGE_CONTENT" && event.type !== "REASONING_MESSAGE_CONTENT";
 			if (targetPiboSessionId === selectedPiboSessionId && eventUpdatesLiveOverlay(event)) {
 				enqueueStreamEvent(targetPiboSessionId, event, flushImmediately);
@@ -330,7 +341,7 @@ export function useSessionTraceLiveStream({
 			if (selectedLiveStreamRef.current?.events === events) selectedLiveStreamRef.current = null;
 			events.close();
 		};
-	}, [currentTraceView?.piboSessionId, enqueueStreamEvent, flushPendingStreamEvents, onError, onRefreshBootstrap, onRefreshTrace, recordLatestLiveStreamCursor, requestSelectedLiveStreamReconnect, selectedLiveStreamReconnectGeneration, selectedPiboSessionId, tracePageReady]);
+	}, [currentTraceView?.piboSessionId, enqueueStreamEvent, flushPendingStreamEvents, onError, onRefreshBootstrap, onRefreshTrace, onRuntimeRequestEvent, recordLatestLiveStreamCursor, requestSelectedLiveStreamReconnect, selectedLiveStreamReconnectGeneration, selectedPiboSessionId, tracePageReady]);
 
 	useEffect(() => {
 		if (!currentTraceView?.piboSessionId) return;

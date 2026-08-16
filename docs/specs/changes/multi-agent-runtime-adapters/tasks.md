@@ -131,7 +131,7 @@ Target branch: `feature/agent-runtime-foundation`
 - [x] 9.3 Implement process/version/availability diagnostics and isolated per-instance/session home/config; deterministic coverage, full-suite verification, and exact Codex `0.147.0` Pibo2 evidence are recorded in `docs/reports/codex-native-process-isolation-validation-2026-08-15.md`.
 - [x] 9.4 Implement thread start, binding CAS, resume, missing-thread state, read/list, and supported fork/history controls; deterministic coverage, full-suite verification, and exact Codex `0.147.0` Pibo2 evidence are recorded in `docs/reports/codex-native-thread-lifecycle-validation-2026-08-15.md`.
 - [x] 9.5 Implement turn start, steering, streaming assistant/reasoning/item/tool/usage events, completion/failure, and interrupt; deterministic, full-suite, and exact Codex `0.147.0` Pibo2 evidence are recorded in `docs/reports/codex-native-turn-lifecycle-validation-2026-08-15.md`.
-- [ ] 9.6 Implement command/file approvals and structured user-input requests through normalized Pibo APIs/UI.
+- [x] 9.6 Implement command/file approvals and explicitly enabled structured user-input requests through normalized Pibo status/events/actions/SSE and Chat Web controls; deterministic, full-suite, authenticated-browser-shell, and exact Codex `0.147.0` Pibo2 evidence are recorded in `docs/reports/codex-native-request-lifecycle-validation-2026-08-15.md`.
 - [ ] 9.7 Implement native model/reasoning/service-tier/options catalog and context usage.
 - [ ] 9.8 Deliver Pibo MCP tools, selected external MCP, selected skills, and selected context without Pi prompt injection.
 - [ ] 9.9 Verify native Codex tools remain unchanged and inspectable.

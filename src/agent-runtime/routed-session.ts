@@ -254,6 +254,10 @@ export class RuntimeRoutedSession {
 	getStatus(): PiboSessionStatus {
 		const status = this.runtimeSession.getStatus();
 		const binding = this.runtimeSession.getBinding();
+		const pendingApprovals = this.runtimeSession.pendingApprovals
+			?? (this.runtimeSession.pendingApproval ? [this.runtimeSession.pendingApproval] : []);
+		const pendingUserInputs = this.runtimeSession.pendingUserInputs
+			?? (this.runtimeSession.pendingUserInput ? [this.runtimeSession.pendingUserInput] : []);
 		const thinkingLevel = status.reasoning?.value && isPiboThinkingLevel(status.reasoning.value)
 			? status.reasoning.value
 			: undefined;
@@ -281,6 +285,12 @@ export class RuntimeRoutedSession {
 			retry: status.retry as PiboSessionStatus["retry"],
 			warnings: status.warnings,
 			errors: status.errors,
+			...(pendingApprovals.length > 0
+				? { pendingApprovals: pendingApprovals.map((request) => structuredClone(request)) }
+				: {}),
+			...(pendingUserInputs.length > 0
+				? { pendingUserInputs: pendingUserInputs.map((request) => structuredClone(request)) }
+				: {}),
 		};
 	}
 
@@ -453,6 +463,18 @@ export class RuntimeRoutedSession {
 		return await compact(customInstructions) as Awaited<ReturnType<PiboGatewayActionContext["compact"]>>;
 	}
 
+	async respondToApproval(requestId: string, decision: string): Promise<void> {
+		const respond = this.runtimeSession.controls?.respondToApproval;
+		if (!respond) throw runtimeCapabilityError(this.runtimeSession, "approval responses");
+		await respond(requestId, decision);
+	}
+
+	async respondToUserInput(requestId: string, answers: PiboJsonObject): Promise<void> {
+		const respond = this.runtimeSession.controls?.respondToUserInput;
+		if (!respond) throw runtimeCapabilityError(this.runtimeSession, "structured user-input responses");
+		await respond(requestId, answers);
+	}
+
 	async dispose(): Promise<void> {
 		if (this.disposePromise) return this.disposePromise;
 		this.disposePromise = this.disposeUnsafe();
@@ -572,6 +594,36 @@ export class RuntimeRoutedSession {
 					result: event.result,
 					aborted: event.aborted,
 					errorMessage: event.errorMessage,
+				}));
+				return;
+			case "approval_requested":
+				this.emit(this.withActiveMessage({
+					type: "approval_requested",
+					piboSessionId: this.piboSessionId,
+					request: structuredClone(event.request),
+				}));
+				return;
+			case "approval_resolved":
+				this.emit(this.withActiveMessage({
+					type: "approval_resolved",
+					piboSessionId: this.piboSessionId,
+					requestId: event.requestId,
+					resolution: event.resolution,
+				}));
+				return;
+			case "user_input_requested":
+				this.emit(this.withActiveMessage({
+					type: "user_input_requested",
+					piboSessionId: this.piboSessionId,
+					request: structuredClone(event.request),
+				}));
+				return;
+			case "user_input_resolved":
+				this.emit(this.withActiveMessage({
+					type: "user_input_resolved",
+					piboSessionId: this.piboSessionId,
+					requestId: event.requestId,
+					resolution: event.resolution,
 				}));
 				return;
 			case "error":
@@ -776,6 +828,8 @@ export class RuntimeRoutedSession {
 				setFastMode: (enabled) => this.setFastMode(enabled),
 				setModel: (model) => this.setModel(model),
 				compact: (customInstructions) => this.compact(customInstructions),
+				respondToApproval: (requestId, decision) => this.respondToApproval(requestId, decision),
+				respondToUserInput: (requestId, answers) => this.respondToUserInput(requestId, answers),
 				kill: async () => {
 					const killed = [await this.kill()];
 					let cancelledRuns: string[] = [];
@@ -929,6 +983,10 @@ export class RuntimeRoutedSession {
 				|| event.type === "tool_execution_started"
 				|| event.type === "tool_execution_updated"
 				|| event.type === "tool_execution_finished"
+				|| event.type === "approval_requested"
+				|| event.type === "approval_resolved"
+				|| event.type === "user_input_requested"
+				|| event.type === "user_input_resolved"
 				|| event.type === "session_error"
 				|| event.type === "execution_result"
 			)

@@ -342,6 +342,20 @@ The `codex` adapter MUST use the official Codex App Server v2 protocol over a su
 - THEN the adapter resumes the same Codex thread id
 - AND a new turn continues the prior conversation.
 
+#### Scenario: Native command or file approval
+
+- GIVEN the exact active Codex turn requests command or file-change approval
+- WHEN Chat Web displays the bounded normalized request and the user selects an official decision
+- THEN Pibo sends the response only to that session's pending native request
+- AND emits one normalized resolution without exposing the native request id.
+
+#### Scenario: Experimental structured user input
+
+- GIVEN a configured `codex-native` instance explicitly enables structured user input
+- WHEN Codex requests bounded questions and the user submits validated answers
+- THEN Pibo returns the answers to the exact pending request
+- AND does not copy secret answers into product events, execution results, diagnostics, or history.
+
 ### REQ-016: Existing Codex compatibility meaning is stable
 
 Persisted or custom `codex-compat-openai-web` profiles and `codex` aliases MUST retain their Pi-backed meaning. The clean `upstream/dev` baseline at `54176105` on August 14, 2026 intentionally exposes no default built-in `codex` profile, so native Codex MUST NOT claim that retired alias implicitly.
@@ -443,7 +457,7 @@ Implementation MUST be split into focused or explicitly stacked branches/PRs to 
 | REQ-002 Registry | Foundation | Registry unit tests, catalog tests | Pi + Designer local pass |
 | REQ-003 Session lifecycle | Foundation/Pi/Codex | Shared adapter contract | Pi local + approved-auth Pibo2 restart/resume pass; Codex 9.4 lifecycle/history and 9.5 shared-contract prompt/abort/disposal plus exact completed-turn child-process restart/resume pass; public service restart pending 10.4 |
 | REQ-004 Capabilities | Foundation/Designer | Capability consistency and save-validation tests | Designer local pass |
-| REQ-005 Events | Pi/Codex/History | Event fixtures and trace tests | Pi local + real-model Pibo2 text/tool/SSE pass; Codex 9.5 assistant/reasoning/tool/usage/compaction/warning/completion/interruption/failure normalization local + exact `0.147.0` pass; approval/input events pending 9.6 |
+| REQ-005 Events | Pi/Codex/History | Event fixtures and trace tests | Pi local + real-model Pibo2 text/tool/SSE pass; Codex 9.5 assistant/reasoning/tool/usage/compaction/warning/completion/interruption/failure normalization and 9.6 approval/input request/resolution normalization pass locally and on exact `0.147.0` |
 | REQ-006 Pi parity | Pi extraction | Full suite, old-session fixtures, Pibo2 parity | Pass: approved Pibo2-managed OAuth, baseline/candidate text and Bash parity, public-Web streaming, unchanged binding across restart, prior-tool-history recovery, controls, trace, and browser evidence; see `pi-agent-runtime-parity-approved-auth-validation-2026-08-15.md` |
 | REQ-007 Bindings | Persistence | Migration/uniqueness/CAS/missing tests | Local + Pibo2 pass |
 | REQ-008 Frozen runtime selection | Profiles/Persistence | Profile edit and existing-session tests | Local + Pibo2 pass |
@@ -453,7 +467,7 @@ Implementation MUST be split into focused or explicitly stacked branches/PRs to 
 | REQ-012 Skills/context/MCP | Materialization | Isolation, secret rebinding, connected inventory, failure, cleanup, restart, Context Build, and Pi-scoped CLI tests | Local + exact-candidate Pibo2 pass; see `runtime-resource-materialization-validation-2026-08-15.md` |
 | REQ-013 History/debug | History | New-turn no-native-read, old Pi, Codex restart tests | Pibo-owned + Pi exact-candidate pass; Codex 9.4 normalized/redacted native provider plus 9.5 exact completed-turn child-process restart/resume and fork-candidate reconciliation pass; public service/Chat Web trace pending |
 | REQ-014 Authoring skill | Skill | Registration plus full/partial evals | Local + exact-candidate Pibo2 pass; 20/20 with skill versus 9/20 baseline |
-| REQ-015 Native Codex | Codex | Fixtures, exact binary, Pibo2 integrated flows | 9.1 schema, 9.2 typed stdio client, 9.3 process/private-home isolation, 9.4 thread/binding/history, and 9.5 stable turn start/steer/interrupt plus assistant/reasoning/native-command/usage/failure normalization pass on exact Pibo2 `0.147.0`; approvals, options, resources, profile, and public integrated flows pending |
+| REQ-015 Native Codex | Codex | Fixtures, exact binary, Pibo2 integrated flows | 9.1 schema, 9.2 typed stdio client, 9.3 process/private-home isolation, 9.4 thread/binding/history, 9.5 stable turn lifecycle/output/failure, and 9.6 command/file approval plus explicitly enabled structured-input round trips pass on exact Pibo2 `0.147.0`; options, resources, profile, and public live-request flows pending |
 | REQ-016 Compatibility alias | Profiles | Existing profile tests | Local pass; native profile pending |
-| REQ-017 Verification | All | Local and Pibo2 evidence reports | Runtime foundation through Codex 9.5 has focused/full/exact evidence; remaining Codex integrations and final cross-runtime audit pending |
+| REQ-017 Verification | All | Local and Pibo2 evidence reports | Runtime foundation through Codex 9.6 has focused/full/exact evidence; remaining Codex integrations and final cross-runtime audit pending |
 | REQ-018 Delivery | All | Branch/commit/PR/final audit | Implementing |

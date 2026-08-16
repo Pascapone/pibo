@@ -37,6 +37,7 @@ type SessionTraceLayoutProps = {
   sessionViewProps: ChatSessionViewProps;
   webAnnotationsPanelRendered: boolean;
   webAnnotationsPanelProps: ComponentProps<typeof WebAnnotationsSessionPanel>;
+  runtimeRequestPanel?: ReactNode;
   composerProps: ComponentProps<typeof Composer>;
 };
 
@@ -67,6 +68,7 @@ export function SessionTraceLayout({
   sessionViewProps,
   webAnnotationsPanelRendered,
   webAnnotationsPanelProps,
+  runtimeRequestPanel,
   composerProps,
 }: SessionTraceLayoutProps) {
   const terminalLoading = roomNavigationPending || (sessionNavigationPending && !currentTraceView) || loadingTrace;
@@ -128,6 +130,7 @@ export function SessionTraceLayout({
         {!terminalFullscreen && webAnnotationsPanelRendered ? (
           <WebAnnotationsSessionPanel {...webAnnotationsPanelProps} />
         ) : null}
+        {runtimeRequestPanel}
         <Composer {...composerProps} />
       </TerminalFileDropTarget>
 

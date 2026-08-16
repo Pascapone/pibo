@@ -204,6 +204,8 @@ export type PiboGatewayActionContext = {
 	setFastMode(enabled: boolean): { mode: "fast" | "normal"; supported: boolean; changed: boolean };
 	setModel(model: ModelProfile): Promise<ModelProfile>;
 	compact(customInstructions?: string): Promise<CompactionResult>;
+	respondToApproval(requestId: string, decision: string): Promise<void>;
+	respondToUserInput(requestId: string, answers: PiboJsonObject): Promise<void>;
 	kill(): Promise<{ killed: string[]; cancelledRuns: string[] }>;
 	killAll(): Promise<{ killed: string[]; cancelledRuns: string[] }>;
 };

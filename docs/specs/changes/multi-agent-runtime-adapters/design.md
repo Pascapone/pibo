@@ -546,17 +546,17 @@ Large product messages and terminal event bodies are hydrated from `PayloadStore
 
 ## Decision: Approvals and user input
 
-Add normalized runtime request records and output events. Requests are persisted with:
+Add normalized runtime request records and output events. A live request exposes:
 
-- Pibo Session id;
-- runtime instance/adapter;
-- native request id (opaque/redacted in normal UI);
-- turn/message correlation;
-- request type and safe summary;
-- structured fields/options;
-- status and timestamps.
+- Pibo Session and active message correlation;
+- an opaque Pibo-owned request id;
+- request type and bounded redacted summary;
+- safe structured fields/options;
+- current pending/resolution state.
 
-Generic execution actions respond through capability-gated `controls.respondToApproval` and `controls.respondToUserInput`. Chat Web presents pending requests in the active session. Abort/disposal resolves or rejects outstanding requests deterministically. Pi may initially advertise unsupported if no equivalent request surface exists.
+Native request ids remain adapter-private and memory-only. They are never copied into product events, status, bindings, diagnostics, or normal UI. Request and resolution output events may be retained as product history, but structured answers—especially answers marked secret—are delivered only to the pending adapter request and are not copied into resolution events or execution results.
+
+Generic execution actions respond through capability-gated `controls.respondToApproval` and `controls.respondToUserInput`. Chat Web presents pending requests in the active session and reconstructs the panel from live status after reload. Abort, server-side resolution, turn completion, process failure, and disposal settle outstanding requests deterministically without writing stale JSON-RPC responses. Pi advertises unsupported because it exposes no equivalent request surface.
 
 ## Decision: Native Codex adapter
 
@@ -588,6 +588,8 @@ Task 9.3 fixes the filesystem/process boundary as follows: each configured insta
 Task 9.4 implements stable thread lifecycle and native history behind the generic adapter contract without registering a built-in runtime instance or profile. An unbound session calls `thread/start`; a bound session resumes only its exact native thread id; stable `thread/read`, `thread/list`, and `thread/fork` back inspection, listing, fork, clone, and adapter-owned history. Missing responses become a `missing` binding and never trigger replacement creation. List requests include every stable source kind because omitted filters exclude non-interactive App Server sources, while the configured-instance-private Codex home keeps the result scoped. The exact `0.147.0` binary does not make a freshly started thread durable or server-listable before its first turn; the live adapter includes that current thread in normalized listing, but a process restart before materialization correctly produces `missing`. The restart guarantee remains tied to a completed native turn, as stated by REQ-015.
 
 Task 9.5 adds a session-owned `CodexNativeTurnController` over stable `turn/start`, `turn/steer`, and `turn/interrupt`. The controller subscribes before prompt dispatch, permits one active turn, accepts notification-before-response ordering, scopes every item/usage/error event to the exact thread and turn, and settles `prompt()` only at terminal completion/failure or a terminal process/protocol error. It normalizes assistant and reasoning deltas/finals, native command/file/MCP and other stable tool items, latest per-turn usage, compaction items, warnings, interruption, and failure into Pibo semantic events. Generic routing supplies the active Pibo message id; no Codex branch is added outside the adapter. Terminal turns reconcile the controller's thread snapshot so history, fork candidates, and child-process restart resume see the completed native state. Cumulative usage notifications are retained internally and emitted once at terminal settlement to prevent accounting duplication. Foreign/stale/duplicate notifications are ignored; malformed active-turn input fails closed and shuts down the owned process. Exact `0.147.0` validation proves streamed reasoning/assistant output, a native command tool loop, steering, interruption, redacted provider failure, and continued turns after child-process restart. Public gateway/service restart remains task 10.4.
+
+Task 9.6 adds a session-owned `CodexNativeRequestController` for stable command/file approvals and experimental structured user input. Command/file requests are advertised after exact protocol validation. Structured input remains disabled by default and is advertised only when the configured runtime instance explicitly enables `experimentalUserInput`; App Server still initializes with `experimentalApi: false`. The controller validates exact thread/turn scope, replaces native request ids with opaque product ids, bounds and recursively redacts projected payloads, validates decisions/answers, and tracks all pending requests for status/API/UI. `serverRequest/resolved`, turn replacement/completion, interruption, process failure, and disposal cancel deferred handlers without a stale response. Generic Pibo actions and SSE/UI consume normalized request contracts without a Codex-specific orchestration branch. Exact `0.147.0` validation proves accepted command/file approvals, structured-input round trip, pending-approval interruption, child-process restart/resume, private permissions, unchanged global Codex state, and zero leaked App Server processes.
 
 Official surfaces currently identified in the inspected schema include thread start/resume/fork/read/list, turn start/steer/interrupt, model list, reasoning effort, thread token usage, compaction, skills list/extra roots, MCP startup/status/tool APIs, approvals, and structured user input. Final capability claims depend on the exact Pibo2 binary and generated schema.
 

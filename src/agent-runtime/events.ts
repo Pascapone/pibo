@@ -10,12 +10,19 @@ export type AgentRuntimeUsage = {
 	contextWindow?: number;
 };
 
+export type AgentRuntimeApprovalDecision = {
+	id: string;
+	label: string;
+	description?: string;
+};
+
 export type AgentRuntimeApprovalRequest = {
 	requestId: string;
 	requestType: string;
 	title?: string;
 	detail?: string;
 	arguments?: PiboJsonValue;
+	decisions?: readonly AgentRuntimeApprovalDecision[];
 };
 
 export type AgentRuntimeUserInputQuestion = {
@@ -25,12 +32,16 @@ export type AgentRuntimeUserInputQuestion = {
 	options?: readonly { label: string; description?: string }[];
 	multiSelect?: boolean;
 	allowFreeform?: boolean;
+	secret?: boolean;
 };
 
 export type AgentRuntimeUserInputRequest = {
 	requestId: string;
 	questions: readonly AgentRuntimeUserInputQuestion[];
+	blocking?: boolean;
 };
+
+export type AgentRuntimeRequestResolution = "responded" | "cleared" | "aborted" | "expired";
 
 export type AgentRuntimeSemanticEvent =
 	| { type: "turn_started"; turnId?: string }
@@ -52,7 +63,9 @@ export type AgentRuntimeSemanticEvent =
 	| { type: "compaction_start"; reason: string }
 	| { type: "compaction_end"; reason: string; result?: unknown; aborted: boolean; errorMessage?: string }
 	| { type: "approval_requested"; request: AgentRuntimeApprovalRequest }
+	| { type: "approval_resolved"; requestId: string; resolution: AgentRuntimeRequestResolution }
 	| { type: "user_input_requested"; request: AgentRuntimeUserInputRequest }
+	| { type: "user_input_resolved"; requestId: string; resolution: AgentRuntimeRequestResolution }
 	| { type: "warning"; message: string; details?: PiboJsonObject }
 	| { type: "error"; message: string; details?: PiboSessionErrorDetails }
 	| { type: "native_event"; event: unknown; redacted?: boolean };

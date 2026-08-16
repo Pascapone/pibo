@@ -7316,6 +7316,16 @@ test("chat web status refresh returns a snapshot without emitting a new executio
 				cwd: "/workspace",
 				disposed: false,
 				contextUsage: { tokens: 250, contextWindow: 1000, percent: 25 },
+				pendingApprovals: [{
+					requestId: "approval-product-id",
+					requestType: "command_execution",
+					title: "Run command",
+				}],
+				pendingUserInputs: [{
+					requestId: "input-product-id",
+					questions: [{ id: "approach", question: "Which approach?" }],
+					blocking: true,
+				}],
 			};
 		},
 	});
@@ -7335,8 +7345,62 @@ test("chat web status refresh returns a snapshot without emitting a new executio
 		const payload = await response.json();
 		assert.equal(payload.piboSessionId, session.id);
 		assert.equal(payload.contextUsage.percent, 25);
+		assert.deepEqual(payload.pendingApprovals.map((request) => request.requestId), ["approval-product-id"]);
+		assert.deepEqual(payload.pendingUserInputs.map((request) => request.requestId), ["input-product-id"]);
 		assert.deepEqual(snapshotCalls, [session.id]);
 		assert.equal(emitted.length, 0, "refreshing status must not append a trace event");
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("chat web forwards runtime approval and structured-input response actions generically", async () => {
+	const { channel, baseURL, emitted, sessions } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+	});
+	const session = sessions.create({
+		channel: "pibo.chat-web",
+		kind: "chat",
+		profile: "base",
+		title: "Runtime request response fixture",
+	});
+
+	try {
+		const approvalResponse = await fetch(`${baseURL}/api/chat/action`, {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				origin: baseURL,
+				"x-test-user": "user-1",
+			},
+			body: JSON.stringify({
+				piboSessionId: session.id,
+				action: "runtime.approval.respond",
+				params: { requestId: "approval-product-id", decision: "accept" },
+			}),
+		});
+		assert.equal(approvalResponse.status, 200);
+		assert.equal((await approvalResponse.json()).action, "runtime.approval.respond");
+
+		const userInputResponse = await fetch(`${baseURL}/api/chat/action`, {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				origin: baseURL,
+				"x-test-user": "user-1",
+			},
+			body: JSON.stringify({
+				piboSessionId: session.id,
+				action: "runtime.user_input.respond",
+				params: { requestId: "input-product-id", answers: { approach: "Safe" } },
+			}),
+		});
+		assert.equal(userInputResponse.status, 200);
+		assert.equal((await userInputResponse.json()).action, "runtime.user_input.respond");
+		assert.deepEqual(emitted.map((event) => ({ action: event.action, params: event.params })), [
+			{ action: "runtime.approval.respond", params: { requestId: "approval-product-id", decision: "accept" } },
+			{ action: "runtime.user_input.respond", params: { requestId: "input-product-id", answers: { approach: "Safe" } } },
+		]);
 	} finally {
 		await channel.stop?.();
 	}

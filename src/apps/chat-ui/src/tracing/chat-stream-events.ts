@@ -1,5 +1,9 @@
 import { parseTraceStreamFrameId } from "../../../../shared/trace-order.js";
-import type { PiboWebSessionNode } from "../types";
+import type {
+	PiboRuntimeApprovalRequest,
+	PiboRuntimeUserInputRequest,
+	PiboWebSessionNode,
+} from "../types";
 
 export type LiveStreamCursor = {
 	streamId?: number;
@@ -45,8 +49,20 @@ export type ChatStreamEvent = ChatStreamEventMeta & (
 	| { type: "TOOL_CALL_RESULT"; toolCallId: string; toolName?: string; result: unknown; isError: boolean; runId?: string }
 	| { type: "AGENT_DELEGATION"; toolCallId?: string; toolName: string; subagentName: string; childPiboSessionId: string; threadKey?: string }
 	| { type: "EXECUTION_RESULT"; runId?: string; eventId?: string; action: string; result: unknown }
+	| { type: "RUNTIME_APPROVAL_REQUESTED"; runId?: string; request: PiboRuntimeApprovalRequest }
+	| { type: "RUNTIME_APPROVAL_RESOLVED"; runId?: string; requestId: string; resolution: string }
+	| { type: "RUNTIME_USER_INPUT_REQUESTED"; runId?: string; request: PiboRuntimeUserInputRequest }
+	| { type: "RUNTIME_USER_INPUT_RESOLVED"; runId?: string; requestId: string; resolution: string }
 	| { type: "RAW_EVENT"; event: { type: string; [key: string]: unknown } }
 );
+
+export type RuntimeRequestStreamEvent = Extract<ChatStreamEvent, {
+	type:
+		| "RUNTIME_APPROVAL_REQUESTED"
+		| "RUNTIME_APPROVAL_RESOLVED"
+		| "RUNTIME_USER_INPUT_REQUESTED"
+		| "RUNTIME_USER_INPUT_RESOLVED";
+}>;
 
 export function chatStreamEvent(message: MessageEvent): ChatStreamEvent | undefined {
 	try {
@@ -121,7 +137,14 @@ export function eventTraceRefreshDelay(event: ChatStreamEvent): number | undefin
 }
 
 export function eventShouldRefreshNavigation(event: ChatStreamEvent): boolean {
-	return event.type === "RUN_STARTED" || event.type === "RUN_FINISHED" || event.type === "RUN_ERROR" || event.type === "TEXT_MESSAGE_END";
+	return event.type === "RUN_STARTED"
+		|| event.type === "RUN_FINISHED"
+		|| event.type === "RUN_ERROR"
+		|| event.type === "TEXT_MESSAGE_END"
+		|| event.type === "RUNTIME_APPROVAL_REQUESTED"
+		|| event.type === "RUNTIME_APPROVAL_RESOLVED"
+		|| event.type === "RUNTIME_USER_INPUT_REQUESTED"
+		|| event.type === "RUNTIME_USER_INPUT_RESOLVED";
 }
 
 export function eventUpdatesLiveOverlay(event: ChatStreamEvent): boolean {
@@ -178,7 +201,9 @@ export function liveSessionStatusFromEvent(event: ChatStreamEvent): PiboWebSessi
 		event.type === "REASONING_MESSAGE_CONTENT" ||
 		event.type === "TOOL_CALL_START" ||
 		event.type === "TOOL_CALL_ARGS" ||
-		event.type === "AGENT_DELEGATION"
+		event.type === "AGENT_DELEGATION" ||
+		event.type === "RUNTIME_APPROVAL_REQUESTED" ||
+		event.type === "RUNTIME_USER_INPUT_REQUESTED"
 	) {
 		return "running";
 	}

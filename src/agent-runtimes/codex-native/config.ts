@@ -49,6 +49,7 @@ export type CodexNativeRuntimeConfig = PiboJsonObject & {
 	executable: string;
 	homeRoot: string;
 	environmentAllowlist: string[];
+	experimentalUserInput: boolean;
 	diagnosticTimeoutMs: number;
 	startupTimeoutMs: number;
 	requestTimeoutMs: number;
@@ -67,6 +68,7 @@ export const CODEX_NATIVE_RUNTIME_CONFIG_SCHEMA: PiboJsonObject = {
 			items: { type: "string", pattern: ENVIRONMENT_KEY_PATTERN.source },
 			uniqueItems: true,
 		},
+		experimentalUserInput: { type: "boolean", default: false },
 		diagnosticTimeoutMs: { type: "integer", minimum: 1, maximum: MAX_TIMEOUT_MS, default: 5_000 },
 		startupTimeoutMs: { type: "integer", minimum: 1, maximum: MAX_TIMEOUT_MS, default: 10_000 },
 		requestTimeoutMs: { type: "integer", minimum: 1, maximum: MAX_TIMEOUT_MS, default: 120_000 },
@@ -80,6 +82,7 @@ export function defaultCodexNativeRuntimeConfig(): CodexNativeRuntimeConfig {
 		executable: "codex",
 		homeRoot: piboHomePath("agent-runtimes", "codex-native"),
 		environmentAllowlist: [...DEFAULT_CODEX_NATIVE_ENVIRONMENT_ALLOWLIST],
+		experimentalUserInput: false,
 		diagnosticTimeoutMs: 5_000,
 		startupTimeoutMs: 10_000,
 		requestTimeoutMs: 120_000,
@@ -122,6 +125,7 @@ export function parseCodexNativeRuntimeConfig(value: PiboJsonObject): CodexNativ
 		"executable",
 		"homeRoot",
 		"environmentAllowlist",
+		"experimentalUserInput",
 		"diagnosticTimeoutMs",
 		"startupTimeoutMs",
 		"requestTimeoutMs",
@@ -142,6 +146,12 @@ export function parseCodexNativeRuntimeConfig(value: PiboJsonObject): CodexNativ
 		executable: executable.trim(),
 		homeRoot: resolve(homeRoot),
 		environmentAllowlist: environmentAllowlist(value.environmentAllowlist, defaults.environmentAllowlist),
+		experimentalUserInput: value.experimentalUserInput === undefined
+			? defaults.experimentalUserInput
+			: (() => {
+				if (typeof value.experimentalUserInput !== "boolean") throw new Error("experimentalUserInput must be boolean");
+				return value.experimentalUserInput;
+			})(),
 		diagnosticTimeoutMs: timeout(value.diagnosticTimeoutMs, defaults.diagnosticTimeoutMs, "diagnosticTimeoutMs"),
 		startupTimeoutMs: timeout(value.startupTimeoutMs, defaults.startupTimeoutMs, "startupTimeoutMs"),
 		requestTimeoutMs: timeout(value.requestTimeoutMs, defaults.requestTimeoutMs, "requestTimeoutMs"),

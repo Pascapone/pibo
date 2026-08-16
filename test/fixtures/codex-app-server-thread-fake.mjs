@@ -10,6 +10,9 @@ if (args[0] === "--version") {
 	const statePath = join(process.env.CODEX_HOME, "fake-thread-state.json");
 	const loadedThreads = {};
 	const activeTurns = {};
+	const pendingServerRequests = new Map();
+	const serverResponseSummaries = [];
+	let nextServerRequest = 1;
 	const load = () => existsSync(statePath)
 		? JSON.parse(readFileSync(statePath, "utf8"))
 		: { nextThread: 1, nextTurn: 1, clock: 1_780_000_000, threads: {} };
@@ -235,6 +238,51 @@ if (args[0] === "--version") {
 			modelContextWindow: 200_000,
 		},
 	});
+	const requestClient = (active, method, params, onResponse) => {
+		const id = `server-request-${nextServerRequest++}`;
+		active.pendingServerRequestIds ??= [];
+		active.pendingServerRequestIds.push(id);
+		pendingServerRequests.set(id, { id, method, active, onResponse });
+		send({ id, method, params });
+	};
+	const removeActiveServerRequest = (active, requestId) => {
+		active.pendingServerRequestIds = (active.pendingServerRequestIds ?? []).filter((id) => id !== requestId);
+	};
+	const resolveServerRequest = (message) => {
+		const pending = pendingServerRequests.get(message.id);
+		if (!pending) {
+			serverResponseSummaries.push({ requestId: String(message.id), unexpected: true });
+			return;
+		}
+		pendingServerRequests.delete(message.id);
+		removeActiveServerRequest(pending.active, message.id);
+		notify("serverRequest/resolved", { threadId: pending.active.threadId, requestId: message.id });
+		if (pending.method === "item/tool/requestUserInput") {
+			const answers = message.result?.answers ?? {};
+			serverResponseSummaries.push({
+				requestId: String(message.id),
+				method: pending.method,
+				error: Boolean(message.error),
+				answerIds: Object.keys(answers),
+				answerCount: Object.values(answers).reduce((total, value) => total + (Array.isArray(value?.answers) ? value.answers.length : 0), 0),
+			});
+		} else {
+			serverResponseSummaries.push({
+				requestId: String(message.id),
+				method: pending.method,
+				error: Boolean(message.error),
+				decision: message.result?.decision,
+			});
+		}
+		pending.onResponse(message);
+	};
+	const clearServerRequests = (active) => {
+		for (const requestId of [...(active.pendingServerRequestIds ?? [])]) {
+			if (!pendingServerRequests.delete(requestId)) continue;
+			notify("serverRequest/resolved", { threadId: active.threadId, requestId });
+		}
+		active.pendingServerRequestIds = [];
+	};
 	const persistTurn = (active, status) => {
 		const state = load();
 		const thread = loadedThreads[active.threadId] ?? state.threads[active.threadId];
@@ -254,6 +302,7 @@ if (args[0] === "--version") {
 	const completeActive = (active, status, finalAssistant) => {
 		if (!active || active.terminal) return;
 		active.terminal = true;
+		clearServerRequests(active);
 		persistTurn(active, status);
 		const summaryItems = finalAssistant ? [finalAssistant] : [];
 		notify("turn/completed", {
@@ -273,7 +322,7 @@ if (args[0] === "--version") {
 		emitTurnStarted(active);
 		notify("turn/started", { threadId: "foreign-thread", turn: turnSnapshot({ ...active, threadId: "foreign-thread", turnId: "foreign-turn" }) });
 		emitUserItem(active, active.userText);
-		if (active.mode.includes("crash")) {
+		if (active.mode.includes("crash") && !active.mode.includes("approval-crash")) {
 			setImmediate(() => process.exit(17));
 			return;
 		}
@@ -283,6 +332,124 @@ if (args[0] === "--version") {
 				turnId: active.turnId,
 				itemId: `${active.turnId}-assistant`,
 				delta: 42,
+			});
+			return;
+		}
+		if (active.mode.includes("approval-command")) {
+			const itemId = `${active.turnId}-approval-command`;
+			const command = "printf approved token=fixture-command-secret";
+			itemStarted(active, {
+				id: itemId,
+				type: "commandExecution",
+				command,
+				cwd: "/private/approval-workspace",
+				status: "inProgress",
+				commandActions: [{ type: "read", path: "/private/approval-workspace/input.txt" }],
+				source: "agent",
+			});
+			requestClient(active, "item/commandExecution/requestApproval", {
+				threadId: active.mode.includes("approval-foreign") ? "foreign-thread" : active.threadId,
+				turnId: active.turnId,
+				itemId,
+				startedAtMs: active.mode.includes("approval-invalid-timestamp") ? "invalid" : active.startedAt * 1_000 + active.eventSequence++,
+				approvalId: null,
+				environmentId: "private-environment-id",
+				reason: "The command needs approval secret=fixture-approval-secret.",
+				command,
+				cwd: "/private/approval-workspace",
+				commandActions: [{ type: "read", path: "/private/approval-workspace/input.txt" }],
+				networkApprovalContext: { host: "example.test", apiKey: "fixture-network-secret" },
+				proposedExecpolicyAmendment: ["prefix_rule", "token=fixture-policy-secret"],
+				proposedNetworkPolicyAmendments: [{ host: "example.test", secret: "fixture-policy-network-secret" }],
+			}, (response) => {
+				if (response.error) {
+					active.error = { type: "approval_error", message: "approval response failed" };
+					completeActive(active, "failed");
+					return;
+				}
+				const decision = response.result?.decision;
+				const declined = decision === "decline" || decision === "cancel";
+				itemCompleted(active, {
+					id: itemId,
+					type: "commandExecution",
+					command,
+					cwd: "/private/approval-workspace",
+					status: declined ? "declined" : "completed",
+					commandActions: [{ type: "read", path: "/private/approval-workspace/input.txt" }],
+					source: "agent",
+					aggregatedOutput: declined ? "" : "approved",
+					exitCode: declined ? null : 0,
+					durationMs: 4,
+				});
+				if (decision === "cancel") {
+					completeActive(active, "interrupted");
+					return;
+				}
+				const finalAssistant = emitAssistant(active, declined ? "Command declined." : "Command approved.");
+				emitUsage(active);
+				completeActive(active, "completed", finalAssistant);
+			});
+			if (active.mode.includes("approval-crash")) setTimeout(() => process.exit(18), 20);
+			return;
+		}
+		if (active.mode.includes("approval-file")) {
+			const itemId = `${active.turnId}-approval-file`;
+			const changes = [{ path: "src/approved.ts", kind: "update" }];
+			itemStarted(active, { id: itemId, type: "fileChange", status: "inProgress", changes });
+			requestClient(active, "item/fileChange/requestApproval", {
+				threadId: active.threadId,
+				turnId: active.turnId,
+				itemId,
+				startedAtMs: active.startedAt * 1_000 + active.eventSequence++,
+				reason: "Apply the proposed edit.",
+				grantRoot: "/private/approval-workspace",
+			}, (response) => {
+				if (response.error) {
+					active.error = { type: "approval_error", message: "file approval response failed" };
+					completeActive(active, "failed");
+					return;
+				}
+				const decision = response.result?.decision;
+				const declined = decision === "decline" || decision === "cancel";
+				itemCompleted(active, { id: itemId, type: "fileChange", status: declined ? "declined" : "completed", changes });
+				if (decision === "cancel") {
+					completeActive(active, "interrupted");
+					return;
+				}
+				const finalAssistant = emitAssistant(active, declined ? "File change declined." : "File change approved.");
+				emitUsage(active);
+				completeActive(active, "completed", finalAssistant);
+			});
+			return;
+		}
+		if (active.mode.includes("user-input")) {
+			const itemId = `${active.turnId}-user-input`;
+			requestClient(active, "item/tool/requestUserInput", {
+				threadId: active.threadId,
+				turnId: active.turnId,
+				itemId,
+				isBlocking: true,
+				autoResolutionMs: null,
+				questions: [{
+					id: "approach",
+					header: "Approach",
+					question: "Which implementation approach should Codex use?",
+					isOther: !active.mode.includes("listed"),
+					isSecret: active.mode.includes("secret"),
+					options: [
+						{ label: "Safe (Recommended)", description: "Use the conservative implementation." },
+						{ label: "Fast", description: "Prefer the shortest implementation." },
+					],
+				}],
+			}, (response) => {
+				if (response.error) {
+					active.error = { type: "user_input_error", message: "user input response failed" };
+					completeActive(active, "failed");
+					return;
+				}
+				const finalAssistant = emitAssistant(active, "User input accepted.");
+				emitUsage(active);
+				completeActive(active, "completed", finalAssistant);
 			});
 			return;
 		}
@@ -327,6 +494,10 @@ if (args[0] === "--version") {
 			return;
 		}
 		if (message.method === "initialized") return;
+		if (message.method === undefined && Object.hasOwn(message, "id") && (Object.hasOwn(message, "result") || Object.hasOwn(message, "error"))) {
+			resolveServerRequest(message);
+			return;
+		}
 
 		const state = load();
 		state.nextTurn ??= 1;
@@ -471,6 +642,7 @@ if (args[0] === "--version") {
 			return;
 		}
 		if (message.method === "thread/delete" || message.method === "test/deleteThread") {
+			if (activeTurns[params.threadId]) clearServerRequests(activeTurns[params.threadId]);
 			delete loadedThreads[params.threadId];
 			delete activeTurns[params.threadId];
 			delete state.threads[params.threadId];
@@ -493,7 +665,12 @@ if (args[0] === "--version") {
 			return;
 		}
 		if (message.method === "test/getState") {
-			send({ id: message.id, result: { ...clone(state), activeTurns: clone(activeTurns) } });
+			send({ id: message.id, result: {
+				...clone(state),
+				activeTurns: clone(activeTurns),
+				pendingServerRequestCount: pendingServerRequests.size,
+				serverResponseSummaries: clone(serverResponseSummaries),
+			} });
 			return;
 		}
 		send({ id: message.id, result: {} });

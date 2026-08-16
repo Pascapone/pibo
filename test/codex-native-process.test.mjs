@@ -69,12 +69,16 @@ test("Codex native config has safe defaults and rejects unknown, relative, or pr
 	assert.equal(defaults.executable, "codex");
 	assert.equal(defaults.homeRoot.endsWith(join("agent-runtimes", "codex-native")), true);
 	assert.ok(defaults.environmentAllowlist.includes("PATH"));
+	assert.equal(defaults.experimentalUserInput, false);
 	assert.equal(CODEX_NATIVE_RUNTIME_CONFIG_SCHEMA.additionalProperties, false);
+	assert.equal(CODEX_NATIVE_RUNTIME_CONFIG_SCHEMA.properties.experimentalUserInput.default, false);
 
 	const parsed = parseCodexNativeRuntimeConfig({ homeRoot: join(root, "state") });
 	assert.equal(parsed.executable, "codex");
 	assert.equal(parsed.homeRoot, join(root, "state"));
+	assert.equal(parsed.experimentalUserInput, false);
 	assert.notEqual(parsed.environmentAllowlist, defaults.environmentAllowlist);
+	assert.equal(parseCodexNativeRuntimeConfig({ homeRoot: join(root, "experimental"), experimentalUserInput: true }).experimentalUserInput, true);
 
 	assert.throws(() => parseCodexNativeRuntimeConfig({ homeRoot: "relative" }), /absolute path/);
 	assert.throws(() => parseCodexNativeRuntimeConfig({ homeRoot: root, unknown: true }), /unsupported config field/);
@@ -87,6 +91,7 @@ test("Codex native config has safe defaults and rejects unknown, relative, or pr
 		/reserved key/,
 	);
 	assert.throws(() => parseCodexNativeRuntimeConfig({ homeRoot: root, startupTimeoutMs: 0 }), /positive integer/);
+	assert.throws(() => parseCodexNativeRuntimeConfig({ homeRoot: root, experimentalUserInput: "yes" }), /must be boolean/);
 });
 
 test("Codex native diagnostics report exact, compatible, unsupported, missing, failed, and bounded version probes", async (t) => {
@@ -249,7 +254,15 @@ test("Codex native process starts the stable stdio server in isolated state and 
 	t.after(() => runtime.close());
 	const response = await runtime.client.request("test/process", {});
 	assert.equal(response.initialized, true);
-	assert.deepEqual(response.args, ["app-server", "--stdio", "--strict-config"]);
+	assert.deepEqual(response.args, [
+		"app-server",
+		"--stdio",
+		"--strict-config",
+		"-c",
+		"tools.experimental_request_user_input.enabled=false",
+		"-c",
+		"features.default_mode_request_user_input=false",
+	]);
 	assert.equal(response.codexHome, runtime.paths.codexHome);
 	assert.equal(response.home, runtime.paths.processHome);
 	assert.equal(response.tmp, runtime.paths.temp);
@@ -265,6 +278,32 @@ test("Codex native process starts the stable stdio server in isolated state and 
 	assert.equal(existsSync(runtime.paths.generationRoot), false);
 	assert.equal(existsSync(runtime.paths.codexHome), true);
 	assert.equal(await readFile(join(root, "global-marker"), "utf8"), "untouched");
+});
+
+test("Codex native process opts into structured user input only through explicit private config overrides", async (t) => {
+	const root = await testRoot(t);
+	const runtimeConfig = { ...config(root), experimentalUserInput: true };
+	const runtime = await startCodexNativeAppServer({
+		config: runtimeConfig,
+		runtimeInstanceId: "codex-native-user-input",
+		piboSessionId: "ps_process_user_input",
+		sessionGeneration: "generation-user-input",
+		workspace: root,
+		clientVersion: "1.7.2-test",
+		baseEnvironment: fakeEnvironment(),
+	});
+	t.after(() => runtime.close());
+	const response = await runtime.client.request("test/process", {});
+	assert.deepEqual(response.args, [
+		"app-server",
+		"--stdio",
+		"--strict-config",
+		"-c",
+		"tools.experimental_request_user_input.enabled=true",
+		"-c",
+		"features.default_mode_request_user_input=true",
+	]);
+	assert.doesNotMatch(await readFile(runtime.paths.configFile, "utf8"), /request_user_input|default_mode_request_user_input/);
 });
 
 test("Codex native processes isolate configured instances, session environments, and cleanup", async (t) => {

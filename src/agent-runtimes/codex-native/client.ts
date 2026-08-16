@@ -53,6 +53,13 @@ export class CodexAppServerClientError extends Error {
 	}
 }
 
+export class CodexAppServerServerRequestCancelledError extends Error {
+	constructor(message = "Codex App Server request was resolved before the client response.") {
+		super(message);
+		this.name = "CodexAppServerServerRequestCancelledError";
+	}
+}
+
 export class CodexAppServerRpcResponseError extends Error {
 	readonly rpcCode: number;
 	readonly data?: unknown;
@@ -728,6 +735,7 @@ export class CodexAppServerClient {
 			const result = await handler(request);
 			await this.writeMessage({ id: request.id, result: result === undefined ? null : result }, true);
 		} catch (error) {
+			if (error instanceof CodexAppServerServerRequestCancelledError) return;
 			const message = redactCodexAppServerDiagnostic(error instanceof Error ? error.message : "Server request handler failed");
 			await this.writeMessage({ id: request.id, error: { code: -32000, message } }, true).catch(() => {});
 		}

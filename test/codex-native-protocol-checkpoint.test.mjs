@@ -47,6 +47,12 @@ test("Codex native protocol checkpoint stores unmodified stable generated schema
 	]) {
 		assert.ok(full.definitions[definition], `missing full protocol definition ${definition}`);
 	}
+	const serverRequestMethods = full.definitions.ServerRequest.oneOf
+		.map((entry) => entry.properties?.method?.enum?.[0])
+		.filter(Boolean);
+	assert.ok(serverRequestMethods.includes("item/commandExecution/requestApproval"));
+	assert.ok(serverRequestMethods.includes("item/fileChange/requestApproval"));
+	assert.ok(serverRequestMethods.includes("item/tool/requestUserInput"));
 	for (const definition of [
 		"ThreadStartParams",
 		"ThreadResumeParams",
@@ -59,6 +65,7 @@ test("Codex native protocol checkpoint stores unmodified stable generated schema
 		"SkillsExtraRootsSetParams",
 		"ListMcpServerStatusParams",
 		"ThreadTokenUsageUpdatedNotification",
+		"ServerRequestResolvedNotification",
 	]) {
 		assert.ok(v2.definitions[definition], `missing v2 protocol definition ${definition}`);
 	}
